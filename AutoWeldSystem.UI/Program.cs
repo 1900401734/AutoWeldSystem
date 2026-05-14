@@ -10,6 +10,7 @@ using AutoWeldSystem.Services.Production;
 using AutoWeldSystem.UI.Forms;
 using AutoWeldSystem.UI.Infrastructure;
 using AutoWeldSystem.UI.Views;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -34,7 +35,11 @@ public static class Program
             AppHost = Host.CreateDefaultBuilder()
                 .ConfigureServices(services =>
                 {
-                    services.AddSingleton<SqlSugarDbContext>();
+                    services.AddSingleton(provider =>
+                    {
+                        var configuration = provider.GetRequiredService<IConfiguration>();
+                        return new SqlSugarDbContext(configuration["Database:ConnectionString"]);
+                    });
                     services.AddSingleton<IRbacService, RbacService>();
                     services.AddSingleton<ISysUserService, SysUserService>();
                     services.AddSingleton<IAppSettingsService, AppSettingsService>();

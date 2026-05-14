@@ -12,11 +12,15 @@ public class SqlSugarDbContext : IDisposable
     private readonly object _initLock = new();
     private bool _initialized;
 
-    public SqlSugarDbContext()
+    public SqlSugarDbContext(string? connectionString = null)
     {
+        var actualConnectionString = string.IsNullOrWhiteSpace(connectionString)
+            ? DefaultConnectionString
+            : connectionString;
+
         Db = new SqlSugarScope(new ConnectionConfig
         {
-            ConnectionString = DefaultConnectionString,
+            ConnectionString = actualConnectionString,
             DbType = DbType.MySql,
             IsAutoCloseConnection = true,
             InitKeyType = InitKeyType.Attribute
