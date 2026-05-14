@@ -7,6 +7,7 @@ using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.UI.Base;
 using AutoWeldSystem.UI.Forms;
 using AutoWeldSystem.UI.Infrastructure;
+using System.Reflection;
 
 namespace AutoWeldSystem.UI.Views;
 
@@ -20,6 +21,7 @@ public partial class MonitorView : BaseView
     private const int HeaderStatusCellMinWidth = 140;
     private const int HeaderStatusCellPadding = 36;
     private const int HeaderButtonPadding = 62;
+    private const string VersionPrefix = "v";
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 1000 };
     private readonly ILocalizationService _localizer;
     private readonly IPlcCommunicationService _plcCommunicationService;
@@ -38,8 +40,11 @@ public partial class MonitorView : BaseView
     private Font? _titleFont;
     private Font? _headerStatusFont;
     private Font? _headerButtonFont;
+    private Font? _versionFont;
     private Font? _runtimeMessageFont;
     private Font? _runtimeGroupFont;
+    private Label? _lblVersion;
+    private TableLayoutPanel? _titleLayout;
 
     public MonitorView(
         ILocalizationService localizer,
@@ -98,18 +103,63 @@ public partial class MonitorView : BaseView
     {
         _headerStatusFont = new Font("Microsoft YaHei UI", 10.5F, FontStyle.Regular);
         _headerButtonFont = new Font("Microsoft YaHei UI", 10.5F, FontStyle.Regular);
+        _versionFont = new Font("Microsoft YaHei UI", 9F, FontStyle.Regular);
 
         tlpLeftTop.AutoSize = false;
         tlpReportButton.AutoSize = false;
         tlpCommunicationStatus.MinimumSize = new Size(HeaderStatusCellMinWidth * 3, 0);
         tlpReportButton.MinimumSize = new Size(HeaderActionMinWidth, 0);
 
+        ConfigureTitleVersionLayout();
         ConfigureStatusTag(tagMes);
         ConfigureStatusTag(tagPLC);
         ConfigureStatusTag(tagDeviceStatus);
         ConfigureReportButton(btnExpStart);
         ConfigureReportButton(btnExpEnd);
         AdjustHeaderFixedColumns();
+    }
+
+    /// <summary>
+    /// Splits the header title area into app title and version, keeping the version visible without crowding the title.
+    /// </summary>
+    private void ConfigureTitleVersionLayout()
+    {
+        if (_titleLayout is not null)
+        {
+            return;
+        }
+
+        tlpLeftTop.Controls.Remove(lblTitle);
+        lblTitle.Dock = DockStyle.Fill;
+        lblTitle.Margin = new Padding(0);
+        lblTitle.TextAlign = ContentAlignment.BottomCenter;
+
+        _lblVersion = new Label
+        {
+            Dock = DockStyle.Fill,
+            Font = _versionFont,
+            ForeColor = SystemColors.GrayText,
+            Margin = new Padding(0),
+            Name = "lblVersion",
+            Text = BuildVersionText(),
+            TextAlign = ContentAlignment.TopCenter
+        };
+
+        _titleLayout = new TableLayoutPanel
+        {
+            ColumnCount = 1,
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0),
+            Name = "tlpTitleInfo",
+            RowCount = 2
+        };
+        _titleLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        _titleLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 72F));
+        _titleLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 28F));
+        _titleLayout.Controls.Add(lblTitle, 0, 0);
+        _titleLayout.Controls.Add(_lblVersion, 0, 1);
+
+        tlpLeftTop.Controls.Add(_titleLayout, 1, 0);
     }
 
     /// <summary>
@@ -215,6 +265,34 @@ public partial class MonitorView : BaseView
             font,
             new Size(10000, 10000),
             TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
+    }
+
+    /// <summary>
+    /// Builds the compact version text shown below the monitor title.
+    /// </summary>
+    private static string BuildVersionText()
+    {
+        var version = GetApplicationVersion();
+        return string.IsNullOrWhiteSpace(version)
+            ? string.Empty
+            : $"{VersionPrefix}{version}";
+    }
+
+    /// <summary>
+    /// Reads the product version from assembly metadata so the UI always follows Directory.Build.props.
+    /// </summary>
+    private static string GetApplicationVersion()
+    {
+        var assembly = typeof(MonitorView).Assembly;
+        var informationalVersion = assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+            .InformationalVersion;
+        var version = string.IsNullOrWhiteSpace(informationalVersion)
+            ? assembly.GetName().Version?.ToString(3)
+            : informationalVersion;
+
+        // InformationalVersion may contain source metadata after '+', but operators only need the release version.
+        return version?.Split('+')[0] ?? string.Empty;
     }
 
     /// <summary>
@@ -380,6 +458,7 @@ public partial class MonitorView : BaseView
         _titleFont?.Dispose();
         _headerStatusFont?.Dispose();
         _headerButtonFont?.Dispose();
+        _versionFont?.Dispose();
         _runtimeMessageFont?.Dispose();
         _runtimeGroupFont?.Dispose();
         base.OnHandleDestroyed(e);

@@ -42,7 +42,6 @@
             tagMes = new AntdUI.Tag();
             tagPLC = new AntdUI.Tag();
             table2 = new AntdUI.Table();
-            panel1 = new Panel();
             TPLRight = new TableLayoutPanel();
             TLPWorkOrderInfo = new TableLayoutPanel();
             tableLayoutPanel9 = new TableLayoutPanel();
@@ -124,10 +123,12 @@
             // 左右分隔面板.Panel1
             // 
             左右分隔面板.Panel1.Controls.Add(tlpLeft);
+            左右分隔面板.Panel1MinSize = 500;
             // 
             // 左右分隔面板.Panel2
             // 
             左右分隔面板.Panel2.Controls.Add(TPLRight);
+            左右分隔面板.Panel2MinSize = 400;
             左右分隔面板.Size = new Size(1564, 932);
             左右分隔面板.SplitterDistance = 1150;
             左右分隔面板.SplitterWidth = 5;
@@ -141,7 +142,6 @@
             tlpLeft.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             tlpLeft.Controls.Add(tlpLeftTop, 0, 0);
             tlpLeft.Controls.Add(table2, 0, 1);
-            tlpLeft.Controls.Add(panel1, 0, 2);
             tlpLeft.Dock = DockStyle.Fill;
             tlpLeft.Location = new Point(0, 0);
             tlpLeft.Margin = new Padding(4, 3, 4, 3);
@@ -307,14 +307,6 @@
             table2.Size = new Size(1148, 406);
             table2.TabIndex = 2;
             table2.Text = "table2";
-            // 
-            // panel1
-            // 
-            panel1.Dock = DockStyle.Fill;
-            panel1.Location = new Point(3, 519);
-            panel1.Name = "panel1";
-            panel1.Size = new Size(1144, 410);
-            panel1.TabIndex = 3;
             // 
             // TPLRight
             // 
@@ -1088,7 +1080,6 @@
         private AntdUI.Input inputRunningStatus;
         private TableLayoutPanel tlpReportButton;
         private AntdUI.Table table2;
-        private Panel panel1;
         private TableLayoutPanel tableLayoutPanel3;
         private TableLayoutPanel tableLayoutPanel7;
         private AntdUI.Label lblProdModel;
