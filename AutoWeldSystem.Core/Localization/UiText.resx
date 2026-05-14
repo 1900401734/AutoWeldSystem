@@ -1,0 +1,1344 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!-- 
+    Microsoft ResX Schema 
+    
+    Version 2.0
+    
+    The primary goals of this format is to allow a simple XML format 
+    that is mostly human readable. The generation and parsing of the 
+    various data types are done through the TypeConverter classes 
+    associated with the data types.
+    
+    Example:
+    
+    ... ado.net/XML headers & schema ...
+    <resheader name="resmimetype">text/microsoft-resx</resheader>
+    <resheader name="version">2.0</resheader>
+    <resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
+    <resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
+    <data name="Name1"><value>this is my long string</value><comment>this is a comment</comment></data>
+    <data name="Color1" type="System.Drawing.Color, System.Drawing">Blue</data>
+    <data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
+        <value>[base64 mime encoded serialized .NET Framework object]</value>
+    </data>
+    <data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+        <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
+        <comment>This is a comment</comment>
+    </data>
+                
+    There are any number of "resheader" rows that contain simple 
+    name/value pairs.
+    
+    Each data row contains a name, and value. The row also contains a 
+    type or mimetype. Type corresponds to a .NET class that support 
+    text/value conversion through the TypeConverter architecture. 
+    Classes that don't support this are serialized and stored with the 
+    mimetype set.
+    
+    The mimetype is used for serialized objects, and tells the 
+    ResXResourceReader how to depersist the object. This is currently not 
+    extensible. For a given mimetype the value must be set accordingly:
+    
+    Note - application/x-microsoft.net.object.binary.base64 is the format 
+    that the ResXResourceWriter will generate, however the reader can 
+    read any of the formats listed below.
+    
+    mimetype: application/x-microsoft.net.object.binary.base64
+    value   : The object must be serialized with 
+            : System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
+            : and then encoded with base64 encoding.
+    
+    mimetype: application/x-microsoft.net.object.soap.base64
+    value   : The object must be serialized with 
+            : System.Runtime.Serialization.Formatters.Soap.SoapFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.bytearray.base64
+    value   : The object must be serialized into a byte array 
+            : using a System.ComponentModel.TypeConverter
+            : and then encoded with base64 encoding.
+    -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="common.language.chinese" xml:space="preserve">
+    <value>简体中文</value>
+  </data>
+  <data name="common.language.english" xml:space="preserve">
+    <value>English</value>
+  </data>
+  <data name="common.title.info" xml:space="preserve">
+    <value>提示</value>
+  </data>
+  <data name="common.title.warning" xml:space="preserve">
+    <value>提示</value>
+  </data>
+  <data name="common.title.error" xml:space="preserve">
+    <value>错误</value>
+  </data>
+  <data name="common.title.confirm_delete" xml:space="preserve">
+    <value>确认删除</value>
+  </data>
+  <data name="common.title.confirm_reset" xml:space="preserve">
+    <value>确认重置</value>
+  </data>
+  <data name="common.action.add" xml:space="preserve">
+    <value>新增</value>
+  </data>
+  <data name="common.action.edit" xml:space="preserve">
+    <value>编辑</value>
+  </data>
+  <data name="common.action.delete" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="common.action.refresh" xml:space="preserve">
+    <value>刷新</value>
+  </data>
+  <data name="common.action.apply" xml:space="preserve">
+    <value>应用</value>
+  </data>
+  <data name="common.action.save" xml:space="preserve">
+    <value>保存</value>
+  </data>
+  <data name="common.action.cancel" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="common.action.login" xml:space="preserve">
+    <value>登录</value>
+  </data>
+  <data name="common.action.set_role" xml:space="preserve">
+    <value>设置角色</value>
+  </data>
+  <data name="common.action.reset_password" xml:space="preserve">
+    <value>重置密码</value>
+  </data>
+  <data name="common.status.enabled" xml:space="preserve">
+    <value>启用</value>
+  </data>
+  <data name="common.status.not_logged_in" xml:space="preserve">
+    <value>未登录</value>
+  </data>
+  <data name="common.message.save_success" xml:space="preserve">
+    <value>保存成功！</value>
+  </data>
+  <data name="common.message.save_failed" xml:space="preserve">
+    <value>保存失败：{0}</value>
+  </data>
+  <data name="common.message.startup_time_sync_failed" xml:space="preserve">
+    <value>服务器时间同步失败：{0}</value>
+  </data>
+  <data name="common.message.startup_init_failed" xml:space="preserve">
+    <value>程序初始化失败：{0}</value>
+  </data>
+  <data name="auth.message.credentials_required" xml:space="preserve">
+    <value>账号和密码不能为空。</value>
+  </data>
+  <data name="auth.message.invalid_credentials" xml:space="preserve">
+    <value>账号或密码错误。</value>
+  </data>
+  <data name="auth.message.user_disabled" xml:space="preserve">
+    <value>当前用户已被禁用。</value>
+  </data>
+  <data name="auth.message.role_disabled" xml:space="preserve">
+    <value>当前角色不存在或已被禁用。</value>
+  </data>
+  <data name="operator.dialog.title" xml:space="preserve">
+    <value>操作工录入</value>
+  </data>
+  <data name="operator.dialog.label" xml:space="preserve">
+    <value>员工号</value>
+  </data>
+  <data name="operator.message.employee_number_required" xml:space="preserve">
+    <value>员工号不能为空。</value>
+  </data>
+  <data name="main.nav.monitor" xml:space="preserve">
+    <value>生产监控</value>
+  </data>
+  <data name="main.nav.data_manage" xml:space="preserve">
+    <value>数据管理</value>
+  </data>
+  <data name="main.nav.user_manage" xml:space="preserve">
+    <value>用户管理</value>
+  </data>
+  <data name="main.nav.program_manage" xml:space="preserve">
+    <value>程序管理</value>
+  </data>
+  <data name="main.nav.log_manage" xml:space="preserve">
+    <value>日志管理</value>
+  </data>
+  <data name="main.nav.state_manage" xml:space="preserve">
+    <value>上传状态</value>
+  </data>
+  <data name="main.nav.system_setting" xml:space="preserve">
+    <value>系统设置</value>
+  </data>
+  <data name="main.nav.address_manage" xml:space="preserve">
+    <value>地址维护</value>
+  </data>
+  <data name="main.message.no_page_permission" xml:space="preserve">
+    <value>当前用户未分配任何页面权限。</value>
+  </data>
+  <data name="monitor.message.switch_user_confirm" xml:space="preserve">
+    <value>确定返回登录界面切换用户吗？</value>
+  </data>
+  <data name="monitor.message.logout_confirm" xml:space="preserve">
+    <value>确定退出当前登录状态吗？</value>
+  </data>
+  <data name="monitor.title.switch_user" xml:space="preserve">
+    <value>切换用户</value>
+  </data>
+  <data name="monitor.title.logout" xml:space="preserve">
+    <value>退出登录</value>
+  </data>
+  <data name="mes.message.http_error" xml:space="preserve">
+    <value>HTTP {0}：{1}</value>
+  </data>
+  <data name="mes.message.timeout" xml:space="preserve">
+    <value>MES 请求超时，已超过 {0} 秒。</value>
+  </data>
+  <data name="mes.message.request_exception" xml:space="preserve">
+    <value>MES 请求失败：{0}</value>
+  </data>
+  <data name="role.tab.permissions" xml:space="preserve">
+    <value>角色权限</value>
+  </data>
+  <data name="role.dialog.add_title" xml:space="preserve">
+    <value>新增角色</value>
+  </data>
+  <data name="role.dialog.edit_title" xml:space="preserve">
+    <value>编辑角色</value>
+  </data>
+  <data name="role.label.code" xml:space="preserve">
+    <value>角色编码</value>
+  </data>
+  <data name="role.label.name" xml:space="preserve">
+    <value>角色名称</value>
+  </data>
+  <data name="role.label.description" xml:space="preserve">
+    <value>描述</value>
+  </data>
+  <data name="role.label.enabled" xml:space="preserve">
+    <value>是否启用</value>
+  </data>
+  <data name="role.message.name_required" xml:space="preserve">
+    <value>角色名称不能为空！</value>
+  </data>
+  <data name="role.message.code_exists" xml:space="preserve">
+    <value>角色编码“{0}”已存在。</value>
+  </data>
+  <data name="role.message.not_exists" xml:space="preserve">
+    <value>角色不存在。</value>
+  </data>
+  <data name="role.message.select_first" xml:space="preserve">
+    <value>请先选择一个角色。</value>
+  </data>
+  <data name="role.message.permissions_applied" xml:space="preserve">
+    <value>角色权限已应用。</value>
+  </data>
+  <data name="role.message.delete_confirm" xml:space="preserve">
+    <value>确定删除角色“{0}”吗？</value>
+  </data>
+  <data name="role.message.delete_blocked" xml:space="preserve">
+    <value>该角色可能是系统角色，或仍被用户占用，无法删除。</value>
+  </data>
+  <data name="role.message.current_selection" xml:space="preserve">
+    <value>当前角色：{0} ({1})</value>
+  </data>
+  <data name="role.message.no_match" xml:space="preserve">
+    <value>未找到匹配的角色。</value>
+  </data>
+  <data name="role.message.select_left" xml:space="preserve">
+    <value>请选择左侧角色以编辑权限</value>
+  </data>
+  <data name="role.message.permission_hint" xml:space="preserve">
+    <value>勾选后点击“应用”，页面权限控制界面入口，按钮权限控制操作入口。</value>
+  </data>
+  <data name="user.tab.manage" xml:space="preserve">
+    <value>用户管理</value>
+  </data>
+  <data name="user.dialog.add_title" xml:space="preserve">
+    <value>新增用户</value>
+  </data>
+  <data name="user.dialog.edit_title" xml:space="preserve">
+    <value>编辑用户</value>
+  </data>
+  <data name="user.label.name" xml:space="preserve">
+    <value>姓名</value>
+  </data>
+  <data name="user.label.number" xml:space="preserve">
+    <value>工号</value>
+  </data>
+  <data name="user.label.password" xml:space="preserve">
+    <value>密码</value>
+  </data>
+  <data name="user.label.role" xml:space="preserve">
+    <value>角色</value>
+  </data>
+  <data name="user.message.name_required" xml:space="preserve">
+    <value>用户姓名不能为空！</value>
+  </data>
+  <data name="user.message.number_required" xml:space="preserve">
+    <value>用户工号不能为空！</value>
+  </data>
+  <data name="user.message.number_exists" xml:space="preserve">
+    <value>用户工号“{0}”已存在。</value>
+  </data>
+  <data name="user.message.not_exists" xml:space="preserve">
+    <value>用户不存在。</value>
+  </data>
+  <data name="user.message.invalid_role" xml:space="preserve">
+    <value>请选择一个有效角色！</value>
+  </data>
+  <data name="user.message.role_required" xml:space="preserve">
+    <value>请选择一个角色！</value>
+  </data>
+  <data name="user.message.single_role_only" xml:space="preserve">
+    <value>只能选择一个角色！</value>
+  </data>
+  <data name="user.message.no_enabled_roles" xml:space="preserve">
+    <value>当前没有可用角色。</value>
+  </data>
+  <data name="user.message.select_first" xml:space="preserve">
+    <value>请先选择一个用户。</value>
+  </data>
+  <data name="user.message.delete_confirm" xml:space="preserve">
+    <value>确定删除用户“{0}”吗？</value>
+  </data>
+  <data name="user.message.delete_self_blocked" xml:space="preserve">
+    <value>删除失败。当前登录用户不能删除自己。</value>
+  </data>
+  <data name="user.message.reset_password_confirm" xml:space="preserve">
+    <value>确定将用户“{0}”的密码重置为 {1} 吗？</value>
+  </data>
+  <data name="user.message.reset_password_success" xml:space="preserve">
+    <value>密码已重置为 {0}。</value>
+  </data>
+  <data name="user.message.add_success_with_password" xml:space="preserve">
+    <value>保存成功，新用户已可使用当前密码登录。</value>
+  </data>
+  <data name="user.message.add_success_default_password" xml:space="preserve">
+    <value>保存成功，初始密码为 {0}。</value>
+  </data>
+  <data name="system.title" xml:space="preserve">
+    <value>系统设置</value>
+  </data>
+  <data name="system.description" xml:space="preserve">
+    <value>配置 PLC、MES、总控、设备信息以及本地数据和日志存储路径。</value>
+  </data>
+  <data name="system.group.plc" xml:space="preserve">
+    <value>PLC参数设定</value>
+  </data>
+  <data name="system.group.controller" xml:space="preserve">
+    <value>总控参数设定</value>
+  </data>
+  <data name="system.group.application" xml:space="preserve">
+    <value>应用参数设定</value>
+  </data>
+  <data name="system.label.ip" xml:space="preserve">
+    <value>IP</value>
+  </data>
+  <data name="system.label.port" xml:space="preserve">
+    <value>端口</value>
+  </data>
+  <data name="system.label.type" xml:space="preserve">
+    <value>类型</value>
+  </data>
+  <data name="system.label.device_id" xml:space="preserve">
+    <value>设备编号</value>
+  </data>
+  <data name="system.label.device_name" xml:space="preserve">
+    <value>设备名称</value>
+  </data>
+  <data name="system.label.device_status_url" xml:space="preserve">
+    <value>设备状态地址</value>
+  </data>
+  <data name="system.label.log_path" xml:space="preserve">
+    <value>日志路径</value>
+  </data>
+  <data name="system.label.data_path" xml:space="preserve">
+    <value>数据路径</value>
+  </data>
+  <data name="system.label.mes_url" xml:space="preserve">
+    <value>MES地址</value>
+  </data>
+  <data name="system.label.use_product_number_filter" xml:space="preserve">
+    <value>按产品工号筛选程序</value>
+  </data>
+  <data name="system.button.connect" xml:space="preserve">
+    <value>连接</value>
+  </data>
+  <data name="system.button.sync_device" xml:space="preserve">
+    <value>同步到MES</value>
+  </data>
+  <data name="system.button.change_path" xml:space="preserve">
+    <value>变更路径</value>
+  </data>
+  <data name="system.button.open_folder" xml:space="preserve">
+    <value>打开文件所在位置</value>
+  </data>
+  <data name="system.button.test_connection" xml:space="preserve">
+    <value>连通性测试</value>
+  </data>
+  <data name="system.button.apply_all" xml:space="preserve">
+    <value>应用全部</value>
+  </data>
+  <data name="system.plc_type.modbus_tcp" xml:space="preserve">
+    <value>Modbus TCP</value>
+  </data>
+  <data name="system.plc_type.tcp_socket" xml:space="preserve">
+    <value>TCP Socket</value>
+  </data>
+  <data name="system.plc_type.custom" xml:space="preserve">
+    <value>自定义</value>
+  </data>
+  <data name="system.message.value_required" xml:space="preserve">
+    <value>请输入 {0}。</value>
+  </data>
+  <data name="system.message.invalid_ip" xml:space="preserve">
+    <value>{0} 请输入有效的 IP 地址。</value>
+  </data>
+  <data name="system.message.invalid_port" xml:space="preserve">
+    <value>{0} 请输入有效的端口号。</value>
+  </data>
+  <data name="system.message.invalid_url" xml:space="preserve">
+    <value>{0} 请输入有效的地址。</value>
+  </data>
+  <data name="system.message.folder_missing" xml:space="preserve">
+    <value>目录不存在：{0}</value>
+  </data>
+  <data name="system.message.select_folder" xml:space="preserve">
+    <value>请选择 {0}</value>
+  </data>
+  <data name="system.message.connection_success" xml:space="preserve">
+    <value>{0} 连通成功。</value>
+  </data>
+  <data name="system.message.connection_failed" xml:space="preserve">
+    <value>{0} 连通失败：{1}</value>
+  </data>
+  <data name="system.message.mes_connection_success" xml:space="preserve">
+    <value>MES 连通性测试成功，服务器时间：{0}</value>
+  </data>
+  <data name="system.message.device_sync_success" xml:space="preserve">
+    <value>设备信息已同步到 MES。</value>
+  </data>
+  <data name="system.message.device_sync_failed" xml:space="preserve">
+    <value>设备信息同步到 MES 失败：{0}</value>
+  </data>
+  <data name="plc.state.stopped" xml:space="preserve">
+    <value>已停止</value>
+  </data>
+  <data name="plc.state.connecting" xml:space="preserve">
+    <value>连接中</value>
+  </data>
+  <data name="plc.state.connected" xml:space="preserve">
+    <value>已连接</value>
+  </data>
+  <data name="plc.state.reconnecting" xml:space="preserve">
+    <value>重连中</value>
+  </data>
+  <data name="plc.state.disconnected" xml:space="preserve">
+    <value>已断开</value>
+  </data>
+  <data name="plc.state.faulted" xml:space="preserve">
+    <value>异常</value>
+  </data>
+  <data name="grid.role.code" xml:space="preserve">
+    <value>角色编码</value>
+  </data>
+  <data name="grid.role.name" xml:space="preserve">
+    <value>角色名称</value>
+  </data>
+  <data name="grid.role.description" xml:space="preserve">
+    <value>角色描述</value>
+  </data>
+  <data name="grid.role.enabled" xml:space="preserve">
+    <value>启用</value>
+  </data>
+  <data name="grid.role.updated_time" xml:space="preserve">
+    <value>修改时间</value>
+  </data>
+  <data name="grid.user.id" xml:space="preserve">
+    <value>Id</value>
+  </data>
+  <data name="grid.user.number" xml:space="preserve">
+    <value>用户工号</value>
+  </data>
+  <data name="grid.user.name" xml:space="preserve">
+    <value>用户名</value>
+  </data>
+  <data name="grid.user.role" xml:space="preserve">
+    <value>角色</value>
+  </data>
+  <data name="grid.user.enabled" xml:space="preserve">
+    <value>启用</value>
+  </data>
+  <data name="grid.user.last_login" xml:space="preserve">
+    <value>最后登录时间</value>
+  </data>
+  <data name="grid.user.updated_time" xml:space="preserve">
+    <value>修改时间</value>
+  </data>
+  <data name="system.plc_type.siemens_s7" xml:space="preserve">
+    <value>西门子 S7-1200</value>
+  </data>
+  <data name="plc.message.service_stopped" xml:space="preserve">
+    <value>PLC 服务已停止。</value>
+  </data>
+  <data name="plc.message.connecting" xml:space="preserve">
+    <value>正在连接 {0}。</value>
+  </data>
+  <data name="plc.message.already_connected" xml:space="preserve">
+    <value>PLC 已连接。</value>
+  </data>
+  <data name="plc.message.connected" xml:space="preserve">
+    <value>PLC 已连接：{0}。</value>
+  </data>
+  <data name="plc.message.unsupported_type" xml:space="preserve">
+    <value>不支持的 PLC 类型：{0}</value>
+  </data>
+  <data name="plc.message.heartbeat_skipped" xml:space="preserve">
+    <value>PLC 心跳地址为空，TCP 端口探测成功。</value>
+  </data>
+  <data name="plc.message.heartbeat_succeeded" xml:space="preserve">
+    <value>PLC 心跳检测成功。</value>
+  </data>
+  <data name="plc.message.heartbeat_failed" xml:space="preserve">
+    <value>PLC 心跳检测失败：{0}</value>
+  </data>
+  <data name="plc.message.tcp_probe_failed" xml:space="preserve">
+    <value>PLC TCP 探测失败：{0}</value>
+  </data>
+  <data name="plc.message.not_connected" xml:space="preserve">
+    <value>PLC 未连接。</value>
+  </data>
+  <data name="plc.message.address_required" xml:space="preserve">
+    <value>PLC 地址不能为空。</value>
+  </data>
+  <data name="plc.message.write_succeeded" xml:space="preserve">
+    <value>PLC 写入成功。</value>
+  </data>
+  <data name="plc.message.timeout" xml:space="preserve">
+    <value>连接超时</value>
+  </data>
+  <data name="address.title" xml:space="preserve">
+    <value>PLC 地址配置</value>
+  </data>
+  <data name="address.description" xml:space="preserve">
+    <value>维护固定业务信号对应的 PLC 实际地址。地址键和名称由程序固定，用户只需要编辑地址、类型、长度、启用状态和备注。</value>
+  </data>
+  <data name="address.button.save" xml:space="preserve">
+    <value>保存地址</value>
+  </data>
+  <data name="address.button.refresh" xml:space="preserve">
+    <value>刷新</value>
+  </data>
+  <data name="address.button.test" xml:space="preserve">
+    <value>测试选中地址</value>
+  </data>
+  <data name="address.message.select_first" xml:space="preserve">
+    <value>请先选择一个 PLC 地址。</value>
+  </data>
+  <data name="address.message.address_required" xml:space="preserve">
+    <value>请输入“{0}”的 PLC 地址。</value>
+  </data>
+  <data name="address.message.save_success" xml:space="preserve">
+    <value>PLC 地址保存成功。</value>
+  </data>
+  <data name="address.message.save_failed" xml:space="preserve">
+    <value>PLC 地址保存失败：{0}</value>
+  </data>
+  <data name="address.message.test_success" xml:space="preserve">
+    <value>地址“{0}”测试成功，读取值：{1}</value>
+  </data>
+  <data name="address.message.test_failed" xml:space="preserve">
+    <value>地址“{0}”测试失败：{1}</value>
+  </data>
+  <data name="grid.plc_address.key" xml:space="preserve">
+    <value>地址键</value>
+  </data>
+  <data name="grid.plc_address.name" xml:space="preserve">
+    <value>名称</value>
+  </data>
+  <data name="grid.plc_address.sort" xml:space="preserve">
+    <value>排序</value>
+  </data>
+  <data name="grid.plc_address.address" xml:space="preserve">
+    <value>PLC 地址</value>
+  </data>
+  <data name="grid.plc_address.data_type" xml:space="preserve">
+    <value>数据类型</value>
+  </data>
+  <data name="grid.plc_address.data_length" xml:space="preserve">
+    <value>长度</value>
+  </data>
+  <data name="grid.plc_address.enabled" xml:space="preserve">
+    <value>启用</value>
+  </data>
+  <data name="grid.plc_address.description" xml:space="preserve">
+    <value>备注</value>
+  </data>
+  <data name="grid.plc_address.updated_time" xml:space="preserve">
+    <value>更新时间</value>
+  </data>
+  <data name="address.name.pc_heartbeat" xml:space="preserve">
+    <value>PC 心跳</value>
+  </data>
+  <data name="address.name.plc_heartbeat" xml:space="preserve">
+    <value>PLC 心跳</value>
+  </data>
+  <data name="address.name.device_status" xml:space="preserve">
+    <value>设备状态</value>
+  </data>
+  <data name="address.name.weld_start" xml:space="preserve">
+    <value>焊接开始</value>
+  </data>
+  <data name="address.name.weld_end" xml:space="preserve">
+    <value>焊接结束</value>
+  </data>
+  <data name="address.name.work_id" xml:space="preserve">
+    <value>工单号</value>
+  </data>
+  <data name="address.name.serial_number" xml:space="preserve">
+    <value>产品序列号</value>
+  </data>
+  <data name="address.name.program_name" xml:space="preserve">
+    <value>程序名称</value>
+  </data>
+  <data name="address.name.product_model" xml:space="preserve">
+    <value>产品型号</value>
+  </data>
+  <data name="address.name.total_production" xml:space="preserve">
+    <value>加工总数</value>
+  </data>
+  <data name="address.name.accepted_quantity" xml:space="preserve">
+    <value>合格数量</value>
+  </data>
+  <data name="address.name.rejected_quantity" xml:space="preserve">
+    <value>不合格数量</value>
+  </data>
+  <data name="auth.login.title" xml:space="preserve">
+    <value>登录</value>
+  </data>
+  <data name="auth.login.app_title" xml:space="preserve">
+    <value>自动焊接系统</value>
+  </data>
+  <data name="auth.login.label.account" xml:space="preserve">
+    <value>账户</value>
+  </data>
+  <data name="auth.login.label.password" xml:space="preserve">
+    <value>密码</value>
+  </data>
+  <data name="auth.login.label.language" xml:space="preserve">
+    <value>语言</value>
+  </data>
+  <data name="auth.login.tip" xml:space="preserve">
+    <value>本地账户仅用于用户角色权限分配。</value>
+  </data>
+  <data name="mes.state.checking" xml:space="preserve">
+    <value>检测中</value>
+  </data>
+  <data name="mes.state.connected" xml:space="preserve">
+    <value>已连接</value>
+  </data>
+  <data name="mes.state.disconnected" xml:space="preserve">
+    <value>已断开</value>
+  </data>
+  <data name="device.status.running" xml:space="preserve">
+    <value>运行</value>
+  </data>
+  <data name="device.status.paused" xml:space="preserve">
+    <value>暂停</value>
+  </data>
+  <data name="device.status.stopped" xml:space="preserve">
+    <value>停止</value>
+  </data>
+  <data name="device.status.alarm" xml:space="preserve">
+    <value>报警</value>
+  </data>
+  <data name="device.status.unknown" xml:space="preserve">
+    <value>未知</value>
+  </data>
+  <data name="production.metric.total" xml:space="preserve">
+    <value>加工总数</value>
+  </data>
+  <data name="production.metric.target" xml:space="preserve">
+    <value>目标产量</value>
+  </data>
+  <data name="production.metric.mes_quantity" xml:space="preserve">
+    <value>MES生产数量</value>
+  </data>
+  <data name="production.metric.accepted" xml:space="preserve">
+    <value>合格数量</value>
+  </data>
+  <data name="production.metric.rejected" xml:space="preserve">
+    <value>不良数量</value>
+  </data>
+  <data name="production.metric.accepted_rate" xml:space="preserve">
+    <value>合格率</value>
+  </data>
+  <data name="production.metric.rejected_rate" xml:space="preserve">
+    <value>不良率</value>
+  </data>
+  <data name="production.metric.achievement_rate" xml:space="preserve">
+    <value>生产达成率</value>
+  </data>
+  <data name="production.grid.name" xml:space="preserve">
+    <value>指标</value>
+  </data>
+  <data name="production.grid.value" xml:space="preserve">
+    <value>数值</value>
+  </data>
+  <data name="production.value.not_available" xml:space="preserve">
+    <value>--</value>
+  </data>
+  <data name="address.name.target_production" xml:space="preserve">
+    <value>目标产量</value>
+  </data>
+  <data name="monitor.label.device_status" xml:space="preserve">
+    <value>设备状态</value>
+  </data>
+  <data name="monitor.label.plc_state" xml:space="preserve">
+    <value>PLC状态</value>
+  </data>
+  <data name="monitor.label.mes_state" xml:space="preserve">
+    <value>MES状态</value>
+  </data>
+  <data name="monitor.title.app" xml:space="preserve">
+    <value>单稳态型自动点焊系统</value>
+  </data>
+  <data name="monitor.status.normal" xml:space="preserve">
+    <value>正常</value>
+  </data>
+  <data name="monitor.status.warning" xml:space="preserve">
+    <value>警告</value>
+  </data>
+  <data name="monitor.status.error" xml:space="preserve">
+    <value>错误</value>
+  </data>
+  <data name="monitor.message.plc_disconnected" xml:space="preserve">
+    <value>PLC未连接</value>
+  </data>
+  <data name="monitor.message.plc_reconnecting" xml:space="preserve">
+    <value>PLC正在重连</value>
+  </data>
+  <data name="monitor.message.plc_connected" xml:space="preserve">
+    <value>PLC已连接</value>
+  </data>
+  <data name="monitor.message.plc_faulted" xml:space="preserve">
+    <value>PLC通信异常</value>
+  </data>
+  <data name="monitor.message.mes_request_failed" xml:space="preserve">
+    <value>MES请求失败：{0}</value>
+  </data>
+  <data name="monitor.button.change_work_order" xml:space="preserve">
+    <value>变更工单</value>
+  </data>
+  <data name="monitor.button.start_report" xml:space="preserve">
+    <value>开工上报</value>
+  </data>
+  <data name="monitor.button.finish_report" xml:space="preserve">
+    <value>完工上报</value>
+  </data>
+  <data name="monitor.button.switch_user" xml:space="preserve">
+    <value>切换用户</value>
+  </data>
+  <data name="monitor.button.logout" xml:space="preserve">
+    <value>退出登录</value>
+  </data>
+  <data name="monitor.label.current_user" xml:space="preserve">
+    <value>当前用户</value>
+  </data>
+  <data name="monitor.label.current_lang" xml:space="preserve">
+    <value>当前语言</value>
+  </data>
+  <data name="monitor.label.work_order_no" xml:space="preserve">
+    <value>工单号</value>
+  </data>
+  <data name="monitor.label.program_name" xml:space="preserve">
+    <value>程序名称</value>
+  </data>
+  <data name="monitor.label.product_no" xml:space="preserve">
+    <value>产品工号</value>
+  </data>
+  <data name="monitor.label.product_model" xml:space="preserve">
+    <value>产品型号</value>
+  </data>
+  <data name="monitor.label.batch_no" xml:space="preserve">
+    <value>批次号</value>
+  </data>
+  <data name="monitor.label.spec" xml:space="preserve">
+    <value>规格</value>
+  </data>
+  <data name="monitor.label.part_name" xml:space="preserve">
+    <value>部件名称</value>
+  </data>
+  <data name="monitor.label.drawing_no" xml:space="preserve">
+    <value>零件图号</value>
+  </data>
+  <data name="monitor.label.sequence_no" xml:space="preserve">
+    <value>序号</value>
+  </data>
+  <data name="monitor.label.process_no" xml:space="preserve">
+    <value>工序号</value>
+  </data>
+  <data name="monitor.label.process_name" xml:space="preserve">
+    <value>工序名称</value>
+  </data>
+  <data name="monitor.label.production_quantity" xml:space="preserve">
+    <value>生产数量</value>
+  </data>
+  <data name="monitor.group.exception_tips" xml:space="preserve">
+    <value>异常提示：</value>
+  </data>
+  <data name="monitor.group.running_status" xml:space="preserve">
+    <value>运行状态：</value>
+  </data>
+  <data name="monitor.group.production_metrics" xml:space="preserve">
+    <value>生产指标</value>
+  </data>
+  <data name="permission.page.monitor" xml:space="preserve">
+    <value>监控界面</value>
+  </data>
+  <data name="permission.page.data_manage" xml:space="preserve">
+    <value>数据管理</value>
+  </data>
+  <data name="permission.page.user_manage" xml:space="preserve">
+    <value>用户管理</value>
+  </data>
+  <data name="permission.page.program_manage" xml:space="preserve">
+    <value>程序管理</value>
+  </data>
+  <data name="permission.page.log_manage" xml:space="preserve">
+    <value>日志管理</value>
+  </data>
+  <data name="permission.page.state_manage" xml:space="preserve">
+    <value>上传状态</value>
+  </data>
+  <data name="permission.page.system_setting" xml:space="preserve">
+    <value>系统设置</value>
+  </data>
+  <data name="permission.page.address_manage" xml:space="preserve">
+    <value>地址维护</value>
+  </data>
+  <data name="permission.button.monitor.change_work_order" xml:space="preserve">
+    <value>变更工单</value>
+  </data>
+  <data name="permission.button.monitor.start_report" xml:space="preserve">
+    <value>开工上报</value>
+  </data>
+  <data name="permission.button.monitor.finish_report" xml:space="preserve">
+    <value>完工上报</value>
+  </data>
+  <data name="permission.button.auth.switch_user" xml:space="preserve">
+    <value>切换用户</value>
+  </data>
+  <data name="permission.button.auth.logout" xml:space="preserve">
+    <value>退出登录</value>
+  </data>
+  <data name="permission.button.data.export" xml:space="preserve">
+    <value>导出数据</value>
+  </data>
+  <data name="permission.button.user.add" xml:space="preserve">
+    <value>新增用户</value>
+  </data>
+  <data name="permission.button.user.edit" xml:space="preserve">
+    <value>编辑用户</value>
+  </data>
+  <data name="permission.button.user.delete" xml:space="preserve">
+    <value>删除用户</value>
+  </data>
+  <data name="permission.button.user.assign_role" xml:space="preserve">
+    <value>分配角色</value>
+  </data>
+  <data name="permission.button.user.reset_password" xml:space="preserve">
+    <value>重置密码</value>
+  </data>
+  <data name="permission.button.role.add" xml:space="preserve">
+    <value>新增角色</value>
+  </data>
+  <data name="permission.button.role.edit" xml:space="preserve">
+    <value>编辑角色</value>
+  </data>
+  <data name="permission.button.role.delete" xml:space="preserve">
+    <value>删除角色</value>
+  </data>
+  <data name="permission.button.role.assign_permissions" xml:space="preserve">
+    <value>分配权限</value>
+  </data>
+  <data name="permission.button.program.add" xml:space="preserve">
+    <value>新增程序</value>
+  </data>
+  <data name="permission.button.program.edit" xml:space="preserve">
+    <value>编辑程序</value>
+  </data>
+  <data name="permission.button.program.delete" xml:space="preserve">
+    <value>删除程序</value>
+  </data>
+  <data name="monitor.message.work_id_required" xml:space="preserve">
+    <value>工单二维码不能为空。</value>
+  </data>
+  <data name="monitor.message.work_order_load_failed" xml:space="preserve">
+    <value>获取工单信息失败</value>
+  </data>
+  <data name="monitor.message.process_required" xml:space="preserve">
+    <value>当前工单没有可选工序。</value>
+  </data>
+  <data name="monitor.message.program_list_empty" xml:space="preserve">
+    <value>当前工单和设备没有可选程序。</value>
+  </data>
+  <data name="monitor.message.program_download_failed" xml:space="preserve">
+    <value>下载所选程序失败。</value>
+  </data>
+  <data name="monitor.message.work_order_ready" xml:space="preserve">
+    <value>工单和程序已准备完成。</value>
+  </data>
+  <data name="monitor.message.start_prerequisite_missing" xml:space="preserve">
+    <value>请先加载工单、选择工序并下载程序，再进行开工上报。</value>
+  </data>
+  <data name="monitor.message.quantity_invalid" xml:space="preserve">
+    <value>数量必须是大于 0 的整数。</value>
+  </data>
+  <data name="monitor.message.operator_validation_failed" xml:space="preserve">
+    <value>员工校验失败</value>
+  </data>
+  <data name="monitor.message.start_success" xml:space="preserve">
+    <value>开工上报成功，MES Id：{0}</value>
+  </data>
+  <data name="monitor.message.finish_prerequisite_missing" xml:space="preserve">
+    <value>当前没有运行中的工单，请先开工上报。</value>
+  </data>
+  <data name="monitor.message.finish_success" xml:space="preserve">
+    <value>完工上报成功。</value>
+  </data>
+  <data name="monitor.runtime.idle" xml:space="preserve">
+    <value>等待业务操作。</value>
+  </data>
+  <data name="monitor.runtime.loading_work_order" xml:space="preserve">
+    <value>正在获取工单信息...</value>
+  </data>
+  <data name="monitor.runtime.loading_programs" xml:space="preserve">
+    <value>正在获取程序列表...</value>
+  </data>
+  <data name="monitor.runtime.downloading_program" xml:space="preserve">
+    <value>正在下载程序...</value>
+  </data>
+  <data name="monitor.runtime.validating_operator" xml:space="preserve">
+    <value>正在校验员工信息...</value>
+  </data>
+  <data name="monitor.runtime.submitting_start" xml:space="preserve">
+    <value>正在开工上报...</value>
+  </data>
+  <data name="monitor.runtime.submitting_finish" xml:space="preserve">
+    <value>正在完工上报...</value>
+  </data>
+  <data name="monitor.error.work_id_read_failed" xml:space="preserve">
+    <value>工单号读取失败</value>
+  </data>
+  <data name="monitor.error.production_collect_failed" xml:space="preserve">
+    <value>生产数据采集失败</value>
+  </data>
+  <data name="monitor.error.operation_failed" xml:space="preserve">
+    <value>操作失败</value>
+  </data>
+  <data name="monitor.dialog.scan_work_id_title" xml:space="preserve">
+    <value>加载工单</value>
+  </data>
+  <data name="monitor.dialog.scan_work_id_prompt" xml:space="preserve">
+    <value>请扫描或输入工单二维码。</value>
+  </data>
+  <data name="monitor.dialog.select_process_title" xml:space="preserve">
+    <value>选择工序</value>
+  </data>
+  <data name="monitor.dialog.select_process_prompt" xml:space="preserve">
+    <value>请选择当前设备要加工的工序。</value>
+  </data>
+  <data name="monitor.dialog.select_program_title" xml:space="preserve">
+    <value>选择程序</value>
+  </data>
+  <data name="monitor.dialog.select_program_prompt" xml:space="preserve">
+    <value>请根据程序名称选择程序。</value>
+  </data>
+  <data name="monitor.dialog.actual_quantity_title" xml:space="preserve">
+    <value>实际数量</value>
+  </data>
+  <data name="monitor.dialog.actual_quantity_prompt" xml:space="preserve">
+    <value>请输入实际生产数量。</value>
+  </data>
+  <data name="monitor.dialog.qualified_quantity_title" xml:space="preserve">
+    <value>合格数量</value>
+  </data>
+  <data name="monitor.dialog.qualified_quantity_prompt" xml:space="preserve">
+    <value>请输入合格数量。</value>
+  </data>
+  <data name="monitor.dialog.failed_quantity_title" xml:space="preserve">
+    <value>不良数量</value>
+  </data>
+  <data name="monitor.dialog.failed_quantity_prompt" xml:space="preserve">
+    <value>请输入不良数量。</value>
+  </data>
+  <data name="log.title.mes_interaction" xml:space="preserve">
+    <value>MES交互日志</value>
+  </data>
+  <data name="log.tab.production_flow" xml:space="preserve">
+    <value>生产流程日志</value>
+  </data>
+  <data name="log.tab.program_exception" xml:space="preserve">
+    <value>程序异常日志</value>
+  </data>
+  <data name="log.description.mes_interaction" xml:space="preserve">
+    <value>实时显示本机 MES 请求、响应和异常，日志目录跟随系统设置。</value>
+  </data>
+  <data name="log.description.program_exception" xml:space="preserve">
+    <value>记录程序异常、源码位置和完整堆栈，帮助快速定位问题代码。</value>
+  </data>
+  <data name="log.label.date" xml:space="preserve">
+    <value>日志日期</value>
+  </data>
+  <data name="log.label.keyword" xml:space="preserve">
+    <value>关键词</value>
+  </data>
+  <data name="log.button.refresh" xml:space="preserve">
+    <value>刷新</value>
+  </data>
+  <data name="log.button.open_folder" xml:space="preserve">
+    <value>打开目录</value>
+  </data>
+  <data name="log.button.open_source" xml:space="preserve">
+    <value>打开源码</value>
+  </data>
+  <data name="log.button.copy_details" xml:space="preserve">
+    <value>复制详情</value>
+  </data>
+  <data name="log.column.send_time" xml:space="preserve">
+    <value>发送时间</value>
+  </data>
+  <data name="log.column.purpose" xml:space="preserve">
+    <value>请求原因</value>
+  </data>
+  <data name="log.column.method" xml:space="preserve">
+    <value>方法</value>
+  </data>
+  <data name="log.column.http_status" xml:space="preserve">
+    <value>HTTP</value>
+  </data>
+  <data name="log.column.mes_status" xml:space="preserve">
+    <value>MES</value>
+  </data>
+  <data name="log.column.success" xml:space="preserve">
+    <value>结果</value>
+  </data>
+  <data name="log.column.duration" xml:space="preserve">
+    <value>耗时(ms)</value>
+  </data>
+  <data name="log.column.url" xml:space="preserve">
+    <value>接口地址</value>
+  </data>
+  <data name="log.column.occurred_time" xml:space="preserve">
+    <value>发生时间</value>
+  </data>
+  <data name="log.column.category" xml:space="preserve">
+    <value>分类</value>
+  </data>
+  <data name="log.column.severity" xml:space="preserve">
+    <value>等级</value>
+  </data>
+  <data name="log.column.exception_type" xml:space="preserve">
+    <value>异常类型</value>
+  </data>
+  <data name="log.column.message" xml:space="preserve">
+    <value>消息</value>
+  </data>
+  <data name="log.column.source" xml:space="preserve">
+    <value>来源</value>
+  </data>
+  <data name="log.column.source_line" xml:space="preserve">
+    <value>源码位置</value>
+  </data>
+  <data name="log.detail.request" xml:space="preserve">
+    <value>请求报文</value>
+  </data>
+  <data name="log.detail.response" xml:space="preserve">
+    <value>响应报文</value>
+  </data>
+  <data name="log.detail.basic_info" xml:space="preserve">
+    <value>基础信息</value>
+  </data>
+  <data name="log.detail.stack_trace" xml:space="preserve">
+    <value>异常堆栈</value>
+  </data>
+  <data name="log.detail.context" xml:space="preserve">
+    <value>上下文</value>
+  </data>
+  <data name="log.detail.no_selection" xml:space="preserve">
+    <value>请选择一条日志查看详情。</value>
+  </data>
+  <data name="log.detail.no_exception_selection" xml:space="preserve">
+    <value>请选择一条异常日志查看详情。</value>
+  </data>
+  <data name="log.placeholder.reserved" xml:space="preserve">
+    <value>当前分类已预留，后续接入对应日志服务后显示。</value>
+  </data>
+  <data name="log.value.success" xml:space="preserve">
+    <value>成功</value>
+  </data>
+  <data name="log.value.failed" xml:space="preserve">
+    <value>失败</value>
+  </data>
+  <data name="log.value.business_exception" xml:space="preserve">
+    <value>业务异常</value>
+  </data>
+  <data name="log.value.program_exception" xml:space="preserve">
+    <value>程序异常</value>
+  </data>
+  <data name="log.message.source_missing" xml:space="preserve">
+    <value>当前异常没有可打开的源码文件。请确认以 Debug 构建运行，且 PDB 文件存在。</value>
+  </data>
+  <data name="log.message.details_copied" xml:space="preserve">
+    <value>异常详情已复制到剪贴板。</value>
+  </data>
+  <data name="log.message.exception_logged" xml:space="preserve">
+    <value>程序发生异常，已写入异常日志。TraceId：{0}</value>
+  </data>
+  <data name="program.button.sync_mes" xml:space="preserve">
+    <value>同步MES</value>
+  </data>
+  <data name="program.button.pull_mes" xml:space="preserve">
+    <value>从MES拉取</value>
+  </data>
+  <data name="program.button.build_name" xml:space="preserve">
+    <value>生成名称</value>
+  </data>
+  <data name="program.button.browse_file" xml:space="preserve">
+    <value>选择</value>
+  </data>
+  <data name="program.checkbox.sync_now" xml:space="preserve">
+    <value>保存后立即同步</value>
+  </data>
+  <data name="program.placeholder.keyword" xml:space="preserve">
+    <value>搜索程序 / 产品工号 / 状态</value>
+  </data>
+  <data name="program.group.revisions" xml:space="preserve">
+    <value>版本提交历史</value>
+  </data>
+  <data name="program.label.program_name" xml:space="preserve">
+    <value>程序名称</value>
+  </data>
+  <data name="program.label.product_num" xml:space="preserve">
+    <value>产品工号</value>
+  </data>
+  <data name="program.label.product_model" xml:space="preserve">
+    <value>产品型号</value>
+  </data>
+  <data name="program.label.component_code" xml:space="preserve">
+    <value>零组件代码</value>
+  </data>
+  <data name="program.label.sequence_number" xml:space="preserve">
+    <value>流水号</value>
+  </data>
+  <data name="program.label.program_type" xml:space="preserve">
+    <value>程序类型</value>
+  </data>
+  <data name="program.label.weld_job_name" xml:space="preserve">
+    <value>焊接作业</value>
+  </data>
+  <data name="program.label.robot_job_name" xml:space="preserve">
+    <value>机器作业</value>
+  </data>
+  <data name="program.label.cycle_time" xml:space="preserve">
+    <value>节拍秒</value>
+  </data>
+  <data name="program.label.program_file" xml:space="preserve">
+    <value>程序文件</value>
+  </data>
+  <data name="program.label.commit_message" xml:space="preserve">
+    <value>提交说明</value>
+  </data>
+  <data name="program.label.remark" xml:space="preserve">
+    <value>备注</value>
+  </data>
+  <data name="program.label.program_content" xml:space="preserve">
+    <value>工艺参数JSON</value>
+  </data>
+  <data name="program.option.parameter_string" xml:space="preserve">
+    <value>0 - 参数字符串</value>
+  </data>
+  <data name="program.option.file" xml:space="preserve">
+    <value>1 - 文件</value>
+  </data>
+  <data name="program.commit.create" xml:space="preserve">
+    <value>新增程序</value>
+  </data>
+  <data name="program.commit.update" xml:space="preserve">
+    <value>修改程序</value>
+  </data>
+  <data name="program.message.current_new" xml:space="preserve">
+    <value>当前：新建本地程序</value>
+  </data>
+  <data name="program.message.current_selected" xml:space="preserve">
+    <value>当前：v{0} / {1} / {2}</value>
+  </data>
+  <data name="program.message.save_success" xml:space="preserve">
+    <value>程序已保存。</value>
+  </data>
+  <data name="program.message.select_delete" xml:space="preserve">
+    <value>请先选择要删除的程序。</value>
+  </data>
+  <data name="program.message.delete_confirm" xml:space="preserve">
+    <value>确定删除当前程序吗？</value>
+  </data>
+  <data name="program.message.select_sync" xml:space="preserve">
+    <value>请先选择要同步的程序。</value>
+  </data>
+  <data name="program.message.pull_success" xml:space="preserve">
+    <value>已从 MES 下载 {0} 个程序。</value>
+  </data>
+  <data name="program.message.sequence_invalid" xml:space="preserve">
+    <value>流水号必须是大于 0 的数字。</value>
+  </data>
+  <data name="program.message.cycle_time_invalid" xml:space="preserve">
+    <value>焊接节拍必须是大于等于 0 的数字。</value>
+  </data>
+  <data name="program.dialog.select_file" xml:space="preserve">
+    <value>选择程序文件</value>
+  </data>
+  <data name="program.dialog.file_filter_all" xml:space="preserve">
+    <value>所有文件 (*.*)|*.*</value>
+  </data>
+  <data name="program.status.pending_create" xml:space="preserve">
+    <value>新增待同步</value>
+  </data>
+  <data name="program.status.pending_update" xml:space="preserve">
+    <value>更新待同步</value>
+  </data>
+  <data name="program.status.pending_delete" xml:space="preserve">
+    <value>删除待同步</value>
+  </data>
+  <data name="program.status.synced" xml:space="preserve">
+    <value>已同步</value>
+  </data>
+  <data name="program.status.failed" xml:space="preserve">
+    <value>同步失败</value>
+  </data>
+  <data name="program.status.deleted" xml:space="preserve">
+    <value>已删除</value>
+  </data>
+  <data name="program.action.create" xml:space="preserve">
+    <value>新增</value>
+  </data>
+  <data name="program.action.update" xml:space="preserve">
+    <value>更新</value>
+  </data>
+  <data name="program.action.delete" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="state.title" xml:space="preserve">
+    <value>上传状态</value>
+  </data>
+  <data name="state.description" xml:space="preserve">
+    <value>查看尚未同步至 MES 的本地程序，支持断网恢复后手动重试。</value>
+  </data>
+  <data name="state.button.retry_selected" xml:space="preserve">
+    <value>重试选中</value>
+  </data>
+  <data name="state.button.retry_all" xml:space="preserve">
+    <value>全部重试</value>
+  </data>
+  <data name="state.summary.pending_programs" xml:space="preserve">
+    <value>待同步程序：{0} 条</value>
+  </data>
+  <data name="state.message.select_pending" xml:space="preserve">
+    <value>请先选择一条待同步记录。</value>
+  </data>
+  <data name="grid.program.name" xml:space="preserve">
+    <value>程序名称</value>
+  </data>
+  <data name="grid.program.product_num" xml:space="preserve">
+    <value>产品工号</value>
+  </data>
+  <data name="grid.program.version_number" xml:space="preserve">
+    <value>版本</value>
+  </data>
+  <data name="grid.program.sync_status" xml:space="preserve">
+    <value>同步状态</value>
+  </data>
+  <data name="grid.program.sync_action" xml:space="preserve">
+    <value>动作</value>
+  </data>
+  <data name="grid.program.sync_message" xml:space="preserve">
+    <value>消息</value>
+  </data>
+  <data name="grid.program.commit_id" xml:space="preserve">
+    <value>提交ID</value>
+  </data>
+  <data name="grid.program.commit_message" xml:space="preserve">
+    <value>说明</value>
+  </data>
+  <data name="grid.program.commit_user" xml:space="preserve">
+    <value>提交人</value>
+  </data>
+  <data name="grid.program.commit_time" xml:space="preserve">
+    <value>提交时间</value>
+  </data>
+  <data name="grid.program.updated_time" xml:space="preserve">
+    <value>更新时间</value>
+  </data>
+  <data name="grid.program.last_sync_time" xml:space="preserve">
+    <value>最近同步</value>
+  </data>
+</root>

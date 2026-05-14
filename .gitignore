@@ -1,0 +1,26 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Build output
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+
+# Local runtime settings
+AutoWeldSystem.UI/appsettings.json
+
+# Logs and generated runtime data
+logs/
+*.log
+*.tmp
+
+# OS files
+Thumbs.db
+Desktop.ini
