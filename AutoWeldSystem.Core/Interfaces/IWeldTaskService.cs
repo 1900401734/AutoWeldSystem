@@ -1,4 +1,5 @@
 using AutoWeldSystem.Core.DTOs;
+using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Models;
 
 namespace AutoWeldSystem.Core.Interfaces;
@@ -21,7 +22,11 @@ public interface IWeldTaskService
 
     Task<MesBaseResponse<MesUserInfoResponse>> ValidateMesOperatorAsync(string employeeNumber, CancellationToken cancellationToken = default);
 
-    Task<BizWeldTask> StartAsync(string employeeNumber, int actualQty, CancellationToken cancellationToken = default);
+    Task<BizWeldTask> StartAsync(
+        string employeeNumber,
+        int actualQty,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        CancellationToken cancellationToken = default);
 
     Task<MesBaseResponse<object>> ChangeStatusAsync(string statusCode, CancellationToken cancellationToken = default);
 

@@ -7,6 +7,15 @@ namespace AutoWeldSystem.Core.Constants;
 public static class ProductionConstants
 {
     /// <summary>
+    /// Station defaults.
+    /// 当前版本的界面仍按单工位流程运行，因此默认写入 1；后续双工位界面再传入实际工位号。
+    /// </summary>
+    public static class Stations
+    {
+        public const int DefaultStationNo = 1;
+    }
+
+    /// <summary>
     /// Product number source modes.
     /// </summary>
     public static class ProductNoSources

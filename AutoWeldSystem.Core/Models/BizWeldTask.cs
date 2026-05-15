@@ -1,3 +1,4 @@
+using AutoWeldSystem.Core.Constants;
 using SqlSugar;
 
 namespace AutoWeldSystem.Core.Models;
@@ -19,6 +20,12 @@ public class BizWeldTask
 
     [SugarColumn(Length = 50, ColumnDescription = "设备编号")]
     public string DeviceId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 工位号。用于支持同一台设备的多个工位同时生产不同工单或不同产品型号。
+    /// </summary>
+    [SugarColumn(ColumnDescription = "工位号")]
+    public int StationNo { get; set; } = ProductionConstants.Stations.DefaultStationNo;
 
     [SugarColumn(Length = 50, ColumnDescription = "工单编号")]
     public string WorkOrderId { get; set; } = string.Empty;

@@ -150,9 +150,14 @@ public class WeldTaskService : IWeldTaskService
         return response;
     }
 
-    public async Task<BizWeldTask> StartAsync(string employeeNumber, int actualQty, CancellationToken cancellationToken = default)
+    public async Task<BizWeldTask> StartAsync(
+        string employeeNumber,
+        int actualQty,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        CancellationToken cancellationToken = default)
     {
         EnsureReadyForStart();
+        var normalizedStationNo = NormalizeStationNo(stationNo);
 
         var validation = await ValidateMesOperatorAsync(employeeNumber, cancellationToken);
         if (!validation.IsSuccess)
@@ -192,6 +197,7 @@ public class WeldTaskService : IWeldTaskService
         var task = new BizWeldTask
         {
             ExpStartId = response.Data.Id,
+            StationNo = normalizedStationNo,
             WorkOrderId = workOrder.SN,
             ProductNum = workOrder.ProdNum,
             ProductModel = workOrder.ProdModel,
@@ -215,8 +221,9 @@ public class WeldTaskService : IWeldTaskService
 
         task = _dbContext.Db.Insertable(task).ExecuteReturnEntity();
         CurrentState.ActiveTask = task;
+        CurrentState.CurrentStationNo = normalizedStationNo;
         CurrentState.MesOperatorNumber = employeeNumber;
-        _operationLogService.Write("ExpStart", $"Start report submitted, MES Id={task.ExpStartId}, WorkOrder={task.WorkOrderId}");
+        _operationLogService.Write("ExpStart", $"Start report submitted, Station={task.StationNo}, MES Id={task.ExpStartId}, WorkOrder={task.WorkOrderId}");
         NotifyStateChanged();
         return task;
     }
@@ -308,7 +315,7 @@ public class WeldTaskService : IWeldTaskService
         _dbContext.Db.Updateable(task).ExecuteCommand();
         EnqueueFinishUploadTasks(task, settings.UploadMode);
         CurrentState.ActiveTask = task;
-        _operationLogService.Write("ExpEnd", $"Finish report submitted, WorkOrder={task.WorkOrderId}, UploadStatus={task.UploadStatus}");
+        _operationLogService.Write("ExpEnd", $"Finish report submitted, Station={task.StationNo}, WorkOrder={task.WorkOrderId}, UploadStatus={task.UploadStatus}");
         NotifyStateChanged();
         return task;
     }
@@ -509,6 +516,7 @@ public class WeldTaskService : IWeldTaskService
             TaskType = taskType,
             UploadMode = uploadMode.ToString(),
             WeldTaskId = task.Id,
+            task.StationNo,
             task.ExpStartId,
             task.DeviceId,
             SN = task.WorkOrderId,
@@ -534,6 +542,13 @@ public class WeldTaskService : IWeldTaskService
             UploadMode.Quantity => "特定数量上传",
             _ => "整批上传"
         };
+    }
+
+    private static int NormalizeStationNo(int stationNo)
+    {
+        return stationNo <= 0
+            ? ProductionConstants.Stations.DefaultStationNo
+            : stationNo;
     }
 
     private void NotifyStateChanged()
