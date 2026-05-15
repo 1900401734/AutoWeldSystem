@@ -59,6 +59,7 @@ public static class Program
                     services.AddSingleton<IProductNoGeneratorService, ProductNoGeneratorService>();
                     services.AddSingleton<IDeviceStatusService, DeviceStatusService>();
                     services.AddSingleton<IUploadTaskService, UploadTaskService>();
+                    services.AddSingleton<IProductionReportFileService, ProductionReportFileService>();
                     services.AddTransient<PermissionUiBinder>();
 
                     services.AddHttpClient<IMesProvider, MesProvider>();

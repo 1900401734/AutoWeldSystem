@@ -17,6 +17,7 @@ public class WeldTaskService : IWeldTaskService
     private readonly IOperationLogService _operationLogService;
     private readonly ILocalizationService _localizer;
     private readonly IUploadTaskService _uploadTaskService;
+    private readonly IProductionReportFileService _reportFileService;
 
     public WeldTaskService(
         SqlSugarDbContext dbContext,
@@ -24,7 +25,8 @@ public class WeldTaskService : IWeldTaskService
         IAppSettingsService settingsService,
         IOperationLogService operationLogService,
         ILocalizationService localizer,
-        IUploadTaskService uploadTaskService)
+        IUploadTaskService uploadTaskService,
+        IProductionReportFileService reportFileService)
     {
         _mesProvider = mesProvider;
         _dbContext = dbContext;
@@ -32,6 +34,7 @@ public class WeldTaskService : IWeldTaskService
         _operationLogService = operationLogService;
         _localizer = localizer;
         _uploadTaskService = uploadTaskService;
+        _reportFileService = reportFileService;
         CurrentState = new ProductionRuntimeState();
     }
 
@@ -461,6 +464,19 @@ public class WeldTaskService : IWeldTaskService
 
     private void EnqueueReportFileTask(BizWeldTask task, UploadMode uploadMode)
     {
+        BizProductionReportFile? reportFile = null;
+        string? generationError = null;
+
+        try
+        {
+            reportFile = _reportFileService.GenerateCsvReport(task);
+        }
+        catch (Exception ex)
+        {
+            generationError = ex.Message;
+            _operationLogService.Write("ReportFile", $"Report file generation failed, WorkOrder={task.WorkOrderId}, Error={ex.Message}");
+        }
+
         _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
         {
             TaskType = ProductionConstants.UploadTaskTypes.ReportFile,
@@ -468,9 +484,12 @@ public class WeldTaskService : IWeldTaskService
             BusinessId = BuildUploadBusinessId(task, "report-file"),
             WeldTaskId = task.Id,
             PayloadJson = BuildUploadPayload(task, uploadMode, ProductionConstants.UploadTaskTypes.ReportFile),
-            Status = ProductionConstants.UploadStatuses.Pending,
+            FilePath = reportFile?.FilePath,
+            Status = reportFile is null ? ProductionConstants.UploadStatuses.Failed : ProductionConstants.UploadStatuses.Pending,
             NextRetryTime = DateTime.Now,
-            Message = "完工后排队，等待报告文件生成并上传。"
+            Message = reportFile is null
+                ? $"报告文件生成失败：{generationError}"
+                : "报告文件已生成，等待上传执行器处理。"
         });
     }
 
