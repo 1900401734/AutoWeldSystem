@@ -15,6 +15,10 @@ public interface IUploadTaskService
 
     BizUploadTask EnqueueOrUpdate(BizUploadTask task);
 
+    Task<UploadTaskSummary?> ExecuteAsync(int id, CancellationToken cancellationToken = default);
+
+    Task<int> ExecuteAllPendingAsync(string taskType, CancellationToken cancellationToken = default);
+
     void RequestRetry(int id);
 
     int RequestRetryAll(string taskType);

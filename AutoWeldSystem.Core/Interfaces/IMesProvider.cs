@@ -80,4 +80,9 @@ public interface IMesProvider
     /// 完工上报。
     /// </summary>
     Task<MesBaseResponse<object>> EndWorkAsync(ExpEndRequest requestData, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 报告文件上报。
+    /// </summary>
+    Task<MesBaseResponse<object>> UploadReportFileAsync(ReportFileUploadRequest requestData, CancellationToken cancellationToken = default);
 }

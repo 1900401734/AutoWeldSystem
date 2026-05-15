@@ -141,6 +141,58 @@ public class MesProvider : IMesProvider
     public Task<MesBaseResponse<object>> EndWorkAsync(ExpEndRequest requestData, CancellationToken cancellationToken = default)
         => PostAsync<ExpEndRequest, object>(AppConstants.MesLogPurposes.EndWork, "api/ExpEnd", ApiCode.common_003, "ExpEnd", requestData, cancellationToken);
 
+    /// <summary>
+    /// 报告文件上报。
+    /// MES 该接口使用 multipart/form-data，而不是统一的 ApiCode JSON 包装。
+    /// </summary>
+    public async Task<MesBaseResponse<object>> UploadReportFileAsync(ReportFileUploadRequest requestData, CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(requestData.FilePath))
+        {
+            return new MesBaseResponse<object>
+            {
+                Status = AppConstants.MesStatus.Error,
+                Msg = $"Report file does not exist: {requestData.FilePath}"
+            };
+        }
+
+        await using var fileStream = File.OpenRead(requestData.FilePath);
+        using var form = new MultipartFormDataContent
+        {
+            { new StringContent(requestData.ExpStartId), nameof(requestData.ExpStartId) },
+            { new StringContent(requestData.DeviceId), nameof(requestData.DeviceId) },
+            { new StringContent(requestData.SN), nameof(requestData.SN) },
+            { new StringContent(requestData.ProcessNo), nameof(requestData.ProcessNo) },
+            { new StringContent(requestData.FileType.ToString()), nameof(requestData.FileType) }
+        };
+
+        form.Add(new StreamContent(fileStream), "file", Path.GetFileName(requestData.FilePath));
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, BuildUri("api/ExpFile", null, null))
+        {
+            Content = form
+        };
+
+        var requestLogBody = JsonSerializer.Serialize(new
+        {
+            requestData.ExpStartId,
+            requestData.DeviceId,
+            requestData.SN,
+            requestData.ProcessNo,
+            requestData.FileType,
+            FileName = Path.GetFileName(requestData.FilePath),
+            FileLength = fileStream.Length
+        }, JsonOptions);
+
+        return await SendAsync<object>(
+            AppConstants.MesLogPurposes.UploadReportFile,
+            request,
+            requestLogBody,
+            cancellationToken,
+            null,
+            true);
+    }
+
     private async Task<MesBaseResponse<T>> GetAsync<T>(
         string purpose,
         string path,

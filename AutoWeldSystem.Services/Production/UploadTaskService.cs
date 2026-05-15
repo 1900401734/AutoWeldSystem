@@ -13,11 +13,13 @@ namespace AutoWeldSystem.Services.Production;
 public class UploadTaskService : IUploadTaskService
 {
     private readonly SqlSugarDbContext _dbContext;
+    private readonly IMesProvider _mesProvider;
     private readonly object _dbLock = new();
 
-    public UploadTaskService(SqlSugarDbContext dbContext)
+    public UploadTaskService(SqlSugarDbContext dbContext, IMesProvider mesProvider)
     {
         _dbContext = dbContext;
+        _mesProvider = mesProvider;
     }
 
     public IReadOnlyList<UploadTaskSummary> GetTasks(string taskType, bool includeCompleted = false)
@@ -87,6 +89,46 @@ public class UploadTaskService : IUploadTaskService
         }
     }
 
+    public async Task<UploadTaskSummary?> ExecuteAsync(int id, CancellationToken cancellationToken = default)
+    {
+        var task = MarkUploading(id);
+        if (task is null)
+        {
+            return null;
+        }
+
+        var response = await ExecuteByTypeAsync(task, cancellationToken);
+        return FinishExecution(task.Id, response);
+    }
+
+    public async Task<int> ExecuteAllPendingAsync(string taskType, CancellationToken cancellationToken = default)
+    {
+        List<int> taskIds;
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var normalizedTaskType = NormalizeTaskType(taskType);
+            taskIds = _dbContext.Db.Queryable<BizUploadTask>()
+                .Where(task => task.TaskType == normalizedTaskType
+                    && task.Status != ProductionConstants.UploadStatuses.Uploaded)
+                .ToList()
+                .Select(task => task.Id)
+                .ToList();
+        }
+
+        var executedCount = 0;
+        foreach (var taskId in taskIds)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (await ExecuteAsync(taskId, cancellationToken) is not null)
+            {
+                executedCount++;
+            }
+        }
+
+        return executedCount;
+    }
+
     public void RequestRetry(int id)
     {
         lock (_dbLock)
@@ -122,6 +164,146 @@ public class UploadTaskService : IUploadTaskService
 
             return tasks.Count;
         }
+    }
+
+    private BizUploadTask? MarkUploading(int id)
+    {
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var task = _dbContext.Db.Queryable<BizUploadTask>().InSingle(id);
+            if (task is null || task.Status == ProductionConstants.UploadStatuses.Uploaded)
+            {
+                return task;
+            }
+
+            task.Status = ProductionConstants.UploadStatuses.Uploading;
+            task.LastAttemptTime = DateTime.Now;
+            task.RetryCount++;
+            task.UpdatedTime = DateTime.Now;
+            _dbContext.Db.Updateable(task).ExecuteCommand();
+            return task;
+        }
+    }
+
+    private async Task<MesBaseResponse<object>> ExecuteByTypeAsync(BizUploadTask task, CancellationToken cancellationToken)
+    {
+        return task.TaskType switch
+        {
+            ProductionConstants.UploadTaskTypes.ReportFile => await UploadReportFileAsync(task, cancellationToken),
+            ProductionConstants.UploadTaskTypes.ProcessParameter => Unsupported("过程参数上传执行器尚未接入。"),
+            ProductionConstants.UploadTaskTypes.ProgramFile => Unsupported("程序文件上传由程序管理服务处理。"),
+            _ => Unsupported($"暂不支持的上传任务类型：{task.TaskType}")
+        };
+    }
+
+    private async Task<MesBaseResponse<object>> UploadReportFileAsync(BizUploadTask task, CancellationToken cancellationToken)
+    {
+        var request = BuildReportFileRequest(task);
+        if (request is null)
+        {
+            return Unsupported("报告文件任务缺少工单或文件路径信息。");
+        }
+
+        return await _mesProvider.UploadReportFileAsync(request, cancellationToken);
+    }
+
+    private ReportFileUploadRequest? BuildReportFileRequest(BizUploadTask task)
+    {
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var weldTask = task.WeldTaskId is null
+                ? null
+                : _dbContext.Db.Queryable<BizWeldTask>().InSingle(task.WeldTaskId.Value);
+            if (weldTask is null)
+            {
+                return null;
+            }
+
+            var filePath = task.FilePath;
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                filePath = _dbContext.Db.Queryable<BizProductionReportFile>()
+                    .Where(report => report.TaskId == weldTask.Id)
+                    .ToList()
+                    .OrderByDescending(report => report.UpdatedTime)
+                    .Select(report => report.FilePath)
+                    .FirstOrDefault();
+            }
+
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                return null;
+            }
+
+            return new ReportFileUploadRequest
+            {
+                ExpStartId = weldTask.ExpStartId ?? string.Empty,
+                DeviceId = weldTask.DeviceId,
+                SN = weldTask.WorkOrderId,
+                ProcessNo = weldTask.ProcessNo,
+                FileType = ProductionConstants.MesFileTypes.ReportFile,
+                FilePath = filePath
+            };
+        }
+    }
+
+    private UploadTaskSummary? FinishExecution(int taskId, MesBaseResponse<object> response)
+    {
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var task = _dbContext.Db.Queryable<BizUploadTask>().InSingle(taskId);
+            if (task is null)
+            {
+                return null;
+            }
+
+            task.Status = response.IsSuccess
+                ? ProductionConstants.UploadStatuses.Uploaded
+                : ProductionConstants.UploadStatuses.Failed;
+            task.Message = response.Msg;
+            task.CompletedTime = response.IsSuccess ? DateTime.Now : null;
+            task.NextRetryTime = response.IsSuccess ? null : DateTime.Now.AddMinutes(1);
+            task.UpdatedTime = DateTime.Now;
+            _dbContext.Db.Updateable(task).ExecuteCommand();
+            UpdateReportFileStatus(task, response);
+            return ToSummary(task);
+        }
+    }
+
+    private void UpdateReportFileStatus(BizUploadTask task, MesBaseResponse<object> response)
+    {
+        if (task.TaskType != ProductionConstants.UploadTaskTypes.ReportFile)
+        {
+            return;
+        }
+
+        var report = _dbContext.Db.Queryable<BizProductionReportFile>()
+            .Where(item => item.TaskId == task.WeldTaskId || item.FilePath == task.FilePath)
+            .ToList()
+            .OrderByDescending(item => item.UpdatedTime)
+            .FirstOrDefault();
+        if (report is null)
+        {
+            return;
+        }
+
+        report.UploadStatus = task.Status;
+        report.UploadTime = response.IsSuccess ? DateTime.Now : null;
+        report.UploadMessage = response.Msg;
+        report.UpdatedTime = DateTime.Now;
+        _dbContext.Db.Updateable(report).ExecuteCommand();
+    }
+
+    private static MesBaseResponse<object> Unsupported(string message)
+    {
+        return new MesBaseResponse<object>
+        {
+            Status = AppConstants.MesStatus.Error,
+            Msg = message
+        };
     }
 
     private static void MarkRetryRequested(BizUploadTask task)

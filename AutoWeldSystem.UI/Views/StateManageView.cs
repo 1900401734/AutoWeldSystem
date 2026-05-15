@@ -172,9 +172,9 @@ public partial class StateManageView : BaseView
 
         try
         {
-            _uploadTaskService.RequestRetry(task.Id);
+            await _uploadTaskService.ExecuteAsync(task.Id);
             ReloadActiveTasks();
-            ShowInfo("已将选中的上传任务重新加入待上传队列。");
+            ShowInfo("已执行选中的上传任务。");
         }
         catch (Exception ex)
         {
@@ -217,8 +217,8 @@ public partial class StateManageView : BaseView
             }
             else
             {
-                var count = _uploadTaskService.RequestRetryAll(GetActiveUploadTaskType());
-                ShowInfo($"已将 {count} 条上传任务重新加入待上传队列。");
+                var count = await _uploadTaskService.ExecuteAllPendingAsync(GetActiveUploadTaskType());
+                ShowInfo($"已执行 {count} 条上传任务。");
             }
 
             ReloadActiveTasks();
