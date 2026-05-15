@@ -113,4 +113,14 @@ public static class ProductionConstants
         public const string Ng = "NG";
         public const string Unknown = "Unknown";
     }
+
+    /// <summary>
+    /// Local product instance statuses under one weld task.
+    /// </summary>
+    public static class ProductInstanceStatuses
+    {
+        public const string Running = "Running";
+        public const string Completed = "Completed";
+        public const string Abandoned = "Abandoned";
+    }
 }

@@ -57,6 +57,7 @@ public class SqlSugarDbContext : IDisposable
                     typeof(BizWeldTask),
                     typeof(BizWeldData),
                     typeof(BizWeldPointRecord),
+                    typeof(BizProductInstance),
                     typeof(BizProductProcessConfig),
                     typeof(BizCollectionParameter),
                     typeof(BizProductionReportFile),

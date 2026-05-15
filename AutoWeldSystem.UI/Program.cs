@@ -56,6 +56,7 @@ public static class Program
                     services.AddSingleton<IPlcWorkIdMonitorService, PlcWorkIdMonitorService>();
                     services.AddSingleton<IProductProcessConfigService, ProductProcessConfigService>();
                     services.AddSingleton<ICollectionParameterService, CollectionParameterService>();
+                    services.AddSingleton<IProductNoGeneratorService, ProductNoGeneratorService>();
                     services.AddTransient<PermissionUiBinder>();
 
                     services.AddHttpClient<IMesProvider, MesProvider>();
