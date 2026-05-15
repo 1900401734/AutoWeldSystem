@@ -26,11 +26,18 @@ namespace AutoWeldSystem.UI.Views
             btnSave = new AntdUI.Button();
             btnRefresh = new AntdUI.Button();
             btnTest = new AntdUI.Button();
+            tabAddressCategories = new TabControl();
+            tabBusinessAddresses = new TabPage();
             tableAddresses = new AntdUI.Table();
+            tabCollectionParameters = new TabPage();
+            tableCollectionParameters = new AntdUI.Table();
             rootLayout.SuspendLayout();
             headerLayout.SuspendLayout();
             titleLayout.SuspendLayout();
             buttonFlow.SuspendLayout();
+            tabAddressCategories.SuspendLayout();
+            tabBusinessAddresses.SuspendLayout();
+            tabCollectionParameters.SuspendLayout();
             SuspendLayout();
             // 
             // rootLayout
@@ -38,7 +45,7 @@ namespace AutoWeldSystem.UI.Views
             rootLayout.ColumnCount = 1;
             rootLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             rootLayout.Controls.Add(headerLayout, 0, 0);
-            rootLayout.Controls.Add(tableAddresses, 0, 1);
+            rootLayout.Controls.Add(tabAddressCategories, 0, 1);
             rootLayout.Dock = DockStyle.Fill;
             rootLayout.Location = new Point(0, 0);
             rootLayout.Name = "rootLayout";
@@ -173,19 +180,66 @@ namespace AutoWeldSystem.UI.Views
             btnTest.Size = new Size(139, 45);
             btnTest.TabIndex = 2;
             btnTest.Text = "测试选中地址";
-            // 
+            //
+            // tabAddressCategories
+            //
+            tabAddressCategories.Controls.Add(tabBusinessAddresses);
+            tabAddressCategories.Controls.Add(tabCollectionParameters);
+            tabAddressCategories.Dock = DockStyle.Fill;
+            tabAddressCategories.HotTrack = true;
+            tabAddressCategories.Location = new Point(24, 104);
+            tabAddressCategories.Margin = new Padding(24, 6, 24, 24);
+            tabAddressCategories.Name = "tabAddressCategories";
+            tabAddressCategories.SelectedIndex = 0;
+            tabAddressCategories.Size = new Size(1250, 593);
+            tabAddressCategories.TabIndex = 1;
+            //
+            // tabBusinessAddresses
+            //
+            tabBusinessAddresses.Controls.Add(tableAddresses);
+            tabBusinessAddresses.Location = new Point(4, 29);
+            tabBusinessAddresses.Name = "tabBusinessAddresses";
+            tabBusinessAddresses.Padding = new Padding(3);
+            tabBusinessAddresses.Size = new Size(1242, 560);
+            tabBusinessAddresses.TabIndex = 0;
+            tabBusinessAddresses.Text = "业务信号地址";
+            tabBusinessAddresses.UseVisualStyleBackColor = true;
+            //
             // tableAddresses
-            // 
+            //
             tableAddresses.Dock = DockStyle.Fill;
             tableAddresses.EditMode = AntdUI.TEditMode.DoubleClick;
             tableAddresses.Gap = 12;
-            tableAddresses.Location = new Point(24, 104);
-            tableAddresses.Margin = new Padding(24, 6, 24, 24);
+            tableAddresses.Location = new Point(3, 3);
+            tableAddresses.Margin = new Padding(0);
             tableAddresses.Name = "tableAddresses";
-            tableAddresses.Size = new Size(1250, 593);
-            tableAddresses.TabIndex = 1;
+            tableAddresses.Size = new Size(1236, 554);
+            tableAddresses.TabIndex = 0;
             tableAddresses.Text = "tableAddresses";
-            // 
+            //
+            // tabCollectionParameters
+            //
+            tabCollectionParameters.Controls.Add(tableCollectionParameters);
+            tabCollectionParameters.Location = new Point(4, 29);
+            tabCollectionParameters.Name = "tabCollectionParameters";
+            tabCollectionParameters.Padding = new Padding(3);
+            tabCollectionParameters.Size = new Size(1242, 560);
+            tabCollectionParameters.TabIndex = 1;
+            tabCollectionParameters.Text = "采集参数地址";
+            tabCollectionParameters.UseVisualStyleBackColor = true;
+            //
+            // tableCollectionParameters
+            //
+            tableCollectionParameters.Dock = DockStyle.Fill;
+            tableCollectionParameters.EditMode = AntdUI.TEditMode.DoubleClick;
+            tableCollectionParameters.Gap = 8;
+            tableCollectionParameters.Location = new Point(3, 3);
+            tableCollectionParameters.Margin = new Padding(0);
+            tableCollectionParameters.Name = "tableCollectionParameters";
+            tableCollectionParameters.Size = new Size(1236, 554);
+            tableCollectionParameters.TabIndex = 0;
+            tableCollectionParameters.Text = "tableCollectionParameters";
+            //
             // AddressManageView
             // 
             AutoScaleDimensions = new SizeF(8F, 20F);
@@ -200,6 +254,9 @@ namespace AutoWeldSystem.UI.Views
             titleLayout.PerformLayout();
             buttonFlow.ResumeLayout(false);
             buttonFlow.PerformLayout();
+            tabCollectionParameters.ResumeLayout(false);
+            tabBusinessAddresses.ResumeLayout(false);
+            tabAddressCategories.ResumeLayout(false);
             ResumeLayout(false);
         }
 
@@ -213,6 +270,10 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Button btnRefresh;
         private AntdUI.Button btnTest;
         private Components.InputQuery queryAddresses;
+        private TabControl tabAddressCategories;
+        private TabPage tabBusinessAddresses;
         private AntdUI.Table tableAddresses;
+        private TabPage tabCollectionParameters;
+        private AntdUI.Table tableCollectionParameters;
     }
 }

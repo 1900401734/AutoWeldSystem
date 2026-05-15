@@ -28,10 +28,6 @@ public partial class AddressManageView : BaseView
     private string _addressKeyword = string.Empty;
     private string _parameterKeyword = string.Empty;
     private bool _initialized;
-    private TabControl tabAddressCategories = null!;
-    private TabPage tabBusinessAddresses = null!;
-    private TabPage tabCollectionParameters = null!;
-    private AntdUI.Table tableCollectionParameters = null!;
 
     public AddressManageView(
         IPlcAddressService addressService,
@@ -49,7 +45,6 @@ public partial class AddressManageView : BaseView
         _localizer = localizer;
 
         InitializeComponent();
-        BuildAddressTabs();
         ConfigureTable();
         WireEvents();
     }
@@ -90,51 +85,6 @@ public partial class AddressManageView : BaseView
 
         ConfigureTableColumns();
         ConfigureCollectionParameterColumns();
-    }
-
-    /// <summary>
-    /// 将原有业务地址表放入页签，并新增采集参数页签。
-    /// 这里不改 Designer 的布局生成逻辑，降低后续设计器打不开的风险。
-    /// </summary>
-    private void BuildAddressTabs()
-    {
-        rootLayout.Controls.Remove(tableAddresses);
-
-        tabAddressCategories = new TabControl
-        {
-            Dock = DockStyle.Fill,
-            HotTrack = true,
-            Margin = new Padding(24, 6, 24, 24)
-        };
-        tabBusinessAddresses = new TabPage
-        {
-            Padding = new Padding(3),
-            Text = "业务信号地址",
-            UseVisualStyleBackColor = true
-        };
-        tabCollectionParameters = new TabPage
-        {
-            Padding = new Padding(3),
-            Text = "采集参数地址",
-            UseVisualStyleBackColor = true
-        };
-
-        tableAddresses.Dock = DockStyle.Fill;
-        tableAddresses.Margin = new Padding(0);
-        tableCollectionParameters = new AntdUI.Table
-        {
-            Dock = DockStyle.Fill,
-            EditMode = AntdUI.TEditMode.DoubleClick,
-            Gap = 8,
-            Name = "tableCollectionParameters",
-            Text = "tableCollectionParameters"
-        };
-
-        tabBusinessAddresses.Controls.Add(tableAddresses);
-        tabCollectionParameters.Controls.Add(tableCollectionParameters);
-        tabAddressCategories.Controls.Add(tabBusinessAddresses);
-        tabAddressCategories.Controls.Add(tabCollectionParameters);
-        rootLayout.Controls.Add(tabAddressCategories, 0, 1);
     }
 
     /// <summary>
