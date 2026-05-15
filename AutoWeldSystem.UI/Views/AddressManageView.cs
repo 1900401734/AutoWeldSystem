@@ -14,30 +14,42 @@ namespace AutoWeldSystem.UI.Views;
 public partial class AddressManageView : BaseView
 {
     private readonly IPlcAddressService _addressService;
+    private readonly ICollectionParameterService _collectionParameterService;
     private readonly IPlcCommunicationService _plcCommunicationService;
     private readonly IPlcProductionMonitorService _plcProductionMonitorService;
     private readonly IPlcWorkIdMonitorService _plcWorkIdMonitorService;
     private readonly ILocalizationService _localizer;
     private readonly List<BizPlcAddress> _allAddresses = new();
+    private readonly List<BizCollectionParameter> _allCollectionParameters = new();
     private List<PlcAddressTableRow> _currentRows = new();
+    private List<CollectionParameterTableRow> _currentParameterRows = new();
     private PlcAddressTableRow? _selectedRow;
+    private CollectionParameterTableRow? _selectedParameterRow;
     private string _addressKeyword = string.Empty;
+    private string _parameterKeyword = string.Empty;
     private bool _initialized;
+    private TabControl tabAddressCategories = null!;
+    private TabPage tabBusinessAddresses = null!;
+    private TabPage tabCollectionParameters = null!;
+    private AntdUI.Table tableCollectionParameters = null!;
 
     public AddressManageView(
         IPlcAddressService addressService,
+        ICollectionParameterService collectionParameterService,
         IPlcCommunicationService plcCommunicationService,
         IPlcProductionMonitorService plcProductionMonitorService,
         IPlcWorkIdMonitorService plcWorkIdMonitorService,
         ILocalizationService localizer)
     {
         _addressService = addressService;
+        _collectionParameterService = collectionParameterService;
         _plcCommunicationService = plcCommunicationService;
         _plcProductionMonitorService = plcProductionMonitorService;
         _plcWorkIdMonitorService = plcWorkIdMonitorService;
         _localizer = localizer;
 
         InitializeComponent();
+        BuildAddressTabs();
         ConfigureTable();
         WireEvents();
     }
@@ -70,10 +82,59 @@ public partial class AddressManageView : BaseView
     private void ConfigureTable()
     {
         TableStyleHelper.ApplyAntdTable(tableAddresses);
+        TableStyleHelper.ApplyAntdTable(tableCollectionParameters);
         tableAddresses.EditLostFocus = true;
         tableAddresses.LostFocusClearSelection = false;
+        tableCollectionParameters.EditLostFocus = true;
+        tableCollectionParameters.LostFocusClearSelection = false;
 
         ConfigureTableColumns();
+        ConfigureCollectionParameterColumns();
+    }
+
+    /// <summary>
+    /// 将原有业务地址表放入页签，并新增采集参数页签。
+    /// 这里不改 Designer 的布局生成逻辑，降低后续设计器打不开的风险。
+    /// </summary>
+    private void BuildAddressTabs()
+    {
+        rootLayout.Controls.Remove(tableAddresses);
+
+        tabAddressCategories = new TabControl
+        {
+            Dock = DockStyle.Fill,
+            HotTrack = true,
+            Margin = new Padding(24, 6, 24, 24)
+        };
+        tabBusinessAddresses = new TabPage
+        {
+            Padding = new Padding(3),
+            Text = "业务信号地址",
+            UseVisualStyleBackColor = true
+        };
+        tabCollectionParameters = new TabPage
+        {
+            Padding = new Padding(3),
+            Text = "采集参数地址",
+            UseVisualStyleBackColor = true
+        };
+
+        tableAddresses.Dock = DockStyle.Fill;
+        tableAddresses.Margin = new Padding(0);
+        tableCollectionParameters = new AntdUI.Table
+        {
+            Dock = DockStyle.Fill,
+            EditMode = AntdUI.TEditMode.DoubleClick,
+            Gap = 8,
+            Name = "tableCollectionParameters",
+            Text = "tableCollectionParameters"
+        };
+
+        tabBusinessAddresses.Controls.Add(tableAddresses);
+        tabCollectionParameters.Controls.Add(tableCollectionParameters);
+        tabAddressCategories.Controls.Add(tabBusinessAddresses);
+        tabAddressCategories.Controls.Add(tabCollectionParameters);
+        rootLayout.Controls.Add(tabAddressCategories, 0, 1);
     }
 
     /// <summary>
@@ -86,7 +147,7 @@ public partial class AddressManageView : BaseView
         tableAddresses.Columns.Add(CreateTableColumn(nameof(PlcAddressTableRow.AddressName), TextKeys.Grid.PlcAddressName, readOnly: true));
         tableAddresses.Columns.Add(CreateTableColumn(nameof(PlcAddressTableRow.Sort), TextKeys.Grid.PlcAddressSort));
         tableAddresses.Columns.Add(CreateTableColumn(nameof(PlcAddressTableRow.Address), TextKeys.Grid.PlcAddress));
-        tableAddresses.Columns.Add(CreateDataTypeColumn());
+        tableAddresses.Columns.Add(CreateDataTypeColumn(nameof(PlcAddressTableRow.DataType), _localizer.GetString(TextKeys.Grid.PlcAddressDataType)));
         tableAddresses.Columns.Add(CreateTableColumn(nameof(PlcAddressTableRow.DataLength), TextKeys.Grid.PlcAddressDataLength));
         tableAddresses.Columns.Add(CreateEnabledColumn());
         tableAddresses.Columns.Add(CreateTableColumn(nameof(PlcAddressTableRow.Description), TextKeys.Grid.PlcAddressDescription));
@@ -98,12 +159,40 @@ public partial class AddressManageView : BaseView
         TableStyleHelper.ApplyAntdColumnDefaults(tableAddresses);
     }
 
+    private void ConfigureCollectionParameterColumns()
+    {
+        tableCollectionParameters.Columns.Clear();
+
+        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.StationNo), "工位"));
+        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.CollectionGroup), "采集组"));
+        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.ParameterKey), "参数键"));
+        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.ParameterName), "参数名称"));
+        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.Address), "PLC 地址"));
+        tableCollectionParameters.Columns.Add(CreateDataTypeColumn(nameof(CollectionParameterTableRow.DataType), "数据类型"));
+        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.DataLength), "长度"));
+        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.Scale), "缩放"));
+        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.Offset), "偏移"));
+        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.DecimalPlaces), "小数位"));
+        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.Unit), "单位"));
+        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.MesFieldName), "MES 字段"));
+        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.ReportColumnName), "报表列"));
+        tableCollectionParameters.Columns.Add(CreateParameterEnabledColumn());
+        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.Description), "备注"));
+        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.UpdatedTime), "更新时间", readOnly: true, displayFormat: "yyyy-MM-dd HH:mm:ss"));
+        TableStyleHelper.ApplyAntdColumnDefaults(tableCollectionParameters);
+    }
+
     /// <summary>
     /// 创建普通文本列，统一处理只读、编辑和显示格式。
     /// </summary>
     private AntdUI.Column CreateTableColumn(string key, string titleKey, bool readOnly = false, string? displayFormat = null)
     {
-        return new AntdUI.Column(key, _localizer.GetString(titleKey))
+        return CreateRawColumn(key, _localizer.GetString(titleKey), readOnly, displayFormat);
+    }
+
+    private AntdUI.Column CreateRawColumn(string key, string title, bool readOnly = false, string? displayFormat = null)
+    {
+        return new AntdUI.Column(key, title)
         {
             Align = GetColumnAlign(key),
             ReadOnly = readOnly,
@@ -116,9 +205,9 @@ public partial class AddressManageView : BaseView
     /// <summary>
     /// 数据类型列使用下拉项，减少手工输入错误。
     /// </summary>
-    private AntdUI.ColumnSelect CreateDataTypeColumn()
+    private AntdUI.ColumnSelect CreateDataTypeColumn(string key, string title)
     {
-        return new AntdUI.ColumnSelect(nameof(PlcAddressTableRow.DataType), _localizer.GetString(TextKeys.Grid.PlcAddressDataType))
+        return new AntdUI.ColumnSelect(key, title)
         {
             Align = AntdUI.ColumnAlign.Center,
             Editable = true,
@@ -134,6 +223,15 @@ public partial class AddressManageView : BaseView
     private AntdUI.ColumnSwitch CreateEnabledColumn()
     {
         return new AntdUI.ColumnSwitch(nameof(PlcAddressTableRow.Enabled), _localizer.GetString(TextKeys.Grid.PlcAddressEnabled))
+        {
+            Align = AntdUI.ColumnAlign.Center,
+            AutoCheck = true
+        };
+    }
+
+    private static AntdUI.ColumnSwitch CreateParameterEnabledColumn()
+    {
+        return new AntdUI.ColumnSwitch(nameof(CollectionParameterTableRow.Enabled), "启用")
         {
             Align = AntdUI.ColumnAlign.Center,
             AutoCheck = true
@@ -160,12 +258,18 @@ public partial class AddressManageView : BaseView
         btnSave.Click += Save_Click;
         btnRefresh.Click += (_, _) => LoadAddresses();
         btnTest.Click += TestSelected_Click;
-        queryAddresses.QueryClick += (_, keyword) => ApplyAddressFilter(keyword);
+        queryAddresses.QueryClick += (_, keyword) => ApplyActiveFilter(keyword);
+        tabAddressCategories.SelectedIndexChanged += (_, _) => SwitchActiveFilterText();
         tableAddresses.CellClick += TableAddresses_CellClick;
         tableAddresses.CellEndEdit += TableAddresses_CellEndEdit;
         tableAddresses.CellEndValueEdit += TableAddresses_CellEndValueEdit;
         tableAddresses.CellEditComplete += TableAddresses_CellEditComplete;
         tableAddresses.CheckedChanged += TableAddresses_CheckedChanged;
+        tableCollectionParameters.CellClick += TableCollectionParameters_CellClick;
+        tableCollectionParameters.CellEndEdit += TableAddresses_CellEndEdit;
+        tableCollectionParameters.CellEndValueEdit += TableAddresses_CellEndValueEdit;
+        tableCollectionParameters.CellEditComplete += TableAddresses_CellEditComplete;
+        tableCollectionParameters.CheckedChanged += TableAddresses_CheckedChanged;
     }
 
     private void TableAddresses_CellClick(object sender, AntdUI.TableClickEventArgs e)
@@ -176,24 +280,45 @@ public partial class AddressManageView : BaseView
         }
     }
 
+    private void TableCollectionParameters_CellClick(object sender, AntdUI.TableClickEventArgs e)
+    {
+        if (e.Record is CollectionParameterTableRow row)
+        {
+            _selectedParameterRow = row;
+        }
+    }
+
     /// <summary>
     /// 文本编辑结束前先校验输入；返回 false 时 AntdUI.Table 会拒绝这次提交。
     /// </summary>
     private bool TableAddresses_CellEndEdit(object sender, AntdUI.TableEndEditEventArgs e)
     {
-        if (e.Record is not PlcAddressTableRow)
-        {
-            return true;
-        }
-
         var value = e.Value?.Trim() ?? string.Empty;
 
-        return e.Column.Key switch
+        if (e.Record is PlcAddressTableRow)
         {
-            nameof(PlcAddressTableRow.Sort) => IsNonNegativeInt(value),
-            nameof(PlcAddressTableRow.DataLength) => IsPositiveInt(value),
-            _ => true
-        };
+            return e.Column.Key switch
+            {
+                nameof(PlcAddressTableRow.Sort) => IsNonNegativeInt(value),
+                nameof(PlcAddressTableRow.DataLength) => IsPositiveInt(value),
+                _ => true
+            };
+        }
+
+        if (e.Record is CollectionParameterTableRow)
+        {
+            return e.Column.Key switch
+            {
+                nameof(CollectionParameterTableRow.StationNo) => IsNonNegativeInt(value),
+                nameof(CollectionParameterTableRow.DataLength) => IsPositiveInt(value),
+                nameof(CollectionParameterTableRow.Scale) => IsDecimal(value),
+                nameof(CollectionParameterTableRow.Offset) => IsDecimal(value),
+                nameof(CollectionParameterTableRow.DecimalPlaces) => IsNonNegativeInt(value),
+                _ => true
+            };
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -201,9 +326,10 @@ public partial class AddressManageView : BaseView
     /// </summary>
     private bool TableAddresses_CellEndValueEdit(object sender, AntdUI.TableEndValueEditEventArgs e)
     {
-        return e.Record is not PlcAddressTableRow
-            || e.Column.Key != nameof(PlcAddressTableRow.DataType)
-            || AppConstants.PlcDataTypes.All.Contains(e.Value?.ToString());
+        var isDataTypeColumn = e.Column.Key == nameof(PlcAddressTableRow.DataType)
+            || e.Column.Key == nameof(CollectionParameterTableRow.DataType);
+
+        return !isDataTypeColumn || AppConstants.PlcDataTypes.All.Contains(e.Value?.ToString());
     }
 
     /// <summary>
@@ -213,6 +339,12 @@ public partial class AddressManageView : BaseView
     {
         if (e.Record is not PlcAddressTableRow row)
         {
+            if (e.Record is CollectionParameterTableRow parameterRow)
+            {
+                _selectedParameterRow = parameterRow;
+                parameterRow.Enabled = e.Value;
+            }
+
             return;
         }
 
@@ -225,14 +357,20 @@ public partial class AddressManageView : BaseView
     /// </summary>
     private void TableAddresses_CellEditComplete(object sender, AntdUI.ITableEventArgs e)
     {
-        if (e.Record is not PlcAddressTableRow row)
+        if (e.Record is PlcAddressTableRow row)
         {
+            _selectedRow = row;
+            row.Normalize();
+            tableAddresses.Refresh();
             return;
         }
 
-        _selectedRow = row;
-        row.Normalize();
-        tableAddresses.Refresh();
+        if (e.Record is CollectionParameterTableRow parameterRow)
+        {
+            _selectedParameterRow = parameterRow;
+            parameterRow.Normalize();
+            tableCollectionParameters.Refresh();
+        }
     }
 
     private void ApplyLocalizedTexts()
@@ -242,6 +380,8 @@ public partial class AddressManageView : BaseView
         btnSave.Text = _localizer.GetString(TextKeys.Address.ButtonSave);
         btnRefresh.Text = _localizer.GetString(TextKeys.Address.ButtonRefresh);
         btnTest.Text = _localizer.GetString(TextKeys.Address.ButtonTest);
+        tabBusinessAddresses.Text = "业务信号地址";
+        tabCollectionParameters.Text = "采集参数地址";
     }
 
     private void LoadAddresses()
@@ -250,12 +390,33 @@ public partial class AddressManageView : BaseView
         {
             _allAddresses.Clear();
             _allAddresses.AddRange(_addressService.GetAll());
+            _allCollectionParameters.Clear();
+            _allCollectionParameters.AddRange(_collectionParameterService.GetAll(includeDisabled: true));
             ApplyAddressFilter(_addressKeyword);
+            ApplyCollectionFilter(_parameterKeyword);
         }
         catch (Exception ex)
         {
             ShowError(_localizer.GetString(TextKeys.Address.MessageSaveFailed, ex.Message));
         }
+    }
+
+    private void ApplyActiveFilter(string? keyword)
+    {
+        if (tabAddressCategories.SelectedTab == tabCollectionParameters)
+        {
+            ApplyCollectionFilter(keyword);
+            return;
+        }
+
+        ApplyAddressFilter(keyword);
+    }
+
+    private void SwitchActiveFilterText()
+    {
+        queryAddresses.Text = tabAddressCategories.SelectedTab == tabCollectionParameters
+            ? _parameterKeyword
+            : _addressKeyword;
     }
 
     /// <summary>
@@ -288,6 +449,38 @@ public partial class AddressManageView : BaseView
         SelectVisibleRow(selectedAddressKey);
     }
 
+    private void ApplyCollectionFilter(string? keyword)
+    {
+        EndTableEdit();
+
+        _parameterKeyword = keyword?.Trim() ?? string.Empty;
+        var selectedParameterId = _selectedParameterRow?.Id;
+
+        var filteredParameters = _allCollectionParameters
+            .Where(parameter => string.IsNullOrWhiteSpace(_parameterKeyword)
+                || Contains(parameter.CollectionGroup, _parameterKeyword)
+                || Contains(parameter.ParameterKey, _parameterKeyword)
+                || Contains(parameter.ParameterName, _parameterKeyword)
+                || Contains(parameter.Address, _parameterKeyword)
+                || Contains(parameter.DataType, _parameterKeyword)
+                || Contains(parameter.MesFieldName, _parameterKeyword)
+                || Contains(parameter.ReportColumnName, _parameterKeyword)
+                || Contains(parameter.Description, _parameterKeyword))
+            .OrderBy(parameter => parameter.CollectionGroup)
+            .ThenBy(parameter => parameter.StationNo)
+            .ThenBy(parameter => parameter.Sort)
+            .ThenBy(parameter => parameter.ParameterKey)
+            .ToList();
+
+        _currentParameterRows = filteredParameters
+            .Select(parameter => new CollectionParameterTableRow(parameter))
+            .ToList();
+
+        tableCollectionParameters.DataSource = _currentParameterRows;
+        tableCollectionParameters.Refresh();
+        SelectVisibleParameterRow(selectedParameterId);
+    }
+
     /// <summary>
     /// 保存后重启 PLC 通讯服务，让新的心跳地址立即生效。
     /// </summary>
@@ -298,8 +491,11 @@ public partial class AddressManageView : BaseView
         try
         {
             var addresses = GetCurrentAddresses();
+            var collectionParameters = GetCurrentCollectionParameters();
             NormalizeAddresses(addresses);
+            NormalizeCollectionParameters(collectionParameters);
             _addressService.SaveAll(addresses);
+            _collectionParameterService.SaveAll(collectionParameters);
             await _plcProductionMonitorService.ReloadAddressesAsync();
             await _plcWorkIdMonitorService.ReloadAddressAsync();
             await _plcCommunicationService.RestartAsync();
@@ -315,6 +511,12 @@ public partial class AddressManageView : BaseView
     private async void TestSelected_Click(object? sender, EventArgs e)
     {
         EndTableEdit();
+
+        if (tabAddressCategories.SelectedTab == tabCollectionParameters)
+        {
+            await TestSelectedCollectionParameterAsync();
+            return;
+        }
 
         var address = GetSelectedAddress();
         if (address is null)
@@ -339,17 +541,47 @@ public partial class AddressManageView : BaseView
         ShowWarning(_localizer.GetString(TextKeys.Address.MessageTestFailed, GetAddressDisplayName(address), result.Message));
     }
 
+    private async Task TestSelectedCollectionParameterAsync()
+    {
+        var parameter = _selectedParameterRow?.Source;
+        if (parameter is null)
+        {
+            ShowWarning(_localizer.GetString(TextKeys.Address.MessageSelectFirst));
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(parameter.Address))
+        {
+            ShowWarning($"请先填写 {parameter.ParameterName} 的 PLC 地址。");
+            return;
+        }
+
+        var result = await ReadAddressAsync(parameter.Address, parameter.DataType, parameter.DataLength);
+        if (result.IsSuccess)
+        {
+            ShowInfo($"{parameter.ParameterName} 读取成功：{result.Value}");
+            return;
+        }
+
+        ShowWarning($"{parameter.ParameterName} 读取失败：{result.Message}");
+    }
+
     private async Task<PlcServiceResult<string>> ReadAddressAsync(BizPlcAddress address)
     {
-        var plcAddress = address.Address?.Trim() ?? string.Empty;
-        var dataType = NormalizeDataType(address.DataType);
+        return await ReadAddressAsync(address.Address, address.DataType, address.DataLength);
+    }
+
+    private async Task<PlcServiceResult<string>> ReadAddressAsync(string? address, string? dataTypeValue, int dataLength)
+    {
+        var plcAddress = address?.Trim() ?? string.Empty;
+        var dataType = NormalizeDataType(dataTypeValue);
 
         return dataType switch
         {
             AppConstants.PlcDataTypes.Bool => ToTextResult(await _plcCommunicationService.ReadBoolAsync(plcAddress)),
             AppConstants.PlcDataTypes.Int32 => ToTextResult(await _plcCommunicationService.ReadInt32Async(plcAddress)),
             AppConstants.PlcDataTypes.Float => ToTextResult(await _plcCommunicationService.ReadFloatAsync(plcAddress)),
-            AppConstants.PlcDataTypes.String => ToTextResult(await _plcCommunicationService.ReadStringAsync(plcAddress, (ushort)Math.Max(1, address.DataLength))),
+            AppConstants.PlcDataTypes.String => ToTextResult(await _plcCommunicationService.ReadStringAsync(plcAddress, (ushort)Math.Max(1, dataLength))),
             _ => ToTextResult(await _plcCommunicationService.ReadInt16Async(plcAddress))
         };
     }
@@ -366,6 +598,11 @@ public partial class AddressManageView : BaseView
         return _allAddresses.ToList();
     }
 
+    private List<BizCollectionParameter> GetCurrentCollectionParameters()
+    {
+        return _allCollectionParameters.ToList();
+    }
+
     private BizPlcAddress? GetSelectedAddress()
     {
         return _selectedRow?.Source;
@@ -377,6 +614,7 @@ public partial class AddressManageView : BaseView
     private void EndTableEdit()
     {
         tableAddresses.EditModeClose();
+        tableCollectionParameters.EditModeClose();
     }
 
     /// <summary>
@@ -393,6 +631,17 @@ public partial class AddressManageView : BaseView
         }
     }
 
+    private void SelectVisibleParameterRow(int? selectedParameterId)
+    {
+        _selectedParameterRow = _currentParameterRows.FirstOrDefault(row => row.Id == selectedParameterId)
+            ?? _currentParameterRows.FirstOrDefault();
+
+        if (_selectedParameterRow is not null)
+        {
+            tableCollectionParameters.SetSelected(_selectedParameterRow, true);
+        }
+    }
+
     private static void NormalizeAddresses(IEnumerable<BizPlcAddress> addresses)
     {
         foreach (var address in addresses)
@@ -401,6 +650,26 @@ public partial class AddressManageView : BaseView
             address.DataType = NormalizeDataType(address.DataType);
             address.DataLength = Math.Max(1, address.DataLength);
             address.Sort = Math.Max(0, address.Sort);
+        }
+    }
+
+    private static void NormalizeCollectionParameters(IEnumerable<BizCollectionParameter> parameters)
+    {
+        foreach (var parameter in parameters)
+        {
+            parameter.CollectionGroup = string.IsNullOrWhiteSpace(parameter.CollectionGroup) ? "default" : parameter.CollectionGroup.Trim();
+            parameter.ParameterKey = parameter.ParameterKey.Trim();
+            parameter.ParameterName = parameter.ParameterName.Trim();
+            parameter.Address = parameter.Address?.Trim();
+            parameter.DataType = NormalizeDataType(parameter.DataType);
+            parameter.DataLength = Math.Max(1, parameter.DataLength);
+            parameter.Scale = parameter.Scale == 0 ? 1m : parameter.Scale;
+            parameter.DecimalPlaces = Math.Clamp(parameter.DecimalPlaces, 0, 6);
+            parameter.Unit = NormalizeNullableText(parameter.Unit);
+            parameter.MesFieldName = NormalizeNullableText(parameter.MesFieldName);
+            parameter.ReportColumnName = NormalizeNullableText(parameter.ReportColumnName);
+            parameter.Sort = Math.Max(0, parameter.Sort);
+            parameter.Description = NormalizeNullableText(parameter.Description);
         }
     }
 
@@ -433,6 +702,11 @@ public partial class AddressManageView : BaseView
     private static bool IsNonNegativeInt(string value)
     {
         return int.TryParse(value, out var number) && number >= 0;
+    }
+
+    private static bool IsDecimal(string value)
+    {
+        return decimal.TryParse(value, out _);
     }
 
     private string GetAddressDisplayName(BizPlcAddress address)
@@ -539,6 +813,125 @@ public partial class AddressManageView : BaseView
             Source.DataType = NormalizeDataType(Source.DataType);
             Source.DataLength = Math.Max(1, Source.DataLength);
             Source.Sort = Math.Max(0, Source.Sort);
+            Source.Description = NormalizeNullableText(Source.Description);
+        }
+    }
+
+    /// <summary>
+    /// 采集参数表格行。
+    /// 表格直接编辑包装属性，属性再写回源实体，保存时不丢失筛选外的数据。
+    /// </summary>
+    private sealed class CollectionParameterTableRow(BizCollectionParameter source)
+    {
+        public BizCollectionParameter Source { get; } = source;
+
+        public int Id => Source.Id;
+
+        public int StationNo
+        {
+            get => Source.StationNo;
+            set => Source.StationNo = Math.Max(0, value);
+        }
+
+        public string CollectionGroup
+        {
+            get => Source.CollectionGroup;
+            set => Source.CollectionGroup = string.IsNullOrWhiteSpace(value) ? "default" : value.Trim();
+        }
+
+        public string ParameterKey
+        {
+            get => Source.ParameterKey;
+            set => Source.ParameterKey = value.Trim();
+        }
+
+        public string ParameterName
+        {
+            get => Source.ParameterName;
+            set => Source.ParameterName = value.Trim();
+        }
+
+        public string? Address
+        {
+            get => Source.Address;
+            set => Source.Address = NormalizeNullableText(value);
+        }
+
+        public string DataType
+        {
+            get => Source.DataType;
+            set => Source.DataType = NormalizeDataType(value);
+        }
+
+        public int DataLength
+        {
+            get => Source.DataLength;
+            set => Source.DataLength = Math.Max(1, value);
+        }
+
+        public decimal Scale
+        {
+            get => Source.Scale;
+            set => Source.Scale = value == 0 ? 1m : value;
+        }
+
+        public decimal Offset
+        {
+            get => Source.Offset;
+            set => Source.Offset = value;
+        }
+
+        public int DecimalPlaces
+        {
+            get => Source.DecimalPlaces;
+            set => Source.DecimalPlaces = Math.Clamp(value, 0, 6);
+        }
+
+        public string? Unit
+        {
+            get => Source.Unit;
+            set => Source.Unit = NormalizeNullableText(value);
+        }
+
+        public string? MesFieldName
+        {
+            get => Source.MesFieldName;
+            set => Source.MesFieldName = NormalizeNullableText(value);
+        }
+
+        public string? ReportColumnName
+        {
+            get => Source.ReportColumnName;
+            set => Source.ReportColumnName = NormalizeNullableText(value);
+        }
+
+        public bool Enabled
+        {
+            get => Source.Enabled;
+            set => Source.Enabled = value;
+        }
+
+        public string? Description
+        {
+            get => Source.Description;
+            set => Source.Description = NormalizeNullableText(value);
+        }
+
+        public DateTime UpdatedTime => Source.UpdatedTime;
+
+        public void Normalize()
+        {
+            Source.CollectionGroup = string.IsNullOrWhiteSpace(Source.CollectionGroup) ? "default" : Source.CollectionGroup.Trim();
+            Source.ParameterKey = Source.ParameterKey.Trim();
+            Source.ParameterName = Source.ParameterName.Trim();
+            Source.Address = NormalizeNullableText(Source.Address);
+            Source.DataType = NormalizeDataType(Source.DataType);
+            Source.DataLength = Math.Max(1, Source.DataLength);
+            Source.Scale = Source.Scale == 0 ? 1m : Source.Scale;
+            Source.DecimalPlaces = Math.Clamp(Source.DecimalPlaces, 0, 6);
+            Source.Unit = NormalizeNullableText(Source.Unit);
+            Source.MesFieldName = NormalizeNullableText(Source.MesFieldName);
+            Source.ReportColumnName = NormalizeNullableText(Source.ReportColumnName);
             Source.Description = NormalizeNullableText(Source.Description);
         }
     }
