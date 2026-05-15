@@ -136,6 +136,7 @@ public static class AppConstants
         public const string ChangeWorkStatus = "工单状态变更";
         public const string EndWork = "完工上报";
         public const string UploadReportFile = "报告文件上报";
+        public const string UploadProcessParameters = "采集参数上传";
     }
 
     /// <summary>

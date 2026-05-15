@@ -372,7 +372,8 @@ public class WeldTaskService : IWeldTaskService
         task.UploadMessage = ResolveUploadMessage(settings.UploadMode);
 
         _dbContext.Db.Updateable(task).ExecuteCommand();
-        EnqueueFinishUploadTasks(task, settings.UploadMode);
+        var uploadTasks = EnqueueFinishUploadTasks(task, settings.UploadMode);
+        await ExecuteFinishUploadTasksAsync(task, uploadTasks, cancellationToken);
         station.ActiveTask = task;
         station.UpdatedTime = DateTime.Now;
         RefreshCompatibilityState(normalizedStationNo);
@@ -541,19 +542,18 @@ public class WeldTaskService : IWeldTaskService
     /// 完工上报成功后创建本地上传任务。
     /// 当前只负责任务排队，真实上传执行器后续按任务类型逐步接入。
     /// </summary>
-    private void EnqueueFinishUploadTasks(BizWeldTask task, UploadMode uploadMode)
+    private IReadOnlyList<BizUploadTask> EnqueueFinishUploadTasks(BizWeldTask task, UploadMode uploadMode)
     {
-        if (uploadMode != UploadMode.Realtime)
+        return new[]
         {
-            EnqueueProcessParameterTask(task, uploadMode);
-        }
-
-        EnqueueReportFileTask(task, uploadMode);
+            EnqueueProcessParameterTask(task, uploadMode),
+            EnqueueReportFileTask(task, uploadMode)
+        };
     }
 
-    private void EnqueueProcessParameterTask(BizWeldTask task, UploadMode uploadMode)
+    private BizUploadTask EnqueueProcessParameterTask(BizWeldTask task, UploadMode uploadMode)
     {
-        _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
+        return _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
         {
             TaskType = ProductionConstants.UploadTaskTypes.ProcessParameter,
             Target = ProductionConstants.UploadTargets.Mes,
@@ -566,7 +566,7 @@ public class WeldTaskService : IWeldTaskService
         });
     }
 
-    private void EnqueueReportFileTask(BizWeldTask task, UploadMode uploadMode)
+    private BizUploadTask EnqueueReportFileTask(BizWeldTask task, UploadMode uploadMode)
     {
         BizProductionReportFile? reportFile = null;
         string? generationError = null;
@@ -581,7 +581,7 @@ public class WeldTaskService : IWeldTaskService
             _operationLogService.Write("ReportFile", $"Report file generation failed, WorkOrder={task.WorkOrderId}, Error={ex.Message}");
         }
 
-        _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
+        return _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
         {
             TaskType = ProductionConstants.UploadTaskTypes.ReportFile,
             Target = ProductionConstants.UploadTargets.Mes,
@@ -595,6 +595,58 @@ public class WeldTaskService : IWeldTaskService
                 ? $"报告文件生成失败：{generationError}"
                 : "报告文件已生成，等待上传执行器处理。"
         });
+    }
+
+    /// <summary>
+    /// 完工后立即尝试执行本次任务产生的上传任务。
+    /// 网络或 MES 异常时任务会保留在上传状态页，供用户恢复后手动重试。
+    /// </summary>
+    private async Task ExecuteFinishUploadTasksAsync(
+        BizWeldTask task,
+        IReadOnlyList<BizUploadTask> uploadTasks,
+        CancellationToken cancellationToken)
+    {
+        var summaries = new List<UploadTaskSummary>();
+        foreach (var uploadTask in uploadTasks)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var summary = await _uploadTaskService.ExecuteAsync(uploadTask.Id, cancellationToken);
+            if (summary is not null)
+            {
+                summaries.Add(summary);
+            }
+        }
+
+        UpdateTaskUploadState(task, summaries);
+    }
+
+    private void UpdateTaskUploadState(BizWeldTask task, IReadOnlyList<UploadTaskSummary> uploadSummaries)
+    {
+        if (uploadSummaries.Count == 0)
+        {
+            return;
+        }
+
+        var failedTasks = uploadSummaries
+            .Where(summary => summary.Status == ProductionConstants.UploadStatuses.Failed)
+            .ToList();
+        var allUploaded = uploadSummaries.All(summary => summary.Status == ProductionConstants.UploadStatuses.Uploaded);
+
+        task.UploadStatus = allUploaded
+            ? ProductionConstants.UploadStatuses.Uploaded
+            : failedTasks.Count > 0
+                ? ProductionConstants.UploadStatuses.Failed
+                : ProductionConstants.UploadStatuses.Pending;
+        task.UploadMessage = allUploaded
+            ? "完工后上传任务已全部完成。"
+            : failedTasks.Count > 0
+                ? $"完工后仍有 {failedTasks.Count} 个上传任务失败，请在上传状态页重试。"
+                : "完工后上传任务已排队，请在上传状态页查看进度。";
+
+        _dbContext.Db.Updateable(task)
+            .UpdateColumns(it => new { it.UploadStatus, it.UploadMessage })
+            .Where(it => it.Id == task.Id)
+            .ExecuteCommand();
     }
 
     private static string BuildUploadBusinessId(BizWeldTask task, string uploadKind)

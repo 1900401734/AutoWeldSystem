@@ -85,4 +85,9 @@ public interface IMesProvider
     /// 报告文件上报。
     /// </summary>
     Task<MesBaseResponse<object>> UploadReportFileAsync(ReportFileUploadRequest requestData, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 采集参数上传。
+    /// </summary>
+    Task<MesBaseResponse<object>> UploadProcessParametersAsync(IReadOnlyList<ProcessParameterUploadItem> requestData, CancellationToken cancellationToken = default);
 }

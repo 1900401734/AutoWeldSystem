@@ -193,6 +193,19 @@ public class MesProvider : IMesProvider
             true);
     }
 
+    /// <summary>
+    /// 采集参数上传。
+    /// MES 文档要求 Data 为焊点参数数组，路径固定为 /api/PostData。
+    /// </summary>
+    public Task<MesBaseResponse<object>> UploadProcessParametersAsync(IReadOnlyList<ProcessParameterUploadItem> requestData, CancellationToken cancellationToken = default)
+        => PostAsync<IReadOnlyList<ProcessParameterUploadItem>, object>(
+            AppConstants.MesLogPurposes.UploadProcessParameters,
+            "api/PostData",
+            ApiCode.EMWeldDetail_001,
+            "EMWeldDetail",
+            requestData,
+            cancellationToken);
+
     private async Task<MesBaseResponse<T>> GetAsync<T>(
         string purpose,
         string path,

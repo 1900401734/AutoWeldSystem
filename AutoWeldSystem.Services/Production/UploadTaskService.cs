@@ -3,6 +3,7 @@ using AutoWeldSystem.Core.DTOs;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Models;
 using AutoWeldSystem.Data;
+using System.Globalization;
 
 namespace AutoWeldSystem.Services.Production;
 
@@ -191,9 +192,122 @@ public class UploadTaskService : IUploadTaskService
         return task.TaskType switch
         {
             ProductionConstants.UploadTaskTypes.ReportFile => await UploadReportFileAsync(task, cancellationToken),
-            ProductionConstants.UploadTaskTypes.ProcessParameter => Unsupported("过程参数上传执行器尚未接入。"),
+            ProductionConstants.UploadTaskTypes.ProcessParameter => await UploadProcessParametersAsync(task, cancellationToken),
             ProductionConstants.UploadTaskTypes.ProgramFile => Unsupported("程序文件上传由程序管理服务处理。"),
             _ => Unsupported($"暂不支持的上传任务类型：{task.TaskType}")
+        };
+    }
+
+    /// <summary>
+    /// 上传当前任务下尚未成功上传的焊点记录。
+    /// 先尝试整批上传，失败后按 ProductNo 降级，最后再降级到单条焊点，尽量保住已成功的数据。
+    /// </summary>
+    private async Task<MesBaseResponse<object>> UploadProcessParametersAsync(BizUploadTask task, CancellationToken cancellationToken)
+    {
+        var records = GetPendingWeldPointRecords(task);
+        if (records.Count == 0)
+        {
+            return Success("没有待上传的过程参数。");
+        }
+
+        var batchResponse = await UploadProcessParameterGroupAsync(records, cancellationToken);
+        if (batchResponse.IsSuccess)
+        {
+            UpdateWeldPointUploadStatus(records, batchResponse);
+            return batchResponse;
+        }
+
+        var failedMessages = new List<string>();
+        foreach (var productGroup in records.GroupBy(record => record.ProductNo).OrderBy(group => group.Key))
+        {
+            var productRecords = productGroup.ToList();
+            var productResponse = await UploadProcessParameterGroupAsync(productRecords, cancellationToken);
+            if (productResponse.IsSuccess)
+            {
+                UpdateWeldPointUploadStatus(productRecords, productResponse);
+                continue;
+            }
+
+            foreach (var record in productRecords.OrderBy(record => record.SequenceNo))
+            {
+                var singleResponse = await UploadProcessParameterGroupAsync(new[] { record }, cancellationToken);
+                UpdateWeldPointUploadStatus(new[] { record }, singleResponse);
+                if (!singleResponse.IsSuccess)
+                {
+                    failedMessages.Add($"ProductNo={record.ProductNo}, TouchNo={record.TouchNo}: {singleResponse.Msg}");
+                }
+            }
+        }
+
+        return failedMessages.Count == 0
+            ? Success($"过程参数已通过降级策略上传成功。整批失败原因：{batchResponse.Msg}")
+            : Unsupported($"过程参数部分上传失败。整批失败原因：{batchResponse.Msg}；明细：{FormatFailureMessages(failedMessages)}");
+    }
+
+    private IReadOnlyList<BizWeldPointRecord> GetPendingWeldPointRecords(BizUploadTask task)
+    {
+        if (task.WeldTaskId is null)
+        {
+            return Array.Empty<BizWeldPointRecord>();
+        }
+
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            return _dbContext.Db.Queryable<BizWeldPointRecord>()
+                .Where(record => record.TaskId == task.WeldTaskId.Value
+                    && record.UploadStatus != ProductionConstants.UploadStatuses.Uploaded)
+                .ToList()
+                .OrderBy(record => record.StationNo)
+                .ThenBy(record => record.ProductNo)
+                .ThenBy(record => record.SequenceNo)
+                .ToList();
+        }
+    }
+
+    private async Task<MesBaseResponse<object>> UploadProcessParameterGroupAsync(
+        IReadOnlyList<BizWeldPointRecord> records,
+        CancellationToken cancellationToken)
+    {
+        var items = records.Select(ToProcessParameterUploadItem).ToList();
+        return await _mesProvider.UploadProcessParametersAsync(items, cancellationToken);
+    }
+
+    private void UpdateWeldPointUploadStatus(IReadOnlyList<BizWeldPointRecord> records, MesBaseResponse<object> response)
+    {
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            foreach (var record in records)
+            {
+                record.UploadStatus = response.IsSuccess
+                    ? ProductionConstants.UploadStatuses.Uploaded
+                    : ProductionConstants.UploadStatuses.Failed;
+                record.UploadTime = response.IsSuccess ? DateTime.Now : null;
+                record.UploadMessage = response.Msg;
+                record.RetryCount = response.IsSuccess ? record.RetryCount : record.RetryCount + 1;
+                _dbContext.Db.Updateable(record).ExecuteCommand();
+            }
+        }
+    }
+
+    private static ProcessParameterUploadItem ToProcessParameterUploadItem(BizWeldPointRecord record)
+    {
+        return new ProcessParameterUploadItem
+        {
+            ExpStartId = record.ExpStartId ?? string.Empty,
+            DeviceId = record.DeviceId,
+            SN = record.SN,
+            ProcessNo = record.ProcessNo,
+            ProductNo = record.ProductNo,
+            TouchNo = record.TouchNo,
+            MaxElectric = record.MaxElectric ?? string.Empty,
+            MaxVoltage = record.MaxVoltage ?? string.Empty,
+            ValidPower = record.ValidPower ?? string.Empty,
+            Displacement = record.Displacement ?? string.Empty,
+            WeldTs = record.WeldTs ?? string.Empty,
+            Type = string.IsNullOrWhiteSpace(record.Type) ? "EM" : record.Type,
+            Ts = record.RecordTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
         };
     }
 
@@ -297,6 +411,16 @@ public class UploadTaskService : IUploadTaskService
         _dbContext.Db.Updateable(report).ExecuteCommand();
     }
 
+    private static MesBaseResponse<object> Success(string message)
+    {
+        return new MesBaseResponse<object>
+        {
+            Status = AppConstants.MesStatus.Success,
+            Msg = message,
+            Data = new object()
+        };
+    }
+
     private static MesBaseResponse<object> Unsupported(string message)
     {
         return new MesBaseResponse<object>
@@ -304,6 +428,16 @@ public class UploadTaskService : IUploadTaskService
             Status = AppConstants.MesStatus.Error,
             Msg = message
         };
+    }
+
+    private static string FormatFailureMessages(IReadOnlyList<string> messages)
+    {
+        var visibleMessages = messages.Take(5).ToList();
+        var suffix = messages.Count > visibleMessages.Count
+            ? $"；其余 {messages.Count - visibleMessages.Count} 条失败请查看 MES 交互日志"
+            : string.Empty;
+
+        return string.Join("；", visibleMessages) + suffix;
     }
 
     private static void MarkRetryRequested(BizUploadTask task)

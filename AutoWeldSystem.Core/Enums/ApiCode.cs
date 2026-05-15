@@ -19,5 +19,7 @@ public enum ApiCode
     [Description("更新程序")]
     common_007,
     [Description("下载程序")]
-    common_008
+    common_008,
+    [Description("采集参数上传")]
+    EMWeldDetail_001
 }
