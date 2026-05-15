@@ -735,7 +735,7 @@ namespace AutoWeldSystem.UI.Views
             lblProductProcessDescription.Name = "lblProductProcessDescription";
             lblProductProcessDescription.Size = new Size(1421, 26);
             lblProductProcessDescription.TabIndex = 1;
-            lblProductProcessDescription.Text = "维护产品型号、工序号、每件焊点数量和采集参数组，为后续焊点采集、ProductNo 生成和上传策略提供基础配置。";
+            lblProductProcessDescription.Text = "维护工位、产品型号、工序号、每件焊点数量和采集参数组。工位 0 表示所有工位共享配置。";
             lblProductProcessDescription.TextAlign = ContentAlignment.MiddleLeft;
             //
             // productProcessToolbar

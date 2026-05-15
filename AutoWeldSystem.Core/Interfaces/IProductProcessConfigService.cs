@@ -1,4 +1,5 @@
 using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.Constants;
 
 namespace AutoWeldSystem.Core.Interfaces;
 
@@ -16,7 +17,10 @@ public interface IProductProcessConfigService
     /// <summary>
     /// 根据产品型号和工序号查找启用的配置。
     /// </summary>
-    BizProductProcessConfig? FindActive(string productModel, string processNo);
+    BizProductProcessConfig? FindActive(
+        string productModel,
+        string processNo,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo);
 
     /// <summary>
     /// 保存单条配置。

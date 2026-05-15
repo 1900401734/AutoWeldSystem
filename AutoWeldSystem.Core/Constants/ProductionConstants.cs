@@ -12,6 +12,7 @@ public static class ProductionConstants
     /// </summary>
     public static class Stations
     {
+        public const int SharedStationNo = 0;
         public const int DefaultStationNo = 1;
     }
 

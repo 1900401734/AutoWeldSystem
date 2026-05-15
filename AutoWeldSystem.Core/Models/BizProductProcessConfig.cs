@@ -20,6 +20,12 @@ public class BizProductProcessConfig
     public string ProductModel { get; set; } = string.Empty;
 
     /// <summary>
+    /// Station number. Use 0 for configuration shared by all stations.
+    /// </summary>
+    [SugarColumn(ColumnDescription = "工位号")]
+    public int StationNo { get; set; } = ProductionConstants.Stations.SharedStationNo;
+
+    /// <summary>
     /// MES process number.
     /// </summary>
     [SugarColumn(Length = 50, ColumnDescription = "工序号")]

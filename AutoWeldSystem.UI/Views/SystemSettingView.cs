@@ -124,6 +124,7 @@ public partial class SystemSettingView : BaseView
 
         tableProductProcesses.Columns.Clear();
         tableProductProcesses.Columns.Add(CreateProductProcessColumn(nameof(ProductProcessConfigTableRow.ProductModel), "产品型号"));
+        tableProductProcesses.Columns.Add(CreateProductProcessColumn(nameof(ProductProcessConfigTableRow.StationNo), "工位(0共享)"));
         tableProductProcesses.Columns.Add(CreateProductProcessColumn(nameof(ProductProcessConfigTableRow.ProcessNo), "工序号"));
         tableProductProcesses.Columns.Add(CreateProductProcessColumn(nameof(ProductProcessConfigTableRow.ProcessName), "工序名称"));
         tableProductProcesses.Columns.Add(CreateProductProcessColumn(nameof(ProductProcessConfigTableRow.WeldPointCount), "每件焊点数"));
@@ -251,7 +252,7 @@ public partial class SystemSettingView : BaseView
         tabBasicSettings.Text = "基础设置";
         tabProductProcess.Text = "产品工艺配置";
         lblProductProcessTitle.Text = "产品工艺配置";
-        lblProductProcessDescription.Text = "维护产品型号、工序号、每件焊点数量和采集参数组，为后续焊点采集、ProductNo 生成和上传策略提供基础配置。";
+        lblProductProcessDescription.Text = "维护工位、产品型号、工序号、每件焊点数量和采集参数组。工位 0 表示所有工位共享配置。";
         btnAddProductProcess.Text = "新增";
         btnSaveProductProcesses.Text = "保存";
         btnDisableProductProcess.Text = "禁用选中";
@@ -338,6 +339,7 @@ public partial class SystemSettingView : BaseView
         var config = new BizProductProcessConfig
         {
             ProductModel = "默认型号",
+            StationNo = ProductionConstants.Stations.SharedStationNo,
             ProcessNo = "05",
             ProcessName = "默认工序",
             WeldPointCount = 1,
@@ -428,6 +430,7 @@ public partial class SystemSettingView : BaseView
         return e.Column.Key switch
         {
             nameof(ProductProcessConfigTableRow.ProductModel) => !string.IsNullOrWhiteSpace(value),
+            nameof(ProductProcessConfigTableRow.StationNo) => IsNonNegativeInt(value),
             nameof(ProductProcessConfigTableRow.ProcessNo) => !string.IsNullOrWhiteSpace(value),
             nameof(ProductProcessConfigTableRow.WeldPointCount) => IsPositiveInt(value),
             nameof(ProductProcessConfigTableRow.Sort) => IsNonNegativeInt(value),
@@ -488,6 +491,7 @@ public partial class SystemSettingView : BaseView
         foreach (var config in configs)
         {
             config.ProductModel = NormalizeRequiredText(config.ProductModel);
+            config.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, config.StationNo);
             config.ProcessNo = NormalizeRequiredText(config.ProcessNo);
             config.ProcessName = NormalizeNullableText(config.ProcessName);
             config.WeldPointCount = Math.Max(1, config.WeldPointCount);
@@ -509,14 +513,14 @@ public partial class SystemSettingView : BaseView
 
         var duplicate = enabledConfigs
             .GroupBy(
-                config => $"{config.ProductModel}\u001F{config.ProcessNo}",
+                config => $"{config.StationNo}\u001F{config.ProductModel}\u001F{config.ProcessNo}",
                 StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(group => group.Count() > 1);
 
         if (duplicate is not null)
         {
             var first = duplicate.First();
-            throw new InvalidOperationException($"产品型号“{first.ProductModel}”与工序号“{first.ProcessNo}”存在重复启用配置。");
+            throw new InvalidOperationException($"工位“{first.StationNo}”、产品型号“{first.ProductModel}”与工序号“{first.ProcessNo}”存在重复启用配置。");
         }
     }
 
@@ -1074,6 +1078,12 @@ public partial class SystemSettingView : BaseView
             set => Source.ProductModel = value.Trim();
         }
 
+        public int StationNo
+        {
+            get => Source.StationNo;
+            set => Source.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, value);
+        }
+
         public string ProcessNo
         {
             get => Source.ProcessNo;
@@ -1133,6 +1143,7 @@ public partial class SystemSettingView : BaseView
         public void Normalize()
         {
             Source.ProductModel = Source.ProductModel.Trim();
+            Source.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, Source.StationNo);
             Source.ProcessNo = Source.ProcessNo.Trim();
             Source.ProcessName = NormalizeNullableText(Source.ProcessName);
             Source.WeldPointCount = Math.Max(1, Source.WeldPointCount);

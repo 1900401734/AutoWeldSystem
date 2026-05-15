@@ -33,24 +33,37 @@ public class ProductProcessConfigService : IProductProcessConfigService
 
             return query.ToList()
                 .OrderBy(it => it.Sort)
+                .ThenBy(it => it.StationNo)
                 .ThenBy(it => it.ProductModel)
                 .ThenBy(it => it.ProcessNo)
                 .ToList();
         }
     }
 
-    public BizProductProcessConfig? FindActive(string productModel, string processNo)
+    public BizProductProcessConfig? FindActive(
+        string productModel,
+        string processNo,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo)
     {
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
             var normalizedModel = NormalizeRequired(productModel);
             var normalizedProcessNo = NormalizeRequired(processNo);
+            var normalizedStationNo = NormalizeStationNo(stationNo);
 
-            return _dbContext.Db.Queryable<BizProductProcessConfig>()
-                .First(it => it.Enabled
+            var candidates = _dbContext.Db.Queryable<BizProductProcessConfig>()
+                .Where(it => it.Enabled
                     && it.ProductModel == normalizedModel
-                    && it.ProcessNo == normalizedProcessNo);
+                    && it.ProcessNo == normalizedProcessNo
+                    && (it.StationNo == normalizedStationNo || it.StationNo == ProductionConstants.Stations.SharedStationNo))
+                .ToList();
+
+            // 优先使用当前工位专用配置；没有专用配置时回退到 0 号共享配置。
+            return candidates
+                .OrderByDescending(it => it.StationNo == normalizedStationNo)
+                .ThenBy(it => it.Sort)
+                .FirstOrDefault();
         }
     }
 
@@ -96,6 +109,7 @@ public class ProductProcessConfigService : IProductProcessConfigService
     private static void Normalize(BizProductProcessConfig config)
     {
         config.ProductModel = NormalizeRequired(config.ProductModel);
+        config.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, config.StationNo);
         config.ProcessNo = NormalizeRequired(config.ProcessNo);
         config.ProcessName = NormalizeNullable(config.ProcessName);
         config.CollectionGroup = string.IsNullOrWhiteSpace(config.CollectionGroup)
@@ -119,6 +133,13 @@ public class ProductProcessConfigService : IProductProcessConfigService
         }
 
         return normalized;
+    }
+
+    private static int NormalizeStationNo(int stationNo)
+    {
+        return stationNo <= ProductionConstants.Stations.SharedStationNo
+            ? ProductionConstants.Stations.DefaultStationNo
+            : stationNo;
     }
 
     private static string? NormalizeNullable(string? value)
