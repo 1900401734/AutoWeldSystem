@@ -4,10 +4,12 @@ using AutoWeldSystem.Core.DTOs;
 using AutoWeldSystem.Core.Enums;
 using AutoWeldSystem.Core.Exceptions;
 using AutoWeldSystem.Core.Interfaces;
+using AutoWeldSystem.Core.Models;
 using AutoWeldSystem.UI.Base;
 using AutoWeldSystem.UI.Forms;
 using AutoWeldSystem.UI.Infrastructure;
 using System.Reflection;
+using System.Text.Json;
 
 namespace AutoWeldSystem.UI.Views;
 
@@ -28,11 +30,14 @@ public partial class MonitorView : BaseView
     private readonly IMesConnectionMonitorService _mesConnectionMonitorService;
     private readonly IPlcProductionMonitorService _plcProductionMonitorService;
     private readonly IPlcWorkIdMonitorService _plcWorkIdMonitorService;
+    private readonly IPlcWeldCycleMonitorService _plcWeldCycleMonitorService;
     private readonly IWeldTaskService _weldTaskService;
     private readonly IProgramExceptionLogService _exceptionLogService;
     private bool _syncingLanguageSelection;
     private string? _runtimeStatusKey = TextKeys.Monitor.RuntimeStatus.Idle;
     private object[] _runtimeStatusArgs = Array.Empty<object>();
+    private string? _runtimeStatusText;
+    private bool _runtimeStatusTextIsSuccess;
     private string? _runtimeErrorKey;
     private object[] _runtimeErrorArgs = Array.Empty<object>();
     private string? _runtimeErrorText;
@@ -45,6 +50,7 @@ public partial class MonitorView : BaseView
     private Font? _runtimeGroupFont;
     private Label? _lblVersion;
     private TableLayoutPanel? _titleLayout;
+    private readonly List<WeldParameterRow> _weldParameterRows = new();
 
     public MonitorView(
         ILocalizationService localizer,
@@ -52,6 +58,7 @@ public partial class MonitorView : BaseView
         IMesConnectionMonitorService mesConnectionMonitorService,
         IPlcProductionMonitorService plcProductionMonitorService,
         IPlcWorkIdMonitorService plcWorkIdMonitorService,
+        IPlcWeldCycleMonitorService plcWeldCycleMonitorService,
         IWeldTaskService weldTaskService,
         IProgramExceptionLogService exceptionLogService)
     {
@@ -62,15 +69,18 @@ public partial class MonitorView : BaseView
         _mesConnectionMonitorService = mesConnectionMonitorService;
         _plcProductionMonitorService = plcProductionMonitorService;
         _plcWorkIdMonitorService = plcWorkIdMonitorService;
+        _plcWeldCycleMonitorService = plcWeldCycleMonitorService;
         _weldTaskService = weldTaskService;
         _exceptionLogService = exceptionLogService;
 
         LoadTitleLogo();
         ConfigureHeaderLayout();
         ConfigureRuntimeMessagePanels();
+        ConfigureStationResultTags();
         ApplyLocalizedTexts();
         ConfigureTables();
         ConfigureProductionTableColumns();
+        ConfigureWeldParameterTableColumns();
         WireEvents();
         BindSessionInfo();
         BindProductionRuntimeState();
@@ -313,6 +323,24 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
+    /// 工位结果标签用于显示最近一次采集结果。当前焊接信号只有一组，因此先启用工位 1。
+    /// </summary>
+    private void ConfigureStationResultTags()
+    {
+        ConfigureStationResultTag(tag1, "工位1\r\n--", UiColors.Status.Muted);
+        ConfigureStationResultTag(tag2, "工位2\r\n--", UiColors.Status.Muted);
+        tag1.Visible = true;
+        tag2.Visible = false;
+    }
+
+    private static void ConfigureStationResultTag(AntdUI.Tag tag, string text, Color backColor)
+    {
+        tag.Text = text;
+        tag.ForeColor = Color.White;
+        tag.BackColor = backColor;
+    }
+
+    /// <summary>
     /// 标题文字或容器尺寸变化后，重新计算一个尽量填满区域但不溢出的字号。
     /// </summary>
     private void TitleLayout_Changed(object? sender, EventArgs e)
@@ -411,6 +439,7 @@ public partial class MonitorView : BaseView
         _mesConnectionMonitorService.StatusChanged += MesConnectionMonitorService_StatusChanged;
         _plcProductionMonitorService.StatusChanged += PlcProductionMonitorService_StatusChanged;
         _plcWorkIdMonitorService.WorkIdChanged += PlcWorkIdMonitorService_WorkIdChanged;
+        _plcWeldCycleMonitorService.WeldPointCollected += PlcWeldCycleMonitorService_WeldPointCollected;
     }
 
     /// <summary>
@@ -423,6 +452,7 @@ public partial class MonitorView : BaseView
         BindLanguageSelection();
         BindProductionRuntimeState();
         ConfigureProductionTableColumns();
+        ConfigureWeldParameterTableColumns();
         RefreshRuntimePanels();
         ApplyPlcStatus(_plcCommunicationService.Current);
         ApplyMesStatus(_mesConnectionMonitorService.Current);
@@ -453,6 +483,7 @@ public partial class MonitorView : BaseView
         _mesConnectionMonitorService.StatusChanged -= MesConnectionMonitorService_StatusChanged;
         _plcProductionMonitorService.StatusChanged -= PlcProductionMonitorService_StatusChanged;
         _plcWorkIdMonitorService.WorkIdChanged -= PlcWorkIdMonitorService_WorkIdChanged;
+        _plcWeldCycleMonitorService.WeldPointCollected -= PlcWeldCycleMonitorService_WeldPointCollected;
         _timer.Stop();
         _timer.Dispose();
         _titleFont?.Dispose();
@@ -563,6 +594,22 @@ public partial class MonitorView : BaseView
         }
 
         ApplyWorkIdSnapshot(e);
+    }
+
+    private void PlcWeldCycleMonitorService_WeldPointCollected(object? sender, BizWeldPointRecord e)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        if (InvokeRequired)
+        {
+            BeginInvoke(() => ApplyLatestWeldPointRecord(e));
+            return;
+        }
+
+        ApplyLatestWeldPointRecord(e);
     }
 
     private void SwitchUser_Click(object? sender, EventArgs e)
@@ -845,6 +892,27 @@ public partial class MonitorView : BaseView
         }
     }
 
+    private void ApplyLatestWeldPointRecord(BizWeldPointRecord record)
+    {
+        ApplyStationResult(record);
+        BindWeldParameterRows(record);
+        ClearRuntimeError();
+        SetRuntimeStatusText(
+            $"焊点采集完成：工位{record.StationNo} 产品{record.ProductNo} 焊点{record.TouchNo} {record.TestResult}",
+            isSuccess: true);
+    }
+
+    private void ApplyStationResult(BizWeldPointRecord record)
+    {
+        var tag = record.StationNo == 2 ? tag2 : tag1;
+        tag.Visible = true;
+        tag.Text = $"工位{record.StationNo}\r\n{record.TestResult}";
+        tag.ForeColor = Color.White;
+        tag.BackColor = string.Equals(record.TestResult, ProductionConstants.TestResults.Ok, StringComparison.OrdinalIgnoreCase)
+            ? UiColors.Status.Success
+            : UiColors.Status.Danger;
+    }
+
     /// <summary>
     /// 下拉框选项不是资源控件属性，所以这里手动刷新。
     /// </summary>
@@ -1021,6 +1089,127 @@ public partial class MonitorView : BaseView
         TableStyleHelper.ApplyAntdColumnDefaults(table1);
     }
 
+    private void ConfigureWeldParameterTableColumns()
+    {
+        table2.Columns.Clear();
+        table2.Columns.Add(new AntdUI.Column(nameof(WeldParameterRow.Station), "工位") { Ellipsis = true });
+        table2.Columns.Add(new AntdUI.Column(nameof(WeldParameterRow.ProductNo), "产品编号") { Ellipsis = true });
+        table2.Columns.Add(new AntdUI.Column(nameof(WeldParameterRow.TouchNo), "焊点") { Ellipsis = true });
+        table2.Columns.Add(new AntdUI.Column(nameof(WeldParameterRow.ParameterName), "测试参数") { Ellipsis = true });
+        table2.Columns.Add(new AntdUI.Column(nameof(WeldParameterRow.Value), "数值") { Ellipsis = true });
+        table2.Columns.Add(new AntdUI.Column(nameof(WeldParameterRow.Result), "结果") { Ellipsis = true });
+        table2.Columns.Add(new AntdUI.Column(nameof(WeldParameterRow.RecordTime), "采集时间") { Ellipsis = true });
+        TableStyleHelper.ApplyAntdColumnDefaults(table2);
+        BindWeldParameterTable();
+    }
+
+    private void BindWeldParameterRows(BizWeldPointRecord record)
+    {
+        _weldParameterRows.RemoveAll(row => row.StationNo == record.StationNo);
+        _weldParameterRows.AddRange(BuildWeldParameterRows(record));
+        _weldParameterRows.Sort((left, right) =>
+        {
+            var stationCompare = left.StationNo.CompareTo(right.StationNo);
+            return stationCompare != 0
+                ? stationCompare
+                : left.Sort.CompareTo(right.Sort);
+        });
+        BindWeldParameterTable();
+    }
+
+    private void BindWeldParameterTable()
+    {
+        table2.DataSource = _weldParameterRows.ToList();
+        table2.Refresh();
+    }
+
+    private IEnumerable<WeldParameterRow> BuildWeldParameterRows(BizWeldPointRecord record)
+    {
+        var rows = new List<WeldParameterRow>
+        {
+            CreateWeldParameterRow(record, "峰值电流(KA)", FormatNullableText(record.MaxElectric), 10),
+            CreateWeldParameterRow(record, "峰值电压(V)", FormatNullableText(record.MaxVoltage), 20),
+            CreateWeldParameterRow(record, "有效功率(KW)", FormatNullableText(record.ValidPower), 30),
+            CreateWeldParameterRow(record, "位移", FormatNullableText(record.Displacement), 40),
+            CreateWeldParameterRow(record, "焊接时间", FormatNullableText(record.WeldTs), 50),
+            CreateWeldParameterRow(record, "测试结果", record.TestResult, 90)
+        };
+
+        rows.AddRange(BuildDynamicWeldParameterRows(record, rows.Count + 100));
+        return rows;
+    }
+
+    private IEnumerable<WeldParameterRow> BuildDynamicWeldParameterRows(BizWeldPointRecord record, int startSort)
+    {
+        var rawValues = ParseRawWeldValues(record.RawDataJson);
+        var knownKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "max_electric",
+            "MaxElectric",
+            "max_voltage",
+            "MaxVoltage",
+            "valid_power",
+            "ValidPower",
+            "displacement",
+            "Displacement",
+            "weld_ts",
+            "WeldTs",
+            "test_result",
+            "test_result_raw",
+            "TestResult",
+            "Result"
+        };
+
+        var sort = startSort;
+        foreach (var item in rawValues
+            .Where(item => !knownKeys.Contains(item.Key))
+            .OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            yield return CreateWeldParameterRow(record, item.Key, FormatNullableText(item.Value), sort++);
+        }
+    }
+
+    private static Dictionary<string, string> ParseRawWeldValues(string? rawDataJson)
+    {
+        if (string.IsNullOrWhiteSpace(rawDataJson))
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(rawDataJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            return document.RootElement.EnumerateObject()
+                .ToDictionary(
+                    property => property.Name,
+                    property => property.Value.ToString(),
+                    StringComparer.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private static WeldParameterRow CreateWeldParameterRow(BizWeldPointRecord record, string parameterName, string value, int sort)
+    {
+        return new WeldParameterRow(
+            record.StationNo,
+            $"工位{record.StationNo}",
+            record.ProductNo,
+            record.TouchNo,
+            parameterName,
+            value,
+            record.TestResult,
+            record.RecordTime.ToString("HH:mm:ss"),
+            sort);
+    }
+
     /// <summary>
     /// Keeps monitor tables visually aligned with other management pages.
     /// </summary>
@@ -1028,7 +1217,8 @@ public partial class MonitorView : BaseView
     {
         TableStyleHelper.ApplyAntdTable(table1, AntdUI.ColumnsMode.Fill);
         ApplyCompactProductionMetricTableStyle();
-        TableStyleHelper.ApplyAntdTable(table2);
+        TableStyleHelper.ApplyAntdTable(table2, AntdUI.ColumnsMode.Fill);
+        ApplyWeldParameterTableStyle();
     }
 
     /// <summary>
@@ -1041,6 +1231,15 @@ public partial class MonitorView : BaseView
         table1.Gap = 4;
         table1.GapCell = 2;
         table1.Gaps = new Size(4, 4);
+    }
+
+    private void ApplyWeldParameterTableStyle()
+    {
+        table2.RowHeight = 38;
+        table2.RowHeightHeader = 40;
+        table2.Gap = 6;
+        table2.GapCell = 3;
+        table2.Gaps = new Size(6, 6);
     }
 
     private static string GetDeviceStatusKey(short? statusCode)
@@ -1075,6 +1274,13 @@ public partial class MonitorView : BaseView
     private string FormatNullable(int? value)
     {
         return value?.ToString() ?? _localizer.GetString(TextKeys.Production.NotAvailable);
+    }
+
+    private string FormatNullableText(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? _localizer.GetString(TextKeys.Production.NotAvailable)
+            : value.Trim();
     }
 
     private static double? CalculateRate(int numerator, int denominator)
@@ -1316,6 +1522,17 @@ public partial class MonitorView : BaseView
     {
         _runtimeStatusKey = messageKey;
         _runtimeStatusArgs = args;
+        _runtimeStatusText = null;
+        _runtimeStatusTextIsSuccess = false;
+        RefreshRuntimeStatus();
+    }
+
+    private void SetRuntimeStatusText(string message, bool isSuccess = false)
+    {
+        _runtimeStatusKey = null;
+        _runtimeStatusArgs = Array.Empty<object>();
+        _runtimeStatusText = NormalizePanelMessage(message);
+        _runtimeStatusTextIsSuccess = isSuccess;
         RefreshRuntimeStatus();
     }
 
@@ -1362,7 +1579,7 @@ public partial class MonitorView : BaseView
     private void RefreshRuntimeStatus()
     {
         inputRunningStatus.Text = _runtimeStatusKey is null
-            ? string.Empty
+            ? _runtimeStatusText ?? string.Empty
             : BuildLocalizedMessage(_runtimeStatusKey, _runtimeStatusArgs);
         ApplyRuntimeStatusTone();
     }
@@ -1380,7 +1597,9 @@ public partial class MonitorView : BaseView
     /// </summary>
     private void ApplyRuntimeStatusTone()
     {
-        var color = GetRuntimeStatusColor(_runtimeStatusKey);
+        var color = _runtimeStatusTextIsSuccess
+            ? UiColors.Status.Success
+            : GetRuntimeStatusColor(_runtimeStatusKey);
         groupBox2.ForeColor = color;
         inputRunningStatus.ForeColor = color;
     }
@@ -1430,6 +1649,20 @@ public partial class MonitorView : BaseView
                 MessageBoxIcon.Question)
             == DialogResult.Yes;
     }
+
+    /// <summary>
+    /// Row model for the real-time weld parameter table. Sort is kept for display ordering only.
+    /// </summary>
+    private sealed record WeldParameterRow(
+        int StationNo,
+        string Station,
+        string ProductNo,
+        string TouchNo,
+        string ParameterName,
+        string Value,
+        string Result,
+        string RecordTime,
+        int Sort);
 
     private sealed record ProductionMetricRow(string Name, string Value);
 }
