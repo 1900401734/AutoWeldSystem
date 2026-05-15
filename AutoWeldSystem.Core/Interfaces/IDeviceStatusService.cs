@@ -1,0 +1,35 @@
+using AutoWeldSystem.Core.Models;
+
+namespace AutoWeldSystem.Core.Interfaces;
+
+/// <summary>
+/// 设备状态服务。
+/// 统一维护当前设备状态、本地设备状态日志和 MES 设备状态上报。
+/// </summary>
+public interface IDeviceStatusService
+{
+    /// <summary>
+    /// 设备状态变化事件，供 MonitorView 或后续轻量服务器状态缓存使用。
+    /// </summary>
+    event EventHandler<BizDeviceStatusLog>? StatusChanged;
+
+    /// <summary>
+    /// 获取当前设备状态。没有历史记录时返回一个未保存的默认状态。
+    /// </summary>
+    BizDeviceStatusLog GetCurrentStatus();
+
+    /// <summary>
+    /// 查询设备状态日志。
+    /// </summary>
+    IReadOnlyList<BizDeviceStatusLog> GetLogs(DateTime? from = null, DateTime? to = null, int maxCount = 200);
+
+    /// <summary>
+    /// 切换设备状态，写入本地日志，并按需上报 MES。
+    /// </summary>
+    Task<BizDeviceStatusLog> ChangeStatusAsync(
+        string deviceStatus,
+        string? remark = null,
+        string source = "Software",
+        bool reportToMes = true,
+        CancellationToken cancellationToken = default);
+}
