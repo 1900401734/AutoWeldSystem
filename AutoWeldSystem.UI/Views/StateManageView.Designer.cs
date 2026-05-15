@@ -26,11 +26,16 @@ namespace AutoWeldSystem.UI.Views
             btnRetryAll = new AntdUI.Button();
             btnRefresh = new AntdUI.Button();
             lblSummary = new Label();
+            tabUploadCategories = new TabControl();
+            tabProcessParameters = new TabPage();
+            tabReportFiles = new TabPage();
+            tabProgramFiles = new TabPage();
             dgvPending = new DataGridView();
             rootLayout.SuspendLayout();
             headerLayout.SuspendLayout();
             titleLayout.SuspendLayout();
             buttonFlow.SuspendLayout();
+            tabUploadCategories.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)dgvPending).BeginInit();
             SuspendLayout();
             // 
@@ -39,10 +44,12 @@ namespace AutoWeldSystem.UI.Views
             rootLayout.ColumnCount = 1;
             rootLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             rootLayout.Controls.Add(headerLayout, 0, 0);
-            rootLayout.Controls.Add(lblSummary, 0, 1);
-            rootLayout.Controls.Add(dgvPending, 0, 2);
+            rootLayout.Controls.Add(tabUploadCategories, 0, 1);
+            rootLayout.Controls.Add(lblSummary, 0, 2);
+            rootLayout.Controls.Add(dgvPending, 0, 3);
             rootLayout.Dock = DockStyle.Fill;
-            rootLayout.RowCount = 3;
+            rootLayout.RowCount = 4;
+            rootLayout.RowStyles.Add(new RowStyle());
             rootLayout.RowStyles.Add(new RowStyle());
             rootLayout.RowStyles.Add(new RowStyle());
             rootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
@@ -127,9 +134,52 @@ namespace AutoWeldSystem.UI.Views
             lblSummary.AutoSize = true;
             lblSummary.Dock = DockStyle.Fill;
             lblSummary.ForeColor = SystemColors.GrayText;
-            lblSummary.Location = new Point(20, 94);
+            lblSummary.Location = new Point(20, 138);
             lblSummary.Margin = new Padding(20, 0, 20, 8);
             lblSummary.Text = "待同步程序：0 条";
+            //
+            // tabUploadCategories
+            //
+            tabUploadCategories.Controls.Add(tabProcessParameters);
+            tabUploadCategories.Controls.Add(tabReportFiles);
+            tabUploadCategories.Controls.Add(tabProgramFiles);
+            tabUploadCategories.Dock = DockStyle.Fill;
+            tabUploadCategories.Location = new Point(20, 94);
+            tabUploadCategories.Margin = new Padding(20, 0, 20, 8);
+            tabUploadCategories.Name = "tabUploadCategories";
+            tabUploadCategories.SelectedIndex = 0;
+            tabUploadCategories.Size = new Size(1326, 36);
+            tabUploadCategories.TabIndex = 4;
+            //
+            // tabProcessParameters
+            //
+            tabProcessParameters.Location = new Point(4, 29);
+            tabProcessParameters.Name = "tabProcessParameters";
+            tabProcessParameters.Padding = new Padding(3);
+            tabProcessParameters.Size = new Size(1318, 3);
+            tabProcessParameters.TabIndex = 0;
+            tabProcessParameters.Text = "过程参数";
+            tabProcessParameters.UseVisualStyleBackColor = true;
+            //
+            // tabReportFiles
+            //
+            tabReportFiles.Location = new Point(4, 29);
+            tabReportFiles.Name = "tabReportFiles";
+            tabReportFiles.Padding = new Padding(3);
+            tabReportFiles.Size = new Size(1318, 3);
+            tabReportFiles.TabIndex = 1;
+            tabReportFiles.Text = "报告文件";
+            tabReportFiles.UseVisualStyleBackColor = true;
+            //
+            // tabProgramFiles
+            //
+            tabProgramFiles.Location = new Point(4, 29);
+            tabProgramFiles.Name = "tabProgramFiles";
+            tabProgramFiles.Padding = new Padding(3);
+            tabProgramFiles.Size = new Size(1318, 3);
+            tabProgramFiles.TabIndex = 2;
+            tabProgramFiles.Text = "程序文件";
+            tabProgramFiles.UseVisualStyleBackColor = true;
             // 
             // dgvPending
             // 
@@ -138,7 +188,7 @@ namespace AutoWeldSystem.UI.Views
             dgvPending.BackgroundColor = SystemColors.Window;
             dgvPending.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             dgvPending.Dock = DockStyle.Fill;
-            dgvPending.Location = new Point(20, 126);
+            dgvPending.Location = new Point(20, 170);
             dgvPending.Margin = new Padding(20, 0, 20, 20);
             dgvPending.MultiSelect = false;
             dgvPending.ReadOnly = true;
@@ -161,6 +211,7 @@ namespace AutoWeldSystem.UI.Views
             titleLayout.ResumeLayout(false);
             titleLayout.PerformLayout();
             buttonFlow.ResumeLayout(false);
+            tabUploadCategories.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)dgvPending).EndInit();
             ResumeLayout(false);
         }
@@ -175,6 +226,10 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Button btnRetryAll;
         private AntdUI.Button btnRefresh;
         private Label lblSummary;
+        private TabControl tabUploadCategories;
+        private TabPage tabProcessParameters;
+        private TabPage tabReportFiles;
+        private TabPage tabProgramFiles;
         private DataGridView dgvPending;
     }
 }

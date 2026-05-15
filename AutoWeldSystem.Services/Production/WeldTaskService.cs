@@ -1,9 +1,11 @@
+using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
 using AutoWeldSystem.Core.Enums;
 using AutoWeldSystem.Core.Exceptions;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Models;
 using AutoWeldSystem.Data;
+using System.Text.Json;
 
 namespace AutoWeldSystem.Services.Production;
 
@@ -14,15 +16,22 @@ public class WeldTaskService : IWeldTaskService
     private readonly IAppSettingsService _settingsService;
     private readonly IOperationLogService _operationLogService;
     private readonly ILocalizationService _localizer;
+    private readonly IUploadTaskService _uploadTaskService;
 
-    public WeldTaskService(SqlSugarDbContext dbContext,IMesProvider mesProvider,IAppSettingsService settingsService,
-        IOperationLogService operationLogService,ILocalizationService localizer)
+    public WeldTaskService(
+        SqlSugarDbContext dbContext,
+        IMesProvider mesProvider,
+        IAppSettingsService settingsService,
+        IOperationLogService operationLogService,
+        ILocalizationService localizer,
+        IUploadTaskService uploadTaskService)
     {
         _mesProvider = mesProvider;
         _dbContext = dbContext;
         _settingsService = settingsService;
         _operationLogService = operationLogService;
         _localizer = localizer;
+        _uploadTaskService = uploadTaskService;
         CurrentState = new ProductionRuntimeState();
     }
 
@@ -289,10 +298,12 @@ public class WeldTaskService : IWeldTaskService
         task.EndOperatorNumber = endOperator;
         task.EndTime = DateTime.Now;
         task.TaskStatus = "Completed";
-        task.UploadStatus = ResolveUploadStatus(_settingsService.Get().UploadMode);
-        task.UploadMessage = ResolveUploadMessage(_settingsService.Get().UploadMode);
+        var settings = _settingsService.Get();
+        task.UploadStatus = ResolveUploadStatus(settings.UploadMode);
+        task.UploadMessage = ResolveUploadMessage(settings.UploadMode);
 
         _dbContext.Db.Updateable(task).ExecuteCommand();
+        EnqueueFinishUploadTasks(task, settings.UploadMode);
         CurrentState.ActiveTask = task;
         _operationLogService.Write("ExpEnd", $"Finish report submitted, WorkOrder={task.WorkOrderId}, UploadStatus={task.UploadStatus}");
         NotifyStateChanged();
@@ -416,6 +427,93 @@ public class WeldTaskService : IWeldTaskService
             UploadMode.Realtime => "Realtime upload",
             UploadMode.Quantity => "Quantity upload",
             _ => "Batch upload"
+        };
+    }
+
+    /// <summary>
+    /// 完工上报成功后创建本地上传任务。
+    /// 当前只负责任务排队，真实上传执行器后续按任务类型逐步接入。
+    /// </summary>
+    private void EnqueueFinishUploadTasks(BizWeldTask task, UploadMode uploadMode)
+    {
+        if (uploadMode != UploadMode.Realtime)
+        {
+            EnqueueProcessParameterTask(task, uploadMode);
+        }
+
+        EnqueueReportFileTask(task, uploadMode);
+    }
+
+    private void EnqueueProcessParameterTask(BizWeldTask task, UploadMode uploadMode)
+    {
+        _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
+        {
+            TaskType = ProductionConstants.UploadTaskTypes.ProcessParameter,
+            Target = ProductionConstants.UploadTargets.Mes,
+            BusinessId = BuildUploadBusinessId(task, "process-parameter"),
+            WeldTaskId = task.Id,
+            PayloadJson = BuildUploadPayload(task, uploadMode, ProductionConstants.UploadTaskTypes.ProcessParameter),
+            Status = ProductionConstants.UploadStatuses.Pending,
+            NextRetryTime = DateTime.Now,
+            Message = $"{GetUploadModeName(uploadMode)}模式完工后排队，等待过程参数上传执行器处理。"
+        });
+    }
+
+    private void EnqueueReportFileTask(BizWeldTask task, UploadMode uploadMode)
+    {
+        _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
+        {
+            TaskType = ProductionConstants.UploadTaskTypes.ReportFile,
+            Target = ProductionConstants.UploadTargets.Mes,
+            BusinessId = BuildUploadBusinessId(task, "report-file"),
+            WeldTaskId = task.Id,
+            PayloadJson = BuildUploadPayload(task, uploadMode, ProductionConstants.UploadTaskTypes.ReportFile),
+            Status = ProductionConstants.UploadStatuses.Pending,
+            NextRetryTime = DateTime.Now,
+            Message = "完工后排队，等待报告文件生成并上传。"
+        });
+    }
+
+    private static string BuildUploadBusinessId(BizWeldTask task, string uploadKind)
+    {
+        var stableTaskId = string.IsNullOrWhiteSpace(task.ExpStartId)
+            ? $"local-{task.Id}"
+            : task.ExpStartId.Trim();
+
+        return $"{stableTaskId}:{uploadKind}";
+    }
+
+    private static string BuildUploadPayload(BizWeldTask task, UploadMode uploadMode, string taskType)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            TaskType = taskType,
+            UploadMode = uploadMode.ToString(),
+            WeldTaskId = task.Id,
+            task.ExpStartId,
+            task.DeviceId,
+            SN = task.WorkOrderId,
+            task.ProductNum,
+            task.ProductModel,
+            task.Batch,
+            task.ProcessNo,
+            task.ProcessName,
+            task.ActualQty,
+            task.QualifiedQty,
+            task.FailedQty,
+            StartTime = task.StartTime.ToString("yyyy-MM-dd HH:mm:ss"),
+            EndTime = task.EndTime?.ToString("yyyy-MM-dd HH:mm:ss"),
+            OperatorNumber = task.EndOperatorNumber ?? task.StartOperatorNumber
+        });
+    }
+
+    private static string GetUploadModeName(UploadMode mode)
+    {
+        return mode switch
+        {
+            UploadMode.Realtime => "单件实时上传",
+            UploadMode.Quantity => "特定数量上传",
+            _ => "整批上传"
         };
     }
 
