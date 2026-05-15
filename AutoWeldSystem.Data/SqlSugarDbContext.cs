@@ -56,6 +56,12 @@ public class SqlSugarDbContext : IDisposable
                     typeof(BizProgramRevision),
                     typeof(BizWeldTask),
                     typeof(BizWeldData),
+                    typeof(BizWeldPointRecord),
+                    typeof(BizProductProcessConfig),
+                    typeof(BizCollectionParameter),
+                    typeof(BizProductionReportFile),
+                    typeof(BizUploadTask),
+                    typeof(BizDeviceStatusLog),
                     typeof(BizPlcAddress));
 
                 _initialized = true;
