@@ -14,6 +14,8 @@ public interface IWeldTaskService
 
     Task<MesWorkOrderResponse?> GetWorkOrderInfoAsync(string workId, CancellationToken cancellationToken = default);
 
+    void SelectStation(int stationNo);
+
     void SelectProcess(ExpItemData process);
 
     Task<IReadOnlyList<MesProgramListItemData>> LoadProgramsAsync(CancellationToken cancellationToken = default);

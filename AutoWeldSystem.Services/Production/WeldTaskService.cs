@@ -84,9 +84,17 @@ public class WeldTaskService : IWeldTaskService
         }
 
         CurrentState.CurrentWorkOrder = response.Data;
+        CurrentState.SaveCurrentStation();
         _operationLogService.Write("WorkOrder", $"Work order loaded: {response.Data.SN}");
         NotifyStateChanged();
         return response.Data;
+    }
+
+    public void SelectStation(int stationNo)
+    {
+        CurrentState.SaveCurrentStation();
+        CurrentState.RestoreStation(stationNo);
+        NotifyStateChanged();
     }
 
     public void SelectProcess(ExpItemData process)
@@ -94,6 +102,7 @@ public class WeldTaskService : IWeldTaskService
         CurrentState.SelectedProcess = process;
         CurrentState.AvailablePrograms.Clear();
         CurrentState.SelectedProgram = null;
+        CurrentState.SaveCurrentStation();
         NotifyStateChanged();
     }
 
@@ -113,11 +122,13 @@ public class WeldTaskService : IWeldTaskService
         if (!response.IsSuccess || response.Data is null)
         {
             CurrentState.AvailablePrograms.Clear();
+            CurrentState.SaveCurrentStation();
             NotifyStateChanged();
             return Array.Empty<MesProgramListItemData>();
         }
 
         CurrentState.AvailablePrograms = response.Data;
+        CurrentState.SaveCurrentStation();
         NotifyStateChanged();
         return CurrentState.AvailablePrograms;
     }
@@ -134,6 +145,7 @@ public class WeldTaskService : IWeldTaskService
 
         CurrentState.SelectedProgram = response.Data;
         UpsertProgram(response.Data, settings.DeviceId);
+        CurrentState.SaveCurrentStation();
         NotifyStateChanged();
         return response.Data;
     }
@@ -144,6 +156,7 @@ public class WeldTaskService : IWeldTaskService
         if (response.IsSuccess)
         {
             CurrentState.MesOperatorNumber = employeeNumber;
+            CurrentState.SaveCurrentStation();
         }
 
         NotifyStateChanged();
@@ -156,8 +169,13 @@ public class WeldTaskService : IWeldTaskService
         int stationNo = ProductionConstants.Stations.DefaultStationNo,
         CancellationToken cancellationToken = default)
     {
-        EnsureReadyForStart();
         var normalizedStationNo = NormalizeStationNo(stationNo);
+        if (CurrentState.CurrentStationNo != normalizedStationNo)
+        {
+            CurrentState.RestoreStation(normalizedStationNo);
+        }
+
+        EnsureReadyForStart();
 
         var validation = await ValidateMesOperatorAsync(employeeNumber, cancellationToken);
         if (!validation.IsSuccess)
@@ -223,6 +241,7 @@ public class WeldTaskService : IWeldTaskService
         CurrentState.ActiveTask = task;
         CurrentState.CurrentStationNo = normalizedStationNo;
         CurrentState.MesOperatorNumber = employeeNumber;
+        CurrentState.SaveCurrentStation();
         _operationLogService.Write("ExpStart", $"Start report submitted, Station={task.StationNo}, MES Id={task.ExpStartId}, WorkOrder={task.WorkOrderId}");
         NotifyStateChanged();
         return task;
@@ -254,6 +273,7 @@ public class WeldTaskService : IWeldTaskService
 
             _dbContext.Db.Updateable(CurrentState.ActiveTask).UpdateColumns(it => new { it.TaskStatus }).ExecuteCommand();
             _operationLogService.Write("ExpStatus", $"Task status changed to {CurrentState.ActiveTask.TaskStatus}");
+            CurrentState.SaveCurrentStation();
             NotifyStateChanged();
         }
 
@@ -315,6 +335,7 @@ public class WeldTaskService : IWeldTaskService
         _dbContext.Db.Updateable(task).ExecuteCommand();
         EnqueueFinishUploadTasks(task, settings.UploadMode);
         CurrentState.ActiveTask = task;
+        CurrentState.SaveCurrentStation();
         _operationLogService.Write("ExpEnd", $"Finish report submitted, Station={task.StationNo}, WorkOrder={task.WorkOrderId}, UploadStatus={task.UploadStatus}");
         NotifyStateChanged();
         return task;
@@ -336,6 +357,7 @@ public class WeldTaskService : IWeldTaskService
         if (CurrentState.ActiveTask is not null)
         {
             CurrentState.ActiveTask = _dbContext.Db.Queryable<BizWeldTask>().InSingle(CurrentState.ActiveTask.Id);
+            CurrentState.SaveCurrentStation();
         }
 
         _operationLogService.Write("RetryUpload", $"Pending upload retry triggered for {pendingTasks.Count} task(s).");
@@ -351,6 +373,7 @@ public class WeldTaskService : IWeldTaskService
         }
 
         CurrentState.SelectedProgram.ProgramContent = content;
+        CurrentState.SaveCurrentStation();
         NotifyStateChanged();
     }
 
@@ -412,7 +435,7 @@ public class WeldTaskService : IWeldTaskService
     {
         var lastSyncTime = CurrentState.LastServerSyncTime;
         var lastSyncMessage = CurrentState.LastServerSyncMessage;
-        CurrentState.Reset();
+        CurrentState.ResetCurrentStation();
         if (keepSyncMessage)
         {
             CurrentState.LastServerSyncTime = lastSyncTime;
