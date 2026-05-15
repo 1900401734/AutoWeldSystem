@@ -57,6 +57,7 @@ public static class Program
                     services.AddSingleton<IProductProcessConfigService, ProductProcessConfigService>();
                     services.AddSingleton<ICollectionParameterService, CollectionParameterService>();
                     services.AddSingleton<IProductNoGeneratorService, ProductNoGeneratorService>();
+                    services.AddSingleton<IWeldPointCollectionService, WeldPointCollectionService>();
                     services.AddSingleton<IDeviceStatusService, DeviceStatusService>();
                     services.AddSingleton<IUploadTaskService, UploadTaskService>();
                     services.AddSingleton<IProductionReportFileService, ProductionReportFileService>();
