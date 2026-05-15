@@ -18,6 +18,7 @@ public partial class AddressManageView : BaseView
     private readonly IPlcCommunicationService _plcCommunicationService;
     private readonly IPlcProductionMonitorService _plcProductionMonitorService;
     private readonly IPlcWorkIdMonitorService _plcWorkIdMonitorService;
+    private readonly IPlcWeldCycleMonitorService _plcWeldCycleMonitorService;
     private readonly ILocalizationService _localizer;
     private readonly List<BizPlcAddress> _allAddresses = new();
     private readonly List<BizCollectionParameter> _allCollectionParameters = new();
@@ -35,6 +36,7 @@ public partial class AddressManageView : BaseView
         IPlcCommunicationService plcCommunicationService,
         IPlcProductionMonitorService plcProductionMonitorService,
         IPlcWorkIdMonitorService plcWorkIdMonitorService,
+        IPlcWeldCycleMonitorService plcWeldCycleMonitorService,
         ILocalizationService localizer)
     {
         _addressService = addressService;
@@ -42,6 +44,7 @@ public partial class AddressManageView : BaseView
         _plcCommunicationService = plcCommunicationService;
         _plcProductionMonitorService = plcProductionMonitorService;
         _plcWorkIdMonitorService = plcWorkIdMonitorService;
+        _plcWeldCycleMonitorService = plcWeldCycleMonitorService;
         _localizer = localizer;
 
         InitializeComponent();
@@ -448,6 +451,7 @@ public partial class AddressManageView : BaseView
             _collectionParameterService.SaveAll(collectionParameters);
             await _plcProductionMonitorService.ReloadAddressesAsync();
             await _plcWorkIdMonitorService.ReloadAddressAsync();
+            await _plcWeldCycleMonitorService.ReloadAddressesAsync();
             await _plcCommunicationService.RestartAsync();
             LoadAddresses();
             ShowInfo(_localizer.GetString(TextKeys.Address.MessageSaveSuccess));

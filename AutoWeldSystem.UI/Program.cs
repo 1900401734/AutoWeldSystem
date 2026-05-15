@@ -29,6 +29,7 @@ public static class Program
         var mesMonitorStarted = false;
         var productionMonitorStarted = false;
         var workIdMonitorStarted = false;
+        var weldCycleMonitorStarted = false;
 
         try
         {
@@ -54,6 +55,7 @@ public static class Program
                     services.AddSingleton<IMesConnectionMonitorService, MesConnectionMonitorService>();
                     services.AddSingleton<IPlcProductionMonitorService, PlcProductionMonitorService>();
                     services.AddSingleton<IPlcWorkIdMonitorService, PlcWorkIdMonitorService>();
+                    services.AddSingleton<IPlcWeldCycleMonitorService, PlcWeldCycleMonitorService>();
                     services.AddSingleton<IProductProcessConfigService, ProductProcessConfigService>();
                     services.AddSingleton<ICollectionParameterService, CollectionParameterService>();
                     services.AddSingleton<IProductNoGeneratorService, ProductNoGeneratorService>();
@@ -93,6 +95,8 @@ public static class Program
             productionMonitorStarted = true;
             AppHost.Services.GetRequiredService<IPlcWorkIdMonitorService>().StartAsync().GetAwaiter().GetResult();
             workIdMonitorStarted = true;
+            AppHost.Services.GetRequiredService<IPlcWeldCycleMonitorService>().StartAsync().GetAwaiter().GetResult();
+            weldCycleMonitorStarted = true;
 
             var taskService = AppHost.Services.GetRequiredService<IWeldTaskService>();
             var timeSyncResult = taskService.SyncServerTimeAsync().GetAwaiter().GetResult();
@@ -130,7 +134,7 @@ public static class Program
         }
         finally
         {
-            StopBackgroundServices(workIdMonitorStarted, productionMonitorStarted, mesMonitorStarted, plcServiceStarted);
+            StopBackgroundServices(weldCycleMonitorStarted, workIdMonitorStarted, productionMonitorStarted, mesMonitorStarted, plcServiceStarted);
             AppHost?.Dispose();
         }
     }
@@ -169,10 +173,20 @@ public static class Program
         }
     }
 
-    private static void StopBackgroundServices(bool workIdMonitorStarted, bool productionMonitorStarted, bool mesMonitorStarted, bool plcServiceStarted)
+    private static void StopBackgroundServices(
+        bool weldCycleMonitorStarted,
+        bool workIdMonitorStarted,
+        bool productionMonitorStarted,
+        bool mesMonitorStarted,
+        bool plcServiceStarted)
     {
         try
         {
+            if (weldCycleMonitorStarted)
+            {
+                AppHost?.Services.GetRequiredService<IPlcWeldCycleMonitorService>().StopAsync().GetAwaiter().GetResult();
+            }
+
             if (workIdMonitorStarted)
             {
                 AppHost?.Services.GetRequiredService<IPlcWorkIdMonitorService>().StopAsync().GetAwaiter().GetResult();
