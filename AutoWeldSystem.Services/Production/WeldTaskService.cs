@@ -72,20 +72,27 @@ public class WeldTaskService : IWeldTaskService
     /// <param name="workId"></param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
-    public async Task<MesWorkOrderResponse?> GetWorkOrderInfoAsync(string workId, CancellationToken cancellationToken = default)
+    public async Task<MesWorkOrderResponse?> GetWorkOrderInfoAsync(
+        string workId,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        CancellationToken cancellationToken = default)
     {
-        ResetRuntime(keepSyncMessage: true);
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        ResetStationRuntime(normalizedStationNo);
         var response = await _mesProvider.GetWorkOrderInfoAsync(workId, cancellationToken);
         if (!response.IsSuccess || response.Data is null)
         {
             CurrentState.LastServerSyncMessage = response.Msg;
+            RefreshCompatibilityState(normalizedStationNo);
             NotifyStateChanged();
             return null;
         }
 
-        CurrentState.CurrentWorkOrder = response.Data;
-        CurrentState.SaveCurrentStation();
-        _operationLogService.Write("WorkOrder", $"Work order loaded: {response.Data.SN}");
+        var station = GetStation(normalizedStationNo);
+        station.CurrentWorkOrder = response.Data;
+        station.UpdatedTime = DateTime.Now;
+        RefreshCompatibilityState(normalizedStationNo);
+        _operationLogService.Write("WorkOrder", $"Work order loaded, Station={normalizedStationNo}, SN={response.Data.SN}");
         NotifyStateChanged();
         return response.Data;
     }
@@ -97,18 +104,25 @@ public class WeldTaskService : IWeldTaskService
         NotifyStateChanged();
     }
 
-    public void SelectProcess(ExpItemData process)
+    public void SelectProcess(ExpItemData process, int stationNo = ProductionConstants.Stations.DefaultStationNo)
     {
-        CurrentState.SelectedProcess = process;
-        CurrentState.AvailablePrograms.Clear();
-        CurrentState.SelectedProgram = null;
-        CurrentState.SaveCurrentStation();
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var station = GetStation(normalizedStationNo);
+        station.SelectedProcess = process;
+        station.AvailablePrograms.Clear();
+        station.SelectedProgram = null;
+        station.UpdatedTime = DateTime.Now;
+        RefreshCompatibilityState(normalizedStationNo);
         NotifyStateChanged();
     }
 
-    public async Task<IReadOnlyList<MesProgramListItemData>> LoadProgramsAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<MesProgramListItemData>> LoadProgramsAsync(
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        CancellationToken cancellationToken = default)
     {
-        if (CurrentState.CurrentWorkOrder is null)
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var station = GetStation(normalizedStationNo);
+        if (station.CurrentWorkOrder is null)
         {
             return Array.Empty<MesProgramListItemData>();
         }
@@ -116,25 +130,32 @@ public class WeldTaskService : IWeldTaskService
         var settings = _settingsService.Get();
         var response = await _mesProvider.GetProgramListAsync(
             settings.DeviceId,
-            settings.UseProductNumberFilter ? CurrentState.CurrentWorkOrder.ProdNum : null,
+            settings.UseProductNumberFilter ? station.CurrentWorkOrder.ProdNum : null,
             cancellationToken);
 
         if (!response.IsSuccess || response.Data is null)
         {
-            CurrentState.AvailablePrograms.Clear();
-            CurrentState.SaveCurrentStation();
+            station.AvailablePrograms.Clear();
+            station.UpdatedTime = DateTime.Now;
+            RefreshCompatibilityState(normalizedStationNo);
             NotifyStateChanged();
             return Array.Empty<MesProgramListItemData>();
         }
 
-        CurrentState.AvailablePrograms = response.Data;
-        CurrentState.SaveCurrentStation();
+        station.AvailablePrograms = response.Data;
+        station.UpdatedTime = DateTime.Now;
+        RefreshCompatibilityState(normalizedStationNo);
         NotifyStateChanged();
-        return CurrentState.AvailablePrograms;
+        return station.AvailablePrograms;
     }
 
-    public async Task<MesProgramData?> DownloadProgramAsync(MesProgramListItemData program, CancellationToken cancellationToken = default)
+    public async Task<MesProgramData?> DownloadProgramAsync(
+        MesProgramListItemData program,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        CancellationToken cancellationToken = default)
     {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var station = GetStation(normalizedStationNo);
         var settings = _settingsService.Get();
         var response = await _mesProvider.DownloadProgramAsync(settings.DeviceId, program.Id, cancellationToken);
         if (!response.IsSuccess || response.Data is null)
@@ -143,20 +164,27 @@ public class WeldTaskService : IWeldTaskService
             return null;
         }
 
-        CurrentState.SelectedProgram = response.Data;
+        station.SelectedProgram = response.Data;
+        station.UpdatedTime = DateTime.Now;
         UpsertProgram(response.Data, settings.DeviceId);
-        CurrentState.SaveCurrentStation();
+        RefreshCompatibilityState(normalizedStationNo);
         NotifyStateChanged();
         return response.Data;
     }
 
-    public async Task<MesBaseResponse<MesUserInfoResponse>> ValidateMesOperatorAsync(string employeeNumber, CancellationToken cancellationToken = default)
+    public async Task<MesBaseResponse<MesUserInfoResponse>> ValidateMesOperatorAsync(
+        string employeeNumber,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        CancellationToken cancellationToken = default)
     {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var station = GetStation(normalizedStationNo);
         var response = await _mesProvider.GetUserInfoAsync(employeeNumber, cancellationToken);
         if (response.IsSuccess)
         {
-            CurrentState.MesOperatorNumber = employeeNumber;
-            CurrentState.SaveCurrentStation();
+            station.MesOperatorNumber = employeeNumber;
+            station.UpdatedTime = DateTime.Now;
+            RefreshCompatibilityState(normalizedStationNo);
         }
 
         NotifyStateChanged();
@@ -170,23 +198,20 @@ public class WeldTaskService : IWeldTaskService
         CancellationToken cancellationToken = default)
     {
         var normalizedStationNo = NormalizeStationNo(stationNo);
-        if (CurrentState.CurrentStationNo != normalizedStationNo)
-        {
-            CurrentState.RestoreStation(normalizedStationNo);
-        }
+        var station = GetStation(normalizedStationNo);
 
-        EnsureReadyForStart();
+        EnsureReadyForStart(station);
 
-        var validation = await ValidateMesOperatorAsync(employeeNumber, cancellationToken);
+        var validation = await ValidateMesOperatorAsync(employeeNumber, normalizedStationNo, cancellationToken);
         if (!validation.IsSuccess)
         {
             throw new BusinessOperationException("MES.ValidateOperator", "员工校验失败", validation.Msg);
         }
 
         var settings = _settingsService.Get();
-        var workOrder = CurrentState.CurrentWorkOrder!;
-        var process = CurrentState.SelectedProcess!;
-        var program = CurrentState.SelectedProgram!;
+        var workOrder = station.CurrentWorkOrder!;
+        var process = station.SelectedProcess!;
+        var program = station.SelectedProgram!;
         var request = new ExpStartRequest
         {
             DeviceId = settings.DeviceId,
@@ -238,42 +263,48 @@ public class WeldTaskService : IWeldTaskService
         };
 
         task = _dbContext.Db.Insertable(task).ExecuteReturnEntity();
-        CurrentState.ActiveTask = task;
-        CurrentState.CurrentStationNo = normalizedStationNo;
-        CurrentState.MesOperatorNumber = employeeNumber;
-        CurrentState.SaveCurrentStation();
+        station.ActiveTask = task;
+        station.MesOperatorNumber = employeeNumber;
+        station.UpdatedTime = DateTime.Now;
+        RefreshCompatibilityState(normalizedStationNo);
         _operationLogService.Write("ExpStart", $"Start report submitted, Station={task.StationNo}, MES Id={task.ExpStartId}, WorkOrder={task.WorkOrderId}");
         NotifyStateChanged();
         return task;
     }
 
-    public async Task<MesBaseResponse<object>> ChangeStatusAsync(string statusCode, CancellationToken cancellationToken = default)
+    public async Task<MesBaseResponse<object>> ChangeStatusAsync(
+        string statusCode,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        CancellationToken cancellationToken = default)
     {
-        if (CurrentState.ActiveTask?.ExpStartId is null)
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var station = GetStation(normalizedStationNo);
+        if (station.ActiveTask?.ExpStartId is null)
         {
             return new MesBaseResponse<object> { Status = "E", Msg = "No running Task" };
         }
 
         var response = await _mesProvider.ChangeWorkStatusAsync(new ExpStatusRequest
         {
-            ExpStartId = CurrentState.ActiveTask.ExpStartId,
-            DeviceId = CurrentState.ActiveTask.DeviceId,
+            ExpStartId = station.ActiveTask.ExpStartId,
+            DeviceId = station.ActiveTask.DeviceId,
             ExpStatus = statusCode,
             Ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
         }, cancellationToken);
 
         if (response.IsSuccess)
         {
-            CurrentState.ActiveTask.TaskStatus = statusCode switch
+            station.ActiveTask.TaskStatus = statusCode switch
             {
                 "2" => "Paused",
                 "1" => "Completed",
                 _ => "Running"
             };
 
-            _dbContext.Db.Updateable(CurrentState.ActiveTask).UpdateColumns(it => new { it.TaskStatus }).ExecuteCommand();
-            _operationLogService.Write("ExpStatus", $"Task status changed to {CurrentState.ActiveTask.TaskStatus}");
-            CurrentState.SaveCurrentStation();
+            station.UpdatedTime = DateTime.Now;
+            _dbContext.Db.Updateable(station.ActiveTask).UpdateColumns(it => new { it.TaskStatus }).ExecuteCommand();
+            _operationLogService.Write("ExpStatus", $"Task status changed, Station={normalizedStationNo}, Status={station.ActiveTask.TaskStatus}");
+            RefreshCompatibilityState(normalizedStationNo);
             NotifyStateChanged();
         }
 
@@ -290,16 +321,24 @@ public class WeldTaskService : IWeldTaskService
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
     /// <exception cref="InvalidOperationException"></exception>
-    public async Task<BizWeldTask> FinishAsync(string employeeNumber, int actualQty, int qualifiedQty, int failedQty, CancellationToken cancellationToken = default)
+    public async Task<BizWeldTask> FinishAsync(
+        string employeeNumber,
+        int actualQty,
+        int qualifiedQty,
+        int failedQty,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        CancellationToken cancellationToken = default)
     {
-        if (CurrentState.ActiveTask?.ExpStartId is null || CurrentState.SelectedProcess is null)
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var station = GetStation(normalizedStationNo);
+        if (station.ActiveTask?.ExpStartId is null || station.SelectedProcess is null)
         {
             throw new BusinessOperationException("MES.FinishReport", "完工上报失败", "No task to finish");
         }
 
-        var task = CurrentState.ActiveTask;
+        var task = station.ActiveTask;
         var endOperator = string.IsNullOrWhiteSpace(employeeNumber)
-            ? task.StartOperatorNumber ?? CurrentState.MesOperatorNumber
+            ? task.StartOperatorNumber ?? station.MesOperatorNumber
             : employeeNumber;
 
         var response = await _mesProvider.EndWorkAsync(new ExpEndRequest
@@ -334,8 +373,9 @@ public class WeldTaskService : IWeldTaskService
 
         _dbContext.Db.Updateable(task).ExecuteCommand();
         EnqueueFinishUploadTasks(task, settings.UploadMode);
-        CurrentState.ActiveTask = task;
-        CurrentState.SaveCurrentStation();
+        station.ActiveTask = task;
+        station.UpdatedTime = DateTime.Now;
+        RefreshCompatibilityState(normalizedStationNo);
         _operationLogService.Write("ExpEnd", $"Finish report submitted, Station={task.StationNo}, WorkOrder={task.WorkOrderId}, UploadStatus={task.UploadStatus}");
         NotifyStateChanged();
         return task;
@@ -365,15 +405,18 @@ public class WeldTaskService : IWeldTaskService
         return Task.CompletedTask;
     }
 
-    public void UpdateProgramContent(string content)
+    public void UpdateProgramContent(string content, int stationNo = ProductionConstants.Stations.DefaultStationNo)
     {
-        if (CurrentState.SelectedProgram is null)
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var station = GetStation(normalizedStationNo);
+        if (station.SelectedProgram is null)
         {
             return;
         }
 
-        CurrentState.SelectedProgram.ProgramContent = content;
-        CurrentState.SaveCurrentStation();
+        station.SelectedProgram.ProgramContent = content;
+        station.UpdatedTime = DateTime.Now;
+        RefreshCompatibilityState(normalizedStationNo);
         NotifyStateChanged();
     }
 
@@ -383,19 +426,19 @@ public class WeldTaskService : IWeldTaskService
         NotifyStateChanged();
     }
 
-    private void EnsureReadyForStart()
+    private void EnsureReadyForStart(ProductionStationRuntimeState station)
     {
-        if (CurrentState.CurrentWorkOrder is null)
+        if (station.CurrentWorkOrder is null)
         {
             throw new BusinessOperationException("MES.StartReport", "开工上报失败", "No work order available");
         }
 
-        if (CurrentState.SelectedProcess is null)
+        if (station.SelectedProcess is null)
         {
             throw new BusinessOperationException("MES.StartReport", "开工上报失败", "No process selected");
         }
 
-        if (CurrentState.SelectedProgram is null)
+        if (station.SelectedProgram is null)
         {
             throw new BusinessOperationException("MES.StartReport", "开工上报失败", "No program downloaded");
         }
@@ -435,11 +478,42 @@ public class WeldTaskService : IWeldTaskService
     {
         var lastSyncTime = CurrentState.LastServerSyncTime;
         var lastSyncMessage = CurrentState.LastServerSyncMessage;
-        CurrentState.ResetCurrentStation();
+        ResetStationRuntime(CurrentState.CurrentStationNo);
         if (keepSyncMessage)
         {
             CurrentState.LastServerSyncTime = lastSyncTime;
             CurrentState.LastServerSyncMessage = lastSyncMessage;
+        }
+    }
+
+    /// <summary>
+    /// 获取指定工位的运行状态，工位不存在时由运行状态对象自动创建。
+    /// </summary>
+    private ProductionStationRuntimeState GetStation(int stationNo)
+    {
+        return CurrentState.GetOrCreateStation(NormalizeStationNo(stationNo));
+    }
+
+    /// <summary>
+    /// 清空指定工位的业务上下文，不影响其它工位。
+    /// </summary>
+    private void ResetStationRuntime(int stationNo)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var station = GetStation(normalizedStationNo);
+        station.Reset();
+        RefreshCompatibilityState(normalizedStationNo);
+    }
+
+    /// <summary>
+    /// 如果被更新的是当前界面正在查看的工位，则刷新旧版兼容属性，保持现有 MonitorView 不需要立即改造。
+    /// </summary>
+    private void RefreshCompatibilityState(int stationNo)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        if (CurrentState.CurrentStationNo == normalizedStationNo)
+        {
+            CurrentState.RestoreStation(normalizedStationNo);
         }
     }
 
