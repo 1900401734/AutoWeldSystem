@@ -94,7 +94,7 @@ public partial class MonitorView : BaseView
         RefreshRuntimePanels();
         ApplyPlcStatus(_plcCommunicationService.Current);
         ApplyMesStatus(_mesConnectionMonitorService.Current);
-        ApplyProductionStatus(_plcProductionMonitorService.Current);
+        ApplyProductionStatus(GetCurrentProductionSnapshot());
         AdjustTitleFontSize();
     }
 
@@ -441,6 +441,11 @@ public partial class MonitorView : BaseView
             : string.Empty;
     }
 
+    private PlcProductionSnapshot GetCurrentProductionSnapshot()
+    {
+        return _plcProductionMonitorService.GetCurrent(CurrentStationNo);
+    }
+
     /// <summary>
     /// 标题文字或容器尺寸变化后，重新计算一个尽量填满区域但不溢出的字号。
     /// </summary>
@@ -559,7 +564,7 @@ public partial class MonitorView : BaseView
         RefreshRuntimePanels();
         ApplyPlcStatus(_plcCommunicationService.Current);
         ApplyMesStatus(_mesConnectionMonitorService.Current);
-        ApplyProductionStatus(_plcProductionMonitorService.Current);
+        ApplyProductionStatus(GetCurrentProductionSnapshot());
         AdjustTitleFontSize();
     }
 
@@ -575,7 +580,7 @@ public partial class MonitorView : BaseView
         RefreshRuntimePanels();
         ApplyPlcStatus(_plcCommunicationService.Current);
         ApplyMesStatus(_mesConnectionMonitorService.Current);
-        ApplyProductionStatus(_plcProductionMonitorService.Current);
+        ApplyProductionStatus(GetCurrentProductionSnapshot());
         AdjustTitleFontSize();
     }
 
@@ -800,7 +805,7 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        var production = _plcProductionMonitorService.Current;
+        var production = GetCurrentProductionSnapshot();
         var defaultActual = Math.Max(1, production.TotalProduction > 0 ? production.TotalProduction : state.ActiveTask.ActualQty);
         if (!TryPromptPositiveInt(TextKeys.Monitor.Dialog.ActualQuantityTitle, TextKeys.Monitor.Dialog.ActualQuantityPrompt, defaultActual, out var actualQty)
             || !TryPromptNonNegativeInt(TextKeys.Monitor.Dialog.QualifiedQuantityTitle, TextKeys.Monitor.Dialog.QualifiedQuantityPrompt, production.AcceptedQuantity, out var qualifiedQty)
@@ -1004,7 +1009,7 @@ public partial class MonitorView : BaseView
     private void RefreshProductionRuntimeState()
     {
         BindProductionRuntimeState();
-        BindProductionMetrics(_plcProductionMonitorService.Current);
+        BindProductionMetrics(GetCurrentProductionSnapshot());
     }
 
     private void ApplyWorkIdSnapshot(PlcWorkIdSnapshot snapshot)
@@ -1165,6 +1170,11 @@ public partial class MonitorView : BaseView
     /// </summary>
     private void ApplyProductionStatus(PlcProductionSnapshot snapshot)
     {
+        if (snapshot.StationNo != CurrentStationNo)
+        {
+            return;
+        }
+
         ApplyDeviceStatus(snapshot);
         BindProductionMetrics(snapshot);
     }

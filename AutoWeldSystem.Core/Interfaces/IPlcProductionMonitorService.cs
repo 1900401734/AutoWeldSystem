@@ -11,6 +11,11 @@ public interface IPlcProductionMonitorService : IAsyncDisposable
 
     PlcProductionSnapshot Current { get; }
 
+    /// <summary>
+    /// 获取指定工位最近一次读取到的生产指标快照。
+    /// </summary>
+    PlcProductionSnapshot GetCurrent(int stationNo);
+
     Task StartAsync(CancellationToken cancellationToken = default);
 
     Task StopAsync(CancellationToken cancellationToken = default);

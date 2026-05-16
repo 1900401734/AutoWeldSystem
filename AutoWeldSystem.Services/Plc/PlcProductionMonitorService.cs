@@ -20,7 +20,9 @@ public sealed class PlcProductionMonitorService : IPlcProductionMonitorService, 
     private readonly IProgramExceptionLogService _exceptionLogService;
     private readonly SemaphoreSlim _addressSync = new(1, 1);
     private readonly object _businessLogSync = new();
-    private Dictionary<string, BizPlcAddress> _addresses = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _snapshotSync = new();
+    private List<BizPlcAddress> _addresses = [];
+    private readonly Dictionary<int, PlcProductionSnapshot> _stationSnapshots = new();
     private CancellationTokenSource? _cts;
     private Task? _loopTask;
     private string _lastBusinessLogKey = string.Empty;
@@ -37,12 +39,24 @@ public sealed class PlcProductionMonitorService : IPlcProductionMonitorService, 
         _plcAddressService = plcAddressService;
         _localizer = localizer;
         _exceptionLogService = exceptionLogService;
-        Current = new PlcProductionSnapshot(false, null, 0, null, 0, 0, DateTime.Now, string.Empty);
+        Current = CreateSnapshot(ProductionConstants.Stations.DefaultStationNo, false, null, 0, null, 0, 0, DateTime.Now, string.Empty);
+        _stationSnapshots[ProductionConstants.Stations.DefaultStationNo] = Current;
     }
 
     public event EventHandler<PlcProductionSnapshot>? StatusChanged;
 
     public PlcProductionSnapshot Current { get; private set; }
+
+    public PlcProductionSnapshot GetCurrent(int stationNo)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        lock (_snapshotSync)
+        {
+            return _stationSnapshots.TryGetValue(normalizedStationNo, out var snapshot)
+                ? snapshot
+                : CreateSnapshot(normalizedStationNo, false, null, 0, null, 0, 0, DateTime.Now, string.Empty);
+        }
+    }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
@@ -85,7 +99,7 @@ public sealed class PlcProductionMonitorService : IPlcProductionMonitorService, 
     {
         var addresses = _plcAddressService.GetAll()
             .Where(it => it.Enabled && !string.IsNullOrWhiteSpace(it.Address))
-            .ToDictionary(it => it.AddressKey, StringComparer.OrdinalIgnoreCase);
+            .ToList();
 
         await _addressSync.WaitAsync(cancellationToken);
         try
@@ -139,7 +153,7 @@ public sealed class PlcProductionMonitorService : IPlcProductionMonitorService, 
             }
             catch (Exception ex)
             {
-                WriteBusinessFailureLog(ex.Message);
+                WriteBusinessFailureLog(Current.StationNo, ex.Message);
                 Publish(Current with
                 {
                     IsSuccess = false,
@@ -155,56 +169,48 @@ public sealed class PlcProductionMonitorService : IPlcProductionMonitorService, 
     private async Task PollOnceAsync(CancellationToken cancellationToken)
     {
         var addresses = await GetAddressSnapshotAsync(cancellationToken);
-        var deviceStatusAddress = GetAddress(addresses, AppConstants.PlcAddressKeys.DeviceStatus);
+        var stationNumbers = ResolveStationNumbers(addresses);
+        var deviceStatusAddress = GetAddress(addresses, AppConstants.PlcAddressKeys.DeviceStatus, ProductionConstants.Stations.DefaultStationNo);
         if (deviceStatusAddress is null)
         {
             var message = _localizer.GetString(TextKeys.Plc.MessageAddressRequired);
-            WriteBusinessFailureLog(message);
-            Publish(Current with
-            {
-                IsSuccess = false,
-                DeviceStatusCode = null,
-                UpdatedTime = DateTime.Now,
-                Message = message
-            });
+            PublishFailureForStations(stationNumbers, message);
             return;
         }
 
         var statusResult = await _plcCommunicationService.ReadInt16Async(deviceStatusAddress.Address!, cancellationToken);
         if (!statusResult.IsSuccess)
         {
-            WriteBusinessFailureLog(statusResult.Message);
-            Publish(Current with
-            {
-                IsSuccess = false,
-                DeviceStatusCode = null,
-                UpdatedTime = DateTime.Now,
-                Message = statusResult.Message
-            });
+            PublishFailureForStations(stationNumbers, statusResult.Message);
             return;
         }
 
-        var total = await ReadIntegerOrDefaultAsync(addresses, AppConstants.PlcAddressKeys.TotalProduction, cancellationToken);
-        var accepted = await ReadIntegerOrDefaultAsync(addresses, AppConstants.PlcAddressKeys.AcceptedQuantity, cancellationToken);
-        var rejected = await ReadIntegerOrDefaultAsync(addresses, AppConstants.PlcAddressKeys.RejectedQuantity, cancellationToken);
+        foreach (var stationNo in stationNumbers)
+        {
+            var total = await ReadIntegerOrDefaultAsync(addresses, AppConstants.PlcAddressKeys.TotalProduction, stationNo, cancellationToken);
+            var target = await ReadNullableIntegerAsync(addresses, AppConstants.PlcAddressKeys.TargetProduction, stationNo, cancellationToken);
+            var accepted = await ReadIntegerOrDefaultAsync(addresses, AppConstants.PlcAddressKeys.AcceptedQuantity, stationNo, cancellationToken);
+            var rejected = await ReadIntegerOrDefaultAsync(addresses, AppConstants.PlcAddressKeys.RejectedQuantity, stationNo, cancellationToken);
 
-        Publish(new PlcProductionSnapshot(
-            true,
-            statusResult.Value,
-            total,
-            null,
-            accepted,
-            rejected,
-            DateTime.Now,
-            string.Empty));
+            Publish(CreateSnapshot(
+                stationNo,
+                true,
+                statusResult.Value,
+                total,
+                target,
+                accepted,
+                rejected,
+                DateTime.Now,
+                string.Empty));
+        }
     }
 
-    private async Task<Dictionary<string, BizPlcAddress>> GetAddressSnapshotAsync(CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<BizPlcAddress>> GetAddressSnapshotAsync(CancellationToken cancellationToken)
     {
         await _addressSync.WaitAsync(cancellationToken);
         try
         {
-            return new Dictionary<string, BizPlcAddress>(_addresses, StringComparer.OrdinalIgnoreCase);
+            return _addresses.ToList();
         }
         finally
         {
@@ -213,20 +219,22 @@ public sealed class PlcProductionMonitorService : IPlcProductionMonitorService, 
     }
 
     private async Task<int> ReadIntegerOrDefaultAsync(
-        IReadOnlyDictionary<string, BizPlcAddress> addresses,
+        IReadOnlyList<BizPlcAddress> addresses,
         string key,
+        int stationNo,
         CancellationToken cancellationToken)
     {
-        var value = await ReadNullableIntegerAsync(addresses, key, cancellationToken);
+        var value = await ReadNullableIntegerAsync(addresses, key, stationNo, cancellationToken);
         return value ?? 0;
     }
 
     private async Task<int?> ReadNullableIntegerAsync(
-        IReadOnlyDictionary<string, BizPlcAddress> addresses,
+        IReadOnlyList<BizPlcAddress> addresses,
         string key,
+        int stationNo,
         CancellationToken cancellationToken)
     {
-        var address = GetAddress(addresses, key);
+        var address = GetAddress(addresses, key, stationNo);
         if (address is null)
         {
             return null;
@@ -290,11 +298,17 @@ public sealed class PlcProductionMonitorService : IPlcProductionMonitorService, 
             : null;
     }
 
-    private static BizPlcAddress? GetAddress(IReadOnlyDictionary<string, BizPlcAddress> addresses, string key)
+    private static BizPlcAddress? GetAddress(IReadOnlyList<BizPlcAddress> addresses, string logicalKey, int stationNo)
     {
-        return addresses.TryGetValue(key, out var address)
-            ? address
-            : null;
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        return addresses
+            .Where(address => string.Equals(GetLogicalKey(address), logicalKey, StringComparison.OrdinalIgnoreCase))
+            .Where(address => address.StationNo == normalizedStationNo
+                || address.StationNo == ProductionConstants.Stations.SharedStationNo)
+            .OrderByDescending(address => address.StationNo == normalizedStationNo)
+            .ThenByDescending(address => address.StationNo == ProductionConstants.Stations.SharedStationNo)
+            .ThenBy(address => address.Sort)
+            .FirstOrDefault();
     }
 
     private static string NormalizeDataType(string? dataType)
@@ -306,17 +320,25 @@ public sealed class PlcProductionMonitorService : IPlcProductionMonitorService, 
 
     private void Publish(PlcProductionSnapshot snapshot)
     {
-        Current = snapshot;
+        lock (_snapshotSync)
+        {
+            _stationSnapshots[snapshot.StationNo] = snapshot;
+            if (snapshot.StationNo == ProductionConstants.Stations.DefaultStationNo)
+            {
+                Current = snapshot;
+            }
+        }
+
         StatusChanged?.Invoke(this, snapshot);
     }
 
     /// <summary>
     /// PLC 生产数据采集失败属于可预见业务异常，详细原因写入异常日志供日志管理页面查看。
     /// </summary>
-    private void WriteBusinessFailureLog(string detail)
+    private void WriteBusinessFailureLog(int stationNo, string detail)
     {
         var summary = _localizer.GetString(TextKeys.Monitor.RuntimeError.ProductionCollectFailed);
-        if (!ShouldWriteBusinessLog(summary, detail))
+        if (!ShouldWriteBusinessLog(stationNo, summary, detail))
         {
             return;
         }
@@ -325,12 +347,12 @@ public sealed class PlcProductionMonitorService : IPlcProductionMonitorService, 
             "PLC.ProductionMonitor",
             summary,
             detail,
-            "读取设备状态、加工总数、合格数量或不良数量失败。");
+            $"读取设备状态、加工总数、合格数量或不良数量失败。Station={stationNo}");
     }
 
-    private bool ShouldWriteBusinessLog(string summary, string detail)
+    private bool ShouldWriteBusinessLog(int stationNo, string summary, string detail)
     {
-        var key = $"{summary}|{detail}";
+        var key = $"{stationNo}|{summary}|{detail}";
         lock (_businessLogSync)
         {
             var now = DateTime.Now;
@@ -344,5 +366,83 @@ public sealed class PlcProductionMonitorService : IPlcProductionMonitorService, 
             _lastBusinessLogTime = now;
             return true;
         }
+    }
+
+    private void PublishFailureForStations(IReadOnlyList<int> stationNumbers, string message)
+    {
+        foreach (var stationNo in stationNumbers)
+        {
+            WriteBusinessFailureLog(stationNo, message);
+            var current = GetCurrent(stationNo);
+            Publish(current with
+            {
+                IsSuccess = false,
+                DeviceStatusCode = null,
+                UpdatedTime = DateTime.Now,
+                Message = message
+            });
+        }
+    }
+
+    private static IReadOnlyList<int> ResolveStationNumbers(IReadOnlyList<BizPlcAddress> addresses)
+    {
+        var stationNumbers = addresses
+            .Where(address => IsStationMetricKey(GetLogicalKey(address)))
+            .Select(address => NormalizeStationNo(address.StationNo))
+            .Where(stationNo => stationNo > ProductionConstants.Stations.SharedStationNo)
+            .Distinct()
+            .OrderBy(stationNo => stationNo)
+            .ToList();
+
+        return stationNumbers.Count > 0
+            ? stationNumbers
+            : [ProductionConstants.Stations.DefaultStationNo];
+    }
+
+    private static bool IsStationMetricKey(string logicalKey)
+    {
+        return logicalKey is AppConstants.PlcAddressKeys.TotalProduction
+            or AppConstants.PlcAddressKeys.TargetProduction
+            or AppConstants.PlcAddressKeys.AcceptedQuantity
+            or AppConstants.PlcAddressKeys.RejectedQuantity;
+    }
+
+    private static string GetLogicalKey(BizPlcAddress address)
+    {
+        return string.IsNullOrWhiteSpace(address.LogicalKey)
+            ? address.AddressKey
+            : address.LogicalKey.Trim();
+    }
+
+    private static PlcProductionSnapshot CreateSnapshot(
+        int stationNo,
+        bool isSuccess,
+        short? deviceStatusCode,
+        int totalProduction,
+        int? targetProduction,
+        int acceptedQuantity,
+        int rejectedQuantity,
+        DateTime updatedTime,
+        string message)
+    {
+        return new PlcProductionSnapshot(
+            isSuccess,
+            deviceStatusCode,
+            totalProduction,
+            targetProduction,
+            acceptedQuantity,
+            rejectedQuantity,
+            updatedTime,
+            message)
+        {
+            StationNo = NormalizeStationNo(stationNo)
+        };
+    }
+
+    private static int NormalizeStationNo(int stationNo)
+    {
+        return stationNo <= ProductionConstants.Stations.SharedStationNo
+            ? ProductionConstants.Stations.DefaultStationNo
+            : stationNo;
     }
 }

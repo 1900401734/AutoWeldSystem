@@ -1,3 +1,5 @@
+using AutoWeldSystem.Core.Constants;
+
 namespace AutoWeldSystem.Core.DTOs;
 
 /// <summary>
@@ -14,6 +16,11 @@ public sealed record PlcProductionSnapshot(
     DateTime UpdatedTime,
     string Message)
 {
+    /// <summary>
+    /// 生产指标所属工位。设备状态为共享信号，产量类指标按该工位区分。
+    /// </summary>
+    public int StationNo { get; init; } = ProductionConstants.Stations.DefaultStationNo;
+
     public double? AcceptedRate => TotalProduction > 0
         ? (double)AcceptedQuantity / TotalProduction
         : null;
