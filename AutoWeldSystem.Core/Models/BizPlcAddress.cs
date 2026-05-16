@@ -13,6 +13,18 @@ public class BizPlcAddress
     [SugarColumn(IsPrimaryKey = true, Length = 50, ColumnDescription = "地址用途键")]
     public string AddressKey { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Logical business key used by code. Multiple stations can share the same logical key.
+    /// </summary>
+    [SugarColumn(Length = 50, IsNullable = true, ColumnDescription = "逻辑地址键")]
+    public string? LogicalKey { get; set; }
+
+    /// <summary>
+    /// Station number. 0 means this address is shared by all stations.
+    /// </summary>
+    [SugarColumn(ColumnDescription = "工位号")]
+    public int StationNo { get; set; }
+
     [SugarColumn(Length = 100, ColumnDescription = "地址名称")]
     public string AddressName { get; set; } = string.Empty;
 

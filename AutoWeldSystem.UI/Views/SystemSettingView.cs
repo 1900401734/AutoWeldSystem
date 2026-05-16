@@ -210,6 +210,7 @@ public partial class SystemSettingView : BaseView
         input_DataPath.Text = settings.DataDirectory;
         input_BaseUrl.Text = settings.MesBaseUrl;
         chkUseProductNumberFilter.Checked = settings.UseProductNumberFilter;
+        chkEnableDualStationMode.Checked = settings.EnableDualStationMode;
 
         _selectedPlcType = NormalizePlcType(settings.PlcType);
         BindPlcTypeOptions();
@@ -238,6 +239,7 @@ public partial class SystemSettingView : BaseView
         lblDataPath.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDataPath);
         lblMesUrl.Text = _localizer.GetString(TextKeys.SystemSetting.LabelMesUrl);
         chkUseProductNumberFilter.Text = _localizer.GetString(TextKeys.SystemSetting.LabelUseProductNumberFilter);
+        chkEnableDualStationMode.Text = "启用双工位双工单模式";
 
         btnConnectPlc.Text = _localizer.GetString(TextKeys.SystemSetting.ButtonConnect);
         btnConnectMasterController.Text = _localizer.GetString(TextKeys.SystemSetting.ButtonConnect);
@@ -847,6 +849,7 @@ public partial class SystemSettingView : BaseView
         settings.DataDirectory = dataDirectory;
         settings.MesBaseUrl = mesBaseUrl;
         settings.UseProductNumberFilter = chkUseProductNumberFilter.Checked;
+        settings.EnableDualStationMode = chkEnableDualStationMode.Checked;
         return true;
     }
 

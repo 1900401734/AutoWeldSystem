@@ -12,5 +12,7 @@ public interface IPlcAddressService
 
     BizPlcAddress? GetByKey(string addressKey);
 
+    BizPlcAddress? GetByKey(string logicalKey, int stationNo);
+
     void SaveAll(IEnumerable<BizPlcAddress> addresses);
 }

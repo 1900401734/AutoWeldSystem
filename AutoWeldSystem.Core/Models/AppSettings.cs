@@ -73,6 +73,9 @@ public class AppSettings
     [SugarColumn(ColumnDescription = "是否使用产品编号过滤")]
     public bool UseProductNumberFilter { get; set; } = true;
 
+    [SugarColumn(ColumnDescription = "是否启用双工位双工单模式")]
+    public bool EnableDualStationMode { get; set; }
+
     [SugarColumn(ColumnDescription = "是否启用程序调优")]
     public bool EnableProgramTuning { get; set; } = true;
 

@@ -98,6 +98,7 @@ public partial class AddressManageView : BaseView
         tableAddresses.Columns.Clear();
 
         tableAddresses.Columns.Add(CreateTableColumn(nameof(PlcAddressTableRow.AddressName), TextKeys.Grid.PlcAddressName, readOnly: true));
+        tableAddresses.Columns.Add(CreateRawColumn(nameof(PlcAddressTableRow.StationNo), "工位(0共享)", readOnly: true));
         tableAddresses.Columns.Add(CreateTableColumn(nameof(PlcAddressTableRow.Sort), TextKeys.Grid.PlcAddressSort));
         tableAddresses.Columns.Add(CreateTableColumn(nameof(PlcAddressTableRow.Address), TextKeys.Grid.PlcAddress));
         tableAddresses.Columns.Add(CreateDataTypeColumn(nameof(PlcAddressTableRow.DataType), _localizer.GetString(TextKeys.Grid.PlcAddressDataType)));
@@ -197,6 +198,7 @@ public partial class AddressManageView : BaseView
     private static AntdUI.ColumnAlign GetColumnAlign(string key)
     {
         return key is nameof(PlcAddressTableRow.Sort)
+                or nameof(PlcAddressTableRow.StationNo)
                 or nameof(PlcAddressTableRow.DataLength)
                 or nameof(PlcAddressTableRow.UpdatedTime)
             ? AntdUI.ColumnAlign.Center
@@ -253,6 +255,7 @@ public partial class AddressManageView : BaseView
             return e.Column.Key switch
             {
                 nameof(PlcAddressTableRow.Sort) => IsNonNegativeInt(value),
+                nameof(PlcAddressTableRow.StationNo) => IsNonNegativeInt(value),
                 nameof(PlcAddressTableRow.DataLength) => IsPositiveInt(value),
                 _ => true
             };
@@ -385,11 +388,14 @@ public partial class AddressManageView : BaseView
         var filteredAddresses = _allAddresses
             .Where(address => string.IsNullOrWhiteSpace(_addressKeyword)
                 || Contains(address.AddressKey, _addressKeyword)
+                || Contains(address.LogicalKey, _addressKeyword)
+                || Contains(address.StationNo.ToString(), _addressKeyword)
                 || Contains(GetAddressDisplayName(address), _addressKeyword)
                 || Contains(address.Address, _addressKeyword)
                 || Contains(address.DataType, _addressKeyword)
                 || Contains(address.Description, _addressKeyword))
             .OrderBy(address => address.Sort)
+            .ThenBy(address => address.StationNo)
             .ThenBy(address => address.AddressKey)
             .ToList();
 
@@ -601,6 +607,8 @@ public partial class AddressManageView : BaseView
         foreach (var address in addresses)
         {
             address.Address = address.Address?.Trim();
+            address.LogicalKey = string.IsNullOrWhiteSpace(address.LogicalKey) ? address.AddressKey : address.LogicalKey.Trim();
+            address.StationNo = Math.Max(0, address.StationNo);
             address.DataType = NormalizeDataType(address.DataType);
             address.DataLength = Math.Max(1, address.DataLength);
             address.Sort = Math.Max(0, address.Sort);
@@ -665,7 +673,10 @@ public partial class AddressManageView : BaseView
 
     private string GetAddressDisplayName(BizPlcAddress address)
     {
-        var key = address.AddressKey switch
+        var logicalKey = string.IsNullOrWhiteSpace(address.LogicalKey)
+            ? address.AddressKey
+            : address.LogicalKey;
+        var key = logicalKey switch
         {
             AppConstants.PlcAddressKeys.PcHeartBeat => TextKeys.Address.NamePcHeartbeat,
             AppConstants.PlcAddressKeys.PlcHeartBeat => TextKeys.Address.NamePlcHeartbeat,
@@ -720,6 +731,8 @@ public partial class AddressManageView : BaseView
 
         public string AddressName { get; } = addressName;
 
+        public int StationNo => Source.StationNo;
+
         public int Sort
         {
             get => Source.Sort;
@@ -763,6 +776,8 @@ public partial class AddressManageView : BaseView
         /// </summary>
         public void Normalize()
         {
+            Source.LogicalKey = string.IsNullOrWhiteSpace(Source.LogicalKey) ? Source.AddressKey : Source.LogicalKey.Trim();
+            Source.StationNo = Math.Max(0, Source.StationNo);
             Source.Address = NormalizeNullableText(Source.Address);
             Source.DataType = NormalizeDataType(Source.DataType);
             Source.DataLength = Math.Max(1, Source.DataLength);

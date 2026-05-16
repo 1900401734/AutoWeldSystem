@@ -64,6 +64,7 @@ namespace AutoWeldSystem.UI.Views
             btnOpenDataPath = new AntdUI.Button();
             lblDeviceUrl = new AntdUI.Label();
             input_DeviceUrl = new AntdUI.Input();
+            chkEnableDualStationMode = new AntdUI.Checkbox();
             panel2 = new AntdUI.Panel();
             btnSaveAll = new AntdUI.Button();
             headerLayout = new TableLayoutPanel();
@@ -299,7 +300,7 @@ namespace AutoWeldSystem.UI.Views
             grpAppConfig.Controls.Add(tableLayoutPanel3);
             grpAppConfig.Location = new Point(367, 0);
             grpAppConfig.Name = "grpAppConfig";
-            grpAppConfig.Size = new Size(743, 341);
+            grpAppConfig.Size = new Size(743, 386);
             grpAppConfig.TabIndex = 1;
             grpAppConfig.TabStop = false;
             grpAppConfig.Text = "应用参数设定";
@@ -329,16 +330,18 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanel3.Controls.Add(btnOpenDataPath, 3, 3);
             tableLayoutPanel3.Controls.Add(lblDeviceUrl, 0, 5);
             tableLayoutPanel3.Controls.Add(input_DeviceUrl, 1, 5);
+            tableLayoutPanel3.Controls.Add(chkEnableDualStationMode, 1, 6);
             tableLayoutPanel3.Location = new Point(6, 38);
             tableLayoutPanel3.Name = "tableLayoutPanel3";
-            tableLayoutPanel3.RowCount = 6;
-            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 16.66667F));
-            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 16.6666679F));
-            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 16.6666679F));
-            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 16.66667F));
-            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 16.66667F));
-            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 16.66667F));
-            tableLayoutPanel3.Size = new Size(731, 274);
+            tableLayoutPanel3.RowCount = 7;
+            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 14.2857141F));
+            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 14.2857141F));
+            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 14.2857141F));
+            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 14.2857141F));
+            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 14.2857141F));
+            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 14.2857141F));
+            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 14.2857141F));
+            tableLayoutPanel3.Size = new Size(731, 319);
             tableLayoutPanel3.TabIndex = 3;
             //
             // lblDeviceId
@@ -528,6 +531,17 @@ namespace AutoWeldSystem.UI.Views
             input_DeviceUrl.Name = "input_DeviceUrl";
             input_DeviceUrl.Size = new Size(292, 43);
             input_DeviceUrl.TabIndex = 8;
+            //
+            // chkEnableDualStationMode
+            //
+            chkEnableDualStationMode.AutoSizeMode = AntdUI.TAutoSize.Width;
+            tableLayoutPanel3.SetColumnSpan(chkEnableDualStationMode, 3);
+            chkEnableDualStationMode.Dock = DockStyle.Fill;
+            chkEnableDualStationMode.Location = new Point(88, 276);
+            chkEnableDualStationMode.Name = "chkEnableDualStationMode";
+            chkEnableDualStationMode.Size = new Size(640, 40);
+            chkEnableDualStationMode.TabIndex = 10;
+            chkEnableDualStationMode.Text = "启用双工位双工单模式";
             //
             // panel2
             //
@@ -927,5 +941,6 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Label lblDeviceUrl;
         private AntdUI.Input input_DeviceUrl;
         private TableLayoutPanel tableLayoutPanel1;
+        private AntdUI.Checkbox chkEnableDualStationMode;
     }
 }

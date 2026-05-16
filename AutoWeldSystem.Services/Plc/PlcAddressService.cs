@@ -12,11 +12,13 @@ namespace AutoWeldSystem.Services.Plc;
 public class PlcAddressService : IPlcAddressService
 {
     private readonly SqlSugarDbContext _dbContext;
+    private readonly IAppSettingsService _settingsService;
     private readonly object _dbLock = new();
 
-    public PlcAddressService(SqlSugarDbContext dbContext)
+    public PlcAddressService(SqlSugarDbContext dbContext, IAppSettingsService settingsService)
     {
         _dbContext = dbContext;
+        _settingsService = settingsService;
     }
 
     public IReadOnlyList<BizPlcAddress> GetAll()
@@ -25,23 +27,44 @@ public class PlcAddressService : IPlcAddressService
         {
             EnsureSeedData();
 
+            var dualStationEnabled = IsDualStationModeEnabled();
             return _dbContext.Db.Queryable<BizPlcAddress>()
                 .OrderBy(it => it.Sort)
                 .ToList()
+                .Where(address => dualStationEnabled
+                    || address.StationNo <= ProductionConstants.Stations.DefaultStationNo)
                 .OrderBy(it => it.Sort)
+                .ThenBy(it => it.StationNo)
                 .ThenBy(it => it.AddressKey)
                 .ToList();
         }
     }
 
     public BizPlcAddress? GetByKey(string addressKey)
+        => GetByKey(addressKey, ProductionConstants.Stations.DefaultStationNo);
+
+    public BizPlcAddress? GetByKey(string logicalKey, int stationNo)
     {
         lock (_dbLock)
         {
             EnsureSeedData();
 
-            return _dbContext.Db.Queryable<BizPlcAddress>()
-                .First(it => it.AddressKey == addressKey);
+            var normalizedLogicalKey = NormalizeLogicalKey(logicalKey);
+            var normalizedStationNo = IsDualStationModeEnabled()
+                ? NormalizeStationNo(stationNo)
+                : ProductionConstants.Stations.DefaultStationNo;
+            var addresses = _dbContext.Db.Queryable<BizPlcAddress>()
+                .Where(it => it.AddressKey == normalizedLogicalKey || it.LogicalKey == normalizedLogicalKey)
+                .ToList()
+                .Where(it => it.StationNo == normalizedStationNo
+                    || it.StationNo == ProductionConstants.Stations.SharedStationNo)
+                .ToList();
+
+            return addresses
+                .OrderByDescending(it => it.StationNo == normalizedStationNo)
+                .ThenByDescending(it => it.StationNo == ProductionConstants.Stations.SharedStationNo)
+                .ThenBy(it => it.Sort)
+                .FirstOrDefault();
         }
     }
 
@@ -80,6 +103,8 @@ public class PlcAddressService : IPlcAddressService
                 _dbContext.Db.Updateable(address)
                     .UpdateColumns(it => new
                     {
+                        it.LogicalKey,
+                        it.StationNo,
                         it.Address,
                         it.DataType,
                         it.DataLength,
@@ -99,6 +124,10 @@ public class PlcAddressService : IPlcAddressService
     /// </summary>
     private static void NormalizeAddress(BizPlcAddress address)
     {
+        address.LogicalKey = NormalizeLogicalKey(string.IsNullOrWhiteSpace(address.LogicalKey)
+            ? address.AddressKey
+            : address.LogicalKey);
+        address.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, address.StationNo);
         address.Address = NormalizeNullableText(address.Address);
         address.DataType = AppConstants.PlcDataTypes.All.Contains(address.DataType)
             ? address.DataType
@@ -113,7 +142,9 @@ public class PlcAddressService : IPlcAddressService
     /// </summary>
     private static bool HasAddressChanged(BizPlcAddress oldAddress, BizPlcAddress newAddress)
     {
-        return !SameText(oldAddress.Address, newAddress.Address)
+        return !SameText(oldAddress.LogicalKey, newAddress.LogicalKey)
+            || oldAddress.StationNo != newAddress.StationNo
+            || !SameText(oldAddress.Address, newAddress.Address)
             || !SameText(oldAddress.DataType, newAddress.DataType)
             || oldAddress.DataLength != newAddress.DataLength
             || oldAddress.Enabled != newAddress.Enabled
@@ -137,11 +168,47 @@ public class PlcAddressService : IPlcAddressService
             StringComparison.Ordinal);
     }
 
+    private static string NormalizeLogicalKey(string? logicalKey)
+    {
+        var normalizedKey = logicalKey?.Trim();
+        return string.IsNullOrWhiteSpace(normalizedKey)
+            ? string.Empty
+            : normalizedKey;
+    }
+
+    private static string BuildStationAddressKey(string logicalKey, int stationNo)
+    {
+        return stationNo <= ProductionConstants.Stations.DefaultStationNo
+            ? logicalKey
+            : $"{logicalKey}_s{stationNo}";
+    }
+
+    private static bool IsStationSpecificLogicalKey(string? logicalKey)
+    {
+        return logicalKey is AppConstants.PlcAddressKeys.WeldStart
+            or AppConstants.PlcAddressKeys.WeldEnd
+            or AppConstants.PlcAddressKeys.WorkId
+            or AppConstants.PlcAddressKeys.ProgramName
+            or AppConstants.PlcAddressKeys.ProductModel
+            or AppConstants.PlcAddressKeys.TotalProduction
+            or AppConstants.PlcAddressKeys.TargetProduction
+            or AppConstants.PlcAddressKeys.AcceptedQuantity
+            or AppConstants.PlcAddressKeys.RejectedQuantity;
+    }
+
+    private static int NormalizeStationNo(int stationNo)
+    {
+        return stationNo <= ProductionConstants.Stations.SharedStationNo
+            ? ProductionConstants.Stations.DefaultStationNo
+            : stationNo;
+    }
+
     private void EnsureSeedData()
     {
         _dbContext.InitDatabase();
+        MigrateStationColumns();
 
-        foreach (var address in BuildDefaultAddresses())
+        foreach (var address in BuildDefaultAddresses(IsDualStationModeEnabled()))
         {
             var exists = _dbContext.Db.Queryable<BizPlcAddress>()
                 .Any(it => it.AddressKey == address.AddressKey);
@@ -157,27 +224,102 @@ public class PlcAddressService : IPlcAddressService
         MigrateAndRemoveLegacySerialNumberAddress();
     }
 
-    private static IReadOnlyList<BizPlcAddress> BuildDefaultAddresses()
+    /// <summary>
+    /// Existing databases only had AddressKey. Fill the new station fields without changing user-entered PLC addresses.
+    /// </summary>
+    private void MigrateStationColumns()
     {
-        return new[]
+        var addresses = _dbContext.Db.Queryable<BizPlcAddress>().ToList();
+        foreach (var address in addresses)
         {
-            Create(AppConstants.PlcAddressKeys.PlcHeartBeat, "PLC Heartbeat", AppConstants.PlcDataTypes.Int16, 1, 10, "Read this address to confirm PLC communication."),
-            Create(AppConstants.PlcAddressKeys.PcHeartBeat, "PC Heartbeat", AppConstants.PlcDataTypes.Int16, 1, 20, "Optional address written by PC to notify PLC that software is alive."),
-            Create(AppConstants.PlcAddressKeys.DeviceStatus, "Device Status", AppConstants.PlcDataTypes.Int16, 1, 30, "Device running status address."),
-            Create(AppConstants.PlcAddressKeys.WeldStart, "Weld Start", AppConstants.PlcDataTypes.Bool, 1, 40, "Welding start signal."),
-            Create(AppConstants.PlcAddressKeys.WeldEnd, "Weld End", AppConstants.PlcDataTypes.Bool, 1, 50, "Welding end signal."),
-            Create(AppConstants.PlcAddressKeys.WorkId, "Work Order No", AppConstants.PlcDataTypes.String, 32, 60, "Work order number address."),
-            Create(AppConstants.PlcAddressKeys.ProgramName, "Program Name", AppConstants.PlcDataTypes.String, 32, 70, "Program name address."),
-            Create(AppConstants.PlcAddressKeys.ProductModel, "Product Model", AppConstants.PlcDataTypes.String, 32, 80, "Product model address."),
-            Create(AppConstants.PlcAddressKeys.TotalProduction, "Total Processed", AppConstants.PlcDataTypes.Int32, 1, 90, "Total processed counter."),
-            Create(AppConstants.PlcAddressKeys.TargetProduction, "Target Production", AppConstants.PlcDataTypes.Int32, 1, 100, "Target production counter."),
-            Create(AppConstants.PlcAddressKeys.AcceptedQuantity, "Accepted Quantity", AppConstants.PlcDataTypes.Int32, 1, 110, "Accepted quantity counter."),
-            Create(AppConstants.PlcAddressKeys.RejectedQuantity, "Rejected Quantity", AppConstants.PlcDataTypes.Int32, 1, 120, "Rejected quantity counter.")
-        };
+            var changed = false;
+            if (string.IsNullOrWhiteSpace(address.LogicalKey))
+            {
+                address.LogicalKey = address.AddressKey;
+                changed = true;
+            }
+
+            if (address.StationNo <= 0 && IsStationSpecificLogicalKey(address.LogicalKey))
+            {
+                address.StationNo = ProductionConstants.Stations.DefaultStationNo;
+                changed = true;
+            }
+
+            if (address.StationNo < 0)
+            {
+                address.StationNo = ProductionConstants.Stations.SharedStationNo;
+                changed = true;
+            }
+
+            if (!changed)
+            {
+                continue;
+            }
+
+            _dbContext.Db.Updateable(address)
+                .UpdateColumns(it => new { it.LogicalKey, it.StationNo })
+                .Where(it => it.AddressKey == address.AddressKey)
+                .ExecuteCommand();
+        }
     }
+
+    private static IReadOnlyList<BizPlcAddress> BuildDefaultAddresses(bool dualStationEnabled)
+    {
+        var addresses = new List<BizPlcAddress>
+        {
+            CreateShared(AppConstants.PlcAddressKeys.PlcHeartBeat, "PLC Heartbeat", AppConstants.PlcDataTypes.Int16, 1, 10, "Read this address to confirm PLC communication."),
+            CreateShared(AppConstants.PlcAddressKeys.PcHeartBeat, "PC Heartbeat", AppConstants.PlcDataTypes.Int16, 1, 20, "Optional address written by PC to notify PLC that software is alive."),
+            CreateShared(AppConstants.PlcAddressKeys.DeviceStatus, "Device Status", AppConstants.PlcDataTypes.Int16, 1, 30, "Device running status address.")
+        };
+
+        var stationNumbers = dualStationEnabled
+            ? new[] { 1, 2 }
+            : new[] { ProductionConstants.Stations.DefaultStationNo };
+
+        foreach (var stationNo in stationNumbers)
+        {
+            addresses.Add(CreateStation(AppConstants.PlcAddressKeys.WeldStart, stationNo, "Weld Start", AppConstants.PlcDataTypes.Bool, 1, 40, "Welding start signal."));
+            addresses.Add(CreateStation(AppConstants.PlcAddressKeys.WeldEnd, stationNo, "Weld End", AppConstants.PlcDataTypes.Bool, 1, 50, "Welding end signal."));
+            addresses.Add(CreateStation(AppConstants.PlcAddressKeys.WorkId, stationNo, "Work Order No", AppConstants.PlcDataTypes.String, 32, 60, "Work order number address."));
+            addresses.Add(CreateStation(AppConstants.PlcAddressKeys.ProgramName, stationNo, "Program Name", AppConstants.PlcDataTypes.String, 32, 70, "Program name address."));
+            addresses.Add(CreateStation(AppConstants.PlcAddressKeys.ProductModel, stationNo, "Product Model", AppConstants.PlcDataTypes.String, 32, 80, "Product model address."));
+            addresses.Add(CreateStation(AppConstants.PlcAddressKeys.TotalProduction, stationNo, "Total Processed", AppConstants.PlcDataTypes.Int32, 1, 90, "Total processed counter."));
+            addresses.Add(CreateStation(AppConstants.PlcAddressKeys.TargetProduction, stationNo, "Target Production", AppConstants.PlcDataTypes.Int32, 1, 100, "Target production counter."));
+            addresses.Add(CreateStation(AppConstants.PlcAddressKeys.AcceptedQuantity, stationNo, "Accepted Quantity", AppConstants.PlcDataTypes.Int32, 1, 110, "Accepted quantity counter."));
+            addresses.Add(CreateStation(AppConstants.PlcAddressKeys.RejectedQuantity, stationNo, "Rejected Quantity", AppConstants.PlcDataTypes.Int32, 1, 120, "Rejected quantity counter."));
+        }
+
+        return addresses;
+    }
+
+    private bool IsDualStationModeEnabled()
+    {
+        return _settingsService.Get().EnableDualStationMode;
+    }
+
+    private static BizPlcAddress CreateShared(
+        string logicalKey,
+        string name,
+        string dataType,
+        int length,
+        int sort,
+        string description)
+        => Create(logicalKey, logicalKey, ProductionConstants.Stations.SharedStationNo, name, dataType, length, sort, description);
+
+    private static BizPlcAddress CreateStation(
+        string logicalKey,
+        int stationNo,
+        string name,
+        string dataType,
+        int length,
+        int sort,
+        string description)
+        => Create(BuildStationAddressKey(logicalKey, stationNo), logicalKey, stationNo, name, dataType, length, sort, description);
 
     private static BizPlcAddress Create(
         string key,
+        string logicalKey,
+        int stationNo,
         string name,
         string dataType,
         int length,
@@ -187,6 +329,8 @@ public class PlcAddressService : IPlcAddressService
         return new BizPlcAddress
         {
             AddressKey = key,
+            LogicalKey = logicalKey,
+            StationNo = stationNo,
             AddressName = name,
             DataType = dataType,
             DataLength = length,
