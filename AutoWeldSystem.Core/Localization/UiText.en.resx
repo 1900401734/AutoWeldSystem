@@ -807,6 +807,9 @@
   <data name="monitor.label.current_lang" xml:space="preserve">
     <value>Language</value>
   </data>
+  <data name="monitor.label.station" xml:space="preserve">
+    <value>Current Station</value>
+  </data>
   <data name="monitor.label.work_order_no" xml:space="preserve">
     <value>Work Order</value>
   </data>

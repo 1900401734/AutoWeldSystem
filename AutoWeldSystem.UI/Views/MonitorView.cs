@@ -23,9 +23,11 @@ public partial class MonitorView : BaseView
     private const int HeaderStatusCellMinWidth = 140;
     private const int HeaderStatusCellPadding = 36;
     private const int HeaderButtonPadding = 62;
+    private const int StationSelectorRowIndex = 3;
     private const string VersionPrefix = "v";
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 1000 };
     private readonly ILocalizationService _localizer;
+    private readonly IAppSettingsService _settingsService;
     private readonly IPlcCommunicationService _plcCommunicationService;
     private readonly IMesConnectionMonitorService _mesConnectionMonitorService;
     private readonly IPlcProductionMonitorService _plcProductionMonitorService;
@@ -34,6 +36,8 @@ public partial class MonitorView : BaseView
     private readonly IWeldTaskService _weldTaskService;
     private readonly IProgramExceptionLogService _exceptionLogService;
     private bool _syncingLanguageSelection;
+    private bool _syncingStationSelection;
+    private bool _dualStationModeEnabled;
     private string? _runtimeStatusKey = TextKeys.Monitor.RuntimeStatus.Idle;
     private object[] _runtimeStatusArgs = Array.Empty<object>();
     private string? _runtimeStatusText;
@@ -54,6 +58,7 @@ public partial class MonitorView : BaseView
 
     public MonitorView(
         ILocalizationService localizer,
+        IAppSettingsService settingsService,
         IPlcCommunicationService plcCommunicationService,
         IMesConnectionMonitorService mesConnectionMonitorService,
         IPlcProductionMonitorService plcProductionMonitorService,
@@ -65,6 +70,7 @@ public partial class MonitorView : BaseView
         InitializeComponent();
 
         _localizer = localizer;
+        _settingsService = settingsService;
         _plcCommunicationService = plcCommunicationService;
         _mesConnectionMonitorService = mesConnectionMonitorService;
         _plcProductionMonitorService = plcProductionMonitorService;
@@ -78,6 +84,7 @@ public partial class MonitorView : BaseView
         ConfigureRuntimeMessagePanels();
         ConfigureStationResultTags();
         ApplyLocalizedTexts();
+        ConfigureStationSelector();
         ConfigureTables();
         ConfigureProductionTableColumns();
         ConfigureWeldParameterTableColumns();
@@ -341,6 +348,87 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
+    /// 根据系统设置决定是否显示工位选择。默认单工位模式下强制回到工位 1，避免误操作到隐藏工位。
+    /// </summary>
+    private void ConfigureStationSelector()
+    {
+        _dualStationModeEnabled = _settingsService.Get().EnableDualStationMode;
+        SetStationSelectorVisible(_dualStationModeEnabled);
+        tag2.Visible = _dualStationModeEnabled || _weldParameterRows.Any(row => row.StationNo == 2);
+
+        if (!_dualStationModeEnabled && CurrentStationNo != ProductionConstants.Stations.DefaultStationNo)
+        {
+            _weldTaskService.SelectStation(ProductionConstants.Stations.DefaultStationNo);
+        }
+
+        BindStationSelection();
+    }
+
+    private void SetStationSelectorVisible(bool visible)
+    {
+        tableLayoutPanel10.Visible = visible;
+
+        if (TLPWorkOrderInfo.RowStyles.Count <= StationSelectorRowIndex)
+        {
+            return;
+        }
+
+        TLPWorkOrderInfo.RowStyles[StationSelectorRowIndex].SizeType = visible
+            ? SizeType.Percent
+            : SizeType.Absolute;
+        TLPWorkOrderInfo.RowStyles[StationSelectorRowIndex].Height = visible ? 10F : 0F;
+    }
+
+    private void BindStationSelection()
+    {
+        _syncingStationSelection = true;
+        try
+        {
+            selectStation.Items.Clear();
+            selectStation.Items.AddRange(new object[]
+            {
+                FormatStationName(1),
+                FormatStationName(2)
+            });
+            SyncStationSelection();
+        }
+        finally
+        {
+            _syncingStationSelection = false;
+        }
+    }
+
+    private void SyncStationSelection()
+    {
+        if (selectStation.Items.Count == 0)
+        {
+            return;
+        }
+
+        var index = Math.Max(0, Math.Min(selectStation.Items.Count - 1, CurrentStationNo - 1));
+        if (selectStation.SelectedIndex != index)
+        {
+            selectStation.SelectedIndex = index;
+        }
+    }
+
+    private string FormatStationName(int stationNo)
+    {
+        return $"{_localizer.GetString(TextKeys.Monitor.Label.Station)} {stationNo}";
+    }
+
+    private int CurrentStationNo
+    {
+        get
+        {
+            var stationNo = _weldTaskService.CurrentState.CurrentStationNo;
+            return stationNo <= 0
+                ? ProductionConstants.Stations.DefaultStationNo
+                : stationNo;
+        }
+    }
+
+    /// <summary>
     /// 标题文字或容器尺寸变化后，重新计算一个尽量填满区域但不溢出的字号。
     /// </summary>
     private void TitleLayout_Changed(object? sender, EventArgs e)
@@ -433,6 +521,7 @@ public partial class MonitorView : BaseView
         btnExpStart.Click += StartReport_Click;
         btnExpEnd.Click += FinishReport_Click;
         select_Lang.SelectedIndexChanged += Language_SelectedIndexChanged;
+        selectStation.SelectedIndexChanged += Station_SelectedIndexChanged;
         GlobalContext.SessionChanged += GlobalContext_SessionChanged;
         _weldTaskService.StateChanged += WeldTaskService_StateChanged;
         _plcCommunicationService.StatusChanged += PlcCommunicationService_StatusChanged;
@@ -448,6 +537,7 @@ public partial class MonitorView : BaseView
     protected override void OnLanguageChanged()
     {
         ApplyLocalizedTexts();
+        ConfigureStationSelector();
         BindSessionInfo();
         BindLanguageSelection();
         BindProductionRuntimeState();
@@ -467,6 +557,7 @@ public partial class MonitorView : BaseView
         UpdateCurrentTime();
         BindSessionInfo();
         BindLanguageSelection();
+        ConfigureStationSelector();
         BindProductionRuntimeState();
         RefreshRuntimePanels();
         ApplyPlcStatus(_plcCommunicationService.Current);
@@ -641,6 +732,7 @@ public partial class MonitorView : BaseView
 
     private async void StartReport_Click(object? sender, EventArgs e)
     {
+        var stationNo = CurrentStationNo;
         if (ShouldPrepareWorkOrderBeforeStart()
             && !await PrepareWorkOrderAndProgramAsync(forceManualInput: false))
         {
@@ -663,7 +755,7 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        var employeeNumber = await PromptValidatedOperatorAsync();
+        var employeeNumber = await PromptValidatedOperatorAsync(stationNo);
         if (string.IsNullOrWhiteSpace(employeeNumber))
         {
             return;
@@ -673,7 +765,7 @@ public partial class MonitorView : BaseView
         {
             ClearRuntimeError();
             SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.SubmittingStart);
-            var task = await _weldTaskService.StartAsync(employeeNumber, actualQty);
+            var task = await _weldTaskService.StartAsync(employeeNumber, actualQty, stationNo);
             RefreshProductionRuntimeState();
             ShowInfo(TextKeys.Monitor.Message.StartSuccess, task.ExpStartId ?? string.Empty);
         });
@@ -681,6 +773,7 @@ public partial class MonitorView : BaseView
 
     private async void FinishReport_Click(object? sender, EventArgs e)
     {
+        var stationNo = CurrentStationNo;
         var state = _weldTaskService.CurrentState;
         if (state.ActiveTask is null)
         {
@@ -688,7 +781,7 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        var employeeNumber = await PromptValidatedOperatorAsync();
+        var employeeNumber = await PromptValidatedOperatorAsync(stationNo);
         if (string.IsNullOrWhiteSpace(employeeNumber))
         {
             return;
@@ -707,7 +800,7 @@ public partial class MonitorView : BaseView
         {
             ClearRuntimeError();
             SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.SubmittingFinish);
-            await _weldTaskService.FinishAsync(employeeNumber, actualQty, qualifiedQty, failedQty);
+            await _weldTaskService.FinishAsync(employeeNumber, actualQty, qualifiedQty, failedQty, stationNo);
             RefreshProductionRuntimeState();
             ShowInfo(TextKeys.Monitor.Message.FinishSuccess);
         });
@@ -721,6 +814,11 @@ public partial class MonitorView : BaseView
             return true;
         }
 
+        if (_dualStationModeEnabled)
+        {
+            return false;
+        }
+
         var plcWorkId = _plcWorkIdMonitorService.Current.WorkId.Trim();
         return !string.IsNullOrWhiteSpace(plcWorkId)
             && !string.Equals(state.CurrentWorkOrder.SN, plcWorkId, StringComparison.OrdinalIgnoreCase);
@@ -728,6 +826,7 @@ public partial class MonitorView : BaseView
 
     private async Task<bool> PrepareWorkOrderAndProgramAsync(bool forceManualInput)
     {
+        var stationNo = CurrentStationNo;
         if (!TryResolveWorkId(forceManualInput, out var workId))
         {
             return false;
@@ -738,7 +837,7 @@ public partial class MonitorView : BaseView
         {
             ClearRuntimeError();
             SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.LoadingWorkOrder);
-            var workOrder = await _weldTaskService.GetWorkOrderInfoAsync(workId);
+            var workOrder = await _weldTaskService.GetWorkOrderInfoAsync(workId, stationNo);
             if (workOrder is null)
             {
                 ShowBusinessWarning(
@@ -754,9 +853,9 @@ public partial class MonitorView : BaseView
                 return;
             }
 
-            _weldTaskService.SelectProcess(process);
+            _weldTaskService.SelectProcess(process, stationNo);
             SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.LoadingPrograms);
-            var programs = await _weldTaskService.LoadProgramsAsync();
+            var programs = await _weldTaskService.LoadProgramsAsync(stationNo);
             if (programs.Count == 0)
             {
                 ShowBusinessWarning(
@@ -773,7 +872,7 @@ public partial class MonitorView : BaseView
             }
 
             SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.DownloadingProgram);
-            var detail = await _weldTaskService.DownloadProgramAsync(program);
+            var detail = await _weldTaskService.DownloadProgramAsync(program, stationNo);
             if (detail is null)
             {
                 ShowBusinessWarning(
@@ -796,7 +895,10 @@ public partial class MonitorView : BaseView
     {
         var snapshot = _plcWorkIdMonitorService.Current;
         var plcWorkId = snapshot.WorkId.Trim();
-        if (!forceManualInput && snapshot.IsSuccess && !string.IsNullOrWhiteSpace(plcWorkId))
+        if (!_dualStationModeEnabled
+            && !forceManualInput
+            && snapshot.IsSuccess
+            && !string.IsNullOrWhiteSpace(plcWorkId))
         {
             workId = plcWorkId;
             return true;
@@ -839,6 +941,24 @@ public partial class MonitorView : BaseView
         _localizer.SetLanguage(targetLanguage);
     }
 
+    private void Station_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
+    {
+        if (_syncingStationSelection || !_dualStationModeEnabled)
+        {
+            return;
+        }
+
+        var stationNo = Math.Max(ProductionConstants.Stations.DefaultStationNo, selectStation.SelectedIndex + 1);
+        if (stationNo == CurrentStationNo)
+        {
+            return;
+        }
+
+        _weldTaskService.SelectStation(stationNo);
+        RefreshProductionRuntimeState();
+        SyncStationSelection();
+    }
+
     /// <summary>
     /// 会话信息里的“未登录”文本要随语言一起切换。
     /// </summary>
@@ -856,8 +976,9 @@ public partial class MonitorView : BaseView
         var workOrder = state.CurrentWorkOrder;
         var process = state.SelectedProcess;
         var program = state.SelectedProgram;
-        var liveWorkId = _plcWorkIdMonitorService.Current.WorkId.Trim();
+        var liveWorkId = _dualStationModeEnabled ? string.Empty : _plcWorkIdMonitorService.Current.WorkId.Trim();
 
+        SyncStationSelection();
         inputSN.Text = !string.IsNullOrWhiteSpace(liveWorkId) ? liveWorkId : workOrder?.SN ?? string.Empty;
         inputProdNum.Text = workOrder?.ProdNum ?? string.Empty;
         inputBatch.Text = workOrder?.Batch ?? string.Empty;
@@ -881,6 +1002,11 @@ public partial class MonitorView : BaseView
 
     private void ApplyWorkIdSnapshot(PlcWorkIdSnapshot snapshot)
     {
+        if (_dualStationModeEnabled)
+        {
+            return;
+        }
+
         if (snapshot.IsSuccess)
         {
             BindProductionRuntimeState();
@@ -958,6 +1084,7 @@ public partial class MonitorView : BaseView
 
         lblCurUser.Text = _localizer.GetString(TextKeys.Monitor.Label.CurrentUser);
         lblCurLang.Text = _localizer.GetString(TextKeys.Monitor.Label.CurrentLang);
+        lblStation.Text = _localizer.GetString(TextKeys.Monitor.Label.Station);
         lblWorkOrder.Text = _localizer.GetString(TextKeys.Monitor.Label.WorkOrderNo);
         lblProgramName.Text = _localizer.GetString(TextKeys.Monitor.Label.ProgramName);
         lblProductNo.Text = _localizer.GetString(TextKeys.Monitor.Label.ProductNo);
@@ -1358,7 +1485,7 @@ public partial class MonitorView : BaseView
         return $"{program.ProgramName} | {program.ProgramType} | {program.ProductNum} | {program.Id}";
     }
 
-    private async Task<string> PromptValidatedOperatorAsync()
+    private async Task<string> PromptValidatedOperatorAsync(int stationNo)
     {
         while (true)
         {
@@ -1370,7 +1497,7 @@ public partial class MonitorView : BaseView
 
             ClearRuntimeError();
             SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.ValidatingOperator);
-            var response = await _weldTaskService.ValidateMesOperatorAsync(form.EmployeeNumber);
+            var response = await _weldTaskService.ValidateMesOperatorAsync(form.EmployeeNumber, stationNo);
             if (response.IsSuccess)
             {
                 return form.EmployeeNumber;

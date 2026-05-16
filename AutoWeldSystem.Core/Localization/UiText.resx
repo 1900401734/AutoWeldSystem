@@ -807,6 +807,9 @@
   <data name="monitor.label.current_lang" xml:space="preserve">
     <value>当前语言</value>
   </data>
+  <data name="monitor.label.station" xml:space="preserve">
+    <value>当前工位</value>
+  </data>
   <data name="monitor.label.work_order_no" xml:space="preserve">
     <value>工单号</value>
   </data>

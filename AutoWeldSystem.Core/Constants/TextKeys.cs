@@ -101,6 +101,7 @@ public static class TextKeys
 
             public const string CurrentUser = "monitor.label.current_user";
             public const string CurrentLang = "monitor.label.current_lang";
+            public const string Station = "monitor.label.station";
             public const string WorkOrderNo = "monitor.label.work_order_no";
             public const string ProgramName = "monitor.label.program_name";
             public const string ProductNo = "monitor.label.product_no";
