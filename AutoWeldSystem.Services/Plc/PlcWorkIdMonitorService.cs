@@ -16,7 +16,9 @@ public sealed class PlcWorkIdMonitorService : IPlcWorkIdMonitorService, IDisposa
 
     private readonly SemaphoreSlim _sync = new(1, 1);
     private readonly object _businessLogSync = new();
-    private BizPlcAddress? _address;
+    private readonly object _snapshotSync = new();
+    private Dictionary<int, BizPlcAddress?> _addresses = new();
+    private Dictionary<int, PlcWorkIdSnapshot> _stationSnapshots = new();
     private CancellationTokenSource? _cts;
     private Task? _loopTask;
     private string _lastBusinessLogKey = string.Empty;
@@ -35,12 +37,24 @@ public sealed class PlcWorkIdMonitorService : IPlcWorkIdMonitorService, IDisposa
         _plcCommunicationService = plcCommunicationService;
         _localizer = localizer;
         _exceptionLogService = exceptionLogService;
-        Current = new PlcWorkIdSnapshot(false, string.Empty, default, string.Empty);
+        Current = CreateSnapshot(ProductionConstants.Stations.DefaultStationNo, false, string.Empty, default, string.Empty);
+        _stationSnapshots[ProductionConstants.Stations.DefaultStationNo] = Current;
     }
 
     public event EventHandler<PlcWorkIdSnapshot>? WorkIdChanged;
 
     public PlcWorkIdSnapshot Current { get; private set; }
+
+    public PlcWorkIdSnapshot GetCurrent(int stationNo)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        lock (_snapshotSync)
+        {
+            return _stationSnapshots.TryGetValue(normalizedStationNo, out var snapshot)
+                ? snapshot
+                : CreateSnapshot(normalizedStationNo, false, string.Empty, default, string.Empty);
+        }
+    }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
@@ -80,12 +94,23 @@ public sealed class PlcWorkIdMonitorService : IPlcWorkIdMonitorService, IDisposa
 
     public async Task ReloadAddressAsync(CancellationToken cancellationToken = default)
     {
-        var address = _addressService.GetByKey(AppConstants.PlcAddressKeys.WorkId);
+        var addresses = ResolveWorkIdAddresses();
 
         await _sync.WaitAsync(cancellationToken);
         try
         {
-            _address = address;
+            _addresses = addresses;
+
+            lock (_snapshotSync)
+            {
+                foreach (var stationNo in addresses.Keys)
+                {
+                    if (!_stationSnapshots.ContainsKey(stationNo))
+                    {
+                        _stationSnapshots[stationNo] = CreateSnapshot(stationNo, false, string.Empty, default, string.Empty);
+                    }
+                }
+            }
         }
         finally
         {
@@ -134,7 +159,7 @@ public sealed class PlcWorkIdMonitorService : IPlcWorkIdMonitorService, IDisposa
             }
             catch (Exception ex)
             {
-                WriteBusinessFailureLog(ex.Message);
+                WriteBusinessFailureLog(Current.StationNo, ex.Message);
                 Publish(Current with
                 {
                     IsSuccess = false,
@@ -148,12 +173,24 @@ public sealed class PlcWorkIdMonitorService : IPlcWorkIdMonitorService, IDisposa
 
     private async Task ReadOnceAsync(CancellationToken cancellationToken)
     {
-        var address = await GetAddressAsync(cancellationToken);
+        var addresses = await GetAddressSnapshotAsync(cancellationToken);
+        foreach (var (stationNo, address) in addresses.OrderBy(it => it.Key))
+        {
+            await ReadStationOnceAsync(stationNo, address, cancellationToken);
+        }
+    }
+
+    private async Task ReadStationOnceAsync(
+        int stationNo,
+        BizPlcAddress? address,
+        CancellationToken cancellationToken)
+    {
+        var current = GetCurrent(stationNo);
         if (address is null || string.IsNullOrWhiteSpace(address.Address))
         {
             var message = _localizer.GetString(TextKeys.Plc.MessageAddressRequired);
-            WriteBusinessFailureLog(message);
-            Publish(new PlcWorkIdSnapshot(false, Current.WorkId, DateTime.Now, message));
+            WriteBusinessFailureLog(stationNo, message);
+            Publish(CreateSnapshot(stationNo, false, current.WorkId, DateTime.Now, message));
             return;
         }
 
@@ -161,21 +198,21 @@ public sealed class PlcWorkIdMonitorService : IPlcWorkIdMonitorService, IDisposa
         var result = await _plcCommunicationService.ReadStringAsync(address.Address, length, cancellationToken);
         if (!result.IsSuccess)
         {
-            WriteBusinessFailureLog(result.Message);
-            Publish(new PlcWorkIdSnapshot(false, Current.WorkId, DateTime.Now, result.Message));
+            WriteBusinessFailureLog(stationNo, result.Message);
+            Publish(CreateSnapshot(stationNo, false, current.WorkId, DateTime.Now, result.Message));
             return;
         }
 
         var workId = (result.Value ?? string.Empty).Trim('\0', ' ', '\r', '\n', '\t');
-        Publish(new PlcWorkIdSnapshot(true, workId, DateTime.Now, string.Empty));
+        Publish(CreateSnapshot(stationNo, true, workId, DateTime.Now, string.Empty));
     }
 
-    private async Task<BizPlcAddress?> GetAddressAsync(CancellationToken cancellationToken)
+    private async Task<Dictionary<int, BizPlcAddress?>> GetAddressSnapshotAsync(CancellationToken cancellationToken)
     {
         await _sync.WaitAsync(cancellationToken);
         try
         {
-            return _address;
+            return new Dictionary<int, BizPlcAddress?>(_addresses);
         }
         finally
         {
@@ -185,22 +222,31 @@ public sealed class PlcWorkIdMonitorService : IPlcWorkIdMonitorService, IDisposa
 
     private void Publish(PlcWorkIdSnapshot snapshot)
     {
-        if (snapshot.Equals(Current))
+        var previous = GetCurrent(snapshot.StationNo);
+        if (snapshot.Equals(previous))
         {
             return;
         }
 
-        Current = snapshot;
+        lock (_snapshotSync)
+        {
+            _stationSnapshots[snapshot.StationNo] = snapshot;
+            if (snapshot.StationNo == ProductionConstants.Stations.DefaultStationNo)
+            {
+                Current = snapshot;
+            }
+        }
+
         WorkIdChanged?.Invoke(this, snapshot);
     }
 
     /// <summary>
     /// PLC 工单号读取失败属于可预见业务异常，详细原因写日志，界面只显示“工单号读取失败”。
     /// </summary>
-    private void WriteBusinessFailureLog(string detail)
+    private void WriteBusinessFailureLog(int stationNo, string detail)
     {
         var summary = _localizer.GetString(TextKeys.Monitor.RuntimeError.WorkIdReadFailed);
-        if (!ShouldWriteBusinessLog(summary, detail))
+        if (!ShouldWriteBusinessLog(stationNo, summary, detail))
         {
             return;
         }
@@ -209,12 +255,12 @@ public sealed class PlcWorkIdMonitorService : IPlcWorkIdMonitorService, IDisposa
             "PLC.WorkIdMonitor",
             summary,
             detail,
-            "读取地址维护中配置的工单号地址失败。");
+            $"读取地址维护中配置的工单号地址失败。Station={stationNo}");
     }
 
-    private bool ShouldWriteBusinessLog(string summary, string detail)
+    private bool ShouldWriteBusinessLog(int stationNo, string summary, string detail)
     {
-        var key = $"{summary}|{detail}";
+        var key = $"{stationNo}|{summary}|{detail}";
         lock (_businessLogSync)
         {
             var now = DateTime.Now;
@@ -228,5 +274,65 @@ public sealed class PlcWorkIdMonitorService : IPlcWorkIdMonitorService, IDisposa
             _lastBusinessLogTime = now;
             return true;
         }
+    }
+
+    private Dictionary<int, BizPlcAddress?> ResolveWorkIdAddresses()
+    {
+        var addresses = _addressService.GetAll()
+            .Where(IsWorkIdAddress)
+            .GroupBy(address => NormalizeStationNo(address.StationNo))
+            .ToDictionary(
+                group => group.Key,
+                group => NormalizeReadableAddress(group.OrderBy(address => address.Sort).First()),
+                EqualityComparer<int>.Default);
+
+        if (addresses.Count == 0)
+        {
+            addresses[ProductionConstants.Stations.DefaultStationNo] = NormalizeReadableAddress(
+                _addressService.GetByKey(AppConstants.PlcAddressKeys.WorkId, ProductionConstants.Stations.DefaultStationNo));
+        }
+
+        return addresses
+            .OrderBy(item => item.Key)
+            .ToDictionary(item => item.Key, item => item.Value);
+    }
+
+    private static BizPlcAddress? NormalizeReadableAddress(BizPlcAddress? address)
+    {
+        return address is { Enabled: true } && !string.IsNullOrWhiteSpace(address.Address)
+            ? address
+            : null;
+    }
+
+    private static bool IsWorkIdAddress(BizPlcAddress address)
+    {
+        return string.Equals(GetLogicalKey(address), AppConstants.PlcAddressKeys.WorkId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetLogicalKey(BizPlcAddress address)
+    {
+        return string.IsNullOrWhiteSpace(address.LogicalKey)
+            ? address.AddressKey
+            : address.LogicalKey.Trim();
+    }
+
+    private static PlcWorkIdSnapshot CreateSnapshot(
+        int stationNo,
+        bool isSuccess,
+        string workId,
+        DateTime updatedTime,
+        string message)
+    {
+        return new PlcWorkIdSnapshot(isSuccess, workId, updatedTime, message)
+        {
+            StationNo = NormalizeStationNo(stationNo)
+        };
+    }
+
+    private static int NormalizeStationNo(int stationNo)
+    {
+        return stationNo <= ProductionConstants.Stations.SharedStationNo
+            ? ProductionConstants.Stations.DefaultStationNo
+            : stationNo;
     }
 }

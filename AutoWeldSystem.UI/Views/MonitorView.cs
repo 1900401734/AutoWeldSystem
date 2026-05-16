@@ -428,6 +428,19 @@ public partial class MonitorView : BaseView
         }
     }
 
+    private PlcWorkIdSnapshot GetCurrentWorkIdSnapshot()
+    {
+        return _plcWorkIdMonitorService.GetCurrent(CurrentStationNo);
+    }
+
+    private string GetCurrentLiveWorkId()
+    {
+        var snapshot = GetCurrentWorkIdSnapshot();
+        return snapshot.IsSuccess
+            ? snapshot.WorkId.Trim()
+            : string.Empty;
+    }
+
     /// <summary>
     /// 标题文字或容器尺寸变化后，重新计算一个尽量填满区域但不溢出的字号。
     /// </summary>
@@ -814,12 +827,7 @@ public partial class MonitorView : BaseView
             return true;
         }
 
-        if (_dualStationModeEnabled)
-        {
-            return false;
-        }
-
-        var plcWorkId = _plcWorkIdMonitorService.Current.WorkId.Trim();
+        var plcWorkId = GetCurrentLiveWorkId();
         return !string.IsNullOrWhiteSpace(plcWorkId)
             && !string.Equals(state.CurrentWorkOrder.SN, plcWorkId, StringComparison.OrdinalIgnoreCase);
     }
@@ -893,11 +901,10 @@ public partial class MonitorView : BaseView
 
     private bool TryResolveWorkId(bool forceManualInput, out string workId)
     {
-        var snapshot = _plcWorkIdMonitorService.Current;
-        var plcWorkId = snapshot.WorkId.Trim();
-        if (!_dualStationModeEnabled
-            && !forceManualInput
-            && snapshot.IsSuccess
+        var stationSnapshot = GetCurrentWorkIdSnapshot();
+        var plcWorkId = stationSnapshot.WorkId.Trim();
+        if (!forceManualInput
+            && stationSnapshot.IsSuccess
             && !string.IsNullOrWhiteSpace(plcWorkId))
         {
             workId = plcWorkId;
@@ -976,7 +983,7 @@ public partial class MonitorView : BaseView
         var workOrder = state.CurrentWorkOrder;
         var process = state.SelectedProcess;
         var program = state.SelectedProgram;
-        var liveWorkId = _dualStationModeEnabled ? string.Empty : _plcWorkIdMonitorService.Current.WorkId.Trim();
+        var liveWorkId = GetCurrentLiveWorkId();
 
         SyncStationSelection();
         inputSN.Text = !string.IsNullOrWhiteSpace(liveWorkId) ? liveWorkId : workOrder?.SN ?? string.Empty;
@@ -1002,7 +1009,7 @@ public partial class MonitorView : BaseView
 
     private void ApplyWorkIdSnapshot(PlcWorkIdSnapshot snapshot)
     {
-        if (_dualStationModeEnabled)
+        if (snapshot.StationNo != CurrentStationNo)
         {
             return;
         }
