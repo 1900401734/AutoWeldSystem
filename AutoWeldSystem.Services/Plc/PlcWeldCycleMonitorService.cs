@@ -13,6 +13,7 @@ public sealed class PlcWeldCycleMonitorService : IPlcWeldCycleMonitorService, ID
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(200);
     private static readonly TimeSpan BusinessLogInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan CollectionAckPulseWidth = TimeSpan.FromMilliseconds(120);
 
     private readonly IPlcAddressService _addressService;
     private readonly IPlcCommunicationService _plcCommunicationService;
@@ -110,7 +111,8 @@ public sealed class PlcWeldCycleMonitorService : IPlcWeldCycleMonitorService, ID
                 {
                     StationNo = stationNo,
                     StartAddress = FindAddress(addresses, AppConstants.PlcAddressKeys.WeldStart, stationNo),
-                    EndAddress = FindAddress(addresses, AppConstants.PlcAddressKeys.WeldEnd, stationNo)
+                    EndAddress = FindAddress(addresses, AppConstants.PlcAddressKeys.WeldEnd, stationNo),
+                    CollectionAckAddress = FindAddress(addresses, AppConstants.PlcAddressKeys.WeldCollectionAck, stationNo)
                 };
             }
         }
@@ -217,7 +219,7 @@ public sealed class PlcWeldCycleMonitorService : IPlcWeldCycleMonitorService, ID
 
         if (endRising)
         {
-            await CollectWeldPointAsync(task, stationState.CycleStarted, cancellationToken);
+            await CollectWeldPointAsync(task, stationState, cancellationToken);
             stationState.CycleStarted = false;
         }
 
@@ -261,7 +263,8 @@ public sealed class PlcWeldCycleMonitorService : IPlcWeldCycleMonitorService, ID
             {
                 StationNo = normalizedStationNo,
                 StartAddress = _addressService.GetByKey(AppConstants.PlcAddressKeys.WeldStart, normalizedStationNo),
-                EndAddress = _addressService.GetByKey(AppConstants.PlcAddressKeys.WeldEnd, normalizedStationNo)
+                EndAddress = _addressService.GetByKey(AppConstants.PlcAddressKeys.WeldEnd, normalizedStationNo),
+                CollectionAckAddress = _addressService.GetByKey(AppConstants.PlcAddressKeys.WeldCollectionAck, normalizedStationNo)
             };
             _stationStates[normalizedStationNo] = stationState;
             return stationState;
@@ -288,11 +291,11 @@ public sealed class PlcWeldCycleMonitorService : IPlcWeldCycleMonitorService, ID
         }
     }
 
-    private async Task CollectWeldPointAsync(BizWeldTask task, bool hasStartSignal, CancellationToken cancellationToken)
+    private async Task CollectWeldPointAsync(BizWeldTask task, StationCycleState stationState, CancellationToken cancellationToken)
     {
         try
         {
-            if (!hasStartSignal)
+            if (!stationState.CycleStarted)
             {
                 _operationLogService.Write(
                     "WeldCycle",
@@ -300,6 +303,7 @@ public sealed class PlcWeldCycleMonitorService : IPlcWeldCycleMonitorService, ID
             }
 
             var record = await _weldPointCollectionService.CollectAsync(task, task.StationNo, cancellationToken);
+            await PulseCollectionAckAsync(stationState, cancellationToken);
             WeldPointCollected?.Invoke(this, record);
             await _weldPointUploadCoordinatorService.HandleCollectedAsync(record, cancellationToken);
         }
@@ -310,6 +314,29 @@ public sealed class PlcWeldCycleMonitorService : IPlcWeldCycleMonitorService, ID
         catch (Exception ex)
         {
             _exceptionLogService.Write(ex, "PLC.WeldCycleMonitor", $"Station={task.StationNo}, WorkOrder={task.WorkOrderId}");
+        }
+    }
+
+    private async Task PulseCollectionAckAsync(StationCycleState stationState, CancellationToken cancellationToken)
+    {
+        if (!IsUsable(stationState.CollectionAckAddress))
+        {
+            return;
+        }
+
+        var address = stationState.CollectionAckAddress!.Address!;
+        var writeHighResult = await _plcCommunicationService.WriteBoolAsync(address, true, cancellationToken);
+        if (!writeHighResult.IsSuccess)
+        {
+            WriteBusinessFailureLog($"工位{stationState.StationNo}采集完成反馈写入失败", writeHighResult.Message);
+            return;
+        }
+
+        await Task.Delay(CollectionAckPulseWidth, cancellationToken);
+        var writeLowResult = await _plcCommunicationService.WriteBoolAsync(address, false, cancellationToken);
+        if (!writeLowResult.IsSuccess)
+        {
+            WriteBusinessFailureLog($"工位{stationState.StationNo}采集完成反馈复位失败", writeLowResult.Message);
         }
     }
 
@@ -343,7 +370,8 @@ public sealed class PlcWeldCycleMonitorService : IPlcWeldCycleMonitorService, ID
     {
         var logicalKey = GetLogicalKey(address);
         return string.Equals(logicalKey, AppConstants.PlcAddressKeys.WeldStart, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(logicalKey, AppConstants.PlcAddressKeys.WeldEnd, StringComparison.OrdinalIgnoreCase);
+            || string.Equals(logicalKey, AppConstants.PlcAddressKeys.WeldEnd, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(logicalKey, AppConstants.PlcAddressKeys.WeldCollectionAck, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string GetLogicalKey(BizPlcAddress address)
@@ -398,6 +426,8 @@ public sealed class PlcWeldCycleMonitorService : IPlcWeldCycleMonitorService, ID
         public BizPlcAddress? StartAddress { get; init; }
 
         public BizPlcAddress? EndAddress { get; init; }
+
+        public BizPlcAddress? CollectionAckAddress { get; init; }
 
         public bool LastStartSignal { get; set; }
 

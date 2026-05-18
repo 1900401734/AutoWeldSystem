@@ -152,7 +152,8 @@ public sealed class ProgramManageService : IProgramManageService
 
         entity.IsDeleted = true;
         entity.VersionNumber++;
-        entity.CommitMessage = "删除程序";
+        entity.Remark = AppConstants.ProgramRemarkActions.Delete;
+        entity.CommitMessage = AppConstants.ProgramRemarkActions.Delete;
         entity.CommitId = CreateCommitId(entity, entity.CommitMessage);
         entity.UpdatedTime = DateTime.Now;
 

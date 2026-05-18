@@ -5,7 +5,7 @@ namespace AutoWeldSystem.Core.Models;
 
 /// <summary>
 /// Product process configuration.
-/// It tells the collection engine how many weld points a product model has in a specific process.
+/// It tells the collection engine how many weld points a product number/model has and which collection group to use.
 /// </summary>
 [SugarTable("Biz_ProductProcessConfig", TableDescription = "产品型号工艺配置表")]
 public class BizProductProcessConfig
@@ -14,9 +14,15 @@ public class BizProductProcessConfig
     public int Id { get; set; }
 
     /// <summary>
-    /// Product model returned by MES or configured manually.
+    /// Product number. This is the primary key used to bind a program to collection parameters.
     /// </summary>
-    [SugarColumn(Length = 100, ColumnDescription = "产品型号")]
+    [SugarColumn(Length = 50, IsNullable = true, ColumnDescription = "产品工号")]
+    public string? ProductNum { get; set; }
+
+    /// <summary>
+    /// Product model returned by MES or configured manually. This is an auxiliary match key.
+    /// </summary>
+    [SugarColumn(Length = 100, IsNullable = true, ColumnDescription = "产品型号")]
     public string ProductModel { get; set; } = string.Empty;
 
     /// <summary>

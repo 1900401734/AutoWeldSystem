@@ -35,7 +35,9 @@ public partial class SystemSettingView : BaseView
     private readonly ILocalizationService _localizer;
     private readonly IPlcCommunicationService _plcCommunicationService;
     private readonly IProductProcessConfigService _productProcessConfigService;
+    private readonly IProgramManageService _programService;
     private readonly List<BizProductProcessConfig> _productProcessConfigs = new();
+    private readonly List<BizProgram> _programOptions = new();
     private AppSettings _currentSettings = new();
     private List<ProductProcessConfigTableRow> _productProcessRows = new();
     private ProductProcessConfigTableRow? _selectedProductProcessRow;
@@ -49,7 +51,8 @@ public partial class SystemSettingView : BaseView
         IMesProvider mesProvider,
         ILocalizationService localizer,
         IPlcCommunicationService plcCommunicationService,
-        IProductProcessConfigService productProcessConfigService)
+        IProductProcessConfigService productProcessConfigService,
+        IProgramManageService programService)
     {
         InitializeComponent();
 
@@ -58,6 +61,7 @@ public partial class SystemSettingView : BaseView
         _localizer = localizer;
         _plcCommunicationService = plcCommunicationService;
         _productProcessConfigService = productProcessConfigService;
+        _programService = programService;
 
         ConfigureMesProgramFilterOption();
         ConfigureProductProcessTable();
@@ -84,6 +88,7 @@ public partial class SystemSettingView : BaseView
 
         _initialized = true;
         LoadSettings();
+        LoadProgramOptions();
         LoadProductProcessConfigs();
     }
 
@@ -105,7 +110,11 @@ public partial class SystemSettingView : BaseView
         btnAddProductProcess.Click += AddProductProcess_Click;
         btnSaveProductProcesses.Click += SaveProductProcesses_Click;
         btnDisableProductProcess.Click += DisableProductProcess_Click;
-        btnRefreshProductProcesses.Click += (_, _) => LoadProductProcessConfigs();
+        btnRefreshProductProcesses.Click += (_, _) =>
+        {
+            LoadProgramOptions();
+            LoadProductProcessConfigs();
+        };
         tableProductProcesses.CellClick += TableProductProcesses_CellClick;
         tableProductProcesses.CellEndEdit += TableProductProcesses_CellEndEdit;
         tableProductProcesses.CellEndValueEdit += TableProductProcesses_CellEndValueEdit;
@@ -123,10 +132,9 @@ public partial class SystemSettingView : BaseView
         tableProductProcesses.LostFocusClearSelection = false;
 
         tableProductProcesses.Columns.Clear();
-        tableProductProcesses.Columns.Add(CreateProductProcessColumn(nameof(ProductProcessConfigTableRow.ProductModel), "产品型号"));
+        tableProductProcesses.Columns.Add(CreateProgramProductNumColumn());
+        tableProductProcesses.Columns.Add(CreateProgramProductModelColumn());
         tableProductProcesses.Columns.Add(CreateProductProcessColumn(nameof(ProductProcessConfigTableRow.StationNo), "工位(0共享)"));
-        tableProductProcesses.Columns.Add(CreateProductProcessColumn(nameof(ProductProcessConfigTableRow.ProcessNo), "工序号"));
-        tableProductProcesses.Columns.Add(CreateProductProcessColumn(nameof(ProductProcessConfigTableRow.ProcessName), "工序名称"));
         tableProductProcesses.Columns.Add(CreateProductProcessColumn(nameof(ProductProcessConfigTableRow.WeldPointCount), "每件焊点数"));
         tableProductProcesses.Columns.Add(CreateProductProcessColumn(nameof(ProductProcessConfigTableRow.CollectionGroup), "采集组"));
         tableProductProcesses.Columns.Add(CreateProductProcessColumn(nameof(ProductProcessConfigTableRow.ProgramMatchRule), "程序匹配规则"));
@@ -148,6 +156,37 @@ public partial class SystemSettingView : BaseView
             Editable = !readOnly,
             Ellipsis = true,
             DisplayFormat = displayFormat
+        };
+    }
+
+    private AntdUI.ColumnSelect CreateProgramProductNumColumn()
+    {
+        return new AntdUI.ColumnSelect(nameof(ProductProcessConfigTableRow.ProductNum), "产品工号")
+        {
+            Align = AntdUI.ColumnAlign.Center,
+            Editable = true,
+            Items = _programOptions
+                .Where(program => !string.IsNullOrWhiteSpace(program.ProductNum))
+                .GroupBy(program => program.ProductNum.Trim(), StringComparer.OrdinalIgnoreCase)
+                .OrderBy(group => group.Key)
+                .Select(group => new AntdUI.SelectItem(group.Key) { Tag = group.Key })
+                .ToList()
+        };
+    }
+
+    private AntdUI.ColumnSelect CreateProgramProductModelColumn()
+    {
+        return new AntdUI.ColumnSelect(nameof(ProductProcessConfigTableRow.ProductModel), "产品型号")
+        {
+            Align = AntdUI.ColumnAlign.Center,
+            Editable = true,
+            Items = _programOptions
+                .Select(program => program.ProductModel?.Trim())
+                .Where(model => !string.IsNullOrWhiteSpace(model))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(model => model)
+                .Select(model => new AntdUI.SelectItem(model!) { Tag = model! })
+                .ToList()
         };
     }
 
@@ -254,7 +293,7 @@ public partial class SystemSettingView : BaseView
         tabBasicSettings.Text = "基础设置";
         tabProductProcess.Text = "产品工艺配置";
         lblProductProcessTitle.Text = "产品工艺配置";
-        lblProductProcessDescription.Text = "维护工位、产品型号、工序号、每件焊点数量和采集参数组。工位 0 表示所有工位共享配置。";
+        lblProductProcessDescription.Text = "维护产品工号、产品型号、工位、每件焊点数量和采集参数组。工位 0 表示所有工位共享配置。";
         btnAddProductProcess.Text = "新增";
         btnSaveProductProcesses.Text = "保存";
         btnDisableProductProcess.Text = "禁用选中";
@@ -314,14 +353,36 @@ public partial class SystemSettingView : BaseView
         }
     }
 
+    private void LoadProgramOptions()
+    {
+        try
+        {
+            _programOptions.Clear();
+            _programOptions.AddRange(_programService.GetPrograms());
+            ConfigureProductProcessTable();
+        }
+        catch (Exception ex)
+        {
+            ShowErrorMessage($"程序选项加载失败：{ex.Message}");
+        }
+    }
+
+    private BizProgram? GetDefaultProgramOption()
+    {
+        return _programOptions
+            .OrderBy(program => program.ProductNum)
+            .ThenBy(program => program.ProductModel)
+            .FirstOrDefault();
+    }
+
     private void RefreshProductProcessRows()
     {
         var selectedId = _selectedProductProcessRow?.Id;
 
         _productProcessRows = _productProcessConfigs
             .OrderBy(config => config.Sort)
+            .ThenBy(config => config.ProductNum)
             .ThenBy(config => config.ProductModel)
-            .ThenBy(config => config.ProcessNo)
             .Select(config => new ProductProcessConfigTableRow(config))
             .ToList();
 
@@ -340,16 +401,17 @@ public partial class SystemSettingView : BaseView
 
         var config = new BizProductProcessConfig
         {
-            ProductModel = "默认型号",
+            ProductNum = GetDefaultProgramOption()?.ProductNum ?? string.Empty,
+            ProductModel = GetDefaultProgramOption()?.ProductModel ?? string.Empty,
             StationNo = ProductionConstants.Stations.SharedStationNo,
-            ProcessNo = "05",
-            ProcessName = "默认工序",
+            ProcessNo = "*",
+            ProcessName = null,
             WeldPointCount = 1,
             CollectionGroup = "default",
             ProductNoSource = ProductionConstants.ProductNoSources.AutoIncrement,
             Enabled = true,
             Sort = nextSort,
-            Description = "请按现场产品和工序修改"
+            Description = "请按现场产品修改"
         };
 
         _productProcessConfigs.Add(config);
@@ -431,9 +493,9 @@ public partial class SystemSettingView : BaseView
 
         return e.Column.Key switch
         {
+            nameof(ProductProcessConfigTableRow.ProductNum) => !string.IsNullOrWhiteSpace(value),
             nameof(ProductProcessConfigTableRow.ProductModel) => !string.IsNullOrWhiteSpace(value),
             nameof(ProductProcessConfigTableRow.StationNo) => IsNonNegativeInt(value),
-            nameof(ProductProcessConfigTableRow.ProcessNo) => !string.IsNullOrWhiteSpace(value),
             nameof(ProductProcessConfigTableRow.WeldPointCount) => IsPositiveInt(value),
             nameof(ProductProcessConfigTableRow.Sort) => IsNonNegativeInt(value),
             _ => true
@@ -454,6 +516,7 @@ public partial class SystemSettingView : BaseView
         }
 
         _selectedProductProcessRow = row;
+        ApplyProgramSelection(row);
         row.Normalize();
         tableProductProcesses.Refresh();
     }
@@ -467,6 +530,23 @@ public partial class SystemSettingView : BaseView
 
         _selectedProductProcessRow = row;
         row.Enabled = e.Value;
+    }
+
+    private void ApplyProgramSelection(ProductProcessConfigTableRow row)
+    {
+        if (string.IsNullOrWhiteSpace(row.ProductNum))
+        {
+            return;
+        }
+
+        var program = _programOptions.FirstOrDefault(program =>
+            string.Equals(program.ProductNum?.Trim(), row.ProductNum.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (program is null || !string.IsNullOrWhiteSpace(row.ProductModel))
+        {
+            return;
+        }
+
+        row.ProductModel = program.ProductModel ?? string.Empty;
     }
 
     private void SelectVisibleProductProcessRow(int? selectedId)
@@ -492,10 +572,11 @@ public partial class SystemSettingView : BaseView
     {
         foreach (var config in configs)
         {
-            config.ProductModel = NormalizeRequiredText(config.ProductModel);
+            config.ProductNum = NormalizeRequiredText(config.ProductNum);
+            config.ProductModel = NormalizeNullableText(config.ProductModel) ?? string.Empty;
             config.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, config.StationNo);
-            config.ProcessNo = NormalizeRequiredText(config.ProcessNo);
-            config.ProcessName = NormalizeNullableText(config.ProcessName);
+            config.ProcessNo = string.IsNullOrWhiteSpace(config.ProcessNo) ? "*" : config.ProcessNo.Trim();
+            config.ProcessName = null;
             config.WeldPointCount = Math.Max(1, config.WeldPointCount);
             config.CollectionGroup = string.IsNullOrWhiteSpace(config.CollectionGroup)
                 ? "default"
@@ -515,14 +596,14 @@ public partial class SystemSettingView : BaseView
 
         var duplicate = enabledConfigs
             .GroupBy(
-                config => $"{config.StationNo}\u001F{config.ProductModel}\u001F{config.ProcessNo}",
+                config => $"{config.StationNo}\u001F{config.ProductNum}\u001F{config.ProductModel}",
                 StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(group => group.Count() > 1);
 
         if (duplicate is not null)
         {
             var first = duplicate.First();
-            throw new InvalidOperationException($"工位“{first.StationNo}”、产品型号“{first.ProductModel}”与工序号“{first.ProcessNo}”存在重复启用配置。");
+            throw new InvalidOperationException($"工位“{first.StationNo}”、产品工号“{first.ProductNum}”与产品型号“{first.ProductModel}”存在重复启用配置。");
         }
     }
 
@@ -1075,6 +1156,12 @@ public partial class SystemSettingView : BaseView
 
         public int Id => Source.Id;
 
+        public string ProductNum
+        {
+            get => Source.ProductNum ?? string.Empty;
+            set => Source.ProductNum = value.Trim();
+        }
+
         public string ProductModel
         {
             get => Source.ProductModel;
@@ -1145,10 +1232,11 @@ public partial class SystemSettingView : BaseView
 
         public void Normalize()
         {
-            Source.ProductModel = Source.ProductModel.Trim();
+            Source.ProductNum = NormalizeRequiredText(Source.ProductNum);
+            Source.ProductModel = NormalizeNullableText(Source.ProductModel) ?? string.Empty;
             Source.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, Source.StationNo);
-            Source.ProcessNo = Source.ProcessNo.Trim();
-            Source.ProcessName = NormalizeNullableText(Source.ProcessName);
+            Source.ProcessNo = string.IsNullOrWhiteSpace(Source.ProcessNo) ? "*" : Source.ProcessNo.Trim();
+            Source.ProcessName = null;
             Source.WeldPointCount = Math.Max(1, Source.WeldPointCount);
             Source.CollectionGroup = string.IsNullOrWhiteSpace(Source.CollectionGroup)
                 ? "default"

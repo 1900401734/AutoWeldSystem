@@ -30,6 +30,11 @@ namespace AutoWeldSystem.UI.Views
             tabBusinessAddresses = new TabPage();
             tableAddresses = new AntdUI.Table();
             tabCollectionParameters = new TabPage();
+            collectionParameterLayout = new TableLayoutPanel();
+            collectionParameterToolbar = new FlowLayoutPanel();
+            btnAddCollectionParameter = new AntdUI.Button();
+            btnDeleteCollectionParameter = new AntdUI.Button();
+            lblCollectionParameterHint = new Label();
             tableCollectionParameters = new AntdUI.Table();
             rootLayout.SuspendLayout();
             headerLayout.SuspendLayout();
@@ -38,6 +43,8 @@ namespace AutoWeldSystem.UI.Views
             tabAddressCategories.SuspendLayout();
             tabBusinessAddresses.SuspendLayout();
             tabCollectionParameters.SuspendLayout();
+            collectionParameterLayout.SuspendLayout();
+            collectionParameterToolbar.SuspendLayout();
             SuspendLayout();
             // 
             // rootLayout
@@ -219,7 +226,7 @@ namespace AutoWeldSystem.UI.Views
             //
             // tabCollectionParameters
             //
-            tabCollectionParameters.Controls.Add(tableCollectionParameters);
+            tabCollectionParameters.Controls.Add(collectionParameterLayout);
             tabCollectionParameters.Location = new Point(4, 29);
             tabCollectionParameters.Name = "tabCollectionParameters";
             tabCollectionParameters.Padding = new Padding(3);
@@ -228,16 +235,84 @@ namespace AutoWeldSystem.UI.Views
             tabCollectionParameters.Text = "采集参数地址";
             tabCollectionParameters.UseVisualStyleBackColor = true;
             //
+            // collectionParameterLayout
+            //
+            collectionParameterLayout.ColumnCount = 1;
+            collectionParameterLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            collectionParameterLayout.Controls.Add(collectionParameterToolbar, 0, 0);
+            collectionParameterLayout.Controls.Add(lblCollectionParameterHint, 0, 1);
+            collectionParameterLayout.Controls.Add(tableCollectionParameters, 0, 2);
+            collectionParameterLayout.Dock = DockStyle.Fill;
+            collectionParameterLayout.Location = new Point(3, 3);
+            collectionParameterLayout.Margin = new Padding(0);
+            collectionParameterLayout.Name = "collectionParameterLayout";
+            collectionParameterLayout.RowCount = 3;
+            collectionParameterLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44F));
+            collectionParameterLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+            collectionParameterLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            collectionParameterLayout.Size = new Size(1236, 554);
+            collectionParameterLayout.TabIndex = 0;
+            //
+            // collectionParameterToolbar
+            //
+            collectionParameterToolbar.AutoSize = true;
+            collectionParameterToolbar.Controls.Add(btnAddCollectionParameter);
+            collectionParameterToolbar.Controls.Add(btnDeleteCollectionParameter);
+            collectionParameterToolbar.Dock = DockStyle.Right;
+            collectionParameterToolbar.Location = new Point(1037, 0);
+            collectionParameterToolbar.Margin = new Padding(0);
+            collectionParameterToolbar.Name = "collectionParameterToolbar";
+            collectionParameterToolbar.Size = new Size(199, 44);
+            collectionParameterToolbar.TabIndex = 0;
+            collectionParameterToolbar.WrapContents = false;
+            //
+            // btnAddCollectionParameter
+            //
+            btnAddCollectionParameter.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnAddCollectionParameter.BorderWidth = 1F;
+            btnAddCollectionParameter.IconSvg = "PlusOutlined";
+            btnAddCollectionParameter.Location = new Point(0, 0);
+            btnAddCollectionParameter.Margin = new Padding(0, 0, 10, 0);
+            btnAddCollectionParameter.Name = "btnAddCollectionParameter";
+            btnAddCollectionParameter.Size = new Size(89, 40);
+            btnAddCollectionParameter.TabIndex = 0;
+            btnAddCollectionParameter.Text = "新增";
+            //
+            // btnDeleteCollectionParameter
+            //
+            btnDeleteCollectionParameter.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnDeleteCollectionParameter.BorderWidth = 1F;
+            btnDeleteCollectionParameter.IconSvg = "DeleteOutlined";
+            btnDeleteCollectionParameter.Location = new Point(99, 0);
+            btnDeleteCollectionParameter.Margin = new Padding(0);
+            btnDeleteCollectionParameter.Name = "btnDeleteCollectionParameter";
+            btnDeleteCollectionParameter.Size = new Size(100, 40);
+            btnDeleteCollectionParameter.TabIndex = 1;
+            btnDeleteCollectionParameter.Text = "删除选中";
+            //
+            // lblCollectionParameterHint
+            //
+            lblCollectionParameterHint.AutoEllipsis = true;
+            lblCollectionParameterHint.Dock = DockStyle.Fill;
+            lblCollectionParameterHint.ForeColor = SystemColors.GrayText;
+            lblCollectionParameterHint.Location = new Point(0, 44);
+            lblCollectionParameterHint.Margin = new Padding(0);
+            lblCollectionParameterHint.Name = "lblCollectionParameterHint";
+            lblCollectionParameterHint.Size = new Size(1236, 30);
+            lblCollectionParameterHint.TabIndex = 1;
+            lblCollectionParameterHint.Text = "测试项通过采集组与产品工艺配置关联；工位 0 表示所有工位共享。";
+            lblCollectionParameterHint.TextAlign = ContentAlignment.MiddleLeft;
+            //
             // tableCollectionParameters
             //
             tableCollectionParameters.Dock = DockStyle.Fill;
             tableCollectionParameters.EditMode = AntdUI.TEditMode.DoubleClick;
             tableCollectionParameters.Gap = 8;
-            tableCollectionParameters.Location = new Point(3, 3);
+            tableCollectionParameters.Location = new Point(0, 74);
             tableCollectionParameters.Margin = new Padding(0);
             tableCollectionParameters.Name = "tableCollectionParameters";
-            tableCollectionParameters.Size = new Size(1236, 554);
-            tableCollectionParameters.TabIndex = 0;
+            tableCollectionParameters.Size = new Size(1236, 480);
+            tableCollectionParameters.TabIndex = 2;
             tableCollectionParameters.Text = "tableCollectionParameters";
             //
             // AddressManageView
@@ -254,6 +329,10 @@ namespace AutoWeldSystem.UI.Views
             titleLayout.PerformLayout();
             buttonFlow.ResumeLayout(false);
             buttonFlow.PerformLayout();
+            collectionParameterToolbar.ResumeLayout(false);
+            collectionParameterToolbar.PerformLayout();
+            collectionParameterLayout.ResumeLayout(false);
+            collectionParameterLayout.PerformLayout();
             tabCollectionParameters.ResumeLayout(false);
             tabBusinessAddresses.ResumeLayout(false);
             tabAddressCategories.ResumeLayout(false);
@@ -274,6 +353,11 @@ namespace AutoWeldSystem.UI.Views
         private TabPage tabBusinessAddresses;
         private AntdUI.Table tableAddresses;
         private TabPage tabCollectionParameters;
+        private TableLayoutPanel collectionParameterLayout;
+        private FlowLayoutPanel collectionParameterToolbar;
+        private AntdUI.Button btnAddCollectionParameter;
+        private AntdUI.Button btnDeleteCollectionParameter;
+        private Label lblCollectionParameterHint;
         private AntdUI.Table tableCollectionParameters;
     }
 }

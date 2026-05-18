@@ -119,6 +119,7 @@ public partial class AddressManageView : BaseView
 
         tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.StationNo), "工位"));
         tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.CollectionGroup), "采集组"));
+        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.Sort), "排序"));
         tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.ParameterKey), "参数键"));
         tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.ParameterName), "参数名称"));
         tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.Address), "PLC 地址"));
@@ -130,6 +131,7 @@ public partial class AddressManageView : BaseView
         tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.Unit), "单位"));
         tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.MesFieldName), "MES 字段"));
         tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.ReportColumnName), "报表列"));
+        tableCollectionParameters.Columns.Add(CreateParameterRequiredColumn());
         tableCollectionParameters.Columns.Add(CreateParameterEnabledColumn());
         tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.Description), "备注"));
         tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.UpdatedTime), "更新时间", readOnly: true, displayFormat: "yyyy-MM-dd HH:mm:ss"));
@@ -192,6 +194,15 @@ public partial class AddressManageView : BaseView
         };
     }
 
+    private static AntdUI.ColumnSwitch CreateParameterRequiredColumn()
+    {
+        return new AntdUI.ColumnSwitch(nameof(CollectionParameterTableRow.Required), "必填")
+        {
+            Align = AntdUI.ColumnAlign.Center,
+            AutoCheck = true
+        };
+    }
+
     /// <summary>
     /// 数字、开关这类字段居中显示，现场人员扫表时更容易对齐查看。
     /// </summary>
@@ -213,6 +224,8 @@ public partial class AddressManageView : BaseView
         btnSave.Click += Save_Click;
         btnRefresh.Click += (_, _) => LoadAddresses();
         btnTest.Click += TestSelected_Click;
+        btnAddCollectionParameter.Click += AddCollectionParameter_Click;
+        btnDeleteCollectionParameter.Click += DeleteCollectionParameter_Click;
         queryAddresses.QueryClick += (_, keyword) => ApplyActiveFilter(keyword);
         tabAddressCategories.SelectedIndexChanged += (_, _) => SwitchActiveFilterText();
         tableAddresses.CellClick += TableAddresses_CellClick;
@@ -266,6 +279,7 @@ public partial class AddressManageView : BaseView
             return e.Column.Key switch
             {
                 nameof(CollectionParameterTableRow.StationNo) => IsNonNegativeInt(value),
+                nameof(CollectionParameterTableRow.Sort) => IsNonNegativeInt(value),
                 nameof(CollectionParameterTableRow.DataLength) => IsPositiveInt(value),
                 nameof(CollectionParameterTableRow.Scale) => IsDecimal(value),
                 nameof(CollectionParameterTableRow.Offset) => IsDecimal(value),
@@ -298,6 +312,12 @@ public partial class AddressManageView : BaseView
             if (e.Record is CollectionParameterTableRow parameterRow)
             {
                 _selectedParameterRow = parameterRow;
+                if (e.Column.Key == nameof(CollectionParameterTableRow.Required))
+                {
+                    parameterRow.Required = e.Value;
+                    return;
+                }
+
                 parameterRow.Enabled = e.Value;
             }
 
@@ -336,6 +356,9 @@ public partial class AddressManageView : BaseView
         btnSave.Text = _localizer.GetString(TextKeys.Address.ButtonSave);
         btnRefresh.Text = _localizer.GetString(TextKeys.Address.ButtonRefresh);
         btnTest.Text = _localizer.GetString(TextKeys.Address.ButtonTest);
+        btnAddCollectionParameter.Text = "新增";
+        btnDeleteCollectionParameter.Text = "删除选中";
+        lblCollectionParameterHint.Text = "测试项通过采集组与产品工艺配置关联；工位 0 表示所有工位共享。";
         tabBusinessAddresses.Text = "业务信号地址";
         tabCollectionParameters.Text = "采集参数地址";
     }
@@ -440,6 +463,84 @@ public partial class AddressManageView : BaseView
         SelectVisibleParameterRow(selectedParameterId);
     }
 
+    private void AddCollectionParameter_Click(object? sender, EventArgs e)
+    {
+        EndTableEdit();
+
+        var template = _selectedParameterRow?.Source;
+        var collectionGroup = template?.CollectionGroup ?? "default";
+        var stationNo = template?.StationNo ?? ProductionConstants.Stations.DefaultStationNo;
+        var sort = _allCollectionParameters
+            .Where(parameter => parameter.StationNo == stationNo
+                && string.Equals(parameter.CollectionGroup, collectionGroup, StringComparison.OrdinalIgnoreCase))
+            .Select(parameter => parameter.Sort)
+            .DefaultIfEmpty(0)
+            .Max() + 10;
+
+        var parameter = new BizCollectionParameter
+        {
+            StationNo = stationNo,
+            CollectionGroup = collectionGroup,
+            ParameterKey = BuildNewParameterKey(collectionGroup, stationNo),
+            ParameterName = "新测试项",
+            DataType = AppConstants.PlcDataTypes.Float,
+            DataLength = 1,
+            Scale = 1m,
+            DecimalPlaces = 2,
+            Required = false,
+            Enabled = true,
+            Sort = sort,
+            Description = "用户新增测试项，请配置 PLC 地址和字段映射。",
+            UpdatedTime = DateTime.Now
+        };
+
+        _allCollectionParameters.Add(parameter);
+        _parameterKeyword = string.Empty;
+        queryAddresses.Text = string.Empty;
+        ApplyCollectionFilter(_parameterKeyword);
+        _selectedParameterRow = _currentParameterRows.FirstOrDefault(row => ReferenceEquals(row.Source, parameter));
+        SelectVisibleParameterRow(_selectedParameterRow?.Id);
+    }
+
+    private void DeleteCollectionParameter_Click(object? sender, EventArgs e)
+    {
+        EndTableEdit();
+
+        var parameter = _selectedParameterRow?.Source;
+        if (parameter is null)
+        {
+            ShowWarning(_localizer.GetString(TextKeys.Address.MessageSelectFirst));
+            return;
+        }
+
+        var result = MessageBox.Show(
+            this,
+            $"确认删除测试项“{parameter.ParameterName}”吗？",
+            _localizer.GetString(TextKeys.Common.TitleWarning),
+            MessageBoxButtons.OKCancel,
+            MessageBoxIcon.Warning);
+        if (result != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            if (parameter.Id > 0)
+            {
+                _collectionParameterService.Delete(parameter.Id);
+            }
+
+            _allCollectionParameters.Remove(parameter);
+            _selectedParameterRow = null;
+            ApplyCollectionFilter(_parameterKeyword);
+        }
+        catch (Exception ex)
+        {
+            ShowError($"删除测试项失败：{ex.Message}");
+        }
+    }
+
     /// <summary>
     /// 保存后重启 PLC 通讯服务，让新的心跳地址立即生效。
     /// </summary>
@@ -453,6 +554,7 @@ public partial class AddressManageView : BaseView
             var collectionParameters = GetCurrentCollectionParameters();
             NormalizeAddresses(addresses);
             NormalizeCollectionParameters(collectionParameters);
+            ValidateCollectionParameters(collectionParameters);
             _addressService.SaveAll(addresses);
             _collectionParameterService.SaveAll(collectionParameters);
             await _plcProductionMonitorService.ReloadAddressesAsync();
@@ -635,6 +737,36 @@ public partial class AddressManageView : BaseView
         }
     }
 
+    private static void ValidateCollectionParameters(IEnumerable<BizCollectionParameter> parameters)
+    {
+        var enabledParameters = parameters.Where(parameter => parameter.Enabled).ToList();
+        foreach (var parameter in enabledParameters)
+        {
+            if (string.IsNullOrWhiteSpace(parameter.ParameterKey))
+            {
+                throw new InvalidOperationException("采集参数的参数键不能为空。");
+            }
+
+            if (string.IsNullOrWhiteSpace(parameter.ParameterName))
+            {
+                throw new InvalidOperationException("采集参数的参数名称不能为空。");
+            }
+        }
+
+        var duplicate = enabledParameters
+            .GroupBy(parameter => new
+            {
+                Group = parameter.CollectionGroup,
+                parameter.StationNo,
+                Key = parameter.ParameterKey
+            })
+            .FirstOrDefault(group => group.Count() > 1);
+        if (duplicate is not null)
+        {
+            throw new InvalidOperationException($"采集组“{duplicate.Key.Group}”工位{duplicate.Key.StationNo}存在重复参数键“{duplicate.Key.Key}”。");
+        }
+    }
+
     private static string NormalizeDataType(string? dataType)
     {
         return AppConstants.PlcDataTypes.All.Contains(dataType)
@@ -683,6 +815,7 @@ public partial class AddressManageView : BaseView
             AppConstants.PlcAddressKeys.DeviceStatus => TextKeys.Address.NameDeviceStatus,
             AppConstants.PlcAddressKeys.WeldStart => TextKeys.Address.NameWeldStart,
             AppConstants.PlcAddressKeys.WeldEnd => TextKeys.Address.NameWeldEnd,
+            AppConstants.PlcAddressKeys.WeldCollectionAck => TextKeys.Address.NameWeldCollectionAck,
             AppConstants.PlcAddressKeys.WorkId => TextKeys.Address.NameWorkId,
             AppConstants.PlcAddressKeys.LegacySerialNumber => TextKeys.Address.NameWorkId,
             AppConstants.PlcAddressKeys.ProgramName => TextKeys.Address.NameProgramName,
@@ -703,6 +836,23 @@ public partial class AddressManageView : BaseView
     {
         return !string.IsNullOrWhiteSpace(source)
             && source.Contains(keyword, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string BuildNewParameterKey(string collectionGroup, int stationNo)
+    {
+        var index = 1;
+        string key;
+        do
+        {
+            key = $"custom_{stationNo}_{index}";
+            index++;
+        }
+        while (_allCollectionParameters.Any(parameter =>
+            string.Equals(parameter.CollectionGroup, collectionGroup, StringComparison.OrdinalIgnoreCase)
+            && parameter.StationNo == stationNo
+            && string.Equals(parameter.ParameterKey, key, StringComparison.OrdinalIgnoreCase)));
+
+        return key;
     }
 
     private void ShowInfo(string message)
@@ -808,6 +958,12 @@ public partial class AddressManageView : BaseView
             set => Source.CollectionGroup = string.IsNullOrWhiteSpace(value) ? "default" : value.Trim();
         }
 
+        public int Sort
+        {
+            get => Source.Sort;
+            set => Source.Sort = Math.Max(0, value);
+        }
+
         public string ParameterKey
         {
             get => Source.ParameterKey;
@@ -872,6 +1028,12 @@ public partial class AddressManageView : BaseView
         {
             get => Source.ReportColumnName;
             set => Source.ReportColumnName = NormalizeNullableText(value);
+        }
+
+        public bool Required
+        {
+            get => Source.Required;
+            set => Source.Required = value;
         }
 
         public bool Enabled

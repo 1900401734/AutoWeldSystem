@@ -651,6 +651,9 @@
   <data name="address.name.weld_end" xml:space="preserve">
     <value>Weld End</value>
   </data>
+  <data name="address.name.weld_collection_ack" xml:space="preserve">
+    <value>Collection Ack</value>
+  </data>
   <data name="address.name.work_id" xml:space="preserve">
     <value>Work Order No</value>
   </data>
@@ -1182,6 +1185,9 @@
   <data name="program.label.program_name" xml:space="preserve">
     <value>Program Name</value>
   </data>
+  <data name="program.label.program_id" xml:space="preserve">
+    <value>MES Program ID</value>
+  </data>
   <data name="program.label.product_num" xml:space="preserve">
     <value>Product No.</value>
   </data>
@@ -1213,10 +1219,10 @@
     <value>Commit Message</value>
   </data>
   <data name="program.label.remark" xml:space="preserve">
-    <value>Remark</value>
+    <value>MES Remark</value>
   </data>
   <data name="program.label.program_content" xml:space="preserve">
-    <value>Process Parameter JSON</value>
+    <value>Program Content</value>
   </data>
   <data name="program.option.parameter_string" xml:space="preserve">
     <value>0 - Parameter String</value>
@@ -1311,8 +1317,14 @@
   <data name="grid.program.name" xml:space="preserve">
     <value>Program Name</value>
   </data>
+  <data name="grid.program.id" xml:space="preserve">
+    <value>MES Program ID</value>
+  </data>
   <data name="grid.program.product_num" xml:space="preserve">
     <value>Product No.</value>
+  </data>
+  <data name="grid.program.product_model" xml:space="preserve">
+    <value>Product Model</value>
   </data>
   <data name="grid.program.version_number" xml:space="preserve">
     <value>Version</value>

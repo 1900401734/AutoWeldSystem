@@ -13,6 +13,8 @@ namespace AutoWeldSystem.UI.Views;
 /// </summary>
 public partial class ProgramManageView : BaseView
 {
+    private const string ProgramRowNumberColumnName = "ProgramRowNumber";
+
     private readonly IProgramManageService _programService;
     private readonly ILocalizationService _localizer;
     private readonly BindingSource _programBindingSource = new();
@@ -28,6 +30,7 @@ public partial class ProgramManageView : BaseView
 
         InitializeComponent();
         ConfigureGrids();
+        BindRemarkOptions(AppConstants.ProgramRemarkActions.Create);
         WireEvents();
     }
 
@@ -50,6 +53,7 @@ public partial class ProgramManageView : BaseView
         ApplyLocalizedTexts();
         ApplyGridHeaders();
         BindProgramTypeOptions();
+        BindRemarkOptions(GetSelectedRemark());
         UpdateCurrentInfoText();
         dgvPrograms.Refresh();
     }
@@ -59,11 +63,13 @@ public partial class ProgramManageView : BaseView
         TableStyleHelper.ApplyDataGridView(dgvPrograms);
         dgvPrograms.AutoGenerateColumns = false;
         dgvPrograms.Columns.Clear();
-        dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.ProgramName), 28));
-        dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.ProductNum), 14));
+        var rowNumberColumn = CreateRowNumberColumn();
+        dgvPrograms.Columns.Add(rowNumberColumn);
+        rowNumberColumn.MinimumWidth = 60;
+        dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.ProductNum), 18));
+        dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.ProductModel), 18));
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.VersionNumber), 8));
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.SyncStatus), 13));
-        dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.CommitId), 12));
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.UpdatedTime), 18));
         dgvPrograms.DataSource = _programBindingSource;
 
@@ -76,6 +82,17 @@ public partial class ProgramManageView : BaseView
         dgvRevisions.Columns.Add(CreateTextColumn(nameof(BizProgramRevision.UserName), 12));
         dgvRevisions.Columns.Add(CreateTextColumn(nameof(BizProgramRevision.CreatedTime), 20));
         dgvRevisions.DataSource = _revisionBindingSource;
+    }
+
+    private static DataGridViewTextBoxColumn CreateRowNumberColumn()
+    {
+        return new DataGridViewTextBoxColumn
+        {
+            Name = ProgramRowNumberColumnName,
+            ReadOnly = true,
+            FillWeight = 6,
+            MinimumWidth = 60
+        };
     }
 
     private static DataGridViewTextBoxColumn CreateTextColumn(string propertyName, float fillWeight)
@@ -117,27 +134,24 @@ public partial class ProgramManageView : BaseView
         grpRevisions.Text = _localizer.GetString(TextKeys.ProgramManage.GroupRevisions);
 
         lblProgramName.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramName);
+        lblProgramId.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramId);
         lblProductNum.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProductNum);
         lblProductModel.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProductModel);
         lblComponentCode.Text = _localizer.GetString(TextKeys.ProgramManage.LabelComponentCode);
         lblSequenceNumber.Text = _localizer.GetString(TextKeys.ProgramManage.LabelSequenceNumber);
         lblProgramType.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramType);
-        lblWeldJobName.Text = _localizer.GetString(TextKeys.ProgramManage.LabelWeldJobName);
-        lblRobotJobName.Text = _localizer.GetString(TextKeys.ProgramManage.LabelRobotJobName);
-        lblCycleTime.Text = _localizer.GetString(TextKeys.ProgramManage.LabelCycleTime);
         lblProgramFile.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramFile);
-        lblCommitMessage.Text = _localizer.GetString(TextKeys.ProgramManage.LabelCommitMessage);
-        lblRemark.Text = _localizer.GetString(TextKeys.ProgramManage.LabelRemark);
+        lblCommitMessage.Text = _localizer.GetString(TextKeys.ProgramManage.LabelRemark);
         lblProgramContent.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramContent);
     }
 
     private void ApplyGridHeaders()
     {
-        SetColumnHeader(dgvPrograms, nameof(BizProgram.ProgramName), TextKeys.Grid.ProgramName);
+        SetColumnHeaderByName(dgvPrograms, ProgramRowNumberColumnName, TextKeys.Monitor.Label.SequenceNo);
         SetColumnHeader(dgvPrograms, nameof(BizProgram.ProductNum), TextKeys.Grid.ProgramProductNum);
+        SetColumnHeader(dgvPrograms, nameof(BizProgram.ProductModel), TextKeys.Grid.ProgramProductModel);
         SetColumnHeader(dgvPrograms, nameof(BizProgram.VersionNumber), TextKeys.Grid.ProgramVersionNumber);
         SetColumnHeader(dgvPrograms, nameof(BizProgram.SyncStatus), TextKeys.Grid.ProgramSyncStatus);
-        SetColumnHeader(dgvPrograms, nameof(BizProgram.CommitId), TextKeys.Grid.ProgramCommitId);
         SetColumnHeader(dgvPrograms, nameof(BizProgram.UpdatedTime), TextKeys.Grid.ProgramUpdatedTime);
 
         SetColumnHeader(dgvRevisions, nameof(BizProgramRevision.VersionNumber), TextKeys.Grid.ProgramVersionNumber);
@@ -163,6 +177,21 @@ public partial class ProgramManageView : BaseView
         cmbProgramType.SelectedIndex = Math.Min(selectedIndex, cmbProgramType.Items.Count - 1);
     }
 
+    private void BindRemarkOptions(string? selectedRemark)
+    {
+        var normalizedSelectedRemark = string.IsNullOrWhiteSpace(selectedRemark)
+            ? AppConstants.ProgramRemarkActions.Create
+            : selectedRemark.Trim();
+
+        cmbRemark.Items.Clear();
+        cmbRemark.Items.Add(AppConstants.ProgramRemarkActions.Create);
+        cmbRemark.Items.Add(AppConstants.ProgramRemarkActions.Update);
+        cmbRemark.Items.Add(AppConstants.ProgramRemarkActions.Delete);
+        cmbRemark.SelectedItem = cmbRemark.Items.Contains(normalizedSelectedRemark)
+            ? normalizedSelectedRemark
+            : AppConstants.ProgramRemarkActions.Update;
+    }
+
     private void SetColumnHeader(DataGridView grid, string propertyName, string headerKey)
     {
         foreach (DataGridViewColumn column in grid.Columns)
@@ -172,6 +201,14 @@ public partial class ProgramManageView : BaseView
                 column.HeaderText = _localizer.GetString(headerKey);
                 return;
             }
+        }
+    }
+
+    private void SetColumnHeaderByName(DataGridView grid, string columnName, string headerKey)
+    {
+        if (grid.Columns.Contains(columnName))
+        {
+            grid.Columns[columnName].HeaderText = _localizer.GetString(headerKey);
         }
     }
 
@@ -196,6 +233,7 @@ public partial class ProgramManageView : BaseView
             .ToList();
 
         _programBindingSource.DataSource = filtered;
+        dgvPrograms.Invalidate();
         if (filtered.Count == 0)
         {
             _revisionBindingSource.DataSource = Array.Empty<BizProgramRevision>();
@@ -215,18 +253,15 @@ public partial class ProgramManageView : BaseView
     private void StartNewProgram()
     {
         _editingId = 0;
+        txtProgramId.Clear();
         txtProgramName.Clear();
         txtProductNum.Clear();
         txtProductModel.Clear();
         txtComponentCode.Clear();
         txtSequenceNumber.Text = "1";
         cmbProgramType.SelectedIndex = 0;
-        txtWeldJobName.Clear();
-        txtRobotJobName.Clear();
-        txtCycleTime.Text = "0";
         txtProgramFile.Clear();
-        txtRemark.Clear();
-        txtCommitMessage.Text = _localizer.GetString(TextKeys.ProgramManage.CommitCreate);
+        BindRemarkOptions(GetAutoRemarkAction(null));
         txtProgramContent.Text = "{\r\n}";
         lblCurrentInfo.Text = _localizer.GetString(TextKeys.ProgramManage.CurrentNew);
         _revisionBindingSource.DataSource = Array.Empty<BizProgramRevision>();
@@ -240,18 +275,15 @@ public partial class ProgramManageView : BaseView
         }
 
         _editingId = program.Id;
+        txtProgramId.Text = program.ProgramId ?? string.Empty;
         txtProgramName.Text = program.ProgramName;
         txtProductNum.Text = program.ProductNum;
         txtProductModel.Text = program.ProductModel ?? string.Empty;
         txtComponentCode.Text = program.ComponentCode ?? string.Empty;
         txtSequenceNumber.Text = program.SequenceNumber.ToString();
         cmbProgramType.SelectedIndex = program.ProgramType == "1" ? 1 : 0;
-        txtWeldJobName.Text = program.WeldJobName ?? string.Empty;
-        txtRobotJobName.Text = program.RobotJobName ?? string.Empty;
-        txtCycleTime.Text = program.CycleTimeSeconds.ToString("0.###");
         txtProgramFile.Text = program.ProgramFileName ?? string.Empty;
-        txtRemark.Text = program.Remark ?? string.Empty;
-        txtCommitMessage.Text = _localizer.GetString(TextKeys.ProgramManage.CommitUpdate);
+        BindRemarkOptions(GetAutoRemarkAction(program));
         txtProgramContent.Text = string.IsNullOrWhiteSpace(program.ProgramContentJson)
             ? "{\r\n}"
             : program.ProgramContentJson;
@@ -275,11 +307,14 @@ public partial class ProgramManageView : BaseView
 
     private void SetCurrentProgramInfo(BizProgram program)
     {
-        lblCurrentInfo.Text = _localizer.GetString(
+        var currentText = _localizer.GetString(
             TextKeys.ProgramManage.CurrentSelected,
             program.VersionNumber,
             GetSyncStatusText(program.SyncStatus),
             program.CommitId ?? string.Empty);
+        var programId = string.IsNullOrWhiteSpace(program.ProgramId) ? "--" : program.ProgramId;
+        //lblCurrentInfo.Text = $"{currentText}，MES程序ID：{programId}";
+        lblCurrentInfo.Text = $"{currentText}";
     }
 
     private void DgvPrograms_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
@@ -290,6 +325,13 @@ public partial class ProgramManageView : BaseView
         }
 
         var column = dgvPrograms.Columns[e.ColumnIndex];
+        if (string.Equals(column.Name, ProgramRowNumberColumnName, StringComparison.Ordinal))
+        {
+            e.Value = (e.RowIndex + 1).ToString();
+            e.FormattingApplied = true;
+            return;
+        }
+
         if (string.Equals(column.DataPropertyName, nameof(BizProgram.SyncStatus), StringComparison.Ordinal))
         {
             e.Value = GetSyncStatusText(Convert.ToString(e.Value));
@@ -431,12 +473,6 @@ public partial class ProgramManageView : BaseView
             return false;
         }
 
-        if (!decimal.TryParse(txtCycleTime.Text.Trim(), out var cycleTime) || cycleTime < 0)
-        {
-            ShowWarning(TextKeys.ProgramManage.CycleTimeInvalid);
-            return false;
-        }
-
         request.ProgramName = txtProgramName.Text.Trim();
         request.ProductNum = txtProductNum.Text.Trim();
         request.ProductModel = txtProductModel.Text.Trim();
@@ -445,12 +481,33 @@ public partial class ProgramManageView : BaseView
         request.ProgramType = cmbProgramType.SelectedIndex == 1 ? "1" : "0";
         request.ProgramContentJson = txtProgramContent.Text.Trim();
         request.ProgramFilePath = File.Exists(txtProgramFile.Text.Trim()) ? txtProgramFile.Text.Trim() : string.Empty;
-        request.WeldJobName = txtWeldJobName.Text.Trim();
-        request.RobotJobName = txtRobotJobName.Text.Trim();
-        request.CycleTimeSeconds = cycleTime;
-        request.Remark = txtRemark.Text.Trim();
-        request.CommitMessage = txtCommitMessage.Text.Trim();
+        request.WeldJobName = string.Empty;
+        request.RobotJobName = string.Empty;
+        request.CycleTimeSeconds = 0m;
+        request.Remark = GetSelectedRemark();
+        request.CommitMessage = request.Remark;
         return true;
+    }
+
+    private string GetSelectedRemark()
+    {
+        return cmbRemark.SelectedItem?.ToString() ?? AppConstants.ProgramRemarkActions.Update;
+    }
+
+    private static string GetAutoRemarkAction(BizProgram? program)
+    {
+        if (program is null || program.Id <= 0)
+        {
+            return AppConstants.ProgramRemarkActions.Create;
+        }
+
+        return program.SyncAction switch
+        {
+            AppConstants.ProgramSyncActions.Create => AppConstants.ProgramRemarkActions.Create,
+            AppConstants.ProgramSyncActions.Delete => AppConstants.ProgramRemarkActions.Delete,
+            _ when string.IsNullOrWhiteSpace(program.ProgramId) => AppConstants.ProgramRemarkActions.Create,
+            _ => AppConstants.ProgramRemarkActions.Update
+        };
     }
 
     private string BuildProgramNameFromInputs()

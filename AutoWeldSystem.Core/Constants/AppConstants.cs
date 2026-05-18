@@ -62,6 +62,7 @@ public static class AppConstants
         public const string DeviceStatus = "device_status";
         public const string WeldStart = "weld_start";
         public const string WeldEnd = "weld_end";
+        public const string WeldCollectionAck = "weld_collection_ack";
         public const string WorkId = "work_id";
         public const string LegacySerialNumber = "serial_number";
         public const string ProgramName = "program_name";
@@ -162,5 +163,16 @@ public static class AppConstants
         public const string Create = "Create";
         public const string Update = "Update";
         public const string Delete = "Delete";
+    }
+
+    /// <summary>
+    /// MES 程序备注动作。
+    /// 客户接口中的 Remark 字段用于区分程序新增、修改和删除。
+    /// </summary>
+    public static class ProgramRemarkActions
+    {
+        public const string Create = "新增";
+        public const string Update = "修改";
+        public const string Delete = "删除";
     }
 }

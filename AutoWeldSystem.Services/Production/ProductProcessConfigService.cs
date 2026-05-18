@@ -6,7 +6,7 @@ using AutoWeldSystem.Data;
 namespace AutoWeldSystem.Services.Production;
 
 /// <summary>
-/// 产品型号工艺配置服务实现。
+/// 产品工艺配置服务实现。
 /// 这层只处理配置持久化，不直接控制 PLC 或 MES。
 /// </summary>
 public class ProductProcessConfigService : IProductProcessConfigService
@@ -34,34 +34,36 @@ public class ProductProcessConfigService : IProductProcessConfigService
             return query.ToList()
                 .OrderBy(it => it.Sort)
                 .ThenBy(it => it.StationNo)
+                .ThenBy(it => it.ProductNum)
                 .ThenBy(it => it.ProductModel)
-                .ThenBy(it => it.ProcessNo)
                 .ToList();
         }
     }
 
     public BizProductProcessConfig? FindActive(
+        string productNum,
         string productModel,
-        string processNo,
         int stationNo = ProductionConstants.Stations.DefaultStationNo)
     {
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
-            var normalizedModel = NormalizeRequired(productModel);
-            var normalizedProcessNo = NormalizeRequired(processNo);
+            var normalizedProductNum = NormalizeNullable(productNum);
+            var normalizedModel = NormalizeNullable(productModel);
             var normalizedStationNo = NormalizeStationNo(stationNo);
 
             var candidates = _dbContext.Db.Queryable<BizProductProcessConfig>()
                 .Where(it => it.Enabled
-                    && it.ProductModel == normalizedModel
-                    && it.ProcessNo == normalizedProcessNo
                     && (it.StationNo == normalizedStationNo || it.StationNo == ProductionConstants.Stations.SharedStationNo))
+                .ToList()
+                .Where(config => IsProductMatch(config, normalizedProductNum, normalizedModel))
                 .ToList();
 
             // 优先使用当前工位专用配置；没有专用配置时回退到 0 号共享配置。
             return candidates
                 .OrderByDescending(it => it.StationNo == normalizedStationNo)
+                .ThenByDescending(it => IsExactProductModelMatch(it, normalizedModel))
+                .ThenByDescending(it => !string.IsNullOrWhiteSpace(it.ProductNum))
                 .ThenBy(it => it.Sort)
                 .FirstOrDefault();
         }
@@ -108,9 +110,11 @@ public class ProductProcessConfigService : IProductProcessConfigService
 
     private static void Normalize(BizProductProcessConfig config)
     {
-        config.ProductModel = NormalizeRequired(config.ProductModel);
+        config.ProductNum = NormalizeNullable(config.ProductNum);
+        config.ProductModel = NormalizeNullable(config.ProductModel) ?? string.Empty;
         config.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, config.StationNo);
-        config.ProcessNo = NormalizeRequired(config.ProcessNo);
+        // 工序号由 MES 工单提供，不再参与采集参数匹配；保留字段仅兼容已有表结构。
+        config.ProcessNo = string.IsNullOrWhiteSpace(config.ProcessNo) ? "*" : config.ProcessNo.Trim();
         config.ProcessName = NormalizeNullable(config.ProcessName);
         config.CollectionGroup = string.IsNullOrWhiteSpace(config.CollectionGroup)
             ? "default"
@@ -124,15 +128,31 @@ public class ProductProcessConfigService : IProductProcessConfigService
         config.Description = NormalizeNullable(config.Description);
     }
 
-    private static string NormalizeRequired(string value)
+    private static bool IsProductMatch(BizProductProcessConfig config, string? productNum, string? productModel)
     {
-        var normalized = value.Trim();
-        if (string.IsNullOrWhiteSpace(normalized))
+        var configProductNum = NormalizeNullable(config.ProductNum);
+        var configProductModel = NormalizeNullable(config.ProductModel);
+        var productNumMatches = !string.IsNullOrWhiteSpace(productNum)
+            && SameText(configProductNum, productNum);
+        var legacyModelMatches = string.IsNullOrWhiteSpace(configProductNum)
+            && !string.IsNullOrWhiteSpace(productModel)
+            && SameText(configProductModel, productModel);
+
+        if (!productNumMatches && !legacyModelMatches)
         {
-            throw new InvalidOperationException("产品型号和工序号不能为空。");
+            return false;
         }
 
-        return normalized;
+        // 产品型号是辅助键；为空时表示只按产品工号匹配。
+        return string.IsNullOrWhiteSpace(configProductModel)
+            || string.IsNullOrWhiteSpace(productModel)
+            || SameText(configProductModel, productModel);
+    }
+
+    private static bool IsExactProductModelMatch(BizProductProcessConfig config, string? productModel)
+    {
+        return !string.IsNullOrWhiteSpace(productModel)
+            && SameText(config.ProductModel, productModel);
     }
 
     private static int NormalizeStationNo(int stationNo)
@@ -146,5 +166,13 @@ public class ProductProcessConfigService : IProductProcessConfigService
     {
         var normalized = value?.Trim();
         return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
+    }
+
+    private static bool SameText(string? left, string? right)
+    {
+        return string.Equals(
+            NormalizeNullable(left),
+            NormalizeNullable(right),
+            StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -33,4 +33,10 @@ public interface ICollectionParameterService
     /// 禁用采集参数。
     /// </summary>
     void Disable(int id);
+
+    /// <summary>
+    /// 删除采集参数。
+    /// 测试项是现场可配置数据，用户确认删除后应从本地配置中移除。
+    /// </summary>
+    void Delete(int id);
 }

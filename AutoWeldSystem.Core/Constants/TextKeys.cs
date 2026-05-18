@@ -372,6 +372,7 @@ public static class TextKeys
         public const string PlaceholderKeyword = "program.placeholder.keyword";
         public const string GroupRevisions = "program.group.revisions";
         public const string LabelProgramName = "program.label.program_name";
+        public const string LabelProgramId = "program.label.program_id";
         public const string LabelProductNum = "program.label.product_num";
         public const string LabelProductModel = "program.label.product_model";
         public const string LabelComponentCode = "program.label.component_code";
@@ -513,6 +514,7 @@ public static class TextKeys
         public const string NameDeviceStatus = "address.name.device_status";
         public const string NameWeldStart = "address.name.weld_start";
         public const string NameWeldEnd = "address.name.weld_end";
+        public const string NameWeldCollectionAck = "address.name.weld_collection_ack";
         public const string NameWorkId = "address.name.work_id";
         public const string NameSerialNumber = "address.name.serial_number";
         public const string NameProgramName = "address.name.program_name";
@@ -550,7 +552,9 @@ public static class TextKeys
         public const string PlcAddressDescription = "grid.plc_address.description";
         public const string PlcAddressUpdatedTime = "grid.plc_address.updated_time";
         public const string ProgramName = "grid.program.name";
+        public const string ProgramId = "grid.program.id";
         public const string ProgramProductNum = "grid.program.product_num";
+        public const string ProgramProductModel = "grid.program.product_model";
         public const string ProgramVersionNumber = "grid.program.version_number";
         public const string ProgramSyncStatus = "grid.program.sync_status";
         public const string ProgramSyncAction = "grid.program.sync_action";

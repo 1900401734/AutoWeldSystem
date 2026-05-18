@@ -187,6 +187,7 @@ public class PlcAddressService : IPlcAddressService
     {
         return logicalKey is AppConstants.PlcAddressKeys.WeldStart
             or AppConstants.PlcAddressKeys.WeldEnd
+            or AppConstants.PlcAddressKeys.WeldCollectionAck
             or AppConstants.PlcAddressKeys.WorkId
             or AppConstants.PlcAddressKeys.ProgramName
             or AppConstants.PlcAddressKeys.ProductModel
@@ -280,6 +281,7 @@ public class PlcAddressService : IPlcAddressService
         {
             addresses.Add(CreateStation(AppConstants.PlcAddressKeys.WeldStart, stationNo, "Weld Start", AppConstants.PlcDataTypes.Bool, 1, 40, "Welding start signal."));
             addresses.Add(CreateStation(AppConstants.PlcAddressKeys.WeldEnd, stationNo, "Weld End", AppConstants.PlcDataTypes.Bool, 1, 50, "Welding end signal."));
+            addresses.Add(CreateStation(AppConstants.PlcAddressKeys.WeldCollectionAck, stationNo, "Collection Ack", AppConstants.PlcDataTypes.Bool, 1, 55, "PC writes a short pulse after weld point data is saved locally."));
             addresses.Add(CreateStation(AppConstants.PlcAddressKeys.WorkId, stationNo, "Work Order No", AppConstants.PlcDataTypes.String, 32, 60, "Work order number address."));
             addresses.Add(CreateStation(AppConstants.PlcAddressKeys.ProgramName, stationNo, "Program Name", AppConstants.PlcDataTypes.String, 32, 70, "Program name address."));
             addresses.Add(CreateStation(AppConstants.PlcAddressKeys.ProductModel, stationNo, "Product Model", AppConstants.PlcDataTypes.String, 32, 80, "Product model address."));

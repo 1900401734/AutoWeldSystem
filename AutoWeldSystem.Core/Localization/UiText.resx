@@ -651,6 +651,9 @@
   <data name="address.name.weld_end" xml:space="preserve">
     <value>焊接结束</value>
   </data>
+  <data name="address.name.weld_collection_ack" xml:space="preserve">
+    <value>采集完成反馈</value>
+  </data>
   <data name="address.name.work_id" xml:space="preserve">
     <value>工单号</value>
   </data>
@@ -1182,6 +1185,9 @@
   <data name="program.label.program_name" xml:space="preserve">
     <value>程序名称</value>
   </data>
+  <data name="program.label.program_id" xml:space="preserve">
+    <value>MES程序ID</value>
+  </data>
   <data name="program.label.product_num" xml:space="preserve">
     <value>产品工号</value>
   </data>
@@ -1213,10 +1219,10 @@
     <value>提交说明</value>
   </data>
   <data name="program.label.remark" xml:space="preserve">
-    <value>备注</value>
+    <value>MES备注</value>
   </data>
   <data name="program.label.program_content" xml:space="preserve">
-    <value>工艺参数JSON</value>
+    <value>程序内容</value>
   </data>
   <data name="program.option.parameter_string" xml:space="preserve">
     <value>0 - 参数字符串</value>
@@ -1311,8 +1317,14 @@
   <data name="grid.program.name" xml:space="preserve">
     <value>程序名称</value>
   </data>
+  <data name="grid.program.id" xml:space="preserve">
+    <value>MES程序ID</value>
+  </data>
   <data name="grid.program.product_num" xml:space="preserve">
     <value>产品工号</value>
+  </data>
+  <data name="grid.program.product_model" xml:space="preserve">
+    <value>产品型号</value>
   </data>
   <data name="grid.program.version_number" xml:space="preserve">
     <value>版本</value>

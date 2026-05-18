@@ -116,18 +116,32 @@ public class CollectionParameterService : ICollectionParameterService
         }
     }
 
+    public void Delete(int id)
+    {
+        if (id <= 0)
+        {
+            return;
+        }
+
+        lock (_dbLock)
+        {
+            EnsureSeedData();
+            _dbContext.Db.Deleteable<BizCollectionParameter>()
+                .Where(it => it.Id == id)
+                .ExecuteCommand();
+        }
+    }
+
     private void EnsureSeedData()
     {
         _dbContext.InitDatabase();
+        if (_dbContext.Db.Queryable<BizCollectionParameter>().Any())
+        {
+            return;
+        }
 
         foreach (var parameter in BuildDefaultParameters())
         {
-            var exists = FindByLogicalKey(parameter) is not null;
-            if (exists)
-            {
-                continue;
-            }
-
             _dbContext.Db.Insertable(parameter).ExecuteCommand();
         }
     }

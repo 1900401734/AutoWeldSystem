@@ -4,8 +4,8 @@ using AutoWeldSystem.Core.Constants;
 namespace AutoWeldSystem.Core.Interfaces;
 
 /// <summary>
-/// 产品型号工艺配置服务。
-/// 负责维护“产品型号 + 工序号”对应的焊点数量和采集参数组。
+/// 产品工艺配置服务。
+/// 负责维护“产品工号 + 产品型号 + 工位”对应的焊点数量和采集参数组。
 /// </summary>
 public interface IProductProcessConfigService
 {
@@ -15,11 +15,11 @@ public interface IProductProcessConfigService
     IReadOnlyList<BizProductProcessConfig> GetAll(bool includeDisabled = false);
 
     /// <summary>
-    /// 根据产品型号和工序号查找启用的配置。
+    /// 根据产品工号和产品型号查找启用的配置。
     /// </summary>
     BizProductProcessConfig? FindActive(
+        string productNum,
         string productModel,
-        string processNo,
         int stationNo = ProductionConstants.Stations.DefaultStationNo);
 
     /// <summary>

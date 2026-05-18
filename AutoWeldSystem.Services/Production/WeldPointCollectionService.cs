@@ -76,7 +76,7 @@ public sealed class WeldPointCollectionService : IWeldPointCollectionService
 
     private BizProductProcessConfig ResolveProcessConfig(BizWeldTask task, int stationNo)
     {
-        var config = _productProcessConfigService.FindActive(task.ProductModel, task.ProcessNo, stationNo);
+        var config = _productProcessConfigService.FindActive(task.ProductNum, task.ProductModel, stationNo);
         if (config is not null)
         {
             return config;
@@ -85,14 +85,15 @@ public sealed class WeldPointCollectionService : IWeldPointCollectionService
         // 没有配置时先使用最保守的默认值，避免采集流程因早期未配置而完全不可用。
         _operationLogService.Write(
             "WeldPointCollection",
-            $"Product process config not found, fallback to default. Station={stationNo}, ProductModel={task.ProductModel}, ProcessNo={task.ProcessNo}");
+            $"Product process config not found, fallback to default. Station={stationNo}, ProductNum={task.ProductNum}, ProductModel={task.ProductModel}");
 
         return new BizProductProcessConfig
         {
+            ProductNum = task.ProductNum,
             ProductModel = task.ProductModel,
             StationNo = ProductionConstants.Stations.SharedStationNo,
-            ProcessNo = task.ProcessNo,
-            ProcessName = task.ProcessName,
+            ProcessNo = "*",
+            ProcessName = null,
             WeldPointCount = 1,
             CollectionGroup = "default",
             ProductNoSource = ProductionConstants.ProductNoSources.AutoIncrement,
