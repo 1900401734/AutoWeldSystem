@@ -67,7 +67,7 @@ public class WeldTaskService : IWeldTaskService
     }
 
     /// <summary>
-    /// 
+    /// 获取工单信息
     /// </summary>
     /// <param name="workId"></param>
     /// <param name="cancellationToken"></param>

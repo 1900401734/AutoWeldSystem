@@ -60,6 +60,7 @@ public static class Program
                     services.AddSingleton<ICollectionParameterService, CollectionParameterService>();
                     services.AddSingleton<IProductNoGeneratorService, ProductNoGeneratorService>();
                     services.AddSingleton<IWeldPointCollectionService, WeldPointCollectionService>();
+                    services.AddSingleton<IWeldPointUploadCoordinatorService, WeldPointUploadCoordinatorService>();
                     services.AddSingleton<IDeviceStatusService, DeviceStatusService>();
                     services.AddSingleton<IUploadTaskService, UploadTaskService>();
                     services.AddSingleton<IProductionReportFileService, ProductionReportFileService>();

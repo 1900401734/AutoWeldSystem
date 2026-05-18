@@ -4,6 +4,7 @@ using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Models;
 using AutoWeldSystem.Data;
 using System.Globalization;
+using System.Text.Json;
 
 namespace AutoWeldSystem.Services.Production;
 
@@ -258,6 +259,7 @@ public class UploadTaskService : IUploadTaskService
                 .Where(record => record.TaskId == task.WeldTaskId.Value
                     && record.UploadStatus != ProductionConstants.UploadStatuses.Uploaded)
                 .ToList()
+                .Where(record => IsRecordInTaskScope(record, task))
                 .OrderBy(record => record.StationNo)
                 .ThenBy(record => record.ProductNo)
                 .ThenBy(record => record.SequenceNo)
@@ -438,6 +440,33 @@ public class UploadTaskService : IUploadTaskService
             : string.Empty;
 
         return string.Join("；", visibleMessages) + suffix;
+    }
+
+    private static bool IsRecordInTaskScope(BizWeldPointRecord record, BizUploadTask task)
+    {
+        var productNo = ReadProductNo(task.PayloadJson);
+        return string.IsNullOrWhiteSpace(productNo)
+            || string.Equals(record.ProductNo, productNo, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? ReadProductNo(string? payloadJson)
+    {
+        if (string.IsNullOrWhiteSpace(payloadJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            return document.RootElement.TryGetProperty("ProductNo", out var productNoElement)
+                ? productNoElement.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static void MarkRetryRequested(BizUploadTask task)

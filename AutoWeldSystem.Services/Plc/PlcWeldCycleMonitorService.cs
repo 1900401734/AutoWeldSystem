@@ -18,6 +18,7 @@ public sealed class PlcWeldCycleMonitorService : IPlcWeldCycleMonitorService, ID
     private readonly IPlcCommunicationService _plcCommunicationService;
     private readonly IWeldTaskService _weldTaskService;
     private readonly IWeldPointCollectionService _weldPointCollectionService;
+    private readonly IWeldPointUploadCoordinatorService _weldPointUploadCoordinatorService;
     private readonly IProgramExceptionLogService _exceptionLogService;
     private readonly IOperationLogService _operationLogService;
     private readonly SemaphoreSlim _sync = new(1, 1);
@@ -35,6 +36,7 @@ public sealed class PlcWeldCycleMonitorService : IPlcWeldCycleMonitorService, ID
         IPlcCommunicationService plcCommunicationService,
         IWeldTaskService weldTaskService,
         IWeldPointCollectionService weldPointCollectionService,
+        IWeldPointUploadCoordinatorService weldPointUploadCoordinatorService,
         IProgramExceptionLogService exceptionLogService,
         IOperationLogService operationLogService)
     {
@@ -42,6 +44,7 @@ public sealed class PlcWeldCycleMonitorService : IPlcWeldCycleMonitorService, ID
         _plcCommunicationService = plcCommunicationService;
         _weldTaskService = weldTaskService;
         _weldPointCollectionService = weldPointCollectionService;
+        _weldPointUploadCoordinatorService = weldPointUploadCoordinatorService;
         _exceptionLogService = exceptionLogService;
         _operationLogService = operationLogService;
     }
@@ -298,6 +301,7 @@ public sealed class PlcWeldCycleMonitorService : IPlcWeldCycleMonitorService, ID
 
             var record = await _weldPointCollectionService.CollectAsync(task, task.StationNo, cancellationToken);
             WeldPointCollected?.Invoke(this, record);
+            await _weldPointUploadCoordinatorService.HandleCollectedAsync(record, cancellationToken);
         }
         catch (BusinessOperationException ex)
         {
