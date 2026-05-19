@@ -29,22 +29,22 @@ namespace AutoWeldSystem.UI.Views
             tabAddressCategories = new TabControl();
             tabBusinessAddresses = new TabPage();
             tableAddresses = new AntdUI.Table();
-            tabCollectionParameters = new TabPage();
-            collectionParameterLayout = new TableLayoutPanel();
-            collectionParameterToolbar = new FlowLayoutPanel();
-            btnAddCollectionParameter = new AntdUI.Button();
-            btnDeleteCollectionParameter = new AntdUI.Button();
-            lblCollectionParameterHint = new Label();
-            tableCollectionParameters = new AntdUI.Table();
+            tabTestItemAddresses = new TabPage();
+            testItemAddressLayout = new TableLayoutPanel();
+            testItemAddressToolbar = new FlowLayoutPanel();
+            btnAddTestItemAddress = new AntdUI.Button();
+            btnDeleteTestItemAddress = new AntdUI.Button();
+            lblTestItemAddressHint = new Label();
+            tableTestItemAddresses = new AntdUI.Table();
             rootLayout.SuspendLayout();
             headerLayout.SuspendLayout();
             titleLayout.SuspendLayout();
             buttonFlow.SuspendLayout();
             tabAddressCategories.SuspendLayout();
             tabBusinessAddresses.SuspendLayout();
-            tabCollectionParameters.SuspendLayout();
-            collectionParameterLayout.SuspendLayout();
-            collectionParameterToolbar.SuspendLayout();
+            tabTestItemAddresses.SuspendLayout();
+            testItemAddressLayout.SuspendLayout();
+            testItemAddressToolbar.SuspendLayout();
             SuspendLayout();
             // 
             // rootLayout
@@ -191,7 +191,7 @@ namespace AutoWeldSystem.UI.Views
             // tabAddressCategories
             //
             tabAddressCategories.Controls.Add(tabBusinessAddresses);
-            tabAddressCategories.Controls.Add(tabCollectionParameters);
+            tabAddressCategories.Controls.Add(tabTestItemAddresses);
             tabAddressCategories.Dock = DockStyle.Fill;
             tabAddressCategories.HotTrack = true;
             tabAddressCategories.Location = new Point(24, 104);
@@ -224,96 +224,96 @@ namespace AutoWeldSystem.UI.Views
             tableAddresses.TabIndex = 0;
             tableAddresses.Text = "tableAddresses";
             //
-            // tabCollectionParameters
+            // tabTestItemAddresses
             //
-            tabCollectionParameters.Controls.Add(collectionParameterLayout);
-            tabCollectionParameters.Location = new Point(4, 29);
-            tabCollectionParameters.Name = "tabCollectionParameters";
-            tabCollectionParameters.Padding = new Padding(3);
-            tabCollectionParameters.Size = new Size(1242, 560);
-            tabCollectionParameters.TabIndex = 1;
-            tabCollectionParameters.Text = "采集参数地址";
-            tabCollectionParameters.UseVisualStyleBackColor = true;
+            tabTestItemAddresses.Controls.Add(testItemAddressLayout);
+            tabTestItemAddresses.Location = new Point(4, 29);
+            tabTestItemAddresses.Name = "tabTestItemAddresses";
+            tabTestItemAddresses.Padding = new Padding(3);
+            tabTestItemAddresses.Size = new Size(1242, 560);
+            tabTestItemAddresses.TabIndex = 1;
+            tabTestItemAddresses.Text = "测试项目地址";
+            tabTestItemAddresses.UseVisualStyleBackColor = true;
             //
-            // collectionParameterLayout
+            // testItemAddressLayout
             //
-            collectionParameterLayout.ColumnCount = 1;
-            collectionParameterLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            collectionParameterLayout.Controls.Add(collectionParameterToolbar, 0, 0);
-            collectionParameterLayout.Controls.Add(lblCollectionParameterHint, 0, 1);
-            collectionParameterLayout.Controls.Add(tableCollectionParameters, 0, 2);
-            collectionParameterLayout.Dock = DockStyle.Fill;
-            collectionParameterLayout.Location = new Point(3, 3);
-            collectionParameterLayout.Margin = new Padding(0);
-            collectionParameterLayout.Name = "collectionParameterLayout";
-            collectionParameterLayout.RowCount = 3;
-            collectionParameterLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44F));
-            collectionParameterLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
-            collectionParameterLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            collectionParameterLayout.Size = new Size(1236, 554);
-            collectionParameterLayout.TabIndex = 0;
+            testItemAddressLayout.ColumnCount = 1;
+            testItemAddressLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            testItemAddressLayout.Controls.Add(testItemAddressToolbar, 0, 0);
+            testItemAddressLayout.Controls.Add(lblTestItemAddressHint, 0, 1);
+            testItemAddressLayout.Controls.Add(tableTestItemAddresses, 0, 2);
+            testItemAddressLayout.Dock = DockStyle.Fill;
+            testItemAddressLayout.Location = new Point(3, 3);
+            testItemAddressLayout.Margin = new Padding(0);
+            testItemAddressLayout.Name = "testItemAddressLayout";
+            testItemAddressLayout.RowCount = 3;
+            testItemAddressLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44F));
+            testItemAddressLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+            testItemAddressLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            testItemAddressLayout.Size = new Size(1236, 554);
+            testItemAddressLayout.TabIndex = 0;
             //
-            // collectionParameterToolbar
+            // testItemAddressToolbar
             //
-            collectionParameterToolbar.AutoSize = true;
-            collectionParameterToolbar.Controls.Add(btnAddCollectionParameter);
-            collectionParameterToolbar.Controls.Add(btnDeleteCollectionParameter);
-            collectionParameterToolbar.Dock = DockStyle.Right;
-            collectionParameterToolbar.Location = new Point(1037, 0);
-            collectionParameterToolbar.Margin = new Padding(0);
-            collectionParameterToolbar.Name = "collectionParameterToolbar";
-            collectionParameterToolbar.Size = new Size(199, 44);
-            collectionParameterToolbar.TabIndex = 0;
-            collectionParameterToolbar.WrapContents = false;
+            testItemAddressToolbar.AutoSize = true;
+            testItemAddressToolbar.Controls.Add(btnAddTestItemAddress);
+            testItemAddressToolbar.Controls.Add(btnDeleteTestItemAddress);
+            testItemAddressToolbar.Dock = DockStyle.Right;
+            testItemAddressToolbar.Location = new Point(1037, 0);
+            testItemAddressToolbar.Margin = new Padding(0);
+            testItemAddressToolbar.Name = "testItemAddressToolbar";
+            testItemAddressToolbar.Size = new Size(199, 44);
+            testItemAddressToolbar.TabIndex = 0;
+            testItemAddressToolbar.WrapContents = false;
             //
-            // btnAddCollectionParameter
+            // btnAddTestItemAddress
             //
-            btnAddCollectionParameter.AutoSizeMode = AntdUI.TAutoSize.Width;
-            btnAddCollectionParameter.BorderWidth = 1F;
-            btnAddCollectionParameter.IconSvg = "PlusOutlined";
-            btnAddCollectionParameter.Location = new Point(0, 0);
-            btnAddCollectionParameter.Margin = new Padding(0, 0, 10, 0);
-            btnAddCollectionParameter.Name = "btnAddCollectionParameter";
-            btnAddCollectionParameter.Size = new Size(89, 40);
-            btnAddCollectionParameter.TabIndex = 0;
-            btnAddCollectionParameter.Text = "新增";
+            btnAddTestItemAddress.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnAddTestItemAddress.BorderWidth = 1F;
+            btnAddTestItemAddress.IconSvg = "PlusOutlined";
+            btnAddTestItemAddress.Location = new Point(0, 0);
+            btnAddTestItemAddress.Margin = new Padding(0, 0, 10, 0);
+            btnAddTestItemAddress.Name = "btnAddTestItemAddress";
+            btnAddTestItemAddress.Size = new Size(89, 40);
+            btnAddTestItemAddress.TabIndex = 0;
+            btnAddTestItemAddress.Text = "新增";
             //
-            // btnDeleteCollectionParameter
+            // btnDeleteTestItemAddress
             //
-            btnDeleteCollectionParameter.AutoSizeMode = AntdUI.TAutoSize.Width;
-            btnDeleteCollectionParameter.BorderWidth = 1F;
-            btnDeleteCollectionParameter.IconSvg = "DeleteOutlined";
-            btnDeleteCollectionParameter.Location = new Point(99, 0);
-            btnDeleteCollectionParameter.Margin = new Padding(0);
-            btnDeleteCollectionParameter.Name = "btnDeleteCollectionParameter";
-            btnDeleteCollectionParameter.Size = new Size(100, 40);
-            btnDeleteCollectionParameter.TabIndex = 1;
-            btnDeleteCollectionParameter.Text = "删除选中";
+            btnDeleteTestItemAddress.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnDeleteTestItemAddress.BorderWidth = 1F;
+            btnDeleteTestItemAddress.IconSvg = "DeleteOutlined";
+            btnDeleteTestItemAddress.Location = new Point(99, 0);
+            btnDeleteTestItemAddress.Margin = new Padding(0);
+            btnDeleteTestItemAddress.Name = "btnDeleteTestItemAddress";
+            btnDeleteTestItemAddress.Size = new Size(100, 40);
+            btnDeleteTestItemAddress.TabIndex = 1;
+            btnDeleteTestItemAddress.Text = "删除选中";
             //
-            // lblCollectionParameterHint
+            // lblTestItemAddressHint
             //
-            lblCollectionParameterHint.AutoEllipsis = true;
-            lblCollectionParameterHint.Dock = DockStyle.Fill;
-            lblCollectionParameterHint.ForeColor = SystemColors.GrayText;
-            lblCollectionParameterHint.Location = new Point(0, 44);
-            lblCollectionParameterHint.Margin = new Padding(0);
-            lblCollectionParameterHint.Name = "lblCollectionParameterHint";
-            lblCollectionParameterHint.Size = new Size(1236, 30);
-            lblCollectionParameterHint.TabIndex = 1;
-            lblCollectionParameterHint.Text = "测试项通过采集组与产品工艺配置关联；工位 0 表示所有工位共享。";
-            lblCollectionParameterHint.TextAlign = ContentAlignment.MiddleLeft;
+            lblTestItemAddressHint.AutoEllipsis = true;
+            lblTestItemAddressHint.Dock = DockStyle.Fill;
+            lblTestItemAddressHint.ForeColor = SystemColors.GrayText;
+            lblTestItemAddressHint.Location = new Point(0, 44);
+            lblTestItemAddressHint.Margin = new Padding(0);
+            lblTestItemAddressHint.Name = "lblTestItemAddressHint";
+            lblTestItemAddressHint.Size = new Size(1236, 30);
+            lblTestItemAddressHint.TabIndex = 1;
+            lblTestItemAddressHint.Text = "测试项目地址来自测试项目模板；工位 0 表示所有工位共享，焊点 0 表示所有焊点共享。";
+            lblTestItemAddressHint.TextAlign = ContentAlignment.MiddleLeft;
             //
-            // tableCollectionParameters
+            // tableTestItemAddresses
             //
-            tableCollectionParameters.Dock = DockStyle.Fill;
-            tableCollectionParameters.EditMode = AntdUI.TEditMode.DoubleClick;
-            tableCollectionParameters.Gap = 8;
-            tableCollectionParameters.Location = new Point(0, 74);
-            tableCollectionParameters.Margin = new Padding(0);
-            tableCollectionParameters.Name = "tableCollectionParameters";
-            tableCollectionParameters.Size = new Size(1236, 480);
-            tableCollectionParameters.TabIndex = 2;
-            tableCollectionParameters.Text = "tableCollectionParameters";
+            tableTestItemAddresses.Dock = DockStyle.Fill;
+            tableTestItemAddresses.EditMode = AntdUI.TEditMode.DoubleClick;
+            tableTestItemAddresses.Gap = 8;
+            tableTestItemAddresses.Location = new Point(0, 74);
+            tableTestItemAddresses.Margin = new Padding(0);
+            tableTestItemAddresses.Name = "tableTestItemAddresses";
+            tableTestItemAddresses.Size = new Size(1236, 480);
+            tableTestItemAddresses.TabIndex = 2;
+            tableTestItemAddresses.Text = "tableTestItemAddresses";
             //
             // AddressManageView
             // 
@@ -329,11 +329,11 @@ namespace AutoWeldSystem.UI.Views
             titleLayout.PerformLayout();
             buttonFlow.ResumeLayout(false);
             buttonFlow.PerformLayout();
-            collectionParameterToolbar.ResumeLayout(false);
-            collectionParameterToolbar.PerformLayout();
-            collectionParameterLayout.ResumeLayout(false);
-            collectionParameterLayout.PerformLayout();
-            tabCollectionParameters.ResumeLayout(false);
+            testItemAddressToolbar.ResumeLayout(false);
+            testItemAddressToolbar.PerformLayout();
+            testItemAddressLayout.ResumeLayout(false);
+            testItemAddressLayout.PerformLayout();
+            tabTestItemAddresses.ResumeLayout(false);
             tabBusinessAddresses.ResumeLayout(false);
             tabAddressCategories.ResumeLayout(false);
             ResumeLayout(false);
@@ -352,12 +352,12 @@ namespace AutoWeldSystem.UI.Views
         private TabControl tabAddressCategories;
         private TabPage tabBusinessAddresses;
         private AntdUI.Table tableAddresses;
-        private TabPage tabCollectionParameters;
-        private TableLayoutPanel collectionParameterLayout;
-        private FlowLayoutPanel collectionParameterToolbar;
-        private AntdUI.Button btnAddCollectionParameter;
-        private AntdUI.Button btnDeleteCollectionParameter;
-        private Label lblCollectionParameterHint;
-        private AntdUI.Table tableCollectionParameters;
+        private TabPage tabTestItemAddresses;
+        private TableLayoutPanel testItemAddressLayout;
+        private FlowLayoutPanel testItemAddressToolbar;
+        private AntdUI.Button btnAddTestItemAddress;
+        private AntdUI.Button btnDeleteTestItemAddress;
+        private Label lblTestItemAddressHint;
+        private AntdUI.Table tableTestItemAddresses;
     }
 }

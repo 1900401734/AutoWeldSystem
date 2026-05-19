@@ -9,30 +9,31 @@ namespace AutoWeldSystem.UI.Views;
 
 /// <summary>
 /// PLC 地址维护页面。
-/// 使用固定地址用途加表格内编辑，既方便现场配置，也避免业务代码依赖用户自定义名称。
+/// 固定业务信号和测试项目地址分开维护，避免用户把业务触发信号与工艺采集参数混在一起。
 /// </summary>
 public partial class AddressManageView : BaseView
 {
     private readonly IPlcAddressService _addressService;
-    private readonly ICollectionParameterService _collectionParameterService;
+    private readonly ITestItemTemplateService _testItemTemplateService;
     private readonly IPlcCommunicationService _plcCommunicationService;
     private readonly IPlcProductionMonitorService _plcProductionMonitorService;
     private readonly IPlcWorkIdMonitorService _plcWorkIdMonitorService;
     private readonly IPlcWeldCycleMonitorService _plcWeldCycleMonitorService;
     private readonly ILocalizationService _localizer;
     private readonly List<BizPlcAddress> _allAddresses = new();
-    private readonly List<BizCollectionParameter> _allCollectionParameters = new();
+    private readonly List<BizTestItemTemplate> _testItemTemplates = new();
+    private readonly List<BizTestItemTemplateItem> _allTestItemAddresses = new();
     private List<PlcAddressTableRow> _currentRows = new();
-    private List<CollectionParameterTableRow> _currentParameterRows = new();
+    private List<TestItemAddressTableRow> _currentTestItemRows = new();
     private PlcAddressTableRow? _selectedRow;
-    private CollectionParameterTableRow? _selectedParameterRow;
+    private TestItemAddressTableRow? _selectedTestItemRow;
     private string _addressKeyword = string.Empty;
-    private string _parameterKeyword = string.Empty;
+    private string _testItemKeyword = string.Empty;
     private bool _initialized;
 
     public AddressManageView(
         IPlcAddressService addressService,
-        ICollectionParameterService collectionParameterService,
+        ITestItemTemplateService testItemTemplateService,
         IPlcCommunicationService plcCommunicationService,
         IPlcProductionMonitorService plcProductionMonitorService,
         IPlcWorkIdMonitorService plcWorkIdMonitorService,
@@ -40,7 +41,7 @@ public partial class AddressManageView : BaseView
         ILocalizationService localizer)
     {
         _addressService = addressService;
-        _collectionParameterService = collectionParameterService;
+        _testItemTemplateService = testItemTemplateService;
         _plcCommunicationService = plcCommunicationService;
         _plcProductionMonitorService = plcProductionMonitorService;
         _plcWorkIdMonitorService = plcWorkIdMonitorService;
@@ -48,7 +49,7 @@ public partial class AddressManageView : BaseView
         _localizer = localizer;
 
         InitializeComponent();
-        ConfigureTable();
+        ConfigureTables();
         WireEvents();
     }
 
@@ -63,40 +64,37 @@ public partial class AddressManageView : BaseView
 
         _initialized = true;
         ApplyLocalizedTexts();
-        LoadAddresses();
+        LoadData();
     }
 
     protected override void OnLanguageChanged()
     {
         ApplyLocalizedTexts();
-        ConfigureTableColumns();
+        ConfigureBusinessAddressColumns();
+        ConfigureTestItemAddressColumns();
         ApplyAddressFilter(_addressKeyword);
-        tableAddresses.Refresh();
+        ApplyTestItemAddressFilter(_testItemKeyword);
     }
 
     /// <summary>
-    /// 初始化 AntdUI 表格，只做一次控件级配置。
+    /// 初始化 AntdUI 表格的通用视觉和编辑行为。
     /// </summary>
-    private void ConfigureTable()
+    private void ConfigureTables()
     {
         TableStyleHelper.ApplyAntdTable(tableAddresses);
-        TableStyleHelper.ApplyAntdTable(tableCollectionParameters);
+        TableStyleHelper.ApplyAntdTable(tableTestItemAddresses);
         tableAddresses.EditLostFocus = true;
         tableAddresses.LostFocusClearSelection = false;
-        tableCollectionParameters.EditLostFocus = true;
-        tableCollectionParameters.LostFocusClearSelection = false;
+        tableTestItemAddresses.EditLostFocus = true;
+        tableTestItemAddresses.LostFocusClearSelection = false;
 
-        ConfigureTableColumns();
-        ConfigureCollectionParameterColumns();
+        ConfigureBusinessAddressColumns();
+        ConfigureTestItemAddressColumns();
     }
 
-    /// <summary>
-    /// 按当前语言重建列标题，避免语言切换后仍显示旧表头。
-    /// </summary>
-    private void ConfigureTableColumns()
+    private void ConfigureBusinessAddressColumns()
     {
         tableAddresses.Columns.Clear();
-
         tableAddresses.Columns.Add(CreateTableColumn(nameof(PlcAddressTableRow.AddressName), TextKeys.Grid.PlcAddressName, readOnly: true));
         tableAddresses.Columns.Add(CreateRawColumn(nameof(PlcAddressTableRow.StationNo), "工位(0共享)", readOnly: true));
         tableAddresses.Columns.Add(CreateTableColumn(nameof(PlcAddressTableRow.Sort), TextKeys.Grid.PlcAddressSort));
@@ -113,34 +111,36 @@ public partial class AddressManageView : BaseView
         TableStyleHelper.ApplyAntdColumnDefaults(tableAddresses);
     }
 
-    private void ConfigureCollectionParameterColumns()
+    private void ConfigureTestItemAddressColumns()
     {
-        tableCollectionParameters.Columns.Clear();
-
-        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.StationNo), "工位"));
-        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.CollectionGroup), "采集组"));
-        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.Sort), "排序"));
-        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.ParameterKey), "参数键"));
-        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.ParameterName), "参数名称"));
-        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.Address), "PLC 地址"));
-        tableCollectionParameters.Columns.Add(CreateDataTypeColumn(nameof(CollectionParameterTableRow.DataType), "数据类型"));
-        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.DataLength), "长度"));
-        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.Scale), "缩放"));
-        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.Offset), "偏移"));
-        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.DecimalPlaces), "小数位"));
-        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.Unit), "单位"));
-        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.MesFieldName), "MES 字段"));
-        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.ReportColumnName), "报表列"));
-        tableCollectionParameters.Columns.Add(CreateParameterRequiredColumn());
-        tableCollectionParameters.Columns.Add(CreateParameterEnabledColumn());
-        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.Description), "备注"));
-        tableCollectionParameters.Columns.Add(CreateRawColumn(nameof(CollectionParameterTableRow.UpdatedTime), "更新时间", readOnly: true, displayFormat: "yyyy-MM-dd HH:mm:ss"));
-        TableStyleHelper.ApplyAntdColumnDefaults(tableCollectionParameters);
+        tableTestItemAddresses.Columns.Clear();
+        tableTestItemAddresses.Columns.Add(CreateTemplateColumn());
+        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(TestItemAddressTableRow.StationNo), "工位(0共享)"));
+        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(TestItemAddressTableRow.TouchNo), "焊点(0共享)"));
+        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(TestItemAddressTableRow.Sort), "排序"));
+        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(TestItemAddressTableRow.ItemKey), "测试项键"));
+        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(TestItemAddressTableRow.ItemName), "测试项目"));
+        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(TestItemAddressTableRow.ActualAddress), "实际值地址"));
+        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(TestItemAddressTableRow.UpperAddress), "上限地址"));
+        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(TestItemAddressTableRow.LowerAddress), "下限地址"));
+        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(TestItemAddressTableRow.ResultAddress), "结果地址"));
+        tableTestItemAddresses.Columns.Add(CreateDataTypeColumn(nameof(TestItemAddressTableRow.ValueDataType), "数值类型"));
+        tableTestItemAddresses.Columns.Add(CreateDataTypeColumn(nameof(TestItemAddressTableRow.ResultDataType), "结果类型"));
+        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(TestItemAddressTableRow.ValueDataLength), "数值长度"));
+        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(TestItemAddressTableRow.ResultDataLength), "结果长度"));
+        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(TestItemAddressTableRow.Scale), "缩放"));
+        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(TestItemAddressTableRow.Offset), "偏移"));
+        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(TestItemAddressTableRow.DecimalPlaces), "小数位"));
+        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(TestItemAddressTableRow.Unit), "单位"));
+        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(TestItemAddressTableRow.MesFieldPrefix), "MES字段"));
+        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(TestItemAddressTableRow.ReportColumnName), "报表列"));
+        tableTestItemAddresses.Columns.Add(CreateTestItemRequiredColumn());
+        tableTestItemAddresses.Columns.Add(CreateTestItemEnabledColumn());
+        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(TestItemAddressTableRow.Description), "备注"));
+        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(TestItemAddressTableRow.UpdatedTime), "更新时间", readOnly: true, displayFormat: "yyyy-MM-dd HH:mm:ss"));
+        TableStyleHelper.ApplyAntdColumnDefaults(tableTestItemAddresses);
     }
 
-    /// <summary>
-    /// 创建普通文本列，统一处理只读、编辑和显示格式。
-    /// </summary>
     private AntdUI.Column CreateTableColumn(string key, string titleKey, bool readOnly = false, string? displayFormat = null)
     {
         return CreateRawColumn(key, _localizer.GetString(titleKey), readOnly, displayFormat);
@@ -158,9 +158,20 @@ public partial class AddressManageView : BaseView
         };
     }
 
-    /// <summary>
-    /// 数据类型列使用下拉项，减少手工输入错误。
-    /// </summary>
+    private AntdUI.ColumnSelect CreateTemplateColumn()
+    {
+        return new AntdUI.ColumnSelect(nameof(TestItemAddressTableRow.TemplateId), "测试项目模板*")
+        {
+            Align = AntdUI.ColumnAlign.Center,
+            Editable = true,
+            Items = _testItemTemplates
+                .OrderBy(template => template.Sort)
+                .ThenBy(template => template.TemplateName)
+                .Select(template => new AntdUI.SelectItem(GetTemplateDisplayName(template)) { Tag = template.Id })
+                .ToList()
+        };
+    }
+
     private AntdUI.ColumnSelect CreateDataTypeColumn(string key, string title)
     {
         return new AntdUI.ColumnSelect(key, title)
@@ -173,9 +184,6 @@ public partial class AddressManageView : BaseView
         };
     }
 
-    /// <summary>
-    /// 启用列使用开关控件，点击即可变更布尔值。
-    /// </summary>
     private AntdUI.ColumnSwitch CreateEnabledColumn()
     {
         return new AntdUI.ColumnSwitch(nameof(PlcAddressTableRow.Enabled), _localizer.GetString(TextKeys.Grid.PlcAddressEnabled))
@@ -185,59 +193,56 @@ public partial class AddressManageView : BaseView
         };
     }
 
-    private static AntdUI.ColumnSwitch CreateParameterEnabledColumn()
+    private static AntdUI.ColumnSwitch CreateTestItemRequiredColumn()
     {
-        return new AntdUI.ColumnSwitch(nameof(CollectionParameterTableRow.Enabled), "启用")
+        return new AntdUI.ColumnSwitch(nameof(TestItemAddressTableRow.Required), "必填")
         {
             Align = AntdUI.ColumnAlign.Center,
             AutoCheck = true
         };
     }
 
-    private static AntdUI.ColumnSwitch CreateParameterRequiredColumn()
+    private static AntdUI.ColumnSwitch CreateTestItemEnabledColumn()
     {
-        return new AntdUI.ColumnSwitch(nameof(CollectionParameterTableRow.Required), "必填")
+        return new AntdUI.ColumnSwitch(nameof(TestItemAddressTableRow.Enabled), "启用")
         {
             Align = AntdUI.ColumnAlign.Center,
             AutoCheck = true
         };
     }
 
-    /// <summary>
-    /// 数字、开关这类字段居中显示，现场人员扫表时更容易对齐查看。
-    /// </summary>
     private static AntdUI.ColumnAlign GetColumnAlign(string key)
     {
-        return key is nameof(PlcAddressTableRow.Sort)
-                or nameof(PlcAddressTableRow.StationNo)
-                or nameof(PlcAddressTableRow.DataLength)
-                or nameof(PlcAddressTableRow.UpdatedTime)
-            ? AntdUI.ColumnAlign.Center
-            : AntdUI.ColumnAlign.Left;
+        return key.Contains("Address", StringComparison.OrdinalIgnoreCase)
+            || key is nameof(PlcAddressTableRow.Description)
+                or nameof(TestItemAddressTableRow.Description)
+                or nameof(TestItemAddressTableRow.ItemName)
+                or nameof(TestItemAddressTableRow.ItemKey)
+            ? AntdUI.ColumnAlign.Left
+            : AntdUI.ColumnAlign.Center;
     }
 
-    /// <summary>
-    /// 统一绑定事件，避免构造函数里堆积细节。
-    /// </summary>
     private void WireEvents()
     {
         btnSave.Click += Save_Click;
-        btnRefresh.Click += (_, _) => LoadAddresses();
+        btnRefresh.Click += (_, _) => LoadData();
         btnTest.Click += TestSelected_Click;
-        btnAddCollectionParameter.Click += AddCollectionParameter_Click;
-        btnDeleteCollectionParameter.Click += DeleteCollectionParameter_Click;
+        btnAddTestItemAddress.Click += AddTestItemAddress_Click;
+        btnDeleteTestItemAddress.Click += DeleteTestItemAddress_Click;
         queryAddresses.QueryClick += (_, keyword) => ApplyActiveFilter(keyword);
         tabAddressCategories.SelectedIndexChanged += (_, _) => SwitchActiveFilterText();
+
         tableAddresses.CellClick += TableAddresses_CellClick;
         tableAddresses.CellEndEdit += TableAddresses_CellEndEdit;
         tableAddresses.CellEndValueEdit += TableAddresses_CellEndValueEdit;
         tableAddresses.CellEditComplete += TableAddresses_CellEditComplete;
         tableAddresses.CheckedChanged += TableAddresses_CheckedChanged;
-        tableCollectionParameters.CellClick += TableCollectionParameters_CellClick;
-        tableCollectionParameters.CellEndEdit += TableAddresses_CellEndEdit;
-        tableCollectionParameters.CellEndValueEdit += TableAddresses_CellEndValueEdit;
-        tableCollectionParameters.CellEditComplete += TableAddresses_CellEditComplete;
-        tableCollectionParameters.CheckedChanged += TableAddresses_CheckedChanged;
+
+        tableTestItemAddresses.CellClick += TableTestItemAddresses_CellClick;
+        tableTestItemAddresses.CellEndEdit += TableAddresses_CellEndEdit;
+        tableTestItemAddresses.CellEndValueEdit += TableAddresses_CellEndValueEdit;
+        tableTestItemAddresses.CellEditComplete += TableAddresses_CellEditComplete;
+        tableTestItemAddresses.CheckedChanged += TableAddresses_CheckedChanged;
     }
 
     private void TableAddresses_CellClick(object sender, AntdUI.TableClickEventArgs e)
@@ -248,17 +253,14 @@ public partial class AddressManageView : BaseView
         }
     }
 
-    private void TableCollectionParameters_CellClick(object sender, AntdUI.TableClickEventArgs e)
+    private void TableTestItemAddresses_CellClick(object sender, AntdUI.TableClickEventArgs e)
     {
-        if (e.Record is CollectionParameterTableRow row)
+        if (e.Record is TestItemAddressTableRow row)
         {
-            _selectedParameterRow = row;
+            _selectedTestItemRow = row;
         }
     }
 
-    /// <summary>
-    /// 文本编辑结束前先校验输入；返回 false 时 AntdUI.Table 会拒绝这次提交。
-    /// </summary>
     private bool TableAddresses_CellEndEdit(object sender, AntdUI.TableEndEditEventArgs e)
     {
         var value = e.Value?.Trim() ?? string.Empty;
@@ -274,16 +276,21 @@ public partial class AddressManageView : BaseView
             };
         }
 
-        if (e.Record is CollectionParameterTableRow)
+        if (e.Record is TestItemAddressTableRow)
         {
             return e.Column.Key switch
             {
-                nameof(CollectionParameterTableRow.StationNo) => IsNonNegativeInt(value),
-                nameof(CollectionParameterTableRow.Sort) => IsNonNegativeInt(value),
-                nameof(CollectionParameterTableRow.DataLength) => IsPositiveInt(value),
-                nameof(CollectionParameterTableRow.Scale) => IsDecimal(value),
-                nameof(CollectionParameterTableRow.Offset) => IsDecimal(value),
-                nameof(CollectionParameterTableRow.DecimalPlaces) => IsNonNegativeInt(value),
+                nameof(TestItemAddressTableRow.TemplateId) => ResolveTemplateId(value) > 0,
+                nameof(TestItemAddressTableRow.StationNo) => IsNonNegativeInt(value),
+                nameof(TestItemAddressTableRow.TouchNo) => IsNonNegativeInt(value),
+                nameof(TestItemAddressTableRow.Sort) => IsNonNegativeInt(value),
+                nameof(TestItemAddressTableRow.ItemKey) => !string.IsNullOrWhiteSpace(value),
+                nameof(TestItemAddressTableRow.ItemName) => !string.IsNullOrWhiteSpace(value),
+                nameof(TestItemAddressTableRow.ValueDataLength) => IsPositiveInt(value),
+                nameof(TestItemAddressTableRow.ResultDataLength) => IsPositiveInt(value),
+                nameof(TestItemAddressTableRow.Scale) => IsDecimal(value),
+                nameof(TestItemAddressTableRow.Offset) => IsDecimal(value),
+                nameof(TestItemAddressTableRow.DecimalPlaces) => IsNonNegativeInt(value),
                 _ => true
             };
         }
@@ -291,88 +298,109 @@ public partial class AddressManageView : BaseView
         return true;
     }
 
-    /// <summary>
-    /// 下拉编辑只接受系统支持的数据类型，避免保存未知类型后 PLC 读取逻辑无法判断。
-    /// </summary>
     private bool TableAddresses_CellEndValueEdit(object sender, AntdUI.TableEndValueEditEventArgs e)
     {
-        var isDataTypeColumn = e.Column.Key == nameof(PlcAddressTableRow.DataType)
-            || e.Column.Key == nameof(CollectionParameterTableRow.DataType);
+        var value = GetSelectValueText(e.Value);
+        if (e.Record is TestItemAddressTableRow itemRow)
+        {
+            switch (e.Column.Key)
+            {
+                case nameof(TestItemAddressTableRow.TemplateId):
+                    itemRow.TemplateId = ResolveTemplateId(value);
+                    return itemRow.TemplateId > 0;
 
-        return !isDataTypeColumn || AppConstants.PlcDataTypes.All.Contains(e.Value?.ToString());
+                case nameof(TestItemAddressTableRow.ValueDataType):
+                    itemRow.ValueDataType = value;
+                    return AppConstants.PlcDataTypes.All.Contains(value);
+
+                case nameof(TestItemAddressTableRow.ResultDataType):
+                    itemRow.ResultDataType = value;
+                    return AppConstants.PlcDataTypes.All.Contains(value);
+            }
+        }
+
+        if (e.Record is PlcAddressTableRow addressRow && e.Column.Key == nameof(PlcAddressTableRow.DataType))
+        {
+            addressRow.DataType = value;
+            return AppConstants.PlcDataTypes.All.Contains(value);
+        }
+
+        return true;
     }
 
-    /// <summary>
-    /// 开关列点击后同步当前选中行，并显式写回 Enabled，避免不同版本控件行为差异。
-    /// </summary>
     private void TableAddresses_CheckedChanged(object sender, AntdUI.TableCheckEventArgs e)
     {
-        if (e.Record is not PlcAddressTableRow row)
+        if (e.Record is PlcAddressTableRow addressRow)
         {
-            if (e.Record is CollectionParameterTableRow parameterRow)
-            {
-                _selectedParameterRow = parameterRow;
-                if (e.Column.Key == nameof(CollectionParameterTableRow.Required))
-                {
-                    parameterRow.Required = e.Value;
-                    return;
-                }
-
-                parameterRow.Enabled = e.Value;
-            }
-
+            _selectedRow = addressRow;
+            addressRow.Enabled = e.Value;
             return;
         }
 
-        _selectedRow = row;
-        row.Enabled = e.Value;
+        if (e.Record is TestItemAddressTableRow itemRow)
+        {
+            _selectedTestItemRow = itemRow;
+            if (e.Column.Key == nameof(TestItemAddressTableRow.Required))
+            {
+                itemRow.Required = e.Value;
+                return;
+            }
+
+            itemRow.Enabled = e.Value;
+        }
     }
 
-    /// <summary>
-    /// 编辑完成后重新归一化当前行，并刷新显示，避免空长度、负排序等非法值留在界面上。
-    /// </summary>
     private void TableAddresses_CellEditComplete(object sender, AntdUI.ITableEventArgs e)
     {
-        if (e.Record is PlcAddressTableRow row)
+        if (e.Record is PlcAddressTableRow addressRow)
         {
-            _selectedRow = row;
-            row.Normalize();
+            _selectedRow = addressRow;
+            addressRow.Normalize();
             tableAddresses.Refresh();
             return;
         }
 
-        if (e.Record is CollectionParameterTableRow parameterRow)
+        if (e.Record is TestItemAddressTableRow itemRow)
         {
-            _selectedParameterRow = parameterRow;
-            parameterRow.Normalize();
-            tableCollectionParameters.Refresh();
+            _selectedTestItemRow = itemRow;
+            itemRow.Normalize();
+            tableTestItemAddresses.Refresh();
         }
     }
 
     private void ApplyLocalizedTexts()
     {
         lblTitle.Text = _localizer.GetString(TextKeys.Address.Title);
-        lblDescription.Text = _localizer.GetString(TextKeys.Address.Description);
+        lblDescription.Text = "维护 PLC 业务信号地址和各测试项目的采集地址。测试项目地址通过模板与产品工艺配置关联。";
         btnSave.Text = _localizer.GetString(TextKeys.Address.ButtonSave);
         btnRefresh.Text = _localizer.GetString(TextKeys.Address.ButtonRefresh);
         btnTest.Text = _localizer.GetString(TextKeys.Address.ButtonTest);
-        btnAddCollectionParameter.Text = "新增";
-        btnDeleteCollectionParameter.Text = "删除选中";
-        lblCollectionParameterHint.Text = "测试项通过采集组与产品工艺配置关联；工位 0 表示所有工位共享。";
+        btnAddTestItemAddress.Text = "新增";
+        btnDeleteTestItemAddress.Text = "删除选中";
+        lblTestItemAddressHint.Text = "测试项目地址来自测试项目模板；工位 0 表示所有工位共享，焊点 0 表示所有焊点共享。";
         tabBusinessAddresses.Text = "业务信号地址";
-        tabCollectionParameters.Text = "采集参数地址";
+        tabTestItemAddresses.Text = "测试项目地址";
     }
 
-    private void LoadAddresses()
+    private void LoadData()
     {
         try
         {
             _allAddresses.Clear();
             _allAddresses.AddRange(_addressService.GetAll());
-            _allCollectionParameters.Clear();
-            _allCollectionParameters.AddRange(_collectionParameterService.GetAll(includeDisabled: true));
+
+            _testItemTemplates.Clear();
+            _testItemTemplates.AddRange(_testItemTemplateService.GetTemplates(includeDisabled: true));
+
+            _allTestItemAddresses.Clear();
+            foreach (var template in _testItemTemplates)
+            {
+                _allTestItemAddresses.AddRange(_testItemTemplateService.GetItems(template.Id, includeDisabled: true));
+            }
+
+            ConfigureTestItemAddressColumns();
             ApplyAddressFilter(_addressKeyword);
-            ApplyCollectionFilter(_parameterKeyword);
+            ApplyTestItemAddressFilter(_testItemKeyword);
         }
         catch (Exception ex)
         {
@@ -382,9 +410,9 @@ public partial class AddressManageView : BaseView
 
     private void ApplyActiveFilter(string? keyword)
     {
-        if (tabAddressCategories.SelectedTab == tabCollectionParameters)
+        if (tabAddressCategories.SelectedTab == tabTestItemAddresses)
         {
-            ApplyCollectionFilter(keyword);
+            ApplyTestItemAddressFilter(keyword);
             return;
         }
 
@@ -393,14 +421,11 @@ public partial class AddressManageView : BaseView
 
     private void SwitchActiveFilterText()
     {
-        queryAddresses.Text = tabAddressCategories.SelectedTab == tabCollectionParameters
-            ? _parameterKeyword
+        queryAddresses.Text = tabAddressCategories.SelectedTab == tabTestItemAddresses
+            ? _testItemKeyword
             : _addressKeyword;
     }
 
-    /// <summary>
-    /// 搜索只影响界面显示，不改变完整地址集合，避免保存时漏掉被筛选隐藏的地址。
-    /// </summary>
     private void ApplyAddressFilter(string? keyword)
     {
         EndTableEdit();
@@ -431,83 +456,100 @@ public partial class AddressManageView : BaseView
         SelectVisibleRow(selectedAddressKey);
     }
 
-    private void ApplyCollectionFilter(string? keyword)
+    private void ApplyTestItemAddressFilter(string? keyword)
     {
         EndTableEdit();
 
-        _parameterKeyword = keyword?.Trim() ?? string.Empty;
-        var selectedParameterId = _selectedParameterRow?.Id;
+        _testItemKeyword = keyword?.Trim() ?? string.Empty;
+        var selectedItemId = _selectedTestItemRow?.Id;
 
-        var filteredParameters = _allCollectionParameters
-            .Where(parameter => string.IsNullOrWhiteSpace(_parameterKeyword)
-                || Contains(parameter.CollectionGroup, _parameterKeyword)
-                || Contains(parameter.ParameterKey, _parameterKeyword)
-                || Contains(parameter.ParameterName, _parameterKeyword)
-                || Contains(parameter.Address, _parameterKeyword)
-                || Contains(parameter.DataType, _parameterKeyword)
-                || Contains(parameter.MesFieldName, _parameterKeyword)
-                || Contains(parameter.ReportColumnName, _parameterKeyword)
-                || Contains(parameter.Description, _parameterKeyword))
-            .OrderBy(parameter => parameter.CollectionGroup)
-            .ThenBy(parameter => parameter.StationNo)
-            .ThenBy(parameter => parameter.Sort)
-            .ThenBy(parameter => parameter.ParameterKey)
+        var filteredItems = _allTestItemAddresses
+            .Where(item => string.IsNullOrWhiteSpace(_testItemKeyword)
+                || Contains(GetTemplateDisplayName(item.TemplateId), _testItemKeyword)
+                || Contains(item.StationNo.ToString(), _testItemKeyword)
+                || Contains(item.TouchNo.ToString(), _testItemKeyword)
+                || Contains(item.ItemKey, _testItemKeyword)
+                || Contains(item.ItemName, _testItemKeyword)
+                || Contains(item.ActualAddress, _testItemKeyword)
+                || Contains(item.UpperAddress, _testItemKeyword)
+                || Contains(item.LowerAddress, _testItemKeyword)
+                || Contains(item.ResultAddress, _testItemKeyword)
+                || Contains(item.ValueDataType, _testItemKeyword)
+                || Contains(item.ResultDataType, _testItemKeyword)
+                || Contains(item.Unit, _testItemKeyword)
+                || Contains(item.MesFieldPrefix, _testItemKeyword)
+                || Contains(item.ReportColumnName, _testItemKeyword)
+                || Contains(item.Description, _testItemKeyword))
+            .OrderBy(item => GetTemplateSort(item.TemplateId))
+            .ThenBy(item => item.TemplateId)
+            .ThenBy(item => item.StationNo)
+            .ThenBy(item => item.TouchNo)
+            .ThenBy(item => item.Sort)
+            .ThenBy(item => item.ItemKey)
             .ToList();
 
-        _currentParameterRows = filteredParameters
-            .Select(parameter => new CollectionParameterTableRow(parameter))
+        _currentTestItemRows = filteredItems
+            .Select(item => new TestItemAddressTableRow(item, _testItemTemplates))
             .ToList();
 
-        tableCollectionParameters.DataSource = _currentParameterRows;
-        tableCollectionParameters.Refresh();
-        SelectVisibleParameterRow(selectedParameterId);
+        tableTestItemAddresses.DataSource = _currentTestItemRows;
+        tableTestItemAddresses.Refresh();
+        SelectVisibleTestItemRow(selectedItemId);
     }
 
-    private void AddCollectionParameter_Click(object? sender, EventArgs e)
+    private void AddTestItemAddress_Click(object? sender, EventArgs e)
     {
         EndTableEdit();
 
-        var template = _selectedParameterRow?.Source;
-        var collectionGroup = template?.CollectionGroup ?? "default";
-        var stationNo = template?.StationNo ?? ProductionConstants.Stations.DefaultStationNo;
-        var sort = _allCollectionParameters
-            .Where(parameter => parameter.StationNo == stationNo
-                && string.Equals(parameter.CollectionGroup, collectionGroup, StringComparison.OrdinalIgnoreCase))
-            .Select(parameter => parameter.Sort)
+        var template = GetDefaultTemplate();
+        if (template is null)
+        {
+            ShowWarning("请先在系统设置中新增测试项目模板。");
+            return;
+        }
+
+        var stationNo = _selectedTestItemRow?.StationNo ?? ProductionConstants.Stations.SharedStationNo;
+        var touchNo = _selectedTestItemRow?.TouchNo ?? 0;
+        var sort = _allTestItemAddresses
+            .Where(item => item.TemplateId == template.Id && item.StationNo == stationNo && item.TouchNo == touchNo)
+            .Select(item => item.Sort)
             .DefaultIfEmpty(0)
             .Max() + 10;
 
-        var parameter = new BizCollectionParameter
+        var item = new BizTestItemTemplateItem
         {
+            TemplateId = template.Id,
             StationNo = stationNo,
-            CollectionGroup = collectionGroup,
-            ParameterKey = BuildNewParameterKey(collectionGroup, stationNo),
-            ParameterName = "新测试项",
-            DataType = AppConstants.PlcDataTypes.Float,
-            DataLength = 1,
+            TouchNo = touchNo,
+            ItemKey = BuildNewItemKey(template.Id, stationNo, touchNo),
+            ItemName = "新测试项目",
+            ValueDataType = AppConstants.PlcDataTypes.Float,
+            ResultDataType = AppConstants.PlcDataTypes.Int16,
+            ValueDataLength = 1,
+            ResultDataLength = 1,
             Scale = 1m,
             DecimalPlaces = 2,
             Required = false,
             Enabled = true,
             Sort = sort,
-            Description = "用户新增测试项，请配置 PLC 地址和字段映射。",
+            Description = "用户新增测试项目，请配置 PLC 地址和字段映射。",
             UpdatedTime = DateTime.Now
         };
 
-        _allCollectionParameters.Add(parameter);
-        _parameterKeyword = string.Empty;
+        _allTestItemAddresses.Add(item);
+        _testItemKeyword = string.Empty;
         queryAddresses.Text = string.Empty;
-        ApplyCollectionFilter(_parameterKeyword);
-        _selectedParameterRow = _currentParameterRows.FirstOrDefault(row => ReferenceEquals(row.Source, parameter));
-        SelectVisibleParameterRow(_selectedParameterRow?.Id);
+        ApplyTestItemAddressFilter(_testItemKeyword);
+        _selectedTestItemRow = _currentTestItemRows.FirstOrDefault(row => ReferenceEquals(row.Source, item));
+        SelectVisibleTestItemRow(_selectedTestItemRow?.Id);
     }
 
-    private void DeleteCollectionParameter_Click(object? sender, EventArgs e)
+    private void DeleteTestItemAddress_Click(object? sender, EventArgs e)
     {
         EndTableEdit();
 
-        var parameter = _selectedParameterRow?.Source;
-        if (parameter is null)
+        var item = _selectedTestItemRow?.Source;
+        if (item is null)
         {
             ShowWarning(_localizer.GetString(TextKeys.Address.MessageSelectFirst));
             return;
@@ -515,7 +557,7 @@ public partial class AddressManageView : BaseView
 
         var result = MessageBox.Show(
             this,
-            $"确认删除测试项“{parameter.ParameterName}”吗？",
+            $"确认删除测试项目“{item.ItemName}”吗？",
             _localizer.GetString(TextKeys.Common.TitleWarning),
             MessageBoxButtons.OKCancel,
             MessageBoxIcon.Warning);
@@ -526,42 +568,39 @@ public partial class AddressManageView : BaseView
 
         try
         {
-            if (parameter.Id > 0)
+            if (item.Id > 0)
             {
-                _collectionParameterService.Delete(parameter.Id);
+                _testItemTemplateService.DeleteItem(item.Id);
             }
 
-            _allCollectionParameters.Remove(parameter);
-            _selectedParameterRow = null;
-            ApplyCollectionFilter(_parameterKeyword);
+            _allTestItemAddresses.Remove(item);
+            _selectedTestItemRow = null;
+            ApplyTestItemAddressFilter(_testItemKeyword);
         }
         catch (Exception ex)
         {
-            ShowError($"删除测试项失败：{ex.Message}");
+            ShowError($"删除测试项目失败：{ex.Message}");
         }
     }
 
-    /// <summary>
-    /// 保存后重启 PLC 通讯服务，让新的心跳地址立即生效。
-    /// </summary>
     private async void Save_Click(object? sender, EventArgs e)
     {
         EndTableEdit();
 
         try
         {
-            var addresses = GetCurrentAddresses();
-            var collectionParameters = GetCurrentCollectionParameters();
+            var addresses = _allAddresses.ToList();
+            var testItems = _allTestItemAddresses.ToList();
             NormalizeAddresses(addresses);
-            NormalizeCollectionParameters(collectionParameters);
-            ValidateCollectionParameters(collectionParameters);
+            NormalizeTestItemAddresses(testItems);
+            ValidateTestItemAddresses(testItems);
             _addressService.SaveAll(addresses);
-            _collectionParameterService.SaveAll(collectionParameters);
+            _testItemTemplateService.SaveItems(testItems);
             await _plcProductionMonitorService.ReloadAddressesAsync();
             await _plcWorkIdMonitorService.ReloadAddressAsync();
             await _plcWeldCycleMonitorService.ReloadAddressesAsync();
             await _plcCommunicationService.RestartAsync();
-            LoadAddresses();
+            LoadData();
             ShowInfo(_localizer.GetString(TextKeys.Address.MessageSaveSuccess));
         }
         catch (Exception ex)
@@ -574,13 +613,13 @@ public partial class AddressManageView : BaseView
     {
         EndTableEdit();
 
-        if (tabAddressCategories.SelectedTab == tabCollectionParameters)
+        if (tabAddressCategories.SelectedTab == tabTestItemAddresses)
         {
-            await TestSelectedCollectionParameterAsync();
+            await TestSelectedTestItemAsync();
             return;
         }
 
-        var address = GetSelectedAddress();
+        var address = _selectedRow?.Source;
         if (address is null)
         {
             ShowWarning(_localizer.GetString(TextKeys.Address.MessageSelectFirst));
@@ -593,7 +632,7 @@ public partial class AddressManageView : BaseView
             return;
         }
 
-        var result = await ReadAddressAsync(address);
+        var result = await ReadAddressAsync(address.Address, address.DataType, address.DataLength);
         if (result.IsSuccess)
         {
             ShowInfo(_localizer.GetString(TextKeys.Address.MessageTestSuccess, GetAddressDisplayName(address), result.Value ?? string.Empty));
@@ -603,34 +642,29 @@ public partial class AddressManageView : BaseView
         ShowWarning(_localizer.GetString(TextKeys.Address.MessageTestFailed, GetAddressDisplayName(address), result.Message));
     }
 
-    private async Task TestSelectedCollectionParameterAsync()
+    private async Task TestSelectedTestItemAsync()
     {
-        var parameter = _selectedParameterRow?.Source;
-        if (parameter is null)
+        var item = _selectedTestItemRow?.Source;
+        if (item is null)
         {
             ShowWarning(_localizer.GetString(TextKeys.Address.MessageSelectFirst));
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(parameter.Address))
+        if (string.IsNullOrWhiteSpace(item.ActualAddress))
         {
-            ShowWarning($"请先填写 {parameter.ParameterName} 的 PLC 地址。");
+            ShowWarning($"请先填写 {item.ItemName} 的实际值地址。");
             return;
         }
 
-        var result = await ReadAddressAsync(parameter.Address, parameter.DataType, parameter.DataLength);
+        var result = await ReadAddressAsync(item.ActualAddress, item.ValueDataType, item.ValueDataLength);
         if (result.IsSuccess)
         {
-            ShowInfo($"{parameter.ParameterName} 读取成功：{result.Value}");
+            ShowInfo($"{item.ItemName} 实际值读取成功：{result.Value}");
             return;
         }
 
-        ShowWarning($"{parameter.ParameterName} 读取失败：{result.Message}");
-    }
-
-    private async Task<PlcServiceResult<string>> ReadAddressAsync(BizPlcAddress address)
-    {
-        return await ReadAddressAsync(address.Address, address.DataType, address.DataLength);
+        ShowWarning($"{item.ItemName} 实际值读取失败：{result.Message}");
     }
 
     private async Task<PlcServiceResult<string>> ReadAddressAsync(string? address, string? dataTypeValue, int dataLength)
@@ -655,33 +689,12 @@ public partial class AddressManageView : BaseView
             : PlcServiceResult<string>.Fail(result.Message);
     }
 
-    private List<BizPlcAddress> GetCurrentAddresses()
-    {
-        return _allAddresses.ToList();
-    }
-
-    private List<BizCollectionParameter> GetCurrentCollectionParameters()
-    {
-        return _allCollectionParameters.ToList();
-    }
-
-    private BizPlcAddress? GetSelectedAddress()
-    {
-        return _selectedRow?.Source;
-    }
-
-    /// <summary>
-    /// 关闭单元格编辑框，确保保存或筛选前把最新输入写回行对象。
-    /// </summary>
     private void EndTableEdit()
     {
         tableAddresses.EditModeClose();
-        tableCollectionParameters.EditModeClose();
+        tableTestItemAddresses.EditModeClose();
     }
 
-    /// <summary>
-    /// 筛选后尽量保留原选中行；原行不可见时默认选中第一行。
-    /// </summary>
     private void SelectVisibleRow(string? selectedAddressKey)
     {
         _selectedRow = _currentRows.FirstOrDefault(row => row.AddressKey == selectedAddressKey)
@@ -693,14 +706,14 @@ public partial class AddressManageView : BaseView
         }
     }
 
-    private void SelectVisibleParameterRow(int? selectedParameterId)
+    private void SelectVisibleTestItemRow(int? selectedItemId)
     {
-        _selectedParameterRow = _currentParameterRows.FirstOrDefault(row => row.Id == selectedParameterId)
-            ?? _currentParameterRows.FirstOrDefault();
+        _selectedTestItemRow = _currentTestItemRows.FirstOrDefault(row => row.Id == selectedItemId)
+            ?? _currentTestItemRows.FirstOrDefault();
 
-        if (_selectedParameterRow is not null)
+        if (_selectedTestItemRow is not null)
         {
-            tableCollectionParameters.SetSelected(_selectedParameterRow, true);
+            tableTestItemAddresses.SetSelected(_selectedTestItemRow, true);
         }
     }
 
@@ -717,90 +730,129 @@ public partial class AddressManageView : BaseView
         }
     }
 
-    private static void NormalizeCollectionParameters(IEnumerable<BizCollectionParameter> parameters)
+    private static void NormalizeTestItemAddresses(IEnumerable<BizTestItemTemplateItem> items)
     {
-        foreach (var parameter in parameters)
+        foreach (var item in items)
         {
-            parameter.CollectionGroup = string.IsNullOrWhiteSpace(parameter.CollectionGroup) ? "default" : parameter.CollectionGroup.Trim();
-            parameter.ParameterKey = parameter.ParameterKey.Trim();
-            parameter.ParameterName = parameter.ParameterName.Trim();
-            parameter.Address = parameter.Address?.Trim();
-            parameter.DataType = NormalizeDataType(parameter.DataType);
-            parameter.DataLength = Math.Max(1, parameter.DataLength);
-            parameter.Scale = parameter.Scale == 0 ? 1m : parameter.Scale;
-            parameter.DecimalPlaces = Math.Clamp(parameter.DecimalPlaces, 0, 6);
-            parameter.Unit = NormalizeNullableText(parameter.Unit);
-            parameter.MesFieldName = NormalizeNullableText(parameter.MesFieldName);
-            parameter.ReportColumnName = NormalizeNullableText(parameter.ReportColumnName);
-            parameter.Sort = Math.Max(0, parameter.Sort);
-            parameter.Description = NormalizeNullableText(parameter.Description);
+            item.TemplateId = Math.Max(0, item.TemplateId);
+            item.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, item.StationNo);
+            item.TouchNo = Math.Max(0, item.TouchNo);
+            item.ItemKey = NormalizeRequiredText(item.ItemKey);
+            item.ItemName = NormalizeRequiredText(item.ItemName);
+            item.ActualAddress = NormalizeNullableText(item.ActualAddress);
+            item.UpperAddress = NormalizeNullableText(item.UpperAddress);
+            item.LowerAddress = NormalizeNullableText(item.LowerAddress);
+            item.ResultAddress = NormalizeNullableText(item.ResultAddress);
+            item.ValueDataType = NormalizeDataType(item.ValueDataType);
+            item.ResultDataType = NormalizeDataType(item.ResultDataType);
+            item.ValueDataLength = Math.Max(1, item.ValueDataLength);
+            item.ResultDataLength = Math.Max(1, item.ResultDataLength);
+            item.Scale = item.Scale == 0 ? 1m : item.Scale;
+            item.DecimalPlaces = Math.Clamp(item.DecimalPlaces, 0, 6);
+            item.Unit = NormalizeNullableText(item.Unit);
+            item.MesFieldPrefix = NormalizeNullableText(item.MesFieldPrefix);
+            item.ReportColumnName = NormalizeNullableText(item.ReportColumnName);
+            item.Sort = Math.Max(0, item.Sort);
+            item.Description = NormalizeNullableText(item.Description);
         }
     }
 
-    private static void ValidateCollectionParameters(IEnumerable<BizCollectionParameter> parameters)
+    private static void ValidateTestItemAddresses(IEnumerable<BizTestItemTemplateItem> items)
     {
-        var enabledParameters = parameters.Where(parameter => parameter.Enabled).ToList();
-        foreach (var parameter in enabledParameters)
+        var enabledItems = items.Where(item => item.Enabled).ToList();
+        foreach (var item in enabledItems)
         {
-            if (string.IsNullOrWhiteSpace(parameter.ParameterKey))
+            if (item.TemplateId <= 0)
             {
-                throw new InvalidOperationException("采集参数的参数键不能为空。");
+                throw new InvalidOperationException($"测试项目“{item.ItemName}”尚未绑定模板。");
             }
 
-            if (string.IsNullOrWhiteSpace(parameter.ParameterName))
+            if (item.Required && string.IsNullOrWhiteSpace(item.ActualAddress))
             {
-                throw new InvalidOperationException("采集参数的参数名称不能为空。");
+                throw new InvalidOperationException($"必采测试项目“{item.ItemName}”尚未配置实际值地址。");
             }
         }
 
-        var duplicate = enabledParameters
-            .GroupBy(parameter => new
-            {
-                Group = parameter.CollectionGroup,
-                parameter.StationNo,
-                Key = parameter.ParameterKey
-            })
+        var duplicate = enabledItems
+            .GroupBy(
+                item => $"{item.TemplateId}\u001F{item.StationNo}\u001F{item.TouchNo}\u001F{item.ItemKey}",
+                StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(group => group.Count() > 1);
         if (duplicate is not null)
         {
-            throw new InvalidOperationException($"采集组“{duplicate.Key.Group}”工位{duplicate.Key.StationNo}存在重复参数键“{duplicate.Key.Key}”。");
+            var first = duplicate.First();
+            throw new InvalidOperationException($"模板“{first.TemplateId}”中工位“{first.StationNo}”、焊点“{first.TouchNo}”存在重复测试项键“{first.ItemKey}”。");
         }
     }
 
-    private static string NormalizeDataType(string? dataType)
+    private int ResolveTemplateId(string value)
     {
-        return AppConstants.PlcDataTypes.All.Contains(dataType)
-            ? dataType!
-            : AppConstants.PlcDataTypes.Int16;
+        if (int.TryParse(value, out var templateId)
+            && _testItemTemplates.Any(template => template.Id == templateId))
+        {
+            return templateId;
+        }
+
+        var template = _testItemTemplates.FirstOrDefault(item =>
+            string.Equals(GetTemplateDisplayName(item), value, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(item.TemplateCode, value, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(item.TemplateName, value, StringComparison.OrdinalIgnoreCase));
+
+        return template?.Id ?? 0;
     }
 
-    private static int ParsePositiveInt(string value)
+    private BizTestItemTemplate? GetDefaultTemplate()
     {
-        return int.TryParse(value, out var number)
-            ? Math.Max(1, number)
-            : 1;
+        return _selectedTestItemRow is null
+            ? _testItemTemplates.OrderBy(template => template.Sort).ThenBy(template => template.TemplateCode).FirstOrDefault()
+            : _testItemTemplates.FirstOrDefault(template => template.Id == _selectedTestItemRow.TemplateId)
+                ?? _testItemTemplates.OrderBy(template => template.Sort).ThenBy(template => template.TemplateCode).FirstOrDefault();
     }
 
-    private static int ParseNonNegativeInt(string value)
+    private string GetTemplateDisplayName(int templateId)
     {
-        return int.TryParse(value, out var number)
-            ? Math.Max(0, number)
-            : 0;
+        var template = _testItemTemplates.FirstOrDefault(item => item.Id == templateId);
+        return template is null ? string.Empty : GetTemplateDisplayName(template);
     }
 
-    private static bool IsPositiveInt(string value)
+    private static string GetTemplateDisplayName(BizTestItemTemplate template)
     {
-        return int.TryParse(value, out var number) && number > 0;
+        return string.IsNullOrWhiteSpace(template.TemplateCode)
+            ? template.TemplateName
+            : $"{template.TemplateName} ({template.TemplateCode})";
     }
 
-    private static bool IsNonNegativeInt(string value)
+    private int GetTemplateSort(int templateId)
     {
-        return int.TryParse(value, out var number) && number >= 0;
+        return _testItemTemplates.FirstOrDefault(template => template.Id == templateId)?.Sort ?? int.MaxValue;
     }
 
-    private static bool IsDecimal(string value)
+    private string BuildNewItemKey(int templateId, int stationNo, int touchNo)
     {
-        return decimal.TryParse(value, out _);
+        var index = 1;
+        string key;
+        do
+        {
+            key = $"custom_{stationNo}_{touchNo}_{index}";
+            index++;
+        }
+        while (_allTestItemAddresses.Any(item =>
+            item.TemplateId == templateId
+            && item.StationNo == stationNo
+            && item.TouchNo == touchNo
+            && string.Equals(item.ItemKey, key, StringComparison.OrdinalIgnoreCase)));
+
+        return key;
+    }
+
+    private static string GetSelectValueText(object? value)
+    {
+        return value switch
+        {
+            null => string.Empty,
+            AntdUI.SelectItem item => (item.Tag?.ToString() ?? item.Text ?? string.Empty).Trim(),
+            _ => value.ToString()?.Trim() ?? string.Empty
+        };
     }
 
     private string GetAddressDisplayName(BizPlcAddress address)
@@ -832,27 +884,51 @@ public partial class AddressManageView : BaseView
             : _localizer.GetString(key);
     }
 
+    private static string NormalizeDataType(string? dataType)
+    {
+        return AppConstants.PlcDataTypes.All.Contains(dataType)
+            ? dataType!
+            : AppConstants.PlcDataTypes.Int16;
+    }
+
+    private static string NormalizeRequiredText(string? value)
+    {
+        var normalizedValue = value?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedValue))
+        {
+            throw new InvalidOperationException("必填字段不能为空。");
+        }
+
+        return normalizedValue;
+    }
+
+    private static string? NormalizeNullableText(string? value)
+    {
+        var normalizedValue = value?.Trim();
+        return string.IsNullOrWhiteSpace(normalizedValue)
+            ? null
+            : normalizedValue;
+    }
+
     private static bool Contains(string? source, string keyword)
     {
         return !string.IsNullOrWhiteSpace(source)
             && source.Contains(keyword, StringComparison.OrdinalIgnoreCase);
     }
 
-    private string BuildNewParameterKey(string collectionGroup, int stationNo)
+    private static bool IsPositiveInt(string value)
     {
-        var index = 1;
-        string key;
-        do
-        {
-            key = $"custom_{stationNo}_{index}";
-            index++;
-        }
-        while (_allCollectionParameters.Any(parameter =>
-            string.Equals(parameter.CollectionGroup, collectionGroup, StringComparison.OrdinalIgnoreCase)
-            && parameter.StationNo == stationNo
-            && string.Equals(parameter.ParameterKey, key, StringComparison.OrdinalIgnoreCase)));
+        return int.TryParse(value, out var number) && number > 0;
+    }
 
-        return key;
+    private static bool IsNonNegativeInt(string value)
+    {
+        return int.TryParse(value, out var number) && number >= 0;
+    }
+
+    private static bool IsDecimal(string value)
+    {
+        return decimal.TryParse(value, out _);
     }
 
     private void ShowInfo(string message)
@@ -871,7 +947,7 @@ public partial class AddressManageView : BaseView
     }
 
     /// <summary>
-    /// AntdUI.Table 的数据行。显示字段走包装类，编辑字段直接写回原始 PLC 地址对象。
+    /// 业务信号地址表格行。表格编辑的是包装属性，保存时仍回写到原始地址实体。
     /// </summary>
     private sealed class PlcAddressTableRow(BizPlcAddress source, string addressName)
     {
@@ -921,9 +997,6 @@ public partial class AddressManageView : BaseView
 
         public DateTime UpdatedTime => Source.UpdatedTime;
 
-        /// <summary>
-        /// 单行数据清理，供表格编辑完成后立即修正显示值。
-        /// </summary>
         public void Normalize()
         {
             Source.LogicalKey = string.IsNullOrWhiteSpace(Source.LogicalKey) ? Source.AddressKey : Source.LogicalKey.Trim();
@@ -937,25 +1010,50 @@ public partial class AddressManageView : BaseView
     }
 
     /// <summary>
-    /// 采集参数表格行。
-    /// 表格直接编辑包装属性，属性再写回源实体，保存时不丢失筛选外的数据。
+    /// 测试项目地址表格行。一个测试项包含实际值、上下限和结果四类 PLC 地址。
     /// </summary>
-    private sealed class CollectionParameterTableRow(BizCollectionParameter source)
+    private sealed class TestItemAddressTableRow(BizTestItemTemplateItem source, IReadOnlyList<BizTestItemTemplate> templates)
     {
-        public BizCollectionParameter Source { get; } = source;
+        public BizTestItemTemplateItem Source { get; } = source;
+
+        private readonly IReadOnlyList<BizTestItemTemplate> _templates = templates;
 
         public int Id => Source.Id;
+
+        public int TemplateId
+        {
+            get => Source.TemplateId;
+            set => Source.TemplateId = Math.Max(0, value);
+        }
+
+        public string TemplateName
+        {
+            get
+            {
+                var template = _templates.FirstOrDefault(item => item.Id == Source.TemplateId);
+                return template is null ? string.Empty : GetTemplateDisplayName(template);
+            }
+            set
+            {
+                var normalized = value.Trim();
+                var template = _templates.FirstOrDefault(item =>
+                    string.Equals(GetTemplateDisplayName(item), normalized, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(item.TemplateCode, normalized, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(item.TemplateName, normalized, StringComparison.OrdinalIgnoreCase));
+                Source.TemplateId = template?.Id ?? Source.TemplateId;
+            }
+        }
 
         public int StationNo
         {
             get => Source.StationNo;
-            set => Source.StationNo = Math.Max(0, value);
+            set => Source.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, value);
         }
 
-        public string CollectionGroup
+        public int TouchNo
         {
-            get => Source.CollectionGroup;
-            set => Source.CollectionGroup = string.IsNullOrWhiteSpace(value) ? "default" : value.Trim();
+            get => Source.TouchNo;
+            set => Source.TouchNo = Math.Max(0, value);
         }
 
         public int Sort
@@ -964,34 +1062,64 @@ public partial class AddressManageView : BaseView
             set => Source.Sort = Math.Max(0, value);
         }
 
-        public string ParameterKey
+        public string ItemKey
         {
-            get => Source.ParameterKey;
-            set => Source.ParameterKey = value.Trim();
+            get => Source.ItemKey;
+            set => Source.ItemKey = value.Trim();
         }
 
-        public string ParameterName
+        public string ItemName
         {
-            get => Source.ParameterName;
-            set => Source.ParameterName = value.Trim();
+            get => Source.ItemName;
+            set => Source.ItemName = value.Trim();
         }
 
-        public string? Address
+        public string? ActualAddress
         {
-            get => Source.Address;
-            set => Source.Address = NormalizeNullableText(value);
+            get => Source.ActualAddress;
+            set => Source.ActualAddress = NormalizeNullableText(value);
         }
 
-        public string DataType
+        public string? UpperAddress
         {
-            get => Source.DataType;
-            set => Source.DataType = NormalizeDataType(value);
+            get => Source.UpperAddress;
+            set => Source.UpperAddress = NormalizeNullableText(value);
         }
 
-        public int DataLength
+        public string? LowerAddress
         {
-            get => Source.DataLength;
-            set => Source.DataLength = Math.Max(1, value);
+            get => Source.LowerAddress;
+            set => Source.LowerAddress = NormalizeNullableText(value);
+        }
+
+        public string? ResultAddress
+        {
+            get => Source.ResultAddress;
+            set => Source.ResultAddress = NormalizeNullableText(value);
+        }
+
+        public string ValueDataType
+        {
+            get => Source.ValueDataType;
+            set => Source.ValueDataType = NormalizeDataType(value);
+        }
+
+        public string ResultDataType
+        {
+            get => Source.ResultDataType;
+            set => Source.ResultDataType = NormalizeDataType(value);
+        }
+
+        public int ValueDataLength
+        {
+            get => Source.ValueDataLength;
+            set => Source.ValueDataLength = Math.Max(1, value);
+        }
+
+        public int ResultDataLength
+        {
+            get => Source.ResultDataLength;
+            set => Source.ResultDataLength = Math.Max(1, value);
         }
 
         public decimal Scale
@@ -1018,10 +1146,10 @@ public partial class AddressManageView : BaseView
             set => Source.Unit = NormalizeNullableText(value);
         }
 
-        public string? MesFieldName
+        public string? MesFieldPrefix
         {
-            get => Source.MesFieldName;
-            set => Source.MesFieldName = NormalizeNullableText(value);
+            get => Source.MesFieldPrefix;
+            set => Source.MesFieldPrefix = NormalizeNullableText(value);
         }
 
         public string? ReportColumnName
@@ -1052,26 +1180,26 @@ public partial class AddressManageView : BaseView
 
         public void Normalize()
         {
-            Source.CollectionGroup = string.IsNullOrWhiteSpace(Source.CollectionGroup) ? "default" : Source.CollectionGroup.Trim();
-            Source.ParameterKey = Source.ParameterKey.Trim();
-            Source.ParameterName = Source.ParameterName.Trim();
-            Source.Address = NormalizeNullableText(Source.Address);
-            Source.DataType = NormalizeDataType(Source.DataType);
-            Source.DataLength = Math.Max(1, Source.DataLength);
+            Source.TemplateId = Math.Max(0, Source.TemplateId);
+            Source.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, Source.StationNo);
+            Source.TouchNo = Math.Max(0, Source.TouchNo);
+            Source.Sort = Math.Max(0, Source.Sort);
+            Source.ItemKey = Source.ItemKey?.Trim() ?? string.Empty;
+            Source.ItemName = Source.ItemName?.Trim() ?? string.Empty;
+            Source.ActualAddress = NormalizeNullableText(Source.ActualAddress);
+            Source.UpperAddress = NormalizeNullableText(Source.UpperAddress);
+            Source.LowerAddress = NormalizeNullableText(Source.LowerAddress);
+            Source.ResultAddress = NormalizeNullableText(Source.ResultAddress);
+            Source.ValueDataType = NormalizeDataType(Source.ValueDataType);
+            Source.ResultDataType = NormalizeDataType(Source.ResultDataType);
+            Source.ValueDataLength = Math.Max(1, Source.ValueDataLength);
+            Source.ResultDataLength = Math.Max(1, Source.ResultDataLength);
             Source.Scale = Source.Scale == 0 ? 1m : Source.Scale;
             Source.DecimalPlaces = Math.Clamp(Source.DecimalPlaces, 0, 6);
             Source.Unit = NormalizeNullableText(Source.Unit);
-            Source.MesFieldName = NormalizeNullableText(Source.MesFieldName);
+            Source.MesFieldPrefix = NormalizeNullableText(Source.MesFieldPrefix);
             Source.ReportColumnName = NormalizeNullableText(Source.ReportColumnName);
             Source.Description = NormalizeNullableText(Source.Description);
         }
-    }
-
-    private static string? NormalizeNullableText(string? value)
-    {
-        var normalizedValue = value?.Trim();
-        return string.IsNullOrWhiteSpace(normalizedValue)
-            ? null
-            : normalizedValue;
     }
 }

@@ -35,16 +35,19 @@ public partial class SystemSettingView : BaseView
     private readonly ILocalizationService _localizer;
     private readonly IPlcCommunicationService _plcCommunicationService;
     private readonly IProductProcessConfigService _productProcessConfigService;
+    private readonly ITestItemTemplateService _testItemTemplateService;
     private readonly IProgramManageService _programService;
     private readonly List<BizProductProcessConfig> _productProcessConfigs = new();
+    private readonly List<BizTestItemTemplate> _testItemTemplates = new();
     private readonly List<BizProgram> _programOptions = new();
     private AppSettings _currentSettings = new();
     private List<ProductProcessConfigTableRow> _productProcessRows = new();
+    private List<TestItemTemplateTableRow> _testTemplateRows = new();
     private ProductProcessConfigTableRow? _selectedProductProcessRow;
+    private TestItemTemplateTableRow? _selectedTestTemplateRow;
     private bool _initialized;
     private bool _syncingPlcTypeSelection;
     private string _selectedPlcType = AppConstants.PlcTypes.ModbusTcp;
-    private readonly AntdUI.Checkbox chkUseProductNumberFilter = new();
 
     public SystemSettingView(
         IAppSettingsService settingsService,
@@ -52,6 +55,7 @@ public partial class SystemSettingView : BaseView
         ILocalizationService localizer,
         IPlcCommunicationService plcCommunicationService,
         IProductProcessConfigService productProcessConfigService,
+        ITestItemTemplateService testItemTemplateService,
         IProgramManageService programService)
     {
         InitializeComponent();
@@ -61,10 +65,11 @@ public partial class SystemSettingView : BaseView
         _localizer = localizer;
         _plcCommunicationService = plcCommunicationService;
         _productProcessConfigService = productProcessConfigService;
+        _testItemTemplateService = testItemTemplateService;
         _programService = programService;
 
-        ConfigureMesProgramFilterOption();
         ConfigureProductProcessTable();
+        ConfigureTestItemTemplateTables();
         WireEvents();
     }
 
@@ -89,6 +94,7 @@ public partial class SystemSettingView : BaseView
         _initialized = true;
         LoadSettings();
         LoadProgramOptions();
+        LoadTestItemTemplates();
         LoadProductProcessConfigs();
     }
 
@@ -109,7 +115,7 @@ public partial class SystemSettingView : BaseView
         select_PlcType.SelectedIndexChanged += Select_PlcType_SelectedIndexChanged;
         btnAddProductProcess.Click += AddProductProcess_Click;
         btnSaveProductProcesses.Click += SaveProductProcesses_Click;
-        btnDisableProductProcess.Click += DisableProductProcess_Click;
+        btnDeleteProductProcess.Click += DeleteProductProcess_Click;
         btnRefreshProductProcesses.Click += (_, _) =>
         {
             LoadProgramOptions();
@@ -120,6 +126,20 @@ public partial class SystemSettingView : BaseView
         tableProductProcesses.CellEndValueEdit += TableProductProcesses_CellEndValueEdit;
         tableProductProcesses.CellEditComplete += TableProductProcesses_CellEditComplete;
         tableProductProcesses.CheckedChanged += TableProductProcesses_CheckedChanged;
+        btnAddTestTemplate.Click += AddTestTemplate_Click;
+        btnSaveTestTemplates.Click += SaveTestTemplates_Click;
+        btnDeleteTestTemplate.Click += DeleteTestTemplate_Click;
+        btnRefreshTestTemplates.Click += (_, _) =>
+        {
+            LoadTestItemTemplates();
+            ConfigureProductProcessTable();
+            RefreshProductProcessRows();
+        };
+        tableTestTemplates.CellClick += TableTestTemplates_CellClick;
+        tableTestTemplates.CellEndEdit += TableTestTemplates_CellEndEdit;
+        tableTestTemplates.CellEndValueEdit += TableTestTemplates_CellEndValueEdit;
+        tableTestTemplates.CellEditComplete += TableTestTemplates_CellEditComplete;
+        tableTestTemplates.CheckedChanged += TableTestTemplates_CheckedChanged;
     }
 
     /// <summary>
@@ -136,14 +156,33 @@ public partial class SystemSettingView : BaseView
         tableProductProcesses.Columns.Add(CreateProgramProductModelColumn());
         tableProductProcesses.Columns.Add(CreateProductProcessColumn(nameof(ProductProcessConfigTableRow.StationNo), "工位(0共享)"));
         tableProductProcesses.Columns.Add(CreateProductProcessColumn(nameof(ProductProcessConfigTableRow.WeldPointCount), "每件焊点数"));
-        tableProductProcesses.Columns.Add(CreateProductProcessColumn(nameof(ProductProcessConfigTableRow.CollectionGroup), "采集组"));
-        tableProductProcesses.Columns.Add(CreateProductProcessColumn(nameof(ProductProcessConfigTableRow.ProgramMatchRule), "程序匹配规则"));
+        tableProductProcesses.Columns.Add(CreateProductProcessTemplateColumn());
         tableProductProcesses.Columns.Add(CreateProductNoSourceColumn());
         tableProductProcesses.Columns.Add(CreateProductProcessEnabledColumn());
         tableProductProcesses.Columns.Add(CreateProductProcessColumn(nameof(ProductProcessConfigTableRow.Sort), "排序"));
         tableProductProcesses.Columns.Add(CreateProductProcessColumn(nameof(ProductProcessConfigTableRow.Description), "备注"));
         tableProductProcesses.Columns.Add(CreateProductProcessColumn(nameof(ProductProcessConfigTableRow.UpdatedTime), "更新时间", readOnly: true, displayFormat: "yyyy-MM-dd HH:mm:ss"));
         TableStyleHelper.ApplyAntdColumnDefaults(tableProductProcesses);
+    }
+
+    /// <summary>
+    /// 系统设置只维护模板基础信息，具体测试项目地址统一放到地址维护页面。
+    /// </summary>
+    private void ConfigureTestItemTemplateTables()
+    {
+        TableStyleHelper.ApplyAntdTable(tableTestTemplates);
+        tableTestTemplates.EditLostFocus = true;
+        tableTestTemplates.LostFocusClearSelection = false;
+
+        tableTestTemplates.Columns.Clear();
+        tableTestTemplates.Columns.Add(CreateProductProcessColumn(nameof(TestItemTemplateTableRow.TemplateCode), "模板编码"));
+        tableTestTemplates.Columns.Add(CreateProductProcessColumn(nameof(TestItemTemplateTableRow.TemplateName), "模板名称"));
+        tableTestTemplates.Columns.Add(CreateProductProcessColumn(nameof(TestItemTemplateTableRow.VersionNumber), "版本"));
+        tableTestTemplates.Columns.Add(CreateTestTemplateEnabledColumn());
+        tableTestTemplates.Columns.Add(CreateProductProcessColumn(nameof(TestItemTemplateTableRow.Sort), "排序"));
+        tableTestTemplates.Columns.Add(CreateProductProcessColumn(nameof(TestItemTemplateTableRow.Description), "备注"));
+        tableTestTemplates.Columns.Add(CreateProductProcessColumn(nameof(TestItemTemplateTableRow.UpdatedTime), "更新时间", readOnly: true, displayFormat: "yyyy-MM-dd HH:mm:ss"));
+        TableStyleHelper.ApplyAntdColumnDefaults(tableTestTemplates);
     }
 
     private static AntdUI.Column CreateProductProcessColumn(string key, string title, bool readOnly = false, string? displayFormat = null)
@@ -159,9 +198,48 @@ public partial class SystemSettingView : BaseView
         };
     }
 
+    private AntdUI.ColumnSelect CreateProductProcessTemplateColumn()
+    {
+        return new AntdUI.ColumnSelect(nameof(ProductProcessConfigTableRow.TemplateId), "测试项目模板*")
+        {
+            Align = AntdUI.ColumnAlign.Center,
+            Editable = true,
+            Items = _testItemTemplates
+                .OrderBy(template => template.Sort)
+                .ThenBy(template => template.TemplateName)
+                .Select(template => new AntdUI.SelectItem(GetTemplateDisplayName(template))
+                {
+                    Tag = template.Id
+                })
+                .ToList()
+        };
+    }
+
+    private static AntdUI.ColumnSelect CreateDataTypeColumn(string key, string title)
+    {
+        return new AntdUI.ColumnSelect(key, title)
+        {
+            Align = AntdUI.ColumnAlign.Center,
+            Editable = true,
+            Items = AppConstants.PlcDataTypes.All
+                .Select(dataType => new AntdUI.SelectItem(dataType) { Tag = dataType })
+                .ToList()
+        };
+    }
+
+    private static AntdUI.ColumnSwitch CreateTestTemplateEnabledColumn()
+    {
+        return new AntdUI.ColumnSwitch(nameof(TestItemTemplateTableRow.Enabled), "启用")
+        {
+            Align = AntdUI.ColumnAlign.Center,
+            AutoCheck = true
+        };
+    }
+
+
     private AntdUI.ColumnSelect CreateProgramProductNumColumn()
     {
-        return new AntdUI.ColumnSelect(nameof(ProductProcessConfigTableRow.ProductNum), "产品工号")
+        return new AntdUI.ColumnSelect(nameof(ProductProcessConfigTableRow.ProductNum), "产品工号*")
         {
             Align = AntdUI.ColumnAlign.Center,
             Editable = true,
@@ -176,15 +254,16 @@ public partial class SystemSettingView : BaseView
 
     private AntdUI.ColumnSelect CreateProgramProductModelColumn()
     {
-        return new AntdUI.ColumnSelect(nameof(ProductProcessConfigTableRow.ProductModel), "产品型号")
+        return new AntdUI.ColumnSelect(nameof(ProductProcessConfigTableRow.ProductModel), "产品型号(选填)")
         {
             Align = AntdUI.ColumnAlign.Center,
             Editable = true,
-            Items = _programOptions
+            Items = new[] { string.Empty }
+                .Concat(_programOptions
                 .Select(program => program.ProductModel?.Trim())
                 .Where(model => !string.IsNullOrWhiteSpace(model))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(model => model)
+                .OrderBy(model => model))
                 .Select(model => new AntdUI.SelectItem(model!) { Tag = model! })
                 .ToList()
         };
@@ -211,21 +290,6 @@ public partial class SystemSettingView : BaseView
         };
     }
 
-    /// <summary>
-    /// Adds the MES program-list filter option at runtime to keep Designer code stable.
-    /// </summary>
-    private void ConfigureMesProgramFilterOption()
-    {
-        chkUseProductNumberFilter.AutoSizeMode = AntdUI.TAutoSize.Width;
-        chkUseProductNumberFilter.Checked = true;
-        chkUseProductNumberFilter.Dock = DockStyle.Fill;
-        chkUseProductNumberFilter.Margin = new Padding(6, 3, 3, 3);
-        chkUseProductNumberFilter.Name = nameof(chkUseProductNumberFilter);
-        chkUseProductNumberFilter.TabIndex = 10;
-        chkUseProductNumberFilter.Text = _localizer.GetString(TextKeys.SystemSetting.LabelUseProductNumberFilter);
-
-        tableLayoutPanel3.Controls.Add(chkUseProductNumberFilter, 3, 4);
-    }
 
     private void LoadSettings()
     {
@@ -293,11 +357,19 @@ public partial class SystemSettingView : BaseView
         tabBasicSettings.Text = "基础设置";
         tabProductProcess.Text = "产品工艺配置";
         lblProductProcessTitle.Text = "产品工艺配置";
-        lblProductProcessDescription.Text = "维护产品工号、产品型号、工位、每件焊点数量和采集参数组。工位 0 表示所有工位共享配置。";
+        lblProductProcessDescription.Text = "维护产品工号、产品型号、工位、每件焊点数量和测试项目模板。工位 0 表示所有工位共享配置。";
         btnAddProductProcess.Text = "新增";
         btnSaveProductProcesses.Text = "保存";
-        btnDisableProductProcess.Text = "禁用选中";
+        btnDeleteProductProcess.Text = "删除选中";
         btnRefreshProductProcesses.Text = "刷新";
+        tabTestItemTemplates.Text = "测试项目模板";
+        lblTestTemplateTitle.Text = "测试项目模板";
+        lblTestTemplateDescription.Text = "维护可复用的测试项目模板。具体测试项目和 PLC 地址请在地址维护界面配置。";
+        lblTestTemplateListTitle.Text = "模板列表";
+        btnAddTestTemplate.Text = "新增";
+        btnSaveTestTemplates.Text = "保存";
+        btnDeleteTestTemplate.Text = "删除选中";
+        btnRefreshTestTemplates.Text = "刷新";
     }
 
     /// <summary>
@@ -367,11 +439,39 @@ public partial class SystemSettingView : BaseView
         }
     }
 
+    /// <summary>
+    /// 从数据库加载测试项目模板。服务层会自动创建一套默认模板，方便首次配置。
+    /// </summary>
+    private void LoadTestItemTemplates()
+    {
+        try
+        {
+            EndTestTemplateEdit();
+            _testItemTemplates.Clear();
+            _testItemTemplates.AddRange(_testItemTemplateService.GetTemplates(includeDisabled: true));
+            RefreshTestTemplateRows();
+            ConfigureProductProcessTable();
+        }
+        catch (Exception ex)
+        {
+            ShowErrorMessage($"测试项目模板加载失败：{ex.Message}");
+        }
+    }
+
     private BizProgram? GetDefaultProgramOption()
     {
         return _programOptions
             .OrderBy(program => program.ProductNum)
             .ThenBy(program => program.ProductModel)
+            .FirstOrDefault();
+    }
+
+    private BizTestItemTemplate? GetDefaultTemplateOption()
+    {
+        return _testItemTemplates
+            .Where(template => template.Enabled)
+            .OrderBy(template => template.Sort)
+            .ThenBy(template => template.TemplateCode)
             .FirstOrDefault();
     }
 
@@ -383,12 +483,27 @@ public partial class SystemSettingView : BaseView
             .OrderBy(config => config.Sort)
             .ThenBy(config => config.ProductNum)
             .ThenBy(config => config.ProductModel)
-            .Select(config => new ProductProcessConfigTableRow(config))
+            .Select(config => new ProductProcessConfigTableRow(config, _testItemTemplates))
             .ToList();
 
         tableProductProcesses.DataSource = _productProcessRows;
         tableProductProcesses.Refresh();
         SelectVisibleProductProcessRow(selectedId);
+    }
+
+    private void RefreshTestTemplateRows()
+    {
+        var selectedId = _selectedTestTemplateRow?.Id;
+
+        _testTemplateRows = _testItemTemplates
+            .OrderBy(template => template.Sort)
+            .ThenBy(template => template.TemplateCode)
+            .Select(template => new TestItemTemplateTableRow(template))
+            .ToList();
+
+        tableTestTemplates.DataSource = _testTemplateRows;
+        tableTestTemplates.Refresh();
+        SelectVisibleTestTemplateRow(selectedId);
     }
 
     private void AddProductProcess_Click(object? sender, EventArgs e)
@@ -407,7 +522,7 @@ public partial class SystemSettingView : BaseView
             ProcessNo = "*",
             ProcessName = null,
             WeldPointCount = 1,
-            CollectionGroup = "default",
+            TemplateId = GetDefaultTemplateOption()?.Id ?? 0,
             ProductNoSource = ProductionConstants.ProductNoSources.AutoIncrement,
             Enabled = true,
             Sort = nextSort,
@@ -445,7 +560,7 @@ public partial class SystemSettingView : BaseView
         }
     }
 
-    private void DisableProductProcess_Click(object? sender, EventArgs e)
+    private void DeleteProductProcess_Click(object? sender, EventArgs e)
     {
         EndProductProcessEdit();
 
@@ -465,12 +580,17 @@ public partial class SystemSettingView : BaseView
                 return;
             }
 
-            _productProcessConfigService.Disable(selectedConfig.Id);
+            if (!ConfirmProductProcessDelete())
+            {
+                return;
+            }
+
+            _productProcessConfigService.Delete(selectedConfig.Id);
             LoadProductProcessConfigs();
         }
         catch (Exception ex)
         {
-            ShowErrorMessage($"产品工艺配置禁用失败：{ex.Message}");
+            ShowErrorMessage($"产品工艺配置删除失败：{ex.Message}");
         }
     }
 
@@ -494,7 +614,8 @@ public partial class SystemSettingView : BaseView
         return e.Column.Key switch
         {
             nameof(ProductProcessConfigTableRow.ProductNum) => !string.IsNullOrWhiteSpace(value),
-            nameof(ProductProcessConfigTableRow.ProductModel) => !string.IsNullOrWhiteSpace(value),
+            nameof(ProductProcessConfigTableRow.ProductModel) => true,
+            nameof(ProductProcessConfigTableRow.TemplateId) => ResolveTemplateId(value) > 0,
             nameof(ProductProcessConfigTableRow.StationNo) => IsNonNegativeInt(value),
             nameof(ProductProcessConfigTableRow.WeldPointCount) => IsPositiveInt(value),
             nameof(ProductProcessConfigTableRow.Sort) => IsNonNegativeInt(value),
@@ -504,8 +625,39 @@ public partial class SystemSettingView : BaseView
 
     private bool TableProductProcesses_CellEndValueEdit(object sender, AntdUI.TableEndValueEditEventArgs e)
     {
-        return e.Column.Key != nameof(ProductProcessConfigTableRow.ProductNoSource)
-            || ProductNoSourceOptions.Contains(e.Value?.ToString());
+        if (e.Record is not ProductProcessConfigTableRow row)
+        {
+            return true;
+        }
+
+        var value = GetSelectValueText(e.Value);
+        switch (e.Column.Key)
+        {
+            case nameof(ProductProcessConfigTableRow.ProductNum):
+                row.ProductNum = value;
+                ApplyProgramSelection(row, true);
+                return true;
+
+            case nameof(ProductProcessConfigTableRow.ProductModel):
+                row.ProductModel = value;
+                return true;
+
+            case nameof(ProductProcessConfigTableRow.TemplateId):
+                row.TemplateId = ResolveTemplateId(value);
+                return row.TemplateId > 0;
+
+            case nameof(ProductProcessConfigTableRow.ProductNoSource):
+                if (!ProductNoSourceOptions.Contains(value))
+                {
+                    return false;
+                }
+
+                row.ProductNoSource = value;
+                return true;
+
+            default:
+                return true;
+        }
     }
 
     private void TableProductProcesses_CellEditComplete(object sender, AntdUI.ITableEventArgs e)
@@ -516,8 +668,8 @@ public partial class SystemSettingView : BaseView
         }
 
         _selectedProductProcessRow = row;
-        ApplyProgramSelection(row);
-        row.Normalize();
+        ApplyProgramSelection(row, false);
+        row.NormalizeForDisplay();
         tableProductProcesses.Refresh();
     }
 
@@ -532,21 +684,67 @@ public partial class SystemSettingView : BaseView
         row.Enabled = e.Value;
     }
 
-    private void ApplyProgramSelection(ProductProcessConfigTableRow row)
+    private void ApplyProgramSelection(ProductProcessConfigTableRow row, bool productNumChanged)
     {
         if (string.IsNullOrWhiteSpace(row.ProductNum))
         {
             return;
         }
 
-        var program = _programOptions.FirstOrDefault(program =>
-            string.Equals(program.ProductNum?.Trim(), row.ProductNum.Trim(), StringComparison.OrdinalIgnoreCase));
-        if (program is null || !string.IsNullOrWhiteSpace(row.ProductModel))
+        if (!productNumChanged && !string.IsNullOrWhiteSpace(row.ProductModel))
         {
             return;
         }
 
-        row.ProductModel = program.ProductModel ?? string.Empty;
+        row.ProductModel = GetDefaultProductModel(row.ProductNum) ?? string.Empty;
+    }
+
+    private string? GetDefaultProductModel(string productNum)
+    {
+        var models = _programOptions
+            .Where(program => string.Equals(program.ProductNum?.Trim(), productNum.Trim(), StringComparison.OrdinalIgnoreCase))
+            .Select(program => NormalizeNullableText(program.ProductModel))
+            .Where(model => !string.IsNullOrWhiteSpace(model))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(model => model)
+            .ToList();
+
+        return models.Count == 1
+            ? models[0]
+            : models.FirstOrDefault();
+    }
+
+    private static string GetSelectValueText(object? value)
+    {
+        return value switch
+        {
+            null => string.Empty,
+            AntdUI.SelectItem item => (item.Tag?.ToString() ?? item.Text ?? string.Empty).Trim(),
+            _ => value.ToString()?.Trim() ?? string.Empty
+        };
+    }
+
+    private int ResolveTemplateId(string value)
+    {
+        if (int.TryParse(value, out var templateId)
+            && _testItemTemplates.Any(template => template.Id == templateId))
+        {
+            return templateId;
+        }
+
+        var template = _testItemTemplates.FirstOrDefault(item =>
+            string.Equals(GetTemplateDisplayName(item), value, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(item.TemplateCode, value, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(item.TemplateName, value, StringComparison.OrdinalIgnoreCase));
+
+        return template?.Id ?? 0;
+    }
+
+    private static string GetTemplateDisplayName(BizTestItemTemplate template)
+    {
+        return string.IsNullOrWhiteSpace(template.TemplateCode)
+            ? template.TemplateName
+            : $"{template.TemplateName} ({template.TemplateCode})";
     }
 
     private void SelectVisibleProductProcessRow(int? selectedId)
@@ -568,7 +766,7 @@ public partial class SystemSettingView : BaseView
         tableProductProcesses.EditModeClose();
     }
 
-    private static void NormalizeProductProcessConfigs(IEnumerable<BizProductProcessConfig> configs)
+    private void NormalizeProductProcessConfigs(IEnumerable<BizProductProcessConfig> configs)
     {
         foreach (var config in configs)
         {
@@ -578,9 +776,9 @@ public partial class SystemSettingView : BaseView
             config.ProcessNo = string.IsNullOrWhiteSpace(config.ProcessNo) ? "*" : config.ProcessNo.Trim();
             config.ProcessName = null;
             config.WeldPointCount = Math.Max(1, config.WeldPointCount);
-            config.CollectionGroup = string.IsNullOrWhiteSpace(config.CollectionGroup)
-                ? "default"
-                : config.CollectionGroup.Trim();
+            config.TemplateId = config.TemplateId <= 0
+                ? GetDefaultTemplateOption()?.Id ?? 0
+                : config.TemplateId;
             config.ProgramMatchRule = NormalizeNullableText(config.ProgramMatchRule);
             config.ProductNoSource = NormalizeProductNoSource(config.ProductNoSource);
             config.Sort = Math.Max(0, config.Sort);
@@ -594,6 +792,12 @@ public partial class SystemSettingView : BaseView
             .Where(config => config.Enabled)
             .ToList();
 
+        var missingTemplate = enabledConfigs.FirstOrDefault(config => config.TemplateId <= 0);
+        if (missingTemplate is not null)
+        {
+            throw new InvalidOperationException($"产品工号“{missingTemplate.ProductNum}”尚未绑定测试项目模板。");
+        }
+
         var duplicate = enabledConfigs
             .GroupBy(
                 config => $"{config.StationNo}\u001F{config.ProductNum}\u001F{config.ProductModel}",
@@ -604,6 +808,206 @@ public partial class SystemSettingView : BaseView
         {
             var first = duplicate.First();
             throw new InvalidOperationException($"工位“{first.StationNo}”、产品工号“{first.ProductNum}”与产品型号“{first.ProductModel}”存在重复启用配置。");
+        }
+    }
+
+    private void AddTestTemplate_Click(object? sender, EventArgs e)
+    {
+        EndTestTemplateEdit();
+
+        var nextSort = _testItemTemplates.Count == 0
+            ? 10
+            : _testItemTemplates.Max(template => template.Sort) + 10;
+
+        var template = new BizTestItemTemplate
+        {
+            TemplateCode = BuildNextTemplateCode(),
+            TemplateName = "新测试项目模板",
+            VersionNumber = 1,
+            Enabled = true,
+            Sort = nextSort,
+            Description = "请按产品型号或产品工号修改"
+        };
+
+        _testItemTemplates.Add(template);
+        RefreshTestTemplateRows();
+        _selectedTestTemplateRow = _testTemplateRows.FirstOrDefault(row => ReferenceEquals(row.Source, template));
+        SelectVisibleTestTemplateRow(_selectedTestTemplateRow?.Id);
+    }
+
+    private void SaveTestTemplates_Click(object? sender, EventArgs e)
+    {
+        EndTestTemplateEdit();
+
+        try
+        {
+            NormalizeTestTemplates(_testItemTemplates);
+            ValidateTestTemplates(_testItemTemplates);
+
+            var selectedTemplateCode = _selectedTestTemplateRow?.TemplateCode;
+            foreach (var template in _testItemTemplates.OrderBy(template => template.Sort))
+            {
+                _testItemTemplateService.SaveTemplate(template);
+            }
+
+            _testItemTemplates.Clear();
+            _testItemTemplates.AddRange(_testItemTemplateService.GetTemplates(includeDisabled: true));
+            RefreshTestTemplateRows();
+            _selectedTestTemplateRow = _testTemplateRows.FirstOrDefault(row =>
+                string.Equals(row.TemplateCode, selectedTemplateCode, StringComparison.OrdinalIgnoreCase))
+                ?? _selectedTestTemplateRow;
+            SelectVisibleTestTemplateRow(_selectedTestTemplateRow?.Id);
+            ConfigureProductProcessTable();
+            RefreshProductProcessRows();
+            ShowInfoMessage("测试项目模板已保存。");
+        }
+        catch (Exception ex)
+        {
+            ShowErrorMessage($"测试项目模板保存失败：{ex.Message}");
+        }
+    }
+
+    private void DeleteTestTemplate_Click(object? sender, EventArgs e)
+    {
+        EndTestTemplateEdit();
+
+        var selectedTemplate = _selectedTestTemplateRow?.Source;
+        if (selectedTemplate is null)
+        {
+            ShowWarningMessage("请先选择一个测试项目模板。");
+            return;
+        }
+
+        try
+        {
+            if (selectedTemplate.Id <= 0)
+            {
+                _testItemTemplates.Remove(selectedTemplate);
+                RefreshTestTemplateRows();
+                ConfigureProductProcessTable();
+                RefreshProductProcessRows();
+                return;
+            }
+
+            if (!ConfirmTestTemplateDelete())
+            {
+                return;
+            }
+
+            _testItemTemplateService.DeleteTemplate(selectedTemplate.Id);
+            LoadTestItemTemplates();
+            ConfigureProductProcessTable();
+            RefreshProductProcessRows();
+        }
+        catch (Exception ex)
+        {
+            ShowErrorMessage($"测试项目模板删除失败：{ex.Message}");
+        }
+    }
+
+    private void TableTestTemplates_CellClick(object sender, AntdUI.TableClickEventArgs e)
+    {
+        if (e.Record is TestItemTemplateTableRow row)
+        {
+            _selectedTestTemplateRow = row;
+        }
+    }
+
+    private bool TableTestTemplates_CellEndEdit(object sender, AntdUI.TableEndEditEventArgs e)
+    {
+        var value = e.Value?.Trim() ?? string.Empty;
+        return e.Column.Key switch
+        {
+            nameof(TestItemTemplateTableRow.TemplateCode) => !string.IsNullOrWhiteSpace(value),
+            nameof(TestItemTemplateTableRow.TemplateName) => !string.IsNullOrWhiteSpace(value),
+            nameof(TestItemTemplateTableRow.VersionNumber) => IsPositiveInt(value),
+            nameof(TestItemTemplateTableRow.Sort) => IsNonNegativeInt(value),
+            _ => true
+        };
+    }
+
+    private bool TableTestTemplates_CellEndValueEdit(object sender, AntdUI.TableEndValueEditEventArgs e)
+    {
+        return true;
+    }
+
+    private void TableTestTemplates_CellEditComplete(object sender, AntdUI.ITableEventArgs e)
+    {
+        if (e.Record is not TestItemTemplateTableRow row)
+        {
+            return;
+        }
+
+        _selectedTestTemplateRow = row;
+        row.NormalizeForDisplay();
+        tableTestTemplates.Refresh();
+    }
+
+    private void TableTestTemplates_CheckedChanged(object sender, AntdUI.TableCheckEventArgs e)
+    {
+        if (e.Record is not TestItemTemplateTableRow row)
+        {
+            return;
+        }
+
+        _selectedTestTemplateRow = row;
+        row.Enabled = e.Value;
+    }
+
+    private void SelectVisibleTestTemplateRow(int? selectedId)
+    {
+        _selectedTestTemplateRow = selectedId is > 0
+            ? _testTemplateRows.FirstOrDefault(row => row.Id == selectedId)
+            : _testTemplateRows.FirstOrDefault(row => row.Id <= 0);
+
+        _selectedTestTemplateRow ??= _testTemplateRows.FirstOrDefault();
+
+        if (_selectedTestTemplateRow is not null)
+        {
+            tableTestTemplates.SetSelected(_selectedTestTemplateRow, true);
+        }
+    }
+
+    private void EndTestTemplateEdit()
+    {
+        tableTestTemplates.EditModeClose();
+    }
+
+    private string BuildNextTemplateCode()
+    {
+        var index = _testItemTemplates.Count + 1;
+        string code;
+        do
+        {
+            code = $"template_{index}";
+            index++;
+        }
+        while (_testItemTemplates.Any(template => string.Equals(template.TemplateCode, code, StringComparison.OrdinalIgnoreCase)));
+
+        return code;
+    }
+
+    private static void NormalizeTestTemplates(IEnumerable<BizTestItemTemplate> templates)
+    {
+        foreach (var template in templates)
+        {
+            template.TemplateCode = NormalizeRequiredText(template.TemplateCode);
+            template.TemplateName = NormalizeRequiredText(template.TemplateName);
+            template.VersionNumber = Math.Max(1, template.VersionNumber);
+            template.Sort = Math.Max(0, template.Sort);
+            template.Description = NormalizeNullableText(template.Description);
+        }
+    }
+
+    private static void ValidateTestTemplates(IEnumerable<BizTestItemTemplate> templates)
+    {
+        var duplicate = templates
+            .GroupBy(template => template.TemplateCode, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(group => group.Count() > 1);
+
+        if (duplicate is not null)
+        {
+            throw new InvalidOperationException($"测试项目模板编码“{duplicate.Key}”重复。");
         }
     }
 
@@ -1068,7 +1472,7 @@ public partial class SystemSettingView : BaseView
         var normalizedValue = value?.Trim();
         if (string.IsNullOrWhiteSpace(normalizedValue))
         {
-            throw new InvalidOperationException("产品型号和工序号不能为空。");
+            throw new InvalidOperationException("产品工号不能为空。");
         }
 
         return normalizedValue;
@@ -1147,12 +1551,34 @@ public partial class SystemSettingView : BaseView
             MessageBoxIcon.Error);
     }
 
+    private bool ConfirmProductProcessDelete()
+    {
+        return MessageBox.Show(
+            this,
+            "确定删除选中的产品工艺配置吗？",
+            _localizer.GetString(TextKeys.Common.TitleConfirmDelete),
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question) == DialogResult.Yes;
+    }
+
+    private bool ConfirmTestTemplateDelete()
+    {
+        return MessageBox.Show(
+            this,
+            "确定删除选中的测试项目模板吗？该模板下的测试项目明细也会一起删除。",
+            _localizer.GetString(TextKeys.Common.TitleConfirmDelete),
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question) == DialogResult.Yes;
+    }
+
     /// <summary>
     /// 产品工艺配置表格行。界面编辑的是包装属性，保存时仍回写到原始实体。
     /// </summary>
-    private sealed class ProductProcessConfigTableRow(BizProductProcessConfig source)
+    private sealed class ProductProcessConfigTableRow(BizProductProcessConfig source, IReadOnlyList<BizTestItemTemplate> templates)
     {
         public BizProductProcessConfig Source { get; } = source;
+
+        private readonly IReadOnlyList<BizTestItemTemplate> _templates = templates;
 
         public int Id => Source.Id;
 
@@ -1192,10 +1618,28 @@ public partial class SystemSettingView : BaseView
             set => Source.WeldPointCount = Math.Max(1, value);
         }
 
-        public string CollectionGroup
+        public int TemplateId
         {
-            get => Source.CollectionGroup;
-            set => Source.CollectionGroup = string.IsNullOrWhiteSpace(value) ? "default" : value.Trim();
+            get => Source.TemplateId;
+            set => Source.TemplateId = Math.Max(0, value);
+        }
+
+        public string TemplateName
+        {
+            get
+            {
+                var template = _templates.FirstOrDefault(item => item.Id == Source.TemplateId);
+                return template is null ? string.Empty : GetTemplateDisplayName(template);
+            }
+            set
+            {
+                var normalized = value.Trim();
+                var template = _templates.FirstOrDefault(item =>
+                    string.Equals(GetTemplateDisplayName(item), normalized, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(item.TemplateCode, normalized, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(item.TemplateName, normalized, StringComparison.OrdinalIgnoreCase));
+                Source.TemplateId = template?.Id ?? Source.TemplateId;
+            }
         }
 
         public string? ProgramMatchRule
@@ -1230,6 +1674,21 @@ public partial class SystemSettingView : BaseView
 
         public DateTime UpdatedTime => Source.UpdatedTime;
 
+        public void NormalizeForDisplay()
+        {
+            Source.ProductNum = Source.ProductNum?.Trim();
+            Source.ProductModel = NormalizeNullableText(Source.ProductModel) ?? string.Empty;
+            Source.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, Source.StationNo);
+            Source.ProcessNo = string.IsNullOrWhiteSpace(Source.ProcessNo) ? "*" : Source.ProcessNo.Trim();
+            Source.ProcessName = null;
+            Source.WeldPointCount = Math.Max(1, Source.WeldPointCount);
+            Source.TemplateId = Math.Max(0, Source.TemplateId);
+            Source.ProgramMatchRule = NormalizeNullableText(Source.ProgramMatchRule);
+            Source.ProductNoSource = NormalizeProductNoSource(Source.ProductNoSource);
+            Source.Sort = Math.Max(0, Source.Sort);
+            Source.Description = NormalizeNullableText(Source.Description);
+        }
+
         public void Normalize()
         {
             Source.ProductNum = NormalizeRequiredText(Source.ProductNum);
@@ -1238,11 +1697,66 @@ public partial class SystemSettingView : BaseView
             Source.ProcessNo = string.IsNullOrWhiteSpace(Source.ProcessNo) ? "*" : Source.ProcessNo.Trim();
             Source.ProcessName = null;
             Source.WeldPointCount = Math.Max(1, Source.WeldPointCount);
-            Source.CollectionGroup = string.IsNullOrWhiteSpace(Source.CollectionGroup)
-                ? "default"
-                : Source.CollectionGroup.Trim();
+            Source.TemplateId = Math.Max(0, Source.TemplateId);
             Source.ProgramMatchRule = NormalizeNullableText(Source.ProgramMatchRule);
             Source.ProductNoSource = NormalizeProductNoSource(Source.ProductNoSource);
+            Source.Sort = Math.Max(0, Source.Sort);
+            Source.Description = NormalizeNullableText(Source.Description);
+        }
+    }
+
+    /// <summary>
+    /// 测试项目模板表格行。界面编辑包装对象，保存时回写到原始实体。
+    /// </summary>
+    private sealed class TestItemTemplateTableRow(BizTestItemTemplate source)
+    {
+        public BizTestItemTemplate Source { get; } = source;
+
+        public int Id => Source.Id;
+
+        public string TemplateCode
+        {
+            get => Source.TemplateCode;
+            set => Source.TemplateCode = value.Trim();
+        }
+
+        public string TemplateName
+        {
+            get => Source.TemplateName;
+            set => Source.TemplateName = value.Trim();
+        }
+
+        public int VersionNumber
+        {
+            get => Source.VersionNumber;
+            set => Source.VersionNumber = Math.Max(1, value);
+        }
+
+        public bool Enabled
+        {
+            get => Source.Enabled;
+            set => Source.Enabled = value;
+        }
+
+        public int Sort
+        {
+            get => Source.Sort;
+            set => Source.Sort = Math.Max(0, value);
+        }
+
+        public string? Description
+        {
+            get => Source.Description;
+            set => Source.Description = NormalizeNullableText(value);
+        }
+
+        public DateTime UpdatedTime => Source.UpdatedTime;
+
+        public void NormalizeForDisplay()
+        {
+            Source.TemplateCode = Source.TemplateCode?.Trim() ?? string.Empty;
+            Source.TemplateName = Source.TemplateName?.Trim() ?? string.Empty;
+            Source.VersionNumber = Math.Max(1, Source.VersionNumber);
             Source.Sort = Math.Max(0, Source.Sort);
             Source.Description = NormalizeNullableText(Source.Description);
         }

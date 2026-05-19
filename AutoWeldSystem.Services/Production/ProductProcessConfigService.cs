@@ -108,6 +108,20 @@ public class ProductProcessConfigService : IProductProcessConfigService
         }
     }
 
+    /// <summary>
+    /// 物理删除产品工艺配置，界面删除行时调用。
+    /// </summary>
+    public void Delete(int id)
+    {
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            _dbContext.Db.Deleteable<BizProductProcessConfig>()
+                .Where(it => it.Id == id)
+                .ExecuteCommand();
+        }
+    }
+
     private static void Normalize(BizProductProcessConfig config)
     {
         config.ProductNum = NormalizeNullable(config.ProductNum);
@@ -116,9 +130,7 @@ public class ProductProcessConfigService : IProductProcessConfigService
         // 工序号由 MES 工单提供，不再参与采集参数匹配；保留字段仅兼容已有表结构。
         config.ProcessNo = string.IsNullOrWhiteSpace(config.ProcessNo) ? "*" : config.ProcessNo.Trim();
         config.ProcessName = NormalizeNullable(config.ProcessName);
-        config.CollectionGroup = string.IsNullOrWhiteSpace(config.CollectionGroup)
-            ? "default"
-            : config.CollectionGroup.Trim();
+        config.TemplateId = Math.Max(0, config.TemplateId);
         config.ProgramMatchRule = NormalizeNullable(config.ProgramMatchRule);
         config.ProductNoSource = string.IsNullOrWhiteSpace(config.ProductNoSource)
             ? ProductionConstants.ProductNoSources.AutoIncrement

@@ -58,7 +58,7 @@ public class ProductionReportFileService : IProductionReportFileService
                 .ToList();
 
             Directory.CreateDirectory(Path.GetDirectoryName(report.FilePath)!);
-            WriteCsv(report.FilePath, BuildHeaders(), records, task);
+            WriteCsv(report.FilePath, BuildHeaders(task), records, task);
 
             report.UploadStatus = ProductionConstants.UploadStatuses.Pending;
             report.UploadMessage = $"CSV report generated, rows={records.Count}.";
@@ -123,14 +123,13 @@ public class ProductionReportFileService : IProductionReportFileService
             : existingReports.Max(report => report.SequenceNo) + 1;
     }
 
-    private string[] BuildHeaders()
+    private string[] BuildHeaders(BizWeldTask task)
     {
-        var dynamicHeaders = _dbContext.Db.Queryable<BizCollectionParameter>()
-            .Where(parameter => parameter.Enabled && parameter.ReportColumnName != null && parameter.ReportColumnName != "")
-            .ToList()
-            .OrderBy(parameter => parameter.Sort)
-            .Select(parameter => parameter.ReportColumnName!.Trim())
-            .Where(header => !string.IsNullOrWhiteSpace(header))
+        var templateHeaders = GetTemplateItemsForTask(task)
+            .OrderBy(item => item.Sort)
+            .SelectMany(BuildTemplateHeaders);
+
+        var dynamicHeaders = templateHeaders
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Where(header => !BaseHeaders.Contains(header, StringComparer.OrdinalIgnoreCase))
             .ToArray();
@@ -175,27 +174,135 @@ public class ProductionReportFileService : IProductionReportFileService
             ["测试结果"] = record.TestResult
         };
 
-        AddDynamicValues(row, record);
+        AddDynamicValues(row, record, task);
         return row;
     }
 
-    private void AddDynamicValues(Dictionary<string, string> row, BizWeldPointRecord record)
+    private void AddDynamicValues(Dictionary<string, string> row, BizWeldPointRecord record, BizWeldTask task)
     {
         var rawValues = ParseRawData(record.RawDataJson);
-        var parameters = _dbContext.Db.Queryable<BizCollectionParameter>()
-            .Where(parameter => parameter.Enabled && parameter.ReportColumnName != null && parameter.ReportColumnName != "")
-            .ToList();
+        AddTemplateDynamicValues(row, rawValues, task);
+    }
 
-        foreach (var parameter in parameters)
+    private void AddTemplateDynamicValues(Dictionary<string, string> row, IReadOnlyDictionary<string, string> rawValues, BizWeldTask task)
+    {
+        foreach (var item in GetTemplateItemsForTask(task))
         {
-            var header = parameter.ReportColumnName?.Trim();
-            if (string.IsNullOrWhiteSpace(header) || row.ContainsKey(header))
+            var header = GetTemplateHeader(item);
+            if (string.IsNullOrWhiteSpace(header))
             {
                 continue;
             }
 
-            row[header] = GetRecordValue(record, parameter, rawValues);
+            TryAddDynamicValue(row, header, GetRawValue(rawValues, item.ItemKey, item.MesFieldPrefix));
+            TryAddDynamicValue(row, $"{header}上限", GetRawValue(rawValues, $"{item.ItemKey}_upper", BuildMesRoleKey(item.MesFieldPrefix, "Upper"), BuildMesRoleKey(item.MesFieldPrefix, "upper", "_")));
+            TryAddDynamicValue(row, $"{header}下限", GetRawValue(rawValues, $"{item.ItemKey}_lower", BuildMesRoleKey(item.MesFieldPrefix, "Lower"), BuildMesRoleKey(item.MesFieldPrefix, "lower", "_")));
+            TryAddDynamicValue(row, $"{header}结果", GetRawValue(rawValues, $"{item.ItemKey}_result", BuildMesRoleKey(item.MesFieldPrefix, "Result"), BuildMesRoleKey(item.MesFieldPrefix, "result", "_")));
         }
+    }
+
+    private IReadOnlyList<BizTestItemTemplateItem> GetTemplateItemsForTask(BizWeldTask task)
+    {
+        var templateId = ResolveTemplateId(task);
+        if (templateId <= 0)
+        {
+            return Array.Empty<BizTestItemTemplateItem>();
+        }
+
+        return _dbContext.Db.Queryable<BizTestItemTemplateItem>()
+            .Where(item => item.TemplateId == templateId && item.Enabled)
+            .ToList();
+    }
+
+    private int ResolveTemplateId(BizWeldTask task)
+    {
+        var stationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, task.StationNo);
+        var configs = _dbContext.Db.Queryable<BizProductProcessConfig>()
+            .Where(config => config.Enabled && config.TemplateId > 0)
+            .ToList();
+
+        var matched = configs
+            .Where(config => IsTaskProcessMatch(config, task, stationNo))
+            .OrderByDescending(config => config.StationNo == stationNo)
+            .ThenByDescending(config => IsExactTextMatch(config.ProductModel, task.ProductModel))
+            .ThenBy(config => config.Sort)
+            .FirstOrDefault();
+
+        return matched?.TemplateId ?? 0;
+    }
+
+    private static bool IsTaskProcessMatch(BizProductProcessConfig config, BizWeldTask task, int stationNo)
+    {
+        if (config.StationNo != ProductionConstants.Stations.SharedStationNo && config.StationNo != stationNo)
+        {
+            return false;
+        }
+
+        if (!IsExactTextMatch(config.ProductNum, task.ProductNum))
+        {
+            return false;
+        }
+
+        return string.IsNullOrWhiteSpace(config.ProductModel)
+            || IsExactTextMatch(config.ProductModel, task.ProductModel);
+    }
+
+    private static bool IsExactTextMatch(string? left, string? right)
+    {
+        return string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IEnumerable<string> BuildTemplateHeaders(BizTestItemTemplateItem item)
+    {
+        var header = GetTemplateHeader(item);
+        if (string.IsNullOrWhiteSpace(header))
+        {
+            yield break;
+        }
+
+        yield return header;
+        yield return $"{header}上限";
+        yield return $"{header}下限";
+        yield return $"{header}结果";
+    }
+
+    private static string GetTemplateHeader(BizTestItemTemplateItem item)
+    {
+        var header = string.IsNullOrWhiteSpace(item.ReportColumnName)
+            ? item.ItemName
+            : item.ReportColumnName;
+
+        return header?.Trim() ?? string.Empty;
+    }
+
+    private static void TryAddDynamicValue(Dictionary<string, string> row, string header, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(header) || row.ContainsKey(header))
+        {
+            return;
+        }
+
+        row[header] = value ?? string.Empty;
+    }
+
+    private static string? GetRawValue(IReadOnlyDictionary<string, string> rawValues, params string?[] keys)
+    {
+        foreach (var key in keys)
+        {
+            if (!string.IsNullOrWhiteSpace(key) && rawValues.TryGetValue(key, out var value))
+            {
+                return value;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? BuildMesRoleKey(string? prefix, string role, string separator = "")
+    {
+        return string.IsNullOrWhiteSpace(prefix)
+            ? null
+            : $"{prefix.Trim()}{separator}{role}";
     }
 
     private static Dictionary<string, string> ParseRawData(string? rawDataJson)
@@ -223,35 +330,6 @@ public class ProductionReportFileService : IProductionReportFileService
         {
             return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         }
-    }
-
-    private static string GetRecordValue(
-        BizWeldPointRecord record,
-        BizCollectionParameter parameter,
-        IReadOnlyDictionary<string, string> rawValues)
-    {
-        if (rawValues.TryGetValue(parameter.ParameterKey, out var byKey))
-        {
-            return byKey;
-        }
-
-        if (!string.IsNullOrWhiteSpace(parameter.MesFieldName)
-            && rawValues.TryGetValue(parameter.MesFieldName, out var byMesField))
-        {
-            return byMesField;
-        }
-
-        return parameter.ParameterKey switch
-        {
-            "max_electric" => record.MaxElectric ?? string.Empty,
-            "max_voltage" => record.MaxVoltage ?? string.Empty,
-            "valid_power" => record.ValidPower ?? string.Empty,
-            "displacement" => record.Displacement ?? string.Empty,
-            "weld_ts" => record.WeldTs ?? string.Empty,
-            "test_result" => record.TestResult,
-            "test_result_raw" => record.TestResultRaw ?? string.Empty,
-            _ => string.Empty
-        };
     }
 
     private string GetReportDirectory(BizWeldTask task)

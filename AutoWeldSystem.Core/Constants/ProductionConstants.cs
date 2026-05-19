@@ -32,7 +32,6 @@ public static class ProductionConstants
     public static class PlcAddressCategories
     {
         public const string BusinessSignal = "BusinessSignal";
-        public const string CollectionParameter = "CollectionParameter";
         public const string DeviceStatus = "DeviceStatus";
         public const string StationResult = "StationResult";
         public const string CentralServer = "CentralServer";

@@ -31,4 +31,9 @@ public interface IProductProcessConfigService
     /// 禁用配置。历史数据仍可保留，不做物理删除。
     /// </summary>
     void Disable(int id);
+
+    /// <summary>
+    /// 删除产品工艺配置行，用于界面中移除不再需要的配置。
+    /// </summary>
+    void Delete(int id);
 }

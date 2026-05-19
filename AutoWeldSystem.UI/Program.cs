@@ -57,7 +57,7 @@ public static class Program
                     services.AddSingleton<IPlcWorkIdMonitorService, PlcWorkIdMonitorService>();
                     services.AddSingleton<IPlcWeldCycleMonitorService, PlcWeldCycleMonitorService>();
                     services.AddSingleton<IProductProcessConfigService, ProductProcessConfigService>();
-                    services.AddSingleton<ICollectionParameterService, CollectionParameterService>();
+                    services.AddSingleton<ITestItemTemplateService, TestItemTemplateService>();
                     services.AddSingleton<IProductNoGeneratorService, ProductNoGeneratorService>();
                     services.AddSingleton<IWeldPointCollectionService, WeldPointCollectionService>();
                     services.AddSingleton<IWeldPointUploadCoordinatorService, WeldPointUploadCoordinatorService>();

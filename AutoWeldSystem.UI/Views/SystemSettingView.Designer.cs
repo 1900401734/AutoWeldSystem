@@ -46,6 +46,12 @@ namespace AutoWeldSystem.UI.Views
             select_PlcType = new AntdUI.Select();
             grpAppConfig = new GroupBox();
             tableLayoutPanel3 = new TableLayoutPanel();
+            flowPanel2 = new AntdUI.FlowPanel();
+            btnOpenDataPath = new AntdUI.Button();
+            btnChangeDataPath = new AntdUI.Button();
+            flowPanel1 = new AntdUI.FlowPanel();
+            btnOpenLogPath = new AntdUI.Button();
+            btnChangeLogPath = new AntdUI.Button();
             lblDeviceId = new AntdUI.Label();
             input_DeviceID = new AntdUI.Input();
             btnSyncDevice = new AntdUI.Button();
@@ -58,10 +64,6 @@ namespace AutoWeldSystem.UI.Views
             input_DataPath = new AntdUI.Input();
             input_BaseUrl = new AntdUI.Input();
             btnTestConnection = new AntdUI.Button();
-            btnChangeLogPath = new AntdUI.Button();
-            btnChangeDataPath = new AntdUI.Button();
-            btnOpenLogPath = new AntdUI.Button();
-            btnOpenDataPath = new AntdUI.Button();
             lblDeviceUrl = new AntdUI.Label();
             input_DeviceUrl = new AntdUI.Input();
             chkEnableDualStationMode = new AntdUI.Checkbox();
@@ -76,6 +78,10 @@ namespace AutoWeldSystem.UI.Views
             tabSettingCategories = new TabControl();
             tabBasicSettings = new TabPage();
             panelBasicSettings = new AntdUI.Panel();
+            groupBox1 = new GroupBox();
+            tableLayoutPanel5 = new TableLayoutPanel();
+            chkUseProductNumberFilter = new AntdUI.Checkbox();
+            tableLayoutPanel1 = new TableLayoutPanel();
             tabProductProcess = new TabPage();
             productProcessLayout = new TableLayoutPanel();
             productProcessHeaderLayout = new TableLayoutPanel();
@@ -83,17 +89,32 @@ namespace AutoWeldSystem.UI.Views
             lblProductProcessDescription = new Label();
             productProcessToolbar = new FlowLayoutPanel();
             btnRefreshProductProcesses = new AntdUI.Button();
-            btnDisableProductProcess = new AntdUI.Button();
+            btnDeleteProductProcess = new AntdUI.Button();
             btnSaveProductProcesses = new AntdUI.Button();
             btnAddProductProcess = new AntdUI.Button();
             tableProductProcesses = new AntdUI.Table();
-            tableLayoutPanel1 = new TableLayoutPanel();
+            tabTestItemTemplates = new TabPage();
+            testTemplateLayout = new TableLayoutPanel();
+            testTemplateHeaderLayout = new TableLayoutPanel();
+            lblTestTemplateTitle = new Label();
+            lblTestTemplateDescription = new Label();
+            testTemplateBodyLayout = new TableLayoutPanel();
+            testTemplateListLayout = new TableLayoutPanel();
+            lblTestTemplateListTitle = new Label();
+            testTemplateToolbar = new FlowLayoutPanel();
+            btnRefreshTestTemplates = new AntdUI.Button();
+            btnDeleteTestTemplate = new AntdUI.Button();
+            btnSaveTestTemplates = new AntdUI.Button();
+            btnAddTestTemplate = new AntdUI.Button();
+            tableTestTemplates = new AntdUI.Table();
             grpMasterConfig.SuspendLayout();
             tableLayoutPanel2.SuspendLayout();
             grpPlcConfig.SuspendLayout();
             tlpPlcConfig.SuspendLayout();
             grpAppConfig.SuspendLayout();
             tableLayoutPanel3.SuspendLayout();
+            flowPanel2.SuspendLayout();
+            flowPanel1.SuspendLayout();
             panel2.SuspendLayout();
             headerLayout.SuspendLayout();
             titleLayout.SuspendLayout();
@@ -102,11 +123,19 @@ namespace AutoWeldSystem.UI.Views
             tabSettingCategories.SuspendLayout();
             tabBasicSettings.SuspendLayout();
             panelBasicSettings.SuspendLayout();
+            groupBox1.SuspendLayout();
+            tableLayoutPanel5.SuspendLayout();
+            tableLayoutPanel1.SuspendLayout();
             tabProductProcess.SuspendLayout();
             productProcessLayout.SuspendLayout();
             productProcessHeaderLayout.SuspendLayout();
             productProcessToolbar.SuspendLayout();
-            tableLayoutPanel1.SuspendLayout();
+            tabTestItemTemplates.SuspendLayout();
+            testTemplateLayout.SuspendLayout();
+            testTemplateHeaderLayout.SuspendLayout();
+            testTemplateBodyLayout.SuspendLayout();
+            testTemplateListLayout.SuspendLayout();
+            testTemplateToolbar.SuspendLayout();
             SuspendLayout();
             //
             // grpMasterConfig
@@ -307,11 +336,12 @@ namespace AutoWeldSystem.UI.Views
             //
             // tableLayoutPanel3
             //
-            tableLayoutPanel3.ColumnCount = 4;
+            tableLayoutPanel3.ColumnCount = 3;
             tableLayoutPanel3.ColumnStyles.Add(new ColumnStyle());
             tableLayoutPanel3.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             tableLayoutPanel3.ColumnStyles.Add(new ColumnStyle());
-            tableLayoutPanel3.ColumnStyles.Add(new ColumnStyle());
+            tableLayoutPanel3.Controls.Add(flowPanel2, 2, 3);
+            tableLayoutPanel3.Controls.Add(flowPanel1, 2, 2);
             tableLayoutPanel3.Controls.Add(lblDeviceId, 0, 0);
             tableLayoutPanel3.Controls.Add(input_DeviceID, 1, 0);
             tableLayoutPanel3.Controls.Add(btnSyncDevice, 2, 0);
@@ -324,25 +354,96 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanel3.Controls.Add(input_DataPath, 1, 3);
             tableLayoutPanel3.Controls.Add(input_BaseUrl, 1, 4);
             tableLayoutPanel3.Controls.Add(btnTestConnection, 2, 4);
-            tableLayoutPanel3.Controls.Add(btnChangeLogPath, 2, 2);
-            tableLayoutPanel3.Controls.Add(btnChangeDataPath, 2, 3);
-            tableLayoutPanel3.Controls.Add(btnOpenLogPath, 3, 2);
-            tableLayoutPanel3.Controls.Add(btnOpenDataPath, 3, 3);
             tableLayoutPanel3.Controls.Add(lblDeviceUrl, 0, 5);
             tableLayoutPanel3.Controls.Add(input_DeviceUrl, 1, 5);
-            tableLayoutPanel3.Controls.Add(chkEnableDualStationMode, 1, 6);
             tableLayoutPanel3.Location = new Point(6, 38);
             tableLayoutPanel3.Name = "tableLayoutPanel3";
             tableLayoutPanel3.RowCount = 7;
-            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 14.2857141F));
-            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 14.2857141F));
-            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 14.2857141F));
-            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 14.2857141F));
-            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 14.2857141F));
-            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 14.2857141F));
-            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 14.2857141F));
+            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 14.2857113F));
+            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 14.2857151F));
+            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 14.2857151F));
+            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 14.2857151F));
+            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 14.2857151F));
+            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 14.2857151F));
+            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 14.2857151F));
             tableLayoutPanel3.Size = new Size(731, 319);
             tableLayoutPanel3.TabIndex = 3;
+            //
+            // flowPanel2
+            //
+            flowPanel2.Controls.Add(btnOpenDataPath);
+            flowPanel2.Controls.Add(btnChangeDataPath);
+            flowPanel2.Dock = DockStyle.Fill;
+            flowPanel2.Location = new Point(383, 135);
+            flowPanel2.Margin = new Padding(0);
+            flowPanel2.Name = "flowPanel2";
+            flowPanel2.Size = new Size(348, 45);
+            flowPanel2.TabIndex = 6;
+            flowPanel2.Text = "flowPanel2";
+            //
+            // btnOpenDataPath
+            //
+            btnOpenDataPath.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnOpenDataPath.BorderWidth = 1F;
+            btnOpenDataPath.Dock = DockStyle.Right;
+            btnOpenDataPath.IconSvg = "FolderOpenOutlined";
+            btnOpenDataPath.JoinMode = AntdUI.TJoinMode.Right;
+            btnOpenDataPath.Location = new Point(128, 3);
+            btnOpenDataPath.Name = "btnOpenDataPath";
+            btnOpenDataPath.Size = new Size(189, 39);
+            btnOpenDataPath.TabIndex = 6;
+            btnOpenDataPath.Text = "打开文件所在位置";
+            //
+            // btnChangeDataPath
+            //
+            btnChangeDataPath.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnChangeDataPath.BorderWidth = 1F;
+            btnChangeDataPath.Dock = DockStyle.Left;
+            btnChangeDataPath.IconSvg = "EditOutlined";
+            btnChangeDataPath.JoinMode = AntdUI.TJoinMode.Left;
+            btnChangeDataPath.Location = new Point(3, 3);
+            btnChangeDataPath.Name = "btnChangeDataPath";
+            btnChangeDataPath.Size = new Size(119, 39);
+            btnChangeDataPath.TabIndex = 4;
+            btnChangeDataPath.Text = "变更路径";
+            //
+            // flowPanel1
+            //
+            flowPanel1.Controls.Add(btnOpenLogPath);
+            flowPanel1.Controls.Add(btnChangeLogPath);
+            flowPanel1.Dock = DockStyle.Fill;
+            flowPanel1.Location = new Point(383, 90);
+            flowPanel1.Margin = new Padding(0);
+            flowPanel1.Name = "flowPanel1";
+            flowPanel1.Size = new Size(348, 45);
+            flowPanel1.TabIndex = 6;
+            flowPanel1.Text = "flowPanel1";
+            //
+            // btnOpenLogPath
+            //
+            btnOpenLogPath.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnOpenLogPath.BorderWidth = 1F;
+            btnOpenLogPath.Dock = DockStyle.Right;
+            btnOpenLogPath.IconSvg = "FolderOpenOutlined";
+            btnOpenLogPath.JoinMode = AntdUI.TJoinMode.Right;
+            btnOpenLogPath.Location = new Point(128, 3);
+            btnOpenLogPath.Name = "btnOpenLogPath";
+            btnOpenLogPath.Size = new Size(189, 39);
+            btnOpenLogPath.TabIndex = 5;
+            btnOpenLogPath.Text = "打开文件所在位置";
+            //
+            // btnChangeLogPath
+            //
+            btnChangeLogPath.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnChangeLogPath.BorderWidth = 1F;
+            btnChangeLogPath.Dock = DockStyle.Left;
+            btnChangeLogPath.IconSvg = "EditOutlined";
+            btnChangeLogPath.JoinMode = AntdUI.TJoinMode.Left;
+            btnChangeLogPath.Location = new Point(3, 3);
+            btnChangeLogPath.Name = "btnChangeLogPath";
+            btnChangeLogPath.Size = new Size(119, 39);
+            btnChangeLogPath.TabIndex = 4;
+            btnChangeLogPath.Text = "变更路径";
             //
             // lblDeviceId
             //
@@ -367,7 +468,6 @@ namespace AutoWeldSystem.UI.Views
             //
             btnSyncDevice.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnSyncDevice.BorderWidth = 1F;
-            tableLayoutPanel3.SetColumnSpan(btnSyncDevice, 2);
             btnSyncDevice.Dock = DockStyle.Fill;
             btnSyncDevice.IconSvg = "CloudUploadOutlined";
             btnSyncDevice.Location = new Point(386, 3);
@@ -465,54 +565,6 @@ namespace AutoWeldSystem.UI.Views
             btnTestConnection.TabIndex = 3;
             btnTestConnection.Text = "连通性测试";
             //
-            // btnChangeLogPath
-            //
-            btnChangeLogPath.AutoSizeMode = AntdUI.TAutoSize.Width;
-            btnChangeLogPath.BorderWidth = 1F;
-            btnChangeLogPath.Dock = DockStyle.Fill;
-            btnChangeLogPath.IconSvg = "EditOutlined";
-            btnChangeLogPath.Location = new Point(386, 93);
-            btnChangeLogPath.Name = "btnChangeLogPath";
-            btnChangeLogPath.Size = new Size(124, 39);
-            btnChangeLogPath.TabIndex = 4;
-            btnChangeLogPath.Text = "变更路径";
-            //
-            // btnChangeDataPath
-            //
-            btnChangeDataPath.AutoSizeMode = AntdUI.TAutoSize.Width;
-            btnChangeDataPath.BorderWidth = 1F;
-            btnChangeDataPath.Dock = DockStyle.Fill;
-            btnChangeDataPath.IconSvg = "EditOutlined";
-            btnChangeDataPath.Location = new Point(386, 138);
-            btnChangeDataPath.Name = "btnChangeDataPath";
-            btnChangeDataPath.Size = new Size(124, 39);
-            btnChangeDataPath.TabIndex = 4;
-            btnChangeDataPath.Text = "变更路径";
-            //
-            // btnOpenLogPath
-            //
-            btnOpenLogPath.AutoSizeMode = AntdUI.TAutoSize.Width;
-            btnOpenLogPath.BorderWidth = 1F;
-            btnOpenLogPath.Dock = DockStyle.Fill;
-            btnOpenLogPath.IconSvg = "FolderOpenOutlined";
-            btnOpenLogPath.Location = new Point(534, 93);
-            btnOpenLogPath.Name = "btnOpenLogPath";
-            btnOpenLogPath.Size = new Size(194, 39);
-            btnOpenLogPath.TabIndex = 5;
-            btnOpenLogPath.Text = "打开文件所在位置";
-            //
-            // btnOpenDataPath
-            //
-            btnOpenDataPath.AutoSizeMode = AntdUI.TAutoSize.Width;
-            btnOpenDataPath.BorderWidth = 1F;
-            btnOpenDataPath.Dock = DockStyle.Fill;
-            btnOpenDataPath.IconSvg = "FolderOpenOutlined";
-            btnOpenDataPath.Location = new Point(534, 138);
-            btnOpenDataPath.Name = "btnOpenDataPath";
-            btnOpenDataPath.Size = new Size(194, 39);
-            btnOpenDataPath.TabIndex = 6;
-            btnOpenDataPath.Text = "打开文件所在位置";
-            //
             // lblDeviceUrl
             //
             lblDeviceUrl.AutoEllipsis = true;
@@ -520,7 +572,7 @@ namespace AutoWeldSystem.UI.Views
             lblDeviceUrl.Dock = DockStyle.Fill;
             lblDeviceUrl.Location = new Point(3, 228);
             lblDeviceUrl.Name = "lblDeviceUrl";
-            lblDeviceUrl.Size = new Size(70, 43);
+            lblDeviceUrl.Size = new Size(70, 39);
             lblDeviceUrl.TabIndex = 7;
             lblDeviceUrl.Text = "设备地址";
             //
@@ -529,17 +581,16 @@ namespace AutoWeldSystem.UI.Views
             input_DeviceUrl.Dock = DockStyle.Fill;
             input_DeviceUrl.Location = new Point(88, 228);
             input_DeviceUrl.Name = "input_DeviceUrl";
-            input_DeviceUrl.Size = new Size(292, 43);
+            input_DeviceUrl.Size = new Size(292, 39);
             input_DeviceUrl.TabIndex = 8;
             //
             // chkEnableDualStationMode
             //
             chkEnableDualStationMode.AutoSizeMode = AntdUI.TAutoSize.Width;
-            tableLayoutPanel3.SetColumnSpan(chkEnableDualStationMode, 3);
             chkEnableDualStationMode.Dock = DockStyle.Fill;
-            chkEnableDualStationMode.Location = new Point(88, 276);
+            chkEnableDualStationMode.Location = new Point(3, 3);
             chkEnableDualStationMode.Name = "chkEnableDualStationMode";
-            chkEnableDualStationMode.Size = new Size(640, 40);
+            chkEnableDualStationMode.Size = new Size(221, 40);
             chkEnableDualStationMode.TabIndex = 10;
             chkEnableDualStationMode.Text = "启用双工位双工单模式";
             //
@@ -653,6 +704,7 @@ namespace AutoWeldSystem.UI.Views
             //
             tabSettingCategories.Controls.Add(tabBasicSettings);
             tabSettingCategories.Controls.Add(tabProductProcess);
+            tabSettingCategories.Controls.Add(tabTestItemTemplates);
             tabSettingCategories.Dock = DockStyle.Fill;
             tabSettingCategories.Location = new Point(0, 0);
             tabSettingCategories.Name = "tabSettingCategories";
@@ -663,24 +715,78 @@ namespace AutoWeldSystem.UI.Views
             // tabBasicSettings
             //
             tabBasicSettings.Controls.Add(panelBasicSettings);
-            tabBasicSettings.Location = new Point(4, 29);
+            tabBasicSettings.Location = new Point(4, 32);
             tabBasicSettings.Name = "tabBasicSettings";
             tabBasicSettings.Padding = new Padding(3);
-            tabBasicSettings.Size = new Size(1427, 665);
+            tabBasicSettings.Size = new Size(1427, 662);
             tabBasicSettings.TabIndex = 0;
             tabBasicSettings.Text = "基础设置";
             tabBasicSettings.UseVisualStyleBackColor = true;
             //
             // panelBasicSettings
             //
+            panelBasicSettings.Controls.Add(groupBox1);
             panelBasicSettings.Controls.Add(tableLayoutPanel1);
             panelBasicSettings.Controls.Add(grpAppConfig);
             panelBasicSettings.Dock = DockStyle.Fill;
             panelBasicSettings.Location = new Point(3, 3);
             panelBasicSettings.Name = "panelBasicSettings";
-            panelBasicSettings.Size = new Size(1421, 659);
+            panelBasicSettings.Size = new Size(1421, 656);
             panelBasicSettings.TabIndex = 0;
             panelBasicSettings.Text = "panelBasicSettings";
+            //
+            // groupBox1
+            //
+            groupBox1.Controls.Add(tableLayoutPanel5);
+            groupBox1.Location = new Point(367, 392);
+            groupBox1.Name = "groupBox1";
+            groupBox1.Size = new Size(743, 264);
+            groupBox1.TabIndex = 5;
+            groupBox1.TabStop = false;
+            groupBox1.Text = "生产配置";
+            //
+            // tableLayoutPanel5
+            //
+            tableLayoutPanel5.ColumnCount = 3;
+            tableLayoutPanel5.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3333321F));
+            tableLayoutPanel5.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3333321F));
+            tableLayoutPanel5.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3333321F));
+            tableLayoutPanel5.Controls.Add(chkUseProductNumberFilter, 1, 0);
+            tableLayoutPanel5.Controls.Add(chkEnableDualStationMode, 0, 0);
+            tableLayoutPanel5.Location = new Point(9, 41);
+            tableLayoutPanel5.Name = "tableLayoutPanel5";
+            tableLayoutPanel5.RowCount = 2;
+            tableLayoutPanel5.RowStyles.Add(new RowStyle());
+            tableLayoutPanel5.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            tableLayoutPanel5.Size = new Size(725, 217);
+            tableLayoutPanel5.TabIndex = 4;
+            //
+            // chkUseProductNumberFilter
+            //
+            chkUseProductNumberFilter.AutoSizeMode = AntdUI.TAutoSize.Width;
+            chkUseProductNumberFilter.Dock = DockStyle.Fill;
+            chkUseProductNumberFilter.Location = new Point(244, 3);
+            chkUseProductNumberFilter.Name = "chkUseProductNumberFilter";
+            chkUseProductNumberFilter.Size = new Size(204, 40);
+            chkUseProductNumberFilter.TabIndex = 11;
+            chkUseProductNumberFilter.Text = "按产品工号筛选程序";
+            //
+            // tableLayoutPanel1
+            //
+            tableLayoutPanel1.AutoSize = true;
+            tableLayoutPanel1.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            tableLayoutPanel1.ColumnCount = 1;
+            tableLayoutPanel1.ColumnStyles.Add(new ColumnStyle());
+            tableLayoutPanel1.Controls.Add(grpPlcConfig, 0, 0);
+            tableLayoutPanel1.Controls.Add(grpMasterConfig, 0, 1);
+            tableLayoutPanel1.Dock = DockStyle.Left;
+            tableLayoutPanel1.Location = new Point(0, 0);
+            tableLayoutPanel1.Name = "tableLayoutPanel1";
+            tableLayoutPanel1.RowCount = 2;
+            tableLayoutPanel1.RowStyles.Add(new RowStyle());
+            tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            tableLayoutPanel1.Size = new Size(364, 656);
+            tableLayoutPanel1.TabIndex = 3;
             //
             // tabProductProcess
             //
@@ -755,7 +861,7 @@ namespace AutoWeldSystem.UI.Views
             // productProcessToolbar
             //
             productProcessToolbar.Controls.Add(btnRefreshProductProcesses);
-            productProcessToolbar.Controls.Add(btnDisableProductProcess);
+            productProcessToolbar.Controls.Add(btnDeleteProductProcess);
             productProcessToolbar.Controls.Add(btnSaveProductProcesses);
             productProcessToolbar.Controls.Add(btnAddProductProcess);
             productProcessToolbar.Dock = DockStyle.Fill;
@@ -772,31 +878,31 @@ namespace AutoWeldSystem.UI.Views
             btnRefreshProductProcesses.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnRefreshProductProcesses.BorderWidth = 1F;
             btnRefreshProductProcesses.IconSvg = "ReloadOutlined";
-            btnRefreshProductProcesses.Location = new Point(1309, 3);
+            btnRefreshProductProcesses.Location = new Point(1329, 3);
             btnRefreshProductProcesses.Name = "btnRefreshProductProcesses";
-            btnRefreshProductProcesses.Size = new Size(109, 36);
+            btnRefreshProductProcesses.Size = new Size(89, 36);
             btnRefreshProductProcesses.TabIndex = 3;
             btnRefreshProductProcesses.Text = "刷新";
             //
-            // btnDisableProductProcess
+            // btnDeleteProductProcess
             //
-            btnDisableProductProcess.AutoSizeMode = AntdUI.TAutoSize.Width;
-            btnDisableProductProcess.BorderWidth = 1F;
-            btnDisableProductProcess.IconSvg = "StopOutlined";
-            btnDisableProductProcess.Location = new Point(1176, 3);
-            btnDisableProductProcess.Name = "btnDisableProductProcess";
-            btnDisableProductProcess.Size = new Size(127, 36);
-            btnDisableProductProcess.TabIndex = 2;
-            btnDisableProductProcess.Text = "禁用选中";
+            btnDeleteProductProcess.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnDeleteProductProcess.BorderWidth = 1F;
+            btnDeleteProductProcess.IconSvg = "DeleteOutlined";
+            btnDeleteProductProcess.Location = new Point(1199, 3);
+            btnDeleteProductProcess.Name = "btnDeleteProductProcess";
+            btnDeleteProductProcess.Size = new Size(124, 36);
+            btnDeleteProductProcess.TabIndex = 2;
+            btnDeleteProductProcess.Text = "删除选中";
             //
             // btnSaveProductProcesses
             //
             btnSaveProductProcesses.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnSaveProductProcesses.BorderWidth = 1F;
             btnSaveProductProcesses.IconSvg = "SaveOutlined";
-            btnSaveProductProcesses.Location = new Point(1061, 3);
+            btnSaveProductProcesses.Location = new Point(1104, 3);
             btnSaveProductProcesses.Name = "btnSaveProductProcesses";
-            btnSaveProductProcesses.Size = new Size(109, 36);
+            btnSaveProductProcesses.Size = new Size(89, 36);
             btnSaveProductProcesses.TabIndex = 1;
             btnSaveProductProcesses.Text = "保存";
             //
@@ -805,9 +911,9 @@ namespace AutoWeldSystem.UI.Views
             btnAddProductProcess.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnAddProductProcess.BorderWidth = 1F;
             btnAddProductProcess.IconSvg = "PlusOutlined";
-            btnAddProductProcess.Location = new Point(946, 3);
+            btnAddProductProcess.Location = new Point(1009, 3);
             btnAddProductProcess.Name = "btnAddProductProcess";
-            btnAddProductProcess.Size = new Size(109, 36);
+            btnAddProductProcess.Size = new Size(89, 36);
             btnAddProductProcess.TabIndex = 0;
             btnAddProductProcess.Text = "新增";
             //
@@ -816,6 +922,7 @@ namespace AutoWeldSystem.UI.Views
             tableProductProcesses.Dock = DockStyle.Fill;
             tableProductProcesses.EditMode = AntdUI.TEditMode.DoubleClick;
             tableProductProcesses.Gap = 8;
+            tableProductProcesses.Gaps = new Size(8, 8);
             tableProductProcesses.Location = new Point(0, 114);
             tableProductProcesses.Margin = new Padding(0);
             tableProductProcesses.Name = "tableProductProcesses";
@@ -823,23 +930,189 @@ namespace AutoWeldSystem.UI.Views
             tableProductProcesses.TabIndex = 2;
             tableProductProcesses.Text = "tableProductProcesses";
             //
-            // tableLayoutPanel1
+            // tabTestItemTemplates
             //
-            tableLayoutPanel1.AutoSize = true;
-            tableLayoutPanel1.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            tableLayoutPanel1.ColumnCount = 1;
-            tableLayoutPanel1.ColumnStyles.Add(new ColumnStyle());
-            tableLayoutPanel1.Controls.Add(grpPlcConfig, 0, 0);
-            tableLayoutPanel1.Controls.Add(grpMasterConfig, 0, 1);
-            tableLayoutPanel1.Dock = DockStyle.Left;
-            tableLayoutPanel1.Location = new Point(0, 0);
-            tableLayoutPanel1.Name = "tableLayoutPanel1";
-            tableLayoutPanel1.RowCount = 2;
-            tableLayoutPanel1.RowStyles.Add(new RowStyle());
-            tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tableLayoutPanel1.Size = new Size(364, 698);
-            tableLayoutPanel1.TabIndex = 3;
+            tabTestItemTemplates.Controls.Add(testTemplateLayout);
+            tabTestItemTemplates.Location = new Point(4, 29);
+            tabTestItemTemplates.Name = "tabTestItemTemplates";
+            tabTestItemTemplates.Padding = new Padding(3);
+            tabTestItemTemplates.Size = new Size(1427, 665);
+            tabTestItemTemplates.TabIndex = 2;
+            tabTestItemTemplates.Text = "测试项目模板";
+            tabTestItemTemplates.UseVisualStyleBackColor = true;
             //
+            // testTemplateLayout
+            //
+            testTemplateLayout.ColumnCount = 1;
+            testTemplateLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            testTemplateLayout.Controls.Add(testTemplateHeaderLayout, 0, 0);
+            testTemplateLayout.Controls.Add(testTemplateBodyLayout, 0, 1);
+            testTemplateLayout.Dock = DockStyle.Fill;
+            testTemplateLayout.Location = new Point(3, 3);
+            testTemplateLayout.Name = "testTemplateLayout";
+            testTemplateLayout.RowCount = 2;
+            testTemplateLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 64F));
+            testTemplateLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            testTemplateLayout.Size = new Size(1421, 659);
+            testTemplateLayout.TabIndex = 0;
+            //
+            // testTemplateHeaderLayout
+            //
+            testTemplateHeaderLayout.ColumnCount = 1;
+            testTemplateHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            testTemplateHeaderLayout.Controls.Add(lblTestTemplateTitle, 0, 0);
+            testTemplateHeaderLayout.Controls.Add(lblTestTemplateDescription, 0, 1);
+            testTemplateHeaderLayout.Dock = DockStyle.Fill;
+            testTemplateHeaderLayout.Location = new Point(0, 0);
+            testTemplateHeaderLayout.Margin = new Padding(0, 0, 0, 6);
+            testTemplateHeaderLayout.Name = "testTemplateHeaderLayout";
+            testTemplateHeaderLayout.RowCount = 2;
+            testTemplateHeaderLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
+            testTemplateHeaderLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            testTemplateHeaderLayout.Size = new Size(1421, 58);
+            testTemplateHeaderLayout.TabIndex = 0;
+            //
+            // lblTestTemplateTitle
+            //
+            lblTestTemplateTitle.AutoSize = true;
+            lblTestTemplateTitle.Dock = DockStyle.Fill;
+            lblTestTemplateTitle.Font = new Font("Microsoft YaHei UI", 12F, FontStyle.Bold);
+            lblTestTemplateTitle.Location = new Point(0, 0);
+            lblTestTemplateTitle.Margin = new Padding(0);
+            lblTestTemplateTitle.Name = "lblTestTemplateTitle";
+            lblTestTemplateTitle.Size = new Size(1421, 32);
+            lblTestTemplateTitle.TabIndex = 0;
+            lblTestTemplateTitle.Text = "测试项目模板";
+            lblTestTemplateTitle.TextAlign = ContentAlignment.MiddleLeft;
+            //
+            // lblTestTemplateDescription
+            //
+            lblTestTemplateDescription.AutoEllipsis = true;
+            lblTestTemplateDescription.Dock = DockStyle.Fill;
+            lblTestTemplateDescription.ForeColor = SystemColors.GrayText;
+            lblTestTemplateDescription.Location = new Point(0, 32);
+            lblTestTemplateDescription.Margin = new Padding(0);
+            lblTestTemplateDescription.Name = "lblTestTemplateDescription";
+            lblTestTemplateDescription.Size = new Size(1421, 26);
+            lblTestTemplateDescription.TabIndex = 1;
+            lblTestTemplateDescription.Text = "维护可复用的测试项目模板。产品工艺配置绑定模板后，采集时按模板中的焊点、工位和地址读取实际值、上下限和结果。";
+            lblTestTemplateDescription.TextAlign = ContentAlignment.MiddleLeft;
+            //
+            // testTemplateBodyLayout
+            //
+            testTemplateBodyLayout.ColumnCount = 1;
+            testTemplateBodyLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            testTemplateBodyLayout.Controls.Add(testTemplateListLayout, 0, 0);
+            testTemplateBodyLayout.Dock = DockStyle.Fill;
+            testTemplateBodyLayout.Location = new Point(0, 64);
+            testTemplateBodyLayout.Margin = new Padding(0);
+            testTemplateBodyLayout.Name = "testTemplateBodyLayout";
+            testTemplateBodyLayout.RowCount = 1;
+            testTemplateBodyLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            testTemplateBodyLayout.Size = new Size(1421, 595);
+            testTemplateBodyLayout.TabIndex = 1;
+            //
+            // testTemplateListLayout
+            //
+            testTemplateListLayout.ColumnCount = 1;
+            testTemplateListLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            testTemplateListLayout.Controls.Add(lblTestTemplateListTitle, 0, 0);
+            testTemplateListLayout.Controls.Add(testTemplateToolbar, 0, 1);
+            testTemplateListLayout.Controls.Add(tableTestTemplates, 0, 2);
+            testTemplateListLayout.Dock = DockStyle.Fill;
+            testTemplateListLayout.Location = new Point(0, 0);
+            testTemplateListLayout.Margin = new Padding(0, 0, 8, 0);
+            testTemplateListLayout.Name = "testTemplateListLayout";
+            testTemplateListLayout.RowCount = 3;
+            testTemplateListLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36F));
+            testTemplateListLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50F));
+            testTemplateListLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            testTemplateListLayout.Size = new Size(1421, 595);
+            testTemplateListLayout.TabIndex = 0;
+            //
+            // lblTestTemplateListTitle
+            //
+            lblTestTemplateListTitle.Dock = DockStyle.Fill;
+            lblTestTemplateListTitle.Font = new Font("Microsoft YaHei UI", 10.5F, FontStyle.Bold);
+            lblTestTemplateListTitle.Location = new Point(0, 0);
+            lblTestTemplateListTitle.Margin = new Padding(0);
+            lblTestTemplateListTitle.Name = "lblTestTemplateListTitle";
+            lblTestTemplateListTitle.Size = new Size(1421, 36);
+            lblTestTemplateListTitle.TabIndex = 0;
+            lblTestTemplateListTitle.Text = "模板列表";
+            lblTestTemplateListTitle.TextAlign = ContentAlignment.MiddleLeft;
+            //
+            // testTemplateToolbar
+            //
+            testTemplateToolbar.Controls.Add(btnRefreshTestTemplates);
+            testTemplateToolbar.Controls.Add(btnDeleteTestTemplate);
+            testTemplateToolbar.Controls.Add(btnSaveTestTemplates);
+            testTemplateToolbar.Controls.Add(btnAddTestTemplate);
+            testTemplateToolbar.Dock = DockStyle.Fill;
+            testTemplateToolbar.FlowDirection = FlowDirection.RightToLeft;
+            testTemplateToolbar.Location = new Point(0, 36);
+            testTemplateToolbar.Margin = new Padding(0, 0, 0, 8);
+            testTemplateToolbar.Name = "testTemplateToolbar";
+            testTemplateToolbar.Size = new Size(1421, 42);
+            testTemplateToolbar.TabIndex = 1;
+            testTemplateToolbar.WrapContents = false;
+            //
+            // btnRefreshTestTemplates
+            //
+            btnRefreshTestTemplates.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnRefreshTestTemplates.BorderWidth = 1F;
+            btnRefreshTestTemplates.IconSvg = "ReloadOutlined";
+            btnRefreshTestTemplates.Location = new Point(383, 3);
+            btnRefreshTestTemplates.Name = "btnRefreshTestTemplates";
+            btnRefreshTestTemplates.Size = new Size(89, 36);
+            btnRefreshTestTemplates.TabIndex = 3;
+            btnRefreshTestTemplates.Text = "刷新";
+            //
+            // btnDeleteTestTemplate
+            //
+            btnDeleteTestTemplate.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnDeleteTestTemplate.BorderWidth = 1F;
+            btnDeleteTestTemplate.IconSvg = "DeleteOutlined";
+            btnDeleteTestTemplate.Location = new Point(253, 3);
+            btnDeleteTestTemplate.Name = "btnDeleteTestTemplate";
+            btnDeleteTestTemplate.Size = new Size(124, 36);
+            btnDeleteTestTemplate.TabIndex = 2;
+            btnDeleteTestTemplate.Text = "删除选中";
+            //
+            // btnSaveTestTemplates
+            //
+            btnSaveTestTemplates.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnSaveTestTemplates.BorderWidth = 1F;
+            btnSaveTestTemplates.IconSvg = "SaveOutlined";
+            btnSaveTestTemplates.Location = new Point(158, 3);
+            btnSaveTestTemplates.Name = "btnSaveTestTemplates";
+            btnSaveTestTemplates.Size = new Size(89, 36);
+            btnSaveTestTemplates.TabIndex = 1;
+            btnSaveTestTemplates.Text = "保存";
+            //
+            // btnAddTestTemplate
+            //
+            btnAddTestTemplate.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnAddTestTemplate.BorderWidth = 1F;
+            btnAddTestTemplate.IconSvg = "PlusOutlined";
+            btnAddTestTemplate.Location = new Point(63, 3);
+            btnAddTestTemplate.Name = "btnAddTestTemplate";
+            btnAddTestTemplate.Size = new Size(89, 36);
+            btnAddTestTemplate.TabIndex = 0;
+            btnAddTestTemplate.Text = "新增";
+            //
+            // tableTestTemplates
+            //
+            tableTestTemplates.Dock = DockStyle.Fill;
+            tableTestTemplates.EditMode = AntdUI.TEditMode.DoubleClick;
+            tableTestTemplates.Gap = 8;
+            tableTestTemplates.Gaps = new Size(8, 8);
+            tableTestTemplates.Location = new Point(0, 86);
+            tableTestTemplates.Margin = new Padding(0);
+            tableTestTemplates.Name = "tableTestTemplates";
+            tableTestTemplates.Size = new Size(1421, 509);
+            tableTestTemplates.TabIndex = 2;
+            tableTestTemplates.Text = "tableTestTemplates";
             // SystemSettingView
             //
             AutoScaleDimensions = new SizeF(120F, 120F);
@@ -859,6 +1132,10 @@ namespace AutoWeldSystem.UI.Views
             grpAppConfig.ResumeLayout(false);
             tableLayoutPanel3.ResumeLayout(false);
             tableLayoutPanel3.PerformLayout();
+            flowPanel2.ResumeLayout(false);
+            flowPanel2.PerformLayout();
+            flowPanel1.ResumeLayout(false);
+            flowPanel1.PerformLayout();
             panel2.ResumeLayout(false);
             panel2.PerformLayout();
             headerLayout.ResumeLayout(false);
@@ -870,14 +1147,25 @@ namespace AutoWeldSystem.UI.Views
             tabBasicSettings.ResumeLayout(false);
             panelBasicSettings.ResumeLayout(false);
             panelBasicSettings.PerformLayout();
+            groupBox1.ResumeLayout(false);
+            tableLayoutPanel5.ResumeLayout(false);
+            tableLayoutPanel5.PerformLayout();
+            tableLayoutPanel1.ResumeLayout(false);
+            tableLayoutPanel1.PerformLayout();
             tabProductProcess.ResumeLayout(false);
             productProcessLayout.ResumeLayout(false);
             productProcessHeaderLayout.ResumeLayout(false);
             productProcessHeaderLayout.PerformLayout();
             productProcessToolbar.ResumeLayout(false);
             productProcessToolbar.PerformLayout();
-            tableLayoutPanel1.ResumeLayout(false);
-            tableLayoutPanel1.PerformLayout();
+            tabTestItemTemplates.ResumeLayout(false);
+            testTemplateLayout.ResumeLayout(false);
+            testTemplateHeaderLayout.ResumeLayout(false);
+            testTemplateHeaderLayout.PerformLayout();
+            testTemplateBodyLayout.ResumeLayout(false);
+            testTemplateListLayout.ResumeLayout(false);
+            testTemplateToolbar.ResumeLayout(false);
+            testTemplateToolbar.PerformLayout();
             ResumeLayout(false);
         }
 
@@ -933,14 +1221,33 @@ namespace AutoWeldSystem.UI.Views
         private Label lblProductProcessDescription;
         private FlowLayoutPanel productProcessToolbar;
         private AntdUI.Button btnRefreshProductProcesses;
-        private AntdUI.Button btnDisableProductProcess;
+        private AntdUI.Button btnDeleteProductProcess;
         private AntdUI.Button btnSaveProductProcesses;
         private AntdUI.Button btnAddProductProcess;
         private AntdUI.Table tableProductProcesses;
+        private TabPage tabTestItemTemplates;
+        private TableLayoutPanel testTemplateLayout;
+        private TableLayoutPanel testTemplateHeaderLayout;
+        private Label lblTestTemplateTitle;
+        private Label lblTestTemplateDescription;
+        private TableLayoutPanel testTemplateBodyLayout;
+        private TableLayoutPanel testTemplateListLayout;
+        private Label lblTestTemplateListTitle;
+        private FlowLayoutPanel testTemplateToolbar;
+        private AntdUI.Button btnRefreshTestTemplates;
+        private AntdUI.Button btnDeleteTestTemplate;
+        private AntdUI.Button btnSaveTestTemplates;
+        private AntdUI.Button btnAddTestTemplate;
+        private AntdUI.Table tableTestTemplates;
         private AntdUI.Button btnSaveAll;
         private AntdUI.Label lblDeviceUrl;
         private AntdUI.Input input_DeviceUrl;
         private TableLayoutPanel tableLayoutPanel1;
         private AntdUI.Checkbox chkEnableDualStationMode;
+        private GroupBox groupBox1;
+        private TableLayoutPanel tableLayoutPanel5;
+        private AntdUI.FlowPanel flowPanel2;
+        private AntdUI.FlowPanel flowPanel1;
+        private AntdUI.Checkbox chkUseProductNumberFilter;
     }
 }

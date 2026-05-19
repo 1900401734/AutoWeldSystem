@@ -5,7 +5,7 @@ namespace AutoWeldSystem.Core.Models;
 
 /// <summary>
 /// Product process configuration.
-/// It tells the collection engine how many weld points a product number/model has and which collection group to use.
+/// It tells the collection engine how many weld points a product number/model has and which test item template to use.
 /// </summary>
 [SugarTable("Biz_ProductProcessConfig", TableDescription = "产品型号工艺配置表")]
 public class BizProductProcessConfig
@@ -14,7 +14,7 @@ public class BizProductProcessConfig
     public int Id { get; set; }
 
     /// <summary>
-    /// Product number. This is the primary key used to bind a program to collection parameters.
+    /// Product number. This is the primary key used to bind a program to the matching test item template.
     /// </summary>
     [SugarColumn(Length = 50, IsNullable = true, ColumnDescription = "产品工号")]
     public string? ProductNum { get; set; }
@@ -50,10 +50,10 @@ public class BizProductProcessConfig
     public int WeldPointCount { get; set; } = 1;
 
     /// <summary>
-    /// Collection parameter group key. Different models can bind different parameter sets.
+    /// 绑定的测试项目模板 ID。0 表示暂未绑定模板。
     /// </summary>
-    [SugarColumn(Length = 50, ColumnDescription = "采集参数组")]
-    public string CollectionGroup { get; set; } = "default";
+    [SugarColumn(ColumnDescription = "测试项目模板ID")]
+    public int TemplateId { get; set; }
 
     /// <summary>
     /// Program matching rule reserved for future automatic program lookup.
