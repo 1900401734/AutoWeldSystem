@@ -87,6 +87,7 @@ public static class TextKeys
         public static class Button
         {
             public const string ChangeWorkOrder = "monitor.button.change_work_order";
+            public const string EditWO = "monitor.button.edit";
             public const string StartReport = "monitor.button.start_report";
             public const string FinishReport = "monitor.button.finish_report";
             public const string SwitchUser = "monitor.button.switch_user";
@@ -375,6 +376,7 @@ public static class TextKeys
         public const string LabelProgramId = "program.label.program_id";
         public const string LabelProductNum = "program.label.product_num";
         public const string LabelProductModel = "program.label.product_model";
+        public const string LabelRecipeCode = "program.label.recipe_code";
         public const string LabelComponentCode = "program.label.component_code";
         public const string LabelSequenceNumber = "program.label.sequence_number";
         public const string LabelProgramType = "program.label.program_type";
@@ -384,6 +386,7 @@ public static class TextKeys
         public const string LabelProgramFile = "program.label.program_file";
         public const string LabelCommitMessage = "program.label.commit_message";
         public const string LabelRemark = "program.label.remark";
+        public const string LabelLocalRemark = "program.label.local_remark";
         public const string LabelProgramContent = "program.label.program_content";
         public const string OptionParameterString = "program.option.parameter_string";
         public const string OptionFile = "program.option.file";
@@ -445,6 +448,7 @@ public static class TextKeys
         public const string LabelDataPath = "system.label.data_path";
         public const string LabelMesUrl = "system.label.mes_url";
         public const string LabelUseProductNumberFilter = "system.label.use_product_number_filter";
+        public const string LabelValidateRecipeBeforeStart = "system.label.validate_recipe_before_start";
         public const string ButtonConnect = "system.button.connect";
         public const string ButtonSyncDevice = "system.button.sync_device";
         public const string ButtonChangePath = "system.button.change_path";
@@ -519,6 +523,7 @@ public static class TextKeys
         public const string NameSerialNumber = "address.name.serial_number";
         public const string NameProgramName = "address.name.program_name";
         public const string NameProductModel = "address.name.product_model";
+        public const string NameRecipeCode = "address.name.recipe_code";
         public const string NameTotalProduction = "address.name.total_production";
         public const string NameTargetProduction = "address.name.target_production";
         public const string NameAcceptedQuantity = "address.name.accepted_quantity";
@@ -555,6 +560,8 @@ public static class TextKeys
         public const string ProgramId = "grid.program.id";
         public const string ProgramProductNum = "grid.program.product_num";
         public const string ProgramProductModel = "grid.program.product_model";
+        public const string ProgramRecipeCode = "grid.program.recipe_code";
+        public const string ProgramLocalRemark = "grid.program.local_remark";
         public const string ProgramVersionNumber = "grid.program.version_number";
         public const string ProgramSyncStatus = "grid.program.sync_status";
         public const string ProgramSyncAction = "grid.program.sync_action";

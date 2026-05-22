@@ -420,6 +420,9 @@
   <data name="system.label.use_product_number_filter" xml:space="preserve">
     <value>Filter programs by product No.</value>
   </data>
+  <data name="system.label.validate_recipe_before_start" xml:space="preserve">
+    <value>Validate PLC recipe before start</value>
+  </data>
   <data name="system.button.connect" xml:space="preserve">
     <value>Connect</value>
   </data>
@@ -666,6 +669,9 @@
   <data name="address.name.product_model" xml:space="preserve">
     <value>Product Model</value>
   </data>
+  <data name="address.name.recipe_code" xml:space="preserve">
+    <value>Recipe Code</value>
+  </data>
   <data name="address.name.total_production" xml:space="preserve">
     <value>Total Processed</value>
   </data>
@@ -790,7 +796,7 @@
     <value>MES request failed: {0}</value>
   </data>
   <data name="monitor.button.change_work_order" xml:space="preserve">
-    <value>Change Work Order</value>
+    <value>Change</value>
   </data>
   <data name="monitor.button.start_report" xml:space="preserve">
     <value>Start Report</value>
@@ -1194,6 +1200,9 @@
   <data name="program.label.product_model" xml:space="preserve">
     <value>Product Model</value>
   </data>
+  <data name="program.label.recipe_code" xml:space="preserve">
+    <value>Recipe Code / No.</value>
+  </data>
   <data name="program.label.component_code" xml:space="preserve">
     <value>Component Code</value>
   </data>
@@ -1220,6 +1229,9 @@
   </data>
   <data name="program.label.remark" xml:space="preserve">
     <value>MES Remark</value>
+  </data>
+  <data name="program.label.local_remark" xml:space="preserve">
+    <value>Local Remark</value>
   </data>
   <data name="program.label.program_content" xml:space="preserve">
     <value>Program Content</value>
@@ -1326,6 +1338,12 @@
   <data name="grid.program.product_model" xml:space="preserve">
     <value>Product Model</value>
   </data>
+  <data name="grid.program.recipe_code" xml:space="preserve">
+    <value>Recipe Code / No.</value>
+  </data>
+  <data name="grid.program.local_remark" xml:space="preserve">
+    <value>Local Remark</value>
+  </data>
   <data name="grid.program.version_number" xml:space="preserve">
     <value>Version</value>
   </data>
@@ -1355,5 +1373,8 @@
   </data>
   <data name="grid.program.last_sync_time" xml:space="preserve">
     <value>Last Sync Time</value>
+  </data>
+  <data name="monitor.button.edit" xml:space="preserve">
+    <value>Edit</value>
   </data>
 </root>

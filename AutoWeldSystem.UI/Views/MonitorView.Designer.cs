@@ -32,17 +32,22 @@ namespace AutoWeldSystem.UI.Views
             左右分隔面板 = new AntdUI.Splitter();
             tlpLeft = new TableLayoutPanel();
             tlpLeftTop = new TableLayoutPanel();
-            picLogo = new PictureBox();
-            tlpReportButton = new TableLayoutPanel();
-            btnExpEnd = new AntdUI.Button();
-            btnExpStart = new AntdUI.Button();
             lblTitle = new Label();
             tlpCommunicationStatus = new TableLayoutPanel();
+            btnExpEnd = new AntdUI.Button();
             tagDeviceStatus = new AntdUI.Tag();
+            btnExpStart = new AntdUI.Button();
+            tagTaskStatus = new AntdUI.Tag();
             tagMes = new AntdUI.Tag();
             tagPLC = new AntdUI.Tag();
+            picLogo = new PictureBox();
             table2 = new AntdUI.Table();
+            panel1 = new Panel();
             TPLRight = new TableLayoutPanel();
+            groupBox3 = new GroupBox();
+            tableLayoutPanel1 = new TableLayoutPanel();
+            tag2 = new AntdUI.Tag();
+            tag1 = new AntdUI.Tag();
             TLPWorkOrderInfo = new TableLayoutPanel();
             tableLayoutPanel9 = new TableLayoutPanel();
             lblPartName = new AntdUI.Label();
@@ -65,8 +70,9 @@ namespace AutoWeldSystem.UI.Views
             inputSpec = new AntdUI.Input();
             tableLayoutPanel6 = new TableLayoutPanel();
             lblWorkOrder = new AntdUI.Label();
-            inputSN = new AntdUI.Input();
             btnChangeWO = new AntdUI.Button();
+            inputSN = new AntdUI.Input();
+            btnEditWO = new AntdUI.Button();
             tableLayoutPanel2 = new TableLayoutPanel();
             lblProductNo = new AntdUI.Label();
             inputProdNum = new AntdUI.Input();
@@ -83,9 +89,6 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanel10 = new TableLayoutPanel();
             lblStation = new AntdUI.Label();
             selectStation = new AntdUI.Select();
-            tableLayoutPanel1 = new TableLayoutPanel();
-            tag2 = new AntdUI.Tag();
-            tag1 = new AntdUI.Tag();
             groupBox1 = new GroupBox();
             inputErrorTips = new AntdUI.Input();
             table1 = new AntdUI.Table();
@@ -97,10 +100,11 @@ namespace AutoWeldSystem.UI.Views
             左右分隔面板.SuspendLayout();
             tlpLeft.SuspendLayout();
             tlpLeftTop.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)picLogo).BeginInit();
-            tlpReportButton.SuspendLayout();
             tlpCommunicationStatus.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)picLogo).BeginInit();
             TPLRight.SuspendLayout();
+            groupBox3.SuspendLayout();
+            tableLayoutPanel1.SuspendLayout();
             TLPWorkOrderInfo.SuspendLayout();
             tableLayoutPanel9.SuspendLayout();
             tableLayoutPanel3.SuspendLayout();
@@ -111,65 +115,63 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanel4.SuspendLayout();
             tableLayoutPanel5.SuspendLayout();
             tableLayoutPanel10.SuspendLayout();
-            tableLayoutPanel1.SuspendLayout();
             groupBox1.SuspendLayout();
             groupBox2.SuspendLayout();
             SuspendLayout();
-            //
+            // 
             // 左右分隔面板
-            //
+            // 
             左右分隔面板.BackColor = SystemColors.Control;
             左右分隔面板.Dock = DockStyle.Fill;
             左右分隔面板.Location = new Point(0, 0);
             左右分隔面板.Margin = new Padding(0);
             左右分隔面板.Name = "左右分隔面板";
-            //
+            // 
             // 左右分隔面板.Panel1
-            //
+            // 
             左右分隔面板.Panel1.Controls.Add(tlpLeft);
             左右分隔面板.Panel1MinSize = 500;
-            //
+            // 
             // 左右分隔面板.Panel2
-            //
+            // 
             左右分隔面板.Panel2.Controls.Add(TPLRight);
             左右分隔面板.Panel2MinSize = 400;
             左右分隔面板.Size = new Size(1564, 932);
             左右分隔面板.SplitterDistance = 1150;
             左右分隔面板.SplitterWidth = 5;
             左右分隔面板.TabIndex = 3;
-            //
+            // 
             // tlpLeft
-            //
+            // 
             tlpLeft.AutoSize = true;
             tlpLeft.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             tlpLeft.ColumnCount = 1;
             tlpLeft.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             tlpLeft.Controls.Add(tlpLeftTop, 0, 0);
             tlpLeft.Controls.Add(table2, 0, 1);
+            tlpLeft.Controls.Add(panel1, 0, 2);
             tlpLeft.Dock = DockStyle.Fill;
             tlpLeft.Location = new Point(0, 0);
             tlpLeft.Margin = new Padding(4, 3, 4, 3);
             tlpLeft.Name = "tlpLeft";
             tlpLeft.RowCount = 3;
             tlpLeft.RowStyles.Add(new RowStyle(SizeType.Percent, 11.5879831F));
-            tlpLeft.RowStyles.Add(new RowStyle(SizeType.Percent, 43.776825F));
-            tlpLeft.RowStyles.Add(new RowStyle(SizeType.Percent, 44.6351929F));
+            tlpLeft.RowStyles.Add(new RowStyle(SizeType.Percent, 51.28755F));
+            tlpLeft.RowStyles.Add(new RowStyle(SizeType.Percent, 37.1244621F));
             tlpLeft.Size = new Size(1150, 932);
             tlpLeft.TabIndex = 0;
-            //
+            // 
             // tlpLeftTop
-            //
+            // 
             tlpLeftTop.AutoSize = true;
             tlpLeftTop.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            tlpLeftTop.ColumnCount = 4;
+            tlpLeftTop.ColumnCount = 3;
             tlpLeftTop.ColumnStyles.Add(new ColumnStyle());
-            tlpLeftTop.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            tlpLeftTop.ColumnStyles.Add(new ColumnStyle());
-            tlpLeftTop.ColumnStyles.Add(new ColumnStyle());
-            tlpLeftTop.Controls.Add(picLogo, 0, 0);
-            tlpLeftTop.Controls.Add(tlpReportButton, 3, 0);
+            tlpLeftTop.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 65F));
+            tlpLeftTop.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 35F));
             tlpLeftTop.Controls.Add(lblTitle, 1, 0);
             tlpLeftTop.Controls.Add(tlpCommunicationStatus, 2, 0);
+            tlpLeftTop.Controls.Add(picLogo, 0, 0);
             tlpLeftTop.Dock = DockStyle.Fill;
             tlpLeftTop.Location = new Point(3, 3);
             tlpLeftTop.Name = "tlpLeftTop";
@@ -177,9 +179,112 @@ namespace AutoWeldSystem.UI.Views
             tlpLeftTop.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tlpLeftTop.Size = new Size(1144, 102);
             tlpLeftTop.TabIndex = 4;
-            //
+            // 
+            // lblTitle
+            // 
+            lblTitle.Dock = DockStyle.Fill;
+            lblTitle.Font = new Font("Microsoft YaHei UI", 28F, FontStyle.Bold);
+            lblTitle.ImeMode = ImeMode.NoControl;
+            lblTitle.Location = new Point(168, 0);
+            lblTitle.Margin = new Padding(0);
+            lblTitle.Name = "lblTitle";
+            lblTitle.Size = new Size(634, 102);
+            lblTitle.TabIndex = 0;
+            lblTitle.Text = "单稳态型自动点焊系统";
+            lblTitle.TextAlign = ContentAlignment.MiddleCenter;
+            // 
+            // tlpCommunicationStatus
+            // 
+            tlpCommunicationStatus.ColumnCount = 3;
+            tlpCommunicationStatus.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3333321F));
+            tlpCommunicationStatus.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3333359F));
+            tlpCommunicationStatus.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3333359F));
+            tlpCommunicationStatus.Controls.Add(btnExpEnd, 2, 1);
+            tlpCommunicationStatus.Controls.Add(tagDeviceStatus, 0, 1);
+            tlpCommunicationStatus.Controls.Add(btnExpStart, 2, 0);
+            tlpCommunicationStatus.Controls.Add(tagTaskStatus, 1, 1);
+            tlpCommunicationStatus.Controls.Add(tagMes, 0, 0);
+            tlpCommunicationStatus.Controls.Add(tagPLC, 1, 0);
+            tlpCommunicationStatus.Dock = DockStyle.Fill;
+            tlpCommunicationStatus.Location = new Point(802, 0);
+            tlpCommunicationStatus.Margin = new Padding(0);
+            tlpCommunicationStatus.Name = "tlpCommunicationStatus";
+            tlpCommunicationStatus.RowCount = 2;
+            tlpCommunicationStatus.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
+            tlpCommunicationStatus.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
+            tlpCommunicationStatus.Size = new Size(342, 102);
+            tlpCommunicationStatus.TabIndex = 2;
+            // 
+            // btnExpEnd
+            // 
+            btnExpEnd.BorderWidth = 1F;
+            btnExpEnd.Dock = DockStyle.Fill;
+            btnExpEnd.IconGap = 0.2F;
+            btnExpEnd.IconSvg = "CheckCircleOutlined";
+            btnExpEnd.Location = new Point(227, 51);
+            btnExpEnd.Margin = new Padding(0);
+            btnExpEnd.Name = "btnExpEnd";
+            btnExpEnd.Size = new Size(115, 51);
+            btnExpEnd.TabIndex = 3;
+            btnExpEnd.Tag = "perm:button.monitor.finish-report:visible";
+            btnExpEnd.Text = "完工上报";
+            // 
+            // tagDeviceStatus
+            // 
+            tagDeviceStatus.Dock = DockStyle.Fill;
+            tagDeviceStatus.Location = new Point(0, 51);
+            tagDeviceStatus.Margin = new Padding(0);
+            tagDeviceStatus.Name = "tagDeviceStatus";
+            tagDeviceStatus.Size = new Size(113, 51);
+            tagDeviceStatus.TabIndex = 2;
+            tagDeviceStatus.Text = "RUN";
+            // 
+            // btnExpStart
+            // 
+            btnExpStart.BorderWidth = 1F;
+            btnExpStart.Dock = DockStyle.Fill;
+            btnExpStart.IconGap = 0.2F;
+            btnExpStart.IconSvg = "PlayCircleOutlined";
+            btnExpStart.Location = new Point(227, 0);
+            btnExpStart.Margin = new Padding(0);
+            btnExpStart.Name = "btnExpStart";
+            btnExpStart.Size = new Size(115, 51);
+            btnExpStart.TabIndex = 3;
+            btnExpStart.Tag = "perm:button.monitor.start-report:visible";
+            btnExpStart.Text = "开工上报";
+            // 
+            // tagTaskStatus
+            // 
+            tagTaskStatus.Dock = DockStyle.Fill;
+            tagTaskStatus.Location = new Point(113, 51);
+            tagTaskStatus.Margin = new Padding(0);
+            tagTaskStatus.Name = "tagTaskStatus";
+            tagTaskStatus.Size = new Size(114, 51);
+            tagTaskStatus.TabIndex = 3;
+            tagTaskStatus.Text = "未开工";
+            // 
+            // tagMes
+            // 
+            tagMes.Dock = DockStyle.Fill;
+            tagMes.Location = new Point(0, 0);
+            tagMes.Margin = new Padding(0);
+            tagMes.Name = "tagMes";
+            tagMes.Size = new Size(113, 51);
+            tagMes.TabIndex = 0;
+            tagMes.Text = "MES";
+            // 
+            // tagPLC
+            // 
+            tagPLC.Dock = DockStyle.Fill;
+            tagPLC.Location = new Point(113, 0);
+            tagPLC.Margin = new Padding(0);
+            tagPLC.Name = "tagPLC";
+            tagPLC.Size = new Size(114, 51);
+            tagPLC.TabIndex = 0;
+            tagPLC.Text = "PLC";
+            // 
             // picLogo
-            //
+            // 
             picLogo.Dock = DockStyle.Fill;
             picLogo.Image = (Image)resources.GetObject("picLogo.Image");
             picLogo.Location = new Point(0, 0);
@@ -189,135 +294,31 @@ namespace AutoWeldSystem.UI.Views
             picLogo.SizeMode = PictureBoxSizeMode.Zoom;
             picLogo.TabIndex = 1;
             picLogo.TabStop = false;
-            //
-            // tlpReportButton
-            //
-            tlpReportButton.AutoSize = true;
-            tlpReportButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            tlpReportButton.ColumnCount = 1;
-            tlpReportButton.ColumnStyles.Add(new ColumnStyle());
-            tlpReportButton.Controls.Add(btnExpEnd, 0, 1);
-            tlpReportButton.Controls.Add(btnExpStart, 0, 0);
-            tlpReportButton.Dock = DockStyle.Fill;
-            tlpReportButton.Location = new Point(1025, 0);
-            tlpReportButton.Margin = new Padding(0);
-            tlpReportButton.Name = "tlpReportButton";
-            tlpReportButton.RowCount = 2;
-            tlpReportButton.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
-            tlpReportButton.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
-            tlpReportButton.Size = new Size(119, 102);
-            tlpReportButton.TabIndex = 3;
-            //
-            // btnExpEnd
-            //
-            btnExpEnd.AutoSizeMode = AntdUI.TAutoSize.Height;
-            btnExpEnd.BorderWidth = 1F;
-            btnExpEnd.Dock = DockStyle.Fill;
-            btnExpEnd.IconSvg = "CheckCircleOutlined";
-            btnExpEnd.JoinMode = AntdUI.TJoinMode.Bottom;
-            btnExpEnd.Location = new Point(0, 51);
-            btnExpEnd.Margin = new Padding(0);
-            btnExpEnd.Name = "btnExpEnd";
-            btnExpEnd.Shape = AntdUI.TShape.Round;
-            btnExpEnd.Size = new Size(119, 51);
-            btnExpEnd.TabIndex = 3;
-            btnExpEnd.Tag = "perm:button.monitor.finish-report:visible";
-            btnExpEnd.Text = "完工上报";
-            //
-            // btnExpStart
-            //
-            btnExpStart.AutoSizeMode = AntdUI.TAutoSize.Height;
-            btnExpStart.BorderWidth = 1F;
-            btnExpStart.Dock = DockStyle.Fill;
-            btnExpStart.IconSvg = "PlayCircleOutlined";
-            btnExpStart.JoinMode = AntdUI.TJoinMode.Top;
-            btnExpStart.Location = new Point(0, 0);
-            btnExpStart.Margin = new Padding(0);
-            btnExpStart.Name = "btnExpStart";
-            btnExpStart.Shape = AntdUI.TShape.Round;
-            btnExpStart.Size = new Size(119, 51);
-            btnExpStart.TabIndex = 3;
-            btnExpStart.Tag = "perm:button.monitor.start-report:visible";
-            btnExpStart.Text = "开工上报";
-            //
-            // lblTitle
-            //
-            lblTitle.Dock = DockStyle.Fill;
-            lblTitle.Font = new Font("Microsoft YaHei UI", 28F, FontStyle.Bold);
-            lblTitle.ImeMode = ImeMode.NoControl;
-            lblTitle.Location = new Point(168, 0);
-            lblTitle.Margin = new Padding(0);
-            lblTitle.Name = "lblTitle";
-            lblTitle.Size = new Size(536, 102);
-            lblTitle.TabIndex = 0;
-            lblTitle.Text = "单稳态型自动点焊系统";
-            lblTitle.TextAlign = ContentAlignment.MiddleCenter;
-            //
-            // tlpCommunicationStatus
-            //
-            tlpCommunicationStatus.ColumnCount = 3;
-            tlpCommunicationStatus.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3333321F));
-            tlpCommunicationStatus.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3333359F));
-            tlpCommunicationStatus.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3333359F));
-            tlpCommunicationStatus.Controls.Add(tagDeviceStatus, 2, 0);
-            tlpCommunicationStatus.Controls.Add(tagMes, 0, 0);
-            tlpCommunicationStatus.Controls.Add(tagPLC, 1, 0);
-            tlpCommunicationStatus.Dock = DockStyle.Fill;
-            tlpCommunicationStatus.Location = new Point(704, 0);
-            tlpCommunicationStatus.Margin = new Padding(0);
-            tlpCommunicationStatus.Name = "tlpCommunicationStatus";
-            tlpCommunicationStatus.RowCount = 1;
-            tlpCommunicationStatus.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tlpCommunicationStatus.Size = new Size(321, 102);
-            tlpCommunicationStatus.TabIndex = 2;
-            //
-            // tagDeviceStatus
-            //
-            tagDeviceStatus.Dock = DockStyle.Fill;
-            tagDeviceStatus.Location = new Point(213, 0);
-            tagDeviceStatus.Margin = new Padding(0);
-            tagDeviceStatus.Name = "tagDeviceStatus";
-            tagDeviceStatus.Size = new Size(108, 102);
-            tagDeviceStatus.TabIndex = 2;
-            tagDeviceStatus.Text = "RUN";
-            //
-            // tagMes
-            //
-            tagMes.Dock = DockStyle.Fill;
-            tagMes.Location = new Point(0, 0);
-            tagMes.Margin = new Padding(0);
-            tagMes.Name = "tagMes";
-            tagMes.Size = new Size(106, 102);
-            tagMes.TabIndex = 0;
-            tagMes.Text = "MES";
-            //
-            // tagPLC
-            //
-            tagPLC.Dock = DockStyle.Fill;
-            tagPLC.Location = new Point(106, 0);
-            tagPLC.Margin = new Padding(0);
-            tagPLC.Name = "tagPLC";
-            tagPLC.Size = new Size(107, 102);
-            tagPLC.TabIndex = 0;
-            tagPLC.Text = "PLC";
-            //
+            // 
             // table2
-            //
+            // 
             table2.Dock = DockStyle.Fill;
             table2.Gap = 12;
             table2.Location = new Point(1, 109);
             table2.Margin = new Padding(1);
             table2.Name = "table2";
-            table2.Size = new Size(1148, 406);
+            table2.Size = new Size(1148, 476);
             table2.TabIndex = 2;
             table2.Text = "table2";
-            //
+            // 
+            // panel1
+            // 
+            panel1.Location = new Point(3, 589);
+            panel1.Name = "panel1";
+            panel1.Size = new Size(1144, 297);
+            panel1.TabIndex = 5;
+            // 
             // TPLRight
-            //
+            // 
             TPLRight.ColumnCount = 1;
             TPLRight.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            TPLRight.Controls.Add(groupBox3, 0, 3);
             TPLRight.Controls.Add(TLPWorkOrderInfo, 0, 0);
-            TPLRight.Controls.Add(tableLayoutPanel1, 0, 3);
             TPLRight.Controls.Add(groupBox1, 0, 1);
             TPLRight.Controls.Add(table1, 0, 4);
             TPLRight.Controls.Add(groupBox2, 0, 2);
@@ -333,9 +334,58 @@ namespace AutoWeldSystem.UI.Views
             TPLRight.RowStyles.Add(new RowStyle());
             TPLRight.Size = new Size(409, 932);
             TPLRight.TabIndex = 0;
-            //
+            // 
+            // groupBox3
+            // 
+            groupBox3.Controls.Add(tableLayoutPanel1);
+            groupBox3.Dock = DockStyle.Fill;
+            groupBox3.Location = new Point(3, 572);
+            groupBox3.Name = "groupBox3";
+            groupBox3.Size = new Size(403, 82);
+            groupBox3.TabIndex = 0;
+            groupBox3.TabStop = false;
+            groupBox3.Text = "产品结果";
+            // 
+            // tableLayoutPanel1
+            // 
+            tableLayoutPanel1.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            tableLayoutPanel1.ColumnCount = 2;
+            tableLayoutPanel1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            tableLayoutPanel1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            tableLayoutPanel1.Controls.Add(tag2, 1, 0);
+            tableLayoutPanel1.Controls.Add(tag1, 0, 0);
+            tableLayoutPanel1.Dock = DockStyle.Fill;
+            tableLayoutPanel1.Location = new Point(3, 26);
+            tableLayoutPanel1.Margin = new Padding(0);
+            tableLayoutPanel1.Name = "tableLayoutPanel1";
+            tableLayoutPanel1.RowCount = 1;
+            tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            tableLayoutPanel1.Size = new Size(397, 53);
+            tableLayoutPanel1.TabIndex = 1;
+            // 
+            // tag2
+            // 
+            tag2.Dock = DockStyle.Fill;
+            tag2.Font = new Font("Microsoft YaHei UI", 15F, FontStyle.Bold);
+            tag2.Location = new Point(201, 3);
+            tag2.Name = "tag2";
+            tag2.Size = new Size(193, 47);
+            tag2.TabIndex = 1;
+            tag2.Text = "工位2";
+            tag2.Visible = false;
+            // 
+            // tag1
+            // 
+            tag1.Dock = DockStyle.Fill;
+            tag1.Font = new Font("Microsoft YaHei UI", 15F, FontStyle.Bold);
+            tag1.Location = new Point(3, 3);
+            tag1.Name = "tag1";
+            tag1.Size = new Size(192, 47);
+            tag1.TabIndex = 0;
+            tag1.Text = "工位1";
+            // 
             // TLPWorkOrderInfo
-            //
+            // 
             TLPWorkOrderInfo.ColumnCount = 1;
             TLPWorkOrderInfo.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             TLPWorkOrderInfo.Controls.Add(tableLayoutPanel9, 0, 8);
@@ -365,9 +415,9 @@ namespace AutoWeldSystem.UI.Views
             TLPWorkOrderInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 10F));
             TLPWorkOrderInfo.Size = new Size(401, 387);
             TLPWorkOrderInfo.TabIndex = 0;
-            //
+            // 
             // tableLayoutPanel9
-            //
+            // 
             tableLayoutPanel9.AutoSize = true;
             tableLayoutPanel9.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             tableLayoutPanel9.ColumnCount = 4;
@@ -387,9 +437,9 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanel9.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tableLayoutPanel9.Size = new Size(401, 38);
             tableLayoutPanel9.TabIndex = 0;
-            //
+            // 
             // lblPartName
-            //
+            // 
             lblPartName.AutoEllipsis = true;
             lblPartName.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblPartName.AutoSizePadding = true;
@@ -401,9 +451,9 @@ namespace AutoWeldSystem.UI.Views
             lblPartName.TabIndex = 29;
             lblPartName.Text = "部件名称";
             lblPartName.TextAlign = ContentAlignment.MiddleCenter;
-            //
+            // 
             // inputProductName
-            //
+            // 
             inputProductName.Dock = DockStyle.Fill;
             inputProductName.ImeMode = ImeMode.Inherit;
             inputProductName.Location = new Point(79, 0);
@@ -412,9 +462,9 @@ namespace AutoWeldSystem.UI.Views
             inputProductName.ReadOnly = true;
             inputProductName.Size = new Size(121, 38);
             inputProductName.TabIndex = 4;
-            //
+            // 
             // lblDrawingNo
-            //
+            // 
             lblDrawingNo.AutoEllipsis = true;
             lblDrawingNo.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblDrawingNo.AutoSizePadding = true;
@@ -426,9 +476,9 @@ namespace AutoWeldSystem.UI.Views
             lblDrawingNo.TabIndex = 29;
             lblDrawingNo.Text = "零件图号";
             lblDrawingNo.TextAlign = ContentAlignment.MiddleCenter;
-            //
+            // 
             // inputDrawingNo
-            //
+            // 
             inputDrawingNo.Dock = DockStyle.Fill;
             inputDrawingNo.ImeMode = ImeMode.Inherit;
             inputDrawingNo.Location = new Point(279, 0);
@@ -437,9 +487,9 @@ namespace AutoWeldSystem.UI.Views
             inputDrawingNo.ReadOnly = true;
             inputDrawingNo.Size = new Size(122, 38);
             inputDrawingNo.TabIndex = 4;
-            //
+            // 
             // tableLayoutPanel3
-            //
+            // 
             tableLayoutPanel3.ColumnCount = 4;
             tableLayoutPanel3.ColumnStyles.Add(new ColumnStyle());
             tableLayoutPanel3.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
@@ -457,9 +507,9 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tableLayoutPanel3.Size = new Size(401, 45);
             tableLayoutPanel3.TabIndex = 2;
-            //
+            // 
             // lblProcessName
-            //
+            // 
             lblProcessName.AutoEllipsis = true;
             lblProcessName.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblProcessName.AutoSizePadding = true;
@@ -471,9 +521,9 @@ namespace AutoWeldSystem.UI.Views
             lblProcessName.TabIndex = 30;
             lblProcessName.Text = "工序名称";
             lblProcessName.TextAlign = ContentAlignment.MiddleCenter;
-            //
+            // 
             // inputProcessNo
-            //
+            // 
             inputProcessNo.Dock = DockStyle.Fill;
             inputProcessNo.ImeMode = ImeMode.Inherit;
             inputProcessNo.Location = new Point(270, 0);
@@ -482,9 +532,9 @@ namespace AutoWeldSystem.UI.Views
             inputProcessNo.ReadOnly = true;
             inputProcessNo.Size = new Size(131, 45);
             inputProcessNo.TabIndex = 4;
-            //
+            // 
             // inputItemName
-            //
+            // 
             inputItemName.Dock = DockStyle.Fill;
             inputItemName.ImeMode = ImeMode.Inherit;
             inputItemName.Location = new Point(79, 0);
@@ -493,9 +543,9 @@ namespace AutoWeldSystem.UI.Views
             inputItemName.ReadOnly = true;
             inputItemName.Size = new Size(131, 45);
             inputItemName.TabIndex = 4;
-            //
+            // 
             // lblProcessNo
-            //
+            // 
             lblProcessNo.AutoEllipsis = true;
             lblProcessNo.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblProcessNo.AutoSizePadding = true;
@@ -507,9 +557,9 @@ namespace AutoWeldSystem.UI.Views
             lblProcessNo.TabIndex = 27;
             lblProcessNo.Text = "工序号";
             lblProcessNo.TextAlign = ContentAlignment.MiddleCenter;
-            //
+            // 
             // tableLayoutPanel7
-            //
+            // 
             tableLayoutPanel7.ColumnCount = 2;
             tableLayoutPanel7.ColumnStyles.Add(new ColumnStyle());
             tableLayoutPanel7.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
@@ -525,9 +575,9 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanel7.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tableLayoutPanel7.Size = new Size(401, 38);
             tableLayoutPanel7.TabIndex = 8;
-            //
+            // 
             // inputProgramName
-            //
+            // 
             inputProgramName.Dock = DockStyle.Fill;
             inputProgramName.ImeMode = ImeMode.Inherit;
             inputProgramName.Location = new Point(79, 0);
@@ -536,9 +586,9 @@ namespace AutoWeldSystem.UI.Views
             inputProgramName.ReadOnly = true;
             inputProgramName.Size = new Size(322, 38);
             inputProgramName.TabIndex = 4;
-            //
+            // 
             // lblProgramName
-            //
+            // 
             lblProgramName.AutoEllipsis = true;
             lblProgramName.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblProgramName.AutoSizePadding = true;
@@ -550,9 +600,9 @@ namespace AutoWeldSystem.UI.Views
             lblProgramName.TabIndex = 23;
             lblProgramName.Text = "程序名称";
             lblProgramName.TextAlign = ContentAlignment.MiddleCenter;
-            //
+            // 
             // lblCurTime
-            //
+            // 
             lblCurTime.AutoSize = true;
             TLPWorkOrderInfo.SetColumnSpan(lblCurTime, 4);
             lblCurTime.Dock = DockStyle.Fill;
@@ -565,9 +615,9 @@ namespace AutoWeldSystem.UI.Views
             lblCurTime.TabIndex = 6;
             lblCurTime.Text = "当前时间";
             lblCurTime.TextAlign = ContentAlignment.MiddleCenter;
-            //
+            // 
             // tableLayoutPanel8
-            //
+            // 
             tableLayoutPanel8.ColumnCount = 4;
             tableLayoutPanel8.ColumnStyles.Add(new ColumnStyle());
             tableLayoutPanel8.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
@@ -585,9 +635,9 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanel8.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tableLayoutPanel8.Size = new Size(401, 38);
             tableLayoutPanel8.TabIndex = 0;
-            //
+            // 
             // lblBatchNo
-            //
+            // 
             lblBatchNo.AutoEllipsis = true;
             lblBatchNo.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblBatchNo.AutoSizePadding = true;
@@ -599,9 +649,9 @@ namespace AutoWeldSystem.UI.Views
             lblBatchNo.TabIndex = 29;
             lblBatchNo.Text = "批次";
             lblBatchNo.TextAlign = ContentAlignment.MiddleCenter;
-            //
+            // 
             // inputBatch
-            //
+            // 
             inputBatch.Dock = DockStyle.Fill;
             inputBatch.ImeMode = ImeMode.Inherit;
             inputBatch.Location = new Point(40, 0);
@@ -610,9 +660,9 @@ namespace AutoWeldSystem.UI.Views
             inputBatch.ReadOnly = true;
             inputBatch.Size = new Size(160, 38);
             inputBatch.TabIndex = 4;
-            //
+            // 
             // lblSpec
-            //
+            // 
             lblSpec.AutoEllipsis = true;
             lblSpec.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblSpec.AutoSizePadding = true;
@@ -624,9 +674,9 @@ namespace AutoWeldSystem.UI.Views
             lblSpec.TabIndex = 29;
             lblSpec.Text = "规格";
             lblSpec.TextAlign = ContentAlignment.MiddleCenter;
-            //
+            // 
             // inputSpec
-            //
+            // 
             inputSpec.Dock = DockStyle.Fill;
             inputSpec.ImeMode = ImeMode.Inherit;
             inputSpec.Location = new Point(240, 0);
@@ -635,16 +685,18 @@ namespace AutoWeldSystem.UI.Views
             inputSpec.ReadOnly = true;
             inputSpec.Size = new Size(161, 38);
             inputSpec.TabIndex = 4;
-            //
+            // 
             // tableLayoutPanel6
-            //
-            tableLayoutPanel6.ColumnCount = 3;
+            // 
+            tableLayoutPanel6.ColumnCount = 4;
             tableLayoutPanel6.ColumnStyles.Add(new ColumnStyle());
             tableLayoutPanel6.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             tableLayoutPanel6.ColumnStyles.Add(new ColumnStyle());
+            tableLayoutPanel6.ColumnStyles.Add(new ColumnStyle());
             tableLayoutPanel6.Controls.Add(lblWorkOrder, 0, 0);
-            tableLayoutPanel6.Controls.Add(inputSN, 1, 0);
             tableLayoutPanel6.Controls.Add(btnChangeWO, 2, 0);
+            tableLayoutPanel6.Controls.Add(inputSN, 1, 0);
+            tableLayoutPanel6.Controls.Add(btnEditWO, 3, 0);
             tableLayoutPanel6.Dock = DockStyle.Fill;
             tableLayoutPanel6.Location = new Point(0, 152);
             tableLayoutPanel6.Margin = new Padding(0);
@@ -653,9 +705,9 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanel6.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tableLayoutPanel6.Size = new Size(401, 38);
             tableLayoutPanel6.TabIndex = 7;
-            //
+            // 
             // lblWorkOrder
-            //
+            // 
             lblWorkOrder.AutoEllipsis = true;
             lblWorkOrder.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblWorkOrder.AutoSizePadding = true;
@@ -667,36 +719,54 @@ namespace AutoWeldSystem.UI.Views
             lblWorkOrder.TabIndex = 22;
             lblWorkOrder.Text = "工单号";
             lblWorkOrder.TextAlign = ContentAlignment.MiddleCenter;
-            //
+            // 
+            // btnChangeWO
+            // 
+            btnChangeWO.AutoEllipsis = true;
+            btnChangeWO.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnChangeWO.BorderWidth = 1F;
+            btnChangeWO.Dock = DockStyle.Right;
+            btnChangeWO.IconSvg = "SwapOutlined";
+            btnChangeWO.JoinMode = AntdUI.TJoinMode.Left;
+            btnChangeWO.Location = new Point(233, 0);
+            btnChangeWO.Margin = new Padding(0);
+            btnChangeWO.Name = "btnChangeWO";
+            btnChangeWO.Shape = AntdUI.TShape.Round;
+            btnChangeWO.Size = new Size(84, 38);
+            btnChangeWO.TabIndex = 3;
+            btnChangeWO.Tag = "perm:button.monitor.change-work-order:visible";
+            btnChangeWO.Text = "变更";
+            // 
             // inputSN
-            //
+            // 
             inputSN.Dock = DockStyle.Fill;
             inputSN.ImeMode = ImeMode.Inherit;
             inputSN.Location = new Point(60, 0);
             inputSN.Margin = new Padding(0);
             inputSN.Name = "inputSN";
             inputSN.ReadOnly = true;
-            inputSN.Size = new Size(217, 38);
+            inputSN.Size = new Size(173, 38);
             inputSN.TabIndex = 4;
-            //
-            // btnChangeWO
-            //
-            btnChangeWO.AutoEllipsis = true;
-            btnChangeWO.AutoSizeMode = AntdUI.TAutoSize.Width;
-            btnChangeWO.BorderWidth = 1F;
-            btnChangeWO.Dock = DockStyle.Fill;
-            btnChangeWO.IconSvg = "SwapOutlined";
-            btnChangeWO.Location = new Point(277, 0);
-            btnChangeWO.Margin = new Padding(0);
-            btnChangeWO.Name = "btnChangeWO";
-            btnChangeWO.Shape = AntdUI.TShape.Round;
-            btnChangeWO.Size = new Size(124, 38);
-            btnChangeWO.TabIndex = 3;
-            btnChangeWO.Tag = "perm:button.monitor.change-work-order:visible";
-            btnChangeWO.Text = "变更工单";
-            //
+            // 
+            // btnEditWO
+            // 
+            btnEditWO.AutoEllipsis = true;
+            btnEditWO.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnEditWO.BorderWidth = 1F;
+            btnEditWO.Dock = DockStyle.Left;
+            btnEditWO.IconSvg = "EditOutlined";
+            btnEditWO.JoinMode = AntdUI.TJoinMode.Right;
+            btnEditWO.Location = new Point(317, 0);
+            btnEditWO.Margin = new Padding(0);
+            btnEditWO.Name = "btnEditWO";
+            btnEditWO.Shape = AntdUI.TShape.Round;
+            btnEditWO.Size = new Size(84, 38);
+            btnEditWO.TabIndex = 3;
+            btnEditWO.Tag = "";
+            btnEditWO.Text = "微调";
+            // 
             // tableLayoutPanel2
-            //
+            // 
             tableLayoutPanel2.ColumnCount = 4;
             tableLayoutPanel2.ColumnStyles.Add(new ColumnStyle());
             tableLayoutPanel2.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
@@ -714,9 +784,9 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanel2.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tableLayoutPanel2.Size = new Size(401, 38);
             tableLayoutPanel2.TabIndex = 1;
-            //
+            // 
             // lblProductNo
-            //
+            // 
             lblProductNo.AutoEllipsis = true;
             lblProductNo.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblProductNo.AutoSizePadding = true;
@@ -728,9 +798,9 @@ namespace AutoWeldSystem.UI.Views
             lblProductNo.TabIndex = 24;
             lblProductNo.Text = "产品工号";
             lblProductNo.TextAlign = ContentAlignment.MiddleCenter;
-            //
+            // 
             // inputProdNum
-            //
+            // 
             inputProdNum.Dock = DockStyle.Fill;
             inputProdNum.ImeMode = ImeMode.Inherit;
             inputProdNum.Location = new Point(79, 0);
@@ -739,9 +809,9 @@ namespace AutoWeldSystem.UI.Views
             inputProdNum.ReadOnly = true;
             inputProdNum.Size = new Size(121, 38);
             inputProdNum.TabIndex = 4;
-            //
+            // 
             // inputProdModel
-            //
+            // 
             inputProdModel.Dock = DockStyle.Fill;
             inputProdModel.ImeMode = ImeMode.Inherit;
             inputProdModel.Location = new Point(279, 0);
@@ -750,9 +820,9 @@ namespace AutoWeldSystem.UI.Views
             inputProdModel.ReadOnly = true;
             inputProdModel.Size = new Size(122, 38);
             inputProdModel.TabIndex = 4;
-            //
+            // 
             // lblProdModel
-            //
+            // 
             lblProdModel.AutoEllipsis = true;
             lblProdModel.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblProdModel.AutoSizePadding = true;
@@ -764,9 +834,9 @@ namespace AutoWeldSystem.UI.Views
             lblProdModel.TabIndex = 23;
             lblProdModel.Text = "产品型号";
             lblProdModel.TextAlign = ContentAlignment.MiddleCenter;
-            //
+            // 
             // tableLayoutPanel4
-            //
+            // 
             tableLayoutPanel4.ColumnCount = 3;
             tableLayoutPanel4.ColumnStyles.Add(new ColumnStyle());
             tableLayoutPanel4.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
@@ -782,9 +852,9 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanel4.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tableLayoutPanel4.Size = new Size(401, 38);
             tableLayoutPanel4.TabIndex = 3;
-            //
+            // 
             // lblCurUser
-            //
+            // 
             lblCurUser.AutoEllipsis = true;
             lblCurUser.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblCurUser.AutoSizePadding = true;
@@ -796,9 +866,9 @@ namespace AutoWeldSystem.UI.Views
             lblCurUser.TabIndex = 18;
             lblCurUser.Text = "当前用户";
             lblCurUser.TextAlign = ContentAlignment.MiddleCenter;
-            //
+            // 
             // lblCurrentUser
-            //
+            // 
             lblCurrentUser.AutoSize = true;
             lblCurrentUser.Dock = DockStyle.Fill;
             lblCurrentUser.ImeMode = ImeMode.NoControl;
@@ -809,9 +879,9 @@ namespace AutoWeldSystem.UI.Views
             lblCurrentUser.TabIndex = 1;
             lblCurrentUser.Text = "当前用户";
             lblCurrentUser.TextAlign = ContentAlignment.MiddleCenter;
-            //
+            // 
             // btnSwitchUser
-            //
+            // 
             btnSwitchUser.AutoEllipsis = true;
             btnSwitchUser.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnSwitchUser.BorderWidth = 1F;
@@ -825,9 +895,9 @@ namespace AutoWeldSystem.UI.Views
             btnSwitchUser.TabIndex = 3;
             btnSwitchUser.Tag = "perm:button.auth.switch-user:visible";
             btnSwitchUser.Text = "切换用户";
-            //
+            // 
             // tableLayoutPanel5
-            //
+            // 
             tableLayoutPanel5.ColumnCount = 3;
             tableLayoutPanel5.ColumnStyles.Add(new ColumnStyle());
             tableLayoutPanel5.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
@@ -843,9 +913,9 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanel5.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tableLayoutPanel5.Size = new Size(401, 38);
             tableLayoutPanel5.TabIndex = 4;
-            //
+            // 
             // lblCurLang
-            //
+            // 
             lblCurLang.AutoEllipsis = true;
             lblCurLang.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblCurLang.AutoSizePadding = true;
@@ -857,9 +927,9 @@ namespace AutoWeldSystem.UI.Views
             lblCurLang.TabIndex = 21;
             lblCurLang.Text = "当前语言";
             lblCurLang.TextAlign = ContentAlignment.MiddleCenter;
-            //
+            // 
             // select_Lang
-            //
+            // 
             select_Lang.Dock = DockStyle.Fill;
             select_Lang.Location = new Point(79, 0);
             select_Lang.Margin = new Padding(0);
@@ -867,9 +937,9 @@ namespace AutoWeldSystem.UI.Views
             select_Lang.PrefixText = "";
             select_Lang.Size = new Size(198, 38);
             select_Lang.TabIndex = 7;
-            //
+            // 
             // btnLogout
-            //
+            // 
             btnLogout.AutoEllipsis = true;
             btnLogout.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnLogout.BorderWidth = 1F;
@@ -883,9 +953,9 @@ namespace AutoWeldSystem.UI.Views
             btnLogout.TabIndex = 3;
             btnLogout.Tag = "perm:button.auth.logout:visible";
             btnLogout.Text = "退出登录";
-            //
+            // 
             // tableLayoutPanel10
-            //
+            // 
             tableLayoutPanel10.ColumnCount = 2;
             tableLayoutPanel10.ColumnStyles.Add(new ColumnStyle());
             tableLayoutPanel10.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
@@ -899,9 +969,9 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanel10.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tableLayoutPanel10.Size = new Size(401, 38);
             tableLayoutPanel10.TabIndex = 9;
-            //
+            // 
             // lblStation
-            //
+            // 
             lblStation.AutoEllipsis = true;
             lblStation.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblStation.AutoSizePadding = true;
@@ -913,61 +983,20 @@ namespace AutoWeldSystem.UI.Views
             lblStation.TabIndex = 31;
             lblStation.Text = "当前工位";
             lblStation.TextAlign = ContentAlignment.MiddleCenter;
-            //
+            // 
             // selectStation
-            //
+            // 
             selectStation.Dock = DockStyle.Fill;
             selectStation.Location = new Point(79, 0);
             selectStation.Margin = new Padding(0);
             selectStation.Name = "selectStation";
             selectStation.Size = new Size(322, 38);
             selectStation.TabIndex = 8;
-            //
-            // tableLayoutPanel1
-            //
-            tableLayoutPanel1.AutoSize = true;
-            tableLayoutPanel1.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            tableLayoutPanel1.ColumnCount = 2;
-            tableLayoutPanel1.ColumnStyles.Add(new ColumnStyle());
-            tableLayoutPanel1.ColumnStyles.Add(new ColumnStyle());
-            tableLayoutPanel1.Controls.Add(tag2, 1, 0);
-            tableLayoutPanel1.Controls.Add(tag1, 0, 0);
-            tableLayoutPanel1.Dock = DockStyle.Fill;
-            tableLayoutPanel1.Location = new Point(0, 569);
-            tableLayoutPanel1.Margin = new Padding(0);
-            tableLayoutPanel1.Name = "tableLayoutPanel1";
-            tableLayoutPanel1.RowCount = 1;
-            tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tableLayoutPanel1.Size = new Size(409, 48);
-            tableLayoutPanel1.TabIndex = 1;
-            //
-            // tag2
-            //
-            tag2.AutoSizeMode = AntdUI.TAutoSize.Auto;
-            tag2.Dock = DockStyle.Fill;
-            tag2.Font = new Font("Microsoft YaHei UI", 15F, FontStyle.Bold);
-            tag2.Location = new Point(92, 3);
-            tag2.Name = "tag2";
-            tag2.Size = new Size(83, 42);
-            tag2.TabIndex = 1;
-            tag2.Text = "工位2";
-            tag2.Visible = false;
-            //
-            // tag1
-            //
-            tag1.AutoSizeMode = AntdUI.TAutoSize.Auto;
-            tag1.Dock = DockStyle.Fill;
-            tag1.Font = new Font("Microsoft YaHei UI", 15F, FontStyle.Bold);
-            tag1.Location = new Point(3, 3);
-            tag1.Name = "tag1";
-            tag1.Size = new Size(83, 42);
-            tag1.TabIndex = 0;
-            tag1.Text = "工位1";
-            //
+            // 
             // groupBox1
-            //
+            // 
             groupBox1.Controls.Add(inputErrorTips);
-            groupBox1.Dock = DockStyle.Top;
+            groupBox1.Dock = DockStyle.Fill;
             groupBox1.ForeColor = SystemColors.ActiveCaptionText;
             groupBox1.Location = new Point(3, 396);
             groupBox1.Name = "groupBox1";
@@ -975,9 +1004,9 @@ namespace AutoWeldSystem.UI.Views
             groupBox1.TabIndex = 4;
             groupBox1.TabStop = false;
             groupBox1.Text = "异常提示：";
-            //
+            // 
             // inputErrorTips
-            //
+            // 
             inputErrorTips.BackColor = Color.Transparent;
             inputErrorTips.BorderActive = Color.Transparent;
             inputErrorTips.BorderColor = Color.Transparent;
@@ -991,23 +1020,23 @@ namespace AutoWeldSystem.UI.Views
             inputErrorTips.SelectionColor = SystemColors.ActiveCaption;
             inputErrorTips.Size = new Size(397, 53);
             inputErrorTips.TabIndex = 1;
-            //
+            // 
             // table1
-            //
+            // 
             table1.AutoSizeColumnsMode = AntdUI.ColumnsMode.Fill;
             table1.BorderRenderMode = AntdUI.TableBorderMode.High;
             table1.Dock = DockStyle.Fill;
             table1.Gap = 8;
             table1.GapCell = 5;
             table1.Gaps = new Size(8, 8);
-            table1.Location = new Point(3, 620);
+            table1.Location = new Point(3, 660);
             table1.Name = "table1";
-            table1.Size = new Size(403, 309);
+            table1.Size = new Size(403, 269);
             table1.TabIndex = 1;
             table1.Text = "生产指标";
-            //
+            // 
             // groupBox2
-            //
+            // 
             groupBox2.Controls.Add(inputRunningStatus);
             groupBox2.Dock = DockStyle.Fill;
             groupBox2.ForeColor = SystemColors.ActiveCaptionText;
@@ -1017,9 +1046,9 @@ namespace AutoWeldSystem.UI.Views
             groupBox2.TabIndex = 3;
             groupBox2.TabStop = false;
             groupBox2.Text = "运行状态：";
-            //
+            // 
             // inputRunningStatus
-            //
+            // 
             inputRunningStatus.BackColor = Color.Transparent;
             inputRunningStatus.BorderActive = Color.Transparent;
             inputRunningStatus.BorderColor = Color.Transparent;
@@ -1033,9 +1062,9 @@ namespace AutoWeldSystem.UI.Views
             inputRunningStatus.SelectionColor = SystemColors.ActiveCaption;
             inputRunningStatus.Size = new Size(397, 53);
             inputRunningStatus.TabIndex = 1;
-            //
+            // 
             // MonitorView
-            //
+            // 
             AutoScaleDimensions = new SizeF(10F, 23F);
             AutoScaleMode = AutoScaleMode.Font;
             AutoSize = true;
@@ -1052,13 +1081,11 @@ namespace AutoWeldSystem.UI.Views
             tlpLeft.ResumeLayout(false);
             tlpLeft.PerformLayout();
             tlpLeftTop.ResumeLayout(false);
-            tlpLeftTop.PerformLayout();
-            ((System.ComponentModel.ISupportInitialize)picLogo).EndInit();
-            tlpReportButton.ResumeLayout(false);
-            tlpReportButton.PerformLayout();
             tlpCommunicationStatus.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)picLogo).EndInit();
             TPLRight.ResumeLayout(false);
-            TPLRight.PerformLayout();
+            groupBox3.ResumeLayout(false);
+            tableLayoutPanel1.ResumeLayout(false);
             TLPWorkOrderInfo.ResumeLayout(false);
             TLPWorkOrderInfo.PerformLayout();
             tableLayoutPanel9.ResumeLayout(false);
@@ -1079,8 +1106,6 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanel5.PerformLayout();
             tableLayoutPanel10.ResumeLayout(false);
             tableLayoutPanel10.PerformLayout();
-            tableLayoutPanel1.ResumeLayout(false);
-            tableLayoutPanel1.PerformLayout();
             groupBox1.ResumeLayout(false);
             groupBox2.ResumeLayout(false);
             ResumeLayout(false);
@@ -1113,6 +1138,7 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Select select_Lang;
         private AntdUI.Label lblCurUser;
         private AntdUI.Tag tagDeviceStatus;
+        private AntdUI.Tag tagTaskStatus;
         private AntdUI.Label lblProcessName;
         private AntdUI.Label lblBatchNo;
         private AntdUI.Label lblProcessNo;
@@ -1125,7 +1151,6 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Table table1;
         private GroupBox groupBox2;
         private AntdUI.Input inputRunningStatus;
-        private TableLayoutPanel tlpReportButton;
         private AntdUI.Table table2;
         private TableLayoutPanel tableLayoutPanel3;
         private TableLayoutPanel tableLayoutPanel7;
@@ -1150,5 +1175,8 @@ namespace AutoWeldSystem.UI.Views
         private TableLayoutPanel tableLayoutPanel10;
         private AntdUI.Label lblStation;
         private AntdUI.Select selectStation;
+        private AntdUI.Button btnEditWO;
+        private Panel panel1;
+        private GroupBox groupBox3;
     }
 }

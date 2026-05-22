@@ -406,7 +406,7 @@
     <value>设备名称</value>
   </data>
   <data name="system.label.device_status_url" xml:space="preserve">
-    <value>设备状态地址</value>
+    <value>设备地址</value>
   </data>
   <data name="system.label.log_path" xml:space="preserve">
     <value>日志路径</value>
@@ -420,6 +420,9 @@
   <data name="system.label.use_product_number_filter" xml:space="preserve">
     <value>按产品工号筛选程序</value>
   </data>
+  <data name="system.label.validate_recipe_before_start" xml:space="preserve">
+    <value>开工前校验 PLC 配方编号</value>
+  </data>
   <data name="system.button.connect" xml:space="preserve">
     <value>连接</value>
   </data>
@@ -430,7 +433,7 @@
     <value>变更路径</value>
   </data>
   <data name="system.button.open_folder" xml:space="preserve">
-    <value>打开文件所在位置</value>
+    <value>打开目录</value>
   </data>
   <data name="system.button.test_connection" xml:space="preserve">
     <value>连通性测试</value>
@@ -666,6 +669,9 @@
   <data name="address.name.product_model" xml:space="preserve">
     <value>产品型号</value>
   </data>
+  <data name="address.name.recipe_code" xml:space="preserve">
+    <value>配方编号</value>
+  </data>
   <data name="address.name.total_production" xml:space="preserve">
     <value>加工总数</value>
   </data>
@@ -790,7 +796,7 @@
     <value>MES请求失败：{0}</value>
   </data>
   <data name="monitor.button.change_work_order" xml:space="preserve">
-    <value>变更工单</value>
+    <value>变更</value>
   </data>
   <data name="monitor.button.start_report" xml:space="preserve">
     <value>开工上报</value>
@@ -883,7 +889,7 @@
     <value>地址维护</value>
   </data>
   <data name="permission.button.monitor.change_work_order" xml:space="preserve">
-    <value>变更工单</value>
+    <value>变更</value>
   </data>
   <data name="permission.button.monitor.start_report" xml:space="preserve">
     <value>开工上报</value>
@@ -1194,6 +1200,9 @@
   <data name="program.label.product_model" xml:space="preserve">
     <value>产品型号</value>
   </data>
+  <data name="program.label.recipe_code" xml:space="preserve">
+    <value>配方编号/序号</value>
+  </data>
   <data name="program.label.component_code" xml:space="preserve">
     <value>零组件代码</value>
   </data>
@@ -1220,6 +1229,9 @@
   </data>
   <data name="program.label.remark" xml:space="preserve">
     <value>MES备注</value>
+  </data>
+  <data name="program.label.local_remark" xml:space="preserve">
+    <value>本地备注</value>
   </data>
   <data name="program.label.program_content" xml:space="preserve">
     <value>程序内容</value>
@@ -1326,6 +1338,12 @@
   <data name="grid.program.product_model" xml:space="preserve">
     <value>产品型号</value>
   </data>
+  <data name="grid.program.recipe_code" xml:space="preserve">
+    <value>配方编号/序号</value>
+  </data>
+  <data name="grid.program.local_remark" xml:space="preserve">
+    <value>本地备注</value>
+  </data>
   <data name="grid.program.version_number" xml:space="preserve">
     <value>版本</value>
   </data>
@@ -1355,5 +1373,9 @@
   </data>
   <data name="grid.program.last_sync_time" xml:space="preserve">
     <value>最近同步</value>
+  </data>
+  <data name="monitor.button.edit" xml:space="preserve">
+    <value>微调</value>
+    <comment>工单</comment>
   </data>
 </root>

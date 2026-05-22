@@ -15,25 +15,25 @@ public sealed class PromptInputForm : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
-        ClientSize = new Size(420, 140);
+        ClientSize = new Size(500, 170);
 
         var label = new Label
         {
             Text = prompt,
             AutoSize = false,
             Location = new Point(16, 16),
-            Size = new Size(388, 24)
+            Size = new Size(468, 48)
         };
 
-        _input.Location = new Point(16, 48);
-        _input.Size = new Size(388, 28);
+        _input.Location = new Point(16, 72);
+        _input.Size = new Size(468, 28);
         _input.Text = defaultValue;
 
         var btnOk = new Button
         {
             Text = okText,
             DialogResult = DialogResult.OK,
-            Location = new Point(228, 96),
+            Location = new Point(308, 126),
             Size = new Size(84, 30)
         };
 
@@ -41,7 +41,7 @@ public sealed class PromptInputForm : Form
         {
             Text = cancelText,
             DialogResult = DialogResult.Cancel,
-            Location = new Point(320, 96),
+            Location = new Point(400, 126),
             Size = new Size(84, 30)
         };
 

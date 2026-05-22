@@ -1,4 +1,4 @@
-using AutoWeldSystem.Core.DTOs;
+ï»¿using AutoWeldSystem.Core.DTOs;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Models;
 
@@ -11,14 +11,14 @@ public interface IWeldTaskService
     event EventHandler? StateChanged;
 
     /// <summary>
-    /// Í¬²½·þÎñÆ÷Ê±¼ä
+    /// Í¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½
     /// </summary>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
     Task<MesBaseResponse<MesServerTimeResponse>> SyncServerTimeAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// »ñÈ¡¹¤µ¥ÐÅÏ¢
+    /// ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
     /// </summary>
     /// <param name="workId"></param>
     /// <param name="stationNo"></param>
@@ -30,13 +30,13 @@ public interface IWeldTaskService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Ñ¡Ôñ¹¤Î»¡£Ö§³Ö¶à¹¤Î»Éú²úÊ±£¬ÇÐ»»µ±Ç°²Ù×÷µÄ¹¤Î»£¬È·±£ºóÐø²Ù×÷Õë¶ÔÕýÈ·µÄ¹¤Î»½øÐÐ¡£
+    /// Ñ¡ï¿½ï¿½Î»ï¿½ï¿½Ö§ï¿½Ö¶à¹¤Î»ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½Ð»ï¿½ï¿½ï¿½Ç°ï¿½ï¿½ï¿½ï¿½ï¿½Ä¹ï¿½Î»ï¿½ï¿½È·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È·ï¿½Ä¹ï¿½Î»ï¿½ï¿½ï¿½Ð¡ï¿½
     /// </summary>
     /// <param name="stationNo"></param>
     void SelectStation(int stationNo);
 
     /// <summary>
-    /// Ñ¡Ôñ¹¤Ðò¡£¸ù¾Ý¹¤µ¥ÐÅÏ¢£¬Ñ¡Ôñµ±Ç°¹¤Î»µÄ¹¤Ðò£¬È·±£ºóÐø²Ù×÷Õë¶ÔÕýÈ·µÄ¹¤Ðò½øÐÐ¡£
+    /// Ñ¡ï¿½ï¿½ï¿½ò¡£¸ï¿½ï¿½Ý¹ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ï¿½Ñ¡ï¿½ï¿½Ç°ï¿½ï¿½Î»ï¿½Ä¹ï¿½ï¿½ï¿½È·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È·ï¿½Ä¹ï¿½ï¿½ï¿½ï¿½ï¿½Ð¡ï¿½
     /// </summary>
     /// <param name="process"></param>
     /// <param name="stationNo"></param>
@@ -52,6 +52,12 @@ public interface IWeldTaskService
         int stationNo = ProductionConstants.Stations.DefaultStationNo,
         CancellationToken cancellationToken = default);
 
+    void ApplyStartAdjustment(
+        MesWorkOrderResponse workOrder,
+        ExpItemData? process,
+        string programContent,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo);
+
     Task<MesBaseResponse<MesUserInfoResponse>> ValidateMesOperatorAsync(
         string employeeNumber,
         int stationNo = ProductionConstants.Stations.DefaultStationNo,
@@ -61,6 +67,7 @@ public interface IWeldTaskService
         string employeeNumber,
         int actualQty,
         int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        bool employeeAlreadyValidated = false,
         CancellationToken cancellationToken = default);
 
     Task<MesBaseResponse<object>> ChangeStatusAsync(

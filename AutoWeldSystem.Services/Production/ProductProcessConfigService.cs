@@ -12,11 +12,13 @@ namespace AutoWeldSystem.Services.Production;
 public class ProductProcessConfigService : IProductProcessConfigService
 {
     private readonly SqlSugarDbContext _dbContext;
+    private readonly IAppSettingsService _settingsService;
     private readonly object _dbLock = new();
 
-    public ProductProcessConfigService(SqlSugarDbContext dbContext)
+    public ProductProcessConfigService(SqlSugarDbContext dbContext, IAppSettingsService settingsService)
     {
         _dbContext = dbContext;
+        _settingsService = settingsService;
     }
 
     public IReadOnlyList<BizProductProcessConfig> GetAll(bool includeDisabled = false)
@@ -45,6 +47,8 @@ public class ProductProcessConfigService : IProductProcessConfigService
         string productModel,
         int stationNo = ProductionConstants.Stations.DefaultStationNo)
     {
+        var bindingMode = NormalizeBindingMode(_settingsService.Get().TestParameterBindingMode);
+
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -56,14 +60,14 @@ public class ProductProcessConfigService : IProductProcessConfigService
                 .Where(it => it.Enabled
                     && (it.StationNo == normalizedStationNo || it.StationNo == ProductionConstants.Stations.SharedStationNo))
                 .ToList()
-                .Where(config => IsProductMatch(config, normalizedProductNum, normalizedModel))
+                .Where(config => IsProductMatch(config, normalizedProductNum, normalizedModel, bindingMode))
                 .ToList();
 
             // 优先使用当前工位专用配置；没有专用配置时回退到 0 号共享配置。
             return candidates
                 .OrderByDescending(it => it.StationNo == normalizedStationNo)
-                .ThenByDescending(it => IsExactProductModelMatch(it, normalizedModel))
-                .ThenByDescending(it => !string.IsNullOrWhiteSpace(it.ProductNum))
+                .ThenByDescending(it => ShouldPrioritizeExactModel(it, normalizedModel, bindingMode))
+                .ThenByDescending(it => ShouldPrioritizeExactProductNum(it, normalizedProductNum, bindingMode))
                 .ThenBy(it => it.Sort)
                 .FirstOrDefault();
         }
@@ -140,31 +144,62 @@ public class ProductProcessConfigService : IProductProcessConfigService
         config.Description = NormalizeNullable(config.Description);
     }
 
-    private static bool IsProductMatch(BizProductProcessConfig config, string? productNum, string? productModel)
+    private static bool IsProductMatch(
+        BizProductProcessConfig config,
+        string? productNum,
+        string? productModel,
+        string bindingMode)
     {
         var configProductNum = NormalizeNullable(config.ProductNum);
         var configProductModel = NormalizeNullable(config.ProductModel);
-        var productNumMatches = !string.IsNullOrWhiteSpace(productNum)
-            && SameText(configProductNum, productNum);
-        var legacyModelMatches = string.IsNullOrWhiteSpace(configProductNum)
-            && !string.IsNullOrWhiteSpace(productModel)
-            && SameText(configProductModel, productModel);
 
-        if (!productNumMatches && !legacyModelMatches)
+        if (bindingMode == AppConstants.TestParameterBindingModes.ProductNumOnly)
         {
-            return false;
+            return !string.IsNullOrWhiteSpace(productNum)
+                && SameText(configProductNum, productNum);
         }
 
-        // 产品型号是辅助键；为空时表示只按产品工号匹配。
-        return string.IsNullOrWhiteSpace(configProductModel)
-            || string.IsNullOrWhiteSpace(productModel)
-            || SameText(configProductModel, productModel);
+        if (bindingMode == AppConstants.TestParameterBindingModes.ProductModelOnly)
+        {
+            return !string.IsNullOrWhiteSpace(productModel)
+                && SameText(configProductModel, productModel);
+        }
+
+        return !string.IsNullOrWhiteSpace(productNum)
+            && SameText(configProductNum, productNum)
+            && (string.IsNullOrWhiteSpace(configProductModel)
+                || string.IsNullOrWhiteSpace(productModel)
+                || SameText(configProductModel, productModel));
     }
 
-    private static bool IsExactProductModelMatch(BizProductProcessConfig config, string? productModel)
+    private static bool ShouldPrioritizeExactModel(
+        BizProductProcessConfig config,
+        string? productModel,
+        string bindingMode)
     {
-        return !string.IsNullOrWhiteSpace(productModel)
+        return bindingMode != AppConstants.TestParameterBindingModes.ProductNumOnly
+            && !string.IsNullOrWhiteSpace(productModel)
             && SameText(config.ProductModel, productModel);
+    }
+
+    private static bool ShouldPrioritizeExactProductNum(
+        BizProductProcessConfig config,
+        string? productNum,
+        string bindingMode)
+    {
+        return bindingMode != AppConstants.TestParameterBindingModes.ProductModelOnly
+            && !string.IsNullOrWhiteSpace(productNum)
+            && SameText(config.ProductNum, productNum);
+    }
+
+    private static string NormalizeBindingMode(string? value)
+    {
+        return value switch
+        {
+            AppConstants.TestParameterBindingModes.ProductNumOnly => AppConstants.TestParameterBindingModes.ProductNumOnly,
+            AppConstants.TestParameterBindingModes.ProductModelOnly => AppConstants.TestParameterBindingModes.ProductModelOnly,
+            _ => AppConstants.TestParameterBindingModes.ProductNumAndModel
+        };
     }
 
     private static int NormalizeStationNo(int stationNo)

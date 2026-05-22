@@ -14,6 +14,8 @@ public sealed class ProgramSaveRequest
 
     public string ProductModel { get; set; } = string.Empty;
 
+    public string RecipeCode { get; set; } = string.Empty;
+
     public string ComponentCode { get; set; } = string.Empty;
 
     public int SequenceNumber { get; set; } = 1;
@@ -31,6 +33,8 @@ public sealed class ProgramSaveRequest
     public decimal CycleTimeSeconds { get; set; }
 
     public string Remark { get; set; } = string.Empty;
+
+    public string LocalRemark { get; set; } = string.Empty;
 
     public string CommitMessage { get; set; } = string.Empty;
 }

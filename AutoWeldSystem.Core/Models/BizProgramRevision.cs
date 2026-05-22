@@ -33,8 +33,14 @@ public class BizProgramRevision
     [SugarColumn(Length = 50, ColumnDescription = "产品工号")]
     public string ProductNum { get; set; } = string.Empty;
 
+    [SugarColumn(Length = 50, ColumnDescription = "配方编号", IsNullable = true)]
+    public string? RecipeCode { get; set; }
+
     [SugarColumn(ColumnDataType = "text", ColumnDescription = "工艺参数JSON", IsNullable = true)]
     public string? ProgramContentJson { get; set; }
+
+    [SugarColumn(Length = 500, ColumnDescription = "本地备注", IsNullable = true)]
+    public string? LocalRemark { get; set; }
 
     [SugarColumn(ColumnDataType = "longtext", ColumnDescription = "执行文件Base64", IsNullable = true)]
     public string? ProgramFileBase64 { get; set; }

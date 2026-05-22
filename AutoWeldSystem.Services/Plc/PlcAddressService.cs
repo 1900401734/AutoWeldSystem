@@ -189,8 +189,10 @@ public class PlcAddressService : IPlcAddressService
             or AppConstants.PlcAddressKeys.WeldEnd
             or AppConstants.PlcAddressKeys.WeldCollectionAck
             or AppConstants.PlcAddressKeys.WorkId
+            or AppConstants.PlcAddressKeys.ProductNum
             or AppConstants.PlcAddressKeys.ProgramName
             or AppConstants.PlcAddressKeys.ProductModel
+            or AppConstants.PlcAddressKeys.RecipeCode
             or AppConstants.PlcAddressKeys.TotalProduction
             or AppConstants.PlcAddressKeys.TargetProduction
             or AppConstants.PlcAddressKeys.AcceptedQuantity
@@ -283,12 +285,14 @@ public class PlcAddressService : IPlcAddressService
             addresses.Add(CreateStation(AppConstants.PlcAddressKeys.WeldEnd, stationNo, "Weld End", AppConstants.PlcDataTypes.Bool, 1, 50, "Welding end signal."));
             addresses.Add(CreateStation(AppConstants.PlcAddressKeys.WeldCollectionAck, stationNo, "Collection Ack", AppConstants.PlcDataTypes.Bool, 1, 55, "PC writes a short pulse after weld point data is saved locally."));
             addresses.Add(CreateStation(AppConstants.PlcAddressKeys.WorkId, stationNo, "Work Order No", AppConstants.PlcDataTypes.String, 32, 60, "Work order number address."));
-            addresses.Add(CreateStation(AppConstants.PlcAddressKeys.ProgramName, stationNo, "Program Name", AppConstants.PlcDataTypes.String, 32, 70, "Program name address."));
-            addresses.Add(CreateStation(AppConstants.PlcAddressKeys.ProductModel, stationNo, "Product Model", AppConstants.PlcDataTypes.String, 32, 80, "Product model address."));
-            addresses.Add(CreateStation(AppConstants.PlcAddressKeys.TotalProduction, stationNo, "Total Processed", AppConstants.PlcDataTypes.Int32, 1, 90, "Total processed counter."));
-            addresses.Add(CreateStation(AppConstants.PlcAddressKeys.TargetProduction, stationNo, "Target Production", AppConstants.PlcDataTypes.Int32, 1, 100, "Target production counter."));
-            addresses.Add(CreateStation(AppConstants.PlcAddressKeys.AcceptedQuantity, stationNo, "Accepted Quantity", AppConstants.PlcDataTypes.Int32, 1, 110, "Accepted quantity counter."));
-            addresses.Add(CreateStation(AppConstants.PlcAddressKeys.RejectedQuantity, stationNo, "Rejected Quantity", AppConstants.PlcDataTypes.Int32, 1, 120, "Rejected quantity counter."));
+            addresses.Add(CreateStation(AppConstants.PlcAddressKeys.ProductNum, stationNo, "Product No", AppConstants.PlcDataTypes.String, 32, 70, "Product number address used for offline production."));
+            addresses.Add(CreateStation(AppConstants.PlcAddressKeys.ProgramName, stationNo, "Program Name", AppConstants.PlcDataTypes.String, 32, 80, "Program name address."));
+            addresses.Add(CreateStation(AppConstants.PlcAddressKeys.ProductModel, stationNo, "Product Model", AppConstants.PlcDataTypes.String, 32, 90, "Product model address."));
+            addresses.Add(CreateStation(AppConstants.PlcAddressKeys.RecipeCode, stationNo, "Recipe Code", AppConstants.PlcDataTypes.String, 32, 95, "Recipe code address used to verify PLC and software use the same recipe before start."));
+            addresses.Add(CreateStation(AppConstants.PlcAddressKeys.TotalProduction, stationNo, "Total Processed", AppConstants.PlcDataTypes.Int32, 1, 100, "Total processed counter."));
+            addresses.Add(CreateStation(AppConstants.PlcAddressKeys.TargetProduction, stationNo, "Target Production", AppConstants.PlcDataTypes.Int32, 1, 110, "Target production counter."));
+            addresses.Add(CreateStation(AppConstants.PlcAddressKeys.AcceptedQuantity, stationNo, "Accepted Quantity", AppConstants.PlcDataTypes.Int32, 1, 120, "Accepted quantity counter."));
+            addresses.Add(CreateStation(AppConstants.PlcAddressKeys.RejectedQuantity, stationNo, "Rejected Quantity", AppConstants.PlcDataTypes.Int32, 1, 130, "Rejected quantity counter."));
         }
 
         return addresses;

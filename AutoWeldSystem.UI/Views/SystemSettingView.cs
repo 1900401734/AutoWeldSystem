@@ -30,6 +30,13 @@ public partial class SystemSettingView : BaseView
         ProductionConstants.ProductNoSources.Manual
     };
 
+    private static readonly TestParameterBindingModeOption[] TestParameterBindingModeOptions =
+    {
+        new(AppConstants.TestParameterBindingModes.ProductNumAndModel, "产品工号 + 产品型号"),
+        new(AppConstants.TestParameterBindingModes.ProductNumOnly, "仅产品工号"),
+        new(AppConstants.TestParameterBindingModes.ProductModelOnly, "仅产品型号")
+    };
+
     private readonly IAppSettingsService _settingsService;
     private readonly IMesProvider _mesProvider;
     private readonly ILocalizationService _localizer;
@@ -47,7 +54,9 @@ public partial class SystemSettingView : BaseView
     private TestItemTemplateTableRow? _selectedTestTemplateRow;
     private bool _initialized;
     private bool _syncingPlcTypeSelection;
+    private bool _syncingTestParameterBindingModeSelection;
     private string _selectedPlcType = AppConstants.PlcTypes.ModbusTcp;
+    private string _selectedTestParameterBindingMode = AppConstants.TestParameterBindingModes.ProductNumAndModel;
 
     public SystemSettingView(
         IAppSettingsService settingsService,
@@ -80,6 +89,7 @@ public partial class SystemSettingView : BaseView
     {
         ApplyLocalizedTexts();
         BindPlcTypeOptions();
+        BindTestParameterBindingModeOptions();
     }
 
     protected override void OnLoad(EventArgs e)
@@ -113,6 +123,7 @@ public partial class SystemSettingView : BaseView
         btnOpenLogPath.Click += (_, _) => OpenFolder(input_LogsPath.Text, BuildFieldName(grpAppConfig.Text, lblLogPath.Text));
         btnOpenDataPath.Click += (_, _) => OpenFolder(input_DataPath.Text, BuildFieldName(grpAppConfig.Text, lblDataPath.Text));
         select_PlcType.SelectedIndexChanged += Select_PlcType_SelectedIndexChanged;
+        select_TestParameterBindingMode.SelectedIndexChanged += Select_TestParameterBindingMode_SelectedIndexChanged;
         btnAddProductProcess.Click += AddProductProcess_Click;
         btnSaveProductProcesses.Click += SaveProductProcesses_Click;
         btnDeleteProductProcess.Click += DeleteProductProcess_Click;
@@ -239,7 +250,11 @@ public partial class SystemSettingView : BaseView
 
     private AntdUI.ColumnSelect CreateProgramProductNumColumn()
     {
-        return new AntdUI.ColumnSelect(nameof(ProductProcessConfigTableRow.ProductNum), "产品工号*")
+        var title = _selectedTestParameterBindingMode == AppConstants.TestParameterBindingModes.ProductModelOnly
+            ? "产品工号(选填)"
+            : "产品工号*";
+
+        return new AntdUI.ColumnSelect(nameof(ProductProcessConfigTableRow.ProductNum), title)
         {
             Align = AntdUI.ColumnAlign.Center,
             Editable = true,
@@ -254,7 +269,11 @@ public partial class SystemSettingView : BaseView
 
     private AntdUI.ColumnSelect CreateProgramProductModelColumn()
     {
-        return new AntdUI.ColumnSelect(nameof(ProductProcessConfigTableRow.ProductModel), "产品型号(选填)")
+        var title = _selectedTestParameterBindingMode == AppConstants.TestParameterBindingModes.ProductModelOnly
+            ? "产品型号*"
+            : "产品型号(选填)";
+
+        return new AntdUI.ColumnSelect(nameof(ProductProcessConfigTableRow.ProductModel), title)
         {
             Align = AntdUI.ColumnAlign.Center,
             Editable = true,
@@ -314,9 +333,12 @@ public partial class SystemSettingView : BaseView
         input_BaseUrl.Text = settings.MesBaseUrl;
         chkUseProductNumberFilter.Checked = settings.UseProductNumberFilter;
         chkEnableDualStationMode.Checked = settings.EnableDualStationMode;
+        chkValidateRecipeBeforeStart.Checked = settings.ValidateRecipeBeforeStart;
 
         _selectedPlcType = NormalizePlcType(settings.PlcType);
+        _selectedTestParameterBindingMode = NormalizeTestParameterBindingMode(settings.TestParameterBindingMode);
         BindPlcTypeOptions();
+        BindTestParameterBindingModeOptions();
     }
 
     /// <summary>
@@ -329,6 +351,8 @@ public partial class SystemSettingView : BaseView
         grpPlcConfig.Text = _localizer.GetString(TextKeys.SystemSetting.GroupPlc);
         grpMasterConfig.Text = _localizer.GetString(TextKeys.SystemSetting.GroupController);
         grpAppConfig.Text = _localizer.GetString(TextKeys.SystemSetting.GroupApplication);
+        groupBox1.Text = "生产配置";
+        grpMesConfig.Text = "MES配置";
 
         lblPlcIp.Text = _localizer.GetString(TextKeys.SystemSetting.LabelIp);
         lblPlcPort.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPort);
@@ -341,7 +365,9 @@ public partial class SystemSettingView : BaseView
         lblLogPath.Text = _localizer.GetString(TextKeys.SystemSetting.LabelLogPath);
         lblDataPath.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDataPath);
         lblMesUrl.Text = _localizer.GetString(TextKeys.SystemSetting.LabelMesUrl);
+        lblTestParameterBindingMode.Text = "测试参数绑定方式";
         chkUseProductNumberFilter.Text = _localizer.GetString(TextKeys.SystemSetting.LabelUseProductNumberFilter);
+        chkValidateRecipeBeforeStart.Text = _localizer.GetString(TextKeys.SystemSetting.LabelValidateRecipeBeforeStart);
         chkEnableDualStationMode.Text = "启用双工位双工单模式";
 
         btnConnectPlc.Text = _localizer.GetString(TextKeys.SystemSetting.ButtonConnect);
@@ -392,6 +418,23 @@ public partial class SystemSettingView : BaseView
         _syncingPlcTypeSelection = false;
     }
 
+    private void BindTestParameterBindingModeOptions()
+    {
+        _syncingTestParameterBindingModeSelection = true;
+
+        select_TestParameterBindingMode.Items.Clear();
+        select_TestParameterBindingMode.Items.AddRange(TestParameterBindingModeOptions
+            .Select(option => (object)option.DisplayName)
+            .ToArray());
+
+        var selectedIndex = Array.FindIndex(TestParameterBindingModeOptions, option =>
+            string.Equals(option.Value, _selectedTestParameterBindingMode, StringComparison.OrdinalIgnoreCase));
+
+        select_TestParameterBindingMode.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+
+        _syncingTestParameterBindingModeSelection = false;
+    }
+
     private void Select_PlcType_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
     {
         if (_syncingPlcTypeSelection)
@@ -405,6 +448,24 @@ public partial class SystemSettingView : BaseView
         }
 
         _selectedPlcType = PlcTypeOptions[select_PlcType.SelectedIndex].Value;
+    }
+
+    private void Select_TestParameterBindingMode_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
+    {
+        if (_syncingTestParameterBindingModeSelection)
+        {
+            return;
+        }
+
+        if (select_TestParameterBindingMode.SelectedIndex < 0
+            || select_TestParameterBindingMode.SelectedIndex >= TestParameterBindingModeOptions.Length)
+        {
+            return;
+        }
+
+        _selectedTestParameterBindingMode = TestParameterBindingModeOptions[select_TestParameterBindingMode.SelectedIndex].Value;
+        ConfigureProductProcessTable();
+        RefreshProductProcessRows();
     }
 
     /// <summary>
@@ -613,8 +674,8 @@ public partial class SystemSettingView : BaseView
 
         return e.Column.Key switch
         {
-            nameof(ProductProcessConfigTableRow.ProductNum) => !string.IsNullOrWhiteSpace(value),
-            nameof(ProductProcessConfigTableRow.ProductModel) => true,
+            nameof(ProductProcessConfigTableRow.ProductNum) => !RequiresProductNum() || !string.IsNullOrWhiteSpace(value),
+            nameof(ProductProcessConfigTableRow.ProductModel) => !RequiresProductModel() || !string.IsNullOrWhiteSpace(value),
             nameof(ProductProcessConfigTableRow.TemplateId) => ResolveTemplateId(value) > 0,
             nameof(ProductProcessConfigTableRow.StationNo) => IsNonNegativeInt(value),
             nameof(ProductProcessConfigTableRow.WeldPointCount) => IsPositiveInt(value),
@@ -770,8 +831,12 @@ public partial class SystemSettingView : BaseView
     {
         foreach (var config in configs)
         {
-            config.ProductNum = NormalizeRequiredText(config.ProductNum);
-            config.ProductModel = NormalizeNullableText(config.ProductModel) ?? string.Empty;
+            config.ProductNum = RequiresProductNum()
+                ? NormalizeRequiredText(config.ProductNum)
+                : NormalizeNullableText(config.ProductNum);
+            config.ProductModel = RequiresProductModel()
+                ? NormalizeRequiredProductModel(config.ProductModel)
+                : NormalizeNullableText(config.ProductModel) ?? string.Empty;
             config.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, config.StationNo);
             config.ProcessNo = string.IsNullOrWhiteSpace(config.ProcessNo) ? "*" : config.ProcessNo.Trim();
             config.ProcessName = null;
@@ -786,11 +851,17 @@ public partial class SystemSettingView : BaseView
         }
     }
 
-    private static void ValidateProductProcessConfigs(IEnumerable<BizProductProcessConfig> configs)
+    private void ValidateProductProcessConfigs(IEnumerable<BizProductProcessConfig> configs)
     {
         var enabledConfigs = configs
             .Where(config => config.Enabled)
             .ToList();
+
+        var missingIdentity = enabledConfigs.FirstOrDefault(IsProductIdentityMissing);
+        if (missingIdentity is not null)
+        {
+            throw new InvalidOperationException("产品工艺配置缺少当前绑定方式要求的产品标识。");
+        }
 
         var missingTemplate = enabledConfigs.FirstOrDefault(config => config.TemplateId <= 0);
         if (missingTemplate is not null)
@@ -800,7 +871,7 @@ public partial class SystemSettingView : BaseView
 
         var duplicate = enabledConfigs
             .GroupBy(
-                config => $"{config.StationNo}\u001F{config.ProductNum}\u001F{config.ProductModel}",
+                BuildProductProcessDuplicateKey,
                 StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(group => group.Count() > 1);
 
@@ -809,6 +880,22 @@ public partial class SystemSettingView : BaseView
             var first = duplicate.First();
             throw new InvalidOperationException($"工位“{first.StationNo}”、产品工号“{first.ProductNum}”与产品型号“{first.ProductModel}”存在重复启用配置。");
         }
+    }
+
+    private bool IsProductIdentityMissing(BizProductProcessConfig config)
+    {
+        return RequiresProductNum() && string.IsNullOrWhiteSpace(config.ProductNum)
+            || RequiresProductModel() && string.IsNullOrWhiteSpace(config.ProductModel);
+    }
+
+    private string BuildProductProcessDuplicateKey(BizProductProcessConfig config)
+    {
+        return _selectedTestParameterBindingMode switch
+        {
+            AppConstants.TestParameterBindingModes.ProductNumOnly => $"{config.StationNo}\u001F{config.ProductNum}",
+            AppConstants.TestParameterBindingModes.ProductModelOnly => $"{config.StationNo}\u001F{config.ProductModel}",
+            _ => $"{config.StationNo}\u001F{config.ProductNum}\u001F{config.ProductModel}"
+        };
     }
 
     private void AddTestTemplate_Click(object? sender, EventArgs e)
@@ -1334,7 +1421,9 @@ public partial class SystemSettingView : BaseView
         settings.DataDirectory = dataDirectory;
         settings.MesBaseUrl = mesBaseUrl;
         settings.UseProductNumberFilter = chkUseProductNumberFilter.Checked;
+        settings.TestParameterBindingMode = NormalizeTestParameterBindingMode(_selectedTestParameterBindingMode);
         settings.EnableDualStationMode = chkEnableDualStationMode.Checked;
+        settings.ValidateRecipeBeforeStart = chkValidateRecipeBeforeStart.Checked;
         return true;
     }
 
@@ -1467,12 +1556,40 @@ public partial class SystemSettingView : BaseView
             : ProductionConstants.ProductNoSources.AutoIncrement;
     }
 
+    private static string NormalizeTestParameterBindingMode(string? bindingMode)
+    {
+        return TestParameterBindingModeOptions.Any(option => string.Equals(option.Value, bindingMode, StringComparison.OrdinalIgnoreCase))
+            ? bindingMode ?? AppConstants.TestParameterBindingModes.ProductNumAndModel
+            : AppConstants.TestParameterBindingModes.ProductNumAndModel;
+    }
+
+    private bool RequiresProductNum()
+    {
+        return _selectedTestParameterBindingMode != AppConstants.TestParameterBindingModes.ProductModelOnly;
+    }
+
+    private bool RequiresProductModel()
+    {
+        return _selectedTestParameterBindingMode == AppConstants.TestParameterBindingModes.ProductModelOnly;
+    }
+
     private static string NormalizeRequiredText(string? value)
     {
         var normalizedValue = value?.Trim();
         if (string.IsNullOrWhiteSpace(normalizedValue))
         {
             throw new InvalidOperationException("产品工号不能为空。");
+        }
+
+        return normalizedValue;
+    }
+
+    private static string NormalizeRequiredProductModel(string? value)
+    {
+        var normalizedValue = value?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedValue))
+        {
+            throw new InvalidOperationException("产品型号不能为空。");
         }
 
         return normalizedValue;
@@ -1763,4 +1880,6 @@ public partial class SystemSettingView : BaseView
     }
 
     private sealed record PlcTypeOption(string Value, string TextKey);
+
+    private sealed record TestParameterBindingModeOption(string Value, string DisplayName);
 }

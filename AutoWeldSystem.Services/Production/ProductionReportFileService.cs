@@ -217,34 +217,74 @@ public class ProductionReportFileService : IProductionReportFileService
     private int ResolveTemplateId(BizWeldTask task)
     {
         var stationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, task.StationNo);
+        var bindingMode = NormalizeBindingMode(_settingsService.Get().TestParameterBindingMode);
         var configs = _dbContext.Db.Queryable<BizProductProcessConfig>()
             .Where(config => config.Enabled && config.TemplateId > 0)
             .ToList();
 
         var matched = configs
-            .Where(config => IsTaskProcessMatch(config, task, stationNo))
+            .Where(config => IsTaskProcessMatch(config, task, stationNo, bindingMode))
             .OrderByDescending(config => config.StationNo == stationNo)
-            .ThenByDescending(config => IsExactTextMatch(config.ProductModel, task.ProductModel))
+            .ThenByDescending(config => ShouldPrioritizeExactModel(config, task.ProductModel, bindingMode))
+            .ThenByDescending(config => ShouldPrioritizeExactProductNum(config, task.ProductNum, bindingMode))
             .ThenBy(config => config.Sort)
             .FirstOrDefault();
 
         return matched?.TemplateId ?? 0;
     }
 
-    private static bool IsTaskProcessMatch(BizProductProcessConfig config, BizWeldTask task, int stationNo)
+    private static bool IsTaskProcessMatch(
+        BizProductProcessConfig config,
+        BizWeldTask task,
+        int stationNo,
+        string bindingMode)
     {
         if (config.StationNo != ProductionConstants.Stations.SharedStationNo && config.StationNo != stationNo)
         {
             return false;
         }
 
-        if (!IsExactTextMatch(config.ProductNum, task.ProductNum))
+        if (bindingMode == AppConstants.TestParameterBindingModes.ProductNumOnly)
         {
-            return false;
+            return IsExactTextMatch(config.ProductNum, task.ProductNum);
         }
 
-        return string.IsNullOrWhiteSpace(config.ProductModel)
-            || IsExactTextMatch(config.ProductModel, task.ProductModel);
+        if (bindingMode == AppConstants.TestParameterBindingModes.ProductModelOnly)
+        {
+            return IsExactTextMatch(config.ProductModel, task.ProductModel);
+        }
+
+        return IsExactTextMatch(config.ProductNum, task.ProductNum)
+            && (string.IsNullOrWhiteSpace(config.ProductModel)
+                || IsExactTextMatch(config.ProductModel, task.ProductModel));
+    }
+
+    private static bool ShouldPrioritizeExactModel(
+        BizProductProcessConfig config,
+        string? productModel,
+        string bindingMode)
+    {
+        return bindingMode != AppConstants.TestParameterBindingModes.ProductNumOnly
+            && IsExactTextMatch(config.ProductModel, productModel);
+    }
+
+    private static bool ShouldPrioritizeExactProductNum(
+        BizProductProcessConfig config,
+        string? productNum,
+        string bindingMode)
+    {
+        return bindingMode != AppConstants.TestParameterBindingModes.ProductModelOnly
+            && IsExactTextMatch(config.ProductNum, productNum);
+    }
+
+    private static string NormalizeBindingMode(string? value)
+    {
+        return value switch
+        {
+            AppConstants.TestParameterBindingModes.ProductNumOnly => AppConstants.TestParameterBindingModes.ProductNumOnly,
+            AppConstants.TestParameterBindingModes.ProductModelOnly => AppConstants.TestParameterBindingModes.ProductModelOnly,
+            _ => AppConstants.TestParameterBindingModes.ProductNumAndModel
+        };
     }
 
     private static bool IsExactTextMatch(string? left, string? right)

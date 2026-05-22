@@ -45,7 +45,9 @@ namespace AutoWeldSystem.UI.Views
             txtSequenceNumber = new TextBox();
             txtComponentCode = new TextBox();
             txtProductModel = new TextBox();
+            txtRecipeCode = new TextBox();
             lblProductModel = new Label();
+            lblRecipeCode = new Label();
             lblComponentCode = new Label();
             lblSequenceNumber = new Label();
             lblProgramType = new Label();
@@ -56,6 +58,8 @@ namespace AutoWeldSystem.UI.Views
             LayoutProgramName = new TableLayoutPanel();
             txtProgramName = new TextBox();
             btnBuildName = new AntdUI.Button();
+            txtLocalRemark = new TextBox();
+            lblLocalRemark = new Label();
             txtProgramContent = new TextBox();
             rootLayout.SuspendLayout();
             toolbar.SuspendLayout();
@@ -283,32 +287,38 @@ namespace AutoWeldSystem.UI.Views
             editorLayout.ColumnCount = 2;
             editorLayout.ColumnStyles.Add(new ColumnStyle());
             editorLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            editorLayout.Controls.Add(cmbRemark, 1, 9);
-            editorLayout.Controls.Add(fileLayout, 1, 8);
-            editorLayout.Controls.Add(txtProgramId, 1, 7);
-            editorLayout.Controls.Add(lblProgramId, 0, 7);
-            editorLayout.Controls.Add(lblProgramFile, 0, 8);
-            editorLayout.Controls.Add(lblCommitMessage, 0, 9);
-            editorLayout.Controls.Add(lblProgramContent, 0, 10);
-            editorLayout.Controls.Add(cmbProgramType, 1, 6);
-            editorLayout.Controls.Add(txtSequenceNumber, 1, 5);
-            editorLayout.Controls.Add(txtComponentCode, 1, 4);
+            editorLayout.Controls.Add(cmbRemark, 1, 10);
+            editorLayout.Controls.Add(fileLayout, 1, 9);
+            editorLayout.Controls.Add(txtProgramId, 1, 8);
+            editorLayout.Controls.Add(lblProgramId, 0, 8);
+            editorLayout.Controls.Add(lblProgramFile, 0, 9);
+            editorLayout.Controls.Add(lblCommitMessage, 0, 10);
+            editorLayout.Controls.Add(txtLocalRemark, 1, 11);
+            editorLayout.Controls.Add(lblLocalRemark, 0, 11);
+            editorLayout.Controls.Add(lblProgramContent, 0, 12);
+            editorLayout.Controls.Add(cmbProgramType, 1, 7);
+            editorLayout.Controls.Add(txtSequenceNumber, 1, 6);
+            editorLayout.Controls.Add(txtComponentCode, 1, 5);
+            editorLayout.Controls.Add(txtRecipeCode, 1, 4);
             editorLayout.Controls.Add(txtProductModel, 1, 3);
+            editorLayout.Controls.Add(lblRecipeCode, 0, 4);
             editorLayout.Controls.Add(lblProductModel, 0, 3);
-            editorLayout.Controls.Add(lblComponentCode, 0, 4);
-            editorLayout.Controls.Add(lblSequenceNumber, 0, 5);
-            editorLayout.Controls.Add(lblProgramType, 0, 6);
+            editorLayout.Controls.Add(lblComponentCode, 0, 5);
+            editorLayout.Controls.Add(lblSequenceNumber, 0, 6);
+            editorLayout.Controls.Add(lblProgramType, 0, 7);
             editorLayout.Controls.Add(txtProductNum, 1, 2);
             editorLayout.Controls.Add(lblProductNum, 0, 2);
             editorLayout.Controls.Add(lblProgramName, 0, 1);
             editorLayout.Controls.Add(lblCurrentInfo, 0, 0);
             editorLayout.Controls.Add(LayoutProgramName, 1, 1);
-            editorLayout.Controls.Add(txtProgramContent, 0, 11);
+            editorLayout.Controls.Add(txtProgramContent, 0, 13);
             editorLayout.Dock = DockStyle.Fill;
             editorLayout.Location = new Point(0, 0);
             editorLayout.Margin = new Padding(0);
             editorLayout.Name = "editorLayout";
-            editorLayout.RowCount = 12;
+            editorLayout.RowCount = 14;
+            editorLayout.RowStyles.Add(new RowStyle());
+            editorLayout.RowStyles.Add(new RowStyle());
             editorLayout.RowStyles.Add(new RowStyle());
             editorLayout.RowStyles.Add(new RowStyle());
             editorLayout.RowStyles.Add(new RowStyle());
@@ -413,6 +423,26 @@ namespace AutoWeldSystem.UI.Views
             lblCommitMessage.Text = "MES备注";
             lblCommitMessage.TextAlign = ContentAlignment.MiddleLeft;
             // 
+            // txtLocalRemark
+            // 
+            txtLocalRemark.Dock = DockStyle.Fill;
+            txtLocalRemark.Location = new Point(118, 440);
+            txtLocalRemark.Margin = new Padding(0);
+            txtLocalRemark.Name = "txtLocalRemark";
+            txtLocalRemark.Size = new Size(509, 30);
+            txtLocalRemark.TabIndex = 24;
+            // 
+            // lblLocalRemark
+            // 
+            lblLocalRemark.Dock = DockStyle.Fill;
+            lblLocalRemark.Location = new Point(0, 440);
+            lblLocalRemark.Margin = new Padding(0);
+            lblLocalRemark.Name = "lblLocalRemark";
+            lblLocalRemark.Size = new Size(118, 40);
+            lblLocalRemark.TabIndex = 25;
+            lblLocalRemark.Text = "本地备注";
+            lblLocalRemark.TextAlign = ContentAlignment.MiddleLeft;
+            // 
             // lblProgramContent
             // 
             editorLayout.SetColumnSpan(lblProgramContent, 2);
@@ -463,6 +493,15 @@ namespace AutoWeldSystem.UI.Views
             txtProductModel.Size = new Size(509, 30);
             txtProductModel.TabIndex = 7;
             // 
+            // txtRecipeCode
+            // 
+            txtRecipeCode.Dock = DockStyle.Fill;
+            txtRecipeCode.Location = new Point(118, 160);
+            txtRecipeCode.Margin = new Padding(0);
+            txtRecipeCode.Name = "txtRecipeCode";
+            txtRecipeCode.Size = new Size(509, 30);
+            txtRecipeCode.TabIndex = 8;
+            // 
             // lblProductModel
             // 
             lblProductModel.Dock = DockStyle.Fill;
@@ -473,6 +512,17 @@ namespace AutoWeldSystem.UI.Views
             lblProductModel.TabIndex = 6;
             lblProductModel.Text = "产品型号";
             lblProductModel.TextAlign = ContentAlignment.MiddleLeft;
+            // 
+            // lblRecipeCode
+            // 
+            lblRecipeCode.Dock = DockStyle.Fill;
+            lblRecipeCode.Location = new Point(0, 160);
+            lblRecipeCode.Margin = new Padding(0);
+            lblRecipeCode.Name = "lblRecipeCode";
+            lblRecipeCode.Size = new Size(118, 40);
+            lblRecipeCode.TabIndex = 9;
+            lblRecipeCode.Text = "配方编号";
+            lblRecipeCode.TextAlign = ContentAlignment.MiddleLeft;
             // 
             // lblComponentCode
             // 
@@ -657,6 +707,8 @@ namespace AutoWeldSystem.UI.Views
         private TextBox txtProductNum;
         private Label lblProductModel;
         private TextBox txtProductModel;
+        private Label lblRecipeCode;
+        private TextBox txtRecipeCode;
         private Label lblComponentCode;
         private TextBox txtComponentCode;
         private Label lblSequenceNumber;
@@ -669,6 +721,8 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Button btnBrowseFile;
         private Label lblCommitMessage;
         private ComboBox cmbRemark;
+        private Label lblLocalRemark;
+        private TextBox txtLocalRemark;
         private Label lblProgramContent;
         private TextBox txtProgramContent;
         private TableLayoutPanel LayoutProgramName;

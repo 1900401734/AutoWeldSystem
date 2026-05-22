@@ -164,12 +164,45 @@ public class WeldTaskService : IWeldTaskService
             return null;
         }
 
-        station.SelectedProgram = response.Data;
+        var detail = MergeProgramListSnapshot(response.Data, program);
+        station.SelectedProgram = detail;
         station.UpdatedTime = DateTime.Now;
-        UpsertProgram(response.Data, settings.DeviceId);
+        UpsertProgram(detail, settings.DeviceId);
         RefreshCompatibilityState(normalizedStationNo);
         NotifyStateChanged();
-        return response.Data;
+        return detail;
+    }
+
+    public void ApplyStartAdjustment(
+        MesWorkOrderResponse workOrder,
+        ExpItemData? process,
+        string programContent,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var station = GetStation(normalizedStationNo);
+        if (station.ActiveTask is not null)
+        {
+            throw new BusinessOperationException("StartAdjustment", "开工信息调整失败", "当前工位已生成生产任务，不能再调整开工信息。");
+        }
+
+        station.CurrentWorkOrder = CloneWorkOrder(workOrder);
+        if (process is not null)
+        {
+            station.SelectedProcess = CloneProcess(process);
+        }
+
+        if (station.SelectedProgram is not null)
+        {
+            station.SelectedProgram.ProgramContent = string.IsNullOrWhiteSpace(programContent)
+                ? "{}"
+                : programContent.Trim();
+        }
+
+        station.UpdatedTime = DateTime.Now;
+        RefreshCompatibilityState(normalizedStationNo);
+        _operationLogService.Write("StartAdjustment", $"Start data adjusted locally, Station={normalizedStationNo}, SN={workOrder.SN}, ProductNum={workOrder.ProdNum}");
+        NotifyStateChanged();
     }
 
     public async Task<MesBaseResponse<MesUserInfoResponse>> ValidateMesOperatorAsync(
@@ -195,6 +228,7 @@ public class WeldTaskService : IWeldTaskService
         string employeeNumber,
         int actualQty,
         int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        bool employeeAlreadyValidated = false,
         CancellationToken cancellationToken = default)
     {
         var normalizedStationNo = NormalizeStationNo(stationNo);
@@ -202,10 +236,13 @@ public class WeldTaskService : IWeldTaskService
 
         EnsureReadyForStart(station);
 
-        var validation = await ValidateMesOperatorAsync(employeeNumber, normalizedStationNo, cancellationToken);
-        if (!validation.IsSuccess)
+        if (!employeeAlreadyValidated)
         {
-            throw new BusinessOperationException("MES.ValidateOperator", "员工校验失败", validation.Msg);
+            var validation = await ValidateMesOperatorAsync(employeeNumber, normalizedStationNo, cancellationToken);
+            if (!validation.IsSuccess)
+            {
+                throw new BusinessOperationException("MES.ValidateOperator", "员工校验失败", validation.Msg);
+            }
         }
 
         var settings = _settingsService.Get();
@@ -445,7 +482,23 @@ public class WeldTaskService : IWeldTaskService
         }
     }
 
-    private void UpsertProgram(MesProgramData detail, string deviceId)
+    /// <summary>
+    /// MES 的程序详情接口可能只返回文件内容，列表接口中的程序工号、类型等信息需要保留下来。
+    /// </summary>
+    private static MesProgramData MergeProgramListSnapshot(MesProgramData detail, MesProgramListItemData snapshot)
+    {
+        detail.Id = FirstNonEmpty(detail.Id, snapshot.Id);
+        detail.ProgramName = FirstNonEmpty(detail.ProgramName, snapshot.ProgramName);
+        detail.ProductNum = FirstNonEmpty(detail.ProductNum, snapshot.ProductNum);
+        detail.ProgramType = FirstNonEmpty(detail.ProgramType, snapshot.ProgramType);
+        detail.DeviceId = FirstNonEmpty(detail.DeviceId, snapshot.DeviceId);
+        return detail;
+    }
+
+    private static string FirstNonEmpty(string? primary, string? fallback)
+        => string.IsNullOrWhiteSpace(primary) ? NormalizeText(fallback) : NormalizeText(primary);
+
+    private BizProgram UpsertProgram(MesProgramData detail, string deviceId)
     {
         var entity = _dbContext.Db.Queryable<BizProgram>().First(it => it.ProgramId == detail.Id && it.DeviceId == deviceId);
         if (entity is null)
@@ -462,8 +515,7 @@ public class WeldTaskService : IWeldTaskService
                 UpdatedTime = DateTime.Now
             };
 
-            _dbContext.Db.Insertable(entity).ExecuteCommand();
-            return;
+            return _dbContext.Db.Insertable(entity).ExecuteReturnEntity();
         }
 
         entity.ProgramName = detail.ProgramName;
@@ -473,6 +525,42 @@ public class WeldTaskService : IWeldTaskService
         entity.ProgramFileBase64 = detail.ProgramFile;
         entity.UpdatedTime = DateTime.Now;
         _dbContext.Db.Updateable(entity).ExecuteCommand();
+        return entity;
+    }
+
+    private static MesWorkOrderResponse CloneWorkOrder(MesWorkOrderResponse source)
+    {
+        return new MesWorkOrderResponse
+        {
+            SN = NormalizeText(source.SN),
+            ProdNum = NormalizeText(source.ProdNum),
+            ProdModel = NormalizeText(source.ProdModel),
+            Spec = NormalizeText(source.Spec),
+            Batch = NormalizeText(source.Batch),
+            ProductName = NormalizeText(source.ProductName),
+            DrawingNo = NormalizeText(source.DrawingNo),
+            ProjectFrom = NormalizeText(source.ProjectFrom),
+            ExpItems = (source.ExpItems ?? []).Select(CloneProcess).ToList()
+        };
+    }
+
+    private static ExpItemData CloneProcess(ExpItemData source)
+    {
+        return new ExpItemData
+        {
+            ItemID = source.ItemID,
+            ItemTitle = source.ItemTitle,
+            ItemCont = source.ItemCont,
+            SequenceNo = source.SequenceNo,
+            ItemName = NormalizeText(source.ItemName),
+            ProcessNo = NormalizeText(source.ProcessNo),
+            StartAmount = source.StartAmount
+        };
+    }
+
+    private static string NormalizeText(string? value)
+    {
+        return value?.Trim() ?? string.Empty;
     }
 
     private void ResetRuntime(bool keepSyncMessage)

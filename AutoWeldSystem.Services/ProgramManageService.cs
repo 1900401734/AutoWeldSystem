@@ -276,6 +276,7 @@ public sealed class ProgramManageService : IProgramManageService
             : request.ProgramName;
         entity.ProductNum = request.ProductNum;
         entity.ProductModel = request.ProductModel;
+        entity.RecipeCode = request.RecipeCode;
         entity.ComponentCode = request.ComponentCode;
         entity.SequenceNumber = Math.Max(1, request.SequenceNumber);
         entity.DeviceId = settings.DeviceId;
@@ -285,6 +286,7 @@ public sealed class ProgramManageService : IProgramManageService
         entity.RobotJobName = request.RobotJobName;
         entity.CycleTimeSeconds = request.CycleTimeSeconds;
         entity.Remark = request.Remark;
+        entity.LocalRemark = request.LocalRemark;
         entity.IsDeleted = false;
 
         if (fileBytes is not null)
@@ -324,7 +326,9 @@ public sealed class ProgramManageService : IProgramManageService
             CommitMessage = commitMessage,
             ProgramName = entity.ProgramName,
             ProductNum = entity.ProductNum,
+            RecipeCode = entity.RecipeCode,
             ProgramContentJson = entity.ProgramContentJson,
+            LocalRemark = entity.LocalRemark,
             ProgramFileBase64 = entity.ProgramFileBase64,
             UserNumber = user?.UserNumber ?? "system",
             UserName = user?.UserName ?? "system",
@@ -445,6 +449,7 @@ public sealed class ProgramManageService : IProgramManageService
         request.ProgramName = request.ProgramName.Trim();
         request.ProductNum = request.ProductNum.Trim();
         request.ProductModel = request.ProductModel.Trim();
+        request.RecipeCode = request.RecipeCode.Trim();
         request.ComponentCode = request.ComponentCode.Trim();
         request.ProgramType = request.ProgramType.Trim();
         request.ProgramContentJson = request.ProgramContentJson.Trim();
@@ -452,6 +457,7 @@ public sealed class ProgramManageService : IProgramManageService
         request.WeldJobName = request.WeldJobName.Trim();
         request.RobotJobName = request.RobotJobName.Trim();
         request.Remark = request.Remark.Trim();
+        request.LocalRemark = request.LocalRemark.Trim();
         request.CommitMessage = string.IsNullOrWhiteSpace(request.CommitMessage)
             ? "本地保存"
             : request.CommitMessage.Trim();
@@ -482,6 +488,8 @@ public sealed class ProgramManageService : IProgramManageService
         {
             entity.ProgramName,
             entity.ProductNum,
+            entity.RecipeCode,
+            entity.LocalRemark,
             entity.ProgramContentJson,
             entity.ProgramFileBase64,
             entity.VersionNumber,

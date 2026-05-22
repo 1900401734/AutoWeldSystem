@@ -13,8 +13,6 @@ namespace AutoWeldSystem.UI.Views;
 /// </summary>
 public partial class ProgramManageView : BaseView
 {
-    private const string ProgramRowNumberColumnName = "ProgramRowNumber";
-
     private readonly IProgramManageService _programService;
     private readonly ILocalizationService _localizer;
     private readonly BindingSource _programBindingSource = new();
@@ -63,11 +61,10 @@ public partial class ProgramManageView : BaseView
         TableStyleHelper.ApplyDataGridView(dgvPrograms);
         dgvPrograms.AutoGenerateColumns = false;
         dgvPrograms.Columns.Clear();
-        var rowNumberColumn = CreateRowNumberColumn();
-        dgvPrograms.Columns.Add(rowNumberColumn);
-        rowNumberColumn.MinimumWidth = 60;
+        dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.RecipeCode), 14));
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.ProductNum), 18));
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.ProductModel), 18));
+        dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.LocalRemark), 18));
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.VersionNumber), 8));
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.SyncStatus), 13));
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.UpdatedTime), 18));
@@ -82,17 +79,6 @@ public partial class ProgramManageView : BaseView
         dgvRevisions.Columns.Add(CreateTextColumn(nameof(BizProgramRevision.UserName), 12));
         dgvRevisions.Columns.Add(CreateTextColumn(nameof(BizProgramRevision.CreatedTime), 20));
         dgvRevisions.DataSource = _revisionBindingSource;
-    }
-
-    private static DataGridViewTextBoxColumn CreateRowNumberColumn()
-    {
-        return new DataGridViewTextBoxColumn
-        {
-            Name = ProgramRowNumberColumnName,
-            ReadOnly = true,
-            FillWeight = 6,
-            MinimumWidth = 60
-        };
     }
 
     private static DataGridViewTextBoxColumn CreateTextColumn(string propertyName, float fillWeight)
@@ -137,19 +123,22 @@ public partial class ProgramManageView : BaseView
         lblProgramId.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramId);
         lblProductNum.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProductNum);
         lblProductModel.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProductModel);
+        lblRecipeCode.Text = _localizer.GetString(TextKeys.ProgramManage.LabelRecipeCode);
         lblComponentCode.Text = _localizer.GetString(TextKeys.ProgramManage.LabelComponentCode);
         lblSequenceNumber.Text = _localizer.GetString(TextKeys.ProgramManage.LabelSequenceNumber);
         lblProgramType.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramType);
         lblProgramFile.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramFile);
         lblCommitMessage.Text = _localizer.GetString(TextKeys.ProgramManage.LabelRemark);
+        lblLocalRemark.Text = _localizer.GetString(TextKeys.ProgramManage.LabelLocalRemark);
         lblProgramContent.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramContent);
     }
 
     private void ApplyGridHeaders()
     {
-        SetColumnHeaderByName(dgvPrograms, ProgramRowNumberColumnName, TextKeys.Monitor.Label.SequenceNo);
+        SetColumnHeader(dgvPrograms, nameof(BizProgram.RecipeCode), TextKeys.Grid.ProgramRecipeCode);
         SetColumnHeader(dgvPrograms, nameof(BizProgram.ProductNum), TextKeys.Grid.ProgramProductNum);
         SetColumnHeader(dgvPrograms, nameof(BizProgram.ProductModel), TextKeys.Grid.ProgramProductModel);
+        SetColumnHeader(dgvPrograms, nameof(BizProgram.LocalRemark), TextKeys.Grid.ProgramLocalRemark);
         SetColumnHeader(dgvPrograms, nameof(BizProgram.VersionNumber), TextKeys.Grid.ProgramVersionNumber);
         SetColumnHeader(dgvPrograms, nameof(BizProgram.SyncStatus), TextKeys.Grid.ProgramSyncStatus);
         SetColumnHeader(dgvPrograms, nameof(BizProgram.UpdatedTime), TextKeys.Grid.ProgramUpdatedTime);
@@ -204,14 +193,6 @@ public partial class ProgramManageView : BaseView
         }
     }
 
-    private void SetColumnHeaderByName(DataGridView grid, string columnName, string headerKey)
-    {
-        if (grid.Columns.Contains(columnName))
-        {
-            grid.Columns[columnName].HeaderText = _localizer.GetString(headerKey);
-        }
-    }
-
     private void ReloadPrograms(int? selectedId = null)
     {
         _programs.Clear();
@@ -225,11 +206,19 @@ public partial class ProgramManageView : BaseView
         var filtered = _programs
             .Where(program => string.IsNullOrWhiteSpace(keyword)
                 || Contains(program.ProgramName, keyword)
+                || Contains(program.RecipeCode, keyword)
                 || Contains(program.ProductNum, keyword)
                 || Contains(program.ProductModel, keyword)
                 || Contains(program.ComponentCode, keyword)
+                || Contains(program.LocalRemark, keyword)
                 || Contains(program.SyncStatus, keyword)
                 || Contains(GetSyncStatusText(program.SyncStatus), keyword))
+            .OrderBy(GetRecipeSortBucket)
+            .ThenBy(GetRecipeSortNumber)
+            .ThenBy(program => NormalizeSortText(program.RecipeCode), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(program => NormalizeSortText(program.ProductNum), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(program => NormalizeSortText(program.ProductModel), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(program => NormalizeSortText(program.ProgramName), StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         _programBindingSource.DataSource = filtered;
@@ -250,6 +239,26 @@ public partial class ProgramManageView : BaseView
             && source.Contains(keyword, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// 配方编号通常是数字。这里把数字编号排在前面，文本编号排在后面，空值放到最后。
+    /// </summary>
+    private static int GetRecipeSortBucket(BizProgram program)
+    {
+        var recipeCode = program.RecipeCode?.Trim();
+        if (string.IsNullOrWhiteSpace(recipeCode))
+        {
+            return 2;
+        }
+
+        return int.TryParse(recipeCode, out _) ? 0 : 1;
+    }
+
+    private static int GetRecipeSortNumber(BizProgram program)
+        => int.TryParse(program.RecipeCode?.Trim(), out var recipeNumber) ? recipeNumber : 0;
+
+    private static string NormalizeSortText(string? value)
+        => value?.Trim() ?? string.Empty;
+
     private void StartNewProgram()
     {
         _editingId = 0;
@@ -257,11 +266,13 @@ public partial class ProgramManageView : BaseView
         txtProgramName.Clear();
         txtProductNum.Clear();
         txtProductModel.Clear();
+        txtRecipeCode.Clear();
         txtComponentCode.Clear();
         txtSequenceNumber.Text = "1";
         cmbProgramType.SelectedIndex = 0;
         txtProgramFile.Clear();
         BindRemarkOptions(GetAutoRemarkAction(null));
+        txtLocalRemark.Clear();
         txtProgramContent.Text = "{\r\n}";
         lblCurrentInfo.Text = _localizer.GetString(TextKeys.ProgramManage.CurrentNew);
         _revisionBindingSource.DataSource = Array.Empty<BizProgramRevision>();
@@ -279,11 +290,13 @@ public partial class ProgramManageView : BaseView
         txtProgramName.Text = program.ProgramName;
         txtProductNum.Text = program.ProductNum;
         txtProductModel.Text = program.ProductModel ?? string.Empty;
+        txtRecipeCode.Text = program.RecipeCode ?? string.Empty;
         txtComponentCode.Text = program.ComponentCode ?? string.Empty;
         txtSequenceNumber.Text = program.SequenceNumber.ToString();
         cmbProgramType.SelectedIndex = program.ProgramType == "1" ? 1 : 0;
         txtProgramFile.Text = program.ProgramFileName ?? string.Empty;
         BindRemarkOptions(GetAutoRemarkAction(program));
+        txtLocalRemark.Text = program.LocalRemark ?? string.Empty;
         txtProgramContent.Text = string.IsNullOrWhiteSpace(program.ProgramContentJson)
             ? "{\r\n}"
             : program.ProgramContentJson;
@@ -325,13 +338,6 @@ public partial class ProgramManageView : BaseView
         }
 
         var column = dgvPrograms.Columns[e.ColumnIndex];
-        if (string.Equals(column.Name, ProgramRowNumberColumnName, StringComparison.Ordinal))
-        {
-            e.Value = (e.RowIndex + 1).ToString();
-            e.FormattingApplied = true;
-            return;
-        }
-
         if (string.Equals(column.DataPropertyName, nameof(BizProgram.SyncStatus), StringComparison.Ordinal))
         {
             e.Value = GetSyncStatusText(Convert.ToString(e.Value));
@@ -476,6 +482,7 @@ public partial class ProgramManageView : BaseView
         request.ProgramName = txtProgramName.Text.Trim();
         request.ProductNum = txtProductNum.Text.Trim();
         request.ProductModel = txtProductModel.Text.Trim();
+        request.RecipeCode = txtRecipeCode.Text.Trim();
         request.ComponentCode = txtComponentCode.Text.Trim();
         request.SequenceNumber = sequenceNumber;
         request.ProgramType = cmbProgramType.SelectedIndex == 1 ? "1" : "0";
@@ -485,6 +492,7 @@ public partial class ProgramManageView : BaseView
         request.RobotJobName = string.Empty;
         request.CycleTimeSeconds = 0m;
         request.Remark = GetSelectedRemark();
+        request.LocalRemark = txtLocalRemark.Text.Trim();
         request.CommitMessage = request.Remark;
         return true;
     }

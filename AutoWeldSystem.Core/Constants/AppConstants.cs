@@ -65,8 +65,10 @@ public static class AppConstants
         public const string WeldCollectionAck = "weld_collection_ack";
         public const string WorkId = "work_id";
         public const string LegacySerialNumber = "serial_number";
+        public const string ProductNum = "product_num";
         public const string ProgramName = "program_name";
         public const string ProductModel = "product_model";
+        public const string RecipeCode = "recipe_code";
         public const string TotalProduction = "total_production";
         public const string TargetProduction = "target_production";
         public const string AcceptedQuantity = "accepted_quantity";
@@ -174,5 +176,16 @@ public static class AppConstants
         public const string Create = "新增";
         public const string Update = "修改";
         public const string Delete = "删除";
+    }
+
+    /// <summary>
+    /// 测试参数绑定方式。
+    /// 用稳定字符串入库，避免后续界面文字调整影响业务匹配逻辑。
+    /// </summary>
+    public static class TestParameterBindingModes
+    {
+        public const string ProductNumAndModel = "ProductNumAndModel";
+        public const string ProductNumOnly = "ProductNumOnly";
+        public const string ProductModelOnly = "ProductModelOnly";
     }
 }
