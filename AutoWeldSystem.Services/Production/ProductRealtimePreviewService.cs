@@ -1,0 +1,588 @@
+using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.DTOs;
+using AutoWeldSystem.Core.Interfaces;
+using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.Plc;
+using System.Globalization;
+
+namespace AutoWeldSystem.Services.Production;
+
+/// <summary>
+/// 产品焊点实时预览服务。
+/// 该服务独立于产品就绪信号按固定周期读取 PLC，让界面显示当前设备数据。
+/// </summary>
+public sealed class ProductRealtimePreviewService : IProductRealtimePreviewService, IDisposable
+{
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
+
+    private readonly IWeldTaskService _weldTaskService;
+    private readonly IProductProcessConfigService _productProcessConfigService;
+    private readonly ITestSchemeConfigService _testSchemeConfigService;
+    private readonly IProgramManageService _programManageService;
+    private readonly IPlcAddressService _plcAddressService;
+    private readonly IPlcCommunicationService _plcCommunicationService;
+    private readonly IPlcExpressionReadService _plcExpressionReadService;
+    private readonly IProgramExceptionLogService _exceptionLogService;
+    private readonly object _snapshotSync = new();
+    private readonly Dictionary<int, ProductRealtimePreviewSnapshot> _snapshots = new();
+
+    private CancellationTokenSource? _cts;
+    private Task? _loopTask;
+    private bool _disposed;
+
+    public ProductRealtimePreviewService(
+        IWeldTaskService weldTaskService,
+        IProductProcessConfigService productProcessConfigService,
+        ITestSchemeConfigService testSchemeConfigService,
+        IProgramManageService programManageService,
+        IPlcAddressService plcAddressService,
+        IPlcCommunicationService plcCommunicationService,
+        IPlcExpressionReadService plcExpressionReadService,
+        IProgramExceptionLogService exceptionLogService)
+    {
+        _weldTaskService = weldTaskService;
+        _productProcessConfigService = productProcessConfigService;
+        _testSchemeConfigService = testSchemeConfigService;
+        _programManageService = programManageService;
+        _plcAddressService = plcAddressService;
+        _plcCommunicationService = plcCommunicationService;
+        _plcExpressionReadService = plcExpressionReadService;
+        _exceptionLogService = exceptionLogService;
+    }
+
+    public event EventHandler<ProductRealtimePreviewSnapshot>? SnapshotChanged;
+
+    public ProductRealtimePreviewSnapshot? GetCurrent(int stationNo)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        lock (_snapshotSync)
+        {
+            return _snapshots.TryGetValue(normalizedStationNo, out var snapshot)
+                ? snapshot
+                : null;
+        }
+    }
+
+    public Task StartAsync(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if (_loopTask is { IsCompleted: false })
+        {
+            return Task.CompletedTask;
+        }
+
+        _cts?.Dispose();
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _loopTask = Task.Run(() => RunAsync(_cts.Token), CancellationToken.None);
+        return Task.CompletedTask;
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken = default)
+    {
+        if (_cts is not null)
+        {
+            await _cts.CancelAsync();
+        }
+
+        if (_loopTask is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _loopTask.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
+        }
+        catch
+        {
+            // 实时预览是辅助显示，停止失败不应阻塞程序退出。
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await StopAsync();
+        Dispose();
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        try
+        {
+            StopAsync().GetAwaiter().GetResult();
+        }
+        catch
+        {
+        }
+
+        _cts?.Dispose();
+        _disposed = true;
+    }
+
+    private async Task RunAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await PollOnceAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                _exceptionLogService.Write(ex, "ProductRealtimePreviewService.RunAsync");
+            }
+
+            await Task.Delay(PollInterval, cancellationToken);
+        }
+    }
+
+    private async Task PollOnceAsync(CancellationToken cancellationToken)
+    {
+        if (!_plcCommunicationService.Current.IsConnected)
+        {
+            return;
+        }
+
+        foreach (var station in ResolvePreviewStations())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var stationNo = NormalizeStationNo(station.StationNo);
+            var identity = ResolveProductIdentity(station)
+                ?? await ReadPlcProductIdentityAsync(stationNo, cancellationToken);
+            if (identity is null || string.IsNullOrWhiteSpace(identity.ProductNum))
+            {
+                PublishStatusSnapshot(stationNo, "未识别到产品工号，请检查当前任务或 PLC ProductNum 业务地址。");
+                continue;
+            }
+
+            var config = ResolveProcessConfig(identity.ProductNum, station);
+            if (config is null)
+            {
+                PublishStatusSnapshot(identity.StationNo, $"未找到产品工号 {identity.ProductNum} 的产品工艺配置。", identity);
+                continue;
+            }
+
+            var snapshot = await BuildSnapshotAsync(identity, config, cancellationToken);
+            Publish(snapshot);
+        }
+    }
+
+    private IReadOnlyList<ProductionStationRuntimeState> ResolvePreviewStations()
+    {
+        var state = _weldTaskService.CurrentState;
+        var stations = state.StationStates.Values
+            .Where(station => station.HasWorkOrder || station.HasProgram || station.ActiveTask is not null)
+            .OrderBy(station => station.StationNo)
+            .ToList();
+
+        if (stations.Count > 0)
+        {
+            return stations;
+        }
+
+        return new[]
+        {
+            new ProductionStationRuntimeState
+            {
+                StationNo = NormalizeStationNo(state.CurrentStationNo),
+                CurrentWorkOrder = state.CurrentWorkOrder,
+                SelectedProcess = state.SelectedProcess,
+                SelectedProgram = state.SelectedProgram,
+                ActiveTask = state.ActiveTask
+            }
+        };
+    }
+
+    private ProductPreviewIdentity? ResolveProductIdentity(ProductionStationRuntimeState station)
+    {
+        var localProgram = station.SelectedProgram is not null
+            ? ResolveLocalProgram(station.SelectedProgram)
+            : ResolveLocalProgramById(station.ActiveTask?.ProgramId, station.ActiveTask?.DeviceId);
+        if (!string.IsNullOrWhiteSpace(localProgram?.ProductNum))
+        {
+            return new ProductPreviewIdentity(
+                NormalizeStationNo(station.StationNo),
+                localProgram.ProductNum.Trim(),
+                localProgram.ProductModel?.Trim() ?? string.Empty);
+        }
+
+        if (!string.IsNullOrWhiteSpace(station.CurrentWorkOrder?.ProdNum))
+        {
+            return new ProductPreviewIdentity(
+                NormalizeStationNo(station.StationNo),
+                station.CurrentWorkOrder.ProdNum.Trim(),
+                station.CurrentWorkOrder.ProdModel?.Trim() ?? string.Empty);
+        }
+
+        if (!string.IsNullOrWhiteSpace(station.ActiveTask?.ProductNum))
+        {
+            return new ProductPreviewIdentity(
+                NormalizeStationNo(station.StationNo),
+                station.ActiveTask.ProductNum.Trim(),
+                station.ActiveTask.ProductModel?.Trim() ?? string.Empty);
+        }
+
+        return null;
+    }
+
+    private BizProductProcessConfig? ResolveProcessConfig(string productNum, ProductionStationRuntimeState station)
+    {
+        if (station.ActiveTask is not null)
+        {
+            return _productProcessConfigService.FindActiveForTask(station.ActiveTask, station.StationNo);
+        }
+
+        return _productProcessConfigService.FindActive(productNum, station.StationNo);
+    }
+
+    /// <summary>
+    /// No active MES task is required for preview: offline alignment can still identify the product from PLC business addresses.
+    /// </summary>
+    private async Task<ProductPreviewIdentity?> ReadPlcProductIdentityAsync(int stationNo, CancellationToken cancellationToken)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var productNum = await ReadBusinessAddressTextAsync(
+            AppConstants.PlcAddressKeys.ProductNum,
+            normalizedStationNo,
+            cancellationToken);
+        if (string.IsNullOrWhiteSpace(productNum))
+        {
+            return null;
+        }
+
+        var productModel = await ReadBusinessAddressTextAsync(
+            AppConstants.PlcAddressKeys.ProductModel,
+            normalizedStationNo,
+            cancellationToken);
+        return new ProductPreviewIdentity(normalizedStationNo, productNum, productModel);
+    }
+
+    /// <summary>
+    /// Reads one configured PLC business address as text and quietly returns empty text when the address is not usable.
+    /// </summary>
+    private async Task<string> ReadBusinessAddressTextAsync(
+        string logicalKey,
+        int stationNo,
+        CancellationToken cancellationToken)
+    {
+        var address = _plcAddressService.GetByKey(logicalKey, stationNo);
+        if (address is null || !address.Enabled || string.IsNullOrWhiteSpace(address.Address))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            var result = await _plcExpressionReadService.ReadResolvedAddressTextAsync(
+                address.Address,
+                address.DataType,
+                stringLength: address.DataLength,
+                cancellationToken: cancellationToken);
+            return result.IsSuccess ? NormalizePlcText(result.Value) : string.Empty;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private async Task<ProductRealtimePreviewSnapshot> BuildSnapshotAsync(
+        ProductPreviewIdentity identity,
+        BizProductProcessConfig config,
+        CancellationToken cancellationToken)
+    {
+        var refreshTime = DateTime.Now;
+        var productNo = await ReadExpressionTextAsync(config.ProductBase, 0, config.ProductNoExpr, cancellationToken);
+        var productResult = FormatResult(await ReadExpressionTextAsync(config.ProductBase, 0, config.ProductResultExpr, cancellationToken));
+        var actualTouchCount = await ReadExpressionTextAsync(config.ProductBase, 0, config.ActualTouchCountExpr, cancellationToken);
+        var presetTouchCount = await ReadExpressionTextAsync(config.ProductBase, 0, config.PresetTouchCountExpr, cancellationToken);
+        var rows = await BuildRowsAsync(identity, config, FormatValue(productNo), refreshTime, cancellationToken);
+        var message = rows.Count == 0
+            ? "测试方案没有可显示的测试项，请检查方案明细和测试项字典。"
+            : string.Empty;
+
+        return new ProductRealtimePreviewSnapshot(
+            identity.StationNo,
+            FormatValue(productNo),
+            identity.ProductNum,
+            identity.ProductModel,
+            config.SchemeId,
+            BuildTouchCountText(config.TouchCount, actualTouchCount, presetTouchCount),
+            productResult,
+            refreshTime,
+            rows,
+            message);
+    }
+
+    private async Task<IReadOnlyList<ProductRealtimePreviewRow>> BuildRowsAsync(
+        ProductPreviewIdentity identity,
+        BizProductProcessConfig config,
+        string productNo,
+        DateTime refreshTime,
+        CancellationToken cancellationToken)
+    {
+        var schemeItems = ResolveSchemeItems(config.SchemeId);
+        var rows = new List<ProductRealtimePreviewRow>();
+
+        for (var touchNo = 1; touchNo <= Math.Max(1, config.TouchCount); touchNo++)
+        {
+            var touchContextOffset = (touchNo - 1) * config.TouchHeaderLen;
+            var testContextOffset = (touchNo - 1) * config.TestAreaLen;
+            var touchResult = FormatResult(await ReadExpressionTextAsync(
+                config.TouchBase,
+                touchContextOffset,
+                config.TouchResultExpr,
+                cancellationToken));
+            foreach (var schemeItem in schemeItems)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                rows.Add(await BuildRowAsync(
+                    identity,
+                    config,
+                    productNo,
+                    touchNo,
+                    testContextOffset,
+                    touchResult,
+                    schemeItem,
+                    refreshTime,
+                    cancellationToken));
+            }
+        }
+
+        return rows;
+    }
+
+    private async Task<ProductRealtimePreviewRow> BuildRowAsync(
+        ProductPreviewIdentity identity,
+        BizProductProcessConfig config,
+        string productNo,
+        int touchNo,
+        int testContextOffset,
+        string touchResult,
+        SchemePreviewItem schemeItem,
+        DateTime refreshTime,
+        CancellationToken cancellationToken)
+    {
+        var item = schemeItem.Item;
+        var actual = ResolveExpressionBinding(config.TestBase, testContextOffset, item.ActualExpression);
+        var upper = ResolveExpressionBinding(config.TestBase, testContextOffset, item.UpperExpression);
+        var lower = ResolveExpressionBinding(config.TestBase, testContextOffset, item.LowerExpression);
+        var result = ResolveExpressionBinding(config.TestBase, testContextOffset, item.ResultExpression);
+
+        return new ProductRealtimePreviewRow
+        {
+            StationNo = identity.StationNo,
+            Station = $"工位{identity.StationNo}",
+            ProductNo = productNo,
+            ProductNum = identity.ProductNum,
+            ProductModel = identity.ProductModel,
+            TouchIndex = touchNo,
+            TouchNo = touchNo.ToString(CultureInfo.InvariantCulture),
+            TouchResult = touchResult,
+            ItemId = item.ItemId,
+            ItemName = item.ItemName,
+            Unit = item.Unit ?? string.Empty,
+            ActualValue = await ReadValueTextAsync(actual, cancellationToken),
+            UpperValue = await ReadValueTextAsync(upper, cancellationToken),
+            LowerValue = await ReadValueTextAsync(lower, cancellationToken),
+            Result = FormatResult(await ReadValueTextAsync(result, cancellationToken)),
+            RefreshTimeText = refreshTime.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture),
+            ActualAddress = actual.Address,
+            UpperAddress = upper.Address,
+            LowerAddress = lower.Address,
+            ResultAddress = result.Address,
+            Sort = touchNo * 10000 + schemeItem.Sort
+        };
+    }
+
+    private IReadOnlyList<SchemePreviewItem> ResolveSchemeItems(string schemeId)
+    {
+        var details = _testSchemeConfigService.GetDetails(schemeId)
+            .OrderBy(detail => detail.DetailId)
+            .ToList();
+        if (details.Count == 0)
+        {
+            return Array.Empty<SchemePreviewItem>();
+        }
+
+        var allItems = _testSchemeConfigService.GetItems();
+        return details
+            .Select((detail, index) => new
+            {
+                Sort = (index + 1) * 10,
+                Item = allItems.FirstOrDefault(item => item.ItemId == detail.ItemId)
+            })
+            .Where(item => item.Item is not null)
+            .Select(item => new SchemePreviewItem(item.Sort, item.Item!))
+            .ToList();
+    }
+
+    private async Task<string> ReadExpressionTextAsync(
+        string baseAddress,
+        int contextOffset,
+        string? expression,
+        CancellationToken cancellationToken)
+    {
+        var result = await _plcExpressionReadService.ReadExpressionTextAsync(
+            baseAddress,
+            contextOffset,
+            expression,
+            cancellationToken: cancellationToken);
+        return result.IsSuccess ? FormatValue(result.Value) : "--";
+    }
+
+    private async Task<string> ReadValueTextAsync(PlcExpressionBinding binding, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(binding.Address))
+        {
+            return "--";
+        }
+
+        var result = await _plcExpressionReadService.ReadResolvedAddressTextAsync(
+            binding.Address,
+            binding.DataType,
+            binding.Rule,
+            cancellationToken: cancellationToken);
+        return result.IsSuccess ? FormatValue(result.Value) : "--";
+    }
+
+    private PlcExpressionBinding ResolveExpressionBinding(string baseAddress, int contextOffset, string? expression)
+    {
+        return _plcExpressionReadService.TryResolve(baseAddress, contextOffset, expression, out var binding, out _)
+            ? binding
+            : PlcExpressionBinding.Empty;
+    }
+
+    private static string BuildTouchCountText(int configuredTouchCount, string actualTouchCount, string presetTouchCount)
+    {
+        // 实际焊点数来自 PLC；未配置或读取失败时显示 ?，提醒现场不要误以为读到了真实值。
+        var actual = string.IsNullOrWhiteSpace(actualTouchCount) || actualTouchCount == "--"
+            ? "?"
+            : actualTouchCount;
+
+        // 预设焊点数优先使用 PLC 读取值；读取不到时回退产品工艺配置中的焊点数量。
+        var expected = string.IsNullOrWhiteSpace(presetTouchCount) || presetTouchCount == "--"
+            ? Math.Max(1, configuredTouchCount).ToString(CultureInfo.InvariantCulture)
+            : presetTouchCount;
+
+        return $"{actual}/{expected}";
+    }
+
+    private static string FormatValue(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? "--"
+            : value.Trim().Trim('\0');
+    }
+
+    private static string FormatResult(string? value)
+    {
+        var result = FormatValue(value);
+        if (result == "--")
+        {
+            return result;
+        }
+
+        return string.Equals(result, ProductionConstants.TestResults.OkRawValue, StringComparison.Ordinal)
+            || string.Equals(result, ProductionConstants.TestResults.Ok, StringComparison.OrdinalIgnoreCase)
+            ? ProductionConstants.TestResults.Ok
+            : ProductionConstants.TestResults.Ng;
+    }
+
+    private void Publish(ProductRealtimePreviewSnapshot snapshot)
+    {
+        lock (_snapshotSync)
+        {
+            _snapshots[snapshot.StationNo] = snapshot;
+        }
+
+        SnapshotChanged?.Invoke(this, snapshot);
+    }
+
+    /// <summary>
+    /// Publishes a lightweight failure snapshot so the monitor clears stale rows and shows why realtime refresh stopped.
+    /// </summary>
+    private void PublishStatusSnapshot(int stationNo, string message, ProductPreviewIdentity? identity = null)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        Publish(new ProductRealtimePreviewSnapshot(
+            normalizedStationNo,
+            "--",
+            identity?.ProductNum ?? string.Empty,
+            identity?.ProductModel ?? string.Empty,
+            string.Empty,
+            string.Empty,
+            "--",
+            DateTime.Now,
+            Array.Empty<ProductRealtimePreviewRow>(),
+            message));
+    }
+
+    private BizProgram? ResolveLocalProgram(MesProgramData program)
+    {
+        var localPrograms = _programManageService.GetPrograms();
+        var programId = program.Id?.Trim();
+        if (!string.IsNullOrWhiteSpace(programId))
+        {
+            var byMesProgramId = ResolveLocalProgramById(programId);
+            if (byMesProgramId is not null)
+            {
+                return byMesProgramId;
+            }
+        }
+
+        return localPrograms.FirstOrDefault(item =>
+            SameText(item.ProgramName, program.ProgramName)
+            && SameText(item.ProductNum, program.ProductNum));
+    }
+
+    private BizProgram? ResolveLocalProgramById(string? programId, string? deviceId = null)
+    {
+        var normalizedProgramId = programId?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedProgramId))
+        {
+            return null;
+        }
+
+        return _programManageService.GetPrograms()
+            .Where(program => SameText(program.ProgramId, normalizedProgramId))
+            .OrderByDescending(program => SameText(program.DeviceId, deviceId))
+            .ThenByDescending(program => program.UpdatedTime)
+            .FirstOrDefault();
+    }
+
+    private static bool SameText(string? left, string? right)
+    {
+        return string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizePlcText(string? value)
+    {
+        return value?.Trim().Trim('\0') ?? string.Empty;
+    }
+
+    private static int NormalizeStationNo(int stationNo)
+    {
+        return stationNo <= ProductionConstants.Stations.SharedStationNo
+            ? ProductionConstants.Stations.DefaultStationNo
+            : stationNo;
+    }
+
+    private sealed record ProductPreviewIdentity(int StationNo, string ProductNum, string ProductModel);
+
+    private sealed record SchemePreviewItem(int Sort, DimTestItem Item);
+}
