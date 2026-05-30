@@ -28,6 +28,7 @@ public sealed class PromptInputForm : Form
         _input.Location = new Point(16, 72);
         _input.Size = new Size(468, 28);
         _input.Text = defaultValue;
+        _input.ImeMode = ImeMode.Disable;
 
         var btnOk = new Button
         {

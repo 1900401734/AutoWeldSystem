@@ -18,9 +18,11 @@ public static class GlobalContext
 
     public static bool IsAdmin => CurrentUser?.Role == AppConstants.Roles.Admin;
 
-    public static bool IsOperator => HasRole(UserRole.Operator);
+    public static bool IsOperator => CurrentUser?.Role == AppConstants.Roles.Operator;
+    //public static bool IsOperator => HasRole(UserRole.Operator);
 
-    public static bool IsReadonly => HasRole(UserRole.Readonly);
+    public static bool IsReadonly => CurrentUser?.Role == AppConstants.Roles.Readonly;
+    //public static bool IsReadonly => HasRole(UserRole.Readonly);
 
     public static bool IsAuthenticated => CurrentUser is not null;
 

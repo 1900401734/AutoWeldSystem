@@ -11,6 +11,20 @@ public interface IWeldTaskService
     event EventHandler? StateChanged;
 
     /// <summary>
+    /// 查询指定工位当前是否存在尚未完工的焊接任务。
+    /// </summary>
+    /// <param name="stationNo">工位号。</param>
+    /// <returns>未完工任务；若没有则返回 null。</returns>
+    BizWeldTask? GetUnfinishedTask(int stationNo = ProductionConstants.Stations.DefaultStationNo);
+
+    /// <summary>
+    /// 将指定工位的本地未完工任务恢复到当前运行态。
+    /// </summary>
+    /// <param name="stationNo">工位号。</param>
+    /// <returns>恢复成功的未完工任务；若没有可恢复任务则返回 null。</returns>
+    BizWeldTask? RestoreUnfinishedTask(int stationNo = ProductionConstants.Stations.DefaultStationNo);
+
+    /// <summary>
     /// ͬ��������ʱ��
     /// </summary>
     /// <param name="cancellationToken"></param>

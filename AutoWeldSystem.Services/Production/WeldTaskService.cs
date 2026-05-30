@@ -11,6 +11,8 @@ namespace AutoWeldSystem.Services.Production;
 
 public class WeldTaskService : IWeldTaskService
 {
+    private const string TaskStatusCompleted = "Completed";
+
     private readonly IMesProvider _mesProvider;
     private readonly SqlSugarDbContext _dbContext;
     private readonly IAppSettingsService _settingsService;
@@ -43,10 +45,65 @@ public class WeldTaskService : IWeldTaskService
     public event EventHandler? StateChanged;
 
     /// <summary>
-    /// 同步时间
+    /// 统一查询当前工位是否存在未完工任务，先看内存运行态，再查本地数据库兜底。
     /// </summary>
-    /// <param name="cancellationToken"></param>
-    /// <returns></returns>
+    public BizWeldTask? GetUnfinishedTask(int stationNo = ProductionConstants.Stations.DefaultStationNo)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var station = GetStation(normalizedStationNo);
+        if (IsUnfinishedTask(station.ActiveTask))
+        {
+            return station.ActiveTask;
+        }
+
+        return _dbContext.Db.Queryable<BizWeldTask>()
+            .Where(task => task.StationNo == normalizedStationNo
+                && task.TaskStatus != TaskStatusCompleted
+                && task.EndTime == null)
+            .OrderByDescending(task => task.StartTime)
+            .OrderByDescending(task => task.Id)
+            .First();
+    }
+
+    /// <summary>
+    /// 将本地未完工任务恢复成运行态，供程序重启后继续完工上报。
+    /// </summary>
+    public BizWeldTask? RestoreUnfinishedTask(int stationNo = ProductionConstants.Stations.DefaultStationNo)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var unfinishedTask = GetUnfinishedTask(normalizedStationNo);
+        if (unfinishedTask is null)
+        {
+            return null;
+        }
+
+        var station = GetStation(normalizedStationNo);
+        var alreadyRestored = station.ActiveTask?.Id == unfinishedTask.Id;
+        var process = CreateProcessSnapshot(unfinishedTask);
+
+        station.CurrentWorkOrder = CreateWorkOrderSnapshot(unfinishedTask, process);
+        station.SelectedProcess = process;
+        station.SelectedProgram = CreateProgramSnapshot(unfinishedTask);
+        station.AvailablePrograms = CreateProgramListSnapshot(unfinishedTask);
+        station.ActiveTask = unfinishedTask;
+        station.MesOperatorNumber = unfinishedTask.StartOperatorNumber ?? station.MesOperatorNumber;
+        station.UpdatedTime = DateTime.Now;
+
+        RefreshCompatibilityState(normalizedStationNo);
+        if (!alreadyRestored)
+        {
+            _operationLogService.Write(
+                "TaskRecovery",
+                $"Unfinished task restored, Station={unfinishedTask.StationNo}, WorkOrder={unfinishedTask.WorkOrderId}, MES Id={unfinishedTask.ExpStartId}");
+        }
+
+        NotifyStateChanged();
+        return unfinishedTask;
+    }
+
+    /// <summary>
+    /// 同步 MES 服务器时间，并记录最近一次同步结果。
+    /// </summary>
     public async Task<MesBaseResponse<MesServerTimeResponse>> SyncServerTimeAsync(CancellationToken cancellationToken = default)
     {
         var response = await _mesProvider.GetServerTimeAsync(cancellationToken);
@@ -234,6 +291,7 @@ public class WeldTaskService : IWeldTaskService
         var normalizedStationNo = NormalizeStationNo(stationNo);
         var station = GetStation(normalizedStationNo);
 
+        EnsureNoUnfinishedTask(normalizedStationNo);
         EnsureReadyForStart(station);
 
         if (!employeeAlreadyValidated)
@@ -334,7 +392,7 @@ public class WeldTaskService : IWeldTaskService
             station.ActiveTask.TaskStatus = statusCode switch
             {
                 "2" => "Paused",
-                "1" => "Completed",
+                "1" => TaskStatusCompleted,
                 _ => "Running"
             };
 
@@ -368,12 +426,15 @@ public class WeldTaskService : IWeldTaskService
     {
         var normalizedStationNo = NormalizeStationNo(stationNo);
         var station = GetStation(normalizedStationNo);
-        if (station.ActiveTask?.ExpStartId is null || station.SelectedProcess is null)
+        var task = IsUnfinishedTask(station.ActiveTask)
+            ? station.ActiveTask!
+            : RestoreUnfinishedTask(normalizedStationNo);
+
+        if (task?.ExpStartId is null)
         {
             throw new BusinessOperationException("MES.FinishReport", "完工上报失败", "No task to finish");
         }
 
-        var task = station.ActiveTask;
         var endOperator = string.IsNullOrWhiteSpace(employeeNumber)
             ? task.StartOperatorNumber ?? station.MesOperatorNumber
             : employeeNumber;
@@ -403,7 +464,7 @@ public class WeldTaskService : IWeldTaskService
         task.FailedQty = failedQty;
         task.EndOperatorNumber = endOperator;
         task.EndTime = DateTime.Now;
-        task.TaskStatus = "Completed";
+        task.TaskStatus = TaskStatusCompleted;
         var settings = _settingsService.Get();
         task.UploadStatus = ResolveUploadStatus(settings.UploadMode);
         task.UploadMessage = ResolveUploadMessage(settings.UploadMode);
@@ -422,7 +483,7 @@ public class WeldTaskService : IWeldTaskService
     public Task RetryPendingUploadsAsync(CancellationToken cancellationToken = default)
     {
         var pendingTasks = _dbContext.Db.Queryable<BizWeldTask>()
-            .Where(it => it.TaskStatus == "Completed" && it.UploadStatus != "Uploaded")
+            .Where(it => it.TaskStatus == TaskStatusCompleted && it.UploadStatus != "Uploaded")
             .ToList();
 
         foreach (var task in pendingTasks)
@@ -480,6 +541,105 @@ public class WeldTaskService : IWeldTaskService
         {
             throw new BusinessOperationException("MES.StartReport", "开工上报失败", "No program downloaded");
         }
+    }
+
+    /// <summary>
+    /// 开工前的服务层硬拦截，避免 UI 之外的调用绕过“同工位只能有一个未完工任务”的规则。
+    /// </summary>
+    private void EnsureNoUnfinishedTask(int stationNo)
+    {
+        var unfinishedTask = GetUnfinishedTask(stationNo);
+        if (unfinishedTask is null)
+        {
+            return;
+        }
+
+        throw new BusinessOperationException(
+            "MES.StartReport",
+            _localizer.GetString(TextKeys.Monitor.Message.StartBlockedByUnfinishedTask),
+            BuildUnfinishedTaskDetail(unfinishedTask));
+    }
+
+    /// <summary>
+    /// EndTime 有值或状态为 Completed 都视为已完工；上传状态不参与开工拦截。
+    /// </summary>
+    private static bool IsUnfinishedTask(BizWeldTask? task)
+    {
+        return task is not null
+            && task.EndTime is null
+            && !string.Equals(task.TaskStatus, TaskStatusCompleted, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildUnfinishedTaskDetail(BizWeldTask task)
+    {
+        return $"Station={task.StationNo}; WorkOrder={task.WorkOrderId}; MES Id={task.ExpStartId}; Status={task.TaskStatus}; StartTime={task.StartTime:yyyy-MM-dd HH:mm:ss}";
+    }
+
+    /// <summary>
+    /// 使用本地任务快照重建工单对象，让重启后的界面可以继续显示原工单信息。
+    /// </summary>
+    private static MesWorkOrderResponse CreateWorkOrderSnapshot(BizWeldTask task, ExpItemData process)
+    {
+        return new MesWorkOrderResponse
+        {
+            SN = task.WorkOrderId,
+            ProdNum = task.ProductNum,
+            ProdModel = task.ProductModel,
+            Spec = task.Spec,
+            Batch = task.Batch,
+            ProductName = task.ProductName,
+            DrawingNo = task.DrawingNo,
+            ExpItems = [process]
+        };
+    }
+
+    /// <summary>
+    /// 使用本地任务快照重建工序对象；完工上报只需要工序号和工序名称继续保持一致。
+    /// </summary>
+    private static ExpItemData CreateProcessSnapshot(BizWeldTask task)
+    {
+        return new ExpItemData
+        {
+            ProcessNo = task.ProcessNo,
+            ItemName = task.ProcessName,
+            StartAmount = Math.Max(1, task.PlannedQty)
+        };
+    }
+
+    /// <summary>
+    /// 使用本地任务快照重建程序对象，避免重启后必须重新下载程序才能完工。
+    /// </summary>
+    private static MesProgramData CreateProgramSnapshot(BizWeldTask task)
+    {
+        return new MesProgramData
+        {
+            Id = task.ProgramId ?? string.Empty,
+            ProgramName = task.ProgramName ?? string.Empty,
+            DeviceId = task.DeviceId,
+            ProductNum = task.ProductNum,
+            ProgramContent = string.IsNullOrWhiteSpace(task.ProgramContentSnapshot)
+                ? "{}"
+                : task.ProgramContentSnapshot
+        };
+    }
+
+    private static List<MesProgramListItemData> CreateProgramListSnapshot(BizWeldTask task)
+    {
+        if (string.IsNullOrWhiteSpace(task.ProgramId) && string.IsNullOrWhiteSpace(task.ProgramName))
+        {
+            return [];
+        }
+
+        return
+        [
+            new MesProgramListItemData
+            {
+                Id = task.ProgramId ?? string.Empty,
+                ProgramName = task.ProgramName ?? string.Empty,
+                DeviceId = task.DeviceId,
+                ProductNum = task.ProductNum
+            }
+        ];
     }
 
     /// <summary>

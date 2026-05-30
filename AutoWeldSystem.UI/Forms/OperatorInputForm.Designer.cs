@@ -67,6 +67,7 @@ partial class OperatorInputForm
         Controls.Add(btnOk);
         Controls.Add(txtEmployeeNumber);
         Controls.Add(lblEmployeeNumber);
+        AcceptButton = btnOk;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
