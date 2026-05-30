@@ -35,12 +35,17 @@ public class ProductionReportFileService : IProductionReportFileService
 
     private readonly SqlSugarDbContext _dbContext;
     private readonly IAppSettingsService _settingsService;
+    private readonly IProductionFlowLogService _productionLogService;
     private readonly object _dbLock = new();
 
-    public ProductionReportFileService(SqlSugarDbContext dbContext, IAppSettingsService settingsService)
+    public ProductionReportFileService(
+        SqlSugarDbContext dbContext,
+        IAppSettingsService settingsService,
+        IProductionFlowLogService productionLogService)
     {
         _dbContext = dbContext;
         _settingsService = settingsService;
+        _productionLogService = productionLogService;
     }
 
     public BizProductionReportFile GenerateCsvReport(BizWeldTask task)
@@ -63,6 +68,14 @@ public class ProductionReportFileService : IProductionReportFileService
             report.UploadStatus = ProductionConstants.UploadStatuses.Pending;
             report.UploadMessage = $"CSV report generated, rows={records.Count}.";
             report.UpdatedTime = DateTime.Now;
+            _productionLogService.Write(
+                "ReportFileGenerated",
+                "报告文件生成成功",
+                $"FilePath={report.FilePath}, Rows={records.Count}",
+                stationNo: task.StationNo,
+                workOrderId: task.WorkOrderId,
+                programId: task.ProgramId ?? string.Empty,
+                plcAddress: report.FilePath);
 
             if (report.Id <= 0)
             {
@@ -125,11 +138,10 @@ public class ProductionReportFileService : IProductionReportFileService
 
     private string[] BuildHeaders(BizWeldTask task)
     {
-        var templateHeaders = GetTemplateItemsForTask(task)
-            .OrderBy(item => item.Sort)
-            .SelectMany(BuildTemplateHeaders);
+        var itemHeaders = GetSchemeItemsForTask(task)
+            .SelectMany(BuildItemHeaders);
 
-        var dynamicHeaders = templateHeaders
+        var dynamicHeaders = itemHeaders
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Where(header => !BaseHeaders.Contains(header, StringComparer.OrdinalIgnoreCase))
             .ToArray();
@@ -181,110 +193,75 @@ public class ProductionReportFileService : IProductionReportFileService
     private void AddDynamicValues(Dictionary<string, string> row, BizWeldPointRecord record, BizWeldTask task)
     {
         var rawValues = ParseRawData(record.RawDataJson);
-        AddTemplateDynamicValues(row, rawValues, task);
+        AddSchemeDynamicValues(row, rawValues, task);
     }
 
-    private void AddTemplateDynamicValues(Dictionary<string, string> row, IReadOnlyDictionary<string, string> rawValues, BizWeldTask task)
+    private void AddSchemeDynamicValues(Dictionary<string, string> row, IReadOnlyDictionary<string, string> rawValues, BizWeldTask task)
     {
-        foreach (var item in GetTemplateItemsForTask(task))
+        foreach (var item in GetSchemeItemsForTask(task))
         {
-            var header = GetTemplateHeader(item);
+            var header = GetItemHeader(item);
             if (string.IsNullOrWhiteSpace(header))
             {
                 continue;
             }
 
-            TryAddDynamicValue(row, header, GetRawValue(rawValues, item.ItemKey, item.MesFieldPrefix));
-            TryAddDynamicValue(row, $"{header}上限", GetRawValue(rawValues, $"{item.ItemKey}_upper", BuildMesRoleKey(item.MesFieldPrefix, "Upper"), BuildMesRoleKey(item.MesFieldPrefix, "upper", "_")));
-            TryAddDynamicValue(row, $"{header}下限", GetRawValue(rawValues, $"{item.ItemKey}_lower", BuildMesRoleKey(item.MesFieldPrefix, "Lower"), BuildMesRoleKey(item.MesFieldPrefix, "lower", "_")));
-            TryAddDynamicValue(row, $"{header}结果", GetRawValue(rawValues, $"{item.ItemKey}_result", BuildMesRoleKey(item.MesFieldPrefix, "Result"), BuildMesRoleKey(item.MesFieldPrefix, "result", "_")));
+            var itemKey = ResolveItemKey(item);
+            TryAddDynamicValue(row, header, GetRawValue(rawValues, item.ItemName, itemKey));
+            TryAddDynamicValue(row, $"{header}上限", GetRawValue(rawValues, $"{item.ItemName}上限", $"{itemKey}_upper"));
+            TryAddDynamicValue(row, $"{header}下限", GetRawValue(rawValues, $"{item.ItemName}下限", $"{itemKey}_lower"));
+            TryAddDynamicValue(row, $"{header}结果", GetRawValue(rawValues, $"{item.ItemName}结果", $"{itemKey}_result"));
         }
     }
 
-    private IReadOnlyList<BizTestItemTemplateItem> GetTemplateItemsForTask(BizWeldTask task)
+    private IReadOnlyList<DimTestItem> GetSchemeItemsForTask(BizWeldTask task)
     {
-        var templateId = ResolveTemplateId(task);
-        if (templateId <= 0)
+        var config = ResolveProductProcessConfig(task);
+        if (config is null)
         {
-            return Array.Empty<BizTestItemTemplateItem>();
+            return Array.Empty<DimTestItem>();
         }
 
-        return _dbContext.Db.Queryable<BizTestItemTemplateItem>()
-            .Where(item => item.TemplateId == templateId && item.Enabled)
+        var details = _dbContext.Db.Queryable<BizSchemeDetail>()
+            .Where(detail => detail.SchemeId == config.SchemeId)
+            .ToList();
+        if (details.Count == 0)
+        {
+            return Array.Empty<DimTestItem>();
+        }
+
+        var itemIds = details.Select(detail => detail.ItemId).Distinct().ToList();
+        var items = _dbContext.Db.Queryable<DimTestItem>()
+            .Where(item => itemIds.Contains(item.ItemId))
+            .ToList();
+
+        return details
+            .OrderBy(detail => detail.DetailId)
+            .Select(detail => items.FirstOrDefault(item => item.ItemId == detail.ItemId))
+            .Where(item => item is not null)
+            .Select(item => item!)
             .ToList();
     }
 
-    private int ResolveTemplateId(BizWeldTask task)
+    private BizProductProcessConfig? ResolveProductProcessConfig(BizWeldTask task)
     {
-        var stationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, task.StationNo);
-        var bindingMode = NormalizeBindingMode(_settingsService.Get().TestParameterBindingMode);
-        var configs = _dbContext.Db.Queryable<BizProductProcessConfig>()
-            .Where(config => config.Enabled && config.TemplateId > 0)
-            .ToList();
+        var productNum = ResolveTaskProductNum(task);
+        if (string.IsNullOrWhiteSpace(productNum))
+        {
+            return null;
+        }
 
-        var matched = configs
-            .Where(config => IsTaskProcessMatch(config, task, stationNo, bindingMode))
+        var stationNo = task.StationNo <= ProductionConstants.Stations.SharedStationNo
+            ? ProductionConstants.Stations.DefaultStationNo
+            : task.StationNo;
+
+        return _dbContext.Db.Queryable<BizProductProcessConfig>()
+            .Where(config => config.Enabled && config.ProductNum == productNum)
+            .ToList()
+            .Where(config => config.StationNo == ProductionConstants.Stations.SharedStationNo || config.StationNo == stationNo)
             .OrderByDescending(config => config.StationNo == stationNo)
-            .ThenByDescending(config => ShouldPrioritizeExactModel(config, task.ProductModel, bindingMode))
-            .ThenByDescending(config => ShouldPrioritizeExactProductNum(config, task.ProductNum, bindingMode))
-            .ThenBy(config => config.Sort)
+            .ThenBy(config => config.Id)
             .FirstOrDefault();
-
-        return matched?.TemplateId ?? 0;
-    }
-
-    private static bool IsTaskProcessMatch(
-        BizProductProcessConfig config,
-        BizWeldTask task,
-        int stationNo,
-        string bindingMode)
-    {
-        if (config.StationNo != ProductionConstants.Stations.SharedStationNo && config.StationNo != stationNo)
-        {
-            return false;
-        }
-
-        if (bindingMode == AppConstants.TestParameterBindingModes.ProductNumOnly)
-        {
-            return IsExactTextMatch(config.ProductNum, task.ProductNum);
-        }
-
-        if (bindingMode == AppConstants.TestParameterBindingModes.ProductModelOnly)
-        {
-            return IsExactTextMatch(config.ProductModel, task.ProductModel);
-        }
-
-        return IsExactTextMatch(config.ProductNum, task.ProductNum)
-            && (string.IsNullOrWhiteSpace(config.ProductModel)
-                || IsExactTextMatch(config.ProductModel, task.ProductModel));
-    }
-
-    private static bool ShouldPrioritizeExactModel(
-        BizProductProcessConfig config,
-        string? productModel,
-        string bindingMode)
-    {
-        return bindingMode != AppConstants.TestParameterBindingModes.ProductNumOnly
-            && IsExactTextMatch(config.ProductModel, productModel);
-    }
-
-    private static bool ShouldPrioritizeExactProductNum(
-        BizProductProcessConfig config,
-        string? productNum,
-        string bindingMode)
-    {
-        return bindingMode != AppConstants.TestParameterBindingModes.ProductModelOnly
-            && IsExactTextMatch(config.ProductNum, productNum);
-    }
-
-    private static string NormalizeBindingMode(string? value)
-    {
-        return value switch
-        {
-            AppConstants.TestParameterBindingModes.ProductNumOnly => AppConstants.TestParameterBindingModes.ProductNumOnly,
-            AppConstants.TestParameterBindingModes.ProductModelOnly => AppConstants.TestParameterBindingModes.ProductModelOnly,
-            _ => AppConstants.TestParameterBindingModes.ProductNumAndModel
-        };
     }
 
     private static bool IsExactTextMatch(string? left, string? right)
@@ -292,9 +269,31 @@ public class ProductionReportFileService : IProductionReportFileService
         return string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
-    private static IEnumerable<string> BuildTemplateHeaders(BizTestItemTemplateItem item)
+    private string ResolveTaskProductNum(BizWeldTask task)
     {
-        var header = GetTemplateHeader(item);
+        if (!string.IsNullOrWhiteSpace(task.ProgramId))
+        {
+            var programs = _dbContext.Db.Queryable<BizProgram>()
+                .Where(program => !program.IsDeleted && program.ProgramId == task.ProgramId.Trim())
+                .ToList();
+
+            var localProgram = programs
+                .OrderByDescending(program => IsExactTextMatch(program.DeviceId, task.DeviceId))
+                .ThenByDescending(program => program.UpdatedTime)
+                .FirstOrDefault();
+
+            if (!string.IsNullOrWhiteSpace(localProgram?.ProductNum))
+            {
+                return localProgram.ProductNum.Trim();
+            }
+        }
+
+        return task.ProductNum.Trim();
+    }
+
+    private static IEnumerable<string> BuildItemHeaders(DimTestItem item)
+    {
+        var header = GetItemHeader(item);
         if (string.IsNullOrWhiteSpace(header))
         {
             yield break;
@@ -306,13 +305,9 @@ public class ProductionReportFileService : IProductionReportFileService
         yield return $"{header}结果";
     }
 
-    private static string GetTemplateHeader(BizTestItemTemplateItem item)
+    private static string GetItemHeader(DimTestItem item)
     {
-        var header = string.IsNullOrWhiteSpace(item.ReportColumnName)
-            ? item.ItemName
-            : item.ReportColumnName;
-
-        return header?.Trim() ?? string.Empty;
+        return item.ItemName?.Trim() ?? string.Empty;
     }
 
     private static void TryAddDynamicValue(Dictionary<string, string> row, string header, string? value)
@@ -338,11 +333,18 @@ public class ProductionReportFileService : IProductionReportFileService
         return null;
     }
 
-    private static string? BuildMesRoleKey(string? prefix, string role, string separator = "")
+    private static string ResolveItemKey(DimTestItem item)
     {
-        return string.IsNullOrWhiteSpace(prefix)
-            ? null
-            : $"{prefix.Trim()}{separator}{role}";
+        return item.ItemName.Trim() switch
+        {
+            "峰值电流" => "max_electric",
+            "峰值电压" => "max_voltage",
+            "有效功率" => "valid_power",
+            "位移" => "displacement",
+            "焊接时间" => "weld_ts",
+            var name when !string.IsNullOrWhiteSpace(name) => $"item_{item.ItemId}",
+            _ => $"item_{item.ItemId}"
+        };
     }
 
     private static Dictionary<string, string> ParseRawData(string? rawDataJson)

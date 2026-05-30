@@ -18,6 +18,7 @@ public partial class LogManageView : BaseView
 {
     private const int MaxDisplayCount = 1000;
     private const string ColumnResultName = "colResult";
+    private const string ColumnProductionLevelName = "colProductionLevel";
     private const string ColumnExceptionCategoryName = "colExceptionCategory";
     private const string ColumnExceptionSeverityName = "colExceptionSeverity";
 
@@ -28,15 +29,33 @@ public partial class LogManageView : BaseView
     };
 
     private readonly IMesInteractionLogService _mesLogService;
+    private readonly IProductionFlowLogService _productionLogService;
     private readonly IProgramExceptionLogService _exceptionLogService;
     private readonly ILocalizationService _localizer;
     private readonly BindingSource _mesBindingSource = new();
+    private readonly BindingSource _productionBindingSource = new();
     private readonly BindingSource _exceptionBindingSource = new();
     private readonly List<MesInteractionLogEntry> _mesLogs = new();
+    private readonly List<ProductionFlowLogEntry> _productionLogs = new();
     private readonly List<ProgramExceptionLogEntry> _exceptionLogs = new();
     private bool _initialized;
     private string _keyword = string.Empty;
+    private string _productionKeyword = string.Empty;
     private string _exceptionKeyword = string.Empty;
+
+    private Label lblProductionTitle = null!;
+    private Label lblProductionDescription = null!;
+    private Label lblProductionDate = null!;
+    private DateTimePicker dtpProductionDate = null!;
+    private Label lblProductionKeyword = null!;
+    private TextBox txtProductionKeyword = null!;
+    private AntdUI.Button btnRefreshProduction = null!;
+    private AntdUI.Button btnOpenProductionFolder = null!;
+    private DataGridView dgvProductionLogs = null!;
+    private TabPage tabProductionBasicInfo = null!;
+    private TabPage tabProductionDetail = null!;
+    private TextBox txtProductionBasicInfo = null!;
+    private TextBox txtProductionDetail = null!;
 
     private Label lblExceptionTitle = null!;
     private Label lblExceptionDescription = null!;
@@ -58,16 +77,20 @@ public partial class LogManageView : BaseView
 
     public LogManageView(
         IMesInteractionLogService mesLogService,
+        IProductionFlowLogService productionLogService,
         IProgramExceptionLogService exceptionLogService,
         ILocalizationService localizer)
     {
         _mesLogService = mesLogService;
+        _productionLogService = productionLogService;
         _exceptionLogService = exceptionLogService;
         _localizer = localizer;
 
         InitializeComponent();
+        BuildProductionLogTab();
         BuildExceptionLogTab();
         ConfigureMesGrid();
+        ConfigureProductionGrid();
         ConfigureExceptionGrid();
         WireEvents();
     }
@@ -83,8 +106,10 @@ public partial class LogManageView : BaseView
 
         _initialized = true;
         dtpMesDate.Value = DateTime.Today;
+        dtpProductionDate.Value = DateTime.Today;
         dtpExceptionDate.Value = DateTime.Today;
         LoadMesLogs();
+        LoadProductionLogs();
         LoadExceptionLogs();
     }
 
@@ -92,9 +117,144 @@ public partial class LogManageView : BaseView
     {
         ApplyLocalizedTexts();
         ApplyMesGridHeaders();
+        ApplyProductionGridHeaders();
         ApplyExceptionGridHeaders();
         ApplyMesFilter();
+        ApplyProductionFilter();
         ApplyExceptionFilter();
+    }
+
+    private void BuildProductionLogTab()
+    {
+        tabProductionLogs.Controls.Clear();
+
+        var rootLayout = new TableLayoutPanel
+        {
+            ColumnCount = 1,
+            Dock = DockStyle.Fill,
+            RowCount = 2
+        };
+        rootLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        rootLayout.RowStyles.Add(new RowStyle());
+        rootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
+        var headerLayout = new TableLayoutPanel
+        {
+            ColumnCount = 2,
+            Dock = DockStyle.Fill,
+            Margin = new Padding(20, 14, 20, 8),
+            RowCount = 1
+        };
+        headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        headerLayout.ColumnStyles.Add(new ColumnStyle());
+        headerLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
+        var titleLayout = new TableLayoutPanel
+        {
+            ColumnCount = 1,
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0),
+            RowCount = 2
+        };
+        titleLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        titleLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
+        titleLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
+        lblProductionTitle = new Label
+        {
+            AutoSize = true,
+            Dock = DockStyle.Fill,
+            Font = new Font("Microsoft YaHei UI", 14F, FontStyle.Bold),
+            Margin = new Padding(0),
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+        lblProductionDescription = new Label
+        {
+            AutoEllipsis = true,
+            Dock = DockStyle.Fill,
+            ForeColor = SystemColors.GrayText,
+            Margin = new Padding(0),
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+        titleLayout.Controls.Add(lblProductionTitle, 0, 0);
+        titleLayout.Controls.Add(lblProductionDescription, 0, 1);
+
+        var toolbar = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Right,
+            Margin = new Padding(0),
+            Padding = new Padding(0, 6, 0, 0),
+            WrapContents = false
+        };
+        lblProductionDate = new Label { AutoSize = true, Margin = new Padding(0, 9, 8, 0) };
+        dtpProductionDate = new DateTimePicker
+        {
+            CustomFormat = "yyyy-MM-dd",
+            Format = DateTimePickerFormat.Custom,
+            Margin = new Padding(0, 2, 16, 0),
+            Size = new Size(150, 30)
+        };
+        lblProductionKeyword = new Label { AutoSize = true, Margin = new Padding(0, 9, 8, 0) };
+        txtProductionKeyword = new TextBox
+        {
+            Margin = new Padding(0, 2, 16, 0),
+            PlaceholderText = "Step / WorkOrder / ProductNo / PLC",
+            Size = new Size(230, 30)
+        };
+        btnRefreshProduction = CreateToolbarButton("ReloadOutlined");
+        btnRefreshProduction.Margin = new Padding(0, 0, 10, 0);
+        btnOpenProductionFolder = CreateToolbarButton("FolderOpenOutlined");
+        toolbar.Controls.Add(lblProductionDate);
+        toolbar.Controls.Add(dtpProductionDate);
+        toolbar.Controls.Add(lblProductionKeyword);
+        toolbar.Controls.Add(txtProductionKeyword);
+        toolbar.Controls.Add(btnRefreshProduction);
+        toolbar.Controls.Add(btnOpenProductionFolder);
+
+        headerLayout.Controls.Add(titleLayout, 0, 0);
+        headerLayout.Controls.Add(toolbar, 1, 0);
+
+        var splitContent = new SplitContainer
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(20, 0, 20, 18),
+            SplitterDistance = 820,
+            SplitterWidth = 5
+        };
+        splitContent.Panel1.Padding = new Padding(0, 0, 12, 0);
+        splitContent.Panel2.Padding = new Padding(12, 0, 0, 0);
+
+        dgvProductionLogs = new DataGridView
+        {
+            AllowUserToAddRows = false,
+            AllowUserToDeleteRows = false,
+            BackgroundColor = SystemColors.Window,
+            ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize,
+            Dock = DockStyle.Fill,
+            MultiSelect = false,
+            ReadOnly = true,
+            RowHeadersVisible = false,
+            RowTemplate = { Height = 28 },
+            SelectionMode = DataGridViewSelectionMode.FullRowSelect
+        };
+
+        var tabDetails = new TabControl { Dock = DockStyle.Fill };
+        tabProductionBasicInfo = new TabPage();
+        tabProductionDetail = new TabPage();
+        txtProductionBasicInfo = CreateReadonlyDetailTextBox();
+        txtProductionDetail = CreateReadonlyDetailTextBox();
+        tabProductionBasicInfo.Controls.Add(txtProductionBasicInfo);
+        tabProductionDetail.Controls.Add(txtProductionDetail);
+        tabDetails.Controls.Add(tabProductionBasicInfo);
+        tabDetails.Controls.Add(tabProductionDetail);
+
+        splitContent.Panel1.Controls.Add(dgvProductionLogs);
+        splitContent.Panel2.Controls.Add(tabDetails);
+
+        rootLayout.Controls.Add(headerLayout, 0, 0);
+        rootLayout.Controls.Add(splitContent, 0, 1);
+        tabProductionLogs.Controls.Add(rootLayout);
     }
 
     private void BuildExceptionLogTab()
@@ -347,6 +507,30 @@ public partial class LogManageView : BaseView
         ApplyMesGridHeaders();
     }
 
+    private void ConfigureProductionGrid()
+    {
+        TableStyleHelper.ApplyDataGridView(dgvProductionLogs);
+        dgvProductionLogs.AutoGenerateColumns = false;
+        dgvProductionLogs.Columns.Clear();
+
+        dgvProductionLogs.Columns.Add(CreateTextColumn(nameof(ProductionLogRow.OccurredTime), 14));
+        dgvProductionLogs.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            Name = ColumnProductionLevelName,
+            DataPropertyName = nameof(ProductionLogRow.Level),
+            FillWeight = 8
+        });
+        dgvProductionLogs.Columns.Add(CreateTextColumn(nameof(ProductionLogRow.Step), 16));
+        dgvProductionLogs.Columns.Add(CreateTextColumn(nameof(ProductionLogRow.Summary), 28));
+        dgvProductionLogs.Columns.Add(CreateTextColumn(nameof(ProductionLogRow.Station), 8));
+        dgvProductionLogs.Columns.Add(CreateTextColumn(nameof(ProductionLogRow.WorkOrderId), 16));
+        dgvProductionLogs.Columns.Add(CreateTextColumn(nameof(ProductionLogRow.ProductNo), 13));
+        dgvProductionLogs.Columns.Add(CreateTextColumn(nameof(ProductionLogRow.PlcSignal), 13));
+
+        dgvProductionLogs.DataSource = _productionBindingSource;
+        ApplyProductionGridHeaders();
+    }
+
     private void ConfigureExceptionGrid()
     {
         TableStyleHelper.ApplyDataGridView(dgvExceptionLogs);
@@ -398,6 +582,19 @@ public partial class LogManageView : BaseView
         dgvMesLogs.CellFormatting += DgvMesLogs_CellFormatting;
         _mesLogService.LogWritten += MesLogService_LogWritten;
 
+        btnRefreshProduction.Click += (_, _) => LoadProductionLogs();
+        btnOpenProductionFolder.Click += (_, _) => OpenProductionLogFolder();
+        dtpProductionDate.ValueChanged += (_, _) => LoadProductionLogs();
+        txtProductionKeyword.TextChanged += (_, _) =>
+        {
+            _productionKeyword = txtProductionKeyword.Text.Trim();
+            ApplyProductionFilter();
+        };
+        dgvProductionLogs.SelectionChanged += (_, _) => ShowSelectedProductionLogDetails();
+        dgvProductionLogs.CellFormatting += DgvProductionLogs_CellFormatting;
+        _productionLogService.LogWritten += ProductionLogService_LogWritten;
+        Disposed += (_, _) => _productionLogService.LogWritten -= ProductionLogService_LogWritten;
+
         btnRefreshException.Click += (_, _) => LoadExceptionLogs();
         btnOpenExceptionFolder.Click += (_, _) => OpenExceptionLogFolder();
         btnOpenExceptionSource.Click += (_, _) => OpenSelectedExceptionSource();
@@ -421,21 +618,29 @@ public partial class LogManageView : BaseView
         tabExceptionLogs.Text = _localizer.GetString(TextKeys.Log.TabProgramException);
         lblMesTitle.Text = _localizer.GetString(TextKeys.Log.TitleMesInteraction);
         lblMesDescription.Text = _localizer.GetString(TextKeys.Log.DescriptionMesInteraction);
+        lblProductionTitle.Text = _localizer.GetString(TextKeys.Log.TabProductionFlow);
+        lblProductionDescription.Text = "记录PLC信号、数据采集、保存、上传和转发等生产过程关键步骤。";
         lblExceptionTitle.Text = _localizer.GetString(TextKeys.Log.TabProgramException);
         lblExceptionDescription.Text = _localizer.GetString(TextKeys.Log.DescriptionProgramException);
         lblMesDate.Text = _localizer.GetString(TextKeys.Log.LabelDate);
+        lblProductionDate.Text = _localizer.GetString(TextKeys.Log.LabelDate);
         lblExceptionDate.Text = _localizer.GetString(TextKeys.Log.LabelDate);
         lblMesKeyword.Text = _localizer.GetString(TextKeys.Log.LabelKeyword);
+        lblProductionKeyword.Text = _localizer.GetString(TextKeys.Log.LabelKeyword);
         lblExceptionKeyword.Text = _localizer.GetString(TextKeys.Log.LabelKeyword);
         btnRefreshMes.Text = _localizer.GetString(TextKeys.Log.ButtonRefresh);
+        btnRefreshProduction.Text = _localizer.GetString(TextKeys.Log.ButtonRefresh);
         btnRefreshException.Text = _localizer.GetString(TextKeys.Log.ButtonRefresh);
         btnOpenMesFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
+        btnOpenProductionFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
         btnOpenExceptionFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
         btnOpenExceptionSource.Text = _localizer.GetString(TextKeys.Log.ButtonOpenSource);
         btnCopyExceptionDetails.Text = _localizer.GetString(TextKeys.Log.ButtonCopyDetails);
         tabBasicInfo.Text = _localizer.GetString(TextKeys.Log.DetailBasicInfo);
         tabRequestBody.Text = _localizer.GetString(TextKeys.Log.DetailRequest);
         tabResponseBody.Text = _localizer.GetString(TextKeys.Log.DetailResponse);
+        tabProductionBasicInfo.Text = _localizer.GetString(TextKeys.Log.DetailBasicInfo);
+        tabProductionDetail.Text = _localizer.GetString(TextKeys.Log.DetailContext);
         tabExceptionBasicInfo.Text = _localizer.GetString(TextKeys.Log.DetailBasicInfo);
         tabExceptionStackTrace.Text = _localizer.GetString(TextKeys.Log.DetailStackTrace);
         tabExceptionContext.Text = _localizer.GetString(TextKeys.Log.DetailContext);
@@ -444,6 +649,11 @@ public partial class LogManageView : BaseView
         if (dgvMesLogs.CurrentRow?.DataBoundItem is null)
         {
             ShowMesLogDetails(null);
+        }
+
+        if (dgvProductionLogs.CurrentRow?.DataBoundItem is null)
+        {
+            ShowProductionLogDetails(null);
         }
 
         if (dgvExceptionLogs.CurrentRow?.DataBoundItem is null)
@@ -466,6 +676,23 @@ public partial class LogManageView : BaseView
         dgvMesLogs.Columns[4].HeaderText = _localizer.GetString(TextKeys.Log.ColumnMesStatus);
         dgvMesLogs.Columns[5].HeaderText = _localizer.GetString(TextKeys.Log.ColumnSuccess);
         dgvMesLogs.Columns[6].HeaderText = _localizer.GetString(TextKeys.Log.ColumnDuration);
+    }
+
+    private void ApplyProductionGridHeaders()
+    {
+        if (dgvProductionLogs.Columns.Count < 8)
+        {
+            return;
+        }
+
+        dgvProductionLogs.Columns[0].HeaderText = "时间";
+        dgvProductionLogs.Columns[1].HeaderText = "级别";
+        dgvProductionLogs.Columns[2].HeaderText = "步骤";
+        dgvProductionLogs.Columns[3].HeaderText = "摘要";
+        dgvProductionLogs.Columns[4].HeaderText = "工位";
+        dgvProductionLogs.Columns[5].HeaderText = "工单号";
+        dgvProductionLogs.Columns[6].HeaderText = "产品编号";
+        dgvProductionLogs.Columns[7].HeaderText = "PLC信号";
     }
 
     private void ApplyExceptionGridHeaders()
@@ -493,6 +720,20 @@ public partial class LogManageView : BaseView
                 .GetByDate(dtpMesDate.Value.Date, MaxDisplayCount)
                 .Where(ShouldShowMesLog));
             ApplyMesFilter();
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex.Message);
+        }
+    }
+
+    private void LoadProductionLogs()
+    {
+        try
+        {
+            _productionLogs.Clear();
+            _productionLogs.AddRange(_productionLogService.GetByDate(dtpProductionDate.Value.Date, MaxDisplayCount));
+            ApplyProductionFilter();
         }
         catch (Exception ex)
         {
@@ -535,6 +776,29 @@ public partial class LogManageView : BaseView
         }
 
         ShowSelectedMesLogDetails();
+    }
+
+    private void ApplyProductionFilter()
+    {
+        var rows = _productionLogs
+            .Where(entry => IsProductionLogMatched(entry, _productionKeyword))
+            .Select(entry => new ProductionLogRow(entry))
+            .ToList();
+
+        _productionBindingSource.DataSource = rows;
+        if (rows.Count == 0)
+        {
+            ShowProductionLogDetails(null);
+            return;
+        }
+
+        if (dgvProductionLogs.CurrentRow is null)
+        {
+            dgvProductionLogs.Rows[0].Selected = true;
+            dgvProductionLogs.CurrentCell = dgvProductionLogs.Rows[0].Cells[0];
+        }
+
+        ShowSelectedProductionLogDetails();
     }
 
     private void ApplyExceptionFilter()
@@ -599,6 +863,25 @@ public partial class LogManageView : BaseView
             || Contains(entry.TraceId, keyword);
     }
 
+    private static bool IsProductionLogMatched(ProductionFlowLogEntry entry, string keyword)
+    {
+        if (string.IsNullOrWhiteSpace(keyword))
+        {
+            return true;
+        }
+
+        return Contains(entry.TraceId, keyword)
+            || Contains(entry.Level, keyword)
+            || Contains(entry.Step, keyword)
+            || Contains(entry.Summary, keyword)
+            || Contains(entry.Detail, keyword)
+            || Contains(entry.WorkOrderId, keyword)
+            || Contains(entry.ProductNo, keyword)
+            || Contains(entry.ProgramId, keyword)
+            || Contains(entry.PlcSignal, keyword)
+            || Contains(entry.PlcAddress, keyword);
+    }
+
     private static bool IsExceptionLogMatched(ProgramExceptionLogEntry entry, string keyword)
     {
         if (string.IsNullOrWhiteSpace(keyword))
@@ -650,6 +933,22 @@ public partial class LogManageView : BaseView
         AddLiveMesLog(entry);
     }
 
+    private void ProductionLogService_LogWritten(object? sender, ProductionFlowLogEntry entry)
+    {
+        if (IsDisposed || !IsHandleCreated)
+        {
+            return;
+        }
+
+        if (InvokeRequired)
+        {
+            BeginInvoke(new Action(() => AddLiveProductionLog(entry)));
+            return;
+        }
+
+        AddLiveProductionLog(entry);
+    }
+
     private void ExceptionLogService_LogWritten(object? sender, ProgramExceptionLogEntry entry)
     {
         if (IsDisposed || !IsHandleCreated)
@@ -687,6 +986,22 @@ public partial class LogManageView : BaseView
         ApplyMesFilter();
     }
 
+    private void AddLiveProductionLog(ProductionFlowLogEntry entry)
+    {
+        if (entry.OccurredTime.Date != dtpProductionDate.Value.Date)
+        {
+            return;
+        }
+
+        _productionLogs.Insert(0, entry);
+        if (_productionLogs.Count > MaxDisplayCount)
+        {
+            _productionLogs.RemoveRange(MaxDisplayCount, _productionLogs.Count - MaxDisplayCount);
+        }
+
+        ApplyProductionFilter();
+    }
+
     private void AddLiveExceptionLog(ProgramExceptionLogEntry entry)
     {
         if (entry.OccurredTime.Date != dtpExceptionDate.Value.Date)
@@ -709,6 +1024,12 @@ public partial class LogManageView : BaseView
         ShowMesLogDetails(row?.Entry);
     }
 
+    private void ShowSelectedProductionLogDetails()
+    {
+        var row = dgvProductionLogs.CurrentRow?.DataBoundItem as ProductionLogRow;
+        ShowProductionLogDetails(row?.Entry);
+    }
+
     private void ShowSelectedExceptionDetails()
     {
         ShowExceptionDetails(GetSelectedExceptionEntry());
@@ -727,6 +1048,19 @@ public partial class LogManageView : BaseView
         txtBasicInfo.Text = BuildBasicInfo(entry);
         txtRequestBody.Text = PrettyPrintJson(entry.RequestBody);
         txtResponseBody.Text = PrettyPrintJson(entry.ResponseBody);
+    }
+
+    private void ShowProductionLogDetails(ProductionFlowLogEntry? entry)
+    {
+        if (entry is null)
+        {
+            txtProductionBasicInfo.Text = _localizer.GetString(TextKeys.Log.DetailNoSelection);
+            txtProductionDetail.Clear();
+            return;
+        }
+
+        txtProductionBasicInfo.Text = BuildProductionBasicInfo(entry);
+        txtProductionDetail.Text = entry.Detail;
     }
 
     private void ShowExceptionDetails(ProgramExceptionLogEntry? entry)
@@ -776,6 +1110,24 @@ public partial class LogManageView : BaseView
             builder.AppendLine($"Error: {entry.ErrorMessage}");
         }
 
+        return builder.ToString();
+    }
+
+    private static string BuildProductionBasicInfo(ProductionFlowLogEntry entry)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine($"TraceId: {entry.TraceId}");
+        builder.AppendLine($"Time: {entry.OccurredTime:yyyy-MM-dd HH:mm:ss.fff}");
+        builder.AppendLine($"Level: {entry.Level}");
+        builder.AppendLine($"Step: {entry.Step}");
+        builder.AppendLine($"Summary: {entry.Summary}");
+        builder.AppendLine($"Station: {entry.StationNo}");
+        builder.AppendLine($"WorkOrder: {entry.WorkOrderId}");
+        builder.AppendLine($"ProductNo: {entry.ProductNo}");
+        builder.AppendLine($"ProgramId: {entry.ProgramId}");
+        builder.AppendLine($"PLC Signal: {entry.PlcSignal}");
+        builder.AppendLine($"PLC Address: {entry.PlcAddress}");
+        builder.AppendLine($"Duration: {entry.DurationMilliseconds?.ToString() ?? "-"} ms");
         return builder.ToString();
     }
 
@@ -880,6 +1232,24 @@ public partial class LogManageView : BaseView
         }
     }
 
+    private void DgvProductionLogs_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
+    {
+        if (e.RowIndex < 0 || dgvProductionLogs.Rows[e.RowIndex].DataBoundItem is not ProductionLogRow row)
+        {
+            return;
+        }
+
+        if (e.CellStyle is null || dgvProductionLogs.Columns[e.ColumnIndex].Name != ColumnProductionLevelName)
+        {
+            return;
+        }
+
+        e.CellStyle.ForeColor = row.Entry.Level.Equals("Error", StringComparison.OrdinalIgnoreCase)
+            ? UiColors.Status.Danger
+            : UiColors.Status.Success;
+        e.CellStyle.Font = new Font(dgvProductionLogs.Font, FontStyle.Bold);
+    }
+
     private void DgvExceptionLogs_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
     {
         if (e.RowIndex < 0 || dgvExceptionLogs.Rows[e.RowIndex].DataBoundItem is not ExceptionLogRow row)
@@ -912,6 +1282,24 @@ public partial class LogManageView : BaseView
         try
         {
             var folder = _mesLogService.GetLogDirectory();
+            Directory.CreateDirectory(folder);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = folder,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex.Message);
+        }
+    }
+
+    private void OpenProductionLogFolder()
+    {
+        try
+        {
+            var folder = _productionLogService.GetLogDirectory();
             Directory.CreateDirectory(folder);
             Process.Start(new ProcessStartInfo
             {
@@ -1041,6 +1429,32 @@ public partial class LogManageView : BaseView
 
         public string Duration => Entry.DurationMilliseconds.ToString();
 
+    }
+
+    private sealed class ProductionLogRow
+    {
+        public ProductionLogRow(ProductionFlowLogEntry entry)
+        {
+            Entry = entry;
+        }
+
+        public ProductionFlowLogEntry Entry { get; }
+
+        public string OccurredTime => Entry.OccurredTime.ToString("HH:mm:ss.fff");
+
+        public string Level => Entry.Level;
+
+        public string Step => Entry.Step;
+
+        public string Summary => Entry.Summary;
+
+        public string Station => Entry.StationNo <= 0 ? "-" : Entry.StationNo.ToString();
+
+        public string WorkOrderId => string.IsNullOrWhiteSpace(Entry.WorkOrderId) ? "-" : Entry.WorkOrderId;
+
+        public string ProductNo => string.IsNullOrWhiteSpace(Entry.ProductNo) ? "-" : Entry.ProductNo;
+
+        public string PlcSignal => string.IsNullOrWhiteSpace(Entry.PlcSignal) ? "-" : Entry.PlcSignal;
     }
 
     private sealed class ExceptionLogRow

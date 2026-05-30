@@ -6,22 +6,22 @@ using AutoWeldSystem.Core.Models;
 namespace AutoWeldSystem.Services.Plc;
 
 /// <summary>
-/// Monitors weld start/end PLC signals and triggers weld point collection.
+/// Monitors PLC product-cycle signals and triggers one complete product data collection.
 /// Each station keeps its own signal snapshot so dual-station equipment can run independently.
 /// </summary>
 public sealed class PlcWeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisposable
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(200);
     private static readonly TimeSpan BusinessLogInterval = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan CollectionAckPulseWidth = TimeSpan.FromMilliseconds(120);
 
     private readonly IPlcAddressService _addressService;
     private readonly IPlcCommunicationService _plcCommunicationService;
     private readonly IWeldTaskService _weldTaskService;
-    private readonly IWeldPointCollectionService _weldPointCollectionService;
+    private readonly IProductCycleCollectionService _productCycleCollectionService;
     private readonly IWeldPointUploadCoordinatorService _weldPointUploadCoordinatorService;
     private readonly IProgramExceptionLogService _exceptionLogService;
     private readonly IOperationLogService _operationLogService;
+    private readonly IProductionFlowLogService _productionLogService;
     private readonly SemaphoreSlim _sync = new(1, 1);
     private readonly object _businessLogSync = new();
     private readonly Dictionary<int, StationCycleState> _stationStates = new();
@@ -36,18 +36,20 @@ public sealed class PlcWeldCycleMonitorService : IPlcWeldCycleMonitorService, ID
         IPlcAddressService addressService,
         IPlcCommunicationService plcCommunicationService,
         IWeldTaskService weldTaskService,
-        IWeldPointCollectionService weldPointCollectionService,
+        IProductCycleCollectionService productCycleCollectionService,
         IWeldPointUploadCoordinatorService weldPointUploadCoordinatorService,
         IProgramExceptionLogService exceptionLogService,
-        IOperationLogService operationLogService)
+        IOperationLogService operationLogService,
+        IProductionFlowLogService productionLogService)
     {
         _addressService = addressService;
         _plcCommunicationService = plcCommunicationService;
         _weldTaskService = weldTaskService;
-        _weldPointCollectionService = weldPointCollectionService;
+        _productCycleCollectionService = productCycleCollectionService;
         _weldPointUploadCoordinatorService = weldPointUploadCoordinatorService;
         _exceptionLogService = exceptionLogService;
         _operationLogService = operationLogService;
+        _productionLogService = productionLogService;
     }
 
     public event EventHandler<BizWeldPointRecord>? WeldPointCollected;
@@ -110,9 +112,8 @@ public sealed class PlcWeldCycleMonitorService : IPlcWeldCycleMonitorService, ID
                 _stationStates[stationNo] = new StationCycleState
                 {
                     StationNo = stationNo,
-                    StartAddress = FindAddress(addresses, AppConstants.PlcAddressKeys.WeldStart, stationNo),
-                    EndAddress = FindAddress(addresses, AppConstants.PlcAddressKeys.WeldEnd, stationNo),
-                    CollectionAckAddress = FindAddress(addresses, AppConstants.PlcAddressKeys.WeldCollectionAck, stationNo)
+                    ProductDataReadyAddress = FindAddress(addresses, AppConstants.PlcAddressKeys.ProductDataReady, stationNo),
+                    ProductCollectionFeedbackAddress = FindAddress(addresses, AppConstants.PlcAddressKeys.ProductCollectionFeedback, stationNo)
                 };
             }
         }
@@ -163,6 +164,12 @@ public sealed class PlcWeldCycleMonitorService : IPlcWeldCycleMonitorService, ID
             }
             catch (Exception ex)
             {
+                if (!IsPlcConnected())
+                {
+                    await Task.Delay(PollInterval, cancellationToken);
+                    continue;
+                }
+
                 WriteBusinessFailureLog("焊接周期监控失败", ex.Message);
                 await Task.Delay(PollInterval, cancellationToken);
             }
@@ -188,43 +195,64 @@ public sealed class PlcWeldCycleMonitorService : IPlcWeldCycleMonitorService, ID
 
     private async Task PollStationAsync(BizWeldTask task, StationCycleState stationState, CancellationToken cancellationToken)
     {
-        if (!IsUsable(stationState.StartAddress) || !IsUsable(stationState.EndAddress))
+        await PollProductCycleAsync(task, stationState, cancellationToken);
+    }
+
+    private async Task PollProductCycleAsync(BizWeldTask task, StationCycleState stationState, CancellationToken cancellationToken)
+    {
+        if (!IsUsable(stationState.ProductDataReadyAddress) || !IsUsable(stationState.ProductCollectionFeedbackAddress))
         {
-            WriteBusinessFailureLog(
-                $"工位{task.StationNo}焊接信号地址未配置",
-                "请在地址维护中配置该工位的焊接开始和焊接结束 PLC 地址。");
             return;
         }
 
-        var startSignal = await ReadBoolSignalAsync(stationState.StartAddress!, $"工位{task.StationNo}焊接开始信号", cancellationToken);
-        var endSignal = await ReadBoolSignalAsync(stationState.EndAddress!, $"工位{task.StationNo}焊接结束信号", cancellationToken);
-
-        if (!stationState.HasSignalSnapshot)
+        if (!IsPlcConnected())
         {
-            stationState.LastStartSignal = startSignal;
-            stationState.LastEndSignal = endSignal;
-            stationState.CycleStarted = startSignal;
-            stationState.HasSignalSnapshot = true;
             return;
         }
 
-        var startRising = startSignal && !stationState.LastStartSignal;
-        var endRising = endSignal && !stationState.LastEndSignal;
-
-        if (startRising)
+        short readyValue;
+        try
         {
-            stationState.CycleStarted = true;
-            _operationLogService.Write("WeldCycle", $"Weld start detected, Station={task.StationNo}, WorkOrder={task.WorkOrderId}");
+            readyValue = await ReadNumberSignalAsync(stationState.ProductDataReadyAddress!, $"工位{task.StationNo}产品数据就绪信号", cancellationToken);
+        }
+        catch (BusinessOperationException) when (!IsPlcConnected())
+        {
+            return;
         }
 
-        if (endRising)
+        var ready = readyValue == 1;
+        if (!ready)
         {
-            await CollectWeldPointAsync(task, stationState, cancellationToken);
-            stationState.CycleStarted = false;
+            if (stationState.ProductDataReadyHandled || stationState.ProductFeedbackWritten)
+            {
+                WriteProductionLog(
+                    "ProductDataReadyReset",
+                    "PLC已清空产品数据就绪信号",
+                    $"ReadyValue={readyValue}",
+                    task,
+                    plcSignal: AppConstants.PlcAddressKeys.ProductDataReady,
+                    plcAddress: stationState.ProductDataReadyAddress?.Address);
+                await WriteProductCollectionFeedbackAsync(stationState, 0, cancellationToken);
+            }
+
+            stationState.ProductDataReadyHandled = false;
+            stationState.ProductFeedbackWritten = false;
+            return;
         }
 
-        stationState.LastStartSignal = startSignal;
-        stationState.LastEndSignal = endSignal;
+        if (stationState.ProductDataReadyHandled)
+        {
+            return;
+        }
+
+        WriteProductionLog(
+            "ProductDataReady",
+            "检测到产品数据就绪信号",
+            $"ReadyValue={readyValue}, ReadyAddress={stationState.ProductDataReadyAddress?.Address}, FeedbackAddress={stationState.ProductCollectionFeedbackAddress?.Address}",
+            task,
+            plcSignal: AppConstants.PlcAddressKeys.ProductDataReady,
+            plcAddress: stationState.ProductDataReadyAddress?.Address);
+        await CollectProductCycleAsync(task, stationState, cancellationToken);
     }
 
     private IReadOnlyList<BizWeldTask> GetActiveTasks()
@@ -262,9 +290,8 @@ public sealed class PlcWeldCycleMonitorService : IPlcWeldCycleMonitorService, ID
             stationState = new StationCycleState
             {
                 StationNo = normalizedStationNo,
-                StartAddress = _addressService.GetByKey(AppConstants.PlcAddressKeys.WeldStart, normalizedStationNo),
-                EndAddress = _addressService.GetByKey(AppConstants.PlcAddressKeys.WeldEnd, normalizedStationNo),
-                CollectionAckAddress = _addressService.GetByKey(AppConstants.PlcAddressKeys.WeldCollectionAck, normalizedStationNo)
+                ProductDataReadyAddress = _addressService.GetByKey(AppConstants.PlcAddressKeys.ProductDataReady, normalizedStationNo),
+                ProductCollectionFeedbackAddress = _addressService.GetByKey(AppConstants.PlcAddressKeys.ProductCollectionFeedback, normalizedStationNo)
             };
             _stationStates[normalizedStationNo] = stationState;
             return stationState;
@@ -291,67 +318,142 @@ public sealed class PlcWeldCycleMonitorService : IPlcWeldCycleMonitorService, ID
         }
     }
 
-    private async Task CollectWeldPointAsync(BizWeldTask task, StationCycleState stationState, CancellationToken cancellationToken)
+    private async Task CollectProductCycleAsync(BizWeldTask task, StationCycleState stationState, CancellationToken cancellationToken)
     {
         try
         {
-            if (!stationState.CycleStarted)
-            {
-                _operationLogService.Write(
-                    "WeldCycle",
-                    $"Weld end detected without a start edge, collect anyway. Station={task.StationNo}, WorkOrder={task.WorkOrderId}");
-            }
+            WriteProductionLog(
+                "ProductCollectionStart",
+                "开始读取整件产品数据",
+                $"ProgramId={task.ProgramId}, ReadyAddress={stationState.ProductDataReadyAddress?.Address}",
+                task,
+                plcSignal: AppConstants.PlcAddressKeys.ProductDataReady,
+                plcAddress: stationState.ProductDataReadyAddress?.Address);
+            var records = await _productCycleCollectionService.CollectAsync(task, task.StationNo, cancellationToken);
+            await WriteProductCollectionFeedbackAsync(stationState, 1, cancellationToken);
+            stationState.ProductDataReadyHandled = true;
+            stationState.ProductFeedbackWritten = true;
+            WriteProductionLog(
+                "ProductCollectionFeedback",
+                "已反馈PLC采集成功",
+                $"Feedback=1, Records={records.Count}, Address={stationState.ProductCollectionFeedbackAddress?.Address}",
+                task,
+                productNo: records.FirstOrDefault()?.ProductNo,
+                plcSignal: AppConstants.PlcAddressKeys.ProductCollectionFeedback,
+                plcAddress: stationState.ProductCollectionFeedbackAddress?.Address);
 
-            var record = await _weldPointCollectionService.CollectAsync(task, task.StationNo, cancellationToken);
-            await PulseCollectionAckAsync(stationState, cancellationToken);
-            WeldPointCollected?.Invoke(this, record);
-            await _weldPointUploadCoordinatorService.HandleCollectedAsync(record, cancellationToken);
+            foreach (var record in records)
+            {
+                WeldPointCollected?.Invoke(this, record);
+                await _weldPointUploadCoordinatorService.HandleCollectedAsync(record, cancellationToken);
+            }
         }
         catch (BusinessOperationException ex)
         {
+            if (!IsPlcConnected())
+            {
+                return;
+            }
+
+            await WriteProductCollectionFeedbackAsync(stationState, 2, cancellationToken);
+            stationState.ProductDataReadyHandled = true;
+            stationState.ProductFeedbackWritten = true;
+            WriteProductionLog(
+                "ProductCollectionFeedback",
+                "已反馈PLC采集失败",
+                ex.Detail,
+                task,
+                level: "Error",
+                plcSignal: AppConstants.PlcAddressKeys.ProductCollectionFeedback,
+                plcAddress: stationState.ProductCollectionFeedbackAddress?.Address);
             WriteBusinessFailureLog(ex.Message, ex.Detail);
         }
         catch (Exception ex)
         {
-            _exceptionLogService.Write(ex, "PLC.WeldCycleMonitor", $"Station={task.StationNo}, WorkOrder={task.WorkOrderId}");
+            if (!IsPlcConnected())
+            {
+                return;
+            }
+
+            await WriteProductCollectionFeedbackAsync(stationState, 2, cancellationToken);
+            stationState.ProductDataReadyHandled = true;
+            stationState.ProductFeedbackWritten = true;
+            WriteProductionLog(
+                "ProductCollectionFeedback",
+                "已反馈PLC采集失败",
+                ex.Message,
+                task,
+                level: "Error",
+                plcSignal: AppConstants.PlcAddressKeys.ProductCollectionFeedback,
+                plcAddress: stationState.ProductCollectionFeedbackAddress?.Address);
+            _exceptionLogService.Write(ex, "PLC.ProductCycleMonitor", $"Station={task.StationNo}, WorkOrder={task.WorkOrderId}");
         }
     }
 
-    private async Task PulseCollectionAckAsync(StationCycleState stationState, CancellationToken cancellationToken)
+    private async Task<short> ReadNumberSignalAsync(BizPlcAddress address, string signalName, CancellationToken cancellationToken)
     {
-        if (!IsUsable(stationState.CollectionAckAddress))
+        var dataType = NormalizeDataType(address.DataType);
+        if (dataType == AppConstants.PlcDataTypes.Bool)
         {
-            return;
+            var boolResult = await _plcCommunicationService.ReadBoolAsync(address.Address!, cancellationToken);
+            if (boolResult.IsSuccess)
+            {
+                return boolResult.Value ? (short)1 : (short)0;
+            }
+
+            throw new BusinessOperationException("PLC.ProductCycleMonitor", $"{signalName}读取失败", boolResult.Message);
         }
 
-        var address = stationState.CollectionAckAddress!.Address!;
-        var writeHighResult = await _plcCommunicationService.WriteBoolAsync(address, true, cancellationToken);
-        if (!writeHighResult.IsSuccess)
+        if (dataType == AppConstants.PlcDataTypes.Int32)
         {
-            WriteBusinessFailureLog($"工位{stationState.StationNo}采集完成反馈写入失败", writeHighResult.Message);
-            return;
+            var intResult = await _plcCommunicationService.ReadInt32Async(address.Address!, cancellationToken);
+            if (intResult.IsSuccess)
+            {
+                return (short)intResult.Value;
+            }
+
+            throw new BusinessOperationException("PLC.ProductCycleMonitor", $"{signalName}读取失败", intResult.Message);
         }
 
-        await Task.Delay(CollectionAckPulseWidth, cancellationToken);
-        var writeLowResult = await _plcCommunicationService.WriteBoolAsync(address, false, cancellationToken);
-        if (!writeLowResult.IsSuccess)
-        {
-            WriteBusinessFailureLog($"工位{stationState.StationNo}采集完成反馈复位失败", writeLowResult.Message);
-        }
-    }
-
-    private async Task<bool> ReadBoolSignalAsync(BizPlcAddress address, string signalName, CancellationToken cancellationToken)
-    {
-        var result = await _plcCommunicationService.ReadBoolAsync(address.Address!, cancellationToken);
+        var result = await _plcCommunicationService.ReadInt16Async(address.Address!, cancellationToken);
         if (result.IsSuccess)
         {
             return result.Value;
         }
 
-        throw new BusinessOperationException(
-            "PLC.WeldCycleMonitor",
-            $"{signalName}读取失败",
-            result.Message);
+        throw new BusinessOperationException("PLC.ProductCycleMonitor", $"{signalName}读取失败", result.Message);
+    }
+
+    private async Task WriteProductCollectionFeedbackAsync(StationCycleState stationState, short value, CancellationToken cancellationToken)
+    {
+        if (!IsUsable(stationState.ProductCollectionFeedbackAddress))
+        {
+            return;
+        }
+
+        if (!IsPlcConnected())
+        {
+            return;
+        }
+
+        var address = stationState.ProductCollectionFeedbackAddress!;
+        var result = NormalizeDataType(address.DataType) switch
+        {
+            AppConstants.PlcDataTypes.Bool => await _plcCommunicationService.WriteBoolAsync(address.Address!, value > 0, cancellationToken),
+            AppConstants.PlcDataTypes.Int32 => await _plcCommunicationService.WriteInt32Async(address.Address!, value, cancellationToken),
+            AppConstants.PlcDataTypes.Float => await _plcCommunicationService.WriteFloatAsync(address.Address!, value, cancellationToken),
+            _ => await _plcCommunicationService.WriteInt16Async(address.Address!, value, cancellationToken)
+        };
+
+        if (!result.IsSuccess)
+        {
+            if (!IsPlcConnected())
+            {
+                return;
+            }
+
+            WriteBusinessFailureLog($"工位{stationState.StationNo}产品采集反馈写入失败", result.Message);
+        }
     }
 
     private static BizPlcAddress? FindAddress(IReadOnlyList<BizPlcAddress> addresses, string logicalKey, int stationNo)
@@ -369,9 +471,15 @@ public sealed class PlcWeldCycleMonitorService : IPlcWeldCycleMonitorService, ID
     private static bool IsWeldSignalAddress(BizPlcAddress address)
     {
         var logicalKey = GetLogicalKey(address);
-        return string.Equals(logicalKey, AppConstants.PlcAddressKeys.WeldStart, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(logicalKey, AppConstants.PlcAddressKeys.WeldEnd, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(logicalKey, AppConstants.PlcAddressKeys.WeldCollectionAck, StringComparison.OrdinalIgnoreCase);
+        return string.Equals(logicalKey, AppConstants.PlcAddressKeys.ProductDataReady, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(logicalKey, AppConstants.PlcAddressKeys.ProductCollectionFeedback, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeDataType(string? dataType)
+    {
+        return AppConstants.PlcDataTypes.All.Contains(dataType)
+            ? dataType!
+            : AppConstants.PlcDataTypes.Int16;
     }
 
     private static string GetLogicalKey(BizPlcAddress address)
@@ -387,6 +495,11 @@ public sealed class PlcWeldCycleMonitorService : IPlcWeldCycleMonitorService, ID
             && !string.IsNullOrWhiteSpace(address.Address);
     }
 
+    private bool IsPlcConnected()
+    {
+        return _plcCommunicationService.Current.IsConnected;
+    }
+
     private void WriteBusinessFailureLog(string summary, string detail)
     {
         if (!ShouldWriteBusinessLog(summary, detail))
@@ -398,7 +511,7 @@ public sealed class PlcWeldCycleMonitorService : IPlcWeldCycleMonitorService, ID
             "PLC.WeldCycleMonitor",
             summary,
             detail,
-            "监控焊接开始/结束信号并触发焊点数据采集。");
+            "监控产品数据就绪信号并触发整件产品数据采集。");
     }
 
     private bool ShouldWriteBusinessLog(string summary, string detail)
@@ -419,30 +532,45 @@ public sealed class PlcWeldCycleMonitorService : IPlcWeldCycleMonitorService, ID
         }
     }
 
+    private void WriteProductionLog(
+        string step,
+        string summary,
+        string detail,
+        BizWeldTask task,
+        string level = "Info",
+        string? productNo = null,
+        string? plcSignal = null,
+        string? plcAddress = null)
+    {
+        _productionLogService.Write(
+            step,
+            summary,
+            detail,
+            level,
+            task.StationNo,
+            task.WorkOrderId,
+            productNo ?? string.Empty,
+            task.ProgramId ?? string.Empty,
+            plcSignal ?? string.Empty,
+            plcAddress ?? string.Empty);
+    }
+
     private sealed class StationCycleState
     {
         public int StationNo { get; init; }
 
-        public BizPlcAddress? StartAddress { get; init; }
+        public BizPlcAddress? ProductDataReadyAddress { get; init; }
 
-        public BizPlcAddress? EndAddress { get; init; }
+        public BizPlcAddress? ProductCollectionFeedbackAddress { get; init; }
 
-        public BizPlcAddress? CollectionAckAddress { get; init; }
+        public bool ProductDataReadyHandled { get; set; }
 
-        public bool LastStartSignal { get; set; }
-
-        public bool LastEndSignal { get; set; }
-
-        public bool HasSignalSnapshot { get; set; }
-
-        public bool CycleStarted { get; set; }
+        public bool ProductFeedbackWritten { get; set; }
 
         public void ResetSignalSnapshot()
         {
-            LastStartSignal = false;
-            LastEndSignal = false;
-            HasSignalSnapshot = false;
-            CycleStarted = false;
+            ProductDataReadyHandled = false;
+            ProductFeedbackWritten = false;
         }
     }
 }

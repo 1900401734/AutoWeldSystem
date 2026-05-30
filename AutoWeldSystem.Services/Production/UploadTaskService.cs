@@ -16,12 +16,17 @@ public class UploadTaskService : IUploadTaskService
 {
     private readonly SqlSugarDbContext _dbContext;
     private readonly IMesProvider _mesProvider;
+    private readonly IProductionFlowLogService _productionLogService;
     private readonly object _dbLock = new();
 
-    public UploadTaskService(SqlSugarDbContext dbContext, IMesProvider mesProvider)
+    public UploadTaskService(
+        SqlSugarDbContext dbContext,
+        IMesProvider mesProvider,
+        IProductionFlowLogService productionLogService)
     {
         _dbContext = dbContext;
         _mesProvider = mesProvider;
+        _productionLogService = productionLogService;
     }
 
     public IReadOnlyList<UploadTaskSummary> GetTasks(string taskType, bool includeCompleted = false)
@@ -100,7 +105,9 @@ public class UploadTaskService : IUploadTaskService
         }
 
         var response = await ExecuteByTypeAsync(task, cancellationToken);
-        return FinishExecution(task.Id, response);
+        var summary = FinishExecution(task.Id, response);
+        WriteUploadFlowLog(task, response);
+        return summary;
     }
 
     public async Task<int> ExecuteAllPendingAsync(string taskType, CancellationToken cancellationToken = default)
@@ -389,6 +396,50 @@ public class UploadTaskService : IUploadTaskService
         }
     }
 
+    private void WriteUploadFlowLog(BizUploadTask task, MesBaseResponse<object> response)
+    {
+        var payload = ReadUploadPayload(task.PayloadJson);
+        var step = ResolveUploadFlowStep(task.TaskType, response.IsSuccess);
+        if (string.IsNullOrWhiteSpace(step))
+        {
+            return;
+        }
+
+        _productionLogService.Write(
+            step,
+            ResolveUploadSummary(task.TaskType, response.IsSuccess),
+            response.Msg,
+            response.IsSuccess ? "Info" : "Error",
+            payload.StationNo,
+            payload.WorkOrderId,
+            payload.ProductNo,
+            plcAddress: task.FilePath ?? string.Empty);
+    }
+
+    private static string ResolveUploadFlowStep(string taskType, bool success)
+    {
+        return taskType switch
+        {
+            ProductionConstants.UploadTaskTypes.ProcessParameter => success
+                ? "ProcessParameterUploadSucceeded"
+                : "ProcessParameterUploadFailed",
+            ProductionConstants.UploadTaskTypes.ReportFile => success
+                ? "ReportFileUploadSucceeded"
+                : "ReportFileUploadFailed",
+            _ => string.Empty
+        };
+    }
+
+    private static string ResolveUploadSummary(string taskType, bool success)
+    {
+        return taskType switch
+        {
+            ProductionConstants.UploadTaskTypes.ProcessParameter => success ? "过程参数上传成功" : "过程参数上传失败",
+            ProductionConstants.UploadTaskTypes.ReportFile => success ? "报告文件上传成功" : "报告文件上传失败",
+            _ => success ? "上传成功" : "上传失败"
+        };
+    }
+
     private void UpdateReportFileStatus(BizUploadTask task, MesBaseResponse<object> response)
     {
         if (task.TaskType != ProductionConstants.UploadTaskTypes.ReportFile)
@@ -467,6 +518,44 @@ public class UploadTaskService : IUploadTaskService
         {
             return null;
         }
+    }
+
+    private static UploadPayloadInfo ReadUploadPayload(string? payloadJson)
+    {
+        if (string.IsNullOrWhiteSpace(payloadJson))
+        {
+            return new UploadPayloadInfo();
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            var root = document.RootElement;
+            return new UploadPayloadInfo
+            {
+                StationNo = ReadInt(root, "StationNo"),
+                WorkOrderId = ReadString(root, "SN"),
+                ProductNo = ReadString(root, "ProductNo")
+            };
+        }
+        catch (JsonException)
+        {
+            return new UploadPayloadInfo();
+        }
+    }
+
+    private static int ReadInt(JsonElement root, string propertyName)
+    {
+        return root.TryGetProperty(propertyName, out var element) && element.TryGetInt32(out var value)
+            ? value
+            : 0;
+    }
+
+    private static string ReadString(JsonElement root, string propertyName)
+    {
+        return root.TryGetProperty(propertyName, out var element)
+            ? element.GetString() ?? string.Empty
+            : string.Empty;
     }
 
     private static void MarkRetryRequested(BizUploadTask task)
@@ -550,6 +639,15 @@ public class UploadTaskService : IUploadTaskService
             CreatedTime = task.CreatedTime,
             UpdatedTime = task.UpdatedTime
         };
+    }
+
+    private sealed record UploadPayloadInfo
+    {
+        public int StationNo { get; init; }
+
+        public string WorkOrderId { get; init; } = string.Empty;
+
+        public string ProductNo { get; init; } = string.Empty;
     }
 
     private static string NormalizeTaskType(string? taskType)
