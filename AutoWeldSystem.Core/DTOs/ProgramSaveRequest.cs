@@ -32,9 +32,5 @@ public sealed class ProgramSaveRequest
 
     public decimal CycleTimeSeconds { get; set; }
 
-    public string Remark { get; set; } = string.Empty;
-
     public string LocalRemark { get; set; } = string.Empty;
-
-    public string CommitMessage { get; set; } = string.Empty;
 }

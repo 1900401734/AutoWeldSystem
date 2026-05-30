@@ -491,10 +491,14 @@ public partial class ProgramManageView : BaseView
         request.WeldJobName = string.Empty;
         request.RobotJobName = string.Empty;
         request.CycleTimeSeconds = 0m;
-        request.Remark = GetSelectedRemark();
+        BindRemarkOptions(GetAutoRemarkAction(GetEditingProgram()));
         request.LocalRemark = txtLocalRemark.Text.Trim();
-        request.CommitMessage = request.Remark;
         return true;
+    }
+
+    private BizProgram? GetEditingProgram()
+    {
+        return _programs.FirstOrDefault(program => program.Id == _editingId);
     }
 
     private string GetSelectedRemark()

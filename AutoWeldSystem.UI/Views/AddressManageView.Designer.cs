@@ -10,6 +10,7 @@ namespace AutoWeldSystem.UI.Views
             {
                 components.Dispose();
             }
+
             base.Dispose(disposing);
         }
 
@@ -21,30 +22,76 @@ namespace AutoWeldSystem.UI.Views
             titleLayout = new TableLayoutPanel();
             lblTitle = new Label();
             lblDescription = new Label();
-            queryAddresses = new AutoWeldSystem.UI.Components.InputQuery(components);
-            buttonFlow = new FlowLayoutPanel();
-            btnSave = new AntdUI.Button();
-            btnRefresh = new AntdUI.Button();
+            SaveLayout = new TableLayoutPanel();
             btnTest = new AntdUI.Button();
+            btnRefresh = new AntdUI.Button();
+            btnSave = new AntdUI.Button();
+            queryAddresses = new AutoWeldSystem.UI.Components.InputQuery(components);
+            bindingFlowPanel = new FlowLayoutPanel();
+            lblBindingProduct = new Label();
+            lblBindingArrow1 = new Label();
+            lblBindingProcess = new Label();
+            lblBindingArrow2 = new Label();
+            lblBindingScheme = new Label();
+            lblBindingArrow3 = new Label();
+            lblBindingDetail = new Label();
+            lblBindingArrow4 = new Label();
+            lblBindingItem = new Label();
+            lblBindingArrow5 = new Label();
+            lblBindingPreview = new Label();
             tabAddressCategories = new TabControl();
             tabBusinessAddresses = new TabPage();
             tableAddresses = new AntdUI.Table();
             tabTestItemAddresses = new TabPage();
             testItemAddressLayout = new TableLayoutPanel();
-            testItemAddressToolbar = new FlowLayoutPanel();
-            btnAddTestItemAddress = new AntdUI.Button();
-            btnDeleteTestItemAddress = new AntdUI.Button();
             lblTestItemAddressHint = new Label();
+            lblProductProcessGroupHint = new Label();
+            productProcessToolbar = new FlowLayoutPanel();
+            btnAddProductProcess = new AntdUI.Button();
+            btnDeleteProductProcess = new AntdUI.Button();
+            btnPreviewProductProcessAddress = new AntdUI.Button();
+            lblProductProcessSummary = new Label();
             tableTestItemAddresses = new AntdUI.Table();
+            tabTestSchemes = new TabPage();
+            testSchemeLayout = new TableLayoutPanel();
+            lblTestSchemeHint = new Label();
+            testSchemeToolbar = new FlowLayoutPanel();
+            btnAddScheme = new AntdUI.Button();
+            btnDeleteScheme = new AntdUI.Button();
+            tableTestSchemes = new AntdUI.Table();
+            tabSchemeDetails = new TabPage();
+            schemeDetailLayout = new TableLayoutPanel();
+            lblSchemeDetailHint = new Label();
+            schemeDetailToolbar = new FlowLayoutPanel();
+            btnAddSchemeDetail = new AntdUI.Button();
+            btnDeleteSchemeDetail = new AntdUI.Button();
+            tableSchemeDetails = new AntdUI.Table();
+            tabTestItems = new TabPage();
+            testItemLayout = new TableLayoutPanel();
+            lblTestItemHint = new Label();
+            testItemToolbar = new FlowLayoutPanel();
+            btnAddTestItem = new AntdUI.Button();
+            btnDeleteTestItem = new AntdUI.Button();
+            tableTestItems = new AntdUI.Table();
             rootLayout.SuspendLayout();
             headerLayout.SuspendLayout();
             titleLayout.SuspendLayout();
-            buttonFlow.SuspendLayout();
+            SaveLayout.SuspendLayout();
+            bindingFlowPanel.SuspendLayout();
             tabAddressCategories.SuspendLayout();
             tabBusinessAddresses.SuspendLayout();
             tabTestItemAddresses.SuspendLayout();
             testItemAddressLayout.SuspendLayout();
-            testItemAddressToolbar.SuspendLayout();
+            productProcessToolbar.SuspendLayout();
+            tabTestSchemes.SuspendLayout();
+            testSchemeLayout.SuspendLayout();
+            testSchemeToolbar.SuspendLayout();
+            tabSchemeDetails.SuspendLayout();
+            schemeDetailLayout.SuspendLayout();
+            schemeDetailToolbar.SuspendLayout();
+            tabTestItems.SuspendLayout();
+            testItemLayout.SuspendLayout();
+            testItemToolbar.SuspendLayout();
             SuspendLayout();
             // 
             // rootLayout
@@ -52,12 +99,14 @@ namespace AutoWeldSystem.UI.Views
             rootLayout.ColumnCount = 1;
             rootLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             rootLayout.Controls.Add(headerLayout, 0, 0);
-            rootLayout.Controls.Add(tabAddressCategories, 0, 1);
+            rootLayout.Controls.Add(bindingFlowPanel, 0, 1);
+            rootLayout.Controls.Add(tabAddressCategories, 0, 2);
             rootLayout.Dock = DockStyle.Fill;
             rootLayout.Location = new Point(0, 0);
             rootLayout.Name = "rootLayout";
-            rootLayout.RowCount = 2;
+            rootLayout.RowCount = 3;
             rootLayout.RowStyles.Add(new RowStyle());
+            rootLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48F));
             rootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             rootLayout.Size = new Size(1298, 721);
             rootLayout.TabIndex = 0;
@@ -65,12 +114,12 @@ namespace AutoWeldSystem.UI.Views
             // headerLayout
             // 
             headerLayout.ColumnCount = 3;
-            headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            headerLayout.ColumnStyles.Add(new ColumnStyle());
-            headerLayout.ColumnStyles.Add(new ColumnStyle());
+            headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
+            headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
             headerLayout.Controls.Add(titleLayout, 0, 0);
+            headerLayout.Controls.Add(SaveLayout, 2, 0);
             headerLayout.Controls.Add(queryAddresses, 1, 0);
-            headerLayout.Controls.Add(buttonFlow, 2, 0);
             headerLayout.Dock = DockStyle.Fill;
             headerLayout.Location = new Point(24, 18);
             headerLayout.Margin = new Padding(24, 18, 24, 10);
@@ -93,7 +142,7 @@ namespace AutoWeldSystem.UI.Views
             titleLayout.RowCount = 2;
             titleLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
             titleLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            titleLayout.Size = new Size(601, 70);
+            titleLayout.Size = new Size(625, 70);
             titleLayout.TabIndex = 0;
             // 
             // lblTitle
@@ -104,7 +153,7 @@ namespace AutoWeldSystem.UI.Views
             lblTitle.Location = new Point(0, 0);
             lblTitle.Margin = new Padding(0);
             lblTitle.Name = "lblTitle";
-            lblTitle.Size = new Size(601, 34);
+            lblTitle.Size = new Size(625, 34);
             lblTitle.TabIndex = 0;
             lblTitle.Text = "PLC 地址配置";
             lblTitle.TextAlign = ContentAlignment.MiddleLeft;
@@ -117,204 +166,704 @@ namespace AutoWeldSystem.UI.Views
             lblDescription.Location = new Point(0, 34);
             lblDescription.Margin = new Padding(0);
             lblDescription.Name = "lblDescription";
-            lblDescription.Size = new Size(601, 36);
+            lblDescription.Size = new Size(625, 36);
             lblDescription.TabIndex = 1;
             lblDescription.Text = "维护固定业务信号对应的 PLC 实际地址。";
             lblDescription.TextAlign = ContentAlignment.MiddleLeft;
             // 
-            // queryAddresses
+            // SaveLayout
             // 
-            queryAddresses.AutoSize = true;
-            queryAddresses.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            queryAddresses.Location = new Point(601, 0);
-            queryAddresses.Margin = new Padding(0);
-            queryAddresses.MinimumSize = new Size(125, 46);
-            queryAddresses.Name = "queryAddresses";
-            queryAddresses.QueryChanged = null;
-            queryAddresses.Size = new Size(307, 46);
-            queryAddresses.TabIndex = 1;
-            // 
-            // buttonFlow
-            // 
-            buttonFlow.AutoSize = true;
-            buttonFlow.Controls.Add(btnSave);
-            buttonFlow.Controls.Add(btnRefresh);
-            buttonFlow.Controls.Add(btnTest);
-            buttonFlow.Dock = DockStyle.Right;
-            buttonFlow.Location = new Point(908, 0);
-            buttonFlow.Margin = new Padding(0);
-            buttonFlow.Name = "buttonFlow";
-            buttonFlow.Size = new Size(342, 70);
-            buttonFlow.TabIndex = 1;
-            buttonFlow.WrapContents = false;
-            // 
-            // btnSave
-            // 
-            btnSave.AutoSizeMode = AntdUI.TAutoSize.Width;
-            btnSave.BorderWidth = 1F;
-            btnSave.IconSvg = "SaveOutlined";
-            btnSave.JoinMode = AntdUI.TJoinMode.Left;
-            btnSave.Location = new Point(0, 0);
-            btnSave.Margin = new Padding(0, 0, 10, 0);
-            btnSave.Name = "btnSave";
-            btnSave.Size = new Size(107, 45);
-            btnSave.TabIndex = 0;
-            btnSave.Text = "保存地址";
-            // 
-            // btnRefresh
-            // 
-            btnRefresh.AutoSizeMode = AntdUI.TAutoSize.Width;
-            btnRefresh.BorderWidth = 1F;
-            btnRefresh.IconSvg = "ReloadOutlined";
-            btnRefresh.JoinMode = AntdUI.TJoinMode.LR;
-            btnRefresh.Location = new Point(117, 0);
-            btnRefresh.Margin = new Padding(0, 0, 10, 0);
-            btnRefresh.Name = "btnRefresh";
-            btnRefresh.Size = new Size(76, 44);
-            btnRefresh.TabIndex = 1;
-            btnRefresh.Text = "刷新";
+            SaveLayout.AutoSize = true;
+            SaveLayout.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            SaveLayout.ColumnCount = 3;
+            SaveLayout.ColumnStyles.Add(new ColumnStyle());
+            SaveLayout.ColumnStyles.Add(new ColumnStyle());
+            SaveLayout.ColumnStyles.Add(new ColumnStyle());
+            SaveLayout.Controls.Add(btnTest, 2, 0);
+            SaveLayout.Controls.Add(btnRefresh, 1, 0);
+            SaveLayout.Controls.Add(btnSave, 0, 0);
+            SaveLayout.Dock = DockStyle.Fill;
+            SaveLayout.Location = new Point(937, 0);
+            SaveLayout.Margin = new Padding(0);
+            SaveLayout.Name = "SaveLayout";
+            SaveLayout.RowCount = 1;
+            SaveLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            SaveLayout.Size = new Size(313, 70);
+            SaveLayout.TabIndex = 1;
             // 
             // btnTest
             // 
             btnTest.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnTest.BorderWidth = 1F;
-            btnTest.Dock = DockStyle.Right;
+            btnTest.Dock = DockStyle.Fill;
             btnTest.IconSvg = "ApiOutlined";
             btnTest.JoinMode = AntdUI.TJoinMode.Right;
-            btnTest.Location = new Point(203, 0);
+            btnTest.Location = new Point(183, 0);
             btnTest.Margin = new Padding(0);
             btnTest.Name = "btnTest";
-            btnTest.Size = new Size(139, 45);
+            btnTest.Size = new Size(139, 70);
             btnTest.TabIndex = 2;
             btnTest.Text = "测试选中地址";
-            //
+            // 
+            // btnRefresh
+            // 
+            btnRefresh.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnRefresh.BorderWidth = 1F;
+            btnRefresh.Dock = DockStyle.Fill;
+            btnRefresh.IconSvg = "ReloadOutlined";
+            btnRefresh.JoinMode = AntdUI.TJoinMode.LR;
+            btnRefresh.Location = new Point(107, 0);
+            btnRefresh.Margin = new Padding(0);
+            btnRefresh.Name = "btnRefresh";
+            btnRefresh.Size = new Size(76, 70);
+            btnRefresh.TabIndex = 1;
+            btnRefresh.Text = "刷新";
+            // 
+            // btnSave
+            // 
+            btnSave.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnSave.BorderWidth = 1F;
+            btnSave.Dock = DockStyle.Fill;
+            btnSave.IconSvg = "SaveOutlined";
+            btnSave.JoinMode = AntdUI.TJoinMode.Left;
+            btnSave.Location = new Point(0, 0);
+            btnSave.Margin = new Padding(0);
+            btnSave.Name = "btnSave";
+            btnSave.Size = new Size(107, 70);
+            btnSave.TabIndex = 0;
+            btnSave.Text = "保存地址";
+            // 
+            // queryAddresses
+            // 
+            queryAddresses.AutoSize = true;
+            queryAddresses.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            queryAddresses.Dock = DockStyle.Fill;
+            queryAddresses.Location = new Point(625, 0);
+            queryAddresses.Margin = new Padding(0);
+            queryAddresses.MinimumSize = new Size(125, 46);
+            queryAddresses.Name = "queryAddresses";
+            queryAddresses.QueryChanged = null;
+            queryAddresses.Size = new Size(312, 70);
+            queryAddresses.TabIndex = 1;
+            // 
+            // bindingFlowPanel
+            // 
+            bindingFlowPanel.BackColor = Color.FromArgb(248, 250, 252);
+            bindingFlowPanel.Controls.Add(lblBindingProduct);
+            bindingFlowPanel.Controls.Add(lblBindingArrow1);
+            bindingFlowPanel.Controls.Add(lblBindingProcess);
+            bindingFlowPanel.Controls.Add(lblBindingArrow2);
+            bindingFlowPanel.Controls.Add(lblBindingScheme);
+            bindingFlowPanel.Controls.Add(lblBindingArrow3);
+            bindingFlowPanel.Controls.Add(lblBindingDetail);
+            bindingFlowPanel.Controls.Add(lblBindingArrow4);
+            bindingFlowPanel.Controls.Add(lblBindingItem);
+            bindingFlowPanel.Controls.Add(lblBindingArrow5);
+            bindingFlowPanel.Controls.Add(lblBindingPreview);
+            bindingFlowPanel.Dock = DockStyle.Fill;
+            bindingFlowPanel.Location = new Point(24, 98);
+            bindingFlowPanel.Margin = new Padding(24, 0, 24, 6);
+            bindingFlowPanel.Name = "bindingFlowPanel";
+            bindingFlowPanel.Padding = new Padding(12, 8, 12, 8);
+            bindingFlowPanel.Size = new Size(1250, 42);
+            bindingFlowPanel.TabIndex = 1;
+            bindingFlowPanel.WrapContents = false;
+            // 
+            // lblBindingProduct
+            // 
+            lblBindingProduct.AutoSize = true;
+            lblBindingProduct.BackColor = Color.FromArgb(232, 244, 255);
+            lblBindingProduct.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
+            lblBindingProduct.Location = new Point(12, 8);
+            lblBindingProduct.Margin = new Padding(0, 0, 6, 0);
+            lblBindingProduct.Name = "lblBindingProduct";
+            lblBindingProduct.Padding = new Padding(10, 2, 10, 2);
+            lblBindingProduct.Size = new Size(137, 24);
+            lblBindingProduct.TabIndex = 0;
+            lblBindingProduct.Text = "产品工号 ProductNum";
+            // 
+            // lblBindingArrow1
+            // 
+            lblBindingArrow1.AutoSize = true;
+            lblBindingArrow1.ForeColor = SystemColors.GrayText;
+            lblBindingArrow1.Location = new Point(155, 8);
+            lblBindingArrow1.Margin = new Padding(0, 0, 6, 0);
+            lblBindingArrow1.Name = "lblBindingArrow1";
+            lblBindingArrow1.Size = new Size(24, 20);
+            lblBindingArrow1.TabIndex = 1;
+            lblBindingArrow1.Text = "->";
+            // 
+            // lblBindingProcess
+            // 
+            lblBindingProcess.AutoSize = true;
+            lblBindingProcess.BackColor = Color.FromArgb(237, 247, 237);
+            lblBindingProcess.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
+            lblBindingProcess.Location = new Point(185, 8);
+            lblBindingProcess.Margin = new Padding(0, 0, 6, 0);
+            lblBindingProcess.Name = "lblBindingProcess";
+            lblBindingProcess.Padding = new Padding(10, 2, 10, 2);
+            lblBindingProcess.Size = new Size(150, 24);
+            lblBindingProcess.TabIndex = 2;
+            lblBindingProcess.Text = "产品工艺 SchemeId";
+            // 
+            // lblBindingArrow2
+            // 
+            lblBindingArrow2.AutoSize = true;
+            lblBindingArrow2.ForeColor = SystemColors.GrayText;
+            lblBindingArrow2.Location = new Point(341, 8);
+            lblBindingArrow2.Margin = new Padding(0, 0, 6, 0);
+            lblBindingArrow2.Name = "lblBindingArrow2";
+            lblBindingArrow2.Size = new Size(24, 20);
+            lblBindingArrow2.TabIndex = 3;
+            lblBindingArrow2.Text = "->";
+            // 
+            // lblBindingScheme
+            // 
+            lblBindingScheme.AutoSize = true;
+            lblBindingScheme.BackColor = Color.FromArgb(255, 247, 230);
+            lblBindingScheme.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
+            lblBindingScheme.Location = new Point(371, 8);
+            lblBindingScheme.Margin = new Padding(0, 0, 6, 0);
+            lblBindingScheme.Name = "lblBindingScheme";
+            lblBindingScheme.Padding = new Padding(10, 2, 10, 2);
+            lblBindingScheme.Size = new Size(69, 24);
+            lblBindingScheme.TabIndex = 4;
+            lblBindingScheme.Text = "测试方案";
+            // 
+            // lblBindingArrow3
+            // 
+            lblBindingArrow3.AutoSize = true;
+            lblBindingArrow3.ForeColor = SystemColors.GrayText;
+            lblBindingArrow3.Location = new Point(446, 8);
+            lblBindingArrow3.Margin = new Padding(0, 0, 6, 0);
+            lblBindingArrow3.Name = "lblBindingArrow3";
+            lblBindingArrow3.Size = new Size(24, 20);
+            lblBindingArrow3.TabIndex = 5;
+            lblBindingArrow3.Text = "->";
+            // 
+            // lblBindingDetail
+            // 
+            lblBindingDetail.AutoSize = true;
+            lblBindingDetail.BackColor = Color.FromArgb(246, 239, 255);
+            lblBindingDetail.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
+            lblBindingDetail.Location = new Point(476, 8);
+            lblBindingDetail.Margin = new Padding(0, 0, 6, 0);
+            lblBindingDetail.Name = "lblBindingDetail";
+            lblBindingDetail.Padding = new Padding(10, 2, 10, 2);
+            lblBindingDetail.Size = new Size(107, 24);
+            lblBindingDetail.TabIndex = 6;
+            lblBindingDetail.Text = "方案明细 ItemId";
+            // 
+            // lblBindingArrow4
+            // 
+            lblBindingArrow4.AutoSize = true;
+            lblBindingArrow4.ForeColor = SystemColors.GrayText;
+            lblBindingArrow4.Location = new Point(589, 8);
+            lblBindingArrow4.Margin = new Padding(0, 0, 6, 0);
+            lblBindingArrow4.Name = "lblBindingArrow4";
+            lblBindingArrow4.Size = new Size(24, 20);
+            lblBindingArrow4.TabIndex = 7;
+            lblBindingArrow4.Text = "->";
+            // 
+            // lblBindingItem
+            // 
+            lblBindingItem.AutoSize = true;
+            lblBindingItem.BackColor = Color.FromArgb(255, 241, 240);
+            lblBindingItem.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
+            lblBindingItem.Location = new Point(619, 8);
+            lblBindingItem.Margin = new Padding(0, 0, 6, 0);
+            lblBindingItem.Name = "lblBindingItem";
+            lblBindingItem.Padding = new Padding(10, 2, 10, 2);
+            lblBindingItem.Size = new Size(111, 24);
+            lblBindingItem.TabIndex = 8;
+            lblBindingItem.Text = "测试项字典 表达式";
+            // 
+            // lblBindingArrow5
+            // 
+            lblBindingArrow5.AutoSize = true;
+            lblBindingArrow5.ForeColor = SystemColors.GrayText;
+            lblBindingArrow5.Location = new Point(736, 8);
+            lblBindingArrow5.Margin = new Padding(0, 0, 6, 0);
+            lblBindingArrow5.Name = "lblBindingArrow5";
+            lblBindingArrow5.Size = new Size(24, 20);
+            lblBindingArrow5.TabIndex = 9;
+            lblBindingArrow5.Text = "->";
+            // 
+            // lblBindingPreview
+            // 
+            lblBindingPreview.AutoSize = true;
+            lblBindingPreview.BackColor = Color.FromArgb(238, 242, 246);
+            lblBindingPreview.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
+            lblBindingPreview.Location = new Point(766, 8);
+            lblBindingPreview.Margin = new Padding(0);
+            lblBindingPreview.Name = "lblBindingPreview";
+            lblBindingPreview.Padding = new Padding(10, 2, 10, 2);
+            lblBindingPreview.Size = new Size(92, 24);
+            lblBindingPreview.TabIndex = 10;
+            lblBindingPreview.Text = "PLC 地址预览";
+            // 
             // tabAddressCategories
-            //
+            // 
             tabAddressCategories.Controls.Add(tabBusinessAddresses);
             tabAddressCategories.Controls.Add(tabTestItemAddresses);
+            tabAddressCategories.Controls.Add(tabTestSchemes);
+            tabAddressCategories.Controls.Add(tabSchemeDetails);
+            tabAddressCategories.Controls.Add(tabTestItems);
             tabAddressCategories.Dock = DockStyle.Fill;
             tabAddressCategories.HotTrack = true;
-            tabAddressCategories.Location = new Point(24, 104);
+            tabAddressCategories.Location = new Point(24, 152);
             tabAddressCategories.Margin = new Padding(24, 6, 24, 24);
             tabAddressCategories.Name = "tabAddressCategories";
             tabAddressCategories.SelectedIndex = 0;
-            tabAddressCategories.Size = new Size(1250, 593);
-            tabAddressCategories.TabIndex = 1;
-            //
+            tabAddressCategories.Size = new Size(1250, 545);
+            tabAddressCategories.TabIndex = 2;
+            // 
             // tabBusinessAddresses
-            //
+            // 
             tabBusinessAddresses.Controls.Add(tableAddresses);
             tabBusinessAddresses.Location = new Point(4, 29);
             tabBusinessAddresses.Name = "tabBusinessAddresses";
             tabBusinessAddresses.Padding = new Padding(3);
-            tabBusinessAddresses.Size = new Size(1242, 560);
+            tabBusinessAddresses.Size = new Size(1242, 512);
             tabBusinessAddresses.TabIndex = 0;
             tabBusinessAddresses.Text = "业务信号地址";
             tabBusinessAddresses.UseVisualStyleBackColor = true;
-            //
+            // 
             // tableAddresses
-            //
+            // 
             tableAddresses.Dock = DockStyle.Fill;
             tableAddresses.EditMode = AntdUI.TEditMode.DoubleClick;
             tableAddresses.Gap = 12;
             tableAddresses.Location = new Point(3, 3);
             tableAddresses.Margin = new Padding(0);
             tableAddresses.Name = "tableAddresses";
-            tableAddresses.Size = new Size(1236, 554);
+            tableAddresses.Size = new Size(1236, 506);
             tableAddresses.TabIndex = 0;
             tableAddresses.Text = "tableAddresses";
-            //
+            // 
             // tabTestItemAddresses
-            //
+            // 
             tabTestItemAddresses.Controls.Add(testItemAddressLayout);
             tabTestItemAddresses.Location = new Point(4, 29);
             tabTestItemAddresses.Name = "tabTestItemAddresses";
             tabTestItemAddresses.Padding = new Padding(3);
-            tabTestItemAddresses.Size = new Size(1242, 560);
+            tabTestItemAddresses.Size = new Size(1242, 512);
             tabTestItemAddresses.TabIndex = 1;
-            tabTestItemAddresses.Text = "测试项目地址";
+            tabTestItemAddresses.Text = "产品工艺";
             tabTestItemAddresses.UseVisualStyleBackColor = true;
-            //
+            // 
             // testItemAddressLayout
-            //
+            // 
             testItemAddressLayout.ColumnCount = 1;
             testItemAddressLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            testItemAddressLayout.Controls.Add(testItemAddressToolbar, 0, 0);
-            testItemAddressLayout.Controls.Add(lblTestItemAddressHint, 0, 1);
-            testItemAddressLayout.Controls.Add(tableTestItemAddresses, 0, 2);
+            testItemAddressLayout.Controls.Add(lblTestItemAddressHint, 0, 0);
+            testItemAddressLayout.Controls.Add(lblProductProcessGroupHint, 0, 1);
+            testItemAddressLayout.Controls.Add(productProcessToolbar, 0, 2);
+            testItemAddressLayout.Controls.Add(lblProductProcessSummary, 0, 3);
+            testItemAddressLayout.Controls.Add(tableTestItemAddresses, 0, 4);
             testItemAddressLayout.Dock = DockStyle.Fill;
             testItemAddressLayout.Location = new Point(3, 3);
             testItemAddressLayout.Margin = new Padding(0);
             testItemAddressLayout.Name = "testItemAddressLayout";
-            testItemAddressLayout.RowCount = 3;
-            testItemAddressLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44F));
+            testItemAddressLayout.RowCount = 5;
             testItemAddressLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+            testItemAddressLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
+            testItemAddressLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
+            testItemAddressLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
             testItemAddressLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            testItemAddressLayout.Size = new Size(1236, 554);
+            testItemAddressLayout.Size = new Size(1236, 506);
             testItemAddressLayout.TabIndex = 0;
-            //
-            // testItemAddressToolbar
-            //
-            testItemAddressToolbar.AutoSize = true;
-            testItemAddressToolbar.Controls.Add(btnAddTestItemAddress);
-            testItemAddressToolbar.Controls.Add(btnDeleteTestItemAddress);
-            testItemAddressToolbar.Dock = DockStyle.Right;
-            testItemAddressToolbar.Location = new Point(1037, 0);
-            testItemAddressToolbar.Margin = new Padding(0);
-            testItemAddressToolbar.Name = "testItemAddressToolbar";
-            testItemAddressToolbar.Size = new Size(199, 44);
-            testItemAddressToolbar.TabIndex = 0;
-            testItemAddressToolbar.WrapContents = false;
-            //
-            // btnAddTestItemAddress
-            //
-            btnAddTestItemAddress.AutoSizeMode = AntdUI.TAutoSize.Width;
-            btnAddTestItemAddress.BorderWidth = 1F;
-            btnAddTestItemAddress.IconSvg = "PlusOutlined";
-            btnAddTestItemAddress.Location = new Point(0, 0);
-            btnAddTestItemAddress.Margin = new Padding(0, 0, 10, 0);
-            btnAddTestItemAddress.Name = "btnAddTestItemAddress";
-            btnAddTestItemAddress.Size = new Size(89, 40);
-            btnAddTestItemAddress.TabIndex = 0;
-            btnAddTestItemAddress.Text = "新增";
-            //
-            // btnDeleteTestItemAddress
-            //
-            btnDeleteTestItemAddress.AutoSizeMode = AntdUI.TAutoSize.Width;
-            btnDeleteTestItemAddress.BorderWidth = 1F;
-            btnDeleteTestItemAddress.IconSvg = "DeleteOutlined";
-            btnDeleteTestItemAddress.Location = new Point(99, 0);
-            btnDeleteTestItemAddress.Margin = new Padding(0);
-            btnDeleteTestItemAddress.Name = "btnDeleteTestItemAddress";
-            btnDeleteTestItemAddress.Size = new Size(100, 40);
-            btnDeleteTestItemAddress.TabIndex = 1;
-            btnDeleteTestItemAddress.Text = "删除选中";
-            //
+            // 
             // lblTestItemAddressHint
-            //
+            // 
             lblTestItemAddressHint.AutoEllipsis = true;
             lblTestItemAddressHint.Dock = DockStyle.Fill;
             lblTestItemAddressHint.ForeColor = SystemColors.GrayText;
-            lblTestItemAddressHint.Location = new Point(0, 44);
+            lblTestItemAddressHint.Location = new Point(0, 0);
             lblTestItemAddressHint.Margin = new Padding(0);
             lblTestItemAddressHint.Name = "lblTestItemAddressHint";
             lblTestItemAddressHint.Size = new Size(1236, 30);
             lblTestItemAddressHint.TabIndex = 1;
-            lblTestItemAddressHint.Text = "测试项目地址来自测试项目模板；工位 0 表示所有工位共享，焊点 0 表示所有焊点共享。";
+            lblTestItemAddressHint.Text = "维护产品工号、工位、焊点数量和 PLC 数据区布局；测试方案决定采集哪些测试项。";
             lblTestItemAddressHint.TextAlign = ContentAlignment.MiddleLeft;
-            //
+            // 
+            // lblProductProcessGroupHint
+            // 
+            lblProductProcessGroupHint.AutoEllipsis = true;
+            lblProductProcessGroupHint.Dock = DockStyle.Fill;
+            lblProductProcessGroupHint.ForeColor = SystemColors.GrayText;
+            lblProductProcessGroupHint.Location = new Point(0, 30);
+            lblProductProcessGroupHint.Margin = new Padding(0);
+            lblProductProcessGroupHint.Name = "lblProductProcessGroupHint";
+            lblProductProcessGroupHint.Padding = new Padding(0, 4, 0, 0);
+            lblProductProcessGroupHint.Size = new Size(1236, 34);
+            lblProductProcessGroupHint.TabIndex = 2;
+            lblProductProcessGroupHint.Text = "分组填写：产品头保存产品级字段，焊点头按焊点头长度递增，测试项区按测试区长度递增；最终地址可通过 PLC 地址预览核对。";
+            lblProductProcessGroupHint.TextAlign = ContentAlignment.MiddleLeft;
+            // 
+            // productProcessToolbar
+            // 
+            productProcessToolbar.Controls.Add(btnAddProductProcess);
+            productProcessToolbar.Controls.Add(btnDeleteProductProcess);
+            productProcessToolbar.Controls.Add(btnPreviewProductProcessAddress);
+            productProcessToolbar.Dock = DockStyle.Fill;
+            productProcessToolbar.Location = new Point(0, 64);
+            productProcessToolbar.Margin = new Padding(0);
+            productProcessToolbar.Name = "productProcessToolbar";
+            productProcessToolbar.Padding = new Padding(0, 4, 0, 4);
+            productProcessToolbar.Size = new Size(1236, 42);
+            productProcessToolbar.TabIndex = 2;
+            productProcessToolbar.WrapContents = false;
+            // 
+            // btnAddProductProcess
+            // 
+            btnAddProductProcess.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnAddProductProcess.BorderWidth = 1F;
+            btnAddProductProcess.Height = 34;
+            btnAddProductProcess.IconSvg = "PlusOutlined";
+            btnAddProductProcess.Location = new Point(0, 4);
+            btnAddProductProcess.Margin = new Padding(0, 0, 8, 0);
+            btnAddProductProcess.Name = "btnAddProductProcess";
+            btnAddProductProcess.Size = new Size(72, 34);
+            btnAddProductProcess.TabIndex = 0;
+            btnAddProductProcess.Text = "新增";
+            // 
+            // btnDeleteProductProcess
+            // 
+            btnDeleteProductProcess.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnDeleteProductProcess.BorderWidth = 1F;
+            btnDeleteProductProcess.Height = 34;
+            btnDeleteProductProcess.IconSvg = "DeleteOutlined";
+            btnDeleteProductProcess.Location = new Point(80, 4);
+            btnDeleteProductProcess.Margin = new Padding(0, 0, 8, 0);
+            btnDeleteProductProcess.Name = "btnDeleteProductProcess";
+            btnDeleteProductProcess.Size = new Size(72, 34);
+            btnDeleteProductProcess.TabIndex = 1;
+            btnDeleteProductProcess.Text = "删除";
+            // 
+            // btnPreviewProductProcessAddress
+            // 
+            btnPreviewProductProcessAddress.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnPreviewProductProcessAddress.BorderWidth = 1F;
+            btnPreviewProductProcessAddress.Height = 34;
+            btnPreviewProductProcessAddress.IconSvg = "EyeOutlined";
+            btnPreviewProductProcessAddress.Location = new Point(160, 4);
+            btnPreviewProductProcessAddress.Margin = new Padding(0, 0, 8, 0);
+            btnPreviewProductProcessAddress.Name = "btnPreviewProductProcessAddress";
+            btnPreviewProductProcessAddress.Size = new Size(126, 34);
+            btnPreviewProductProcessAddress.TabIndex = 2;
+            btnPreviewProductProcessAddress.Text = "PLC 地址预览";
+            // 
+            // lblProductProcessSummary
+            // 
+            lblProductProcessSummary.AutoEllipsis = true;
+            lblProductProcessSummary.BackColor = Color.FromArgb(248, 250, 252);
+            lblProductProcessSummary.Dock = DockStyle.Fill;
+            lblProductProcessSummary.ForeColor = Color.FromArgb(73, 80, 87);
+            lblProductProcessSummary.Location = new Point(0, 106);
+            lblProductProcessSummary.Margin = new Padding(0);
+            lblProductProcessSummary.Name = "lblProductProcessSummary";
+            lblProductProcessSummary.Padding = new Padding(10, 6, 10, 0);
+            lblProductProcessSummary.Size = new Size(1236, 34);
+            lblProductProcessSummary.TabIndex = 4;
+            lblProductProcessSummary.Text = "选择一条产品工艺后，可查看产品 -> 焊点 -> 测试项绑定摘要，并打开 PLC 地址预览。";
+            lblProductProcessSummary.TextAlign = ContentAlignment.MiddleLeft;
+            // 
             // tableTestItemAddresses
-            //
+            // 
             tableTestItemAddresses.Dock = DockStyle.Fill;
             tableTestItemAddresses.EditMode = AntdUI.TEditMode.DoubleClick;
             tableTestItemAddresses.Gap = 8;
-            tableTestItemAddresses.Location = new Point(0, 74);
+            tableTestItemAddresses.Gaps = new Size(8, 8);
+            tableTestItemAddresses.Location = new Point(0, 140);
             tableTestItemAddresses.Margin = new Padding(0);
             tableTestItemAddresses.Name = "tableTestItemAddresses";
-            tableTestItemAddresses.Size = new Size(1236, 480);
-            tableTestItemAddresses.TabIndex = 2;
-            tableTestItemAddresses.Text = "tableTestItemAddresses";
-            //
+            tableTestItemAddresses.Size = new Size(1236, 366);
+            tableTestItemAddresses.TabIndex = 5;
+            tableTestItemAddresses.Text = "tableProductProcessConfigs";
+            // 
+            // tabTestSchemes
+            // 
+            tabTestSchemes.Controls.Add(testSchemeLayout);
+            tabTestSchemes.Location = new Point(4, 29);
+            tabTestSchemes.Name = "tabTestSchemes";
+            tabTestSchemes.Padding = new Padding(3);
+            tabTestSchemes.Size = new Size(1242, 560);
+            tabTestSchemes.TabIndex = 2;
+            tabTestSchemes.Text = "测试方案";
+            tabTestSchemes.UseVisualStyleBackColor = true;
+            // 
+            // testSchemeLayout
+            // 
+            testSchemeLayout.ColumnCount = 1;
+            testSchemeLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            testSchemeLayout.Controls.Add(lblTestSchemeHint, 0, 0);
+            testSchemeLayout.Controls.Add(testSchemeToolbar, 0, 1);
+            testSchemeLayout.Controls.Add(tableTestSchemes, 0, 2);
+            testSchemeLayout.Dock = DockStyle.Fill;
+            testSchemeLayout.Location = new Point(3, 3);
+            testSchemeLayout.Margin = new Padding(0);
+            testSchemeLayout.Name = "testSchemeLayout";
+            testSchemeLayout.RowCount = 3;
+            testSchemeLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+            testSchemeLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
+            testSchemeLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            testSchemeLayout.Size = new Size(1236, 554);
+            testSchemeLayout.TabIndex = 0;
+            // 
+            // lblTestSchemeHint
+            // 
+            lblTestSchemeHint.AutoEllipsis = true;
+            lblTestSchemeHint.Dock = DockStyle.Fill;
+            lblTestSchemeHint.ForeColor = SystemColors.GrayText;
+            lblTestSchemeHint.Location = new Point(0, 0);
+            lblTestSchemeHint.Margin = new Padding(0);
+            lblTestSchemeHint.Name = "lblTestSchemeHint";
+            lblTestSchemeHint.Size = new Size(1236, 30);
+            lblTestSchemeHint.TabIndex = 0;
+            lblTestSchemeHint.Text = "维护测试方案主表。方案ID用于产品工艺绑定，保存后不建议改名。";
+            lblTestSchemeHint.TextAlign = ContentAlignment.MiddleLeft;
+            // 
+            // testSchemeToolbar
+            // 
+            testSchemeToolbar.Controls.Add(btnAddScheme);
+            testSchemeToolbar.Controls.Add(btnDeleteScheme);
+            testSchemeToolbar.Dock = DockStyle.Fill;
+            testSchemeToolbar.Location = new Point(0, 30);
+            testSchemeToolbar.Margin = new Padding(0);
+            testSchemeToolbar.Name = "testSchemeToolbar";
+            testSchemeToolbar.Padding = new Padding(0, 4, 0, 4);
+            testSchemeToolbar.Size = new Size(1236, 42);
+            testSchemeToolbar.TabIndex = 1;
+            testSchemeToolbar.WrapContents = false;
+            // 
+            // btnAddScheme
+            // 
+            btnAddScheme.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnAddScheme.BorderWidth = 1F;
+            btnAddScheme.Height = 34;
+            btnAddScheme.IconSvg = "PlusOutlined";
+            btnAddScheme.Location = new Point(0, 4);
+            btnAddScheme.Margin = new Padding(0, 0, 8, 0);
+            btnAddScheme.Name = "btnAddScheme";
+            btnAddScheme.Size = new Size(72, 34);
+            btnAddScheme.TabIndex = 0;
+            btnAddScheme.Text = "新增";
+            // 
+            // btnDeleteScheme
+            // 
+            btnDeleteScheme.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnDeleteScheme.BorderWidth = 1F;
+            btnDeleteScheme.Height = 34;
+            btnDeleteScheme.IconSvg = "DeleteOutlined";
+            btnDeleteScheme.Location = new Point(80, 4);
+            btnDeleteScheme.Margin = new Padding(0, 0, 8, 0);
+            btnDeleteScheme.Name = "btnDeleteScheme";
+            btnDeleteScheme.Size = new Size(72, 34);
+            btnDeleteScheme.TabIndex = 1;
+            btnDeleteScheme.Text = "删除";
+            // 
+            // tableTestSchemes
+            // 
+            tableTestSchemes.Dock = DockStyle.Fill;
+            tableTestSchemes.EditMode = AntdUI.TEditMode.DoubleClick;
+            tableTestSchemes.Gap = 8;
+            tableTestSchemes.Gaps = new Size(8, 8);
+            tableTestSchemes.Location = new Point(0, 72);
+            tableTestSchemes.Margin = new Padding(0);
+            tableTestSchemes.Name = "tableTestSchemes";
+            tableTestSchemes.Size = new Size(1236, 482);
+            tableTestSchemes.TabIndex = 2;
+            tableTestSchemes.Text = "tableTestSchemes";
+            // 
+            // tabSchemeDetails
+            // 
+            tabSchemeDetails.Controls.Add(schemeDetailLayout);
+            tabSchemeDetails.Location = new Point(4, 29);
+            tabSchemeDetails.Name = "tabSchemeDetails";
+            tabSchemeDetails.Padding = new Padding(3);
+            tabSchemeDetails.Size = new Size(1242, 560);
+            tabSchemeDetails.TabIndex = 3;
+            tabSchemeDetails.Text = "方案明细";
+            tabSchemeDetails.UseVisualStyleBackColor = true;
+            // 
+            // schemeDetailLayout
+            // 
+            schemeDetailLayout.ColumnCount = 1;
+            schemeDetailLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            schemeDetailLayout.Controls.Add(lblSchemeDetailHint, 0, 0);
+            schemeDetailLayout.Controls.Add(schemeDetailToolbar, 0, 1);
+            schemeDetailLayout.Controls.Add(tableSchemeDetails, 0, 2);
+            schemeDetailLayout.Dock = DockStyle.Fill;
+            schemeDetailLayout.Location = new Point(3, 3);
+            schemeDetailLayout.Margin = new Padding(0);
+            schemeDetailLayout.Name = "schemeDetailLayout";
+            schemeDetailLayout.RowCount = 3;
+            schemeDetailLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+            schemeDetailLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
+            schemeDetailLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            schemeDetailLayout.Size = new Size(1236, 554);
+            schemeDetailLayout.TabIndex = 0;
+            // 
+            // lblSchemeDetailHint
+            // 
+            lblSchemeDetailHint.AutoEllipsis = true;
+            lblSchemeDetailHint.Dock = DockStyle.Fill;
+            lblSchemeDetailHint.ForeColor = SystemColors.GrayText;
+            lblSchemeDetailHint.Location = new Point(0, 0);
+            lblSchemeDetailHint.Margin = new Padding(0);
+            lblSchemeDetailHint.Name = "lblSchemeDetailHint";
+            lblSchemeDetailHint.Size = new Size(1236, 30);
+            lblSchemeDetailHint.TabIndex = 0;
+            lblSchemeDetailHint.Text = "维护测试方案包含哪些测试项。同一方案中同一测试项只能出现一次。";
+            lblSchemeDetailHint.TextAlign = ContentAlignment.MiddleLeft;
+            // 
+            // schemeDetailToolbar
+            // 
+            schemeDetailToolbar.Controls.Add(btnAddSchemeDetail);
+            schemeDetailToolbar.Controls.Add(btnDeleteSchemeDetail);
+            schemeDetailToolbar.Dock = DockStyle.Fill;
+            schemeDetailToolbar.Location = new Point(0, 30);
+            schemeDetailToolbar.Margin = new Padding(0);
+            schemeDetailToolbar.Name = "schemeDetailToolbar";
+            schemeDetailToolbar.Padding = new Padding(0, 4, 0, 4);
+            schemeDetailToolbar.Size = new Size(1236, 42);
+            schemeDetailToolbar.TabIndex = 1;
+            schemeDetailToolbar.WrapContents = false;
+            // 
+            // btnAddSchemeDetail
+            // 
+            btnAddSchemeDetail.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnAddSchemeDetail.BorderWidth = 1F;
+            btnAddSchemeDetail.Height = 34;
+            btnAddSchemeDetail.IconSvg = "PlusOutlined";
+            btnAddSchemeDetail.Location = new Point(0, 4);
+            btnAddSchemeDetail.Margin = new Padding(0, 0, 8, 0);
+            btnAddSchemeDetail.Name = "btnAddSchemeDetail";
+            btnAddSchemeDetail.Size = new Size(72, 34);
+            btnAddSchemeDetail.TabIndex = 0;
+            btnAddSchemeDetail.Text = "新增";
+            // 
+            // btnDeleteSchemeDetail
+            // 
+            btnDeleteSchemeDetail.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnDeleteSchemeDetail.BorderWidth = 1F;
+            btnDeleteSchemeDetail.Height = 34;
+            btnDeleteSchemeDetail.IconSvg = "DeleteOutlined";
+            btnDeleteSchemeDetail.Location = new Point(80, 4);
+            btnDeleteSchemeDetail.Margin = new Padding(0, 0, 8, 0);
+            btnDeleteSchemeDetail.Name = "btnDeleteSchemeDetail";
+            btnDeleteSchemeDetail.Size = new Size(72, 34);
+            btnDeleteSchemeDetail.TabIndex = 1;
+            btnDeleteSchemeDetail.Text = "删除";
+            // 
+            // tableSchemeDetails
+            // 
+            tableSchemeDetails.Dock = DockStyle.Fill;
+            tableSchemeDetails.EditMode = AntdUI.TEditMode.DoubleClick;
+            tableSchemeDetails.Gap = 8;
+            tableSchemeDetails.Gaps = new Size(8, 8);
+            tableSchemeDetails.Location = new Point(0, 72);
+            tableSchemeDetails.Margin = new Padding(0);
+            tableSchemeDetails.Name = "tableSchemeDetails";
+            tableSchemeDetails.Size = new Size(1236, 482);
+            tableSchemeDetails.TabIndex = 2;
+            tableSchemeDetails.Text = "tableSchemeDetails";
+            // 
+            // tabTestItems
+            // 
+            tabTestItems.Controls.Add(testItemLayout);
+            tabTestItems.Location = new Point(4, 29);
+            tabTestItems.Name = "tabTestItems";
+            tabTestItems.Padding = new Padding(3);
+            tabTestItems.Size = new Size(1242, 560);
+            tabTestItems.TabIndex = 4;
+            tabTestItems.Text = "测试项字典";
+            tabTestItems.UseVisualStyleBackColor = true;
+            // 
+            // testItemLayout
+            // 
+            testItemLayout.ColumnCount = 1;
+            testItemLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            testItemLayout.Controls.Add(lblTestItemHint, 0, 0);
+            testItemLayout.Controls.Add(testItemToolbar, 0, 1);
+            testItemLayout.Controls.Add(tableTestItems, 0, 2);
+            testItemLayout.Dock = DockStyle.Fill;
+            testItemLayout.Location = new Point(3, 3);
+            testItemLayout.Margin = new Padding(0);
+            testItemLayout.Name = "testItemLayout";
+            testItemLayout.RowCount = 3;
+            testItemLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+            testItemLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
+            testItemLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            testItemLayout.Size = new Size(1236, 554);
+            testItemLayout.TabIndex = 0;
+            // 
+            // lblTestItemHint
+            // 
+            lblTestItemHint.AutoEllipsis = true;
+            lblTestItemHint.Dock = DockStyle.Fill;
+            lblTestItemHint.ForeColor = SystemColors.GrayText;
+            lblTestItemHint.Location = new Point(0, 0);
+            lblTestItemHint.Margin = new Padding(0);
+            lblTestItemHint.Name = "lblTestItemHint";
+            lblTestItemHint.Size = new Size(1236, 30);
+            lblTestItemHint.TabIndex = 0;
+            lblTestItemHint.Text = "维护测试项名称、单位和相对偏移表达式，例如 0:F-0、12:H-4。";
+            lblTestItemHint.TextAlign = ContentAlignment.MiddleLeft;
+            // 
+            // testItemToolbar
+            // 
+            testItemToolbar.Controls.Add(btnAddTestItem);
+            testItemToolbar.Controls.Add(btnDeleteTestItem);
+            testItemToolbar.Dock = DockStyle.Fill;
+            testItemToolbar.Location = new Point(0, 30);
+            testItemToolbar.Margin = new Padding(0);
+            testItemToolbar.Name = "testItemToolbar";
+            testItemToolbar.Padding = new Padding(0, 4, 0, 4);
+            testItemToolbar.Size = new Size(1236, 42);
+            testItemToolbar.TabIndex = 1;
+            testItemToolbar.WrapContents = false;
+            // 
+            // btnAddTestItem
+            // 
+            btnAddTestItem.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnAddTestItem.BorderWidth = 1F;
+            btnAddTestItem.Height = 34;
+            btnAddTestItem.IconSvg = "PlusOutlined";
+            btnAddTestItem.Location = new Point(0, 4);
+            btnAddTestItem.Margin = new Padding(0, 0, 8, 0);
+            btnAddTestItem.Name = "btnAddTestItem";
+            btnAddTestItem.Size = new Size(72, 34);
+            btnAddTestItem.TabIndex = 0;
+            btnAddTestItem.Text = "新增";
+            // 
+            // btnDeleteTestItem
+            // 
+            btnDeleteTestItem.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnDeleteTestItem.BorderWidth = 1F;
+            btnDeleteTestItem.Height = 34;
+            btnDeleteTestItem.IconSvg = "DeleteOutlined";
+            btnDeleteTestItem.Location = new Point(80, 4);
+            btnDeleteTestItem.Margin = new Padding(0, 0, 8, 0);
+            btnDeleteTestItem.Name = "btnDeleteTestItem";
+            btnDeleteTestItem.Size = new Size(72, 34);
+            btnDeleteTestItem.TabIndex = 1;
+            btnDeleteTestItem.Text = "删除";
+            // 
+            // tableTestItems
+            // 
+            tableTestItems.Dock = DockStyle.Fill;
+            tableTestItems.EditMode = AntdUI.TEditMode.DoubleClick;
+            tableTestItems.Gap = 8;
+            tableTestItems.Gaps = new Size(8, 8);
+            tableTestItems.Location = new Point(0, 72);
+            tableTestItems.Margin = new Padding(0);
+            tableTestItems.Name = "tableTestItems";
+            tableTestItems.Size = new Size(1236, 482);
+            tableTestItems.TabIndex = 2;
+            tableTestItems.Text = "tableTestItems";
+            // 
             // AddressManageView
             // 
             AutoScaleDimensions = new SizeF(8F, 20F);
@@ -327,15 +876,24 @@ namespace AutoWeldSystem.UI.Views
             headerLayout.PerformLayout();
             titleLayout.ResumeLayout(false);
             titleLayout.PerformLayout();
-            buttonFlow.ResumeLayout(false);
-            buttonFlow.PerformLayout();
-            testItemAddressToolbar.ResumeLayout(false);
-            testItemAddressToolbar.PerformLayout();
-            testItemAddressLayout.ResumeLayout(false);
-            testItemAddressLayout.PerformLayout();
-            tabTestItemAddresses.ResumeLayout(false);
-            tabBusinessAddresses.ResumeLayout(false);
+            SaveLayout.ResumeLayout(false);
+            SaveLayout.PerformLayout();
+            bindingFlowPanel.ResumeLayout(false);
+            bindingFlowPanel.PerformLayout();
             tabAddressCategories.ResumeLayout(false);
+            tabBusinessAddresses.ResumeLayout(false);
+            tabTestItemAddresses.ResumeLayout(false);
+            testItemAddressLayout.ResumeLayout(false);
+            productProcessToolbar.ResumeLayout(false);
+            tabTestSchemes.ResumeLayout(false);
+            testSchemeLayout.ResumeLayout(false);
+            testSchemeToolbar.ResumeLayout(false);
+            tabSchemeDetails.ResumeLayout(false);
+            schemeDetailLayout.ResumeLayout(false);
+            schemeDetailToolbar.ResumeLayout(false);
+            tabTestItems.ResumeLayout(false);
+            testItemLayout.ResumeLayout(false);
+            testItemToolbar.ResumeLayout(false);
             ResumeLayout(false);
         }
 
@@ -344,20 +902,56 @@ namespace AutoWeldSystem.UI.Views
         private TableLayoutPanel titleLayout;
         private Label lblTitle;
         private Label lblDescription;
-        private FlowLayoutPanel buttonFlow;
         private AntdUI.Button btnSave;
         private AntdUI.Button btnRefresh;
         private AntdUI.Button btnTest;
         private Components.InputQuery queryAddresses;
+        private FlowLayoutPanel bindingFlowPanel;
+        private Label lblBindingProduct;
+        private Label lblBindingArrow1;
+        private Label lblBindingProcess;
+        private Label lblBindingArrow2;
+        private Label lblBindingScheme;
+        private Label lblBindingArrow3;
+        private Label lblBindingDetail;
+        private Label lblBindingArrow4;
+        private Label lblBindingItem;
+        private Label lblBindingArrow5;
+        private Label lblBindingPreview;
         private TabControl tabAddressCategories;
         private TabPage tabBusinessAddresses;
         private AntdUI.Table tableAddresses;
         private TabPage tabTestItemAddresses;
         private TableLayoutPanel testItemAddressLayout;
-        private FlowLayoutPanel testItemAddressToolbar;
-        private AntdUI.Button btnAddTestItemAddress;
-        private AntdUI.Button btnDeleteTestItemAddress;
         private Label lblTestItemAddressHint;
+        private Label lblProductProcessGroupHint;
+        private FlowLayoutPanel productProcessToolbar;
+        private AntdUI.Button btnAddProductProcess;
+        private AntdUI.Button btnDeleteProductProcess;
+        private AntdUI.Button btnPreviewProductProcessAddress;
+        private Label lblProductProcessSummary;
         private AntdUI.Table tableTestItemAddresses;
+        private TabPage tabTestSchemes;
+        private TableLayoutPanel testSchemeLayout;
+        private Label lblTestSchemeHint;
+        private FlowLayoutPanel testSchemeToolbar;
+        private AntdUI.Button btnAddScheme;
+        private AntdUI.Button btnDeleteScheme;
+        private AntdUI.Table tableTestSchemes;
+        private TabPage tabSchemeDetails;
+        private TableLayoutPanel schemeDetailLayout;
+        private Label lblSchemeDetailHint;
+        private FlowLayoutPanel schemeDetailToolbar;
+        private AntdUI.Button btnAddSchemeDetail;
+        private AntdUI.Button btnDeleteSchemeDetail;
+        private AntdUI.Table tableSchemeDetails;
+        private TabPage tabTestItems;
+        private TableLayoutPanel testItemLayout;
+        private Label lblTestItemHint;
+        private FlowLayoutPanel testItemToolbar;
+        private AntdUI.Button btnAddTestItem;
+        private AntdUI.Button btnDeleteTestItem;
+        private AntdUI.Table tableTestItems;
+        private TableLayoutPanel SaveLayout;
     }
 }

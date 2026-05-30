@@ -1,10 +1,12 @@
-using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Models;
 using AutoWeldSystem.Data;
 
 namespace AutoWeldSystem.Services;
 
+/// <summary>
+/// 系统基础设置服务。
+/// </summary>
 public class AppSettingsService : IAppSettingsService
 {
     private readonly SqlSugarDbContext _dbContext;
@@ -23,7 +25,6 @@ public class AppSettingsService : IAppSettingsService
             var settings = _dbContext.Db.Queryable<AppSettings>().InSingle(1);
             if (settings is not null)
             {
-                Normalize(settings);
                 return settings;
             }
 
@@ -40,8 +41,6 @@ public class AppSettingsService : IAppSettingsService
             _dbContext.InitDatabase();
             settings.Id = 1;
             settings.UpdatedTime = DateTime.Now;
-            Normalize(settings);
-
             var exists = _dbContext.Db.Queryable<AppSettings>().Any(it => it.Id == 1);
             if (exists)
             {
@@ -54,20 +53,5 @@ public class AppSettingsService : IAppSettingsService
 
             return _dbContext.Db.Queryable<AppSettings>().InSingle(1) ?? settings;
         }
-    }
-
-    private static void Normalize(AppSettings settings)
-    {
-        settings.TestParameterBindingMode = NormalizeTestParameterBindingMode(settings.TestParameterBindingMode);
-    }
-
-    private static string NormalizeTestParameterBindingMode(string? value)
-    {
-        return value switch
-        {
-            AppConstants.TestParameterBindingModes.ProductNumOnly => AppConstants.TestParameterBindingModes.ProductNumOnly,
-            AppConstants.TestParameterBindingModes.ProductModelOnly => AppConstants.TestParameterBindingModes.ProductModelOnly,
-            _ => AppConstants.TestParameterBindingModes.ProductNumAndModel
-        };
     }
 }

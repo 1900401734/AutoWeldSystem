@@ -40,14 +40,16 @@ namespace AutoWeldSystem.UI.Views
             lblProgramId = new Label();
             lblProgramFile = new Label();
             lblCommitMessage = new Label();
+            txtLocalRemark = new TextBox();
+            lblLocalRemark = new Label();
             lblProgramContent = new Label();
             cmbProgramType = new ComboBox();
             txtSequenceNumber = new TextBox();
             txtComponentCode = new TextBox();
-            txtProductModel = new TextBox();
             txtRecipeCode = new TextBox();
-            lblProductModel = new Label();
+            txtProductModel = new TextBox();
             lblRecipeCode = new Label();
+            lblProductModel = new Label();
             lblComponentCode = new Label();
             lblSequenceNumber = new Label();
             lblProgramType = new Label();
@@ -58,8 +60,6 @@ namespace AutoWeldSystem.UI.Views
             LayoutProgramName = new TableLayoutPanel();
             txtProgramName = new TextBox();
             btnBuildName = new AntdUI.Button();
-            txtLocalRemark = new TextBox();
-            lblLocalRemark = new Label();
             txtProgramContent = new TextBox();
             rootLayout.SuspendLayout();
             toolbar.SuspendLayout();
@@ -338,11 +338,13 @@ namespace AutoWeldSystem.UI.Views
             // 
             cmbRemark.Dock = DockStyle.Fill;
             cmbRemark.DropDownStyle = ComboBoxStyle.DropDownList;
-            cmbRemark.Location = new Point(118, 360);
+            cmbRemark.Enabled = false;
+            cmbRemark.Location = new Point(118, 400);
             cmbRemark.Margin = new Padding(0);
             cmbRemark.Name = "cmbRemark";
             cmbRemark.Size = new Size(509, 31);
             cmbRemark.TabIndex = 23;
+            cmbRemark.TabStop = false;
             // 
             // fileLayout
             // 
@@ -352,7 +354,7 @@ namespace AutoWeldSystem.UI.Views
             fileLayout.Controls.Add(txtProgramFile, 0, 0);
             fileLayout.Controls.Add(btnBrowseFile, 1, 0);
             fileLayout.Dock = DockStyle.Fill;
-            fileLayout.Location = new Point(118, 320);
+            fileLayout.Location = new Point(118, 360);
             fileLayout.Margin = new Padding(0);
             fileLayout.Name = "fileLayout";
             fileLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
@@ -383,7 +385,7 @@ namespace AutoWeldSystem.UI.Views
             // txtProgramId
             // 
             txtProgramId.Dock = DockStyle.Fill;
-            txtProgramId.Location = new Point(118, 280);
+            txtProgramId.Location = new Point(118, 320);
             txtProgramId.Margin = new Padding(0);
             txtProgramId.Name = "txtProgramId";
             txtProgramId.ReadOnly = true;
@@ -393,7 +395,7 @@ namespace AutoWeldSystem.UI.Views
             // lblProgramId
             // 
             lblProgramId.Dock = DockStyle.Fill;
-            lblProgramId.Location = new Point(0, 280);
+            lblProgramId.Location = new Point(0, 320);
             lblProgramId.Margin = new Padding(0);
             lblProgramId.Name = "lblProgramId";
             lblProgramId.Size = new Size(118, 40);
@@ -404,7 +406,7 @@ namespace AutoWeldSystem.UI.Views
             // lblProgramFile
             // 
             lblProgramFile.Dock = DockStyle.Fill;
-            lblProgramFile.Location = new Point(0, 320);
+            lblProgramFile.Location = new Point(0, 360);
             lblProgramFile.Margin = new Padding(0);
             lblProgramFile.Name = "lblProgramFile";
             lblProgramFile.Size = new Size(118, 40);
@@ -415,7 +417,7 @@ namespace AutoWeldSystem.UI.Views
             // lblCommitMessage
             // 
             lblCommitMessage.Dock = DockStyle.Fill;
-            lblCommitMessage.Location = new Point(0, 360);
+            lblCommitMessage.Location = new Point(0, 400);
             lblCommitMessage.Margin = new Padding(0);
             lblCommitMessage.Name = "lblCommitMessage";
             lblCommitMessage.Size = new Size(118, 40);
@@ -447,7 +449,7 @@ namespace AutoWeldSystem.UI.Views
             // 
             editorLayout.SetColumnSpan(lblProgramContent, 2);
             lblProgramContent.Dock = DockStyle.Fill;
-            lblProgramContent.Location = new Point(0, 400);
+            lblProgramContent.Location = new Point(0, 480);
             lblProgramContent.Margin = new Padding(0);
             lblProgramContent.Name = "lblProgramContent";
             lblProgramContent.Size = new Size(627, 40);
@@ -460,7 +462,7 @@ namespace AutoWeldSystem.UI.Views
             cmbProgramType.Dock = DockStyle.Fill;
             cmbProgramType.DropDownStyle = ComboBoxStyle.DropDownList;
             cmbProgramType.Items.AddRange(new object[] { "0 - 参数字符串", "1 - 文件" });
-            cmbProgramType.Location = new Point(118, 240);
+            cmbProgramType.Location = new Point(118, 280);
             cmbProgramType.Margin = new Padding(0);
             cmbProgramType.Name = "cmbProgramType";
             cmbProgramType.Size = new Size(509, 31);
@@ -469,7 +471,7 @@ namespace AutoWeldSystem.UI.Views
             // txtSequenceNumber
             // 
             txtSequenceNumber.Dock = DockStyle.Fill;
-            txtSequenceNumber.Location = new Point(118, 200);
+            txtSequenceNumber.Location = new Point(118, 240);
             txtSequenceNumber.Margin = new Padding(0);
             txtSequenceNumber.Name = "txtSequenceNumber";
             txtSequenceNumber.Size = new Size(509, 30);
@@ -478,20 +480,11 @@ namespace AutoWeldSystem.UI.Views
             // txtComponentCode
             // 
             txtComponentCode.Dock = DockStyle.Fill;
-            txtComponentCode.Location = new Point(118, 160);
+            txtComponentCode.Location = new Point(118, 200);
             txtComponentCode.Margin = new Padding(0);
             txtComponentCode.Name = "txtComponentCode";
             txtComponentCode.Size = new Size(509, 30);
             txtComponentCode.TabIndex = 9;
-            // 
-            // txtProductModel
-            // 
-            txtProductModel.Dock = DockStyle.Fill;
-            txtProductModel.Location = new Point(118, 120);
-            txtProductModel.Margin = new Padding(0);
-            txtProductModel.Name = "txtProductModel";
-            txtProductModel.Size = new Size(509, 30);
-            txtProductModel.TabIndex = 7;
             // 
             // txtRecipeCode
             // 
@@ -502,16 +495,14 @@ namespace AutoWeldSystem.UI.Views
             txtRecipeCode.Size = new Size(509, 30);
             txtRecipeCode.TabIndex = 8;
             // 
-            // lblProductModel
+            // txtProductModel
             // 
-            lblProductModel.Dock = DockStyle.Fill;
-            lblProductModel.Location = new Point(0, 120);
-            lblProductModel.Margin = new Padding(0);
-            lblProductModel.Name = "lblProductModel";
-            lblProductModel.Size = new Size(118, 40);
-            lblProductModel.TabIndex = 6;
-            lblProductModel.Text = "产品型号";
-            lblProductModel.TextAlign = ContentAlignment.MiddleLeft;
+            txtProductModel.Dock = DockStyle.Fill;
+            txtProductModel.Location = new Point(118, 120);
+            txtProductModel.Margin = new Padding(0);
+            txtProductModel.Name = "txtProductModel";
+            txtProductModel.Size = new Size(509, 30);
+            txtProductModel.TabIndex = 7;
             // 
             // lblRecipeCode
             // 
@@ -524,10 +515,21 @@ namespace AutoWeldSystem.UI.Views
             lblRecipeCode.Text = "配方编号";
             lblRecipeCode.TextAlign = ContentAlignment.MiddleLeft;
             // 
+            // lblProductModel
+            // 
+            lblProductModel.Dock = DockStyle.Fill;
+            lblProductModel.Location = new Point(0, 120);
+            lblProductModel.Margin = new Padding(0);
+            lblProductModel.Name = "lblProductModel";
+            lblProductModel.Size = new Size(118, 40);
+            lblProductModel.TabIndex = 6;
+            lblProductModel.Text = "产品型号";
+            lblProductModel.TextAlign = ContentAlignment.MiddleLeft;
+            // 
             // lblComponentCode
             // 
             lblComponentCode.Dock = DockStyle.Fill;
-            lblComponentCode.Location = new Point(0, 160);
+            lblComponentCode.Location = new Point(0, 200);
             lblComponentCode.Margin = new Padding(0);
             lblComponentCode.Name = "lblComponentCode";
             lblComponentCode.Size = new Size(118, 40);
@@ -538,7 +540,7 @@ namespace AutoWeldSystem.UI.Views
             // lblSequenceNumber
             // 
             lblSequenceNumber.Dock = DockStyle.Fill;
-            lblSequenceNumber.Location = new Point(0, 200);
+            lblSequenceNumber.Location = new Point(0, 240);
             lblSequenceNumber.Margin = new Padding(0);
             lblSequenceNumber.Name = "lblSequenceNumber";
             lblSequenceNumber.Size = new Size(118, 40);
@@ -549,7 +551,7 @@ namespace AutoWeldSystem.UI.Views
             // lblProgramType
             // 
             lblProgramType.Dock = DockStyle.Fill;
-            lblProgramType.Location = new Point(0, 240);
+            lblProgramType.Location = new Point(0, 280);
             lblProgramType.Margin = new Padding(0);
             lblProgramType.Name = "lblProgramType";
             lblProgramType.Size = new Size(118, 40);
@@ -645,12 +647,12 @@ namespace AutoWeldSystem.UI.Views
             editorLayout.SetColumnSpan(txtProgramContent, 2);
             txtProgramContent.Dock = DockStyle.Fill;
             txtProgramContent.Font = new Font("Consolas", 10F);
-            txtProgramContent.Location = new Point(0, 440);
+            txtProgramContent.Location = new Point(0, 520);
             txtProgramContent.Margin = new Padding(0);
             txtProgramContent.Multiline = true;
             txtProgramContent.Name = "txtProgramContent";
             txtProgramContent.ScrollBars = ScrollBars.Both;
-            txtProgramContent.Size = new Size(627, 241);
+            txtProgramContent.Size = new Size(627, 161);
             txtProgramContent.TabIndex = 27;
             txtProgramContent.WordWrap = false;
             // 

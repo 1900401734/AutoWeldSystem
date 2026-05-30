@@ -59,12 +59,15 @@ public class SqlSugarDbContext : IDisposable
                     typeof(BizWeldPointRecord),
                     typeof(BizProductInstance),
                     typeof(BizProductProcessConfig),
-                    typeof(BizTestItemTemplate),
-                    typeof(BizTestItemTemplateItem),
+                    typeof(BizTestScheme),
+                    typeof(BizSchemeDetail),
+                    typeof(DimTestItem),
                     typeof(BizProductionReportFile),
                     typeof(BizUploadTask),
                     typeof(BizDeviceStatusLog),
                     typeof(BizPlcAddress));
+
+                SeedDefaultTestScheme();
 
                 _initialized = true;
             }
@@ -78,5 +81,72 @@ public class SqlSugarDbContext : IDisposable
     public void Dispose()
     {
         Db.Dispose();
+    }
+
+    /// <summary>
+    /// 写入最小闭环需要的默认测试方案。
+    /// 产品工艺只要绑定 S01，就会默认采集峰值电流、峰值电压和有效功率。
+    /// </summary>
+    private void SeedDefaultTestScheme()
+    {
+        if (!Db.Queryable<BizTestScheme>().Any(it => it.SchemeId == "S01"))
+        {
+            Db.Insertable(new BizTestScheme
+            {
+                SchemeId = "S01",
+                SchemeName = "标准3项测试结构",
+                Description = "包含峰值电流、峰值电压、有效功率。"
+            }).ExecuteCommand();
+        }
+
+        var electricId = EnsureTestItem("峰值电流", "KA", "0:F-0", "4:I-2", "8:I-2", "12:H-4");
+        var voltageId = EnsureTestItem("峰值电压", "V", "16:F-0", "20:I-2", "24:I-2", "28:H-4");
+        var powerId = EnsureTestItem("有效功率", "KW", "32:F-0", "36:I-2", "40:I-2", "44:H-4");
+
+        EnsureSchemeDetail("S01", electricId);
+        EnsureSchemeDetail("S01", voltageId);
+        EnsureSchemeDetail("S01", powerId);
+    }
+
+    private int EnsureTestItem(
+        string itemName,
+        string unit,
+        string actualExpression,
+        string upperExpression,
+        string lowerExpression,
+        string resultExpression)
+    {
+        var existing = Db.Queryable<DimTestItem>()
+            .First(it => it.ItemName == itemName);
+        if (existing is not null)
+        {
+            return existing.ItemId;
+        }
+
+        var inserted = Db.Insertable(new DimTestItem
+        {
+            ItemName = itemName,
+            Unit = unit,
+            ActualExpression = actualExpression,
+            UpperExpression = upperExpression,
+            LowerExpression = lowerExpression,
+            ResultExpression = resultExpression
+        }).ExecuteReturnEntity();
+
+        return inserted.ItemId;
+    }
+
+    private void EnsureSchemeDetail(string schemeId, int itemId)
+    {
+        if (Db.Queryable<BizSchemeDetail>().Any(it => it.SchemeId == schemeId && it.ItemId == itemId))
+        {
+            return;
+        }
+
+        Db.Insertable(new BizSchemeDetail
+        {
+            SchemeId = schemeId,
+            ItemId = itemId
+        }).ExecuteCommand();
     }
 }

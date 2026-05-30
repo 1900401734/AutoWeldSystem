@@ -672,6 +672,12 @@
   <data name="address.name.recipe_code" xml:space="preserve">
     <value>配方编号</value>
   </data>
+  <data name="address.name.product_data_ready" xml:space="preserve">
+    <value>产品数据就绪</value>
+  </data>
+  <data name="address.name.product_collection_feedback" xml:space="preserve">
+    <value>采集完成反馈</value>
+  </data>
   <data name="address.name.total_production" xml:space="preserve">
     <value>加工总数</value>
   </data>
@@ -730,7 +736,7 @@
     <value>目标产量</value>
   </data>
   <data name="production.metric.mes_quantity" xml:space="preserve">
-    <value>MES生产数量</value>
+    <value>工单数量</value>
   </data>
   <data name="production.metric.accepted" xml:space="preserve">
     <value>合格数量</value>
@@ -962,6 +968,9 @@
   </data>
   <data name="monitor.message.start_prerequisite_missing" xml:space="preserve">
     <value>请先加载工单、选择工序并下载程序，再进行开工上报。</value>
+  </data>
+  <data name="monitor.message.start_blocked_by_unfinished_task" xml:space="preserve">
+    <value>当前工位已开工或存在尚未完工任务，请先完工上报后再开工。</value>
   </data>
   <data name="monitor.message.quantity_invalid" xml:space="preserve">
     <value>数量必须是大于 0 的整数。</value>
@@ -1201,7 +1210,7 @@
     <value>产品型号</value>
   </data>
   <data name="program.label.recipe_code" xml:space="preserve">
-    <value>配方编号/序号</value>
+    <value>配方编号</value>
   </data>
   <data name="program.label.component_code" xml:space="preserve">
     <value>零组件代码</value>
@@ -1339,7 +1348,7 @@
     <value>产品型号</value>
   </data>
   <data name="grid.program.recipe_code" xml:space="preserve">
-    <value>配方编号/序号</value>
+    <value>配方编号</value>
   </data>
   <data name="grid.program.local_remark" xml:space="preserve">
     <value>本地备注</value>

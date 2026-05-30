@@ -17,7 +17,7 @@ namespace AutoWeldSystem.Services;
 /// </summary>
 public sealed class ProgramManageService : IProgramManageService
 {
-    private const int MaxLocalProgramCount = 128;
+    private const int MaxLocalProgramCount = 256;
 
     private readonly SqlSugarDbContext _dbContext;
     private readonly IAppSettingsService _settingsService;
@@ -111,10 +111,12 @@ public sealed class ProgramManageService : IProgramManageService
             throw new InvalidOperationException($"本地程序数量已达到 {MaxLocalProgramCount} 个上限。");
         }
 
+        var remark = ResolveSaveRemark(entity);
         ApplyRequest(entity, request);
         entity.VersionNumber = entity.Id == 0 ? 1 : entity.VersionNumber + 1;
-        entity.CommitId = CreateCommitId(entity, request.CommitMessage);
-        entity.CommitMessage = request.CommitMessage;
+        entity.Remark = remark;
+        entity.CommitId = CreateCommitId(entity, remark);
+        entity.CommitMessage = remark;
         entity.SyncAction = string.IsNullOrWhiteSpace(entity.ProgramId)
             ? AppConstants.ProgramSyncActions.Create
             : AppConstants.ProgramSyncActions.Update;
@@ -128,7 +130,7 @@ public sealed class ProgramManageService : IProgramManageService
             ? _dbContext.Db.Insertable(entity).ExecuteReturnEntity()
             : UpdateAndReturn(entity);
 
-        AddRevision(entity, request.CommitMessage);
+        AddRevision(entity, remark);
         _operationLogService.Write("ProgramSave", $"保存程序：{entity.ProgramName}，版本：v{entity.VersionNumber}");
 
         if (syncNow)
@@ -285,7 +287,6 @@ public sealed class ProgramManageService : IProgramManageService
         entity.WeldJobName = request.WeldJobName;
         entity.RobotJobName = request.RobotJobName;
         entity.CycleTimeSeconds = request.CycleTimeSeconds;
-        entity.Remark = request.Remark;
         entity.LocalRemark = request.LocalRemark;
         entity.IsDeleted = false;
 
@@ -300,6 +301,22 @@ public sealed class ProgramManageService : IProgramManageService
         {
             entity.CreatedTime = DateTime.Now;
         }
+    }
+
+    private static string ResolveSaveRemark(BizProgram entity)
+    {
+        if (entity.Id <= 0)
+        {
+            return AppConstants.ProgramRemarkActions.Create;
+        }
+
+        if (string.Equals(entity.SyncAction, AppConstants.ProgramSyncActions.Create, StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(entity.ProgramId))
+        {
+            return AppConstants.ProgramRemarkActions.Create;
+        }
+
+        return AppConstants.ProgramRemarkActions.Update;
     }
 
     private static byte[]? GetProgramFileBytes(string filePath)
@@ -456,11 +473,7 @@ public sealed class ProgramManageService : IProgramManageService
         request.ProgramFilePath = request.ProgramFilePath.Trim();
         request.WeldJobName = request.WeldJobName.Trim();
         request.RobotJobName = request.RobotJobName.Trim();
-        request.Remark = request.Remark.Trim();
         request.LocalRemark = request.LocalRemark.Trim();
-        request.CommitMessage = string.IsNullOrWhiteSpace(request.CommitMessage)
-            ? "本地保存"
-            : request.CommitMessage.Trim();
 
         if (string.IsNullOrWhiteSpace(request.ProductNum))
         {

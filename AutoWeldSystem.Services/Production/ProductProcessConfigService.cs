@@ -6,19 +6,17 @@ using AutoWeldSystem.Data;
 namespace AutoWeldSystem.Services.Production;
 
 /// <summary>
-/// 产品工艺配置服务实现。
-/// 这层只处理配置持久化，不直接控制 PLC 或 MES。
+/// 产品工艺配置服务。
+/// 当前最小闭环只按产品工号和工位匹配，不再使用旧的测试参数绑定方式。
 /// </summary>
 public class ProductProcessConfigService : IProductProcessConfigService
 {
     private readonly SqlSugarDbContext _dbContext;
-    private readonly IAppSettingsService _settingsService;
     private readonly object _dbLock = new();
 
-    public ProductProcessConfigService(SqlSugarDbContext dbContext, IAppSettingsService settingsService)
+    public ProductProcessConfigService(SqlSugarDbContext dbContext)
     {
         _dbContext = dbContext;
-        _settingsService = settingsService;
     }
 
     public IReadOnlyList<BizProductProcessConfig> GetAll(bool includeDisabled = false)
@@ -34,43 +32,45 @@ public class ProductProcessConfigService : IProductProcessConfigService
             }
 
             return query.ToList()
-                .OrderBy(it => it.Sort)
+                .OrderBy(it => it.ProductNum)
                 .ThenBy(it => it.StationNo)
-                .ThenBy(it => it.ProductNum)
-                .ThenBy(it => it.ProductModel)
+                .ThenBy(it => it.Id)
                 .ToList();
         }
     }
 
     public BizProductProcessConfig? FindActive(
         string productNum,
-        string productModel,
         int stationNo = ProductionConstants.Stations.DefaultStationNo)
     {
-        var bindingMode = NormalizeBindingMode(_settingsService.Get().TestParameterBindingMode);
+        var normalizedProductNum = NormalizeNullable(productNum);
+        if (string.IsNullOrWhiteSpace(normalizedProductNum))
+        {
+            return null;
+        }
 
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
-            var normalizedProductNum = NormalizeNullable(productNum);
-            var normalizedModel = NormalizeNullable(productModel);
             var normalizedStationNo = NormalizeStationNo(stationNo);
-
-            var candidates = _dbContext.Db.Queryable<BizProductProcessConfig>()
-                .Where(it => it.Enabled
-                    && (it.StationNo == normalizedStationNo || it.StationNo == ProductionConstants.Stations.SharedStationNo))
-                .ToList()
-                .Where(config => IsProductMatch(config, normalizedProductNum, normalizedModel, bindingMode))
+            var configs = _dbContext.Db.Queryable<BizProductProcessConfig>()
+                .Where(it => it.Enabled && it.ProductNum == normalizedProductNum)
                 .ToList();
 
-            // 优先使用当前工位专用配置；没有专用配置时回退到 0 号共享配置。
-            return candidates
+            return configs
+                .Where(it => it.StationNo == normalizedStationNo || it.StationNo == ProductionConstants.Stations.SharedStationNo)
                 .OrderByDescending(it => it.StationNo == normalizedStationNo)
-                .ThenByDescending(it => ShouldPrioritizeExactModel(it, normalizedModel, bindingMode))
-                .ThenByDescending(it => ShouldPrioritizeExactProductNum(it, normalizedProductNum, bindingMode))
-                .ThenBy(it => it.Sort)
+                .ThenBy(it => it.Id)
                 .FirstOrDefault();
         }
+    }
+
+    public BizProductProcessConfig? FindActiveForTask(
+        BizWeldTask task,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo)
+    {
+        var productNum = ResolveProgramBoundProductNum(task);
+        return FindActive(productNum, stationNo);
     }
 
     public BizProductProcessConfig Save(BizProductProcessConfig config)
@@ -112,9 +112,6 @@ public class ProductProcessConfigService : IProductProcessConfigService
         }
     }
 
-    /// <summary>
-    /// 物理删除产品工艺配置，界面删除行时调用。
-    /// </summary>
     public void Delete(int id)
     {
         lock (_dbLock)
@@ -126,80 +123,46 @@ public class ProductProcessConfigService : IProductProcessConfigService
         }
     }
 
+    private string ResolveProgramBoundProductNum(BizWeldTask task)
+    {
+        var programId = NormalizeNullable(task.ProgramId);
+        if (string.IsNullOrWhiteSpace(programId))
+        {
+            return NormalizeNullable(task.ProductNum) ?? string.Empty;
+        }
+
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var localProgram = _dbContext.Db.Queryable<BizProgram>()
+                .Where(program => !program.IsDeleted && program.ProgramId == programId)
+                .ToList()
+                .OrderByDescending(program => SameText(program.DeviceId, task.DeviceId))
+                .ThenByDescending(program => program.UpdatedTime)
+                .FirstOrDefault();
+
+            return NormalizeNullable(localProgram?.ProductNum) ?? NormalizeNullable(task.ProductNum) ?? string.Empty;
+        }
+    }
+
     private static void Normalize(BizProductProcessConfig config)
     {
-        config.ProductNum = NormalizeNullable(config.ProductNum);
-        config.ProductModel = NormalizeNullable(config.ProductModel) ?? string.Empty;
+        config.SchemeId = string.IsNullOrWhiteSpace(config.SchemeId) ? "S01" : config.SchemeId.Trim();
+        config.ProductNum = NormalizeRequired(config.ProductNum, "产品工号不能为空。");
         config.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, config.StationNo);
-        // 工序号由 MES 工单提供，不再参与采集参数匹配；保留字段仅兼容已有表结构。
-        config.ProcessNo = string.IsNullOrWhiteSpace(config.ProcessNo) ? "*" : config.ProcessNo.Trim();
-        config.ProcessName = NormalizeNullable(config.ProcessName);
-        config.TemplateId = Math.Max(0, config.TemplateId);
-        config.ProgramMatchRule = NormalizeNullable(config.ProgramMatchRule);
-        config.ProductNoSource = string.IsNullOrWhiteSpace(config.ProductNoSource)
-            ? ProductionConstants.ProductNoSources.AutoIncrement
-            : config.ProductNoSource.Trim();
-        config.WeldPointCount = Math.Max(1, config.WeldPointCount);
-        config.Sort = Math.Max(0, config.Sort);
-        config.Description = NormalizeNullable(config.Description);
-    }
-
-    private static bool IsProductMatch(
-        BizProductProcessConfig config,
-        string? productNum,
-        string? productModel,
-        string bindingMode)
-    {
-        var configProductNum = NormalizeNullable(config.ProductNum);
-        var configProductModel = NormalizeNullable(config.ProductModel);
-
-        if (bindingMode == AppConstants.TestParameterBindingModes.ProductNumOnly)
-        {
-            return !string.IsNullOrWhiteSpace(productNum)
-                && SameText(configProductNum, productNum);
-        }
-
-        if (bindingMode == AppConstants.TestParameterBindingModes.ProductModelOnly)
-        {
-            return !string.IsNullOrWhiteSpace(productModel)
-                && SameText(configProductModel, productModel);
-        }
-
-        return !string.IsNullOrWhiteSpace(productNum)
-            && SameText(configProductNum, productNum)
-            && (string.IsNullOrWhiteSpace(configProductModel)
-                || string.IsNullOrWhiteSpace(productModel)
-                || SameText(configProductModel, productModel));
-    }
-
-    private static bool ShouldPrioritizeExactModel(
-        BizProductProcessConfig config,
-        string? productModel,
-        string bindingMode)
-    {
-        return bindingMode != AppConstants.TestParameterBindingModes.ProductNumOnly
-            && !string.IsNullOrWhiteSpace(productModel)
-            && SameText(config.ProductModel, productModel);
-    }
-
-    private static bool ShouldPrioritizeExactProductNum(
-        BizProductProcessConfig config,
-        string? productNum,
-        string bindingMode)
-    {
-        return bindingMode != AppConstants.TestParameterBindingModes.ProductModelOnly
-            && !string.IsNullOrWhiteSpace(productNum)
-            && SameText(config.ProductNum, productNum);
-    }
-
-    private static string NormalizeBindingMode(string? value)
-    {
-        return value switch
-        {
-            AppConstants.TestParameterBindingModes.ProductNumOnly => AppConstants.TestParameterBindingModes.ProductNumOnly,
-            AppConstants.TestParameterBindingModes.ProductModelOnly => AppConstants.TestParameterBindingModes.ProductModelOnly,
-            _ => AppConstants.TestParameterBindingModes.ProductNumAndModel
-        };
+        config.TouchCount = Math.Max(1, config.TouchCount);
+        config.ProductBase = NormalizeRequired(config.ProductBase, "产品头基地址不能为空。");
+        config.ProductLen = Math.Max(1, config.ProductLen);
+        config.ProductNoExpr = NormalizeRequired(config.ProductNoExpr, "产品编号偏移表达式不能为空。");
+        config.ProductResultExpr = NormalizeRequired(config.ProductResultExpr, "产品结果偏移表达式不能为空。");
+        config.ActualTouchCountExpr = NormalizeNullable(config.ActualTouchCountExpr);
+        config.PresetTouchCountExpr = NormalizeNullable(config.PresetTouchCountExpr);
+        config.TouchBase = NormalizeRequired(config.TouchBase, "焊点头基地址不能为空。");
+        config.TouchHeaderLen = Math.Max(1, config.TouchHeaderLen);
+        config.TouchNoExpr = NormalizeRequired(config.TouchNoExpr, "焊点编号偏移表达式不能为空。");
+        config.TouchResultExpr = NormalizeRequired(config.TouchResultExpr, "焊点结果偏移表达式不能为空。");
+        config.TestBase = NormalizeRequired(config.TestBase, "测试项基地址不能为空。");
+        config.TestAreaLen = Math.Max(1, config.TestAreaLen);
     }
 
     private static int NormalizeStationNo(int stationNo)
@@ -207,6 +170,17 @@ public class ProductProcessConfigService : IProductProcessConfigService
         return stationNo <= ProductionConstants.Stations.SharedStationNo
             ? ProductionConstants.Stations.DefaultStationNo
             : stationNo;
+    }
+
+    private static string NormalizeRequired(string? value, string message)
+    {
+        var normalized = NormalizeNullable(value);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            throw new InvalidOperationException(message);
+        }
+
+        return normalized;
     }
 
     private static string? NormalizeNullable(string? value)

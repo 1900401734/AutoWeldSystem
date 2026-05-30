@@ -73,9 +73,6 @@ public class AppSettings
     [SugarColumn(ColumnDescription = "是否使用产品编号过滤")]
     public bool UseProductNumberFilter { get; set; } = true;
 
-    [SugarColumn(Length = 30, ColumnDescription = "测试参数绑定方式")]
-    public string TestParameterBindingMode { get; set; } = AppConstants.TestParameterBindingModes.ProductNumAndModel;
-
     [SugarColumn(ColumnDescription = "是否启用双工位双工单模式")]
     public bool EnableDualStationMode { get; set; }
 

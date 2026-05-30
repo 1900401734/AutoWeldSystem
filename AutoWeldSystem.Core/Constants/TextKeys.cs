@@ -151,6 +151,7 @@ public static class TextKeys
             public const string ProgramDownloadFailed = "monitor.message.program_download_failed";
             public const string WorkOrderReady = "monitor.message.work_order_ready";
             public const string StartPrerequisiteMissing = "monitor.message.start_prerequisite_missing";
+            public const string StartBlockedByUnfinishedTask = "monitor.message.start_blocked_by_unfinished_task";
             public const string QuantityInvalid = "monitor.message.quantity_invalid";
             public const string OperatorValidationFailed = "monitor.message.operator_validation_failed";
             public const string StartSuccess = "monitor.message.start_success";
@@ -524,6 +525,8 @@ public static class TextKeys
         public const string NameProgramName = "address.name.program_name";
         public const string NameProductModel = "address.name.product_model";
         public const string NameRecipeCode = "address.name.recipe_code";
+        public const string NameProductDataReady = "address.name.product_data_ready";
+        public const string NameProductCollectionFeedback = "address.name.product_collection_feedback";
         public const string NameTotalProduction = "address.name.total_production";
         public const string NameTargetProduction = "address.name.target_production";
         public const string NameAcceptedQuantity = "address.name.accepted_quantity";
