@@ -141,6 +141,11 @@ public sealed class HslPlcCommunicationService : IPlcCommunicationService, IDisp
         return ExecuteWriteAsync(address, client => client.WriteAsync(address, value), cancellationToken);
     }
 
+    public Task<PlcServiceResult> WriteStringAsync(string address, string value, CancellationToken cancellationToken = default)
+    {
+        return ExecuteWriteAsync(address, client => client.WriteAsync(address, value), cancellationToken);
+    }
+
     public async ValueTask DisposeAsync()
     {
         await StopInternalAsync(closeClient: false, CancellationToken.None);

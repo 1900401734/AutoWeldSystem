@@ -15,6 +15,7 @@ public partial class MainForm : BaseWindow
     private readonly ISysUserService _userService;
     private readonly ILocalizationService _localizer;
     private readonly PermissionUiBinder _permissionUiBinder;
+    private readonly PlcWriteDebugMessageFilter _plcWriteDebugMessageFilter;
     private readonly Dictionary<string, UserControl> _viewCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<PageDefinition> _allPages;
     private readonly List<PageDefinition> _visiblePages = new();
@@ -29,8 +30,10 @@ public partial class MainForm : BaseWindow
         _userService = userService;
         _localizer = localizer;
         _permissionUiBinder = permissionUiBinder;
+        _plcWriteDebugMessageFilter = new PlcWriteDebugMessageFilter(serviceProvider, this);
 
         InitializeComponent();
+        Application.AddMessageFilter(_plcWriteDebugMessageFilter);
 
         _allPages = BuildPages();
         GlobalContext.SessionChanged += GlobalContext_SessionChanged;
@@ -54,6 +57,7 @@ public partial class MainForm : BaseWindow
 
     protected override void OnHandleDestroyed(EventArgs e)
     {
+        Application.RemoveMessageFilter(_plcWriteDebugMessageFilter);
         GlobalContext.SessionChanged -= GlobalContext_SessionChanged;
         base.OnHandleDestroyed(e);
     }

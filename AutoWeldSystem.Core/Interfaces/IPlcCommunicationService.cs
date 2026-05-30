@@ -76,4 +76,9 @@ public interface IPlcCommunicationService : IAsyncDisposable
     /// 写入浮点数地址。
     /// </summary>
     Task<PlcServiceResult> WriteFloatAsync(string address, float value, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 写入字符串地址。
+    /// </summary>
+    Task<PlcServiceResult> WriteStringAsync(string address, string value, CancellationToken cancellationToken = default);
 }

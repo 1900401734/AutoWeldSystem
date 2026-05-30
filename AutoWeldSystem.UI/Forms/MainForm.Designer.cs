@@ -95,6 +95,7 @@ partial class MainForm
         Controls.Add(tableLayoutPanel1);
         Controls.Add(segmented1);
         Name = "MainForm";
+        WindowState = FormWindowState.Maximized;
         pnlContent.ResumeLayout(false);
         tableLayoutPanel1.ResumeLayout(false);
         ResumeLayout(false);
