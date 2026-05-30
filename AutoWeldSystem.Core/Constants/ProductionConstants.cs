@@ -94,12 +94,12 @@ public static class ProductionConstants
     /// </summary>
     public static class MesDeviceStatuses
     {
-        public const string Stopped = "0";
-        public const string PoweredOn = "1";
-        public const string Exception = "4";
-        public const string Recovered = "5";
-        public const string ProgramStarted = "6";
-        public const string ProgramEnded = "7";
+        public const string Stopped = "0";          // 停机
+        public const string PoweredOn = "1";        // 开机
+        public const string Exception = "4";        // 异常
+        public const string Recovered = "5";        // 异常恢复
+        public const string ProgramStarted = "6";   // 程序执行开始
+        public const string ProgramEnded = "7";     // 程序执行结束
     }
 
     /// <summary>

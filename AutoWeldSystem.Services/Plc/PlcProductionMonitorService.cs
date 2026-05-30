@@ -153,6 +153,12 @@ public sealed class PlcProductionMonitorService : IPlcProductionMonitorService, 
             }
             catch (Exception ex)
             {
+                if (!IsPlcConnected())
+                {
+                    await Task.Delay(PollInterval, cancellationToken);
+                    continue;
+                }
+
                 WriteBusinessFailureLog(Current.StationNo, ex.Message);
                 Publish(Current with
                 {
@@ -170,17 +176,28 @@ public sealed class PlcProductionMonitorService : IPlcProductionMonitorService, 
     {
         var addresses = await GetAddressSnapshotAsync(cancellationToken);
         var stationNumbers = ResolveStationNumbers(addresses);
+        if (!IsPlcConnected())
+        {
+            PublishIdleForStations(stationNumbers);
+            return;
+        }
+
         var deviceStatusAddress = GetAddress(addresses, AppConstants.PlcAddressKeys.DeviceStatus, ProductionConstants.Stations.DefaultStationNo);
         if (deviceStatusAddress is null)
         {
-            var message = _localizer.GetString(TextKeys.Plc.MessageAddressRequired);
-            PublishFailureForStations(stationNumbers, message);
+            PublishIdleForStations(stationNumbers);
             return;
         }
 
         var statusResult = await _plcCommunicationService.ReadInt16Async(deviceStatusAddress.Address!, cancellationToken);
         if (!statusResult.IsSuccess)
         {
+            if (!IsPlcConnected())
+            {
+                PublishIdleForStations(stationNumbers);
+                return;
+            }
+
             PublishFailureForStations(stationNumbers, statusResult.Message);
             return;
         }
@@ -191,6 +208,12 @@ public sealed class PlcProductionMonitorService : IPlcProductionMonitorService, 
             var target = await ReadNullableIntegerAsync(addresses, AppConstants.PlcAddressKeys.TargetProduction, stationNo, cancellationToken);
             var accepted = await ReadIntegerOrDefaultAsync(addresses, AppConstants.PlcAddressKeys.AcceptedQuantity, stationNo, cancellationToken);
             var rejected = await ReadIntegerOrDefaultAsync(addresses, AppConstants.PlcAddressKeys.RejectedQuantity, stationNo, cancellationToken);
+
+            if (!IsPlcConnected())
+            {
+                PublishIdleForStations(stationNumbers);
+                return;
+            }
 
             Publish(CreateSnapshot(
                 stationNo,
@@ -258,6 +281,11 @@ public sealed class PlcProductionMonitorService : IPlcProductionMonitorService, 
                 cancellationToken)),
             _ => ToInteger(await _plcCommunicationService.ReadInt16Async(plcAddress, cancellationToken))
         };
+    }
+
+    private bool IsPlcConnected()
+    {
+        return _plcCommunicationService.Current.IsConnected;
     }
 
     private static int? ToInteger(PlcServiceResult<bool> result)
@@ -380,6 +408,26 @@ public sealed class PlcProductionMonitorService : IPlcProductionMonitorService, 
                 DeviceStatusCode = null,
                 UpdatedTime = DateTime.Now,
                 Message = message
+            });
+        }
+    }
+
+    private void PublishIdleForStations(IReadOnlyList<int> stationNumbers)
+    {
+        foreach (var stationNo in stationNumbers)
+        {
+            var current = GetCurrent(stationNo);
+            if (!current.IsSuccess && string.IsNullOrWhiteSpace(current.Message))
+            {
+                continue;
+            }
+
+            Publish(current with
+            {
+                IsSuccess = false,
+                DeviceStatusCode = null,
+                UpdatedTime = DateTime.Now,
+                Message = string.Empty
             });
         }
     }

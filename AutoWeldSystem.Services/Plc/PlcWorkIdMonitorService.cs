@@ -159,6 +159,12 @@ public sealed class PlcWorkIdMonitorService : IPlcWorkIdMonitorService, IDisposa
             }
             catch (Exception ex)
             {
+                if (!IsPlcConnected())
+                {
+                    await Task.Delay(PollInterval, cancellationToken);
+                    continue;
+                }
+
                 WriteBusinessFailureLog(Current.StationNo, ex.Message);
                 Publish(Current with
                 {
@@ -186,11 +192,15 @@ public sealed class PlcWorkIdMonitorService : IPlcWorkIdMonitorService, IDisposa
         CancellationToken cancellationToken)
     {
         var current = GetCurrent(stationNo);
+        if (!IsPlcConnected())
+        {
+            PublishIdle(stationNo, current);
+            return;
+        }
+
         if (address is null || string.IsNullOrWhiteSpace(address.Address))
         {
-            var message = _localizer.GetString(TextKeys.Plc.MessageAddressRequired);
-            WriteBusinessFailureLog(stationNo, message);
-            Publish(CreateSnapshot(stationNo, false, current.WorkId, DateTime.Now, message));
+            PublishIdle(stationNo, current);
             return;
         }
 
@@ -198,6 +208,12 @@ public sealed class PlcWorkIdMonitorService : IPlcWorkIdMonitorService, IDisposa
         var result = await _plcCommunicationService.ReadStringAsync(address.Address, length, cancellationToken);
         if (!result.IsSuccess)
         {
+            if (!IsPlcConnected())
+            {
+                PublishIdle(stationNo, current);
+                return;
+            }
+
             WriteBusinessFailureLog(stationNo, result.Message);
             Publish(CreateSnapshot(stationNo, false, current.WorkId, DateTime.Now, result.Message));
             return;
@@ -205,6 +221,21 @@ public sealed class PlcWorkIdMonitorService : IPlcWorkIdMonitorService, IDisposa
 
         var workId = (result.Value ?? string.Empty).Trim('\0', ' ', '\r', '\n', '\t');
         Publish(CreateSnapshot(stationNo, true, workId, DateTime.Now, string.Empty));
+    }
+
+    private bool IsPlcConnected()
+    {
+        return _plcCommunicationService.Current.IsConnected;
+    }
+
+    private void PublishIdle(int stationNo, PlcWorkIdSnapshot current)
+    {
+        if (!current.IsSuccess && string.IsNullOrWhiteSpace(current.Message))
+        {
+            return;
+        }
+
+        Publish(CreateSnapshot(stationNo, false, current.WorkId, DateTime.Now, string.Empty));
     }
 
     private async Task<Dictionary<int, BizPlcAddress?>> GetAddressSnapshotAsync(CancellationToken cancellationToken)

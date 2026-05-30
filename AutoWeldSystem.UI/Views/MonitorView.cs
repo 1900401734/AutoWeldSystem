@@ -5,10 +5,14 @@ using AutoWeldSystem.Core.Enums;
 using AutoWeldSystem.Core.Exceptions;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.Plc;
 using AutoWeldSystem.UI.Base;
 using AutoWeldSystem.UI.Forms;
 using AutoWeldSystem.UI.Infrastructure;
+using System.Globalization;
 using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 
 namespace AutoWeldSystem.UI.Views;
@@ -22,9 +26,27 @@ public partial class MonitorView : BaseView
     private const int HeaderStatusCellMinWidth = 140;
     private const int HeaderStatusCellPadding = 36;
     private const int HeaderButtonPadding = 62;
+    private const int RealtimePreviewPaintIntervalMs = 500;
+    private const int WeldPreviewMouseWheelPixels = 96;
+    private const int WeldPreviewMinVisibleRows = 5;
+    private const int WeldPreviewMaxVisibleRows = 12;
+    private const int WeldPreviewHeightPadding = 20;
+    private const int WeldPreviewHeightTolerance = 2;
+    // 主界面运行提示只承载摘要，完整业务细节以生产日志和本地日志为准。
+    private const int RuntimeSummaryMaxLength = 56;
+    private const string RuntimeSummaryOverflowSuffix = "...";
+    private const int WmSetRedraw = 0x000B;
+    private const string PreviewTouchNoColumn = "TouchNo";
+    private const string PreviewTouchResultColumn = "TouchResult";
+    private const string PreviewMessageColumn = "Message";
+    private const string PreviewUpperRole = "Upper";
+    private const string PreviewLowerRole = "Lower";
+    private const string PreviewActualRole = "Actual";
+    private const string PreviewResultRole = "Result";
     private const int StationSelectorRowIndex = 3;
     private const string VersionPrefix = "v";
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 1000 };
+    private readonly System.Windows.Forms.Timer _realtimePreviewPaintTimer = new() { Interval = RealtimePreviewPaintIntervalMs };
     private readonly ILocalizationService _localizer;
     private readonly IAppSettingsService _settingsService;
     private readonly IPlcCommunicationService _plcCommunicationService;
@@ -33,11 +55,14 @@ public partial class MonitorView : BaseView
     private readonly IPlcWorkIdMonitorService _plcWorkIdMonitorService;
     private readonly IPlcWeldCycleMonitorService _plcWeldCycleMonitorService;
     private readonly IPlcAddressService _plcAddressService;
+    private readonly IPlcExpressionReadService _plcExpressionReadService;
     private readonly IProductProcessConfigService _productProcessConfigService;
-    private readonly ITestItemTemplateService _testItemTemplateService;
+    private readonly ITestSchemeConfigService _testSchemeConfigService;
+    private readonly IProductRealtimePreviewService _productRealtimePreviewService;
     private readonly IProgramManageService _programManageService;
     private readonly IWeldTaskService _weldTaskService;
     private readonly IProgramExceptionLogService _exceptionLogService;
+    private readonly IProductionFlowLogService _productionLogService;
     private bool _syncingLanguageSelection;
     private bool _syncingStationSelection;
     private bool _dualStationModeEnabled;
@@ -52,17 +77,26 @@ public partial class MonitorView : BaseView
     private Font? _titleFont;
     private Font? _headerStatusFont;
     private Font? _headerButtonFont;
-    private Font? _versionFont;
     private Font? _runtimeMessageFont;
     private Font? _runtimeGroupFont;
-    private Label? _lblVersion;
-    private TableLayoutPanel? _titleLayout;
     private readonly List<WeldParameterRow> _weldParameterRows = new();
+    private readonly object _realtimePreviewSync = new();
+    private ProductRealtimePreviewSnapshot? _pendingRealtimePreviewSnapshot;
     private ProductIdentity? _currentProductIdentity;
-    private DateTime _lastProductTemplateRefreshTime = DateTime.MinValue;
-    private string _lastProductTemplatePreviewKey = string.Empty;
+    private DateTime _lastSchemePreviewRefreshTime = DateTime.MinValue;
+    private string _lastSchemePreviewKey = string.Empty;
     private string _confirmedProgramFingerprint = string.Empty;
-    private bool _refreshingProductTemplatePreview;
+    private string _weldParameterLayoutKey = string.Empty;
+    private string _weldParameterPreviewSchemaKey = string.Empty;
+    private string _weldParameterVisibleValueKey = string.Empty;
+    private bool _refreshingSchemePreview;
+    private bool _weldParameterTableBound;
+    private bool _realtimePreviewApplyPosted;
+    private bool _syncingWeldPreviewHorizontalScroll;
+    private bool _adjustingWeldPreviewHostHeight;
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
     public MonitorView(
         ILocalizationService localizer,
@@ -73,11 +107,14 @@ public partial class MonitorView : BaseView
         IPlcWorkIdMonitorService plcWorkIdMonitorService,
         IPlcWeldCycleMonitorService plcWeldCycleMonitorService,
         IPlcAddressService plcAddressService,
+        IPlcExpressionReadService plcExpressionReadService,
         IProductProcessConfigService productProcessConfigService,
-        ITestItemTemplateService testItemTemplateService,
+        ITestSchemeConfigService testSchemeConfigService,
+        IProductRealtimePreviewService productRealtimePreviewService,
         IProgramManageService programManageService,
         IWeldTaskService weldTaskService,
-        IProgramExceptionLogService exceptionLogService)
+        IProgramExceptionLogService exceptionLogService,
+        IProductionFlowLogService productionLogService)
     {
         InitializeComponent();
 
@@ -89,11 +126,14 @@ public partial class MonitorView : BaseView
         _plcWorkIdMonitorService = plcWorkIdMonitorService;
         _plcWeldCycleMonitorService = plcWeldCycleMonitorService;
         _plcAddressService = plcAddressService;
+        _plcExpressionReadService = plcExpressionReadService;
         _productProcessConfigService = productProcessConfigService;
-        _testItemTemplateService = testItemTemplateService;
+        _testSchemeConfigService = testSchemeConfigService;
+        _productRealtimePreviewService = productRealtimePreviewService;
         _programManageService = programManageService;
         _weldTaskService = weldTaskService;
         _exceptionLogService = exceptionLogService;
+        _productionLogService = productionLogService;
 
         LoadTitleLogo();
         ConfigureHeaderLayout();
@@ -111,7 +151,7 @@ public partial class MonitorView : BaseView
         ApplyPlcStatus(_plcCommunicationService.Current);
         ApplyMesStatus(_mesConnectionMonitorService.Current);
         ApplyProductionStatus(GetCurrentProductionSnapshot());
-        QueueRefreshProductTemplatePreview(force: true);
+        QueueRefreshSchemePreview(force: true);
         AdjustTitleFontSize();
     }
 
@@ -137,63 +177,19 @@ public partial class MonitorView : BaseView
     {
         _headerStatusFont = new Font("Microsoft YaHei UI", 10.5F, FontStyle.Regular);
         _headerButtonFont = new Font("Microsoft YaHei UI", 10.5F, FontStyle.Regular);
-        _versionFont = new Font("Microsoft YaHei UI", 9F, FontStyle.Regular);
 
         tlpLeftTop.AutoSize = false;
         tlpCommunicationStatus.MinimumSize = new Size(HeaderStatusCellMinWidth * 2, 0);
 
-        ConfigureTitleVersionLayout();
+        GetVersion();
         ConfigureStatusTag(tagMes);
         ConfigureStatusTag(tagPLC);
         ConfigureStatusTag(tagDeviceStatus);
         ConfigureStatusTag(tagTaskStatus);
-        //ConfigureReportButton(btnExpStart);
-        //ConfigureReportButton(btnExpEnd);
         AdjustHeaderFixedColumns();
     }
 
-    /// <summary>
-    /// Splits the header title area into app title and version, keeping the version visible without crowding the title.
-    /// </summary>
-    private void ConfigureTitleVersionLayout()
-    {
-        if (_titleLayout is not null)
-        {
-            return;
-        }
-
-        tlpLeftTop.Controls.Remove(lblTitle);
-        lblTitle.Dock = DockStyle.Fill;
-        lblTitle.Margin = new Padding(0);
-        lblTitle.TextAlign = ContentAlignment.BottomCenter;
-
-        _lblVersion = new Label
-        {
-            Dock = DockStyle.Fill,
-            Font = _versionFont,
-            ForeColor = SystemColors.GrayText,
-            Margin = new Padding(0),
-            Name = "lblVersion",
-            Text = BuildVersionText(),
-            TextAlign = ContentAlignment.TopCenter
-        };
-
-        _titleLayout = new TableLayoutPanel
-        {
-            ColumnCount = 1,
-            Dock = DockStyle.Fill,
-            Margin = new Padding(0),
-            Name = "tlpTitleInfo",
-            RowCount = 2
-        };
-        _titleLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        _titleLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 72F));
-        _titleLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 28F));
-        _titleLayout.Controls.Add(lblTitle, 0, 0);
-        _titleLayout.Controls.Add(_lblVersion, 0, 1);
-
-        tlpLeftTop.Controls.Add(_titleLayout, 1, 0);
-    }
+    private void GetVersion() => lblVersion.Text = BuildVersionText();
 
     /// <summary>
     /// Status tags use compact bold text and a small margin so rounded corners do not cut into text.
@@ -342,8 +338,8 @@ public partial class MonitorView : BaseView
         _runtimeMessageFont = new Font("Microsoft YaHei UI", 12.5F, FontStyle.Bold);
         _runtimeGroupFont = new Font("Microsoft YaHei UI", 10.5F, FontStyle.Bold);
 
-        groupBox1.Font = _runtimeGroupFont;
-        groupBox2.Font = _runtimeGroupFont;
+        grpErrorTips.Font = _runtimeGroupFont;
+        grpRunningStatus.Font = _runtimeGroupFont;
         inputErrorTips.Font = _runtimeMessageFont;
         inputRunningStatus.Font = _runtimeMessageFont;
 
@@ -357,8 +353,8 @@ public partial class MonitorView : BaseView
     private void ConfigureStationResultTags()
     {
         tableLayoutPanel1.AutoSize = false;
-        ConfigureStationResultTag(tag1, "工位1--", UiColors.Status.Muted);
-        ConfigureStationResultTag(tag2, "工位2--", UiColors.Status.Muted);
+        ConfigureStationResultTag(tagStation1, "工位1--", UiColors.Status.Muted);
+        ConfigureStationResultTag(tagStation2, "工位2--", UiColors.Status.Muted);
         UpdateStationResultLayout();
     }
 
@@ -398,8 +394,8 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        tag1.Visible = true;
-        tag2.Visible = _dualStationModeEnabled;
+        tagStation1.Visible = true;
+        tagStation2.Visible = _dualStationModeEnabled;
 
         tableLayoutPanel1.ColumnStyles[0].SizeType = SizeType.Percent;
         tableLayoutPanel1.ColumnStyles[0].Width = _dualStationModeEnabled ? 50F : 100F;
@@ -578,6 +574,7 @@ public partial class MonitorView : BaseView
     {
         Load += MonitorView_Load;
         _timer.Tick += Timer_Tick;
+        _realtimePreviewPaintTimer.Tick += RealtimePreviewPaintTimer_Tick;
         tlpLeftTop.SizeChanged += TitleLayout_Changed;
         lblTitle.SizeChanged += TitleLayout_Changed;
         lblTitle.TextChanged += TitleLayout_Changed;
@@ -587,6 +584,17 @@ public partial class MonitorView : BaseView
         btnEditWO.Click += EditWorkOrder_Click;
         btnExpStart.Click += StartReport_Click;
         btnExpEnd.Click += FinishReport_Click;
+        btnAddressPreview.Click += AddressPreview_Click;
+        splitter1.SizeChanged += Splitter1_SizeChanged;
+        table2.MouseEnter += Table2_MouseEnter;
+        table2.MouseWheel += Table2_MouseWheel;
+        table2.Scroll += Table2_Scroll;
+        table2.SizeChanged += Table2_ScrollRangeChanged;
+        table2.ColumnWidthChanged += Table2_ScrollRangeChanged;
+        table2.ColumnAdded += Table2_ScrollRangeChanged;
+        table2.ColumnRemoved += Table2_ScrollRangeChanged;
+        table2HorizontalScrollBar.ValueChanged += Table2HorizontalScrollBar_ValueChanged;
+        table2HorizontalScrollBar.VisibleChanged += Table2HorizontalScrollBar_VisibleChanged;
         select_Lang.SelectedIndexChanged += Language_SelectedIndexChanged;
         selectStation.SelectedIndexChanged += Station_SelectedIndexChanged;
         GlobalContext.SessionChanged += GlobalContext_SessionChanged;
@@ -596,6 +604,68 @@ public partial class MonitorView : BaseView
         _plcProductionMonitorService.StatusChanged += PlcProductionMonitorService_StatusChanged;
         _plcWorkIdMonitorService.WorkIdChanged += PlcWorkIdMonitorService_WorkIdChanged;
         _plcWeldCycleMonitorService.WeldPointCollected += PlcWeldCycleMonitorService_WeldPointCollected;
+        _productRealtimePreviewService.SnapshotChanged += ProductRealtimePreviewService_SnapshotChanged;
+        _productionLogService.LogWritten += ProductionLogService_LogWritten;
+    }
+
+    private void Splitter1_SizeChanged(object? sender, EventArgs e)
+    {
+        AdjustWeldPreviewHostHeight();
+    }
+
+    private void Table2_MouseEnter(object? sender, EventArgs e)
+    {
+        if (table2.CanFocus)
+        {
+            table2.Focus();
+        }
+    }
+
+    private void Table2_MouseWheel(object? sender, MouseEventArgs e)
+    {
+        if (GetWeldPreviewMaxHorizontalOffset() <= 0)
+        {
+            return;
+        }
+
+        if (e is HandledMouseEventArgs handled)
+        {
+            handled.Handled = true;
+        }
+
+        var wheelSteps = Math.Max(1, Math.Abs(e.Delta) / SystemInformation.MouseWheelScrollDelta);
+        var direction = e.Delta < 0 ? 1 : -1;
+        SetWeldPreviewHorizontalOffset(
+            table2.HorizontalScrollingOffset + direction * wheelSteps * WeldPreviewMouseWheelPixels);
+    }
+
+    private void Table2_Scroll(object? sender, ScrollEventArgs e)
+    {
+        if (e.ScrollOrientation == ScrollOrientation.HorizontalScroll)
+        {
+            SyncWeldPreviewHorizontalScrollBar();
+        }
+    }
+
+    private void Table2_ScrollRangeChanged(object? sender, EventArgs e)
+    {
+        SyncWeldPreviewHorizontalScrollBar();
+        AdjustWeldPreviewHostHeight();
+    }
+
+    private void Table2HorizontalScrollBar_ValueChanged(object? sender, EventArgs e)
+    {
+        if (_syncingWeldPreviewHorizontalScroll)
+        {
+            return;
+        }
+
+        SetWeldPreviewHorizontalOffset(table2HorizontalScrollBar.Value);
+    }
+
+    private void Table2HorizontalScrollBar_VisibleChanged(object? sender, EventArgs e)
+    {
+        AdjustWeldPreviewHostHeight();
     }
 
     /// <summary>
@@ -614,23 +684,26 @@ public partial class MonitorView : BaseView
         ApplyPlcStatus(_plcCommunicationService.Current);
         ApplyMesStatus(_mesConnectionMonitorService.Current);
         ApplyProductionStatus(GetCurrentProductionSnapshot());
-        QueueRefreshProductTemplatePreview(force: true);
+        QueueRefreshSchemePreview(force: true);
         AdjustTitleFontSize();
     }
 
     private void MonitorView_Load(object? sender, EventArgs e)
     {
         _timer.Start();
+        _realtimePreviewPaintTimer.Start();
         ApplyLocalizedTexts();
         UpdateCurrentTime();
         BindSessionInfo();
         BindLanguageSelection();
         ConfigureStationSelector();
+        _weldTaskService.RestoreUnfinishedTask(CurrentStationNo);
         BindProductionRuntimeState();
         RefreshRuntimePanels();
         ApplyPlcStatus(_plcCommunicationService.Current);
         ApplyMesStatus(_mesConnectionMonitorService.Current);
         ApplyProductionStatus(GetCurrentProductionSnapshot());
+        ApplyCurrentRealtimePreviewSnapshot();
         AdjustTitleFontSize();
     }
 
@@ -643,12 +716,15 @@ public partial class MonitorView : BaseView
         _plcProductionMonitorService.StatusChanged -= PlcProductionMonitorService_StatusChanged;
         _plcWorkIdMonitorService.WorkIdChanged -= PlcWorkIdMonitorService_WorkIdChanged;
         _plcWeldCycleMonitorService.WeldPointCollected -= PlcWeldCycleMonitorService_WeldPointCollected;
+        _productRealtimePreviewService.SnapshotChanged -= ProductRealtimePreviewService_SnapshotChanged;
+        _productionLogService.LogWritten -= ProductionLogService_LogWritten;
         _timer.Stop();
+        _realtimePreviewPaintTimer.Stop();
         _timer.Dispose();
+        _realtimePreviewPaintTimer.Dispose();
         _titleFont?.Dispose();
         _headerStatusFont?.Dispose();
         _headerButtonFont?.Dispose();
-        _versionFont?.Dispose();
         _runtimeMessageFont?.Dispose();
         _runtimeGroupFont?.Dispose();
         base.OnHandleDestroyed(e);
@@ -676,7 +752,7 @@ public partial class MonitorView : BaseView
 
         if (_weldTaskService.CurrentState.CurrentWorkOrder is null)
         {
-            QueueRefreshProductTemplatePreview(force: false);
+            QueueRefreshSchemePreview(force: false);
         }
     }
 
@@ -776,6 +852,78 @@ public partial class MonitorView : BaseView
         ApplyLatestWeldPointRecord(e);
     }
 
+    private void ProductRealtimePreviewService_SnapshotChanged(object? sender, ProductRealtimePreviewSnapshot e)
+    {
+        if (IsDisposed || !IsHandleCreated || e.StationNo != CurrentStationNo)
+        {
+            return;
+        }
+
+        lock (_realtimePreviewSync)
+        {
+            _pendingRealtimePreviewSnapshot = e;
+            if (_realtimePreviewApplyPosted)
+            {
+                return;
+            }
+
+            _realtimePreviewApplyPosted = true;
+        }
+
+        if (InvokeRequired)
+        {
+            BeginInvoke(new Action(ApplyPendingRealtimePreviewSnapshot));
+            return;
+        }
+
+        ApplyPendingRealtimePreviewSnapshot();
+    }
+
+    /// <summary>
+    /// Fallback check for a pending realtime snapshot; normal snapshots post to the UI immediately.
+    /// </summary>
+    private void RealtimePreviewPaintTimer_Tick(object? sender, EventArgs e)
+    {
+        ApplyPendingRealtimePreviewSnapshot();
+    }
+
+    /// <summary>
+    /// Consumes one cached realtime snapshot. Older snapshots are overwritten before this method runs.
+    /// </summary>
+    private void ApplyPendingRealtimePreviewSnapshot()
+    {
+        ProductRealtimePreviewSnapshot? snapshot;
+        lock (_realtimePreviewSync)
+        {
+            snapshot = _pendingRealtimePreviewSnapshot;
+            _pendingRealtimePreviewSnapshot = null;
+            _realtimePreviewApplyPosted = false;
+        }
+
+        if (snapshot is null || IsDisposed || snapshot.StationNo != CurrentStationNo)
+        {
+            return;
+        }
+
+        ApplyProductRealtimePreviewSnapshot(snapshot);
+    }
+
+    private void ProductionLogService_LogWritten(object? sender, ProductionFlowLogEntry e)
+    {
+        if (IsDisposed || !ShouldShowProductionHint(e))
+        {
+            return;
+        }
+
+        if (InvokeRequired)
+        {
+            BeginInvoke(() => ApplyProductionHint(e));
+            return;
+        }
+
+        ApplyProductionHint(e);
+    }
+
     private void SwitchUser_Click(object? sender, EventArgs e)
     {
         if (!ConfirmAction(TextKeys.Monitor.Message.SwitchUserConfirm, TextKeys.Monitor.Title.SwitchUserTitle))
@@ -800,6 +948,12 @@ public partial class MonitorView : BaseView
 
     private async void ChangeWorkOrder_Click(object? sender, EventArgs e)
     {
+        if (_weldTaskService.RestoreUnfinishedTask(CurrentStationNo) is not null)
+        {
+            ShowWarning(TextKeys.Monitor.Message.StartBlockedByUnfinishedTask);
+            return;
+        }
+
         await PrepareWorkOrderAndProgramAsync(forceManualInput: true);
     }
 
@@ -814,7 +968,7 @@ public partial class MonitorView : BaseView
 
         if (state.ActiveTask is not null)
         {
-            ShowWarningText("当前工位已经开工，不能再调整加工程序。");
+            ShowWarningText("处于开工状态，禁止调整加工程序。");
             return;
         }
 
@@ -838,9 +992,23 @@ public partial class MonitorView : BaseView
         }
     }
 
+    private void AddressPreview_Click(object? sender, EventArgs e)
+    {
+        var rows = BuildCurrentAddressPreviewRows();
+        using var form = new AddressPreviewForm(rows, _plcExpressionReadService, _localizer);
+        form.ShowDialog(this);
+    }
+
     private async void StartReport_Click(object? sender, EventArgs e)
     {
         var stationNo = CurrentStationNo;
+        if (_weldTaskService.RestoreUnfinishedTask(stationNo) is not null)
+        {
+            RefreshProductionRuntimeState();
+            ShowWarning(TextKeys.Monitor.Message.StartBlockedByUnfinishedTask);
+            return;
+        }
+
         if (ShouldPrepareWorkOrderBeforeStart()
             && !await PrepareWorkOrderAndProgramAsync(forceManualInput: false))
         {
@@ -869,7 +1037,8 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        if (!await ValidateRecipeBeforeStartAsync(state.SelectedProgram, stationNo))
+        if (!await PrepareRecipeBeforeStartAsync(state.SelectedProgram, stationNo)
+            || !await ValidateRecipeBeforeStartAsync(state.SelectedProgram, stationNo))
         {
             return;
         }
@@ -899,8 +1068,8 @@ public partial class MonitorView : BaseView
     private async void FinishReport_Click(object? sender, EventArgs e)
     {
         var stationNo = CurrentStationNo;
-        var state = _weldTaskService.CurrentState;
-        if (state.ActiveTask is null)
+        var activeTask = _weldTaskService.RestoreUnfinishedTask(stationNo);
+        if (activeTask is null)
         {
             ShowWarning(TextKeys.Monitor.Message.FinishPrerequisiteMissing);
             return;
@@ -913,7 +1082,7 @@ public partial class MonitorView : BaseView
         }
 
         var production = GetCurrentProductionSnapshot();
-        var defaultActual = Math.Max(1, production.TotalProduction > 0 ? production.TotalProduction : state.ActiveTask.ActualQty);
+        var defaultActual = Math.Max(1, production.TotalProduction > 0 ? production.TotalProduction : activeTask.ActualQty);
         if (!TryPromptPositiveInt(TextKeys.Monitor.Dialog.ActualQuantityTitle, TextKeys.Monitor.Dialog.ActualQuantityPrompt, defaultActual, out var actualQty)
             || !TryPromptNonNegativeInt(TextKeys.Monitor.Dialog.QualifiedQuantityTitle, TextKeys.Monitor.Dialog.QualifiedQuantityPrompt, production.AcceptedQuantity, out var qualifiedQty)
             || !TryPromptNonNegativeInt(TextKeys.Monitor.Dialog.FailedQuantityTitle, TextKeys.Monitor.Dialog.FailedQuantityPrompt, production.RejectedQuantity, out var failedQty))
@@ -1132,8 +1301,10 @@ public partial class MonitorView : BaseView
         }
 
         _weldTaskService.SelectStation(stationNo);
+        _weldTaskService.RestoreUnfinishedTask(stationNo);
         RefreshProductionRuntimeState();
-        QueueRefreshProductTemplatePreview(force: true);
+        QueueRefreshSchemePreview(force: true);
+        ApplyCurrentRealtimePreviewSnapshot();
         SyncStationSelection();
     }
 
@@ -1218,7 +1389,7 @@ public partial class MonitorView : BaseView
     {
         BindProductionRuntimeState();
         BindProductionMetrics(GetCurrentProductionSnapshot());
-        QueueRefreshProductTemplatePreview(force: false);
+        QueueRefreshSchemePreview(force: false);
     }
 
     private void ApplyWorkIdSnapshot(PlcWorkIdSnapshot snapshot)
@@ -1231,7 +1402,7 @@ public partial class MonitorView : BaseView
         if (snapshot.IsSuccess)
         {
             BindProductionRuntimeState();
-            QueueRefreshProductTemplatePreview(force: true);
+            QueueRefreshSchemePreview(force: true);
         }
 
         if (!snapshot.IsSuccess && !string.IsNullOrWhiteSpace(snapshot.Message))
@@ -1246,8 +1417,60 @@ public partial class MonitorView : BaseView
         BindWeldParameterRows(record);
         ClearRuntimeError();
         SetRuntimeStatusText(
-            $"焊点采集完成：工位{record.StationNo} 产品{record.ProductNo} 焊点{record.TouchNo} {record.TestResult}",
+            $"数据采集完成：焊点{record.TouchNo} {record.TestResult}",
             isSuccess: true);
+    }
+
+    private bool ShouldShowProductionHint(ProductionFlowLogEntry entry)
+    {
+        if (entry.StationNo > 0 && entry.StationNo != CurrentStationNo)
+        {
+            return false;
+        }
+
+        return entry.Step is
+            "ProductDataReady" or
+            "ProductCollectionStart" or
+            "ProductDataReadStart" or
+            "ProductDataSaved" or
+            "ProductCollectionFeedback" or
+            "ProcessParameterUploadSucceeded" or
+            "ProcessParameterUploadFailed" or
+            "ReportFileGenerated" or
+            "ReportFileUploadSucceeded" or
+            "ReportFileUploadFailed";
+    }
+
+    private void ApplyProductionHint(ProductionFlowLogEntry entry)
+    {
+        if (entry.Level.Equals("Error", StringComparison.OrdinalIgnoreCase))
+        {
+            SetRuntimeErrorText(ToProductionHintText(entry));
+            return;
+        }
+
+        ClearRuntimeError();
+        SetRuntimeStatusText(ToProductionHintText(entry), isSuccess: true);
+    }
+
+    private static string ToProductionHintText(ProductionFlowLogEntry entry)
+    {
+        return entry.Step switch
+        {
+            "ProductDataReady" => "PLC触发采集数据",
+            "ProductCollectionStart" => "正在采集产品数据",
+            "ProductDataReadStart" => "正在采集产品数据",
+            "ProductDataSaved" => "数据保存成功",
+            "ProductCollectionFeedback" => entry.Level.Equals("Error", StringComparison.OrdinalIgnoreCase)
+                ? "PLC采集反馈失败"
+                : "PLC采集反馈成功",
+            "ProcessParameterUploadSucceeded" => "数据上传成功",
+            "ProcessParameterUploadFailed" => "数据上传失败",
+            "ReportFileGenerated" => "报告生成成功",
+            "ReportFileUploadSucceeded" => "报告上传成功",
+            "ReportFileUploadFailed" => "报告上传失败",
+            _ => entry.Summary
+        };
     }
 
     private void ApplyStationResult(BizWeldPointRecord record)
@@ -1257,11 +1480,11 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        var tag = record.StationNo == 2 ? tag2 : tag1;
+        var tag = record.StationNo == 2 ? tagStation2 : tagStation1;
         var resultText = NormalizeStationResultText(record.TestResultRaw ?? record.TestResult);
 
         UpdateStationResultLayout();
-        tag.Text = $"工位{record.StationNo}\r\n{resultText}";
+        tag.Text = $"工位{record.StationNo}{resultText}";
         tag.ForeColor = Color.White;
         tag.BackColor = string.Equals(resultText, ProductionConstants.TestResults.Ok, StringComparison.OrdinalIgnoreCase)
             ? UiColors.Status.Success
@@ -1319,9 +1542,11 @@ public partial class MonitorView : BaseView
         btnEditWO.Text = _localizer.GetString(TextKeys.Monitor.Button.EditWO);
         btnSwitchUser.Text = _localizer.GetString(TextKeys.Monitor.Button.SwitchUser);
         btnLogout.Text = _localizer.GetString(TextKeys.Monitor.Button.Logout);
-        groupBox1.Text = _localizer.GetString(TextKeys.Monitor.Group.ExceptionTips);
-        groupBox2.Text = _localizer.GetString(TextKeys.Monitor.Group.RunningStatus);
+        grpErrorTips.Text = _localizer.GetString(TextKeys.Monitor.Group.ExceptionTips);
+        grpRunningStatus.Text = _localizer.GetString(TextKeys.Monitor.Group.RunningStatus);
+        //groupStationOverview.Text = "工位产品概览";
         table1.Text = _localizer.GetString(TextKeys.Monitor.Group.ProductionMetrics);
+        table2.Text = "实时测试结果";
 
         lblCurUser.Text = _localizer.GetString(TextKeys.Monitor.Label.CurrentUser);
         lblCurLang.Text = _localizer.GetString(TextKeys.Monitor.Label.CurrentLang);
@@ -1336,6 +1561,16 @@ public partial class MonitorView : BaseView
         lblDrawingNo.Text = _localizer.GetString(TextKeys.Monitor.Label.DrawingNo);
         lblProcessNo.Text = _localizer.GetString(TextKeys.Monitor.Label.ProcessNo);
         lblProcessName.Text = _localizer.GetString(TextKeys.Monitor.Label.ProcessName);
+        lblLiveStation.Text = "工位";
+        lblLiveProductNo.Text = "产品编号";
+        lblLiveProductNum.Text = "产品工号";
+        lblLiveProductModel.Text = "产品型号";
+        lblLiveScheme.Text = "方案";
+        lblLiveTouchCount.Text = "焊点数量";
+        lblLiveResult.Text = "产品结果";
+        lblLiveRefreshTime.Text = "刷新时间";
+        lblLiveHint.Text = "实时预览服务每 1 秒读取当前工位测试值，采集到新快照后立即刷新界面。";
+        btnAddressPreview.Text = "PLC 地址预览";
         AdjustHeaderFixedColumns();
     }
 
@@ -1436,11 +1671,11 @@ public partial class MonitorView : BaseView
         var rows = new List<ProductionMetricRow>
         {
             new(_localizer.GetString(TextKeys.Production.TotalProduction), snapshot.TotalProduction.ToString()),
-            new(_localizer.GetString(TextKeys.Production.MesProductionQuantity), FormatNullable(mesProductionQuantity)),
             new(_localizer.GetString(TextKeys.Production.AcceptedQuantity), snapshot.AcceptedQuantity.ToString()),
             new(_localizer.GetString(TextKeys.Production.RejectedQuantity), snapshot.RejectedQuantity.ToString()),
             new(_localizer.GetString(TextKeys.Production.AcceptedRate), FormatRate(acceptedRate)),
             new(_localizer.GetString(TextKeys.Production.RejectedRate), FormatRate(rejectedRate)),
+            new(_localizer.GetString(TextKeys.Production.MesProductionQuantity), FormatNullable(mesProductionQuantity)),
             new(_localizer.GetString(TextKeys.Production.AchievementRate), FormatRate(achievementRate))
         };
 
@@ -1464,28 +1699,19 @@ public partial class MonitorView : BaseView
 
     private void ConfigureWeldParameterTableColumns()
     {
-        table2.Columns.Clear();
-        table2.Columns.Add(new AntdUI.Column(nameof(WeldParameterRow.Station), "工位") { Ellipsis = true });
-        table2.Columns.Add(new AntdUI.Column(nameof(WeldParameterRow.ProductNum), "产品工号") { Ellipsis = true });
-        table2.Columns.Add(new AntdUI.Column(nameof(WeldParameterRow.ProductModel), "产品型号") { Ellipsis = true });
-        table2.Columns.Add(new AntdUI.Column(nameof(WeldParameterRow.TouchNo), "焊点") { Ellipsis = true });
-        table2.Columns.Add(new AntdUI.Column(nameof(WeldParameterRow.ParameterName), "测试项目") { Ellipsis = true });
-        table2.Columns.Add(new AntdUI.Column(nameof(WeldParameterRow.Unit), "单位") { Ellipsis = true });
-        table2.Columns.Add(new AntdUI.Column(nameof(WeldParameterRow.ActualAddress), "实际值地址") { Ellipsis = true });
-        table2.Columns.Add(new AntdUI.Column(nameof(WeldParameterRow.UpperAddress), "上限地址") { Ellipsis = true });
-        table2.Columns.Add(new AntdUI.Column(nameof(WeldParameterRow.LowerAddress), "下限地址") { Ellipsis = true });
-        table2.Columns.Add(new AntdUI.Column(nameof(WeldParameterRow.ResultAddress), "结果地址") { Ellipsis = true });
-        table2.Columns.Add(new AntdUI.Column(nameof(WeldParameterRow.Value), "最新值") { Ellipsis = true });
-        table2.Columns.Add(new AntdUI.Column(nameof(WeldParameterRow.Result), "最新结果") { Ellipsis = true });
-        table2.Columns.Add(new AntdUI.Column(nameof(WeldParameterRow.RecordTime), "采集时间") { Ellipsis = true });
-        TableStyleHelper.ApplyAntdColumnDefaults(table2);
-        BindWeldParameterTable();
+        table2.AutoGenerateColumns = false;
+        _weldParameterLayoutKey = string.Empty;
+        _weldParameterPreviewSchemaKey = string.Empty;
+        _weldParameterVisibleValueKey = string.Empty;
+        _weldParameterTableBound = false;
+        BindWeldParameterTable(forceRebind: true);
     }
 
     private void BindWeldParameterRows(BizWeldPointRecord record)
     {
         var rawValues = ParseRawWeldValues(record.RawDataJson);
         var touchIndex = ParsePositiveInt(record.TouchNo);
+        var structureChanged = false;
         var matchedRows = _weldParameterRows
             .Where(row => row.StationNo == record.StationNo && row.TouchIndex == touchIndex)
             .ToList();
@@ -1493,55 +1719,870 @@ public partial class MonitorView : BaseView
         if (matchedRows.Count == 0)
         {
             _weldParameterRows.AddRange(BuildFallbackWeldParameterRows(record, rawValues));
+            structureChanged = true;
         }
         else
         {
             foreach (var row in matchedRows)
             {
+                row.ProductNo = record.ProductNo;
+                row.TouchResult = FormatTestResultText(record.TestResult);
                 row.Value = FormatNullableText(FindRecordValue(record, row, rawValues));
+                row.UpperValue = FormatNullableText(FindRawValue(rawValues, $"{row.ItemKey}_upper", $"{row.ParameterName}上限"));
+                row.LowerValue = FormatNullableText(FindRawValue(rawValues, $"{row.ItemKey}_lower", $"{row.ParameterName}下限"));
                 row.Result = FormatTestResultText(FindRecordResult(record, row, rawValues));
                 row.RecordTime = record.RecordTime.ToString("HH:mm:ss");
             }
         }
 
         SortWeldParameterRows();
-        BindWeldParameterTable();
+        BindWeldParameterTable(forceRebind: structureChanged);
     }
 
-    private void BindWeldParameterTable()
+    private void BindWeldParameterTable(bool forceRebind = false)
     {
-        table2.DataSource = _weldParameterRows.ToList();
-        table2.Refresh();
+        if (forceRebind || !_weldParameterTableBound)
+        {
+            RebuildWeldParameterPreviewTable();
+            return;
+        }
+
+        RefreshWeldParameterTable();
     }
 
-    private void QueueRefreshProductTemplatePreview(bool force)
+    /// <summary>
+    /// Updates table2 values without rebuilding columns or rebinding data.
+    /// </summary>
+    private void RefreshWeldParameterTable()
+    {
+        RefreshWeldParameterRows();
+        _weldParameterLayoutKey = BuildWeldPreviewLayoutKey(_weldParameterRows);
+        _weldParameterVisibleValueKey = BuildWeldPreviewVisibleValueKey(_weldParameterRows);
+    }
+
+    /// <summary>
+    /// Updates the unbound DataGridView preview from the cached realtime rows.
+    /// The preview is pivoted by weld point, so changed detail rows are merged into the same visible grid.
+    /// </summary>
+    private void RefreshWeldParameterRows()
+    {
+        if (!_weldParameterTableBound)
+        {
+            BindWeldParameterTable(forceRebind: true);
+            return;
+        }
+
+        var items = ResolveWeldPreviewItems(_weldParameterRows);
+        var layoutKey = BuildWeldPreviewLayoutKey(_weldParameterRows);
+        if (!string.Equals(layoutKey, _weldParameterLayoutKey, StringComparison.Ordinal))
+        {
+            BindWeldParameterTable(forceRebind: true);
+            return;
+        }
+
+        if (IsInfoPreview(items))
+        {
+            if (EnsureInfoPreviewRows())
+            {
+                BindWeldParameterTable(forceRebind: true);
+                return;
+            }
+
+            FillInfoPreviewRows();
+            AdjustWeldPreviewHostHeight();
+            return;
+        }
+
+        var touchGroups = ResolvePreviewTouchGroups(_weldParameterRows);
+        if (table2.Rows.Count != touchGroups.Count)
+        {
+            BindWeldParameterTable(forceRebind: true);
+            return;
+        }
+
+        FillWeldPreviewRows(items, touchGroups);
+        AdjustWeldPreviewHostHeight();
+    }
+
+    /// <summary>
+    /// Rebuilds the unbound pivot table: one row per weld point and one column group per test item.
+    /// </summary>
+    private void RebuildWeldParameterPreviewTable()
+    {
+        var items = ResolveWeldPreviewItems(_weldParameterRows);
+        SetControlRedraw(table2, enabled: false);
+        table2.SuspendLayout();
+        try
+        {
+            table2.Rows.Clear();
+            table2.Columns.Clear();
+
+            AddWeldPreviewColumn(PreviewTouchNoColumn, "焊点序号", 86);
+            AddWeldPreviewColumn(PreviewTouchResultColumn, "焊点结果", 86);
+            if (IsInfoPreview(items))
+            {
+                AddWeldPreviewColumn(PreviewMessageColumn, "提示", 360);
+                FillInfoPreviewRows();
+            }
+            else
+            {
+                foreach (var item in items)
+                {
+                    AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewUpperRole), $"{item.Name}上限", 118);
+                    AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewLowerRole), $"{item.Name}下限", 118);
+                    AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewActualRole), $"{item.Name}实际值", 136);
+                    AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewResultRole), $"{item.Name}结果", 118);
+                }
+
+                FillWeldPreviewRows(items, ResolvePreviewTouchGroups(_weldParameterRows));
+            }
+
+            _weldParameterLayoutKey = BuildWeldPreviewLayoutKey(_weldParameterRows);
+            _weldParameterPreviewSchemaKey = BuildWeldPreviewSchemaKey(items);
+            _weldParameterVisibleValueKey = BuildWeldPreviewVisibleValueKey(_weldParameterRows);
+            _weldParameterTableBound = true;
+        }
+        finally
+        {
+            table2.ResumeLayout(false);
+            SetControlRedraw(table2, enabled: true);
+            RedrawControl(table2);
+            SyncWeldPreviewHorizontalScrollBar();
+            AdjustWeldPreviewHostHeight();
+        }
+    }
+
+    /// <summary>
+    /// 暂停或恢复控件绘制，避免结构重建时用户看到清空过程。
+    /// </summary>
+    private static void SetControlRedraw(Control control, bool enabled)
+    {
+        if (!control.IsHandleCreated)
+        {
+            return;
+        }
+
+        SendMessage(control.Handle, WmSetRedraw, enabled ? new IntPtr(1) : IntPtr.Zero, IntPtr.Zero);
+    }
+
+    private static void RedrawControl(Control control)
+    {
+        control.Invalidate();
+        control.Update();
+    }
+
+    /// <summary>
+    /// 让实时预览区域按焊点行数调整高度，但超过上限后保留纵向滚动。
+    /// </summary>
+    private void AdjustWeldPreviewHostHeight()
+    {
+        if (_adjustingWeldPreviewHostHeight || splitter1.Height <= 0)
+        {
+            return;
+        }
+
+        var targetHeight = CalculateWeldPreviewHostHeight();
+        var minDistance = Math.Max(1, splitter1.Panel1MinSize);
+        var maxDistance = Math.Max(
+            minDistance,
+            splitter1.Height - splitter1.SplitterWidth - splitter1.Panel2MinSize);
+        var nextDistance = Math.Clamp(targetHeight, minDistance, maxDistance);
+        if (Math.Abs(splitter1.SplitterDistance - nextDistance) < WeldPreviewHeightTolerance)
+        {
+            return;
+        }
+
+        _adjustingWeldPreviewHostHeight = true;
+        try
+        {
+            splitter1.SplitterDistance = nextDistance;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentOutOfRangeException)
+        {
+            _exceptionLogService.Write(ex, "MonitorView.AdjustWeldPreviewHostHeight");
+        }
+        finally
+        {
+            _adjustingWeldPreviewHostHeight = false;
+        }
+    }
+
+    private int CalculateWeldPreviewHostHeight()
+    {
+        var rowCount = Math.Clamp(
+            Math.Max(table2.Rows.Count, WeldPreviewMinVisibleRows),
+            WeldPreviewMinVisibleRows,
+            WeldPreviewMaxVisibleRows);
+        var rowHeight = ResolveWeldPreviewRowHeight();
+        var headerHeight = table2.ColumnHeadersVisible ? table2.ColumnHeadersHeight : 0;
+        var scrollBarHeight = table2HorizontalScrollBar.Visible ? table2HorizontalScrollBar.Height : 0;
+        return headerHeight + rowCount * rowHeight + scrollBarHeight + WeldPreviewHeightPadding;
+    }
+
+    private int ResolveWeldPreviewRowHeight()
+    {
+        var firstVisibleRow = table2.Rows
+            .Cast<DataGridViewRow>()
+            .FirstOrDefault(row => row.Visible);
+        if (firstVisibleRow?.Height > 0)
+        {
+            return firstVisibleRow.Height;
+        }
+
+        return table2.RowTemplate.Height > 0
+            ? table2.RowTemplate.Height
+            : 30;
+    }
+
+    private void SetWeldPreviewHorizontalOffset(int requestedOffset)
+    {
+        var contentWidth = GetWeldPreviewContentWidth();
+        var viewportWidth = GetWeldPreviewViewportWidth();
+        var maxOffset = Math.Max(0, contentWidth - viewportWidth);
+        var nextOffset = Math.Clamp(requestedOffset, 0, maxOffset);
+
+        _syncingWeldPreviewHorizontalScroll = true;
+        try
+        {
+            if (table2.HorizontalScrollingOffset != nextOffset)
+            {
+                table2.HorizontalScrollingOffset = nextOffset;
+            }
+
+            table2HorizontalScrollBar.SetScrollInfo(contentWidth, viewportWidth, nextOffset);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            table2.HorizontalScrollingOffset = 0;
+            table2HorizontalScrollBar.SetScrollInfo(contentWidth, viewportWidth, 0);
+        }
+        finally
+        {
+            _syncingWeldPreviewHorizontalScroll = false;
+        }
+    }
+
+    private void SyncWeldPreviewHorizontalScrollBar()
+    {
+        if (_syncingWeldPreviewHorizontalScroll)
+        {
+            return;
+        }
+
+        var contentWidth = GetWeldPreviewContentWidth();
+        var viewportWidth = GetWeldPreviewViewportWidth();
+        var maxOffset = Math.Max(0, contentWidth - viewportWidth);
+        var offset = Math.Clamp(table2.HorizontalScrollingOffset, 0, maxOffset);
+
+        _syncingWeldPreviewHorizontalScroll = true;
+        try
+        {
+            if (table2.HorizontalScrollingOffset != offset)
+            {
+                table2.HorizontalScrollingOffset = offset;
+            }
+
+            table2HorizontalScrollBar.SetScrollInfo(contentWidth, viewportWidth, offset);
+        }
+        finally
+        {
+            _syncingWeldPreviewHorizontalScroll = false;
+        }
+    }
+
+    private int GetWeldPreviewMaxHorizontalOffset()
+    {
+        return Math.Max(0, GetWeldPreviewContentWidth() - GetWeldPreviewViewportWidth());
+    }
+
+    private int GetWeldPreviewContentWidth()
+    {
+        return table2.Columns
+            .Cast<DataGridViewColumn>()
+            .Where(column => column.Visible)
+            .Sum(column => column.Width);
+    }
+
+    private int GetWeldPreviewViewportWidth()
+    {
+        return Math.Max(0, table2.ClientSize.Width - (table2.RowHeadersVisible ? table2.RowHeadersWidth : 0));
+    }
+
+    private void AddWeldPreviewColumn(string columnName, string headerText, int width)
+    {
+        table2.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            HeaderText = headerText,
+            MinimumWidth = width,
+            Width = width,
+            Name = columnName,
+            //SortMode = DataGridViewColumnSortMode.NotSortable
+        });
+    }
+
+    private bool EnsureInfoPreviewRows()
+    {
+        return table2.Rows.Count != _weldParameterRows.Count;
+    }
+
+    private void FillInfoPreviewRows()
+    {
+        var rows = _weldParameterRows.OrderBy(item => item.Sort).ToList();
+        EnsurePreviewRowCount(rows.Count);
+
+        for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+        {
+            var sourceRow = rows[rowIndex];
+            SetPreviewValue(rowIndex, PreviewTouchNoColumn, DisplayPreviewValue(sourceRow.TouchNo));
+            SetPreviewValue(rowIndex, PreviewTouchResultColumn, DisplayPreviewValue(sourceRow.ParameterName));
+            SetPreviewValue(rowIndex, PreviewMessageColumn, DisplayPreviewValue(sourceRow.Value));
+        }
+    }
+
+    private void FillWeldPreviewRows(
+        IReadOnlyList<WeldPreviewItem> items,
+        IReadOnlyList<IGrouping<int, WeldParameterRow>> touchGroups)
+    {
+        EnsurePreviewRowCount(touchGroups.Count);
+
+        for (var rowIndex = 0; rowIndex < touchGroups.Count; rowIndex++)
+        {
+            var touchGroup = touchGroups[rowIndex];
+            SetPreviewValue(rowIndex, PreviewTouchNoColumn, ResolvePreviewTouchNo(touchGroup));
+            SetPreviewValue(rowIndex, PreviewTouchResultColumn, ResolvePreviewTouchResult(touchGroup));
+
+            foreach (var item in items)
+            {
+                var detail = touchGroup.FirstOrDefault(row => SamePreviewItem(row, item));
+                SetPreviewValue(rowIndex, BuildPreviewColumnName(item.Index, PreviewUpperRole), DisplayPreviewValue(detail?.UpperValue));
+                SetPreviewValue(rowIndex, BuildPreviewColumnName(item.Index, PreviewLowerRole), DisplayPreviewValue(detail?.LowerValue));
+                SetPreviewValue(rowIndex, BuildPreviewColumnName(item.Index, PreviewActualRole), DisplayPreviewValue(detail?.Value));
+                SetPreviewValue(rowIndex, BuildPreviewColumnName(item.Index, PreviewResultRole), DisplayPreviewValue(detail?.Result));
+            }
+        }
+    }
+
+    private void SetPreviewValue(int rowIndex, string columnName, string value)
+    {
+        if (rowIndex < 0 || rowIndex >= table2.Rows.Count || !table2.Columns.Contains(columnName))
+        {
+            return;
+        }
+
+        var cell = table2.Rows[rowIndex].Cells[columnName];
+        var current = cell.Value as string ?? string.Empty;
+        if (!string.Equals(current, value, StringComparison.Ordinal))
+        {
+            cell.Value = value;
+        }
+
+        ApplyPreviewResultCellStyle(cell, columnName, value);
+    }
+
+    /// <summary>
+    /// Marks weld result cells with stable OK/NG colors without repainting the whole table.
+    /// </summary>
+    private static void ApplyPreviewResultCellStyle(DataGridViewCell cell, string columnName, string value)
+    {
+        if (!IsPreviewResultColumn(columnName))
+        {
+            return;
+        }
+
+        var normalizedValue = value.Trim();
+        if (string.Equals(normalizedValue, ProductionConstants.TestResults.Ok, StringComparison.OrdinalIgnoreCase))
+        {
+            SetPreviewResultCellColor(cell, UiColors.Status.Success);
+            return;
+        }
+
+        if (string.Equals(normalizedValue, ProductionConstants.TestResults.Ng, StringComparison.OrdinalIgnoreCase))
+        {
+            SetPreviewResultCellColor(cell, UiColors.Status.Danger);
+            return;
+        }
+
+        ResetPreviewCellStyle(cell);
+    }
+
+    /// <summary>
+    /// Only weld-point result cells need the strong OK/NG background color.
+    /// </summary>
+    private static bool IsPreviewResultColumn(string columnName)
+    {
+        return string.Equals(columnName, PreviewTouchResultColumn, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Applies the same foreground/background color in normal and selected states.
+    /// </summary>
+    private static void SetPreviewResultCellColor(DataGridViewCell cell, Color backColor)
+    {
+        cell.Style.BackColor = backColor;
+        cell.Style.ForeColor = Color.White;
+        cell.Style.SelectionBackColor = backColor;
+        cell.Style.SelectionForeColor = Color.White;
+    }
+
+    /// <summary>
+    /// Returns ordinary cells to the table default style when their result is blank or unknown.
+    /// </summary>
+    private static void ResetPreviewCellStyle(DataGridViewCell cell)
+    {
+        cell.Style.BackColor = Color.Empty;
+        cell.Style.ForeColor = Color.Empty;
+        cell.Style.SelectionBackColor = Color.Empty;
+        cell.Style.SelectionForeColor = Color.Empty;
+    }
+
+    private void EnsurePreviewRowCount(int rowCount)
+    {
+        while (table2.Rows.Count < rowCount)
+        {
+            table2.Rows.Add();
+        }
+
+        while (table2.Rows.Count > rowCount)
+        {
+            table2.Rows.RemoveAt(table2.Rows.Count - 1);
+        }
+    }
+
+    private static IReadOnlyList<WeldPreviewItem> ResolveWeldPreviewItems(IEnumerable<WeldParameterRow> rows)
+    {
+        var items = rows
+            .Where(row => row.TouchIndex > 0)
+            .Where(row => !string.IsNullOrWhiteSpace(row.ItemKey))
+            .Where(row => !IsTouchResultRow(row))
+            .GroupBy(row => row.ItemKey, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new
+            {
+                Name = group.First().ParameterName,
+                Key = group.Key,
+                Sort = group.Min(row => row.Sort % 10000)
+            })
+            .OrderBy(item => item.Sort)
+            .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+            .Select((item, index) => new WeldPreviewItem(index + 1, item.Key, item.Name, item.Sort))
+            .ToList();
+
+        return items.Count == 0
+            ? Array.Empty<WeldPreviewItem>()
+            : items;
+    }
+
+    private static IReadOnlyList<IGrouping<int, WeldParameterRow>> ResolvePreviewTouchGroups(IEnumerable<WeldParameterRow> rows)
+    {
+        return rows
+            .Where(row => row.TouchIndex > 0)
+            .Where(row => !string.IsNullOrWhiteSpace(row.ItemKey))
+            .GroupBy(row => row.TouchIndex)
+            .OrderBy(group => group.Key)
+            .ToList();
+    }
+
+    private static bool IsInfoPreview(IReadOnlyList<WeldPreviewItem> items)
+    {
+        return items.Count == 0;
+    }
+
+    private static string BuildWeldPreviewSchemaKey(IReadOnlyList<WeldPreviewItem> items)
+    {
+        return items.Count == 0
+            ? "info"
+            : string.Join("|", items.Select(item => $"{item.Index}:{item.Key}:{item.Name}"));
+    }
+
+    /// <summary>
+    /// 表格布局 key 同时包含列结构和焊点行数；只有它变化时才允许重建 table2。
+    /// </summary>
+    private static string BuildWeldPreviewLayoutKey(IEnumerable<WeldParameterRow> rows)
+    {
+        var materializedRows = rows.ToList();
+        var items = ResolveWeldPreviewItems(materializedRows);
+        var rowCount = IsInfoPreview(items)
+            ? materializedRows.Count
+            : ResolvePreviewTouchGroups(materializedRows).Count;
+        return $"{BuildWeldPreviewSchemaKey(items)}|rows:{rowCount}";
+    }
+
+    /// <summary>
+    /// 只记录 table2 可见测试数据。刷新时间、产品编号等非表格字段变化时，不触发表格刷新。
+    /// </summary>
+    private static string BuildWeldPreviewVisibleValueKey(IEnumerable<WeldParameterRow> rows)
+    {
+        return string.Join('\u001F', rows
+            .OrderBy(row => row.Sort)
+            .Select(row => string.Join('\u001E',
+                row.TouchIndex,
+                row.TouchNo,
+                row.ItemKey,
+                row.ParameterName,
+                row.TouchResult,
+                row.Value,
+                row.UpperValue,
+                row.LowerValue,
+                row.Result)));
+    }
+
+    private static string BuildPreviewColumnName(int itemIndex, string role)
+    {
+        return $"Item{itemIndex}_{role}";
+    }
+
+    private static bool SamePreviewItem(WeldParameterRow row, WeldPreviewItem item)
+    {
+        return string.Equals(row.ItemKey, item.Key, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsTouchResultRow(WeldParameterRow row)
+    {
+        return string.Equals(row.ItemKey, "test_result", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(row.ParameterName, "焊点结果", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ResolvePreviewTouchNo(IEnumerable<WeldParameterRow> rows)
+    {
+        var first = rows.OrderBy(row => row.Sort).FirstOrDefault();
+        return DisplayPreviewValue(first?.TouchNo);
+    }
+
+    private static string ResolvePreviewTouchResult(IEnumerable<WeldParameterRow> rows)
+    {
+        // 焊点结果列只显示焊点结果地址的值，避免与测试项结果列互相回退导致 OK/NG 抖动。
+        var explicitResult = rows
+            .Select(row => row.TouchResult)
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value) && value != "--");
+        return DisplayPreviewValue(explicitResult);
+    }
+
+    private static string DisplayPreviewValue(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) || value == "--"
+            ? string.Empty
+            : value.Trim();
+    }
+
+    /// <summary>
+    /// 切换工位或页面加载时，优先显示实时预览服务已有的最新快照。
+    /// </summary>
+    private void ApplyCurrentRealtimePreviewSnapshot()
+    {
+        var snapshot = _productRealtimePreviewService.GetCurrent(CurrentStationNo);
+        if (snapshot is not null)
+        {
+            ApplyProductRealtimePreviewSnapshot(snapshot);
+        }
+    }
+
+    /// <summary>
+    /// 将服务层实时采集快照映射到主界面，MonitorView 不直接读取 PLC。
+    /// </summary>
+    private void ApplyProductRealtimePreviewSnapshot(ProductRealtimePreviewSnapshot snapshot)
+    {
+        //SetControlText(groupStationOverview, $"工位 {snapshot.StationNo} 产品概览");
+        SetControlText(inputLiveStation, FormatStationName(snapshot.StationNo));
+        SetControlText(inputLiveProductNo, snapshot.ProductNo);
+        SetControlText(inputLiveProductNum, snapshot.ProductNum);
+        SetControlText(inputLiveProductModel, snapshot.ProductModel);
+        SetControlText(inputLiveScheme, snapshot.SchemeId);
+        SetControlText(inputLiveTouchCount, snapshot.TouchCountText);
+        SetControlText(inputLiveResult, snapshot.ProductResult);
+        SetControlText(inputLiveRefreshTime, snapshot.RefreshTimeText);
+        SetControlText(lblLiveHint, string.IsNullOrWhiteSpace(snapshot.Message)
+            ? "实时采集正常"
+            : snapshot.Message);
+        _currentProductIdentity = new ProductIdentity(
+            snapshot.StationNo,
+            snapshot.ProductNum,
+            snapshot.ProductModel,
+            "RealtimePreview");
+
+        // 采集短暂失败会发布空快照；已有表格时保留旧数据，只用上方提示说明状态。
+        if (snapshot.Rows.Count == 0 && table2.Rows.Count > 0)
+        {
+            return;
+        }
+
+        ApplyRealtimeWeldParameterRows(snapshot.Rows);
+    }
+
+    /// <summary>
+    /// Updates realtime rows in place when the row structure is unchanged.
+    /// Rebinding is reserved for product/scheme/touch changes because rebuilding the table causes visible flicker.
+    /// </summary>
+    private void ApplyRealtimeWeldParameterRows(IReadOnlyList<ProductRealtimePreviewRow> snapshotRows)
+    {
+        var nextRows = snapshotRows
+            .OrderBy(row => row.Sort)
+            .Select(ToWeldParameterRow)
+            .ToList();
+        ApplyWeldParameterRows(nextRows);
+    }
+
+    /// <summary>
+    /// 应用下一批预览行。布局不变时不清空表格，值不变时不触碰 table2。
+    /// </summary>
+    private void ApplyWeldParameterRows(IReadOnlyList<WeldParameterRow> nextRows)
+    {
+        PreserveStablePreviewValues(nextRows);
+        var nextLayoutKey = BuildWeldPreviewLayoutKey(nextRows);
+        var nextVisibleValueKey = BuildWeldPreviewVisibleValueKey(nextRows);
+        var layoutChanged = !_weldParameterTableBound
+            || !string.Equals(nextLayoutKey, _weldParameterLayoutKey, StringComparison.Ordinal);
+
+        ReplaceWeldParameterRows(nextRows);
+        if (layoutChanged)
+        {
+            BindWeldParameterTable(forceRebind: true);
+            return;
+        }
+
+        if (string.Equals(nextVisibleValueKey, _weldParameterVisibleValueKey, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _weldParameterVisibleValueKey = nextVisibleValueKey;
+        RefreshWeldParameterRows();
+    }
+
+    private void ReplaceWeldParameterRows(IEnumerable<WeldParameterRow> rows)
+    {
+        _weldParameterRows.Clear();
+        _weldParameterRows.AddRange(rows);
+        SortWeldParameterRows();
+    }
+
+    /// <summary>
+    /// PLC 偶发读取失败返回空值时，保留上一轮有效值，避免结果或上下限列来回跳动。
+    /// </summary>
+    private void PreserveStablePreviewValues(IEnumerable<WeldParameterRow> nextRows)
+    {
+        var previousRows = _weldParameterRows
+            .Where(row => !string.IsNullOrWhiteSpace(row.ItemKey))
+            .GroupBy(row => row.UniqueKey, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var nextRow in nextRows)
+        {
+            if (!previousRows.TryGetValue(nextRow.UniqueKey, out var previousRow))
+            {
+                continue;
+            }
+
+            if (IsEmptyPreviewValue(nextRow.TouchResult) && !IsEmptyPreviewValue(previousRow.TouchResult))
+            {
+                nextRow.TouchResult = previousRow.TouchResult;
+            }
+
+            if (IsEmptyPreviewValue(nextRow.UpperValue) && !IsEmptyPreviewValue(previousRow.UpperValue))
+            {
+                nextRow.UpperValue = previousRow.UpperValue;
+            }
+
+            if (IsEmptyPreviewValue(nextRow.LowerValue) && !IsEmptyPreviewValue(previousRow.LowerValue))
+            {
+                nextRow.LowerValue = previousRow.LowerValue;
+            }
+
+            if (IsEmptyPreviewValue(nextRow.Result) && !IsEmptyPreviewValue(previousRow.Result))
+            {
+                nextRow.Result = previousRow.Result;
+            }
+        }
+    }
+
+    private static bool IsEmptyPreviewValue(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) || string.Equals(value.Trim(), "--", StringComparison.Ordinal);
+    }
+
+    private static bool SetRowTextIfChanged(string current, string next, Action<string> apply)
+    {
+        if (string.Equals(current, next, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        apply(next);
+        return true;
+    }
+
+    private static void SetControlText(Control control, string? text)
+    {
+        var value = text ?? string.Empty;
+        if (!string.Equals(control.Text, value, StringComparison.Ordinal))
+        {
+            control.Text = value;
+        }
+    }
+
+    private static WeldParameterRow ToWeldParameterRow(ProductRealtimePreviewRow row)
+    {
+        return new WeldParameterRow
+        {
+            StationNo = row.StationNo,
+            Station = row.Station,
+            ProductNo = row.ProductNo,
+            ProductNum = row.ProductNum,
+            ProductModel = row.ProductModel,
+            TouchIndex = row.TouchIndex,
+            TouchNo = row.TouchNo,
+            TouchResult = row.TouchResult,
+            ParameterName = row.ItemName,
+            Unit = row.Unit,
+            ActualAddress = row.ActualAddress,
+            UpperAddress = row.UpperAddress,
+            LowerAddress = row.LowerAddress,
+            ResultAddress = row.ResultAddress,
+            Value = row.ActualValue,
+            UpperValue = row.UpperValue,
+            LowerValue = row.LowerValue,
+            Result = row.Result,
+            RecordTime = row.RefreshTimeText,
+            Sort = row.Sort,
+            ItemKey = ResolveItemKey(row.ItemId, row.ItemName),
+            TestItemId = row.ItemId
+        };
+    }
+
+    private ProductIdentity? ResolveCurrentPreviewIdentity(int stationNo)
+    {
+        if (_currentProductIdentity is not null
+            && _currentProductIdentity.StationNo == stationNo
+            && !string.IsNullOrWhiteSpace(_currentProductIdentity.ProductNum))
+        {
+            return _currentProductIdentity;
+        }
+
+        return ResolveOnlineProductIdentity(stationNo);
+    }
+
+    private IReadOnlyList<PlcAddressPreviewRow> BuildCurrentAddressPreviewRows()
+    {
+        var stationNo = CurrentStationNo;
+        var identity = ResolveCurrentPreviewIdentity(stationNo);
+        if (identity is null || string.IsNullOrWhiteSpace(identity.ProductNum))
+        {
+            return new[]
+            {
+                PlcAddressPreviewRow.Info(stationNo, "当前工位尚未识别到产品工号，无法计算地址预览。")
+            };
+        }
+
+        var config = _productProcessConfigService.FindActive(identity.ProductNum, stationNo);
+        if (config is null)
+        {
+            return new[]
+            {
+                PlcAddressPreviewRow.Info(stationNo, $"未找到产品工号 {identity.ProductNum} 的产品工艺配置。")
+            };
+        }
+
+        var schemeItems = ResolveSchemeItems(config.SchemeId);
+        var rows = new List<PlcAddressPreviewRow>();
+
+        AddAddressPreviewRow(rows, identity, "产品头", "-", "产品编号", config.ProductBase, 0, config.ProductNoExpr);
+        AddAddressPreviewRow(rows, identity, "产品头", "-", "产品结果", config.ProductBase, 0, config.ProductResultExpr);
+        AddAddressPreviewRow(rows, identity, "产品头", "-", "实际焊点数", config.ProductBase, 0, config.ActualTouchCountExpr);
+        AddAddressPreviewRow(rows, identity, "产品头", "-", "预设焊点数", config.ProductBase, 0, config.PresetTouchCountExpr);
+
+        for (var touchNo = 1; touchNo <= Math.Max(1, config.TouchCount); touchNo++)
+        {
+            var touchContextOffset = (touchNo - 1) * config.TouchHeaderLen;
+            var testContextOffset = (touchNo - 1) * config.TestAreaLen;
+            var touchText = touchNo.ToString(CultureInfo.InvariantCulture);
+
+            AddAddressPreviewRow(rows, identity, "焊点头", touchText, "焊点编号", config.TouchBase, touchContextOffset, config.TouchNoExpr);
+            AddAddressPreviewRow(rows, identity, "焊点头", touchText, "焊点结果", config.TouchBase, touchContextOffset, config.TouchResultExpr);
+
+            foreach (var schemeItem in schemeItems)
+            {
+                var item = schemeItem.Item;
+                AddAddressPreviewRow(rows, identity, "测试项", touchText, $"{item.ItemName} 实际值", config.TestBase, testContextOffset, item.ActualExpression);
+                AddAddressPreviewRow(rows, identity, "测试项", touchText, $"{item.ItemName} 上限", config.TestBase, testContextOffset, item.UpperExpression);
+                AddAddressPreviewRow(rows, identity, "测试项", touchText, $"{item.ItemName} 下限", config.TestBase, testContextOffset, item.LowerExpression);
+                AddAddressPreviewRow(rows, identity, "测试项", touchText, $"{item.ItemName} 结果", config.TestBase, testContextOffset, item.ResultExpression);
+            }
+        }
+
+        return rows;
+    }
+
+    private void AddAddressPreviewRow(
+        ICollection<PlcAddressPreviewRow> rows,
+        ProductIdentity identity,
+        string category,
+        string touchNo,
+        string valueRole,
+        string baseAddress,
+        int contextOffset,
+        string? expression)
+    {
+        if (string.IsNullOrWhiteSpace(expression))
+        {
+            return;
+        }
+
+        var binding = ResolvePreviewExpressionBinding(baseAddress, contextOffset, expression);
+        rows.Add(new PlcAddressPreviewRow
+        {
+            Station = $"工位{identity.StationNo}",
+            ProductNum = identity.ProductNum,
+            ProductModel = identity.ProductModel,
+            Category = category,
+            TouchNo = touchNo,
+            ValueRole = valueRole,
+            BaseAddress = baseAddress,
+            ContextOffset = contextOffset,
+            Expression = binding.Expression,
+            DataType = binding.DataType,
+            Rule = binding.Rule,
+            ResolvedAddress = binding.Address
+        });
+    }
+
+    private PlcExpressionBinding ResolvePreviewExpressionBinding(string baseAddress, int contextOffset, string? expression)
+    {
+        if (_plcExpressionReadService.TryResolve(baseAddress, contextOffset, expression, out var binding, out _))
+        {
+            return binding;
+        }
+
+        var expressionText = expression?.Trim() ?? string.Empty;
+        return new PlcExpressionBinding(expressionText, AppConstants.PlcDataTypes.Int16, 0, expressionText);
+    }
+
+    private void QueueRefreshSchemePreview(bool force)
     {
         if (IsDisposed || !IsHandleCreated)
         {
             return;
         }
 
-        if (!force && DateTime.Now - _lastProductTemplateRefreshTime < TimeSpan.FromSeconds(2))
+        if (!force && DateTime.Now - _lastSchemePreviewRefreshTime < TimeSpan.FromSeconds(2))
         {
             return;
         }
 
-        _lastProductTemplateRefreshTime = DateTime.Now;
-        _ = RefreshProductTemplatePreviewAsync(force);
+        _lastSchemePreviewRefreshTime = DateTime.Now;
+        _ = RefreshSchemePreviewAsync(force);
     }
 
-    private async Task RefreshProductTemplatePreviewAsync(bool force)
+    private async Task RefreshSchemePreviewAsync(bool force)
     {
-        if (_refreshingProductTemplatePreview)
+        if (_refreshingSchemePreview)
         {
             return;
         }
 
-        _refreshingProductTemplatePreview = true;
+        _refreshingSchemePreview = true;
         try
         {
             var stationNo = CurrentStationNo;
             var identity = ResolveOnlineProductIdentity(stationNo)
+                ?? await ReadPlcRecipeProductIdentityAsync(stationNo)
                 ?? await ReadPlcProductIdentityAsync(stationNo);
 
             if (IsDisposed || !IsHandleCreated)
@@ -1551,25 +2592,37 @@ public partial class MonitorView : BaseView
 
             if (InvokeRequired)
             {
-                BeginInvoke(() => ApplyProductTemplatePreview(identity, force));
+                BeginInvoke(() => ApplySchemePreview(identity, force));
                 return;
             }
 
-            ApplyProductTemplatePreview(identity, force);
+            ApplySchemePreview(identity, force);
         }
         catch (Exception ex)
         {
-            _exceptionLogService.Write(ex, "MonitorView.RefreshProductTemplatePreviewAsync");
+            _exceptionLogService.Write(ex, "MonitorView.RefreshSchemePreviewAsync");
         }
         finally
         {
-            _refreshingProductTemplatePreview = false;
+            _refreshingSchemePreview = false;
         }
     }
 
     private ProductIdentity? ResolveOnlineProductIdentity(int stationNo)
     {
         var state = _weldTaskService.CurrentState;
+        var localProgram = state.SelectedProgram is not null
+            ? ResolveLocalProgram(state.SelectedProgram)
+            : ResolveLocalProgramById(state.ActiveTask?.ProgramId, state.ActiveTask?.DeviceId);
+        if (!string.IsNullOrWhiteSpace(localProgram?.ProductNum))
+        {
+            return new ProductIdentity(
+                stationNo,
+                localProgram.ProductNum.Trim(),
+                localProgram.ProductModel?.Trim() ?? string.Empty,
+                "LocalProgram");
+        }
+
         if (!string.IsNullOrWhiteSpace(state.CurrentWorkOrder?.ProdNum))
         {
             return new ProductIdentity(
@@ -1596,6 +2649,35 @@ public partial class MonitorView : BaseView
         var productNum = await ReadPlcAddressTextAsync(AppConstants.PlcAddressKeys.ProductNum, stationNo);
         var productModel = await ReadPlcAddressTextAsync(AppConstants.PlcAddressKeys.ProductModel, stationNo);
         return new ProductIdentity(stationNo, productNum, productModel, "PLC");
+    }
+
+    /// <summary>
+    /// 离线模式下可以通过 PLC 当前配方编号反查本地程序，从而确定产品工号和型号。
+    /// </summary>
+    private async Task<ProductIdentity?> ReadPlcRecipeProductIdentityAsync(int stationNo)
+    {
+        if (!chkReadPlc.Checked)
+        {
+            return null;
+        }
+
+        var recipeResult = await ReadPlcAddressTextResultAsync(AppConstants.PlcAddressKeys.RecipeCode, stationNo);
+        if (!recipeResult.IsSuccess || string.IsNullOrWhiteSpace(recipeResult.Value))
+        {
+            return null;
+        }
+
+        var localProgram = ResolveLocalProgramByRecipeCode(recipeResult.Value, stationNo);
+        if (localProgram is null)
+        {
+            return null;
+        }
+
+        return new ProductIdentity(
+            stationNo,
+            localProgram.ProductNum.Trim(),
+            localProgram.ProductModel?.Trim() ?? string.Empty,
+            "PLCRecipe");
     }
 
     private async Task<string> ReadPlcAddressTextAsync(string logicalKey, int stationNo)
@@ -1640,7 +2722,67 @@ public partial class MonitorView : BaseView
         }
     }
 
-    private void ApplyProductTemplatePreview(ProductIdentity identity, bool force)
+    private async Task<PlcWriteResult> WritePlcAddressTextResultAsync(string logicalKey, int stationNo, string value)
+    {
+        var address = _plcAddressService.GetByKey(logicalKey, stationNo);
+        if (address is null || !address.Enabled || string.IsNullOrWhiteSpace(address.Address))
+        {
+            return PlcWriteResult.Failed($"PLC business address \"{logicalKey}\" is not configured or disabled.");
+        }
+
+        var normalizedValue = NormalizePlcText(value);
+        var plcAddress = address.Address.Trim();
+        var result = address.DataType switch
+        {
+            AppConstants.PlcDataTypes.Bool => await WriteBoolTextAsync(plcAddress, normalizedValue),
+            AppConstants.PlcDataTypes.Int32 => await WriteInt32TextAsync(plcAddress, normalizedValue),
+            AppConstants.PlcDataTypes.Float => await WriteFloatTextAsync(plcAddress, normalizedValue),
+            AppConstants.PlcDataTypes.String => await _plcCommunicationService.WriteStringAsync(plcAddress, normalizedValue),
+            _ => await WriteInt16TextAsync(plcAddress, normalizedValue)
+        };
+
+        return result.IsSuccess
+            ? PlcWriteResult.Success(plcAddress)
+            : PlcWriteResult.Failed(result.Message, plcAddress);
+    }
+
+    private async Task<PlcServiceResult> WriteBoolTextAsync(string address, string value)
+    {
+        if (value is "1" || value.Equals("true", StringComparison.OrdinalIgnoreCase))
+        {
+            return await _plcCommunicationService.WriteBoolAsync(address, true);
+        }
+
+        if (value is "0" || value.Equals("false", StringComparison.OrdinalIgnoreCase))
+        {
+            return await _plcCommunicationService.WriteBoolAsync(address, false);
+        }
+
+        return PlcServiceResult.Fail($"配方编号“{value}”不能写入 Bool 地址，请改用 Int16/Int32/String 地址。");
+    }
+
+    private async Task<PlcServiceResult> WriteInt16TextAsync(string address, string value)
+    {
+        return short.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? await _plcCommunicationService.WriteInt16Async(address, parsed)
+            : PlcServiceResult.Fail($"配方编号“{value}”不能转换为 Int16。");
+    }
+
+    private async Task<PlcServiceResult> WriteInt32TextAsync(string address, string value)
+    {
+        return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? await _plcCommunicationService.WriteInt32Async(address, parsed)
+            : PlcServiceResult.Fail($"配方编号“{value}”不能转换为 Int32。");
+    }
+
+    private async Task<PlcServiceResult> WriteFloatTextAsync(string address, string value)
+    {
+        return float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+            ? await _plcCommunicationService.WriteFloatAsync(address, parsed)
+            : PlcServiceResult.Fail($"配方编号“{value}”不能转换为 Float。");
+    }
+
+    private void ApplySchemePreview(ProductIdentity identity, bool force)
     {
         if (identity.StationNo != CurrentStationNo)
         {
@@ -1656,7 +2798,7 @@ public partial class MonitorView : BaseView
 
         var previewKey = $"{identity.StationNo}|{identity.ProductNum}|{identity.ProductModel}|{identity.Source}";
         if (!force
-            && string.Equals(previewKey, _lastProductTemplatePreviewKey, StringComparison.Ordinal)
+            && string.Equals(previewKey, _lastSchemePreviewKey, StringComparison.Ordinal)
             && _weldParameterRows.Count > 0)
         {
             return;
@@ -1666,15 +2808,13 @@ public partial class MonitorView : BaseView
             .Where(row => !string.IsNullOrWhiteSpace(row.ItemKey))
             .GroupBy(row => row.UniqueKey, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var nextRows = BuildSchemePreviewRows(identity, previousRows).ToList();
 
-        _lastProductTemplatePreviewKey = previewKey;
-        _weldParameterRows.Clear();
-        _weldParameterRows.AddRange(BuildProductTemplatePreviewRows(identity, previousRows));
-        SortWeldParameterRows();
-        BindWeldParameterTable();
+        _lastSchemePreviewKey = previewKey;
+        ApplyWeldParameterRows(nextRows);
     }
 
-    private IEnumerable<WeldParameterRow> BuildProductTemplatePreviewRows(
+    private IEnumerable<WeldParameterRow> BuildSchemePreviewRows(
         ProductIdentity identity,
         IReadOnlyDictionary<string, WeldParameterRow> previousRows)
     {
@@ -1683,70 +2823,70 @@ public partial class MonitorView : BaseView
             return new[] { CreateInfoRow(identity, "等待产品工号", "请确认 MES 工单或 PLC 产品工号地址。") };
         }
 
-        var config = _productProcessConfigService.FindActive(identity.ProductNum, identity.ProductModel, identity.StationNo);
+        var config = _productProcessConfigService.FindActive(identity.ProductNum, identity.StationNo);
         if (config is null)
         {
-            return new[] { CreateInfoRow(identity, "未找到产品工艺配置", $"产品工号：{identity.ProductNum}，产品型号：{identity.ProductModel}") };
+            return new[] { CreateInfoRow(identity, "未找到产品工艺配置", "请在地址维护中维护当前产品的产品工艺。") };
         }
 
-        if (config.TemplateId <= 0)
+        var schemeItems = ResolveSchemeItems(config.SchemeId);
+        if (schemeItems.Count == 0)
         {
-            return new[] { CreateInfoRow(identity, "未绑定测试项目模板", $"产品工号：{identity.ProductNum}") };
+            return new[] { CreateInfoRow(identity, "测试方案未配置", $"测试方案 {config.SchemeId} 未配置测试项。") };
         }
 
-        var allItems = _testItemTemplateService.GetItems(config.TemplateId)
-            .Where(item => item.Enabled)
-            .ToList();
         var rows = new List<WeldParameterRow>();
 
-        for (var touchNo = 1; touchNo <= Math.Max(1, config.WeldPointCount); touchNo++)
+        for (var touchNo = 1; touchNo <= Math.Max(1, config.TouchCount); touchNo++)
         {
-            var items = SelectTemplateItemsForTouch(allItems, identity.StationNo, touchNo);
-            foreach (var item in items)
+            foreach (var schemeItem in schemeItems)
             {
-                var row = CreateTemplatePreviewRow(identity, config, item, touchNo);
+                var row = CreateSchemePreviewRow(identity, config, schemeItem.Item, touchNo, schemeItem.Sort);
                 CopyLatestValues(previousRows, row);
                 rows.Add(row);
             }
         }
 
         return rows.Count == 0
-            ? new[] { CreateInfoRow(identity, "测试项目模板无可用明细", $"模板ID：{config.TemplateId}") }
+            ? new[] { CreateInfoRow(identity, "测试方案未配置", $"测试方案 {config.SchemeId} 未配置测试项。") }
             : rows;
     }
 
-    private static IReadOnlyList<BizTestItemTemplateItem> SelectTemplateItemsForTouch(
-        IReadOnlyList<BizTestItemTemplateItem> allItems,
-        int stationNo,
-        int touchNo)
+    private IReadOnlyList<SchemePreviewItem> ResolveSchemeItems(string schemeId)
     {
-        return allItems
-            .Where(item => IsTemplateItemMatched(item, stationNo, touchNo))
-            .GroupBy(item => item.ItemKey, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group
-                .OrderByDescending(item => item.StationNo == stationNo)
-                .ThenByDescending(item => item.TouchNo == touchNo)
-                .ThenBy(item => item.Sort)
-                .First())
-            .OrderBy(item => item.Sort)
-            .ThenBy(item => item.ItemName)
+        var details = _testSchemeConfigService.GetDetails(schemeId)
+            .OrderBy(detail => detail.DetailId)
+            .ToList();
+        if (details.Count == 0)
+        {
+            return Array.Empty<SchemePreviewItem>();
+        }
+
+        var allItems = _testSchemeConfigService.GetItems();
+        return details
+            .Select((detail, index) => new
+            {
+                Sort = (index + 1) * 10,
+                Item = allItems.FirstOrDefault(item => item.ItemId == detail.ItemId)
+            })
+            .Where(item => item.Item is not null)
+            .Select(item => new SchemePreviewItem(item.Sort, item.Item!))
             .ToList();
     }
 
-    private static bool IsTemplateItemMatched(BizTestItemTemplateItem item, int stationNo, int touchNo)
-    {
-        var stationMatched = item.StationNo == ProductionConstants.Stations.SharedStationNo
-            || item.StationNo == stationNo;
-        var touchMatched = item.TouchNo == 0 || item.TouchNo == touchNo;
-        return stationMatched && touchMatched;
-    }
-
-    private static WeldParameterRow CreateTemplatePreviewRow(
+    private WeldParameterRow CreateSchemePreviewRow(
         ProductIdentity identity,
         BizProductProcessConfig config,
-        BizTestItemTemplateItem item,
-        int touchNo)
+        DimTestItem item,
+        int touchNo,
+        int sort)
     {
+        var testContextOffset = (Math.Max(1, touchNo) - 1) * config.TestAreaLen;
+        var actual = ResolvePreviewExpressionBinding(config.TestBase, testContextOffset, item.ActualExpression);
+        var upper = ResolvePreviewExpressionBinding(config.TestBase, testContextOffset, item.UpperExpression);
+        var lower = ResolvePreviewExpressionBinding(config.TestBase, testContextOffset, item.LowerExpression);
+        var result = ResolvePreviewExpressionBinding(config.TestBase, testContextOffset, item.ResultExpression);
+
         return new WeldParameterRow
         {
             StationNo = identity.StationNo,
@@ -1757,19 +2897,44 @@ public partial class MonitorView : BaseView
             TouchNo = touchNo.ToString(),
             ParameterName = item.ItemName,
             Unit = item.Unit ?? string.Empty,
-            ActualAddress = item.ActualAddress ?? string.Empty,
-            UpperAddress = item.UpperAddress ?? string.Empty,
-            LowerAddress = item.LowerAddress ?? string.Empty,
-            ResultAddress = item.ResultAddress ?? string.Empty,
+            ActualAddress = actual.Address,
+            UpperAddress = upper.Address,
+            LowerAddress = lower.Address,
+            ResultAddress = result.Address,
+            ActualDataType = actual.DataType,
+            ActualRule = actual.Rule,
+            UpperDataType = upper.DataType,
+            UpperRule = upper.Rule,
+            LowerDataType = lower.DataType,
+            LowerRule = lower.Rule,
+            ResultDataType = result.DataType,
+            ResultRule = result.Rule,
             Value = "--",
             Result = "--",
             RecordTime = string.Empty,
-            Sort = touchNo * 10000 + item.Sort,
-            ItemKey = item.ItemKey,
-            MesFieldPrefix = item.MesFieldPrefix,
-            TemplateItemId = item.Id,
+            Sort = touchNo * 10000 + sort,
+            ItemKey = ResolveItemKey(item),
+            TestItemId = item.ItemId,
             ProcessConfigId = config.Id
         };
+    }
+
+    /// <summary>
+    /// 将偏移表达式转换成实时读取所需的地址、数据类型和显示规则；表达式异常时保留原文方便排查。
+    /// </summary>
+    private static string ResolveItemKey(DimTestItem item)
+    {
+        return ResolveItemKey(item.ItemId, item.ItemName);
+    }
+
+    private static string ResolveItemKey(int itemId, string? itemName)
+    {
+        if (itemId > 0)
+        {
+            return $"item_{itemId}";
+        }
+
+        return itemName?.Trim() ?? string.Empty;
     }
 
     private static WeldParameterRow CreateInfoRow(ProductIdentity identity, string title, string detail)
@@ -1799,6 +2964,9 @@ public partial class MonitorView : BaseView
         }
 
         target.Value = previous.Value;
+        target.TouchResult = previous.TouchResult;
+        target.UpperValue = previous.UpperValue;
+        target.LowerValue = previous.LowerValue;
         target.Result = previous.Result;
         target.RecordTime = previous.RecordTime;
     }
@@ -1844,6 +3012,7 @@ public partial class MonitorView : BaseView
         {
             StationNo = record.StationNo,
             Station = $"工位{record.StationNo}",
+            ProductNo = record.ProductNo,
             ProductNum = _currentProductIdentity?.ProductNum ?? _weldTaskService.CurrentState.ActiveTask?.ProductNum ?? string.Empty,
             ProductModel = _currentProductIdentity?.ProductModel ?? _weldTaskService.CurrentState.ActiveTask?.ProductModel ?? string.Empty,
             TouchIndex = ParsePositiveInt(record.TouchNo),
@@ -1862,7 +3031,7 @@ public partial class MonitorView : BaseView
         WeldParameterRow row,
         IReadOnlyDictionary<string, string> rawValues)
     {
-        return FindRawValue(rawValues, row.ItemKey, row.MesFieldPrefix)
+        return FindRawValue(rawValues, row.ItemKey, row.ParameterName)
             ?? row.ItemKey switch
             {
                 "max_electric" => record.MaxElectric,
@@ -1880,7 +3049,7 @@ public partial class MonitorView : BaseView
         WeldParameterRow row,
         IReadOnlyDictionary<string, string> rawValues)
     {
-        return FindRawValue(rawValues, $"{row.ItemKey}_result", $"{row.MesFieldPrefix}Result", $"{row.MesFieldPrefix}_result")
+        return FindRawValue(rawValues, $"{row.ItemKey}_result", $"{row.ParameterName}结果")
             ?? record.TestResult;
     }
 
@@ -1952,7 +3121,6 @@ public partial class MonitorView : BaseView
     {
         TableStyleHelper.ApplyAntdTable(table1, AntdUI.ColumnsMode.Fill);
         ApplyCompactProductionMetricTableStyle();
-        TableStyleHelper.ApplyAntdTable(table2, AntdUI.ColumnsMode.Fill);
         ApplyWeldParameterTableStyle();
     }
 
@@ -1970,11 +3138,30 @@ public partial class MonitorView : BaseView
 
     private void ApplyWeldParameterTableStyle()
     {
-        table2.RowHeight = 38;
-        table2.RowHeightHeader = 40;
-        table2.Gap = 6;
-        table2.GapCell = 3;
-        table2.Gaps = new Size(6, 6);
+        EnableDoubleBuffering(table2);
+        table2.ScrollBars = ScrollBars.Vertical;
+        table2.DefaultCellStyle.Font = new Font("Microsoft YaHei UI", 10F);
+        table2.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+        table2.DefaultCellStyle.SelectionBackColor = Color.FromArgb(232, 244, 255);
+        table2.DefaultCellStyle.SelectionForeColor = Color.FromArgb(30, 30, 30);
+        table2.ColumnHeadersDefaultCellStyle.Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold);
+        table2.ColumnHeadersDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+        table2.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(248, 249, 250);
+        table2.ColumnHeadersDefaultCellStyle.ForeColor = Color.FromArgb(30, 30, 30);
+        table2.DefaultCellStyle.WrapMode = DataGridViewTriState.False;
+        table2.ColumnHeadersHeight = 36;
+        table2.RowTemplate.Height = 30;
+        table2.GridColor = Color.FromArgb(224, 224, 224);
+    }
+
+    /// <summary>
+    /// Enables buffered painting for high-frequency monitor tables.
+    /// </summary>
+    private static void EnableDoubleBuffering(Control control)
+    {
+        typeof(Control)
+            .GetProperty("DoubleBuffered", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?.SetValue(control, true);
     }
 
     private static string GetDeviceStatusKey(short? statusCode)
@@ -2020,7 +3207,7 @@ public partial class MonitorView : BaseView
 
     private string FormatTestResultText(string? value)
     {
-        if (string.IsNullOrWhiteSpace(value))
+        if (string.IsNullOrWhiteSpace(value) || string.Equals(value.Trim(), "--", StringComparison.Ordinal))
         {
             return _localizer.GetString(TextKeys.Production.NotAvailable);
         }
@@ -2150,7 +3337,7 @@ public partial class MonitorView : BaseView
         _weldTaskService.ApplyStartAdjustment(form.AdjustedWorkOrder, form.AdjustedProcess, form.ProgramContent, stationNo);
         var refreshedProgram = _weldTaskService.CurrentState.SelectedProgram ?? program;
         _confirmedProgramFingerprint = BuildProgramFingerprint(refreshedProgram, stationNo);
-        QueueRefreshProductTemplatePreview(force: true);
+        QueueRefreshSchemePreview(force: true);
         return true;
     }
 
@@ -2165,6 +3352,91 @@ public partial class MonitorView : BaseView
     private static string BuildProgramFingerprint(MesProgramData program, int stationNo)
     {
         return $"{stationNo}|{program.Id}|{program.ProgramName}|{program.ProgramContent}";
+    }
+
+    /// <summary>
+    /// 根据页面勾选项，在开工上报前执行配方下发或配方读取校验。
+    /// </summary>
+    private async Task<bool> PrepareRecipeBeforeStartAsync(MesProgramData program, int stationNo)
+    {
+        var shouldSendRecipe = chkSendPlc.Checked;
+        var shouldReadRecipe = chkReadPlc.Checked;
+        if (!shouldSendRecipe && !shouldReadRecipe)
+        {
+            return true;
+        }
+
+        var localRecipeCode = ResolveExpectedRecipeCode(program);
+        if (string.IsNullOrWhiteSpace(localRecipeCode))
+        {
+            ShowRecipeCheckFailed(
+                $"Local program has no recipe code. ProgramId={program.Id}; ProgramName={program.ProgramName}; Station={stationNo}");
+            return false;
+        }
+
+        if (shouldSendRecipe && !await SendRecipeCodeToPlcAsync(localRecipeCode, program, stationNo))
+        {
+            return false;
+        }
+
+        if (shouldReadRecipe && !await ReadAndCompareRecipeCodeAsync(localRecipeCode, program, stationNo))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private async Task<bool> SendRecipeCodeToPlcAsync(string recipeCode, MesProgramData program, int stationNo)
+    {
+        var writeResult = await WritePlcAddressTextResultAsync(AppConstants.PlcAddressKeys.RecipeCode, stationNo, recipeCode);
+        if (!writeResult.IsSuccess)
+        {
+            ShowRecipeCheckFailed(
+                $"PLC recipe code write failed. Station={stationNo}; RecipeCode={recipeCode}; Detail={writeResult.Detail}");
+            return false;
+        }
+
+        _productionLogService.Write(
+            "RecipeCodeWrite",
+            "配方编号已下发PLC",
+            $"RecipeCode={recipeCode}, ProgramId={program.Id}, ProgramName={program.ProgramName}",
+            stationNo: stationNo,
+            programId: program.Id ?? string.Empty,
+            plcSignal: AppConstants.PlcAddressKeys.RecipeCode,
+            plcAddress: writeResult.Address);
+        SetRuntimeStatusText($"配方编号已下发：{recipeCode}", isSuccess: true);
+        return true;
+    }
+
+    private async Task<bool> ReadAndCompareRecipeCodeAsync(string expectedRecipeCode, MesProgramData program, int stationNo)
+    {
+        var plcRecipeResult = await ReadPlcAddressTextResultAsync(AppConstants.PlcAddressKeys.RecipeCode, stationNo);
+        if (!plcRecipeResult.IsSuccess || string.IsNullOrWhiteSpace(plcRecipeResult.Value))
+        {
+            ShowRecipeCheckFailed(
+                $"PLC recipe code could not be read. Station={stationNo}; Detail={plcRecipeResult.Detail}");
+            return false;
+        }
+
+        var plcRecipeCode = NormalizeRecipeCode(plcRecipeResult.Value);
+        var localRecipeCode = NormalizeRecipeCode(expectedRecipeCode);
+        if (!string.Equals(plcRecipeCode, localRecipeCode, StringComparison.OrdinalIgnoreCase))
+        {
+            ShowRecipeCheckFailed(
+                $"PLC recipe code mismatch. Station={stationNo}; Local={localRecipeCode}; PLC={plcRecipeCode}; ProgramId={program.Id}; ProgramName={program.ProgramName}");
+            return false;
+        }
+
+        _productionLogService.Write(
+            "RecipeCodeRead",
+            "PLC配方编号读取一致",
+            $"RecipeCode={plcRecipeCode}, ProgramId={program.Id}, ProgramName={program.ProgramName}",
+            stationNo: stationNo,
+            programId: program.Id ?? string.Empty,
+            plcSignal: AppConstants.PlcAddressKeys.RecipeCode);
+        SetRuntimeStatusText($"PLC配方编号一致：{localRecipeCode}", isSuccess: true);
+        return true;
     }
 
     /// <summary>
@@ -2218,8 +3490,7 @@ public partial class MonitorView : BaseView
         var programId = program.Id?.Trim() ?? string.Empty;
         if (!string.IsNullOrWhiteSpace(programId))
         {
-            var byMesProgramId = localPrograms.FirstOrDefault(item =>
-                string.Equals(item.ProgramId?.Trim(), programId, StringComparison.OrdinalIgnoreCase));
+            var byMesProgramId = ResolveLocalProgramById(programId);
             if (byMesProgramId is not null)
             {
                 return byMesProgramId;
@@ -2229,6 +3500,37 @@ public partial class MonitorView : BaseView
         return localPrograms.FirstOrDefault(item =>
             string.Equals(item.ProgramName?.Trim(), program.ProgramName?.Trim(), StringComparison.OrdinalIgnoreCase)
             && string.Equals(item.ProductNum?.Trim(), program.ProductNum?.Trim(), StringComparison.OrdinalIgnoreCase));
+    }
+
+    private BizProgram? ResolveLocalProgramById(string? programId, string? deviceId = null)
+    {
+        var normalizedProgramId = programId?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedProgramId))
+        {
+            return null;
+        }
+
+        return _programManageService.GetPrograms()
+            .Where(program => string.Equals(program.ProgramId?.Trim(), normalizedProgramId, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(program => SameText(program.DeviceId, deviceId))
+            .ThenByDescending(program => program.UpdatedTime)
+            .FirstOrDefault();
+    }
+
+    private BizProgram? ResolveLocalProgramByRecipeCode(string? recipeCode, int stationNo)
+    {
+        var normalizedRecipeCode = NormalizeRecipeCode(recipeCode);
+        if (string.IsNullOrWhiteSpace(normalizedRecipeCode))
+        {
+            return null;
+        }
+
+        var settings = _settingsService.Get();
+        return _programManageService.GetPrograms()
+            .Where(program => string.Equals(NormalizeRecipeCode(program.RecipeCode), normalizedRecipeCode, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(program => SameText(program.DeviceId, settings.DeviceId))
+            .ThenByDescending(program => program.UpdatedTime)
+            .FirstOrDefault();
     }
 
     private void ShowRecipeCheckFailed(string detail)
@@ -2241,6 +3543,11 @@ public partial class MonitorView : BaseView
     private static string NormalizeRecipeCode(string? value)
     {
         return NormalizePlcText(value);
+    }
+
+    private static bool SameText(string? left, string? right)
+    {
+        return string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
     private static string FormatProgram(MesProgramListItemData program)
@@ -2494,7 +3801,7 @@ public partial class MonitorView : BaseView
     {
         _runtimeStatusKey = null;
         _runtimeStatusArgs = Array.Empty<object>();
-        _runtimeStatusText = NormalizePanelMessage(message);
+        _runtimeStatusText = NormalizeRuntimeSummary(message);
         _runtimeStatusTextIsSuccess = isSuccess;
         RefreshRuntimeStatus();
     }
@@ -2517,7 +3824,7 @@ public partial class MonitorView : BaseView
     {
         _runtimeErrorKey = null;
         _runtimeErrorArgs = Array.Empty<object>();
-        _runtimeErrorText = NormalizePanelMessage(message);
+        _runtimeErrorText = NormalizeRuntimeSummary(message);
         RefreshRuntimeError();
     }
 
@@ -2563,7 +3870,7 @@ public partial class MonitorView : BaseView
         var color = _runtimeStatusTextIsSuccess
             ? UiColors.Status.Success
             : GetRuntimeStatusColor(_runtimeStatusKey);
-        groupBox2.ForeColor = color;
+        grpRunningStatus.ForeColor = color;
         inputRunningStatus.ForeColor = color;
     }
 
@@ -2573,7 +3880,7 @@ public partial class MonitorView : BaseView
     private void ApplyRuntimeErrorTone(bool hasError)
     {
         var color = hasError ? UiColors.Status.Danger : UiColors.Status.Muted;
-        groupBox1.ForeColor = color;
+        grpErrorTips.ForeColor = color;
         inputErrorTips.ForeColor = color;
     }
 
@@ -2591,12 +3898,46 @@ public partial class MonitorView : BaseView
 
     private string BuildLocalizedMessage(string messageKey, params object[] args)
     {
-        return NormalizePanelMessage(_localizer.GetString(messageKey, args));
+        return NormalizeRuntimeSummary(_localizer.GetString(messageKey, args));
     }
 
-    private static string NormalizePanelMessage(string? message)
+    /// <summary>
+    /// 主界面只展示业务摘要，详细错误和上下文仍以日志为准。
+    /// </summary>
+    private static string NormalizeRuntimeSummary(string? message)
     {
-        return string.IsNullOrWhiteSpace(message) ? string.Empty : message.Trim();
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return string.Empty;
+        }
+
+        var builder = new StringBuilder(message.Length);
+        var previousWasWhiteSpace = false;
+        foreach (var current in message.Trim())
+        {
+            if (char.IsWhiteSpace(current))
+            {
+                if (!previousWasWhiteSpace)
+                {
+                    builder.Append(' ');
+                    previousWasWhiteSpace = true;
+                }
+
+                continue;
+            }
+
+            builder.Append(current);
+            previousWasWhiteSpace = false;
+        }
+
+        var summary = builder.ToString().Trim();
+        if (summary.Length <= RuntimeSummaryMaxLength)
+        {
+            return summary;
+        }
+
+        var keepLength = Math.Max(0, RuntimeSummaryMaxLength - RuntimeSummaryOverflowSuffix.Length);
+        return summary[..keepLength] + RuntimeSummaryOverflowSuffix;
     }
 
     /// <summary>
@@ -2629,11 +3970,20 @@ public partial class MonitorView : BaseView
         public static PlcTextReadResult Failed(string detail) => new(false, string.Empty, detail);
     }
 
+    private sealed record PlcWriteResult(bool IsSuccess, string Detail, string Address)
+    {
+        public static PlcWriteResult Success(string address) => new(true, string.Empty, address);
+
+        public static PlcWriteResult Failed(string detail, string address = "") => new(false, detail, address);
+    }
+
     private sealed class WeldParameterRow
     {
         public int StationNo { get; init; }
 
         public string Station { get; init; } = string.Empty;
+
+        public string ProductNo { get; set; } = string.Empty;
 
         public string ProductNum { get; init; } = string.Empty;
 
@@ -2642,6 +3992,8 @@ public partial class MonitorView : BaseView
         public int TouchIndex { get; init; }
 
         public string TouchNo { get; init; } = string.Empty;
+
+        public string TouchResult { get; set; } = "--";
 
         public string ParameterName { get; init; } = string.Empty;
 
@@ -2655,7 +4007,27 @@ public partial class MonitorView : BaseView
 
         public string ResultAddress { get; init; } = string.Empty;
 
+        public string ActualDataType { get; init; } = AppConstants.PlcDataTypes.Int16;
+
+        public int ActualRule { get; init; }
+
+        public string UpperDataType { get; init; } = AppConstants.PlcDataTypes.Int16;
+
+        public int UpperRule { get; init; }
+
+        public string LowerDataType { get; init; } = AppConstants.PlcDataTypes.Int16;
+
+        public int LowerRule { get; init; }
+
+        public string ResultDataType { get; init; } = AppConstants.PlcDataTypes.Int16;
+
+        public int ResultRule { get; init; }
+
         public string Value { get; set; } = "--";
+
+        public string UpperValue { get; set; } = "--";
+
+        public string LowerValue { get; set; } = "--";
 
         public string Result { get; set; } = "--";
 
@@ -2665,9 +4037,7 @@ public partial class MonitorView : BaseView
 
         public string ItemKey { get; init; } = string.Empty;
 
-        public string? MesFieldPrefix { get; init; }
-
-        public int TemplateItemId { get; init; }
+        public int TestItemId { get; init; }
 
         public int ProcessConfigId { get; init; }
 
@@ -2675,4 +4045,8 @@ public partial class MonitorView : BaseView
     }
 
     private sealed record ProductionMetricRow(string Name, string Value);
+
+    private sealed record WeldPreviewItem(int Index, string Key, string Name, int Sort);
+
+    private sealed record SchemePreviewItem(int Sort, DimTestItem Item);
 }

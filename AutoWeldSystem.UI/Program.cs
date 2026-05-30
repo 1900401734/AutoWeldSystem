@@ -30,6 +30,7 @@ public static class Program
         var productionMonitorStarted = false;
         var workIdMonitorStarted = false;
         var weldCycleMonitorStarted = false;
+        var realtimePreviewStarted = false;
 
         try
         {
@@ -47,19 +48,22 @@ public static class Program
                     services.AddSingleton<IPlcAddressService, PlcAddressService>();
                     services.AddSingleton<IOperationLogService, OperationLogService>();
                     services.AddSingleton<IMesInteractionLogService, MesInteractionLogService>();
+                    services.AddSingleton<IProductionFlowLogService, ProductionFlowLogService>();
                     services.AddSingleton<IProgramExceptionLogService, ProgramExceptionLogService>();
                     services.AddSingleton<ILocalizationService, LocalizationService>();
                     services.AddSingleton<IWeldTaskService, WeldTaskService>();
                     services.AddSingleton<IProgramManageService, ProgramManageService>();
                     services.AddSingleton<IPlcCommunicationService, HslPlcCommunicationService>();
+                    services.AddSingleton<IPlcExpressionReadService, PlcExpressionReadService>();
                     services.AddSingleton<IMesConnectionMonitorService, MesConnectionMonitorService>();
                     services.AddSingleton<IPlcProductionMonitorService, PlcProductionMonitorService>();
                     services.AddSingleton<IPlcWorkIdMonitorService, PlcWorkIdMonitorService>();
                     services.AddSingleton<IPlcWeldCycleMonitorService, PlcWeldCycleMonitorService>();
                     services.AddSingleton<IProductProcessConfigService, ProductProcessConfigService>();
-                    services.AddSingleton<ITestItemTemplateService, TestItemTemplateService>();
+                    services.AddSingleton<ITestSchemeConfigService, TestSchemeConfigService>();
                     services.AddSingleton<IProductNoGeneratorService, ProductNoGeneratorService>();
-                    services.AddSingleton<IWeldPointCollectionService, WeldPointCollectionService>();
+                    services.AddSingleton<IProductCycleCollectionService, ProductCycleCollectionService>();
+                    services.AddSingleton<IProductRealtimePreviewService, ProductRealtimePreviewService>();
                     services.AddSingleton<IWeldPointUploadCoordinatorService, WeldPointUploadCoordinatorService>();
                     services.AddSingleton<IDeviceStatusService, DeviceStatusService>();
                     services.AddSingleton<IUploadTaskService, UploadTaskService>();
@@ -70,6 +74,7 @@ public static class Program
 
                     services.AddTransient<LoginForm>();
                     services.AddTransient<MainForm>();
+                    services.AddTransient<PlcWriteDebugForm>();
                     services.AddTransient<OperatorInputForm>();
                     services.AddTransient<RoleEditForm>();
                     services.AddTransient<UserEditForm>();
@@ -98,6 +103,8 @@ public static class Program
             workIdMonitorStarted = true;
             AppHost.Services.GetRequiredService<IPlcWeldCycleMonitorService>().StartAsync().GetAwaiter().GetResult();
             weldCycleMonitorStarted = true;
+            AppHost.Services.GetRequiredService<IProductRealtimePreviewService>().StartAsync().GetAwaiter().GetResult();
+            realtimePreviewStarted = true;
 
             var taskService = AppHost.Services.GetRequiredService<IWeldTaskService>();
             var timeSyncResult = taskService.SyncServerTimeAsync().GetAwaiter().GetResult();
@@ -135,7 +142,7 @@ public static class Program
         }
         finally
         {
-            StopBackgroundServices(weldCycleMonitorStarted, workIdMonitorStarted, productionMonitorStarted, mesMonitorStarted, plcServiceStarted);
+            StopBackgroundServices(realtimePreviewStarted, weldCycleMonitorStarted, workIdMonitorStarted, productionMonitorStarted, mesMonitorStarted, plcServiceStarted);
             AppHost?.Dispose();
         }
     }
@@ -175,6 +182,7 @@ public static class Program
     }
 
     private static void StopBackgroundServices(
+        bool realtimePreviewStarted,
         bool weldCycleMonitorStarted,
         bool workIdMonitorStarted,
         bool productionMonitorStarted,
@@ -183,6 +191,11 @@ public static class Program
     {
         try
         {
+            if (realtimePreviewStarted)
+            {
+                AppHost?.Services.GetRequiredService<IProductRealtimePreviewService>().StopAsync().GetAwaiter().GetResult();
+            }
+
             if (weldCycleMonitorStarted)
             {
                 AppHost?.Services.GetRequiredService<IPlcWeldCycleMonitorService>().StopAsync().GetAwaiter().GetResult();
