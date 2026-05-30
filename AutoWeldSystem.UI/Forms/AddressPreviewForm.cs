@@ -1,0 +1,191 @@
+using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.Interfaces;
+using AutoWeldSystem.UI.Base;
+using System.Globalization;
+
+namespace AutoWeldSystem.UI.Forms;
+
+/// <summary>
+/// PLC 地址预览窗口。
+/// 用于核对产品头、焊点头和测试项的最终 PLC 读取地址。
+/// </summary>
+public partial class AddressPreviewForm : BaseWindow
+{
+    // 三次点击比双击更难稳定完成，因此使用独立的调试触发窗口，不直接套用系统双击间隔。
+    private const int TestAddressTripleClickIntervalMs = 1200;
+
+    private readonly IReadOnlyList<PlcAddressPreviewRow> _rows;
+    private readonly IPlcExpressionReadService _plcExpressionReadService;
+    private readonly ILocalizationService _localizer;
+    private string _keyword = string.Empty;
+    private PlcAddressPreviewRow? _selectedRow;
+    private PlcAddressPreviewRow? _lastPreviewClickRow;
+    private long _lastPreviewClickTicks;
+    private int _previewClickCount;
+
+    public AddressPreviewForm(
+        IReadOnlyList<PlcAddressPreviewRow> rows,
+        IPlcExpressionReadService plcExpressionReadService,
+        ILocalizationService localizer)
+    {
+        InitializeComponent();
+
+        _rows = rows;
+        _plcExpressionReadService = plcExpressionReadService;
+        _localizer = localizer;
+        ConfigureTable();
+        BindRows();
+
+        inputQuery.QueryClick += (_, keyword) => ApplyFilter(keyword);
+        tableAddressPreview.CellClick += TableAddressPreview_CellClick;
+        btnTestSelected.Click += TestSelected_Click;
+        btnClose.Click += (_, _) => Close();
+        CancelButton = btnClose;
+    }
+
+    private void TableAddressPreview_CellClick(object sender, AntdUI.TableClickEventArgs e)
+    {
+        _selectedRow = e.Record as PlcAddressPreviewRow;
+        if (_selectedRow is null)
+        {
+            ResetPreviewTestClick();
+            return;
+        }
+
+        RegisterPreviewTestClick(_selectedRow);
+    }
+
+    private void RegisterPreviewTestClick(PlcAddressPreviewRow row)
+    {
+        var now = Environment.TickCount64;
+        var isContinuousSameRow = ReferenceEquals(_lastPreviewClickRow, row)
+            && now - _lastPreviewClickTicks <= TestAddressTripleClickIntervalMs;
+
+        _previewClickCount = isContinuousSameRow
+            ? _previewClickCount + 1
+            : 1;
+        _lastPreviewClickRow = row;
+        _lastPreviewClickTicks = now;
+
+        if (_previewClickCount < 3)
+        {
+            return;
+        }
+
+        ResetPreviewTestClick();
+        btnTestSelected.PerformClick();
+    }
+
+    private void ResetPreviewTestClick()
+    {
+        _lastPreviewClickRow = null;
+        _lastPreviewClickTicks = 0;
+        _previewClickCount = 0;
+    }
+
+    private async void TestSelected_Click(object? sender, EventArgs e)
+    {
+        var row = _selectedRow;
+        if (row is null || string.IsNullOrWhiteSpace(row.ResolvedAddress))
+        {
+            ShowWarning("请先选择一条有效地址。");
+            return;
+        }
+
+        btnTestSelected.Enabled = false;
+        try
+        {
+            var valueRole = GetValueRole(row);
+            var result = await _plcExpressionReadService.ReadResolvedAddressTextAsync(
+                row.ResolvedAddress,
+                row.DataType,
+                row.Rule,
+                valueRole);
+
+            if (result.IsSuccess)
+            {
+                ShowInfo($"字段：{valueRole}\r\n地址：{row.ResolvedAddress}\r\n读取值：{result.Value ?? string.Empty}");
+                return;
+            }
+
+            ShowWarning($"字段：{valueRole}\r\n地址：{row.ResolvedAddress}\r\n失败原因：{result.Message}");
+        }
+        finally
+        {
+            btnTestSelected.Enabled = true;
+        }
+    }
+
+    private static string GetValueRole(PlcAddressPreviewRow row)
+    {
+        return string.IsNullOrWhiteSpace(row.ValueRole)
+            ? "PLC地址"
+            : row.ValueRole.Trim();
+    }
+
+    /// <summary>
+    /// 绑定地址预览数据。
+    /// 表格列属于窗口界面结构，集中放在 Designer 文件中配置。
+    /// </summary>
+    private void BindRows()
+    {
+        ApplyFilter(_keyword);
+    }
+
+    /// <summary>
+    /// 按关键词过滤地址预览行，只影响当前弹窗中的显示数据。
+    /// </summary>
+    private void ApplyFilter(string? keyword)
+    {
+        _keyword = keyword?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(_keyword) && !string.IsNullOrEmpty(inputQuery.Text))
+        {
+            inputQuery.Text = string.Empty;
+        }
+
+        _selectedRow = null;
+        ResetPreviewTestClick();
+
+        var filteredRows = string.IsNullOrWhiteSpace(_keyword)
+            ? _rows.ToList()
+            : _rows.Where(row => IsMatched(row, _keyword)).ToList();
+
+        tableAddressPreview.DataSource = filteredRows;
+        tableAddressPreview.Refresh();
+    }
+
+    /// <summary>
+    /// 搜索范围覆盖预览表的主要可见列，便于按地址、字段、产品或焊点快速定位。
+    /// </summary>
+    private static bool IsMatched(PlcAddressPreviewRow row, string keyword)
+    {
+        return Contains(row.Station, keyword)
+            || Contains(row.ProductNum, keyword)
+            || Contains(row.ProductModel, keyword)
+            || Contains(row.Category, keyword)
+            || Contains(row.TouchNo, keyword)
+            || Contains(row.ValueRole, keyword)
+            || Contains(row.BaseAddress, keyword)
+            || Contains(row.ContextOffset.ToString(CultureInfo.InvariantCulture), keyword)
+            || Contains(row.Expression, keyword)
+            || Contains(row.DataType, keyword)
+            || Contains(row.Rule.ToString(CultureInfo.InvariantCulture), keyword)
+            || Contains(row.ResolvedAddress, keyword);
+    }
+
+    private static bool Contains(string? value, string keyword)
+    {
+        return !string.IsNullOrWhiteSpace(value)
+            && value.Contains(keyword, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void ShowInfo(string message)
+    {
+        MessageBox.Show(this, message, _localizer.GetString(TextKeys.Common.TitleInfo), MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+
+    private void ShowWarning(string message)
+    {
+        MessageBox.Show(this, message, _localizer.GetString(TextKeys.Common.TitleWarning), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+    }
+}
