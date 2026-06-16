@@ -22,11 +22,14 @@ using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.MES;
 using AutoWeldSystem.Core.Interfaces.PLC;
 using AutoWeldSystem.Core.Runtime;
+using AutoWeldSystem.UI.ViewModels;
 
 namespace AutoWeldSystem.UI.Views;
 
 public partial class MonitorView : BaseView
 {
+    #region 常量配置
+
     private const int TitleTextPadding = 8;
     private const int HeaderLogoWidth = 168;
     private const int HeaderActionMinWidth = 156;
@@ -36,13 +39,14 @@ public partial class MonitorView : BaseView
     private const int RealtimePreviewPaintIntervalMs = 500;
     private const int WeldPreviewMouseWheelPixels = 96;
     private const int RuntimeSummaryMaxLength = 56;
-    private const string RuntimeSummaryOverflowSuffix = "...";
-    private static readonly TimeSpan RecipePreparationTimeout = TimeSpan.FromSeconds(5);
     private const int PlcStatusToolTipRefreshIntervalMs = 500;
     private const int PlcStatusToolTipHoverPollIntervalMs = 100;
     private const int PlcStatusToolTipMaxWidth = 520;
     private const int PlcStatusHistoryLimit = 10;
     private const int WmSetRedraw = 0x000B;
+
+    private static readonly TimeSpan RecipePreparationTimeout = TimeSpan.FromSeconds(5);
+    private const string RuntimeSummaryOverflowSuffix = "...";
     private const string PreviewTouchNoColumn = "TouchNo";
     private const string PreviewTouchResultColumn = "TouchResult";
     private const string PreviewMessageColumn = "Message";
@@ -50,16 +54,31 @@ public partial class MonitorView : BaseView
     private const string PreviewLowerRole = "Lower";
     private const string PreviewActualRole = "Actual";
     private const string PreviewResultRole = "Result";
-    private const int StationSelectorRowIndex = 1;
     private const string VersionPrefix = "v";
+
+    #endregion
+
+    #region 工位操作静态状态
+
     private static readonly object StationOperationSync = new();
     private static readonly HashSet<int> BusyOperationStations = new();
+
+    #endregion
+
+    #region 定时器
+
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 1000 };
     private readonly System.Windows.Forms.Timer _realtimePreviewPaintTimer = new() { Interval = RealtimePreviewPaintIntervalMs };
     private readonly System.Windows.Forms.Timer _plcStatusToolTipTimer = new() { Interval = PlcStatusToolTipHoverPollIntervalMs };
+
+    #endregion
+
+    #region 注入服务
+
+    private AppSettings _currentSettings;
+
     private readonly ILocalizationService _localizer;
     private readonly IAppSettingsService _settingsService;
-    private AppSettings _currentSettings;
     private readonly IPlcCommunicationService _plcCommunicationService;
     private readonly IMesConnectionMonitor _mesConnectionMonitorService;
     private readonly IPlcProductionMonitorService _plcProductionMonitorService;
@@ -74,10 +93,14 @@ public partial class MonitorView : BaseView
     private readonly IProductHistoryService _productHistoryService;
     private readonly IProgramManageService _programManageService;
     private readonly IWeldTaskService _weldTaskService;
-    private readonly IUploadTaskService _uploadTaskService;
     private readonly IProgramExceptionLogService _exceptionLogService;
     private readonly IProductionFlowLogService _productionLogService;
     private readonly IRuntimeTipStateService _runtimeTipStateService;
+
+    #endregion
+
+    #region 运行状态
+
     private bool _syncingStationSelection;
     private bool _syncingProcessSelection;
     private bool _dualStationEnabled;
@@ -89,11 +112,17 @@ public partial class MonitorView : BaseView
     private object[] _runtimeErrorArgs = Array.Empty<object>();
     private string? _runtimeErrorText;
     private bool _adjustingTitleFont;
+
     private Font? _titleFont;
     private Font? _headerStatusFont;
     private Font? _headerButtonFont;
     private Font? _runtimeMessageFont;
     private Font? _runtimeGroupFont;
+
+    #endregion
+
+    #region 预览状态
+
     private readonly List<WeldParameterRow> _weldParameterRows = new();
     private readonly object _realtimePreviewSync = new();
     private ProductRealtimePreviewSnapshot? _pendingRealtimePreviewSnapshot;
@@ -106,6 +135,7 @@ public partial class MonitorView : BaseView
     private string _weldParameterVisibleValueKey = string.Empty;
     private readonly Dictionary<int, string> _productHistorySchemaKeys = new();
     private readonly int _uiThreadId = Environment.CurrentManagedThreadId;
+
     private bool _refreshingSchemePreview;
     private bool _refreshingProductHistoryPreview;
     private bool _productHistoryRefreshPending;
@@ -118,23 +148,43 @@ public partial class MonitorView : BaseView
     private bool _lastMesConnected;
     private bool _pendingUploadRetryRunning;
     private bool _plcStatusToolTipVisible;
+
+    #endregion
+
+    #region PLC 状态悬浮提示状态
+
     private DateTime _lastPlcStatusToolTipRefreshTime = DateTime.MinValue;
     private string _lastPlcStatusToolTipText = string.Empty;
     private Panel? _plcStatusToolTipPanel;
     private Label? _plcStatusToolTipLabel;
+
     private readonly Dictionary<int, PlcConnectionSnapshot> _lastPlcHistorySnapshots = new();
     private readonly List<PlcStatusHistoryEntry> _plcStatusHistory = new();
+
+    #endregion
+
+    #region 业务信号调和状态
+
     private readonly Dictionary<int, int> _lastWorkOrderStatusSnapshots = new();
     private readonly Dictionary<int, int> _lastDeviceModeSnapshots = new();
     private readonly Dictionary<int, SemaphoreSlim> _workOrderStatusLocks = new();
     private readonly Dictionary<int, SemaphoreSlim> _deviceModeLocks = new();
     private readonly object _businessSignalLockSync = new();
+
     private int _viewStationNo = ProductionConstants.Stations.DefaultStationNo;
     private bool _stationViewReadOnly;
     private bool _enableBusinessSignalReconcile = true;
 
+    #endregion
+
+    #region 系统调用
+
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+    #endregion
+
+    #region 构造函数
 
     public MonitorView(
         ILocalizationService localizer,
@@ -153,7 +203,6 @@ public partial class MonitorView : BaseView
         IProductHistoryService productHistoryService,
         IProgramManageService programManageService,
         IWeldTaskService weldTaskService,
-        IUploadTaskService uploadTaskService,
         IProgramExceptionLogService exceptionLogService,
         IProductionFlowLogService productionLogService,
         IRuntimeTipStateService runtimeTipStateService)
@@ -177,7 +226,6 @@ public partial class MonitorView : BaseView
         _productHistoryService = productHistoryService;
         _programManageService = programManageService;
         _weldTaskService = weldTaskService;
-        _uploadTaskService = uploadTaskService;
         _exceptionLogService = exceptionLogService;
         _productionLogService = productionLogService;
         _runtimeTipStateService = runtimeTipStateService;
@@ -200,6 +248,10 @@ public partial class MonitorView : BaseView
         QueueRefreshSchemePreview(force: true);
         AdjustTitleFontSize();
     }
+
+    #endregion
+
+    #region 公开视图配置
 
     /// <summary>
     /// Configures the station shown by this window. The station can still be changed
@@ -224,11 +276,7 @@ public partial class MonitorView : BaseView
 
     public int ViewStationNo => CurrentStationNo;
 
-    public void ApplyRuntimeSettingsChanged(
-        AppSettings settings,
-        bool readOnly,
-        bool enableBusinessSignalReconcile,
-        bool triggerBusinessSignalReconcile = false)
+    public void ApplyRuntimeSettingsChanged(AppSettings settings, bool readOnly, bool enableBusinessSignalReconcile, bool triggerBusinessSignalReconcile = false)
     {
         UpdateSettingsSnapshot(settings);
         _stationViewReadOnly = readOnly;
@@ -250,19 +298,9 @@ public partial class MonitorView : BaseView
         }
     }
 
-    /// <summary>
-    /// Receives the latest persisted settings without performing database access.
-    /// UI reconfiguration for dual-station mode is coordinated by MainForm.
-    /// </summary>
-    private void SettingsService_SettingsChanged(object? sender, AppSettingsChangedEventArgs e)
-    {
-        if (IsDisposed)
-        {
-            return;
-        }
+    #endregion
 
-        UpdateSettingsSnapshot(e.CurrentSettings);
-    }
+    #region 设置快照
 
     /// <summary>
     /// Atomically replaces the read-only settings snapshot used by this view.
@@ -273,6 +311,558 @@ public partial class MonitorView : BaseView
         ArgumentNullException.ThrowIfNull(settings);
         Interlocked.Exchange(ref _currentSettings, settings);
     }
+
+    #endregion
+
+    #region 按钮事件
+
+    private async void GetWorkOrder_Click(object? sender, EventArgs e)
+    {
+        if (IsReadOnlyOperationBlocked("获取工单"))
+        {
+            return;
+        }
+
+        var stationNo = CurrentStationNo;
+
+        SelectStationForOperation(stationNo);
+        if (_weldTaskService.RestoreUnfinishedTask(stationNo) is not null)
+        {
+            ShowWarning(TextKeys.Monitor.Message.StartBlockedByUnfinishedTask);
+            return;
+        }
+
+        await PrepareWorkOrderAsync(forceManualInput: false);
+    }
+
+    private async void ChangeWorkOrder_Click(object? sender, EventArgs e)
+    {
+        if (IsReadOnlyOperationBlocked("变更工单"))
+        {
+            return;
+        }
+
+        var stationNo = CurrentStationNo;
+        SelectStationForOperation(stationNo);
+        if (_weldTaskService.RestoreUnfinishedTask(stationNo) is not null)
+        {
+            ShowWarning(TextKeys.Monitor.Message.StartBlockedByUnfinishedTask);
+            return;
+        }
+
+        await PrepareWorkOrderAsync(forceManualInput: true);
+    }
+
+    private async void EditWorkOrder_Click(object? sender, EventArgs e)
+    {
+        if (IsReadOnlyOperationBlocked("微调工单"))
+        {
+            return;
+        }
+
+        SelectStationForOperation(CurrentStationNo);
+        var state = GetCurrentStationState();
+        if (state.CurrentWorkOrder is null)
+        {
+            ShowWarningText("请先获取工单信息后再确认加工程序。");
+            return;
+        }
+
+        if (state.ActiveTask is not null)
+        {
+            ShowWarningText("处于开工状态，禁止调整加工程序。");
+            return;
+        }
+
+        if (state.SelectedProcess is null)
+        {
+            ShowWarning(TextKeys.Monitor.Message.ProcessRequired);
+            return;
+        }
+
+        if (state.SelectedProgram is null)
+        {
+            await PrepareProgramForCurrentWorkOrderAsync(CurrentStationNo);
+            return;
+        }
+
+        if (TryConfirmStartData(state.CurrentWorkOrder, state.SelectedProcess, state.SelectedProgram, CurrentStationNo))
+        {
+            RefreshProductionRuntimeState();
+            ClearRuntimeError();
+            SetRuntimeStatusText("加工程序已确认，本次开工将使用当前程序内容。", isSuccess: true);
+        }
+    }
+
+    private async void LocalWorkOrder_Click(object? sender, EventArgs e)
+    {
+        if (IsReadOnlyOperationBlocked("本地工单"))
+        {
+            return;
+        }
+
+        var stationNo = CurrentStationNo;
+        SelectStationForOperation(stationNo);
+        var activeTask = _weldTaskService.RestoreUnfinishedTask(stationNo);
+        if (activeTask is { IsOfflineCreated: true, EndTime: null })
+        {
+            await FinishLocalWorkOrderAsync(stationNo);
+            return;
+        }
+
+        if (activeTask is not null && activeTask.EndTime is null)
+        {
+            SetStationReportFailure(stationNo, "本地工单", "当前工位已有在线任务未完工，不能创建本地工单。");
+            return;
+        }
+
+        var programs = _programManageService.GetPrograms()
+            .Where(program => !program.IsDeleted)
+            .Where(program => !string.IsNullOrWhiteSpace(program.RecipeCode))
+            .ToList();
+        if (programs.Count == 0)
+        {
+            ShowWarningText("没有可用的本地程序，或本地程序缺少配方编号。");
+            return;
+        }
+
+        using var form = new LocalWorkOrderForm(programs, stationNo, _plcWorkIdMonitorService);
+        if (form.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        var localProgram = new ProgramDataRes
+        {
+            Id = form.Request.ProgramId,
+            ProgramName = form.Request.ProgramName,
+            ProductNum = form.Request.ProductNum,
+            RecipeCode = form.Request.RecipeCode,
+            ProgramType = form.Request.ProgramType,
+            ProgramContent = form.Request.ProgramContent
+        };
+
+        BindLocalOperatorInfo();
+        await RunReportOperationAsync(stationNo, "本地开工", async () =>
+        {
+            ClearRuntimeError();
+            SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.SubmittingStart);
+            selectRecipeCode.Text = form.Request.RecipeCode;
+            await _weldTaskService.StartLocalAsync(form.Request, ResolveLocalOperatorNumber(), 0);
+            RefreshProductionRuntimeState();
+            QueueRefreshSchemePreview(force: true);
+            SetRuntimeStatusText(BuildStationReportSuccessText(stationNo, "本地开工"), isSuccess: true);
+        });
+
+        // Write business signals independently - failures won't affect the start success status
+        await SafeWriteStartBusinessSignalsAsync(localProgram, stationNo);
+    }
+
+    private async void StartReport_Click(object? sender, EventArgs e)
+    {
+        if (IsReadOnlyOperationBlocked("开工上报"))
+        {
+            return;
+        }
+
+        var stationNo = CurrentStationNo;
+        SelectStationForOperation(stationNo);
+        if (_weldTaskService.RestoreUnfinishedTask(stationNo) is not null)
+        {
+            RefreshProductionRuntimeState();
+            SetStationReportFailure(stationNo, "开工上报", BuildLocalizedMessage(TextKeys.Monitor.Message.StartBlockedByUnfinishedTask));
+            return;
+        }
+
+        var state = GetCurrentStationState();
+        if (state.CurrentWorkOrder is null)
+        {
+            SetStationReportFailure(stationNo, "开工上报", "请先点击获取工单，获取工单信息后再开工上报。");
+            return;
+        }
+
+        if (state.SelectedProcess is null)
+        {
+            SetStationReportFailure(stationNo, "开工上报", BuildLocalizedMessage(TextKeys.Monitor.Message.ProcessRequired));
+            return;
+        }
+
+        if (state.CurrentWorkOrder is not null
+            && state.SelectedProcess is not null
+            && state.SelectedProgram is null
+            && !await PrepareProgramForCurrentWorkOrderAsync(stationNo))
+        {
+            return;
+        }
+
+        state = GetCurrentStationState();
+        if (state.CurrentWorkOrder is null || state.SelectedProcess is null || state.SelectedProgram is null)
+        {
+            SetStationReportFailure(stationNo, "开工上报", BuildLocalizedMessage(TextKeys.Monitor.Message.StartPrerequisiteMissing));
+            return;
+        }
+
+        if (!IsProgramContentConfirmed(state.SelectedProgram, stationNo)
+            && !TryConfirmStartData(state.CurrentWorkOrder, state.SelectedProcess, state.SelectedProgram, stationNo))
+        {
+            return;
+        }
+
+        var actualQty = 0;
+
+        var employeeNumber = await PromptValidatedOperatorAsync(stationNo);
+        if (string.IsNullOrWhiteSpace(employeeNumber))
+        {
+            return;
+        }
+
+        await RunReportOperationAsync(stationNo, "开工上报", async () =>
+        {
+            ClearRuntimeError();
+            SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.SubmittingStart);
+            await _weldTaskService.StartAsync(employeeNumber, actualQty, stationNo, employeeAlreadyValidated: true);
+            RefreshProductionRuntimeState();
+            QueueRefreshSchemePreview(force: true);
+            SetRuntimeStatusText(BuildStationReportSuccessText(stationNo, "开工上报"), isSuccess: true);
+        });
+
+        // Write business signals independently - failures won't affect the start success status
+        await SafeWriteStartBusinessSignalsAsync(state.SelectedProgram, stationNo);
+    }
+
+    private async void FinishReport_Click(object? sender, EventArgs e)
+    {
+        if (IsReadOnlyOperationBlocked("完工上报"))
+        {
+            return;
+        }
+
+        var stationNo = CurrentStationNo;
+        SelectStationForOperation(stationNo);
+        var activeTask = _weldTaskService.RestoreUnfinishedTask(stationNo);
+        if (activeTask is null)
+        {
+            SetStationReportFailure(stationNo, "完工上报", BuildLocalizedMessage(TextKeys.Monitor.Message.FinishPrerequisiteMissing));
+            return;
+        }
+
+        var employeeNumber = await PromptValidatedOperatorAsync(stationNo);
+        if (string.IsNullOrWhiteSpace(employeeNumber))
+        {
+            return;
+        }
+
+        if (!TryResolveFinishQuantities(stationNo, out var actualQty, out var qualifiedQty, out var failedQty))
+        {
+            return;
+        }
+
+        await RunReportOperationAsync(stationNo, "完工上报", async () =>
+        {
+            ClearRuntimeError();
+            SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.SubmittingFinish);
+            await _weldTaskService.FinishAsync(employeeNumber, actualQty, qualifiedQty, failedQty, stationNo);
+            await WriteFinishBusinessSignalsAsync(stationNo);
+            RefreshProductionRuntimeState();
+            SetRuntimeStatusText(BuildStationReportSuccessText(stationNo, "完工上报"), isSuccess: true);
+        });
+    }
+
+    #endregion
+
+    #region WinForms 生命周期事件
+
+    private void MonitorView_Load(object? sender, EventArgs e)
+    {
+        _timer.Start();
+        _realtimePreviewPaintTimer.Start();
+        ApplyLocalizedTexts();
+        UpdateCurrentTime();
+        ConfigureStationSelector();
+        _weldTaskService.RestoreUnfinishedTask(CurrentStationNo);
+        BindProductionRuntimeState();
+        RestoreCurrentRuntimeTipState();
+        RefreshRuntimePanels();
+        ApplyAllStationStatuses();
+        ApplyMesStatus(_mesConnectionMonitorService.Current);
+        ApplyCurrentRealtimePreviewSnapshot();
+        RefreshProductHistoryPreview();
+        if (_enableBusinessSignalReconcile)
+        {
+            QueueBusinessSignalReconciliation("MonitorView.Load");
+        }
+        AdjustTitleFontSize();
+        SetVerticalSplitterPanel2ToMinWidth();
+    }
+
+    private void Timer_Tick(object? sender, EventArgs e)
+    {
+        UpdateCurrentTime();
+
+        if (GetCurrentStationState().CurrentWorkOrder is null)
+        {
+            QueueRefreshSchemePreview(force: false);
+        }
+
+        if (_enableBusinessSignalReconcile && _plcCommunicationService.Current.IsConnected)
+        {
+            QueueBusinessSignalReconciliation("MonitorView.Timer");
+        }
+    }
+
+    protected override void OnLanguageChanged()
+    {
+        ApplyLocalizedTexts();
+        ConfigureStationSelector();
+        BindProductionRuntimeState();
+        ConfigureProductionTableColumns();
+        ConfigureWeldParameterTableColumns();
+        RefreshRuntimePanels();
+        ApplyAllStationStatuses();
+        ApplyMesStatus(_mesConnectionMonitorService.Current);
+        QueueRefreshSchemePreview(force: true);
+        AdjustTitleFontSize();
+    }
+
+    protected override void OnHandleDestroyed(EventArgs e)
+    {
+        _settingsService.SettingsChanged -= OnSettingsChanged;
+        _weldTaskService.StateChanged -= WeldTaskService_StateChanged;
+        _plcCommunicationService.StatusChanged -= PlcCommunicationService_StatusChanged;
+        _mesConnectionMonitorService.StatusChanged -= MesConnectionMonitorService_StatusChanged;
+        _plcProductionMonitorService.StatusChanged -= PlcProductionMonitorService_StatusChanged;
+        _plcWorkIdMonitorService.WorkIdChanged -= PlcWorkIdMonitorService_WorkIdChanged;
+        _plcWeldCycleMonitorService.WeldPointCollected -= PlcWeldCycleMonitorService_WeldPointCollected;
+        _productRealtimePreviewService.SnapshotChanged -= ProductRealtimePreviewService_SnapshotChanged;
+        _productionLogService.LogWritten -= ProductionLogService_LogWritten;
+        tableHistory1.CellClick -= ProductHistoryTable_CellClick;
+        tableHistory2.CellClick -= ProductHistoryTable_CellClick;
+        UnwireWeldPreviewGridEvents(dgvPreview1);
+        UnwireWeldPreviewGridEvents(dgvPreview2);
+        HorizontalScrollBar1.ValueChanged -= Table2HorizontalScrollBar_ValueChanged;
+        HorizontalScrollBar2.ValueChanged -= Table2HorizontalScrollBar_ValueChanged;
+        tagPLC.MouseEnter -= TagPLC_MouseEnter;
+        tagPLC.MouseLeave -= TagPLC_MouseLeave;
+        _timer.Stop();
+        _realtimePreviewPaintTimer.Stop();
+        _plcStatusToolTipTimer.Stop();
+        _timer.Dispose();
+        _realtimePreviewPaintTimer.Dispose();
+        _plcStatusToolTipTimer.Dispose();
+        DisposePlcStatusToolTipPopup();
+        _titleFont?.Dispose();
+        _headerStatusFont?.Dispose();
+        _headerButtonFont?.Dispose();
+        _runtimeMessageFont?.Dispose();
+        _runtimeGroupFont?.Dispose();
+        base.OnHandleDestroyed(e);
+    }
+
+    #endregion
+
+    #region 工位与工序事件
+
+    private void Station_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
+    {
+        if (_syncingStationSelection || !_dualStationEnabled)
+        {
+            return;
+        }
+
+        var stationNo = Math.Clamp(e.Value + 1, 1, 2);
+        SwitchStationFromUi(stationNo);
+    }
+
+    private void StationTab_SelectedIndexChanged(int stationNo)
+    {
+        if (_syncingStationSelection || !_dualStationEnabled)
+        {
+            return;
+        }
+
+        SwitchStationFromUi(stationNo);
+    }
+
+    private void ProcessSelection_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
+    {
+        if (_syncingProcessSelection)
+        {
+            return;
+        }
+
+        var state = GetCurrentStationState();
+        var processes = state.CurrentWorkOrder?.ExpItems ?? [];
+        // AntdUI raises SelectedIndexChanged before every control property is stable,
+        // so use the event value as the source of truth for the user's new selection.
+        var selectedIndex = e.Value;
+        if (selectedIndex < 0 || selectedIndex >= processes.Count)
+        {
+            ClearProcessSelectionDisplay();
+            inputProcessNo.Text = string.Empty;
+            input1.Text = string.Empty;
+            return;
+        }
+
+        var process = processes[selectedIndex];
+        SelectStationForOperation(CurrentStationNo);
+        _weldTaskService.SelectProcess(process, CurrentStationNo);
+        selectItemName.Text = GetProcessDisplayName(process);
+        inputProcessNo.Text = process.ProcessNo ?? string.Empty;
+        input1.Text = process.StartAmount.ToString(CultureInfo.InvariantCulture);
+        ClearRuntimeError();
+        SetRuntimeStatusText($"已选择工序：{process.ItemName}", isSuccess: true);
+    }
+
+    #endregion
+
+    #region 服务事件处理
+
+    /// <summary>
+    /// Fallback check for a pending realtime snapshot; normal snapshots post to the UI immediately.
+    /// </summary>
+    private void RealtimePreviewPaintTimer_Tick(object? sender, EventArgs e)
+    {
+        ApplyPendingRealtimePreviewSnapshot();
+    }
+
+    private void WeldTaskService_StateChanged(object? sender, EventArgs e)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        RunOnUiThread(ApplyWeldTaskStateChanged, "MonitorView.WeldTaskStateChanged");
+    }
+
+    private void PlcCommunicationService_StatusChanged(object? sender, PlcConnectionSnapshot e)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        RunOnUiThread(() => ApplyPlcStatus(e), "MonitorView.PlcStatusChanged");
+    }
+
+    private void MesConnectionMonitorService_StatusChanged(object? sender, MesConnectionSnapshot e)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        RunOnUiThread(() => ApplyMesStatus(e), "MonitorView.MesStatusChanged");
+    }
+
+    private void PlcProductionMonitorService_StatusChanged(object? sender, PlcProductionSnapshot e)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        RunOnUiThread(() => ApplyProductionStatus(e), "MonitorView.ProductionStatusChanged");
+    }
+
+    private void PlcWorkIdMonitorService_WorkIdChanged(object? sender, PlcWorkIdSnapshot e)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        RunOnUiThread(() => ApplyWorkIdSnapshot(e), "MonitorView.WorkIdChanged");
+    }
+
+    private void PlcWeldCycleMonitorService_WeldPointCollected(object? sender, BizWeldPointRecord e)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        RunOnUiThread(() => ApplyLatestWeldPointRecord(e), "MonitorView.WeldPointCollected");
+    }
+
+    private void ProductRealtimePreviewService_SnapshotChanged(object? sender, ProductRealtimePreviewSnapshot e)
+    {
+        if (IsDisposed || !IsHandleCreated || e.StationNo != CurrentStationNo)
+        {
+            return;
+        }
+
+        lock (_realtimePreviewSync)
+        {
+            _pendingRealtimePreviewSnapshot = e;
+            if (_realtimePreviewApplyPosted)
+            {
+                return;
+            }
+
+            _realtimePreviewApplyPosted = true;
+        }
+
+        if (!RunOnUiThread(ApplyPendingRealtimePreviewSnapshot, "MonitorView.RealtimePreviewSnapshot"))
+        {
+            lock (_realtimePreviewSync)
+            {
+                _realtimePreviewApplyPosted = false;
+            }
+        }
+    }
+
+    private void ProductionLogService_LogWritten(object? sender, ProductionFlowLogEntry e)
+    {
+        if (IsDisposed || !ShouldShowProductionHint(e))
+        {
+            return;
+        }
+
+        RunOnUiThread(() => ApplyProductionHint(e), "MonitorView.ProductionLogWritten");
+    }
+
+    private void ApplyWeldTaskStateChanged()
+    {
+        RefreshProductionRuntimeState();
+        QueueRefreshSchemePreview(force: true);
+        if (_enableBusinessSignalReconcile)
+        {
+            QueueBusinessSignalReconciliation("WeldTaskService.StateChanged", includeDeviceMode: false);
+        }
+    }
+
+    /// <summary>
+    /// Receives the latest persisted settings without performing database access.
+    /// UI reconfiguration for dual-station mode is coordinated by MainForm.
+    /// </summary>
+    private void OnSettingsChanged(object? sender, AppSettingsChangedEventArgs e)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        UpdateSettingsSnapshot(e.CurrentSettings);
+    }
+
+    #endregion
+
+    #region 表格与鼠标事件
+
+    private void ProductHistoryTable_CellClick(object sender, AntdUI.TableClickEventArgs e)
+    {
+        if (e.Button != MouseButtons.Right || e.Record is not ProductHistoryTableRow row)
+        {
+            return;
+        }
+
+        ShowProductHistoryContextMenu((Control)sender, row);
+    }
+
+    #endregion
+
+    #region 头部与状态布局
 
     private void LoadTitleLogo()
     {
@@ -460,6 +1050,10 @@ public partial class MonitorView : BaseView
         return version?.Split('+')[0] ?? string.Empty;
     }
 
+    #endregion
+
+    #region 运行提示面板
+
     private void ConfigureRuntimeMessagePanels()
     {
         _runtimeMessageFont = new Font("Microsoft YaHei UI", 12.5F, FontStyle.Bold);
@@ -473,6 +1067,10 @@ public partial class MonitorView : BaseView
         ApplyRuntimeErrorTone(hasError: false);
         ApplyRuntimeStatusTone();
     }
+
+    #endregion
+
+    #region 工位选择与视图模式
 
     private void ConfigureStationResultTags()
     {
@@ -494,6 +1092,7 @@ public partial class MonitorView : BaseView
     private void ConfigureStationSelector()
     {
         _dualStationEnabled = _currentSettings.EnableDualStation;
+
         SetStationSelectorVisible(_dualStationEnabled);
         SetStationPreviewPagesVisible(_dualStationEnabled);
         ConfigureCommunicationStatusLayout();
@@ -583,13 +1182,10 @@ public partial class MonitorView : BaseView
     {
         tlpCurStation.Visible = visible;
 
-        if (TLPWorkOrderInfo.RowStyles.Count <= StationSelectorRowIndex)
-        {
-            return;
-        }
+        var rowIndex = TLPWorkOrderInfo.GetRow(control: tlpCurStation);
 
-        TLPWorkOrderInfo.RowStyles[StationSelectorRowIndex].SizeType = visible ? SizeType.Percent : SizeType.Absolute;
-        TLPWorkOrderInfo.RowStyles[StationSelectorRowIndex].Height = visible ? 10F : 0F;
+        TLPWorkOrderInfo.RowStyles[rowIndex].SizeType = visible ? SizeType.Percent : SizeType.Absolute;
+        TLPWorkOrderInfo.RowStyles[rowIndex].Height = visible ? 10F : 0F;
     }
 
     private void BindStationSelection()
@@ -695,7 +1291,7 @@ public partial class MonitorView : BaseView
 
     private AntdUI.Table CurrentMetricTable => CurrentStationNo == 2 ? tableMetric2 : tableMetric1;
 
-    private AntdUI.Table CurrentProductHistoryTable => CurrentStationNo == 2 ? tableProductHistoryPreview2 : tableProductHistoryPreview1;
+    private AntdUI.Table CurrentProductHistoryTable => CurrentStationNo == 2 ? tableHistory2 : tableHistory1;
 
     private AntdUI.Label CurrentLivePreviewStatusLabel => CurrentStationNo == 2 ? lblLiveHint2 : lblLiveHint1;
 
@@ -722,6 +1318,10 @@ public partial class MonitorView : BaseView
     {
         return _plcProductionMonitorService.GetCurrent(CurrentStationNo);
     }
+
+    #endregion
+
+    #region 标题布局调整
 
     private void TitleLayout_Changed(object? sender, EventArgs e)
     {
@@ -794,6 +1394,10 @@ public partial class MonitorView : BaseView
         return best;
     }
 
+    #endregion
+
+    #region 事件订阅
+
     private void WireEvents()
     {
         Load += MonitorView_Load;
@@ -821,8 +1425,8 @@ public partial class MonitorView : BaseView
         WireWeldPreviewGridEvents(dgvPreview1);
         WireWeldPreviewGridEvents(dgvPreview2);
 
-        tableProductHistoryPreview1.CellClick += ProductHistoryTable_CellClick;
-        tableProductHistoryPreview2.CellClick += ProductHistoryTable_CellClick;
+        tableHistory1.CellClick += ProductHistoryTable_CellClick;
+        tableHistory2.CellClick += ProductHistoryTable_CellClick;
 
         segmentedStationSwitch.SelectIndexChanged += Station_SelectedIndexChanged;
         selectItemName.SelectedIndexChanged += ProcessSelection_SelectedIndexChanged;
@@ -837,7 +1441,7 @@ public partial class MonitorView : BaseView
         _plcWeldCycleMonitorService.WeldPointCollected += PlcWeldCycleMonitorService_WeldPointCollected;
         _productRealtimePreviewService.SnapshotChanged += ProductRealtimePreviewService_SnapshotChanged;
         _productionLogService.LogWritten += ProductionLogService_LogWritten;
-        _settingsService.SettingsChanged += SettingsService_SettingsChanged;
+        _settingsService.SettingsChanged += OnSettingsChanged;
     }
 
     private void WireWeldPreviewGridEvents(DataGridView grid)
@@ -861,6 +1465,10 @@ public partial class MonitorView : BaseView
         grid.ColumnAdded -= Table2_ScrollRangeChanged;
         grid.ColumnRemoved -= Table2_ScrollRangeChanged;
     }
+
+    #endregion
+
+    #region 预览表格鼠标与滚动事件
 
     private void Table2_MouseEnter(object? sender, EventArgs e)
     {
@@ -923,136 +1531,9 @@ public partial class MonitorView : BaseView
         SetWeldPreviewHorizontalOffset(CurrentStationNo, CurrentWeldPreviewScrollBar.Value);
     }
 
-    protected override void OnLanguageChanged()
-    {
-        ApplyLocalizedTexts();
-        ConfigureStationSelector();
-        BindProductionRuntimeState();
-        ConfigureProductionTableColumns();
-        ConfigureWeldParameterTableColumns();
-        RefreshRuntimePanels();
-        ApplyAllStationStatuses();
-        ApplyMesStatus(_mesConnectionMonitorService.Current);
-        QueueRefreshSchemePreview(force: true);
-        AdjustTitleFontSize();
-    }
+    #endregion
 
-    private void MonitorView_Load(object? sender, EventArgs e)
-    {
-        _timer.Start();
-        _realtimePreviewPaintTimer.Start();
-        ApplyLocalizedTexts();
-        UpdateCurrentTime();
-        ConfigureStationSelector();
-        _weldTaskService.RestoreUnfinishedTask(CurrentStationNo);
-        BindProductionRuntimeState();
-        RestoreCurrentRuntimeTipState();
-        RefreshRuntimePanels();
-        ApplyAllStationStatuses();
-        ApplyMesStatus(_mesConnectionMonitorService.Current);
-        ApplyCurrentRealtimePreviewSnapshot();
-        RefreshProductHistoryPreview();
-        if (_enableBusinessSignalReconcile)
-        {
-            QueueBusinessSignalReconciliation("MonitorView.Load");
-        }
-        AdjustTitleFontSize();
-        SetVerticalSplitterPanel2ToMinWidth();
-    }
-
-    protected override void OnHandleDestroyed(EventArgs e)
-    {
-        _settingsService.SettingsChanged -= SettingsService_SettingsChanged;
-        _weldTaskService.StateChanged -= WeldTaskService_StateChanged;
-        _plcCommunicationService.StatusChanged -= PlcCommunicationService_StatusChanged;
-        _mesConnectionMonitorService.StatusChanged -= MesConnectionMonitorService_StatusChanged;
-        _plcProductionMonitorService.StatusChanged -= PlcProductionMonitorService_StatusChanged;
-        _plcWorkIdMonitorService.WorkIdChanged -= PlcWorkIdMonitorService_WorkIdChanged;
-        _plcWeldCycleMonitorService.WeldPointCollected -= PlcWeldCycleMonitorService_WeldPointCollected;
-        _productRealtimePreviewService.SnapshotChanged -= ProductRealtimePreviewService_SnapshotChanged;
-        _productionLogService.LogWritten -= ProductionLogService_LogWritten;
-        tableProductHistoryPreview1.CellClick -= ProductHistoryTable_CellClick;
-        tableProductHistoryPreview2.CellClick -= ProductHistoryTable_CellClick;
-        UnwireWeldPreviewGridEvents(dgvPreview1);
-        UnwireWeldPreviewGridEvents(dgvPreview2);
-        HorizontalScrollBar1.ValueChanged -= Table2HorizontalScrollBar_ValueChanged;
-        HorizontalScrollBar2.ValueChanged -= Table2HorizontalScrollBar_ValueChanged;
-        tagPLC.MouseEnter -= TagPLC_MouseEnter;
-        tagPLC.MouseLeave -= TagPLC_MouseLeave;
-        _timer.Stop();
-        _realtimePreviewPaintTimer.Stop();
-        _plcStatusToolTipTimer.Stop();
-        _timer.Dispose();
-        _realtimePreviewPaintTimer.Dispose();
-        _plcStatusToolTipTimer.Dispose();
-        DisposePlcStatusToolTipPopup();
-        _titleFont?.Dispose();
-        _headerStatusFont?.Dispose();
-        _headerButtonFont?.Dispose();
-        _runtimeMessageFont?.Dispose();
-        _runtimeGroupFont?.Dispose();
-        base.OnHandleDestroyed(e);
-    }
-
-    private void Timer_Tick(object? sender, EventArgs e)
-    {
-        UpdateCurrentTime();
-
-        if (GetCurrentStationState().CurrentWorkOrder is null)
-        {
-            QueueRefreshSchemePreview(force: false);
-        }
-
-        if (_enableBusinessSignalReconcile && _plcCommunicationService.Current.IsConnected)
-        {
-            QueueBusinessSignalReconciliation("MonitorView.Timer");
-        }
-    }
-
-    private void WeldTaskService_StateChanged(object? sender, EventArgs e)
-    {
-        if (IsDisposed)
-        {
-            return;
-        }
-
-        if (InvokeRequired)
-        {
-            BeginInvoke(() =>
-            {
-                RefreshProductionRuntimeState();
-                QueueRefreshSchemePreview(force: true);
-                if (_enableBusinessSignalReconcile)
-                {
-                    QueueBusinessSignalReconciliation("WeldTaskService.StateChanged", includeDeviceMode: false);
-                }
-            });
-            return;
-        }
-
-        RefreshProductionRuntimeState();
-        QueueRefreshSchemePreview(force: true);
-        if (_enableBusinessSignalReconcile)
-        {
-            QueueBusinessSignalReconciliation("WeldTaskService.StateChanged", includeDeviceMode: false);
-        }
-    }
-
-    private void PlcCommunicationService_StatusChanged(object? sender, PlcConnectionSnapshot e)
-    {
-        if (IsDisposed)
-        {
-            return;
-        }
-
-        if (InvokeRequired)
-        {
-            BeginInvoke(() => ApplyPlcStatus(e));
-            return;
-        }
-
-        ApplyPlcStatus(e);
-    }
+    #region PLC 状态悬浮提示
 
     private void ApplyAllStationStatuses()
     {
@@ -1328,104 +1809,9 @@ public partial class MonitorView : BaseView
             .Replace("\n", " / ", StringComparison.Ordinal);
     }
 
-    private void MesConnectionMonitorService_StatusChanged(object? sender, MesConnectionSnapshot e)
-    {
-        if (IsDisposed)
-        {
-            return;
-        }
+    #endregion
 
-        if (InvokeRequired)
-        {
-            BeginInvoke(() => ApplyMesStatus(e));
-            return;
-        }
-
-        ApplyMesStatus(e);
-    }
-
-    private void PlcProductionMonitorService_StatusChanged(object? sender, PlcProductionSnapshot e)
-    {
-        if (IsDisposed)
-        {
-            return;
-        }
-
-        if (InvokeRequired)
-        {
-            BeginInvoke(() => ApplyProductionStatus(e));
-            return;
-        }
-
-        ApplyProductionStatus(e);
-    }
-
-    private void PlcWorkIdMonitorService_WorkIdChanged(object? sender, PlcWorkIdSnapshot e)
-    {
-        if (IsDisposed)
-        {
-            return;
-        }
-
-        if (InvokeRequired)
-        {
-            BeginInvoke(() => ApplyWorkIdSnapshot(e));
-            return;
-        }
-
-        ApplyWorkIdSnapshot(e);
-    }
-
-    private void PlcWeldCycleMonitorService_WeldPointCollected(object? sender, BizWeldPointRecord e)
-    {
-        if (IsDisposed)
-        {
-            return;
-        }
-
-        if (InvokeRequired)
-        {
-            BeginInvoke(() => ApplyLatestWeldPointRecord(e));
-            return;
-        }
-
-        ApplyLatestWeldPointRecord(e);
-    }
-
-    private void ProductRealtimePreviewService_SnapshotChanged(object? sender, ProductRealtimePreviewSnapshot e)
-    {
-        if (IsDisposed || !IsHandleCreated || e.StationNo != CurrentStationNo)
-        {
-            return;
-        }
-
-        lock (_realtimePreviewSync)
-        {
-            _pendingRealtimePreviewSnapshot = e;
-            if (_realtimePreviewApplyPosted)
-            {
-                return;
-            }
-
-            _realtimePreviewApplyPosted = true;
-        }
-
-        if (InvokeRequired)
-        {
-            BeginInvoke(new Action(ApplyPendingRealtimePreviewSnapshot));
-            return;
-        }
-
-        ApplyPendingRealtimePreviewSnapshot();
-    }
-
-    /// <summary>
-    /// Fallback check for a pending realtime snapshot; normal snapshots post to the UI immediately.
-    /// </summary>
-    private void RealtimePreviewPaintTimer_Tick(object? sender, EventArgs e)
-    {
-        ApplyPendingRealtimePreviewSnapshot();
-    }
+    #region 实时预览调度
 
     /// <summary>
     /// Consumes one cached realtime snapshot. Older snapshots are overwritten before this method runs.
@@ -1448,163 +1834,9 @@ public partial class MonitorView : BaseView
         ApplyProductRealtimePreviewSnapshot(snapshot);
     }
 
-    private void ProductionLogService_LogWritten(object? sender, ProductionFlowLogEntry e)
-    {
-        if (IsDisposed || !ShouldShowProductionHint(e))
-        {
-            return;
-        }
+    #endregion
 
-        if (InvokeRequired)
-        {
-            BeginInvoke(() => ApplyProductionHint(e));
-            return;
-        }
-
-        ApplyProductionHint(e);
-    }
-
-    private async void GetWorkOrder_Click(object? sender, EventArgs e)
-    {
-        if (IsReadOnlyOperationBlocked("获取工单"))
-        {
-            return;
-        }
-
-        var stationNo = CurrentStationNo;
-
-        SelectStationForOperation(stationNo);
-        if (_weldTaskService.RestoreUnfinishedTask(stationNo) is not null)
-        {
-            ShowWarning(TextKeys.Monitor.Message.StartBlockedByUnfinishedTask);
-            return;
-        }
-
-        await PrepareWorkOrderAsync(forceManualInput: false);
-    }
-
-    private async void ChangeWorkOrder_Click(object? sender, EventArgs e)
-    {
-        if (IsReadOnlyOperationBlocked("变更工单"))
-        {
-            return;
-        }
-
-        var stationNo = CurrentStationNo;
-        SelectStationForOperation(stationNo);
-        if (_weldTaskService.RestoreUnfinishedTask(stationNo) is not null)
-        {
-            ShowWarning(TextKeys.Monitor.Message.StartBlockedByUnfinishedTask);
-            return;
-        }
-
-        await PrepareWorkOrderAsync(forceManualInput: true);
-    }
-
-    private async void EditWorkOrder_Click(object? sender, EventArgs e)
-    {
-        if (IsReadOnlyOperationBlocked("微调工单"))
-        {
-            return;
-        }
-
-        SelectStationForOperation(CurrentStationNo);
-        var state = GetCurrentStationState();
-        if (state.CurrentWorkOrder is null)
-        {
-            ShowWarningText("请先获取工单信息后再确认加工程序。");
-            return;
-        }
-
-        if (state.ActiveTask is not null)
-        {
-            ShowWarningText("处于开工状态，禁止调整加工程序。");
-            return;
-        }
-
-        if (state.SelectedProcess is null)
-        {
-            ShowWarning(TextKeys.Monitor.Message.ProcessRequired);
-            return;
-        }
-
-        if (state.SelectedProgram is null)
-        {
-            await PrepareProgramForCurrentWorkOrderAsync(CurrentStationNo);
-            return;
-        }
-
-        if (TryConfirmStartData(state.CurrentWorkOrder, state.SelectedProcess, state.SelectedProgram, CurrentStationNo))
-        {
-            RefreshProductionRuntimeState();
-            ClearRuntimeError();
-            SetRuntimeStatusText("加工程序已确认，本次开工将使用当前程序内容。", isSuccess: true);
-        }
-    }
-
-    private async void LocalWorkOrder_Click(object? sender, EventArgs e)
-    {
-        if (IsReadOnlyOperationBlocked("本地工单"))
-        {
-            return;
-        }
-
-        var stationNo = CurrentStationNo;
-        SelectStationForOperation(stationNo);
-        var activeTask = _weldTaskService.RestoreUnfinishedTask(stationNo);
-        if (activeTask is { IsOfflineCreated: true, EndTime: null })
-        {
-            await FinishLocalWorkOrderAsync(stationNo);
-            return;
-        }
-
-        if (activeTask is not null && activeTask.EndTime is null)
-        {
-            SetStationReportFailure(stationNo, "本地工单", "当前工位已有在线任务未完工，不能创建本地工单。");
-            return;
-        }
-
-        var programs = _programManageService.GetPrograms()
-            .Where(program => !program.IsDeleted)
-            .Where(program => !string.IsNullOrWhiteSpace(program.RecipeCode))
-            .ToList();
-        if (programs.Count == 0)
-        {
-            ShowWarningText("没有可用的本地程序，或本地程序缺少配方编号。");
-            return;
-        }
-
-        using var form = new LocalWorkOrderForm(programs, stationNo, _plcWorkIdMonitorService);
-        if (form.ShowDialog(this) != DialogResult.OK)
-        {
-            return;
-        }
-
-        var localProgram = new ProgramDataRes
-        {
-            Id = form.Request.ProgramId,
-            ProgramName = form.Request.ProgramName,
-            ProductNum = form.Request.ProductNum,
-            RecipeCode = form.Request.RecipeCode,
-            ProgramType = form.Request.ProgramType,
-            ProgramContent = form.Request.ProgramContent
-        };
-
-        BindLocalOperatorInfo();
-        await RunReportOperationAsync(stationNo, "本地开工", async () =>
-        {
-            ClearRuntimeError();
-            SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.SubmittingStart);
-            selectRecipeCode.Text = form.Request.RecipeCode;
-            await _weldTaskService.StartLocalAsync(form.Request, ResolveLocalOperatorNumber(), 0);
-            RefreshProductionRuntimeState();
-            QueueRefreshSchemePreview(force: true);
-            SetRuntimeStatusText(BuildStationReportSuccessText(stationNo, "本地开工"), isSuccess: true);
-        });
-
-        // Write business signals independently - failures won't affect the start success status
-        await SafeWriteStartBusinessSignalsAsync(localProgram, stationNo);
-    }
+    #region 完工上报流程
 
     private async Task FinishLocalWorkOrderAsync(int stationNo)
     {
@@ -1651,116 +1883,6 @@ public partial class MonitorView : BaseView
             : Environment.UserName.Trim();
     }
 
-    private async void StartReport_Click(object? sender, EventArgs e)
-    {
-        if (IsReadOnlyOperationBlocked("开工上报"))
-        {
-            return;
-        }
-
-        var stationNo = CurrentStationNo;
-        SelectStationForOperation(stationNo);
-        if (_weldTaskService.RestoreUnfinishedTask(stationNo) is not null)
-        {
-            RefreshProductionRuntimeState();
-            SetStationReportFailure(stationNo, "开工上报", BuildLocalizedMessage(TextKeys.Monitor.Message.StartBlockedByUnfinishedTask));
-            return;
-        }
-
-        var state = GetCurrentStationState();
-        if (state.CurrentWorkOrder is null)
-        {
-            SetStationReportFailure(stationNo, "开工上报", "请先点击获取工单，获取工单信息后再开工上报。");
-            return;
-        }
-
-        if (state.SelectedProcess is null)
-        {
-            SetStationReportFailure(stationNo, "开工上报", BuildLocalizedMessage(TextKeys.Monitor.Message.ProcessRequired));
-            return;
-        }
-
-        if (state.CurrentWorkOrder is not null
-            && state.SelectedProcess is not null
-            && state.SelectedProgram is null
-            && !await PrepareProgramForCurrentWorkOrderAsync(stationNo))
-        {
-            return;
-        }
-
-        state = GetCurrentStationState();
-        if (state.CurrentWorkOrder is null || state.SelectedProcess is null || state.SelectedProgram is null)
-        {
-            SetStationReportFailure(stationNo, "开工上报", BuildLocalizedMessage(TextKeys.Monitor.Message.StartPrerequisiteMissing));
-            return;
-        }
-
-        if (!IsProgramContentConfirmed(state.SelectedProgram, stationNo)
-            && !TryConfirmStartData(state.CurrentWorkOrder, state.SelectedProcess, state.SelectedProgram, stationNo))
-        {
-            return;
-        }
-
-        var actualQty = 0;
-
-        var employeeNumber = await PromptValidatedOperatorAsync(stationNo);
-        if (string.IsNullOrWhiteSpace(employeeNumber))
-        {
-            return;
-        }
-
-        await RunReportOperationAsync(stationNo, "开工上报", async () =>
-        {
-            ClearRuntimeError();
-            SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.SubmittingStart);
-            await _weldTaskService.StartAsync(employeeNumber, actualQty, stationNo, employeeAlreadyValidated: true);
-            RefreshProductionRuntimeState();
-            QueueRefreshSchemePreview(force: true);
-            SetRuntimeStatusText(BuildStationReportSuccessText(stationNo, "开工上报"), isSuccess: true);
-        });
-
-        // Write business signals independently - failures won't affect the start success status
-        await SafeWriteStartBusinessSignalsAsync(state.SelectedProgram, stationNo);
-    }
-
-    private async void FinishReport_Click(object? sender, EventArgs e)
-    {
-        if (IsReadOnlyOperationBlocked("完工上报"))
-        {
-            return;
-        }
-
-        var stationNo = CurrentStationNo;
-        SelectStationForOperation(stationNo);
-        var activeTask = _weldTaskService.RestoreUnfinishedTask(stationNo);
-        if (activeTask is null)
-        {
-            SetStationReportFailure(stationNo, "完工上报", BuildLocalizedMessage(TextKeys.Monitor.Message.FinishPrerequisiteMissing));
-            return;
-        }
-
-        var employeeNumber = await PromptValidatedOperatorAsync(stationNo);
-        if (string.IsNullOrWhiteSpace(employeeNumber))
-        {
-            return;
-        }
-
-        if (!TryResolveFinishQuantities(stationNo, out var actualQty, out var qualifiedQty, out var failedQty))
-        {
-            return;
-        }
-
-        await RunReportOperationAsync(stationNo, "完工上报", async () =>
-        {
-            ClearRuntimeError();
-            SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.SubmittingFinish);
-            await _weldTaskService.FinishAsync(employeeNumber, actualQty, qualifiedQty, failedQty, stationNo);
-            await WriteFinishBusinessSignalsAsync(stationNo);
-            RefreshProductionRuntimeState();
-            SetRuntimeStatusText(BuildStationReportSuccessText(stationNo, "完工上报"), isSuccess: true);
-        });
-    }
-
     private bool TryResolveFinishQuantities(int stationNo, out int actualQty, out int qualifiedQty, out int failedQty)
     {
         var settings = _currentSettings;
@@ -1770,12 +1892,8 @@ public partial class MonitorView : BaseView
             : TryResolveFinishQuantitiesFromPlc(stationNo, production, out actualQty, out qualifiedQty, out failedQty);
     }
 
-    private bool TryResolveFinishQuantitiesFromPlc(
-        int stationNo,
-        PlcProductionSnapshot production,
-        out int actualQty,
-        out int qualifiedQty,
-        out int failedQty)
+    private bool TryResolveFinishQuantitiesFromPlc(int stationNo, PlcProductionSnapshot production,
+        out int actualQty, out int qualifiedQty, out int failedQty)
     {
         actualQty = production.TotalProduction;
         qualifiedQty = production.AcceptedQuantity;
@@ -1790,11 +1908,8 @@ public partial class MonitorView : BaseView
         return false;
     }
 
-    private bool TryResolveFinishQuantitiesWithPrompt(
-        PlcProductionSnapshot production,
-        out int actualQty,
-        out int qualifiedQty,
-        out int failedQty)
+    private bool TryResolveFinishQuantitiesWithPrompt(PlcProductionSnapshot production,
+        out int actualQty, out int qualifiedQty, out int failedQty)
     {
         actualQty = 0;
         qualifiedQty = 0;
@@ -1857,6 +1972,10 @@ public partial class MonitorView : BaseView
             : "请确认 PLC 连接和产量地址配置。";
         return $"PLC 完工数量读取失败，已阻止完工上报：{suffix}";
     }
+
+    #endregion
+
+    #region 工单准备流程
 
     private async Task<bool> PrepareWorkOrderAsync(bool forceManualInput)
     {
@@ -1991,56 +2110,9 @@ public partial class MonitorView : BaseView
         return false;
     }
 
-    private void Station_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
-    {
-        if (_syncingStationSelection || !_dualStationEnabled)
-        {
-            return;
-        }
+    #endregion
 
-        var stationNo = Math.Clamp(e.Value + 1, 1, 2);
-        SwitchStationFromUi(stationNo);
-    }
-
-    private void StationTab_SelectedIndexChanged(int stationNo)
-    {
-        if (_syncingStationSelection || !_dualStationEnabled)
-        {
-            return;
-        }
-
-        SwitchStationFromUi(stationNo);
-    }
-
-    private void ProcessSelection_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
-    {
-        if (_syncingProcessSelection)
-        {
-            return;
-        }
-
-        var state = GetCurrentStationState();
-        var processes = state.CurrentWorkOrder?.ExpItems ?? [];
-        // AntdUI raises SelectedIndexChanged before every control property is stable,
-        // so use the event value as the source of truth for the user's new selection.
-        var selectedIndex = e.Value;
-        if (selectedIndex < 0 || selectedIndex >= processes.Count)
-        {
-            ClearProcessSelectionDisplay();
-            inputProcessNo.Text = string.Empty;
-            input1.Text = string.Empty;
-            return;
-        }
-
-        var process = processes[selectedIndex];
-        SelectStationForOperation(CurrentStationNo);
-        _weldTaskService.SelectProcess(process, CurrentStationNo);
-        selectItemName.Text = GetProcessDisplayName(process);
-        inputProcessNo.Text = process.ProcessNo ?? string.Empty;
-        input1.Text = process.StartAmount.ToString(CultureInfo.InvariantCulture);
-        ClearRuntimeError();
-        SetRuntimeStatusText($"已选择工序：{process.ItemName}", isSuccess: true);
-    }
+    #region 工位运行状态绑定
 
     private void SwitchStationFromUi(int stationNo)
     {
@@ -2435,6 +2507,10 @@ public partial class MonitorView : BaseView
         AdjustHeaderFixedColumns();
     }
 
+    #endregion
+
+    #region PLC 与 MES 状态展示
+
     private void ApplyPlcStatus(PlcConnectionSnapshot snapshot)
     {
         RecordPlcStatusChange(snapshot);
@@ -2475,10 +2551,11 @@ public partial class MonitorView : BaseView
         }
     }
 
-    private void QueueBusinessSignalReconciliation(
-        string source,
-        bool includeDeviceMode = true,
-        bool includeWorkOrderStatus = true)
+    #endregion
+
+    #region PLC 业务信号调和
+
+    private void QueueBusinessSignalReconciliation(string source, bool includeDeviceMode = true, bool includeWorkOrderStatus = true)
     {
         if (includeDeviceMode)
         {
@@ -2579,6 +2656,10 @@ public partial class MonitorView : BaseView
             ? ProductionConstants.PlcWorkOrderStatuses.FinishedForbidProduction
             : ProductionConstants.PlcWorkOrderStatuses.StartedAllowProduction;
     }
+
+    #endregion
+
+    #region PLC 与 MES 状态展示
 
     private static string GetPlcStateKey(PlcConnectionState state)
     {
@@ -2696,6 +2777,10 @@ public partial class MonitorView : BaseView
         }
     }
 
+    #endregion
+
+    #region 生产指标表格
+
     private void BindProductionMetrics(PlcProductionSnapshot snapshot)
     {
         var mesProductionQuantity = GetCurrentStationState().SelectedProcess?.StartAmount;
@@ -2721,6 +2806,10 @@ public partial class MonitorView : BaseView
         metricTable.Refresh();
     }
 
+    #endregion
+
+    #region 表格列配置
+
     private void ConfigureProductionTableColumns()
     {
         ConfigureProductionTableColumns(tableMetric1);
@@ -2743,16 +2832,14 @@ public partial class MonitorView : BaseView
 
     private void ConfigureProductHistoryTableColumns()
     {
-        ConfigureProductHistoryTableColumns(tableProductHistoryPreview1, [], 1);
-        ConfigureProductHistoryTableColumns(tableProductHistoryPreview2, [], 2);
+        ConfigureProductHistoryTableColumns(tableHistory1, [], 1);
+        ConfigureProductHistoryTableColumns(tableHistory2, [], 2);
     }
 
-    private void ConfigureProductHistoryTableColumns(
-        AntdUI.Table table,
-        IReadOnlyList<ProductHistoryDynamicColumn> dynamicColumns,
-        int stationNo)
+    private void ConfigureProductHistoryTableColumns(AntdUI.Table table, IReadOnlyList<ProductHistoryDynamicColumn> dynamicColumns, int stationNo)
     {
         var schemaKey = BuildProductHistorySchemaKey(dynamicColumns);
+
         if (_productHistorySchemaKeys.TryGetValue(stationNo, out var existingSchemaKey)
             && string.Equals(existingSchemaKey, schemaKey, StringComparison.Ordinal)
             && table.Columns.Count > 0)
@@ -2826,6 +2913,10 @@ public partial class MonitorView : BaseView
         BindWeldParameterTable(forceRebind: true);
     }
 
+    #endregion
+
+    #region 产品历史预览
+
     private void RefreshProductHistoryPreview()
     {
         if (IsDisposed || Disposing)
@@ -2833,9 +2924,8 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        // InvokeRequired can return false before a handle is created. Comparing the
-        // creating thread explicitly prevents background services from mutating the
-        // AntdUI column collection while the control is being initialized or painted.
+        // Compare the creating thread explicitly so background services cannot mutate
+        // the AntdUI column collection while the control is being initialized or painted.
         if (Environment.CurrentManagedThreadId != _uiThreadId)
         {
             PostProductHistoryRefreshToUiThread();
@@ -2876,11 +2966,14 @@ public partial class MonitorView : BaseView
 
         try
         {
-            BeginInvoke(new Action(() =>
+            if (!RunOnUiThread(() =>
             {
                 Interlocked.Exchange(ref _productHistoryRefreshPosted, 0);
                 RefreshProductHistoryPreview();
-            }));
+            }, "MonitorView.ProductHistoryRefresh"))
+            {
+                Interlocked.Exchange(ref _productHistoryRefreshPosted, 0);
+            }
         }
         catch (InvalidOperationException)
         {
@@ -2933,18 +3026,9 @@ public partial class MonitorView : BaseView
 
     private AntdUI.Table GetProductHistoryTable(int stationNo)
     {
-        return stationNo == 2 ? tableProductHistoryPreview2 : tableProductHistoryPreview1;
+        return stationNo == 2 ? tableHistory2 : tableHistory1;
     }
 
-    private void ProductHistoryTable_CellClick(object sender, AntdUI.TableClickEventArgs e)
-    {
-        if (e.Button != MouseButtons.Right || e.Record is not ProductHistoryTableRow row)
-        {
-            return;
-        }
-
-        ShowProductHistoryContextMenu((Control)sender, row);
-    }
 
     private void ShowProductHistoryContextMenu(Control target, ProductHistoryTableRow row)
     {
@@ -3004,9 +3088,7 @@ public partial class MonitorView : BaseView
         }
     }
 
-    private ProductHistoryTableRow ToProductHistoryRow(
-        ProductHistoryProduct product,
-        IReadOnlyList<ProductHistoryDynamicColumn> dynamicColumns)
+    private ProductHistoryTableRow ToProductHistoryRow(ProductHistoryProduct product, IReadOnlyList<ProductHistoryDynamicColumn> dynamicColumns)
     {
         return new ProductHistoryTableRow
         {
@@ -3027,10 +3109,8 @@ public partial class MonitorView : BaseView
         };
     }
 
-    private ProductHistoryTableRow ToProductHistoryPointRow(
-        ProductHistoryProduct product,
-        ProductHistoryPoint point,
-        IReadOnlyList<ProductHistoryDynamicColumn> dynamicColumns)
+    private ProductHistoryTableRow ToProductHistoryPointRow(ProductHistoryProduct product,
+        ProductHistoryPoint point, IReadOnlyList<ProductHistoryDynamicColumn> dynamicColumns)
     {
         return new ProductHistoryTableRow
         {
@@ -3051,9 +3131,7 @@ public partial class MonitorView : BaseView
         };
     }
 
-    private Dictionary<string, string> BuildProductHistoryDynamicValues(
-        ProductHistoryPoint point,
-        IReadOnlyList<ProductHistoryDynamicColumn> dynamicColumns)
+    private Dictionary<string, string> BuildProductHistoryDynamicValues(ProductHistoryPoint point, IReadOnlyList<ProductHistoryDynamicColumn> dynamicColumns)
     {
         var rawValues = ParseRawWeldValues(point.RawDataJson);
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -3068,9 +3146,7 @@ public partial class MonitorView : BaseView
         return values;
     }
 
-    private static string? FindProductHistoryDynamicRawValueForHistory(
-        ProductHistoryPoint point,
-        IReadOnlyDictionary<string, string> rawValues,
+    private static string? FindProductHistoryDynamicRawValueForHistory(ProductHistoryPoint point, IReadOnlyDictionary<string, string> rawValues,
         ProductHistoryDynamicColumn column)
     {
         var rawValue = column.Role switch
@@ -3109,9 +3185,7 @@ public partial class MonitorView : BaseView
         };
     }
 
-    private IReadOnlyList<ProductHistoryDynamicColumn> ResolveProductHistoryDynamicColumns(
-        BizWeldTask activeTask,
-        ProductHistorySnapshot snapshot)
+    private IReadOnlyList<ProductHistoryDynamicColumn> ResolveProductHistoryDynamicColumns(BizWeldTask activeTask, ProductHistorySnapshot snapshot)
     {
         var stationNo = snapshot.StationNo;
         var config = ResolveProductHistoryProcessConfig(activeTask, stationNo);
@@ -3199,11 +3273,7 @@ public partial class MonitorView : BaseView
             .ToList();
     }
 
-    private static bool TryResolveProductHistoryRawColumnForHistory(
-        string rawKey,
-        out string itemKey,
-        out string itemName,
-        out string role)
+    private static bool TryResolveProductHistoryRawColumnForHistory(string rawKey, out string itemKey, out string itemName, out string role)
     {
         itemKey = string.Empty;
         itemName = string.Empty;
@@ -3297,25 +3367,6 @@ public partial class MonitorView : BaseView
         };
     }
 
-    private static string ResolveProductHistoryKnownItemKey(string itemKey, string? itemName)
-    {
-        var normalized = (itemKey ?? string.Empty).Trim();
-        if (IsKnownProductHistoryItemKey(normalized))
-        {
-            return normalized;
-        }
-
-        return (itemName ?? string.Empty).Trim() switch
-        {
-            "峰值电流" => "max_electric",
-            "峰值电压" => "max_voltage",
-            "有效功率" => "valid_power",
-            "位移" => "displacement",
-            "焊接时间" => "weld_ts",
-            _ => normalized
-        };
-    }
-
     private static bool IsKnownProductHistoryItemKey(string itemKey)
     {
         return string.Equals(itemKey, "max_electric", StringComparison.OrdinalIgnoreCase)
@@ -3323,19 +3374,6 @@ public partial class MonitorView : BaseView
             || string.Equals(itemKey, "valid_power", StringComparison.OrdinalIgnoreCase)
             || string.Equals(itemKey, "displacement", StringComparison.OrdinalIgnoreCase)
             || string.Equals(itemKey, "weld_ts", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string ResolveProductHistoryItemName(string itemKey, string fallbackName)
-    {
-        return itemKey switch
-        {
-            "max_electric" => "峰值电流",
-            "max_voltage" => "峰值电压",
-            "valid_power" => "有效功率",
-            "displacement" => "位移",
-            "weld_ts" => "焊接时间",
-            _ => fallbackName.Trim()
-        };
     }
 
     private static IEnumerable<ProductHistoryDynamicColumn> CreateProductHistoryDynamicColumns(ProductHistoryRawColumnCandidate candidate)
@@ -3452,12 +3490,7 @@ public partial class MonitorView : BaseView
         }
     }
 
-    private static ProductHistoryDynamicColumn CreateProductHistoryDynamicColumn(
-        string itemKey,
-        string itemName,
-        string role,
-        string title,
-        int sort)
+    private static ProductHistoryDynamicColumn CreateProductHistoryDynamicColumn(string itemKey, string itemName, string role, string title, int sort)
     {
         return new ProductHistoryDynamicColumn(
             $"{itemKey}_{role}",
@@ -3505,6 +3538,10 @@ public partial class MonitorView : BaseView
     {
         return time?.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) ?? "--";
     }
+
+    #endregion
+
+    #region 焊接参数预览
 
     private void BindWeldParameterRows(BizWeldPointRecord record)
     {
@@ -4097,6 +4134,10 @@ public partial class MonitorView : BaseView
             : value.Trim();
     }
 
+    #endregion
+
+    #region 实时预览
+
     private void ApplyCurrentRealtimePreviewSnapshot()
     {
         var snapshot = _productRealtimePreviewService.GetCurrent(CurrentStationNo);
@@ -4301,6 +4342,10 @@ public partial class MonitorView : BaseView
         return new PlcExpressionBinding(expressionText, AppConstants.PlcDataTypes.Int16, 0, expressionText);
     }
 
+    #endregion
+
+    #region 方案预览与解析
+
     private void QueueRefreshSchemePreview(bool force)
     {
         if (IsDisposed || !IsHandleCreated)
@@ -4340,13 +4385,9 @@ public partial class MonitorView : BaseView
                 return;
             }
 
-            if (InvokeRequired)
-            {
-                BeginInvoke(() => ApplySchemePreview(identity, force));
-                return;
-            }
-
-            ApplySchemePreview(identity, force);
+            RunOnUiThread(
+                () => ApplySchemePreview(identity, force),
+                "MonitorView.RefreshSchemePreview");
         }
         catch (Exception ex)
         {
@@ -4488,10 +4529,8 @@ public partial class MonitorView : BaseView
         ApplyWeldParameterRows(nextRows);
     }
 
-    private IEnumerable<WeldParameterRow> BuildSchemePreviewRows(
-        ProductIdentity identity,
-        BizProductProcessConfig? config,
-        IReadOnlyDictionary<string, WeldParameterRow> previousRows)
+    private IEnumerable<WeldParameterRow> BuildSchemePreviewRows(ProductIdentity identity,
+        BizProductProcessConfig? config, IReadOnlyDictionary<string, WeldParameterRow> previousRows)
     {
         if (string.IsNullOrWhiteSpace(identity.ProductNum))
         {
@@ -4781,6 +4820,10 @@ public partial class MonitorView : BaseView
         }
     }
 
+    #endregion
+
+    #region 表格样式
+
     /// <summary>
     /// Keeps monitor tables visually aligned with other management pages.
     /// </summary>
@@ -4788,23 +4831,11 @@ public partial class MonitorView : BaseView
     {
         TableStyleHelper.ApplyAntdTable(tableMetric1, AntdUI.ColumnsMode.Fill);
         TableStyleHelper.ApplyAntdTable(tableMetric2, AntdUI.ColumnsMode.Fill);
-        TableStyleHelper.ApplyAntdTable(tableProductHistoryPreview1, AntdUI.ColumnsMode.Fill);
-        TableStyleHelper.ApplyAntdTable(tableProductHistoryPreview2, AntdUI.ColumnsMode.Fill);
-        ApplyProductHistoryTableStyle(tableProductHistoryPreview1);
-        ApplyProductHistoryTableStyle(tableProductHistoryPreview2);
+        TableStyleHelper.ApplyAntdTable(tableHistory1, AntdUI.ColumnsMode.Fill);
+        TableStyleHelper.ApplyAntdTable(tableHistory2, AntdUI.ColumnsMode.Fill);
+
         ApplyCompactProductionMetricTableStyle();
         ApplyWeldParameterTableStyle();
-    }
-
-    private static void ApplyProductHistoryTableStyle(AntdUI.Table table)
-    {
-        table.DefaultExpand = false;
-        table.TreeButtonSize = 18;
-        table.RowHeight = 36;
-        table.RowHeightHeader = 38;
-        table.Gap = 6;
-        table.GapCell = 3;
-        table.Gaps = new Size(6, 4);
     }
 
     /// <summary>
@@ -4830,7 +4861,6 @@ public partial class MonitorView : BaseView
         ApplyWeldParameterTableStyle(dgvPreview1);
         ApplyWeldParameterTableStyle(dgvPreview2);
     }
-
     private static void ApplyWeldParameterTableStyle(DataGridView grid)
     {
         EnableDoubleBuffering(grid);
@@ -4858,6 +4888,10 @@ public partial class MonitorView : BaseView
             .GetProperty("DoubleBuffered", BindingFlags.Instance | BindingFlags.NonPublic)
             ?.SetValue(control, true);
     }
+
+    #endregion
+
+    #region 设备状态与格式化辅助
 
     private static string GetDeviceStatusKey(short? statusCode)
     {
@@ -4928,6 +4962,10 @@ public partial class MonitorView : BaseView
             : _localizer.GetString(TextKeys.Production.NotAvailable);
     }
 
+    #endregion
+
+    #region 操作员与程序确认
+
     private bool TrySelectProgram(IReadOnlyList<MesProgramListItemData> programs, out MesProgramListItemData program)
     {
         var columns = new[]
@@ -4959,11 +4997,7 @@ public partial class MonitorView : BaseView
             out program);
     }
 
-    private bool TryConfirmStartData(
-        WorkOrderRes? workOrder,
-        ExpItemData? process,
-        ProgramDataRes program,
-        int stationNo)
+    private bool TryConfirmStartData(WorkOrderRes? workOrder, ExpItemData? process, ProgramDataRes program, int stationNo)
     {
         if (workOrder is null)
         {
@@ -5000,6 +5034,10 @@ public partial class MonitorView : BaseView
     {
         return $"{stationNo}|{program.Id}|{program.ProgramName}|{program.ProgramContent}";
     }
+
+    #endregion
+
+    #region 配方下发与校验
 
     /// <summary>
     /// Resolves the recipe code after a task has started.
@@ -5164,6 +5202,10 @@ public partial class MonitorView : BaseView
         return $"{lookupHint} {resolution.Detail}";
     }
 
+    #endregion
+
+    #region PLC 业务信号写入与调和
+
     private async Task WriteStartBusinessSignalsAsync(ProgramDataRes program, int stationNo)
     {
         await WriteStartBusinessSignalsAfterStartAsync(program, stationNo);
@@ -5238,13 +5280,7 @@ public partial class MonitorView : BaseView
             mirrorWorkOrderStations: true);
     }
 
-    private async Task RequireWorkOrderStatusWriteAsync(
-        int stationNo,
-        int status,
-        string source,
-        string summary,
-        bool writeOnReadFailure,
-        bool mirrorWorkOrderStations)
+    private async Task RequireWorkOrderStatusWriteAsync(int stationNo, int status, string source, string summary, bool writeOnReadFailure, bool mirrorWorkOrderStations)
     {
         var targetStations = mirrorWorkOrderStations
             ? ResolveWorkOrderSignalStations(stationNo)
@@ -5262,14 +5298,8 @@ public partial class MonitorView : BaseView
         }
     }
 
-    private async Task EnsureWorkOrderStatusAsync(
-        int stationNo,
-        int expectedStatus,
-        string source,
-        string summary,
-        string context,
-        bool writeOnReadFailure,
-        bool mirrorWorkOrderStations)
+    private async Task EnsureWorkOrderStatusAsync(int stationNo, int expectedStatus, string source,
+        string summary, string context, bool writeOnReadFailure, bool mirrorWorkOrderStations)
     {
         var targetStations = mirrorWorkOrderStations
             ? ResolveWorkOrderSignalStations(stationNo)
@@ -5290,13 +5320,7 @@ public partial class MonitorView : BaseView
         }
     }
 
-    private Task EnsureDeviceModeAsync(
-        int stationNo,
-        int expectedMode,
-        string source,
-        string summary,
-        string context,
-        bool writeOnReadFailure)
+    private Task EnsureDeviceModeAsync(int stationNo, int expectedMode, string source, string summary, string context, bool writeOnReadFailure)
     {
         var targetStationNo = NormalizeStatusStationNo(stationNo);
         return EnsureIntegerBusinessSignalAsync(
@@ -5312,17 +5336,8 @@ public partial class MonitorView : BaseView
             (target, value) => _plcBusinessSignalService.WriteDeviceModeAsync(target, value));
     }
 
-    private async Task EnsureIntegerBusinessSignalAsync(
-        int stationNo,
-        string logicalKey,
-        int expectedValue,
-        string source,
-        string summary,
-        string context,
-        bool writeOnReadFailure,
-        IDictionary<int, int> lastSuccessCache,
-        SemaphoreSlim signalLock,
-        Func<int, int, Task<PlcBusinessSignalResult>> writeAsync)
+    private async Task EnsureIntegerBusinessSignalAsync(int stationNo, string logicalKey, int expectedValue, string source, string summary, string context,
+        bool writeOnReadFailure, IDictionary<int, int> lastSuccessCache, SemaphoreSlim signalLock, Func<int, int, Task<PlcBusinessSignalResult>> writeAsync)
     {
         var targetStationNo = NormalizeStatusStationNo(stationNo);
         await signalLock.WaitAsync();
@@ -5408,16 +5423,8 @@ public partial class MonitorView : BaseView
         return int.TryParse((value ?? string.Empty).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out number);
     }
 
-    private void WriteBusinessSignalReconcileFlowLog(
-        PlcBusinessSignalResult readResult,
-        PlcBusinessSignalResult? writeResult,
-        string source,
-        string summary,
-        int stationNo,
-        string plcSignal,
-        int expectedValue,
-        bool shouldWrite,
-        string context)
+    private void WriteBusinessSignalReconcileFlowLog(PlcBusinessSignalResult readResult, PlcBusinessSignalResult? writeResult,
+        string source, string summary, int stationNo, string plcSignal, int expectedValue, bool shouldWrite, string context)
     {
         var state = _weldTaskService.CurrentState.GetOrCreateStation(NormalizeStatusStationNo(stationNo));
         var actionSummary = BuildBusinessSignalReconcileSummary(plcSignal, readResult, writeResult, summary);
@@ -5448,11 +5455,8 @@ public partial class MonitorView : BaseView
             plcAddress: address);
     }
 
-    private static string BuildBusinessSignalReconcileSummary(
-        string plcSignal,
-        PlcBusinessSignalResult readResult,
-        PlcBusinessSignalResult? writeResult,
-        string failureSummary)
+    private static string BuildBusinessSignalReconcileSummary(string plcSignal, PlcBusinessSignalResult readResult,
+        PlcBusinessSignalResult? writeResult, string failureSummary)
     {
         if (!readResult.IsSuccess && writeResult is null)
         {
@@ -5484,14 +5488,12 @@ public partial class MonitorView : BaseView
             : ProductionConstants.PlcDeviceModes.SingleOrDualSameWorkOrder;
     }
 
-    private void WriteRecipeFlowLog(
-        string step,
-        string summary,
-        string detail,
-        int stationNo,
-        string level = "Info",
-        string plcSignal = "",
-        string plcAddress = "")
+    #endregion
+
+    #region 配方显示与本地程序辅助
+
+    private void WriteRecipeFlowLog(string step, string summary, string detail, int stationNo,
+        string level = "Info", string plcSignal = "", string plcAddress = "")
     {
         var state = GetCurrentStationState();
         _productionLogService.Write(
@@ -5594,6 +5596,10 @@ public partial class MonitorView : BaseView
     {
         return $"{program.ProgramName} | {program.ProgramType} | {program.ProductNum} | {program.Id}";
     }
+
+    #endregion
+
+    #region 操作员信息与输入确认
 
     private async Task<string> PromptValidatedOperatorAsync(int stationNo)
     {
@@ -5743,6 +5749,10 @@ public partial class MonitorView : BaseView
         return false;
     }
 
+    #endregion
+
+    #region 通用操作与提示
+
     private async Task RunUiOperationAsync(Func<Task> action)
     {
         try
@@ -5885,6 +5895,10 @@ public partial class MonitorView : BaseView
             MessageBoxIcon.Error);
     }
 
+    #endregion
+
+    #region 运行提示更新
+
     private void SetRuntimeStatus(string messageKey, params object[] args)
     {
         _runtimeStatusKey = messageKey;
@@ -5932,6 +5946,10 @@ public partial class MonitorView : BaseView
         ApplyRuntimeErrorTone(hasError: false);
         PersistCurrentRuntimeTipState();
     }
+
+    #endregion
+
+    #region 运行提示持久化
 
     private void RestoreCurrentRuntimeTipState()
     {
@@ -6005,6 +6023,10 @@ public partial class MonitorView : BaseView
             return Array.Empty<object>();
         }
     }
+
+    #endregion
+
+    #region 运行提示显示
 
     private void RefreshRuntimePanels()
     {
@@ -6097,103 +6119,9 @@ public partial class MonitorView : BaseView
         return summary[..keepLength] + RuntimeSummaryOverflowSuffix;
     }
 
-    /// <summary>
-    /// Identifies the active product used by the real-time preview.
-    /// </summary>
-    private sealed record ProductIdentity(
-        int StationNo,
-        string ProductNum,
-        string ProductModel,
-        string Source);
+    #endregion
 
-    /// <summary>
-    /// Row model used by AntdUI.Table for the product history tree.
-    /// </summary>
-    private sealed class ProductHistoryTableRow
-    {
-        public bool IsProductRow { get; init; }
-
-        public int TaskId { get; init; }
-
-        public int StationNo { get; init; }
-
-        public string ProductNo { get; init; } = string.Empty;
-
-        public string TouchNo { get; init; } = string.Empty;
-
-        public string NodeText { get; init; } = string.Empty;
-
-        public string ResultText { get; init; } = string.Empty;
-
-        public string UploadStatusText { get; init; } = string.Empty;
-
-        public bool IsTest { get; init; }
-
-        public string IsTestText { get; init; } = string.Empty;
-
-        public string TouchCountText { get; init; } = string.Empty;
-
-        public string RecordTimeText { get; init; } = string.Empty;
-
-        public Dictionary<string, string> DynamicValues { get; init; } = new(StringComparer.OrdinalIgnoreCase);
-
-        public bool CanMarkTest { get; init; }
-
-        public string MarkDisabledReason { get; init; } = string.Empty;
-
-        public List<ProductHistoryTableRow> Children { get; init; } = [];
-    }
-
-    private sealed record ProductHistoryDynamicColumn(
-        string Key,
-        string Title,
-        string ItemKey,
-        string ItemName,
-        string Role,
-        int Sort);
-
-    private sealed class ProductHistoryRawColumnCandidate
-    {
-        public ProductHistoryRawColumnCandidate(string itemKey, string itemName, int sort)
-        {
-            ItemKey = itemKey;
-            ItemName = itemName;
-            Sort = sort;
-        }
-
-        public string ItemKey { get; }
-
-        public string ItemName { get; }
-
-        public int Sort { get; }
-
-        public bool EnableActual { get; private set; }
-
-        public bool EnableUpper { get; private set; }
-
-        public bool EnableLower { get; private set; }
-
-        public bool EnableResult { get; private set; }
-
-        public void EnableRole(string role)
-        {
-            switch (role)
-            {
-                case PreviewUpperRole:
-                    EnableUpper = true;
-                    break;
-                case PreviewLowerRole:
-                    EnableLower = true;
-                    break;
-                case PreviewResultRole:
-                    EnableResult = true;
-                    break;
-                default:
-                    EnableActual = true;
-                    break;
-            }
-        }
-    }
+    #region 嵌套模型
 
     private sealed record PlcTextReadResult(bool IsSuccess, string Value, string Detail)
     {
@@ -6202,111 +6130,11 @@ public partial class MonitorView : BaseView
         public static PlcTextReadResult Failed(string detail) => new(false, string.Empty, detail);
     }
 
-    private sealed record PlcWriteResult(bool IsSuccess, string Detail, string Address)
-    {
-        public static PlcWriteResult Success(string address) => new(true, string.Empty, address);
-
-        public static PlcWriteResult Failed(string detail, string address = "") => new(false, detail, address);
-    }
-
-    private sealed class WeldParameterRow
-    {
-        public int StationNo { get; init; }
-
-        public string Station { get; init; } = string.Empty;
-
-        public string ProductNo { get; set; } = string.Empty;
-
-        public string ProductNum { get; init; } = string.Empty;
-
-        public string ProductModel { get; init; } = string.Empty;
-
-        public int TouchIndex { get; init; }
-
-        public string TouchNo { get; init; } = string.Empty;
-
-        public string TouchResult { get; set; } = "--";
-
-        public string ParameterName { get; init; } = string.Empty;
-
-        public string Unit { get; init; } = string.Empty;
-
-        public bool EnableActual { get; init; } = true;
-
-        public bool EnableUpper { get; init; } = true;
-
-        public bool EnableLower { get; init; } = true;
-
-        public bool EnableResult { get; init; } = true;
-
-        public string ActualAddress { get; init; } = string.Empty;
-
-        public string UpperAddress { get; init; } = string.Empty;
-
-        public string LowerAddress { get; init; } = string.Empty;
-
-        public string ResultAddress { get; init; } = string.Empty;
-
-        public string ActualDataType { get; init; } = AppConstants.PlcDataTypes.Int16;
-
-        public int ActualRule { get; init; }
-
-        public string UpperDataType { get; init; } = AppConstants.PlcDataTypes.Int16;
-
-        public int UpperRule { get; init; }
-
-        public string LowerDataType { get; init; } = AppConstants.PlcDataTypes.Int16;
-
-        public int LowerRule { get; init; }
-
-        public string ResultDataType { get; init; } = AppConstants.PlcDataTypes.Int16;
-
-        public int ResultRule { get; init; }
-
-        public string Value { get; set; } = "--";
-
-        public string UpperValue { get; set; } = "--";
-
-        public string LowerValue { get; set; } = "--";
-
-        public string Result { get; set; } = "--";
-
-        public string RecordTime { get; set; } = string.Empty;
-
-        public int Sort { get; init; }
-
-        public string ItemKey { get; init; } = string.Empty;
-
-        public int TestItemId { get; init; }
-
-        public int ProcessConfigId { get; init; }
-
-        public string UniqueKey => $"{StationNo}|{ProductNum}|{ProductModel}|{TouchIndex}|{ItemKey}";
-    }
-
     private sealed record ProductionMetricRow(string Name, string Value);
-
-    /// <summary>
-    /// Keeps only the fields needed to explain when and why the PLC connection state changed.
-    /// </summary>
-    private sealed record PlcStatusHistoryEntry(
-        int StationNo,
-        DateTime ChangedTime,
-        PlcConnectionState State,
-        bool IsConnected,
-        string Message);
-
-    private sealed record WeldPreviewItem(
-        int Index,
-        string Key,
-        string Name,
-        int Sort,
-        bool EnableActual,
-        bool EnableUpper,
-        bool EnableLower,
-        bool EnableResult);
 
     private sealed record SchemePreviewItem(int Sort, DimTestItem Item, BizSchemeDetail Detail);
 
     private sealed record RecipeCodeResolution(string RecipeCode, string Source, string Detail);
+
+    #endregion
 }

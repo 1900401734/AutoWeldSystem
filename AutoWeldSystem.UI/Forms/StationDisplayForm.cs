@@ -9,12 +9,7 @@ public sealed class StationDisplayForm : Form
 {
     private readonly MonitorView _monitorView;
 
-    public StationDisplayForm(
-        MonitorView monitorView,
-        ILocalizationService localizer,
-        PermissionUiBinder permissionUiBinder,
-        int stationNo,
-        bool readOnly)
+    public StationDisplayForm(MonitorView monitorView, ILocalizationService localizer, PermissionUiBinder permissionUiBinder, int stationNo, bool readOnly)
     {
         _monitorView = monitorView;
         InitialStationNo = stationNo == 2 ? 2 : 1;

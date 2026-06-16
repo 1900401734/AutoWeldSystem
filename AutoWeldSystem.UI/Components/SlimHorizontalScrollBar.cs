@@ -27,7 +27,7 @@ public sealed class SlimHorizontalScrollBar : Control
 
         Height = DefaultBarHeight;
         MinimumSize = new Size(0, DefaultBarHeight);
-        BackColor = Color.White;
+        BackColor = Color.LightGray;
         Cursor = Cursors.Hand;
         TabStop = false;
     }
