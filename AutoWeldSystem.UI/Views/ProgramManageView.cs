@@ -411,17 +411,11 @@ public partial class ProgramManageView : BaseView
         try
         {
             await _programService.SyncProgramAsync(programId);
-            if (!IsDisposed && IsHandleCreated)
-            {
-                BeginInvoke(() => ReloadPrograms(programId));
-            }
+            RunOnUiThread(() => ReloadPrograms(programId), "ProgramManageView.SyncProgram.Reload");
         }
         catch (Exception ex)
         {
-            if (!IsDisposed && IsHandleCreated)
-            {
-                BeginInvoke(() => ShowErrorMessage(ex.Message));
-            }
+            RunOnUiThread(() => ShowErrorMessage(ex.Message), "ProgramManageView.SyncProgram.Error");
         }
     }
 

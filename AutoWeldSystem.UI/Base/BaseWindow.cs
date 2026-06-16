@@ -57,6 +57,22 @@ public class BaseWindow : Window
 
     protected virtual bool ApplyDesignerResourcesOnLanguageChanged => true;
 
+    /// <summary>
+    /// Runs UI updates safely even when the caller is a background service event.
+    /// </summary>
+    protected bool RunOnUiThread(Action action, string source, bool requireHandle = true)
+    {
+        return UiThreadDispatcherProvider.Current.TryRun(this, action, source, requireHandle);
+    }
+
+    /// <summary>
+    /// Runs async UI work safely even when the caller is a background service event.
+    /// </summary>
+    protected Task<bool> RunOnUiThreadAsync(Func<Task> action, string source, bool requireHandle = true)
+    {
+        return UiThreadDispatcherProvider.Current.TryRunAsync(this, action, source, requireHandle);
+    }
+
     private void GlobalContext_LanguageChanged(object? sender, EventArgs e)
     {
         if (IsDisposed)
@@ -64,13 +80,7 @@ public class BaseWindow : Window
             return;
         }
 
-        if (InvokeRequired)
-        {
-            BeginInvoke(new Action(HandleLanguageChanged));
-            return;
-        }
-
-        HandleLanguageChanged();
+        RunOnUiThread(HandleLanguageChanged, "BaseWindow.LanguageChanged");
     }
 
     private void HandleLanguageChanged()

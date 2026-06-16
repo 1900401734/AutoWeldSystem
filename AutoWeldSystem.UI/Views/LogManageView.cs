@@ -594,13 +594,7 @@ public partial class LogManageView : BaseView
             return;
         }
 
-        if (InvokeRequired)
-        {
-            BeginInvoke(new Action(() => AddLiveMesLog(entry)));
-            return;
-        }
-
-        AddLiveMesLog(entry);
+        RunOnUiThread(() => AddLiveMesLog(entry), "LogManageView.MesLogWritten");
     }
 
     private void ProductionLogService_LogWritten(object? sender, ProductionFlowLogEntry entry)
@@ -610,13 +604,7 @@ public partial class LogManageView : BaseView
             return;
         }
 
-        if (InvokeRequired)
-        {
-            BeginInvoke(new Action(() => AddLiveProductionLog(entry)));
-            return;
-        }
-
-        AddLiveProductionLog(entry);
+        RunOnUiThread(() => AddLiveProductionLog(entry), "LogManageView.ProductionLogWritten");
     }
 
     private void ExceptionLogService_LogWritten(object? sender, ProgramExceptionLogEntry entry)
@@ -626,13 +614,7 @@ public partial class LogManageView : BaseView
             return;
         }
 
-        if (InvokeRequired)
-        {
-            BeginInvoke(new Action(() => AddLiveExceptionLog(entry)));
-            return;
-        }
-
-        AddLiveExceptionLog(entry);
+        RunOnUiThread(() => AddLiveExceptionLog(entry), "LogManageView.ExceptionLogWritten");
     }
 
     private void DeviceStatusService_StatusChanged(object? sender, BizDeviceStatusLog entry)
@@ -642,13 +624,7 @@ public partial class LogManageView : BaseView
             return;
         }
 
-        if (InvokeRequired)
-        {
-            BeginInvoke(new Action(() => AddLiveDeviceStatusLog(entry)));
-            return;
-        }
-
-        AddLiveDeviceStatusLog(entry);
+        RunOnUiThread(() => AddLiveDeviceStatusLog(entry), "LogManageView.DeviceStatusChanged");
     }
 
     private void AddLiveMesLog(MesInteractionLogEntry entry)

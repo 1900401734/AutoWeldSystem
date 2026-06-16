@@ -75,7 +75,7 @@ public partial class MainForm : BaseWindow
         WireSystemInfoEvents();
         _allPages = BuildPages();
         GlobalContext.SessionChanged += GlobalContext_SessionChanged;
-        _settingsService.SettingsChanged += SettingsService_SettingsChanged;
+        _settingsService.SettingsChanged += OnSettingsChanged;
 
         RefreshShell();
     }
@@ -115,11 +115,11 @@ public partial class MainForm : BaseWindow
         CloseStation2DisplayWindow();
         Application.RemoveMessageFilter(_plcWriteDebugMessageFilter);
         GlobalContext.SessionChanged -= GlobalContext_SessionChanged;
-        _settingsService.SettingsChanged -= SettingsService_SettingsChanged;
+        _settingsService.SettingsChanged -= OnSettingsChanged;
         base.OnHandleDestroyed(e);
     }
 
-    private void SettingsService_SettingsChanged(object? sender, AppSettingsChangedEventArgs e)
+    private void OnSettingsChanged(object? sender, AppSettingsChangedEventArgs e)
     {
         try
         {
@@ -133,13 +133,9 @@ public partial class MainForm : BaseWindow
                 return;
             }
 
-            if (InvokeRequired)
-            {
-                BeginInvoke(() => ApplyDualModeRuntimeSettingsSafely(settings));
-                return;
-            }
-
-            ApplyDualModeRuntimeSettingsSafely(settings);
+            RunOnUiThread(
+                () => ApplyDualModeRuntimeSettingsSafely(settings),
+                "MainForm.SettingsChanged");
         }
         catch (Exception ex)
         {
@@ -168,14 +164,13 @@ public partial class MainForm : BaseWindow
             return;
         }
 
-        if (InvokeRequired)
-        {
-            BeginInvoke(RefreshShell);
-            return;
-        }
-
-        RefreshShell();
-        EnsureStation2DisplayWindow();
+        RunOnUiThread(
+            () =>
+            {
+                RefreshShell();
+                EnsureStation2DisplayWindow();
+            },
+            "MainForm.SessionChanged");
     }
 
     private void ApplyDualModeRuntimeSettings(AppSettings settings)

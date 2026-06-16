@@ -55,6 +55,7 @@ public static class Program
                     services.AddSingleton<IMesInteractionLogService, MesInteractionLogService>();
                     services.AddSingleton<IProductionFlowLogService, ProductionFlowLogService>();
                     services.AddSingleton<IProgramExceptionLogService, ProgramExceptionLogService>();
+                    services.AddSingleton<IUiThreadDispatcher, WinFormsUiThreadDispatcher>();
                     services.AddSingleton<ILocalizationService, LocalizationService>();
                     services.AddSingleton<IWeldTaskService, WeldTaskService>();
                     services.AddSingleton<IProgramManageService, ProgramManageService>();
@@ -98,6 +99,7 @@ public static class Program
                 .Build();
 
             InstallExceptionHandlers(AppHost.Services.GetRequiredService<IProgramExceptionLogService>());
+            UiThreadDispatcherProvider.Configure(AppHost.Services.GetRequiredService<IUiThreadDispatcher>());
             AppHost.Services.GetRequiredService<ISysUserService>().InitDb();
             AppHost.Services.GetRequiredService<ILocalizationService>();
             AppHost.Services.GetRequiredService<IPlcCommunicationService>().StartAsync().GetAwaiter().GetResult();
