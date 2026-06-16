@@ -36,13 +36,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Remove="Controls\AdminTable.cs" />
-    <Compile Remove="Controls\AdminTable.Designer.cs" />
-    <Compile Remove="Forms\PlcAddressPreviewRow.cs" />
-    <EmbeddedResource Remove="Controls\AdminTable.resx" />
-  </ItemGroup>
-
-  <ItemGroup>
     <Folder Include="Infrastructure\" />
   </ItemGroup>
 
