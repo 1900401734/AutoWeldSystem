@@ -44,7 +44,7 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
             dbContext.InitDatabase();
             var settings = dbContext.Db.Queryable<AppSettings>().InSingle(1);
 
-            if (settings is  null)
+            if (settings is null)
             {
                 settings = new AppSettings();
                 dbContext.Db.Insertable(settings).ExecuteCommand();
@@ -96,9 +96,7 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
 
         if (changedProperties.Count > 0)
         {
-            SettingsChanged?.Invoke(
-                this,
-                new AppSettingsChangedEventArgs(previousSnapshot, currentSnapshot, changedProperties));
+            SettingsChanged?.Invoke(this, new AppSettingsChangedEventArgs(previousSnapshot, currentSnapshot, changedProperties));
         }
 
         return currentSnapshot.Clone();

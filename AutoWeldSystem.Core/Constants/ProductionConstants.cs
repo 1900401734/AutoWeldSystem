@@ -146,9 +146,6 @@ public static class ProductionConstants
         public const string ProgramEnded = "7";     // 程序执行结束
     }
 
-    /// <summary>
-    /// MES work order status code values from MES接口.xlsx.
-    /// </summary>
     public static class MesWorkOrderStatuses
     {
         public const string StartedOrRestarted = "0";

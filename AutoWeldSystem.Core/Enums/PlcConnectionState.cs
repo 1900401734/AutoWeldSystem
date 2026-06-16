@@ -1,5 +1,6 @@
 namespace AutoWeldSystem.Core.Enums;
 
+
 public enum PlcConnectionState
 {
     Stopped = 0,
