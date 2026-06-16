@@ -1,7 +1,7 @@
-using AutoWeldSystem.Core.Constants;
-using AutoWeldSystem.Core.Enums;
-using AutoWeldSystem.Core.Models;
 using System.Globalization;
+using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.Entities;
+using AutoWeldSystem.Core.Enums;
 
 namespace AutoWeldSystem.Core;
 

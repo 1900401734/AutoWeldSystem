@@ -1,3 +1,4 @@
+
 namespace AutoWeldSystem.Core.Constants;
 
 /// <summary>
@@ -80,6 +81,67 @@ public static class TextKeys
     }
 
     /// <summary>
+    /// Data-management page text keys.
+    /// </summary>
+    public static class DataManage
+    {
+        public const string ProductNum = "data.label.product_num";
+        public const string Batch = "data.label.batch";
+        public const string WorkOrderId = "data.label.work_order_id";
+        public const string DateRange = "data.label.date_range";
+        public const string FuzzySearch = "data.placeholder.fuzzy_search";
+        public const string WorkOrderPlaceholder = "data.placeholder.work_order";
+        public const string Query = "data.button.query";
+        public const string Reset = "data.button.reset";
+        public const string OpenReport = "data.button.open_report";
+        public const string OpenReportFolder = "data.button.open_report_folder";
+        public const string TabWeldParameters = "data.tab.weld_parameters";
+        public const string TabCollectionData = "data.tab.collection_data";
+        public const string TabReportFiles = "data.tab.report_files";
+        public const string RawData = "data.label.raw_data";
+        public const string Loading = "data.message.loading";
+        public const string SelectWorkOrder = "data.message.select_work_order";
+        public const string SelectReport = "data.message.select_report";
+        public const string WorkOrderSummary = "data.summary.work_orders";
+        public const string ParameterSummary = "data.summary.parameters";
+        public const string CollectionSummary = "data.summary.collection";
+        public const string ReportSummary = "data.summary.reports";
+        public const string QueryFailed = "data.message.query_failed";
+        public const string DetailQueryFailed = "data.message.detail_query_failed";
+        public const string ReportFileMissing = "data.message.report_file_missing";
+        public const string ReportDirectoryMissing = "data.message.report_directory_missing";
+        public const string OpenPathFailed = "data.message.open_path_failed";
+        public const string ColumnStation = "data.column.station";
+        public const string ColumnWorkOrderId = "data.column.work_order_id";
+        public const string ColumnProductNum = "data.column.product_num";
+        public const string ColumnBatch = "data.column.batch";
+        public const string ColumnProductName = "data.column.product_name";
+        public const string ColumnProcess = "data.column.process";
+        public const string ColumnRecipe = "data.column.recipe";
+        public const string ColumnPlannedQty = "data.column.planned_qty";
+        public const string ColumnActualQty = "data.column.actual_qty";
+        public const string ColumnQualifiedQty = "data.column.qualified_qty";
+        public const string ColumnFailedQty = "data.column.failed_qty";
+        public const string ColumnOperator = "data.column.operator";
+        public const string ColumnStartTime = "data.column.start_time";
+        public const string ColumnEndTime = "data.column.end_time";
+        public const string ColumnTaskStatus = "data.column.task_status";
+        public const string ColumnUploadStatus = "data.column.upload_status";
+        public const string ColumnProductNo = "data.column.product_no";
+        public const string ColumnTouchNo = "data.column.touch_no";
+        public const string ColumnTouchResult = "data.column.touch_result";
+        public const string ColumnRecordTime = "data.column.record_time";
+        public const string ColumnSequence = "data.column.sequence";
+        public const string ColumnIsTest = "data.column.is_test";
+        public const string ColumnProductCompleted = "data.column.product_completed";
+        public const string ColumnFileName = "data.column.file_name";
+        public const string ColumnFileFormat = "data.column.file_format";
+        public const string ColumnFilePath = "data.column.file_path";
+        public const string ColumnCreatedTime = "data.column.created_time";
+        public const string ColumnUpdatedTime = "data.column.updated_time";
+    }
+
+    /// <summary>
     /// 监控页文本键。
     /// </summary>
     public static class Monitor
@@ -88,6 +150,7 @@ public static class TextKeys
         {
             public const string ChangeWorkOrder = "monitor.button.change_work_order";
             public const string EditWO = "monitor.button.edit";
+            public const string LocalWorkOrder = "monitor.button.local_work_order";
             public const string StartReport = "monitor.button.start_report";
             public const string FinishReport = "monitor.button.finish_report";
             public const string SwitchUser = "monitor.button.switch_user";
@@ -177,6 +240,23 @@ public static class TextKeys
             public const string OperationFailed = "monitor.error.operation_failed";
         }
 
+        public static class ProductionHint
+        {
+            public const string ProductDataReady = "monitor.production_hint.product_data_ready";
+            public const string ProductCollectionStart = "monitor.production_hint.product_collection_start";
+            public const string ProductDataReadStart = "monitor.production_hint.product_data_read_start";
+            public const string ProductDataSaved = "monitor.production_hint.product_data_saved";
+            public const string ProductDataSaveFailed = "monitor.production_hint.product_data_save_failed";
+            public const string ProductCollectionFeedbackSucceeded = "monitor.production_hint.product_collection_feedback_succeeded";
+            public const string ProductCollectionFeedbackFailed = "monitor.production_hint.product_collection_feedback_failed";
+            public const string RecipeCodeWriteSucceeded = "monitor.production_hint.recipe_code_write_succeeded";
+            public const string RecipeCodeWriteFailed = "monitor.production_hint.recipe_code_write_failed";
+            public const string RecipeCodeValidationSucceeded = "monitor.production_hint.recipe_code_validation_succeeded";
+            public const string RecipeCodeValidationFailed = "monitor.production_hint.recipe_code_validation_failed";
+            public const string BusinessSignalWriteSucceeded = "monitor.production_hint.business_signal_write_succeeded";
+            public const string BusinessSignalWriteFailed = "monitor.production_hint.business_signal_write_failed";
+        }
+
         public static class Dialog
         {
             public const string ScanWorkIdTitle = "monitor.dialog.scan_work_id_title";
@@ -210,6 +290,10 @@ public static class TextKeys
         public const string ButtonAuthSwitchUser = "permission.button.auth.switch_user";
         public const string ButtonAuthLogout = "permission.button.auth.logout";
         public const string ButtonDataExport = "permission.button.data.export";
+        public const string ButtonDataQuery = "permission.button.data.query";
+        public const string ButtonDataReset = "permission.button.data.reset";
+        public const string ButtonDataOpenReport = "permission.button.data.open_report";
+        public const string ButtonDataOpenReportFolder = "permission.button.data.open_report_folder";
         public const string ButtonUserAdd = "permission.button.user.add";
         public const string ButtonUserEdit = "permission.button.user.edit";
         public const string ButtonUserDelete = "permission.button.user.delete";
@@ -436,9 +520,17 @@ public static class TextKeys
     {
         public const string Title = "system.title";
         public const string Description = "system.description";
+
+        public const string TabBasic = "system.tab.basic";
+
         public const string GroupPlc = "system.group.plc";
         public const string GroupController = "system.group.controller";
         public const string GroupApplication = "system.group.application";
+        public const string GroupDevice = "system.group.device";
+        public const string GroupProduction = "system.group.production";
+        public const string GroupMes = "system.group.mes";
+
+
         public const string LabelIp = "system.label.ip";
         public const string LabelPort = "system.label.port";
         public const string LabelType = "system.label.type";
@@ -448,17 +540,27 @@ public static class TextKeys
         public const string LabelLogPath = "system.label.log_path";
         public const string LabelDataPath = "system.label.data_path";
         public const string LabelMesUrl = "system.label.mes_url";
-        public const string LabelUseProductNumberFilter = "system.label.use_product_number_filter";
-        public const string LabelValidateRecipeBeforeStart = "system.label.validate_recipe_before_start";
+        public const string UploadMode = "system.label.upload_mode";
+        public const string UploadBatchSize = "system.label.upload_batch_size";
+        public const string PlcHeartbeatRate = "system.label.plc_heartbeat_rate";
+
+        public const string ChkUseProductNumberFilter = "system.checkbox.use_product_number_filter";
+        public const string ChkValidateRecipeAfterStart = "system.checkbox.validate_recipe_after_start";
+        public const string ChkEnableFinishExpQtyPrompt = "system.checkbox.enable_finish_exp_qty_prompt";
+        public const string ChkEnableDualStation = "system.Checkbox.enable_dual_station";
+        public const string ChkEnableDualWorkOrder = "system.Checkbox.enable_dual_work_order";
+
         public const string ButtonConnect = "system.button.connect";
         public const string ButtonSyncDevice = "system.button.sync_device";
         public const string ButtonChangePath = "system.button.change_path";
         public const string ButtonOpenFolder = "system.button.open_folder";
         public const string ButtonTestConnection = "system.button.test_connection";
         public const string ButtonApplyAll = "system.button.apply_all";
+
         public const string PlcTypeModbusTcp = "system.plc_type.modbus_tcp";
         public const string PlcTypeTcpSocket = "system.plc_type.tcp_socket";
-        public const string PlcTypeSiemensS7 = "system.plc_type.siemens_s7";
+        public const string PlcTypeSiemensS71200 = "system.plc_type.siemens_s7";
+
         public const string MessageValueRequired = "system.message.value_required";
         public const string MessageInvalidIp = "system.message.invalid_ip";
         public const string MessageInvalidPort = "system.message.invalid_port";
@@ -491,6 +593,7 @@ public static class TextKeys
         public const string MessageHeartbeatSkipped = "plc.message.heartbeat_skipped";
         public const string MessageHeartbeatSucceeded = "plc.message.heartbeat_succeeded";
         public const string MessageHeartbeatFailed = "plc.message.heartbeat_failed";
+        public const string MessageHeartbeatNoChange = "plc.message.heartbeat_no_change";
         public const string MessageTcpProbeFailed = "plc.message.tcp_probe_failed";
         public const string MessageNotConnected = "plc.message.not_connected";
         public const string MessageAddressRequired = "plc.message.address_required";
@@ -525,6 +628,10 @@ public static class TextKeys
         public const string NameProgramName = "address.name.program_name";
         public const string NameProductModel = "address.name.product_model";
         public const string NameRecipeCode = "address.name.recipe_code";
+        public const string NamePcRecipeCode = "address.name.pc_recipe_code";
+        public const string NamePlcRecipeCode = "address.name.plc_recipe_code";
+        public const string NameWorkOrderStatus = "address.name.work_order_status";
+        public const string NameDeviceMode = "address.name.device_mode";
         public const string NameProductDataReady = "address.name.product_data_ready";
         public const string NameProductCollectionFeedback = "address.name.product_collection_feedback";
         public const string NameTotalProduction = "address.name.total_production";
@@ -551,14 +658,19 @@ public static class TextKeys
         public const string UserLastLoginTime = "grid.user.last_login";
         public const string UserUpdatedTime = "grid.user.updated_time";
         public const string PlcAddressKey = "grid.plc_address.key";
-        public const string PlcAddressName = "grid.plc_address.name";
-        public const string PlcAddressSort = "grid.plc_address.sort";
-        public const string PlcAddress = "grid.plc_address.address";
-        public const string PlcAddressDataType = "grid.plc_address.data_type";
-        public const string PlcAddressDataLength = "grid.plc_address.data_length";
-        public const string PlcAddressEnabled = "grid.plc_address.enabled";
-        public const string PlcAddressDescription = "grid.plc_address.description";
-        public const string PlcAddressUpdatedTime = "grid.plc_address.updated_time";
+
+        #region 业务信号表格
+        public const string Sort = "grid.plc_address.sort";
+        public const string Name = "grid.plc_address.name";
+        public const string Station = "grid.plc_address.station";
+        public const string Address = "grid.plc_address.address";
+        public const string DataType = "grid.plc_address.data_type";
+        public const string Length = "grid.plc_address.data_length";
+        public const string Enabled = "grid.plc_address.enabled";
+        public const string Description = "grid.plc_address.description";
+        public const string UpdatedTime = "grid.plc_address.updated_time";
+        #endregion
+
         public const string ProgramName = "grid.program.name";
         public const string ProgramId = "grid.program.id";
         public const string ProgramProductNum = "grid.program.product_num";

@@ -17,36 +17,74 @@ public static class ProductionConstants
     }
 
     /// <summary>
-    /// Product number source modes.
-    /// </summary>
-    public static class ProductNoSources
-    {
-        public const string AutoIncrement = "AutoIncrement";
-        public const string Plc = "PLC";
-        public const string Manual = "Manual";
-    }
-
-    /// <summary>
-    /// PLC address categories used by address management tabs and collection services.
-    /// </summary>
-    public static class PlcAddressCategories
-    {
-        public const string BusinessSignal = "BusinessSignal";
-        public const string DeviceStatus = "DeviceStatus";
-        public const string StationResult = "StationResult";
-        public const string CentralServer = "CentralServer";
-        public const string RemoteControl = "RemoteControl";
-    }
-
-    /// <summary>
     /// Local upload task types.
     /// </summary>
     public static class UploadTaskTypes
     {
+        /// <summary>
+        /// 开工上报
+        /// </summary>
+        public const string StartReport = "StartReport";
+        /// <summary>
+        /// 完工上报
+        /// </summary>
+        public const string FinishReport = "FinishReport";
+        /// <summary>
+        /// 过程参数
+        /// </summary>
         public const string ProcessParameter = "ProcessParameter";
+        /// <summary>
+        /// 报告文件
+        /// </summary>
         public const string ReportFile = "ReportFile";
+        /// <summary>
+        /// 程序文件
+        /// </summary>
         public const string ProgramFile = "ProgramFile";
+        /// <summary>
+        /// 工单状态
+        /// </summary>
+        public const string WorkOrderStatus = "WorkOrderStatus";
+        /// <summary>
+        /// 设备状态
+        /// </summary>
         public const string DeviceStatus = "DeviceStatus";
+    }
+
+    /// <summary>
+    /// PLC work-order status values written by the PC.
+    /// Only 1 and 2 are valid. PLC register reset to 0 must be reconciled by the PC.
+    /// </summary>
+    public static class PlcWorkOrderStatuses
+    {
+        /// <summary>
+        /// 开工允许生产
+        /// </summary>
+        public const int StartedAllowProduction = 1;
+        /// <summary>
+        /// 完工禁止生产
+        /// </summary>
+        public const int FinishedForbidProduction = 2;
+    }
+
+    /// <summary>
+    /// PLC device mode values written by the PC.
+    /// </summary>
+    public static class PlcDeviceModes
+    {
+        public const int SingleOrDualSameWorkOrder = 1;
+        public const int DualStationDualWorkOrder = 2;
+    }
+
+    /// <summary>
+    /// PLC raw device status values read by the PC.
+    /// </summary>
+    public static class PlcDeviceStatuses
+    {
+        public const short Running = 1;
+        public const short Paused = 2;
+        public const short Stopped = 3;
+        public const short Alarm = 4;
     }
 
     /// <summary>
@@ -85,7 +123,13 @@ public static class ProductionConstants
     /// </summary>
     public static class MesFileTypes
     {
+        /// <summary>
+        /// 加工程序文件
+        /// </summary>
         public const int ProgramFile = 1;
+        /// <summary>
+        /// 报告文件（如加工记录表、曲线数据等）
+        /// </summary>
         public const int ReportFile = 2;
     }
 

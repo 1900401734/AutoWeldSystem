@@ -1,5 +1,7 @@
+using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
+using AutoWeldSystem.Core.DTOs.Upload;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.UI.Base;
 using AutoWeldSystem.UI.Infrastructure;
@@ -8,12 +10,13 @@ namespace AutoWeldSystem.UI.Views;
 
 /// <summary>
 /// 上传状态页面。
-/// 该页面只做本地待上传任务的查看和人工重试入口，真正的上传执行逻辑由对应服务逐步接入。
+/// 总览页只管理当前任务补传链路；程序文件同步保留为独立页签，避免和工单任务混在一起。
 /// </summary>
 public partial class StateManageView : BaseView
 {
     private readonly IProgramManageService _programService;
     private readonly IUploadTaskService _uploadTaskService;
+    private readonly IUploadStatusSummaryService _summaryService;
     private readonly ILocalizationService _localizer;
     private readonly BindingSource _bindingSource = new();
     private bool _initialized;
@@ -21,10 +24,12 @@ public partial class StateManageView : BaseView
     public StateManageView(
         IProgramManageService programService,
         IUploadTaskService uploadTaskService,
+        IUploadStatusSummaryService summaryService,
         ILocalizationService localizer)
     {
         _programService = programService;
         _uploadTaskService = uploadTaskService;
+        _summaryService = summaryService;
         _localizer = localizer;
 
         InitializeComponent();
@@ -42,6 +47,7 @@ public partial class StateManageView : BaseView
         }
 
         _initialized = true;
+        ApplyLocalizedTexts();
         ReloadActiveTasks();
     }
 
@@ -52,9 +58,6 @@ public partial class StateManageView : BaseView
         dgvPending.Refresh();
     }
 
-    /// <summary>
-    /// 表格外观只配置一次，列会随当前页签重建。
-    /// </summary>
     private void ConfigureGrid()
     {
         TableStyleHelper.ApplyDataGridView(dgvPending);
@@ -66,6 +69,21 @@ public partial class StateManageView : BaseView
     private void ConfigureActiveGridColumns()
     {
         dgvPending.Columns.Clear();
+
+        if (IsSummaryTab())
+        {
+            dgvPending.Columns.Add(CreateTextColumn(nameof(UploadPendingSummaryRow.SequenceNo), "序号", 6));
+            dgvPending.Columns.Add(CreateTextColumn(nameof(UploadPendingSummaryRow.TaskIdentity), "任务标识", 22));
+            dgvPending.Columns.Add(CreateTextColumn(nameof(UploadPendingSummaryRow.WorkOrderId), "工单号", 14));
+            dgvPending.Columns.Add(CreateTextColumn(nameof(UploadPendingSummaryRow.StationNo), "工位", 6));
+            dgvPending.Columns.Add(CreateTextColumn(nameof(UploadPendingSummaryRow.StartReportStatus), "开工上报", 10));
+            dgvPending.Columns.Add(CreateTextColumn(nameof(UploadPendingSummaryRow.ProcessParameterStatus), "过程参数", 10));
+            dgvPending.Columns.Add(CreateTextColumn(nameof(UploadPendingSummaryRow.ReportFileStatus), "xlsx报表", 10));
+            dgvPending.Columns.Add(CreateTextColumn(nameof(UploadPendingSummaryRow.FinishReportStatus), "完工上报", 10));
+            dgvPending.Columns.Add(CreateTextColumn(nameof(UploadPendingSummaryRow.PendingCount), "待处理数", 8));
+            dgvPending.Columns.Add(CreateTextColumn(nameof(UploadPendingSummaryRow.UpdatedTime), "更新时间", 14));
+            return;
+        }
 
         if (IsProgramFileTab())
         {
@@ -110,26 +128,44 @@ public partial class StateManageView : BaseView
     private void ApplyLocalizedTexts()
     {
         lblTitle.Text = _localizer.GetString(TextKeys.StateManage.Title);
-        lblDescription.Text = "查看过程参数、报告文件和程序文件的本地上传状态，支持断网恢复后的人工重试。";
+        lblDescription.Text = "查看开工、过程参数、xlsx报表和完工上报的本地待上传状态，支持断网恢复后人工补传。";
         btnRetrySelected.Text = _localizer.GetString(TextKeys.StateManage.ButtonRetrySelected);
-        btnRetryAll.Text = _localizer.GetString(TextKeys.StateManage.ButtonRetryAll);
+        btnRetryAll.Text = IsSummaryTab() ? "一键上传" : _localizer.GetString(TextKeys.StateManage.ButtonRetryAll);
+        ApplyRetryAllPermissionForActiveTab();
         btnRefresh.Text = _localizer.GetString(TextKeys.Common.ActionRefresh);
+        tabSummary.Text = "上传总览";
+        tabStartReports.Text = "开工信息";
+        tabFinishReports.Text = "完工信息";
         tabProcessParameters.Text = "过程参数";
         tabReportFiles.Text = "报告文件";
+        tabWorkOrderStatuses.Text = "工单状态";
+        tabDeviceStatuses.Text = "设备状态";
         tabProgramFiles.Text = "程序文件";
         SetSummary(GetPendingCount());
     }
 
     private void SwitchUploadCategory()
     {
+        btnRetryAll.Text = IsSummaryTab() ? "一键上传" : _localizer.GetString(TextKeys.StateManage.ButtonRetryAll);
+        ApplyRetryAllPermissionForActiveTab();
         ConfigureActiveGridColumns();
         ReloadActiveTasks();
+    }
+
+    private void ApplyRetryAllPermissionForActiveTab()
+    {
+        var permissionCode = IsSummaryTab()
+            ? PermissionCodes.Buttons.State.UploadAll
+            : PermissionCodes.Buttons.State.RetryAll;
+        btnRetryAll.Tag = $"perm:{permissionCode}:visible";
+        btnRetryAll.Visible = GlobalContext.HasPermission(permissionCode);
     }
 
     private int GetPendingCount()
     {
         return _bindingSource.DataSource switch
         {
+            ICollection<UploadPendingSummaryRow> summaries => summaries.Count(row => row.PendingCount > 0),
             ICollection<ProgramSyncSummary> programs => programs.Count,
             ICollection<UploadTaskSummary> tasks => tasks.Count,
             _ => 0
@@ -143,6 +179,16 @@ public partial class StateManageView : BaseView
 
     private void ReloadActiveTasks()
     {
+        btnRetrySelected.Enabled = !IsSummaryTab();
+
+        if (IsSummaryTab())
+        {
+            var rows = _summaryService.GetSummary().ToList();
+            _bindingSource.DataSource = rows;
+            SetSummary(rows.Count(row => row.PendingCount > 0));
+            return;
+        }
+
         if (IsProgramFileTab())
         {
             var programs = _programService.GetPendingSyncPrograms().ToList();
@@ -158,6 +204,12 @@ public partial class StateManageView : BaseView
 
     private async void RetrySelected_ClickAsync(object? sender, EventArgs e)
     {
+        if (IsSummaryTab())
+        {
+            ShowWarning("上传总览请使用一键上传。");
+            return;
+        }
+
         if (IsProgramFileTab())
         {
             await RetrySelectedProgramAsync();
@@ -211,7 +263,12 @@ public partial class StateManageView : BaseView
         btnRetryAll.Enabled = false;
         try
         {
-            if (IsProgramFileTab())
+            if (IsSummaryTab())
+            {
+                var count = await ExecuteAllPendingUploadsAsync();
+                ShowInfo($"已按开工、过程参数、xlsx报表、完工顺序执行 {count} 条待上传任务。");
+            }
+            else if (IsProgramFileTab())
             {
                 await _programService.SyncAllPendingAsync();
             }
@@ -233,6 +290,25 @@ public partial class StateManageView : BaseView
         }
     }
 
+    private async Task<int> ExecuteAllPendingUploadsAsync()
+    {
+        var count = 0;
+        var taskTypes = new[]
+        {
+            ProductionConstants.UploadTaskTypes.StartReport,
+            ProductionConstants.UploadTaskTypes.ProcessParameter,
+            ProductionConstants.UploadTaskTypes.ReportFile,
+            ProductionConstants.UploadTaskTypes.FinishReport
+        };
+
+        foreach (var taskType in taskTypes)
+        {
+            count += await _uploadTaskService.ExecuteAllPendingAsync(taskType);
+        }
+
+        return count;
+    }
+
     private void DgvPending_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
     {
         if (e.RowIndex < 0 || e.CellStyle is null)
@@ -241,6 +317,12 @@ public partial class StateManageView : BaseView
         }
 
         var item = dgvPending.Rows[e.RowIndex].DataBoundItem;
+        if (item is UploadPendingSummaryRow summary)
+        {
+            FormatSummaryCell(summary, e);
+            return;
+        }
+
         if (item is ProgramSyncSummary program)
         {
             FormatProgramCell(program, e);
@@ -251,6 +333,24 @@ public partial class StateManageView : BaseView
         {
             FormatUploadTaskCell(task, e);
         }
+    }
+
+    private void FormatSummaryCell(UploadPendingSummaryRow item, DataGridViewCellFormattingEventArgs e)
+    {
+        if (e.CellStyle is null)
+        {
+            return;
+        }
+
+        var text = Convert.ToString(e.Value);
+        e.CellStyle.ForeColor = text switch
+        {
+            "失败" => Color.Firebrick,
+            "上传中" => Color.RoyalBlue,
+            "待上传" => Color.DarkOrange,
+            "已上传" => Color.SeaGreen,
+            _ => item.PendingCount > 0 ? Color.DarkOrange : Color.FromArgb(36, 36, 36)
+        };
     }
 
     private void FormatProgramCell(ProgramSyncSummary item, DataGridViewCellFormattingEventArgs e)
@@ -307,14 +407,59 @@ public partial class StateManageView : BaseView
             return ProductionConstants.UploadTaskTypes.ReportFile;
         }
 
+        if (tabUploadCategories.SelectedTab == tabStartReports)
+        {
+            return ProductionConstants.UploadTaskTypes.StartReport;
+        }
+
+        if (tabUploadCategories.SelectedTab == tabFinishReports)
+        {
+            return ProductionConstants.UploadTaskTypes.FinishReport;
+        }
+
+        if (tabUploadCategories.SelectedTab == tabWorkOrderStatuses)
+        {
+            return ProductionConstants.UploadTaskTypes.WorkOrderStatus;
+        }
+
+        if (tabUploadCategories.SelectedTab == tabDeviceStatuses)
+        {
+            return ProductionConstants.UploadTaskTypes.DeviceStatus;
+        }
+
         return ProductionConstants.UploadTaskTypes.ProcessParameter;
     }
 
     private string GetActiveCategoryText()
     {
+        if (IsSummaryTab())
+        {
+            return "上传总览";
+        }
+
         if (tabUploadCategories.SelectedTab == tabReportFiles)
         {
             return "报告文件";
+        }
+
+        if (tabUploadCategories.SelectedTab == tabStartReports)
+        {
+            return "开工信息";
+        }
+
+        if (tabUploadCategories.SelectedTab == tabFinishReports)
+        {
+            return "完工信息";
+        }
+
+        if (tabUploadCategories.SelectedTab == tabWorkOrderStatuses)
+        {
+            return "工单状态";
+        }
+
+        if (tabUploadCategories.SelectedTab == tabDeviceStatuses)
+        {
+            return "设备状态";
         }
 
         if (tabUploadCategories.SelectedTab == tabProgramFiles)
@@ -328,6 +473,11 @@ public partial class StateManageView : BaseView
     private bool IsProgramFileTab()
     {
         return tabUploadCategories.SelectedTab == tabProgramFiles;
+    }
+
+    private bool IsSummaryTab()
+    {
+        return tabUploadCategories.SelectedTab == tabSummary;
     }
 
     private string GetProgramSyncStatusText(string? status)

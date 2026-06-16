@@ -51,7 +51,7 @@ namespace AutoWeldSystem.UI.Views
             btnDeleteProductProcess = new AntdUI.Button();
             btnPreviewProductProcessAddress = new AntdUI.Button();
             lblProductProcessSummary = new Label();
-            tableTestItemAddresses = new AntdUI.Table();
+            tableProcess = new AntdUI.Table();
             tabTestSchemes = new TabPage();
             testSchemeLayout = new TableLayoutPanel();
             lblTestSchemeHint = new Label();
@@ -63,9 +63,9 @@ namespace AutoWeldSystem.UI.Views
             schemeDetailLayout = new TableLayoutPanel();
             lblSchemeDetailHint = new Label();
             schemeDetailToolbar = new FlowLayoutPanel();
-            btnAddSchemeDetail = new AntdUI.Button();
-            btnDeleteSchemeDetail = new AntdUI.Button();
-            tableSchemeDetails = new AntdUI.Table();
+            lblSchemeDetailScheme = new Label();
+            selectSchemeDetailScheme = new AntdUI.Select();
+            treeSchemeDetails = new TreeView();
             tabTestItems = new TabPage();
             testItemLayout = new TableLayoutPanel();
             lblTestItemHint = new Label();
@@ -203,6 +203,7 @@ namespace AutoWeldSystem.UI.Views
             btnTest.Name = "btnTest";
             btnTest.Size = new Size(139, 70);
             btnTest.TabIndex = 2;
+            btnTest.Tag = "perm:button.address.test:visible";
             btnTest.Text = "测试选中地址";
             // 
             // btnRefresh
@@ -217,6 +218,7 @@ namespace AutoWeldSystem.UI.Views
             btnRefresh.Name = "btnRefresh";
             btnRefresh.Size = new Size(76, 70);
             btnRefresh.TabIndex = 1;
+            btnRefresh.Tag = "perm:button.address.refresh:visible";
             btnRefresh.Text = "刷新";
             // 
             // btnSave
@@ -231,6 +233,7 @@ namespace AutoWeldSystem.UI.Views
             btnSave.Name = "btnSave";
             btnSave.Size = new Size(107, 70);
             btnSave.TabIndex = 0;
+            btnSave.Tag = "perm:button.address.save:visible";
             btnSave.Text = "保存地址";
             // 
             // queryAddresses
@@ -278,7 +281,7 @@ namespace AutoWeldSystem.UI.Views
             lblBindingProduct.Margin = new Padding(0, 0, 6, 0);
             lblBindingProduct.Name = "lblBindingProduct";
             lblBindingProduct.Padding = new Padding(10, 2, 10, 2);
-            lblBindingProduct.Size = new Size(137, 24);
+            lblBindingProduct.Size = new Size(191, 23);
             lblBindingProduct.TabIndex = 0;
             lblBindingProduct.Text = "产品工号 ProductNum";
             // 
@@ -286,10 +289,10 @@ namespace AutoWeldSystem.UI.Views
             // 
             lblBindingArrow1.AutoSize = true;
             lblBindingArrow1.ForeColor = SystemColors.GrayText;
-            lblBindingArrow1.Location = new Point(155, 8);
+            lblBindingArrow1.Location = new Point(209, 8);
             lblBindingArrow1.Margin = new Padding(0, 0, 6, 0);
             lblBindingArrow1.Name = "lblBindingArrow1";
-            lblBindingArrow1.Size = new Size(24, 20);
+            lblBindingArrow1.Size = new Size(25, 20);
             lblBindingArrow1.TabIndex = 1;
             lblBindingArrow1.Text = "->";
             // 
@@ -298,11 +301,11 @@ namespace AutoWeldSystem.UI.Views
             lblBindingProcess.AutoSize = true;
             lblBindingProcess.BackColor = Color.FromArgb(237, 247, 237);
             lblBindingProcess.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
-            lblBindingProcess.Location = new Point(185, 8);
+            lblBindingProcess.Location = new Point(240, 8);
             lblBindingProcess.Margin = new Padding(0, 0, 6, 0);
             lblBindingProcess.Name = "lblBindingProcess";
             lblBindingProcess.Padding = new Padding(10, 2, 10, 2);
-            lblBindingProcess.Size = new Size(150, 24);
+            lblBindingProcess.Size = new Size(168, 23);
             lblBindingProcess.TabIndex = 2;
             lblBindingProcess.Text = "产品工艺 SchemeId";
             // 
@@ -310,10 +313,10 @@ namespace AutoWeldSystem.UI.Views
             // 
             lblBindingArrow2.AutoSize = true;
             lblBindingArrow2.ForeColor = SystemColors.GrayText;
-            lblBindingArrow2.Location = new Point(341, 8);
+            lblBindingArrow2.Location = new Point(414, 8);
             lblBindingArrow2.Margin = new Padding(0, 0, 6, 0);
             lblBindingArrow2.Name = "lblBindingArrow2";
-            lblBindingArrow2.Size = new Size(24, 20);
+            lblBindingArrow2.Size = new Size(25, 20);
             lblBindingArrow2.TabIndex = 3;
             lblBindingArrow2.Text = "->";
             // 
@@ -322,11 +325,11 @@ namespace AutoWeldSystem.UI.Views
             lblBindingScheme.AutoSize = true;
             lblBindingScheme.BackColor = Color.FromArgb(255, 247, 230);
             lblBindingScheme.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
-            lblBindingScheme.Location = new Point(371, 8);
+            lblBindingScheme.Location = new Point(445, 8);
             lblBindingScheme.Margin = new Padding(0, 0, 6, 0);
             lblBindingScheme.Name = "lblBindingScheme";
             lblBindingScheme.Padding = new Padding(10, 2, 10, 2);
-            lblBindingScheme.Size = new Size(69, 24);
+            lblBindingScheme.Size = new Size(89, 23);
             lblBindingScheme.TabIndex = 4;
             lblBindingScheme.Text = "测试方案";
             // 
@@ -334,10 +337,10 @@ namespace AutoWeldSystem.UI.Views
             // 
             lblBindingArrow3.AutoSize = true;
             lblBindingArrow3.ForeColor = SystemColors.GrayText;
-            lblBindingArrow3.Location = new Point(446, 8);
+            lblBindingArrow3.Location = new Point(540, 8);
             lblBindingArrow3.Margin = new Padding(0, 0, 6, 0);
             lblBindingArrow3.Name = "lblBindingArrow3";
-            lblBindingArrow3.Size = new Size(24, 20);
+            lblBindingArrow3.Size = new Size(25, 20);
             lblBindingArrow3.TabIndex = 5;
             lblBindingArrow3.Text = "->";
             // 
@@ -346,11 +349,11 @@ namespace AutoWeldSystem.UI.Views
             lblBindingDetail.AutoSize = true;
             lblBindingDetail.BackColor = Color.FromArgb(246, 239, 255);
             lblBindingDetail.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
-            lblBindingDetail.Location = new Point(476, 8);
+            lblBindingDetail.Location = new Point(571, 8);
             lblBindingDetail.Margin = new Padding(0, 0, 6, 0);
             lblBindingDetail.Name = "lblBindingDetail";
             lblBindingDetail.Padding = new Padding(10, 2, 10, 2);
-            lblBindingDetail.Size = new Size(107, 24);
+            lblBindingDetail.Size = new Size(143, 23);
             lblBindingDetail.TabIndex = 6;
             lblBindingDetail.Text = "方案明细 ItemId";
             // 
@@ -358,10 +361,10 @@ namespace AutoWeldSystem.UI.Views
             // 
             lblBindingArrow4.AutoSize = true;
             lblBindingArrow4.ForeColor = SystemColors.GrayText;
-            lblBindingArrow4.Location = new Point(589, 8);
+            lblBindingArrow4.Location = new Point(720, 8);
             lblBindingArrow4.Margin = new Padding(0, 0, 6, 0);
             lblBindingArrow4.Name = "lblBindingArrow4";
-            lblBindingArrow4.Size = new Size(24, 20);
+            lblBindingArrow4.Size = new Size(25, 20);
             lblBindingArrow4.TabIndex = 7;
             lblBindingArrow4.Text = "->";
             // 
@@ -370,11 +373,11 @@ namespace AutoWeldSystem.UI.Views
             lblBindingItem.AutoSize = true;
             lblBindingItem.BackColor = Color.FromArgb(255, 241, 240);
             lblBindingItem.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
-            lblBindingItem.Location = new Point(619, 8);
+            lblBindingItem.Location = new Point(751, 8);
             lblBindingItem.Margin = new Padding(0, 0, 6, 0);
             lblBindingItem.Name = "lblBindingItem";
             lblBindingItem.Padding = new Padding(10, 2, 10, 2);
-            lblBindingItem.Size = new Size(111, 24);
+            lblBindingItem.Size = new Size(153, 23);
             lblBindingItem.TabIndex = 8;
             lblBindingItem.Text = "测试项字典 表达式";
             // 
@@ -382,10 +385,10 @@ namespace AutoWeldSystem.UI.Views
             // 
             lblBindingArrow5.AutoSize = true;
             lblBindingArrow5.ForeColor = SystemColors.GrayText;
-            lblBindingArrow5.Location = new Point(736, 8);
+            lblBindingArrow5.Location = new Point(910, 8);
             lblBindingArrow5.Margin = new Padding(0, 0, 6, 0);
             lblBindingArrow5.Name = "lblBindingArrow5";
-            lblBindingArrow5.Size = new Size(24, 20);
+            lblBindingArrow5.Size = new Size(25, 20);
             lblBindingArrow5.TabIndex = 9;
             lblBindingArrow5.Text = "->";
             // 
@@ -394,11 +397,11 @@ namespace AutoWeldSystem.UI.Views
             lblBindingPreview.AutoSize = true;
             lblBindingPreview.BackColor = Color.FromArgb(238, 242, 246);
             lblBindingPreview.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
-            lblBindingPreview.Location = new Point(766, 8);
+            lblBindingPreview.Location = new Point(941, 8);
             lblBindingPreview.Margin = new Padding(0);
             lblBindingPreview.Name = "lblBindingPreview";
             lblBindingPreview.Padding = new Padding(10, 2, 10, 2);
-            lblBindingPreview.Size = new Size(92, 24);
+            lblBindingPreview.Size = new Size(121, 23);
             lblBindingPreview.TabIndex = 10;
             lblBindingPreview.Text = "PLC 地址预览";
             // 
@@ -460,7 +463,7 @@ namespace AutoWeldSystem.UI.Views
             testItemAddressLayout.Controls.Add(lblProductProcessGroupHint, 0, 1);
             testItemAddressLayout.Controls.Add(productProcessToolbar, 0, 2);
             testItemAddressLayout.Controls.Add(lblProductProcessSummary, 0, 3);
-            testItemAddressLayout.Controls.Add(tableTestItemAddresses, 0, 4);
+            testItemAddressLayout.Controls.Add(tableProcess, 0, 4);
             testItemAddressLayout.Dock = DockStyle.Fill;
             testItemAddressLayout.Location = new Point(3, 3);
             testItemAddressLayout.Margin = new Padding(0);
@@ -519,39 +522,39 @@ namespace AutoWeldSystem.UI.Views
             // 
             btnAddProductProcess.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnAddProductProcess.BorderWidth = 1F;
-            btnAddProductProcess.Height = 34;
             btnAddProductProcess.IconSvg = "PlusOutlined";
             btnAddProductProcess.Location = new Point(0, 4);
             btnAddProductProcess.Margin = new Padding(0, 0, 8, 0);
             btnAddProductProcess.Name = "btnAddProductProcess";
-            btnAddProductProcess.Size = new Size(72, 34);
+            btnAddProductProcess.Size = new Size(81, 34);
             btnAddProductProcess.TabIndex = 0;
+            btnAddProductProcess.Tag = "perm:button.address.add-product-process:visible";
             btnAddProductProcess.Text = "新增";
             // 
             // btnDeleteProductProcess
             // 
             btnDeleteProductProcess.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnDeleteProductProcess.BorderWidth = 1F;
-            btnDeleteProductProcess.Height = 34;
             btnDeleteProductProcess.IconSvg = "DeleteOutlined";
-            btnDeleteProductProcess.Location = new Point(80, 4);
+            btnDeleteProductProcess.Location = new Point(89, 4);
             btnDeleteProductProcess.Margin = new Padding(0, 0, 8, 0);
             btnDeleteProductProcess.Name = "btnDeleteProductProcess";
-            btnDeleteProductProcess.Size = new Size(72, 34);
+            btnDeleteProductProcess.Size = new Size(81, 34);
             btnDeleteProductProcess.TabIndex = 1;
+            btnDeleteProductProcess.Tag = "perm:button.address.delete-product-process:visible";
             btnDeleteProductProcess.Text = "删除";
             // 
             // btnPreviewProductProcessAddress
             // 
             btnPreviewProductProcessAddress.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnPreviewProductProcessAddress.BorderWidth = 1F;
-            btnPreviewProductProcessAddress.Height = 34;
             btnPreviewProductProcessAddress.IconSvg = "EyeOutlined";
-            btnPreviewProductProcessAddress.Location = new Point(160, 4);
+            btnPreviewProductProcessAddress.Location = new Point(178, 4);
             btnPreviewProductProcessAddress.Margin = new Padding(0, 0, 8, 0);
             btnPreviewProductProcessAddress.Name = "btnPreviewProductProcessAddress";
-            btnPreviewProductProcessAddress.Size = new Size(126, 34);
+            btnPreviewProductProcessAddress.Size = new Size(141, 34);
             btnPreviewProductProcessAddress.TabIndex = 2;
+            btnPreviewProductProcessAddress.Tag = "perm:button.address.preview-product-process-address:visible";
             btnPreviewProductProcessAddress.Text = "PLC 地址预览";
             // 
             // lblProductProcessSummary
@@ -569,18 +572,18 @@ namespace AutoWeldSystem.UI.Views
             lblProductProcessSummary.Text = "选择一条产品工艺后，可查看产品 -> 焊点 -> 测试项绑定摘要，并打开 PLC 地址预览。";
             lblProductProcessSummary.TextAlign = ContentAlignment.MiddleLeft;
             // 
-            // tableTestItemAddresses
+            // tableProcess
             // 
-            tableTestItemAddresses.Dock = DockStyle.Fill;
-            tableTestItemAddresses.EditMode = AntdUI.TEditMode.DoubleClick;
-            tableTestItemAddresses.Gap = 8;
-            tableTestItemAddresses.Gaps = new Size(8, 8);
-            tableTestItemAddresses.Location = new Point(0, 140);
-            tableTestItemAddresses.Margin = new Padding(0);
-            tableTestItemAddresses.Name = "tableTestItemAddresses";
-            tableTestItemAddresses.Size = new Size(1236, 366);
-            tableTestItemAddresses.TabIndex = 5;
-            tableTestItemAddresses.Text = "tableProductProcessConfigs";
+            tableProcess.Dock = DockStyle.Fill;
+            tableProcess.EditMode = AntdUI.TEditMode.DoubleClick;
+            tableProcess.Gap = 8;
+            tableProcess.Gaps = new Size(8, 8);
+            tableProcess.Location = new Point(0, 140);
+            tableProcess.Margin = new Padding(0);
+            tableProcess.Name = "tableProcess";
+            tableProcess.Size = new Size(1236, 366);
+            tableProcess.TabIndex = 5;
+            tableProcess.Text = "tableProductProcessConfigs";
             // 
             // tabTestSchemes
             // 
@@ -588,7 +591,7 @@ namespace AutoWeldSystem.UI.Views
             tabTestSchemes.Location = new Point(4, 29);
             tabTestSchemes.Name = "tabTestSchemes";
             tabTestSchemes.Padding = new Padding(3);
-            tabTestSchemes.Size = new Size(1242, 560);
+            tabTestSchemes.Size = new Size(1242, 512);
             tabTestSchemes.TabIndex = 2;
             tabTestSchemes.Text = "测试方案";
             tabTestSchemes.UseVisualStyleBackColor = true;
@@ -608,7 +611,7 @@ namespace AutoWeldSystem.UI.Views
             testSchemeLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
             testSchemeLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
             testSchemeLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            testSchemeLayout.Size = new Size(1236, 554);
+            testSchemeLayout.Size = new Size(1236, 506);
             testSchemeLayout.TabIndex = 0;
             // 
             // lblTestSchemeHint
@@ -641,26 +644,26 @@ namespace AutoWeldSystem.UI.Views
             // 
             btnAddScheme.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnAddScheme.BorderWidth = 1F;
-            btnAddScheme.Height = 34;
             btnAddScheme.IconSvg = "PlusOutlined";
             btnAddScheme.Location = new Point(0, 4);
             btnAddScheme.Margin = new Padding(0, 0, 8, 0);
             btnAddScheme.Name = "btnAddScheme";
-            btnAddScheme.Size = new Size(72, 34);
+            btnAddScheme.Size = new Size(81, 34);
             btnAddScheme.TabIndex = 0;
+            btnAddScheme.Tag = "perm:button.address.add-scheme:visible";
             btnAddScheme.Text = "新增";
             // 
             // btnDeleteScheme
             // 
             btnDeleteScheme.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnDeleteScheme.BorderWidth = 1F;
-            btnDeleteScheme.Height = 34;
             btnDeleteScheme.IconSvg = "DeleteOutlined";
-            btnDeleteScheme.Location = new Point(80, 4);
+            btnDeleteScheme.Location = new Point(89, 4);
             btnDeleteScheme.Margin = new Padding(0, 0, 8, 0);
             btnDeleteScheme.Name = "btnDeleteScheme";
-            btnDeleteScheme.Size = new Size(72, 34);
+            btnDeleteScheme.Size = new Size(81, 34);
             btnDeleteScheme.TabIndex = 1;
+            btnDeleteScheme.Tag = "perm:button.address.delete-scheme:visible";
             btnDeleteScheme.Text = "删除";
             // 
             // tableTestSchemes
@@ -672,7 +675,7 @@ namespace AutoWeldSystem.UI.Views
             tableTestSchemes.Location = new Point(0, 72);
             tableTestSchemes.Margin = new Padding(0);
             tableTestSchemes.Name = "tableTestSchemes";
-            tableTestSchemes.Size = new Size(1236, 482);
+            tableTestSchemes.Size = new Size(1236, 434);
             tableTestSchemes.TabIndex = 2;
             tableTestSchemes.Text = "tableTestSchemes";
             // 
@@ -682,7 +685,7 @@ namespace AutoWeldSystem.UI.Views
             tabSchemeDetails.Location = new Point(4, 29);
             tabSchemeDetails.Name = "tabSchemeDetails";
             tabSchemeDetails.Padding = new Padding(3);
-            tabSchemeDetails.Size = new Size(1242, 560);
+            tabSchemeDetails.Size = new Size(1242, 512);
             tabSchemeDetails.TabIndex = 3;
             tabSchemeDetails.Text = "方案明细";
             tabSchemeDetails.UseVisualStyleBackColor = true;
@@ -693,7 +696,7 @@ namespace AutoWeldSystem.UI.Views
             schemeDetailLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             schemeDetailLayout.Controls.Add(lblSchemeDetailHint, 0, 0);
             schemeDetailLayout.Controls.Add(schemeDetailToolbar, 0, 1);
-            schemeDetailLayout.Controls.Add(tableSchemeDetails, 0, 2);
+            schemeDetailLayout.Controls.Add(treeSchemeDetails, 0, 2);
             schemeDetailLayout.Dock = DockStyle.Fill;
             schemeDetailLayout.Location = new Point(3, 3);
             schemeDetailLayout.Margin = new Padding(0);
@@ -702,7 +705,7 @@ namespace AutoWeldSystem.UI.Views
             schemeDetailLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
             schemeDetailLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
             schemeDetailLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            schemeDetailLayout.Size = new Size(1236, 554);
+            schemeDetailLayout.Size = new Size(1236, 506);
             schemeDetailLayout.TabIndex = 0;
             // 
             // lblSchemeDetailHint
@@ -720,8 +723,8 @@ namespace AutoWeldSystem.UI.Views
             // 
             // schemeDetailToolbar
             // 
-            schemeDetailToolbar.Controls.Add(btnAddSchemeDetail);
-            schemeDetailToolbar.Controls.Add(btnDeleteSchemeDetail);
+            schemeDetailToolbar.Controls.Add(lblSchemeDetailScheme);
+            schemeDetailToolbar.Controls.Add(selectSchemeDetailScheme);
             schemeDetailToolbar.Dock = DockStyle.Fill;
             schemeDetailToolbar.Location = new Point(0, 30);
             schemeDetailToolbar.Margin = new Padding(0);
@@ -731,44 +734,35 @@ namespace AutoWeldSystem.UI.Views
             schemeDetailToolbar.TabIndex = 1;
             schemeDetailToolbar.WrapContents = false;
             // 
-            // btnAddSchemeDetail
+            // lblSchemeDetailScheme
             // 
-            btnAddSchemeDetail.AutoSizeMode = AntdUI.TAutoSize.Width;
-            btnAddSchemeDetail.BorderWidth = 1F;
-            btnAddSchemeDetail.Height = 34;
-            btnAddSchemeDetail.IconSvg = "PlusOutlined";
-            btnAddSchemeDetail.Location = new Point(0, 4);
-            btnAddSchemeDetail.Margin = new Padding(0, 0, 8, 0);
-            btnAddSchemeDetail.Name = "btnAddSchemeDetail";
-            btnAddSchemeDetail.Size = new Size(72, 34);
-            btnAddSchemeDetail.TabIndex = 0;
-            btnAddSchemeDetail.Text = "新增";
+            lblSchemeDetailScheme.Location = new Point(0, 4);
+            lblSchemeDetailScheme.Margin = new Padding(0, 0, 8, 0);
+            lblSchemeDetailScheme.Name = "lblSchemeDetailScheme";
+            lblSchemeDetailScheme.Size = new Size(72, 34);
+            lblSchemeDetailScheme.TabIndex = 0;
+            lblSchemeDetailScheme.Text = "测试方案";
+            lblSchemeDetailScheme.TextAlign = ContentAlignment.MiddleLeft;
             // 
-            // btnDeleteSchemeDetail
+            // selectSchemeDetailScheme
             // 
-            btnDeleteSchemeDetail.AutoSizeMode = AntdUI.TAutoSize.Width;
-            btnDeleteSchemeDetail.BorderWidth = 1F;
-            btnDeleteSchemeDetail.Height = 34;
-            btnDeleteSchemeDetail.IconSvg = "DeleteOutlined";
-            btnDeleteSchemeDetail.Location = new Point(80, 4);
-            btnDeleteSchemeDetail.Margin = new Padding(0, 0, 8, 0);
-            btnDeleteSchemeDetail.Name = "btnDeleteSchemeDetail";
-            btnDeleteSchemeDetail.Size = new Size(72, 34);
-            btnDeleteSchemeDetail.TabIndex = 1;
-            btnDeleteSchemeDetail.Text = "删除";
+            selectSchemeDetailScheme.Location = new Point(80, 4);
+            selectSchemeDetailScheme.Margin = new Padding(0, 0, 8, 0);
+            selectSchemeDetailScheme.Name = "selectSchemeDetailScheme";
+            selectSchemeDetailScheme.Size = new Size(260, 34);
+            selectSchemeDetailScheme.TabIndex = 1;
             // 
-            // tableSchemeDetails
+            // treeSchemeDetails
             // 
-            tableSchemeDetails.Dock = DockStyle.Fill;
-            tableSchemeDetails.EditMode = AntdUI.TEditMode.DoubleClick;
-            tableSchemeDetails.Gap = 8;
-            tableSchemeDetails.Gaps = new Size(8, 8);
-            tableSchemeDetails.Location = new Point(0, 72);
-            tableSchemeDetails.Margin = new Padding(0);
-            tableSchemeDetails.Name = "tableSchemeDetails";
-            tableSchemeDetails.Size = new Size(1236, 482);
-            tableSchemeDetails.TabIndex = 2;
-            tableSchemeDetails.Text = "tableSchemeDetails";
+            treeSchemeDetails.BorderStyle = BorderStyle.FixedSingle;
+            treeSchemeDetails.CheckBoxes = true;
+            treeSchemeDetails.Dock = DockStyle.Left;
+            treeSchemeDetails.HideSelection = false;
+            treeSchemeDetails.Location = new Point(0, 72);
+            treeSchemeDetails.Margin = new Padding(0);
+            treeSchemeDetails.Name = "treeSchemeDetails";
+            treeSchemeDetails.Size = new Size(340, 434);
+            treeSchemeDetails.TabIndex = 2;
             // 
             // tabTestItems
             // 
@@ -776,7 +770,7 @@ namespace AutoWeldSystem.UI.Views
             tabTestItems.Location = new Point(4, 29);
             tabTestItems.Name = "tabTestItems";
             tabTestItems.Padding = new Padding(3);
-            tabTestItems.Size = new Size(1242, 560);
+            tabTestItems.Size = new Size(1242, 512);
             tabTestItems.TabIndex = 4;
             tabTestItems.Text = "测试项字典";
             tabTestItems.UseVisualStyleBackColor = true;
@@ -796,7 +790,7 @@ namespace AutoWeldSystem.UI.Views
             testItemLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
             testItemLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
             testItemLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            testItemLayout.Size = new Size(1236, 554);
+            testItemLayout.Size = new Size(1236, 506);
             testItemLayout.TabIndex = 0;
             // 
             // lblTestItemHint
@@ -829,26 +823,26 @@ namespace AutoWeldSystem.UI.Views
             // 
             btnAddTestItem.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnAddTestItem.BorderWidth = 1F;
-            btnAddTestItem.Height = 34;
             btnAddTestItem.IconSvg = "PlusOutlined";
             btnAddTestItem.Location = new Point(0, 4);
             btnAddTestItem.Margin = new Padding(0, 0, 8, 0);
             btnAddTestItem.Name = "btnAddTestItem";
-            btnAddTestItem.Size = new Size(72, 34);
+            btnAddTestItem.Size = new Size(81, 34);
             btnAddTestItem.TabIndex = 0;
+            btnAddTestItem.Tag = "perm:button.address.add-test-item:visible";
             btnAddTestItem.Text = "新增";
             // 
             // btnDeleteTestItem
             // 
             btnDeleteTestItem.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnDeleteTestItem.BorderWidth = 1F;
-            btnDeleteTestItem.Height = 34;
             btnDeleteTestItem.IconSvg = "DeleteOutlined";
-            btnDeleteTestItem.Location = new Point(80, 4);
+            btnDeleteTestItem.Location = new Point(89, 4);
             btnDeleteTestItem.Margin = new Padding(0, 0, 8, 0);
             btnDeleteTestItem.Name = "btnDeleteTestItem";
-            btnDeleteTestItem.Size = new Size(72, 34);
+            btnDeleteTestItem.Size = new Size(81, 34);
             btnDeleteTestItem.TabIndex = 1;
+            btnDeleteTestItem.Tag = "perm:button.address.delete-test-item:visible";
             btnDeleteTestItem.Text = "删除";
             // 
             // tableTestItems
@@ -860,7 +854,7 @@ namespace AutoWeldSystem.UI.Views
             tableTestItems.Location = new Point(0, 72);
             tableTestItems.Margin = new Padding(0);
             tableTestItems.Name = "tableTestItems";
-            tableTestItems.Size = new Size(1236, 482);
+            tableTestItems.Size = new Size(1236, 434);
             tableTestItems.TabIndex = 2;
             tableTestItems.Text = "tableTestItems";
             // 
@@ -885,15 +879,18 @@ namespace AutoWeldSystem.UI.Views
             tabTestItemAddresses.ResumeLayout(false);
             testItemAddressLayout.ResumeLayout(false);
             productProcessToolbar.ResumeLayout(false);
+            productProcessToolbar.PerformLayout();
             tabTestSchemes.ResumeLayout(false);
             testSchemeLayout.ResumeLayout(false);
             testSchemeToolbar.ResumeLayout(false);
+            testSchemeToolbar.PerformLayout();
             tabSchemeDetails.ResumeLayout(false);
             schemeDetailLayout.ResumeLayout(false);
             schemeDetailToolbar.ResumeLayout(false);
             tabTestItems.ResumeLayout(false);
             testItemLayout.ResumeLayout(false);
             testItemToolbar.ResumeLayout(false);
+            testItemToolbar.PerformLayout();
             ResumeLayout(false);
         }
 
@@ -930,7 +927,7 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Button btnDeleteProductProcess;
         private AntdUI.Button btnPreviewProductProcessAddress;
         private Label lblProductProcessSummary;
-        private AntdUI.Table tableTestItemAddresses;
+        private AntdUI.Table tableProcess;
         private TabPage tabTestSchemes;
         private TableLayoutPanel testSchemeLayout;
         private Label lblTestSchemeHint;
@@ -942,9 +939,9 @@ namespace AutoWeldSystem.UI.Views
         private TableLayoutPanel schemeDetailLayout;
         private Label lblSchemeDetailHint;
         private FlowLayoutPanel schemeDetailToolbar;
-        private AntdUI.Button btnAddSchemeDetail;
-        private AntdUI.Button btnDeleteSchemeDetail;
-        private AntdUI.Table tableSchemeDetails;
+        private Label lblSchemeDetailScheme;
+        private AntdUI.Select selectSchemeDetailScheme;
+        private TreeView treeSchemeDetails;
         private TabPage tabTestItems;
         private TableLayoutPanel testItemLayout;
         private Label lblTestItemHint;

@@ -382,13 +382,19 @@
     <value>Configure PLC, MES, controller, device identity, and local data/log storage paths.</value>
   </data>
   <data name="system.group.plc" xml:space="preserve">
-    <value>PLC Settings</value>
+    <value>PLC Config</value>
+  </data>
+  <data name="system.group.production" xml:space="preserve">
+    <value>Production Config</value>
+  </data>
+  <data name="system.group.device" xml:space="preserve">
+    <value>Production Config</value>
   </data>
   <data name="system.group.controller" xml:space="preserve">
-    <value>Controller Settings</value>
+    <value>Server Config</value>
   </data>
   <data name="system.group.application" xml:space="preserve">
-    <value>Application Settings</value>
+    <value>Application Config</value>
   </data>
   <data name="system.label.ip" xml:space="preserve">
     <value>IP</value>
@@ -417,11 +423,14 @@
   <data name="system.label.mes_url" xml:space="preserve">
     <value>MES URL</value>
   </data>
-  <data name="system.label.use_product_number_filter" xml:space="preserve">
+  <data name="system.checkbox.use_product_number_filter" xml:space="preserve">
     <value>Filter programs by product No.</value>
   </data>
-  <data name="system.label.validate_recipe_before_start" xml:space="preserve">
-    <value>Validate PLC recipe before start</value>
+  <data name="system.checkbox.validate_recipe_after_start" xml:space="preserve">
+    <value>Validate PLC recipe after start</value>
+  </data>
+  <data name="system.checkbox.enable_finish_exp_qty_prompt" xml:space="preserve">
+    <value>Prompt for finish actual quantity</value>
   </data>
   <data name="system.button.connect" xml:space="preserve">
     <value>Connect</value>
@@ -564,6 +573,9 @@
   <data name="plc.message.heartbeat_failed" xml:space="preserve">
     <value>PLC heartbeat failed: {0}</value>
   </data>
+  <data name="plc.message.heartbeat_no_change" xml:space="preserve">
+    <value>PLC heartbeat has not changed for {0:0.0}s; TCP connection is still established, waiting for PLC business heartbeat recovery.</value>
+  </data>
   <data name="plc.message.tcp_probe_failed" xml:space="preserve">
     <value>PLC TCP probe failed: {0}</value>
   </data>
@@ -611,9 +623,6 @@
   </data>
   <data name="address.message.test_failed" xml:space="preserve">
     <value>Address "{0}" test failed: {1}</value>
-  </data>
-  <data name="grid.plc_address.key" xml:space="preserve">
-    <value>Key</value>
   </data>
   <data name="grid.plc_address.name" xml:space="preserve">
     <value>Name</value>
@@ -671,6 +680,18 @@
   </data>
   <data name="address.name.recipe_code" xml:space="preserve">
     <value>Recipe Code</value>
+  </data>
+  <data name="address.name.pc_recipe_code" xml:space="preserve">
+    <value>PC Recipe</value>
+  </data>
+  <data name="address.name.plc_recipe_code" xml:space="preserve">
+    <value>PLC Recipe</value>
+  </data>
+  <data name="address.name.work_order_status" xml:space="preserve">
+    <value>Work Order Status</value>
+  </data>
+  <data name="address.name.device_mode" xml:space="preserve">
+    <value>Device Mode</value>
   </data>
   <data name="address.name.product_data_ready" xml:space="preserve">
     <value>Product Data Ready</value>
@@ -806,6 +827,9 @@
   </data>
   <data name="monitor.button.start_report" xml:space="preserve">
     <value>Start Report</value>
+  </data>
+  <data name="monitor.button.local_work_order" xml:space="preserve">
+    <value>Start Experiment Offline</value>
   </data>
   <data name="monitor.button.finish_report" xml:space="preserve">
     <value>Finish Report</value>
@@ -1016,6 +1040,45 @@
   </data>
   <data name="monitor.error.operation_failed" xml:space="preserve">
     <value>Operation failed.</value>
+  </data>
+  <data name="monitor.production_hint.product_data_ready" xml:space="preserve">
+    <value>PLC triggered data collection.</value>
+  </data>
+  <data name="monitor.production_hint.product_collection_start" xml:space="preserve">
+    <value>Collecting product data.</value>
+  </data>
+  <data name="monitor.production_hint.product_data_read_start" xml:space="preserve">
+    <value>Collecting product data.</value>
+  </data>
+  <data name="monitor.production_hint.product_data_saved" xml:space="preserve">
+    <value>Data saved successfully.</value>
+  </data>
+  <data name="monitor.production_hint.product_data_save_failed" xml:space="preserve">
+    <value>Data save failed.</value>
+  </data>
+  <data name="monitor.production_hint.product_collection_feedback_succeeded" xml:space="preserve">
+    <value>PLC collection feedback succeeded.</value>
+  </data>
+  <data name="monitor.production_hint.product_collection_feedback_failed" xml:space="preserve">
+    <value>PLC collection feedback failed.</value>
+  </data>
+  <data name="monitor.production_hint.recipe_code_write_succeeded" xml:space="preserve">
+    <value>Recipe code sent.</value>
+  </data>
+  <data name="monitor.production_hint.recipe_code_write_failed" xml:space="preserve">
+    <value>Recipe code send failed.</value>
+  </data>
+  <data name="monitor.production_hint.recipe_code_validation_succeeded" xml:space="preserve">
+    <value>Recipe code validation passed.</value>
+  </data>
+  <data name="monitor.production_hint.recipe_code_validation_failed" xml:space="preserve">
+    <value>Recipe code validation failed.</value>
+  </data>
+  <data name="monitor.production_hint.business_signal_write_succeeded" xml:space="preserve">
+    <value>PLC business signal write succeeded.</value>
+  </data>
+  <data name="monitor.production_hint.business_signal_write_failed" xml:space="preserve">
+    <value>PLC business signal write failed.</value>
   </data>
   <data name="monitor.dialog.scan_work_id_title" xml:space="preserve">
     <value>Load Work Order</value>
@@ -1385,5 +1448,203 @@
   </data>
   <data name="monitor.button.edit" xml:space="preserve">
     <value>Edit</value>
+  </data>
+  <data name="system.group.mes" xml:space="preserve">
+    <value>MES Config</value>
+  </data>
+  <data name="system.tab.basic" xml:space="preserve">
+    <value>Basic Settrings</value>
+  </data>
+  <data name="system.Checkbox.enable_dual_station" xml:space="preserve">
+    <value>Enable dual station</value>
+  </data>
+  <data name="system.Checkbox.enable_dual_work_order" xml:space="preserve">
+    <value>Enable dual work order</value>
+  </data>
+  <data name="system.label.upload_mode" xml:space="preserve">
+    <value>Upload Mode</value>
+  </data>
+  <data name="system.label.upload_batch_size" xml:space="preserve">
+    <value>Upload Batch Size</value>
+  </data>
+  <data name="system.label.plc_heartbeat_rate" xml:space="preserve">
+    <value>PLC Heartbeat Rate</value>
+  </data>
+  <data name="data.label.product_num" xml:space="preserve">
+    <value>Product No.</value>
+  </data>
+  <data name="data.label.batch" xml:space="preserve">
+    <value>Batch</value>
+  </data>
+  <data name="data.label.work_order_id" xml:space="preserve">
+    <value>Work Order</value>
+  </data>
+  <data name="data.label.date_range" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="data.placeholder.fuzzy_search" xml:space="preserve">
+    <value>Contains</value>
+  </data>
+  <data name="data.placeholder.work_order" xml:space="preserve">
+    <value>Flow card number</value>
+  </data>
+  <data name="data.button.query" xml:space="preserve">
+    <value>Query</value>
+  </data>
+  <data name="data.button.reset" xml:space="preserve">
+    <value>Reset</value>
+  </data>
+  <data name="data.button.open_report" xml:space="preserve">
+    <value>Open Report</value>
+  </data>
+  <data name="data.button.open_report_folder" xml:space="preserve">
+    <value>Open Folder</value>
+  </data>
+  <data name="data.tab.weld_parameters" xml:space="preserve">
+    <value>Weld Parameters</value>
+  </data>
+  <data name="data.tab.collection_data" xml:space="preserve">
+    <value>Collection Data</value>
+  </data>
+  <data name="data.tab.report_files" xml:space="preserve">
+    <value>Report Files</value>
+  </data>
+  <data name="data.label.raw_data" xml:space="preserve">
+    <value>Raw Collection Data</value>
+  </data>
+  <data name="data.message.loading" xml:space="preserve">
+    <value>Loading...</value>
+  </data>
+  <data name="data.message.select_work_order" xml:space="preserve">
+    <value>Select a historical work order.</value>
+  </data>
+  <data name="data.message.select_report" xml:space="preserve">
+    <value>Select a report file first.</value>
+  </data>
+  <data name="data.summary.work_orders" xml:space="preserve">
+    <value>Historical work orders: {0}</value>
+  </data>
+  <data name="data.summary.parameters" xml:space="preserve">
+    <value>Weld parameters: {0}; dynamic columns: {1}</value>
+  </data>
+  <data name="data.summary.collection" xml:space="preserve">
+    <value>Collection records: {0}</value>
+  </data>
+  <data name="data.summary.reports" xml:space="preserve">
+    <value>Report files: {0}</value>
+  </data>
+  <data name="data.message.query_failed" xml:space="preserve">
+    <value>Failed to query work-order history: {0}</value>
+  </data>
+  <data name="data.message.detail_query_failed" xml:space="preserve">
+    <value>Failed to query work-order details: {0}</value>
+  </data>
+  <data name="data.message.report_file_missing" xml:space="preserve">
+    <value>Report file does not exist: {0}</value>
+  </data>
+  <data name="data.message.report_directory_missing" xml:space="preserve">
+    <value>Report directory does not exist: {0}</value>
+  </data>
+  <data name="data.message.open_path_failed" xml:space="preserve">
+    <value>Failed to open path: {0}</value>
+  </data>
+  <data name="data.column.station" xml:space="preserve">
+    <value>Station</value>
+  </data>
+  <data name="data.column.work_order_id" xml:space="preserve">
+    <value>Work Order</value>
+  </data>
+  <data name="data.column.product_num" xml:space="preserve">
+    <value>Product No.</value>
+  </data>
+  <data name="data.column.batch" xml:space="preserve">
+    <value>Batch</value>
+  </data>
+  <data name="data.column.product_name" xml:space="preserve">
+    <value>Product Name</value>
+  </data>
+  <data name="data.column.process" xml:space="preserve">
+    <value>Process</value>
+  </data>
+  <data name="data.column.recipe" xml:space="preserve">
+    <value>Recipe</value>
+  </data>
+  <data name="data.column.planned_qty" xml:space="preserve">
+    <value>Planned Qty</value>
+  </data>
+  <data name="data.column.actual_qty" xml:space="preserve">
+    <value>Actual Qty</value>
+  </data>
+  <data name="data.column.qualified_qty" xml:space="preserve">
+    <value>Qualified Qty</value>
+  </data>
+  <data name="data.column.failed_qty" xml:space="preserve">
+    <value>Failed Qty</value>
+  </data>
+  <data name="data.column.operator" xml:space="preserve">
+    <value>Operator No.</value>
+  </data>
+  <data name="data.column.start_time" xml:space="preserve">
+    <value>Start Time</value>
+  </data>
+  <data name="data.column.end_time" xml:space="preserve">
+    <value>End Time</value>
+  </data>
+  <data name="data.column.task_status" xml:space="preserve">
+    <value>Task Status</value>
+  </data>
+  <data name="data.column.upload_status" xml:space="preserve">
+    <value>Upload Status</value>
+  </data>
+  <data name="data.column.product_no" xml:space="preserve">
+    <value>Product Serial</value>
+  </data>
+  <data name="data.column.touch_no" xml:space="preserve">
+    <value>Weld Point</value>
+  </data>
+  <data name="data.column.touch_result" xml:space="preserve">
+    <value>Weld Result</value>
+  </data>
+  <data name="data.column.record_time" xml:space="preserve">
+    <value>Collection Time</value>
+  </data>
+  <data name="data.column.sequence" xml:space="preserve">
+    <value>Sequence</value>
+  </data>
+  <data name="data.column.is_test" xml:space="preserve">
+    <value>Test Weld</value>
+  </data>
+  <data name="data.column.product_completed" xml:space="preserve">
+    <value>Product Completed</value>
+  </data>
+  <data name="data.column.file_name" xml:space="preserve">
+    <value>File Name</value>
+  </data>
+  <data name="data.column.file_format" xml:space="preserve">
+    <value>Format</value>
+  </data>
+  <data name="data.column.file_path" xml:space="preserve">
+    <value>File Path</value>
+  </data>
+  <data name="data.column.created_time" xml:space="preserve">
+    <value>Created Time</value>
+  </data>
+  <data name="data.column.updated_time" xml:space="preserve">
+    <value>Updated Time</value>
+  </data>
+  <data name="permission.button.data.query" xml:space="preserve">
+    <value>Query History</value>
+  </data>
+  <data name="permission.button.data.reset" xml:space="preserve">
+    <value>Reset History Filter</value>
+  </data>
+  <data name="permission.button.data.open_report" xml:space="preserve">
+    <value>Open Report File</value>
+  </data>
+  <data name="permission.button.data.open_report_folder" xml:space="preserve">
+    <value>Open Report Folder</value>
+  </data>
+  <data name="grid.plc_address.station" xml:space="preserve">
+    <value>Station</value>
   </data>
 </root>

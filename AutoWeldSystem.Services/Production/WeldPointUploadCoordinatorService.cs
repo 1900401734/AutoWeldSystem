@@ -1,9 +1,11 @@
 using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Enums;
 using AutoWeldSystem.Core.Interfaces;
-using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Data;
 using System.Text.Json;
+using AutoWeldSystem.Core.Runtime;
 
 namespace AutoWeldSystem.Services.Production;
 
@@ -18,6 +20,7 @@ public sealed class WeldPointUploadCoordinatorService : IWeldPointUploadCoordina
     private readonly IUploadTaskService _uploadTaskService;
     private readonly IOperationLogService _operationLogService;
     private readonly object _dbLock = new();
+    private AppSettings _currentSettings;
 
     public WeldPointUploadCoordinatorService(
         SqlSugarDbContext dbContext,
@@ -27,6 +30,8 @@ public sealed class WeldPointUploadCoordinatorService : IWeldPointUploadCoordina
     {
         _dbContext = dbContext;
         _settingsService = settingsService;
+        _currentSettings = settingsService.Get();
+        _settingsService.SettingsChanged += SettingsService_SettingsChanged;
         _uploadTaskService = uploadTaskService;
         _operationLogService = operationLogService;
     }
@@ -38,7 +43,7 @@ public sealed class WeldPointUploadCoordinatorService : IWeldPointUploadCoordina
             return;
         }
 
-        var settings = _settingsService.Get();
+        var settings = CurrentSettings;
         if (settings.UploadMode == UploadMode.Batch)
         {
             _operationLogService.Write(
@@ -47,16 +52,17 @@ public sealed class WeldPointUploadCoordinatorService : IWeldPointUploadCoordina
             return;
         }
 
-        var uploadTask = EnqueueProductUploadTask(record, settings.UploadMode);
         if (settings.UploadMode == UploadMode.Realtime)
         {
+            var uploadTask = EnqueueProductUploadTask(record, settings.UploadMode);
             await _uploadTaskService.ExecuteAsync(uploadTask.Id, cancellationToken);
             return;
         }
 
+        var taskUploadTask = EnqueueTaskUploadTask(record, settings.UploadMode);
         if (settings.UploadMode == UploadMode.Quantity && IsQuantityThresholdReached(record.TaskId, settings.UploadBatchSize))
         {
-            await ExecutePendingProductTasksAsync(record.TaskId, cancellationToken);
+            await _uploadTaskService.ExecuteAsync(taskUploadTask.Id, cancellationToken);
         }
     }
 
@@ -75,13 +81,19 @@ public sealed class WeldPointUploadCoordinatorService : IWeldPointUploadCoordina
         });
     }
 
-    private async Task ExecutePendingProductTasksAsync(int weldTaskId, CancellationToken cancellationToken)
+    private BizUploadTask EnqueueTaskUploadTask(BizWeldPointRecord record, UploadMode uploadMode)
     {
-        foreach (var taskId in GetPendingProductUploadTaskIds(weldTaskId))
+        return _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            await _uploadTaskService.ExecuteAsync(taskId, cancellationToken);
-        }
+            TaskType = ProductionConstants.UploadTaskTypes.ProcessParameter,
+            Target = ProductionConstants.UploadTargets.Mes,
+            BusinessId = BuildTaskBusinessId(record),
+            WeldTaskId = record.TaskId,
+            PayloadJson = BuildTaskUploadPayload(record, uploadMode),
+            Status = ProductionConstants.UploadStatuses.Pending,
+            NextRetryTime = DateTime.Now,
+            Message = $"已达到或等待达到上传数量阈值，任务 {record.TaskId} 的待上传产品将批量上传。"
+        });
     }
 
     private bool IsQuantityThresholdReached(int weldTaskId, int configuredBatchSize)
@@ -103,32 +115,17 @@ public sealed class WeldPointUploadCoordinatorService : IWeldPointUploadCoordina
         }
     }
 
-    private IReadOnlyList<int> GetPendingProductUploadTaskIds(int weldTaskId)
-    {
-        lock (_dbLock)
-        {
-            _dbContext.InitDatabase();
-            return _dbContext.Db.Queryable<BizUploadTask>()
-                .Where(task => task.WeldTaskId == weldTaskId
-                    && task.TaskType == ProductionConstants.UploadTaskTypes.ProcessParameter
-                    && task.Status != ProductionConstants.UploadStatuses.Uploaded)
-                .ToList()
-                .Where(IsProductScopedTask)
-                .OrderBy(task => task.CreatedTime)
-                .Select(task => task.Id)
-                .ToList();
-        }
-    }
-
-    private static bool IsProductScopedTask(BizUploadTask task)
-    {
-        return !string.IsNullOrWhiteSpace(ReadProductNo(task.PayloadJson));
-    }
-
     private static string BuildProductBusinessId(BizWeldPointRecord record)
     {
-        // BizUploadTask.BusinessId is limited to 100 chars; local task id + ProductNo is stable and compact.
-        return $"task-{record.TaskId}:pp:{record.ProductNo}";
+        // BizUploadTask.BusinessId is limited to 100 chars; station is part of the product identity on dual-station equipment.
+        return $"task-{record.TaskId}:s{record.StationNo}:pp:{record.ProductNo}";
+    }
+
+    private static string BuildTaskBusinessId(BizWeldPointRecord record)
+    {
+        // Quantity mode intentionally uses one task-level upload task,
+        // so one execution uploads all currently pending products together.
+        return $"task-{record.TaskId}:pp:quantity";
     }
 
     private static string BuildProductUploadPayload(BizWeldPointRecord record, UploadMode uploadMode)
@@ -147,6 +144,21 @@ public sealed class WeldPointUploadCoordinatorService : IWeldPointUploadCoordina
         });
     }
 
+    private static string BuildTaskUploadPayload(BizWeldPointRecord record, UploadMode uploadMode)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            TaskType = ProductionConstants.UploadTaskTypes.ProcessParameter,
+            UploadMode = uploadMode.ToString(),
+            record.TaskId,
+            record.StationNo,
+            record.ExpStartId,
+            record.DeviceId,
+            record.SN,
+            record.ProcessNo
+        });
+    }
+
     private static string BuildPendingMessage(UploadMode uploadMode, BizWeldPointRecord record)
     {
         return uploadMode == UploadMode.Realtime
@@ -154,23 +166,11 @@ public sealed class WeldPointUploadCoordinatorService : IWeldPointUploadCoordina
             : $"产品 {record.ProductNo} 已采集完整，等待达到特定数量后上传过程参数。";
     }
 
-    private static string? ReadProductNo(string? payloadJson)
-    {
-        if (string.IsNullOrWhiteSpace(payloadJson))
-        {
-            return null;
-        }
+    private AppSettings CurrentSettings => Volatile.Read(ref _currentSettings);
 
-        try
-        {
-            using var document = JsonDocument.Parse(payloadJson);
-            return document.RootElement.TryGetProperty("ProductNo", out var productNoElement)
-                ? productNoElement.GetString()
-                : null;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
+    private void SettingsService_SettingsChanged(object? sender, AppSettingsChangedEventArgs e)
+    {
+        Interlocked.Exchange(ref _currentSettings, e.CurrentSettings);
     }
+
 }

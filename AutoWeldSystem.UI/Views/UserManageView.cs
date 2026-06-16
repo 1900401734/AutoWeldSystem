@@ -1,12 +1,14 @@
 using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.DTOs;
 using AutoWeldSystem.Core.Exceptions;
 using AutoWeldSystem.Core.Interfaces;
-using AutoWeldSystem.Core.Models;
 using AutoWeldSystem.Core.Security;
 using AutoWeldSystem.UI.Base;
 using AutoWeldSystem.UI.Forms;
 using AutoWeldSystem.UI.Infrastructure;
+using AutoWeldSystem.Core.Entities;
+using AutoWeldSystem.Core.Interfaces.UserManage;
 
 namespace AutoWeldSystem.UI.Views;
 
@@ -271,7 +273,7 @@ public partial class UserManageView : BaseView
     private void ReloadRoles(int? selectedRoleId = null)
     {
         _allRoles.Clear();
-        _allRoles.AddRange(_rbacService.GetAllRoles());
+        _allRoles.AddRange(_rbacService.GetAllRoles().Where(CanShowRole));
         ApplyRoleFilter(_roleKeyword, selectedRoleId);
     }
 
@@ -658,7 +660,21 @@ public partial class UserManageView : BaseView
 
     private bool HasEnabledRoles()
     {
-        return _rbacService.GetAllRoles(true).Count > 0;
+        return _rbacService.GetAllRoles(true).Any(CanShowRole);
+    }
+
+    private static bool CanShowRole(SysRole role)
+    {
+        return IsCurrentDeveloper()
+            || !string.Equals(role.RoleCode, AppConstants.Roles.Developer, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsCurrentDeveloper()
+    {
+        var currentUser = GlobalContext.CurrentUser;
+        return currentUser is not null
+            && (string.Equals(currentUser.UserNumber, "dev", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(currentUser.Role, AppConstants.Roles.Developer, StringComparison.OrdinalIgnoreCase));
     }
 
     private SysRole? GetSelectedRole()

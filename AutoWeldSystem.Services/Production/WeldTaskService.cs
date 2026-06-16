@@ -1,9 +1,16 @@
+using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
+using AutoWeldSystem.Core.DTOs.Mes.Request;
+using AutoWeldSystem.Core.DTOs.Mes.Response;
+using AutoWeldSystem.Core.DTOs.Upload;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Enums;
 using AutoWeldSystem.Core.Exceptions;
 using AutoWeldSystem.Core.Interfaces;
-using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.Interfaces.Log;
+using AutoWeldSystem.Core.Interfaces.MES;
+using AutoWeldSystem.Core.Runtime;
 using AutoWeldSystem.Data;
 using System.Text.Json;
 
@@ -12,6 +19,7 @@ namespace AutoWeldSystem.Services.Production;
 public class WeldTaskService : IWeldTaskService
 {
     private const string TaskStatusCompleted = "Completed";
+    private const string TaskStatusRunning = "Running";
 
     private readonly IMesProvider _mesProvider;
     private readonly SqlSugarDbContext _dbContext;
@@ -20,6 +28,7 @@ public class WeldTaskService : IWeldTaskService
     private readonly ILocalizationService _localizer;
     private readonly IUploadTaskService _uploadTaskService;
     private readonly IProductionReportFileService _reportFileService;
+    private AppSettings _currentSettings;
 
     public WeldTaskService(
         SqlSugarDbContext dbContext,
@@ -33,6 +42,8 @@ public class WeldTaskService : IWeldTaskService
         _mesProvider = mesProvider;
         _dbContext = dbContext;
         _settingsService = settingsService;
+        _currentSettings = settingsService.Get();
+        _settingsService.SettingsChanged += SettingsService_SettingsChanged;
         _operationLogService = operationLogService;
         _localizer = localizer;
         _uploadTaskService = uploadTaskService;
@@ -50,16 +61,23 @@ public class WeldTaskService : IWeldTaskService
     public BizWeldTask? GetUnfinishedTask(int stationNo = ProductionConstants.Stations.DefaultStationNo)
     {
         var normalizedStationNo = NormalizeStationNo(stationNo);
-        var station = GetStation(normalizedStationNo);
-        if (IsUnfinishedTask(station.ActiveTask))
+        var stationNumbers = ResolveTaskScopeStationNumbers(normalizedStationNo);
+        foreach (var scopedStationNo in stationNumbers)
         {
-            return station.ActiveTask;
+            var station = GetStation(scopedStationNo);
+            if (IsUnfinishedTask(station.ActiveTask))
+            {
+                return station.ActiveTask;
+            }
         }
 
-        return _dbContext.Db.Queryable<BizWeldTask>()
-            .Where(task => task.StationNo == normalizedStationNo
-                && task.TaskStatus != TaskStatusCompleted
-                && task.EndTime == null)
+        var query = _dbContext.Db.Queryable<BizWeldTask>()
+            .Where(task => task.TaskStatus != TaskStatusCompleted && task.EndTime == null);
+        query = stationNumbers.Length == 1
+            ? query.Where(task => task.StationNo == stationNumbers[0])
+            : query.Where(task => stationNumbers.Contains(task.StationNo));
+
+        return query
             .OrderByDescending(task => task.StartTime)
             .OrderByDescending(task => task.Id)
             .First();
@@ -80,21 +98,17 @@ public class WeldTaskService : IWeldTaskService
         var station = GetStation(normalizedStationNo);
         var alreadyRestored = station.ActiveTask?.Id == unfinishedTask.Id;
         var process = CreateProcessSnapshot(unfinishedTask);
+        var workOrder = CreateWorkOrderSnapshot(unfinishedTask, process);
+        var program = CreateProgramSnapshot(unfinishedTask);
+        var operatorNumber = FirstNonEmpty(unfinishedTask.UserNumber, station.MesOperatorNumber);
 
-        station.CurrentWorkOrder = CreateWorkOrderSnapshot(unfinishedTask, process);
-        station.SelectedProcess = process;
-        station.SelectedProgram = CreateProgramSnapshot(unfinishedTask);
-        station.AvailablePrograms = CreateProgramListSnapshot(unfinishedTask);
-        station.ActiveTask = unfinishedTask;
-        station.MesOperatorNumber = unfinishedTask.StartOperatorNumber ?? station.MesOperatorNumber;
-        station.UpdatedTime = DateTime.Now;
-
-        RefreshCompatibilityState(normalizedStationNo);
+        ApplyStartedRuntimeState(normalizedStationNo, workOrder, process, program, unfinishedTask, operatorNumber);
+        ApplySharedStartedRuntimeStateIfNeeded(normalizedStationNo, workOrder, process, program, unfinishedTask, operatorNumber);
         if (!alreadyRestored)
         {
             _operationLogService.Write(
                 "TaskRecovery",
-                $"Unfinished task restored, Station={unfinishedTask.StationNo}, WorkOrder={unfinishedTask.WorkOrderId}, MES Id={unfinishedTask.ExpStartId}");
+                $"Unfinished task restored, Station={unfinishedTask.StationNo}, WorkOrder={unfinishedTask.SN}, MES Id={unfinishedTask.ExpStartId}");
         }
 
         NotifyStateChanged();
@@ -104,7 +118,7 @@ public class WeldTaskService : IWeldTaskService
     /// <summary>
     /// 同步 MES 服务器时间，并记录最近一次同步结果。
     /// </summary>
-    public async Task<MesBaseResponse<MesServerTimeResponse>> SyncServerTimeAsync(CancellationToken cancellationToken = default)
+    public async Task<BasicRes<ServerTimeRes>> SyncServerTimeAsync(CancellationToken cancellationToken = default)
     {
         var response = await _mesProvider.GetServerTimeAsync(cancellationToken);
 
@@ -129,7 +143,7 @@ public class WeldTaskService : IWeldTaskService
     /// <param name="workId"></param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
-    public async Task<MesWorkOrderResponse?> GetWorkOrderInfoAsync(
+    public async Task<WorkOrderRes?> GetWorkOrderInfoAsync(
         string workId,
         int stationNo = ProductionConstants.Stations.DefaultStationNo,
         CancellationToken cancellationToken = default)
@@ -184,7 +198,7 @@ public class WeldTaskService : IWeldTaskService
             return Array.Empty<MesProgramListItemData>();
         }
 
-        var settings = _settingsService.Get();
+        var settings = CurrentSettings;
         var response = await _mesProvider.GetProgramListAsync(
             settings.DeviceId,
             settings.UseProductNumberFilter ? station.CurrentWorkOrder.ProdNum : null,
@@ -206,14 +220,14 @@ public class WeldTaskService : IWeldTaskService
         return station.AvailablePrograms;
     }
 
-    public async Task<MesProgramData?> DownloadProgramAsync(
+    public async Task<ProgramDataRes?> DownloadProgramAsync(
         MesProgramListItemData program,
         int stationNo = ProductionConstants.Stations.DefaultStationNo,
         CancellationToken cancellationToken = default)
     {
         var normalizedStationNo = NormalizeStationNo(stationNo);
         var station = GetStation(normalizedStationNo);
-        var settings = _settingsService.Get();
+        var settings = CurrentSettings;
         var response = await _mesProvider.DownloadProgramAsync(settings.DeviceId, program.Id, cancellationToken);
         if (!response.IsSuccess || response.Data is null)
         {
@@ -222,16 +236,17 @@ public class WeldTaskService : IWeldTaskService
         }
 
         var detail = MergeProgramListSnapshot(response.Data, program);
+        var localProgram = UpsertProgram(detail, settings.DeviceId);
+        detail.RecipeCode = FirstNonEmpty(localProgram?.RecipeCode, detail.RecipeCode);
         station.SelectedProgram = detail;
         station.UpdatedTime = DateTime.Now;
-        UpsertProgram(detail, settings.DeviceId);
         RefreshCompatibilityState(normalizedStationNo);
         NotifyStateChanged();
         return detail;
     }
 
     public void ApplyStartAdjustment(
-        MesWorkOrderResponse workOrder,
+        WorkOrderRes workOrder,
         ExpItemData? process,
         string programContent,
         int stationNo = ProductionConstants.Stations.DefaultStationNo)
@@ -262,7 +277,7 @@ public class WeldTaskService : IWeldTaskService
         NotifyStateChanged();
     }
 
-    public async Task<MesBaseResponse<MesUserInfoResponse>> ValidateMesOperatorAsync(
+    public async Task<BasicRes<UserInfoRes>> ValidateMesOperatorAsync(
         string employeeNumber,
         int stationNo = ProductionConstants.Stations.DefaultStationNo,
         CancellationToken cancellationToken = default)
@@ -272,7 +287,8 @@ public class WeldTaskService : IWeldTaskService
         var response = await _mesProvider.GetUserInfoAsync(employeeNumber, cancellationToken);
         if (response.IsSuccess)
         {
-            station.MesOperatorNumber = employeeNumber;
+            station.MesOperatorInfo = CreateOperatorInfo(response.Data, employeeNumber);
+            station.MesOperatorNumber = station.MesOperatorInfo.UserNumber;
             station.UpdatedTime = DateTime.Now;
             RefreshCompatibilityState(normalizedStationNo);
         }
@@ -303,28 +319,13 @@ public class WeldTaskService : IWeldTaskService
             }
         }
 
-        var settings = _settingsService.Get();
+        var settings = CurrentSettings;
         var workOrder = station.CurrentWorkOrder!;
         var process = station.SelectedProcess!;
         var program = station.SelectedProgram!;
-        var request = new ExpStartRequest
-        {
-            DeviceId = settings.DeviceId,
-            SN = workOrder.SN,
-            ProductNum = workOrder.ProdNum,
-            ProductName = workOrder.ProductName,
-            DrawingNo = workOrder.DrawingNo,
-            Batch = workOrder.Batch,
-            Qty = process.StartAmount,
-            ProcessNo = process.ProcessNo,
-            ItemName = process.ItemName,
-            ExpQty = actualQty,
-            StartTs = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
-            StartExperID = employeeNumber,
-            ExpStatus = "0",
-            ProgramName = program.ProgramName,
-            PramaterActual = string.IsNullOrWhiteSpace(program.ProgramContent) ? "{}" : program.ProgramContent
-        };
+        var operatorInfo = CreateOperatorInfo(station.MesOperatorInfo, employeeNumber);
+        var startOperatorNumber = FirstNonEmpty(operatorInfo.UserNumber, employeeNumber);
+        var request = BuildStartRequest(settings.DeviceId, workOrder, process, program, actualQty, startOperatorNumber);
 
         var response = await _mesProvider.StartWorkAsync(request, cancellationToken);
         if (!response.IsSuccess || response.Data is null)
@@ -334,9 +335,10 @@ public class WeldTaskService : IWeldTaskService
 
         var task = new BizWeldTask
         {
+            LocalExpStartId = CreateLocalTaskGuid(),
             ExpStartId = response.Data.Id,
             StationNo = normalizedStationNo,
-            WorkOrderId = workOrder.SN,
+            SN = workOrder.SN,
             ProductNum = workOrder.ProdNum,
             ProductModel = workOrder.ProdModel,
             Spec = workOrder.Spec,
@@ -346,28 +348,95 @@ public class WeldTaskService : IWeldTaskService
             DeviceId = settings.DeviceId,
             ProcessNo = process.ProcessNo,
             ProcessName = process.ItemName,
-            PlannedQty = process.StartAmount,
+            StartAmount = process.StartAmount,
             ActualQty = actualQty,
             ProgramId = program.Id,
             ProgramName = program.ProgramName,
-            StartOperatorNumber = employeeNumber,
+            RecipeCode = ResolveProgramRecipeCode(program, settings.DeviceId),
+            UserNumber = startOperatorNumber,
+            UserName = operatorInfo.UserName,
+            DeptName = operatorInfo.DeptName,
+            TeamName = operatorInfo.TeamName,
             StartTime = DateTime.Now,
-            TaskStatus = "Running",
+            TaskStatus = TaskStatusRunning,
             UploadStatus = settings.UploadMode == UploadMode.Realtime ? "Realtime" : "Pending",
             ProgramContentSnapshot = program.ProgramContent
         };
 
         task = _dbContext.Db.Insertable(task).ExecuteReturnEntity();
-        station.ActiveTask = task;
-        station.MesOperatorNumber = employeeNumber;
-        station.UpdatedTime = DateTime.Now;
-        RefreshCompatibilityState(normalizedStationNo);
-        _operationLogService.Write("ExpStart", $"Start report submitted, Station={task.StationNo}, MES Id={task.ExpStartId}, WorkOrder={task.WorkOrderId}");
+        ApplyStartedRuntimeState(normalizedStationNo, workOrder, process, program, task, startOperatorNumber);
+        ApplySharedStartedRuntimeStateIfNeeded(normalizedStationNo, workOrder, process, program, task, startOperatorNumber);
+        _operationLogService.Write("ExpStart", $"Start report submitted, Station={task.StationNo}, MES Id={task.ExpStartId}, WorkOrder={task.SN}");
         NotifyStateChanged();
         return task;
     }
 
-    public async Task<MesBaseResponse<object>> ChangeStatusAsync(
+    /// <summary>
+    /// Creates a local running task and queues the MES start report for later retry.
+    /// </summary>
+    public Task<BizWeldTask> StartLocalAsync(
+        OfflineExperimentStartReq request,
+        string operatorNumber,
+        int actualQty,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        NormalizeLocalRequest(request);
+
+        var normalizedStationNo = NormalizeStationNo(request.StationNo);
+        EnsureNoUnfinishedTask(normalizedStationNo);
+
+        var settings = CurrentSettings;
+        var workOrder = CreateLocalWorkOrder(request);
+        var process = CreateLocalProcess(request);
+        var program = CreateLocalProgram(request, settings.DeviceId);
+        var localOperatorNumber = ResolveLocalOperatorNumber(operatorNumber);
+        var localOperatorInfo = CreateLocalOperatorInfo(localOperatorNumber);
+        var startRequest = BuildStartRequest(settings.DeviceId, workOrder, process, program, actualQty, localOperatorNumber);
+
+        var task = new BizWeldTask
+        {
+            LocalExpStartId = CreateLocalTaskGuid(),
+            IsOfflineCreated = true,
+            StationNo = normalizedStationNo,
+            SN = workOrder.SN,
+            ProductNum = workOrder.ProdNum,
+            ProductModel = workOrder.ProdModel,
+            Spec = workOrder.Spec,
+            Batch = workOrder.Batch,
+            ProductName = workOrder.ProductName,
+            DrawingNo = workOrder.DrawingNo,
+            DeviceId = settings.DeviceId,
+            ProcessNo = process.ProcessNo,
+            ProcessName = process.ItemName,
+            StartAmount = process.StartAmount,
+            ActualQty = actualQty,
+            ProgramId = program.Id,
+            ProgramName = program.ProgramName,
+            RecipeCode = request.RecipeCode,
+            UserNumber = localOperatorNumber,
+            UserName = localOperatorInfo.UserName,
+            DeptName = localOperatorInfo.DeptName,
+            TeamName = localOperatorInfo.TeamName,
+            StartTime = DateTime.Now,
+            TaskStatus = TaskStatusRunning,
+            UploadStatus = ProductionConstants.UploadStatuses.Pending,
+            UploadMessage = "Local task created offline. Start report is queued for MES retry.",
+            ProgramContentSnapshot = program.ProgramContent
+        };
+
+        task = _dbContext.Db.Insertable(task).ExecuteReturnEntity();
+        ApplyStartedRuntimeState(normalizedStationNo, workOrder, process, program, task, localOperatorNumber);
+        ApplySharedStartedRuntimeStateIfNeeded(normalizedStationNo, workOrder, process, program, task, localOperatorNumber);
+        EnqueueStartReportTask(task, startRequest);
+        EnqueueWorkOrderStatusTask(task, ProductionConstants.MesWorkOrderStatuses.StartedOrRestarted);
+
+        _operationLogService.Write("LocalExpStart", $"Local task started, Station={task.StationNo}, WorkOrder={task.SN}, Recipe={task.RecipeCode}");
+        NotifyStateChanged();
+        return Task.FromResult(task);
+    }
+
+    public async Task<BasicRes<object>> ChangeStatusAsync(
         string statusCode,
         int stationNo = ProductionConstants.Stations.DefaultStationNo,
         CancellationToken cancellationToken = default)
@@ -376,16 +445,25 @@ public class WeldTaskService : IWeldTaskService
         var station = GetStation(normalizedStationNo);
         if (station.ActiveTask?.ExpStartId is null)
         {
-            return new MesBaseResponse<object> { Status = "E", Msg = "No running Task" };
+            if (station.ActiveTask is not null)
+            {
+                EnqueueWorkOrderStatusTask(station.ActiveTask, statusCode);
+                return new BasicRes<object>
+                {
+                    Status = AppConstants.MesStatus.Success,
+                    Msg = "Work-order status is queued for MES retry."
+                };
+            }
+
+            return new BasicRes<object> { Status = AppConstants.MesStatus.Error, Msg = "No running Task" };
         }
 
-        var response = await _mesProvider.ChangeWorkStatusAsync(new ExpStatusRequest
+        var request = BuildStatusRequest(station.ActiveTask, statusCode);
+        var response = await _mesProvider.ChangeWorkStatusAsync(request, cancellationToken);
+        if (!response.IsSuccess)
         {
-            ExpStartId = station.ActiveTask.ExpStartId,
-            DeviceId = station.ActiveTask.DeviceId,
-            ExpStatus = statusCode,
-            Ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
-        }, cancellationToken);
+            EnqueueWorkOrderStatusTask(station.ActiveTask, statusCode);
+        }
 
         if (response.IsSuccess)
         {
@@ -416,11 +494,7 @@ public class WeldTaskService : IWeldTaskService
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
     /// <exception cref="InvalidOperationException"></exception>
-    public async Task<BizWeldTask> FinishAsync(
-        string employeeNumber,
-        int actualQty,
-        int qualifiedQty,
-        int failedQty,
+    public async Task<BizWeldTask> FinishAsync(string employeeNumber, int actualQty, int qualifiedQty, int failedQty,
         int stationNo = ProductionConstants.Stations.DefaultStationNo,
         CancellationToken cancellationToken = default)
     {
@@ -436,14 +510,14 @@ public class WeldTaskService : IWeldTaskService
         }
 
         var endOperator = string.IsNullOrWhiteSpace(employeeNumber)
-            ? task.StartOperatorNumber ?? station.MesOperatorNumber
+            ? task.UserNumber ?? station.MesOperatorNumber
             : employeeNumber;
 
-        var response = await _mesProvider.EndWorkAsync(new ExpEndRequest
+        var finishRequest = new ExperimentEndReq
         {
             ExpStartId = task.ExpStartId,
             DeviceId = task.DeviceId,
-            SN = task.WorkOrderId,
+            SN = task.SN,
             ProcessNo = task.ProcessNo,
             EndTs = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
             EndExperID = endOperator,
@@ -452,11 +526,31 @@ public class WeldTaskService : IWeldTaskService
             ExpQty = actualQty,
             QualifyNumber = qualifiedQty,
             FailureNumber = failedQty
-        }, cancellationToken);
+        };
 
-        if (!response.IsSuccess)
+        BasicRes<object> response;
+        try
         {
-            throw new BusinessOperationException("MES.FinishReport", "完工上报失败", response.Msg);
+            response = await _mesProvider.EndWorkAsync(finishRequest, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            // MES failures must not block local completion. Keep the reason in the retry task.
+            response = new BasicRes<object>()
+            {
+                Status = "F",
+                Msg = ex.Message
+            };
+        }
+
+        var finishUploaded = response.IsSuccess;
+        var finishUploadMessage = finishUploaded
+            ? (string.IsNullOrWhiteSpace(response.Msg) ? "Finish report uploaded." : response.Msg)
+            : $"Finish report failed and was queued for retry: {response.Msg}";
+
+        if (!finishUploaded)
+        {
+            _operationLogService.Write("ExpEnd", $"Finish report failed before retry queue, Station={task.StationNo}, WorkOrder={task.SN}, Message={response.Msg}");
         }
 
         task.ActualQty = actualQty;
@@ -465,43 +559,80 @@ public class WeldTaskService : IWeldTaskService
         task.EndOperatorNumber = endOperator;
         task.EndTime = DateTime.Now;
         task.TaskStatus = TaskStatusCompleted;
-        var settings = _settingsService.Get();
-        task.UploadStatus = ResolveUploadStatus(settings.UploadMode);
-        task.UploadMessage = ResolveUploadMessage(settings.UploadMode);
+        var settings = CurrentSettings;
+        task.UploadStatus = finishUploaded
+            ? ResolveUploadStatus(settings.UploadMode)
+            : ProductionConstants.UploadStatuses.Pending;
+        task.UploadMessage = finishUploaded
+            ? ResolveUploadMessage(settings.UploadMode)
+            : finishUploadMessage;
 
         _dbContext.Db.Updateable(task).ExecuteCommand();
-        var uploadTasks = EnqueueFinishUploadTasks(task, settings.UploadMode);
+        var finishReportTask = EnqueueFinishReportTask(
+            task,
+            finishRequest,
+            finishUploaded ? ProductionConstants.UploadStatuses.Uploaded : ProductionConstants.UploadStatuses.Pending,
+            finishUploadMessage);
+        var uploadTasks = EnqueueFinishUploadTasks(task, settings.UploadMode).ToList();
+        if (!finishUploaded)
+        {
+            uploadTasks.Add(finishReportTask);
+        }
+
         await ExecuteFinishUploadTasksAsync(task, uploadTasks, cancellationToken);
-        station.ActiveTask = task;
-        station.UpdatedTime = DateTime.Now;
-        RefreshCompatibilityState(normalizedStationNo);
-        _operationLogService.Write("ExpEnd", $"Finish report submitted, Station={task.StationNo}, WorkOrder={task.WorkOrderId}, UploadStatus={task.UploadStatus}");
+        ApplyFinishedRuntimeState(normalizedStationNo, task);
+        _operationLogService.Write("ExpEnd", $"Finish report handled, Station={task.StationNo}, WorkOrder={task.SN}, UploadStatus={task.UploadStatus}, FinishUploaded={finishUploaded}");
         NotifyStateChanged();
         return task;
     }
 
+    /// <summary>
+    /// Completes an offline-created task locally and queues all MES uploads for recovery.
+    /// </summary>
+    public Task<BizWeldTask> FinishLocalAsync(
+        string employeeNumber,
+        int actualQty,
+        int qualifiedQty,
+        int failedQty,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var station = GetStation(normalizedStationNo);
+        var task = IsUnfinishedTask(station.ActiveTask)
+            ? station.ActiveTask!
+            : RestoreUnfinishedTask(normalizedStationNo);
+
+        if (task is null || !task.IsOfflineCreated)
+        {
+            throw new BusinessOperationException("Local.FinishReport", "本地完工失败", "No offline task to finish.");
+        }
+
+        var endOperator = ResolveLocalOperatorNumber(employeeNumber);
+        task.ActualQty = actualQty;
+        task.QualifiedQty = qualifiedQty;
+        task.FailedQty = failedQty;
+        task.EndOperatorNumber = endOperator;
+        task.EndTime = DateTime.Now;
+        task.TaskStatus = TaskStatusCompleted;
+        task.UploadStatus = ProductionConstants.UploadStatuses.Pending;
+        task.UploadMessage = "Local finish completed offline. Finish data is queued for MES retry.";
+
+        _dbContext.Db.Updateable(task).ExecuteCommand();
+        EnqueueFinishReportTask(task, BuildEndRequest(task, endOperator, actualQty, qualifiedQty, failedQty));
+        EnqueueWorkOrderStatusTask(task, ProductionConstants.MesWorkOrderStatuses.Completed);
+        EnqueueFinishUploadTasks(task, CurrentSettings.UploadMode);
+
+        ApplyFinishedRuntimeState(normalizedStationNo, task);
+        _operationLogService.Write("LocalExpEnd", $"Local task finished, Station={task.StationNo}, WorkOrder={task.SN}, UploadStatus={task.UploadStatus}");
+        NotifyStateChanged();
+        return Task.FromResult(task);
+    }
+
     public Task RetryPendingUploadsAsync(CancellationToken cancellationToken = default)
     {
-        var pendingTasks = _dbContext.Db.Queryable<BizWeldTask>()
-            .Where(it => it.TaskStatus == TaskStatusCompleted && it.UploadStatus != "Uploaded")
-            .ToList();
-
-        foreach (var task in pendingTasks)
-        {
-            task.UploadStatus = "Retrying";
-            task.UploadMessage = "Manual retry has been triggered. Process data and report upload integration is reserved for the next step.";
-            _dbContext.Db.Updateable(task).ExecuteCommand();
-        }
-
-        if (CurrentState.ActiveTask is not null)
-        {
-            CurrentState.ActiveTask = _dbContext.Db.Queryable<BizWeldTask>().InSingle(CurrentState.ActiveTask.Id);
-            CurrentState.SaveCurrentStation();
-        }
-
-        _operationLogService.Write("RetryUpload", $"Pending upload retry triggered for {pendingTasks.Count} task(s).");
-        NotifyStateChanged();
-        return Task.CompletedTask;
+        return RetryPendingUploadsInternalAsync(cancellationToken);
     }
 
     public void UpdateProgramContent(string content, int stationNo = ProductionConstants.Stations.DefaultStationNo)
@@ -525,6 +656,334 @@ public class WeldTaskService : IWeldTaskService
         NotifyStateChanged();
     }
 
+    private async Task RetryPendingUploadsInternalAsync(CancellationToken cancellationToken)
+    {
+        var executedCount = 0;
+        executedCount += await _uploadTaskService.ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.StartReport, cancellationToken);
+        executedCount += await _uploadTaskService.ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.ProcessParameter, cancellationToken);
+        executedCount += await _uploadTaskService.ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.ReportFile, cancellationToken);
+        executedCount += await _uploadTaskService.ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.FinishReport, cancellationToken);
+
+        if (CurrentState.ActiveTask is not null)
+        {
+            CurrentState.ActiveTask = _dbContext.Db.Queryable<BizWeldTask>().InSingle(CurrentState.ActiveTask.Id);
+            CurrentState.SaveCurrentStation();
+        }
+
+        _operationLogService.Write("RetryUpload", $"Pending upload retry executed for {executedCount} task(s).");
+        NotifyStateChanged();
+    }
+
+    private static ExperimentStartReq BuildStartRequest(
+        string deviceId,
+        WorkOrderRes workOrder,
+        ExpItemData process,
+        ProgramDataRes program,
+        int actualQty,
+        string employeeNumber)
+    {
+        return new ExperimentStartReq
+        {
+            DeviceId = deviceId,
+            SN = workOrder.SN,
+            ProductNum = workOrder.ProdNum,
+            ProductName = workOrder.ProductName,
+            DrawingNo = workOrder.DrawingNo,
+            Batch = workOrder.Batch,
+            Qty = process.StartAmount,
+            ProcessNo = process.ProcessNo,
+            ItemName = process.ItemName,
+            ExpQty = actualQty,
+            StartTs = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+            StartExperID = employeeNumber,
+            ExpStatus = ProductionConstants.MesWorkOrderStatuses.StartedOrRestarted,
+            ProgramName = program.ProgramName,
+            PramaterActual = string.IsNullOrWhiteSpace(program.ProgramContent) ? "{}" : program.ProgramContent
+        };
+    }
+
+    private static ExperimentEndReq BuildEndRequest(
+        BizWeldTask task,
+        string employeeNumber,
+        int actualQty,
+        int qualifiedQty,
+        int failedQty)
+    {
+        return new ExperimentEndReq
+        {
+            ExpStartId = task.ExpStartId ?? string.Empty,
+            DeviceId = task.DeviceId,
+            SN = task.SN,
+            ProcessNo = task.ProcessNo,
+            EndTs = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+            EndExperID = employeeNumber,
+            ExpStatus = ProductionConstants.MesWorkOrderStatuses.Completed,
+            WorkHour = Convert.ToDecimal((DateTime.Now - task.StartTime).TotalHours),
+            ExpQty = actualQty,
+            QualifyNumber = qualifiedQty,
+            FailureNumber = failedQty
+        };
+    }
+
+    private static ReportExperimentStatusReq BuildStatusRequest(BizWeldTask task, string statusCode)
+    {
+        return new ReportExperimentStatusReq
+        {
+            ExpStartId = task.ExpStartId ?? string.Empty,
+            DeviceId = task.DeviceId,
+            ExpStatus = statusCode,
+            Ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+        };
+    }
+
+    private static WorkOrderRes CreateLocalWorkOrder(OfflineExperimentStartReq request)
+    {
+        var process = CreateLocalProcess(request);
+        return new WorkOrderRes
+        {
+            SN = request.WorkOrderId,
+            ProdNum = request.ProductNum,
+            ProdModel = request.ProductModel,
+            Spec = request.Spec,
+            Batch = request.Batch,
+            ProductName = request.ProductName,
+            DrawingNo = request.DrawingNo,
+            ProjectFrom = "Local",
+            ExpItems = [process]
+        };
+    }
+
+    private static ExpItemData CreateLocalProcess(OfflineExperimentStartReq request)
+    {
+        return new ExpItemData
+        {
+            ItemID = request.ProgramLocalId,
+            ItemName = request.ProcessName,
+            ProcessNo = request.ProcessNo,
+            StartAmount = Math.Max(1, request.PlannedQty)
+        };
+    }
+
+    private static ProgramDataRes CreateLocalProgram(OfflineExperimentStartReq request, string deviceId)
+    {
+        return new ProgramDataRes
+        {
+            Id = request.ProgramId,
+            ProgramName = request.ProgramName,
+            DeviceId = deviceId,
+            ProductNum = request.ProductNum,
+            RecipeCode = request.RecipeCode,
+            ProgramType = request.ProgramType,
+            ProgramContent = string.IsNullOrWhiteSpace(request.ProgramContent) ? "{}" : request.ProgramContent
+        };
+    }
+
+    private void ApplyStartedRuntimeState(
+        int stationNo,
+        WorkOrderRes workOrder,
+        ExpItemData process,
+        ProgramDataRes program,
+        BizWeldTask task,
+        string operatorNumber)
+    {
+        var station = GetStation(stationNo);
+        station.CurrentWorkOrder = CloneWorkOrder(workOrder);
+        station.SelectedProcess = CloneProcess(process);
+        station.SelectedProgram = program;
+        station.AvailablePrograms = CreateProgramListSnapshot(task);
+        station.ActiveTask = task;
+        station.MesOperatorInfo = CreateTaskOperatorInfo(task, operatorNumber);
+        station.MesOperatorNumber = station.MesOperatorInfo?.UserNumber ?? operatorNumber;
+        station.UpdatedTime = DateTime.Now;
+        RefreshCompatibilityState(stationNo);
+    }
+
+    /// <summary>
+    /// 双工位同工单只创建一个任务，但两个工位都要持有同一个运行任务，用于各自预览和采集。
+    /// </summary>
+    private void ApplySharedStartedRuntimeStateIfNeeded(
+        int sourceStationNo,
+        WorkOrderRes workOrder,
+        ExpItemData process,
+        ProgramDataRes program,
+        BizWeldTask task,
+        string operatorNumber)
+    {
+        if (!IsDualStationSameWorkOrder())
+        {
+            return;
+        }
+
+        var normalizedSourceStationNo = NormalizeStationNo(sourceStationNo);
+        foreach (var stationNo in GetDualStationNumbers())
+        {
+            if (stationNo == normalizedSourceStationNo)
+            {
+                continue;
+            }
+
+            ApplyStartedRuntimeState(stationNo, workOrder, process, program, task, operatorNumber);
+        }
+    }
+
+    /// <summary>
+    /// 同工单模式下，完工一次即结束共享任务，两个工位运行态都需要同步到已完工状态。
+    /// </summary>
+    private void ApplyFinishedRuntimeState(int sourceStationNo, BizWeldTask task)
+    {
+        foreach (var stationNo in ResolveTaskScopeStationNumbers(sourceStationNo))
+        {
+            var station = GetStation(stationNo);
+            if (station.ActiveTask?.Id != task.Id && stationNo != NormalizeStationNo(sourceStationNo))
+            {
+                continue;
+            }
+
+            station.ActiveTask = task;
+            station.UpdatedTime = DateTime.Now;
+        }
+
+        RefreshCompatibilityState(CurrentState.CurrentStationNo);
+    }
+
+    private BizUploadTask EnqueueStartReportTask(BizWeldTask task, ExperimentStartReq request)
+    {
+        return _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
+        {
+            TaskType = ProductionConstants.UploadTaskTypes.StartReport,
+            Target = ProductionConstants.UploadTargets.Mes,
+            BusinessId = BuildUploadBusinessId(task, "start-report"),
+            WeldTaskId = task.Id,
+            PayloadJson = JsonSerializer.Serialize(new
+            {
+                TaskType = ProductionConstants.UploadTaskTypes.StartReport,
+                WeldTaskId = task.Id,
+                task.StationNo,
+                task.SN,
+                task.ProductNum,
+                task.RecipeCode,
+                Request = request
+            }),
+            Status = ProductionConstants.UploadStatuses.Pending,
+            NextRetryTime = DateTime.Now,
+            Message = "Start report is queued for MES retry."
+        });
+    }
+
+    private BizUploadTask EnqueueFinishReportTask(
+        BizWeldTask task,
+        ExperimentEndReq request,
+        string status = ProductionConstants.UploadStatuses.Pending,
+        string? message = null)
+    {
+        var normalizedStatus = string.IsNullOrWhiteSpace(status)
+            ? ProductionConstants.UploadStatuses.Pending
+            : status.Trim();
+        var isUploaded = string.Equals(normalizedStatus, ProductionConstants.UploadStatuses.Uploaded, StringComparison.OrdinalIgnoreCase);
+
+        return _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
+        {
+            TaskType = ProductionConstants.UploadTaskTypes.FinishReport,
+            Target = ProductionConstants.UploadTargets.Mes,
+            BusinessId = BuildUploadBusinessId(task, "finish-report"),
+            WeldTaskId = task.Id,
+            PayloadJson = JsonSerializer.Serialize(new
+            {
+                TaskType = ProductionConstants.UploadTaskTypes.FinishReport,
+                WeldTaskId = task.Id,
+                task.StationNo,
+                task.SN,
+                task.ProductNum,
+                task.RecipeCode,
+                Request = request
+            }),
+            Status = normalizedStatus,
+            NextRetryTime = isUploaded ? null : DateTime.Now,
+            CompletedTime = isUploaded ? DateTime.Now : null,
+            Message = message ?? (isUploaded
+                ? "Finish report uploaded."
+                : "Finish report is queued for MES retry.")
+        });
+    }
+
+    private BizUploadTask EnqueueWorkOrderStatusTask(BizWeldTask task, string statusCode)
+    {
+        return _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
+        {
+            TaskType = ProductionConstants.UploadTaskTypes.WorkOrderStatus,
+            Target = ProductionConstants.UploadTargets.Mes,
+            BusinessId = BuildUploadBusinessId(task, $"work-status-{statusCode}"),
+            WeldTaskId = task.Id,
+            PayloadJson = JsonSerializer.Serialize(new
+            {
+                TaskType = ProductionConstants.UploadTaskTypes.WorkOrderStatus,
+                WeldTaskId = task.Id,
+                task.StationNo,
+                task.SN,
+                task.ProductNum,
+                StatusCode = statusCode,
+                Request = BuildStatusRequest(task, statusCode)
+            }),
+            Status = ProductionConstants.UploadStatuses.Pending,
+            NextRetryTime = DateTime.Now,
+            Message = "Work-order status is queued for MES retry."
+        });
+    }
+
+    private static void NormalizeLocalRequest(OfflineExperimentStartReq request)
+    {
+        request.StationNo = NormalizeStationNo(request.StationNo);
+        request.WorkOrderId = NormalizeText(request.WorkOrderId);
+        request.Batch = NormalizeText(request.Batch);
+        request.Spec = NormalizeText(request.Spec);
+        request.ProcessNo = NormalizeText(request.ProcessNo);
+        request.ProcessName = NormalizeText(request.ProcessName);
+        request.ProgramId = NormalizeText(request.ProgramId);
+        request.ProgramName = NormalizeText(request.ProgramName);
+        request.ProgramType = NormalizeText(request.ProgramType);
+        request.ProgramContent = string.IsNullOrWhiteSpace(request.ProgramContent) ? "{}" : request.ProgramContent.Trim();
+        request.ProductNum = NormalizeText(request.ProductNum);
+        request.ProductModel = NormalizeText(request.ProductModel);
+        request.ProductName = NormalizeText(request.ProductName);
+        request.DrawingNo = NormalizeText(request.DrawingNo);
+        request.RecipeCode = NormalizeText(request.RecipeCode);
+        request.PlannedQty = Math.Max(1, request.PlannedQty);
+
+        if (string.IsNullOrWhiteSpace(request.WorkOrderId))
+        {
+            throw new BusinessOperationException("Local.StartReport", "本地开工失败", "Local work order number is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.ProgramName) || string.IsNullOrWhiteSpace(request.RecipeCode))
+        {
+            throw new BusinessOperationException("Local.StartReport", "本地开工失败", "Local program and recipe code are required.");
+        }
+    }
+
+    private static string ResolveLocalOperatorNumber(string? operatorNumber)
+    {
+        var currentUserNumber = GlobalContext.CurrentUser?.UserNumber;
+        return FirstNonEmpty(operatorNumber, currentUserNumber, Environment.UserName, "local");
+    }
+
+    /// <summary>
+    /// Resolves the recipe code from the local program record selected by the MES program ID.
+    /// </summary>
+    private string ResolveProgramRecipeCode(ProgramDataRes program, string deviceId)
+    {
+        _dbContext.InitDatabase();
+        var programId = NormalizeText(program.Id);
+        var localProgram = !string.IsNullOrWhiteSpace(programId)
+            ? _dbContext.Db.Queryable<BizProgram>()
+                .Where(item => item.ProgramId == programId)
+                .ToList()
+                .OrderByDescending(item => SameText(item.DeviceId, deviceId))
+                .FirstOrDefault()
+            : null;
+
+        return FirstNonEmpty(localProgram?.RecipeCode, program.RecipeCode);
+    }
+
     private void EnsureReadyForStart(ProductionStationRuntimeState station)
     {
         if (station.CurrentWorkOrder is null)
@@ -541,6 +1000,7 @@ public class WeldTaskService : IWeldTaskService
         {
             throw new BusinessOperationException("MES.StartReport", "开工上报失败", "No program downloaded");
         }
+
     }
 
     /// <summary>
@@ -572,17 +1032,17 @@ public class WeldTaskService : IWeldTaskService
 
     private static string BuildUnfinishedTaskDetail(BizWeldTask task)
     {
-        return $"Station={task.StationNo}; WorkOrder={task.WorkOrderId}; MES Id={task.ExpStartId}; Status={task.TaskStatus}; StartTime={task.StartTime:yyyy-MM-dd HH:mm:ss}";
+        return $"Station={task.StationNo}; WorkOrder={task.SN}; MES Id={task.ExpStartId}; Status={task.TaskStatus}; StartTime={task.StartTime:yyyy-MM-dd HH:mm:ss}";
     }
 
     /// <summary>
     /// 使用本地任务快照重建工单对象，让重启后的界面可以继续显示原工单信息。
     /// </summary>
-    private static MesWorkOrderResponse CreateWorkOrderSnapshot(BizWeldTask task, ExpItemData process)
+    private static WorkOrderRes CreateWorkOrderSnapshot(BizWeldTask task, ExpItemData process)
     {
-        return new MesWorkOrderResponse
+        return new WorkOrderRes
         {
-            SN = task.WorkOrderId,
+            SN = task.SN,
             ProdNum = task.ProductNum,
             ProdModel = task.ProductModel,
             Spec = task.Spec,
@@ -602,21 +1062,22 @@ public class WeldTaskService : IWeldTaskService
         {
             ProcessNo = task.ProcessNo,
             ItemName = task.ProcessName,
-            StartAmount = Math.Max(1, task.PlannedQty)
+            StartAmount = Math.Max(1, task.StartAmount)
         };
     }
 
     /// <summary>
     /// 使用本地任务快照重建程序对象，避免重启后必须重新下载程序才能完工。
     /// </summary>
-    private static MesProgramData CreateProgramSnapshot(BizWeldTask task)
+    private static ProgramDataRes CreateProgramSnapshot(BizWeldTask task)
     {
-        return new MesProgramData
+        return new ProgramDataRes
         {
             Id = task.ProgramId ?? string.Empty,
             ProgramName = task.ProgramName ?? string.Empty,
             DeviceId = task.DeviceId,
             ProductNum = task.ProductNum,
+            RecipeCode = task.RecipeCode ?? string.Empty,
             ProgramContent = string.IsNullOrWhiteSpace(task.ProgramContentSnapshot)
                 ? "{}"
                 : task.ProgramContentSnapshot
@@ -645,7 +1106,7 @@ public class WeldTaskService : IWeldTaskService
     /// <summary>
     /// MES 的程序详情接口可能只返回文件内容，列表接口中的程序工号、类型等信息需要保留下来。
     /// </summary>
-    private static MesProgramData MergeProgramListSnapshot(MesProgramData detail, MesProgramListItemData snapshot)
+    private static ProgramDataRes MergeProgramListSnapshot(ProgramDataRes detail, MesProgramListItemData snapshot)
     {
         detail.Id = FirstNonEmpty(detail.Id, snapshot.Id);
         detail.ProgramName = FirstNonEmpty(detail.ProgramName, snapshot.ProgramName);
@@ -655,10 +1116,70 @@ public class WeldTaskService : IWeldTaskService
         return detail;
     }
 
-    private static string FirstNonEmpty(string? primary, string? fallback)
-        => string.IsNullOrWhiteSpace(primary) ? NormalizeText(fallback) : NormalizeText(primary);
+    private static string FirstNonEmpty(params string?[] values)
+        => NormalizeText(values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)));
 
-    private BizProgram UpsertProgram(MesProgramData detail, string deviceId)
+    /// <summary>
+    /// 统一规范 MES 员工信息。MES 偶发不返回员工号时，用用户输入的工号兜底。
+    /// </summary>
+    private static UserInfoRes CreateOperatorInfo(UserInfoRes? source, string fallbackUserNumber)
+    {
+        return new UserInfoRes
+        {
+            UserNumber = FirstNonEmpty(source?.UserNumber, fallbackUserNumber),
+            UserName = NormalizeText(source?.UserName),
+            DeptName = NormalizeText(source?.DeptName),
+            TeamName = NormalizeText(source?.TeamName)
+        };
+    }
+
+    /// <summary>
+    /// 离线工单无法校验 MES 员工，使用本地系统用户作为员工快照。
+    /// </summary>
+    private static UserInfoRes CreateLocalOperatorInfo(string operatorNumber)
+    {
+        var currentUser = GlobalContext.CurrentUser;
+        return new UserInfoRes
+        {
+            UserNumber = FirstNonEmpty(operatorNumber, currentUser?.UserNumber, Environment.UserName, "local"),
+            UserName = FirstNonEmpty(currentUser?.UserName, Environment.UserName),
+            DeptName = string.Empty,
+            TeamName = string.Empty
+        };
+    }
+
+    /// <summary>
+    /// 从已入库的任务快照恢复员工信息，供软件重启后回填 MonitorView。
+    /// </summary>
+    private static UserInfoRes? CreateTaskOperatorInfo(BizWeldTask task, string? fallbackUserNumber)
+    {
+        var userNumber = FirstNonEmpty(task.UserNumber, fallbackUserNumber);
+        var userName = NormalizeText(task.UserName);
+        var deptName = NormalizeText(task.DeptName);
+        var teamName = NormalizeText(task.TeamName);
+        if (string.IsNullOrWhiteSpace(userNumber)
+            && string.IsNullOrWhiteSpace(userName)
+            && string.IsNullOrWhiteSpace(deptName)
+            && string.IsNullOrWhiteSpace(teamName))
+        {
+            return null;
+        }
+
+        return new UserInfoRes
+        {
+            UserNumber = userNumber,
+            UserName = userName,
+            DeptName = deptName,
+            TeamName = teamName
+        };
+    }
+
+    private static bool SameText(string? left, string? right)
+    {
+        return string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private BizProgram UpsertProgram(ProgramDataRes detail, string deviceId)
     {
         var entity = _dbContext.Db.Queryable<BizProgram>().First(it => it.ProgramId == detail.Id && it.DeviceId == deviceId);
         if (entity is null)
@@ -670,8 +1191,9 @@ public class WeldTaskService : IWeldTaskService
                 ProductNum = detail.ProductNum,
                 DeviceId = deviceId,
                 ProgramType = detail.ProgramType,
-                ProgramContentJson = detail.ProgramContent,
-                ProgramFileBase64 = detail.ProgramFile,
+                RecipeCode = NormalizeText(detail.RecipeCode),
+                ProgramContent = detail.ProgramContent,
+                ProgramFile = detail.ProgramFile,
                 UpdatedTime = DateTime.Now
             };
 
@@ -681,16 +1203,17 @@ public class WeldTaskService : IWeldTaskService
         entity.ProgramName = detail.ProgramName;
         entity.ProductNum = detail.ProductNum;
         entity.ProgramType = detail.ProgramType;
-        entity.ProgramContentJson = detail.ProgramContent;
-        entity.ProgramFileBase64 = detail.ProgramFile;
+        entity.RecipeCode = FirstNonEmpty(detail.RecipeCode, entity.RecipeCode);
+        entity.ProgramContent = detail.ProgramContent;
+        entity.ProgramFile = detail.ProgramFile;
         entity.UpdatedTime = DateTime.Now;
         _dbContext.Db.Updateable(entity).ExecuteCommand();
         return entity;
     }
 
-    private static MesWorkOrderResponse CloneWorkOrder(MesWorkOrderResponse source)
+    private static WorkOrderRes CloneWorkOrder(WorkOrderRes source)
     {
-        return new MesWorkOrderResponse
+        return new WorkOrderRes
         {
             SN = NormalizeText(source.SN),
             ProdNum = NormalizeText(source.ProdNum),
@@ -766,13 +1289,41 @@ public class WeldTaskService : IWeldTaskService
         }
     }
 
+    /// <summary>
+    /// 单工位和双工位双工单只看当前工位；双工位同工单需要把工位1/2视为同一个任务范围。
+    /// </summary>
+    private int[] ResolveTaskScopeStationNumbers(int stationNo)
+    {
+        return IsDualStationSameWorkOrder()
+            ? GetDualStationNumbers()
+            : [NormalizeStationNo(stationNo)];
+    }
+
+    private bool IsDualStationSameWorkOrder()
+    {
+        var settings = CurrentSettings;
+        return settings.EnableDualStation && !settings.EnableDualWorkOrder;
+    }
+
+    private AppSettings CurrentSettings => Volatile.Read(ref _currentSettings);
+
+    private void SettingsService_SettingsChanged(object? sender, AppSettingsChangedEventArgs e)
+    {
+        Interlocked.Exchange(ref _currentSettings, e.CurrentSettings);
+    }
+
+    private static int[] GetDualStationNumbers()
+    {
+        return [1, 2];
+    }
+
     private static string ResolveUploadStatus(UploadMode mode)
     {
         return mode switch
         {
-            UploadMode.Realtime => "Uploaded",
-            UploadMode.Quantity => "WaitingQuantityUpload",
-            _ => "WaitingBatchUpload"
+            UploadMode.Realtime => ProductionConstants.UploadStatuses.Uploaded,
+            UploadMode.Quantity => ProductionConstants.UploadStatuses.Pending,
+            _ => ProductionConstants.UploadStatuses.Pending
         };
     }
 
@@ -821,12 +1372,12 @@ public class WeldTaskService : IWeldTaskService
 
         try
         {
-            reportFile = _reportFileService.GenerateCsvReport(task);
+            reportFile = _reportFileService.GenerateXlsxReport(task);
         }
         catch (Exception ex)
         {
             generationError = ex.Message;
-            _operationLogService.Write("ReportFile", $"Report file generation failed, WorkOrder={task.WorkOrderId}, Error={ex.Message}");
+            _operationLogService.Write("ReportFile", $"Report file generation failed, WorkOrder={task.SN}, Error={ex.Message}");
         }
 
         return _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
@@ -899,11 +1450,17 @@ public class WeldTaskService : IWeldTaskService
 
     private static string BuildUploadBusinessId(BizWeldTask task, string uploadKind)
     {
-        var stableTaskId = string.IsNullOrWhiteSpace(task.ExpStartId)
-            ? $"local-{task.Id}"
-            : task.ExpStartId.Trim();
+        var stableTaskId = FirstNonEmpty(
+            task.ExpStartId,
+            task.LocalExpStartId,
+            task.Id.ToString("x").PadLeft(32, '0'));
 
         return $"{stableTaskId}:{uploadKind}";
+    }
+
+    private static string CreateLocalTaskGuid()
+    {
+        return Guid.NewGuid().ToString("N");
     }
 
     private static string BuildUploadPayload(BizWeldTask task, UploadMode uploadMode, string taskType)
@@ -915,10 +1472,12 @@ public class WeldTaskService : IWeldTaskService
             WeldTaskId = task.Id,
             task.StationNo,
             task.ExpStartId,
+            task.IsOfflineCreated,
             task.DeviceId,
-            SN = task.WorkOrderId,
+            SN = task.SN,
             task.ProductNum,
             task.ProductModel,
+            task.RecipeCode,
             task.Batch,
             task.ProcessNo,
             task.ProcessName,
@@ -927,7 +1486,7 @@ public class WeldTaskService : IWeldTaskService
             task.FailedQty,
             StartTime = task.StartTime.ToString("yyyy-MM-dd HH:mm:ss"),
             EndTime = task.EndTime?.ToString("yyyy-MM-dd HH:mm:ss"),
-            OperatorNumber = task.EndOperatorNumber ?? task.StartOperatorNumber
+            OperatorNumber = task.EndOperatorNumber ?? task.UserNumber
         });
     }
 
@@ -943,9 +1502,7 @@ public class WeldTaskService : IWeldTaskService
 
     private static int NormalizeStationNo(int stationNo)
     {
-        return stationNo <= 0
-            ? ProductionConstants.Stations.DefaultStationNo
-            : stationNo;
+        return stationNo <= 0 ? ProductionConstants.Stations.DefaultStationNo : stationNo;
     }
 
     private void NotifyStateChanged()

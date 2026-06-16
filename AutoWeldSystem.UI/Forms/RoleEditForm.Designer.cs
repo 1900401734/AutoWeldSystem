@@ -139,12 +139,12 @@
             tableLayoutPanel1.Size = new Size(250, 146);
             tableLayoutPanel1.TabIndex = 5;
             // 
-            // lblProgramName
+            // label2
             // 
             label2.AutoSizeMode = AntdUI.TAutoSize.Width;
             label2.Dock = DockStyle.Fill;
             label2.Location = new Point(3, 3);
-            label2.Name = "lblProgramName";
+            label2.Name = "label2";
             label2.Size = new Size(70, 42);
             label2.TabIndex = 6;
             label2.Text = "角色编码";

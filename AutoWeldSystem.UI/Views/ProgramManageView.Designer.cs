@@ -156,6 +156,7 @@ namespace AutoWeldSystem.UI.Views
             btnSync.Name = "btnSync";
             btnSync.Size = new Size(118, 40);
             btnSync.TabIndex = 3;
+            btnSync.Tag = "perm:button.program.sync:visible";
             btnSync.Text = "同步MES";
             // 
             // btnPullMes
@@ -167,6 +168,7 @@ namespace AutoWeldSystem.UI.Views
             btnPullMes.Name = "btnPullMes";
             btnPullMes.Size = new Size(132, 40);
             btnPullMes.TabIndex = 4;
+            btnPullMes.Tag = "perm:button.program.pull-mes:visible";
             btnPullMes.Text = "从MES拉取";
             // 
             // btnRefresh
@@ -178,6 +180,7 @@ namespace AutoWeldSystem.UI.Views
             btnRefresh.Name = "btnRefresh";
             btnRefresh.Size = new Size(92, 40);
             btnRefresh.TabIndex = 5;
+            btnRefresh.Tag = "perm:button.program.refresh:visible";
             btnRefresh.Text = "刷新";
             // 
             // chkSyncNow
@@ -345,6 +348,7 @@ namespace AutoWeldSystem.UI.Views
             cmbRemark.Size = new Size(509, 31);
             cmbRemark.TabIndex = 23;
             cmbRemark.TabStop = false;
+            cmbRemark.Visible = false;
             // 
             // fileLayout
             // 
@@ -369,6 +373,7 @@ namespace AutoWeldSystem.UI.Views
             txtProgramFile.Name = "txtProgramFile";
             txtProgramFile.Size = new Size(413, 30);
             txtProgramFile.TabIndex = 0;
+            txtProgramFile.Visible = false;
             // 
             // btnBrowseFile
             // 
@@ -380,7 +385,9 @@ namespace AutoWeldSystem.UI.Views
             btnBrowseFile.Name = "btnBrowseFile";
             btnBrowseFile.Size = new Size(96, 40);
             btnBrowseFile.TabIndex = 1;
+            btnBrowseFile.Tag = "perm:button.program.browse-file:visible";
             btnBrowseFile.Text = "选择";
+            btnBrowseFile.Visible = false;
             // 
             // txtProgramId
             // 
@@ -391,6 +398,7 @@ namespace AutoWeldSystem.UI.Views
             txtProgramId.ReadOnly = true;
             txtProgramId.Size = new Size(509, 30);
             txtProgramId.TabIndex = 15;
+            txtProgramId.Visible = false;
             // 
             // lblProgramId
             // 
@@ -402,6 +410,7 @@ namespace AutoWeldSystem.UI.Views
             lblProgramId.TabIndex = 14;
             lblProgramId.Text = "MES程序ID";
             lblProgramId.TextAlign = ContentAlignment.MiddleLeft;
+            lblProgramId.Visible = false;
             // 
             // lblProgramFile
             // 
@@ -413,6 +422,7 @@ namespace AutoWeldSystem.UI.Views
             lblProgramFile.TabIndex = 20;
             lblProgramFile.Text = "程序文件";
             lblProgramFile.TextAlign = ContentAlignment.MiddleLeft;
+            lblProgramFile.Visible = false;
             // 
             // lblCommitMessage
             // 
@@ -424,6 +434,7 @@ namespace AutoWeldSystem.UI.Views
             lblCommitMessage.TabIndex = 22;
             lblCommitMessage.Text = "MES备注";
             lblCommitMessage.TextAlign = ContentAlignment.MiddleLeft;
+            lblCommitMessage.Visible = false;
             // 
             // txtLocalRemark
             // 
@@ -467,6 +478,7 @@ namespace AutoWeldSystem.UI.Views
             cmbProgramType.Name = "cmbProgramType";
             cmbProgramType.Size = new Size(509, 31);
             cmbProgramType.TabIndex = 13;
+            cmbProgramType.Visible = false;
             // 
             // txtSequenceNumber
             // 
@@ -558,6 +570,7 @@ namespace AutoWeldSystem.UI.Views
             lblProgramType.TabIndex = 12;
             lblProgramType.Text = "程序类型";
             lblProgramType.TextAlign = ContentAlignment.MiddleLeft;
+            lblProgramType.Visible = false;
             // 
             // txtProductNum
             // 
@@ -638,6 +651,7 @@ namespace AutoWeldSystem.UI.Views
             btnBuildName.Name = "btnBuildName";
             btnBuildName.Size = new Size(118, 40);
             btnBuildName.TabIndex = 3;
+            btnBuildName.Tag = "perm:button.program.build-name:visible";
             btnBuildName.Text = "生成名称";
             // 
             // txtProgramContent

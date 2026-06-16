@@ -1,6 +1,6 @@
 using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
-using AutoWeldSystem.Core.Models;
 using AutoWeldSystem.Data;
 
 namespace AutoWeldSystem.Services.Production;
@@ -158,6 +158,8 @@ public class ProductProcessConfigService : IProductProcessConfigService
         config.ActualTouchCountExpr = NormalizeNullable(config.ActualTouchCountExpr);
         config.PresetTouchCountExpr = NormalizeNullable(config.PresetTouchCountExpr);
         config.TouchBase = NormalizeRequired(config.TouchBase, "焊点头基地址不能为空。");
+        config.TouchNoBase = NormalizeNullable(config.TouchNoBase) ?? config.TouchBase;
+        config.TouchResultBase = NormalizeNullable(config.TouchResultBase) ?? config.TouchBase;
         config.TouchHeaderLen = Math.Max(1, config.TouchHeaderLen);
         config.TouchNoExpr = NormalizeRequired(config.TouchNoExpr, "焊点编号偏移表达式不能为空。");
         config.TouchResultExpr = NormalizeRequired(config.TouchResultExpr, "焊点结果偏移表达式不能为空。");

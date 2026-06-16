@@ -1,48 +1,65 @@
 using AutoWeldSystem.Core.Constants;
-using AutoWeldSystem.Core.DTOs;
+using AutoWeldSystem.Core.DTOs.Mes.Request;
+using AutoWeldSystem.Core.Enums;
 using AutoWeldSystem.Core.Interfaces;
-using AutoWeldSystem.Core.Models;
 using AutoWeldSystem.UI.Base;
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
+using AutoWeldSystem.Core.Entities;
+using AutoWeldSystem.Core.Interfaces.MES;
+using AutoWeldSystem.Core.Interfaces.PLC;
+using AutoWeldSystem.Core.Runtime;
 
 namespace AutoWeldSystem.UI.Views;
 
-/// <summary>
-/// 系统设置页。
-/// 本页只维护基础系统参数；产品工艺和测试方案配置统一移动到地址维护页。
-/// </summary>
 public partial class SystemSettingView : BaseView
 {
     private static readonly PlcTypeOption[] PlcTypeOptions =
     {
         new(AppConstants.PlcTypes.ModbusTcp, TextKeys.SystemSetting.PlcTypeModbusTcp),
         new(AppConstants.PlcTypes.TcpSocket, TextKeys.SystemSetting.PlcTypeTcpSocket),
-        new(AppConstants.PlcTypes.SiemensS7, TextKeys.SystemSetting.PlcTypeSiemensS7)
+        new(AppConstants.PlcTypes.SiemensS71200, TextKeys.SystemSetting.PlcTypeSiemensS71200)
+    };
+
+    private static readonly UploadModeOption[] UploadModeOptions =
+    {
+        new(UploadMode.Realtime, "单件实时上传"),
+        new(UploadMode.Quantity, "按特定数量上传"),
+        new(UploadMode.Batch, "完工批量上传")
     };
 
     private readonly IAppSettingsService _settingsService;
     private readonly IMesProvider _mesProvider;
     private readonly ILocalizationService _localizer;
     private readonly IPlcCommunicationService _plcCommunicationService;
-    private AppSettings _currentSettings = new();
+    private readonly IWeldTaskService _weldTaskService;
+
     private bool _initialized;
     private bool _syncingPlcTypeSelection;
+    private bool _syncingUploadModeSelection;
+    private bool _syncingDualModeSelection;
     private string _selectedPlcType = AppConstants.PlcTypes.ModbusTcp;
+    private UploadMode _selectedUploadMode = UploadMode.Quantity;
+    private AppSettings _currentSettings = new();
 
     public SystemSettingView(
         IAppSettingsService settingsService,
         IMesProvider mesProvider,
         ILocalizationService localizer,
-        IPlcCommunicationService plcCommunicationService)
+        IPlcCommunicationService plcCommunicationService,
+        IWeldTaskService weldTaskService)
     {
         InitializeComponent();
 
         _settingsService = settingsService;
+        _currentSettings = settingsService.Get();
+        _settingsService.SettingsChanged += SettingsService_SettingsChanged;
         _mesProvider = mesProvider;
         _localizer = localizer;
         _plcCommunicationService = plcCommunicationService;
+        _weldTaskService = weldTaskService;
 
         WireEvents();
     }
@@ -76,18 +93,243 @@ public partial class SystemSettingView : BaseView
         btnTestConnection.Click += TestConnection_ClickAsync;
         btnConnectPlc.Click += ConnectPlc_ClickAsync;
         btnConnectMasterController.Click += ConnectMasterController_ClickAsync;
-        btnChangeLogPath.Click += (_, _) => SelectFolder(input_LogsPath, BuildFieldName(grpAppConfig.Text, lblLogPath.Text));
-        btnChangeDataPath.Click += (_, _) => SelectFolder(input_DataPath, BuildFieldName(grpAppConfig.Text, lblDataPath.Text));
-        btnOpenLogPath.Click += (_, _) => OpenFolder(input_LogsPath.Text, BuildFieldName(grpAppConfig.Text, lblLogPath.Text));
-        btnOpenDataPath.Click += (_, _) => OpenFolder(input_DataPath.Text, BuildFieldName(grpAppConfig.Text, lblDataPath.Text));
+        btnChangeLogPath.Click += (_, _) => SelectFolder(input_LogsPath, BuildFieldName(grpDeviceConfig.Text, lblLogPath.Text));
+        btnChangeDataPath.Click += (_, _) => SelectFolder(input_DataPath, BuildFieldName(grpDeviceConfig.Text, lblDataPath.Text));
+        btnOpenLogPath.Click += (_, _) => OpenFolder(input_LogsPath.Text, BuildFieldName(grpDeviceConfig.Text, lblLogPath.Text));
+        btnOpenDataPath.Click += (_, _) => OpenFolder(input_DataPath.Text, BuildFieldName(grpDeviceConfig.Text, lblDataPath.Text));
         select_PlcType.SelectedIndexChanged += Select_PlcType_SelectedIndexChanged;
+        selectUploadMode.SelectedIndexChanged += SelectUploadMode_SelectedIndexChanged;
+        chkEnableDualStation.CheckedChanged += ChkEnableDualStation_CheckedChanged;
+        chkEnableDualWorkOrder.CheckedChanged += ChkEnableDualWorkOrder_CheckedChanged;
     }
+
+    #region Events Handler
+
+    private async void SaveAll_Click(object? sender, EventArgs e)
+    {
+        if (!TryBuildSettings(out var settings))
+        {
+            return;
+        }
+
+        try
+        {
+            var previousSettings = _currentSettings;
+            if (!CanSaveRuntimeModeChange(previousSettings, settings))
+            {
+                BindSettings(previousSettings);
+                return;
+            }
+
+            var shouldSyncDevice = HasDeviceIdentityChanged(previousSettings, settings);
+            var shouldRestartPlc = HasPlcCommunicationChanged(previousSettings, settings);
+            var syncRequest = BuildDeviceRequest(previousSettings, settings);
+
+            _currentSettings = _settingsService.Save(settings);
+            BindSettings(_currentSettings);
+            if (shouldRestartPlc)
+            {
+                await _plcCommunicationService.RestartAsync();
+            }
+
+            if (shouldSyncDevice && await SyncDeviceToMesAsync(syncRequest, btnSaveAll, false))
+            {
+                MarkDeviceSynced();
+            }
+
+            ShowInfoMessage(_localizer.GetString(TextKeys.Common.SaveSuccess));
+        }
+        catch (Exception ex)
+        {
+            ShowErrorMessage(_localizer.GetString(TextKeys.Common.SaveFailed, ex.Message));
+        }
+    }
+
+    /// <summary>
+    /// 手动把当前设备信息同步到 MES。
+    /// </summary>
+    private async void SyncDevice_ClickAsync(object? sender, EventArgs e)
+    {
+        if (!TryBuildSettings(out var settings))
+        {
+            return;
+        }
+
+        try
+        {
+            var previousSettings = _currentSettings;
+            if (!CanSaveRuntimeModeChange(previousSettings, settings))
+            {
+                BindSettings(previousSettings);
+                return;
+            }
+
+            var request = BuildDeviceRequest(previousSettings, settings);
+
+            _currentSettings = _settingsService.Save(settings);
+            BindSettings(_currentSettings);
+
+            if (await SyncDeviceToMesAsync(request, btnSyncDevice, true))
+            {
+                MarkDeviceSynced();
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowError(TextKeys.SystemSetting.MessageDeviceSyncFailed, ex.Message);
+        }
+    }
+
+    private async void TestConnection_ClickAsync(object? sender, EventArgs e)
+    {
+        var mesFieldName = BuildFieldName(grpDeviceConfig.Text, lblMesUrl.Text);
+        var baseUrl = input_BaseUrl.Text.Trim();
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            ShowWarning(TextKeys.SystemSetting.MessageValueRequired, mesFieldName);
+            return;
+        }
+
+        if (!TryValidateBaseUrl(baseUrl))
+        {
+            ShowWarning(TextKeys.SystemSetting.MessageInvalidUrl, mesFieldName);
+            return;
+        }
+
+        btnTestConnection.Enabled = false;
+        try
+        {
+            var timeoutSeconds = Math.Max(3, _currentSettings.MesTimeoutSeconds);
+            var response = await _mesProvider.TestConnectionAsync(baseUrl, timeoutSeconds, true);
+            if (response.IsSuccess)
+            {
+                ShowInfo(TextKeys.SystemSetting.MessageMesConnectionSuccess, response.Data?.CurrentTime ?? string.Empty);
+                return;
+            }
+
+            ShowError(TextKeys.SystemSetting.MessageConnectionFailed, mesFieldName, response.Msg);
+        }
+        catch (Exception ex)
+        {
+            ShowError(TextKeys.SystemSetting.MessageConnectionFailed, mesFieldName, ex.Message);
+        }
+        finally
+        {
+            btnTestConnection.Enabled = true;
+        }
+    }
+
+    private async void ConnectPlc_ClickAsync(object? sender, EventArgs e)
+    {
+        await TestTcpEndpointAsync(input_PlcIp.Text, input_PlcPort.Text, grpPlcConfig.Text, btnConnectPlc);
+    }
+
+    private async void ConnectMasterController_ClickAsync(object? sender, EventArgs e)
+    {
+        await TestTcpEndpointAsync(input_MasterIp.Text, input_MasterPort.Text, grpMasterConfig.Text, btnConnectMasterController);
+    }
+
+    private void Select_PlcType_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
+    {
+        if (_syncingPlcTypeSelection)
+        {
+            return;
+        }
+
+        if (e.Value < 0 || e.Value >= PlcTypeOptions.Length)
+        {
+            return;
+        }
+
+        _selectedPlcType = PlcTypeOptions[e.Value].Value;
+    }
+
+    private void SelectUploadMode_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
+    {
+        if (_syncingUploadModeSelection)
+        {
+            return;
+        }
+
+        if (e.Value < 0 || e.Value >= UploadModeOptions.Length)
+        {
+            return;
+        }
+
+        _selectedUploadMode = UploadModeOptions[e.Value].Value;
+        UpdateUploadBatchSizeEnabled();
+    }
+
+    private void ChkEnableDualStation_CheckedChanged(object sender, AntdUI.BoolEventArgs e)
+    {
+        if (_syncingDualModeSelection)
+        {
+            return;
+        }
+
+        // 双工单必须依赖双工位；取消双工位时同步取消双工单，避免保存非法组合。
+        if (!e.Value && chkEnableDualWorkOrder.Checked)
+        {
+            SetDualModeCheckboxes(enableDualStation: false, enableDualWorkOrder: false);
+        }
+    }
+
+    private void ChkEnableDualWorkOrder_CheckedChanged(object sender, AntdUI.BoolEventArgs e)
+    {
+        if (_syncingDualModeSelection)
+        {
+            return;
+        }
+
+        // 用户勾选双工单时自动开启双工位，表达“双工位双工单”模式。
+        if (e.Value && !chkEnableDualStation.Checked)
+        {
+            SetDualModeCheckboxes(enableDualStation: true, enableDualWorkOrder: true);
+        }
+    }
+    private void SelectFolder(AntdUI.Input targetInput, string fieldName)
+    {
+        using var dialog = new FolderBrowserDialog
+        {
+            Description = _localizer.GetString(TextKeys.SystemSetting.MessageSelectFolder, fieldName),
+            ShowNewFolderButton = true
+        };
+
+        if (!string.IsNullOrWhiteSpace(targetInput.Text) && Directory.Exists(targetInput.Text))
+        {
+            dialog.SelectedPath = targetInput.Text;
+        }
+
+        if (dialog.ShowDialog(this) == DialogResult.OK)
+        {
+            targetInput.Text = dialog.SelectedPath;
+        }
+    }
+
+    private string BuildFieldName(string? groupName, string? fieldName)
+    {
+        var normalizedGroup = NormalizeCaption(groupName);
+        var normalizedField = NormalizeCaption(fieldName);
+        return string.IsNullOrWhiteSpace(normalizedGroup) ? normalizedField : $"{normalizedGroup} - {normalizedField}";
+    }
+
+    #endregion
 
     private void LoadSettings()
     {
-        _currentSettings = _settingsService.Get();
-        BindSettings(_currentSettings);
+        BindSettings(CurrentSettings);
         ApplyLocalizedTexts();
+    }
+
+    protected override void OnHandleDestroyed(EventArgs e)
+    {
+        _settingsService.SettingsChanged -= SettingsService_SettingsChanged;
+        base.OnHandleDestroyed(e);
+    }
+
+    private void SettingsService_SettingsChanged(object? sender, AppSettingsChangedEventArgs e)
+    {
+        Interlocked.Exchange(ref _currentSettings, e.CurrentSettings);
     }
 
     /// <summary>
@@ -97,20 +339,27 @@ public partial class SystemSettingView : BaseView
     {
         input_DeviceID.Text = settings.DeviceId;
         input_DeviceName.Text = settings.DeviceName;
-        input_DeviceUrl.Text = settings.DeviceStatusUrl ?? string.Empty;
+        input_DeviceUrl.Text = settings.DeviceBaseUrl;
         input_PlcIp.Text = settings.PlcIp;
-        input_PlcPort.Text = settings.PlcPort.ToString();
+        input_PlcPort.Text = settings.PlcPort.ToString().Trim();
         input_MasterIp.Text = settings.MasterControlIp;
-        input_MasterPort.Text = settings.MasterControlPort.ToString();
+        input_MasterPort.Text = settings.MasterControlPort.ToString().Trim();
+        input_MesTimeout.Text = settings.MesTimeoutSeconds.ToString();
         input_LogsPath.Text = settings.LogDirectory;
         input_DataPath.Text = settings.DataDirectory;
         input_BaseUrl.Text = settings.MesBaseUrl;
         chkUseProductNumberFilter.Checked = settings.UseProductNumberFilter;
-        chkEnableDualStationMode.Checked = settings.EnableDualStationMode;
-        chkValidateRecipeBeforeStart.Checked = settings.ValidateRecipeBeforeStart;
+        SetDualModeCheckboxes(settings.EnableDualStation, settings.EnableDualWorkOrder);
+        chkValidateRecipeBeforeStart.Checked = settings.ValidateRecipeAfterStart;
+        chkEnableFinishExpQtyPrompt.Checked = settings.EnableFinishExpQtyPrompt;
+        inputPlcHeartbeatInterval.Text = Math.Clamp(settings.PlcHeartbeatReadIntervalMilliseconds <= 0 ? 300 : settings.PlcHeartbeatReadIntervalMilliseconds, 100, 5000).ToString(CultureInfo.InvariantCulture);
 
         _selectedPlcType = NormalizePlcType(settings.PlcType);
+        _selectedUploadMode = NormalizeUploadMode(settings.UploadMode);
+        inputUploadBatchSize.Text = Math.Max(1, settings.UploadBatchSize).ToString(CultureInfo.InvariantCulture);
         BindPlcTypeOptions();
+        BindUploadModeOptions();
+        UpdateUploadBatchSizeEnabled();
     }
 
     /// <summary>
@@ -118,28 +367,43 @@ public partial class SystemSettingView : BaseView
     /// </summary>
     private void ApplyLocalizedTexts()
     {
-        lblTitle.Text = _localizer.GetString(TextKeys.SystemSetting.Title);
-        lblDescription.Text = _localizer.GetString(TextKeys.SystemSetting.Description);
+        tabBasicSettings.Text = _localizer.GetString(TextKeys.SystemSetting.TabBasic);
+
         grpPlcConfig.Text = _localizer.GetString(TextKeys.SystemSetting.GroupPlc);
         grpMasterConfig.Text = _localizer.GetString(TextKeys.SystemSetting.GroupController);
         grpAppConfig.Text = _localizer.GetString(TextKeys.SystemSetting.GroupApplication);
-        groupBox1.Text = "生产配置";
-        grpMesConfig.Text = "MES配置";
+        grpDeviceConfig.Text = _localizer.GetString(TextKeys.SystemSetting.GroupDevice);
+        grpProductionConfig.Text = _localizer.GetString(TextKeys.SystemSetting.GroupProduction);
+        grpMesConfig.Text = _localizer.GetString(TextKeys.SystemSetting.GroupMes);
+
+        lblTitle.Text = _localizer.GetString(TextKeys.SystemSetting.Title);
+        lblDescription.Text = _localizer.GetString(TextKeys.SystemSetting.Description);
 
         lblPlcIp.Text = _localizer.GetString(TextKeys.SystemSetting.LabelIp);
         lblPlcPort.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPort);
         lblPlcType.Text = _localizer.GetString(TextKeys.SystemSetting.LabelType);
+
         lblMasterIp.Text = _localizer.GetString(TextKeys.SystemSetting.LabelIp);
         lblMasterPort.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPort);
+
         lblDeviceId.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDeviceId);
         lblDeviceName.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDeviceName);
         lblDeviceUrl.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDeviceStatusUrl);
+        lblMesUrl.Text = _localizer.GetString(TextKeys.SystemSetting.LabelMesUrl);
+
         lblLogPath.Text = _localizer.GetString(TextKeys.SystemSetting.LabelLogPath);
         lblDataPath.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDataPath);
-        lblMesUrl.Text = _localizer.GetString(TextKeys.SystemSetting.LabelMesUrl);
-        chkUseProductNumberFilter.Text = _localizer.GetString(TextKeys.SystemSetting.LabelUseProductNumberFilter);
-        chkValidateRecipeBeforeStart.Text = _localizer.GetString(TextKeys.SystemSetting.LabelValidateRecipeBeforeStart);
-        chkEnableDualStationMode.Text = "启用双工位双工单模式";
+        lblUploadMode.Text = _localizer.GetString(TextKeys.SystemSetting.UploadMode);
+        lblUploadBatchSize.Text = _localizer.GetString(TextKeys.SystemSetting.UploadBatchSize);
+        lblPlcHeartbeatInterval.Text = _localizer.GetString(TextKeys.SystemSetting.PlcHeartbeatRate);
+
+        BindUploadModeOptions();
+
+        chkUseProductNumberFilter.Text = _localizer.GetString(TextKeys.SystemSetting.ChkUseProductNumberFilter);
+        chkValidateRecipeBeforeStart.Text = _localizer.GetString(TextKeys.SystemSetting.ChkValidateRecipeAfterStart);
+        chkEnableFinishExpQtyPrompt.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableFinishExpQtyPrompt);
+        chkEnableDualStation.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableDualStation);
+        chkEnableDualWorkOrder.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableDualWorkOrder);
 
         btnConnectPlc.Text = _localizer.GetString(TextKeys.SystemSetting.ButtonConnect);
         btnConnectMasterController.Text = _localizer.GetString(TextKeys.SystemSetting.ButtonConnect);
@@ -150,7 +414,6 @@ public partial class SystemSettingView : BaseView
         btnOpenLogPath.Text = _localizer.GetString(TextKeys.SystemSetting.ButtonOpenFolder);
         btnOpenDataPath.Text = _localizer.GetString(TextKeys.SystemSetting.ButtonOpenFolder);
         btnSaveAll.Text = _localizer.GetString(TextKeys.SystemSetting.ButtonApplyAll);
-        tabBasicSettings.Text = "基础设置";
     }
 
     /// <summary>
@@ -170,123 +433,52 @@ public partial class SystemSettingView : BaseView
         _syncingPlcTypeSelection = false;
     }
 
-    private void Select_PlcType_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
+    private void BindUploadModeOptions()
     {
-        if (_syncingPlcTypeSelection)
-        {
-            return;
-        }
-
-        if (select_PlcType.SelectedIndex < 0 || select_PlcType.SelectedIndex >= PlcTypeOptions.Length)
-        {
-            return;
-        }
-
-        _selectedPlcType = PlcTypeOptions[select_PlcType.SelectedIndex].Value;
-    }
-
-    /// <summary>
-    /// 全局保存按钮负责收集当前页全部可编辑设置，并持久化到数据库。
-    /// </summary>
-    private async void SaveAll_Click(object? sender, EventArgs e)
-    {
-        if (!TryBuildSettings(out var settings))
-        {
-            return;
-        }
-
+        _syncingUploadModeSelection = true;
         try
         {
-            var previousSettings = _currentSettings;
-            var shouldSyncDevice = HasDeviceIdentityChanged(previousSettings, settings);
-            var syncRequest = BuildDeviceRequest(previousSettings, settings);
+            selectUploadMode.Items.Clear();
+            selectUploadMode.Items.AddRange(UploadModeOptions
+                .Select(option => (object)option.DisplayName)
+                .ToArray());
 
-            _currentSettings = _settingsService.Save(settings);
-            BindSettings(_currentSettings);
-            await _plcCommunicationService.RestartAsync();
-
-            if (shouldSyncDevice && await SyncDeviceToMesAsync(syncRequest, btnSaveAll, false))
-            {
-                MarkDeviceSynced();
-            }
-
-            ShowInfoMessage(_localizer.GetString(TextKeys.Common.SaveSuccess));
-        }
-        catch (Exception ex)
-        {
-            ShowErrorMessage(_localizer.GetString(TextKeys.Common.SaveFailed, ex.Message));
-        }
-    }
-
-    private async void TestConnection_ClickAsync(object? sender, EventArgs e)
-    {
-        var mesFieldName = BuildFieldName(grpAppConfig.Text, lblMesUrl.Text);
-        var baseUrl = input_BaseUrl.Text.Trim();
-        if (string.IsNullOrWhiteSpace(baseUrl))
-        {
-            ShowWarning(TextKeys.SystemSetting.MessageValueRequired, mesFieldName);
-            return;
-        }
-
-        if (!TryValidateBaseUrl(baseUrl))
-        {
-            ShowWarning(TextKeys.SystemSetting.MessageInvalidUrl, mesFieldName);
-            return;
-        }
-
-        btnTestConnection.Enabled = false;
-        try
-        {
-            var timeoutSeconds = Math.Max(3, _currentSettings.MesTimeoutSeconds);
-            var response = await _mesProvider.TestConnectionAsync(baseUrl, timeoutSeconds);
-            if (response.IsSuccess)
-            {
-                ShowInfo(TextKeys.SystemSetting.MessageMesConnectionSuccess, response.Data?.CurrentTime ?? string.Empty);
-                return;
-            }
-
-            ShowError(TextKeys.SystemSetting.MessageConnectionFailed, mesFieldName, response.Msg);
-        }
-        catch (Exception ex)
-        {
-            ShowError(TextKeys.SystemSetting.MessageConnectionFailed, mesFieldName, ex.Message);
+            var selectedIndex = Array.FindIndex(UploadModeOptions, option => option.Value == _selectedUploadMode);
+            selectUploadMode.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 1;
         }
         finally
         {
-            btnTestConnection.Enabled = true;
+            _syncingUploadModeSelection = false;
+        }
+    }
+
+    private void UpdateUploadBatchSizeEnabled()
+    {
+        inputUploadBatchSize.Enabled = _selectedUploadMode == UploadMode.Quantity;
+        if (string.IsNullOrWhiteSpace(inputUploadBatchSize.Text))
+        {
+            inputUploadBatchSize.Text = "1";
         }
     }
 
     /// <summary>
-    /// 手动把当前设备信息同步到 MES。
+    /// 从配置回填双工位/双工单开关时临时屏蔽联动事件，避免加载配置时反复触发 UI 逻辑。
     /// </summary>
-    private async void SyncDevice_ClickAsync(object? sender, EventArgs e)
+    private void SetDualModeCheckboxes(bool enableDualStation, bool enableDualWorkOrder)
     {
-        if (!TryBuildSettings(out var settings))
-        {
-            return;
-        }
-
+        _syncingDualModeSelection = true;
         try
         {
-            var previousSettings = _currentSettings;
-            var request = BuildDeviceRequest(previousSettings, settings);
-
-            _currentSettings = _settingsService.Save(settings);
-            BindSettings(_currentSettings);
-
-            if (await SyncDeviceToMesAsync(request, btnSyncDevice, true))
-            {
-                MarkDeviceSynced();
-            }
+            chkEnableDualStation.Checked = enableDualStation || enableDualWorkOrder;
+            chkEnableDualWorkOrder.Checked = enableDualWorkOrder;
         }
-        catch (Exception ex)
+        finally
         {
-            ShowError(TextKeys.SystemSetting.MessageDeviceSyncFailed, ex.Message);
+            _syncingDualModeSelection = false;
         }
     }
 
-    private async Task<bool> SyncDeviceToMesAsync(AddDeviceRequest request, Control triggerButton, bool showSuccessMessage)
+    private async Task<bool> SyncDeviceToMesAsync(AddDeviceReq request, Control triggerButton, bool showSuccessMessage)
     {
         triggerButton.Enabled = false;
         try
@@ -316,20 +508,10 @@ public partial class SystemSettingView : BaseView
     /// </summary>
     private void MarkDeviceSynced()
     {
-        var settings = _settingsService.Get();
+        var settings = CurrentSettings.Clone();
         settings.MesSyncedDeviceId = settings.DeviceId;
         _currentSettings = _settingsService.Save(settings);
         BindSettings(_currentSettings);
-    }
-
-    private async void ConnectPlc_ClickAsync(object? sender, EventArgs e)
-    {
-        await TestTcpEndpointAsync(input_PlcIp.Text, input_PlcPort.Text, grpPlcConfig.Text, btnConnectPlc);
-    }
-
-    private async void ConnectMasterController_ClickAsync(object? sender, EventArgs e)
-    {
-        await TestTcpEndpointAsync(input_MasterIp.Text, input_MasterPort.Text, grpMasterConfig.Text, btnConnectMasterController);
     }
 
     /// <summary>
@@ -365,25 +547,6 @@ public partial class SystemSettingView : BaseView
         }
     }
 
-    private void SelectFolder(AntdUI.Input targetInput, string fieldName)
-    {
-        using var dialog = new FolderBrowserDialog
-        {
-            Description = _localizer.GetString(TextKeys.SystemSetting.MessageSelectFolder, fieldName),
-            ShowNewFolderButton = true
-        };
-
-        if (!string.IsNullOrWhiteSpace(targetInput.Text) && Directory.Exists(targetInput.Text))
-        {
-            dialog.SelectedPath = targetInput.Text;
-        }
-
-        if (dialog.ShowDialog(this) == DialogResult.OK)
-        {
-            targetInput.Text = dialog.SelectedPath;
-        }
-    }
-
     private void OpenFolder(string folderPath, string fieldName)
     {
         var normalizedPath = folderPath?.Trim() ?? string.Empty;
@@ -408,7 +571,7 @@ public partial class SystemSettingView : BaseView
 
     private bool TryBuildSettings(out AppSettings settings)
     {
-        settings = _settingsService.Get();
+        settings = CurrentSettings.Clone();
 
         var deviceId = input_DeviceID.Text.Trim();
         if (string.IsNullOrWhiteSpace(deviceId))
@@ -486,9 +649,28 @@ public partial class SystemSettingView : BaseView
             return false;
         }
 
+        if (!TryParsePositiveInt(inputUploadBatchSize.Text, NormalizeCaption(lblUploadBatchSize.Text), out var uploadBatchSize))
+        {
+            return false;
+        }
+
+        if (!TryParsePositiveInt(inputPlcHeartbeatInterval.Text, NormalizeCaption(lblPlcHeartbeatInterval.Text), out var heartbeatInterval))
+        {
+            return false;
+        }
+
+        var mesTimeout = input_MesTimeout.Text;
+        var enableDualStation = chkEnableDualStation.Checked;
+        var enableDualWorkOrder = chkEnableDualWorkOrder.Checked;
+        if (enableDualWorkOrder && !enableDualStation)
+        {
+            ShowWarningMessage("启用双工单时必须同时启用双工位。");
+            return false;
+        }
+
         settings.DeviceId = deviceId;
         settings.DeviceName = deviceName;
-        settings.DeviceStatusUrl = deviceStatusUrl;
+        settings.DeviceBaseUrl = deviceStatusUrl;
         settings.PlcIp = plcIp;
         settings.PlcPort = plcPort;
         settings.PlcType = NormalizePlcType(_selectedPlcType);
@@ -497,21 +679,63 @@ public partial class SystemSettingView : BaseView
         settings.LogDirectory = logDirectory;
         settings.DataDirectory = dataDirectory;
         settings.MesBaseUrl = mesBaseUrl;
+        settings.MesTimeoutSeconds = int.TryParse(mesTimeout, NumberStyles.Integer, CultureInfo.InvariantCulture, out var timeout) && timeout > 0 ? timeout : 10;
         settings.UseProductNumberFilter = chkUseProductNumberFilter.Checked;
-        settings.EnableDualStationMode = chkEnableDualStationMode.Checked;
-        settings.ValidateRecipeBeforeStart = chkValidateRecipeBeforeStart.Checked;
+        settings.EnableDualStation = enableDualStation;
+        settings.EnableDualWorkOrder = enableDualWorkOrder;
+        settings.ValidateRecipeAfterStart = chkValidateRecipeBeforeStart.Checked;
+        settings.EnableFinishExpQtyPrompt = chkEnableFinishExpQtyPrompt.Checked;
+        settings.PlcHeartbeatReadIntervalMilliseconds = Math.Clamp(heartbeatInterval, 100, 5000);
+        settings.UploadMode = NormalizeUploadMode(_selectedUploadMode);
+        settings.UploadBatchSize = Math.Max(1, uploadBatchSize);
         return true;
     }
 
-    private AddDeviceRequest BuildDeviceRequest(AppSettings previousSettings, AppSettings newSettings)
+    private bool CanSaveRuntimeModeChange(AppSettings previousSettings, AppSettings newSettings)
     {
-        return new AddDeviceRequest
+        if (!HasDualModeChanged(previousSettings, newSettings))
+        {
+            return true;
+        }
+
+        if (!HasAnyUnfinishedTask())
+        {
+            return true;
+        }
+
+        ShowWarningMessage("存在未完工任务，不能切换双工位/双工单模式，请先完工后再调整。");
+        return false;
+    }
+
+    private bool HasAnyUnfinishedTask()
+    {
+        return _weldTaskService.GetUnfinishedTask(1) is not null
+            || _weldTaskService.GetUnfinishedTask(2) is not null;
+    }
+
+    private static bool HasDualModeChanged(AppSettings oldSettings, AppSettings newSettings)
+    {
+        return oldSettings.EnableDualStation != newSettings.EnableDualStation
+            || oldSettings.EnableDualWorkOrder != newSettings.EnableDualWorkOrder;
+    }
+
+    private static bool HasPlcCommunicationChanged(AppSettings oldSettings, AppSettings newSettings)
+    {
+        return !SameText(oldSettings.PlcIp, newSettings.PlcIp)
+            || oldSettings.PlcPort != newSettings.PlcPort
+            || !SameText(oldSettings.PlcType, newSettings.PlcType)
+            || oldSettings.PlcHeartbeatReadIntervalMilliseconds != newSettings.PlcHeartbeatReadIntervalMilliseconds;
+    }
+
+    private AddDeviceReq BuildDeviceRequest(AppSettings previousSettings, AppSettings newSettings)
+    {
+        return new AddDeviceReq
         {
             OldDeviceId = GetMesOldDeviceId(previousSettings, newSettings),
             DeviceId = newSettings.DeviceId.Trim(),
             DeviceName = newSettings.DeviceName.Trim(),
             IP = GetLocalIPv4Address(),
-            DevStatusUrl = newSettings.DeviceStatusUrl?.Trim() ?? string.Empty,
+            DevStatusUrl = newSettings.DeviceBaseUrl?.Trim() ?? string.Empty,
             PostDataDomain = EnsureTrailingSlash(newSettings.MesBaseUrl)
         };
     }
@@ -532,7 +756,7 @@ public partial class SystemSettingView : BaseView
     {
         return !SameText(oldSettings.DeviceId, newSettings.DeviceId)
             || !SameText(oldSettings.DeviceName, newSettings.DeviceName)
-            || !SameText(oldSettings.DeviceStatusUrl, newSettings.DeviceStatusUrl)
+            || !SameText(oldSettings.DeviceBaseUrl, newSettings.DeviceBaseUrl)
             || !SameText(oldSettings.MesBaseUrl, newSettings.MesBaseUrl);
     }
 
@@ -585,19 +809,26 @@ public partial class SystemSettingView : BaseView
         return false;
     }
 
+    private bool TryParsePositiveInt(string text, string fieldName, out int value)
+    {
+        if (int.TryParse(text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value) && value > 0)
+        {
+            return true;
+        }
+
+        MessageBox.Show(
+            this,
+            $"{fieldName} 必须是大于 0 的整数。",
+            _localizer.GetString(TextKeys.Common.TitleWarning),
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Warning);
+        return false;
+    }
+
     private static bool TryValidateBaseUrl(string baseUrl)
     {
         return Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri)
             && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
-    }
-
-    private string BuildFieldName(string? groupName, string? fieldName)
-    {
-        var normalizedGroup = NormalizeCaption(groupName);
-        var normalizedField = NormalizeCaption(fieldName);
-        return string.IsNullOrWhiteSpace(normalizedGroup)
-            ? normalizedField
-            : $"{normalizedGroup} - {normalizedField}";
     }
 
     private static string NormalizeCaption(string? text)
@@ -615,6 +846,13 @@ public partial class SystemSettingView : BaseView
             : AppConstants.PlcTypes.ModbusTcp;
     }
 
+    private static UploadMode NormalizeUploadMode(UploadMode mode)
+    {
+        return Enum.IsDefined(mode) ? mode : UploadMode.Quantity;
+    }
+
+    private AppSettings CurrentSettings => Volatile.Read(ref _currentSettings);
+
     private void ShowInfo(string messageKey, params object[] args)
     {
         ShowInfoMessage(_localizer.GetString(messageKey, args));
@@ -630,6 +868,11 @@ public partial class SystemSettingView : BaseView
         MessageBox.Show(this, _localizer.GetString(messageKey, args), _localizer.GetString(TextKeys.Common.TitleWarning), MessageBoxButtons.OK, MessageBoxIcon.Warning);
     }
 
+    private void ShowWarningMessage(string message)
+    {
+        MessageBox.Show(this, message, _localizer.GetString(TextKeys.Common.TitleWarning), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+    }
+
     private void ShowError(string messageKey, params object[] args)
     {
         MessageBox.Show(this, _localizer.GetString(messageKey, args), _localizer.GetString(TextKeys.Common.TitleError), MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -641,4 +884,6 @@ public partial class SystemSettingView : BaseView
     }
 
     private sealed record PlcTypeOption(string Value, string TextKey);
+
+    private sealed record UploadModeOption(UploadMode Value, string DisplayName);
 }

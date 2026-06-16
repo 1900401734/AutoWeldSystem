@@ -341,6 +341,7 @@ namespace AutoWeldSystem.UI.Views
             btnRefreshRoles.Name = "btnRefreshRoles";
             btnRefreshRoles.Size = new Size(89, 44);
             btnRefreshRoles.TabIndex = 3;
+            btnRefreshRoles.Tag = "perm:button.role.refresh:visible";
             btnRefreshRoles.Text = "刷新";
             // 
             // queryRoles

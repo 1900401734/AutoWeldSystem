@@ -1,4 +1,4 @@
-using AutoWeldSystem.Core.DTOs;
+using AutoWeldSystem.Core.ViewModels;
 
 namespace AutoWeldSystem.Core.Interfaces;
 

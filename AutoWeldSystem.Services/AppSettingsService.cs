@@ -1,57 +1,118 @@
 using AutoWeldSystem.Core.Interfaces;
-using AutoWeldSystem.Core.Models;
 using AutoWeldSystem.Data;
+using AutoWeldSystem.Core.Entities;
+using AutoWeldSystem.Core.Runtime;
+using System.Reflection;
 
 namespace AutoWeldSystem.Services;
 
 /// <summary>
 /// 系统基础设置服务。
 /// </summary>
-public class AppSettingsService : IAppSettingsService
+public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsService
 {
-    private readonly SqlSugarDbContext _dbContext;
+    private static readonly PropertyInfo[] ComparableProperties = typeof(AppSettings)
+        .GetProperties(BindingFlags.Instance | BindingFlags.Public)
+        .Where(property => property.CanRead)
+        .Where(property => property.Name is not nameof(AppSettings.Id) and not nameof(AppSettings.UpdatedTime))
+        .ToArray();
+
     private readonly object _dbLock = new();
 
-    public AppSettingsService(SqlSugarDbContext dbContext)
-    {
-        _dbContext = dbContext;
-    }
+    private AppSettings? _cachedSettings;
 
+    public event EventHandler<AppSettingsChangedEventArgs>? SettingsChanged;
+
+    /// <summary>
+    /// 获取配置：DCL 极速读取内存克隆快照，彻底告别数据库 IO。
+    /// </summary>
+    /// <returns>系统设置参数</returns>
     public AppSettings Get()
     {
+        if (_cachedSettings is not null)
+        {
+            return _cachedSettings.Clone();
+        }
+
         lock (_dbLock)
         {
-            _dbContext.InitDatabase();
-            var settings = _dbContext.Db.Queryable<AppSettings>().InSingle(1);
-            if (settings is not null)
+            if (_cachedSettings is not null)
             {
-                return settings;
+                return _cachedSettings.Clone();
             }
 
-            settings = new AppSettings();
-            _dbContext.Db.Insertable(settings).ExecuteCommand();
-            return settings;
+            dbContext.InitDatabase();
+            var settings = dbContext.Db.Queryable<AppSettings>().InSingle(1);
+
+            if (settings is  null)
+            {
+                settings = new AppSettings();
+                dbContext.Db.Insertable(settings).ExecuteCommand();
+            }
+
+            _cachedSettings = settings.Clone();
+
+            return _cachedSettings.Clone();
         }
     }
 
+    /// <summary>
+    /// 保存配置：落库、同步刷新缓存，并广播新旧数据对比。
+    /// </summary>
     public AppSettings Save(AppSettings settings)
     {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        AppSettings previousSnapshot;
+        AppSettings currentSnapshot;
+        IReadOnlyList<string> changedProperties;
+
         lock (_dbLock)
         {
-            _dbContext.InitDatabase();
+            dbContext.InitDatabase();
+
+            var dbPrevious = dbContext.Db.Queryable<AppSettings>().InSingle(1) ?? new AppSettings();
+            previousSnapshot = dbPrevious.Clone();
+
             settings.Id = 1;
             settings.UpdatedTime = DateTime.Now;
-            var exists = _dbContext.Db.Queryable<AppSettings>().Any(it => it.Id == 1);
+
+            var exists = dbContext.Db.Queryable<AppSettings>().Any(it => it.Id == 1);
             if (exists)
             {
-                _dbContext.Db.Updateable(settings).ExecuteCommand();
+                dbContext.Db.Updateable(settings).ExecuteCommand();
             }
             else
             {
-                _dbContext.Db.Insertable(settings).ExecuteCommand();
+                dbContext.Db.Insertable(settings).ExecuteCommand();
             }
 
-            return _dbContext.Db.Queryable<AppSettings>().InSingle(1) ?? settings;
+            var dbCurrent = dbContext.Db.Queryable<AppSettings>().InSingle(1) ?? settings;
+            currentSnapshot = dbCurrent.Clone();
+            changedProperties = ResolveChangedProperties(previousSnapshot, currentSnapshot);
+
+            _cachedSettings = currentSnapshot.Clone();
         }
+
+        if (changedProperties.Count > 0)
+        {
+            SettingsChanged?.Invoke(
+                this,
+                new AppSettingsChangedEventArgs(previousSnapshot, currentSnapshot, changedProperties));
+        }
+
+        return currentSnapshot.Clone();
+    }
+
+    private static IReadOnlyList<string> ResolveChangedProperties(
+        AppSettings previousSettings,
+        AppSettings currentSettings)
+    {
+        return ComparableProperties
+            .Where(property => !Equals(
+                property.GetValue(previousSettings),
+                property.GetValue(currentSettings)))
+            .Select(property => property.Name)
+            .ToArray();
     }
 }

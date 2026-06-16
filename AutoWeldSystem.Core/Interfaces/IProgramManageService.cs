@@ -1,5 +1,6 @@
 using AutoWeldSystem.Core.DTOs;
-using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.DTOs.Mes.Request;
+using AutoWeldSystem.Core.Entities;
 
 namespace AutoWeldSystem.Core.Interfaces;
 
@@ -17,7 +18,7 @@ public interface IProgramManageService
 
     string BuildProgramName(string productNum, string componentCode, int sequenceNumber);
 
-    Task<BizProgram> SaveAsync(ProgramSaveRequest request, bool syncNow, CancellationToken cancellationToken = default);
+    Task<BizProgram> SaveAsync(SaveProgramReq request, bool syncNow, CancellationToken cancellationToken = default);
 
     Task DeleteAsync(int id, bool syncNow, CancellationToken cancellationToken = default);
 
@@ -25,5 +26,5 @@ public interface IProgramManageService
 
     Task SyncAllPendingAsync(CancellationToken cancellationToken = default);
 
-    Task<int> PullFromMesAsync(string? productNum = null, CancellationToken cancellationToken = default);
+    Task<int> PullFromMesAsync(CancellationToken cancellationToken = default);
 }

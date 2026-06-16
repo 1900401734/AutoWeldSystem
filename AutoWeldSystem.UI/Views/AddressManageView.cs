@@ -1,12 +1,15 @@
 using AutoWeldSystem.Core.Constants;
-using AutoWeldSystem.Core.DTOs;
+using AutoWeldSystem.Core.DTOs.Plc;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
-using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.Interfaces.Log;
+using AutoWeldSystem.Core.Interfaces.PLC;
 using AutoWeldSystem.Core.Plc;
 using AutoWeldSystem.UI.Base;
 using AutoWeldSystem.UI.Forms;
 using AutoWeldSystem.UI.Infrastructure;
 using System.Globalization;
+using AutoWeldSystem.Core.ViewModels;
 
 namespace AutoWeldSystem.UI.Views;
 
@@ -42,13 +45,11 @@ public partial class AddressManageView : BaseView
     private List<PlcAddressTableRow> _currentRows = new();
     private List<ProductProcessTableRow> _currentProductProcessRows = new();
     private List<TestSchemeTableRow> _currentSchemeRows = new();
-    private List<SchemeDetailTableRow> _currentDetailRows = new();
     private List<TestItemTableRow> _currentItemRows = new();
 
     private PlcAddressTableRow? _selectedRow;
     private ProductProcessTableRow? _selectedProductProcessRow;
     private TestSchemeTableRow? _selectedSchemeRow;
-    private SchemeDetailTableRow? _selectedDetailRow;
     private TestItemTableRow? _selectedItemRow;
     private PlcAddressTableRow? _lastBusinessAddressClickRow;
 
@@ -59,8 +60,11 @@ public partial class AddressManageView : BaseView
     private string _itemKeyword = string.Empty;
     private long _lastBusinessAddressClickTicks;
     private int _businessAddressClickCount;
+    private string _currentSchemeDetailSchemeId = string.Empty;
     private bool _saving;
     private bool _initialized;
+    private bool _handlingSchemeDetailTreeCheck;
+    private bool _syncingSchemeDetailSchemeSelection;
 
     public AddressManageView(
         IPlcAddressService addressService,
@@ -112,7 +116,6 @@ public partial class AddressManageView : BaseView
         ConfigureBusinessAddressColumns();
         ConfigureProductProcessColumns();
         ConfigureTestSchemeColumns();
-        ConfigureSchemeDetailColumns();
         ConfigureTestItemColumns();
         ApplyActiveFilter(GetActiveKeyword());
     }
@@ -123,66 +126,68 @@ public partial class AddressManageView : BaseView
     private void ConfigureTables()
     {
         TableStyleHelper.ApplyAntdTable(tableAddresses);
-        TableStyleHelper.ApplyAntdTable(tableTestItemAddresses);
+        TableStyleHelper.ApplyAntdTable(tableProcess);
         TableStyleHelper.ApplyAntdTable(tableTestSchemes);
-        TableStyleHelper.ApplyAntdTable(tableSchemeDetails);
         TableStyleHelper.ApplyAntdTable(tableTestItems);
 
         tableAddresses.EditLostFocus = true;
         tableAddresses.LostFocusClearSelection = false;
-        tableTestItemAddresses.EditLostFocus = true;
-        tableTestItemAddresses.LostFocusClearSelection = false;
+        tableProcess.EditLostFocus = true;
+        tableProcess.LostFocusClearSelection = false;
         tableTestSchemes.EditLostFocus = true;
         tableTestSchemes.LostFocusClearSelection = false;
-        tableSchemeDetails.EditLostFocus = true;
-        tableSchemeDetails.LostFocusClearSelection = false;
         tableTestItems.EditLostFocus = true;
         tableTestItems.LostFocusClearSelection = false;
 
         ConfigureBusinessAddressColumns();
         ConfigureProductProcessColumns();
         ConfigureTestSchemeColumns();
-        ConfigureSchemeDetailColumns();
         ConfigureTestItemColumns();
     }
+
+    #region 业务信号
 
     private void ConfigureBusinessAddressColumns()
     {
         tableAddresses.Columns.Clear();
-        tableAddresses.Columns.Add(CreateTableColumn(nameof(PlcAddressTableRow.AddressName), TextKeys.Grid.PlcAddressName, readOnly: true));
-        tableAddresses.Columns.Add(CreateRawColumn(nameof(PlcAddressTableRow.StationNo), "工位(0共享)", readOnly: true));
-        tableAddresses.Columns.Add(CreateTableColumn(nameof(PlcAddressTableRow.Sort), TextKeys.Grid.PlcAddressSort));
-        tableAddresses.Columns.Add(CreateTableColumn(nameof(PlcAddressTableRow.Address), TextKeys.Grid.PlcAddress));
-        tableAddresses.Columns.Add(CreateDataTypeColumn(nameof(PlcAddressTableRow.DataType), _localizer.GetString(TextKeys.Grid.PlcAddressDataType)));
-        tableAddresses.Columns.Add(CreateTableColumn(nameof(PlcAddressTableRow.DataLength), TextKeys.Grid.PlcAddressDataLength));
-        tableAddresses.Columns.Add(CreateAddressEnabledColumn());
-        tableAddresses.Columns.Add(CreateTableColumn(nameof(PlcAddressTableRow.Description), TextKeys.Grid.PlcAddressDescription));
-        tableAddresses.Columns.Add(CreateTableColumn(nameof(PlcAddressTableRow.UpdatedTime), TextKeys.Grid.PlcAddressUpdatedTime, readOnly: true, displayFormat: "yyyy-MM-dd HH:mm:ss"));
+        tableAddresses.Columns.Add(CreateTableColumn(nameof(PlcAddressTableRow.Sort), TextKeys.Grid.Sort));
+        tableAddresses.Columns.Add(CreateTableColumn(nameof(PlcAddressTableRow.AddressName), TextKeys.Grid.Name, readOnly: true));
+        tableAddresses.Columns.Add(CreateTableColumn(nameof(PlcAddressTableRow.StationNo), TextKeys.Grid.Station, readOnly: true));
+        tableAddresses.Columns.Add(CreateTableColumn(nameof(PlcAddressTableRow.Address), TextKeys.Grid.Address));
+        tableAddresses.Columns.Add(CreateDataTypeColumn(nameof(PlcAddressTableRow.DataType), _localizer.GetString(TextKeys.Grid.DataType)));
+        tableAddresses.Columns.Add(CreateTableColumn(nameof(PlcAddressTableRow.DataLength), TextKeys.Grid.Length));
+        tableAddresses.Columns.Add(CreateAddressEnabledColumn(_localizer.GetString(TextKeys.Grid.Enabled)));
+        tableAddresses.Columns.Add(CreateTableColumn(nameof(PlcAddressTableRow.Description), TextKeys.Grid.Description));
+        tableAddresses.Columns.Add(CreateTableColumn(nameof(PlcAddressTableRow.UpdatedTime), TextKeys.Grid.UpdatedTime, readOnly: true, displayFormat: "yyyy-MM-dd HH:mm:ss"));
         TableStyleHelper.ApplyAntdColumnDefaults(tableAddresses);
     }
 
+    #endregion
+
+
     private void ConfigureProductProcessColumns()
     {
-        tableTestItemAddresses.Columns.Clear();
-        tableTestItemAddresses.Columns.Add(CreateProgramProductNumColumn());
-        tableTestItemAddresses.Columns.Add(CreateSchemeSelectColumn(nameof(ProductProcessTableRow.SchemeId), "测试方案ID"));
-        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.StationNo), "工位(0共享)"));
-        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.TouchCount), "焊点数量"));
-        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.ProductBase), "产品头基地址"));
-        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.ProductLen), "产品头长度"));
-        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.ProductNoExpr), "产品编号偏移"));
-        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.ProductResultExpr), "产品结果偏移"));
-        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.ActualTouchCountExpr), "实际焊点数偏移"));
-        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.PresetTouchCountExpr), "预设焊点数偏移"));
-        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.TouchBase), "焊点头基地址"));
-        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.TouchHeaderLen), "焊点头长度"));
-        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.TouchNoExpr), "焊点编号偏移"));
-        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.TouchResultExpr), "焊点结果偏移"));
-        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.TestBase), "测试项基地址"));
-        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.TestAreaLen), "测试区长度"));
-        tableTestItemAddresses.Columns.Add(CreateProductProcessEnabledColumn());
-        tableTestItemAddresses.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.UpdatedTime), "更新时间", readOnly: true, displayFormat: "yyyy-MM-dd HH:mm:ss"));
-        TableStyleHelper.ApplyAntdColumnDefaults(tableTestItemAddresses);
+        tableProcess.Columns.Clear();
+        tableProcess.Columns.Add(CreateProgramProductNumColumn());
+        tableProcess.Columns.Add(CreateSchemeSelectColumn(nameof(ProductProcessTableRow.SchemeId), "测试方案ID"));
+        tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.StationNo), "工位(0共享)"));
+        tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.TouchCount), "焊点数量"));
+        tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.ProductBase), "产品头基地址"));
+        tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.ProductLen), "产品头长度"));
+        tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.ProductNoExpr), "产品编号偏移"));
+        tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.ProductResultExpr), "产品结果偏移"));
+        tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.ActualTouchCountExpr), "实际焊点数偏移"));
+        tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.PresetTouchCountExpr), "预设焊点数偏移"));
+        tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.TouchNoBase), "焊点编号基地址"));
+        tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.TouchResultBase), "焊点结果基地址"));
+        tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.TouchHeaderLen), "焊点头长度"));
+        tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.TouchNoExpr), "焊点编号偏移"));
+        tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.TouchResultExpr), "焊点结果偏移"));
+        tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.TestBase), "测试项基地址"));
+        tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.TestAreaLen), "测试区长度"));
+        tableProcess.Columns.Add(CreateProductProcessEnabledColumn());
+        tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.UpdatedTime), "更新时间", readOnly: true, displayFormat: "yyyy-MM-dd HH:mm:ss"));
+        TableStyleHelper.ApplyAntdColumnDefaults(tableProcess);
     }
 
     private void ConfigureTestSchemeColumns()
@@ -196,11 +201,7 @@ public partial class AddressManageView : BaseView
 
     private void ConfigureSchemeDetailColumns()
     {
-        tableSchemeDetails.Columns.Clear();
-        tableSchemeDetails.Columns.Add(CreateSchemeSelectColumn(nameof(SchemeDetailTableRow.SchemeId), "测试方案ID"));
-        tableSchemeDetails.Columns.Add(CreateTestItemSelectColumn());
-        tableSchemeDetails.Columns.Add(CreateRawColumn(nameof(SchemeDetailTableRow.ItemName), "测试项目", readOnly: true));
-        TableStyleHelper.ApplyAntdColumnDefaults(tableSchemeDetails);
+        BindSchemeDetailSchemeOptions();
     }
 
     private void ConfigureTestItemColumns()
@@ -221,6 +222,14 @@ public partial class AddressManageView : BaseView
         return CreateRawColumn(key, _localizer.GetString(titleKey), readOnly, displayFormat);
     }
 
+    /// <summary>
+    /// 创建表头
+    /// </summary>
+    /// <param name="key"></param>
+    /// <param name="title"></param>
+    /// <param name="readOnly"></param>
+    /// <param name="displayFormat"></param>
+    /// <returns></returns>
     private static AntdUI.Column CreateRawColumn(string key, string title, bool readOnly = false, string? displayFormat = null)
     {
         return new AntdUI.Column(key, title)
@@ -261,20 +270,6 @@ public partial class AddressManageView : BaseView
         };
     }
 
-    private AntdUI.ColumnSelect CreateTestItemSelectColumn()
-    {
-        return new AntdUI.ColumnSelect(nameof(SchemeDetailTableRow.ItemId), "测试项ID")
-        {
-            Align = AntdUI.ColumnAlign.Center,
-            Editable = true,
-            Items = _testItems
-                .Where(item => item.ItemId > 0)
-                .OrderBy(item => item.ItemId)
-                .Select(item => new AntdUI.SelectItem($"{item.ItemId} - {item.ItemName}") { Tag = item.ItemId })
-                .ToList()
-        };
-    }
-
     private static AntdUI.ColumnSelect CreateDataTypeColumn(string key, string title)
     {
         return new AntdUI.ColumnSelect(key, title)
@@ -287,9 +282,9 @@ public partial class AddressManageView : BaseView
         };
     }
 
-    private static AntdUI.ColumnSwitch CreateAddressEnabledColumn()
+    private static AntdUI.ColumnSwitch CreateAddressEnabledColumn(string? titleKey)
     {
-        return new AntdUI.ColumnSwitch(nameof(PlcAddressTableRow.Enabled), "启用")
+        return new AntdUI.ColumnSwitch(nameof(PlcAddressTableRow.Enabled), titleKey)
         {
             Align = AntdUI.ColumnAlign.Center,
             AutoCheck = true
@@ -314,7 +309,6 @@ public partial class AddressManageView : BaseView
             || key is nameof(PlcAddressTableRow.Description)
                 or nameof(TestSchemeTableRow.Description)
                 or nameof(TestItemTableRow.ItemName)
-                or nameof(SchemeDetailTableRow.ItemName)
             ? AntdUI.ColumnAlign.Left
             : AntdUI.ColumnAlign.Center;
     }
@@ -333,31 +327,26 @@ public partial class AddressManageView : BaseView
         tableAddresses.CellEditComplete += Table_CellEditComplete;
         tableAddresses.CheckedChanged += Table_CheckedChanged;
 
-        tableTestItemAddresses.CellClick += Table_CellClick;
-        tableTestItemAddresses.CellEndEdit += Table_CellEndEdit;
-        tableTestItemAddresses.CellEndValueEdit += Table_CellEndValueEdit;
-        tableTestItemAddresses.CellEditComplete += Table_CellEditComplete;
-        tableTestItemAddresses.CheckedChanged += Table_CheckedChanged;
+        tableProcess.CellClick += Table_CellClick;
+        tableProcess.CellEndEdit += Table_CellEndEdit;
+        tableProcess.CellEndValueEdit += Table_CellEndValueEdit;
+        tableProcess.CellEditComplete += Table_CellEditComplete;
+        tableProcess.CheckedChanged += Table_CheckedChanged;
 
         btnAddProductProcess.Click += AddProductProcess_Click;
         btnDeleteProductProcess.Click += DeleteProductProcess_Click;
         btnPreviewProductProcessAddress.Click += PreviewProductProcessAddress_Click;
         btnAddScheme.Click += AddScheme_Click;
         btnDeleteScheme.Click += DeleteScheme_Click;
-        btnAddSchemeDetail.Click += AddSchemeDetail_Click;
-        btnDeleteSchemeDetail.Click += DeleteSchemeDetail_Click;
         btnAddTestItem.Click += AddTestItem_Click;
         btnDeleteTestItem.Click += DeleteTestItem_Click;
+        selectSchemeDetailScheme.SelectedIndexChanged += SchemeDetailScheme_SelectedIndexChanged;
+        treeSchemeDetails.AfterCheck += SchemeDetailTree_AfterCheck;
 
         tableTestSchemes.CellClick += Table_CellClick;
         tableTestSchemes.CellEndEdit += Table_CellEndEdit;
         tableTestSchemes.CellEndValueEdit += Table_CellEndValueEdit;
         tableTestSchemes.CellEditComplete += Table_CellEditComplete;
-
-        tableSchemeDetails.CellClick += Table_CellClick;
-        tableSchemeDetails.CellEndEdit += Table_CellEndEdit;
-        tableSchemeDetails.CellEndValueEdit += Table_CellEndValueEdit;
-        tableSchemeDetails.CellEditComplete += Table_CellEditComplete;
 
         tableTestItems.CellClick += Table_CellClick;
         tableTestItems.CellEndEdit += Table_CellEndEdit;
@@ -385,13 +374,13 @@ public partial class AddressManageView : BaseView
         lblBindingPreview.Text = "PLC 地址预览";
         lblTestItemAddressHint.Text = "维护产品工号、工位、焊点数量和 PLC 数据区布局；测试方案决定采集哪些测试项。";
         lblProductProcessGroupHint.Text = "分组填写：产品头保存产品级字段，焊点头按焊点头长度递增，测试项区按测试区长度递增；最终地址可通过 PLC 地址预览核对。";
+        lblSchemeDetailHint.Text = "先选择测试方案，再勾选该方案包含的测试项字段；新增测试项字典后会自动出现在树中。";
+        lblSchemeDetailScheme.Text = "测试方案";
         btnAddProductProcess.Text = "新增";
         btnDeleteProductProcess.Text = "删除";
         btnPreviewProductProcessAddress.Text = "PLC 地址预览";
         btnAddScheme.Text = "新增";
         btnDeleteScheme.Text = "删除";
-        btnAddSchemeDetail.Text = "新增";
-        btnDeleteSchemeDetail.Text = "删除";
         btnAddTestItem.Text = "新增";
         btnDeleteTestItem.Text = "删除";
         SyncActiveCommandState();
@@ -402,6 +391,7 @@ public partial class AddressManageView : BaseView
         try
         {
             EndTableEdit();
+            treeSchemeDetails.Nodes.Clear();
             _allAddresses.Clear();
             _allAddresses.AddRange(_addressService.GetAll());
             _programOptions.Clear();
@@ -530,11 +520,12 @@ public partial class AddressManageView : BaseView
     {
         EndTableEdit();
         _addressKeyword = keyword?.Trim() ?? string.Empty;
-        var selectedAddressKey = _selectedRow?.AddressKey;
+
+        var selectedLogicalKey = _selectedRow?.Source.LogicalKey;
+        var selectedStationNo = _selectedRow?.Source.StationNo;
 
         var filteredAddresses = _allAddresses
             .Where(address => string.IsNullOrWhiteSpace(_addressKeyword)
-                || Contains(address.AddressKey, _addressKeyword)
                 || Contains(address.LogicalKey, _addressKeyword)
                 || Contains(address.StationNo.ToString(), _addressKeyword)
                 || Contains(GetAddressDisplayName(address), _addressKeyword)
@@ -543,7 +534,6 @@ public partial class AddressManageView : BaseView
                 || Contains(address.Description, _addressKeyword))
             .OrderBy(address => address.Sort)
             .ThenBy(address => address.StationNo)
-            .ThenBy(address => address.AddressKey)
             .ToList();
 
         _currentRows = filteredAddresses
@@ -552,7 +542,7 @@ public partial class AddressManageView : BaseView
 
         tableAddresses.DataSource = _currentRows;
         tableAddresses.Refresh();
-        SelectVisibleRow(selectedAddressKey);
+        SelectVisibleRow(selectedLogicalKey, selectedStationNo);
     }
 
     private void ApplyProductProcessFilter(string? keyword)
@@ -568,6 +558,8 @@ public partial class AddressManageView : BaseView
                 || Contains(config.StationNo.ToString(), _productProcessKeyword)
                 || Contains(config.ProductBase, _productProcessKeyword)
                 || Contains(config.TouchBase, _productProcessKeyword)
+                || Contains(config.TouchNoBase, _productProcessKeyword)
+                || Contains(config.TouchResultBase, _productProcessKeyword)
                 || Contains(config.TestBase, _productProcessKeyword))
             .OrderBy(config => config.ProductNum)
             .ThenBy(config => config.StationNo)
@@ -575,8 +567,8 @@ public partial class AddressManageView : BaseView
             .Select(config => new ProductProcessTableRow(config))
             .ToList();
 
-        tableTestItemAddresses.DataSource = _currentProductProcessRows;
-        tableTestItemAddresses.Refresh();
+        tableProcess.DataSource = _currentProductProcessRows;
+        tableProcess.Refresh();
         SelectVisibleProductProcessRow(selectedId);
     }
 
@@ -604,21 +596,267 @@ public partial class AddressManageView : BaseView
     {
         EndTableEdit();
         _detailKeyword = keyword?.Trim() ?? string.Empty;
-        var selectedId = _selectedDetailRow?.DetailId;
+        SyncCurrentSchemeDetailTreeToMemory();
+        LoadSchemeDetailTree(_detailKeyword);
+    }
 
-        _currentDetailRows = _schemeDetails
-            .Where(detail => string.IsNullOrWhiteSpace(_detailKeyword)
-                || Contains(detail.SchemeId, _detailKeyword)
-                || Contains(detail.ItemId.ToString(), _detailKeyword)
-                || Contains(GetItemName(detail.ItemId), _detailKeyword))
-            .OrderBy(detail => detail.SchemeId)
-            .ThenBy(detail => detail.DetailId)
-            .Select(detail => new SchemeDetailTableRow(detail, _testItems))
-            .ToList();
+    private void BindSchemeDetailSchemeOptions()
+    {
+        SyncCurrentSchemeDetailTreeToMemory();
 
-        tableSchemeDetails.DataSource = _currentDetailRows;
-        tableSchemeDetails.Refresh();
-        SelectVisibleDetailRow(selectedId);
+        var previousSchemeId = _currentSchemeDetailSchemeId;
+        var schemes = _testSchemes.OrderBy(scheme => scheme.SchemeId).ToList();
+        var selectedIndex = schemes.FindIndex(scheme =>
+            string.Equals(scheme.SchemeId, previousSchemeId, StringComparison.OrdinalIgnoreCase));
+        if (selectedIndex < 0 && schemes.Count > 0)
+        {
+            selectedIndex = 0;
+        }
+
+        _syncingSchemeDetailSchemeSelection = true;
+        try
+        {
+            selectSchemeDetailScheme.Items.Clear();
+            foreach (var scheme in schemes)
+            {
+                selectSchemeDetailScheme.Items.Add(new AntdUI.SelectItem($"{scheme.SchemeId} - {scheme.SchemeName}")
+                {
+                    Tag = scheme.SchemeId
+                });
+            }
+
+            selectSchemeDetailScheme.SelectedIndex = selectedIndex;
+            selectSchemeDetailScheme.Text = selectedIndex >= 0
+                ? $"{schemes[selectedIndex].SchemeId} - {schemes[selectedIndex].SchemeName}"
+                : string.Empty;
+            _currentSchemeDetailSchemeId = selectedIndex >= 0 ? schemes[selectedIndex].SchemeId : string.Empty;
+        }
+        finally
+        {
+            _syncingSchemeDetailSchemeSelection = false;
+        }
+
+        LoadSchemeDetailTree(_detailKeyword);
+    }
+
+    private void SchemeDetailScheme_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
+    {
+        if (_syncingSchemeDetailSchemeSelection)
+        {
+            return;
+        }
+
+        SyncCurrentSchemeDetailTreeToMemory();
+        _currentSchemeDetailSchemeId = ResolveSelectedSchemeDetailSchemeId();
+        LoadSchemeDetailTree(_detailKeyword);
+    }
+
+    private string ResolveSelectedSchemeDetailSchemeId()
+    {
+        var selectedValue = GetSelectValueText(selectSchemeDetailScheme.SelectedValue);
+        if (!string.IsNullOrWhiteSpace(selectedValue))
+        {
+            return selectedValue;
+        }
+
+        var schemes = _testSchemes.OrderBy(scheme => scheme.SchemeId).ToList();
+        return selectSchemeDetailScheme.SelectedIndex >= 0 && selectSchemeDetailScheme.SelectedIndex < schemes.Count
+            ? schemes[selectSchemeDetailScheme.SelectedIndex].SchemeId
+            : string.Empty;
+    }
+
+    private void LoadSchemeDetailTree(string? keyword)
+    {
+        _handlingSchemeDetailTreeCheck = true;
+        treeSchemeDetails.BeginUpdate();
+        try
+        {
+            treeSchemeDetails.Nodes.Clear();
+            if (string.IsNullOrWhiteSpace(_currentSchemeDetailSchemeId))
+            {
+                treeSchemeDetails.Nodes.Add(new TreeNode("请先维护并选择测试方案。"));
+                return;
+            }
+
+            var visibleItems = _testItems
+                .Where(item => item.ItemId > 0)
+                .Where(item => MatchesSchemeDetailKeyword(item, keyword))
+                .OrderBy(item => item.ItemId)
+                .ToList();
+            if (visibleItems.Count == 0)
+            {
+                treeSchemeDetails.Nodes.Add(new TreeNode("当前没有可配置的测试项。"));
+                return;
+            }
+
+            var detailByItemId = _schemeDetails
+                .Where(detail => SameScheme(detail.SchemeId, _currentSchemeDetailSchemeId))
+                .GroupBy(detail => detail.ItemId)
+                .ToDictionary(group => group.Key, group => group.First());
+
+            foreach (var item in visibleItems)
+            {
+                detailByItemId.TryGetValue(item.ItemId, out var detail);
+                treeSchemeDetails.Nodes.Add(CreateSchemeDetailItemNode(item, detail));
+            }
+
+            treeSchemeDetails.ExpandAll();
+        }
+        finally
+        {
+            treeSchemeDetails.EndUpdate();
+            _handlingSchemeDetailTreeCheck = false;
+        }
+    }
+
+    private TreeNode CreateSchemeDetailItemNode(DimTestItem item, BizSchemeDetail? detail)
+    {
+        var parent = new TreeNode($"{item.ItemId} - {item.ItemName}")
+        {
+            Tag = new SchemeDetailTreeNodeTag(item.ItemId, null)
+        };
+
+        parent.Nodes.Add(CreateSchemeDetailRoleNode(item.ItemId, SchemeDetailValueRole.Actual, "实际值", detail?.EnableActual ?? false));
+        parent.Nodes.Add(CreateSchemeDetailRoleNode(item.ItemId, SchemeDetailValueRole.Upper, "上限", detail?.EnableUpper ?? false));
+        parent.Nodes.Add(CreateSchemeDetailRoleNode(item.ItemId, SchemeDetailValueRole.Lower, "下限", detail?.EnableLower ?? false));
+        parent.Nodes.Add(CreateSchemeDetailRoleNode(item.ItemId, SchemeDetailValueRole.Result, "结果", detail?.EnableResult ?? false));
+        parent.Checked = parent.Nodes.Cast<TreeNode>().Any(node => node.Checked);
+        return parent;
+    }
+
+    private static TreeNode CreateSchemeDetailRoleNode(
+        int itemId,
+        SchemeDetailValueRole role,
+        string text,
+        bool isChecked)
+    {
+        return new TreeNode(text)
+        {
+            Tag = new SchemeDetailTreeNodeTag(itemId, role),
+            Checked = isChecked
+        };
+    }
+
+    private static bool MatchesSchemeDetailKeyword(DimTestItem item, string? keyword)
+    {
+        var normalizedKeyword = keyword?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalizedKeyword))
+        {
+            return true;
+        }
+
+        return Contains(item.ItemId.ToString(CultureInfo.InvariantCulture), normalizedKeyword)
+            || Contains(item.ItemName, normalizedKeyword)
+            || Contains(item.Unit, normalizedKeyword)
+            || Contains("实际值", normalizedKeyword)
+            || Contains("上限", normalizedKeyword)
+            || Contains("下限", normalizedKeyword)
+            || Contains("结果", normalizedKeyword);
+    }
+
+    private void SchemeDetailTree_AfterCheck(object? sender, TreeViewEventArgs e)
+    {
+        var node = e.Node;
+        if (_handlingSchemeDetailTreeCheck || node is null)
+        {
+            return;
+        }
+
+        _handlingSchemeDetailTreeCheck = true;
+        try
+        {
+            if (node.Tag is SchemeDetailTreeNodeTag { Role: null })
+            {
+                SetChildCheckedState(node, node.Checked);
+            }
+
+            UpdateParentCheckedState(node.Parent);
+        }
+        finally
+        {
+            _handlingSchemeDetailTreeCheck = false;
+        }
+    }
+
+    private void SetChildCheckedState(TreeNode node, bool isChecked)
+    {
+        foreach (TreeNode child in node.Nodes)
+        {
+            child.Checked = isChecked;
+            SetChildCheckedState(child, isChecked);
+        }
+    }
+
+    private void UpdateParentCheckedState(TreeNode? node)
+    {
+        if (node is null)
+        {
+            return;
+        }
+
+        node.Checked = node.Nodes.Cast<TreeNode>().Any(child => child.Checked);
+        UpdateParentCheckedState(node.Parent);
+    }
+
+    private void SyncCurrentSchemeDetailTreeToMemory()
+    {
+        var schemeId = _currentSchemeDetailSchemeId?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(schemeId) || treeSchemeDetails.Nodes.Count == 0)
+        {
+            return;
+        }
+
+        var visibleItemIds = treeSchemeDetails.Nodes
+            .Cast<TreeNode>()
+            .Select(node => node.Tag as SchemeDetailTreeNodeTag)
+            .Where(tag => tag is { Role: null })
+            .Select(tag => tag!.ItemId)
+            .Distinct()
+            .ToHashSet();
+        if (visibleItemIds.Count == 0)
+        {
+            return;
+        }
+
+        var existingDetails = _schemeDetails
+            .Where(detail => SameScheme(detail.SchemeId, schemeId) && visibleItemIds.Contains(detail.ItemId))
+            .GroupBy(detail => detail.ItemId)
+            .ToDictionary(group => group.Key, group => group.First());
+
+        _schemeDetails.RemoveAll(detail => SameScheme(detail.SchemeId, schemeId) && visibleItemIds.Contains(detail.ItemId));
+        foreach (TreeNode itemNode in treeSchemeDetails.Nodes)
+        {
+            if (itemNode.Tag is not SchemeDetailTreeNodeTag { Role: null } itemTag)
+            {
+                continue;
+            }
+
+            var detail = existingDetails.TryGetValue(itemTag.ItemId, out var existingDetail)
+                ? existingDetail
+                : new BizSchemeDetail { SchemeId = schemeId, ItemId = itemTag.ItemId };
+            ApplySchemeDetailRoleState(detail, itemNode);
+            if (HasAnyEnabledRole(detail))
+            {
+                _schemeDetails.Add(detail);
+            }
+        }
+    }
+
+    private static void ApplySchemeDetailRoleState(BizSchemeDetail detail, TreeNode itemNode)
+    {
+        detail.EnableActual = IsSchemeDetailRoleChecked(itemNode, SchemeDetailValueRole.Actual);
+        detail.EnableUpper = IsSchemeDetailRoleChecked(itemNode, SchemeDetailValueRole.Upper);
+        detail.EnableLower = IsSchemeDetailRoleChecked(itemNode, SchemeDetailValueRole.Lower);
+        detail.EnableResult = IsSchemeDetailRoleChecked(itemNode, SchemeDetailValueRole.Result);
+    }
+
+    private static bool IsSchemeDetailRoleChecked(TreeNode itemNode, SchemeDetailValueRole role)
+    {
+        return itemNode.Nodes
+            .Cast<TreeNode>()
+            .Any(node => node.Checked
+                && node.Tag is SchemeDetailTreeNodeTag tag
+                && tag.Role == role);
     }
 
     private void ApplyItemFilter(string? keyword)
@@ -814,9 +1052,28 @@ public partial class AddressManageView : BaseView
 
     private void SaveSchemeDetails()
     {
-        NormalizeSchemeDetails(_schemeDetails);
-        ValidateSchemeDetails(_schemeDetails);
-        foreach (var detail in _schemeDetails.OrderBy(detail => detail.SchemeId).ThenBy(detail => detail.DetailId))
+        SyncCurrentSchemeDetailTreeToMemory();
+
+        var details = _schemeDetails
+            .Where(HasAnyEnabledRole)
+            .OrderBy(detail => detail.SchemeId)
+            .ThenBy(detail => detail.DetailId)
+            .ToList();
+        NormalizeSchemeDetails(details);
+        ValidateSchemeDetails(details);
+
+        var currentKeys = details
+            .Select(detail => BuildSchemeDetailKey(detail.SchemeId, detail.ItemId))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var persistedDetail in _testSchemeConfigService.GetDetails())
+        {
+            if (!currentKeys.Contains(BuildSchemeDetailKey(persistedDetail.SchemeId, persistedDetail.ItemId)))
+            {
+                _testSchemeConfigService.DeleteDetail(persistedDetail.DetailId);
+            }
+        }
+
+        foreach (var detail in details)
         {
             _testSchemeConfigService.SaveDetail(detail);
         }
@@ -942,16 +1199,32 @@ public partial class AddressManageView : BaseView
             var testContextOffset = (touchNo - 1) * config.TestAreaLen;
             var touchText = touchNo.ToString(CultureInfo.InvariantCulture);
 
-            AddProductProcessAddressPreviewRow(rows, identity, "焊点头", touchText, "焊点编号", config.TouchBase, touchContextOffset, config.TouchNoExpr);
-            AddProductProcessAddressPreviewRow(rows, identity, "焊点头", touchText, "焊点结果", config.TouchBase, touchContextOffset, config.TouchResultExpr);
+            AddProductProcessAddressPreviewRow(rows, identity, "焊点头", touchText, "焊点编号", ResolveTouchNoBase(config), touchContextOffset, config.TouchNoExpr);
+            AddProductProcessAddressPreviewRow(rows, identity, "焊点头", touchText, "焊点结果", ResolveTouchResultBase(config), touchContextOffset, config.TouchResultExpr);
 
             foreach (var schemeItem in schemeItems)
             {
                 var item = schemeItem.Item;
-                AddProductProcessAddressPreviewRow(rows, identity, "测试项", touchText, $"{item.ItemName} 实际值", config.TestBase, testContextOffset, item.ActualExpression);
-                AddProductProcessAddressPreviewRow(rows, identity, "测试项", touchText, $"{item.ItemName} 上限", config.TestBase, testContextOffset, item.UpperExpression);
-                AddProductProcessAddressPreviewRow(rows, identity, "测试项", touchText, $"{item.ItemName} 下限", config.TestBase, testContextOffset, item.LowerExpression);
-                AddProductProcessAddressPreviewRow(rows, identity, "测试项", touchText, $"{item.ItemName} 结果", config.TestBase, testContextOffset, item.ResultExpression);
+                var detail = schemeItem.Detail;
+                if (detail.EnableActual)
+                {
+                    AddProductProcessAddressPreviewRow(rows, identity, "测试项", touchText, $"{item.ItemName} 实际值", config.TestBase, testContextOffset, item.ActualExpression);
+                }
+
+                if (detail.EnableUpper)
+                {
+                    AddProductProcessAddressPreviewRow(rows, identity, "测试项", touchText, $"{item.ItemName} 上限", config.TestBase, testContextOffset, item.UpperExpression);
+                }
+
+                if (detail.EnableLower)
+                {
+                    AddProductProcessAddressPreviewRow(rows, identity, "测试项", touchText, $"{item.ItemName} 下限", config.TestBase, testContextOffset, item.LowerExpression);
+                }
+
+                if (detail.EnableResult)
+                {
+                    AddProductProcessAddressPreviewRow(rows, identity, "测试项", touchText, $"{item.ItemName} 结果", config.TestBase, testContextOffset, item.ResultExpression);
+                }
             }
         }
 
@@ -984,10 +1257,11 @@ public partial class AddressManageView : BaseView
             .Select(detail => new
             {
                 Sort = detail.DetailId,
-                Item = _testItems.FirstOrDefault(item => item.ItemId == detail.ItemId)
+                Item = _testItems.FirstOrDefault(item => item.ItemId == detail.ItemId),
+                Detail = detail
             })
             .Where(detail => detail.Item is not null)
-            .Select(detail => new ProductSchemePreviewItem(detail.Sort, detail.Item!))
+            .Select(detail => new ProductSchemePreviewItem(detail.Sort, detail.Item!, detail.Detail))
             .ToList();
     }
 
@@ -1035,6 +1309,12 @@ public partial class AddressManageView : BaseView
         return new PlcExpressionBinding(expressionText, AppConstants.PlcDataTypes.Int16, 0, expressionText);
     }
 
+    private static string ResolveTouchNoBase(BizProductProcessConfig config)
+        => string.IsNullOrWhiteSpace(config.TouchNoBase) ? config.TouchBase : config.TouchNoBase!.Trim();
+
+    private static string ResolveTouchResultBase(BizProductProcessConfig config)
+        => string.IsNullOrWhiteSpace(config.TouchResultBase) ? config.TouchBase : config.TouchResultBase!.Trim();
+
     private void AddProductProcess_Click(object? sender, EventArgs e)
     {
         EndTableEdit();
@@ -1054,6 +1334,8 @@ public partial class AddressManageView : BaseView
             ProductNoExpr = "0:I-0",
             ProductResultExpr = "4:H-4",
             TouchBase = "DB8.32",
+            TouchNoBase = "DB8.32",
+            TouchResultBase = "DB8.32",
             TouchHeaderLen = 16,
             TouchNoExpr = "0:I-0",
             TouchResultExpr = "4:H-4",
@@ -1067,7 +1349,7 @@ public partial class AddressManageView : BaseView
         _selectedProductProcessRow = _currentProductProcessRows.FirstOrDefault(row => ReferenceEquals(row.Source, config));
         if (_selectedProductProcessRow is not null)
         {
-            tableTestItemAddresses.SetSelected(_selectedProductProcessRow, true);
+            tableProcess.SetSelected(_selectedProductProcessRow, true);
         }
 
         UpdateProductProcessSummary();
@@ -1114,6 +1396,8 @@ public partial class AddressManageView : BaseView
         _testSchemes.Add(scheme);
         ApplySchemeFilter(_schemeKeyword);
         ConfigureProductProcessColumns();
+        treeSchemeDetails.Nodes.Clear();
+        _currentSchemeDetailSchemeId = scheme.SchemeId;
         ConfigureSchemeDetailColumns();
     }
 
@@ -1141,47 +1425,13 @@ public partial class AddressManageView : BaseView
 
         _schemeDetails.RemoveAll(detail => string.Equals(detail.SchemeId, row.SchemeId, StringComparison.OrdinalIgnoreCase));
         _testSchemes.Remove(row.Source);
+        if (SameScheme(_currentSchemeDetailSchemeId, row.SchemeId))
+        {
+            _currentSchemeDetailSchemeId = string.Empty;
+        }
+
         ApplySchemeFilter(_schemeKeyword);
-        ApplyDetailFilter(_detailKeyword);
-    }
-
-    private void AddSchemeDetail_Click(object? sender, EventArgs e)
-    {
-        EndTableEdit();
-        var detail = new BizSchemeDetail
-        {
-            SchemeId = _testSchemes.FirstOrDefault()?.SchemeId ?? string.Empty,
-            ItemId = _testItems.FirstOrDefault()?.ItemId ?? 0
-        };
-
-        _schemeDetails.Add(detail);
-        ApplyDetailFilter(_detailKeyword);
-    }
-
-    private void DeleteSchemeDetail_Click(object? sender, EventArgs e)
-    {
-        EndTableEdit();
-        var row = _selectedDetailRow;
-        if (row is null)
-        {
-            ShowWarning("请先选择一条方案明细。");
-            return;
-        }
-
-        if (row.DetailId <= 0)
-        {
-            _schemeDetails.Remove(row.Source);
-            ApplyDetailFilter(_detailKeyword);
-            return;
-        }
-
-        if (!ConfirmDelete("确定删除选中的方案明细吗？"))
-        {
-            return;
-        }
-
-        _testSchemeConfigService.DeleteDetail(row.DetailId);
-        LoadData();
+        ConfigureSchemeDetailColumns();
     }
 
     private void AddTestItem_Click(object? sender, EventArgs e)
@@ -1246,10 +1496,6 @@ public partial class AddressManageView : BaseView
                 ResetBusinessAddressTestClick();
                 _selectedSchemeRow = row;
                 break;
-            case SchemeDetailTableRow row:
-                ResetBusinessAddressTestClick();
-                _selectedDetailRow = row;
-                break;
             case TestItemTableRow row:
                 ResetBusinessAddressTestClick();
                 _selectedItemRow = row;
@@ -1289,12 +1535,6 @@ public partial class AddressManageView : BaseView
                 nameof(TestSchemeTableRow.SchemeName) => !string.IsNullOrWhiteSpace(value),
                 _ => true
             },
-            SchemeDetailTableRow => e.Column.Key switch
-            {
-                nameof(SchemeDetailTableRow.SchemeId) => !string.IsNullOrWhiteSpace(value),
-                nameof(SchemeDetailTableRow.ItemId) => IsPositiveInt(value),
-                _ => true
-            },
             TestItemTableRow => e.Column.Key switch
             {
                 nameof(TestItemTableRow.ItemName) => !string.IsNullOrWhiteSpace(value),
@@ -1321,14 +1561,6 @@ public partial class AddressManageView : BaseView
             case ProductProcessTableRow processRow when e.Column.Key == nameof(ProductProcessTableRow.SchemeId):
                 processRow.SchemeId = value;
                 return !string.IsNullOrWhiteSpace(value);
-
-            case SchemeDetailTableRow detailRow when e.Column.Key == nameof(SchemeDetailTableRow.SchemeId):
-                detailRow.SchemeId = value;
-                return !string.IsNullOrWhiteSpace(value);
-
-            case SchemeDetailTableRow detailRow when e.Column.Key == nameof(SchemeDetailTableRow.ItemId):
-                detailRow.ItemId = ResolveItemId(value);
-                return detailRow.ItemId > 0;
 
             default:
                 return true;
@@ -1365,7 +1597,7 @@ public partial class AddressManageView : BaseView
             case ProductProcessTableRow row:
                 _selectedProductProcessRow = row;
                 row.NormalizeForDisplay();
-                tableTestItemAddresses.Refresh();
+                tableProcess.Refresh();
                 UpdateProductProcessSummary();
                 SyncActiveCommandState();
                 break;
@@ -1375,12 +1607,6 @@ public partial class AddressManageView : BaseView
                 tableTestSchemes.Refresh();
                 ConfigureProductProcessColumns();
                 ConfigureSchemeDetailColumns();
-                break;
-            case SchemeDetailTableRow row:
-                _selectedDetailRow = row;
-                row.NormalizeForDisplay();
-                tableSchemeDetails.Refresh();
-                UpdateProductProcessSummary();
                 break;
             case TestItemTableRow row:
                 _selectedItemRow = row;
@@ -1395,16 +1621,16 @@ public partial class AddressManageView : BaseView
     private void EndTableEdit()
     {
         tableAddresses.EditModeClose();
-        tableTestItemAddresses.EditModeClose();
+        tableProcess.EditModeClose();
         tableTestSchemes.EditModeClose();
-        tableSchemeDetails.EditModeClose();
         tableTestItems.EditModeClose();
     }
 
-    private void SelectVisibleRow(string? selectedAddressKey)
+    private void SelectVisibleRow(string? logicalKey, int? stationNo)
     {
-        _selectedRow = _currentRows.FirstOrDefault(row => row.AddressKey == selectedAddressKey)
+        _selectedRow = _currentRows.FirstOrDefault(row => row.LogicalKey == logicalKey && row.StationNo == stationNo)
             ?? _currentRows.FirstOrDefault();
+
         if (_selectedRow is not null)
         {
             tableAddresses.SetSelected(_selectedRow, true);
@@ -1417,7 +1643,7 @@ public partial class AddressManageView : BaseView
             ?? _currentProductProcessRows.FirstOrDefault();
         if (_selectedProductProcessRow is not null)
         {
-            tableTestItemAddresses.SetSelected(_selectedProductProcessRow, true);
+            tableProcess.SetSelected(_selectedProductProcessRow, true);
         }
 
         UpdateProductProcessSummary();
@@ -1431,16 +1657,6 @@ public partial class AddressManageView : BaseView
         if (_selectedSchemeRow is not null)
         {
             tableTestSchemes.SetSelected(_selectedSchemeRow, true);
-        }
-    }
-
-    private void SelectVisibleDetailRow(int? selectedId)
-    {
-        _selectedDetailRow = _currentDetailRows.FirstOrDefault(row => row.DetailId == selectedId)
-            ?? _currentDetailRows.FirstOrDefault();
-        if (_selectedDetailRow is not null)
-        {
-            tableSchemeDetails.SetSelected(_selectedDetailRow, true);
         }
     }
 
@@ -1459,8 +1675,10 @@ public partial class AddressManageView : BaseView
         foreach (var address in addresses)
         {
             address.Address = address.Address?.Trim();
-            address.LogicalKey = string.IsNullOrWhiteSpace(address.LogicalKey) ? address.AddressKey : address.LogicalKey.Trim();
-            address.StationNo = Math.Max(0, address.StationNo);
+            address.LogicalKey = address.LogicalKey.Trim();
+            address.StationNo = IsBusinessAddressKey(address.LogicalKey)
+                ? Math.Max(ProductionConstants.Stations.DefaultStationNo, address.StationNo)
+                : Math.Max(ProductionConstants.Stations.SharedStationNo, address.StationNo);
             address.DataType = NormalizeDataType(address.DataType);
             address.DataLength = Math.Max(1, address.DataLength);
             address.Sort = Math.Max(0, address.Sort);
@@ -1482,6 +1700,8 @@ public partial class AddressManageView : BaseView
             config.ActualTouchCountExpr = NormalizeNullableText(config.ActualTouchCountExpr);
             config.PresetTouchCountExpr = NormalizeNullableText(config.PresetTouchCountExpr);
             config.TouchBase = NormalizeRequiredText(config.TouchBase, "焊点头基地址不能为空。");
+            config.TouchNoBase = NormalizeNullableText(config.TouchNoBase) ?? config.TouchBase;
+            config.TouchResultBase = NormalizeNullableText(config.TouchResultBase) ?? config.TouchBase;
             config.TouchHeaderLen = Math.Max(1, config.TouchHeaderLen);
             config.TouchNoExpr = NormalizeRequiredText(config.TouchNoExpr, "焊点编号偏移不能为空。");
             config.TouchResultExpr = NormalizeRequiredText(config.TouchResultExpr, "焊点结果偏移不能为空。");
@@ -1549,6 +1769,11 @@ public partial class AddressManageView : BaseView
             {
                 throw new InvalidOperationException($"测试项ID“{detail.ItemId}”不存在。");
             }
+
+            if (!HasAnyEnabledRole(detail))
+            {
+                throw new InvalidOperationException("方案明细至少需要启用实际值、上限、下限或结果中的一项。");
+            }
         }
     }
 
@@ -1609,24 +1834,6 @@ public partial class AddressManageView : BaseView
         return $"S{index:00}";
     }
 
-    private int ResolveItemId(string value)
-    {
-        if (int.TryParse(value, out var itemId) && _testItems.Any(item => item.ItemId == itemId))
-        {
-            return itemId;
-        }
-
-        var item = _testItems.FirstOrDefault(it =>
-            string.Equals(it.ItemName, value, StringComparison.OrdinalIgnoreCase)
-            || string.Equals($"{it.ItemId} - {it.ItemName}", value, StringComparison.OrdinalIgnoreCase));
-        return item?.ItemId ?? 0;
-    }
-
-    private string GetItemName(int itemId)
-    {
-        return _testItems.FirstOrDefault(item => item.ItemId == itemId)?.ItemName ?? string.Empty;
-    }
-
     private int GetTestItemDisplayId(DimTestItem item)
     {
         if (item.ItemId > 0)
@@ -1659,35 +1866,44 @@ public partial class AddressManageView : BaseView
 
     private string GetAddressDisplayName(BizPlcAddress address)
     {
-        var logicalKey = string.IsNullOrWhiteSpace(address.LogicalKey)
-            ? address.AddressKey
-            : address.LogicalKey;
-        var key = logicalKey switch
+        var key = address.LogicalKey switch
         {
-            AppConstants.PlcAddressKeys.PcHeartBeat => TextKeys.Address.NamePcHeartbeat,
-            AppConstants.PlcAddressKeys.PlcHeartBeat => TextKeys.Address.NamePlcHeartbeat,
-            AppConstants.PlcAddressKeys.DeviceStatus => TextKeys.Address.NameDeviceStatus,
-            AppConstants.PlcAddressKeys.WeldStart => TextKeys.Address.NameWeldStart,
-            AppConstants.PlcAddressKeys.WeldEnd => TextKeys.Address.NameWeldEnd,
-            AppConstants.PlcAddressKeys.WeldCollectionAck => TextKeys.Address.NameWeldCollectionAck,
-            AppConstants.PlcAddressKeys.WorkId => TextKeys.Address.NameWorkId,
-            AppConstants.PlcAddressKeys.LegacySerialNumber => TextKeys.Address.NameWorkId,
-            AppConstants.PlcAddressKeys.ProductNum => TextKeys.Monitor.Label.ProductNo,
-            AppConstants.PlcAddressKeys.ProgramName => TextKeys.Address.NameProgramName,
-            AppConstants.PlcAddressKeys.ProductModel => TextKeys.Address.NameProductModel,
-            AppConstants.PlcAddressKeys.RecipeCode => TextKeys.Address.NameRecipeCode,
-            AppConstants.PlcAddressKeys.ProductDataReady => TextKeys.Address.NameProductDataReady,
-            AppConstants.PlcAddressKeys.ProductCollectionFeedback => TextKeys.Address.NameProductCollectionFeedback,
-            AppConstants.PlcAddressKeys.TotalProduction => TextKeys.Address.NameTotalProduction,
-            AppConstants.PlcAddressKeys.TargetProduction => TextKeys.Address.NameTargetProduction,
-            AppConstants.PlcAddressKeys.AcceptedQuantity => TextKeys.Address.NameAcceptedQuantity,
-            AppConstants.PlcAddressKeys.RejectedQuantity => TextKeys.Address.NameRejectedQuantity,
+            AppConstants.PlcLogicalKeys.PcHeartBeat => TextKeys.Address.NamePcHeartbeat,
+            AppConstants.PlcLogicalKeys.PlcHeartBeat => TextKeys.Address.NamePlcHeartbeat,
+            AppConstants.PlcLogicalKeys.DeviceStatus => TextKeys.Address.NameDeviceStatus,
+            AppConstants.PlcLogicalKeys.WorkId => TextKeys.Address.NameWorkId,
+            AppConstants.PlcLogicalKeys.PcRecipeCode => TextKeys.Address.NamePcRecipeCode,
+            AppConstants.PlcLogicalKeys.PlcRecipeCode => TextKeys.Address.NamePlcRecipeCode,
+            AppConstants.PlcLogicalKeys.WorkOrderStatus => TextKeys.Address.NameWorkOrderStatus,
+            AppConstants.PlcLogicalKeys.DeviceMode => TextKeys.Address.NameDeviceMode,
+            AppConstants.PlcLogicalKeys.ProductDataReady => TextKeys.Address.NameProductDataReady,
+            AppConstants.PlcLogicalKeys.ProductCollectionFeedback => TextKeys.Address.NameProductCollectionFeedback,
+            AppConstants.PlcLogicalKeys.TotalProduction => TextKeys.Address.NameTotalProduction,
+            AppConstants.PlcLogicalKeys.AcceptedQuantity => TextKeys.Address.NameAcceptedQuantity,
+            AppConstants.PlcLogicalKeys.RejectedQuantity => TextKeys.Address.NameRejectedQuantity,
             _ => string.Empty
         };
 
         return string.IsNullOrWhiteSpace(key)
             ? address.AddressName
             : _localizer.GetString(key);
+    }
+
+    private static bool IsBusinessAddressKey(string? logicalKey)
+    {
+        return logicalKey is AppConstants.PlcLogicalKeys.PcHeartBeat
+            or AppConstants.PlcLogicalKeys.PlcHeartBeat
+            or AppConstants.PlcLogicalKeys.DeviceStatus
+            or AppConstants.PlcLogicalKeys.WorkId
+            or AppConstants.PlcLogicalKeys.PcRecipeCode
+            or AppConstants.PlcLogicalKeys.PlcRecipeCode
+            or AppConstants.PlcLogicalKeys.WorkOrderStatus
+            or AppConstants.PlcLogicalKeys.DeviceMode
+            or AppConstants.PlcLogicalKeys.ProductDataReady
+            or AppConstants.PlcLogicalKeys.ProductCollectionFeedback
+            or AppConstants.PlcLogicalKeys.TotalProduction
+            or AppConstants.PlcLogicalKeys.AcceptedQuantity
+            or AppConstants.PlcLogicalKeys.RejectedQuantity;
     }
 
     private static string GetSelectValueText(object? value)
@@ -1730,6 +1946,21 @@ public partial class AddressManageView : BaseView
     {
         return !string.IsNullOrWhiteSpace(source)
             && source.Contains(keyword, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool SameScheme(string? left, string? right)
+    {
+        return string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasAnyEnabledRole(BizSchemeDetail detail)
+    {
+        return detail.EnableActual || detail.EnableUpper || detail.EnableLower || detail.EnableResult;
+    }
+
+    private static string BuildSchemeDetailKey(string? schemeId, int itemId)
+    {
+        return $"{schemeId?.Trim() ?? string.Empty}\u001F{itemId}";
     }
 
     private static bool IsPositiveInt(string value)
@@ -1780,7 +2011,17 @@ public partial class AddressManageView : BaseView
     /// <summary>
     /// 产品工艺预览时使用的方案明细行，Sort 保留方案明细顺序。
     /// </summary>
-    private sealed record ProductSchemePreviewItem(int Sort, DimTestItem Item);
+    private sealed record ProductSchemePreviewItem(int Sort, DimTestItem Item, BizSchemeDetail Detail);
+
+    private enum SchemeDetailValueRole
+    {
+        Actual,
+        Upper,
+        Lower,
+        Result
+    }
+
+    private sealed record SchemeDetailTreeNodeTag(int ItemId, SchemeDetailValueRole? Role);
 
     /// <summary>
     /// 业务信号地址表格行。表格编辑的是包装属性，保存时仍回写到原始地址实体。
@@ -1789,9 +2030,13 @@ public partial class AddressManageView : BaseView
     {
         public BizPlcAddress Source { get; } = source;
 
-        public string AddressKey => Source.AddressKey;
-
         public string AddressName { get; } = addressName;
+
+        public string LogicalKey
+        {
+            get => Source.LogicalKey;
+            set => Source.LogicalKey = value.Trim();
+        }
 
         public int StationNo => Source.StationNo;
 
@@ -1835,8 +2080,10 @@ public partial class AddressManageView : BaseView
 
         public void Normalize()
         {
-            Source.LogicalKey = string.IsNullOrWhiteSpace(Source.LogicalKey) ? Source.AddressKey : Source.LogicalKey.Trim();
-            Source.StationNo = Math.Max(0, Source.StationNo);
+            Source.LogicalKey = Source.LogicalKey.Trim();
+            Source.StationNo = IsBusinessAddressKey(Source.LogicalKey)
+                ? Math.Max(ProductionConstants.Stations.DefaultStationNo, Source.StationNo)
+                : Math.Max(ProductionConstants.Stations.SharedStationNo, Source.StationNo);
             Source.Address = NormalizeNullableText(Source.Address);
             Source.DataType = NormalizeDataType(Source.DataType);
             Source.DataLength = Math.Max(1, Source.DataLength);
@@ -1920,6 +2167,18 @@ public partial class AddressManageView : BaseView
             set => Source.TouchBase = value.Trim();
         }
 
+        public string TouchNoBase
+        {
+            get => string.IsNullOrWhiteSpace(Source.TouchNoBase) ? Source.TouchBase : Source.TouchNoBase!;
+            set => Source.TouchNoBase = value.Trim();
+        }
+
+        public string TouchResultBase
+        {
+            get => string.IsNullOrWhiteSpace(Source.TouchResultBase) ? Source.TouchBase : Source.TouchResultBase!;
+            set => Source.TouchResultBase = value.Trim();
+        }
+
         public int TouchHeaderLen
         {
             get => Source.TouchHeaderLen;
@@ -1971,6 +2230,8 @@ public partial class AddressManageView : BaseView
             Source.ActualTouchCountExpr = NormalizeNullableText(Source.ActualTouchCountExpr);
             Source.PresetTouchCountExpr = NormalizeNullableText(Source.PresetTouchCountExpr);
             Source.TouchBase = Source.TouchBase.Trim();
+            Source.TouchNoBase = NormalizeNullableText(Source.TouchNoBase) ?? Source.TouchBase;
+            Source.TouchResultBase = NormalizeNullableText(Source.TouchResultBase) ?? Source.TouchBase;
             Source.TouchHeaderLen = Math.Max(1, Source.TouchHeaderLen);
             Source.TouchNoExpr = Source.TouchNoExpr.Trim();
             Source.TouchResultExpr = Source.TouchResultExpr.Trim();
@@ -2009,38 +2270,6 @@ public partial class AddressManageView : BaseView
             Source.SchemeId = Source.SchemeId?.Trim() ?? string.Empty;
             Source.SchemeName = Source.SchemeName?.Trim() ?? string.Empty;
             Source.Description = NormalizeNullableText(Source.Description);
-        }
-    }
-
-    /// <summary>
-    /// 方案明细表格行。
-    /// </summary>
-    private sealed class SchemeDetailTableRow(BizSchemeDetail source, IReadOnlyList<DimTestItem> items)
-    {
-        public BizSchemeDetail Source { get; } = source;
-
-        private readonly IReadOnlyList<DimTestItem> _items = items;
-
-        public int DetailId => Source.DetailId;
-
-        public string SchemeId
-        {
-            get => Source.SchemeId;
-            set => Source.SchemeId = value.Trim();
-        }
-
-        public int ItemId
-        {
-            get => Source.ItemId;
-            set => Source.ItemId = Math.Max(0, value);
-        }
-
-        public string ItemName => _items.FirstOrDefault(item => item.ItemId == Source.ItemId)?.ItemName ?? string.Empty;
-
-        public void NormalizeForDisplay()
-        {
-            Source.SchemeId = Source.SchemeId?.Trim() ?? string.Empty;
-            Source.ItemId = Math.Max(0, Source.ItemId);
         }
     }
 

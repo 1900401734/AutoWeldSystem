@@ -1,5 +1,5 @@
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
-using AutoWeldSystem.Core.Models;
 using AutoWeldSystem.Core.Plc;
 using AutoWeldSystem.Data;
 
@@ -79,6 +79,7 @@ public sealed class TestSchemeConfigService : ITestSchemeConfigService
             }
 
             return query.ToList()
+                .Select(NormalizeLegacyDetailRoles)
                 .OrderBy(detail => detail.SchemeId)
                 .ThenBy(detail => detail.DetailId)
                 .ToList();
@@ -201,6 +202,34 @@ public sealed class TestSchemeConfigService : ITestSchemeConfigService
         {
             throw new InvalidOperationException("测试项ID必须大于0。");
         }
+
+        if (!HasAnyEnabledRole(detail))
+        {
+            throw new InvalidOperationException("方案明细至少需要启用实际值、上限、下限或结果中的一项。");
+        }
+    }
+
+    /// <summary>
+    /// 旧版本方案明细没有字段启用标记，新增列后数据库默认值可能全部为 false。
+    /// 这种记录按旧行为视为四个字段全启用，避免升级后现有方案突然不采集数据。
+    /// </summary>
+    private static BizSchemeDetail NormalizeLegacyDetailRoles(BizSchemeDetail detail)
+    {
+        if (HasAnyEnabledRole(detail))
+        {
+            return detail;
+        }
+
+        detail.EnableActual = true;
+        detail.EnableUpper = true;
+        detail.EnableLower = true;
+        detail.EnableResult = true;
+        return detail;
+    }
+
+    private static bool HasAnyEnabledRole(BizSchemeDetail detail)
+    {
+        return detail.EnableActual || detail.EnableUpper || detail.EnableLower || detail.EnableResult;
     }
 
     private static void Normalize(DimTestItem item)

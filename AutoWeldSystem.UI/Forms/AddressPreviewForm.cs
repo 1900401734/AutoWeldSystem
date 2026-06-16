@@ -1,7 +1,9 @@
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Interfaces;
+using AutoWeldSystem.Core.Interfaces.PLC;
 using AutoWeldSystem.UI.Base;
 using System.Globalization;
+using AutoWeldSystem.Core.ViewModels;
 
 namespace AutoWeldSystem.UI.Forms;
 

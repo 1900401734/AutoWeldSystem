@@ -1,4 +1,4 @@
-using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.Entities;
 
 namespace AutoWeldSystem.Core.Interfaces;
 

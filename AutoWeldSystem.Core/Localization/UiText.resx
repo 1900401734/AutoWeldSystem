@@ -382,13 +382,19 @@
     <value>配置 PLC、MES、总控、设备信息以及本地数据和日志存储路径。</value>
   </data>
   <data name="system.group.plc" xml:space="preserve">
-    <value>PLC参数设定</value>
+    <value>PLC配置</value>
+  </data>
+  <data name="system.group.production" xml:space="preserve">
+    <value>生产配置</value>
+  </data>
+  <data name="system.group.device" xml:space="preserve">
+    <value>设备管理</value>
   </data>
   <data name="system.group.controller" xml:space="preserve">
-    <value>总控参数设定</value>
+    <value>总控配置</value>
   </data>
   <data name="system.group.application" xml:space="preserve">
-    <value>应用参数设定</value>
+    <value>应用配置</value>
   </data>
   <data name="system.label.ip" xml:space="preserve">
     <value>IP</value>
@@ -417,11 +423,14 @@
   <data name="system.label.mes_url" xml:space="preserve">
     <value>MES地址</value>
   </data>
-  <data name="system.label.use_product_number_filter" xml:space="preserve">
+  <data name="system.checkbox.use_product_number_filter" xml:space="preserve">
     <value>按产品工号筛选程序</value>
   </data>
-  <data name="system.label.validate_recipe_before_start" xml:space="preserve">
-    <value>开工前校验 PLC 配方编号</value>
+  <data name="system.checkbox.validate_recipe_after_start" xml:space="preserve">
+    <value>开工后校验 PLC 配方编号</value>
+  </data>
+  <data name="system.checkbox.enable_finish_exp_qty_prompt" xml:space="preserve">
+    <value>启用完工实际数量输入弹窗</value>
   </data>
   <data name="system.button.connect" xml:space="preserve">
     <value>连接</value>
@@ -564,6 +573,9 @@
   <data name="plc.message.heartbeat_failed" xml:space="preserve">
     <value>PLC 心跳检测失败：{0}</value>
   </data>
+  <data name="plc.message.heartbeat_no_change" xml:space="preserve">
+    <value>PLC心跳无变化，已持续 {0:0.0} 秒；TCP连接仍可建立，等待 PLC 业务心跳恢复。</value>
+  </data>
   <data name="plc.message.tcp_probe_failed" xml:space="preserve">
     <value>PLC TCP 探测失败：{0}</value>
   </data>
@@ -611,9 +623,6 @@
   </data>
   <data name="address.message.test_failed" xml:space="preserve">
     <value>地址“{0}”测试失败：{1}</value>
-  </data>
-  <data name="grid.plc_address.key" xml:space="preserve">
-    <value>地址键</value>
   </data>
   <data name="grid.plc_address.name" xml:space="preserve">
     <value>名称</value>
@@ -671,6 +680,18 @@
   </data>
   <data name="address.name.recipe_code" xml:space="preserve">
     <value>配方编号</value>
+  </data>
+  <data name="address.name.pc_recipe_code" xml:space="preserve">
+    <value>PC配方</value>
+  </data>
+  <data name="address.name.plc_recipe_code" xml:space="preserve">
+    <value>PLC配方</value>
+  </data>
+  <data name="address.name.work_order_status" xml:space="preserve">
+    <value>工单状态</value>
+  </data>
+  <data name="address.name.device_mode" xml:space="preserve">
+    <value>设备模式</value>
   </data>
   <data name="address.name.product_data_ready" xml:space="preserve">
     <value>产品数据就绪</value>
@@ -806,6 +827,9 @@
   </data>
   <data name="monitor.button.start_report" xml:space="preserve">
     <value>开工上报</value>
+  </data>
+  <data name="monitor.button.local_work_order" xml:space="preserve">
+    <value>离线开工</value>
   </data>
   <data name="monitor.button.finish_report" xml:space="preserve">
     <value>完工上报</value>
@@ -961,7 +985,8 @@
     <value>当前工单和设备没有可选程序。</value>
   </data>
   <data name="monitor.message.program_download_failed" xml:space="preserve">
-    <value>下载所选程序失败。</value>
+    <value>
+	。</value>
   </data>
   <data name="monitor.message.work_order_ready" xml:space="preserve">
     <value>工单和程序已准备完成。</value>
@@ -988,7 +1013,7 @@
     <value>完工上报成功。</value>
   </data>
   <data name="monitor.runtime.idle" xml:space="preserve">
-    <value>等待业务操作。</value>
+    <value>等待业务操作</value>
   </data>
   <data name="monitor.runtime.loading_work_order" xml:space="preserve">
     <value>正在获取工单信息...</value>
@@ -1016,6 +1041,45 @@
   </data>
   <data name="monitor.error.operation_failed" xml:space="preserve">
     <value>操作失败</value>
+  </data>
+  <data name="monitor.production_hint.product_data_ready" xml:space="preserve">
+    <value>PLC触发采集数据</value>
+  </data>
+  <data name="monitor.production_hint.product_collection_start" xml:space="preserve">
+    <value>正在采集产品数据</value>
+  </data>
+  <data name="monitor.production_hint.product_data_read_start" xml:space="preserve">
+    <value>正在采集产品数据</value>
+  </data>
+  <data name="monitor.production_hint.product_data_saved" xml:space="preserve">
+    <value>数据保存成功</value>
+  </data>
+  <data name="monitor.production_hint.product_data_save_failed" xml:space="preserve">
+    <value>数据保存失败</value>
+  </data>
+  <data name="monitor.production_hint.product_collection_feedback_succeeded" xml:space="preserve">
+    <value>PLC采集反馈成功</value>
+  </data>
+  <data name="monitor.production_hint.product_collection_feedback_failed" xml:space="preserve">
+    <value>PLC采集反馈失败</value>
+  </data>
+  <data name="monitor.production_hint.recipe_code_write_succeeded" xml:space="preserve">
+    <value>配方编号已下发</value>
+  </data>
+  <data name="monitor.production_hint.recipe_code_write_failed" xml:space="preserve">
+    <value>配方编号下发失败</value>
+  </data>
+  <data name="monitor.production_hint.recipe_code_validation_succeeded" xml:space="preserve">
+    <value>配方编号校验通过</value>
+  </data>
+  <data name="monitor.production_hint.recipe_code_validation_failed" xml:space="preserve">
+    <value>配方编号校验失败</value>
+  </data>
+  <data name="monitor.production_hint.business_signal_write_succeeded" xml:space="preserve">
+    <value>PLC业务信号写入成功</value>
+  </data>
+  <data name="monitor.production_hint.business_signal_write_failed" xml:space="preserve">
+    <value>PLC业务信号写入失败</value>
   </data>
   <data name="monitor.dialog.scan_work_id_title" xml:space="preserve">
     <value>加载工单</value>
@@ -1386,5 +1450,203 @@
   <data name="monitor.button.edit" xml:space="preserve">
     <value>微调</value>
     <comment>工单</comment>
+  </data>
+  <data name="system.group.mes" xml:space="preserve">
+    <value>MES配置</value>
+  </data>
+  <data name="system.tab.basic" xml:space="preserve">
+    <value>基础设置</value>
+  </data>
+  <data name="system.Checkbox.enable_dual_station" xml:space="preserve">
+    <value>启用双工位</value>
+  </data>
+  <data name="system.Checkbox.enable_dual_work_order" xml:space="preserve">
+    <value>启用双工单</value>
+  </data>
+  <data name="system.label.upload_mode" xml:space="preserve">
+    <value>上传模式</value>
+  </data>
+  <data name="system.label.upload_batch_size" xml:space="preserve">
+    <value>上传批次大小</value>
+  </data>
+  <data name="system.label.plc_heartbeat_rate" xml:space="preserve">
+    <value>PLC心跳频率</value>
+  </data>
+  <data name="data.label.product_num" xml:space="preserve">
+    <value>产品工号</value>
+  </data>
+  <data name="data.label.batch" xml:space="preserve">
+    <value>批次</value>
+  </data>
+  <data name="data.label.work_order_id" xml:space="preserve">
+    <value>工单号</value>
+  </data>
+  <data name="data.label.date_range" xml:space="preserve">
+    <value>日期</value>
+  </data>
+  <data name="data.placeholder.fuzzy_search" xml:space="preserve">
+    <value>模糊查询</value>
+  </data>
+  <data name="data.placeholder.work_order" xml:space="preserve">
+    <value>流转卡号</value>
+  </data>
+  <data name="data.button.query" xml:space="preserve">
+    <value>查询</value>
+  </data>
+  <data name="data.button.reset" xml:space="preserve">
+    <value>重置</value>
+  </data>
+  <data name="data.button.open_report" xml:space="preserve">
+    <value>打开报告</value>
+  </data>
+  <data name="data.button.open_report_folder" xml:space="preserve">
+    <value>打开所在目录</value>
+  </data>
+  <data name="data.tab.weld_parameters" xml:space="preserve">
+    <value>焊接参数</value>
+  </data>
+  <data name="data.tab.collection_data" xml:space="preserve">
+    <value>采集数据</value>
+  </data>
+  <data name="data.tab.report_files" xml:space="preserve">
+    <value>报告文件</value>
+  </data>
+  <data name="data.label.raw_data" xml:space="preserve">
+    <value>原始采集数据</value>
+  </data>
+  <data name="data.message.loading" xml:space="preserve">
+    <value>正在加载...</value>
+  </data>
+  <data name="data.message.select_work_order" xml:space="preserve">
+    <value>请选择历史工单</value>
+  </data>
+  <data name="data.message.select_report" xml:space="preserve">
+    <value>请先选择报告文件。</value>
+  </data>
+  <data name="data.summary.work_orders" xml:space="preserve">
+    <value>历史工单：{0} 条</value>
+  </data>
+  <data name="data.summary.parameters" xml:space="preserve">
+    <value>焊接参数：{0} 条，动态测试项列：{1} 列</value>
+  </data>
+  <data name="data.summary.collection" xml:space="preserve">
+    <value>采集数据：{0} 条</value>
+  </data>
+  <data name="data.summary.reports" xml:space="preserve">
+    <value>报告文件：{0} 个</value>
+  </data>
+  <data name="data.message.query_failed" xml:space="preserve">
+    <value>历史工单查询失败：{0}</value>
+  </data>
+  <data name="data.message.detail_query_failed" xml:space="preserve">
+    <value>工单明细查询失败：{0}</value>
+  </data>
+  <data name="data.message.report_file_missing" xml:space="preserve">
+    <value>报告文件不存在：{0}</value>
+  </data>
+  <data name="data.message.report_directory_missing" xml:space="preserve">
+    <value>报告文件目录不存在：{0}</value>
+  </data>
+  <data name="data.message.open_path_failed" xml:space="preserve">
+    <value>打开路径失败：{0}</value>
+  </data>
+  <data name="data.column.station" xml:space="preserve">
+    <value>工位</value>
+  </data>
+  <data name="data.column.work_order_id" xml:space="preserve">
+    <value>工单号</value>
+  </data>
+  <data name="data.column.product_num" xml:space="preserve">
+    <value>产品工号</value>
+  </data>
+  <data name="data.column.batch" xml:space="preserve">
+    <value>批次</value>
+  </data>
+  <data name="data.column.product_name" xml:space="preserve">
+    <value>产品名称</value>
+  </data>
+  <data name="data.column.process" xml:space="preserve">
+    <value>工序</value>
+  </data>
+  <data name="data.column.recipe" xml:space="preserve">
+    <value>配方</value>
+  </data>
+  <data name="data.column.planned_qty" xml:space="preserve">
+    <value>计划数量</value>
+  </data>
+  <data name="data.column.actual_qty" xml:space="preserve">
+    <value>实际数量</value>
+  </data>
+  <data name="data.column.qualified_qty" xml:space="preserve">
+    <value>合格数量</value>
+  </data>
+  <data name="data.column.failed_qty" xml:space="preserve">
+    <value>不良数量</value>
+  </data>
+  <data name="data.column.operator" xml:space="preserve">
+    <value>操作员工号</value>
+  </data>
+  <data name="data.column.start_time" xml:space="preserve">
+    <value>开始时间</value>
+  </data>
+  <data name="data.column.end_time" xml:space="preserve">
+    <value>结束时间</value>
+  </data>
+  <data name="data.column.task_status" xml:space="preserve">
+    <value>任务状态</value>
+  </data>
+  <data name="data.column.upload_status" xml:space="preserve">
+    <value>上传状态</value>
+  </data>
+  <data name="data.column.product_no" xml:space="preserve">
+    <value>产品编号</value>
+  </data>
+  <data name="data.column.touch_no" xml:space="preserve">
+    <value>焊点编号</value>
+  </data>
+  <data name="data.column.touch_result" xml:space="preserve">
+    <value>焊点结果</value>
+  </data>
+  <data name="data.column.record_time" xml:space="preserve">
+    <value>采集时间</value>
+  </data>
+  <data name="data.column.sequence" xml:space="preserve">
+    <value>序号</value>
+  </data>
+  <data name="data.column.is_test" xml:space="preserve">
+    <value>试焊件</value>
+  </data>
+  <data name="data.column.product_completed" xml:space="preserve">
+    <value>产品完成</value>
+  </data>
+  <data name="data.column.file_name" xml:space="preserve">
+    <value>文件名</value>
+  </data>
+  <data name="data.column.file_format" xml:space="preserve">
+    <value>格式</value>
+  </data>
+  <data name="data.column.file_path" xml:space="preserve">
+    <value>文件路径</value>
+  </data>
+  <data name="data.column.created_time" xml:space="preserve">
+    <value>创建时间</value>
+  </data>
+  <data name="data.column.updated_time" xml:space="preserve">
+    <value>更新时间</value>
+  </data>
+  <data name="permission.button.data.query" xml:space="preserve">
+    <value>查询历史数据</value>
+  </data>
+  <data name="permission.button.data.reset" xml:space="preserve">
+    <value>重置历史查询</value>
+  </data>
+  <data name="permission.button.data.open_report" xml:space="preserve">
+    <value>打开报告文件</value>
+  </data>
+  <data name="permission.button.data.open_report_folder" xml:space="preserve">
+    <value>打开报告目录</value>
+  </data>
+  <data name="grid.plc_address.station" xml:space="preserve">
+    <value>工位</value>
   </data>
 </root>

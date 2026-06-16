@@ -1,10 +1,10 @@
 using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Enums;
 using AutoWeldSystem.Core.Exceptions;
-using AutoWeldSystem.Core.Interfaces;
-using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.Interfaces.UserManage;
 using AutoWeldSystem.Core.Security;
 using AutoWeldSystem.Data;
 using SqlSugar;
@@ -281,25 +281,33 @@ public class RbacService : IRbacService
         {
             new SysRole
             {
+                RoleCode = AppConstants.Roles.Developer,
+                RoleName = "开发者",
+                Description = "内置系统开发者角色",
+                Enabled = true,
+                IsSystem = true
+            },
+            new SysRole
+            {
                 RoleCode = AppConstants.Roles.Admin,
-                RoleName = "Administrator",
-                Description = "Built-in administrator role",
+                RoleName = "管理员",
+                Description = "内置系统管理员角色",
                 Enabled = true,
                 IsSystem = true
             },
             new SysRole
             {
                 RoleCode = AppConstants.Roles.Operator,
-                RoleName = "Operator",
-                Description = "Built-in operator role",
+                RoleName = "操作员",
+                Description = "内置系统操作员角色",
                 Enabled = true,
                 IsSystem = true
             },
             new SysRole
             {
                 RoleCode = AppConstants.Roles.Readonly,
-                RoleName = "Readonly",
-                Description = "Built-in readonly role",
+                RoleName = "只读用户",
+                Description = "内置系统只读角色",
                 Enabled = true,
                 IsSystem = true
             }
@@ -365,17 +373,48 @@ public class RbacService : IRbacService
             }
 
             var existingCount = _dbContext.Db.Queryable<SysRolePermission>().Count(it => it.RoleId == role.Id);
-            if (existingCount > 0)
-            {
-                continue;
-            }
-
             var permissionIds = pair.Value
                 .Where(permissions.ContainsKey)
                 .Select(code => permissions[code].Id)
                 .ToArray();
 
+            if (existingCount > 0
+                && (string.Equals(role.RoleCode, AppConstants.Roles.Developer, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(role.RoleCode, AppConstants.Roles.Admin, StringComparison.OrdinalIgnoreCase)))
+            {
+                AppendMissingRolePermissions(role.Id, permissionIds);
+                continue;
+            }
+
+            if (existingCount > 0)
+            {
+                continue;
+            }
+
             SaveRolePermissions(role.Id, permissionIds);
+        }
+    }
+
+    private void AppendMissingRolePermissions(int roleId, IReadOnlyCollection<int> desiredPermissionIds)
+    {
+        var existingIds = _dbContext.Db.Queryable<SysRolePermission>()
+            .Where(item => item.RoleId == roleId)
+            .Select(item => item.PermissionId)
+            .ToList()
+            .ToHashSet();
+        var missing = desiredPermissionIds
+            .Where(permissionId => !existingIds.Contains(permissionId))
+            .Select(permissionId => new SysRolePermission
+            {
+                RoleId = roleId,
+                PermissionId = permissionId,
+                CreatedTime = DateTime.Now
+            })
+            .ToList();
+
+        if (missing.Count > 0)
+        {
+            _dbContext.Db.Insertable(missing).ExecuteCommand();
         }
     }
 
@@ -385,6 +424,7 @@ public class RbacService : IRbacService
 
         return new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase)
         {
+            [AppConstants.Roles.Developer] = allCodes,
             [AppConstants.Roles.Admin] = allCodes,
             [AppConstants.Roles.Operator] = new[]
             {
@@ -394,17 +434,34 @@ public class RbacService : IRbacService
                 PermissionCodes.Buttons.Monitor.ChangeWorkOrder,
                 PermissionCodes.Buttons.Monitor.StartReport,
                 PermissionCodes.Buttons.Monitor.FinishReport,
+                PermissionCodes.Buttons.Monitor.GetWorkOrder,
+                PermissionCodes.Buttons.Monitor.EditWorkOrder,
+                PermissionCodes.Buttons.Monitor.LocalWorkOrder,
                 PermissionCodes.Buttons.Auth.SwitchUser,
                 PermissionCodes.Buttons.Auth.Logout,
+                PermissionCodes.Buttons.Auth.AddressPreview,
                 PermissionCodes.Buttons.Data.Export,
+                PermissionCodes.Buttons.Data.Query,
+                PermissionCodes.Buttons.Data.Reset,
+                PermissionCodes.Buttons.Data.OpenReport,
+                PermissionCodes.Buttons.Data.OpenReportFolder,
                 PermissionCodes.Buttons.Program.Add,
                 PermissionCodes.Buttons.Program.Edit,
-                PermissionCodes.Buttons.Program.Delete
+                PermissionCodes.Buttons.Program.Delete,
+                PermissionCodes.Buttons.Program.Sync,
+                PermissionCodes.Buttons.Program.PullMes,
+                PermissionCodes.Buttons.Program.Refresh,
+                PermissionCodes.Buttons.Program.BrowseFile,
+                PermissionCodes.Buttons.Program.BuildName
             },
             [AppConstants.Roles.Readonly] = new[]
             {
                 PermissionCodes.Pages.Monitor,
                 PermissionCodes.Pages.DataManage,
+                PermissionCodes.Buttons.Data.Query,
+                PermissionCodes.Buttons.Data.Reset,
+                PermissionCodes.Buttons.Data.OpenReport,
+                PermissionCodes.Buttons.Data.OpenReportFolder,
                 PermissionCodes.Buttons.Auth.SwitchUser,
                 PermissionCodes.Buttons.Auth.Logout
             }

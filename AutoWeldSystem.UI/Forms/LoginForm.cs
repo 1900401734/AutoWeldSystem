@@ -1,8 +1,9 @@
 using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
-using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.Interfaces.UserManage;
 using AutoWeldSystem.UI.Base;
 
 namespace AutoWeldSystem.UI.Forms;

@@ -1,7 +1,7 @@
 using AutoWeldSystem.Core.Constants;
-using AutoWeldSystem.Core.DTOs;
+using AutoWeldSystem.Core.DTOs.Mes.Request;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
-using AutoWeldSystem.Core.Models;
 using AutoWeldSystem.UI.Base;
 using AutoWeldSystem.UI.Infrastructure;
 
@@ -63,7 +63,7 @@ public partial class ProgramManageView : BaseView
         dgvPrograms.Columns.Clear();
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.RecipeCode), 14));
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.ProductNum), 18));
-        dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.ProductModel), 18));
+        //dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.ProductModel), 18));
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.LocalRemark), 18));
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.VersionNumber), 8));
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.SyncStatus), 13));
@@ -297,9 +297,9 @@ public partial class ProgramManageView : BaseView
         txtProgramFile.Text = program.ProgramFileName ?? string.Empty;
         BindRemarkOptions(GetAutoRemarkAction(program));
         txtLocalRemark.Text = program.LocalRemark ?? string.Empty;
-        txtProgramContent.Text = string.IsNullOrWhiteSpace(program.ProgramContentJson)
+        txtProgramContent.Text = string.IsNullOrWhiteSpace(program.ProgramContent)
             ? "{\r\n}"
-            : program.ProgramContentJson;
+            : program.ProgramContent;
         SetCurrentProgramInfo(program);
         _revisionBindingSource.DataSource = _programService.GetRevisions(program.Id).ToList();
     }
@@ -387,9 +387,14 @@ public partial class ProgramManageView : BaseView
         btnSave.Enabled = false;
         try
         {
-            var saved = await _programService.SaveAsync(request, chkSyncNow.Checked);
+            var syncInBackground = chkSyncNow.Checked;
+            var saved = await _programService.SaveAsync(request, syncNow: false);
             ReloadPrograms(saved.Id);
-            ShowInfo(TextKeys.ProgramManage.SaveSuccess);
+            ShowInfo(syncInBackground ? "程序已保存到本地，MES同步将在后台执行。" : _localizer.GetString(TextKeys.ProgramManage.SaveSuccess));
+            if (syncInBackground)
+            {
+                _ = SyncProgramInBackgroundAsync(saved.Id);
+            }
         }
         catch (Exception ex)
         {
@@ -398,6 +403,25 @@ public partial class ProgramManageView : BaseView
         finally
         {
             btnSave.Enabled = true;
+        }
+    }
+
+    private async Task SyncProgramInBackgroundAsync(int programId)
+    {
+        try
+        {
+            await _programService.SyncProgramAsync(programId);
+            if (!IsDisposed && IsHandleCreated)
+            {
+                BeginInvoke(() => ReloadPrograms(programId));
+            }
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed && IsHandleCreated)
+            {
+                BeginInvoke(() => ShowErrorMessage(ex.Message));
+            }
         }
     }
 
@@ -455,7 +479,7 @@ public partial class ProgramManageView : BaseView
         btnPullMes.Enabled = false;
         try
         {
-            var count = await _programService.PullFromMesAsync(string.IsNullOrWhiteSpace(txtProductNum.Text) ? null : txtProductNum.Text.Trim());
+            var count = await _programService.PullFromMesAsync();
             ReloadPrograms();
             ShowInfo(TextKeys.ProgramManage.PullSuccess, count);
         }
@@ -469,9 +493,9 @@ public partial class ProgramManageView : BaseView
         }
     }
 
-    private bool TryBuildRequest(out ProgramSaveRequest request)
+    private bool TryBuildRequest(out SaveProgramReq request)
     {
-        request = new ProgramSaveRequest { Id = _editingId };
+        request = new SaveProgramReq { Id = _editingId };
 
         if (!int.TryParse(txtSequenceNumber.Text.Trim(), out var sequenceNumber) || sequenceNumber <= 0)
         {

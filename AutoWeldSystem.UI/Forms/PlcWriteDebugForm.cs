@@ -1,5 +1,6 @@
-using AutoWeldSystem.Core.DTOs;
-using AutoWeldSystem.Core.Interfaces;
+using AutoWeldSystem.Core.DTOs.Plc;
+using AutoWeldSystem.Core.Interfaces.Log;
+using AutoWeldSystem.Core.Interfaces.PLC;
 using AutoWeldSystem.UI.Base;
 using System.Globalization;
 

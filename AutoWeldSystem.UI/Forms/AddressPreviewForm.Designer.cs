@@ -1,3 +1,5 @@
+using AutoWeldSystem.Core.ViewModels;
+
 namespace AutoWeldSystem.UI.Forms
 {
     partial class AddressPreviewForm

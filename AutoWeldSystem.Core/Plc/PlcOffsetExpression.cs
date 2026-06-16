@@ -1,5 +1,5 @@
-using AutoWeldSystem.Core.Constants;
 using System.Globalization;
+using AutoWeldSystem.Core.Constants;
 
 namespace AutoWeldSystem.Core.Plc;
 
@@ -88,7 +88,7 @@ public sealed record PlcOffsetExpression(int Offset, string DataType, int Rule)
         };
     }
 
-    private static string AddByteOffset(string baseAddress, int offset)
+    public static string AddByteOffset(string baseAddress, int offset)
     {
         var normalizedBase = baseAddress.Trim();
         if (string.IsNullOrWhiteSpace(normalizedBase))

@@ -7,12 +7,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.104.2" />
     <ProjectReference Include="..\AutoWeldSystem.Core\AutoWeldSystem.Core.csproj" />
     <ProjectReference Include="..\AutoWeldSystem.Data\AutoWeldSystem.Data.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Plc\" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,9 +1,13 @@
 ﻿using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Interfaces;
+using AutoWeldSystem.Core.Interfaces.Log;
+using AutoWeldSystem.Core.Interfaces.MES;
+using AutoWeldSystem.Core.Interfaces.PLC;
+using AutoWeldSystem.Core.Interfaces.UserManage;
 using AutoWeldSystem.Data;
 using AutoWeldSystem.Services;
-using AutoWeldSystem.Services.Logging;
+using AutoWeldSystem.Services.Log;
 using AutoWeldSystem.Services.Mes;
 using AutoWeldSystem.Services.Plc;
 using AutoWeldSystem.Services.Production;
@@ -45,7 +49,8 @@ public static class Program
                     services.AddSingleton<IRbacService, RbacService>();
                     services.AddSingleton<ISysUserService, SysUserService>();
                     services.AddSingleton<IAppSettingsService, AppSettingsService>();
-                    services.AddSingleton<IPlcAddressService, PlcAddressService>();
+                    services.AddSingleton<IPlcAddressService, AddressService>();
+                    services.AddSingleton<IPlcBusinessSignalService, BusinessSignalService>();
                     services.AddSingleton<IOperationLogService, OperationLogService>();
                     services.AddSingleton<IMesInteractionLogService, MesInteractionLogService>();
                     services.AddSingleton<IProductionFlowLogService, ProductionFlowLogService>();
@@ -53,21 +58,24 @@ public static class Program
                     services.AddSingleton<ILocalizationService, LocalizationService>();
                     services.AddSingleton<IWeldTaskService, WeldTaskService>();
                     services.AddSingleton<IProgramManageService, ProgramManageService>();
-                    services.AddSingleton<IPlcCommunicationService, HslPlcCommunicationService>();
-                    services.AddSingleton<IPlcExpressionReadService, PlcExpressionReadService>();
-                    services.AddSingleton<IMesConnectionMonitorService, MesConnectionMonitorService>();
-                    services.AddSingleton<IPlcProductionMonitorService, PlcProductionMonitorService>();
-                    services.AddSingleton<IPlcWorkIdMonitorService, PlcWorkIdMonitorService>();
-                    services.AddSingleton<IPlcWeldCycleMonitorService, PlcWeldCycleMonitorService>();
+                    services.AddSingleton<IPlcCommunicationService, CommunicationService>();
+                    services.AddSingleton<IPlcExpressionReadService, ExpressionReadService>();
+                    services.AddSingleton<IMesConnectionMonitor, MesConnectionMonitor>();
+                    services.AddSingleton<IPlcProductionMonitorService, ProductionMonitorService>();
+                    services.AddSingleton<IPlcWorkIdMonitorService, WorkIdMonitorService>();
+                    services.AddSingleton<IPlcWeldCycleMonitorService, WeldCycleMonitorService>();
                     services.AddSingleton<IProductProcessConfigService, ProductProcessConfigService>();
                     services.AddSingleton<ITestSchemeConfigService, TestSchemeConfigService>();
-                    services.AddSingleton<IProductNoGeneratorService, ProductNoGeneratorService>();
                     services.AddSingleton<IProductCycleCollectionService, ProductCycleCollectionService>();
                     services.AddSingleton<IProductRealtimePreviewService, ProductRealtimePreviewService>();
+                    services.AddSingleton<IProductHistoryService, ProductHistoryService>();
                     services.AddSingleton<IWeldPointUploadCoordinatorService, WeldPointUploadCoordinatorService>();
                     services.AddSingleton<IDeviceStatusService, DeviceStatusService>();
+                    services.AddSingleton<IRuntimeTipStateService, RuntimeTipStateService>();
                     services.AddSingleton<IUploadTaskService, UploadTaskService>();
+                    services.AddSingleton<IUploadStatusSummaryService, UploadStatusSummaryService>();
                     services.AddSingleton<IProductionReportFileService, ProductionReportFileService>();
+                    services.AddSingleton<IDataHistoryQueryService, DataHistoryQueryService>();
                     services.AddTransient<PermissionUiBinder>();
 
                     services.AddHttpClient<IMesProvider, MesProvider>();
@@ -91,11 +99,10 @@ public static class Program
 
             InstallExceptionHandlers(AppHost.Services.GetRequiredService<IProgramExceptionLogService>());
             AppHost.Services.GetRequiredService<ISysUserService>().InitDb();
-            // Resolve the localizer early so startup warnings follow the current language.
-            var localizer = AppHost.Services.GetRequiredService<ILocalizationService>();
+            AppHost.Services.GetRequiredService<ILocalizationService>();
             AppHost.Services.GetRequiredService<IPlcCommunicationService>().StartAsync().GetAwaiter().GetResult();
             plcServiceStarted = true;
-            AppHost.Services.GetRequiredService<IMesConnectionMonitorService>().StartAsync().GetAwaiter().GetResult();
+            AppHost.Services.GetRequiredService<IMesConnectionMonitor>().StartAsync().GetAwaiter().GetResult();
             mesMonitorStarted = true;
             AppHost.Services.GetRequiredService<IPlcProductionMonitorService>().StartAsync().GetAwaiter().GetResult();
             productionMonitorStarted = true;
@@ -105,15 +112,6 @@ public static class Program
             weldCycleMonitorStarted = true;
             AppHost.Services.GetRequiredService<IProductRealtimePreviewService>().StartAsync().GetAwaiter().GetResult();
             realtimePreviewStarted = true;
-
-            var taskService = AppHost.Services.GetRequiredService<IWeldTaskService>();
-            var timeSyncResult = taskService.SyncServerTimeAsync().GetAwaiter().GetResult();
-            if (!timeSyncResult.IsSuccess)
-            {
-                ShowStartupMessage(
-                    localizer.GetString(TextKeys.Common.StartupTimeSyncFailed, timeSyncResult.Msg),
-                    MessageBoxIcon.Warning);
-            }
 
             while (true)
             {
@@ -138,6 +136,7 @@ public static class Program
         catch (Exception ex)
         {
             TryLogProgramException(ex, "Startup");
+            WriteStartupFallbackLog(ex);
             ShowStartupError(ex);
         }
         finally
@@ -181,6 +180,38 @@ public static class Program
         }
     }
 
+    /// <summary>
+    /// 启动早期可能还没有成功连接数据库，此时普通异常日志无法读取系统设置目录。
+    /// 这里写入程序目录下的兜底日志，方便工控机现场直接定位启动失败原因。
+    /// </summary>
+    private static void WriteStartupFallbackLog(Exception exception)
+    {
+        try
+        {
+            var logDirectory = Path.Combine(AppContext.BaseDirectory, "Logs", "startup");
+            Directory.CreateDirectory(logDirectory);
+            var filePath = Path.Combine(logDirectory, "startup-fatal.log");
+            var content = string.Join(
+                Environment.NewLine,
+                $"Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}",
+                $"Machine: {Environment.MachineName}",
+                $"User: {Environment.UserName}",
+                $"BaseDirectory: {AppContext.BaseDirectory}",
+                $"ExceptionType: {exception.GetType().FullName}",
+                $"Message: {exception.Message}",
+                "StackTrace:",
+                exception.ToString(),
+                new string('-', 80),
+                string.Empty);
+
+            File.AppendAllText(filePath, content, System.Text.Encoding.UTF8);
+        }
+        catch
+        {
+            // 兜底日志也不能影响启动异常弹窗。
+        }
+    }
+
     private static void StopBackgroundServices(
         bool realtimePreviewStarted,
         bool weldCycleMonitorStarted,
@@ -213,7 +244,7 @@ public static class Program
 
             if (mesMonitorStarted)
             {
-                AppHost?.Services.GetRequiredService<IMesConnectionMonitorService>().StopAsync().GetAwaiter().GetResult();
+                AppHost?.Services.GetRequiredService<IMesConnectionMonitor>().StopAsync().GetAwaiter().GetResult();
             }
 
             if (plcServiceStarted)

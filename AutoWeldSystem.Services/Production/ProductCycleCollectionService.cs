@@ -1,7 +1,9 @@
 using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Exceptions;
 using AutoWeldSystem.Core.Interfaces;
-using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.Interfaces.Log;
+using AutoWeldSystem.Core.Interfaces.PLC;
 using AutoWeldSystem.Data;
 using System.Globalization;
 using System.Text.Json;
@@ -21,6 +23,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
     private readonly IPlcExpressionReadService _plcExpressionReadService;
     private readonly IOperationLogService _operationLogService;
     private readonly IProductionFlowLogService _productionLogService;
+    private readonly IProductionReportFileService _reportFileService;
     private readonly object _dbLock = new();
 
     public ProductCycleCollectionService(
@@ -28,13 +31,15 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         IProductProcessConfigService productProcessConfigService,
         IPlcExpressionReadService plcExpressionReadService,
         IOperationLogService operationLogService,
-        IProductionFlowLogService productionLogService)
+        IProductionFlowLogService productionLogService,
+        IProductionReportFileService reportFileService)
     {
         _dbContext = dbContext;
         _productProcessConfigService = productProcessConfigService;
         _plcExpressionReadService = plcExpressionReadService;
         _operationLogService = operationLogService;
         _productionLogService = productionLogService;
+        _reportFileService = reportFileService;
     }
 
     public async Task<IReadOnlyList<BizWeldPointRecord>> CollectAsync(
@@ -56,7 +61,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             "开始采集产品周期数据",
             $"SchemeId={processConfig.SchemeId}, ProductBase={processConfig.ProductBase}, TouchBase={processConfig.TouchBase}, TestBase={processConfig.TestBase}, TouchCount={processConfig.TouchCount}",
             stationNo: normalizedStationNo,
-            workOrderId: task.WorkOrderId,
+            workOrderId: task.SN,
             programId: task.ProgramId ?? string.Empty);
 
         var header = await ReadProductHeaderAsync(processConfig, cancellationToken);
@@ -74,22 +79,61 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
                 cancellationToken));
         }
 
-        SaveRecords(task.Id, normalizedStationNo, records);
+        try
+        {
+            SaveRecords(task.Id, normalizedStationNo, records);
+        }
+        catch (Exception ex)
+        {
+            _productionLogService.Write(
+                "ProductDataSaveFailed",
+                "产品采集数据保存失败",
+                $"ProductNo={header.ProductNo}, TouchCount={records.Count}, Error={ex.Message}",
+                "Error",
+                normalizedStationNo,
+                task.SN,
+                header.ProductNo,
+                task.ProgramId ?? string.Empty);
+            throw;
+        }
+
+        GenerateReportAfterProductSaved(task, normalizedStationNo, header.ProductNo, records.Count);
 
         _productionLogService.Write(
             "ProductDataSaved",
             "产品采集数据已保存",
             $"ProductNo={header.ProductNo}, TouchCount={records.Count}, Result={header.ProductResult}",
             stationNo: normalizedStationNo,
-            workOrderId: task.WorkOrderId,
+            workOrderId: task.SN,
             productNo: header.ProductNo,
             programId: task.ProgramId ?? string.Empty);
 
         _operationLogService.Write(
             "ProductCycleCollection",
-            $"Product collected, Station={normalizedStationNo}, WorkOrder={task.WorkOrderId}, ProductNo={header.ProductNo}, TouchCount={records.Count}, Result={header.ProductResult}");
+            $"Product collected, Station={normalizedStationNo}, WorkOrder={task.SN}, ProductNo={header.ProductNo}, TouchCount={records.Count}, Result={header.ProductResult}");
 
         return records;
+    }
+
+    /// <summary>
+    /// 每完成一件产品就刷新一次 XLSX 报表，避免等到完工上报时才统一生成。
+    /// 报表生成失败不应阻断 PLC 采集反馈，因此这里只记录日志。
+    /// </summary>
+    private void GenerateReportAfterProductSaved(BizWeldTask task, int stationNo, string productNo, int touchCount)
+    {
+        try
+        {
+            var reportFile = _reportFileService.GenerateXlsxReport(task);
+            _operationLogService.Write(
+                "ReportFile",
+                $"Report file refreshed after product saved, Station={stationNo}, WorkOrder={task.SN}, ProductNo={productNo}, TouchCount={touchCount}, FilePath={reportFile.FilePath}");
+        }
+        catch (Exception ex)
+        {
+            _operationLogService.Write(
+                "ReportFile",
+                $"Report file refresh failed after product saved, Station={stationNo}, WorkOrder={task.SN}, ProductNo={productNo}, Error={ex.Message}");
+        }
     }
 
     private BizProductProcessConfig ResolveProcessConfig(BizWeldTask task, int stationNo)
@@ -114,6 +158,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             var details = _dbContext.Db.Queryable<BizSchemeDetail>()
                 .Where(detail => detail.SchemeId == schemeId)
                 .ToList()
+                .Select(NormalizeLegacyDetailRoles)
                 .OrderBy(detail => detail.DetailId)
                 .ToList();
             if (details.Count == 0)
@@ -131,8 +176,9 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
                 {
                     var item = items.FirstOrDefault(it => it.ItemId == detail.ItemId)
                         ?? throw new BusinessOperationException(Category, "测试项字典缺失", $"测试项ID“{detail.ItemId}”不存在。");
-                    return new SchemeItemSnapshot(detail.DetailId, item);
+                    return new SchemeItemSnapshot(detail.DetailId, item, detail);
                 })
+                .Where(snapshot => HasAnyEnabledRole(snapshot.Detail))
                 .ToList();
         }
     }
@@ -206,13 +252,13 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         var testContextOffset = config.TestAreaLen * (touchIndex - 1);
 
         var touchNo = await ReadExpressionValueAsync(
-            config.TouchBase,
+            ResolveTouchNoBase(config),
             touchContextOffset,
             config.TouchNoExpr,
             "焊点编号",
             cancellationToken);
         var touchResultRaw = await ReadExpressionValueAsync(
-            config.TouchBase,
+            ResolveTouchResultBase(config),
             touchContextOffset,
             config.TouchResultExpr,
             "焊点结果",
@@ -234,7 +280,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             cancellationToken.ThrowIfCancellationRequested();
             await ReadTestItemValuesAsync(
                 config,
-                schemeItem.Item,
+                schemeItem,
                 testContextOffset,
                 values,
                 cancellationToken);
@@ -246,20 +292,14 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             TaskId = task.Id,
             ExpStartId = task.ExpStartId,
             DeviceId = task.DeviceId,
-            SN = task.WorkOrderId,
+            SN = task.SN,
             ProcessNo = task.ProcessNo,
             ProductNo = header.ProductNo,
             TouchNo = string.IsNullOrWhiteSpace(touchNo) ? touchIndex.ToString(CultureInfo.InvariantCulture) : touchNo.Trim(),
             StationNo = stationNo,
-            MaxElectric = FirstValue(values, "max_electric", "峰值电流"),
-            MaxVoltage = FirstValue(values, "max_voltage", "峰值电压"),
-            ValidPower = FirstValue(values, "valid_power", "有效功率"),
-            Displacement = FirstValue(values, "displacement", "位移"),
-            WeldTs = FirstValue(values, "weld_ts", "焊接时间"),
-            TestResultRaw = resultRaw,
             TestResult = NormalizeTestResult(resultRaw),
-            OperatorNo = task.StartOperatorNumber,
-            RecordTime = DateTime.Now,
+            OperatorNo = task.UserNumber,
+            Ts = DateTime.Now,
             ProductCompleted = touchIndex >= header.ActualTouchCount,
             UploadStatus = ProductionConstants.UploadStatuses.Pending,
             RawDataJson = JsonSerializer.Serialize(values)
@@ -268,47 +308,60 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
 
     private async Task ReadTestItemValuesAsync(
         BizProductProcessConfig config,
-        DimTestItem item,
+        SchemeItemSnapshot schemeItem,
         int testContextOffset,
         IDictionary<string, string> values,
         CancellationToken cancellationToken)
     {
+        var item = schemeItem.Item;
         var itemKey = ResolveItemKey(item);
-        var actualValue = await ReadExpressionValueAsync(
-            config.TestBase,
-            testContextOffset,
-            item.ActualExpression,
-            $"{item.ItemName}实际值",
-            cancellationToken);
-        AddValue(values, itemKey, actualValue);
-        AddValue(values, item.ItemName, actualValue);
+        if (schemeItem.Detail.EnableActual)
+        {
+            var actualValue = await ReadExpressionValueAsync(
+                config.TestBase,
+                testContextOffset,
+                item.ActualExpression,
+                $"{item.ItemName}实际值",
+                cancellationToken);
+            AddValue(values, itemKey, actualValue);
+            AddValue(values, item.ItemName, actualValue);
+        }
 
-        var upperValue = await ReadOptionalExpressionValueAsync(
-            config.TestBase,
-            testContextOffset,
-            item.UpperExpression,
-            $"{item.ItemName}上限",
-            cancellationToken);
-        AddValue(values, $"{itemKey}_upper", upperValue);
-        AddValue(values, $"{item.ItemName}上限", upperValue);
+        if (schemeItem.Detail.EnableUpper)
+        {
+            var upperValue = await ReadOptionalExpressionValueAsync(
+                config.TestBase,
+                testContextOffset,
+                item.UpperExpression,
+                $"{item.ItemName}上限",
+                cancellationToken);
+            AddValue(values, $"{itemKey}_upper", upperValue);
+            AddValue(values, $"{item.ItemName}上限", upperValue);
+        }
 
-        var lowerValue = await ReadOptionalExpressionValueAsync(
-            config.TestBase,
-            testContextOffset,
-            item.LowerExpression,
-            $"{item.ItemName}下限",
-            cancellationToken);
-        AddValue(values, $"{itemKey}_lower", lowerValue);
-        AddValue(values, $"{item.ItemName}下限", lowerValue);
+        if (schemeItem.Detail.EnableLower)
+        {
+            var lowerValue = await ReadOptionalExpressionValueAsync(
+                config.TestBase,
+                testContextOffset,
+                item.LowerExpression,
+                $"{item.ItemName}下限",
+                cancellationToken);
+            AddValue(values, $"{itemKey}_lower", lowerValue);
+            AddValue(values, $"{item.ItemName}下限", lowerValue);
+        }
 
-        var resultValue = await ReadOptionalExpressionValueAsync(
-            config.TestBase,
-            testContextOffset,
-            item.ResultExpression,
-            $"{item.ItemName}结果",
-            cancellationToken);
-        AddValue(values, $"{itemKey}_result", resultValue);
-        AddValue(values, $"{item.ItemName}结果", resultValue);
+        if (schemeItem.Detail.EnableResult)
+        {
+            var resultValue = await ReadOptionalExpressionValueAsync(
+                config.TestBase,
+                testContextOffset,
+                item.ResultExpression,
+                $"{item.ItemName}结果",
+                cancellationToken);
+            AddValue(values, $"{itemKey}_result", resultValue);
+            AddValue(values, $"{item.ItemName}结果", resultValue);
+        }
     }
 
     private async Task<string?> ReadOptionalExpressionValueAsync(
@@ -357,13 +410,34 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
+            var nextSequenceNo = GetNextSequenceNo(taskId, stationNo);
             foreach (var record in records)
             {
-                record.SequenceNo = GetNextSequenceNo(taskId, stationNo);
+                var existingRecord = FindExistingRecord(record);
+                if (existingRecord is not null)
+                {
+                    record.Id = existingRecord.Id;
+                    record.SequenceNo = existingRecord.SequenceNo;
+                    continue;
+                }
+
+                record.SequenceNo = nextSequenceNo++;
                 var saved = _dbContext.Db.Insertable(record).ExecuteReturnEntity();
                 record.Id = saved.Id;
             }
         }
+    }
+
+    /// <summary>
+    /// 同工单双工位可能共享产品就绪业务信号；使用产品级自然键避免同一焊点被重复插入。
+    /// </summary>
+    private BizWeldPointRecord? FindExistingRecord(BizWeldPointRecord record)
+    {
+        return _dbContext.Db.Queryable<BizWeldPointRecord>()
+            .First(existing => existing.TaskId == record.TaskId
+                && existing.StationNo == record.StationNo
+                && existing.ProductNo == record.ProductNo
+                && existing.TouchNo == record.TouchNo);
     }
 
     private int GetNextSequenceNo(int taskId, int stationNo)
@@ -408,6 +482,25 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         }
 
         values[key.Trim()] = value;
+    }
+
+    private static bool HasAnyEnabledRole(BizSchemeDetail detail)
+    {
+        return detail.EnableActual || detail.EnableUpper || detail.EnableLower || detail.EnableResult;
+    }
+
+    private static BizSchemeDetail NormalizeLegacyDetailRoles(BizSchemeDetail detail)
+    {
+        if (HasAnyEnabledRole(detail))
+        {
+            return detail;
+        }
+
+        detail.EnableActual = true;
+        detail.EnableUpper = true;
+        detail.EnableLower = true;
+        detail.EnableResult = true;
+        return detail;
     }
 
     private static string? FirstValue(IReadOnlyDictionary<string, string> values, params string[] keys)
@@ -462,6 +555,12 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             : ProductionConstants.Stations.DefaultStationNo;
     }
 
+    private static string ResolveTouchNoBase(BizProductProcessConfig config)
+        => string.IsNullOrWhiteSpace(config.TouchNoBase) ? config.TouchBase : config.TouchNoBase!.Trim();
+
+    private static string ResolveTouchResultBase(BizProductProcessConfig config)
+        => string.IsNullOrWhiteSpace(config.TouchResultBase) ? config.TouchBase : config.TouchResultBase!.Trim();
+
     private sealed record ProductHeaderSnapshot(
         string ProductNo,
         int ActualTouchCount,
@@ -469,5 +568,5 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         string ProductResult,
         string? PlcPresetTouchCount);
 
-    private sealed record SchemeItemSnapshot(int DetailId, DimTestItem Item);
+    private sealed record SchemeItemSnapshot(int DetailId, DimTestItem Item, BizSchemeDetail Detail);
 }

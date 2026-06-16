@@ -1,4 +1,4 @@
-using AutoWeldSystem.Core.Interfaces;
+using AutoWeldSystem.Core.Interfaces.UserManage;
 
 namespace AutoWeldSystem.UI.Infrastructure;
 

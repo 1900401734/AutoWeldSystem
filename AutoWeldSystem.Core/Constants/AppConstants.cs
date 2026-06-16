@@ -8,10 +8,6 @@ public static class AppConstants
 {
     public const string ApplicationName = "AutoWeldSystem";
 
-    /// <summary>
-    /// 系统默认值常量。
-    /// 这类值会被多个模块共用，集中管理后就不会在代码里散落魔法字符串。
-    /// </summary>
     public static class Defaults
     {
         public const string InitialPassword = "123456";
@@ -22,6 +18,7 @@ public static class AppConstants
     /// </summary>
     public static class Roles
     {
+        public const string Developer = "Developer";
         public const string Admin = "Admin";
         public const string Operator = "Operator";
         public const string Readonly = "Readonly";
@@ -45,34 +42,29 @@ public static class AppConstants
         public const string ModbusTcp = "ModbusTcp";
         public const string TcpSocket = "TcpSocket";
         public const string SiemensS71200 = "SiemensS7-1200";
-        public const string SiemensS7Legacy = "SiemensS7";
-
-        // 兼容旧代码里已经使用的 SiemensS7 常量，实际含义固定为 S7-1200。
-        public const string SiemensS7 = SiemensS71200;
     }
 
     /// <summary>
-    /// PLC 地址用途常量。
-    /// 业务代码只认这些稳定键，用户只需要在界面中维护实际 PLC 地址。
+    /// PLC Logical Key
     /// </summary>
-    public static class PlcAddressKeys
+    public static class PlcLogicalKeys
     {
+        public const string DeviceStatus = "device_status";
+        public const string WorkId = "work_id";
+
         public const string PcHeartBeat = "pc_heartbeat";
         public const string PlcHeartBeat = "plc_heartbeat";
-        public const string DeviceStatus = "device_status";
-        public const string WeldStart = "weld_start";
-        public const string WeldEnd = "weld_end";
-        public const string WeldCollectionAck = "weld_collection_ack";
-        public const string WorkId = "work_id";
-        public const string LegacySerialNumber = "serial_number";
-        public const string ProductNum = "product_num";
-        public const string ProgramName = "program_name";
-        public const string ProductModel = "product_model";
-        public const string RecipeCode = "recipe_code";
+
+        public const string PcRecipeCode = "pc_recipe_code";
+        public const string PlcRecipeCode = "plc_recipe_code";
+
         public const string ProductDataReady = "product_data_ready";
         public const string ProductCollectionFeedback = "product_collection_feedback";
+
+        public const string WorkOrderStatus = "work_order_status";
+        public const string DeviceMode = "device_mode";
+
         public const string TotalProduction = "total_production";
-        public const string TargetProduction = "target_production";
         public const string AcceptedQuantity = "accepted_quantity";
         public const string RejectedQuantity = "rejected_quantity";
     }
@@ -147,8 +139,7 @@ public static class AppConstants
     }
 
     /// <summary>
-    /// 本地程序与 MES 的同步状态。
-    /// 使用稳定字符串保存到数据库，方便上传状态页过滤和人工排查。
+    /// 程序同步状态
     /// </summary>
     public static class ProgramSyncStatus
     {
@@ -181,5 +172,4 @@ public static class AppConstants
         public const string Update = "修改";
         public const string Delete = "删除";
     }
-
 }

@@ -1,4 +1,5 @@
-using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.Entities;
 
 namespace AutoWeldSystem.Core.Interfaces;
 
@@ -31,5 +32,8 @@ public interface IDeviceStatusService
         string? remark = null,
         string source = "Software",
         bool reportToMes = true,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        int? weldTaskId = null,
+        string? workOrderId = null,
         CancellationToken cancellationToken = default);
 }

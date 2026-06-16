@@ -1,4 +1,4 @@
-using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.Entities;
 
 namespace AutoWeldSystem.Core.Interfaces;
 
@@ -8,5 +8,5 @@ namespace AutoWeldSystem.Core.Interfaces;
 /// </summary>
 public interface IProductionReportFileService
 {
-    BizProductionReportFile GenerateCsvReport(BizWeldTask task);
+    BizProductionReportFile GenerateXlsxReport(BizWeldTask task);
 }

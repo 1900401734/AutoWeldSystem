@@ -1,5 +1,5 @@
-using AutoWeldSystem.Core.DTOs;
-using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.DTOs.Upload;
+using AutoWeldSystem.Core.Entities;
 
 namespace AutoWeldSystem.Core.Interfaces;
 

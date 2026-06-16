@@ -4,8 +4,13 @@ using System.Text.Json;
 using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
+using AutoWeldSystem.Core.DTOs.Mes.Request;
+using AutoWeldSystem.Core.DTOs.Mes.Response;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
-using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.Interfaces.Log;
+using AutoWeldSystem.Core.Interfaces.MES;
+using AutoWeldSystem.Core.Runtime;
 using AutoWeldSystem.Data;
 using SqlSugar;
 
@@ -23,6 +28,7 @@ public sealed class ProgramManageService : IProgramManageService
     private readonly IAppSettingsService _settingsService;
     private readonly IMesProvider _mesProvider;
     private readonly IOperationLogService _operationLogService;
+    private AppSettings _currentSettings;
 
     public ProgramManageService(
         SqlSugarDbContext dbContext,
@@ -32,6 +38,8 @@ public sealed class ProgramManageService : IProgramManageService
     {
         _dbContext = dbContext;
         _settingsService = settingsService;
+        _currentSettings = settingsService.Get();
+        _settingsService.SettingsChanged += SettingsService_SettingsChanged;
         _mesProvider = mesProvider;
         _operationLogService = operationLogService;
     }
@@ -83,7 +91,7 @@ public sealed class ProgramManageService : IProgramManageService
 
     public string BuildProgramName(string productNum, string componentCode, int sequenceNumber)
     {
-        var settings = _settingsService.Get();
+        var settings = CurrentSettings;
         var deviceId = NormalizeNamePart(settings.DeviceId);
         var component = NormalizeNamePart(componentCode);
         var product = NormalizeNamePart(productNum.Replace("#", string.Empty));
@@ -92,7 +100,7 @@ public sealed class ProgramManageService : IProgramManageService
         return $"{deviceId}_CX_{component}_DH_{sequence}_{product}";
     }
 
-    public async Task<BizProgram> SaveAsync(ProgramSaveRequest request, bool syncNow, CancellationToken cancellationToken = default)
+    public async Task<BizProgram> SaveAsync(SaveProgramReq request, bool syncNow, CancellationToken cancellationToken = default)
     {
         _dbContext.InitDatabase();
         NormalizeRequest(request);
@@ -228,13 +236,12 @@ public sealed class ProgramManageService : IProgramManageService
         }
     }
 
-    public async Task<int> PullFromMesAsync(string? productNum = null, CancellationToken cancellationToken = default)
+    public async Task<int> PullFromMesAsync(CancellationToken cancellationToken = default)
     {
         _dbContext.InitDatabase();
 
-        var settings = _settingsService.Get();
-        var queryProductNum = settings.UseProductNumberFilter ? productNum : null;
-        var listResponse = await _mesProvider.GetProgramListAsync(settings.DeviceId, queryProductNum, cancellationToken);
+        var settings = CurrentSettings;
+        var listResponse = await _mesProvider.GetProgramListAsync(settings.DeviceId, null, cancellationToken);
         if (!listResponse.IsSuccess || listResponse.Data is null)
         {
             throw new InvalidOperationException(listResponse.Msg);
@@ -268,9 +275,9 @@ public sealed class ProgramManageService : IProgramManageService
         return _dbContext.Db.Queryable<BizProgram>().InSingle(entity.Id);
     }
 
-    private void ApplyRequest(BizProgram entity, ProgramSaveRequest request)
+    private void ApplyRequest(BizProgram entity, SaveProgramReq request)
     {
-        var settings = _settingsService.Get();
+        var settings = CurrentSettings;
         var fileBytes = GetProgramFileBytes(request.ProgramFilePath);
 
         entity.ProgramName = string.IsNullOrWhiteSpace(request.ProgramName)
@@ -283,16 +290,13 @@ public sealed class ProgramManageService : IProgramManageService
         entity.SequenceNumber = Math.Max(1, request.SequenceNumber);
         entity.DeviceId = settings.DeviceId;
         entity.ProgramType = string.IsNullOrWhiteSpace(request.ProgramType) ? "0" : request.ProgramType;
-        entity.ProgramContentJson = request.ProgramContentJson;
-        entity.WeldJobName = request.WeldJobName;
-        entity.RobotJobName = request.RobotJobName;
-        entity.CycleTimeSeconds = request.CycleTimeSeconds;
+        entity.ProgramContent = request.ProgramContentJson;
         entity.LocalRemark = request.LocalRemark;
         entity.IsDeleted = false;
 
         if (fileBytes is not null)
         {
-            entity.ProgramFileBase64 = Convert.ToBase64String(fileBytes);
+            entity.ProgramFile = Convert.ToBase64String(fileBytes);
             entity.ProgramFileName = Path.GetFileName(request.ProgramFilePath);
             entity.ProgramType = "1";
         }
@@ -301,6 +305,13 @@ public sealed class ProgramManageService : IProgramManageService
         {
             entity.CreatedTime = DateTime.Now;
         }
+    }
+
+    private AppSettings CurrentSettings => Volatile.Read(ref _currentSettings);
+
+    private void SettingsService_SettingsChanged(object? sender, AppSettingsChangedEventArgs e)
+    {
+        Interlocked.Exchange(ref _currentSettings, e.CurrentSettings);
     }
 
     private static string ResolveSaveRemark(BizProgram entity)
@@ -344,9 +355,9 @@ public sealed class ProgramManageService : IProgramManageService
             ProgramName = entity.ProgramName,
             ProductNum = entity.ProductNum,
             RecipeCode = entity.RecipeCode,
-            ProgramContentJson = entity.ProgramContentJson,
+            ProgramContentJson = entity.ProgramContent,
             LocalRemark = entity.LocalRemark,
-            ProgramFileBase64 = entity.ProgramFileBase64,
+            ProgramFileBase64 = entity.ProgramFile,
             UserNumber = user?.UserNumber ?? "system",
             UserName = user?.UserName ?? "system",
             CreatedTime = DateTime.Now
@@ -394,7 +405,7 @@ public sealed class ProgramManageService : IProgramManageService
         return "程序删除已同步至 MES。";
     }
 
-    private void UpsertRemoteProgram(MesProgramData data)
+    private void UpsertRemoteProgram(ProgramDataRes data)
     {
         var entity = _dbContext.Db.Queryable<BizProgram>().First(it => it.ProgramId == data.Id);
         if (entity is null)
@@ -411,10 +422,10 @@ public sealed class ProgramManageService : IProgramManageService
 
         entity.ProgramName = data.ProgramName;
         entity.DeviceId = data.DeviceId;
-        entity.ProgramContentJson = data.ProgramContent;
+        entity.ProgramContent = data.ProgramContent;
         entity.ProgramType = data.ProgramType;
         entity.ProductNum = data.ProductNum;
-        entity.ProgramFileBase64 = data.ProgramFile;
+        entity.ProgramFile = data.ProgramFile;
         entity.Remark = data.Remark;
         entity.SyncAction = null;
         entity.SyncStatus = AppConstants.ProgramSyncStatus.Synced;
@@ -430,17 +441,17 @@ public sealed class ProgramManageService : IProgramManageService
         AddRevision(entity, entity.CommitMessage);
     }
 
-    private static MesProgramData ToMesProgramData(BizProgram entity)
+    private static ProgramDataRes ToMesProgramData(BizProgram entity)
     {
-        return new MesProgramData
+        return new ProgramDataRes
         {
             Id = entity.ProgramId ?? string.Empty,
             ProgramName = entity.ProgramName,
             DeviceId = entity.DeviceId,
-            ProgramContent = entity.ProgramContentJson ?? string.Empty,
+            ProgramContent = entity.ProgramContent ?? string.Empty,
             ProgramType = entity.ProgramType,
             ProductNum = entity.ProductNum,
-            ProgramFile = entity.ProgramFileBase64 ?? string.Empty,
+            ProgramFile = entity.ProgramFile ?? string.Empty,
             Remark = entity.Remark ?? string.Empty
         };
     }
@@ -461,7 +472,7 @@ public sealed class ProgramManageService : IProgramManageService
         };
     }
 
-    private static void NormalizeRequest(ProgramSaveRequest request)
+    private static void NormalizeRequest(SaveProgramReq request)
     {
         request.ProgramName = request.ProgramName.Trim();
         request.ProductNum = request.ProductNum.Trim();
@@ -503,8 +514,8 @@ public sealed class ProgramManageService : IProgramManageService
             entity.ProductNum,
             entity.RecipeCode,
             entity.LocalRemark,
-            entity.ProgramContentJson,
-            entity.ProgramFileBase64,
+            entity.ProgramContent,
+            entity.ProgramFile,
             entity.VersionNumber,
             commitMessage,
             Timestamp = DateTime.Now.Ticks
@@ -513,7 +524,7 @@ public sealed class ProgramManageService : IProgramManageService
         return CreateHash(snapshot);
     }
 
-    private static string CreateCommitId(MesProgramData data)
+    private static string CreateCommitId(ProgramDataRes data)
     {
         return CreateHash(JsonSerializer.Serialize(data) + DateTime.Now.Ticks);
     }

@@ -1,5 +1,5 @@
-using AutoWeldSystem.Core.DTOs;
-using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.DTOs.Mes.Response;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.UI.Base;
 using System.ComponentModel;
 
@@ -20,17 +20,17 @@ public partial class ProgramContentConfirmForm : BaseWindow
     private const string KeyProgramName = "ProgramName";
     private const string KeyProgramType = "ProgramType";
 
-    private readonly MesWorkOrderResponse _sourceWorkOrder;
+    private readonly WorkOrderRes _sourceWorkOrder;
     private readonly ExpItemData? _sourceProcess;
-    private readonly MesProgramData _sourceProgram;
+    private readonly ProgramDataRes _sourceProgram;
     private readonly IReadOnlyList<BizProgram> _localPrograms;
     private readonly BindingList<StartFieldRow> _rows = [];
     private bool _isBindingRows;
 
     public ProgramContentConfirmForm(
-        MesWorkOrderResponse workOrder,
+        WorkOrderRes workOrder,
         ExpItemData? process,
-        MesProgramData program,
+        ProgramDataRes program,
         IReadOnlyList<BizProgram> localPrograms)
     {
         InitializeComponent();
@@ -45,7 +45,7 @@ public partial class ProgramContentConfirmForm : BaseWindow
         Shown += (_, _) => ApplyProductDropdownCells();
     }
 
-    public MesWorkOrderResponse AdjustedWorkOrder { get; private set; } = new();
+    public WorkOrderRes AdjustedWorkOrder { get; private set; } = new();
 
     public ExpItemData? AdjustedProcess { get; private set; }
 
@@ -349,9 +349,9 @@ public partial class ProgramContentConfirmForm : BaseWindow
         return -1;
     }
 
-    private static MesWorkOrderResponse CloneWorkOrder(MesWorkOrderResponse source)
+    private static WorkOrderRes CloneWorkOrder(WorkOrderRes source)
     {
-        return new MesWorkOrderResponse
+        return new WorkOrderRes
         {
             SN = source.SN,
             ProdNum = source.ProdNum,

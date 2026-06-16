@@ -1,7 +1,12 @@
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
+using AutoWeldSystem.Core.DTOs.Mes.Request;
+using AutoWeldSystem.Core.DTOs.Mes.Response;
+using AutoWeldSystem.Core.DTOs.Upload;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
-using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.Interfaces.Log;
+using AutoWeldSystem.Core.Interfaces.MES;
 using AutoWeldSystem.Data;
 using System.Globalization;
 using System.Text.Json;
@@ -88,6 +93,7 @@ public class UploadTaskService : IUploadTaskService
             existing.Target = task.Target;
             existing.MaxRetryCount = task.MaxRetryCount;
             existing.NextRetryTime = task.NextRetryTime;
+            existing.CompletedTime = task.CompletedTime;
             existing.Message = task.Message;
             existing.UpdatedTime = DateTime.Now;
 
@@ -106,7 +112,6 @@ public class UploadTaskService : IUploadTaskService
 
         var response = await ExecuteByTypeAsync(task, cancellationToken);
         var summary = FinishExecution(task.Id, response);
-        WriteUploadFlowLog(task, response);
         return summary;
     }
 
@@ -195,10 +200,14 @@ public class UploadTaskService : IUploadTaskService
         }
     }
 
-    private async Task<MesBaseResponse<object>> ExecuteByTypeAsync(BizUploadTask task, CancellationToken cancellationToken)
+    private async Task<BasicRes<object>> ExecuteByTypeAsync(BizUploadTask task, CancellationToken cancellationToken)
     {
         return task.TaskType switch
         {
+            ProductionConstants.UploadTaskTypes.StartReport => await UploadStartReportAsync(task, cancellationToken),
+            ProductionConstants.UploadTaskTypes.FinishReport => await UploadFinishReportAsync(task, cancellationToken),
+            ProductionConstants.UploadTaskTypes.WorkOrderStatus => await UploadWorkOrderStatusAsync(task, cancellationToken),
+            ProductionConstants.UploadTaskTypes.DeviceStatus => await UploadDeviceStatusAsync(task, cancellationToken),
             ProductionConstants.UploadTaskTypes.ReportFile => await UploadReportFileAsync(task, cancellationToken),
             ProductionConstants.UploadTaskTypes.ProcessParameter => await UploadProcessParametersAsync(task, cancellationToken),
             ProductionConstants.UploadTaskTypes.ProgramFile => Unsupported("程序文件上传由程序管理服务处理。"),
@@ -210,8 +219,104 @@ public class UploadTaskService : IUploadTaskService
     /// 上传当前任务下尚未成功上传的焊点记录。
     /// 先尝试整批上传，失败后按 ProductNo 降级，最后再降级到单条焊点，尽量保住已成功的数据。
     /// </summary>
-    private async Task<MesBaseResponse<object>> UploadProcessParametersAsync(BizUploadTask task, CancellationToken cancellationToken)
+    private async Task<BasicRes<object>> UploadStartReportAsync(BizUploadTask task, CancellationToken cancellationToken)
     {
+        var request = ReadPayloadRequest<ExperimentStartReq>(task.PayloadJson);
+        if (request is null)
+        {
+            return Unsupported("Start report task payload is missing.");
+        }
+
+        var response = await _mesProvider.StartWorkAsync(request, cancellationToken);
+        if (!response.IsSuccess || response.Data is null || string.IsNullOrWhiteSpace(response.Data.Id))
+        {
+            return Unsupported(response.Msg);
+        }
+
+        UpdateTaskExpStartId(task, response.Data.Id);
+        return Success(string.IsNullOrWhiteSpace(response.Msg) ? "Start report uploaded." : response.Msg);
+    }
+
+    private async Task<BasicRes<object>> UploadFinishReportAsync(BizUploadTask task, CancellationToken cancellationToken)
+    {
+        var weldTask = GetWeldTask(task);
+        if (weldTask is null)
+        {
+            return Unsupported("Finish report task has no weld task.");
+        }
+
+        if (string.IsNullOrWhiteSpace(weldTask.ExpStartId))
+        {
+            return Unsupported("Finish report is waiting for start report upload.");
+        }
+
+        var request = ReadPayloadRequest<ExperimentEndReq>(task.PayloadJson) ?? new ExperimentEndReq();
+        request.ExpStartId = weldTask.ExpStartId;
+        request.DeviceId = FirstNonEmpty(request.DeviceId, weldTask.DeviceId);
+        request.SN = FirstNonEmpty(request.SN, weldTask.SN);
+        request.ProcessNo = FirstNonEmpty(request.ProcessNo, weldTask.ProcessNo);
+        request.EndExperID = FirstNonEmpty(request.EndExperID, weldTask.EndOperatorNumber, weldTask.UserNumber, Environment.UserName);
+        request.EndTs = FirstNonEmpty(request.EndTs, weldTask.EndTime?.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+        request.ExpStatus = ProductionConstants.MesWorkOrderStatuses.Completed;
+        request.WorkHour = request.WorkHour <= 0
+            ? Convert.ToDecimal(((weldTask.EndTime ?? DateTime.Now) - weldTask.StartTime).TotalHours)
+            : request.WorkHour;
+        request.ExpQty = request.ExpQty <= 0 ? weldTask.ActualQty : request.ExpQty;
+        request.QualifyNumber = request.QualifyNumber <= 0 ? weldTask.QualifiedQty : request.QualifyNumber;
+        request.FailureNumber = request.FailureNumber <= 0 ? weldTask.FailedQty : request.FailureNumber;
+
+        return await _mesProvider.EndWorkAsync(request, cancellationToken);
+    }
+
+    private async Task<BasicRes<object>> UploadWorkOrderStatusAsync(BizUploadTask task, CancellationToken cancellationToken)
+    {
+        var weldTask = GetWeldTask(task);
+        if (weldTask is null)
+        {
+            return Unsupported("Work-order status task has no weld task.");
+        }
+
+        if (string.IsNullOrWhiteSpace(weldTask.ExpStartId))
+        {
+            return Unsupported("Work-order status is waiting for start report upload.");
+        }
+
+        var statusCode = ReadStatusCode(task.PayloadJson);
+        if (string.Equals(statusCode, ProductionConstants.MesWorkOrderStatuses.Completed, StringComparison.OrdinalIgnoreCase)
+            && !IsFinishReportUploadedOrAbsent(weldTask.Id))
+        {
+            return Unsupported("Completed status is waiting for finish report upload.");
+        }
+
+        var request = ReadPayloadRequest<ReportExperimentStatusReq>(task.PayloadJson) ?? new ReportExperimentStatusReq();
+        request.ExpStartId = weldTask.ExpStartId;
+        request.DeviceId = FirstNonEmpty(request.DeviceId, weldTask.DeviceId);
+        request.ExpStatus = FirstNonEmpty(statusCode, request.ExpStatus);
+        request.Ts = FirstNonEmpty(request.Ts, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+
+        return await _mesProvider.ChangeWorkStatusAsync(request, cancellationToken);
+    }
+
+    private async Task<BasicRes<object>> UploadDeviceStatusAsync(BizUploadTask task, CancellationToken cancellationToken)
+    {
+        var request = ReadDeviceStatusRequest(task.PayloadJson);
+        if (request is null)
+        {
+            return Unsupported("Device status task payload is missing.");
+        }
+
+        var response = await _mesProvider.ReportDeviceStatusAsync(request.Request, cancellationToken);
+        UpdateDeviceStatusLog(request.LogId, response);
+        return response;
+    }
+
+    private async Task<BasicRes<object>> UploadProcessParametersAsync(BizUploadTask task, CancellationToken cancellationToken)
+    {
+        if (!EnsureTaskExpStartReady(task, out var message))
+        {
+            return Unsupported(message);
+        }
+
         var records = GetPendingWeldPointRecords(task);
         if (records.Count == 0)
         {
@@ -223,6 +328,12 @@ public class UploadTaskService : IUploadTaskService
         {
             UpdateWeldPointUploadStatus(records, batchResponse);
             return batchResponse;
+        }
+
+        if (!IsProductScopedTask(task))
+        {
+            UpdateWeldPointUploadStatus(records, batchResponse);
+            return Unsupported($"过程参数批量上传失败，任务级上传不会拆分为单件上传。原因：{batchResponse.Msg}");
         }
 
         var failedMessages = new List<string>();
@@ -274,7 +385,92 @@ public class UploadTaskService : IUploadTaskService
         }
     }
 
-    private async Task<MesBaseResponse<object>> UploadProcessParameterGroupAsync(
+    private bool EnsureTaskExpStartReady(BizUploadTask task, out string message)
+    {
+        message = string.Empty;
+        var weldTask = GetWeldTask(task);
+        if (weldTask is null)
+        {
+            message = "Upload task has no weld task.";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(weldTask.ExpStartId))
+        {
+            message = "Upload task is waiting for start report upload.";
+            return false;
+        }
+
+        UpdateWeldPointExpStartId(weldTask.Id, weldTask.ExpStartId);
+        return true;
+    }
+
+    private BizWeldTask? GetWeldTask(BizUploadTask task)
+    {
+        if (task.WeldTaskId is null)
+        {
+            return null;
+        }
+
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            return _dbContext.Db.Queryable<BizWeldTask>().InSingle(task.WeldTaskId.Value);
+        }
+    }
+
+    private void UpdateTaskExpStartId(BizUploadTask task, string expStartId)
+    {
+        if (task.WeldTaskId is null)
+        {
+            return;
+        }
+
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var weldTask = _dbContext.Db.Queryable<BizWeldTask>().InSingle(task.WeldTaskId.Value);
+            if (weldTask is null)
+            {
+                return;
+            }
+
+            weldTask.ExpStartId = expStartId.Trim();
+            weldTask.UploadMessage = "Start report uploaded to MES.";
+            _dbContext.Db.Updateable(weldTask)
+                .UpdateColumns(it => new { it.ExpStartId, it.UploadMessage })
+                .Where(it => it.Id == weldTask.Id)
+                .ExecuteCommand();
+
+            UpdateWeldPointExpStartId(weldTask.Id, weldTask.ExpStartId);
+        }
+    }
+
+    private void UpdateWeldPointExpStartId(int weldTaskId, string expStartId)
+    {
+        _dbContext.Db.Updateable<BizWeldPointRecord>()
+            .SetColumns(record => record.ExpStartId == expStartId)
+            .Where(record => record.TaskId == weldTaskId && record.ExpStartId == null)
+            .ExecuteCommand();
+    }
+
+    private bool IsFinishReportUploadedOrAbsent(int weldTaskId)
+    {
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var finishTask = _dbContext.Db.Queryable<BizUploadTask>()
+                .Where(task => task.WeldTaskId == weldTaskId
+                    && task.TaskType == ProductionConstants.UploadTaskTypes.FinishReport)
+                .OrderByDescending(task => task.UpdatedTime)
+                .First();
+
+            return finishTask is null
+                || finishTask.Status == ProductionConstants.UploadStatuses.Uploaded;
+        }
+    }
+
+    private async Task<BasicRes<object>> UploadProcessParameterGroupAsync(
         IReadOnlyList<BizWeldPointRecord> records,
         CancellationToken cancellationToken)
     {
@@ -282,7 +478,7 @@ public class UploadTaskService : IUploadTaskService
         return await _mesProvider.UploadProcessParametersAsync(items, cancellationToken);
     }
 
-    private void UpdateWeldPointUploadStatus(IReadOnlyList<BizWeldPointRecord> records, MesBaseResponse<object> response)
+    private void UpdateWeldPointUploadStatus(IReadOnlyList<BizWeldPointRecord> records, BasicRes<object> response)
     {
         lock (_dbLock)
         {
@@ -310,17 +506,13 @@ public class UploadTaskService : IUploadTaskService
             ProcessNo = record.ProcessNo,
             ProductNo = record.ProductNo,
             TouchNo = record.TouchNo,
-            MaxElectric = record.MaxElectric ?? string.Empty,
-            MaxVoltage = record.MaxVoltage ?? string.Empty,
-            ValidPower = record.ValidPower ?? string.Empty,
-            Displacement = record.Displacement ?? string.Empty,
-            WeldTs = record.WeldTs ?? string.Empty,
             Type = string.IsNullOrWhiteSpace(record.Type) ? "EM" : record.Type,
-            Ts = record.RecordTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
+            IsTest = record.IsTest,
+            Ts = record.Ts.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
         };
     }
 
-    private async Task<MesBaseResponse<object>> UploadReportFileAsync(BizUploadTask task, CancellationToken cancellationToken)
+    private async Task<BasicRes<object>> UploadReportFileAsync(BizUploadTask task, CancellationToken cancellationToken)
     {
         var request = BuildReportFileRequest(task);
         if (request is null)
@@ -331,7 +523,7 @@ public class UploadTaskService : IUploadTaskService
         return await _mesProvider.UploadReportFileAsync(request, cancellationToken);
     }
 
-    private ReportFileUploadRequest? BuildReportFileRequest(BizUploadTask task)
+    private UploadReportFileReq? BuildReportFileRequest(BizUploadTask task)
     {
         lock (_dbLock)
         {
@@ -340,6 +532,11 @@ public class UploadTaskService : IUploadTaskService
                 ? null
                 : _dbContext.Db.Queryable<BizWeldTask>().InSingle(task.WeldTaskId.Value);
             if (weldTask is null)
+            {
+                return null;
+            }
+
+            if (string.IsNullOrWhiteSpace(weldTask.ExpStartId))
             {
                 return null;
             }
@@ -360,11 +557,11 @@ public class UploadTaskService : IUploadTaskService
                 return null;
             }
 
-            return new ReportFileUploadRequest
+            return new UploadReportFileReq
             {
                 ExpStartId = weldTask.ExpStartId ?? string.Empty,
                 DeviceId = weldTask.DeviceId,
-                SN = weldTask.WorkOrderId,
+                SN = weldTask.SN,
                 ProcessNo = weldTask.ProcessNo,
                 FileType = ProductionConstants.MesFileTypes.ReportFile,
                 FilePath = filePath
@@ -372,7 +569,7 @@ public class UploadTaskService : IUploadTaskService
         }
     }
 
-    private UploadTaskSummary? FinishExecution(int taskId, MesBaseResponse<object> response)
+    private UploadTaskSummary? FinishExecution(int taskId, BasicRes<object> response)
     {
         lock (_dbLock)
         {
@@ -396,7 +593,7 @@ public class UploadTaskService : IUploadTaskService
         }
     }
 
-    private void WriteUploadFlowLog(BizUploadTask task, MesBaseResponse<object> response)
+    private void WriteUploadFlowLog(BizUploadTask task, BasicRes<object> response)
     {
         var payload = ReadUploadPayload(task.PayloadJson);
         var step = ResolveUploadFlowStep(task.TaskType, response.IsSuccess);
@@ -420,6 +617,18 @@ public class UploadTaskService : IUploadTaskService
     {
         return taskType switch
         {
+            ProductionConstants.UploadTaskTypes.StartReport => success
+                ? "StartReportUploadSucceeded"
+                : "StartReportUploadFailed",
+            ProductionConstants.UploadTaskTypes.FinishReport => success
+                ? "FinishReportUploadSucceeded"
+                : "FinishReportUploadFailed",
+            ProductionConstants.UploadTaskTypes.WorkOrderStatus => success
+                ? "WorkOrderStatusUploadSucceeded"
+                : "WorkOrderStatusUploadFailed",
+            ProductionConstants.UploadTaskTypes.DeviceStatus => success
+                ? "DeviceStatusUploadSucceeded"
+                : "DeviceStatusUploadFailed",
             ProductionConstants.UploadTaskTypes.ProcessParameter => success
                 ? "ProcessParameterUploadSucceeded"
                 : "ProcessParameterUploadFailed",
@@ -440,7 +649,7 @@ public class UploadTaskService : IUploadTaskService
         };
     }
 
-    private void UpdateReportFileStatus(BizUploadTask task, MesBaseResponse<object> response)
+    private void UpdateReportFileStatus(BizUploadTask task, BasicRes<object> response)
     {
         if (task.TaskType != ProductionConstants.UploadTaskTypes.ReportFile)
         {
@@ -464,9 +673,37 @@ public class UploadTaskService : IUploadTaskService
         _dbContext.Db.Updateable(report).ExecuteCommand();
     }
 
-    private static MesBaseResponse<object> Success(string message)
+    private void UpdateDeviceStatusLog(int logId, BasicRes<object> response)
     {
-        return new MesBaseResponse<object>
+        if (logId <= 0)
+        {
+            return;
+        }
+
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var log = _dbContext.Db.Queryable<BizDeviceStatusLog>().InSingle(logId);
+            if (log is null)
+            {
+                return;
+            }
+
+            log.ReportStatus = response.IsSuccess
+                ? ProductionConstants.UploadStatuses.Uploaded
+                : ProductionConstants.UploadStatuses.Failed;
+            log.ReportTime = DateTime.Now;
+            log.ReportMessage = response.Msg;
+            _dbContext.Db.Updateable(log)
+                .UpdateColumns(it => new { it.ReportStatus, it.ReportTime, it.ReportMessage })
+                .Where(it => it.Id == log.Id)
+                .ExecuteCommand();
+        }
+    }
+
+    private static BasicRes<object> Success(string message)
+    {
+        return new BasicRes<object>
         {
             Status = AppConstants.MesStatus.Success,
             Msg = message,
@@ -474,9 +711,9 @@ public class UploadTaskService : IUploadTaskService
         };
     }
 
-    private static MesBaseResponse<object> Unsupported(string message)
+    private static BasicRes<object> Unsupported(string message)
     {
-        return new MesBaseResponse<object>
+        return new BasicRes<object>
         {
             Status = AppConstants.MesStatus.Error,
             Msg = message
@@ -500,6 +737,11 @@ public class UploadTaskService : IUploadTaskService
             || string.Equals(record.ProductNo, productNo, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsProductScopedTask(BizUploadTask task)
+    {
+        return !string.IsNullOrWhiteSpace(ReadProductNo(task.PayloadJson));
+    }
+
     private static string? ReadProductNo(string? payloadJson)
     {
         if (string.IsNullOrWhiteSpace(payloadJson))
@@ -513,6 +755,86 @@ public class UploadTaskService : IUploadTaskService
             return document.RootElement.TryGetProperty("ProductNo", out var productNoElement)
                 ? productNoElement.GetString()
                 : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static T? ReadPayloadRequest<T>(string? payloadJson)
+    {
+        if (string.IsNullOrWhiteSpace(payloadJson))
+        {
+            return default;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            var element = document.RootElement.TryGetProperty("Request", out var requestElement)
+                ? requestElement
+                : document.RootElement;
+            return element.Deserialize<T>();
+        }
+        catch (JsonException)
+        {
+            return default;
+        }
+    }
+
+    private static string ReadStatusCode(string? payloadJson)
+    {
+        if (string.IsNullOrWhiteSpace(payloadJson))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            var root = document.RootElement;
+            if (root.TryGetProperty("StatusCode", out var statusCodeElement))
+            {
+                return statusCodeElement.GetString() ?? string.Empty;
+            }
+
+            if (root.TryGetProperty("Request", out var requestElement)
+                && requestElement.TryGetProperty("ExpStatus", out var expStatusElement))
+            {
+                return expStatusElement.GetString() ?? string.Empty;
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        return string.Empty;
+    }
+
+    private static DeviceStatusUploadRequest? ReadDeviceStatusRequest(string? payloadJson)
+    {
+        if (string.IsNullOrWhiteSpace(payloadJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            var root = document.RootElement;
+            var logId = ReadInt(root, "LogId");
+            var request = new ReportDeviceStatusReq
+            {
+                DeviceId = ReadString(root, "DeviceId"),
+                DevStatus = ReadString(root, "DevStatus"),
+                Ts = ReadString(root, "Ts"),
+                Remark = ReadString(root, "Remark")
+            };
+
+            return string.IsNullOrWhiteSpace(request.DeviceId) || string.IsNullOrWhiteSpace(request.DevStatus)
+                ? null
+                : new DeviceStatusUploadRequest(logId, request);
         }
         catch (JsonException)
         {
@@ -534,7 +856,7 @@ public class UploadTaskService : IUploadTaskService
             return new UploadPayloadInfo
             {
                 StationNo = ReadInt(root, "StationNo"),
-                WorkOrderId = ReadString(root, "SN"),
+                WorkOrderId = FirstNonEmpty(ReadString(root, "SN"), ReadString(root, "WorkOrder")),
                 ProductNo = ReadString(root, "ProductNo")
             };
         }
@@ -620,6 +942,11 @@ public class UploadTaskService : IUploadTaskService
             or ProductionConstants.UploadStatuses.Retrying;
     }
 
+    private static string FirstNonEmpty(params string?[] values)
+    {
+        return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
+    }
+
     private static UploadTaskSummary ToSummary(BizUploadTask task)
     {
         return new UploadTaskSummary
@@ -650,10 +977,15 @@ public class UploadTaskService : IUploadTaskService
         public string ProductNo { get; init; } = string.Empty;
     }
 
+    private sealed record DeviceStatusUploadRequest(int LogId, ReportDeviceStatusReq Request);
+
     private static string NormalizeTaskType(string? taskType)
     {
         return taskType switch
         {
+            ProductionConstants.UploadTaskTypes.StartReport => ProductionConstants.UploadTaskTypes.StartReport,
+            ProductionConstants.UploadTaskTypes.FinishReport => ProductionConstants.UploadTaskTypes.FinishReport,
+            ProductionConstants.UploadTaskTypes.WorkOrderStatus => ProductionConstants.UploadTaskTypes.WorkOrderStatus,
             ProductionConstants.UploadTaskTypes.ProcessParameter => ProductionConstants.UploadTaskTypes.ProcessParameter,
             ProductionConstants.UploadTaskTypes.ReportFile => ProductionConstants.UploadTaskTypes.ReportFile,
             ProductionConstants.UploadTaskTypes.ProgramFile => ProductionConstants.UploadTaskTypes.ProgramFile,

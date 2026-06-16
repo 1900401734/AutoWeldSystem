@@ -1,8 +1,13 @@
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
+using AutoWeldSystem.Core.DTOs.Mes.Response;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
-using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.Interfaces.Log;
+using AutoWeldSystem.Core.Interfaces.PLC;
 using AutoWeldSystem.Core.Plc;
+using AutoWeldSystem.Core.Runtime;
+using AutoWeldSystem.Core.ViewModels;
 using System.Globalization;
 
 namespace AutoWeldSystem.Services.Production;
@@ -161,7 +166,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
                 ?? await ReadPlcProductIdentityAsync(stationNo, cancellationToken);
             if (identity is null || string.IsNullOrWhiteSpace(identity.ProductNum))
             {
-                PublishStatusSnapshot(stationNo, "未识别到产品工号，请检查当前任务或 PLC ProductNum 业务地址。");
+                PublishStatusSnapshot(stationNo, "未识别到产品工号，请检查当前任务或 PLC 配方业务地址。");
                 continue;
             }
 
@@ -246,25 +251,25 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
     }
 
     /// <summary>
-    /// No active MES task is required for preview: offline alignment can still identify the product from PLC business addresses.
+    /// No active MES task is required for preview: offline alignment identifies the product by PLC recipe code.
     /// </summary>
     private async Task<ProductPreviewIdentity?> ReadPlcProductIdentityAsync(int stationNo, CancellationToken cancellationToken)
     {
         var normalizedStationNo = NormalizeStationNo(stationNo);
-        var productNum = await ReadBusinessAddressTextAsync(
-            AppConstants.PlcAddressKeys.ProductNum,
+        var recipeCode = await ReadBusinessAddressTextAsync(
+            AppConstants.PlcLogicalKeys.PlcRecipeCode,
             normalizedStationNo,
             cancellationToken);
-        if (string.IsNullOrWhiteSpace(productNum))
+        var localProgram = ResolveLocalProgramByRecipeCode(recipeCode);
+        if (localProgram is null)
         {
             return null;
         }
 
-        var productModel = await ReadBusinessAddressTextAsync(
-            AppConstants.PlcAddressKeys.ProductModel,
+        return new ProductPreviewIdentity(
             normalizedStationNo,
-            cancellationToken);
-        return new ProductPreviewIdentity(normalizedStationNo, productNum, productModel);
+            localProgram.ProductNum.Trim(),
+            localProgram.ProductModel?.Trim() ?? string.Empty);
     }
 
     /// <summary>
@@ -275,7 +280,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         int stationNo,
         CancellationToken cancellationToken)
     {
-        var address = _plcAddressService.GetByKey(logicalKey, stationNo);
+        var address = _plcAddressService.GetAddress(logicalKey, stationNo);
         if (address is null || !address.Enabled || string.IsNullOrWhiteSpace(address.Address))
         {
             return string.Empty;
@@ -343,7 +348,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             var touchContextOffset = (touchNo - 1) * config.TouchHeaderLen;
             var testContextOffset = (touchNo - 1) * config.TestAreaLen;
             var touchResult = FormatResult(await ReadExpressionTextAsync(
-                config.TouchBase,
+                ResolveTouchResultBase(config),
                 touchContextOffset,
                 config.TouchResultExpr,
                 cancellationToken));
@@ -378,10 +383,18 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         CancellationToken cancellationToken)
     {
         var item = schemeItem.Item;
-        var actual = ResolveExpressionBinding(config.TestBase, testContextOffset, item.ActualExpression);
-        var upper = ResolveExpressionBinding(config.TestBase, testContextOffset, item.UpperExpression);
-        var lower = ResolveExpressionBinding(config.TestBase, testContextOffset, item.LowerExpression);
-        var result = ResolveExpressionBinding(config.TestBase, testContextOffset, item.ResultExpression);
+        var actual = schemeItem.EnableActual
+            ? ResolveExpressionBinding(config.TestBase, testContextOffset, item.ActualExpression)
+            : PlcExpressionBinding.Empty;
+        var upper = schemeItem.EnableUpper
+            ? ResolveExpressionBinding(config.TestBase, testContextOffset, item.UpperExpression)
+            : PlcExpressionBinding.Empty;
+        var lower = schemeItem.EnableLower
+            ? ResolveExpressionBinding(config.TestBase, testContextOffset, item.LowerExpression)
+            : PlcExpressionBinding.Empty;
+        var result = schemeItem.EnableResult
+            ? ResolveExpressionBinding(config.TestBase, testContextOffset, item.ResultExpression)
+            : PlcExpressionBinding.Empty;
 
         return new ProductRealtimePreviewRow
         {
@@ -396,10 +409,14 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             ItemId = item.ItemId,
             ItemName = item.ItemName,
             Unit = item.Unit ?? string.Empty,
-            ActualValue = await ReadValueTextAsync(actual, cancellationToken),
-            UpperValue = await ReadValueTextAsync(upper, cancellationToken),
-            LowerValue = await ReadValueTextAsync(lower, cancellationToken),
-            Result = FormatResult(await ReadValueTextAsync(result, cancellationToken)),
+            EnableActual = schemeItem.EnableActual,
+            EnableUpper = schemeItem.EnableUpper,
+            EnableLower = schemeItem.EnableLower,
+            EnableResult = schemeItem.EnableResult,
+            ActualValue = schemeItem.EnableActual ? await ReadValueTextAsync(actual, cancellationToken) : string.Empty,
+            UpperValue = schemeItem.EnableUpper ? await ReadValueTextAsync(upper, cancellationToken) : string.Empty,
+            LowerValue = schemeItem.EnableLower ? await ReadValueTextAsync(lower, cancellationToken) : string.Empty,
+            Result = schemeItem.EnableResult ? FormatResult(await ReadValueTextAsync(result, cancellationToken)) : string.Empty,
             RefreshTimeText = refreshTime.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture),
             ActualAddress = actual.Address,
             UpperAddress = upper.Address,
@@ -424,10 +441,12 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             .Select((detail, index) => new
             {
                 Sort = (index + 1) * 10,
-                Item = allItems.FirstOrDefault(item => item.ItemId == detail.ItemId)
+                Item = allItems.FirstOrDefault(item => item.ItemId == detail.ItemId),
+                Detail = detail
             })
             .Where(item => item.Item is not null)
-            .Select(item => new SchemePreviewItem(item.Sort, item.Item!))
+            .Where(item => HasAnyEnabledRole(item.Detail))
+            .Select(item => new SchemePreviewItem(item.Sort, item.Item!, item.Detail))
             .ToList();
     }
 
@@ -532,7 +551,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             message));
     }
 
-    private BizProgram? ResolveLocalProgram(MesProgramData program)
+    private BizProgram? ResolveLocalProgram(ProgramDataRes program)
     {
         var localPrograms = _programManageService.GetPrograms();
         var programId = program.Id?.Trim();
@@ -565,6 +584,20 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             .FirstOrDefault();
     }
 
+    private BizProgram? ResolveLocalProgramByRecipeCode(string? recipeCode)
+    {
+        var normalizedRecipeCode = NormalizePlcText(recipeCode);
+        if (string.IsNullOrWhiteSpace(normalizedRecipeCode))
+        {
+            return null;
+        }
+
+        return _programManageService.GetPrograms()
+            .Where(program => SameText(program.RecipeCode, normalizedRecipeCode))
+            .OrderByDescending(program => program.UpdatedTime)
+            .FirstOrDefault();
+    }
+
     private static bool SameText(string? left, string? right)
     {
         return string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
@@ -575,6 +608,9 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         return value?.Trim().Trim('\0') ?? string.Empty;
     }
 
+    private static string ResolveTouchResultBase(BizProductProcessConfig config)
+        => string.IsNullOrWhiteSpace(config.TouchResultBase) ? config.TouchBase : config.TouchResultBase!.Trim();
+
     private static int NormalizeStationNo(int stationNo)
     {
         return stationNo <= ProductionConstants.Stations.SharedStationNo
@@ -584,5 +620,19 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
 
     private sealed record ProductPreviewIdentity(int StationNo, string ProductNum, string ProductModel);
 
-    private sealed record SchemePreviewItem(int Sort, DimTestItem Item);
+    private static bool HasAnyEnabledRole(BizSchemeDetail detail)
+    {
+        return detail.EnableActual || detail.EnableUpper || detail.EnableLower || detail.EnableResult;
+    }
+
+    private sealed record SchemePreviewItem(int Sort, DimTestItem Item, BizSchemeDetail Detail)
+    {
+        public bool EnableActual => Detail.EnableActual;
+
+        public bool EnableUpper => Detail.EnableUpper;
+
+        public bool EnableLower => Detail.EnableLower;
+
+        public bool EnableResult => Detail.EnableResult;
+    }
 }

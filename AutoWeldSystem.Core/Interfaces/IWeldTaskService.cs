@@ -1,6 +1,9 @@
-﻿using AutoWeldSystem.Core.DTOs;
-using AutoWeldSystem.Core.Constants;
-using AutoWeldSystem.Core.Models;
+﻿using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.DTOs;
+using AutoWeldSystem.Core.DTOs.Mes.Request;
+using AutoWeldSystem.Core.DTOs.Mes.Response;
+using AutoWeldSystem.Core.Entities;
+using AutoWeldSystem.Core.Runtime;
 
 namespace AutoWeldSystem.Core.Interfaces;
 
@@ -24,55 +27,41 @@ public interface IWeldTaskService
     /// <returns>恢复成功的未完工任务；若没有可恢复任务则返回 null。</returns>
     BizWeldTask? RestoreUnfinishedTask(int stationNo = ProductionConstants.Stations.DefaultStationNo);
 
-    /// <summary>
-    /// ͬ��������ʱ��
-    /// </summary>
-    /// <param name="cancellationToken"></param>
-    /// <returns></returns>
-    Task<MesBaseResponse<MesServerTimeResponse>> SyncServerTimeAsync(CancellationToken cancellationToken = default);
+    Task<BasicRes<ServerTimeRes>> SyncServerTimeAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// ��ȡ������Ϣ
-    /// </summary>
-    /// <param name="workId"></param>
-    /// <param name="stationNo"></param>
-    /// <param name="cancellationToken"></param>
-    /// <returns></returns>
-    Task<MesWorkOrderResponse?> GetWorkOrderInfoAsync(
-        string workId,
-        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+    Task<WorkOrderRes?> GetWorkOrderInfoAsync(string workId, int stationNo = ProductionConstants.Stations.DefaultStationNo,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// ѡ��λ��֧�ֶ๤λ����ʱ���л���ǰ�����Ĺ�λ��ȷ���������������ȷ�Ĺ�λ���С�
-    /// </summary>
-    /// <param name="stationNo"></param>
     void SelectStation(int stationNo);
 
-    /// <summary>
-    /// ѡ���򡣸��ݹ�����Ϣ��ѡ��ǰ��λ�Ĺ���ȷ���������������ȷ�Ĺ�����С�
-    /// </summary>
-    /// <param name="process"></param>
-    /// <param name="stationNo"></param>
     void SelectProcess(ExpItemData process, int stationNo = ProductionConstants.Stations.DefaultStationNo);
-
 
     Task<IReadOnlyList<MesProgramListItemData>> LoadProgramsAsync(
         int stationNo = ProductionConstants.Stations.DefaultStationNo,
         CancellationToken cancellationToken = default);
 
-    Task<MesProgramData?> DownloadProgramAsync(
+    Task<ProgramDataRes?> DownloadProgramAsync(
         MesProgramListItemData program,
         int stationNo = ProductionConstants.Stations.DefaultStationNo,
         CancellationToken cancellationToken = default);
 
     void ApplyStartAdjustment(
-        MesWorkOrderResponse workOrder,
+        WorkOrderRes workOrder,
         ExpItemData? process,
         string programContent,
         int stationNo = ProductionConstants.Stations.DefaultStationNo);
 
-    Task<MesBaseResponse<MesUserInfoResponse>> ValidateMesOperatorAsync(
+    /// <summary>
+    /// Creates and starts a local work order without MES calls.
+    /// The generated start report is queued for makeup upload after MES recovers.
+    /// </summary>
+    Task<BizWeldTask> StartLocalAsync(
+        OfflineExperimentStartReq request,
+        string operatorNumber,
+        int actualQty,
+        CancellationToken cancellationToken = default);
+
+    Task<BasicRes<UserInfoRes>> ValidateMesOperatorAsync(
         string employeeNumber,
         int stationNo = ProductionConstants.Stations.DefaultStationNo,
         CancellationToken cancellationToken = default);
@@ -84,12 +73,20 @@ public interface IWeldTaskService
         bool employeeAlreadyValidated = false,
         CancellationToken cancellationToken = default);
 
-    Task<MesBaseResponse<object>> ChangeStatusAsync(
+    Task<BasicRes<object>> ChangeStatusAsync(
         string statusCode,
         int stationNo = ProductionConstants.Stations.DefaultStationNo,
         CancellationToken cancellationToken = default);
 
     Task<BizWeldTask> FinishAsync(
+        string employeeNumber,
+        int actualQty,
+        int qualifiedQty,
+        int failedQty,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        CancellationToken cancellationToken = default);
+
+    Task<BizWeldTask> FinishLocalAsync(
         string employeeNumber,
         int actualQty,
         int qualifiedQty,
