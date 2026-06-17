@@ -88,7 +88,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             _productionLogService.Write(
                 "ProductDataSaveFailed",
                 "产品采集数据保存失败",
-                $"ProductNo={header.ProductNo}, TouchCount={records.Count}, Error={ex.Message}",
+                $"ProductNumber={header.ProductNo}, TouchCount={records.Count}, Error={ex.Message}",
                 "Error",
                 normalizedStationNo,
                 task.SN,
@@ -102,7 +102,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         _productionLogService.Write(
             "ProductDataSaved",
             "产品采集数据已保存",
-            $"ProductNo={header.ProductNo}, TouchCount={records.Count}, Result={header.ProductResult}",
+            $"ProductNumber={header.ProductNo}, TouchCount={records.Count}, Result={header.ProductResult}",
             stationNo: normalizedStationNo,
             workOrderId: task.SN,
             productNo: header.ProductNo,
@@ -110,7 +110,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
 
         _operationLogService.Write(
             "ProductCycleCollection",
-            $"Product collected, Station={normalizedStationNo}, WorkOrder={task.SN}, ProductNo={header.ProductNo}, TouchCount={records.Count}, Result={header.ProductResult}");
+            $"Product collected, Station={normalizedStationNo}, WorkOrder={task.SN}, ProductNumber={header.ProductNo}, TouchCount={records.Count}, Result={header.ProductResult}");
 
         return records;
     }
@@ -126,13 +126,13 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             var reportFile = _reportFileService.GenerateXlsxReport(task);
             _operationLogService.Write(
                 "ReportFile",
-                $"Report file refreshed after product saved, Station={stationNo}, WorkOrder={task.SN}, ProductNo={productNo}, TouchCount={touchCount}, FilePath={reportFile.FilePath}");
+                $"Report file refreshed after product saved, Station={stationNo}, WorkOrder={task.SN}, ProductNumber={productNo}, TouchCount={touchCount}, FilePath={reportFile.FilePath}");
         }
         catch (Exception ex)
         {
             _operationLogService.Write(
                 "ReportFile",
-                $"Report file refresh failed after product saved, Station={stationNo}, WorkOrder={task.SN}, ProductNo={productNo}, Error={ex.Message}");
+                $"Report file refresh failed after product saved, Station={stationNo}, WorkOrder={task.SN}, ProductNumber={productNo}, Error={ex.Message}");
         }
     }
 

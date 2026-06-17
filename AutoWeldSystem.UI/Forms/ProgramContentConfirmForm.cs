@@ -8,7 +8,7 @@ namespace AutoWeldSystem.UI.Forms;
 public partial class ProgramContentConfirmForm : BaseWindow
 {
     private const string KeyWorkOrderNo = "SN";
-    private const string KeyProductNum = "ProductNum";
+    private const string KeyProductNum = "ProductNumber";
     private const string KeyProductModel = "ProductModel";
     private const string KeyBatch = "Batch";
     private const string KeySpec = "Spec";
@@ -369,7 +369,7 @@ public partial class ProgramContentConfirmForm : BaseWindow
     {
         return new ExpItemData
         {
-            ItemID = source.ItemID,
+            ItemId = source.ItemId,
             ItemTitle = source.ItemTitle,
             ItemCont = source.ItemCont,
             SequenceNo = source.SequenceNo,

@@ -366,7 +366,7 @@ public partial class AddressManageView : BaseView
         tabTestSchemes.Text = "测试方案";
         tabSchemeDetails.Text = "方案明细";
         tabTestItems.Text = "测试项字典";
-        lblBindingProduct.Text = "产品工号 ProductNum";
+        lblBindingProduct.Text = "产品工号 ProductNumber";
         lblBindingProcess.Text = "产品工艺 SchemeId";
         lblBindingScheme.Text = "测试方案";
         lblBindingDetail.Text = "方案明细 ItemId";

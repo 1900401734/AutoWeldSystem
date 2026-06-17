@@ -48,7 +48,7 @@ public sealed class WeldPointUploadCoordinatorService : IWeldPointUploadCoordina
         {
             _operationLogService.Write(
                 "WeldPointUpload",
-                $"Batch upload mode, defer process parameter upload until finish report. TaskId={record.TaskId}, ProductNo={record.ProductNo}");
+                $"Batch upload mode, defer process parameter upload until finish report. TaskId={record.TaskId}, ProductNumber={record.ProductNo}");
             return;
         }
 

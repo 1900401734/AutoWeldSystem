@@ -232,7 +232,7 @@
     <value>地址维护</value>
   </data>
   <data name="main.message.no_page_permission" xml:space="preserve">
-    <value>当前用户未分配任何页面权限。</value>
+    <value>当前用户未分配任何页面权限</value>
   </data>
   <data name="monitor.message.switch_user_confirm" xml:space="preserve">
     <value>确定返回登录界面切换用户吗？</value>
@@ -786,17 +786,11 @@
   <data name="address.name.target_production" xml:space="preserve">
     <value>目标产量</value>
   </data>
-  <data name="monitor.label.device_status" xml:space="preserve">
-    <value>设备状态</value>
-  </data>
   <data name="monitor.label.plc_state" xml:space="preserve">
     <value>PLC状态</value>
   </data>
   <data name="monitor.label.mes_state" xml:space="preserve">
     <value>MES状态</value>
-  </data>
-  <data name="monitor.title.app" xml:space="preserve">
-    <value>单稳态型自动点焊系统</value>
   </data>
   <data name="monitor.status.normal" xml:space="preserve">
     <value>正常</value>
@@ -855,14 +849,14 @@
   <data name="monitor.label.program_name" xml:space="preserve">
     <value>程序名称</value>
   </data>
-  <data name="monitor.label.product_no" xml:space="preserve">
+  <data name="monitor.label.product_number" xml:space="preserve">
     <value>产品工号</value>
   </data>
   <data name="monitor.label.product_model" xml:space="preserve">
     <value>产品型号</value>
   </data>
-  <data name="monitor.label.batch_no" xml:space="preserve">
-    <value>批次号</value>
+  <data name="monitor.label.batch" xml:space="preserve">
+    <value>批次</value>
   </data>
   <data name="monitor.label.spec" xml:space="preserve">
     <value>规格</value>
@@ -973,44 +967,43 @@
     <value>删除程序</value>
   </data>
   <data name="monitor.message.work_id_required" xml:space="preserve">
-    <value>工单二维码不能为空。</value>
+    <value>工单二维码不能为空</value>
   </data>
   <data name="monitor.message.work_order_load_failed" xml:space="preserve">
     <value>获取工单信息失败</value>
   </data>
   <data name="monitor.message.process_required" xml:space="preserve">
-    <value>当前工单没有可选工序。</value>
+    <value>当前工单没有可选工序</value>
   </data>
   <data name="monitor.message.program_list_empty" xml:space="preserve">
-    <value>当前工单和设备没有可选程序。</value>
+    <value>当前工单和设备没有可选程序</value>
   </data>
   <data name="monitor.message.program_download_failed" xml:space="preserve">
-    <value>
-	。</value>
+    <value>程序下载失败</value>
   </data>
   <data name="monitor.message.work_order_ready" xml:space="preserve">
-    <value>工单和程序已准备完成。</value>
+    <value>工单和程序已准备完成</value>
   </data>
   <data name="monitor.message.start_prerequisite_missing" xml:space="preserve">
-    <value>请先加载工单、选择工序并下载程序，再进行开工上报。</value>
+    <value>请先加载工单、选择工序并下载程序</value>
   </data>
   <data name="monitor.message.start_blocked_by_unfinished_task" xml:space="preserve">
-    <value>当前工位已开工或存在尚未完工任务，请先完工上报后再开工。</value>
+    <value>已开工或存在尚未完工任务</value>
   </data>
   <data name="monitor.message.quantity_invalid" xml:space="preserve">
-    <value>数量必须是大于 0 的整数。</value>
+    <value>数量必须是大于 0 的整数</value>
   </data>
   <data name="monitor.message.operator_validation_failed" xml:space="preserve">
-    <value>员工校验失败</value>
+    <value>员工身份校验失败</value>
   </data>
   <data name="monitor.message.start_success" xml:space="preserve">
-    <value>开工上报成功，MES Id：{0}</value>
+    <value>开工上报成功</value>
   </data>
   <data name="monitor.message.finish_prerequisite_missing" xml:space="preserve">
-    <value>当前没有运行中的工单，请先开工上报。</value>
+    <value>当前无运行工单，请先开工上报</value>
   </data>
   <data name="monitor.message.finish_success" xml:space="preserve">
-    <value>完工上报成功。</value>
+    <value>完工上报成功</value>
   </data>
   <data name="monitor.runtime.idle" xml:space="preserve">
     <value>等待业务操作</value>
@@ -1488,7 +1481,7 @@
     <value>模糊查询</value>
   </data>
   <data name="data.placeholder.work_order" xml:space="preserve">
-    <value>流转卡号</value>
+    <value>工单号</value>
   </data>
   <data name="data.button.query" xml:space="preserve">
     <value>查询</value>
@@ -1648,5 +1641,23 @@
   </data>
   <data name="grid.plc_address.station" xml:space="preserve">
     <value>工位</value>
+  </data>
+  <data name="monitor.label.device_state" xml:space="preserve">
+    <value>设备状态</value>
+  </data>
+  <data name="monitor.label.work_order_state" xml:space="preserve">
+    <value>工单状态</value>
+  </data>
+  <data name="work_order.status.not_started" xml:space="preserve">
+    <value>未开工</value>
+  </data>
+  <data name="work_order.status.in_progress" xml:space="preserve">
+    <value>生产中</value>
+  </data>
+  <data name="work_order.status.paused" xml:space="preserve">
+    <value>已暂停</value>
+  </data>
+  <data name="work_order.status.completed" xml:space="preserve">
+    <value>已完工</value>
   </data>
 </root>

@@ -273,7 +273,7 @@ public class WeldTaskService : IWeldTaskService
 
         station.UpdatedTime = DateTime.Now;
         RefreshCompatibilityState(normalizedStationNo);
-        _operationLogService.Write("StartAdjustment", $"Start data adjusted locally, Station={normalizedStationNo}, SN={workOrder.SN}, ProductNum={workOrder.ProdNum}");
+        _operationLogService.Write("StartAdjustment", $"Start data adjusted locally, Station={normalizedStationNo}, SN={workOrder.SN}, ProductNumber={workOrder.ProdNum}");
         NotifyStateChanged();
     }
 
@@ -757,7 +757,7 @@ public class WeldTaskService : IWeldTaskService
     {
         return new ExpItemData
         {
-            ItemID = request.ProgramLocalId,
+            ItemId = request.ProgramLocalId,
             ItemName = request.ProcessName,
             ProcessNo = request.ProcessNo,
             StartAmount = Math.Max(1, request.PlannedQty)
@@ -1231,7 +1231,7 @@ public class WeldTaskService : IWeldTaskService
     {
         return new ExpItemData
         {
-            ItemID = source.ItemID,
+            ItemId = source.ItemId,
             ItemTitle = source.ItemTitle,
             ItemCont = source.ItemCont,
             SequenceNo = source.SequenceNo,

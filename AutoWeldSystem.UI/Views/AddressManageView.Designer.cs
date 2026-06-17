@@ -283,7 +283,7 @@ namespace AutoWeldSystem.UI.Views
             lblBindingProduct.Padding = new Padding(10, 2, 10, 2);
             lblBindingProduct.Size = new Size(191, 23);
             lblBindingProduct.TabIndex = 0;
-            lblBindingProduct.Text = "产品工号 ProductNum";
+            lblBindingProduct.Text = "产品工号 ProductNumber";
             // 
             // lblBindingArrow1
             // 

@@ -62,7 +62,7 @@ public class ExpItemData
     /// <summary>
     /// 项目ID
     /// </summary>
-    public int ItemID { get; set; }
+    public int ItemId { get; set; }
 
     /// <summary>
     /// 分组

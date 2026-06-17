@@ -3,26 +3,26 @@ using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
 using AutoWeldSystem.Core.DTOs.Mes.Response;
 using AutoWeldSystem.Core.DTOs.Plc;
+using AutoWeldSystem.Core.Entities;
+using AutoWeldSystem.Core.Enums;
 using AutoWeldSystem.Core.Exceptions;
 using AutoWeldSystem.Core.Interfaces;
+using AutoWeldSystem.Core.Interfaces.Log;
+using AutoWeldSystem.Core.Interfaces.MES;
+using AutoWeldSystem.Core.Interfaces.PLC;
 using AutoWeldSystem.Core.Plc;
+using AutoWeldSystem.Core.Runtime;
 using AutoWeldSystem.Core.ViewModels;
 using AutoWeldSystem.UI.Base;
+using AutoWeldSystem.UI.Components;
 using AutoWeldSystem.UI.Forms;
 using AutoWeldSystem.UI.Infrastructure;
+using AutoWeldSystem.UI.ViewModels;
 using System.Globalization;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
-using AutoWeldSystem.Core.Entities;
-using AutoWeldSystem.Core.Enums;
-using AutoWeldSystem.UI.Components;
-using AutoWeldSystem.Core.Interfaces.Log;
-using AutoWeldSystem.Core.Interfaces.MES;
-using AutoWeldSystem.Core.Interfaces.PLC;
-using AutoWeldSystem.Core.Runtime;
-using AutoWeldSystem.UI.ViewModels;
 
 namespace AutoWeldSystem.UI.Views;
 
@@ -31,11 +31,6 @@ public partial class MonitorView : BaseView
     #region 常量配置
 
     private const int TitleTextPadding = 8;
-    private const int HeaderLogoWidth = 168;
-    private const int HeaderActionMinWidth = 156;
-    private const int HeaderStatusCellMinWidth = 140;
-    private const int HeaderStatusCellPadding = 36;
-    private const int HeaderButtonPadding = 62;
     private const int RealtimePreviewPaintIntervalMs = 500;
     private const int WeldPreviewMouseWheelPixels = 96;
     private const int RuntimeSummaryMaxLength = 56;
@@ -54,7 +49,6 @@ public partial class MonitorView : BaseView
     private const string PreviewLowerRole = "Lower";
     private const string PreviewActualRole = "Actual";
     private const string PreviewResultRole = "Result";
-    private const string VersionPrefix = "v";
 
     #endregion
 
@@ -114,8 +108,6 @@ public partial class MonitorView : BaseView
     private bool _adjustingTitleFont;
 
     private Font? _titleFont;
-    private Font? _headerStatusFont;
-    private Font? _headerButtonFont;
     private Font? _runtimeMessageFont;
     private Font? _runtimeGroupFont;
 
@@ -179,6 +171,14 @@ public partial class MonitorView : BaseView
 
     #region 系统调用
 
+    /// <summary>
+    /// 调用 Win32 SendMessage 接口向指定窗口发送消息。
+    /// </summary>
+    /// <param name="hWnd">hWnd。</param>
+    /// <param name="msg">窗口消息编号。</param>
+    /// <param name="wParam">消息的第一个附加参数。</param>
+    /// <param name="lParam">消息的第二个附加参数。</param>
+    /// <returns>Win32 API 返回值。</returns>
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
@@ -186,6 +186,28 @@ public partial class MonitorView : BaseView
 
     #region 构造函数
 
+    /// <summary>
+    /// 初始化监控视图，完成服务注入、界面配置、事件绑定和初始数据刷新。
+    /// </summary>
+    /// <param name="localizer">界面文本本地化服务。</param>
+    /// <param name="settingsService">系统设置读取与变更通知服务。</param>
+    /// <param name="mesConnectionMonitorService">MES 连接状态监控服务。</param>
+    /// <param name="plcCommunicationService">PLC 通讯服务。</param>
+    /// <param name="plcProductionMonitorService">PLC 生产数据监控服务。</param>
+    /// <param name="plcWorkIdMonitorService">PLC 工单号监控服务。</param>
+    /// <param name="plcWeldCycleMonitorService">PLC 焊接节拍监控服务。</param>
+    /// <param name="plcAddressService">PLC 地址配置服务。</param>
+    /// <param name="plcBusinessSignalService">PLC 业务信号读写服务。</param>
+    /// <param name="plcExpressionReadService">PLC 表达式解析读取服务。</param>
+    /// <param name="productProcessConfigService">产品工艺配置服务。</param>
+    /// <param name="testSchemeConfigService">测试方案配置服务。</param>
+    /// <param name="productRealtimePreviewService">产品实时预览服务。</param>
+    /// <param name="productHistoryService">产品历史查询与标记服务。</param>
+    /// <param name="programManageService">本地程序管理服务。</param>
+    /// <param name="weldTaskService">焊接任务业务服务。</param>
+    /// <param name="exceptionLogService">程序异常与业务异常日志服务。</param>
+    /// <param name="productionLogService">生产流程日志服务。</param>
+    /// <param name="runtimeTipStateService">运行提示状态持久化服务。</param>
     public MonitorView(
         ILocalizationService localizer,
         IAppSettingsService settingsService,
@@ -230,12 +252,10 @@ public partial class MonitorView : BaseView
         _productionLogService = productionLogService;
         _runtimeTipStateService = runtimeTipStateService;
 
-        LoadTitleLogo();
-        ConfigureHeaderLayout();
+        GetVersion();
         ConfigureRuntimeMessagePanels();
-        ConfigureStationResultTags();
         ApplyLocalizedTexts();
-        ConfigureStationSelector();
+        ConfigureDeviceMode();
         ConfigureTables();
         ConfigureProductionTableColumns();
         ConfigureWeldParameterTableColumns();
@@ -254,16 +274,18 @@ public partial class MonitorView : BaseView
     #region 公开视图配置
 
     /// <summary>
-    /// Configures the station shown by this window. The station can still be changed
-    /// by the window's own station tabs; it never follows another window.
+    /// 配置当前窗口展示的工位、只读模式和业务信号调和开关。
     /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <param name="readOnly">是否以只读模式显示。</param>
+    /// <param name="enableBusinessSignalReconcile">是否启用 PLC 业务信号调和。</param>
     public void ConfigureStationView(int stationNo, bool readOnly, bool enableBusinessSignalReconcile = true)
     {
-        _viewStationNo = NormalizePreviewStationNo(stationNo);
+        _viewStationNo = NormalizeStationNo(stationNo);
         _stationViewReadOnly = readOnly;
         _enableBusinessSignalReconcile = enableBusinessSignalReconcile;
 
-        ConfigureStationSelector();
+        ConfigureDeviceMode();
         ApplyStationViewMode();
         _weldTaskService.RestoreUnfinishedTask(CurrentStationNo);
         RefreshProductionRuntimeState();
@@ -276,13 +298,24 @@ public partial class MonitorView : BaseView
 
     public int ViewStationNo => CurrentStationNo;
 
-    public void ApplyRuntimeSettingsChanged(AppSettings settings, bool readOnly, bool enableBusinessSignalReconcile, bool triggerBusinessSignalReconcile = false)
+    /// <summary>
+    /// 应用运行时设置变更，并刷新当前监控界面状态。
+    /// </summary>
+    /// <param name="settings">应用设置快照。</param>
+    /// <param name="readOnly">是否以只读模式显示。</param>
+    /// <param name="enableBusinessSignalReconcile">是否启用 PLC 业务信号调和。</param>
+    /// <param name="triggerBusinessSignalReconcile">设置变更后是否立即触发业务信号调和。</param>
+    public void ApplyRuntimeSettingsChanged(
+        AppSettings settings,
+        bool readOnly,
+        bool enableBusinessSignalReconcile, 
+        bool triggerBusinessSignalReconcile = false)
     {
         UpdateSettingsSnapshot(settings);
         _stationViewReadOnly = readOnly;
         _enableBusinessSignalReconcile = enableBusinessSignalReconcile;
 
-        ConfigureStationSelector();
+        ConfigureDeviceMode();
         ApplyMesStatus(_mesConnectionMonitorService.Current);
         RefreshProductionRuntimeState();
         RestoreCurrentRuntimeTipState();
@@ -300,12 +333,268 @@ public partial class MonitorView : BaseView
 
     #endregion
 
+    #region 工位选择与视图模式
+
+    /// <summary>
+    /// 配置设备模式。
+    /// </summary>
+    private void ConfigureDeviceMode()
+    {
+        _dualStationEnabled = _currentSettings.EnableDualStation;
+
+        tlpStation.Visible = _dualStationEnabled;
+        tabsPreview2.Visible = _dualStationEnabled;
+        tabsMetrics2.Visible = _dualStationEnabled;
+        tagStationResult2.Visible = _dualStationEnabled;
+
+        if (!_dualStationEnabled)
+        {
+            tabsPreview.SelectedIndex = 0;
+            tabsMetrics.SelectedIndex = 0;
+        }
+
+        if (!_dualStationEnabled && CurrentStationNo != ProductionConstants.Stations.DefaultStationNo)
+        {
+            _viewStationNo = ProductionConstants.Stations.DefaultStationNo;
+        }
+
+        if (!_dualStationEnabled
+            && _weldTaskService.CurrentState.CurrentStationNo != ProductionConstants.Stations.DefaultStationNo)
+        {
+            _weldTaskService.SelectStation(ProductionConstants.Stations.DefaultStationNo);
+        }
+
+        BindStationSelection();
+        ApplyStationViewMode();
+    }
+
+    /// <summary>
+    /// 应用工位视图模式。
+    /// </summary>
+    private void ApplyStationViewMode()
+    {
+        ApplyOperationMode();
+    }
+
+    /// <summary>
+    /// 应用操作模式。
+    /// </summary>
+    private void ApplyOperationMode()
+    {
+        var canOperate = !_stationViewReadOnly;
+
+        btnGetWO.Visible = canOperate;
+        btnLocalWorkOrder.Visible = canOperate;
+        btnChangeWO.Visible = canOperate;
+        btnEditWO.Visible = canOperate;
+        btnExpStart.Visible = canOperate;
+        btnExpEnd.Visible = canOperate;
+
+        btnGetWO.Enabled = canOperate;
+        btnLocalWorkOrder.Enabled = canOperate;
+        btnChangeWO.Enabled = canOperate;
+        btnEditWO.Enabled = canOperate;
+        btnExpStart.Enabled = canOperate;
+        btnExpEnd.Enabled = canOperate;
+    }
+
+    /// <summary>
+    /// 判断读取OnlyOperationBlocked。
+    /// </summary>
+    /// <param name="actionName">操作名称，用于提示和日志。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
+    private bool IsReadOnlyOperationBlocked(string actionName)
+    {
+        if (!_stationViewReadOnly)
+        {
+            return false;
+        }
+
+        SetRuntimeErrorText($"工位{CurrentStationNo}{actionName}已禁用，当前窗口为只读看板。");
+        return true;
+    }
+
+    /// <summary>
+    /// 绑定工位选择。
+    /// </summary>
+    private void BindStationSelection()
+    {
+        _syncingStationSelection = true;
+        try
+        {
+            segmentedStationSwitch.Items.Clear();
+            segmentedStationSwitch.Items.Add(new AntdUI.SegmentedItem { Text = FormatStationName(1) });
+            segmentedStationSwitch.Items.Add(new AntdUI.SegmentedItem { Text = FormatStationName(2) });
+            SyncStationSelection();
+        }
+        finally
+        {
+            _syncingStationSelection = false;
+        }
+    }
+
+    /// <summary>
+    /// 处理Sync工位选择。
+    /// </summary>
+    private void SyncStationSelection()
+    {
+        var previousSyncing = _syncingStationSelection;
+        _syncingStationSelection = true;
+        try
+        {
+            var index = Math.Max(0, Math.Min(1, CurrentStationNo - 1));
+            if (segmentedStationSwitch.Items.Count > 0 && segmentedStationSwitch.SelectIndex != index)
+            {
+                segmentedStationSwitch.SelectIndex = index;
+            }
+
+            if (tabsPreview.Pages.Count > index && tabsPreview.SelectedIndex != index)
+            {
+                tabsPreview.SelectedIndex = index;
+            }
+
+            if (tabsMetrics.Pages.Count > index && tabsMetrics.SelectedIndex != index)
+            {
+                tabsMetrics.SelectedIndex = index;
+            }
+        }
+        finally
+        {
+            _syncingStationSelection = previousSyncing;
+        }
+    }
+
+    /// <summary>
+    /// 格式化工位名称。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>处理后的文本。</returns>
+    private string FormatStationName(int stationNo)
+    {
+        return $"{_localizer.GetString(TextKeys.Monitor.Label.Station)} {stationNo}";
+    }
+
+    private int CurrentStationNo => NormalizeStationNo(_viewStationNo);
+
+    /// <summary>
+    /// 获取当前工位状态。
+    /// </summary>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
+    private ProductionStationRuntimeState GetCurrentStationState()
+    {
+        return _weldTaskService.CurrentState.GetOrCreateStation(CurrentStationNo);
+    }
+
+    /// <summary>
+    /// 解析工单信号Stations。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>解析后的集合。</returns>
+    private IReadOnlyList<int> ResolveWorkOrderSignalStations(int stationNo)
+    {
+        var settings = _currentSettings;
+        if (settings.EnableDualStation && !settings.EnableDualWorkOrder)
+        {
+            return [1, 2];
+        }
+
+        return [NormalizeStatusStationNo(stationNo)];
+    }
+
+    private DataGridView CurrentWeldPreviewGrid => GetWeldPreviewGrid(CurrentStationNo);
+
+    private SlimHorizontalScrollBar CurrentWeldPreviewScrollBar
+        => GetWeldPreviewScrollBar(CurrentStationNo);
+
+    /// <summary>
+    /// 获取焊接预览Grid。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
+    private DataGridView GetWeldPreviewGrid(int stationNo)
+        => NormalizeStationNo(stationNo) == 2 ? dgvPreview2 : dgvPreview1;
+
+    /// <summary>
+    /// 获取焊接预览滚动Bar。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
+    private SlimHorizontalScrollBar GetWeldPreviewScrollBar(int stationNo)
+        => NormalizeStationNo(stationNo) == 2 ? HorizontalScrollBar2 : HorizontalScrollBar1;
+
+    /// <summary>
+    /// 解析焊接预览工位号。
+    /// </summary>
+    /// <param name="control">目标控件。</param>
+    /// <returns>解析或计算后的数值。</returns>
+    private int ResolveWeldPreviewStationNo(Control control)
+    {
+        if (ReferenceEquals(control, dgvPreview2)
+            || ReferenceEquals(control, HorizontalScrollBar2))
+        {
+            return 2;
+        }
+
+        return 1;
+    }
+
+    /// <summary>
+    /// 规范化预览工位号。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>解析或计算后的数值。</returns>
+    private static int NormalizeStationNo(int stationNo) => stationNo == 2 ? 2 : 1;
+
+    private AntdUI.Table CurrentMetricTable => CurrentStationNo == 2 ? tableMetric2 : tableMetric1;
+
+    private AntdUI.Table CurrentProductHistoryTable => CurrentStationNo == 2 ? tableHistory2 : tableHistory1;
+
+    private AntdUI.Label CurrentLivePreviewStatusLabel => CurrentStationNo == 2 ? lblLiveHint2 : lblLiveHint1;
+
+    private AntdUI.Label CurrentLiveProductNoLabel => CurrentStationNo == 2 ? lblLiveProductNo2 : lblLiveProductNo1;
+
+    private AntdUI.Tag CurrentLiveResultTag => CurrentStationNo == 2 ? tagLiveResult2 : tagLiveResult1;
+
+    private AntdUI.Label CurrentLiveTouchCountLabel => CurrentStationNo == 2 ? lblLiveTouchNo2 : lblLiveTouchNo1;
+
+    /// <summary>
+    /// 获取当前工单号快照。
+    /// </summary>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
+    private PlcWorkIdSnapshot GetCurrentWorkIdSnapshot()
+    {
+        return _plcWorkIdMonitorService.GetCurrent(CurrentStationNo);
+    }
+
+    /// <summary>
+    /// 获取当前LiveWorkId。
+    /// </summary>
+    /// <returns>处理后的文本。</returns>
+    private string GetCurrentLiveWorkId()
+    {
+        var snapshot = GetCurrentWorkIdSnapshot();
+        return snapshot.IsSuccess
+            ? snapshot.WorkId.Trim()
+            : string.Empty;
+    }
+
+    /// <summary>
+    /// 获取当前生产快照。
+    /// </summary>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
+    private PlcProductionSnapshot GetCurrentProductionSnapshot()
+    {
+        return _plcProductionMonitorService.GetCurrent(CurrentStationNo);
+    }
+
+    #endregion
+
     #region 设置快照
 
     /// <summary>
-    /// Atomically replaces the read-only settings snapshot used by this view.
-    /// The supplied settings object is never modified by MonitorView.
+    /// 更新Settings快照。
     /// </summary>
+    /// <param name="settings">应用设置快照。</param>
     private void UpdateSettingsSnapshot(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
@@ -314,19 +603,104 @@ public partial class MonitorView : BaseView
 
     #endregion
 
+    #region 事件订阅
+
+    /// <summary>
+    /// 订阅监控视图需要的界面事件和后台服务事件。
+    /// </summary>
+    private void WireEvents()
+    {
+        Load += MonitorView_Load;
+
+        btnGetWO.Click += GetWorkOrder_Click;
+        btnLocalWorkOrder.Click += LocalWorkOrder_Click;
+        btnChangeWO.Click += ChangeWorkOrder_Click;
+        btnEditWO.Click += EditWorkOrder_Click;
+        btnExpStart.Click += StartReport_Click;
+        btnExpEnd.Click += FinishReport_Click;
+
+        _timer.Tick += Timer_Tick;
+        _realtimePreviewPaintTimer.Tick += RealtimePreviewPaintTimer_Tick;
+        _plcStatusToolTipTimer.Tick += PlcStatusToolTipTimer_Tick;
+
+        LeftTopLayout.SizeChanged += TitleLayout_Changed;
+        lblTitle.SizeChanged += TitleLayout_Changed;
+        lblTitle.TextChanged += TitleLayout_Changed;
+        tagPLC.MouseEnter += TagPLC_MouseEnter;
+        tagPLC.MouseLeave += TagPLC_MouseLeave;
+
+        HorizontalScrollBar2.ValueChanged += Table2HorizontalScrollBar_ValueChanged;
+        HorizontalScrollBar1.ValueChanged += Table2HorizontalScrollBar_ValueChanged;
+
+        WireWeldPreviewGridEvents(dgvPreview1);
+        WireWeldPreviewGridEvents(dgvPreview2);
+
+        tableHistory1.CellClick += ProductHistoryTable_CellClick;
+        tableHistory2.CellClick += ProductHistoryTable_CellClick;
+
+        segmentedStationSwitch.SelectIndexChanged += Station_SelectedIndexChanged;
+        selectItemName.SelectedIndexChanged += ProcessSelection_SelectedIndexChanged;
+        tabsPreview.SelectedIndexChanged += (_, _) => StationTab_SelectedIndexChanged(tabsPreview.SelectedIndex + 1);
+        tabsMetrics.SelectedIndexChanged += (_, _) => StationTab_SelectedIndexChanged(tabsMetrics.SelectedIndex + 1);
+
+        _weldTaskService.StateChanged += WeldTaskService_StateChanged;
+        _plcCommunicationService.StatusChanged += PlcCommunicationService_StatusChanged;
+        _mesConnectionMonitorService.StatusChanged += MesConnectionMonitorService_StatusChanged;
+        _plcProductionMonitorService.StatusChanged += PlcProductionMonitorService_StatusChanged;
+        _plcWorkIdMonitorService.WorkIdChanged += PlcWorkIdMonitorService_WorkIdChanged;
+        _plcWeldCycleMonitorService.WeldPointCollected += PlcWeldCycleMonitorService_WeldPointCollected;
+        _productRealtimePreviewService.SnapshotChanged += ProductRealtimePreviewService_SnapshotChanged;
+        _productionLogService.LogWritten += ProductionLogService_LogWritten;
+        _settingsService.SettingsChanged += OnSettingsChanged;
+    }
+
+    /// <summary>
+    /// 订阅焊接预览表格的鼠标、滚动和列变化事件。
+    /// </summary>
+    /// <param name="grid">目标表格控件。</param>
+    private void WireWeldPreviewGridEvents(DataGridView grid)
+    {
+        grid.MouseEnter += Table2_MouseEnter;
+        grid.MouseWheel += Table2_MouseWheel;
+        grid.Scroll += Table2_Scroll;
+        grid.SizeChanged += Table2_ScrollRangeChanged;
+        grid.ColumnWidthChanged += Table2_ScrollRangeChanged;
+        grid.ColumnAdded += Table2_ScrollRangeChanged;
+        grid.ColumnRemoved += Table2_ScrollRangeChanged;
+    }
+
+    /// <summary>
+    /// 取消订阅焊接预览表格事件，避免控件释放后仍触发回调。
+    /// </summary>
+    /// <param name="grid">目标表格控件。</param>
+    private void UnwireWeldPreviewGridEvents(DataGridView grid)
+    {
+        grid.MouseEnter -= Table2_MouseEnter;
+        grid.MouseWheel -= Table2_MouseWheel;
+        grid.Scroll -= Table2_Scroll;
+        grid.SizeChanged -= Table2_ScrollRangeChanged;
+        grid.ColumnWidthChanged -= Table2_ScrollRangeChanged;
+        grid.ColumnAdded -= Table2_ScrollRangeChanged;
+        grid.ColumnRemoved -= Table2_ScrollRangeChanged;
+    }
+
+    #endregion
+
     #region 按钮事件
 
+    /// <summary>
+    /// 处理获取工单按钮点击事件。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private async void GetWorkOrder_Click(object? sender, EventArgs e)
     {
-        if (IsReadOnlyOperationBlocked("获取工单"))
-        {
-            return;
-        }
+        if (IsReadOnlyOperationBlocked("获取工单")) return;
 
-        var stationNo = CurrentStationNo;
+        SelectStationForOperation(CurrentStationNo);
 
-        SelectStationForOperation(stationNo);
-        if (_weldTaskService.RestoreUnfinishedTask(stationNo) is not null)
+        // 有未完工任务时禁止重新获取工单，避免同一工位出现两条并行任务。
+        if (_weldTaskService.RestoreUnfinishedTask(CurrentStationNo) is not null)
         {
             ShowWarning(TextKeys.Monitor.Message.StartBlockedByUnfinishedTask);
             return;
@@ -335,6 +709,11 @@ public partial class MonitorView : BaseView
         await PrepareWorkOrderAsync(forceManualInput: false);
     }
 
+    /// <summary>
+    /// 处理变更工单按钮点击事件。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private async void ChangeWorkOrder_Click(object? sender, EventArgs e)
     {
         if (IsReadOnlyOperationBlocked("变更工单"))
@@ -344,6 +723,7 @@ public partial class MonitorView : BaseView
 
         var stationNo = CurrentStationNo;
         SelectStationForOperation(stationNo);
+        // 变更工单同样必须避开未完工任务，防止覆盖正在生产的任务上下文。
         if (_weldTaskService.RestoreUnfinishedTask(stationNo) is not null)
         {
             ShowWarning(TextKeys.Monitor.Message.StartBlockedByUnfinishedTask);
@@ -353,6 +733,11 @@ public partial class MonitorView : BaseView
         await PrepareWorkOrderAsync(forceManualInput: true);
     }
 
+    /// <summary>
+    /// 处理微调工单按钮点击事件。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private async void EditWorkOrder_Click(object? sender, EventArgs e)
     {
         if (IsReadOnlyOperationBlocked("微调工单"))
@@ -394,6 +779,11 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 处理本地工单按钮点击事件。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private async void LocalWorkOrder_Click(object? sender, EventArgs e)
     {
         if (IsReadOnlyOperationBlocked("本地工单"))
@@ -404,6 +794,7 @@ public partial class MonitorView : BaseView
         var stationNo = CurrentStationNo;
         SelectStationForOperation(stationNo);
         var activeTask = _weldTaskService.RestoreUnfinishedTask(stationNo);
+        // 本地任务未完工时，此按钮复用为“本地完工”，减少离线流程入口数量。
         if (activeTask is { IsOfflineCreated: true, EndTime: null })
         {
             await FinishLocalWorkOrderAsync(stationNo);
@@ -454,10 +845,15 @@ public partial class MonitorView : BaseView
             SetRuntimeStatusText(BuildStationReportSuccessText(stationNo, "本地开工"), isSuccess: true);
         });
 
-        // Write business signals independently - failures won't affect the start success status
+        // PLC 业务信号独立写入；失败只提示和记录日志，不回滚已经成功的本地开工。
         await SafeWriteStartBusinessSignalsAsync(localProgram, stationNo);
     }
 
+    /// <summary>
+    /// 处理开工上报按钮点击事件。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private async void StartReport_Click(object? sender, EventArgs e)
     {
         if (IsReadOnlyOperationBlocked("开工上报"))
@@ -467,6 +863,7 @@ public partial class MonitorView : BaseView
 
         var stationNo = CurrentStationNo;
         SelectStationForOperation(stationNo);
+        // 开工前先恢复持久化任务，软件重启后也能拦截未完工任务。
         if (_weldTaskService.RestoreUnfinishedTask(stationNo) is not null)
         {
             RefreshProductionRuntimeState();
@@ -487,6 +884,7 @@ public partial class MonitorView : BaseView
             return;
         }
 
+        // 工单和工序通过后才下载程序，避免“只查看工单”时提前占用 MES 下载资源。
         if (state.CurrentWorkOrder is not null
             && state.SelectedProcess is not null
             && state.SelectedProgram is null
@@ -502,6 +900,7 @@ public partial class MonitorView : BaseView
             return;
         }
 
+        // 程序内容会影响配方编号和测试方案，开工前必须由操作员确认。
         if (!IsProgramContentConfirmed(state.SelectedProgram, stationNo)
             && !TryConfirmStartData(state.CurrentWorkOrder, state.SelectedProcess, state.SelectedProgram, stationNo))
         {
@@ -526,10 +925,15 @@ public partial class MonitorView : BaseView
             SetRuntimeStatusText(BuildStationReportSuccessText(stationNo, "开工上报"), isSuccess: true);
         });
 
-        // Write business signals independently - failures won't affect the start success status
+        // PLC 业务信号独立写入；失败只提示和记录日志，不回滚已经成功的在线开工。
         await SafeWriteStartBusinessSignalsAsync(state.SelectedProgram, stationNo);
     }
 
+    /// <summary>
+    /// 处理完工上报按钮点击事件。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private async void FinishReport_Click(object? sender, EventArgs e)
     {
         if (IsReadOnlyOperationBlocked("完工上报"))
@@ -552,6 +956,7 @@ public partial class MonitorView : BaseView
             return;
         }
 
+        // 完工数量优先来自 PLC；配置允许时才通过弹窗补录，避免上报数量与设备数据不一致。
         if (!TryResolveFinishQuantities(stationNo, out var actualQty, out var qualifiedQty, out var failedQty))
         {
             return;
@@ -562,6 +967,7 @@ public partial class MonitorView : BaseView
             ClearRuntimeError();
             SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.SubmittingFinish);
             await _weldTaskService.FinishAsync(employeeNumber, actualQty, qualifiedQty, failedQty, stationNo);
+            // 完工后立即禁止 PLC 继续生产，防止操作员未重新开工时设备继续采集。
             await WriteFinishBusinessSignalsAsync(stationNo);
             RefreshProductionRuntimeState();
             SetRuntimeStatusText(BuildStationReportSuccessText(stationNo, "完工上报"), isSuccess: true);
@@ -572,13 +978,18 @@ public partial class MonitorView : BaseView
 
     #region WinForms 生命周期事件
 
+    /// <summary>
+    /// 处理MonitorView加载。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private void MonitorView_Load(object? sender, EventArgs e)
     {
         _timer.Start();
         _realtimePreviewPaintTimer.Start();
         ApplyLocalizedTexts();
         UpdateCurrentTime();
-        ConfigureStationSelector();
+        ConfigureDeviceMode();
         _weldTaskService.RestoreUnfinishedTask(CurrentStationNo);
         BindProductionRuntimeState();
         RestoreCurrentRuntimeTipState();
@@ -595,6 +1006,11 @@ public partial class MonitorView : BaseView
         SetVerticalSplitterPanel2ToMinWidth();
     }
 
+    /// <summary>
+    /// 处理Timer定时触发事件。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private void Timer_Tick(object? sender, EventArgs e)
     {
         UpdateCurrentTime();
@@ -610,10 +1026,13 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 处理Language变更。
+    /// </summary>
     protected override void OnLanguageChanged()
     {
         ApplyLocalizedTexts();
-        ConfigureStationSelector();
+        ConfigureDeviceMode();
         BindProductionRuntimeState();
         ConfigureProductionTableColumns();
         ConfigureWeldParameterTableColumns();
@@ -624,6 +1043,10 @@ public partial class MonitorView : BaseView
         AdjustTitleFontSize();
     }
 
+    /// <summary>
+    /// 处理HandleDestroyed。
+    /// </summary>
+    /// <param name="e">事件参数。</param>
     protected override void OnHandleDestroyed(EventArgs e)
     {
         _settingsService.SettingsChanged -= OnSettingsChanged;
@@ -651,8 +1074,6 @@ public partial class MonitorView : BaseView
         _plcStatusToolTipTimer.Dispose();
         DisposePlcStatusToolTipPopup();
         _titleFont?.Dispose();
-        _headerStatusFont?.Dispose();
-        _headerButtonFont?.Dispose();
         _runtimeMessageFont?.Dispose();
         _runtimeGroupFont?.Dispose();
         base.OnHandleDestroyed(e);
@@ -662,6 +1083,11 @@ public partial class MonitorView : BaseView
 
     #region 工位与工序事件
 
+    /// <summary>
+    /// 处理工位选择变化事件。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private void Station_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
     {
         if (_syncingStationSelection || !_dualStationEnabled)
@@ -673,6 +1099,10 @@ public partial class MonitorView : BaseView
         SwitchStationFromUi(stationNo);
     }
 
+    /// <summary>
+    /// 处理工位Tab选择变化事件。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
     private void StationTab_SelectedIndexChanged(int stationNo)
     {
         if (_syncingStationSelection || !_dualStationEnabled)
@@ -683,6 +1113,11 @@ public partial class MonitorView : BaseView
         SwitchStationFromUi(stationNo);
     }
 
+    /// <summary>
+    /// 处理工序选择选择变化事件。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private void ProcessSelection_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
     {
         if (_syncingProcessSelection)
@@ -699,7 +1134,7 @@ public partial class MonitorView : BaseView
         {
             ClearProcessSelectionDisplay();
             inputProcessNo.Text = string.Empty;
-            input1.Text = string.Empty;
+            inputStartAmount.Text = string.Empty;
             return;
         }
 
@@ -708,7 +1143,7 @@ public partial class MonitorView : BaseView
         _weldTaskService.SelectProcess(process, CurrentStationNo);
         selectItemName.Text = GetProcessDisplayName(process);
         inputProcessNo.Text = process.ProcessNo ?? string.Empty;
-        input1.Text = process.StartAmount.ToString(CultureInfo.InvariantCulture);
+        inputStartAmount.Text = process.StartAmount.ToString(CultureInfo.InvariantCulture);
         ClearRuntimeError();
         SetRuntimeStatusText($"已选择工序：{process.ItemName}", isSuccess: true);
     }
@@ -718,13 +1153,20 @@ public partial class MonitorView : BaseView
     #region 服务事件处理
 
     /// <summary>
-    /// Fallback check for a pending realtime snapshot; normal snapshots post to the UI immediately.
+    /// 处理实时预览PaintTimer定时触发事件。
     /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private void RealtimePreviewPaintTimer_Tick(object? sender, EventArgs e)
     {
         ApplyPendingRealtimePreviewSnapshot();
     }
 
+    /// <summary>
+    /// 处理Weld任务Service状态变更。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private void WeldTaskService_StateChanged(object? sender, EventArgs e)
     {
         if (IsDisposed)
@@ -735,6 +1177,11 @@ public partial class MonitorView : BaseView
         RunOnUiThread(ApplyWeldTaskStateChanged, "MonitorView.WeldTaskStateChanged");
     }
 
+    /// <summary>
+    /// 处理PlcCommunicationService状态变化事件。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private void PlcCommunicationService_StatusChanged(object? sender, PlcConnectionSnapshot e)
     {
         if (IsDisposed)
@@ -745,6 +1192,11 @@ public partial class MonitorView : BaseView
         RunOnUiThread(() => ApplyPlcStatus(e), "MonitorView.PlcStatusChanged");
     }
 
+    /// <summary>
+    /// 处理MesConnectionMonitorService状态变化事件。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private void MesConnectionMonitorService_StatusChanged(object? sender, MesConnectionSnapshot e)
     {
         if (IsDisposed)
@@ -755,6 +1207,11 @@ public partial class MonitorView : BaseView
         RunOnUiThread(() => ApplyMesStatus(e), "MonitorView.MesStatusChanged");
     }
 
+    /// <summary>
+    /// 处理Plc生产MonitorService状态变化事件。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private void PlcProductionMonitorService_StatusChanged(object? sender, PlcProductionSnapshot e)
     {
         if (IsDisposed)
@@ -765,6 +1222,11 @@ public partial class MonitorView : BaseView
         RunOnUiThread(() => ApplyProductionStatus(e), "MonitorView.ProductionStatusChanged");
     }
 
+    /// <summary>
+    /// 处理PlcWorkIdMonitorService工单号变化事件。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private void PlcWorkIdMonitorService_WorkIdChanged(object? sender, PlcWorkIdSnapshot e)
     {
         if (IsDisposed)
@@ -775,6 +1237,11 @@ public partial class MonitorView : BaseView
         RunOnUiThread(() => ApplyWorkIdSnapshot(e), "MonitorView.WorkIdChanged");
     }
 
+    /// <summary>
+    /// 处理PlcWeldCycleMonitorService焊点采集完成事件。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private void PlcWeldCycleMonitorService_WeldPointCollected(object? sender, BizWeldPointRecord e)
     {
         if (IsDisposed)
@@ -785,6 +1252,11 @@ public partial class MonitorView : BaseView
         RunOnUiThread(() => ApplyLatestWeldPointRecord(e), "MonitorView.WeldPointCollected");
     }
 
+    /// <summary>
+    /// 处理产品实时预览Service快照变化事件。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private void ProductRealtimePreviewService_SnapshotChanged(object? sender, ProductRealtimePreviewSnapshot e)
     {
         if (IsDisposed || !IsHandleCreated || e.StationNo != CurrentStationNo)
@@ -812,6 +1284,11 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 处理生产LogService日志写入事件。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private void ProductionLogService_LogWritten(object? sender, ProductionFlowLogEntry e)
     {
         if (IsDisposed || !ShouldShowProductionHint(e))
@@ -822,6 +1299,9 @@ public partial class MonitorView : BaseView
         RunOnUiThread(() => ApplyProductionHint(e), "MonitorView.ProductionLogWritten");
     }
 
+    /// <summary>
+    /// 应用Weld任务状态变更。
+    /// </summary>
     private void ApplyWeldTaskStateChanged()
     {
         RefreshProductionRuntimeState();
@@ -833,9 +1313,10 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// Receives the latest persisted settings without performing database access.
-    /// UI reconfiguration for dual-station mode is coordinated by MainForm.
+    /// 处理Settings变更。
     /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private void OnSettingsChanged(object? sender, AppSettingsChangedEventArgs e)
     {
         if (IsDisposed)
@@ -850,6 +1331,11 @@ public partial class MonitorView : BaseView
 
     #region 表格与鼠标事件
 
+    /// <summary>
+    /// 处理产品历史表格Cell点击。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private void ProductHistoryTable_CellClick(object sender, AntdUI.TableClickEventArgs e)
     {
         if (e.Button != MouseButtons.Right || e.Record is not ProductHistoryTableRow row)
@@ -862,189 +1348,24 @@ public partial class MonitorView : BaseView
 
     #endregion
 
-    #region 头部与状态布局
-
-    private void LoadTitleLogo()
-    {
-        if (!File.Exists(AppAssets.LogoPath))
-        {
-            picLogo.Visible = false;
-            return;
-        }
-
-        picLogo.Visible = true;
-        picLogo.ImageLocation = AppAssets.LogoPath;
-    }
+    #region 版本信息
 
     /// <summary>
-    /// Keeps the header readable when English labels are longer than Chinese labels.
+    /// 获取Version。
     /// </summary>
-    private void ConfigureHeaderLayout()
-    {
-        _headerStatusFont = new Font("Microsoft YaHei UI", 10.5F, FontStyle.Regular);
-        _headerButtonFont = new Font("Microsoft YaHei UI", 10.5F, FontStyle.Regular);
-
-        LeftTopLayout.AutoSize = false;
-        tlpCommunicationStatus.MinimumSize = new Size(HeaderStatusCellMinWidth * 2, 0);
-
-        GetVersion();
-        ConfigureStatusTag(tagMes);
-        ConfigureStatusTag(tagPLC);
-        ConfigureStatusTag(tagDeviceStatus);
-        ConfigureStatusTag(tagTaskStatus);
-        ConfigureCommunicationStatusLayout();
-        AdjustHeaderFixedColumns();
-    }
-
-    private void ConfigureCommunicationStatusLayout()
-    {
-        tlpCommunicationStatus.SuspendLayout();
-        try
-        {
-            tlpCommunicationStatus.Controls.Clear();
-            tlpCommunicationStatus.ColumnStyles.Clear();
-            tlpCommunicationStatus.RowStyles.Clear();
-            tlpCommunicationStatus.RowCount = 2;
-            tlpCommunicationStatus.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
-            tlpCommunicationStatus.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
-
-            tlpCommunicationStatus.ColumnCount = 2;
-            tlpCommunicationStatus.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            tlpCommunicationStatus.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            tlpCommunicationStatus.Controls.Add(tagMes, 0, 0);
-            tlpCommunicationStatus.Controls.Add(tagPLC, 1, 0);
-            tlpCommunicationStatus.Controls.Add(tagDeviceStatus, 0, 1);
-            tlpCommunicationStatus.Controls.Add(tagTaskStatus, 1, 1);
-        }
-        finally
-        {
-            tlpCommunicationStatus.ResumeLayout();
-        }
-    }
-
     private void GetVersion() => lblVersion.Text = BuildVersionText();
 
     /// <summary>
-    /// Status tags use compact bold text and a small margin so rounded corners do not cut into text.
+    /// 构建Version文本。
     /// </summary>
-    private void ConfigureStatusTag(AntdUI.Tag tag)
-    {
-        tag.Font = _headerStatusFont;
-        tag.Margin = new Padding(4, 0, 4, 0);
-        tag.AutoEllipsis = false;
-        tag.TextMultiLine = true;
-    }
-
-    /// <summary>
-    /// The title column can shrink, while status cards and action buttons reserve measured widths.
-    /// </summary>
-    private void AdjustHeaderFixedColumns()
-    {
-        if (LeftTopLayout.ColumnStyles.Count < 4)
-        {
-            return;
-        }
-
-        var logoWidth = picLogo.Visible ? HeaderLogoWidth : 0;
-        var statusWidth = CalculateHeaderStatusWidth();
-        var actionWidth = CalculateHeaderActionWidth();
-
-        LeftTopLayout.ColumnStyles[0].SizeType = SizeType.Absolute;
-        LeftTopLayout.ColumnStyles[0].Width = logoWidth;
-        LeftTopLayout.ColumnStyles[1].SizeType = SizeType.Percent;
-        LeftTopLayout.ColumnStyles[1].Width = 100F;
-        LeftTopLayout.ColumnStyles[2].SizeType = SizeType.Absolute;
-        LeftTopLayout.ColumnStyles[2].Width = statusWidth;
-        LeftTopLayout.ColumnStyles[3].SizeType = SizeType.Absolute;
-        LeftTopLayout.ColumnStyles[3].Width = actionWidth;
-
-        tlpCommunicationStatus.MinimumSize = new Size(statusWidth, 0);
-    }
-
-    /// <summary>
-    /// Measures possible status words so every status card can show the longest translated value.
-    /// </summary>
-    private int CalculateHeaderStatusWidth()
-    {
-        var statusFont = _headerStatusFont ?? tagMes.Font;
-        var statusTexts = new[]
-        {
-            "MES",
-            "PLC",
-            _localizer.GetString(TextKeys.Monitor.Label.DeviceStatus),
-            _localizer.GetString(TextKeys.Mes.StateChecking),
-            _localizer.GetString(TextKeys.Mes.StateConnected),
-            _localizer.GetString(TextKeys.Mes.StateDisconnected),
-            _localizer.GetString(TextKeys.Plc.StateStopped),
-            _localizer.GetString(TextKeys.Plc.StateConnecting),
-            _localizer.GetString(TextKeys.Plc.StateConnected),
-            _localizer.GetString(TextKeys.Plc.StateReconnecting),
-            _localizer.GetString(TextKeys.Plc.StateDisconnected),
-            _localizer.GetString(TextKeys.Plc.StateFaulted),
-            _localizer.GetString(TextKeys.DeviceStatus.Running),
-            _localizer.GetString(TextKeys.DeviceStatus.Paused),
-            _localizer.GetString(TextKeys.DeviceStatus.Stopped),
-            _localizer.GetString(TextKeys.DeviceStatus.Alarm),
-            _localizer.GetString(TextKeys.DeviceStatus.Unknown),
-            "工位状态",
-            "未开工",
-            "待开工",
-            "已开工",
-            "已暂停",
-            "已完工"
-        };
-
-        var maxTextWidth = statusTexts.Max(text => MeasureTextWidth(text, statusFont));
-        var cellWidth = Math.Max(HeaderStatusCellMinWidth, maxTextWidth + HeaderStatusCellPadding);
-        return cellWidth * 2;
-    }
-
-    /// <summary>
-    /// Measures localized report button text and leaves extra room for the icon.
-    /// </summary>
-    private int CalculateHeaderActionWidth()
-    {
-        var buttonFont = _headerButtonFont ?? btnExpStart.Font;
-        var startWidth = MeasureTextWidth(btnExpStart.Text ?? string.Empty, buttonFont);
-        var finishWidth = MeasureTextWidth(btnExpEnd.Text ?? string.Empty, buttonFont);
-        return Math.Max(HeaderActionMinWidth, Math.Max(startWidth, finishWidth) + HeaderButtonPadding);
-    }
-
-    /// <summary>
-    /// Centralized text measurement avoids scattered magic width values in the header layout.
-    /// </summary>
-    private static int MeasureTextWidth(string text, Font font)
-    {
-        return TextRenderer.MeasureText(
-            text,
-            font,
-            new Size(10000, 10000),
-            TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
-    }
-
-    /// <summary>
-    /// Builds the compact version text shown below the monitor title.
-    /// </summary>
+    /// <returns>处理后的文本。</returns>
     private static string BuildVersionText()
     {
-        var version = GetApplicationVersion();
-        return string.IsNullOrWhiteSpace(version)
-            ? string.Empty
-            : $"{VersionPrefix}{version}";
-    }
-
-    /// <summary>
-    /// Reads the product version from assembly metadata so the UI always follows Directory.Build.props.
-    /// </summary>
-    private static string GetApplicationVersion()
-    {
         var assembly = typeof(MonitorView).Assembly;
-        var informationalVersion = assembly
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
-            .InformationalVersion;
-        var version = string.IsNullOrWhiteSpace(informationalVersion)
-            ? assembly.GetName().Version?.ToString(3)
-            : informationalVersion;
+
+        var informationalVersion = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+
+        var version = string.IsNullOrWhiteSpace(informationalVersion) ? assembly.GetName().Version?.ToString(3) : informationalVersion;
 
         // InformationalVersion may contain source metadata after '+', but operators only need the release version.
         return version?.Split('+')[0] ?? string.Empty;
@@ -1054,6 +1375,9 @@ public partial class MonitorView : BaseView
 
     #region 运行提示面板
 
+    /// <summary>
+    /// 配置运行时MessagePanels。
+    /// </summary>
     private void ConfigureRuntimeMessagePanels()
     {
         _runtimeMessageFont = new Font("Microsoft YaHei UI", 12.5F, FontStyle.Bold);
@@ -1070,265 +1394,21 @@ public partial class MonitorView : BaseView
 
     #endregion
 
-    #region 工位选择与视图模式
-
-    private void ConfigureStationResultTags()
-    {
-        tableLayoutPanel1.AutoSize = false;
-        ConfigureStationResultTag(tagStation1, "工位1--", UiColors.Status.Muted);
-        ConfigureStationResultTag(tagStation2, "工位2--", UiColors.Status.Muted);
-        UpdateStationResultLayout();
-    }
-
-    private static void ConfigureStationResultTag(AntdUI.Tag tag, string text, Color backColor)
-    {
-        tag.Text = text;
-        tag.Dock = DockStyle.Fill;
-        tag.ForeColor = Color.White;
-        tag.BackColor = backColor;
-        tag.TextMultiLine = true;
-    }
-
-    private void ConfigureStationSelector()
-    {
-        _dualStationEnabled = _currentSettings.EnableDualStation;
-
-        SetStationSelectorVisible(_dualStationEnabled);
-        SetStationPreviewPagesVisible(_dualStationEnabled);
-        ConfigureCommunicationStatusLayout();
-        UpdateStationResultLayout();
-        AdjustHeaderFixedColumns();
-
-        if (!_dualStationEnabled && CurrentStationNo != ProductionConstants.Stations.DefaultStationNo)
-        {
-            _viewStationNo = ProductionConstants.Stations.DefaultStationNo;
-        }
-
-        if (!_dualStationEnabled
-            && _weldTaskService.CurrentState.CurrentStationNo != ProductionConstants.Stations.DefaultStationNo)
-        {
-            _weldTaskService.SelectStation(ProductionConstants.Stations.DefaultStationNo);
-        }
-
-        BindStationSelection();
-        ApplyStationViewMode();
-    }
-
-    private void ApplyStationViewMode()
-    {
-        ApplyOperationMode();
-    }
-
-    private void ApplyOperationMode()
-    {
-        var canOperate = !_stationViewReadOnly;
-        btnGetWO.Visible = canOperate;
-        btnLocalWorkOrder.Visible = canOperate;
-        btnChangeWO.Visible = canOperate;
-        btnEditWO.Visible = canOperate;
-        btnExpStart.Visible = canOperate;
-        btnExpEnd.Visible = canOperate;
-
-        btnGetWO.Enabled = canOperate;
-        btnLocalWorkOrder.Enabled = canOperate;
-        btnChangeWO.Enabled = canOperate;
-        btnEditWO.Enabled = canOperate;
-        btnExpStart.Enabled = canOperate;
-        btnExpEnd.Enabled = canOperate;
-    }
-
-    private bool IsReadOnlyOperationBlocked(string actionName)
-    {
-        if (!_stationViewReadOnly)
-        {
-            return false;
-        }
-
-        SetRuntimeErrorText($"工位{CurrentStationNo}{actionName}已禁用，当前窗口为只读看板。");
-        return true;
-    }
-
-    private void SetStationPreviewPagesVisible(bool visible)
-    {
-        tabStation2.Visible = visible;
-        tabPage1.Visible = visible;
-
-        if (!visible)
-        {
-            tabsStationView.SelectedIndex = 0;
-            tabsMetrics.SelectedIndex = 0;
-        }
-    }
-
-    private void UpdateStationResultLayout()
-    {
-        if (tableLayoutPanel1.ColumnStyles.Count < 2)
-        {
-            return;
-        }
-
-        tagStation1.Visible = true;
-        tagStation2.Visible = _dualStationEnabled;
-
-        tableLayoutPanel1.ColumnStyles[0].SizeType = SizeType.Percent;
-        tableLayoutPanel1.ColumnStyles[0].Width = _dualStationEnabled ? 50F : 100F;
-        tableLayoutPanel1.ColumnStyles[1].SizeType = _dualStationEnabled
-            ? SizeType.Percent
-            : SizeType.Absolute;
-        tableLayoutPanel1.ColumnStyles[1].Width = _dualStationEnabled ? 50F : 0F;
-    }
-
-    private void SetStationSelectorVisible(bool visible)
-    {
-        tlpCurStation.Visible = visible;
-
-        var rowIndex = TLPWorkOrderInfo.GetRow(control: tlpCurStation);
-
-        TLPWorkOrderInfo.RowStyles[rowIndex].SizeType = visible ? SizeType.Percent : SizeType.Absolute;
-        TLPWorkOrderInfo.RowStyles[rowIndex].Height = visible ? 10F : 0F;
-    }
-
-    private void BindStationSelection()
-    {
-        _syncingStationSelection = true;
-        try
-        {
-            segmentedStationSwitch.Items.Clear();
-            segmentedStationSwitch.Items.Add(new AntdUI.SegmentedItem { Text = FormatStationName(1) });
-            segmentedStationSwitch.Items.Add(new AntdUI.SegmentedItem { Text = FormatStationName(2) });
-            SyncStationSelection();
-        }
-        finally
-        {
-            _syncingStationSelection = false;
-        }
-    }
-
-    private void SyncStationSelection()
-    {
-        var previousSyncing = _syncingStationSelection;
-        _syncingStationSelection = true;
-        try
-        {
-            var index = Math.Max(0, Math.Min(1, CurrentStationNo - 1));
-            if (segmentedStationSwitch.Items.Count > 0 && segmentedStationSwitch.SelectIndex != index)
-            {
-                segmentedStationSwitch.SelectIndex = index;
-            }
-
-            if (tabsStationView.Pages.Count > index && tabsStationView.SelectedIndex != index)
-            {
-                tabsStationView.SelectedIndex = index;
-            }
-
-            if (tabsMetrics.Pages.Count > index && tabsMetrics.SelectedIndex != index)
-            {
-                tabsMetrics.SelectedIndex = index;
-            }
-        }
-        finally
-        {
-            _syncingStationSelection = previousSyncing;
-        }
-    }
-
-    private string FormatStationName(int stationNo)
-    {
-        return $"{_localizer.GetString(TextKeys.Monitor.Label.Station)} {stationNo}";
-    }
-
-    private int CurrentStationNo
-    {
-        get
-        {
-            return NormalizePreviewStationNo(_viewStationNo);
-        }
-    }
-
-    private ProductionStationRuntimeState GetCurrentStationState()
-    {
-        return _weldTaskService.CurrentState.GetOrCreateStation(CurrentStationNo);
-    }
-
-    /// <summary>
-    /// Work-order level PLC signals are mirrored in dual-station/same-work-order mode.
-    /// </summary>
-    private IReadOnlyList<int> ResolveWorkOrderSignalStations(int stationNo)
-    {
-        var settings = _currentSettings;
-        if (settings.EnableDualStation && !settings.EnableDualWorkOrder)
-        {
-            return [1, 2];
-        }
-
-        return [NormalizeStatusStationNo(stationNo)];
-    }
-
-    private DataGridView CurrentWeldPreviewGrid => GetWeldPreviewGrid(CurrentStationNo);
-
-    private SlimHorizontalScrollBar CurrentWeldPreviewScrollBar
-        => GetWeldPreviewScrollBar(CurrentStationNo);
-
-    private DataGridView GetWeldPreviewGrid(int stationNo)
-        => NormalizePreviewStationNo(stationNo) == 2 ? dgvPreview2 : dgvPreview1;
-
-    private SlimHorizontalScrollBar GetWeldPreviewScrollBar(int stationNo)
-        => NormalizePreviewStationNo(stationNo) == 2 ? HorizontalScrollBar2 : HorizontalScrollBar1;
-
-    private int ResolveWeldPreviewStationNo(Control control)
-    {
-        if (ReferenceEquals(control, dgvPreview2)
-            || ReferenceEquals(control, HorizontalScrollBar2))
-        {
-            return 2;
-        }
-
-        return 1;
-    }
-
-    private static int NormalizePreviewStationNo(int stationNo)
-        => stationNo == 2 ? 2 : 1;
-
-    private AntdUI.Table CurrentMetricTable => CurrentStationNo == 2 ? tableMetric2 : tableMetric1;
-
-    private AntdUI.Table CurrentProductHistoryTable => CurrentStationNo == 2 ? tableHistory2 : tableHistory1;
-
-    private AntdUI.Label CurrentLivePreviewStatusLabel => CurrentStationNo == 2 ? lblLiveHint2 : lblLiveHint1;
-
-    private AntdUI.Label CurrentLiveProductNoLabel => CurrentStationNo == 2 ? lblLiveProductNo2 : lblLiveProductNo1;
-
-    private AntdUI.Tag CurrentLiveResultTag => CurrentStationNo == 2 ? tagLiveResult2 : tagLiveResult1;
-
-    private AntdUI.Label CurrentLiveTouchCountLabel => CurrentStationNo == 2 ? lblLiveTouchNo2 : lblLiveTouchNo1;
-
-    private PlcWorkIdSnapshot GetCurrentWorkIdSnapshot()
-    {
-        return _plcWorkIdMonitorService.GetCurrent(CurrentStationNo);
-    }
-
-    private string GetCurrentLiveWorkId()
-    {
-        var snapshot = GetCurrentWorkIdSnapshot();
-        return snapshot.IsSuccess
-            ? snapshot.WorkId.Trim()
-            : string.Empty;
-    }
-
-    private PlcProductionSnapshot GetCurrentProductionSnapshot()
-    {
-        return _plcProductionMonitorService.GetCurrent(CurrentStationNo);
-    }
-
-    #endregion
-
     #region 标题布局调整
 
+    /// <summary>
+    /// 处理标题布局变更。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private void TitleLayout_Changed(object? sender, EventArgs e)
     {
-        AdjustHeaderFixedColumns();
         AdjustTitleFontSize();
     }
 
+    /// <summary>
+    /// 处理Adjust标题字体尺寸。
+    /// </summary>
     private void AdjustTitleFontSize()
     {
         if (_adjustingTitleFont || string.IsNullOrWhiteSpace(lblTitle.Text))
@@ -1365,6 +1445,13 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 查找最佳标题字体尺寸。
+    /// </summary>
+    /// <param name="text">显示文本。</param>
+    /// <param name="baseFont">基础字体。</param>
+    /// <param name="availableSize">可用显示尺寸。</param>
+    /// <returns>解析或计算后的数值。</returns>
     private static float FindBestTitleFontSize(string text, Font baseFont, Size availableSize)
     {
         const float MinTitleFontSize = 12F;
@@ -1396,80 +1483,13 @@ public partial class MonitorView : BaseView
 
     #endregion
 
-    #region 事件订阅
-
-    private void WireEvents()
-    {
-        Load += MonitorView_Load;
-
-        btnGetWO.Click += GetWorkOrder_Click;
-        btnLocalWorkOrder.Click += LocalWorkOrder_Click;
-        btnChangeWO.Click += ChangeWorkOrder_Click;
-        btnEditWO.Click += EditWorkOrder_Click;
-        btnExpStart.Click += StartReport_Click;
-        btnExpEnd.Click += FinishReport_Click;
-
-        _timer.Tick += Timer_Tick;
-        _realtimePreviewPaintTimer.Tick += RealtimePreviewPaintTimer_Tick;
-        _plcStatusToolTipTimer.Tick += PlcStatusToolTipTimer_Tick;
-
-        LeftTopLayout.SizeChanged += TitleLayout_Changed;
-        lblTitle.SizeChanged += TitleLayout_Changed;
-        lblTitle.TextChanged += TitleLayout_Changed;
-        tagPLC.MouseEnter += TagPLC_MouseEnter;
-        tagPLC.MouseLeave += TagPLC_MouseLeave;
-
-        HorizontalScrollBar2.ValueChanged += Table2HorizontalScrollBar_ValueChanged;
-        HorizontalScrollBar1.ValueChanged += Table2HorizontalScrollBar_ValueChanged;
-
-        WireWeldPreviewGridEvents(dgvPreview1);
-        WireWeldPreviewGridEvents(dgvPreview2);
-
-        tableHistory1.CellClick += ProductHistoryTable_CellClick;
-        tableHistory2.CellClick += ProductHistoryTable_CellClick;
-
-        segmentedStationSwitch.SelectIndexChanged += Station_SelectedIndexChanged;
-        selectItemName.SelectedIndexChanged += ProcessSelection_SelectedIndexChanged;
-        tabsStationView.SelectedIndexChanged += (_, _) => StationTab_SelectedIndexChanged(tabsStationView.SelectedIndex + 1);
-        tabsMetrics.SelectedIndexChanged += (_, _) => StationTab_SelectedIndexChanged(tabsMetrics.SelectedIndex + 1);
-
-        _weldTaskService.StateChanged += WeldTaskService_StateChanged;
-        _plcCommunicationService.StatusChanged += PlcCommunicationService_StatusChanged;
-        _mesConnectionMonitorService.StatusChanged += MesConnectionMonitorService_StatusChanged;
-        _plcProductionMonitorService.StatusChanged += PlcProductionMonitorService_StatusChanged;
-        _plcWorkIdMonitorService.WorkIdChanged += PlcWorkIdMonitorService_WorkIdChanged;
-        _plcWeldCycleMonitorService.WeldPointCollected += PlcWeldCycleMonitorService_WeldPointCollected;
-        _productRealtimePreviewService.SnapshotChanged += ProductRealtimePreviewService_SnapshotChanged;
-        _productionLogService.LogWritten += ProductionLogService_LogWritten;
-        _settingsService.SettingsChanged += OnSettingsChanged;
-    }
-
-    private void WireWeldPreviewGridEvents(DataGridView grid)
-    {
-        grid.MouseEnter += Table2_MouseEnter;
-        grid.MouseWheel += Table2_MouseWheel;
-        grid.Scroll += Table2_Scroll;
-        grid.SizeChanged += Table2_ScrollRangeChanged;
-        grid.ColumnWidthChanged += Table2_ScrollRangeChanged;
-        grid.ColumnAdded += Table2_ScrollRangeChanged;
-        grid.ColumnRemoved += Table2_ScrollRangeChanged;
-    }
-
-    private void UnwireWeldPreviewGridEvents(DataGridView grid)
-    {
-        grid.MouseEnter -= Table2_MouseEnter;
-        grid.MouseWheel -= Table2_MouseWheel;
-        grid.Scroll -= Table2_Scroll;
-        grid.SizeChanged -= Table2_ScrollRangeChanged;
-        grid.ColumnWidthChanged -= Table2_ScrollRangeChanged;
-        grid.ColumnAdded -= Table2_ScrollRangeChanged;
-        grid.ColumnRemoved -= Table2_ScrollRangeChanged;
-    }
-
-    #endregion
-
     #region 预览表格鼠标与滚动事件
 
+    /// <summary>
+    /// 处理表格2鼠标进入事件。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private void Table2_MouseEnter(object? sender, EventArgs e)
     {
         var grid = CurrentWeldPreviewGrid;
@@ -1479,6 +1499,11 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 处理表格2鼠标滚轮事件。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private void Table2_MouseWheel(object? sender, MouseEventArgs e)
     {
         var stationNo = sender is DataGridView grid
@@ -1501,6 +1526,11 @@ public partial class MonitorView : BaseView
             GetWeldPreviewGrid(stationNo).HorizontalScrollingOffset + direction * wheelSteps * WeldPreviewMouseWheelPixels);
     }
 
+    /// <summary>
+    /// 处理表格2滚动事件。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private void Table2_Scroll(object? sender, ScrollEventArgs e)
     {
         if (e.ScrollOrientation == ScrollOrientation.HorizontalScroll)
@@ -1509,12 +1539,22 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 处理表格2滚动范围变化事件。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private void Table2_ScrollRangeChanged(object? sender, EventArgs e)
     {
         var grid = sender as DataGridView;
         SyncWeldPreviewHorizontalScrollBar(grid);
     }
 
+    /// <summary>
+    /// 处理表格2水平滚动Bar值变更。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private void Table2HorizontalScrollBar_ValueChanged(object? sender, EventArgs e)
     {
         if (_syncingWeldPreviewHorizontalScroll)
@@ -1535,6 +1575,9 @@ public partial class MonitorView : BaseView
 
     #region PLC 状态悬浮提示
 
+    /// <summary>
+    /// 应用全部工位Statuses。
+    /// </summary>
     private void ApplyAllStationStatuses()
     {
         if (IsDisposed)
@@ -1546,6 +1589,11 @@ public partial class MonitorView : BaseView
         ApplyProductionStatus(_plcProductionMonitorService.GetCurrent(CurrentStationNo));
     }
 
+    /// <summary>
+    /// 处理TagPLC鼠标进入事件。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private void TagPLC_MouseEnter(object? sender, EventArgs e)
     {
         _plcStatusToolTipVisible = true;
@@ -1554,11 +1602,21 @@ public partial class MonitorView : BaseView
         _plcStatusToolTipTimer.Start();
     }
 
+    /// <summary>
+    /// 处理TagPLC鼠标离开事件。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private void TagPLC_MouseLeave(object? sender, EventArgs e)
     {
         ClosePlcStatusToolTip();
     }
 
+    /// <summary>
+    /// 处理PLC 状态ToolTipTimer定时触发事件。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
     private void PlcStatusToolTipTimer_Tick(object? sender, EventArgs e)
     {
         if (!_plcStatusToolTipVisible)
@@ -1581,7 +1639,7 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// Reads the latest PLC snapshot on demand, so tooltip details can follow heartbeat/message changes.
+    /// 刷新PLC 状态ToolTip。
     /// </summary>
     private void RefreshPlcStatusToolTip()
     {
@@ -1608,6 +1666,10 @@ public partial class MonitorView : BaseView
         ShowPlcStatusToolTipPopup();
     }
 
+    /// <summary>
+    /// 判断鼠标OverTagPlc。
+    /// </summary>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private bool IsMouseOverTagPlc()
     {
         if (IsDisposed || !tagPLC.IsHandleCreated)
@@ -1619,11 +1681,19 @@ public partial class MonitorView : BaseView
         return bounds.Contains(Cursor.Position);
     }
 
+    /// <summary>
+    /// 规范化状态工位号。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>解析或计算后的数值。</returns>
     private static int NormalizeStatusStationNo(int stationNo)
     {
         return stationNo == 2 ? 2 : ProductionConstants.Stations.DefaultStationNo;
     }
 
+    /// <summary>
+    /// 关闭PLC 状态ToolTip。
+    /// </summary>
     private void ClosePlcStatusToolTip()
     {
         _plcStatusToolTipVisible = false;
@@ -1631,6 +1701,9 @@ public partial class MonitorView : BaseView
         HidePlcStatusToolTipPopup();
     }
 
+    /// <summary>
+    /// 确保PLC 状态ToolTip弹窗。
+    /// </summary>
     private void EnsurePlcStatusToolTipPopup()
     {
         if (_plcStatusToolTipPanel is not null)
@@ -1663,6 +1736,10 @@ public partial class MonitorView : BaseView
         Controls.Add(_plcStatusToolTipPanel);
     }
 
+    /// <summary>
+    /// 更新PLC 状态ToolTip文本。
+    /// </summary>
+    /// <param name="text">显示文本。</param>
     private void UpdatePlcStatusToolTipText(string text)
     {
         EnsurePlcStatusToolTipPopup();
@@ -1683,6 +1760,9 @@ public partial class MonitorView : BaseView
         _plcStatusToolTipPanel.Size = new Size(preferredSize.Width + 2, preferredSize.Height + 2);
     }
 
+    /// <summary>
+    /// 显示PLC 状态ToolTip弹窗。
+    /// </summary>
     private void ShowPlcStatusToolTipPopup()
     {
         EnsurePlcStatusToolTipPopup();
@@ -1697,6 +1777,9 @@ public partial class MonitorView : BaseView
         _plcStatusToolTipPanel.BringToFront();
     }
 
+    /// <summary>
+    /// 隐藏PLC 状态ToolTip弹窗。
+    /// </summary>
     private void HidePlcStatusToolTipPopup()
     {
         if (_plcStatusToolTipPanel is not null)
@@ -1705,6 +1788,9 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 释放PLC 状态ToolTip弹窗。
+    /// </summary>
     private void DisposePlcStatusToolTipPopup()
     {
         _plcStatusToolTipPanel?.Dispose();
@@ -1713,6 +1799,11 @@ public partial class MonitorView : BaseView
         _lastPlcStatusToolTipText = string.Empty;
     }
 
+    /// <summary>
+    /// 构建PLC 状态ToolTip文本。
+    /// </summary>
+    /// <param name="snapshot">状态快照。</param>
+    /// <returns>处理后的文本。</returns>
     private string BuildPlcStatusToolTipText(PlcConnectionSnapshot snapshot)
     {
         var history = _plcStatusHistory
@@ -1749,6 +1840,10 @@ public partial class MonitorView : BaseView
         return builder.ToString();
     }
 
+    /// <summary>
+    /// 记录PLC 状态变更。
+    /// </summary>
+    /// <param name="snapshot">状态快照。</param>
     private void RecordPlcStatusChange(PlcConnectionSnapshot snapshot)
     {
         var stationNo = NormalizeStatusStationNo(snapshot.StationNo);
@@ -1777,26 +1872,51 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 获取LocalizedPLC 状态文本。
+    /// </summary>
+    /// <param name="state">工位运行状态。</param>
+    /// <returns>处理后的文本。</returns>
     private string GetLocalizedPlcStateText(PlcConnectionState state)
     {
         return _localizer.GetString(GetPlcStateKey(state));
     }
 
+    /// <summary>
+    /// 格式化Yes号。
+    /// </summary>
+    /// <param name="value">待处理值。</param>
+    /// <returns>处理后的文本。</returns>
     private static string FormatYesNo(bool value)
     {
         return value ? "是" : "否";
     }
 
+    /// <summary>
+    /// 格式化可选时间。
+    /// </summary>
+    /// <param name="value">待处理值。</param>
+    /// <returns>处理后的文本。</returns>
     private static string FormatOptionalTime(DateTime? value)
     {
         return value.HasValue ? FormatTime(value.Value) : "--";
     }
 
+    /// <summary>
+    /// 格式化时间。
+    /// </summary>
+    /// <param name="value">待处理值。</param>
+    /// <returns>处理后的文本。</returns>
     private static string FormatTime(DateTime value)
     {
         return value.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.CurrentCulture);
     }
 
+    /// <summary>
+    /// 格式化ToolTip值。
+    /// </summary>
+    /// <param name="value">待处理值。</param>
+    /// <returns>处理后的文本。</returns>
     private static string FormatToolTipValue(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -1814,7 +1934,7 @@ public partial class MonitorView : BaseView
     #region 实时预览调度
 
     /// <summary>
-    /// Consumes one cached realtime snapshot. Older snapshots are overwritten before this method runs.
+    /// 应用待处理实时预览快照。
     /// </summary>
     private void ApplyPendingRealtimePreviewSnapshot()
     {
@@ -1838,6 +1958,11 @@ public partial class MonitorView : BaseView
 
     #region 完工上报流程
 
+    /// <summary>
+    /// 异步完工Local工单。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>表示异步操作的任务。</returns>
     private async Task FinishLocalWorkOrderAsync(int stationNo)
     {
         if (!TryResolveFinishQuantities(stationNo, out var actualQty, out var qualifiedQty, out var failedQty))
@@ -1862,15 +1987,22 @@ public partial class MonitorView : BaseView
         });
     }
 
+    /// <summary>
+    /// 绑定本地操作员信息。
+    /// </summary>
     private void BindLocalOperatorInfo()
     {
         var user = GlobalContext.CurrentUser;
         MesUserName.Text = user?.UserName ?? Environment.UserName;
         MesUserNumber.Text = ResolveLocalOperatorNumber();
-        DeptName.Text = string.Empty;
+        inputDeptName.Text = string.Empty;
         TeamName.Text = string.Empty;
     }
 
+    /// <summary>
+    /// 解析本地操作员编号。
+    /// </summary>
+    /// <returns>处理后的文本。</returns>
     private static string ResolveLocalOperatorNumber()
     {
         if (!string.IsNullOrWhiteSpace(GlobalContext.CurrentUser?.UserNumber))
@@ -1883,6 +2015,14 @@ public partial class MonitorView : BaseView
             : Environment.UserName.Trim();
     }
 
+    /// <summary>
+    /// 尝试解析完工上报需要的产量、合格数和不合格数。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <param name="actualQty">输出实际生产数量。</param>
+    /// <param name="qualifiedQty">输出合格数量。</param>
+    /// <param name="failedQty">输出不合格数量。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private bool TryResolveFinishQuantities(int stationNo, out int actualQty, out int qualifiedQty, out int failedQty)
     {
         var settings = _currentSettings;
@@ -1892,6 +2032,15 @@ public partial class MonitorView : BaseView
             : TryResolveFinishQuantitiesFromPlc(stationNo, production, out actualQty, out qualifiedQty, out failedQty);
     }
 
+    /// <summary>
+    /// 尝试直接从 PLC 生产快照读取完工数量。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <param name="production">PLC 生产数据快照。</param>
+    /// <param name="actualQty">输出实际生产数量。</param>
+    /// <param name="qualifiedQty">输出合格数量。</param>
+    /// <param name="failedQty">输出不合格数量。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private bool TryResolveFinishQuantitiesFromPlc(int stationNo, PlcProductionSnapshot production,
         out int actualQty, out int qualifiedQty, out int failedQty)
     {
@@ -1908,6 +2057,14 @@ public partial class MonitorView : BaseView
         return false;
     }
 
+    /// <summary>
+    /// 在 PLC 数量不完整时通过人工输入补齐完工数量。
+    /// </summary>
+    /// <param name="production">PLC 生产数据快照。</param>
+    /// <param name="actualQty">输出实际生产数量。</param>
+    /// <param name="qualifiedQty">输出合格数量。</param>
+    /// <param name="failedQty">输出不合格数量。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private bool TryResolveFinishQuantitiesWithPrompt(PlcProductionSnapshot production,
         out int actualQty, out int qualifiedQty, out int failedQty)
     {
@@ -1953,6 +2110,11 @@ public partial class MonitorView : BaseView
             out failedQty);
     }
 
+    /// <summary>
+    /// 构建完工数量读取失败文本。
+    /// </summary>
+    /// <param name="production">PLC 生产数据快照。</param>
+    /// <returns>处理后的文本。</returns>
     private static string BuildFinishQuantityReadFailureText(PlcProductionSnapshot production)
     {
         var details = new[]
@@ -1977,6 +2139,11 @@ public partial class MonitorView : BaseView
 
     #region 工单准备流程
 
+    /// <summary>
+    /// 异步准备工单信息，必要时提示人工输入工单号。
+    /// </summary>
+    /// <param name="forceManualInput">是否强制人工输入工单号。</param>
+    /// <returns>异步操作成功返回 true，否则返回 false。</returns>
     private async Task<bool> PrepareWorkOrderAsync(bool forceManualInput)
     {
         var stationNo = CurrentStationNo;
@@ -2010,7 +2177,7 @@ public partial class MonitorView : BaseView
                 return;
             }
 
-            // Work-order retrieval only binds the process; program download is deferred to start report.
+            // 获取工单阶段只绑定默认工序，程序下载推迟到开工前，减少无效 MES 调用。
             _weldTaskService.SelectProcess(defaultProcess, stationNo);
             RefreshProductionRuntimeState();
             ClearMesOperatorInfo();
@@ -2021,6 +2188,11 @@ public partial class MonitorView : BaseView
         return isReady;
     }
 
+    /// <summary>
+    /// 异步加载并确认当前工单的加工程序。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>异步操作成功返回 true，否则返回 false。</returns>
     private async Task<bool> PrepareProgramForCurrentWorkOrderAsync(int stationNo)
     {
         var isReady = false;
@@ -2041,7 +2213,7 @@ public partial class MonitorView : BaseView
                     "MES.GetProgramList",
                     TextKeys.Monitor.Message.ProgramListEmpty,
                     "MES 返回的程序列表为空。",
-                    $"WorkId={workOrder.SN}; ProductNum={workOrder.ProdNum}");
+                    $"WorkId={workOrder.SN}; ProductNumber={workOrder.ProdNum}");
                 return;
             }
 
@@ -2050,6 +2222,7 @@ public partial class MonitorView : BaseView
                 return;
             }
 
+            // 操作员选定程序后再下载详情，保证确认窗展示的是本次实际要开工的内容。
             SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.DownloadingProgram);
             var detail = await _weldTaskService.DownloadProgramAsync(program, stationNo);
             if (detail is null)
@@ -2075,6 +2248,12 @@ public partial class MonitorView : BaseView
         return isReady;
     }
 
+    /// <summary>
+    /// 尝试从 PLC 或人工输入中解析工单号。
+    /// </summary>
+    /// <param name="forceManualInput">是否强制人工输入工单号。</param>
+    /// <param name="workId">输出解析到的工单号。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private bool TryResolveWorkId(bool forceManualInput, out string workId)
     {
         var stationSnapshot = GetCurrentWorkIdSnapshot();
@@ -2114,6 +2293,10 @@ public partial class MonitorView : BaseView
 
     #region 工位运行状态绑定
 
+    /// <summary>
+    /// 从界面切换当前展示的工位。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
     private void SwitchStationFromUi(int stationNo)
     {
         var normalizedStationNo = Math.Clamp(stationNo, 1, 2);
@@ -2131,15 +2314,21 @@ public partial class MonitorView : BaseView
         SyncStationSelection();
     }
 
+    /// <summary>
+    /// 选择后续业务操作要作用的工位。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
     private void SelectStationForOperation(int stationNo)
     {
-        var normalizedStationNo = NormalizePreviewStationNo(stationNo);
-        if (_weldTaskService.CurrentState.CurrentStationNo != normalizedStationNo)
+        if (_weldTaskService.CurrentState.CurrentStationNo != stationNo)
         {
-            _weldTaskService.SelectStation(normalizedStationNo);
+            _weldTaskService.SelectStation(stationNo);
         }
     }
 
+    /// <summary>
+    /// 绑定生产运行状态。
+    /// </summary>
     private void BindProductionRuntimeState()
     {
         var state = GetCurrentStationState();
@@ -2164,7 +2353,7 @@ public partial class MonitorView : BaseView
         inputSpec.Text = workOrder?.Spec ?? string.Empty;
         BindProcessSelection(workOrder, process, activeTask is not null);
         inputProcessNo.Text = process?.ProcessNo ?? string.Empty;
-        input1.Text = process is null ? string.Empty : process.StartAmount.ToString(CultureInfo.InvariantCulture);
+        inputStartAmount.Text = process is null ? string.Empty : process.StartAmount.ToString(CultureInfo.InvariantCulture);
         inputProgramName.Text = program?.ProgramName ?? string.Empty;
         selectRecipeCode.Text = ResolveRecipeCodeForDisplay(activeTask, program);
         BindRuntimeOperatorInfo(state, activeTask);
@@ -2175,8 +2364,11 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// <summary>Bind MES process items and immediately reflect the selected process back to runtime fields.</summary>
+    /// 绑定工序选择。
     /// </summary>
+    /// <param name="workOrder">MES 工单数据。</param>
+    /// <param name="selectedProcess">当前选中的工序。</param>
+    /// <param name="bindSelectedOnly">是否只绑定当前选中工序。</param>
     private void BindProcessSelection(WorkOrderRes? workOrder, ExpItemData? selectedProcess, bool bindSelectedOnly)
     {
         _syncingProcessSelection = true;
@@ -2210,6 +2402,9 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 清空工序选择控件的显示内容。
+    /// </summary>
     private void ClearProcessSelectionDisplay()
     {
         if (selectItemName.SelectedIndex != -1)
@@ -2220,6 +2415,11 @@ public partial class MonitorView : BaseView
         selectItemName.Text = string.Empty;
     }
 
+    /// <summary>
+    /// 获取工序在下拉框中的显示名称。
+    /// </summary>
+    /// <param name="process">工序数据。</param>
+    /// <returns>处理后的文本。</returns>
     private static string GetProcessDisplayName(ExpItemData process)
     {
         return string.IsNullOrWhiteSpace(process.ItemName)
@@ -2227,6 +2427,12 @@ public partial class MonitorView : BaseView
             : process.ItemName.Trim();
     }
 
+    /// <summary>
+    /// 解析选中工序索引。
+    /// </summary>
+    /// <param name="processes">工序集合。</param>
+    /// <param name="selectedProcess">当前选中的工序。</param>
+    /// <returns>解析或计算后的数值。</returns>
     private static int ResolveSelectedProcessIndex(IReadOnlyList<ExpItemData> processes, ExpItemData? selectedProcess)
     {
         if (selectedProcess is null)
@@ -2234,8 +2440,8 @@ public partial class MonitorView : BaseView
             return -1;
         }
 
-        var itemIdIndex = selectedProcess.ItemID > 0
-            ? processes.ToList().FindIndex(process => process.ItemID == selectedProcess.ItemID)
+        var itemIdIndex = selectedProcess.ItemId > 0
+            ? processes.ToList().FindIndex(process => process.ItemId == selectedProcess.ItemId)
             : -1;
         if (itemIdIndex >= 0)
         {
@@ -2250,6 +2456,10 @@ public partial class MonitorView : BaseView
             && process.SequenceNo == selectedProcess.SequenceNo);
     }
 
+    /// <summary>
+    /// 应用任务状态Tag。
+    /// </summary>
+    /// <param name="state">工位运行状态。</param>
     private void ApplyTaskStatusTag(ProductionStationRuntimeState state)
     {
         var activeTask = state.ActiveTask;
@@ -2282,6 +2492,11 @@ public partial class MonitorView : BaseView
         ApplyTaskStatusTag(statusText, statusColor);
     }
 
+    /// <summary>
+    /// 应用任务状态Tag。
+    /// </summary>
+    /// <param name="statusText">状态显示文本。</param>
+    /// <param name="backColor">背景颜色。</param>
     private void ApplyTaskStatusTag(string statusText, Color backColor)
     {
         tagTaskStatus.Text = $"{statusText}\r\n工位状态";
@@ -2292,7 +2507,7 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// Refreshes work-order fields and metrics that depend on the selected MES process.
+    /// 刷新生产运行状态。
     /// </summary>
     private void RefreshProductionRuntimeState()
     {
@@ -2302,6 +2517,10 @@ public partial class MonitorView : BaseView
         QueueRefreshSchemePreview(force: false);
     }
 
+    /// <summary>
+    /// 应用WorkId快照。
+    /// </summary>
+    /// <param name="snapshot">状态快照。</param>
     private void ApplyWorkIdSnapshot(PlcWorkIdSnapshot snapshot)
     {
         if (snapshot.StationNo != CurrentStationNo)
@@ -2341,6 +2560,11 @@ public partial class MonitorView : BaseView
             isSuccess: true);
     }
 
+    /// <summary>
+    /// 判断是否显示生产提示。
+    /// </summary>
+    /// <param name="entry">生产流程日志条目。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private bool ShouldShowProductionHint(ProductionFlowLogEntry entry)
     {
         if (entry.StationNo > 0 && entry.StationNo != CurrentStationNo)
@@ -2363,6 +2587,10 @@ public partial class MonitorView : BaseView
             "WorkOrderFinishedCountReset";
     }
 
+    /// <summary>
+    /// 应用生产提示。
+    /// </summary>
+    /// <param name="entry">生产流程日志条目。</param>
     private void ApplyProductionHint(ProductionFlowLogEntry entry)
     {
         if (ShouldRefreshProductHistoryFromLog(entry))
@@ -2380,11 +2608,21 @@ public partial class MonitorView : BaseView
         SetRuntimeStatusText(ToProductionHintText(entry), isSuccess: true);
     }
 
+    /// <summary>
+    /// 判断是否刷新产品历史从Log。
+    /// </summary>
+    /// <param name="entry">生产流程日志条目。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private static bool ShouldRefreshProductHistoryFromLog(ProductionFlowLogEntry entry)
     {
         return false;
     }
 
+    /// <summary>
+    /// 处理到生产提示文本。
+    /// </summary>
+    /// <param name="entry">生产流程日志条目。</param>
+    /// <returns>处理后的文本。</returns>
     private string ToProductionHintText(ProductionFlowLogEntry entry)
     {
         return entry.Step switch
@@ -2416,9 +2654,8 @@ public partial class MonitorView : BaseView
         }
 
         var resultText = ResolveStationProductResultText(record);
-        var tag = record.StationNo == 2 ? tagStation2 : tagStation1;
+        var tag = record.StationNo == 2 ? tagStationResult2 : tagStationResult1;
 
-        UpdateStationResultLayout();
         tag.Text = $"工位{record.StationNo}{resultText}";
         tag.ForeColor = Color.White;
         tag.BackColor = ResolveStationResultColor(resultText);
@@ -2438,6 +2675,11 @@ public partial class MonitorView : BaseView
         return NormalizeStationResultText(productResult);
     }
 
+    /// <summary>
+    /// 解析工位结果颜色。
+    /// </summary>
+    /// <param name="resultText">结果文本。</param>
+    /// <returns>用于界面显示的颜色。</returns>
     private static Color ResolveStationResultColor(string resultText)
     {
         if (string.Equals(resultText, ProductionConstants.TestResults.Ok, StringComparison.OrdinalIgnoreCase))
@@ -2450,6 +2692,11 @@ public partial class MonitorView : BaseView
             : UiColors.Status.Muted;
     }
 
+    /// <summary>
+    /// 规范化工位结果文本。
+    /// </summary>
+    /// <param name="rawResult">原始结果。</param>
+    /// <returns>处理后的文本。</returns>
     private static string NormalizeStationResultText(string? rawResult)
     {
         return string.Equals(rawResult?.Trim(), ProductionConstants.TestResults.OkRawValue, StringComparison.Ordinal)
@@ -2458,19 +2705,25 @@ public partial class MonitorView : BaseView
             : ProductionConstants.TestResults.Ng;
     }
 
+    /// <summary>
+    /// 更新当前时间。
+    /// </summary>
     private void UpdateCurrentTime()
     {
         lblCurTime.Text = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
     }
 
+    /// <summary>
+    /// 应用本地化文本。
+    /// </summary>
     private void ApplyLocalizedTexts()
     {
-        lblTitle.Text = _localizer.GetString(TextKeys.Monitor.Title.AppTitle);
+        lblTitle.Text = _currentSettings.DeviceName;
         lblWorkOrder.Text = _localizer.GetString(TextKeys.Monitor.Label.WorkOrderNo);
         lblProgramName.Text = _localizer.GetString(TextKeys.Monitor.Label.ProgramName);
-        lblProductNo.Text = _localizer.GetString(TextKeys.Monitor.Label.ProductNo);
+        lblProductNo.Text = _localizer.GetString(TextKeys.Monitor.Label.ProductNumber);
         lblProdModel.Text = _localizer.GetString(TextKeys.Monitor.Label.ProductModel);
-        lblBatchNo.Text = _localizer.GetString(TextKeys.Monitor.Label.BatchNo);
+        lblBatchNo.Text = _localizer.GetString(TextKeys.Monitor.Label.Batch);
         lblSpec.Text = _localizer.GetString(TextKeys.Monitor.Label.Spec);
         lblPartName.Text = _localizer.GetString(TextKeys.Monitor.Label.PartName);
         lblDrawingNo.Text = _localizer.GetString(TextKeys.Monitor.Label.DrawingNo);
@@ -2504,13 +2757,16 @@ public partial class MonitorView : BaseView
 
         SetLiveResultTagColor(tagLiveResult1, UiColors.Status.Muted, Color.White);
         SetLiveResultTagColor(tagLiveResult2, UiColors.Status.Muted, Color.White);
-        AdjustHeaderFixedColumns();
     }
 
     #endregion
 
     #region PLC 与 MES 状态展示
 
+    /// <summary>
+    /// 应用 PLC 连接状态快照，并在需要时触发业务信号调和。
+    /// </summary>
+    /// <param name="snapshot">状态快照。</param>
     private void ApplyPlcStatus(PlcConnectionSnapshot snapshot)
     {
         RecordPlcStatusChange(snapshot);
@@ -2536,12 +2792,14 @@ public partial class MonitorView : BaseView
 
         if (!snapshot.IsConnected)
         {
+            // PLC 断开后清空上次成功快照，重连后必须重新读取确认，不能相信旧状态。
             _lastWorkOrderStatusSnapshots.Remove(stationNo);
             _lastDeviceModeSnapshots.Remove(stationNo);
         }
 
         if (snapshot.IsConnected && _enableBusinessSignalReconcile)
         {
+            // PLC 重连后主动调和业务信号，避免设备端状态停留在断线前的旧值。
             QueueBusinessSignalReconciliation("PLC.StatusChanged");
         }
 
@@ -2555,19 +2813,32 @@ public partial class MonitorView : BaseView
 
     #region PLC 业务信号调和
 
+    /// <summary>
+    /// 排队触发 PLC 设备模式和工单状态的业务信号调和。
+    /// </summary>
+    /// <param name="source">触发来源或日志来源。</param>
+    /// <param name="includeDeviceMode">是否调和设备模式。</param>
+    /// <param name="includeWorkOrderStatus">是否调和工单状态。</param>
     private void QueueBusinessSignalReconciliation(string source, bool includeDeviceMode = true, bool includeWorkOrderStatus = true)
     {
         if (includeDeviceMode)
         {
+            // 调和任务允许后台执行；方法内部有运行标记，避免重复并发。
             _ = ReconcileDeviceModeAsync(source);
         }
 
         if (includeWorkOrderStatus)
         {
+            // 工单状态调和同样后台执行，避免阻塞 PLC 状态事件回调。
             _ = ReconcileWorkOrderStatusAsync(source);
         }
     }
 
+    /// <summary>
+    /// 异步调和 PLC 设备模式，确保 PLC 与当前软件设置一致。
+    /// </summary>
+    /// <param name="source">触发来源或日志来源。</param>
+    /// <returns>表示异步操作的任务。</returns>
     private async Task ReconcileDeviceModeAsync(string source)
     {
         if (_deviceModeReconcileRunning)
@@ -2583,6 +2854,7 @@ public partial class MonitorView : BaseView
             {
                 if (!_plcCommunicationService.GetCurrent(stationNo).IsConnected)
                 {
+                    // 未连接工位不写 PLC，避免把通讯异常误判为业务写入失败。
                     continue;
                 }
 
@@ -2605,6 +2877,11 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 异步调和 PLC 工单状态，确保 PLC 与当前任务状态一致。
+    /// </summary>
+    /// <param name="source">触发来源或日志来源。</param>
+    /// <returns>表示异步操作的任务。</returns>
     private async Task ReconcileWorkOrderStatusAsync(string source)
     {
         if (_workOrderStatusReconcileRunning)
@@ -2619,6 +2896,7 @@ public partial class MonitorView : BaseView
             {
                 if (!_plcCommunicationService.GetCurrent(stationNo).IsConnected)
                 {
+                    // 工位离线时跳过调和，等待下一次连接恢复事件再处理。
                     continue;
                 }
 
@@ -2642,6 +2920,10 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 解析业务信号调和Stations。
+    /// </summary>
+    /// <returns>解析后的集合。</returns>
     private IReadOnlyList<int> ResolveBusinessSignalReconcileStations()
     {
         var settings = _currentSettings;
@@ -2650,6 +2932,11 @@ public partial class MonitorView : BaseView
             : [ProductionConstants.Stations.DefaultStationNo];
     }
 
+    /// <summary>
+    /// 解析ExpectedPlc工单状态。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>解析或计算后的数值。</returns>
     private int ResolveExpectedPlcWorkOrderStatus(int stationNo)
     {
         return _weldTaskService.GetUnfinishedTask(stationNo) is null
@@ -2661,6 +2948,11 @@ public partial class MonitorView : BaseView
 
     #region PLC 与 MES 状态展示
 
+    /// <summary>
+    /// 获取PLC 状态键。
+    /// </summary>
+    /// <param name="state">工位运行状态。</param>
+    /// <returns>处理后的文本。</returns>
     private static string GetPlcStateKey(PlcConnectionState state)
     {
         return state switch
@@ -2675,8 +2967,9 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// MES connectivity is judged by the MES monitor service; the view only maps it to color and text.
+    /// 应用 MES 连接状态，并根据在线状态调整可用操作。
     /// </summary>
+    /// <param name="snapshot">状态快照。</param>
     private void ApplyMesStatus(MesConnectionSnapshot snapshot)
     {
         tagMes.Text = $"MES\r\n{_localizer.GetString(GetMesStateKey(snapshot))}";
@@ -2689,12 +2982,17 @@ public partial class MonitorView : BaseView
         ApplyMesDependentButtonState(snapshot);
         if (snapshot.IsConnected && !_lastMesConnected && _enableBusinessSignalReconcile)
         {
+            // MES 从离线变为在线后，立即重试断线期间积压的上传任务。
             QueuePendingUploadRetry();
         }
 
         _lastMesConnected = snapshot.IsConnected;
     }
 
+    /// <summary>
+    /// 应用MesDependentButton状态。
+    /// </summary>
+    /// <param name="snapshot">状态快照。</param>
     private void ApplyMesDependentButtonState(MesConnectionSnapshot snapshot)
     {
         if (_stationViewReadOnly)
@@ -2710,6 +3008,9 @@ public partial class MonitorView : BaseView
         btnLocalWorkOrder.Enabled = !isOnline;
     }
 
+    /// <summary>
+    /// 在 MES 恢复连接后排队重试待上传数据。
+    /// </summary>
     private void QueuePendingUploadRetry()
     {
         if (_pendingUploadRetryRunning)
@@ -2735,6 +3036,11 @@ public partial class MonitorView : BaseView
         });
     }
 
+    /// <summary>
+    /// 获取MES 状态键。
+    /// </summary>
+    /// <param name="snapshot">状态快照。</param>
+    /// <returns>处理后的文本。</returns>
     private static string GetMesStateKey(MesConnectionSnapshot snapshot)
     {
         if (snapshot.UpdatedTime == default)
@@ -2748,8 +3054,9 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// Refreshes device state and production metrics from the latest PLC production snapshot.
+    /// 应用生产状态。
     /// </summary>
+    /// <param name="snapshot">状态快照。</param>
     private void ApplyProductionStatus(PlcProductionSnapshot snapshot)
     {
         if (NormalizeStatusStationNo(snapshot.StationNo) != CurrentStationNo)
@@ -2761,13 +3068,17 @@ public partial class MonitorView : BaseView
         BindProductionMetrics(snapshot);
     }
 
+    /// <summary>
+    /// 应用设备状态。
+    /// </summary>
+    /// <param name="snapshot">状态快照。</param>
     private void ApplyDeviceStatus(PlcProductionSnapshot snapshot)
     {
         var stateKey = GetDeviceStatusKey(snapshot.DeviceStatusCode);
         var stateText = _localizer.GetString(stateKey);
 
         // The dynamic state is placed first so it stays visible even if the Tag only paints one line.
-        tagDeviceStatus.Text = $"{stateText}\r\n{_localizer.GetString(TextKeys.Monitor.Label.DeviceStatus)}";
+        tagDeviceStatus.Text = $"{stateText}\r\n{_localizer.GetString(TextKeys.Monitor.Label.DeviceState)}";
         tagDeviceStatus.ForeColor = Color.White;
         tagDeviceStatus.BackColor = GetDeviceStatusColor(snapshot.DeviceStatusCode, snapshot.IsSuccess);
 
@@ -2781,6 +3092,10 @@ public partial class MonitorView : BaseView
 
     #region 生产指标表格
 
+    /// <summary>
+    /// 绑定生产指标。
+    /// </summary>
+    /// <param name="snapshot">状态快照。</param>
     private void BindProductionMetrics(PlcProductionSnapshot snapshot)
     {
         var mesProductionQuantity = GetCurrentStationState().SelectedProcess?.StartAmount;
@@ -2810,12 +3125,19 @@ public partial class MonitorView : BaseView
 
     #region 表格列配置
 
+    /// <summary>
+    /// 配置生产表格Columns。
+    /// </summary>
     private void ConfigureProductionTableColumns()
     {
         ConfigureProductionTableColumns(tableMetric1);
         ConfigureProductionTableColumns(tableMetric2);
     }
 
+    /// <summary>
+    /// 配置生产表格Columns。
+    /// </summary>
+    /// <param name="table">目标表格控件。</param>
     private void ConfigureProductionTableColumns(AntdUI.Table table)
     {
         table.Columns.Clear();
@@ -2830,12 +3152,21 @@ public partial class MonitorView : BaseView
         TableStyleHelper.ApplyAntdColumnDefaults(table);
     }
 
+    /// <summary>
+    /// 配置产品历史表格Columns。
+    /// </summary>
     private void ConfigureProductHistoryTableColumns()
     {
         ConfigureProductHistoryTableColumns(tableHistory1, [], 1);
         ConfigureProductHistoryTableColumns(tableHistory2, [], 2);
     }
 
+    /// <summary>
+    /// 配置产品历史表格Columns。
+    /// </summary>
+    /// <param name="table">目标表格控件。</param>
+    /// <param name="dynamicColumns">动态列集合。</param>
+    /// <param name="stationNo">工位编号。</param>
     private void ConfigureProductHistoryTableColumns(AntdUI.Table table, IReadOnlyList<ProductHistoryDynamicColumn> dynamicColumns, int stationNo)
     {
         var schemaKey = BuildProductHistorySchemaKey(dynamicColumns);
@@ -2875,6 +3206,12 @@ public partial class MonitorView : BaseView
         _productHistorySchemaKeys[stationNo] = schemaKey;
     }
 
+    /// <summary>
+    /// 创建产品历史列。
+    /// </summary>
+    /// <param name="key">键。</param>
+    /// <param name="title">标题文本。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private static AntdUI.Column CreateProductHistoryColumn(string key, string title)
     {
         return new AntdUI.Column(key, title)
@@ -2886,6 +3223,11 @@ public partial class MonitorView : BaseView
         };
     }
 
+    /// <summary>
+    /// 创建产品历史动态列。
+    /// </summary>
+    /// <param name="dynamicColumn">动态列定义。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private static AntdUI.Column CreateProductHistoryDynamicColumn(ProductHistoryDynamicColumn dynamicColumn)
     {
         var key = dynamicColumn.Key;
@@ -2902,6 +3244,9 @@ public partial class MonitorView : BaseView
         };
     }
 
+    /// <summary>
+    /// 配置焊接参数表格Columns。
+    /// </summary>
     private void ConfigureWeldParameterTableColumns()
     {
         dgvPreview1.AutoGenerateColumns = false;
@@ -2917,6 +3262,9 @@ public partial class MonitorView : BaseView
 
     #region 产品历史预览
 
+    /// <summary>
+    /// 刷新当前工位的产品历史预览，并确保实际刷新在 UI 线程执行。
+    /// </summary>
     private void RefreshProductHistoryPreview()
     {
         if (IsDisposed || Disposing)
@@ -2924,8 +3272,7 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        // Compare the creating thread explicitly so background services cannot mutate
-        // the AntdUI column collection while the control is being initialized or painted.
+        // 产品历史会配置 AntdUI 动态列，必须回到 UI 线程，避免后台线程改列集合导致控件异常。
         if (Environment.CurrentManagedThreadId != _uiThreadId)
         {
             PostProductHistoryRefreshToUiThread();
@@ -2934,6 +3281,7 @@ public partial class MonitorView : BaseView
 
         if (_refreshingProductHistoryPreview)
         {
+            // 刷新中收到的新请求只打标记，当前刷新结束后再补一次，避免递归重入。
             _productHistoryRefreshPending = true;
             return;
         }
@@ -2955,7 +3303,7 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// Coalesces product-history refresh requests raised by background services.
+    /// 将产品历史刷新请求合并投递到 UI 线程。
     /// </summary>
     private void PostProductHistoryRefreshToUiThread()
     {
@@ -2968,6 +3316,7 @@ public partial class MonitorView : BaseView
         {
             if (!RunOnUiThread(() =>
             {
+                // 投递成功后先清掉标记，这样执行期间的新请求可以再次入队。
                 Interlocked.Exchange(ref _productHistoryRefreshPosted, 0);
                 RefreshProductHistoryPreview();
             }, "MonitorView.ProductHistoryRefresh"))
@@ -2982,7 +3331,7 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// Loads and binds the current station history. This method runs only on the UI thread.
+    /// 在 UI 线程加载并绑定当前工位的产品历史数据。
     /// </summary>
     private void RefreshProductHistoryPreviewCore()
     {
@@ -2991,6 +3340,7 @@ public partial class MonitorView : BaseView
             var activeTask = GetCurrentStationState().ActiveTask;
             if (activeTask is null)
             {
+                // 无当前任务时仍重置列和数据，避免界面保留上一个任务的历史记录。
                 ConfigureProductHistoryTableColumns(CurrentProductHistoryTable, [], CurrentStationNo);
                 BindProductHistoryRows(CurrentProductHistoryTable, []);
                 return;
@@ -3005,6 +3355,11 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 根据产品历史快照配置动态列并绑定产品历史行。
+    /// </summary>
+    /// <param name="snapshot">状态快照。</param>
+    /// <param name="activeTask">active任务。</param>
     private void BindProductHistorySnapshot(ProductHistorySnapshot snapshot, BizWeldTask activeTask)
     {
         var table = GetProductHistoryTable(snapshot.StationNo);
@@ -3017,6 +3372,11 @@ public partial class MonitorView : BaseView
         BindProductHistoryRows(table, rows);
     }
 
+    /// <summary>
+    /// 绑定产品历史行。
+    /// </summary>
+    /// <param name="table">目标表格控件。</param>
+    /// <param name="rows">行数据集合。</param>
     private void BindProductHistoryRows(AntdUI.Table table, IReadOnlyList<ProductHistoryTableRow> rows)
     {
         table.DataSource = rows;
@@ -3024,12 +3384,22 @@ public partial class MonitorView : BaseView
         table.Invalidate();
     }
 
+    /// <summary>
+    /// 获取产品历史表格。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private AntdUI.Table GetProductHistoryTable(int stationNo)
     {
         return stationNo == 2 ? tableHistory2 : tableHistory1;
     }
 
 
+    /// <summary>
+    /// 显示产品历史上下文菜单。
+    /// </summary>
+    /// <param name="target">目标对象。</param>
+    /// <param name="row">表格行数据。</param>
     private void ShowProductHistoryContextMenu(Control target, ProductHistoryTableRow row)
     {
         if (_stationViewReadOnly)
@@ -3065,11 +3435,17 @@ public partial class MonitorView : BaseView
             0);
     }
 
+    /// <summary>
+    /// 设置产品历史中的试焊件标记，并刷新界面状态。
+    /// </summary>
+    /// <param name="row">表格行数据。</param>
+    /// <param name="isTest">是否标记为试焊件。</param>
     private void SetProductHistoryTestFlag(ProductHistoryTableRow row, bool isTest)
     {
         try
         {
             var result = _productHistoryService.SetProductTestFlag(row.TaskId, row.StationNo, row.ProductNo, isTest);
+            // 不论服务返回成功或失败，都先刷新一次，保证界面与服务层最终状态一致。
             RefreshProductHistoryPreview();
 
             if (!result.IsSuccess)
@@ -3088,6 +3464,12 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 处理到产品历史行。
+    /// </summary>
+    /// <param name="product">产品历史数据。</param>
+    /// <param name="dynamicColumns">动态列集合。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private ProductHistoryTableRow ToProductHistoryRow(ProductHistoryProduct product, IReadOnlyList<ProductHistoryDynamicColumn> dynamicColumns)
     {
         return new ProductHistoryTableRow
@@ -3109,6 +3491,13 @@ public partial class MonitorView : BaseView
         };
     }
 
+    /// <summary>
+    /// 处理到产品历史Point行。
+    /// </summary>
+    /// <param name="product">产品历史数据。</param>
+    /// <param name="point">焊点历史数据。</param>
+    /// <param name="dynamicColumns">动态列集合。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private ProductHistoryTableRow ToProductHistoryPointRow(ProductHistoryProduct product,
         ProductHistoryPoint point, IReadOnlyList<ProductHistoryDynamicColumn> dynamicColumns)
     {
@@ -3131,6 +3520,12 @@ public partial class MonitorView : BaseView
         };
     }
 
+    /// <summary>
+    /// 构建产品历史动态值。
+    /// </summary>
+    /// <param name="point">焊点历史数据。</param>
+    /// <param name="dynamicColumns">动态列集合。</param>
+    /// <returns>解析后的集合。</returns>
     private Dictionary<string, string> BuildProductHistoryDynamicValues(ProductHistoryPoint point, IReadOnlyList<ProductHistoryDynamicColumn> dynamicColumns)
     {
         var rawValues = ParseRawWeldValues(point.RawDataJson);
@@ -3146,6 +3541,13 @@ public partial class MonitorView : BaseView
         return values;
     }
 
+    /// <summary>
+    /// 查找产品历史动态原始值用于历史。
+    /// </summary>
+    /// <param name="point">焊点历史数据。</param>
+    /// <param name="rawValues">原始采集值集合。</param>
+    /// <param name="column">动态列定义。</param>
+    /// <returns>处理后的文本。</returns>
     private static string? FindProductHistoryDynamicRawValueForHistory(ProductHistoryPoint point, IReadOnlyDictionary<string, string> rawValues,
         ProductHistoryDynamicColumn column)
     {
@@ -3161,6 +3563,12 @@ public partial class MonitorView : BaseView
         return rawValue ?? FindProductHistoryFixedValue(point, column);
     }
 
+    /// <summary>
+    /// 查找产品历史固定值。
+    /// </summary>
+    /// <param name="point">焊点历史数据。</param>
+    /// <param name="column">动态列定义。</param>
+    /// <returns>处理后的文本。</returns>
     private static string? FindProductHistoryFixedValue(ProductHistoryPoint point, ProductHistoryDynamicColumn column)
     {
         var itemKey = ResolveProductHistoryKnownItemKeyForHistory(column.ItemKey, column.ItemName);
@@ -3185,6 +3593,12 @@ public partial class MonitorView : BaseView
         };
     }
 
+    /// <summary>
+    /// 解析产品历史动态Columns。
+    /// </summary>
+    /// <param name="activeTask">active任务。</param>
+    /// <param name="snapshot">状态快照。</param>
+    /// <returns>解析后的集合。</returns>
     private IReadOnlyList<ProductHistoryDynamicColumn> ResolveProductHistoryDynamicColumns(BizWeldTask activeTask, ProductHistorySnapshot snapshot)
     {
         var stationNo = snapshot.StationNo;
@@ -3208,6 +3622,12 @@ public partial class MonitorView : BaseView
             : ResolveProductHistoryDynamicColumnsFromSnapshot(snapshot);
     }
 
+    /// <summary>
+    /// 解析产品历史工序Config。
+    /// </summary>
+    /// <param name="activeTask">active任务。</param>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private BizProductProcessConfig? ResolveProductHistoryProcessConfig(BizWeldTask activeTask, int stationNo)
     {
         var config = _productProcessConfigService.FindActiveForTask(activeTask, stationNo);
@@ -3227,6 +3647,11 @@ public partial class MonitorView : BaseView
         return _productProcessConfigService.FindActive(currentIdentity.ProductNum, stationNo);
     }
 
+    /// <summary>
+    /// 解析产品历史动态Columns从实时预览。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>解析后的集合。</returns>
     private IReadOnlyList<ProductHistoryDynamicColumn> ResolveProductHistoryDynamicColumnsFromRealtimePreview(int stationNo)
     {
         if (CurrentStationNo != stationNo)
@@ -3241,6 +3666,11 @@ public partial class MonitorView : BaseView
             .ToList();
     }
 
+    /// <summary>
+    /// 解析产品历史动态Columns从快照。
+    /// </summary>
+    /// <param name="snapshot">状态快照。</param>
+    /// <returns>解析后的集合。</returns>
     private static IReadOnlyList<ProductHistoryDynamicColumn> ResolveProductHistoryDynamicColumnsFromSnapshot(ProductHistorySnapshot snapshot)
     {
         var candidates = new Dictionary<string, ProductHistoryRawColumnCandidate>(StringComparer.OrdinalIgnoreCase);
@@ -3273,6 +3703,14 @@ public partial class MonitorView : BaseView
             .ToList();
     }
 
+    /// <summary>
+    /// 尝试解析产品历史原始列用于历史。
+    /// </summary>
+    /// <param name="rawKey">原始字段键。</param>
+    /// <param name="itemKey">测试项键。</param>
+    /// <param name="itemName">测试项名称。</param>
+    /// <param name="role">字段角色。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private static bool TryResolveProductHistoryRawColumnForHistory(string rawKey, out string itemKey, out string itemName, out string role)
     {
         itemKey = string.Empty;
@@ -3326,6 +3764,11 @@ public partial class MonitorView : BaseView
         return true;
     }
 
+    /// <summary>
+    /// 判断产品历史原始键Ignored。
+    /// </summary>
+    /// <param name="key">键。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private static bool IsProductHistoryRawKeyIgnored(string key)
     {
         return string.Equals(key, "product_result", StringComparison.OrdinalIgnoreCase)
@@ -3335,6 +3778,12 @@ public partial class MonitorView : BaseView
             || string.Equals(key, "Result", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// 解析产品历史已知Item键用于历史。
+    /// </summary>
+    /// <param name="itemKey">测试项键。</param>
+    /// <param name="itemName">测试项名称。</param>
+    /// <returns>处理后的文本。</returns>
     private static string ResolveProductHistoryKnownItemKeyForHistory(string itemKey, string? itemName)
     {
         var normalized = (itemKey ?? string.Empty).Trim();
@@ -3354,6 +3803,12 @@ public partial class MonitorView : BaseView
         };
     }
 
+    /// <summary>
+    /// 解析产品历史Item名称用于历史。
+    /// </summary>
+    /// <param name="itemKey">测试项键。</param>
+    /// <param name="fallbackName">兜底显示名称。</param>
+    /// <returns>处理后的文本。</returns>
     private static string ResolveProductHistoryItemNameForHistory(string itemKey, string fallbackName)
     {
         return itemKey switch
@@ -3367,6 +3822,11 @@ public partial class MonitorView : BaseView
         };
     }
 
+    /// <summary>
+    /// 判断已知产品历史Item键。
+    /// </summary>
+    /// <param name="itemKey">测试项键。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private static bool IsKnownProductHistoryItemKey(string itemKey)
     {
         return string.Equals(itemKey, "max_electric", StringComparison.OrdinalIgnoreCase)
@@ -3376,6 +3836,11 @@ public partial class MonitorView : BaseView
             || string.Equals(itemKey, "weld_ts", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// 创建产品历史动态Columns。
+    /// </summary>
+    /// <param name="candidate">动态列候选项。</param>
+    /// <returns>解析后的集合。</returns>
     private static IEnumerable<ProductHistoryDynamicColumn> CreateProductHistoryDynamicColumns(ProductHistoryRawColumnCandidate candidate)
     {
         if (candidate.EnableUpper)
@@ -3419,6 +3884,11 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 创建产品历史动态Columns。
+    /// </summary>
+    /// <param name="previewItem">预览Item。</param>
+    /// <returns>解析后的集合。</returns>
     private static IEnumerable<ProductHistoryDynamicColumn> CreateProductHistoryDynamicColumns(WeldPreviewItem previewItem)
     {
         if (previewItem.EnableUpper)
@@ -3462,6 +3932,11 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 创建产品历史动态Columns从Scheme。
+    /// </summary>
+    /// <param name="schemeItem">测试方案项。</param>
+    /// <returns>解析后的集合。</returns>
     private static IEnumerable<ProductHistoryDynamicColumn> CreateProductHistoryDynamicColumnsFromScheme(SchemePreviewItem schemeItem)
     {
         var item = schemeItem.Item;
@@ -3490,6 +3965,15 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 创建产品历史动态列。
+    /// </summary>
+    /// <param name="itemKey">测试项键。</param>
+    /// <param name="itemName">测试项名称。</param>
+    /// <param name="role">字段角色。</param>
+    /// <param name="title">标题文本。</param>
+    /// <param name="sort">排序。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private static ProductHistoryDynamicColumn CreateProductHistoryDynamicColumn(string itemKey, string itemName, string role, string title, int sort)
     {
         return new ProductHistoryDynamicColumn(
@@ -3501,6 +3985,11 @@ public partial class MonitorView : BaseView
             sort);
     }
 
+    /// <summary>
+    /// 构建产品历史结构键。
+    /// </summary>
+    /// <param name="dynamicColumns">动态列集合。</param>
+    /// <returns>处理后的文本。</returns>
     private static string BuildProductHistorySchemaKey(IReadOnlyList<ProductHistoryDynamicColumn> dynamicColumns)
     {
         return dynamicColumns.Count == 0
@@ -3508,6 +3997,11 @@ public partial class MonitorView : BaseView
             : string.Join("|", dynamicColumns.Select(column => $"{column.Key}:{column.Title}:{column.Role}:{column.Sort}"));
     }
 
+    /// <summary>
+    /// 格式化历史上传状态。
+    /// </summary>
+    /// <param name="status">目标状态值。</param>
+    /// <returns>处理后的文本。</returns>
     private static string FormatHistoryUploadStatus(string status)
     {
         return status switch
@@ -3522,6 +4016,11 @@ public partial class MonitorView : BaseView
         };
     }
 
+    /// <summary>
+    /// 格式化历史结果。
+    /// </summary>
+    /// <param name="result">结果。</param>
+    /// <returns>处理后的文本。</returns>
     private static string FormatHistoryResult(string result)
     {
         return string.IsNullOrWhiteSpace(result) || string.Equals(result, ProductionConstants.TestResults.Unknown, StringComparison.OrdinalIgnoreCase)
@@ -3529,11 +4028,21 @@ public partial class MonitorView : BaseView
             : result;
     }
 
+    /// <summary>
+    /// 格式化历史测试标记。
+    /// </summary>
+    /// <param name="isTest">是否标记为试焊件。</param>
+    /// <returns>处理后的文本。</returns>
     private static string FormatHistoryTestFlag(bool isTest)
     {
         return isTest ? "试焊件" : "--";
     }
 
+    /// <summary>
+    /// 格式化历史时间。
+    /// </summary>
+    /// <param name="time">时间。</param>
+    /// <returns>处理后的文本。</returns>
     private static string FormatHistoryTime(DateTime? time)
     {
         return time?.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) ?? "--";
@@ -3574,6 +4083,10 @@ public partial class MonitorView : BaseView
         BindWeldParameterTable(forceRebind: structureChanged);
     }
 
+    /// <summary>
+    /// 绑定焊接参数表格。
+    /// </summary>
+    /// <param name="forceRebind">forceRebind。</param>
     private void BindWeldParameterTable(bool forceRebind = false)
     {
         if (forceRebind || !_weldParameterTableBound)
@@ -3586,7 +4099,7 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// Updates table2 values without rebuilding columns or rebinding data.
+    /// 刷新焊接参数表格。
     /// </summary>
     private void RefreshWeldParameterTable()
     {
@@ -3596,8 +4109,7 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// Updates the unbound DataGridView preview from the cached realtime rows.
-    /// The preview is pivoted by weld point, so changed detail rows are merged into the same visible grid.
+    /// 刷新焊接参数行。
     /// </summary>
     private void RefreshWeldParameterRows()
     {
@@ -3638,7 +4150,7 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// Rebuilds the unbound pivot table: one row per weld point and one column group per test item.
+    /// 处理Rebuild焊接参数预览表格。
     /// </summary>
     private void RebuildWeldParameterPreviewTable()
     {
@@ -3700,6 +4212,11 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 设置控件重绘。
+    /// </summary>
+    /// <param name="control">目标控件。</param>
+    /// <param name="enabled">是否启用。</param>
     private static void SetControlRedraw(Control control, bool enabled)
     {
         if (!control.IsHandleCreated)
@@ -3710,6 +4227,10 @@ public partial class MonitorView : BaseView
         SendMessage(control.Handle, WmSetRedraw, enabled ? new IntPtr(1) : IntPtr.Zero, IntPtr.Zero);
     }
 
+    /// <summary>
+    /// 处理RedrawControl。
+    /// </summary>
+    /// <param name="control">目标控件。</param>
     private static void RedrawControl(Control control)
     {
         control.Invalidate();
@@ -3717,8 +4238,7 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// Sets the right panel to its configured minimum width before the first visible paint.
-    /// This runs once during load so later manual splitter adjustments are preserved.
+    /// 设置垂直分隔条Panel2到Min宽度。
     /// </summary>
     private void SetVerticalSplitterPanel2ToMinWidth()
     {
@@ -3748,6 +4268,11 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 设置焊接预览水平偏移。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <param name="requestedOffset">请求设置的水平偏移量。</param>
     private void SetWeldPreviewHorizontalOffset(int stationNo, int requestedOffset)
     {
         var grid = GetWeldPreviewGrid(stationNo);
@@ -3778,9 +4303,16 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 处理Sync焊接预览水平滚动Bar。
+    /// </summary>
     private void SyncWeldPreviewHorizontalScrollBar()
         => SyncWeldPreviewHorizontalScrollBar(CurrentWeldPreviewGrid);
 
+    /// <summary>
+    /// 处理Sync焊接预览水平滚动Bar。
+    /// </summary>
+    /// <param name="sourceGrid">触发同步的源表格。</param>
     private void SyncWeldPreviewHorizontalScrollBar(DataGridView? sourceGrid)
     {
         if (_syncingWeldPreviewHorizontalScroll)
@@ -3812,11 +4344,21 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 获取焊接预览Max水平偏移。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>解析或计算后的数值。</returns>
     private int GetWeldPreviewMaxHorizontalOffset(int stationNo)
     {
         return Math.Max(0, GetWeldPreviewContentWidth(stationNo) - GetWeldPreviewViewportWidth(stationNo));
     }
 
+    /// <summary>
+    /// 获取焊接预览内容宽度。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>解析或计算后的数值。</returns>
     private int GetWeldPreviewContentWidth(int stationNo)
     {
         return GetWeldPreviewGrid(stationNo).Columns
@@ -3825,12 +4367,23 @@ public partial class MonitorView : BaseView
             .Sum(column => column.Width);
     }
 
+    /// <summary>
+    /// 获取焊接预览视口宽度。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>解析或计算后的数值。</returns>
     private int GetWeldPreviewViewportWidth(int stationNo)
     {
         var grid = GetWeldPreviewGrid(stationNo);
         return Math.Max(0, grid.ClientSize.Width - (grid.RowHeadersVisible ? grid.RowHeadersWidth : 0));
     }
 
+    /// <summary>
+    /// 添加焊接预览列。
+    /// </summary>
+    /// <param name="columnName">列名。</param>
+    /// <param name="headerText">列标题。</param>
+    /// <param name="width">列宽度。</param>
     private void AddWeldPreviewColumn(string columnName, string headerText, int width)
     {
         CurrentWeldPreviewGrid.Columns.Add(new DataGridViewTextBoxColumn
@@ -3843,11 +4396,18 @@ public partial class MonitorView : BaseView
         });
     }
 
+    /// <summary>
+    /// 确保信息预览行。
+    /// </summary>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private bool EnsureInfoPreviewRows()
     {
         return CurrentWeldPreviewGrid.Rows.Count != _weldParameterRows.Count;
     }
 
+    /// <summary>
+    /// 填充信息预览行。
+    /// </summary>
     private void FillInfoPreviewRows()
     {
         var rows = _weldParameterRows.OrderBy(item => item.Sort).ToList();
@@ -3862,6 +4422,11 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 填充焊接预览行。
+    /// </summary>
+    /// <param name="items">预览项集合。</param>
+    /// <param name="touchGroups">按焊点分组的行集合。</param>
     private void FillWeldPreviewRows(IReadOnlyList<WeldPreviewItem> items, IReadOnlyList<IGrouping<int, WeldParameterRow>> touchGroups)
     {
         EnsurePreviewRowCount(touchGroups.Count);
@@ -3898,6 +4463,12 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 设置预览值。
+    /// </summary>
+    /// <param name="rowIndex">行索引。</param>
+    /// <param name="columnName">列名。</param>
+    /// <param name="value">待处理值。</param>
     private void SetPreviewValue(int rowIndex, string columnName, string value)
     {
         var grid = CurrentWeldPreviewGrid;
@@ -3917,8 +4488,11 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// Marks weld result cells with stable OK/NG colors without repainting the whole table.
+    /// 应用预览结果CellStyle。
     /// </summary>
+    /// <param name="cell">目标单元格。</param>
+    /// <param name="columnName">列名。</param>
+    /// <param name="value">待处理值。</param>
     private static void ApplyPreviewResultCellStyle(DataGridViewCell cell, string columnName, string value)
     {
         if (!IsPreviewResultColumn(columnName))
@@ -3943,16 +4517,20 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// Only weld-point result cells need the strong OK/NG background color.
+    /// 判断预览结果列。
     /// </summary>
+    /// <param name="columnName">列名。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private static bool IsPreviewResultColumn(string columnName)
     {
         return string.Equals(columnName, PreviewTouchResultColumn, StringComparison.Ordinal);
     }
 
     /// <summary>
-    /// Applies the same foreground/background color in normal and selected states.
+    /// 设置预览结果Cell颜色。
     /// </summary>
+    /// <param name="cell">目标单元格。</param>
+    /// <param name="backColor">背景颜色。</param>
     private static void SetPreviewResultCellColor(DataGridViewCell cell, Color backColor)
     {
         cell.Style.BackColor = backColor;
@@ -3962,8 +4540,9 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// Returns ordinary cells to the table default style when their result is blank or unknown.
+    /// 处理Reset预览单元格Style。
     /// </summary>
+    /// <param name="cell">目标单元格。</param>
     private static void ResetPreviewCellStyle(DataGridViewCell cell)
     {
         cell.Style.BackColor = Color.Empty;
@@ -3972,6 +4551,10 @@ public partial class MonitorView : BaseView
         cell.Style.SelectionForeColor = Color.Empty;
     }
 
+    /// <summary>
+    /// 确保预览行Count。
+    /// </summary>
+    /// <param name="rowCount">目标行数。</param>
     private void EnsurePreviewRowCount(int rowCount)
     {
         var grid = CurrentWeldPreviewGrid;
@@ -3986,6 +4569,11 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 解析焊接预览Items。
+    /// </summary>
+    /// <param name="rows">行数据集合。</param>
+    /// <returns>解析后的集合。</returns>
     private static IReadOnlyList<WeldPreviewItem> ResolveWeldPreviewItems(IEnumerable<WeldParameterRow> rows)
     {
         var items = rows
@@ -4022,6 +4610,11 @@ public partial class MonitorView : BaseView
             : items;
     }
 
+    /// <summary>
+    /// 解析预览焊点分组。
+    /// </summary>
+    /// <param name="rows">行数据集合。</param>
+    /// <returns>解析后的集合。</returns>
     private static IReadOnlyList<IGrouping<int, WeldParameterRow>> ResolvePreviewTouchGroups(IEnumerable<WeldParameterRow> rows)
     {
         return rows
@@ -4032,11 +4625,21 @@ public partial class MonitorView : BaseView
             .ToList();
     }
 
+    /// <summary>
+    /// 判断信息预览。
+    /// </summary>
+    /// <param name="items">预览项集合。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private static bool IsInfoPreview(IReadOnlyList<WeldPreviewItem> items)
     {
         return items.Count == 0;
     }
 
+    /// <summary>
+    /// 构建焊接预览结构键。
+    /// </summary>
+    /// <param name="items">预览项集合。</param>
+    /// <returns>处理后的文本。</returns>
     private static string BuildWeldPreviewSchemaKey(IReadOnlyList<WeldPreviewItem> items)
     {
         return items.Count == 0
@@ -4045,6 +4648,11 @@ public partial class MonitorView : BaseView
                 $"{item.Index}:{item.Key}:{item.Name}:{item.EnableActual}:{item.EnableUpper}:{item.EnableLower}:{item.EnableResult}"));
     }
 
+    /// <summary>
+    /// 构建焊接预览布局键。
+    /// </summary>
+    /// <param name="rows">行数据集合。</param>
+    /// <returns>处理后的文本。</returns>
     private static string BuildWeldPreviewLayoutKey(IEnumerable<WeldParameterRow> rows)
     {
         var materializedRows = rows.ToList();
@@ -4055,6 +4663,11 @@ public partial class MonitorView : BaseView
         return $"{BuildWeldPreviewSchemaKey(items)}|rows:{rowCount}";
     }
 
+    /// <summary>
+    /// 构建焊接预览可见值键。
+    /// </summary>
+    /// <param name="rows">行数据集合。</param>
+    /// <returns>处理后的文本。</returns>
     private static string BuildWeldPreviewVisibleValueKey(IEnumerable<WeldParameterRow> rows)
     {
         return string.Join('\u001F', rows
@@ -4078,27 +4691,54 @@ public partial class MonitorView : BaseView
                 row.Result)));
     }
 
+    /// <summary>
+    /// 构建预览列名称。
+    /// </summary>
+    /// <param name="itemIndex">item索引。</param>
+    /// <param name="role">字段角色。</param>
+    /// <returns>处理后的文本。</returns>
     private static string BuildPreviewColumnName(int itemIndex, string role)
     {
         return $"Item{itemIndex}_{role}";
     }
 
+    /// <summary>
+    /// 比较预览Item。
+    /// </summary>
+    /// <param name="row">表格行数据。</param>
+    /// <param name="item">测试项。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private static bool SamePreviewItem(WeldParameterRow row, WeldPreviewItem item)
     {
         return string.Equals(row.ItemKey, item.Key, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// 判断焊点结果行。
+    /// </summary>
+    /// <param name="row">表格行数据。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private static bool IsTouchResultRow(WeldParameterRow row)
     {
         return string.Equals(row.ItemKey, "test_result", StringComparison.OrdinalIgnoreCase)
             || string.Equals(row.ParameterName, "焊点结果", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// 判断是否存在AnyEnabled角色。
+    /// </summary>
+    /// <param name="detail">详情。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private static bool HasAnyEnabledRole(BizSchemeDetail detail)
     {
         return detail.EnableActual || detail.EnableUpper || detail.EnableLower || detail.EnableResult;
     }
 
+    /// <summary>
+    /// 规范化旧版详情角色。
+    /// </summary>
+    /// <param name="detail">详情。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private static BizSchemeDetail NormalizeLegacyDetailRoles(BizSchemeDetail detail)
     {
         if (HasAnyEnabledRole(detail))
@@ -4113,12 +4753,22 @@ public partial class MonitorView : BaseView
         return detail;
     }
 
+    /// <summary>
+    /// 解析预览焊点号。
+    /// </summary>
+    /// <param name="rows">行数据集合。</param>
+    /// <returns>处理后的文本。</returns>
     private static string ResolvePreviewTouchNo(IEnumerable<WeldParameterRow> rows)
     {
         var first = rows.OrderBy(row => row.Sort).FirstOrDefault();
         return DisplayPreviewValue(first?.TouchNo);
     }
 
+    /// <summary>
+    /// 解析预览焊点结果。
+    /// </summary>
+    /// <param name="rows">行数据集合。</param>
+    /// <returns>处理后的文本。</returns>
     private static string ResolvePreviewTouchResult(IEnumerable<WeldParameterRow> rows)
     {
         var explicitResult = rows
@@ -4127,6 +4777,11 @@ public partial class MonitorView : BaseView
         return DisplayPreviewValue(explicitResult);
     }
 
+    /// <summary>
+    /// 处理Display预览值。
+    /// </summary>
+    /// <param name="value">待处理值。</param>
+    /// <returns>处理后的文本。</returns>
     private static string DisplayPreviewValue(string? value)
     {
         return string.IsNullOrWhiteSpace(value) || value == "--"
@@ -4138,6 +4793,9 @@ public partial class MonitorView : BaseView
 
     #region 实时预览
 
+    /// <summary>
+    /// 应用当前工位缓存的实时预览快照。
+    /// </summary>
     private void ApplyCurrentRealtimePreviewSnapshot()
     {
         var snapshot = _productRealtimePreviewService.GetCurrent(CurrentStationNo);
@@ -4147,6 +4805,10 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 应用产品实时预览快照，刷新摘要和焊接参数行。
+    /// </summary>
+    /// <param name="snapshot">状态快照。</param>
     private void ApplyProductRealtimePreviewSnapshot(ProductRealtimePreviewSnapshot snapshot)
     {
         ApplyLivePreviewSummary(snapshot);
@@ -4154,12 +4816,17 @@ public partial class MonitorView : BaseView
 
         if (snapshot.Rows.Count == 0 && CurrentWeldPreviewGrid.Rows.Count > 0)
         {
+            // 后台短暂读空时保留上一帧明细，避免实时表格被瞬间清空造成闪烁。
             return;
         }
 
         ApplyRealtimeWeldParameterRows(snapshot.Rows);
     }
 
+    /// <summary>
+    /// 应用实时预览摘要。
+    /// </summary>
+    /// <param name="snapshot">状态快照。</param>
     private void ApplyLivePreviewSummary(ProductRealtimePreviewSnapshot snapshot)
     {
         var hasErrorMessage = !string.IsNullOrWhiteSpace(snapshot.Message);
@@ -4172,6 +4839,10 @@ public partial class MonitorView : BaseView
         ApplyLiveResultTag(snapshot.ProductResult);
     }
 
+    /// <summary>
+    /// 应用实时结果Tag。
+    /// </summary>
+    /// <param name="productResult">产品结果。</param>
     private void ApplyLiveResultTag(string? productResult)
     {
         var resultText = FormatLiveSummaryValue(productResult);
@@ -4193,21 +4864,32 @@ public partial class MonitorView : BaseView
         SetLiveResultTagColor(tag, UiColors.Status.Muted, Color.White);
     }
 
+    /// <summary>
+    /// 设置实时结果Tag颜色。
+    /// </summary>
+    /// <param name="tag">tag。</param>
+    /// <param name="backColor">背景颜色。</param>
+    /// <param name="foreColor">前景颜色。</param>
     private static void SetLiveResultTagColor(AntdUI.Tag tag, Color backColor, Color foreColor)
     {
         tag.BackColor = backColor;
         tag.ForeColor = foreColor;
     }
 
+    /// <summary>
+    /// 格式化实时摘要值。
+    /// </summary>
+    /// <param name="value">待处理值。</param>
+    /// <returns>处理后的文本。</returns>
     private static string FormatLiveSummaryValue(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? "--" : value.Trim();
     }
 
     /// <summary>
-    /// Updates realtime rows in place when the row structure is unchanged.
-    /// Rebinding is reserved for product/scheme/touch changes because rebuilding the table causes visible flicker.
+    /// 将实时预览行转换为焊接参数行并刷新界面。
     /// </summary>
+    /// <param name="snapshotRows">实时快照行集合。</param>
     private void ApplyRealtimeWeldParameterRows(IReadOnlyList<ProductRealtimePreviewRow> snapshotRows)
     {
         var nextRows = snapshotRows
@@ -4217,6 +4899,10 @@ public partial class MonitorView : BaseView
         ApplyWeldParameterRows(nextRows);
     }
 
+    /// <summary>
+    /// 应用新的焊接参数行，按布局变化决定重绑或局部刷新。
+    /// </summary>
+    /// <param name="nextRows">下一批行数据。</param>
     private void ApplyWeldParameterRows(IReadOnlyList<WeldParameterRow> nextRows)
     {
         PreserveStablePreviewValues(nextRows);
@@ -4228,12 +4914,14 @@ public partial class MonitorView : BaseView
         ReplaceWeldParameterRows(nextRows);
         if (layoutChanged)
         {
+            // 列结构、焊点数量或测试项变化时必须重绑，否则表格列与数据会错位。
             BindWeldParameterTable(forceRebind: true);
             return;
         }
 
         if (string.Equals(nextVisibleValueKey, _weldParameterVisibleValueKey, StringComparison.Ordinal))
         {
+            // 可见值没有变化时跳过刷新，降低高频 PLC 快照对 UI 的压力。
             return;
         }
 
@@ -4241,6 +4929,10 @@ public partial class MonitorView : BaseView
         RefreshWeldParameterRows();
     }
 
+    /// <summary>
+    /// 替换焊接参数行。
+    /// </summary>
+    /// <param name="rows">行数据集合。</param>
     private void ReplaceWeldParameterRows(IEnumerable<WeldParameterRow> rows)
     {
         _weldParameterRows.Clear();
@@ -4248,6 +4940,10 @@ public partial class MonitorView : BaseView
         SortWeldParameterRows();
     }
 
+    /// <summary>
+    /// 在新快照缺少值时保留上一帧稳定值，减少界面闪烁。
+    /// </summary>
+    /// <param name="nextRows">下一批行数据。</param>
     private void PreserveStablePreviewValues(IEnumerable<WeldParameterRow> nextRows)
     {
         var previousRows = _weldParameterRows
@@ -4284,11 +4980,21 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 判断Empty预览值。
+    /// </summary>
+    /// <param name="value">待处理值。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private static bool IsEmptyPreviewValue(string? value)
     {
         return string.IsNullOrWhiteSpace(value) || string.Equals(value.Trim(), "--", StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// 设置Control文本。
+    /// </summary>
+    /// <param name="control">目标控件。</param>
+    /// <param name="text">显示文本。</param>
     private static void SetControlText(Control control, string? text)
     {
         var value = text ?? string.Empty;
@@ -4298,6 +5004,11 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 处理到焊接参数行。
+    /// </summary>
+    /// <param name="row">表格行数据。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private static WeldParameterRow ToWeldParameterRow(ProductRealtimePreviewRow row)
     {
         return new WeldParameterRow
@@ -4331,6 +5042,13 @@ public partial class MonitorView : BaseView
         };
     }
 
+    /// <summary>
+    /// 解析预览表达式绑定。
+    /// </summary>
+    /// <param name="baseAddress">PLC 基础地址。</param>
+    /// <param name="contextOffset">相对基础地址的上下文偏移。</param>
+    /// <param name="expression">PLC 表达式。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private PlcExpressionBinding ResolvePreviewExpressionBinding(string baseAddress, int contextOffset, string? expression)
     {
         if (_plcExpressionReadService.TryResolve(baseAddress, contextOffset, expression, out var binding, out _))
@@ -4346,6 +5064,10 @@ public partial class MonitorView : BaseView
 
     #region 方案预览与解析
 
+    /// <summary>
+    /// 排队刷新方案预览，并限制短时间内的重复刷新。
+    /// </summary>
+    /// <param name="force">是否强制刷新。</param>
     private void QueueRefreshSchemePreview(bool force)
     {
         if (IsDisposed || !IsHandleCreated)
@@ -4355,6 +5077,7 @@ public partial class MonitorView : BaseView
 
         if (!force && DateTime.Now - _lastSchemePreviewRefreshTime < TimeSpan.FromSeconds(2))
         {
+            // 非强制刷新做短时间节流，避免 PLC/MES 状态频繁变化时反复重建预览表。
             return;
         }
 
@@ -4362,6 +5085,11 @@ public partial class MonitorView : BaseView
         _ = RefreshSchemePreviewAsync(force);
     }
 
+    /// <summary>
+    /// 异步解析产品身份并刷新当前工位方案预览。
+    /// </summary>
+    /// <param name="force">是否强制刷新。</param>
+    /// <returns>表示异步操作的任务。</returns>
     private async Task RefreshSchemePreviewAsync(bool force)
     {
         if (_refreshingSchemePreview)
@@ -4377,6 +5105,7 @@ public partial class MonitorView : BaseView
                 ?? await ReadPlcRecipeProductIdentityAsync(stationNo);
             if (identity is null)
             {
+                // 没有产品身份时无法确定测试方案，保持当前提示行或上一帧预览。
                 return;
             }
 
@@ -4399,6 +5128,11 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 从当前任务、工单或本地程序中解析在线产品身份。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private ProductIdentity? ResolveOnlineProductIdentity(int stationNo)
     {
         var state = GetCurrentStationState();
@@ -4435,6 +5169,11 @@ public partial class MonitorView : BaseView
         return null;
     }
 
+    /// <summary>
+    /// 异步读取 PLC 配方编号并反查产品身份。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>异步操作结果。</returns>
     private async Task<ProductIdentity?> ReadPlcRecipeProductIdentityAsync(int stationNo)
     {
         var recipeResult = await ReadPlcAddressTextResultAsync(AppConstants.PlcLogicalKeys.PlcRecipeCode, stationNo);
@@ -4456,6 +5195,12 @@ public partial class MonitorView : BaseView
             "PLCRecipe");
     }
 
+    /// <summary>
+    /// 异步读取Plc地址文本结果。
+    /// </summary>
+    /// <param name="logicalKey">PLC 逻辑地址键。</param>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>异步操作结果。</returns>
     private async Task<PlcTextReadResult> ReadPlcAddressTextResultAsync(string logicalKey, int stationNo)
     {
         var address = _plcAddressService.GetAddress(logicalKey, stationNo);
@@ -4495,6 +5240,11 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 应用方案预览，并在方案结构变化时刷新焊接参数表。
+    /// </summary>
+    /// <param name="identity">产品身份信息。</param>
+    /// <param name="force">是否强制刷新。</param>
     private void ApplySchemePreview(ProductIdentity identity, bool force)
     {
         if (identity.StationNo != CurrentStationNo)
@@ -4516,9 +5266,11 @@ public partial class MonitorView : BaseView
             && string.Equals(previewKey, _lastSchemePreviewKey, StringComparison.Ordinal)
             && _weldParameterRows.Count > 0)
         {
+            // 产品、任务和方案都没变时复用现有预览，避免频繁重建表格。
             return;
         }
 
+        // 生成方案行前先缓存上一帧数据，用于把实时值带回新预览行。
         var previousRows = _weldParameterRows
             .Where(row => !string.IsNullOrWhiteSpace(row.ItemKey))
             .GroupBy(row => row.UniqueKey, StringComparer.OrdinalIgnoreCase)
@@ -4529,6 +5281,13 @@ public partial class MonitorView : BaseView
         ApplyWeldParameterRows(nextRows);
     }
 
+    /// <summary>
+    /// 根据产品工艺和测试方案生成方案预览行。
+    /// </summary>
+    /// <param name="identity">产品身份信息。</param>
+    /// <param name="config">产品工艺配置。</param>
+    /// <param name="previousRows">上一次预览行缓存。</param>
+    /// <returns>解析后的集合。</returns>
     private IEnumerable<WeldParameterRow> BuildSchemePreviewRows(ProductIdentity identity,
         BizProductProcessConfig? config, IReadOnlyDictionary<string, WeldParameterRow> previousRows)
     {
@@ -4566,9 +5325,10 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// Uses the started task as the authoritative source after start, then falls back
-    /// to the product number while the operator is preparing the work order.
+    /// 解析实时预览工序Config。
     /// </summary>
+    /// <param name="identity">产品身份信息。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private BizProductProcessConfig? ResolveRealtimePreviewProcessConfig(ProductIdentity identity)
     {
         var activeTask = GetCurrentStationState().ActiveTask;
@@ -4584,6 +5344,11 @@ public partial class MonitorView : BaseView
         return _productProcessConfigService.FindActive(identity.ProductNum, identity.StationNo);
     }
 
+    /// <summary>
+    /// 解析方案测试项。
+    /// </summary>
+    /// <param name="schemeId">测试方案编号。</param>
+    /// <returns>解析后的集合。</returns>
     private IReadOnlyList<SchemePreviewItem> ResolveSchemeItems(string schemeId)
     {
         var details = _testSchemeConfigService.GetDetails(schemeId)
@@ -4609,6 +5374,14 @@ public partial class MonitorView : BaseView
             .ToList();
     }
 
+    /// <summary>
+    /// 创建方案预览行。
+    /// </summary>
+    /// <param name="identity">产品身份信息。</param>
+    /// <param name="config">产品工艺配置。</param>
+    /// <param name="schemeItem">测试方案项。</param>
+    /// <param name="touchNo">焊点号。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private WeldParameterRow CreateSchemePreviewRow(ProductIdentity identity, BizProductProcessConfig config, SchemePreviewItem schemeItem, int touchNo)
     {
         var item = schemeItem.Item;
@@ -4663,11 +5436,22 @@ public partial class MonitorView : BaseView
         };
     }
 
+    /// <summary>
+    /// 解析Item键。
+    /// </summary>
+    /// <param name="item">测试项。</param>
+    /// <returns>处理后的文本。</returns>
     private static string ResolveItemKey(DimTestItem item)
     {
         return ResolveItemKey(item.ItemId, item.ItemName);
     }
 
+    /// <summary>
+    /// 解析Item键。
+    /// </summary>
+    /// <param name="itemId">测试项编号。</param>
+    /// <param name="itemName">测试项名称。</param>
+    /// <returns>处理后的文本。</returns>
     private static string ResolveItemKey(int itemId, string? itemName)
     {
         if (itemId > 0)
@@ -4678,6 +5462,13 @@ public partial class MonitorView : BaseView
         return itemName?.Trim() ?? string.Empty;
     }
 
+    /// <summary>
+    /// 创建信息行。
+    /// </summary>
+    /// <param name="identity">产品身份信息。</param>
+    /// <param name="title">标题文本。</param>
+    /// <param name="detail">详情。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private static WeldParameterRow CreateInfoRow(ProductIdentity identity, string title, string detail)
     {
         return new WeldParameterRow
@@ -4695,6 +5486,11 @@ public partial class MonitorView : BaseView
         };
     }
 
+    /// <summary>
+    /// 复制最新值。
+    /// </summary>
+    /// <param name="previousRows">上一次预览行缓存。</param>
+    /// <param name="target">目标对象。</param>
     private static void CopyLatestValues(IReadOnlyDictionary<string, WeldParameterRow> previousRows, WeldParameterRow target)
     {
         if (!previousRows.TryGetValue(target.UniqueKey, out var previous))
@@ -4759,6 +5555,12 @@ public partial class MonitorView : BaseView
             ?? record.TestResult;
     }
 
+    /// <summary>
+    /// 查找原始值。
+    /// </summary>
+    /// <param name="rawValues">原始采集值集合。</param>
+    /// <param name="keys">键。</param>
+    /// <returns>处理后的文本。</returns>
     private static string? FindRawValue(IReadOnlyDictionary<string, string> rawValues, params string?[] keys)
     {
         foreach (var key in keys)
@@ -4772,16 +5574,29 @@ public partial class MonitorView : BaseView
         return null;
     }
 
+    /// <summary>
+    /// 解析Positive整数。
+    /// </summary>
+    /// <param name="value">待处理值。</param>
+    /// <returns>解析或计算后的数值。</returns>
     private static int ParsePositiveInt(string? value)
     {
         return int.TryParse(value, out var result) && result > 0 ? result : 0;
     }
 
+    /// <summary>
+    /// 规范化Plc文本。
+    /// </summary>
+    /// <param name="value">待处理值。</param>
+    /// <returns>处理后的文本。</returns>
     private static string NormalizePlcText(string? value)
     {
         return value?.Trim().Trim('\0') ?? string.Empty;
     }
 
+    /// <summary>
+    /// 排序焊接参数行。
+    /// </summary>
     private void SortWeldParameterRows()
     {
         _weldParameterRows.Sort((left, right) =>
@@ -4793,6 +5608,11 @@ public partial class MonitorView : BaseView
         });
     }
 
+    /// <summary>
+    /// 解析焊接原始值。
+    /// </summary>
+    /// <param name="rawDataJson">原始采集 JSON。</param>
+    /// <returns>解析后的集合。</returns>
     private static Dictionary<string, string> ParseRawWeldValues(string? rawDataJson)
     {
         if (string.IsNullOrWhiteSpace(rawDataJson))
@@ -4825,7 +5645,7 @@ public partial class MonitorView : BaseView
     #region 表格样式
 
     /// <summary>
-    /// Keeps monitor tables visually aligned with other management pages.
+    /// 配置Tables。
     /// </summary>
     private void ConfigureTables()
     {
@@ -4839,7 +5659,7 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// The metric table has only a few fixed rows, so a compact row height keeps the right panel readable.
+    /// 应用紧凑生产指标表格Style。
     /// </summary>
     private void ApplyCompactProductionMetricTableStyle()
     {
@@ -4847,6 +5667,10 @@ public partial class MonitorView : BaseView
         ApplyCompactProductionMetricTableStyle(tableMetric2);
     }
 
+    /// <summary>
+    /// 应用紧凑生产指标表格Style。
+    /// </summary>
+    /// <param name="table">目标表格控件。</param>
     private static void ApplyCompactProductionMetricTableStyle(AntdUI.Table table)
     {
         table.RowHeight = 34;
@@ -4856,11 +5680,18 @@ public partial class MonitorView : BaseView
         table.Gaps = new Size(4, 4);
     }
 
+    /// <summary>
+    /// 应用焊接参数表格Style。
+    /// </summary>
     private void ApplyWeldParameterTableStyle()
     {
         ApplyWeldParameterTableStyle(dgvPreview1);
         ApplyWeldParameterTableStyle(dgvPreview2);
     }
+    /// <summary>
+    /// 应用焊接参数表格Style。
+    /// </summary>
+    /// <param name="grid">目标表格控件。</param>
     private static void ApplyWeldParameterTableStyle(DataGridView grid)
     {
         EnableDoubleBuffering(grid);
@@ -4880,8 +5711,9 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// Enables buffered painting for high-frequency monitor tables.
+    /// 启用双缓冲。
     /// </summary>
+    /// <param name="control">目标控件。</param>
     private static void EnableDoubleBuffering(Control control)
     {
         typeof(Control)
@@ -4893,6 +5725,11 @@ public partial class MonitorView : BaseView
 
     #region 设备状态与格式化辅助
 
+    /// <summary>
+    /// 获取设备状态键。
+    /// </summary>
+    /// <param name="statusCode">状态Code。</param>
+    /// <returns>处理后的文本。</returns>
     private static string GetDeviceStatusKey(short? statusCode)
     {
         return statusCode switch
@@ -4905,6 +5742,12 @@ public partial class MonitorView : BaseView
         };
     }
 
+    /// <summary>
+    /// 获取设备状态颜色。
+    /// </summary>
+    /// <param name="statusCode">状态Code。</param>
+    /// <param name="isSuccess">判断成功。</param>
+    /// <returns>用于界面显示的颜色。</returns>
     private static Color GetDeviceStatusColor(short? statusCode, bool isSuccess)
     {
         if (!isSuccess)
@@ -4922,6 +5765,11 @@ public partial class MonitorView : BaseView
         };
     }
 
+    /// <summary>
+    /// 格式化可空文本。
+    /// </summary>
+    /// <param name="value">待处理值。</param>
+    /// <returns>处理后的文本。</returns>
     private string FormatNullableText(string? value)
     {
         return string.IsNullOrWhiteSpace(value)
@@ -4929,6 +5777,11 @@ public partial class MonitorView : BaseView
             : value.Trim();
     }
 
+    /// <summary>
+    /// 格式化测试结果文本。
+    /// </summary>
+    /// <param name="value">待处理值。</param>
+    /// <returns>处理后的文本。</returns>
     private string FormatTestResultText(string? value)
     {
         if (string.IsNullOrWhiteSpace(value) || string.Equals(value.Trim(), "--", StringComparison.Ordinal))
@@ -4948,6 +5801,12 @@ public partial class MonitorView : BaseView
             : ProductionConstants.TestResults.Ng;
     }
 
+    /// <summary>
+    /// 计算比率。
+    /// </summary>
+    /// <param name="numerator">numerator。</param>
+    /// <param name="denominator">denominator。</param>
+    /// <returns>解析或计算后的数值。</returns>
     private static double? CalculateRate(int numerator, int denominator)
     {
         return denominator > 0
@@ -4955,6 +5814,11 @@ public partial class MonitorView : BaseView
             : null;
     }
 
+    /// <summary>
+    /// 格式化比率。
+    /// </summary>
+    /// <param name="value">待处理值。</param>
+    /// <returns>处理后的文本。</returns>
     private string FormatRate(double? value)
     {
         return value.HasValue
@@ -4966,6 +5830,12 @@ public partial class MonitorView : BaseView
 
     #region 操作员与程序确认
 
+    /// <summary>
+    /// 尝试选择程序。
+    /// </summary>
+    /// <param name="programs">可选程序列表。</param>
+    /// <param name="program">程序数据。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private bool TrySelectProgram(IReadOnlyList<MesProgramListItemData> programs, out MesProgramListItemData program)
     {
         var columns = new[]
@@ -4997,6 +5867,14 @@ public partial class MonitorView : BaseView
             out program);
     }
 
+    /// <summary>
+    /// 尝试确认开工数据。
+    /// </summary>
+    /// <param name="workOrder">MES 工单数据。</param>
+    /// <param name="process">工序数据。</param>
+    /// <param name="program">程序数据。</param>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private bool TryConfirmStartData(WorkOrderRes? workOrder, ExpItemData? process, ProgramDataRes program, int stationNo)
     {
         if (workOrder is null)
@@ -5022,6 +5900,12 @@ public partial class MonitorView : BaseView
         return true;
     }
 
+    /// <summary>
+    /// 判断程序内容已确认。
+    /// </summary>
+    /// <param name="program">程序数据。</param>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private bool IsProgramContentConfirmed(ProgramDataRes program, int stationNo)
     {
         return string.Equals(
@@ -5030,6 +5914,12 @@ public partial class MonitorView : BaseView
             StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// 构建程序指纹。
+    /// </summary>
+    /// <param name="program">程序数据。</param>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>处理后的文本。</returns>
     private static string BuildProgramFingerprint(ProgramDataRes program, int stationNo)
     {
         return $"{stationNo}|{program.Id}|{program.ProgramName}|{program.ProgramContent}";
@@ -5040,9 +5930,11 @@ public partial class MonitorView : BaseView
     #region 配方下发与校验
 
     /// <summary>
-    /// Resolves the recipe code after a task has started.
-    /// Online tasks use ProgramId; offline tasks use ProductNum.
+    /// 解析配方编号用于Started任务。
     /// </summary>
+    /// <param name="task">焊接任务。</param>
+    /// <param name="selectedProgram">当前选中的程序。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private RecipeCodeResolution ResolveRecipeCodeForStartedTask(BizWeldTask task, ProgramDataRes? selectedProgram)
     {
         if (task.IsOfflineCreated)
@@ -5051,8 +5943,8 @@ public partial class MonitorView : BaseView
             var localProgram = ResolveLocalProgramByProductNum(productNum);
             return new RecipeCodeResolution(
                 FirstNonEmpty(localProgram?.RecipeCode, task.RecipeCode),
-                "ProductNum",
-                $"ProductNum={productNum}; LocalProgramMatched={localProgram is not null}; LocalProgramId={localProgram?.Id}; RecipeCodePresent={!string.IsNullOrWhiteSpace(localProgram?.RecipeCode)}; TaskGuid={task.LocalExpStartId}");
+                "ProductNumber",
+                $"ProductNumber={productNum}; LocalProgramMatched={localProgram is not null}; LocalProgramId={localProgram?.Id}; RecipeCodePresent={!string.IsNullOrWhiteSpace(localProgram?.RecipeCode)}; TaskGuid={task.LocalExpStartId}");
         }
 
         var programId = FirstNonEmpty(selectedProgram?.Id, task.ProgramId);
@@ -5063,6 +5955,11 @@ public partial class MonitorView : BaseView
             $"ProgramId={programId}; LocalProgramMatched={localProgramById is not null}; LocalProgramId={localProgramById?.Id}; RecipeCodePresent={!string.IsNullOrWhiteSpace(localProgramById?.RecipeCode)}; ExpStartId={task.ExpStartId}");
     }
 
+    /// <summary>
+    /// 解析本地程序按程序Id。
+    /// </summary>
+    /// <param name="mesProgramId">MES 程序编号。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private BizProgram? ResolveLocalProgramByProgramId(string? mesProgramId)
     {
         var normalizedProgramId = mesProgramId?.Trim();
@@ -5079,6 +5976,11 @@ public partial class MonitorView : BaseView
             .FirstOrDefault();
     }
 
+    /// <summary>
+    /// 解析本地程序按产品Num。
+    /// </summary>
+    /// <param name="productNum">产品工号。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private BizProgram? ResolveLocalProgramByProductNum(string? productNum)
     {
         var normalizedProductNum = productNum?.Trim();
@@ -5096,9 +5998,12 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// Dispatches the recipe after start succeeds. PC recipe is always written;
-    /// PLC recipe is checked only when enabled in system settings.
+    /// 开工成功后异步下发配方编号，并按设置执行 PLC 校验。
     /// </summary>
+    /// <param name="task">焊接任务。</param>
+    /// <param name="selectedProgram">当前选中的程序。</param>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>表示异步操作的任务。</returns>
     private async Task DispatchRecipeCodeAfterStartAsync(BizWeldTask task, ProgramDataRes? selectedProgram, int stationNo)
     {
         var resolution = ResolveRecipeCodeForStartedTask(task, selectedProgram);
@@ -5131,6 +6036,7 @@ public partial class MonitorView : BaseView
 
             if (!validateRecipe)
             {
+                // 未启用校验时只写 PC 配方地址，保持与旧现场 PLC 流程兼容。
                 var writeResult = await _plcBusinessSignalService.WriteTextAsync(
                     AppConstants.PlcLogicalKeys.PcRecipeCode,
                     targetStationNo,
@@ -5161,6 +6067,7 @@ public partial class MonitorView : BaseView
                 continue;
             }
 
+            // 启用校验时同步写 PC 配方并等待 PLC 配方回读一致，防止设备使用错误配方。
             var syncResult = await _plcBusinessSignalService.SyncRecipeCodeAsync(
                 targetStationNo,
                 recipeCode,
@@ -5194,10 +6101,16 @@ public partial class MonitorView : BaseView
             isSuccess: true);
     }
 
+    /// <summary>
+    /// 构建配方解析失败详情。
+    /// </summary>
+    /// <param name="task">焊接任务。</param>
+    /// <param name="resolution">resolution。</param>
+    /// <returns>处理后的文本。</returns>
     private static string BuildRecipeResolveFailureDetail(BizWeldTask task, RecipeCodeResolution resolution)
     {
         var lookupHint = task.IsOfflineCreated
-            ? "离线任务需要按 ProductNum 匹配本地程序并读取 RecipeCode。"
+            ? "离线任务需要按 ProductNumber 匹配本地程序并读取 RecipeCode。"
             : "在线任务需要按 ProgramId 匹配本地程序并读取 RecipeCode。";
         return $"{lookupHint} {resolution.Detail}";
     }
@@ -5206,15 +6119,23 @@ public partial class MonitorView : BaseView
 
     #region PLC 业务信号写入与调和
 
+    /// <summary>
+    /// 开工成功后写入需要的 PLC 业务信号。
+    /// </summary>
+    /// <param name="program">程序数据。</param>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>表示异步操作的任务。</returns>
     private async Task WriteStartBusinessSignalsAsync(ProgramDataRes program, int stationNo)
     {
         await WriteStartBusinessSignalsAfterStartAsync(program, stationNo);
     }
 
     /// <summary>
-    /// Safely writes start business signals (recipe code, work order status) after start succeeds.
-    /// Catches and handles exceptions independently without affecting the start success status.
+    /// 安全写入开工业务信号，异常只更新提示和日志，不回滚开工结果。
     /// </summary>
+    /// <param name="program">程序数据。</param>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>表示异步操作的任务。</returns>
     private async Task SafeWriteStartBusinessSignalsAsync(ProgramDataRes program, int stationNo)
     {
         try
@@ -5223,28 +6144,30 @@ public partial class MonitorView : BaseView
         }
         catch (BusinessOperationException ex) when (ex.SourceName?.Contains("Recipe") == true)
         {
-            // Recipe-related errors should not mask the start success
+            // 配方相关异常不覆盖开工成功状态，只在异常提示区展示风险。
             SetRuntimeErrorText("配方编号校验失败");
             _exceptionLogService.WriteBusiness(ex.SourceName, ex.Message, ex.Detail);
         }
         catch (BusinessOperationException ex)
         {
-            // Other business signal errors
+            // 其他业务信号异常同样只提示和记日志，不回滚已经完成的开工。
             SetRuntimeErrorText($"业务信号写入失败：{ex.Message}");
             _exceptionLogService.WriteBusiness(ex.SourceName, ex.Message, ex.Detail);
         }
         catch (Exception ex)
         {
-            // Unexpected errors
+            // 未预期异常保留统一提示，详细堆栈写入异常日志。
             SetRuntimeErrorText("业务信号写入失败");
             _exceptionLogService.Write(ex, "MonitorView.SafeWriteStartBusinessSignals");
         }
     }
 
     /// <summary>
-    /// Runs PLC writes after local or online start succeeds.
-    /// Work-order status must be written before the recipe code.
+    /// 开工完成后按顺序写入工单状态和配方编号。
     /// </summary>
+    /// <param name="program">程序数据。</param>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>异步操作成功返回 true，否则返回 false。</returns>
     private async Task<bool> WriteStartBusinessSignalsAfterStartAsync(ProgramDataRes program, int stationNo)
     {
         var task = GetCurrentStationState().ActiveTask ?? _weldTaskService.RestoreUnfinishedTask(stationNo);
@@ -5265,10 +6188,16 @@ public partial class MonitorView : BaseView
             writeOnReadFailure: true,
             mirrorWorkOrderStations: true);
 
+        // 只有 PLC 已允许生产后才下发配方，保证设备状态与任务状态顺序一致。
         await DispatchRecipeCodeAfterStartAsync(task, program, stationNo);
         return true;
     }
 
+    /// <summary>
+    /// 完工成功后写入禁止生产的 PLC 工单状态。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>表示异步操作的任务。</returns>
     private async Task WriteFinishBusinessSignalsAsync(int stationNo)
     {
         await RequireWorkOrderStatusWriteAsync(
@@ -5280,6 +6209,16 @@ public partial class MonitorView : BaseView
             mirrorWorkOrderStations: true);
     }
 
+    /// <summary>
+    /// 异步处理Require工单状态写入。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <param name="status">目标状态值。</param>
+    /// <param name="source">触发来源或日志来源。</param>
+    /// <param name="summary">日志摘要。</param>
+    /// <param name="writeOnReadFailure">读取失败时是否仍尝试写入。</param>
+    /// <param name="mirrorWorkOrderStations">是否同步写入同一工单关联的工位。</param>
+    /// <returns>表示异步操作的任务。</returns>
     private async Task RequireWorkOrderStatusWriteAsync(int stationNo, int status, string source, string summary, bool writeOnReadFailure, bool mirrorWorkOrderStations)
     {
         var targetStations = mirrorWorkOrderStations
@@ -5298,6 +6237,17 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 异步确保工单状态。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <param name="expectedStatus">期望的工单状态。</param>
+    /// <param name="source">触发来源或日志来源。</param>
+    /// <param name="summary">日志摘要。</param>
+    /// <param name="context">业务上下文说明。</param>
+    /// <param name="writeOnReadFailure">读取失败时是否仍尝试写入。</param>
+    /// <param name="mirrorWorkOrderStations">是否同步写入同一工单关联的工位。</param>
+    /// <returns>表示异步操作的任务。</returns>
     private async Task EnsureWorkOrderStatusAsync(int stationNo, int expectedStatus, string source,
         string summary, string context, bool writeOnReadFailure, bool mirrorWorkOrderStations)
     {
@@ -5320,6 +6270,16 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 异步确保设备模式。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <param name="expectedMode">期望的设备模式。</param>
+    /// <param name="source">触发来源或日志来源。</param>
+    /// <param name="summary">日志摘要。</param>
+    /// <param name="context">业务上下文说明。</param>
+    /// <param name="writeOnReadFailure">读取失败时是否仍尝试写入。</param>
+    /// <returns>表示异步操作的任务。</returns>
     private Task EnsureDeviceModeAsync(int stationNo, int expectedMode, string source, string summary, string context, bool writeOnReadFailure)
     {
         var targetStationNo = NormalizeStatusStationNo(stationNo);
@@ -5336,6 +6296,20 @@ public partial class MonitorView : BaseView
             (target, value) => _plcBusinessSignalService.WriteDeviceModeAsync(target, value));
     }
 
+    /// <summary>
+    /// 读取并校验 PLC 整数业务信号，必要时串行写入期望值。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <param name="logicalKey">PLC 逻辑地址键。</param>
+    /// <param name="expectedValue">期望写入或保持的整数值。</param>
+    /// <param name="source">触发来源或日志来源。</param>
+    /// <param name="summary">日志摘要。</param>
+    /// <param name="context">业务上下文说明。</param>
+    /// <param name="writeOnReadFailure">读取失败时是否仍尝试写入。</param>
+    /// <param name="lastSuccessCache">上次成功值缓存。</param>
+    /// <param name="signalLock">当前信号的串行写入锁。</param>
+    /// <param name="writeAsync">实际执行 PLC 写入的异步委托。</param>
+    /// <returns>表示异步操作的任务。</returns>
     private async Task EnsureIntegerBusinessSignalAsync(int stationNo, string logicalKey, int expectedValue, string source, string summary, string context,
         bool writeOnReadFailure, IDictionary<int, int> lastSuccessCache, SemaphoreSlim signalLock, Func<int, int, Task<PlcBusinessSignalResult>> writeAsync)
     {
@@ -5350,6 +6324,7 @@ public partial class MonitorView : BaseView
 
             if (!readResult.IsSuccess && !writeOnReadFailure)
             {
+                // 调和场景下读取失败不强写，避免通讯不稳定时把未知状态改成错误值。
                 WriteBusinessSignalReconcileFlowLog(
                     readResult,
                     writeResult,
@@ -5365,10 +6340,12 @@ public partial class MonitorView : BaseView
 
             if (!shouldWrite)
             {
+                // PLC 当前值已符合预期，只更新缓存并跳过写入，减少不必要的 PLC 写操作。
                 lastSuccessCache[targetStationNo] = expectedValue;
                 return;
             }
 
+            // 读取值缺失或不一致时才写入期望值，写入结果统一落生产流程日志。
             writeResult = await writeAsync(targetStationNo, expectedValue);
             WriteBusinessSignalReconcileFlowLog(
                 readResult,
@@ -5397,12 +6374,28 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 获取工单状态Lock。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private SemaphoreSlim GetWorkOrderStatusLock(int stationNo)
         => GetBusinessSignalLock(_workOrderStatusLocks, stationNo);
 
+    /// <summary>
+    /// 获取设备模式Lock。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private SemaphoreSlim GetDeviceModeLock(int stationNo)
         => GetBusinessSignalLock(_deviceModeLocks, stationNo);
 
+    /// <summary>
+    /// 获取业务信号Lock。
+    /// </summary>
+    /// <param name="locks">locks。</param>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private SemaphoreSlim GetBusinessSignalLock(Dictionary<int, SemaphoreSlim> locks, int stationNo)
     {
         var targetStationNo = NormalizeStatusStationNo(stationNo);
@@ -5418,11 +6411,29 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 尝试解析PLC 信号整数。
+    /// </summary>
+    /// <param name="value">待处理值。</param>
+    /// <param name="number">输出解析后的整数。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private static bool TryParsePlcSignalInt(string? value, out int number)
     {
         return int.TryParse((value ?? string.Empty).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out number);
     }
 
+    /// <summary>
+    /// 写入 PLC 业务信号调和日志，记录读写结果和上下文。
+    /// </summary>
+    /// <param name="readResult">PLC 读取结果。</param>
+    /// <param name="writeResult">PLC 写入结果。</param>
+    /// <param name="source">触发来源或日志来源。</param>
+    /// <param name="summary">日志摘要。</param>
+    /// <param name="stationNo">工位编号。</param>
+    /// <param name="plcSignal">PLC 信号名称。</param>
+    /// <param name="expectedValue">期望写入或保持的整数值。</param>
+    /// <param name="shouldWrite">是否需要执行写入。</param>
+    /// <param name="context">业务上下文说明。</param>
     private void WriteBusinessSignalReconcileFlowLog(PlcBusinessSignalResult readResult, PlcBusinessSignalResult? writeResult,
         string source, string summary, int stationNo, string plcSignal, int expectedValue, bool shouldWrite, string context)
     {
@@ -5455,6 +6466,14 @@ public partial class MonitorView : BaseView
             plcAddress: address);
     }
 
+    /// <summary>
+    /// 构建业务信号调和摘要。
+    /// </summary>
+    /// <param name="plcSignal">PLC 信号名称。</param>
+    /// <param name="readResult">PLC 读取结果。</param>
+    /// <param name="writeResult">PLC 写入结果。</param>
+    /// <param name="failureSummary">失败摘要。</param>
+    /// <returns>处理后的文本。</returns>
     private static string BuildBusinessSignalReconcileSummary(string plcSignal, PlcBusinessSignalResult readResult,
         PlcBusinessSignalResult? writeResult, string failureSummary)
     {
@@ -5471,6 +6490,12 @@ public partial class MonitorView : BaseView
         return failureSummary;
     }
 
+    /// <summary>
+    /// 解析业务信号调和严重级别。
+    /// </summary>
+    /// <param name="readResult">PLC 读取结果。</param>
+    /// <param name="writeResult">PLC 写入结果。</param>
+    /// <returns>处理后的文本。</returns>
     private static string ResolveBusinessSignalReconcileSeverity(
         PlcBusinessSignalResult readResult,
         PlcBusinessSignalResult? writeResult)
@@ -5480,6 +6505,10 @@ public partial class MonitorView : BaseView
             : "Info";
     }
 
+    /// <summary>
+    /// 解析PLC 设备模式。
+    /// </summary>
+    /// <returns>解析或计算后的数值。</returns>
     private int ResolvePlcDeviceMode()
     {
         var settings = _currentSettings;
@@ -5492,6 +6521,16 @@ public partial class MonitorView : BaseView
 
     #region 配方显示与本地程序辅助
 
+    /// <summary>
+    /// 写入配方流程日志。
+    /// </summary>
+    /// <param name="step">step。</param>
+    /// <param name="summary">日志摘要。</param>
+    /// <param name="detail">详情。</param>
+    /// <param name="stationNo">工位编号。</param>
+    /// <param name="level">level。</param>
+    /// <param name="plcSignal">PLC 信号名称。</param>
+    /// <param name="plcAddress">plc地址。</param>
     private void WriteRecipeFlowLog(string step, string summary, string detail, int stationNo,
         string level = "Info", string plcSignal = "", string plcAddress = "")
     {
@@ -5510,8 +6549,11 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// Displays the recipe snapshot without using task ids for recipe lookup.
+    /// 解析配方编号用于Display。
     /// </summary>
+    /// <param name="activeTask">active任务。</param>
+    /// <param name="program">程序数据。</param>
+    /// <returns>处理后的文本。</returns>
     private string ResolveRecipeCodeForDisplay(BizWeldTask? activeTask, ProgramDataRes? program)
     {
         if (activeTask is not null)
@@ -5528,6 +6570,11 @@ public partial class MonitorView : BaseView
         return FirstNonEmpty(localProgram?.RecipeCode, program.RecipeCode);
     }
 
+    /// <summary>
+    /// 解析本地程序。
+    /// </summary>
+    /// <param name="program">程序数据。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private BizProgram? ResolveLocalProgram(ProgramDataRes program)
     {
         var localPrograms = _programManageService.GetPrograms();
@@ -5546,6 +6593,12 @@ public partial class MonitorView : BaseView
             && string.Equals(item.ProductNum?.Trim(), program.ProductNum?.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// 解析本地程序按Id。
+    /// </summary>
+    /// <param name="programId">程序Id。</param>
+    /// <param name="deviceId">设备编号。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private BizProgram? ResolveLocalProgramById(string? programId, string? deviceId = null)
     {
         var normalizedProgramId = programId?.Trim();
@@ -5561,6 +6614,12 @@ public partial class MonitorView : BaseView
             .FirstOrDefault();
     }
 
+    /// <summary>
+    /// 解析本地程序按配方编号。
+    /// </summary>
+    /// <param name="recipeCode">配方编号。</param>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private BizProgram? ResolveLocalProgramByRecipeCode(string? recipeCode, int stationNo)
     {
         var normalizedRecipeCode = NormalizeRecipeCode(recipeCode);
@@ -5577,21 +6636,42 @@ public partial class MonitorView : BaseView
             .FirstOrDefault();
     }
 
+    /// <summary>
+    /// 规范化配方编号。
+    /// </summary>
+    /// <param name="value">待处理值。</param>
+    /// <returns>处理后的文本。</returns>
     private static string NormalizeRecipeCode(string? value)
     {
         return NormalizePlcText(value);
     }
 
+    /// <summary>
+    /// 比较文本。
+    /// </summary>
+    /// <param name="left">左侧文本。</param>
+    /// <param name="right">右侧文本。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private static bool SameText(string? left, string? right)
     {
         return string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// 处理第一个非Empty。
+    /// </summary>
+    /// <param name="values">候选文本集合。</param>
+    /// <returns>处理后的文本。</returns>
     private static string FirstNonEmpty(params string?[] values)
     {
         return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
     }
 
+    /// <summary>
+    /// 格式化程序。
+    /// </summary>
+    /// <param name="program">程序数据。</param>
+    /// <returns>处理后的文本。</returns>
     private static string FormatProgram(MesProgramListItemData program)
     {
         return $"{program.ProgramName} | {program.ProgramType} | {program.ProductNum} | {program.Id}";
@@ -5601,6 +6681,11 @@ public partial class MonitorView : BaseView
 
     #region 操作员信息与输入确认
 
+    /// <summary>
+    /// 异步提示已校验操作员。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>异步解析得到的文本。</returns>
     private async Task<string> PromptValidatedOperatorAsync(int stationNo)
     {
         while (true)
@@ -5630,16 +6715,26 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 绑定MES 操作员信息。
+    /// </summary>
+    /// <param name="userInfo">MES 用户信息。</param>
+    /// <param name="fallbackEmployeeNumber">兜底员工编号。</param>
     private void BindMesOperatorInfo(UserInfoRes? userInfo, string fallbackEmployeeNumber)
     {
         MesUserName.Text = userInfo?.UserName?.Trim() ?? string.Empty;
         MesUserNumber.Text = string.IsNullOrWhiteSpace(userInfo?.UserNumber)
             ? fallbackEmployeeNumber.Trim()
             : userInfo.UserNumber.Trim();
-        DeptName.Text = userInfo?.DeptName?.Trim() ?? string.Empty;
+        inputDeptName.Text = userInfo?.DeptName?.Trim() ?? string.Empty;
         TeamName.Text = userInfo?.TeamName?.Trim() ?? string.Empty;
     }
 
+    /// <summary>
+    /// 绑定运行时操作员信息。
+    /// </summary>
+    /// <param name="state">工位运行状态。</param>
+    /// <param name="activeTask">active任务。</param>
     private void BindRuntimeOperatorInfo(ProductionStationRuntimeState state, BizWeldTask? activeTask)
     {
         var taskOperator = CreateTaskOperatorInfo(activeTask);
@@ -5664,6 +6759,11 @@ public partial class MonitorView : BaseView
         ClearMesOperatorInfo();
     }
 
+    /// <summary>
+    /// 创建任务操作员信息。
+    /// </summary>
+    /// <param name="task">焊接任务。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private static UserInfoRes? CreateTaskOperatorInfo(BizWeldTask? task)
     {
         if (task is null)
@@ -5692,14 +6792,25 @@ public partial class MonitorView : BaseView
         };
     }
 
+    /// <summary>
+    /// 清空MES 操作员信息。
+    /// </summary>
     private void ClearMesOperatorInfo()
     {
         MesUserName.Text = string.Empty;
         MesUserNumber.Text = string.Empty;
-        DeptName.Text = string.Empty;
+        inputDeptName.Text = string.Empty;
         TeamName.Text = string.Empty;
     }
 
+    /// <summary>
+    /// 尝试提示输入非负数整数。
+    /// </summary>
+    /// <param name="titleKey">标题本地化键。</param>
+    /// <param name="promptKey">提示本地化键。</param>
+    /// <param name="defaultValue">默认值。</param>
+    /// <param name="value">待处理值。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private bool TryPromptNonNegativeInt(string titleKey, string promptKey, int defaultValue, out int value)
     {
         if (!TryPromptInt(titleKey, promptKey, defaultValue, out value))
@@ -5716,6 +6827,14 @@ public partial class MonitorView : BaseView
         return false;
     }
 
+    /// <summary>
+    /// 尝试提示输入整数。
+    /// </summary>
+    /// <param name="titleKey">标题本地化键。</param>
+    /// <param name="promptKey">提示本地化键。</param>
+    /// <param name="defaultValue">默认值。</param>
+    /// <param name="value">待处理值。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private bool TryPromptInt(string titleKey, string promptKey, int defaultValue, out int value)
     {
         return TryPromptIntText(
@@ -5725,6 +6844,14 @@ public partial class MonitorView : BaseView
             out value);
     }
 
+    /// <summary>
+    /// 尝试提示输入整数文本。
+    /// </summary>
+    /// <param name="title">标题文本。</param>
+    /// <param name="prompt">提示文本。</param>
+    /// <param name="defaultValue">默认值。</param>
+    /// <param name="value">待处理值。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private bool TryPromptIntText(string title, string prompt, int defaultValue, out int value)
     {
         if (!PromptInputForm.TryShow(
@@ -5753,6 +6880,11 @@ public partial class MonitorView : BaseView
 
     #region 通用操作与提示
 
+    /// <summary>
+    /// 统一执行界面异步操作，并处理业务异常和未知异常。
+    /// </summary>
+    /// <param name="action">需要执行的异步操作。</param>
+    /// <returns>表示异步操作的任务。</returns>
     private async Task RunUiOperationAsync(Func<Task> action)
     {
         try
@@ -5779,11 +6911,19 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 串行执行指定工位的开工或完工上报操作。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <param name="actionName">操作名称，用于提示和日志。</param>
+    /// <param name="action">需要执行的异步操作。</param>
+    /// <returns>表示异步操作的任务。</returns>
     private async Task RunReportOperationAsync(int stationNo, string actionName, Func<Task> action)
     {
-        stationNo = NormalizePreviewStationNo(stationNo);
+        stationNo = NormalizeStationNo(stationNo);
         if (!TryEnterStationOperation(stationNo))
         {
+            // 同一工位上报必须串行，避免重复点击造成 MES/PLC 状态交叉写入。
             SetRuntimeErrorText($"工位{stationNo}{actionName}正在执行中，请稍后再试。");
             return;
         }
@@ -5791,6 +6931,7 @@ public partial class MonitorView : BaseView
         try
         {
             UseWaitCursor = true;
+            // 执行业务前再次选中工位，确保服务层和界面层使用同一个工位上下文。
             SelectStationForOperation(stationNo);
             await action();
         }
@@ -5807,10 +6948,16 @@ public partial class MonitorView : BaseView
         finally
         {
             UseWaitCursor = false;
+            // finally 中释放锁，保证异常路径不会永久占用当前工位操作权限。
             ExitStationOperation(stationNo);
         }
     }
 
+    /// <summary>
+    /// 尝试进入工位操作锁，防止同一工位重复上报。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>条件满足返回 true，否则返回 false。</returns>
     private static bool TryEnterStationOperation(int stationNo)
     {
         lock (StationOperationSync)
@@ -5825,6 +6972,10 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 释放工位操作锁。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
     private static void ExitStationOperation(int stationNo)
     {
         lock (StationOperationSync)
@@ -5833,16 +6984,35 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 构建工位上报成功文本。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <param name="actionName">操作名称，用于提示和日志。</param>
+    /// <returns>处理后的文本。</returns>
     private static string BuildStationReportSuccessText(int stationNo, string actionName)
     {
         return $"工位{stationNo}{actionName}成功";
     }
 
+    /// <summary>
+    /// 设置工位上报失败。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <param name="actionName">操作名称，用于提示和日志。</param>
+    /// <param name="detail">详情。</param>
     private void SetStationReportFailure(int stationNo, string actionName, string detail)
     {
         SetRuntimeErrorText(BuildStationReportFailureText(stationNo, actionName, detail));
     }
 
+    /// <summary>
+    /// 构建工位上报失败文本。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <param name="actionName">操作名称，用于提示和日志。</param>
+    /// <param name="detail">详情。</param>
+    /// <returns>处理后的文本。</returns>
     private static string BuildStationReportFailureText(int stationNo, string actionName, string detail)
     {
         return string.IsNullOrWhiteSpace(detail)
@@ -5850,6 +7020,11 @@ public partial class MonitorView : BaseView
             : $"工位{stationNo}{actionName}失败：{detail}";
     }
 
+    /// <summary>
+    /// 显示警告。
+    /// </summary>
+    /// <param name="messageKey">本地化文本键。</param>
+    /// <param name="args">本地化文本参数。</param>
     private void ShowWarning(string messageKey, params object[] args)
     {
         SetRuntimeError(messageKey, args);
@@ -5861,6 +7036,10 @@ public partial class MonitorView : BaseView
             MessageBoxIcon.Warning);
     }
 
+    /// <summary>
+    /// 显示警告文本。
+    /// </summary>
+    /// <param name="message">提示消息。</param>
     private void ShowWarningText(string message)
     {
         SetRuntimeErrorText(message);
@@ -5872,6 +7051,13 @@ public partial class MonitorView : BaseView
             MessageBoxIcon.Warning);
     }
 
+    /// <summary>
+    /// 显示Business警告。
+    /// </summary>
+    /// <param name="source">触发来源或日志来源。</param>
+    /// <param name="messageKey">本地化文本键。</param>
+    /// <param name="detail">详情。</param>
+    /// <param name="context">业务上下文说明。</param>
     private void ShowBusinessWarning(string source, string messageKey, string detail, string? context = null)
     {
         var message = _localizer.GetString(messageKey);
@@ -5885,6 +7071,10 @@ public partial class MonitorView : BaseView
             MessageBoxIcon.Warning);
     }
 
+    /// <summary>
+    /// 显示异常。
+    /// </summary>
+    /// <param name="message">提示消息。</param>
     private void ShowError(string message)
     {
         MessageBox.Show(
@@ -5899,6 +7089,11 @@ public partial class MonitorView : BaseView
 
     #region 运行提示更新
 
+    /// <summary>
+    /// 设置运行状态。
+    /// </summary>
+    /// <param name="messageKey">本地化文本键。</param>
+    /// <param name="args">本地化文本参数。</param>
     private void SetRuntimeStatus(string messageKey, params object[] args)
     {
         _runtimeStatusKey = messageKey;
@@ -5909,6 +7104,11 @@ public partial class MonitorView : BaseView
         RefreshRuntimeStatus();
     }
 
+    /// <summary>
+    /// 设置运行状态文本。
+    /// </summary>
+    /// <param name="message">提示消息。</param>
+    /// <param name="isSuccess">判断成功。</param>
     private void SetRuntimeStatusText(string message, bool isSuccess = false)
     {
         _runtimeStatusKey = null;
@@ -5919,6 +7119,11 @@ public partial class MonitorView : BaseView
         RefreshRuntimeStatus();
     }
 
+    /// <summary>
+    /// 设置运行异常。
+    /// </summary>
+    /// <param name="messageKey">本地化文本键。</param>
+    /// <param name="args">本地化文本参数。</param>
     private void SetRuntimeError(string messageKey, params object[] args)
     {
         _runtimeErrorKey = messageKey;
@@ -5928,6 +7133,10 @@ public partial class MonitorView : BaseView
         RefreshRuntimeError();
     }
 
+    /// <summary>
+    /// 设置运行异常文本。
+    /// </summary>
+    /// <param name="message">提示消息。</param>
     private void SetRuntimeErrorText(string message)
     {
         _runtimeErrorKey = null;
@@ -5937,6 +7146,9 @@ public partial class MonitorView : BaseView
         RefreshRuntimeError();
     }
 
+    /// <summary>
+    /// 清空运行异常。
+    /// </summary>
     private void ClearRuntimeError()
     {
         _runtimeErrorKey = null;
@@ -5951,6 +7163,9 @@ public partial class MonitorView : BaseView
 
     #region 运行提示持久化
 
+    /// <summary>
+    /// 恢复当前工位上一次保存的运行提示状态。
+    /// </summary>
     private void RestoreCurrentRuntimeTipState()
     {
         try
@@ -5974,6 +7189,9 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 保存当前工位运行状态和异常提示。
+    /// </summary>
     private void PersistCurrentRuntimeTipState()
     {
         try
@@ -5996,6 +7214,11 @@ public partial class MonitorView : BaseView
         }
     }
 
+    /// <summary>
+    /// 序列化运行时Args。
+    /// </summary>
+    /// <param name="args">本地化文本参数。</param>
+    /// <returns>处理后的文本。</returns>
     private static string? SerializeRuntimeArgs(object[] args)
     {
         if (args.Length == 0)
@@ -6007,6 +7230,11 @@ public partial class MonitorView : BaseView
         return JsonSerializer.Serialize(values);
     }
 
+    /// <summary>
+    /// 反序列化运行时Args。
+    /// </summary>
+    /// <param name="json">json。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
     private static object[] DeserializeRuntimeArgs(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -6028,12 +7256,18 @@ public partial class MonitorView : BaseView
 
     #region 运行提示显示
 
+    /// <summary>
+    /// 刷新运行时Panels。
+    /// </summary>
     private void RefreshRuntimePanels()
     {
         RefreshRuntimeStatus();
         RefreshRuntimeError();
     }
 
+    /// <summary>
+    /// 刷新运行状态。
+    /// </summary>
     private void RefreshRuntimeStatus()
     {
         inputRunningStatus.Text = _runtimeStatusKey is null
@@ -6042,6 +7276,9 @@ public partial class MonitorView : BaseView
         ApplyRuntimeStatusTone();
     }
 
+    /// <summary>
+    /// 刷新运行异常。
+    /// </summary>
     private void RefreshRuntimeError()
     {
         inputErrorTips.Text = _runtimeErrorKey is null
@@ -6050,6 +7287,9 @@ public partial class MonitorView : BaseView
         ApplyRuntimeErrorTone(!string.IsNullOrWhiteSpace(inputErrorTips.Text));
     }
 
+    /// <summary>
+    /// 应用运行状态Tone。
+    /// </summary>
     private void ApplyRuntimeStatusTone()
     {
         var color = _runtimeStatusTextIsSuccess
@@ -6059,6 +7299,10 @@ public partial class MonitorView : BaseView
         inputRunningStatus.ForeColor = color;
     }
 
+    /// <summary>
+    /// 应用运行异常Tone。
+    /// </summary>
+    /// <param name="hasError">当前是否存在异常提示。</param>
     private void ApplyRuntimeErrorTone(bool hasError)
     {
         var color = hasError ? UiColors.Status.Danger : UiColors.Status.Muted;
@@ -6066,6 +7310,11 @@ public partial class MonitorView : BaseView
         inputErrorTips.ForeColor = color;
     }
 
+    /// <summary>
+    /// 获取运行状态颜色。
+    /// </summary>
+    /// <param name="messageKey">本地化文本键。</param>
+    /// <returns>用于界面显示的颜色。</returns>
     private static Color GetRuntimeStatusColor(string? messageKey)
     {
         return messageKey switch
@@ -6078,11 +7327,22 @@ public partial class MonitorView : BaseView
         };
     }
 
+    /// <summary>
+    /// 构建LocalizedMessage。
+    /// </summary>
+    /// <param name="messageKey">本地化文本键。</param>
+    /// <param name="args">本地化文本参数。</param>
+    /// <returns>处理后的文本。</returns>
     private string BuildLocalizedMessage(string messageKey, params object[] args)
     {
         return NormalizeRuntimeSummary(_localizer.GetString(messageKey, args));
     }
 
+    /// <summary>
+    /// 规范化运行时摘要。
+    /// </summary>
+    /// <param name="message">提示消息。</param>
+    /// <returns>处理后的文本。</returns>
     private static string NormalizeRuntimeSummary(string? message)
     {
         if (string.IsNullOrWhiteSpace(message))
@@ -6125,8 +7385,18 @@ public partial class MonitorView : BaseView
 
     private sealed record PlcTextReadResult(bool IsSuccess, string Value, string Detail)
     {
+    /// <summary>
+    /// 处理成功。
+    /// </summary>
+    /// <param name="value">待处理值。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
         public static PlcTextReadResult Success(string value) => new(true, value, string.Empty);
 
+    /// <summary>
+    /// 处理Failed。
+    /// </summary>
+    /// <param name="detail">详情。</param>
+    /// <returns>解析到的对象；不存在时返回 null。</returns>
         public static PlcTextReadResult Failed(string detail) => new(false, string.Empty, detail);
     }
 

@@ -711,7 +711,7 @@ namespace AutoWeldSystem.UI.Views
             txtProductionKeyword.Location = new Point(318, 8);
             txtProductionKeyword.Margin = new Padding(0, 2, 16, 0);
             txtProductionKeyword.Name = "txtProductionKeyword";
-            txtProductionKeyword.PlaceholderText = "Step / WorkOrder / ProductNo / PLC";
+            txtProductionKeyword.PlaceholderText = "Step / WorkOrder / ProductNumber / PLC";
             txtProductionKeyword.Size = new Size(230, 30);
             txtProductionKeyword.TabIndex = 3;
             // 
@@ -841,7 +841,7 @@ namespace AutoWeldSystem.UI.Views
             // 
             // colProductionProductNo
             // 
-            colProductionProductNo.DataPropertyName = "ProductNo";
+            colProductionProductNo.DataPropertyName = "ProductNumber";
             colProductionProductNo.FillWeight = 13F;
             colProductionProductNo.HeaderText = "Product No.";
             colProductionProductNo.MinimumWidth = 88;
@@ -1553,7 +1553,7 @@ namespace AutoWeldSystem.UI.Views
             // 
             // colDeviceStatus
             // 
-            colDeviceStatus.DataPropertyName = "DeviceStatus";
+            colDeviceStatus.DataPropertyName = "DeviceState";
             colDeviceStatus.FillWeight = 10F;
             colDeviceStatus.HeaderText = "Status Code";
             colDeviceStatus.MinimumWidth = 88;

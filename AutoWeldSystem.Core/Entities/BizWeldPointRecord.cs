@@ -5,7 +5,7 @@ namespace AutoWeldSystem.Core.Entities;
 
 /// <summary>
 /// Weld point collection record.
-/// One row represents one weld start/end cycle for a specific ProductNo and TouchNo.
+/// One row represents one weld start/end cycle for a specific ProductNumber and TouchNo.
 /// </summary>
 [SugarTable("Biz_WeldPointRecord", TableDescription = "焊点采集记录表")]
 public class BizWeldPointRecord
@@ -41,7 +41,7 @@ public class BizWeldPointRecord
     public string ProductNo { get; set; } = string.Empty;
 
     /// <summary>
-    /// Weld point number under one ProductNo.
+    /// Weld point number under one ProductNumber.
     /// </summary>
     [SugarColumn(Length = 50, ColumnDescription = "焊点编号")]
     public string TouchNo { get; set; } = string.Empty;
@@ -86,7 +86,7 @@ public class BizWeldPointRecord
     public string? OperatorNo { get; set; }
 
     /// <summary>
-    /// Whether all weld points for this ProductNo have been collected.
+    /// Whether all weld points for this ProductNumber have been collected.
     /// </summary>
     [SugarColumn(ColumnDescription = "产品是否采集完成")]
     public bool ProductCompleted { get; set; }

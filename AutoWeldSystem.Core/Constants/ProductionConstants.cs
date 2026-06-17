@@ -48,7 +48,7 @@ public static class ProductionConstants
         /// <summary>
         /// 设备状态
         /// </summary>
-        public const string DeviceStatus = "DeviceStatus";
+        public const string DeviceStatus = "DeviceState";
     }
 
     /// <summary>

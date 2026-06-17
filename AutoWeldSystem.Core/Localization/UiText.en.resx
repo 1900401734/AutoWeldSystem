@@ -786,17 +786,11 @@
   <data name="address.name.target_production" xml:space="preserve">
     <value>Target Production</value>
   </data>
-  <data name="monitor.label.device_status" xml:space="preserve">
-    <value>Device Status</value>
-  </data>
   <data name="monitor.label.plc_state" xml:space="preserve">
     <value>PLC State</value>
   </data>
   <data name="monitor.label.mes_state" xml:space="preserve">
     <value>MES State</value>
-  </data>
-  <data name="monitor.title.app" xml:space="preserve">
-    <value>Monostable Automatic Spot Welding System</value>
   </data>
   <data name="monitor.status.normal" xml:space="preserve">
     <value>Normal</value>
@@ -855,14 +849,14 @@
   <data name="monitor.label.program_name" xml:space="preserve">
     <value>Program Name</value>
   </data>
-  <data name="monitor.label.product_no" xml:space="preserve">
-    <value>Product No.</value>
+  <data name="monitor.label.product_number" xml:space="preserve">
+    <value>Product Num.</value>
   </data>
   <data name="monitor.label.product_model" xml:space="preserve">
     <value>Model</value>
   </data>
-  <data name="monitor.label.batch_no" xml:space="preserve">
-    <value>Batch No.</value>
+  <data name="monitor.label.batch" xml:space="preserve">
+    <value>Batch</value>
   </data>
   <data name="monitor.label.spec" xml:space="preserve">
     <value>Spec</value>
@@ -1003,7 +997,7 @@
     <value>Employee validation failed.</value>
   </data>
   <data name="monitor.message.start_success" xml:space="preserve">
-    <value>Start report succeeded. MES Id: {0}</value>
+    <value>Start report succeeded.</value>
   </data>
   <data name="monitor.message.finish_prerequisite_missing" xml:space="preserve">
     <value>No running work order exists. Please start report first.</value>
@@ -1471,7 +1465,7 @@
     <value>PLC Heartbeat Rate</value>
   </data>
   <data name="data.label.product_num" xml:space="preserve">
-    <value>Product No.</value>
+    <value>Product Num.</value>
   </data>
   <data name="data.label.batch" xml:space="preserve">
     <value>Batch</value>
@@ -1486,7 +1480,7 @@
     <value>Contains</value>
   </data>
   <data name="data.placeholder.work_order" xml:space="preserve">
-    <value>Flow card number</value>
+    <value>SN</value>
   </data>
   <data name="data.button.query" xml:space="preserve">
     <value>Query</value>
@@ -1646,5 +1640,23 @@
   </data>
   <data name="grid.plc_address.station" xml:space="preserve">
     <value>Station</value>
+  </data>
+  <data name="monitor.label.device_state" xml:space="preserve">
+    <value>Device State</value>
+  </data>
+  <data name="monitor.label.work_order_state" xml:space="preserve">
+    <value>Work Order State</value>
+  </data>
+  <data name="work_order.status.not_started" xml:space="preserve">
+    <value>Not Started</value>
+  </data>
+  <data name="work_order.status.in_progress" xml:space="preserve">
+    <value>In Progress</value>
+  </data>
+  <data name="work_order.status.paused" xml:space="preserve">
+    <value>Paused</value>
+  </data>
+  <data name="work_order.status.completed" xml:space="preserve">
+    <value>Completed</value>
   </data>
 </root>

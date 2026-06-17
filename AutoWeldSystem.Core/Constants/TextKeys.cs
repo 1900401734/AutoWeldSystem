@@ -1,4 +1,3 @@
-
 namespace AutoWeldSystem.Core.Constants;
 
 /// <summary>
@@ -55,206 +54,400 @@ public static class TextKeys
     }
 
     /// <summary>
-    /// 操作工弹窗文本键。
-    /// </summary>
-    public static class Operator
-    {
-        public const string DialogTitle = "operator.dialog.title";
-        public const string DialogLabel = "operator.dialog.label";
-        public const string EmployeeNumberRequired = "operator.message.employee_number_required";
-    }
-
-    /// <summary>
     /// 主界面导航文本键。
-    /// </summary>
     public static class Main
     {
+        /// <summary>
+        /// 生产监控
+        /// </summary>
         public const string NavMonitor = "main.nav.monitor";
+        /// <summary>
+        /// 数据管理
+        /// </summary>
         public const string NavDataManage = "main.nav.data_manage";
+        /// <summary>
+        /// 用户管理
+        /// </summary>
         public const string NavUserManage = "main.nav.user_manage";
+        /// <summary>
+        /// 程序管理
+        /// </summary>
         public const string NavProgramManage = "main.nav.program_manage";
+        /// <summary>
+        /// 日志管理
+        /// </summary>
         public const string NavLogManage = "main.nav.log_manage";
+        /// <summary>
+        /// 上传状态
+        /// </summary>
         public const string NavStateManage = "main.nav.state_manage";
+        /// <summary>
+        /// 系统设置
+        /// </summary>
         public const string NavSystemSetting = "main.nav.system_setting";
+        /// <summary>
+        /// 地址维护
+        /// </summary>
         public const string NavAddressManage = "main.nav.address_manage";
+        /// <summary>
+        /// 当前用户未分配任何页面权限
+        /// </summary>
         public const string EmptyPermissionPage = "main.message.no_page_permission";
     }
 
     /// <summary>
-    /// Data-management page text keys.
-    /// </summary>
-    public static class DataManage
-    {
-        public const string ProductNum = "data.label.product_num";
-        public const string Batch = "data.label.batch";
-        public const string WorkOrderId = "data.label.work_order_id";
-        public const string DateRange = "data.label.date_range";
-        public const string FuzzySearch = "data.placeholder.fuzzy_search";
-        public const string WorkOrderPlaceholder = "data.placeholder.work_order";
-        public const string Query = "data.button.query";
-        public const string Reset = "data.button.reset";
-        public const string OpenReport = "data.button.open_report";
-        public const string OpenReportFolder = "data.button.open_report_folder";
-        public const string TabWeldParameters = "data.tab.weld_parameters";
-        public const string TabCollectionData = "data.tab.collection_data";
-        public const string TabReportFiles = "data.tab.report_files";
-        public const string RawData = "data.label.raw_data";
-        public const string Loading = "data.message.loading";
-        public const string SelectWorkOrder = "data.message.select_work_order";
-        public const string SelectReport = "data.message.select_report";
-        public const string WorkOrderSummary = "data.summary.work_orders";
-        public const string ParameterSummary = "data.summary.parameters";
-        public const string CollectionSummary = "data.summary.collection";
-        public const string ReportSummary = "data.summary.reports";
-        public const string QueryFailed = "data.message.query_failed";
-        public const string DetailQueryFailed = "data.message.detail_query_failed";
-        public const string ReportFileMissing = "data.message.report_file_missing";
-        public const string ReportDirectoryMissing = "data.message.report_directory_missing";
-        public const string OpenPathFailed = "data.message.open_path_failed";
-        public const string ColumnStation = "data.column.station";
-        public const string ColumnWorkOrderId = "data.column.work_order_id";
-        public const string ColumnProductNum = "data.column.product_num";
-        public const string ColumnBatch = "data.column.batch";
-        public const string ColumnProductName = "data.column.product_name";
-        public const string ColumnProcess = "data.column.process";
-        public const string ColumnRecipe = "data.column.recipe";
-        public const string ColumnPlannedQty = "data.column.planned_qty";
-        public const string ColumnActualQty = "data.column.actual_qty";
-        public const string ColumnQualifiedQty = "data.column.qualified_qty";
-        public const string ColumnFailedQty = "data.column.failed_qty";
-        public const string ColumnOperator = "data.column.operator";
-        public const string ColumnStartTime = "data.column.start_time";
-        public const string ColumnEndTime = "data.column.end_time";
-        public const string ColumnTaskStatus = "data.column.task_status";
-        public const string ColumnUploadStatus = "data.column.upload_status";
-        public const string ColumnProductNo = "data.column.product_no";
-        public const string ColumnTouchNo = "data.column.touch_no";
-        public const string ColumnTouchResult = "data.column.touch_result";
-        public const string ColumnRecordTime = "data.column.record_time";
-        public const string ColumnSequence = "data.column.sequence";
-        public const string ColumnIsTest = "data.column.is_test";
-        public const string ColumnProductCompleted = "data.column.product_completed";
-        public const string ColumnFileName = "data.column.file_name";
-        public const string ColumnFileFormat = "data.column.file_format";
-        public const string ColumnFilePath = "data.column.file_path";
-        public const string ColumnCreatedTime = "data.column.created_time";
-        public const string ColumnUpdatedTime = "data.column.updated_time";
-    }
-
-    /// <summary>
-    /// 监控页文本键。
+    /// 生产监控页文本键。
     /// </summary>
     public static class Monitor
     {
         public static class Button
         {
+            /// <summary>
+            /// 变更
+            /// </summary>
             public const string ChangeWorkOrder = "monitor.button.change_work_order";
+            /// <summary>
+            /// 微调
+            /// </summary>
             public const string EditWO = "monitor.button.edit";
+            /// <summary>
+            /// 离线开工
+            /// </summary>
             public const string LocalWorkOrder = "monitor.button.local_work_order";
+            /// <summary>
+            /// 开工上报
+            /// </summary>
             public const string StartReport = "monitor.button.start_report";
+            /// <summary>
+            /// 完工上报
+            /// </summary>
             public const string FinishReport = "monitor.button.finish_report";
+            /// <summary>
+            /// 切换用户
+            /// </summary>
             public const string SwitchUser = "monitor.button.switch_user";
+            /// <summary>
+            /// 退出登录
+            /// </summary>
             public const string Logout = "monitor.button.logout";
         }
 
         public static class Label
         {
-            public const string PlcState = "monitor.label.plc_state";
-            public const string MesState = "monitor.label.mes_state";
-            public const string DeviceStatus = "monitor.label.device_status";
-
-            public const string CurrentUser = "monitor.label.current_user";
-            public const string CurrentLang = "monitor.label.current_lang";
-            public const string Station = "monitor.label.station";
-            public const string WorkOrderNo = "monitor.label.work_order_no";
-            public const string ProgramName = "monitor.label.program_name";
-            public const string ProductNo = "monitor.label.product_no";
-            public const string ProductModel = "monitor.label.product_model";
-            public const string BatchNo = "monitor.label.batch_no";
-            public const string Spec = "monitor.label.spec";
-            public const string PartName = "monitor.label.part_name";
-            public const string DrawingNo = "monitor.label.drawing_no";
+            /// <summary>
+            /// 序号
+            /// </summary>
             public const string SequenceNo = "monitor.label.sequence_no";
+
+            // ----- 连接状态 -----
+
+            /// <summary>
+            /// PLC状态
+            /// </summary>
+            public const string PlcState = "monitor.label.plc_state";
+            /// <summary>
+            /// MES状态
+            /// </summary>
+            public const string MesState = "monitor.label.mes_state";
+            /// <summary>
+            /// 设备状态
+            /// </summary>
+            public const string DeviceState = "monitor.label.device_state";
+            /// <summary>
+            /// 工单状态
+            /// </summary>
+            public const string WorkOrderState = "monitor.label.work_order_state";
+
+            // ----- 工单信息 -----
+
+            /// <summary>
+            /// 当前用户
+            /// </summary>
+            public const string CurrentUser = "monitor.label.current_user";
+            /// <summary>
+            /// 当前语言
+            /// </summary>
+            public const string CurrentLang = "monitor.label.current_lang";
+            /// <summary>
+            /// 当前工位
+            /// </summary>
+            public const string Station = "monitor.label.station";
+            /// <summary>
+            /// 工单号
+            /// </summary>
+            public const string WorkOrderNo = "monitor.label.work_order_no";
+            /// <summary>
+            /// 程序名称
+            /// </summary>
+            public const string ProgramName = "monitor.label.program_name";
+            /// <summary>
+            /// 产品工号
+            /// </summary>
+            public const string ProductNumber = "monitor.label.product_number";
+            /// <summary>
+            /// 产品型号
+            /// </summary>
+            public const string ProductModel = "monitor.label.product_model";
+            /// <summary>
+            /// 批次
+            /// </summary>
+            public const string Batch = "monitor.label.batch";
+            /// <summary>
+            /// 规格
+            /// </summary>
+            public const string Spec = "monitor.label.spec";
+            /// <summary>
+            /// 部件名称
+            /// </summary>
+            public const string PartName = "monitor.label.part_name";
+            /// <summary>
+            /// 零件图号
+            /// </summary>
+            public const string DrawingNo = "monitor.label.drawing_no";
+            /// <summary>
+            /// 工序号
+            /// </summary>
             public const string ProcessNo = "monitor.label.process_no";
+            /// <summary>
+            /// 工序名称
+            /// </summary>
             public const string ProcessName = "monitor.label.process_name";
+            /// <summary>
+            /// 生产数量
+            /// </summary>
             public const string ProductionQuantity = "monitor.label.production_quantity";
         }
 
         public static class Group
         {
+            /// <summary>
+            /// 异常提示：
+            /// </summary>
             public const string ExceptionTips = "monitor.group.exception_tips";
+            /// <summary>
+            /// 运行状态：
+            /// </summary>
             public const string RunningStatus = "monitor.group.running_status";
+            /// <summary>
+            /// 生产指标
+            /// </summary>
             public const string ProductionMetrics = "monitor.group.production_metrics";
         }
 
         public static class Title
         {
-            public const string AppTitle = "monitor.title.app";
+            /// <summary>
+            /// 切换用户
+            /// </summary>
             public const string SwitchUserTitle = "monitor.title.switch_user";
+            /// <summary>
+            /// 退出登录
+            /// </summary>
             public const string LogoutTitle = "monitor.title.logout";
 
+            /// <summary>
+            /// 正常
+            /// </summary>
             public const string Normal = "monitor.status.normal";
+            /// <summary>
+            /// 警告
+            /// </summary>
             public const string Warning = "monitor.status.warning";
+            /// <summary>
+            /// 错误
+            /// </summary>
             public const string Error = "monitor.status.error";
         }
 
+        /// <summary>
+        /// 用于界面层和服务层交互的消息文本键。
+        /// </summary>
         public static class Message
         {
-            public const string SwitchUserConfirm = "monitor.message.switch_user_confirm";
-            public const string LogoutConfirm = "monitor.message.logout_confirm";
-            public const string PlcDisconnected = "monitor.message.plc_disconnected";
-            public const string PlcReconnecting = "monitor.message.plc_reconnecting";
-            public const string PlcConnected = "monitor.message.plc_connected";
-            public const string PlcFaulted = "monitor.message.plc_faulted";
-            public const string MesRequestFailed = "monitor.message.mes_request_failed";
-            public const string WorkIdRequired = "monitor.message.work_id_required";
-            public const string WorkOrderLoadFailed = "monitor.message.work_order_load_failed";
-            public const string ProcessRequired = "monitor.message.process_required";
-            public const string ProgramListEmpty = "monitor.message.program_list_empty";
-            public const string ProgramDownloadFailed = "monitor.message.program_download_failed";
-            public const string WorkOrderReady = "monitor.message.work_order_ready";
-            public const string StartPrerequisiteMissing = "monitor.message.start_prerequisite_missing";
-            public const string StartBlockedByUnfinishedTask = "monitor.message.start_blocked_by_unfinished_task";
-            public const string QuantityInvalid = "monitor.message.quantity_invalid";
-            public const string OperatorValidationFailed = "monitor.message.operator_validation_failed";
-            public const string StartSuccess = "monitor.message.start_success";
+            /// <summary>
+            /// 当前无运行工单，请先开工上报
+            /// </summary>
             public const string FinishPrerequisiteMissing = "monitor.message.finish_prerequisite_missing";
+            /// <summary>
+            /// 完工上报成功
+            /// </summary>
             public const string FinishSuccess = "monitor.message.finish_success";
+            /// <summary>
+            /// 确定退出当前登录状态吗？
+            /// </summary>
+            public const string LogoutConfirm = "monitor.message.logout_confirm";
+            /// <summary>
+            /// MES请求失败：{0}
+            /// </summary>
+            public const string MesRequestFailed = "monitor.message.mes_request_failed";
+            /// <summary>
+            /// 员工校验失败
+            /// </summary>
+            public const string OperatorValidationFailed = "monitor.message.operator_validation_failed";
+            /// <summary>
+            /// PLC已连接
+            /// </summary>
+            public const string PlcConnected = "monitor.message.plc_connected";
+            /// <summary>
+            /// PLC未连接
+            /// </summary>
+            public const string PlcDisconnected = "monitor.message.plc_disconnected";
+            /// <summary>
+            /// PLC通信异常
+            /// </summary>
+            public const string PlcFaulted = "monitor.message.plc_faulted";
+            /// <summary>
+            /// PLC正在重连
+            /// </summary>
+            public const string PlcReconnecting = "monitor.message.plc_reconnecting";
+            /// <summary>
+            /// 当前工单没有可选工序
+            /// </summary>
+            public const string ProcessRequired = "monitor.message.process_required";
+            /// <summary>
+            /// 程序下载失败
+            /// </summary>
+            public const string ProgramDownloadFailed = "monitor.message.program_download_failed";
+            /// <summary>
+            /// 当前工单和设备没有可选程序
+            /// </summary>
+            public const string ProgramListEmpty = "monitor.message.program_list_empty";
+            /// <summary>
+            /// 数量必须是大于 0 的整数
+            /// </summary>
+            public const string QuantityInvalid = "monitor.message.quantity_invalid";
+            /// <summary>
+            /// 已开工或存在尚未完工任务
+            /// </summary>
+            public const string StartBlockedByUnfinishedTask = "monitor.message.start_blocked_by_unfinished_task";
+            /// <summary>
+            /// 请先加载工单、选择工序并下载程序
+            /// </summary>
+            public const string StartPrerequisiteMissing = "monitor.message.start_prerequisite_missing";
+            /// <summary>
+            /// 开工上报成功
+            /// </summary>
+            public const string StartSuccess = "monitor.message.start_success";
+            /// <summary>
+            /// 确定返回登录界面切换用户吗？
+            /// </summary>
+            public const string SwitchUserConfirm = "monitor.message.switch_user_confirm";
+            /// <summary>
+            /// 工单二维码不能为空
+            /// </summary>
+            public const string WorkIdRequired = "monitor.message.work_id_required";
+            /// <summary>
+            /// 获取工单信息失败
+            /// </summary>
+            public const string WorkOrderLoadFailed = "monitor.message.work_order_load_failed";
+            /// <summary>
+            /// 工单和程序已准备完成
+            /// </summary>
+            public const string WorkOrderReady = "monitor.message.work_order_ready";
         }
 
         public static class RuntimeStatus
         {
-            public const string Idle = "monitor.runtime.idle";
-            public const string LoadingWorkOrder = "monitor.runtime.loading_work_order";
-            public const string LoadingPrograms = "monitor.runtime.loading_programs";
+            /// <summary>
+            /// 正在下载程序...
+            /// </summary>
             public const string DownloadingProgram = "monitor.runtime.downloading_program";
-            public const string ValidatingOperator = "monitor.runtime.validating_operator";
-            public const string SubmittingStart = "monitor.runtime.submitting_start";
+            /// <summary>
+            /// 等待业务操作
+            /// </summary>
+            public const string Idle = "monitor.runtime.idle";
+            /// <summary>
+            /// 正在获取程序列表...
+            /// </summary>
+            public const string LoadingPrograms = "monitor.runtime.loading_programs";
+            /// <summary>
+            /// 正在获取工单信息...
+            /// </summary>
+            public const string LoadingWorkOrder = "monitor.runtime.loading_work_order";
+            /// <summary>
+            /// 正在完工上报...
+            /// </summary>
             public const string SubmittingFinish = "monitor.runtime.submitting_finish";
+            /// <summary>
+            /// 正在开工上报...
+            /// </summary>
+            public const string SubmittingStart = "monitor.runtime.submitting_start";
+            /// <summary>
+            /// 正在校验员工信息...
+            /// </summary>
+            public const string ValidatingOperator = "monitor.runtime.validating_operator";
         }
 
         public static class RuntimeError
         {
-            public const string WorkIdReadFailed = "monitor.error.work_id_read_failed";
-            public const string ProductionCollectFailed = "monitor.error.production_collect_failed";
+            /// <summary>
+            /// 操作失败
+            /// </summary>
             public const string OperationFailed = "monitor.error.operation_failed";
+            /// <summary>
+            /// 生产数据采集失败
+            /// </summary>
+            public const string ProductionCollectFailed = "monitor.error.production_collect_failed";
+            /// <summary>
+            /// 工单号读取失败
+            /// </summary>
+            public const string WorkIdReadFailed = "monitor.error.work_id_read_failed";
         }
 
         public static class ProductionHint
         {
-            public const string ProductDataReady = "monitor.production_hint.product_data_ready";
-            public const string ProductCollectionStart = "monitor.production_hint.product_collection_start";
-            public const string ProductDataReadStart = "monitor.production_hint.product_data_read_start";
-            public const string ProductDataSaved = "monitor.production_hint.product_data_saved";
-            public const string ProductDataSaveFailed = "monitor.production_hint.product_data_save_failed";
-            public const string ProductCollectionFeedbackSucceeded = "monitor.production_hint.product_collection_feedback_succeeded";
-            public const string ProductCollectionFeedbackFailed = "monitor.production_hint.product_collection_feedback_failed";
-            public const string RecipeCodeWriteSucceeded = "monitor.production_hint.recipe_code_write_succeeded";
-            public const string RecipeCodeWriteFailed = "monitor.production_hint.recipe_code_write_failed";
-            public const string RecipeCodeValidationSucceeded = "monitor.production_hint.recipe_code_validation_succeeded";
-            public const string RecipeCodeValidationFailed = "monitor.production_hint.recipe_code_validation_failed";
-            public const string BusinessSignalWriteSucceeded = "monitor.production_hint.business_signal_write_succeeded";
+            /// <summary>
+            /// PLC业务信号写入失败
+            /// </summary>
             public const string BusinessSignalWriteFailed = "monitor.production_hint.business_signal_write_failed";
+            /// <summary>
+            /// PLC业务信号写入成功
+            /// </summary>
+            public const string BusinessSignalWriteSucceeded = "monitor.production_hint.business_signal_write_succeeded";
+            /// <summary>
+            /// PLC采集反馈失败
+            /// </summary>
+            public const string ProductCollectionFeedbackFailed = "monitor.production_hint.product_collection_feedback_failed";
+            /// <summary>
+            /// PLC采集反馈成功
+            /// </summary>
+            public const string ProductCollectionFeedbackSucceeded = "monitor.production_hint.product_collection_feedback_succeeded";
+            /// <summary>
+            /// 正在采集产品数据
+            /// </summary>
+            public const string ProductCollectionStart = "monitor.production_hint.product_collection_start";
+            /// <summary>
+            /// PLC触发采集数据
+            /// </summary>
+            public const string ProductDataReady = "monitor.production_hint.product_data_ready";
+            /// <summary>
+            /// 正在采集产品数据
+            /// </summary>
+            public const string ProductDataReadStart = "monitor.production_hint.product_data_read_start";
+            /// <summary>
+            /// 数据保存成功
+            /// </summary>
+            public const string ProductDataSaved = "monitor.production_hint.product_data_saved";
+            /// <summary>
+            /// 数据保存失败
+            /// </summary>
+            public const string ProductDataSaveFailed = "monitor.production_hint.product_data_save_failed";
+            /// <summary>
+            /// 配方编号校验失败
+            /// </summary>
+            public const string RecipeCodeValidationFailed = "monitor.production_hint.recipe_code_validation_failed";
+            /// <summary>
+            /// 配方编号校验通过
+            /// </summary>
+            public const string RecipeCodeValidationSucceeded = "monitor.production_hint.recipe_code_validation_succeeded";
+            /// <summary>
+            /// 配方编号下发失败
+            /// </summary>
+            public const string RecipeCodeWriteFailed = "monitor.production_hint.recipe_code_write_failed";
+            /// <summary>
+            /// 配方编号已下发
+            /// </summary>
+            public const string RecipeCodeWriteSucceeded = "monitor.production_hint.recipe_code_write_succeeded";
         }
 
         public static class Dialog
@@ -274,6 +467,292 @@ public static class TextKeys
         }
     }
 
+    /// <summary>
+    /// 数据管理页文本键。
+    /// </summary>
+    public static class DataManage
+    {
+        /// <summary>
+        /// 产品工号
+        /// </summary>
+        public const string ProductNum = "data.label.product_num";
+        /// <summary>
+        /// 批次
+        /// </summary>
+        public const string Batch = "data.label.batch";
+        /// <summary>
+        /// 工单号
+        /// </summary>
+        public const string WorkOrderId = "data.label.work_order_id";
+        /// <summary>
+        /// 日期
+        /// </summary>
+        public const string DateRange = "data.label.date_range";
+        /// <summary>
+        /// 原始采集数据
+        /// </summary>
+        public const string RawData = "data.label.raw_data";
+
+        /// <summary>
+        /// 模糊查询
+        /// </summary>
+        public const string FuzzySearch = "data.placeholder.fuzzy_search";
+        /// <summary>
+        /// 工单号
+        /// </summary>
+        public const string WorkOrderPlaceholder = "data.placeholder.work_order";
+
+        /// <summary>
+        /// 查询
+        /// </summary>
+        public const string Query = "data.button.query";
+        /// <summary>
+        /// 重置
+        /// </summary>
+        public const string Reset = "data.button.reset";
+        /// <summary>
+        /// 打开报告
+        /// </summary>
+        public const string OpenReport = "data.button.open_report";
+        /// <summary>
+        /// 打开所在目录
+        /// </summary>
+        public const string OpenReportFolder = "data.button.open_report_folder";
+
+        /// <summary>
+        /// 焊接参数
+        /// </summary>
+        public const string TabWeldParameters = "data.tab.weld_parameters";
+        /// <summary>
+        /// 采集数据
+        /// </summary>
+        public const string TabCollectionData = "data.tab.collection_data";
+        /// <summary>
+        /// 报告文件
+        /// </summary>
+        public const string TabReportFiles = "data.tab.report_files";
+
+        /// <summary>
+        /// 采集数据：{0} 条
+        /// </summary>
+        public const string CollectionSummary = "data.summary.collection";
+        /// <summary>
+        /// 焊接参数：{0} 条，动态测试项列：{1} 列
+        /// </summary>
+        public const string ParameterSummary = "data.summary.parameters";
+        /// <summary>
+        /// 报告文件：{0} 个
+        /// </summary>
+        public const string ReportSummary = "data.summary.reports";
+        /// <summary>
+        /// 历史工单：{0} 条
+        /// </summary>
+        public const string WorkOrderSummary = "data.summary.work_orders";
+
+        /// <summary>
+        /// 工单明细查询失败：{0}
+        /// </summary>
+        public const string DetailQueryFailed = "data.message.detail_query_failed";
+        /// <summary>
+        /// 正在加载...
+        /// </summary>
+        public const string Loading = "data.message.loading";
+        /// <summary>
+        /// 打开路径失败：{0}
+        /// </summary>
+        public const string OpenPathFailed = "data.message.open_path_failed";
+        /// <summary>
+        /// 历史工单查询失败：{0}
+        /// </summary>
+        public const string QueryFailed = "data.message.query_failed";
+        /// <summary>
+        /// 报告文件目录不存在：{0}
+        /// </summary>
+        public const string ReportDirectoryMissing = "data.message.report_directory_missing";
+        /// <summary>
+        /// 报告文件不存在：{0}
+        /// </summary>
+        public const string ReportFileMissing = "data.message.report_file_missing";
+        /// <summary>
+        /// 请先选择报告文件。
+        /// </summary>
+        public const string SelectReport = "data.message.select_report";
+        /// <summary>
+        /// 请选择历史工单
+        /// </summary>
+        public const string SelectWorkOrder = "data.message.select_work_order";
+
+        /// <summary>
+        /// 工位
+        /// </summary>
+        public const string ColumnStation = "data.column.station";
+        /// <summary>
+        /// 工单号
+        /// </summary>
+        public const string ColumnWorkOrderId = "data.column.work_order_id";
+        /// <summary>
+        /// 产品工号
+        /// </summary>
+        public const string ColumnProductNum = "data.column.product_num";
+        /// <summary>
+        /// 批次
+        /// </summary>
+        public const string ColumnBatch = "data.column.batch";
+        /// <summary>
+        /// 产品名称/部件名称
+        /// </summary>
+        public const string ColumnProductName = "data.column.product_name";
+        /// <summary>
+        /// 工序
+        /// </summary>
+        public const string ColumnProcess = "data.column.process";
+        /// <summary>
+        /// 配方
+        /// </summary>
+        public const string ColumnRecipe = "data.column.recipe";
+        /// <summary>
+        /// 计划数量
+        /// </summary>
+        public const string ColumnPlannedQty = "data.column.planned_qty";
+        /// <summary>
+        /// 实际数量
+        /// </summary>
+        public const string ColumnActualQty = "data.column.actual_qty";
+        /// <summary>
+        /// 合格数量
+        /// </summary>
+        public const string ColumnQualifiedQty = "data.column.qualified_qty";
+        /// <summary>
+        /// 不良数量
+        /// </summary>
+        public const string ColumnFailedQty = "data.column.failed_qty";
+        /// <summary>
+        /// 操作员工号
+        /// </summary>
+        public const string ColumnOperator = "data.column.operator";
+        /// <summary>
+        /// 开始时间
+        /// </summary>
+        public const string ColumnStartTime = "data.column.start_time";
+        /// <summary>
+        /// 结束时间
+        /// </summary>
+        public const string ColumnEndTime = "data.column.end_time";
+        /// <summary>
+        /// 任务状态
+        /// </summary>
+        public const string ColumnTaskStatus = "data.column.task_status";
+        /// <summary>
+        /// 上传状态
+        /// </summary>
+        public const string ColumnUploadStatus = "data.column.upload_status";
+        /// <summary>
+        /// 产品编号
+        /// </summary>
+        public const string ColumnProductNo = "data.column.product_no";
+        /// <summary>
+        /// 焊点编号
+        /// </summary>
+        public const string ColumnTouchNo = "data.column.touch_no";
+        /// <summary>
+        /// 焊点结果
+        /// </summary>
+        public const string ColumnTouchResult = "data.column.touch_result";
+        /// <summary>
+        /// 采集时间
+        /// </summary>
+        public const string ColumnRecordTime = "data.column.record_time";
+        /// <summary>
+        /// 序号
+        /// </summary>
+        public const string ColumnSequence = "data.column.sequence";
+        /// <summary>
+        /// 试焊件
+        /// </summary>
+        public const string ColumnIsTest = "data.column.is_test";
+        /// <summary>
+        /// 产品完成
+        /// </summary>
+        public const string ColumnProductCompleted = "data.column.product_completed";
+        /// <summary>
+        /// 文件名
+        /// </summary>
+        public const string ColumnFileName = "data.column.file_name";
+        /// <summary>
+        /// 格式
+        /// </summary>
+        public const string ColumnFileFormat = "data.column.file_format";
+        /// <summary>
+        /// 文件路径
+        /// </summary>
+        public const string ColumnFilePath = "data.column.file_path";
+        /// <summary>
+        /// 创建时间
+        /// </summary>
+        public const string ColumnCreatedTime = "data.column.created_time";
+        /// <summary>
+        /// 更新时间
+        /// </summary>
+        public const string ColumnUpdatedTime = "data.column.updated_time";
+    }
+
+    /// <summary>
+    /// 用户相关文本键。
+    /// </summary>
+    public static class User
+    {
+        public const string TabTitle = "user.tab.manage";
+        public const string AddDialogTitle = "user.dialog.add_title";
+        public const string EditDialogTitle = "user.dialog.edit_title";
+        public const string LabelName = "user.label.name";
+        public const string LabelNumber = "user.label.number";
+        public const string LabelPassword = "user.label.password";
+        public const string LabelRole = "user.label.role";
+        public const string NameRequired = "user.message.name_required";
+        public const string NumberRequired = "user.message.number_required";
+        public const string NumberExists = "user.message.number_exists";
+        public const string NotExists = "user.message.not_exists";
+        public const string InvalidRole = "user.message.invalid_role";
+        public const string RoleRequired = "user.message.role_required";
+        public const string SingleRoleOnly = "user.message.single_role_only";
+        public const string NoEnabledRoles = "user.message.no_enabled_roles";
+        public const string SelectFirst = "user.message.select_first";
+        public const string DeleteConfirm = "user.message.delete_confirm";
+        public const string DeleteSelfBlocked = "user.message.delete_self_blocked";
+        public const string ResetPasswordConfirm = "user.message.reset_password_confirm";
+        public const string ResetPasswordSuccess = "user.message.reset_password_success";
+        public const string AddSuccessWithPassword = "user.message.add_success_with_password";
+        public const string AddSuccessDefaultPassword = "user.message.add_success_default_password";
+    }
+
+    /// <summary>
+    /// 角色相关文本键。
+    /// </summary>
+    public static class Role
+    {
+        public const string TabTitle = "role.tab.permissions";
+        public const string AddDialogTitle = "role.dialog.add_title";
+        public const string EditDialogTitle = "role.dialog.edit_title";
+        public const string LabelCode = "role.label.code";
+        public const string LabelName = "role.label.name";
+        public const string LabelDescription = "role.label.description";
+        public const string LabelEnabled = "role.label.enabled";
+        public const string NameRequired = "role.message.name_required";
+        public const string CodeExists = "role.message.code_exists";
+        public const string NotExists = "role.message.not_exists";
+        public const string SelectFirst = "role.message.select_first";
+        public const string PermissionsApplied = "role.message.permissions_applied";
+        public const string DeleteConfirm = "role.message.delete_confirm";
+        public const string DeleteBlocked = "role.message.delete_blocked";
+        public const string CurrentSelection = "role.message.current_selection";
+        public const string NoMatch = "role.message.no_match";
+        public const string SelectLeft = "role.message.select_left";
+        public const string PermissionHint = "role.message.permission_hint";
+    }
+
+    /// <summary>
+    /// 权限相关文本键。
+    /// </summary>
     public static class Permission
     {
         public const string PageMonitor = "permission.page.monitor";
@@ -308,6 +787,60 @@ public static class TextKeys
         public const string ButtonProgramDelete = "permission.button.program.delete";
     }
 
+    /// <summary>
+    /// 程序管理页相关文本键。
+    /// </summary>
+    public static class ProgramManage
+    {
+        public const string ButtonSyncMes = "program.button.sync_mes";
+        public const string ButtonPullMes = "program.button.pull_mes";
+        public const string ButtonBuildName = "program.button.build_name";
+        public const string ButtonBrowseFile = "program.button.browse_file";
+        public const string CheckSyncNow = "program.checkbox.sync_now";
+        public const string PlaceholderKeyword = "program.placeholder.keyword";
+        public const string GroupRevisions = "program.group.revisions";
+        public const string LabelProgramName = "program.label.program_name";
+        public const string LabelProgramId = "program.label.program_id";
+        public const string LabelProductNum = "program.label.product_num";
+        public const string LabelProductModel = "program.label.product_model";
+        public const string LabelRecipeCode = "program.label.recipe_code";
+        public const string LabelComponentCode = "program.label.component_code";
+        public const string LabelSequenceNumber = "program.label.sequence_number";
+        public const string LabelProgramType = "program.label.program_type";
+        public const string LabelProgramFile = "program.label.program_file";
+        public const string LabelCommitMessage = "program.label.commit_message";
+        public const string LabelRemark = "program.label.remark";
+        public const string LabelLocalRemark = "program.label.local_remark";
+        public const string LabelProgramContent = "program.label.program_content";
+        public const string OptionParameterString = "program.option.parameter_string";
+        public const string OptionFile = "program.option.file";
+        public const string CommitCreate = "program.commit.create";
+        public const string CommitUpdate = "program.commit.update";
+        public const string CurrentNew = "program.message.current_new";
+        public const string CurrentSelected = "program.message.current_selected";
+        public const string SaveSuccess = "program.message.save_success";
+        public const string SelectDelete = "program.message.select_delete";
+        public const string DeleteConfirm = "program.message.delete_confirm";
+        public const string SelectSync = "program.message.select_sync";
+        public const string PullSuccess = "program.message.pull_success";
+        public const string SequenceInvalid = "program.message.sequence_invalid";
+        public const string CycleTimeInvalid = "program.message.cycle_time_invalid";
+        public const string DialogSelectFile = "program.dialog.select_file";
+        public const string DialogFileFilterAll = "program.dialog.file_filter_all";
+        public const string StatusPendingCreate = "program.status.pending_create";
+        public const string StatusPendingUpdate = "program.status.pending_update";
+        public const string StatusPendingDelete = "program.status.pending_delete";
+        public const string StatusSynced = "program.status.synced";
+        public const string StatusFailed = "program.status.failed";
+        public const string StatusDeleted = "program.status.deleted";
+        public const string ActionCreate = "program.action.create";
+        public const string ActionUpdate = "program.action.update";
+        public const string ActionDelete = "program.action.delete";
+    }
+
+    /// <summary>
+    /// 日志管理页文本键
+    /// </summary>
     public static class Log
     {
         public const string TitleMesInteraction = "log.title.mes_interaction";
@@ -353,152 +886,6 @@ public static class TextKeys
         public const string MessageExceptionLogged = "log.message.exception_logged";
     }
 
-    public static class DeviceStatus
-    {
-        public const string Running = "device.status.running";
-        public const string Paused = "device.status.paused";
-        public const string Stopped = "device.status.stopped";
-        public const string Alarm = "device.status.alarm";
-        public const string Unknown = "device.status.unknown";
-    }
-
-    public static class Production
-    {
-        public const string TotalProduction = "production.metric.total";
-        public const string TargetProduction = "production.metric.target";
-        public const string MesProductionQuantity = "production.metric.mes_quantity";
-        public const string AcceptedQuantity = "production.metric.accepted";
-        public const string RejectedQuantity = "production.metric.rejected";
-        public const string AcceptedRate = "production.metric.accepted_rate";
-        public const string RejectedRate = "production.metric.rejected_rate";
-        public const string AchievementRate = "production.metric.achievement_rate";
-        public const string MetricName = "production.grid.name";
-        public const string MetricValue = "production.grid.value";
-        public const string NotAvailable = "production.value.not_available";
-    }
-
-    /// <summary>
-    /// MES 请求相关文本键。
-    /// 这类消息由服务层和界面层共同复用。
-    /// </summary>
-    public static class Mes
-    {
-        public const string HttpError = "mes.message.http_error";
-        public const string Timeout = "mes.message.timeout";
-        public const string RequestException = "mes.message.request_exception";
-        public const string StateChecking = "mes.state.checking";
-        public const string StateConnected = "mes.state.connected";
-        public const string StateDisconnected = "mes.state.disconnected";
-    }
-
-    /// <summary>
-    /// 角色相关文本键。
-    /// </summary>
-    public static class Role
-    {
-        public const string TabTitle = "role.tab.permissions";
-        public const string AddDialogTitle = "role.dialog.add_title";
-        public const string EditDialogTitle = "role.dialog.edit_title";
-        public const string LabelCode = "role.label.code";
-        public const string LabelName = "role.label.name";
-        public const string LabelDescription = "role.label.description";
-        public const string LabelEnabled = "role.label.enabled";
-        public const string NameRequired = "role.message.name_required";
-        public const string CodeExists = "role.message.code_exists";
-        public const string NotExists = "role.message.not_exists";
-        public const string SelectFirst = "role.message.select_first";
-        public const string PermissionsApplied = "role.message.permissions_applied";
-        public const string DeleteConfirm = "role.message.delete_confirm";
-        public const string DeleteBlocked = "role.message.delete_blocked";
-        public const string CurrentSelection = "role.message.current_selection";
-        public const string NoMatch = "role.message.no_match";
-        public const string SelectLeft = "role.message.select_left";
-        public const string PermissionHint = "role.message.permission_hint";
-    }
-
-    /// <summary>
-    /// 用户相关文本键。
-    /// </summary>
-    public static class User
-    {
-        public const string TabTitle = "user.tab.manage";
-        public const string AddDialogTitle = "user.dialog.add_title";
-        public const string EditDialogTitle = "user.dialog.edit_title";
-        public const string LabelName = "user.label.name";
-        public const string LabelNumber = "user.label.number";
-        public const string LabelPassword = "user.label.password";
-        public const string LabelRole = "user.label.role";
-        public const string NameRequired = "user.message.name_required";
-        public const string NumberRequired = "user.message.number_required";
-        public const string NumberExists = "user.message.number_exists";
-        public const string NotExists = "user.message.not_exists";
-        public const string InvalidRole = "user.message.invalid_role";
-        public const string RoleRequired = "user.message.role_required";
-        public const string SingleRoleOnly = "user.message.single_role_only";
-        public const string NoEnabledRoles = "user.message.no_enabled_roles";
-        public const string SelectFirst = "user.message.select_first";
-        public const string DeleteConfirm = "user.message.delete_confirm";
-        public const string DeleteSelfBlocked = "user.message.delete_self_blocked";
-        public const string ResetPasswordConfirm = "user.message.reset_password_confirm";
-        public const string ResetPasswordSuccess = "user.message.reset_password_success";
-        public const string AddSuccessWithPassword = "user.message.add_success_with_password";
-        public const string AddSuccessDefaultPassword = "user.message.add_success_default_password";
-    }
-
-    /// <summary>
-    /// 程序管理页相关文本键。
-    /// </summary>
-    public static class ProgramManage
-    {
-        public const string ButtonSyncMes = "program.button.sync_mes";
-        public const string ButtonPullMes = "program.button.pull_mes";
-        public const string ButtonBuildName = "program.button.build_name";
-        public const string ButtonBrowseFile = "program.button.browse_file";
-        public const string CheckSyncNow = "program.checkbox.sync_now";
-        public const string PlaceholderKeyword = "program.placeholder.keyword";
-        public const string GroupRevisions = "program.group.revisions";
-        public const string LabelProgramName = "program.label.program_name";
-        public const string LabelProgramId = "program.label.program_id";
-        public const string LabelProductNum = "program.label.product_num";
-        public const string LabelProductModel = "program.label.product_model";
-        public const string LabelRecipeCode = "program.label.recipe_code";
-        public const string LabelComponentCode = "program.label.component_code";
-        public const string LabelSequenceNumber = "program.label.sequence_number";
-        public const string LabelProgramType = "program.label.program_type";
-        public const string LabelWeldJobName = "program.label.weld_job_name";
-        public const string LabelRobotJobName = "program.label.robot_job_name";
-        public const string LabelCycleTime = "program.label.cycle_time";
-        public const string LabelProgramFile = "program.label.program_file";
-        public const string LabelCommitMessage = "program.label.commit_message";
-        public const string LabelRemark = "program.label.remark";
-        public const string LabelLocalRemark = "program.label.local_remark";
-        public const string LabelProgramContent = "program.label.program_content";
-        public const string OptionParameterString = "program.option.parameter_string";
-        public const string OptionFile = "program.option.file";
-        public const string CommitCreate = "program.commit.create";
-        public const string CommitUpdate = "program.commit.update";
-        public const string CurrentNew = "program.message.current_new";
-        public const string CurrentSelected = "program.message.current_selected";
-        public const string SaveSuccess = "program.message.save_success";
-        public const string SelectDelete = "program.message.select_delete";
-        public const string DeleteConfirm = "program.message.delete_confirm";
-        public const string SelectSync = "program.message.select_sync";
-        public const string PullSuccess = "program.message.pull_success";
-        public const string SequenceInvalid = "program.message.sequence_invalid";
-        public const string CycleTimeInvalid = "program.message.cycle_time_invalid";
-        public const string DialogSelectFile = "program.dialog.select_file";
-        public const string DialogFileFilterAll = "program.dialog.file_filter_all";
-        public const string StatusPendingCreate = "program.status.pending_create";
-        public const string StatusPendingUpdate = "program.status.pending_update";
-        public const string StatusPendingDelete = "program.status.pending_delete";
-        public const string StatusSynced = "program.status.synced";
-        public const string StatusFailed = "program.status.failed";
-        public const string StatusDeleted = "program.status.deleted";
-        public const string ActionCreate = "program.action.create";
-        public const string ActionUpdate = "program.action.update";
-        public const string ActionDelete = "program.action.delete";
-    }
-
     /// <summary>
     /// 上传状态页相关文本键。
     /// </summary>
@@ -529,7 +916,6 @@ public static class TextKeys
         public const string GroupDevice = "system.group.device";
         public const string GroupProduction = "system.group.production";
         public const string GroupMes = "system.group.mes";
-
 
         public const string LabelIp = "system.label.ip";
         public const string LabelPort = "system.label.port";
@@ -575,33 +961,6 @@ public static class TextKeys
     }
 
     /// <summary>
-    /// PLC 通讯状态文本键。
-    /// </summary>
-    public static class Plc
-    {
-        public const string StateStopped = "plc.state.stopped";
-        public const string StateConnecting = "plc.state.connecting";
-        public const string StateConnected = "plc.state.connected";
-        public const string StateReconnecting = "plc.state.reconnecting";
-        public const string StateDisconnected = "plc.state.disconnected";
-        public const string StateFaulted = "plc.state.faulted";
-        public const string MessageServiceStopped = "plc.message.service_stopped";
-        public const string MessageConnecting = "plc.message.connecting";
-        public const string MessageAlreadyConnected = "plc.message.already_connected";
-        public const string MessageConnected = "plc.message.connected";
-        public const string MessageUnsupportedType = "plc.message.unsupported_type";
-        public const string MessageHeartbeatSkipped = "plc.message.heartbeat_skipped";
-        public const string MessageHeartbeatSucceeded = "plc.message.heartbeat_succeeded";
-        public const string MessageHeartbeatFailed = "plc.message.heartbeat_failed";
-        public const string MessageHeartbeatNoChange = "plc.message.heartbeat_no_change";
-        public const string MessageTcpProbeFailed = "plc.message.tcp_probe_failed";
-        public const string MessageNotConnected = "plc.message.not_connected";
-        public const string MessageAddressRequired = "plc.message.address_required";
-        public const string MessageWriteSucceeded = "plc.message.write_succeeded";
-        public const string MessageTimeout = "plc.message.timeout";
-    }
-
-    /// <summary>
     /// 地址维护页文本键。
     /// </summary>
     public static class Address
@@ -638,6 +997,211 @@ public static class TextKeys
         public const string NameTargetProduction = "address.name.target_production";
         public const string NameAcceptedQuantity = "address.name.accepted_quantity";
         public const string NameRejectedQuantity = "address.name.rejected_quantity";
+    }
+
+    /// <summary>
+    /// 操作工弹窗文本键。
+    /// </summary>
+    public static class Operator
+    {
+        public const string DialogTitle = "operator.dialog.title";
+        public const string DialogLabel = "operator.dialog.label";
+        public const string EmployeeNumberRequired = "operator.message.employee_number_required";
+    }
+
+    /// <summary>
+    /// 设备状态Tag
+    /// </summary>
+    public static class DeviceStatus
+    {
+        /// <summary>
+        /// 运行
+        /// </summary>
+        public const string Running = "device.status.running";
+        /// <summary>
+        /// 暂停
+        /// </summary>
+        public const string Paused = "device.status.paused";
+        /// <summary>
+        /// 停止
+        /// </summary>
+        public const string Stopped = "device.status.stopped";
+        /// <summary>
+        /// 报警
+        /// </summary>
+        public const string Alarm = "device.status.alarm";
+        /// <summary>
+        /// 未知
+        /// </summary>
+        public const string Unknown = "device.status.unknown";
+    }
+
+    /// <summary>
+    /// 工单状态Tag
+    /// </summary>
+    public static class WorkOrderStatus
+    {
+        /// <summary>
+        /// 未开工
+        /// </summary>
+        public const string NotStarted = "work_order.status.not_started";
+        /// <summary>
+        /// 生产中
+        /// </summary>
+        public const string InProgress = "work_order.status.in_progress";
+        /// <summary>
+        /// 已暂停
+        /// </summary>
+        public const string Paused = "work_order.status.paused";
+        /// <summary>
+        /// 已完工
+        /// </summary>
+        public const string Completed = "work_order.status.completed";
+    }
+
+    public static class Production
+    {
+        public const string TotalProduction = "production.metric.total";
+        public const string TargetProduction = "production.metric.target";
+        public const string MesProductionQuantity = "production.metric.mes_quantity";
+        public const string AcceptedQuantity = "production.metric.accepted";
+        public const string RejectedQuantity = "production.metric.rejected";
+        public const string AcceptedRate = "production.metric.accepted_rate";
+        public const string RejectedRate = "production.metric.rejected_rate";
+        public const string AchievementRate = "production.metric.achievement_rate";
+        public const string MetricName = "production.grid.name";
+        public const string MetricValue = "production.grid.value";
+        public const string NotAvailable = "production.value.not_available";
+    }
+
+    /// <summary>
+    /// MES 请求相关文本键。
+    /// 这类消息由服务层和界面层共同复用。
+    /// </summary>
+    public static class Mes
+    {
+        // ----- 连接状态 -----
+
+        /// <summary>
+        /// 检测中
+        /// </summary>
+        public const string StateChecking = "mes.state.checking";
+        /// <summary>
+        /// 已连接
+        /// </summary>
+        public const string StateConnected = "mes.state.connected";
+        /// <summary>
+        /// 已断开
+        /// </summary>
+        public const string StateDisconnected = "mes.state.disconnected";
+
+        // ----- 消息提示 -----
+
+        /// <summary>
+        /// HTTP {0}：{1}
+        /// </summary>
+        public const string HttpError = "mes.message.http_error";
+        /// <summary>
+        /// MES 请求失败：{0}
+        /// </summary>
+        public const string RequestException = "mes.message.request_exception";
+        /// <summary>
+        /// MES 请求超时，已超过 {0} 秒。
+        /// </summary>
+        public const string Timeout = "mes.message.timeout";
+    }
+
+    /// <summary>
+    /// PLC 通讯状态文本键。
+    /// </summary>
+    public static class Plc
+    {
+        // ----- 连接状态 -----
+
+        /// <summary>
+        /// 已停止
+        /// </summary>
+        public const string StateStopped = "plc.state.stopped";
+        /// <summary>
+        /// 连接中
+        /// </summary>
+        public const string StateConnecting = "plc.state.connecting";
+        /// <summary>
+        /// 已连接
+        /// </summary>
+        public const string StateConnected = "plc.state.connected";
+        /// <summary>
+        /// 重连中
+        /// </summary>
+        public const string StateReconnecting = "plc.state.reconnecting";
+        /// <summary>
+        /// 已断开
+        /// </summary>
+        public const string StateDisconnected = "plc.state.disconnected";
+        /// <summary>
+        /// 异常
+        /// </summary>
+        public const string StateFaulted = "plc.state.faulted";
+
+        // ----- 消息提示 -----
+
+        /// <summary>
+        /// PLC 地址不能为空。
+        /// </summary>
+        public const string MessageAddressRequired = "plc.message.address_required";
+        /// <summary>
+        /// PLC 已连接。
+        /// </summary>
+        public const string MessageAlreadyConnected = "plc.message.already_connected";
+        /// <summary>
+        /// PLC 已连接：{0}。
+        /// </summary>
+        public const string MessageConnected = "plc.message.connected";
+        /// <summary>
+        /// 正在连接 {0}。
+        /// </summary>
+        public const string MessageConnecting = "plc.message.connecting";
+        /// <summary>
+        /// PLC 心跳检测失败：{0}
+        /// </summary>
+        public const string MessageHeartbeatFailed = "plc.message.heartbeat_failed";
+        /// <summary>
+        /// PLC心跳无变化，已持续 {0:0.0} 秒；TCP连接仍可建立，等待 PLC 业务心跳恢复。
+        /// </summary>
+        public const string MessageHeartbeatNoChange = "plc.message.heartbeat_no_change";
+        /// <summary>
+        /// PLC 心跳地址为空，TCP 端口探测成功。
+        /// </summary>
+        public const string MessageHeartbeatSkipped = "plc.message.heartbeat_skipped";
+        /// <summary>
+        /// PLC 心跳检测成功。
+        /// </summary>
+        public const string MessageHeartbeatSucceeded = "plc.message.heartbeat_succeeded";
+        /// <summary>
+        /// PLC 未连接。
+        /// </summary>
+        public const string MessageNotConnected = "plc.message.not_connected";
+        /// <summary>
+        /// PLC 服务已停止。
+        /// </summary>
+        public const string MessageServiceStopped = "plc.message.service_stopped";
+        /// <summary>
+        /// PLC TCP 探测失败：{0}
+        /// </summary>
+        public const string MessageTcpProbeFailed = "plc.message.tcp_probe_failed";
+        /// <summary>
+        /// 连接超时
+        /// </summary>
+        public const string MessageTimeout = "plc.message.timeout";
+        /// <summary>
+        /// 不支持的 PLC 类型：{0}
+        /// </summary>
+        public const string MessageUnsupportedType = "plc.message.unsupported_type";
+        /// <summary>
+        /// PLC 写入成功。
+        /// </summary>
+        public const string MessageWriteSucceeded = "plc.message.write_succeeded";
+
     }
 
     /// <summary>

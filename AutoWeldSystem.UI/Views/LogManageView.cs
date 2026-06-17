@@ -829,7 +829,7 @@ public partial class LogManageView : BaseView
         builder.AppendLine($"Summary: {entry.Summary}");
         builder.AppendLine($"Station: {entry.StationNo}");
         builder.AppendLine($"WorkOrder: {entry.WorkOrder}");
-        builder.AppendLine($"ProductNo: {entry.ProductNo}");
+        builder.AppendLine($"ProductNumber: {entry.ProductNo}");
         builder.AppendLine($"ProgramId: {entry.ProgramId}");
         builder.AppendLine($"PLC Signal: {entry.PlcSignal}");
         builder.AppendLine($"PLC Address: {entry.PlcAddress}");
@@ -864,7 +864,7 @@ public partial class LogManageView : BaseView
         builder.AppendLine($"Station: {entry.StationNo}");
         builder.AppendLine($"TaskId: {entry.WeldTaskId?.ToString() ?? "-"}");
         builder.AppendLine($"WorkOrder: {entry.WorkOrderId ?? "-"}");
-        builder.AppendLine($"DeviceStatus: {entry.DeviceStatus}");
+        builder.AppendLine($"DeviceState: {entry.DeviceStatus}");
         builder.AppendLine($"StatusName: {entry.StatusName}");
         builder.AppendLine($"Source: {entry.Source}");
         builder.AppendLine($"OccurredTime: {entry.OccurredTime:yyyy-MM-dd HH:mm:ss.fff}");

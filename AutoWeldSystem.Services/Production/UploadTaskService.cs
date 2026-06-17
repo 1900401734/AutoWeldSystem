@@ -217,7 +217,7 @@ public class UploadTaskService : IUploadTaskService
 
     /// <summary>
     /// 上传当前任务下尚未成功上传的焊点记录。
-    /// 先尝试整批上传，失败后按 ProductNo 降级，最后再降级到单条焊点，尽量保住已成功的数据。
+    /// 先尝试整批上传，失败后按 ProductNumber 降级，最后再降级到单条焊点，尽量保住已成功的数据。
     /// </summary>
     private async Task<BasicRes<object>> UploadStartReportAsync(BizUploadTask task, CancellationToken cancellationToken)
     {
@@ -353,7 +353,7 @@ public class UploadTaskService : IUploadTaskService
                 UpdateWeldPointUploadStatus(new[] { record }, singleResponse);
                 if (!singleResponse.IsSuccess)
                 {
-                    failedMessages.Add($"ProductNo={record.ProductNo}, TouchNo={record.TouchNo}: {singleResponse.Msg}");
+                    failedMessages.Add($"ProductNumber={record.ProductNo}, TouchNo={record.TouchNo}: {singleResponse.Msg}");
                 }
             }
         }
@@ -752,7 +752,7 @@ public class UploadTaskService : IUploadTaskService
         try
         {
             using var document = JsonDocument.Parse(payloadJson);
-            return document.RootElement.TryGetProperty("ProductNo", out var productNoElement)
+            return document.RootElement.TryGetProperty("ProductNumber", out var productNoElement)
                 ? productNoElement.GetString()
                 : null;
         }
@@ -857,7 +857,7 @@ public class UploadTaskService : IUploadTaskService
             {
                 StationNo = ReadInt(root, "StationNo"),
                 WorkOrderId = FirstNonEmpty(ReadString(root, "SN"), ReadString(root, "WorkOrder")),
-                ProductNo = ReadString(root, "ProductNo")
+                ProductNo = ReadString(root, "ProductNumber")
             };
         }
         catch (JsonException)

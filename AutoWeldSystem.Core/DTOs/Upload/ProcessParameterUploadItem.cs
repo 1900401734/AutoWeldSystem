@@ -2,7 +2,7 @@ namespace AutoWeldSystem.Core.DTOs.Upload;
 
 /// <summary>
 /// MES process parameter upload row.
-/// One row represents one collected weld point under a ProductNo.
+/// One row represents one collected weld point under a ProductNumber.
 /// </summary>
 public sealed class ProcessParameterUploadItem
 {

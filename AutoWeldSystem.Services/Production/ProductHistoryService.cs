@@ -61,7 +61,7 @@ public sealed class ProductHistoryService : IProductHistoryService
                 return ProductHistoryMarkResult.Failed(disabledReason);
             }
 
-            // Product-level marking must update all weld points under the same ProductNo,
+            // Product-level marking must update all weld points under the same ProductNumber,
             // otherwise the process-parameter upload payload would contain mixed IsTest values.
             _dbContext.Db.Updateable<BizWeldPointRecord>()
                 .SetColumns(record => record.IsTest == isTest)
