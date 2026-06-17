@@ -20,6 +20,23 @@ namespace AutoWeldSystem.UI.Forms;
 
 public partial class MainForm : BaseWindow
 {
+    private const int Station2DisplayCreateMaxAttempts = 5;
+    private static readonly TimeSpan Station2DisplayCreateRetryDelay = TimeSpan.FromMilliseconds(800);
+
+    private bool _syncingLanguageSelection;
+    private bool _startupTimeSyncQueued;
+    private bool _station2DisplayCreateFailureNotified;
+
+    private AppSettings _currentSettings;
+    private StationDisplayForm? _station2DisplayForm;
+    private CancellationTokenSource? _station2DisplayCreateRetryCts;
+
+    private readonly PermissionUiBinder _permissionUiBinder;
+    private readonly PlcWriteDebugMessageFilter _plcWriteDebugMessageFilter;
+    private readonly Dictionary<string, UserControl> _viewCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<PageDefinition> _allPages;
+    private readonly List<PageDefinition> _visiblePages = new();
+
     private readonly IServiceProvider _serviceProvider;
     private readonly ISysUserService _userService;
     private readonly ILocalizationService _localizer;
@@ -30,16 +47,6 @@ public partial class MainForm : BaseWindow
     private readonly IProductRealtimePreviewService _productRealtimePreviewService;
     private readonly IProgramManageService _programManageService;
     private readonly IAppSettingsService _settingsService;
-    private AppSettings _currentSettings;
-
-    private readonly PermissionUiBinder _permissionUiBinder;
-    private readonly PlcWriteDebugMessageFilter _plcWriteDebugMessageFilter;
-    private readonly Dictionary<string, UserControl> _viewCache = new(StringComparer.OrdinalIgnoreCase);
-    private readonly List<PageDefinition> _allPages;
-    private readonly List<PageDefinition> _visiblePages = new();
-    private StationDisplayForm? _station2DisplayForm;
-    private bool _syncingLanguageSelection;
-    private bool _startupTimeSyncQueued;
 
     public MainForm(
         IServiceProvider serviceProvider,
@@ -334,7 +341,7 @@ public partial class MainForm : BaseWindow
 
     private void SwitchUser_Click(object? sender, EventArgs e)
     {
-        if (!ConfirmAction(TextKeys.Monitor.Message.SwitchUserConfirm, TextKeys.Monitor.Title.SwitchUserTitle))
+        if (!ConfirmAction(TextKeys.Monitor.Message.SwitchUserConfirm, TextKeys.Monitor.Button.SwitchUser))
         {
             return;
         }
@@ -359,17 +366,24 @@ public partial class MainForm : BaseWindow
     /// </summary>
     private List<PageDefinition> BuildPages()
     {
-        return new List<PageDefinition>
-        {
+        return
+        [
             new(_localizer.GetString(TextKeys.Main.NavMonitor), PermissionCodes.Pages.Monitor, CreatePrimaryMonitorView),
+
             new(_localizer.GetString(TextKeys.Main.NavDataManage), PermissionCodes.Pages.DataManage, () => _serviceProvider.GetRequiredService<DataManageView>()),
+
             new(_localizer.GetString(TextKeys.Main.NavUserManage), PermissionCodes.Pages.UserManage, () => _serviceProvider.GetRequiredService<UserManageView>()),
+
             new(_localizer.GetString(TextKeys.Main.NavProgramManage), PermissionCodes.Pages.ProgramManage, () => _serviceProvider.GetRequiredService<ProgramManageView>()),
+
             new(_localizer.GetString(TextKeys.Main.NavLogManage), PermissionCodes.Pages.LogManage, () => _serviceProvider.GetRequiredService<LogManageView>()),
+
             new(_localizer.GetString(TextKeys.Main.NavStateManage), PermissionCodes.Pages.StateManage, () => _serviceProvider.GetRequiredService<StateManageView>()),
+
             new(_localizer.GetString(TextKeys.Main.NavSystemSetting), PermissionCodes.Pages.SystemSetting, () => _serviceProvider.GetRequiredService<SystemSettingView>()),
+
             new(_localizer.GetString(TextKeys.Main.NavAddressManage), PermissionCodes.Pages.AddressManage, () => _serviceProvider.GetRequiredService<AddressManageView>())
-        };
+        ];
     }
 
     /// <summary>
@@ -426,6 +440,7 @@ public partial class MainForm : BaseWindow
     private MonitorView CreatePrimaryMonitorView()
     {
         var view = _serviceProvider.GetRequiredService<MonitorView>();
+
         var settings = CurrentSettings;
         if (settings.EnableDualStation)
         {
@@ -440,12 +455,22 @@ public partial class MainForm : BaseWindow
 
     private void EnsureStation2DisplayWindow(AppSettings? currentSettings = null)
     {
+        CancelStation2DisplayCreateRetry(resetNotification: true);
+
+        var settings = currentSettings ?? CurrentSettings;
+        TryEnsureStation2DisplayWindow(settings, attempt: 1);
+    }
+
+    /// <summary>
+    /// 尝试创建或刷新工位 2 扩展屏；数据库瞬时繁忙时由调用方安排重试。
+    /// </summary>
+    private void TryEnsureStation2DisplayWindow(AppSettings settings, int attempt)
+    {
         if (IsDisposed || !IsHandleCreated)
         {
             return;
         }
 
-        var settings = currentSettings ?? CurrentSettings;
         if (!settings.EnableDualStation || !_userService.HasPermission(PermissionCodes.Pages.Monitor))
         {
             CloseStation2DisplayWindow();
@@ -474,12 +499,119 @@ public partial class MainForm : BaseWindow
             // remain visible and maximized on an extended monitor.
             _station2DisplayForm.Show();
             _station2DisplayForm.Activate();
+            CancelStation2DisplayCreateRetry(resetNotification: true);
         }
         catch (Exception ex)
         {
             _serviceProvider.GetService<IProgramExceptionLogService>()?
                 .Write(ex, "MainForm.EnsureStation2DisplayWindow");
+
+            if (ShouldRetryStation2DisplayCreate(ex, attempt))
+            {
+                ScheduleStation2DisplayCreateRetry(settings, attempt + 1);
+                return;
+            }
+
+            CancelStation2DisplayCreateRetry(resetNotification: false);
+            ShowStation2DisplayCreateFailureOnce();
         }
+    }
+
+    /// <summary>
+    /// 判断扩展屏创建失败是否属于数据库连接繁忙导致的瞬时异常。
+    /// </summary>
+    private bool ShouldRetryStation2DisplayCreate(Exception exception, int attempt)
+    {
+        if (attempt >= Station2DisplayCreateMaxAttempts)
+        {
+            return false;
+        }
+
+        var detail = exception.ToString();
+        return detail.Contains("MySqlConnection is already in use", StringComparison.OrdinalIgnoreCase)
+            || detail.Contains("Cannot Open when State is Connecting", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// 安排下一次扩展屏创建重试，并保留当前设置快照。
+    /// </summary>
+    private void ScheduleStation2DisplayCreateRetry(AppSettings settings, int nextAttempt)
+    {
+        CancelStation2DisplayCreateRetry(resetNotification: false);
+
+        var retrySettings = settings.Clone();
+        var retryCts = new CancellationTokenSource();
+        _station2DisplayCreateRetryCts = retryCts;
+
+        _ = RetryStation2DisplayCreateAsync(retrySettings, nextAttempt, retryCts.Token);
+    }
+
+    /// <summary>
+    /// 延迟后回到 UI 线程重试创建扩展屏。
+    /// </summary>
+    private async Task RetryStation2DisplayCreateAsync(AppSettings settings, int attempt, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(Station2DisplayCreateRetryDelay, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        RunOnUiThread(
+            () =>
+            {
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    TryEnsureStation2DisplayWindow(settings, attempt);
+                }
+            },
+            "MainForm.Station2DisplayRetry");
+    }
+
+    /// <summary>
+    /// 取消仍在等待的扩展屏创建重试。
+    /// </summary>
+    private void CancelStation2DisplayCreateRetry(bool resetNotification)
+    {
+        var retryCts = _station2DisplayCreateRetryCts;
+        _station2DisplayCreateRetryCts = null;
+        if (retryCts is not null)
+        {
+            retryCts.Cancel();
+            retryCts.Dispose();
+        }
+
+        if (resetNotification)
+        {
+            _station2DisplayCreateFailureNotified = false;
+        }
+    }
+
+    /// <summary>
+    /// 扩展屏最终创建失败时，只向操作员提示一次。
+    /// </summary>
+    private void ShowStation2DisplayCreateFailureOnce()
+    {
+        if (_station2DisplayCreateFailureNotified || IsDisposed)
+        {
+            return;
+        }
+
+        _station2DisplayCreateFailureNotified = true;
+        MessageBox.Show(
+            this,
+            "扩展屏创建失败，请稍后重试或查看异常日志。",
+            "扩展屏创建失败",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Warning);
     }
 
     private void PlaceStation2DisplayWindow(Form form)
@@ -505,6 +637,8 @@ public partial class MainForm : BaseWindow
 
     private void CloseStation2DisplayWindow()
     {
+        CancelStation2DisplayCreateRetry(resetNotification: true);
+
         if (_station2DisplayForm is null)
         {
             return;
@@ -807,10 +941,7 @@ public partial class MainForm : BaseWindow
 
     private static bool SameText(string? left, string? right)
     {
-        return string.Equals(
-            left?.Trim(),
-            right?.Trim(),
-            StringComparison.OrdinalIgnoreCase);
+        return string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
     private int CurrentStationNo
