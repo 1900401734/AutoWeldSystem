@@ -13,11 +13,29 @@ public static class UiColors
     /// </summary>
     public static class Status
     {
+        /// <summary>
+        /// blue
+        /// </summary>
         public static readonly Color Primary = Color.FromArgb(13, 110, 253);
+        /// <summary>
+        /// Green
+        /// </summary>
         public static readonly Color Success = Color.FromArgb(25, 135, 84);
+        /// <summary>
+        /// Orange
+        /// </summary>
         public static readonly Color Business = Color.FromArgb(180, 83, 9);
+        /// <summary>
+        /// Yellow
+        /// </summary>
         public static readonly Color Warning = Color.FromArgb(255, 193, 7);
+        /// <summary>
+        /// Red
+        /// </summary>
         public static readonly Color Danger = Color.FromArgb(220, 53, 69);
+        /// <summary>
+        /// Gray
+        /// </summary>
         public static readonly Color Muted = Color.FromArgb(108, 117, 125);
     }
 
