@@ -95,9 +95,6 @@ public partial class MonitorView : BaseView
 
     #region 运行状态
 
-    private bool _syncingStationSelection;
-    private bool _syncingProcessSelection;
-    private bool _dualStationEnabled;
     private string? _runtimeStatusKey = TextKeys.Monitor.RuntimeStatus.Idle;
     private object[] _runtimeStatusArgs = Array.Empty<object>();
     private string? _runtimeStatusText;
@@ -105,8 +102,11 @@ public partial class MonitorView : BaseView
     private string? _runtimeErrorKey;
     private object[] _runtimeErrorArgs = Array.Empty<object>();
     private string? _runtimeErrorText;
-    private bool _adjustingTitleFont;
 
+    private bool _syncingStationSelection;
+    private bool _syncingProcessSelection;
+    private bool _dualStationEnabled;
+    private bool _adjustingTitleFont;
     private Font? _titleFont;
     private Font? _runtimeMessageFont;
     private Font? _runtimeGroupFont;

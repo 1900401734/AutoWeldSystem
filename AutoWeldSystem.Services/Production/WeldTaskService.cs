@@ -1182,6 +1182,7 @@ public class WeldTaskService : IWeldTaskService
     private BizProgram UpsertProgram(ProgramDataRes detail, string deviceId)
     {
         var entity = _dbContext.Db.Queryable<BizProgram>().First(it => it.ProgramId == detail.Id && it.DeviceId == deviceId);
+
         if (entity is null)
         {
             entity = new BizProgram

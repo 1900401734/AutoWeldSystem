@@ -1,5 +1,8 @@
 ﻿namespace AutoWeldSystem.Core.DTOs.Mes.Response;
 
+/// <summary>
+/// 新增程序时，MES返回报文字段
+/// </summary>
 public class ProgramDataRes
 {
     /// <summary>
@@ -30,12 +33,12 @@ public class ProgramDataRes
     /// <summary>
     /// 产品工号
     /// </summary>
-    public string? ProductNum { get; set; } = string.Empty;
+    public string ProductNum { get; set; } = string.Empty;
 
     /// <summary>
     /// 程序文件，base64字符串文件流，客户端需解析存为文件
     /// </summary>
-    public string? ProgramFile { get; set; }
+    public string ProgramFile { get; set; } = string.Empty;
 
     /// <summary>
     /// 备注

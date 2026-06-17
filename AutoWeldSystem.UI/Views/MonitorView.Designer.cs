@@ -31,14 +31,14 @@ namespace AutoWeldSystem.UI.Views
         private void InitializeComponent()
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(MonitorView));
-            AntdUI.Tabs.StyleLine styleLine1 = new AntdUI.Tabs.StyleLine();
-            DataGridViewCellStyle dataGridViewCellStyle1 = new DataGridViewCellStyle();
-            DataGridViewCellStyle dataGridViewCellStyle2 = new DataGridViewCellStyle();
-            DataGridViewCellStyle dataGridViewCellStyle3 = new DataGridViewCellStyle();
-            DataGridViewCellStyle dataGridViewCellStyle4 = new DataGridViewCellStyle();
-            AntdUI.SegmentedItem segmentedItem1 = new AntdUI.SegmentedItem();
-            AntdUI.SegmentedItem segmentedItem2 = new AntdUI.SegmentedItem();
-            AntdUI.Tabs.StyleLine styleLine2 = new AntdUI.Tabs.StyleLine();
+            AntdUI.Tabs.StyleLine styleLine4 = new AntdUI.Tabs.StyleLine();
+            DataGridViewCellStyle dataGridViewCellStyle5 = new DataGridViewCellStyle();
+            DataGridViewCellStyle dataGridViewCellStyle6 = new DataGridViewCellStyle();
+            DataGridViewCellStyle dataGridViewCellStyle7 = new DataGridViewCellStyle();
+            DataGridViewCellStyle dataGridViewCellStyle8 = new DataGridViewCellStyle();
+            AntdUI.SegmentedItem segmentedItem3 = new AntdUI.SegmentedItem();
+            AntdUI.SegmentedItem segmentedItem4 = new AntdUI.SegmentedItem();
+            AntdUI.Tabs.StyleLine styleLine3 = new AntdUI.Tabs.StyleLine();
             VerticalSplitter = new AntdUI.Splitter();
             tlpLeft = new TableLayoutPanel();
             LeftTopLayout = new TableLayoutPanel();
@@ -362,7 +362,7 @@ namespace AutoWeldSystem.UI.Views
             tabsPreview.Pages.Add(tabsPreview2);
             tabsPreview.SelectedIndex = 1;
             tabsPreview.Size = new Size(1148, 827);
-            tabsPreview.Style = styleLine1;
+            tabsPreview.Style = styleLine4;
             tabsPreview.TabIndex = 6;
             tabsPreview.Text = "tabs1";
             // 
@@ -503,23 +503,23 @@ namespace AutoWeldSystem.UI.Views
             dgvPreview1.BackgroundColor = SystemColors.Control;
             dgvPreview1.BorderStyle = BorderStyle.None;
             dgvPreview1.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
-            dataGridViewCellStyle1.Alignment = DataGridViewContentAlignment.MiddleCenter;
-            dataGridViewCellStyle1.BackColor = SystemColors.Control;
-            dataGridViewCellStyle1.Font = new Font("Microsoft YaHei UI", 10.5F);
-            dataGridViewCellStyle1.ForeColor = SystemColors.WindowText;
-            dataGridViewCellStyle1.SelectionBackColor = SystemColors.ActiveCaption;
-            dataGridViewCellStyle1.SelectionForeColor = SystemColors.HighlightText;
-            dgvPreview1.ColumnHeadersDefaultCellStyle = dataGridViewCellStyle1;
+            dataGridViewCellStyle5.Alignment = DataGridViewContentAlignment.MiddleCenter;
+            dataGridViewCellStyle5.BackColor = SystemColors.Control;
+            dataGridViewCellStyle5.Font = new Font("Microsoft YaHei UI", 10.5F);
+            dataGridViewCellStyle5.ForeColor = SystemColors.WindowText;
+            dataGridViewCellStyle5.SelectionBackColor = SystemColors.ActiveCaption;
+            dataGridViewCellStyle5.SelectionForeColor = SystemColors.HighlightText;
+            dgvPreview1.ColumnHeadersDefaultCellStyle = dataGridViewCellStyle5;
             dgvPreview1.ColumnHeadersHeight = 29;
             dgvPreview1.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
-            dataGridViewCellStyle2.Alignment = DataGridViewContentAlignment.MiddleCenter;
-            dataGridViewCellStyle2.BackColor = SystemColors.Control;
-            dataGridViewCellStyle2.Font = new Font("Microsoft YaHei UI", 10.5F);
-            dataGridViewCellStyle2.ForeColor = SystemColors.GrayText;
-            dataGridViewCellStyle2.SelectionBackColor = SystemColors.Highlight;
-            dataGridViewCellStyle2.SelectionForeColor = SystemColors.HighlightText;
-            dataGridViewCellStyle2.WrapMode = DataGridViewTriState.False;
-            dgvPreview1.DefaultCellStyle = dataGridViewCellStyle2;
+            dataGridViewCellStyle6.Alignment = DataGridViewContentAlignment.MiddleCenter;
+            dataGridViewCellStyle6.BackColor = SystemColors.Control;
+            dataGridViewCellStyle6.Font = new Font("Microsoft YaHei UI", 10.5F);
+            dataGridViewCellStyle6.ForeColor = SystemColors.GrayText;
+            dataGridViewCellStyle6.SelectionBackColor = SystemColors.Highlight;
+            dataGridViewCellStyle6.SelectionForeColor = SystemColors.HighlightText;
+            dataGridViewCellStyle6.WrapMode = DataGridViewTriState.False;
+            dgvPreview1.DefaultCellStyle = dataGridViewCellStyle6;
             dgvPreview1.Dock = DockStyle.Fill;
             dgvPreview1.EnableHeadersVisualStyles = false;
             dgvPreview1.ImeMode = ImeMode.Disable;
@@ -627,23 +627,23 @@ namespace AutoWeldSystem.UI.Views
             dgvPreview2.BackgroundColor = SystemColors.Control;
             dgvPreview2.BorderStyle = BorderStyle.None;
             dgvPreview2.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
-            dataGridViewCellStyle3.Alignment = DataGridViewContentAlignment.MiddleCenter;
-            dataGridViewCellStyle3.BackColor = SystemColors.Control;
-            dataGridViewCellStyle3.Font = new Font("Microsoft YaHei UI", 10.5F);
-            dataGridViewCellStyle3.ForeColor = SystemColors.WindowText;
-            dataGridViewCellStyle3.SelectionBackColor = SystemColors.ActiveCaption;
-            dataGridViewCellStyle3.SelectionForeColor = SystemColors.HighlightText;
-            dgvPreview2.ColumnHeadersDefaultCellStyle = dataGridViewCellStyle3;
+            dataGridViewCellStyle7.Alignment = DataGridViewContentAlignment.MiddleCenter;
+            dataGridViewCellStyle7.BackColor = SystemColors.Control;
+            dataGridViewCellStyle7.Font = new Font("Microsoft YaHei UI", 10.5F);
+            dataGridViewCellStyle7.ForeColor = SystemColors.WindowText;
+            dataGridViewCellStyle7.SelectionBackColor = SystemColors.ActiveCaption;
+            dataGridViewCellStyle7.SelectionForeColor = SystemColors.HighlightText;
+            dgvPreview2.ColumnHeadersDefaultCellStyle = dataGridViewCellStyle7;
             dgvPreview2.ColumnHeadersHeight = 29;
             dgvPreview2.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
-            dataGridViewCellStyle4.Alignment = DataGridViewContentAlignment.MiddleCenter;
-            dataGridViewCellStyle4.BackColor = SystemColors.Control;
-            dataGridViewCellStyle4.Font = new Font("Microsoft YaHei UI", 10.5F);
-            dataGridViewCellStyle4.ForeColor = SystemColors.GrayText;
-            dataGridViewCellStyle4.SelectionBackColor = SystemColors.Highlight;
-            dataGridViewCellStyle4.SelectionForeColor = SystemColors.HighlightText;
-            dataGridViewCellStyle4.WrapMode = DataGridViewTriState.False;
-            dgvPreview2.DefaultCellStyle = dataGridViewCellStyle4;
+            dataGridViewCellStyle8.Alignment = DataGridViewContentAlignment.MiddleCenter;
+            dataGridViewCellStyle8.BackColor = SystemColors.Control;
+            dataGridViewCellStyle8.Font = new Font("Microsoft YaHei UI", 10.5F);
+            dataGridViewCellStyle8.ForeColor = SystemColors.GrayText;
+            dataGridViewCellStyle8.SelectionBackColor = SystemColors.Highlight;
+            dataGridViewCellStyle8.SelectionForeColor = SystemColors.HighlightText;
+            dataGridViewCellStyle8.WrapMode = DataGridViewTriState.False;
+            dgvPreview2.DefaultCellStyle = dataGridViewCellStyle8;
             dgvPreview2.Dock = DockStyle.Fill;
             dgvPreview2.EnableHeadersVisualStyles = false;
             dgvPreview2.ImeMode = ImeMode.Disable;
@@ -805,8 +805,8 @@ namespace AutoWeldSystem.UI.Views
             // tlpStationResult
             // 
             tlpStationResult.ColumnCount = 2;
-            tlpStationResult.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            tlpStationResult.ColumnStyles.Add(new ColumnStyle());
+            tlpStationResult.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            tlpStationResult.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             tlpStationResult.Controls.Add(tagStationResult2, 1, 0);
             tlpStationResult.Controls.Add(tagStationResult1, 0, 0);
             tlpStationResult.Dock = DockStyle.Fill;
@@ -1037,11 +1037,11 @@ namespace AutoWeldSystem.UI.Views
             segmentedStationSwitch.Dock = DockStyle.Fill;
             segmentedStationSwitch.ForeActive = Color.RoyalBlue;
             segmentedStationSwitch.Full = true;
-            segmentedItem1.LocalizationText = "";
-            segmentedItem1.Text = "工位1";
-            segmentedItem2.Text = "工位2";
-            segmentedStationSwitch.Items.Add(segmentedItem1);
-            segmentedStationSwitch.Items.Add(segmentedItem2);
+            segmentedItem3.LocalizationText = "";
+            segmentedItem3.Text = "工位1";
+            segmentedItem4.Text = "工位2";
+            segmentedStationSwitch.Items.Add(segmentedItem3);
+            segmentedStationSwitch.Items.Add(segmentedItem4);
             segmentedStationSwitch.Location = new Point(0, 0);
             segmentedStationSwitch.Margin = new Padding(0);
             segmentedStationSwitch.Name = "segmentedStationSwitch";
@@ -1176,12 +1176,12 @@ namespace AutoWeldSystem.UI.Views
             lblVersion.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblVersion.Dock = DockStyle.Right;
             lblVersion.Font = new Font("Microsoft YaHei UI", 9F);
-            lblVersion.Location = new Point(331, 0);
+            lblVersion.Location = new Point(358, 0);
             lblVersion.Name = "lblVersion";
             lblVersion.Prefix = "v";
-            lblVersion.Size = new Size(70, 36);
+            lblVersion.Size = new Size(43, 36);
             lblVersion.TabIndex = 2;
-            lblVersion.Text = "Version";
+            lblVersion.Text = "x.x.x";
             lblVersion.TextAlign = ContentAlignment.BottomRight;
             // 
             // lblCurTime
@@ -1664,7 +1664,7 @@ namespace AutoWeldSystem.UI.Views
             tabsMetrics.Pages.Add(tabsMetrics1);
             tabsMetrics.Pages.Add(tabsMetrics2);
             tabsMetrics.Size = new Size(407, 218);
-            tabsMetrics.Style = styleLine2;
+            tabsMetrics.Style = styleLine3;
             tabsMetrics.TabIndex = 5;
             tabsMetrics.Text = "tabsMetrics";
             // 
