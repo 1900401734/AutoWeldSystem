@@ -32,9 +32,9 @@ public partial class SystemSettingView : BaseView
 
     private static readonly ProcessParameterDeviceTypeOption[] ProcessParameterDeviceTypeOptions =
     {
-        new("电磁系统", ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic, ApiCode.EMWeldDetail_001, "EMWeldDetail"),
-        new("整件系统-检测设备", ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck, ApiCode.WholePieceCheckDetail_001, "WholePieceCheckDetail"),
-        new("整件系统-点焊设备", ProductionConstants.ProcessParameterDeviceTypes.WholePieceWeld, ApiCode.WholePieceWeldDetail_001, "WholePieceWeldDetail")
+        new("电磁系统", ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic),
+        new("整件系统-检测设备", ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck),
+        new("整件系统-点焊设备", ProductionConstants.ProcessParameterDeviceTypes.WholePieceWeld)
     };
 
     private readonly IAppSettingsService _settingsService;
@@ -51,14 +51,7 @@ public partial class SystemSettingView : BaseView
     private string _selectedPlcType = AppConstants.PlcTypes.ModbusTcp;
     private UploadMode _selectedUploadMode = UploadMode.Quantity;
     private string _selectedProcessParameterDeviceType = ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic;
-    private AppSettings _currentSettings = new();
-
-    private readonly Label _lblProcessParameterDeviceType = new();
-    private readonly Label _lblProcessParameterApiCode = new();
-    private readonly Label _lblProcessParameterApiName = new();
-    private readonly AntdUI.Select _selectProcessParameterDeviceType = new();
-    private readonly AntdUI.Input _inputProcessParameterApiCode = new();
-    private readonly AntdUI.Input _inputProcessParameterApiName = new();
+    private AppSettings _currentSettings;
 
     public SystemSettingView(
         IAppSettingsService settingsService,
@@ -77,7 +70,6 @@ public partial class SystemSettingView : BaseView
         _plcCommunicationService = plcCommunicationService;
         _weldTaskService = weldTaskService;
 
-        InitializeProcessParameterControls();
         WireEvents();
     }
 
@@ -101,7 +93,7 @@ public partial class SystemSettingView : BaseView
     }
 
     /// <summary>
-    /// 统一绑定运行时事件，避免逻辑散落在 Designer 文件里。
+    /// 统一绑定运行时事件，便于集中维护按钮和下拉框行为。
     /// </summary>
     private void WireEvents()
     {
@@ -118,68 +110,7 @@ public partial class SystemSettingView : BaseView
         selectUploadMode.SelectedIndexChanged += SelectUploadMode_SelectedIndexChanged;
         chkEnableDualStation.CheckedChanged += ChkEnableDualStation_CheckedChanged;
         chkEnableDualWorkOrder.CheckedChanged += ChkEnableDualWorkOrder_CheckedChanged;
-        _selectProcessParameterDeviceType.SelectedIndexChanged += SelectProcessParameterDeviceType_SelectedIndexChanged;
-    }
-
-    /// <summary>
-    /// 在 MES 配置区追加过程参数接口配置控件，避免手动改 Designer 造成布局噪声。
-    /// </summary>
-    private void InitializeProcessParameterControls()
-    {
-        tableLayoutPanelMesConfig.SuspendLayout();
-        try
-        {
-            tableLayoutPanelMesConfig.RowCount = Math.Max(tableLayoutPanelMesConfig.RowCount, 5);
-            while (tableLayoutPanelMesConfig.RowStyles.Count < tableLayoutPanelMesConfig.RowCount)
-            {
-                tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
-            }
-
-            for (var index = 0; index < tableLayoutPanelMesConfig.RowStyles.Count; index++)
-            {
-                tableLayoutPanelMesConfig.RowStyles[index].SizeType = SizeType.Absolute;
-                tableLayoutPanelMesConfig.RowStyles[index].Height = 34F;
-            }
-
-            grpMesConfig.Height = Math.Max(grpMesConfig.Height, 206);
-            tableLayoutPanelMesConfig.Height = 170;
-            ConfigureProcessParameterLabel(_lblProcessParameterDeviceType);
-            ConfigureProcessParameterLabel(_lblProcessParameterApiCode);
-            ConfigureProcessParameterLabel(_lblProcessParameterApiName);
-            ConfigureProcessParameterSelect(_selectProcessParameterDeviceType);
-            ConfigureProcessParameterInput(_inputProcessParameterApiCode);
-            ConfigureProcessParameterInput(_inputProcessParameterApiName);
-
-            tableLayoutPanelMesConfig.Controls.Add(_lblProcessParameterDeviceType, 0, 2);
-            tableLayoutPanelMesConfig.Controls.Add(_selectProcessParameterDeviceType, 1, 2);
-            tableLayoutPanelMesConfig.Controls.Add(_lblProcessParameterApiCode, 0, 3);
-            tableLayoutPanelMesConfig.Controls.Add(_inputProcessParameterApiCode, 1, 3);
-            tableLayoutPanelMesConfig.Controls.Add(_lblProcessParameterApiName, 0, 4);
-            tableLayoutPanelMesConfig.Controls.Add(_inputProcessParameterApiName, 1, 4);
-        }
-        finally
-        {
-            tableLayoutPanelMesConfig.ResumeLayout();
-        }
-    }
-
-    private static void ConfigureProcessParameterLabel(Label label)
-    {
-        label.AutoSize = true;
-        label.Dock = DockStyle.Fill;
-        label.TextAlign = ContentAlignment.MiddleLeft;
-    }
-
-    private static void ConfigureProcessParameterSelect(AntdUI.Select select)
-    {
-        select.Dock = DockStyle.Fill;
-        select.Margin = new Padding(0, 2, 0, 2);
-    }
-
-    private static void ConfigureProcessParameterInput(AntdUI.Input input)
-    {
-        input.Dock = DockStyle.Fill;
-        input.Margin = new Padding(0, 2, 0, 2);
+        selectProcessParameterDeviceType.SelectedIndexChanged += SelectProcessParameterDeviceType_SelectedIndexChanged;
     }
 
     #region Events Handler
@@ -353,8 +284,6 @@ public partial class SystemSettingView : BaseView
 
         var option = ProcessParameterDeviceTypeOptions[e.Value];
         _selectedProcessParameterDeviceType = option.Value;
-        _inputProcessParameterApiCode.Text = option.ApiCode.ToString();
-        _inputProcessParameterApiName.Text = option.ApiName;
     }
 
     private void ChkEnableDualStation_CheckedChanged(object sender, AntdUI.BoolEventArgs e)
@@ -454,10 +383,6 @@ public partial class SystemSettingView : BaseView
         _selectedPlcType = NormalizePlcType(settings.PlcType);
         _selectedUploadMode = NormalizeUploadMode(settings.UploadMode);
         _selectedProcessParameterDeviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
-        _inputProcessParameterApiCode.Text = NormalizeProcessParameterApiCode(settings.ProcessParameterApiCode).ToString();
-        _inputProcessParameterApiName.Text = string.IsNullOrWhiteSpace(settings.ProcessParameterApiName)
-            ? ResolveDefaultProcessParameterApiName(settings.ProcessParameterApiCode)
-            : settings.ProcessParameterApiName.Trim();
         inputUploadBatchSize.Text = Math.Max(1, settings.UploadBatchSize).ToString(CultureInfo.InvariantCulture);
         BindPlcTypeOptions();
         BindUploadModeOptions();
@@ -466,7 +391,7 @@ public partial class SystemSettingView : BaseView
     }
 
     /// <summary>
-    /// 页面静态文本不依赖 Designer 资源切换，这里手动统一设置。
+    /// 根据当前语言回填页面静态文本。
     /// </summary>
     private void ApplyLocalizedTexts()
     {
@@ -493,15 +418,14 @@ public partial class SystemSettingView : BaseView
         lblDeviceName.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDeviceName);
         lblDeviceUrl.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDeviceStatusUrl);
         lblMesUrl.Text = _localizer.GetString(TextKeys.SystemSetting.LabelMesUrl);
+        label1.Text = "MES超时(s)";
 
         lblLogPath.Text = _localizer.GetString(TextKeys.SystemSetting.LabelLogPath);
         lblDataPath.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDataPath);
         lblUploadMode.Text = _localizer.GetString(TextKeys.SystemSetting.UploadMode);
         lblUploadBatchSize.Text = _localizer.GetString(TextKeys.SystemSetting.UploadBatchSize);
         lblPlcHeartbeatInterval.Text = _localizer.GetString(TextKeys.SystemSetting.PlcHeartbeatRate);
-        _lblProcessParameterDeviceType.Text = "过程参数设备类型";
-        _lblProcessParameterApiCode.Text = "过程参数接口编码";
-        _lblProcessParameterApiName.Text = "过程参数接口名称";
+        lblProcessParameterDeviceType.Text = "过程参数设备类型";
 
         BindUploadModeOptions();
         BindProcessParameterDeviceTypeOptions();
@@ -564,14 +488,14 @@ public partial class SystemSettingView : BaseView
         _syncingProcessParameterDeviceTypeSelection = true;
         try
         {
-            _selectProcessParameterDeviceType.Items.Clear();
-            _selectProcessParameterDeviceType.Items.AddRange(ProcessParameterDeviceTypeOptions
+            selectProcessParameterDeviceType.Items.Clear();
+            selectProcessParameterDeviceType.Items.AddRange(ProcessParameterDeviceTypeOptions
                 .Select(option => (object)option.DisplayName)
                 .ToArray());
 
             var selectedIndex = Array.FindIndex(ProcessParameterDeviceTypeOptions, option =>
                 string.Equals(option.Value, _selectedProcessParameterDeviceType, StringComparison.OrdinalIgnoreCase));
-            _selectProcessParameterDeviceType.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+            selectProcessParameterDeviceType.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
         }
         finally
         {
@@ -795,21 +719,6 @@ public partial class SystemSettingView : BaseView
             return false;
         }
 
-        var processParameterApiCodeText = _inputProcessParameterApiCode.Text.Trim();
-        if (!Enum.TryParse<ApiCode>(processParameterApiCodeText, ignoreCase: true, out var processParameterApiCode)
-            || !Enum.IsDefined(typeof(ApiCode), processParameterApiCode))
-        {
-            ShowWarningMessage("过程参数接口编码必须是有效的 ApiCode 枚举值。");
-            return false;
-        }
-
-        var processParameterApiName = _inputProcessParameterApiName.Text.Trim();
-        if (string.IsNullOrWhiteSpace(processParameterApiName))
-        {
-            ShowWarningMessage("过程参数接口名称不能为空。");
-            return false;
-        }
-
         settings.DeviceId = deviceId;
         settings.DeviceName = deviceName;
         settings.DeviceBaseUrl = deviceStatusUrl;
@@ -831,8 +740,6 @@ public partial class SystemSettingView : BaseView
         settings.UploadMode = NormalizeUploadMode(_selectedUploadMode);
         settings.UploadBatchSize = Math.Max(1, uploadBatchSize);
         settings.ProcessParameterDeviceType = NormalizeProcessParameterDeviceType(_selectedProcessParameterDeviceType);
-        settings.ProcessParameterApiCode = processParameterApiCode;
-        settings.ProcessParameterApiName = processParameterApiName;
         return true;
     }
 
@@ -1004,19 +911,6 @@ public partial class SystemSettingView : BaseView
             : ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic;
     }
 
-    private static ApiCode NormalizeProcessParameterApiCode(ApiCode apiCode)
-    {
-        return Enum.IsDefined(typeof(ApiCode), apiCode)
-            ? apiCode
-            : ApiCode.EMWeldDetail_001;
-    }
-
-    private static string ResolveDefaultProcessParameterApiName(ApiCode apiCode)
-    {
-        return ProcessParameterDeviceTypeOptions.FirstOrDefault(option => option.ApiCode == apiCode)?.ApiName
-            ?? "EMWeldDetail";
-    }
-
     private AppSettings CurrentSettings => Volatile.Read(ref _currentSettings);
 
     private void ShowInfo(string messageKey, params object[] args)
@@ -1053,5 +947,5 @@ public partial class SystemSettingView : BaseView
 
     private sealed record UploadModeOption(UploadMode Value, string DisplayName);
 
-    private sealed record ProcessParameterDeviceTypeOption(string DisplayName, string Value, ApiCode ApiCode, string ApiName);
+    private sealed record ProcessParameterDeviceTypeOption(string DisplayName, string Value);
 }

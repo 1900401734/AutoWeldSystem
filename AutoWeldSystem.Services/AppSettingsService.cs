@@ -2,7 +2,6 @@ using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Data;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Constants;
-using AutoWeldSystem.Core.Enums;
 using AutoWeldSystem.Core.Runtime;
 using System.Reflection;
 
@@ -121,19 +120,11 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
     }
 
     /// <summary>
-    /// 补齐升级后可能为空的过程参数接口配置，避免上传时拿到空接口名。
+    /// 归一化过程参数设备类型，避免历史配置或空值导致上传接口映射落不到默认设备类型。
     /// </summary>
     private static void Normalize(AppSettings settings)
     {
         settings.ProcessParameterDeviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
-        if (!Enum.IsDefined(typeof(ApiCode), settings.ProcessParameterApiCode))
-        {
-            settings.ProcessParameterApiCode = ApiCode.EMWeldDetail_001;
-        }
-
-        settings.ProcessParameterApiName = string.IsNullOrWhiteSpace(settings.ProcessParameterApiName)
-            ? ResolveDefaultProcessParameterApiName(settings.ProcessParameterApiCode)
-            : settings.ProcessParameterApiName.Trim();
     }
 
     private static string NormalizeProcessParameterDeviceType(string? value)
@@ -146,13 +137,4 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
         };
     }
 
-    private static string ResolveDefaultProcessParameterApiName(ApiCode apiCode)
-    {
-        return apiCode switch
-        {
-            ApiCode.WholePieceCheckDetail_001 => "WholePieceCheckDetail",
-            ApiCode.WholePieceWeldDetail_001 => "WholePieceWeldDetail",
-            _ => "EMWeldDetail"
-        };
-    }
 }

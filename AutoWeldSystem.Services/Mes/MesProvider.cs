@@ -233,17 +233,34 @@ public class MesProvider : IMesProvider, IDisposable
     public Task<BasicRes<object>> UploadProcessParametersAsync(IReadOnlyList<ProcessParameterUploadItem> requestData, CancellationToken cancellationToken = default)
     {
         var settings = CurrentSettings;
-        var apiName = string.IsNullOrWhiteSpace(settings.ProcessParameterApiName)
-            ? "EMWeldDetail"
-            : settings.ProcessParameterApiName.Trim();
+        var apiConfig = ResolveProcessParameterApiConfig(settings);
 
         return PostAsync<IReadOnlyList<ProcessParameterUploadItem>, object>(
             AppConstants.MesLogPurposes.UploadProcessParameters,
             "api/PostData",
-            settings.ProcessParameterApiCode,
-            apiName,
+            apiConfig.ApiCode,
+            apiConfig.ApiName,
             requestData,
             cancellationToken);
+    }
+
+    /// <summary>
+    /// 过程参数接口由程序按设备类型固定映射，界面只负责选择设备类型。
+    /// </summary>
+    private static ProcessParameterApiConfig ResolveProcessParameterApiConfig(AppSettings settings)
+    {
+        return settings.ProcessParameterDeviceType?.Trim() switch
+        {
+            ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck => new ProcessParameterApiConfig(
+                ApiCode.WholePieceCheckDetail_001,
+                "WholePieceCheckDetail"),
+            ProductionConstants.ProcessParameterDeviceTypes.WholePieceWeld => new ProcessParameterApiConfig(
+                ApiCode.WholePieceWeldDetail_001,
+                "WholePieceWeldDetail"),
+            _ => new ProcessParameterApiConfig(
+                ApiCode.EMWeldDetail_001,
+                "EMWeldDetail")
+        };
     }
 
     private async Task<BasicRes<T>> GetAsync<T>(string purpose, string apiCode, IDictionary<string, string?>? query,
@@ -596,6 +613,8 @@ public class MesProvider : IMesProvider, IDisposable
     {
         _settingsService.SettingsChanged -= SettingsService_SettingsChanged;
     }
+
+    private sealed record ProcessParameterApiConfig(ApiCode ApiCode, string ApiName);
 
     private AppSettings CurrentSettings => Volatile.Read(ref _currentSettings);
 

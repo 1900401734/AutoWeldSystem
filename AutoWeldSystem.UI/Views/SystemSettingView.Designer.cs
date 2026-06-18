@@ -77,6 +77,8 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanel4 = new TableLayoutPanel();
             label1 = new AntdUI.Label();
             input_MesTimeout = new AntdUI.InputNumber();
+            lblProcessParameterDeviceType = new AntdUI.Label();
+            selectProcessParameterDeviceType = new AntdUI.Select();
             grpDeviceConfig = new GroupBox();
             layoutDeviceNoConfig = new TableLayoutPanel();
             tlpDeviceId = new TableLayoutPanel();
@@ -866,51 +868,56 @@ namespace AutoWeldSystem.UI.Views
             grpMesConfig.Controls.Add(tableLayoutPanelMesConfig);
             grpMesConfig.Location = new Point(919, 176);
             grpMesConfig.Name = "grpMesConfig";
-            grpMesConfig.Size = new Size(538, 104);
+            grpMesConfig.Size = new Size(538, 138);
             grpMesConfig.TabIndex = 3;
             grpMesConfig.TabStop = false;
-            grpMesConfig.Text = "MES配置";
+            grpMesConfig.Text = "MES Config";
             // 
             // tableLayoutPanelMesConfig
             // 
             tableLayoutPanelMesConfig.ColumnCount = 2;
-            tableLayoutPanelMesConfig.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            tableLayoutPanelMesConfig.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            tableLayoutPanelMesConfig.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190F));
+            tableLayoutPanelMesConfig.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             tableLayoutPanelMesConfig.Controls.Add(chkUseProductNumberFilter, 0, 0);
             tableLayoutPanelMesConfig.Controls.Add(tableLayoutPanel4, 0, 1);
+            tableLayoutPanelMesConfig.Controls.Add(lblProcessParameterDeviceType, 0, 2);
+            tableLayoutPanelMesConfig.Controls.Add(selectProcessParameterDeviceType, 1, 2);
             tableLayoutPanelMesConfig.Dock = DockStyle.Fill;
             tableLayoutPanelMesConfig.Location = new Point(3, 23);
             tableLayoutPanelMesConfig.Name = "tableLayoutPanelMesConfig";
-            tableLayoutPanelMesConfig.RowCount = 2;
-            tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
-            tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
-            tableLayoutPanelMesConfig.Size = new Size(532, 78);
+            tableLayoutPanelMesConfig.RowCount = 3;
+            tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
+            tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
+            tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
+            tableLayoutPanelMesConfig.Size = new Size(532, 112);
             tableLayoutPanelMesConfig.TabIndex = 0;
             // 
             // chkUseProductNumberFilter
             // 
+            tableLayoutPanelMesConfig.SetColumnSpan(chkUseProductNumberFilter, 2);
             chkUseProductNumberFilter.Dock = DockStyle.Fill;
             chkUseProductNumberFilter.Location = new Point(0, 0);
             chkUseProductNumberFilter.Margin = new Padding(0);
             chkUseProductNumberFilter.Name = "chkUseProductNumberFilter";
-            chkUseProductNumberFilter.Size = new Size(266, 39);
+            chkUseProductNumberFilter.Size = new Size(532, 34);
             chkUseProductNumberFilter.TabIndex = 0;
-            chkUseProductNumberFilter.Text = "使用产品编号过滤";
+            chkUseProductNumberFilter.Text = "Use product number filter";
             // 
             // tableLayoutPanel4
             // 
             tableLayoutPanel4.ColumnCount = 2;
+            tableLayoutPanelMesConfig.SetColumnSpan(tableLayoutPanel4, 2);
             tableLayoutPanel4.ColumnStyles.Add(new ColumnStyle());
             tableLayoutPanel4.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             tableLayoutPanel4.Controls.Add(label1, 0, 0);
             tableLayoutPanel4.Controls.Add(input_MesTimeout, 1, 0);
             tableLayoutPanel4.Dock = DockStyle.Fill;
-            tableLayoutPanel4.Location = new Point(0, 39);
+            tableLayoutPanel4.Location = new Point(0, 34);
             tableLayoutPanel4.Margin = new Padding(0);
             tableLayoutPanel4.Name = "tableLayoutPanel4";
             tableLayoutPanel4.RowCount = 1;
             tableLayoutPanel4.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tableLayoutPanel4.Size = new Size(266, 39);
+            tableLayoutPanel4.Size = new Size(532, 34);
             tableLayoutPanel4.TabIndex = 1;
             // 
             // label1
@@ -921,21 +928,43 @@ namespace AutoWeldSystem.UI.Views
             label1.Margin = new Padding(0);
             label1.Name = "label1";
             label1.Padding = new Padding(8, 0, 0, 0);
-            label1.Size = new Size(84, 39);
+            label1.Size = new Size(112, 34);
             label1.TabIndex = 0;
-            label1.Text = "MES超时(s)";
+            label1.Text = "MES Timeout(s)";
             // 
             // input_MesTimeout
             // 
             input_MesTimeout.Dock = DockStyle.Fill;
-            input_MesTimeout.Location = new Point(84, 0);
+            input_MesTimeout.Location = new Point(112, 0);
             input_MesTimeout.Margin = new Padding(0);
             input_MesTimeout.Name = "input_MesTimeout";
-            input_MesTimeout.Size = new Size(182, 39);
+            input_MesTimeout.Size = new Size(420, 34);
             input_MesTimeout.TabIndex = 1;
-            // 
+            input_MesTimeout.Text = "0";
+            //
+            // lblProcessParameterDeviceType
+            //
+            lblProcessParameterDeviceType.AutoSizeMode = AntdUI.TAutoSize.Width;
+            lblProcessParameterDeviceType.Dock = DockStyle.Fill;
+            lblProcessParameterDeviceType.Location = new Point(0, 68);
+            lblProcessParameterDeviceType.Margin = new Padding(0);
+            lblProcessParameterDeviceType.Name = "lblProcessParameterDeviceType";
+            lblProcessParameterDeviceType.Padding = new Padding(8, 0, 0, 0);
+            lblProcessParameterDeviceType.Size = new Size(164, 34);
+            lblProcessParameterDeviceType.TabIndex = 2;
+            lblProcessParameterDeviceType.Text = "Process parameter type";
+            //
+            // selectProcessParameterDeviceType
+            //
+            selectProcessParameterDeviceType.Dock = DockStyle.Fill;
+            selectProcessParameterDeviceType.Location = new Point(190, 70);
+            selectProcessParameterDeviceType.Margin = new Padding(0, 2, 0, 2);
+            selectProcessParameterDeviceType.Name = "selectProcessParameterDeviceType";
+            selectProcessParameterDeviceType.Size = new Size(342, 30);
+            selectProcessParameterDeviceType.TabIndex = 3;
+            //
             // grpDeviceConfig
-            // 
+            //
             grpDeviceConfig.Controls.Add(layoutDeviceNoConfig);
             grpDeviceConfig.Location = new Point(312, 6);
             grpDeviceConfig.Margin = new Padding(0);
@@ -944,9 +973,9 @@ namespace AutoWeldSystem.UI.Views
             grpDeviceConfig.TabIndex = 0;
             grpDeviceConfig.TabStop = false;
             grpDeviceConfig.Text = "设备编号管理";
-            // 
+            //
             // layoutDeviceNoConfig
-            // 
+            //
             layoutDeviceNoConfig.ColumnCount = 1;
             layoutDeviceNoConfig.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             layoutDeviceNoConfig.Controls.Add(tlpDeviceId, 0, 0);
@@ -1196,6 +1225,7 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanelHeartbeat.PerformLayout();
             grpMesConfig.ResumeLayout(false);
             tableLayoutPanelMesConfig.ResumeLayout(false);
+            tableLayoutPanelMesConfig.PerformLayout();
             tableLayoutPanel4.ResumeLayout(false);
             tableLayoutPanel4.PerformLayout();
             grpDeviceConfig.ResumeLayout(false);
@@ -1289,5 +1319,7 @@ namespace AutoWeldSystem.UI.Views
         private TableLayoutPanel tableLayoutPanel4;
         private AntdUI.Label label1;
         private AntdUI.InputNumber input_MesTimeout;
+        private AntdUI.Label lblProcessParameterDeviceType;
+        private AntdUI.Select selectProcessParameterDeviceType;
     }
 }
