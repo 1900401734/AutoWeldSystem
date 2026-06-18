@@ -65,13 +65,6 @@ public class MesProvider : IMesProvider, IDisposable
         => GetAsync<ServerTimeRes>(AppConstants.MesLogPurposes.GetServerTime, "api/ServerTime", null, cancellationToken);
 
     /// <summary>
-    /// 后台连接监控专用探测。
-    /// 探测请求只服务于在线状态判断，不写入交互日志，避免日志界面被高频心跳刷新。
-    /// </summary>
-    public Task<BasicRes<ServerTimeRes>> ProbeServerTimeAsync(CancellationToken cancellationToken = default)
-        => GetAsync<ServerTimeRes>(AppConstants.MesLogPurposes.GetServerTime, "api/ServerTime", null, cancellationToken, writeLog: false);
-
-    /// <summary>
     /// 使用设置页里临时输入的地址测试 MES 连通性。
     /// 不直接写库，这样用户可以先测通再保存。
     /// </summary>
