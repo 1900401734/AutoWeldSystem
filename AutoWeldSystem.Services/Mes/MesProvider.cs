@@ -231,13 +231,20 @@ public class MesProvider : IMesProvider, IDisposable
     /// MES 文档要求 Data 为焊点参数数组，路径固定为 /api/PostData。
     /// </summary>
     public Task<BasicRes<object>> UploadProcessParametersAsync(IReadOnlyList<ProcessParameterUploadItem> requestData, CancellationToken cancellationToken = default)
-        => PostAsync<IReadOnlyList<ProcessParameterUploadItem>, object>(
+    {
+        var settings = CurrentSettings;
+        var apiName = string.IsNullOrWhiteSpace(settings.ProcessParameterApiName)
+            ? "EMWeldDetail"
+            : settings.ProcessParameterApiName.Trim();
+
+        return PostAsync<IReadOnlyList<ProcessParameterUploadItem>, object>(
             AppConstants.MesLogPurposes.UploadProcessParameters,
             "api/PostData",
-            ApiCode.EMWeldDetail_001,
-            "EMWeldDetail",
+            settings.ProcessParameterApiCode,
+            apiName,
             requestData,
             cancellationToken);
+    }
 
     private async Task<BasicRes<T>> GetAsync<T>(string purpose, string apiCode, IDictionary<string, string?>? query,
         CancellationToken cancellationToken, string? baseUrlOverride = null, int? timeoutSecondsOverride = null, bool writeLog = true)

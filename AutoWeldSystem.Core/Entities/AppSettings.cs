@@ -67,6 +67,15 @@ public class AppSettings
     [SugarColumn(ColumnDescription = "MES超时时间（秒）")]
     public int MesTimeoutSeconds { get; set; } = 10;
 
+    [SugarColumn(Length = 50, ColumnDescription = "过程参数设备类型")]
+    public string ProcessParameterDeviceType { get; set; } = ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic;
+
+    [SugarColumn(ColumnDescription = "过程参数接口编码")]
+    public ApiCode ProcessParameterApiCode { get; set; } = ApiCode.EMWeldDetail_001;
+
+    [SugarColumn(Length = 100, ColumnDescription = "过程参数接口名称")]
+    public string ProcessParameterApiName { get; set; } = "EMWeldDetail";
+
     #endregion
 
     #region 生产配置

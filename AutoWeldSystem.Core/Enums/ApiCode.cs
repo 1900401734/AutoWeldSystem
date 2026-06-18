@@ -20,6 +20,10 @@ public enum ApiCode
     common_007,
     [Description("下载程序")]
     common_008,
-    [Description("采集参数上传")]
-    EMWeldDetail_001
+    [Description("电磁系统采集参数上传")]
+    EMWeldDetail_001,
+    [Description("整件系统-检测设备采集参数上传")]
+    WholePieceCheckDetail_001,
+    [Description("整件系统-点焊设备采集参数上传")]
+    WholePieceWeldDetail_001
 }

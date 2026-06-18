@@ -154,6 +154,16 @@ public static class ProductionConstants
     }
 
     /// <summary>
+    /// 过程参数上传设备类型。
+    /// </summary>
+    public static class ProcessParameterDeviceTypes
+    {
+        public const string Electromagnetic = "Electromagnetic";
+        public const string WholePieceCheck = "WholePieceCheck";
+        public const string WholePieceWeld = "WholePieceWeld";
+    }
+
+    /// <summary>
     /// Station test result values. PLC raw value 3 means OK; all other values are NG.
     /// </summary>
     public static class TestResults
