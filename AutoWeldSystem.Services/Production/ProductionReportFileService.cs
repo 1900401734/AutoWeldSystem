@@ -16,6 +16,22 @@ namespace AutoWeldSystem.Services.Production;
 /// </summary>
 public class ProductionReportFileService : IProductionReportFileService
 {
+    private const string ColumnStationNo = "station_no";
+    private const string ColumnProductNo = "product_no";
+    private const string ColumnProductResult = "product_result";
+    private const string ColumnTouchNo = "touch_no";
+    private const string ColumnTouchResult = "touch_result";
+    private const string ColumnWorkOrder = "work_order";
+    private const string ColumnBatch = "batch";
+    private const string ColumnQuantity = "quantity";
+    private const string ColumnPartName = "part_name";
+    private const string ColumnProcessNo = "process_no";
+    private const string ColumnOperator = "operator";
+    private const string ColumnRecordTime = "record_time";
+    private const string ReportRoleActual = "actual";
+    private const string ReportRoleUpper = "upper";
+    private const string ReportRoleLower = "lower";
+    private const string ReportRoleResult = "result";
     private const string HeaderStationNo = "工位";
     private const string HeaderProductNo = "产品编号";
     private const string HeaderProductResult = "产品结果";
@@ -29,40 +45,6 @@ public class ProductionReportFileService : IProductionReportFileService
     private const string HeaderOperator = "操作人员";
     private const string HeaderRecordTime = "日期";
     private const string ReportFormat = "XLSX";
-
-    private static readonly string[] LeadingHeaders =
-    {
-        HeaderStationNo,
-        HeaderProductNo,
-        HeaderProductResult,
-        HeaderTouchNo,
-        HeaderTouchResult
-    };
-
-    private static readonly string[] TrailingHeaders =
-    {
-        HeaderWorkOrder,
-        HeaderBatch,
-        HeaderQuantity,
-        HeaderPartName,
-        HeaderProcessNo,
-        HeaderOperator,
-        HeaderRecordTime
-    };
-
-    private static readonly HashSet<string> ProductMergeHeaders = new(StringComparer.OrdinalIgnoreCase)
-    {
-        HeaderStationNo,
-        HeaderProductNo,
-        HeaderProductResult,
-        HeaderWorkOrder,
-        HeaderBatch,
-        HeaderQuantity,
-        HeaderPartName,
-        HeaderProcessNo,
-        HeaderOperator,
-        HeaderRecordTime
-    };
 
     private readonly SqlSugarDbContext _dbContext;
     private readonly IAppSettingsService _settingsService;
@@ -97,7 +79,7 @@ public class ProductionReportFileService : IProductionReportFileService
                 .ToList();
 
             Directory.CreateDirectory(Path.GetDirectoryName(report.FilePath)!);
-            WriteXlsx(report.FilePath, BuildHeaders(task), records, task);
+            WriteXlsx(report.FilePath, BuildReportSchema(task), records, task);
 
             report.FileFormat = ReportFormat;
             report.UploadStatus = ProductionConstants.UploadStatuses.Pending;
@@ -162,46 +144,49 @@ public class ProductionReportFileService : IProductionReportFileService
             : existingReports.Max(report => report.SequenceNo) + 1;
     }
 
-    private string[] BuildHeaders(BizWeldTask task)
+    private ReportSchema BuildReportSchema(BizWeldTask task)
     {
-        var dynamicHeaders = GetSchemeItemsForTask(task)
-            .SelectMany(BuildItemHeaders)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Where(header => !LeadingHeaders.Contains(header, StringComparer.OrdinalIgnoreCase))
-            .Where(header => !TrailingHeaders.Contains(header, StringComparer.OrdinalIgnoreCase));
+        var config = ResolveProductProcessConfig(task);
+        var displayOptions = ReportDisplayOptions.FromConfig(config);
+        var schemeItems = GetSchemeItemsForConfig(config);
+        var leadingColumns = BuildLeadingColumns(displayOptions);
+        var dynamicColumns = schemeItems.SelectMany(BuildItemColumns);
+        var trailingColumns = BuildTrailingColumns();
+        var columns = leadingColumns
+            .Concat(dynamicColumns)
+            .Concat(trailingColumns)
+            .DistinctBy(column => column.Key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-        return LeadingHeaders
-            .Concat(dynamicHeaders)
-            .Concat(TrailingHeaders)
-            .ToArray();
+        return new ReportSchema(columns, schemeItems, displayOptions);
     }
 
     private void WriteXlsx(
         string filePath,
-        IReadOnlyList<string> headers,
+        ReportSchema schema,
         IReadOnlyList<BizWeldPointRecord> records,
         BizWeldTask task)
     {
         using var workbook = new XLWorkbook();
         var worksheet = workbook.Worksheets.Add("生产报表");
-        WriteHeaderRow(worksheet, headers);
-        WriteDataRows(worksheet, headers, records, task);
-        MergeRepeatedProductFields(worksheet, headers, records);
-        ApplyWorksheetStyle(worksheet, headers.Count, records.Count);
+        WriteHeaderRow(worksheet, schema.Columns);
+        WriteDataRows(worksheet, schema, records, task);
+        MergeRepeatedProductFields(worksheet, schema.Columns, records);
+        ApplyWorksheetStyle(worksheet, schema.Columns.Count, records.Count);
         workbook.SaveAs(filePath);
     }
 
-    private static void WriteHeaderRow(IXLWorksheet worksheet, IReadOnlyList<string> headers)
+    private static void WriteHeaderRow(IXLWorksheet worksheet, IReadOnlyList<ReportColumn> columns)
     {
-        for (var columnIndex = 0; columnIndex < headers.Count; columnIndex++)
+        for (var columnIndex = 0; columnIndex < columns.Count; columnIndex++)
         {
-            worksheet.Cell(1, columnIndex + 1).Value = headers[columnIndex];
+            worksheet.Cell(1, columnIndex + 1).Value = columns[columnIndex].Title;
         }
     }
 
     private void WriteDataRows(
         IXLWorksheet worksheet,
-        IReadOnlyList<string> headers,
+        ReportSchema schema,
         IReadOnlyList<BizWeldPointRecord> records,
         BizWeldTask task)
     {
@@ -209,11 +194,11 @@ public class ProductionReportFileService : IProductionReportFileService
         for (var rowIndex = 0; rowIndex < records.Count; rowIndex++)
         {
             var record = records[rowIndex];
-            var row = BuildRow(record, task, ResolveProductContext(record, productContexts));
-            for (var columnIndex = 0; columnIndex < headers.Count; columnIndex++)
+            var row = BuildRow(record, task, ResolveProductContext(record, productContexts), schema);
+            for (var columnIndex = 0; columnIndex < schema.Columns.Count; columnIndex++)
             {
-                var header = headers[columnIndex];
-                worksheet.Cell(rowIndex + 2, columnIndex + 1).Value = row.TryGetValue(header, out var value)
+                var column = schema.Columns[columnIndex];
+                worksheet.Cell(rowIndex + 2, columnIndex + 1).Value = row.TryGetValue(column.Key, out var value)
                     ? value
                     : string.Empty;
             }
@@ -244,7 +229,7 @@ public class ProductionReportFileService : IProductionReportFileService
 
     private static void MergeRepeatedProductFields(
         IXLWorksheet worksheet,
-        IReadOnlyList<string> headers,
+        IReadOnlyList<ReportColumn> columns,
         IReadOnlyList<BizWeldPointRecord> records)
     {
         if (records.Count <= 1)
@@ -252,10 +237,10 @@ public class ProductionReportFileService : IProductionReportFileService
             return;
         }
 
-        var mergeColumns = headers
-            .Select((header, index) => new { Header = header, Column = index + 1 })
-            .Where(item => ProductMergeHeaders.Contains(item.Header))
-            .Select(item => item.Column)
+        var mergeColumns = columns
+            .Select((column, index) => new { Column = column, Index = index + 1 })
+            .Where(item => item.Column.MergeByProduct)
+            .Select(item => item.Index)
             .ToArray();
 
         var groupStartRow = 2;
@@ -336,76 +321,72 @@ public class ProductionReportFileService : IProductionReportFileService
             : ProductionConstants.TestResults.Unknown;
     }
 
-    private Dictionary<string, string> BuildRow(BizWeldPointRecord record, BizWeldTask task, ProductReportContext productContext)
+    private Dictionary<string, string> BuildRow(
+        BizWeldPointRecord record,
+        BizWeldTask task,
+        ProductReportContext productContext,
+        ReportSchema schema)
     {
         var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            [HeaderStationNo] = record.StationNo.ToString(),
-            [HeaderProductNo] = record.ProductNo,
-            [HeaderProductResult] = productContext.ProductResult,
-            [HeaderTouchNo] = string.IsNullOrWhiteSpace(record.TouchNo) ? record.SequenceNo.ToString() : record.TouchNo,
-            [HeaderTouchResult] = record.TestResult,
-            [HeaderWorkOrder] = task.SN,
-            [HeaderBatch] = task.Batch,
-            [HeaderQuantity] = ResolveReportQuantity(task).ToString(),
-            [HeaderPartName] = BuildPartName(task),
-            [HeaderProcessNo] = task.ProcessNo,
-            [HeaderOperator] = record.OperatorNo ?? task.EndOperatorNumber ?? task.UserNumber ?? string.Empty,
-            [HeaderRecordTime] = productContext.RecordTime.ToString("yyyy-MM-dd HH:mm:ss")
+            [ColumnStationNo] = record.StationNo.ToString(),
+            [ColumnProductNo] = record.ProductNo,
+            [ColumnProductResult] = productContext.ProductResult,
+            [ColumnTouchNo] = string.IsNullOrWhiteSpace(record.TouchNo) ? record.SequenceNo.ToString() : record.TouchNo,
+            [ColumnTouchResult] = record.TestResult,
+            [ColumnWorkOrder] = task.SN,
+            [ColumnBatch] = task.Batch,
+            [ColumnQuantity] = ResolveReportQuantity(task).ToString(),
+            [ColumnPartName] = BuildPartName(task),
+            [ColumnProcessNo] = task.ProcessNo,
+            [ColumnOperator] = record.OperatorNo ?? task.EndOperatorNumber ?? task.UserNumber ?? string.Empty,
+            [ColumnRecordTime] = productContext.RecordTime.ToString("yyyy-MM-dd HH:mm:ss")
         };
 
-        AddDynamicValues(row, record, task);
+        AddDynamicValues(row, record, schema);
         return row;
     }
 
-    private void AddDynamicValues(Dictionary<string, string> row, BizWeldPointRecord record, BizWeldTask task)
+    private void AddDynamicValues(Dictionary<string, string> row, BizWeldPointRecord record, ReportSchema schema)
     {
         var rawValues = ParseRawData(record.RawDataJson);
-        AddSchemeDynamicValues(row, record, rawValues, task);
+        AddSchemeDynamicValues(row, rawValues, schema);
     }
 
     private void AddSchemeDynamicValues(
         Dictionary<string, string> row,
-        BizWeldPointRecord record,
         IReadOnlyDictionary<string, string> rawValues,
-        BizWeldTask task)
+        ReportSchema schema)
     {
-        foreach (var schemeItem in GetSchemeItemsForTask(task))
+        foreach (var schemeItem in schema.SchemeItems)
         {
             var item = schemeItem.Item;
             var detail = schemeItem.Detail;
-            var header = GetItemHeader(item);
-            if (string.IsNullOrWhiteSpace(header))
-            {
-                continue;
-            }
-
             var itemKey = ResolveItemKey(item);
-            if (detail.EnableActual)
+            if (ShouldWriteReportRole(detail.EnableActual, detail.ReportActual))
             {
-                TryAddDynamicValue(row, header, GetRawValue(rawValues, item.ItemName, itemKey) ?? string.Empty);
+                TryAddDynamicValue(row, BuildDynamicColumnKey(item, ReportRoleActual), GetRawValue(rawValues, item.ItemName, itemKey) ?? string.Empty);
             }
 
-            if (detail.EnableUpper)
+            if (ShouldWriteReportRole(detail.EnableUpper, detail.ReportUpper))
             {
-                TryAddDynamicValue(row, $"{header}上限", GetRawValue(rawValues, $"{item.ItemName}上限", $"{itemKey}_upper"));
+                TryAddDynamicValue(row, BuildDynamicColumnKey(item, ReportRoleUpper), GetRawValue(rawValues, $"{item.ItemName}上限", $"{itemKey}_upper"));
             }
 
-            if (detail.EnableLower)
+            if (ShouldWriteReportRole(detail.EnableLower, detail.ReportLower))
             {
-                TryAddDynamicValue(row, $"{header}下限", GetRawValue(rawValues, $"{item.ItemName}下限", $"{itemKey}_lower"));
+                TryAddDynamicValue(row, BuildDynamicColumnKey(item, ReportRoleLower), GetRawValue(rawValues, $"{item.ItemName}下限", $"{itemKey}_lower"));
             }
 
-            if (detail.EnableResult)
+            if (ShouldWriteReportRole(detail.EnableResult, detail.ReportResult))
             {
-                TryAddDynamicValue(row, $"{header}结果", GetRawValue(rawValues, $"{item.ItemName}结果", $"{itemKey}_result"));
+                TryAddDynamicValue(row, BuildDynamicColumnKey(item, ReportRoleResult), GetRawValue(rawValues, $"{item.ItemName}结果", $"{itemKey}_result"));
             }
         }
     }
 
-    private IReadOnlyList<SchemeReportItem> GetSchemeItemsForTask(BizWeldTask task)
+    private IReadOnlyList<SchemeReportItem> GetSchemeItemsForConfig(BizProductProcessConfig? config)
     {
-        var config = ResolveProductProcessConfig(task);
         if (config is null)
         {
             return Array.Empty<SchemeReportItem>();
@@ -487,40 +468,65 @@ public class ProductionReportFileService : IProductionReportFileService
         return task.ProductNum.Trim();
     }
 
-    private static IEnumerable<string> BuildItemHeaders(SchemeReportItem schemeItem)
+    private static IEnumerable<ReportColumn> BuildLeadingColumns(ReportDisplayOptions displayOptions)
+    {
+        yield return new ReportColumn(ColumnStationNo, HeaderStationNo, MergeByProduct: true);
+        yield return new ReportColumn(ColumnProductNo, HeaderProductNo, MergeByProduct: true);
+        yield return new ReportColumn(ColumnProductResult, HeaderProductResult, MergeByProduct: true);
+        yield return new ReportColumn(ColumnTouchNo, displayOptions.PointNoHeader, MergeByProduct: false);
+        yield return new ReportColumn(ColumnTouchResult, displayOptions.PointResultHeader, MergeByProduct: false);
+    }
+
+    private static IEnumerable<ReportColumn> BuildTrailingColumns()
+    {
+        yield return new ReportColumn(ColumnWorkOrder, HeaderWorkOrder, MergeByProduct: true);
+        yield return new ReportColumn(ColumnBatch, HeaderBatch, MergeByProduct: true);
+        yield return new ReportColumn(ColumnQuantity, HeaderQuantity, MergeByProduct: true);
+        yield return new ReportColumn(ColumnPartName, HeaderPartName, MergeByProduct: true);
+        yield return new ReportColumn(ColumnProcessNo, HeaderProcessNo, MergeByProduct: true);
+        yield return new ReportColumn(ColumnOperator, HeaderOperator, MergeByProduct: true);
+        yield return new ReportColumn(ColumnRecordTime, HeaderRecordTime, MergeByProduct: true);
+    }
+
+    private static IEnumerable<ReportColumn> BuildItemColumns(SchemeReportItem schemeItem)
     {
         var item = schemeItem.Item;
         var detail = schemeItem.Detail;
-        var header = GetItemHeader(item);
-        if (string.IsNullOrWhiteSpace(header))
+        var itemName = NormalizeDisplayText(item.ItemName, $"测试项{item.ItemId}");
+
+        if (ShouldWriteReportRole(detail.EnableActual, detail.ReportActual))
         {
-            yield break;
+            yield return new ReportColumn(BuildDynamicColumnKey(item, ReportRoleActual), NormalizeDisplayText(detail.ActualHeader, $"{itemName}实际值"), MergeByProduct: false);
         }
 
-        if (detail.EnableActual)
+        if (ShouldWriteReportRole(detail.EnableUpper, detail.ReportUpper))
         {
-            yield return header;
+            yield return new ReportColumn(BuildDynamicColumnKey(item, ReportRoleUpper), NormalizeDisplayText(detail.UpperHeader, $"{itemName}上限"), MergeByProduct: false);
         }
 
-        if (detail.EnableUpper)
+        if (ShouldWriteReportRole(detail.EnableLower, detail.ReportLower))
         {
-            yield return $"{header}上限";
+            yield return new ReportColumn(BuildDynamicColumnKey(item, ReportRoleLower), NormalizeDisplayText(detail.LowerHeader, $"{itemName}下限"), MergeByProduct: false);
         }
 
-        if (detail.EnableLower)
+        if (ShouldWriteReportRole(detail.EnableResult, detail.ReportResult))
         {
-            yield return $"{header}下限";
-        }
-
-        if (detail.EnableResult)
-        {
-            yield return $"{header}结果";
+            yield return new ReportColumn(BuildDynamicColumnKey(item, ReportRoleResult), NormalizeDisplayText(detail.ResultHeader, $"{itemName}结果"), MergeByProduct: false);
         }
     }
 
-    private static string GetItemHeader(DimTestItem item)
+    private static bool ShouldWriteReportRole(bool collectEnabled, bool? reportEnabled)
+        => collectEnabled && (reportEnabled ?? true);
+
+    private static string BuildDynamicColumnKey(DimTestItem item, string role)
+        => $"{ResolveItemKey(item)}_{role}";
+
+    private static string NormalizeDisplayText(string? value, string fallback)
     {
-        return item.ItemName?.Trim() ?? string.Empty;
+        var normalizedValue = value?.Trim();
+        return string.IsNullOrWhiteSpace(normalizedValue)
+            ? fallback
+            : normalizedValue;
     }
 
     private static void TryAddDynamicValue(Dictionary<string, string> row, string header, string? value)
@@ -646,6 +652,29 @@ public class ProductionReportFileService : IProductionReportFileService
     }
 
     private sealed record ProductReportContext(string ProductResult, DateTime RecordTime);
+
+    private sealed record ReportSchema(
+        IReadOnlyList<ReportColumn> Columns,
+        IReadOnlyList<SchemeReportItem> SchemeItems,
+        ReportDisplayOptions DisplayOptions);
+
+    private sealed record ReportColumn(string Key, string Title, bool MergeByProduct);
+
+    private sealed record ReportDisplayOptions(string PointNoHeader, string PointResultHeader)
+    {
+        public static ReportDisplayOptions FromConfig(BizProductProcessConfig? config)
+        {
+            if (config is null)
+            {
+                return new ReportDisplayOptions(HeaderTouchNo, HeaderTouchResult);
+            }
+
+            var pointName = NormalizeDisplayText(config.PointName, "焊点");
+            return new ReportDisplayOptions(
+                NormalizeDisplayText(config.PointNoHeader, $"{pointName}序号"),
+                NormalizeDisplayText(config.PointResultHeader, $"{pointName}结果"));
+        }
+    }
 
     private sealed record SchemeReportItem(DimTestItem Item, BizSchemeDetail Detail);
 
