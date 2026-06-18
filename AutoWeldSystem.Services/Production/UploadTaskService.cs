@@ -21,16 +21,19 @@ public class UploadTaskService : IUploadTaskService
 {
     private readonly SqlSugarDbContext _dbContext;
     private readonly IMesProvider _mesProvider;
+    private readonly IAppSettingsService _settingsService;
     private readonly IProductionFlowLogService _productionLogService;
     private readonly object _dbLock = new();
 
     public UploadTaskService(
         SqlSugarDbContext dbContext,
         IMesProvider mesProvider,
+        IAppSettingsService settingsService,
         IProductionFlowLogService productionLogService)
     {
         _dbContext = dbContext;
         _mesProvider = mesProvider;
+        _settingsService = settingsService;
         _productionLogService = productionLogService;
     }
 
@@ -474,7 +477,15 @@ public class UploadTaskService : IUploadTaskService
         IReadOnlyList<BizWeldPointRecord> records,
         CancellationToken cancellationToken)
     {
-        var items = records.Select(ToProcessParameterUploadItem).ToList();
+        var settings = _settingsService.Get();
+        var deviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
+        var schemeItemCache = new Dictionary<string, IReadOnlyList<ProcessParameterSchemeItem>>(StringComparer.OrdinalIgnoreCase);
+        var items = records
+            .Select(record => ToProcessParameterUploadItem(
+                record,
+                deviceType,
+                ResolveProcessParameterSchemeItems(record, schemeItemCache)))
+            .ToList();
         return await _mesProvider.UploadProcessParametersAsync(items, cancellationToken);
     }
 
@@ -496,20 +507,329 @@ public class UploadTaskService : IUploadTaskService
         }
     }
 
-    private static ProcessParameterUploadItem ToProcessParameterUploadItem(BizWeldPointRecord record)
+    private IReadOnlyList<ProcessParameterSchemeItem> ResolveProcessParameterSchemeItems(
+        BizWeldPointRecord record,
+        Dictionary<string, IReadOnlyList<ProcessParameterSchemeItem>> cache)
     {
-        return new ProcessParameterUploadItem
+        var cacheKey = $"{record.TaskId}\u001F{record.ProductNo}\u001F{record.StationNo}";
+        if (cache.TryGetValue(cacheKey, out var cachedItems))
         {
-            ExpStartId = record.ExpStartId ?? string.Empty,
+            return cachedItems;
+        }
+
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var config = ResolveProductProcessConfig(record);
+            var items = GetMesSchemeItemsForConfig(config);
+            cache[cacheKey] = items;
+            return items;
+        }
+    }
+
+    private BizProductProcessConfig? ResolveProductProcessConfig(BizWeldPointRecord record)
+    {
+        var task = _dbContext.Db.Queryable<BizWeldTask>().InSingle(record.TaskId);
+        if (task is null)
+        {
+            return null;
+        }
+
+        var productNum = ResolveTaskProductNum(task);
+        if (string.IsNullOrWhiteSpace(productNum))
+        {
+            return null;
+        }
+
+        var stationNo = record.StationNo > ProductionConstants.Stations.SharedStationNo
+            ? record.StationNo
+            : task.StationNo;
+        stationNo = stationNo > ProductionConstants.Stations.SharedStationNo
+            ? stationNo
+            : ProductionConstants.Stations.DefaultStationNo;
+
+        return _dbContext.Db.Queryable<BizProductProcessConfig>()
+            .Where(config => config.Enabled && config.ProductNum == productNum)
+            .ToList()
+            .Where(config => config.StationNo == ProductionConstants.Stations.SharedStationNo || config.StationNo == stationNo)
+            .OrderByDescending(config => config.StationNo == stationNo)
+            .ThenBy(config => config.Id)
+            .FirstOrDefault();
+    }
+
+    private IReadOnlyList<ProcessParameterSchemeItem> GetMesSchemeItemsForConfig(BizProductProcessConfig? config)
+    {
+        if (config is null)
+        {
+            return Array.Empty<ProcessParameterSchemeItem>();
+        }
+
+        var details = _dbContext.Db.Queryable<BizSchemeDetail>()
+            .Where(detail => detail.SchemeId == config.SchemeId)
+            .ToList()
+            .Select(NormalizeLegacyDetailRoles)
+            .Where(HasAnyMesEnabledRole)
+            .ToList();
+        if (details.Count == 0)
+        {
+            return Array.Empty<ProcessParameterSchemeItem>();
+        }
+
+        var itemIds = details.Select(detail => detail.ItemId).Distinct().ToList();
+        var items = _dbContext.Db.Queryable<DimTestItem>()
+            .Where(item => itemIds.Contains(item.ItemId))
+            .ToList();
+
+        return details
+            .OrderBy(detail => detail.DetailId)
+            .Select(detail => new
+            {
+                Item = items.FirstOrDefault(item => item.ItemId == detail.ItemId),
+                Detail = detail
+            })
+            .Where(item => item.Item is not null)
+            .Select(item => new ProcessParameterSchemeItem(item.Item!, item.Detail))
+            .ToList();
+    }
+
+    private string ResolveTaskProductNum(BizWeldTask task)
+    {
+        if (!string.IsNullOrWhiteSpace(task.ProgramId))
+        {
+            var programs = _dbContext.Db.Queryable<BizProgram>()
+                .Where(program => !program.IsDeleted && program.ProgramId == task.ProgramId.Trim())
+                .ToList();
+
+            var localProgram = programs
+                .OrderByDescending(program => IsExactTextMatch(program.DeviceId, task.DeviceId))
+                .ThenByDescending(program => program.UpdatedTime)
+                .FirstOrDefault();
+
+            if (!string.IsNullOrWhiteSpace(localProgram?.ProductNum))
+            {
+                return localProgram.ProductNum.Trim();
+            }
+        }
+
+        return task.ProductNum.Trim();
+    }
+
+    private static ProcessParameterUploadItem ToProcessParameterUploadItem(
+        BizWeldPointRecord record,
+        string deviceType,
+        IReadOnlyList<ProcessParameterSchemeItem> schemeItems)
+    {
+        var item = new ProcessParameterUploadItem
+        {
+            ExpStartId = record.ExpStartId,
             DeviceId = record.DeviceId,
             SN = record.SN,
             ProcessNo = record.ProcessNo,
             ProductNo = record.ProductNo,
-            TouchNo = record.TouchNo,
-            Type = string.IsNullOrWhiteSpace(record.Type) ? "EM" : record.Type,
+            TouchNo = ShouldWriteTouchNo(deviceType) ? record.TouchNo : null,
+            Type = ResolveProcessParameterType(deviceType),
             IsTest = record.IsTest,
             Ts = record.Ts.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
         };
+
+        AddMesDynamicFields(item, record.RawDataJson, schemeItems);
+        return item;
+    }
+
+    private static void AddMesDynamicFields(
+        ProcessParameterUploadItem uploadItem,
+        string? rawDataJson,
+        IReadOnlyList<ProcessParameterSchemeItem> schemeItems)
+    {
+        if (schemeItems.Count == 0)
+        {
+            return;
+        }
+
+        var rawValues = ParseRawData(rawDataJson);
+        foreach (var schemeItem in schemeItems)
+        {
+            AddMesDynamicField(uploadItem, rawValues, schemeItem, ProcessParameterValueRole.Actual);
+            AddMesDynamicField(uploadItem, rawValues, schemeItem, ProcessParameterValueRole.Upper);
+            AddMesDynamicField(uploadItem, rawValues, schemeItem, ProcessParameterValueRole.Lower);
+            AddMesDynamicField(uploadItem, rawValues, schemeItem, ProcessParameterValueRole.Result);
+        }
+    }
+
+    private static void AddMesDynamicField(
+        ProcessParameterUploadItem uploadItem,
+        IReadOnlyDictionary<string, string> rawValues,
+        ProcessParameterSchemeItem schemeItem,
+        ProcessParameterValueRole role)
+    {
+        if (!ShouldUploadMesRole(schemeItem.Detail, role, out var mesFieldName))
+        {
+            return;
+        }
+
+        var value = ResolveRawRoleValue(rawValues, schemeItem.Item, role) ?? string.Empty;
+        TryAddDynamicField(uploadItem, mesFieldName, value);
+    }
+
+    private static bool ShouldUploadMesRole(
+        BizSchemeDetail detail,
+        ProcessParameterValueRole role,
+        out string mesFieldName)
+    {
+        mesFieldName = role switch
+        {
+            ProcessParameterValueRole.Actual when detail.EnableActual && detail.MesActual == true => detail.ActualMesFieldName ?? string.Empty,
+            ProcessParameterValueRole.Upper when detail.EnableUpper && detail.MesUpper == true => detail.UpperMesFieldName ?? string.Empty,
+            ProcessParameterValueRole.Lower when detail.EnableLower && detail.MesLower == true => detail.LowerMesFieldName ?? string.Empty,
+            ProcessParameterValueRole.Result when detail.EnableResult && detail.MesResult == true => detail.ResultMesFieldName ?? string.Empty,
+            _ => string.Empty
+        };
+
+        mesFieldName = mesFieldName.Trim();
+        return !string.IsNullOrWhiteSpace(mesFieldName);
+    }
+
+    private static string? ResolveRawRoleValue(
+        IReadOnlyDictionary<string, string> rawValues,
+        DimTestItem item,
+        ProcessParameterValueRole role)
+    {
+        var itemKey = ResolveItemKey(item);
+        return role switch
+        {
+            ProcessParameterValueRole.Actual => GetRawValue(rawValues, itemKey, item.ItemName),
+            ProcessParameterValueRole.Upper => GetRawValue(rawValues, $"{itemKey}_upper", $"{item.ItemName}上限"),
+            ProcessParameterValueRole.Lower => GetRawValue(rawValues, $"{itemKey}_lower", $"{item.ItemName}下限"),
+            ProcessParameterValueRole.Result => GetRawValue(rawValues, $"{itemKey}_result", $"{item.ItemName}结果"),
+            _ => null
+        };
+    }
+
+    private static void TryAddDynamicField(ProcessParameterUploadItem uploadItem, string fieldName, string value)
+    {
+        if (string.IsNullOrWhiteSpace(fieldName) || IsReservedProcessParameterField(fieldName))
+        {
+            return;
+        }
+
+        // 方案保存已校验同一方案内不重复；这里仍用 TryAdd 防止历史脏数据覆盖已生成字段。
+        uploadItem.DynamicFields.TryAdd(fieldName.Trim(), value);
+    }
+
+    private static bool IsReservedProcessParameterField(string fieldName)
+    {
+        return fieldName.Equals(nameof(ProcessParameterUploadItem.ExpStartId), StringComparison.OrdinalIgnoreCase)
+            || fieldName.Equals(nameof(ProcessParameterUploadItem.DeviceId), StringComparison.OrdinalIgnoreCase)
+            || fieldName.Equals(nameof(ProcessParameterUploadItem.SN), StringComparison.OrdinalIgnoreCase)
+            || fieldName.Equals(nameof(ProcessParameterUploadItem.ProcessNo), StringComparison.OrdinalIgnoreCase)
+            || fieldName.Equals(nameof(ProcessParameterUploadItem.ProductNo), StringComparison.OrdinalIgnoreCase)
+            || fieldName.Equals(nameof(ProcessParameterUploadItem.TouchNo), StringComparison.OrdinalIgnoreCase)
+            || fieldName.Equals(nameof(ProcessParameterUploadItem.Type), StringComparison.OrdinalIgnoreCase)
+            || fieldName.Equals(nameof(ProcessParameterUploadItem.Ts), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ShouldWriteTouchNo(string deviceType)
+        => !string.Equals(deviceType, ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck, StringComparison.OrdinalIgnoreCase);
+
+    private static string ResolveProcessParameterType(string deviceType)
+        => string.Equals(deviceType, ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic, StringComparison.OrdinalIgnoreCase)
+            ? "EM"
+            : "WP";
+
+    private static string NormalizeProcessParameterDeviceType(string? value)
+    {
+        return value?.Trim() switch
+        {
+            ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck => ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck,
+            ProductionConstants.ProcessParameterDeviceTypes.WholePieceWeld => ProductionConstants.ProcessParameterDeviceTypes.WholePieceWeld,
+            _ => ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic
+        };
+    }
+
+    private static bool HasAnyEnabledRole(BizSchemeDetail detail)
+    {
+        return detail.EnableActual || detail.EnableUpper || detail.EnableLower || detail.EnableResult;
+    }
+
+    private static bool HasAnyMesEnabledRole(BizSchemeDetail detail)
+    {
+        return detail.EnableActual && detail.MesActual == true
+            || detail.EnableUpper && detail.MesUpper == true
+            || detail.EnableLower && detail.MesLower == true
+            || detail.EnableResult && detail.MesResult == true;
+    }
+
+    private static BizSchemeDetail NormalizeLegacyDetailRoles(BizSchemeDetail detail)
+    {
+        if (HasAnyEnabledRole(detail))
+        {
+            return detail;
+        }
+
+        detail.EnableActual = true;
+        detail.EnableUpper = true;
+        detail.EnableLower = true;
+        detail.EnableResult = true;
+        return detail;
+    }
+
+    private static bool IsExactTextMatch(string? left, string? right)
+    {
+        return string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? GetRawValue(IReadOnlyDictionary<string, string> rawValues, params string?[] keys)
+    {
+        foreach (var key in keys)
+        {
+            if (!string.IsNullOrWhiteSpace(key) && rawValues.TryGetValue(key, out var value))
+            {
+                return value;
+            }
+        }
+
+        return null;
+    }
+
+    private static string ResolveItemKey(DimTestItem item)
+    {
+        return item.ItemName.Trim() switch
+        {
+            "峰值电流" => "max_electric",
+            "峰值电压" => "max_voltage",
+            "有效功率" => "valid_power",
+            "位移" => "displacement",
+            "焊接时间" => "weld_ts",
+            var name when !string.IsNullOrWhiteSpace(name) => $"item_{item.ItemId}",
+            _ => $"item_{item.ItemId}"
+        };
+    }
+
+    private static Dictionary<string, string> ParseRawData(string? rawDataJson)
+    {
+        if (string.IsNullOrWhiteSpace(rawDataJson))
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(rawDataJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            return document.RootElement.EnumerateObject()
+                .ToDictionary(
+                    property => property.Name,
+                    property => property.Value.ToString(),
+                    StringComparer.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
     }
 
     private async Task<BasicRes<object>> UploadReportFileAsync(BizUploadTask task, CancellationToken cancellationToken)
@@ -978,6 +1298,16 @@ public class UploadTaskService : IUploadTaskService
     }
 
     private sealed record DeviceStatusUploadRequest(int LogId, ReportDeviceStatusReq Request);
+
+    private sealed record ProcessParameterSchemeItem(DimTestItem Item, BizSchemeDetail Detail);
+
+    private enum ProcessParameterValueRole
+    {
+        Actual,
+        Upper,
+        Lower,
+        Result
+    }
 
     private static string NormalizeTaskType(string? taskType)
     {

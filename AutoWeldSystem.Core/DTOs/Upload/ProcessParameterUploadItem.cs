@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace AutoWeldSystem.Core.DTOs.Upload;
 
 /// <summary>
@@ -34,7 +36,8 @@ public sealed class ProcessParameterUploadItem
     /// <summary>
     /// 焊点编号。在产品周期采集中从PLC读取，
     /// </summary>
-    public string TouchNo { get; set; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? TouchNo { get; set; } = string.Empty;
 
     /// <summary>
     /// 类型。用于区分接触系统、整件、电磁设备的点焊参数。字典值：[TS, 接触系统], [WP, 整件]，[EM, 电磁]
@@ -49,5 +52,12 @@ public sealed class ProcessParameterUploadItem
     /// <summary>
     /// True when the operator marked the whole product as a local test weld part before upload.
     /// </summary>
+    [JsonIgnore]
     public bool IsTest { get; set; }
+
+    /// <summary>
+    /// MES 动态过程参数字段。字段名来自方案明细的 MesFieldName，序列化时会和基础字段平铺在同一个 JSON 对象中。
+    /// </summary>
+    [JsonExtensionData]
+    public Dictionary<string, object?> DynamicFields { get; } = new(StringComparer.OrdinalIgnoreCase);
 }
