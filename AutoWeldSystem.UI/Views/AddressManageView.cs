@@ -2019,11 +2019,28 @@ public partial class AddressManageView : BaseView
             detail.UpperMesFieldName = NormalizeNullableText(detail.UpperMesFieldName);
             detail.LowerMesFieldName = NormalizeNullableText(detail.LowerMesFieldName);
             detail.ResultMesFieldName = NormalizeNullableText(detail.ResultMesFieldName);
+            ValidateMesFieldName(detail.EnableActual, detail.MesActual, detail.ActualMesFieldName, item.ItemName, "实际值");
+            ValidateMesFieldName(detail.EnableUpper, detail.MesUpper, detail.UpperMesFieldName, item.ItemName, "上限");
+            ValidateMesFieldName(detail.EnableLower, detail.MesLower, detail.LowerMesFieldName, item.ItemName, "下限");
+            ValidateMesFieldName(detail.EnableResult, detail.MesResult, detail.ResultMesFieldName, item.ItemName, "结果");
 
             if (!HasAnyEnabledRole(detail))
             {
                 throw new InvalidOperationException("方案明细至少需要启用实际值、上限、下限或结果中的一项。");
             }
+        }
+    }
+
+    private static void ValidateMesFieldName(
+        bool collectEnabled,
+        bool? mesEnabled,
+        string? mesFieldName,
+        string itemName,
+        string roleName)
+    {
+        if (collectEnabled && mesEnabled == true && string.IsNullOrWhiteSpace(mesFieldName))
+        {
+            throw new InvalidOperationException($"{itemName}{roleName}已启用 MES 上传，必须填写 MES 字段名。");
         }
     }
 
@@ -2036,6 +2053,15 @@ public partial class AddressManageView : BaseView
         {
             var first = duplicate.First();
             throw new InvalidOperationException($"测试方案“{first.SchemeId}”中测试项“{first.ItemId}”重复。");
+        }
+        var duplicateMesField = details
+            .SelectMany(EnumerateEnabledMesFields)
+            .GroupBy(field => $"{field.SchemeId}\u001F{field.MesFieldName}", StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(group => group.Count() > 1);
+        if (duplicateMesField is not null)
+        {
+            var first = duplicateMesField.First();
+            throw new InvalidOperationException($"测试方案“{first.SchemeId}”中 MES 字段名“{first.MesFieldName}”重复。");
         }
     }
 
@@ -2208,6 +2234,29 @@ public partial class AddressManageView : BaseView
         return detail.EnableActual || detail.EnableUpper || detail.EnableLower || detail.EnableResult;
     }
 
+    private static IEnumerable<SchemeMesField> EnumerateEnabledMesFields(BizSchemeDetail detail)
+    {
+        if (detail.EnableActual && detail.MesActual == true && !string.IsNullOrWhiteSpace(detail.ActualMesFieldName))
+        {
+            yield return new SchemeMesField(detail.SchemeId, detail.ActualMesFieldName.Trim());
+        }
+
+        if (detail.EnableUpper && detail.MesUpper == true && !string.IsNullOrWhiteSpace(detail.UpperMesFieldName))
+        {
+            yield return new SchemeMesField(detail.SchemeId, detail.UpperMesFieldName.Trim());
+        }
+
+        if (detail.EnableLower && detail.MesLower == true && !string.IsNullOrWhiteSpace(detail.LowerMesFieldName))
+        {
+            yield return new SchemeMesField(detail.SchemeId, detail.LowerMesFieldName.Trim());
+        }
+
+        if (detail.EnableResult && detail.MesResult == true && !string.IsNullOrWhiteSpace(detail.ResultMesFieldName))
+        {
+            yield return new SchemeMesField(detail.SchemeId, detail.ResultMesFieldName.Trim());
+        }
+    }
+
     private static string BuildSchemeDetailKey(string? schemeId, int itemId)
     {
         return $"{schemeId?.Trim() ?? string.Empty}\u001F{itemId}";
@@ -2262,6 +2311,8 @@ public partial class AddressManageView : BaseView
     /// 产品工艺预览时使用的方案明细行，Sort 保留方案明细顺序。
     /// </summary>
     private sealed record ProductSchemePreviewItem(int Sort, DimTestItem Item, BizSchemeDetail Detail);
+
+    private sealed record SchemeMesField(string SchemeId, string MesFieldName);
 
     private enum SchemeDetailValueRole
     {
