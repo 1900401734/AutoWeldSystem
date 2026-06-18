@@ -20,6 +20,14 @@ public sealed class WeldParameterRow
 
     public string TouchResult { get; set; } = "--";
 
+    public string PointName { get; init; } = "焊点";
+
+    public string PointNoHeader { get; init; } = "焊点序号";
+
+    public string PointResultHeader { get; init; } = "焊点结果";
+
+    public string PointCountHeader { get; init; } = "焊点数";
+
     public string ParameterName { get; init; } = string.Empty;
 
     public string Unit { get; init; } = string.Empty;
@@ -31,6 +39,14 @@ public sealed class WeldParameterRow
     public bool EnableLower { get; init; } = true;
 
     public bool EnableResult { get; init; } = true;
+
+    public string ActualHeader { get; init; } = string.Empty;
+
+    public string UpperHeader { get; init; } = string.Empty;
+
+    public string LowerHeader { get; init; } = string.Empty;
+
+    public string ResultHeader { get; init; } = string.Empty;
 
     public string ActualAddress { get; init; } = string.Empty;
 

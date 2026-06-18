@@ -308,7 +308,7 @@ public partial class MonitorView : BaseView
     public void ApplyRuntimeSettingsChanged(
         AppSettings settings,
         bool readOnly,
-        bool enableBusinessSignalReconcile, 
+        bool enableBusinessSignalReconcile,
         bool triggerBusinessSignalReconcile = false)
     {
         UpdateSettingsSnapshot(settings);
@@ -345,12 +345,19 @@ public partial class MonitorView : BaseView
         tlpStation.Visible = _dualStationEnabled;
         tabsPreview2.Visible = _dualStationEnabled;
         tabsMetrics2.Visible = _dualStationEnabled;
-        tagStationResult2.Visible = _dualStationEnabled;
+        tagResult2.Visible = _dualStationEnabled;
 
         if (!_dualStationEnabled)
         {
             tabsPreview.SelectedIndex = 0;
             tabsMetrics.SelectedIndex = 0;
+
+            // Column1：100F
+            tlpResult.ColumnStyles[0].SizeType = SizeType.Percent;
+            tlpResult.ColumnStyles[0].Width = 100F;
+            // Column2：0F
+            tlpResult.ColumnStyles[1].SizeType = SizeType.Absolute;
+            tlpResult.ColumnStyles[1].Width = 0F;
         }
 
         if (!_dualStationEnabled && CurrentStationNo != ProductionConstants.Stations.DefaultStationNo)
@@ -366,6 +373,25 @@ public partial class MonitorView : BaseView
 
         BindStationSelection();
         ApplyStationViewMode();
+    }
+
+    /// <summary>
+    /// 绑定工位选择。
+    /// </summary>
+    private void BindStationSelection()
+    {
+        _syncingStationSelection = true;
+        try
+        {
+            segmentedStationSwitch.Items.Clear();
+            segmentedStationSwitch.Items.Add(new AntdUI.SegmentedItem { Text = FormatStationName(1) });
+            segmentedStationSwitch.Items.Add(new AntdUI.SegmentedItem { Text = FormatStationName(2) });
+            SyncStationSelection();
+        }
+        finally
+        {
+            _syncingStationSelection = false;
+        }
     }
 
     /// <summary>
@@ -412,25 +438,6 @@ public partial class MonitorView : BaseView
 
         SetRuntimeErrorText($"工位{CurrentStationNo}{actionName}已禁用，当前窗口为只读看板。");
         return true;
-    }
-
-    /// <summary>
-    /// 绑定工位选择。
-    /// </summary>
-    private void BindStationSelection()
-    {
-        _syncingStationSelection = true;
-        try
-        {
-            segmentedStationSwitch.Items.Clear();
-            segmentedStationSwitch.Items.Add(new AntdUI.SegmentedItem { Text = FormatStationName(1) });
-            segmentedStationSwitch.Items.Add(new AntdUI.SegmentedItem { Text = FormatStationName(2) });
-            SyncStationSelection();
-        }
-        finally
-        {
-            _syncingStationSelection = false;
-        }
     }
 
     /// <summary>
@@ -2654,7 +2661,7 @@ public partial class MonitorView : BaseView
         }
 
         var resultText = ResolveStationProductResultText(record);
-        var tag = record.StationNo == 2 ? tagStationResult2 : tagStationResult1;
+        var tag = record.StationNo == 2 ? tagResult2 : tagResult1;
 
         tag.Text = $"工位{record.StationNo}{resultText}";
         tag.ForeColor = Color.White;
@@ -3157,8 +3164,8 @@ public partial class MonitorView : BaseView
     /// </summary>
     private void ConfigureProductHistoryTableColumns()
     {
-        ConfigureProductHistoryTableColumns(tableHistory1, [], 1);
-        ConfigureProductHistoryTableColumns(tableHistory2, [], 2);
+        ConfigureProductHistoryTableColumns(tableHistory1, [], 1, ProductHistoryDisplayOptions.Default);
+        ConfigureProductHistoryTableColumns(tableHistory2, [], 2, ProductHistoryDisplayOptions.Default);
     }
 
     /// <summary>
@@ -3167,9 +3174,13 @@ public partial class MonitorView : BaseView
     /// <param name="table">目标表格控件。</param>
     /// <param name="dynamicColumns">动态列集合。</param>
     /// <param name="stationNo">工位编号。</param>
-    private void ConfigureProductHistoryTableColumns(AntdUI.Table table, IReadOnlyList<ProductHistoryDynamicColumn> dynamicColumns, int stationNo)
+    private void ConfigureProductHistoryTableColumns(
+        AntdUI.Table table,
+        IReadOnlyList<ProductHistoryDynamicColumn> dynamicColumns,
+        int stationNo,
+        ProductHistoryDisplayOptions displayOptions)
     {
-        var schemaKey = BuildProductHistorySchemaKey(dynamicColumns);
+        var schemaKey = BuildProductHistorySchemaKey(dynamicColumns, displayOptions);
 
         if (_productHistorySchemaKeys.TryGetValue(stationNo, out var existingSchemaKey)
             && string.Equals(existingSchemaKey, schemaKey, StringComparison.Ordinal)
@@ -3180,7 +3191,7 @@ public partial class MonitorView : BaseView
 
         table.Columns.Clear();
 
-        var nodeColumn = new AntdUI.Column(nameof(ProductHistoryTableRow.NodeText), "产品/焊点")
+        var nodeColumn = new AntdUI.Column(nameof(ProductHistoryTableRow.NodeText), $"产品/{displayOptions.PointName}")
         {
             Align = AntdUI.ColumnAlign.Left,
             ColAlign = AntdUI.ColumnAlign.Center,
@@ -3190,11 +3201,15 @@ public partial class MonitorView : BaseView
 
         table.Columns.Add(nodeColumn);
         table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.ProductNo), "产品编号"));
-        table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.TouchNo), "焊点"));
-        table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.ResultText), "结果"));
+        table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.TouchNo), displayOptions.PointName));
+        table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.ResultText), displayOptions.PointResultHeader));
         table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.UploadStatusText), "上传状态"));
-        table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.IsTestText), "试焊件"));
-        table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.TouchCountText), "焊点数"));
+        if (displayOptions.ShowTestFlagInHistory)
+        {
+            table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.IsTestText), "试焊件"));
+        }
+
+        table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.TouchCountText), displayOptions.PointCountHeader));
         table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.RecordTimeText), "采集时间"));
         foreach (var dynamicColumn in dynamicColumns)
         {
@@ -3341,7 +3356,7 @@ public partial class MonitorView : BaseView
             if (activeTask is null)
             {
                 // 无当前任务时仍重置列和数据，避免界面保留上一个任务的历史记录。
-                ConfigureProductHistoryTableColumns(CurrentProductHistoryTable, [], CurrentStationNo);
+                ConfigureProductHistoryTableColumns(CurrentProductHistoryTable, [], CurrentStationNo, ProductHistoryDisplayOptions.Default);
                 BindProductHistoryRows(CurrentProductHistoryTable, []);
                 return;
             }
@@ -3363,10 +3378,11 @@ public partial class MonitorView : BaseView
     private void BindProductHistorySnapshot(ProductHistorySnapshot snapshot, BizWeldTask activeTask)
     {
         var table = GetProductHistoryTable(snapshot.StationNo);
+        var displayOptions = ResolveProductHistoryDisplayOptions(activeTask, snapshot.StationNo);
         var dynamicColumns = ResolveProductHistoryDynamicColumns(activeTask, snapshot);
-        ConfigureProductHistoryTableColumns(table, dynamicColumns, snapshot.StationNo);
+        ConfigureProductHistoryTableColumns(table, dynamicColumns, snapshot.StationNo, displayOptions);
         var rows = snapshot.Products
-            .Select(product => ToProductHistoryRow(product, dynamicColumns))
+            .Select(product => ToProductHistoryRow(product, dynamicColumns, displayOptions))
             .ToList();
 
         BindProductHistoryRows(table, rows);
@@ -3402,7 +3418,7 @@ public partial class MonitorView : BaseView
     /// <param name="row">表格行数据。</param>
     private void ShowProductHistoryContextMenu(Control target, ProductHistoryTableRow row)
     {
-        if (_stationViewReadOnly)
+        if (_stationViewReadOnly || !row.ShowTestFlag)
         {
             return;
         }
@@ -3470,7 +3486,10 @@ public partial class MonitorView : BaseView
     /// <param name="product">产品历史数据。</param>
     /// <param name="dynamicColumns">动态列集合。</param>
     /// <returns>解析到的对象；不存在时返回 null。</returns>
-    private ProductHistoryTableRow ToProductHistoryRow(ProductHistoryProduct product, IReadOnlyList<ProductHistoryDynamicColumn> dynamicColumns)
+    private ProductHistoryTableRow ToProductHistoryRow(
+        ProductHistoryProduct product,
+        IReadOnlyList<ProductHistoryDynamicColumn> dynamicColumns,
+        ProductHistoryDisplayOptions displayOptions)
     {
         return new ProductHistoryTableRow
         {
@@ -3481,13 +3500,14 @@ public partial class MonitorView : BaseView
             NodeText = $"产品 {product.ProductNo}",
             ResultText = FormatHistoryResult(product.Result),
             UploadStatusText = FormatHistoryUploadStatus(product.UploadStatus),
+            ShowTestFlag = displayOptions.ShowTestFlagInHistory,
             IsTest = product.IsTest,
             IsTestText = FormatHistoryTestFlag(product.IsTest),
             TouchCountText = product.TouchCount.ToString(CultureInfo.InvariantCulture),
             RecordTimeText = FormatHistoryTime(product.LastRecordTime),
             CanMarkTest = product.CanMarkTest,
             MarkDisabledReason = product.MarkDisabledReason,
-            Children = product.Points.Select(point => ToProductHistoryPointRow(product, point, dynamicColumns)).ToList()
+            Children = product.Points.Select(point => ToProductHistoryPointRow(product, point, dynamicColumns, displayOptions)).ToList()
         };
     }
 
@@ -3499,7 +3519,9 @@ public partial class MonitorView : BaseView
     /// <param name="dynamicColumns">动态列集合。</param>
     /// <returns>解析到的对象；不存在时返回 null。</returns>
     private ProductHistoryTableRow ToProductHistoryPointRow(ProductHistoryProduct product,
-        ProductHistoryPoint point, IReadOnlyList<ProductHistoryDynamicColumn> dynamicColumns)
+        ProductHistoryPoint point,
+        IReadOnlyList<ProductHistoryDynamicColumn> dynamicColumns,
+        ProductHistoryDisplayOptions displayOptions)
     {
         return new ProductHistoryTableRow
         {
@@ -3508,9 +3530,10 @@ public partial class MonitorView : BaseView
             StationNo = product.StationNo,
             ProductNo = product.ProductNo,
             TouchNo = point.TouchNo,
-            NodeText = $"焊点 {point.TouchNo}",
+            NodeText = $"{displayOptions.PointName} {point.TouchNo}",
             ResultText = FormatHistoryResult(point.Result),
             UploadStatusText = FormatHistoryUploadStatus(point.UploadStatus),
+            ShowTestFlag = displayOptions.ShowTestFlagInHistory,
             IsTest = point.IsTest,
             IsTestText = FormatHistoryTestFlag(point.IsTest),
             RecordTimeText = FormatHistoryTime(point.RecordTime),
@@ -3645,6 +3668,14 @@ public partial class MonitorView : BaseView
         }
 
         return _productProcessConfigService.FindActive(currentIdentity.ProductNum, stationNo);
+    }
+
+    private ProductHistoryDisplayOptions ResolveProductHistoryDisplayOptions(BizWeldTask activeTask, int stationNo)
+    {
+        var config = ResolveProductHistoryProcessConfig(activeTask, stationNo);
+        return config is null
+            ? ProductHistoryDisplayOptions.Default
+            : ProductHistoryDisplayOptions.FromConfig(config);
     }
 
     /// <summary>
@@ -3897,7 +3928,7 @@ public partial class MonitorView : BaseView
                 previewItem.Key,
                 previewItem.Name,
                 PreviewUpperRole,
-                $"{previewItem.Name}上限",
+                NormalizeDisplayText(previewItem.UpperHeader, $"{previewItem.Name}上限"),
                 previewItem.Sort + 1);
         }
 
@@ -3907,7 +3938,7 @@ public partial class MonitorView : BaseView
                 previewItem.Key,
                 previewItem.Name,
                 PreviewLowerRole,
-                $"{previewItem.Name}下限",
+                NormalizeDisplayText(previewItem.LowerHeader, $"{previewItem.Name}下限"),
                 previewItem.Sort + 2);
         }
 
@@ -3917,7 +3948,7 @@ public partial class MonitorView : BaseView
                 previewItem.Key,
                 previewItem.Name,
                 PreviewActualRole,
-                $"{previewItem.Name}实际值",
+                NormalizeDisplayText(previewItem.ActualHeader, $"{previewItem.Name}实际值"),
                 previewItem.Sort + 3);
         }
 
@@ -3927,7 +3958,7 @@ public partial class MonitorView : BaseView
                 previewItem.Key,
                 previewItem.Name,
                 PreviewResultRole,
-                $"{previewItem.Name}结果",
+                NormalizeDisplayText(previewItem.ResultHeader, $"{previewItem.Name}结果"),
                 previewItem.Sort + 4);
         }
     }
@@ -3946,22 +3977,22 @@ public partial class MonitorView : BaseView
 
         if (detail.EnableUpper)
         {
-            yield return CreateProductHistoryDynamicColumn(itemKey, itemName, PreviewUpperRole, $"{itemName}上限", schemeItem.Sort + 1);
+            yield return CreateProductHistoryDynamicColumn(itemKey, itemName, PreviewUpperRole, NormalizeDisplayText(detail.UpperHeader, $"{itemName}上限"), schemeItem.Sort + 1);
         }
 
         if (detail.EnableLower)
         {
-            yield return CreateProductHistoryDynamicColumn(itemKey, itemName, PreviewLowerRole, $"{itemName}下限", schemeItem.Sort + 2);
+            yield return CreateProductHistoryDynamicColumn(itemKey, itemName, PreviewLowerRole, NormalizeDisplayText(detail.LowerHeader, $"{itemName}下限"), schemeItem.Sort + 2);
         }
 
         if (detail.EnableActual)
         {
-            yield return CreateProductHistoryDynamicColumn(itemKey, itemName, PreviewActualRole, $"{itemName}实际值", schemeItem.Sort + 3);
+            yield return CreateProductHistoryDynamicColumn(itemKey, itemName, PreviewActualRole, NormalizeDisplayText(detail.ActualHeader, $"{itemName}实际值"), schemeItem.Sort + 3);
         }
 
         if (detail.EnableResult)
         {
-            yield return CreateProductHistoryDynamicColumn(itemKey, itemName, PreviewResultRole, $"{itemName}结果", schemeItem.Sort + 4);
+            yield return CreateProductHistoryDynamicColumn(itemKey, itemName, PreviewResultRole, NormalizeDisplayText(detail.ResultHeader, $"{itemName}结果"), schemeItem.Sort + 4);
         }
     }
 
@@ -3990,11 +4021,20 @@ public partial class MonitorView : BaseView
     /// </summary>
     /// <param name="dynamicColumns">动态列集合。</param>
     /// <returns>处理后的文本。</returns>
-    private static string BuildProductHistorySchemaKey(IReadOnlyList<ProductHistoryDynamicColumn> dynamicColumns)
+    private static string BuildProductHistorySchemaKey(
+        IReadOnlyList<ProductHistoryDynamicColumn> dynamicColumns,
+        ProductHistoryDisplayOptions displayOptions)
     {
-        return dynamicColumns.Count == 0
+        var displayKey = string.Join('\u001E',
+            displayOptions.PointName,
+            displayOptions.PointNoHeader,
+            displayOptions.PointResultHeader,
+            displayOptions.PointCountHeader,
+            displayOptions.ShowTestFlagInHistory);
+        var dynamicKey = dynamicColumns.Count == 0
             ? "base"
             : string.Join("|", dynamicColumns.Select(column => $"{column.Key}:{column.Title}:{column.Role}:{column.Sort}"));
+        return $"{displayKey}|{dynamicKey}";
     }
 
     /// <summary>
@@ -4155,6 +4195,7 @@ public partial class MonitorView : BaseView
     private void RebuildWeldParameterPreviewTable()
     {
         var items = ResolveWeldPreviewItems(_weldParameterRows);
+        var displayOptions = ResolveWeldPreviewDisplayOptions(_weldParameterRows);
         var grid = CurrentWeldPreviewGrid;
         SetControlRedraw(grid, enabled: false);
         grid.SuspendLayout();
@@ -4163,8 +4204,8 @@ public partial class MonitorView : BaseView
             grid.Rows.Clear();
             grid.Columns.Clear();
 
-            AddWeldPreviewColumn(PreviewTouchNoColumn, "焊点序号", 86);
-            AddWeldPreviewColumn(PreviewTouchResultColumn, "焊点结果", 86);
+            AddWeldPreviewColumn(PreviewTouchNoColumn, displayOptions.PointNoHeader, 86);
+            AddWeldPreviewColumn(PreviewTouchResultColumn, displayOptions.PointResultHeader, 86);
             if (IsInfoPreview(items))
             {
                 AddWeldPreviewColumn(PreviewMessageColumn, "提示", 360);
@@ -4176,22 +4217,22 @@ public partial class MonitorView : BaseView
                 {
                     if (item.EnableUpper)
                     {
-                        AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewUpperRole), $"{item.Name}上限", 118);
+                        AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewUpperRole), NormalizeDisplayText(item.UpperHeader, $"{item.Name}上限"), 118);
                     }
 
                     if (item.EnableLower)
                     {
-                        AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewLowerRole), $"{item.Name}下限", 118);
+                        AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewLowerRole), NormalizeDisplayText(item.LowerHeader, $"{item.Name}下限"), 118);
                     }
 
                     if (item.EnableActual)
                     {
-                        AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewActualRole), $"{item.Name}实际值", 136);
+                        AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewActualRole), NormalizeDisplayText(item.ActualHeader, $"{item.Name}实际值"), 136);
                     }
 
                     if (item.EnableResult)
                     {
-                        AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewResultRole), $"{item.Name}结果", 118);
+                        AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewResultRole), NormalizeDisplayText(item.ResultHeader, $"{item.Name}结果"), 118);
                     }
                 }
 
@@ -4589,7 +4630,11 @@ public partial class MonitorView : BaseView
                 EnableActual = group.Any(row => row.EnableActual),
                 EnableUpper = group.Any(row => row.EnableUpper),
                 EnableLower = group.Any(row => row.EnableLower),
-                EnableResult = group.Any(row => row.EnableResult)
+                EnableResult = group.Any(row => row.EnableResult),
+                ActualHeader = group.Select(row => row.ActualHeader).FirstOrDefault(header => !string.IsNullOrWhiteSpace(header)) ?? string.Empty,
+                UpperHeader = group.Select(row => row.UpperHeader).FirstOrDefault(header => !string.IsNullOrWhiteSpace(header)) ?? string.Empty,
+                LowerHeader = group.Select(row => row.LowerHeader).FirstOrDefault(header => !string.IsNullOrWhiteSpace(header)) ?? string.Empty,
+                ResultHeader = group.Select(row => row.ResultHeader).FirstOrDefault(header => !string.IsNullOrWhiteSpace(header)) ?? string.Empty
             })
             .Where(item => item.EnableActual || item.EnableUpper || item.EnableLower || item.EnableResult)
             .OrderBy(item => item.Sort)
@@ -4602,7 +4647,11 @@ public partial class MonitorView : BaseView
                 item.EnableActual,
                 item.EnableUpper,
                 item.EnableLower,
-                item.EnableResult))
+                item.EnableResult,
+                item.ActualHeader,
+                item.UpperHeader,
+                item.LowerHeader,
+                item.ResultHeader))
             .ToList();
 
         return items.Count == 0
@@ -4645,7 +4694,7 @@ public partial class MonitorView : BaseView
         return items.Count == 0
             ? "info"
             : string.Join("|", items.Select(item =>
-                $"{item.Index}:{item.Key}:{item.Name}:{item.EnableActual}:{item.EnableUpper}:{item.EnableLower}:{item.EnableResult}"));
+                $"{item.Index}:{item.Key}:{item.Name}:{item.EnableActual}:{item.EnableUpper}:{item.EnableLower}:{item.EnableResult}:{item.ActualHeader}:{item.UpperHeader}:{item.LowerHeader}:{item.ResultHeader}"));
     }
 
     /// <summary>
@@ -4657,10 +4706,32 @@ public partial class MonitorView : BaseView
     {
         var materializedRows = rows.ToList();
         var items = ResolveWeldPreviewItems(materializedRows);
+        var displayOptions = ResolveWeldPreviewDisplayOptions(materializedRows);
         var rowCount = IsInfoPreview(items)
             ? materializedRows.Count
             : ResolvePreviewTouchGroups(materializedRows).Count;
-        return $"{BuildWeldPreviewSchemaKey(items)}|rows:{rowCount}";
+        return $"{displayOptions.PointNoHeader}:{displayOptions.PointResultHeader}|{BuildWeldPreviewSchemaKey(items)}|rows:{rowCount}";
+    }
+
+    private static ProductHistoryDisplayOptions ResolveWeldPreviewDisplayOptions(IEnumerable<WeldParameterRow> rows)
+    {
+        var row = rows.FirstOrDefault(item =>
+            !string.IsNullOrWhiteSpace(item.PointName)
+            || !string.IsNullOrWhiteSpace(item.PointNoHeader)
+            || !string.IsNullOrWhiteSpace(item.PointResultHeader)
+            || !string.IsNullOrWhiteSpace(item.PointCountHeader));
+        if (row is null)
+        {
+            return ProductHistoryDisplayOptions.Default;
+        }
+
+        var pointName = NormalizeDisplayText(row.PointName, ProductHistoryDisplayOptions.Default.PointName);
+        return new ProductHistoryDisplayOptions(
+            pointName,
+            NormalizeDisplayText(row.PointNoHeader, $"{pointName}序号"),
+            NormalizeDisplayText(row.PointResultHeader, $"{pointName}结果"),
+            NormalizeDisplayText(row.PointCountHeader, $"{pointName}数"),
+            true);
     }
 
     /// <summary>
@@ -4678,8 +4749,16 @@ public partial class MonitorView : BaseView
                 row.ProductModel,
                 row.TouchIndex,
                 row.TouchNo,
+                row.PointName,
+                row.PointNoHeader,
+                row.PointResultHeader,
+                row.PointCountHeader,
                 row.ItemKey,
                 row.ParameterName,
+                row.ActualHeader,
+                row.UpperHeader,
+                row.LowerHeader,
+                row.ResultHeader,
                 row.EnableActual,
                 row.EnableUpper,
                 row.EnableLower,
@@ -4835,7 +4914,7 @@ public partial class MonitorView : BaseView
         statusLabel.ForeColor = hasErrorMessage ? UiColors.Status.Danger : UiColors.Status.Success;
 
         SetControlText(CurrentLiveProductNoLabel, $"产品编号：{FormatLiveSummaryValue(snapshot.ProductNo)}");
-        SetControlText(CurrentLiveTouchCountLabel, $"焊点：{FormatLiveSummaryValue(snapshot.TouchCountText)}");
+        SetControlText(CurrentLiveTouchCountLabel, $"{NormalizeDisplayText(snapshot.PointName, "焊点")}：{FormatLiveSummaryValue(snapshot.TouchCountText)}");
         ApplyLiveResultTag(snapshot.ProductResult);
     }
 
@@ -5021,12 +5100,20 @@ public partial class MonitorView : BaseView
             TouchIndex = row.TouchIndex,
             TouchNo = row.TouchNo,
             TouchResult = row.TouchResult,
+            PointName = row.PointName,
+            PointNoHeader = row.PointNoHeader,
+            PointResultHeader = row.PointResultHeader,
+            PointCountHeader = row.PointCountHeader,
             ParameterName = row.ItemName,
             Unit = row.Unit,
             EnableActual = row.EnableActual,
             EnableUpper = row.EnableUpper,
             EnableLower = row.EnableLower,
             EnableResult = row.EnableResult,
+            ActualHeader = row.ActualHeader,
+            UpperHeader = row.UpperHeader,
+            LowerHeader = row.LowerHeader,
+            ResultHeader = row.ResultHeader,
             ActualAddress = row.ActualAddress,
             UpperAddress = row.UpperAddress,
             LowerAddress = row.LowerAddress,
@@ -5344,6 +5431,31 @@ public partial class MonitorView : BaseView
         return _productProcessConfigService.FindActive(identity.ProductNum, identity.StationNo);
     }
 
+    private static string ResolvePointName(BizProductProcessConfig config)
+        => NormalizeDisplayText(config.PointName, "焊点");
+
+    private static string ResolvePointNoHeader(BizProductProcessConfig config)
+        => NormalizeDisplayText(config.PointNoHeader, $"{ResolvePointName(config)}序号");
+
+    private static string ResolvePointResultHeader(BizProductProcessConfig config)
+        => NormalizeDisplayText(config.PointResultHeader, $"{ResolvePointName(config)}结果");
+
+    private static string ResolvePointCountHeader(BizProductProcessConfig config)
+        => NormalizeDisplayText(config.PointCountHeader, $"{ResolvePointName(config)}数");
+
+    private static string ResolveDetailHeader(BizSchemeDetail detail, DimTestItem item, string role)
+    {
+        var itemName = NormalizeDisplayText(item.ItemName, $"测试项{item.ItemId}");
+        return role switch
+        {
+            PreviewActualRole => NormalizeDisplayText(detail.ActualHeader, $"{itemName}实际值"),
+            PreviewUpperRole => NormalizeDisplayText(detail.UpperHeader, $"{itemName}上限"),
+            PreviewLowerRole => NormalizeDisplayText(detail.LowerHeader, $"{itemName}下限"),
+            PreviewResultRole => NormalizeDisplayText(detail.ResultHeader, $"{itemName}结果"),
+            _ => itemName
+        };
+    }
+
     /// <summary>
     /// 解析方案测试项。
     /// </summary>
@@ -5408,12 +5520,20 @@ public partial class MonitorView : BaseView
             ProductModel = identity.ProductModel,
             TouchIndex = touchNo,
             TouchNo = touchNo.ToString(),
+            PointName = ResolvePointName(config),
+            PointNoHeader = ResolvePointNoHeader(config),
+            PointResultHeader = ResolvePointResultHeader(config),
+            PointCountHeader = ResolvePointCountHeader(config),
             ParameterName = item.ItemName,
             Unit = item.Unit ?? string.Empty,
             EnableActual = detail.EnableActual,
             EnableUpper = detail.EnableUpper,
             EnableLower = detail.EnableLower,
             EnableResult = detail.EnableResult,
+            ActualHeader = ResolveDetailHeader(detail, item, PreviewActualRole),
+            UpperHeader = ResolveDetailHeader(detail, item, PreviewUpperRole),
+            LowerHeader = ResolveDetailHeader(detail, item, PreviewLowerRole),
+            ResultHeader = ResolveDetailHeader(detail, item, PreviewResultRole),
             ActualAddress = actual.Address,
             UpperAddress = upper.Address,
             LowerAddress = lower.Address,
@@ -5508,9 +5628,10 @@ public partial class MonitorView : BaseView
 
     private IEnumerable<WeldParameterRow> BuildFallbackWeldParameterRows(BizWeldPointRecord record, IReadOnlyDictionary<string, string> rawValues)
     {
+        var displayOptions = ResolveRecordDisplayOptions(record);
         var knownRows = new[]
         {
-            CreateFallbackWeldParameterRow(record, "test_result", "焊点结果", FormatNullableText(record.TestResult), 90)
+            CreateFallbackWeldParameterRow(record, displayOptions, "test_result", displayOptions.PointResultHeader, FormatNullableText(record.TestResult), 90)
         };
 
         var knownKeys = new HashSet<string>(knownRows.Select(row => row.ItemKey), StringComparer.OrdinalIgnoreCase)
@@ -5524,12 +5645,18 @@ public partial class MonitorView : BaseView
                 && !item.Key.EndsWith("_lower", StringComparison.OrdinalIgnoreCase)
                 && !item.Key.EndsWith("_result", StringComparison.OrdinalIgnoreCase))
             .OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
-            .Select((item, index) => CreateFallbackWeldParameterRow(record, item.Key, item.Key, FormatNullableText(item.Value), 100 + index));
+            .Select((item, index) => CreateFallbackWeldParameterRow(record, displayOptions, item.Key, item.Key, FormatNullableText(item.Value), 100 + index));
 
         return knownRows.Concat(dynamicRows);
     }
 
-    private WeldParameterRow CreateFallbackWeldParameterRow(BizWeldPointRecord record, string itemKey, string parameterName, string value, int sort)
+    private WeldParameterRow CreateFallbackWeldParameterRow(
+        BizWeldPointRecord record,
+        ProductHistoryDisplayOptions displayOptions,
+        string itemKey,
+        string parameterName,
+        string value,
+        int sort)
     {
         return new WeldParameterRow
         {
@@ -5540,6 +5667,10 @@ public partial class MonitorView : BaseView
             ProductModel = _currentProductIdentity?.ProductModel ?? GetCurrentStationState().ActiveTask?.ProductModel ?? string.Empty,
             TouchIndex = ParsePositiveInt(record.TouchNo),
             TouchNo = record.TouchNo,
+            PointName = displayOptions.PointName,
+            PointNoHeader = displayOptions.PointNoHeader,
+            PointResultHeader = displayOptions.PointResultHeader,
+            PointCountHeader = displayOptions.PointCountHeader,
             ParameterName = parameterName,
             Value = value,
             Result = FormatNullableText(record.TestResult),
@@ -5547,6 +5678,22 @@ public partial class MonitorView : BaseView
             Sort = ParsePositiveInt(record.TouchNo) * 10000 + sort,
             ItemKey = itemKey
         };
+    }
+
+    private ProductHistoryDisplayOptions ResolveRecordDisplayOptions(BizWeldPointRecord record)
+    {
+        var activeTask = GetCurrentStationState().ActiveTask;
+        var config = activeTask is not null
+            ? _productProcessConfigService.FindActiveForTask(activeTask, record.StationNo)
+            : null;
+        if (config is null && _currentProductIdentity is { } identity && !string.IsNullOrWhiteSpace(identity.ProductNum))
+        {
+            config = _productProcessConfigService.FindActive(identity.ProductNum, record.StationNo);
+        }
+
+        return config is null
+            ? ProductHistoryDisplayOptions.Default
+            : ProductHistoryDisplayOptions.FromConfig(config);
     }
 
     private static string? FindRecordResult(BizWeldPointRecord record, WeldParameterRow row, IReadOnlyDictionary<string, string> rawValues)
@@ -5775,6 +5922,14 @@ public partial class MonitorView : BaseView
         return string.IsNullOrWhiteSpace(value)
             ? _localizer.GetString(TextKeys.Production.NotAvailable)
             : value.Trim();
+    }
+
+    private static string NormalizeDisplayText(string? value, string fallback)
+    {
+        var normalizedValue = value?.Trim();
+        return string.IsNullOrWhiteSpace(normalizedValue)
+            ? fallback
+            : normalizedValue;
     }
 
     /// <summary>
@@ -7385,22 +7540,43 @@ public partial class MonitorView : BaseView
 
     private sealed record PlcTextReadResult(bool IsSuccess, string Value, string Detail)
     {
-    /// <summary>
-    /// 处理成功。
-    /// </summary>
-    /// <param name="value">待处理值。</param>
-    /// <returns>解析到的对象；不存在时返回 null。</returns>
+        /// <summary>
+        /// 处理成功。
+        /// </summary>
+        /// <param name="value">待处理值。</param>
+        /// <returns>解析到的对象；不存在时返回 null。</returns>
         public static PlcTextReadResult Success(string value) => new(true, value, string.Empty);
 
-    /// <summary>
-    /// 处理Failed。
-    /// </summary>
-    /// <param name="detail">详情。</param>
-    /// <returns>解析到的对象；不存在时返回 null。</returns>
+        /// <summary>
+        /// 处理Failed。
+        /// </summary>
+        /// <param name="detail">详情。</param>
+        /// <returns>解析到的对象；不存在时返回 null。</returns>
         public static PlcTextReadResult Failed(string detail) => new(false, string.Empty, detail);
     }
 
     private sealed record ProductionMetricRow(string Name, string Value);
+
+    private sealed record ProductHistoryDisplayOptions(
+        string PointName,
+        string PointNoHeader,
+        string PointResultHeader,
+        string PointCountHeader,
+        bool ShowTestFlagInHistory)
+    {
+        public static ProductHistoryDisplayOptions Default { get; } = new("焊点", "焊点序号", "焊点结果", "焊点数", true);
+
+        public static ProductHistoryDisplayOptions FromConfig(BizProductProcessConfig config)
+        {
+            var pointName = NormalizeDisplayText(config.PointName, "焊点");
+            return new ProductHistoryDisplayOptions(
+                pointName,
+                NormalizeDisplayText(config.PointNoHeader, $"{pointName}序号"),
+                NormalizeDisplayText(config.PointResultHeader, $"{pointName}结果"),
+                NormalizeDisplayText(config.PointCountHeader, $"{pointName}数"),
+                config.ShowTestFlagInHistory != false);
+        }
+    }
 
     private sealed record SchemePreviewItem(int Sort, DimTestItem Item, BizSchemeDetail Detail);
 

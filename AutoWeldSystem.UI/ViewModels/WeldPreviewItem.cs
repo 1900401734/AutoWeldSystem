@@ -9,4 +9,8 @@ public sealed record WeldPreviewItem(
     bool EnableActual,
     bool EnableUpper,
     bool EnableLower,
-    bool EnableResult);
+    bool EnableResult,
+    string ActualHeader,
+    string UpperHeader,
+    string LowerHeader,
+    string ResultHeader);

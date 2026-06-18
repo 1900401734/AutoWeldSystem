@@ -20,6 +20,8 @@ public sealed class ProductHistoryTableRow
 
     public string ResultText { get; init; } = string.Empty;
 
+    public bool ShowTestFlag { get; init; } = true;
+
     public string UploadStatusText { get; init; } = string.Empty;
 
     public bool IsTest { get; init; }

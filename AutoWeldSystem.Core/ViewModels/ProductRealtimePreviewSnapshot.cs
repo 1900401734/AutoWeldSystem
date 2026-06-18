@@ -13,6 +13,7 @@ public sealed record ProductRealtimePreviewSnapshot(
     string ProductModel,
     string SchemeId,
     string TouchCountText,
+    string PointName,
     string ProductResult,
     DateTime RefreshTime,
     IReadOnlyList<ProductRealtimePreviewRow> Rows,

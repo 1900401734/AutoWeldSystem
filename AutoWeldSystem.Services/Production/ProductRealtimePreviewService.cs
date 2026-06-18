@@ -327,6 +327,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             identity.ProductModel,
             config.SchemeId,
             BuildTouchCountText(config.TouchCount, actualTouchCount, presetTouchCount),
+            ResolvePointName(config),
             productResult,
             refreshTime,
             rows,
@@ -406,6 +407,10 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             TouchIndex = touchNo,
             TouchNo = touchNo.ToString(CultureInfo.InvariantCulture),
             TouchResult = touchResult,
+            PointName = ResolvePointName(config),
+            PointNoHeader = ResolvePointNoHeader(config),
+            PointResultHeader = ResolvePointResultHeader(config),
+            PointCountHeader = ResolvePointCountHeader(config),
             ItemId = item.ItemId,
             ItemName = item.ItemName,
             Unit = item.Unit ?? string.Empty,
@@ -413,6 +418,10 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             EnableUpper = schemeItem.EnableUpper,
             EnableLower = schemeItem.EnableLower,
             EnableResult = schemeItem.EnableResult,
+            ActualHeader = ResolveDetailHeader(schemeItem.Detail, item, ProductRealtimePreviewRole.Actual),
+            UpperHeader = ResolveDetailHeader(schemeItem.Detail, item, ProductRealtimePreviewRole.Upper),
+            LowerHeader = ResolveDetailHeader(schemeItem.Detail, item, ProductRealtimePreviewRole.Lower),
+            ResultHeader = ResolveDetailHeader(schemeItem.Detail, item, ProductRealtimePreviewRole.Result),
             ActualValue = schemeItem.EnableActual ? await ReadValueTextAsync(actual, cancellationToken) : string.Empty,
             UpperValue = schemeItem.EnableUpper ? await ReadValueTextAsync(upper, cancellationToken) : string.Empty,
             LowerValue = schemeItem.EnableLower ? await ReadValueTextAsync(lower, cancellationToken) : string.Empty,
@@ -501,6 +510,39 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         return $"{actual}/{expected}";
     }
 
+    private static string ResolvePointName(BizProductProcessConfig config)
+        => NormalizeNullableText(config.PointName) ?? "焊点";
+
+    private static string ResolvePointNoHeader(BizProductProcessConfig config)
+        => NormalizeNullableText(config.PointNoHeader) ?? $"{ResolvePointName(config)}序号";
+
+    private static string ResolvePointResultHeader(BizProductProcessConfig config)
+        => NormalizeNullableText(config.PointResultHeader) ?? $"{ResolvePointName(config)}结果";
+
+    private static string ResolvePointCountHeader(BizProductProcessConfig config)
+        => NormalizeNullableText(config.PointCountHeader) ?? $"{ResolvePointName(config)}数";
+
+    private static string ResolveDetailHeader(BizSchemeDetail detail, DimTestItem item, ProductRealtimePreviewRole role)
+    {
+        var itemName = NormalizeNullableText(item.ItemName) ?? $"测试项{item.ItemId}";
+        return role switch
+        {
+            ProductRealtimePreviewRole.Actual => NormalizeNullableText(detail.ActualHeader) ?? $"{itemName}实际值",
+            ProductRealtimePreviewRole.Upper => NormalizeNullableText(detail.UpperHeader) ?? $"{itemName}上限",
+            ProductRealtimePreviewRole.Lower => NormalizeNullableText(detail.LowerHeader) ?? $"{itemName}下限",
+            ProductRealtimePreviewRole.Result => NormalizeNullableText(detail.ResultHeader) ?? $"{itemName}结果",
+            _ => itemName
+        };
+    }
+
+    private static string? NormalizeNullableText(string? value)
+    {
+        var normalizedValue = value?.Trim();
+        return string.IsNullOrWhiteSpace(normalizedValue)
+            ? null
+            : normalizedValue;
+    }
+
     private static string FormatValue(string? value)
     {
         return string.IsNullOrWhiteSpace(value)
@@ -545,6 +587,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             identity?.ProductModel ?? string.Empty,
             string.Empty,
             string.Empty,
+            "焊点",
             "--",
             DateTime.Now,
             Array.Empty<ProductRealtimePreviewRow>(),
@@ -619,6 +662,14 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
     }
 
     private sealed record ProductPreviewIdentity(int StationNo, string ProductNum, string ProductModel);
+
+    private enum ProductRealtimePreviewRole
+    {
+        Actual,
+        Upper,
+        Lower,
+        Result
+    }
 
     private static bool HasAnyEnabledRole(BizSchemeDetail detail)
     {

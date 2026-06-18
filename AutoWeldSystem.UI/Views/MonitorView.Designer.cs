@@ -31,14 +31,14 @@ namespace AutoWeldSystem.UI.Views
         private void InitializeComponent()
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(MonitorView));
-            AntdUI.Tabs.StyleLine styleLine4 = new AntdUI.Tabs.StyleLine();
+            AntdUI.Tabs.StyleLine styleLine3 = new AntdUI.Tabs.StyleLine();
             DataGridViewCellStyle dataGridViewCellStyle5 = new DataGridViewCellStyle();
             DataGridViewCellStyle dataGridViewCellStyle6 = new DataGridViewCellStyle();
             DataGridViewCellStyle dataGridViewCellStyle7 = new DataGridViewCellStyle();
             DataGridViewCellStyle dataGridViewCellStyle8 = new DataGridViewCellStyle();
             AntdUI.SegmentedItem segmentedItem3 = new AntdUI.SegmentedItem();
             AntdUI.SegmentedItem segmentedItem4 = new AntdUI.SegmentedItem();
-            AntdUI.Tabs.StyleLine styleLine3 = new AntdUI.Tabs.StyleLine();
+            AntdUI.Tabs.StyleLine styleLine4 = new AntdUI.Tabs.StyleLine();
             VerticalSplitter = new AntdUI.Splitter();
             tlpLeft = new TableLayoutPanel();
             LeftTopLayout = new TableLayoutPanel();
@@ -77,9 +77,9 @@ namespace AutoWeldSystem.UI.Views
             lblLiveTouchNo2 = new AntdUI.Label();
             tlpRight = new TableLayoutPanel();
             grpProductResult = new GroupBox();
-            tlpStationResult = new TableLayoutPanel();
-            tagStationResult2 = new AntdUI.Tag();
-            tagStationResult1 = new AntdUI.Tag();
+            tlpResult = new TableLayoutPanel();
+            tagResult2 = new AntdUI.Tag();
+            tagResult1 = new AntdUI.Tag();
             tlpWorkOrderInfo = new TableLayoutPanel();
             tlpUserInfo2 = new TableLayoutPanel();
             TeamName = new AntdUI.Input();
@@ -176,7 +176,7 @@ namespace AutoWeldSystem.UI.Views
             tlpStationOverview2.SuspendLayout();
             tlpRight.SuspendLayout();
             grpProductResult.SuspendLayout();
-            tlpStationResult.SuspendLayout();
+            tlpResult.SuspendLayout();
             tlpWorkOrderInfo.SuspendLayout();
             tlpUserInfo2.SuspendLayout();
             tlpButton.SuspendLayout();
@@ -362,7 +362,7 @@ namespace AutoWeldSystem.UI.Views
             tabsPreview.Pages.Add(tabsPreview2);
             tabsPreview.SelectedIndex = 1;
             tabsPreview.Size = new Size(1148, 827);
-            tabsPreview.Style = styleLine4;
+            tabsPreview.Style = styleLine3;
             tabsPreview.TabIndex = 6;
             tabsPreview.Text = "tabs1";
             // 
@@ -792,7 +792,7 @@ namespace AutoWeldSystem.UI.Views
             // 
             // grpProductResult
             // 
-            grpProductResult.Controls.Add(tlpStationResult);
+            grpProductResult.Controls.Add(tlpResult);
             grpProductResult.Dock = DockStyle.Fill;
             grpProductResult.Location = new Point(1, 625);
             grpProductResult.Margin = new Padding(1, 0, 1, 0);
@@ -802,48 +802,48 @@ namespace AutoWeldSystem.UI.Views
             grpProductResult.TabStop = false;
             grpProductResult.Text = "产品结果";
             // 
-            // tlpStationResult
+            // tlpResult
             // 
-            tlpStationResult.ColumnCount = 2;
-            tlpStationResult.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            tlpStationResult.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            tlpStationResult.Controls.Add(tagStationResult2, 1, 0);
-            tlpStationResult.Controls.Add(tagStationResult1, 0, 0);
-            tlpStationResult.Dock = DockStyle.Fill;
-            tlpStationResult.Location = new Point(3, 26);
-            tlpStationResult.Margin = new Padding(0);
-            tlpStationResult.Name = "tlpStationResult";
-            tlpStationResult.RowCount = 1;
-            tlpStationResult.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tlpStationResult.Size = new Size(401, 59);
-            tlpStationResult.TabIndex = 1;
+            tlpResult.ColumnCount = 2;
+            tlpResult.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            tlpResult.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            tlpResult.Controls.Add(tagResult2, 1, 0);
+            tlpResult.Controls.Add(tagResult1, 0, 0);
+            tlpResult.Dock = DockStyle.Fill;
+            tlpResult.Location = new Point(3, 26);
+            tlpResult.Margin = new Padding(0);
+            tlpResult.Name = "tlpResult";
+            tlpResult.RowCount = 1;
+            tlpResult.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            tlpResult.Size = new Size(401, 59);
+            tlpResult.TabIndex = 1;
             // 
-            // tagStationResult2
+            // tagResult2
             // 
-            tagStationResult2.BackColor = Color.FromArgb(108, 117, 125);
-            tagStationResult2.Dock = DockStyle.Fill;
-            tagStationResult2.Font = new Font("Microsoft YaHei UI", 15F, FontStyle.Bold);
-            tagStationResult2.ForeColor = Color.White;
-            tagStationResult2.Location = new Point(200, 0);
-            tagStationResult2.Margin = new Padding(0);
-            tagStationResult2.Name = "tagStationResult2";
-            tagStationResult2.Size = new Size(201, 59);
-            tagStationResult2.TabIndex = 1;
-            tagStationResult2.Text = "工位2--";
-            tagStationResult2.Visible = false;
+            tagResult2.BackColor = Color.FromArgb(108, 117, 125);
+            tagResult2.Dock = DockStyle.Fill;
+            tagResult2.Font = new Font("Microsoft YaHei UI", 15F, FontStyle.Bold);
+            tagResult2.ForeColor = Color.White;
+            tagResult2.Location = new Point(200, 0);
+            tagResult2.Margin = new Padding(0);
+            tagResult2.Name = "tagResult2";
+            tagResult2.Size = new Size(201, 59);
+            tagResult2.TabIndex = 1;
+            tagResult2.Text = "工位2--";
+            tagResult2.Visible = false;
             // 
-            // tagStationResult1
+            // tagResult1
             // 
-            tagStationResult1.BackColor = Color.FromArgb(108, 117, 125);
-            tagStationResult1.Dock = DockStyle.Fill;
-            tagStationResult1.Font = new Font("Microsoft YaHei UI", 15F, FontStyle.Bold);
-            tagStationResult1.ForeColor = Color.White;
-            tagStationResult1.Location = new Point(0, 0);
-            tagStationResult1.Margin = new Padding(0);
-            tagStationResult1.Name = "tagStationResult1";
-            tagStationResult1.Size = new Size(200, 59);
-            tagStationResult1.TabIndex = 0;
-            tagStationResult1.Text = "工位1--";
+            tagResult1.BackColor = Color.FromArgb(108, 117, 125);
+            tagResult1.Dock = DockStyle.Fill;
+            tagResult1.Font = new Font("Microsoft YaHei UI", 15F, FontStyle.Bold);
+            tagResult1.ForeColor = Color.White;
+            tagResult1.Location = new Point(0, 0);
+            tagResult1.Margin = new Padding(0);
+            tagResult1.Name = "tagResult1";
+            tagResult1.Size = new Size(200, 59);
+            tagResult1.TabIndex = 0;
+            tagResult1.Text = "工位1--";
             // 
             // tlpWorkOrderInfo
             // 
@@ -1664,7 +1664,7 @@ namespace AutoWeldSystem.UI.Views
             tabsMetrics.Pages.Add(tabsMetrics1);
             tabsMetrics.Pages.Add(tabsMetrics2);
             tabsMetrics.Size = new Size(407, 218);
-            tabsMetrics.Style = styleLine3;
+            tabsMetrics.Style = styleLine4;
             tabsMetrics.TabIndex = 5;
             tabsMetrics.Text = "tabsMetrics";
             // 
@@ -1812,7 +1812,7 @@ namespace AutoWeldSystem.UI.Views
             tlpStationOverview2.PerformLayout();
             tlpRight.ResumeLayout(false);
             grpProductResult.ResumeLayout(false);
-            tlpStationResult.ResumeLayout(false);
+            tlpResult.ResumeLayout(false);
             tlpWorkOrderInfo.ResumeLayout(false);
             tlpWorkOrderInfo.PerformLayout();
             tlpUserInfo2.ResumeLayout(false);
@@ -1897,9 +1897,9 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Label lblDrawingNo;
         private AntdUI.Input inputDrawingNo;
         private TableLayoutPanel LeftTopLayout;
-        private TableLayoutPanel tlpStationResult;
-        private AntdUI.Tag tagStationResult2;
-        private AntdUI.Tag tagStationResult1;
+        private TableLayoutPanel tlpResult;
+        private AntdUI.Tag tagResult2;
+        private AntdUI.Tag tagResult1;
         private TableLayoutPanel tlpStation;
         private AntdUI.Segmented segmentedStationSwitch;
         private AntdUI.Button btnEditWO;
