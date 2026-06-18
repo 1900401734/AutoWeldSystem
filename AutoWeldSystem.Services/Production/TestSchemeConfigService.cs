@@ -78,8 +78,9 @@ public sealed class TestSchemeConfigService : ITestSchemeConfigService
                 query = query.Where(it => it.SchemeId == normalizedSchemeId);
             }
 
+            var items = _dbContext.Db.Queryable<DimTestItem>().ToList();
             return query.ToList()
-                .Select(NormalizeLegacyDetailRoles)
+                .Select(detail => NormalizeLegacyDetailRoles(detail, items))
                 .OrderBy(detail => detail.SchemeId)
                 .ThenBy(detail => detail.DetailId)
                 .ToList();
@@ -91,7 +92,8 @@ public sealed class TestSchemeConfigService : ITestSchemeConfigService
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
-            Normalize(detail);
+            var item = _dbContext.Db.Queryable<DimTestItem>().InSingle(detail.ItemId);
+            Normalize(detail, item);
             EnsureSchemeExists(detail.SchemeId);
             EnsureItemExists(detail.ItemId);
             EnsureDetailNotDuplicated(detail);
@@ -195,7 +197,7 @@ public sealed class TestSchemeConfigService : ITestSchemeConfigService
         scheme.Description = NormalizeNullable(scheme.Description);
     }
 
-    private static void Normalize(BizSchemeDetail detail)
+    private static void Normalize(BizSchemeDetail detail, DimTestItem? item)
     {
         detail.SchemeId = NormalizeRequired(detail.SchemeId, "测试方案ID不能为空。");
         if (detail.ItemId <= 0)
@@ -207,16 +209,19 @@ public sealed class TestSchemeConfigService : ITestSchemeConfigService
         {
             throw new InvalidOperationException("方案明细至少需要启用实际值、上限、下限或结果中的一项。");
         }
+
+        NormalizeDetailOutput(detail, item);
     }
 
     /// <summary>
     /// 旧版本方案明细没有字段启用标记，新增列后数据库默认值可能全部为 false。
     /// 这种记录按旧行为视为四个字段全启用，避免升级后现有方案突然不采集数据。
     /// </summary>
-    private static BizSchemeDetail NormalizeLegacyDetailRoles(BizSchemeDetail detail)
+    private static BizSchemeDetail NormalizeLegacyDetailRoles(BizSchemeDetail detail, IReadOnlyList<DimTestItem> items)
     {
         if (HasAnyEnabledRole(detail))
         {
+            NormalizeDetailOutput(detail, items.FirstOrDefault(item => item.ItemId == detail.ItemId));
             return detail;
         }
 
@@ -224,7 +229,21 @@ public sealed class TestSchemeConfigService : ITestSchemeConfigService
         detail.EnableUpper = true;
         detail.EnableLower = true;
         detail.EnableResult = true;
+        NormalizeDetailOutput(detail, items.FirstOrDefault(item => item.ItemId == detail.ItemId));
         return detail;
+    }
+
+    private static void NormalizeDetailOutput(BizSchemeDetail detail, DimTestItem? item)
+    {
+        var itemName = NormalizeNullable(item?.ItemName) ?? $"测试项{detail.ItemId}";
+        detail.ActualHeader = NormalizeNullable(detail.ActualHeader) ?? $"{itemName}实际值";
+        detail.UpperHeader = NormalizeNullable(detail.UpperHeader) ?? $"{itemName}上限";
+        detail.LowerHeader = NormalizeNullable(detail.LowerHeader) ?? $"{itemName}下限";
+        detail.ResultHeader = NormalizeNullable(detail.ResultHeader) ?? $"{itemName}结果";
+        detail.ActualMesFieldName = NormalizeNullable(detail.ActualMesFieldName);
+        detail.UpperMesFieldName = NormalizeNullable(detail.UpperMesFieldName);
+        detail.LowerMesFieldName = NormalizeNullable(detail.LowerMesFieldName);
+        detail.ResultMesFieldName = NormalizeNullable(detail.ResultMesFieldName);
     }
 
     private static bool HasAnyEnabledRole(BizSchemeDetail detail)

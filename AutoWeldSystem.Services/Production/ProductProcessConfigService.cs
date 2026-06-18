@@ -151,6 +151,11 @@ public class ProductProcessConfigService : IProductProcessConfigService
         config.ProductNum = NormalizeRequired(config.ProductNum, "产品工号不能为空。");
         config.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, config.StationNo);
         config.TouchCount = Math.Max(1, config.TouchCount);
+        config.PointName = NormalizeNullable(config.PointName) ?? "焊点";
+        config.PointNoHeader = NormalizeNullable(config.PointNoHeader) ?? $"{config.PointName}序号";
+        config.PointResultHeader = NormalizeNullable(config.PointResultHeader) ?? $"{config.PointName}结果";
+        config.PointCountHeader = NormalizeNullable(config.PointCountHeader) ?? $"{config.PointName}数";
+        config.ShowTestFlagInHistory ??= true;
         config.ProductBase = NormalizeRequired(config.ProductBase, "产品头基地址不能为空。");
         config.ProductLen = Math.Max(1, config.ProductLen);
         config.ProductNoExpr = NormalizeRequired(config.ProductNoExpr, "产品编号偏移表达式不能为空。");

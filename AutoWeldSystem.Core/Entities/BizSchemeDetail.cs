@@ -29,4 +29,52 @@ public class BizSchemeDetail
 
     [SugarColumn(ColumnDescription = "是否启用结果")]
     public bool EnableResult { get; set; } = true;
+
+    [SugarColumn(Length = 100, IsNullable = true, ColumnDescription = "实际值显示表头")]
+    public string? ActualHeader { get; set; }
+
+    [SugarColumn(Length = 100, IsNullable = true, ColumnDescription = "上限显示表头")]
+    public string? UpperHeader { get; set; }
+
+    [SugarColumn(Length = 100, IsNullable = true, ColumnDescription = "下限显示表头")]
+    public string? LowerHeader { get; set; }
+
+    [SugarColumn(Length = 100, IsNullable = true, ColumnDescription = "结果显示表头")]
+    public string? ResultHeader { get; set; }
+
+    [SugarColumn(ColumnDescription = "实际值写入报表")]
+    public bool? ReportActual { get; set; } = true;
+
+    [SugarColumn(ColumnDescription = "上限写入报表")]
+    public bool? ReportUpper { get; set; } = true;
+
+    [SugarColumn(ColumnDescription = "下限写入报表")]
+    public bool? ReportLower { get; set; } = true;
+
+    [SugarColumn(ColumnDescription = "结果写入报表")]
+    public bool? ReportResult { get; set; } = true;
+
+    [SugarColumn(ColumnDescription = "实际值上传MES")]
+    public bool? MesActual { get; set; }
+
+    [SugarColumn(ColumnDescription = "上限上传MES")]
+    public bool? MesUpper { get; set; }
+
+    [SugarColumn(ColumnDescription = "下限上传MES")]
+    public bool? MesLower { get; set; }
+
+    [SugarColumn(ColumnDescription = "结果上传MES")]
+    public bool? MesResult { get; set; }
+
+    [SugarColumn(Length = 100, IsNullable = true, ColumnDescription = "实际值MES字段名")]
+    public string? ActualMesFieldName { get; set; }
+
+    [SugarColumn(Length = 100, IsNullable = true, ColumnDescription = "上限MES字段名")]
+    public string? UpperMesFieldName { get; set; }
+
+    [SugarColumn(Length = 100, IsNullable = true, ColumnDescription = "下限MES字段名")]
+    public string? LowerMesFieldName { get; set; }
+
+    [SugarColumn(Length = 100, IsNullable = true, ColumnDescription = "结果MES字段名")]
+    public string? ResultMesFieldName { get; set; }
 }

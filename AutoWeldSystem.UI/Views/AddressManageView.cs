@@ -46,6 +46,9 @@ public partial class AddressManageView : BaseView
     private List<ProductProcessTableRow> _currentProductProcessRows = new();
     private List<TestSchemeTableRow> _currentSchemeRows = new();
     private List<TestItemTableRow> _currentItemRows = new();
+    private List<SchemeDetailRoleTableRow> _currentSchemeDetailRoleRows = new();
+
+    private readonly DataGridView _schemeDetailRoleGrid = new();
 
     private PlcAddressTableRow? _selectedRow;
     private ProductProcessTableRow? _selectedProductProcessRow;
@@ -93,6 +96,7 @@ public partial class AddressManageView : BaseView
 
         InitializeComponent();
         ConfigureTables();
+        InitializeSchemeDetailRoleGrid();
         WireEvents();
     }
 
@@ -145,6 +149,83 @@ public partial class AddressManageView : BaseView
         ConfigureTestItemColumns();
     }
 
+    /// <summary>
+    /// 初始化方案明细右侧输出配置表格。
+    /// TreeView 负责快速勾选采集字段，表格负责编辑表头、报表和 MES 输出配置。
+    /// </summary>
+    private void InitializeSchemeDetailRoleGrid()
+    {
+        _schemeDetailRoleGrid.AllowUserToAddRows = false;
+        _schemeDetailRoleGrid.AllowUserToDeleteRows = false;
+        _schemeDetailRoleGrid.AutoGenerateColumns = false;
+        _schemeDetailRoleGrid.BackgroundColor = Color.White;
+        _schemeDetailRoleGrid.BorderStyle = BorderStyle.FixedSingle;
+        _schemeDetailRoleGrid.Dock = DockStyle.Fill;
+        _schemeDetailRoleGrid.MultiSelect = false;
+        _schemeDetailRoleGrid.RowHeadersVisible = false;
+        _schemeDetailRoleGrid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+        _schemeDetailRoleGrid.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            DataPropertyName = nameof(SchemeDetailRoleTableRow.ItemName),
+            HeaderText = "测试项",
+            ReadOnly = true,
+            Width = 150
+        });
+        _schemeDetailRoleGrid.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            DataPropertyName = nameof(SchemeDetailRoleTableRow.RoleName),
+            HeaderText = "字段",
+            ReadOnly = true,
+            Width = 76
+        });
+        _schemeDetailRoleGrid.Columns.Add(new DataGridViewCheckBoxColumn
+        {
+            DataPropertyName = nameof(SchemeDetailRoleTableRow.Enabled),
+            HeaderText = "采集",
+            Width = 58
+        });
+        _schemeDetailRoleGrid.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            DataPropertyName = nameof(SchemeDetailRoleTableRow.HeaderText),
+            HeaderText = "显示表头",
+            Width = 150
+        });
+        _schemeDetailRoleGrid.Columns.Add(new DataGridViewCheckBoxColumn
+        {
+            DataPropertyName = nameof(SchemeDetailRoleTableRow.ReportEnabled),
+            HeaderText = "报表",
+            Width = 58
+        });
+        _schemeDetailRoleGrid.Columns.Add(new DataGridViewCheckBoxColumn
+        {
+            DataPropertyName = nameof(SchemeDetailRoleTableRow.MesEnabled),
+            HeaderText = "MES",
+            Width = 58
+        });
+        _schemeDetailRoleGrid.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            DataPropertyName = nameof(SchemeDetailRoleTableRow.MesFieldName),
+            HeaderText = "MES字段名",
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill
+        });
+
+        TableStyleHelper.ApplyDataGridView(_schemeDetailRoleGrid);
+
+        // 左侧树用于快速勾选采集字段，右侧表格用于维护每个字段的输出配置。
+        schemeDetailLayout.Controls.Remove(treeSchemeDetails);
+        var splitContainer = new SplitContainer
+        {
+            Dock = DockStyle.Fill,
+            FixedPanel = FixedPanel.Panel1,
+            SplitterDistance = 340,
+            SplitterWidth = 6
+        };
+        treeSchemeDetails.Dock = DockStyle.Fill;
+        splitContainer.Panel1.Controls.Add(treeSchemeDetails);
+        splitContainer.Panel2.Controls.Add(_schemeDetailRoleGrid);
+        schemeDetailLayout.Controls.Add(splitContainer, 0, 2);
+    }
+
     #region 业务信号
 
     private void ConfigureBusinessAddressColumns()
@@ -172,6 +253,11 @@ public partial class AddressManageView : BaseView
         tableProcess.Columns.Add(CreateSchemeSelectColumn(nameof(ProductProcessTableRow.SchemeId), "测试方案ID"));
         tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.StationNo), "工位(0共享)"));
         tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.TouchCount), "焊点数量"));
+        tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.PointName), "采集点名称"));
+        tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.PointNoHeader), "编号表头"));
+        tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.PointResultHeader), "结果表头"));
+        tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.PointCountHeader), "数量表头"));
+        tableProcess.Columns.Add(CreateProductProcessTestFlagColumn());
         tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.ProductBase), "产品头基地址"));
         tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.ProductLen), "产品头长度"));
         tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.ProductNoExpr), "产品编号偏移"));
@@ -284,7 +370,7 @@ public partial class AddressManageView : BaseView
 
     private static AntdUI.ColumnSwitch CreateAddressEnabledColumn(string? titleKey)
     {
-        return new AntdUI.ColumnSwitch(nameof(PlcAddressTableRow.Enabled), titleKey)
+        return new AntdUI.ColumnSwitch(nameof(PlcAddressTableRow.Enabled), titleKey ?? string.Empty)
         {
             Align = AntdUI.ColumnAlign.Center,
             AutoCheck = true
@@ -294,6 +380,15 @@ public partial class AddressManageView : BaseView
     private static AntdUI.ColumnSwitch CreateProductProcessEnabledColumn()
     {
         return new AntdUI.ColumnSwitch(nameof(ProductProcessTableRow.Enabled), "启用")
+        {
+            Align = AntdUI.ColumnAlign.Center,
+            AutoCheck = true
+        };
+    }
+
+    private static AntdUI.ColumnSwitch CreateProductProcessTestFlagColumn()
+    {
+        return new AntdUI.ColumnSwitch(nameof(ProductProcessTableRow.ShowTestFlagInHistory), "历史显示试焊件")
         {
             Align = AntdUI.ColumnAlign.Center,
             AutoCheck = true
@@ -597,12 +692,14 @@ public partial class AddressManageView : BaseView
         EndTableEdit();
         _detailKeyword = keyword?.Trim() ?? string.Empty;
         SyncCurrentSchemeDetailTreeToMemory();
+        SyncCurrentSchemeDetailGridToMemory();
         LoadSchemeDetailTree(_detailKeyword);
     }
 
     private void BindSchemeDetailSchemeOptions()
     {
         SyncCurrentSchemeDetailTreeToMemory();
+        SyncCurrentSchemeDetailGridToMemory();
 
         var previousSchemeId = _currentSchemeDetailSchemeId;
         var schemes = _testSchemes.OrderBy(scheme => scheme.SchemeId).ToList();
@@ -647,6 +744,7 @@ public partial class AddressManageView : BaseView
         }
 
         SyncCurrentSchemeDetailTreeToMemory();
+        SyncCurrentSchemeDetailGridToMemory();
         _currentSchemeDetailSchemeId = ResolveSelectedSchemeDetailSchemeId();
         LoadSchemeDetailTree(_detailKeyword);
     }
@@ -706,6 +804,7 @@ public partial class AddressManageView : BaseView
         {
             treeSchemeDetails.EndUpdate();
             _handlingSchemeDetailTreeCheck = false;
+            BindSchemeDetailRoleRows();
         }
     }
 
@@ -776,6 +875,10 @@ public partial class AddressManageView : BaseView
         {
             _handlingSchemeDetailTreeCheck = false;
         }
+
+        // 树节点是采集开关的快捷入口，切换后同步刷新右侧输出配置表。
+        SyncCurrentSchemeDetailTreeToMemory();
+        BindSchemeDetailRoleRows();
     }
 
     private void SetChildCheckedState(TreeNode node, bool isChecked)
@@ -840,6 +943,91 @@ public partial class AddressManageView : BaseView
                 _schemeDetails.Add(detail);
             }
         }
+    }
+
+    private void BindSchemeDetailRoleRows()
+    {
+        var schemeId = _currentSchemeDetailSchemeId?.Trim() ?? string.Empty;
+        var visibleItemIds = treeSchemeDetails.Nodes
+            .Cast<TreeNode>()
+            .Select(node => node.Tag as SchemeDetailTreeNodeTag)
+            .Where(tag => tag is { Role: null })
+            .Select(tag => tag!.ItemId)
+            .Distinct()
+            .ToHashSet();
+
+        var detailByItemId = _schemeDetails
+            .Where(detail => SameScheme(detail.SchemeId, schemeId) && visibleItemIds.Contains(detail.ItemId))
+            .GroupBy(detail => detail.ItemId)
+            .ToDictionary(group => group.Key, group => group.First());
+
+        _currentSchemeDetailRoleRows = _testItems
+            .Where(item => visibleItemIds.Contains(item.ItemId))
+            .OrderBy(item => item.ItemId)
+            .SelectMany(item =>
+            {
+                var detail = detailByItemId.TryGetValue(item.ItemId, out var existingDetail)
+                    ? existingDetail
+                    : CreateEmptySchemeDetail(schemeId, item.ItemId);
+                return CreateSchemeDetailRoleRows(detail, item);
+            })
+            .ToList();
+
+        _schemeDetailRoleGrid.DataSource = null;
+        _schemeDetailRoleGrid.DataSource = _currentSchemeDetailRoleRows;
+    }
+
+    private void SyncCurrentSchemeDetailGridToMemory()
+    {
+        _schemeDetailRoleGrid.EndEdit();
+        var schemeId = _currentSchemeDetailSchemeId?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(schemeId) || _currentSchemeDetailRoleRows.Count == 0)
+        {
+            return;
+        }
+
+        var visibleItemIds = _currentSchemeDetailRoleRows
+            .Select(row => row.ItemId)
+            .Distinct()
+            .ToHashSet();
+
+        _schemeDetails.RemoveAll(detail => SameScheme(detail.SchemeId, schemeId) && visibleItemIds.Contains(detail.ItemId));
+        foreach (var group in _currentSchemeDetailRoleRows.GroupBy(row => row.ItemId))
+        {
+            var detail = group.First().Source;
+            detail.SchemeId = schemeId;
+            detail.ItemId = group.Key;
+            foreach (var row in group)
+            {
+                row.NormalizeForSave();
+            }
+
+            if (HasAnyEnabledRole(detail))
+            {
+                _schemeDetails.Add(detail);
+            }
+        }
+    }
+
+    private IEnumerable<SchemeDetailRoleTableRow> CreateSchemeDetailRoleRows(BizSchemeDetail detail, DimTestItem item)
+    {
+        yield return new SchemeDetailRoleTableRow(detail, item, SchemeDetailValueRole.Actual);
+        yield return new SchemeDetailRoleTableRow(detail, item, SchemeDetailValueRole.Upper);
+        yield return new SchemeDetailRoleTableRow(detail, item, SchemeDetailValueRole.Lower);
+        yield return new SchemeDetailRoleTableRow(detail, item, SchemeDetailValueRole.Result);
+    }
+
+    private static BizSchemeDetail CreateEmptySchemeDetail(string schemeId, int itemId)
+    {
+        return new BizSchemeDetail
+        {
+            SchemeId = schemeId,
+            ItemId = itemId,
+            EnableActual = false,
+            EnableUpper = false,
+            EnableLower = false,
+            EnableResult = false
+        };
     }
 
     private static void ApplySchemeDetailRoleState(BizSchemeDetail detail, TreeNode itemNode)
@@ -1053,6 +1241,7 @@ public partial class AddressManageView : BaseView
     private void SaveSchemeDetails()
     {
         SyncCurrentSchemeDetailTreeToMemory();
+        SyncCurrentSchemeDetailGridToMemory();
 
         var details = _schemeDetails
             .Where(HasAnyEnabledRole)
@@ -1181,12 +1370,16 @@ public partial class AddressManageView : BaseView
     {
         var identity = ResolveProductProcessPreviewIdentity(config);
         var schemeItems = ResolveSchemeItems(config.SchemeId);
+        var pointName = ResolvePointName(config);
+        var pointNoHeader = ResolvePointNoHeader(config);
+        var pointResultHeader = ResolvePointResultHeader(config);
+        var pointCountHeader = ResolvePointCountHeader(config);
         var rows = new List<PlcAddressPreviewRow>();
 
         AddProductProcessAddressPreviewRow(rows, identity, "产品头", "-", "产品编号", config.ProductBase, 0, config.ProductNoExpr);
         AddProductProcessAddressPreviewRow(rows, identity, "产品头", "-", "产品结果", config.ProductBase, 0, config.ProductResultExpr);
-        AddProductProcessAddressPreviewRow(rows, identity, "产品头", "-", "实际焊点数", config.ProductBase, 0, config.ActualTouchCountExpr);
-        AddProductProcessAddressPreviewRow(rows, identity, "产品头", "-", "预设焊点数", config.ProductBase, 0, config.PresetTouchCountExpr);
+        AddProductProcessAddressPreviewRow(rows, identity, "产品头", "-", $"实际{pointCountHeader}", config.ProductBase, 0, config.ActualTouchCountExpr);
+        AddProductProcessAddressPreviewRow(rows, identity, "产品头", "-", $"预设{pointCountHeader}", config.ProductBase, 0, config.PresetTouchCountExpr);
 
         if (schemeItems.Count == 0)
         {
@@ -1199,8 +1392,8 @@ public partial class AddressManageView : BaseView
             var testContextOffset = (touchNo - 1) * config.TestAreaLen;
             var touchText = touchNo.ToString(CultureInfo.InvariantCulture);
 
-            AddProductProcessAddressPreviewRow(rows, identity, "焊点头", touchText, "焊点编号", ResolveTouchNoBase(config), touchContextOffset, config.TouchNoExpr);
-            AddProductProcessAddressPreviewRow(rows, identity, "焊点头", touchText, "焊点结果", ResolveTouchResultBase(config), touchContextOffset, config.TouchResultExpr);
+            AddProductProcessAddressPreviewRow(rows, identity, $"{pointName}头", touchText, pointNoHeader, ResolveTouchNoBase(config), touchContextOffset, config.TouchNoExpr);
+            AddProductProcessAddressPreviewRow(rows, identity, $"{pointName}头", touchText, pointResultHeader, ResolveTouchResultBase(config), touchContextOffset, config.TouchResultExpr);
 
             foreach (var schemeItem in schemeItems)
             {
@@ -1208,22 +1401,22 @@ public partial class AddressManageView : BaseView
                 var detail = schemeItem.Detail;
                 if (detail.EnableActual)
                 {
-                    AddProductProcessAddressPreviewRow(rows, identity, "测试项", touchText, $"{item.ItemName} 实际值", config.TestBase, testContextOffset, item.ActualExpression);
+                    AddProductProcessAddressPreviewRow(rows, identity, "测试项", touchText, ResolveSchemeDetailHeader(detail, item, SchemeDetailValueRole.Actual), config.TestBase, testContextOffset, item.ActualExpression);
                 }
 
                 if (detail.EnableUpper)
                 {
-                    AddProductProcessAddressPreviewRow(rows, identity, "测试项", touchText, $"{item.ItemName} 上限", config.TestBase, testContextOffset, item.UpperExpression);
+                    AddProductProcessAddressPreviewRow(rows, identity, "测试项", touchText, ResolveSchemeDetailHeader(detail, item, SchemeDetailValueRole.Upper), config.TestBase, testContextOffset, item.UpperExpression);
                 }
 
                 if (detail.EnableLower)
                 {
-                    AddProductProcessAddressPreviewRow(rows, identity, "测试项", touchText, $"{item.ItemName} 下限", config.TestBase, testContextOffset, item.LowerExpression);
+                    AddProductProcessAddressPreviewRow(rows, identity, "测试项", touchText, ResolveSchemeDetailHeader(detail, item, SchemeDetailValueRole.Lower), config.TestBase, testContextOffset, item.LowerExpression);
                 }
 
                 if (detail.EnableResult)
                 {
-                    AddProductProcessAddressPreviewRow(rows, identity, "测试项", touchText, $"{item.ItemName} 结果", config.TestBase, testContextOffset, item.ResultExpression);
+                    AddProductProcessAddressPreviewRow(rows, identity, "测试项", touchText, ResolveSchemeDetailHeader(detail, item, SchemeDetailValueRole.Result), config.TestBase, testContextOffset, item.ResultExpression);
                 }
             }
         }
@@ -1309,6 +1502,30 @@ public partial class AddressManageView : BaseView
         return new PlcExpressionBinding(expressionText, AppConstants.PlcDataTypes.Int16, 0, expressionText);
     }
 
+    private static string ResolvePointName(BizProductProcessConfig config)
+        => NormalizeNullableText(config.PointName) ?? "焊点";
+
+    private static string ResolvePointNoHeader(BizProductProcessConfig config)
+        => NormalizeNullableText(config.PointNoHeader) ?? $"{ResolvePointName(config)}序号";
+
+    private static string ResolvePointResultHeader(BizProductProcessConfig config)
+        => NormalizeNullableText(config.PointResultHeader) ?? $"{ResolvePointName(config)}结果";
+
+    private static string ResolvePointCountHeader(BizProductProcessConfig config)
+        => NormalizeNullableText(config.PointCountHeader) ?? $"{ResolvePointName(config)}数";
+
+    private static string ResolveSchemeDetailHeader(BizSchemeDetail detail, DimTestItem item, SchemeDetailValueRole role)
+    {
+        return role switch
+        {
+            SchemeDetailValueRole.Actual => NormalizeNullableText(detail.ActualHeader) ?? $"{item.ItemName}实际值",
+            SchemeDetailValueRole.Upper => NormalizeNullableText(detail.UpperHeader) ?? $"{item.ItemName}上限",
+            SchemeDetailValueRole.Lower => NormalizeNullableText(detail.LowerHeader) ?? $"{item.ItemName}下限",
+            SchemeDetailValueRole.Result => NormalizeNullableText(detail.ResultHeader) ?? $"{item.ItemName}结果",
+            _ => item.ItemName
+        };
+    }
+
     private static string ResolveTouchNoBase(BizProductProcessConfig config)
         => string.IsNullOrWhiteSpace(config.TouchNoBase) ? config.TouchBase : config.TouchNoBase!.Trim();
 
@@ -1329,6 +1546,11 @@ public partial class AddressManageView : BaseView
             SchemeId = schemeId,
             StationNo = ProductionConstants.Stations.SharedStationNo,
             TouchCount = 1,
+            PointName = "焊点",
+            PointNoHeader = "焊点序号",
+            PointResultHeader = "焊点结果",
+            PointCountHeader = "焊点数",
+            ShowTestFlagInHistory = true,
             ProductBase = "DB8.0",
             ProductLen = 32,
             ProductNoExpr = "0:I-0",
@@ -1524,6 +1746,10 @@ public partial class AddressManageView : BaseView
                 nameof(ProductProcessTableRow.SchemeId) => !string.IsNullOrWhiteSpace(value),
                 nameof(ProductProcessTableRow.StationNo) => IsNonNegativeInt(value),
                 nameof(ProductProcessTableRow.TouchCount) => IsPositiveInt(value),
+                nameof(ProductProcessTableRow.PointName) => !string.IsNullOrWhiteSpace(value),
+                nameof(ProductProcessTableRow.PointNoHeader) => !string.IsNullOrWhiteSpace(value),
+                nameof(ProductProcessTableRow.PointResultHeader) => !string.IsNullOrWhiteSpace(value),
+                nameof(ProductProcessTableRow.PointCountHeader) => !string.IsNullOrWhiteSpace(value),
                 nameof(ProductProcessTableRow.ProductLen) => IsPositiveInt(value),
                 nameof(ProductProcessTableRow.TouchHeaderLen) => IsPositiveInt(value),
                 nameof(ProductProcessTableRow.TestAreaLen) => IsPositiveInt(value),
@@ -1579,7 +1805,15 @@ public partial class AddressManageView : BaseView
         if (e.Record is ProductProcessTableRow processRow)
         {
             _selectedProductProcessRow = processRow;
-            processRow.Enabled = e.Value;
+            if (e.Column.Key == nameof(ProductProcessTableRow.ShowTestFlagInHistory))
+            {
+                processRow.ShowTestFlagInHistory = e.Value;
+            }
+            else
+            {
+                processRow.Enabled = e.Value;
+            }
+
             UpdateProductProcessSummary();
             SyncActiveCommandState();
         }
@@ -1624,6 +1858,7 @@ public partial class AddressManageView : BaseView
         tableProcess.EditModeClose();
         tableTestSchemes.EditModeClose();
         tableTestItems.EditModeClose();
+        _schemeDetailRoleGrid.EndEdit();
     }
 
     private void SelectVisibleRow(string? logicalKey, int? stationNo)
@@ -1693,6 +1928,11 @@ public partial class AddressManageView : BaseView
             config.SchemeId = NormalizeRequiredText(config.SchemeId, "测试方案ID不能为空。");
             config.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, config.StationNo);
             config.TouchCount = Math.Max(1, config.TouchCount);
+            config.PointName = NormalizeRequiredText(config.PointName, "采集点名称不能为空。");
+            config.PointNoHeader = NormalizeRequiredText(config.PointNoHeader, "采集点编号表头不能为空。");
+            config.PointResultHeader = NormalizeRequiredText(config.PointResultHeader, "采集点结果表头不能为空。");
+            config.PointCountHeader = NormalizeRequiredText(config.PointCountHeader, "采集点数量表头不能为空。");
+            config.ShowTestFlagInHistory ??= true;
             config.ProductBase = NormalizeRequiredText(config.ProductBase, "产品头基地址不能为空。");
             config.ProductLen = Math.Max(1, config.ProductLen);
             config.ProductNoExpr = NormalizeRequiredText(config.ProductNoExpr, "产品编号偏移不能为空。");
@@ -1765,10 +2005,20 @@ public partial class AddressManageView : BaseView
                 throw new InvalidOperationException($"测试方案“{detail.SchemeId}”不存在。");
             }
 
-            if (!_testItems.Any(item => item.ItemId == detail.ItemId))
+            var item = _testItems.FirstOrDefault(item => item.ItemId == detail.ItemId);
+            if (item is null)
             {
                 throw new InvalidOperationException($"测试项ID“{detail.ItemId}”不存在。");
             }
+
+            detail.ActualHeader = NormalizeNullableText(detail.ActualHeader) ?? $"{item.ItemName}实际值";
+            detail.UpperHeader = NormalizeNullableText(detail.UpperHeader) ?? $"{item.ItemName}上限";
+            detail.LowerHeader = NormalizeNullableText(detail.LowerHeader) ?? $"{item.ItemName}下限";
+            detail.ResultHeader = NormalizeNullableText(detail.ResultHeader) ?? $"{item.ItemName}结果";
+            detail.ActualMesFieldName = NormalizeNullableText(detail.ActualMesFieldName);
+            detail.UpperMesFieldName = NormalizeNullableText(detail.UpperMesFieldName);
+            detail.LowerMesFieldName = NormalizeNullableText(detail.LowerMesFieldName);
+            detail.ResultMesFieldName = NormalizeNullableText(detail.ResultMesFieldName);
 
             if (!HasAnyEnabledRole(detail))
             {
@@ -2024,6 +2274,221 @@ public partial class AddressManageView : BaseView
     private sealed record SchemeDetailTreeNodeTag(int ItemId, SchemeDetailValueRole? Role);
 
     /// <summary>
+    /// 方案明细输出配置表格行。
+    /// 同一个 BizSchemeDetail 会拆成四行，分别维护实际值、上限、下限和结果的输出配置。
+    /// </summary>
+    private sealed class SchemeDetailRoleTableRow(BizSchemeDetail source, DimTestItem item, SchemeDetailValueRole role)
+    {
+        public BizSchemeDetail Source { get; } = source;
+
+        public int ItemId => item.ItemId;
+
+        public string ItemName => item.ItemName;
+
+        public SchemeDetailValueRole Role { get; } = role;
+
+        public string RoleName => Role switch
+        {
+            SchemeDetailValueRole.Actual => "实际值",
+            SchemeDetailValueRole.Upper => "上限",
+            SchemeDetailValueRole.Lower => "下限",
+            SchemeDetailValueRole.Result => "结果",
+            _ => string.Empty
+        };
+
+        public bool Enabled
+        {
+            get => GetEnabled(Source, Role);
+            set => SetEnabled(Source, Role, value);
+        }
+
+        public string HeaderText
+        {
+            get => ResolveSchemeDetailHeader(Source, item, Role);
+            set => SetHeader(Source, Role, NormalizeNullableText(value) ?? ResolveDefaultHeader(item, Role));
+        }
+
+        public bool ReportEnabled
+        {
+            get => GetReportEnabled(Source, Role);
+            set => SetReportEnabled(Source, Role, value);
+        }
+
+        public bool MesEnabled
+        {
+            get => GetMesEnabled(Source, Role);
+            set => SetMesEnabled(Source, Role, value);
+        }
+
+        public string? MesFieldName
+        {
+            get => GetMesFieldName(Source, Role);
+            set => SetMesFieldName(Source, Role, NormalizeNullableText(value));
+        }
+
+        public void NormalizeForSave()
+        {
+            HeaderText = HeaderText;
+            MesFieldName = MesFieldName;
+        }
+
+        private static string ResolveDefaultHeader(DimTestItem item, SchemeDetailValueRole role)
+        {
+            return role switch
+            {
+                SchemeDetailValueRole.Actual => $"{item.ItemName}实际值",
+                SchemeDetailValueRole.Upper => $"{item.ItemName}上限",
+                SchemeDetailValueRole.Lower => $"{item.ItemName}下限",
+                SchemeDetailValueRole.Result => $"{item.ItemName}结果",
+                _ => item.ItemName
+            };
+        }
+
+        private static bool GetEnabled(BizSchemeDetail detail, SchemeDetailValueRole role)
+        {
+            return role switch
+            {
+                SchemeDetailValueRole.Actual => detail.EnableActual,
+                SchemeDetailValueRole.Upper => detail.EnableUpper,
+                SchemeDetailValueRole.Lower => detail.EnableLower,
+                SchemeDetailValueRole.Result => detail.EnableResult,
+                _ => false
+            };
+        }
+
+        private static void SetEnabled(BizSchemeDetail detail, SchemeDetailValueRole role, bool value)
+        {
+            switch (role)
+            {
+                case SchemeDetailValueRole.Actual:
+                    detail.EnableActual = value;
+                    break;
+                case SchemeDetailValueRole.Upper:
+                    detail.EnableUpper = value;
+                    break;
+                case SchemeDetailValueRole.Lower:
+                    detail.EnableLower = value;
+                    break;
+                case SchemeDetailValueRole.Result:
+                    detail.EnableResult = value;
+                    break;
+            }
+        }
+
+        private static void SetHeader(BizSchemeDetail detail, SchemeDetailValueRole role, string value)
+        {
+            switch (role)
+            {
+                case SchemeDetailValueRole.Actual:
+                    detail.ActualHeader = value;
+                    break;
+                case SchemeDetailValueRole.Upper:
+                    detail.UpperHeader = value;
+                    break;
+                case SchemeDetailValueRole.Lower:
+                    detail.LowerHeader = value;
+                    break;
+                case SchemeDetailValueRole.Result:
+                    detail.ResultHeader = value;
+                    break;
+            }
+        }
+
+        private static bool GetReportEnabled(BizSchemeDetail detail, SchemeDetailValueRole role)
+        {
+            return role switch
+            {
+                SchemeDetailValueRole.Actual => detail.ReportActual ?? detail.EnableActual,
+                SchemeDetailValueRole.Upper => detail.ReportUpper ?? detail.EnableUpper,
+                SchemeDetailValueRole.Lower => detail.ReportLower ?? detail.EnableLower,
+                SchemeDetailValueRole.Result => detail.ReportResult ?? detail.EnableResult,
+                _ => false
+            };
+        }
+
+        private static void SetReportEnabled(BizSchemeDetail detail, SchemeDetailValueRole role, bool value)
+        {
+            switch (role)
+            {
+                case SchemeDetailValueRole.Actual:
+                    detail.ReportActual = value;
+                    break;
+                case SchemeDetailValueRole.Upper:
+                    detail.ReportUpper = value;
+                    break;
+                case SchemeDetailValueRole.Lower:
+                    detail.ReportLower = value;
+                    break;
+                case SchemeDetailValueRole.Result:
+                    detail.ReportResult = value;
+                    break;
+            }
+        }
+
+        private static bool GetMesEnabled(BizSchemeDetail detail, SchemeDetailValueRole role)
+        {
+            return role switch
+            {
+                SchemeDetailValueRole.Actual => detail.MesActual ?? false,
+                SchemeDetailValueRole.Upper => detail.MesUpper ?? false,
+                SchemeDetailValueRole.Lower => detail.MesLower ?? false,
+                SchemeDetailValueRole.Result => detail.MesResult ?? false,
+                _ => false
+            };
+        }
+
+        private static void SetMesEnabled(BizSchemeDetail detail, SchemeDetailValueRole role, bool value)
+        {
+            switch (role)
+            {
+                case SchemeDetailValueRole.Actual:
+                    detail.MesActual = value;
+                    break;
+                case SchemeDetailValueRole.Upper:
+                    detail.MesUpper = value;
+                    break;
+                case SchemeDetailValueRole.Lower:
+                    detail.MesLower = value;
+                    break;
+                case SchemeDetailValueRole.Result:
+                    detail.MesResult = value;
+                    break;
+            }
+        }
+
+        private static string? GetMesFieldName(BizSchemeDetail detail, SchemeDetailValueRole role)
+        {
+            return role switch
+            {
+                SchemeDetailValueRole.Actual => detail.ActualMesFieldName,
+                SchemeDetailValueRole.Upper => detail.UpperMesFieldName,
+                SchemeDetailValueRole.Lower => detail.LowerMesFieldName,
+                SchemeDetailValueRole.Result => detail.ResultMesFieldName,
+                _ => null
+            };
+        }
+
+        private static void SetMesFieldName(BizSchemeDetail detail, SchemeDetailValueRole role, string? value)
+        {
+            switch (role)
+            {
+                case SchemeDetailValueRole.Actual:
+                    detail.ActualMesFieldName = value;
+                    break;
+                case SchemeDetailValueRole.Upper:
+                    detail.UpperMesFieldName = value;
+                    break;
+                case SchemeDetailValueRole.Lower:
+                    detail.LowerMesFieldName = value;
+                    break;
+                case SchemeDetailValueRole.Result:
+                    detail.ResultMesFieldName = value;
+                    break;
+            }
+        }
+    }
+
+    /// <summary>
     /// 业务信号地址表格行。表格编辑的是包装属性，保存时仍回写到原始地址实体。
     /// </summary>
     private sealed class PlcAddressTableRow(BizPlcAddress source, string addressName)
@@ -2125,6 +2590,30 @@ public partial class AddressManageView : BaseView
             set => Source.TouchCount = Math.Max(1, value);
         }
 
+        public string PointName
+        {
+            get => Source.PointName;
+            set => Source.PointName = value.Trim();
+        }
+
+        public string PointNoHeader
+        {
+            get => Source.PointNoHeader;
+            set => Source.PointNoHeader = value.Trim();
+        }
+
+        public string PointResultHeader
+        {
+            get => Source.PointResultHeader;
+            set => Source.PointResultHeader = value.Trim();
+        }
+
+        public string PointCountHeader
+        {
+            get => Source.PointCountHeader;
+            set => Source.PointCountHeader = value.Trim();
+        }
+
         public string ProductBase
         {
             get => Source.ProductBase;
@@ -2215,6 +2704,12 @@ public partial class AddressManageView : BaseView
             set => Source.Enabled = value;
         }
 
+        public bool ShowTestFlagInHistory
+        {
+            get => Source.ShowTestFlagInHistory != false;
+            set => Source.ShowTestFlagInHistory = value;
+        }
+
         public DateTime UpdatedTime => Source.UpdatedTime;
 
         public void NormalizeForDisplay()
@@ -2223,6 +2718,11 @@ public partial class AddressManageView : BaseView
             Source.SchemeId = string.IsNullOrWhiteSpace(Source.SchemeId) ? "S01" : Source.SchemeId.Trim();
             Source.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, Source.StationNo);
             Source.TouchCount = Math.Max(1, Source.TouchCount);
+            Source.PointName = NormalizeNullableText(Source.PointName) ?? "焊点";
+            Source.PointNoHeader = NormalizeNullableText(Source.PointNoHeader) ?? $"{Source.PointName}序号";
+            Source.PointResultHeader = NormalizeNullableText(Source.PointResultHeader) ?? $"{Source.PointName}结果";
+            Source.PointCountHeader = NormalizeNullableText(Source.PointCountHeader) ?? $"{Source.PointName}数";
+            Source.ShowTestFlagInHistory ??= true;
             Source.ProductBase = Source.ProductBase.Trim();
             Source.ProductLen = Math.Max(1, Source.ProductLen);
             Source.ProductNoExpr = Source.ProductNoExpr.Trim();

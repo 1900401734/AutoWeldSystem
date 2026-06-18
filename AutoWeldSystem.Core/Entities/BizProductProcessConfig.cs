@@ -21,6 +21,36 @@ public class BizProductProcessConfig
     [SugarColumn(ColumnDescription = "焊点数量")]
     public int TouchCount { get; set; } = 1;
 
+    /// <summary>
+    /// 当前工艺的采集点名称，例如焊点、相机。
+    /// </summary>
+    [SugarColumn(Length = 50, ColumnDescription = "采集点名称")]
+    public string PointName { get; set; } = "焊点";
+
+    /// <summary>
+    /// 实时预览和报表中采集点编号的列标题。
+    /// </summary>
+    [SugarColumn(Length = 50, ColumnDescription = "采集点编号表头")]
+    public string PointNoHeader { get; set; } = "焊点序号";
+
+    /// <summary>
+    /// 实时预览和报表中采集点结果的列标题。
+    /// </summary>
+    [SugarColumn(Length = 50, ColumnDescription = "采集点结果表头")]
+    public string PointResultHeader { get; set; } = "焊点结果";
+
+    /// <summary>
+    /// 产品历史中采集点数量的列标题。
+    /// </summary>
+    [SugarColumn(Length = 50, ColumnDescription = "采集点数量表头")]
+    public string PointCountHeader { get; set; } = "焊点数";
+
+    /// <summary>
+    /// 是否在产品历史中显示试焊件列和右键标记入口。
+    /// </summary>
+    [SugarColumn(IsNullable = true, ColumnDescription = "产品历史显示试焊件")]
+    public bool? ShowTestFlagInHistory { get; set; } = true;
+
     [SugarColumn(Length = 100, ColumnDescription = "产品头基地址")]
     public string ProductBase { get; set; } = "DB8.0";
 
