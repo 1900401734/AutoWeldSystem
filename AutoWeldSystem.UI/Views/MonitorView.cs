@@ -102,6 +102,7 @@ public partial class MonitorView : BaseView
     private string? _runtimeErrorKey;
     private object[] _runtimeErrorArgs = Array.Empty<object>();
     private string? _runtimeErrorText;
+    private string? _deviceAlarmRuntimeErrorText;
 
     private bool _syncingStationSelection;
     private bool _syncingProcessSelection;
@@ -3089,9 +3090,40 @@ public partial class MonitorView : BaseView
         tagDeviceStatus.ForeColor = Color.White;
         tagDeviceStatus.BackColor = GetDeviceStatusColor(snapshot.DeviceStatusCode, snapshot.IsSuccess);
 
+        if (snapshot.DeviceStatusCode == ProductionConstants.PlcDeviceStatuses.Alarm)
+        {
+            var alarmMessage = string.IsNullOrWhiteSpace(snapshot.AlarmMessage)
+                ? "PLC设备报警，未匹配到已启用的报警原因"
+                : snapshot.AlarmMessage;
+            _deviceAlarmRuntimeErrorText = NormalizeRuntimeSummary(alarmMessage);
+            SetRuntimeErrorText(_deviceAlarmRuntimeErrorText);
+            return;
+        }
+
+        ClearDeviceAlarmRuntimeErrorIfCurrent();
+
         if (!snapshot.IsSuccess && !string.IsNullOrWhiteSpace(snapshot.Message))
         {
             SetRuntimeError(TextKeys.Monitor.RuntimeError.ProductionCollectFailed);
+        }
+    }
+
+    /// <summary>
+    /// 清除由 PLC 报警写入的异常提示，避免报警恢复后覆盖其它业务异常。
+    /// </summary>
+    private void ClearDeviceAlarmRuntimeErrorIfCurrent()
+    {
+        if (string.IsNullOrWhiteSpace(_deviceAlarmRuntimeErrorText))
+        {
+            return;
+        }
+
+        var shouldClear = _runtimeErrorKey is null
+            && string.Equals(_runtimeErrorText, _deviceAlarmRuntimeErrorText, StringComparison.Ordinal);
+        _deviceAlarmRuntimeErrorText = null;
+        if (shouldClear)
+        {
+            ClearRuntimeError();
         }
     }
 

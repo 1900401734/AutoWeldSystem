@@ -29,6 +29,8 @@ public sealed record PlcProductionSnapshot(
 
     public string RejectedQuantityReadMessage { get; init; } = string.Empty;
 
+    public string AlarmMessage { get; init; } = string.Empty;
+
     public bool ProductionQuantitiesReadSuccess =>
         TotalProductionReadSuccess
         && AcceptedQuantityReadSuccess

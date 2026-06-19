@@ -1,18 +1,18 @@
+using System.Globalization;
+using System.Text.Json;
 using AutoWeldSystem.Core.Constants;
-using AutoWeldSystem.Core.DTOs;
+using AutoWeldSystem.Core.DTOs.Mes.Request;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.MES;
-using AutoWeldSystem.Data;
-using System.Text.Json;
-using AutoWeldSystem.Core.DTOs.Mes.Request;
 using AutoWeldSystem.Core.Runtime;
+using AutoWeldSystem.Data;
 
 namespace AutoWeldSystem.Services.Production;
 
 /// <summary>
-/// 设备状态服务实现。
-/// 所有设备状态变化都先落本地日志，再尝试上报 MES，保证现场可追溯。
+/// 设备状态服务。
+/// 状态码统一采用 PLC 原始状态：1=运行、2=暂停/空闲、3=停止、4=报警。
 /// </summary>
 public class DeviceStatusService : IDeviceStatusService
 {
@@ -97,6 +97,8 @@ public class DeviceStatusService : IDeviceStatusService
                 .Where(it => it.StationNo == normalizedStationNo)
                 .OrderByDescending(it => it.OccurredTime)
                 .First();
+
+            // 状态码没有变化时，不重复落库、上传或进入重试队列。
             if (latest is not null
                 && string.Equals(latest.DeviceStatus, normalizedStatus, StringComparison.OrdinalIgnoreCase))
             {
@@ -204,12 +206,13 @@ public class DeviceStatusService : IDeviceStatusService
     private BizDeviceStatusLog BuildDefaultStatus()
     {
         var settings = CurrentSettings;
+        var defaultStatus = ProductionConstants.PlcDeviceStatuses.Paused.ToString(CultureInfo.InvariantCulture);
         return new BizDeviceStatusLog
         {
             DeviceId = settings.DeviceId,
             StationNo = ProductionConstants.Stations.DefaultStationNo,
-            DeviceStatus = ProductionConstants.MesDeviceStatuses.PoweredOn,
-            StatusName = GetStatusName(ProductionConstants.MesDeviceStatuses.PoweredOn),
+            DeviceStatus = defaultStatus,
+            StatusName = GetStatusName(defaultStatus),
             Source = "Software",
             Remark = "No device status log yet.",
             OccurredTime = DateTime.Now,
@@ -222,13 +225,8 @@ public class DeviceStatusService : IDeviceStatusService
         var normalized = deviceStatus.Trim();
         return normalized switch
         {
-            ProductionConstants.MesDeviceStatuses.Stopped
-                or ProductionConstants.MesDeviceStatuses.PoweredOn
-                or ProductionConstants.MesDeviceStatuses.Exception
-                or ProductionConstants.MesDeviceStatuses.Recovered
-                or ProductionConstants.MesDeviceStatuses.ProgramStarted
-                or ProductionConstants.MesDeviceStatuses.ProgramEnded => normalized,
-            _ => throw new InvalidOperationException($"不支持的设备状态编码：{deviceStatus}")
+            "1" or "2" or "3" or "4" => normalized,
+            _ => throw new InvalidOperationException($"Unsupported PLC device status code: {deviceStatus}")
         };
     }
 
@@ -243,12 +241,10 @@ public class DeviceStatusService : IDeviceStatusService
     {
         return deviceStatus switch
         {
-            ProductionConstants.MesDeviceStatuses.Stopped => "停机",
-            ProductionConstants.MesDeviceStatuses.PoweredOn => "开机",
-            ProductionConstants.MesDeviceStatuses.Exception => "异常",
-            ProductionConstants.MesDeviceStatuses.Recovered => "异常恢复",
-            ProductionConstants.MesDeviceStatuses.ProgramStarted => "程序运行开始",
-            ProductionConstants.MesDeviceStatuses.ProgramEnded => "程序运行结束",
+            "1" => "运行",
+            "2" => "暂停/空闲",
+            "3" => "停止",
+            "4" => "报警",
             _ => "未知"
         };
     }

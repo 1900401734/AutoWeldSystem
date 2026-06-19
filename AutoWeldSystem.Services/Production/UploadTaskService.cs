@@ -1152,7 +1152,7 @@ public class UploadTaskService : IUploadTaskService
                 Remark = ReadString(root, "Remark")
             };
 
-            return string.IsNullOrWhiteSpace(request.DeviceId) || string.IsNullOrWhiteSpace(request.DevStatus)
+            return string.IsNullOrWhiteSpace(request.DeviceId) || !IsPlcDeviceStatusCode(request.DevStatus)
                 ? null
                 : new DeviceStatusUploadRequest(logId, request);
         }
@@ -1184,6 +1184,11 @@ public class UploadTaskService : IUploadTaskService
         {
             return new UploadPayloadInfo();
         }
+    }
+
+    private static bool IsPlcDeviceStatusCode(string? statusCode)
+    {
+        return statusCode?.Trim() is "1" or "2" or "3" or "4";
     }
 
     private static int ReadInt(JsonElement root, string propertyName)

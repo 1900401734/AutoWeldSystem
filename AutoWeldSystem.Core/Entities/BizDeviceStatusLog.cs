@@ -26,7 +26,7 @@ public class BizDeviceStatusLog
     public string? WorkOrderId { get; set; }
 
     [SugarColumn(Length = 10, ColumnDescription = "设备状态编码")]
-    public string DeviceStatus { get; set; } = ProductionConstants.MesDeviceStatuses.PoweredOn;
+    public string DeviceStatus { get; set; } = "2";
 
     [SugarColumn(Length = 50, ColumnDescription = "设备状态名称")]
     public string StatusName { get; set; } = string.Empty;

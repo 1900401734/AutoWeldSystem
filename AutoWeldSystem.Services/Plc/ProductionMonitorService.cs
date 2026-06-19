@@ -5,6 +5,7 @@ using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.MES;
 using AutoWeldSystem.Core.Interfaces.PLC;
+using System.Globalization;
 
 namespace AutoWeldSystem.Services.Plc;
 
@@ -24,6 +25,7 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
     private readonly IDeviceStatusService _deviceStatusService;
     private readonly IWeldTaskService _weldTaskService;
     private readonly IProgramExceptionLogService _exceptionLogService;
+    private readonly IPlcAlarmAddressService _plcAlarmAddressService;
     private readonly SemaphoreSlim _addressSync = new(1, 1);
     private readonly object _businessLogSync = new();
     private readonly object _snapshotSync = new();
@@ -42,7 +44,8 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
         IMesConnectionMonitor mesConnectionMonitorService,
         IDeviceStatusService deviceStatusService,
         IWeldTaskService weldTaskService,
-        IProgramExceptionLogService exceptionLogService)
+        IProgramExceptionLogService exceptionLogService,
+        IPlcAlarmAddressService plcAlarmAddressService)
     {
         _plcCommunicationService = plcCommunicationService;
         _plcAddressService = plcAddressService;
@@ -51,6 +54,7 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
         _deviceStatusService = deviceStatusService;
         _weldTaskService = weldTaskService;
         _exceptionLogService = exceptionLogService;
+        _plcAlarmAddressService = plcAlarmAddressService;
         Current = CreateSnapshot(ProductionConstants.Stations.DefaultStationNo, false, null, 0, null, 0, 0, DateTime.Now, string.Empty);
         _stationSnapshots[ProductionConstants.Stations.DefaultStationNo] = Current;
     }
@@ -183,7 +187,8 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
                     AcceptedQuantityReadSuccess = false,
                     AcceptedQuantityReadMessage = ex.Message,
                     RejectedQuantityReadSuccess = false,
-                    RejectedQuantityReadMessage = ex.Message
+                    RejectedQuantityReadMessage = ex.Message,
+                    AlarmMessage = string.Empty
                 });
                 await Task.Delay(PollInterval, cancellationToken);
             }
@@ -222,7 +227,10 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
                 continue;
             }
 
-            await RecordDeviceStatusChangeAsync(stationNo, statusResult.Value, cancellationToken);
+            var alarmMessage = statusResult.Value == ProductionConstants.PlcDeviceStatuses.Alarm
+                ? await ReadActiveAlarmMessageAsync(stationNo, cancellationToken)
+                : string.Empty;
+            await RecordDeviceStatusChangeAsync(stationNo, statusResult.Value, alarmMessage, cancellationToken);
 
             var total = await ReadRequiredIntegerAsync(addresses, AppConstants.PlcLogicalKeys.TotalProduction, stationNo, cancellationToken);
             var accepted = await ReadRequiredIntegerAsync(addresses, AppConstants.PlcLogicalKeys.AcceptedQuantity, stationNo, cancellationToken);
@@ -256,7 +264,8 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
                 accepted.IsSuccess,
                 accepted.Message,
                 rejected.IsSuccess,
-                rejected.Message));
+                rejected.Message,
+                alarmMessage));
         }
     }
 
@@ -325,7 +334,11 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
         return _plcCommunicationService.GetCurrent(stationNo).IsConnected;
     }
 
-    private async Task RecordDeviceStatusChangeAsync(int stationNo, short plcStatusCode, CancellationToken cancellationToken)
+    private async Task RecordDeviceStatusChangeAsync(
+        int stationNo,
+        short plcStatusCode,
+        string alarmMessage,
+        CancellationToken cancellationToken)
     {
         var normalizedStationNo = NormalizeStationNo(stationNo);
         var activeTask = _weldTaskService.CurrentState.StationStates.TryGetValue(normalizedStationNo, out var stationState)
@@ -333,8 +346,8 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
             : _weldTaskService.CurrentState.ActiveTask;
 
         await _deviceStatusService.ChangeStatusAsync(
-            MapPlcDeviceStatusToMesStatus(plcStatusCode),
-            $"PLC status station={normalizedStationNo}, code={plcStatusCode}",
+            plcStatusCode.ToString(CultureInfo.InvariantCulture),
+            BuildDeviceStatusRemark(normalizedStationNo, plcStatusCode, alarmMessage),
             $"PLC-S{normalizedStationNo}",
             reportToMes: _mesConnectionMonitorService.Current.IsConnected,
             stationNo: normalizedStationNo,
@@ -343,16 +356,45 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
             cancellationToken);
     }
 
-    private static string MapPlcDeviceStatusToMesStatus(short plcStatusCode)
+    private async Task<string> ReadActiveAlarmMessageAsync(int stationNo, CancellationToken cancellationToken)
     {
-        return plcStatusCode switch
+        var alarmAddresses = _plcAlarmAddressService.GetEnabledForStation(stationNo)
+            .Where(alarm => !string.IsNullOrWhiteSpace(alarm.Address))
+            .ToList();
+        var activeMessages = new List<string>();
+
+        foreach (var alarm in alarmAddresses)
         {
-            ProductionConstants.PlcDeviceStatuses.Running => ProductionConstants.MesDeviceStatuses.ProgramStarted,
-            ProductionConstants.PlcDeviceStatuses.Paused => ProductionConstants.MesDeviceStatuses.Stopped,
-            ProductionConstants.PlcDeviceStatuses.Stopped => ProductionConstants.MesDeviceStatuses.Stopped,
-            ProductionConstants.PlcDeviceStatuses.Alarm => ProductionConstants.MesDeviceStatuses.Exception,
-            _ => ProductionConstants.MesDeviceStatuses.PoweredOn
-        };
+            var readResult = await _plcCommunicationService.ReadBoolAsync(alarm.Address, cancellationToken);
+            if (readResult.IsSuccess)
+            {
+                if (readResult.Value)
+                {
+                    activeMessages.Add(alarm.AlarmContent.Trim());
+                }
+
+                continue;
+            }
+
+            WriteBusinessFailureLog(
+                stationNo,
+                $"报警地址“{alarm.Address}”读取失败：{readResult.Message}");
+        }
+
+        return activeMessages.Count > 0
+            ? string.Join("；", activeMessages.Distinct(StringComparer.OrdinalIgnoreCase))
+            : "PLC设备报警，未匹配到已启用的报警原因";
+    }
+
+    private static string BuildDeviceStatusRemark(int stationNo, short plcStatusCode, string alarmMessage)
+    {
+        if (plcStatusCode == ProductionConstants.PlcDeviceStatuses.Alarm
+            && !string.IsNullOrWhiteSpace(alarmMessage))
+        {
+            return alarmMessage.Trim();
+        }
+
+        return $"PLC status station={stationNo}, code={plcStatusCode}";
     }
 
     private static int? ToInteger(PlcServiceResult<bool> result)
@@ -567,7 +609,8 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
                 AcceptedQuantityReadSuccess = false,
                 AcceptedQuantityReadMessage = message,
                 RejectedQuantityReadSuccess = false,
-                RejectedQuantityReadMessage = message
+                RejectedQuantityReadMessage = message,
+                AlarmMessage = string.Empty
             });
         }
     }
@@ -588,6 +631,7 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
                 DeviceStatusCode = null,
                 UpdatedTime = DateTime.Now,
                 Message = string.Empty,
+                AlarmMessage = string.Empty,
                 TotalProductionReadSuccess = false,
                 TotalProductionReadMessage = "PLC未连接或生产监控未就绪。",
                 AcceptedQuantityReadSuccess = false,
@@ -636,7 +680,8 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
         bool acceptedQuantityReadSuccess = false,
         string acceptedQuantityReadMessage = "",
         bool rejectedQuantityReadSuccess = false,
-        string rejectedQuantityReadMessage = "")
+        string rejectedQuantityReadMessage = "",
+        string alarmMessage = "")
     {
         return new PlcProductionSnapshot(
             isSuccess,
@@ -654,7 +699,8 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
             AcceptedQuantityReadSuccess = acceptedQuantityReadSuccess,
             AcceptedQuantityReadMessage = acceptedQuantityReadMessage,
             RejectedQuantityReadSuccess = rejectedQuantityReadSuccess,
-            RejectedQuantityReadMessage = rejectedQuantityReadMessage
+            RejectedQuantityReadMessage = rejectedQuantityReadMessage,
+            AlarmMessage = alarmMessage
         };
     }
 
