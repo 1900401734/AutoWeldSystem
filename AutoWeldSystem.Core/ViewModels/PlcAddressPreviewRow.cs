@@ -28,6 +28,11 @@ public sealed class PlcAddressPreviewRow
 
     public int Rule { get; init; }
 
+    /// <summary>
+    /// 表达式中的固定小数位配置；为空表示沿用历史默认格式。
+    /// </summary>
+    public int? DecimalPlaces { get; init; }
+
     public string ResolvedAddress { get; init; } = string.Empty;
 
     public static PlcAddressPreviewRow Info(int stationNo, string message)

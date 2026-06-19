@@ -84,7 +84,7 @@ namespace AutoWeldSystem.UI.Forms
             lblHint.Name = "lblHint";
             lblHint.Size = new Size(1156, 38);
             lblHint.TabIndex = 0;
-            lblHint.Text = "按产品工艺配置计算产品头、焊点头和测试项最终 PLC 地址，用于与 PLC 工程师对点。";
+            lblHint.Text = "按产品工艺配置计算最终 PLC 地址。表达式：偏移:类型-规则_小数位；数值如 14:F-0_2，数值字符串如 0:S-8_3。";
             lblHint.TextAlign = ContentAlignment.MiddleLeft;
             // 
             // inputQuery
@@ -180,6 +180,7 @@ namespace AutoWeldSystem.UI.Forms
             tableAddressPreview.Columns.Add(new AntdUI.Column(nameof(PlcAddressPreviewRow.Expression), "偏移表达式") { Ellipsis = true });
             tableAddressPreview.Columns.Add(new AntdUI.Column(nameof(PlcAddressPreviewRow.DataType), "类型") { Ellipsis = true });
             tableAddressPreview.Columns.Add(new AntdUI.Column(nameof(PlcAddressPreviewRow.Rule), "规则") { Ellipsis = true });
+            tableAddressPreview.Columns.Add(new AntdUI.Column(nameof(PlcAddressPreviewRow.DecimalPlaces), "小数位") { Ellipsis = true });
             tableAddressPreview.Columns.Add(new AntdUI.Column(nameof(PlcAddressPreviewRow.ResolvedAddress), "最终地址") { Ellipsis = true });
             AutoWeldSystem.UI.Infrastructure.TableStyleHelper.ApplyAntdTable(tableAddressPreview, AntdUI.ColumnsMode.Fill);
             AutoWeldSystem.UI.Infrastructure.TableStyleHelper.ApplyAntdColumnDefaults(tableAddressPreview);

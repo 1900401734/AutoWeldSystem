@@ -386,10 +386,8 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         try
         {
             var binding = _plcExpressionReadService.Resolve(baseAddress, contextOffset, expressionText);
-            var result = await _plcExpressionReadService.ReadResolvedAddressTextAsync(
-                binding.Address,
-                binding.DataType,
-                binding.Rule,
+            var result = await _plcExpressionReadService.ReadBindingTextAsync(
+                binding,
                 valueRole,
                 cancellationToken: cancellationToken);
             if (result.IsSuccess)

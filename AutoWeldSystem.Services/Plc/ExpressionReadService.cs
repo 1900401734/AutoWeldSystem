@@ -8,7 +8,7 @@ namespace AutoWeldSystem.Services.Plc;
 
 /// <summary>
 /// PLC 表达式读取服务。
-/// 它把“表达式解析、最终地址计算、PLC 读取、显示规则转换”集中在一个地方。
+/// 它把“表达式解析、最终地址计算、PLC 读取、显示规则转换、小数位格式化”集中在一个地方。
 /// </summary>
 public sealed class ExpressionReadService : IPlcExpressionReadService
 {
@@ -39,7 +39,8 @@ public sealed class ExpressionReadService : IPlcExpressionReadService
             expression.ResolveAddress(baseAddress, contextOffset),
             expression.DataType,
             expression.Rule,
-            expressionText.Trim());
+            expressionText.Trim(),
+            expression.DecimalPlaces);
     }
 
     /// <summary>
@@ -82,17 +83,30 @@ public sealed class ExpressionReadService : IPlcExpressionReadService
             return PlcServiceResult<string>.Fail($"{valueRole}偏移表达式无效：{message}");
         }
 
+        return await ReadBindingTextAsync(binding, valueRole, stringLength, cancellationToken);
+    }
+
+    /// <summary>
+    /// 读取已解析的表达式绑定，避免调用方重复拆 Address/DataType/Rule/DecimalPlaces。
+    /// </summary>
+    public async Task<PlcServiceResult<string>> ReadBindingTextAsync(
+        PlcExpressionBinding binding,
+        string valueRole = "PLC地址",
+        int stringLength = 32,
+        CancellationToken cancellationToken = default)
+    {
         return await ReadResolvedAddressTextAsync(
             binding.Address,
             binding.DataType,
             binding.Rule,
             valueRole,
             stringLength,
-            cancellationToken);
+            cancellationToken,
+            binding.DecimalPlaces);
     }
 
     /// <summary>
-    /// 读取已经解析好的 PLC 地址，并按数据类型和规则转换成界面可显示的文本。
+    /// 读取已经解析好的 PLC 地址，并按数据类型、规则和小数位转换成界面可显示的文本。
     /// </summary>
     public async Task<PlcServiceResult<string>> ReadResolvedAddressTextAsync(
         string? address,
@@ -100,7 +114,8 @@ public sealed class ExpressionReadService : IPlcExpressionReadService
         int rule = 0,
         string valueRole = "PLC地址",
         int stringLength = 32,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        int? decimalPlaces = null)
     {
         var plcAddress = address?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(plcAddress))
@@ -114,31 +129,31 @@ public sealed class ExpressionReadService : IPlcExpressionReadService
                 await _plcCommunicationService.ReadBoolAsync(plcAddress, cancellationToken),
                 plcAddress,
                 valueRole,
-                value => ApplyDisplayRule(value ? 1m : 0m, rule)),
+                value => ApplyDisplayRule(value ? 1m : 0m, rule, null)),
 
             AppConstants.PlcDataTypes.Int32 => ToTextResult(
                 await _plcCommunicationService.ReadInt32Async(plcAddress, cancellationToken),
                 plcAddress,
                 valueRole,
-                value => ApplyDisplayRule(value, rule)),
+                value => ApplyDisplayRule(value, rule, decimalPlaces)),
 
             AppConstants.PlcDataTypes.Float => ToTextResult(
                 await _plcCommunicationService.ReadFloatAsync(plcAddress, cancellationToken),
                 plcAddress,
                 valueRole,
-                value => ApplyDisplayRule(Convert.ToDecimal(value, CultureInfo.InvariantCulture), rule)),
+                value => ApplyDisplayRule(Convert.ToDecimal(value, CultureInfo.InvariantCulture), rule, decimalPlaces)),
 
             AppConstants.PlcDataTypes.String => ToTextResult(
                 await _plcCommunicationService.ReadStringAsync(plcAddress, (ushort)Math.Max(1, rule > 0 ? rule : stringLength), cancellationToken),
                 plcAddress,
                 valueRole,
-                NormalizePlcText),
+                value => NormalizeStringValue(value, decimalPlaces)),
 
             _ => ToTextResult(
                 await _plcCommunicationService.ReadInt16Async(plcAddress, cancellationToken),
                 plcAddress,
                 valueRole,
-                value => ApplyDisplayRule(value, rule))
+                value => ApplyDisplayRule(value, rule, decimalPlaces))
         };
     }
 
@@ -153,7 +168,10 @@ public sealed class ExpressionReadService : IPlcExpressionReadService
             : PlcServiceResult<string>.Fail($"{valueRole}地址“{address}”读取失败：{result.Message}");
     }
 
-    private static string ApplyDisplayRule(decimal rawValue, int rule)
+    /// <summary>
+    /// 先应用旧规则缩放，再应用新小数位格式，保证历史配置行为不变。
+    /// </summary>
+    private static string ApplyDisplayRule(decimal rawValue, int rule, int? decimalPlaces)
     {
         if (rule == 4)
         {
@@ -168,9 +186,117 @@ public sealed class ExpressionReadService : IPlcExpressionReadService
             _ => rawValue
         };
 
+        return FormatNumericValue(value, decimalPlaces);
+    }
+
+    private static string FormatNumericValue(decimal value, int? decimalPlaces)
+    {
+        if (decimalPlaces is >= 0)
+        {
+            return value.ToString($"F{decimalPlaces.Value}", CultureInfo.InvariantCulture);
+        }
+
         return value % 1m == 0
             ? value.ToString("0", CultureInfo.InvariantCulture)
             : value.ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// String 默认只清理 PLC 填充字符；配置 _小数位 时才按数值字符串截断格式化。
+    /// </summary>
+    private static string NormalizeStringValue(string? value, int? decimalPlaces)
+    {
+        var text = NormalizePlcText(value);
+        return decimalPlaces is >= 0
+            ? NormalizeNumericString(text, decimalPlaces.Value)
+            : text;
+    }
+
+    /// <summary>
+    /// 规范化数值型字符串；完整格式不匹配数字时保持原值，避免误处理工单号、产品编号等普通字符串。
+    /// </summary>
+    private static string NormalizeNumericString(string text, int decimalPlaces)
+    {
+        if (!TrySplitNumericString(text, out var isNegative, out var integerPart, out var fractionPart))
+        {
+            return text;
+        }
+
+        var normalizedInteger = integerPart.TrimStart('0');
+        if (normalizedInteger.Length == 0)
+        {
+            normalizedInteger = "0";
+        }
+
+        var sign = isNegative ? "-" : string.Empty;
+        if (decimalPlaces == 0)
+        {
+            return $"{sign}{normalizedInteger}";
+        }
+
+        var normalizedFraction = fractionPart.Length > decimalPlaces
+            ? fractionPart[..decimalPlaces]
+            : fractionPart.PadRight(decimalPlaces, '0');
+
+        return $"{sign}{normalizedInteger}.{normalizedFraction}";
+    }
+
+    /// <summary>
+    /// 只接受完整数值字符串，不接受千分位、单位和混合文本。
+    /// </summary>
+    private static bool TrySplitNumericString(string text, out bool isNegative, out string integerPart, out string fractionPart)
+    {
+        isNegative = false;
+        integerPart = string.Empty;
+        fractionPart = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        var startIndex = 0;
+        if (text[0] is '+' or '-')
+        {
+            isNegative = text[0] == '-';
+            startIndex = 1;
+        }
+
+        if (startIndex >= text.Length)
+        {
+            return false;
+        }
+
+        var decimalIndex = text.IndexOf('.', startIndex);
+        if (decimalIndex >= 0)
+        {
+            integerPart = text[startIndex..decimalIndex];
+            fractionPart = text[(decimalIndex + 1)..];
+            if (text.IndexOf('.', decimalIndex + 1) >= 0)
+            {
+                return false;
+            }
+        }
+        else
+        {
+            integerPart = text[startIndex..];
+        }
+
+        var hasDigit = integerPart.Length > 0 || fractionPart.Length > 0;
+        return hasDigit && IsAsciiDigits(integerPart) && IsAsciiDigits(fractionPart);
+    }
+
+    private static bool IsAsciiDigits(string text)
+    {
+        foreach (var ch in text)
+        {
+            if (ch < '0' || ch > '9')
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static string FormatResult(string? value)

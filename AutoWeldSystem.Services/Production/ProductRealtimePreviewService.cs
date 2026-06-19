@@ -480,10 +480,8 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             return "--";
         }
 
-        var result = await _plcExpressionReadService.ReadResolvedAddressTextAsync(
-            binding.Address,
-            binding.DataType,
-            binding.Rule,
+        var result = await _plcExpressionReadService.ReadBindingTextAsync(
+            binding,
             cancellationToken: cancellationToken);
         return result.IsSuccess ? FormatValue(result.Value) : "--";
     }

@@ -796,6 +796,7 @@ public partial class MainForm : BaseWindow
             Expression = binding.Expression,
             DataType = binding.DataType,
             Rule = binding.Rule,
+            DecimalPlaces = binding.DecimalPlaces,
             ResolvedAddress = binding.Address
         });
     }

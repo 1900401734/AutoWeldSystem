@@ -1,6 +1,7 @@
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.PLC;
+using AutoWeldSystem.Core.Plc;
 using AutoWeldSystem.UI.Base;
 using System.Globalization;
 using AutoWeldSystem.Core.ViewModels;
@@ -98,11 +99,13 @@ public partial class AddressPreviewForm : BaseWindow
         try
         {
             var valueRole = GetValueRole(row);
-            var result = await _plcExpressionReadService.ReadResolvedAddressTextAsync(
+            var binding = new PlcExpressionBinding(
                 row.ResolvedAddress,
                 row.DataType,
                 row.Rule,
-                valueRole);
+                row.Expression,
+                row.DecimalPlaces);
+            var result = await _plcExpressionReadService.ReadBindingTextAsync(binding, valueRole);
 
             if (result.IsSuccess)
             {
@@ -172,6 +175,7 @@ public partial class AddressPreviewForm : BaseWindow
             || Contains(row.Expression, keyword)
             || Contains(row.DataType, keyword)
             || Contains(row.Rule.ToString(CultureInfo.InvariantCulture), keyword)
+            || Contains(row.DecimalPlaces?.ToString(), keyword)
             || Contains(row.ResolvedAddress, keyword);
     }
 

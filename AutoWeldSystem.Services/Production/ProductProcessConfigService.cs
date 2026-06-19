@@ -1,6 +1,7 @@
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
+using AutoWeldSystem.Core.Plc;
 using AutoWeldSystem.Data;
 
 namespace AutoWeldSystem.Services.Production;
@@ -170,6 +171,29 @@ public class ProductProcessConfigService : IProductProcessConfigService
         config.TouchResultExpr = NormalizeRequired(config.TouchResultExpr, "焊点结果偏移表达式不能为空。");
         config.TestBase = NormalizeRequired(config.TestBase, "测试项基地址不能为空。");
         config.TestAreaLen = Math.Max(1, config.TestAreaLen);
+        ValidateExpression(config.ProductNoExpr, "产品编号偏移表达式");
+        ValidateExpression(config.ProductResultExpr, "产品结果偏移表达式");
+        ValidateExpression(config.ActualTouchCountExpr, "实际采集点数偏移表达式");
+        ValidateExpression(config.PresetTouchCountExpr, "预设采集点数偏移表达式");
+        ValidateExpression(config.TouchNoExpr, "采集点编号偏移表达式");
+        ValidateExpression(config.TouchResultExpr, "采集点结果偏移表达式");
+    }
+
+    private static void ValidateExpression(string? expression, string fieldName)
+    {
+        if (string.IsNullOrWhiteSpace(expression))
+        {
+            return;
+        }
+
+        try
+        {
+            PlcOffsetExpression.Parse(expression);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"{fieldName}无效：{ex.Message} {PlcOffsetExpression.RuleHint}", ex);
+        }
     }
 
     private static int NormalizeStationNo(int stationNo)

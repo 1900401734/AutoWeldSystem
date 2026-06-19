@@ -279,7 +279,7 @@ public sealed class TestSchemeConfigService : ITestSchemeConfigService
         }
         catch (Exception ex)
         {
-            throw new InvalidOperationException($"{fieldName}无效：{ex.Message}", ex);
+            throw new InvalidOperationException($"{fieldName}无效：{ex.Message} {PlcOffsetExpression.RuleHint}", ex);
         }
     }
 
