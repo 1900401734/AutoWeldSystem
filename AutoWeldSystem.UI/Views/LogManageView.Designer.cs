@@ -1,4 +1,4 @@
-namespace AutoWeldSystem.UI.Views
+﻿namespace AutoWeldSystem.UI.Views
 {
     partial class LogManageView
     {
@@ -355,7 +355,7 @@ namespace AutoWeldSystem.UI.Views
             btnRefreshMes.Name = "btnRefreshMes";
             btnRefreshMes.Size = new Size(117, 40);
             btnRefreshMes.TabIndex = 4;
-            btnRefreshMes.Tag = "perm:button.log.refresh:visible";
+            btnRefreshMes.Tag = "perm:button.log.refresh:enabled";
             btnRefreshMes.Text = "Refresh";
             // 
             // btnOpenMesFolder
@@ -367,7 +367,7 @@ namespace AutoWeldSystem.UI.Views
             btnOpenMesFolder.Name = "btnOpenMesFolder";
             btnOpenMesFolder.Size = new Size(159, 40);
             btnOpenMesFolder.TabIndex = 5;
-            btnOpenMesFolder.Tag = "perm:button.log.open-folder:visible";
+            btnOpenMesFolder.Tag = "perm:button.log.open-folder:enabled";
             btnOpenMesFolder.Text = "Open Folder";
             // 
             // splitMesContent
@@ -722,7 +722,7 @@ namespace AutoWeldSystem.UI.Views
             btnRefreshProduction.Name = "btnRefreshProduction";
             btnRefreshProduction.Size = new Size(117, 40);
             btnRefreshProduction.TabIndex = 4;
-            btnRefreshProduction.Tag = "perm:button.log.refresh:visible";
+            btnRefreshProduction.Tag = "perm:button.log.refresh:enabled";
             btnRefreshProduction.Text = "Refresh";
             // 
             // btnOpenProductionFolder
@@ -734,7 +734,7 @@ namespace AutoWeldSystem.UI.Views
             btnOpenProductionFolder.Name = "btnOpenProductionFolder";
             btnOpenProductionFolder.Size = new Size(159, 40);
             btnOpenProductionFolder.TabIndex = 5;
-            btnOpenProductionFolder.Tag = "perm:button.log.open-folder:visible";
+            btnOpenProductionFolder.Tag = "perm:button.log.open-folder:enabled";
             btnOpenProductionFolder.Text = "Open Folder";
             // 
             // splitProductionContent
@@ -1050,7 +1050,7 @@ namespace AutoWeldSystem.UI.Views
             btnRefreshException.Name = "btnRefreshException";
             btnRefreshException.Size = new Size(117, 40);
             btnRefreshException.TabIndex = 4;
-            btnRefreshException.Tag = "perm:button.log.refresh:visible";
+            btnRefreshException.Tag = "perm:button.log.refresh:enabled";
             btnRefreshException.Text = "Refresh";
             // 
             // btnOpenExceptionFolder
@@ -1062,7 +1062,7 @@ namespace AutoWeldSystem.UI.Views
             btnOpenExceptionFolder.Name = "btnOpenExceptionFolder";
             btnOpenExceptionFolder.Size = new Size(159, 40);
             btnOpenExceptionFolder.TabIndex = 5;
-            btnOpenExceptionFolder.Tag = "perm:button.log.open-folder:visible";
+            btnOpenExceptionFolder.Tag = "perm:button.log.open-folder:enabled";
             btnOpenExceptionFolder.Text = "Open Folder";
             // 
             // splitExceptionContent
@@ -1212,7 +1212,7 @@ namespace AutoWeldSystem.UI.Views
             btnOpenExceptionSource.Name = "btnOpenExceptionSource";
             btnOpenExceptionSource.Size = new Size(163, 40);
             btnOpenExceptionSource.TabIndex = 0;
-            btnOpenExceptionSource.Tag = "perm:button.log.open-source:visible";
+            btnOpenExceptionSource.Tag = "perm:button.log.open-source:enabled";
             btnOpenExceptionSource.Text = "Open Source";
             // 
             // btnCopyExceptionDetails
@@ -1224,7 +1224,7 @@ namespace AutoWeldSystem.UI.Views
             btnCopyExceptionDetails.Name = "btnCopyExceptionDetails";
             btnCopyExceptionDetails.Size = new Size(98, 40);
             btnCopyExceptionDetails.TabIndex = 1;
-            btnCopyExceptionDetails.Tag = "perm:button.log.copy-details:visible";
+            btnCopyExceptionDetails.Tag = "perm:button.log.copy-details:enabled";
             btnCopyExceptionDetails.Text = "Copy";
             // 
             // tabExceptionDetails
@@ -1466,7 +1466,7 @@ namespace AutoWeldSystem.UI.Views
             btnRefreshDeviceStatus.Name = "btnRefreshDeviceStatus";
             btnRefreshDeviceStatus.Size = new Size(117, 40);
             btnRefreshDeviceStatus.TabIndex = 4;
-            btnRefreshDeviceStatus.Tag = "perm:button.log.refresh:visible";
+            btnRefreshDeviceStatus.Tag = "perm:button.log.refresh:enabled";
             btnRefreshDeviceStatus.Text = "Refresh";
             // 
             // splitDeviceStatusContent

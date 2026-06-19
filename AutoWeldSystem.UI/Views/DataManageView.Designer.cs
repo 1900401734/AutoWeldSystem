@@ -1,4 +1,4 @@
-namespace AutoWeldSystem.UI.Views
+﻿namespace AutoWeldSystem.UI.Views
 {
     partial class DataManageView
     {
@@ -277,7 +277,7 @@ namespace AutoWeldSystem.UI.Views
             btnQuery.Name = "btnQuery";
             btnQuery.Size = new Size(88, 42);
             btnQuery.TabIndex = 8;
-            btnQuery.Tag = "perm:button.data.query:visible";
+            btnQuery.Tag = "perm:button.data.query:enabled";
             btnQuery.Text = "查询";
             btnQuery.Type = AntdUI.TTypeMini.Primary;
             //
@@ -291,7 +291,7 @@ namespace AutoWeldSystem.UI.Views
             btnReset.Name = "btnReset";
             btnReset.Size = new Size(98, 42);
             btnReset.TabIndex = 9;
-            btnReset.Tag = "perm:button.data.reset:visible";
+            btnReset.Tag = "perm:button.data.reset:enabled";
             btnReset.Text = "重置";
             //
             // mainSplitter
@@ -634,7 +634,7 @@ namespace AutoWeldSystem.UI.Views
             btnOpenReport.Name = "btnOpenReport";
             btnOpenReport.Size = new Size(118, 40);
             btnOpenReport.TabIndex = 0;
-            btnOpenReport.Tag = "perm:button.data.open-report:visible";
+            btnOpenReport.Tag = "perm:button.data.open-report:enabled";
             btnOpenReport.Text = "打开报告";
             //
             // btnOpenReportFolder
@@ -646,7 +646,7 @@ namespace AutoWeldSystem.UI.Views
             btnOpenReportFolder.Name = "btnOpenReportFolder";
             btnOpenReportFolder.Size = new Size(136, 40);
             btnOpenReportFolder.TabIndex = 1;
-            btnOpenReportFolder.Tag = "perm:button.data.open-report-folder:visible";
+            btnOpenReportFolder.Tag = "perm:button.data.open-report-folder:enabled";
             btnOpenReportFolder.Text = "打开所在目录";
             //
             // lblReportSummary

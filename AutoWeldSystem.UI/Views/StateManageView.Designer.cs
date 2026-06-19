@@ -1,4 +1,4 @@
-namespace AutoWeldSystem.UI.Views
+﻿namespace AutoWeldSystem.UI.Views
 {
     partial class StateManageView
     {
@@ -141,7 +141,7 @@ namespace AutoWeldSystem.UI.Views
             btnRetrySelected.Name = "btnRetrySelected";
             btnRetrySelected.Size = new Size(122, 40);
             btnRetrySelected.TabIndex = 0;
-            btnRetrySelected.Tag = "perm:button.state.retry-selected:visible";
+            btnRetrySelected.Tag = "perm:button.state.retry-selected:enabled";
             btnRetrySelected.Text = "重试选中";
             // 
             // btnRetryAll
@@ -153,7 +153,7 @@ namespace AutoWeldSystem.UI.Views
             btnRetryAll.Name = "btnRetryAll";
             btnRetryAll.Size = new Size(122, 40);
             btnRetryAll.TabIndex = 1;
-            btnRetryAll.Tag = "perm:button.state.retry-all:visible";
+            btnRetryAll.Tag = "perm:button.state.retry-all:enabled";
             btnRetryAll.Text = "全部重试";
             // 
             // btnRefresh
@@ -164,7 +164,7 @@ namespace AutoWeldSystem.UI.Views
             btnRefresh.Name = "btnRefresh";
             btnRefresh.Size = new Size(92, 40);
             btnRefresh.TabIndex = 2;
-            btnRefresh.Tag = "perm:button.state.refresh:visible";
+            btnRefresh.Tag = "perm:button.state.refresh:enabled";
             btnRefresh.Text = "刷新";
             // 
             // tabUploadCategories

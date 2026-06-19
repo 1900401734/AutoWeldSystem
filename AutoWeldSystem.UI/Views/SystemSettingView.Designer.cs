@@ -1,4 +1,4 @@
-namespace AutoWeldSystem.UI.Views
+﻿namespace AutoWeldSystem.UI.Views
 {
     partial class SystemSettingView
     {
@@ -201,7 +201,7 @@ namespace AutoWeldSystem.UI.Views
             titleLayout.SetRowSpan(btnSaveAll, 2);
             btnSaveAll.Size = new Size(112, 65);
             btnSaveAll.TabIndex = 0;
-            btnSaveAll.Tag = "perm:button.system.save:visible";
+            btnSaveAll.Tag = "perm:button.system.save:enabled";
             btnSaveAll.Text = "应用全部";
             //
             // tabSettingCategories
@@ -314,7 +314,7 @@ namespace AutoWeldSystem.UI.Views
             btnChangeLogPath.Name = "btnChangeLogPath";
             btnChangeLogPath.Size = new Size(81, 45);
             btnChangeLogPath.TabIndex = 2;
-            btnChangeLogPath.Tag = "perm:button.system.change-path:visible";
+            btnChangeLogPath.Tag = "perm:button.system.change-path:enabled";
             btnChangeLogPath.Text = "更改";
             //
             // btnOpenLogPath
@@ -328,7 +328,7 @@ namespace AutoWeldSystem.UI.Views
             btnOpenLogPath.Name = "btnOpenLogPath";
             btnOpenLogPath.Size = new Size(81, 45);
             btnOpenLogPath.TabIndex = 3;
-            btnOpenLogPath.Tag = "perm:button.system.open-path:visible";
+            btnOpenLogPath.Tag = "perm:button.system.open-path:enabled";
             btnOpenLogPath.Text = "打开";
             //
             // tlpDataPath
@@ -384,7 +384,7 @@ namespace AutoWeldSystem.UI.Views
             btnChangeDataPath.Name = "btnChangeDataPath";
             btnChangeDataPath.Size = new Size(81, 45);
             btnChangeDataPath.TabIndex = 2;
-            btnChangeDataPath.Tag = "perm:button.system.change-path:visible";
+            btnChangeDataPath.Tag = "perm:button.system.change-path:enabled";
             btnChangeDataPath.Text = "更改";
             //
             // btnOpenDataPath
@@ -398,7 +398,7 @@ namespace AutoWeldSystem.UI.Views
             btnOpenDataPath.Name = "btnOpenDataPath";
             btnOpenDataPath.Size = new Size(81, 45);
             btnOpenDataPath.TabIndex = 3;
-            btnOpenDataPath.Tag = "perm:button.system.open-path:visible";
+            btnOpenDataPath.Tag = "perm:button.system.open-path:enabled";
             btnOpenDataPath.Text = "打开";
             //
             // chkEnableAutoStart
@@ -491,7 +491,7 @@ namespace AutoWeldSystem.UI.Views
             btnConnectMasterController.Name = "btnConnectMasterController";
             btnConnectMasterController.Size = new Size(81, 45);
             btnConnectMasterController.TabIndex = 2;
-            btnConnectMasterController.Tag = "perm:button.system.connect-master:visible";
+            btnConnectMasterController.Tag = "perm:button.system.connect-master:enabled";
             btnConnectMasterController.Text = "连接";
             //
             // tableLayoutPanel8
@@ -613,7 +613,7 @@ namespace AutoWeldSystem.UI.Views
             btnConnectPlc.Name = "btnConnectPlc";
             btnConnectPlc.Size = new Size(81, 45);
             btnConnectPlc.TabIndex = 2;
-            btnConnectPlc.Tag = "perm:button.system.connect-plc:visible";
+            btnConnectPlc.Tag = "perm:button.system.connect-plc:enabled";
             btnConnectPlc.Text = "连接";
             //
             // tlpPlcPort
@@ -1060,7 +1060,7 @@ namespace AutoWeldSystem.UI.Views
             btnSyncDevice.Name = "btnSyncDevice";
             btnSyncDevice.Size = new Size(81, 45);
             btnSyncDevice.TabIndex = 2;
-            btnSyncDevice.Tag = "perm:button.system.sync-device:visible";
+            btnSyncDevice.Tag = "perm:button.system.sync-device:enabled";
             btnSyncDevice.Text = "同步";
             //
             // tlpDeviceName
@@ -1191,7 +1191,7 @@ namespace AutoWeldSystem.UI.Views
             btnTestConnection.Name = "btnTestConnection";
             btnTestConnection.Size = new Size(81, 45);
             btnTestConnection.TabIndex = 2;
-            btnTestConnection.Tag = "perm:button.system.test-mes:visible";
+            btnTestConnection.Tag = "perm:button.system.test-mes:enabled";
             btnTestConnection.Text = "测试";
             //
             // SystemSettingView

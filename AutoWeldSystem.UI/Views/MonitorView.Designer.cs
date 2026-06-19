@@ -1,4 +1,4 @@
-using AutoWeldSystem.UI.Components;
+﻿using AutoWeldSystem.UI.Components;
 
 namespace AutoWeldSystem.UI.Views
 {
@@ -974,7 +974,7 @@ namespace AutoWeldSystem.UI.Views
             btnExpEnd.Name = "btnExpEnd";
             btnExpEnd.Size = new Size(101, 47);
             btnExpEnd.TabIndex = 3;
-            btnExpEnd.Tag = "perm:button.monitor.finish-report:visible";
+            btnExpEnd.Tag = "perm:button.monitor.finish-report:enabled";
             btnExpEnd.Text = "完工上报";
             // 
             // btnExpStart
@@ -988,7 +988,7 @@ namespace AutoWeldSystem.UI.Views
             btnExpStart.Name = "btnExpStart";
             btnExpStart.Size = new Size(100, 47);
             btnExpStart.TabIndex = 3;
-            btnExpStart.Tag = "perm:button.monitor.start-report:visible";
+            btnExpStart.Tag = "perm:button.monitor.start-report:enabled";
             btnExpStart.Text = "开工上报";
             // 
             // btnLocalWorkOrder
@@ -1002,7 +1002,7 @@ namespace AutoWeldSystem.UI.Views
             btnLocalWorkOrder.Name = "btnLocalWorkOrder";
             btnLocalWorkOrder.Size = new Size(100, 47);
             btnLocalWorkOrder.TabIndex = 5;
-            btnLocalWorkOrder.Tag = "perm:button.monitor.local-work-order:visible";
+            btnLocalWorkOrder.Tag = "perm:button.monitor.local-work-order:enabled";
             btnLocalWorkOrder.Text = "离线开工";
             // 
             // btnGetWO
@@ -1014,7 +1014,7 @@ namespace AutoWeldSystem.UI.Views
             btnGetWO.Name = "btnGetWO";
             btnGetWO.Size = new Size(100, 47);
             btnGetWO.TabIndex = 4;
-            btnGetWO.Tag = "perm:button.monitor.get-work-order:visible";
+            btnGetWO.Tag = "perm:button.monitor.get-work-order:enabled";
             btnGetWO.Text = "获取工单";
             // 
             // tlpStation
@@ -1404,7 +1404,7 @@ namespace AutoWeldSystem.UI.Views
             btnChangeWO.Shape = AntdUI.TShape.Round;
             btnChangeWO.Size = new Size(84, 36);
             btnChangeWO.TabIndex = 3;
-            btnChangeWO.Tag = "perm:button.monitor.change-work-order:visible";
+            btnChangeWO.Tag = "perm:button.monitor.change-work-order:enabled";
             btnChangeWO.Text = "变更";
             // 
             // inputSN
@@ -1432,7 +1432,7 @@ namespace AutoWeldSystem.UI.Views
             btnEditWO.Shape = AntdUI.TShape.Round;
             btnEditWO.Size = new Size(84, 36);
             btnEditWO.TabIndex = 3;
-            btnEditWO.Tag = "perm:button.monitor.edit-work-order:visible";
+            btnEditWO.Tag = "perm:button.monitor.edit-work-order:enabled";
             btnEditWO.Text = "微调";
             // 
             // tlpProductModel

@@ -1,4 +1,4 @@
-namespace AutoWeldSystem.UI.Views
+﻿namespace AutoWeldSystem.UI.Views
 {
     partial class AddressManageView
     {
@@ -214,7 +214,7 @@ namespace AutoWeldSystem.UI.Views
             btnTest.Name = "btnTest";
             btnTest.Size = new Size(139, 70);
             btnTest.TabIndex = 2;
-            btnTest.Tag = "perm:button.address.test:visible";
+            btnTest.Tag = "perm:button.address.test:enabled";
             btnTest.Text = "测试选中地址";
             //
             // btnRefresh
@@ -229,7 +229,7 @@ namespace AutoWeldSystem.UI.Views
             btnRefresh.Name = "btnRefresh";
             btnRefresh.Size = new Size(76, 70);
             btnRefresh.TabIndex = 1;
-            btnRefresh.Tag = "perm:button.address.refresh:visible";
+            btnRefresh.Tag = "perm:button.address.refresh:enabled";
             btnRefresh.Text = "刷新";
             //
             // btnSave
@@ -244,7 +244,7 @@ namespace AutoWeldSystem.UI.Views
             btnSave.Name = "btnSave";
             btnSave.Size = new Size(107, 70);
             btnSave.TabIndex = 0;
-            btnSave.Tag = "perm:button.address.save:visible";
+            btnSave.Tag = "perm:button.address.save:enabled";
             btnSave.Text = "保存地址";
             //
             // queryAddresses
@@ -522,7 +522,7 @@ namespace AutoWeldSystem.UI.Views
             btnAddAlarmAddress.Name = "btnAddAlarmAddress";
             btnAddAlarmAddress.Size = new Size(81, 34);
             btnAddAlarmAddress.TabIndex = 0;
-            btnAddAlarmAddress.Tag = "perm:button.address.add-alarm:visible";
+            btnAddAlarmAddress.Tag = "perm:button.address.add-alarm:enabled";
             btnAddAlarmAddress.Text = "新增";
             //
             // btnDeleteAlarmAddress
@@ -535,7 +535,7 @@ namespace AutoWeldSystem.UI.Views
             btnDeleteAlarmAddress.Name = "btnDeleteAlarmAddress";
             btnDeleteAlarmAddress.Size = new Size(81, 34);
             btnDeleteAlarmAddress.TabIndex = 1;
-            btnDeleteAlarmAddress.Tag = "perm:button.address.delete-alarm:visible";
+            btnDeleteAlarmAddress.Tag = "perm:button.address.delete-alarm:enabled";
             btnDeleteAlarmAddress.Text = "删除";
             //
             // btnPasteAlarmAddresses
@@ -548,7 +548,7 @@ namespace AutoWeldSystem.UI.Views
             btnPasteAlarmAddresses.Name = "btnPasteAlarmAddresses";
             btnPasteAlarmAddresses.Size = new Size(141, 34);
             btnPasteAlarmAddresses.TabIndex = 2;
-            btnPasteAlarmAddresses.Tag = "perm:button.address.paste-alarm:visible";
+            btnPasteAlarmAddresses.Tag = "perm:button.address.paste-alarm:enabled";
             btnPasteAlarmAddresses.Text = "粘贴导入";
             //
             // tableAlarmAddresses
@@ -648,7 +648,7 @@ namespace AutoWeldSystem.UI.Views
             btnAddProductProcess.Name = "btnAddProductProcess";
             btnAddProductProcess.Size = new Size(81, 34);
             btnAddProductProcess.TabIndex = 0;
-            btnAddProductProcess.Tag = "perm:button.address.add-product-process:visible";
+            btnAddProductProcess.Tag = "perm:button.address.add-product-process:enabled";
             btnAddProductProcess.Text = "新增";
             //
             // btnDeleteProductProcess
@@ -661,7 +661,7 @@ namespace AutoWeldSystem.UI.Views
             btnDeleteProductProcess.Name = "btnDeleteProductProcess";
             btnDeleteProductProcess.Size = new Size(81, 34);
             btnDeleteProductProcess.TabIndex = 1;
-            btnDeleteProductProcess.Tag = "perm:button.address.delete-product-process:visible";
+            btnDeleteProductProcess.Tag = "perm:button.address.delete-product-process:enabled";
             btnDeleteProductProcess.Text = "删除";
             //
             // btnPreviewProductProcessAddress
@@ -674,7 +674,7 @@ namespace AutoWeldSystem.UI.Views
             btnPreviewProductProcessAddress.Name = "btnPreviewProductProcessAddress";
             btnPreviewProductProcessAddress.Size = new Size(141, 34);
             btnPreviewProductProcessAddress.TabIndex = 2;
-            btnPreviewProductProcessAddress.Tag = "perm:button.address.preview-product-process-address:visible";
+            btnPreviewProductProcessAddress.Tag = "perm:button.address.preview-product-process-address:enabled";
             btnPreviewProductProcessAddress.Text = "PLC 地址预览";
             //
             // lblProductProcessSummary
@@ -770,7 +770,7 @@ namespace AutoWeldSystem.UI.Views
             btnAddScheme.Name = "btnAddScheme";
             btnAddScheme.Size = new Size(81, 34);
             btnAddScheme.TabIndex = 0;
-            btnAddScheme.Tag = "perm:button.address.add-scheme:visible";
+            btnAddScheme.Tag = "perm:button.address.add-scheme:enabled";
             btnAddScheme.Text = "新增";
             //
             // btnDeleteScheme
@@ -783,7 +783,7 @@ namespace AutoWeldSystem.UI.Views
             btnDeleteScheme.Name = "btnDeleteScheme";
             btnDeleteScheme.Size = new Size(81, 34);
             btnDeleteScheme.TabIndex = 1;
-            btnDeleteScheme.Tag = "perm:button.address.delete-scheme:visible";
+            btnDeleteScheme.Tag = "perm:button.address.delete-scheme:enabled";
             btnDeleteScheme.Text = "删除";
             //
             // tableTestSchemes
@@ -949,7 +949,7 @@ namespace AutoWeldSystem.UI.Views
             btnAddTestItem.Name = "btnAddTestItem";
             btnAddTestItem.Size = new Size(81, 34);
             btnAddTestItem.TabIndex = 0;
-            btnAddTestItem.Tag = "perm:button.address.add-test-item:visible";
+            btnAddTestItem.Tag = "perm:button.address.add-test-item:enabled";
             btnAddTestItem.Text = "新增";
             //
             // btnDeleteTestItem
@@ -962,7 +962,7 @@ namespace AutoWeldSystem.UI.Views
             btnDeleteTestItem.Name = "btnDeleteTestItem";
             btnDeleteTestItem.Size = new Size(81, 34);
             btnDeleteTestItem.TabIndex = 1;
-            btnDeleteTestItem.Tag = "perm:button.address.delete-test-item:visible";
+            btnDeleteTestItem.Tag = "perm:button.address.delete-test-item:enabled";
             btnDeleteTestItem.Text = "删除";
             //
             // tableTestItems

@@ -1,4 +1,4 @@
-namespace AutoWeldSystem.UI.Views
+﻿namespace AutoWeldSystem.UI.Views
 {
     partial class UserManageView
     {
@@ -120,7 +120,7 @@ namespace AutoWeldSystem.UI.Views
             btnAddUser.Name = "btnAddUser";
             btnAddUser.Size = new Size(89, 44);
             btnAddUser.TabIndex = 0;
-            btnAddUser.Tag = "perm:button.user.add:visible";
+            btnAddUser.Tag = "perm:button.user.add:enabled";
             btnAddUser.Text = "新增";
             // 
             // btnEditUser
@@ -133,7 +133,7 @@ namespace AutoWeldSystem.UI.Views
             btnEditUser.Name = "btnEditUser";
             btnEditUser.Size = new Size(89, 44);
             btnEditUser.TabIndex = 1;
-            btnEditUser.Tag = "perm:button.user.edit:visible";
+            btnEditUser.Tag = "perm:button.user.edit:enabled";
             btnEditUser.Text = "编辑";
             // 
             // btnDeleteUser
@@ -146,7 +146,7 @@ namespace AutoWeldSystem.UI.Views
             btnDeleteUser.Name = "btnDeleteUser";
             btnDeleteUser.Size = new Size(89, 44);
             btnDeleteUser.TabIndex = 2;
-            btnDeleteUser.Tag = "perm:button.user.delete:visible";
+            btnDeleteUser.Tag = "perm:button.user.delete:enabled";
             btnDeleteUser.Text = "删除";
             // 
             // btnSetRole
@@ -159,7 +159,7 @@ namespace AutoWeldSystem.UI.Views
             btnSetRole.Name = "btnSetRole";
             btnSetRole.Size = new Size(124, 44);
             btnSetRole.TabIndex = 3;
-            btnSetRole.Tag = "perm:button.user.assign-role:visible";
+            btnSetRole.Tag = "perm:button.user.assign-role:enabled";
             btnSetRole.Text = "设置角色";
             // 
             // btnResetPassword
@@ -172,7 +172,7 @@ namespace AutoWeldSystem.UI.Views
             btnResetPassword.Name = "btnResetPassword";
             btnResetPassword.Size = new Size(124, 44);
             btnResetPassword.TabIndex = 4;
-            btnResetPassword.Tag = "perm:button.user.reset-password:visible";
+            btnResetPassword.Tag = "perm:button.user.reset-password:enabled";
             btnResetPassword.Text = "重置密码";
             // 
             // queryUsers
@@ -302,7 +302,7 @@ namespace AutoWeldSystem.UI.Views
             btnAddRole.Name = "btnAddRole";
             btnAddRole.Size = new Size(89, 44);
             btnAddRole.TabIndex = 0;
-            btnAddRole.Tag = "perm:button.role.add:visible";
+            btnAddRole.Tag = "perm:button.role.add:enabled";
             btnAddRole.Text = "新增";
             // 
             // btnEditRole
@@ -315,7 +315,7 @@ namespace AutoWeldSystem.UI.Views
             btnEditRole.Name = "btnEditRole";
             btnEditRole.Size = new Size(89, 44);
             btnEditRole.TabIndex = 1;
-            btnEditRole.Tag = "perm:button.role.edit:visible";
+            btnEditRole.Tag = "perm:button.role.edit:enabled";
             btnEditRole.Text = "编辑";
             // 
             // btnDeleteRole
@@ -328,7 +328,7 @@ namespace AutoWeldSystem.UI.Views
             btnDeleteRole.Name = "btnDeleteRole";
             btnDeleteRole.Size = new Size(89, 44);
             btnDeleteRole.TabIndex = 2;
-            btnDeleteRole.Tag = "perm:button.role.delete:visible";
+            btnDeleteRole.Tag = "perm:button.role.delete:enabled";
             btnDeleteRole.Text = "删除";
             // 
             // btnRefreshRoles
@@ -341,7 +341,7 @@ namespace AutoWeldSystem.UI.Views
             btnRefreshRoles.Name = "btnRefreshRoles";
             btnRefreshRoles.Size = new Size(89, 44);
             btnRefreshRoles.TabIndex = 3;
-            btnRefreshRoles.Tag = "perm:button.role.refresh:visible";
+            btnRefreshRoles.Tag = "perm:button.role.refresh:enabled";
             btnRefreshRoles.Text = "刷新";
             // 
             // queryRoles
@@ -368,7 +368,7 @@ namespace AutoWeldSystem.UI.Views
             btnSavePermissions.Name = "btnSavePermissions";
             btnSavePermissions.Size = new Size(68, 53);
             btnSavePermissions.TabIndex = 2;
-            btnSavePermissions.Tag = "perm:button.role.assign-permissions:visible";
+            btnSavePermissions.Tag = "perm:button.role.assign-permissions:enabled";
             btnSavePermissions.Text = "应用";
             // 
             // splitRoleContent

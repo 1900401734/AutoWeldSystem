@@ -1,4 +1,4 @@
-namespace AutoWeldSystem.UI.Forms;
+﻿namespace AutoWeldSystem.UI.Forms;
 
 partial class MainForm
 {
@@ -144,7 +144,7 @@ partial class MainForm
         btnSwitchUser.IconSvg = "UserSwitchOutlined";
         btnSwitchUser.Name = "btnSwitchUser";
         btnSwitchUser.Shape = AntdUI.TShape.Circle;
-        btnSwitchUser.Tag = "perm:button.auth.switch-user:visible";
+        btnSwitchUser.Tag = "perm:button.auth.switch-user:enabled";
         // 
         // btnAddressPreview
         // 
@@ -156,7 +156,7 @@ partial class MainForm
         btnAddressPreview.IconSvg = "EyeOutlined";
         btnAddressPreview.Name = "btnAddressPreview";
         btnAddressPreview.Shape = AntdUI.TShape.Circle;
-        btnAddressPreview.Tag = "perm:button.auth.address-preview:visible";
+        btnAddressPreview.Tag = "perm:button.auth.address-preview:enabled";
         // 
         // btnLogout
         // 
@@ -169,7 +169,7 @@ partial class MainForm
         btnLogout.IconSvg = "LogoutOutlined";
         btnLogout.Name = "btnLogout";
         btnLogout.Shape = AntdUI.TShape.Circle;
-        btnLogout.Tag = "perm:button.auth.logout:visible";
+        btnLogout.Tag = "perm:button.auth.logout:enabled";
         // 
         // tableLayoutPanel1
         // 

@@ -157,8 +157,14 @@ public partial class StateManageView : BaseView
         var permissionCode = IsSummaryTab()
             ? PermissionCodes.Buttons.State.UploadAll
             : PermissionCodes.Buttons.State.RetryAll;
-        btnRetryAll.Tag = $"perm:{permissionCode}:visible";
-        btnRetryAll.Visible = GlobalContext.HasPermission(permissionCode);
+        btnRetryAll.Tag = $"perm:{permissionCode}:enabled";
+        btnRetryAll.Enabled = GlobalContext.HasPermission(permissionCode);
+    }
+
+    private void ApplyRetrySelectedPermissionForActiveTab()
+    {
+        btnRetrySelected.Enabled = !IsSummaryTab()
+            && GlobalContext.HasPermission(PermissionCodes.Buttons.State.RetrySelected);
     }
 
     private int GetPendingCount()
@@ -179,7 +185,7 @@ public partial class StateManageView : BaseView
 
     private void ReloadActiveTasks()
     {
-        btnRetrySelected.Enabled = !IsSummaryTab();
+        ApplyRetrySelectedPermissionForActiveTab();
 
         if (IsSummaryTab())
         {
@@ -254,7 +260,7 @@ public partial class StateManageView : BaseView
         }
         finally
         {
-            btnRetrySelected.Enabled = true;
+            ApplyRetrySelectedPermissionForActiveTab();
         }
     }
 
@@ -286,7 +292,7 @@ public partial class StateManageView : BaseView
         }
         finally
         {
-            btnRetryAll.Enabled = true;
+            ApplyRetryAllPermissionForActiveTab();
         }
     }
 

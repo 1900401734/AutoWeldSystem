@@ -1,4 +1,4 @@
-namespace AutoWeldSystem.UI.Views
+﻿namespace AutoWeldSystem.UI.Views
 {
     partial class ProgramManageView
     {
@@ -120,7 +120,7 @@ namespace AutoWeldSystem.UI.Views
             btnNew.Name = "btnNew";
             btnNew.Size = new Size(92, 40);
             btnNew.TabIndex = 0;
-            btnNew.Tag = "perm:button.program.add:visible";
+            btnNew.Tag = "perm:button.program.add:enabled";
             btnNew.Text = "新建";
             // 
             // btnSave
@@ -132,7 +132,7 @@ namespace AutoWeldSystem.UI.Views
             btnSave.Name = "btnSave";
             btnSave.Size = new Size(92, 40);
             btnSave.TabIndex = 1;
-            btnSave.Tag = "perm:button.program.edit:visible";
+            btnSave.Tag = "perm:button.program.edit:enabled";
             btnSave.Text = "保存";
             // 
             // btnDelete
@@ -144,7 +144,7 @@ namespace AutoWeldSystem.UI.Views
             btnDelete.Name = "btnDelete";
             btnDelete.Size = new Size(92, 40);
             btnDelete.TabIndex = 2;
-            btnDelete.Tag = "perm:button.program.delete:visible";
+            btnDelete.Tag = "perm:button.program.delete:enabled";
             btnDelete.Text = "删除";
             // 
             // btnSync
@@ -156,7 +156,7 @@ namespace AutoWeldSystem.UI.Views
             btnSync.Name = "btnSync";
             btnSync.Size = new Size(118, 40);
             btnSync.TabIndex = 3;
-            btnSync.Tag = "perm:button.program.sync:visible";
+            btnSync.Tag = "perm:button.program.sync:enabled";
             btnSync.Text = "同步MES";
             // 
             // btnPullMes
@@ -168,7 +168,7 @@ namespace AutoWeldSystem.UI.Views
             btnPullMes.Name = "btnPullMes";
             btnPullMes.Size = new Size(132, 40);
             btnPullMes.TabIndex = 4;
-            btnPullMes.Tag = "perm:button.program.pull-mes:visible";
+            btnPullMes.Tag = "perm:button.program.pull-mes:enabled";
             btnPullMes.Text = "从MES拉取";
             // 
             // btnRefresh
@@ -180,7 +180,7 @@ namespace AutoWeldSystem.UI.Views
             btnRefresh.Name = "btnRefresh";
             btnRefresh.Size = new Size(92, 40);
             btnRefresh.TabIndex = 5;
-            btnRefresh.Tag = "perm:button.program.refresh:visible";
+            btnRefresh.Tag = "perm:button.program.refresh:enabled";
             btnRefresh.Text = "刷新";
             // 
             // chkSyncNow
@@ -385,7 +385,7 @@ namespace AutoWeldSystem.UI.Views
             btnBrowseFile.Name = "btnBrowseFile";
             btnBrowseFile.Size = new Size(96, 40);
             btnBrowseFile.TabIndex = 1;
-            btnBrowseFile.Tag = "perm:button.program.browse-file:visible";
+            btnBrowseFile.Tag = "perm:button.program.browse-file:enabled";
             btnBrowseFile.Text = "选择";
             btnBrowseFile.Visible = false;
             // 
@@ -651,7 +651,7 @@ namespace AutoWeldSystem.UI.Views
             btnBuildName.Name = "btnBuildName";
             btnBuildName.Size = new Size(118, 40);
             btnBuildName.TabIndex = 3;
-            btnBuildName.Tag = "perm:button.program.build-name:visible";
+            btnBuildName.Tag = "perm:button.program.build-name:enabled";
             btnBuildName.Text = "生成名称";
             // 
             // txtProgramContent
