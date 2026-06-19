@@ -42,6 +42,7 @@ public partial class SystemSettingView : BaseView
     private readonly ILocalizationService _localizer;
     private readonly IPlcCommunicationService _plcCommunicationService;
     private readonly IWeldTaskService _weldTaskService;
+    private readonly IWindowsShellIntegrationService _windowsShellIntegrationService;
 
     private bool _initialized;
     private bool _syncingPlcTypeSelection;
@@ -58,7 +59,8 @@ public partial class SystemSettingView : BaseView
         IMesProvider mesProvider,
         ILocalizationService localizer,
         IPlcCommunicationService plcCommunicationService,
-        IWeldTaskService weldTaskService)
+        IWeldTaskService weldTaskService,
+        IWindowsShellIntegrationService windowsShellIntegrationService)
     {
         InitializeComponent();
 
@@ -69,6 +71,7 @@ public partial class SystemSettingView : BaseView
         _localizer = localizer;
         _plcCommunicationService = plcCommunicationService;
         _weldTaskService = weldTaskService;
+        _windowsShellIntegrationService = windowsShellIntegrationService;
 
         WireEvents();
     }
@@ -137,6 +140,7 @@ public partial class SystemSettingView : BaseView
 
             _currentSettings = _settingsService.Save(settings);
             BindSettings(_currentSettings);
+            _windowsShellIntegrationService.ApplyStartupIntegration(_currentSettings);
             if (shouldRestartPlc)
             {
                 await _plcCommunicationService.RestartAsync();
@@ -178,6 +182,7 @@ public partial class SystemSettingView : BaseView
 
             _currentSettings = _settingsService.Save(settings);
             BindSettings(_currentSettings);
+            _windowsShellIntegrationService.ApplyStartupIntegration(_currentSettings);
 
             if (await SyncDeviceToMesAsync(request, btnSyncDevice, true))
             {
@@ -373,6 +378,7 @@ public partial class SystemSettingView : BaseView
         input_MesTimeout.Text = settings.MesTimeoutSeconds.ToString();
         input_LogsPath.Text = settings.LogDirectory;
         input_DataPath.Text = settings.DataDirectory;
+        chkEnableAutoStart.Checked = settings.EnableAutoStart ?? true;
         input_BaseUrl.Text = settings.MesBaseUrl;
         chkUseProductNumberFilter.Checked = settings.UseProductNumberFilter;
         SetDualModeCheckboxes(settings.EnableDualStation, settings.EnableDualWorkOrder);
@@ -422,6 +428,7 @@ public partial class SystemSettingView : BaseView
 
         lblLogPath.Text = _localizer.GetString(TextKeys.SystemSetting.LabelLogPath);
         lblDataPath.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDataPath);
+        chkEnableAutoStart.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableAutoStart);
         lblUploadMode.Text = _localizer.GetString(TextKeys.SystemSetting.UploadMode);
         lblUploadBatchSize.Text = _localizer.GetString(TextKeys.SystemSetting.UploadBatchSize);
         lblPlcHeartbeatInterval.Text = _localizer.GetString(TextKeys.SystemSetting.PlcHeartbeatRate);
@@ -729,6 +736,7 @@ public partial class SystemSettingView : BaseView
         settings.MasterControlPort = masterControlPort;
         settings.LogDirectory = logDirectory;
         settings.DataDirectory = dataDirectory;
+        settings.EnableAutoStart = chkEnableAutoStart.Checked;
         settings.MesBaseUrl = mesBaseUrl;
         settings.MesTimeoutSeconds = int.TryParse(mesTimeout, NumberStyles.Integer, CultureInfo.InvariantCulture, out var timeout) && timeout > 0 ? timeout : 10;
         settings.UseProductNumberFilter = chkUseProductNumberFilter.Checked;

@@ -426,6 +426,9 @@
   <data name="system.checkbox.use_product_number_filter" xml:space="preserve">
     <value>Filter programs by product No.</value>
   </data>
+  <data name="system.checkbox.enable_auto_start" xml:space="preserve">
+    <value>Start with Windows</value>
+  </data>
   <data name="system.checkbox.validate_recipe_after_start" xml:space="preserve">
     <value>Validate PLC recipe after start</value>
   </data>

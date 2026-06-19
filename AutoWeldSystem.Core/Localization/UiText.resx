@@ -426,6 +426,9 @@
   <data name="system.checkbox.use_product_number_filter" xml:space="preserve">
     <value>按产品工号筛选程序</value>
   </data>
+  <data name="system.checkbox.enable_auto_start" xml:space="preserve">
+    <value>开机自启</value>
+  </data>
   <data name="system.checkbox.validate_recipe_after_start" xml:space="preserve">
     <value>开工后校验 PLC 配方编号</value>
   </data>

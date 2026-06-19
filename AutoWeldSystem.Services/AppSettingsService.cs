@@ -124,6 +124,7 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
     /// </summary>
     private static void Normalize(AppSettings settings)
     {
+        settings.EnableAutoStart ??= true;
         settings.ProcessParameterDeviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
     }
 

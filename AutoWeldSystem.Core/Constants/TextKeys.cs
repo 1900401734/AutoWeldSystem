@@ -931,6 +931,7 @@ public static class TextKeys
         public const string PlcHeartbeatRate = "system.label.plc_heartbeat_rate";
 
         public const string ChkUseProductNumberFilter = "system.checkbox.use_product_number_filter";
+        public const string ChkEnableAutoStart = "system.checkbox.enable_auto_start";
         public const string ChkValidateRecipeAfterStart = "system.checkbox.validate_recipe_after_start";
         public const string ChkEnableFinishExpQtyPrompt = "system.checkbox.enable_finish_exp_qty_prompt";
         public const string ChkEnableDualStation = "system.Checkbox.enable_dual_station";

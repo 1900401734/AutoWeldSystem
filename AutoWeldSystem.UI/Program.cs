@@ -57,6 +57,7 @@ public static class Program
                     services.AddSingleton<IProgramExceptionLogService, ProgramExceptionLogService>();
                     services.AddSingleton<IUiThreadDispatcher, WinFormsUiThreadDispatcher>();
                     services.AddSingleton<ILocalizationService, LocalizationService>();
+                    services.AddSingleton<IWindowsShellIntegrationService, WindowsShellIntegrationService>();
                     services.AddSingleton<IWeldTaskService, WeldTaskService>();
                     services.AddSingleton<IProgramManageService, ProgramManageService>();
                     services.AddSingleton<IPlcCommunicationService, CommunicationService>();
@@ -102,6 +103,7 @@ public static class Program
             UiThreadDispatcherProvider.Configure(AppHost.Services.GetRequiredService<IUiThreadDispatcher>());
             AppHost.Services.GetRequiredService<ISysUserService>().InitDb();
             AppHost.Services.GetRequiredService<ILocalizationService>();
+            AppHost.Services.GetRequiredService<IWindowsShellIntegrationService>().ApplyStartupIntegration();
             AppHost.Services.GetRequiredService<IPlcCommunicationService>().StartAsync().GetAwaiter().GetResult();
             plcServiceStarted = true;
             AppHost.Services.GetRequiredService<IMesConnectionMonitor>().StartAsync().GetAwaiter().GetResult();
