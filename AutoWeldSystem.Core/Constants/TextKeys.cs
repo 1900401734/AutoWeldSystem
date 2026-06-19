@@ -766,8 +766,12 @@ public static class TextKeys
         public const string ButtonMonitorChangeWorkOrder = "permission.button.monitor.change_work_order";
         public const string ButtonMonitorStartReport = "permission.button.monitor.start_report";
         public const string ButtonMonitorFinishReport = "permission.button.monitor.finish_report";
+        public const string ButtonMonitorGetWorkOrder = "permission.button.monitor.get_work_order";
+        public const string ButtonMonitorEditWorkOrder = "permission.button.monitor.edit_work_order";
+        public const string ButtonMonitorLocalWorkOrder = "permission.button.monitor.local_work_order";
         public const string ButtonAuthSwitchUser = "permission.button.auth.switch_user";
         public const string ButtonAuthLogout = "permission.button.auth.logout";
+        public const string ButtonAuthAddressPreview = "permission.button.auth.address_preview";
         public const string ButtonDataExport = "permission.button.data.export";
         public const string ButtonDataQuery = "permission.button.data.query";
         public const string ButtonDataReset = "permission.button.data.reset";
@@ -781,10 +785,44 @@ public static class TextKeys
         public const string ButtonRoleAdd = "permission.button.role.add";
         public const string ButtonRoleEdit = "permission.button.role.edit";
         public const string ButtonRoleDelete = "permission.button.role.delete";
+        public const string ButtonRoleRefresh = "permission.button.role.refresh";
         public const string ButtonRoleAssignPermissions = "permission.button.role.assign_permissions";
         public const string ButtonProgramAdd = "permission.button.program.add";
         public const string ButtonProgramEdit = "permission.button.program.edit";
         public const string ButtonProgramDelete = "permission.button.program.delete";
+        public const string ButtonProgramSync = "permission.button.program.sync";
+        public const string ButtonProgramPullMes = "permission.button.program.pull_mes";
+        public const string ButtonProgramRefresh = "permission.button.program.refresh";
+        public const string ButtonProgramBrowseFile = "permission.button.program.browse_file";
+        public const string ButtonProgramBuildName = "permission.button.program.build_name";
+        public const string ButtonLogRefresh = "permission.button.log.refresh";
+        public const string ButtonLogOpenFolder = "permission.button.log.open_folder";
+        public const string ButtonLogOpenSource = "permission.button.log.open_source";
+        public const string ButtonLogCopyDetails = "permission.button.log.copy_details";
+        public const string ButtonStateRetrySelected = "permission.button.state.retry_selected";
+        public const string ButtonStateRetryAll = "permission.button.state.retry_all";
+        public const string ButtonStateRefresh = "permission.button.state.refresh";
+        public const string ButtonStateUploadAll = "permission.button.state.upload_all";
+        public const string ButtonSystemSave = "permission.button.system.save";
+        public const string ButtonSystemConnectPlc = "permission.button.system.connect_plc";
+        public const string ButtonSystemConnectMaster = "permission.button.system.connect_master";
+        public const string ButtonSystemSyncDevice = "permission.button.system.sync_device";
+        public const string ButtonSystemTestMes = "permission.button.system.test_mes";
+        public const string ButtonSystemChangePath = "permission.button.system.change_path";
+        public const string ButtonSystemOpenPath = "permission.button.system.open_path";
+        public const string ButtonAddressSave = "permission.button.address.save";
+        public const string ButtonAddressRefresh = "permission.button.address.refresh";
+        public const string ButtonAddressTest = "permission.button.address.test";
+        public const string ButtonAddressAddAlarm = "permission.button.address.add_alarm";
+        public const string ButtonAddressDeleteAlarm = "permission.button.address.delete_alarm";
+        public const string ButtonAddressPasteAlarm = "permission.button.address.paste_alarm";
+        public const string ButtonAddressAddProductProcess = "permission.button.address.add_product_process";
+        public const string ButtonAddressDeleteProductProcess = "permission.button.address.delete_product_process";
+        public const string ButtonAddressPreviewProductProcessAddress = "permission.button.address.preview_product_process_address";
+        public const string ButtonAddressAddScheme = "permission.button.address.add_scheme";
+        public const string ButtonAddressDeleteScheme = "permission.button.address.delete_scheme";
+        public const string ButtonAddressAddTestItem = "permission.button.address.add_test_item";
+        public const string ButtonAddressDeleteTestItem = "permission.button.address.delete_test_item";
     }
 
     /// <summary>

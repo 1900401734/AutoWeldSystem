@@ -307,7 +307,7 @@
     <value>Select a role on the left to edit permissions.</value>
   </data>
   <data name="role.message.permission_hint" xml:space="preserve">
-    <value>After checking items, click Apply. Page permissions control page entry; button permissions control action entry.</value>
+    <value>After checking items, click Apply. Page permissions control page entry visibility; button permissions control whether buttons can be clicked.</value>
   </data>
   <data name="user.tab.manage" xml:space="preserve">
     <value>User Manage</value>
@@ -924,11 +924,23 @@
   <data name="permission.button.monitor.finish_report" xml:space="preserve">
     <value>Finish Report</value>
   </data>
+  <data name="permission.button.monitor.get_work_order" xml:space="preserve">
+    <value>Get Work Order</value>
+  </data>
+  <data name="permission.button.monitor.edit_work_order" xml:space="preserve">
+    <value>Edit Work Order</value>
+  </data>
+  <data name="permission.button.monitor.local_work_order" xml:space="preserve">
+    <value>Local Work Order</value>
+  </data>
   <data name="permission.button.auth.switch_user" xml:space="preserve">
     <value>Switch User</value>
   </data>
   <data name="permission.button.auth.logout" xml:space="preserve">
     <value>Logout</value>
+  </data>
+  <data name="permission.button.auth.address_preview" xml:space="preserve">
+    <value>PLC Address Preview</value>
   </data>
   <data name="permission.button.data.export" xml:space="preserve">
     <value>Export Data</value>
@@ -957,6 +969,9 @@
   <data name="permission.button.role.delete" xml:space="preserve">
     <value>Delete Role</value>
   </data>
+  <data name="permission.button.role.refresh" xml:space="preserve">
+    <value>Refresh Roles</value>
+  </data>
   <data name="permission.button.role.assign_permissions" xml:space="preserve">
     <value>Assign Permissions</value>
   </data>
@@ -968,6 +983,105 @@
   </data>
   <data name="permission.button.program.delete" xml:space="preserve">
     <value>Delete Program</value>
+  </data>
+  <data name="permission.button.program.sync" xml:space="preserve">
+    <value>Sync Program</value>
+  </data>
+  <data name="permission.button.program.pull_mes" xml:space="preserve">
+    <value>Pull MES Program</value>
+  </data>
+  <data name="permission.button.program.refresh" xml:space="preserve">
+    <value>Refresh Program</value>
+  </data>
+  <data name="permission.button.program.browse_file" xml:space="preserve">
+    <value>Browse Program File</value>
+  </data>
+  <data name="permission.button.program.build_name" xml:space="preserve">
+    <value>Build Program Name</value>
+  </data>
+  <data name="permission.button.log.refresh" xml:space="preserve">
+    <value>Refresh Logs</value>
+  </data>
+  <data name="permission.button.log.open_folder" xml:space="preserve">
+    <value>Open Log Folder</value>
+  </data>
+  <data name="permission.button.log.open_source" xml:space="preserve">
+    <value>Open Source File</value>
+  </data>
+  <data name="permission.button.log.copy_details" xml:space="preserve">
+    <value>Copy Log Details</value>
+  </data>
+  <data name="permission.button.state.retry_selected" xml:space="preserve">
+    <value>Retry Selected Upload</value>
+  </data>
+  <data name="permission.button.state.retry_all" xml:space="preserve">
+    <value>Retry All Uploads</value>
+  </data>
+  <data name="permission.button.state.refresh" xml:space="preserve">
+    <value>Refresh Upload State</value>
+  </data>
+  <data name="permission.button.state.upload_all" xml:space="preserve">
+    <value>One Click Upload</value>
+  </data>
+  <data name="permission.button.system.save" xml:space="preserve">
+    <value>Save Settings</value>
+  </data>
+  <data name="permission.button.system.connect_plc" xml:space="preserve">
+    <value>Test PLC Connection</value>
+  </data>
+  <data name="permission.button.system.connect_master" xml:space="preserve">
+    <value>Test Controller Connection</value>
+  </data>
+  <data name="permission.button.system.sync_device" xml:space="preserve">
+    <value>Sync Device</value>
+  </data>
+  <data name="permission.button.system.test_mes" xml:space="preserve">
+    <value>Test MES Connection</value>
+  </data>
+  <data name="permission.button.system.change_path" xml:space="preserve">
+    <value>Change Path</value>
+  </data>
+  <data name="permission.button.system.open_path" xml:space="preserve">
+    <value>Open Path</value>
+  </data>
+  <data name="permission.button.address.save" xml:space="preserve">
+    <value>Save Address</value>
+  </data>
+  <data name="permission.button.address.refresh" xml:space="preserve">
+    <value>Refresh Address</value>
+  </data>
+  <data name="permission.button.address.test" xml:space="preserve">
+    <value>Test Address</value>
+  </data>
+  <data name="permission.button.address.add_alarm" xml:space="preserve">
+    <value>Add Alarm Address</value>
+  </data>
+  <data name="permission.button.address.delete_alarm" xml:space="preserve">
+    <value>Delete Alarm Address</value>
+  </data>
+  <data name="permission.button.address.paste_alarm" xml:space="preserve">
+    <value>Paste Alarm Addresses</value>
+  </data>
+  <data name="permission.button.address.add_product_process" xml:space="preserve">
+    <value>Add Product Process</value>
+  </data>
+  <data name="permission.button.address.delete_product_process" xml:space="preserve">
+    <value>Delete Product Process</value>
+  </data>
+  <data name="permission.button.address.preview_product_process_address" xml:space="preserve">
+    <value>Preview Product Process Address</value>
+  </data>
+  <data name="permission.button.address.add_scheme" xml:space="preserve">
+    <value>Add Test Scheme</value>
+  </data>
+  <data name="permission.button.address.delete_scheme" xml:space="preserve">
+    <value>Delete Test Scheme</value>
+  </data>
+  <data name="permission.button.address.add_test_item" xml:space="preserve">
+    <value>Add Test Item</value>
+  </data>
+  <data name="permission.button.address.delete_test_item" xml:space="preserve">
+    <value>Delete Test Item</value>
   </data>
   <data name="monitor.message.work_id_required" xml:space="preserve">
     <value>Work ID cannot be empty.</value>

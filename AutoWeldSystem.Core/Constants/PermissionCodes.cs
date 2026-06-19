@@ -104,6 +104,9 @@ public static class PermissionCodes
             public const string Save = "button.address.save";
             public const string Refresh = "button.address.refresh";
             public const string Test = "button.address.test";
+            public const string AddAlarm = "button.address.add-alarm";
+            public const string DeleteAlarm = "button.address.delete-alarm";
+            public const string PasteAlarm = "button.address.paste-alarm";
             public const string AddProductProcess = "button.address.add-product-process";
             public const string DeleteProductProcess = "button.address.delete-product-process";
             public const string PreviewProductProcessAddress = "button.address.preview-product-process-address";

@@ -307,7 +307,7 @@
     <value>请选择左侧角色以编辑权限</value>
   </data>
   <data name="role.message.permission_hint" xml:space="preserve">
-    <value>勾选后点击“应用”，页面权限控制界面入口，按钮权限控制操作入口。</value>
+    <value>勾选后点击“应用”。页面权限控制界面入口显示，按钮权限控制按钮是否可点击。</value>
   </data>
   <data name="user.tab.manage" xml:space="preserve">
     <value>用户管理</value>
@@ -924,11 +924,23 @@
   <data name="permission.button.monitor.finish_report" xml:space="preserve">
     <value>完工上报</value>
   </data>
+  <data name="permission.button.monitor.get_work_order" xml:space="preserve">
+    <value>获取工单</value>
+  </data>
+  <data name="permission.button.monitor.edit_work_order" xml:space="preserve">
+    <value>编辑工单</value>
+  </data>
+  <data name="permission.button.monitor.local_work_order" xml:space="preserve">
+    <value>本地工单</value>
+  </data>
   <data name="permission.button.auth.switch_user" xml:space="preserve">
     <value>切换用户</value>
   </data>
   <data name="permission.button.auth.logout" xml:space="preserve">
     <value>退出登录</value>
+  </data>
+  <data name="permission.button.auth.address_preview" xml:space="preserve">
+    <value>PLC 地址预览</value>
   </data>
   <data name="permission.button.data.export" xml:space="preserve">
     <value>导出数据</value>
@@ -957,6 +969,9 @@
   <data name="permission.button.role.delete" xml:space="preserve">
     <value>删除角色</value>
   </data>
+  <data name="permission.button.role.refresh" xml:space="preserve">
+    <value>刷新角色</value>
+  </data>
   <data name="permission.button.role.assign_permissions" xml:space="preserve">
     <value>分配权限</value>
   </data>
@@ -968,6 +983,105 @@
   </data>
   <data name="permission.button.program.delete" xml:space="preserve">
     <value>删除程序</value>
+  </data>
+  <data name="permission.button.program.sync" xml:space="preserve">
+    <value>同步程序</value>
+  </data>
+  <data name="permission.button.program.pull_mes" xml:space="preserve">
+    <value>从 MES 拉取程序</value>
+  </data>
+  <data name="permission.button.program.refresh" xml:space="preserve">
+    <value>刷新程序</value>
+  </data>
+  <data name="permission.button.program.browse_file" xml:space="preserve">
+    <value>浏览程序文件</value>
+  </data>
+  <data name="permission.button.program.build_name" xml:space="preserve">
+    <value>生成程序名</value>
+  </data>
+  <data name="permission.button.log.refresh" xml:space="preserve">
+    <value>刷新日志</value>
+  </data>
+  <data name="permission.button.log.open_folder" xml:space="preserve">
+    <value>打开日志目录</value>
+  </data>
+  <data name="permission.button.log.open_source" xml:space="preserve">
+    <value>打开来源文件</value>
+  </data>
+  <data name="permission.button.log.copy_details" xml:space="preserve">
+    <value>复制日志详情</value>
+  </data>
+  <data name="permission.button.state.retry_selected" xml:space="preserve">
+    <value>重传选中项</value>
+  </data>
+  <data name="permission.button.state.retry_all" xml:space="preserve">
+    <value>重传全部</value>
+  </data>
+  <data name="permission.button.state.refresh" xml:space="preserve">
+    <value>刷新上传状态</value>
+  </data>
+  <data name="permission.button.state.upload_all" xml:space="preserve">
+    <value>一键上传</value>
+  </data>
+  <data name="permission.button.system.save" xml:space="preserve">
+    <value>保存系统设置</value>
+  </data>
+  <data name="permission.button.system.connect_plc" xml:space="preserve">
+    <value>测试 PLC 连接</value>
+  </data>
+  <data name="permission.button.system.connect_master" xml:space="preserve">
+    <value>测试总控连接</value>
+  </data>
+  <data name="permission.button.system.sync_device" xml:space="preserve">
+    <value>同步设备</value>
+  </data>
+  <data name="permission.button.system.test_mes" xml:space="preserve">
+    <value>测试 MES 连接</value>
+  </data>
+  <data name="permission.button.system.change_path" xml:space="preserve">
+    <value>更改路径</value>
+  </data>
+  <data name="permission.button.system.open_path" xml:space="preserve">
+    <value>打开路径</value>
+  </data>
+  <data name="permission.button.address.save" xml:space="preserve">
+    <value>保存地址</value>
+  </data>
+  <data name="permission.button.address.refresh" xml:space="preserve">
+    <value>刷新地址</value>
+  </data>
+  <data name="permission.button.address.test" xml:space="preserve">
+    <value>测试地址</value>
+  </data>
+  <data name="permission.button.address.add_alarm" xml:space="preserve">
+    <value>新增报警地址</value>
+  </data>
+  <data name="permission.button.address.delete_alarm" xml:space="preserve">
+    <value>删除报警地址</value>
+  </data>
+  <data name="permission.button.address.paste_alarm" xml:space="preserve">
+    <value>粘贴导入报警地址</value>
+  </data>
+  <data name="permission.button.address.add_product_process" xml:space="preserve">
+    <value>新增产品工艺</value>
+  </data>
+  <data name="permission.button.address.delete_product_process" xml:space="preserve">
+    <value>删除产品工艺</value>
+  </data>
+  <data name="permission.button.address.preview_product_process_address" xml:space="preserve">
+    <value>预览产品工艺地址</value>
+  </data>
+  <data name="permission.button.address.add_scheme" xml:space="preserve">
+    <value>新增测试方案</value>
+  </data>
+  <data name="permission.button.address.delete_scheme" xml:space="preserve">
+    <value>删除测试方案</value>
+  </data>
+  <data name="permission.button.address.add_test_item" xml:space="preserve">
+    <value>新增测试项</value>
+  </data>
+  <data name="permission.button.address.delete_test_item" xml:space="preserve">
+    <value>删除测试项</value>
   </data>
   <data name="monitor.message.work_id_required" xml:space="preserve">
     <value>工单二维码不能为空</value>
