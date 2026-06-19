@@ -232,7 +232,7 @@ public partial class LogManageView : BaseView
         lblExceptionTitle.Text = _localizer.GetString(TextKeys.Log.TabProgramException);
         lblExceptionDescription.Text = _localizer.GetString(TextKeys.Log.DescriptionProgramException);
         lblDeviceStatusTitle.Text = "设备状态日志";
-        lblDeviceStatusDescription.Text = "只记录设备状态变化，并显示对应MES上报状态。";
+        lblDeviceStatusDescription.Text = "只记录设备状态变化，并显示 PLC 原始状态上报结果。";
         lblMesDate.Text = _localizer.GetString(TextKeys.Log.LabelDate);
         lblProductionDate.Text = _localizer.GetString(TextKeys.Log.LabelDate);
         lblExceptionDate.Text = _localizer.GetString(TextKeys.Log.LabelDate);
@@ -297,8 +297,6 @@ public partial class LogManageView : BaseView
         colProductionStep.HeaderText = "步骤";
         colProductionSummary.HeaderText = "摘要";
         colProductionStation.HeaderText = "工位";
-        colProductionWorkOrder.HeaderText = "工单号";
-        colProductionProductNo.HeaderText = "产品编号";
         colProductionPlcSignal.HeaderText = "PLC信号";
     }
 
@@ -1188,10 +1186,6 @@ public partial class LogManageView : BaseView
         public string Summary => Entry.Summary;
 
         public string Station => Entry.StationNo <= 0 ? "-" : Entry.StationNo.ToString();
-
-        public string WorkOrderId => string.IsNullOrWhiteSpace(Entry.WorkOrder) ? "-" : Entry.WorkOrder;
-
-        public string ProductNo => string.IsNullOrWhiteSpace(Entry.ProductNo) ? "-" : Entry.ProductNo;
 
         public string PlcSignal => string.IsNullOrWhiteSpace(Entry.PlcSignal) ? "-" : Entry.PlcSignal;
     }

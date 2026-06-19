@@ -71,8 +71,6 @@ namespace AutoWeldSystem.UI.Views
             colProductionStep = new DataGridViewTextBoxColumn();
             colProductionSummary = new DataGridViewTextBoxColumn();
             colProductionStation = new DataGridViewTextBoxColumn();
-            colProductionWorkOrder = new DataGridViewTextBoxColumn();
-            colProductionProductNo = new DataGridViewTextBoxColumn();
             colProductionPlcSignal = new DataGridViewTextBoxColumn();
             tabProductionDetails = new TabControl();
             tabProductionBasicInfo = new TabPage();
@@ -766,7 +764,7 @@ namespace AutoWeldSystem.UI.Views
             dgvProductionLogs.AllowUserToDeleteRows = false;
             dgvProductionLogs.BackgroundColor = SystemColors.Window;
             dgvProductionLogs.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-            dgvProductionLogs.Columns.AddRange(new DataGridViewColumn[] { colProductionOccurredTime, colProductionLevel, colProductionStep, colProductionSummary, colProductionStation, colProductionWorkOrder, colProductionProductNo, colProductionPlcSignal });
+            dgvProductionLogs.Columns.AddRange(new DataGridViewColumn[] { colProductionOccurredTime, colProductionLevel, colProductionStep, colProductionSummary, colProductionStation, colProductionPlcSignal });
             dgvProductionLogs.Dock = DockStyle.Fill;
             dgvProductionLogs.Location = new Point(0, 0);
             dgvProductionLogs.MultiSelect = false;
@@ -828,26 +826,6 @@ namespace AutoWeldSystem.UI.Views
             colProductionStation.Name = "colProductionStation";
             colProductionStation.ReadOnly = true;
             colProductionStation.Width = 125;
-            // 
-            // colProductionWorkOrder
-            // 
-            colProductionWorkOrder.DataPropertyName = "SN";
-            colProductionWorkOrder.FillWeight = 16F;
-            colProductionWorkOrder.HeaderText = "Work Order";
-            colProductionWorkOrder.MinimumWidth = 88;
-            colProductionWorkOrder.Name = "colProductionWorkOrder";
-            colProductionWorkOrder.ReadOnly = true;
-            colProductionWorkOrder.Width = 125;
-            // 
-            // colProductionProductNo
-            // 
-            colProductionProductNo.DataPropertyName = "ProductNumber";
-            colProductionProductNo.FillWeight = 13F;
-            colProductionProductNo.HeaderText = "Product No.";
-            colProductionProductNo.MinimumWidth = 88;
-            colProductionProductNo.Name = "colProductionProductNo";
-            colProductionProductNo.ReadOnly = true;
-            colProductionProductNo.Width = 125;
             // 
             // colProductionPlcSignal
             // 
@@ -1811,8 +1789,6 @@ namespace AutoWeldSystem.UI.Views
         private DataGridViewTextBoxColumn colProductionStep;
         private DataGridViewTextBoxColumn colProductionSummary;
         private DataGridViewTextBoxColumn colProductionStation;
-        private DataGridViewTextBoxColumn colProductionWorkOrder;
-        private DataGridViewTextBoxColumn colProductionProductNo;
         private DataGridViewTextBoxColumn colProductionPlcSignal;
         private DataGridViewTextBoxColumn colExceptionOccurredTime;
         private DataGridViewTextBoxColumn colExceptionCategory;

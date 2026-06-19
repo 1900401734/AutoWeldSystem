@@ -40,7 +40,7 @@ public sealed class MesInteractionLogService : IMesInteractionLogService
         {
             var filePath = GetLogFilePath(entry.SendTime);
             Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
-            var json = JsonSerializer.Serialize(entry, JsonOptions);
+            var json = LocalJsonLogFormatter.Serialize(entry);
 
             lock (_writeLock)
             {
@@ -65,7 +65,7 @@ public sealed class MesInteractionLogService : IMesInteractionLogService
                 return Array.Empty<MesInteractionLogEntry>();
             }
 
-            return ReadLatestRecords(filePath, Math.Max(1, take))
+            return LocalJsonLogFormatter.ReadLatestRecords(filePath, Math.Max(1, take))
                 .Reverse()
                 .Select(TryDeserialize)
                 .Where(it => it is not null)
@@ -133,7 +133,7 @@ public sealed class MesInteractionLogService : IMesInteractionLogService
 
         try
         {
-            return JsonSerializer.Deserialize<MesInteractionLogEntry>(line, JsonOptions);
+            return LocalJsonLogFormatter.Deserialize<MesInteractionLogEntry>(line);
         }
         catch
         {

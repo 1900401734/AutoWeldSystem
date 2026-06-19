@@ -63,7 +63,7 @@ public sealed class ProgramExceptionLogService : IProgramExceptionLogService
         {
             var filePath = GetLogFilePath(entry.OccurredTime);
             Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
-            var json = JsonSerializer.Serialize(entry, JsonOptions);
+            var json = LocalJsonLogFormatter.Serialize(entry);
 
             lock (_writeLock)
             {
@@ -88,7 +88,7 @@ public sealed class ProgramExceptionLogService : IProgramExceptionLogService
                 return Array.Empty<ProgramExceptionLogEntry>();
             }
 
-            return ReadLatestRecords(filePath, Math.Max(1, take))
+            return LocalJsonLogFormatter.ReadLatestRecords(filePath, Math.Max(1, take))
                 .Reverse()
                 .Select(TryDeserialize)
                 .Where(entry => entry is not null)
@@ -261,7 +261,7 @@ public sealed class ProgramExceptionLogService : IProgramExceptionLogService
 
         try
         {
-            return JsonSerializer.Deserialize<ProgramExceptionLogEntry>(line, JsonOptions);
+            return LocalJsonLogFormatter.Deserialize<ProgramExceptionLogEntry>(line);
         }
         catch
         {

@@ -42,7 +42,7 @@ public sealed class ProductionFlowLogService : IProductionFlowLogService
             entry.OccurredTime = entry.OccurredTime == default ? DateTime.Now : entry.OccurredTime;
             var filePath = GetLogFilePath(entry.OccurredTime);
             Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
-            var json = JsonSerializer.Serialize(entry, JsonOptions);
+            var json = LocalJsonLogFormatter.Serialize(entry);
 
             lock (_writeLock)
             {
@@ -96,7 +96,7 @@ public sealed class ProductionFlowLogService : IProductionFlowLogService
                 return Array.Empty<ProductionFlowLogEntry>();
             }
 
-            return ReadLatestRecords(filePath, Math.Max(1, take))
+            return LocalJsonLogFormatter.ReadLatestRecords(filePath, Math.Max(1, take))
                 .Reverse()
                 .Select(TryDeserialize)
                 .Where(entry => entry is not null)
@@ -159,7 +159,7 @@ public sealed class ProductionFlowLogService : IProductionFlowLogService
         {
             return string.IsNullOrWhiteSpace(line)
                 ? null
-                : JsonSerializer.Deserialize<ProductionFlowLogEntry>(line, JsonOptions);
+                : LocalJsonLogFormatter.Deserialize<ProductionFlowLogEntry>(line);
         }
         catch
         {
