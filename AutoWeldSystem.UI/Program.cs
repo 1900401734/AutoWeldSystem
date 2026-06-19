@@ -50,6 +50,7 @@ public static class Program
                     services.AddSingleton<ISysUserService, SysUserService>();
                     services.AddSingleton<IAppSettingsService, AppSettingsService>();
                     services.AddSingleton<IPlcAddressService, AddressService>();
+                    services.AddSingleton<IPlcAlarmAddressService, PlcAlarmAddressService>();
                     services.AddSingleton<IPlcBusinessSignalService, BusinessSignalService>();
                     services.AddSingleton<IOperationLogService, OperationLogService>();
                     services.AddSingleton<IMesInteractionLogService, MesInteractionLogService>();

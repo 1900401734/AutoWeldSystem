@@ -21,8 +21,10 @@ public partial class AddressManageView : BaseView
 {
     // 三次点击用于调试测试地址，间隔需要比系统双击时间更宽松，避免第三次点击过慢导致计数被重置。
     private const int TestAddressTripleClickIntervalMs = 1200;
+    private const string PlcExpressionRuleHint = PlcOffsetExpression.RuleHint;
 
     private readonly IPlcAddressService _addressService;
+    private readonly IPlcAlarmAddressService _plcAlarmAddressService;
     private readonly IProductProcessConfigService _productProcessConfigService;
     private readonly ITestSchemeConfigService _testSchemeConfigService;
     private readonly IProgramManageService _programManageService;
@@ -35,6 +37,7 @@ public partial class AddressManageView : BaseView
     private readonly IProgramExceptionLogService _exceptionLogService;
 
     private readonly List<BizPlcAddress> _allAddresses = new();
+    private readonly List<BizPlcAlarmAddress> _alarmAddresses = new();
     private readonly List<BizProductProcessConfig> _productProcessConfigs = new();
     private readonly List<BizTestScheme> _testSchemes = new();
     private readonly List<BizSchemeDetail> _schemeDetails = new();
@@ -43,6 +46,7 @@ public partial class AddressManageView : BaseView
     private readonly Dictionary<DimTestItem, int> _temporaryTestItemIds = new();
 
     private List<PlcAddressTableRow> _currentRows = new();
+    private List<AlarmAddressTableRow> _currentAlarmRows = new();
     private List<ProductProcessTableRow> _currentProductProcessRows = new();
     private List<TestSchemeTableRow> _currentSchemeRows = new();
     private List<TestItemTableRow> _currentItemRows = new();
@@ -51,12 +55,14 @@ public partial class AddressManageView : BaseView
     private readonly DataGridView _schemeDetailRoleGrid = new();
 
     private PlcAddressTableRow? _selectedRow;
+    private AlarmAddressTableRow? _selectedAlarmRow;
     private ProductProcessTableRow? _selectedProductProcessRow;
     private TestSchemeTableRow? _selectedSchemeRow;
     private TestItemTableRow? _selectedItemRow;
     private PlcAddressTableRow? _lastBusinessAddressClickRow;
 
     private string _addressKeyword = string.Empty;
+    private string _alarmKeyword = string.Empty;
     private string _productProcessKeyword = string.Empty;
     private string _schemeKeyword = string.Empty;
     private string _detailKeyword = string.Empty;
@@ -71,6 +77,7 @@ public partial class AddressManageView : BaseView
 
     public AddressManageView(
         IPlcAddressService addressService,
+        IPlcAlarmAddressService plcAlarmAddressService,
         IProductProcessConfigService productProcessConfigService,
         ITestSchemeConfigService testSchemeConfigService,
         IProgramManageService programManageService,
@@ -83,6 +90,7 @@ public partial class AddressManageView : BaseView
         IProgramExceptionLogService exceptionLogService)
     {
         _addressService = addressService;
+        _plcAlarmAddressService = plcAlarmAddressService;
         _productProcessConfigService = productProcessConfigService;
         _testSchemeConfigService = testSchemeConfigService;
         _programManageService = programManageService;
@@ -118,6 +126,7 @@ public partial class AddressManageView : BaseView
     {
         ApplyLocalizedTexts();
         ConfigureBusinessAddressColumns();
+        ConfigureAlarmAddressColumns();
         ConfigureProductProcessColumns();
         ConfigureTestSchemeColumns();
         ConfigureTestItemColumns();
@@ -130,12 +139,15 @@ public partial class AddressManageView : BaseView
     private void ConfigureTables()
     {
         TableStyleHelper.ApplyAntdTable(tableAddresses);
+        TableStyleHelper.ApplyAntdTable(tableAlarmAddresses);
         TableStyleHelper.ApplyAntdTable(tableProcess);
         TableStyleHelper.ApplyAntdTable(tableTestSchemes);
         TableStyleHelper.ApplyAntdTable(tableTestItems);
 
         tableAddresses.EditLostFocus = true;
         tableAddresses.LostFocusClearSelection = false;
+        tableAlarmAddresses.EditLostFocus = true;
+        tableAlarmAddresses.LostFocusClearSelection = false;
         tableProcess.EditLostFocus = true;
         tableProcess.LostFocusClearSelection = false;
         tableTestSchemes.EditLostFocus = true;
@@ -144,6 +156,7 @@ public partial class AddressManageView : BaseView
         tableTestItems.LostFocusClearSelection = false;
 
         ConfigureBusinessAddressColumns();
+        ConfigureAlarmAddressColumns();
         ConfigureProductProcessColumns();
         ConfigureTestSchemeColumns();
         ConfigureTestItemColumns();
@@ -244,6 +257,18 @@ public partial class AddressManageView : BaseView
     }
 
     #endregion
+
+    private void ConfigureAlarmAddressColumns()
+    {
+        tableAlarmAddresses.Columns.Clear();
+        tableAlarmAddresses.Columns.Add(CreateRawColumn(nameof(AlarmAddressTableRow.Sort), "排序"));
+        tableAlarmAddresses.Columns.Add(CreateRawColumn(nameof(AlarmAddressTableRow.StationNo), "工位(0共享)"));
+        tableAlarmAddresses.Columns.Add(CreateRawColumn(nameof(AlarmAddressTableRow.Address), "PLC Bool地址"));
+        tableAlarmAddresses.Columns.Add(CreateRawColumn(nameof(AlarmAddressTableRow.AlarmContent), "报警内容"));
+        tableAlarmAddresses.Columns.Add(CreateAlarmAddressEnabledColumn());
+        tableAlarmAddresses.Columns.Add(CreateRawColumn(nameof(AlarmAddressTableRow.UpdatedTime), "更新时间", readOnly: true, displayFormat: "yyyy-MM-dd HH:mm:ss"));
+        TableStyleHelper.ApplyAntdColumnDefaults(tableAlarmAddresses);
+    }
 
 
     private void ConfigureProductProcessColumns()
@@ -386,6 +411,15 @@ public partial class AddressManageView : BaseView
         };
     }
 
+    private static AntdUI.ColumnSwitch CreateAlarmAddressEnabledColumn()
+    {
+        return new AntdUI.ColumnSwitch(nameof(AlarmAddressTableRow.Enabled), "启用")
+        {
+            Align = AntdUI.ColumnAlign.Center,
+            AutoCheck = true
+        };
+    }
+
     private static AntdUI.ColumnSwitch CreateProductProcessTestFlagColumn()
     {
         return new AntdUI.ColumnSwitch(nameof(ProductProcessTableRow.ShowTestFlagInHistory), "历史显示试焊件")
@@ -402,6 +436,7 @@ public partial class AddressManageView : BaseView
             || key.Contains("Expr", StringComparison.OrdinalIgnoreCase)
             || key.Contains("Expression", StringComparison.OrdinalIgnoreCase)
             || key is nameof(PlcAddressTableRow.Description)
+                or nameof(AlarmAddressTableRow.AlarmContent)
                 or nameof(TestSchemeTableRow.Description)
                 or nameof(TestItemTableRow.ItemName)
             ? AntdUI.ColumnAlign.Left
@@ -421,6 +456,14 @@ public partial class AddressManageView : BaseView
         tableAddresses.CellEndValueEdit += Table_CellEndValueEdit;
         tableAddresses.CellEditComplete += Table_CellEditComplete;
         tableAddresses.CheckedChanged += Table_CheckedChanged;
+
+        tableAlarmAddresses.CellClick += Table_CellClick;
+        tableAlarmAddresses.CellEndEdit += Table_CellEndEdit;
+        tableAlarmAddresses.CellEditComplete += Table_CellEditComplete;
+        tableAlarmAddresses.CheckedChanged += Table_CheckedChanged;
+        btnAddAlarmAddress.Click += AddAlarmAddress_Click;
+        btnDeleteAlarmAddress.Click += DeleteAlarmAddress_Click;
+        btnPasteAlarmAddresses.Click += PasteAlarmAddresses_Click;
 
         tableProcess.CellClick += Table_CellClick;
         tableProcess.CellEndEdit += Table_CellEndEdit;
@@ -468,9 +511,10 @@ public partial class AddressManageView : BaseView
         lblBindingItem.Text = "测试项字典 表达式";
         lblBindingPreview.Text = "PLC 地址预览";
         lblTestItemAddressHint.Text = "维护产品工号、工位、焊点数量和 PLC 数据区布局；测试方案决定采集哪些测试项。";
-        lblProductProcessGroupHint.Text = "分组填写：产品头保存产品级字段，焊点头按焊点头长度递增，测试项区按测试区长度递增；最终地址可通过 PLC 地址预览核对。";
+        lblProductProcessGroupHint.Text = $"分组填写：产品头保存产品级字段，焊点头按焊点头长度递增，测试项区按测试区长度递增；最终地址可通过 PLC 地址预览核对。{PlcExpressionRuleHint}";
         lblSchemeDetailHint.Text = "先选择测试方案，再勾选该方案包含的测试项字段；新增测试项字典后会自动出现在树中。";
         lblSchemeDetailScheme.Text = "测试方案";
+        lblTestItemHint.Text = $"维护测试项名称、单位和相对偏移表达式。{PlcExpressionRuleHint}";
         btnAddProductProcess.Text = "新增";
         btnDeleteProductProcess.Text = "删除";
         btnPreviewProductProcessAddress.Text = "PLC 地址预览";
@@ -489,6 +533,8 @@ public partial class AddressManageView : BaseView
             treeSchemeDetails.Nodes.Clear();
             _allAddresses.Clear();
             _allAddresses.AddRange(_addressService.GetAll());
+            _alarmAddresses.Clear();
+            _alarmAddresses.AddRange(_plcAlarmAddressService.GetAll());
             _programOptions.Clear();
             _programOptions.AddRange(_programManageService.GetPrograms());
             _testSchemes.Clear();
@@ -504,6 +550,7 @@ public partial class AddressManageView : BaseView
             ConfigureProductProcessColumns();
             ConfigureSchemeDetailColumns();
             ApplyAddressFilter(_addressKeyword);
+            ApplyAlarmAddressFilter(_alarmKeyword);
             ApplyProductProcessFilter(_productProcessKeyword);
             ApplySchemeFilter(_schemeKeyword);
             ApplyDetailFilter(_detailKeyword);
@@ -527,6 +574,12 @@ public partial class AddressManageView : BaseView
         if (tabAddressCategories.SelectedTab == tabBusinessAddresses)
         {
             ApplyAddressFilter(keyword);
+            return;
+        }
+
+        if (tabAddressCategories.SelectedTab == tabAlarmAddresses)
+        {
+            ApplyAlarmAddressFilter(keyword);
             return;
         }
 
@@ -558,6 +611,11 @@ public partial class AddressManageView : BaseView
             return _addressKeyword;
         }
 
+        if (tabAddressCategories.SelectedTab == tabAlarmAddresses)
+        {
+            return _alarmKeyword;
+        }
+
         if (tabAddressCategories.SelectedTab == tabTestItemAddresses)
         {
             return _productProcessKeyword;
@@ -586,6 +644,7 @@ public partial class AddressManageView : BaseView
     {
         btnTest.Enabled = tabAddressCategories.SelectedTab == tabBusinessAddresses;
         btnPreviewProductProcessAddress.Enabled = _selectedProductProcessRow is not null;
+        btnDeleteAlarmAddress.Enabled = _selectedAlarmRow is not null;
     }
 
     /// <summary>
@@ -638,6 +697,28 @@ public partial class AddressManageView : BaseView
         tableAddresses.DataSource = _currentRows;
         tableAddresses.Refresh();
         SelectVisibleRow(selectedLogicalKey, selectedStationNo);
+    }
+
+    private void ApplyAlarmAddressFilter(string? keyword)
+    {
+        EndTableEdit();
+        _alarmKeyword = keyword?.Trim() ?? string.Empty;
+        var selectedId = _selectedAlarmRow?.Id;
+
+        _currentAlarmRows = _alarmAddresses
+            .Where(alarm => string.IsNullOrWhiteSpace(_alarmKeyword)
+                || Contains(alarm.StationNo.ToString(CultureInfo.InvariantCulture), _alarmKeyword)
+                || Contains(alarm.Address, _alarmKeyword)
+                || Contains(alarm.AlarmContent, _alarmKeyword))
+            .OrderBy(alarm => alarm.Sort)
+            .ThenBy(alarm => alarm.StationNo)
+            .ThenBy(alarm => alarm.Id)
+            .Select(alarm => new AlarmAddressTableRow(alarm))
+            .ToList();
+
+        tableAlarmAddresses.DataSource = _currentAlarmRows;
+        tableAlarmAddresses.Refresh();
+        SelectVisibleAlarmRow(selectedId);
     }
 
     private void ApplyProductProcessFilter(string? keyword)
@@ -1090,6 +1171,12 @@ public partial class AddressManageView : BaseView
                 return;
             }
 
+            if (tabAddressCategories.SelectedTab == tabAlarmAddresses)
+            {
+                SaveAlarmAddresses();
+                return;
+            }
+
             if (tabAddressCategories.SelectedTab == tabTestItemAddresses)
             {
                 SaveProductProcesses();
@@ -1129,6 +1216,13 @@ public partial class AddressManageView : BaseView
         await RefreshAddressDependentServicesQuietlyAsync();
         ReloadBusinessAddressDataAfterSave();
         ShowInfo(_localizer.GetString(TextKeys.Address.MessageSaveSuccess));
+    }
+
+    private void SaveAlarmAddresses()
+    {
+        NormalizeAlarmAddresses(_alarmAddresses);
+        _plcAlarmAddressService.SaveAll(_alarmAddresses);
+        ShowPostSaveResult("报警地址配置已保存。", TryReloadDataAfterSave("AddressManageView.ReloadAfterAlarmAddressSave"));
     }
 
     /// <summary>
@@ -1487,6 +1581,7 @@ public partial class AddressManageView : BaseView
             Expression = binding.Expression,
             DataType = binding.DataType,
             Rule = binding.Rule,
+            DecimalPlaces = binding.DecimalPlaces,
             ResolvedAddress = binding.Address
         });
     }
@@ -1606,6 +1701,128 @@ public partial class AddressManageView : BaseView
         LoadData();
     }
 
+    private void AddAlarmAddress_Click(object? sender, EventArgs e)
+    {
+        EndTableEdit();
+        var alarm = new BizPlcAlarmAddress
+        {
+            StationNo = ProductionConstants.Stations.SharedStationNo,
+            Address = string.Empty,
+            AlarmContent = string.Empty,
+            Enabled = true,
+            Sort = _alarmAddresses.Select(item => item.Sort).DefaultIfEmpty(0).Max() + 1,
+            UpdatedTime = DateTime.Now
+        };
+
+        _alarmAddresses.Add(alarm);
+        ApplyAlarmAddressFilter(_alarmKeyword);
+        _selectedAlarmRow = _currentAlarmRows.FirstOrDefault(row => ReferenceEquals(row.Source, alarm));
+        if (_selectedAlarmRow is not null)
+        {
+            tableAlarmAddresses.SetSelected(_selectedAlarmRow, true);
+        }
+
+        SyncActiveCommandState();
+    }
+
+    private void DeleteAlarmAddress_Click(object? sender, EventArgs e)
+    {
+        EndTableEdit();
+        var row = _selectedAlarmRow;
+        if (row is null)
+        {
+            ShowWarning("请先选择一条报警地址配置。");
+            return;
+        }
+
+        _alarmAddresses.Remove(row.Source);
+        ApplyAlarmAddressFilter(_alarmKeyword);
+        SyncActiveCommandState();
+    }
+
+    private void PasteAlarmAddresses_Click(object? sender, EventArgs e)
+    {
+        EndTableEdit();
+        if (!Clipboard.ContainsText())
+        {
+            ShowWarning("剪贴板中没有可导入的报警地址。");
+            return;
+        }
+
+        var imported = ParseAlarmAddressClipboard(Clipboard.GetText()).ToList();
+        if (imported.Count == 0)
+        {
+            ShowWarning("未识别到有效的两列数据，请从 Excel 复制“地址 / 内容”两列。");
+            return;
+        }
+
+        var nextSort = _alarmAddresses.Select(item => item.Sort).DefaultIfEmpty(0).Max() + 1;
+        foreach (var item in imported)
+        {
+            var existing = _alarmAddresses.FirstOrDefault(alarm =>
+                alarm.StationNo == ProductionConstants.Stations.SharedStationNo
+                && string.Equals(alarm.Address, item.Address, StringComparison.OrdinalIgnoreCase));
+            if (existing is not null)
+            {
+                existing.AlarmContent = item.Content;
+                existing.Enabled = true;
+                existing.UpdatedTime = DateTime.Now;
+                continue;
+            }
+
+            _alarmAddresses.Add(new BizPlcAlarmAddress
+            {
+                StationNo = ProductionConstants.Stations.SharedStationNo,
+                Address = item.Address,
+                AlarmContent = item.Content,
+                Enabled = true,
+                Sort = nextSort++,
+                UpdatedTime = DateTime.Now
+            });
+        }
+
+        ApplyAlarmAddressFilter(_alarmKeyword);
+        ShowInfo($"已导入 {imported.Count} 条报警地址，请确认后点击保存。");
+    }
+
+    private static IEnumerable<AlarmAddressImportRow> ParseAlarmAddressClipboard(string text)
+    {
+        foreach (var rawLine in text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var line = rawLine.Trim();
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            var cells = line.Contains('\t')
+                ? line.Split('\t')
+                : line.Split(',');
+            if (cells.Length < 2)
+            {
+                continue;
+            }
+
+            var address = cells[0].Trim().Trim('"');
+            var content = cells[1].Trim().Trim('"');
+            if (IsAlarmImportHeader(address, content)
+                || string.IsNullOrWhiteSpace(address)
+                || string.IsNullOrWhiteSpace(content))
+            {
+                continue;
+            }
+
+            yield return new AlarmAddressImportRow(address, content);
+        }
+    }
+
+    private static bool IsAlarmImportHeader(string address, string content)
+    {
+        return address.Contains("地址", StringComparison.OrdinalIgnoreCase)
+            && (content.Contains("内容", StringComparison.OrdinalIgnoreCase)
+                || content.Contains("报警", StringComparison.OrdinalIgnoreCase));
+    }
+
     private void AddScheme_Click(object? sender, EventArgs e)
     {
         EndTableEdit();
@@ -1708,6 +1925,11 @@ public partial class AddressManageView : BaseView
                 _selectedRow = row;
                 RegisterBusinessAddressTestClick(row);
                 break;
+            case AlarmAddressTableRow row:
+                ResetBusinessAddressTestClick();
+                _selectedAlarmRow = row;
+                SyncActiveCommandState();
+                break;
             case ProductProcessTableRow row:
                 ResetBusinessAddressTestClick();
                 _selectedProductProcessRow = row;
@@ -1738,6 +1960,14 @@ public partial class AddressManageView : BaseView
                 nameof(PlcAddressTableRow.Sort) => IsNonNegativeInt(value),
                 nameof(PlcAddressTableRow.StationNo) => IsNonNegativeInt(value),
                 nameof(PlcAddressTableRow.DataLength) => IsPositiveInt(value),
+                _ => true
+            },
+            AlarmAddressTableRow => e.Column.Key switch
+            {
+                nameof(AlarmAddressTableRow.Sort) => IsNonNegativeInt(value),
+                nameof(AlarmAddressTableRow.StationNo) => IsNonNegativeInt(value),
+                nameof(AlarmAddressTableRow.Address) => !string.IsNullOrWhiteSpace(value),
+                nameof(AlarmAddressTableRow.AlarmContent) => !string.IsNullOrWhiteSpace(value),
                 _ => true
             },
             ProductProcessTableRow => e.Column.Key switch
@@ -1802,6 +2032,13 @@ public partial class AddressManageView : BaseView
             return;
         }
 
+        if (e.Record is AlarmAddressTableRow alarmRow)
+        {
+            _selectedAlarmRow = alarmRow;
+            alarmRow.Enabled = e.Value;
+            return;
+        }
+
         if (e.Record is ProductProcessTableRow processRow)
         {
             _selectedProductProcessRow = processRow;
@@ -1827,6 +2064,12 @@ public partial class AddressManageView : BaseView
                 _selectedRow = row;
                 row.Normalize();
                 tableAddresses.Refresh();
+                break;
+            case AlarmAddressTableRow row:
+                _selectedAlarmRow = row;
+                row.Normalize();
+                tableAlarmAddresses.Refresh();
+                SyncActiveCommandState();
                 break;
             case ProductProcessTableRow row:
                 _selectedProductProcessRow = row;
@@ -1855,6 +2098,7 @@ public partial class AddressManageView : BaseView
     private void EndTableEdit()
     {
         tableAddresses.EditModeClose();
+        tableAlarmAddresses.EditModeClose();
         tableProcess.EditModeClose();
         tableTestSchemes.EditModeClose();
         tableTestItems.EditModeClose();
@@ -1870,6 +2114,19 @@ public partial class AddressManageView : BaseView
         {
             tableAddresses.SetSelected(_selectedRow, true);
         }
+    }
+
+    private void SelectVisibleAlarmRow(int? selectedId)
+    {
+        _selectedAlarmRow = selectedId is null
+            ? _currentAlarmRows.FirstOrDefault()
+            : _currentAlarmRows.FirstOrDefault(row => row.Id == selectedId) ?? _currentAlarmRows.FirstOrDefault();
+        if (_selectedAlarmRow is not null)
+        {
+            tableAlarmAddresses.SetSelected(_selectedAlarmRow, true);
+        }
+
+        SyncActiveCommandState();
     }
 
     private void SelectVisibleProductProcessRow(int? selectedId)
@@ -1920,6 +2177,17 @@ public partial class AddressManageView : BaseView
         }
     }
 
+    private static void NormalizeAlarmAddresses(IEnumerable<BizPlcAlarmAddress> alarms)
+    {
+        foreach (var alarm in alarms)
+        {
+            alarm.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, alarm.StationNo);
+            alarm.Sort = Math.Max(0, alarm.Sort);
+            alarm.Address = alarm.Address.Trim();
+            alarm.AlarmContent = alarm.AlarmContent.Trim();
+        }
+    }
+
     private void NormalizeProductProcesses(IEnumerable<BizProductProcessConfig> configs)
     {
         foreach (var config in configs)
@@ -1947,6 +2215,12 @@ public partial class AddressManageView : BaseView
             config.TouchResultExpr = NormalizeRequiredText(config.TouchResultExpr, "焊点结果偏移不能为空。");
             config.TestBase = NormalizeRequiredText(config.TestBase, "测试项基地址不能为空。");
             config.TestAreaLen = Math.Max(1, config.TestAreaLen);
+            ValidateOffsetExpression(config.ProductNoExpr, "产品编号偏移");
+            ValidateOffsetExpression(config.ProductResultExpr, "产品结果偏移");
+            ValidateOffsetExpression(config.ActualTouchCountExpr, "实际采集点数偏移");
+            ValidateOffsetExpression(config.PresetTouchCountExpr, "预设采集点数偏移");
+            ValidateOffsetExpression(config.TouchNoExpr, "采集点编号偏移");
+            ValidateOffsetExpression(config.TouchResultExpr, "采集点结果偏移");
         }
     }
 
@@ -2095,7 +2369,7 @@ public partial class AddressManageView : BaseView
         }
         catch (Exception ex)
         {
-            throw new InvalidOperationException($"{fieldName}无效：{ex.Message}", ex);
+            throw new InvalidOperationException($"{fieldName}无效：{ex.Message} {PlcExpressionRuleHint}", ex);
         }
     }
 
@@ -2313,6 +2587,8 @@ public partial class AddressManageView : BaseView
     private sealed record ProductSchemePreviewItem(int Sort, DimTestItem Item, BizSchemeDetail Detail);
 
     private sealed record SchemeMesField(string SchemeId, string MesFieldName);
+
+    private sealed record AlarmAddressImportRow(string Address, string Content);
 
     private enum SchemeDetailValueRole
     {
@@ -2542,6 +2818,56 @@ public partial class AddressManageView : BaseView
     /// <summary>
     /// 业务信号地址表格行。表格编辑的是包装属性，保存时仍回写到原始地址实体。
     /// </summary>
+    /// <summary>
+    /// PLC 报警地址表格行。
+    /// </summary>
+    private sealed class AlarmAddressTableRow(BizPlcAlarmAddress source)
+    {
+        public BizPlcAlarmAddress Source { get; } = source;
+
+        public int Id => Source.Id;
+
+        public int Sort
+        {
+            get => Source.Sort;
+            set => Source.Sort = Math.Max(0, value);
+        }
+
+        public int StationNo
+        {
+            get => Source.StationNo;
+            set => Source.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, value);
+        }
+
+        public string Address
+        {
+            get => Source.Address;
+            set => Source.Address = value?.Trim() ?? string.Empty;
+        }
+
+        public string AlarmContent
+        {
+            get => Source.AlarmContent;
+            set => Source.AlarmContent = value?.Trim() ?? string.Empty;
+        }
+
+        public bool Enabled
+        {
+            get => Source.Enabled;
+            set => Source.Enabled = value;
+        }
+
+        public DateTime UpdatedTime => Source.UpdatedTime;
+
+        public void Normalize()
+        {
+            Source.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, Source.StationNo);
+            Source.Sort = Math.Max(0, Source.Sort);
+            Source.Address = Source.Address.Trim();
+            Source.AlarmContent = Source.AlarmContent.Trim();
+        }
+    }
+
     private sealed class PlcAddressTableRow(BizPlcAddress source, string addressName)
     {
         public BizPlcAddress Source { get; } = source;

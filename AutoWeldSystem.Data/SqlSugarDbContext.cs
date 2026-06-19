@@ -60,7 +60,8 @@ public class SqlSugarDbContext : IDisposable
                     typeof(BizUploadTask),
                     typeof(BizDeviceStatusLog),
                     typeof(BizRuntimeTipState),
-                    typeof(BizPlcAddress));
+                    typeof(BizPlcAddress),
+                    typeof(BizPlcAlarmAddress));
 
                 _initialized = true;
             }
