@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutoWeldSystem.Services", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutoWeldSystem.Core", "AutoWeldSystem.Core\AutoWeldSystem.Core.csproj", "{A49E46B4-F60C-D6BD-AC48-0E5A79C7F6B1}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutoWeldSystem.Tests", "AutoWeldSystem.Tests\AutoWeldSystem.Tests.csproj", "{915EA362-DDA3-4554-92B1-0F847A1464F7}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +35,10 @@ Global
 		{A49E46B4-F60C-D6BD-AC48-0E5A79C7F6B1}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A49E46B4-F60C-D6BD-AC48-0E5A79C7F6B1}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A49E46B4-F60C-D6BD-AC48-0E5A79C7F6B1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{915EA362-DDA3-4554-92B1-0F847A1464F7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{915EA362-DDA3-4554-92B1-0F847A1464F7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{915EA362-DDA3-4554-92B1-0F847A1464F7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{915EA362-DDA3-4554-92B1-0F847A1464F7}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

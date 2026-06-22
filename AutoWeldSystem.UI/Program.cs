@@ -34,6 +34,7 @@ public static class Program
         var productionMonitorStarted = false;
         var workIdMonitorStarted = false;
         var weldCycleMonitorStarted = false;
+        var recipeReconcileMonitorStarted = false;
         var realtimePreviewStarted = false;
 
         try
@@ -67,6 +68,7 @@ public static class Program
                     services.AddSingleton<IPlcProductionMonitorService, ProductionMonitorService>();
                     services.AddSingleton<IPlcWorkIdMonitorService, WorkIdMonitorService>();
                     services.AddSingleton<IPlcWeldCycleMonitorService, WeldCycleMonitorService>();
+                    services.AddSingleton<IPlcRecipeReconcileMonitorService, RecipeCodeReconcileMonitorService>();
                     services.AddSingleton<IProductProcessConfigService, ProductProcessConfigService>();
                     services.AddSingleton<ITestSchemeConfigService, TestSchemeConfigService>();
                     services.AddSingleton<IProductCycleCollectionService, ProductCycleCollectionService>();
@@ -115,6 +117,8 @@ public static class Program
             workIdMonitorStarted = true;
             AppHost.Services.GetRequiredService<IPlcWeldCycleMonitorService>().StartAsync().GetAwaiter().GetResult();
             weldCycleMonitorStarted = true;
+            AppHost.Services.GetRequiredService<IPlcRecipeReconcileMonitorService>().StartAsync().GetAwaiter().GetResult();
+            recipeReconcileMonitorStarted = true;
             AppHost.Services.GetRequiredService<IProductRealtimePreviewService>().StartAsync().GetAwaiter().GetResult();
             realtimePreviewStarted = true;
 
@@ -146,7 +150,14 @@ public static class Program
         }
         finally
         {
-            StopBackgroundServices(realtimePreviewStarted, weldCycleMonitorStarted, workIdMonitorStarted, productionMonitorStarted, mesMonitorStarted, plcServiceStarted);
+            StopBackgroundServices(
+                realtimePreviewStarted,
+                recipeReconcileMonitorStarted,
+                weldCycleMonitorStarted,
+                workIdMonitorStarted,
+                productionMonitorStarted,
+                mesMonitorStarted,
+                plcServiceStarted);
             AppHost?.Dispose();
         }
     }
@@ -219,6 +230,7 @@ public static class Program
 
     private static void StopBackgroundServices(
         bool realtimePreviewStarted,
+        bool recipeReconcileMonitorStarted,
         bool weldCycleMonitorStarted,
         bool workIdMonitorStarted,
         bool productionMonitorStarted,
@@ -230,6 +242,11 @@ public static class Program
             if (realtimePreviewStarted)
             {
                 AppHost?.Services.GetRequiredService<IProductRealtimePreviewService>().StopAsync().GetAwaiter().GetResult();
+            }
+
+            if (recipeReconcileMonitorStarted)
+            {
+                AppHost?.Services.GetRequiredService<IPlcRecipeReconcileMonitorService>().StopAsync().GetAwaiter().GetResult();
             }
 
             if (weldCycleMonitorStarted)
