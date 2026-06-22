@@ -513,6 +513,9 @@
   <data name="plc.state.faulted" xml:space="preserve">
     <value>异常</value>
   </data>
+  <data name="plc.state.unverified" xml:space="preserve">
+    <value>未验证</value>
+  </data>
   <data name="grid.role.code" xml:space="preserve">
     <value>角色编码</value>
   </data>
@@ -563,6 +566,18 @@
   </data>
   <data name="plc.message.connected" xml:space="preserve">
     <value>PLC 已连接：{0}。</value>
+  </data>
+  <data name="plc.message.business_verification_succeeded" xml:space="preserve">
+    <value>PLC 已通过业务地址验证：{0}。</value>
+  </data>
+  <data name="plc.message.endpoint_required" xml:space="preserve">
+    <value>PLC IP 或端口未配置。</value>
+  </data>
+  <data name="plc.message.verification_address_missing" xml:space="preserve">
+    <value>PLC TCP 已连接，但未配置 PLC 心跳或可读业务地址。</value>
+  </data>
+  <data name="plc.message.business_verification_failed" xml:space="preserve">
+    <value>PLC 业务地址验证失败：{0}</value>
   </data>
   <data name="plc.message.unsupported_type" xml:space="preserve">
     <value>不支持的 PLC 类型：{0}</value>
@@ -1184,6 +1199,15 @@
   </data>
   <data name="monitor.production_hint.recipe_code_validation_failed" xml:space="preserve">
     <value>配方编号校验失败</value>
+  </data>
+  <data name="monitor.production_hint.recipe_code_changed_detected" xml:space="preserve">
+    <value>PLC侧配方号变更至：{0}</value>
+  </data>
+  <data name="monitor.production_hint.recipe_code_reconcile_succeeded" xml:space="preserve">
+    <value>配方号调和成功：{0}</value>
+  </data>
+  <data name="monitor.production_hint.recipe_code_reconcile_failed" xml:space="preserve">
+    <value>配方号调和失败：目标{0}，PLC当前{1}</value>
   </data>
   <data name="monitor.production_hint.business_signal_write_succeeded" xml:space="preserve">
     <value>PLC业务信号写入成功</value>

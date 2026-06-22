@@ -24,6 +24,18 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
     private const int HeartbeatFailureThreshold = 3;
     private const int PlcCommunicationTimeoutMilliseconds = 3000;
 
+    private static readonly string[] VerificationLogicalKeyPriority =
+    [
+        AppConstants.PlcLogicalKeys.DeviceStatus,
+        AppConstants.PlcLogicalKeys.TotalProduction,
+        AppConstants.PlcLogicalKeys.AcceptedQuantity,
+        AppConstants.PlcLogicalKeys.RejectedQuantity,
+        AppConstants.PlcLogicalKeys.WorkId,
+        AppConstants.PlcLogicalKeys.PlcRecipeCode,
+        AppConstants.PlcLogicalKeys.ProductDataReady,
+        AppConstants.PlcLogicalKeys.DeviceMode
+    ];
+
     private readonly IAppSettingsService _settingsService;
     private readonly IOperationLogService _operationLogService;
     private readonly IPlcAddressService _plcAddressService;
@@ -265,6 +277,7 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
             while (!cancellationToken.IsCancellationRequested)
             {
                 var runtimeSettings = CurrentSettings;
+                endpoint = BuildEndpoint(runtimeSettings);
                 var nextStationNumbers = ResolveRuntimeStationNumbers(runtimeSettings, heartbeatAddresses);
                 if (!stationNumbers.SequenceEqual(nextStationNumbers))
                 {
@@ -277,6 +290,14 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
                 var plcHeartbeatReadInterval = ResolvePlcHeartbeatReadInterval(runtimeSettings);
                 if (_client is null)
                 {
+                    var endpointValidation = ValidateEndpointSettings(runtimeSettings);
+                    if (!endpointValidation.IsSuccess)
+                    {
+                        PublishForStations(stationNumbers, PlcConnectionState.Disconnected, false, endpointValidation.Message, endpoint: endpoint);
+                        await Task.Delay(ConnectionObjectModeInterval, cancellationToken);
+                        continue;
+                    }
+
                     if (reconnectDelay > TimeSpan.Zero)
                     {
                         PublishForStations(stationNumbers, PlcConnectionState.Reconnecting, false, $"PLC reconnect retry waits {reconnectDelay.TotalSeconds:0}s.", endpoint: endpoint);
@@ -285,7 +306,7 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
 
                     PublishForStations(stationNumbers, PlcConnectionState.Reconnecting, false, Text(TextKeys.Plc.MessageConnecting, endpoint), endpoint: endpoint);
 
-                    var connectResult = await ConnectAsync(settings, cancellationToken);
+                    var connectResult = await ConnectAsync(runtimeSettings, cancellationToken);
                     if (!connectResult.IsSuccess)
                     {
                         PublishForStations(stationNumbers, PlcConnectionState.Disconnected, false, connectResult.Message, endpoint: endpoint);
@@ -305,7 +326,14 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
                     var runtime = GetOrCreateHeartbeatRuntime(stationNo);
                     if (!ShouldUsePlcHeartbeat(heartbeatAddress))
                     {
-                        PublishConnectedIfDue(stationNo, Text(TextKeys.Plc.MessageConnected, endpoint), endpoint);
+                        var verificationResult = await VerifyBusinessAddressAsync(heartbeatAddress.VerificationAddress, cancellationToken);
+                        if (!verificationResult.IsSuccess)
+                        {
+                            Publish(stationNo, PlcConnectionState.Unverified, false, verificationResult.Message, endpoint: endpoint);
+                            continue;
+                        }
+
+                        PublishConnectedIfDue(stationNo, verificationResult.Message, endpoint);
                         await TryWritePcHeartbeatIfDueAsync(runtime, heartbeatAddress, DateTime.Now, cancellationToken);
                         continue;
                     }
@@ -377,6 +405,12 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
         await _sync.WaitAsync(cancellationToken);
         try
         {
+            var endpointValidation = ValidateEndpointSettings(settings);
+            if (!endpointValidation.IsSuccess)
+            {
+                return endpointValidation;
+            }
+
             if (_client is not null)
             {
                 return PlcServiceResult.Success(Text(TextKeys.Plc.MessageAlreadyConnected));
@@ -449,17 +483,29 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
             Text(TextKeys.Plc.MessageUnsupportedType, settings.PlcType ?? string.Empty));
     }
 
+    /// <summary>
+    /// Validates the endpoint before creating an HSL client so empty IP values never fall back to 127.0.0.1.
+    /// </summary>
+    private PlcServiceResult ValidateEndpointSettings(AppSettings settings)
+    {
+        return string.IsNullOrWhiteSpace(settings.PlcIp) || settings.PlcPort is <= 0 or > 65535
+            ? PlcServiceResult.Fail(Text(TextKeys.Plc.MessageEndpointRequired))
+            : PlcServiceResult.Success();
+    }
+
     private IReadOnlyDictionary<int, HeartbeatAddressPair> LoadHeartbeatAddresses(AppSettings settings)
     {
         var stationNumbers = ResolveRuntimeStationNumbers(settings, new Dictionary<int, HeartbeatAddressPair>());
         var addresses = new Dictionary<int, HeartbeatAddressPair>();
         try
         {
+            var allAddresses = _plcAddressService.GetAll();
             foreach (var stationNo in stationNumbers)
             {
                 addresses[stationNo] = new HeartbeatAddressPair(
-                    _plcAddressService.GetAddress(AppConstants.PlcLogicalKeys.PcHeartBeat, stationNo),
-                    _plcAddressService.GetAddress(AppConstants.PlcLogicalKeys.PlcHeartBeat, stationNo));
+                    FindAddress(allAddresses, AppConstants.PlcLogicalKeys.PcHeartBeat, stationNo),
+                    FindAddress(allAddresses, AppConstants.PlcLogicalKeys.PlcHeartBeat, stationNo),
+                    ResolveVerificationAddress(allAddresses, stationNo));
             }
         }
         catch
@@ -468,6 +514,40 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
         }
 
         return addresses;
+    }
+
+    /// <summary>
+    /// Finds an address by logical key and station without treating disabled or blank rows as usable.
+    /// </summary>
+    private static BizPlcAddress? FindAddress(
+        IReadOnlyList<BizPlcAddress> addresses,
+        string logicalKey,
+        int stationNo)
+    {
+        return addresses
+            .Where(address => string.Equals(address.LogicalKey, logicalKey, StringComparison.OrdinalIgnoreCase))
+            .Where(address => NormalizeStationNo(address.StationNo) == NormalizeStationNo(stationNo))
+            .OrderBy(address => address.Sort)
+            .FirstOrDefault(address => IsUsableHeartbeatAddress(address, out _));
+    }
+
+    /// <summary>
+    /// Selects a readable business address used only to verify that the TCP endpoint is the expected PLC.
+    /// </summary>
+    private static BizPlcAddress? ResolveVerificationAddress(
+        IReadOnlyList<BizPlcAddress> addresses,
+        int stationNo)
+    {
+        foreach (var logicalKey in VerificationLogicalKeyPriority)
+        {
+            var address = FindAddress(addresses, logicalKey, stationNo);
+            if (IsUsableHeartbeatAddress(address, out _))
+            {
+                return address;
+            }
+        }
+
+        return null;
     }
 
     private async Task<HeartbeatCheckResult> MaintainSoftHeartbeatAsync(
@@ -540,23 +620,23 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
         var textValue = value.ToString();
         return NormalizeDataType(heartbeatAddress!.DataType) switch
         {
-            AppConstants.PlcDataTypes.Bool => await ExecuteWriteAsync(
+            AppConstants.PlcDataTypes.Bool => await ExecuteRawWriteAsync(
                 address,
                 client => client.WriteAsync(address, value > 0),
                 cancellationToken),
-            AppConstants.PlcDataTypes.Int32 => await ExecuteWriteAsync(
+            AppConstants.PlcDataTypes.Int32 => await ExecuteRawWriteAsync(
                 address,
                 client => client.WriteAsync(address, value),
                 cancellationToken),
-            AppConstants.PlcDataTypes.Float => await ExecuteWriteAsync(
+            AppConstants.PlcDataTypes.Float => await ExecuteRawWriteAsync(
                 address,
                 client => client.WriteAsync(address, Convert.ToSingle(value)),
                 cancellationToken),
-            AppConstants.PlcDataTypes.String => await ExecuteWriteAsync(
+            AppConstants.PlcDataTypes.String => await ExecuteRawWriteAsync(
                 address,
                 client => client.WriteAsync(address, textValue),
                 cancellationToken),
-            _ => await ExecuteWriteAsync(
+            _ => await ExecuteRawWriteAsync(
                 address,
                 client => client.WriteAsync(address, Convert.ToInt16(value)),
                 cancellationToken)
@@ -572,25 +652,56 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
             return PlcServiceResult<string>.Fail("PLC heartbeat business address is not configured or disabled.");
         }
 
-        return NormalizeDataType(heartbeatAddress!.DataType) switch
+        return await ReadConfiguredAddressValueAsync(heartbeatAddress!, address, cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads one configured PLC business address to prove that the TCP endpoint is the expected PLC.
+    /// </summary>
+    private async Task<PlcServiceResult> VerifyBusinessAddressAsync(
+        BizPlcAddress? verificationAddress,
+        CancellationToken cancellationToken)
+    {
+        if (!IsUsableHeartbeatAddress(verificationAddress, out var address))
         {
-            AppConstants.PlcDataTypes.Bool => NormalizeHeartbeatRead(await ExecuteReadAsync(
+            return PlcServiceResult.Fail(Text(TextKeys.Plc.MessageVerificationAddressMissing));
+        }
+
+        var verifiedAddress = verificationAddress!;
+        var readResult = await ReadConfiguredAddressValueAsync(verifiedAddress, address, cancellationToken);
+        var addressLabel = $"{verifiedAddress.LogicalKey}:{address}";
+        return readResult.IsSuccess
+            ? PlcServiceResult.Success(Text(TextKeys.Plc.MessageBusinessVerificationSucceeded, addressLabel))
+            : PlcServiceResult.Fail(Text(TextKeys.Plc.MessageBusinessVerificationFailed, $"{addressLabel} {readResult.Message}"));
+    }
+
+    /// <summary>
+    /// Converts any supported PLC address value to text for heartbeat and verification checks.
+    /// </summary>
+    private async Task<PlcServiceResult<string>> ReadConfiguredAddressValueAsync(
+        BizPlcAddress plcAddress,
+        string address,
+        CancellationToken cancellationToken)
+    {
+        return NormalizeDataType(plcAddress.DataType) switch
+        {
+            AppConstants.PlcDataTypes.Bool => NormalizeHeartbeatRead(await ExecuteRawReadAsync(
                 address,
                 client => client.ReadBoolAsync(address),
                 cancellationToken)),
-            AppConstants.PlcDataTypes.Int32 => NormalizeHeartbeatRead(await ExecuteReadAsync(
+            AppConstants.PlcDataTypes.Int32 => NormalizeHeartbeatRead(await ExecuteRawReadAsync(
                 address,
                 client => client.ReadInt32Async(address),
                 cancellationToken)),
-            AppConstants.PlcDataTypes.Float => NormalizeHeartbeatRead(await ExecuteReadAsync(
+            AppConstants.PlcDataTypes.Float => NormalizeHeartbeatRead(await ExecuteRawReadAsync(
                 address,
                 client => client.ReadFloatAsync(address),
                 cancellationToken)),
-            AppConstants.PlcDataTypes.String => NormalizeHeartbeatRead(await ExecuteReadAsync(
+            AppConstants.PlcDataTypes.String => NormalizeHeartbeatRead(await ExecuteRawReadAsync(
                 ResolveStringReadAddress(address),
-                client => client.ReadStringAsync(ResolveStringReadAddress(address), (ushort)Math.Max(1, heartbeatAddress.DataLength)),
+                client => client.ReadStringAsync(ResolveStringReadAddress(address), (ushort)Math.Max(1, plcAddress.DataLength)),
                 cancellationToken)),
-            _ => NormalizeHeartbeatRead(await ExecuteReadAsync(
+            _ => NormalizeHeartbeatRead(await ExecuteRawReadAsync(
                 address,
                 client => client.ReadInt16Async(address),
                 cancellationToken))
@@ -721,6 +832,18 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
             return PlcServiceResult<T>.Fail(connectResult.Message);
         }
 
+        return await ExecuteRawReadAsync(address, action, cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads through the current TCP client without requiring business verification.
+    /// This path is used only by heartbeat and connection verification.
+    /// </summary>
+    private async Task<PlcServiceResult<T>> ExecuteRawReadAsync<T>(
+        string address,
+        Func<NetworkDeviceBase, Task<OperateResult<T>>> action,
+        CancellationToken cancellationToken)
+    {
         await _sync.WaitAsync(cancellationToken);
         try
         {
@@ -766,6 +889,18 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
             return connectResult;
         }
 
+        return await ExecuteRawWriteAsync(address, action, cancellationToken);
+    }
+
+    /// <summary>
+    /// Writes through the current TCP client without requiring business verification.
+    /// This path is used only by heartbeat maintenance.
+    /// </summary>
+    private async Task<PlcServiceResult> ExecuteRawWriteAsync(
+        string address,
+        Func<NetworkDeviceBase, Task<OperateResult>> action,
+        CancellationToken cancellationToken)
+    {
         await _sync.WaitAsync(cancellationToken);
         try
         {
@@ -797,12 +932,31 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
     /// </summary>
     private Task<PlcServiceResult> EnsureConnectedAsync(CancellationToken cancellationToken)
     {
-        if (_client is not null)
+        if (_client is null)
+        {
+            return Task.FromResult(PlcServiceResult.Fail(Text(TextKeys.Plc.MessageNotConnected)));
+        }
+
+        if (HasVerifiedConnection())
         {
             return Task.FromResult(PlcServiceResult.Success(Text(TextKeys.Plc.MessageAlreadyConnected)));
         }
 
-        return Task.FromResult(PlcServiceResult.Fail(Text(TextKeys.Plc.MessageNotConnected)));
+        var message = string.IsNullOrWhiteSpace(Current.Message)
+            ? Text(TextKeys.Plc.MessageVerificationAddressMissing)
+            : Current.Message;
+        return Task.FromResult(PlcServiceResult.Fail(message));
+    }
+
+    /// <summary>
+    /// Business reads and writes are allowed only after at least one station has passed PLC address verification.
+    /// </summary>
+    private bool HasVerifiedConnection()
+    {
+        lock (_snapshotSync)
+        {
+            return _stationSnapshots.Values.Any(snapshot => snapshot.IsConnected);
+        }
     }
 
     /// <summary>
@@ -977,7 +1131,7 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
         var normalizedStationNo = NormalizeStationNo(stationNo);
         return heartbeatAddresses.TryGetValue(normalizedStationNo, out var addressPair)
             ? addressPair
-            : new HeartbeatAddressPair(null, null);
+            : new HeartbeatAddressPair(null, null, null);
     }
 
     private static IReadOnlyList<int> ResolveRuntimeStationNumbers(
@@ -1053,7 +1207,10 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
     /// <summary>
     /// 软心跳使用的一组业务信号地址。
     /// </summary>
-    private sealed record HeartbeatAddressPair(BizPlcAddress? PcHeartbeat, BizPlcAddress? PlcHeartbeat);
+    private sealed record HeartbeatAddressPair(
+        BizPlcAddress? PcHeartbeat,
+        BizPlcAddress? PlcHeartbeat,
+        BizPlcAddress? VerificationAddress);
 
     /// <summary>
     /// 每个工位独立维护心跳采样状态，避免双工位共用一个运行态导致误判。

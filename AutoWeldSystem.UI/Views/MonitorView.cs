@@ -11,6 +11,7 @@ using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.MES;
 using AutoWeldSystem.Core.Interfaces.PLC;
 using AutoWeldSystem.Core.Plc;
+using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Core.Runtime;
 using AutoWeldSystem.Core.ViewModels;
 using AutoWeldSystem.UI.Base;
@@ -2591,6 +2592,9 @@ public partial class MonitorView : BaseView
             "RecipeCodeWriteFailed" or
             "RecipeCodeValidationSucceeded" or
             "RecipeCodeValidationFailed" or
+            "RecipeCodeChangedDetected" or
+            "RecipeCodeReconcileSucceeded" or
+            "RecipeCodeReconcileFailed" or
             "BusinessSignalWrite" or
             "WorkOrderFinishedCountReset";
     }
@@ -2647,11 +2651,48 @@ public partial class MonitorView : BaseView
             "RecipeCodeWriteFailed" => _localizer.GetString(TextKeys.Monitor.ProductionHint.RecipeCodeWriteFailed),
             "RecipeCodeValidationSucceeded" => _localizer.GetString(TextKeys.Monitor.ProductionHint.RecipeCodeValidationSucceeded),
             "RecipeCodeValidationFailed" => _localizer.GetString(TextKeys.Monitor.ProductionHint.RecipeCodeValidationFailed),
+            "RecipeCodeChangedDetected" => _localizer.GetString(
+                TextKeys.Monitor.ProductionHint.RecipeCodeChangedDetected,
+                GetProductionLogDetailValue(entry, "PlcRecipeCode")),
+            "RecipeCodeReconcileSucceeded" => _localizer.GetString(
+                TextKeys.Monitor.ProductionHint.RecipeCodeReconcileSucceeded,
+                GetProductionLogDetailValue(entry, "ExpectedRecipeCode")),
+            "RecipeCodeReconcileFailed" => _localizer.GetString(
+                TextKeys.Monitor.ProductionHint.RecipeCodeReconcileFailed,
+                GetProductionLogDetailValue(entry, "ExpectedRecipeCode"),
+                GetProductionLogDetailValue(entry, "PlcRecipeCode")),
             "BusinessSignalWrite" => entry.Level.Equals("Error", StringComparison.OrdinalIgnoreCase)
                 ? _localizer.GetString(TextKeys.Monitor.ProductionHint.BusinessSignalWriteFailed)
                 : _localizer.GetString(TextKeys.Monitor.ProductionHint.BusinessSignalWriteSucceeded),
             _ => entry.Summary
         };
+    }
+
+    /// <summary>
+    /// 从生产流程日志详情中读取 key=value 形式的值，供本地化提示拼接动态参数。
+    /// </summary>
+    /// <param name="entry">生产流程日志条目。</param>
+    /// <param name="key">详情字段名。</param>
+    /// <returns>字段值；未找到时返回日志摘要，避免界面显示空白。</returns>
+    private static string GetProductionLogDetailValue(ProductionFlowLogEntry entry, string key)
+    {
+        var separators = new[] { "\r\n", "\n", ";" };
+        foreach (var part in entry.Detail.Split(separators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separatorIndex = part.IndexOf('=', StringComparison.Ordinal);
+            if (separatorIndex <= 0)
+            {
+                continue;
+            }
+
+            var fieldName = part[..separatorIndex].Trim();
+            if (string.Equals(fieldName, key, StringComparison.OrdinalIgnoreCase))
+            {
+                return part[(separatorIndex + 1)..].Trim();
+            }
+        }
+
+        return entry.Summary;
     }
 
     private void ApplyStationResult(BizWeldPointRecord record)
@@ -2792,6 +2833,7 @@ public partial class MonitorView : BaseView
             PlcConnectionState.Connected => UiColors.Status.Success,
             PlcConnectionState.Connecting => UiColors.Status.Primary,
             PlcConnectionState.Reconnecting => UiColors.Status.Business,
+            PlcConnectionState.Unverified => UiColors.Status.Warning,
             PlcConnectionState.Disconnected => UiColors.Status.Warning,
             PlcConnectionState.Faulted => UiColors.Status.Danger,
             PlcConnectionState.Stopped => UiColors.Status.Muted,
@@ -2968,6 +3010,7 @@ public partial class MonitorView : BaseView
             PlcConnectionState.Connecting => TextKeys.Plc.StateConnecting,
             PlcConnectionState.Connected => TextKeys.Plc.StateConnected,
             PlcConnectionState.Reconnecting => TextKeys.Plc.StateReconnecting,
+            PlcConnectionState.Unverified => TextKeys.Plc.StateUnverified,
             PlcConnectionState.Disconnected => TextKeys.Plc.StateDisconnected,
             PlcConnectionState.Faulted => TextKeys.Plc.StateFaulted,
             _ => TextKeys.Plc.StateStopped
@@ -4007,22 +4050,22 @@ public partial class MonitorView : BaseView
         var itemKey = ResolveItemKey(item);
         var itemName = item.ItemName?.Trim() ?? itemKey;
 
-        if (detail.EnableUpper)
+        if (SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Upper))
         {
             yield return CreateProductHistoryDynamicColumn(itemKey, itemName, PreviewUpperRole, NormalizeDisplayText(detail.UpperHeader, $"{itemName}上限"), schemeItem.Sort + 1);
         }
 
-        if (detail.EnableLower)
+        if (SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Lower))
         {
             yield return CreateProductHistoryDynamicColumn(itemKey, itemName, PreviewLowerRole, NormalizeDisplayText(detail.LowerHeader, $"{itemName}下限"), schemeItem.Sort + 2);
         }
 
-        if (detail.EnableActual)
+        if (SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Actual))
         {
             yield return CreateProductHistoryDynamicColumn(itemKey, itemName, PreviewActualRole, NormalizeDisplayText(detail.ActualHeader, $"{itemName}实际值"), schemeItem.Sort + 3);
         }
 
-        if (detail.EnableResult)
+        if (SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Result))
         {
             yield return CreateProductHistoryDynamicColumn(itemKey, itemName, PreviewResultRole, NormalizeDisplayText(detail.ResultHeader, $"{itemName}结果"), schemeItem.Sort + 4);
         }
@@ -4842,26 +4885,7 @@ public partial class MonitorView : BaseView
     /// <returns>条件满足返回 true，否则返回 false。</returns>
     private static bool HasAnyEnabledRole(BizSchemeDetail detail)
     {
-        return detail.EnableActual || detail.EnableUpper || detail.EnableLower || detail.EnableResult;
-    }
-
-    /// <summary>
-    /// 规范化旧版详情角色。
-    /// </summary>
-    /// <param name="detail">详情。</param>
-    /// <returns>解析到的对象；不存在时返回 null。</returns>
-    private static BizSchemeDetail NormalizeLegacyDetailRoles(BizSchemeDetail detail)
-    {
-        if (HasAnyEnabledRole(detail))
-        {
-            return detail;
-        }
-
-        detail.EnableActual = true;
-        detail.EnableUpper = true;
-        detail.EnableLower = true;
-        detail.EnableResult = true;
-        return detail;
+        return SchemeDetailRoleRules.HasAnyCollectEnabled(detail);
     }
 
     /// <summary>
@@ -5496,7 +5520,6 @@ public partial class MonitorView : BaseView
     private IReadOnlyList<SchemePreviewItem> ResolveSchemeItems(string schemeId)
     {
         var details = _testSchemeConfigService.GetDetails(schemeId)
-            .Select(NormalizeLegacyDetailRoles)
             .OrderBy(detail => detail.DetailId)
             .ToList();
         if (details.Count == 0)
@@ -5513,6 +5536,11 @@ public partial class MonitorView : BaseView
                 Detail = detail
             })
             .Where(item => item.Item is not null)
+            .Select(item =>
+            {
+                SchemeDetailRoleRules.ClearUnavailableRoles(item.Detail, item.Item!);
+                return item;
+            })
             .Where(item => HasAnyEnabledRole(item.Detail))
             .Select(item => new SchemePreviewItem(item.Sort, item.Item!, item.Detail))
             .ToList();
@@ -5913,10 +5941,11 @@ public partial class MonitorView : BaseView
     {
         return statusCode switch
         {
-            1 => TextKeys.DeviceStatus.Running,
-            2 => TextKeys.DeviceStatus.Paused,
-            3 => TextKeys.DeviceStatus.Stopped,
-            4 => TextKeys.DeviceStatus.Alarm,
+            ProductionConstants.PlcDeviceStatuses.Unknown => TextKeys.DeviceStatus.Unknown,
+            ProductionConstants.PlcDeviceStatuses.Running => TextKeys.DeviceStatus.Running,
+            ProductionConstants.PlcDeviceStatuses.Paused => TextKeys.DeviceStatus.Paused,
+            ProductionConstants.PlcDeviceStatuses.Stopped => TextKeys.DeviceStatus.Stopped,
+            ProductionConstants.PlcDeviceStatuses.Alarm => TextKeys.DeviceStatus.Alarm,
             _ => TextKeys.DeviceStatus.Unknown
         };
     }
@@ -5936,10 +5965,10 @@ public partial class MonitorView : BaseView
 
         return statusCode switch
         {
-            1 => UiColors.Status.Success,
-            2 => UiColors.Status.Warning,
-            3 => UiColors.Status.Muted,
-            4 => UiColors.Status.Danger,
+            ProductionConstants.PlcDeviceStatuses.Running => UiColors.Status.Success,
+            ProductionConstants.PlcDeviceStatuses.Paused => UiColors.Status.Warning,
+            ProductionConstants.PlcDeviceStatuses.Stopped => UiColors.Status.Muted,
+            ProductionConstants.PlcDeviceStatuses.Alarm => UiColors.Status.Danger,
             _ => UiColors.Status.Muted
         };
     }

@@ -513,6 +513,9 @@
   <data name="plc.state.faulted" xml:space="preserve">
     <value>Faulted</value>
   </data>
+  <data name="plc.state.unverified" xml:space="preserve">
+    <value>Unverified</value>
+  </data>
   <data name="grid.role.code" xml:space="preserve">
     <value>Role Code</value>
   </data>
@@ -563,6 +566,18 @@
   </data>
   <data name="plc.message.connected" xml:space="preserve">
     <value>PLC connected: {0}.</value>
+  </data>
+  <data name="plc.message.business_verification_succeeded" xml:space="preserve">
+    <value>PLC business address verified: {0}.</value>
+  </data>
+  <data name="plc.message.endpoint_required" xml:space="preserve">
+    <value>PLC IP or port is not configured.</value>
+  </data>
+  <data name="plc.message.verification_address_missing" xml:space="preserve">
+    <value>PLC TCP is connected, but no PLC heartbeat or readable business address is configured.</value>
+  </data>
+  <data name="plc.message.business_verification_failed" xml:space="preserve">
+    <value>PLC business address verification failed: {0}</value>
   </data>
   <data name="plc.message.unsupported_type" xml:space="preserve">
     <value>Unsupported PLC type: {0}</value>
@@ -1184,6 +1199,15 @@
   </data>
   <data name="monitor.production_hint.recipe_code_validation_failed" xml:space="preserve">
     <value>Recipe code validation failed.</value>
+  </data>
+  <data name="monitor.production_hint.recipe_code_changed_detected" xml:space="preserve">
+    <value>PLC recipe code changed to: {0}</value>
+  </data>
+  <data name="monitor.production_hint.recipe_code_reconcile_succeeded" xml:space="preserve">
+    <value>Recipe code reconciliation succeeded: {0}</value>
+  </data>
+  <data name="monitor.production_hint.recipe_code_reconcile_failed" xml:space="preserve">
+    <value>Recipe code reconciliation failed: target {0}, PLC current {1}</value>
   </data>
   <data name="monitor.production_hint.business_signal_write_succeeded" xml:space="preserve">
     <value>PLC business signal write succeeded.</value>

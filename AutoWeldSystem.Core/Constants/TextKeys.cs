@@ -448,6 +448,18 @@ public static class TextKeys
             /// 配方编号已下发
             /// </summary>
             public const string RecipeCodeWriteSucceeded = "monitor.production_hint.recipe_code_write_succeeded";
+            /// <summary>
+            /// PLC侧配方号变更
+            /// </summary>
+            public const string RecipeCodeChangedDetected = "monitor.production_hint.recipe_code_changed_detected";
+            /// <summary>
+            /// 配方号调和成功
+            /// </summary>
+            public const string RecipeCodeReconcileSucceeded = "monitor.production_hint.recipe_code_reconcile_succeeded";
+            /// <summary>
+            /// 配方号调和失败
+            /// </summary>
+            public const string RecipeCodeReconcileFailed = "monitor.production_hint.recipe_code_reconcile_failed";
         }
 
         public static class Dialog
@@ -1181,6 +1193,10 @@ public static class TextKeys
         /// 异常
         /// </summary>
         public const string StateFaulted = "plc.state.faulted";
+        /// <summary>
+        /// TCP connected but PLC business addresses have not been verified.
+        /// </summary>
+        public const string StateUnverified = "plc.state.unverified";
 
         // ----- 消息提示 -----
 
@@ -1197,9 +1213,25 @@ public static class TextKeys
         /// </summary>
         public const string MessageConnected = "plc.message.connected";
         /// <summary>
+        /// PLC business address verification succeeded: {0}.
+        /// </summary>
+        public const string MessageBusinessVerificationSucceeded = "plc.message.business_verification_succeeded";
+        /// <summary>
         /// 正在连接 {0}。
         /// </summary>
         public const string MessageConnecting = "plc.message.connecting";
+        /// <summary>
+        /// PLC IP or port is not configured.
+        /// </summary>
+        public const string MessageEndpointRequired = "plc.message.endpoint_required";
+        /// <summary>
+        /// TCP is connected, but no PLC heartbeat or readable business address is configured.
+        /// </summary>
+        public const string MessageVerificationAddressMissing = "plc.message.verification_address_missing";
+        /// <summary>
+        /// PLC business address verification failed: {0}
+        /// </summary>
+        public const string MessageBusinessVerificationFailed = "plc.message.business_verification_failed";
         /// <summary>
         /// PLC 心跳检测失败：{0}
         /// </summary>

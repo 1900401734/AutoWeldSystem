@@ -223,11 +223,12 @@ public class DeviceStatusService : IDeviceStatusService
     private static string NormalizeStatus(string deviceStatus)
     {
         var normalized = deviceStatus.Trim();
-        return normalized switch
+        if (ProductionConstants.PlcDeviceStatuses.IsReportable(normalized))
         {
-            "1" or "2" or "3" or "4" => normalized,
-            _ => throw new InvalidOperationException($"Unsupported PLC device status code: {deviceStatus}")
-        };
+            return normalized;
+        }
+
+        throw new InvalidOperationException($"Unsupported PLC device status code: {deviceStatus}");
     }
 
     private AppSettings CurrentSettings => Volatile.Read(ref _currentSettings);

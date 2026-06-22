@@ -227,18 +227,30 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
                 continue;
             }
 
-            var alarmMessage = statusResult.Value == ProductionConstants.PlcDeviceStatuses.Alarm
-                ? await ReadActiveAlarmMessageAsync(stationNo, cancellationToken)
-                : string.Empty;
-            await RecordDeviceStatusChangeAsync(stationNo, statusResult.Value, alarmMessage, cancellationToken);
+            var plcStatusCode = statusResult.Value;
+            var statusMessage = BuildDeviceStatusValidationMessage(plcStatusCode);
+            var alarmMessage = string.Empty;
+
+            if (ProductionConstants.PlcDeviceStatuses.IsReportable(plcStatusCode))
+            {
+                alarmMessage = plcStatusCode == ProductionConstants.PlcDeviceStatuses.Alarm
+                    ? await ReadActiveAlarmMessageAsync(stationNo, cancellationToken)
+                    : string.Empty;
+                await RecordDeviceStatusChangeAsync(stationNo, plcStatusCode, alarmMessage, cancellationToken);
+            }
+            else if (!string.IsNullOrWhiteSpace(statusMessage))
+            {
+                WriteBusinessFailureLog(stationNo, statusMessage);
+            }
 
             var total = await ReadRequiredIntegerAsync(addresses, AppConstants.PlcLogicalKeys.TotalProduction, stationNo, cancellationToken);
             var accepted = await ReadRequiredIntegerAsync(addresses, AppConstants.PlcLogicalKeys.AcceptedQuantity, stationNo, cancellationToken);
             var rejected = await ReadRequiredIntegerAsync(addresses, AppConstants.PlcLogicalKeys.RejectedQuantity, stationNo, cancellationToken);
             var quantityMessage = BuildQuantityReadMessage(total, accepted, rejected);
-            var isSnapshotSuccess = string.IsNullOrWhiteSpace(quantityMessage);
+            var snapshotMessage = BuildSnapshotMessage(statusMessage, quantityMessage);
+            var isSnapshotSuccess = string.IsNullOrWhiteSpace(snapshotMessage);
 
-            if (!isSnapshotSuccess)
+            if (!string.IsNullOrWhiteSpace(quantityMessage))
             {
                 WriteBusinessFailureLog(stationNo, quantityMessage);
             }
@@ -252,13 +264,13 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
             Publish(CreateSnapshot(
                 stationNo,
                 isSnapshotSuccess,
-                statusResult.Value,
+                plcStatusCode,
                 total.Value,
                 null,
                 accepted.Value,
                 rejected.Value,
                 DateTime.Now,
-                quantityMessage,
+                snapshotMessage,
                 total.IsSuccess,
                 total.Message,
                 accepted.IsSuccess,
@@ -511,6 +523,31 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
             .Where(result => !result.IsSuccess && !string.IsNullOrWhiteSpace(result.Message))
             .Select(result => result.Message)
             .Distinct());
+    }
+
+    /// <summary>
+    /// Builds a local-only warning for PLC statuses that cannot be recorded or uploaded.
+    /// </summary>
+    private static string BuildDeviceStatusValidationMessage(short plcStatusCode)
+    {
+        if (plcStatusCode == ProductionConstants.PlcDeviceStatuses.Unknown
+            || ProductionConstants.PlcDeviceStatuses.IsReportable(plcStatusCode))
+        {
+            return string.Empty;
+        }
+
+        return $"PLC设备状态值无效：{plcStatusCode}。仅支持 0=未知（本地显示）、1=运行、2=暂停/空闲、3=停止、4=报警；已跳过设备状态上报。";
+    }
+
+    /// <summary>
+    /// Merges status and quantity warnings into one snapshot message for the UI.
+    /// </summary>
+    private static string BuildSnapshotMessage(params string[] messages)
+    {
+        return string.Join("；", messages
+            .Where(message => !string.IsNullOrWhiteSpace(message))
+            .Select(message => message.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase));
     }
 
     private static string GetQuantityName(string key)
