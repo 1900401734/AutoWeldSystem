@@ -404,8 +404,8 @@ public partial class LogManageView : BaseView
     private void ApplyProductionFilter()
     {
         var rows = _productionLogs
-            .Where(entry => IsProductionLogMatched(entry, _productionKeyword))
-            .Select(entry => new ProductionLogRow(entry))
+            .Where(entry => IsProductionLogMatched(entry, _productionKeyword, _localizer))
+            .Select(entry => new ProductionLogRow(entry, _localizer))
             .ToList();
 
         _productionBindingSource.DataSource = rows;
@@ -513,22 +513,27 @@ public partial class LogManageView : BaseView
             || Contains(entry.TraceId, keyword);
     }
 
-    private static bool IsProductionLogMatched(ProductionFlowLogEntry entry, string keyword)
+    private static bool IsProductionLogMatched(ProductionFlowLogEntry entry, string keyword, ILocalizationService localizer)
     {
         if (string.IsNullOrWhiteSpace(keyword))
         {
             return true;
         }
 
+        var localizedSummary = PlcBusinessSignalDisplayHelper.FormatSignalReferences(entry.Summary, localizer);
+        var localizedPlcSignal = PlcBusinessSignalDisplayHelper.FormatSignalName(entry.PlcSignal, localizer);
+
         return Contains(entry.TraceId, keyword)
             || Contains(entry.Level, keyword)
             || Contains(entry.Step, keyword)
             || Contains(entry.Summary, keyword)
+            || Contains(localizedSummary, keyword)
             || Contains(entry.Detail, keyword)
             || Contains(entry.WorkOrder, keyword)
             || Contains(entry.ProductNo, keyword)
             || Contains(entry.ProgramId, keyword)
             || Contains(entry.PlcSignal, keyword)
+            || Contains(localizedPlcSignal, keyword)
             || Contains(entry.PlcAddress, keyword);
     }
 
@@ -817,19 +822,19 @@ public partial class LogManageView : BaseView
         return builder.ToString();
     }
 
-    private static string BuildProductionBasicInfo(ProductionFlowLogEntry entry)
+    private string BuildProductionBasicInfo(ProductionFlowLogEntry entry)
     {
         var builder = new StringBuilder();
         builder.AppendLine($"TraceId: {entry.TraceId}");
         builder.AppendLine($"Time: {entry.OccurredTime:yyyy-MM-dd HH:mm:ss.fff}");
         builder.AppendLine($"Level: {entry.Level}");
         builder.AppendLine($"Step: {entry.Step}");
-        builder.AppendLine($"Summary: {entry.Summary}");
+        builder.AppendLine($"Summary: {PlcBusinessSignalDisplayHelper.FormatSignalReferences(entry.Summary, _localizer)}");
         builder.AppendLine($"Station: {entry.StationNo}");
         builder.AppendLine($"WorkOrder: {entry.WorkOrder}");
         builder.AppendLine($"ProductNumber: {entry.ProductNo}");
         builder.AppendLine($"ProgramId: {entry.ProgramId}");
-        builder.AppendLine($"PLC Signal: {entry.PlcSignal}");
+        builder.AppendLine($"PLC Signal: {PlcBusinessSignalDisplayHelper.FormatSignalName(entry.PlcSignal, _localizer)}");
         builder.AppendLine($"PLC Address: {entry.PlcAddress}");
         builder.AppendLine($"Duration: {entry.DurationMilliseconds?.ToString() ?? "-"} ms");
         return builder.ToString();
@@ -1170,9 +1175,11 @@ public partial class LogManageView : BaseView
 
     private sealed class ProductionLogRow
     {
-        public ProductionLogRow(ProductionFlowLogEntry entry)
+        public ProductionLogRow(ProductionFlowLogEntry entry, ILocalizationService localizer)
         {
             Entry = entry;
+            Summary = PlcBusinessSignalDisplayHelper.FormatSignalReferences(entry.Summary, localizer);
+            PlcSignal = PlcBusinessSignalDisplayHelper.FormatSignalName(entry.PlcSignal, localizer);
         }
 
         public ProductionFlowLogEntry Entry { get; }
@@ -1183,11 +1190,11 @@ public partial class LogManageView : BaseView
 
         public string Step => Entry.Step;
 
-        public string Summary => Entry.Summary;
+        public string Summary { get; }
 
         public string Station => Entry.StationNo <= 0 ? "-" : Entry.StationNo.ToString();
 
-        public string PlcSignal => string.IsNullOrWhiteSpace(Entry.PlcSignal) ? "-" : Entry.PlcSignal;
+        public string PlcSignal { get; }
     }
 
     private sealed class DeviceStatusLogRow
