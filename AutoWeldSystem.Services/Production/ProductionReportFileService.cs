@@ -2,6 +2,7 @@ using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
+using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Data;
 using ClosedXML.Excel;
 using System.Text.Json;
@@ -363,22 +364,22 @@ public class ProductionReportFileService : IProductionReportFileService
             var item = schemeItem.Item;
             var detail = schemeItem.Detail;
             var itemKey = ResolveItemKey(item);
-            if (ShouldWriteReportRole(detail.EnableActual, detail.ReportActual))
+            if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Actual))
             {
                 TryAddDynamicValue(row, BuildDynamicColumnKey(item, ReportRoleActual), GetRawValue(rawValues, item.ItemName, itemKey) ?? string.Empty);
             }
 
-            if (ShouldWriteReportRole(detail.EnableUpper, detail.ReportUpper))
+            if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Upper))
             {
                 TryAddDynamicValue(row, BuildDynamicColumnKey(item, ReportRoleUpper), GetRawValue(rawValues, $"{item.ItemName}上限", $"{itemKey}_upper"));
             }
 
-            if (ShouldWriteReportRole(detail.EnableLower, detail.ReportLower))
+            if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Lower))
             {
                 TryAddDynamicValue(row, BuildDynamicColumnKey(item, ReportRoleLower), GetRawValue(rawValues, $"{item.ItemName}下限", $"{itemKey}_lower"));
             }
 
-            if (ShouldWriteReportRole(detail.EnableResult, detail.ReportResult))
+            if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Result))
             {
                 TryAddDynamicValue(row, BuildDynamicColumnKey(item, ReportRoleResult), GetRawValue(rawValues, $"{item.ItemName}结果", $"{itemKey}_result"));
             }
@@ -394,8 +395,6 @@ public class ProductionReportFileService : IProductionReportFileService
 
         var details = _dbContext.Db.Queryable<BizSchemeDetail>()
             .Where(detail => detail.SchemeId == config.SchemeId)
-            .ToList()
-            .Select(NormalizeLegacyDetailRoles)
             .ToList();
         if (details.Count == 0)
         {
@@ -415,6 +414,11 @@ public class ProductionReportFileService : IProductionReportFileService
                 Detail = detail
             })
             .Where(item => item.Item is not null)
+            .Select(item =>
+            {
+                SchemeDetailRoleRules.ClearUnavailableRoles(item.Detail, item.Item!);
+                return item;
+            })
             .Where(item => HasAnyEnabledRole(item.Detail))
             .Select(item => new SchemeReportItem(item.Item!, item.Detail))
             .ToList();
@@ -494,29 +498,26 @@ public class ProductionReportFileService : IProductionReportFileService
         var detail = schemeItem.Detail;
         var itemName = NormalizeDisplayText(item.ItemName, $"测试项{item.ItemId}");
 
-        if (ShouldWriteReportRole(detail.EnableActual, detail.ReportActual))
+        if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Actual))
         {
             yield return new ReportColumn(BuildDynamicColumnKey(item, ReportRoleActual), NormalizeDisplayText(detail.ActualHeader, $"{itemName}实际值"), MergeByProduct: false);
         }
 
-        if (ShouldWriteReportRole(detail.EnableUpper, detail.ReportUpper))
+        if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Upper))
         {
             yield return new ReportColumn(BuildDynamicColumnKey(item, ReportRoleUpper), NormalizeDisplayText(detail.UpperHeader, $"{itemName}上限"), MergeByProduct: false);
         }
 
-        if (ShouldWriteReportRole(detail.EnableLower, detail.ReportLower))
+        if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Lower))
         {
             yield return new ReportColumn(BuildDynamicColumnKey(item, ReportRoleLower), NormalizeDisplayText(detail.LowerHeader, $"{itemName}下限"), MergeByProduct: false);
         }
 
-        if (ShouldWriteReportRole(detail.EnableResult, detail.ReportResult))
+        if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Result))
         {
             yield return new ReportColumn(BuildDynamicColumnKey(item, ReportRoleResult), NormalizeDisplayText(detail.ResultHeader, $"{itemName}结果"), MergeByProduct: false);
         }
     }
-
-    private static bool ShouldWriteReportRole(bool collectEnabled, bool? reportEnabled)
-        => collectEnabled && (reportEnabled ?? true);
 
     private static string BuildDynamicColumnKey(DimTestItem item, string role)
         => $"{ResolveItemKey(item)}_{role}";
@@ -634,21 +635,7 @@ public class ProductionReportFileService : IProductionReportFileService
 
     private static bool HasAnyEnabledRole(BizSchemeDetail detail)
     {
-        return detail.EnableActual || detail.EnableUpper || detail.EnableLower || detail.EnableResult;
-    }
-
-    private static BizSchemeDetail NormalizeLegacyDetailRoles(BizSchemeDetail detail)
-    {
-        if (HasAnyEnabledRole(detail))
-        {
-            return detail;
-        }
-
-        detail.EnableActual = true;
-        detail.EnableUpper = true;
-        detail.EnableLower = true;
-        detail.EnableResult = true;
-        return detail;
+        return SchemeDetailRoleRules.AllRoles.Any(role => SchemeDetailRoleRules.ShouldWriteReportRole(detail, role));
     }
 
     private sealed record ProductReportContext(string ProductResult, DateTime RecordTime);

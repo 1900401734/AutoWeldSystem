@@ -5,6 +5,7 @@ using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.PLC;
 using AutoWeldSystem.Core.Plc;
+using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.UI.Base;
 using AutoWeldSystem.UI.Forms;
 using AutoWeldSystem.UI.Infrastructure;
@@ -147,7 +148,7 @@ public partial class AddressManageView : BaseView
         tableAddresses.EditLostFocus = true;
         tableAddresses.LostFocusClearSelection = false;
         tableAlarmAddresses.EditLostFocus = true;
-        tableAlarmAddresses.LostFocusClearSelection = false;
+        AntdTableSelectionHelper.EnableMultiRowSelection(tableAlarmAddresses);
         tableProcess.EditLostFocus = true;
         tableProcess.LostFocusClearSelection = false;
         tableTestSchemes.EditLostFocus = true;
@@ -202,6 +203,12 @@ public partial class AddressManageView : BaseView
             DataPropertyName = nameof(SchemeDetailRoleTableRow.HeaderText),
             HeaderText = "显示表头",
             Width = 150
+        });
+        _schemeDetailRoleGrid.Columns.Add(new DataGridViewCheckBoxColumn
+        {
+            DataPropertyName = nameof(SchemeDetailRoleTableRow.SaveEnabled),
+            HeaderText = "保存",
+            Width = 58
         });
         _schemeDetailRoleGrid.Columns.Add(new DataGridViewCheckBoxColumn
         {
@@ -644,7 +651,34 @@ public partial class AddressManageView : BaseView
     {
         btnTest.Enabled = tabAddressCategories.SelectedTab == tabBusinessAddresses;
         btnPreviewProductProcessAddress.Enabled = _selectedProductProcessRow is not null;
-        btnDeleteAlarmAddress.Enabled = _selectedAlarmRow is not null;
+        btnDeleteAlarmAddress.Enabled = GetSelectedAlarmRows().Count > 0;
+    }
+
+    /// <summary>
+    /// Gets the selected alarm rows while preserving the old single-row fallback behavior.
+    /// </summary>
+    private IReadOnlyList<AlarmAddressTableRow> GetSelectedAlarmRows()
+    {
+        var selectedRows = AntdTableSelectionHelper.GetSelectedRows<AlarmAddressTableRow>(tableAlarmAddresses);
+        if (selectedRows.Count > 0)
+        {
+            return selectedRows;
+        }
+
+        return _selectedAlarmRow is null
+            ? Array.Empty<AlarmAddressTableRow>()
+            : new[] { _selectedAlarmRow };
+    }
+
+    /// <summary>
+    /// Captures selected alarm source objects so selection can be restored after rebinding rows.
+    /// </summary>
+    private List<BizPlcAlarmAddress> GetSelectedAlarmSources()
+    {
+        return GetSelectedAlarmRows()
+            .Select(row => row.Source)
+            .Distinct()
+            .ToList();
     }
 
     /// <summary>
@@ -699,11 +733,14 @@ public partial class AddressManageView : BaseView
         SelectVisibleRow(selectedLogicalKey, selectedStationNo);
     }
 
-    private void ApplyAlarmAddressFilter(string? keyword)
+    private void ApplyAlarmAddressFilter(
+        string? keyword,
+        IReadOnlyCollection<BizPlcAlarmAddress>? selectedSources = null,
+        bool fallbackToFirst = true)
     {
         EndTableEdit();
         _alarmKeyword = keyword?.Trim() ?? string.Empty;
-        var selectedId = _selectedAlarmRow?.Id;
+        var sourcesToRestore = selectedSources?.ToList() ?? GetSelectedAlarmSources();
 
         _currentAlarmRows = _alarmAddresses
             .Where(alarm => string.IsNullOrWhiteSpace(_alarmKeyword)
@@ -718,7 +755,7 @@ public partial class AddressManageView : BaseView
 
         tableAlarmAddresses.DataSource = _currentAlarmRows;
         tableAlarmAddresses.Refresh();
-        SelectVisibleAlarmRow(selectedId);
+        SelectVisibleAlarmRows(sourcesToRestore, fallbackToFirst);
     }
 
     private void ApplyProductProcessFilter(string? keyword)
@@ -896,10 +933,14 @@ public partial class AddressManageView : BaseView
             Tag = new SchemeDetailTreeNodeTag(item.ItemId, null)
         };
 
-        parent.Nodes.Add(CreateSchemeDetailRoleNode(item.ItemId, SchemeDetailValueRole.Actual, "实际值", detail?.EnableActual ?? false));
-        parent.Nodes.Add(CreateSchemeDetailRoleNode(item.ItemId, SchemeDetailValueRole.Upper, "上限", detail?.EnableUpper ?? false));
-        parent.Nodes.Add(CreateSchemeDetailRoleNode(item.ItemId, SchemeDetailValueRole.Lower, "下限", detail?.EnableLower ?? false));
-        parent.Nodes.Add(CreateSchemeDetailRoleNode(item.ItemId, SchemeDetailValueRole.Result, "结果", detail?.EnableResult ?? false));
+        foreach (var role in SchemeDetailRoleRules.GetAvailableRoles(item))
+        {
+            parent.Nodes.Add(CreateSchemeDetailRoleNode(
+                item.ItemId,
+                role,
+                SchemeDetailRoleRules.GetRoleName(role),
+                detail is not null && SchemeDetailRoleRules.IsCollectEnabled(detail, role)));
+        }
         parent.Checked = parent.Nodes.Cast<TreeNode>().Any(node => node.Checked);
         return parent;
     }
@@ -928,10 +969,8 @@ public partial class AddressManageView : BaseView
         return Contains(item.ItemId.ToString(CultureInfo.InvariantCulture), normalizedKeyword)
             || Contains(item.ItemName, normalizedKeyword)
             || Contains(item.Unit, normalizedKeyword)
-            || Contains("实际值", normalizedKeyword)
-            || Contains("上限", normalizedKeyword)
-            || Contains("下限", normalizedKeyword)
-            || Contains("结果", normalizedKeyword);
+            || SchemeDetailRoleRules.GetAvailableRoles(item)
+                .Any(role => Contains(SchemeDetailRoleRules.GetRoleName(role), normalizedKeyword));
     }
 
     private void SchemeDetailTree_AfterCheck(object? sender, TreeViewEventArgs e)
@@ -1019,7 +1058,12 @@ public partial class AddressManageView : BaseView
                 ? existingDetail
                 : new BizSchemeDetail { SchemeId = schemeId, ItemId = itemTag.ItemId };
             ApplySchemeDetailRoleState(detail, itemNode);
-            if (HasAnyEnabledRole(detail))
+            if (_testItems.FirstOrDefault(item => item.ItemId == itemTag.ItemId) is { } item)
+            {
+                SchemeDetailRoleRules.ClearUnavailableRoles(detail, item);
+            }
+
+            if (HasAnyConfiguredRole(detail))
             {
                 _schemeDetails.Add(detail);
             }
@@ -1082,8 +1126,12 @@ public partial class AddressManageView : BaseView
             {
                 row.NormalizeForSave();
             }
+            if (_testItems.FirstOrDefault(item => item.ItemId == group.Key) is { } item)
+            {
+                SchemeDetailRoleRules.ClearUnavailableRoles(detail, item);
+            }
 
-            if (HasAnyEnabledRole(detail))
+            if (HasAnyConfiguredRole(detail))
             {
                 _schemeDetails.Add(detail);
             }
@@ -1092,10 +1140,10 @@ public partial class AddressManageView : BaseView
 
     private IEnumerable<SchemeDetailRoleTableRow> CreateSchemeDetailRoleRows(BizSchemeDetail detail, DimTestItem item)
     {
-        yield return new SchemeDetailRoleTableRow(detail, item, SchemeDetailValueRole.Actual);
-        yield return new SchemeDetailRoleTableRow(detail, item, SchemeDetailValueRole.Upper);
-        yield return new SchemeDetailRoleTableRow(detail, item, SchemeDetailValueRole.Lower);
-        yield return new SchemeDetailRoleTableRow(detail, item, SchemeDetailValueRole.Result);
+        foreach (var role in SchemeDetailRoleRules.GetAvailableRoles(item))
+        {
+            yield return new SchemeDetailRoleTableRow(detail, item, role);
+        }
     }
 
     private static BizSchemeDetail CreateEmptySchemeDetail(string schemeId, int itemId)
@@ -1113,10 +1161,10 @@ public partial class AddressManageView : BaseView
 
     private static void ApplySchemeDetailRoleState(BizSchemeDetail detail, TreeNode itemNode)
     {
-        detail.EnableActual = IsSchemeDetailRoleChecked(itemNode, SchemeDetailValueRole.Actual);
-        detail.EnableUpper = IsSchemeDetailRoleChecked(itemNode, SchemeDetailValueRole.Upper);
-        detail.EnableLower = IsSchemeDetailRoleChecked(itemNode, SchemeDetailValueRole.Lower);
-        detail.EnableResult = IsSchemeDetailRoleChecked(itemNode, SchemeDetailValueRole.Result);
+        foreach (var role in SchemeDetailRoleRules.AllRoles)
+        {
+            SchemeDetailRoleRules.SetCollectEnabled(detail, role, IsSchemeDetailRoleChecked(itemNode, role));
+        }
     }
 
     private static bool IsSchemeDetailRoleChecked(TreeNode itemNode, SchemeDetailValueRole role)
@@ -1338,7 +1386,7 @@ public partial class AddressManageView : BaseView
         SyncCurrentSchemeDetailGridToMemory();
 
         var details = _schemeDetails
-            .Where(HasAnyEnabledRole)
+            .Where(HasAnyConfiguredRole)
             .OrderBy(detail => detail.SchemeId)
             .ThenBy(detail => detail.DetailId)
             .ToList();
@@ -1493,24 +1541,20 @@ public partial class AddressManageView : BaseView
             {
                 var item = schemeItem.Item;
                 var detail = schemeItem.Detail;
-                if (detail.EnableActual)
+                foreach (var role in SchemeDetailRoleRules.GetAvailableRoles(item))
                 {
-                    AddProductProcessAddressPreviewRow(rows, identity, "测试项", touchText, ResolveSchemeDetailHeader(detail, item, SchemeDetailValueRole.Actual), config.TestBase, testContextOffset, item.ActualExpression);
-                }
-
-                if (detail.EnableUpper)
-                {
-                    AddProductProcessAddressPreviewRow(rows, identity, "测试项", touchText, ResolveSchemeDetailHeader(detail, item, SchemeDetailValueRole.Upper), config.TestBase, testContextOffset, item.UpperExpression);
-                }
-
-                if (detail.EnableLower)
-                {
-                    AddProductProcessAddressPreviewRow(rows, identity, "测试项", touchText, ResolveSchemeDetailHeader(detail, item, SchemeDetailValueRole.Lower), config.TestBase, testContextOffset, item.LowerExpression);
-                }
-
-                if (detail.EnableResult)
-                {
-                    AddProductProcessAddressPreviewRow(rows, identity, "测试项", touchText, ResolveSchemeDetailHeader(detail, item, SchemeDetailValueRole.Result), config.TestBase, testContextOffset, item.ResultExpression);
+                    if (SchemeDetailRoleRules.IsCollectEnabled(detail, role))
+                    {
+                        AddProductProcessAddressPreviewRow(
+                            rows,
+                            identity,
+                            "测试项",
+                            touchText,
+                            ResolveSchemeDetailHeader(detail, item, role),
+                            config.TestBase,
+                            testContextOffset,
+                            SchemeDetailRoleRules.GetExpression(item, role));
+                    }
                 }
             }
         }
@@ -1715,29 +1759,32 @@ public partial class AddressManageView : BaseView
         };
 
         _alarmAddresses.Add(alarm);
-        ApplyAlarmAddressFilter(_alarmKeyword);
-        _selectedAlarmRow = _currentAlarmRows.FirstOrDefault(row => ReferenceEquals(row.Source, alarm));
-        if (_selectedAlarmRow is not null)
-        {
-            tableAlarmAddresses.SetSelected(_selectedAlarmRow, true);
-        }
-
-        SyncActiveCommandState();
+        ApplyAlarmAddressFilter(_alarmKeyword, new[] { alarm }, fallbackToFirst: false);
     }
 
     private void DeleteAlarmAddress_Click(object? sender, EventArgs e)
     {
         EndTableEdit();
-        var row = _selectedAlarmRow;
-        if (row is null)
+        var rows = GetSelectedAlarmRows();
+        if (rows.Count == 0)
         {
             ShowWarning("请先选择一条报警地址配置。");
             return;
         }
 
-        _alarmAddresses.Remove(row.Source);
-        ApplyAlarmAddressFilter(_alarmKeyword);
-        SyncActiveCommandState();
+        // New unsaved rows have Id = 0, so delete by source object reference instead of database Id.
+        var sourcesToRemove = rows
+            .Select(row => row.Source)
+            .Distinct()
+            .ToList();
+
+        foreach (var source in sourcesToRemove)
+        {
+            _alarmAddresses.Remove(source);
+        }
+
+        _selectedAlarmRow = null;
+        ApplyAlarmAddressFilter(_alarmKeyword, Array.Empty<BizPlcAlarmAddress>(), fallbackToFirst: false);
     }
 
     private void PasteAlarmAddresses_Click(object? sender, EventArgs e)
@@ -1803,7 +1850,7 @@ public partial class AddressManageView : BaseView
                 continue;
             }
 
-            var address = cells[0].Trim().Trim('"');
+            var address = NormalizeAlarmAddress(cells[0].Trim().Trim('"'));
             var content = cells[1].Trim().Trim('"');
             if (IsAlarmImportHeader(address, content)
                 || string.IsNullOrWhiteSpace(address)
@@ -1814,6 +1861,52 @@ public partial class AddressManageView : BaseView
 
             yield return new AlarmAddressImportRow(address, content);
         }
+    }
+
+    /// <summary>
+    /// Normalizes PLC alarm addresses pasted from PLC engineering sheets.
+    /// </summary>
+    private static string NormalizeAlarmAddress(string address)
+    {
+        var normalized = address.Trim();
+        return TryConvertDbnBitAddress(normalized, out var converted)
+            ? converted
+            : normalized;
+    }
+
+    /// <summary>
+    /// Converts DBnBit-900080 style engineering addresses to Siemens DB9.8.0 format.
+    /// </summary>
+    private static bool TryConvertDbnBitAddress(string address, out string converted)
+    {
+        const string prefix = "DBnBit-";
+        converted = string.Empty;
+
+        if (!address.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var digits = address[prefix.Length..].Trim();
+        if (digits.Length < 6 || digits.Any(character => character < '0' || character > '9'))
+        {
+            return false;
+        }
+
+        var dbText = digits[..^5];
+        var byteText = digits.Substring(digits.Length - 5, 4);
+        var bitText = digits[^1..];
+        if (!int.TryParse(dbText, NumberStyles.None, CultureInfo.InvariantCulture, out var dbNumber)
+            || !int.TryParse(byteText, NumberStyles.None, CultureInfo.InvariantCulture, out var byteOffset)
+            || !int.TryParse(bitText, NumberStyles.None, CultureInfo.InvariantCulture, out var bitOffset)
+            || dbNumber <= 0
+            || bitOffset is < 0 or > 7)
+        {
+            return false;
+        }
+
+        converted = $"DB{dbNumber}.{byteOffset}.{bitOffset}";
+        return true;
     }
 
     private static bool IsAlarmImportHeader(string address, string content)
@@ -2035,7 +2128,12 @@ public partial class AddressManageView : BaseView
         if (e.Record is AlarmAddressTableRow alarmRow)
         {
             _selectedAlarmRow = alarmRow;
-            alarmRow.Enabled = e.Value;
+            if (e.Column.Key == nameof(AlarmAddressTableRow.Enabled))
+            {
+                alarmRow.Enabled = e.Value;
+            }
+
+            SyncActiveCommandState();
             return;
         }
 
@@ -2116,14 +2214,27 @@ public partial class AddressManageView : BaseView
         }
     }
 
-    private void SelectVisibleAlarmRow(int? selectedId)
+    private void SelectVisibleAlarmRows(
+        IReadOnlyCollection<BizPlcAlarmAddress> selectedSources,
+        bool fallbackToFirst)
     {
-        _selectedAlarmRow = selectedId is null
-            ? _currentAlarmRows.FirstOrDefault()
-            : _currentAlarmRows.FirstOrDefault(row => row.Id == selectedId) ?? _currentAlarmRows.FirstOrDefault();
-        if (_selectedAlarmRow is not null)
+        // Source references stay stable while editing, including new rows whose database Id is still 0.
+        AntdTableSelectionHelper.RestoreSelection(
+            tableAlarmAddresses,
+            _currentAlarmRows,
+            row => selectedSources.Any(source => ReferenceEquals(source, row.Source)));
+
+        _selectedAlarmRow = AntdTableSelectionHelper
+            .GetSelectedRows<AlarmAddressTableRow>(tableAlarmAddresses)
+            .LastOrDefault();
+
+        if (_selectedAlarmRow is null && fallbackToFirst)
         {
-            tableAlarmAddresses.SetSelected(_selectedAlarmRow, true);
+            _selectedAlarmRow = _currentAlarmRows.FirstOrDefault();
+            if (_selectedAlarmRow is not null)
+            {
+                tableAlarmAddresses.SetSelected(_selectedAlarmRow, true);
+            }
         }
 
         SyncActiveCommandState();
@@ -2183,7 +2294,7 @@ public partial class AddressManageView : BaseView
         {
             alarm.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, alarm.StationNo);
             alarm.Sort = Math.Max(0, alarm.Sort);
-            alarm.Address = alarm.Address.Trim();
+            alarm.Address = NormalizeAlarmAddress(alarm.Address);
             alarm.AlarmContent = alarm.AlarmContent.Trim();
         }
     }
@@ -2293,10 +2404,13 @@ public partial class AddressManageView : BaseView
             detail.UpperMesFieldName = NormalizeNullableText(detail.UpperMesFieldName);
             detail.LowerMesFieldName = NormalizeNullableText(detail.LowerMesFieldName);
             detail.ResultMesFieldName = NormalizeNullableText(detail.ResultMesFieldName);
+            SchemeDetailRoleRules.ClearUnavailableRoles(detail, item);
             ValidateMesFieldName(detail.EnableActual, detail.MesActual, detail.ActualMesFieldName, item.ItemName, "实际值");
             ValidateMesFieldName(detail.EnableUpper, detail.MesUpper, detail.UpperMesFieldName, item.ItemName, "上限");
             ValidateMesFieldName(detail.EnableLower, detail.MesLower, detail.LowerMesFieldName, item.ItemName, "下限");
             ValidateMesFieldName(detail.EnableResult, detail.MesResult, detail.ResultMesFieldName, item.ItemName, "结果");
+            SchemeDetailRoleRules.ClearUnavailableRoles(detail, item);
+            ValidateSchemeDetailRoleOutputs(detail, item);
 
             if (!HasAnyEnabledRole(detail))
             {
@@ -2305,14 +2419,28 @@ public partial class AddressManageView : BaseView
         }
     }
 
+    private static void ValidateSchemeDetailRoleOutputs(BizSchemeDetail detail, DimTestItem item)
+    {
+        foreach (var role in SchemeDetailRoleRules.GetAvailableRoles(item))
+        {
+            var outputEnabled = SchemeDetailRoleRules.IsSaveEnabled(detail, role)
+                || SchemeDetailRoleRules.IsReportEnabled(detail, role)
+                || SchemeDetailRoleRules.IsMesEnabled(detail, role);
+            if (!SchemeDetailRoleRules.IsCollectEnabled(detail, role) && outputEnabled)
+            {
+                throw new InvalidOperationException($"{item.ItemName}{SchemeDetailRoleRules.GetRoleName(role)}已启用保存、报表或 MES，必须先启用采集。");
+            }
+        }
+    }
+
     private static void ValidateMesFieldName(
         bool collectEnabled,
-        bool? mesEnabled,
+        bool mesEnabled,
         string? mesFieldName,
         string itemName,
         string roleName)
     {
-        if (collectEnabled && mesEnabled == true && string.IsNullOrWhiteSpace(mesFieldName))
+        if (collectEnabled && mesEnabled && string.IsNullOrWhiteSpace(mesFieldName))
         {
             throw new InvalidOperationException($"{itemName}{roleName}已启用 MES 上传，必须填写 MES 字段名。");
         }
@@ -2505,29 +2633,23 @@ public partial class AddressManageView : BaseView
 
     private static bool HasAnyEnabledRole(BizSchemeDetail detail)
     {
-        return detail.EnableActual || detail.EnableUpper || detail.EnableLower || detail.EnableResult;
+        return SchemeDetailRoleRules.HasAnyCollectEnabled(detail);
+    }
+
+    private static bool HasAnyConfiguredRole(BizSchemeDetail detail)
+    {
+        return SchemeDetailRoleRules.HasAnyConfiguredRole(detail);
     }
 
     private static IEnumerable<SchemeMesField> EnumerateEnabledMesFields(BizSchemeDetail detail)
     {
-        if (detail.EnableActual && detail.MesActual == true && !string.IsNullOrWhiteSpace(detail.ActualMesFieldName))
+        foreach (var role in SchemeDetailRoleRules.AllRoles)
         {
-            yield return new SchemeMesField(detail.SchemeId, detail.ActualMesFieldName.Trim());
-        }
-
-        if (detail.EnableUpper && detail.MesUpper == true && !string.IsNullOrWhiteSpace(detail.UpperMesFieldName))
-        {
-            yield return new SchemeMesField(detail.SchemeId, detail.UpperMesFieldName.Trim());
-        }
-
-        if (detail.EnableLower && detail.MesLower == true && !string.IsNullOrWhiteSpace(detail.LowerMesFieldName))
-        {
-            yield return new SchemeMesField(detail.SchemeId, detail.LowerMesFieldName.Trim());
-        }
-
-        if (detail.EnableResult && detail.MesResult == true && !string.IsNullOrWhiteSpace(detail.ResultMesFieldName))
-        {
-            yield return new SchemeMesField(detail.SchemeId, detail.ResultMesFieldName.Trim());
+            if (SchemeDetailRoleRules.ShouldUploadMesRole(detail, role)
+                && !string.IsNullOrWhiteSpace(SchemeDetailRoleRules.GetMesFieldName(detail, role)))
+            {
+                yield return new SchemeMesField(detail.SchemeId, SchemeDetailRoleRules.GetMesFieldName(detail, role)!.Trim());
+            }
         }
     }
 
@@ -2590,14 +2712,6 @@ public partial class AddressManageView : BaseView
 
     private sealed record AlarmAddressImportRow(string Address, string Content);
 
-    private enum SchemeDetailValueRole
-    {
-        Actual,
-        Upper,
-        Lower,
-        Result
-    }
-
     private sealed record SchemeDetailTreeNodeTag(int ItemId, SchemeDetailValueRole? Role);
 
     /// <summary>
@@ -2633,6 +2747,12 @@ public partial class AddressManageView : BaseView
         {
             get => ResolveSchemeDetailHeader(Source, item, Role);
             set => SetHeader(Source, Role, NormalizeNullableText(value) ?? ResolveDefaultHeader(item, Role));
+        }
+
+        public bool SaveEnabled
+        {
+            get => GetSaveEnabled(Source, Role);
+            set => SetSaveEnabled(Source, Role, value);
         }
 
         public bool ReportEnabled
@@ -2721,14 +2841,45 @@ public partial class AddressManageView : BaseView
             }
         }
 
+        private static bool GetSaveEnabled(BizSchemeDetail detail, SchemeDetailValueRole role)
+        {
+            return role switch
+            {
+                SchemeDetailValueRole.Actual => detail.SaveActual,
+                SchemeDetailValueRole.Upper => detail.SaveUpper,
+                SchemeDetailValueRole.Lower => detail.SaveLower,
+                SchemeDetailValueRole.Result => detail.SaveResult,
+                _ => false
+            };
+        }
+
+        private static void SetSaveEnabled(BizSchemeDetail detail, SchemeDetailValueRole role, bool value)
+        {
+            switch (role)
+            {
+                case SchemeDetailValueRole.Actual:
+                    detail.SaveActual = value;
+                    break;
+                case SchemeDetailValueRole.Upper:
+                    detail.SaveUpper = value;
+                    break;
+                case SchemeDetailValueRole.Lower:
+                    detail.SaveLower = value;
+                    break;
+                case SchemeDetailValueRole.Result:
+                    detail.SaveResult = value;
+                    break;
+            }
+        }
+
         private static bool GetReportEnabled(BizSchemeDetail detail, SchemeDetailValueRole role)
         {
             return role switch
             {
-                SchemeDetailValueRole.Actual => detail.ReportActual ?? detail.EnableActual,
-                SchemeDetailValueRole.Upper => detail.ReportUpper ?? detail.EnableUpper,
-                SchemeDetailValueRole.Lower => detail.ReportLower ?? detail.EnableLower,
-                SchemeDetailValueRole.Result => detail.ReportResult ?? detail.EnableResult,
+                SchemeDetailValueRole.Actual => detail.ReportActual,
+                SchemeDetailValueRole.Upper => detail.ReportUpper,
+                SchemeDetailValueRole.Lower => detail.ReportLower,
+                SchemeDetailValueRole.Result => detail.ReportResult,
                 _ => false
             };
         }
@@ -2756,10 +2907,10 @@ public partial class AddressManageView : BaseView
         {
             return role switch
             {
-                SchemeDetailValueRole.Actual => detail.MesActual ?? false,
-                SchemeDetailValueRole.Upper => detail.MesUpper ?? false,
-                SchemeDetailValueRole.Lower => detail.MesLower ?? false,
-                SchemeDetailValueRole.Result => detail.MesResult ?? false,
+                SchemeDetailValueRole.Actual => detail.MesActual,
+                SchemeDetailValueRole.Upper => detail.MesUpper,
+                SchemeDetailValueRole.Lower => detail.MesLower,
+                SchemeDetailValueRole.Result => detail.MesResult,
                 _ => false
             };
         }
@@ -2863,7 +3014,7 @@ public partial class AddressManageView : BaseView
         {
             Source.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, Source.StationNo);
             Source.Sort = Math.Max(0, Source.Sort);
-            Source.Address = Source.Address.Trim();
+            Source.Address = NormalizeAlarmAddress(Source.Address);
             Source.AlarmContent = Source.AlarmContent.Trim();
         }
     }

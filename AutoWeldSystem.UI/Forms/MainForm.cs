@@ -13,6 +13,7 @@ using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.PLC;
 using AutoWeldSystem.Core.Interfaces.UserManage;
+using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Core.Runtime;
 using AutoWeldSystem.Core.ViewModels;
 
@@ -902,6 +903,11 @@ public partial class MainForm : BaseWindow
                 Detail = detail
             })
             .Where(item => item.Item is not null)
+            .Select(item =>
+            {
+                SchemeDetailRoleRules.ClearUnavailableRoles(item.Detail, item.Item!);
+                return item;
+            })
             .Where(item => HasAnyEnabledRole(item.Detail))
             .Select(item => new SchemePreviewItem(item.Sort, item.Item!, item.Detail))
             .ToList();
@@ -969,7 +975,7 @@ public partial class MainForm : BaseWindow
 
     private static bool HasAnyEnabledRole(BizSchemeDetail detail)
     {
-        return detail.EnableActual || detail.EnableUpper || detail.EnableLower || detail.EnableResult;
+        return SchemeDetailRoleRules.HasAnyCollectEnabled(detail);
     }
 
     private sealed record SchemePreviewItem(int Sort, DimTestItem Item, BizSchemeDetail Detail);

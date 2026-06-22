@@ -7,6 +7,7 @@ using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.MES;
+using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Data;
 using System.Globalization;
 using System.Text.Json;
@@ -566,9 +567,6 @@ public class UploadTaskService : IUploadTaskService
 
         var details = _dbContext.Db.Queryable<BizSchemeDetail>()
             .Where(detail => detail.SchemeId == config.SchemeId)
-            .ToList()
-            .Select(NormalizeLegacyDetailRoles)
-            .Where(HasAnyMesEnabledRole)
             .ToList();
         if (details.Count == 0)
         {
@@ -588,6 +586,12 @@ public class UploadTaskService : IUploadTaskService
                 Detail = detail
             })
             .Where(item => item.Item is not null)
+            .Select(item =>
+            {
+                SchemeDetailRoleRules.ClearUnavailableRoles(item.Detail, item.Item!);
+                return item;
+            })
+            .Where(item => HasAnyMesEnabledRole(item.Detail))
             .Select(item => new ProcessParameterSchemeItem(item.Item!, item.Detail))
             .ToList();
     }
@@ -649,10 +653,10 @@ public class UploadTaskService : IUploadTaskService
         var rawValues = ParseRawData(rawDataJson);
         foreach (var schemeItem in schemeItems)
         {
-            AddMesDynamicField(uploadItem, rawValues, schemeItem, ProcessParameterValueRole.Actual);
-            AddMesDynamicField(uploadItem, rawValues, schemeItem, ProcessParameterValueRole.Upper);
-            AddMesDynamicField(uploadItem, rawValues, schemeItem, ProcessParameterValueRole.Lower);
-            AddMesDynamicField(uploadItem, rawValues, schemeItem, ProcessParameterValueRole.Result);
+            AddMesDynamicField(uploadItem, rawValues, schemeItem, SchemeDetailValueRole.Actual);
+            AddMesDynamicField(uploadItem, rawValues, schemeItem, SchemeDetailValueRole.Upper);
+            AddMesDynamicField(uploadItem, rawValues, schemeItem, SchemeDetailValueRole.Lower);
+            AddMesDynamicField(uploadItem, rawValues, schemeItem, SchemeDetailValueRole.Result);
         }
     }
 
@@ -660,7 +664,7 @@ public class UploadTaskService : IUploadTaskService
         ProcessParameterUploadItem uploadItem,
         IReadOnlyDictionary<string, string> rawValues,
         ProcessParameterSchemeItem schemeItem,
-        ProcessParameterValueRole role)
+        SchemeDetailValueRole role)
     {
         if (!ShouldUploadMesRole(schemeItem.Detail, role, out var mesFieldName))
         {
@@ -673,18 +677,12 @@ public class UploadTaskService : IUploadTaskService
 
     private static bool ShouldUploadMesRole(
         BizSchemeDetail detail,
-        ProcessParameterValueRole role,
+        SchemeDetailValueRole role,
         out string mesFieldName)
     {
-        mesFieldName = role switch
-        {
-            ProcessParameterValueRole.Actual when detail.EnableActual && detail.MesActual == true => detail.ActualMesFieldName ?? string.Empty,
-            ProcessParameterValueRole.Upper when detail.EnableUpper && detail.MesUpper == true => detail.UpperMesFieldName ?? string.Empty,
-            ProcessParameterValueRole.Lower when detail.EnableLower && detail.MesLower == true => detail.LowerMesFieldName ?? string.Empty,
-            ProcessParameterValueRole.Result when detail.EnableResult && detail.MesResult == true => detail.ResultMesFieldName ?? string.Empty,
-            _ => string.Empty
-        };
-
+        mesFieldName = SchemeDetailRoleRules.ShouldUploadMesRole(detail, role)
+            ? SchemeDetailRoleRules.GetMesFieldName(detail, role) ?? string.Empty
+            : string.Empty;
         mesFieldName = mesFieldName.Trim();
         return !string.IsNullOrWhiteSpace(mesFieldName);
     }
@@ -692,15 +690,15 @@ public class UploadTaskService : IUploadTaskService
     private static string? ResolveRawRoleValue(
         IReadOnlyDictionary<string, string> rawValues,
         DimTestItem item,
-        ProcessParameterValueRole role)
+        SchemeDetailValueRole role)
     {
         var itemKey = ResolveItemKey(item);
         return role switch
         {
-            ProcessParameterValueRole.Actual => GetRawValue(rawValues, itemKey, item.ItemName),
-            ProcessParameterValueRole.Upper => GetRawValue(rawValues, $"{itemKey}_upper", $"{item.ItemName}上限"),
-            ProcessParameterValueRole.Lower => GetRawValue(rawValues, $"{itemKey}_lower", $"{item.ItemName}下限"),
-            ProcessParameterValueRole.Result => GetRawValue(rawValues, $"{itemKey}_result", $"{item.ItemName}结果"),
+            SchemeDetailValueRole.Actual => GetRawValue(rawValues, itemKey, item.ItemName),
+            SchemeDetailValueRole.Upper => GetRawValue(rawValues, $"{itemKey}_upper", $"{item.ItemName}上限"),
+            SchemeDetailValueRole.Lower => GetRawValue(rawValues, $"{itemKey}_lower", $"{item.ItemName}下限"),
+            SchemeDetailValueRole.Result => GetRawValue(rawValues, $"{itemKey}_result", $"{item.ItemName}结果"),
             _ => null
         };
     }
@@ -748,29 +746,12 @@ public class UploadTaskService : IUploadTaskService
 
     private static bool HasAnyEnabledRole(BizSchemeDetail detail)
     {
-        return detail.EnableActual || detail.EnableUpper || detail.EnableLower || detail.EnableResult;
+        return SchemeDetailRoleRules.HasAnyCollectEnabled(detail);
     }
 
     private static bool HasAnyMesEnabledRole(BizSchemeDetail detail)
     {
-        return detail.EnableActual && detail.MesActual == true
-            || detail.EnableUpper && detail.MesUpper == true
-            || detail.EnableLower && detail.MesLower == true
-            || detail.EnableResult && detail.MesResult == true;
-    }
-
-    private static BizSchemeDetail NormalizeLegacyDetailRoles(BizSchemeDetail detail)
-    {
-        if (HasAnyEnabledRole(detail))
-        {
-            return detail;
-        }
-
-        detail.EnableActual = true;
-        detail.EnableUpper = true;
-        detail.EnableLower = true;
-        detail.EnableResult = true;
-        return detail;
+        return SchemeDetailRoleRules.AllRoles.Any(role => SchemeDetailRoleRules.ShouldUploadMesRole(detail, role));
     }
 
     private static bool IsExactTextMatch(string? left, string? right)
@@ -1188,7 +1169,7 @@ public class UploadTaskService : IUploadTaskService
 
     private static bool IsPlcDeviceStatusCode(string? statusCode)
     {
-        return statusCode?.Trim() is "1" or "2" or "3" or "4";
+        return ProductionConstants.PlcDeviceStatuses.IsReportable(statusCode);
     }
 
     private static int ReadInt(JsonElement root, string propertyName)
@@ -1305,14 +1286,6 @@ public class UploadTaskService : IUploadTaskService
     private sealed record DeviceStatusUploadRequest(int LogId, ReportDeviceStatusReq Request);
 
     private sealed record ProcessParameterSchemeItem(DimTestItem Item, BizSchemeDetail Detail);
-
-    private enum ProcessParameterValueRole
-    {
-        Actual,
-        Upper,
-        Lower,
-        Result
-    }
 
     private static string NormalizeTaskType(string? taskType)
     {

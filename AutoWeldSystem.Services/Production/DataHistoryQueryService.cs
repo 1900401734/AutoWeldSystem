@@ -2,6 +2,7 @@ using System.Text.Json;
 using AutoWeldSystem.Core.DTOs.DataManagement;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
+using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Data;
 
 namespace AutoWeldSystem.Services.Production;
@@ -236,8 +237,6 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
         var details = _dbContext.Db.Queryable<BizSchemeDetail>()
             .Where(detail => schemeIds.Contains(detail.SchemeId))
             .OrderBy(detail => detail.DetailId)
-            .ToList()
-            .Select(NormalizeLegacyDetailRoles)
             .ToList();
         var itemIds = details.Select(detail => detail.ItemId).Distinct().ToList();
         var items = _dbContext.Db.Queryable<DimTestItem>()
@@ -249,6 +248,11 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
                 items.FirstOrDefault(item => item.ItemId == detail.ItemId),
                 detail))
             .Where(definition => definition.Item is not null)
+            .Select(definition =>
+            {
+                SchemeDetailRoleRules.ClearUnavailableRoles(definition.Detail, definition.Item!);
+                return definition;
+            })
             .Where(definition => HasAnyEnabledRole(definition.Detail))
             .GroupBy(definition => definition.Item!.ItemId)
             .Select(group => group.First())
@@ -264,10 +268,10 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
             var item = definition.Item!;
             var detail = definition.Detail;
             var itemKey = ResolveItemKey(item);
-            AddColumn(columns, detail.EnableActual, itemKey, $"{item.ItemName}实际值");
-            AddColumn(columns, detail.EnableUpper, $"{itemKey}_upper", $"{item.ItemName}上限");
-            AddColumn(columns, detail.EnableLower, $"{itemKey}_lower", $"{item.ItemName}下限");
-            AddColumn(columns, detail.EnableResult, $"{itemKey}_result", $"{item.ItemName}结果");
+            AddColumn(columns, SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Actual), itemKey, NormalizeDisplayText(detail.ActualHeader, $"{item.ItemName}实际值"));
+            AddColumn(columns, SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Upper), $"{itemKey}_upper", NormalizeDisplayText(detail.UpperHeader, $"{item.ItemName}上限"));
+            AddColumn(columns, SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Lower), $"{itemKey}_lower", NormalizeDisplayText(detail.LowerHeader, $"{item.ItemName}下限"));
+            AddColumn(columns, SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Result), $"{itemKey}_result", NormalizeDisplayText(detail.ResultHeader, $"{item.ItemName}结果"));
         }
 
         return columns;
@@ -284,22 +288,22 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
             var item = definition.Item!;
             var detail = definition.Detail;
             var itemKey = ResolveItemKey(item);
-            if (detail.EnableActual)
+            if (SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Actual))
             {
                 values[itemKey] = FirstRawValue(rawValues, itemKey, item.ItemName) ?? string.Empty;
             }
 
-            if (detail.EnableUpper)
+            if (SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Upper))
             {
                 values[$"{itemKey}_upper"] = FirstRawValue(rawValues, $"{itemKey}_upper", $"{item.ItemName}上限") ?? string.Empty;
             }
 
-            if (detail.EnableLower)
+            if (SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Lower))
             {
                 values[$"{itemKey}_lower"] = FirstRawValue(rawValues, $"{itemKey}_lower", $"{item.ItemName}下限") ?? string.Empty;
             }
 
-            if (detail.EnableResult)
+            if (SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Result))
             {
                 values[$"{itemKey}_result"] = FirstRawValue(rawValues, $"{itemKey}_result", $"{item.ItemName}结果") ?? string.Empty;
             }
@@ -375,23 +379,12 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
         columns.Add(new DataHistoryDynamicColumn { Key = key, HeaderText = headerText });
     }
 
-    private static BizSchemeDetail NormalizeLegacyDetailRoles(BizSchemeDetail detail)
-    {
-        if (HasAnyEnabledRole(detail))
-        {
-            return detail;
-        }
-
-        detail.EnableActual = true;
-        detail.EnableUpper = true;
-        detail.EnableLower = true;
-        detail.EnableResult = true;
-        return detail;
-    }
+    private static string NormalizeDisplayText(string? value, string fallback)
+        => string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
 
     private static bool HasAnyEnabledRole(BizSchemeDetail detail)
     {
-        return detail.EnableActual || detail.EnableUpper || detail.EnableLower || detail.EnableResult;
+        return SchemeDetailRoleRules.AllRoles.Any(role => SchemeDetailRoleRules.ShouldShowHistoryRole(detail, role));
     }
 
     private static string ResolveItemKey(DimTestItem item)

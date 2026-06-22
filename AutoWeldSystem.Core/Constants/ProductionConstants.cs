@@ -81,10 +81,27 @@ public static class ProductionConstants
     /// </summary>
     public static class PlcDeviceStatuses
     {
+        public const short Unknown = 0;
         public const short Running = 1;
         public const short Paused = 2;
         public const short Stopped = 3;
         public const short Alarm = 4;
+
+        /// <summary>
+        /// Determines whether the PLC status can be recorded and uploaded to MES.
+        /// </summary>
+        public static bool IsReportable(short statusCode)
+        {
+            return statusCode is Running or Paused or Stopped or Alarm;
+        }
+
+        /// <summary>
+        /// Determines whether the stored status text is a PLC status that can be uploaded.
+        /// </summary>
+        public static bool IsReportable(string? statusCode)
+        {
+            return statusCode?.Trim() is "1" or "2" or "3" or "4";
+        }
     }
 
     /// <summary>

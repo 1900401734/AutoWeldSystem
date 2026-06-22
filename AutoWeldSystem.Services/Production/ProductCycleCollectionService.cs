@@ -4,6 +4,7 @@ using AutoWeldSystem.Core.Exceptions;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.PLC;
+using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Data;
 using System.Globalization;
 using System.Text.Json;
@@ -158,7 +159,6 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             var details = _dbContext.Db.Queryable<BizSchemeDetail>()
                 .Where(detail => detail.SchemeId == schemeId)
                 .ToList()
-                .Select(NormalizeLegacyDetailRoles)
                 .OrderBy(detail => detail.DetailId)
                 .ToList();
             if (details.Count == 0)
@@ -176,6 +176,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
                 {
                     var item = items.FirstOrDefault(it => it.ItemId == detail.ItemId)
                         ?? throw new BusinessOperationException(Category, "测试项字典缺失", $"测试项ID“{detail.ItemId}”不存在。");
+                    SchemeDetailRoleRules.ClearUnavailableRoles(detail, item);
                     return new SchemeItemSnapshot(detail.DetailId, item, detail);
                 })
                 .Where(snapshot => HasAnyEnabledRole(snapshot.Detail))
@@ -290,15 +291,15 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         return new BizWeldPointRecord
         {
             TaskId = task.Id,
-            ExpStartId = task.ExpStartId,
-            DeviceId = task.DeviceId,
-            SN = task.SN,
-            ProcessNo = task.ProcessNo,
-            ProductNo = header.ProductNo,
+            ExpStartId = task.ExpStartId ?? string.Empty,
+            DeviceId = task.DeviceId ?? string.Empty,
+            SN = task.SN ?? string.Empty,
+            ProcessNo = task.ProcessNo ?? string.Empty,
+            ProductNo = header.ProductNo ?? string.Empty,
             TouchNo = string.IsNullOrWhiteSpace(touchNo) ? touchIndex.ToString(CultureInfo.InvariantCulture) : touchNo.Trim(),
             StationNo = stationNo,
             TestResult = NormalizeTestResult(resultRaw),
-            OperatorNo = task.UserNumber,
+            OperatorNo = task.UserNumber ?? string.Empty,
             Ts = DateTime.Now,
             ProductCompleted = touchIndex >= header.ActualTouchCount,
             UploadStatus = ProductionConstants.UploadStatuses.Pending,
@@ -315,7 +316,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
     {
         var item = schemeItem.Item;
         var itemKey = ResolveItemKey(item);
-        if (schemeItem.Detail.EnableActual)
+        if (SchemeDetailRoleRules.ShouldPersistRole(schemeItem.Detail, SchemeDetailValueRole.Actual))
         {
             var actualValue = await ReadExpressionValueAsync(
                 config.TestBase,
@@ -327,7 +328,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             AddValue(values, item.ItemName, actualValue);
         }
 
-        if (schemeItem.Detail.EnableUpper)
+        if (SchemeDetailRoleRules.ShouldPersistRole(schemeItem.Detail, SchemeDetailValueRole.Upper))
         {
             var upperValue = await ReadOptionalExpressionValueAsync(
                 config.TestBase,
@@ -339,7 +340,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             AddValue(values, $"{item.ItemName}上限", upperValue);
         }
 
-        if (schemeItem.Detail.EnableLower)
+        if (SchemeDetailRoleRules.ShouldPersistRole(schemeItem.Detail, SchemeDetailValueRole.Lower))
         {
             var lowerValue = await ReadOptionalExpressionValueAsync(
                 config.TestBase,
@@ -351,7 +352,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             AddValue(values, $"{item.ItemName}下限", lowerValue);
         }
 
-        if (schemeItem.Detail.EnableResult)
+        if (SchemeDetailRoleRules.ShouldPersistRole(schemeItem.Detail, SchemeDetailValueRole.Result))
         {
             var resultValue = await ReadOptionalExpressionValueAsync(
                 config.TestBase,
@@ -484,21 +485,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
 
     private static bool HasAnyEnabledRole(BizSchemeDetail detail)
     {
-        return detail.EnableActual || detail.EnableUpper || detail.EnableLower || detail.EnableResult;
-    }
-
-    private static BizSchemeDetail NormalizeLegacyDetailRoles(BizSchemeDetail detail)
-    {
-        if (HasAnyEnabledRole(detail))
-        {
-            return detail;
-        }
-
-        detail.EnableActual = true;
-        detail.EnableUpper = true;
-        detail.EnableLower = true;
-        detail.EnableResult = true;
-        return detail;
+        return SchemeDetailRoleRules.HasAnyCollectEnabled(detail);
     }
 
     private static string? FirstValue(IReadOnlyDictionary<string, string> values, params string[] keys)

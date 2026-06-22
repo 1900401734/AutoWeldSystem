@@ -19,16 +19,16 @@ public class BizSchemeDetail
     public int ItemId { get; set; }
 
     [SugarColumn(ColumnDescription = "是否启用实际值")]
-    public bool EnableActual { get; set; } = true;
+    public bool EnableActual { get; set; }
 
     [SugarColumn(ColumnDescription = "是否启用上限")]
-    public bool EnableUpper { get; set; } = true;
+    public bool EnableUpper { get; set; }
 
     [SugarColumn(ColumnDescription = "是否启用下限")]
-    public bool EnableLower { get; set; } = true;
+    public bool EnableLower { get; set; }
 
     [SugarColumn(ColumnDescription = "是否启用结果")]
-    public bool EnableResult { get; set; } = true;
+    public bool EnableResult { get; set; }
 
     [SugarColumn(Length = 100, IsNullable = true, ColumnDescription = "实际值显示表头")]
     public string? ActualHeader { get; set; }
@@ -42,29 +42,41 @@ public class BizSchemeDetail
     [SugarColumn(Length = 100, IsNullable = true, ColumnDescription = "结果显示表头")]
     public string? ResultHeader { get; set; }
 
+    [SugarColumn(ColumnDescription = "实际值写入历史数据")]
+    public bool SaveActual { get; set; }
+
+    [SugarColumn(ColumnDescription = "上限写入历史数据")]
+    public bool SaveUpper { get; set; }
+
+    [SugarColumn(ColumnDescription = "下限写入历史数据")]
+    public bool SaveLower { get; set; }
+
+    [SugarColumn(ColumnDescription = "结果写入历史数据")]
+    public bool SaveResult { get; set; }
+
     [SugarColumn(ColumnDescription = "实际值写入报表")]
-    public bool? ReportActual { get; set; } = true;
+    public bool ReportActual { get; set; }
 
     [SugarColumn(ColumnDescription = "上限写入报表")]
-    public bool? ReportUpper { get; set; } = true;
+    public bool ReportUpper { get; set; }
 
     [SugarColumn(ColumnDescription = "下限写入报表")]
-    public bool? ReportLower { get; set; } = true;
+    public bool ReportLower { get; set; }
 
     [SugarColumn(ColumnDescription = "结果写入报表")]
-    public bool? ReportResult { get; set; } = true;
+    public bool ReportResult { get; set; }
 
     [SugarColumn(ColumnDescription = "实际值上传MES")]
-    public bool? MesActual { get; set; }
+    public bool MesActual { get; set; }
 
     [SugarColumn(ColumnDescription = "上限上传MES")]
-    public bool? MesUpper { get; set; }
+    public bool MesUpper { get; set; }
 
     [SugarColumn(ColumnDescription = "下限上传MES")]
-    public bool? MesLower { get; set; }
+    public bool MesLower { get; set; }
 
     [SugarColumn(ColumnDescription = "结果上传MES")]
-    public bool? MesResult { get; set; }
+    public bool MesResult { get; set; }
 
     [SugarColumn(Length = 100, IsNullable = true, ColumnDescription = "实际值MES字段名")]
     public string? ActualMesFieldName { get; set; }

@@ -1,6 +1,7 @@
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Plc;
+using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Data;
 
 namespace AutoWeldSystem.Services.Production;
@@ -80,7 +81,7 @@ public sealed class TestSchemeConfigService : ITestSchemeConfigService
 
             var items = _dbContext.Db.Queryable<DimTestItem>().ToList();
             return query.ToList()
-                .Select(detail => NormalizeLegacyDetailRoles(detail, items))
+                .Select(detail => NormalizeDetailRoles(detail, items))
                 .OrderBy(detail => detail.SchemeId)
                 .ThenBy(detail => detail.DetailId)
                 .ToList();
@@ -205,6 +206,13 @@ public sealed class TestSchemeConfigService : ITestSchemeConfigService
             throw new InvalidOperationException("测试项ID必须大于0。");
         }
 
+        if (item is not null)
+        {
+            SchemeDetailRoleRules.ClearUnavailableRoles(detail, item);
+        }
+
+        ValidateRoleOutputs(detail);
+
         if (!HasAnyEnabledRole(detail))
         {
             throw new InvalidOperationException("方案明细至少需要启用实际值、上限、下限或结果中的一项。");
@@ -214,22 +222,17 @@ public sealed class TestSchemeConfigService : ITestSchemeConfigService
     }
 
     /// <summary>
-    /// 旧版本方案明细没有字段启用标记，新增列后数据库默认值可能全部为 false。
-    /// 这种记录按旧行为视为四个字段全启用，避免升级后现有方案突然不采集数据。
+    /// 按测试项字典清理不可用角色，并补齐可用角色的显示表头。
     /// </summary>
-    private static BizSchemeDetail NormalizeLegacyDetailRoles(BizSchemeDetail detail, IReadOnlyList<DimTestItem> items)
+    private static BizSchemeDetail NormalizeDetailRoles(BizSchemeDetail detail, IReadOnlyList<DimTestItem> items)
     {
-        if (HasAnyEnabledRole(detail))
+        var item = items.FirstOrDefault(item => item.ItemId == detail.ItemId);
+        if (item is not null)
         {
-            NormalizeDetailOutput(detail, items.FirstOrDefault(item => item.ItemId == detail.ItemId));
-            return detail;
+            SchemeDetailRoleRules.ClearUnavailableRoles(detail, item);
         }
 
-        detail.EnableActual = true;
-        detail.EnableUpper = true;
-        detail.EnableLower = true;
-        detail.EnableResult = true;
-        NormalizeDetailOutput(detail, items.FirstOrDefault(item => item.ItemId == detail.ItemId));
+        NormalizeDetailOutput(detail, item);
         return detail;
     }
 
@@ -246,9 +249,32 @@ public sealed class TestSchemeConfigService : ITestSchemeConfigService
         detail.ResultMesFieldName = NormalizeNullable(detail.ResultMesFieldName);
     }
 
+    /// <summary>
+    /// 校验输出开关必须建立在采集开关之上，避免保存、报表或 MES 使用未采集的数据。
+    /// </summary>
+    private static void ValidateRoleOutputs(BizSchemeDetail detail)
+    {
+        foreach (var role in SchemeDetailRoleRules.AllRoles)
+        {
+            var outputEnabled = SchemeDetailRoleRules.IsSaveEnabled(detail, role)
+                || SchemeDetailRoleRules.IsReportEnabled(detail, role)
+                || SchemeDetailRoleRules.IsMesEnabled(detail, role);
+            if (!SchemeDetailRoleRules.IsCollectEnabled(detail, role) && outputEnabled)
+            {
+                throw new InvalidOperationException("方案明细中启用保存、报表或 MES 的字段，必须同时启用采集。");
+            }
+
+            if (SchemeDetailRoleRules.IsMesEnabled(detail, role)
+                && string.IsNullOrWhiteSpace(SchemeDetailRoleRules.GetMesFieldName(detail, role)))
+            {
+                throw new InvalidOperationException("方案明细中启用 MES 上传的字段，必须填写 MES 字段名。");
+            }
+        }
+    }
+
     private static bool HasAnyEnabledRole(BizSchemeDetail detail)
     {
-        return detail.EnableActual || detail.EnableUpper || detail.EnableLower || detail.EnableResult;
+        return SchemeDetailRoleRules.HasAnyCollectEnabled(detail);
     }
 
     private static void Normalize(DimTestItem item)
