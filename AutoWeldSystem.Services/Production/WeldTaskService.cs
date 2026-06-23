@@ -650,6 +650,53 @@ public class WeldTaskService : IWeldTaskService
         NotifyStateChanged();
     }
 
+    /// <summary>
+    /// Updates a task recipe code after PLC confirmation and keeps every runtime station that references the task in sync.
+    /// </summary>
+    public bool TryUpdateRecipeCode(
+        int taskId,
+        string recipeCode,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo)
+    {
+        var normalizedRecipeCode = NormalizeText(recipeCode);
+        if (taskId <= 0 || string.IsNullOrWhiteSpace(normalizedRecipeCode))
+        {
+            return false;
+        }
+
+        var task = _dbContext.Db.Queryable<BizWeldTask>().InSingle(taskId);
+        if (task is null)
+        {
+            return false;
+        }
+
+        task.RecipeCode = normalizedRecipeCode;
+        _dbContext.Db.Updateable(task)
+            .UpdateColumns(it => new { it.RecipeCode })
+            .ExecuteCommand();
+
+        // Multiple stations can hold the same task instance in dual-station same-work-order mode.
+        foreach (var station in CurrentState.StationStates.Values)
+        {
+            if (station.ActiveTask?.Id != taskId)
+            {
+                continue;
+            }
+
+            station.ActiveTask.RecipeCode = normalizedRecipeCode;
+            if (station.SelectedProgram is not null)
+            {
+                station.SelectedProgram.RecipeCode = normalizedRecipeCode;
+            }
+
+            station.UpdatedTime = DateTime.Now;
+        }
+
+        RefreshCompatibilityState(stationNo);
+        NotifyStateChanged();
+        return true;
+    }
+
     public void Reset()
     {
         ResetRuntime(keepSyncMessage: true);

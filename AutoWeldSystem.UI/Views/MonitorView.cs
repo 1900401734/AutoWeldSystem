@@ -42,7 +42,9 @@ public partial class MonitorView : BaseView
     private const int WmSetRedraw = 0x000B;
 
     private static readonly TimeSpan RecipePreparationTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan FinishRecipeReadFailureLogInterval = TimeSpan.FromSeconds(30);
     private const string RuntimeSummaryOverflowSuffix = "...";
+    private const string RuntimeErrorSourceDeviceAlarm = "DeviceAlarm";
     private const string PreviewTouchNoColumn = "TouchNo";
     private const string PreviewTouchResultColumn = "TouchResult";
     private const string PreviewMessageColumn = "Message";
@@ -103,7 +105,9 @@ public partial class MonitorView : BaseView
     private string? _runtimeErrorKey;
     private object[] _runtimeErrorArgs = Array.Empty<object>();
     private string? _runtimeErrorText;
+    private string? _runtimeErrorSource;
     private string? _deviceAlarmRuntimeErrorText;
+    private readonly Dictionary<int, DateTime> _finishRecipeReadFailureLogTimes = new();
 
     private bool _syncingStationSelection;
     private bool _syncingProcessSelection;
@@ -975,6 +979,7 @@ public partial class MonitorView : BaseView
         {
             ClearRuntimeError();
             SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.SubmittingFinish);
+            await RefreshRecipeCodeFromPlcBeforeFinishAsync(activeTask, stationNo);
             await _weldTaskService.FinishAsync(employeeNumber, actualQty, qualifiedQty, failedQty, stationNo);
             // 完工后立即禁止 PLC 继续生产，防止操作员未重新开工时设备继续采集。
             await WriteFinishBusinessSignalsAsync(stationNo);
@@ -1984,6 +1989,8 @@ public partial class MonitorView : BaseView
         {
             ClearRuntimeError();
             SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.SubmittingFinish);
+            var activeTask = _weldTaskService.RestoreUnfinishedTask(stationNo);
+            await RefreshRecipeCodeFromPlcBeforeFinishAsync(activeTask, stationNo);
             await _weldTaskService.FinishLocalAsync(
                 ResolveLocalOperatorNumber(),
                 actualQty,
@@ -1997,7 +2004,83 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// 绑定本地操作员信息。
+    /// Reads the final PLC recipe code before finish and updates the local task when a valid value is available.
+    /// </summary>
+    /// <param name="activeTask">Current unfinished task.</param>
+    /// <param name="stationNo">Station number used for PLC addressing.</param>
+    /// <returns>Asynchronous operation.</returns>
+    private async Task RefreshRecipeCodeFromPlcBeforeFinishAsync(BizWeldTask? activeTask, int stationNo)
+    {
+        if (activeTask is null || activeTask.Id <= 0)
+        {
+            return;
+        }
+
+        PlcBusinessSignalResult readResult;
+        try
+        {
+            readResult = await _plcBusinessSignalService.ReadTextAsync(
+                AppConstants.PlcLogicalKeys.PlcRecipeCode,
+                stationNo);
+        }
+        catch (Exception ex)
+        {
+            WriteFinishRecipeReadFailureLog(stationNo, activeTask, ex.Message);
+            return;
+        }
+
+        if (!readResult.IsSuccess)
+        {
+            WriteFinishRecipeReadFailureLog(stationNo, activeTask, readResult.Message);
+            return;
+        }
+
+        var plcRecipeCode = NormalizeRecipeCode(readResult.Value);
+        if (string.IsNullOrWhiteSpace(plcRecipeCode))
+        {
+            WriteFinishRecipeReadFailureLog(stationNo, activeTask, "PLC recipe code is empty.");
+            return;
+        }
+
+        if (!_weldTaskService.TryUpdateRecipeCode(activeTask.Id, plcRecipeCode, stationNo))
+        {
+            WriteFinishRecipeReadFailureLog(stationNo, activeTask, "Local task recipe update failed.");
+            return;
+        }
+
+        activeTask.RecipeCode = plcRecipeCode;
+        if (NormalizeStationNo(stationNo) == CurrentStationNo)
+        {
+            selectRecipeCode.Text = plcRecipeCode;
+        }
+    }
+
+    /// <summary>
+    /// Writes a throttled log entry when the finish recipe read cannot produce a usable value.
+    /// </summary>
+    /// <param name="stationNo">Station number.</param>
+    /// <param name="task">Current task.</param>
+    /// <param name="detail">Failure detail.</param>
+    private void WriteFinishRecipeReadFailureLog(int stationNo, BizWeldTask task, string? detail)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var now = DateTime.Now;
+        if (_finishRecipeReadFailureLogTimes.TryGetValue(normalizedStationNo, out var lastWriteTime)
+            && now - lastWriteTime < FinishRecipeReadFailureLogInterval)
+        {
+            return;
+        }
+
+        _finishRecipeReadFailureLogTimes[normalizedStationNo] = now;
+        _exceptionLogService.WriteBusiness(
+            "PLC.RecipeCode.FinishRead",
+            "Finish recipe code read failed.",
+            $"Station={normalizedStationNo}; TaskId={task.Id}; WorkOrder={task.SN}; Detail={detail}",
+            "Finish reads PLC recipe code before closing the task.");
+    }
+
+    /// <summary>
+    /// Binds local operator information to the finish/start panel.
     /// </summary>
     private void BindLocalOperatorInfo()
     {
@@ -3134,7 +3217,7 @@ public partial class MonitorView : BaseView
                 ? "PLC设备报警，未匹配到已启用的报警原因"
                 : snapshot.AlarmMessage;
             _deviceAlarmRuntimeErrorText = NormalizeRuntimeSummary(alarmMessage);
-            SetRuntimeErrorText(_deviceAlarmRuntimeErrorText);
+            SetRuntimeErrorText(_deviceAlarmRuntimeErrorText, RuntimeErrorSourceDeviceAlarm);
             return;
         }
 
@@ -3151,13 +3234,10 @@ public partial class MonitorView : BaseView
     /// </summary>
     private void ClearDeviceAlarmRuntimeErrorIfCurrent()
     {
-        if (string.IsNullOrWhiteSpace(_deviceAlarmRuntimeErrorText))
-        {
-            return;
-        }
-
-        var shouldClear = _runtimeErrorKey is null
-            && string.Equals(_runtimeErrorText, _deviceAlarmRuntimeErrorText, StringComparison.Ordinal);
+        var shouldClear = string.Equals(_runtimeErrorSource, RuntimeErrorSourceDeviceAlarm, StringComparison.Ordinal)
+            || (!string.IsNullOrWhiteSpace(_deviceAlarmRuntimeErrorText)
+                && _runtimeErrorKey is null
+                && string.Equals(_runtimeErrorText, _deviceAlarmRuntimeErrorText, StringComparison.Ordinal));
         _deviceAlarmRuntimeErrorText = null;
         if (shouldClear)
         {
@@ -7332,6 +7412,7 @@ public partial class MonitorView : BaseView
         _runtimeErrorKey = messageKey;
         _runtimeErrorArgs = args;
         _runtimeErrorText = null;
+        _runtimeErrorSource = null;
         PersistCurrentRuntimeTipState();
         RefreshRuntimeError();
     }
@@ -7340,11 +7421,12 @@ public partial class MonitorView : BaseView
     /// 设置运行异常文本。
     /// </summary>
     /// <param name="message">提示消息。</param>
-    private void SetRuntimeErrorText(string message)
+    private void SetRuntimeErrorText(string message, string? source = null)
     {
         _runtimeErrorKey = null;
         _runtimeErrorArgs = Array.Empty<object>();
         _runtimeErrorText = NormalizeRuntimeSummary(message);
+        _runtimeErrorSource = source;
         PersistCurrentRuntimeTipState();
         RefreshRuntimeError();
     }
@@ -7357,6 +7439,7 @@ public partial class MonitorView : BaseView
         _runtimeErrorKey = null;
         _runtimeErrorArgs = Array.Empty<object>();
         _runtimeErrorText = null;
+        _runtimeErrorSource = null;
         inputErrorTips.Clear();
         ApplyRuntimeErrorTone(hasError: false);
         PersistCurrentRuntimeTipState();
@@ -7385,6 +7468,10 @@ public partial class MonitorView : BaseView
                 : state.RuntimeErrorKey;
             _runtimeErrorArgs = DeserializeRuntimeArgs(state.RuntimeErrorArgsJson);
             _runtimeErrorText = state.RuntimeErrorText;
+            _runtimeErrorSource = state.RuntimeErrorSource;
+            _deviceAlarmRuntimeErrorText = string.Equals(_runtimeErrorSource, RuntimeErrorSourceDeviceAlarm, StringComparison.Ordinal)
+                ? _runtimeErrorText
+                : null;
         }
         catch (Exception ex)
         {
@@ -7408,7 +7495,8 @@ public partial class MonitorView : BaseView
                 RuntimeStatusTextIsSuccess = _runtimeStatusTextIsSuccess,
                 RuntimeErrorKey = _runtimeErrorKey,
                 RuntimeErrorArgsJson = SerializeRuntimeArgs(_runtimeErrorArgs),
-                RuntimeErrorText = _runtimeErrorText
+                RuntimeErrorText = _runtimeErrorText,
+                RuntimeErrorSource = _runtimeErrorSource
             });
         }
         catch (Exception ex)

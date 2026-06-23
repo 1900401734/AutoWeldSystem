@@ -37,6 +37,12 @@ public class BizRuntimeTipState
     [SugarColumn(ColumnDataType = "text", IsNullable = true, ColumnDescription = "异常提示动态文本")]
     public string? RuntimeErrorText { get; set; }
 
+    /// <summary>
+    /// Source of the current runtime error. Device alarm prompts use this to clear only alarm-related errors after recovery.
+    /// </summary>
+    [SugarColumn(Length = 50, IsNullable = true, ColumnDescription = "运行异常来源")]
+    public string? RuntimeErrorSource { get; set; }
+
     [SugarColumn(ColumnDescription = "更新时间")]
     public DateTime UpdatedTime { get; set; } = DateTime.Now;
 }

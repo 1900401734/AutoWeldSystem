@@ -19,6 +19,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan ReconcileTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan BusinessLogInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan RestoreAttemptInterval = TimeSpan.FromSeconds(10);
 
     private readonly IAppSettingsService _settingsService;
     private readonly IPlcCommunicationService _plcCommunicationService;
@@ -156,7 +157,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
             return;
         }
 
-        var activeTasks = GetRunningStationTasks();
+        var activeTasks = GetRunningStationTasks(settings);
         if (activeTasks.Count == 0)
         {
             ClearStationStates();
@@ -313,7 +314,31 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
     /// <summary>
     /// 获取当前运行中的工位任务，只使用内存运行态，避免后台服务每秒查询数据库。
     /// </summary>
-    private IReadOnlyList<ActiveRecipeTask> GetRunningStationTasks()
+    private IReadOnlyList<ActiveRecipeTask> GetRunningStationTasks(AppSettings settings)
+    {
+        var runtimeTasks = GetRunningStationTasksFromRuntime();
+        var monitorStations = ResolveMonitorStationNumbers(settings);
+        var restoredTask = false;
+
+        foreach (var stationNo in monitorStations)
+        {
+            if (runtimeTasks.Any(task => task.StationNo == stationNo))
+            {
+                continue;
+            }
+
+            restoredTask |= TryRestoreRunningTask(stationNo);
+        }
+
+        return restoredTask
+            ? GetRunningStationTasksFromRuntime()
+            : runtimeTasks;
+    }
+
+    /// <summary>
+    /// Gets running station tasks from the in-memory runtime state only.
+    /// </summary>
+    private IReadOnlyList<ActiveRecipeTask> GetRunningStationTasksFromRuntime()
     {
         var runtimeState = _weldTaskService.CurrentState;
         var stationTasks = runtimeState.StationStates.Values
@@ -332,6 +357,45 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
         return IsRunningTask(runtimeState.ActiveTask)
             ? [new ActiveRecipeTask(NormalizeStationNo(runtimeState.CurrentStationNo), runtimeState.ActiveTask!)]
             : [];
+    }
+
+    /// <summary>
+    /// Restores an unfinished task for a station with a small cooldown to avoid polling the database every second.
+    /// </summary>
+    private bool TryRestoreRunningTask(int stationNo)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var state = GetStationState(normalizedStationNo);
+        var now = DateTime.Now;
+        if (now - state.LastRestoreAttemptTime < RestoreAttemptInterval)
+        {
+            return false;
+        }
+
+        state.LastRestoreAttemptTime = now;
+        try
+        {
+            var restoredTask = _weldTaskService.RestoreUnfinishedTask(normalizedStationNo);
+            return IsRunningTask(restoredTask);
+        }
+        catch (Exception ex)
+        {
+            WriteBusinessFailureLog(
+                normalizedStationNo,
+                "PLC recipe task restore failed.",
+                $"Station={normalizedStationNo}; Detail={ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Resolves the stations that need recipe monitoring under the current station mode.
+    /// </summary>
+    private static int[] ResolveMonitorStationNumbers(AppSettings settings)
+    {
+        return settings.EnableDualStation
+            ? [1, 2]
+            : [ProductionConstants.Stations.DefaultStationNo];
     }
 
     /// <summary>
@@ -431,7 +495,11 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
     {
         lock (_stateSync)
         {
-            _stationStates.Clear();
+            foreach (var state in _stationStates.Values)
+            {
+                state.LastMismatchKey = string.Empty;
+                state.NextRetryTime = default;
+            }
         }
     }
 
@@ -470,5 +538,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
         public DateTime LastFailureLogTime { get; set; }
 
         public DateTime NextRetryTime { get; set; }
+
+        public DateTime LastRestoreAttemptTime { get; set; }
     }
 }

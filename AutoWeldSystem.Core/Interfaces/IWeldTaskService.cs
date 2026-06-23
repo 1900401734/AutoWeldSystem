@@ -94,6 +94,18 @@ public interface IWeldTaskService
         int stationNo = ProductionConstants.Stations.DefaultStationNo,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Updates the recipe code of an existing task and synchronizes the in-memory runtime state.
+    /// </summary>
+    /// <param name="taskId">Task database id.</param>
+    /// <param name="recipeCode">Recipe code read from PLC or selected by the PC.</param>
+    /// <param name="stationNo">Station context used to refresh the compatibility runtime state.</param>
+    /// <returns>true when the task exists and was updated; otherwise false.</returns>
+    bool TryUpdateRecipeCode(
+        int taskId,
+        string recipeCode,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo);
+
     Task RetryPendingUploadsAsync(CancellationToken cancellationToken = default);
 
     void UpdateProgramContent(string content, int stationNo = ProductionConstants.Stations.DefaultStationNo);
