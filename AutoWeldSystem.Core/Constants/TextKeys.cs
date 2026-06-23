@@ -817,7 +817,6 @@ public static class TextKeys
         public const string ButtonStateUploadAll = "permission.button.state.upload_all";
         public const string ButtonSystemSave = "permission.button.system.save";
         public const string ButtonSystemConnectPlc = "permission.button.system.connect_plc";
-        public const string ButtonSystemConnectMaster = "permission.button.system.connect_master";
         public const string ButtonSystemSyncDevice = "permission.button.system.sync_device";
         public const string ButtonSystemTestMes = "permission.button.system.test_mes";
         public const string ButtonSystemChangePath = "permission.button.system.change_path";

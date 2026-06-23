@@ -39,13 +39,19 @@ public class AppSettings
 
     #endregion
 
-    #region 总控配置
+    #region 中心服务器配置
 
-    [SugarColumn(Length = 100, ColumnDescription = "总控地址")]
-    public string MasterControlIp { get; set; } = "127.0.0.1";
+    [SugarColumn(ColumnDescription = "是否启用中心服务器同步")]
+    public bool EnableCenterServerSync { get; set; }
 
-    [SugarColumn(ColumnDescription = "总控端口")]
-    public int MasterControlPort { get; set; } = 503;
+    [SugarColumn(Length = 300, ColumnDescription = "中心服务器地址")]
+    public string CenterServerBaseUrl { get; set; } = CenterServerConstants.DefaultBaseUrl;
+
+    [SugarColumn(Length = 80, ColumnDescription = "中心服务器系统类型")]
+    public string CenterServerSystemType { get; set; } = CenterServerConstants.SystemTypes.Other;
+
+    [SugarColumn(ColumnDescription = "中心服务器心跳间隔秒")]
+    public int CenterServerHeartbeatIntervalSeconds { get; set; } = CenterServerConstants.DefaultHeartbeatIntervalSeconds;
 
     #endregion
 

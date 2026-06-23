@@ -1,5 +1,7 @@
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.Center;
+using AutoWeldSystem.Core.DTOs.CenterServer;
 using AutoWeldSystem.Core.Production;
 
 var tests = new (string Name, Action Run)[]
@@ -10,7 +12,12 @@ var tests = new (string Name, Action Run)[]
     ("Running task with changed PLC recipe requests reconciliation", RunningTaskWithChangedPlcRecipeRequestsReconciliation),
     ("Finished PLC work-order status skips recipe reconciliation", FinishedWorkOrderStatusSkipsRecipeReconciliation),
     ("PLC test result codes map to explicit result names", PlcTestResultCodesMapToExplicitResultNames),
-    ("Pre-weld NG is treated as failed product result", PreWeldNgIsTreatedAsFailedProductResult)
+    ("Pre-weld NG is treated as failed product result", PreWeldNgIsTreatedAsFailedProductResult),
+    ("Center device key uses DeviceId only", CenterDeviceKeyUsesDeviceIdOnly),
+    ("Center client online uses heartbeat freshness", CenterClientOnlineUsesHeartbeatFreshness),
+    ("Center offline state keeps PLC status unchanged", CenterOfflineStateKeepsPlcStatusUnchanged),
+    ("Center telemetry snapshot carries station runtime data", CenterTelemetrySnapshotCarriesStationRuntimeData),
+    ("Center dashboard device totals are calculated from station data", CenterDashboardDeviceTotalsAreCalculatedFromStationData)
 };
 
 foreach (var test in tests)
@@ -127,6 +134,102 @@ static void PreWeldNgIsTreatedAsFailedProductResult()
     AssertEqual(ProductionConstants.TestResults.PreWeldNg, result, "Product result should preserve pre-weld NG when any point failed before welding.");
     AssertTrue(TestResultRules.IsFailed(result), "Pre-weld NG must be treated as a failed result.");
 }
+
+static void CenterDeviceKeyUsesDeviceIdOnly()
+{
+    var request = new CenterTelemetrySnapshotRequest
+    {
+        DeviceId = " EM-001 ",
+        DeviceName = "Single station",
+        SystemType = CenterServerConstants.SystemTypes.Electromagnetic
+    };
+
+    AssertEqual("EM-001", CenterTelemetryRules.ResolveDeviceKey(request), "Center devices must be registered by DeviceId.");
+}
+
+static void CenterClientOnlineUsesHeartbeatFreshness()
+{
+    var now = new DateTime(2026, 6, 22, 8, 0, 0);
+    var freshHeartbeat = now.AddSeconds(-10);
+    var staleHeartbeat = now.AddSeconds(-16);
+
+    AssertTrue(CenterTelemetryRules.IsClientOnline(freshHeartbeat, now, 15), "Fresh heartbeat must mark the client online.");
+    AssertFalse(CenterTelemetryRules.IsClientOnline(staleHeartbeat, now, 15), "Stale heartbeat must mark the client offline.");
+}
+
+static void CenterOfflineStateKeepsPlcStatusUnchanged()
+{
+    var snapshot = new CenterDeviceRuntimeDto
+    {
+        PlcDeviceStatusCode = ProductionConstants.PlcDeviceStatuses.Alarm.ToString(),
+        PlcDeviceStatusName = "Alarm",
+        LastSeenAt = new DateTime(2026, 6, 22, 8, 0, 0)
+    };
+
+    var view = CenterTelemetryRules.BuildDashboardState(
+        snapshot,
+        now: snapshot.LastSeenAt.Value.AddSeconds(30),
+        offlineTimeoutSeconds: 15);
+
+    AssertFalse(view.ClientOnline, "Stale heartbeat must only affect client online state.");
+    AssertEqual("4", view.PlcDeviceStatusCode, "Offline client state must not rewrite PLC device status.");
+}
+
+static void CenterTelemetrySnapshotCarriesStationRuntimeData()
+{
+    var request = new CenterTelemetrySnapshotRequest
+    {
+        DeviceId = "EM-001",
+        DeviceName = "单稳态型自动电焊设备",
+        SystemType = CenterServerConstants.SystemTypes.Electromagnetic,
+        Stations =
+        [
+            new CenterTelemetryStationSnapshot
+            {
+                StationNo = 1,
+                DeviceStatusCode = "1",
+                DeviceStatusName = "运行",
+                CurrentWorkOrder = "WO-1",
+                ProductJobNo = "163#J",
+                TodayTotalCount = 10,
+                TodayQualifiedCount = 9,
+                TodayFailedCount = 1
+            },
+            new CenterTelemetryStationSnapshot
+            {
+                StationNo = 2,
+                DeviceStatusCode = "4",
+                DeviceStatusName = "报警",
+                CurrentWorkOrder = "WO-2",
+                ProductJobNo = "164#J",
+                AlarmMessage = "气压低",
+                TodayTotalCount = 3,
+                TodayQualifiedCount = 3
+            }
+        ]
+    };
+
+    AssertEqual(2, request.Stations.Count, "Center telemetry must keep each station as an independent runtime snapshot.");
+    AssertEqual("WO-2", request.Stations[1].CurrentWorkOrder, "Dual-station work orders must not overwrite each other.");
+    AssertEqual("164#J", request.Stations[1].ProductJobNo, "Dual-station product job numbers must not overwrite each other.");
+}
+
+static void CenterDashboardDeviceTotalsAreCalculatedFromStationData()
+{
+    var device = new CenterDashboardDeviceDto
+    {
+        Stations =
+        [
+            new CenterDashboardStationDto { TodayTotalCount = 10, TodayQualifiedCount = 9, TodayFailedCount = 1 },
+            new CenterDashboardStationDto { TodayTotalCount = 3, TodayQualifiedCount = 3, TodayFailedCount = 0 }
+        ]
+    };
+
+    AssertEqual(13, device.TodayTotalCount, "Dashboard device total must be the sum of station totals.");
+    AssertEqual(12, device.TodayQualifiedCount, "Dashboard device qualified count must be the sum of station qualified counts.");
+    AssertEqual(1, device.TodayFailedCount, "Dashboard device failed count must be the sum of station failed counts.");
+}
+
 static void AssertTrue(bool condition, string message)
 {
     if (!condition)

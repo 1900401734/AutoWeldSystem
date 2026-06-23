@@ -1,0 +1,188 @@
+@page "/Dashboard"
+@using AutoWeldSystem.Core.Constants
+@using AutoWeldSystem.Core.DTOs.CenterServer
+@inject AutoWeldSystem.CenterServer.Services.CenterDashboardQueryService DashboardQuery
+@implements IDisposable
+
+<main class="dashboard-shell">
+    <header class="dashboard-header">
+        <div>
+            <h1>中心服务器看板</h1>
+            <p>动态汇总已接入设备的在线状态、设备状态和生产数据。</p>
+        </div>
+        <div class="dashboard-time">@_snapshot.GeneratedAt.ToString("yyyy-MM-dd HH:mm:ss")</div>
+    </header>
+
+    <section class="summary-strip">
+        <div><span>设备数</span><strong>@_snapshot.Devices.Count</strong></div>
+        <div><span>在线</span><strong>@_snapshot.Devices.Count(it => it.State.ClientOnline)</strong></div>
+        <div><span>报警设备</span><strong>@_snapshot.Devices.Count(HasAlarmStation)</strong></div>
+        <div><span>今日总数</span><strong>@_snapshot.Devices.Sum(it => it.TodayTotalCount)</strong></div>
+        <div><span>合格</span><strong>@_snapshot.Devices.Sum(it => it.TodayQualifiedCount)</strong></div>
+        <div><span>不良</span><strong>@_snapshot.Devices.Sum(it => it.TodayFailedCount)</strong></div>
+    </section>
+
+    @foreach (var group in _snapshot.Devices.GroupBy(it => string.IsNullOrWhiteSpace(it.SystemType) ? CenterServerConstants.SystemTypes.Other : it.SystemType))
+    {
+        <section class="device-group">
+            <h2>@ResolveSystemTypeName(group.Key)</h2>
+            <div class="device-grid">
+                @foreach (var device in group)
+                {
+                    <article class="device-card @ResolveDeviceStatusClass(device)">
+                        <div class="device-card-header">
+                            <div>
+                                <h3>@FirstNonEmpty(device.DeviceName, device.DeviceId)</h3>
+                                <p>@device.DeviceId</p>
+                            </div>
+                            <span class="online-badge @(device.State.ClientOnline ? "online" : "offline")">
+                                @(device.State.ClientOnline ? "在线" : "离线")
+                            </span>
+                        </div>
+
+                        @if (device.Stations.Count == 0)
+                        {
+                            <p class="empty-station-text">尚未收到工位数据</p>
+                        }
+                        else
+                        {
+                            @foreach (var station in device.Stations)
+                            {
+                                <section class="station-panel @ResolveStationStatusClass(station)">
+                                    <div class="station-title">
+                                        <strong>工位 @station.StationNo</strong>
+                                        <span>@station.State.PlcDeviceStatusName</span>
+                                    </div>
+                                    <div class="status-row">
+                                        <span>设备状态</span>
+                                        <strong>@FirstNonEmpty(station.State.PlcDeviceStatusName, "未知")</strong>
+                                    </div>
+                                    <div class="status-row">
+                                        <span>PLC连接</span>
+                                        <strong>@(station.State.PlcConnected ? "已连接" : "未连接")</strong>
+                                    </div>
+                                    <div class="status-row">
+                                        <span>当前工单</span>
+                                        <strong>@FirstNonEmpty(station.CurrentWorkOrder, "--")</strong>
+                                    </div>
+                                    <div class="status-row">
+                                        <span>产品工号</span>
+                                        <strong>@FirstNonEmpty(station.ProductJobNo, station.ProductModel, "--")</strong>
+                                    </div>
+                                    <div class="count-row">
+                                        <div><span>总数</span><strong>@station.TodayTotalCount</strong></div>
+                                        <div><span>合格</span><strong>@station.TodayQualifiedCount</strong></div>
+                                        <div><span>不良</span><strong>@station.TodayFailedCount</strong></div>
+                                    </div>
+                                    @if (!string.IsNullOrWhiteSpace(station.State.AlarmMessage))
+                                    {
+                                        <p class="alarm-text">工位 @station.StationNo：@station.State.AlarmMessage</p>
+                                    }
+                                </section>
+                            }
+                        }
+
+                        <p class="update-text">最后更新：@FormatTime(device.State.LastSeenAt)</p>
+                    </article>
+                }
+            </div>
+        </section>
+    }
+</main>
+
+@code {
+    private CenterDashboardSnapshotDto _snapshot = new();
+    private PeriodicTimer? _timer;
+    private CancellationTokenSource? _cts;
+
+    protected override Task OnInitializedAsync()
+    {
+        _snapshot = DashboardQuery.GetSnapshot();
+        _cts = new CancellationTokenSource();
+        _timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+        _ = RefreshLoopAsync(_cts.Token);
+        return Task.CompletedTask;
+    }
+
+    private async Task RefreshLoopAsync(CancellationToken cancellationToken)
+    {
+        if (_timer is null)
+        {
+            return;
+        }
+
+        while (await _timer.WaitForNextTickAsync(cancellationToken))
+        {
+            _snapshot = DashboardQuery.GetSnapshot(cancellationToken);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+        _timer?.Dispose();
+    }
+
+    private static bool HasAlarmStation(CenterDashboardDeviceDto device)
+        => device.Stations.Any(station => station.State.PlcDeviceStatusCode == "4");
+
+    private static string ResolveDeviceStatusClass(CenterDashboardDeviceDto device)
+    {
+        if (!device.State.ClientOnline)
+        {
+            return "offline-card";
+        }
+
+        if (device.Stations.Any(station => station.State.PlcDeviceStatusCode == "4"))
+        {
+            return "alarm-card";
+        }
+
+        if (device.Stations.Any(station => station.State.PlcDeviceStatusCode == "1"))
+        {
+            return "running-card";
+        }
+
+        if (device.Stations.Any(station => station.State.PlcDeviceStatusCode == "2"))
+        {
+            return "paused-card";
+        }
+
+        if (device.Stations.Any(station => station.State.PlcDeviceStatusCode == "3"))
+        {
+            return "stopped-card";
+        }
+
+        return "unknown-card";
+    }
+
+    private static string ResolveStationStatusClass(CenterDashboardStationDto station)
+    {
+        return station.State.PlcDeviceStatusCode switch
+        {
+            "1" => "station-running",
+            "2" => "station-paused",
+            "3" => "station-stopped",
+            "4" => "station-alarm",
+            _ => "station-unknown"
+        };
+    }
+
+    private static string ResolveSystemTypeName(string value)
+    {
+        return value switch
+        {
+            CenterServerConstants.SystemTypes.Electromagnetic => "电磁系统",
+            CenterServerConstants.SystemTypes.WholePiece => "整件系统",
+            _ => "其它"
+        };
+    }
+
+    private static string FormatTime(DateTime? value)
+        => value is null ? "--" : value.Value.ToString("yyyy-MM-dd HH:mm:ss");
+
+    private static string FirstNonEmpty(params string?[] values)
+        => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
+}

@@ -2,6 +2,7 @@ using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Data;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.Center;
 using AutoWeldSystem.Core.Runtime;
 using System.Reflection;
 
@@ -126,6 +127,10 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
     {
         settings.EnableAutoStart ??= true;
         settings.ProcessParameterDeviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
+        settings.CenterServerBaseUrl = CenterTelemetryRules.NormalizeBaseUrl(settings.CenterServerBaseUrl);
+        settings.CenterServerSystemType = CenterTelemetryRules.NormalizeSystemType(settings.CenterServerSystemType);
+        settings.CenterServerHeartbeatIntervalSeconds = CenterTelemetryRules.NormalizeHeartbeatIntervalSeconds(
+            settings.CenterServerHeartbeatIntervalSeconds);
     }
 
     private static string NormalizeProcessParameterDeviceType(string? value)

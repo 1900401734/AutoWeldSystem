@@ -1,4 +1,5 @@
 using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.Center;
 using AutoWeldSystem.Core.DTOs.Mes.Request;
 using AutoWeldSystem.Core.Enums;
 using AutoWeldSystem.Core.Interfaces;
@@ -37,6 +38,13 @@ public partial class SystemSettingView : BaseView
         new("整件系统-点焊设备", ProductionConstants.ProcessParameterDeviceTypes.WholePieceWeld)
     };
 
+    private static readonly CenterServerOption[] CenterServerSystemTypeOptions =
+    {
+        new("电磁系统", CenterServerConstants.SystemTypes.Electromagnetic),
+        new("整件系统", CenterServerConstants.SystemTypes.WholePiece),
+        new("其它", CenterServerConstants.SystemTypes.Other)
+    };
+
     private readonly IAppSettingsService _settingsService;
     private readonly IMesProvider _mesProvider;
     private readonly ILocalizationService _localizer;
@@ -49,9 +57,11 @@ public partial class SystemSettingView : BaseView
     private bool _syncingUploadModeSelection;
     private bool _syncingDualModeSelection;
     private bool _syncingProcessParameterDeviceTypeSelection;
+    private bool _syncingCenterServerSystemTypeSelection;
     private string _selectedPlcType = AppConstants.PlcTypes.ModbusTcp;
     private UploadMode _selectedUploadMode = UploadMode.Quantity;
     private string _selectedProcessParameterDeviceType = ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic;
+    private string _selectedCenterServerSystemType = CenterServerConstants.SystemTypes.Other;
     private AppSettings _currentSettings;
 
     public SystemSettingView(
@@ -104,7 +114,6 @@ public partial class SystemSettingView : BaseView
         btnSyncDevice.Click += SyncDevice_ClickAsync;
         btnTestConnection.Click += TestConnection_ClickAsync;
         btnConnectPlc.Click += ConnectPlc_ClickAsync;
-        btnConnectMasterController.Click += ConnectMasterController_ClickAsync;
         btnChangeLogPath.Click += (_, _) => SelectFolder(input_LogsPath, BuildFieldName(grpDeviceConfig.Text, lblLogPath.Text));
         btnChangeDataPath.Click += (_, _) => SelectFolder(input_DataPath, BuildFieldName(grpDeviceConfig.Text, lblDataPath.Text));
         btnOpenLogPath.Click += (_, _) => OpenFolder(input_LogsPath.Text, BuildFieldName(grpDeviceConfig.Text, lblLogPath.Text));
@@ -114,6 +123,7 @@ public partial class SystemSettingView : BaseView
         chkEnableDualStation.CheckedChanged += ChkEnableDualStation_CheckedChanged;
         chkEnableDualWorkOrder.CheckedChanged += ChkEnableDualWorkOrder_CheckedChanged;
         selectProcessParameterDeviceType.SelectedIndexChanged += SelectProcessParameterDeviceType_SelectedIndexChanged;
+        selectCenterServerSystemType.SelectedIndexChanged += SelectCenterServerSystemType_SelectedIndexChanged;
     }
 
     #region Events Handler
@@ -239,11 +249,6 @@ public partial class SystemSettingView : BaseView
         await TestTcpEndpointAsync(input_PlcIp.Text, input_PlcPort.Text, grpPlcConfig.Text, btnConnectPlc);
     }
 
-    private async void ConnectMasterController_ClickAsync(object? sender, EventArgs e)
-    {
-        await TestTcpEndpointAsync(input_MasterIp.Text, input_MasterPort.Text, grpMasterConfig.Text, btnConnectMasterController);
-    }
-
     private void Select_PlcType_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
     {
         if (_syncingPlcTypeSelection)
@@ -289,6 +294,21 @@ public partial class SystemSettingView : BaseView
 
         var option = ProcessParameterDeviceTypeOptions[e.Value];
         _selectedProcessParameterDeviceType = option.Value;
+    }
+
+    private void SelectCenterServerSystemType_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
+    {
+        if (_syncingCenterServerSystemTypeSelection)
+        {
+            return;
+        }
+
+        if (e.Value < 0 || e.Value >= CenterServerSystemTypeOptions.Length)
+        {
+            return;
+        }
+
+        _selectedCenterServerSystemType = CenterServerSystemTypeOptions[e.Value].Value;
     }
 
     private void ChkEnableDualStation_CheckedChanged(object sender, AntdUI.BoolEventArgs e)
@@ -373,12 +393,14 @@ public partial class SystemSettingView : BaseView
         input_DeviceUrl.Text = settings.DeviceBaseUrl;
         input_PlcIp.Text = settings.PlcIp;
         input_PlcPort.Text = settings.PlcPort.ToString().Trim();
-        input_MasterIp.Text = settings.MasterControlIp;
-        input_MasterPort.Text = settings.MasterControlPort.ToString().Trim();
         input_MesTimeout.Text = settings.MesTimeoutSeconds.ToString();
         input_LogsPath.Text = settings.LogDirectory;
         input_DataPath.Text = settings.DataDirectory;
         chkEnableAutoStart.Checked = settings.EnableAutoStart ?? true;
+        chkEnableCenterServerSync.Checked = settings.EnableCenterServerSync;
+        inputCenterServerBaseUrl.Text = CenterTelemetryRules.NormalizeBaseUrl(settings.CenterServerBaseUrl);
+        inputCenterServerHeartbeatInterval.Text = CenterTelemetryRules.NormalizeHeartbeatIntervalSeconds(
+            settings.CenterServerHeartbeatIntervalSeconds).ToString(CultureInfo.InvariantCulture);
         input_BaseUrl.Text = settings.MesBaseUrl;
         chkUseProductNumberFilter.Checked = settings.UseProductNumberFilter;
         SetDualModeCheckboxes(settings.EnableDualStation, settings.EnableDualWorkOrder);
@@ -389,10 +411,12 @@ public partial class SystemSettingView : BaseView
         _selectedPlcType = NormalizePlcType(settings.PlcType);
         _selectedUploadMode = NormalizeUploadMode(settings.UploadMode);
         _selectedProcessParameterDeviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
+        _selectedCenterServerSystemType = NormalizeCenterServerSystemType(settings.CenterServerSystemType);
         inputUploadBatchSize.Text = Math.Max(1, settings.UploadBatchSize).ToString(CultureInfo.InvariantCulture);
         BindPlcTypeOptions();
         BindUploadModeOptions();
         BindProcessParameterDeviceTypeOptions();
+        BindCenterServerSystemTypeOptions();
         UpdateUploadBatchSizeEnabled();
     }
 
@@ -404,11 +428,11 @@ public partial class SystemSettingView : BaseView
         tabBasicSettings.Text = _localizer.GetString(TextKeys.SystemSetting.TabBasic);
 
         grpPlcConfig.Text = _localizer.GetString(TextKeys.SystemSetting.GroupPlc);
-        grpMasterConfig.Text = _localizer.GetString(TextKeys.SystemSetting.GroupController);
         grpAppConfig.Text = _localizer.GetString(TextKeys.SystemSetting.GroupApplication);
         grpDeviceConfig.Text = _localizer.GetString(TextKeys.SystemSetting.GroupDevice);
         grpProductionConfig.Text = _localizer.GetString(TextKeys.SystemSetting.GroupProduction);
         grpMesConfig.Text = _localizer.GetString(TextKeys.SystemSetting.GroupMes);
+        grpCenterServerConfig.Text = "中心服务器";
 
         lblTitle.Text = _localizer.GetString(TextKeys.SystemSetting.Title);
         lblDescription.Text = _localizer.GetString(TextKeys.SystemSetting.Description);
@@ -416,9 +440,6 @@ public partial class SystemSettingView : BaseView
         lblPlcIp.Text = _localizer.GetString(TextKeys.SystemSetting.LabelIp);
         lblPlcPort.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPort);
         lblPlcType.Text = _localizer.GetString(TextKeys.SystemSetting.LabelType);
-
-        lblMasterIp.Text = _localizer.GetString(TextKeys.SystemSetting.LabelIp);
-        lblMasterPort.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPort);
 
         lblDeviceId.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDeviceId);
         lblDeviceName.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDeviceName);
@@ -432,6 +453,10 @@ public partial class SystemSettingView : BaseView
         lblUploadMode.Text = _localizer.GetString(TextKeys.SystemSetting.UploadMode);
         lblUploadBatchSize.Text = _localizer.GetString(TextKeys.SystemSetting.UploadBatchSize);
         lblPlcHeartbeatInterval.Text = _localizer.GetString(TextKeys.SystemSetting.PlcHeartbeatRate);
+        chkEnableCenterServerSync.Text = "启用中心服务器同步";
+        lblCenterServerBaseUrl.Text = "中心服务器地址";
+        lblCenterServerSystemType.Text = "系统类型";
+        lblCenterServerHeartbeatInterval.Text = "心跳间隔(s)";
         lblProcessParameterDeviceType.Text = "过程参数设备类型";
 
         BindUploadModeOptions();
@@ -444,7 +469,6 @@ public partial class SystemSettingView : BaseView
         chkEnableDualWorkOrder.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableDualWorkOrder);
 
         btnConnectPlc.Text = _localizer.GetString(TextKeys.SystemSetting.ButtonConnect);
-        btnConnectMasterController.Text = _localizer.GetString(TextKeys.SystemSetting.ButtonConnect);
         btnSyncDevice.Text = _localizer.GetString(TextKeys.SystemSetting.ButtonSyncDevice);
         btnTestConnection.Text = _localizer.GetString(TextKeys.SystemSetting.ButtonTestConnection);
         btnChangeLogPath.Text = _localizer.GetString(TextKeys.SystemSetting.ButtonChangePath);
@@ -507,6 +531,26 @@ public partial class SystemSettingView : BaseView
         finally
         {
             _syncingProcessParameterDeviceTypeSelection = false;
+        }
+    }
+
+    private void BindCenterServerSystemTypeOptions()
+    {
+        _syncingCenterServerSystemTypeSelection = true;
+        try
+        {
+            selectCenterServerSystemType.Items.Clear();
+            selectCenterServerSystemType.Items.AddRange(CenterServerSystemTypeOptions
+                .Select(option => (object)option.DisplayName)
+                .ToArray());
+
+            var selectedIndex = Array.FindIndex(CenterServerSystemTypeOptions, option =>
+                string.Equals(option.Value, _selectedCenterServerSystemType, StringComparison.OrdinalIgnoreCase));
+            selectCenterServerSystemType.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 2;
+        }
+        finally
+        {
+            _syncingCenterServerSystemTypeSelection = false;
         }
     }
 
@@ -656,17 +700,6 @@ public partial class SystemSettingView : BaseView
             return false;
         }
 
-        var masterControlIp = input_MasterIp.Text.Trim();
-        if (!TryValidateIp(masterControlIp, BuildFieldName(grpMasterConfig.Text, lblMasterIp.Text)))
-        {
-            return false;
-        }
-
-        if (!TryParsePort(input_MasterPort.Text, BuildFieldName(grpMasterConfig.Text, lblMasterPort.Text), out var masterControlPort))
-        {
-            return false;
-        }
-
         var logDirectory = input_LogsPath.Text.Trim();
         if (string.IsNullOrWhiteSpace(logDirectory))
         {
@@ -707,12 +740,30 @@ public partial class SystemSettingView : BaseView
             return false;
         }
 
+        var centerServerBaseUrl = inputCenterServerBaseUrl.Text.Trim();
+        if (chkEnableCenterServerSync.Checked && string.IsNullOrWhiteSpace(centerServerBaseUrl))
+        {
+            ShowWarning(TextKeys.SystemSetting.MessageValueRequired, NormalizeCaption(lblCenterServerBaseUrl.Text));
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(centerServerBaseUrl) && !TryValidateBaseUrl(centerServerBaseUrl))
+        {
+            ShowWarning(TextKeys.SystemSetting.MessageInvalidUrl, NormalizeCaption(lblCenterServerBaseUrl.Text));
+            return false;
+        }
+
         if (!TryParsePositiveInt(inputUploadBatchSize.Text, NormalizeCaption(lblUploadBatchSize.Text), out var uploadBatchSize))
         {
             return false;
         }
 
         if (!TryParsePositiveInt(inputPlcHeartbeatInterval.Text, NormalizeCaption(lblPlcHeartbeatInterval.Text), out var heartbeatInterval))
+        {
+            return false;
+        }
+
+        if (!TryParsePositiveInt(inputCenterServerHeartbeatInterval.Text, NormalizeCaption(lblCenterServerHeartbeatInterval.Text), out var centerHeartbeatInterval))
         {
             return false;
         }
@@ -732,11 +783,13 @@ public partial class SystemSettingView : BaseView
         settings.PlcIp = plcIp;
         settings.PlcPort = plcPort;
         settings.PlcType = NormalizePlcType(_selectedPlcType);
-        settings.MasterControlIp = masterControlIp;
-        settings.MasterControlPort = masterControlPort;
         settings.LogDirectory = logDirectory;
         settings.DataDirectory = dataDirectory;
         settings.EnableAutoStart = chkEnableAutoStart.Checked;
+        settings.EnableCenterServerSync = chkEnableCenterServerSync.Checked;
+        settings.CenterServerBaseUrl = CenterTelemetryRules.NormalizeBaseUrl(centerServerBaseUrl);
+        settings.CenterServerSystemType = NormalizeCenterServerSystemType(_selectedCenterServerSystemType);
+        settings.CenterServerHeartbeatIntervalSeconds = CenterTelemetryRules.NormalizeHeartbeatIntervalSeconds(centerHeartbeatInterval);
         settings.MesBaseUrl = mesBaseUrl;
         settings.MesTimeoutSeconds = int.TryParse(mesTimeout, NumberStyles.Integer, CultureInfo.InvariantCulture, out var timeout) && timeout > 0 ? timeout : 10;
         settings.UseProductNumberFilter = chkUseProductNumberFilter.Checked;
@@ -919,6 +972,14 @@ public partial class SystemSettingView : BaseView
             : ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic;
     }
 
+    private static string NormalizeCenterServerSystemType(string? value)
+    {
+        var normalizedValue = value?.Trim();
+        return CenterServerSystemTypeOptions.Any(option => string.Equals(option.Value, normalizedValue, StringComparison.OrdinalIgnoreCase))
+            ? normalizedValue!
+            : CenterServerConstants.SystemTypes.Other;
+    }
+
     private AppSettings CurrentSettings => Volatile.Read(ref _currentSettings);
 
     private void ShowInfo(string messageKey, params object[] args)
@@ -956,4 +1017,6 @@ public partial class SystemSettingView : BaseView
     private sealed record UploadModeOption(UploadMode Value, string DisplayName);
 
     private sealed record ProcessParameterDeviceTypeOption(string DisplayName, string Value);
+
+    private sealed record CenterServerOption(string DisplayName, string Value);
 }

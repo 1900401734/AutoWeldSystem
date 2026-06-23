@@ -7,6 +7,7 @@ using AutoWeldSystem.Core.Interfaces.PLC;
 using AutoWeldSystem.Core.Interfaces.UserManage;
 using AutoWeldSystem.Data;
 using AutoWeldSystem.Services;
+using AutoWeldSystem.Services.Center;
 using AutoWeldSystem.Services.Log;
 using AutoWeldSystem.Services.Mes;
 using AutoWeldSystem.Services.Plc;
@@ -36,6 +37,7 @@ public static class Program
         var weldCycleMonitorStarted = false;
         var recipeReconcileMonitorStarted = false;
         var realtimePreviewStarted = false;
+        var centerTelemetrySyncStarted = false;
 
         try
         {
@@ -81,9 +83,11 @@ public static class Program
                     services.AddSingleton<IUploadStatusSummaryService, UploadStatusSummaryService>();
                     services.AddSingleton<IProductionReportFileService, ProductionReportFileService>();
                     services.AddSingleton<IDataHistoryQueryService, DataHistoryQueryService>();
+                    services.AddSingleton<ICenterTelemetrySyncService, CenterTelemetrySyncService>();
                     services.AddTransient<PermissionUiBinder>();
 
                     services.AddHttpClient<IMesProvider, MesProvider>();
+                    services.AddHttpClient<CenterTelemetryClient>();
 
                     services.AddTransient<LoginForm>();
                     services.AddTransient<MainForm>();
@@ -121,6 +125,8 @@ public static class Program
             recipeReconcileMonitorStarted = true;
             AppHost.Services.GetRequiredService<IProductRealtimePreviewService>().StartAsync().GetAwaiter().GetResult();
             realtimePreviewStarted = true;
+            AppHost.Services.GetRequiredService<ICenterTelemetrySyncService>().StartAsync().GetAwaiter().GetResult();
+            centerTelemetrySyncStarted = true;
 
             while (true)
             {
@@ -151,6 +157,7 @@ public static class Program
         finally
         {
             StopBackgroundServices(
+                centerTelemetrySyncStarted,
                 realtimePreviewStarted,
                 recipeReconcileMonitorStarted,
                 weldCycleMonitorStarted,
@@ -229,6 +236,7 @@ public static class Program
     }
 
     private static void StopBackgroundServices(
+        bool centerTelemetrySyncStarted,
         bool realtimePreviewStarted,
         bool recipeReconcileMonitorStarted,
         bool weldCycleMonitorStarted,
@@ -239,6 +247,12 @@ public static class Program
     {
         try
         {
+
+            if (centerTelemetrySyncStarted)
+            {
+                AppHost?.Services.GetRequiredService<ICenterTelemetrySyncService>().StopAsync().GetAwaiter().GetResult();
+            }
+
             if (realtimePreviewStarted)
             {
                 AppHost?.Services.GetRequiredService<IProductRealtimePreviewService>().StopAsync().GetAwaiter().GetResult();

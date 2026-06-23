@@ -64,7 +64,6 @@ public static class PermissionCatalog
 
         new(PermissionCodes.Buttons.SystemSetting.Save, "Save Settings", PermissionType.Button, PermissionCodes.Pages.SystemSetting, 710),
         new(PermissionCodes.Buttons.SystemSetting.ConnectPlc, "Test PLC Connection", PermissionType.Button, PermissionCodes.Pages.SystemSetting, 720),
-        new(PermissionCodes.Buttons.SystemSetting.ConnectMaster, "Test Controller Connection", PermissionType.Button, PermissionCodes.Pages.SystemSetting, 730),
         new(PermissionCodes.Buttons.SystemSetting.SyncDevice, "Sync Device", PermissionType.Button, PermissionCodes.Pages.SystemSetting, 740),
         new(PermissionCodes.Buttons.SystemSetting.TestMes, "Test MES Connection", PermissionType.Button, PermissionCodes.Pages.SystemSetting, 750),
         new(PermissionCodes.Buttons.SystemSetting.ChangePath, "Change Path", PermissionType.Button, PermissionCodes.Pages.SystemSetting, 760),

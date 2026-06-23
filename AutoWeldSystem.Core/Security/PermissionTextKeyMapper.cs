@@ -58,7 +58,6 @@ public static class PermissionTextKeyMapper
             PermissionCodes.Buttons.State.UploadAll => TextKeys.Permission.ButtonStateUploadAll,
             PermissionCodes.Buttons.SystemSetting.Save => TextKeys.Permission.ButtonSystemSave,
             PermissionCodes.Buttons.SystemSetting.ConnectPlc => TextKeys.Permission.ButtonSystemConnectPlc,
-            PermissionCodes.Buttons.SystemSetting.ConnectMaster => TextKeys.Permission.ButtonSystemConnectMaster,
             PermissionCodes.Buttons.SystemSetting.SyncDevice => TextKeys.Permission.ButtonSystemSyncDevice,
             PermissionCodes.Buttons.SystemSetting.TestMes => TextKeys.Permission.ButtonSystemTestMes,
             PermissionCodes.Buttons.SystemSetting.ChangePath => TextKeys.Permission.ButtonSystemChangePath,

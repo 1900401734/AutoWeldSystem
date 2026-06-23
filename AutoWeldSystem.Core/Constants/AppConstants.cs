@@ -101,7 +101,6 @@ public static class AppConstants
     {
         public const string Mes = "MES";
         public const string ProductionFlow = "ProductionFlow";
-        public const string MasterControl = "MasterControl";
         public const string ProgramException = "ProgramException";
     }
 

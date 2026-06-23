@@ -92,7 +92,6 @@ public static class PermissionCodes
         {
             public const string Save = "button.system.save";
             public const string ConnectPlc = "button.system.connect-plc";
-            public const string ConnectMaster = "button.system.connect-master";
             public const string SyncDevice = "button.system.sync-device";
             public const string TestMes = "button.system.test-mes";
             public const string ChangePath = "button.system.change-path";
