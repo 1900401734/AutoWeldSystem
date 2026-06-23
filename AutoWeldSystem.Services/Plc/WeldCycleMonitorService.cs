@@ -21,6 +21,7 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
     private readonly IWeldTaskService _weldTaskService;
     private readonly IProductCycleCollectionService _productCycleCollectionService;
     private readonly IWeldPointUploadCoordinatorService _weldPointUploadCoordinatorService;
+    private readonly ICenterProductForwardingService _centerProductForwardingService;
     private readonly IProgramExceptionLogService _exceptionLogService;
     private readonly IOperationLogService _operationLogService;
     private readonly IProductionFlowLogService _productionLogService;
@@ -40,6 +41,7 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
         IWeldTaskService weldTaskService,
         IProductCycleCollectionService productCycleCollectionService,
         IWeldPointUploadCoordinatorService weldPointUploadCoordinatorService,
+        ICenterProductForwardingService centerProductForwardingService,
         IProgramExceptionLogService exceptionLogService,
         IOperationLogService operationLogService,
         IProductionFlowLogService productionLogService)
@@ -49,6 +51,7 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
         _weldTaskService = weldTaskService;
         _productCycleCollectionService = productCycleCollectionService;
         _weldPointUploadCoordinatorService = weldPointUploadCoordinatorService;
+        _centerProductForwardingService = centerProductForwardingService;
         _exceptionLogService = exceptionLogService;
         _operationLogService = operationLogService;
         _productionLogService = productionLogService;
@@ -347,6 +350,8 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
                 productNo: records.FirstOrDefault()?.ProductNo,
                 plcSignal: AppConstants.PlcLogicalKeys.ProductCollectionFeedback,
                 plcAddress: stationState.ProductCollectionFeedbackAddress?.Address);
+
+            _centerProductForwardingService.EnqueueCompletedProduct(task, stationState.StationNo, records);
 
             foreach (var record in records)
             {

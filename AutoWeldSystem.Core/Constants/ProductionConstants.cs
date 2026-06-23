@@ -49,6 +49,11 @@ public static class ProductionConstants
         /// 设备状态
         /// </summary>
         public const string DeviceStatus = "DeviceState";
+
+        /// <summary>
+        /// Completed product report forwarded to the center server.
+        /// </summary>
+        public const string CenterProductReport = "CenterProductReport";
     }
 
     /// <summary>

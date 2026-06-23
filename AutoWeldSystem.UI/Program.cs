@@ -38,6 +38,7 @@ public static class Program
         var recipeReconcileMonitorStarted = false;
         var realtimePreviewStarted = false;
         var centerTelemetrySyncStarted = false;
+        var centerProductForwardingStarted = false;
 
         try
         {
@@ -84,6 +85,7 @@ public static class Program
                     services.AddSingleton<IProductionReportFileService, ProductionReportFileService>();
                     services.AddSingleton<IDataHistoryQueryService, DataHistoryQueryService>();
                     services.AddSingleton<ICenterTelemetrySyncService, CenterTelemetrySyncService>();
+                    services.AddSingleton<ICenterProductForwardingService, CenterProductForwardingService>();
                     services.AddTransient<PermissionUiBinder>();
 
                     services.AddHttpClient<IMesProvider, MesProvider>();
@@ -127,6 +129,8 @@ public static class Program
             realtimePreviewStarted = true;
             AppHost.Services.GetRequiredService<ICenterTelemetrySyncService>().StartAsync().GetAwaiter().GetResult();
             centerTelemetrySyncStarted = true;
+            AppHost.Services.GetRequiredService<ICenterProductForwardingService>().StartAsync().GetAwaiter().GetResult();
+            centerProductForwardingStarted = true;
 
             while (true)
             {
@@ -157,6 +161,7 @@ public static class Program
         finally
         {
             StopBackgroundServices(
+                centerProductForwardingStarted,
                 centerTelemetrySyncStarted,
                 realtimePreviewStarted,
                 recipeReconcileMonitorStarted,
@@ -236,6 +241,7 @@ public static class Program
     }
 
     private static void StopBackgroundServices(
+        bool centerProductForwardingStarted,
         bool centerTelemetrySyncStarted,
         bool realtimePreviewStarted,
         bool recipeReconcileMonitorStarted,
@@ -247,6 +253,10 @@ public static class Program
     {
         try
         {
+            if (centerProductForwardingStarted)
+            {
+                AppHost?.Services.GetRequiredService<ICenterProductForwardingService>().StopAsync().GetAwaiter().GetResult();
+            }
 
             if (centerTelemetrySyncStarted)
             {

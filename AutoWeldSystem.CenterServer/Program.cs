@@ -15,6 +15,7 @@ builder.Services.AddSingleton(provider =>
 });
 builder.Services.AddSingleton<CenterTelemetryIngestService>();
 builder.Services.AddSingleton<CenterDashboardQueryService>();
+builder.Services.AddSingleton<CenterProductReportIngestService>();
 
 var app = builder.Build();
 
@@ -39,6 +40,14 @@ app.MapPost("/api/center/heartbeat", async (
     return result.Success ? Results.Ok(result) : Results.BadRequest(result);
 });
 
+app.MapPost("/api/center/product-report", async (
+    CenterProductReportRequest request,
+    CenterProductReportIngestService service,
+    CancellationToken cancellationToken) =>
+{
+    var result = await service.IngestAsync(request, cancellationToken);
+    return result.Success ? Results.Ok(result) : Results.BadRequest(result);
+});
 
 app.MapGet("/api/center/dashboard", (
     CenterDashboardQueryService service,

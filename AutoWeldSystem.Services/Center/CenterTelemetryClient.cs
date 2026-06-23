@@ -44,4 +44,32 @@ public sealed class CenterTelemetryClient
             ServerTime = DateTime.Now
         };
     }
+
+    /// <summary>
+    /// Uploads one completed product report to the center server.
+    /// </summary>
+    public async Task<CenterTelemetryAck> UploadProductReportAsync(
+        AppSettings settings,
+        CenterProductReportRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var baseUrl = CenterTelemetryRules.NormalizeBaseUrl(settings.CenterServerBaseUrl);
+        using var response = await _httpClient.PostAsJsonAsync(
+            new Uri(new Uri(baseUrl), "api/center/product-report"),
+            request,
+            cancellationToken);
+
+        var ack = await response.Content.ReadFromJsonAsync<CenterTelemetryAck>(cancellationToken: cancellationToken);
+        if (ack is not null)
+        {
+            return ack;
+        }
+
+        return new CenterTelemetryAck
+        {
+            Success = response.IsSuccessStatusCode,
+            Message = response.IsSuccessStatusCode ? "Accepted" : response.ReasonPhrase ?? "Center server error.",
+            ServerTime = DateTime.Now
+        };
+    }
 }

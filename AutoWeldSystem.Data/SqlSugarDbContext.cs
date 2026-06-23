@@ -65,7 +65,8 @@ public class SqlSugarDbContext : IDisposable
                     typeof(CenterDeviceNode),
                     typeof(CenterDeviceRuntimeSnapshot),
                     typeof(CenterDeviceStationRuntimeSnapshot),
-                    typeof(CenterTelemetryLog));
+                    typeof(CenterTelemetryLog),
+                    typeof(CenterProductRecord));
 
                 _initialized = true;
             }

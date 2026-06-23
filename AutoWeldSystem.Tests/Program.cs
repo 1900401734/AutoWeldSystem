@@ -17,7 +17,8 @@ var tests = new (string Name, Action Run)[]
     ("Center client online uses heartbeat freshness", CenterClientOnlineUsesHeartbeatFreshness),
     ("Center offline state keeps PLC status unchanged", CenterOfflineStateKeepsPlcStatusUnchanged),
     ("Center telemetry snapshot carries station runtime data", CenterTelemetrySnapshotCarriesStationRuntimeData),
-    ("Center dashboard device totals are calculated from station data", CenterDashboardDeviceTotalsAreCalculatedFromStationData)
+    ("Center dashboard device totals are calculated from station data", CenterDashboardDeviceTotalsAreCalculatedFromStationData),
+    ("Center product report request carries one completed product", CenterProductReportRequestCarriesOneCompletedProduct)
 };
 
 foreach (var test in tests)
@@ -228,6 +229,32 @@ static void CenterDashboardDeviceTotalsAreCalculatedFromStationData()
     AssertEqual(13, device.TodayTotalCount, "Dashboard device total must be the sum of station totals.");
     AssertEqual(12, device.TodayQualifiedCount, "Dashboard device qualified count must be the sum of station qualified counts.");
     AssertEqual(1, device.TodayFailedCount, "Dashboard device failed count must be the sum of station failed counts.");
+}
+
+static void CenterProductReportRequestCarriesOneCompletedProduct()
+{
+    var request = new CenterProductReportRequest
+    {
+        DeviceId = "EM-001",
+        StationNo = 2,
+        WorkOrder = "WO-2",
+        ProductJobNo = "164#J",
+        ProductNo = "P0001",
+        ProductResult = ProductionConstants.TestResults.Ok,
+        Points =
+        [
+            new CenterProductReportPointDto
+            {
+                TouchNo = "1",
+                TestResult = ProductionConstants.TestResults.Ok,
+                RawDataJson = "{\"height\":\"1.23\"}"
+            }
+        ]
+    };
+
+    AssertEqual(2, request.StationNo, "Completed product forwarding must preserve the producing station.");
+    AssertEqual("164#J", request.ProductJobNo, "Completed product forwarding must preserve the product job number.");
+    AssertEqual(1, request.Points.Count, "Completed product forwarding must include collected point rows.");
 }
 
 static void AssertTrue(bool condition, string message)
