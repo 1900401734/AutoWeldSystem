@@ -84,7 +84,7 @@ namespace AutoWeldSystem.UI.Forms
             lblHint.Name = "lblHint";
             lblHint.Size = new Size(1156, 38);
             lblHint.TabIndex = 0;
-            lblHint.Text = "按产品工艺配置计算最终 PLC 地址。表达式：偏移:类型-规则_小数位；数值如 14:F-0_2，数值字符串如 0:S-8_3。";
+            lblHint.Text = "按产品工艺配置计算最终 PLC 地址。表达式：偏移:类型-规则_小数位；规则4结果(2=NG、3=OK、4=焊前NG)；数值如 14:F-0_2，数值字符串如 0:S-8_3。";
             lblHint.TextAlign = ContentAlignment.MiddleLeft;
             // 
             // inputQuery

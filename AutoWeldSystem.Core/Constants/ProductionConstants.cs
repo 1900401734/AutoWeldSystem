@@ -181,14 +181,19 @@ public static class ProductionConstants
     }
 
     /// <summary>
-    /// Station test result values. PLC raw value 3 means OK; all other values are NG.
+    /// Station test result values read from PLC and shown in local production data.
     /// </summary>
     public static class TestResults
     {
+        public const string NoResultRawValue = "0";
+        public const string NgRawValue = "2";
         public const string OkRawValue = "3";
+        public const string PreWeldNgRawValue = "4";
         public const string Ok = "OK";
         public const string Ng = "NG";
+        public const string PreWeldNg = "焊前NG";
         public const string Unknown = "Unknown";
+        public const string NotAvailable = "--";
     }
 
     /// <summary>

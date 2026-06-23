@@ -276,18 +276,21 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         AddValue(values, "touch_no_raw", touchNo);
         AddValue(values, "touch_result_raw", touchResultRaw);
 
-        foreach (var schemeItem in schemeItems)
+        var testResult = NormalizeTestResult(FirstValue(values, "touch_result_raw", "product_result"));
+        if (!TestResultRules.IsPreWeldNg(testResult))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            await ReadTestItemValuesAsync(
-                config,
-                schemeItem,
-                testContextOffset,
-                values,
-                cancellationToken);
+            foreach (var schemeItem in schemeItems)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await ReadTestItemValuesAsync(
+                    config,
+                    schemeItem,
+                    testContextOffset,
+                    values,
+                    cancellationToken);
+            }
         }
 
-        var resultRaw = FirstValue(values, "touch_result_raw", "product_result");
         return new BizWeldPointRecord
         {
             TaskId = task.Id,
@@ -298,7 +301,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             ProductNo = header.ProductNo ?? string.Empty,
             TouchNo = string.IsNullOrWhiteSpace(touchNo) ? touchIndex.ToString(CultureInfo.InvariantCulture) : touchNo.Trim(),
             StationNo = stationNo,
-            TestResult = NormalizeTestResult(resultRaw),
+            TestResult = testResult,
             OperatorNo = task.UserNumber ?? string.Empty,
             Ts = DateTime.Now,
             ProductCompleted = touchIndex >= header.ActualTouchCount,
@@ -516,17 +519,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
     }
 
     private static string NormalizeTestResult(string? rawResult)
-    {
-        if (string.IsNullOrWhiteSpace(rawResult))
-        {
-            return ProductionConstants.TestResults.Unknown;
-        }
-
-        return string.Equals(rawResult.Trim(), ProductionConstants.TestResults.OkRawValue, StringComparison.Ordinal)
-            || string.Equals(rawResult.Trim(), ProductionConstants.TestResults.Ok, StringComparison.OrdinalIgnoreCase)
-            ? ProductionConstants.TestResults.Ok
-            : ProductionConstants.TestResults.Ng;
-    }
+        => TestResultRules.Normalize(rawResult);
 
     private static int NormalizeStationNo(int stationNo, BizWeldTask task)
     {

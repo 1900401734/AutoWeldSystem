@@ -8,7 +8,9 @@ var tests = new (string Name, Action Run)[]
     ("Collection does not imply local save or upload", CollectionDoesNotImplyOutput),
     ("Unavailable roles are cleared before save", UnavailableRolesAreCleared),
     ("Running task with changed PLC recipe requests reconciliation", RunningTaskWithChangedPlcRecipeRequestsReconciliation),
-    ("Finished PLC work-order status skips recipe reconciliation", FinishedWorkOrderStatusSkipsRecipeReconciliation)
+    ("Finished PLC work-order status skips recipe reconciliation", FinishedWorkOrderStatusSkipsRecipeReconciliation),
+    ("PLC test result codes map to explicit result names", PlcTestResultCodesMapToExplicitResultNames),
+    ("Pre-weld NG is treated as failed product result", PreWeldNgIsTreatedAsFailedProductResult)
 };
 
 foreach (var test in tests)
@@ -105,6 +107,26 @@ static void FinishedWorkOrderStatusSkipsRecipeReconciliation()
     AssertFalse(decision.ShouldReconcile, "PLC 工单状态为完工/禁止生产时，不应继续写回配方号。");
 }
 
+static void PlcTestResultCodesMapToExplicitResultNames()
+{
+    AssertEqual(ProductionConstants.TestResults.Ng, TestResultRules.Normalize("2"), "PLC raw value 2 must mean NG.");
+    AssertEqual(ProductionConstants.TestResults.Ok, TestResultRules.Normalize("3"), "PLC raw value 3 must mean OK.");
+    AssertEqual(ProductionConstants.TestResults.PreWeldNg, TestResultRules.Normalize("4"), "PLC raw value 4 must mean pre-weld NG.");
+    AssertEqual(ProductionConstants.TestResults.Unknown, TestResultRules.Normalize("0"), "PLC raw value 0 must not be treated as OK or NG.");
+    AssertEqual(ProductionConstants.TestResults.NotAvailable, TestResultRules.ToDisplayText("0"), "PLC raw value 0 must display as --.");
+    AssertEqual(ProductionConstants.TestResults.Unknown, TestResultRules.Normalize("1"), "Undefined PLC result values must stay Unknown.");
+}
+
+static void PreWeldNgIsTreatedAsFailedProductResult()
+{
+    var result = TestResultRules.ResolveProductResult([
+        ProductionConstants.TestResults.Ok,
+        ProductionConstants.TestResults.PreWeldNg
+    ]);
+
+    AssertEqual(ProductionConstants.TestResults.PreWeldNg, result, "Product result should preserve pre-weld NG when any point failed before welding.");
+    AssertTrue(TestResultRules.IsFailed(result), "Pre-weld NG must be treated as a failed result.");
+}
 static void AssertTrue(bool condition, string message)
 {
     if (!condition)

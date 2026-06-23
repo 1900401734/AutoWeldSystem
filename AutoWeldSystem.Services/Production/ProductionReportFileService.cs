@@ -310,17 +310,7 @@ public class ProductionReportFileService : IProductionReportFileService
     }
 
     private static string ResolveProductResult(IEnumerable<BizWeldPointRecord> records)
-    {
-        var recordList = records.ToList();
-        if (recordList.Any(record => string.Equals(record.TestResult, ProductionConstants.TestResults.Ng, StringComparison.OrdinalIgnoreCase)))
-        {
-            return ProductionConstants.TestResults.Ng;
-        }
-
-        return recordList.All(record => string.Equals(record.TestResult, ProductionConstants.TestResults.Ok, StringComparison.OrdinalIgnoreCase))
-            ? ProductionConstants.TestResults.Ok
-            : ProductionConstants.TestResults.Unknown;
-    }
+        => TestResultRules.ResolveProductResult(records.Select(record => record.TestResult));
 
     private Dictionary<string, string> BuildRow(
         BizWeldPointRecord record,

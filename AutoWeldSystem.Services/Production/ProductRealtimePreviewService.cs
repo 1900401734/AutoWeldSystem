@@ -562,10 +562,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             return result;
         }
 
-        return string.Equals(result, ProductionConstants.TestResults.OkRawValue, StringComparison.Ordinal)
-            || string.Equals(result, ProductionConstants.TestResults.Ok, StringComparison.OrdinalIgnoreCase)
-            ? ProductionConstants.TestResults.Ok
-            : ProductionConstants.TestResults.Ng;
+        return TestResultRules.ToDisplayText(result);
     }
 
     private void Publish(ProductRealtimePreviewSnapshot snapshot)

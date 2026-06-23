@@ -2,6 +2,7 @@ using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs.Plc;
 using AutoWeldSystem.Core.Interfaces.PLC;
 using AutoWeldSystem.Core.Plc;
+using AutoWeldSystem.Core.Production;
 using System.Globalization;
 
 namespace AutoWeldSystem.Services.Plc;
@@ -300,18 +301,7 @@ public sealed class ExpressionReadService : IPlcExpressionReadService
     }
 
     private static string FormatResult(string? value)
-    {
-        var result = NormalizePlcText(value);
-        if (string.IsNullOrWhiteSpace(result))
-        {
-            return ProductionConstants.TestResults.Unknown;
-        }
-
-        return string.Equals(result, ProductionConstants.TestResults.OkRawValue, StringComparison.Ordinal)
-            || string.Equals(result, ProductionConstants.TestResults.Ok, StringComparison.OrdinalIgnoreCase)
-            ? ProductionConstants.TestResults.Ok
-            : ProductionConstants.TestResults.Ng;
-    }
+        => TestResultRules.ToDisplayText(value);
 
     private static string NormalizeDataType(string? dataType)
     {

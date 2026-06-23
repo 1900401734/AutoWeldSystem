@@ -1,6 +1,7 @@
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
+using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Core.ViewModels;
 using AutoWeldSystem.Data;
 
@@ -153,16 +154,7 @@ public sealed class ProductHistoryService : IProductHistoryService
     }
 
     private static string ResolveProductResult(IReadOnlyList<BizWeldPointRecord> records)
-    {
-        if (records.Any(record => string.Equals(record.TestResult, ProductionConstants.TestResults.Ng, StringComparison.OrdinalIgnoreCase)))
-        {
-            return ProductionConstants.TestResults.Ng;
-        }
-
-        return records.All(record => string.Equals(record.TestResult, ProductionConstants.TestResults.Ok, StringComparison.OrdinalIgnoreCase))
-            ? ProductionConstants.TestResults.Ok
-            : ProductionConstants.TestResults.Unknown;
-    }
+        => TestResultRules.ResolveProductResult(records.Select(record => record.TestResult));
 
     private static string ResolveProductUploadStatus(IReadOnlyList<BizWeldPointRecord> records)
     {

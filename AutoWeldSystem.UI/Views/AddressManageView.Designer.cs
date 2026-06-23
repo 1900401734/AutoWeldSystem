@@ -923,7 +923,7 @@
             lblTestItemHint.Name = "lblTestItemHint";
             lblTestItemHint.Size = new Size(1236, 30);
             lblTestItemHint.TabIndex = 0;
-            lblTestItemHint.Text = "维护测试项名称、单位和相对偏移表达式。表达式：偏移:类型-规则_小数位；类型 B/H/I/F/S；规则 0原值、1除以10、2除以100、3除以1000、4结果；数值如 14:F-0_2，数值字符串如 0:S-8_3。";
+            lblTestItemHint.Text = "维护测试项名称、单位和相对偏移表达式。表达式：偏移:类型-规则_小数位；类型 B/H/I/F/S；规则 0原值、1除以10、2除以100、3除以1000、4结果(2=NG、3=OK、4=焊前NG)；数值如 14:F-0_2，数值字符串如 0:S-8_3。";
             lblTestItemHint.TextAlign = ContentAlignment.MiddleLeft;
             //
             // testItemToolbar

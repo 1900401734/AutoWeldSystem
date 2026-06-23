@@ -2721,7 +2721,7 @@ public partial class MonitorView : BaseView
             return "--";
         }
 
-        return NormalizeStationResultText(productResult);
+        return TestResultRules.ToDisplayText(productResult);
     }
 
     /// <summary>
@@ -2731,12 +2731,12 @@ public partial class MonitorView : BaseView
     /// <returns>用于界面显示的颜色。</returns>
     private static Color ResolveStationResultColor(string resultText)
     {
-        if (string.Equals(resultText, ProductionConstants.TestResults.Ok, StringComparison.OrdinalIgnoreCase))
+        if (TestResultRules.IsOk(resultText))
         {
             return UiColors.Status.Success;
         }
 
-        return string.Equals(resultText, ProductionConstants.TestResults.Ng, StringComparison.OrdinalIgnoreCase)
+        return TestResultRules.IsFailed(resultText)
             ? UiColors.Status.Danger
             : UiColors.Status.Muted;
     }
@@ -2747,12 +2747,7 @@ public partial class MonitorView : BaseView
     /// <param name="rawResult">原始结果。</param>
     /// <returns>处理后的文本。</returns>
     private static string NormalizeStationResultText(string? rawResult)
-    {
-        return string.Equals(rawResult?.Trim(), ProductionConstants.TestResults.OkRawValue, StringComparison.Ordinal)
-            || string.Equals(rawResult?.Trim(), ProductionConstants.TestResults.Ok, StringComparison.OrdinalIgnoreCase)
-            ? ProductionConstants.TestResults.Ok
-            : ProductionConstants.TestResults.Ng;
-    }
+        => TestResultRules.ToDisplayText(rawResult);
 
     /// <summary>
     /// 更新当前时间。
@@ -4616,14 +4611,14 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        var normalizedValue = value.Trim();
-        if (string.Equals(normalizedValue, ProductionConstants.TestResults.Ok, StringComparison.OrdinalIgnoreCase))
+        var normalizedValue = TestResultRules.Normalize(value);
+        if (TestResultRules.IsOk(normalizedValue))
         {
             SetPreviewResultCellColor(cell, UiColors.Status.Success);
             return;
         }
 
-        if (string.Equals(normalizedValue, ProductionConstants.TestResults.Ng, StringComparison.OrdinalIgnoreCase))
+        if (TestResultRules.IsFailed(normalizedValue))
         {
             SetPreviewResultCellColor(cell, UiColors.Status.Danger);
             return;
@@ -4984,13 +4979,13 @@ public partial class MonitorView : BaseView
         var tag = CurrentLiveResultTag;
         SetControlText(tag, $"产品结果：{resultText}");
 
-        if (string.Equals(resultText, ProductionConstants.TestResults.Ok, StringComparison.OrdinalIgnoreCase))
+        if (TestResultRules.IsOk(resultText))
         {
             SetLiveResultTagColor(tag, UiColors.Status.Success, Color.White);
             return;
         }
 
-        if (string.Equals(resultText, ProductionConstants.TestResults.Ng, StringComparison.OrdinalIgnoreCase))
+        if (TestResultRules.IsFailed(resultText))
         {
             SetLiveResultTagColor(tag, UiColors.Status.Danger, Color.White);
             return;
@@ -6006,15 +6001,7 @@ public partial class MonitorView : BaseView
         }
 
         var resultText = value.Trim();
-        if (string.Equals(resultText, ProductionConstants.TestResults.OkRawValue, StringComparison.Ordinal)
-            || string.Equals(resultText, ProductionConstants.TestResults.Ok, StringComparison.OrdinalIgnoreCase))
-        {
-            return ProductionConstants.TestResults.Ok;
-        }
-
-        return string.Equals(resultText, _localizer.GetString(TextKeys.Production.NotAvailable), StringComparison.Ordinal)
-            ? resultText
-            : ProductionConstants.TestResults.Ng;
+        return TestResultRules.ToDisplayText(resultText);
     }
 
     /// <summary>
