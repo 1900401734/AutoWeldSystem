@@ -14,12 +14,17 @@ public sealed class CenterTelemetryIngestService
 {
     private readonly SqlSugarDbContext _dbContext;
     private readonly IHubContext<CenterDashboardHub> _hubContext;
+    private readonly CenterDashboardChangeNotifier _changeNotifier;
     private readonly object _dbLock = new();
 
-    public CenterTelemetryIngestService(SqlSugarDbContext dbContext, IHubContext<CenterDashboardHub> hubContext)
+    public CenterTelemetryIngestService(
+        SqlSugarDbContext dbContext,
+        IHubContext<CenterDashboardHub> hubContext,
+        CenterDashboardChangeNotifier changeNotifier)
     {
         _dbContext = dbContext;
         _hubContext = hubContext;
+        _changeNotifier = changeNotifier;
     }
 
     /// <summary>
@@ -47,6 +52,7 @@ public sealed class CenterTelemetryIngestService
             UpsertRuntimeSnapshot(deviceId, request);
         }
 
+        _changeNotifier.Notify(deviceId);
         await _hubContext.Clients.All.SendAsync("CenterDashboardChanged", deviceId, cancellationToken);
 
         return new CenterTelemetryAck

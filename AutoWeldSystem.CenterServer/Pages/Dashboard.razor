@@ -1,13 +1,13 @@
 @page "/Dashboard"
 @using AutoWeldSystem.CenterServer.Configuration
 @using AutoWeldSystem.CenterServer.Models
+@using AutoWeldSystem.CenterServer.Services
 @using AutoWeldSystem.Core.Constants
 @using AutoWeldSystem.Core.DTOs.CenterServer
-@using Microsoft.AspNetCore.SignalR.Client
 @inject AutoWeldSystem.CenterServer.Services.CenterDashboardQueryService DashboardQuery
 @inject AutoWeldSystem.CenterServer.Services.CenterPushJsonlLogService PushLogService
 @inject AutoWeldSystem.CenterServer.Services.CenterServerSettingsService SettingsService
-@inject NavigationManager NavigationManager
+@inject AutoWeldSystem.CenterServer.Services.CenterDashboardChangeNotifier ChangeNotifier
 @implements IAsyncDisposable
 
 <main class="dashboard-shell">
@@ -16,7 +16,10 @@
             <h1>中心服务器看板</h1>
             <p>动态汇总已接入设备的在线状态、工位状态和生产数据。</p>
         </div>
-        <div class="dashboard-time">@_snapshot.GeneratedAt.ToString("yyyy-MM-dd HH:mm:ss")</div>
+        <div class="dashboard-time">
+            <div>@_snapshot.GeneratedAt.ToString("yyyy-MM-dd HH:mm:ss")</div>
+            <small>实时：@FormatTime(_lastRealtimeRefreshAt) / 轮询：@FormatTime(_lastPollingRefreshAt)</small>
+        </div>
     </header>
 
     <section class="settings-panel">
@@ -168,54 +171,38 @@
     private CenterDashboardSnapshotDto _snapshot = new();
     private CenterServerLocalSettings _settings = new();
     private IReadOnlyList<CenterPushLogRecord> _logs = [];
-    private HubConnection? _hubConnection;
     private PeriodicTimer? _timer;
     private CancellationTokenSource? _cts;
     private string _settingsMessage = string.Empty;
+    private DateTime? _lastRealtimeRefreshAt;
+    private DateTime? _lastPollingRefreshAt;
     private string _logDeviceKeyword = string.Empty;
     private string _logStationText = string.Empty;
     private string _logRequestType = string.Empty;
     private string _logKeyword = string.Empty;
 
-    protected override async Task OnInitializedAsync()
+    protected override Task OnInitializedAsync()
     {
         _settings = SettingsService.Get();
         _snapshot = DashboardQuery.GetSnapshot();
         RefreshLogs();
         _cts = new CancellationTokenSource();
-        try
-        {
-            await StartDashboardHubAsync(_cts.Token);
-        }
-        catch
-        {
-            _settingsMessage = "实时刷新连接失败，已使用轮询刷新。";
-        }
-
+        ChangeNotifier.DashboardChanged += ChangeNotifier_DashboardChanged;
+        _settingsMessage = "实时刷新已启用，轮询每 10 秒兜底。";
         _timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
         _ = RefreshLoopAsync(_cts.Token);
+
+        return Task.CompletedTask;
     }
 
-    private async Task StartDashboardHubAsync(CancellationToken cancellationToken)
+    private void ChangeNotifier_DashboardChanged(object? sender, CenterDashboardChangedEventArgs e)
     {
-        _hubConnection = new HubConnectionBuilder()
-            .WithUrl(NavigationManager.ToAbsoluteUri("/hubs/center-dashboard"))
-            .WithAutomaticReconnect()
-            .Build();
-
-        _hubConnection.On<string>("CenterDashboardChanged", deviceId =>
+        _ = InvokeAsync(() =>
         {
-            _ = InvokeAsync(RefreshDashboardFromHubAsync);
+            RefreshDashboardSnapshot();
+            _lastRealtimeRefreshAt = e.ChangedAt;
+            StateHasChanged();
         });
-
-        await _hubConnection.StartAsync(cancellationToken);
-    }
-
-    private async Task RefreshDashboardFromHubAsync()
-    {
-        _snapshot = DashboardQuery.GetSnapshot();
-        RefreshLogs();
-        await InvokeAsync(StateHasChanged);
     }
 
     private async Task RefreshLoopAsync(CancellationToken cancellationToken)
@@ -225,11 +212,18 @@
             return;
         }
 
-        while (await _timer.WaitForNextTickAsync(cancellationToken))
+        try
         {
-            _snapshot = DashboardQuery.GetSnapshot(cancellationToken);
-            RefreshLogs();
-            await InvokeAsync(StateHasChanged);
+            while (await _timer.WaitForNextTickAsync(cancellationToken))
+            {
+                RefreshDashboardSnapshot(cancellationToken);
+                _lastPollingRefreshAt = DateTime.Now;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The dashboard page was closed; no further refresh work is required.
         }
     }
 
@@ -238,6 +232,12 @@
         SettingsService.Save(_settings);
         _settings = SettingsService.Get();
         _settingsMessage = $"已保存：{DateTime.Now:HH:mm:ss}";
+        RefreshLogs();
+    }
+
+    private void RefreshDashboardSnapshot(CancellationToken cancellationToken = default)
+    {
+        _snapshot = DashboardQuery.GetSnapshot(cancellationToken);
         RefreshLogs();
     }
 
@@ -256,13 +256,10 @@
     public async ValueTask DisposeAsync()
     {
         _cts?.Cancel();
+        ChangeNotifier.DashboardChanged -= ChangeNotifier_DashboardChanged;
         _timer?.Dispose();
-        if (_hubConnection is not null)
-        {
-            await _hubConnection.DisposeAsync();
-        }
-
         _cts?.Dispose();
+        await Task.CompletedTask;
     }
 
     private static bool HasAlarmStation(CenterDashboardDeviceDto device)

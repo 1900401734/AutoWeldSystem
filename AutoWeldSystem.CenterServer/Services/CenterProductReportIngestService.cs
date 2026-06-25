@@ -22,17 +22,20 @@ public sealed class CenterProductReportIngestService
     private readonly SqlSugarDbContext _dbContext;
     private readonly IHubContext<CenterDashboardHub> _hubContext;
     private readonly CenterServerSettingsService _settingsService;
+    private readonly CenterDashboardChangeNotifier _changeNotifier;
     private readonly object _dbLock = new();
     private readonly object _fileLock = new();
 
     public CenterProductReportIngestService(
         SqlSugarDbContext dbContext,
         IHubContext<CenterDashboardHub> hubContext,
-        CenterServerSettingsService settingsService)
+        CenterServerSettingsService settingsService,
+        CenterDashboardChangeNotifier changeNotifier)
     {
         _dbContext = dbContext;
         _hubContext = hubContext;
         _settingsService = settingsService;
+        _changeNotifier = changeNotifier;
     }
 
     /// <summary>
@@ -71,6 +74,7 @@ public sealed class CenterProductReportIngestService
             RefreshStationCounts(deviceId, request);
         }
 
+        _changeNotifier.Notify(deviceId);
         await _hubContext.Clients.All.SendAsync("CenterDashboardChanged", deviceId, cancellationToken);
 
         return new CenterTelemetryAck

@@ -33,6 +33,7 @@ builder.Services.AddSingleton(provider =>
 });
 builder.Services.AddSingleton<CenterServerSettingsService>();
 builder.Services.AddSingleton<CenterServerWindowsStartupService>();
+builder.Services.AddSingleton<CenterDashboardChangeNotifier>();
 builder.Services.AddSingleton<CenterPushJsonlLogService>();
 builder.Services.AddSingleton<CenterTelemetryIngestService>();
 builder.Services.AddSingleton<CenterDashboardQueryService>();
@@ -94,6 +95,7 @@ app.MapBlazorHub();
 app.MapHub<CenterDashboardHub>("/hubs/center-dashboard");
 app.MapFallbackToPage("/_Host");
 
+Log.Information("Center server configured URLs: {Urls}. Ensure the industrial PC firewall allows TCP 7099 when accessed from LAN.", app.Configuration["Urls"]);
 app.Run();
 
 static async Task<IResult> HandleTelemetryAsync(
