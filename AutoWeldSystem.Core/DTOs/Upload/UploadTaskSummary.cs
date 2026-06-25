@@ -14,6 +14,8 @@ public sealed class UploadTaskSummary
 
     public string BusinessId { get; set; } = string.Empty;
 
+    public string TaskIdentity { get; set; } = string.Empty;
+
     public string Status { get; set; } = string.Empty;
 
     public int RetryCount { get; set; }

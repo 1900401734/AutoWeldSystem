@@ -38,6 +38,11 @@ public class UploadTaskService : IUploadTaskService
         _productionLogService = productionLogService;
     }
 
+    /// <summary>
+    /// Raised when an upload task status or upload-summary visibility changes.
+    /// </summary>
+    public event EventHandler<UploadTaskStatusChangedEventArgs>? TaskStatusChanged;
+
     public IReadOnlyList<UploadTaskSummary> GetTasks(string taskType, bool includeCompleted = false)
     {
         lock (_dbLock)
@@ -45,7 +50,7 @@ public class UploadTaskService : IUploadTaskService
             _dbContext.InitDatabase();
             var normalizedTaskType = NormalizeTaskType(taskType);
             var query = _dbContext.Db.Queryable<BizUploadTask>()
-                .Where(task => task.TaskType == normalizedTaskType);
+                .Where(task => task.TaskType == normalizedTaskType && !task.IsDeleted);
 
             if (!includeCompleted)
             {
@@ -66,7 +71,7 @@ public class UploadTaskService : IUploadTaskService
         {
             _dbContext.InitDatabase();
             var task = _dbContext.Db.Queryable<BizUploadTask>().InSingle(id);
-            return task is null ? null : ToSummary(task);
+            return task is null || task.IsDeleted ? null : ToSummary(task);
         }
     }
 
@@ -83,6 +88,11 @@ public class UploadTaskService : IUploadTaskService
                 task.CreatedTime = DateTime.Now;
                 task.UpdatedTime = DateTime.Now;
                 return _dbContext.Db.Insertable(task).ExecuteReturnEntity();
+            }
+
+            if (existing.IsDeleted)
+            {
+                return existing;
             }
 
             if (existing.Status == ProductionConstants.UploadStatuses.Uploaded)
@@ -128,6 +138,7 @@ public class UploadTaskService : IUploadTaskService
             var normalizedTaskType = NormalizeTaskType(taskType);
             taskIds = _dbContext.Db.Queryable<BizUploadTask>()
                 .Where(task => task.TaskType == normalizedTaskType
+                    && !task.IsDeleted
                     && task.Status != ProductionConstants.UploadStatuses.Uploaded)
                 .ToList()
                 .Select(task => task.Id)
@@ -149,28 +160,34 @@ public class UploadTaskService : IUploadTaskService
 
     public void RequestRetry(int id)
     {
+        UploadTaskStatusChangedEventArgs? changed = null;
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
             var task = _dbContext.Db.Queryable<BizUploadTask>().InSingle(id);
-            if (task is null || task.Status == ProductionConstants.UploadStatuses.Uploaded)
+            if (task is null || task.IsDeleted || task.Status == ProductionConstants.UploadStatuses.Uploaded)
             {
                 return;
             }
 
             MarkRetryRequested(task);
             _dbContext.Db.Updateable(task).ExecuteCommand();
+            changed = ToStatusChangedEvent(task);
         }
+
+        PublishTaskStatusChanged(changed);
     }
 
     public int RequestRetryAll(string taskType)
     {
+        var changes = new List<UploadTaskStatusChangedEventArgs>();
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
             var normalizedTaskType = NormalizeTaskType(taskType);
             var tasks = _dbContext.Db.Queryable<BizUploadTask>()
                 .Where(task => task.TaskType == normalizedTaskType
+                    && !task.IsDeleted
                     && task.Status != ProductionConstants.UploadStatuses.Uploaded)
                 .ToList();
 
@@ -178,10 +195,68 @@ public class UploadTaskService : IUploadTaskService
             {
                 MarkRetryRequested(task);
                 _dbContext.Db.Updateable(task).ExecuteCommand();
+                changes.Add(ToStatusChangedEvent(task));
+            }
+        }
+
+        foreach (var change in changes)
+        {
+            PublishTaskStatusChanged(change);
+        }
+
+        return changes.Count;
+    }
+
+    public void DeleteTask(int id)
+    {
+        UploadTaskStatusChangedEventArgs? changed = null;
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var task = _dbContext.Db.Queryable<BizUploadTask>().InSingle(id);
+            if (task is null || task.IsDeleted)
+            {
+                return;
             }
 
-            return tasks.Count;
+            task.IsDeleted = true;
+            task.DeletedTime = DateTime.Now;
+            task.UpdatedTime = DateTime.Now;
+            task.Message = "Deleted from upload state page.";
+            _dbContext.Db.Updateable(task).ExecuteCommand();
+            changed = ToStatusChangedEvent(task, "Deleted");
         }
+
+        PublishTaskStatusChanged(changed);
+    }
+
+    public void HideWeldTaskUploadState(int weldTaskId)
+    {
+        UploadTaskStatusChangedEventArgs? changed = null;
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var task = _dbContext.Db.Queryable<BizWeldTask>().InSingle(weldTaskId);
+            if (task is null || task.UploadStateHidden)
+            {
+                return;
+            }
+
+            task.UploadStateHidden = true;
+            _dbContext.Db.Updateable(task)
+                .UpdateColumns(it => new { it.UploadStateHidden })
+                .Where(it => it.Id == task.Id)
+                .ExecuteCommand();
+
+            changed = new UploadTaskStatusChangedEventArgs
+            {
+                WeldTaskId = task.Id,
+                TaskType = "Summary",
+                Status = "Hidden"
+            };
+        }
+
+        PublishTaskStatusChanged(changed);
     }
 
     private BizUploadTask? MarkUploading(int id)
@@ -190,9 +265,9 @@ public class UploadTaskService : IUploadTaskService
         {
             _dbContext.InitDatabase();
             var task = _dbContext.Db.Queryable<BizUploadTask>().InSingle(id);
-            if (task is null || task.Status == ProductionConstants.UploadStatuses.Uploaded)
+            if (task is null || task.IsDeleted || task.Status == ProductionConstants.UploadStatuses.Uploaded)
             {
-                return task;
+                return null;
             }
 
             task.Status = ProductionConstants.UploadStatuses.Uploading;
@@ -231,6 +306,8 @@ public class UploadTaskService : IUploadTaskService
             return Unsupported("Start report task payload is missing.");
         }
 
+        ApplyOfflineStartRequestId(task, request);
+
         var response = await _mesProvider.StartWorkAsync(request, cancellationToken);
         if (!response.IsSuccess || response.Data is null || string.IsNullOrWhiteSpace(response.Data.Id))
         {
@@ -239,6 +316,20 @@ public class UploadTaskService : IUploadTaskService
 
         UpdateTaskExpStartId(task, response.Data.Id);
         return Success(string.IsNullOrWhiteSpace(response.Msg) ? "Start report uploaded." : response.Msg);
+    }
+
+    /// <summary>
+    /// Backfills the device-generated local id for offline start reports that were queued before this rule existed.
+    /// </summary>
+    private void ApplyOfflineStartRequestId(BizUploadTask task, ExperimentStartReq request)
+    {
+        var weldTask = GetWeldTask(task);
+        if (weldTask is null)
+        {
+            return;
+        }
+
+        ExperimentStartRequestRules.ApplyOfflineStartId(weldTask, request);
     }
 
     private async Task<BasicRes<object>> UploadFinishReportAsync(BizUploadTask task, CancellationToken cancellationToken)
@@ -480,11 +571,13 @@ public class UploadTaskService : IUploadTaskService
     {
         var settings = _settingsService.Get();
         var deviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
+        var showTestFlagInHistory = settings.ShowTestFlagInHistory != false;
         var schemeItemCache = new Dictionary<string, IReadOnlyList<ProcessParameterSchemeItem>>(StringComparer.OrdinalIgnoreCase);
         var items = records
             .Select(record => ToProcessParameterUploadItem(
                 record,
                 deviceType,
+                showTestFlagInHistory,
                 ResolveProcessParameterSchemeItems(record, schemeItemCache)))
             .ToList();
         return await _mesProvider.UploadProcessParametersAsync(items, cancellationToken);
@@ -621,6 +714,7 @@ public class UploadTaskService : IUploadTaskService
     private static ProcessParameterUploadItem ToProcessParameterUploadItem(
         BizWeldPointRecord record,
         string deviceType,
+        bool showTestFlagInHistory,
         IReadOnlyList<ProcessParameterSchemeItem> schemeItems)
     {
         var item = new ProcessParameterUploadItem
@@ -632,7 +726,7 @@ public class UploadTaskService : IUploadTaskService
             ProductNo = record.ProductNo,
             TouchNo = ShouldWriteTouchNo(deviceType) ? record.TouchNo : null,
             Type = ResolveProcessParameterType(deviceType),
-            IsTest = record.IsTest,
+            IsTest = ProcessParameterIsTestRules.Resolve(record.IsTest, showTestFlagInHistory, deviceType),
             Ts = record.Ts.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
         };
 
@@ -722,6 +816,7 @@ public class UploadTaskService : IUploadTaskService
             || fieldName.Equals(nameof(ProcessParameterUploadItem.ProcessNo), StringComparison.OrdinalIgnoreCase)
             || fieldName.Equals(nameof(ProcessParameterUploadItem.ProductNo), StringComparison.OrdinalIgnoreCase)
             || fieldName.Equals(nameof(ProcessParameterUploadItem.TouchNo), StringComparison.OrdinalIgnoreCase)
+            || fieldName.Equals(nameof(ProcessParameterUploadItem.IsTest), StringComparison.OrdinalIgnoreCase)
             || fieldName.Equals(nameof(ProcessParameterUploadItem.Type), StringComparison.OrdinalIgnoreCase)
             || fieldName.Equals(nameof(ProcessParameterUploadItem.Ts), StringComparison.OrdinalIgnoreCase);
     }
@@ -872,11 +967,13 @@ public class UploadTaskService : IUploadTaskService
 
     private UploadTaskSummary? FinishExecution(int taskId, BasicRes<object> response)
     {
+        UploadTaskSummary? summary;
+        UploadTaskStatusChangedEventArgs? changed = null;
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
             var task = _dbContext.Db.Queryable<BizUploadTask>().InSingle(taskId);
-            if (task is null)
+            if (task is null || task.IsDeleted)
             {
                 return null;
             }
@@ -890,8 +987,12 @@ public class UploadTaskService : IUploadTaskService
             task.UpdatedTime = DateTime.Now;
             _dbContext.Db.Updateable(task).ExecuteCommand();
             UpdateReportFileStatus(task, response);
-            return ToSummary(task);
+            summary = ToSummary(task);
+            changed = ToStatusChangedEvent(task);
         }
+
+        PublishTaskStatusChanged(changed);
+        return summary;
     }
 
     private void WriteUploadFlowLog(BizUploadTask task, BasicRes<object> response)
@@ -1033,34 +1134,20 @@ public class UploadTaskService : IUploadTaskService
 
     private static bool IsRecordInTaskScope(BizWeldPointRecord record, BizUploadTask task)
     {
-        var productNo = ReadProductNo(task.PayloadJson);
-        return string.IsNullOrWhiteSpace(productNo)
-            || string.Equals(record.ProductNo, productNo, StringComparison.OrdinalIgnoreCase);
+        var stationNo = ProcessParameterUploadPayloadRules.ReadStationNo(task.PayloadJson);
+        if (stationNo > 0 && record.StationNo != stationNo)
+        {
+            return false;
+        }
+
+        var productNos = ProcessParameterUploadPayloadRules.ReadProductNos(task.PayloadJson);
+        return productNos.Count == 0
+            || productNos.Contains(record.ProductNo, StringComparer.OrdinalIgnoreCase);
     }
 
     private static bool IsProductScopedTask(BizUploadTask task)
     {
-        return !string.IsNullOrWhiteSpace(ReadProductNo(task.PayloadJson));
-    }
-
-    private static string? ReadProductNo(string? payloadJson)
-    {
-        if (string.IsNullOrWhiteSpace(payloadJson))
-        {
-            return null;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(payloadJson);
-            return document.RootElement.TryGetProperty("ProductNumber", out var productNoElement)
-                ? productNoElement.GetString()
-                : null;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
+        return ProcessParameterUploadPayloadRules.ReadProductNos(task.PayloadJson).Count > 0;
     }
 
     private static T? ReadPayloadRequest<T>(string? payloadJson)
@@ -1158,7 +1245,7 @@ public class UploadTaskService : IUploadTaskService
             {
                 StationNo = ReadInt(root, "StationNo"),
                 WorkOrderId = FirstNonEmpty(ReadString(root, "SN"), ReadString(root, "WorkOrder")),
-                ProductNo = ReadString(root, "ProductNumber")
+                ProductNo = FirstNonEmpty(ReadString(root, "ProductNo"), ReadString(root, "ProductNumber"))
             };
         }
         catch (JsonException)
@@ -1253,7 +1340,7 @@ public class UploadTaskService : IUploadTaskService
         return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
     }
 
-    private static UploadTaskSummary ToSummary(BizUploadTask task)
+    private UploadTaskSummary ToSummary(BizUploadTask task)
     {
         return new UploadTaskSummary
         {
@@ -1261,6 +1348,7 @@ public class UploadTaskService : IUploadTaskService
             TaskType = task.TaskType,
             Target = task.Target,
             BusinessId = task.BusinessId ?? string.Empty,
+            TaskIdentity = ResolveTaskIdentity(task),
             Status = task.Status,
             RetryCount = task.RetryCount,
             MaxRetryCount = task.MaxRetryCount,
@@ -1272,6 +1360,43 @@ public class UploadTaskService : IUploadTaskService
             CreatedTime = task.CreatedTime,
             UpdatedTime = task.UpdatedTime
         };
+    }
+
+    /// <summary>
+    /// Creates the event payload for upload task changes.
+    /// </summary>
+    private static UploadTaskStatusChangedEventArgs ToStatusChangedEvent(BizUploadTask task, string? status = null)
+    {
+        return new UploadTaskStatusChangedEventArgs
+        {
+            UploadTaskId = task.Id,
+            WeldTaskId = task.WeldTaskId,
+            TaskType = task.TaskType,
+            Status = status ?? task.Status
+        };
+    }
+
+    /// <summary>
+    /// Raises the upload task status event after database locks have been released.
+    /// </summary>
+    private void PublishTaskStatusChanged(UploadTaskStatusChangedEventArgs? args)
+    {
+        if (args is not null)
+        {
+            TaskStatusChanged?.Invoke(this, args);
+        }
+    }
+
+    /// <summary>
+    /// Resolves the operator-facing task id for upload-status detail rows.
+    /// </summary>
+    private string ResolveTaskIdentity(BizUploadTask task)
+    {
+        var weldTask = task.WeldTaskId is null
+            ? null
+            : _dbContext.Db.Queryable<BizWeldTask>().InSingle(task.WeldTaskId.Value);
+
+        return UploadTaskIdentityRules.Resolve(weldTask, task.WeldTaskId, task.BusinessId);
     }
 
     private sealed record UploadPayloadInfo

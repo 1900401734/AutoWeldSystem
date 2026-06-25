@@ -9,6 +9,8 @@ namespace AutoWeldSystem.Core.Interfaces;
 /// </summary>
 public interface IUploadTaskService
 {
+    event EventHandler<UploadTaskStatusChangedEventArgs>? TaskStatusChanged;
+
     IReadOnlyList<UploadTaskSummary> GetTasks(string taskType, bool includeCompleted = false);
 
     UploadTaskSummary? GetById(int id);
@@ -22,4 +24,8 @@ public interface IUploadTaskService
     void RequestRetry(int id);
 
     int RequestRetryAll(string taskType);
+
+    void DeleteTask(int id);
+
+    void HideWeldTaskUploadState(int weldTaskId);
 }

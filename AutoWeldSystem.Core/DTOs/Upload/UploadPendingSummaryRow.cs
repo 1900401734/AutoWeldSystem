@@ -9,6 +9,11 @@ public sealed class UploadPendingSummaryRow
     public int SequenceNo { get; set; }
 
     /// <summary>
+    /// Local weld task id used for hiding the row from upload summary.
+    /// </summary>
+    public int WeldTaskId { get; set; }
+
+    /// <summary>
     /// MES 已返回时显示 ExpStartId；离线未补传开工时显示本地 32 位 GUID。
     /// </summary>
     public string TaskIdentity { get; set; } = string.Empty;

@@ -33,9 +33,18 @@ public sealed class UploadStatusSummaryService : IUploadStatusSummaryService
         {
             _dbContext.InitDatabase();
 
-            var tasks = _dbContext.Db.Queryable<BizWeldTask>()
+            var recentTasks = _dbContext.Db.Queryable<BizWeldTask>()
                 .OrderByDescending(task => task.Id)
                 .Take(Math.Max(1, maxCount * 3))
+                .ToList();
+            var unfinishedTasks = _dbContext.Db.Queryable<BizWeldTask>()
+                .Where(task => task.EndTime == null && !task.UploadStateHidden)
+                .ToList();
+            var tasks = unfinishedTasks
+                .Concat(recentTasks)
+                .GroupBy(task => task.Id)
+                .Select(group => group.First())
+                .OrderByDescending(task => task.Id)
                 .ToList();
             if (tasks.Count == 0)
             {
@@ -45,6 +54,7 @@ public sealed class UploadStatusSummaryService : IUploadStatusSummaryService
             var taskIds = tasks.Select(task => task.Id).ToList();
             var uploadTasks = _dbContext.Db.Queryable<BizUploadTask>()
                 .Where(task => task.WeldTaskId.HasValue && taskIds.Contains(task.WeldTaskId.Value))
+                .Where(task => !task.IsDeleted)
                 .ToList();
             var weldPoints = _dbContext.Db.Queryable<BizWeldPointRecord>()
                 .Where(record => taskIds.Contains(record.TaskId))
@@ -55,8 +65,9 @@ public sealed class UploadStatusSummaryService : IUploadStatusSummaryService
 
             var rows = tasks
                 .Select(task => BuildRow(task, uploadTasks, weldPoints, reportFiles))
-                .Where(row => row.PendingCount > 0)
-                .Where(row => !string.Equals(row.FinishReportStatus, Uploaded, StringComparison.Ordinal))
+                .Where(row => UploadSummaryVisibilityRules.ShouldShow(
+                    tasks.First(task => task.Id == row.WeldTaskId),
+                    row.PendingCount))
                 .OrderByDescending(row => row.PendingCount)
                 .ThenByDescending(row => row.UpdatedTime)
                 .Take(Math.Max(1, maxCount))
@@ -92,7 +103,8 @@ public sealed class UploadStatusSummaryService : IUploadStatusSummaryService
 
         var row = new UploadPendingSummaryRow
         {
-            TaskIdentity = ResolveTaskIdentity(task),
+            WeldTaskId = task.Id,
+            TaskIdentity = UploadTaskIdentityRules.Resolve(task),
             WorkOrderId = task.SN,
             StationNo = task.StationNo,
             StartReportStatus = AggregateUploadTasks(scopedUploads, ProductionConstants.UploadTaskTypes.StartReport),
@@ -167,21 +179,6 @@ public sealed class UploadStatusSummaryService : IUploadStatusSummaryService
         times.AddRange(weldPoints.Select(item => item.UploadTime ?? item.Ts));
         times.AddRange(reportFiles.Select(item => item.UpdatedTime));
         return times.Max();
-    }
-
-    private static string ResolveTaskIdentity(BizWeldTask task)
-    {
-        if (!string.IsNullOrWhiteSpace(task.ExpStartId))
-        {
-            return task.ExpStartId.Trim();
-        }
-
-        if (!string.IsNullOrWhiteSpace(task.LocalExpStartId))
-        {
-            return task.LocalExpStartId.Trim();
-        }
-
-        return task.Id.ToString("x").PadLeft(32, '0');
     }
 
     private static bool SameStatus(string? left, string right)

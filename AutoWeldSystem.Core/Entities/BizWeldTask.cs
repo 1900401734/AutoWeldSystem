@@ -195,6 +195,13 @@ public class BizWeldTask
     [SugarColumn(Length = 20, ColumnDescription = "上传状态")]
     public string UploadStatus { get; set; } = "Pending";
 
+    /// <summary>
+    /// 用户在上传状态总览中手动隐藏该任务后的标记。
+    /// 只影响上传状态页展示，不删除生产历史、焊点记录或报表文件。
+    /// </summary>
+    [SugarColumn(ColumnDescription = "上传状态总览隐藏")]
+    public bool UploadStateHidden { get; set; }
+
     [SugarColumn(ColumnDataType = "text", IsNullable = true, ColumnDescription = "上传消息")]
     public string? UploadMessage { get; set; }
 

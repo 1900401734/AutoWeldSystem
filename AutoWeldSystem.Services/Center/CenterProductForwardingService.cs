@@ -168,6 +168,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             return _dbContext.Db.Queryable<BizUploadTask>()
                 .Where(task => task.TaskType == ProductionConstants.UploadTaskTypes.CenterProductReport
                     && task.Target == ProductionConstants.UploadTargets.CentralServer
+                    && !task.IsDeleted
                     && task.Status != ProductionConstants.UploadStatuses.Uploaded
                     && task.RetryCount < task.MaxRetryCount
                     && (task.NextRetryTime == null || task.NextRetryTime <= DateTime.Now))
@@ -183,7 +184,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
         {
             _dbContext.InitDatabase();
             var task = _dbContext.Db.Queryable<BizUploadTask>().InSingle(taskId);
-            if (task is null || task.Status == ProductionConstants.UploadStatuses.Uploaded)
+            if (task is null || task.IsDeleted || task.Status == ProductionConstants.UploadStatuses.Uploaded)
             {
                 return null;
             }

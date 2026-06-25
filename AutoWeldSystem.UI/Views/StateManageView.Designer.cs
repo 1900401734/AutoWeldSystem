@@ -24,6 +24,7 @@
             buttonFlow = new FlowLayoutPanel();
             btnRetrySelected = new AntdUI.Button();
             btnRetryAll = new AntdUI.Button();
+            btnDeleteSelected = new AntdUI.Button();
             btnRefresh = new AntdUI.Button();
             tabUploadCategories = new TabControl();
             tabSummary = new TabPage();
@@ -123,6 +124,7 @@
             buttonFlow.AutoSize = true;
             buttonFlow.Controls.Add(btnRetrySelected);
             buttonFlow.Controls.Add(btnRetryAll);
+            buttonFlow.Controls.Add(btnDeleteSelected);
             buttonFlow.Controls.Add(btnRefresh);
             buttonFlow.Dock = DockStyle.Right;
             buttonFlow.Location = new Point(961, 3);
@@ -155,15 +157,27 @@
             btnRetryAll.TabIndex = 1;
             btnRetryAll.Tag = "perm:button.state.retry-all:enabled";
             btnRetryAll.Text = "全部重试";
+            //
+            // btnDeleteSelected
+            //
+            btnDeleteSelected.BorderWidth = 1F;
+            btnDeleteSelected.IconSvg = "DeleteOutlined";
+            btnDeleteSelected.Location = new Point(264, 7);
+            btnDeleteSelected.Margin = new Padding(0, 0, 10, 0);
+            btnDeleteSelected.Name = "btnDeleteSelected";
+            btnDeleteSelected.Size = new Size(122, 40);
+            btnDeleteSelected.TabIndex = 2;
+            btnDeleteSelected.Tag = "perm:button.state.delete:enabled";
+            btnDeleteSelected.Text = "删除选中";
             // 
             // btnRefresh
             // 
             btnRefresh.BorderWidth = 1F;
             btnRefresh.IconSvg = "ReloadOutlined";
-            btnRefresh.Location = new Point(267, 10);
+            btnRefresh.Location = new Point(399, 10);
             btnRefresh.Name = "btnRefresh";
             btnRefresh.Size = new Size(92, 40);
-            btnRefresh.TabIndex = 2;
+            btnRefresh.TabIndex = 3;
             btnRefresh.Tag = "perm:button.state.refresh:enabled";
             btnRefresh.Text = "刷新";
             // 
@@ -324,6 +338,7 @@
         private FlowLayoutPanel buttonFlow;
         private AntdUI.Button btnRetrySelected;
         private AntdUI.Button btnRetryAll;
+        private AntdUI.Button btnDeleteSelected;
         private AntdUI.Button btnRefresh;
         private Label lblSummary;
         private TabControl tabUploadCategories;

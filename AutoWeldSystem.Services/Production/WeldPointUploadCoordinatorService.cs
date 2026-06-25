@@ -141,6 +141,7 @@ public sealed class WeldPointUploadCoordinatorService : IWeldPointUploadCoordina
         return _dbContext.Db.Queryable<BizUploadTask>()
             .Where(task => task.WeldTaskId == weldTaskId
                 && task.TaskType == ProductionConstants.UploadTaskTypes.ProcessParameter
+                && !task.IsDeleted
                 && task.Status != ProductionConstants.UploadStatuses.Uploaded)
             .ToList()
             .Where(task =>
