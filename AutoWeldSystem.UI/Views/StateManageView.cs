@@ -3,6 +3,7 @@ using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
 using AutoWeldSystem.Core.DTOs.Upload;
 using AutoWeldSystem.Core.Interfaces;
+using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.UI.Base;
 using AutoWeldSystem.UI.Infrastructure;
 
@@ -97,16 +98,22 @@ public partial class StateManageView : BaseView
         }
 
         dgvPending.Columns.Add(CreateTextColumn(nameof(UploadTaskSummary.TaskIdentity), "任务ID", 16));
+        if (IsProcessParameterTab())
+        {
+            dgvPending.Columns.Add(CreateTextColumn(nameof(UploadTaskSummary.StationNo), "工位", 6));
+            dgvPending.Columns.Add(CreateTextColumn(nameof(UploadTaskSummary.ProductNo), "产品编号", 12));
+        }
+
         dgvPending.Columns.Add(CreateTextColumn(nameof(UploadTaskSummary.Target), "目标平台", 10));
         dgvPending.Columns.Add(CreateTextColumn(nameof(UploadTaskSummary.Status), "上传状态", 12));
         dgvPending.Columns.Add(CreateTextColumn(nameof(UploadTaskSummary.RetryCount), "重试次数", 9));
         dgvPending.Columns.Add(CreateTextColumn(nameof(UploadTaskSummary.MaxRetryCount), "最大重试", 9));
-        if (!IsStartReportTab())
+        if (IsReportFileTab())
         {
             dgvPending.Columns.Add(CreateTextColumn(nameof(UploadTaskSummary.FilePath), "文件路径", 24));
         }
 
-        dgvPending.Columns.Add(CreateTextColumn(nameof(UploadTaskSummary.Message), "处理消息", 30));
+        dgvPending.Columns.Add(CreateTextColumn(nameof(UploadTaskSummary.DisplayMessage), "处理消息", 30));
         dgvPending.Columns.Add(CreateDateTimeColumn(nameof(UploadTaskSummary.UpdatedTime), "更新时间", 14));
     }
 
@@ -135,7 +142,11 @@ public partial class StateManageView : BaseView
         btnDeleteSelected.Click += DeleteSelected_Click;
         tabUploadCategories.SelectedIndexChanged += (_, _) => SwitchUploadCategory();
         dgvPending.CellFormatting += DgvPending_CellFormatting;
-        dgvPending.SelectionChanged += (_, _) => ApplyDeletePermissionForActiveTab();
+        dgvPending.SelectionChanged += (_, _) =>
+        {
+            ApplyRetrySelectedPermissionForActiveTab();
+            ApplyDeletePermissionForActiveTab();
+        };
     }
 
     private void ApplyLocalizedTexts()
@@ -179,14 +190,39 @@ public partial class StateManageView : BaseView
 
     private void ApplyRetrySelectedPermissionForActiveTab()
     {
-        btnRetrySelected.Enabled = !IsSummaryTab()
+        if (IsSummaryTab())
+        {
+            btnRetrySelected.Enabled = false;
+            return;
+        }
+
+        if (IsProgramFileTab())
+        {
+            btnRetrySelected.Enabled = dgvPending.CurrentRow?.DataBoundItem is ProgramSyncSummary
+                && GlobalContext.HasPermission(PermissionCodes.Buttons.State.RetrySelected);
+            return;
+        }
+
+        btnRetrySelected.Enabled = dgvPending.CurrentRow?.DataBoundItem is UploadTaskSummary { CanRetry: true }
             && GlobalContext.HasPermission(PermissionCodes.Buttons.State.RetrySelected);
     }
 
     private void ApplyDeletePermissionForActiveTab()
     {
-        btnDeleteSelected.Enabled = !IsProgramFileTab()
-            && dgvPending.CurrentRow?.DataBoundItem is not null
+        if (IsProgramFileTab())
+        {
+            btnDeleteSelected.Enabled = false;
+            return;
+        }
+
+        var canDelete = dgvPending.CurrentRow?.DataBoundItem switch
+        {
+            UploadPendingSummaryRow => true,
+            UploadTaskSummary { CanDelete: true } => true,
+            _ => false
+        };
+
+        btnDeleteSelected.Enabled = canDelete
             && GlobalContext.HasPermission(PermissionCodes.Buttons.State.Delete);
     }
 
@@ -215,6 +251,7 @@ public partial class StateManageView : BaseView
             var rows = _summaryService.GetSummary().ToList();
             _bindingSource.DataSource = rows;
             SetSummary(rows.Count(row => row.PendingCount > 0));
+            ApplyRetrySelectedPermissionForActiveTab();
             ApplyDeletePermissionForActiveTab();
             return;
         }
@@ -224,13 +261,17 @@ public partial class StateManageView : BaseView
             var programs = _programService.GetPendingSyncPrograms().ToList();
             _bindingSource.DataSource = programs;
             SetSummary(programs.Count);
+            ApplyRetrySelectedPermissionForActiveTab();
             ApplyDeletePermissionForActiveTab();
             return;
         }
 
-        var tasks = _uploadTaskService.GetTasks(GetActiveUploadTaskType()).ToList();
+        var tasks = IsProcessParameterTab()
+            ? _uploadTaskService.GetProcessParameterRows().ToList()
+            : _uploadTaskService.GetTasks(GetActiveUploadTaskType()).ToList();
         _bindingSource.DataSource = tasks;
         SetSummary(tasks.Count);
+        ApplyRetrySelectedPermissionForActiveTab();
         ApplyDeletePermissionForActiveTab();
     }
 
@@ -251,6 +292,12 @@ public partial class StateManageView : BaseView
         if (dgvPending.CurrentRow?.DataBoundItem is not UploadTaskSummary task)
         {
             ShowWarning(_localizer.GetString(TextKeys.StateManage.MessageSelectPending));
+            return;
+        }
+
+        if (!task.CanRetry)
+        {
+            ShowWarning("该过程参数行来自产品历史，需等待达到批次数量后自动上传，不能手动重试。");
             return;
         }
 
@@ -341,6 +388,12 @@ public partial class StateManageView : BaseView
 
         if (selectedItem is UploadTaskSummary task)
         {
+            if (!task.CanDelete)
+            {
+                ShowWarning("该过程参数行来自产品历史，只用于查看待上传状态，不能删除。");
+                return;
+            }
+
             _uploadTaskService.DeleteTask(task.Id);
             ReloadActiveTasks();
             ShowInfo("已删除选中的上传任务。");
@@ -402,13 +455,21 @@ public partial class StateManageView : BaseView
             return;
         }
 
-        var text = Convert.ToString(e.Value);
-        e.CellStyle.ForeColor = text switch
+        var column = dgvPending.Columns[e.ColumnIndex];
+        var rawText = Convert.ToString(e.Value);
+        if (column.DataPropertyName.EndsWith("Status", StringComparison.Ordinal))
         {
-            "失败" => Color.Firebrick,
-            "上传中" => Color.RoyalBlue,
-            "待上传" => Color.DarkOrange,
-            "已上传" => Color.SeaGreen,
+            e.Value = GetUploadStatusText(rawText);
+            e.FormattingApplied = true;
+        }
+
+        e.CellStyle.ForeColor = rawText switch
+        {
+            ProductionConstants.UploadStatuses.Failed => Color.Firebrick,
+            ProductionConstants.UploadStatuses.Uploading => Color.RoyalBlue,
+            ProductionConstants.UploadStatuses.Pending => Color.DarkOrange,
+            ProductionConstants.UploadStatuses.Retrying => Color.DarkOrange,
+            ProductionConstants.UploadStatuses.Uploaded => Color.SeaGreen,
             _ => item.PendingCount > 0 ? Color.DarkOrange : Color.FromArgb(36, 36, 36)
         };
     }
@@ -540,6 +601,16 @@ public partial class StateManageView : BaseView
         return tabUploadCategories.SelectedTab == tabStartReports;
     }
 
+    private bool IsReportFileTab()
+    {
+        return tabUploadCategories.SelectedTab == tabReportFiles;
+    }
+
+    private bool IsProcessParameterTab()
+    {
+        return tabUploadCategories.SelectedTab == tabProcessParameters;
+    }
+
     private bool IsSummaryTab()
     {
         return tabUploadCategories.SelectedTab == tabSummary;
@@ -580,6 +651,7 @@ public partial class StateManageView : BaseView
             ProductionConstants.UploadStatuses.Failed => "上传失败",
             ProductionConstants.UploadStatuses.Retrying => "重试中",
             ProductionConstants.UploadStatuses.Skipped => "已跳过",
+            UploadSummaryStatusResolver.NoData => "无数据",
             _ => status ?? string.Empty
         };
     }
