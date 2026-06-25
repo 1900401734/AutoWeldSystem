@@ -16,7 +16,32 @@ public sealed class UploadTaskSummary
 
     public string TaskIdentity { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Station number associated with the upload row. Virtual process-parameter rows use it for product-history grouping.
+    /// </summary>
+    public int StationNo { get; set; }
+
+    /// <summary>
+    /// Product number represented by a process-parameter row. Empty for task-level rows.
+    /// </summary>
+    public string ProductNo { get; set; } = string.Empty;
+
     public string Status { get; set; } = string.Empty;
+
+    /// <summary>
+    /// True when the row is derived from product history rather than a persisted upload task.
+    /// </summary>
+    public bool IsVirtual { get; set; }
+
+    /// <summary>
+    /// Whether the row can be manually retried from the upload-state page.
+    /// </summary>
+    public bool CanRetry { get; set; } = true;
+
+    /// <summary>
+    /// Whether the row can be manually deleted from the upload-state page.
+    /// </summary>
+    public bool CanDelete { get; set; } = true;
 
     public int RetryCount { get; set; }
 
@@ -31,6 +56,11 @@ public sealed class UploadTaskSummary
     public string FilePath { get; set; } = string.Empty;
 
     public string Message { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Operator-facing message. Falls back to <see cref="Message"/> when empty.
+    /// </summary>
+    public string DisplayMessage { get; set; } = string.Empty;
 
     public DateTime CreatedTime { get; set; }
 

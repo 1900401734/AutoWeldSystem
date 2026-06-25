@@ -8,17 +8,11 @@ using AutoWeldSystem.Data;
 namespace AutoWeldSystem.Services.Production;
 
 /// <summary>
-/// 上传总览聚合服务。
-/// 只聚合任务补传链路：开工、过程参数、xlsx 报表、完工；程序同步和设备/工单状态不进入总览。
+/// 聚合上传总览行。
+/// 总览状态以补传任务为优先来源，并使用已落库的业务事实兜底，避免在线成功链路显示为“无数据”。
 /// </summary>
 public sealed class UploadStatusSummaryService : IUploadStatusSummaryService
 {
-    private const string NoData = "无数据";
-    private const string Pending = "待上传";
-    private const string Uploading = "上传中";
-    private const string Failed = "失败";
-    private const string Uploaded = "已上传";
-
     private readonly SqlSugarDbContext _dbContext;
     private readonly object _dbLock = new();
 
@@ -46,6 +40,7 @@ public sealed class UploadStatusSummaryService : IUploadStatusSummaryService
                 .Select(group => group.First())
                 .OrderByDescending(task => task.Id)
                 .ToList();
+
             if (tasks.Count == 0)
             {
                 return Array.Empty<UploadPendingSummaryRow>();
@@ -62,12 +57,12 @@ public sealed class UploadStatusSummaryService : IUploadStatusSummaryService
             var reportFiles = _dbContext.Db.Queryable<BizProductionReportFile>()
                 .Where(report => taskIds.Contains(report.TaskId))
                 .ToList();
+            var taskLookup = tasks.ToDictionary(task => task.Id);
 
             var rows = tasks
                 .Select(task => BuildRow(task, uploadTasks, weldPoints, reportFiles))
-                .Where(row => UploadSummaryVisibilityRules.ShouldShow(
-                    tasks.First(task => task.Id == row.WeldTaskId),
-                    row.PendingCount))
+                .Where(row => taskLookup.TryGetValue(row.WeldTaskId, out var task)
+                    && UploadSummaryVisibilityRules.ShouldShow(task, row.PendingCount))
                 .OrderByDescending(row => row.PendingCount)
                 .ThenByDescending(row => row.UpdatedTime)
                 .Take(Math.Max(1, maxCount))
@@ -92,25 +87,24 @@ public sealed class UploadStatusSummaryService : IUploadStatusSummaryService
         var scopedPoints = weldPoints.Where(item => item.TaskId == task.Id).ToList();
         var scopedReports = reportFiles.Where(item => item.TaskId == task.Id).ToList();
 
-        var processStatuses = scopedUploads
-            .Where(item => SameTaskType(item, ProductionConstants.UploadTaskTypes.ProcessParameter))
-            .Select(item => item.Status)
-            .Concat(scopedPoints.Select(point => point.UploadStatus));
-        var reportStatuses = scopedUploads
-            .Where(item => SameTaskType(item, ProductionConstants.UploadTaskTypes.ReportFile))
-            .Select(item => item.Status)
-            .Concat(scopedReports.Select(report => report.UploadStatus));
-
         var row = new UploadPendingSummaryRow
         {
             WeldTaskId = task.Id,
             TaskIdentity = UploadTaskIdentityRules.Resolve(task),
             WorkOrderId = task.SN,
             StationNo = task.StationNo,
-            StartReportStatus = AggregateUploadTasks(scopedUploads, ProductionConstants.UploadTaskTypes.StartReport),
-            ProcessParameterStatus = AggregateStatuses(processStatuses),
-            ReportFileStatus = AggregateStatuses(reportStatuses),
-            FinishReportStatus = AggregateUploadTasks(scopedUploads, ProductionConstants.UploadTaskTypes.FinishReport),
+            StartReportStatus = UploadSummaryStatusResolver.ResolveStartReportStatus(
+                task,
+                GetUploadStatuses(scopedUploads, ProductionConstants.UploadTaskTypes.StartReport)),
+            ProcessParameterStatus = UploadSummaryStatusResolver.ResolveProcessParameterStatus(
+                GetUploadStatuses(scopedUploads, ProductionConstants.UploadTaskTypes.ProcessParameter),
+                scopedPoints),
+            ReportFileStatus = UploadSummaryStatusResolver.ResolveReportFileStatus(
+                GetUploadStatuses(scopedUploads, ProductionConstants.UploadTaskTypes.ReportFile),
+                scopedReports),
+            FinishReportStatus = UploadSummaryStatusResolver.ResolveFinishReportStatus(
+                task,
+                GetUploadStatuses(scopedUploads, ProductionConstants.UploadTaskTypes.FinishReport)),
             UpdatedTime = ResolveUpdatedTime(task, scopedUploads, scopedPoints, scopedReports)
         };
 
@@ -122,51 +116,13 @@ public sealed class UploadStatusSummaryService : IUploadStatusSummaryService
         return row;
     }
 
-    private static string AggregateUploadTasks(IEnumerable<BizUploadTask> tasks, string taskType)
-    {
-        return AggregateStatuses(tasks
+    private static IEnumerable<string?> GetUploadStatuses(IEnumerable<BizUploadTask> tasks, string taskType)
+        => tasks
             .Where(task => SameTaskType(task, taskType))
-            .Select(task => task.Status));
-    }
-
-    private static string AggregateStatuses(IEnumerable<string?> statuses)
-    {
-        var normalized = statuses
-            .Select(status => status?.Trim())
-            .Where(status => !string.IsNullOrWhiteSpace(status))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        if (normalized.Count == 0)
-        {
-            return NoData;
-        }
-
-        if (normalized.Any(status => SameStatus(status, ProductionConstants.UploadStatuses.Uploading)))
-        {
-            return Uploading;
-        }
-
-        if (normalized.Any(status => SameStatus(status, ProductionConstants.UploadStatuses.Failed)
-            || SameStatus(status, ProductionConstants.UploadStatuses.Retrying)))
-        {
-            return Failed;
-        }
-
-        if (normalized.Any(status => SameStatus(status, ProductionConstants.UploadStatuses.Pending)))
-        {
-            return Pending;
-        }
-
-        return Uploaded;
-    }
+            .Select(task => task.Status);
 
     private static int CountPendingLike(params string[] statuses)
-    {
-        return statuses.Count(status =>
-            string.Equals(status, Pending, StringComparison.Ordinal)
-            || string.Equals(status, Uploading, StringComparison.Ordinal)
-            || string.Equals(status, Failed, StringComparison.Ordinal));
-    }
+        => statuses.Count(UploadSummaryStatusResolver.IsPendingLike);
 
     private static DateTime ResolveUpdatedTime(
         BizWeldTask task,
@@ -179,11 +135,6 @@ public sealed class UploadStatusSummaryService : IUploadStatusSummaryService
         times.AddRange(weldPoints.Select(item => item.UploadTime ?? item.Ts));
         times.AddRange(reportFiles.Select(item => item.UpdatedTime));
         return times.Max();
-    }
-
-    private static bool SameStatus(string? left, string right)
-    {
-        return string.Equals(left?.Trim(), right, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool SameTaskType(BizUploadTask task, string taskType)

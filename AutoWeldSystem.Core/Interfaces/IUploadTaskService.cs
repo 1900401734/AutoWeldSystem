@@ -13,6 +13,11 @@ public interface IUploadTaskService
 
     IReadOnlyList<UploadTaskSummary> GetTasks(string taskType, bool includeCompleted = false);
 
+    /// <summary>
+    /// Gets process-parameter rows, including persisted upload tasks and read-only product-history rows.
+    /// </summary>
+    IReadOnlyList<UploadTaskSummary> GetProcessParameterRows(bool includeCompleted = false);
+
     UploadTaskSummary? GetById(int id);
 
     BizUploadTask EnqueueOrUpdate(BizUploadTask task);

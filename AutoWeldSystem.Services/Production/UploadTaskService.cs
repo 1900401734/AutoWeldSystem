@@ -65,6 +65,54 @@ public class UploadTaskService : IUploadTaskService
         }
     }
 
+    public IReadOnlyList<UploadTaskSummary> GetProcessParameterRows(bool includeCompleted = false)
+    {
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var uploadTasks = QueryUploadTasks(ProductionConstants.UploadTaskTypes.ProcessParameter, includeCompleted);
+            var rows = uploadTasks
+                .Select(ToSummary)
+                .ToList();
+
+            var pendingRecords = _dbContext.Db.Queryable<BizWeldPointRecord>()
+                .Where(record => record.ProductCompleted
+                    && record.UploadStatus != ProductionConstants.UploadStatuses.Uploaded)
+                .ToList();
+            if (pendingRecords.Count == 0)
+            {
+                return rows;
+            }
+
+            var weldTaskIds = pendingRecords
+                .Select(record => record.TaskId)
+                .Distinct()
+                .ToList();
+            var weldTasks = _dbContext.Db.Queryable<BizWeldTask>()
+                .Where(task => weldTaskIds.Contains(task.Id))
+                .ToList();
+            var openProcessTasks = uploadTasks
+                .Where(task => task.Status != ProductionConstants.UploadStatuses.Uploaded)
+                .ToList();
+            var batchSize = Math.Max(1, _settingsService.Get().UploadBatchSize);
+
+            foreach (var weldTask in weldTasks.OrderByDescending(task => task.Id))
+            {
+                var taskRecords = pendingRecords
+                    .Where(record => record.TaskId == weldTask.Id)
+                    .Where(record => !IsCoveredByOpenProcessTask(record, openProcessTasks))
+                    .ToList();
+                rows.AddRange(ProcessParameterUploadRowRules.CreatePendingProductRows(weldTask, taskRecords, batchSize));
+            }
+
+            return rows
+                .OrderByDescending(row => IsActionRequired(row.Status))
+                .ThenBy(row => row.IsVirtual)
+                .ThenByDescending(row => row.UpdatedTime)
+                .ToList();
+        }
+    }
+
     public UploadTaskSummary? GetById(int id)
     {
         lock (_dbLock)
@@ -73,6 +121,20 @@ public class UploadTaskService : IUploadTaskService
             var task = _dbContext.Db.Queryable<BizUploadTask>().InSingle(id);
             return task is null || task.IsDeleted ? null : ToSummary(task);
         }
+    }
+
+    private List<BizUploadTask> QueryUploadTasks(string taskType, bool includeCompleted)
+    {
+        var normalizedTaskType = NormalizeTaskType(taskType);
+        var query = _dbContext.Db.Queryable<BizUploadTask>()
+            .Where(task => task.TaskType == normalizedTaskType && !task.IsDeleted);
+
+        if (!includeCompleted)
+        {
+            query = query.Where(task => task.Status != ProductionConstants.UploadStatuses.Uploaded);
+        }
+
+        return query.ToList();
     }
 
     public BizUploadTask EnqueueOrUpdate(BizUploadTask task)
@@ -1145,6 +1207,26 @@ public class UploadTaskService : IUploadTaskService
             || productNos.Contains(record.ProductNo, StringComparer.OrdinalIgnoreCase);
     }
 
+    private static bool IsCoveredByOpenProcessTask(BizWeldPointRecord record, IReadOnlyList<BizUploadTask> openProcessTasks)
+    {
+        foreach (var task in openProcessTasks.Where(task => task.WeldTaskId == record.TaskId))
+        {
+            var stationNo = ProcessParameterUploadPayloadRules.ReadStationNo(task.PayloadJson);
+            if (stationNo > 0 && stationNo != record.StationNo)
+            {
+                continue;
+            }
+
+            var productNos = ProcessParameterUploadPayloadRules.ReadProductNos(task.PayloadJson);
+            if (productNos.Count == 0 || productNos.Contains(record.ProductNo, StringComparer.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static bool IsProductScopedTask(BizUploadTask task)
     {
         return ProcessParameterUploadPayloadRules.ReadProductNos(task.PayloadJson).Count > 0;
@@ -1342,6 +1424,13 @@ public class UploadTaskService : IUploadTaskService
 
     private UploadTaskSummary ToSummary(BizUploadTask task)
     {
+        var payload = ReadUploadPayload(task.PayloadJson);
+        var productNos = ProcessParameterUploadPayloadRules.ReadProductNos(task.PayloadJson);
+        var productText = productNos.Count > 0
+            ? string.Join(", ", productNos)
+            : payload.ProductNo;
+        var message = task.Message ?? string.Empty;
+
         return new UploadTaskSummary
         {
             Id = task.Id,
@@ -1349,17 +1438,42 @@ public class UploadTaskService : IUploadTaskService
             Target = task.Target,
             BusinessId = task.BusinessId ?? string.Empty,
             TaskIdentity = ResolveTaskIdentity(task),
+            StationNo = payload.StationNo,
+            ProductNo = productText,
             Status = task.Status,
+            IsVirtual = false,
+            CanRetry = task.Status != ProductionConstants.UploadStatuses.Uploaded,
+            CanDelete = true,
             RetryCount = task.RetryCount,
             MaxRetryCount = task.MaxRetryCount,
             NextRetryTime = task.NextRetryTime,
             LastAttemptTime = task.LastAttemptTime,
             CompletedTime = task.CompletedTime,
-            FilePath = task.FilePath ?? string.Empty,
-            Message = task.Message ?? string.Empty,
+            FilePath = ResolveDisplayFilePath(task),
+            Message = message,
+            DisplayMessage = message,
             CreatedTime = task.CreatedTime,
             UpdatedTime = task.UpdatedTime
         };
+    }
+
+    private string ResolveDisplayFilePath(BizUploadTask task)
+    {
+        if (!string.IsNullOrWhiteSpace(task.FilePath))
+        {
+            return task.FilePath.Trim();
+        }
+
+        if (!string.Equals(task.TaskType, ProductionConstants.UploadTaskTypes.ReportFile, StringComparison.OrdinalIgnoreCase)
+            || task.WeldTaskId is null)
+        {
+            return string.Empty;
+        }
+
+        return _dbContext.Db.Queryable<BizProductionReportFile>()
+            .Where(report => report.TaskId == task.WeldTaskId.Value)
+            .OrderByDescending(report => report.UpdatedTime)
+            .First()?.FilePath ?? string.Empty;
     }
 
     /// <summary>
