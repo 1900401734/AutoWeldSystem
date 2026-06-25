@@ -43,6 +43,9 @@ public class AppSettings
     [SugarColumn(Length = 20, ColumnDescription = "PLC字符串数值处理方式")]
     public string PlcStringNumericFormatMode { get; set; } = AppConstants.PlcStringNumericFormatModes.Truncate;
 
+    [SugarColumn(ColumnDescription = "是否启用PLC报警读取", IsNullable = true)]
+    public bool? EnablePlcAlarmReading { get; set; } = true;
+
     #endregion
 
     #region 中心服务器配置

@@ -129,6 +129,7 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
         settings.EnableAutoStart ??= true;
         settings.ShowTestFlagInHistory ??= true;
         settings.EnablePlcStringNumericFormatting ??= true;
+        settings.EnablePlcAlarmReading ??= true;
         settings.PlcStringNumericFormatMode = PlcStringNumericFormatter.NormalizeMode(settings.PlcStringNumericFormatMode);
         settings.ProcessParameterDeviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
         settings.CenterServerBaseUrl = CenterTelemetryRules.NormalizeBaseUrl(settings.CenterServerBaseUrl);

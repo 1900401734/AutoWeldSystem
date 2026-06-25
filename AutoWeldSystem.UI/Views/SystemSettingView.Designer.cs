@@ -38,6 +38,7 @@
             chkEnableAutoStart = new AntdUI.Checkbox();
             grpPlcConfig = new GroupBox();
             tlpPlcConfig = new TableLayoutPanel();
+            chkEnablePlcAlarmReading = new AntdUI.Checkbox();
             tlpPlcIp = new TableLayoutPanel();
             lblPlcIp = new AntdUI.Label();
             input_PlcIp = new AntdUI.Input();
@@ -138,9 +139,9 @@
             tlpDeviveUrl.SuspendLayout();
             tlpMesUrl.SuspendLayout();
             SuspendLayout();
-            //
+            // 
             // rootLayout
-            //
+            // 
             rootLayout.ColumnCount = 1;
             rootLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             rootLayout.Controls.Add(titleLayout, 0, 0);
@@ -153,9 +154,9 @@
             rootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 90.36755F));
             rootLayout.Size = new Size(1519, 789);
             rootLayout.TabIndex = 0;
-            //
+            // 
             // titleLayout
-            //
+            // 
             titleLayout.ColumnCount = 2;
             titleLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             titleLayout.ColumnStyles.Add(new ColumnStyle());
@@ -171,9 +172,9 @@
             titleLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             titleLayout.Size = new Size(1471, 65);
             titleLayout.TabIndex = 0;
-            //
+            // 
             // lblTitle
-            //
+            // 
             lblTitle.AutoSize = true;
             lblTitle.Dock = DockStyle.Fill;
             lblTitle.Font = new Font("Microsoft YaHei UI", 14F, FontStyle.Bold);
@@ -184,9 +185,9 @@
             lblTitle.TabIndex = 0;
             lblTitle.Text = "系统设置";
             lblTitle.TextAlign = ContentAlignment.MiddleLeft;
-            //
+            // 
             // lblDescription
-            //
+            // 
             lblDescription.AutoEllipsis = true;
             lblDescription.AutoSize = true;
             lblDescription.Dock = DockStyle.Fill;
@@ -198,9 +199,9 @@
             lblDescription.TabIndex = 1;
             lblDescription.Text = "维护基础系统参数、MES 参数、PLC 参数和本地路径。";
             lblDescription.TextAlign = ContentAlignment.MiddleLeft;
-            //
+            // 
             // btnSaveAll
-            //
+            // 
             btnSaveAll.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnSaveAll.BorderWidth = 1F;
             btnSaveAll.Dock = DockStyle.Right;
@@ -213,9 +214,9 @@
             btnSaveAll.TabIndex = 0;
             btnSaveAll.Tag = "perm:button.system.save:enabled";
             btnSaveAll.Text = "应用全部";
-            //
+            // 
             // tabSettingCategories
-            //
+            // 
             tabSettingCategories.Controls.Add(tabBasicSettings);
             tabSettingCategories.Dock = DockStyle.Fill;
             tabSettingCategories.HotTrack = true;
@@ -225,9 +226,9 @@
             tabSettingCategories.SelectedIndex = 0;
             tabSettingCategories.Size = new Size(1471, 702);
             tabSettingCategories.TabIndex = 1;
-            //
+            // 
             // tabBasicSettings
-            //
+            // 
             tabBasicSettings.Controls.Add(grpAppConfig);
             tabBasicSettings.Controls.Add(grpPlcConfig);
             tabBasicSettings.Controls.Add(grpProductionConfig);
@@ -241,9 +242,9 @@
             tabBasicSettings.TabIndex = 0;
             tabBasicSettings.Text = "基础设置";
             tabBasicSettings.UseVisualStyleBackColor = true;
-            //
+            // 
             // grpAppConfig
-            //
+            // 
             grpAppConfig.Controls.Add(tableLayoutPanel1);
             grpAppConfig.Location = new Point(312, 209);
             grpAppConfig.Name = "grpAppConfig";
@@ -251,9 +252,9 @@
             grpAppConfig.TabIndex = 5;
             grpAppConfig.TabStop = false;
             grpAppConfig.Text = "应用配置";
-            //
+            // 
             // tableLayoutPanel1
-            //
+            // 
             tableLayoutPanel1.AutoSize = true;
             tableLayoutPanel1.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             tableLayoutPanel1.ColumnCount = 1;
@@ -270,9 +271,9 @@
             tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
             tableLayoutPanel1.Size = new Size(595, 135);
             tableLayoutPanel1.TabIndex = 6;
-            //
+            // 
             // tlpLogPath
-            //
+            // 
             tlpLogPath.AutoSize = true;
             tlpLogPath.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             tlpLogPath.ColumnCount = 4;
@@ -292,9 +293,9 @@
             tlpLogPath.RowStyles.Add(new RowStyle());
             tlpLogPath.Size = new Size(595, 45);
             tlpLogPath.TabIndex = 4;
-            //
+            // 
             // lblLogPath
-            //
+            // 
             lblLogPath.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblLogPath.Dock = DockStyle.Fill;
             lblLogPath.Location = new Point(0, 0);
@@ -303,18 +304,18 @@
             lblLogPath.Size = new Size(63, 45);
             lblLogPath.TabIndex = 0;
             lblLogPath.Text = "日志目录";
-            //
+            // 
             // input_LogsPath
-            //
+            // 
             input_LogsPath.Dock = DockStyle.Fill;
             input_LogsPath.Location = new Point(63, 0);
             input_LogsPath.Margin = new Padding(0);
             input_LogsPath.Name = "input_LogsPath";
             input_LogsPath.Size = new Size(370, 45);
             input_LogsPath.TabIndex = 1;
-            //
+            // 
             // btnChangeLogPath
-            //
+            // 
             btnChangeLogPath.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnChangeLogPath.BorderWidth = 1F;
             btnChangeLogPath.Dock = DockStyle.Fill;
@@ -326,9 +327,9 @@
             btnChangeLogPath.TabIndex = 2;
             btnChangeLogPath.Tag = "perm:button.system.change-path:enabled";
             btnChangeLogPath.Text = "更改";
-            //
+            // 
             // btnOpenLogPath
-            //
+            // 
             btnOpenLogPath.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnOpenLogPath.BorderWidth = 1F;
             btnOpenLogPath.Dock = DockStyle.Fill;
@@ -340,9 +341,9 @@
             btnOpenLogPath.TabIndex = 3;
             btnOpenLogPath.Tag = "perm:button.system.open-path:enabled";
             btnOpenLogPath.Text = "打开";
-            //
+            // 
             // tlpDataPath
-            //
+            // 
             tlpDataPath.AutoSize = true;
             tlpDataPath.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             tlpDataPath.ColumnCount = 4;
@@ -362,9 +363,9 @@
             tlpDataPath.RowStyles.Add(new RowStyle());
             tlpDataPath.Size = new Size(595, 45);
             tlpDataPath.TabIndex = 5;
-            //
+            // 
             // lblDataPath
-            //
+            // 
             lblDataPath.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblDataPath.Dock = DockStyle.Fill;
             lblDataPath.Location = new Point(0, 0);
@@ -373,18 +374,18 @@
             lblDataPath.Size = new Size(63, 45);
             lblDataPath.TabIndex = 0;
             lblDataPath.Text = "数据目录";
-            //
+            // 
             // input_DataPath
-            //
+            // 
             input_DataPath.Dock = DockStyle.Fill;
             input_DataPath.Location = new Point(63, 0);
             input_DataPath.Margin = new Padding(0);
             input_DataPath.Name = "input_DataPath";
             input_DataPath.Size = new Size(370, 45);
             input_DataPath.TabIndex = 1;
-            //
+            // 
             // btnChangeDataPath
-            //
+            // 
             btnChangeDataPath.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnChangeDataPath.BorderWidth = 1F;
             btnChangeDataPath.Dock = DockStyle.Fill;
@@ -396,9 +397,9 @@
             btnChangeDataPath.TabIndex = 2;
             btnChangeDataPath.Tag = "perm:button.system.change-path:enabled";
             btnChangeDataPath.Text = "更改";
-            //
+            // 
             // btnOpenDataPath
-            //
+            // 
             btnOpenDataPath.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnOpenDataPath.BorderWidth = 1F;
             btnOpenDataPath.Dock = DockStyle.Fill;
@@ -410,9 +411,9 @@
             btnOpenDataPath.TabIndex = 3;
             btnOpenDataPath.Tag = "perm:button.system.open-path:enabled";
             btnOpenDataPath.Text = "打开";
-            //
+            // 
             // chkEnableAutoStart
-            //
+            // 
             chkEnableAutoStart.Checked = true;
             chkEnableAutoStart.CheckState = CheckState.Checked;
             chkEnableAutoStart.Dock = DockStyle.Fill;
@@ -423,24 +424,25 @@
             chkEnableAutoStart.Size = new Size(595, 45);
             chkEnableAutoStart.TabIndex = 6;
             chkEnableAutoStart.Text = "开机自启";
-            //
+            // 
             // grpPlcConfig
-            //
+            // 
             grpPlcConfig.Controls.Add(tlpPlcConfig);
             grpPlcConfig.Location = new Point(6, 6);
             grpPlcConfig.Margin = new Padding(0);
             grpPlcConfig.Name = "grpPlcConfig";
-            grpPlcConfig.Size = new Size(297, 252);
+            grpPlcConfig.Size = new Size(297, 295);
             grpPlcConfig.TabIndex = 1;
             grpPlcConfig.TabStop = false;
             grpPlcConfig.Text = "PLC配置";
-            //
+            // 
             // tlpPlcConfig
-            //
+            // 
             tlpPlcConfig.AutoSize = true;
             tlpPlcConfig.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             tlpPlcConfig.ColumnCount = 1;
             tlpPlcConfig.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            tlpPlcConfig.Controls.Add(chkEnablePlcAlarmReading, 0, 5);
             tlpPlcConfig.Controls.Add(tlpPlcIp, 0, 0);
             tlpPlcConfig.Controls.Add(tlpPlcPort, 0, 1);
             tlpPlcConfig.Controls.Add(tableLayoutPanel7, 0, 2);
@@ -449,17 +451,31 @@
             tlpPlcConfig.Dock = DockStyle.Fill;
             tlpPlcConfig.Location = new Point(3, 23);
             tlpPlcConfig.Name = "tlpPlcConfig";
-            tlpPlcConfig.RowCount = 5;
+            tlpPlcConfig.RowCount = 6;
             tlpPlcConfig.RowStyles.Add(new RowStyle());
             tlpPlcConfig.RowStyles.Add(new RowStyle());
             tlpPlcConfig.RowStyles.Add(new RowStyle());
             tlpPlcConfig.RowStyles.Add(new RowStyle());
             tlpPlcConfig.RowStyles.Add(new RowStyle());
-            tlpPlcConfig.Size = new Size(291, 226);
+            tlpPlcConfig.RowStyles.Add(new RowStyle());
+            tlpPlcConfig.Size = new Size(291, 269);
             tlpPlcConfig.TabIndex = 0;
-            //
+            // 
+            // chkEnablePlcAlarmReading
+            // 
+            chkEnablePlcAlarmReading.Checked = true;
+            chkEnablePlcAlarmReading.CheckState = CheckState.Checked;
+            chkEnablePlcAlarmReading.Dock = DockStyle.Fill;
+            chkEnablePlcAlarmReading.Location = new Point(0, 226);
+            chkEnablePlcAlarmReading.Margin = new Padding(0);
+            chkEnablePlcAlarmReading.Name = "chkEnablePlcAlarmReading";
+            chkEnablePlcAlarmReading.Padding = new Padding(8, 0, 0, 0);
+            chkEnablePlcAlarmReading.Size = new Size(291, 45);
+            chkEnablePlcAlarmReading.TabIndex = 5;
+            chkEnablePlcAlarmReading.Text = "启用报警信息读取";
+            // 
             // tlpPlcIp
-            //
+            // 
             tlpPlcIp.AutoSize = true;
             tlpPlcIp.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             tlpPlcIp.ColumnCount = 3;
@@ -477,9 +493,9 @@
             tlpPlcIp.RowStyles.Add(new RowStyle());
             tlpPlcIp.Size = new Size(291, 45);
             tlpPlcIp.TabIndex = 0;
-            //
+            // 
             // lblPlcIp
-            //
+            // 
             lblPlcIp.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblPlcIp.Dock = DockStyle.Fill;
             lblPlcIp.Location = new Point(0, 0);
@@ -488,18 +504,18 @@
             lblPlcIp.Size = new Size(13, 45);
             lblPlcIp.TabIndex = 0;
             lblPlcIp.Text = "IP";
-            //
+            // 
             // input_PlcIp
-            //
+            // 
             input_PlcIp.Dock = DockStyle.Fill;
             input_PlcIp.Location = new Point(13, 0);
             input_PlcIp.Margin = new Padding(0);
             input_PlcIp.Name = "input_PlcIp";
             input_PlcIp.Size = new Size(197, 45);
             input_PlcIp.TabIndex = 1;
-            //
+            // 
             // btnConnectPlc
-            //
+            // 
             btnConnectPlc.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnConnectPlc.BorderWidth = 1F;
             btnConnectPlc.Dock = DockStyle.Fill;
@@ -511,9 +527,9 @@
             btnConnectPlc.TabIndex = 2;
             btnConnectPlc.Tag = "perm:button.system.connect-plc:enabled";
             btnConnectPlc.Text = "连接";
-            //
+            // 
             // tlpPlcPort
-            //
+            // 
             tlpPlcPort.AutoSize = true;
             tlpPlcPort.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             tlpPlcPort.ColumnCount = 2;
@@ -529,9 +545,9 @@
             tlpPlcPort.RowStyles.Add(new RowStyle());
             tlpPlcPort.Size = new Size(291, 45);
             tlpPlcPort.TabIndex = 1;
-            //
+            // 
             // lblPlcPort
-            //
+            // 
             lblPlcPort.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblPlcPort.Dock = DockStyle.Fill;
             lblPlcPort.Location = new Point(0, 0);
@@ -540,18 +556,18 @@
             lblPlcPort.Size = new Size(32, 45);
             lblPlcPort.TabIndex = 0;
             lblPlcPort.Text = "端口";
-            //
+            // 
             // input_PlcPort
-            //
+            // 
             input_PlcPort.Dock = DockStyle.Fill;
             input_PlcPort.Location = new Point(32, 0);
             input_PlcPort.Margin = new Padding(0);
             input_PlcPort.Name = "input_PlcPort";
             input_PlcPort.Size = new Size(259, 45);
             input_PlcPort.TabIndex = 1;
-            //
+            // 
             // tableLayoutPanel7
-            //
+            // 
             tableLayoutPanel7.AutoSize = true;
             tableLayoutPanel7.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             tableLayoutPanel7.ColumnCount = 2;
@@ -567,9 +583,9 @@
             tableLayoutPanel7.RowStyles.Add(new RowStyle());
             tableLayoutPanel7.Size = new Size(291, 46);
             tableLayoutPanel7.TabIndex = 2;
-            //
+            // 
             // lblPlcType
-            //
+            // 
             lblPlcType.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblPlcType.Dock = DockStyle.Fill;
             lblPlcType.Location = new Point(0, 0);
@@ -578,18 +594,18 @@
             lblPlcType.Size = new Size(32, 46);
             lblPlcType.TabIndex = 0;
             lblPlcType.Text = "类型";
-            //
+            // 
             // select_PlcType
-            //
+            // 
             select_PlcType.Dock = DockStyle.Fill;
             select_PlcType.Location = new Point(32, 0);
             select_PlcType.Margin = new Padding(0);
             select_PlcType.Name = "select_PlcType";
             select_PlcType.Size = new Size(259, 46);
             select_PlcType.TabIndex = 1;
-            //
+            // 
             // chkEnablePlcStringNumericFormatting
-            //
+            // 
             chkEnablePlcStringNumericFormatting.Checked = true;
             chkEnablePlcStringNumericFormatting.CheckState = CheckState.Checked;
             chkEnablePlcStringNumericFormatting.Dock = DockStyle.Fill;
@@ -600,9 +616,9 @@
             chkEnablePlcStringNumericFormatting.Size = new Size(291, 45);
             chkEnablePlcStringNumericFormatting.TabIndex = 3;
             chkEnablePlcStringNumericFormatting.Text = "启用PLC字符串数值处理";
-            //
+            // 
             // tlpPlcStringNumericMode
-            //
+            // 
             tlpPlcStringNumericMode.AutoSize = true;
             tlpPlcStringNumericMode.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             tlpPlcStringNumericMode.ColumnCount = 2;
@@ -618,9 +634,9 @@
             tlpPlcStringNumericMode.RowStyles.Add(new RowStyle());
             tlpPlcStringNumericMode.Size = new Size(291, 45);
             tlpPlcStringNumericMode.TabIndex = 4;
-            //
+            // 
             // lblPlcStringNumericFormatMode
-            //
+            // 
             lblPlcStringNumericFormatMode.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblPlcStringNumericFormatMode.Dock = DockStyle.Fill;
             lblPlcStringNumericFormatMode.Location = new Point(0, 0);
@@ -630,18 +646,18 @@
             lblPlcStringNumericFormatMode.Size = new Size(71, 45);
             lblPlcStringNumericFormatMode.TabIndex = 0;
             lblPlcStringNumericFormatMode.Text = "处理方式";
-            //
+            // 
             // selectPlcStringNumericFormatMode
-            //
+            // 
             selectPlcStringNumericFormatMode.Dock = DockStyle.Fill;
             selectPlcStringNumericFormatMode.Location = new Point(71, 0);
             selectPlcStringNumericFormatMode.Margin = new Padding(0);
             selectPlcStringNumericFormatMode.Name = "selectPlcStringNumericFormatMode";
             selectPlcStringNumericFormatMode.Size = new Size(220, 45);
             selectPlcStringNumericFormatMode.TabIndex = 1;
-            //
+            // 
             // grpProductionConfig
-            //
+            // 
             grpProductionConfig.Controls.Add(tlpProductConfig);
             grpProductionConfig.Location = new Point(919, 6);
             grpProductionConfig.Name = "grpProductionConfig";
@@ -649,9 +665,9 @@
             grpProductionConfig.TabIndex = 4;
             grpProductionConfig.TabStop = false;
             grpProductionConfig.Text = "生产配置";
-            //
+            // 
             // tlpProductConfig
-            //
+            // 
             tlpProductConfig.ColumnCount = 2;
             tlpProductConfig.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             tlpProductConfig.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
@@ -672,9 +688,9 @@
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Percent, 25F));
             tlpProductConfig.Size = new Size(532, 138);
             tlpProductConfig.TabIndex = 0;
-            //
+            // 
             // chkEnableDualStation
-            //
+            // 
             chkEnableDualStation.Dock = DockStyle.Fill;
             chkEnableDualStation.Location = new Point(0, 0);
             chkEnableDualStation.Margin = new Padding(0);
@@ -682,9 +698,9 @@
             chkEnableDualStation.Size = new Size(266, 34);
             chkEnableDualStation.TabIndex = 0;
             chkEnableDualStation.Text = "启用双工位";
-            //
+            // 
             // chkEnableDualWorkOrder
-            //
+            // 
             chkEnableDualWorkOrder.Dock = DockStyle.Fill;
             chkEnableDualWorkOrder.Location = new Point(266, 0);
             chkEnableDualWorkOrder.Margin = new Padding(0);
@@ -692,9 +708,9 @@
             chkEnableDualWorkOrder.Size = new Size(266, 34);
             chkEnableDualWorkOrder.TabIndex = 1;
             chkEnableDualWorkOrder.Text = "启用双工单";
-            //
+            // 
             // tableLayoutPanel2
-            //
+            // 
             tableLayoutPanel2.ColumnCount = 2;
             tableLayoutPanel2.ColumnStyles.Add(new ColumnStyle());
             tableLayoutPanel2.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
@@ -708,9 +724,9 @@
             tableLayoutPanel2.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tableLayoutPanel2.Size = new Size(266, 34);
             tableLayoutPanel2.TabIndex = 6;
-            //
+            // 
             // lblUploadMode
-            //
+            // 
             lblUploadMode.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblUploadMode.Dock = DockStyle.Fill;
             lblUploadMode.Location = new Point(0, 0);
@@ -720,18 +736,18 @@
             lblUploadMode.Size = new Size(71, 34);
             lblUploadMode.TabIndex = 3;
             lblUploadMode.Text = "上传模式";
-            //
+            // 
             // selectUploadMode
-            //
+            // 
             selectUploadMode.Dock = DockStyle.Fill;
             selectUploadMode.Location = new Point(71, 0);
             selectUploadMode.Margin = new Padding(0);
             selectUploadMode.Name = "selectUploadMode";
             selectUploadMode.Size = new Size(195, 34);
             selectUploadMode.TabIndex = 4;
-            //
+            // 
             // chkValidateRecipeBeforeStart
-            //
+            // 
             chkValidateRecipeBeforeStart.Dock = DockStyle.Fill;
             chkValidateRecipeBeforeStart.Location = new Point(0, 34);
             chkValidateRecipeBeforeStart.Margin = new Padding(0);
@@ -739,9 +755,9 @@
             chkValidateRecipeBeforeStart.Size = new Size(266, 34);
             chkValidateRecipeBeforeStart.TabIndex = 2;
             chkValidateRecipeBeforeStart.Text = "开工后校验配方";
-            //
+            // 
             // chkEnableFinishExpQtyPrompt
-            //
+            // 
             chkEnableFinishExpQtyPrompt.Dock = DockStyle.Fill;
             chkEnableFinishExpQtyPrompt.Location = new Point(266, 34);
             chkEnableFinishExpQtyPrompt.Margin = new Padding(0);
@@ -749,9 +765,9 @@
             chkEnableFinishExpQtyPrompt.Size = new Size(266, 34);
             chkEnableFinishExpQtyPrompt.TabIndex = 3;
             chkEnableFinishExpQtyPrompt.Text = "启用完工实际数量输入弹窗";
-            //
+            // 
             // tableLayoutPanel3
-            //
+            // 
             tableLayoutPanel3.ColumnCount = 2;
             tableLayoutPanel3.ColumnStyles.Add(new ColumnStyle());
             tableLayoutPanel3.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
@@ -765,9 +781,9 @@
             tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tableLayoutPanel3.Size = new Size(266, 34);
             tableLayoutPanel3.TabIndex = 6;
-            //
+            // 
             // lblUploadBatchSize
-            //
+            // 
             lblUploadBatchSize.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblUploadBatchSize.Dock = DockStyle.Fill;
             lblUploadBatchSize.Location = new Point(0, 0);
@@ -777,9 +793,9 @@
             lblUploadBatchSize.Size = new Size(71, 34);
             lblUploadBatchSize.TabIndex = 5;
             lblUploadBatchSize.Text = "上传数量";
-            //
+            // 
             // inputUploadBatchSize
-            //
+            // 
             inputUploadBatchSize.Dock = DockStyle.Fill;
             inputUploadBatchSize.Location = new Point(71, 0);
             inputUploadBatchSize.Margin = new Padding(0);
@@ -787,9 +803,9 @@
             inputUploadBatchSize.Size = new Size(195, 34);
             inputUploadBatchSize.TabIndex = 6;
             inputUploadBatchSize.Text = "1";
-            //
+            // 
             // tableLayoutPanelHeartbeat
-            //
+            // 
             tableLayoutPanelHeartbeat.ColumnCount = 2;
             tlpProductConfig.SetColumnSpan(tableLayoutPanelHeartbeat, 2);
             tableLayoutPanelHeartbeat.ColumnStyles.Add(new ColumnStyle());
@@ -804,9 +820,9 @@
             tableLayoutPanelHeartbeat.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tableLayoutPanelHeartbeat.Size = new Size(532, 36);
             tableLayoutPanelHeartbeat.TabIndex = 7;
-            //
+            // 
             // lblPlcHeartbeatInterval
-            //
+            // 
             lblPlcHeartbeatInterval.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblPlcHeartbeatInterval.Dock = DockStyle.Fill;
             lblPlcHeartbeatInterval.Location = new Point(0, 0);
@@ -816,9 +832,9 @@
             lblPlcHeartbeatInterval.Size = new Size(155, 36);
             lblPlcHeartbeatInterval.TabIndex = 0;
             lblPlcHeartbeatInterval.Text = "PLC心跳监测频率(ms)";
-            //
+            // 
             // inputPlcHeartbeatInterval
-            //
+            // 
             inputPlcHeartbeatInterval.Dock = DockStyle.Fill;
             inputPlcHeartbeatInterval.Location = new Point(155, 0);
             inputPlcHeartbeatInterval.Margin = new Padding(0);
@@ -826,9 +842,9 @@
             inputPlcHeartbeatInterval.Size = new Size(377, 36);
             inputPlcHeartbeatInterval.TabIndex = 1;
             inputPlcHeartbeatInterval.Text = "300";
-            //
+            // 
             // grpMesConfig
-            //
+            // 
             grpMesConfig.Controls.Add(tableLayoutPanelMesConfig);
             grpMesConfig.Location = new Point(919, 176);
             grpMesConfig.Name = "grpMesConfig";
@@ -836,9 +852,9 @@
             grpMesConfig.TabIndex = 3;
             grpMesConfig.TabStop = false;
             grpMesConfig.Text = "MES Config";
-            //
+            // 
             // tableLayoutPanelMesConfig
-            //
+            // 
             tableLayoutPanelMesConfig.ColumnCount = 2;
             tableLayoutPanelMesConfig.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190F));
             tableLayoutPanelMesConfig.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
@@ -857,9 +873,9 @@
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
             tableLayoutPanelMesConfig.Size = new Size(532, 146);
             tableLayoutPanelMesConfig.TabIndex = 0;
-            //
+            // 
             // chkUseProductNumberFilter
-            //
+            // 
             tableLayoutPanelMesConfig.SetColumnSpan(chkUseProductNumberFilter, 2);
             chkUseProductNumberFilter.Dock = DockStyle.Fill;
             chkUseProductNumberFilter.Location = new Point(0, 0);
@@ -868,9 +884,9 @@
             chkUseProductNumberFilter.Size = new Size(532, 34);
             chkUseProductNumberFilter.TabIndex = 0;
             chkUseProductNumberFilter.Text = "Use product number filter";
-            //
+            // 
             // tableLayoutPanel4
-            //
+            // 
             tableLayoutPanel4.ColumnCount = 2;
             tableLayoutPanelMesConfig.SetColumnSpan(tableLayoutPanel4, 2);
             tableLayoutPanel4.ColumnStyles.Add(new ColumnStyle());
@@ -885,9 +901,9 @@
             tableLayoutPanel4.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tableLayoutPanel4.Size = new Size(532, 34);
             tableLayoutPanel4.TabIndex = 1;
-            //
+            // 
             // label1
-            //
+            // 
             label1.AutoSizeMode = AntdUI.TAutoSize.Width;
             label1.Dock = DockStyle.Fill;
             label1.Location = new Point(0, 0);
@@ -897,9 +913,9 @@
             label1.Size = new Size(112, 34);
             label1.TabIndex = 0;
             label1.Text = "MES Timeout(s)";
-            //
+            // 
             // input_MesTimeout
-            //
+            // 
             input_MesTimeout.Dock = DockStyle.Fill;
             input_MesTimeout.Location = new Point(112, 0);
             input_MesTimeout.Margin = new Padding(0);
@@ -907,44 +923,44 @@
             input_MesTimeout.Size = new Size(420, 34);
             input_MesTimeout.TabIndex = 1;
             input_MesTimeout.Text = "0";
-            //
+            // 
             // lblProcessParameterDeviceType
-            //
+            // 
             lblProcessParameterDeviceType.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblProcessParameterDeviceType.Dock = DockStyle.Fill;
             lblProcessParameterDeviceType.Location = new Point(0, 68);
             lblProcessParameterDeviceType.Margin = new Padding(0);
             lblProcessParameterDeviceType.Name = "lblProcessParameterDeviceType";
             lblProcessParameterDeviceType.Padding = new Padding(8, 0, 0, 0);
-            lblProcessParameterDeviceType.Size = new Size(164, 44);
+            lblProcessParameterDeviceType.Size = new Size(164, 34);
             lblProcessParameterDeviceType.TabIndex = 2;
             lblProcessParameterDeviceType.Text = "Process parameter type";
-            //
+            // 
             // selectProcessParameterDeviceType
-            //
+            // 
             selectProcessParameterDeviceType.Dock = DockStyle.Fill;
             selectProcessParameterDeviceType.Location = new Point(190, 70);
             selectProcessParameterDeviceType.Margin = new Padding(0, 2, 0, 2);
             selectProcessParameterDeviceType.Name = "selectProcessParameterDeviceType";
-            selectProcessParameterDeviceType.Size = new Size(342, 40);
+            selectProcessParameterDeviceType.Size = new Size(342, 30);
             selectProcessParameterDeviceType.TabIndex = 3;
-            //
+            // 
             // chkShowTestFlagInHistory
-            //
-            tableLayoutPanelMesConfig.SetColumnSpan(chkShowTestFlagInHistory, 2);
+            // 
             chkShowTestFlagInHistory.Checked = true;
             chkShowTestFlagInHistory.CheckState = CheckState.Checked;
+            tableLayoutPanelMesConfig.SetColumnSpan(chkShowTestFlagInHistory, 2);
             chkShowTestFlagInHistory.Dock = DockStyle.Fill;
             chkShowTestFlagInHistory.Location = new Point(0, 102);
             chkShowTestFlagInHistory.Margin = new Padding(0);
             chkShowTestFlagInHistory.Name = "chkShowTestFlagInHistory";
             chkShowTestFlagInHistory.Padding = new Padding(8, 0, 0, 0);
-            chkShowTestFlagInHistory.Size = new Size(532, 34);
+            chkShowTestFlagInHistory.Size = new Size(532, 44);
             chkShowTestFlagInHistory.TabIndex = 4;
             chkShowTestFlagInHistory.Text = "产品历史显示试焊件";
-            //
+            // 
             // grpCenterServerConfig
-            //
+            // 
             grpCenterServerConfig.Controls.Add(tableLayoutPanelCenterServer);
             grpCenterServerConfig.Location = new Point(919, 354);
             grpCenterServerConfig.Name = "grpCenterServerConfig";
@@ -952,9 +968,9 @@
             grpCenterServerConfig.TabIndex = 6;
             grpCenterServerConfig.TabStop = false;
             grpCenterServerConfig.Text = "中心服务器";
-            //
+            // 
             // tableLayoutPanelCenterServer
-            //
+            // 
             tableLayoutPanelCenterServer.ColumnCount = 1;
             tableLayoutPanelCenterServer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             tableLayoutPanelCenterServer.Controls.Add(chkEnableCenterServerSync, 0, 0);
@@ -971,9 +987,9 @@
             tableLayoutPanelCenterServer.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
             tableLayoutPanelCenterServer.Size = new Size(532, 152);
             tableLayoutPanelCenterServer.TabIndex = 0;
-            //
+            // 
             // chkEnableCenterServerSync
-            //
+            // 
             chkEnableCenterServerSync.Dock = DockStyle.Fill;
             chkEnableCenterServerSync.Location = new Point(0, 0);
             chkEnableCenterServerSync.Margin = new Padding(0);
@@ -981,9 +997,9 @@
             chkEnableCenterServerSync.Size = new Size(532, 34);
             chkEnableCenterServerSync.TabIndex = 0;
             chkEnableCenterServerSync.Text = "启用中心服务器同步";
-            //
+            // 
             // tlpCenterServerBaseUrl
-            //
+            // 
             tlpCenterServerBaseUrl.ColumnCount = 2;
             tlpCenterServerBaseUrl.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150F));
             tlpCenterServerBaseUrl.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
@@ -997,30 +1013,30 @@
             tlpCenterServerBaseUrl.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tlpCenterServerBaseUrl.Size = new Size(532, 40);
             tlpCenterServerBaseUrl.TabIndex = 1;
-            //
+            // 
             // lblCenterServerBaseUrl
-            //
+            // 
             lblCenterServerBaseUrl.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblCenterServerBaseUrl.Dock = DockStyle.Fill;
             lblCenterServerBaseUrl.Location = new Point(0, 0);
             lblCenterServerBaseUrl.Margin = new Padding(0);
             lblCenterServerBaseUrl.Name = "lblCenterServerBaseUrl";
             lblCenterServerBaseUrl.Padding = new Padding(8, 0, 0, 0);
-            lblCenterServerBaseUrl.Size = new Size(150, 40);
+            lblCenterServerBaseUrl.Size = new Size(118, 40);
             lblCenterServerBaseUrl.TabIndex = 0;
             lblCenterServerBaseUrl.Text = "中心服务器地址";
-            //
+            // 
             // inputCenterServerBaseUrl
-            //
+            // 
             inputCenterServerBaseUrl.Dock = DockStyle.Fill;
             inputCenterServerBaseUrl.Location = new Point(150, 2);
             inputCenterServerBaseUrl.Margin = new Padding(0, 2, 0, 2);
             inputCenterServerBaseUrl.Name = "inputCenterServerBaseUrl";
             inputCenterServerBaseUrl.Size = new Size(382, 36);
             inputCenterServerBaseUrl.TabIndex = 1;
-            //
+            // 
             // tlpCenterServerSystemType
-            //
+            // 
             tlpCenterServerSystemType.ColumnCount = 2;
             tlpCenterServerSystemType.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150F));
             tlpCenterServerSystemType.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
@@ -1034,30 +1050,30 @@
             tlpCenterServerSystemType.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tlpCenterServerSystemType.Size = new Size(532, 40);
             tlpCenterServerSystemType.TabIndex = 2;
-            //
+            // 
             // lblCenterServerSystemType
-            //
+            // 
             lblCenterServerSystemType.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblCenterServerSystemType.Dock = DockStyle.Fill;
             lblCenterServerSystemType.Location = new Point(0, 0);
             lblCenterServerSystemType.Margin = new Padding(0);
             lblCenterServerSystemType.Name = "lblCenterServerSystemType";
             lblCenterServerSystemType.Padding = new Padding(8, 0, 0, 0);
-            lblCenterServerSystemType.Size = new Size(150, 40);
+            lblCenterServerSystemType.Size = new Size(71, 40);
             lblCenterServerSystemType.TabIndex = 0;
             lblCenterServerSystemType.Text = "系统类型";
-            //
+            // 
             // selectCenterServerSystemType
-            //
+            // 
             selectCenterServerSystemType.Dock = DockStyle.Fill;
             selectCenterServerSystemType.Location = new Point(150, 2);
             selectCenterServerSystemType.Margin = new Padding(0, 2, 0, 2);
             selectCenterServerSystemType.Name = "selectCenterServerSystemType";
             selectCenterServerSystemType.Size = new Size(382, 36);
             selectCenterServerSystemType.TabIndex = 1;
-            //
+            // 
             // tlpCenterServerHeartbeat
-            //
+            // 
             tlpCenterServerHeartbeat.ColumnCount = 2;
             tlpCenterServerHeartbeat.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150F));
             tlpCenterServerHeartbeat.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
@@ -1071,21 +1087,21 @@
             tlpCenterServerHeartbeat.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tlpCenterServerHeartbeat.Size = new Size(532, 40);
             tlpCenterServerHeartbeat.TabIndex = 4;
-            //
+            // 
             // lblCenterServerHeartbeatInterval
-            //
+            // 
             lblCenterServerHeartbeatInterval.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblCenterServerHeartbeatInterval.Dock = DockStyle.Fill;
             lblCenterServerHeartbeatInterval.Location = new Point(0, 0);
             lblCenterServerHeartbeatInterval.Margin = new Padding(0);
             lblCenterServerHeartbeatInterval.Name = "lblCenterServerHeartbeatInterval";
             lblCenterServerHeartbeatInterval.Padding = new Padding(8, 0, 0, 0);
-            lblCenterServerHeartbeatInterval.Size = new Size(150, 40);
+            lblCenterServerHeartbeatInterval.Size = new Size(87, 40);
             lblCenterServerHeartbeatInterval.TabIndex = 0;
             lblCenterServerHeartbeatInterval.Text = "心跳间隔(s)";
-            //
+            // 
             // inputCenterServerHeartbeatInterval
-            //
+            // 
             inputCenterServerHeartbeatInterval.Dock = DockStyle.Fill;
             inputCenterServerHeartbeatInterval.Location = new Point(150, 2);
             inputCenterServerHeartbeatInterval.Margin = new Padding(0, 2, 0, 2);
@@ -1093,9 +1109,9 @@
             inputCenterServerHeartbeatInterval.Size = new Size(382, 36);
             inputCenterServerHeartbeatInterval.TabIndex = 1;
             inputCenterServerHeartbeatInterval.Text = "5";
-            //
+            // 
             // grpDeviceConfig
-            //
+            // 
             grpDeviceConfig.Controls.Add(layoutDeviceNoConfig);
             grpDeviceConfig.Location = new Point(312, 6);
             grpDeviceConfig.Margin = new Padding(0);
@@ -1104,9 +1120,9 @@
             grpDeviceConfig.TabIndex = 0;
             grpDeviceConfig.TabStop = false;
             grpDeviceConfig.Text = "设备编号管理";
-            //
+            // 
             // layoutDeviceNoConfig
-            //
+            // 
             layoutDeviceNoConfig.ColumnCount = 1;
             layoutDeviceNoConfig.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             layoutDeviceNoConfig.Controls.Add(tlpDeviceId, 0, 0);
@@ -1123,9 +1139,9 @@
             layoutDeviceNoConfig.RowStyles.Add(new RowStyle(SizeType.Percent, 25F));
             layoutDeviceNoConfig.Size = new Size(595, 174);
             layoutDeviceNoConfig.TabIndex = 0;
-            //
+            // 
             // tlpDeviceId
-            //
+            // 
             tlpDeviceId.AutoSize = true;
             tlpDeviceId.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             tlpDeviceId.ColumnCount = 3;
@@ -1143,9 +1159,9 @@
             tlpDeviceId.RowStyles.Add(new RowStyle());
             tlpDeviceId.Size = new Size(595, 43);
             tlpDeviceId.TabIndex = 0;
-            //
+            // 
             // lblDeviceId
-            //
+            // 
             lblDeviceId.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblDeviceId.Dock = DockStyle.Fill;
             lblDeviceId.Location = new Point(0, 0);
@@ -1154,18 +1170,18 @@
             lblDeviceId.Size = new Size(63, 45);
             lblDeviceId.TabIndex = 0;
             lblDeviceId.Text = "设备编号";
-            //
+            // 
             // input_DeviceID
-            //
+            // 
             input_DeviceID.Dock = DockStyle.Fill;
             input_DeviceID.Location = new Point(63, 0);
             input_DeviceID.Margin = new Padding(0);
             input_DeviceID.Name = "input_DeviceID";
             input_DeviceID.Size = new Size(451, 45);
             input_DeviceID.TabIndex = 1;
-            //
+            // 
             // btnSyncDevice
-            //
+            // 
             btnSyncDevice.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnSyncDevice.BorderWidth = 1F;
             btnSyncDevice.Dock = DockStyle.Fill;
@@ -1177,9 +1193,9 @@
             btnSyncDevice.TabIndex = 2;
             btnSyncDevice.Tag = "perm:button.system.sync-device:enabled";
             btnSyncDevice.Text = "同步";
-            //
+            // 
             // tlpDeviceName
-            //
+            // 
             tlpDeviceName.AutoSize = true;
             tlpDeviceName.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             tlpDeviceName.ColumnCount = 2;
@@ -1195,9 +1211,9 @@
             tlpDeviceName.RowStyles.Add(new RowStyle());
             tlpDeviceName.Size = new Size(595, 43);
             tlpDeviceName.TabIndex = 1;
-            //
+            // 
             // lblDeviceName
-            //
+            // 
             lblDeviceName.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblDeviceName.Dock = DockStyle.Fill;
             lblDeviceName.Location = new Point(0, 0);
@@ -1206,18 +1222,18 @@
             lblDeviceName.Size = new Size(63, 45);
             lblDeviceName.TabIndex = 0;
             lblDeviceName.Text = "设备名称";
-            //
+            // 
             // input_DeviceName
-            //
+            // 
             input_DeviceName.Dock = DockStyle.Fill;
             input_DeviceName.Location = new Point(63, 0);
             input_DeviceName.Margin = new Padding(0);
             input_DeviceName.Name = "input_DeviceName";
             input_DeviceName.Size = new Size(532, 45);
             input_DeviceName.TabIndex = 1;
-            //
+            // 
             // tlpDeviveUrl
-            //
+            // 
             tlpDeviveUrl.AutoSize = true;
             tlpDeviveUrl.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             tlpDeviveUrl.ColumnCount = 2;
@@ -1233,9 +1249,9 @@
             tlpDeviveUrl.RowStyles.Add(new RowStyle());
             tlpDeviveUrl.Size = new Size(595, 45);
             tlpDeviveUrl.TabIndex = 2;
-            //
+            // 
             // lblDeviceUrl
-            //
+            // 
             lblDeviceUrl.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblDeviceUrl.Dock = DockStyle.Fill;
             lblDeviceUrl.Location = new Point(0, 0);
@@ -1244,18 +1260,18 @@
             lblDeviceUrl.Size = new Size(63, 46);
             lblDeviceUrl.TabIndex = 0;
             lblDeviceUrl.Text = "状态地址";
-            //
+            // 
             // input_DeviceUrl
-            //
+            // 
             input_DeviceUrl.Dock = DockStyle.Fill;
             input_DeviceUrl.Location = new Point(63, 0);
             input_DeviceUrl.Margin = new Padding(0);
             input_DeviceUrl.Name = "input_DeviceUrl";
             input_DeviceUrl.Size = new Size(532, 46);
             input_DeviceUrl.TabIndex = 1;
-            //
+            // 
             // tlpMesUrl
-            //
+            // 
             tlpMesUrl.AutoSize = true;
             tlpMesUrl.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             tlpMesUrl.ColumnCount = 3;
@@ -1273,9 +1289,9 @@
             tlpMesUrl.RowStyles.Add(new RowStyle());
             tlpMesUrl.Size = new Size(595, 43);
             tlpMesUrl.TabIndex = 3;
-            //
+            // 
             // lblMesUrl
-            //
+            // 
             lblMesUrl.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblMesUrl.Dock = DockStyle.Fill;
             lblMesUrl.Location = new Point(0, 0);
@@ -1284,9 +1300,9 @@
             lblMesUrl.Size = new Size(61, 45);
             lblMesUrl.TabIndex = 0;
             lblMesUrl.Text = "MES地址";
-            //
+            // 
             // input_BaseUrl
-            //
+            // 
             input_BaseUrl.Dock = DockStyle.Fill;
             input_BaseUrl.Location = new Point(61, 0);
             input_BaseUrl.Margin = new Padding(0);
@@ -1294,9 +1310,9 @@
             input_BaseUrl.Padding = new Padding(2, 0, 0, 0);
             input_BaseUrl.Size = new Size(453, 45);
             input_BaseUrl.TabIndex = 1;
-            //
+            // 
             // btnTestConnection
-            //
+            // 
             btnTestConnection.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnTestConnection.BorderWidth = 1F;
             btnTestConnection.Dock = DockStyle.Fill;
@@ -1308,9 +1324,9 @@
             btnTestConnection.TabIndex = 2;
             btnTestConnection.Tag = "perm:button.system.test-mes:enabled";
             btnTestConnection.Text = "测试";
-            //
+            // 
             // SystemSettingView
-            //
+            // 
             AutoScaleDimensions = new SizeF(8F, 20F);
             AutoScaleMode = AutoScaleMode.Font;
             Controls.Add(rootLayout);
@@ -1357,8 +1373,11 @@
             grpCenterServerConfig.ResumeLayout(false);
             tableLayoutPanelCenterServer.ResumeLayout(false);
             tlpCenterServerBaseUrl.ResumeLayout(false);
+            tlpCenterServerBaseUrl.PerformLayout();
             tlpCenterServerSystemType.ResumeLayout(false);
+            tlpCenterServerSystemType.PerformLayout();
             tlpCenterServerHeartbeat.ResumeLayout(false);
+            tlpCenterServerHeartbeat.PerformLayout();
             grpDeviceConfig.ResumeLayout(false);
             layoutDeviceNoConfig.ResumeLayout(false);
             layoutDeviceNoConfig.PerformLayout();
@@ -1384,6 +1403,7 @@
         private AntdUI.Select select_PlcType;
         private AntdUI.Label lblPlcType;
         private AntdUI.Checkbox chkEnablePlcStringNumericFormatting;
+        //private AntdUI.Checkbox chkEnablePlcAlarmReading;
         private TableLayoutPanel tlpPlcStringNumericMode;
         private AntdUI.Label lblPlcStringNumericFormatMode;
         private AntdUI.Select selectPlcStringNumericFormatMode;
@@ -1461,5 +1481,6 @@
         private TableLayoutPanel tlpCenterServerHeartbeat;
         private AntdUI.Label lblCenterServerHeartbeatInterval;
         private AntdUI.Input inputCenterServerHeartbeatInterval;
+        private AntdUI.Checkbox chkEnablePlcAlarmReading;
     }
 }

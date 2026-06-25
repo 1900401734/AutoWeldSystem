@@ -129,6 +129,7 @@ public partial class SystemSettingView : BaseView
         btnOpenDataPath.Click += (_, _) => OpenFolder(input_DataPath.Text, BuildFieldName(grpDeviceConfig.Text, lblDataPath.Text));
         select_PlcType.SelectedIndexChanged += Select_PlcType_SelectedIndexChanged;
         chkEnablePlcStringNumericFormatting.CheckedChanged += ChkEnablePlcStringNumericFormatting_CheckedChanged;
+        chkEnablePlcAlarmReading.CheckedChanged += ChkEnablePlcAlarmReading_CheckedChanged;
         selectPlcStringNumericFormatMode.SelectedIndexChanged += SelectPlcStringNumericFormatMode_SelectedIndexChanged;
         selectUploadMode.SelectedIndexChanged += SelectUploadMode_SelectedIndexChanged;
         chkEnableDualStation.CheckedChanged += ChkEnableDualStation_CheckedChanged;
@@ -280,6 +281,10 @@ public partial class SystemSettingView : BaseView
         UpdatePlcStringNumericFormatModeEnabled();
     }
 
+    private void ChkEnablePlcAlarmReading_CheckedChanged(object sender, AntdUI.BoolEventArgs e)
+    {
+    }
+
     private void SelectPlcStringNumericFormatMode_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
     {
         if (_syncingPlcStringNumericFormatModeSelection)
@@ -425,6 +430,7 @@ public partial class SystemSettingView : BaseView
         input_PlcIp.Text = settings.PlcIp;
         input_PlcPort.Text = settings.PlcPort.ToString().Trim();
         chkEnablePlcStringNumericFormatting.Checked = settings.EnablePlcStringNumericFormatting ?? true;
+        chkEnablePlcAlarmReading.Checked = settings.EnablePlcAlarmReading ?? true;
         input_MesTimeout.Text = settings.MesTimeoutSeconds.ToString();
         input_LogsPath.Text = settings.LogDirectory;
         input_DataPath.Text = settings.DataDirectory;
@@ -477,6 +483,7 @@ public partial class SystemSettingView : BaseView
         lblPlcPort.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPort);
         lblPlcType.Text = _localizer.GetString(TextKeys.SystemSetting.LabelType);
         chkEnablePlcStringNumericFormatting.Text = "启用 PLC 字符串数值处理";
+        chkEnablePlcAlarmReading.Text = "启用PLC报警读取";
         lblPlcStringNumericFormatMode.Text = "处理方式";
 
         lblDeviceId.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDeviceId);
@@ -849,6 +856,7 @@ public partial class SystemSettingView : BaseView
         settings.PlcPort = plcPort;
         settings.PlcType = NormalizePlcType(_selectedPlcType);
         settings.EnablePlcStringNumericFormatting = chkEnablePlcStringNumericFormatting.Checked;
+        settings.EnablePlcAlarmReading = chkEnablePlcAlarmReading.Checked;
         settings.PlcStringNumericFormatMode = NormalizePlcStringNumericFormatMode(_selectedPlcStringNumericFormatMode);
         settings.LogDirectory = logDirectory;
         settings.DataDirectory = dataDirectory;

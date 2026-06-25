@@ -3293,7 +3293,8 @@ public partial class MonitorView : BaseView
         tagDeviceStatus.ForeColor = Color.White;
         tagDeviceStatus.BackColor = GetDeviceStatusColor(snapshot.DeviceStatusCode, snapshot.IsSuccess);
 
-        if (snapshot.DeviceStatusCode == ProductionConstants.PlcDeviceStatuses.Alarm)
+        if (snapshot.DeviceStatusCode == ProductionConstants.PlcDeviceStatuses.Alarm
+            && (_currentSettings.EnablePlcAlarmReading != false))
         {
             var alarmMessage = string.IsNullOrWhiteSpace(snapshot.AlarmMessage)
                 ? "PLC设备报警，未匹配到已启用的报警原因"

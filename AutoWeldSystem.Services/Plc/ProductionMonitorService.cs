@@ -26,6 +26,7 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
     private readonly IWeldTaskService _weldTaskService;
     private readonly IProgramExceptionLogService _exceptionLogService;
     private readonly IPlcAlarmAddressService _plcAlarmAddressService;
+    private readonly IAppSettingsService _settingsService;
     private readonly SemaphoreSlim _addressSync = new(1, 1);
     private readonly object _businessLogSync = new();
     private readonly object _snapshotSync = new();
@@ -45,7 +46,8 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
         IDeviceStatusService deviceStatusService,
         IWeldTaskService weldTaskService,
         IProgramExceptionLogService exceptionLogService,
-        IPlcAlarmAddressService plcAlarmAddressService)
+        IPlcAlarmAddressService plcAlarmAddressService,
+        IAppSettingsService settingsService)
     {
         _plcCommunicationService = plcCommunicationService;
         _plcAddressService = plcAddressService;
@@ -55,6 +57,7 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
         _weldTaskService = weldTaskService;
         _exceptionLogService = exceptionLogService;
         _plcAlarmAddressService = plcAlarmAddressService;
+        _settingsService = settingsService;
         Current = CreateSnapshot(ProductionConstants.Stations.DefaultStationNo, false, null, 0, null, 0, 0, DateTime.Now, string.Empty);
         _stationSnapshots[ProductionConstants.Stations.DefaultStationNo] = Current;
     }
@@ -234,6 +237,7 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
             if (ProductionConstants.PlcDeviceStatuses.IsReportable(plcStatusCode))
             {
                 alarmMessage = plcStatusCode == ProductionConstants.PlcDeviceStatuses.Alarm
+                    && (_settingsService.Get().EnablePlcAlarmReading != false)
                     ? await ReadActiveAlarmMessageAsync(stationNo, cancellationToken)
                     : string.Empty;
                 await RecordDeviceStatusChangeAsync(stationNo, plcStatusCode, alarmMessage, cancellationToken);
