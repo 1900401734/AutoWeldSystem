@@ -12,7 +12,8 @@ partial class LocalWorkOrderForm
     private Label lblProcessName;
     private Label lblPlannedQty;
     private Label lblProductNum;
-    private Label lblProductModel;
+    private Label lblProductName;
+    private Label lblDrawingNo;
     private Label lblProgramName;
     private Label lblRecipeCode;
     private TextBox txtWorkOrderId;
@@ -23,7 +24,8 @@ partial class LocalWorkOrderForm
     private TextBox txtProcessName;
     private NumericUpDown numPlannedQty;
     private TextBox txtProductNum;
-    private TextBox txtProductModel;
+    private TextBox txtProductName;
+    private TextBox txtDrawingNo;
     private TextBox txtProgramName;
     private TextBox txtRecipeCode;
     private FlowLayoutPanel buttonPanel;
@@ -51,7 +53,8 @@ partial class LocalWorkOrderForm
         lblProcessName = new Label();
         lblPlannedQty = new Label();
         lblProductNum = new Label();
-        lblProductModel = new Label();
+        lblProductName = new Label();
+        lblDrawingNo = new Label();
         lblProgramName = new Label();
         lblRecipeCode = new Label();
         txtWorkOrderId = new TextBox();
@@ -62,7 +65,8 @@ partial class LocalWorkOrderForm
         txtProcessName = new TextBox();
         numPlannedQty = new NumericUpDown();
         txtProductNum = new TextBox();
-        txtProductModel = new TextBox();
+        txtProductName = new TextBox();
+        txtDrawingNo = new TextBox();
         txtProgramName = new TextBox();
         txtRecipeCode = new TextBox();
         buttonPanel = new FlowLayoutPanel();
@@ -94,24 +98,26 @@ partial class LocalWorkOrderForm
         layoutRoot.Controls.Add(numPlannedQty, 1, 6);
         layoutRoot.Controls.Add(lblProductNum, 0, 7);
         layoutRoot.Controls.Add(txtProductNum, 1, 7);
-        layoutRoot.Controls.Add(lblProductModel, 0, 8);
-        layoutRoot.Controls.Add(txtProductModel, 1, 8);
-        layoutRoot.Controls.Add(lblProgramName, 0, 9);
-        layoutRoot.Controls.Add(txtProgramName, 1, 9);
-        layoutRoot.Controls.Add(lblRecipeCode, 0, 10);
-        layoutRoot.Controls.Add(txtRecipeCode, 1, 10);
-        layoutRoot.Controls.Add(buttonPanel, 1, 11);
+        layoutRoot.Controls.Add(lblProductName, 0, 8);
+        layoutRoot.Controls.Add(txtProductName, 1, 8);
+        layoutRoot.Controls.Add(lblDrawingNo, 0, 9);
+        layoutRoot.Controls.Add(txtDrawingNo, 1, 9);
+        layoutRoot.Controls.Add(lblProgramName, 0, 10);
+        layoutRoot.Controls.Add(txtProgramName, 1, 10);
+        layoutRoot.Controls.Add(lblRecipeCode, 0, 11);
+        layoutRoot.Controls.Add(txtRecipeCode, 1, 11);
+        layoutRoot.Controls.Add(buttonPanel, 1, 12);
         layoutRoot.Dock = DockStyle.Fill;
         layoutRoot.Location = new Point(0, 0);
         layoutRoot.Name = "layoutRoot";
         layoutRoot.Padding = new Padding(16);
-        layoutRoot.RowCount = 12;
-        for (var i = 0; i < 11; i++)
+        layoutRoot.RowCount = 13;
+        for (var i = 0; i < 12; i++)
         {
             layoutRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 36F));
         }
         layoutRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 46F));
-        layoutRoot.Size = new Size(560, 460);
+        layoutRoot.Size = new Size(560, 520);
         layoutRoot.TabIndex = 0;
         // 
         // labels
@@ -124,10 +130,11 @@ partial class LocalWorkOrderForm
         lblProcessName.Text = "工序名称";
         lblPlannedQty.Text = "计划数量";
         lblProductNum.Text = "产品工号";
-        lblProductModel.Text = "产品型号";
+        lblProductName.Text = "产品名称*";
+        lblDrawingNo.Text = "图号*";
         lblProgramName.Text = "程序名称";
         lblRecipeCode.Text = "配方编号";
-        foreach (var label in new[] { lblWorkOrderId, lblProgram, lblBatch, lblSpec, lblProcessNo, lblProcessName, lblPlannedQty, lblProductNum, lblProductModel, lblProgramName, lblRecipeCode })
+        foreach (var label in new[] { lblWorkOrderId, lblProgram, lblBatch, lblSpec, lblProcessNo, lblProcessName, lblPlannedQty, lblProductNum, lblProductName, lblDrawingNo, lblProgramName, lblRecipeCode })
         {
             label.Dock = DockStyle.Fill;
             label.TextAlign = ContentAlignment.MiddleLeft;
@@ -135,7 +142,7 @@ partial class LocalWorkOrderForm
         // 
         // inputs
         // 
-        foreach (var input in new[] { txtWorkOrderId, txtBatch, txtSpec, txtProcessNo, txtProcessName, txtProductNum, txtProductModel, txtProgramName, txtRecipeCode })
+        foreach (var input in new[] { txtWorkOrderId, txtBatch, txtSpec, txtProcessNo, txtProcessName, txtProductNum, txtProductName, txtDrawingNo, txtProgramName, txtRecipeCode })
         {
             input.Dock = DockStyle.Fill;
             input.Margin = new Padding(0, 4, 0, 4);
@@ -149,7 +156,6 @@ partial class LocalWorkOrderForm
         numPlannedQty.Minimum = 1;
         numPlannedQty.Size = new Size(160, 27);
         txtProductNum.ReadOnly = true;
-        txtProductModel.ReadOnly = true;
         txtProgramName.ReadOnly = true;
         txtRecipeCode.ReadOnly = true;
         // 
@@ -159,7 +165,7 @@ partial class LocalWorkOrderForm
         buttonPanel.Controls.Add(btnCancel);
         buttonPanel.Dock = DockStyle.Fill;
         buttonPanel.FlowDirection = FlowDirection.RightToLeft;
-        buttonPanel.Location = new Point(136, 412);
+        buttonPanel.Location = new Point(136, 448);
         buttonPanel.Margin = new Padding(0);
         buttonPanel.Name = "buttonPanel";
         buttonPanel.Size = new Size(408, 42);
@@ -190,7 +196,7 @@ partial class LocalWorkOrderForm
         // LocalWorkOrderForm
         // 
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(560, 460);
+        ClientSize = new Size(560, 520);
         Controls.Add(layoutRoot);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;

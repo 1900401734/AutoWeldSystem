@@ -73,7 +73,6 @@ public partial class LocalWorkOrderForm : BaseWindow
     {
         var program = SelectedProgram;
         txtProductNum.Text = program?.ProductNum ?? string.Empty;
-        txtProductModel.Text = program?.ProductModel ?? string.Empty;
         txtProgramName.Text = program?.ProgramName ?? string.Empty;
         txtRecipeCode.Text = program?.RecipeCode ?? string.Empty;
     }
@@ -162,6 +161,18 @@ public partial class LocalWorkOrderForm : BaseWindow
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(txtProductName.Text))
+        {
+            MessageBox.Show(this, "产品名称不能为空。", "本地工单", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(txtDrawingNo.Text))
+        {
+            MessageBox.Show(this, "图号不能为空。", "本地工单", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
         Request = new OfflineExperimentStartReq
         {
             StationNo = _stationNo,
@@ -177,8 +188,9 @@ public partial class LocalWorkOrderForm : BaseWindow
             ProgramType = program.ProgramType.Trim(),
             ProgramContent = string.IsNullOrWhiteSpace(program.ProgramContent) ? "{}" : program.ProgramContent.Trim(),
             ProductNum = program.ProductNum.Trim(),
-            ProductModel = program.ProductModel?.Trim() ?? string.Empty,
-            ProductName = program.ProgramName.Trim(),
+            ProductModel = string.Empty,
+            ProductName = txtProductName.Text.Trim(),
+            DrawingNo = txtDrawingNo.Text.Trim(),
             RecipeCode = program.RecipeCode.Trim()
         };
 
@@ -202,6 +214,6 @@ public partial class LocalWorkOrderForm : BaseWindow
         public BizProgram Program { get; }
 
         public string DisplayText
-            => $"{Program.ProductNum} | 配方={Program.RecipeCode} | 型号={Program.ProductModel} | {Program.UpdatedTime:yyyy-MM-dd HH:mm}";
+            => $"配方={Program.RecipeCode} | {Program.ProductNum}";
     }
 }
