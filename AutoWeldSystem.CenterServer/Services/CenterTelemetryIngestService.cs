@@ -45,7 +45,6 @@ public sealed class CenterTelemetryIngestService
             _dbContext.InitDatabase();
             UpsertDeviceNode(deviceId, request);
             UpsertRuntimeSnapshot(deviceId, request);
-            InsertTelemetryLog(deviceId, request);
         }
 
         await _hubContext.Clients.All.SendAsync("CenterDashboardChanged", deviceId, cancellationToken);
@@ -148,21 +147,4 @@ public sealed class CenterTelemetryIngestService
         }
     }
 
-    private void InsertTelemetryLog(string deviceId, CenterTelemetrySnapshotRequest request)
-    {
-        foreach (var station in request.Stations.Where(item => item.StationNo > 0))
-        {
-            _dbContext.Db.Insertable(new CenterTelemetryLog
-            {
-                DeviceId = deviceId,
-                StationNo = station.StationNo,
-                DeviceStatusCode = station.DeviceStatusCode.Trim(),
-                AlarmMessage = station.AlarmMessage.Trim(),
-                TodayTotalCount = Math.Max(0, station.TodayTotalCount),
-                TodayQualifiedCount = Math.Max(0, station.TodayQualifiedCount),
-                TodayFailedCount = Math.Max(0, station.TodayFailedCount),
-                CreatedAt = DateTime.Now
-            }).ExecuteCommand();
-        }
-    }
 }

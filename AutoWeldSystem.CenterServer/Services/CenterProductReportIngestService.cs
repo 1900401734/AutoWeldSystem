@@ -12,27 +12,31 @@ using Microsoft.AspNetCore.SignalR;
 namespace AutoWeldSystem.CenterServer.Services;
 
 /// <summary>
-/// Stores completed product data forwarded by equipment clients and refreshes center-side XLSX reports.
+/// 接收设备端转发的单件产品数据，并直接维护中心服务器本地 Excel 报表。
+/// 产品明细不写入中心数据库，数据库只保留看板最新运行快照。
 /// </summary>
 public sealed class CenterProductReportIngestService
 {
+    private static readonly Regex InvalidFileNameChars = new("""[\\/:*?""<>|]+""", RegexOptions.Compiled);
+
     private readonly SqlSugarDbContext _dbContext;
     private readonly IHubContext<CenterDashboardHub> _hubContext;
-    private readonly IConfiguration _configuration;
+    private readonly CenterServerSettingsService _settingsService;
     private readonly object _dbLock = new();
+    private readonly object _fileLock = new();
 
     public CenterProductReportIngestService(
         SqlSugarDbContext dbContext,
         IHubContext<CenterDashboardHub> hubContext,
-        IConfiguration configuration)
+        CenterServerSettingsService settingsService)
     {
         _dbContext = dbContext;
         _hubContext = hubContext;
-        _configuration = configuration;
+        _settingsService = settingsService;
     }
 
     /// <summary>
-    /// Saves one completed product and refreshes the corresponding center report file.
+    /// 保存一个完成产品，并刷新对应的中心端 Excel 报表。
     /// </summary>
     public async Task<CenterTelemetryAck> IngestAsync(
         CenterProductReportRequest request,
@@ -55,13 +59,16 @@ public sealed class CenterProductReportIngestService
         }
 
         string reportPath;
+        lock (_fileLock)
+        {
+            reportPath = WriteReportFile(deviceId, request);
+        }
+
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
             UpsertDeviceNode(deviceId, request);
-            ReplaceProductRecords(deviceId, request);
             RefreshStationCounts(deviceId, request);
-            reportPath = WriteReportFile(deviceId, request);
         }
 
         await _hubContext.Clients.All.SendAsync("CenterDashboardChanged", deviceId, cancellationToken);
@@ -85,7 +92,7 @@ public sealed class CenterProductReportIngestService
     }
 
     /// <summary>
-    /// Ensures product-only uploads can also register a new device node.
+    /// 产品上传也可以首次登记设备节点，保证新设备能出现在看板中。
     /// </summary>
     private void UpsertDeviceNode(string deviceId, CenterProductReportRequest request)
     {
@@ -111,57 +118,44 @@ public sealed class CenterProductReportIngestService
     }
 
     /// <summary>
-    /// Replaces the same product rows to keep retry uploads idempotent.
+    /// 写入或重写 Excel 报表。
+    /// 同一设备、工位、工单、产品号重复上传时会先删除旧行，保证设备端重试不会重复计数。
     /// </summary>
-    private void ReplaceProductRecords(string deviceId, CenterProductReportRequest request)
+    private string WriteReportFile(string deviceId, CenterProductReportRequest request)
     {
-        _dbContext.Db.Deleteable<CenterProductRecord>()
-            .Where(record => record.DeviceId == deviceId
-                && record.StationNo == request.StationNo
-                && record.WorkOrder == request.WorkOrder
-                && record.ProductNo == request.ProductNo)
-            .ExecuteCommand();
+        var reportDate = request.CompletedAt == default ? DateTime.Today : request.CompletedAt.Date;
+        var reportPath = BuildReportPath(deviceId, request, reportDate);
+        Directory.CreateDirectory(Path.GetDirectoryName(reportPath)!);
 
-        var rows = request.Points
-            .OrderBy(point => point.SequenceNo)
-            .Select(point => new CenterProductRecord
-            {
-                DeviceId = deviceId,
-                DeviceName = request.DeviceName.Trim(),
-                SystemType = CenterTelemetryRules.NormalizeSystemType(request.SystemType),
-                StationNo = request.StationNo,
-                WorkOrder = request.WorkOrder.Trim(),
-                ProductJobNo = request.ProductJobNo.Trim(),
-                ProductNo = request.ProductNo.Trim(),
-                ProductModel = request.ProductModel.Trim(),
-                ProductResult = request.ProductResult.Trim(),
-                SequenceNo = point.SequenceNo,
-                TouchNo = point.TouchNo.Trim(),
-                TestResult = point.TestResult.Trim(),
-                CollectedAt = point.CollectedAt == default ? DateTime.Now : point.CollectedAt,
-                CompletedAt = request.CompletedAt == default ? DateTime.Now : request.CompletedAt,
-                RawDataJson = point.RawDataJson,
-                CreatedAt = DateTime.Now
-            })
+        var rows = LoadExistingRows(reportPath)
+            .Where(row => !IsSameProduct(row, request))
+            .ToList();
+        rows.AddRange(BuildRows(deviceId, request));
+        rows = rows
+            .OrderBy(row => row.ProductNo)
+            .ThenBy(row => row.SequenceNo)
             .ToList();
 
-        _dbContext.Db.Insertable(rows).ExecuteCommand();
+        var columns = ResolveColumns(reportPath, request, rows);
+        using var workbook = new XLWorkbook();
+        WriteReportWorksheet(workbook, columns, rows);
+        WriteDataWorksheet(workbook, rows);
+        WriteColumnsWorksheet(workbook, columns);
+        workbook.SaveAs(reportPath);
+        return reportPath;
     }
 
     /// <summary>
-    /// Updates dashboard counts immediately after a product report is accepted.
+    /// 产品完成后立即更新看板计数。
+    /// 计数来自 Excel 中当天的产品记录，而不是中心数据库。
     /// </summary>
-    private void RefreshStationCounts(string deviceId, CenterProductReportRequest request)
+    private void RefreshStationCounts(
+        string deviceId,
+        CenterProductReportRequest request)
     {
-        var start = DateTime.Today;
-        var end = start.AddDays(1);
-        var products = _dbContext.Db.Queryable<CenterProductRecord>()
-            .Where(record => record.DeviceId == deviceId
-                && record.StationNo == request.StationNo
-                && record.CompletedAt >= start
-                && record.CompletedAt < end)
-            .ToList()
-            .GroupBy(record => record.ProductNo, StringComparer.OrdinalIgnoreCase)
+        var today = DateTime.Today;
+        var products = LoadTodayProducts(deviceId, request.StationNo, today)
+            .GroupBy(row => $"{row.WorkOrder}\u001F{row.ProductNo}", StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
             .ToList();
 
@@ -192,86 +186,338 @@ public sealed class CenterProductReportIngestService
         }
     }
 
-    private string WriteReportFile(string deviceId, CenterProductReportRequest request)
+    private IReadOnlyList<CenterProductReportRow> LoadTodayProducts(string deviceId, int stationNo, DateTime reportDate)
     {
-        var reportDate = request.CompletedAt == default ? DateTime.Today : request.CompletedAt.Date;
-        var rows = _dbContext.Db.Queryable<CenterProductRecord>()
-            .Where(record => record.DeviceId == deviceId
-                && record.StationNo == request.StationNo
-                && record.WorkOrder == request.WorkOrder
-                && record.CompletedAt >= reportDate
-                && record.CompletedAt < reportDate.AddDays(1))
-            .OrderBy(record => record.ProductNo)
-            .OrderBy(record => record.SequenceNo)
+        var root = _settingsService.Get().DataDirectory;
+        if (!Directory.Exists(root))
+        {
+            return [];
+        }
+
+        var fileName = $"{reportDate:yyyyMMdd}.xlsx";
+        var rows = new List<CenterProductReportRow>();
+        foreach (var filePath in Directory.EnumerateFiles(root, fileName, SearchOption.AllDirectories))
+        {
+            rows.AddRange(LoadExistingRows(filePath)
+                .Where(row => row.StationNo == stationNo
+                    && row.CompletedAt.Date == reportDate.Date
+                    && string.Equals(row.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        return rows;
+    }
+
+    private IReadOnlyList<CenterProductReportColumn> ResolveColumns(
+        string reportPath,
+        CenterProductReportRequest request,
+        IReadOnlyList<CenterProductReportRow> rows)
+    {
+        var savedColumns = LoadExistingColumns(reportPath);
+        var requestColumns = CenterProductReportFormat.FromDtos(request.ReportColumns);
+        var dynamicFallbackColumns = ResolveDynamicKeys(rows)
+            .Select(key => new CenterProductReportColumn(key, key, MergeByProduct: false));
+
+        return CenterProductReportFormat.BuildColumns(savedColumns
+            .Concat(requestColumns)
+            .Concat(dynamicFallbackColumns));
+    }
+
+    private static IReadOnlyList<CenterProductReportRow> BuildRows(
+        string deviceId,
+        CenterProductReportRequest request)
+    {
+        return request.Points
+            .OrderBy(point => point.SequenceNo)
+            .Select(point => new CenterProductReportRow
+            {
+                DeviceId = deviceId,
+                DeviceName = request.DeviceName.Trim(),
+                SystemType = CenterTelemetryRules.NormalizeSystemType(request.SystemType),
+                StationNo = request.StationNo,
+                WorkOrder = request.WorkOrder.Trim(),
+                Batch = request.Batch.Trim(),
+                Quantity = request.Quantity,
+                PartName = request.PartName.Trim(),
+                ProcessNo = request.ProcessNo.Trim(),
+                OperatorNo = string.IsNullOrWhiteSpace(point.OperatorNo)
+                    ? request.OperatorNo.Trim()
+                    : point.OperatorNo.Trim(),
+                ProductJobNo = request.ProductJobNo.Trim(),
+                ProductNo = request.ProductNo.Trim(),
+                ProductModel = request.ProductModel.Trim(),
+                ProductResult = request.ProductResult.Trim(),
+                SequenceNo = point.SequenceNo,
+                TouchNo = point.TouchNo.Trim(),
+                TestResult = point.TestResult.Trim(),
+                CollectedAt = point.CollectedAt == default ? DateTime.Now : point.CollectedAt,
+                CompletedAt = request.CompletedAt == default ? DateTime.Now : request.CompletedAt,
+                RawDataJson = point.RawDataJson ?? string.Empty
+            })
             .ToList();
-        var dynamicKeys = ResolveDynamicKeys(rows);
-        var reportPath = BuildReportPath(deviceId, request.StationNo, request.WorkOrder, reportDate);
+    }
 
-        Directory.CreateDirectory(Path.GetDirectoryName(reportPath)!);
-        using var workbook = new XLWorkbook();
-        var worksheet = workbook.Worksheets.Add("产品数据");
-        var fixedHeaders = new[]
+    private static void WriteReportWorksheet(
+        XLWorkbook workbook,
+        IReadOnlyList<CenterProductReportColumn> columns,
+        IReadOnlyList<CenterProductReportRow> rows)
+    {
+        var worksheet = workbook.Worksheets.Add(CenterProductReportFormat.WorksheetName);
+        for (var column = 0; column < columns.Count; column++)
         {
-            "设备编号", "设备名称", "系统类型", "工位", "工单号", "产品工号", "PLC产品编号",
-            "产品型号", "产品结果", "点位", "点位结果", "采集时间"
-        };
-
-        var headers = fixedHeaders.Concat(dynamicKeys).ToList();
-        for (var column = 0; column < headers.Count; column++)
-        {
-            worksheet.Cell(1, column + 1).Value = headers[column];
+            worksheet.Cell(1, column + 1).Value = columns[column].Title;
         }
 
         for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
         {
-            WriteReportRow(worksheet, rowIndex + 2, rows[rowIndex], dynamicKeys);
+            WriteReportRow(worksheet, rowIndex + 2, rows[rowIndex], columns);
         }
 
-        var usedRange = worksheet.Range(1, 1, Math.Max(1, rows.Count + 1), headers.Count);
-        usedRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-        usedRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-        usedRange.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
-        usedRange.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
-        worksheet.Columns().AdjustToContents();
-        workbook.SaveAs(reportPath);
-        return reportPath;
+        MergeRepeatedProductFields(worksheet, columns, rows);
+        ApplyWorksheetStyle(worksheet, columns.Count, rows.Count);
     }
 
     private static void WriteReportRow(
         IXLWorksheet worksheet,
         int rowNumber,
-        CenterProductRecord row,
-        IReadOnlyList<string> dynamicKeys)
+        CenterProductReportRow row,
+        IReadOnlyList<CenterProductReportColumn> columns)
     {
-        var fixedValues = new[]
+        var values = BuildReportRow(row);
+        foreach (var pair in ParseRawData(row.RawDataJson))
         {
-            row.DeviceId,
-            row.DeviceName,
-            row.SystemType,
-            row.StationNo.ToString(),
-            row.WorkOrder,
-            row.ProductJobNo,
-            row.ProductNo,
-            row.ProductModel,
-            row.ProductResult,
-            row.TouchNo,
-            row.TestResult,
-            row.CollectedAt.ToString("yyyy-MM-dd HH:mm:ss")
-        };
-        for (var column = 0; column < fixedValues.Length; column++)
-        {
-            worksheet.Cell(rowNumber, column + 1).Value = fixedValues[column];
+            values.TryAdd(pair.Key, pair.Value);
         }
 
-        var dynamicValues = ParseRawData(row.RawDataJson);
-        for (var index = 0; index < dynamicKeys.Count; index++)
+        for (var index = 0; index < columns.Count; index++)
         {
-            dynamicValues.TryGetValue(dynamicKeys[index], out var value);
-            worksheet.Cell(rowNumber, fixedValues.Length + index + 1).Value = value ?? string.Empty;
+            values.TryGetValue(columns[index].Key, out var value);
+            worksheet.Cell(rowNumber, index + 1).Value = value ?? string.Empty;
         }
     }
 
-    private IReadOnlyList<string> ResolveDynamicKeys(IReadOnlyList<CenterProductRecord> rows)
+    private static Dictionary<string, string> BuildReportRow(CenterProductReportRow row)
+    {
+        return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [CenterProductReportFormat.ColumnStationNo] = row.StationNo.ToString(),
+            [CenterProductReportFormat.ColumnProductNo] = row.ProductNo,
+            [CenterProductReportFormat.ColumnProductResult] = row.ProductResult,
+            [CenterProductReportFormat.ColumnTouchNo] = string.IsNullOrWhiteSpace(row.TouchNo)
+                ? row.SequenceNo.ToString()
+                : row.TouchNo,
+            [CenterProductReportFormat.ColumnTouchResult] = row.TestResult,
+            [CenterProductReportFormat.ColumnWorkOrder] = row.WorkOrder,
+            [CenterProductReportFormat.ColumnBatch] = row.Batch,
+            [CenterProductReportFormat.ColumnQuantity] = row.Quantity.ToString(),
+            [CenterProductReportFormat.ColumnPartName] = row.PartName,
+            [CenterProductReportFormat.ColumnProcessNo] = row.ProcessNo,
+            [CenterProductReportFormat.ColumnOperator] = row.OperatorNo,
+            [CenterProductReportFormat.ColumnRecordTime] = row.CompletedAt.ToString("yyyy-MM-dd HH:mm:ss")
+        };
+    }
+
+    private static void WriteDataWorksheet(
+        XLWorkbook workbook,
+        IReadOnlyList<CenterProductReportRow> rows)
+    {
+        var worksheet = workbook.Worksheets.Add(CenterProductReportFormat.DataWorksheetName);
+        worksheet.Visibility = XLWorksheetVisibility.Hidden;
+        var headers = CenterDataColumns.All;
+        for (var index = 0; index < headers.Count; index++)
+        {
+            worksheet.Cell(1, index + 1).Value = headers[index];
+        }
+
+        for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+        {
+            var values = rows[rowIndex].ToDictionary();
+            for (var columnIndex = 0; columnIndex < headers.Count; columnIndex++)
+            {
+                values.TryGetValue(headers[columnIndex], out var value);
+                worksheet.Cell(rowIndex + 2, columnIndex + 1).Value = value ?? string.Empty;
+            }
+        }
+    }
+
+    private static void WriteColumnsWorksheet(
+        XLWorkbook workbook,
+        IReadOnlyList<CenterProductReportColumn> columns)
+    {
+        var worksheet = workbook.Worksheets.Add(CenterProductReportFormat.ColumnsWorksheetName);
+        worksheet.Visibility = XLWorksheetVisibility.Hidden;
+        worksheet.Cell(1, 1).Value = "Key";
+        worksheet.Cell(1, 2).Value = "Title";
+        worksheet.Cell(1, 3).Value = "MergeByProduct";
+        for (var index = 0; index < columns.Count; index++)
+        {
+            worksheet.Cell(index + 2, 1).Value = columns[index].Key;
+            worksheet.Cell(index + 2, 2).Value = columns[index].Title;
+            worksheet.Cell(index + 2, 3).Value = columns[index].MergeByProduct;
+        }
+    }
+
+    private static IReadOnlyList<CenterProductReportRow> LoadExistingRows(string reportPath)
+    {
+        if (!File.Exists(reportPath))
+        {
+            return [];
+        }
+
+        try
+        {
+            using var workbook = new XLWorkbook(reportPath);
+            var worksheet = workbook.Worksheets.FirstOrDefault(
+                sheet => string.Equals(sheet.Name, CenterProductReportFormat.DataWorksheetName, StringComparison.OrdinalIgnoreCase));
+            if (worksheet is null)
+            {
+                return [];
+            }
+
+            var rows = new List<CenterProductReportRow>();
+            var lastRow = worksheet.LastRowUsed()?.RowNumber() ?? 1;
+            for (var rowNumber = 2; rowNumber <= lastRow; rowNumber++)
+            {
+                rows.Add(CenterProductReportRow.FromWorksheetRow(worksheet, rowNumber));
+            }
+
+            return rows;
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static IReadOnlyList<CenterProductReportColumn> LoadExistingColumns(string reportPath)
+    {
+        if (!File.Exists(reportPath))
+        {
+            return [];
+        }
+
+        try
+        {
+            using var workbook = new XLWorkbook(reportPath);
+            var worksheet = workbook.Worksheets.FirstOrDefault(
+                sheet => string.Equals(sheet.Name, CenterProductReportFormat.ColumnsWorksheetName, StringComparison.OrdinalIgnoreCase));
+            if (worksheet is null)
+            {
+                return [];
+            }
+
+            var columns = new List<CenterProductReportColumn>();
+            var lastRow = worksheet.LastRowUsed()?.RowNumber() ?? 1;
+            for (var rowNumber = 2; rowNumber <= lastRow; rowNumber++)
+            {
+                var key = worksheet.Cell(rowNumber, 1).GetString();
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    continue;
+                }
+
+                columns.Add(new CenterProductReportColumn(
+                    key.Trim(),
+                    worksheet.Cell(rowNumber, 2).GetString(),
+                    worksheet.Cell(rowNumber, 3).GetBoolean()));
+            }
+
+            return columns;
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static void ApplyWorksheetStyle(IXLWorksheet worksheet, int columnCount, int dataRowCount)
+    {
+        if (columnCount <= 0)
+        {
+            return;
+        }
+
+        var lastRow = Math.Max(1, dataRowCount + 1);
+        var usedRange = worksheet.Range(1, 1, lastRow, columnCount);
+        usedRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        usedRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        usedRange.Style.Alignment.WrapText = true;
+        usedRange.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+        usedRange.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+        var headerRange = worksheet.Range(1, 1, 1, columnCount);
+        headerRange.Style.Font.Bold = true;
+        headerRange.Style.Fill.BackgroundColor = XLColor.FromHtml("#EAF2FF");
+        worksheet.SheetView.FreezeRows(1);
+        worksheet.Columns().AdjustToContents();
+    }
+
+    private static void MergeRepeatedProductFields(
+        IXLWorksheet worksheet,
+        IReadOnlyList<CenterProductReportColumn> columns,
+        IReadOnlyList<CenterProductReportRow> rows)
+    {
+        if (rows.Count <= 1)
+        {
+            return;
+        }
+
+        var mergeColumns = columns
+            .Select((column, index) => new { Column = column, Index = index + 1 })
+            .Where(item => item.Column.MergeByProduct)
+            .Select(item => item.Index)
+            .ToArray();
+
+        var groupStartRow = 2;
+        var currentKey = BuildProductMergeKey(rows[0]);
+        for (var recordIndex = 1; recordIndex < rows.Count; recordIndex++)
+        {
+            var key = BuildProductMergeKey(rows[recordIndex]);
+            if (!string.Equals(currentKey, key, StringComparison.OrdinalIgnoreCase))
+            {
+                MergeProductColumns(worksheet, groupStartRow, recordIndex + 1, mergeColumns);
+                groupStartRow = recordIndex + 2;
+                currentKey = key;
+            }
+        }
+
+        MergeProductColumns(worksheet, groupStartRow, rows.Count + 1, mergeColumns);
+    }
+
+    private static void MergeProductColumns(IXLWorksheet worksheet, int startRow, int endRow, IReadOnlyList<int> columns)
+    {
+        if (endRow <= startRow)
+        {
+            return;
+        }
+
+        foreach (var column in columns)
+        {
+            var range = worksheet.Range(startRow, column, endRow, column);
+            var distinctValues = range.Cells()
+                .Select(cell => cell.GetString())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count();
+            if (distinctValues <= 1)
+            {
+                range.Merge();
+                range.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+                range.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            }
+        }
+    }
+
+    private static string BuildProductMergeKey(CenterProductReportRow row)
+    {
+        return CenterProductReportFormat.BuildProductMergeKey(row.StationNo, row.WorkOrder, row.ProductNo);
+    }
+
+    private static bool IsSameProduct(CenterProductReportRow row, CenterProductReportRequest request)
+    {
+        return row.StationNo == request.StationNo
+            && string.Equals(row.WorkOrder, request.WorkOrder.Trim(), StringComparison.OrdinalIgnoreCase)
+            && string.Equals(row.ProductNo, request.ProductNo.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IReadOnlyList<string> ResolveDynamicKeys(IReadOnlyList<CenterProductReportRow> rows)
     {
         var keys = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -318,22 +564,182 @@ public sealed class CenterProductReportIngestService
         }
     }
 
-    private string BuildReportPath(string deviceId, int stationNo, string workOrder, DateTime reportDate)
+    private string BuildReportPath(string deviceId, CenterProductReportRequest request, DateTime reportDate)
     {
-        var configuredRoot = _configuration.GetValue<string>("CenterServer:ReportDirectory");
-        var root = string.IsNullOrWhiteSpace(configuredRoot)
-            ? Path.Combine(AppContext.BaseDirectory, "CenterReports")
-            : configuredRoot.Trim();
-        var fileName = $"{SanitizeFileName(deviceId)}_S{stationNo}_{SanitizeFileName(workOrder)}_{reportDate:yyyyMMdd}.xlsx";
-        return Path.Combine(root, reportDate.ToString("yyyyMMdd"), fileName);
+        var root = _settingsService.Get().DataDirectory;
+        var devicePart = SanitizeFileName($"{FirstNonEmpty(request.DeviceName, "Device")}_{FirstNonEmpty(deviceId, "Unknown")}");
+        var stationPart = $"Station{request.StationNo}";
+        var workOrderPart = SanitizeFileName(FirstNonEmpty(request.WorkOrder, "NoWorkOrder"));
+        return Path.Combine(root, devicePart, stationPart, workOrderPart, $"{reportDate:yyyyMMdd}.xlsx");
     }
 
-    private static bool IsProductOk(CenterProductRecord row)
+    private static bool IsProductOk(CenterProductReportRow row)
         => string.Equals(row.ProductResult, ProductionConstants.TestResults.Ok, StringComparison.OrdinalIgnoreCase);
 
     private static string SanitizeFileName(string value)
     {
-        var normalized = string.IsNullOrWhiteSpace(value) ? "未命名" : value.Trim();
-        return Regex.Replace(normalized, """[\\/:*?""<>|]""", "_");
+        var normalized = string.IsNullOrWhiteSpace(value) ? "NA" : value.Trim();
+        return InvalidFileNameChars.Replace(normalized, "-");
+    }
+
+    private static string FirstNonEmpty(params string?[] values)
+        => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
+
+    private sealed class CenterProductReportRow
+    {
+        public string DeviceId { get; set; } = string.Empty;
+        public string DeviceName { get; set; } = string.Empty;
+        public string SystemType { get; set; } = string.Empty;
+        public int StationNo { get; set; } = 1;
+        public string WorkOrder { get; set; } = string.Empty;
+        public string Batch { get; set; } = string.Empty;
+        public int Quantity { get; set; }
+        public string PartName { get; set; } = string.Empty;
+        public string ProcessNo { get; set; } = string.Empty;
+        public string OperatorNo { get; set; } = string.Empty;
+        public string ProductJobNo { get; set; } = string.Empty;
+        public string ProductNo { get; set; } = string.Empty;
+        public string ProductModel { get; set; } = string.Empty;
+        public string ProductResult { get; set; } = string.Empty;
+        public int SequenceNo { get; set; }
+        public string TouchNo { get; set; } = string.Empty;
+        public string TestResult { get; set; } = string.Empty;
+        public DateTime CollectedAt { get; set; } = DateTime.Now;
+        public DateTime CompletedAt { get; set; } = DateTime.Now;
+        public string RawDataJson { get; set; } = string.Empty;
+
+        public Dictionary<string, string> ToDictionary()
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                [CenterDataColumns.DeviceId] = DeviceId,
+                [CenterDataColumns.DeviceName] = DeviceName,
+                [CenterDataColumns.SystemType] = SystemType,
+                [CenterDataColumns.StationNo] = StationNo.ToString(),
+                [CenterDataColumns.WorkOrder] = WorkOrder,
+                [CenterDataColumns.Batch] = Batch,
+                [CenterDataColumns.Quantity] = Quantity.ToString(),
+                [CenterDataColumns.PartName] = PartName,
+                [CenterDataColumns.ProcessNo] = ProcessNo,
+                [CenterDataColumns.OperatorNo] = OperatorNo,
+                [CenterDataColumns.ProductJobNo] = ProductJobNo,
+                [CenterDataColumns.ProductNo] = ProductNo,
+                [CenterDataColumns.ProductModel] = ProductModel,
+                [CenterDataColumns.ProductResult] = ProductResult,
+                [CenterDataColumns.SequenceNo] = SequenceNo.ToString(),
+                [CenterDataColumns.TouchNo] = TouchNo,
+                [CenterDataColumns.TestResult] = TestResult,
+                [CenterDataColumns.CollectedAt] = CollectedAt.ToString("O"),
+                [CenterDataColumns.CompletedAt] = CompletedAt.ToString("O"),
+                [CenterDataColumns.RawDataJson] = RawDataJson
+            };
+        }
+
+        public static CenterProductReportRow FromWorksheetRow(IXLWorksheet worksheet, int rowNumber)
+        {
+            var row = new CenterProductReportRow
+            {
+                DeviceId = Get(worksheet, rowNumber, CenterDataColumns.DeviceId),
+                DeviceName = Get(worksheet, rowNumber, CenterDataColumns.DeviceName),
+                SystemType = Get(worksheet, rowNumber, CenterDataColumns.SystemType),
+                StationNo = GetInt(worksheet, rowNumber, CenterDataColumns.StationNo, 1),
+                WorkOrder = Get(worksheet, rowNumber, CenterDataColumns.WorkOrder),
+                Batch = Get(worksheet, rowNumber, CenterDataColumns.Batch),
+                Quantity = GetInt(worksheet, rowNumber, CenterDataColumns.Quantity, 0),
+                PartName = Get(worksheet, rowNumber, CenterDataColumns.PartName),
+                ProcessNo = Get(worksheet, rowNumber, CenterDataColumns.ProcessNo),
+                OperatorNo = Get(worksheet, rowNumber, CenterDataColumns.OperatorNo),
+                ProductJobNo = Get(worksheet, rowNumber, CenterDataColumns.ProductJobNo),
+                ProductNo = Get(worksheet, rowNumber, CenterDataColumns.ProductNo),
+                ProductModel = Get(worksheet, rowNumber, CenterDataColumns.ProductModel),
+                ProductResult = Get(worksheet, rowNumber, CenterDataColumns.ProductResult),
+                SequenceNo = GetInt(worksheet, rowNumber, CenterDataColumns.SequenceNo, 0),
+                TouchNo = Get(worksheet, rowNumber, CenterDataColumns.TouchNo),
+                TestResult = Get(worksheet, rowNumber, CenterDataColumns.TestResult),
+                CollectedAt = GetDate(worksheet, rowNumber, CenterDataColumns.CollectedAt),
+                CompletedAt = GetDate(worksheet, rowNumber, CenterDataColumns.CompletedAt),
+                RawDataJson = Get(worksheet, rowNumber, CenterDataColumns.RawDataJson)
+            };
+            return row;
+        }
+
+        private static string Get(IXLWorksheet worksheet, int rowNumber, string columnName)
+        {
+            var columnIndex = CenterDataColumns.IndexOf(columnName) + 1;
+            return worksheet.Cell(rowNumber, columnIndex).GetString();
+        }
+
+        private static int GetInt(IXLWorksheet worksheet, int rowNumber, string columnName, int fallback)
+        {
+            return int.TryParse(Get(worksheet, rowNumber, columnName), out var value) ? value : fallback;
+        }
+
+        private static DateTime GetDate(IXLWorksheet worksheet, int rowNumber, string columnName)
+        {
+            return DateTime.TryParse(Get(worksheet, rowNumber, columnName), out var value)
+                ? value
+                : DateTime.Now;
+        }
+    }
+
+    private static class CenterDataColumns
+    {
+        public const string DeviceId = "DeviceId";
+        public const string DeviceName = "DeviceName";
+        public const string SystemType = "SystemType";
+        public const string StationNo = "StationNo";
+        public const string WorkOrder = "WorkOrder";
+        public const string Batch = "Batch";
+        public const string Quantity = "Quantity";
+        public const string PartName = "PartName";
+        public const string ProcessNo = "ProcessNo";
+        public const string OperatorNo = "OperatorNo";
+        public const string ProductJobNo = "ProductJobNo";
+        public const string ProductNo = "ProductNo";
+        public const string ProductModel = "ProductModel";
+        public const string ProductResult = "ProductResult";
+        public const string SequenceNo = "SequenceNo";
+        public const string TouchNo = "TouchNo";
+        public const string TestResult = "TestResult";
+        public const string CollectedAt = "CollectedAt";
+        public const string CompletedAt = "CompletedAt";
+        public const string RawDataJson = "RawDataJson";
+
+        public static readonly IReadOnlyList<string> All =
+        [
+            DeviceId,
+            DeviceName,
+            SystemType,
+            StationNo,
+            WorkOrder,
+            Batch,
+            Quantity,
+            PartName,
+            ProcessNo,
+            OperatorNo,
+            ProductJobNo,
+            ProductNo,
+            ProductModel,
+            ProductResult,
+            SequenceNo,
+            TouchNo,
+            TestResult,
+            CollectedAt,
+            CompletedAt,
+            RawDataJson
+        ];
+
+        public static int IndexOf(string columnName)
+        {
+            for (var index = 0; index < All.Count; index++)
+            {
+                if (string.Equals(All[index], columnName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return index;
+                }
+            }
+
+            throw new InvalidOperationException($"Center report data column is missing: {columnName}");
+        }
     }
 }

@@ -26,6 +26,20 @@ public sealed class CenterProductRecord
     public string WorkOrder { get; set; } = string.Empty;
 
     [SugarColumn(Length = 50)]
+    public string Batch { get; set; } = string.Empty;
+
+    public int Quantity { get; set; }
+
+    [SugarColumn(Length = 100)]
+    public string PartName { get; set; } = string.Empty;
+
+    [SugarColumn(Length = 50)]
+    public string ProcessNo { get; set; } = string.Empty;
+
+    [SugarColumn(Length = 50)]
+    public string OperatorNo { get; set; } = string.Empty;
+
+    [SugarColumn(Length = 50)]
     public string ProductJobNo { get; set; } = string.Empty;
 
     [SugarColumn(Length = 50)]

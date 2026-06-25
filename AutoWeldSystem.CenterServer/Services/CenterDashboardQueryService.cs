@@ -12,13 +12,13 @@ namespace AutoWeldSystem.CenterServer.Services;
 public sealed class CenterDashboardQueryService
 {
     private readonly SqlSugarDbContext _dbContext;
-    private readonly IConfiguration _configuration;
+    private readonly CenterServerSettingsService _settingsService;
     private readonly object _dbLock = new();
 
-    public CenterDashboardQueryService(SqlSugarDbContext dbContext, IConfiguration configuration)
+    public CenterDashboardQueryService(SqlSugarDbContext dbContext, CenterServerSettingsService settingsService)
     {
         _dbContext = dbContext;
-        _configuration = configuration;
+        _settingsService = settingsService;
     }
 
     /// <summary>
@@ -42,9 +42,7 @@ public sealed class CenterDashboardQueryService
                 .ToList()
                 .GroupBy(it => it.DeviceId, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(group => group.Key, group => group.OrderBy(it => it.StationNo).ToList(), StringComparer.OrdinalIgnoreCase);
-            var timeoutSeconds = _configuration.GetValue(
-                "CenterServer:OfflineTimeoutSeconds",
-                CenterServerConstants.DefaultOfflineTimeoutSeconds);
+            var timeoutSeconds = _settingsService.Get().OfflineTimeoutSeconds;
 
             return new CenterDashboardSnapshotDto
             {

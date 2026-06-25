@@ -288,7 +288,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
         _exceptionLogService.Write(ex, "CenterProductForwardingService");
     }
 
-    private static CenterProductReportRequest BuildRequest(
+    private CenterProductReportRequest BuildRequest(
         AppSettings settings,
         BizWeldTask task,
         int stationNo,
@@ -303,19 +303,179 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             SystemType = CenterTelemetryRules.NormalizeSystemType(settings.CenterServerSystemType),
             StationNo = stationNo,
             WorkOrder = task.SN ?? string.Empty,
+            Batch = task.Batch ?? string.Empty,
+            Quantity = task.StartAmount > 0 ? task.StartAmount : task.ActualQty,
+            PartName = task.ProductName ?? string.Empty,
+            ProcessNo = task.ProcessNo ?? string.Empty,
+            OperatorNo = first.OperatorNo ?? task.EndOperatorNumber ?? task.UserNumber ?? string.Empty,
             ProductJobNo = task.ProductNum ?? string.Empty,
             ProductNo = first.ProductNo,
             ProductModel = task.ProductModel ?? string.Empty,
             ProductResult = TestResultRules.ResolveProductResult(orderedRecords.Select(record => record.TestResult)),
             CompletedAt = orderedRecords.Max(record => record.Ts),
+            ReportColumns = BuildReportColumns(task, stationNo),
             Points = orderedRecords.Select(record => new CenterProductReportPointDto
             {
                 SequenceNo = record.SequenceNo,
                 TouchNo = record.TouchNo,
                 TestResult = record.TestResult,
                 CollectedAt = record.Ts,
+                OperatorNo = record.OperatorNo ?? string.Empty,
                 RawDataJson = record.RawDataJson ?? string.Empty
             }).ToList()
+        };
+    }
+
+    /// <summary>
+    /// 生成设备端生产报表列定义。
+    /// 中心服务器使用这份列定义，确保 Excel 表头跟设备端配置保持一致。
+    /// </summary>
+    private List<CenterProductReportColumnDto> BuildReportColumns(BizWeldTask task, int stationNo)
+    {
+        var columns = new List<CenterProductReportColumnDto>();
+        var config = ResolveProductProcessConfig(task, stationNo);
+
+        columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnStationNo, Title = "工位", MergeByProduct = true });
+        columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnProductNo, Title = "产品编号", MergeByProduct = true });
+        columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnProductResult, Title = "产品结果", MergeByProduct = true });
+        columns.Add(new CenterProductReportColumnDto
+        {
+            Key = CenterProductReportFormat.ColumnTouchNo,
+            Title = NormalizeDisplayText(config?.PointNoHeader, "焊点编号"),
+            MergeByProduct = false
+        });
+        columns.Add(new CenterProductReportColumnDto
+        {
+            Key = CenterProductReportFormat.ColumnTouchResult,
+            Title = NormalizeDisplayText(config?.PointResultHeader, "焊点结果"),
+            MergeByProduct = false
+        });
+
+        columns.AddRange(BuildDynamicReportColumns(config));
+        columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnWorkOrder, Title = "工号", MergeByProduct = true });
+        columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnBatch, Title = "批次", MergeByProduct = true });
+        columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnQuantity, Title = "数量", MergeByProduct = true });
+        columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnPartName, Title = "零部件名称", MergeByProduct = true });
+        columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnProcessNo, Title = "工序号", MergeByProduct = true });
+        columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnOperator, Title = "操作人员", MergeByProduct = true });
+        columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnRecordTime, Title = "日期", MergeByProduct = true });
+        return columns;
+    }
+
+    private List<CenterProductReportColumnDto> BuildDynamicReportColumns(BizProductProcessConfig? config)
+    {
+        if (config is null)
+        {
+            return [];
+        }
+
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var details = _dbContext.Db.Queryable<BizSchemeDetail>()
+                .Where(detail => detail.SchemeId == config.SchemeId)
+                .ToList();
+            if (details.Count == 0)
+            {
+                return [];
+            }
+
+            var itemIds = details.Select(detail => detail.ItemId).Distinct().ToList();
+            var items = _dbContext.Db.Queryable<DimTestItem>()
+                .Where(item => itemIds.Contains(item.ItemId))
+                .ToList();
+
+            return details
+                .OrderBy(detail => detail.DetailId)
+                .SelectMany(detail => BuildDynamicReportColumns(detail, items.FirstOrDefault(item => item.ItemId == detail.ItemId)))
+                .ToList();
+        }
+    }
+
+    private static IEnumerable<CenterProductReportColumnDto> BuildDynamicReportColumns(
+        BizSchemeDetail detail,
+        DimTestItem? item)
+    {
+        if (item is null)
+        {
+            yield break;
+        }
+
+        SchemeDetailRoleRules.ClearUnavailableRoles(detail, item);
+        var itemKey = ResolveItemKey(item);
+        if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Actual))
+        {
+            yield return BuildDynamicColumn(itemKey, detail.ActualHeader, SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Actual));
+        }
+
+        if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Upper))
+        {
+            yield return BuildDynamicColumn($"{itemKey}_upper", detail.UpperHeader, SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Upper));
+        }
+
+        if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Lower))
+        {
+            yield return BuildDynamicColumn($"{itemKey}_lower", detail.LowerHeader, SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Lower));
+        }
+
+        if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Result))
+        {
+            yield return BuildDynamicColumn($"{itemKey}_result", detail.ResultHeader, SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Result));
+        }
+    }
+
+    private static CenterProductReportColumnDto BuildDynamicColumn(string key, string? title, string fallbackTitle)
+    {
+        return new CenterProductReportColumnDto
+        {
+            Key = key,
+            Title = NormalizeDisplayText(title, fallbackTitle),
+            MergeByProduct = false
+        };
+    }
+
+    private BizProductProcessConfig? ResolveProductProcessConfig(BizWeldTask task, int stationNo)
+    {
+        var productNum = task.ProductNum?.Trim();
+        if (string.IsNullOrWhiteSpace(productNum))
+        {
+            return null;
+        }
+
+        var normalizedStationNo = stationNo <= ProductionConstants.Stations.SharedStationNo
+            ? ProductionConstants.Stations.DefaultStationNo
+            : stationNo;
+
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            return _dbContext.Db.Queryable<BizProductProcessConfig>()
+                .Where(config => config.Enabled && config.ProductNum == productNum)
+                .ToList()
+                .Where(config => config.StationNo == ProductionConstants.Stations.SharedStationNo
+                    || config.StationNo == normalizedStationNo)
+                .OrderByDescending(config => config.StationNo == normalizedStationNo)
+                .ThenBy(config => config.Id)
+                .FirstOrDefault();
+        }
+    }
+
+    private static string NormalizeDisplayText(string? value, string fallback)
+    {
+        return string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+    }
+
+    private static string ResolveItemKey(DimTestItem item)
+    {
+        return item.ItemName.Trim() switch
+        {
+            "峰值电流" => "max_electric",
+            "峰值电压" => "max_voltage",
+            "有效功率" => "valid_power",
+            "位移" => "displacement",
+            "焊接时间" => "weld_ts",
+            var name when !string.IsNullOrWhiteSpace(name) => $"item_{item.ItemId}",
+            _ => $"item_{item.ItemId}"
         };
     }
 
