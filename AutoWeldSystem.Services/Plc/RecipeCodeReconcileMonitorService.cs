@@ -29,6 +29,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
     private readonly IProgramExceptionLogService _exceptionLogService;
     private readonly object _stateSync = new();
     private readonly Dictionary<int, StationRecipeReconcileState> _stationStates = new();
+    private readonly Dictionary<int, PlcRecipeCodeSnapshot> _recipeSnapshots = new();
     private AppSettings _currentSettings;
     private CancellationTokenSource? _cts;
     private Task? _loopTask;
@@ -50,6 +51,27 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
         _exceptionLogService = exceptionLogService;
         _currentSettings = settingsService.Get();
         _settingsService.SettingsChanged += SettingsService_SettingsChanged;
+    }
+
+    /// <summary>
+    /// Raised when the latest PLC recipe snapshot for a station changes.
+    /// </summary>
+    public event EventHandler<PlcRecipeCodeSnapshot>? RecipeCodeChanged;
+
+    /// <summary>
+    /// Gets the latest PLC recipe snapshot for a station.
+    /// </summary>
+    /// <param name="stationNo">Station number.</param>
+    /// <returns>Latest known snapshot or a failed placeholder when no read has completed yet.</returns>
+    public PlcRecipeCodeSnapshot GetCurrent(int stationNo)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        lock (_stateSync)
+        {
+            return _recipeSnapshots.TryGetValue(normalizedStationNo, out var snapshot)
+                ? snapshot
+                : PlcRecipeCodeSnapshot.Failed(normalizedStationNo, "PLC recipe has not been read.");
+        }
     }
 
     /// <summary>
@@ -151,22 +173,28 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
     private async Task PollOnceAsync(CancellationToken cancellationToken)
     {
         var settings = CurrentSettings;
-        if (!settings.ValidateRecipeAfterStart)
-        {
-            ClearStationStates();
-            return;
-        }
+        var monitorStations = RecipeStationScopeRules.ResolveMonitorStations(settings.EnableDualStation);
+        var activeTasks = GetRunningStationTasks(settings)
+            .GroupBy(task => NormalizeStationNo(task.StationNo))
+            .ToDictionary(group => group.Key, group => group.First());
 
-        var activeTasks = GetRunningStationTasks(settings);
-        if (activeTasks.Count == 0)
-        {
-            ClearStationStates();
-            return;
-        }
-
-        foreach (var activeTask in activeTasks)
+        foreach (var stationNo in monitorStations)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            var normalizedStationNo = NormalizeStationNo(stationNo);
+
+            if (!activeTasks.TryGetValue(normalizedStationNo, out var activeTask))
+            {
+                await PollIdleStationRecipeAsync(normalizedStationNo, cancellationToken);
+                continue;
+            }
+
+            if (!settings.ValidateRecipeAfterStart)
+            {
+                ResetStationMismatch(normalizedStationNo);
+                continue;
+            }
+
             await PollStationAsync(settings, activeTask, cancellationToken);
         }
     }
@@ -199,10 +227,13 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
             cancellationToken);
         if (!readResult.IsSuccess)
         {
+            PublishRecipeReadFailure(stationNo, readResult.Message);
             ResetStationMismatch(stationNo);
-            WriteBusinessFailureLog(stationNo, "PLC配方号读取失败", readResult.Message);
+            WriteBusinessFailureLog(stationNo, "PLC recipe code read failed", readResult.Message);
             return;
         }
+
+        PublishRecipeSnapshot(PlcRecipeCodeSnapshot.Success(stationNo, NormalizeRecipeCode(readResult.Value)));
 
         var decision = RecipeCodeReconcileRules.Decide(
             settings.ValidateRecipeAfterStart,
@@ -217,13 +248,44 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
             return;
         }
 
-        await ReconcileRecipeAsync(stationNo, task, decision, readResult, cancellationToken);
+        await ReconcileRecipeAsync(settings, stationNo, task, decision, readResult, cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads the PLC recipe code for an idle station and publishes it as a UI snapshot.
+    /// Idle stations never write PC recipe codes because there is no running task to reconcile against.
+    /// </summary>
+    private async Task PollIdleStationRecipeAsync(int stationNo, CancellationToken cancellationToken)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        ResetStationMismatch(normalizedStationNo);
+
+        if (!_plcCommunicationService.GetCurrent(normalizedStationNo).IsConnected)
+        {
+            PublishRecipeReadFailure(normalizedStationNo, "PLC is not connected.");
+            return;
+        }
+
+        var readResult = await _plcBusinessSignalService.ReadTextAsync(
+            AppConstants.PlcLogicalKeys.PlcRecipeCode,
+            normalizedStationNo,
+            cancellationToken);
+        if (!readResult.IsSuccess)
+        {
+            PublishRecipeReadFailure(normalizedStationNo, readResult.Message);
+            return;
+        }
+
+        PublishRecipeSnapshot(PlcRecipeCodeSnapshot.Success(
+            normalizedStationNo,
+            NormalizeRecipeCode(readResult.Value)));
     }
 
     /// <summary>
     /// 将任务配方号写回 PLC，并把检测到的切换和调和结果写入生产流程日志。
     /// </summary>
     private async Task ReconcileRecipeAsync(
+        AppSettings settings,
         int stationNo,
         BizWeldTask task,
         RecipeCodeReconcileDecision decision,
@@ -254,46 +316,57 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
                 plcAddress: readResult.Address);
         }
 
-        var syncResult = await _plcBusinessSignalService.SyncRecipeCodeAsync(
-            stationNo,
-            decision.ExpectedRecipeCode,
-            ReconcileTimeout,
-            cancellationToken);
-        if (syncResult.IsSuccess)
+        var targetStations = RecipeStationScopeRules.ResolveSharedRecipeStations(
+            settings.EnableDualStation,
+            settings.EnableDualWorkOrder,
+            stationNo);
+        foreach (var targetStationNo in targetStations)
         {
-            state.LastMismatchKey = string.Empty;
-            state.LastFailureKey = string.Empty;
-            state.NextRetryTime = default;
+            var syncResult = await _plcBusinessSignalService.SyncRecipeCodeAsync(
+                targetStationNo,
+                decision.ExpectedRecipeCode,
+                ReconcileTimeout,
+                cancellationToken);
+            if (syncResult.IsSuccess)
+            {
+                WriteRecipeFlowLog(
+                    "RecipeCodeReconcileSucceeded",
+                    $"配方号调和成功：{syncResult.PcRecipeCode}",
+                    $"Station={targetStationNo}; SourceStation={stationNo}; TaskId={task.Id}; ChangedPlcRecipeCode={decision.PlcRecipeCode}; ExpectedRecipeCode={syncResult.PcRecipeCode}; SyncedPlcRecipeCode={syncResult.PlcRecipeCode}",
+                    targetStationNo,
+                    task,
+                    level: "Info",
+                    plcSignal: AppConstants.PlcLogicalKeys.PlcRecipeCode,
+                    plcAddress: readResult.Address);
+                continue;
+            }
+
+            var currentPlcRecipe = string.IsNullOrWhiteSpace(syncResult.PlcRecipeCode)
+                ? decision.PlcRecipeCode
+                : syncResult.PlcRecipeCode;
             WriteRecipeFlowLog(
-                "RecipeCodeReconcileSucceeded",
-                $"配方号调和成功：{syncResult.PcRecipeCode}",
-                $"Station={stationNo}; TaskId={task.Id}; ChangedPlcRecipeCode={decision.PlcRecipeCode}; ExpectedRecipeCode={syncResult.PcRecipeCode}; SyncedPlcRecipeCode={syncResult.PlcRecipeCode}",
-                stationNo,
+                "RecipeCodeReconcileFailed",
+                "PLC recipe code reconcile failed",
+                $"Station={targetStationNo}; SourceStation={stationNo}; TaskId={task.Id}; ChangedPlcRecipeCode={decision.PlcRecipeCode}; ExpectedRecipeCode={syncResult.PcRecipeCode}; PlcRecipeCode={currentPlcRecipe}; Detail={syncResult.Message}",
+                targetStationNo,
                 task,
-                level: "Info",
+                level: "Error",
                 plcSignal: AppConstants.PlcLogicalKeys.PlcRecipeCode,
                 plcAddress: readResult.Address);
+
+            WriteBusinessFailureLog(
+                targetStationNo,
+                "PLC recipe code reconcile failed",
+                $"Station={targetStationNo}; SourceStation={stationNo}; TaskId={task.Id}; Expected={decision.ExpectedRecipeCode}; PLC={currentPlcRecipe}; Detail={syncResult.Message}");
+            state.NextRetryTime = DateTime.Now + BusinessLogInterval;
             return;
         }
 
-        var currentPlcRecipe = string.IsNullOrWhiteSpace(syncResult.PlcRecipeCode)
-            ? decision.PlcRecipeCode
-            : syncResult.PlcRecipeCode;
-        WriteRecipeFlowLog(
-            "RecipeCodeReconcileFailed",
-            $"配方号调和失败：目标{decision.ExpectedRecipeCode}，PLC当前{currentPlcRecipe}",
-            $"Station={stationNo}; TaskId={task.Id}; ChangedPlcRecipeCode={decision.PlcRecipeCode}; ExpectedRecipeCode={syncResult.PcRecipeCode}; PlcRecipeCode={currentPlcRecipe}; Detail={syncResult.Message}",
-            stationNo,
-            task,
-            level: "Error",
-            plcSignal: AppConstants.PlcLogicalKeys.PlcRecipeCode,
-            plcAddress: readResult.Address);
+        state.LastMismatchKey = string.Empty;
+        state.LastFailureKey = string.Empty;
+        state.NextRetryTime = default;
+        return;
 
-        WriteBusinessFailureLog(
-            stationNo,
-            "PLC配方号调和失败",
-            $"Station={stationNo}; TaskId={task.Id}; Expected={decision.ExpectedRecipeCode}; PLC={currentPlcRecipe}; Detail={syncResult.Message}");
-        state.NextRetryTime = DateTime.Now + BusinessLogInterval;
     }
 
     /// <summary>
@@ -393,9 +466,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
     /// </summary>
     private static int[] ResolveMonitorStationNumbers(AppSettings settings)
     {
-        return settings.EnableDualStation
-            ? [1, 2]
-            : [ProductionConstants.Stations.DefaultStationNo];
+        return RecipeStationScopeRules.ResolveMonitorStations(settings.EnableDualStation);
     }
 
     /// <summary>
@@ -510,6 +581,45 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
     {
         var state = GetStationState(stationNo);
         state.LastMismatchKey = string.Empty;
+    }
+
+    /// <summary>
+    /// Publishes a changed PLC recipe snapshot to UI subscribers.
+    /// </summary>
+    private void PublishRecipeSnapshot(PlcRecipeCodeSnapshot snapshot)
+    {
+        lock (_stateSync)
+        {
+            if (_recipeSnapshots.TryGetValue(snapshot.StationNo, out var previous)
+                && previous.IsSuccess == snapshot.IsSuccess
+                && string.Equals(previous.RecipeCode, snapshot.RecipeCode, StringComparison.Ordinal)
+                && string.Equals(previous.Message, snapshot.Message, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _recipeSnapshots[snapshot.StationNo] = snapshot;
+        }
+
+        RecipeCodeChanged?.Invoke(this, snapshot);
+    }
+
+    /// <summary>
+    /// Publishes a failed snapshot only when no previous successful recipe is available.
+    /// </summary>
+    private void PublishRecipeReadFailure(int stationNo, string message)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        lock (_stateSync)
+        {
+            if (_recipeSnapshots.TryGetValue(normalizedStationNo, out var previous)
+                && previous.IsSuccess)
+            {
+                return;
+            }
+        }
+
+        PublishRecipeSnapshot(PlcRecipeCodeSnapshot.Failed(normalizedStationNo, message));
     }
 
     private AppSettings CurrentSettings => Volatile.Read(ref _currentSettings);

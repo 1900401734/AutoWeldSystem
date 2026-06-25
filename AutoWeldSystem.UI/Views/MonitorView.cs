@@ -3,6 +3,7 @@ using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
 using AutoWeldSystem.Core.DTOs.Mes.Response;
 using AutoWeldSystem.Core.DTOs.Plc;
+using AutoWeldSystem.Core.DTOs.Upload;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Enums;
 using AutoWeldSystem.Core.Exceptions;
@@ -83,6 +84,7 @@ public partial class MonitorView : BaseView
     private readonly IPlcWeldCycleMonitorService _plcWeldCycleMonitorService;
     private readonly IPlcAddressService _plcAddressService;
     private readonly IPlcBusinessSignalService _plcBusinessSignalService;
+    private readonly IPlcRecipeReconcileMonitorService _plcRecipeReconcileMonitorService;
     private readonly IPlcExpressionReadService _plcExpressionReadService;
     private readonly IProductProcessConfigService _productProcessConfigService;
     private readonly ITestSchemeConfigService _testSchemeConfigService;
@@ -90,6 +92,7 @@ public partial class MonitorView : BaseView
     private readonly IProductHistoryService _productHistoryService;
     private readonly IProgramManageService _programManageService;
     private readonly IWeldTaskService _weldTaskService;
+    private readonly IUploadTaskService _uploadTaskService;
     private readonly IProgramExceptionLogService _exceptionLogService;
     private readonly IProductionFlowLogService _productionLogService;
     private readonly IRuntimeTipStateService _runtimeTipStateService;
@@ -224,6 +227,7 @@ public partial class MonitorView : BaseView
         IPlcWeldCycleMonitorService plcWeldCycleMonitorService,
         IPlcAddressService plcAddressService,
         IPlcBusinessSignalService plcBusinessSignalService,
+        IPlcRecipeReconcileMonitorService plcRecipeReconcileMonitorService,
         IPlcExpressionReadService plcExpressionReadService,
         IProductProcessConfigService productProcessConfigService,
         ITestSchemeConfigService testSchemeConfigService,
@@ -231,6 +235,7 @@ public partial class MonitorView : BaseView
         IProductHistoryService productHistoryService,
         IProgramManageService programManageService,
         IWeldTaskService weldTaskService,
+        IUploadTaskService uploadTaskService,
         IProgramExceptionLogService exceptionLogService,
         IProductionFlowLogService productionLogService,
         IRuntimeTipStateService runtimeTipStateService)
@@ -247,6 +252,7 @@ public partial class MonitorView : BaseView
         _plcWeldCycleMonitorService = plcWeldCycleMonitorService;
         _plcAddressService = plcAddressService;
         _plcBusinessSignalService = plcBusinessSignalService;
+        _plcRecipeReconcileMonitorService = plcRecipeReconcileMonitorService;
         _plcExpressionReadService = plcExpressionReadService;
         _productProcessConfigService = productProcessConfigService;
         _testSchemeConfigService = testSchemeConfigService;
@@ -254,6 +260,7 @@ public partial class MonitorView : BaseView
         _productHistoryService = productHistoryService;
         _programManageService = programManageService;
         _weldTaskService = weldTaskService;
+        _uploadTaskService = uploadTaskService;
         _exceptionLogService = exceptionLogService;
         _productionLogService = productionLogService;
         _runtimeTipStateService = runtimeTipStateService;
@@ -506,12 +513,10 @@ public partial class MonitorView : BaseView
     private IReadOnlyList<int> ResolveWorkOrderSignalStations(int stationNo)
     {
         var settings = _currentSettings;
-        if (settings.EnableDualStation && !settings.EnableDualWorkOrder)
-        {
-            return [1, 2];
-        }
-
-        return [NormalizeStatusStationNo(stationNo)];
+        return RecipeStationScopeRules.ResolveSharedRecipeStations(
+            settings.EnableDualStation,
+            settings.EnableDualWorkOrder,
+            NormalizeStatusStationNo(stationNo));
     }
 
     private DataGridView CurrentWeldPreviewGrid => GetWeldPreviewGrid(CurrentStationNo);
@@ -662,8 +667,10 @@ public partial class MonitorView : BaseView
         _plcProductionMonitorService.StatusChanged += PlcProductionMonitorService_StatusChanged;
         _plcWorkIdMonitorService.WorkIdChanged += PlcWorkIdMonitorService_WorkIdChanged;
         _plcWeldCycleMonitorService.WeldPointCollected += PlcWeldCycleMonitorService_WeldPointCollected;
+        _plcRecipeReconcileMonitorService.RecipeCodeChanged += PlcRecipeReconcileMonitorService_RecipeCodeChanged;
         _productRealtimePreviewService.SnapshotChanged += ProductRealtimePreviewService_SnapshotChanged;
         _productionLogService.LogWritten += ProductionLogService_LogWritten;
+        _uploadTaskService.TaskStatusChanged += UploadTaskService_TaskStatusChanged;
         _settingsService.SettingsChanged += OnSettingsChanged;
     }
 
@@ -1070,8 +1077,10 @@ public partial class MonitorView : BaseView
         _plcProductionMonitorService.StatusChanged -= PlcProductionMonitorService_StatusChanged;
         _plcWorkIdMonitorService.WorkIdChanged -= PlcWorkIdMonitorService_WorkIdChanged;
         _plcWeldCycleMonitorService.WeldPointCollected -= PlcWeldCycleMonitorService_WeldPointCollected;
+        _plcRecipeReconcileMonitorService.RecipeCodeChanged -= PlcRecipeReconcileMonitorService_RecipeCodeChanged;
         _productRealtimePreviewService.SnapshotChanged -= ProductRealtimePreviewService_SnapshotChanged;
         _productionLogService.LogWritten -= ProductionLogService_LogWritten;
+        _uploadTaskService.TaskStatusChanged -= UploadTaskService_TaskStatusChanged;
         tableHistory1.CellClick -= ProductHistoryTable_CellClick;
         tableHistory2.CellClick -= ProductHistoryTable_CellClick;
         UnwireWeldPreviewGridEvents(dgvPreview1);
@@ -1271,6 +1280,49 @@ public partial class MonitorView : BaseView
     /// </summary>
     /// <param name="sender">事件发送者。</param>
     /// <param name="e">事件参数。</param>
+    /// <summary>
+    /// Handles PLC recipe readback snapshot changes for idle station display.
+    /// </summary>
+    private void PlcRecipeReconcileMonitorService_RecipeCodeChanged(object? sender, PlcRecipeCodeSnapshot e)
+    {
+        if (IsDisposed || !IsHandleCreated || e.StationNo != CurrentStationNo)
+        {
+            return;
+        }
+
+        RunOnUiThread(() => ApplyIdleRecipeCodeSnapshot(e), "MonitorView.RecipeCodeChanged");
+    }
+
+    /// <summary>
+    /// Applies the latest PLC recipe readback to the recipe selector only when the station is idle.
+    /// </summary>
+    private void ApplyIdleRecipeCodeSnapshot(PlcRecipeCodeSnapshot snapshot)
+    {
+        if (snapshot.StationNo != CurrentStationNo)
+        {
+            return;
+        }
+
+        var state = GetCurrentStationState();
+        if (IsRunningWeldTask(state.ActiveTask))
+        {
+            return;
+        }
+
+        var recipeCode = snapshot.IsSuccess && !string.IsNullOrWhiteSpace(snapshot.RecipeCode)
+            ? snapshot.RecipeCode
+            : "--";
+        if (!string.Equals(selectRecipeCode.Text, recipeCode, StringComparison.Ordinal))
+        {
+            selectRecipeCode.Text = recipeCode;
+        }
+
+        if (snapshot.IsSuccess && !string.IsNullOrWhiteSpace(snapshot.RecipeCode))
+        {
+            QueueRefreshSchemePreview(force: true);
+        }
+    }
+
     private void ProductRealtimePreviewService_SnapshotChanged(object? sender, ProductRealtimePreviewSnapshot e)
     {
         if (IsDisposed || !IsHandleCreated || e.StationNo != CurrentStationNo)
@@ -1303,6 +1355,30 @@ public partial class MonitorView : BaseView
     /// </summary>
     /// <param name="sender">事件发送者。</param>
     /// <param name="e">事件参数。</param>
+    /// <summary>
+    /// 过程参数上传完成后刷新产品历史，避免上传状态列停留在上一轮显示值。
+    /// </summary>
+    private void UploadTaskService_TaskStatusChanged(object? sender, UploadTaskStatusChangedEventArgs e)
+    {
+        if (IsDisposed || !IsHandleCreated)
+        {
+            return;
+        }
+
+        if (!string.Equals(e.TaskType, ProductionConstants.UploadTaskTypes.ProcessParameter, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var activeTask = GetCurrentStationState().ActiveTask;
+        if (activeTask is null || e.WeldTaskId is not null && e.WeldTaskId.Value != activeTask.Id)
+        {
+            return;
+        }
+
+        RefreshProductHistoryPreview();
+    }
+
     private void ProductionLogService_LogWritten(object? sender, ProductionFlowLogEntry e)
     {
         if (IsDisposed || !ShouldShowProductionHint(e))
@@ -1338,7 +1414,13 @@ public partial class MonitorView : BaseView
             return;
         }
 
+        var previousShowTestFlag = _currentSettings.ShowTestFlagInHistory != false;
         UpdateSettingsSnapshot(e.CurrentSettings);
+        var currentShowTestFlag = e.CurrentSettings.ShowTestFlagInHistory != false;
+        if (previousShowTestFlag != currentShowTestFlag)
+        {
+            RunOnUiThread(RefreshProductHistoryPreview, "MonitorView.SettingsChanged.ShowTestFlag");
+        }
     }
 
     #endregion
@@ -3314,8 +3396,12 @@ public partial class MonitorView : BaseView
     /// </summary>
     private void ConfigureProductHistoryTableColumns()
     {
-        ConfigureProductHistoryTableColumns(tableHistory1, [], 1, ProductHistoryDisplayOptions.Default);
-        ConfigureProductHistoryTableColumns(tableHistory2, [], 2, ProductHistoryDisplayOptions.Default);
+        var displayOptions = ProductHistoryDisplayOptions.Default with
+        {
+            ShowTestFlagInHistory = _currentSettings.ShowTestFlagInHistory != false
+        };
+        ConfigureProductHistoryTableColumns(tableHistory1, [], 1, displayOptions);
+        ConfigureProductHistoryTableColumns(tableHistory2, [], 2, displayOptions);
     }
 
     /// <summary>
@@ -3506,7 +3592,11 @@ public partial class MonitorView : BaseView
             if (activeTask is null)
             {
                 // 无当前任务时仍重置列和数据，避免界面保留上一个任务的历史记录。
-                ConfigureProductHistoryTableColumns(CurrentProductHistoryTable, [], CurrentStationNo, ProductHistoryDisplayOptions.Default);
+                ConfigureProductHistoryTableColumns(
+                    CurrentProductHistoryTable,
+                    [],
+                    CurrentStationNo,
+                    ProductHistoryDisplayOptions.Default with { ShowTestFlagInHistory = _currentSettings.ShowTestFlagInHistory != false });
                 BindProductHistoryRows(CurrentProductHistoryTable, []);
                 return;
             }
@@ -3823,9 +3913,10 @@ public partial class MonitorView : BaseView
     private ProductHistoryDisplayOptions ResolveProductHistoryDisplayOptions(BizWeldTask activeTask, int stationNo)
     {
         var config = ResolveProductHistoryProcessConfig(activeTask, stationNo);
+        var showTestFlagInHistory = _currentSettings.ShowTestFlagInHistory != false;
         return config is null
-            ? ProductHistoryDisplayOptions.Default
-            : ProductHistoryDisplayOptions.FromConfig(config);
+            ? ProductHistoryDisplayOptions.Default with { ShowTestFlagInHistory = showTestFlagInHistory }
+            : ProductHistoryDisplayOptions.FromConfig(config, showTestFlagInHistory);
     }
 
     /// <summary>
@@ -5826,9 +5917,10 @@ public partial class MonitorView : BaseView
             config = _productProcessConfigService.FindActive(identity.ProductNum, record.StationNo);
         }
 
+        var showTestFlagInHistory = _currentSettings.ShowTestFlagInHistory != false;
         return config is null
-            ? ProductHistoryDisplayOptions.Default
-            : ProductHistoryDisplayOptions.FromConfig(config);
+            ? ProductHistoryDisplayOptions.Default with { ShowTestFlagInHistory = showTestFlagInHistory }
+            : ProductHistoryDisplayOptions.FromConfig(config, showTestFlagInHistory);
     }
 
     private static string? FindRecordResult(BizWeldPointRecord record, WeldParameterRow row, IReadOnlyDictionary<string, string> rawValues)
@@ -6839,14 +6931,20 @@ public partial class MonitorView : BaseView
     /// <returns>处理后的文本。</returns>
     private string ResolveRecipeCodeForDisplay(BizWeldTask? activeTask, ProgramDataRes? program)
     {
-        if (activeTask is not null)
+        if (activeTask is not null && IsRunningWeldTask(activeTask))
         {
             return FirstNonEmpty(activeTask.RecipeCode, program?.RecipeCode);
         }
 
+        var snapshot = _plcRecipeReconcileMonitorService.GetCurrent(CurrentStationNo);
+        if (snapshot.IsSuccess && !string.IsNullOrWhiteSpace(snapshot.RecipeCode))
+        {
+            return snapshot.RecipeCode;
+        }
+
         if (program is null)
         {
-            return string.Empty;
+            return "--";
         }
 
         var localProgram = ResolveLocalProgramById(program.Id);
@@ -6858,6 +6956,19 @@ public partial class MonitorView : BaseView
     /// </summary>
     /// <param name="program">程序数据。</param>
     /// <returns>解析到的对象；不存在时返回 null。</returns>
+    /// <summary>
+    /// Determines whether a weld task is still in production.
+    /// </summary>
+    private static bool IsRunningWeldTask(BizWeldTask? task)
+    {
+        return task is not null
+            && task.EndTime is null
+            && string.Equals(
+                task.TaskStatus,
+                ProductionConstants.ProductInstanceStatuses.Running,
+                StringComparison.OrdinalIgnoreCase);
+    }
+
     private BizProgram? ResolveLocalProgram(ProgramDataRes program)
     {
         var localPrograms = _programManageService.GetPrograms();
@@ -7702,7 +7813,7 @@ public partial class MonitorView : BaseView
     {
         public static ProductHistoryDisplayOptions Default { get; } = new("焊点", "焊点序号", "焊点结果", "焊点数", true);
 
-        public static ProductHistoryDisplayOptions FromConfig(BizProductProcessConfig config)
+        public static ProductHistoryDisplayOptions FromConfig(BizProductProcessConfig config, bool showTestFlagInHistory)
         {
             var pointName = NormalizeDisplayText(config.PointName, "焊点");
             return new ProductHistoryDisplayOptions(
@@ -7710,7 +7821,7 @@ public partial class MonitorView : BaseView
                 NormalizeDisplayText(config.PointNoHeader, $"{pointName}序号"),
                 NormalizeDisplayText(config.PointResultHeader, $"{pointName}结果"),
                 NormalizeDisplayText(config.PointCountHeader, $"{pointName}数"),
-                config.ShowTestFlagInHistory != false);
+                showTestFlagInHistory);
         }
     }
 

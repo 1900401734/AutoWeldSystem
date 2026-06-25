@@ -1,18 +1,31 @@
+using AutoWeldSystem.Core.DTOs.Plc;
+
 namespace AutoWeldSystem.Core.Interfaces.PLC;
 
 /// <summary>
-/// PLC 配方号持续调和监控服务。
-/// 服务在开工任务运行期间检查 PLC 侧配方号，发现被切换后自动写回当前任务配方号。
+/// Monitors PLC recipe codes and reconciles PC recipe values when a running task requires it.
 /// </summary>
 public interface IPlcRecipeReconcileMonitorService : IAsyncDisposable
 {
     /// <summary>
-    /// 启动后台监控循环。
+    /// Raised when a station PLC recipe snapshot changes.
+    /// </summary>
+    event EventHandler<PlcRecipeCodeSnapshot>? RecipeCodeChanged;
+
+    /// <summary>
+    /// Starts the background recipe monitoring loop.
     /// </summary>
     Task StartAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// 停止后台监控循环。
+    /// Stops the background recipe monitoring loop.
     /// </summary>
     Task StopAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the latest PLC-side recipe snapshot for a station.
+    /// </summary>
+    /// <param name="stationNo">Station number.</param>
+    /// <returns>Latest known snapshot, or a failed snapshot when no successful read has happened yet.</returns>
+    PlcRecipeCodeSnapshot GetCurrent(int stationNo);
 }
