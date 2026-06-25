@@ -10,6 +10,7 @@ using AutoWeldSystem.Core.Exceptions;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.MES;
+using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Core.Runtime;
 using AutoWeldSystem.Data;
 using System.Text.Json;
@@ -881,13 +882,7 @@ public class WeldTaskService : IWeldTaskService
         foreach (var stationNo in ResolveTaskScopeStationNumbers(sourceStationNo))
         {
             var station = GetStation(stationNo);
-            if (station.ActiveTask?.Id != task.Id && stationNo != NormalizeStationNo(sourceStationNo))
-            {
-                continue;
-            }
-
-            station.ActiveTask = task;
-            station.UpdatedTime = DateTime.Now;
+            WeldTaskRuntimeRules.ClearFinishedTask(station, task);
         }
 
         RefreshCompatibilityState(CurrentState.CurrentStationNo);
@@ -895,6 +890,8 @@ public class WeldTaskService : IWeldTaskService
 
     private BizUploadTask EnqueueStartReportTask(BizWeldTask task, ExperimentStartReq request)
     {
+        ExperimentStartRequestRules.ApplyOfflineStartId(task, request);
+
         return _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
         {
             TaskType = ProductionConstants.UploadTaskTypes.StartReport,

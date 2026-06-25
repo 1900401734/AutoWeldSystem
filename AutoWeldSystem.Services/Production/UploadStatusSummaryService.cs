@@ -2,6 +2,7 @@ using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs.Upload;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
+using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Data;
 
 namespace AutoWeldSystem.Services.Production;
