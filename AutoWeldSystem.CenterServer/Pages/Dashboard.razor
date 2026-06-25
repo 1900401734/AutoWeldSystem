@@ -1,17 +1,49 @@
 @page "/Dashboard"
+@using AutoWeldSystem.CenterServer.Configuration
+@using AutoWeldSystem.CenterServer.Models
 @using AutoWeldSystem.Core.Constants
 @using AutoWeldSystem.Core.DTOs.CenterServer
+@using Microsoft.AspNetCore.SignalR.Client
 @inject AutoWeldSystem.CenterServer.Services.CenterDashboardQueryService DashboardQuery
-@implements IDisposable
+@inject AutoWeldSystem.CenterServer.Services.CenterPushJsonlLogService PushLogService
+@inject AutoWeldSystem.CenterServer.Services.CenterServerSettingsService SettingsService
+@inject NavigationManager NavigationManager
+@implements IAsyncDisposable
 
 <main class="dashboard-shell">
     <header class="dashboard-header">
         <div>
             <h1>中心服务器看板</h1>
-            <p>动态汇总已接入设备的在线状态、设备状态和生产数据。</p>
+            <p>动态汇总已接入设备的在线状态、工位状态和生产数据。</p>
         </div>
         <div class="dashboard-time">@_snapshot.GeneratedAt.ToString("yyyy-MM-dd HH:mm:ss")</div>
     </header>
+
+    <section class="settings-panel">
+        <div class="section-title">
+            <h2>中心服务器设置</h2>
+            <span>@_settingsMessage</span>
+        </div>
+        <div class="settings-grid">
+            <label class="check-row">
+                <input type="checkbox" @bind="_settings.EnableAutoStart" />
+                <span>开机自启</span>
+            </label>
+            <label>
+                <span>日志路径</span>
+                <input class="text-input" @bind="_settings.LogDirectory" />
+            </label>
+            <label>
+                <span>数据路径</span>
+                <input class="text-input" @bind="_settings.DataDirectory" />
+            </label>
+            <label>
+                <span>离线超时（秒）</span>
+                <input class="text-input" type="number" min="3" max="3600" @bind="_settings.OfflineTimeoutSeconds" />
+            </label>
+            <button class="primary-button" @onclick="SaveSettings">保存设置</button>
+        </div>
+    </section>
 
     <section class="summary-strip">
         <div><span>设备数</span><strong>@_snapshot.Devices.Count</strong></div>
@@ -54,10 +86,6 @@
                                         <span>@station.State.PlcDeviceStatusName</span>
                                     </div>
                                     <div class="status-row">
-                                        <span>设备状态</span>
-                                        <strong>@FirstNonEmpty(station.State.PlcDeviceStatusName, "未知")</strong>
-                                    </div>
-                                    <div class="status-row">
                                         <span>PLC连接</span>
                                         <strong>@(station.State.PlcConnected ? "已连接" : "未连接")</strong>
                                     </div>
@@ -88,20 +116,106 @@
             </div>
         </section>
     }
+
+    <section class="log-panel">
+        <div class="section-title">
+            <h2>设备推送日志</h2>
+            <span>读取 JSONL 文件，不依赖数据库</span>
+        </div>
+        <div class="log-filter">
+            <input class="text-input" placeholder="设备名称/编号" @bind="_logDeviceKeyword" />
+            <input class="text-input" placeholder="工位" type="number" @bind="_logStationText" />
+            <select class="text-input" @bind="_logRequestType">
+                <option value="">全部类型</option>
+                <option value="telemetry">telemetry</option>
+                <option value="heartbeat">heartbeat</option>
+                <option value="product-report">product-report</option>
+            </select>
+            <input class="text-input" placeholder="关键字" @bind="_logKeyword" />
+            <button class="primary-button" @onclick="RefreshLogs">查询</button>
+        </div>
+        <div class="log-table-wrap">
+            <table class="log-table">
+                <thead>
+                    <tr>
+                        <th>时间</th>
+                        <th>类型</th>
+                        <th>设备</th>
+                        <th>工位</th>
+                        <th>结果</th>
+                        <th>消息</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var log in _logs)
+                    {
+                        <tr class="@(log.Success ? "log-success" : "log-failed")">
+                            <td>@log.ReceivedAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                            <td>@log.RequestType</td>
+                            <td>@FirstNonEmpty(log.DeviceName, log.DeviceId, "--")</td>
+                            <td>@(log.StationNo <= 0 ? "--" : log.StationNo)</td>
+                            <td>@(log.Success ? "成功" : "失败")</td>
+                            <td>@FirstNonEmpty(log.Error, log.Message, "--")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
 </main>
 
 @code {
     private CenterDashboardSnapshotDto _snapshot = new();
+    private CenterServerLocalSettings _settings = new();
+    private IReadOnlyList<CenterPushLogRecord> _logs = [];
+    private HubConnection? _hubConnection;
     private PeriodicTimer? _timer;
     private CancellationTokenSource? _cts;
+    private string _settingsMessage = string.Empty;
+    private string _logDeviceKeyword = string.Empty;
+    private string _logStationText = string.Empty;
+    private string _logRequestType = string.Empty;
+    private string _logKeyword = string.Empty;
 
-    protected override Task OnInitializedAsync()
+    protected override async Task OnInitializedAsync()
+    {
+        _settings = SettingsService.Get();
+        _snapshot = DashboardQuery.GetSnapshot();
+        RefreshLogs();
+        _cts = new CancellationTokenSource();
+        try
+        {
+            await StartDashboardHubAsync(_cts.Token);
+        }
+        catch
+        {
+            _settingsMessage = "实时刷新连接失败，已使用轮询刷新。";
+        }
+
+        _timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
+        _ = RefreshLoopAsync(_cts.Token);
+    }
+
+    private async Task StartDashboardHubAsync(CancellationToken cancellationToken)
+    {
+        _hubConnection = new HubConnectionBuilder()
+            .WithUrl(NavigationManager.ToAbsoluteUri("/hubs/center-dashboard"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hubConnection.On<string>("CenterDashboardChanged", deviceId =>
+        {
+            _ = InvokeAsync(RefreshDashboardFromHubAsync);
+        });
+
+        await _hubConnection.StartAsync(cancellationToken);
+    }
+
+    private async Task RefreshDashboardFromHubAsync()
     {
         _snapshot = DashboardQuery.GetSnapshot();
-        _cts = new CancellationTokenSource();
-        _timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
-        _ = RefreshLoopAsync(_cts.Token);
-        return Task.CompletedTask;
+        RefreshLogs();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task RefreshLoopAsync(CancellationToken cancellationToken)
@@ -114,15 +228,41 @@
         while (await _timer.WaitForNextTickAsync(cancellationToken))
         {
             _snapshot = DashboardQuery.GetSnapshot(cancellationToken);
+            RefreshLogs();
             await InvokeAsync(StateHasChanged);
         }
     }
 
-    public void Dispose()
+    private void SaveSettings()
+    {
+        SettingsService.Save(_settings);
+        _settings = SettingsService.Get();
+        _settingsMessage = $"已保存：{DateTime.Now:HH:mm:ss}";
+        RefreshLogs();
+    }
+
+    private void RefreshLogs()
+    {
+        _logs = PushLogService.QueryRecent(new CenterPushLogQuery
+        {
+            DeviceKeyword = _logDeviceKeyword,
+            StationNo = int.TryParse(_logStationText, out var stationNo) && stationNo > 0 ? stationNo : null,
+            RequestType = _logRequestType,
+            Keyword = _logKeyword,
+            Limit = 200
+        });
+    }
+
+    public async ValueTask DisposeAsync()
     {
         _cts?.Cancel();
-        _cts?.Dispose();
         _timer?.Dispose();
+        if (_hubConnection is not null)
+        {
+            await _hubConnection.DisposeAsync();
+        }
+
+        _cts?.Dispose();
     }
 
     private static bool HasAlarmStation(CenterDashboardDeviceDto device)

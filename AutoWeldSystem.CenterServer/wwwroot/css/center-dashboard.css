@@ -13,7 +13,9 @@ body {
 
 .dashboard-header,
 .summary-strip,
-.device-card {
+.device-card,
+.settings-panel,
+.log-panel {
    background: #ffffff;
    border: 1px solid #d9e2ec;
    border-radius: 8px;
@@ -48,6 +50,76 @@ body {
    gap: 1px;
    margin: 16px 0 24px;
    overflow: hidden;
+}
+
+.settings-panel,
+.log-panel {
+   margin-top: 16px;
+   padding: 16px;
+}
+
+.section-title {
+   display: flex;
+   align-items: center;
+   justify-content: space-between;
+   gap: 16px;
+   margin-bottom: 12px;
+}
+
+.section-title h2 {
+   margin: 0;
+   font-size: 18px;
+}
+
+.section-title span {
+   color: #627386;
+   font-size: 13px;
+}
+
+.settings-grid,
+.log-filter {
+   display: grid;
+   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+   gap: 12px;
+   align-items: end;
+}
+
+.settings-grid label {
+   display: grid;
+   gap: 6px;
+   color: #52606d;
+   font-size: 13px;
+}
+
+.check-row {
+   grid-template-columns: auto 1fr;
+   align-items: center;
+   align-self: center;
+}
+
+.text-input {
+   width: 100%;
+   box-sizing: border-box;
+   min-height: 34px;
+   padding: 6px 10px;
+   border: 1px solid #cbd5e1;
+   border-radius: 6px;
+   background: #ffffff;
+   color: #1f2933;
+}
+
+.primary-button {
+   min-height: 34px;
+   border: 0;
+   border-radius: 6px;
+   background: #2563eb;
+   color: #ffffff;
+   font-weight: 600;
+   cursor: pointer;
+}
+
+.primary-button:hover {
+   background: #1d4ed8;
 }
 
 .summary-strip div {
@@ -229,4 +301,43 @@ body {
 
 .unknown-card {
    border-left-color: #6b7c93;
+}
+
+.log-table-wrap {
+   overflow: auto;
+   max-height: 360px;
+   border: 1px solid #e2e8f0;
+   border-radius: 6px;
+}
+
+.log-table {
+   width: 100%;
+   border-collapse: collapse;
+   font-size: 13px;
+}
+
+.log-table th,
+.log-table td {
+   padding: 9px 10px;
+   border-bottom: 1px solid #edf2f7;
+   text-align: left;
+   white-space: nowrap;
+}
+
+.log-table th {
+   position: sticky;
+   top: 0;
+   background: #f8fafc;
+   color: #334e68;
+   z-index: 1;
+}
+
+.log-success td:nth-child(5) {
+   color: #137a46;
+   font-weight: 600;
+}
+
+.log-failed td:nth-child(5),
+.log-failed td:nth-child(6) {
+   color: #a8071a;
 }
