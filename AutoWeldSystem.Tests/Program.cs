@@ -37,7 +37,9 @@ var tests = new (string Name, Action Run)[]
     ("Offline start request uses local task id", OfflineStartRequestUsesLocalTaskId),
     ("Upload task identity prefers MES id then local id", UploadTaskIdentityPrefersMesIdThenLocalId),
     ("Unfinished upload summary task stays visible until hidden", UnfinishedUploadSummaryTaskStaysVisibleUntilHidden),
+    ("Upload summary status falls back to business facts", UploadSummaryStatusFallsBackToBusinessFacts),
     ("Deleted upload task is excluded from retry lists", DeletedUploadTaskIsExcludedFromRetryLists),
+    ("Process parameter pending product rows are read only", ProcessParameterPendingProductRowsAreReadOnly),
     ("Process parameter IsTest follows global setting and device type", ProcessParameterIsTestFollowsGlobalSettingAndDeviceType),
     ("Quantity upload batches product scopes and unique task ids", QuantityUploadBatchesProductScopesAndUniqueTaskIds),
     ("Process parameter upload payload reads product scope fields", ProcessParameterUploadPayloadReadsProductScopeFields)
@@ -535,6 +537,38 @@ static void UnfinishedUploadSummaryTaskStaysVisibleUntilHidden()
     AssertTrue(UploadSummaryVisibilityRules.ShouldShow(completedTask, pendingCount: 1), "已完工但仍有待处理项时，总览仍需显示。");
 }
 
+static void UploadSummaryStatusFallsBackToBusinessFacts()
+{
+    var onlineStartedTask = new BizWeldTask
+    {
+        ExpStartId = "MES-1001"
+    };
+
+    AssertEqual(
+        ProductionConstants.UploadStatuses.Uploaded,
+        UploadSummaryStatusResolver.ResolveStartReportStatus(onlineStartedTask, Array.Empty<string>()),
+        "在线开工已返回 ExpStartId 时，即使没有补传任务，总览也应显示开工已上传。");
+
+    var uploadedRecords = new[]
+    {
+        BuildCompletedPoint(taskId: 1, stationNo: 1, productNo: "P001", sequenceNo: 1, uploadStatus: ProductionConstants.UploadStatuses.Uploaded),
+        BuildCompletedPoint(taskId: 1, stationNo: 1, productNo: "P001", sequenceNo: 2, uploadStatus: ProductionConstants.UploadStatuses.Uploaded)
+    };
+    AssertEqual(
+        ProductionConstants.UploadStatuses.Uploaded,
+        UploadSummaryStatusResolver.ResolveProcessParameterStatus(Array.Empty<string>(), uploadedRecords),
+        "过程参数没有补传任务但焊点记录全部已上传时，总览应显示已上传。");
+
+    var pendingRecords = new[]
+    {
+        BuildCompletedPoint(taskId: 1, stationNo: 1, productNo: "P002", sequenceNo: 3, uploadStatus: ProductionConstants.UploadStatuses.Pending)
+    };
+    AssertEqual(
+        ProductionConstants.UploadStatuses.Pending,
+        UploadSummaryStatusResolver.ResolveProcessParameterStatus(Array.Empty<string>(), pendingRecords),
+        "产品历史仍有未上传过程参数时，总览应显示待上传。");
+}
+
 static void DeletedUploadTaskIsExcludedFromRetryLists()
 {
     var activeTask = new BizUploadTask
@@ -550,6 +584,35 @@ static void DeletedUploadTaskIsExcludedFromRetryLists()
 
     AssertTrue(UploadTaskVisibilityRules.ShouldInclude(activeTask, includeCompleted: false), "未删除待上传任务应出现在明细列表。");
     AssertFalse(UploadTaskVisibilityRules.ShouldInclude(deletedTask, includeCompleted: true), "软删除上传任务不应出现在明细列表或重试范围。");
+}
+
+static void ProcessParameterPendingProductRowsAreReadOnly()
+{
+    var records = new[]
+    {
+        BuildCompletedPoint(taskId: 7, stationNo: 1, productNo: "P001", sequenceNo: 1),
+        BuildCompletedPoint(taskId: 7, stationNo: 1, productNo: "P001", sequenceNo: 2),
+        BuildCompletedPoint(taskId: 7, stationNo: 1, productNo: "P002", sequenceNo: 3, uploadStatus: ProductionConstants.UploadStatuses.Uploaded),
+        BuildCompletedPoint(taskId: 7, stationNo: 2, productNo: "S2-P001", sequenceNo: 4)
+    };
+    var task = new BizWeldTask
+    {
+        Id = 7,
+        StationNo = 1,
+        ExpStartId = "MES-7",
+        LocalExpStartId = "LOCAL-7",
+        SN = "WO-7"
+    };
+
+    var rows = ProcessParameterUploadRowRules.CreatePendingProductRows(task, records, uploadBatchSize: 3);
+
+    AssertEqual(2, rows.Count, "未上传产品历史应按工位和产品编号生成过程参数只读行。");
+    AssertTrue(rows.All(row => row.IsVirtual), "产品历史补充行必须标记为虚拟行。");
+    AssertTrue(rows.All(row => !row.CanRetry && !row.CanDelete), "虚拟行不能手动重试或删除。");
+    AssertTrue(rows.Any(row => row.ProductNo == "P001" && row.StationNo == 1), "工位 1 未上传产品应显示。");
+    AssertTrue(rows.Any(row => row.ProductNo == "S2-P001" && row.StationNo == 2), "双工位未上传产品应显示。");
+    AssertFalse(rows.Any(row => row.ProductNo == "P002"), "已上传产品不应再显示为待上传过程参数。");
+    AssertTrue(rows[0].DisplayMessage.Contains("批次", StringComparison.Ordinal), "数量模式未达阈值时应提示等待批次数量。");
 }
 
 static void ProcessParameterIsTestFollowsGlobalSettingAndDeviceType()
