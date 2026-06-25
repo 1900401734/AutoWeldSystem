@@ -1,4 +1,5 @@
 using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.DTOs.Upload;
 using AutoWeldSystem.Core.DTOs.Plc;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
@@ -289,7 +290,6 @@ public partial class AddressManageView : BaseView
         tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.PointNoHeader), "编号表头"));
         tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.PointResultHeader), "结果表头"));
         tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.PointCountHeader), "数量表头"));
-        tableProcess.Columns.Add(CreateProductProcessTestFlagColumn());
         tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.ProductBase), "产品头基地址"));
         tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.ProductLen), "产品头长度"));
         tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.ProductNoExpr), "产品编号偏移"));
@@ -421,15 +421,6 @@ public partial class AddressManageView : BaseView
     private static AntdUI.ColumnSwitch CreateAlarmAddressEnabledColumn()
     {
         return new AntdUI.ColumnSwitch(nameof(AlarmAddressTableRow.Enabled), "启用")
-        {
-            Align = AntdUI.ColumnAlign.Center,
-            AutoCheck = true
-        };
-    }
-
-    private static AntdUI.ColumnSwitch CreateProductProcessTestFlagColumn()
-    {
-        return new AntdUI.ColumnSwitch(nameof(ProductProcessTableRow.ShowTestFlagInHistory), "历史显示试焊件")
         {
             Align = AntdUI.ColumnAlign.Center,
             AutoCheck = true
@@ -2140,14 +2131,7 @@ public partial class AddressManageView : BaseView
         if (e.Record is ProductProcessTableRow processRow)
         {
             _selectedProductProcessRow = processRow;
-            if (e.Column.Key == nameof(ProductProcessTableRow.ShowTestFlagInHistory))
-            {
-                processRow.ShowTestFlagInHistory = e.Value;
-            }
-            else
-            {
-                processRow.Enabled = e.Value;
-            }
+            processRow.Enabled = e.Value;
 
             UpdateProductProcessSummary();
             SyncActiveCommandState();
@@ -2444,6 +2428,21 @@ public partial class AddressManageView : BaseView
         {
             throw new InvalidOperationException($"{itemName}{roleName}已启用 MES 上传，必须填写 MES 字段名。");
         }
+
+        if (collectEnabled && mesEnabled && IsReservedProcessParameterField(mesFieldName))
+        {
+            throw new InvalidOperationException($"{itemName}{roleName}的 MES 字段名“{mesFieldName}”是系统保留字段，不能用于动态测试项。");
+        }
+    }
+
+    private static bool IsReservedProcessParameterField(string? mesFieldName)
+    {
+        if (string.IsNullOrWhiteSpace(mesFieldName))
+        {
+            return false;
+        }
+
+        return mesFieldName.Trim().Equals(nameof(ProcessParameterUploadItem.IsTest), StringComparison.OrdinalIgnoreCase);
     }
 
     private static void ValidateSchemeDetails(IEnumerable<BizSchemeDetail> details)

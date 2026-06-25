@@ -48,6 +48,10 @@
             tableLayoutPanel7 = new TableLayoutPanel();
             lblPlcType = new AntdUI.Label();
             select_PlcType = new AntdUI.Select();
+            chkEnablePlcStringNumericFormatting = new AntdUI.Checkbox();
+            tlpPlcStringNumericMode = new TableLayoutPanel();
+            lblPlcStringNumericFormatMode = new AntdUI.Label();
+            selectPlcStringNumericFormatMode = new AntdUI.Select();
             grpProductionConfig = new GroupBox();
             tlpProductConfig = new TableLayoutPanel();
             chkEnableDualStation = new AntdUI.Checkbox();
@@ -71,6 +75,7 @@
             input_MesTimeout = new AntdUI.InputNumber();
             lblProcessParameterDeviceType = new AntdUI.Label();
             selectProcessParameterDeviceType = new AntdUI.Select();
+            chkShowTestFlagInHistory = new AntdUI.Checkbox();
             grpCenterServerConfig = new GroupBox();
             tableLayoutPanelCenterServer = new TableLayoutPanel();
             chkEnableCenterServerSync = new AntdUI.Checkbox();
@@ -112,6 +117,7 @@
             tlpPlcIp.SuspendLayout();
             tlpPlcPort.SuspendLayout();
             tableLayoutPanel7.SuspendLayout();
+            tlpPlcStringNumericMode.SuspendLayout();
             grpProductionConfig.SuspendLayout();
             tlpProductConfig.SuspendLayout();
             tableLayoutPanel2.SuspendLayout();
@@ -424,7 +430,7 @@
             grpPlcConfig.Location = new Point(6, 6);
             grpPlcConfig.Margin = new Padding(0);
             grpPlcConfig.Name = "grpPlcConfig";
-            grpPlcConfig.Size = new Size(297, 162);
+            grpPlcConfig.Size = new Size(297, 252);
             grpPlcConfig.TabIndex = 1;
             grpPlcConfig.TabStop = false;
             grpPlcConfig.Text = "PLC配置";
@@ -438,14 +444,18 @@
             tlpPlcConfig.Controls.Add(tlpPlcIp, 0, 0);
             tlpPlcConfig.Controls.Add(tlpPlcPort, 0, 1);
             tlpPlcConfig.Controls.Add(tableLayoutPanel7, 0, 2);
+            tlpPlcConfig.Controls.Add(chkEnablePlcStringNumericFormatting, 0, 3);
+            tlpPlcConfig.Controls.Add(tlpPlcStringNumericMode, 0, 4);
             tlpPlcConfig.Dock = DockStyle.Fill;
             tlpPlcConfig.Location = new Point(3, 23);
             tlpPlcConfig.Name = "tlpPlcConfig";
-            tlpPlcConfig.RowCount = 3;
+            tlpPlcConfig.RowCount = 5;
             tlpPlcConfig.RowStyles.Add(new RowStyle());
             tlpPlcConfig.RowStyles.Add(new RowStyle());
             tlpPlcConfig.RowStyles.Add(new RowStyle());
-            tlpPlcConfig.Size = new Size(291, 136);
+            tlpPlcConfig.RowStyles.Add(new RowStyle());
+            tlpPlcConfig.RowStyles.Add(new RowStyle());
+            tlpPlcConfig.Size = new Size(291, 226);
             tlpPlcConfig.TabIndex = 0;
             //
             // tlpPlcIp
@@ -577,6 +587,58 @@
             select_PlcType.Name = "select_PlcType";
             select_PlcType.Size = new Size(259, 46);
             select_PlcType.TabIndex = 1;
+            //
+            // chkEnablePlcStringNumericFormatting
+            //
+            chkEnablePlcStringNumericFormatting.Checked = true;
+            chkEnablePlcStringNumericFormatting.CheckState = CheckState.Checked;
+            chkEnablePlcStringNumericFormatting.Dock = DockStyle.Fill;
+            chkEnablePlcStringNumericFormatting.Location = new Point(0, 136);
+            chkEnablePlcStringNumericFormatting.Margin = new Padding(0);
+            chkEnablePlcStringNumericFormatting.Name = "chkEnablePlcStringNumericFormatting";
+            chkEnablePlcStringNumericFormatting.Padding = new Padding(8, 0, 0, 0);
+            chkEnablePlcStringNumericFormatting.Size = new Size(291, 45);
+            chkEnablePlcStringNumericFormatting.TabIndex = 3;
+            chkEnablePlcStringNumericFormatting.Text = "启用PLC字符串数值处理";
+            //
+            // tlpPlcStringNumericMode
+            //
+            tlpPlcStringNumericMode.AutoSize = true;
+            tlpPlcStringNumericMode.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            tlpPlcStringNumericMode.ColumnCount = 2;
+            tlpPlcStringNumericMode.ColumnStyles.Add(new ColumnStyle());
+            tlpPlcStringNumericMode.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            tlpPlcStringNumericMode.Controls.Add(lblPlcStringNumericFormatMode, 0, 0);
+            tlpPlcStringNumericMode.Controls.Add(selectPlcStringNumericFormatMode, 1, 0);
+            tlpPlcStringNumericMode.Dock = DockStyle.Fill;
+            tlpPlcStringNumericMode.Location = new Point(0, 181);
+            tlpPlcStringNumericMode.Margin = new Padding(0);
+            tlpPlcStringNumericMode.Name = "tlpPlcStringNumericMode";
+            tlpPlcStringNumericMode.RowCount = 1;
+            tlpPlcStringNumericMode.RowStyles.Add(new RowStyle());
+            tlpPlcStringNumericMode.Size = new Size(291, 45);
+            tlpPlcStringNumericMode.TabIndex = 4;
+            //
+            // lblPlcStringNumericFormatMode
+            //
+            lblPlcStringNumericFormatMode.AutoSizeMode = AntdUI.TAutoSize.Width;
+            lblPlcStringNumericFormatMode.Dock = DockStyle.Fill;
+            lblPlcStringNumericFormatMode.Location = new Point(0, 0);
+            lblPlcStringNumericFormatMode.Margin = new Padding(0);
+            lblPlcStringNumericFormatMode.Name = "lblPlcStringNumericFormatMode";
+            lblPlcStringNumericFormatMode.Padding = new Padding(8, 0, 0, 0);
+            lblPlcStringNumericFormatMode.Size = new Size(71, 45);
+            lblPlcStringNumericFormatMode.TabIndex = 0;
+            lblPlcStringNumericFormatMode.Text = "处理方式";
+            //
+            // selectPlcStringNumericFormatMode
+            //
+            selectPlcStringNumericFormatMode.Dock = DockStyle.Fill;
+            selectPlcStringNumericFormatMode.Location = new Point(71, 0);
+            selectPlcStringNumericFormatMode.Margin = new Padding(0);
+            selectPlcStringNumericFormatMode.Name = "selectPlcStringNumericFormatMode";
+            selectPlcStringNumericFormatMode.Size = new Size(220, 45);
+            selectPlcStringNumericFormatMode.TabIndex = 1;
             //
             // grpProductionConfig
             //
@@ -770,7 +832,7 @@
             grpMesConfig.Controls.Add(tableLayoutPanelMesConfig);
             grpMesConfig.Location = new Point(919, 176);
             grpMesConfig.Name = "grpMesConfig";
-            grpMesConfig.Size = new Size(538, 138);
+            grpMesConfig.Size = new Size(538, 172);
             grpMesConfig.TabIndex = 3;
             grpMesConfig.TabStop = false;
             grpMesConfig.Text = "MES Config";
@@ -784,14 +846,16 @@
             tableLayoutPanelMesConfig.Controls.Add(tableLayoutPanel4, 0, 1);
             tableLayoutPanelMesConfig.Controls.Add(lblProcessParameterDeviceType, 0, 2);
             tableLayoutPanelMesConfig.Controls.Add(selectProcessParameterDeviceType, 1, 2);
+            tableLayoutPanelMesConfig.Controls.Add(chkShowTestFlagInHistory, 0, 3);
             tableLayoutPanelMesConfig.Dock = DockStyle.Fill;
             tableLayoutPanelMesConfig.Location = new Point(3, 23);
             tableLayoutPanelMesConfig.Name = "tableLayoutPanelMesConfig";
-            tableLayoutPanelMesConfig.RowCount = 3;
+            tableLayoutPanelMesConfig.RowCount = 4;
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
-            tableLayoutPanelMesConfig.Size = new Size(532, 112);
+            tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
+            tableLayoutPanelMesConfig.Size = new Size(532, 146);
             tableLayoutPanelMesConfig.TabIndex = 0;
             //
             // chkUseProductNumberFilter
@@ -865,10 +929,24 @@
             selectProcessParameterDeviceType.Size = new Size(342, 40);
             selectProcessParameterDeviceType.TabIndex = 3;
             //
+            // chkShowTestFlagInHistory
+            //
+            tableLayoutPanelMesConfig.SetColumnSpan(chkShowTestFlagInHistory, 2);
+            chkShowTestFlagInHistory.Checked = true;
+            chkShowTestFlagInHistory.CheckState = CheckState.Checked;
+            chkShowTestFlagInHistory.Dock = DockStyle.Fill;
+            chkShowTestFlagInHistory.Location = new Point(0, 102);
+            chkShowTestFlagInHistory.Margin = new Padding(0);
+            chkShowTestFlagInHistory.Name = "chkShowTestFlagInHistory";
+            chkShowTestFlagInHistory.Padding = new Padding(8, 0, 0, 0);
+            chkShowTestFlagInHistory.Size = new Size(532, 34);
+            chkShowTestFlagInHistory.TabIndex = 4;
+            chkShowTestFlagInHistory.Text = "产品历史显示试焊件";
+            //
             // grpCenterServerConfig
             //
             grpCenterServerConfig.Controls.Add(tableLayoutPanelCenterServer);
-            grpCenterServerConfig.Location = new Point(919, 320);
+            grpCenterServerConfig.Location = new Point(919, 354);
             grpCenterServerConfig.Name = "grpCenterServerConfig";
             grpCenterServerConfig.Size = new Size(538, 178);
             grpCenterServerConfig.TabIndex = 6;
@@ -1261,6 +1339,8 @@
             tlpPlcPort.PerformLayout();
             tableLayoutPanel7.ResumeLayout(false);
             tableLayoutPanel7.PerformLayout();
+            tlpPlcStringNumericMode.ResumeLayout(false);
+            tlpPlcStringNumericMode.PerformLayout();
             grpProductionConfig.ResumeLayout(false);
             tlpProductConfig.ResumeLayout(false);
             tableLayoutPanel2.ResumeLayout(false);
@@ -1303,6 +1383,10 @@
         private TableLayoutPanel tableLayoutPanel7;
         private AntdUI.Select select_PlcType;
         private AntdUI.Label lblPlcType;
+        private AntdUI.Checkbox chkEnablePlcStringNumericFormatting;
+        private TableLayoutPanel tlpPlcStringNumericMode;
+        private AntdUI.Label lblPlcStringNumericFormatMode;
+        private AntdUI.Select selectPlcStringNumericFormatMode;
         private TableLayoutPanel tlpPlcPort;
         private AntdUI.Label lblPlcPort;
         private AntdUI.Input input_PlcPort;
@@ -1364,6 +1448,7 @@
         private AntdUI.InputNumber input_MesTimeout;
         private AntdUI.Label lblProcessParameterDeviceType;
         private AntdUI.Select selectProcessParameterDeviceType;
+        private AntdUI.Checkbox chkShowTestFlagInHistory;
         private GroupBox grpCenterServerConfig;
         private TableLayoutPanel tableLayoutPanelCenterServer;
         private AntdUI.Checkbox chkEnableCenterServerSync;

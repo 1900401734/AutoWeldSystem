@@ -37,6 +37,12 @@ public class AppSettings
     [SugarColumn(Length = 50, ColumnDescription = "PLC类型")]
     public string PlcType { get; set; } = AppConstants.PlcTypes.SiemensS71200;
 
+    [SugarColumn(ColumnDescription = "是否启用PLC字符串数值处理", IsNullable = true)]
+    public bool? EnablePlcStringNumericFormatting { get; set; } = true;
+
+    [SugarColumn(Length = 20, ColumnDescription = "PLC字符串数值处理方式")]
+    public string PlcStringNumericFormatMode { get; set; } = AppConstants.PlcStringNumericFormatModes.Truncate;
+
     #endregion
 
     #region 中心服务器配置
@@ -84,6 +90,12 @@ public class AppSettings
 
     [SugarColumn(Length = 100, ColumnDescription = "过程参数接口名称")]
     public string ProcessParameterApiName { get; set; } = "EMWeldDetail";
+
+    /// <summary>
+    /// Whether product history shows the test-weld flag and process-parameter uploads include IsTest for weld devices.
+    /// </summary>
+    [SugarColumn(IsNullable = true, ColumnDescription = "产品历史显示试焊件")]
+    public bool? ShowTestFlagInHistory { get; set; } = true;
 
     #endregion
 

@@ -1,5 +1,6 @@
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs.Plc;
+using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.PLC;
 using AutoWeldSystem.Core.Plc;
 using AutoWeldSystem.Core.Production;
@@ -14,10 +15,12 @@ namespace AutoWeldSystem.Services.Plc;
 public sealed class ExpressionReadService : IPlcExpressionReadService
 {
     private readonly IPlcCommunicationService _plcCommunicationService;
+    private readonly IAppSettingsService _settingsService;
 
-    public ExpressionReadService(IPlcCommunicationService plcCommunicationService)
+    public ExpressionReadService(IPlcCommunicationService plcCommunicationService, IAppSettingsService settingsService)
     {
         _plcCommunicationService = plcCommunicationService;
+        _settingsService = settingsService;
     }
 
     /// <summary>
@@ -203,101 +206,16 @@ public sealed class ExpressionReadService : IPlcExpressionReadService
     }
 
     /// <summary>
-    /// String 默认只清理 PLC 填充字符；配置 _小数位 时才按数值字符串截断格式化。
+    /// String 默认只清理 PLC 填充字符；配置 _小数位 且系统设置启用后，才按全局模式处理数值字符串。
     /// </summary>
-    private static string NormalizeStringValue(string? value, int? decimalPlaces)
+    private string NormalizeStringValue(string? value, int? decimalPlaces)
     {
-        var text = NormalizePlcText(value);
-        return decimalPlaces is >= 0
-            ? NormalizeNumericString(text, decimalPlaces.Value)
-            : text;
-    }
-
-    /// <summary>
-    /// 规范化数值型字符串；完整格式不匹配数字时保持原值，避免误处理工单号、产品编号等普通字符串。
-    /// </summary>
-    private static string NormalizeNumericString(string text, int decimalPlaces)
-    {
-        if (!TrySplitNumericString(text, out var isNegative, out var integerPart, out var fractionPart))
-        {
-            return text;
-        }
-
-        var normalizedInteger = integerPart.TrimStart('0');
-        if (normalizedInteger.Length == 0)
-        {
-            normalizedInteger = "0";
-        }
-
-        var sign = isNegative ? "-" : string.Empty;
-        if (decimalPlaces == 0)
-        {
-            return $"{sign}{normalizedInteger}";
-        }
-
-        var normalizedFraction = fractionPart.Length > decimalPlaces
-            ? fractionPart[..decimalPlaces]
-            : fractionPart.PadRight(decimalPlaces, '0');
-
-        return $"{sign}{normalizedInteger}.{normalizedFraction}";
-    }
-
-    /// <summary>
-    /// 只接受完整数值字符串，不接受千分位、单位和混合文本。
-    /// </summary>
-    private static bool TrySplitNumericString(string text, out bool isNegative, out string integerPart, out string fractionPart)
-    {
-        isNegative = false;
-        integerPart = string.Empty;
-        fractionPart = string.Empty;
-
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return false;
-        }
-
-        var startIndex = 0;
-        if (text[0] is '+' or '-')
-        {
-            isNegative = text[0] == '-';
-            startIndex = 1;
-        }
-
-        if (startIndex >= text.Length)
-        {
-            return false;
-        }
-
-        var decimalIndex = text.IndexOf('.', startIndex);
-        if (decimalIndex >= 0)
-        {
-            integerPart = text[startIndex..decimalIndex];
-            fractionPart = text[(decimalIndex + 1)..];
-            if (text.IndexOf('.', decimalIndex + 1) >= 0)
-            {
-                return false;
-            }
-        }
-        else
-        {
-            integerPart = text[startIndex..];
-        }
-
-        var hasDigit = integerPart.Length > 0 || fractionPart.Length > 0;
-        return hasDigit && IsAsciiDigits(integerPart) && IsAsciiDigits(fractionPart);
-    }
-
-    private static bool IsAsciiDigits(string text)
-    {
-        foreach (var ch in text)
-        {
-            if (ch < '0' || ch > '9')
-            {
-                return false;
-            }
-        }
-
-        return true;
+        var settings = _settingsService.Get();
+        return PlcStringNumericFormatter.Format(
+            value,
+            decimalPlaces,
+            settings.EnablePlcStringNumericFormatting ?? true,
+            settings.PlcStringNumericFormatMode);
     }
 
     private static string FormatResult(string? value)
@@ -316,8 +234,4 @@ public sealed class ExpressionReadService : IPlcExpressionReadService
         };
     }
 
-    private static string NormalizePlcText(string? value)
-    {
-        return value?.Trim().Trim('\0') ?? string.Empty;
-    }
 }

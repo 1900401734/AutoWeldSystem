@@ -1038,6 +1038,9 @@
   <data name="permission.button.state.upload_all" xml:space="preserve">
     <value>一键上传</value>
   </data>
+  <data name="permission.button.state.delete" xml:space="preserve">
+    <value>删除上传任务</value>
+  </data>
   <data name="permission.button.system.save" xml:space="preserve">
     <value>保存系统设置</value>
   </data>

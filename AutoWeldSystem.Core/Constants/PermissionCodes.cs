@@ -78,6 +78,7 @@ public static class PermissionCodes
             public const string RetryAll = "button.state.retry-all";
             public const string Refresh = "button.state.refresh";
             public const string UploadAll = "button.state.upload-all";
+            public const string Delete = "button.state.delete";
         }
 
         public static class Log

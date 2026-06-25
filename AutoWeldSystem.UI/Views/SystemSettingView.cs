@@ -24,6 +24,12 @@ public partial class SystemSettingView : BaseView
         new(AppConstants.PlcTypes.SiemensS71200, TextKeys.SystemSetting.PlcTypeSiemensS71200)
     };
 
+    private static readonly PlcStringNumericFormatModeOption[] PlcStringNumericFormatModeOptions =
+    {
+        new("固定长度裁切", AppConstants.PlcStringNumericFormatModes.Truncate),
+        new("四舍五入", AppConstants.PlcStringNumericFormatModes.Round)
+    };
+
     private static readonly UploadModeOption[] UploadModeOptions =
     {
         new(UploadMode.Realtime, "单件实时上传"),
@@ -54,11 +60,13 @@ public partial class SystemSettingView : BaseView
 
     private bool _initialized;
     private bool _syncingPlcTypeSelection;
+    private bool _syncingPlcStringNumericFormatModeSelection;
     private bool _syncingUploadModeSelection;
     private bool _syncingDualModeSelection;
     private bool _syncingProcessParameterDeviceTypeSelection;
     private bool _syncingCenterServerSystemTypeSelection;
     private string _selectedPlcType = AppConstants.PlcTypes.ModbusTcp;
+    private string _selectedPlcStringNumericFormatMode = AppConstants.PlcStringNumericFormatModes.Truncate;
     private UploadMode _selectedUploadMode = UploadMode.Quantity;
     private string _selectedProcessParameterDeviceType = ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic;
     private string _selectedCenterServerSystemType = CenterServerConstants.SystemTypes.Other;
@@ -90,6 +98,7 @@ public partial class SystemSettingView : BaseView
     {
         ApplyLocalizedTexts();
         BindPlcTypeOptions();
+        BindPlcStringNumericFormatModeOptions();
     }
 
     protected override void OnLoad(EventArgs e)
@@ -119,6 +128,8 @@ public partial class SystemSettingView : BaseView
         btnOpenLogPath.Click += (_, _) => OpenFolder(input_LogsPath.Text, BuildFieldName(grpDeviceConfig.Text, lblLogPath.Text));
         btnOpenDataPath.Click += (_, _) => OpenFolder(input_DataPath.Text, BuildFieldName(grpDeviceConfig.Text, lblDataPath.Text));
         select_PlcType.SelectedIndexChanged += Select_PlcType_SelectedIndexChanged;
+        chkEnablePlcStringNumericFormatting.CheckedChanged += ChkEnablePlcStringNumericFormatting_CheckedChanged;
+        selectPlcStringNumericFormatMode.SelectedIndexChanged += SelectPlcStringNumericFormatMode_SelectedIndexChanged;
         selectUploadMode.SelectedIndexChanged += SelectUploadMode_SelectedIndexChanged;
         chkEnableDualStation.CheckedChanged += ChkEnableDualStation_CheckedChanged;
         chkEnableDualWorkOrder.CheckedChanged += ChkEnableDualWorkOrder_CheckedChanged;
@@ -264,6 +275,26 @@ public partial class SystemSettingView : BaseView
         _selectedPlcType = PlcTypeOptions[e.Value].Value;
     }
 
+    private void ChkEnablePlcStringNumericFormatting_CheckedChanged(object sender, AntdUI.BoolEventArgs e)
+    {
+        UpdatePlcStringNumericFormatModeEnabled();
+    }
+
+    private void SelectPlcStringNumericFormatMode_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
+    {
+        if (_syncingPlcStringNumericFormatModeSelection)
+        {
+            return;
+        }
+
+        if (e.Value < 0 || e.Value >= PlcStringNumericFormatModeOptions.Length)
+        {
+            return;
+        }
+
+        _selectedPlcStringNumericFormatMode = PlcStringNumericFormatModeOptions[e.Value].Value;
+    }
+
     private void SelectUploadMode_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
     {
         if (_syncingUploadModeSelection)
@@ -393,6 +424,7 @@ public partial class SystemSettingView : BaseView
         input_DeviceUrl.Text = settings.DeviceBaseUrl;
         input_PlcIp.Text = settings.PlcIp;
         input_PlcPort.Text = settings.PlcPort.ToString().Trim();
+        chkEnablePlcStringNumericFormatting.Checked = settings.EnablePlcStringNumericFormatting ?? true;
         input_MesTimeout.Text = settings.MesTimeoutSeconds.ToString();
         input_LogsPath.Text = settings.LogDirectory;
         input_DataPath.Text = settings.DataDirectory;
@@ -403,20 +435,24 @@ public partial class SystemSettingView : BaseView
             settings.CenterServerHeartbeatIntervalSeconds).ToString(CultureInfo.InvariantCulture);
         input_BaseUrl.Text = settings.MesBaseUrl;
         chkUseProductNumberFilter.Checked = settings.UseProductNumberFilter;
+        chkShowTestFlagInHistory.Checked = settings.ShowTestFlagInHistory != false;
         SetDualModeCheckboxes(settings.EnableDualStation, settings.EnableDualWorkOrder);
         chkValidateRecipeBeforeStart.Checked = settings.ValidateRecipeAfterStart;
         chkEnableFinishExpQtyPrompt.Checked = settings.EnableFinishExpQtyPrompt;
         inputPlcHeartbeatInterval.Text = Math.Clamp(settings.PlcHeartbeatReadIntervalMilliseconds <= 0 ? 300 : settings.PlcHeartbeatReadIntervalMilliseconds, 100, 5000).ToString(CultureInfo.InvariantCulture);
 
         _selectedPlcType = NormalizePlcType(settings.PlcType);
+        _selectedPlcStringNumericFormatMode = NormalizePlcStringNumericFormatMode(settings.PlcStringNumericFormatMode);
         _selectedUploadMode = NormalizeUploadMode(settings.UploadMode);
         _selectedProcessParameterDeviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
         _selectedCenterServerSystemType = NormalizeCenterServerSystemType(settings.CenterServerSystemType);
         inputUploadBatchSize.Text = Math.Max(1, settings.UploadBatchSize).ToString(CultureInfo.InvariantCulture);
         BindPlcTypeOptions();
+        BindPlcStringNumericFormatModeOptions();
         BindUploadModeOptions();
         BindProcessParameterDeviceTypeOptions();
         BindCenterServerSystemTypeOptions();
+        UpdatePlcStringNumericFormatModeEnabled();
         UpdateUploadBatchSizeEnabled();
     }
 
@@ -440,6 +476,8 @@ public partial class SystemSettingView : BaseView
         lblPlcIp.Text = _localizer.GetString(TextKeys.SystemSetting.LabelIp);
         lblPlcPort.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPort);
         lblPlcType.Text = _localizer.GetString(TextKeys.SystemSetting.LabelType);
+        chkEnablePlcStringNumericFormatting.Text = "启用 PLC 字符串数值处理";
+        lblPlcStringNumericFormatMode.Text = "处理方式";
 
         lblDeviceId.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDeviceId);
         lblDeviceName.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDeviceName);
@@ -458,8 +496,10 @@ public partial class SystemSettingView : BaseView
         lblCenterServerSystemType.Text = "系统类型";
         lblCenterServerHeartbeatInterval.Text = "心跳间隔(s)";
         lblProcessParameterDeviceType.Text = "过程参数设备类型";
+        chkShowTestFlagInHistory.Text = "产品历史显示试焊件";
 
         BindUploadModeOptions();
+        BindPlcStringNumericFormatModeOptions();
         BindProcessParameterDeviceTypeOptions();
 
         chkUseProductNumberFilter.Text = _localizer.GetString(TextKeys.SystemSetting.ChkUseProductNumberFilter);
@@ -493,6 +533,26 @@ public partial class SystemSettingView : BaseView
             string.Equals(option.Value, _selectedPlcType, StringComparison.OrdinalIgnoreCase));
         select_PlcType.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
         _syncingPlcTypeSelection = false;
+    }
+
+    private void BindPlcStringNumericFormatModeOptions()
+    {
+        _syncingPlcStringNumericFormatModeSelection = true;
+        try
+        {
+            selectPlcStringNumericFormatMode.Items.Clear();
+            selectPlcStringNumericFormatMode.Items.AddRange(PlcStringNumericFormatModeOptions
+                .Select(option => (object)option.DisplayName)
+                .ToArray());
+
+            var selectedIndex = Array.FindIndex(PlcStringNumericFormatModeOptions, option =>
+                string.Equals(option.Value, _selectedPlcStringNumericFormatMode, StringComparison.OrdinalIgnoreCase));
+            selectPlcStringNumericFormatMode.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+        }
+        finally
+        {
+            _syncingPlcStringNumericFormatModeSelection = false;
+        }
     }
 
     private void BindUploadModeOptions()
@@ -561,6 +621,11 @@ public partial class SystemSettingView : BaseView
         {
             inputUploadBatchSize.Text = "1";
         }
+    }
+
+    private void UpdatePlcStringNumericFormatModeEnabled()
+    {
+        selectPlcStringNumericFormatMode.Enabled = chkEnablePlcStringNumericFormatting.Checked;
     }
 
     /// <summary>
@@ -783,6 +848,8 @@ public partial class SystemSettingView : BaseView
         settings.PlcIp = plcIp;
         settings.PlcPort = plcPort;
         settings.PlcType = NormalizePlcType(_selectedPlcType);
+        settings.EnablePlcStringNumericFormatting = chkEnablePlcStringNumericFormatting.Checked;
+        settings.PlcStringNumericFormatMode = NormalizePlcStringNumericFormatMode(_selectedPlcStringNumericFormatMode);
         settings.LogDirectory = logDirectory;
         settings.DataDirectory = dataDirectory;
         settings.EnableAutoStart = chkEnableAutoStart.Checked;
@@ -793,6 +860,7 @@ public partial class SystemSettingView : BaseView
         settings.MesBaseUrl = mesBaseUrl;
         settings.MesTimeoutSeconds = int.TryParse(mesTimeout, NumberStyles.Integer, CultureInfo.InvariantCulture, out var timeout) && timeout > 0 ? timeout : 10;
         settings.UseProductNumberFilter = chkUseProductNumberFilter.Checked;
+        settings.ShowTestFlagInHistory = chkShowTestFlagInHistory.Checked;
         settings.EnableDualStation = enableDualStation;
         settings.EnableDualWorkOrder = enableDualWorkOrder;
         settings.ValidateRecipeAfterStart = chkValidateRecipeBeforeStart.Checked;
@@ -959,6 +1027,14 @@ public partial class SystemSettingView : BaseView
             : AppConstants.PlcTypes.ModbusTcp;
     }
 
+    private static string NormalizePlcStringNumericFormatMode(string? mode)
+    {
+        var normalizedValue = mode?.Trim();
+        return PlcStringNumericFormatModeOptions.Any(option => string.Equals(option.Value, normalizedValue, StringComparison.OrdinalIgnoreCase))
+            ? normalizedValue!
+            : AppConstants.PlcStringNumericFormatModes.Truncate;
+    }
+
     private static UploadMode NormalizeUploadMode(UploadMode mode)
     {
         return Enum.IsDefined(typeof(UploadMode), mode) ? mode : UploadMode.Quantity;
@@ -1013,6 +1089,8 @@ public partial class SystemSettingView : BaseView
     }
 
     private sealed record PlcTypeOption(string Value, string TextKey);
+
+    private sealed record PlcStringNumericFormatModeOption(string DisplayName, string Value);
 
     private sealed record UploadModeOption(UploadMode Value, string DisplayName);
 

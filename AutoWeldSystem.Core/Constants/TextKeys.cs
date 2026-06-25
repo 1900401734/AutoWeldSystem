@@ -815,6 +815,7 @@ public static class TextKeys
         public const string ButtonStateRetryAll = "permission.button.state.retry_all";
         public const string ButtonStateRefresh = "permission.button.state.refresh";
         public const string ButtonStateUploadAll = "permission.button.state.upload_all";
+        public const string ButtonStateDelete = "permission.button.state.delete";
         public const string ButtonSystemSave = "permission.button.system.save";
         public const string ButtonSystemConnectPlc = "permission.button.system.connect_plc";
         public const string ButtonSystemSyncDevice = "permission.button.system.sync_device";

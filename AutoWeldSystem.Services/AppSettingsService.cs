@@ -3,6 +3,7 @@ using AutoWeldSystem.Data;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Center;
+using AutoWeldSystem.Core.Plc;
 using AutoWeldSystem.Core.Runtime;
 using System.Reflection;
 
@@ -126,6 +127,9 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
     private static void Normalize(AppSettings settings)
     {
         settings.EnableAutoStart ??= true;
+        settings.ShowTestFlagInHistory ??= true;
+        settings.EnablePlcStringNumericFormatting ??= true;
+        settings.PlcStringNumericFormatMode = PlcStringNumericFormatter.NormalizeMode(settings.PlcStringNumericFormatMode);
         settings.ProcessParameterDeviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
         settings.CenterServerBaseUrl = CenterTelemetryRules.NormalizeBaseUrl(settings.CenterServerBaseUrl);
         settings.CenterServerSystemType = CenterTelemetryRules.NormalizeSystemType(settings.CenterServerSystemType);

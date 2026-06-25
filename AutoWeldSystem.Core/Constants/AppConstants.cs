@@ -85,6 +85,16 @@ public static class AppConstants
     }
 
     /// <summary>
+    /// PLC 字符串数值的小数处理方式。
+    /// String 表达式是否启用处理由系统设置控制，这里只保存稳定的入库值。
+    /// </summary>
+    public static class PlcStringNumericFormatModes
+    {
+        public const string Truncate = "Truncate";
+        public const string Round = "Round";
+    }
+
+    /// <summary>
     /// MES固定状态码常量
     /// </summary>
     public static class MesStatus

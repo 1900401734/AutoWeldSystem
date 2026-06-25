@@ -61,6 +61,7 @@ public static class PermissionCatalog
         new(PermissionCodes.Buttons.State.RetryAll, "Retry All Uploads", PermissionType.Button, PermissionCodes.Pages.StateManage, 620),
         new(PermissionCodes.Buttons.State.Refresh, "Refresh Upload State", PermissionType.Button, PermissionCodes.Pages.StateManage, 630),
         new(PermissionCodes.Buttons.State.UploadAll, "One Click Upload", PermissionType.Button, PermissionCodes.Pages.StateManage, 640),
+        new(PermissionCodes.Buttons.State.Delete, "Delete Upload State", PermissionType.Button, PermissionCodes.Pages.StateManage, 650),
 
         new(PermissionCodes.Buttons.SystemSetting.Save, "Save Settings", PermissionType.Button, PermissionCodes.Pages.SystemSetting, 710),
         new(PermissionCodes.Buttons.SystemSetting.ConnectPlc, "Test PLC Connection", PermissionType.Button, PermissionCodes.Pages.SystemSetting, 720),

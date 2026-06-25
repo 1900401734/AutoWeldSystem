@@ -1038,6 +1038,9 @@
   <data name="permission.button.state.upload_all" xml:space="preserve">
     <value>One Click Upload</value>
   </data>
+  <data name="permission.button.state.delete" xml:space="preserve">
+    <value>Delete Upload Task</value>
+  </data>
   <data name="permission.button.system.save" xml:space="preserve">
     <value>Save Settings</value>
   </data>
