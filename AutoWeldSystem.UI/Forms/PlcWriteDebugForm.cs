@@ -1,7 +1,10 @@
 using AutoWeldSystem.Core.DTOs.Plc;
 using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.PLC;
+using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.Plc;
 using AutoWeldSystem.UI.Base;
+using AutoWeldSystem.UI.Infrastructure;
 using System.Globalization;
 
 namespace AutoWeldSystem.UI.Forms;
@@ -17,6 +20,7 @@ public partial class PlcWriteDebugForm : BaseWindow
     private readonly IPlcCommunicationService _plcCommunicationService;
     private readonly IOperationLogService _operationLogService;
     private readonly IProgramExceptionLogService _exceptionLogService;
+    private bool _focusValueOnShown;
 
     public PlcWriteDebugForm(
         IPlcCommunicationService plcCommunicationService,
@@ -34,8 +38,17 @@ public partial class PlcWriteDebugForm : BaseWindow
         btnClose.Click += (_, _) => CloseAsCancel();
         Shown += (_, _) =>
         {
-            inputAddress.Focus();
-            inputAddress.SelectAll();
+            if (_focusValueOnShown)
+            {
+                inputValue.Focus();
+                inputValue.SelectAll();
+            }
+            else
+            {
+                inputAddress.Focus();
+                inputAddress.SelectAll();
+            }
+
             AcceptButton = btnWrite;
             CancelButton = btnClose;
         };
@@ -59,12 +72,29 @@ public partial class PlcWriteDebugForm : BaseWindow
     }
 
     /// <summary>
-    /// 写入类型固定为当前调试需求指定的四种类型。
+    /// 从表格右键菜单带入 PLC 地址和数据类型。
+    /// 这里只做预填，不直接执行写入，避免误操作。
+    /// </summary>
+    /// <param name="preset">右键菜单提供的地址预填信息。</param>
+    public void ApplyPreset(PlcWriteDebugPreset preset)
+    {
+        ArgumentNullException.ThrowIfNull(preset);
+
+        inputAddress.Text = preset.Address.Trim();
+        inputValue.Text = preset.ValueText ?? string.Empty;
+        _focusValueOnShown = true;
+        SelectDataType(MapDataType(preset.DataType));
+        SetResult("已带入选中行地址，请确认写入值后执行。", SystemColors.GrayText);
+    }
+
+    /// <summary>
+    /// 写入类型固定为当前调试需求指定的几种基础类型。
     /// </summary>
     private void InitializeDataTypes()
     {
         selectDataType.Items.Clear();
         selectDataType.Items.Add(new PlcWriteTypeOption("short / Int16",PlcWriteDataType.Int16));
+        selectDataType.Items.Add(new PlcWriteTypeOption("bool", PlcWriteDataType.Bool));
         selectDataType.Items.Add(new PlcWriteTypeOption("int / Int32",PlcWriteDataType.Int32));
         selectDataType.Items.Add(new PlcWriteTypeOption("float",PlcWriteDataType.Float));
         selectDataType.Items.Add(new PlcWriteTypeOption("string",PlcWriteDataType.String));
@@ -123,7 +153,7 @@ public partial class PlcWriteDebugForm : BaseWindow
 
         
 
-        if(selectDataType.SelectedValue is not PlcWriteTypeOption option)
+        if (selectDataType.SelectedValue is not PlcWriteTypeOption option)
         {
             SetResult("请选择写入类型。", Color.Firebrick);
             selectDataType.Focus();
@@ -157,6 +187,7 @@ public partial class PlcWriteDebugForm : BaseWindow
         error = string.Empty;
         var isValid = dataType switch
         {
+            PlcWriteDataType.Bool => PlcDebugWriteRules.TryParseBool(valueText, out _),
             PlcWriteDataType.Int16 => short.TryParse(valueText, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
             PlcWriteDataType.Int32 => int.TryParse(valueText, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
             PlcWriteDataType.Float => TryParseFloat(valueText, out _),
@@ -171,6 +202,7 @@ public partial class PlcWriteDebugForm : BaseWindow
 
         error = dataType switch
         {
+            PlcWriteDataType.Bool => "bool 类型只能写入 1、0、true 或 false。",
             PlcWriteDataType.Int16 => "short 类型只能写入 -32768 到 32767 的整数。",
             PlcWriteDataType.Int32 => "int 类型只能写入整数。",
             PlcWriteDataType.Float => "float 类型只能写入数字，例如 12.34。",
@@ -183,6 +215,9 @@ public partial class PlcWriteDebugForm : BaseWindow
     {
         return request.DataType switch
         {
+            PlcWriteDataType.Bool => await _plcCommunicationService.WriteBoolAsync(
+                request.Address,
+                ParseBool(request.ValueText)),
             PlcWriteDataType.Int16 => await _plcCommunicationService.WriteInt16Async(
                 request.Address,
                 short.Parse(request.ValueText, NumberStyles.Integer, CultureInfo.InvariantCulture)),
@@ -197,6 +232,38 @@ public partial class PlcWriteDebugForm : BaseWindow
                 request.ValueText),
             _ => PlcServiceResult.Fail("不支持的 PLC 写入类型。")
         };
+    }
+
+    private static PlcWriteDataType MapDataType(string? dataType)
+    {
+        return PlcDebugWriteRules.NormalizeDataType(dataType) switch
+        {
+            AppConstants.PlcDataTypes.Bool => PlcWriteDataType.Bool,
+            AppConstants.PlcDataTypes.Int32 => PlcWriteDataType.Int32,
+            AppConstants.PlcDataTypes.Float => PlcWriteDataType.Float,
+            AppConstants.PlcDataTypes.String => PlcWriteDataType.String,
+            _ => PlcWriteDataType.Int16
+        };
+    }
+
+    private void SelectDataType(PlcWriteDataType dataType)
+    {
+        for (var index = 0; index < selectDataType.Items.Count; index++)
+        {
+            if (selectDataType.Items[index] is PlcWriteTypeOption option && option.DataType == dataType)
+            {
+                selectDataType.SelectedIndex = index;
+                return;
+            }
+        }
+
+        selectDataType.SelectedIndex = 0;
+    }
+
+    private static bool ParseBool(string valueText)
+    {
+        PlcDebugWriteRules.TryParseBool(valueText, out var value);
+        return value;
     }
 
     private static bool TryParseFloat(string valueText, out float value)
@@ -235,6 +302,7 @@ public partial class PlcWriteDebugForm : BaseWindow
 
     private enum PlcWriteDataType
     {
+        Bool,
         Int16,
         Int32,
         Float,

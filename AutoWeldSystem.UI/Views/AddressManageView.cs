@@ -37,6 +37,7 @@ public partial class AddressManageView : BaseView
     private readonly IPlcWeldCycleMonitorService _plcWeldCycleMonitorService;
     private readonly ILocalizationService _localizer;
     private readonly IProgramExceptionLogService _exceptionLogService;
+    private readonly PlcWriteDebugLauncher _plcWriteDebugLauncher;
 
     private readonly List<BizPlcAddress> _allAddresses = new();
     private readonly List<BizPlcAlarmAddress> _alarmAddresses = new();
@@ -55,6 +56,9 @@ public partial class AddressManageView : BaseView
     private List<SchemeDetailRoleTableRow> _currentSchemeDetailRoleRows = new();
 
     private readonly DataGridView _schemeDetailRoleGrid = new();
+    private readonly System.Windows.Forms.ContextMenuStrip _businessAddressContextMenu = new();
+    private ToolStripMenuItem? _businessAddressReadMenuItem;
+    private ToolStripMenuItem? _businessAddressWriteMenuItem;
 
     private PlcAddressTableRow? _selectedRow;
     private AlarmAddressTableRow? _selectedAlarmRow;
@@ -89,7 +93,8 @@ public partial class AddressManageView : BaseView
         IPlcWorkIdMonitorService plcWorkIdMonitorService,
         IPlcWeldCycleMonitorService plcWeldCycleMonitorService,
         ILocalizationService localizer,
-        IProgramExceptionLogService exceptionLogService)
+        IProgramExceptionLogService exceptionLogService,
+        PlcWriteDebugLauncher plcWriteDebugLauncher)
     {
         _addressService = addressService;
         _plcAlarmAddressService = plcAlarmAddressService;
@@ -103,9 +108,11 @@ public partial class AddressManageView : BaseView
         _plcWeldCycleMonitorService = plcWeldCycleMonitorService;
         _localizer = localizer;
         _exceptionLogService = exceptionLogService;
+        _plcWriteDebugLauncher = plcWriteDebugLauncher;
 
         InitializeComponent();
         ConfigureTables();
+        ConfigureContextMenus();
         InitializeSchemeDetailRoleGrid();
         WireEvents();
     }
@@ -151,17 +158,32 @@ public partial class AddressManageView : BaseView
         tableAlarmAddresses.EditLostFocus = true;
         AntdTableSelectionHelper.EnableMultiRowSelection(tableAlarmAddresses);
         tableProcess.EditLostFocus = true;
-        tableProcess.LostFocusClearSelection = false;
+        AntdTableSelectionHelper.EnableMultiRowSelection(tableProcess);
         tableTestSchemes.EditLostFocus = true;
-        tableTestSchemes.LostFocusClearSelection = false;
+        AntdTableSelectionHelper.EnableMultiRowSelection(tableTestSchemes);
         tableTestItems.EditLostFocus = true;
-        tableTestItems.LostFocusClearSelection = false;
+        AntdTableSelectionHelper.EnableMultiRowSelection(tableTestItems);
 
         ConfigureBusinessAddressColumns();
         ConfigureAlarmAddressColumns();
         ConfigureProductProcessColumns();
         ConfigureTestSchemeColumns();
         ConfigureTestItemColumns();
+    }
+
+    /// <summary>
+    /// 初始化业务信号表格的右键菜单。
+    /// 菜单只操作当前选中行，避免右键误触时批量读写 PLC。
+    /// </summary>
+    private void ConfigureContextMenus()
+    {
+        _businessAddressReadMenuItem = new ToolStripMenuItem("读取", null, BusinessAddressReadMenu_Click);
+        _businessAddressWriteMenuItem = new ToolStripMenuItem("写入", null, BusinessAddressWriteMenu_Click);
+        _businessAddressContextMenu.Items.AddRange(
+        [
+            _businessAddressReadMenuItem,
+            _businessAddressWriteMenuItem
+        ]);
     }
 
     /// <summary>
@@ -454,6 +476,7 @@ public partial class AddressManageView : BaseView
         tableAddresses.CellEndValueEdit += Table_CellEndValueEdit;
         tableAddresses.CellEditComplete += Table_CellEditComplete;
         tableAddresses.CheckedChanged += Table_CheckedChanged;
+        tableAddresses.MouseUp += BusinessAddressTable_MouseUp;
 
         tableAlarmAddresses.CellClick += Table_CellClick;
         tableAlarmAddresses.CellEndEdit += Table_CellEndEdit;
@@ -649,17 +672,25 @@ public partial class AddressManageView : BaseView
     /// Gets the selected alarm rows while preserving the old single-row fallback behavior.
     /// </summary>
     private IReadOnlyList<AlarmAddressTableRow> GetSelectedAlarmRows()
-    {
-        var selectedRows = AntdTableSelectionHelper.GetSelectedRows<AlarmAddressTableRow>(tableAlarmAddresses);
-        if (selectedRows.Count > 0)
-        {
-            return selectedRows;
-        }
+        => AntdTableSelectionHelper.GetSelectedRowsOrFallback(tableAlarmAddresses, _selectedAlarmRow);
 
-        return _selectedAlarmRow is null
-            ? Array.Empty<AlarmAddressTableRow>()
-            : new[] { _selectedAlarmRow };
-    }
+    /// <summary>
+    /// 获取产品工艺表格选中行，兼容旧的单行删除操作。
+    /// </summary>
+    private IReadOnlyList<ProductProcessTableRow> GetSelectedProductProcessRows()
+        => AntdTableSelectionHelper.GetSelectedRowsOrFallback(tableProcess, _selectedProductProcessRow);
+
+    /// <summary>
+    /// 获取测试方案表格选中行，兼容旧的单行删除操作。
+    /// </summary>
+    private IReadOnlyList<TestSchemeTableRow> GetSelectedSchemeRows()
+        => AntdTableSelectionHelper.GetSelectedRowsOrFallback(tableTestSchemes, _selectedSchemeRow);
+
+    /// <summary>
+    /// 获取测试项表格选中行，兼容旧的单行删除操作。
+    /// </summary>
+    private IReadOnlyList<TestItemTableRow> GetSelectedItemRows()
+        => AntdTableSelectionHelper.GetSelectedRowsOrFallback(tableTestItems, _selectedItemRow);
 
     /// <summary>
     /// Captures selected alarm source objects so selection can be restored after rebinding rows.
@@ -1442,6 +1473,64 @@ public partial class AddressManageView : BaseView
         ShowWarning(_localizer.GetString(TextKeys.Address.MessageTestFailed, GetAddressDisplayName(address), result.Message));
     }
 
+    private void BusinessAddressTable_MouseUp(object? sender, MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Right)
+        {
+            return;
+        }
+
+        EndTableEdit();
+        var hasSelectedRow = _selectedRow is not null;
+        if (_businessAddressReadMenuItem is not null)
+        {
+            _businessAddressReadMenuItem.Enabled = hasSelectedRow;
+        }
+
+        if (_businessAddressWriteMenuItem is not null)
+        {
+            _businessAddressWriteMenuItem.Enabled = hasSelectedRow;
+        }
+
+        _businessAddressContextMenu.Show(tableAddresses, e.Location);
+    }
+
+    private void BusinessAddressReadMenu_Click(object? sender, EventArgs e)
+    {
+        // 读取复用工具栏“测试选中地址”的逻辑，保证结果格式和校验保持一致。
+        TestSelected_Click(sender, e);
+    }
+
+    private void BusinessAddressWriteMenu_Click(object? sender, EventArgs e)
+    {
+        if (!TryGetSelectedBusinessAddress(out var address))
+        {
+            return;
+        }
+
+        _plcWriteDebugLauncher.Show(
+            this,
+            new PlcWriteDebugPreset(address.Address!, address.DataType));
+    }
+
+    private bool TryGetSelectedBusinessAddress(out BizPlcAddress address)
+    {
+        address = _selectedRow?.Source!;
+        if (address is null)
+        {
+            ShowWarning(_localizer.GetString(TextKeys.Address.MessageSelectFirst));
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(address.Address))
+        {
+            ShowWarning(_localizer.GetString(TextKeys.Address.MessageAddressRequired, GetAddressDisplayName(address)));
+            return false;
+        }
+
+        return true;
+    }
+
     private void RegisterBusinessAddressTestClick(PlcAddressTableRow row)
     {
         var now = Environment.TickCount64;
@@ -1492,7 +1581,7 @@ public partial class AddressManageView : BaseView
         UpdateProductProcessSummary();
 
         var rows = BuildProductProcessAddressPreviewRows(row.Source);
-        using var form = new AddressPreviewForm(rows, _plcExpressionReadService, _localizer);
+        using var form = new AddressPreviewForm(rows, _plcExpressionReadService, _localizer, _plcWriteDebugLauncher);
         form.ShowDialog(this);
     }
 
@@ -1711,29 +1800,41 @@ public partial class AddressManageView : BaseView
     private void DeleteProductProcess_Click(object? sender, EventArgs e)
     {
         EndTableEdit();
-        var row = _selectedProductProcessRow;
-        if (row is null)
+        var rows = GetSelectedProductProcessRows()
+            .DistinctBy(row => row.Source)
+            .ToList();
+        if (rows.Count == 0)
         {
             ShowWarning("请先选择一条产品工艺配置。");
             return;
         }
 
-        if (row.Id <= 0)
+        var persistedRows = rows.Where(row => row.Id > 0).ToList();
+        if (persistedRows.Count > 0 && !ConfirmDelete($"确定删除选中的 {rows.Count} 条产品工艺配置吗？"))
+        {
+            return;
+        }
+
+        foreach (var row in rows.Where(row => row.Id <= 0))
         {
             _productProcessConfigs.Remove(row.Source);
-            ApplyProductProcessFilter(_productProcessKeyword);
-            UpdateProductProcessSummary();
-            SyncActiveCommandState();
-            return;
         }
 
-        if (!ConfirmDelete("确定删除选中的产品工艺配置吗？"))
+        foreach (var row in persistedRows)
         {
+            _productProcessConfigService.Delete(row.Id);
+        }
+
+        if (persistedRows.Count > 0)
+        {
+            LoadData();
             return;
         }
 
-        _productProcessConfigService.Delete(row.Id);
-        LoadData();
+        _selectedProductProcessRow = null;
+        ApplyProductProcessFilter(_productProcessKeyword);
+        UpdateProductProcessSummary();
+        SyncActiveCommandState();
     }
 
     private void AddAlarmAddress_Click(object? sender, EventArgs e)
@@ -1927,32 +2028,49 @@ public partial class AddressManageView : BaseView
     private void DeleteScheme_Click(object? sender, EventArgs e)
     {
         EndTableEdit();
-        var row = _selectedSchemeRow;
-        if (row is null)
+        var rows = GetSelectedSchemeRows()
+            .DistinctBy(row => row.SchemeId, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (rows.Count == 0)
         {
             ShowWarning("请先选择一个测试方案。");
             return;
         }
 
-        if (!ConfirmDelete("确定删除选中的测试方案吗？该方案下的明细也会一起删除。"))
+        if (!ConfirmDelete($"确定删除选中的 {rows.Count} 个测试方案吗？方案下的明细也会一起删除。"))
         {
             return;
         }
 
-        if (_testSchemeConfigService.GetSchemes().Any(scheme => scheme.SchemeId == row.SchemeId))
+        var persistedSchemeIds = _testSchemeConfigService
+            .GetSchemes()
+            .Select(scheme => scheme.SchemeId)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var deletedPersisted = false;
+
+        foreach (var row in rows)
         {
-            _testSchemeConfigService.DeleteScheme(row.SchemeId);
+            if (persistedSchemeIds.Contains(row.SchemeId))
+            {
+                _testSchemeConfigService.DeleteScheme(row.SchemeId);
+                deletedPersisted = true;
+            }
+
+            _schemeDetails.RemoveAll(detail => string.Equals(detail.SchemeId, row.SchemeId, StringComparison.OrdinalIgnoreCase));
+            _testSchemes.Remove(row.Source);
+            if (SameScheme(_currentSchemeDetailSchemeId, row.SchemeId))
+            {
+                _currentSchemeDetailSchemeId = string.Empty;
+            }
+        }
+
+        if (deletedPersisted)
+        {
             LoadData();
             return;
         }
 
-        _schemeDetails.RemoveAll(detail => string.Equals(detail.SchemeId, row.SchemeId, StringComparison.OrdinalIgnoreCase));
-        _testSchemes.Remove(row.Source);
-        if (SameScheme(_currentSchemeDetailSchemeId, row.SchemeId))
-        {
-            _currentSchemeDetailSchemeId = string.Empty;
-        }
-
+        _selectedSchemeRow = null;
         ApplySchemeFilter(_schemeKeyword);
         ConfigureSchemeDetailColumns();
     }
@@ -1976,29 +2094,41 @@ public partial class AddressManageView : BaseView
     private void DeleteTestItem_Click(object? sender, EventArgs e)
     {
         EndTableEdit();
-        var row = _selectedItemRow;
-        if (row is null)
+        var rows = GetSelectedItemRows()
+            .DistinctBy(row => row.Source)
+            .ToList();
+        if (rows.Count == 0)
         {
             ShowWarning("请先选择一个测试项。");
             return;
         }
 
-        if (!row.IsPersisted)
+        var persistedRows = rows.Where(row => row.IsPersisted).ToList();
+        if (persistedRows.Count > 0 && !ConfirmDelete($"确定删除选中的 {rows.Count} 个测试项吗？引用这些测试项的方案明细也会一起删除。"))
+        {
+            return;
+        }
+
+        foreach (var row in rows.Where(row => !row.IsPersisted))
         {
             _temporaryTestItemIds.Remove(row.Source);
             _testItems.Remove(row.Source);
-            ApplyItemFilter(_itemKeyword);
-            ConfigureSchemeDetailColumns();
-            return;
         }
 
-        if (!ConfirmDelete("确定删除选中的测试项吗？引用该测试项的方案明细也会一起删除。"))
+        foreach (var row in persistedRows)
         {
+            _testSchemeConfigService.DeleteItem(row.PersistedItemId);
+        }
+
+        if (persistedRows.Count > 0)
+        {
+            LoadData();
             return;
         }
 
-        _testSchemeConfigService.DeleteItem(row.PersistedItemId);
-        LoadData();
+        _selectedItemRow = null;
+        ApplyItemFilter(_itemKeyword);
+        ConfigureSchemeDetailColumns();
     }
 
     private void Table_CellClick(object sender, AntdUI.TableClickEventArgs e)

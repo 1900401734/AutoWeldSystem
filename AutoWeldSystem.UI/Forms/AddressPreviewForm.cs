@@ -3,6 +3,7 @@ using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.PLC;
 using AutoWeldSystem.Core.Plc;
 using AutoWeldSystem.UI.Base;
+using AutoWeldSystem.UI.Infrastructure;
 using System.Globalization;
 using AutoWeldSystem.Core.ViewModels;
 
@@ -20,6 +21,10 @@ public partial class AddressPreviewForm : BaseWindow
     private readonly IReadOnlyList<PlcAddressPreviewRow> _rows;
     private readonly IPlcExpressionReadService _plcExpressionReadService;
     private readonly ILocalizationService _localizer;
+    private readonly PlcWriteDebugLauncher _plcWriteDebugLauncher;
+    private readonly System.Windows.Forms.ContextMenuStrip _previewContextMenu = new();
+    private ToolStripMenuItem? _previewReadMenuItem;
+    private ToolStripMenuItem? _previewWriteMenuItem;
     private string _keyword = string.Empty;
     private PlcAddressPreviewRow? _selectedRow;
     private PlcAddressPreviewRow? _lastPreviewClickRow;
@@ -29,21 +34,40 @@ public partial class AddressPreviewForm : BaseWindow
     public AddressPreviewForm(
         IReadOnlyList<PlcAddressPreviewRow> rows,
         IPlcExpressionReadService plcExpressionReadService,
-        ILocalizationService localizer)
+        ILocalizationService localizer,
+        PlcWriteDebugLauncher plcWriteDebugLauncher)
     {
         InitializeComponent();
 
         _rows = rows;
         _plcExpressionReadService = plcExpressionReadService;
         _localizer = localizer;
+        _plcWriteDebugLauncher = plcWriteDebugLauncher;
         ConfigureTable();
+        ConfigureContextMenu();
         BindRows();
 
         inputQuery.QueryClick += (_, keyword) => ApplyFilter(keyword);
         tableAddressPreview.CellClick += TableAddressPreview_CellClick;
+        tableAddressPreview.MouseUp += TableAddressPreview_MouseUp;
         btnTestSelected.Click += TestSelected_Click;
         btnClose.Click += (_, _) => Close();
         CancelButton = btnClose;
+    }
+
+    /// <summary>
+    /// 初始化地址预览表格右键菜单。
+    /// 右键操作只针对当前选中的预览行，避免误操作到其它地址。
+    /// </summary>
+    private void ConfigureContextMenu()
+    {
+        _previewReadMenuItem = new ToolStripMenuItem("读取", null, PreviewReadMenu_Click);
+        _previewWriteMenuItem = new ToolStripMenuItem("写入", null, PreviewWriteMenu_Click);
+        _previewContextMenu.Items.AddRange(
+        [
+            _previewReadMenuItem,
+            _previewWriteMenuItem
+        ]);
     }
 
     private void TableAddressPreview_CellClick(object sender, AntdUI.TableClickEventArgs e)
@@ -56,6 +80,45 @@ public partial class AddressPreviewForm : BaseWindow
         }
 
         RegisterPreviewTestClick(_selectedRow);
+    }
+
+    private void TableAddressPreview_MouseUp(object? sender, MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Right)
+        {
+            return;
+        }
+
+        var canOperate = HasUsableAddress(_selectedRow);
+        if (_previewReadMenuItem is not null)
+        {
+            _previewReadMenuItem.Enabled = canOperate;
+        }
+
+        if (_previewWriteMenuItem is not null)
+        {
+            _previewWriteMenuItem.Enabled = canOperate;
+        }
+
+        _previewContextMenu.Show(tableAddressPreview, e.Location);
+    }
+
+    private void PreviewReadMenu_Click(object? sender, EventArgs e)
+    {
+        // 读取复用底部“测试选中地址”按钮，避免两套 PLC 读取提示格式。
+        TestSelected_Click(sender, e);
+    }
+
+    private void PreviewWriteMenu_Click(object? sender, EventArgs e)
+    {
+        if (!TryGetSelectedPreviewRow(out var row))
+        {
+            return;
+        }
+
+        _plcWriteDebugLauncher.Show(
+            this,
+            new PlcWriteDebugPreset(row.ResolvedAddress, row.DataType));
     }
 
     private void RegisterPreviewTestClick(PlcAddressPreviewRow row)
@@ -88,10 +151,8 @@ public partial class AddressPreviewForm : BaseWindow
 
     private async void TestSelected_Click(object? sender, EventArgs e)
     {
-        var row = _selectedRow;
-        if (row is null || string.IsNullOrWhiteSpace(row.ResolvedAddress))
+        if (!TryGetSelectedPreviewRow(out var row))
         {
-            ShowWarning("请先选择一条有效地址。");
             return;
         }
 
@@ -120,6 +181,21 @@ public partial class AddressPreviewForm : BaseWindow
             btnTestSelected.Enabled = true;
         }
     }
+
+    private bool TryGetSelectedPreviewRow(out PlcAddressPreviewRow row)
+    {
+        row = _selectedRow!;
+        if (HasUsableAddress(row))
+        {
+            return true;
+        }
+
+        ShowWarning("请先选择一条有效地址。");
+        return false;
+    }
+
+    private static bool HasUsableAddress(PlcAddressPreviewRow? row)
+        => row is not null && !string.IsNullOrWhiteSpace(row.ResolvedAddress);
 
     private static string GetValueRole(PlcAddressPreviewRow row)
     {

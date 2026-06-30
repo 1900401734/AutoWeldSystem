@@ -48,6 +48,7 @@ public partial class MainForm : BaseWindow
     private readonly IProductRealtimePreviewService _productRealtimePreviewService;
     private readonly IProgramManageService _programManageService;
     private readonly IAppSettingsService _settingsService;
+    private readonly PlcWriteDebugLauncher _plcWriteDebugLauncher;
 
     public MainForm(
         IServiceProvider serviceProvider,
@@ -60,7 +61,8 @@ public partial class MainForm : BaseWindow
         ITestSchemeConfigService testSchemeConfigService,
         IProductRealtimePreviewService productRealtimePreviewService,
         IProgramManageService programManageService,
-        IAppSettingsService settingsService)
+        IAppSettingsService settingsService,
+        PlcWriteDebugLauncher plcWriteDebugLauncher)
     {
         _serviceProvider = serviceProvider;
         _userService = userService;
@@ -72,6 +74,7 @@ public partial class MainForm : BaseWindow
         _productRealtimePreviewService = productRealtimePreviewService;
         _programManageService = programManageService;
         _settingsService = settingsService;
+        _plcWriteDebugLauncher = plcWriteDebugLauncher;
         _currentSettings = settingsService.Get();
 
         _permissionUiBinder = permissionUiBinder;
@@ -672,7 +675,7 @@ public partial class MainForm : BaseWindow
     private void AddressPreview_Click(object? sender, EventArgs e)
     {
         var rows = BuildCurrentAddressPreviewRows();
-        using var form = new AddressPreviewForm(rows, _plcExpressionReadService, _localizer);
+        using var form = new AddressPreviewForm(rows, _plcExpressionReadService, _localizer, _plcWriteDebugLauncher);
         form.ShowDialog(this);
     }
 

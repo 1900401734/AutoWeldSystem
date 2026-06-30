@@ -66,6 +66,7 @@ public static class Program
                     services.AddSingleton<IUiThreadDispatcher, WinFormsUiThreadDispatcher>();
                     services.AddSingleton<ILocalizationService, LocalizationService>();
                     services.AddSingleton<IWindowsShellIntegrationService, WindowsShellIntegrationService>();
+                    services.AddSingleton<PlcWriteDebugLauncher>();
                     services.AddSingleton<IWeldTaskService, WeldTaskService>();
                     services.AddSingleton<IProgramManageService, ProgramManageService>();
                     services.AddSingleton<IPlcCommunicationService, CommunicationService>();
