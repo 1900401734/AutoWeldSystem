@@ -32,5 +32,10 @@ public sealed class SaveProgramReq
 
     public decimal CycleTimeSeconds { get; set; }
 
+    /// <summary>
+    /// 用户填写的 MES 备注。为空时由服务按新增、修改或删除动作自动补齐。
+    /// </summary>
+    public string MesRemark { get; set; } = string.Empty;
+
     public string LocalRemark { get; set; } = string.Empty;
 }

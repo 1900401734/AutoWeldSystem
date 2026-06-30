@@ -36,12 +36,12 @@ public interface IMesProvider
     /// <summary>
     /// 新增程序。
     /// </summary>
-    Task<BasicRes<ProgramDataRes>> AddExpProgramAsync(ProgramDataRes requestData, CancellationToken cancellationToken = default);
+    Task<BasicRes<ProgramDataRes>> AddExpProgramAsync(ProgramDataWriteReq requestData, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// 更新程序。
     /// </summary>
-    Task<BasicRes<ProgramDataRes>> UpdateExpProgramAsync(ProgramDataRes requestData, CancellationToken cancellationToken = default);
+    Task<BasicRes<ProgramDataRes>> UpdateExpProgramAsync(ProgramDataWriteReq requestData, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// 获取程序列表。

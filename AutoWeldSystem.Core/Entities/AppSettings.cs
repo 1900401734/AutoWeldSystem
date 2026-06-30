@@ -1,5 +1,6 @@
 ﻿using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Enums;
+using AutoWeldSystem.Core.Production;
 using SqlSugar;
 
 namespace AutoWeldSystem.Core.Entities;
@@ -71,6 +72,9 @@ public class AppSettings
 
     [SugarColumn(Length = 260, ColumnDescription = "日志目录")]
     public string LogDirectory { get; set; } = @"D:\AutoWeldLogs";
+
+    [SugarColumn(Length = 260, ColumnDescription = "程序文件目录")]
+    public string ProgramFileDirectory { get; set; } = ProgramFileRules.DefaultProgramFileDirectory;
 
     [SugarColumn(ColumnDescription = "是否启用开机自启", IsNullable = true)]
     public bool? EnableAutoStart { get; set; } = true;

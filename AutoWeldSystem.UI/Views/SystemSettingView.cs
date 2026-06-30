@@ -125,8 +125,10 @@ public partial class SystemSettingView : BaseView
         btnConnectPlc.Click += ConnectPlc_ClickAsync;
         btnChangeLogPath.Click += (_, _) => SelectFolder(input_LogsPath, BuildFieldName(grpDeviceConfig.Text, lblLogPath.Text));
         btnChangeDataPath.Click += (_, _) => SelectFolder(input_DataPath, BuildFieldName(grpDeviceConfig.Text, lblDataPath.Text));
+        btnChangeProgramFilePath.Click += (_, _) => SelectFolder(input_ProgramFilePath, BuildFieldName(grpDeviceConfig.Text, lblProgramFilePath.Text));
         btnOpenLogPath.Click += (_, _) => OpenFolder(input_LogsPath.Text, BuildFieldName(grpDeviceConfig.Text, lblLogPath.Text));
         btnOpenDataPath.Click += (_, _) => OpenFolder(input_DataPath.Text, BuildFieldName(grpDeviceConfig.Text, lblDataPath.Text));
+        btnOpenProgramFilePath.Click += (_, _) => OpenFolder(input_ProgramFilePath.Text, BuildFieldName(grpDeviceConfig.Text, lblProgramFilePath.Text));
         select_PlcType.SelectedIndexChanged += Select_PlcType_SelectedIndexChanged;
         chkEnablePlcStringNumericFormatting.CheckedChanged += ChkEnablePlcStringNumericFormatting_CheckedChanged;
         chkEnablePlcAlarmReading.CheckedChanged += ChkEnablePlcAlarmReading_CheckedChanged;
@@ -434,6 +436,7 @@ public partial class SystemSettingView : BaseView
         input_MesTimeout.Text = settings.MesTimeoutSeconds.ToString();
         input_LogsPath.Text = settings.LogDirectory;
         input_DataPath.Text = settings.DataDirectory;
+        input_ProgramFilePath.Text = settings.ProgramFileDirectory;
         chkEnableAutoStart.Checked = settings.EnableAutoStart ?? true;
         chkEnableCenterServerSync.Checked = settings.EnableCenterServerSync;
         inputCenterServerBaseUrl.Text = CenterTelemetryRules.NormalizeBaseUrl(settings.CenterServerBaseUrl);
@@ -494,6 +497,7 @@ public partial class SystemSettingView : BaseView
 
         lblLogPath.Text = _localizer.GetString(TextKeys.SystemSetting.LabelLogPath);
         lblDataPath.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDataPath);
+        lblProgramFilePath.Text = "程序文件目录";
         chkEnableAutoStart.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableAutoStart);
         lblUploadMode.Text = _localizer.GetString(TextKeys.SystemSetting.UploadMode);
         lblUploadBatchSize.Text = _localizer.GetString(TextKeys.SystemSetting.UploadBatchSize);
@@ -520,8 +524,10 @@ public partial class SystemSettingView : BaseView
         btnTestConnection.Text = _localizer.GetString(TextKeys.SystemSetting.ButtonTestConnection);
         btnChangeLogPath.Text = _localizer.GetString(TextKeys.SystemSetting.ButtonChangePath);
         btnChangeDataPath.Text = _localizer.GetString(TextKeys.SystemSetting.ButtonChangePath);
+        btnChangeProgramFilePath.Text = _localizer.GetString(TextKeys.SystemSetting.ButtonChangePath);
         btnOpenLogPath.Text = _localizer.GetString(TextKeys.SystemSetting.ButtonOpenFolder);
         btnOpenDataPath.Text = _localizer.GetString(TextKeys.SystemSetting.ButtonOpenFolder);
+        btnOpenProgramFilePath.Text = _localizer.GetString(TextKeys.SystemSetting.ButtonOpenFolder);
         btnSaveAll.Text = _localizer.GetString(TextKeys.SystemSetting.ButtonApplyAll);
     }
 
@@ -786,6 +792,13 @@ public partial class SystemSettingView : BaseView
             return false;
         }
 
+        var programFileDirectory = input_ProgramFilePath.Text.Trim();
+        if (string.IsNullOrWhiteSpace(programFileDirectory))
+        {
+            ShowWarning(TextKeys.SystemSetting.MessageValueRequired, NormalizeCaption(lblProgramFilePath.Text));
+            return false;
+        }
+
         var mesBaseUrl = input_BaseUrl.Text.Trim();
         if (string.IsNullOrWhiteSpace(mesBaseUrl))
         {
@@ -860,6 +873,7 @@ public partial class SystemSettingView : BaseView
         settings.PlcStringNumericFormatMode = NormalizePlcStringNumericFormatMode(_selectedPlcStringNumericFormatMode);
         settings.LogDirectory = logDirectory;
         settings.DataDirectory = dataDirectory;
+        settings.ProgramFileDirectory = programFileDirectory;
         settings.EnableAutoStart = chkEnableAutoStart.Checked;
         settings.EnableCenterServerSync = chkEnableCenterServerSync.Checked;
         settings.CenterServerBaseUrl = CenterTelemetryRules.NormalizeBaseUrl(centerServerBaseUrl);

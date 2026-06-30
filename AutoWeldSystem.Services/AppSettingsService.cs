@@ -4,6 +4,7 @@ using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Center;
 using AutoWeldSystem.Core.Plc;
+using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Core.Runtime;
 using System.Reflection;
 
@@ -131,6 +132,9 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
         settings.EnablePlcStringNumericFormatting ??= true;
         settings.EnablePlcAlarmReading ??= true;
         settings.PlcStringNumericFormatMode = PlcStringNumericFormatter.NormalizeMode(settings.PlcStringNumericFormatMode);
+        settings.ProgramFileDirectory = string.IsNullOrWhiteSpace(settings.ProgramFileDirectory)
+            ? ProgramFileRules.DefaultProgramFileDirectory
+            : settings.ProgramFileDirectory.Trim();
         settings.ProcessParameterDeviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
         settings.CenterServerBaseUrl = CenterTelemetryRules.NormalizeBaseUrl(settings.CenterServerBaseUrl);
         settings.CenterServerSystemType = CenterTelemetryRules.NormalizeSystemType(settings.CenterServerSystemType);

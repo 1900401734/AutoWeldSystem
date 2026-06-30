@@ -35,6 +35,11 @@
             input_DataPath = new AntdUI.Input();
             btnChangeDataPath = new AntdUI.Button();
             btnOpenDataPath = new AntdUI.Button();
+            tlpProgramFilePath = new TableLayoutPanel();
+            lblProgramFilePath = new AntdUI.Label();
+            input_ProgramFilePath = new AntdUI.Input();
+            btnChangeProgramFilePath = new AntdUI.Button();
+            btnOpenProgramFilePath = new AntdUI.Button();
             chkEnableAutoStart = new AntdUI.Checkbox();
             grpPlcConfig = new GroupBox();
             tlpPlcConfig = new TableLayoutPanel();
@@ -113,6 +118,7 @@
             tableLayoutPanel1.SuspendLayout();
             tlpLogPath.SuspendLayout();
             tlpDataPath.SuspendLayout();
+            tlpProgramFilePath.SuspendLayout();
             grpPlcConfig.SuspendLayout();
             tlpPlcConfig.SuspendLayout();
             tlpPlcIp.SuspendLayout();
@@ -248,7 +254,7 @@
             grpAppConfig.Controls.Add(tableLayoutPanel1);
             grpAppConfig.Location = new Point(312, 209);
             grpAppConfig.Name = "grpAppConfig";
-            grpAppConfig.Size = new Size(601, 161);
+            grpAppConfig.Size = new Size(601, 206);
             grpAppConfig.TabIndex = 5;
             grpAppConfig.TabStop = false;
             grpAppConfig.Text = "应用配置";
@@ -261,15 +267,17 @@
             tableLayoutPanel1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             tableLayoutPanel1.Controls.Add(tlpLogPath, 0, 0);
             tableLayoutPanel1.Controls.Add(tlpDataPath, 0, 1);
-            tableLayoutPanel1.Controls.Add(chkEnableAutoStart, 0, 2);
+            tableLayoutPanel1.Controls.Add(tlpProgramFilePath, 0, 2);
+            tableLayoutPanel1.Controls.Add(chkEnableAutoStart, 0, 3);
             tableLayoutPanel1.Dock = DockStyle.Fill;
             tableLayoutPanel1.Location = new Point(3, 23);
             tableLayoutPanel1.Name = "tableLayoutPanel1";
-            tableLayoutPanel1.RowCount = 3;
+            tableLayoutPanel1.RowCount = 4;
             tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
             tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
             tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
-            tableLayoutPanel1.Size = new Size(595, 135);
+            tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
+            tableLayoutPanel1.Size = new Size(595, 180);
             tableLayoutPanel1.TabIndex = 6;
             // 
             // tlpLogPath
@@ -412,12 +420,82 @@
             btnOpenDataPath.Tag = "perm:button.system.open-path:enabled";
             btnOpenDataPath.Text = "打开";
             // 
+            // tlpProgramFilePath
+            // 
+            tlpProgramFilePath.AutoSize = true;
+            tlpProgramFilePath.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            tlpProgramFilePath.ColumnCount = 4;
+            tlpProgramFilePath.ColumnStyles.Add(new ColumnStyle());
+            tlpProgramFilePath.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            tlpProgramFilePath.ColumnStyles.Add(new ColumnStyle());
+            tlpProgramFilePath.ColumnStyles.Add(new ColumnStyle());
+            tlpProgramFilePath.Controls.Add(lblProgramFilePath, 0, 0);
+            tlpProgramFilePath.Controls.Add(input_ProgramFilePath, 1, 0);
+            tlpProgramFilePath.Controls.Add(btnChangeProgramFilePath, 2, 0);
+            tlpProgramFilePath.Controls.Add(btnOpenProgramFilePath, 3, 0);
+            tlpProgramFilePath.Dock = DockStyle.Fill;
+            tlpProgramFilePath.Location = new Point(0, 90);
+            tlpProgramFilePath.Margin = new Padding(0);
+            tlpProgramFilePath.Name = "tlpProgramFilePath";
+            tlpProgramFilePath.RowCount = 1;
+            tlpProgramFilePath.RowStyles.Add(new RowStyle());
+            tlpProgramFilePath.Size = new Size(595, 45);
+            tlpProgramFilePath.TabIndex = 7;
+            // 
+            // lblProgramFilePath
+            // 
+            lblProgramFilePath.AutoSizeMode = AntdUI.TAutoSize.Width;
+            lblProgramFilePath.Dock = DockStyle.Fill;
+            lblProgramFilePath.Location = new Point(0, 0);
+            lblProgramFilePath.Margin = new Padding(0);
+            lblProgramFilePath.Name = "lblProgramFilePath";
+            lblProgramFilePath.Size = new Size(91, 45);
+            lblProgramFilePath.TabIndex = 0;
+            lblProgramFilePath.Text = "程序文件目录";
+            // 
+            // input_ProgramFilePath
+            // 
+            input_ProgramFilePath.Dock = DockStyle.Fill;
+            input_ProgramFilePath.Location = new Point(91, 0);
+            input_ProgramFilePath.Margin = new Padding(0);
+            input_ProgramFilePath.Name = "input_ProgramFilePath";
+            input_ProgramFilePath.Size = new Size(342, 45);
+            input_ProgramFilePath.TabIndex = 1;
+            // 
+            // btnChangeProgramFilePath
+            // 
+            btnChangeProgramFilePath.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnChangeProgramFilePath.BorderWidth = 1F;
+            btnChangeProgramFilePath.Dock = DockStyle.Fill;
+            btnChangeProgramFilePath.IconSvg = "FolderOpenOutlined";
+            btnChangeProgramFilePath.Location = new Point(433, 0);
+            btnChangeProgramFilePath.Margin = new Padding(0);
+            btnChangeProgramFilePath.Name = "btnChangeProgramFilePath";
+            btnChangeProgramFilePath.Size = new Size(81, 45);
+            btnChangeProgramFilePath.TabIndex = 2;
+            btnChangeProgramFilePath.Tag = "perm:button.system.change-path:enabled";
+            btnChangeProgramFilePath.Text = "更改";
+            // 
+            // btnOpenProgramFilePath
+            // 
+            btnOpenProgramFilePath.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnOpenProgramFilePath.BorderWidth = 1F;
+            btnOpenProgramFilePath.Dock = DockStyle.Fill;
+            btnOpenProgramFilePath.IconSvg = "FolderOutlined";
+            btnOpenProgramFilePath.Location = new Point(514, 0);
+            btnOpenProgramFilePath.Margin = new Padding(0);
+            btnOpenProgramFilePath.Name = "btnOpenProgramFilePath";
+            btnOpenProgramFilePath.Size = new Size(81, 45);
+            btnOpenProgramFilePath.TabIndex = 3;
+            btnOpenProgramFilePath.Tag = "perm:button.system.open-path:enabled";
+            btnOpenProgramFilePath.Text = "打开";
+            // 
             // chkEnableAutoStart
             // 
             chkEnableAutoStart.Checked = true;
             chkEnableAutoStart.CheckState = CheckState.Checked;
             chkEnableAutoStart.Dock = DockStyle.Fill;
-            chkEnableAutoStart.Location = new Point(0, 90);
+            chkEnableAutoStart.Location = new Point(0, 135);
             chkEnableAutoStart.Margin = new Padding(0);
             chkEnableAutoStart.Name = "chkEnableAutoStart";
             chkEnableAutoStart.Padding = new Padding(8, 0, 0, 0);
@@ -1345,6 +1423,8 @@
             tlpLogPath.PerformLayout();
             tlpDataPath.ResumeLayout(false);
             tlpDataPath.PerformLayout();
+            tlpProgramFilePath.ResumeLayout(false);
+            tlpProgramFilePath.PerformLayout();
             grpPlcConfig.ResumeLayout(false);
             grpPlcConfig.PerformLayout();
             tlpPlcConfig.ResumeLayout(false);
@@ -1431,6 +1511,11 @@
         private AntdUI.Button btnOpenDataPath;
         private AntdUI.Input input_DataPath;
         private AntdUI.Button btnChangeDataPath;
+        private TableLayoutPanel tlpProgramFilePath;
+        private AntdUI.Label lblProgramFilePath;
+        private AntdUI.Button btnOpenProgramFilePath;
+        private AntdUI.Input input_ProgramFilePath;
+        private AntdUI.Button btnChangeProgramFilePath;
         private AntdUI.Checkbox chkEnableAutoStart;
         private TableLayoutPanel tlpLogPath;
         private AntdUI.Label lblLogPath;

@@ -20,7 +20,9 @@ public interface IProgramManageService
 
     Task<BizProgram> SaveAsync(SaveProgramReq request, bool syncNow, CancellationToken cancellationToken = default);
 
-    Task DeleteAsync(int id, bool syncNow, CancellationToken cancellationToken = default);
+    Task<SaveProgramResult> SaveWithSyncDecisionAsync(SaveProgramReq request, CancellationToken cancellationToken = default);
+
+    Task DeleteAsync(int id, bool syncNow, string? remarkOverride = null, CancellationToken cancellationToken = default);
 
     Task SyncProgramAsync(int id, CancellationToken cancellationToken = default);
 

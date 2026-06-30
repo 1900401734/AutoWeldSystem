@@ -2,6 +2,7 @@ using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs.Mes.Request;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
+using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.UI.Base;
 using AutoWeldSystem.UI.Infrastructure;
 
@@ -14,21 +15,28 @@ namespace AutoWeldSystem.UI.Views;
 public partial class ProgramManageView : BaseView
 {
     private readonly IProgramManageService _programService;
+    private readonly ITestSchemeConfigService _testSchemeConfigService;
     private readonly ILocalizationService _localizer;
     private readonly BindingSource _programBindingSource = new();
     private readonly BindingSource _revisionBindingSource = new();
     private readonly List<BizProgram> _programs = new();
+    private readonly List<ProgramContentItemRow> _programContentRows = new();
     private int _editingId;
     private bool _initialized;
+    private bool _programContentDictionaryAvailable;
 
-    public ProgramManageView(IProgramManageService programService, ILocalizationService localizer)
+    public ProgramManageView(
+        IProgramManageService programService,
+        ITestSchemeConfigService testSchemeConfigService,
+        ILocalizationService localizer)
     {
         _programService = programService;
+        _testSchemeConfigService = testSchemeConfigService;
         _localizer = localizer;
 
         InitializeComponent();
         ConfigureGrids();
-        BindRemarkOptions(AppConstants.ProgramRemarkActions.Create);
+        BindRemarkText(null);
         WireEvents();
     }
 
@@ -50,8 +58,9 @@ public partial class ProgramManageView : BaseView
     {
         ApplyLocalizedTexts();
         ApplyGridHeaders();
+        ConfigureProgramContentColumns(_programContentDictionaryAvailable);
         BindProgramTypeOptions();
-        BindRemarkOptions(GetSelectedRemark());
+        BindRemarkText(inputRemark.Text);
         UpdateCurrentInfoText();
         dgvPrograms.Refresh();
     }
@@ -63,8 +72,8 @@ public partial class ProgramManageView : BaseView
         dgvPrograms.Columns.Clear();
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.RecipeCode), 14));
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.ProductNum), 18));
-        //dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.ProductModel), 18));
-        dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.LocalRemark), 18));
+        dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.ProductModel), 18));
+        dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.Description), 18));
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.VersionNumber), 8));
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.SyncStatus), 13));
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.UpdatedTime), 18));
@@ -79,6 +88,13 @@ public partial class ProgramManageView : BaseView
         dgvRevisions.Columns.Add(CreateTextColumn(nameof(BizProgramRevision.UserName), 12));
         dgvRevisions.Columns.Add(CreateTextColumn(nameof(BizProgramRevision.CreatedTime), 20));
         dgvRevisions.DataSource = _revisionBindingSource;
+
+        TableStyleHelper.ApplyAntdTable(tableProgramContent);
+        // AntdUI 表格需要显式设置编辑触发方式，否则列 Editable=true 也不会进入编辑器。
+        tableProgramContent.EditMode = AntdUI.TEditMode.DoubleClick;
+        // 允许单元格失去焦点时提交编辑，保证设定值能进入保存流程。
+        tableProgramContent.EditLostFocus = true;
+        ConfigureProgramContentColumns(dictionaryAvailable: false);
     }
 
     private static DataGridViewTextBoxColumn CreateTextColumn(string propertyName, float fillWeight)
@@ -97,12 +113,13 @@ public partial class ProgramManageView : BaseView
         btnDelete.Click += Delete_ClickAsync;
         btnSync.Click += SyncSelected_ClickAsync;
         btnPullMes.Click += PullMes_ClickAsync;
-        btnBuildName.Click += (_, _) => txtProgramName.Text = BuildProgramNameFromInputs();
+        btnBuildName.Click += (_, _) => inputProgramName.Text = BuildProgramNameFromInputs();
         btnBrowseFile.Click += (_, _) => BrowseProgramFile();
         btnRefresh.Click += (_, _) => ReloadPrograms();
         txtKeyword.TextChanged += (_, _) => ApplyProgramFilter();
         dgvPrograms.SelectionChanged += (_, _) => BindSelectedProgram();
         dgvPrograms.CellFormatting += DgvPrograms_CellFormatting;
+        tableProgramContent.CellEndEdit += ProgramContentTable_CellEndEdit;
     }
 
     private void ApplyLocalizedTexts()
@@ -128,8 +145,8 @@ public partial class ProgramManageView : BaseView
         lblSequenceNumber.Text = _localizer.GetString(TextKeys.ProgramManage.LabelSequenceNumber);
         lblProgramType.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramType);
         lblProgramFile.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramFile);
-        lblCommitMessage.Text = _localizer.GetString(TextKeys.ProgramManage.LabelRemark);
-        lblLocalRemark.Text = _localizer.GetString(TextKeys.ProgramManage.LabelLocalRemark);
+        lblRemark.Text = _localizer.GetString(TextKeys.ProgramManage.LabelRemark);
+        lblDescription.Text = _localizer.GetString(TextKeys.ProgramManage.LabelLocalRemark);
         lblProgramContent.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramContent);
     }
 
@@ -138,7 +155,7 @@ public partial class ProgramManageView : BaseView
         SetColumnHeader(dgvPrograms, nameof(BizProgram.RecipeCode), TextKeys.Grid.ProgramRecipeCode);
         SetColumnHeader(dgvPrograms, nameof(BizProgram.ProductNum), TextKeys.Grid.ProgramProductNum);
         SetColumnHeader(dgvPrograms, nameof(BizProgram.ProductModel), TextKeys.Grid.ProgramProductModel);
-        SetColumnHeader(dgvPrograms, nameof(BizProgram.LocalRemark), TextKeys.Grid.ProgramLocalRemark);
+        SetColumnHeader(dgvPrograms, nameof(BizProgram.Description), TextKeys.Grid.ProgramLocalRemark);
         SetColumnHeader(dgvPrograms, nameof(BizProgram.VersionNumber), TextKeys.Grid.ProgramVersionNumber);
         SetColumnHeader(dgvPrograms, nameof(BizProgram.SyncStatus), TextKeys.Grid.ProgramSyncStatus);
         SetColumnHeader(dgvPrograms, nameof(BizProgram.UpdatedTime), TextKeys.Grid.ProgramUpdatedTime);
@@ -166,20 +183,56 @@ public partial class ProgramManageView : BaseView
         cmbProgramType.SelectedIndex = Math.Min(selectedIndex, cmbProgramType.Items.Count - 1);
     }
 
-    private void BindRemarkOptions(string? selectedRemark)
+    private void BindRemarkText(string? remark)
     {
-        var normalizedSelectedRemark = string.IsNullOrWhiteSpace(selectedRemark)
-            ? AppConstants.ProgramRemarkActions.Create
-            : selectedRemark.Trim();
-
-        cmbRemark.Items.Clear();
-        cmbRemark.Items.Add(AppConstants.ProgramRemarkActions.Create);
-        cmbRemark.Items.Add(AppConstants.ProgramRemarkActions.Update);
-        cmbRemark.Items.Add(AppConstants.ProgramRemarkActions.Delete);
-        cmbRemark.SelectedItem = cmbRemark.Items.Contains(normalizedSelectedRemark)
-            ? normalizedSelectedRemark
-            : AppConstants.ProgramRemarkActions.Update;
+        inputRemark.Text = remark?.Trim() ?? string.Empty;
     }
+
+    private void BindProgramContentRows(string? programContentJson)
+    {
+        var dictionaryItems = _testSchemeConfigService.GetItems();
+        _programContentDictionaryAvailable = dictionaryItems.Any(item => !string.IsNullOrWhiteSpace(item.ItemName));
+        _programContentRows.Clear();
+        _programContentRows.AddRange(ProgramContentJsonRules.BuildRows(dictionaryItems, programContentJson));
+        EnsureManualProgramContentRow();
+        ConfigureProgramContentColumns(_programContentDictionaryAvailable);
+        RefreshProgramContentTable();
+    }
+
+    private bool ProgramContentTable_CellEndEdit(object sender, AntdUI.TableEndEditEventArgs e)
+    {
+        if (EnsureManualProgramContentRow())
+        {
+            RefreshProgramContentTable();
+        }
+
+        return true;
+    }
+
+    private bool EnsureManualProgramContentRow()
+    {
+        if (_programContentDictionaryAvailable)
+        {
+            return false;
+        }
+
+        if (_programContentRows.Any(IsBlankProgramContentRow))
+        {
+            return false;
+        }
+
+        _programContentRows.Add(new ProgramContentItemRow());
+        return true;
+    }
+
+    private void RefreshProgramContentTable()
+    {
+        tableProgramContent.DataSource = null;
+        tableProgramContent.DataSource = _programContentRows;
+    }
+
+    private static bool IsBlankProgramContentRow(ProgramContentItemRow row)
+        => string.IsNullOrWhiteSpace(row.ItemName) && string.IsNullOrWhiteSpace(row.StandardValue);
 
     private void SetColumnHeader(DataGridView grid, string propertyName, string headerKey)
     {
@@ -210,7 +263,7 @@ public partial class ProgramManageView : BaseView
                 || Contains(program.ProductNum, keyword)
                 || Contains(program.ProductModel, keyword)
                 || Contains(program.ComponentCode, keyword)
-                || Contains(program.LocalRemark, keyword)
+                || Contains(program.Description, keyword)
                 || Contains(program.SyncStatus, keyword)
                 || Contains(GetSyncStatusText(program.SyncStatus), keyword))
             .OrderBy(GetRecipeSortBucket)
@@ -263,17 +316,17 @@ public partial class ProgramManageView : BaseView
     {
         _editingId = 0;
         txtProgramId.Clear();
-        txtProgramName.Clear();
-        txtProductNum.Clear();
-        txtProductModel.Clear();
-        txtRecipeCode.Clear();
-        txtComponentCode.Clear();
-        txtSequenceNumber.Text = "1";
+        inputProgramName.Clear();
+        inputProductNum.Clear();
+        inputProductModel.Clear();
+        inputRecipeCode.Text = string.Empty;
+        inputComponentCode.Clear();
+        inputSequenceNumber.Text = "1";
         cmbProgramType.SelectedIndex = 0;
         txtProgramFile.Clear();
-        BindRemarkOptions(GetAutoRemarkAction(null));
-        txtLocalRemark.Clear();
-        txtProgramContent.Text = "{\r\n}";
+        BindRemarkText(null);
+        inputDescription.Clear();
+        BindProgramContentRows(null);
         lblCurrentInfo.Text = _localizer.GetString(TextKeys.ProgramManage.CurrentNew);
         _revisionBindingSource.DataSource = Array.Empty<BizProgramRevision>();
     }
@@ -287,19 +340,17 @@ public partial class ProgramManageView : BaseView
 
         _editingId = program.Id;
         txtProgramId.Text = program.ProgramId ?? string.Empty;
-        txtProgramName.Text = program.ProgramName;
-        txtProductNum.Text = program.ProductNum;
-        txtProductModel.Text = program.ProductModel ?? string.Empty;
-        txtRecipeCode.Text = program.RecipeCode ?? string.Empty;
-        txtComponentCode.Text = program.ComponentCode ?? string.Empty;
-        txtSequenceNumber.Text = program.SequenceNumber.ToString();
+        inputProgramName.Text = program.ProgramName;
+        inputProductNum.Text = program.ProductNum;
+        inputProductModel.Text = program.ProductModel ?? string.Empty;
+        inputRecipeCode.Text = program.RecipeCode ?? string.Empty;
+        inputComponentCode.Text = program.ComponentCode ?? string.Empty;
+        inputSequenceNumber.Text = program.SequenceNumber.ToString();
         cmbProgramType.SelectedIndex = program.ProgramType == "1" ? 1 : 0;
         txtProgramFile.Text = program.ProgramFileName ?? string.Empty;
-        BindRemarkOptions(GetAutoRemarkAction(program));
-        txtLocalRemark.Text = program.LocalRemark ?? string.Empty;
-        txtProgramContent.Text = string.IsNullOrWhiteSpace(program.ProgramContent)
-            ? "{\r\n}"
-            : program.ProgramContent;
+        BindRemarkText(program.Remark);
+        inputDescription.Text = program.Description ?? string.Empty;
+        BindProgramContentRows(program.ProgramContent);
         SetCurrentProgramInfo(program);
         _revisionBindingSource.DataSource = _programService.GetRevisions(program.Id).ToList();
     }
@@ -387,8 +438,9 @@ public partial class ProgramManageView : BaseView
         btnSave.Enabled = false;
         try
         {
-            var syncInBackground = chkSyncNow.Checked;
-            var saved = await _programService.SaveAsync(request, syncNow: false);
+            var saveResult = await _programService.SaveWithSyncDecisionAsync(request);
+            var saved = saveResult.Program;
+            var syncInBackground = chkSyncNow.Checked && saveResult.ShouldSyncNow;
             ReloadPrograms(saved.Id);
             ShowInfo(syncInBackground ? "程序已保存到本地，MES同步将在后台执行。" : _localizer.GetString(TextKeys.ProgramManage.SaveSuccess));
             if (syncInBackground)
@@ -434,7 +486,7 @@ public partial class ProgramManageView : BaseView
 
         try
         {
-            await _programService.DeleteAsync(_editingId, chkSyncNow.Checked);
+            await _programService.DeleteAsync(_editingId, chkSyncNow.Checked, ResolveEditedMesRemark(GetEditingProgram()));
             ReloadPrograms();
             StartNewProgram();
         }
@@ -491,26 +543,33 @@ public partial class ProgramManageView : BaseView
     {
         request = new SaveProgramReq { Id = _editingId };
 
-        if (!int.TryParse(txtSequenceNumber.Text.Trim(), out var sequenceNumber) || sequenceNumber <= 0)
+        if (!int.TryParse(inputSequenceNumber.Text.Trim(), out var sequenceNumber) || sequenceNumber <= 0)
         {
             ShowWarning(TextKeys.ProgramManage.SequenceInvalid);
             return false;
         }
 
-        request.ProgramName = txtProgramName.Text.Trim();
-        request.ProductNum = txtProductNum.Text.Trim();
-        request.ProductModel = txtProductModel.Text.Trim();
-        request.RecipeCode = txtRecipeCode.Text.Trim();
-        request.ComponentCode = txtComponentCode.Text.Trim();
+        request.ProgramName = inputProgramName.Text.Trim();
+        request.ProductNum = inputProductNum.Text.Trim();
+        request.ProductModel = inputProductModel.Text.Trim();
+        request.RecipeCode = ResolveRecipeCodeForSave(GetEditingProgram());
+        request.ComponentCode = inputComponentCode.Text.Trim();
         request.SequenceNumber = sequenceNumber;
         request.ProgramType = cmbProgramType.SelectedIndex == 1 ? "1" : "0";
-        request.ProgramContentJson = txtProgramContent.Text.Trim();
+        tableProgramContent.EditModeClose();
+        if (!ProgramContentJsonRules.TryToJson(_programContentRows, out var programContentJson, out var errorMessage))
+        {
+            ShowWarningMessage(errorMessage);
+            return false;
+        }
+
+        request.ProgramContentJson = programContentJson;
         request.ProgramFilePath = File.Exists(txtProgramFile.Text.Trim()) ? txtProgramFile.Text.Trim() : string.Empty;
         request.WeldJobName = string.Empty;
         request.RobotJobName = string.Empty;
         request.CycleTimeSeconds = 0m;
-        BindRemarkOptions(GetAutoRemarkAction(GetEditingProgram()));
-        request.LocalRemark = txtLocalRemark.Text.Trim();
+        request.MesRemark = ResolveEditedMesRemark(GetEditingProgram());
+        request.LocalRemark = inputDescription.Text.Trim();
         return true;
     }
 
@@ -519,9 +578,27 @@ public partial class ProgramManageView : BaseView
         return _programs.FirstOrDefault(program => program.Id == _editingId);
     }
 
-    private string GetSelectedRemark()
+    private string ResolveEditedMesRemark(BizProgram? editingProgram)
     {
-        return cmbRemark.SelectedItem?.ToString() ?? AppConstants.ProgramRemarkActions.Update;
+        var current = inputRemark.Text.Trim();
+        var original = editingProgram?.Remark?.Trim() ?? string.Empty;
+        return string.Equals(current, original, StringComparison.Ordinal)
+            ? string.Empty
+            : current;
+    }
+
+    private string ResolveRecipeCodeForSave(BizProgram? editingProgram)
+    {
+        var current = inputRecipeCode.Text.Trim();
+        if (!string.IsNullOrWhiteSpace(current))
+        {
+            return current;
+        }
+
+        var original = editingProgram?.RecipeCode?.Trim();
+        return !string.IsNullOrWhiteSpace(original) && !int.TryParse(original, out _)
+            ? original
+            : string.Empty;
     }
 
     private static string GetAutoRemarkAction(BizProgram? program)
@@ -540,14 +617,40 @@ public partial class ProgramManageView : BaseView
         };
     }
 
+    private void ConfigureProgramContentColumns(bool dictionaryAvailable)
+    {
+        tableProgramContent.Columns.Clear();
+        tableProgramContent.Columns.Add(CreateProgramContentColumn(
+            nameof(ProgramContentItemRow.ItemName),
+            "测试项名称",
+            readOnly: dictionaryAvailable));
+        tableProgramContent.Columns.Add(CreateProgramContentColumn(
+            nameof(ProgramContentItemRow.StandardValue),
+            "设定值/标准值",
+            readOnly: false));
+        TableStyleHelper.ApplyAntdColumnDefaults(tableProgramContent);
+    }
+
+    private static AntdUI.Column CreateProgramContentColumn(string key, string title, bool readOnly)
+    {
+        return new AntdUI.Column(key, title)
+        {
+            Align = AntdUI.ColumnAlign.Center,
+            ColAlign = AntdUI.ColumnAlign.Center,
+            ReadOnly = readOnly,
+            Editable = !readOnly,
+            Ellipsis = true
+        };
+    }
+
     private string BuildProgramNameFromInputs()
     {
-        if (!int.TryParse(txtSequenceNumber.Text.Trim(), out var sequenceNumber))
+        if (!int.TryParse(inputSequenceNumber.Text.Trim(), out var sequenceNumber))
         {
             sequenceNumber = 1;
         }
 
-        return _programService.BuildProgramName(txtProductNum.Text.Trim(), txtComponentCode.Text.Trim(), sequenceNumber);
+        return _programService.BuildProgramName(inputProductNum.Text.Trim(), inputComponentCode.Text.Trim(), sequenceNumber);
     }
 
     private void BrowseProgramFile()

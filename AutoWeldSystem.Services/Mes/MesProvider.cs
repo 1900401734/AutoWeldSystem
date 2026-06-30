@@ -86,8 +86,8 @@ public class MesProvider : IMesProvider, IDisposable
     /// <summary>
     /// 新增程序。
     /// </summary>
-    public Task<BasicRes<ProgramDataRes>> AddExpProgramAsync(ProgramDataRes requestData, CancellationToken cancellationToken = default)
-        => SendWithPayloadAsync<ProgramDataRes, ProgramDataRes>(
+    public Task<BasicRes<ProgramDataRes>> AddExpProgramAsync(ProgramDataWriteReq requestData, CancellationToken cancellationToken = default)
+        => SendWithPayloadAsync<ProgramDataWriteReq, ProgramDataRes>(
             AppConstants.MesLogPurposes.AddProgram,
             HttpMethod.Post,
             "api/ExpProgram",
@@ -99,8 +99,8 @@ public class MesProvider : IMesProvider, IDisposable
     /// <summary>
     /// 更新程序。
     /// </summary>
-    public Task<BasicRes<ProgramDataRes>> UpdateExpProgramAsync(ProgramDataRes requestData, CancellationToken cancellationToken = default)
-        => SendWithPayloadAsync<ProgramDataRes, ProgramDataRes>(
+    public Task<BasicRes<ProgramDataRes>> UpdateExpProgramAsync(ProgramDataWriteReq requestData, CancellationToken cancellationToken = default)
+        => SendWithPayloadAsync<ProgramDataWriteReq, ProgramDataRes>(
             AppConstants.MesLogPurposes.UpdateProgram,
             HttpMethod.Put,
             "api/ExpProgram",

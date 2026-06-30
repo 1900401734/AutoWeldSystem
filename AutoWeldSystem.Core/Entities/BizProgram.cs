@@ -52,8 +52,6 @@ public class BizProgram
     [SugarColumn(Length = 50, ColumnDescription = "产品型号", IsNullable = true)]
     public string? ProductModel { get; set; }
 
-    #endregion
-
     [SugarColumn(Length = 80, ColumnDescription = "零组件代码(18位字符串)", IsNullable = true)]
     public string? ComponentCode { get; set; }
 
@@ -64,7 +62,9 @@ public class BizProgram
     public string? ProgramFileName { get; set; }
 
     [SugarColumn(Length = 500, ColumnDescription = "本地备注", IsNullable = true)]
-    public string? LocalRemark { get; set; }
+    public string? Description { get; set; }
+
+    #endregion
 
     [SugarColumn(ColumnDescription = "本地版本号")]
     public int VersionNumber { get; set; } = 1;

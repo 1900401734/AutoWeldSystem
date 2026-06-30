@@ -10,6 +10,7 @@ using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.MES;
+using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Core.Runtime;
 using AutoWeldSystem.Data;
 using SqlSugar;
@@ -102,6 +103,20 @@ public sealed class ProgramManageService : IProgramManageService
 
     public async Task<BizProgram> SaveAsync(SaveProgramReq request, bool syncNow, CancellationToken cancellationToken = default)
     {
+        var result = await SaveWithSyncDecisionAsync(request, cancellationToken);
+        var entity = result.Program;
+
+        if (syncNow && result.ShouldSyncNow)
+        {
+            await SyncProgramAsync(entity.Id, cancellationToken);
+            entity = _dbContext.Db.Queryable<BizProgram>().InSingle(entity.Id);
+        }
+
+        return entity;
+    }
+
+    public Task<SaveProgramResult> SaveWithSyncDecisionAsync(SaveProgramReq request, CancellationToken cancellationToken = default)
+    {
         _dbContext.InitDatabase();
         NormalizeRequest(request);
 
@@ -119,38 +134,39 @@ public sealed class ProgramManageService : IProgramManageService
             throw new InvalidOperationException($"本地程序数量已达到 {MaxLocalProgramCount} 个上限。");
         }
 
-        var remark = ResolveSaveRemark(entity);
+        var original = entity.Id > 0 ? CloneProgram(entity) : null;
+        var hadPendingAction = ProgramMesSyncRules.HasPendingSyncAction(entity);
         ApplyRequest(entity, request);
+        if (!string.IsNullOrWhiteSpace(request.MesRemark))
+        {
+            // 用户显式填写 MES 备注时才覆盖；空值由真实同步动作兜底。
+            entity.Remark = request.MesRemark;
+        }
+
+        var currentSaveSyncAction = ProgramMesSyncRules.ResolveCurrentSaveAction(original, entity);
+        var syncAction = ResolveSaveSyncAction(original, entity, hadPendingAction);
+        var commitMessage = ResolveSaveCommitMessage(request.MesRemark, currentSaveSyncAction);
         entity.VersionNumber = entity.Id == 0 ? 1 : entity.VersionNumber + 1;
-        entity.Remark = remark;
-        entity.CommitId = CreateCommitId(entity, remark);
-        entity.CommitMessage = remark;
-        entity.SyncAction = string.IsNullOrWhiteSpace(entity.ProgramId)
-            ? AppConstants.ProgramSyncActions.Create
-            : AppConstants.ProgramSyncActions.Update;
-        entity.SyncStatus = entity.SyncAction == AppConstants.ProgramSyncActions.Create
-            ? AppConstants.ProgramSyncStatus.PendingCreate
-            : AppConstants.ProgramSyncStatus.PendingUpdate;
-        entity.SyncMessage = "本地已保存，等待同步至 MES。";
+        entity.CommitId = CreateCommitId(entity, commitMessage);
+        entity.CommitMessage = commitMessage;
+        ApplySaveSyncState(entity, syncAction, currentSaveSyncAction, request.MesRemark, original);
         entity.UpdatedTime = DateTime.Now;
 
         entity = entity.Id == 0
             ? _dbContext.Db.Insertable(entity).ExecuteReturnEntity()
             : UpdateAndReturn(entity);
 
-        AddRevision(entity, remark);
+        AddRevision(entity, commitMessage);
         _operationLogService.Write("ProgramSave", $"保存程序：{entity.ProgramName}，版本：v{entity.VersionNumber}");
 
-        if (syncNow)
+        return Task.FromResult(new SaveProgramResult
         {
-            await SyncProgramAsync(entity.Id, cancellationToken);
-            entity = _dbContext.Db.Queryable<BizProgram>().InSingle(entity.Id);
-        }
-
-        return entity;
+            Program = entity,
+            CurrentSaveSyncAction = currentSaveSyncAction
+        });
     }
 
-    public async Task DeleteAsync(int id, bool syncNow, CancellationToken cancellationToken = default)
+    public async Task DeleteAsync(int id, bool syncNow, string? remarkOverride = null, CancellationToken cancellationToken = default)
     {
         _dbContext.InitDatabase();
 
@@ -162,8 +178,9 @@ public sealed class ProgramManageService : IProgramManageService
 
         entity.IsDeleted = true;
         entity.VersionNumber++;
-        entity.Remark = AppConstants.ProgramRemarkActions.Delete;
-        entity.CommitMessage = AppConstants.ProgramRemarkActions.Delete;
+        var deleteRemark = ProgramRemarkRules.ResolveForAction(remarkOverride, AppConstants.ProgramSyncActions.Delete);
+        entity.Remark = deleteRemark;
+        entity.CommitMessage = deleteRemark;
         entity.CommitId = CreateCommitId(entity, entity.CommitMessage);
         entity.UpdatedTime = DateTime.Now;
 
@@ -202,11 +219,23 @@ public sealed class ProgramManageService : IProgramManageService
 
         try
         {
-            var responseMessage = entity.SyncAction switch
+            var executableAction = ProgramMesSyncRules.ResolveExecutableSyncAction(entity.SyncAction, entity.ProgramId);
+            if (string.IsNullOrWhiteSpace(executableAction))
+            {
+                if (string.IsNullOrWhiteSpace(entity.SyncAction))
+                {
+                    return;
+                }
+
+                throw new InvalidOperationException("缺少 MES 程序ID，无法执行当前程序同步动作。");
+            }
+
+            var responseMessage = executableAction switch
             {
                 AppConstants.ProgramSyncActions.Delete => await SyncDeleteAsync(entity, cancellationToken),
-                AppConstants.ProgramSyncActions.Update when !string.IsNullOrWhiteSpace(entity.ProgramId) => await SyncUpdateAsync(entity, cancellationToken),
-                _ => await SyncCreateAsync(entity, cancellationToken)
+                AppConstants.ProgramSyncActions.Update => await SyncUpdateAsync(entity, cancellationToken),
+                AppConstants.ProgramSyncActions.Create => await SyncCreateAsync(entity, cancellationToken),
+                _ => throw new InvalidOperationException($"未知程序同步动作：{entity.SyncAction}")
             };
 
             entity.SyncAction = null;
@@ -278,7 +307,6 @@ public sealed class ProgramManageService : IProgramManageService
     private void ApplyRequest(BizProgram entity, SaveProgramReq request)
     {
         var settings = CurrentSettings;
-        var fileBytes = GetProgramFileBytes(request.ProgramFilePath);
 
         entity.ProgramName = string.IsNullOrWhiteSpace(request.ProgramName)
             ? BuildProgramName(request.ProductNum, request.ComponentCode, request.SequenceNumber)
@@ -288,18 +316,17 @@ public sealed class ProgramManageService : IProgramManageService
         entity.RecipeCode = request.RecipeCode;
         entity.ComponentCode = request.ComponentCode;
         entity.SequenceNumber = Math.Max(1, request.SequenceNumber);
-        entity.DeviceId = settings.DeviceId;
+        if (entity.Id == 0)
+        {
+            entity.DeviceId = settings.DeviceId;
+        }
+
         entity.ProgramType = string.IsNullOrWhiteSpace(request.ProgramType) ? "0" : request.ProgramType;
-        entity.ProgramContent = request.ProgramContentJson;
-        entity.LocalRemark = request.LocalRemark;
+        entity.ProgramContent = string.IsNullOrWhiteSpace(request.ProgramContentJson) ? "{}" : request.ProgramContentJson;
+        entity.Description = request.LocalRemark;
         entity.IsDeleted = false;
 
-        if (fileBytes is not null)
-        {
-            entity.ProgramFile = Convert.ToBase64String(fileBytes);
-            entity.ProgramFileName = Path.GetFileName(request.ProgramFilePath);
-            entity.ProgramType = "1";
-        }
+        WriteProgramContentFile(entity, settings);
 
         if (entity.Id == 0)
         {
@@ -314,20 +341,88 @@ public sealed class ProgramManageService : IProgramManageService
         Interlocked.Exchange(ref _currentSettings, e.CurrentSettings);
     }
 
-    private static string ResolveSaveRemark(BizProgram entity)
+    private static string? ResolveSaveSyncAction(BizProgram? original, BizProgram entity, bool hadPendingAction)
     {
-        if (entity.Id <= 0)
+        return ProgramMesSyncRules.ResolveSaveAction(original, entity, hadPendingAction);
+    }
+
+    private static string ResolveSaveCommitMessage(string? mesRemark, string? syncAction)
+    {
+        if (!string.IsNullOrWhiteSpace(mesRemark))
         {
-            return AppConstants.ProgramRemarkActions.Create;
+            return mesRemark.Trim();
         }
 
-        if (string.Equals(entity.SyncAction, AppConstants.ProgramSyncActions.Create, StringComparison.OrdinalIgnoreCase)
-            || string.IsNullOrWhiteSpace(entity.ProgramId))
+        return string.IsNullOrWhiteSpace(syncAction)
+            ? "本地保存"
+            : ProgramRemarkRules.ResolveForAction(null, syncAction);
+    }
+
+    private static void ApplySaveSyncState(
+        BizProgram entity,
+        string? syncAction,
+        string? currentSaveSyncAction,
+        string? mesRemark,
+        BizProgram? original)
+    {
+        if (string.IsNullOrWhiteSpace(syncAction))
         {
-            return AppConstants.ProgramRemarkActions.Create;
+            entity.SyncAction = null;
+            entity.SyncStatus = original?.SyncStatus ?? AppConstants.ProgramSyncStatus.Synced;
+            entity.SyncMessage = "本地辅助字段已保存，无需同步至 MES。";
+            return;
         }
 
-        return AppConstants.ProgramRemarkActions.Update;
+        if (string.IsNullOrWhiteSpace(currentSaveSyncAction))
+        {
+            // 本次只改本地字段时，保留历史待同步动作，但不把它当作本次保存触发的同步。
+            entity.SyncAction = syncAction;
+            entity.SyncStatus = original?.SyncStatus ?? entity.SyncStatus;
+            entity.SyncMessage = original?.SyncMessage ?? entity.SyncMessage;
+            return;
+        }
+
+        entity.SyncAction = syncAction;
+        entity.Remark = ProgramRemarkRules.ResolveForAction(mesRemark, syncAction);
+        entity.SyncStatus = syncAction switch
+        {
+            AppConstants.ProgramSyncActions.Create => AppConstants.ProgramSyncStatus.PendingCreate,
+            AppConstants.ProgramSyncActions.Delete => AppConstants.ProgramSyncStatus.PendingDelete,
+            _ => AppConstants.ProgramSyncStatus.PendingUpdate
+        };
+        entity.SyncMessage = "本地已保存，等待同步至 MES。";
+    }
+
+    private static BizProgram CloneProgram(BizProgram source)
+    {
+        return new BizProgram
+        {
+            Id = source.Id,
+            ProgramId = source.ProgramId,
+            ProgramName = source.ProgramName,
+            DeviceId = source.DeviceId,
+            ProgramContent = source.ProgramContent,
+            ProgramType = source.ProgramType,
+            ProductNum = source.ProductNum,
+            ProgramFile = source.ProgramFile,
+            Remark = source.Remark,
+            RecipeCode = source.RecipeCode,
+            ProductModel = source.ProductModel,
+            ComponentCode = source.ComponentCode,
+            SequenceNumber = source.SequenceNumber,
+            ProgramFileName = source.ProgramFileName,
+            Description = source.Description,
+            VersionNumber = source.VersionNumber,
+            CommitId = source.CommitId,
+            CommitMessage = source.CommitMessage,
+            SyncStatus = source.SyncStatus,
+            SyncAction = source.SyncAction,
+            SyncMessage = source.SyncMessage,
+            LastSyncTime = source.LastSyncTime,
+            IsDeleted = source.IsDeleted,
+            CreatedTime = source.CreatedTime,
+            UpdatedTime = source.UpdatedTime
+        };
     }
 
     private static byte[]? GetProgramFileBytes(string filePath)
@@ -340,6 +435,25 @@ public sealed class ProgramManageService : IProgramManageService
         return File.Exists(filePath)
             ? File.ReadAllBytes(filePath)
             : throw new FileNotFoundException("程序文件不存在。", filePath);
+    }
+
+    private static void WriteProgramContentFile(BizProgram entity, AppSettings settings)
+    {
+        var json = string.IsNullOrWhiteSpace(entity.ProgramContent) ? "{}" : entity.ProgramContent.Trim();
+        var filePath = ProgramFileRules.BuildFilePath(
+            settings.ProgramFileDirectory,
+            entity.RecipeCode,
+            entity.ProgramName);
+        var directory = Path.GetDirectoryName(filePath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        File.WriteAllText(filePath, json, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        entity.ProgramContent = json;
+        entity.ProgramFile = ProgramFileRules.EncodeJsonToBase64(json);
+        entity.ProgramFileName = Path.GetFileName(filePath);
     }
 
     private void AddRevision(BizProgram entity, string? commitMessage)
@@ -356,7 +470,7 @@ public sealed class ProgramManageService : IProgramManageService
             ProductNum = entity.ProductNum,
             RecipeCode = entity.RecipeCode,
             ProgramContentJson = entity.ProgramContent,
-            LocalRemark = entity.LocalRemark,
+            LocalRemark = entity.Description,
             ProgramFileBase64 = entity.ProgramFile,
             UserNumber = user?.UserNumber ?? "system",
             UserName = user?.UserName ?? "system",
@@ -368,23 +482,32 @@ public sealed class ProgramManageService : IProgramManageService
 
     private async Task<string> SyncCreateAsync(BizProgram entity, CancellationToken cancellationToken)
     {
-        var response = await _mesProvider.AddExpProgramAsync(ToMesProgramData(entity), cancellationToken);
+        var request = ProgramMesPayloadRules.ToWriteRequest(
+            entity,
+            ProgramRemarkRules.ResolveForAction(entity.Remark, AppConstants.ProgramSyncActions.Create));
+        var response = await _mesProvider.AddExpProgramAsync(request, cancellationToken);
         if (!response.IsSuccess)
         {
             throw new InvalidOperationException(response.Msg);
         }
 
+        entity.Remark = request.Remark;
         entity.ProgramId = response.Data?.Id ?? entity.ProgramId;
         return "新增程序已同步至 MES。";
     }
 
     private async Task<string> SyncUpdateAsync(BizProgram entity, CancellationToken cancellationToken)
     {
-        var response = await _mesProvider.UpdateExpProgramAsync(ToMesProgramData(entity), cancellationToken);
+        var request = ProgramMesPayloadRules.ToWriteRequest(
+            entity,
+            ProgramRemarkRules.ResolveForAction(entity.Remark, AppConstants.ProgramSyncActions.Update));
+        var response = await _mesProvider.UpdateExpProgramAsync(request, cancellationToken);
         if (!response.IsSuccess)
         {
             throw new InvalidOperationException(response.Msg);
         }
+
+        entity.Remark = request.Remark;
 
         return "程序更新已同步至 MES。";
     }
@@ -425,6 +548,11 @@ public sealed class ProgramManageService : IProgramManageService
         entity.ProgramContent = data.ProgramContent;
         entity.ProgramType = data.ProgramType;
         entity.ProductNum = data.ProductNum;
+        if (ProgramNameRules.TryExtractComponentCode(data.ProgramName, out var componentCode))
+        {
+            entity.ComponentCode = componentCode;
+        }
+
         entity.ProgramFile = data.ProgramFile;
         entity.Remark = data.Remark;
         entity.SyncAction = null;
@@ -484,6 +612,7 @@ public sealed class ProgramManageService : IProgramManageService
         request.ProgramFilePath = request.ProgramFilePath.Trim();
         request.WeldJobName = request.WeldJobName.Trim();
         request.RobotJobName = request.RobotJobName.Trim();
+        request.MesRemark = request.MesRemark.Trim();
         request.LocalRemark = request.LocalRemark.Trim();
 
         if (string.IsNullOrWhiteSpace(request.ProductNum))
@@ -513,7 +642,7 @@ public sealed class ProgramManageService : IProgramManageService
             entity.ProgramName,
             entity.ProductNum,
             entity.RecipeCode,
-            entity.LocalRemark,
+            LocalRemark = entity.Description,
             entity.ProgramContent,
             entity.ProgramFile,
             entity.VersionNumber,
