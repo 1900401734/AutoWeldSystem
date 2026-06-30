@@ -187,12 +187,12 @@ public static class AppConstants
 
     /// <summary>
     /// MES 程序备注动作。
-    /// 客户接口中的 Remark 字段用于区分程序新增、修改和删除。
+    /// 客户接口中的 Remark 字段用于区分程序新增、更新和删除。
     /// </summary>
     public static class ProgramRemarkActions
     {
         public const string Create = "新增";
-        public const string Update = "修改";
+        public const string Update = "更新";
         public const string Delete = "删除";
     }
 }
