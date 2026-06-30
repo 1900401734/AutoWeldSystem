@@ -1,3 +1,5 @@
+using AutoWeldSystem.Core.ViewModels;
+
 namespace AutoWeldSystem.Core.Interfaces;
 
 /// <summary>
@@ -5,6 +7,16 @@ namespace AutoWeldSystem.Core.Interfaces;
 /// </summary>
 public interface ICenterTelemetrySyncService : IAsyncDisposable
 {
+    /// <summary>
+    /// Raised when a center-server push succeeds or fails.
+    /// </summary>
+    event EventHandler<CenterTelemetryConnectionSnapshot>? StatusChanged;
+
+    /// <summary>
+    /// Latest center-server push status.
+    /// </summary>
+    CenterTelemetryConnectionSnapshot Current { get; }
+
     /// <summary>
     /// Starts the periodic telemetry loop.
     /// </summary>

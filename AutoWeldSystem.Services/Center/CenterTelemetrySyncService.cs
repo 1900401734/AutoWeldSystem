@@ -6,6 +6,7 @@ using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.PLC;
+using AutoWeldSystem.Core.ViewModels;
 using AutoWeldSystem.Data;
 
 namespace AutoWeldSystem.Services.Center;
@@ -41,7 +42,12 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
         _productionMonitorService = productionMonitorService;
         _exceptionLogService = exceptionLogService;
         _client = client;
+        Current = new CenterTelemetryConnectionSnapshot(false, default, "Center telemetry has not been pushed yet.");
     }
+
+    public event EventHandler<CenterTelemetryConnectionSnapshot>? StatusChanged;
+
+    public CenterTelemetryConnectionSnapshot Current { get; private set; }
 
     public Task StartAsync(CancellationToken cancellationToken = default)
     {
@@ -87,11 +93,26 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
             return;
         }
 
-        var request = BuildRequest(settings);
-        var response = await _client.UploadAsync(settings, request, cancellationToken);
-        if (!response.Success)
+        try
         {
-            throw new InvalidOperationException(response.Message);
+            var request = BuildRequest(settings);
+            var response = await _client.UploadAsync(settings, request, cancellationToken);
+            if (!response.Success)
+            {
+                Publish(false, response.Message);
+                throw new InvalidOperationException(response.Message);
+            }
+
+            Publish(true, string.IsNullOrWhiteSpace(response.Message) ? "Center telemetry uploaded." : response.Message);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Publish(false, ex.Message);
+            throw;
         }
     }
 
@@ -216,6 +237,16 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
 
         _lastFailureLogTime = DateTime.Now;
         _exceptionLogService.Write(ex, "CenterTelemetrySyncService.Push");
+    }
+
+    private void Publish(bool isConnected, string message)
+    {
+        var snapshot = new CenterTelemetryConnectionSnapshot(
+            isConnected,
+            DateTime.Now,
+            string.IsNullOrWhiteSpace(message) ? (isConnected ? "Connected" : "Disconnected") : message.Trim());
+        Current = snapshot;
+        StatusChanged?.Invoke(this, snapshot);
     }
 
     private static string ResolvePlcStatusCode(PlcProductionSnapshot production, BizDeviceStatusLog? latestStatus)
