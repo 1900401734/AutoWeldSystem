@@ -1263,11 +1263,17 @@
   <data name="log.tab.program_exception" xml:space="preserve">
     <value>Program Exception Logs</value>
   </data>
+  <data name="log.tab.device_lifecycle" xml:space="preserve">
+    <value>Device Logs</value>
+  </data>
   <data name="log.description.mes_interaction" xml:space="preserve">
     <value>Shows local MES requests, responses, and exceptions in real time. The log directory follows system settings.</value>
   </data>
   <data name="log.description.program_exception" xml:space="preserve">
     <value>Records program exceptions, source locations, and full stack traces for fast code diagnosis.</value>
+  </data>
+  <data name="log.description.device_lifecycle" xml:space="preserve">
+    <value>Records software startup, self-checks, test-program running, and fault alarm lifecycle events.</value>
   </data>
   <data name="log.label.date" xml:space="preserve">
     <value>Log Date</value>
@@ -1331,6 +1337,24 @@
   </data>
   <data name="log.column.source_line" xml:space="preserve">
     <value>Source Location</value>
+  </data>
+  <data name="log.column.level" xml:space="preserve">
+    <value>Level</value>
+  </data>
+  <data name="log.column.event" xml:space="preserve">
+    <value>Event</value>
+  </data>
+  <data name="log.column.device_id" xml:space="preserve">
+    <value>Device ID</value>
+  </data>
+  <data name="log.column.station" xml:space="preserve">
+    <value>Station</value>
+  </data>
+  <data name="log.column.status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="log.column.summary" xml:space="preserve">
+    <value>Summary</value>
   </data>
   <data name="log.detail.request" xml:space="preserve">
     <value>Request Body</value>

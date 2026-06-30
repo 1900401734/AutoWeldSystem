@@ -29,6 +29,7 @@ public class WeldTaskService : IWeldTaskService
     private readonly ILocalizationService _localizer;
     private readonly IUploadTaskService _uploadTaskService;
     private readonly IProductionReportFileService _reportFileService;
+    private readonly IDeviceLifecycleLogService _deviceLifecycleLogService;
     private AppSettings _currentSettings;
 
     public WeldTaskService(
@@ -38,7 +39,8 @@ public class WeldTaskService : IWeldTaskService
         IOperationLogService operationLogService,
         ILocalizationService localizer,
         IUploadTaskService uploadTaskService,
-        IProductionReportFileService reportFileService)
+        IProductionReportFileService reportFileService,
+        IDeviceLifecycleLogService deviceLifecycleLogService)
     {
         _mesProvider = mesProvider;
         _dbContext = dbContext;
@@ -49,6 +51,7 @@ public class WeldTaskService : IWeldTaskService
         _localizer = localizer;
         _uploadTaskService = uploadTaskService;
         _reportFileService = reportFileService;
+        _deviceLifecycleLogService = deviceLifecycleLogService;
         CurrentState = new ProductionRuntimeState();
     }
 
@@ -368,6 +371,7 @@ public class WeldTaskService : IWeldTaskService
         ApplyStartedRuntimeState(normalizedStationNo, workOrder, process, program, task, startOperatorNumber);
         ApplySharedStartedRuntimeStateIfNeeded(normalizedStationNo, workOrder, process, program, task, startOperatorNumber);
         _operationLogService.Write("ExpStart", $"Start report submitted, Station={task.StationNo}, MES Id={task.ExpStartId}, WorkOrder={task.SN}");
+        WriteTestProgramRunningLog(task);
         NotifyStateChanged();
         return task;
     }
@@ -1351,6 +1355,19 @@ public class WeldTaskService : IWeldTaskService
     }
 
     private AppSettings CurrentSettings => Volatile.Read(ref _currentSettings);
+
+    /// <summary>
+    /// Writes the independent device log for a successful MES start report.
+    /// </summary>
+    private void WriteTestProgramRunningLog(BizWeldTask task)
+    {
+        _deviceLifecycleLogService.Write(DeviceLifecycleLogRules.CreateTestProgramRunningEntry(
+            task.DeviceId,
+            task.StationNo,
+            FirstNonEmpty(task.ExpStartId, task.LocalExpStartId),
+            task.SN,
+            DateTime.Now));
+    }
 
     private void SettingsService_SettingsChanged(object? sender, AppSettingsChangedEventArgs e)
     {

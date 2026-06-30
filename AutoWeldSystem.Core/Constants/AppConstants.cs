@@ -112,6 +112,20 @@ public static class AppConstants
         public const string Mes = "MES";
         public const string ProductionFlow = "ProductionFlow";
         public const string ProgramException = "ProgramException";
+        public const string DeviceLifecycle = "DeviceLifecycle";
+    }
+
+    /// <summary>
+    /// Device lifecycle event type values written to the independent device log.
+    /// Keep these values stable because local JSONL files use them for filtering.
+    /// </summary>
+    public static class DeviceLifecycleEventTypes
+    {
+        public const string SoftwareStarted = "SoftwareStarted";
+        public const string SelfCheck = "SelfCheck";
+        public const string TestProgramRunning = "TestProgramRunning";
+        public const string FaultAlarm = "FaultAlarm";
+        public const string FaultRecovered = "FaultRecovered";
     }
 
     /// <summary>

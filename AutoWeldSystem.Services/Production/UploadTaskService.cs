@@ -24,18 +24,21 @@ public class UploadTaskService : IUploadTaskService
     private readonly IMesProvider _mesProvider;
     private readonly IAppSettingsService _settingsService;
     private readonly IProductionFlowLogService _productionLogService;
+    private readonly IDeviceLifecycleLogService _deviceLifecycleLogService;
     private readonly object _dbLock = new();
 
     public UploadTaskService(
         SqlSugarDbContext dbContext,
         IMesProvider mesProvider,
         IAppSettingsService settingsService,
-        IProductionFlowLogService productionLogService)
+        IProductionFlowLogService productionLogService,
+        IDeviceLifecycleLogService deviceLifecycleLogService)
     {
         _dbContext = dbContext;
         _mesProvider = mesProvider;
         _settingsService = settingsService;
         _productionLogService = productionLogService;
+        _deviceLifecycleLogService = deviceLifecycleLogService;
     }
 
     /// <summary>
@@ -377,6 +380,7 @@ public class UploadTaskService : IUploadTaskService
         }
 
         UpdateTaskExpStartId(task, response.Data.Id);
+        WriteStartReportLifecycleLog(task, response.Data.Id);
         return Success(string.IsNullOrWhiteSpace(response.Msg) ? "Start report uploaded." : response.Msg);
     }
 
@@ -392,6 +396,25 @@ public class UploadTaskService : IUploadTaskService
         }
 
         ExperimentStartRequestRules.ApplyOfflineStartId(weldTask, request);
+    }
+
+    /// <summary>
+    /// Writes the independent device log when a queued offline start report is finally accepted by MES.
+    /// </summary>
+    private void WriteStartReportLifecycleLog(BizUploadTask task, string expStartId)
+    {
+        var weldTask = GetWeldTask(task);
+        if (weldTask is null)
+        {
+            return;
+        }
+
+        _deviceLifecycleLogService.Write(DeviceLifecycleLogRules.CreateTestProgramRunningEntry(
+            weldTask.DeviceId,
+            weldTask.StationNo,
+            FirstNonEmpty(expStartId, weldTask.ExpStartId, weldTask.LocalExpStartId),
+            weldTask.SN,
+            DateTime.Now));
     }
 
     private async Task<BasicRes<object>> UploadFinishReportAsync(BizUploadTask task, CancellationToken cancellationToken)

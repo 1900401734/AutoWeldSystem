@@ -39,6 +39,7 @@ public static class Program
         var realtimePreviewStarted = false;
         var centerTelemetrySyncStarted = false;
         var centerProductForwardingStarted = false;
+        var deviceLifecycleLogStarted = false;
 
         try
         {
@@ -60,6 +61,8 @@ public static class Program
                     services.AddSingleton<IMesInteractionLogService, MesInteractionLogService>();
                     services.AddSingleton<IProductionFlowLogService, ProductionFlowLogService>();
                     services.AddSingleton<IProgramExceptionLogService, ProgramExceptionLogService>();
+                    services.AddSingleton<IDeviceLifecycleLogService, DeviceLifecycleLogService>();
+                    services.AddSingleton<IDeviceLifecycleLogCoordinator, DeviceLifecycleLogCoordinator>();
                     services.AddSingleton<IUiThreadDispatcher, WinFormsUiThreadDispatcher>();
                     services.AddSingleton<ILocalizationService, LocalizationService>();
                     services.AddSingleton<IWindowsShellIntegrationService, WindowsShellIntegrationService>();
@@ -131,6 +134,8 @@ public static class Program
             centerTelemetrySyncStarted = true;
             AppHost.Services.GetRequiredService<ICenterProductForwardingService>().StartAsync().GetAwaiter().GetResult();
             centerProductForwardingStarted = true;
+            AppHost.Services.GetRequiredService<IDeviceLifecycleLogCoordinator>().Start();
+            deviceLifecycleLogStarted = true;
 
             while (true)
             {
@@ -161,6 +166,7 @@ public static class Program
         finally
         {
             StopBackgroundServices(
+                deviceLifecycleLogStarted,
                 centerProductForwardingStarted,
                 centerTelemetrySyncStarted,
                 realtimePreviewStarted,
@@ -241,6 +247,7 @@ public static class Program
     }
 
     private static void StopBackgroundServices(
+        bool deviceLifecycleLogStarted,
         bool centerProductForwardingStarted,
         bool centerTelemetrySyncStarted,
         bool realtimePreviewStarted,
@@ -253,6 +260,11 @@ public static class Program
     {
         try
         {
+            if (deviceLifecycleLogStarted)
+            {
+                AppHost?.Services.GetRequiredService<IDeviceLifecycleLogCoordinator>().Stop();
+            }
+
             if (centerProductForwardingStarted)
             {
                 AppHost?.Services.GetRequiredService<ICenterProductForwardingService>().StopAsync().GetAwaiter().GetResult();

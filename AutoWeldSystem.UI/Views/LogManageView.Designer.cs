@@ -110,6 +110,29 @@
             txtExceptionStackTrace = new TextBox();
             tabExceptionContext = new TabPage();
             txtExceptionContext = new TextBox();
+            tabDeviceLifecycleLogs = new TabPage();
+            deviceLifecycleRootLayout = new TableLayoutPanel();
+            deviceLifecycleHeaderLayout = new TableLayoutPanel();
+            deviceLifecycleTitleLayout = new TableLayoutPanel();
+            lblDeviceLifecycleTitle = new Label();
+            lblDeviceLifecycleDescription = new Label();
+            deviceLifecycleToolbar = new FlowLayoutPanel();
+            lblDeviceLifecycleDate = new Label();
+            dtpDeviceLifecycleDate = new DateTimePicker();
+            lblDeviceLifecycleKeyword = new Label();
+            txtDeviceLifecycleKeyword = new TextBox();
+            btnRefreshDeviceLifecycle = new AntdUI.Button();
+            btnOpenDeviceLifecycleFolder = new AntdUI.Button();
+            splitDeviceLifecycleContent = new SplitContainer();
+            dgvDeviceLifecycleLogs = new DataGridView();
+            colLifecycleOccurredTime = new DataGridViewTextBoxColumn();
+            colLifecycleLevel = new DataGridViewTextBoxColumn();
+            colLifecycleEventType = new DataGridViewTextBoxColumn();
+            colLifecycleDeviceId = new DataGridViewTextBoxColumn();
+            colLifecycleStation = new DataGridViewTextBoxColumn();
+            colLifecycleStatus = new DataGridViewTextBoxColumn();
+            colLifecycleSummary = new DataGridViewTextBoxColumn();
+            txtDeviceLifecycleDetail = new TextBox();
             tabDeviceStatusLogs = new TabPage();
             deviceStatusRootLayout = new TableLayoutPanel();
             deviceStatusHeaderLayout = new TableLayoutPanel();
@@ -177,6 +200,16 @@
             tabExceptionBasicInfo.SuspendLayout();
             tabExceptionStackTrace.SuspendLayout();
             tabExceptionContext.SuspendLayout();
+            tabDeviceLifecycleLogs.SuspendLayout();
+            deviceLifecycleRootLayout.SuspendLayout();
+            deviceLifecycleHeaderLayout.SuspendLayout();
+            deviceLifecycleTitleLayout.SuspendLayout();
+            deviceLifecycleToolbar.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)splitDeviceLifecycleContent).BeginInit();
+            splitDeviceLifecycleContent.Panel1.SuspendLayout();
+            splitDeviceLifecycleContent.Panel2.SuspendLayout();
+            splitDeviceLifecycleContent.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)dgvDeviceLifecycleLogs).BeginInit();
             tabDeviceStatusLogs.SuspendLayout();
             deviceStatusRootLayout.SuspendLayout();
             deviceStatusHeaderLayout.SuspendLayout();
@@ -188,12 +221,13 @@
             splitDeviceStatusContent.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)dgvDeviceStatusLogs).BeginInit();
             SuspendLayout();
-            // 
+            //
             // tabLogCategories
-            // 
+            //
             tabLogCategories.Controls.Add(tabMesLogs);
             tabLogCategories.Controls.Add(tabProductionLogs);
             tabLogCategories.Controls.Add(tabExceptionLogs);
+            tabLogCategories.Controls.Add(tabDeviceLifecycleLogs);
             tabLogCategories.Controls.Add(tabDeviceStatusLogs);
             tabLogCategories.Dock = DockStyle.Fill;
             tabLogCategories.HotTrack = true;
@@ -204,9 +238,9 @@
             tabLogCategories.SelectedIndex = 0;
             tabLogCategories.Size = new Size(1366, 745);
             tabLogCategories.TabIndex = 0;
-            // 
+            //
             // tabMesLogs
-            // 
+            //
             tabMesLogs.Controls.Add(mesRootLayout);
             tabMesLogs.Location = new Point(4, 32);
             tabMesLogs.Name = "tabMesLogs";
@@ -215,9 +249,9 @@
             tabMesLogs.TabIndex = 0;
             tabMesLogs.Text = "MES Interaction";
             tabMesLogs.UseVisualStyleBackColor = true;
-            // 
+            //
             // mesRootLayout
-            // 
+            //
             mesRootLayout.ColumnCount = 1;
             mesRootLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             mesRootLayout.Controls.Add(mesHeaderLayout, 0, 0);
@@ -230,9 +264,9 @@
             mesRootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             mesRootLayout.Size = new Size(1352, 703);
             mesRootLayout.TabIndex = 0;
-            // 
+            //
             // mesHeaderLayout
-            // 
+            //
             mesHeaderLayout.ColumnCount = 2;
             mesHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             mesHeaderLayout.ColumnStyles.Add(new ColumnStyle());
@@ -246,9 +280,9 @@
             mesHeaderLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             mesHeaderLayout.Size = new Size(1312, 100);
             mesHeaderLayout.TabIndex = 0;
-            // 
+            //
             // mesTitleLayout
-            // 
+            //
             mesTitleLayout.ColumnCount = 1;
             mesTitleLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             mesTitleLayout.Controls.Add(lblMesTitle, 0, 0);
@@ -262,9 +296,9 @@
             mesTitleLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             mesTitleLayout.Size = new Size(500, 100);
             mesTitleLayout.TabIndex = 0;
-            // 
+            //
             // lblMesTitle
-            // 
+            //
             lblMesTitle.AutoSize = true;
             lblMesTitle.Dock = DockStyle.Fill;
             lblMesTitle.Font = new Font("Microsoft YaHei UI", 14F, FontStyle.Bold);
@@ -275,9 +309,9 @@
             lblMesTitle.TabIndex = 0;
             lblMesTitle.Text = "MES Interaction";
             lblMesTitle.TextAlign = ContentAlignment.MiddleLeft;
-            // 
+            //
             // lblMesDescription
-            // 
+            //
             lblMesDescription.AutoEllipsis = true;
             lblMesDescription.Dock = DockStyle.Fill;
             lblMesDescription.ForeColor = SystemColors.GrayText;
@@ -288,9 +322,9 @@
             lblMesDescription.TabIndex = 1;
             lblMesDescription.Text = "MES Interaction details";
             lblMesDescription.TextAlign = ContentAlignment.MiddleLeft;
-            // 
+            //
             // mesToolbar
-            // 
+            //
             mesToolbar.AutoSize = true;
             mesToolbar.Controls.Add(lblMesDate);
             mesToolbar.Controls.Add(dtpMesDate);
@@ -306,9 +340,9 @@
             mesToolbar.Size = new Size(812, 52);
             mesToolbar.TabIndex = 1;
             mesToolbar.WrapContents = false;
-            // 
+            //
             // lblMesDate
-            // 
+            //
             lblMesDate.AutoSize = true;
             lblMesDate.Location = new Point(0, 15);
             lblMesDate.Margin = new Padding(0, 9, 8, 0);
@@ -316,9 +350,9 @@
             lblMesDate.Size = new Size(51, 24);
             lblMesDate.TabIndex = 0;
             lblMesDate.Text = "Date";
-            // 
+            //
             // dtpMesDate
-            // 
+            //
             dtpMesDate.CustomFormat = "yyyy-MM-dd";
             dtpMesDate.Format = DateTimePickerFormat.Custom;
             dtpMesDate.Location = new Point(59, 8);
@@ -326,9 +360,9 @@
             dtpMesDate.Name = "dtpMesDate";
             dtpMesDate.Size = new Size(150, 30);
             dtpMesDate.TabIndex = 1;
-            // 
+            //
             // lblMesKeyword
-            // 
+            //
             lblMesKeyword.AutoSize = true;
             lblMesKeyword.Location = new Point(225, 15);
             lblMesKeyword.Margin = new Padding(0, 9, 8, 0);
@@ -336,18 +370,18 @@
             lblMesKeyword.Size = new Size(85, 24);
             lblMesKeyword.TabIndex = 2;
             lblMesKeyword.Text = "Keyword";
-            // 
+            //
             // txtMesKeyword
-            // 
+            //
             txtMesKeyword.Location = new Point(318, 8);
             txtMesKeyword.Margin = new Padding(0, 2, 16, 0);
             txtMesKeyword.Name = "txtMesKeyword";
             txtMesKeyword.PlaceholderText = "URL / MES / TraceId";
             txtMesKeyword.Size = new Size(190, 30);
             txtMesKeyword.TabIndex = 3;
-            // 
+            //
             // btnRefreshMes
-            // 
+            //
             btnRefreshMes.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnRefreshMes.BorderWidth = 1F;
             btnRefreshMes.IconSvg = "ReloadOutlined";
@@ -357,9 +391,9 @@
             btnRefreshMes.TabIndex = 4;
             btnRefreshMes.Tag = "perm:button.log.refresh:enabled";
             btnRefreshMes.Text = "Refresh";
-            // 
+            //
             // btnOpenMesFolder
-            // 
+            //
             btnOpenMesFolder.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnOpenMesFolder.BorderWidth = 1F;
             btnOpenMesFolder.IconSvg = "FolderOpenOutlined";
@@ -369,30 +403,30 @@
             btnOpenMesFolder.TabIndex = 5;
             btnOpenMesFolder.Tag = "perm:button.log.open-folder:enabled";
             btnOpenMesFolder.Text = "Open Folder";
-            // 
+            //
             // splitMesContent
-            // 
+            //
             splitMesContent.Dock = DockStyle.Fill;
             splitMesContent.Location = new Point(20, 122);
             splitMesContent.Margin = new Padding(20, 0, 20, 18);
             splitMesContent.Name = "splitMesContent";
-            // 
+            //
             // splitMesContent.Panel1
-            // 
+            //
             splitMesContent.Panel1.Controls.Add(dgvMesLogs);
             splitMesContent.Panel1.Padding = new Padding(0, 0, 12, 0);
-            // 
+            //
             // splitMesContent.Panel2
-            // 
+            //
             splitMesContent.Panel2.Controls.Add(tabMesDetails);
             splitMesContent.Panel2.Padding = new Padding(12, 0, 0, 0);
             splitMesContent.Size = new Size(1312, 563);
             splitMesContent.SplitterDistance = 885;
             splitMesContent.SplitterWidth = 5;
             splitMesContent.TabIndex = 1;
-            // 
+            //
             // dgvMesLogs
-            // 
+            //
             dgvMesLogs.AllowUserToAddRows = false;
             dgvMesLogs.AllowUserToDeleteRows = false;
             dgvMesLogs.BackgroundColor = SystemColors.Window;
@@ -409,9 +443,9 @@
             dgvMesLogs.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             dgvMesLogs.Size = new Size(873, 563);
             dgvMesLogs.TabIndex = 0;
-            // 
+            //
             // colMesSendTime
-            // 
+            //
             colMesSendTime.DataPropertyName = "SendTime";
             colMesSendTime.FillWeight = 18F;
             colMesSendTime.HeaderText = "Send Time";
@@ -419,9 +453,9 @@
             colMesSendTime.Name = "colMesSendTime";
             colMesSendTime.ReadOnly = true;
             colMesSendTime.Width = 125;
-            // 
+            //
             // colMesPurpose
-            // 
+            //
             colMesPurpose.DataPropertyName = "Purpose";
             colMesPurpose.FillWeight = 18F;
             colMesPurpose.HeaderText = "Purpose";
@@ -429,9 +463,9 @@
             colMesPurpose.Name = "colMesPurpose";
             colMesPurpose.ReadOnly = true;
             colMesPurpose.Width = 125;
-            // 
+            //
             // colMesMethod
-            // 
+            //
             colMesMethod.DataPropertyName = "Method";
             colMesMethod.FillWeight = 9F;
             colMesMethod.HeaderText = "Method";
@@ -439,9 +473,9 @@
             colMesMethod.Name = "colMesMethod";
             colMesMethod.ReadOnly = true;
             colMesMethod.Width = 125;
-            // 
+            //
             // colMesHttpStatus
-            // 
+            //
             colMesHttpStatus.DataPropertyName = "HttpStatus";
             colMesHttpStatus.FillWeight = 9F;
             colMesHttpStatus.HeaderText = "HTTP";
@@ -449,9 +483,9 @@
             colMesHttpStatus.Name = "colMesHttpStatus";
             colMesHttpStatus.ReadOnly = true;
             colMesHttpStatus.Width = 125;
-            // 
+            //
             // colMesStatus
-            // 
+            //
             colMesStatus.DataPropertyName = "MesStatus";
             colMesStatus.FillWeight = 8F;
             colMesStatus.HeaderText = "MES Status";
@@ -459,9 +493,9 @@
             colMesStatus.Name = "colMesStatus";
             colMesStatus.ReadOnly = true;
             colMesStatus.Width = 125;
-            // 
+            //
             // colResult
-            // 
+            //
             colResult.DataPropertyName = "Result";
             colResult.FillWeight = 10F;
             colResult.HeaderText = "Result";
@@ -469,9 +503,9 @@
             colResult.Name = "colResult";
             colResult.ReadOnly = true;
             colResult.Width = 125;
-            // 
+            //
             // colMesDuration
-            // 
+            //
             colMesDuration.DataPropertyName = "Duration";
             colMesDuration.FillWeight = 10F;
             colMesDuration.HeaderText = "Duration";
@@ -479,9 +513,9 @@
             colMesDuration.Name = "colMesDuration";
             colMesDuration.ReadOnly = true;
             colMesDuration.Width = 125;
-            // 
+            //
             // tabMesDetails
-            // 
+            //
             tabMesDetails.Controls.Add(tabBasicInfo);
             tabMesDetails.Controls.Add(tabRequestBody);
             tabMesDetails.Controls.Add(tabResponseBody);
@@ -493,9 +527,9 @@
             tabMesDetails.SelectedIndex = 0;
             tabMesDetails.Size = new Size(410, 563);
             tabMesDetails.TabIndex = 0;
-            // 
+            //
             // tabBasicInfo
-            // 
+            //
             tabBasicInfo.Controls.Add(txtBasicInfo);
             tabBasicInfo.Location = new Point(4, 32);
             tabBasicInfo.Name = "tabBasicInfo";
@@ -504,9 +538,9 @@
             tabBasicInfo.TabIndex = 0;
             tabBasicInfo.Text = "Basic";
             tabBasicInfo.UseVisualStyleBackColor = true;
-            // 
+            //
             // txtBasicInfo
-            // 
+            //
             txtBasicInfo.BackColor = SystemColors.Window;
             txtBasicInfo.BorderStyle = BorderStyle.FixedSingle;
             txtBasicInfo.Dock = DockStyle.Fill;
@@ -519,9 +553,9 @@
             txtBasicInfo.Size = new Size(396, 521);
             txtBasicInfo.TabIndex = 0;
             txtBasicInfo.WordWrap = false;
-            // 
+            //
             // tabRequestBody
-            // 
+            //
             tabRequestBody.Controls.Add(txtRequestBody);
             tabRequestBody.Location = new Point(4, 29);
             tabRequestBody.Name = "tabRequestBody";
@@ -530,9 +564,9 @@
             tabRequestBody.TabIndex = 1;
             tabRequestBody.Text = "Request";
             tabRequestBody.UseVisualStyleBackColor = true;
-            // 
+            //
             // txtRequestBody
-            // 
+            //
             txtRequestBody.BackColor = SystemColors.Window;
             txtRequestBody.BorderStyle = BorderStyle.FixedSingle;
             txtRequestBody.Dock = DockStyle.Fill;
@@ -545,9 +579,9 @@
             txtRequestBody.Size = new Size(396, 524);
             txtRequestBody.TabIndex = 0;
             txtRequestBody.WordWrap = false;
-            // 
+            //
             // tabResponseBody
-            // 
+            //
             tabResponseBody.Controls.Add(txtResponseBody);
             tabResponseBody.Location = new Point(4, 29);
             tabResponseBody.Name = "tabResponseBody";
@@ -556,9 +590,9 @@
             tabResponseBody.TabIndex = 2;
             tabResponseBody.Text = "Response";
             tabResponseBody.UseVisualStyleBackColor = true;
-            // 
+            //
             // txtResponseBody
-            // 
+            //
             txtResponseBody.BackColor = SystemColors.Window;
             txtResponseBody.BorderStyle = BorderStyle.FixedSingle;
             txtResponseBody.Dock = DockStyle.Fill;
@@ -571,9 +605,9 @@
             txtResponseBody.Size = new Size(396, 524);
             txtResponseBody.TabIndex = 0;
             txtResponseBody.WordWrap = false;
-            // 
+            //
             // tabProductionLogs
-            // 
+            //
             tabProductionLogs.Controls.Add(productionRootLayout);
             tabProductionLogs.Location = new Point(4, 32);
             tabProductionLogs.Name = "tabProductionLogs";
@@ -582,9 +616,9 @@
             tabProductionLogs.TabIndex = 1;
             tabProductionLogs.Text = "Production Flow";
             tabProductionLogs.UseVisualStyleBackColor = true;
-            // 
+            //
             // productionRootLayout
-            // 
+            //
             productionRootLayout.ColumnCount = 1;
             productionRootLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             productionRootLayout.Controls.Add(productionHeaderLayout, 0, 0);
@@ -597,9 +631,9 @@
             productionRootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             productionRootLayout.Size = new Size(1352, 703);
             productionRootLayout.TabIndex = 0;
-            // 
+            //
             // productionHeaderLayout
-            // 
+            //
             productionHeaderLayout.ColumnCount = 2;
             productionHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             productionHeaderLayout.ColumnStyles.Add(new ColumnStyle());
@@ -613,9 +647,9 @@
             productionHeaderLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             productionHeaderLayout.Size = new Size(1312, 100);
             productionHeaderLayout.TabIndex = 0;
-            // 
+            //
             // productionTitleLayout
-            // 
+            //
             productionTitleLayout.ColumnCount = 1;
             productionTitleLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             productionTitleLayout.Controls.Add(lblProductionTitle, 0, 0);
@@ -629,9 +663,9 @@
             productionTitleLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             productionTitleLayout.Size = new Size(460, 100);
             productionTitleLayout.TabIndex = 0;
-            // 
+            //
             // lblProductionTitle
-            // 
+            //
             lblProductionTitle.AutoSize = true;
             lblProductionTitle.Dock = DockStyle.Fill;
             lblProductionTitle.Font = new Font("Microsoft YaHei UI", 14F, FontStyle.Bold);
@@ -642,9 +676,9 @@
             lblProductionTitle.TabIndex = 0;
             lblProductionTitle.Text = "Production Flow";
             lblProductionTitle.TextAlign = ContentAlignment.MiddleLeft;
-            // 
+            //
             // lblProductionDescription
-            // 
+            //
             lblProductionDescription.AutoEllipsis = true;
             lblProductionDescription.Dock = DockStyle.Fill;
             lblProductionDescription.ForeColor = SystemColors.GrayText;
@@ -655,9 +689,9 @@
             lblProductionDescription.TabIndex = 1;
             lblProductionDescription.Text = "Production Flow details";
             lblProductionDescription.TextAlign = ContentAlignment.MiddleLeft;
-            // 
+            //
             // productionToolbar
-            // 
+            //
             productionToolbar.AutoSize = true;
             productionToolbar.Controls.Add(lblProductionDate);
             productionToolbar.Controls.Add(dtpProductionDate);
@@ -673,9 +707,9 @@
             productionToolbar.Size = new Size(852, 100);
             productionToolbar.TabIndex = 1;
             productionToolbar.WrapContents = false;
-            // 
+            //
             // lblProductionDate
-            // 
+            //
             lblProductionDate.AutoSize = true;
             lblProductionDate.Location = new Point(0, 15);
             lblProductionDate.Margin = new Padding(0, 9, 8, 0);
@@ -683,9 +717,9 @@
             lblProductionDate.Size = new Size(51, 24);
             lblProductionDate.TabIndex = 0;
             lblProductionDate.Text = "Date";
-            // 
+            //
             // dtpProductionDate
-            // 
+            //
             dtpProductionDate.CustomFormat = "yyyy-MM-dd";
             dtpProductionDate.Format = DateTimePickerFormat.Custom;
             dtpProductionDate.Location = new Point(59, 8);
@@ -693,9 +727,9 @@
             dtpProductionDate.Name = "dtpProductionDate";
             dtpProductionDate.Size = new Size(150, 30);
             dtpProductionDate.TabIndex = 1;
-            // 
+            //
             // lblProductionKeyword
-            // 
+            //
             lblProductionKeyword.AutoSize = true;
             lblProductionKeyword.Location = new Point(225, 15);
             lblProductionKeyword.Margin = new Padding(0, 9, 8, 0);
@@ -703,18 +737,18 @@
             lblProductionKeyword.Size = new Size(85, 24);
             lblProductionKeyword.TabIndex = 2;
             lblProductionKeyword.Text = "Keyword";
-            // 
+            //
             // txtProductionKeyword
-            // 
+            //
             txtProductionKeyword.Location = new Point(318, 8);
             txtProductionKeyword.Margin = new Padding(0, 2, 16, 0);
             txtProductionKeyword.Name = "txtProductionKeyword";
             txtProductionKeyword.PlaceholderText = "Step / WorkOrder / ProductNumber / PLC";
             txtProductionKeyword.Size = new Size(230, 30);
             txtProductionKeyword.TabIndex = 3;
-            // 
+            //
             // btnRefreshProduction
-            // 
+            //
             btnRefreshProduction.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnRefreshProduction.BorderWidth = 1F;
             btnRefreshProduction.IconSvg = "ReloadOutlined";
@@ -724,9 +758,9 @@
             btnRefreshProduction.TabIndex = 4;
             btnRefreshProduction.Tag = "perm:button.log.refresh:enabled";
             btnRefreshProduction.Text = "Refresh";
-            // 
+            //
             // btnOpenProductionFolder
-            // 
+            //
             btnOpenProductionFolder.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnOpenProductionFolder.BorderWidth = 1F;
             btnOpenProductionFolder.IconSvg = "FolderOpenOutlined";
@@ -736,30 +770,30 @@
             btnOpenProductionFolder.TabIndex = 5;
             btnOpenProductionFolder.Tag = "perm:button.log.open-folder:enabled";
             btnOpenProductionFolder.Text = "Open Folder";
-            // 
+            //
             // splitProductionContent
-            // 
+            //
             splitProductionContent.Dock = DockStyle.Fill;
             splitProductionContent.Location = new Point(20, 122);
             splitProductionContent.Margin = new Padding(20, 0, 20, 18);
             splitProductionContent.Name = "splitProductionContent";
-            // 
+            //
             // splitProductionContent.Panel1
-            // 
+            //
             splitProductionContent.Panel1.Controls.Add(dgvProductionLogs);
             splitProductionContent.Panel1.Padding = new Padding(0, 0, 12, 0);
-            // 
+            //
             // splitProductionContent.Panel2
-            // 
+            //
             splitProductionContent.Panel2.Controls.Add(tabProductionDetails);
             splitProductionContent.Panel2.Padding = new Padding(12, 0, 0, 0);
             splitProductionContent.Size = new Size(1312, 563);
             splitProductionContent.SplitterDistance = 820;
             splitProductionContent.SplitterWidth = 5;
             splitProductionContent.TabIndex = 1;
-            // 
+            //
             // dgvProductionLogs
-            // 
+            //
             dgvProductionLogs.AllowUserToAddRows = false;
             dgvProductionLogs.AllowUserToDeleteRows = false;
             dgvProductionLogs.BackgroundColor = SystemColors.Window;
@@ -776,9 +810,9 @@
             dgvProductionLogs.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             dgvProductionLogs.Size = new Size(808, 563);
             dgvProductionLogs.TabIndex = 0;
-            // 
+            //
             // colProductionOccurredTime
-            // 
+            //
             colProductionOccurredTime.DataPropertyName = "OccurredTime";
             colProductionOccurredTime.FillWeight = 14F;
             colProductionOccurredTime.HeaderText = "Time";
@@ -786,9 +820,9 @@
             colProductionOccurredTime.Name = "colProductionOccurredTime";
             colProductionOccurredTime.ReadOnly = true;
             colProductionOccurredTime.Width = 125;
-            // 
+            //
             // colProductionLevel
-            // 
+            //
             colProductionLevel.DataPropertyName = "Level";
             colProductionLevel.FillWeight = 8F;
             colProductionLevel.HeaderText = "Level";
@@ -796,9 +830,9 @@
             colProductionLevel.Name = "colProductionLevel";
             colProductionLevel.ReadOnly = true;
             colProductionLevel.Width = 125;
-            // 
+            //
             // colProductionStep
-            // 
+            //
             colProductionStep.DataPropertyName = "Step";
             colProductionStep.FillWeight = 16F;
             colProductionStep.HeaderText = "Step";
@@ -806,9 +840,9 @@
             colProductionStep.Name = "colProductionStep";
             colProductionStep.ReadOnly = true;
             colProductionStep.Width = 125;
-            // 
+            //
             // colProductionSummary
-            // 
+            //
             colProductionSummary.DataPropertyName = "Summary";
             colProductionSummary.FillWeight = 28F;
             colProductionSummary.HeaderText = "Summary";
@@ -816,9 +850,9 @@
             colProductionSummary.Name = "colProductionSummary";
             colProductionSummary.ReadOnly = true;
             colProductionSummary.Width = 125;
-            // 
+            //
             // colProductionStation
-            // 
+            //
             colProductionStation.DataPropertyName = "Station";
             colProductionStation.FillWeight = 8F;
             colProductionStation.HeaderText = "Station";
@@ -826,9 +860,9 @@
             colProductionStation.Name = "colProductionStation";
             colProductionStation.ReadOnly = true;
             colProductionStation.Width = 125;
-            // 
+            //
             // colProductionPlcSignal
-            // 
+            //
             colProductionPlcSignal.DataPropertyName = "PlcSignal";
             colProductionPlcSignal.FillWeight = 13F;
             colProductionPlcSignal.HeaderText = "PLC Signal";
@@ -836,9 +870,9 @@
             colProductionPlcSignal.Name = "colProductionPlcSignal";
             colProductionPlcSignal.ReadOnly = true;
             colProductionPlcSignal.Width = 125;
-            // 
+            //
             // tabProductionDetails
-            // 
+            //
             tabProductionDetails.Controls.Add(tabProductionBasicInfo);
             tabProductionDetails.Controls.Add(tabProductionDetail);
             tabProductionDetails.Dock = DockStyle.Fill;
@@ -847,9 +881,9 @@
             tabProductionDetails.SelectedIndex = 0;
             tabProductionDetails.Size = new Size(475, 563);
             tabProductionDetails.TabIndex = 0;
-            // 
+            //
             // tabProductionBasicInfo
-            // 
+            //
             tabProductionBasicInfo.Controls.Add(txtProductionBasicInfo);
             tabProductionBasicInfo.Location = new Point(4, 32);
             tabProductionBasicInfo.Name = "tabProductionBasicInfo";
@@ -858,9 +892,9 @@
             tabProductionBasicInfo.TabIndex = 0;
             tabProductionBasicInfo.Text = "Basic";
             tabProductionBasicInfo.UseVisualStyleBackColor = true;
-            // 
+            //
             // txtProductionBasicInfo
-            // 
+            //
             txtProductionBasicInfo.BackColor = SystemColors.Window;
             txtProductionBasicInfo.BorderStyle = BorderStyle.FixedSingle;
             txtProductionBasicInfo.Dock = DockStyle.Fill;
@@ -873,9 +907,9 @@
             txtProductionBasicInfo.Size = new Size(461, 521);
             txtProductionBasicInfo.TabIndex = 0;
             txtProductionBasicInfo.WordWrap = false;
-            // 
+            //
             // tabProductionDetail
-            // 
+            //
             tabProductionDetail.Controls.Add(txtProductionDetail);
             tabProductionDetail.Location = new Point(4, 29);
             tabProductionDetail.Name = "tabProductionDetail";
@@ -884,9 +918,9 @@
             tabProductionDetail.TabIndex = 1;
             tabProductionDetail.Text = "Detail";
             tabProductionDetail.UseVisualStyleBackColor = true;
-            // 
+            //
             // txtProductionDetail
-            // 
+            //
             txtProductionDetail.BackColor = SystemColors.Window;
             txtProductionDetail.BorderStyle = BorderStyle.FixedSingle;
             txtProductionDetail.Dock = DockStyle.Fill;
@@ -899,9 +933,9 @@
             txtProductionDetail.Size = new Size(461, 524);
             txtProductionDetail.TabIndex = 0;
             txtProductionDetail.WordWrap = false;
-            // 
+            //
             // tabExceptionLogs
-            // 
+            //
             tabExceptionLogs.Controls.Add(exceptionRootLayout);
             tabExceptionLogs.Location = new Point(4, 29);
             tabExceptionLogs.Name = "tabExceptionLogs";
@@ -910,9 +944,9 @@
             tabExceptionLogs.TabIndex = 2;
             tabExceptionLogs.Text = "Program Exceptions";
             tabExceptionLogs.UseVisualStyleBackColor = true;
-            // 
+            //
             // exceptionRootLayout
-            // 
+            //
             exceptionRootLayout.ColumnCount = 1;
             exceptionRootLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             exceptionRootLayout.Controls.Add(exceptionHeaderLayout, 0, 0);
@@ -925,9 +959,9 @@
             exceptionRootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             exceptionRootLayout.Size = new Size(1352, 706);
             exceptionRootLayout.TabIndex = 0;
-            // 
+            //
             // exceptionHeaderLayout
-            // 
+            //
             exceptionHeaderLayout.ColumnCount = 2;
             exceptionHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             exceptionHeaderLayout.ColumnStyles.Add(new ColumnStyle());
@@ -941,9 +975,9 @@
             exceptionHeaderLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             exceptionHeaderLayout.Size = new Size(1312, 100);
             exceptionHeaderLayout.TabIndex = 0;
-            // 
+            //
             // exceptionTitleLayout
-            // 
+            //
             exceptionTitleLayout.ColumnCount = 1;
             exceptionTitleLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             exceptionTitleLayout.Controls.Add(lblExceptionTitle, 0, 0);
@@ -957,9 +991,9 @@
             exceptionTitleLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             exceptionTitleLayout.Size = new Size(500, 100);
             exceptionTitleLayout.TabIndex = 0;
-            // 
+            //
             // lblExceptionTitle
-            // 
+            //
             lblExceptionTitle.AutoSize = true;
             lblExceptionTitle.Dock = DockStyle.Fill;
             lblExceptionTitle.Font = new Font("Microsoft YaHei UI", 14F, FontStyle.Bold);
@@ -970,9 +1004,9 @@
             lblExceptionTitle.TabIndex = 0;
             lblExceptionTitle.Text = "Program Exceptions";
             lblExceptionTitle.TextAlign = ContentAlignment.MiddleLeft;
-            // 
+            //
             // lblExceptionDescription
-            // 
+            //
             lblExceptionDescription.AutoEllipsis = true;
             lblExceptionDescription.Dock = DockStyle.Fill;
             lblExceptionDescription.ForeColor = SystemColors.GrayText;
@@ -983,9 +1017,9 @@
             lblExceptionDescription.TabIndex = 1;
             lblExceptionDescription.Text = "Program Exceptions details";
             lblExceptionDescription.TextAlign = ContentAlignment.MiddleLeft;
-            // 
+            //
             // exceptionToolbar
-            // 
+            //
             exceptionToolbar.AutoSize = true;
             exceptionToolbar.Controls.Add(lblExceptionDate);
             exceptionToolbar.Controls.Add(dtpExceptionDate);
@@ -1001,9 +1035,9 @@
             exceptionToolbar.Size = new Size(812, 100);
             exceptionToolbar.TabIndex = 1;
             exceptionToolbar.WrapContents = false;
-            // 
+            //
             // lblExceptionDate
-            // 
+            //
             lblExceptionDate.AutoSize = true;
             lblExceptionDate.Location = new Point(0, 15);
             lblExceptionDate.Margin = new Padding(0, 9, 8, 0);
@@ -1011,9 +1045,9 @@
             lblExceptionDate.Size = new Size(51, 24);
             lblExceptionDate.TabIndex = 0;
             lblExceptionDate.Text = "Date";
-            // 
+            //
             // dtpExceptionDate
-            // 
+            //
             dtpExceptionDate.CustomFormat = "yyyy-MM-dd";
             dtpExceptionDate.Format = DateTimePickerFormat.Custom;
             dtpExceptionDate.Location = new Point(59, 8);
@@ -1021,9 +1055,9 @@
             dtpExceptionDate.Name = "dtpExceptionDate";
             dtpExceptionDate.Size = new Size(150, 30);
             dtpExceptionDate.TabIndex = 1;
-            // 
+            //
             // lblExceptionKeyword
-            // 
+            //
             lblExceptionKeyword.AutoSize = true;
             lblExceptionKeyword.Location = new Point(225, 15);
             lblExceptionKeyword.Margin = new Padding(0, 9, 8, 0);
@@ -1031,18 +1065,18 @@
             lblExceptionKeyword.Size = new Size(85, 24);
             lblExceptionKeyword.TabIndex = 2;
             lblExceptionKeyword.Text = "Keyword";
-            // 
+            //
             // txtExceptionKeyword
-            // 
+            //
             txtExceptionKeyword.Location = new Point(318, 8);
             txtExceptionKeyword.Margin = new Padding(0, 2, 16, 0);
             txtExceptionKeyword.Name = "txtExceptionKeyword";
             txtExceptionKeyword.PlaceholderText = "Type / Message / Source";
             txtExceptionKeyword.Size = new Size(190, 30);
             txtExceptionKeyword.TabIndex = 3;
-            // 
+            //
             // btnRefreshException
-            // 
+            //
             btnRefreshException.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnRefreshException.BorderWidth = 1F;
             btnRefreshException.IconSvg = "ReloadOutlined";
@@ -1052,9 +1086,9 @@
             btnRefreshException.TabIndex = 4;
             btnRefreshException.Tag = "perm:button.log.refresh:enabled";
             btnRefreshException.Text = "Refresh";
-            // 
+            //
             // btnOpenExceptionFolder
-            // 
+            //
             btnOpenExceptionFolder.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnOpenExceptionFolder.BorderWidth = 1F;
             btnOpenExceptionFolder.IconSvg = "FolderOpenOutlined";
@@ -1064,30 +1098,30 @@
             btnOpenExceptionFolder.TabIndex = 5;
             btnOpenExceptionFolder.Tag = "perm:button.log.open-folder:enabled";
             btnOpenExceptionFolder.Text = "Open Folder";
-            // 
+            //
             // splitExceptionContent
-            // 
+            //
             splitExceptionContent.Dock = DockStyle.Fill;
             splitExceptionContent.Location = new Point(20, 122);
             splitExceptionContent.Margin = new Padding(20, 0, 20, 18);
             splitExceptionContent.Name = "splitExceptionContent";
-            // 
+            //
             // splitExceptionContent.Panel1
-            // 
+            //
             splitExceptionContent.Panel1.Controls.Add(dgvExceptionLogs);
             splitExceptionContent.Panel1.Padding = new Padding(0, 0, 12, 0);
-            // 
+            //
             // splitExceptionContent.Panel2
-            // 
+            //
             splitExceptionContent.Panel2.Controls.Add(exceptionDetailsLayout);
             splitExceptionContent.Panel2.Padding = new Padding(12, 0, 0, 0);
             splitExceptionContent.Size = new Size(1312, 566);
             splitExceptionContent.SplitterDistance = 760;
             splitExceptionContent.SplitterWidth = 5;
             splitExceptionContent.TabIndex = 1;
-            // 
+            //
             // dgvExceptionLogs
-            // 
+            //
             dgvExceptionLogs.AllowUserToAddRows = false;
             dgvExceptionLogs.AllowUserToDeleteRows = false;
             dgvExceptionLogs.BackgroundColor = SystemColors.Window;
@@ -1104,9 +1138,9 @@
             dgvExceptionLogs.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             dgvExceptionLogs.Size = new Size(748, 566);
             dgvExceptionLogs.TabIndex = 0;
-            // 
+            //
             // colExceptionOccurredTime
-            // 
+            //
             colExceptionOccurredTime.DataPropertyName = "OccurredTime";
             colExceptionOccurredTime.FillWeight = 15F;
             colExceptionOccurredTime.HeaderText = "Time";
@@ -1114,9 +1148,9 @@
             colExceptionOccurredTime.Name = "colExceptionOccurredTime";
             colExceptionOccurredTime.ReadOnly = true;
             colExceptionOccurredTime.Width = 125;
-            // 
+            //
             // colExceptionCategory
-            // 
+            //
             colExceptionCategory.DataPropertyName = "Category";
             colExceptionCategory.FillWeight = 10F;
             colExceptionCategory.HeaderText = "Category";
@@ -1124,9 +1158,9 @@
             colExceptionCategory.Name = "colExceptionCategory";
             colExceptionCategory.ReadOnly = true;
             colExceptionCategory.Width = 125;
-            // 
+            //
             // colExceptionSeverity
-            // 
+            //
             colExceptionSeverity.DataPropertyName = "Severity";
             colExceptionSeverity.FillWeight = 10F;
             colExceptionSeverity.HeaderText = "Severity";
@@ -1134,9 +1168,9 @@
             colExceptionSeverity.Name = "colExceptionSeverity";
             colExceptionSeverity.ReadOnly = true;
             colExceptionSeverity.Width = 125;
-            // 
+            //
             // colExceptionType
-            // 
+            //
             colExceptionType.DataPropertyName = "ExceptionType";
             colExceptionType.FillWeight = 16F;
             colExceptionType.HeaderText = "Exception Type";
@@ -1144,9 +1178,9 @@
             colExceptionType.Name = "colExceptionType";
             colExceptionType.ReadOnly = true;
             colExceptionType.Width = 125;
-            // 
+            //
             // colExceptionMessage
-            // 
+            //
             colExceptionMessage.DataPropertyName = "Message";
             colExceptionMessage.FillWeight = 32F;
             colExceptionMessage.HeaderText = "Message";
@@ -1154,9 +1188,9 @@
             colExceptionMessage.Name = "colExceptionMessage";
             colExceptionMessage.ReadOnly = true;
             colExceptionMessage.Width = 125;
-            // 
+            //
             // colExceptionSource
-            // 
+            //
             colExceptionSource.DataPropertyName = "Source";
             colExceptionSource.FillWeight = 16F;
             colExceptionSource.HeaderText = "Source";
@@ -1164,9 +1198,9 @@
             colExceptionSource.Name = "colExceptionSource";
             colExceptionSource.ReadOnly = true;
             colExceptionSource.Width = 125;
-            // 
+            //
             // colExceptionSourceLocation
-            // 
+            //
             colExceptionSourceLocation.DataPropertyName = "SourceLocation";
             colExceptionSourceLocation.FillWeight = 22F;
             colExceptionSourceLocation.HeaderText = "Location";
@@ -1174,9 +1208,9 @@
             colExceptionSourceLocation.Name = "colExceptionSourceLocation";
             colExceptionSourceLocation.ReadOnly = true;
             colExceptionSourceLocation.Width = 125;
-            // 
+            //
             // exceptionDetailsLayout
-            // 
+            //
             exceptionDetailsLayout.ColumnCount = 1;
             exceptionDetailsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             exceptionDetailsLayout.Controls.Add(exceptionDetailToolbar, 0, 0);
@@ -1189,9 +1223,9 @@
             exceptionDetailsLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             exceptionDetailsLayout.Size = new Size(535, 566);
             exceptionDetailsLayout.TabIndex = 0;
-            // 
+            //
             // exceptionDetailToolbar
-            // 
+            //
             exceptionDetailToolbar.AutoSize = true;
             exceptionDetailToolbar.Controls.Add(btnOpenExceptionSource);
             exceptionDetailToolbar.Controls.Add(btnCopyExceptionDetails);
@@ -1202,9 +1236,9 @@
             exceptionDetailToolbar.Size = new Size(535, 46);
             exceptionDetailToolbar.TabIndex = 0;
             exceptionDetailToolbar.WrapContents = false;
-            // 
+            //
             // btnOpenExceptionSource
-            // 
+            //
             btnOpenExceptionSource.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnOpenExceptionSource.BorderWidth = 1F;
             btnOpenExceptionSource.IconSvg = "FileSearchOutlined";
@@ -1214,9 +1248,9 @@
             btnOpenExceptionSource.TabIndex = 0;
             btnOpenExceptionSource.Tag = "perm:button.log.open-source:enabled";
             btnOpenExceptionSource.Text = "Open Source";
-            // 
+            //
             // btnCopyExceptionDetails
-            // 
+            //
             btnCopyExceptionDetails.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnCopyExceptionDetails.BorderWidth = 1F;
             btnCopyExceptionDetails.IconSvg = "CopyOutlined";
@@ -1226,9 +1260,9 @@
             btnCopyExceptionDetails.TabIndex = 1;
             btnCopyExceptionDetails.Tag = "perm:button.log.copy-details:enabled";
             btnCopyExceptionDetails.Text = "Copy";
-            // 
+            //
             // tabExceptionDetails
-            // 
+            //
             tabExceptionDetails.Controls.Add(tabExceptionBasicInfo);
             tabExceptionDetails.Controls.Add(tabExceptionStackTrace);
             tabExceptionDetails.Controls.Add(tabExceptionContext);
@@ -1238,9 +1272,9 @@
             tabExceptionDetails.SelectedIndex = 0;
             tabExceptionDetails.Size = new Size(529, 506);
             tabExceptionDetails.TabIndex = 1;
-            // 
+            //
             // tabExceptionBasicInfo
-            // 
+            //
             tabExceptionBasicInfo.Controls.Add(txtExceptionBasicInfo);
             tabExceptionBasicInfo.Location = new Point(4, 32);
             tabExceptionBasicInfo.Name = "tabExceptionBasicInfo";
@@ -1249,9 +1283,9 @@
             tabExceptionBasicInfo.TabIndex = 0;
             tabExceptionBasicInfo.Text = "Basic";
             tabExceptionBasicInfo.UseVisualStyleBackColor = true;
-            // 
+            //
             // txtExceptionBasicInfo
-            // 
+            //
             txtExceptionBasicInfo.BackColor = SystemColors.Window;
             txtExceptionBasicInfo.BorderStyle = BorderStyle.FixedSingle;
             txtExceptionBasicInfo.Dock = DockStyle.Fill;
@@ -1264,9 +1298,9 @@
             txtExceptionBasicInfo.Size = new Size(515, 464);
             txtExceptionBasicInfo.TabIndex = 0;
             txtExceptionBasicInfo.WordWrap = false;
-            // 
+            //
             // tabExceptionStackTrace
-            // 
+            //
             tabExceptionStackTrace.Controls.Add(txtExceptionStackTrace);
             tabExceptionStackTrace.Location = new Point(4, 29);
             tabExceptionStackTrace.Name = "tabExceptionStackTrace";
@@ -1275,9 +1309,9 @@
             tabExceptionStackTrace.TabIndex = 1;
             tabExceptionStackTrace.Text = "Stack Trace";
             tabExceptionStackTrace.UseVisualStyleBackColor = true;
-            // 
+            //
             // txtExceptionStackTrace
-            // 
+            //
             txtExceptionStackTrace.BackColor = SystemColors.Window;
             txtExceptionStackTrace.BorderStyle = BorderStyle.FixedSingle;
             txtExceptionStackTrace.Dock = DockStyle.Fill;
@@ -1290,9 +1324,9 @@
             txtExceptionStackTrace.Size = new Size(515, 467);
             txtExceptionStackTrace.TabIndex = 0;
             txtExceptionStackTrace.WordWrap = false;
-            // 
+            //
             // tabExceptionContext
-            // 
+            //
             tabExceptionContext.Controls.Add(txtExceptionContext);
             tabExceptionContext.Location = new Point(4, 29);
             tabExceptionContext.Name = "tabExceptionContext";
@@ -1301,9 +1335,9 @@
             tabExceptionContext.TabIndex = 2;
             tabExceptionContext.Text = "Context";
             tabExceptionContext.UseVisualStyleBackColor = true;
-            // 
+            //
             // txtExceptionContext
-            // 
+            //
             txtExceptionContext.BackColor = SystemColors.Window;
             txtExceptionContext.BorderStyle = BorderStyle.FixedSingle;
             txtExceptionContext.Dock = DockStyle.Fill;
@@ -1316,20 +1350,303 @@
             txtExceptionContext.Size = new Size(515, 467);
             txtExceptionContext.TabIndex = 0;
             txtExceptionContext.WordWrap = false;
-            // 
+            //
+            // tabDeviceLifecycleLogs
+            //
+            tabDeviceLifecycleLogs.Controls.Add(deviceLifecycleRootLayout);
+            tabDeviceLifecycleLogs.Location = new Point(4, 29);
+            tabDeviceLifecycleLogs.Name = "tabDeviceLifecycleLogs";
+            tabDeviceLifecycleLogs.Padding = new Padding(3);
+            tabDeviceLifecycleLogs.Size = new Size(1358, 712);
+            tabDeviceLifecycleLogs.TabIndex = 3;
+            tabDeviceLifecycleLogs.Text = "Device Logs";
+            tabDeviceLifecycleLogs.UseVisualStyleBackColor = true;
+            //
+            // deviceLifecycleRootLayout
+            //
+            deviceLifecycleRootLayout.ColumnCount = 1;
+            deviceLifecycleRootLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            deviceLifecycleRootLayout.Controls.Add(deviceLifecycleHeaderLayout, 0, 0);
+            deviceLifecycleRootLayout.Controls.Add(splitDeviceLifecycleContent, 0, 1);
+            deviceLifecycleRootLayout.Dock = DockStyle.Fill;
+            deviceLifecycleRootLayout.Location = new Point(3, 3);
+            deviceLifecycleRootLayout.Name = "deviceLifecycleRootLayout";
+            deviceLifecycleRootLayout.RowCount = 2;
+            deviceLifecycleRootLayout.RowStyles.Add(new RowStyle());
+            deviceLifecycleRootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            deviceLifecycleRootLayout.Size = new Size(1352, 706);
+            deviceLifecycleRootLayout.TabIndex = 0;
+            //
+            // deviceLifecycleHeaderLayout
+            //
+            deviceLifecycleHeaderLayout.ColumnCount = 2;
+            deviceLifecycleHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            deviceLifecycleHeaderLayout.ColumnStyles.Add(new ColumnStyle());
+            deviceLifecycleHeaderLayout.Controls.Add(deviceLifecycleTitleLayout, 0, 0);
+            deviceLifecycleHeaderLayout.Controls.Add(deviceLifecycleToolbar, 1, 0);
+            deviceLifecycleHeaderLayout.Dock = DockStyle.Fill;
+            deviceLifecycleHeaderLayout.Location = new Point(20, 14);
+            deviceLifecycleHeaderLayout.Margin = new Padding(20, 14, 20, 8);
+            deviceLifecycleHeaderLayout.Name = "deviceLifecycleHeaderLayout";
+            deviceLifecycleHeaderLayout.RowCount = 1;
+            deviceLifecycleHeaderLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            deviceLifecycleHeaderLayout.Size = new Size(1312, 100);
+            deviceLifecycleHeaderLayout.TabIndex = 0;
+            //
+            // deviceLifecycleTitleLayout
+            //
+            deviceLifecycleTitleLayout.ColumnCount = 1;
+            deviceLifecycleTitleLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            deviceLifecycleTitleLayout.Controls.Add(lblDeviceLifecycleTitle, 0, 0);
+            deviceLifecycleTitleLayout.Controls.Add(lblDeviceLifecycleDescription, 0, 1);
+            deviceLifecycleTitleLayout.Dock = DockStyle.Fill;
+            deviceLifecycleTitleLayout.Location = new Point(0, 0);
+            deviceLifecycleTitleLayout.Margin = new Padding(0);
+            deviceLifecycleTitleLayout.Name = "deviceLifecycleTitleLayout";
+            deviceLifecycleTitleLayout.RowCount = 2;
+            deviceLifecycleTitleLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
+            deviceLifecycleTitleLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            deviceLifecycleTitleLayout.Size = new Size(506, 100);
+            deviceLifecycleTitleLayout.TabIndex = 0;
+            //
+            // lblDeviceLifecycleTitle
+            //
+            lblDeviceLifecycleTitle.AutoSize = true;
+            lblDeviceLifecycleTitle.Dock = DockStyle.Fill;
+            lblDeviceLifecycleTitle.Font = new Font("Microsoft YaHei UI", 14F, FontStyle.Bold);
+            lblDeviceLifecycleTitle.Location = new Point(0, 0);
+            lblDeviceLifecycleTitle.Margin = new Padding(0);
+            lblDeviceLifecycleTitle.Name = "lblDeviceLifecycleTitle";
+            lblDeviceLifecycleTitle.Size = new Size(506, 34);
+            lblDeviceLifecycleTitle.TabIndex = 0;
+            lblDeviceLifecycleTitle.Text = "Device Logs";
+            lblDeviceLifecycleTitle.TextAlign = ContentAlignment.MiddleLeft;
+            //
+            // lblDeviceLifecycleDescription
+            //
+            lblDeviceLifecycleDescription.AutoEllipsis = true;
+            lblDeviceLifecycleDescription.Dock = DockStyle.Fill;
+            lblDeviceLifecycleDescription.ForeColor = SystemColors.GrayText;
+            lblDeviceLifecycleDescription.Location = new Point(0, 34);
+            lblDeviceLifecycleDescription.Margin = new Padding(0);
+            lblDeviceLifecycleDescription.Name = "lblDeviceLifecycleDescription";
+            lblDeviceLifecycleDescription.Size = new Size(506, 66);
+            lblDeviceLifecycleDescription.TabIndex = 1;
+            lblDeviceLifecycleDescription.Text = "Device lifecycle events";
+            lblDeviceLifecycleDescription.TextAlign = ContentAlignment.MiddleLeft;
+            //
+            // deviceLifecycleToolbar
+            //
+            deviceLifecycleToolbar.AutoSize = true;
+            deviceLifecycleToolbar.Controls.Add(lblDeviceLifecycleDate);
+            deviceLifecycleToolbar.Controls.Add(dtpDeviceLifecycleDate);
+            deviceLifecycleToolbar.Controls.Add(lblDeviceLifecycleKeyword);
+            deviceLifecycleToolbar.Controls.Add(txtDeviceLifecycleKeyword);
+            deviceLifecycleToolbar.Controls.Add(btnRefreshDeviceLifecycle);
+            deviceLifecycleToolbar.Controls.Add(btnOpenDeviceLifecycleFolder);
+            deviceLifecycleToolbar.Dock = DockStyle.Right;
+            deviceLifecycleToolbar.Location = new Point(506, 0);
+            deviceLifecycleToolbar.Margin = new Padding(0);
+            deviceLifecycleToolbar.Name = "deviceLifecycleToolbar";
+            deviceLifecycleToolbar.Padding = new Padding(0, 6, 0, 0);
+            deviceLifecycleToolbar.Size = new Size(806, 100);
+            deviceLifecycleToolbar.TabIndex = 1;
+            deviceLifecycleToolbar.WrapContents = false;
+            //
+            // lblDeviceLifecycleDate
+            //
+            lblDeviceLifecycleDate.AutoSize = true;
+            lblDeviceLifecycleDate.Location = new Point(0, 15);
+            lblDeviceLifecycleDate.Margin = new Padding(0, 9, 8, 0);
+            lblDeviceLifecycleDate.Name = "lblDeviceLifecycleDate";
+            lblDeviceLifecycleDate.Size = new Size(51, 24);
+            lblDeviceLifecycleDate.TabIndex = 0;
+            lblDeviceLifecycleDate.Text = "Date";
+            //
+            // dtpDeviceLifecycleDate
+            //
+            dtpDeviceLifecycleDate.CustomFormat = "yyyy-MM-dd";
+            dtpDeviceLifecycleDate.Format = DateTimePickerFormat.Custom;
+            dtpDeviceLifecycleDate.Location = new Point(59, 8);
+            dtpDeviceLifecycleDate.Margin = new Padding(0, 2, 16, 0);
+            dtpDeviceLifecycleDate.Name = "dtpDeviceLifecycleDate";
+            dtpDeviceLifecycleDate.Size = new Size(150, 30);
+            dtpDeviceLifecycleDate.TabIndex = 1;
+            //
+            // lblDeviceLifecycleKeyword
+            //
+            lblDeviceLifecycleKeyword.AutoSize = true;
+            lblDeviceLifecycleKeyword.Location = new Point(225, 15);
+            lblDeviceLifecycleKeyword.Margin = new Padding(0, 9, 8, 0);
+            lblDeviceLifecycleKeyword.Name = "lblDeviceLifecycleKeyword";
+            lblDeviceLifecycleKeyword.Size = new Size(85, 24);
+            lblDeviceLifecycleKeyword.TabIndex = 2;
+            lblDeviceLifecycleKeyword.Text = "Keyword";
+            //
+            // txtDeviceLifecycleKeyword
+            //
+            txtDeviceLifecycleKeyword.Location = new Point(318, 8);
+            txtDeviceLifecycleKeyword.Margin = new Padding(0, 2, 16, 0);
+            txtDeviceLifecycleKeyword.Name = "txtDeviceLifecycleKeyword";
+            txtDeviceLifecycleKeyword.PlaceholderText = "Device / Station / Status / Summary";
+            txtDeviceLifecycleKeyword.Size = new Size(240, 30);
+            txtDeviceLifecycleKeyword.TabIndex = 3;
+            //
+            // btnRefreshDeviceLifecycle
+            //
+            btnRefreshDeviceLifecycle.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnRefreshDeviceLifecycle.BorderWidth = 1F;
+            btnRefreshDeviceLifecycle.IconSvg = "ReloadOutlined";
+            btnRefreshDeviceLifecycle.Location = new Point(577, 9);
+            btnRefreshDeviceLifecycle.Name = "btnRefreshDeviceLifecycle";
+            btnRefreshDeviceLifecycle.Size = new Size(104, 40);
+            btnRefreshDeviceLifecycle.TabIndex = 4;
+            btnRefreshDeviceLifecycle.Tag = "perm:button.log.refresh:enabled";
+            btnRefreshDeviceLifecycle.Text = "Refresh";
+            //
+            // btnOpenDeviceLifecycleFolder
+            //
+            btnOpenDeviceLifecycleFolder.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnOpenDeviceLifecycleFolder.BorderWidth = 1F;
+            btnOpenDeviceLifecycleFolder.IconSvg = "FolderOpenOutlined";
+            btnOpenDeviceLifecycleFolder.Location = new Point(687, 9);
+            btnOpenDeviceLifecycleFolder.Name = "btnOpenDeviceLifecycleFolder";
+            btnOpenDeviceLifecycleFolder.Size = new Size(116, 40);
+            btnOpenDeviceLifecycleFolder.TabIndex = 5;
+            btnOpenDeviceLifecycleFolder.Tag = "perm:button.log.open_folder:enabled";
+            btnOpenDeviceLifecycleFolder.Text = "Open";
+            //
+            // splitDeviceLifecycleContent
+            //
+            splitDeviceLifecycleContent.Dock = DockStyle.Fill;
+            splitDeviceLifecycleContent.Location = new Point(20, 122);
+            splitDeviceLifecycleContent.Margin = new Padding(20, 0, 20, 18);
+            splitDeviceLifecycleContent.Name = "splitDeviceLifecycleContent";
+            //
+            // splitDeviceLifecycleContent.Panel1
+            //
+            splitDeviceLifecycleContent.Panel1.Controls.Add(dgvDeviceLifecycleLogs);
+            splitDeviceLifecycleContent.Panel1.Padding = new Padding(0, 0, 12, 0);
+            //
+            // splitDeviceLifecycleContent.Panel2
+            //
+            splitDeviceLifecycleContent.Panel2.Controls.Add(txtDeviceLifecycleDetail);
+            splitDeviceLifecycleContent.Panel2.Padding = new Padding(12, 0, 0, 0);
+            splitDeviceLifecycleContent.Size = new Size(1312, 566);
+            splitDeviceLifecycleContent.SplitterDistance = 820;
+            splitDeviceLifecycleContent.SplitterWidth = 5;
+            splitDeviceLifecycleContent.TabIndex = 1;
+            //
+            // dgvDeviceLifecycleLogs
+            //
+            dgvDeviceLifecycleLogs.AllowUserToAddRows = false;
+            dgvDeviceLifecycleLogs.AllowUserToDeleteRows = false;
+            dgvDeviceLifecycleLogs.BackgroundColor = SystemColors.Window;
+            dgvDeviceLifecycleLogs.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
+            dgvDeviceLifecycleLogs.Columns.AddRange(new DataGridViewColumn[] { colLifecycleOccurredTime, colLifecycleLevel, colLifecycleEventType, colLifecycleDeviceId, colLifecycleStation, colLifecycleStatus, colLifecycleSummary });
+            dgvDeviceLifecycleLogs.Dock = DockStyle.Fill;
+            dgvDeviceLifecycleLogs.Location = new Point(0, 0);
+            dgvDeviceLifecycleLogs.MultiSelect = false;
+            dgvDeviceLifecycleLogs.Name = "dgvDeviceLifecycleLogs";
+            dgvDeviceLifecycleLogs.ReadOnly = true;
+            dgvDeviceLifecycleLogs.RowHeadersVisible = false;
+            dgvDeviceLifecycleLogs.RowHeadersWidth = 51;
+            dgvDeviceLifecycleLogs.RowTemplate.Height = 28;
+            dgvDeviceLifecycleLogs.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            dgvDeviceLifecycleLogs.Size = new Size(808, 566);
+            dgvDeviceLifecycleLogs.TabIndex = 0;
+            //
+            // colLifecycleOccurredTime
+            //
+            colLifecycleOccurredTime.DataPropertyName = "OccurredTime";
+            colLifecycleOccurredTime.HeaderText = "Time";
+            colLifecycleOccurredTime.MinimumWidth = 150;
+            colLifecycleOccurredTime.Name = "colLifecycleOccurredTime";
+            colLifecycleOccurredTime.ReadOnly = true;
+            colLifecycleOccurredTime.Width = 170;
+            //
+            // colLifecycleLevel
+            //
+            colLifecycleLevel.DataPropertyName = "Level";
+            colLifecycleLevel.HeaderText = "Level";
+            colLifecycleLevel.MinimumWidth = 70;
+            colLifecycleLevel.Name = "colLifecycleLevel";
+            colLifecycleLevel.ReadOnly = true;
+            colLifecycleLevel.Width = 80;
+            //
+            // colLifecycleEventType
+            //
+            colLifecycleEventType.DataPropertyName = "EventType";
+            colLifecycleEventType.HeaderText = "Event";
+            colLifecycleEventType.MinimumWidth = 120;
+            colLifecycleEventType.Name = "colLifecycleEventType";
+            colLifecycleEventType.ReadOnly = true;
+            colLifecycleEventType.Width = 150;
+            //
+            // colLifecycleDeviceId
+            //
+            colLifecycleDeviceId.DataPropertyName = "DeviceId";
+            colLifecycleDeviceId.HeaderText = "Device";
+            colLifecycleDeviceId.MinimumWidth = 110;
+            colLifecycleDeviceId.Name = "colLifecycleDeviceId";
+            colLifecycleDeviceId.ReadOnly = true;
+            colLifecycleDeviceId.Width = 140;
+            //
+            // colLifecycleStation
+            //
+            colLifecycleStation.DataPropertyName = "Station";
+            colLifecycleStation.HeaderText = "Station";
+            colLifecycleStation.MinimumWidth = 70;
+            colLifecycleStation.Name = "colLifecycleStation";
+            colLifecycleStation.ReadOnly = true;
+            colLifecycleStation.Width = 80;
+            //
+            // colLifecycleStatus
+            //
+            colLifecycleStatus.DataPropertyName = "Status";
+            colLifecycleStatus.HeaderText = "Status";
+            colLifecycleStatus.MinimumWidth = 80;
+            colLifecycleStatus.Name = "colLifecycleStatus";
+            colLifecycleStatus.ReadOnly = true;
+            colLifecycleStatus.Width = 90;
+            //
+            // colLifecycleSummary
+            //
+            colLifecycleSummary.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+            colLifecycleSummary.DataPropertyName = "Summary";
+            colLifecycleSummary.HeaderText = "Summary";
+            colLifecycleSummary.MinimumWidth = 160;
+            colLifecycleSummary.Name = "colLifecycleSummary";
+            colLifecycleSummary.ReadOnly = true;
+            //
+            // txtDeviceLifecycleDetail
+            //
+            txtDeviceLifecycleDetail.BackColor = SystemColors.Window;
+            txtDeviceLifecycleDetail.BorderStyle = BorderStyle.FixedSingle;
+            txtDeviceLifecycleDetail.Dock = DockStyle.Fill;
+            txtDeviceLifecycleDetail.Font = new Font("Consolas", 10F);
+            txtDeviceLifecycleDetail.Location = new Point(12, 0);
+            txtDeviceLifecycleDetail.Multiline = true;
+            txtDeviceLifecycleDetail.Name = "txtDeviceLifecycleDetail";
+            txtDeviceLifecycleDetail.ReadOnly = true;
+            txtDeviceLifecycleDetail.ScrollBars = ScrollBars.Both;
+            txtDeviceLifecycleDetail.Size = new Size(475, 566);
+            txtDeviceLifecycleDetail.TabIndex = 0;
+            txtDeviceLifecycleDetail.WordWrap = false;
+            //
             // tabDeviceStatusLogs
-            // 
+            //
             tabDeviceStatusLogs.Controls.Add(deviceStatusRootLayout);
             tabDeviceStatusLogs.Location = new Point(4, 29);
             tabDeviceStatusLogs.Name = "tabDeviceStatusLogs";
             tabDeviceStatusLogs.Padding = new Padding(3);
             tabDeviceStatusLogs.Size = new Size(1358, 712);
-            tabDeviceStatusLogs.TabIndex = 3;
+            tabDeviceStatusLogs.TabIndex = 4;
             tabDeviceStatusLogs.Text = "Device Status";
             tabDeviceStatusLogs.UseVisualStyleBackColor = true;
-            // 
+            //
             // deviceStatusRootLayout
-            // 
+            //
             deviceStatusRootLayout.ColumnCount = 1;
             deviceStatusRootLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             deviceStatusRootLayout.Controls.Add(deviceStatusHeaderLayout, 0, 0);
@@ -1342,9 +1659,9 @@
             deviceStatusRootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             deviceStatusRootLayout.Size = new Size(1352, 706);
             deviceStatusRootLayout.TabIndex = 0;
-            // 
+            //
             // deviceStatusHeaderLayout
-            // 
+            //
             deviceStatusHeaderLayout.ColumnCount = 2;
             deviceStatusHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             deviceStatusHeaderLayout.ColumnStyles.Add(new ColumnStyle());
@@ -1358,9 +1675,9 @@
             deviceStatusHeaderLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             deviceStatusHeaderLayout.Size = new Size(1312, 100);
             deviceStatusHeaderLayout.TabIndex = 0;
-            // 
+            //
             // deviceStatusTitleLayout
-            // 
+            //
             deviceStatusTitleLayout.ColumnCount = 1;
             deviceStatusTitleLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             deviceStatusTitleLayout.Controls.Add(lblDeviceStatusTitle, 0, 0);
@@ -1374,9 +1691,9 @@
             deviceStatusTitleLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             deviceStatusTitleLayout.Size = new Size(605, 100);
             deviceStatusTitleLayout.TabIndex = 0;
-            // 
+            //
             // lblDeviceStatusTitle
-            // 
+            //
             lblDeviceStatusTitle.AutoSize = true;
             lblDeviceStatusTitle.Dock = DockStyle.Fill;
             lblDeviceStatusTitle.Font = new Font("Microsoft YaHei UI", 14F, FontStyle.Bold);
@@ -1387,9 +1704,9 @@
             lblDeviceStatusTitle.TabIndex = 0;
             lblDeviceStatusTitle.Text = "Device Status";
             lblDeviceStatusTitle.TextAlign = ContentAlignment.MiddleLeft;
-            // 
+            //
             // lblDeviceStatusDescription
-            // 
+            //
             lblDeviceStatusDescription.AutoEllipsis = true;
             lblDeviceStatusDescription.Dock = DockStyle.Fill;
             lblDeviceStatusDescription.ForeColor = SystemColors.GrayText;
@@ -1400,9 +1717,9 @@
             lblDeviceStatusDescription.TabIndex = 1;
             lblDeviceStatusDescription.Text = "Device Status details";
             lblDeviceStatusDescription.TextAlign = ContentAlignment.MiddleLeft;
-            // 
+            //
             // deviceStatusToolbar
-            // 
+            //
             deviceStatusToolbar.AutoSize = true;
             deviceStatusToolbar.Controls.Add(lblDeviceStatusDate);
             deviceStatusToolbar.Controls.Add(dtpDeviceStatusDate);
@@ -1417,9 +1734,9 @@
             deviceStatusToolbar.Size = new Size(707, 100);
             deviceStatusToolbar.TabIndex = 1;
             deviceStatusToolbar.WrapContents = false;
-            // 
+            //
             // lblDeviceStatusDate
-            // 
+            //
             lblDeviceStatusDate.AutoSize = true;
             lblDeviceStatusDate.Location = new Point(0, 15);
             lblDeviceStatusDate.Margin = new Padding(0, 9, 8, 0);
@@ -1427,9 +1744,9 @@
             lblDeviceStatusDate.Size = new Size(51, 24);
             lblDeviceStatusDate.TabIndex = 0;
             lblDeviceStatusDate.Text = "Date";
-            // 
+            //
             // dtpDeviceStatusDate
-            // 
+            //
             dtpDeviceStatusDate.CustomFormat = "yyyy-MM-dd";
             dtpDeviceStatusDate.Format = DateTimePickerFormat.Custom;
             dtpDeviceStatusDate.Location = new Point(59, 8);
@@ -1437,9 +1754,9 @@
             dtpDeviceStatusDate.Name = "dtpDeviceStatusDate";
             dtpDeviceStatusDate.Size = new Size(150, 30);
             dtpDeviceStatusDate.TabIndex = 1;
-            // 
+            //
             // lblDeviceStatusKeyword
-            // 
+            //
             lblDeviceStatusKeyword.AutoSize = true;
             lblDeviceStatusKeyword.Location = new Point(225, 15);
             lblDeviceStatusKeyword.Margin = new Padding(0, 9, 8, 0);
@@ -1447,18 +1764,18 @@
             lblDeviceStatusKeyword.Size = new Size(85, 24);
             lblDeviceStatusKeyword.TabIndex = 2;
             lblDeviceStatusKeyword.Text = "Keyword";
-            // 
+            //
             // txtDeviceStatusKeyword
-            // 
+            //
             txtDeviceStatusKeyword.Location = new Point(318, 8);
             txtDeviceStatusKeyword.Margin = new Padding(0, 2, 16, 0);
             txtDeviceStatusKeyword.Name = "txtDeviceStatusKeyword";
             txtDeviceStatusKeyword.PlaceholderText = "Station / Status / WorkOrder / Source";
             txtDeviceStatusKeyword.Size = new Size(250, 30);
             txtDeviceStatusKeyword.TabIndex = 3;
-            // 
+            //
             // btnRefreshDeviceStatus
-            // 
+            //
             btnRefreshDeviceStatus.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnRefreshDeviceStatus.BorderWidth = 1F;
             btnRefreshDeviceStatus.IconSvg = "ReloadOutlined";
@@ -1468,30 +1785,30 @@
             btnRefreshDeviceStatus.TabIndex = 4;
             btnRefreshDeviceStatus.Tag = "perm:button.log.refresh:enabled";
             btnRefreshDeviceStatus.Text = "Refresh";
-            // 
+            //
             // splitDeviceStatusContent
-            // 
+            //
             splitDeviceStatusContent.Dock = DockStyle.Fill;
             splitDeviceStatusContent.Location = new Point(20, 122);
             splitDeviceStatusContent.Margin = new Padding(20, 0, 20, 18);
             splitDeviceStatusContent.Name = "splitDeviceStatusContent";
-            // 
+            //
             // splitDeviceStatusContent.Panel1
-            // 
+            //
             splitDeviceStatusContent.Panel1.Controls.Add(dgvDeviceStatusLogs);
             splitDeviceStatusContent.Panel1.Padding = new Padding(0, 0, 12, 0);
-            // 
+            //
             // splitDeviceStatusContent.Panel2
-            // 
+            //
             splitDeviceStatusContent.Panel2.Controls.Add(txtDeviceStatusDetail);
             splitDeviceStatusContent.Panel2.Padding = new Padding(12, 0, 0, 0);
             splitDeviceStatusContent.Size = new Size(1312, 566);
             splitDeviceStatusContent.SplitterDistance = 820;
             splitDeviceStatusContent.SplitterWidth = 5;
             splitDeviceStatusContent.TabIndex = 1;
-            // 
+            //
             // dgvDeviceStatusLogs
-            // 
+            //
             dgvDeviceStatusLogs.AllowUserToAddRows = false;
             dgvDeviceStatusLogs.AllowUserToDeleteRows = false;
             dgvDeviceStatusLogs.BackgroundColor = SystemColors.Window;
@@ -1508,9 +1825,9 @@
             dgvDeviceStatusLogs.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             dgvDeviceStatusLogs.Size = new Size(808, 566);
             dgvDeviceStatusLogs.TabIndex = 0;
-            // 
+            //
             // colDeviceOccurredTime
-            // 
+            //
             colDeviceOccurredTime.DataPropertyName = "OccurredTime";
             colDeviceOccurredTime.FillWeight = 14F;
             colDeviceOccurredTime.HeaderText = "Time";
@@ -1518,9 +1835,9 @@
             colDeviceOccurredTime.Name = "colDeviceOccurredTime";
             colDeviceOccurredTime.ReadOnly = true;
             colDeviceOccurredTime.Width = 125;
-            // 
+            //
             // colDeviceStation
-            // 
+            //
             colDeviceStation.DataPropertyName = "Station";
             colDeviceStation.FillWeight = 8F;
             colDeviceStation.HeaderText = "Station";
@@ -1528,9 +1845,9 @@
             colDeviceStation.Name = "colDeviceStation";
             colDeviceStation.ReadOnly = true;
             colDeviceStation.Width = 125;
-            // 
+            //
             // colDeviceStatus
-            // 
+            //
             colDeviceStatus.DataPropertyName = "DeviceState";
             colDeviceStatus.FillWeight = 10F;
             colDeviceStatus.HeaderText = "Status Code";
@@ -1538,9 +1855,9 @@
             colDeviceStatus.Name = "colDeviceStatus";
             colDeviceStatus.ReadOnly = true;
             colDeviceStatus.Width = 125;
-            // 
+            //
             // colDeviceStatusName
-            // 
+            //
             colDeviceStatusName.DataPropertyName = "StatusName";
             colDeviceStatusName.FillWeight = 14F;
             colDeviceStatusName.HeaderText = "Status";
@@ -1548,9 +1865,9 @@
             colDeviceStatusName.Name = "colDeviceStatusName";
             colDeviceStatusName.ReadOnly = true;
             colDeviceStatusName.Width = 125;
-            // 
+            //
             // colDeviceWorkOrder
-            // 
+            //
             colDeviceWorkOrder.DataPropertyName = "SN";
             colDeviceWorkOrder.FillWeight = 16F;
             colDeviceWorkOrder.HeaderText = "Work Order";
@@ -1558,9 +1875,9 @@
             colDeviceWorkOrder.Name = "colDeviceWorkOrder";
             colDeviceWorkOrder.ReadOnly = true;
             colDeviceWorkOrder.Width = 125;
-            // 
+            //
             // colDeviceSource
-            // 
+            //
             colDeviceSource.DataPropertyName = "Source";
             colDeviceSource.FillWeight = 13F;
             colDeviceSource.HeaderText = "Source";
@@ -1568,9 +1885,9 @@
             colDeviceSource.Name = "colDeviceSource";
             colDeviceSource.ReadOnly = true;
             colDeviceSource.Width = 125;
-            // 
+            //
             // colDeviceReportStatus
-            // 
+            //
             colDeviceReportStatus.DataPropertyName = "ReportStatus";
             colDeviceReportStatus.FillWeight = 13F;
             colDeviceReportStatus.HeaderText = "Upload Status";
@@ -1578,9 +1895,9 @@
             colDeviceReportStatus.Name = "colDeviceReportStatus";
             colDeviceReportStatus.ReadOnly = true;
             colDeviceReportStatus.Width = 125;
-            // 
+            //
             // colDeviceReportMessage
-            // 
+            //
             colDeviceReportMessage.DataPropertyName = "ReportMessage";
             colDeviceReportMessage.FillWeight = 22F;
             colDeviceReportMessage.HeaderText = "Upload Message";
@@ -1588,9 +1905,9 @@
             colDeviceReportMessage.Name = "colDeviceReportMessage";
             colDeviceReportMessage.ReadOnly = true;
             colDeviceReportMessage.Width = 125;
-            // 
+            //
             // txtDeviceStatusDetail
-            // 
+            //
             txtDeviceStatusDetail.BackColor = SystemColors.Window;
             txtDeviceStatusDetail.BorderStyle = BorderStyle.FixedSingle;
             txtDeviceStatusDetail.Dock = DockStyle.Fill;
@@ -1603,9 +1920,9 @@
             txtDeviceStatusDetail.Size = new Size(475, 566);
             txtDeviceStatusDetail.TabIndex = 0;
             txtDeviceStatusDetail.WordWrap = false;
-            // 
+            //
             // LogManageView
-            // 
+            //
             AutoScaleDimensions = new SizeF(10F, 23F);
             AutoScaleMode = AutoScaleMode.Font;
             Controls.Add(tabLogCategories);
@@ -1676,6 +1993,20 @@
             tabExceptionStackTrace.PerformLayout();
             tabExceptionContext.ResumeLayout(false);
             tabExceptionContext.PerformLayout();
+            tabDeviceLifecycleLogs.ResumeLayout(false);
+            deviceLifecycleRootLayout.ResumeLayout(false);
+            deviceLifecycleHeaderLayout.ResumeLayout(false);
+            deviceLifecycleHeaderLayout.PerformLayout();
+            deviceLifecycleTitleLayout.ResumeLayout(false);
+            deviceLifecycleTitleLayout.PerformLayout();
+            deviceLifecycleToolbar.ResumeLayout(false);
+            deviceLifecycleToolbar.PerformLayout();
+            splitDeviceLifecycleContent.Panel1.ResumeLayout(false);
+            splitDeviceLifecycleContent.Panel2.ResumeLayout(false);
+            splitDeviceLifecycleContent.Panel2.PerformLayout();
+            ((System.ComponentModel.ISupportInitialize)splitDeviceLifecycleContent).EndInit();
+            splitDeviceLifecycleContent.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)dgvDeviceLifecycleLogs).EndInit();
             tabDeviceStatusLogs.ResumeLayout(false);
             deviceStatusRootLayout.ResumeLayout(false);
             deviceStatusHeaderLayout.ResumeLayout(false);
@@ -1739,6 +2070,22 @@
         private AntdUI.Button btnOpenExceptionFolder;
         private SplitContainer splitExceptionContent;
         private DataGridView dgvExceptionLogs;
+        private TabPage tabDeviceLifecycleLogs;
+        private TableLayoutPanel deviceLifecycleRootLayout;
+        private TableLayoutPanel deviceLifecycleHeaderLayout;
+        private TableLayoutPanel deviceLifecycleTitleLayout;
+        private Label lblDeviceLifecycleTitle;
+        private Label lblDeviceLifecycleDescription;
+        private FlowLayoutPanel deviceLifecycleToolbar;
+        private Label lblDeviceLifecycleDate;
+        private DateTimePicker dtpDeviceLifecycleDate;
+        private Label lblDeviceLifecycleKeyword;
+        private TextBox txtDeviceLifecycleKeyword;
+        private AntdUI.Button btnRefreshDeviceLifecycle;
+        private AntdUI.Button btnOpenDeviceLifecycleFolder;
+        private SplitContainer splitDeviceLifecycleContent;
+        private DataGridView dgvDeviceLifecycleLogs;
+        private TextBox txtDeviceLifecycleDetail;
         private TabPage tabDeviceStatusLogs;
         private TableLayoutPanel deviceStatusRootLayout;
         private TableLayoutPanel deviceStatusHeaderLayout;
@@ -1797,6 +2144,13 @@
         private DataGridViewTextBoxColumn colExceptionMessage;
         private DataGridViewTextBoxColumn colExceptionSource;
         private DataGridViewTextBoxColumn colExceptionSourceLocation;
+        private DataGridViewTextBoxColumn colLifecycleOccurredTime;
+        private DataGridViewTextBoxColumn colLifecycleLevel;
+        private DataGridViewTextBoxColumn colLifecycleEventType;
+        private DataGridViewTextBoxColumn colLifecycleDeviceId;
+        private DataGridViewTextBoxColumn colLifecycleStation;
+        private DataGridViewTextBoxColumn colLifecycleStatus;
+        private DataGridViewTextBoxColumn colLifecycleSummary;
         private DataGridViewTextBoxColumn colDeviceOccurredTime;
         private DataGridViewTextBoxColumn colDeviceStation;
         private DataGridViewTextBoxColumn colDeviceStatus;

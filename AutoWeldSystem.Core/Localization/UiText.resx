@@ -1263,11 +1263,17 @@
   <data name="log.tab.program_exception" xml:space="preserve">
     <value>程序异常日志</value>
   </data>
+  <data name="log.tab.device_lifecycle" xml:space="preserve">
+    <value>设备日志</value>
+  </data>
   <data name="log.description.mes_interaction" xml:space="preserve">
     <value>实时显示本机 MES 请求、响应和异常，日志目录跟随系统设置。</value>
   </data>
   <data name="log.description.program_exception" xml:space="preserve">
     <value>记录程序异常、源码位置和完整堆栈，帮助快速定位问题代码。</value>
+  </data>
+  <data name="log.description.device_lifecycle" xml:space="preserve">
+    <value>记录软件开启、自检、测试程序运行和故障报警等设备生命周期事件。</value>
   </data>
   <data name="log.label.date" xml:space="preserve">
     <value>日志日期</value>
@@ -1331,6 +1337,24 @@
   </data>
   <data name="log.column.source_line" xml:space="preserve">
     <value>源码位置</value>
+  </data>
+  <data name="log.column.level" xml:space="preserve">
+    <value>级别</value>
+  </data>
+  <data name="log.column.event" xml:space="preserve">
+    <value>事件</value>
+  </data>
+  <data name="log.column.device_id" xml:space="preserve">
+    <value>设备编号</value>
+  </data>
+  <data name="log.column.station" xml:space="preserve">
+    <value>工位</value>
+  </data>
+  <data name="log.column.status" xml:space="preserve">
+    <value>状态</value>
+  </data>
+  <data name="log.column.summary" xml:space="preserve">
+    <value>摘要</value>
   </data>
   <data name="log.detail.request" xml:space="preserve">
     <value>请求报文</value>

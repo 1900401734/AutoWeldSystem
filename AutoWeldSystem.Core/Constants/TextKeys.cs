@@ -896,8 +896,10 @@ public static class TextKeys
         public const string TitleMesInteraction = "log.title.mes_interaction";
         public const string TabProductionFlow = "log.tab.production_flow";
         public const string TabProgramException = "log.tab.program_exception";
+        public const string TabDeviceLifecycle = "log.tab.device_lifecycle";
         public const string DescriptionMesInteraction = "log.description.mes_interaction";
         public const string DescriptionProgramException = "log.description.program_exception";
+        public const string DescriptionDeviceLifecycle = "log.description.device_lifecycle";
         public const string LabelDate = "log.label.date";
         public const string LabelKeyword = "log.label.keyword";
         public const string ButtonRefresh = "log.button.refresh";
@@ -919,6 +921,12 @@ public static class TextKeys
         public const string ColumnMessage = "log.column.message";
         public const string ColumnSource = "log.column.source";
         public const string ColumnSourceLine = "log.column.source_line";
+        public const string ColumnLevel = "log.column.level";
+        public const string ColumnEvent = "log.column.event";
+        public const string ColumnDeviceId = "log.column.device_id";
+        public const string ColumnStation = "log.column.station";
+        public const string ColumnStatus = "log.column.status";
+        public const string ColumnSummary = "log.column.summary";
         public const string DetailRequest = "log.detail.request";
         public const string DetailResponse = "log.detail.response";
         public const string DetailBasicInfo = "log.detail.basic_info";

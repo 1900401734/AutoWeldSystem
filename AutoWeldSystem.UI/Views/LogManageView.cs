@@ -33,20 +33,24 @@ public partial class LogManageView : BaseView
     private readonly IMesInteractionLogService _mesLogService = null!;
     private readonly IProductionFlowLogService _productionLogService = null!;
     private readonly IProgramExceptionLogService _exceptionLogService = null!;
+    private readonly IDeviceLifecycleLogService _deviceLifecycleLogService = null!;
     private readonly IDeviceStatusService _deviceStatusService = null!;
     private readonly ILocalizationService _localizer = null!;
     private readonly BindingSource _mesBindingSource = new();
     private readonly BindingSource _productionBindingSource = new();
     private readonly BindingSource _exceptionBindingSource = new();
+    private readonly BindingSource _deviceLifecycleBindingSource = new();
     private readonly BindingSource _deviceStatusBindingSource = new();
     private readonly List<MesInteractionLogEntry> _mesLogs = new();
     private readonly List<ProductionFlowLogEntry> _productionLogs = new();
     private readonly List<ProgramExceptionLogEntry> _exceptionLogs = new();
+    private readonly List<DeviceLifecycleLogEntry> _deviceLifecycleLogs = new();
     private readonly List<BizDeviceStatusLog> _deviceStatusLogs = new();
     private bool _initialized;
     private string _keyword = string.Empty;
     private string _productionKeyword = string.Empty;
     private string _exceptionKeyword = string.Empty;
+    private string _deviceLifecycleKeyword = string.Empty;
     private string _deviceStatusKeyword = string.Empty;
 
     /// <summary>
@@ -62,12 +66,14 @@ public partial class LogManageView : BaseView
         IMesInteractionLogService mesLogService,
         IProductionFlowLogService productionLogService,
         IProgramExceptionLogService exceptionLogService,
+        IDeviceLifecycleLogService deviceLifecycleLogService,
         IDeviceStatusService deviceStatusService,
         ILocalizationService localizer)
     {
         _mesLogService = mesLogService;
         _productionLogService = productionLogService;
         _exceptionLogService = exceptionLogService;
+        _deviceLifecycleLogService = deviceLifecycleLogService;
         _deviceStatusService = deviceStatusService;
         _localizer = localizer;
 
@@ -75,6 +81,7 @@ public partial class LogManageView : BaseView
         ConfigureMesGrid();
         ConfigureProductionGrid();
         ConfigureExceptionGrid();
+        ConfigureDeviceLifecycleGrid();
         ConfigureDeviceStatusGrid();
         WireEvents();
     }
@@ -92,10 +99,12 @@ public partial class LogManageView : BaseView
         dtpMesDate.Value = DateTime.Today;
         dtpProductionDate.Value = DateTime.Today;
         dtpExceptionDate.Value = DateTime.Today;
+        dtpDeviceLifecycleDate.Value = DateTime.Today;
         dtpDeviceStatusDate.Value = DateTime.Today;
         LoadMesLogs();
         LoadProductionLogs();
         LoadExceptionLogs();
+        LoadDeviceLifecycleLogs();
         LoadDeviceStatusLogs();
     }
 
@@ -110,10 +119,12 @@ public partial class LogManageView : BaseView
         ApplyMesGridHeaders();
         ApplyProductionGridHeaders();
         ApplyExceptionGridHeaders();
+        ApplyDeviceLifecycleGridHeaders();
         ApplyDeviceStatusGridHeaders();
         ApplyMesFilter();
         ApplyProductionFilter();
         ApplyExceptionFilter();
+        ApplyDeviceLifecycleFilter();
         ApplyDeviceStatusFilter();
     }
 
@@ -152,6 +163,17 @@ public partial class LogManageView : BaseView
         dgvExceptionLogs.AutoGenerateColumns = false;
         dgvExceptionLogs.DataSource = _exceptionBindingSource;
         ApplyExceptionGridHeaders();
+    }
+
+    /// <summary>
+    /// Applies the shared runtime style and binds the independent device lifecycle log data source.
+    /// </summary>
+    private void ConfigureDeviceLifecycleGrid()
+    {
+        TableStyleHelper.ApplyDataGridView(dgvDeviceLifecycleLogs);
+        dgvDeviceLifecycleLogs.AutoGenerateColumns = false;
+        dgvDeviceLifecycleLogs.DataSource = _deviceLifecycleBindingSource;
+        ApplyDeviceLifecycleGridHeaders();
     }
 
     /// <summary>
@@ -207,6 +229,18 @@ public partial class LogManageView : BaseView
         _exceptionLogService.LogWritten += ExceptionLogService_LogWritten;
         Disposed += (_, _) => _exceptionLogService.LogWritten -= ExceptionLogService_LogWritten;
 
+        btnRefreshDeviceLifecycle.Click += (_, _) => LoadDeviceLifecycleLogs();
+        btnOpenDeviceLifecycleFolder.Click += (_, _) => OpenDeviceLifecycleLogFolder();
+        dtpDeviceLifecycleDate.ValueChanged += (_, _) => LoadDeviceLifecycleLogs();
+        txtDeviceLifecycleKeyword.TextChanged += (_, _) =>
+        {
+            _deviceLifecycleKeyword = txtDeviceLifecycleKeyword.Text.Trim();
+            ApplyDeviceLifecycleFilter();
+        };
+        dgvDeviceLifecycleLogs.SelectionChanged += (_, _) => ShowSelectedDeviceLifecycleDetails();
+        _deviceLifecycleLogService.LogWritten += DeviceLifecycleLogService_LogWritten;
+        Disposed += (_, _) => _deviceLifecycleLogService.LogWritten -= DeviceLifecycleLogService_LogWritten;
+
         btnRefreshDeviceStatus.Click += (_, _) => LoadDeviceStatusLogs();
         dtpDeviceStatusDate.ValueChanged += (_, _) => LoadDeviceStatusLogs();
         txtDeviceStatusKeyword.TextChanged += (_, _) =>
@@ -224,6 +258,7 @@ public partial class LogManageView : BaseView
         tabMesLogs.Text = _localizer.GetString(TextKeys.Log.TitleMesInteraction);
         tabProductionLogs.Text = _localizer.GetString(TextKeys.Log.TabProductionFlow);
         tabExceptionLogs.Text = _localizer.GetString(TextKeys.Log.TabProgramException);
+        tabDeviceLifecycleLogs.Text = _localizer.GetString(TextKeys.Log.TabDeviceLifecycle);
         tabDeviceStatusLogs.Text = "设备状态日志";
         lblMesTitle.Text = _localizer.GetString(TextKeys.Log.TitleMesInteraction);
         lblMesDescription.Text = _localizer.GetString(TextKeys.Log.DescriptionMesInteraction);
@@ -231,23 +266,29 @@ public partial class LogManageView : BaseView
         lblProductionDescription.Text = "记录PLC触发、数据采集、保存和反馈等采集流程关键步骤。";
         lblExceptionTitle.Text = _localizer.GetString(TextKeys.Log.TabProgramException);
         lblExceptionDescription.Text = _localizer.GetString(TextKeys.Log.DescriptionProgramException);
+        lblDeviceLifecycleTitle.Text = _localizer.GetString(TextKeys.Log.TabDeviceLifecycle);
+        lblDeviceLifecycleDescription.Text = _localizer.GetString(TextKeys.Log.DescriptionDeviceLifecycle);
         lblDeviceStatusTitle.Text = "设备状态日志";
         lblDeviceStatusDescription.Text = "只记录设备状态变化，并显示 PLC 原始状态上报结果。";
         lblMesDate.Text = _localizer.GetString(TextKeys.Log.LabelDate);
         lblProductionDate.Text = _localizer.GetString(TextKeys.Log.LabelDate);
         lblExceptionDate.Text = _localizer.GetString(TextKeys.Log.LabelDate);
+        lblDeviceLifecycleDate.Text = _localizer.GetString(TextKeys.Log.LabelDate);
         lblDeviceStatusDate.Text = _localizer.GetString(TextKeys.Log.LabelDate);
         lblMesKeyword.Text = _localizer.GetString(TextKeys.Log.LabelKeyword);
         lblProductionKeyword.Text = _localizer.GetString(TextKeys.Log.LabelKeyword);
         lblExceptionKeyword.Text = _localizer.GetString(TextKeys.Log.LabelKeyword);
+        lblDeviceLifecycleKeyword.Text = _localizer.GetString(TextKeys.Log.LabelKeyword);
         lblDeviceStatusKeyword.Text = _localizer.GetString(TextKeys.Log.LabelKeyword);
         btnRefreshMes.Text = _localizer.GetString(TextKeys.Log.ButtonRefresh);
         btnRefreshProduction.Text = _localizer.GetString(TextKeys.Log.ButtonRefresh);
         btnRefreshException.Text = _localizer.GetString(TextKeys.Log.ButtonRefresh);
+        btnRefreshDeviceLifecycle.Text = _localizer.GetString(TextKeys.Log.ButtonRefresh);
         btnRefreshDeviceStatus.Text = _localizer.GetString(TextKeys.Log.ButtonRefresh);
         btnOpenMesFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
         btnOpenProductionFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
         btnOpenExceptionFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
+        btnOpenDeviceLifecycleFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
         btnOpenExceptionSource.Text = _localizer.GetString(TextKeys.Log.ButtonOpenSource);
         btnCopyExceptionDetails.Text = _localizer.GetString(TextKeys.Log.ButtonCopyDetails);
         tabBasicInfo.Text = _localizer.GetString(TextKeys.Log.DetailBasicInfo);
@@ -271,6 +312,11 @@ public partial class LogManageView : BaseView
         if (dgvExceptionLogs.CurrentRow?.DataBoundItem is null)
         {
             ShowExceptionDetails(null);
+        }
+
+        if (dgvDeviceLifecycleLogs.CurrentRow?.DataBoundItem is null)
+        {
+            ShowDeviceLifecycleDetails(null);
         }
 
         if (dgvDeviceStatusLogs.CurrentRow?.DataBoundItem is null)
@@ -309,6 +355,17 @@ public partial class LogManageView : BaseView
         colExceptionMessage.HeaderText = _localizer.GetString(TextKeys.Log.ColumnMessage);
         colExceptionSource.HeaderText = _localizer.GetString(TextKeys.Log.ColumnSource);
         colExceptionSourceLocation.HeaderText = _localizer.GetString(TextKeys.Log.ColumnSourceLine);
+    }
+
+    private void ApplyDeviceLifecycleGridHeaders()
+    {
+        colLifecycleOccurredTime.HeaderText = _localizer.GetString(TextKeys.Log.ColumnOccurredTime);
+        colLifecycleLevel.HeaderText = _localizer.GetString(TextKeys.Log.ColumnLevel);
+        colLifecycleEventType.HeaderText = _localizer.GetString(TextKeys.Log.ColumnEvent);
+        colLifecycleDeviceId.HeaderText = _localizer.GetString(TextKeys.Log.ColumnDeviceId);
+        colLifecycleStation.HeaderText = _localizer.GetString(TextKeys.Log.ColumnStation);
+        colLifecycleStatus.HeaderText = _localizer.GetString(TextKeys.Log.ColumnStatus);
+        colLifecycleSummary.HeaderText = _localizer.GetString(TextKeys.Log.ColumnSummary);
     }
 
     private void ApplyDeviceStatusGridHeaders()
@@ -360,6 +417,20 @@ public partial class LogManageView : BaseView
             _exceptionLogs.Clear();
             _exceptionLogs.AddRange(_exceptionLogService.GetByDate(dtpExceptionDate.Value.Date, MaxDisplayCount));
             ApplyExceptionFilter();
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex.Message);
+        }
+    }
+
+    private void LoadDeviceLifecycleLogs()
+    {
+        try
+        {
+            _deviceLifecycleLogs.Clear();
+            _deviceLifecycleLogs.AddRange(_deviceLifecycleLogService.GetByDate(dtpDeviceLifecycleDate.Value.Date, MaxDisplayCount));
+            ApplyDeviceLifecycleFilter();
         }
         catch (Exception ex)
         {
@@ -437,6 +508,24 @@ public partial class LogManageView : BaseView
         SelectFirstRowIfNeeded(dgvExceptionLogs);
 
         ShowSelectedExceptionDetails();
+    }
+
+    private void ApplyDeviceLifecycleFilter()
+    {
+        var rows = _deviceLifecycleLogs
+            .Where(entry => IsDeviceLifecycleLogMatched(entry, _deviceLifecycleKeyword))
+            .Select(entry => new DeviceLifecycleLogRow(entry))
+            .ToList();
+
+        _deviceLifecycleBindingSource.DataSource = rows;
+        if (rows.Count == 0)
+        {
+            ShowDeviceLifecycleDetails(null);
+            return;
+        }
+
+        SelectFirstRowIfNeeded(dgvDeviceLifecycleLogs);
+        ShowSelectedDeviceLifecycleDetails();
     }
 
     private void ApplyDeviceStatusFilter()
@@ -558,6 +647,24 @@ public partial class LogManageView : BaseView
             || Contains(entry.InnerException, keyword);
     }
 
+    private static bool IsDeviceLifecycleLogMatched(DeviceLifecycleLogEntry entry, string keyword)
+    {
+        if (string.IsNullOrWhiteSpace(keyword))
+        {
+            return true;
+        }
+
+        return Contains(entry.TraceId, keyword)
+            || Contains(entry.Level, keyword)
+            || Contains(entry.EventType, keyword)
+            || Contains(entry.DeviceId, keyword)
+            || entry.StationNo.ToString().Contains(keyword, StringComparison.OrdinalIgnoreCase)
+            || Contains(entry.Status, keyword)
+            || Contains(entry.Summary, keyword)
+            || Contains(entry.Detail, keyword)
+            || Contains(entry.Source, keyword);
+    }
+
     private static bool IsDeviceStatusLogMatched(BizDeviceStatusLog entry, string keyword)
     {
         if (string.IsNullOrWhiteSpace(keyword))
@@ -618,6 +725,16 @@ public partial class LogManageView : BaseView
         }
 
         RunOnUiThread(() => AddLiveExceptionLog(entry), "LogManageView.ExceptionLogWritten");
+    }
+
+    private void DeviceLifecycleLogService_LogWritten(object? sender, DeviceLifecycleLogEntry entry)
+    {
+        if (IsDisposed || !IsHandleCreated)
+        {
+            return;
+        }
+
+        RunOnUiThread(() => AddLiveDeviceLifecycleLog(entry), "LogManageView.DeviceLifecycleLogWritten");
     }
 
     private void DeviceStatusService_StatusChanged(object? sender, BizDeviceStatusLog entry)
@@ -683,6 +800,22 @@ public partial class LogManageView : BaseView
         ApplyExceptionFilter();
     }
 
+    private void AddLiveDeviceLifecycleLog(DeviceLifecycleLogEntry entry)
+    {
+        if (entry.OccurredTime.Date != dtpDeviceLifecycleDate.Value.Date)
+        {
+            return;
+        }
+
+        _deviceLifecycleLogs.Insert(0, entry);
+        if (_deviceLifecycleLogs.Count > MaxDisplayCount)
+        {
+            _deviceLifecycleLogs.RemoveRange(MaxDisplayCount, _deviceLifecycleLogs.Count - MaxDisplayCount);
+        }
+
+        ApplyDeviceLifecycleFilter();
+    }
+
     private void AddLiveDeviceStatusLog(BizDeviceStatusLog entry)
     {
         if (entry.OccurredTime.Date != dtpDeviceStatusDate.Value.Date)
@@ -714,6 +847,12 @@ public partial class LogManageView : BaseView
     private void ShowSelectedExceptionDetails()
     {
         ShowExceptionDetails(GetSelectedExceptionEntry());
+    }
+
+    private void ShowSelectedDeviceLifecycleDetails()
+    {
+        var row = dgvDeviceLifecycleLogs.CurrentRow?.DataBoundItem as DeviceLifecycleLogRow;
+        ShowDeviceLifecycleDetails(row?.Entry);
     }
 
     private void ShowSelectedDeviceStatusDetails()
@@ -787,6 +926,13 @@ public partial class LogManageView : BaseView
         txtExceptionContext.Text = BuildExceptionContext(entry);
     }
 
+    private void ShowDeviceLifecycleDetails(DeviceLifecycleLogEntry? entry)
+    {
+        txtDeviceLifecycleDetail.Text = entry is null
+            ? _localizer.GetString(TextKeys.Log.DetailNoSelection)
+            : BuildDeviceLifecycleBasicInfo(entry);
+    }
+
     private void ShowDeviceStatusDetails(BizDeviceStatusLog? entry)
     {
         txtDeviceStatusDetail.Text = entry is null
@@ -856,6 +1002,22 @@ public partial class LogManageView : BaseView
         builder.AppendLine($"Thread: {entry.ThreadId} {entry.ThreadName}".TrimEnd());
         builder.AppendLine($"User: {entry.MachineName}\\{entry.UserName}");
         builder.AppendLine($"AppVersion: {entry.ApplicationVersion}");
+        return builder.ToString();
+    }
+
+    private static string BuildDeviceLifecycleBasicInfo(DeviceLifecycleLogEntry entry)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine($"TraceId: {entry.TraceId}");
+        builder.AppendLine($"Time: {entry.OccurredTime:yyyy-MM-dd HH:mm:ss.fff}");
+        builder.AppendLine($"Level: {entry.Level}");
+        builder.AppendLine($"EventType: {entry.EventType}");
+        builder.AppendLine($"DeviceId: {entry.DeviceId}");
+        builder.AppendLine($"Station: {(entry.StationNo <= 0 ? "-" : entry.StationNo.ToString())}");
+        builder.AppendLine($"Status: {entry.Status}");
+        builder.AppendLine($"Source: {entry.Source}");
+        builder.AppendLine($"Summary: {entry.Summary}");
+        builder.AppendLine($"Detail: {entry.Detail}");
         return builder.ToString();
     }
 
@@ -1073,6 +1235,24 @@ public partial class LogManageView : BaseView
         }
     }
 
+    private void OpenDeviceLifecycleLogFolder()
+    {
+        try
+        {
+            var folder = _deviceLifecycleLogService.GetLogDirectory();
+            Directory.CreateDirectory(folder);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = folder,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex.Message);
+        }
+    }
+
     private void OpenSelectedExceptionSource()
     {
         var entry = GetSelectedExceptionEntry();
@@ -1195,6 +1375,30 @@ public partial class LogManageView : BaseView
         public string Station => Entry.StationNo <= 0 ? "-" : Entry.StationNo.ToString();
 
         public string PlcSignal { get; }
+    }
+
+    private sealed class DeviceLifecycleLogRow
+    {
+        public DeviceLifecycleLogRow(DeviceLifecycleLogEntry entry)
+        {
+            Entry = entry;
+        }
+
+        public DeviceLifecycleLogEntry Entry { get; }
+
+        public string OccurredTime => Entry.OccurredTime.ToString("yyyy-MM-dd HH:mm:ss.fff");
+
+        public string Level => Entry.Level;
+
+        public string EventType => Entry.EventType;
+
+        public string DeviceId => string.IsNullOrWhiteSpace(Entry.DeviceId) ? "-" : Entry.DeviceId;
+
+        public string Station => Entry.StationNo <= 0 ? "-" : Entry.StationNo.ToString();
+
+        public string Status => string.IsNullOrWhiteSpace(Entry.Status) ? "-" : Entry.Status;
+
+        public string Summary => string.IsNullOrWhiteSpace(Entry.Summary) ? "-" : Entry.Summary;
     }
 
     private sealed class DeviceStatusLogRow
