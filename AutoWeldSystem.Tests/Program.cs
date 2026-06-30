@@ -3,6 +3,7 @@ using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Center;
 using AutoWeldSystem.Core.DTOs.CenterServer;
 using AutoWeldSystem.Core.DTOs.Mes.Request;
+using AutoWeldSystem.Core.DTOs.Mes.Response;
 using AutoWeldSystem.Core.DTOs.Upload;
 using AutoWeldSystem.Core.Plc;
 using AutoWeldSystem.Core.Production;
@@ -23,6 +24,8 @@ var tests = new (string Name, Action Run)[]
     ("PLC string numeric formatter truncates when enabled", PlcStringNumericFormatterTruncatesWhenEnabled),
     ("PLC string numeric formatter rounds when enabled", PlcStringNumericFormatterRoundsWhenEnabled),
     ("PLC string numeric formatter keeps non numeric text", PlcStringNumericFormatterKeepsNonNumericText),
+    ("PLC debug write rules parse bool aliases", PlcDebugWriteRulesParseBoolAliases),
+    ("PLC debug write rules normalize unsupported data type", PlcDebugWriteRulesNormalizeUnsupportedDataType),
     ("Pre-weld NG is treated as failed product result", PreWeldNgIsTreatedAsFailedProductResult),
     ("Center device key uses DeviceId only", CenterDeviceKeyUsesDeviceIdOnly),
     ("Center client online uses heartbeat freshness", CenterClientOnlineUsesHeartbeatFreshness),
@@ -42,7 +45,27 @@ var tests = new (string Name, Action Run)[]
     ("Process parameter pending product rows are read only", ProcessParameterPendingProductRowsAreReadOnly),
     ("Process parameter IsTest follows global setting and device type", ProcessParameterIsTestFollowsGlobalSettingAndDeviceType),
     ("Quantity upload batches product scopes and unique task ids", QuantityUploadBatchesProductScopesAndUniqueTaskIds),
-    ("Process parameter upload payload reads product scope fields", ProcessParameterUploadPayloadReadsProductScopeFields)
+    ("Process parameter upload payload reads product scope fields", ProcessParameterUploadPayloadReadsProductScopeFields),
+    ("Device lifecycle connection logs only when state changes", DeviceLifecycleConnectionLogsOnlyWhenStateChanges),
+    ("Device lifecycle alarm logs enter change and recovery", DeviceLifecycleAlarmLogsEnterChangeAndRecovery),
+    ("Program name rules extract component code", ProgramNameRulesExtractComponentCode),
+    ("Program name rules reject invalid component code", ProgramNameRulesRejectInvalidComponentCode),
+    ("Offline program dropdown displays program name", OfflineProgramDropdownDisplaysProgramName),
+    ("Offline start request follows inline monitor input", OfflineStartRequestFollowsInlineMonitorInput),
+    ("Program MES sync ignores local-only fields", ProgramMesSyncIgnoresLocalOnlyFields),
+    ("Program MES sync detects remote fields", ProgramMesSyncDetectsRemoteFields),
+    ("Program MES save action uses update for remote program content", ProgramMesSaveActionUsesUpdateForRemoteProgramContent),
+    ("Program MES current save action separates pending actions", ProgramMesCurrentSaveActionSeparatesPendingActions),
+    ("Program MES executable action never creates when MES id exists", ProgramMesExecutableActionNeverCreatesWhenMesIdExists),
+    ("Program remark rules default by action", ProgramRemarkRulesDefaultByAction),
+    ("Program MES write payload omits recipe code", ProgramMesWritePayloadOmitsRecipeCode),
+    ("Monitor report button rules follow MES and task state", MonitorReportButtonRulesFollowMesAndTaskState),
+    ("Program content rows come from dictionary items", ProgramContentRowsComeFromDictionaryItems),
+    ("Program content JSON keeps only rows with standard values", ProgramContentJsonKeepsOnlyRowsWithStandardValues),
+    ("Program content JSON merges existing values and preserves unknown keys", ProgramContentJsonMergesExistingValuesAndPreservesUnknownKeys),
+    ("Program content JSON rejects duplicate valued item names", ProgramContentJsonRejectsDuplicateValuedItemNames),
+    ("Program file rules build safe json file and base64", ProgramFileRulesBuildSafeJsonFileAndBase64),
+    ("Work-order auto query skips duplicates and running tasks", WorkOrderAutoQuerySkipsDuplicatesAndRunningTasks)
 };
 
 foreach (var test in tests)
@@ -236,6 +259,26 @@ static void PlcStringNumericFormatterKeepsNonNumericText()
         mode: AppConstants.PlcStringNumericFormatModes.Round);
 
     AssertEqual("WO20260618", result, "Non numeric strings must not be changed even when global formatting is enabled.");
+}
+
+static void PlcDebugWriteRulesParseBoolAliases()
+{
+    AssertTrue(PlcDebugWriteRules.TryParseBool("1", out var one), "Bool 写入应接受 1。");
+    AssertTrue(one, "1 应解析为 true。");
+    AssertTrue(PlcDebugWriteRules.TryParseBool("true", out var lowerTrue), "Bool 写入应接受 true。");
+    AssertTrue(lowerTrue, "true 应解析为 true。");
+    AssertTrue(PlcDebugWriteRules.TryParseBool("0", out var zero), "Bool 写入应接受 0。");
+    AssertFalse(zero, "0 应解析为 false。");
+    AssertTrue(PlcDebugWriteRules.TryParseBool("FALSE", out var upperFalse), "Bool 写入应大小写不敏感。");
+    AssertFalse(upperFalse, "FALSE 应解析为 false。");
+    AssertFalse(PlcDebugWriteRules.TryParseBool("yes", out _), "Bool 写入不应接受含糊文本。");
+}
+
+static void PlcDebugWriteRulesNormalizeUnsupportedDataType()
+{
+    AssertEqual(AppConstants.PlcDataTypes.Bool, PlcDebugWriteRules.NormalizeDataType("Bool"), "已支持类型应保持不变。");
+    AssertEqual(AppConstants.PlcDataTypes.Int16, PlcDebugWriteRules.NormalizeDataType("word"), "未知类型应回退到 Int16。");
+    AssertEqual(AppConstants.PlcDataTypes.Int16, PlcDebugWriteRules.NormalizeDataType(null), "空类型应回退到 Int16。");
 }
 
 static void PreWeldNgIsTreatedAsFailedProductResult()
@@ -698,6 +741,572 @@ static void ProcessParameterUploadPayloadReadsProductScopeFields()
     AssertEqual(2, ProcessParameterUploadPayloadRules.ReadStationNo(batchPayload), "批量 payload 必须保留工位过滤条件。");
 }
 
+static void DeviceLifecycleConnectionLogsOnlyWhenStateChanges()
+{
+    AssertTrue(DeviceLifecycleLogRules.HasConnectionStatusChanged(null, currentConnected: false), "首次自检失败也需要记录，方便现场知道自检结果。");
+    AssertFalse(DeviceLifecycleLogRules.HasConnectionStatusChanged(false, currentConnected: false), "持续失败不应重复写设备日志。");
+    AssertTrue(DeviceLifecycleLogRules.HasConnectionStatusChanged(false, currentConnected: true), "失败恢复成功时需要记录设备日志。");
+
+    var entry = DeviceLifecycleLogRules.CreateSelfCheckEntry(
+        deviceId: "D-001",
+        stationNo: 1,
+        source: "PLC",
+        connected: true,
+        message: "PLC 已连接",
+        occurredTime: new DateTime(2026, 6, 26, 8, 0, 0, 123));
+
+    AssertEqual(AppConstants.DeviceLifecycleEventTypes.SelfCheck, entry.EventType, "连接自检日志必须使用 SelfCheck 事件类型。");
+    AssertEqual("Success", entry.Status, "连接成功状态应保存为 Success。");
+    AssertEqual("PLC自检成功", entry.Summary, "连接自检摘要应直接表达被检测对象和结果。");
+    AssertEqual("D-001", entry.DeviceId, "设备日志必须携带设备编号。");
+    AssertEqual(1, entry.StationNo, "PLC 自检日志必须携带工位。");
+}
+
+static void DeviceLifecycleAlarmLogsEnterChangeAndRecovery()
+{
+    var enter = DeviceLifecycleLogRules.DecideAlarmTransition(
+        previousStatusCode: null,
+        previousAlarmMessage: "",
+        currentStatusCode: ProductionConstants.PlcDeviceStatuses.Alarm,
+        currentAlarmMessage: "气压低");
+    AssertTrue(enter.ShouldWrite, "PLC 首次进入报警时必须写设备日志。");
+    AssertEqual(AppConstants.DeviceLifecycleEventTypes.FaultAlarm, enter.EventType, "进入报警应记录 FaultAlarm。");
+
+    var duplicate = DeviceLifecycleLogRules.DecideAlarmTransition(
+        previousStatusCode: ProductionConstants.PlcDeviceStatuses.Alarm,
+        previousAlarmMessage: "气压低",
+        currentStatusCode: ProductionConstants.PlcDeviceStatuses.Alarm,
+        currentAlarmMessage: "气压低");
+    AssertFalse(duplicate.ShouldWrite, "报警状态和原因都未变化时不应重复写设备日志。");
+
+    var changed = DeviceLifecycleLogRules.DecideAlarmTransition(
+        previousStatusCode: ProductionConstants.PlcDeviceStatuses.Alarm,
+        previousAlarmMessage: "气压低",
+        currentStatusCode: ProductionConstants.PlcDeviceStatuses.Alarm,
+        currentAlarmMessage: "安全门打开");
+    AssertTrue(changed.ShouldWrite, "报警原因变化时需要再次写设备日志。");
+    AssertEqual(AppConstants.DeviceLifecycleEventTypes.FaultAlarm, changed.EventType, "报警原因变化仍属于 FaultAlarm。");
+
+    var recovered = DeviceLifecycleLogRules.DecideAlarmTransition(
+        previousStatusCode: ProductionConstants.PlcDeviceStatuses.Alarm,
+        previousAlarmMessage: "安全门打开",
+        currentStatusCode: ProductionConstants.PlcDeviceStatuses.Running,
+        currentAlarmMessage: "");
+    AssertTrue(recovered.ShouldWrite, "PLC 从报警恢复到非报警时必须写恢复日志。");
+    AssertEqual(AppConstants.DeviceLifecycleEventTypes.FaultRecovered, recovered.EventType, "报警恢复应记录 FaultRecovered。");
+}
+
+static void ProgramNameRulesExtractComponentCode()
+{
+    AssertTrue(
+        ProgramNameRules.TryExtractComponentCode("D001_CX_ABC123_DH_001_P001", out var componentCode),
+        "标准程序名称应能解析出零组件代码。");
+    AssertEqual("ABC123", componentCode, "零组件代码必须取 _CX_ 与 _DH_ 之间的原始片段。");
+
+    AssertTrue(
+        ProgramNameRules.TryExtractComponentCode("D001_cx_ZJ-987_dh_001_P001", out var lowerCaseComponentCode),
+        "MES 返回大小写不同的标记时仍应兼容。");
+    AssertEqual("ZJ-987", lowerCaseComponentCode, "大小写兼容不能改变零组件代码本身。");
+}
+
+static void ProgramNameRulesRejectInvalidComponentCode()
+{
+    AssertFalse(
+        ProgramNameRules.TryExtractComponentCode("D001_ABC123_DH_001_P001", out var missingStartCode),
+        "缺少 _CX_ 标记时不能生成伪零组件代码。");
+    AssertEqual(string.Empty, missingStartCode, "解析失败时输出必须为空。");
+
+    AssertFalse(
+        ProgramNameRules.TryExtractComponentCode("D001_CX_ABC123_001_P001", out var missingEndCode),
+        "缺少 _DH_ 标记时不能生成伪零组件代码。");
+    AssertEqual(string.Empty, missingEndCode, "缺少结束标记时输出必须为空。");
+
+    AssertFalse(
+        ProgramNameRules.TryExtractComponentCode("D001_CX__DH_001_P001", out var emptyCode),
+        "零组件代码片段为空时不能生成伪零组件代码。");
+    AssertEqual(string.Empty, emptyCode, "空片段解析失败时输出必须为空。");
+}
+
+static void OfflineProgramDropdownDisplaysProgramName()
+{
+    var programs = new[]
+    {
+        new BizProgram
+        {
+            Id = 7,
+            ProgramName = "程序A",
+            ProgramContent = "内容A",
+            ProductNum = "P-001",
+            RecipeCode = "3",
+            UpdatedTime = new DateTime(2026, 6, 26, 8, 0, 0)
+        },
+        new BizProgram
+        {
+            Id = 8,
+            ProgramName = "重复程序",
+            ProgramContent = "内容B",
+            ProductNum = "P-002",
+            RecipeCode = "4",
+            UpdatedTime = new DateTime(2026, 6, 26, 9, 0, 0)
+        },
+        new BizProgram
+        {
+            Id = 9,
+            ProgramName = "重复程序",
+            ProgramContent = "内容C",
+            ProductNum = "P-003",
+            RecipeCode = "5",
+            UpdatedTime = new DateTime(2026, 6, 26, 10, 0, 0)
+        }
+    };
+
+    var options = OfflineStartInputRules.BuildProgramNameOptions(programs);
+
+    AssertEqual(3, options.Count, "可用本地程序应生成离线程序名称选项。");
+    var uniqueOption = options.Single(option => option.Program.Id == 7);
+    AssertEqual("程序A", uniqueOption.DisplayText, "唯一程序名称下拉必须优先显示程序名称。");
+    AssertEqual("P-001", uniqueOption.Program.ProductNum, "选中程序名称后仍需保留产品工号用于联动回填。");
+    AssertEqual("3", uniqueOption.Program.RecipeCode, "选中程序名称后仍需保留配方号用于联动回填。");
+
+    var duplicateOption = options.Single(option => option.Program.Id == 8);
+    AssertEqual("重复程序 | 产品工号=P-002 | 配方号=4", duplicateOption.DisplayText, "重名程序必须追加产品工号和配方号便于区分。");
+}
+
+static void OfflineStartRequestFollowsInlineMonitorInput()
+{
+    var option = OfflineStartInputRules.BuildProgramNameOptions(new[]
+    {
+        new BizProgram
+        {
+            Id = 9,
+            ProgramId = "MES-P9",
+            ProgramName = "离线程序",
+            ProgramType = "1",
+            ProgramContent = "{\"steps\":3}",
+            ProductNum = "164#J",
+            ProductModel = "M-164",
+            RecipeCode = "5"
+        }
+    }).Single();
+    var input = new OfflineStartInput(
+        StationNo: 2,
+        WorkOrderId: "WO-LOCAL",
+        Batch: "B001",
+        Spec: "S001",
+        ProcessNo: "OP20",
+        ProcessName: "离线焊接",
+        PlannedQtyText: "12",
+        ProductName: "引出线",
+        DrawingNo: "DR-9");
+
+    var request = OfflineStartInputRules.BuildRequest(input, option);
+
+    AssertEqual(2, request.StationNo, "离线开工应使用当前 MonitorView 工位。");
+    AssertEqual("WO-LOCAL", request.WorkOrderId, "离线开工应使用界面输入的工单号。");
+    AssertEqual("引出线", request.ProductName, "离线开工应使用界面输入的产品名称。");
+    AssertEqual("DR-9", request.DrawingNo, "离线开工应使用界面输入的图号。");
+    AssertEqual("OP20", request.ProcessNo, "离线开工应使用界面输入的工序号。");
+    AssertEqual(12, request.PlannedQty, "离线开工应使用界面输入的计划数量。");
+    AssertEqual("164#J", request.ProductNum, "离线开工应使用选中程序关联的产品工号。");
+    AssertEqual("M-164", request.ProductModel, "离线开工应使用选中程序关联的产品型号。");
+    AssertEqual("5", request.RecipeCode, "离线开工应使用选中程序关联的配方号。");
+    AssertEqual("{\"steps\":3}", request.ProgramContent, "离线开工应使用选中程序的程序内容。");
+}
+
+static void ProgramMesSyncIgnoresLocalOnlyFields()
+{
+    var original = BuildSyncedProgram();
+    var edited = BuildSyncedProgram();
+    original.ProgramContent = "{ \"高度\": \"12.5\", \"压力\": { \"min\": \"1\", \"max\": \"9\" } }";
+    original.ProgramFile = ProgramFileRules.EncodeJsonToBase64(original.ProgramContent);
+    edited.ProgramContent = "{\"压力\":{\"max\":\"9\",\"min\":\"1\"},\"高度\":\"12.5\"}";
+    edited.ProgramFile = ProgramFileRules.EncodeJsonToBase64(edited.ProgramContent);
+    edited.RecipeCode = "8";
+    edited.ProductModel = "M-2";
+    edited.ComponentCode = "CX-2";
+    edited.Description = "只改本地备注";
+    edited.SequenceNumber = 9;
+    edited.ProgramFileName = "local-only.txt";
+
+    AssertFalse(
+        ProgramMesSyncRules.HasMesUploadFieldChanges(original, edited),
+        "只修改本地辅助字段时不应触发 MES 更新。");
+    AssertEqual(
+        (string?)null,
+        ProgramMesSyncRules.ResolveCurrentSaveAction(original, edited),
+        "只修改本地辅助字段时，本次保存不应产生 MES 同步动作。");
+
+    var legacyFileOriginal = BuildSyncedProgram();
+    var regeneratedFileEdited = BuildSyncedProgram();
+    legacyFileOriginal.ProgramContent = "{\"高度\":\"12.5\"}";
+    legacyFileOriginal.ProgramFile = "历史旧格式文件内容";
+    regeneratedFileEdited.ProgramContent = legacyFileOriginal.ProgramContent;
+    regeneratedFileEdited.ProgramFile = ProgramFileRules.EncodeJsonToBase64(regeneratedFileEdited.ProgramContent);
+    regeneratedFileEdited.RecipeCode = "9";
+    regeneratedFileEdited.ProgramFileName = "9_P1.json";
+
+    AssertFalse(
+        ProgramMesSyncRules.HasMesUploadFieldChanges(legacyFileOriginal, regeneratedFileEdited),
+        "只改配方号导致本地程序文件重新生成时，不应把派生的 ProgramFile 差异当成 MES 更新。");
+    AssertEqual(
+        (string?)null,
+        ProgramMesSyncRules.ResolveCurrentSaveAction(legacyFileOriginal, regeneratedFileEdited),
+        "只改配方号导致本地程序文件重新生成时，本次保存不应产生 MES 同步动作。");
+}
+
+static void ProgramMesSyncDetectsRemoteFields()
+{
+    var mesFields = new Action<BizProgram>[]
+    {
+        program => program.ProgramName = "P-Changed",
+        program => program.DeviceId = "D-Changed",
+        program => program.ProgramContent = "{\"steps\":2}",
+        program => program.ProgramType = "1",
+        program => program.ProductNum = "PN-Changed",
+        program => program.ProgramFile = "BASE64-CHANGED",
+        program => program.Remark = "用户填写备注"
+    };
+
+    foreach (var change in mesFields)
+    {
+        var original = BuildSyncedProgram();
+        var edited = BuildSyncedProgram();
+        change(edited);
+
+        AssertTrue(
+            ProgramMesSyncRules.HasMesUploadFieldChanges(original, edited),
+            "MES 上传字段变化时必须触发 MES 更新。");
+    }
+}
+
+static void ProgramMesSaveActionUsesUpdateForRemoteProgramContent()
+{
+    var original = BuildSyncedProgram();
+    var edited = BuildSyncedProgram();
+    edited.ProgramContent = "{\"高度\":\"13.0\"}";
+    edited.ProgramFile = ProgramFileRules.EncodeJsonToBase64(edited.ProgramContent);
+
+    var action = ProgramMesSyncRules.ResolveSaveAction(original, edited, hadPendingAction: false);
+
+    AssertEqual(
+        AppConstants.ProgramSyncActions.Update,
+        action,
+        "已有 MES 程序 ID 的程序内容变化时，保存动作必须是 Update，不能重新 Create。");
+
+    original.SyncAction = AppConstants.ProgramSyncActions.Create;
+    original.SyncStatus = AppConstants.ProgramSyncStatus.PendingCreate;
+    edited.SyncAction = AppConstants.ProgramSyncActions.Create;
+    edited.SyncStatus = AppConstants.ProgramSyncStatus.PendingCreate;
+
+    var staleCreateAction = ProgramMesSyncRules.ResolveSaveAction(original, edited, hadPendingAction: true);
+
+    AssertEqual(
+        AppConstants.ProgramSyncActions.Update,
+        staleCreateAction,
+        "即使本地残留 Create 动作，只要已有 MES 程序 ID，修改程序内容也必须转为 Update。");
+}
+
+static void ProgramMesCurrentSaveActionSeparatesPendingActions()
+{
+    var original = BuildSyncedProgram();
+    original.SyncAction = AppConstants.ProgramSyncActions.Update;
+    original.SyncStatus = AppConstants.ProgramSyncStatus.PendingUpdate;
+
+    var localOnlyEdited = BuildSyncedProgram();
+    localOnlyEdited.SyncAction = AppConstants.ProgramSyncActions.Update;
+    localOnlyEdited.SyncStatus = AppConstants.ProgramSyncStatus.PendingUpdate;
+    localOnlyEdited.ProductModel = "M-Local";
+    localOnlyEdited.RecipeCode = "8";
+    localOnlyEdited.Description = "只改本地字段";
+    localOnlyEdited.ProgramFileName = "P1.json";
+
+    AssertEqual(
+        (string?)null,
+        ProgramMesSyncRules.ResolveCurrentSaveAction(original, localOnlyEdited),
+        "已有历史待同步 Update 时，只改本地字段也不应成为本次保存的同步动作。");
+    AssertEqual(
+        AppConstants.ProgramSyncActions.Update,
+        ProgramMesSyncRules.ResolveSaveAction(original, localOnlyEdited, hadPendingAction: true),
+        "已有历史待同步 Update 时，本地字段保存应保留原待同步状态，不能误删。");
+
+    var contentEdited = BuildSyncedProgram();
+    contentEdited.ProgramContent = "{\"高度\":\"13.0\"}";
+    contentEdited.ProgramFile = ProgramFileRules.EncodeJsonToBase64(contentEdited.ProgramContent);
+
+    AssertEqual(
+        AppConstants.ProgramSyncActions.Update,
+        ProgramMesSyncRules.ResolveCurrentSaveAction(original, contentEdited),
+        "实际修改程序内容时，本次保存应产生 MES Update。");
+
+    var remarkEdited = BuildSyncedProgram();
+    remarkEdited.Remark = "人工备注";
+
+    AssertEqual(
+        AppConstants.ProgramSyncActions.Update,
+        ProgramMesSyncRules.ResolveCurrentSaveAction(original, remarkEdited),
+        "用户自定义 MES 备注变化时，本次保存应产生 MES Update。");
+}
+
+static void ProgramMesExecutableActionNeverCreatesWhenMesIdExists()
+{
+    AssertEqual(
+        null,
+        ProgramMesSyncRules.ResolveExecutableSyncAction(null, "MES-1"),
+        "没有待同步动作时，手动点击同步不应兜底调用新增接口。");
+
+    AssertEqual(
+        AppConstants.ProgramSyncActions.Create,
+        ProgramMesSyncRules.ResolveExecutableSyncAction(AppConstants.ProgramSyncActions.Create, null),
+        "本地新程序没有 MES ID 时，Create 动作才允许调用新增接口。");
+
+    AssertEqual(
+        AppConstants.ProgramSyncActions.Update,
+        ProgramMesSyncRules.ResolveExecutableSyncAction(AppConstants.ProgramSyncActions.Create, "MES-1"),
+        "残留 Create 动作但已有 MES ID 时，执行同步必须转为 Update，避免重复新增。");
+
+    AssertEqual(
+        AppConstants.ProgramSyncActions.Update,
+        ProgramMesSyncRules.ResolveExecutableSyncAction(AppConstants.ProgramSyncActions.Update, "MES-1"),
+        "有 MES ID 的 Update 动作应调用更新接口。");
+
+    AssertEqual(
+        null,
+        ProgramMesSyncRules.ResolveExecutableSyncAction(AppConstants.ProgramSyncActions.Update, null),
+        "缺少 MES ID 的 Update 动作不能兜底调用新增接口。");
+}
+
+static void ProgramRemarkRulesDefaultByAction()
+{
+    AssertEqual(
+        "更新",
+        AppConstants.ProgramRemarkActions.Update,
+        "MES 更新程序备注动作必须使用接口约定的“更新”。");
+
+    AssertEqual(
+        AppConstants.ProgramRemarkActions.Create,
+        ProgramRemarkRules.ResolveForAction(null, AppConstants.ProgramSyncActions.Create),
+        "新增程序未填写 MES 备注时应默认新增。");
+
+    AssertEqual(
+        "更新",
+        ProgramRemarkRules.ResolveForAction(" ", AppConstants.ProgramSyncActions.Update),
+        "更新程序未填写 MES 备注时应默认更新。");
+
+    AssertEqual(
+        "更新",
+        ProgramRemarkRules.ResolveForAction("新增", AppConstants.ProgramSyncActions.Update),
+        "历史默认新增备注遇到更新动作时不应被当成人工备注复用。");
+
+    AssertEqual(
+        "更新",
+        ProgramRemarkRules.ResolveForAction("修改", AppConstants.ProgramSyncActions.Update),
+        "历史默认修改备注遇到更新动作时应统一改为更新。");
+
+    AssertEqual(
+        "更新",
+        ProgramRemarkRules.ResolveForAction("删除", AppConstants.ProgramSyncActions.Update),
+        "系统动作删除备注遇到更新动作时不应被当成人工备注复用。");
+
+    AssertEqual(
+        AppConstants.ProgramRemarkActions.Delete,
+        ProgramRemarkRules.ResolveForAction(null, AppConstants.ProgramSyncActions.Delete),
+        "删除程序未填写 MES 备注时应默认删除。");
+
+    AssertEqual(
+        "人工备注",
+        ProgramRemarkRules.ResolveForAction("  人工备注  ", AppConstants.ProgramSyncActions.Update),
+        "用户填写 MES 备注时应优先保留用户内容。");
+}
+
+static void ProgramMesWritePayloadOmitsRecipeCode()
+{
+    var program = BuildSyncedProgram();
+    program.RecipeCode = "99";
+    program.ProgramFileName = "1001_P1.JSON";
+
+    var payload = ProgramMesPayloadRules.ToWriteRequest(program, AppConstants.ProgramRemarkActions.Update);
+    var json = JsonSerializer.Serialize(payload);
+    using var document = JsonDocument.Parse(json);
+    var fileType = document.RootElement.GetProperty(nameof(ProgramDataWriteReq.FileType));
+
+    AssertFalse(
+        json.Contains(nameof(ProgramDataRes.RecipeCode), StringComparison.OrdinalIgnoreCase),
+        "MES 新增/更新程序请求不应包含 RecipeCode。");
+    AssertEqual("P1", payload.ProgramName, "MES 写入请求仍应携带程序名称。");
+    AssertEqual(AppConstants.ProgramRemarkActions.Update, payload.Remark, "MES 写入请求应携带解析后的备注。");
+    AssertEqual(".json", payload.FileType, "MES 写入请求应携带程序文件扩展名字符串。");
+    AssertEqual(JsonValueKind.String, fileType.ValueKind, "MES 写入请求中的 FileType 必须是字符串。");
+    AssertEqual(".json", fileType.GetString(), "MES 写入请求中的 FileType 应使用带点小写扩展名。");
+}
+
+static void MonitorReportButtonRulesFollowMesAndTaskState()
+{
+    var idleOnline = MonitorReportButtonRules.Decide(
+        isReadOnly: false,
+        mesConnected: true,
+        hasOnlineRunningTask: false,
+        hasOfflineRunningTask: false);
+    AssertTrue(idleOnline.ShowStartReportButton, "在线空闲时应显示开工上报。");
+    AssertFalse(idleOnline.ShowFinishReportButton, "在线空闲时不应显示完工上报。");
+    AssertTrue(idleOnline.OnlineReportEnabled, "MES 在线时在线上报按钮应可用。");
+    AssertFalse(idleOnline.LocalWorkOrderEnabled, "MES 在线空闲时应禁用离线开工。");
+
+    var runningOnline = MonitorReportButtonRules.Decide(
+        isReadOnly: false,
+        mesConnected: true,
+        hasOnlineRunningTask: true,
+        hasOfflineRunningTask: false);
+    AssertFalse(runningOnline.ShowStartReportButton, "在线开工后不应继续显示开工上报。");
+    AssertTrue(runningOnline.ShowFinishReportButton, "在线开工后应显示完工上报。");
+
+    var offline = MonitorReportButtonRules.Decide(
+        isReadOnly: false,
+        mesConnected: false,
+        hasOnlineRunningTask: false,
+        hasOfflineRunningTask: false);
+    AssertFalse(offline.OnlineReportEnabled, "MES 离线时在线上报按钮应禁用。");
+    AssertTrue(offline.LocalWorkOrderEnabled, "MES 离线空闲时离线开工应可用。");
+
+    var offlineTaskWhenMesBack = MonitorReportButtonRules.Decide(
+        isReadOnly: false,
+        mesConnected: true,
+        hasOnlineRunningTask: false,
+        hasOfflineRunningTask: true);
+    AssertTrue(offlineTaskWhenMesBack.LocalWorkOrderEnabled, "已有离线未完工任务时即使 MES 恢复也应允许本地完工。");
+}
+
+static void ProgramContentRowsComeFromDictionaryItems()
+{
+    var rows = ProgramContentJsonRules.BuildRows(
+        new[]
+        {
+            new DimTestItem { ItemId = 2, ItemName = "高度" },
+            new DimTestItem { ItemId = 1, ItemName = "压力" }
+        },
+        existingJson: null);
+
+    AssertEqual(2, rows.Count, "测试项字典非空时，程序内容表格应按字典生成行。");
+    AssertEqual("高度", rows[0].ItemName, "行名称必须来自测试项字典。");
+    AssertTrue(rows[0].IsDictionaryItem, "字典生成的行需要标记为字典项，便于 UI 控制名称列只读。");
+}
+
+static void ProgramContentJsonKeepsOnlyRowsWithStandardValues()
+{
+    var rows = new[]
+    {
+        new ProgramContentItemRow { ItemName = "高度", StandardValue = "12.5", IsDictionaryItem = true },
+        new ProgramContentItemRow { ItemName = "压力", StandardValue = "", IsDictionaryItem = true },
+        new ProgramContentItemRow { ItemName = "", StandardValue = "should-skip", IsDictionaryItem = false }
+    };
+
+    var json = ProgramContentJsonRules.ToJson(rows);
+    using var document = JsonDocument.Parse(json);
+    var root = document.RootElement;
+
+    AssertEqual(1, root.EnumerateObject().Count(), "只有设定值非空且测试项名称非空的行才应进入 ProgramContent JSON。");
+    AssertEqual("12.5", root.GetProperty("高度").GetString(), "JSON value 必须按字符串保存，不做数值推断。");
+    AssertFalse(root.TryGetProperty("压力", out _), "设定值为空的测试项不应上传。");
+}
+
+static void ProgramContentJsonMergesExistingValuesAndPreservesUnknownKeys()
+{
+    var rows = ProgramContentJsonRules.BuildRows(
+        new[] { new DimTestItem { ItemId = 1, ItemName = "高度" } },
+        "{\"高度\":\"12.5\",\"旧测试项\":\"A1\"}");
+
+    AssertEqual(2, rows.Count, "绑定已有程序时，不在当前字典内的旧 key 也应显示，避免旧数据丢失。");
+    AssertEqual("12.5", rows[0].StandardValue, "当前字典项应回填已有 JSON 中的设定值。");
+    AssertEqual("旧测试项", rows[1].ItemName, "旧 JSON 中的未知 key 应追加为额外行。");
+    AssertEqual("A1", rows[1].StandardValue, "未知 key 的值也需要保留。");
+    AssertFalse(rows[1].IsDictionaryItem, "未知 key 不是当前字典项，UI 可按手动行处理。");
+}
+
+static void ProgramContentJsonRejectsDuplicateValuedItemNames()
+{
+    var rows = new[]
+    {
+        new ProgramContentItemRow { ItemName = "高度", StandardValue = "12.5" },
+        new ProgramContentItemRow { ItemName = "高度", StandardValue = "13.0" }
+    };
+
+    AssertThrows<InvalidOperationException>(
+        () => ProgramContentJsonRules.ToJson(rows),
+        "重复测试项名称且都有设定值时必须阻止保存，避免 JSON key 覆盖。");
+}
+
+static void ProgramFileRulesBuildSafeJsonFileAndBase64()
+{
+    var fileName = ProgramFileRules.BuildFileName("  1001  ", "A:B/程序");
+    var fileNameWithoutRecipe = ProgramFileRules.BuildFileName(null, "P1");
+    var json = "{\"高度\":\"12.5\"}";
+    var base64 = ProgramFileRules.EncodeJsonToBase64(json);
+    var restored = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(base64));
+
+    AssertEqual("A_B_程序.json", fileName, "程序文件名应只使用程序名称，并替换非法文件名字符。");
+    AssertEqual("P1.json", fileNameWithoutRecipe, "程序文件名不应依赖配方号。");
+    AssertEqual(json, restored, "程序文件 Base64 必须可还原为原始 UTF-8 JSON。");
+    AssertEqual(".json", ProgramFileRules.ResolveFileType("1001_P1.json"), "json 程序文件应返回 .json 文件类型。");
+    AssertEqual(".txt", ProgramFileRules.ResolveFileType(@"C:\temp\a.TXT"), "文件类型应统一返回带点小写扩展名。");
+    AssertEqual(".json", ProgramFileRules.ResolveFileType(""), "文件名为空时应默认按自动生成的 JSON 程序文件处理。");
+}
+
+static void WorkOrderAutoQuerySkipsDuplicatesAndRunningTasks()
+{
+    AssertTrue(
+        WorkOrderAutoQueryRules.ShouldAutoQuery(
+            mesConnected: true,
+            hasRunningTask: false,
+            workIdReadSuccess: true,
+            workId: "WO-1",
+            lastRequestedWorkId: null,
+            queryInProgress: false),
+        "MES 在线、空闲且读取到新工单号时应自动查询。");
+
+    AssertFalse(
+        WorkOrderAutoQueryRules.ShouldAutoQuery(
+            mesConnected: true,
+            hasRunningTask: false,
+            workIdReadSuccess: true,
+            workId: "WO-1",
+            lastRequestedWorkId: "WO-1",
+            queryInProgress: false),
+        "同一工位同一工单号已处理时不应重复自动查询。");
+
+    AssertFalse(
+        WorkOrderAutoQueryRules.ShouldAutoQuery(
+            mesConnected: true,
+            hasRunningTask: true,
+            workIdReadSuccess: true,
+            workId: "WO-2",
+            lastRequestedWorkId: null,
+            queryInProgress: false),
+        "运行中任务必须锁定当前工单，不允许扫码自动覆盖。");
+}
+
+static BizProgram BuildSyncedProgram()
+{
+    return new BizProgram
+    {
+        Id = 1,
+        ProgramId = "MES-1",
+        ProgramName = "P1",
+        DeviceId = "D1",
+        ProgramContent = "{\"steps\":1}",
+        ProgramType = "0",
+        ProductNum = "PN1",
+        ProgramFile = "BASE64",
+        Remark = "旧备注",
+        RecipeCode = "1",
+        ProductModel = "M-1",
+        ComponentCode = "CX-1",
+        Description = "本地备注",
+        SequenceNumber = 1,
+        ProgramFileName = "old.txt",
+        SyncAction = null,
+        SyncStatus = AppConstants.ProgramSyncStatus.Synced
+    };
+}
+
 static BizWeldPointRecord BuildCompletedPoint(
     int taskId,
     int stationNo,
@@ -746,4 +1355,23 @@ static void AssertSequenceEqual<T>(IReadOnlyList<T> expected, IReadOnlyList<T> a
 
     throw new InvalidOperationException(
         $"{message} Expected=[{string.Join(",", expected)}], Actual=[{string.Join(",", actual)}]");
+}
+
+static void AssertThrows<TException>(Action action, string message)
+    where TException : Exception
+{
+    try
+    {
+        action();
+    }
+    catch (TException)
+    {
+        return;
+    }
+    catch (Exception ex)
+    {
+        throw new InvalidOperationException($"{message} Expected={typeof(TException).Name}, Actual={ex.GetType().Name}");
+    }
+
+    throw new InvalidOperationException($"{message} Expected={typeof(TException).Name}, Actual=no exception");
 }
