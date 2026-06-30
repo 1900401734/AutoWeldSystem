@@ -57,7 +57,6 @@ public static class PermissionCodes
 
         public static class Monitor
         {
-            public const string ChangeWorkOrder = "button.monitor.change-work-order";
             public const string StartReport = "button.monitor.start-report";
             public const string FinishReport = "button.monitor.finish-report";
             public const string GetWorkOrder = "button.monitor.get-work-order";

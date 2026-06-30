@@ -1,6 +1,7 @@
 using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
+using AutoWeldSystem.Core.DTOs.Mes.Request;
 using AutoWeldSystem.Core.DTOs.Mes.Response;
 using AutoWeldSystem.Core.DTOs.Plc;
 using AutoWeldSystem.Core.DTOs.Upload;
@@ -111,9 +112,15 @@ public partial class MonitorView : BaseView
     private string? _runtimeErrorSource;
     private string? _deviceAlarmRuntimeErrorText;
     private readonly Dictionary<int, DateTime> _finishRecipeReadFailureLogTimes = new();
+    private readonly Dictionary<int, string> _lastAutoQueriedWorkIds = new();
+    private readonly HashSet<int> _autoQueryStations = new();
+    private readonly List<OfflineProgramNameOption> _offlineProgramNameOptions = new();
 
     private bool _syncingStationSelection;
     private bool _syncingProcessSelection;
+    private bool _syncingOfflineProgramSelection;
+    private bool _syncingOfflineInputs;
+    private bool _offlineWorkOrderEditedByUser;
     private bool _dualStationEnabled;
     private bool _adjustingTitleFont;
     private Font? _titleFont;
@@ -267,6 +274,7 @@ public partial class MonitorView : BaseView
 
         GetVersion();
         ConfigureRuntimeMessagePanels();
+        ConfigureReportButtonLayout();
         ApplyLocalizedTexts();
         ConfigureDeviceMode();
         ConfigureTables();
@@ -330,6 +338,7 @@ public partial class MonitorView : BaseView
 
         ConfigureDeviceMode();
         ApplyMesStatus(_mesConnectionMonitorService.Current);
+        ApplyDeviceIdText();
         RefreshProductionRuntimeState();
         RestoreCurrentRuntimeTipState();
         RefreshRuntimePanels();
@@ -416,6 +425,17 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
+    /// 将在线开工和在线完工按钮放到同一个布局位置，运行时根据任务状态互斥显示。
+    /// </summary>
+    private void ConfigureReportButtonLayout()
+    {
+        tlpButton.SetColumn(btnExpStart, 1);
+        tlpButton.SetColumn(btnExpEnd, 1);
+        tlpButton.SetColumnSpan(btnExpStart, 2);
+        tlpButton.SetColumnSpan(btnExpEnd, 2);
+    }
+
+    /// <summary>
     /// 应用操作模式。
     /// </summary>
     private void ApplyOperationMode()
@@ -424,17 +444,38 @@ public partial class MonitorView : BaseView
 
         btnGetWO.Visible = canOperate;
         btnLocalWorkOrder.Visible = canOperate;
-        btnChangeWO.Visible = canOperate;
         btnEditWO.Visible = canOperate;
         btnExpStart.Visible = canOperate;
-        btnExpEnd.Visible = canOperate;
+        btnExpEnd.Visible = false;
 
         btnGetWO.Enabled = canOperate;
         btnLocalWorkOrder.Enabled = canOperate;
-        btnChangeWO.Enabled = canOperate;
         btnEditWO.Enabled = canOperate;
         btnExpStart.Enabled = canOperate;
         btnExpEnd.Enabled = canOperate;
+        ApplyReportButtonState();
+    }
+
+    /// <summary>
+    /// 根据 MES 连接和当前任务状态刷新在线复合上报按钮及离线按钮。
+    /// </summary>
+    private void ApplyReportButtonState()
+    {
+        var activeTask = _weldTaskService.RestoreUnfinishedTask(CurrentStationNo)
+            ?? GetCurrentStationState().ActiveTask;
+        var hasOnlineRunningTask = activeTask is { IsOfflineCreated: false, EndTime: null };
+        var hasOfflineRunningTask = activeTask is { IsOfflineCreated: true, EndTime: null };
+        var decision = MonitorReportButtonRules.Decide(
+            _stationViewReadOnly,
+            _mesConnectionMonitorService.Current.IsConnected,
+            hasOnlineRunningTask,
+            hasOfflineRunningTask);
+
+        btnExpStart.Visible = !_stationViewReadOnly && decision.ShowStartReportButton;
+        btnExpEnd.Visible = !_stationViewReadOnly && decision.ShowFinishReportButton;
+        btnExpStart.Enabled = decision.OnlineReportEnabled;
+        btnExpEnd.Enabled = decision.OnlineReportEnabled;
+        btnLocalWorkOrder.Enabled = decision.LocalWorkOrderEnabled;
     }
 
     /// <summary>
@@ -632,10 +673,11 @@ public partial class MonitorView : BaseView
 
         btnGetWO.Click += GetWorkOrder_Click;
         btnLocalWorkOrder.Click += LocalWorkOrder_Click;
-        btnChangeWO.Click += ChangeWorkOrder_Click;
         btnEditWO.Click += EditWorkOrder_Click;
         btnExpStart.Click += StartReport_Click;
         btnExpEnd.Click += FinishReport_Click;
+        inputSN.TextChanged += OfflineWorkOrderInput_TextChanged;
+        selectProgramName.SelectedIndexChanged += ProgramNameSelection_SelectedIndexChanged;
 
         _timer.Tick += Timer_Tick;
         _realtimePreviewPaintTimer.Tick += RealtimePreviewPaintTimer_Tick;
@@ -730,30 +772,6 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// 处理变更工单按钮点击事件。
-    /// </summary>
-    /// <param name="sender">事件发送者。</param>
-    /// <param name="e">事件参数。</param>
-    private async void ChangeWorkOrder_Click(object? sender, EventArgs e)
-    {
-        if (IsReadOnlyOperationBlocked("变更工单"))
-        {
-            return;
-        }
-
-        var stationNo = CurrentStationNo;
-        SelectStationForOperation(stationNo);
-        // 变更工单同样必须避开未完工任务，防止覆盖正在生产的任务上下文。
-        if (_weldTaskService.RestoreUnfinishedTask(stationNo) is not null)
-        {
-            ShowWarning(TextKeys.Monitor.Message.StartBlockedByUnfinishedTask);
-            return;
-        }
-
-        await PrepareWorkOrderAsync(forceManualInput: true);
-    }
-
-    /// <summary>
     /// 处理微调工单按钮点击事件。
     /// </summary>
     /// <param name="sender">事件发送者。</param>
@@ -795,7 +813,7 @@ public partial class MonitorView : BaseView
         {
             RefreshProductionRuntimeState();
             ClearRuntimeError();
-            SetRuntimeStatusText("加工程序已确认，本次开工将使用当前程序内容。", isSuccess: true);
+            SetRuntimeStatusText("加工程序已确认，本次开工将使用当前程序名称关联的信息。", isSuccess: true);
         }
     }
 
@@ -827,30 +845,19 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        var programs = _programManageService.GetPrograms()
-            .Where(program => !program.IsDeleted)
-            .Where(program => !string.IsNullOrWhiteSpace(program.RecipeCode))
-            .ToList();
-        if (programs.Count == 0)
-        {
-            ShowWarningText("没有可用的本地程序，或本地程序缺少配方编号。");
-            return;
-        }
-
-        using var form = new LocalWorkOrderForm(programs, stationNo, _plcWorkIdMonitorService);
-        if (form.ShowDialog(this) != DialogResult.OK)
+        if (!TryBuildOfflineStartRequest(stationNo, out var request, out var selectedProgram))
         {
             return;
         }
 
         var localProgram = new ProgramDataRes
         {
-            Id = form.Request.ProgramId,
-            ProgramName = form.Request.ProgramName,
-            ProductNum = form.Request.ProductNum,
-            RecipeCode = form.Request.RecipeCode,
-            ProgramType = form.Request.ProgramType,
-            ProgramContent = form.Request.ProgramContent
+            Id = request.ProgramId,
+            ProgramName = request.ProgramName,
+            ProductNum = request.ProductNum,
+            RecipeCode = request.RecipeCode,
+            ProgramType = request.ProgramType,
+            ProgramContent = request.ProgramContent
         };
 
         BindLocalOperatorInfo();
@@ -858,8 +865,10 @@ public partial class MonitorView : BaseView
         {
             ClearRuntimeError();
             SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.SubmittingStart);
-            selectRecipeCode.Text = form.Request.RecipeCode;
-            await _weldTaskService.StartLocalAsync(form.Request, ResolveLocalOperatorNumber(), 0);
+            selectRecipeCode.Text = request.RecipeCode;
+            await _weldTaskService.StartLocalAsync(request, ResolveLocalOperatorNumber(), 0);
+            _offlineWorkOrderEditedByUser = false;
+            ApplyOfflineProgramNameOption(selectedProgram);
             RefreshProductionRuntimeState();
             QueueRefreshSchemePreview(force: true);
             SetRuntimeStatusText(BuildStationReportSuccessText(stationNo, "本地开工"), isSuccess: true);
@@ -920,7 +929,7 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        // 程序内容会影响配方编号和测试方案，开工前必须由操作员确认。
+        // 程序名称关联的产品工号、配方编号和内容会影响测试方案，开工前必须由操作员确认。
         if (!IsProgramContentConfirmed(state.SelectedProgram, stationNo)
             && !TryConfirmStartData(state.CurrentWorkOrder, state.SelectedProcess, state.SelectedProgram, stationNo))
         {
@@ -1081,6 +1090,8 @@ public partial class MonitorView : BaseView
         _productRealtimePreviewService.SnapshotChanged -= ProductRealtimePreviewService_SnapshotChanged;
         _productionLogService.LogWritten -= ProductionLogService_LogWritten;
         _uploadTaskService.TaskStatusChanged -= UploadTaskService_TaskStatusChanged;
+        inputSN.TextChanged -= OfflineWorkOrderInput_TextChanged;
+        selectProgramName.SelectedIndexChanged -= ProgramNameSelection_SelectedIndexChanged;
         tableHistory1.CellClick -= ProductHistoryTable_CellClick;
         tableHistory2.CellClick -= ProductHistoryTable_CellClick;
         UnwireWeldPreviewGridEvents(dgvPreview1);
@@ -1148,6 +1159,11 @@ public partial class MonitorView : BaseView
             return;
         }
 
+        if (IsOfflineInputEditable(GetCurrentStationState()))
+        {
+            return;
+        }
+
         var state = GetCurrentStationState();
         var processes = state.CurrentWorkOrder?.ExpItems ?? [];
         // AntdUI raises SelectedIndexChanged before every control property is stable,
@@ -1169,6 +1185,44 @@ public partial class MonitorView : BaseView
         inputStartAmount.Text = process.StartAmount.ToString(CultureInfo.InvariantCulture);
         ClearRuntimeError();
         SetRuntimeStatusText($"已选择工序：{process.ItemName}", isSuccess: true);
+    }
+
+    /// <summary>
+    /// 记录离线工单号是否已被操作员手动修改，避免刷新时被 PLC 扫码值覆盖。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
+    private void OfflineWorkOrderInput_TextChanged(object? sender, EventArgs e)
+    {
+        if (_syncingOfflineInputs)
+        {
+            return;
+        }
+
+        if (IsOfflineInputEditable(GetCurrentStationState()))
+        {
+            _offlineWorkOrderEditedByUser = true;
+        }
+    }
+
+    /// <summary>
+    /// 同步离线程序名称下拉选中项关联的产品工号、产品型号和配方号。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
+    private void ProgramNameSelection_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
+    {
+        if (_syncingOfflineProgramSelection)
+        {
+            return;
+        }
+
+        var option = GetSelectedOfflineProgramNameOption();
+        ApplyOfflineProgramNameOption(option);
+        if (option is not null)
+        {
+            QueueRefreshSchemePreview(force: true);
+        }
     }
 
     #endregion
@@ -1227,7 +1281,11 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        RunOnUiThread(() => ApplyMesStatus(e), "MonitorView.MesStatusChanged");
+        RunOnUiThread(() =>
+        {
+            ApplyMesStatus(e);
+            BindProductionRuntimeState();
+        }, "MonitorView.MesStatusChanged");
     }
 
     /// <summary>
@@ -1257,7 +1315,11 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        RunOnUiThread(() => ApplyWorkIdSnapshot(e), "MonitorView.WorkIdChanged");
+        RunOnUiThread(() =>
+        {
+            ApplyWorkIdSnapshot(e);
+            QueueAutoWorkOrderQuery(e);
+        }, "MonitorView.WorkIdChanged");
     }
 
     /// <summary>
@@ -1416,6 +1478,7 @@ public partial class MonitorView : BaseView
 
         var previousShowTestFlag = _currentSettings.ShowTestFlagInHistory != false;
         UpdateSettingsSnapshot(e.CurrentSettings);
+        RunOnUiThread(ApplyDeviceIdText, "MonitorView.SettingsChanged.DeviceId");
         var currentShowTestFlag = e.CurrentSettings.ShowTestFlagInHistory != false;
         if (previousShowTestFlag != currentShowTestFlag)
         {
@@ -2326,6 +2389,18 @@ public partial class MonitorView : BaseView
             return false;
         }
 
+        return await LoadWorkOrderInfoAsync(workId, stationNo, showDialogOnFailure: true);
+    }
+
+    /// <summary>
+    /// 按指定工单号加载 MES 工单信息，并绑定默认工序。
+    /// </summary>
+    /// <param name="workId">工单号。</param>
+    /// <param name="stationNo">工位号。</param>
+    /// <param name="showDialogOnFailure">失败时是否弹窗提示；自动扫码查询使用 false。</param>
+    /// <returns>加载成功返回 true；否则返回 false。</returns>
+    private async Task<bool> LoadWorkOrderInfoAsync(string workId, int stationNo, bool showDialogOnFailure)
+    {
         var isReady = false;
         await RunUiOperationAsync(async () =>
         {
@@ -2334,11 +2409,7 @@ public partial class MonitorView : BaseView
             var workOrder = await _weldTaskService.GetWorkOrderInfoAsync(workId, stationNo);
             if (workOrder is null)
             {
-                ShowBusinessWarning(
-                    "MES.GetWorkOrderInfo",
-                    TextKeys.Monitor.Message.WorkOrderLoadFailed,
-                    _weldTaskService.CurrentState.LastServerSyncMessage ?? string.Empty,
-                    $"WorkId={workId}");
+                HandleWorkOrderLoadFailure(workId, showDialogOnFailure);
                 return;
             }
 
@@ -2360,6 +2431,29 @@ public partial class MonitorView : BaseView
         });
 
         return isReady;
+    }
+
+    /// <summary>
+    /// 统一处理工单加载失败提示，避免自动扫码查询频繁弹窗。
+    /// </summary>
+    /// <param name="workId">工单号。</param>
+    /// <param name="showDialogOnFailure">是否弹窗提示。</param>
+    private void HandleWorkOrderLoadFailure(string workId, bool showDialogOnFailure)
+    {
+        var detail = _weldTaskService.CurrentState.LastServerSyncMessage ?? string.Empty;
+        if (showDialogOnFailure)
+        {
+            ShowBusinessWarning(
+                "MES.GetWorkOrderInfo",
+                TextKeys.Monitor.Message.WorkOrderLoadFailed,
+                detail,
+                $"WorkId={workId}");
+            return;
+        }
+
+        var message = _localizer.GetString(TextKeys.Monitor.Message.WorkOrderLoadFailed);
+        _exceptionLogService.WriteBusiness("MES.GetWorkOrderInfo", message, detail, $"WorkId={workId}");
+        SetRuntimeError(TextKeys.Monitor.Message.WorkOrderLoadFailed);
     }
 
     /// <summary>
@@ -2440,11 +2534,18 @@ public partial class MonitorView : BaseView
             return true;
         }
 
+        var screenWorkId = inputSN.Text?.Trim() ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(screenWorkId))
+        {
+            workId = screenWorkId;
+            return true;
+        }
+
         if (!PromptInputForm.TryShow(
                 this,
                 _localizer.GetString(TextKeys.Monitor.Dialog.ScanWorkIdTitle),
                 _localizer.GetString(TextKeys.Monitor.Dialog.ScanWorkIdPrompt),
-                plcWorkId,
+                !string.IsNullOrWhiteSpace(plcWorkId) ? plcWorkId : screenWorkId,
                 _localizer.GetString(TextKeys.Common.ActionApply),
                 _localizer.GetString(TextKeys.Common.ActionCancel),
                 out var input))
@@ -2477,6 +2578,7 @@ public partial class MonitorView : BaseView
         if (normalizedStationNo != CurrentStationNo)
         {
             _viewStationNo = normalizedStationNo;
+            _offlineWorkOrderEditedByUser = false;
             _weldTaskService.RestoreUnfinishedTask(normalizedStationNo);
         }
 
@@ -2516,6 +2618,18 @@ public partial class MonitorView : BaseView
             : null;
 
         SyncStationSelection();
+        if (IsOfflineInputEditable(state))
+        {
+            BindOfflineEditableRuntimeState(liveWorkId);
+            BindRuntimeOperatorInfo(state, activeTask);
+            ApplyTaskStatusTag(state);
+            btnLocalWorkOrder.Text = _localizer.GetString(TextKeys.Monitor.Button.LocalWorkOrder);
+            ApplyReportButtonState();
+            return;
+        }
+
+        ApplyOfflineInputReadOnly(readOnly: true);
+        _offlineWorkOrderEditedByUser = false;
         inputSN.Text = activeTask is not null
             ? activeTask.SN
             : !string.IsNullOrWhiteSpace(liveWorkId) ? liveWorkId : workOrder?.SN ?? string.Empty;
@@ -2528,13 +2642,184 @@ public partial class MonitorView : BaseView
         BindProcessSelection(workOrder, process, activeTask is not null);
         inputProcessNo.Text = process?.ProcessNo ?? string.Empty;
         inputStartAmount.Text = process is null ? string.Empty : process.StartAmount.ToString(CultureInfo.InvariantCulture);
-        inputProgramName.Text = program?.ProgramName ?? string.Empty;
+        selectProgramName.Text = program?.ProgramName ?? string.Empty;
         selectRecipeCode.Text = ResolveRecipeCodeForDisplay(activeTask, program);
         BindRuntimeOperatorInfo(state, activeTask);
         ApplyTaskStatusTag(state);
         btnLocalWorkOrder.Text = activeTask is { IsOfflineCreated: true, EndTime: null }
             ? "本地完工"
             : _localizer.GetString(TextKeys.Monitor.Button.LocalWorkOrder);
+        ApplyReportButtonState();
+    }
+
+    /// <summary>
+    /// 判断当前工位是否允许在主界面直接编辑离线开工信息。
+    /// </summary>
+    /// <param name="state">当前工位运行态。</param>
+    /// <returns>允许离线编辑返回 true；否则返回 false。</returns>
+    private bool IsOfflineInputEditable(ProductionStationRuntimeState state)
+    {
+        return !_stationViewReadOnly
+            && !_mesConnectionMonitorService.Current.IsConnected
+            && !IsRunningWeldTask(state.ActiveTask);
+    }
+
+    /// <summary>
+    /// 绑定离线空闲状态下的可编辑开工信息。
+    /// </summary>
+    /// <param name="liveWorkId">PLC 当前扫码工单号。</param>
+    private void BindOfflineEditableRuntimeState(string liveWorkId)
+    {
+        _syncingOfflineInputs = true;
+        try
+        {
+            ApplyOfflineInputReadOnly(readOnly: false);
+            BindOfflineProgramNameOptions();
+
+            if (!_offlineWorkOrderEditedByUser)
+            {
+                inputSN.Text = !string.IsNullOrWhiteSpace(liveWorkId)
+                    ? liveWorkId
+                    : string.IsNullOrWhiteSpace(inputSN.Text)
+                        ? $"LOCAL-{CurrentStationNo}-{DateTime.Now:yyyyMMddHHmmss}"
+                        : inputSN.Text;
+            }
+
+            inputProcessNo.Text = string.IsNullOrWhiteSpace(inputProcessNo.Text) ? "OP10" : inputProcessNo.Text;
+            selectItemName.Text = string.IsNullOrWhiteSpace(selectItemName.Text) ? "离线焊接" : selectItemName.Text;
+            inputStartAmount.Text = string.IsNullOrWhiteSpace(inputStartAmount.Text) ? "1" : inputStartAmount.Text;
+            inputProdModel.Text = string.Empty;
+            ApplyOfflineProgramNameOption(GetSelectedOfflineProgramNameOption());
+        }
+        finally
+        {
+            _syncingOfflineInputs = false;
+        }
+    }
+
+    /// <summary>
+    /// 设置离线开工输入控件的只读状态。
+    /// </summary>
+    /// <param name="readOnly">是否只读。</param>
+    private void ApplyOfflineInputReadOnly(bool readOnly)
+    {
+        inputSN.ReadOnly = readOnly;
+        inputBatch.ReadOnly = readOnly;
+        inputSpec.ReadOnly = readOnly;
+        inputProductName.ReadOnly = readOnly;
+        inputDrawingNo.ReadOnly = readOnly;
+        inputProcessNo.ReadOnly = readOnly;
+        inputStartAmount.ReadOnly = readOnly;
+        selectProgramName.ReadOnly = readOnly;
+        inputProdNum.ReadOnly = true;
+        inputProdModel.ReadOnly = true;
+        selectRecipeCode.ReadOnly = true;
+    }
+
+    /// <summary>
+    /// 从本地程序库刷新“程序名称”下拉选项。
+    /// </summary>
+    private void BindOfflineProgramNameOptions()
+    {
+        var previousProgramId = GetSelectedOfflineProgramNameOption()?.Program.Id;
+        var previousText = selectProgramName.Text?.Trim() ?? string.Empty;
+        var options = OfflineStartInputRules.BuildProgramNameOptions(_programManageService.GetPrograms()).ToList();
+
+        _syncingOfflineProgramSelection = true;
+        try
+        {
+            _offlineProgramNameOptions.Clear();
+            _offlineProgramNameOptions.AddRange(options);
+            selectProgramName.Items.Clear();
+            selectProgramName.Items.AddRange(options.Select(option => option.DisplayText).Cast<object>().ToArray());
+
+            var selectedIndex = previousProgramId.HasValue
+                ? options.FindIndex(option => option.Program.Id == previousProgramId.Value)
+                : -1;
+            if (selectedIndex < 0 && !string.IsNullOrWhiteSpace(previousText))
+            {
+                selectedIndex = options.FindIndex(option => string.Equals(option.DisplayText, previousText, StringComparison.Ordinal));
+            }
+
+            if (selectedIndex < 0 && options.Count > 0)
+            {
+                selectedIndex = 0;
+            }
+
+            selectProgramName.SelectedIndex = selectedIndex;
+            selectProgramName.Text = selectedIndex >= 0 ? options[selectedIndex].DisplayText : string.Empty;
+        }
+        finally
+        {
+            _syncingOfflineProgramSelection = false;
+        }
+    }
+
+    /// <summary>
+    /// 将选中的程序名称关联信息同步到产品工号、产品型号和配方号控件。
+    /// </summary>
+    /// <param name="option">选中的本地程序；为空时清空联动字段。</param>
+    private void ApplyOfflineProgramNameOption(OfflineProgramNameOption? option)
+    {
+        inputProdNum.Text = option?.Program.ProductNum ?? string.Empty;
+        inputProdModel.Text = option?.Program.ProductModel ?? string.Empty;
+        selectRecipeCode.Text = option?.Program.RecipeCode ?? string.Empty;
+        if (option is not null && IsOfflineInputEditable(GetCurrentStationState()))
+        {
+            selectProgramName.Text = option.DisplayText;
+        }
+    }
+
+    /// <summary>
+    /// 获取当前程序名称下拉选中的本地程序。
+    /// </summary>
+    /// <returns>选中的程序；未选中时返回 null。</returns>
+    private OfflineProgramNameOption? GetSelectedOfflineProgramNameOption()
+    {
+        var selectedIndex = selectProgramName.SelectedIndex;
+        return selectedIndex >= 0 && selectedIndex < _offlineProgramNameOptions.Count
+            ? _offlineProgramNameOptions[selectedIndex]
+            : null;
+    }
+
+    /// <summary>
+    /// 从主界面离线输入控件构造本地开工请求。
+    /// </summary>
+    /// <param name="stationNo">当前工位号。</param>
+    /// <param name="request">构造出的离线开工请求。</param>
+    /// <param name="selectedProgram">选中的程序名称选项。</param>
+    /// <returns>构造成功返回 true；校验失败返回 false。</returns>
+    private bool TryBuildOfflineStartRequest(int stationNo, out OfflineExperimentStartReq request, out OfflineProgramNameOption? selectedProgram)
+    {
+        request = new OfflineExperimentStartReq();
+        selectedProgram = GetSelectedOfflineProgramNameOption();
+        if (selectedProgram is null)
+        {
+            ShowWarningText("请先选择程序名称。");
+            return false;
+        }
+
+        try
+        {
+            request = OfflineStartInputRules.BuildRequest(
+                new OfflineStartInput(
+                    stationNo,
+                    inputSN.Text,
+                    inputBatch.Text,
+                    inputSpec.Text,
+                    inputProcessNo.Text,
+                    selectItemName.Text,
+                    inputStartAmount.Text,
+                    inputProductName.Text,
+                    inputDrawingNo.Text),
+                selectedProgram);
+            return true;
+        }
+        catch (InvalidOperationException ex)
+        {
+            ShowWarningText(ex.Message);
+            return false;
+        }
     }
 
     /// <summary>
@@ -2711,6 +2996,58 @@ public partial class MonitorView : BaseView
         if (!snapshot.IsSuccess && !string.IsNullOrWhiteSpace(snapshot.Message))
         {
             SetRuntimeError(TextKeys.Monitor.RuntimeError.WorkIdReadFailed);
+        }
+    }
+
+    /// <summary>
+    /// Queues an automatic MES work-order query when PLC scans a new work order on an idle online station.
+    /// </summary>
+    /// <param name="snapshot">PLC work-order snapshot.</param>
+    private void QueueAutoWorkOrderQuery(PlcWorkIdSnapshot snapshot)
+    {
+        var stationNo = NormalizeStationNo(snapshot.StationNo);
+        var state = _weldTaskService.CurrentState.GetOrCreateStation(stationNo);
+        var workId = snapshot.WorkId?.Trim() ?? string.Empty;
+        _lastAutoQueriedWorkIds.TryGetValue(stationNo, out var lastWorkId);
+        var queryInProgress = _autoQueryStations.Contains(stationNo);
+        var hasRunningTask = IsRunningWeldTask(state.ActiveTask) || _weldTaskService.GetUnfinishedTask(stationNo) is not null;
+
+        if (!WorkOrderAutoQueryRules.ShouldAutoQuery(
+                _mesConnectionMonitorService.Current.IsConnected,
+                hasRunningTask,
+                snapshot.IsSuccess,
+                workId,
+                lastWorkId,
+                queryInProgress))
+        {
+            return;
+        }
+
+        _lastAutoQueriedWorkIds[stationNo] = workId;
+        _autoQueryStations.Add(stationNo);
+        _ = AutoLoadWorkOrderInfoAsync(stationNo, workId);
+    }
+
+    /// <summary>
+    /// Loads MES work-order information for an automatic PLC scan without blocking the monitor event.
+    /// </summary>
+    /// <param name="stationNo">Station number.</param>
+    /// <param name="workId">Work order read from PLC.</param>
+    /// <returns>Asynchronous operation.</returns>
+    private async Task AutoLoadWorkOrderInfoAsync(int stationNo, string workId)
+    {
+        try
+        {
+            await LoadWorkOrderInfoAsync(workId, stationNo, showDialogOnFailure: false);
+        }
+        catch (Exception ex)
+        {
+            _exceptionLogService.Write(ex, "MonitorView.AutoLoadWorkOrderInfo");
+            SetRuntimeError(TextKeys.Monitor.Message.WorkOrderLoadFailed);
+        }
+        finally
+        {
+            _autoQueryStations.Remove(stationNo);
         }
     }
 
@@ -2928,6 +3265,7 @@ public partial class MonitorView : BaseView
     private void ApplyLocalizedTexts()
     {
         lblTitle.Text = _currentSettings.DeviceName;
+        ApplyDeviceIdText();
         lblWorkOrder.Text = _localizer.GetString(TextKeys.Monitor.Label.WorkOrderNo);
         lblProgramName.Text = _localizer.GetString(TextKeys.Monitor.Label.ProgramName);
         lblProductNo.Text = _localizer.GetString(TextKeys.Monitor.Label.ProductNumber);
@@ -2954,7 +3292,6 @@ public partial class MonitorView : BaseView
         btnExpStart.Text = _localizer.GetString(TextKeys.Monitor.Button.StartReport);
         btnExpEnd.Text = _localizer.GetString(TextKeys.Monitor.Button.FinishReport);
         btnLocalWorkOrder.Text = _localizer.GetString(TextKeys.Monitor.Button.LocalWorkOrder);
-        btnChangeWO.Text = _localizer.GetString(TextKeys.Monitor.Button.ChangeWorkOrder);
         btnEditWO.Text = _localizer.GetString(TextKeys.Monitor.Button.EditWO);
 
         grpErrorTips.Text = _localizer.GetString(TextKeys.Monitor.Group.ExceptionTips);
@@ -2966,6 +3303,18 @@ public partial class MonitorView : BaseView
 
         SetLiveResultTagColor(tagLiveResult1, UiColors.Status.Muted, Color.White);
         SetLiveResultTagColor(tagLiveResult2, UiColors.Status.Muted, Color.White);
+    }
+
+    /// <summary>
+    /// Displays the configured device id on the monitor header.
+    /// Empty values are shown as "--" so operators can immediately spot incomplete settings.
+    /// </summary>
+    private void ApplyDeviceIdText()
+    {
+        var deviceId = string.IsNullOrWhiteSpace(_currentSettings.DeviceId)
+            ? "--"
+            : _currentSettings.DeviceId.Trim();
+        lblDeviceId.Text = $"{_localizer.GetString(TextKeys.SystemSetting.LabelDeviceId)}：{deviceId}";
     }
 
     #endregion
@@ -3214,9 +3563,7 @@ public partial class MonitorView : BaseView
 
         var isOnline = snapshot.IsConnected;
         btnGetWO.Enabled = isOnline;
-        btnExpStart.Enabled = isOnline;
-        btnExpEnd.Enabled = isOnline;
-        btnLocalWorkOrder.Enabled = !isOnline;
+        ApplyReportButtonState();
     }
 
     /// <summary>
@@ -6269,7 +6616,7 @@ public partial class MonitorView : BaseView
             return false;
         }
 
-        _weldTaskService.ApplyStartAdjustment(form.AdjustedWorkOrder, form.AdjustedProcess, form.ProgramContent, stationNo);
+        _weldTaskService.ApplyStartAdjustment(form.AdjustedWorkOrder, form.AdjustedProcess, form.AdjustedProgram, stationNo);
         var refreshedProgram = GetCurrentStationState().SelectedProgram ?? program;
         _confirmedProgramFingerprint = BuildProgramFingerprint(refreshedProgram, stationNo);
         QueueRefreshSchemePreview(force: true);

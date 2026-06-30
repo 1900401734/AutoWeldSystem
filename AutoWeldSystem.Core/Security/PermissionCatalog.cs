@@ -16,7 +16,6 @@ public static class PermissionCatalog
         new(PermissionCodes.Pages.SystemSetting, "System Setting", PermissionType.Page, Sort: 70),
         new(PermissionCodes.Pages.AddressManage, "Address Management", PermissionType.Page, Sort: 80),
 
-        new(PermissionCodes.Buttons.Monitor.ChangeWorkOrder, "Change Work Order", PermissionType.Button, PermissionCodes.Pages.Monitor, 110),
         new(PermissionCodes.Buttons.Monitor.StartReport, "Start Report", PermissionType.Button, PermissionCodes.Pages.Monitor, 120),
         new(PermissionCodes.Buttons.Monitor.FinishReport, "Finish Report", PermissionType.Button, PermissionCodes.Pages.Monitor, 130),
         new(PermissionCodes.Buttons.Monitor.GetWorkOrder, "Get Work Order", PermissionType.Button, PermissionCodes.Pages.Monitor, 140),

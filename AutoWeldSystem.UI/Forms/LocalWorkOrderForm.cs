@@ -3,6 +3,7 @@ using AutoWeldSystem.Core.DTOs.Mes.Request;
 using AutoWeldSystem.Core.DTOs.Plc;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces.PLC;
+using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.UI.Base;
 
 namespace AutoWeldSystem.UI.Forms;
@@ -46,12 +47,8 @@ public partial class LocalWorkOrderForm : BaseWindow
 
     private void BindPrograms()
     {
-        var items = _programs
-            .Where(program => !program.IsDeleted)
-            .OrderBy(program => program.ProductNum)
-            .ThenBy(program => program.RecipeCode)
-            .ThenByDescending(program => program.UpdatedTime)
-            .Select(program => new LocalProgramItem(program))
+        var items = OfflineStartInputRules.BuildProgramNameOptions(_programs)
+            .Select(option => new LocalProgramItem(option))
             .ToList();
 
         cmbProgram.DisplayMember = nameof(LocalProgramItem.DisplayText);
@@ -188,7 +185,7 @@ public partial class LocalWorkOrderForm : BaseWindow
             ProgramType = program.ProgramType.Trim(),
             ProgramContent = string.IsNullOrWhiteSpace(program.ProgramContent) ? "{}" : program.ProgramContent.Trim(),
             ProductNum = program.ProductNum.Trim(),
-            ProductModel = string.Empty,
+            ProductModel = program.ProductModel?.Trim() ?? string.Empty,
             ProductName = txtProductName.Text.Trim(),
             DrawingNo = txtDrawingNo.Text.Trim(),
             RecipeCode = program.RecipeCode.Trim()
@@ -206,14 +203,15 @@ public partial class LocalWorkOrderForm : BaseWindow
 
     private sealed class LocalProgramItem
     {
-        public LocalProgramItem(BizProgram program)
+        public LocalProgramItem(OfflineProgramNameOption option)
         {
-            Program = program;
+            Option = option;
         }
 
-        public BizProgram Program { get; }
+        public OfflineProgramNameOption Option { get; }
 
-        public string DisplayText
-            => $"配方={Program.RecipeCode} | {Program.ProductNum}";
+        public BizProgram Program => Option.Program;
+
+        public string DisplayText => Option.DisplayText;
     }
 }

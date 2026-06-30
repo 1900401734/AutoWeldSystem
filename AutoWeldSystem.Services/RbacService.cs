@@ -431,7 +431,6 @@ public class RbacService : IRbacService
                 PermissionCodes.Pages.Monitor,
                 PermissionCodes.Pages.DataManage,
                 PermissionCodes.Pages.ProgramManage,
-                PermissionCodes.Buttons.Monitor.ChangeWorkOrder,
                 PermissionCodes.Buttons.Monitor.StartReport,
                 PermissionCodes.Buttons.Monitor.FinishReport,
                 PermissionCodes.Buttons.Monitor.GetWorkOrder,

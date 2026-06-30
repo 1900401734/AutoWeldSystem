@@ -834,9 +834,6 @@
   <data name="monitor.message.mes_request_failed" xml:space="preserve">
     <value>MES request failed: {0}</value>
   </data>
-  <data name="monitor.button.change_work_order" xml:space="preserve">
-    <value>Change</value>
-  </data>
   <data name="monitor.button.start_report" xml:space="preserve">
     <value>Start Report</value>
   </data>
@@ -930,9 +927,6 @@
   <data name="permission.page.address_manage" xml:space="preserve">
     <value>Address Management</value>
   </data>
-  <data name="permission.button.monitor.change_work_order" xml:space="preserve">
-    <value>Change Work Order</value>
-  </data>
   <data name="permission.button.monitor.start_report" xml:space="preserve">
     <value>Start Report</value>
   </data>
@@ -940,7 +934,7 @@
     <value>Finish Report</value>
   </data>
   <data name="permission.button.monitor.get_work_order" xml:space="preserve">
-    <value>Get Work Order</value>
+    <value>Query</value>
   </data>
   <data name="permission.button.monitor.edit_work_order" xml:space="preserve">
     <value>Edit Work Order</value>

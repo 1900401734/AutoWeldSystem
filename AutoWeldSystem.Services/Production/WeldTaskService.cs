@@ -203,9 +203,10 @@ public class WeldTaskService : IWeldTaskService
         }
 
         var settings = CurrentSettings;
+        // 当前开工逻辑由程序名称反推产品工号和配方号，因此程序列表不能再被工单产品工号提前收窄。
         var response = await _mesProvider.GetProgramListAsync(
             settings.DeviceId,
-            settings.UseProductNumberFilter ? station.CurrentWorkOrder.ProdNum : null,
+            null,
             cancellationToken);
 
         if (!response.IsSuccess || response.Data is null)
@@ -252,7 +253,7 @@ public class WeldTaskService : IWeldTaskService
     public void ApplyStartAdjustment(
         WorkOrderRes workOrder,
         ExpItemData? process,
-        string programContent,
+        ProgramDataRes program,
         int stationNo = ProductionConstants.Stations.DefaultStationNo)
     {
         var normalizedStationNo = NormalizeStationNo(stationNo);
@@ -268,16 +269,13 @@ public class WeldTaskService : IWeldTaskService
             station.SelectedProcess = CloneProcess(process);
         }
 
-        if (station.SelectedProgram is not null)
-        {
-            station.SelectedProgram.ProgramContent = string.IsNullOrWhiteSpace(programContent)
-                ? "{}"
-                : programContent.Trim();
-        }
+        station.SelectedProgram = CloneProgram(program);
 
         station.UpdatedTime = DateTime.Now;
         RefreshCompatibilityState(normalizedStationNo);
-        _operationLogService.Write("StartAdjustment", $"Start data adjusted locally, Station={normalizedStationNo}, SN={workOrder.SN}, ProductNumber={workOrder.ProdNum}");
+        _operationLogService.Write(
+            "StartAdjustment",
+            $"Start data adjusted locally, Station={normalizedStationNo}, SN={workOrder.SN}, ProductNumber={workOrder.ProdNum}, ProgramName={program.ProgramName}, Recipe={program.RecipeCode}");
         NotifyStateChanged();
     }
 
@@ -1287,6 +1285,25 @@ public class WeldTaskService : IWeldTaskService
             ItemName = NormalizeText(source.ItemName),
             ProcessNo = NormalizeText(source.ProcessNo),
             StartAmount = source.StartAmount
+        };
+    }
+
+    /// <summary>
+    /// 复制开工确认后的程序快照，避免界面继续编辑时影响已经保存的运行态。
+    /// </summary>
+    private static ProgramDataRes CloneProgram(ProgramDataRes source)
+    {
+        return new ProgramDataRes
+        {
+            Id = NormalizeText(source.Id),
+            ProgramName = NormalizeText(source.ProgramName),
+            DeviceId = NormalizeText(source.DeviceId),
+            ProgramContent = string.IsNullOrWhiteSpace(source.ProgramContent) ? "{}" : source.ProgramContent.Trim(),
+            ProgramType = string.IsNullOrWhiteSpace(source.ProgramType) ? "0" : source.ProgramType.Trim(),
+            ProductNum = NormalizeText(source.ProductNum),
+            ProgramFile = source.ProgramFile ?? string.Empty,
+            Remark = source.Remark ?? string.Empty,
+            RecipeCode = NormalizeText(source.RecipeCode)
         };
     }
 

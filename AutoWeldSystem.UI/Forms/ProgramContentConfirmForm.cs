@@ -1,5 +1,6 @@
 using AutoWeldSystem.Core.DTOs.Mes.Response;
 using AutoWeldSystem.Core.Entities;
+using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.UI.Base;
 using System.ComponentModel;
 
@@ -18,6 +19,7 @@ public partial class ProgramContentConfirmForm : BaseWindow
     private const string KeyProcessName = "ProcessName";
     private const string KeyQuantity = "Quantity";
     private const string KeyProgramName = "ProgramName";
+    private const string KeyRecipeCode = "RecipeCode";
     private const string KeyProgramType = "ProgramType";
 
     private readonly WorkOrderRes _sourceWorkOrder;
@@ -36,18 +38,20 @@ public partial class ProgramContentConfirmForm : BaseWindow
         InitializeComponent();
         _sourceWorkOrder = CloneWorkOrder(workOrder);
         _sourceProcess = process is null ? null : CloneProcess(process);
-        _sourceProgram = program;
+        _sourceProgram = CloneProgram(program);
         _localPrograms = localPrograms;
         ConfigureGrid();
         BindRows();
-        dgvFields.DataBindingComplete += (_, _) => ApplyProductDropdownCells();
+        dgvFields.DataBindingComplete += (_, _) => ApplyStartDropdownCells();
         txtProgramContent.Text = string.IsNullOrWhiteSpace(program.ProgramContent) ? "{}" : program.ProgramContent;
-        Shown += (_, _) => ApplyProductDropdownCells();
+        Shown += (_, _) => ApplyStartDropdownCells();
     }
 
     public WorkOrderRes AdjustedWorkOrder { get; private set; } = new();
 
     public ExpItemData? AdjustedProcess { get; private set; }
+
+    public ProgramDataRes AdjustedProgram { get; private set; } = new();
 
     public string ProgramContent => txtProgramContent.Text.Trim();
 
@@ -84,30 +88,53 @@ public partial class ProgramContentConfirmForm : BaseWindow
         try
         {
             _rows.Clear();
-        AddRow(KeyWorkOrderNo, "工单号", _sourceWorkOrder.SN);
-        AddRow(KeyProductNum, "产品工号", _sourceWorkOrder.ProdNum);
-        AddRow(KeyProductModel, "产品型号", _sourceWorkOrder.ProdModel);
-        AddRow(KeyBatch, "批次", _sourceWorkOrder.Batch);
-        AddRow(KeySpec, "规格", _sourceWorkOrder.Spec);
-        AddRow(KeyProductName, "部件名称", _sourceWorkOrder.ProductName);
-        AddRow(KeyDrawingNo, "零件图号", _sourceWorkOrder.DrawingNo);
-        AddRow(KeyProcessNo, "工序号", _sourceProcess?.ProcessNo ?? string.Empty);
-        AddRow(KeyProcessName, "工序名称", _sourceProcess?.ItemName ?? string.Empty);
-        AddRow(KeyQuantity, "生产数量", _sourceProcess?.StartAmount.ToString() ?? string.Empty);
-        AddRow(KeyProgramName, "程序名称", _sourceProgram.ProgramName, editable: false);
-        AddRow(KeyProgramType, "程序类型", _sourceProgram.ProgramType, editable: false);
+            AddRow(KeyWorkOrderNo, "工单号", _sourceWorkOrder.SN);
+            AddRow(KeyProductNum, "产品工号", ResolveInitialProductNum(), editable: false);
+            AddRow(KeyProductModel, "产品型号", ResolveInitialProductModel(), editable: false);
+            AddRow(KeyBatch, "批次", _sourceWorkOrder.Batch);
+            AddRow(KeySpec, "规格", _sourceWorkOrder.Spec);
+            AddRow(KeyProductName, "部件名称", _sourceWorkOrder.ProductName);
+            AddRow(KeyDrawingNo, "零件图号", _sourceWorkOrder.DrawingNo);
+            AddRow(KeyProcessNo, "工序号", _sourceProcess?.ProcessNo ?? string.Empty);
+            AddRow(KeyProcessName, "工序名称", _sourceProcess?.ItemName ?? string.Empty);
+            AddRow(KeyQuantity, "生产数量", _sourceProcess?.StartAmount.ToString() ?? string.Empty);
+            AddRow(KeyProgramName, "程序名称", _sourceProgram.ProgramName);
+            AddRow(KeyRecipeCode, "配方号", _sourceProgram.RecipeCode, editable: false);
+            AddRow(KeyProgramType, "程序类型", _sourceProgram.ProgramType, editable: false);
         }
         finally
         {
             _isBindingRows = false;
         }
 
-        ApplyProductDropdownCells();
+        ApplyStartDropdownCells();
     }
 
     private void AddRow(string key, string fieldName, string value, bool editable = true)
     {
         _rows.Add(new StartFieldRow(key, fieldName, value, value, editable));
+    }
+
+    private string ResolveInitialProductNum()
+        => FirstNonEmpty(_sourceProgram.ProductNum, _sourceWorkOrder.ProdNum);
+
+    private string ResolveInitialProductModel()
+    {
+        var localProgram = ResolveSourceLocalProgram();
+        return FirstNonEmpty(localProgram?.ProductModel, _sourceWorkOrder.ProdModel);
+    }
+
+    private BizProgram? ResolveSourceLocalProgram()
+    {
+        var byProgramId = _localPrograms.FirstOrDefault(program => SameText(program.ProgramId, _sourceProgram.Id));
+        if (byProgramId is not null)
+        {
+            return byProgramId;
+        }
+
+        return _localPrograms.FirstOrDefault(program =>
+            SameText(program.ProgramName, _sourceProgram.ProgramName)
+            && SameText(program.ProductNum, _sourceProgram.ProductNum));
     }
 
     private void dgvFields_CellBeginEdit(object? sender, DataGridViewCellCancelEventArgs e)
@@ -132,9 +159,9 @@ public partial class ProgramContentConfirmForm : BaseWindow
             row.AdjustedValue = dgvFields.Rows[e.RowIndex].Cells[e.ColumnIndex].Value?.ToString() ?? string.Empty;
         }
 
-        if (row.Key == KeyProductNum)
+        if (row.Key == KeyProgramName)
         {
-            RefreshProductModelDropdown();
+            ApplySelectedProgramName();
         }
     }
 
@@ -165,27 +192,32 @@ public partial class ProgramContentConfirmForm : BaseWindow
         }
     }
 
-    private void ApplyProductDropdownCells()
+    private void ApplyStartDropdownCells()
     {
         if (_isBindingRows)
         {
             return;
         }
 
-        SetComboBoxCell(KeyProductNum, GetProductNumOptions());
-        SetComboBoxCell(KeyProductModel, GetProductModelOptions(GetValue(KeyProductNum)));
+        SetComboBoxCell(KeyProgramName, GetProgramNameOptions());
     }
 
-    private void RefreshProductModelDropdown()
+    private void ApplySelectedProgramName()
     {
-        var productModelOptions = GetProductModelOptions(GetValue(KeyProductNum));
-        var currentModel = GetValue(KeyProductModel);
-        SetComboBoxCell(KeyProductModel, productModelOptions);
-
-        if (string.IsNullOrWhiteSpace(currentModel) && productModelOptions.Count == 1)
+        var option = ResolveSelectedProgramNameOption();
+        if (option is null)
         {
-            SetValue(KeyProductModel, productModelOptions[0]);
+            return;
         }
+
+        // 程序名称是主选择项，产品工号和配方号必须跟随所选程序，避免开工快照错配。
+        SetValue(KeyProductNum, option.Program.ProductNum);
+        SetValue(KeyProductModel, option.Program.ProductModel ?? string.Empty);
+        SetValue(KeyRecipeCode, option.Program.RecipeCode ?? string.Empty);
+        SetValue(KeyProgramType, option.Program.ProgramType);
+        txtProgramContent.Text = string.IsNullOrWhiteSpace(option.Program.ProgramContent)
+            ? "{}"
+            : option.Program.ProgramContent.Trim();
     }
 
     private void SetComboBoxCell(string key, IReadOnlyList<string> options)
@@ -214,37 +246,14 @@ public partial class ProgramContentConfirmForm : BaseWindow
         dgvFields.Rows[rowIndex].Cells[2].Value = currentValue;
     }
 
-    private IReadOnlyList<string> GetProductNumOptions()
+    private IReadOnlyList<string> GetProgramNameOptions()
     {
-        return _localPrograms
-            .Select(program => program.ProductNum)
-            .Append(_sourceProgram.ProductNum)
-            .Append(_sourceWorkOrder.ProdNum)
+        return BuildProgramNameOptions()
+            .Select(option => option.DisplayText)
+            .Append(_sourceProgram.ProgramName)
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Select(value => value.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(value => value)
-            .ToList();
-    }
-
-    private IReadOnlyList<string> GetProductModelOptions(string productNum)
-    {
-        var relatedModels = string.IsNullOrWhiteSpace(productNum)
-            ? Enumerable.Empty<string?>()
-            : _localPrograms
-                .Where(program => string.Equals(
-                    program.ProductNum?.Trim(),
-                    productNum.Trim(),
-                    StringComparison.OrdinalIgnoreCase))
-                .Select(program => program.ProductModel);
-
-        return relatedModels
-            .Concat(_localPrograms.Select(program => program.ProductModel))
-            .Append(_sourceWorkOrder.ProdModel)
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Select(value => value!.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(value => value)
             .ToList();
     }
 
@@ -278,6 +287,7 @@ public partial class ProgramContentConfirmForm : BaseWindow
         AdjustedWorkOrder.ProductName = GetValue(KeyProductName);
         AdjustedWorkOrder.DrawingNo = GetValue(KeyDrawingNo);
         AdjustedProcess = BuildAdjustedProcess();
+        AdjustedProgram = BuildAdjustedProgram();
 
         if (string.IsNullOrWhiteSpace(AdjustedWorkOrder.SN))
         {
@@ -288,6 +298,18 @@ public partial class ProgramContentConfirmForm : BaseWindow
         if (string.IsNullOrWhiteSpace(AdjustedWorkOrder.ProdNum))
         {
             message = "产品工号不能为空。";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(AdjustedProgram.ProgramName))
+        {
+            message = "程序名称不能为空。";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(AdjustedProgram.RecipeCode))
+        {
+            message = "配方号不能为空。";
             return false;
         }
 
@@ -319,6 +341,38 @@ public partial class ProgramContentConfirmForm : BaseWindow
         process.ItemName = GetValue(KeyProcessName);
         process.StartAmount = int.TryParse(GetValue(KeyQuantity), out var quantity) ? quantity : 0;
         return process;
+    }
+
+    private ProgramDataRes BuildAdjustedProgram()
+    {
+        var option = ResolveSelectedProgramNameOption();
+        var program = option is null
+            ? CloneProgram(_sourceProgram)
+            : CreateProgramSnapshot(option.Program);
+
+        program.ProgramContent = string.IsNullOrWhiteSpace(ProgramContent) ? "{}" : ProgramContent;
+        program.ProductNum = string.IsNullOrWhiteSpace(program.ProductNum) ? GetValue(KeyProductNum) : program.ProductNum.Trim();
+        program.RecipeCode = string.IsNullOrWhiteSpace(program.RecipeCode) ? GetValue(KeyRecipeCode) : program.RecipeCode.Trim();
+        program.ProgramType = string.IsNullOrWhiteSpace(program.ProgramType) ? GetValue(KeyProgramType) : program.ProgramType.Trim();
+        return program;
+    }
+
+    private OfflineProgramNameOption? ResolveSelectedProgramNameOption()
+    {
+        var selectedText = GetValue(KeyProgramName);
+        if (string.IsNullOrWhiteSpace(selectedText))
+        {
+            return null;
+        }
+
+        var options = BuildProgramNameOptions();
+        return options.FirstOrDefault(option => SameText(option.DisplayText, selectedText))
+            ?? options.FirstOrDefault(option => SameText(option.Program.ProgramName, selectedText));
+    }
+
+    private IReadOnlyList<OfflineProgramNameOption> BuildProgramNameOptions()
+    {
+        return OfflineStartInputRules.BuildProgramNameOptions(_localPrograms);
     }
 
     private string GetValue(string key)
@@ -377,6 +431,48 @@ public partial class ProgramContentConfirmForm : BaseWindow
             ProcessNo = source.ProcessNo,
             StartAmount = source.StartAmount
         };
+    }
+
+    private static ProgramDataRes CloneProgram(ProgramDataRes source)
+    {
+        return new ProgramDataRes
+        {
+            Id = source.Id,
+            ProgramName = source.ProgramName,
+            DeviceId = source.DeviceId,
+            ProgramContent = source.ProgramContent,
+            ProgramType = source.ProgramType,
+            ProductNum = source.ProductNum,
+            ProgramFile = source.ProgramFile,
+            Remark = source.Remark,
+            RecipeCode = source.RecipeCode
+        };
+    }
+
+    private static ProgramDataRes CreateProgramSnapshot(BizProgram source)
+    {
+        return new ProgramDataRes
+        {
+            Id = string.IsNullOrWhiteSpace(source.ProgramId) ? $"local-{source.Id}" : source.ProgramId.Trim(),
+            ProgramName = source.ProgramName.Trim(),
+            DeviceId = source.DeviceId,
+            ProgramContent = string.IsNullOrWhiteSpace(source.ProgramContent) ? "{}" : source.ProgramContent.Trim(),
+            ProgramType = string.IsNullOrWhiteSpace(source.ProgramType) ? "0" : source.ProgramType.Trim(),
+            ProductNum = source.ProductNum.Trim(),
+            ProgramFile = source.ProgramFile ?? string.Empty,
+            Remark = source.Remark ?? string.Empty,
+            RecipeCode = source.RecipeCode?.Trim() ?? string.Empty
+        };
+    }
+
+    private static bool SameText(string? left, string? right)
+    {
+        return string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string FirstNonEmpty(params string?[] values)
+    {
+        return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
     }
 
     private sealed class StartFieldRow

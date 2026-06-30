@@ -103,10 +103,6 @@ public static class TextKeys
         public static class Button
         {
             /// <summary>
-            /// 变更
-            /// </summary>
-            public const string ChangeWorkOrder = "monitor.button.change_work_order";
-            /// <summary>
             /// 微调
             /// </summary>
             public const string EditWO = "monitor.button.edit";
@@ -775,7 +771,6 @@ public static class TextKeys
         public const string PageStateManage = "permission.page.state_manage";
         public const string PageSystemSetting = "permission.page.system_setting";
         public const string PageAddressManage = "permission.page.address_manage";
-        public const string ButtonMonitorChangeWorkOrder = "permission.button.monitor.change_work_order";
         public const string ButtonMonitorStartReport = "permission.button.monitor.start_report";
         public const string ButtonMonitorFinishReport = "permission.button.monitor.finish_report";
         public const string ButtonMonitorGetWorkOrder = "permission.button.monitor.get_work_order";

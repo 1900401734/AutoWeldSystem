@@ -48,7 +48,7 @@ public interface IWeldTaskService
     void ApplyStartAdjustment(
         WorkOrderRes workOrder,
         ExpItemData? process,
-        string programContent,
+        ProgramDataRes program,
         int stationNo = ProductionConstants.Stations.DefaultStationNo);
 
     /// <summary>

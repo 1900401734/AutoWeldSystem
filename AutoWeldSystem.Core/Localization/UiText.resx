@@ -834,9 +834,6 @@
   <data name="monitor.message.mes_request_failed" xml:space="preserve">
     <value>MES请求失败：{0}</value>
   </data>
-  <data name="monitor.button.change_work_order" xml:space="preserve">
-    <value>变更</value>
-  </data>
   <data name="monitor.button.start_report" xml:space="preserve">
     <value>开工上报</value>
   </data>
@@ -930,9 +927,6 @@
   <data name="permission.page.address_manage" xml:space="preserve">
     <value>地址维护</value>
   </data>
-  <data name="permission.button.monitor.change_work_order" xml:space="preserve">
-    <value>变更</value>
-  </data>
   <data name="permission.button.monitor.start_report" xml:space="preserve">
     <value>开工上报</value>
   </data>
@@ -940,7 +934,7 @@
     <value>完工上报</value>
   </data>
   <data name="permission.button.monitor.get_work_order" xml:space="preserve">
-    <value>获取工单</value>
+    <value>查询</value>
   </data>
   <data name="permission.button.monitor.edit_work_order" xml:space="preserve">
     <value>编辑工单</value>
