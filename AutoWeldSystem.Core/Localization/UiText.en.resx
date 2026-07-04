@@ -1275,6 +1275,9 @@
   <data name="log.label.date" xml:space="preserve">
     <value>Log Date</value>
   </data>
+  <data name="log.check.show_date" xml:space="preserve">
+    <value>Show date</value>
+  </data>
   <data name="log.label.keyword" xml:space="preserve">
     <value>Keyword</value>
   </data>

@@ -35,6 +35,7 @@ namespace AutoWeldSystem.UI.Views
             btnOpenMesFolder = new AntdUI.Button();
             dtpMesDate = new DatePicker();
             lblMesDate = new AntdUI.Label();
+            chkMesShowDate = new AntdUI.Checkbox();
             queryMesLogs = new AutoWeldSystem.UI.Controls.InputQuery(components);
             tableLayoutPanel11 = new TableLayoutPanel();
             lblMesTitle = new Label();
@@ -76,6 +77,7 @@ namespace AutoWeldSystem.UI.Views
             btnOpenProductionFolder = new AntdUI.Button();
             dtpProductionDate = new DatePicker();
             lblProductionDate = new AntdUI.Label();
+            chkProductionShowDate = new AntdUI.Checkbox();
             queryProductionLogs = new AutoWeldSystem.UI.Controls.InputQuery(components);
             productionTitleLayout = new TableLayoutPanel();
             lblProductionTitle = new Label();
@@ -88,6 +90,7 @@ namespace AutoWeldSystem.UI.Views
             btnOpenExceptionFolder = new AntdUI.Button();
             dtpExceptionDate = new DatePicker();
             lblExceptionDate = new AntdUI.Label();
+            chkExceptionShowDate = new AntdUI.Checkbox();
             queryExceptionLogs = new AutoWeldSystem.UI.Controls.InputQuery(components);
             exceptionTitleLayout = new TableLayoutPanel();
             lblExceptionTitle = new Label();
@@ -120,6 +123,7 @@ namespace AutoWeldSystem.UI.Views
             btnOpenDeviceLifecycleFolder = new AntdUI.Button();
             dtpDeviceLifecycleDate = new DatePicker();
             lblDeviceLifecycleDate = new AntdUI.Label();
+            chkDeviceLifecycleShowDate = new AntdUI.Checkbox();
             queryDeviceLifecycleLogs = new AutoWeldSystem.UI.Controls.InputQuery(components);
             deviceLifecycleTitleLayout = new TableLayoutPanel();
             lblDeviceLifecycleTitle = new Label();
@@ -140,6 +144,7 @@ namespace AutoWeldSystem.UI.Views
             deviceStatusToolbar = new TableLayoutPanel();
             dtpDeviceStatusDate = new DatePicker();
             lblDeviceStatusDate = new AntdUI.Label();
+            chkDeviceStatusShowDate = new AntdUI.Checkbox();
             queryDeviceStatusLogs = new AutoWeldSystem.UI.Controls.InputQuery(components);
             deviceStatusTitleLayout = new TableLayoutPanel();
             lblDeviceStatusTitle = new Label();
@@ -306,15 +311,17 @@ namespace AutoWeldSystem.UI.Views
             // 
             tableLayoutPanel10.AutoSize = true;
             tableLayoutPanel10.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            tableLayoutPanel10.ColumnCount = 4;
+            tableLayoutPanel10.ColumnCount = 5;
             tableLayoutPanel10.ColumnStyles.Add(new ColumnStyle());
             tableLayoutPanel10.ColumnStyles.Add(new ColumnStyle());
             tableLayoutPanel10.ColumnStyles.Add(new ColumnStyle());
             tableLayoutPanel10.ColumnStyles.Add(new ColumnStyle());
-            tableLayoutPanel10.Controls.Add(btnOpenMesFolder, 3, 0);
+            tableLayoutPanel10.ColumnStyles.Add(new ColumnStyle());
+            tableLayoutPanel10.Controls.Add(btnOpenMesFolder, 4, 0);
             tableLayoutPanel10.Controls.Add(dtpMesDate, 1, 0);
             tableLayoutPanel10.Controls.Add(lblMesDate, 0, 0);
             tableLayoutPanel10.Controls.Add(queryMesLogs, 2, 0);
+            tableLayoutPanel10.Controls.Add(chkMesShowDate, 3, 0);
             tableLayoutPanel10.Dock = DockStyle.Fill;
             tableLayoutPanel10.Location = new Point(3, 26);
             tableLayoutPanel10.Name = "tableLayoutPanel10";
@@ -355,6 +362,17 @@ namespace AutoWeldSystem.UI.Views
             lblMesDate.Size = new Size(40, 52);
             lblMesDate.TabIndex = 0;
             lblMesDate.Text = "Date";
+            //
+            // chkMesShowDate
+            //
+            chkMesShowDate.Dock = DockStyle.Fill;
+            chkMesShowDate.Location = new Point(513, 0);
+            chkMesShowDate.Margin = new Padding(0);
+            chkMesShowDate.Name = "chkMesShowDate";
+            chkMesShowDate.Padding = new Padding(8, 0, 8, 0);
+            chkMesShowDate.Size = new Size(96, 52);
+            chkMesShowDate.TabIndex = 7;
+            chkMesShowDate.Text = "Show date";
             // 
             // queryMesLogs
             // 
@@ -838,15 +856,17 @@ namespace AutoWeldSystem.UI.Views
             // 
             tlpProductionToolbar.AutoSize = true;
             tlpProductionToolbar.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            tlpProductionToolbar.ColumnCount = 4;
+            tlpProductionToolbar.ColumnCount = 5;
             tlpProductionToolbar.ColumnStyles.Add(new ColumnStyle());
             tlpProductionToolbar.ColumnStyles.Add(new ColumnStyle());
             tlpProductionToolbar.ColumnStyles.Add(new ColumnStyle());
             tlpProductionToolbar.ColumnStyles.Add(new ColumnStyle());
-            tlpProductionToolbar.Controls.Add(btnOpenProductionFolder, 3, 0);
+            tlpProductionToolbar.ColumnStyles.Add(new ColumnStyle());
+            tlpProductionToolbar.Controls.Add(btnOpenProductionFolder, 4, 0);
             tlpProductionToolbar.Controls.Add(dtpProductionDate, 1, 0);
             tlpProductionToolbar.Controls.Add(lblProductionDate, 0, 0);
             tlpProductionToolbar.Controls.Add(queryProductionLogs, 2, 0);
+            tlpProductionToolbar.Controls.Add(chkProductionShowDate, 3, 0);
             tlpProductionToolbar.Dock = DockStyle.Fill;
             tlpProductionToolbar.Location = new Point(3, 26);
             tlpProductionToolbar.Name = "tlpProductionToolbar";
@@ -888,6 +908,17 @@ namespace AutoWeldSystem.UI.Views
             lblProductionDate.Size = new Size(40, 52);
             lblProductionDate.TabIndex = 0;
             lblProductionDate.Text = "Date";
+            //
+            // chkProductionShowDate
+            //
+            chkProductionShowDate.Dock = DockStyle.Fill;
+            chkProductionShowDate.Location = new Point(513, 0);
+            chkProductionShowDate.Margin = new Padding(0);
+            chkProductionShowDate.Name = "chkProductionShowDate";
+            chkProductionShowDate.Padding = new Padding(8, 0, 8, 0);
+            chkProductionShowDate.Size = new Size(96, 52);
+            chkProductionShowDate.TabIndex = 7;
+            chkProductionShowDate.Text = "Show date";
             // 
             // queryProductionLogs
             // 
@@ -1008,15 +1039,17 @@ namespace AutoWeldSystem.UI.Views
             // 
             tableLayoutPanel4.AutoSize = true;
             tableLayoutPanel4.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            tableLayoutPanel4.ColumnCount = 4;
+            tableLayoutPanel4.ColumnCount = 5;
             tableLayoutPanel4.ColumnStyles.Add(new ColumnStyle());
             tableLayoutPanel4.ColumnStyles.Add(new ColumnStyle());
             tableLayoutPanel4.ColumnStyles.Add(new ColumnStyle());
             tableLayoutPanel4.ColumnStyles.Add(new ColumnStyle());
-            tableLayoutPanel4.Controls.Add(btnOpenExceptionFolder, 3, 0);
+            tableLayoutPanel4.ColumnStyles.Add(new ColumnStyle());
+            tableLayoutPanel4.Controls.Add(btnOpenExceptionFolder, 4, 0);
             tableLayoutPanel4.Controls.Add(dtpExceptionDate, 1, 0);
             tableLayoutPanel4.Controls.Add(lblExceptionDate, 0, 0);
             tableLayoutPanel4.Controls.Add(queryExceptionLogs, 2, 0);
+            tableLayoutPanel4.Controls.Add(chkExceptionShowDate, 3, 0);
             tableLayoutPanel4.Dock = DockStyle.Fill;
             tableLayoutPanel4.Location = new Point(3, 26);
             tableLayoutPanel4.Name = "tableLayoutPanel4";
@@ -1058,6 +1091,17 @@ namespace AutoWeldSystem.UI.Views
             lblExceptionDate.Size = new Size(40, 51);
             lblExceptionDate.TabIndex = 0;
             lblExceptionDate.Text = "Date";
+            //
+            // chkExceptionShowDate
+            //
+            chkExceptionShowDate.Dock = DockStyle.Fill;
+            chkExceptionShowDate.Location = new Point(513, 0);
+            chkExceptionShowDate.Margin = new Padding(0);
+            chkExceptionShowDate.Name = "chkExceptionShowDate";
+            chkExceptionShowDate.Padding = new Padding(8, 0, 8, 0);
+            chkExceptionShowDate.Size = new Size(96, 51);
+            chkExceptionShowDate.TabIndex = 7;
+            chkExceptionShowDate.Text = "Show date";
             // 
             // queryExceptionLogs
             // 
@@ -1431,15 +1475,17 @@ namespace AutoWeldSystem.UI.Views
             // 
             deviceLifecycleToolbar.AutoSize = true;
             deviceLifecycleToolbar.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            deviceLifecycleToolbar.ColumnCount = 4;
+            deviceLifecycleToolbar.ColumnCount = 5;
             deviceLifecycleToolbar.ColumnStyles.Add(new ColumnStyle());
             deviceLifecycleToolbar.ColumnStyles.Add(new ColumnStyle());
             deviceLifecycleToolbar.ColumnStyles.Add(new ColumnStyle());
             deviceLifecycleToolbar.ColumnStyles.Add(new ColumnStyle());
-            deviceLifecycleToolbar.Controls.Add(btnOpenDeviceLifecycleFolder, 3, 0);
+            deviceLifecycleToolbar.ColumnStyles.Add(new ColumnStyle());
+            deviceLifecycleToolbar.Controls.Add(btnOpenDeviceLifecycleFolder, 4, 0);
             deviceLifecycleToolbar.Controls.Add(dtpDeviceLifecycleDate, 1, 0);
             deviceLifecycleToolbar.Controls.Add(lblDeviceLifecycleDate, 0, 0);
             deviceLifecycleToolbar.Controls.Add(queryDeviceLifecycleLogs, 2, 0);
+            deviceLifecycleToolbar.Controls.Add(chkDeviceLifecycleShowDate, 3, 0);
             deviceLifecycleToolbar.Dock = DockStyle.Fill;
             deviceLifecycleToolbar.Location = new Point(3, 26);
             deviceLifecycleToolbar.Name = "deviceLifecycleToolbar";
@@ -1480,6 +1526,17 @@ namespace AutoWeldSystem.UI.Views
             lblDeviceLifecycleDate.Size = new Size(40, 52);
             lblDeviceLifecycleDate.TabIndex = 0;
             lblDeviceLifecycleDate.Text = "Date";
+            //
+            // chkDeviceLifecycleShowDate
+            //
+            chkDeviceLifecycleShowDate.Dock = DockStyle.Fill;
+            chkDeviceLifecycleShowDate.Location = new Point(513, 0);
+            chkDeviceLifecycleShowDate.Margin = new Padding(0);
+            chkDeviceLifecycleShowDate.Name = "chkDeviceLifecycleShowDate";
+            chkDeviceLifecycleShowDate.Padding = new Padding(8, 0, 8, 0);
+            chkDeviceLifecycleShowDate.Size = new Size(96, 52);
+            chkDeviceLifecycleShowDate.TabIndex = 7;
+            chkDeviceLifecycleShowDate.Text = "Show date";
             // 
             // queryDeviceLifecycleLogs
             // 
@@ -1709,13 +1766,15 @@ namespace AutoWeldSystem.UI.Views
             // 
             deviceStatusToolbar.AutoSize = true;
             deviceStatusToolbar.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            deviceStatusToolbar.ColumnCount = 3;
+            deviceStatusToolbar.ColumnCount = 4;
+            deviceStatusToolbar.ColumnStyles.Add(new ColumnStyle());
             deviceStatusToolbar.ColumnStyles.Add(new ColumnStyle());
             deviceStatusToolbar.ColumnStyles.Add(new ColumnStyle());
             deviceStatusToolbar.ColumnStyles.Add(new ColumnStyle());
             deviceStatusToolbar.Controls.Add(dtpDeviceStatusDate, 1, 0);
             deviceStatusToolbar.Controls.Add(lblDeviceStatusDate, 0, 0);
             deviceStatusToolbar.Controls.Add(queryDeviceStatusLogs, 2, 0);
+            deviceStatusToolbar.Controls.Add(chkDeviceStatusShowDate, 3, 0);
             deviceStatusToolbar.Dock = DockStyle.Fill;
             deviceStatusToolbar.Location = new Point(3, 26);
             deviceStatusToolbar.Name = "deviceStatusToolbar";
@@ -1743,6 +1802,17 @@ namespace AutoWeldSystem.UI.Views
             lblDeviceStatusDate.Size = new Size(40, 51);
             lblDeviceStatusDate.TabIndex = 0;
             lblDeviceStatusDate.Text = "Date";
+            //
+            // chkDeviceStatusShowDate
+            //
+            chkDeviceStatusShowDate.Dock = DockStyle.Fill;
+            chkDeviceStatusShowDate.Location = new Point(498, 0);
+            chkDeviceStatusShowDate.Margin = new Padding(0);
+            chkDeviceStatusShowDate.Name = "chkDeviceStatusShowDate";
+            chkDeviceStatusShowDate.Padding = new Padding(8, 0, 8, 0);
+            chkDeviceStatusShowDate.Size = new Size(96, 51);
+            chkDeviceStatusShowDate.TabIndex = 3;
+            chkDeviceStatusShowDate.Text = "Show date";
             // 
             // queryDeviceStatusLogs
             // 
@@ -2091,6 +2161,11 @@ namespace AutoWeldSystem.UI.Views
         private Controls.InputQuery queryExceptionLogs;
         private Controls.InputQuery queryDeviceLifecycleLogs;
         private Controls.InputQuery queryDeviceStatusLogs;
+        private AntdUI.Checkbox chkMesShowDate;
+        private AntdUI.Checkbox chkProductionShowDate;
+        private AntdUI.Checkbox chkExceptionShowDate;
+        private AntdUI.Checkbox chkDeviceLifecycleShowDate;
+        private AntdUI.Checkbox chkDeviceStatusShowDate;
 
         private DataGridView dgvDeviceStatusLogs;
         private DataGridView dgvMesLogs;

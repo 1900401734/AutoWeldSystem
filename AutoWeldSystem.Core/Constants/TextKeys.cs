@@ -896,6 +896,7 @@ public static class TextKeys
         public const string DescriptionProgramException = "log.description.program_exception";
         public const string DescriptionDeviceLifecycle = "log.description.device_lifecycle";
         public const string LabelDate = "log.label.date";
+        public const string CheckShowDate = "log.check.show_date";
         public const string ButtonRefresh = "log.button.refresh";
         public const string ButtonOpenFolder = "log.button.open_folder";
         public const string ButtonOpenSource = "log.button.open_source";

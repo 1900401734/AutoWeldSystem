@@ -43,7 +43,7 @@ public static class DeviceLifecycleLogRules
             StationNo = Math.Max(0, stationNo),
             Source = normalizedSource,
             Status = connected ? StatusSuccess : StatusFailed,
-            Summary = $"{normalizedSource}自检{(connected ? "成功" : "失败")}",
+            Summary = BuildConnectionSummary(normalizedSource, connected),
             Detail = NormalizeText(message, connected ? "连接成功" : "连接失败")
         };
     }
@@ -93,7 +93,7 @@ public static class DeviceLifecycleLogRules
             StationNo = 0,
             Source = SourceDeviceApi,
             Status = success ? StatusSuccess : StatusFailed,
-            Summary = success ? "HTTP服务自检成功" : "HTTP服务自检失败",
+            Summary = success ? "HTTP服务启动成功" : "HTTP服务启动失败",
             Detail = $"DeviceBaseUrl={NormalizeText(deviceBaseUrl, "--")}, Success={success}, Message={NormalizeText(message, string.Empty)}"
         };
     }
@@ -260,6 +260,17 @@ public static class DeviceLifecycleLogRules
 
     private static string NormalizeText(string? value, string fallback)
         => string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+
+    private static string BuildConnectionSummary(string source, bool connected)
+    {
+        var displaySource = ResolveConnectionSourceName(source);
+        return $"{displaySource}连接{(connected ? "成功" : "失败")}";
+    }
+
+    private static string ResolveConnectionSourceName(string source)
+        => string.Equals(source, "CenterServer", StringComparison.OrdinalIgnoreCase)
+            ? "看板"
+            : source;
 
     private static string FormatDateTime(DateTime value)
         => value == default ? "--" : value.ToString("yyyy-MM-dd HH:mm:ss");

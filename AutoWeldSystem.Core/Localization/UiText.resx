@@ -1275,6 +1275,9 @@
   <data name="log.label.date" xml:space="preserve">
     <value>日志日期</value>
   </data>
+  <data name="log.check.show_date" xml:space="preserve">
+    <value>显示日期</value>
+  </data>
   <data name="log.label.keyword" xml:space="preserve">
     <value>关键词</value>
   </data>

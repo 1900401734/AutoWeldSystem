@@ -61,6 +61,7 @@ var tests = new (string Name, Action Run)[]
     ("MES device status rules use latest device id for report", MesDeviceStatusRulesUseLatestDeviceIdForReport),
     ("MES device status rules format status identity", MesDeviceStatusRulesFormatStatusIdentity),
     ("MES device status rules format station remarks", MesDeviceStatusRulesFormatStationRemarks),
+    ("Log timestamp display rules switch date visibility", LogTimestampDisplayRulesSwitchDateVisibility),
     ("Device API status query returns current MES status", DeviceApiStatusQueryReturnsCurrentMesStatus),
     ("Device API status query rejects mismatched device id", DeviceApiStatusQueryRejectsMismatchedDeviceId),
     ("Device API set device id saves local settings as synced", DeviceApiSetDeviceIdSavesLocalSettingsAsSynced),
@@ -91,6 +92,7 @@ var tests = new (string Name, Action Run)[]
     ("Weld task server time sync writes device lifecycle success log", WeldTaskServerTimeSyncWritesDeviceLifecycleSuccessLog),
     ("Weld task server time sync writes device lifecycle failure logs", WeldTaskServerTimeSyncWritesDeviceLifecycleFailureLogs),
     ("Weld task server time sync ignores device lifecycle log failure", WeldTaskServerTimeSyncIgnoresDeviceLifecycleLogFailure),
+    ("Device lifecycle self check summaries describe connection result", DeviceLifecycleSelfCheckSummariesDescribeConnectionResult),
     ("Device lifecycle connection logs only when state changes", DeviceLifecycleConnectionLogsOnlyWhenStateChanges),
     ("Device lifecycle alarm logs enter change and recovery", DeviceLifecycleAlarmLogsEnterChangeAndRecovery),
     ("Program name rules extract component code", ProgramNameRulesExtractComponentCode),
@@ -845,6 +847,14 @@ static void MesDeviceStatusRulesFormatStationRemarks()
         "程序开始/结束备注应追加工位说明。");
 }
 
+static void LogTimestampDisplayRulesSwitchDateVisibility()
+{
+    var value = new DateTime(2026, 7, 4, 9, 8, 7, 123);
+
+    AssertEqual("09:08:07.123", LogTimestampDisplayRules.Format(value, showDate: false), "默认日志表格只显示当天时间。");
+    AssertEqual("2026-07-04 09:08:07.123", LogTimestampDisplayRules.Format(value, showDate: true), "勾选显示日期后必须显示完整年月日。");
+}
+
 static void DeviceApiStatusQueryReturnsCurrentMesStatus()
 {
     var settings = new FakeAppSettingsService
@@ -991,7 +1001,7 @@ static void DeviceApiHttpSelfCheckRulesWriteSuccessAndFailure()
     AssertEqual(AppConstants.DeviceLifecycleEventTypes.SelfCheck, successEntry.EventType, "HTTP 服务启动结果属于软件启动自检。");
     AssertEqual("DeviceApi", successEntry.Source, "HTTP 服务自检来源应标记为 DeviceApi。");
     AssertEqual("Success", successEntry.Status, "HTTP 服务监听成功应写 Success。");
-    AssertEqual("HTTP服务自检成功", successEntry.Summary, "HTTP 服务监听成功摘要应明确。");
+    AssertEqual("HTTP服务启动成功", successEntry.Summary, "HTTP 服务监听成功摘要应明确。");
     AssertTrue(successEntry.Detail.Contains("DeviceBaseUrl=http://127.0.0.1:7098/", StringComparison.Ordinal), "详情必须记录监听基地址。");
     AssertEqual("Failed", failure.Status, "HTTP 服务监听失败应写 Failed。");
     AssertTrue(failure.Detail.Contains("端口被占用", StringComparison.Ordinal), "失败详情必须记录原因。");
@@ -1494,6 +1504,37 @@ static void WeldTaskServerTimeSyncIgnoresDeviceLifecycleLogFailure()
     AssertTrue(service.CurrentState.LastServerSyncMessage?.Contains("已校时", StringComparison.Ordinal) == true, "设备日志失败不能覆盖校时状态消息。");
 }
 
+static void DeviceLifecycleSelfCheckSummariesDescribeConnectionResult()
+{
+    var occurredTime = new DateTime(2026, 7, 1, 8, 0, 0);
+
+    AssertEqual(
+        "PLC连接成功",
+        DeviceLifecycleLogRules.CreateSelfCheckEntry("D-001", 1, "PLC", true, "PLC 已连接", occurredTime).Summary,
+        "PLC 自检摘要应展示实际连接结果。");
+    AssertEqual(
+        "MES连接失败",
+        DeviceLifecycleLogRules.CreateSelfCheckEntry("D-001", 0, "MES", false, "MES 离线", occurredTime).Summary,
+        "MES 自检摘要应展示实际连接结果。");
+    AssertEqual(
+        "看板连接成功",
+        DeviceLifecycleLogRules.CreateSelfCheckEntry("D-001", 0, "CenterServer", true, "看板在线", occurredTime).Summary,
+        "看板自检摘要应使用现场可读名称。");
+    AssertEqual(
+        "Camera连接失败",
+        DeviceLifecycleLogRules.CreateSelfCheckEntry("D-001", 0, "Camera", false, "相机离线", occurredTime).Summary,
+        "未知来源仍应按来源名称展示连接结果。");
+
+    AssertEqual(
+        "HTTP服务启动成功",
+        DeviceLifecycleLogRules.CreateDeviceApiHttpSelfCheckEntry("D-001", "http://127.0.0.1:7098/", true, "监听成功", occurredTime).Summary,
+        "HTTP 服务自检摘要应展示服务启动结果。");
+    AssertEqual(
+        "HTTP服务启动失败",
+        DeviceLifecycleLogRules.CreateDeviceApiHttpSelfCheckEntry("D-001", "http://127.0.0.1:7098/", false, "端口被占用", occurredTime).Summary,
+        "HTTP 服务自检失败摘要应展示服务启动失败。");
+}
+
 static void DeviceLifecycleConnectionLogsOnlyWhenStateChanges()
 {
     AssertTrue(DeviceLifecycleLogRules.HasConnectionStatusChanged(null, currentConnected: false), "首次自检失败也需要记录，方便现场知道自检结果。");
@@ -1510,7 +1551,7 @@ static void DeviceLifecycleConnectionLogsOnlyWhenStateChanges()
 
     AssertEqual(AppConstants.DeviceLifecycleEventTypes.SelfCheck, entry.EventType, "连接自检日志必须使用 SelfCheck 事件类型。");
     AssertEqual("Success", entry.Status, "连接成功状态应保存为 Success。");
-    AssertEqual("PLC自检成功", entry.Summary, "连接自检摘要应直接表达被检测对象和结果。");
+    AssertEqual("PLC连接成功", entry.Summary, "连接自检摘要应直接表达被检测对象和结果。");
     AssertEqual("D-001", entry.DeviceId, "设备日志必须携带设备编号。");
     AssertEqual(1, entry.StationNo, "PLC 自检日志必须携带工位。");
 }

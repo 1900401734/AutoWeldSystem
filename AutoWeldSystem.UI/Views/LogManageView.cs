@@ -54,6 +54,8 @@ public partial class LogManageView : BaseView
     private string _exceptionKeyword = string.Empty;
     private string _deviceLifecycleKeyword = string.Empty;
     private string _deviceStatusKeyword = string.Empty;
+    private bool _showLogDate;
+    private bool _syncingShowDateChecks;
 
     /// <summary>
     /// Parameterless constructor used only by the WinForms designer.
@@ -199,6 +201,7 @@ public partial class LogManageView : BaseView
     {
         btnOpenMesFolder.Click += (_, _) => OpenMesLogFolder();
         dtpMesDate.ValueChanged += (_, _) => LoadMesLogs();
+        chkMesShowDate.CheckedChanged += ShowLogDate_CheckedChanged;
         queryMesLogs.QueryClick += (_, keyword) => HandleMesQuery(keyword);
         dgvMesLogs.SelectionChanged += (_, _) => ShowSelectedMesLogDetails();
         dgvMesLogs.CellFormatting += DgvMesLogs_CellFormatting;
@@ -206,6 +209,7 @@ public partial class LogManageView : BaseView
 
         btnOpenProductionFolder.Click += (_, _) => OpenProductionLogFolder();
         dtpProductionDate.ValueChanged += (_, _) => LoadProductionLogs();
+        chkProductionShowDate.CheckedChanged += ShowLogDate_CheckedChanged;
         queryProductionLogs.QueryClick += (_, keyword) => HandleProductionQuery(keyword);
         dgvProductionLogs.SelectionChanged += (_, _) => ShowSelectedProductionLogDetails();
         dgvProductionLogs.CellFormatting += DgvProductionLogs_CellFormatting;
@@ -216,6 +220,7 @@ public partial class LogManageView : BaseView
         btnOpenExceptionSource.Click += (_, _) => OpenSelectedExceptionSource();
         btnCopyExceptionDetails.Click += (_, _) => CopySelectedExceptionDetails();
         dtpExceptionDate.ValueChanged += (_, _) => LoadExceptionLogs();
+        chkExceptionShowDate.CheckedChanged += ShowLogDate_CheckedChanged;
         queryExceptionLogs.QueryClick += (_, keyword) => HandleExceptionQuery(keyword);
         dgvExceptionLogs.SelectionChanged += (_, _) => ShowSelectedExceptionDetails();
         dgvExceptionLogs.CellFormatting += DgvExceptionLogs_CellFormatting;
@@ -224,16 +229,67 @@ public partial class LogManageView : BaseView
 
         btnOpenDeviceLifecycleFolder.Click += (_, _) => OpenDeviceLifecycleLogFolder();
         dtpDeviceLifecycleDate.ValueChanged += (_, _) => LoadDeviceLifecycleLogs();
+        chkDeviceLifecycleShowDate.CheckedChanged += ShowLogDate_CheckedChanged;
         queryDeviceLifecycleLogs.QueryClick += (_, keyword) => HandleDeviceLifecycleQuery(keyword);
         dgvDeviceLifecycleLogs.SelectionChanged += (_, _) => ShowSelectedDeviceLifecycleDetails();
         _deviceLifecycleLogService.LogWritten += DeviceLifecycleLogService_LogWritten;
         Disposed += (_, _) => _deviceLifecycleLogService.LogWritten -= DeviceLifecycleLogService_LogWritten;
 
         dtpDeviceStatusDate.ValueChanged += (_, _) => LoadDeviceStatusLogs();
+        chkDeviceStatusShowDate.CheckedChanged += ShowLogDate_CheckedChanged;
         queryDeviceStatusLogs.QueryClick += (_, keyword) => HandleDeviceStatusQuery(keyword);
         dgvDeviceStatusLogs.SelectionChanged += (_, _) => ShowSelectedDeviceStatusDetails();
         _deviceStatusService.StatusChanged += DeviceStatusService_StatusChanged;
         Disposed += (_, _) => _deviceStatusService.StatusChanged -= DeviceStatusService_StatusChanged;
+    }
+
+    private void ShowLogDate_CheckedChanged(object? sender, AntdUI.BoolEventArgs e)
+    {
+        if (_syncingShowDateChecks)
+        {
+            return;
+        }
+
+        SetShowLogDate(e.Value);
+    }
+
+    private void SetShowLogDate(bool showDate)
+    {
+        if (_showLogDate == showDate)
+        {
+            SyncShowDateChecks();
+            return;
+        }
+
+        _showLogDate = showDate;
+        SyncShowDateChecks();
+        ApplyAllFilters();
+    }
+
+    private void SyncShowDateChecks()
+    {
+        _syncingShowDateChecks = true;
+        try
+        {
+            chkMesShowDate.Checked = _showLogDate;
+            chkProductionShowDate.Checked = _showLogDate;
+            chkExceptionShowDate.Checked = _showLogDate;
+            chkDeviceLifecycleShowDate.Checked = _showLogDate;
+            chkDeviceStatusShowDate.Checked = _showLogDate;
+        }
+        finally
+        {
+            _syncingShowDateChecks = false;
+        }
+    }
+
+    private void ApplyAllFilters()
+    {
+        ApplyMesFilter();
+        ApplyProductionFilter();
+        ApplyExceptionFilter();
+        ApplyDeviceLifecycleFilter();
+        ApplyDeviceStatusFilter();
     }
 
     private void HandleMesQuery(string keyword)
@@ -310,6 +366,11 @@ public partial class LogManageView : BaseView
         lblExceptionDate.Text = _localizer.GetString(TextKeys.Log.LabelDate);
         lblDeviceLifecycleDate.Text = _localizer.GetString(TextKeys.Log.LabelDate);
         lblDeviceStatusDate.Text = _localizer.GetString(TextKeys.Log.LabelDate);
+        chkMesShowDate.Text = _localizer.GetString(TextKeys.Log.CheckShowDate);
+        chkProductionShowDate.Text = _localizer.GetString(TextKeys.Log.CheckShowDate);
+        chkExceptionShowDate.Text = _localizer.GetString(TextKeys.Log.CheckShowDate);
+        chkDeviceLifecycleShowDate.Text = _localizer.GetString(TextKeys.Log.CheckShowDate);
+        chkDeviceStatusShowDate.Text = _localizer.GetString(TextKeys.Log.CheckShowDate);
         btnOpenMesFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
         btnOpenProductionFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
         btnOpenExceptionFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
@@ -503,7 +564,7 @@ public partial class LogManageView : BaseView
     {
         var rows = _productionLogs
             .Where(entry => IsProductionLogMatched(entry, _productionKeyword, _localizer))
-            .Select(entry => new ProductionLogRow(entry, _localizer))
+            .Select(entry => new ProductionLogRow(entry, _localizer, _showLogDate))
             .ToList();
 
         _productionBindingSource.DataSource = rows;
@@ -541,7 +602,7 @@ public partial class LogManageView : BaseView
     {
         var rows = _deviceLifecycleLogs
             .Where(entry => IsDeviceLifecycleLogMatched(entry, _deviceLifecycleKeyword))
-            .Select(entry => new DeviceLifecycleLogRow(entry))
+            .Select(entry => new DeviceLifecycleLogRow(entry, _showLogDate))
             .ToList();
 
         _deviceLifecycleBindingSource.DataSource = rows;
@@ -559,7 +620,7 @@ public partial class LogManageView : BaseView
     {
         var rows = _deviceStatusLogs
             .Where(entry => IsDeviceStatusLogMatched(entry, _deviceStatusKeyword))
-            .Select(entry => new DeviceStatusLogRow(entry))
+            .Select(entry => new DeviceStatusLogRow(entry, _showLogDate))
             .ToList();
 
         _deviceStatusBindingSource.DataSource = rows;
@@ -596,12 +657,13 @@ public partial class LogManageView : BaseView
             entry,
             entry.IsSuccess
                 ? _localizer.GetString(TextKeys.Log.ValueSuccess)
-                : _localizer.GetString(TextKeys.Log.ValueFailed));
+                : _localizer.GetString(TextKeys.Log.ValueFailed),
+            _showLogDate);
     }
 
     private ExceptionLogRow CreateExceptionLogRow(ProgramExceptionLogEntry entry)
     {
-        return new ExceptionLogRow(entry, GetExceptionCategoryText(entry.Category));
+        return new ExceptionLogRow(entry, GetExceptionCategoryText(entry.Category), _showLogDate);
     }
 
     private string GetExceptionCategoryText(string category)
@@ -1356,15 +1418,16 @@ public partial class LogManageView : BaseView
 
     private sealed class MesLogRow
     {
-        public MesLogRow(MesInteractionLogEntry entry, string result)
+        public MesLogRow(MesInteractionLogEntry entry, string result, bool showDate)
         {
             Entry = entry;
+            SendTime = LogTimestampDisplayRules.Format(entry.SendTime, showDate);
             Result = result;
         }
 
         public MesInteractionLogEntry Entry { get; }
 
-        public string SendTime => Entry.SendTime.ToString("yyyy/MM/dd HH:mm:ss.fff");
+        public string SendTime { get; }
 
         public string Purpose => Entry.Purpose;
 
@@ -1382,16 +1445,17 @@ public partial class LogManageView : BaseView
 
     private sealed class ProductionLogRow
     {
-        public ProductionLogRow(ProductionFlowLogEntry entry, ILocalizationService localizer)
+        public ProductionLogRow(ProductionFlowLogEntry entry, ILocalizationService localizer, bool showDate)
         {
             Entry = entry;
+            OccurredTime = LogTimestampDisplayRules.Format(entry.OccurredTime, showDate);
             Summary = PlcBusinessSignalDisplayHelper.FormatSignalReferences(entry.Summary, localizer);
             PlcSignal = PlcBusinessSignalDisplayHelper.FormatSignalName(entry.PlcSignal, localizer);
         }
 
         public ProductionFlowLogEntry Entry { get; }
 
-        public string OccurredTime => Entry.OccurredTime.ToString("HH:mm:ss.fff");
+        public string OccurredTime { get; }
 
         public string Level => Entry.Level;
 
@@ -1406,14 +1470,15 @@ public partial class LogManageView : BaseView
 
     private sealed class DeviceLifecycleLogRow
     {
-        public DeviceLifecycleLogRow(DeviceLifecycleLogEntry entry)
+        public DeviceLifecycleLogRow(DeviceLifecycleLogEntry entry, bool showDate)
         {
             Entry = entry;
+            OccurredTime = LogTimestampDisplayRules.Format(entry.OccurredTime, showDate);
         }
 
         public DeviceLifecycleLogEntry Entry { get; }
 
-        public string OccurredTime => Entry.OccurredTime.ToString("yyyy-MM-dd HH:mm:ss.fff");
+        public string OccurredTime { get; }
 
         public string Level => Entry.Level;
 
@@ -1430,14 +1495,15 @@ public partial class LogManageView : BaseView
 
     private sealed class DeviceStatusLogRow
     {
-        public DeviceStatusLogRow(BizDeviceStatusLog entry)
+        public DeviceStatusLogRow(BizDeviceStatusLog entry, bool showDate)
         {
             Entry = entry;
+            OccurredTime = LogTimestampDisplayRules.Format(entry.OccurredTime, showDate);
         }
 
         public BizDeviceStatusLog Entry { get; }
 
-        public string OccurredTime => Entry.OccurredTime.ToString("HH:mm:ss.fff");
+        public string OccurredTime { get; }
 
         public string Station => Entry.StationNo <= 0 ? "-" : Entry.StationNo.ToString();
 
@@ -1458,15 +1524,16 @@ public partial class LogManageView : BaseView
 
     private sealed class ExceptionLogRow
     {
-        public ExceptionLogRow(ProgramExceptionLogEntry entry, string category)
+        public ExceptionLogRow(ProgramExceptionLogEntry entry, string category, bool showDate)
         {
             Entry = entry;
+            OccurredTime = LogTimestampDisplayRules.Format(entry.OccurredTime, showDate);
             Category = category;
         }
 
         public ProgramExceptionLogEntry Entry { get; }
 
-        public string OccurredTime => Entry.OccurredTime.ToString("HH:mm:ss.fff");
+        public string OccurredTime { get; }
 
         public string Category { get; }
 
