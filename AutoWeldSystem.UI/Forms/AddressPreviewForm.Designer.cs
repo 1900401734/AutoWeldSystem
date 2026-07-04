@@ -34,7 +34,7 @@ namespace AutoWeldSystem.UI.Forms
             pageHeader = new AntdUI.PageHeader();
             mainLayout = new TableLayoutPanel();
             lblHint = new Label();
-            inputQuery = new AutoWeldSystem.UI.Components.InputQuery(components);
+            inputQuery = new AutoWeldSystem.UI.Controls.InputQuery(components);
             tableAddressPreview = new AntdUI.Table();
             bottomPanel = new FlowLayoutPanel();
             btnClose = new AntdUI.Button();
@@ -191,7 +191,7 @@ namespace AutoWeldSystem.UI.Forms
         private AntdUI.PageHeader pageHeader;
         private TableLayoutPanel mainLayout;
         private Label lblHint;
-        private AutoWeldSystem.UI.Components.InputQuery inputQuery;
+        private AutoWeldSystem.UI.Controls.InputQuery inputQuery;
         private AntdUI.Table tableAddressPreview;
         private FlowLayoutPanel bottomPanel;
         private AntdUI.Button btnClose;

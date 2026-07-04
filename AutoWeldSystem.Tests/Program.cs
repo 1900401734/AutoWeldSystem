@@ -1,13 +1,23 @@
 ﻿using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Center;
+using AutoWeldSystem.Core.DTOs;
 using AutoWeldSystem.Core.DTOs.CenterServer;
+using AutoWeldSystem.Core.DTOs.DeviceApi;
 using AutoWeldSystem.Core.DTOs.Mes.Request;
 using AutoWeldSystem.Core.DTOs.Mes.Response;
 using AutoWeldSystem.Core.DTOs.Upload;
 using AutoWeldSystem.Core.Plc;
+using AutoWeldSystem.Core.Interfaces;
+using AutoWeldSystem.Core.Interfaces.Log;
+using AutoWeldSystem.Core.Interfaces.MES;
 using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Core.Runtime;
+using AutoWeldSystem.Core.ViewModels;
+using AutoWeldSystem.Services.Mes;
+using AutoWeldSystem.Services.Production;
+using System.Net;
+using System.Text;
 using System.Text.Json;
 
 var tests = new (string Name, Action Run)[]
@@ -46,6 +56,41 @@ var tests = new (string Name, Action Run)[]
     ("Process parameter IsTest follows global setting and device type", ProcessParameterIsTestFollowsGlobalSettingAndDeviceType),
     ("Quantity upload batches product scopes and unique task ids", QuantityUploadBatchesProductScopesAndUniqueTaskIds),
     ("Process parameter upload payload reads product scope fields", ProcessParameterUploadPayloadReadsProductScopeFields),
+    ("MES device status rules use configured MES codes", MesDeviceStatusRulesUseConfiguredMesCodes),
+    ("MES device status rules convert PLC alarm transitions", MesDeviceStatusRulesConvertPlcAlarmTransitions),
+    ("MES device status rules use latest device id for report", MesDeviceStatusRulesUseLatestDeviceIdForReport),
+    ("MES device status rules format status identity", MesDeviceStatusRulesFormatStatusIdentity),
+    ("MES device status rules format station remarks", MesDeviceStatusRulesFormatStationRemarks),
+    ("Device API status query returns current MES status", DeviceApiStatusQueryReturnsCurrentMesStatus),
+    ("Device API status query rejects mismatched device id", DeviceApiStatusQueryRejectsMismatchedDeviceId),
+    ("Device API set device id saves local settings as synced", DeviceApiSetDeviceIdSavesLocalSettingsAsSynced),
+    ("Device API set device id rejects mismatched old device id", DeviceApiSetDeviceIdRejectsMismatchedOldDeviceId),
+    ("Device API rules build and parse status url", DeviceApiRulesBuildAndParseStatusUrl),
+    ("Device API HTTP self check rules write success and failure", DeviceApiHttpSelfCheckRulesWriteSuccessAndFailure),
+    ("Device API status query writes lifecycle log every time", DeviceApiStatusQueryWritesLifecycleLogEveryTime),
+    ("Device API status query mismatch writes failure lifecycle log", DeviceApiStatusQueryMismatchWritesFailureLifecycleLog),
+    ("Device API set device id writes lifecycle logs", DeviceApiSetDeviceIdWritesLifecycleLogs),
+    ("Device API ignores lifecycle log failure", DeviceApiIgnoresLifecycleLogFailure),
+    ("Upload status display rules localize status text", UploadStatusDisplayRulesLocalizeStatusText),
+    ("Skipped upload tasks are not retried", SkippedUploadTasksAreNotRetried),
+    ("Status report settings default to enabled", StatusReportSettingsDefaultToEnabled),
+    ("MES route settings default to current routes", MesRouteSettingsDefaultToCurrentRoutes),
+    ("MES provider uses configured routes", MesProviderUsesConfiguredRoutes),
+    ("MES provider applies PostData header from latest settings", MesProviderAppliesPostDataHeaderFromLatestSettings),
+    ("Elevated auto start defaults to enabled", ElevatedAutoStartDefaultsToEnabled),
+    ("Startup integration rules remove all when auto start is disabled", StartupIntegrationRulesRemoveAllWhenAutoStartIsDisabled),
+    ("Startup integration rules prefer elevated scheduled task", StartupIntegrationRulesPreferElevatedScheduledTask),
+    ("Startup integration result reports run key fallback", StartupIntegrationResultReportsRunKeyFallback),
+    ("System clock sync skips small offset", SystemClockSyncSkipsSmallOffset),
+    ("System clock sync changes large offset", SystemClockSyncChangesLargeOffset),
+    ("System clock sync rejects invalid server time", SystemClockSyncRejectsInvalidServerTime),
+    ("Weld task server time sync adjusts system clock", WeldTaskServerTimeSyncAdjustsSystemClock),
+    ("Weld task server time sync skips clock on MES failure", WeldTaskServerTimeSyncSkipsClockOnMesFailure),
+    ("Weld task server time sync reports clock failure", WeldTaskServerTimeSyncReportsClockFailure),
+    ("Device lifecycle server time self check uses self check event", DeviceLifecycleServerTimeSelfCheckUsesSelfCheckEvent),
+    ("Weld task server time sync writes device lifecycle success log", WeldTaskServerTimeSyncWritesDeviceLifecycleSuccessLog),
+    ("Weld task server time sync writes device lifecycle failure logs", WeldTaskServerTimeSyncWritesDeviceLifecycleFailureLogs),
+    ("Weld task server time sync ignores device lifecycle log failure", WeldTaskServerTimeSyncIgnoresDeviceLifecycleLogFailure),
     ("Device lifecycle connection logs only when state changes", DeviceLifecycleConnectionLogsOnlyWhenStateChanges),
     ("Device lifecycle alarm logs enter change and recovery", DeviceLifecycleAlarmLogsEnterChangeAndRecovery),
     ("Program name rules extract component code", ProgramNameRulesExtractComponentCode),
@@ -741,6 +786,714 @@ static void ProcessParameterUploadPayloadReadsProductScopeFields()
     AssertEqual(2, ProcessParameterUploadPayloadRules.ReadStationNo(batchPayload), "批量 payload 必须保留工位过滤条件。");
 }
 
+static void MesDeviceStatusRulesUseConfiguredMesCodes()
+{
+    AssertEqual("0", ProductionConstants.MesDeviceStatuses.PoweredOn, "MES 设备状态 0 必须表示软件开机。");
+    AssertEqual("1", ProductionConstants.MesDeviceStatuses.Stopped, "MES 设备状态 1 必须表示软件停机。");
+    AssertTrue(DeviceStatusReportRules.IsMesDeviceStatusCode("0"), "0 是合法 MES 设备状态。");
+    AssertTrue(DeviceStatusReportRules.IsMesDeviceStatusCode("7"), "7 是合法 MES 设备状态。");
+    AssertFalse(DeviceStatusReportRules.IsMesDeviceStatusCode("2"), "PLC 原始状态 2 不应作为 MES 设备状态上传。");
+    AssertFalse(DeviceStatusReportRules.IsMesDeviceStatusCode("3"), "PLC 原始状态 3 不应作为 MES 设备状态上传。");
+    AssertEqual("开机", DeviceStatusReportRules.GetStatusName("0"), "状态名称需要按 MES 语义显示。");
+    AssertEqual("程序执行结束", DeviceStatusReportRules.GetStatusName("7"), "状态 7 应显示程序执行结束。");
+}
+
+static void MesDeviceStatusRulesConvertPlcAlarmTransitions()
+{
+    var enter = DeviceStatusReportRules.ResolvePlcAlarmTransition(
+        previousStatusCode: ProductionConstants.PlcDeviceStatuses.Running,
+        currentStatusCode: ProductionConstants.PlcDeviceStatuses.Alarm);
+    var recovered = DeviceStatusReportRules.ResolvePlcAlarmTransition(
+        previousStatusCode: ProductionConstants.PlcDeviceStatuses.Alarm,
+        currentStatusCode: ProductionConstants.PlcDeviceStatuses.Running);
+    var stillRunning = DeviceStatusReportRules.ResolvePlcAlarmTransition(
+        previousStatusCode: ProductionConstants.PlcDeviceStatuses.Running,
+        currentStatusCode: ProductionConstants.PlcDeviceStatuses.Paused);
+
+    AssertEqual(ProductionConstants.MesDeviceStatuses.Exception, enter, "PLC 进入报警时应转换为 MES 设备状态 4。");
+    AssertEqual(ProductionConstants.MesDeviceStatuses.Recovered, recovered, "PLC 从报警恢复到非报警时应转换为 MES 设备状态 5。");
+    AssertEqual(null, stillRunning, "非报警之间变化不应产生 MES 设备状态上报。");
+}
+
+static void MesDeviceStatusRulesUseLatestDeviceIdForReport()
+{
+    AssertEqual(
+        "NEW-DEVICE",
+        DeviceStatusReportRules.ResolveReportDeviceId(" NEW-DEVICE ", "OLD-DEVICE"),
+        "设备状态上报必须优先使用系统设置中的最新设备编号。");
+    AssertEqual(
+        "OLD-DEVICE",
+        DeviceStatusReportRules.ResolveReportDeviceId(" ", " OLD-DEVICE "),
+        "系统设置设备编号为空时才回退到历史日志或上传任务中的设备编号。");
+}
+
+static void MesDeviceStatusRulesFormatStatusIdentity()
+{
+    AssertEqual("0-开机", DeviceStatusReportRules.FormatStatusIdentity("0"), "开机状态标识应包含状态码和描述。");
+    AssertEqual("1-停机", DeviceStatusReportRules.FormatStatusIdentity("1"), "停机状态标识应包含状态码和描述。");
+    AssertEqual("6-程序执行开始", DeviceStatusReportRules.FormatStatusIdentity("6"), "程序执行开始状态标识应包含状态码和描述。");
+}
+
+static void MesDeviceStatusRulesFormatStationRemarks()
+{
+    AssertEqual("工位1", DeviceStatusReportRules.FormatStationScope(1), "工位 1 应显示为工位1。");
+    AssertEqual("工位2", DeviceStatusReportRules.FormatStationScope(2), "工位 2 应显示为工位2。");
+    AssertEqual("双工位", DeviceStatusReportRules.FormatStationScope(0), "共享报警点应显示为双工位。");
+    AssertEqual(
+        "程序执行开始；工位：工位2",
+        DeviceStatusReportRules.AppendStationRemark("程序执行开始", 2),
+        "程序开始/结束备注应追加工位说明。");
+}
+
+static void DeviceApiStatusQueryReturnsCurrentMesStatus()
+{
+    var settings = new FakeAppSettingsService
+    {
+        Current = new AppSettings { DeviceId = "87261699027", DeviceName = "设备1" }
+    };
+    var statusService = new FakeDeviceStatusService
+    {
+        CurrentStatus = new BizDeviceStatusLog
+        {
+            DeviceId = "87261699027",
+            DeviceStatus = ProductionConstants.MesDeviceStatuses.Stopped
+        }
+    };
+    var service = CreateDeviceApiEndpointService(settings, statusService);
+
+    var response = service.GetDeviceStatus("87261699027");
+
+    AssertTrue(response.IsSuccess, "设备编号匹配时应返回成功。");
+    AssertEqual("成功", response.Msg, "成功响应消息需与平台示例保持一致。");
+    AssertTrue(response.Data is not null, "成功查询必须返回 Data 节点。");
+    AssertEqual("87261699027", response.Data!.DeviceId, "返回设备编号必须来自当前本地设置。");
+    AssertEqual("1", response.Data.DeviceStatus, "设备状态必须使用当前 MES 设备状态码。");
+}
+
+static void DeviceApiStatusQueryRejectsMismatchedDeviceId()
+{
+    var settings = new FakeAppSettingsService
+    {
+        Current = new AppSettings { DeviceId = "87261699027" }
+    };
+    var statusService = new FakeDeviceStatusService
+    {
+        CurrentStatus = new BizDeviceStatusLog
+        {
+            DeviceId = "87261699027",
+            DeviceStatus = ProductionConstants.MesDeviceStatuses.Stopped
+        }
+    };
+    var service = CreateDeviceApiEndpointService(settings, statusService);
+
+    var response = service.GetDeviceStatus("OTHER");
+
+    AssertFalse(response.IsSuccess, "设备编号不匹配时必须拒绝查询。");
+    AssertEqual(null, response.Data, "拒绝查询时不能泄露当前设备状态。");
+    AssertEqual(0, statusService.GetCurrentStatusCallCount, "设备编号不匹配时不应读取当前状态。");
+}
+
+static void DeviceApiSetDeviceIdSavesLocalSettingsAsSynced()
+{
+    var settings = new FakeAppSettingsService
+    {
+        Current = new AppSettings
+        {
+            DeviceId = "9999999990005",
+            DeviceName = "旧设备",
+            DeviceBaseUrl = "http://10.0.0.5:3000/",
+            MesBaseUrl = "http://old-mes/",
+            MesSyncedDeviceId = "9999999990005"
+        }
+    };
+    var operations = new FakeOperationLogService();
+    var service = CreateDeviceApiEndpointService(settings, operationLogService: operations);
+
+    var response = service.SetDeviceIdAsync(new AddDeviceReq
+    {
+        OldDeviceId = "9999999990005",
+        DeviceId = "99999999900053",
+        DeviceName = "123",
+        DevStatusUrl = "http://192.168.80.208:3000/api/DeviceStatus?DeviceId=123333",
+        PostDataDomain = "http://192.168.101.65:8098/"
+    }).GetAwaiter().GetResult();
+
+    AssertTrue(response.IsSuccess, "远程设置设备编号成功时应返回成功。");
+    AssertEqual("99999999900053", settings.Current.DeviceId, "平台下发的新设备编号必须保存到本地设置。");
+    AssertEqual("123", settings.Current.DeviceName, "平台下发的设备名称必须保存到本地设置。");
+    AssertEqual("99999999900053", settings.Current.MesSyncedDeviceId, "远程下发成功后应视为已同步到平台。");
+    AssertEqual("http://192.168.80.208:3000/", settings.Current.DeviceBaseUrl, "DevStatusUrl 应反解保存为设备端 API 基地址。");
+    AssertEqual("http://192.168.101.65:8098/", settings.Current.MesBaseUrl, "PostDataDomain 应保存为 MES 基地址。");
+    AssertTrue(response.Data is not null, "成功设置设备编号必须返回 Data 节点。");
+    AssertEqual(
+        "http://192.168.80.208:3000/api/DeviceStatus?DeviceId=99999999900053",
+        response.Data!.DevStatusUrl,
+        "响应中的 DevStatusUrl 应按新设备编号重新生成。");
+    AssertTrue(operations.Entries.Any(entry => entry.Action == "DeviceApi.SetDeviceId"), "远程修改设备编号需要写入操作日志。");
+}
+
+static void DeviceApiSetDeviceIdRejectsMismatchedOldDeviceId()
+{
+    var settings = new FakeAppSettingsService
+    {
+        Current = new AppSettings
+        {
+            DeviceId = "LOCAL-D1",
+            DeviceName = "旧设备",
+            MesSyncedDeviceId = "SYNC-D1"
+        }
+    };
+    var service = CreateDeviceApiEndpointService(settings);
+
+    var response = service.SetDeviceIdAsync(new AddDeviceReq
+    {
+        OldDeviceId = "OTHER-D1",
+        DeviceId = "NEW-D1",
+        DeviceName = "新设备"
+    }).GetAwaiter().GetResult();
+
+    AssertFalse(response.IsSuccess, "OldDeviceId 既不匹配当前设备编号也不匹配已同步编号时必须拒绝。");
+    AssertEqual("LOCAL-D1", settings.Current.DeviceId, "拒绝请求不能修改本地设备编号。");
+    AssertEqual("SYNC-D1", settings.Current.MesSyncedDeviceId, "拒绝请求不能修改已同步设备编号。");
+}
+
+static void DeviceApiRulesBuildAndParseStatusUrl()
+{
+    var statusUrl = DeviceApiEndpointRules.BuildDeviceStatusUrl("http://192.168.80.208:3000", "ABC 123");
+
+    AssertEqual(
+        "http://192.168.80.208:3000/api/DeviceStatus?DeviceId=ABC%20123",
+        statusUrl,
+        "上报给 MES 的设备状态地址必须包含固定 API 路径和 URL 编码后的设备编号。");
+    AssertTrue(
+        DeviceApiEndpointRules.TryExtractBaseUrlFromStatusUrl(
+            "http://192.168.80.208:3000/api/DeviceStatus?DeviceId=123333",
+            out var baseUrl),
+        "平台下发的设备状态地址应能反解出设备端 API 基地址。");
+    AssertEqual("http://192.168.80.208:3000/", baseUrl, "反解出的设备端 API 基地址必须保留协议、主机和端口。");
+}
+
+static void DeviceApiHttpSelfCheckRulesWriteSuccessAndFailure()
+{
+    var successEntry = DeviceLifecycleLogRules.CreateDeviceApiHttpSelfCheckEntry(
+        "D-001",
+        "http://127.0.0.1:7098/",
+        true,
+        "HTTP 服务监听成功",
+        new DateTime(2026, 7, 1, 8, 0, 0));
+    var failure = DeviceLifecycleLogRules.CreateDeviceApiHttpSelfCheckEntry(
+        "D-001",
+        "http://127.0.0.1:7098/",
+        false,
+        "端口被占用",
+        new DateTime(2026, 7, 1, 8, 0, 1));
+
+    AssertEqual(AppConstants.DeviceLifecycleEventTypes.SelfCheck, successEntry.EventType, "HTTP 服务启动结果属于软件启动自检。");
+    AssertEqual("DeviceApi", successEntry.Source, "HTTP 服务自检来源应标记为 DeviceApi。");
+    AssertEqual("Success", successEntry.Status, "HTTP 服务监听成功应写 Success。");
+    AssertEqual("HTTP服务自检成功", successEntry.Summary, "HTTP 服务监听成功摘要应明确。");
+    AssertTrue(successEntry.Detail.Contains("DeviceBaseUrl=http://127.0.0.1:7098/", StringComparison.Ordinal), "详情必须记录监听基地址。");
+    AssertEqual("Failed", failure.Status, "HTTP 服务监听失败应写 Failed。");
+    AssertTrue(failure.Detail.Contains("端口被占用", StringComparison.Ordinal), "失败详情必须记录原因。");
+}
+
+static void DeviceApiStatusQueryWritesLifecycleLogEveryTime()
+{
+    var settings = new FakeAppSettingsService
+    {
+        Current = new AppSettings { DeviceId = "D-001" }
+    };
+    var statusService = new FakeDeviceStatusService
+    {
+        CurrentStatus = new BizDeviceStatusLog
+        {
+            DeviceId = "D-001",
+            DeviceStatus = ProductionConstants.MesDeviceStatuses.PoweredOn
+        }
+    };
+    var lifecycleLogs = new FakeDeviceLifecycleLogService();
+    var service = CreateDeviceApiEndpointService(settings, statusService, lifecycleLogService: lifecycleLogs);
+
+    service.GetDeviceStatus("D-001");
+    service.GetDeviceStatus("D-001");
+
+    AssertEqual(2, lifecycleLogs.Entries.Count, "设备状态查询按审计要求每次调用都要写设备日志。");
+    AssertTrue(lifecycleLogs.Entries.All(entry => entry.EventType == AppConstants.DeviceLifecycleEventTypes.RemoteAccess), "状态查询应写远程访问事件。");
+    AssertTrue(lifecycleLogs.Entries.All(entry => entry.Source == "DeviceApi"), "状态查询日志来源应为 DeviceApi。");
+    AssertTrue(lifecycleLogs.Entries.All(entry => entry.Status == "Success"), "成功状态查询应写 Success。");
+    AssertTrue(lifecycleLogs.Entries[0].Detail.Contains("RequestType=GET /api/DeviceStatus", StringComparison.Ordinal), "详情必须记录接口类型。");
+}
+
+static void DeviceApiStatusQueryMismatchWritesFailureLifecycleLog()
+{
+    var settings = new FakeAppSettingsService
+    {
+        Current = new AppSettings { DeviceId = "D-001" }
+    };
+    var lifecycleLogs = new FakeDeviceLifecycleLogService();
+    var service = CreateDeviceApiEndpointService(settings, lifecycleLogService: lifecycleLogs);
+
+    var response = service.GetDeviceStatus("D-002");
+
+    AssertFalse(response.IsSuccess, "设备编号不匹配仍应返回失败。");
+    AssertEqual(1, lifecycleLogs.Entries.Count, "设备编号不匹配也要写设备日志。");
+    AssertEqual(AppConstants.DeviceLifecycleEventTypes.RemoteAccess, lifecycleLogs.Entries[0].EventType, "状态查询失败仍属于远程访问事件。");
+    AssertEqual("Failed", lifecycleLogs.Entries[0].Status, "设备编号不匹配应写 Failed。");
+    AssertTrue(lifecycleLogs.Entries[0].Detail.Contains("RequestedDeviceId=D-002", StringComparison.Ordinal), "失败详情必须记录请求设备编号。");
+    AssertTrue(lifecycleLogs.Entries[0].Detail.Contains("CurrentDeviceId=D-001", StringComparison.Ordinal), "失败详情必须记录当前设备编号。");
+}
+
+static void DeviceApiSetDeviceIdWritesLifecycleLogs()
+{
+    var settings = new FakeAppSettingsService
+    {
+        Current = new AppSettings
+        {
+            DeviceId = "D-001",
+            DeviceName = "旧设备",
+            DeviceBaseUrl = "http://127.0.0.1:7098/",
+            MesSyncedDeviceId = "D-001"
+        }
+    };
+    var lifecycleLogs = new FakeDeviceLifecycleLogService();
+    var service = CreateDeviceApiEndpointService(settings, lifecycleLogService: lifecycleLogs);
+
+    var success = service.SetDeviceIdAsync(new AddDeviceReq
+    {
+        OldDeviceId = "D-001",
+        DeviceId = "D-002",
+        DeviceName = "新设备",
+        DevStatusUrl = "http://127.0.0.1:7098/api/DeviceStatus?DeviceId=D-002",
+        PostDataDomain = "http://mes.local/"
+    }).GetAwaiter().GetResult();
+
+    AssertTrue(success.IsSuccess, "设备编号修改成功时接口应返回成功。");
+    AssertEqual(1, lifecycleLogs.Entries.Count, "设备编号修改成功应写设备日志。");
+    AssertEqual(AppConstants.DeviceLifecycleEventTypes.RemoteConfigChanged, lifecycleLogs.Entries[0].EventType, "设备编号修改应写远程配置变更事件。");
+    AssertEqual("Success", lifecycleLogs.Entries[0].Status, "设备编号修改成功应写 Success。");
+    AssertTrue(lifecycleLogs.Entries[0].Detail.Contains("OldDeviceId=D-001", StringComparison.Ordinal), "详情必须记录旧设备编号。");
+    AssertTrue(lifecycleLogs.Entries[0].Detail.Contains("NewDeviceId=D-002", StringComparison.Ordinal), "详情必须记录新设备编号。");
+
+    lifecycleLogs.Entries.Clear();
+    var failure = service.SetDeviceIdAsync(new AddDeviceReq
+    {
+        OldDeviceId = "OTHER",
+        DeviceId = "D-003",
+        DeviceName = "错误设备"
+    }).GetAwaiter().GetResult();
+
+    AssertFalse(failure.IsSuccess, "旧设备编号不匹配时接口应返回失败。");
+    AssertEqual(1, lifecycleLogs.Entries.Count, "设备编号修改失败也应写设备日志。");
+    AssertEqual("Failed", lifecycleLogs.Entries[0].Status, "设备编号修改失败应写 Failed。");
+    AssertTrue(lifecycleLogs.Entries[0].Detail.Contains("OldDeviceId=OTHER", StringComparison.Ordinal), "失败详情必须记录平台传入的旧设备编号。");
+}
+
+static void DeviceApiIgnoresLifecycleLogFailure()
+{
+    var settings = new FakeAppSettingsService
+    {
+        Current = new AppSettings { DeviceId = "D-001", MesSyncedDeviceId = "D-001" }
+    };
+    var statusService = new FakeDeviceStatusService
+    {
+        CurrentStatus = new BizDeviceStatusLog
+        {
+            DeviceId = "D-001",
+            DeviceStatus = ProductionConstants.MesDeviceStatuses.PoweredOn
+        }
+    };
+    var lifecycleLogs = new FakeDeviceLifecycleLogService { ThrowOnWrite = true };
+    var service = CreateDeviceApiEndpointService(settings, statusService, lifecycleLogService: lifecycleLogs);
+
+    var query = service.GetDeviceStatus("D-001");
+    var set = service.SetDeviceIdAsync(new AddDeviceReq
+    {
+        OldDeviceId = "D-001",
+        DeviceId = "D-002",
+        DeviceName = "新设备"
+    }).GetAwaiter().GetResult();
+
+    AssertTrue(query.IsSuccess, "设备日志写入失败不能影响状态查询返回。");
+    AssertTrue(set.IsSuccess, "设备日志写入失败不能影响设备编号设置返回。");
+}
+
+static void UploadStatusDisplayRulesLocalizeStatusText()
+{
+    AssertEqual("待上传", UploadStatusDisplayRules.GetDisplayText(ProductionConstants.UploadStatuses.Pending), "Pending 应显示为待上传。");
+    AssertEqual("上传失败", UploadStatusDisplayRules.GetDisplayText(ProductionConstants.UploadStatuses.Failed), "Failed 应显示为上传失败。");
+    AssertEqual("已跳过", UploadStatusDisplayRules.GetDisplayText(ProductionConstants.UploadStatuses.Skipped), "Skipped 应显示为已跳过。");
+    AssertEqual("无数据", UploadStatusDisplayRules.GetDisplayText(UploadSummaryStatusResolver.NoData), "NoData 应显示为无数据。");
+}
+
+static void SkippedUploadTasksAreNotRetried()
+{
+    var skipped = new BizUploadTask
+    {
+        Status = ProductionConstants.UploadStatuses.Skipped
+    };
+    var pending = new BizUploadTask
+    {
+        Status = ProductionConstants.UploadStatuses.Pending
+    };
+
+    AssertFalse(UploadTaskVisibilityRules.ShouldRetry(skipped), "已跳过任务不应进入重试执行范围。");
+    AssertTrue(UploadTaskVisibilityRules.ShouldRetry(pending), "待上传任务仍应进入重试执行范围。");
+    AssertEqual(
+        ProductionConstants.UploadStatuses.Skipped,
+        UploadSummaryStatusResolver.AggregateUploadStatuses([ProductionConstants.UploadStatuses.Skipped]),
+        "只有已跳过任务时，汇总状态也应显示已跳过。");
+}
+
+static void StatusReportSettingsDefaultToEnabled()
+{
+    var settings = new AppSettings();
+
+    AssertTrue(settings.EnableDeviceStatusReport == true, "设备状态上报开关默认启用，避免升级后行为突变。");
+    AssertTrue(settings.EnableWorkOrderStatusReport == true, "工单状态上报开关默认启用，避免升级后行为突变。");
+}
+
+static void MesRouteSettingsDefaultToCurrentRoutes()
+{
+    var settings = new AppSettings();
+
+    AssertEqual("api/User", settings.MesUserRoute, "员工信息接口默认路由必须保持原值。");
+    AssertEqual("api/ItemsOfBatchTech", settings.MesWorkOrderRoute, "工单接口默认路由必须保持原值。");
+    AssertEqual("api/ServerTime", settings.MesServerTimeRoute, "服务器时间接口默认路由必须保持原值。");
+    AssertEqual("api/ExpProgram", settings.MesProgramManageRoute, "程序管理五个操作必须共用 api/ExpProgram 默认路由。");
+    AssertEqual("api/ExpStartV2", settings.MesStartWorkRoute, "开工上报接口默认路由必须保持原值。");
+    AssertEqual("api/ExpStatus", settings.MesWorkStatusRoute, "工单状态接口默认路由必须保持原值。");
+    AssertEqual("api/ExpEnd", settings.MesEndWorkRoute, "完工上报接口默认路由必须保持原值。");
+    AssertEqual("api/ExpFile", settings.MesReportFileRoute, "报告文件接口默认路由必须保持原值。");
+    AssertEqual("api/PostData", settings.MesPostDataRoute, "过程参数接口默认路由必须保持原值。");
+    AssertEqual("api/Device", settings.MesDeviceRoute, "设备编号同步接口默认路由必须保持原值。");
+    AssertEqual("api/DeviceStatusV2", settings.MesDeviceStatusRoute, "设备状态上报接口默认路由必须保持原值。");
+    AssertFalse(settings.EnablePostDataCustomHeader == true, "PostData 自定义 Header 默认关闭，避免升级后影响现场接口。");
+}
+
+static void MesProviderUsesConfiguredRoutes()
+{
+    var handler = new RecordingHttpMessageHandler();
+    var settings = new FakeAppSettingsService
+    {
+        Current = BuildCustomMesRouteSettings()
+    };
+    using var provider = CreateMesProvider(settings, handler);
+    var tempReportFile = Path.GetTempFileName();
+
+    try
+    {
+        File.WriteAllText(tempReportFile, "report");
+
+        provider.GetUserInfoAsync("U001").GetAwaiter().GetResult();
+        provider.GetWorkOrderInfoAsync("WO-1").GetAwaiter().GetResult();
+        provider.GetServerTimeAsync().GetAwaiter().GetResult();
+        provider.TestConnectionAsync("http://127.0.0.1:8080/", 3, isWriteLog: false).GetAwaiter().GetResult();
+        provider.GetProgramListAsync("D-1", "P-1").GetAwaiter().GetResult();
+        provider.DownloadProgramAsync("D-1", "MES-P1").GetAwaiter().GetResult();
+        provider.AddExpProgramAsync(new ProgramDataWriteReq()).GetAwaiter().GetResult();
+        provider.UpdateExpProgramAsync(new ProgramDataWriteReq()).GetAwaiter().GetResult();
+        provider.DeleteExpProgramAsync("D-1", "MES-P1").GetAwaiter().GetResult();
+        provider.StartWorkAsync(new ExperimentStartReq()).GetAwaiter().GetResult();
+        provider.ChangeWorkStatusAsync(new ReportExperimentStatusReq()).GetAwaiter().GetResult();
+        provider.EndWorkAsync(new ExperimentEndReq()).GetAwaiter().GetResult();
+        provider.UploadReportFileAsync(new UploadReportFileReq { FilePath = tempReportFile }).GetAwaiter().GetResult();
+        provider.UploadProcessParametersAsync([new ProcessParameterUploadItem()]).GetAwaiter().GetResult();
+        provider.SetDeviceIdAsync(new AddDeviceReq()).GetAwaiter().GetResult();
+        provider.ReportDeviceStatusAsync(new ReportDeviceStatusReq()).GetAwaiter().GetResult();
+
+        AssertSequenceEqual(
+            [
+                "mes/user-custom",
+                "mes/work-order-custom",
+                "mes/server-time-custom",
+                "mes/server-time-custom",
+                "mes/program-custom",
+                "mes/program-custom",
+                "mes/program-custom",
+                "mes/program-custom",
+                "mes/program-custom",
+                "mes/start-custom",
+                "mes/status-custom",
+                "mes/end-custom",
+                "mes/report-file-custom",
+                "mes/post-data-custom",
+                "mes/device-custom",
+                "mes/device-status-custom"
+            ],
+            handler.Requests.Select(request => request.Path).ToArray(),
+            "MES 所有业务调用都应使用系统设置中的路由。");
+    }
+    finally
+    {
+        File.Delete(tempReportFile);
+    }
+}
+
+static void MesProviderAppliesPostDataHeaderFromLatestSettings()
+{
+    var handler = new RecordingHttpMessageHandler();
+    var settings = new FakeAppSettingsService
+    {
+        Current = new AppSettings
+        {
+            MesBaseUrl = "http://127.0.0.1:7098/",
+            EnablePostDataCustomHeader = false,
+            PostDataHeaderKey = "X-Factory",
+            PostDataHeaderValue = "old"
+        }
+    };
+
+    using var provider = CreateMesProvider(settings, handler);
+    var changedSettings = settings.Current.Clone();
+    changedSettings.MesPostDataRoute = "mes/post-data-after-save";
+    changedSettings.EnablePostDataCustomHeader = true;
+    changedSettings.PostDataHeaderKey = "X-Factory";
+    changedSettings.PostDataHeaderValue = "line-1";
+    settings.Save(changedSettings);
+
+    provider.UploadProcessParametersAsync([new ProcessParameterUploadItem()]).GetAwaiter().GetResult();
+
+    var request = handler.Requests.Single();
+    AssertEqual("mes/post-data-after-save", request.Path, "保存设置后，PostData 路由应立即使用最新配置。");
+    AssertTrue(request.Headers.TryGetValue("X-Factory", out var value), "启用 PostData 自定义 Header 后，请求必须带上配置的 Key。");
+    AssertEqual("line-1", value, "启用 PostData 自定义 Header 后，请求必须带上配置的 Value。");
+}
+
+static void ElevatedAutoStartDefaultsToEnabled()
+{
+    var settings = new AppSettings();
+
+    AssertTrue(settings.EnableElevatedAutoStart != false, "以管理员权限开机自启应默认启用，保证现场开机校时优先可用。");
+
+    var plan = StartupIntegrationRules.CreatePlan(settings);
+
+    AssertEqual(StartupIntegrationMode.ElevatedScheduledTask, plan.Mode, "默认配置应优先使用最高权限计划任务。");
+}
+
+static void StartupIntegrationRulesRemoveAllWhenAutoStartIsDisabled()
+{
+    var settings = new AppSettings
+    {
+        EnableAutoStart = false,
+        EnableElevatedAutoStart = true
+    };
+
+    var plan = StartupIntegrationRules.CreatePlan(settings);
+
+    AssertEqual(StartupIntegrationMode.Disabled, plan.Mode, "关闭开机自启时应同时移除普通启动项和计划任务。");
+    AssertFalse(plan.EnableRunKey, "关闭开机自启时不能保留普通 Run 启动项。");
+    AssertFalse(plan.EnableElevatedTask, "关闭开机自启时不能保留最高权限计划任务。");
+}
+
+static void StartupIntegrationRulesPreferElevatedScheduledTask()
+{
+    var settings = new AppSettings
+    {
+        EnableAutoStart = true,
+        EnableElevatedAutoStart = true
+    };
+
+    var plan = StartupIntegrationRules.CreatePlan(settings);
+
+    AssertEqual(StartupIntegrationMode.ElevatedScheduledTask, plan.Mode, "启用最高权限自启时应优先使用计划任务。");
+    AssertFalse(plan.EnableRunKey, "计划任务成功时应移除普通 Run 启动项，避免重复启动。");
+    AssertTrue(plan.EnableElevatedTask, "最高权限计划任务应被启用。");
+}
+
+static void StartupIntegrationResultReportsRunKeyFallback()
+{
+    var result = StartupIntegrationResult.RunKeyFallback("计划任务创建失败，已回退为普通开机自启。");
+
+    AssertFalse(result.Success, "计划任务失败后即使有普通自启兜底，也需要向系统设置页报告失败。");
+    AssertFalse(result.UsedElevatedTask, "回退普通自启时不应声明已使用最高权限计划任务。");
+    AssertTrue(result.FallbackToRunKey, "结果应明确标记已经回退到普通 Run 启动项。");
+    AssertTrue(result.Message.Contains("计划任务创建失败", StringComparison.Ordinal), "失败消息应保留计划任务失败原因。");
+}
+
+static void SystemClockSyncSkipsSmallOffset()
+{
+    var localTime = new DateTime(2026, 7, 1, 8, 0, 0);
+    var serverTime = localTime.AddSeconds(3);
+
+    var result = SystemClockSyncRules.Decide(serverTime, localTime);
+
+    AssertTrue(result.Success, "服务器时间格式正确时规则应成功返回。");
+    AssertFalse(result.Changed, "时间差未超过 5 秒时不应修改系统时间。");
+    AssertEqual(3d, result.OffsetSeconds, "时间差应按服务器时间减本机时间计算。");
+}
+
+static void SystemClockSyncChangesLargeOffset()
+{
+    var localTime = new DateTime(2026, 7, 1, 8, 0, 0);
+    var serverTime = localTime.AddSeconds(6);
+
+    var result = SystemClockSyncRules.Decide(serverTime, localTime);
+
+    AssertTrue(result.Success, "服务器时间格式正确时规则应成功返回。");
+    AssertTrue(result.Changed, "时间差超过 5 秒时应触发系统校时。");
+    AssertEqual(6d, result.OffsetSeconds, "触发校时时仍需保留时间差。");
+}
+
+static void SystemClockSyncRejectsInvalidServerTime()
+{
+    var result = SystemClockSyncRules.TryParseServerTime("not-a-time", out _);
+
+    AssertFalse(result.Success, "服务器时间格式非法时应返回失败。");
+    AssertFalse(result.Changed, "服务器时间格式非法时不能修改系统时间。");
+    AssertTrue(result.Message.Contains("服务器时间格式无效", StringComparison.Ordinal), "失败消息应说明服务器时间格式无效。");
+}
+
+static void WeldTaskServerTimeSyncAdjustsSystemClock()
+{
+    var mes = new FakeMesProvider
+    {
+        ServerTimeResponse = SuccessServerTime("2026-07-01 08:00:06")
+    };
+    var clock = new FakeSystemClockService
+    {
+        CurrentTime = new DateTime(2026, 7, 1, 8, 0, 0)
+    };
+    var operations = new FakeOperationLogService();
+    var service = CreateWeldTaskService(mes, clock, operations);
+
+    service.SyncServerTimeAsync().GetAwaiter().GetResult();
+
+    AssertEqual(1, clock.SetLocalTimeCallCount, "服务器时间和本机时间相差超过阈值时必须尝试修改系统时间。");
+    AssertEqual(new DateTime(2026, 7, 1, 8, 0, 6), clock.LastRequestedTime, "系统时间应按服务器返回时间设置。");
+    AssertTrue(service.CurrentState.LastServerSyncMessage?.Contains("已校时", StringComparison.Ordinal) == true, "运行状态应提示已完成校时。");
+    AssertTrue(operations.Entries.Any(entry => entry.Detail.Contains("Changed=True", StringComparison.Ordinal)), "操作日志应记录校时结果。");
+}
+
+static void WeldTaskServerTimeSyncSkipsClockOnMesFailure()
+{
+    var mes = new FakeMesProvider
+    {
+        ServerTimeResponse = new BasicRes<ServerTimeRes> { Status = "E", Msg = "MES 离线" }
+    };
+    var clock = new FakeSystemClockService();
+    var service = CreateWeldTaskService(mes, clock, new FakeOperationLogService());
+
+    service.SyncServerTimeAsync().GetAwaiter().GetResult();
+
+    AssertEqual(0, clock.SetLocalTimeCallCount, "MES 校时接口失败时不应修改系统时间。");
+    AssertEqual("MES 离线", service.CurrentState.LastServerSyncMessage, "MES 失败消息应写入运行状态。");
+}
+
+static void WeldTaskServerTimeSyncReportsClockFailure()
+{
+    var mes = new FakeMesProvider
+    {
+        ServerTimeResponse = SuccessServerTime("2026-07-01 08:00:06")
+    };
+    var clock = new FakeSystemClockService
+    {
+        CurrentTime = new DateTime(2026, 7, 1, 8, 0, 0),
+        SetLocalTimeResult = SystemClockSyncResult.Failed(
+            new DateTime(2026, 7, 1, 8, 0, 6),
+            new DateTime(2026, 7, 1, 8, 0, 0),
+            6,
+            "无权限修改系统时间")
+    };
+    var service = CreateWeldTaskService(mes, clock, new FakeOperationLogService());
+
+    service.SyncServerTimeAsync().GetAwaiter().GetResult();
+
+    AssertEqual(1, clock.SetLocalTimeCallCount, "系统时间差超过阈值时仍应尝试校时。");
+    AssertTrue(service.CurrentState.LastServerSyncMessage?.Contains("无权限修改系统时间", StringComparison.Ordinal) == true, "系统校时失败原因应写入运行状态。");
+}
+
+static void DeviceLifecycleServerTimeSelfCheckUsesSelfCheckEvent()
+{
+    var result = SystemClockSyncResult.ChangedResult(
+        new DateTime(2026, 7, 1, 8, 0, 6),
+        new DateTime(2026, 7, 1, 8, 0, 0),
+        6,
+        "已校时");
+
+    var entry = DeviceLifecycleLogRules.CreateServerTimeSelfCheckEntry(
+        "D-001",
+        result,
+        new DateTime(2026, 7, 1, 8, 0, 7));
+
+    AssertEqual(AppConstants.DeviceLifecycleEventTypes.SelfCheck, entry.EventType, "MES 校时属于开机自检，应复用 SelfCheck 事件类型。");
+    AssertEqual("MES", entry.Source, "MES 校时自检来源应标记为 MES。");
+    AssertEqual("Success", entry.Status, "校时成功应写入 Success 状态。");
+    AssertEqual("MES服务器校时成功", entry.Summary, "摘要应明确展示 MES 服务器校时成功。");
+    AssertTrue(entry.Detail.Contains("ServerTime=2026-07-01 08:00:06", StringComparison.Ordinal), "详情应包含服务器时间。");
+    AssertTrue(entry.Detail.Contains("Changed=True", StringComparison.Ordinal), "详情应包含是否修改系统时间。");
+}
+
+static void WeldTaskServerTimeSyncWritesDeviceLifecycleSuccessLog()
+{
+    var mes = new FakeMesProvider
+    {
+        ServerTimeResponse = SuccessServerTime("2026-07-01 08:00:02")
+    };
+    var clock = new FakeSystemClockService
+    {
+        CurrentTime = new DateTime(2026, 7, 1, 8, 0, 0)
+    };
+    var lifecycleLogs = new FakeDeviceLifecycleLogService();
+    var service = CreateWeldTaskService(mes, clock, new FakeOperationLogService(), lifecycleLogs);
+
+    service.SyncServerTimeAsync().GetAwaiter().GetResult();
+
+    AssertEqual(0, clock.SetLocalTimeCallCount, "时间差未超过阈值时不应修改系统时间。");
+    AssertEqual(1, lifecycleLogs.Entries.Count, "每次启动校时完成后都应写入一条设备自检日志。");
+    AssertEqual("Success", lifecycleLogs.Entries[0].Status, "无需校时也属于自检成功。");
+    AssertEqual("MES服务器校时成功", lifecycleLogs.Entries[0].Summary, "成功日志摘要应明确。");
+    AssertTrue(lifecycleLogs.Entries[0].Detail.Contains("Changed=False", StringComparison.Ordinal), "无需校时时详情应记录 Changed=False。");
+}
+
+static void WeldTaskServerTimeSyncWritesDeviceLifecycleFailureLogs()
+{
+    var mes = new FakeMesProvider
+    {
+        ServerTimeResponse = new BasicRes<ServerTimeRes> { Status = "E", Msg = "MES 离线" }
+    };
+    var lifecycleLogs = new FakeDeviceLifecycleLogService();
+    var service = CreateWeldTaskService(mes, new FakeSystemClockService(), new FakeOperationLogService(), lifecycleLogs);
+
+    service.SyncServerTimeAsync().GetAwaiter().GetResult();
+
+    AssertEqual(1, lifecycleLogs.Entries.Count, "MES 接口失败也应写入设备自检日志。");
+    AssertEqual("Failed", lifecycleLogs.Entries[0].Status, "MES 接口失败应写入 Failed 状态。");
+    AssertEqual("MES服务器校时失败", lifecycleLogs.Entries[0].Summary, "失败日志摘要应明确。");
+    AssertTrue(lifecycleLogs.Entries[0].Detail.Contains("MES 离线", StringComparison.Ordinal), "失败详情应包含 MES 返回原因。");
+
+    mes.ServerTimeResponse = SuccessServerTime("not-a-time");
+    lifecycleLogs.Entries.Clear();
+
+    service.SyncServerTimeAsync().GetAwaiter().GetResult();
+
+    AssertEqual(1, lifecycleLogs.Entries.Count, "服务器时间格式非法也应写入设备自检日志。");
+    AssertEqual("Failed", lifecycleLogs.Entries[0].Status, "服务器时间格式非法应写入 Failed 状态。");
+    AssertTrue(lifecycleLogs.Entries[0].Detail.Contains("服务器时间格式无效", StringComparison.Ordinal), "失败详情应包含格式错误原因。");
+}
+
+static void WeldTaskServerTimeSyncIgnoresDeviceLifecycleLogFailure()
+{
+    var mes = new FakeMesProvider
+    {
+        ServerTimeResponse = SuccessServerTime("2026-07-01 08:00:06")
+    };
+    var clock = new FakeSystemClockService
+    {
+        CurrentTime = new DateTime(2026, 7, 1, 8, 0, 0)
+    };
+    var lifecycleLogs = new FakeDeviceLifecycleLogService
+    {
+        ThrowOnWrite = true
+    };
+    var service = CreateWeldTaskService(mes, clock, new FakeOperationLogService(), lifecycleLogs);
+
+    var response = service.SyncServerTimeAsync().GetAwaiter().GetResult();
+
+    AssertTrue(response.IsSuccess, "设备日志写入失败不能影响 MES 校时接口返回。");
+    AssertEqual(1, clock.SetLocalTimeCallCount, "设备日志失败不能阻断系统校时。");
+    AssertTrue(service.CurrentState.LastServerSyncMessage?.Contains("已校时", StringComparison.Ordinal) == true, "设备日志失败不能覆盖校时状态消息。");
+}
+
 static void DeviceLifecycleConnectionLogsOnlyWhenStateChanges()
 {
     AssertTrue(DeviceLifecycleLogRules.HasConnectionStatusChanged(null, currentConnected: false), "首次自检失败也需要记录，方便现场知道自检结果。");
@@ -1326,6 +2079,78 @@ static BizWeldPointRecord BuildCompletedPoint(
     };
 }
 
+static BasicRes<ServerTimeRes> SuccessServerTime(string currentTime)
+{
+    return new BasicRes<ServerTimeRes>
+    {
+        Status = "S",
+        Msg = "OK",
+        Data = new ServerTimeRes { CurrentTime = currentTime }
+    };
+}
+
+static WeldTaskService CreateWeldTaskService(
+    FakeMesProvider mesProvider,
+    ISystemClockService clockService,
+    FakeOperationLogService operationLogService,
+    FakeDeviceLifecycleLogService? lifecycleLogService = null)
+{
+    return new WeldTaskService(
+        null!,
+        mesProvider,
+        new FakeAppSettingsService(),
+        operationLogService,
+        new FakeLocalizationService(),
+        new FakeUploadTaskService(),
+        new FakeProductionReportFileService(),
+        lifecycleLogService ?? new FakeDeviceLifecycleLogService(),
+        new FakeDeviceStatusService(),
+        clockService);
+}
+
+static DeviceApiEndpointService CreateDeviceApiEndpointService(
+    FakeAppSettingsService? appSettingsService = null,
+    FakeDeviceStatusService? deviceStatusService = null,
+    FakeOperationLogService? operationLogService = null,
+    FakeDeviceLifecycleLogService? lifecycleLogService = null)
+{
+    return new DeviceApiEndpointService(
+        appSettingsService ?? new FakeAppSettingsService(),
+        deviceStatusService ?? new FakeDeviceStatusService(),
+        operationLogService ?? new FakeOperationLogService(),
+        lifecycleLogService ?? new FakeDeviceLifecycleLogService());
+}
+
+static MesProvider CreateMesProvider(
+    FakeAppSettingsService appSettingsService,
+    RecordingHttpMessageHandler handler)
+{
+    return new MesProvider(
+        new HttpClient(handler),
+        appSettingsService,
+        new FakeLocalizationService(),
+        new FakeMesInteractionLogService());
+}
+
+static AppSettings BuildCustomMesRouteSettings()
+{
+    return new AppSettings
+    {
+        MesBaseUrl = "http://127.0.0.1:7098/",
+        MesUserRoute = "mes/user-custom",
+        MesWorkOrderRoute = "mes/work-order-custom",
+        MesServerTimeRoute = "mes/server-time-custom",
+        MesProgramManageRoute = "mes/program-custom",
+        MesStartWorkRoute = "mes/start-custom",
+        MesWorkStatusRoute = "mes/status-custom",
+        MesEndWorkRoute = "mes/end-custom",
+        MesReportFileRoute = "mes/report-file-custom",
+        MesPostDataRoute = "mes/post-data-custom",
+        MesDeviceRoute = "mes/device-custom",
+        MesDeviceStatusRoute = "mes/device-status-custom"
+    };
+}
+
 static void AssertTrue(bool condition, string message)
 {
     if (!condition)
@@ -1375,3 +2200,280 @@ static void AssertThrows<TException>(Action action, string message)
 
     throw new InvalidOperationException($"{message} Expected={typeof(TException).Name}, Actual=no exception");
 }
+
+sealed class FakeMesProvider : IMesProvider
+{
+    public BasicRes<ServerTimeRes> ServerTimeResponse { get; set; } = new()
+    {
+        Status = "S",
+        Msg = "OK",
+        Data = new ServerTimeRes { CurrentTime = "2026-07-01 08:00:00" }
+    };
+
+    public Task<BasicRes<ServerTimeRes>> GetServerTimeAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(ServerTimeResponse);
+
+    public Task<BasicRes<UserInfoRes>> GetUserInfoAsync(string userNumber, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    public Task<BasicRes<WorkOrderRes>> GetWorkOrderInfoAsync(string workId, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    public Task<BasicRes<object>> SetDeviceIdAsync(AddDeviceReq addDeviceRequest, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    public Task<BasicRes<ServerTimeRes>> TestConnectionAsync(string baseUrl, int timeoutSeconds, bool isWriteLog, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    public Task<BasicRes<ProgramDataRes>> AddExpProgramAsync(ProgramDataWriteReq requestData, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    public Task<BasicRes<ProgramDataRes>> UpdateExpProgramAsync(ProgramDataWriteReq requestData, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    public Task<BasicRes<List<MesProgramListItemData>>> GetProgramListAsync(string deviceId, string? productNum = null, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    public Task<BasicRes<ProgramDataRes>> DownloadProgramAsync(string deviceId, string programId, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    public Task<BasicRes<object>> DeleteExpProgramAsync(string deviceId, string programId, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    public Task<BasicRes<object>> ReportDeviceStatusAsync(ReportDeviceStatusReq requestData, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    public Task<BasicRes<ExperimentStartRes>> StartWorkAsync(ExperimentStartReq requestData, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    public Task<BasicRes<object>> ChangeWorkStatusAsync(ReportExperimentStatusReq requestData, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    public Task<BasicRes<object>> EndWorkAsync(ExperimentEndReq requestData, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    public Task<BasicRes<object>> UploadReportFileAsync(UploadReportFileReq requestData, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    public Task<BasicRes<object>> UploadProcessParametersAsync(IReadOnlyList<ProcessParameterUploadItem> requestData, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+}
+
+sealed class FakeSystemClockService : ISystemClockService
+{
+    public DateTime CurrentTime { get; set; } = new(2026, 7, 1, 8, 0, 0);
+
+    public int SetLocalTimeCallCount { get; private set; }
+
+    public DateTime? LastRequestedTime { get; private set; }
+
+    public SystemClockSyncResult? SetLocalTimeResult { get; set; }
+
+    public DateTime GetLocalTime() => CurrentTime;
+
+    public SystemClockSyncResult SetLocalTime(DateTime serverTime, DateTime localTimeBefore)
+    {
+        SetLocalTimeCallCount++;
+        LastRequestedTime = serverTime;
+        return SetLocalTimeResult
+            ?? SystemClockSyncResult.ChangedResult(serverTime, localTimeBefore, (serverTime - localTimeBefore).TotalSeconds, "已校时");
+    }
+}
+
+sealed class FakeAppSettingsService : IAppSettingsService
+{
+    public event EventHandler<AppSettingsChangedEventArgs>? SettingsChanged;
+
+    public AppSettings Current { get; set; } = new();
+
+    public AppSettings Get() => Current.Clone();
+
+    public AppSettings Save(AppSettings settings)
+    {
+        var previous = Current.Clone();
+        Current = settings.Clone();
+        var changedProperties = ResolveChangedProperties(previous, Current);
+        SettingsChanged?.Invoke(this, new AppSettingsChangedEventArgs(previous, Current, changedProperties));
+        return Current.Clone();
+    }
+
+    private static IReadOnlyList<string> ResolveChangedProperties(AppSettings previous, AppSettings current)
+    {
+        return typeof(AppSettings)
+            .GetProperties()
+            .Where(property => property.Name is not nameof(AppSettings.Id) and not nameof(AppSettings.UpdatedTime))
+            .Where(property => !Equals(property.GetValue(previous), property.GetValue(current)))
+            .Select(property => property.Name)
+            .ToArray();
+    }
+}
+
+sealed class FakeOperationLogService : IOperationLogService
+{
+    public List<(string Action, string Detail, string Level)> Entries { get; } = new();
+
+    public void Write(string action, string detail, string level = "Info")
+        => Entries.Add((action, detail, level));
+
+    public IReadOnlyList<SysOperationLog> GetRecent(int take = 200) => Array.Empty<SysOperationLog>();
+}
+
+sealed class FakeMesInteractionLogService : IMesInteractionLogService
+{
+    public event EventHandler<MesInteractionLogEntry>? LogWritten;
+
+    public List<MesInteractionLogEntry> Entries { get; } = new();
+
+    public void Write(MesInteractionLogEntry entry)
+    {
+        Entries.Add(entry);
+        LogWritten?.Invoke(this, entry);
+    }
+
+    public IReadOnlyList<MesInteractionLogEntry> GetByDate(DateTime date, int take = 500) => Entries;
+
+    public string GetLogDirectory() => string.Empty;
+}
+
+sealed class FakeLocalizationService : ILocalizationService
+{
+    public string CurrentLanguage => AppConstants.Languages.Chinese;
+
+    public event EventHandler? LanguageChanged;
+
+    public string GetString(string key) => key;
+
+    public string GetString(string key, params object[] args) => string.Format(key, args);
+
+    public void SetLanguage(string cultureCode) => LanguageChanged?.Invoke(this, EventArgs.Empty);
+}
+
+sealed class FakeUploadTaskService : IUploadTaskService
+{
+    public event EventHandler<UploadTaskStatusChangedEventArgs>? TaskStatusChanged;
+
+    public IReadOnlyList<UploadTaskSummary> GetTasks(string taskType, bool includeCompleted = false) => Array.Empty<UploadTaskSummary>();
+
+    public IReadOnlyList<UploadTaskSummary> GetProcessParameterRows(bool includeCompleted = false) => Array.Empty<UploadTaskSummary>();
+
+    public UploadTaskSummary? GetById(int id) => null;
+
+    public BizUploadTask EnqueueOrUpdate(BizUploadTask task)
+    {
+        TaskStatusChanged?.Invoke(this, new UploadTaskStatusChangedEventArgs
+        {
+            UploadTaskId = task.Id,
+            TaskType = task.TaskType,
+            Status = task.Status
+        });
+        return task;
+    }
+
+    public Task<UploadTaskSummary?> ExecuteAsync(int id, CancellationToken cancellationToken = default) => Task.FromResult<UploadTaskSummary?>(null);
+
+    public Task<int> ExecuteAllPendingAsync(string taskType, CancellationToken cancellationToken = default) => Task.FromResult(0);
+
+    public void RequestRetry(int id) { }
+
+    public int RequestRetryAll(string taskType) => 0;
+
+    public void DeleteTask(int id) { }
+
+    public void HideWeldTaskUploadState(int weldTaskId) { }
+}
+
+sealed class FakeProductionReportFileService : IProductionReportFileService
+{
+    public BizProductionReportFile GenerateXlsxReport(BizWeldTask task) => new();
+}
+
+sealed class FakeDeviceLifecycleLogService : IDeviceLifecycleLogService
+{
+    public event EventHandler<DeviceLifecycleLogEntry>? LogWritten;
+
+    public List<DeviceLifecycleLogEntry> Entries { get; } = new();
+
+    public bool ThrowOnWrite { get; set; }
+
+    public void Write(DeviceLifecycleLogEntry entry)
+    {
+        if (ThrowOnWrite)
+        {
+            throw new InvalidOperationException("设备日志写入失败");
+        }
+
+        Entries.Add(entry);
+        LogWritten?.Invoke(this, entry);
+    }
+
+    public IReadOnlyList<DeviceLifecycleLogEntry> GetByDate(DateTime date, int take = 1000) => Array.Empty<DeviceLifecycleLogEntry>();
+
+    public string GetLogDirectory() => string.Empty;
+}
+
+sealed class FakeDeviceStatusService : IDeviceStatusService
+{
+    public event EventHandler<BizDeviceStatusLog>? StatusChanged;
+
+    public BizDeviceStatusLog CurrentStatus { get; set; } = new();
+
+    public int GetCurrentStatusCallCount { get; private set; }
+
+    public BizDeviceStatusLog GetCurrentStatus()
+    {
+        GetCurrentStatusCallCount++;
+        return CurrentStatus;
+    }
+
+    public IReadOnlyList<BizDeviceStatusLog> GetLogs(DateTime? from = null, DateTime? to = null, int maxCount = 200) => Array.Empty<BizDeviceStatusLog>();
+
+    public Task<BizDeviceStatusLog> ChangeStatusAsync(
+        string deviceStatus,
+        string? remark = null,
+        string source = "Software",
+        bool reportToMes = true,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        int? weldTaskId = null,
+        string? workOrderId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var log = new BizDeviceStatusLog { DeviceStatus = deviceStatus, Remark = remark, Source = source };
+        StatusChanged?.Invoke(this, log);
+        return Task.FromResult(log);
+    }
+}
+
+sealed class RecordingHttpMessageHandler : HttpMessageHandler
+{
+    public List<RecordedHttpRequest> Requests { get; } = new();
+
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var body = request.Content is null
+            ? string.Empty
+            : await request.Content.ReadAsStringAsync(cancellationToken);
+        var headers = request.Headers.ToDictionary(
+            header => header.Key,
+            header => string.Join(",", header.Value),
+            StringComparer.OrdinalIgnoreCase);
+
+        Requests.Add(new RecordedHttpRequest(
+            request.Method.Method,
+            request.RequestUri?.AbsolutePath.TrimStart('/') ?? string.Empty,
+            request.RequestUri?.Query ?? string.Empty,
+            body,
+            headers));
+
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"Status\":\"S\",\"Msg\":\"成功\",\"Data\":null}", Encoding.UTF8, "application/json")
+        };
+    }
+}
+
+sealed record RecordedHttpRequest(
+    string Method,
+    string Path,
+    string Query,
+    string Body,
+    IReadOnlyDictionary<string, string> Headers);

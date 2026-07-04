@@ -6,8 +6,10 @@ using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
+using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Core.ViewModels;
 using AutoWeldSystem.UI.Base;
+using AutoWeldSystem.UI.Controls;
 using AutoWeldSystem.UI.Infrastructure;
 
 namespace AutoWeldSystem.UI.Views;
@@ -132,6 +134,12 @@ public partial class LogManageView : BaseView
         => DesignMode || System.ComponentModel.LicenseManager.UsageMode == System.ComponentModel.LicenseUsageMode.Designtime;
 
     /// <summary>
+    /// Reads an AntdUI date picker as a non-null date for log queries.
+    /// </summary>
+    private static DateTime GetSelectedDate(AntdUI.DatePicker picker)
+        => (picker.Value ?? DateTime.Today).Date;
+
+    /// <summary>
     /// Applies the shared runtime style and binds the MES log data source.
     /// Columns are declared in the designer so they remain visible at design time.
     /// </summary>
@@ -189,68 +197,95 @@ public partial class LogManageView : BaseView
 
     private void WireEvents()
     {
-        btnRefreshMes.Click += (_, _) => LoadMesLogs();
         btnOpenMesFolder.Click += (_, _) => OpenMesLogFolder();
         dtpMesDate.ValueChanged += (_, _) => LoadMesLogs();
-        txtMesKeyword.TextChanged += (_, _) =>
-        {
-            _keyword = txtMesKeyword.Text.Trim();
-            ApplyMesFilter();
-        };
+        queryMesLogs.QueryClick += (_, keyword) => HandleMesQuery(keyword);
         dgvMesLogs.SelectionChanged += (_, _) => ShowSelectedMesLogDetails();
         dgvMesLogs.CellFormatting += DgvMesLogs_CellFormatting;
         _mesLogService.LogWritten += MesLogService_LogWritten;
 
-        btnRefreshProduction.Click += (_, _) => LoadProductionLogs();
         btnOpenProductionFolder.Click += (_, _) => OpenProductionLogFolder();
         dtpProductionDate.ValueChanged += (_, _) => LoadProductionLogs();
-        txtProductionKeyword.TextChanged += (_, _) =>
-        {
-            _productionKeyword = txtProductionKeyword.Text.Trim();
-            ApplyProductionFilter();
-        };
+        queryProductionLogs.QueryClick += (_, keyword) => HandleProductionQuery(keyword);
         dgvProductionLogs.SelectionChanged += (_, _) => ShowSelectedProductionLogDetails();
         dgvProductionLogs.CellFormatting += DgvProductionLogs_CellFormatting;
         _productionLogService.LogWritten += ProductionLogService_LogWritten;
         Disposed += (_, _) => _productionLogService.LogWritten -= ProductionLogService_LogWritten;
 
-        btnRefreshException.Click += (_, _) => LoadExceptionLogs();
         btnOpenExceptionFolder.Click += (_, _) => OpenExceptionLogFolder();
         btnOpenExceptionSource.Click += (_, _) => OpenSelectedExceptionSource();
         btnCopyExceptionDetails.Click += (_, _) => CopySelectedExceptionDetails();
         dtpExceptionDate.ValueChanged += (_, _) => LoadExceptionLogs();
-        txtExceptionKeyword.TextChanged += (_, _) =>
-        {
-            _exceptionKeyword = txtExceptionKeyword.Text.Trim();
-            ApplyExceptionFilter();
-        };
+        queryExceptionLogs.QueryClick += (_, keyword) => HandleExceptionQuery(keyword);
         dgvExceptionLogs.SelectionChanged += (_, _) => ShowSelectedExceptionDetails();
         dgvExceptionLogs.CellFormatting += DgvExceptionLogs_CellFormatting;
         _exceptionLogService.LogWritten += ExceptionLogService_LogWritten;
         Disposed += (_, _) => _exceptionLogService.LogWritten -= ExceptionLogService_LogWritten;
 
-        btnRefreshDeviceLifecycle.Click += (_, _) => LoadDeviceLifecycleLogs();
         btnOpenDeviceLifecycleFolder.Click += (_, _) => OpenDeviceLifecycleLogFolder();
         dtpDeviceLifecycleDate.ValueChanged += (_, _) => LoadDeviceLifecycleLogs();
-        txtDeviceLifecycleKeyword.TextChanged += (_, _) =>
-        {
-            _deviceLifecycleKeyword = txtDeviceLifecycleKeyword.Text.Trim();
-            ApplyDeviceLifecycleFilter();
-        };
+        queryDeviceLifecycleLogs.QueryClick += (_, keyword) => HandleDeviceLifecycleQuery(keyword);
         dgvDeviceLifecycleLogs.SelectionChanged += (_, _) => ShowSelectedDeviceLifecycleDetails();
         _deviceLifecycleLogService.LogWritten += DeviceLifecycleLogService_LogWritten;
         Disposed += (_, _) => _deviceLifecycleLogService.LogWritten -= DeviceLifecycleLogService_LogWritten;
 
-        btnRefreshDeviceStatus.Click += (_, _) => LoadDeviceStatusLogs();
         dtpDeviceStatusDate.ValueChanged += (_, _) => LoadDeviceStatusLogs();
-        txtDeviceStatusKeyword.TextChanged += (_, _) =>
-        {
-            _deviceStatusKeyword = txtDeviceStatusKeyword.Text.Trim();
-            ApplyDeviceStatusFilter();
-        };
+        queryDeviceStatusLogs.QueryClick += (_, keyword) => HandleDeviceStatusQuery(keyword);
         dgvDeviceStatusLogs.SelectionChanged += (_, _) => ShowSelectedDeviceStatusDetails();
         _deviceStatusService.StatusChanged += DeviceStatusService_StatusChanged;
         Disposed += (_, _) => _deviceStatusService.StatusChanged -= DeviceStatusService_StatusChanged;
+    }
+
+    private void HandleMesQuery(string keyword)
+    {
+        HandleLogQuery(queryMesLogs, keyword, value => _keyword = value, LoadMesLogs, ApplyMesFilter);
+    }
+
+    private void HandleProductionQuery(string keyword)
+    {
+        HandleLogQuery(queryProductionLogs, keyword, value => _productionKeyword = value, LoadProductionLogs, ApplyProductionFilter);
+    }
+
+    private void HandleExceptionQuery(string keyword)
+    {
+        HandleLogQuery(queryExceptionLogs, keyword, value => _exceptionKeyword = value, LoadExceptionLogs, ApplyExceptionFilter);
+    }
+
+    private void HandleDeviceLifecycleQuery(string keyword)
+    {
+        HandleLogQuery(
+            queryDeviceLifecycleLogs,
+            keyword,
+            value => _deviceLifecycleKeyword = value,
+            LoadDeviceLifecycleLogs,
+            ApplyDeviceLifecycleFilter);
+    }
+
+    private void HandleDeviceStatusQuery(string keyword)
+    {
+        HandleLogQuery(queryDeviceStatusLogs, keyword, value => _deviceStatusKeyword = value, LoadDeviceStatusLogs, ApplyDeviceStatusFilter);
+    }
+
+    /// <summary>
+    /// Applies InputQuery semantics for log pages: search filters loaded rows, refresh clears and reloads.
+    /// </summary>
+    private static void HandleLogQuery(
+        InputQuery query,
+        string keyword,
+        Action<string> setKeyword,
+        Action loadLogs,
+        Action applyFilter)
+    {
+        var normalizedKeyword = keyword.Trim();
+        setKeyword(normalizedKeyword);
+        if (string.IsNullOrWhiteSpace(normalizedKeyword))
+        {
+            query.Text = string.Empty;
+            loadLogs();
+            return;
+        }
+
+        applyFilter();
     }
 
     private void ApplyLocalizedTexts()
@@ -275,16 +310,6 @@ public partial class LogManageView : BaseView
         lblExceptionDate.Text = _localizer.GetString(TextKeys.Log.LabelDate);
         lblDeviceLifecycleDate.Text = _localizer.GetString(TextKeys.Log.LabelDate);
         lblDeviceStatusDate.Text = _localizer.GetString(TextKeys.Log.LabelDate);
-        lblMesKeyword.Text = _localizer.GetString(TextKeys.Log.LabelKeyword);
-        lblProductionKeyword.Text = _localizer.GetString(TextKeys.Log.LabelKeyword);
-        lblExceptionKeyword.Text = _localizer.GetString(TextKeys.Log.LabelKeyword);
-        lblDeviceLifecycleKeyword.Text = _localizer.GetString(TextKeys.Log.LabelKeyword);
-        lblDeviceStatusKeyword.Text = _localizer.GetString(TextKeys.Log.LabelKeyword);
-        btnRefreshMes.Text = _localizer.GetString(TextKeys.Log.ButtonRefresh);
-        btnRefreshProduction.Text = _localizer.GetString(TextKeys.Log.ButtonRefresh);
-        btnRefreshException.Text = _localizer.GetString(TextKeys.Log.ButtonRefresh);
-        btnRefreshDeviceLifecycle.Text = _localizer.GetString(TextKeys.Log.ButtonRefresh);
-        btnRefreshDeviceStatus.Text = _localizer.GetString(TextKeys.Log.ButtonRefresh);
         btnOpenMesFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
         btnOpenProductionFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
         btnOpenExceptionFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
@@ -362,7 +387,6 @@ public partial class LogManageView : BaseView
         colLifecycleOccurredTime.HeaderText = _localizer.GetString(TextKeys.Log.ColumnOccurredTime);
         colLifecycleLevel.HeaderText = _localizer.GetString(TextKeys.Log.ColumnLevel);
         colLifecycleEventType.HeaderText = _localizer.GetString(TextKeys.Log.ColumnEvent);
-        colLifecycleDeviceId.HeaderText = _localizer.GetString(TextKeys.Log.ColumnDeviceId);
         colLifecycleStation.HeaderText = _localizer.GetString(TextKeys.Log.ColumnStation);
         colLifecycleStatus.HeaderText = _localizer.GetString(TextKeys.Log.ColumnStatus);
         colLifecycleSummary.HeaderText = _localizer.GetString(TextKeys.Log.ColumnSummary);
@@ -374,7 +398,6 @@ public partial class LogManageView : BaseView
         colDeviceStation.HeaderText = "工位";
         colDeviceStatus.HeaderText = "状态码";
         colDeviceStatusName.HeaderText = "状态名称";
-        colDeviceWorkOrder.HeaderText = "工单号";
         colDeviceSource.HeaderText = "来源";
         colDeviceReportStatus.HeaderText = "上传状态";
         colDeviceReportMessage.HeaderText = "上传消息";
@@ -384,9 +407,10 @@ public partial class LogManageView : BaseView
     {
         try
         {
+            var date = GetSelectedDate(dtpMesDate);
             _mesLogs.Clear();
             _mesLogs.AddRange(_mesLogService
-                .GetByDate(dtpMesDate.Value.Date, MaxDisplayCount)
+                .GetByDate(date, MaxDisplayCount)
                 .Where(ShouldShowMesLog));
             ApplyMesFilter();
         }
@@ -400,8 +424,9 @@ public partial class LogManageView : BaseView
     {
         try
         {
+            var date = GetSelectedDate(dtpProductionDate);
             _productionLogs.Clear();
-            _productionLogs.AddRange(_productionLogService.GetByDate(dtpProductionDate.Value.Date, MaxDisplayCount));
+            _productionLogs.AddRange(_productionLogService.GetByDate(date, MaxDisplayCount));
             ApplyProductionFilter();
         }
         catch (Exception ex)
@@ -414,8 +439,9 @@ public partial class LogManageView : BaseView
     {
         try
         {
+            var date = GetSelectedDate(dtpExceptionDate);
             _exceptionLogs.Clear();
-            _exceptionLogs.AddRange(_exceptionLogService.GetByDate(dtpExceptionDate.Value.Date, MaxDisplayCount));
+            _exceptionLogs.AddRange(_exceptionLogService.GetByDate(date, MaxDisplayCount));
             ApplyExceptionFilter();
         }
         catch (Exception ex)
@@ -428,8 +454,9 @@ public partial class LogManageView : BaseView
     {
         try
         {
+            var date = GetSelectedDate(dtpDeviceLifecycleDate);
             _deviceLifecycleLogs.Clear();
-            _deviceLifecycleLogs.AddRange(_deviceLifecycleLogService.GetByDate(dtpDeviceLifecycleDate.Value.Date, MaxDisplayCount));
+            _deviceLifecycleLogs.AddRange(_deviceLifecycleLogService.GetByDate(date, MaxDisplayCount));
             ApplyDeviceLifecycleFilter();
         }
         catch (Exception ex)
@@ -442,7 +469,7 @@ public partial class LogManageView : BaseView
     {
         try
         {
-            var date = dtpDeviceStatusDate.Value.Date;
+            var date = GetSelectedDate(dtpDeviceStatusDate);
             _deviceStatusLogs.Clear();
             _deviceStatusLogs.AddRange(_deviceStatusService.GetLogs(date, date.AddDays(1).AddTicks(-1), MaxDisplayCount));
             ApplyDeviceStatusFilter();
@@ -749,7 +776,7 @@ public partial class LogManageView : BaseView
 
     private void AddLiveMesLog(MesInteractionLogEntry entry)
     {
-        if (entry.SendTime.Date != dtpMesDate.Value.Date)
+        if (entry.SendTime.Date != GetSelectedDate(dtpMesDate))
         {
             return;
         }
@@ -770,7 +797,7 @@ public partial class LogManageView : BaseView
 
     private void AddLiveProductionLog(ProductionFlowLogEntry entry)
     {
-        if (entry.OccurredTime.Date != dtpProductionDate.Value.Date)
+        if (entry.OccurredTime.Date != GetSelectedDate(dtpProductionDate))
         {
             return;
         }
@@ -786,7 +813,7 @@ public partial class LogManageView : BaseView
 
     private void AddLiveExceptionLog(ProgramExceptionLogEntry entry)
     {
-        if (entry.OccurredTime.Date != dtpExceptionDate.Value.Date)
+        if (entry.OccurredTime.Date != GetSelectedDate(dtpExceptionDate))
         {
             return;
         }
@@ -802,7 +829,7 @@ public partial class LogManageView : BaseView
 
     private void AddLiveDeviceLifecycleLog(DeviceLifecycleLogEntry entry)
     {
-        if (entry.OccurredTime.Date != dtpDeviceLifecycleDate.Value.Date)
+        if (entry.OccurredTime.Date != GetSelectedDate(dtpDeviceLifecycleDate))
         {
             return;
         }
@@ -818,7 +845,7 @@ public partial class LogManageView : BaseView
 
     private void AddLiveDeviceStatusLog(BizDeviceStatusLog entry)
     {
-        if (entry.OccurredTime.Date != dtpDeviceStatusDate.Value.Date)
+        if (entry.OccurredTime.Date != GetSelectedDate(dtpDeviceStatusDate))
         {
             return;
         }
@@ -1033,7 +1060,7 @@ public partial class LogManageView : BaseView
         builder.AppendLine($"StatusName: {entry.StatusName}");
         builder.AppendLine($"Source: {entry.Source}");
         builder.AppendLine($"OccurredTime: {entry.OccurredTime:yyyy-MM-dd HH:mm:ss.fff}");
-        builder.AppendLine($"ReportStatus: {entry.ReportStatus}");
+        builder.AppendLine($"ReportStatus: {UploadStatusDisplayRules.GetDisplayText(entry.ReportStatus)}");
         builder.AppendLine($"ReportTime: {entry.ReportTime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-"}");
         builder.AppendLine($"ReportMessage: {entry.ReportMessage ?? "-"}");
         builder.AppendLine($"Remark: {entry.Remark ?? "-"}");
@@ -1422,7 +1449,9 @@ public partial class LogManageView : BaseView
 
         public string Source => string.IsNullOrWhiteSpace(Entry.Source) ? "-" : Entry.Source;
 
-        public string ReportStatus => string.IsNullOrWhiteSpace(Entry.ReportStatus) ? "-" : Entry.ReportStatus;
+        public string ReportStatus => string.IsNullOrWhiteSpace(Entry.ReportStatus)
+            ? "-"
+            : UploadStatusDisplayRules.GetDisplayText(Entry.ReportStatus);
 
         public string ReportMessage => string.IsNullOrWhiteSpace(Entry.ReportMessage) ? "-" : Entry.ReportMessage;
     }

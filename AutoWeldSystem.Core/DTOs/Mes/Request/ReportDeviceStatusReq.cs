@@ -8,7 +8,7 @@ public class ReportDeviceStatusReq
     /// </summary>
     public string DeviceId { get; set; }= string.Empty;
     /// <summary>
-    /// PLC设备状态：1=运行；2=暂停/空闲；3=停止；4=报警。
+    /// MES设备状态：0=开机；1=停机；4=异常；5=异常恢复；6=程序执行开始；7=程序执行结束。
     /// </summary>
     public string DevStatus { get; set; }= string.Empty;
     /// <summary>

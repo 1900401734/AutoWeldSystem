@@ -26,7 +26,7 @@
             btnTest = new AntdUI.Button();
             btnRefresh = new AntdUI.Button();
             btnSave = new AntdUI.Button();
-            queryAddresses = new AutoWeldSystem.UI.Components.InputQuery(components);
+            queryAddresses = new AutoWeldSystem.UI.Controls.InputQuery(components);
             bindingFlowPanel = new FlowLayoutPanel();
             lblBindingProduct = new Label();
             lblBindingArrow1 = new Label();
@@ -1026,7 +1026,7 @@
         private AntdUI.Button btnSave;
         private AntdUI.Button btnRefresh;
         private AntdUI.Button btnTest;
-        private Components.InputQuery queryAddresses;
+        private Controls.InputQuery queryAddresses;
         private FlowLayoutPanel bindingFlowPanel;
         private Label lblBindingProduct;
         private Label lblBindingArrow1;

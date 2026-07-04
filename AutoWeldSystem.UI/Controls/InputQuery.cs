@@ -2,7 +2,7 @@
 using System.ComponentModel.Design;
 using System.Drawing.Design;
 
-namespace AutoWeldSystem.UI.Components;
+namespace AutoWeldSystem.UI.Controls;
 
 /// <summary>
 /// 搜索按钮
@@ -11,17 +11,45 @@ namespace AutoWeldSystem.UI.Components;
 [DefaultEvent(nameof(QueryClick))]
 public partial class InputQuery : UserControl
 {
+    private bool _isShowQueryButton = true;
+    private bool _isShowRefreshButton = true;
+
     #region 公开属性
 
     [Description("是否显示搜索按钮")]
     [Category("外观")]
     [DefaultValue(true)]
-    public bool IsShowQueryButton { get => btnQuery.Visible; set => btnQuery.Visible = value; }
+    public bool IsShowQueryButton
+    {
+        get => _isShowQueryButton;
+        set
+        {
+            _isShowQueryButton = value;
+            btnQuery.Visible = value;
+        }
+    }
 
     [Description("是否显示刷新按钮")]
     [Category("外观")]
     [DefaultValue(true)]
-    public bool IsShowRefreshButton { get => btnRefresh.Visible; set => btnRefresh.Visible = value; }
+    public bool IsShowRefreshButton
+    {
+        get => _isShowRefreshButton;
+        set
+        {
+            _isShowRefreshButton = value;
+            btnRefresh.Visible = value;
+        }
+    }
+
+    [Description("输入框占位提示文本")]
+    [Category("外观")]
+    [DefaultValue("")]
+    public string PlaceholderText
+    {
+        get => input1.PlaceholderText ?? string.Empty;
+        set => input1.PlaceholderText = value;
+    }
 
     /// <summary>
     /// 搜索按钮点击事件 订阅

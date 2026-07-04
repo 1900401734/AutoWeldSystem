@@ -31,6 +31,11 @@ public sealed record PlcProductionSnapshot(
 
     public string AlarmMessage { get; init; } = string.Empty;
 
+    /// <summary>
+    /// Station scope of the active alarm. Null means no active alarm is stored in this snapshot.
+    /// </summary>
+    public int? AlarmStationNo { get; init; }
+
     public bool ProductionQuantitiesReadSuccess =>
         TotalProductionReadSuccess
         && AcceptedQuantityReadSuccess

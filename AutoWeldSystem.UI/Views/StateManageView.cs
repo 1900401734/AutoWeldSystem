@@ -97,7 +97,10 @@ public partial class StateManageView : BaseView
             return;
         }
 
-        dgvPending.Columns.Add(CreateTextColumn(nameof(UploadTaskSummary.TaskIdentity), "任务ID", 16));
+        dgvPending.Columns.Add(CreateTextColumn(
+            nameof(UploadTaskSummary.TaskIdentity),
+            IsDeviceStatusTab() ? "状态标识" : "任务ID",
+            16));
         if (IsProcessParameterTab())
         {
             dgvPending.Columns.Add(CreateTextColumn(nameof(UploadTaskSummary.StationNo), "工位", 6));
@@ -611,6 +614,11 @@ public partial class StateManageView : BaseView
         return tabUploadCategories.SelectedTab == tabProcessParameters;
     }
 
+    private bool IsDeviceStatusTab()
+    {
+        return tabUploadCategories.SelectedTab == tabDeviceStatuses;
+    }
+
     private bool IsSummaryTab()
     {
         return tabUploadCategories.SelectedTab == tabSummary;
@@ -643,17 +651,7 @@ public partial class StateManageView : BaseView
 
     private static string GetUploadStatusText(string? status)
     {
-        return status switch
-        {
-            ProductionConstants.UploadStatuses.Pending => "待上传",
-            ProductionConstants.UploadStatuses.Uploading => "上传中",
-            ProductionConstants.UploadStatuses.Uploaded => "已上传",
-            ProductionConstants.UploadStatuses.Failed => "上传失败",
-            ProductionConstants.UploadStatuses.Retrying => "重试中",
-            ProductionConstants.UploadStatuses.Skipped => "已跳过",
-            UploadSummaryStatusResolver.NoData => "无数据",
-            _ => status ?? string.Empty
-        };
+        return UploadStatusDisplayRules.GetDisplayText(status);
     }
 
     private void ShowInfo(string message)

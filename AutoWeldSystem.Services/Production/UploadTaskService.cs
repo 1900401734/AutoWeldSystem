@@ -25,6 +25,7 @@ public class UploadTaskService : IUploadTaskService
     private readonly IAppSettingsService _settingsService;
     private readonly IProductionFlowLogService _productionLogService;
     private readonly IDeviceLifecycleLogService _deviceLifecycleLogService;
+    private readonly IDeviceStatusService _deviceStatusService;
     private readonly object _dbLock = new();
 
     public UploadTaskService(
@@ -32,13 +33,15 @@ public class UploadTaskService : IUploadTaskService
         IMesProvider mesProvider,
         IAppSettingsService settingsService,
         IProductionFlowLogService productionLogService,
-        IDeviceLifecycleLogService deviceLifecycleLogService)
+        IDeviceLifecycleLogService deviceLifecycleLogService,
+        IDeviceStatusService deviceStatusService)
     {
         _dbContext = dbContext;
         _mesProvider = mesProvider;
         _settingsService = settingsService;
         _productionLogService = productionLogService;
         _deviceLifecycleLogService = deviceLifecycleLogService;
+        _deviceStatusService = deviceStatusService;
     }
 
     /// <summary>
@@ -203,9 +206,9 @@ public class UploadTaskService : IUploadTaskService
             var normalizedTaskType = NormalizeTaskType(taskType);
             taskIds = _dbContext.Db.Queryable<BizUploadTask>()
                 .Where(task => task.TaskType == normalizedTaskType
-                    && !task.IsDeleted
-                    && task.Status != ProductionConstants.UploadStatuses.Uploaded)
+                    && !task.IsDeleted)
                 .ToList()
+                .Where(UploadTaskVisibilityRules.ShouldRetry)
                 .Select(task => task.Id)
                 .ToList();
         }
@@ -230,7 +233,7 @@ public class UploadTaskService : IUploadTaskService
         {
             _dbContext.InitDatabase();
             var task = _dbContext.Db.Queryable<BizUploadTask>().InSingle(id);
-            if (task is null || task.IsDeleted || task.Status == ProductionConstants.UploadStatuses.Uploaded)
+            if (task is null || !UploadTaskVisibilityRules.ShouldRetry(task))
             {
                 return;
             }
@@ -252,11 +255,10 @@ public class UploadTaskService : IUploadTaskService
             var normalizedTaskType = NormalizeTaskType(taskType);
             var tasks = _dbContext.Db.Queryable<BizUploadTask>()
                 .Where(task => task.TaskType == normalizedTaskType
-                    && !task.IsDeleted
-                    && task.Status != ProductionConstants.UploadStatuses.Uploaded)
+                    && !task.IsDeleted)
                 .ToList();
 
-            foreach (var task in tasks)
+            foreach (var task in tasks.Where(UploadTaskVisibilityRules.ShouldRetry))
             {
                 MarkRetryRequested(task);
                 _dbContext.Db.Updateable(task).ExecuteCommand();
@@ -330,7 +332,7 @@ public class UploadTaskService : IUploadTaskService
         {
             _dbContext.InitDatabase();
             var task = _dbContext.Db.Queryable<BizUploadTask>().InSingle(id);
-            if (task is null || task.IsDeleted || task.Status == ProductionConstants.UploadStatuses.Uploaded)
+            if (task is null || !UploadTaskVisibilityRules.ShouldRetry(task))
             {
                 return null;
             }
@@ -381,6 +383,7 @@ public class UploadTaskService : IUploadTaskService
 
         UpdateTaskExpStartId(task, response.Data.Id);
         WriteStartReportLifecycleLog(task, response.Data.Id);
+        await RecordProgramStartedStatusAsync(task, cancellationToken);
         return Success(string.IsNullOrWhiteSpace(response.Msg) ? "Start report uploaded." : response.Msg);
     }
 
@@ -417,6 +420,45 @@ public class UploadTaskService : IUploadTaskService
             DateTime.Now));
     }
 
+    private async Task RecordProgramStartedStatusAsync(BizUploadTask task, CancellationToken cancellationToken)
+    {
+        var weldTask = GetWeldTask(task);
+        if (weldTask is null)
+        {
+            return;
+        }
+
+        await RecordProgramStartedStatusAsync(weldTask, cancellationToken);
+    }
+
+    private Task RecordProgramStartedStatusAsync(BizWeldTask task, CancellationToken cancellationToken)
+    {
+        return _deviceStatusService.ChangeStatusAsync(
+            ProductionConstants.MesDeviceStatuses.ProgramStarted,
+            DeviceStatusReportRules.AppendStationRemark(
+                DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.ProgramStarted),
+                task.StationNo),
+            "MES",
+            stationNo: task.StationNo,
+            weldTaskId: task.Id,
+            workOrderId: task.SN,
+            cancellationToken: cancellationToken);
+    }
+
+    private Task RecordProgramEndedStatusAsync(BizWeldTask task, CancellationToken cancellationToken)
+    {
+        return _deviceStatusService.ChangeStatusAsync(
+            ProductionConstants.MesDeviceStatuses.ProgramEnded,
+            DeviceStatusReportRules.AppendStationRemark(
+                DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.ProgramEnded),
+                task.StationNo),
+            "MES",
+            stationNo: task.StationNo,
+            weldTaskId: task.Id,
+            workOrderId: task.SN,
+            cancellationToken: cancellationToken);
+    }
+
     private async Task<BasicRes<object>> UploadFinishReportAsync(BizUploadTask task, CancellationToken cancellationToken)
     {
         var weldTask = GetWeldTask(task);
@@ -445,11 +487,22 @@ public class UploadTaskService : IUploadTaskService
         request.QualifyNumber = request.QualifyNumber <= 0 ? weldTask.QualifiedQty : request.QualifyNumber;
         request.FailureNumber = request.FailureNumber <= 0 ? weldTask.FailedQty : request.FailureNumber;
 
-        return await _mesProvider.EndWorkAsync(request, cancellationToken);
+        var response = await _mesProvider.EndWorkAsync(request, cancellationToken);
+        if (response.IsSuccess)
+        {
+            await RecordProgramEndedStatusAsync(weldTask, cancellationToken);
+        }
+
+        return response;
     }
 
     private async Task<BasicRes<object>> UploadWorkOrderStatusAsync(BizUploadTask task, CancellationToken cancellationToken)
     {
+        if (!IsWorkOrderStatusReportEnabled())
+        {
+            return Skipped("Work-order status report is disabled in system settings.");
+        }
+
         var weldTask = GetWeldTask(task);
         if (weldTask is null)
         {
@@ -483,6 +536,21 @@ public class UploadTaskService : IUploadTaskService
         if (request is null)
         {
             return Unsupported("Device status task payload is missing.");
+        }
+
+        if (!IsDeviceStatusReportEnabled())
+        {
+            var skipped = Skipped("Device status report is disabled in system settings.");
+            UpdateDeviceStatusLog(request.LogId, skipped);
+            return skipped;
+        }
+
+        request.Request.DeviceId = DeviceStatusReportRules.ResolveReportDeviceId(
+            _settingsService.Get().DeviceId,
+            request.Request.DeviceId);
+        if (string.IsNullOrWhiteSpace(request.Request.DeviceId))
+        {
+            return Unsupported("Device status task payload is missing device id.");
         }
 
         var response = await _mesProvider.ReportDeviceStatusAsync(request.Request, cancellationToken);
@@ -1063,12 +1131,14 @@ public class UploadTaskService : IUploadTaskService
                 return null;
             }
 
-            task.Status = response.IsSuccess
-                ? ProductionConstants.UploadStatuses.Uploaded
-                : ProductionConstants.UploadStatuses.Failed;
+            task.Status = IsSkippedResponse(response)
+                ? ProductionConstants.UploadStatuses.Skipped
+                : response.IsSuccess
+                    ? ProductionConstants.UploadStatuses.Uploaded
+                    : ProductionConstants.UploadStatuses.Failed;
             task.Message = response.Msg;
-            task.CompletedTime = response.IsSuccess ? DateTime.Now : null;
-            task.NextRetryTime = response.IsSuccess ? null : DateTime.Now.AddMinutes(1);
+            task.CompletedTime = response.IsSuccess || IsSkippedResponse(response) ? DateTime.Now : null;
+            task.NextRetryTime = response.IsSuccess || IsSkippedResponse(response) ? null : DateTime.Now.AddMinutes(1);
             task.UpdatedTime = DateTime.Now;
             _dbContext.Db.Updateable(task).ExecuteCommand();
             UpdateReportFileStatus(task, response);
@@ -1176,9 +1246,11 @@ public class UploadTaskService : IUploadTaskService
                 return;
             }
 
-            log.ReportStatus = response.IsSuccess
-                ? ProductionConstants.UploadStatuses.Uploaded
-                : ProductionConstants.UploadStatuses.Failed;
+            log.ReportStatus = IsSkippedResponse(response)
+                ? ProductionConstants.UploadStatuses.Skipped
+                : response.IsSuccess
+                    ? ProductionConstants.UploadStatuses.Uploaded
+                    : ProductionConstants.UploadStatuses.Failed;
             log.ReportTime = DateTime.Now;
             log.ReportMessage = response.Msg;
             _dbContext.Db.Updateable(log)
@@ -1198,6 +1270,16 @@ public class UploadTaskService : IUploadTaskService
         };
     }
 
+    private static BasicRes<object> Skipped(string message)
+    {
+        return new BasicRes<object>
+        {
+            Status = ProductionConstants.UploadStatuses.Skipped,
+            Msg = message,
+            Data = new object()
+        };
+    }
+
     private static BasicRes<object> Unsupported(string message)
     {
         return new BasicRes<object>
@@ -1205,6 +1287,11 @@ public class UploadTaskService : IUploadTaskService
             Status = AppConstants.MesStatus.Error,
             Msg = message
         };
+    }
+
+    private static bool IsSkippedResponse(BasicRes<object> response)
+    {
+        return string.Equals(response.Status, ProductionConstants.UploadStatuses.Skipped, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string FormatFailureMessages(IReadOnlyList<string> messages)
@@ -1325,7 +1412,7 @@ public class UploadTaskService : IUploadTaskService
                 Remark = ReadString(root, "Remark")
             };
 
-            return string.IsNullOrWhiteSpace(request.DeviceId) || !IsPlcDeviceStatusCode(request.DevStatus)
+            return !DeviceStatusReportRules.IsMesDeviceStatusCode(request.DevStatus)
                 ? null
                 : new DeviceStatusUploadRequest(logId, request);
         }
@@ -1357,11 +1444,6 @@ public class UploadTaskService : IUploadTaskService
         {
             return new UploadPayloadInfo();
         }
-    }
-
-    private static bool IsPlcDeviceStatusCode(string? statusCode)
-    {
-        return ProductionConstants.PlcDeviceStatuses.IsReportable(statusCode);
     }
 
     private static int ReadInt(JsonElement root, string propertyName)
@@ -1440,6 +1522,12 @@ public class UploadTaskService : IUploadTaskService
             or ProductionConstants.UploadStatuses.Retrying;
     }
 
+    private bool IsDeviceStatusReportEnabled()
+        => _settingsService.Get().EnableDeviceStatusReport != false;
+
+    private bool IsWorkOrderStatusReportEnabled()
+        => _settingsService.Get().EnableWorkOrderStatusReport != false;
+
     private static string FirstNonEmpty(params string?[] values)
     {
         return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
@@ -1460,7 +1548,7 @@ public class UploadTaskService : IUploadTaskService
             TaskType = task.TaskType,
             Target = task.Target,
             BusinessId = task.BusinessId ?? string.Empty,
-            TaskIdentity = ResolveTaskIdentity(task),
+            TaskIdentity = ResolveTaskSummaryIdentity(task),
             StationNo = payload.StationNo,
             ProductNo = productText,
             Status = task.Status,
@@ -1525,6 +1613,24 @@ public class UploadTaskService : IUploadTaskService
     }
 
     /// <summary>
+    /// Resolves the first column text for an upload-status detail row.
+    /// Device-status tasks use their status code and name instead of a weld task id.
+    /// </summary>
+    private string ResolveTaskSummaryIdentity(BizUploadTask task)
+    {
+        if (string.Equals(task.TaskType, ProductionConstants.UploadTaskTypes.DeviceStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            var deviceStatus = ReadDeviceStatusCode(task.PayloadJson);
+            if (!string.IsNullOrWhiteSpace(deviceStatus))
+            {
+                return DeviceStatusReportRules.FormatStatusIdentity(deviceStatus);
+            }
+        }
+
+        return ResolveTaskIdentity(task);
+    }
+
+    /// <summary>
     /// Resolves the operator-facing task id for upload-status detail rows.
     /// </summary>
     private string ResolveTaskIdentity(BizUploadTask task)
@@ -1534,6 +1640,24 @@ public class UploadTaskService : IUploadTaskService
             : _dbContext.Db.Queryable<BizWeldTask>().InSingle(task.WeldTaskId.Value);
 
         return UploadTaskIdentityRules.Resolve(weldTask, task.WeldTaskId, task.BusinessId);
+    }
+
+    private static string ReadDeviceStatusCode(string? payloadJson)
+    {
+        if (string.IsNullOrWhiteSpace(payloadJson))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            return ReadString(document.RootElement, "DevStatus");
+        }
+        catch (JsonException)
+        {
+            return string.Empty;
+        }
     }
 
     private sealed record UploadPayloadInfo

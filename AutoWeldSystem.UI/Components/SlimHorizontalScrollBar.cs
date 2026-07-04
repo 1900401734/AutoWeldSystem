@@ -1,7 +1,7 @@
 using AutoWeldSystem.UI.Infrastructure;
 using System.Drawing.Drawing2D;
 
-namespace AutoWeldSystem.UI.Components;
+namespace AutoWeldSystem.UI.Controls;
 
 /// <summary>
 /// A compact horizontal scrollbar for wide preview tables.

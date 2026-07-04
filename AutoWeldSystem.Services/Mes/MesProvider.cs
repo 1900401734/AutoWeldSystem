@@ -8,6 +8,7 @@ using AutoWeldSystem.Core.Enums;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.MES;
+using AutoWeldSystem.Core.Mes;
 using AutoWeldSystem.Core.ViewModels;
 using AutoWeldSystem.Core.Runtime;
 using System.Text;
@@ -50,38 +51,65 @@ public class MesProvider : IMesProvider, IDisposable
     /// 获取员工信息。
     /// </summary>
     public Task<BasicRes<UserInfoRes>> GetUserInfoAsync(string numberOrName, CancellationToken cancellationToken = default)
-        => GetAsync<UserInfoRes>(AppConstants.MesLogPurposes.GetUserInfo, "api/User", new Dictionary<string, string?> { ["NumberOrName"] = numberOrName }, cancellationToken);
+        => GetAsync<UserInfoRes>(
+            AppConstants.MesLogPurposes.GetUserInfo,
+            ConfiguredRoute(settings => settings.MesUserRoute, MesEndpointRouteRules.UserDefaultRoute),
+            new Dictionary<string, string?> { ["NumberOrName"] = numberOrName },
+            cancellationToken);
 
     /// <summary>
     /// 获取工单信息。
     /// </summary>
     public Task<BasicRes<WorkOrderRes>> GetWorkOrderInfoAsync(string workId, CancellationToken cancellationToken = default)
-        => GetAsync<WorkOrderRes>(AppConstants.MesLogPurposes.GetWorkOrderInfo, "api/ItemsOfBatchTech", new Dictionary<string, string?> { ["WorkId"] = workId }, cancellationToken);
+        => GetAsync<WorkOrderRes>(
+            AppConstants.MesLogPurposes.GetWorkOrderInfo,
+            ConfiguredRoute(settings => settings.MesWorkOrderRoute, MesEndpointRouteRules.WorkOrderDefaultRoute),
+            new Dictionary<string, string?> { ["WorkId"] = workId },
+            cancellationToken);
 
     /// <summary>
     /// 获取服务器时间。
     /// </summary>
     public Task<BasicRes<ServerTimeRes>> GetServerTimeAsync(CancellationToken cancellationToken = default)
-        => GetAsync<ServerTimeRes>(AppConstants.MesLogPurposes.GetServerTime, "api/ServerTime", null, cancellationToken);
+        => GetAsync<ServerTimeRes>(
+            AppConstants.MesLogPurposes.GetServerTime,
+            ConfiguredRoute(settings => settings.MesServerTimeRoute, MesEndpointRouteRules.ServerTimeDefaultRoute),
+            null,
+            cancellationToken);
 
     /// <summary>
     /// 使用设置页里临时输入的地址测试 MES 连通性。
     /// 不直接写库，这样用户可以先测通再保存。
     /// </summary>
     public Task<BasicRes<ServerTimeRes>> TestConnectionAsync(string baseUrl, int timeoutSeconds, bool isWriteLog, CancellationToken cancellationToken = default)
-        => GetAsync<ServerTimeRes>(AppConstants.MesLogPurposes.TestConnection, "api/ServerTime", null, cancellationToken, baseUrl, timeoutSeconds, isWriteLog);
+        => GetAsync<ServerTimeRes>(
+            AppConstants.MesLogPurposes.TestConnection,
+            ConfiguredRoute(settings => settings.MesServerTimeRoute, MesEndpointRouteRules.ServerTimeDefaultRoute),
+            null,
+            cancellationToken,
+            baseUrl,
+            timeoutSeconds,
+            isWriteLog);
 
     /// <summary>
     /// 获取程序列表。
     /// </summary>
     public Task<BasicRes<List<MesProgramListItemData>>> GetProgramListAsync(string deviceId, string? productNum, CancellationToken cancellationToken = default)
-        => GetAsync<List<MesProgramListItemData>>(AppConstants.MesLogPurposes.GetProgramList, "api/ExpProgram", new Dictionary<string, string?> { ["deviceId"] = deviceId, ["productNum"] = productNum }, cancellationToken);
+        => GetAsync<List<MesProgramListItemData>>(
+            AppConstants.MesLogPurposes.GetProgramList,
+            ConfiguredRoute(settings => settings.MesProgramManageRoute, MesEndpointRouteRules.ProgramManageDefaultRoute),
+            new Dictionary<string, string?> { ["deviceId"] = deviceId, ["productNum"] = productNum },
+            cancellationToken);
 
     /// <summary>
     /// 下载程序。
     /// </summary>
     public Task<BasicRes<ProgramDataRes>> DownloadProgramAsync(string deviceId, string programId, CancellationToken cancellationToken = default)
-        => GetAsync<ProgramDataRes>(AppConstants.MesLogPurposes.DownloadProgram, "api/ExpProgram", new Dictionary<string, string?> { ["deviceId"] = deviceId, ["id"] = programId }, cancellationToken);
+        => GetAsync<ProgramDataRes>(
+            AppConstants.MesLogPurposes.DownloadProgram,
+            ConfiguredRoute(settings => settings.MesProgramManageRoute, MesEndpointRouteRules.ProgramManageDefaultRoute),
+            new Dictionary<string, string?> { ["deviceId"] = deviceId, ["id"] = programId },
+            cancellationToken);
 
     /// <summary>
     /// 新增程序。
@@ -90,7 +118,7 @@ public class MesProvider : IMesProvider, IDisposable
         => SendWithPayloadAsync<ProgramDataWriteReq, ProgramDataRes>(
             AppConstants.MesLogPurposes.AddProgram,
             HttpMethod.Post,
-            "api/ExpProgram",
+            ConfiguredRoute(settings => settings.MesProgramManageRoute, MesEndpointRouteRules.ProgramManageDefaultRoute),
             ApiCode.common_006,
             "AddExpProgram",
             requestData,
@@ -103,7 +131,7 @@ public class MesProvider : IMesProvider, IDisposable
         => SendWithPayloadAsync<ProgramDataWriteReq, ProgramDataRes>(
             AppConstants.MesLogPurposes.UpdateProgram,
             HttpMethod.Put,
-            "api/ExpProgram",
+            ConfiguredRoute(settings => settings.MesProgramManageRoute, MesEndpointRouteRules.ProgramManageDefaultRoute),
             ApiCode.common_007,
             "UpdateExpProgram",
             requestData,
@@ -116,12 +144,13 @@ public class MesProvider : IMesProvider, IDisposable
     {
         var query = new Dictionary<string, string?> { ["deviceId"] = deviceId, ["id"] = programId };
         var requestBody = FormatGetRequestBody(query);
-        if (!TryBuildUri("api/ExpProgram", query, null, out var uri, out var errorMessage))
+        var route = ConfiguredRoute(settings => settings.MesProgramManageRoute, MesEndpointRouteRules.ProgramManageDefaultRoute);
+        if (!TryBuildUri(route, query, null, out var uri, out var errorMessage))
         {
             return CreateRequestBuildFailure<object>(
                 AppConstants.MesLogPurposes.DeleteProgram,
                 HttpMethod.Delete.Method,
-                "api/ExpProgram",
+                route,
                 requestBody,
                 errorMessage,
                 true);
@@ -141,19 +170,37 @@ public class MesProvider : IMesProvider, IDisposable
     /// 开工上报。
     /// </summary>
     public Task<BasicRes<ExperimentStartRes>> StartWorkAsync(ExperimentStartReq requestData, CancellationToken cancellationToken = default)
-        => PostAsync<ExperimentStartReq, ExperimentStartRes>(AppConstants.MesLogPurposes.StartWork, "api/ExpStartV2", ApiCode.common_002, "ExpStartV2", requestData, cancellationToken);
+        => PostAsync<ExperimentStartReq, ExperimentStartRes>(
+            AppConstants.MesLogPurposes.StartWork,
+            ConfiguredRoute(settings => settings.MesStartWorkRoute, MesEndpointRouteRules.StartWorkDefaultRoute),
+            ApiCode.common_002,
+            "ExpStartV2",
+            requestData,
+            cancellationToken);
 
     /// <summary>
     /// 变更工单状态。
     /// </summary>
     public Task<BasicRes<object>> ChangeWorkStatusAsync(ReportExperimentStatusReq requestData, CancellationToken cancellationToken = default)
-        => PostAsync<ReportExperimentStatusReq, object>(AppConstants.MesLogPurposes.ChangeWorkStatus, "api/ExpStatus", ApiCode.common_005, "ExpStatus", requestData, cancellationToken);
+        => PostAsync<ReportExperimentStatusReq, object>(
+            AppConstants.MesLogPurposes.ChangeWorkStatus,
+            ConfiguredRoute(settings => settings.MesWorkStatusRoute, MesEndpointRouteRules.WorkStatusDefaultRoute),
+            ApiCode.common_005,
+            "ExpStatus",
+            requestData,
+            cancellationToken);
 
     /// <summary>
     /// 完工上报。
     /// </summary>
     public Task<BasicRes<object>> EndWorkAsync(ExperimentEndReq requestData, CancellationToken cancellationToken = default)
-        => PostAsync<ExperimentEndReq, object>(AppConstants.MesLogPurposes.EndWork, "api/ExpEnd", ApiCode.common_003, "ExpEnd", requestData, cancellationToken);
+        => PostAsync<ExperimentEndReq, object>(
+            AppConstants.MesLogPurposes.EndWork,
+            ConfiguredRoute(settings => settings.MesEndWorkRoute, MesEndpointRouteRules.EndWorkDefaultRoute),
+            ApiCode.common_003,
+            "ExpEnd",
+            requestData,
+            cancellationToken);
 
     /// <summary>
     /// 报告文件上报。
@@ -182,12 +229,13 @@ public class MesProvider : IMesProvider, IDisposable
             FileLength = fileInfo.Length
         }, JsonOptions);
 
-        if (!TryBuildUri("api/ExpFile", null, null, out var uri, out var errorMessage))
+        var route = ConfiguredRoute(settings => settings.MesReportFileRoute, MesEndpointRouteRules.ReportFileDefaultRoute);
+        if (!TryBuildUri(route, null, null, out var uri, out var errorMessage))
         {
             return CreateRequestBuildFailure<object>(
                 AppConstants.MesLogPurposes.UploadReportFile,
                 HttpMethod.Post.Method,
-                "api/ExpFile",
+                route,
                 requestLogBody,
                 errorMessage,
                 true);
@@ -221,20 +269,22 @@ public class MesProvider : IMesProvider, IDisposable
 
     /// <summary>
     /// 采集参数上传。
-    /// MES 文档要求 Data 为焊点参数数组，路径固定为 /api/PostData。
+    /// MES 文档要求 Data 为焊点参数数组，默认路径为 /api/PostData，现场可在系统设置中调整路由。
     /// </summary>
     public Task<BasicRes<object>> UploadProcessParametersAsync(IReadOnlyList<ProcessParameterUploadItem> requestData, CancellationToken cancellationToken = default)
     {
         var settings = CurrentSettings;
         var apiConfig = ResolveProcessParameterApiConfig(settings);
+        var route = MesEndpointRouteRules.NormalizeRoute(settings.MesPostDataRoute, MesEndpointRouteRules.PostDataDefaultRoute);
 
         return PostAsync<IReadOnlyList<ProcessParameterUploadItem>, object>(
             AppConstants.MesLogPurposes.UploadProcessParameters,
-            "api/PostData",
+            route,
             apiConfig.ApiCode,
             apiConfig.ApiName,
             requestData,
-            cancellationToken);
+            cancellationToken,
+            request => ApplyPostDataHeader(request, settings));
     }
 
     /// <summary>
@@ -275,7 +325,8 @@ public class MesProvider : IMesProvider, IDisposable
         ApiCode apiCode,
         string apiName,
         TRequest requestData,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<HttpRequestMessage>? configureRequest = null)
     {
         return await SendWithPayloadAsync<TRequest, TResponse>(
             purpose,
@@ -284,7 +335,8 @@ public class MesProvider : IMesProvider, IDisposable
             apiCode,
             apiName,
             requestData,
-            cancellationToken);
+            cancellationToken,
+            configureRequest);
     }
 
     private async Task<BasicRes<TResponse>> SendWithPayloadAsync<TRequest, TResponse>(
@@ -294,7 +346,8 @@ public class MesProvider : IMesProvider, IDisposable
         ApiCode apiCode,
         string apiName,
         TRequest requestData,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<HttpRequestMessage>? configureRequest = null)
     {
         var payload = new PostReq<TRequest>
         {
@@ -319,6 +372,7 @@ public class MesProvider : IMesProvider, IDisposable
         {
             Content = new StringContent(requestBody, Encoding.UTF8, "application/json")
         };
+        configureRequest?.Invoke(request);
 
         return await SendAsync<TResponse>(purpose, request, requestBody, cancellationToken, null, true);
     }
@@ -584,7 +638,7 @@ public class MesProvider : IMesProvider, IDisposable
     public Task<BasicRes<object>> SetDeviceIdAsync(AddDeviceReq addDeviceRequest, CancellationToken cancellationToken = default)
         => PostAsync<AddDeviceReq, object>(
             AppConstants.MesLogPurposes.SetDeviceId,
-            "api/Device",
+            ConfiguredRoute(settings => settings.MesDeviceRoute, MesEndpointRouteRules.DeviceDefaultRoute),
             ApiCode.common_004,
             "AddDevice",
             addDeviceRequest,
@@ -596,7 +650,7 @@ public class MesProvider : IMesProvider, IDisposable
     public Task<BasicRes<object>> ReportDeviceStatusAsync(ReportDeviceStatusReq requestData, CancellationToken cancellationToken = default)
         => PostAsync<ReportDeviceStatusReq, object>(
             AppConstants.MesLogPurposes.ReportDeviceStatus,
-            "api/DeviceStatusV2",
+            ConfiguredRoute(settings => settings.MesDeviceStatusRoute, MesEndpointRouteRules.DeviceStatusDefaultRoute),
             ApiCode.common_001,
             "DeviceStatusV2",
             requestData,
@@ -610,6 +664,34 @@ public class MesProvider : IMesProvider, IDisposable
     private sealed record ProcessParameterApiConfig(ApiCode ApiCode, string ApiName);
 
     private AppSettings CurrentSettings => Volatile.Read(ref _currentSettings);
+
+    /// <summary>
+    /// 从最新设置快照读取路由；空值回退到原接口路径，保证旧配置可继续运行。
+    /// </summary>
+    private string ConfiguredRoute(Func<AppSettings, string?> routeSelector, string defaultRoute)
+        => MesEndpointRouteRules.NormalizeRoute(routeSelector(CurrentSettings), defaultRoute);
+
+    /// <summary>
+    /// 仅为 PostData 接口附加用户配置的额外 Header。
+    /// </summary>
+    private static void ApplyPostDataHeader(HttpRequestMessage request, AppSettings settings)
+    {
+        if (settings.EnablePostDataCustomHeader != true)
+        {
+            return;
+        }
+
+        var headerKey = MesEndpointRouteRules.NormalizeHeaderKey(settings.PostDataHeaderKey);
+        var headerValue = MesEndpointRouteRules.NormalizeHeaderValue(settings.PostDataHeaderValue);
+        if (!MesEndpointRouteRules.IsValidHeaderKey(headerKey)
+            || string.IsNullOrWhiteSpace(headerValue))
+        {
+            return;
+        }
+
+        request.Headers.Remove(headerKey);
+        request.Headers.TryAddWithoutValidation(headerKey, headerValue);
+    }
 
     private void SettingsService_SettingsChanged(object? sender, AppSettingsChangedEventArgs e)
     {

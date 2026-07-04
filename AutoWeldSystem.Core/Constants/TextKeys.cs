@@ -896,7 +896,6 @@ public static class TextKeys
         public const string DescriptionProgramException = "log.description.program_exception";
         public const string DescriptionDeviceLifecycle = "log.description.device_lifecycle";
         public const string LabelDate = "log.label.date";
-        public const string LabelKeyword = "log.label.keyword";
         public const string ButtonRefresh = "log.button.refresh";
         public const string ButtonOpenFolder = "log.button.open_folder";
         public const string ButtonOpenSource = "log.button.open_source";
@@ -985,6 +984,7 @@ public static class TextKeys
 
         public const string ChkUseProductNumberFilter = "system.checkbox.use_product_number_filter";
         public const string ChkEnableAutoStart = "system.checkbox.enable_auto_start";
+        public const string ChkEnableElevatedAutoStart = "system.checkbox.enable_elevated_auto_start";
         public const string ChkValidateRecipeAfterStart = "system.checkbox.validate_recipe_after_start";
         public const string ChkEnableFinishExpQtyPrompt = "system.checkbox.enable_finish_exp_qty_prompt";
         public const string ChkEnableDualStation = "system.Checkbox.enable_dual_station";

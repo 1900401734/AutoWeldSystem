@@ -429,6 +429,9 @@
   <data name="system.checkbox.enable_auto_start" xml:space="preserve">
     <value>Start with Windows</value>
   </data>
+  <data name="system.checkbox.enable_elevated_auto_start" xml:space="preserve">
+    <value>Start with Windows as administrator</value>
+  </data>
   <data name="system.checkbox.validate_recipe_after_start" xml:space="preserve">
     <value>Validate PLC recipe after start</value>
   </data>
@@ -442,10 +445,10 @@
     <value>Sync MES</value>
   </data>
   <data name="system.button.change_path" xml:space="preserve">
-    <value>Change Path</value>
+    <value>Change</value>
   </data>
   <data name="system.button.open_folder" xml:space="preserve">
-    <value>Open Folder</value>
+    <value>Open</value>
   </data>
   <data name="system.button.test_connection" xml:space="preserve">
     <value>Connection Test</value>

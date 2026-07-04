@@ -429,6 +429,9 @@
   <data name="system.checkbox.enable_auto_start" xml:space="preserve">
     <value>开机自启</value>
   </data>
+  <data name="system.checkbox.enable_elevated_auto_start" xml:space="preserve">
+    <value>以管理员权限开机自启</value>
+  </data>
   <data name="system.checkbox.validate_recipe_after_start" xml:space="preserve">
     <value>开工后校验 PLC 配方编号</value>
   </data>
@@ -442,10 +445,10 @@
     <value>同步到MES</value>
   </data>
   <data name="system.button.change_path" xml:space="preserve">
-    <value>变更路径</value>
+    <value>变更</value>
   </data>
   <data name="system.button.open_folder" xml:space="preserve">
-    <value>打开目录</value>
+    <value>打开</value>
   </data>
   <data name="system.button.test_connection" xml:space="preserve">
     <value>连通性测试</value>

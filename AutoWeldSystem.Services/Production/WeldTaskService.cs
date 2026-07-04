@@ -30,6 +30,8 @@ public class WeldTaskService : IWeldTaskService
     private readonly IUploadTaskService _uploadTaskService;
     private readonly IProductionReportFileService _reportFileService;
     private readonly IDeviceLifecycleLogService _deviceLifecycleLogService;
+    private readonly IDeviceStatusService _deviceStatusService;
+    private readonly ISystemClockService _systemClockService;
     private AppSettings _currentSettings;
 
     public WeldTaskService(
@@ -40,7 +42,9 @@ public class WeldTaskService : IWeldTaskService
         ILocalizationService localizer,
         IUploadTaskService uploadTaskService,
         IProductionReportFileService reportFileService,
-        IDeviceLifecycleLogService deviceLifecycleLogService)
+        IDeviceLifecycleLogService deviceLifecycleLogService,
+        IDeviceStatusService deviceStatusService,
+        ISystemClockService systemClockService)
     {
         _mesProvider = mesProvider;
         _dbContext = dbContext;
@@ -52,6 +56,8 @@ public class WeldTaskService : IWeldTaskService
         _uploadTaskService = uploadTaskService;
         _reportFileService = reportFileService;
         _deviceLifecycleLogService = deviceLifecycleLogService;
+        _deviceStatusService = deviceStatusService;
+        _systemClockService = systemClockService;
         CurrentState = new ProductionRuntimeState();
     }
 
@@ -126,19 +132,103 @@ public class WeldTaskService : IWeldTaskService
     {
         var response = await _mesProvider.GetServerTimeAsync(cancellationToken);
 
-        if (response.IsSuccess && response.Data is not null && DateTime.TryParse(response.Data.CurrentTime, out var serverTime))
-        {
-            CurrentState.LastServerSyncTime = serverTime;
-            CurrentState.LastServerSyncMessage = $"{serverTime:yyyy-MM-dd HH:mm:ss}";
-            _operationLogService.Write("ServerTime", $"Server time sync succeeded: {serverTime:yyyy-MM-dd HH:mm:ss}");
-        }
-        else
+        if (!response.IsSuccess || response.Data is null)
         {
             CurrentState.LastServerSyncMessage = response.Msg;
+            WriteServerTimeSelfCheckLog(SystemClockSyncResult.Failed(
+                default,
+                default,
+                0,
+                string.IsNullOrWhiteSpace(response.Msg) ? "MES 服务器校时接口调用失败。" : response.Msg));
+            NotifyStateChanged();
+            return response;
         }
 
+        var parseResult = SystemClockSyncRules.TryParseServerTime(response.Data.CurrentTime, out var serverTime);
+        if (!parseResult.Success)
+        {
+            CurrentState.LastServerSyncMessage = parseResult.Message;
+            _operationLogService.Write("ServerTime", parseResult.Message, "Error");
+            WriteServerTimeSelfCheckLog(parseResult);
+            NotifyStateChanged();
+            return response;
+        }
+
+        var clockResult = SynchronizeSystemClock(serverTime);
+        CurrentState.LastServerSyncTime = serverTime;
+        CurrentState.LastServerSyncMessage = BuildServerTimeSyncMessage(clockResult);
+        WriteServerTimeSyncLog(clockResult);
+        WriteServerTimeSelfCheckLog(clockResult);
         NotifyStateChanged();
         return response;
+    }
+
+    /// <summary>
+    /// Compares the MES server time with the local clock and changes Windows time only when needed.
+    /// </summary>
+    private SystemClockSyncResult SynchronizeSystemClock(DateTime serverTime)
+    {
+        var localTimeBefore = _systemClockService.GetLocalTime();
+        var decision = SystemClockSyncRules.Decide(serverTime, localTimeBefore);
+        if (!decision.Changed)
+        {
+            return decision;
+        }
+
+        try
+        {
+            return _systemClockService.SetLocalTime(serverTime, localTimeBefore);
+        }
+        catch (Exception ex)
+        {
+            return SystemClockSyncResult.Failed(
+                serverTime,
+                localTimeBefore,
+                decision.OffsetSeconds,
+                $"系统时间修改失败：{ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Builds the runtime message displayed by monitor screens after startup time sync.
+    /// </summary>
+    private static string BuildServerTimeSyncMessage(SystemClockSyncResult result)
+    {
+        var status = result.Success
+            ? result.Changed ? "已校时" : "无需校时"
+            : "校时失败";
+        return $"{status}：服务器时间={result.ServerTime:yyyy-MM-dd HH:mm:ss}，本机原时间={result.LocalTimeBefore:yyyy-MM-dd HH:mm:ss}，偏差={result.OffsetSeconds:F3} 秒。{result.Message}";
+    }
+
+    /// <summary>
+    /// Writes a compact audit record for server-time synchronization.
+    /// </summary>
+    private void WriteServerTimeSyncLog(SystemClockSyncResult result)
+    {
+        var level = result.Success ? "Info" : "Error";
+        _operationLogService.Write(
+            "ServerTime",
+            $"ServerTime={result.ServerTime:yyyy-MM-dd HH:mm:ss}, LocalBefore={result.LocalTimeBefore:yyyy-MM-dd HH:mm:ss}, OffsetSeconds={result.OffsetSeconds:F3}, Changed={result.Changed}, Success={result.Success}, Message={result.Message}",
+            level);
+    }
+
+    /// <summary>
+    /// Writes MES server-time synchronization as a startup self-check device lifecycle log.
+    /// Device log failures are swallowed because they must not block startup or time sync.
+    /// </summary>
+    private void WriteServerTimeSelfCheckLog(SystemClockSyncResult result)
+    {
+        try
+        {
+            _deviceLifecycleLogService.Write(DeviceLifecycleLogRules.CreateServerTimeSelfCheckEntry(
+                _currentSettings.DeviceId,
+                result,
+                DateTime.Now));
+        }
+        catch (Exception ex)
+        {
+            _operationLogService.Write("ServerTime", $"设备自检日志写入失败：{ex.Message}", "Warning");
+        }
     }
 
     /// <summary>
@@ -370,6 +460,7 @@ public class WeldTaskService : IWeldTaskService
         ApplySharedStartedRuntimeStateIfNeeded(normalizedStationNo, workOrder, process, program, task, startOperatorNumber);
         _operationLogService.Write("ExpStart", $"Start report submitted, Station={task.StationNo}, MES Id={task.ExpStartId}, WorkOrder={task.SN}");
         WriteTestProgramRunningLog(task);
+        await RecordProgramStartedStatusAsync(task, cancellationToken);
         NotifyStateChanged();
         return task;
     }
@@ -377,7 +468,7 @@ public class WeldTaskService : IWeldTaskService
     /// <summary>
     /// Creates a local running task and queues the MES start report for later retry.
     /// </summary>
-    public Task<BizWeldTask> StartLocalAsync(
+    public async Task<BizWeldTask> StartLocalAsync(
         OfflineExperimentStartReq request,
         string operatorNumber,
         int actualQty,
@@ -435,8 +526,9 @@ public class WeldTaskService : IWeldTaskService
         EnqueueWorkOrderStatusTask(task, ProductionConstants.MesWorkOrderStatuses.StartedOrRestarted);
 
         _operationLogService.Write("LocalExpStart", $"Local task started, Station={task.StationNo}, WorkOrder={task.SN}, Recipe={task.RecipeCode}");
+        await RecordProgramStartedStatusAsync(task, cancellationToken);
         NotifyStateChanged();
-        return Task.FromResult(task);
+        return task;
     }
 
     public async Task<BasicRes<object>> ChangeStatusAsync(
@@ -446,6 +538,21 @@ public class WeldTaskService : IWeldTaskService
     {
         var normalizedStationNo = NormalizeStationNo(stationNo);
         var station = GetStation(normalizedStationNo);
+        if (!IsWorkOrderStatusReportEnabled())
+        {
+            if (station.ActiveTask is null)
+            {
+                return new BasicRes<object> { Status = AppConstants.MesStatus.Error, Msg = "No running Task" };
+            }
+
+            ApplyWorkOrderStatusLocalState(station, normalizedStationNo, statusCode);
+            return new BasicRes<object>
+            {
+                Status = AppConstants.MesStatus.Success,
+                Msg = "Work-order status report is disabled in system settings."
+            };
+        }
+
         if (station.ActiveTask?.ExpStartId is null)
         {
             if (station.ActiveTask is not null)
@@ -470,18 +577,7 @@ public class WeldTaskService : IWeldTaskService
 
         if (response.IsSuccess)
         {
-            station.ActiveTask.TaskStatus = statusCode switch
-            {
-                "2" => "Paused",
-                "1" => TaskStatusCompleted,
-                _ => "Running"
-            };
-
-            station.UpdatedTime = DateTime.Now;
-            _dbContext.Db.Updateable(station.ActiveTask).UpdateColumns(it => new { it.TaskStatus }).ExecuteCommand();
-            _operationLogService.Write("ExpStatus", $"Task status changed, Station={normalizedStationNo}, Status={station.ActiveTask.TaskStatus}");
-            RefreshCompatibilityState(normalizedStationNo);
-            NotifyStateChanged();
+            ApplyWorkOrderStatusLocalState(station, normalizedStationNo, statusCode);
         }
 
         return response;
@@ -571,6 +667,11 @@ public class WeldTaskService : IWeldTaskService
             : finishUploadMessage;
 
         _dbContext.Db.Updateable(task).ExecuteCommand();
+        if (finishUploaded)
+        {
+            await RecordProgramEndedStatusAsync(task, cancellationToken);
+        }
+
         var finishReportTask = EnqueueFinishReportTask(
             task,
             finishRequest,
@@ -592,7 +693,7 @@ public class WeldTaskService : IWeldTaskService
     /// <summary>
     /// Completes an offline-created task locally and queues all MES uploads for recovery.
     /// </summary>
-    public Task<BizWeldTask> FinishLocalAsync(
+    public async Task<BizWeldTask> FinishLocalAsync(
         string employeeNumber,
         int actualQty,
         int qualifiedQty,
@@ -629,8 +730,9 @@ public class WeldTaskService : IWeldTaskService
 
         ApplyFinishedRuntimeState(normalizedStationNo, task);
         _operationLogService.Write("LocalExpEnd", $"Local task finished, Station={task.StationNo}, WorkOrder={task.SN}, UploadStatus={task.UploadStatus}");
+        await RecordProgramEndedStatusAsync(task, cancellationToken);
         NotifyStateChanged();
-        return Task.FromResult(task);
+        return task;
     }
 
     public Task RetryPendingUploadsAsync(CancellationToken cancellationToken = default)
@@ -952,8 +1054,13 @@ public class WeldTaskService : IWeldTaskService
         });
     }
 
-    private BizUploadTask EnqueueWorkOrderStatusTask(BizWeldTask task, string statusCode)
+    private BizUploadTask? EnqueueWorkOrderStatusTask(BizWeldTask task, string statusCode)
     {
+        if (!IsWorkOrderStatusReportEnabled())
+        {
+            return null;
+        }
+
         return _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
         {
             TaskType = ProductionConstants.UploadTaskTypes.WorkOrderStatus,
@@ -1373,6 +1480,35 @@ public class WeldTaskService : IWeldTaskService
 
     private AppSettings CurrentSettings => Volatile.Read(ref _currentSettings);
 
+    private bool IsWorkOrderStatusReportEnabled()
+        => CurrentSettings.EnableWorkOrderStatusReport != false;
+
+    private void ApplyWorkOrderStatusLocalState(
+        ProductionStationRuntimeState station,
+        int stationNo,
+        string statusCode)
+    {
+        if (station.ActiveTask is null)
+        {
+            return;
+        }
+
+        station.ActiveTask.TaskStatus = statusCode switch
+        {
+            "2" => "Paused",
+            "1" => TaskStatusCompleted,
+            _ => TaskStatusRunning
+        };
+
+        station.UpdatedTime = DateTime.Now;
+        _dbContext.Db.Updateable(station.ActiveTask)
+            .UpdateColumns(it => new { it.TaskStatus })
+            .ExecuteCommand();
+        _operationLogService.Write("ExpStatus", $"Task status changed, Station={stationNo}, Status={station.ActiveTask.TaskStatus}");
+        RefreshCompatibilityState(stationNo);
+        NotifyStateChanged();
+    }
+
     /// <summary>
     /// Writes the independent device log for a successful MES start report.
     /// </summary>
@@ -1384,6 +1520,34 @@ public class WeldTaskService : IWeldTaskService
             FirstNonEmpty(task.ExpStartId, task.LocalExpStartId),
             task.SN,
             DateTime.Now));
+    }
+
+    private Task RecordProgramStartedStatusAsync(BizWeldTask task, CancellationToken cancellationToken)
+    {
+        return _deviceStatusService.ChangeStatusAsync(
+            ProductionConstants.MesDeviceStatuses.ProgramStarted,
+            DeviceStatusReportRules.AppendStationRemark(
+                DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.ProgramStarted),
+                task.StationNo),
+            task.IsOfflineCreated ? "Local" : "MES",
+            stationNo: task.StationNo,
+            weldTaskId: task.Id,
+            workOrderId: task.SN,
+            cancellationToken: cancellationToken);
+    }
+
+    private Task RecordProgramEndedStatusAsync(BizWeldTask task, CancellationToken cancellationToken)
+    {
+        return _deviceStatusService.ChangeStatusAsync(
+            ProductionConstants.MesDeviceStatuses.ProgramEnded,
+            DeviceStatusReportRules.AppendStationRemark(
+                DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.ProgramEnded),
+                task.StationNo),
+            task.IsOfflineCreated ? "Local" : "MES",
+            stationNo: task.StationNo,
+            weldTaskId: task.Id,
+            workOrderId: task.SN,
+            cancellationToken: cancellationToken);
     }
 
     private void SettingsService_SettingsChanged(object? sender, AppSettingsChangedEventArgs e)

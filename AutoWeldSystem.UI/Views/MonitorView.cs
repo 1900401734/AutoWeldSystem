@@ -17,7 +17,7 @@ using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Core.Runtime;
 using AutoWeldSystem.Core.ViewModels;
 using AutoWeldSystem.UI.Base;
-using AutoWeldSystem.UI.Components;
+using AutoWeldSystem.UI.Controls;
 using AutoWeldSystem.UI.Forms;
 using AutoWeldSystem.UI.Infrastructure;
 using AutoWeldSystem.UI.ViewModels;
@@ -1478,7 +1478,11 @@ public partial class MonitorView : BaseView
 
         var previousShowTestFlag = _currentSettings.ShowTestFlagInHistory != false;
         UpdateSettingsSnapshot(e.CurrentSettings);
-        RunOnUiThread(ApplyDeviceIdText, "MonitorView.SettingsChanged.DeviceId");
+        RunOnUiThread(() =>
+        {
+            lblTitle.Text = _currentSettings.DeviceName;
+            ApplyDeviceIdText();
+        }, "MonitorView.SettingsChanged.DeviceIdentity");
         var currentShowTestFlag = e.CurrentSettings.ShowTestFlagInHistory != false;
         if (previousShowTestFlag != currentShowTestFlag)
         {

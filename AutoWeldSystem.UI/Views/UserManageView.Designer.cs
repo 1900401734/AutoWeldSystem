@@ -24,7 +24,7 @@ namespace AutoWeldSystem.UI.Views
             btnDeleteUser = new AntdUI.Button();
             btnSetRole = new AntdUI.Button();
             btnResetPassword = new AntdUI.Button();
-            queryUsers = new AutoWeldSystem.UI.Components.InputQuery(components);
+            queryUsers = new AutoWeldSystem.UI.Controls.InputQuery(components);
             dgvUsers = new DataGridView();
             tabControl = new TabControl();
             tabPage1 = new TabPage();
@@ -36,7 +36,7 @@ namespace AutoWeldSystem.UI.Views
             btnEditRole = new AntdUI.Button();
             btnDeleteRole = new AntdUI.Button();
             btnRefreshRoles = new AntdUI.Button();
-            queryRoles = new AutoWeldSystem.UI.Components.InputQuery(components);
+            queryRoles = new AutoWeldSystem.UI.Controls.InputQuery(components);
             btnSavePermissions = new AntdUI.Button();
             splitRoleContent = new SplitContainer();
             dgvRoles = new DataGridView();
@@ -180,8 +180,8 @@ namespace AutoWeldSystem.UI.Views
             queryUsers.AutoSize = true;
             queryUsers.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             queryUsers.Dock = DockStyle.Right;
-            queryUsers.IsShowQueryButton = false;
-            queryUsers.IsShowRefreshButton = false;
+            queryUsers.IsShowQueryButton = true;
+            queryUsers.IsShowRefreshButton = true;
             queryUsers.Location = new Point(1157, 0);
             queryUsers.Margin = new Padding(0);
             queryUsers.MinimumSize = new Size(125, 46);
@@ -349,8 +349,8 @@ namespace AutoWeldSystem.UI.Views
             queryRoles.AutoSize = true;
             queryRoles.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             queryRoles.Dock = DockStyle.Right;
-            queryRoles.IsShowQueryButton = false;
-            queryRoles.IsShowRefreshButton = false;
+            queryRoles.IsShowQueryButton = true;
+            queryRoles.IsShowRefreshButton = true;
             queryRoles.Location = new Point(1069, 0);
             queryRoles.Margin = new Padding(0);
             queryRoles.MinimumSize = new Size(125, 46);
@@ -503,7 +503,7 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Button btnDeleteUser;
         private AntdUI.Button btnSetRole;
         private AntdUI.Button btnResetPassword;
-        private Components.InputQuery queryUsers;
+        private Controls.InputQuery queryUsers;
         private DataGridView dgvUsers;
         private TabControl tabControl;
         private TabPage tabPage1;
@@ -515,7 +515,7 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Button btnEditRole;
         private AntdUI.Button btnDeleteRole;
         private AntdUI.Button btnRefreshRoles;
-        private Components.InputQuery queryRoles;
+        private Controls.InputQuery queryRoles;
         private AntdUI.Button btnSavePermissions;
         private SplitContainer splitRoleContent;
         private DataGridView dgvRoles;

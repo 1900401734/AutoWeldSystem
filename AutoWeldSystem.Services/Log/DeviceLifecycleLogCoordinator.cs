@@ -29,6 +29,7 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
     private readonly IMesConnectionMonitor _mesConnectionMonitor;
     private readonly ICenterTelemetrySyncService _centerTelemetrySyncService;
     private readonly IPlcProductionMonitorService _plcProductionMonitorService;
+    private readonly IDeviceStatusService _deviceStatusService;
     private readonly object _sync = new();
     private readonly Dictionary<string, bool> _connectionStates = new();
     private readonly Dictionary<int, AlarmState> _alarmStates = new();
@@ -42,7 +43,8 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
         IPlcCommunicationService plcCommunicationService,
         IMesConnectionMonitor mesConnectionMonitor,
         ICenterTelemetrySyncService centerTelemetrySyncService,
-        IPlcProductionMonitorService plcProductionMonitorService)
+        IPlcProductionMonitorService plcProductionMonitorService,
+        IDeviceStatusService deviceStatusService)
     {
         _settingsService = settingsService;
         _logService = logService;
@@ -50,6 +52,7 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
         _mesConnectionMonitor = mesConnectionMonitor;
         _centerTelemetrySyncService = centerTelemetrySyncService;
         _plcProductionMonitorService = plcProductionMonitorService;
+        _deviceStatusService = deviceStatusService;
         _currentSettings = settingsService.Get();
     }
 
@@ -71,6 +74,7 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
         }
 
         _logService.Write(DeviceLifecycleLogRules.CreateSoftwareStartedEntry(CurrentDeviceId, DateTime.Now));
+        RecordSoftwareStartedStatus();
         RecordInitialConnectionSnapshots();
     }
 
@@ -90,11 +94,49 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
             _centerTelemetrySyncService.StatusChanged -= CenterTelemetrySyncService_StatusChanged;
             _plcProductionMonitorService.StatusChanged -= PlcProductionMonitorService_StatusChanged;
         }
+
+        RecordSoftwareStoppedStatus();
     }
 
     private string CurrentDeviceId => Volatile.Read(ref _currentSettings).DeviceId?.Trim() ?? string.Empty;
 
     private AppSettings CurrentSettings => Volatile.Read(ref _currentSettings);
+
+    private void RecordSoftwareStartedStatus()
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _deviceStatusService.ChangeStatusAsync(
+                    ProductionConstants.MesDeviceStatuses.PoweredOn,
+                    "Software started successfully.",
+                    SourceApplication,
+                    stationNo: ProductionConstants.Stations.SharedStationNo);
+            }
+            catch
+            {
+                // Startup status reporting must not block the main application.
+            }
+        });
+    }
+
+    private void RecordSoftwareStoppedStatus()
+    {
+        try
+        {
+            _deviceStatusService.ChangeStatusAsync(
+                ProductionConstants.MesDeviceStatuses.Stopped,
+                "Software is closing.",
+                SourceApplication,
+                reportToMes: false,
+                stationNo: ProductionConstants.Stations.SharedStationNo).GetAwaiter().GetResult();
+        }
+        catch
+        {
+            // Shutdown must continue even if the local status log cannot be written.
+        }
+    }
 
     private void SettingsService_SettingsChanged(object? sender, AppSettingsChangedEventArgs e)
     {

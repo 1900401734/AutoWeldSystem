@@ -1,5 +1,6 @@
 ﻿using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Enums;
+using AutoWeldSystem.Core.Mes;
 using AutoWeldSystem.Core.Production;
 using SqlSugar;
 
@@ -79,6 +80,13 @@ public class AppSettings
     [SugarColumn(ColumnDescription = "是否启用开机自启", IsNullable = true)]
     public bool? EnableAutoStart { get; set; } = true;
 
+    /// <summary>
+    /// 是否优先使用 Windows 计划任务的最高权限开机自启。
+    /// 启用后，程序开机启动时更容易拥有修改系统时间的权限。
+    /// </summary>
+    [SugarColumn(ColumnDescription = "是否启用最高权限开机自启", IsNullable = true)]
+    public bool? EnableElevatedAutoStart { get; set; } = true;
+
     #endregion
 
     #region MES配置
@@ -86,8 +94,62 @@ public class AppSettings
     [SugarColumn(ColumnDescription = "是否使用产品编号过滤")]
     public bool UseProductNumberFilter { get; set; }
 
+    /// <summary>
+    /// Whether MES device-status uploads are enabled. Local device-status logs are still written when disabled.
+    /// </summary>
+    [SugarColumn(ColumnDescription = "是否启用设备状态上报", IsNullable = true)]
+    public bool? EnableDeviceStatusReport { get; set; } = true;
+
+    /// <summary>
+    /// Whether MES work-order status uploads are enabled. Start/end reports are not controlled by this switch.
+    /// </summary>
+    [SugarColumn(ColumnDescription = "是否启用工单状态上报", IsNullable = true)]
+    public bool? EnableWorkOrderStatusReport { get; set; } = true;
+
     [SugarColumn(ColumnDescription = "MES超时时间（秒）")]
     public int MesTimeoutSeconds { get; set; } = 10;
+
+    [SugarColumn(Length = 200, ColumnDescription = "MES员工信息接口路由")]
+    public string MesUserRoute { get; set; } = MesEndpointRouteRules.UserDefaultRoute;
+
+    [SugarColumn(Length = 200, ColumnDescription = "MES工单信息接口路由")]
+    public string MesWorkOrderRoute { get; set; } = MesEndpointRouteRules.WorkOrderDefaultRoute;
+
+    [SugarColumn(Length = 200, ColumnDescription = "MES服务器时间接口路由")]
+    public string MesServerTimeRoute { get; set; } = MesEndpointRouteRules.ServerTimeDefaultRoute;
+
+    [SugarColumn(Length = 200, ColumnDescription = "MES程序管理接口路由")]
+    public string MesProgramManageRoute { get; set; } = MesEndpointRouteRules.ProgramManageDefaultRoute;
+
+    [SugarColumn(Length = 200, ColumnDescription = "MES开工上报接口路由")]
+    public string MesStartWorkRoute { get; set; } = MesEndpointRouteRules.StartWorkDefaultRoute;
+
+    [SugarColumn(Length = 200, ColumnDescription = "MES工单状态接口路由")]
+    public string MesWorkStatusRoute { get; set; } = MesEndpointRouteRules.WorkStatusDefaultRoute;
+
+    [SugarColumn(Length = 200, ColumnDescription = "MES完工上报接口路由")]
+    public string MesEndWorkRoute { get; set; } = MesEndpointRouteRules.EndWorkDefaultRoute;
+
+    [SugarColumn(Length = 200, ColumnDescription = "MES报告文件接口路由")]
+    public string MesReportFileRoute { get; set; } = MesEndpointRouteRules.ReportFileDefaultRoute;
+
+    [SugarColumn(Length = 200, ColumnDescription = "MES过程参数接口路由")]
+    public string MesPostDataRoute { get; set; } = MesEndpointRouteRules.PostDataDefaultRoute;
+
+    [SugarColumn(Length = 200, ColumnDescription = "MES设备编号接口路由")]
+    public string MesDeviceRoute { get; set; } = MesEndpointRouteRules.DeviceDefaultRoute;
+
+    [SugarColumn(Length = 200, ColumnDescription = "MES设备状态接口路由")]
+    public string MesDeviceStatusRoute { get; set; } = MesEndpointRouteRules.DeviceStatusDefaultRoute;
+
+    [SugarColumn(ColumnDescription = "是否启用PostData自定义Header", IsNullable = true)]
+    public bool? EnablePostDataCustomHeader { get; set; } = false;
+
+    [SugarColumn(Length = 100, ColumnDescription = "PostData自定义Header Key", IsNullable = true)]
+    public string? PostDataHeaderKey { get; set; } = string.Empty;
+
+    [SugarColumn(Length = 300, ColumnDescription = "PostData自定义Header Value", IsNullable = true)]
+    public string? PostDataHeaderValue { get; set; } = string.Empty;
 
     [SugarColumn(Length = 50, ColumnDescription = "过程参数设备类型")]
     public string ProcessParameterDeviceType { get; set; } = ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic;

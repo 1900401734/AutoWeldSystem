@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AutoWeldSystem.Core\AutoWeldSystem.Core.csproj" />
+    <ProjectReference Include="..\AutoWeldSystem.Services\AutoWeldSystem.Services.csproj" />
   </ItemGroup>
 
 </Project>

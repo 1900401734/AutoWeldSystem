@@ -13,6 +13,7 @@ public static class DeviceLifecycleLogRules
     private const string StatusFailed = "Failed";
     private const string StatusAlarm = "Alarm";
     private const string StatusRecovered = "Recovered";
+    private const string SourceDeviceApi = "DeviceApi";
 
     /// <summary>
     /// Returns true only when a connection self-check result should be logged.
@@ -44,6 +45,114 @@ public static class DeviceLifecycleLogRules
             Status = connected ? StatusSuccess : StatusFailed,
             Summary = $"{normalizedSource}自检{(connected ? "成功" : "失败")}",
             Detail = NormalizeText(message, connected ? "连接成功" : "连接失败")
+        };
+    }
+
+    /// <summary>
+    /// Creates a startup self-check entry for MES server-time synchronization.
+    /// The event type stays SelfCheck so the log page treats time sync as part of boot self-check.
+    /// </summary>
+    public static DeviceLifecycleLogEntry CreateServerTimeSelfCheckEntry(
+        string deviceId,
+        SystemClockSyncResult result,
+        DateTime occurredTime)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        return new DeviceLifecycleLogEntry
+        {
+            OccurredTime = occurredTime,
+            Level = result.Success ? "Info" : "Warning",
+            EventType = AppConstants.DeviceLifecycleEventTypes.SelfCheck,
+            DeviceId = NormalizeText(deviceId, string.Empty),
+            StationNo = 0,
+            Source = "MES",
+            Status = result.Success ? StatusSuccess : StatusFailed,
+            Summary = result.Success ? "MES服务器校时成功" : "MES服务器校时失败",
+            Detail = $"ServerTime={FormatDateTime(result.ServerTime)}, LocalBefore={FormatDateTime(result.LocalTimeBefore)}, OffsetSeconds={result.OffsetSeconds:F3}, Changed={result.Changed}, Success={result.Success}, Message={NormalizeText(result.Message, string.Empty)}"
+        };
+    }
+
+    /// <summary>
+    /// Creates a startup self-check entry for the local HTTP device API listener.
+    /// The HTTP listener is part of software boot readiness, so it stays under SelfCheck.
+    /// </summary>
+    public static DeviceLifecycleLogEntry CreateDeviceApiHttpSelfCheckEntry(
+        string deviceId,
+        string deviceBaseUrl,
+        bool success,
+        string message,
+        DateTime occurredTime)
+    {
+        return new DeviceLifecycleLogEntry
+        {
+            OccurredTime = occurredTime,
+            Level = success ? "Info" : "Warning",
+            EventType = AppConstants.DeviceLifecycleEventTypes.SelfCheck,
+            DeviceId = NormalizeText(deviceId, string.Empty),
+            StationNo = 0,
+            Source = SourceDeviceApi,
+            Status = success ? StatusSuccess : StatusFailed,
+            Summary = success ? "HTTP服务自检成功" : "HTTP服务自检失败",
+            Detail = $"DeviceBaseUrl={NormalizeText(deviceBaseUrl, "--")}, Success={success}, Message={NormalizeText(message, string.Empty)}"
+        };
+    }
+
+    /// <summary>
+    /// Creates an audit entry for remote device-status API queries.
+    /// Every query is logged so platform polling remains traceable.
+    /// </summary>
+    public static DeviceLifecycleLogEntry CreateDeviceApiRemoteAccessEntry(
+        string deviceId,
+        string requestType,
+        string requestedDeviceId,
+        string currentDeviceId,
+        string responseStatus,
+        string resultMessage,
+        bool success,
+        DateTime occurredTime)
+    {
+        return new DeviceLifecycleLogEntry
+        {
+            OccurredTime = occurredTime,
+            Level = success ? "Info" : "Warning",
+            EventType = AppConstants.DeviceLifecycleEventTypes.RemoteAccess,
+            DeviceId = NormalizeText(deviceId, string.Empty),
+            StationNo = 0,
+            Source = SourceDeviceApi,
+            Status = success ? StatusSuccess : StatusFailed,
+            Summary = success ? "远程设备状态查询成功" : "远程设备状态查询失败",
+            Detail = $"RequestType={NormalizeText(requestType, "--")}, RequestedDeviceId={NormalizeText(requestedDeviceId, "--")}, CurrentDeviceId={NormalizeText(currentDeviceId, "--")}, ResponseStatus={NormalizeText(responseStatus, "--")}, Message={NormalizeText(resultMessage, string.Empty)}"
+        };
+    }
+
+    /// <summary>
+    /// Creates an audit entry for remote device-id configuration changes.
+    /// The request may fail validation, so both requested values and response status are preserved.
+    /// </summary>
+    public static DeviceLifecycleLogEntry CreateDeviceApiRemoteConfigChangedEntry(
+        string deviceId,
+        string oldDeviceId,
+        string newDeviceId,
+        string deviceName,
+        string devStatusUrl,
+        string postDataDomain,
+        string responseStatus,
+        string resultMessage,
+        bool success,
+        DateTime occurredTime)
+    {
+        return new DeviceLifecycleLogEntry
+        {
+            OccurredTime = occurredTime,
+            Level = success ? "Info" : "Warning",
+            EventType = AppConstants.DeviceLifecycleEventTypes.RemoteConfigChanged,
+            DeviceId = NormalizeText(deviceId, string.Empty),
+            StationNo = 0,
+            Source = SourceDeviceApi,
+            Status = success ? StatusSuccess : StatusFailed,
+            Summary = success ? "远程设备编号设置成功" : "远程设备编号设置失败",
+            Detail = $"RequestType=POST /api/DeviceID, OldDeviceId={NormalizeText(oldDeviceId, "--")}, NewDeviceId={NormalizeText(newDeviceId, "--")}, DeviceName={NormalizeText(deviceName, "--")}, DevStatusUrl={NormalizeText(devStatusUrl, "--")}, PostDataDomain={NormalizeText(postDataDomain, "--")}, ResponseStatus={NormalizeText(responseStatus, "--")}, Message={NormalizeText(resultMessage, string.Empty)}"
         };
     }
 
@@ -151,6 +260,9 @@ public static class DeviceLifecycleLogRules
 
     private static string NormalizeText(string? value, string fallback)
         => string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+
+    private static string FormatDateTime(DateTime value)
+        => value == default ? "--" : value.ToString("yyyy-MM-dd HH:mm:ss");
 }
 
 /// <summary>

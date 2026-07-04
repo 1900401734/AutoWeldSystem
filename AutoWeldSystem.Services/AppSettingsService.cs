@@ -3,6 +3,7 @@ using AutoWeldSystem.Data;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Center;
+using AutoWeldSystem.Core.Mes;
 using AutoWeldSystem.Core.Plc;
 using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Core.Runtime;
@@ -128,18 +129,45 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
     private static void Normalize(AppSettings settings)
     {
         settings.EnableAutoStart ??= true;
+        settings.EnableElevatedAutoStart ??= true;
         settings.ShowTestFlagInHistory ??= true;
         settings.EnablePlcStringNumericFormatting ??= true;
         settings.EnablePlcAlarmReading ??= true;
+        settings.EnableDeviceStatusReport ??= true;
+        settings.EnableWorkOrderStatusReport ??= true;
         settings.PlcStringNumericFormatMode = PlcStringNumericFormatter.NormalizeMode(settings.PlcStringNumericFormatMode);
         settings.ProgramFileDirectory = string.IsNullOrWhiteSpace(settings.ProgramFileDirectory)
             ? ProgramFileRules.DefaultProgramFileDirectory
             : settings.ProgramFileDirectory.Trim();
         settings.ProcessParameterDeviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
+        settings.DeviceBaseUrl = DeviceApiEndpointRules.NormalizeBaseUrl(settings.DeviceBaseUrl);
+        settings.MesBaseUrl = DeviceApiEndpointRules.NormalizeBaseUrl(settings.MesBaseUrl);
+        NormalizeMesEndpointSettings(settings);
         settings.CenterServerBaseUrl = CenterTelemetryRules.NormalizeBaseUrl(settings.CenterServerBaseUrl);
         settings.CenterServerSystemType = CenterTelemetryRules.NormalizeSystemType(settings.CenterServerSystemType);
         settings.CenterServerHeartbeatIntervalSeconds = CenterTelemetryRules.NormalizeHeartbeatIntervalSeconds(
             settings.CenterServerHeartbeatIntervalSeconds);
+    }
+
+    /// <summary>
+    /// 兼容旧数据库：新增路由字段为空时回填原硬编码路径，避免升级后 MES 请求地址变化。
+    /// </summary>
+    private static void NormalizeMesEndpointSettings(AppSettings settings)
+    {
+        settings.MesUserRoute = MesEndpointRouteRules.NormalizeRoute(settings.MesUserRoute, MesEndpointRouteRules.UserDefaultRoute);
+        settings.MesWorkOrderRoute = MesEndpointRouteRules.NormalizeRoute(settings.MesWorkOrderRoute, MesEndpointRouteRules.WorkOrderDefaultRoute);
+        settings.MesServerTimeRoute = MesEndpointRouteRules.NormalizeRoute(settings.MesServerTimeRoute, MesEndpointRouteRules.ServerTimeDefaultRoute);
+        settings.MesProgramManageRoute = MesEndpointRouteRules.NormalizeRoute(settings.MesProgramManageRoute, MesEndpointRouteRules.ProgramManageDefaultRoute);
+        settings.MesStartWorkRoute = MesEndpointRouteRules.NormalizeRoute(settings.MesStartWorkRoute, MesEndpointRouteRules.StartWorkDefaultRoute);
+        settings.MesWorkStatusRoute = MesEndpointRouteRules.NormalizeRoute(settings.MesWorkStatusRoute, MesEndpointRouteRules.WorkStatusDefaultRoute);
+        settings.MesEndWorkRoute = MesEndpointRouteRules.NormalizeRoute(settings.MesEndWorkRoute, MesEndpointRouteRules.EndWorkDefaultRoute);
+        settings.MesReportFileRoute = MesEndpointRouteRules.NormalizeRoute(settings.MesReportFileRoute, MesEndpointRouteRules.ReportFileDefaultRoute);
+        settings.MesPostDataRoute = MesEndpointRouteRules.NormalizeRoute(settings.MesPostDataRoute, MesEndpointRouteRules.PostDataDefaultRoute);
+        settings.MesDeviceRoute = MesEndpointRouteRules.NormalizeRoute(settings.MesDeviceRoute, MesEndpointRouteRules.DeviceDefaultRoute);
+        settings.MesDeviceStatusRoute = MesEndpointRouteRules.NormalizeRoute(settings.MesDeviceStatusRoute, MesEndpointRouteRules.DeviceStatusDefaultRoute);
+        settings.EnablePostDataCustomHeader ??= false;
+        settings.PostDataHeaderKey = MesEndpointRouteRules.NormalizeHeaderKey(settings.PostDataHeaderKey);
+        settings.PostDataHeaderValue = MesEndpointRouteRules.NormalizeHeaderValue(settings.PostDataHeaderValue);
     }
 
     private static string NormalizeProcessParameterDeviceType(string? value)

@@ -1,40 +1,38 @@
-using System.Globalization;
 using System.Text.Json;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs.Mes.Request;
+using AutoWeldSystem.Core.DTOs.Mes.Response;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.MES;
+using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Core.Runtime;
 using AutoWeldSystem.Data;
 
 namespace AutoWeldSystem.Services.Production;
 
 /// <summary>
-/// 设备状态服务。
-/// 状态码统一采用 PLC 原始状态：1=运行、2=暂停/空闲、3=停止、4=报警。
+/// Device status service.
+/// Status codes stored here use MES device-status values, not PLC raw running states.
 /// </summary>
 public class DeviceStatusService : IDeviceStatusService
 {
     private readonly SqlSugarDbContext _dbContext;
     private readonly IAppSettingsService _settingsService;
     private readonly IMesProvider _mesProvider;
-    private readonly IUploadTaskService _uploadTaskService;
     private readonly object _dbLock = new();
     private AppSettings _currentSettings;
 
     public DeviceStatusService(
         SqlSugarDbContext dbContext,
         IAppSettingsService settingsService,
-        IMesProvider mesProvider,
-        IUploadTaskService uploadTaskService)
+        IMesProvider mesProvider)
     {
         _dbContext = dbContext;
         _settingsService = settingsService;
         _currentSettings = settingsService.Get();
         _settingsService.SettingsChanged += SettingsService_SettingsChanged;
         _mesProvider = mesProvider;
-        _uploadTaskService = uploadTaskService;
     }
 
     public event EventHandler<BizDeviceStatusLog>? StatusChanged;
@@ -98,6 +96,17 @@ public class DeviceStatusService : IDeviceStatusService
                 .OrderByDescending(it => it.OccurredTime)
                 .First();
 
+            var existingProgramBoundaryLog = FindExistingProgramBoundaryLog(normalizedStationNo, normalizedStatus, weldTaskId);
+            if (existingProgramBoundaryLog is not null)
+            {
+                return existingProgramBoundaryLog;
+            }
+
+            if (ShouldReuseLatestProgramBoundaryStatus(latest, normalizedStatus, weldTaskId))
+            {
+                return latest!;
+            }
+
             // 状态码没有变化时，不重复落库、上传或进入重试队列。
             if (latest is not null
                 && string.Equals(latest.DeviceStatus, normalizedStatus, StringComparison.OrdinalIgnoreCase))
@@ -109,7 +118,11 @@ public class DeviceStatusService : IDeviceStatusService
             log = _dbContext.Db.Insertable(log).ExecuteReturnEntity();
         }
 
-        if (reportToMes)
+        if (CurrentSettings.EnableDeviceStatusReport == false)
+        {
+            log = MarkSkipped(log, "Device status report is disabled in system settings.");
+        }
+        else if (reportToMes)
         {
             log = await ReportStatusAsync(log, cancellationToken);
         }
@@ -124,13 +137,25 @@ public class DeviceStatusService : IDeviceStatusService
 
     private async Task<BizDeviceStatusLog> ReportStatusAsync(BizDeviceStatusLog log, CancellationToken cancellationToken)
     {
-        var response = await _mesProvider.ReportDeviceStatusAsync(new ReportDeviceStatusReq
+        BasicRes<object> response;
+        try
         {
-            DeviceId = log.DeviceId,
-            DevStatus = log.DeviceStatus,
-            Ts = log.OccurredTime.ToString("yyyy-MM-dd HH:mm:ss"),
-            Remark = log.Remark ?? string.Empty
-        }, cancellationToken);
+            response = await _mesProvider.ReportDeviceStatusAsync(new ReportDeviceStatusReq
+            {
+                DeviceId = DeviceStatusReportRules.ResolveReportDeviceId(_settingsService.Get().DeviceId, log.DeviceId),
+                DevStatus = log.DeviceStatus,
+                Ts = log.OccurredTime.ToString("yyyy-MM-dd HH:mm:ss"),
+                Remark = log.Remark ?? string.Empty
+            }, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            response = new BasicRes<object>
+            {
+                Status = AppConstants.MesStatus.Error,
+                Msg = ex.Message
+            };
+        }
 
         lock (_dbLock)
         {
@@ -157,7 +182,7 @@ public class DeviceStatusService : IDeviceStatusService
 
     private void EnqueueDeviceStatusUpload(BizDeviceStatusLog log)
     {
-        _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
+        var task = new BizUploadTask
         {
             TaskType = ProductionConstants.UploadTaskTypes.DeviceStatus,
             Target = ProductionConstants.UploadTargets.Mes,
@@ -176,7 +201,29 @@ public class DeviceStatusService : IDeviceStatusService
             Status = ProductionConstants.UploadStatuses.Pending,
             NextRetryTime = DateTime.Now,
             Message = "Device status is queued for MES retry."
-        });
+        };
+
+        NormalizeUploadTask(task);
+        var existing = FindExistingUploadTask(task);
+        if (existing is null)
+        {
+            task.CreatedTime = DateTime.Now;
+            task.UpdatedTime = DateTime.Now;
+            _dbContext.Db.Insertable(task).ExecuteCommand();
+            return;
+        }
+
+        if (existing.IsDeleted || existing.Status == ProductionConstants.UploadStatuses.Uploaded)
+        {
+            return;
+        }
+
+        existing.PayloadJson = task.PayloadJson;
+        existing.Status = task.Status;
+        existing.NextRetryTime = task.NextRetryTime;
+        existing.Message = task.Message;
+        existing.UpdatedTime = DateTime.Now;
+        _dbContext.Db.Updateable(existing).ExecuteCommand();
     }
 
     private BizDeviceStatusLog CreateLog(
@@ -195,7 +242,7 @@ public class DeviceStatusService : IDeviceStatusService
             WeldTaskId = weldTaskId,
             WorkOrderId = NormalizeNullable(workOrderId),
             DeviceStatus = deviceStatus,
-            StatusName = GetStatusName(deviceStatus),
+            StatusName = DeviceStatusReportRules.GetStatusName(deviceStatus),
             Source = string.IsNullOrWhiteSpace(source) ? "Software" : source.Trim(),
             Remark = NormalizeNullable(remark),
             OccurredTime = DateTime.Now,
@@ -206,13 +253,13 @@ public class DeviceStatusService : IDeviceStatusService
     private BizDeviceStatusLog BuildDefaultStatus()
     {
         var settings = CurrentSettings;
-        var defaultStatus = ProductionConstants.PlcDeviceStatuses.Paused.ToString(CultureInfo.InvariantCulture);
+        var defaultStatus = ProductionConstants.MesDeviceStatuses.PoweredOn;
         return new BizDeviceStatusLog
         {
             DeviceId = settings.DeviceId,
             StationNo = ProductionConstants.Stations.DefaultStationNo,
             DeviceStatus = defaultStatus,
-            StatusName = GetStatusName(defaultStatus),
+            StatusName = DeviceStatusReportRules.GetStatusName(defaultStatus),
             Source = "Software",
             Remark = "No device status log yet.",
             OccurredTime = DateTime.Now,
@@ -222,13 +269,7 @@ public class DeviceStatusService : IDeviceStatusService
 
     private static string NormalizeStatus(string deviceStatus)
     {
-        var normalized = deviceStatus.Trim();
-        if (ProductionConstants.PlcDeviceStatuses.IsReportable(normalized))
-        {
-            return normalized;
-        }
-
-        throw new InvalidOperationException($"Unsupported PLC device status code: {deviceStatus}");
+        return DeviceStatusReportRules.NormalizeMesDeviceStatusCode(deviceStatus);
     }
 
     private AppSettings CurrentSettings => Volatile.Read(ref _currentSettings);
@@ -238,16 +279,80 @@ public class DeviceStatusService : IDeviceStatusService
         Interlocked.Exchange(ref _currentSettings, e.CurrentSettings);
     }
 
-    private static string GetStatusName(string deviceStatus)
+    private BizDeviceStatusLog MarkSkipped(BizDeviceStatusLog log, string message)
     {
-        return deviceStatus switch
+        lock (_dbLock)
         {
-            "1" => "运行",
-            "2" => "暂停/空闲",
-            "3" => "停止",
-            "4" => "报警",
-            _ => "未知"
-        };
+            log.ReportStatus = ProductionConstants.UploadStatuses.Skipped;
+            log.ReportTime = DateTime.Now;
+            log.ReportMessage = message;
+            _dbContext.Db.Updateable(log)
+                .UpdateColumns(it => new { it.ReportStatus, it.ReportTime, it.ReportMessage })
+                .Where(it => it.Id == log.Id)
+                .ExecuteCommand();
+
+            return _dbContext.Db.Queryable<BizDeviceStatusLog>().InSingle(log.Id) ?? log;
+        }
+    }
+
+    private BizUploadTask? FindExistingUploadTask(BizUploadTask task)
+    {
+        return _dbContext.Db.Queryable<BizUploadTask>()
+            .First(existing => existing.TaskType == task.TaskType
+                && existing.Target == task.Target
+                && existing.BusinessId == task.BusinessId);
+    }
+
+    private static void NormalizeUploadTask(BizUploadTask task)
+    {
+        task.Target = string.IsNullOrWhiteSpace(task.Target)
+            ? ProductionConstants.UploadTargets.Mes
+            : task.Target.Trim();
+        task.BusinessId = string.IsNullOrWhiteSpace(task.BusinessId)
+            ? throw new InvalidOperationException("Device status upload task business id cannot be empty.")
+            : task.BusinessId.Trim();
+    }
+
+    private static bool ShouldReuseLatestProgramBoundaryStatus(
+        BizDeviceStatusLog? latest,
+        string normalizedStatus,
+        int? weldTaskId)
+    {
+        if (latest is null || weldTaskId is null)
+        {
+            return false;
+        }
+
+        var isProgramBoundaryStatus = normalizedStatus is ProductionConstants.MesDeviceStatuses.ProgramStarted
+            or ProductionConstants.MesDeviceStatuses.ProgramEnded;
+        return isProgramBoundaryStatus
+            && latest.WeldTaskId == weldTaskId
+            && string.Equals(latest.DeviceStatus, normalizedStatus, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private BizDeviceStatusLog? FindExistingProgramBoundaryLog(
+        int stationNo,
+        string normalizedStatus,
+        int? weldTaskId)
+    {
+        if (weldTaskId is null)
+        {
+            return null;
+        }
+
+        var isProgramBoundaryStatus = normalizedStatus is ProductionConstants.MesDeviceStatuses.ProgramStarted
+            or ProductionConstants.MesDeviceStatuses.ProgramEnded;
+        if (!isProgramBoundaryStatus)
+        {
+            return null;
+        }
+
+        return _dbContext.Db.Queryable<BizDeviceStatusLog>()
+            .Where(it => it.StationNo == stationNo
+                && it.WeldTaskId == weldTaskId
+                && it.DeviceStatus == normalizedStatus)
+            .OrderByDescending(it => it.OccurredTime)
+            .First();
     }
 
     private static string? NormalizeNullable(string? value)
@@ -259,7 +364,7 @@ public class DeviceStatusService : IDeviceStatusService
     private static int NormalizeStationNo(int stationNo)
     {
         return stationNo <= ProductionConstants.Stations.SharedStationNo
-            ? ProductionConstants.Stations.DefaultStationNo
+            ? ProductionConstants.Stations.SharedStationNo
             : stationNo;
     }
 }

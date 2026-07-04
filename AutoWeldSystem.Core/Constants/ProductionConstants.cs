@@ -51,13 +51,13 @@ public static class ProductionConstants
         public const string DeviceStatus = "DeviceState";
 
         /// <summary>
-        /// Completed product report forwarded to the center server.
+        /// 服务器上报
         /// </summary>
         public const string CenterProductReport = "CenterProductReport";
     }
 
     /// <summary>
-    /// PLC work-order status values written by the PC.
+    /// 工单状态，由PC写入PLC
     /// Only 1 and 2 are valid. PLC register reset to 0 must be reconciled by the PC.
     /// </summary>
     public static class PlcWorkOrderStatuses
@@ -160,12 +160,25 @@ public static class ProductionConstants
     /// </summary>
     public static class MesDeviceStatuses
     {
-        public const string Stopped = "0";          // 停机
-        public const string PoweredOn = "1";        // 开机
-        public const string Exception = "4";        // 异常
-        public const string Recovered = "5";        // 异常恢复
-        public const string ProgramStarted = "6";   // 程序执行开始
-        public const string ProgramEnded = "7";     // 程序执行结束
+        public const string PoweredOn = "0";        // Software started
+        public const string Stopped = "1";          // Software stopped
+        public const string Exception = "4";        // PLC alarm
+        public const string Recovered = "5";        // PLC alarm recovered
+        public const string ProgramStarted = "6";   // Program execution started
+        public const string ProgramEnded = "7";     // Program execution ended
+
+        /// <summary>
+        /// Determines whether the value is a MES device-status code supported by the upload API.
+        /// </summary>
+        public static bool IsSupported(string? statusCode)
+        {
+            return statusCode?.Trim() is PoweredOn
+                or Stopped
+                or Exception
+                or Recovered
+                or ProgramStarted
+                or ProgramEnded;
+        }
     }
 
     public static class MesWorkOrderStatuses

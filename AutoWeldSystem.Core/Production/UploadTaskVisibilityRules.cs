@@ -26,4 +26,22 @@ public static class UploadTaskVisibilityRules
         return includeCompleted
             || !string.Equals(task.Status, ProductionConstants.UploadStatuses.Uploaded, StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// Returns whether a task can be executed by retry logic.
+    /// Skipped tasks are terminal because an upload switch intentionally disabled them.
+    /// </summary>
+    public static bool ShouldRetry(BizUploadTask task)
+    {
+        ArgumentNullException.ThrowIfNull(task);
+
+        if (task.IsDeleted)
+        {
+            return false;
+        }
+
+        return task.Status is ProductionConstants.UploadStatuses.Pending
+            or ProductionConstants.UploadStatuses.Failed
+            or ProductionConstants.UploadStatuses.Retrying;
+    }
 }

@@ -123,6 +123,11 @@ public static class UploadSummaryStatusResolver
             return ProductionConstants.UploadStatuses.Pending;
         }
 
+        if (normalized.Any(status => SameStatus(status, ProductionConstants.UploadStatuses.Skipped)))
+        {
+            return ProductionConstants.UploadStatuses.Skipped;
+        }
+
         return ProductionConstants.UploadStatuses.Uploaded;
     }
 

@@ -1,4 +1,4 @@
-namespace AutoWeldSystem.UI.Components
+namespace AutoWeldSystem.UI.Controls
 {
     partial class InputQuery
     {

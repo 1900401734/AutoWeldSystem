@@ -40,6 +40,7 @@ public static class Program
         var centerTelemetrySyncStarted = false;
         var centerProductForwardingStarted = false;
         var deviceLifecycleLogStarted = false;
+        var deviceApiServerStarted = false;
 
         try
         {
@@ -67,6 +68,9 @@ public static class Program
                     services.AddSingleton<ILocalizationService, LocalizationService>();
                     services.AddSingleton<IWindowsShellIntegrationService, WindowsShellIntegrationService>();
                     services.AddSingleton<PlcWriteDebugLauncher>();
+                    services.AddSingleton<ISystemClockService, WindowsSystemClockService>();
+                    services.AddSingleton<IDeviceApiEndpointService, DeviceApiEndpointService>();
+                    services.AddSingleton<IDeviceApiServerService, DeviceApiServerService>();
                     services.AddSingleton<IWeldTaskService, WeldTaskService>();
                     services.AddSingleton<IProgramManageService, ProgramManageService>();
                     services.AddSingleton<IPlcCommunicationService, CommunicationService>();
@@ -117,6 +121,8 @@ public static class Program
             AppHost.Services.GetRequiredService<ISysUserService>().InitDb();
             AppHost.Services.GetRequiredService<ILocalizationService>();
             AppHost.Services.GetRequiredService<IWindowsShellIntegrationService>().ApplyStartupIntegration();
+            AppHost.Services.GetRequiredService<IDeviceApiServerService>().StartAsync().GetAwaiter().GetResult();
+            deviceApiServerStarted = true;
             AppHost.Services.GetRequiredService<IPlcCommunicationService>().StartAsync().GetAwaiter().GetResult();
             plcServiceStarted = true;
             AppHost.Services.GetRequiredService<IMesConnectionMonitor>().StartAsync().GetAwaiter().GetResult();
@@ -167,6 +173,7 @@ public static class Program
         finally
         {
             StopBackgroundServices(
+                deviceApiServerStarted,
                 deviceLifecycleLogStarted,
                 centerProductForwardingStarted,
                 centerTelemetrySyncStarted,
@@ -248,6 +255,7 @@ public static class Program
     }
 
     private static void StopBackgroundServices(
+        bool deviceApiServerStarted,
         bool deviceLifecycleLogStarted,
         bool centerProductForwardingStarted,
         bool centerTelemetrySyncStarted,
@@ -261,6 +269,11 @@ public static class Program
     {
         try
         {
+            if (deviceApiServerStarted)
+            {
+                AppHost?.Services.GetRequiredService<IDeviceApiServerService>().StopAsync().GetAwaiter().GetResult();
+            }
+
             if (deviceLifecycleLogStarted)
             {
                 AppHost?.Services.GetRequiredService<IDeviceLifecycleLogCoordinator>().Stop();

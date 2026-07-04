@@ -123,6 +123,8 @@ public static class AppConstants
     {
         public const string SoftwareStarted = "SoftwareStarted";
         public const string SelfCheck = "SelfCheck";
+        public const string RemoteAccess = "RemoteAccess";
+        public const string RemoteConfigChanged = "RemoteConfigChanged";
         public const string TestProgramRunning = "TestProgramRunning";
         public const string FaultAlarm = "FaultAlarm";
         public const string FaultRecovered = "FaultRecovered";

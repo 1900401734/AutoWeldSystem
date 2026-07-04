@@ -11,6 +11,8 @@ using System.Net.Sockets;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces.MES;
 using AutoWeldSystem.Core.Interfaces.PLC;
+using AutoWeldSystem.Core.Mes;
+using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Core.Runtime;
 
 namespace AutoWeldSystem.UI.Views;
@@ -49,6 +51,21 @@ public partial class SystemSettingView : BaseView
         new("电磁系统", CenterServerConstants.SystemTypes.Electromagnetic),
         new("整件系统", CenterServerConstants.SystemTypes.WholePiece),
         new("其它", CenterServerConstants.SystemTypes.Other)
+    };
+
+    private static readonly MesRouteInputDefinition[] MesRouteInputDefinitions =
+    {
+        new("User", "员工信息路由", MesEndpointRouteRules.UserDefaultRoute, settings => settings.MesUserRoute, (settings, route) => settings.MesUserRoute = route),
+        new("WorkOrder", "工单信息路由", MesEndpointRouteRules.WorkOrderDefaultRoute, settings => settings.MesWorkOrderRoute, (settings, route) => settings.MesWorkOrderRoute = route),
+        new("ServerTime", "服务器时间路由", MesEndpointRouteRules.ServerTimeDefaultRoute, settings => settings.MesServerTimeRoute, (settings, route) => settings.MesServerTimeRoute = route),
+        new("ProgramManage", "程序管理路由", MesEndpointRouteRules.ProgramManageDefaultRoute, settings => settings.MesProgramManageRoute, (settings, route) => settings.MesProgramManageRoute = route),
+        new("StartWork", "开工上报路由", MesEndpointRouteRules.StartWorkDefaultRoute, settings => settings.MesStartWorkRoute, (settings, route) => settings.MesStartWorkRoute = route),
+        new("WorkStatus", "工单状态路由", MesEndpointRouteRules.WorkStatusDefaultRoute, settings => settings.MesWorkStatusRoute, (settings, route) => settings.MesWorkStatusRoute = route),
+        new("EndWork", "完工上报路由", MesEndpointRouteRules.EndWorkDefaultRoute, settings => settings.MesEndWorkRoute, (settings, route) => settings.MesEndWorkRoute = route),
+        new("ReportFile", "报告文件路由", MesEndpointRouteRules.ReportFileDefaultRoute, settings => settings.MesReportFileRoute, (settings, route) => settings.MesReportFileRoute = route),
+        new("PostData", "PostData路由", MesEndpointRouteRules.PostDataDefaultRoute, settings => settings.MesPostDataRoute, (settings, route) => settings.MesPostDataRoute = route),
+        new("Device", "设备编号路由", MesEndpointRouteRules.DeviceDefaultRoute, settings => settings.MesDeviceRoute, (settings, route) => settings.MesDeviceRoute = route),
+        new("DeviceStatus", "设备状态路由", MesEndpointRouteRules.DeviceStatusDefaultRoute, settings => settings.MesDeviceStatusRoute, (settings, route) => settings.MesDeviceStatusRoute = route)
     };
 
     private readonly IAppSettingsService _settingsService;
@@ -136,6 +153,8 @@ public partial class SystemSettingView : BaseView
         selectUploadMode.SelectedIndexChanged += SelectUploadMode_SelectedIndexChanged;
         chkEnableDualStation.CheckedChanged += ChkEnableDualStation_CheckedChanged;
         chkEnableDualWorkOrder.CheckedChanged += ChkEnableDualWorkOrder_CheckedChanged;
+        chkEnableAutoStart.CheckedChanged += ChkEnableAutoStart_CheckedChanged;
+        chkEnablePostDataCustomHeader.CheckedChanged += ChkEnablePostDataCustomHeader_CheckedChanged;
         selectProcessParameterDeviceType.SelectedIndexChanged += SelectProcessParameterDeviceType_SelectedIndexChanged;
         selectCenterServerSystemType.SelectedIndexChanged += SelectCenterServerSystemType_SelectedIndexChanged;
     }
@@ -164,7 +183,8 @@ public partial class SystemSettingView : BaseView
 
             _currentSettings = _settingsService.Save(settings);
             BindSettings(_currentSettings);
-            _windowsShellIntegrationService.ApplyStartupIntegration(_currentSettings);
+            ApplyStartupIntegrationWithWarning(_currentSettings);
+
             if (shouldRestartPlc)
             {
                 await _plcCommunicationService.RestartAsync();
@@ -206,7 +226,7 @@ public partial class SystemSettingView : BaseView
 
             _currentSettings = _settingsService.Save(settings);
             BindSettings(_currentSettings);
-            _windowsShellIntegrationService.ApplyStartupIntegration(_currentSettings);
+            ApplyStartupIntegrationWithWarning(_currentSettings);
 
             if (await SyncDeviceToMesAsync(request, btnSyncDevice, true))
             {
@@ -376,6 +396,17 @@ public partial class SystemSettingView : BaseView
             SetDualModeCheckboxes(enableDualStation: true, enableDualWorkOrder: true);
         }
     }
+
+    private void ChkEnableAutoStart_CheckedChanged(object sender, AntdUI.BoolEventArgs e)
+    {
+        UpdateElevatedAutoStartEnabled();
+    }
+
+    private void ChkEnablePostDataCustomHeader_CheckedChanged(object sender, AntdUI.BoolEventArgs e)
+    {
+        UpdatePostDataHeaderInputsEnabled();
+    }
+
     private void SelectFolder(AntdUI.Input targetInput, string fieldName)
     {
         using var dialog = new FolderBrowserDialog
@@ -418,7 +449,14 @@ public partial class SystemSettingView : BaseView
 
     private void SettingsService_SettingsChanged(object? sender, AppSettingsChangedEventArgs e)
     {
-        Interlocked.Exchange(ref _currentSettings, e.CurrentSettings);
+        var settings = e.CurrentSettings;
+        Interlocked.Exchange(ref _currentSettings, settings);
+        if (IsDisposed || !IsHandleCreated)
+        {
+            return;
+        }
+
+        RunOnUiThread(() => BindSettings(settings), "SystemSettingView.SettingsChanged");
     }
 
     /// <summary>
@@ -438,13 +476,17 @@ public partial class SystemSettingView : BaseView
         input_DataPath.Text = settings.DataDirectory;
         input_ProgramFilePath.Text = settings.ProgramFileDirectory;
         chkEnableAutoStart.Checked = settings.EnableAutoStart ?? true;
+        chkEnableElevatedAutoStart.Checked = settings.EnableElevatedAutoStart ?? true;
         chkEnableCenterServerSync.Checked = settings.EnableCenterServerSync;
         inputCenterServerBaseUrl.Text = CenterTelemetryRules.NormalizeBaseUrl(settings.CenterServerBaseUrl);
         inputCenterServerHeartbeatInterval.Text = CenterTelemetryRules.NormalizeHeartbeatIntervalSeconds(
             settings.CenterServerHeartbeatIntervalSeconds).ToString(CultureInfo.InvariantCulture);
         input_BaseUrl.Text = settings.MesBaseUrl;
+        BindMesEndpointSettings(settings);
         chkUseProductNumberFilter.Checked = settings.UseProductNumberFilter;
         chkShowTestFlagInHistory.Checked = settings.ShowTestFlagInHistory != false;
+        chkEnableDeviceStatusReport.Checked = settings.EnableDeviceStatusReport != false;
+        chkEnableWorkOrderStatusReport.Checked = settings.EnableWorkOrderStatusReport != false;
         SetDualModeCheckboxes(settings.EnableDualStation, settings.EnableDualWorkOrder);
         chkValidateRecipeBeforeStart.Checked = settings.ValidateRecipeAfterStart;
         chkEnableFinishExpQtyPrompt.Checked = settings.EnableFinishExpQtyPrompt;
@@ -463,6 +505,43 @@ public partial class SystemSettingView : BaseView
         BindCenterServerSystemTypeOptions();
         UpdatePlcStringNumericFormatModeEnabled();
         UpdateUploadBatchSizeEnabled();
+        UpdateElevatedAutoStartEnabled();
+        UpdatePostDataHeaderInputsEnabled();
+    }
+
+    private void BindMesEndpointSettings(AppSettings settings)
+    {
+        foreach (var definition in MesRouteInputDefinitions)
+        {
+            var input = GetMesRouteInput(definition.Key);
+            if (input is not null)
+            {
+                input.Text = MesEndpointRouteRules.NormalizeRoute(definition.GetRoute(settings), definition.DefaultRoute);
+            }
+        }
+
+        chkEnablePostDataCustomHeader.Checked = settings.EnablePostDataCustomHeader == true;
+        inputPostDataHeaderKey.Text = MesEndpointRouteRules.NormalizeHeaderKey(settings.PostDataHeaderKey);
+        inputPostDataHeaderValue.Text = MesEndpointRouteRules.NormalizeHeaderValue(settings.PostDataHeaderValue);
+    }
+
+    private AntdUI.Input? GetMesRouteInput(string key)
+    {
+        return key switch
+        {
+            "User" => inputMesUserRoute,
+            "WorkOrder" => inputMesWorkOrderRoute,
+            "ServerTime" => inputMesServerTimeRoute,
+            "ProgramManage" => inputMesProgramManageRoute,
+            "StartWork" => inputMesStartWorkRoute,
+            "WorkStatus" => inputMesWorkStatusRoute,
+            "EndWork" => inputMesEndWorkRoute,
+            "ReportFile" => inputMesReportFileRoute,
+            "PostData" => inputMesPostDataRoute,
+            "Device" => inputMesDeviceRoute,
+            "DeviceStatus" => inputMesDeviceStatusRoute,
+            _ => null
+        };
     }
 
     /// <summary>
@@ -493,12 +572,13 @@ public partial class SystemSettingView : BaseView
         lblDeviceName.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDeviceName);
         lblDeviceUrl.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDeviceStatusUrl);
         lblMesUrl.Text = _localizer.GetString(TextKeys.SystemSetting.LabelMesUrl);
-        label1.Text = "MES超时(s)";
+        lblMesTimeout.Text = "MES超时(s)";
 
         lblLogPath.Text = _localizer.GetString(TextKeys.SystemSetting.LabelLogPath);
         lblDataPath.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDataPath);
-        lblProgramFilePath.Text = "程序文件目录";
+        lblProgramFilePath.Text = "程序目录";
         chkEnableAutoStart.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableAutoStart);
+        chkEnableElevatedAutoStart.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableElevatedAutoStart);
         lblUploadMode.Text = _localizer.GetString(TextKeys.SystemSetting.UploadMode);
         lblUploadBatchSize.Text = _localizer.GetString(TextKeys.SystemSetting.UploadBatchSize);
         lblPlcHeartbeatInterval.Text = _localizer.GetString(TextKeys.SystemSetting.PlcHeartbeatRate);
@@ -507,6 +587,9 @@ public partial class SystemSettingView : BaseView
         lblCenterServerSystemType.Text = "系统类型";
         lblCenterServerHeartbeatInterval.Text = "心跳间隔(s)";
         lblProcessParameterDeviceType.Text = "过程参数设备类型";
+        chkEnablePostDataCustomHeader.Text = "启用PostData自定义Header";
+        lblPostDataHeaderKey.Text = "Header Key";
+        lblPostDataHeaderValue.Text = "Header Value";
         chkShowTestFlagInHistory.Text = "产品历史显示试焊件";
 
         BindUploadModeOptions();
@@ -514,6 +597,8 @@ public partial class SystemSettingView : BaseView
         BindProcessParameterDeviceTypeOptions();
 
         chkUseProductNumberFilter.Text = _localizer.GetString(TextKeys.SystemSetting.ChkUseProductNumberFilter);
+        chkEnableDeviceStatusReport.Text = "启用设备状态上报";
+        chkEnableWorkOrderStatusReport.Text = "启用工单状态上报";
         chkValidateRecipeBeforeStart.Text = _localizer.GetString(TextKeys.SystemSetting.ChkValidateRecipeAfterStart);
         chkEnableFinishExpQtyPrompt.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableFinishExpQtyPrompt);
         chkEnableDualStation.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableDualStation);
@@ -641,6 +726,18 @@ public partial class SystemSettingView : BaseView
         selectPlcStringNumericFormatMode.Enabled = chkEnablePlcStringNumericFormatting.Checked;
     }
 
+    private void UpdateElevatedAutoStartEnabled()
+    {
+        chkEnableElevatedAutoStart.Enabled = chkEnableAutoStart.Checked;
+    }
+
+    private void UpdatePostDataHeaderInputsEnabled()
+    {
+        var enabled = chkEnablePostDataCustomHeader.Checked;
+        inputPostDataHeaderKey.Enabled = enabled;
+        inputPostDataHeaderValue.Enabled = enabled;
+    }
+
     /// <summary>
     /// 从配置回填双工位/双工单开关时临时屏蔽联动事件，避免加载配置时反复触发 UI 逻辑。
     /// </summary>
@@ -747,6 +844,15 @@ public partial class SystemSettingView : BaseView
             FileName = normalizedPath,
             UseShellExecute = true
         });
+    }
+
+    private void ApplyStartupIntegrationWithWarning(AppSettings settings)
+    {
+        var startupResult = _windowsShellIntegrationService.ApplyStartupIntegration(settings);
+        if (!startupResult.Success)
+        {
+            ShowWarningMessage(startupResult.Message);
+        }
     }
 
     private bool TryBuildSettings(out AppSettings settings)
@@ -864,7 +970,7 @@ public partial class SystemSettingView : BaseView
 
         settings.DeviceId = deviceId;
         settings.DeviceName = deviceName;
-        settings.DeviceBaseUrl = deviceStatusUrl;
+        settings.DeviceBaseUrl = DeviceApiEndpointRules.NormalizeBaseUrl(deviceStatusUrl);
         settings.PlcIp = plcIp;
         settings.PlcPort = plcPort;
         settings.PlcType = NormalizePlcType(_selectedPlcType);
@@ -875,6 +981,7 @@ public partial class SystemSettingView : BaseView
         settings.DataDirectory = dataDirectory;
         settings.ProgramFileDirectory = programFileDirectory;
         settings.EnableAutoStart = chkEnableAutoStart.Checked;
+        settings.EnableElevatedAutoStart = chkEnableElevatedAutoStart.Checked;
         settings.EnableCenterServerSync = chkEnableCenterServerSync.Checked;
         settings.CenterServerBaseUrl = CenterTelemetryRules.NormalizeBaseUrl(centerServerBaseUrl);
         settings.CenterServerSystemType = NormalizeCenterServerSystemType(_selectedCenterServerSystemType);
@@ -883,6 +990,8 @@ public partial class SystemSettingView : BaseView
         settings.MesTimeoutSeconds = int.TryParse(mesTimeout, NumberStyles.Integer, CultureInfo.InvariantCulture, out var timeout) && timeout > 0 ? timeout : 10;
         settings.UseProductNumberFilter = chkUseProductNumberFilter.Checked;
         settings.ShowTestFlagInHistory = chkShowTestFlagInHistory.Checked;
+        settings.EnableDeviceStatusReport = chkEnableDeviceStatusReport.Checked;
+        settings.EnableWorkOrderStatusReport = chkEnableWorkOrderStatusReport.Checked;
         settings.EnableDualStation = enableDualStation;
         settings.EnableDualWorkOrder = enableDualWorkOrder;
         settings.ValidateRecipeAfterStart = chkValidateRecipeBeforeStart.Checked;
@@ -891,6 +1000,53 @@ public partial class SystemSettingView : BaseView
         settings.UploadMode = NormalizeUploadMode(_selectedUploadMode);
         settings.UploadBatchSize = Math.Max(1, uploadBatchSize);
         settings.ProcessParameterDeviceType = NormalizeProcessParameterDeviceType(_selectedProcessParameterDeviceType);
+        if (!TryApplyMesEndpointSettings(settings))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool TryApplyMesEndpointSettings(AppSettings settings)
+    {
+        foreach (var definition in MesRouteInputDefinitions)
+        {
+            var input = GetMesRouteInput(definition.Key);
+            if (input is null)
+            {
+                continue;
+            }
+
+            if (!MesEndpointRouteRules.TryNormalizeRequiredRoute(
+                    input.Text,
+                    definition.DisplayName,
+                    out var route,
+                    out var errorMessage))
+            {
+                ShowWarningMessage(errorMessage);
+                return false;
+            }
+
+            definition.SetRoute(settings, route);
+        }
+
+        var headerEnabled = chkEnablePostDataCustomHeader.Checked;
+        if (!MesEndpointRouteRules.TryValidatePostDataHeader(
+                headerEnabled,
+                inputPostDataHeaderKey.Text,
+                inputPostDataHeaderValue.Text,
+                out var headerKey,
+                out var headerValue,
+                out var headerError))
+        {
+            ShowWarningMessage(headerError);
+            return false;
+        }
+
+        settings.EnablePostDataCustomHeader = headerEnabled;
+        settings.PostDataHeaderKey = headerKey;
+        settings.PostDataHeaderValue = headerValue;
         return true;
     }
 
@@ -938,8 +1094,8 @@ public partial class SystemSettingView : BaseView
             DeviceId = newSettings.DeviceId.Trim(),
             DeviceName = newSettings.DeviceName.Trim(),
             IP = GetLocalIPv4Address(),
-            DevStatusUrl = newSettings.DeviceBaseUrl?.Trim() ?? string.Empty,
-            PostDataDomain = EnsureTrailingSlash(newSettings.MesBaseUrl)
+            DevStatusUrl = DeviceApiEndpointRules.BuildDeviceStatusUrl(newSettings.DeviceBaseUrl, newSettings.DeviceId),
+            PostDataDomain = DeviceApiEndpointRules.NormalizeBaseUrl(newSettings.MesBaseUrl)
         };
     }
 
@@ -961,12 +1117,6 @@ public partial class SystemSettingView : BaseView
             || !SameText(oldSettings.DeviceName, newSettings.DeviceName)
             || !SameText(oldSettings.DeviceBaseUrl, newSettings.DeviceBaseUrl)
             || !SameText(oldSettings.MesBaseUrl, newSettings.MesBaseUrl);
-    }
-
-    private static string EnsureTrailingSlash(string text)
-    {
-        var value = text.Trim();
-        return value.EndsWith("/", StringComparison.Ordinal) ? value : $"{value}/";
     }
 
     private static bool SameText(string? left, string? right)
@@ -1119,4 +1269,11 @@ public partial class SystemSettingView : BaseView
     private sealed record ProcessParameterDeviceTypeOption(string DisplayName, string Value);
 
     private sealed record CenterServerOption(string DisplayName, string Value);
+
+    private sealed record MesRouteInputDefinition(
+        string Key,
+        string DisplayName,
+        string DefaultRoute,
+        Func<AppSettings, string?> GetRoute,
+        Action<AppSettings, string> SetRoute);
 }
