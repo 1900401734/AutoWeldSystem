@@ -55,7 +55,6 @@ public partial class AddressManageView : BaseView
     private List<TestItemTableRow> _currentItemRows = new();
     private List<SchemeDetailRoleTableRow> _currentSchemeDetailRoleRows = new();
 
-    private readonly DataGridView _schemeDetailRoleGrid = new();
     private readonly System.Windows.Forms.ContextMenuStrip _businessAddressContextMenu = new();
     private ToolStripMenuItem? _businessAddressReadMenuItem;
     private ToolStripMenuItem? _businessAddressWriteMenuItem;
@@ -113,7 +112,7 @@ public partial class AddressManageView : BaseView
         InitializeComponent();
         ConfigureTables();
         ConfigureContextMenus();
-        InitializeSchemeDetailRoleGrid();
+        ConfigureSchemeDetailRoleGrid();
         WireEvents();
     }
 
@@ -187,86 +186,12 @@ public partial class AddressManageView : BaseView
     }
 
     /// <summary>
-    /// 初始化方案明细右侧输出配置表格。
-    /// TreeView 负责快速勾选采集字段，表格负责编辑表头、报表和 MES 输出配置。
+    /// 对方案明细右侧表格应用运行期统一样式。
+    /// 控件、列和布局全部由 Designer.cs 维护，确保 VS 设计器能直接显示。
     /// </summary>
-    private void InitializeSchemeDetailRoleGrid()
+    private void ConfigureSchemeDetailRoleGrid()
     {
-        _schemeDetailRoleGrid.AllowUserToAddRows = false;
-        _schemeDetailRoleGrid.AllowUserToDeleteRows = false;
-        _schemeDetailRoleGrid.AutoGenerateColumns = false;
-        _schemeDetailRoleGrid.BackgroundColor = Color.White;
-        _schemeDetailRoleGrid.BorderStyle = BorderStyle.FixedSingle;
-        _schemeDetailRoleGrid.Dock = DockStyle.Fill;
-        _schemeDetailRoleGrid.MultiSelect = false;
-        _schemeDetailRoleGrid.RowHeadersVisible = false;
-        _schemeDetailRoleGrid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-        _schemeDetailRoleGrid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            DataPropertyName = nameof(SchemeDetailRoleTableRow.ItemName),
-            HeaderText = "测试项",
-            ReadOnly = true,
-            Width = 150
-        });
-        _schemeDetailRoleGrid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            DataPropertyName = nameof(SchemeDetailRoleTableRow.RoleName),
-            HeaderText = "字段",
-            ReadOnly = true,
-            Width = 76
-        });
-        _schemeDetailRoleGrid.Columns.Add(new DataGridViewCheckBoxColumn
-        {
-            DataPropertyName = nameof(SchemeDetailRoleTableRow.Enabled),
-            HeaderText = "采集",
-            Width = 58
-        });
-        _schemeDetailRoleGrid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            DataPropertyName = nameof(SchemeDetailRoleTableRow.HeaderText),
-            HeaderText = "显示表头",
-            Width = 150
-        });
-        _schemeDetailRoleGrid.Columns.Add(new DataGridViewCheckBoxColumn
-        {
-            DataPropertyName = nameof(SchemeDetailRoleTableRow.SaveEnabled),
-            HeaderText = "保存",
-            Width = 58
-        });
-        _schemeDetailRoleGrid.Columns.Add(new DataGridViewCheckBoxColumn
-        {
-            DataPropertyName = nameof(SchemeDetailRoleTableRow.ReportEnabled),
-            HeaderText = "报表",
-            Width = 58
-        });
-        _schemeDetailRoleGrid.Columns.Add(new DataGridViewCheckBoxColumn
-        {
-            DataPropertyName = nameof(SchemeDetailRoleTableRow.MesEnabled),
-            HeaderText = "MES",
-            Width = 58
-        });
-        _schemeDetailRoleGrid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            DataPropertyName = nameof(SchemeDetailRoleTableRow.MesFieldName),
-            HeaderText = "MES字段名",
-            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill
-        });
-
-        TableStyleHelper.ApplyDataGridView(_schemeDetailRoleGrid);
-
-        // 左侧树用于快速勾选采集字段，右侧表格用于维护每个字段的输出配置。
-        schemeDetailLayout.Controls.Remove(treeSchemeDetails);
-        var splitContainer = new SplitContainer
-        {
-            Dock = DockStyle.Fill,
-            FixedPanel = FixedPanel.Panel1,
-            SplitterDistance = 340,
-            SplitterWidth = 6
-        };
-        treeSchemeDetails.Dock = DockStyle.Fill;
-        splitContainer.Panel1.Controls.Add(treeSchemeDetails);
-        splitContainer.Panel2.Controls.Add(_schemeDetailRoleGrid);
-        schemeDetailLayout.Controls.Add(splitContainer, 0, 2);
+        TableStyleHelper.ApplyDataGridView(schemeDetailRoleGrid);
     }
 
     #region 业务信号
@@ -1120,13 +1045,13 @@ public partial class AddressManageView : BaseView
             })
             .ToList();
 
-        _schemeDetailRoleGrid.DataSource = null;
-        _schemeDetailRoleGrid.DataSource = _currentSchemeDetailRoleRows;
+        schemeDetailRoleGrid.DataSource = null;
+        schemeDetailRoleGrid.DataSource = _currentSchemeDetailRoleRows;
     }
 
     private void SyncCurrentSchemeDetailGridToMemory()
     {
-        _schemeDetailRoleGrid.EndEdit();
+        schemeDetailRoleGrid.EndEdit();
         var schemeId = _currentSchemeDetailSchemeId?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(schemeId) || _currentSchemeDetailRoleRows.Count == 0)
         {
@@ -2314,7 +2239,7 @@ public partial class AddressManageView : BaseView
         tableProcess.EditModeClose();
         tableTestSchemes.EditModeClose();
         tableTestItems.EditModeClose();
-        _schemeDetailRoleGrid.EndEdit();
+        schemeDetailRoleGrid.EndEdit();
     }
 
     private void SelectVisibleRow(string? logicalKey, int? stationNo)

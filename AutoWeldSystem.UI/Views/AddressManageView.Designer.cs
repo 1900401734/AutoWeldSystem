@@ -73,7 +73,17 @@
             schemeDetailToolbar = new FlowLayoutPanel();
             lblSchemeDetailScheme = new Label();
             selectSchemeDetailScheme = new AntdUI.Select();
+            schemeDetailSplitContainer = new SplitContainer();
             treeSchemeDetails = new TreeView();
+            schemeDetailRoleGrid = new DataGridView();
+            colSchemeDetailItemName = new DataGridViewTextBoxColumn();
+            colSchemeDetailRoleName = new DataGridViewTextBoxColumn();
+            colSchemeDetailEnabled = new DataGridViewCheckBoxColumn();
+            colSchemeDetailHeaderText = new DataGridViewTextBoxColumn();
+            colSchemeDetailSaveEnabled = new DataGridViewCheckBoxColumn();
+            colSchemeDetailReportEnabled = new DataGridViewCheckBoxColumn();
+            colSchemeDetailMesEnabled = new DataGridViewCheckBoxColumn();
+            colSchemeDetailMesFieldName = new DataGridViewTextBoxColumn();
             tabTestItems = new TabPage();
             testItemLayout = new TableLayoutPanel();
             lblTestItemHint = new Label();
@@ -100,6 +110,11 @@
             tabSchemeDetails.SuspendLayout();
             schemeDetailLayout.SuspendLayout();
             schemeDetailToolbar.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)schemeDetailSplitContainer).BeginInit();
+            schemeDetailSplitContainer.Panel1.SuspendLayout();
+            schemeDetailSplitContainer.Panel2.SuspendLayout();
+            schemeDetailSplitContainer.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)schemeDetailRoleGrid).BeginInit();
             tabTestItems.SuspendLayout();
             testItemLayout.SuspendLayout();
             testItemToolbar.SuspendLayout();
@@ -292,7 +307,7 @@
             lblBindingProduct.Margin = new Padding(0, 0, 6, 0);
             lblBindingProduct.Name = "lblBindingProduct";
             lblBindingProduct.Padding = new Padding(10, 2, 10, 2);
-            lblBindingProduct.Size = new Size(191, 23);
+            lblBindingProduct.Size = new Size(216, 23);
             lblBindingProduct.TabIndex = 0;
             lblBindingProduct.Text = "产品工号 ProductNumber";
             //
@@ -300,7 +315,7 @@
             //
             lblBindingArrow1.AutoSize = true;
             lblBindingArrow1.ForeColor = SystemColors.GrayText;
-            lblBindingArrow1.Location = new Point(209, 8);
+            lblBindingArrow1.Location = new Point(234, 8);
             lblBindingArrow1.Margin = new Padding(0, 0, 6, 0);
             lblBindingArrow1.Name = "lblBindingArrow1";
             lblBindingArrow1.Size = new Size(25, 20);
@@ -312,7 +327,7 @@
             lblBindingProcess.AutoSize = true;
             lblBindingProcess.BackColor = Color.FromArgb(237, 247, 237);
             lblBindingProcess.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
-            lblBindingProcess.Location = new Point(240, 8);
+            lblBindingProcess.Location = new Point(265, 8);
             lblBindingProcess.Margin = new Padding(0, 0, 6, 0);
             lblBindingProcess.Name = "lblBindingProcess";
             lblBindingProcess.Padding = new Padding(10, 2, 10, 2);
@@ -324,7 +339,7 @@
             //
             lblBindingArrow2.AutoSize = true;
             lblBindingArrow2.ForeColor = SystemColors.GrayText;
-            lblBindingArrow2.Location = new Point(414, 8);
+            lblBindingArrow2.Location = new Point(439, 8);
             lblBindingArrow2.Margin = new Padding(0, 0, 6, 0);
             lblBindingArrow2.Name = "lblBindingArrow2";
             lblBindingArrow2.Size = new Size(25, 20);
@@ -336,7 +351,7 @@
             lblBindingScheme.AutoSize = true;
             lblBindingScheme.BackColor = Color.FromArgb(255, 247, 230);
             lblBindingScheme.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
-            lblBindingScheme.Location = new Point(445, 8);
+            lblBindingScheme.Location = new Point(470, 8);
             lblBindingScheme.Margin = new Padding(0, 0, 6, 0);
             lblBindingScheme.Name = "lblBindingScheme";
             lblBindingScheme.Padding = new Padding(10, 2, 10, 2);
@@ -348,7 +363,7 @@
             //
             lblBindingArrow3.AutoSize = true;
             lblBindingArrow3.ForeColor = SystemColors.GrayText;
-            lblBindingArrow3.Location = new Point(540, 8);
+            lblBindingArrow3.Location = new Point(565, 8);
             lblBindingArrow3.Margin = new Padding(0, 0, 6, 0);
             lblBindingArrow3.Name = "lblBindingArrow3";
             lblBindingArrow3.Size = new Size(25, 20);
@@ -360,7 +375,7 @@
             lblBindingDetail.AutoSize = true;
             lblBindingDetail.BackColor = Color.FromArgb(246, 239, 255);
             lblBindingDetail.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
-            lblBindingDetail.Location = new Point(571, 8);
+            lblBindingDetail.Location = new Point(596, 8);
             lblBindingDetail.Margin = new Padding(0, 0, 6, 0);
             lblBindingDetail.Name = "lblBindingDetail";
             lblBindingDetail.Padding = new Padding(10, 2, 10, 2);
@@ -372,7 +387,7 @@
             //
             lblBindingArrow4.AutoSize = true;
             lblBindingArrow4.ForeColor = SystemColors.GrayText;
-            lblBindingArrow4.Location = new Point(720, 8);
+            lblBindingArrow4.Location = new Point(745, 8);
             lblBindingArrow4.Margin = new Padding(0, 0, 6, 0);
             lblBindingArrow4.Name = "lblBindingArrow4";
             lblBindingArrow4.Size = new Size(25, 20);
@@ -384,7 +399,7 @@
             lblBindingItem.AutoSize = true;
             lblBindingItem.BackColor = Color.FromArgb(255, 241, 240);
             lblBindingItem.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
-            lblBindingItem.Location = new Point(751, 8);
+            lblBindingItem.Location = new Point(776, 8);
             lblBindingItem.Margin = new Padding(0, 0, 6, 0);
             lblBindingItem.Name = "lblBindingItem";
             lblBindingItem.Padding = new Padding(10, 2, 10, 2);
@@ -396,7 +411,7 @@
             //
             lblBindingArrow5.AutoSize = true;
             lblBindingArrow5.ForeColor = SystemColors.GrayText;
-            lblBindingArrow5.Location = new Point(910, 8);
+            lblBindingArrow5.Location = new Point(935, 8);
             lblBindingArrow5.Margin = new Padding(0, 0, 6, 0);
             lblBindingArrow5.Name = "lblBindingArrow5";
             lblBindingArrow5.Size = new Size(25, 20);
@@ -408,7 +423,7 @@
             lblBindingPreview.AutoSize = true;
             lblBindingPreview.BackColor = Color.FromArgb(238, 242, 246);
             lblBindingPreview.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
-            lblBindingPreview.Location = new Point(941, 8);
+            lblBindingPreview.Location = new Point(966, 8);
             lblBindingPreview.Margin = new Padding(0);
             lblBindingPreview.Name = "lblBindingPreview";
             lblBindingPreview.Padding = new Padding(10, 2, 10, 2);
@@ -546,7 +561,7 @@
             btnPasteAlarmAddresses.Location = new Point(178, 4);
             btnPasteAlarmAddresses.Margin = new Padding(0, 0, 8, 0);
             btnPasteAlarmAddresses.Name = "btnPasteAlarmAddresses";
-            btnPasteAlarmAddresses.Size = new Size(141, 34);
+            btnPasteAlarmAddresses.Size = new Size(112, 34);
             btnPasteAlarmAddresses.TabIndex = 2;
             btnPasteAlarmAddresses.Tag = "perm:button.address.paste-alarm:enabled";
             btnPasteAlarmAddresses.Text = "粘贴导入";
@@ -816,7 +831,7 @@
             schemeDetailLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             schemeDetailLayout.Controls.Add(lblSchemeDetailHint, 0, 0);
             schemeDetailLayout.Controls.Add(schemeDetailToolbar, 0, 1);
-            schemeDetailLayout.Controls.Add(treeSchemeDetails, 0, 2);
+            schemeDetailLayout.Controls.Add(schemeDetailSplitContainer, 0, 2);
             schemeDetailLayout.Dock = DockStyle.Fill;
             schemeDetailLayout.Location = new Point(3, 3);
             schemeDetailLayout.Margin = new Padding(0);
@@ -856,33 +871,151 @@
             //
             // lblSchemeDetailScheme
             //
+            lblSchemeDetailScheme.AutoSize = true;
+            lblSchemeDetailScheme.Dock = DockStyle.Fill;
             lblSchemeDetailScheme.Location = new Point(0, 4);
             lblSchemeDetailScheme.Margin = new Padding(0, 0, 8, 0);
             lblSchemeDetailScheme.Name = "lblSchemeDetailScheme";
-            lblSchemeDetailScheme.Size = new Size(72, 34);
+            lblSchemeDetailScheme.Size = new Size(73, 34);
             lblSchemeDetailScheme.TabIndex = 0;
             lblSchemeDetailScheme.Text = "测试方案";
             lblSchemeDetailScheme.TextAlign = ContentAlignment.MiddleLeft;
             //
             // selectSchemeDetailScheme
             //
-            selectSchemeDetailScheme.Location = new Point(80, 4);
+            selectSchemeDetailScheme.Location = new Point(81, 4);
             selectSchemeDetailScheme.Margin = new Padding(0, 0, 8, 0);
             selectSchemeDetailScheme.Name = "selectSchemeDetailScheme";
             selectSchemeDetailScheme.Size = new Size(260, 34);
             selectSchemeDetailScheme.TabIndex = 1;
             //
+            // schemeDetailSplitContainer
+            //
+            schemeDetailSplitContainer.Dock = DockStyle.Fill;
+            schemeDetailSplitContainer.FixedPanel = FixedPanel.Panel1;
+            schemeDetailSplitContainer.Location = new Point(0, 72);
+            schemeDetailSplitContainer.Margin = new Padding(0);
+            schemeDetailSplitContainer.Name = "schemeDetailSplitContainer";
+            //
+            // schemeDetailSplitContainer.Panel1
+            //
+            schemeDetailSplitContainer.Panel1.Controls.Add(treeSchemeDetails);
+            //
+            // schemeDetailSplitContainer.Panel2
+            //
+            schemeDetailSplitContainer.Panel2.Controls.Add(schemeDetailRoleGrid);
+            schemeDetailSplitContainer.Size = new Size(1236, 434);
+            schemeDetailSplitContainer.SplitterDistance = 333;
+            schemeDetailSplitContainer.SplitterWidth = 6;
+            schemeDetailSplitContainer.TabIndex = 2;
+            //
             // treeSchemeDetails
             //
             treeSchemeDetails.BorderStyle = BorderStyle.FixedSingle;
             treeSchemeDetails.CheckBoxes = true;
-            treeSchemeDetails.Dock = DockStyle.Left;
+            treeSchemeDetails.Dock = DockStyle.Fill;
             treeSchemeDetails.HideSelection = false;
-            treeSchemeDetails.Location = new Point(0, 72);
+            treeSchemeDetails.Location = new Point(0, 0);
             treeSchemeDetails.Margin = new Padding(0);
             treeSchemeDetails.Name = "treeSchemeDetails";
-            treeSchemeDetails.Size = new Size(340, 434);
-            treeSchemeDetails.TabIndex = 2;
+            treeSchemeDetails.Size = new Size(333, 434);
+            treeSchemeDetails.TabIndex = 0;
+            //
+            // schemeDetailRoleGrid
+            //
+            schemeDetailRoleGrid.AllowUserToAddRows = false;
+            schemeDetailRoleGrid.AllowUserToDeleteRows = false;
+            schemeDetailRoleGrid.AutoGenerateColumns = false;
+            schemeDetailRoleGrid.BackgroundColor = Color.White;
+            schemeDetailRoleGrid.BorderStyle = BorderStyle.FixedSingle;
+            schemeDetailRoleGrid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
+            schemeDetailRoleGrid.Columns.AddRange(new DataGridViewColumn[]
+            {
+                colSchemeDetailItemName,
+                colSchemeDetailRoleName,
+                colSchemeDetailEnabled,
+                colSchemeDetailHeaderText,
+                colSchemeDetailSaveEnabled,
+                colSchemeDetailReportEnabled,
+                colSchemeDetailMesEnabled,
+                colSchemeDetailMesFieldName
+            });
+            schemeDetailRoleGrid.Dock = DockStyle.Fill;
+            schemeDetailRoleGrid.Location = new Point(0, 0);
+            schemeDetailRoleGrid.Margin = new Padding(0);
+            schemeDetailRoleGrid.MultiSelect = false;
+            schemeDetailRoleGrid.Name = "schemeDetailRoleGrid";
+            schemeDetailRoleGrid.RowHeadersVisible = false;
+            schemeDetailRoleGrid.RowHeadersWidth = 51;
+            schemeDetailRoleGrid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            schemeDetailRoleGrid.Size = new Size(897, 434);
+            schemeDetailRoleGrid.TabIndex = 0;
+            //
+            // colSchemeDetailItemName
+            //
+            colSchemeDetailItemName.DataPropertyName = "ItemName";
+            colSchemeDetailItemName.HeaderText = "测试项";
+            colSchemeDetailItemName.MinimumWidth = 6;
+            colSchemeDetailItemName.Name = "colSchemeDetailItemName";
+            colSchemeDetailItemName.ReadOnly = true;
+            colSchemeDetailItemName.Width = 150;
+            //
+            // colSchemeDetailRoleName
+            //
+            colSchemeDetailRoleName.DataPropertyName = "RoleName";
+            colSchemeDetailRoleName.HeaderText = "字段";
+            colSchemeDetailRoleName.MinimumWidth = 6;
+            colSchemeDetailRoleName.Name = "colSchemeDetailRoleName";
+            colSchemeDetailRoleName.ReadOnly = true;
+            colSchemeDetailRoleName.Width = 76;
+            //
+            // colSchemeDetailEnabled
+            //
+            colSchemeDetailEnabled.DataPropertyName = "Enabled";
+            colSchemeDetailEnabled.HeaderText = "采集";
+            colSchemeDetailEnabled.MinimumWidth = 6;
+            colSchemeDetailEnabled.Name = "colSchemeDetailEnabled";
+            colSchemeDetailEnabled.Width = 58;
+            //
+            // colSchemeDetailHeaderText
+            //
+            colSchemeDetailHeaderText.DataPropertyName = "HeaderText";
+            colSchemeDetailHeaderText.HeaderText = "显示表头";
+            colSchemeDetailHeaderText.MinimumWidth = 6;
+            colSchemeDetailHeaderText.Name = "colSchemeDetailHeaderText";
+            colSchemeDetailHeaderText.Width = 150;
+            //
+            // colSchemeDetailSaveEnabled
+            //
+            colSchemeDetailSaveEnabled.DataPropertyName = "SaveEnabled";
+            colSchemeDetailSaveEnabled.HeaderText = "保存";
+            colSchemeDetailSaveEnabled.MinimumWidth = 6;
+            colSchemeDetailSaveEnabled.Name = "colSchemeDetailSaveEnabled";
+            colSchemeDetailSaveEnabled.Width = 58;
+            //
+            // colSchemeDetailReportEnabled
+            //
+            colSchemeDetailReportEnabled.DataPropertyName = "ReportEnabled";
+            colSchemeDetailReportEnabled.HeaderText = "报表";
+            colSchemeDetailReportEnabled.MinimumWidth = 6;
+            colSchemeDetailReportEnabled.Name = "colSchemeDetailReportEnabled";
+            colSchemeDetailReportEnabled.Width = 58;
+            //
+            // colSchemeDetailMesEnabled
+            //
+            colSchemeDetailMesEnabled.DataPropertyName = "MesEnabled";
+            colSchemeDetailMesEnabled.HeaderText = "MES";
+            colSchemeDetailMesEnabled.MinimumWidth = 6;
+            colSchemeDetailMesEnabled.Name = "colSchemeDetailMesEnabled";
+            colSchemeDetailMesEnabled.Width = 58;
+            //
+            // colSchemeDetailMesFieldName
+            //
+            colSchemeDetailMesFieldName.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+            colSchemeDetailMesFieldName.DataPropertyName = "MesFieldName";
+            colSchemeDetailMesFieldName.HeaderText = "MES字段名";
+            colSchemeDetailMesFieldName.MinimumWidth = 6;
+            colSchemeDetailMesFieldName.Name = "colSchemeDetailMesFieldName";
             //
             // tabTestItems
             //
@@ -1011,6 +1144,12 @@
             tabSchemeDetails.ResumeLayout(false);
             schemeDetailLayout.ResumeLayout(false);
             schemeDetailToolbar.ResumeLayout(false);
+            schemeDetailToolbar.PerformLayout();
+            schemeDetailSplitContainer.Panel1.ResumeLayout(false);
+            schemeDetailSplitContainer.Panel2.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)schemeDetailSplitContainer).EndInit();
+            schemeDetailSplitContainer.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)schemeDetailRoleGrid).EndInit();
             tabTestItems.ResumeLayout(false);
             testItemLayout.ResumeLayout(false);
             testItemToolbar.ResumeLayout(false);
@@ -1073,7 +1212,17 @@
         private FlowLayoutPanel schemeDetailToolbar;
         private Label lblSchemeDetailScheme;
         private AntdUI.Select selectSchemeDetailScheme;
+        private SplitContainer schemeDetailSplitContainer;
         private TreeView treeSchemeDetails;
+        private DataGridView schemeDetailRoleGrid;
+        private DataGridViewTextBoxColumn colSchemeDetailItemName;
+        private DataGridViewTextBoxColumn colSchemeDetailRoleName;
+        private DataGridViewCheckBoxColumn colSchemeDetailEnabled;
+        private DataGridViewTextBoxColumn colSchemeDetailHeaderText;
+        private DataGridViewCheckBoxColumn colSchemeDetailSaveEnabled;
+        private DataGridViewCheckBoxColumn colSchemeDetailReportEnabled;
+        private DataGridViewCheckBoxColumn colSchemeDetailMesEnabled;
+        private DataGridViewTextBoxColumn colSchemeDetailMesFieldName;
         private TabPage tabTestItems;
         private TableLayoutPanel testItemLayout;
         private Label lblTestItemHint;
