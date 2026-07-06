@@ -1,4 +1,5 @@
 using AntdUI;
+using System.Collections;
 
 namespace AutoWeldSystem.UI.Infrastructure;
 
@@ -31,9 +32,58 @@ public static class AntdTableSelectionHelper
     {
         ArgumentNullException.ThrowIfNull(table);
 
-        return (table.SelectedsReal() ?? Array.Empty<object>())
+        var selectedRows = (table.SelectedsReal() ?? Array.Empty<object>())
             .OfType<T>()
             .ToList();
+        if (selectedRows.Count > 0)
+        {
+            return selectedRows;
+        }
+
+        return GetSelectedRowsFromIndexes<T>(table);
+    }
+
+    /// <summary>
+    /// Reads selected rows from SelectedIndexs when AntdUI only records selected row indexes.
+    /// Ctrl+A selection can hit this path, so delete buttons must not rely only on SelectedsReal().
+    /// </summary>
+    private static IReadOnlyList<T> GetSelectedRowsFromIndexes<T>(Table table)
+        where T : class
+    {
+        var selectedIndexes = table.SelectedIndexs;
+        if (selectedIndexes is null || selectedIndexes.Length == 0)
+        {
+            return Array.Empty<T>();
+        }
+
+        var rows = EnumerateDataSource(table.DataSource)
+            .OfType<T>()
+            .ToList();
+        if (rows.Count == 0)
+        {
+            return Array.Empty<T>();
+        }
+
+        return selectedIndexes
+            .Where(index => index >= 0 && index < rows.Count)
+            .Distinct()
+            .Select(index => rows[index])
+            .ToList();
+    }
+
+    /// <summary>
+    /// Converts the current table data source to an object sequence while keeping string cells out.
+    /// </summary>
+    private static IEnumerable<object> EnumerateDataSource(object? dataSource)
+    {
+        if (dataSource is null or string)
+        {
+            return Array.Empty<object>();
+        }
+
+        return dataSource is IEnumerable enumerable
+            ? enumerable.Cast<object>()
+            : Array.Empty<object>();
     }
 
     /// <summary>

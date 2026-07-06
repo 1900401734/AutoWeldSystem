@@ -10,6 +10,7 @@ using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.UI.Base;
 using AutoWeldSystem.UI.Forms;
 using AutoWeldSystem.UI.Infrastructure;
+using System.Collections;
 using System.Globalization;
 using AutoWeldSystem.Core.ViewModels;
 
@@ -162,6 +163,7 @@ public partial class AddressManageView : BaseView
         AntdTableSelectionHelper.EnableMultiRowSelection(tableTestSchemes);
         tableTestItems.EditLostFocus = true;
         AntdTableSelectionHelper.EnableMultiRowSelection(tableTestItems);
+        WireMultiSelectShortcuts(tableAlarmAddresses, tableProcess, tableTestSchemes, tableTestItems);
 
         ConfigureBusinessAddressColumns();
         ConfigureAlarmAddressColumns();
@@ -436,6 +438,52 @@ public partial class AddressManageView : BaseView
         tableTestItems.CellEndEdit += Table_CellEndEdit;
         tableTestItems.CellEndValueEdit += Table_CellEndValueEdit;
         tableTestItems.CellEditComplete += Table_CellEditComplete;
+    }
+
+    /// <summary>
+    /// Adds Ctrl+A row selection to AntdUI tables that support multi-row delete.
+    /// </summary>
+    private void WireMultiSelectShortcuts(params AntdUI.Table[] tables)
+    {
+        foreach (var table in tables)
+        {
+            table.KeyDown += MultiSelectTable_KeyDown;
+        }
+    }
+
+    /// <summary>
+    /// Selects all visible rows when the operator presses Ctrl+A inside a multi-select table.
+    /// </summary>
+    private void MultiSelectTable_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (sender is not AntdUI.Table table
+            || !e.Control
+            || e.KeyCode != Keys.A)
+        {
+            return;
+        }
+
+        SelectAllVisibleRows(table);
+        SyncActiveCommandState();
+        e.Handled = true;
+        e.SuppressKeyPress = true;
+    }
+
+    /// <summary>
+    /// Selects every row in the currently bound table data source.
+    /// </summary>
+    private static void SelectAllVisibleRows(AntdUI.Table table)
+    {
+        table.SelectedIndexs = Array.Empty<int>();
+        if (table.DataSource is not IEnumerable dataSource || table.DataSource is string)
+        {
+            return;
+        }
+
+        foreach (var row in dataSource.Cast<object>())
+        {
+            table.SetSelected(row, true);
+        }
     }
 
     private void ApplyLocalizedTexts()
@@ -1813,7 +1861,7 @@ public partial class AddressManageView : BaseView
             return;
         }
 
-        var imported = ParseAlarmAddressClipboard(Clipboard.GetText()).ToList();
+        var imported = AlarmAddressImportRules.ParseClipboard(Clipboard.GetText()).ToList();
         if (imported.Count == 0)
         {
             ShowWarning("未识别到有效的两列数据，请从 Excel 复制“地址 / 内容”两列。");
@@ -1824,7 +1872,7 @@ public partial class AddressManageView : BaseView
         foreach (var item in imported)
         {
             var existing = _alarmAddresses.FirstOrDefault(alarm =>
-                alarm.StationNo == ProductionConstants.Stations.SharedStationNo
+                alarm.StationNo == item.StationNo
                 && string.Equals(alarm.Address, item.Address, StringComparison.OrdinalIgnoreCase));
             if (existing is not null)
             {
@@ -1836,7 +1884,7 @@ public partial class AddressManageView : BaseView
 
             _alarmAddresses.Add(new BizPlcAlarmAddress
             {
-                StationNo = ProductionConstants.Stations.SharedStationNo,
+                StationNo = item.StationNo,
                 Address = item.Address,
                 AlarmContent = item.Content,
                 Enabled = true,
@@ -1849,88 +1897,12 @@ public partial class AddressManageView : BaseView
         ShowInfo($"已导入 {imported.Count} 条报警地址，请确认后点击保存。");
     }
 
-    private static IEnumerable<AlarmAddressImportRow> ParseAlarmAddressClipboard(string text)
-    {
-        foreach (var rawLine in text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries))
-        {
-            var line = rawLine.Trim();
-            if (string.IsNullOrWhiteSpace(line))
-            {
-                continue;
-            }
-
-            var cells = line.Contains('\t')
-                ? line.Split('\t')
-                : line.Split(',');
-            if (cells.Length < 2)
-            {
-                continue;
-            }
-
-            var address = NormalizeAlarmAddress(cells[0].Trim().Trim('"'));
-            var content = cells[1].Trim().Trim('"');
-            if (IsAlarmImportHeader(address, content)
-                || string.IsNullOrWhiteSpace(address)
-                || string.IsNullOrWhiteSpace(content))
-            {
-                continue;
-            }
-
-            yield return new AlarmAddressImportRow(address, content);
-        }
-    }
-
     /// <summary>
     /// Normalizes PLC alarm addresses pasted from PLC engineering sheets.
     /// </summary>
     private static string NormalizeAlarmAddress(string address)
     {
-        var normalized = address.Trim();
-        return TryConvertDbnBitAddress(normalized, out var converted)
-            ? converted
-            : normalized;
-    }
-
-    /// <summary>
-    /// Converts DBnBit-900080 style engineering addresses to Siemens DB9.8.0 format.
-    /// </summary>
-    private static bool TryConvertDbnBitAddress(string address, out string converted)
-    {
-        const string prefix = "DBnBit-";
-        converted = string.Empty;
-
-        if (!address.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        var digits = address[prefix.Length..].Trim();
-        if (digits.Length < 6 || digits.Any(character => character < '0' || character > '9'))
-        {
-            return false;
-        }
-
-        var dbText = digits[..^5];
-        var byteText = digits.Substring(digits.Length - 5, 4);
-        var bitText = digits[^1..];
-        if (!int.TryParse(dbText, NumberStyles.None, CultureInfo.InvariantCulture, out var dbNumber)
-            || !int.TryParse(byteText, NumberStyles.None, CultureInfo.InvariantCulture, out var byteOffset)
-            || !int.TryParse(bitText, NumberStyles.None, CultureInfo.InvariantCulture, out var bitOffset)
-            || dbNumber <= 0
-            || bitOffset is < 0 or > 7)
-        {
-            return false;
-        }
-
-        converted = $"DB{dbNumber}.{byteOffset}.{bitOffset}";
-        return true;
-    }
-
-    private static bool IsAlarmImportHeader(string address, string content)
-    {
-        return address.Contains("地址", StringComparison.OrdinalIgnoreCase)
-            && (content.Contains("内容", StringComparison.OrdinalIgnoreCase)
-                || content.Contains("报警", StringComparison.OrdinalIgnoreCase));
+        return AlarmAddressImportRules.NormalizeAddress(address);
     }
 
     private void AddScheme_Click(object? sender, EventArgs e)
@@ -2763,8 +2735,6 @@ public partial class AddressManageView : BaseView
     private sealed record ProductSchemePreviewItem(int Sort, DimTestItem Item, BizSchemeDetail Detail);
 
     private sealed record SchemeMesField(string SchemeId, string MesFieldName);
-
-    private sealed record AlarmAddressImportRow(string Address, string Content);
 
     private sealed record SchemeDetailTreeNodeTag(int ItemId, SchemeDetailValueRole? Role);
 

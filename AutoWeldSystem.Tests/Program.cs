@@ -36,6 +36,7 @@ var tests = new (string Name, Action Run)[]
     ("PLC string numeric formatter keeps non numeric text", PlcStringNumericFormatterKeepsNonNumericText),
     ("PLC debug write rules parse bool aliases", PlcDebugWriteRulesParseBoolAliases),
     ("PLC debug write rules normalize unsupported data type", PlcDebugWriteRulesNormalizeUnsupportedDataType),
+    ("Alarm address import rules parse engineering document rows", AlarmAddressImportRulesParseEngineeringDocumentRows),
     ("Pre-weld NG is treated as failed product result", PreWeldNgIsTreatedAsFailedProductResult),
     ("Center device key uses DeviceId only", CenterDeviceKeyUsesDeviceIdOnly),
     ("Center client online uses heartbeat freshness", CenterClientOnlineUsesHeartbeatFreshness),
@@ -62,6 +63,7 @@ var tests = new (string Name, Action Run)[]
     ("MES device status rules format status identity", MesDeviceStatusRulesFormatStatusIdentity),
     ("MES device status rules format station remarks", MesDeviceStatusRulesFormatStationRemarks),
     ("Log timestamp display rules switch date visibility", LogTimestampDisplayRulesSwitchDateVisibility),
+    ("Antd table selection helper maps selected indexes", AntdTableSelectionHelperMapsSelectedIndexes),
     ("Device API status query returns current MES status", DeviceApiStatusQueryReturnsCurrentMesStatus),
     ("Device API status query rejects mismatched device id", DeviceApiStatusQueryRejectsMismatchedDeviceId),
     ("Device API set device id saves local settings as synced", DeviceApiSetDeviceIdSavesLocalSettingsAsSynced),
@@ -326,6 +328,36 @@ static void PlcDebugWriteRulesNormalizeUnsupportedDataType()
     AssertEqual(AppConstants.PlcDataTypes.Bool, PlcDebugWriteRules.NormalizeDataType("Bool"), "已支持类型应保持不变。");
     AssertEqual(AppConstants.PlcDataTypes.Int16, PlcDebugWriteRules.NormalizeDataType("word"), "未知类型应回退到 Int16。");
     AssertEqual(AppConstants.PlcDataTypes.Int16, PlcDebugWriteRules.NormalizeDataType(null), "空类型应回退到 Int16。");
+}
+
+static void AlarmAddressImportRulesParseEngineeringDocumentRows()
+{
+    var text = """
+        序号	变量名	地址	报警内容	备注
+        1	左夹紧报警	DBnBit-900080	左夹紧气缸，未到位	停机
+        2	右夹紧报警	DB9.DBX9.1	右夹紧气缸未到位
+        3,安全门报警,DB9.10.2,安全门打开,禁止启动
+        4,DB9.11.3,"真空异常,请检查气路"
+        5	安全光栅触发	DBnBit-900087
+        6	DBnBit-1100113	左安全光栅被挡住
+        7	DBnBit-1100113	右安全光栅被挡住
+        """;
+
+    var rows = AlarmAddressImportRules.ParseClipboard(text);
+
+    AssertEqual(7, rows.Count, "工程文档中的每一个报警地址都应被解析。");
+    AssertEqual("DB9.8.0", rows[0].Address, "DBnBit 工程地址应转换为 PLC 可读地址。");
+    AssertEqual("左夹紧气缸，未到位", rows[0].Content, "存在表头时应使用报警内容列，不应混入备注列。");
+    AssertEqual("DB9.9.1", rows[1].Address, "DBx.DBXy.z 地址应规范为 DBx.y.z。");
+    AssertEqual("右夹紧气缸未到位", rows[1].Content, "地址前存在序号和变量名时不应漏导。");
+    AssertEqual("安全门打开", rows[2].Content, "存在内容表头时应只读取报警内容列，不能混入备注列。");
+    AssertEqual("真空异常,请检查气路", rows[3].Content, "CSV 引号内的逗号应保留在同一个内容单元格。");
+    AssertEqual("安全光栅触发", rows[4].Content, "地址在最后一列时应使用地址前最近的有效文本作为内容。");
+    AssertEqual(1, rows[5].StationNo, "左工位报警应导入为工位 1，避免与右工位同地址时互相覆盖。");
+    AssertEqual(2, rows[6].StationNo, "右工位报警应导入为工位 2，避免与左工位同地址时互相覆盖。");
+
+    var noHeaderRows = AlarmAddressImportRules.ParseClipboard("3,安全门报警,DB9.10.2,安全门打开,禁止启动");
+    AssertEqual("安全门打开，禁止启动", noHeaderRows[0].Content, "无表头逗号文本中，地址后的多段内容应合并为完整报警内容。");
 }
 
 static void PreWeldNgIsTreatedAsFailedProductResult()
@@ -853,6 +885,35 @@ static void LogTimestampDisplayRulesSwitchDateVisibility()
 
     AssertEqual("09:08:07.123", LogTimestampDisplayRules.Format(value, showDate: false), "默认日志表格只显示当天时间。");
     AssertEqual("2026-07-04 09:08:07.123", LogTimestampDisplayRules.Format(value, showDate: true), "勾选显示日期后必须显示完整年月日。");
+}
+
+static void AntdTableSelectionHelperMapsSelectedIndexes()
+{
+    var helperCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Infrastructure", "AntdTableSelectionHelper.cs"),
+        Encoding.UTF8);
+    var addressViewCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "AddressManageView.cs"),
+        Encoding.UTF8);
+
+    AssertTrue(
+        helperCode.Contains("GetSelectedRowsFromIndexes", StringComparison.Ordinal),
+        "AntdUI Ctrl+A 可能只写入 SelectedIndexs，选择 helper 必须提供索引兜底读取路径。");
+    AssertTrue(
+        helperCode.Contains("table.SelectedIndexs", StringComparison.Ordinal)
+            && helperCode.Contains("table.DataSource", StringComparison.Ordinal),
+        "索引兜底应从 table.SelectedIndexs 映射到当前 table.DataSource 行对象。");
+    AssertTrue(
+        addressViewCode.Contains("AntdTableSelectionHelper.EnableMultiRowSelection(tableAlarmAddresses);", StringComparison.Ordinal),
+        "报警地址表必须启用 AntdUI 多行选择。");
+    AssertTrue(
+        addressViewCode.Contains("MultiSelectTable_KeyDown", StringComparison.Ordinal)
+            && addressViewCode.Contains("table.SetSelected(row, true)", StringComparison.Ordinal),
+        "AntdUI 多选表应统一处理 Ctrl+A，确保可见行被真实选中。");
+    AssertTrue(
+        addressViewCode.Contains("GetSelectedAlarmRows()", StringComparison.Ordinal)
+            && addressViewCode.Contains("DeleteAlarmAddress_Click", StringComparison.Ordinal),
+        "报警地址删除按钮必须通过统一选择读取方法支持多行删除。");
 }
 
 static void DeviceApiStatusQueryReturnsCurrentMesStatus()
@@ -2190,6 +2251,23 @@ static AppSettings BuildCustomMesRouteSettings()
         MesDeviceRoute = "mes/device-custom",
         MesDeviceStatusRoute = "mes/device-status-custom"
     };
+}
+
+static string GetRepoFilePath(params string[] segments)
+{
+    var directory = new DirectoryInfo(Environment.CurrentDirectory);
+    while (directory is not null)
+    {
+        var candidate = Path.Combine(new[] { directory.FullName }.Concat(segments).ToArray());
+        if (File.Exists(candidate))
+        {
+            return candidate;
+        }
+
+        directory = directory.Parent;
+    }
+
+    throw new FileNotFoundException($"Cannot locate repository file: {string.Join("/", segments)}");
 }
 
 static void AssertTrue(bool condition, string message)
