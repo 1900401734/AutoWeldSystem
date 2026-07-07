@@ -939,9 +939,6 @@
   <data name="permission.button.monitor.finish_report" xml:space="preserve">
     <value>Finish Report</value>
   </data>
-  <data name="permission.button.monitor.get_work_order" xml:space="preserve">
-    <value>Query</value>
-  </data>
   <data name="permission.button.monitor.edit_work_order" xml:space="preserve">
     <value>Edit Work Order</value>
   </data>

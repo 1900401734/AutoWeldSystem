@@ -939,9 +939,6 @@
   <data name="permission.button.monitor.finish_report" xml:space="preserve">
     <value>完工上报</value>
   </data>
-  <data name="permission.button.monitor.get_work_order" xml:space="preserve">
-    <value>查询</value>
-  </data>
   <data name="permission.button.monitor.edit_work_order" xml:space="preserve">
     <value>编辑工单</value>
   </data>

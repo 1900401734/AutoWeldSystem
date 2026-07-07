@@ -39,6 +39,7 @@ public partial class MonitorView : BaseView
     private const int RuntimeSummaryMaxLength = 56;
     private const int PlcStatusToolTipRefreshIntervalMs = 500;
     private const int PlcStatusToolTipHoverPollIntervalMs = 100;
+    private const int ManualWorkOrderQueryDebounceMs = 2000;
     private const int PlcStatusToolTipMaxWidth = 520;
     private const int PlcStatusHistoryLimit = 10;
     private const int WmSetRedraw = 0x000B;
@@ -69,6 +70,7 @@ public partial class MonitorView : BaseView
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 1000 };
     private readonly System.Windows.Forms.Timer _realtimePreviewPaintTimer = new() { Interval = RealtimePreviewPaintIntervalMs };
     private readonly System.Windows.Forms.Timer _plcStatusToolTipTimer = new() { Interval = PlcStatusToolTipHoverPollIntervalMs };
+    private readonly System.Windows.Forms.Timer _manualWorkOrderQueryTimer = new() { Interval = ManualWorkOrderQueryDebounceMs };
 
     #endregion
 
@@ -121,7 +123,9 @@ public partial class MonitorView : BaseView
     private bool _syncingProcessSelection;
     private bool _syncingOfflineProgramSelection;
     private bool _syncingOfflineInputs;
+    private bool _syncingWorkOrderInput;
     private bool _offlineWorkOrderEditedByUser;
+    private bool _manualWorkOrderEditedByUser;
     private bool _dualStationEnabled;
     private bool _adjustingTitleFont;
     private Font? _titleFont;
@@ -457,12 +461,10 @@ public partial class MonitorView : BaseView
     {
         var canOperate = !_stationViewReadOnly;
 
-        btnGetWO.Visible = canOperate;
         btnLocalWorkOrder.Visible = canOperate;
         btnEditWO.Visible = canOperate;
         btnOnlineReport.Visible = canOperate;
 
-        btnGetWO.Enabled = canOperate;
         btnLocalWorkOrder.Enabled = canOperate;
         btnEditWO.Enabled = canOperate;
         btnOnlineReport.Enabled = canOperate;
@@ -695,17 +697,18 @@ public partial class MonitorView : BaseView
         Load += MonitorView_Load;
         GlobalContext.SessionChanged += GlobalContext_SessionChanged;
 
-        btnGetWO.Click += GetWorkOrder_Click;
         btnLocalWorkOrder.Click += LocalWorkOrder_Click;
         btnEditWO.Click += EditWorkOrder_Click;
         btnOnlineReport.Click += OnlineReport_Click;
         btnClearErrorTips.Click += (_, _) => ClearRuntimeError();
-        inputSN.TextChanged += OfflineWorkOrderInput_TextChanged;
+        inputSN.TextChanged += WorkOrderInput_TextChanged;
+        inputSN.KeyDown += WorkOrderInput_KeyDown;
         selectProgramName.SelectedIndexChanged += ProgramNameSelection_SelectedIndexChanged;
 
         _timer.Tick += Timer_Tick;
         _realtimePreviewPaintTimer.Tick += RealtimePreviewPaintTimer_Tick;
         _plcStatusToolTipTimer.Tick += PlcStatusToolTipTimer_Tick;
+        _manualWorkOrderQueryTimer.Tick += ManualWorkOrderQueryTimer_Tick;
 
         LeftTopLayout.SizeChanged += TitleLayout_Changed;
         lblTitle.SizeChanged += TitleLayout_Changed;
@@ -773,27 +776,6 @@ public partial class MonitorView : BaseView
     #endregion
 
     #region 按钮事件
-
-    /// <summary>
-    /// 处理获取工单按钮点击事件。
-    /// </summary>
-    /// <param name="sender">事件发送者。</param>
-    /// <param name="e">事件参数。</param>
-    private async void GetWorkOrder_Click(object? sender, EventArgs e)
-    {
-        if (IsReadOnlyOperationBlocked("获取工单")) return;
-
-        SelectStationForOperation(CurrentStationNo);
-
-        // 有未完工任务时禁止重新获取工单，避免同一工位出现两条并行任务。
-        if (_weldTaskService.RestoreUnfinishedTask(CurrentStationNo) is not null)
-        {
-            ShowWarning(TextKeys.Monitor.Message.StartBlockedByUnfinishedTask);
-            return;
-        }
-
-        await PrepareWorkOrderAsync(forceManualInput: false);
-    }
 
     /// <summary>
     /// 处理微调工单按钮点击事件。
@@ -1139,7 +1121,8 @@ public partial class MonitorView : BaseView
         _productRealtimePreviewService.SnapshotChanged -= ProductRealtimePreviewService_SnapshotChanged;
         _productionLogService.LogWritten -= ProductionLogService_LogWritten;
         _uploadTaskService.TaskStatusChanged -= UploadTaskService_TaskStatusChanged;
-        inputSN.TextChanged -= OfflineWorkOrderInput_TextChanged;
+        inputSN.TextChanged -= WorkOrderInput_TextChanged;
+        inputSN.KeyDown -= WorkOrderInput_KeyDown;
         selectProgramName.SelectedIndexChanged -= ProgramNameSelection_SelectedIndexChanged;
         tableHistory1.CellClick -= ProductHistoryTable_CellClick;
         tableHistory2.CellClick -= ProductHistoryTable_CellClick;
@@ -1152,9 +1135,11 @@ public partial class MonitorView : BaseView
         _timer.Stop();
         _realtimePreviewPaintTimer.Stop();
         _plcStatusToolTipTimer.Stop();
+        _manualWorkOrderQueryTimer.Stop();
         _timer.Dispose();
         _realtimePreviewPaintTimer.Dispose();
         _plcStatusToolTipTimer.Dispose();
+        _manualWorkOrderQueryTimer.Dispose();
         DisposePlcStatusToolTipPopup();
         _titleFont?.Dispose();
         _runtimeMessageFont?.Dispose();
@@ -1237,21 +1222,66 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// 记录离线工单号是否已被操作员手动修改，避免刷新时被 PLC 扫码值覆盖。
+    /// 处理工单号输入变化；离线时只记录人工修改，在线空闲时自动排队查询 MES 工单。
     /// </summary>
     /// <param name="sender">事件发送者。</param>
     /// <param name="e">事件参数。</param>
-    private void OfflineWorkOrderInput_TextChanged(object? sender, EventArgs e)
+    private void WorkOrderInput_TextChanged(object? sender, EventArgs e)
     {
-        if (_syncingOfflineInputs)
+        if (_syncingOfflineInputs || _syncingWorkOrderInput)
         {
             return;
         }
 
-        if (IsOfflineInputEditable(GetCurrentStationState()))
+        var state = GetCurrentStationState();
+        if (IsOfflineInputEditable(state))
         {
             _offlineWorkOrderEditedByUser = true;
+            return;
         }
+
+        if (!IsManualOnlineWorkOrderInputEditable(state))
+        {
+            return;
+        }
+
+        var workId = inputSN.Text?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(workId))
+        {
+            _manualWorkOrderEditedByUser = false;
+            _manualWorkOrderQueryTimer.Stop();
+            return;
+        }
+
+        _manualWorkOrderEditedByUser = true;
+        QueueManualWorkOrderQuery();
+    }
+
+    /// <summary>
+    /// 按回车时立即查询手动输入的工单，适配扫描枪和熟练操作员。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">键盘事件参数。</param>
+    private void WorkOrderInput_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode != Keys.Enter)
+        {
+            return;
+        }
+
+        e.SuppressKeyPress = true;
+        TriggerManualWorkOrderQuery();
+    }
+
+    /// <summary>
+    /// 手动输入停顿达到防抖时间后自动查询工单。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
+    private void ManualWorkOrderQueryTimer_Tick(object? sender, EventArgs e)
+    {
+        _manualWorkOrderQueryTimer.Stop();
+        TriggerManualWorkOrderQuery();
     }
 
     /// <summary>
@@ -2436,22 +2466,6 @@ public partial class MonitorView : BaseView
     #region 工单准备流程
 
     /// <summary>
-    /// 异步准备工单信息，必要时提示人工输入工单号。
-    /// </summary>
-    /// <param name="forceManualInput">是否强制人工输入工单号。</param>
-    /// <returns>异步操作成功返回 true，否则返回 false。</returns>
-    private async Task<bool> PrepareWorkOrderAsync(bool forceManualInput)
-    {
-        var stationNo = CurrentStationNo;
-        if (!TryResolveWorkId(forceManualInput, out var workId))
-        {
-            return false;
-        }
-
-        return await LoadWorkOrderInfoAsync(workId, stationNo, showDialogOnFailure: true);
-    }
-
-    /// <summary>
     /// 按指定工单号加载 MES 工单信息，并绑定默认工序。
     /// </summary>
     /// <param name="workId">工单号。</param>
@@ -2483,6 +2497,12 @@ public partial class MonitorView : BaseView
 
             // 获取工单阶段只绑定默认工序，程序下载推迟到开工前，减少无效 MES 调用。
             _weldTaskService.SelectProcess(defaultProcess, stationNo);
+            if (stationNo == CurrentStationNo)
+            {
+                _manualWorkOrderEditedByUser = false;
+                _manualWorkOrderQueryTimer.Stop();
+            }
+
             RefreshProductionRuntimeState();
             ClearMesOperatorInfo();
             SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.WorkOrderLoaded);
@@ -2575,54 +2595,6 @@ public partial class MonitorView : BaseView
         return isReady;
     }
 
-    /// <summary>
-    /// 尝试从 PLC 或人工输入中解析工单号。
-    /// </summary>
-    /// <param name="forceManualInput">是否强制人工输入工单号。</param>
-    /// <param name="workId">输出解析到的工单号。</param>
-    /// <returns>条件满足返回 true，否则返回 false。</returns>
-    private bool TryResolveWorkId(bool forceManualInput, out string workId)
-    {
-        var stationSnapshot = GetCurrentWorkIdSnapshot();
-        var plcWorkId = stationSnapshot.WorkId.Trim();
-        if (!forceManualInput
-            && stationSnapshot.IsSuccess
-            && !string.IsNullOrWhiteSpace(plcWorkId))
-        {
-            workId = plcWorkId;
-            return true;
-        }
-
-        var screenWorkId = inputSN.Text?.Trim() ?? string.Empty;
-        if (!string.IsNullOrWhiteSpace(screenWorkId))
-        {
-            workId = screenWorkId;
-            return true;
-        }
-
-        if (!PromptInputForm.TryShow(
-                this,
-                _localizer.GetString(TextKeys.Monitor.Dialog.ScanWorkIdTitle),
-                _localizer.GetString(TextKeys.Monitor.Dialog.ScanWorkIdPrompt),
-                !string.IsNullOrWhiteSpace(plcWorkId) ? plcWorkId : screenWorkId,
-                _localizer.GetString(TextKeys.Common.ActionApply),
-                _localizer.GetString(TextKeys.Common.ActionCancel),
-                out var input))
-        {
-            workId = string.Empty;
-            return false;
-        }
-
-        workId = input.Trim();
-        if (!string.IsNullOrWhiteSpace(workId))
-        {
-            return true;
-        }
-
-        ShowWarning(TextKeys.Monitor.Message.WorkIdRequired);
-        return false;
-    }
-
     #endregion
 
     #region 工位运行状态绑定
@@ -2638,6 +2610,8 @@ public partial class MonitorView : BaseView
         {
             _viewStationNo = normalizedStationNo;
             _offlineWorkOrderEditedByUser = false;
+            _manualWorkOrderEditedByUser = false;
+            _manualWorkOrderQueryTimer.Stop();
             _weldTaskService.RestoreUnfinishedTask(normalizedStationNo);
         }
 
@@ -2687,11 +2661,24 @@ public partial class MonitorView : BaseView
             return;
         }
 
+        var canEditOnlineWorkOrder = IsManualOnlineWorkOrderInputEditable(state);
         ApplyOfflineInputReadOnly(readOnly: true);
+        inputSN.ReadOnly = !canEditOnlineWorkOrder;
         _offlineWorkOrderEditedByUser = false;
-        inputSN.Text = activeTask is not null
+        if (!canEditOnlineWorkOrder)
+        {
+            _manualWorkOrderEditedByUser = false;
+            _manualWorkOrderQueryTimer.Stop();
+        }
+
+        var workOrderText = activeTask is not null
             ? activeTask.SN
             : !string.IsNullOrWhiteSpace(liveWorkId) ? liveWorkId : workOrder?.SN ?? string.Empty;
+        if (!_manualWorkOrderEditedByUser || !canEditOnlineWorkOrder)
+        {
+            SetWorkOrderInputText(workOrderText);
+        }
+
         inputProdNum.Text = workOrder?.ProdNum ?? currentIdentity?.ProductNum ?? string.Empty;
         inputBatch.Text = workOrder?.Batch ?? string.Empty;
         inputProductName.Text = workOrder?.ProductName ?? string.Empty;
@@ -2721,6 +2708,19 @@ public partial class MonitorView : BaseView
         return !_stationViewReadOnly
             && !_mesConnectionMonitorService.Current.IsConnected
             && !IsRunningWeldTask(state.ActiveTask);
+    }
+
+    /// <summary>
+    /// 判断在线空闲时是否允许直接在工单号输入框录入并自动查询 MES 工单。
+    /// </summary>
+    /// <param name="state">当前工位运行态。</param>
+    /// <returns>允许在线手输返回 true；否则返回 false。</returns>
+    private bool IsManualOnlineWorkOrderInputEditable(ProductionStationRuntimeState state)
+    {
+        return !_stationViewReadOnly
+            && _mesConnectionMonitorService.Current.IsConnected
+            && !IsRunningWeldTask(state.ActiveTask)
+            && _weldTaskService.GetUnfinishedTask(CurrentStationNo) is null;
     }
 
     /// <summary>
@@ -2773,6 +2773,28 @@ public partial class MonitorView : BaseView
         inputProdNum.ReadOnly = true;
         inputProdModel.ReadOnly = true;
         selectRecipeCode.ReadOnly = true;
+    }
+
+    /// <summary>
+    /// 由程序同步工单号输入框文本，避免触发手动输入自动查询。
+    /// </summary>
+    /// <param name="workId">需要显示的工单号。</param>
+    private void SetWorkOrderInputText(string workId)
+    {
+        if (string.Equals(inputSN.Text, workId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _syncingWorkOrderInput = true;
+        try
+        {
+            inputSN.Text = workId;
+        }
+        finally
+        {
+            _syncingWorkOrderInput = false;
+        }
     }
 
     /// <summary>
@@ -3056,6 +3078,42 @@ public partial class MonitorView : BaseView
         {
             SetRuntimeError(TextKeys.Monitor.RuntimeError.WorkIdReadFailed);
         }
+    }
+
+    /// <summary>
+    /// 重启手动工单查询防抖计时，避免操作员输入过程中频繁请求 MES。
+    /// </summary>
+    private void QueueManualWorkOrderQuery()
+    {
+        _manualWorkOrderQueryTimer.Stop();
+        _manualWorkOrderQueryTimer.Start();
+    }
+
+    /// <summary>
+    /// 立即按当前输入框内容触发工单自动查询。
+    /// </summary>
+    private void TriggerManualWorkOrderQuery()
+    {
+        _manualWorkOrderQueryTimer.Stop();
+
+        var state = GetCurrentStationState();
+        if (!IsManualOnlineWorkOrderInputEditable(state))
+        {
+            return;
+        }
+
+        var workId = inputSN.Text?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(workId))
+        {
+            _manualWorkOrderEditedByUser = false;
+            return;
+        }
+
+        var stationNo = CurrentStationNo;
+        QueueAutoWorkOrderQuery(new PlcWorkIdSnapshot(true, workId, DateTime.Now, string.Empty)
+        {
+            StationNo = stationNo
+        });
     }
 
     /// <summary>
@@ -3629,8 +3687,6 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        var isOnline = snapshot.IsConnected;
-        btnGetWO.Enabled = isOnline;
         ApplyReportButtonState();
     }
 

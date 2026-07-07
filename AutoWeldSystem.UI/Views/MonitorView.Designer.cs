@@ -122,7 +122,6 @@ namespace AutoWeldSystem.UI.Views
             lblWorkOrder = new AntdUI.Label();
             inputSN = new AntdUI.Input();
             btnEditWO = new AntdUI.Button();
-            btnGetWO = new AntdUI.Button();
             tlpProductModel = new TableLayoutPanel();
             lblProdModel = new AntdUI.Label();
             inputProdModel = new AntdUI.Input();
@@ -1377,15 +1376,13 @@ namespace AutoWeldSystem.UI.Views
             // 
             // tlpStationInfo
             // 
-            tlpStationInfo.ColumnCount = 4;
+            tlpStationInfo.ColumnCount = 3;
             tlpStationInfo.ColumnStyles.Add(new ColumnStyle());
             tlpStationInfo.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             tlpStationInfo.ColumnStyles.Add(new ColumnStyle());
-            tlpStationInfo.ColumnStyles.Add(new ColumnStyle());
             tlpStationInfo.Controls.Add(lblWorkOrder, 0, 0);
             tlpStationInfo.Controls.Add(inputSN, 1, 0);
-            tlpStationInfo.Controls.Add(btnEditWO, 3, 0);
-            tlpStationInfo.Controls.Add(btnGetWO, 2, 0);
+            tlpStationInfo.Controls.Add(btnEditWO, 2, 0);
             tlpStationInfo.Dock = DockStyle.Fill;
             tlpStationInfo.Location = new Point(0, 72);
             tlpStationInfo.Margin = new Padding(0);
@@ -1416,7 +1413,7 @@ namespace AutoWeldSystem.UI.Views
             inputSN.Margin = new Padding(0);
             inputSN.Name = "inputSN";
             inputSN.ReadOnly = true;
-            inputSN.Size = new Size(180, 36);
+            inputSN.Size = new Size(264, 36);
             inputSN.TabIndex = 4;
             // 
             // btnEditWO
@@ -1426,7 +1423,6 @@ namespace AutoWeldSystem.UI.Views
             btnEditWO.BorderWidth = 1F;
             btnEditWO.Dock = DockStyle.Left;
             btnEditWO.IconSvg = "EditOutlined";
-            btnEditWO.JoinMode = AntdUI.TJoinMode.Right;
             btnEditWO.Location = new Point(317, 0);
             btnEditWO.Margin = new Padding(0);
             btnEditWO.Name = "btnEditWO";
@@ -1435,21 +1431,6 @@ namespace AutoWeldSystem.UI.Views
             btnEditWO.TabIndex = 3;
             btnEditWO.Tag = "perm:button.monitor.edit-work-order:enabled";
             btnEditWO.Text = "微调";
-            // 
-            // btnGetWO
-            // 
-            btnGetWO.AutoSizeMode = AntdUI.TAutoSize.Width;
-            btnGetWO.BorderWidth = 1F;
-            btnGetWO.Dock = DockStyle.Right;
-            btnGetWO.IconSvg = "CloudDownloadOutlined";
-            btnGetWO.JoinMode = AntdUI.TJoinMode.Left;
-            btnGetWO.Location = new Point(233, 0);
-            btnGetWO.Margin = new Padding(0);
-            btnGetWO.Name = "btnGetWO";
-            btnGetWO.Size = new Size(84, 36);
-            btnGetWO.TabIndex = 4;
-            btnGetWO.Tag = "perm:button.monitor.get-work-order:enabled";
-            btnGetWO.Text = "查询";
             // 
             // tlpProductModel
             // 
@@ -1956,7 +1937,6 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Tag tagLiveResult1;
         private AntdUI.Label lblLiveTouchCount;
         private AntdUI.Label lblLiveTouchNo1;
-        private AntdUI.Button btnGetWO;
         private TableLayoutPanel tlpUserInfo1;
         private AntdUI.Input MesUserNumber;
         private AntdUI.Label lblUserNumber;

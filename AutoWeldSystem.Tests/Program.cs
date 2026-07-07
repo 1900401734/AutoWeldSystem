@@ -8,6 +8,7 @@ using AutoWeldSystem.Core.DTOs.Mes.Request;
 using AutoWeldSystem.Core.DTOs.Mes.Response;
 using AutoWeldSystem.Core.DTOs.Upload;
 using AutoWeldSystem.Core.Plc;
+using AutoWeldSystem.Core.Security;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.MES;
@@ -116,6 +117,8 @@ var tests = new (string Name, Action Run)[]
     ("Monitor report button rules follow MES and task state", MonitorReportButtonRulesFollowMesAndTaskState),
     ("Monitor view uses one online report button", MonitorViewUsesOneOnlineReportButton),
     ("Monitor runtime tips use localized summaries", MonitorRuntimeTipsUseLocalizedSummaries),
+    ("Monitor view auto loads work order without query button", MonitorViewAutoLoadsWorkOrderWithoutQueryButton),
+    ("Permission catalog omits get work order button", PermissionCatalogOmitsGetWorkOrderButton),
     ("Program content rows come from dictionary items", ProgramContentRowsComeFromDictionaryItems),
     ("Program content JSON keeps only rows with standard values", ProgramContentJsonKeepsOnlyRowsWithStandardValues),
     ("Program content JSON merges existing values and preserves unknown keys", ProgramContentJsonMergesExistingValuesAndPreservesUnknownKeys),
@@ -2231,6 +2234,37 @@ static void MonitorRuntimeTipsUseLocalizedSummaries()
     AssertTrue(viewCode.Contains("SetRuntimeErrorWithSource(TextKeys.Monitor.RuntimeError.DeviceAlarm", StringComparison.Ordinal), "设备报警摘要必须保存带来源的本地化资源键。");
 }
 
+static void MonitorViewAutoLoadsWorkOrderWithoutQueryButton()
+{
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.Designer.cs"), Encoding.UTF8);
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+
+    AssertFalse(designerCode.Contains("btnGetWO", StringComparison.Ordinal), "监控页 Designer 不应再声明获取工单按钮。");
+    AssertFalse(designerCode.Contains("button.monitor.get-work-order", StringComparison.Ordinal), "监控页 Designer 不应再绑定获取工单按钮权限。");
+    AssertFalse(viewCode.Contains("GetWorkOrder_Click", StringComparison.Ordinal), "监控页不应再保留按钮驱动的获取工单入口。");
+    AssertFalse(viewCode.Contains("PrepareWorkOrderAsync", StringComparison.Ordinal), "监控页不应再保留按钮驱动的准备工单流程。");
+    AssertTrue(viewCode.Contains("inputSN.KeyDown += WorkOrderInput_KeyDown;", StringComparison.Ordinal), "工单号输入框必须支持回车立即自动查询。");
+    AssertTrue(viewCode.Contains("_manualWorkOrderQueryTimer", StringComparison.Ordinal), "工单号手动输入必须使用防抖定时器。");
+    AssertTrue(viewCode.Contains("TriggerManualWorkOrderQuery();", StringComparison.Ordinal), "工单号手动输入必须进入手动查询入口。");
+    AssertTrue(viewCode.Contains("AutoLoadWorkOrderInfoAsync(stationNo, workId)", StringComparison.Ordinal), "PLC 和手动输入应复用同一套自动加载工单流程。");
+}
+
+static void PermissionCatalogOmitsGetWorkOrderButton()
+{
+    var permissionCodes = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Constants", "PermissionCodes.cs"), Encoding.UTF8);
+    var mapperCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Security", "PermissionTextKeyMapper.cs"), Encoding.UTF8);
+    var textKeysCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Constants", "TextKeys.cs"), Encoding.UTF8);
+    var zhResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.resx"), Encoding.UTF8);
+    var enResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.en.resx"), Encoding.UTF8);
+
+    AssertFalse(PermissionCatalog.All.Any(permission => permission.Code == "button.monitor.get-work-order"), "权限目录不应再暴露已移除的获取工单按钮权限。");
+    AssertFalse(permissionCodes.Contains("button.monitor.get-work-order", StringComparison.Ordinal), "权限常量不应再包含获取工单按钮权限码。");
+    AssertFalse(mapperCode.Contains("ButtonMonitorGetWorkOrder", StringComparison.Ordinal), "权限文本映射不应再引用获取工单按钮资源键。");
+    AssertFalse(textKeysCode.Contains("permission.button.monitor.get_work_order", StringComparison.Ordinal), "TextKeys 不应再声明获取工单按钮资源键。");
+    AssertFalse(zhResources.Contains("permission.button.monitor.get_work_order", StringComparison.Ordinal), "中文资源不应再包含获取工单按钮资源键。");
+    AssertFalse(enResources.Contains("permission.button.monitor.get_work_order", StringComparison.Ordinal), "英文资源不应再包含获取工单按钮资源键。");
+}
+
 static void ProgramContentRowsComeFromDictionaryItems()
 {
     var rows = ProgramContentJsonRules.BuildRows(
@@ -2337,6 +2371,36 @@ static void WorkOrderAutoQuerySkipsDuplicatesAndRunningTasks()
             lastRequestedWorkId: null,
             queryInProgress: false),
         "运行中任务必须锁定当前工单，不允许扫码自动覆盖。");
+
+    AssertTrue(
+        WorkOrderAutoQueryRules.ShouldAutoQuery(
+            mesConnected: true,
+            hasRunningTask: false,
+            workIdReadSuccess: true,
+            workId: "  MANUAL-1  ",
+            lastRequestedWorkId: null,
+            queryInProgress: false),
+        "手动输入的工单号也应复用自动查询规则，并在查询前修剪空白。");
+
+    AssertFalse(
+        WorkOrderAutoQueryRules.ShouldAutoQuery(
+            mesConnected: true,
+            hasRunningTask: false,
+            workIdReadSuccess: true,
+            workId: "MANUAL-1",
+            lastRequestedWorkId: "manual-1",
+            queryInProgress: false),
+        "手动输入同一工单号时也不应重复自动查询。");
+
+    AssertFalse(
+        WorkOrderAutoQueryRules.ShouldAutoQuery(
+            mesConnected: true,
+            hasRunningTask: false,
+            workIdReadSuccess: true,
+            workId: "MANUAL-2",
+            lastRequestedWorkId: null,
+            queryInProgress: true),
+        "同一工位已有自动查询任务时，手动输入不应发起重复请求。");
 }
 
 static BizProgram BuildSyncedProgram()

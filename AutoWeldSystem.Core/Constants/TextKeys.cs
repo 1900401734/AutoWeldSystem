@@ -869,7 +869,6 @@ public static class TextKeys
         public const string PageAddressManage = "permission.page.address_manage";
         public const string ButtonMonitorStartReport = "permission.button.monitor.start_report";
         public const string ButtonMonitorFinishReport = "permission.button.monitor.finish_report";
-        public const string ButtonMonitorGetWorkOrder = "permission.button.monitor.get_work_order";
         public const string ButtonMonitorEditWorkOrder = "permission.button.monitor.edit_work_order";
         public const string ButtonMonitorLocalWorkOrder = "permission.button.monitor.local_work_order";
         public const string ButtonAuthSwitchUser = "permission.button.auth.switch_user";

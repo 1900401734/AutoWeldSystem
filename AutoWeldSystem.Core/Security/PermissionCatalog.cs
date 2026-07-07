@@ -18,7 +18,6 @@ public static class PermissionCatalog
 
         new(PermissionCodes.Buttons.Monitor.StartReport, "Start Report", PermissionType.Button, PermissionCodes.Pages.Monitor, 120),
         new(PermissionCodes.Buttons.Monitor.FinishReport, "Finish Report", PermissionType.Button, PermissionCodes.Pages.Monitor, 130),
-        new(PermissionCodes.Buttons.Monitor.GetWorkOrder, "Get Work Order", PermissionType.Button, PermissionCodes.Pages.Monitor, 140),
         new(PermissionCodes.Buttons.Monitor.EditWorkOrder, "Edit Work Order", PermissionType.Button, PermissionCodes.Pages.Monitor, 150),
         new(PermissionCodes.Buttons.Monitor.LocalWorkOrder, "Local Work Order", PermissionType.Button, PermissionCodes.Pages.Monitor, 160),
         new(PermissionCodes.Buttons.Auth.SwitchUser, "Switch User", PermissionType.Button, PermissionCodes.Pages.Monitor, 170),
