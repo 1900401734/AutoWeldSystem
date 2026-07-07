@@ -235,6 +235,7 @@ public partial class LogManageView : BaseView
         _deviceLifecycleLogService.LogWritten += DeviceLifecycleLogService_LogWritten;
         Disposed += (_, _) => _deviceLifecycleLogService.LogWritten -= DeviceLifecycleLogService_LogWritten;
 
+        btnOpenDeviceStatusFolder.Click += (_, _) => OpenDeviceStatusLogFolder();
         dtpDeviceStatusDate.ValueChanged += (_, _) => LoadDeviceStatusLogs();
         chkDeviceStatusShowDate.CheckedChanged += ShowLogDate_CheckedChanged;
         queryDeviceStatusLogs.QueryClick += (_, keyword) => HandleDeviceStatusQuery(keyword);
@@ -375,6 +376,7 @@ public partial class LogManageView : BaseView
         btnOpenProductionFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
         btnOpenExceptionFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
         btnOpenDeviceLifecycleFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
+        btnOpenDeviceStatusFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
         btnOpenExceptionSource.Text = _localizer.GetString(TextKeys.Log.ButtonOpenSource);
         btnCopyExceptionDetails.Text = _localizer.GetString(TextKeys.Log.ButtonCopyDetails);
         tabBasicInfo.Text = _localizer.GetString(TextKeys.Log.DetailBasicInfo);
@@ -1329,6 +1331,24 @@ public partial class LogManageView : BaseView
         try
         {
             var folder = _deviceLifecycleLogService.GetLogDirectory();
+            Directory.CreateDirectory(folder);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = folder,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex.Message);
+        }
+    }
+
+    private void OpenDeviceStatusLogFolder()
+    {
+        try
+        {
+            var folder = _deviceStatusService.GetLogDirectory();
             Directory.CreateDirectory(folder);
             Process.Start(new ProcessStartInfo
             {

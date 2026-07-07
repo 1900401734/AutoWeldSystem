@@ -8,6 +8,7 @@ using AutoWeldSystem.Core.Interfaces.MES;
 using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Core.Runtime;
 using AutoWeldSystem.Data;
+using AutoWeldSystem.Services.Log;
 
 namespace AutoWeldSystem.Services.Production;
 
@@ -52,6 +53,13 @@ public class DeviceStatusService : IDeviceStatusService
 
     public IReadOnlyList<BizDeviceStatusLog> GetLogs(DateTime? from = null, DateTime? to = null, int maxCount = 200)
     {
+        var localLogs = DeviceStatusLocalLogStore.Read(CurrentSettings, from, to, maxCount);
+        if (localLogs.Count > 0)
+        {
+            return localLogs;
+        }
+
+        // 旧版本只写数据库。没有本地 JSONL 文件时继续回退数据库，避免升级后旧日志不可见。
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -72,6 +80,11 @@ public class DeviceStatusService : IDeviceStatusService
                 .Take(Math.Clamp(maxCount, 1, 5000))
                 .ToList();
         }
+    }
+
+    public string GetLogDirectory()
+    {
+        return DeviceStatusLocalLogStore.GetLogDirectory(CurrentSettings);
     }
 
     public async Task<BizDeviceStatusLog> ChangeStatusAsync(
@@ -131,6 +144,7 @@ public class DeviceStatusService : IDeviceStatusService
             EnqueueDeviceStatusUpload(log);
         }
 
+        WriteLocalStatusLog(log);
         StatusChanged?.Invoke(this, log);
         return log;
     }
@@ -265,6 +279,12 @@ public class DeviceStatusService : IDeviceStatusService
             OccurredTime = DateTime.Now,
             ReportStatus = ProductionConstants.UploadStatuses.Skipped
         };
+    }
+
+    private void WriteLocalStatusLog(BizDeviceStatusLog log)
+    {
+        // 本地文件只是现场排查证据，写入失败不能影响状态切换、MES 上报或界面实时刷新。
+        _ = DeviceStatusLocalLogStore.TryAppend(log, CurrentSettings);
     }
 
     private static string NormalizeStatus(string deviceStatus)

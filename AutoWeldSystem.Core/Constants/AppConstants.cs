@@ -113,6 +113,7 @@ public static class AppConstants
         public const string ProductionFlow = "ProductionFlow";
         public const string ProgramException = "ProgramException";
         public const string DeviceLifecycle = "DeviceLifecycle";
+        public const string DeviceStatus = "DeviceStatus";
     }
 
     /// <summary>

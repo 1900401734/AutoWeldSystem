@@ -25,6 +25,11 @@ public interface IDeviceStatusService
     IReadOnlyList<BizDeviceStatusLog> GetLogs(DateTime? from = null, DateTime? to = null, int maxCount = 200);
 
     /// <summary>
+    /// 获取设备状态日志本地 JSONL 文件目录。
+    /// </summary>
+    string GetLogDirectory();
+
+    /// <summary>
     /// 切换设备状态，写入本地日志，并按需上报 MES。
     /// </summary>
     Task<BizDeviceStatusLog> ChangeStatusAsync(
