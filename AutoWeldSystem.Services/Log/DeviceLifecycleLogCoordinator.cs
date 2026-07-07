@@ -73,8 +73,9 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
             _plcProductionMonitorService.StatusChanged += PlcProductionMonitorService_StatusChanged;
         }
 
-        _logService.Write(DeviceLifecycleLogRules.CreateSoftwareStartedEntry(CurrentDeviceId, DateTime.Now));
-        RecordSoftwareStartedStatus();
+        var occurredTime = DateTime.Now;
+        _logService.Write(DeviceLifecycleLogRules.CreateSoftwareStartedEntry(CurrentDeviceId, occurredTime));
+        RecordSoftwareStartedStatus(occurredTime);
         RecordInitialConnectionSnapshots();
     }
 
@@ -95,14 +96,24 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
             _plcProductionMonitorService.StatusChanged -= PlcProductionMonitorService_StatusChanged;
         }
 
-        RecordSoftwareStoppedStatus();
+        var occurredTime = DateTime.Now;
+        try
+        {
+            _logService.Write(DeviceLifecycleLogRules.CreateSoftwareStoppedEntry(CurrentDeviceId, occurredTime));
+        }
+        catch
+        {
+            // 软件关闭状态上报比生命周期日志写入更关键，日志失败不能阻断停机状态上传。
+        }
+
+        RecordSoftwareStoppedStatus(occurredTime);
     }
 
     private string CurrentDeviceId => Volatile.Read(ref _currentSettings).DeviceId?.Trim() ?? string.Empty;
 
     private AppSettings CurrentSettings => Volatile.Read(ref _currentSettings);
 
-    private void RecordSoftwareStartedStatus()
+    private void RecordSoftwareStartedStatus(DateTime occurredTime)
     {
         _ = Task.Run(async () =>
         {
@@ -112,7 +123,9 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
                     ProductionConstants.MesDeviceStatuses.PoweredOn,
                     "Software started successfully.",
                     SourceApplication,
-                    stationNo: ProductionConstants.Stations.SharedStationNo);
+                    stationNo: ProductionConstants.Stations.SharedStationNo,
+                    occurredTime: occurredTime,
+                    forceWrite: true);
             }
             catch
             {
@@ -121,16 +134,19 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
         });
     }
 
-    private void RecordSoftwareStoppedStatus()
+    private void RecordSoftwareStoppedStatus(DateTime occurredTime)
     {
         try
         {
-            _deviceStatusService.ChangeStatusAsync(
+            _ = _deviceStatusService.ChangeStatusAsync(
                 ProductionConstants.MesDeviceStatuses.Stopped,
                 "Software is closing.",
                 SourceApplication,
-                reportToMes: false,
-                stationNo: ProductionConstants.Stations.SharedStationNo).GetAwaiter().GetResult();
+                reportToMes: true,
+                stationNo: ProductionConstants.Stations.SharedStationNo,
+                occurredTime: occurredTime,
+                forceWrite: true,
+                reportInBackground: true);
         }
         catch
         {

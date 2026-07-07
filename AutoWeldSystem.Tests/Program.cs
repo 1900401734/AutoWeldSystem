@@ -6,12 +6,15 @@ using AutoWeldSystem.Core.DTOs.CenterServer;
 using AutoWeldSystem.Core.DTOs.DeviceApi;
 using AutoWeldSystem.Core.DTOs.Mes.Request;
 using AutoWeldSystem.Core.DTOs.Mes.Response;
+using AutoWeldSystem.Core.DTOs.Plc;
 using AutoWeldSystem.Core.DTOs.Upload;
+using AutoWeldSystem.Core.Enums;
 using AutoWeldSystem.Core.Plc;
 using AutoWeldSystem.Core.Security;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.MES;
+using AutoWeldSystem.Core.Interfaces.PLC;
 using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Core.Runtime;
 using AutoWeldSystem.Core.ViewModels;
@@ -64,10 +67,13 @@ var tests = new (string Name, Action Run)[]
     ("MES device status rules use latest device id for report", MesDeviceStatusRulesUseLatestDeviceIdForReport),
     ("MES device status rules format status identity", MesDeviceStatusRulesFormatStatusIdentity),
     ("MES device status rules format station remarks", MesDeviceStatusRulesFormatStationRemarks),
+    ("MES device status duplicate suppression honors lifecycle force write", MesDeviceStatusDuplicateSuppressionHonorsLifecycleForceWrite),
     ("Log timestamp display rules switch date visibility", LogTimestampDisplayRulesSwitchDateVisibility),
     ("Antd table selection helper maps selected indexes", AntdTableSelectionHelperMapsSelectedIndexes),
     ("Device status local log store resolves directories", DeviceStatusLocalLogStoreResolvesDirectories),
     ("Device status local log store writes and reads jsonl", DeviceStatusLocalLogStoreWritesAndReadsJsonl),
+    ("Device status report keeps millisecond timestamp after MES upload", DeviceStatusReportKeepsMillisecondTimestampAfterMesUpload),
+    ("Device status local log store keeps latest state per log id", DeviceStatusLocalLogStoreKeepsLatestStatePerLogId),
     ("LogManageView device status tab exposes open folder button", LogManageViewDeviceStatusTabExposesOpenFolderButton),
     ("DataManageView static grids define bound columns", DataManageViewStaticGridsDefineBoundColumns),
     ("Device API status query returns current MES status", DeviceApiStatusQueryReturnsCurrentMesStatus),
@@ -101,6 +107,11 @@ var tests = new (string Name, Action Run)[]
     ("Weld task server time sync writes device lifecycle failure logs", WeldTaskServerTimeSyncWritesDeviceLifecycleFailureLogs),
     ("Weld task server time sync ignores device lifecycle log failure", WeldTaskServerTimeSyncIgnoresDeviceLifecycleLogFailure),
     ("Device lifecycle self check summaries describe connection result", DeviceLifecycleSelfCheckSummariesDescribeConnectionResult),
+    ("Device lifecycle software close entry records software close", DeviceLifecycleSoftwareCloseEntryRecordsSoftwareClose),
+    ("Device lifecycle coordinator records software lifecycle statuses", DeviceLifecycleCoordinatorRecordsSoftwareLifecycleStatuses),
+    ("Device lifecycle coordinator syncs software status timestamps", DeviceLifecycleCoordinatorSyncsSoftwareStatusTimestamps),
+    ("Device lifecycle stop triggers background status upload", DeviceLifecycleStopTriggersBackgroundStatusUpload),
+    ("Device lifecycle stop reports status when lifecycle log fails", DeviceLifecycleStopReportsStatusWhenLifecycleLogFails),
     ("Device lifecycle connection logs only when state changes", DeviceLifecycleConnectionLogsOnlyWhenStateChanges),
     ("Device lifecycle alarm logs enter change and recovery", DeviceLifecycleAlarmLogsEnterChangeAndRecovery),
     ("Program name rules extract component code", ProgramNameRulesExtractComponentCode),
@@ -889,6 +900,31 @@ static void MesDeviceStatusRulesFormatStationRemarks()
         "程序开始/结束备注应追加工位说明。");
 }
 
+static void MesDeviceStatusDuplicateSuppressionHonorsLifecycleForceWrite()
+{
+    var stopped = new BizDeviceStatusLog
+    {
+        DeviceStatus = ProductionConstants.MesDeviceStatuses.Stopped,
+        WeldTaskId = null
+    };
+
+    AssertTrue(
+        DeviceStatusReportRules.ShouldSuppressDuplicateStatus(
+            stopped,
+            ProductionConstants.MesDeviceStatuses.Stopped,
+            weldTaskId: null,
+            forceWrite: false),
+        "普通状态重复时应继续复用最新记录，避免重复上传。");
+
+    AssertFalse(
+        DeviceStatusReportRules.ShouldSuppressDuplicateStatus(
+            stopped,
+            ProductionConstants.MesDeviceStatuses.Stopped,
+            weldTaskId: null,
+            forceWrite: true),
+        "软件启动/关闭属于生命周期事件，即使状态码相同也必须新写一条记录。");
+}
+
 static void LogTimestampDisplayRulesSwitchDateVisibility()
 {
     var value = new DateTime(2026, 7, 4, 9, 8, 7, 123);
@@ -994,6 +1030,86 @@ static void DeviceStatusLocalLogStoreWritesAndReadsJsonl()
         AssertEqual(1, logs.Count, "读取本地 JSONL 时应遵守 maxCount。");
         AssertEqual(2, logs[0].Id, "设备状态日志应按发生时间倒序读取。");
         AssertEqual(reportTime, logs[0].ReportTime, "读取出的设备状态日志应保留上报时间。");
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}
+
+static void DeviceStatusReportKeepsMillisecondTimestampAfterMesUpload()
+{
+    var serviceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "DeviceStatusService.cs"),
+        Encoding.UTF8);
+    var reportMethod = ExtractMethodText(
+        serviceCode,
+        "private async Task<BizDeviceStatusLog> ReportStatusAsync",
+        "private async Task ReportStatusInBackgroundAsync");
+    var skippedMethod = ExtractMethodText(
+        serviceCode,
+        "private BizDeviceStatusLog MarkSkipped",
+        "private BizUploadTask? FindExistingUploadTask");
+
+    AssertFalse(
+        reportMethod.Contains("InSingle(log.Id)", StringComparison.Ordinal),
+        "MES 上传更新状态后不能重新从数据库读取 BizDeviceStatusLog，否则 MySQL 可能截断毫秒。");
+    AssertTrue(
+        reportMethod.Contains("return log;", StringComparison.Ordinal),
+        "MES 上传更新状态后应返回保留原始 OccurredTime 的内存对象。");
+    AssertTrue(
+        reportMethod.Contains("Ts = log.OccurredTime.ToString(\"yyyy-MM-dd HH:mm:ss\")", StringComparison.Ordinal),
+        "MES 设备状态接口时间格式仍应按接口约定保持到秒。");
+    AssertFalse(
+        skippedMethod.Contains("InSingle(log.Id)", StringComparison.Ordinal),
+        "禁用 MES 上报时也不能用数据库回读对象覆盖本地毫秒时间。");
+}
+
+static void DeviceStatusLocalLogStoreKeepsLatestStatePerLogId()
+{
+    var root = Path.Combine(Path.GetTempPath(), "AutoWeldSystemDeviceStatusLogDedupeTests", Guid.NewGuid().ToString("N"));
+    var settings = new AppSettings { LogDirectory = root };
+    var occurredTime = new DateTime(2026, 7, 7, 17, 11, 42, 724);
+
+    try
+    {
+        var pending = new BizDeviceStatusLog
+        {
+            Id = 100,
+            DeviceId = "D-001",
+            StationNo = ProductionConstants.Stations.SharedStationNo,
+            DeviceStatus = ProductionConstants.MesDeviceStatuses.Stopped,
+            StatusName = DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.Stopped),
+            Source = "Application",
+            OccurredTime = occurredTime,
+            ReportStatus = ProductionConstants.UploadStatuses.Pending,
+            ReportMessage = "Shutdown upload triggered."
+        };
+        var uploaded = new BizDeviceStatusLog
+        {
+            Id = 100,
+            DeviceId = "D-001",
+            StationNo = ProductionConstants.Stations.SharedStationNo,
+            DeviceStatus = ProductionConstants.MesDeviceStatuses.Stopped,
+            StatusName = DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.Stopped),
+            Source = "Application",
+            OccurredTime = occurredTime,
+            ReportStatus = ProductionConstants.UploadStatuses.Uploaded,
+            ReportMessage = "操作成功",
+            ReportTime = occurredTime.AddSeconds(1)
+        };
+
+        AssertTrue(DeviceStatusLocalLogStore.TryAppend(pending, settings), "待上传状态应写入本地日志。");
+        AssertTrue(DeviceStatusLocalLogStore.TryAppend(uploaded, settings), "重试成功状态应追加写入本地日志。");
+
+        var logs = DeviceStatusLocalLogStore.Read(settings, occurredTime.Date, occurredTime.Date.AddDays(1).AddTicks(-1), 10);
+
+        AssertEqual(1, logs.Count, "同一个设备状态日志 Id 只应显示最新状态。");
+        AssertEqual(ProductionConstants.UploadStatuses.Uploaded, logs[0].ReportStatus, "本地日志读取应保留最新上传状态。");
+        AssertEqual(occurredTime, logs[0].OccurredTime, "本地日志去重不能丢失原始毫秒。");
     }
     finally
     {
@@ -1733,6 +1849,100 @@ static void DeviceLifecycleSelfCheckSummariesDescribeConnectionResult()
         "HTTP服务启动失败",
         DeviceLifecycleLogRules.CreateDeviceApiHttpSelfCheckEntry("D-001", "http://127.0.0.1:7098/", false, "端口被占用", occurredTime).Summary,
         "HTTP 服务自检失败摘要应展示服务启动失败。");
+}
+
+static void DeviceLifecycleSoftwareCloseEntryRecordsSoftwareClose()
+{
+    var occurredTime = new DateTime(2026, 7, 7, 18, 30, 0);
+    var entry = DeviceLifecycleLogRules.CreateSoftwareStoppedEntry("D-001", occurredTime);
+
+    AssertEqual(occurredTime, entry.OccurredTime, "软件关闭日志应保留实际关闭时间。");
+    AssertEqual(AppConstants.DeviceLifecycleEventTypes.SoftwareStopped, entry.EventType, "软件关闭应使用独立生命周期事件类型。");
+    AssertEqual("Application", entry.Source, "软件关闭来源应标记为应用程序。");
+    AssertEqual("Success", entry.Status, "正常关闭应写入成功状态。");
+    AssertEqual("软件关闭", entry.Summary, "设备日志摘要必须显示软件关闭。");
+    AssertTrue(entry.Detail.Contains("关闭", StringComparison.Ordinal), "详情应说明软件正在关闭或已关闭。");
+}
+
+static void DeviceLifecycleCoordinatorRecordsSoftwareLifecycleStatuses()
+{
+    var coordinatorCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Log", "DeviceLifecycleLogCoordinator.cs"),
+        Encoding.UTF8);
+
+    AssertTrue(
+        coordinatorCode.Contains("CreateSoftwareStoppedEntry", StringComparison.Ordinal),
+        "程序关闭时必须写入“软件关闭”设备生命周期日志。");
+    AssertTrue(
+        CountOccurrences(coordinatorCode, "forceWrite: true") >= 2,
+        "软件启动和关闭的设备状态日志都必须强制写入，不能被相同状态去重。");
+}
+
+static void DeviceLifecycleCoordinatorSyncsSoftwareStatusTimestamps()
+{
+    var lifecycleLogs = new FakeDeviceLifecycleLogService();
+    var statusService = new FakeDeviceStatusService();
+    var coordinator = CreateDeviceLifecycleLogCoordinator(lifecycleLogs, statusService);
+
+    coordinator.Start();
+    WaitUntil(
+        () => statusService.Logs.Any(log => log.DeviceStatus == ProductionConstants.MesDeviceStatuses.PoweredOn),
+        "开机设备状态日志应在启动后写入。");
+    coordinator.Stop();
+    WaitUntil(
+        () => statusService.Logs.Any(log => log.DeviceStatus == ProductionConstants.MesDeviceStatuses.Stopped),
+        "停机设备状态日志应在停止后写入。");
+
+    var softwareStarted = lifecycleLogs.Entries.Single(entry => entry.EventType == AppConstants.DeviceLifecycleEventTypes.SoftwareStarted);
+    var poweredOn = statusService.Logs.Single(log => log.DeviceStatus == ProductionConstants.MesDeviceStatuses.PoweredOn);
+    var softwareStopped = lifecycleLogs.Entries.Single(entry => entry.EventType == AppConstants.DeviceLifecycleEventTypes.SoftwareStopped);
+    var stopped = statusService.Logs.Single(log => log.DeviceStatus == ProductionConstants.MesDeviceStatuses.Stopped);
+
+    AssertEqual(softwareStarted.OccurredTime, poweredOn.OccurredTime, "设备日志的软件开启时间必须和设备状态开机时间一致。");
+    AssertEqual(softwareStopped.OccurredTime, stopped.OccurredTime, "设备日志的软件关闭时间必须和设备状态停机时间一致。");
+}
+
+static void DeviceLifecycleStopTriggersBackgroundStatusUpload()
+{
+    var lifecycleLogs = new FakeDeviceLifecycleLogService();
+    var statusService = new FakeDeviceStatusService();
+    var coordinator = CreateDeviceLifecycleLogCoordinator(lifecycleLogs, statusService);
+
+    coordinator.Start();
+    WaitUntil(
+        () => statusService.Logs.Any(log => log.DeviceStatus == ProductionConstants.MesDeviceStatuses.PoweredOn),
+        "开机设备状态日志应在启动后写入。");
+
+    coordinator.Stop();
+    WaitUntil(
+        () => statusService.Logs.Any(log => log.DeviceStatus == ProductionConstants.MesDeviceStatuses.Stopped),
+        "停机设备状态日志应在停止后写入。");
+
+    var stopped = statusService.Logs.Single(log => log.DeviceStatus == ProductionConstants.MesDeviceStatuses.Stopped);
+    AssertEqual(ProductionConstants.MesDeviceStatuses.Stopped, stopped.DeviceStatus, "停止协调器时必须写入停机状态。");
+    AssertTrue(statusService.LastReportInBackground == true, "停机状态应触发后台上传，不能同步阻塞 UI。");
+    AssertTrue(statusService.LastReportToMes == true, "停机状态应先尝试 MES 上传，而不是只进入待上传队列。");
+}
+
+static void DeviceLifecycleStopReportsStatusWhenLifecycleLogFails()
+{
+    var lifecycleLogs = new FakeDeviceLifecycleLogService();
+    var statusService = new FakeDeviceStatusService();
+    var coordinator = CreateDeviceLifecycleLogCoordinator(lifecycleLogs, statusService);
+
+    coordinator.Start();
+    WaitUntil(
+        () => statusService.Logs.Any(log => log.DeviceStatus == ProductionConstants.MesDeviceStatuses.PoweredOn),
+        "开机设备状态日志应在启动后写入。");
+
+    lifecycleLogs.ThrowOnWrite = true;
+    coordinator.Stop();
+    WaitUntil(
+        () => statusService.Logs.Any(log => log.DeviceStatus == ProductionConstants.MesDeviceStatuses.Stopped),
+        "软件关闭日志写入失败时，停机设备状态仍应写入。");
+
+    AssertTrue(statusService.LastReportInBackground == true, "软件关闭日志失败也不能让停机状态改成同步上传。");
+    AssertTrue(statusService.LastReportToMes == true, "软件关闭日志失败也必须先尝试 MES 停机状态上传。");
 }
 
 static void DeviceLifecycleConnectionLogsOnlyWhenStateChanges()
@@ -2475,6 +2685,20 @@ static WeldTaskService CreateWeldTaskService(
         clockService);
 }
 
+static DeviceLifecycleLogCoordinator CreateDeviceLifecycleLogCoordinator(
+    FakeDeviceLifecycleLogService lifecycleLogService,
+    FakeDeviceStatusService deviceStatusService)
+{
+    return new DeviceLifecycleLogCoordinator(
+        new FakeAppSettingsService { Current = new AppSettings { DeviceId = "D-001" } },
+        lifecycleLogService,
+        new FakePlcCommunicationService(),
+        new FakeMesConnectionMonitor(),
+        new FakeCenterTelemetrySyncService(),
+        new FakePlcProductionMonitorService(),
+        deviceStatusService);
+}
+
 static DeviceApiEndpointService CreateDeviceApiEndpointService(
     FakeAppSettingsService? appSettingsService = null,
     FakeDeviceStatusService? deviceStatusService = null,
@@ -2535,6 +2759,46 @@ static string GetRepoFilePath(params string[] segments)
     throw new FileNotFoundException($"Cannot locate repository file: {string.Join("/", segments)}");
 }
 
+static int CountOccurrences(string text, string value)
+{
+    var count = 0;
+    var index = 0;
+    while ((index = text.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+    {
+        count++;
+        index += value.Length;
+    }
+
+    return count;
+}
+
+static string ExtractMethodText(string source, string startMarker, string endMarker)
+{
+    var start = source.IndexOf(startMarker, StringComparison.Ordinal);
+    var end = source.IndexOf(endMarker, start < 0 ? 0 : start, StringComparison.Ordinal);
+
+    AssertTrue(start >= 0, $"源码中必须包含 {startMarker}。");
+    AssertTrue(end > start, $"源码中必须在 {startMarker} 后包含 {endMarker}。");
+
+    return source[start..end];
+}
+
+static void WaitUntil(Func<bool> condition, string message)
+{
+    var deadline = DateTime.UtcNow.AddSeconds(2);
+    while (DateTime.UtcNow < deadline)
+    {
+        if (condition())
+        {
+            return;
+        }
+
+        Thread.Sleep(10);
+    }
+
+    throw new InvalidOperationException(message);
+}
+
 static void AssertTrue(bool condition, string message)
 {
     if (!condition)
@@ -2587,11 +2851,19 @@ static void AssertThrows<TException>(Action action, string message)
 
 sealed class FakeMesProvider : IMesProvider
 {
+    public List<ReportDeviceStatusReq> DeviceStatusRequests { get; } = new();
+
     public BasicRes<ServerTimeRes> ServerTimeResponse { get; set; } = new()
     {
         Status = "S",
         Msg = "OK",
         Data = new ServerTimeRes { CurrentTime = "2026-07-01 08:00:00" }
+    };
+
+    public BasicRes<object> DeviceStatusResponse { get; set; } = new()
+    {
+        Status = AppConstants.MesStatus.Success,
+        Msg = "操作成功"
     };
 
     public Task<BasicRes<ServerTimeRes>> GetServerTimeAsync(CancellationToken cancellationToken = default)
@@ -2625,7 +2897,10 @@ sealed class FakeMesProvider : IMesProvider
         => throw new NotSupportedException();
 
     public Task<BasicRes<object>> ReportDeviceStatusAsync(ReportDeviceStatusReq requestData, CancellationToken cancellationToken = default)
-        => throw new NotSupportedException();
+    {
+        DeviceStatusRequests.Add(requestData);
+        return Task.FromResult(DeviceStatusResponse);
+    }
 
     public Task<BasicRes<ExperimentStartRes>> StartWorkAsync(ExperimentStartReq requestData, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
@@ -2700,6 +2975,135 @@ sealed class FakeOperationLogService : IOperationLogService
         => Entries.Add((action, detail, level));
 
     public IReadOnlyList<SysOperationLog> GetRecent(int take = 200) => Array.Empty<SysOperationLog>();
+}
+
+sealed class FakePlcCommunicationService : IPlcCommunicationService
+{
+    public event EventHandler<PlcConnectionSnapshot>? StatusChanged
+    {
+        add { }
+        remove { }
+    }
+
+    public PlcConnectionSnapshot Current { get; } = new(
+        PlcConnectionState.Stopped,
+        IsConnected: false,
+        Endpoint: string.Empty,
+        LastConnectedTime: null,
+        LastHeartbeatTime: null,
+        Message: string.Empty);
+
+    public PlcConnectionSnapshot GetCurrent(int stationNo) => Current with { StationNo = stationNo };
+
+    public Task StartAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    public Task RestartAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    public Task<PlcServiceResult<bool>> ReadBoolAsync(string address, CancellationToken cancellationToken = default)
+        => Task.FromResult(PlcServiceResult<bool>.Fail("Not configured."));
+
+    public Task<PlcServiceResult<short>> ReadInt16Async(string address, CancellationToken cancellationToken = default)
+        => Task.FromResult(PlcServiceResult<short>.Fail("Not configured."));
+
+    public Task<PlcServiceResult<int>> ReadInt32Async(string address, CancellationToken cancellationToken = default)
+        => Task.FromResult(PlcServiceResult<int>.Fail("Not configured."));
+
+    public Task<PlcServiceResult<float>> ReadFloatAsync(string address, CancellationToken cancellationToken = default)
+        => Task.FromResult(PlcServiceResult<float>.Fail("Not configured."));
+
+    public Task<PlcServiceResult<string>> ReadStringAsync(string address, ushort length, CancellationToken cancellationToken = default)
+        => Task.FromResult(PlcServiceResult<string>.Fail("Not configured."));
+
+    public Task<PlcServiceResult> WriteBoolAsync(string address, bool value, CancellationToken cancellationToken = default)
+        => Task.FromResult(PlcServiceResult.Fail("Not configured."));
+
+    public Task<PlcServiceResult> WriteInt16Async(string address, short value, CancellationToken cancellationToken = default)
+        => Task.FromResult(PlcServiceResult.Fail("Not configured."));
+
+    public Task<PlcServiceResult> WriteInt32Async(string address, int value, CancellationToken cancellationToken = default)
+        => Task.FromResult(PlcServiceResult.Fail("Not configured."));
+
+    public Task<PlcServiceResult> WriteFloatAsync(string address, float value, CancellationToken cancellationToken = default)
+        => Task.FromResult(PlcServiceResult.Fail("Not configured."));
+
+    public Task<PlcServiceResult> WriteStringAsync(string address, string value, CancellationToken cancellationToken = default)
+        => Task.FromResult(PlcServiceResult.Fail("Not configured."));
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}
+
+sealed class FakeMesConnectionMonitor : IMesConnectionMonitor
+{
+    public event EventHandler<MesConnectionSnapshot>? StatusChanged
+    {
+        add { }
+        remove { }
+    }
+
+    public MesConnectionSnapshot Current { get; } = new(
+        IsConnected: false,
+        LastSuccessTime: null,
+        UpdatedTime: default,
+        Message: string.Empty);
+
+    public Task StartAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}
+
+sealed class FakeCenterTelemetrySyncService : ICenterTelemetrySyncService
+{
+    public event EventHandler<CenterTelemetryConnectionSnapshot>? StatusChanged
+    {
+        add { }
+        remove { }
+    }
+
+    public CenterTelemetryConnectionSnapshot Current { get; } = new(
+        IsConnected: false,
+        UpdatedTime: default,
+        Message: string.Empty);
+
+    public Task StartAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    public Task PushOnceAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}
+
+sealed class FakePlcProductionMonitorService : IPlcProductionMonitorService
+{
+    public event EventHandler<PlcProductionSnapshot>? StatusChanged
+    {
+        add { }
+        remove { }
+    }
+
+    public PlcProductionSnapshot Current { get; } = new(
+        IsSuccess: false,
+        DeviceStatusCode: null,
+        TotalProduction: 0,
+        TargetProduction: null,
+        AcceptedQuantity: 0,
+        RejectedQuantity: 0,
+        UpdatedTime: default,
+        Message: string.Empty);
+
+    public PlcProductionSnapshot GetCurrent(int stationNo) => Current with { StationNo = stationNo };
+
+    public Task StartAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    public Task ReloadAddressesAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
 
 sealed class FakeMesInteractionLogService : IMesInteractionLogService
@@ -2799,9 +3203,15 @@ sealed class FakeDeviceStatusService : IDeviceStatusService
 {
     public event EventHandler<BizDeviceStatusLog>? StatusChanged;
 
+    public List<BizDeviceStatusLog> Logs { get; } = new();
+
     public BizDeviceStatusLog CurrentStatus { get; set; } = new();
 
     public int GetCurrentStatusCallCount { get; private set; }
+
+    public bool? LastReportToMes { get; private set; }
+
+    public bool? LastReportInBackground { get; private set; }
 
     public BizDeviceStatusLog GetCurrentStatus()
     {
@@ -2821,9 +3231,24 @@ sealed class FakeDeviceStatusService : IDeviceStatusService
         int stationNo = ProductionConstants.Stations.DefaultStationNo,
         int? weldTaskId = null,
         string? workOrderId = null,
+        DateTime? occurredTime = null,
+        bool forceWrite = false,
+        bool reportInBackground = false,
         CancellationToken cancellationToken = default)
     {
-        var log = new BizDeviceStatusLog { DeviceStatus = deviceStatus, Remark = remark, Source = source };
+        LastReportToMes = reportToMes;
+        LastReportInBackground = reportInBackground;
+        var log = new BizDeviceStatusLog
+        {
+            DeviceStatus = deviceStatus,
+            Remark = remark,
+            Source = source,
+            StationNo = stationNo,
+            WeldTaskId = weldTaskId,
+            WorkOrderId = workOrderId,
+            OccurredTime = occurredTime ?? DateTime.Now
+        };
+        Logs.Add(log);
         StatusChanged?.Invoke(this, log);
         return Task.FromResult(log);
     }

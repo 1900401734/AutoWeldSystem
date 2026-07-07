@@ -258,6 +258,24 @@ public static class DeviceLifecycleLogRules
         };
     }
 
+    /// <summary>
+    /// Creates the lifecycle entry written once when the software is closing normally.
+    /// </summary>
+    public static DeviceLifecycleLogEntry CreateSoftwareStoppedEntry(string deviceId, DateTime occurredTime)
+    {
+        return new DeviceLifecycleLogEntry
+        {
+            OccurredTime = occurredTime,
+            Level = "Info",
+            EventType = AppConstants.DeviceLifecycleEventTypes.SoftwareStopped,
+            DeviceId = NormalizeText(deviceId, string.Empty),
+            Source = "Application",
+            Status = StatusSuccess,
+            Summary = "软件关闭",
+            Detail = "AutoWeldSystem 软件正在关闭。"
+        };
+    }
+
     private static string NormalizeText(string? value, string fallback)
         => string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
 

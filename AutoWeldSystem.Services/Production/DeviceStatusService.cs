@@ -95,6 +95,9 @@ public class DeviceStatusService : IDeviceStatusService
         int stationNo = ProductionConstants.Stations.DefaultStationNo,
         int? weldTaskId = null,
         string? workOrderId = null,
+        DateTime? occurredTime = null,
+        bool forceWrite = false,
+        bool reportInBackground = false,
         CancellationToken cancellationToken = default)
     {
         var normalizedStatus = NormalizeStatus(deviceStatus);
@@ -109,33 +112,48 @@ public class DeviceStatusService : IDeviceStatusService
                 .OrderByDescending(it => it.OccurredTime)
                 .First();
 
-            var existingProgramBoundaryLog = FindExistingProgramBoundaryLog(normalizedStationNo, normalizedStatus, weldTaskId);
-            if (existingProgramBoundaryLog is not null)
+            if (!forceWrite)
             {
-                return existingProgramBoundaryLog;
+                var existingProgramBoundaryLog = FindExistingProgramBoundaryLog(normalizedStationNo, normalizedStatus, weldTaskId);
+                if (existingProgramBoundaryLog is not null)
+                {
+                    return existingProgramBoundaryLog;
+                }
+
+                if (ShouldReuseLatestProgramBoundaryStatus(latest, normalizedStatus, weldTaskId))
+                {
+                    return latest!;
+                }
+
+                // 普通状态码没有变化时，不重复落库、上传或进入重试队列。
+                if (DeviceStatusReportRules.ShouldSuppressDuplicateStatus(latest, normalizedStatus, weldTaskId, forceWrite))
+                {
+                    return latest!;
+                }
             }
 
-            if (ShouldReuseLatestProgramBoundaryStatus(latest, normalizedStatus, weldTaskId))
-            {
-                return latest!;
-            }
-
-            // 状态码没有变化时，不重复落库、上传或进入重试队列。
-            if (latest is not null
-                && string.Equals(latest.DeviceStatus, normalizedStatus, StringComparison.OrdinalIgnoreCase))
-            {
-                return latest;
-            }
-
-            log = CreateLog(normalizedStatus, remark, source, normalizedStationNo, weldTaskId, workOrderId);
+            log = CreateLog(normalizedStatus, remark, source, normalizedStationNo, weldTaskId, workOrderId, occurredTime);
             log = _dbContext.Db.Insertable(log).ExecuteReturnEntity();
         }
 
         if (CurrentSettings.EnableDeviceStatusReport == false)
         {
             log = MarkSkipped(log, "Device status report is disabled in system settings.");
+            WriteLocalStatusLog(log);
+            StatusChanged?.Invoke(this, log);
+            return log;
         }
-        else if (reportToMes)
+
+        if (reportToMes && reportInBackground)
+        {
+            // 关机路径不能等待网络请求；先保留本地证据，再后台做一次 MES 尝试。
+            WriteLocalStatusLog(log);
+            StatusChanged?.Invoke(this, log);
+            _ = Task.Run(() => ReportStatusInBackgroundAsync(log));
+            return log;
+        }
+
+        if (reportToMes)
         {
             log = await ReportStatusAsync(log, cancellationToken);
         }
@@ -184,13 +202,43 @@ public class DeviceStatusService : IDeviceStatusService
                 .Where(it => it.Id == log.Id)
                 .ExecuteCommand();
 
-            var storedLog = _dbContext.Db.Queryable<BizDeviceStatusLog>().InSingle(log.Id) ?? log;
             if (!response.IsSuccess)
             {
-                EnqueueDeviceStatusUpload(storedLog);
+                EnqueueDeviceStatusUpload(log);
             }
 
-            return storedLog;
+            return log;
+        }
+    }
+
+    private async Task ReportStatusInBackgroundAsync(BizDeviceStatusLog log)
+    {
+        try
+        {
+            var updatedLog = await ReportStatusAsync(log, CancellationToken.None);
+            WriteLocalStatusLog(updatedLog);
+            StatusChanged?.Invoke(this, updatedLog);
+        }
+        catch (Exception ex)
+        {
+            log.ReportStatus = ProductionConstants.UploadStatuses.Failed;
+            log.ReportTime = DateTime.Now;
+            log.ReportMessage = ex.Message;
+            TryEnqueueDeviceStatusUpload(log);
+            WriteLocalStatusLog(log);
+            StatusChanged?.Invoke(this, log);
+        }
+    }
+
+    private void TryEnqueueDeviceStatusUpload(BizDeviceStatusLog log)
+    {
+        try
+        {
+            EnqueueDeviceStatusUpload(log);
+        }
+        catch
+        {
+            // 后台关机上报不能抛出异常；本地 failed 状态仍会写入，便于现场排查。
         }
     }
 
@@ -246,7 +294,8 @@ public class DeviceStatusService : IDeviceStatusService
         string source,
         int stationNo,
         int? weldTaskId,
-        string? workOrderId)
+        string? workOrderId,
+        DateTime? occurredTime)
     {
         var settings = CurrentSettings;
         return new BizDeviceStatusLog
@@ -259,7 +308,7 @@ public class DeviceStatusService : IDeviceStatusService
             StatusName = DeviceStatusReportRules.GetStatusName(deviceStatus),
             Source = string.IsNullOrWhiteSpace(source) ? "Software" : source.Trim(),
             Remark = NormalizeNullable(remark),
-            OccurredTime = DateTime.Now,
+            OccurredTime = occurredTime ?? DateTime.Now,
             ReportStatus = ProductionConstants.UploadStatuses.Pending
         };
     }
@@ -311,7 +360,7 @@ public class DeviceStatusService : IDeviceStatusService
                 .Where(it => it.Id == log.Id)
                 .ExecuteCommand();
 
-            return _dbContext.Db.Queryable<BizDeviceStatusLog>().InSingle(log.Id) ?? log;
+            return log;
         }
     }
 

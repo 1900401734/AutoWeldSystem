@@ -59,9 +59,10 @@ public static class DeviceStatusLocalLogStore
         var take = Math.Clamp(maxCount, 1, 5000);
         try
         {
-            return EnumerateCandidateDates(from, to)
-                .SelectMany(date => ReadDate(settings, date, take))
-                .Where(entry => IsInRange(entry, from, to))
+            return DeduplicateByLogId(
+                    EnumerateCandidateDates(from, to)
+                        .SelectMany(date => ReadDate(settings, date, take))
+                        .Where(entry => IsInRange(entry, from, to)))
                 .OrderByDescending(entry => entry.OccurredTime)
                 .Take(take)
                 .ToList();
@@ -70,6 +71,26 @@ public static class DeviceStatusLocalLogStore
         {
             return Array.Empty<BizDeviceStatusLog>();
         }
+    }
+
+    private static IEnumerable<BizDeviceStatusLog> DeduplicateByLogId(IEnumerable<BizDeviceStatusLog> entries)
+    {
+        var latestById = new Dictionary<int, BizDeviceStatusLog>();
+        var noIdEntries = new List<BizDeviceStatusLog>();
+
+        foreach (var entry in entries)
+        {
+            if (entry.Id <= 0)
+            {
+                noIdEntries.Add(entry);
+                continue;
+            }
+
+            // JSONL 按追加顺序读取，后写入的上传结果覆盖早期待上传状态。
+            latestById[entry.Id] = entry;
+        }
+
+        return noIdEntries.Concat(latestById.Values);
     }
 
     private static IEnumerable<BizDeviceStatusLog> ReadDate(AppSettings settings, DateTime date, int take)

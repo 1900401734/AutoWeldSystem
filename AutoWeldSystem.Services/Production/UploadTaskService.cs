@@ -9,6 +9,7 @@ using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.MES;
 using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Data;
+using AutoWeldSystem.Services.Log;
 using System.Globalization;
 using System.Text.Json;
 
@@ -1237,27 +1238,50 @@ public class UploadTaskService : IUploadTaskService
             return;
         }
 
+        BizDeviceStatusLog? updatedLog;
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
-            var log = _dbContext.Db.Queryable<BizDeviceStatusLog>().InSingle(logId);
-            if (log is null)
+            updatedLog = _dbContext.Db.Queryable<BizDeviceStatusLog>().InSingle(logId);
+            if (updatedLog is null)
             {
                 return;
             }
 
-            log.ReportStatus = IsSkippedResponse(response)
+            updatedLog.ReportStatus = IsSkippedResponse(response)
                 ? ProductionConstants.UploadStatuses.Skipped
                 : response.IsSuccess
                     ? ProductionConstants.UploadStatuses.Uploaded
                     : ProductionConstants.UploadStatuses.Failed;
-            log.ReportTime = DateTime.Now;
-            log.ReportMessage = response.Msg;
-            _dbContext.Db.Updateable(log)
+            updatedLog.ReportTime = DateTime.Now;
+            updatedLog.ReportMessage = response.Msg;
+            _dbContext.Db.Updateable(updatedLog)
                 .UpdateColumns(it => new { it.ReportStatus, it.ReportTime, it.ReportMessage })
-                .Where(it => it.Id == log.Id)
+                .Where(it => it.Id == updatedLog.Id)
                 .ExecuteCommand();
         }
+
+        if (TryPreserveLocalOccurredTime(updatedLog))
+        {
+            DeviceStatusLocalLogStore.TryAppend(updatedLog, _settingsService.Get());
+        }
+    }
+
+    private bool TryPreserveLocalOccurredTime(BizDeviceStatusLog log)
+    {
+        var dayStart = log.OccurredTime.Date;
+        var dayEnd = dayStart.AddDays(1).AddTicks(-1);
+        var localLog = DeviceStatusLocalLogStore
+            .Read(_settingsService.Get(), dayStart, dayEnd, maxCount: 5000)
+            .FirstOrDefault(entry => entry.Id == log.Id);
+
+        if (localLog is not null && localLog.OccurredTime != default)
+        {
+            log.OccurredTime = localLog.OccurredTime;
+            return true;
+        }
+
+        return false;
     }
 
     private static BasicRes<object> Success(string message)

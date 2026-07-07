@@ -123,6 +123,7 @@ public static class AppConstants
     public static class DeviceLifecycleEventTypes
     {
         public const string SoftwareStarted = "SoftwareStarted";
+        public const string SoftwareStopped = "SoftwareStopped";
         public const string SelfCheck = "SelfCheck";
         public const string RemoteAccess = "RemoteAccess";
         public const string RemoteConfigChanged = "RemoteConfigChanged";

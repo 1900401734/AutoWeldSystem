@@ -388,7 +388,7 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
             stationNo: normalizedStationNo,
             weldTaskId: activeTask?.Id,
             workOrderId: activeTask?.SN,
-            cancellationToken);
+            cancellationToken: cancellationToken);
     }
 
     private async Task<AlarmReadSnapshot> ReadActiveAlarmSnapshotAsync(int stationNo, CancellationToken cancellationToken)

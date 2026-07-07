@@ -1,4 +1,5 @@
 using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.Entities;
 
 namespace AutoWeldSystem.Core.Production;
 
@@ -92,6 +93,32 @@ public static class DeviceStatusReportRules
         return string.IsNullOrWhiteSpace(normalizedRemark)
             ? $"工位：{stationText}"
             : $"{normalizedRemark}；工位：{stationText}";
+    }
+
+    /// <summary>
+    /// Returns true when a new device-status request should reuse the latest row instead of writing a duplicate.
+    /// Software lifecycle events pass forceWrite=true so each startup/shutdown remains auditable.
+    /// </summary>
+    public static bool ShouldSuppressDuplicateStatus(
+        BizDeviceStatusLog? latest,
+        string normalizedStatus,
+        int? weldTaskId,
+        bool forceWrite)
+    {
+        if (forceWrite || latest is null)
+        {
+            return false;
+        }
+
+        var isProgramBoundaryStatus = normalizedStatus is ProductionConstants.MesDeviceStatuses.ProgramStarted
+            or ProductionConstants.MesDeviceStatuses.ProgramEnded;
+        if (isProgramBoundaryStatus && weldTaskId is not null)
+        {
+            return latest.WeldTaskId == weldTaskId
+                && string.Equals(latest.DeviceStatus, normalizedStatus, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return string.Equals(latest.DeviceStatus, normalizedStatus, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

@@ -40,5 +40,8 @@ public interface IDeviceStatusService
         int stationNo = ProductionConstants.Stations.DefaultStationNo,
         int? weldTaskId = null,
         string? workOrderId = null,
+        DateTime? occurredTime = null,
+        bool forceWrite = false,
+        bool reportInBackground = false,
         CancellationToken cancellationToken = default);
 }
