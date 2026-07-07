@@ -84,9 +84,8 @@ namespace AutoWeldSystem.UI.Views
             tagResult1 = new AntdUI.Tag();
             tlpWorkOrderInfo = new TableLayoutPanel();
             tlpButton = new TableLayoutPanel();
-            btnExpStart = new AntdUI.Button();
             btnLocalWorkOrder = new AntdUI.Button();
-            btnExpEnd = new AntdUI.Button();
+            btnOnlineReport = new AntdUI.Button();
             tlpStation = new TableLayoutPanel();
             segmentedStationSwitch = new AntdUI.Segmented();
             tlpProductNameAndDrawingNo = new TableLayoutPanel();
@@ -135,7 +134,9 @@ namespace AutoWeldSystem.UI.Views
             selectProgramName = new AntdUI.Select();
             lblProgramName = new AntdUI.Label();
             grpErrorTips = new GroupBox();
+            tlpErrorTips = new TableLayoutPanel();
             inputErrorTips = new AntdUI.Input();
+            btnClearErrorTips = new AntdUI.Button();
             grpRunningStatus = new GroupBox();
             inputRunningStatus = new AntdUI.Input();
             tabsMetrics = new AntdUI.Tabs();
@@ -193,6 +194,7 @@ namespace AutoWeldSystem.UI.Views
             tlpProductNum.SuspendLayout();
             tlpProgramName.SuspendLayout();
             grpErrorTips.SuspendLayout();
+            tlpErrorTips.SuspendLayout();
             grpRunningStatus.SuspendLayout();
             tabsMetrics.SuspendLayout();
             tabsMetrics1.SuspendLayout();
@@ -714,6 +716,7 @@ namespace AutoWeldSystem.UI.Views
             // 
             // tableHistory2
             // 
+            tableHistory2.Dock = DockStyle.Fill;
             tableHistory2.Gap = 6;
             tableHistory2.GapCell = 3;
             tableHistory2.Gaps = new Size(6, 6);
@@ -722,7 +725,7 @@ namespace AutoWeldSystem.UI.Views
             tableHistory2.Name = "tableHistory2";
             tableHistory2.RowHeight = 36;
             tableHistory2.RowHeightHeader = 38;
-            tableHistory2.Size = new Size(598, 145);
+            tableHistory2.Size = new Size(1148, 495);
             tableHistory2.TabIndex = 1;
             tableHistory2.Text = "table2";
             tableHistory2.TreeButtonSize = 18;
@@ -911,13 +914,11 @@ namespace AutoWeldSystem.UI.Views
             // 
             // tlpButton
             // 
-            tlpButton.ColumnCount = 3;
-            tlpButton.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3333321F));
-            tlpButton.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3333321F));
-            tlpButton.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3333321F));
-            tlpButton.Controls.Add(btnExpEnd, 2, 0);
+            tlpButton.ColumnCount = 2;
+            tlpButton.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            tlpButton.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             tlpButton.Controls.Add(btnLocalWorkOrder, 0, 0);
-            tlpButton.Controls.Add(btnExpStart, 1, 0);
+            tlpButton.Controls.Add(btnOnlineReport, 1, 0);
             tlpButton.Dock = DockStyle.Fill;
             tlpButton.Location = new Point(0, 396);
             tlpButton.Margin = new Padding(0);
@@ -926,20 +927,6 @@ namespace AutoWeldSystem.UI.Views
             tlpButton.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tlpButton.Size = new Size(401, 47);
             tlpButton.TabIndex = 18;
-            // 
-            // btnExpStart
-            // 
-            btnExpStart.BorderWidth = 1F;
-            btnExpStart.Dock = DockStyle.Fill;
-            btnExpStart.IconGap = 0.2F;
-            btnExpStart.IconSvg = "PlayCircleOutlined";
-            btnExpStart.Location = new Point(133, 0);
-            btnExpStart.Margin = new Padding(0);
-            btnExpStart.Name = "btnExpStart";
-            btnExpStart.Size = new Size(133, 47);
-            btnExpStart.TabIndex = 3;
-            btnExpStart.Tag = "perm:button.monitor.start-report:enabled";
-            btnExpStart.Text = "开工上报";
             // 
             // btnLocalWorkOrder
             // 
@@ -950,24 +937,23 @@ namespace AutoWeldSystem.UI.Views
             btnLocalWorkOrder.Location = new Point(0, 0);
             btnLocalWorkOrder.Margin = new Padding(0);
             btnLocalWorkOrder.Name = "btnLocalWorkOrder";
-            btnLocalWorkOrder.Size = new Size(133, 47);
+            btnLocalWorkOrder.Size = new Size(200, 47);
             btnLocalWorkOrder.TabIndex = 5;
             btnLocalWorkOrder.Tag = "perm:button.monitor.local-work-order:enabled";
             btnLocalWorkOrder.Text = "离线开工";
             // 
-            // btnExpEnd
+            // btnOnlineReport
             // 
-            btnExpEnd.BorderWidth = 1F;
-            btnExpEnd.Dock = DockStyle.Fill;
-            btnExpEnd.IconGap = 0.2F;
-            btnExpEnd.IconSvg = "CheckCircleOutlined";
-            btnExpEnd.Location = new Point(266, 0);
-            btnExpEnd.Margin = new Padding(0);
-            btnExpEnd.Name = "btnExpEnd";
-            btnExpEnd.Size = new Size(135, 47);
-            btnExpEnd.TabIndex = 3;
-            btnExpEnd.Tag = "perm:button.monitor.finish-report:enabled";
-            btnExpEnd.Text = "完工上报";
+            btnOnlineReport.BorderWidth = 1F;
+            btnOnlineReport.Dock = DockStyle.Fill;
+            btnOnlineReport.IconGap = 0.2F;
+            btnOnlineReport.IconSvg = "PlayCircleOutlined";
+            btnOnlineReport.Location = new Point(200, 0);
+            btnOnlineReport.Margin = new Padding(0);
+            btnOnlineReport.Name = "btnOnlineReport";
+            btnOnlineReport.Size = new Size(201, 47);
+            btnOnlineReport.TabIndex = 3;
+            btnOnlineReport.Text = "开工上报";
             // 
             // tlpStation
             // 
@@ -1164,6 +1150,7 @@ namespace AutoWeldSystem.UI.Views
             // 
             // MesUserNumber
             // 
+            MesUserNumber.Dock = DockStyle.Fill;
             MesUserNumber.Location = new Point(53, 0);
             MesUserNumber.Margin = new Padding(0);
             MesUserNumber.Name = "MesUserNumber";
@@ -1173,11 +1160,12 @@ namespace AutoWeldSystem.UI.Views
             // 
             // MesUserName
             // 
+            MesUserName.Dock = DockStyle.Fill;
             MesUserName.Location = new Point(244, 0);
             MesUserName.Margin = new Padding(0);
             MesUserName.Name = "MesUserName";
             MesUserName.ReadOnly = true;
-            MesUserName.Size = new Size(156, 36);
+            MesUserName.Size = new Size(157, 36);
             MesUserName.TabIndex = 1;
             // 
             // lblUserName
@@ -1601,7 +1589,7 @@ namespace AutoWeldSystem.UI.Views
             // 
             // grpErrorTips
             // 
-            grpErrorTips.Controls.Add(inputErrorTips);
+            grpErrorTips.Controls.Add(tlpErrorTips);
             grpErrorTips.Dock = DockStyle.Fill;
             grpErrorTips.ForeColor = SystemColors.ActiveCaptionText;
             grpErrorTips.Location = new Point(1, 449);
@@ -1614,6 +1602,24 @@ namespace AutoWeldSystem.UI.Views
             grpErrorTips.TabStop = false;
             grpErrorTips.Text = "异常提示：";
             // 
+            // tlpErrorTips
+            // 
+            tlpErrorTips.AutoSize = true;
+            tlpErrorTips.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            tlpErrorTips.ColumnCount = 2;
+            tlpErrorTips.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            tlpErrorTips.ColumnStyles.Add(new ColumnStyle());
+            tlpErrorTips.Controls.Add(inputErrorTips, 0, 0);
+            tlpErrorTips.Controls.Add(btnClearErrorTips, 1, 0);
+            tlpErrorTips.Dock = DockStyle.Fill;
+            tlpErrorTips.Location = new Point(3, 26);
+            tlpErrorTips.Margin = new Padding(0);
+            tlpErrorTips.Name = "tlpErrorTips";
+            tlpErrorTips.RowCount = 1;
+            tlpErrorTips.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            tlpErrorTips.Size = new Size(401, 59);
+            tlpErrorTips.TabIndex = 2;
+            // 
             // inputErrorTips
             // 
             inputErrorTips.BackColor = Color.Transparent;
@@ -1622,13 +1628,28 @@ namespace AutoWeldSystem.UI.Views
             inputErrorTips.BorderHover = Color.Transparent;
             inputErrorTips.BorderWidth = 0F;
             inputErrorTips.Dock = DockStyle.Fill;
-            inputErrorTips.Location = new Point(3, 26);
+            inputErrorTips.Location = new Point(0, 0);
             inputErrorTips.Margin = new Padding(0);
             inputErrorTips.Name = "inputErrorTips";
             inputErrorTips.ReadOnly = true;
             inputErrorTips.SelectionColor = SystemColors.ActiveCaption;
-            inputErrorTips.Size = new Size(401, 59);
+            inputErrorTips.Size = new Size(313, 59);
             inputErrorTips.TabIndex = 1;
+            // 
+            // btnClearErrorTips
+            // 
+            btnClearErrorTips.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnClearErrorTips.BorderWidth = 1F;
+            btnClearErrorTips.Dock = DockStyle.Fill;
+            btnClearErrorTips.IconGap = 0.2F;
+            btnClearErrorTips.IconSvg = "CloseCircleOutlined";
+            btnClearErrorTips.Location = new Point(313, 0);
+            btnClearErrorTips.Margin = new Padding(0);
+            btnClearErrorTips.Name = "btnClearErrorTips";
+            btnClearErrorTips.Size = new Size(88, 59);
+            btnClearErrorTips.TabIndex = 2;
+            btnClearErrorTips.Text = "清除";
+            btnClearErrorTips.Visible = false;
             // 
             // grpRunningStatus
             // 
@@ -1847,6 +1868,9 @@ namespace AutoWeldSystem.UI.Views
             tlpProgramName.ResumeLayout(false);
             tlpProgramName.PerformLayout();
             grpErrorTips.ResumeLayout(false);
+            grpErrorTips.PerformLayout();
+            tlpErrorTips.ResumeLayout(false);
+            tlpErrorTips.PerformLayout();
             grpRunningStatus.ResumeLayout(false);
             tabsMetrics.ResumeLayout(false);
             tabsMetrics1.ResumeLayout(false);
@@ -1858,8 +1882,7 @@ namespace AutoWeldSystem.UI.Views
 
         private AntdUI.Splitter VerticalSplitter;
         private TableLayoutPanel tlpLeft;
-        private AntdUI.Button btnExpStart;
-        private AntdUI.Button btnExpEnd;
+        private AntdUI.Button btnOnlineReport;
         private AntdUI.Button btnLocalWorkOrder;
         private TableLayoutPanel tlpCommunicationStatus;
         private AntdUI.Tag tagMes;
@@ -1883,7 +1906,9 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Label lblProgramName;
         private AntdUI.Label lblWorkOrder;
         private GroupBox grpErrorTips;
+        private TableLayoutPanel tlpErrorTips;
         private AntdUI.Input inputErrorTips;
+        private AntdUI.Button btnClearErrorTips;
         private AntdUI.Table tableMetric1;
         private GroupBox grpRunningStatus;
         private AntdUI.Input inputRunningStatus;

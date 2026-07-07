@@ -843,6 +843,9 @@
   <data name="monitor.button.local_work_order" xml:space="preserve">
     <value>离线开工</value>
   </data>
+  <data name="monitor.button.clear_error_tips" xml:space="preserve">
+    <value>清除</value>
+  </data>
   <data name="monitor.button.finish_report" xml:space="preserve">
     <value>完工上报</value>
   </data>
@@ -1137,6 +1140,39 @@
   <data name="monitor.message.finish_success" xml:space="preserve">
     <value>完工上报成功</value>
   </data>
+  <data name="monitor.runtime.program_confirmed" xml:space="preserve">
+    <value>加工程序已确认</value>
+  </data>
+  <data name="monitor.runtime.work_order_loaded" xml:space="preserve">
+    <value>工单信息已获取</value>
+  </data>
+  <data name="monitor.runtime.process_selected" xml:space="preserve">
+    <value>工序已选择</value>
+  </data>
+  <data name="monitor.runtime.local_start_succeeded" xml:space="preserve">
+    <value>本地开工成功</value>
+  </data>
+  <data name="monitor.runtime.online_start_succeeded" xml:space="preserve">
+    <value>开工上报成功</value>
+  </data>
+  <data name="monitor.runtime.online_finish_succeeded" xml:space="preserve">
+    <value>完工上报成功</value>
+  </data>
+  <data name="monitor.runtime.local_finish_succeeded" xml:space="preserve">
+    <value>本地完工成功</value>
+  </data>
+  <data name="monitor.runtime.product_data_collected" xml:space="preserve">
+    <value>数据采集完成</value>
+  </data>
+  <data name="monitor.runtime.recipe_code_write_succeeded" xml:space="preserve">
+    <value>配方已下发</value>
+  </data>
+  <data name="monitor.runtime.recipe_code_validation_succeeded" xml:space="preserve">
+    <value>配方校验通过</value>
+  </data>
+  <data name="monitor.runtime.test_flag_updated" xml:space="preserve">
+    <value>试焊件已更新</value>
+  </data>
   <data name="monitor.runtime.idle" xml:space="preserve">
     <value>等待业务操作</value>
   </data>
@@ -1157,6 +1193,42 @@
   </data>
   <data name="monitor.runtime.submitting_finish" xml:space="preserve">
     <value>正在完工上报...</value>
+  </data>
+  <data name="monitor.error.read_only_operation_blocked" xml:space="preserve">
+    <value>只读看板禁止操作</value>
+  </data>
+  <data name="monitor.error.work_order_required" xml:space="preserve">
+    <value>请先获取工单</value>
+  </data>
+  <data name="monitor.error.active_task_blocks_edit" xml:space="preserve">
+    <value>开工后禁止调整</value>
+  </data>
+  <data name="monitor.error.program_name_required" xml:space="preserve">
+    <value>请选择程序名称</value>
+  </data>
+  <data name="monitor.error.start_info_required" xml:space="preserve">
+    <value>请先确认开工信息</value>
+  </data>
+  <data name="monitor.error.test_flag_update_failed" xml:space="preserve">
+    <value>试焊件标记失败</value>
+  </data>
+  <data name="monitor.error.recipe_validation_failed" xml:space="preserve">
+    <value>配方校验失败</value>
+  </data>
+  <data name="monitor.error.business_signal_write_failed" xml:space="preserve">
+    <value>业务信号写入失败</value>
+  </data>
+  <data name="monitor.error.station_operation_busy" xml:space="preserve">
+    <value>操作正在执行</value>
+  </data>
+  <data name="monitor.error.station_report_failed" xml:space="preserve">
+    <value>上报操作失败</value>
+  </data>
+  <data name="monitor.error.finish_quantity_read_failed" xml:space="preserve">
+    <value>完工数量读取失败</value>
+  </data>
+  <data name="monitor.error.device_alarm" xml:space="preserve">
+    <value>设备报警</value>
   </data>
   <data name="monitor.error.work_id_read_failed" xml:space="preserve">
     <value>工单号读取失败</value>

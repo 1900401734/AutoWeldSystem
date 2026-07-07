@@ -50,10 +50,10 @@ public sealed class ProcessParameterUploadItem
     public string Ts { get; set; } = string.Empty;
 
     /// <summary>
-    /// Product-level test-weld flag. Null means the field is intentionally omitted.
+    /// Product-level test-weld flag for MES. Null means the field is intentionally omitted; 0=false, 1=true.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public bool? IsTest { get; set; }
+    public int? IsTest { get; set; }
 
     /// <summary>
     /// MES dynamic process fields. Field names come from scheme detail MesFieldName and are flattened into this JSON object.

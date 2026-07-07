@@ -111,6 +111,10 @@ public static class TextKeys
             /// </summary>
             public const string LocalWorkOrder = "monitor.button.local_work_order";
             /// <summary>
+            /// 清除异常提示
+            /// </summary>
+            public const string ClearErrorTips = "monitor.button.clear_error_tips";
+            /// <summary>
             /// 开工上报
             /// </summary>
             public const string StartReport = "monitor.button.start_report";
@@ -345,6 +349,50 @@ public static class TextKeys
         public static class RuntimeStatus
         {
             /// <summary>
+            /// 加工程序已确认
+            /// </summary>
+            public const string ProgramConfirmed = "monitor.runtime.program_confirmed";
+            /// <summary>
+            /// 工单信息已获取
+            /// </summary>
+            public const string WorkOrderLoaded = "monitor.runtime.work_order_loaded";
+            /// <summary>
+            /// 工序已选择
+            /// </summary>
+            public const string ProcessSelected = "monitor.runtime.process_selected";
+            /// <summary>
+            /// 本地开工成功
+            /// </summary>
+            public const string LocalStartSucceeded = "monitor.runtime.local_start_succeeded";
+            /// <summary>
+            /// 开工上报成功
+            /// </summary>
+            public const string OnlineStartSucceeded = "monitor.runtime.online_start_succeeded";
+            /// <summary>
+            /// 完工上报成功
+            /// </summary>
+            public const string OnlineFinishSucceeded = "monitor.runtime.online_finish_succeeded";
+            /// <summary>
+            /// 本地完工成功
+            /// </summary>
+            public const string LocalFinishSucceeded = "monitor.runtime.local_finish_succeeded";
+            /// <summary>
+            /// 数据采集完成
+            /// </summary>
+            public const string ProductDataCollected = "monitor.runtime.product_data_collected";
+            /// <summary>
+            /// 配方已下发
+            /// </summary>
+            public const string RecipeCodeWriteSucceeded = "monitor.runtime.recipe_code_write_succeeded";
+            /// <summary>
+            /// 配方校验通过
+            /// </summary>
+            public const string RecipeCodeValidationSucceeded = "monitor.runtime.recipe_code_validation_succeeded";
+            /// <summary>
+            /// 试焊件已更新
+            /// </summary>
+            public const string TestFlagUpdated = "monitor.runtime.test_flag_updated";
+            /// <summary>
             /// 正在下载程序...
             /// </summary>
             public const string DownloadingProgram = "monitor.runtime.downloading_program";
@@ -376,6 +424,54 @@ public static class TextKeys
 
         public static class RuntimeError
         {
+            /// <summary>
+            /// 只读看板禁止操作
+            /// </summary>
+            public const string ReadOnlyOperationBlocked = "monitor.error.read_only_operation_blocked";
+            /// <summary>
+            /// 请先获取工单
+            /// </summary>
+            public const string WorkOrderRequired = "monitor.error.work_order_required";
+            /// <summary>
+            /// 开工后禁止调整
+            /// </summary>
+            public const string ActiveTaskBlocksEdit = "monitor.error.active_task_blocks_edit";
+            /// <summary>
+            /// 请选择程序名称
+            /// </summary>
+            public const string ProgramNameRequired = "monitor.error.program_name_required";
+            /// <summary>
+            /// 请先确认开工信息
+            /// </summary>
+            public const string StartInfoRequired = "monitor.error.start_info_required";
+            /// <summary>
+            /// 试焊件标记失败
+            /// </summary>
+            public const string TestFlagUpdateFailed = "monitor.error.test_flag_update_failed";
+            /// <summary>
+            /// 配方校验失败
+            /// </summary>
+            public const string RecipeValidationFailed = "monitor.error.recipe_validation_failed";
+            /// <summary>
+            /// 业务信号写入失败
+            /// </summary>
+            public const string BusinessSignalWriteFailed = "monitor.error.business_signal_write_failed";
+            /// <summary>
+            /// 操作正在执行
+            /// </summary>
+            public const string StationOperationBusy = "monitor.error.station_operation_busy";
+            /// <summary>
+            /// 上报操作失败
+            /// </summary>
+            public const string StationReportFailed = "monitor.error.station_report_failed";
+            /// <summary>
+            /// 完工数量读取失败
+            /// </summary>
+            public const string FinishQuantityReadFailed = "monitor.error.finish_quantity_read_failed";
+            /// <summary>
+            /// 设备报警
+            /// </summary>
+            public const string DeviceAlarm = "monitor.error.device_alarm";
             /// <summary>
             /// 操作失败
             /// </summary>

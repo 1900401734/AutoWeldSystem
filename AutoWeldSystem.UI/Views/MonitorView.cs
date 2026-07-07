@@ -77,6 +77,7 @@ public partial class MonitorView : BaseView
     private AppSettings _currentSettings;
 
     private readonly ILocalizationService _localizer;
+    private readonly PermissionUiBinder _permissionUiBinder;
     private readonly IAppSettingsService _settingsService;
     private readonly IPlcCommunicationService _plcCommunicationService;
     private readonly IMesConnectionMonitor _mesConnectionMonitorService;
@@ -206,6 +207,7 @@ public partial class MonitorView : BaseView
     /// 初始化监控视图，完成服务注入、界面配置、事件绑定和初始数据刷新。
     /// </summary>
     /// <param name="localizer">界面文本本地化服务。</param>
+    /// <param name="permissionUiBinder">权限 UI 绑定器。</param>
     /// <param name="settingsService">系统设置读取与变更通知服务。</param>
     /// <param name="mesConnectionMonitorService">MES 连接状态监控服务。</param>
     /// <param name="plcCommunicationService">PLC 通讯服务。</param>
@@ -226,6 +228,7 @@ public partial class MonitorView : BaseView
     /// <param name="runtimeTipStateService">运行提示状态持久化服务。</param>
     public MonitorView(
         ILocalizationService localizer,
+        PermissionUiBinder permissionUiBinder,
         IAppSettingsService settingsService,
         IMesConnectionMonitor mesConnectionMonitorService,
         IPlcCommunicationService plcCommunicationService,
@@ -250,6 +253,7 @@ public partial class MonitorView : BaseView
         InitializeComponent();
 
         _localizer = localizer;
+        _permissionUiBinder = permissionUiBinder;
         _settingsService = settingsService;
         _currentSettings = _settingsService.Get();
         _mesConnectionMonitorService = mesConnectionMonitorService;
@@ -425,14 +429,25 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// 将在线开工和在线完工按钮放到同一个布局位置，运行时根据任务状态互斥显示。
+    /// 将离线按钮和在线上报按钮固定为左右各半。
     /// </summary>
     private void ConfigureReportButtonLayout()
     {
-        tlpButton.SetColumn(btnExpStart, 1);
-        tlpButton.SetColumn(btnExpEnd, 1);
-        tlpButton.SetColumnSpan(btnExpStart, 2);
-        tlpButton.SetColumnSpan(btnExpEnd, 2);
+        // 运行时强制两列布局，避免设计器历史列配置影响按钮比例。
+        tlpButton.ColumnCount = 2;
+        tlpButton.ColumnStyles.Clear();
+        tlpButton.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+        tlpButton.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+
+        tlpButton.ColumnStyles[0].SizeType = SizeType.Percent;
+        tlpButton.ColumnStyles[0].Width = 50F;
+        tlpButton.ColumnStyles[1].SizeType = SizeType.Percent;
+        tlpButton.ColumnStyles[1].Width = 50F;
+
+        tlpButton.SetColumn(btnLocalWorkOrder, 0);
+        tlpButton.SetColumnSpan(btnLocalWorkOrder, 1);
+        tlpButton.SetColumn(btnOnlineReport, 1);
+        tlpButton.SetColumnSpan(btnOnlineReport, 1);
     }
 
     /// <summary>
@@ -445,19 +460,17 @@ public partial class MonitorView : BaseView
         btnGetWO.Visible = canOperate;
         btnLocalWorkOrder.Visible = canOperate;
         btnEditWO.Visible = canOperate;
-        btnExpStart.Visible = canOperate;
-        btnExpEnd.Visible = false;
+        btnOnlineReport.Visible = canOperate;
 
         btnGetWO.Enabled = canOperate;
         btnLocalWorkOrder.Enabled = canOperate;
         btnEditWO.Enabled = canOperate;
-        btnExpStart.Enabled = canOperate;
-        btnExpEnd.Enabled = canOperate;
+        btnOnlineReport.Enabled = canOperate;
         ApplyReportButtonState();
     }
 
     /// <summary>
-    /// 根据 MES 连接和当前任务状态刷新在线复合上报按钮及离线按钮。
+    /// 根据 MES 连接和当前任务状态刷新在线上报按钮及离线按钮。
     /// </summary>
     private void ApplyReportButtonState()
     {
@@ -471,10 +484,20 @@ public partial class MonitorView : BaseView
             hasOnlineRunningTask,
             hasOfflineRunningTask);
 
-        btnExpStart.Visible = !_stationViewReadOnly && decision.ShowStartReportButton;
-        btnExpEnd.Visible = !_stationViewReadOnly && decision.ShowFinishReportButton;
-        btnExpStart.Enabled = decision.OnlineReportEnabled;
-        btnExpEnd.Enabled = decision.OnlineReportEnabled;
+        var isFinishAction = decision.OnlineReportAction == MonitorOnlineReportAction.Finish;
+        var permissionCode = isFinishAction
+            ? PermissionCodes.Buttons.Monitor.FinishReport
+            : PermissionCodes.Buttons.Monitor.StartReport;
+
+        btnOnlineReport.Text = _localizer.GetString(isFinishAction
+            ? TextKeys.Monitor.Button.FinishReport
+            : TextKeys.Monitor.Button.StartReport);
+        btnOnlineReport.IconSvg = isFinishAction
+            ? "CheckCircleOutlined"
+            : "PlayCircleOutlined";
+        btnOnlineReport.Visible = decision.ShowOnlineReportButton;
+        _permissionUiBinder.ApplyEnabled(btnOnlineReport, permissionCode);
+        btnOnlineReport.Enabled = btnOnlineReport.Enabled && decision.OnlineReportEnabled;
         btnLocalWorkOrder.Enabled = decision.LocalWorkOrderEnabled;
     }
 
@@ -490,7 +513,7 @@ public partial class MonitorView : BaseView
             return false;
         }
 
-        SetRuntimeErrorText($"工位{CurrentStationNo}{actionName}已禁用，当前窗口为只读看板。");
+        SetRuntimeError(TextKeys.Monitor.RuntimeError.ReadOnlyOperationBlocked);
         return true;
     }
 
@@ -670,12 +693,13 @@ public partial class MonitorView : BaseView
     private void WireEvents()
     {
         Load += MonitorView_Load;
+        GlobalContext.SessionChanged += GlobalContext_SessionChanged;
 
         btnGetWO.Click += GetWorkOrder_Click;
         btnLocalWorkOrder.Click += LocalWorkOrder_Click;
         btnEditWO.Click += EditWorkOrder_Click;
-        btnExpStart.Click += StartReport_Click;
-        btnExpEnd.Click += FinishReport_Click;
+        btnOnlineReport.Click += OnlineReport_Click;
+        btnClearErrorTips.Click += (_, _) => ClearRuntimeError();
         inputSN.TextChanged += OfflineWorkOrderInput_TextChanged;
         selectProgramName.SelectedIndexChanged += ProgramNameSelection_SelectedIndexChanged;
 
@@ -787,13 +811,13 @@ public partial class MonitorView : BaseView
         var state = GetCurrentStationState();
         if (state.CurrentWorkOrder is null)
         {
-            ShowWarningText("请先获取工单信息后再确认加工程序。");
+            ShowWarning(TextKeys.Monitor.RuntimeError.WorkOrderRequired);
             return;
         }
 
         if (state.ActiveTask is not null)
         {
-            ShowWarningText("处于开工状态，禁止调整加工程序。");
+            ShowWarning(TextKeys.Monitor.RuntimeError.ActiveTaskBlocksEdit);
             return;
         }
 
@@ -813,7 +837,7 @@ public partial class MonitorView : BaseView
         {
             RefreshProductionRuntimeState();
             ClearRuntimeError();
-            SetRuntimeStatusText("加工程序已确认，本次开工将使用当前程序名称关联的信息。", isSuccess: true);
+            SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.ProgramConfirmed);
         }
     }
 
@@ -841,7 +865,7 @@ public partial class MonitorView : BaseView
 
         if (activeTask is not null && activeTask.EndTime is null)
         {
-            SetStationReportFailure(stationNo, "本地工单", "当前工位已有在线任务未完工，不能创建本地工单。");
+            SetRuntimeError(TextKeys.Monitor.Message.StartBlockedByUnfinishedTask);
             return;
         }
 
@@ -871,7 +895,7 @@ public partial class MonitorView : BaseView
             ApplyOfflineProgramNameOption(selectedProgram);
             RefreshProductionRuntimeState();
             QueueRefreshSchemePreview(force: true);
-            SetRuntimeStatusText(BuildStationReportSuccessText(stationNo, "本地开工"), isSuccess: true);
+            SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.LocalStartSucceeded);
         });
 
         // PLC 业务信号独立写入；失败只提示和记录日志，不回滚已经成功的本地开工。
@@ -879,11 +903,29 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// 处理开工上报按钮点击事件。
+    /// 处理在线上报按钮点击，根据当前任务状态执行开工或完工。
     /// </summary>
     /// <param name="sender">事件发送者。</param>
     /// <param name="e">事件参数。</param>
-    private async void StartReport_Click(object? sender, EventArgs e)
+    private async void OnlineReport_Click(object? sender, EventArgs e)
+    {
+        var stationNo = CurrentStationNo;
+        var activeTask = _weldTaskService.RestoreUnfinishedTask(stationNo)
+            ?? GetCurrentStationState().ActiveTask;
+
+        if (activeTask is { IsOfflineCreated: false, EndTime: null })
+        {
+            await RunFinishReportAsync();
+            return;
+        }
+
+        await RunStartReportAsync();
+    }
+
+    /// <summary>
+    /// 执行在线开工上报流程。
+    /// </summary>
+    private async Task RunStartReportAsync()
     {
         if (IsReadOnlyOperationBlocked("开工上报"))
         {
@@ -896,20 +938,20 @@ public partial class MonitorView : BaseView
         if (_weldTaskService.RestoreUnfinishedTask(stationNo) is not null)
         {
             RefreshProductionRuntimeState();
-            SetStationReportFailure(stationNo, "开工上报", BuildLocalizedMessage(TextKeys.Monitor.Message.StartBlockedByUnfinishedTask));
+            SetRuntimeError(TextKeys.Monitor.Message.StartBlockedByUnfinishedTask);
             return;
         }
 
         var state = GetCurrentStationState();
         if (state.CurrentWorkOrder is null)
         {
-            SetStationReportFailure(stationNo, "开工上报", "请先点击获取工单，获取工单信息后再开工上报。");
+            SetRuntimeError(TextKeys.Monitor.RuntimeError.WorkOrderRequired);
             return;
         }
 
         if (state.SelectedProcess is null)
         {
-            SetStationReportFailure(stationNo, "开工上报", BuildLocalizedMessage(TextKeys.Monitor.Message.ProcessRequired));
+            SetRuntimeError(TextKeys.Monitor.Message.ProcessRequired);
             return;
         }
 
@@ -925,7 +967,7 @@ public partial class MonitorView : BaseView
         state = GetCurrentStationState();
         if (state.CurrentWorkOrder is null || state.SelectedProcess is null || state.SelectedProgram is null)
         {
-            SetStationReportFailure(stationNo, "开工上报", BuildLocalizedMessage(TextKeys.Monitor.Message.StartPrerequisiteMissing));
+            SetRuntimeError(TextKeys.Monitor.Message.StartPrerequisiteMissing);
             return;
         }
 
@@ -951,7 +993,7 @@ public partial class MonitorView : BaseView
             await _weldTaskService.StartAsync(employeeNumber, actualQty, stationNo, employeeAlreadyValidated: true);
             RefreshProductionRuntimeState();
             QueueRefreshSchemePreview(force: true);
-            SetRuntimeStatusText(BuildStationReportSuccessText(stationNo, "开工上报"), isSuccess: true);
+            SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.OnlineStartSucceeded);
         });
 
         // PLC 业务信号独立写入；失败只提示和记录日志，不回滚已经成功的在线开工。
@@ -959,11 +1001,9 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// 处理完工上报按钮点击事件。
+    /// 执行在线完工上报流程。
     /// </summary>
-    /// <param name="sender">事件发送者。</param>
-    /// <param name="e">事件参数。</param>
-    private async void FinishReport_Click(object? sender, EventArgs e)
+    private async Task RunFinishReportAsync()
     {
         if (IsReadOnlyOperationBlocked("完工上报"))
         {
@@ -975,7 +1015,7 @@ public partial class MonitorView : BaseView
         var activeTask = _weldTaskService.RestoreUnfinishedTask(stationNo);
         if (activeTask is null)
         {
-            SetStationReportFailure(stationNo, "完工上报", BuildLocalizedMessage(TextKeys.Monitor.Message.FinishPrerequisiteMissing));
+            SetRuntimeError(TextKeys.Monitor.Message.FinishPrerequisiteMissing);
             return;
         }
 
@@ -1000,7 +1040,7 @@ public partial class MonitorView : BaseView
             // 完工后立即禁止 PLC 继续生产，防止操作员未重新开工时设备继续采集。
             await WriteFinishBusinessSignalsAsync(stationNo);
             RefreshProductionRuntimeState();
-            SetRuntimeStatusText(BuildStationReportSuccessText(stationNo, "完工上报"), isSuccess: true);
+            SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.OnlineFinishSucceeded);
         });
     }
 
@@ -1034,6 +1074,14 @@ public partial class MonitorView : BaseView
         }
         AdjustTitleFontSize();
         SetVerticalSplitterPanel2ToMinWidth();
+    }
+
+    /// <summary>
+    /// 当前登录用户变化后，重新计算在线按钮对应的开工/完工权限。
+    /// </summary>
+    private void GlobalContext_SessionChanged(object? sender, EventArgs e)
+    {
+        RunOnUiThread(ApplyReportButtonState, "MonitorView.SessionChanged", requireHandle: false);
     }
 
     /// <summary>
@@ -1079,6 +1127,7 @@ public partial class MonitorView : BaseView
     /// <param name="e">事件参数。</param>
     protected override void OnHandleDestroyed(EventArgs e)
     {
+        GlobalContext.SessionChanged -= GlobalContext_SessionChanged;
         _settingsService.SettingsChanged -= OnSettingsChanged;
         _weldTaskService.StateChanged -= WeldTaskService_StateChanged;
         _plcCommunicationService.StatusChanged -= PlcCommunicationService_StatusChanged;
@@ -1184,7 +1233,7 @@ public partial class MonitorView : BaseView
         inputProcessNo.Text = process.ProcessNo ?? string.Empty;
         inputStartAmount.Text = process.StartAmount.ToString(CultureInfo.InvariantCulture);
         ClearRuntimeError();
-        SetRuntimeStatusText($"已选择工序：{process.ItemName}", isSuccess: true);
+        SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.ProcessSelected);
     }
 
     /// <summary>
@@ -2148,7 +2197,7 @@ public partial class MonitorView : BaseView
                 stationNo);
             await WriteFinishBusinessSignalsAsync(stationNo);
             RefreshProductionRuntimeState();
-            SetRuntimeStatusText(BuildStationReportSuccessText(stationNo, "本地完工"), isSuccess: true);
+            SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.LocalFinishSucceeded);
         });
     }
 
@@ -2294,7 +2343,13 @@ public partial class MonitorView : BaseView
             return true;
         }
 
-        SetStationReportFailure(stationNo, "完工上报", BuildFinishQuantityReadFailureText(production));
+        var detail = BuildFinishQuantityReadFailureText(production);
+        _exceptionLogService.WriteBusiness(
+            "PLC.FinishQuantity",
+            _localizer.GetString(TextKeys.Monitor.RuntimeError.FinishQuantityReadFailed),
+            detail,
+            $"Station={stationNo}");
+        SetRuntimeError(TextKeys.Monitor.RuntimeError.FinishQuantityReadFailed);
         return false;
     }
 
@@ -2430,7 +2485,7 @@ public partial class MonitorView : BaseView
             _weldTaskService.SelectProcess(defaultProcess, stationNo);
             RefreshProductionRuntimeState();
             ClearMesOperatorInfo();
-            SetRuntimeStatusText("工单信息已获取，请确认工序后点击开工上报。", isSuccess: true);
+            SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.WorkOrderLoaded);
             isReady = true;
         });
 
@@ -2799,7 +2854,7 @@ public partial class MonitorView : BaseView
         selectedProgram = GetSelectedOfflineProgramNameOption();
         if (selectedProgram is null)
         {
-            ShowWarningText("请先选择程序名称。");
+            ShowWarning(TextKeys.Monitor.RuntimeError.ProgramNameRequired);
             return false;
         }
 
@@ -3070,9 +3125,7 @@ public partial class MonitorView : BaseView
         }
 
         ClearRuntimeError();
-        SetRuntimeStatusText(
-            $"数据采集完成：焊点{record.TouchNo} {record.TestResult}",
-            isSuccess: true);
+        SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.ProductDataCollected);
     }
 
     /// <summary>
@@ -3116,14 +3169,15 @@ public partial class MonitorView : BaseView
             RefreshProductHistoryPreview();
         }
 
+        var hint = ResolveProductionHint(entry);
         if (entry.Level.Equals("Error", StringComparison.OrdinalIgnoreCase))
         {
-            SetRuntimeErrorText(ToProductionHintText(entry));
+            SetRuntimeError(hint.MessageKey, hint.Args);
             return;
         }
 
         ClearRuntimeError();
-        SetRuntimeStatusText(ToProductionHintText(entry), isSuccess: true);
+        SetRuntimeStatusSuccess(hint.MessageKey, hint.Args);
     }
 
     /// <summary>
@@ -3137,42 +3191,51 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// 处理到生产提示文本。
+    /// 解析生产提示文本键和参数。
     /// </summary>
     /// <param name="entry">生产流程日志条目。</param>
-    /// <returns>处理后的文本。</returns>
-    private string ToProductionHintText(ProductionFlowLogEntry entry)
+    /// <returns>资源键和参数。</returns>
+    private (string MessageKey, object[] Args) ResolveProductionHint(ProductionFlowLogEntry entry)
     {
         return entry.Step switch
         {
-            "ProductDataReady" => _localizer.GetString(TextKeys.Monitor.ProductionHint.ProductDataReady),
-            "ProductCollectionStart" => _localizer.GetString(TextKeys.Monitor.ProductionHint.ProductCollectionStart),
-            "ProductDataReadStart" => _localizer.GetString(TextKeys.Monitor.ProductionHint.ProductDataReadStart),
-            "ProductDataSaved" => _localizer.GetString(TextKeys.Monitor.ProductionHint.ProductDataSaved),
-            "ProductDataSaveFailed" => _localizer.GetString(TextKeys.Monitor.ProductionHint.ProductDataSaveFailed),
+            "ProductDataReady" => RuntimeTip(TextKeys.Monitor.ProductionHint.ProductDataReady),
+            "ProductCollectionStart" => RuntimeTip(TextKeys.Monitor.ProductionHint.ProductCollectionStart),
+            "ProductDataReadStart" => RuntimeTip(TextKeys.Monitor.ProductionHint.ProductDataReadStart),
+            "ProductDataSaved" => RuntimeTip(TextKeys.Monitor.ProductionHint.ProductDataSaved),
+            "ProductDataSaveFailed" => RuntimeTip(TextKeys.Monitor.ProductionHint.ProductDataSaveFailed),
             "ProductCollectionFeedback" => entry.Level.Equals("Error", StringComparison.OrdinalIgnoreCase)
-                ? _localizer.GetString(TextKeys.Monitor.ProductionHint.ProductCollectionFeedbackFailed)
-                : _localizer.GetString(TextKeys.Monitor.ProductionHint.ProductCollectionFeedbackSucceeded),
-            "RecipeCodeWriteSucceeded" => _localizer.GetString(TextKeys.Monitor.ProductionHint.RecipeCodeWriteSucceeded),
-            "RecipeCodeWriteFailed" => _localizer.GetString(TextKeys.Monitor.ProductionHint.RecipeCodeWriteFailed),
-            "RecipeCodeValidationSucceeded" => _localizer.GetString(TextKeys.Monitor.ProductionHint.RecipeCodeValidationSucceeded),
-            "RecipeCodeValidationFailed" => _localizer.GetString(TextKeys.Monitor.ProductionHint.RecipeCodeValidationFailed),
-            "RecipeCodeChangedDetected" => _localizer.GetString(
+                ? RuntimeTip(TextKeys.Monitor.ProductionHint.ProductCollectionFeedbackFailed)
+                : RuntimeTip(TextKeys.Monitor.ProductionHint.ProductCollectionFeedbackSucceeded),
+            "RecipeCodeWriteSucceeded" => RuntimeTip(TextKeys.Monitor.ProductionHint.RecipeCodeWriteSucceeded),
+            "RecipeCodeWriteFailed" => RuntimeTip(TextKeys.Monitor.ProductionHint.RecipeCodeWriteFailed),
+            "RecipeCodeValidationSucceeded" => RuntimeTip(TextKeys.Monitor.ProductionHint.RecipeCodeValidationSucceeded),
+            "RecipeCodeValidationFailed" => RuntimeTip(TextKeys.Monitor.ProductionHint.RecipeCodeValidationFailed),
+            "RecipeCodeChangedDetected" => RuntimeTip(
                 TextKeys.Monitor.ProductionHint.RecipeCodeChangedDetected,
                 GetProductionLogDetailValue(entry, "PlcRecipeCode")),
-            "RecipeCodeReconcileSucceeded" => _localizer.GetString(
+            "RecipeCodeReconcileSucceeded" => RuntimeTip(
                 TextKeys.Monitor.ProductionHint.RecipeCodeReconcileSucceeded,
                 GetProductionLogDetailValue(entry, "ExpectedRecipeCode")),
-            "RecipeCodeReconcileFailed" => _localizer.GetString(
+            "RecipeCodeReconcileFailed" => RuntimeTip(
                 TextKeys.Monitor.ProductionHint.RecipeCodeReconcileFailed,
                 GetProductionLogDetailValue(entry, "ExpectedRecipeCode"),
                 GetProductionLogDetailValue(entry, "PlcRecipeCode")),
             "BusinessSignalWrite" => entry.Level.Equals("Error", StringComparison.OrdinalIgnoreCase)
-                ? _localizer.GetString(TextKeys.Monitor.ProductionHint.BusinessSignalWriteFailed)
-                : _localizer.GetString(TextKeys.Monitor.ProductionHint.BusinessSignalWriteSucceeded),
-            _ => entry.Summary
+                ? RuntimeTip(TextKeys.Monitor.ProductionHint.BusinessSignalWriteFailed)
+                : RuntimeTip(TextKeys.Monitor.ProductionHint.BusinessSignalWriteSucceeded),
+            _ => RuntimeTip(TextKeys.Monitor.RuntimeStatus.ProductDataCollected)
         };
     }
+
+    /// <summary>
+    /// 组合运行提示资源键和参数。
+    /// </summary>
+    /// <param name="messageKey">本地化文本键。</param>
+    /// <param name="args">本地化参数。</param>
+    /// <returns>资源键和参数。</returns>
+    private static (string MessageKey, object[] Args) RuntimeTip(string messageKey, params object[] args)
+        => (messageKey, args);
 
     /// <summary>
     /// 从生产流程日志详情中读取 key=value 形式的值，供本地化提示拼接动态参数。
@@ -3293,10 +3356,10 @@ public partial class MonitorView : BaseView
         lblLiveHint1.ForeColor = UiColors.Status.Success;
         lblLiveHint2.ForeColor = UiColors.Status.Success;
 
-        btnExpStart.Text = _localizer.GetString(TextKeys.Monitor.Button.StartReport);
-        btnExpEnd.Text = _localizer.GetString(TextKeys.Monitor.Button.FinishReport);
+        btnOnlineReport.Text = _localizer.GetString(TextKeys.Monitor.Button.StartReport);
         btnLocalWorkOrder.Text = _localizer.GetString(TextKeys.Monitor.Button.LocalWorkOrder);
         btnEditWO.Text = _localizer.GetString(TextKeys.Monitor.Button.EditWO);
+        btnClearErrorTips.Text = _localizer.GetString(TextKeys.Monitor.Button.ClearErrorTips);
 
         grpErrorTips.Text = _localizer.GetString(TextKeys.Monitor.Group.ExceptionTips);
         grpRunningStatus.Text = _localizer.GetString(TextKeys.Monitor.Group.RunningStatus);
@@ -3307,6 +3370,7 @@ public partial class MonitorView : BaseView
 
         SetLiveResultTagColor(tagLiveResult1, UiColors.Status.Muted, Color.White);
         SetLiveResultTagColor(tagLiveResult2, UiColors.Status.Muted, Color.White);
+        RefreshRuntimePanels();
     }
 
     /// <summary>
@@ -3651,7 +3715,7 @@ public partial class MonitorView : BaseView
                 ? "PLC设备报警，未匹配到已启用的报警原因"
                 : snapshot.AlarmMessage;
             _deviceAlarmRuntimeErrorText = NormalizeRuntimeSummary(alarmMessage);
-            SetRuntimeErrorText(_deviceAlarmRuntimeErrorText, RuntimeErrorSourceDeviceAlarm);
+            SetRuntimeErrorWithSource(TextKeys.Monitor.RuntimeError.DeviceAlarm, RuntimeErrorSourceDeviceAlarm);
             return;
         }
 
@@ -4058,17 +4122,17 @@ public partial class MonitorView : BaseView
 
             if (!result.IsSuccess)
             {
-                ShowWarningText(result.Message);
+                ShowWarning(TextKeys.Monitor.RuntimeError.TestFlagUpdateFailed);
                 return;
             }
 
             ClearRuntimeError();
-            SetRuntimeStatusText(result.Message, isSuccess: true);
+            SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.TestFlagUpdated);
         }
         catch (Exception ex)
         {
             _exceptionLogService.Write(ex, "MonitorView.SetProductHistoryTestFlag");
-            ShowWarningText("试焊件标记失败，请查看异常日志。");
+            ShowWarning(TextKeys.Monitor.RuntimeError.TestFlagUpdateFailed);
         }
     }
 
@@ -6606,7 +6670,7 @@ public partial class MonitorView : BaseView
     {
         if (workOrder is null)
         {
-            ShowWarningText("请先获取工单信息后再确认开工信息。");
+            ShowWarning(TextKeys.Monitor.RuntimeError.StartInfoRequired);
             return false;
         }
 
@@ -6822,10 +6886,9 @@ public partial class MonitorView : BaseView
                 plcSignal: AppConstants.PlcLogicalKeys.PlcRecipeCode);
         }
 
-        SetRuntimeStatusText(validateRecipe
-            ? $"配方编号校验通过：{recipeCode}"
-            : $"配方编号已下发：{recipeCode}",
-            isSuccess: true);
+        SetRuntimeStatusSuccess(validateRecipe
+            ? TextKeys.Monitor.RuntimeStatus.RecipeCodeValidationSucceeded
+            : TextKeys.Monitor.RuntimeStatus.RecipeCodeWriteSucceeded);
     }
 
     /// <summary>
@@ -6872,20 +6935,20 @@ public partial class MonitorView : BaseView
         catch (BusinessOperationException ex) when (ex.SourceName?.Contains("Recipe") == true)
         {
             // 配方相关异常不覆盖开工成功状态，只在异常提示区展示风险。
-            SetRuntimeErrorText("配方编号校验失败");
             _exceptionLogService.WriteBusiness(ex.SourceName, ex.Message, ex.Detail);
+            SetRuntimeError(TextKeys.Monitor.RuntimeError.RecipeValidationFailed);
         }
         catch (BusinessOperationException ex)
         {
             // 其他业务信号异常同样只提示和记日志，不回滚已经完成的开工。
-            SetRuntimeErrorText($"业务信号写入失败：{ex.Message}");
             _exceptionLogService.WriteBusiness(ex.SourceName, ex.Message, ex.Detail);
+            SetRuntimeError(TextKeys.Monitor.RuntimeError.BusinessSignalWriteFailed);
         }
         catch (Exception ex)
         {
             // 未预期异常保留统一提示，详细堆栈写入异常日志。
-            SetRuntimeErrorText("业务信号写入失败");
             _exceptionLogService.Write(ex, "MonitorView.SafeWriteStartBusinessSignals");
+            SetRuntimeError(TextKeys.Monitor.RuntimeError.BusinessSignalWriteFailed);
         }
     }
 
@@ -7641,7 +7704,7 @@ public partial class MonitorView : BaseView
         catch (BusinessOperationException ex)
         {
             _exceptionLogService.WriteBusiness(ex.SourceName, ex.Message, ex.Detail);
-            SetRuntimeErrorText(ex.Message);
+            SetRuntimeError(ResolveBusinessRuntimeErrorKey(ex));
             ShowError(ex.Message);
         }
         catch (Exception ex)
@@ -7670,7 +7733,7 @@ public partial class MonitorView : BaseView
         if (!TryEnterStationOperation(stationNo))
         {
             // 同一工位上报必须串行，避免重复点击造成 MES/PLC 状态交叉写入。
-            SetRuntimeErrorText($"工位{stationNo}{actionName}正在执行中，请稍后再试。");
+            SetRuntimeError(TextKeys.Monitor.RuntimeError.StationOperationBusy);
             return;
         }
 
@@ -7684,12 +7747,12 @@ public partial class MonitorView : BaseView
         catch (BusinessOperationException ex)
         {
             _exceptionLogService.WriteBusiness(ex.SourceName, ex.Message, ex.Detail);
-            SetRuntimeErrorText(BuildStationReportFailureText(stationNo, actionName, ex.Message));
+            SetRuntimeError(TextKeys.Monitor.RuntimeError.StationReportFailed);
         }
         catch (Exception ex)
         {
             _exceptionLogService.Write(ex, $"MonitorView.{actionName}");
-            SetRuntimeErrorText(BuildStationReportFailureText(stationNo, actionName, ex.Message));
+            SetRuntimeError(TextKeys.Monitor.RuntimeError.StationReportFailed);
         }
         finally
         {
@@ -7731,39 +7794,24 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// 构建工位上报成功文本。
+    /// 解析业务异常摘要键。
     /// </summary>
-    /// <param name="stationNo">工位编号。</param>
-    /// <param name="actionName">操作名称，用于提示和日志。</param>
-    /// <returns>处理后的文本。</returns>
-    private static string BuildStationReportSuccessText(int stationNo, string actionName)
+    /// <param name="exception">业务异常。</param>
+    /// <returns>本地化摘要键。</returns>
+    private static string ResolveBusinessRuntimeErrorKey(BusinessOperationException exception)
     {
-        return $"工位{stationNo}{actionName}成功";
-    }
+        if (exception.SourceName.Contains("Recipe", StringComparison.OrdinalIgnoreCase))
+        {
+            return TextKeys.Monitor.RuntimeError.RecipeValidationFailed;
+        }
 
-    /// <summary>
-    /// 设置工位上报失败。
-    /// </summary>
-    /// <param name="stationNo">工位编号。</param>
-    /// <param name="actionName">操作名称，用于提示和日志。</param>
-    /// <param name="detail">详情。</param>
-    private void SetStationReportFailure(int stationNo, string actionName, string detail)
-    {
-        SetRuntimeErrorText(BuildStationReportFailureText(stationNo, actionName, detail));
-    }
+        if (exception.SourceName.Contains("PLC", StringComparison.OrdinalIgnoreCase)
+            || exception.SourceName.Contains("WorkOrderStatus", StringComparison.OrdinalIgnoreCase))
+        {
+            return TextKeys.Monitor.RuntimeError.BusinessSignalWriteFailed;
+        }
 
-    /// <summary>
-    /// 构建工位上报失败文本。
-    /// </summary>
-    /// <param name="stationNo">工位编号。</param>
-    /// <param name="actionName">操作名称，用于提示和日志。</param>
-    /// <param name="detail">详情。</param>
-    /// <returns>处理后的文本。</returns>
-    private static string BuildStationReportFailureText(int stationNo, string actionName, string detail)
-    {
-        return string.IsNullOrWhiteSpace(detail)
-            ? $"工位{stationNo}{actionName}失败"
-            : $"工位{stationNo}{actionName}失败：{detail}";
+        return TextKeys.Monitor.RuntimeError.OperationFailed;
     }
 
     /// <summary>
@@ -7842,12 +7890,17 @@ public partial class MonitorView : BaseView
     /// <param name="args">本地化文本参数。</param>
     private void SetRuntimeStatus(string messageKey, params object[] args)
     {
-        _runtimeStatusKey = messageKey;
-        _runtimeStatusArgs = args;
-        _runtimeStatusText = null;
-        _runtimeStatusTextIsSuccess = false;
-        PersistCurrentRuntimeTipState();
-        RefreshRuntimeStatus();
+        SetRuntimeStatusCore(messageKey, args, null, isSuccess: false);
+    }
+
+    /// <summary>
+    /// 设置成功运行状态，并通过资源键保存，便于重启后重新本地化显示。
+    /// </summary>
+    /// <param name="messageKey">本地化文本键。</param>
+    /// <param name="args">本地化文本参数。</param>
+    private void SetRuntimeStatusSuccess(string messageKey, params object[] args)
+    {
+        SetRuntimeStatusCore(messageKey, args, null, isSuccess: true);
     }
 
     /// <summary>
@@ -7857,9 +7910,21 @@ public partial class MonitorView : BaseView
     /// <param name="isSuccess">判断成功。</param>
     private void SetRuntimeStatusText(string message, bool isSuccess = false)
     {
-        _runtimeStatusKey = null;
-        _runtimeStatusArgs = Array.Empty<object>();
-        _runtimeStatusText = NormalizeRuntimeSummary(message);
+        SetRuntimeStatusCore(null, Array.Empty<object>(), NormalizeRuntimeSummary(message), isSuccess);
+    }
+
+    /// <summary>
+    /// 统一写入运行状态字段，避免 key 与动态文本同时残留。
+    /// </summary>
+    /// <param name="messageKey">本地化文本键；为空时使用动态文本。</param>
+    /// <param name="args">本地化文本参数。</param>
+    /// <param name="message">动态文本兼容值。</param>
+    /// <param name="isSuccess">是否按成功状态显示。</param>
+    private void SetRuntimeStatusCore(string? messageKey, object[] args, string? message, bool isSuccess)
+    {
+        _runtimeStatusKey = messageKey;
+        _runtimeStatusArgs = args;
+        _runtimeStatusText = message;
         _runtimeStatusTextIsSuccess = isSuccess;
         PersistCurrentRuntimeTipState();
         RefreshRuntimeStatus();
@@ -7872,12 +7937,18 @@ public partial class MonitorView : BaseView
     /// <param name="args">本地化文本参数。</param>
     private void SetRuntimeError(string messageKey, params object[] args)
     {
-        _runtimeErrorKey = messageKey;
-        _runtimeErrorArgs = args;
-        _runtimeErrorText = null;
-        _runtimeErrorSource = null;
-        PersistCurrentRuntimeTipState();
-        RefreshRuntimeError();
+        SetRuntimeErrorCore(messageKey, args, null, source: null);
+    }
+
+    /// <summary>
+    /// 设置带来源的运行异常。设备报警等来源用于后续只清除对应异常。
+    /// </summary>
+    /// <param name="messageKey">本地化文本键。</param>
+    /// <param name="source">异常来源。</param>
+    /// <param name="args">本地化文本参数。</param>
+    private void SetRuntimeErrorWithSource(string messageKey, string? source, params object[] args)
+    {
+        SetRuntimeErrorCore(messageKey, args, null, source);
     }
 
     /// <summary>
@@ -7886,9 +7957,21 @@ public partial class MonitorView : BaseView
     /// <param name="message">提示消息。</param>
     private void SetRuntimeErrorText(string message, string? source = null)
     {
-        _runtimeErrorKey = null;
-        _runtimeErrorArgs = Array.Empty<object>();
-        _runtimeErrorText = NormalizeRuntimeSummary(message);
+        SetRuntimeErrorCore(null, Array.Empty<object>(), NormalizeRuntimeSummary(message), source);
+    }
+
+    /// <summary>
+    /// 统一写入运行异常字段，避免 key 与动态文本同时残留。
+    /// </summary>
+    /// <param name="messageKey">本地化文本键；为空时使用动态文本。</param>
+    /// <param name="args">本地化文本参数。</param>
+    /// <param name="message">动态文本兼容值。</param>
+    /// <param name="source">异常来源。</param>
+    private void SetRuntimeErrorCore(string? messageKey, object[] args, string? message, string? source)
+    {
+        _runtimeErrorKey = messageKey;
+        _runtimeErrorArgs = args;
+        _runtimeErrorText = message;
         _runtimeErrorSource = source;
         PersistCurrentRuntimeTipState();
         RefreshRuntimeError();
@@ -8062,6 +8145,7 @@ public partial class MonitorView : BaseView
         var color = hasError ? UiColors.Status.Danger : UiColors.Status.Muted;
         grpErrorTips.ForeColor = color;
         inputErrorTips.ForeColor = color;
+        btnClearErrorTips.Visible = hasError;
     }
 
     /// <summary>

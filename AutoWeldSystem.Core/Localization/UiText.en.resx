@@ -843,6 +843,9 @@
   <data name="monitor.button.local_work_order" xml:space="preserve">
     <value>Start Experiment Offline</value>
   </data>
+  <data name="monitor.button.clear_error_tips" xml:space="preserve">
+    <value>Clear</value>
+  </data>
   <data name="monitor.button.finish_report" xml:space="preserve">
     <value>Finish Report</value>
   </data>
@@ -1137,6 +1140,39 @@
   <data name="monitor.message.finish_success" xml:space="preserve">
     <value>Finish report succeeded.</value>
   </data>
+  <data name="monitor.runtime.program_confirmed" xml:space="preserve">
+    <value>Program confirmed.</value>
+  </data>
+  <data name="monitor.runtime.work_order_loaded" xml:space="preserve">
+    <value>Work order loaded.</value>
+  </data>
+  <data name="monitor.runtime.process_selected" xml:space="preserve">
+    <value>Process selected.</value>
+  </data>
+  <data name="monitor.runtime.local_start_succeeded" xml:space="preserve">
+    <value>Offline start succeeded.</value>
+  </data>
+  <data name="monitor.runtime.online_start_succeeded" xml:space="preserve">
+    <value>Start report succeeded.</value>
+  </data>
+  <data name="monitor.runtime.online_finish_succeeded" xml:space="preserve">
+    <value>Finish report succeeded.</value>
+  </data>
+  <data name="monitor.runtime.local_finish_succeeded" xml:space="preserve">
+    <value>Offline finish succeeded.</value>
+  </data>
+  <data name="monitor.runtime.product_data_collected" xml:space="preserve">
+    <value>Data collected.</value>
+  </data>
+  <data name="monitor.runtime.recipe_code_write_succeeded" xml:space="preserve">
+    <value>Recipe code sent.</value>
+  </data>
+  <data name="monitor.runtime.recipe_code_validation_succeeded" xml:space="preserve">
+    <value>Recipe code validated.</value>
+  </data>
+  <data name="monitor.runtime.test_flag_updated" xml:space="preserve">
+    <value>Test flag updated.</value>
+  </data>
   <data name="monitor.runtime.idle" xml:space="preserve">
     <value>Waiting for operation.</value>
   </data>
@@ -1157,6 +1193,42 @@
   </data>
   <data name="monitor.runtime.submitting_finish" xml:space="preserve">
     <value>Submitting finish report...</value>
+  </data>
+  <data name="monitor.error.read_only_operation_blocked" xml:space="preserve">
+    <value>Read-only view blocks operation.</value>
+  </data>
+  <data name="monitor.error.work_order_required" xml:space="preserve">
+    <value>Load a work order first.</value>
+  </data>
+  <data name="monitor.error.active_task_blocks_edit" xml:space="preserve">
+    <value>Started task blocks edit.</value>
+  </data>
+  <data name="monitor.error.program_name_required" xml:space="preserve">
+    <value>Select a program name.</value>
+  </data>
+  <data name="monitor.error.start_info_required" xml:space="preserve">
+    <value>Confirm start info first.</value>
+  </data>
+  <data name="monitor.error.test_flag_update_failed" xml:space="preserve">
+    <value>Test flag update failed.</value>
+  </data>
+  <data name="monitor.error.recipe_validation_failed" xml:space="preserve">
+    <value>Recipe validation failed.</value>
+  </data>
+  <data name="monitor.error.business_signal_write_failed" xml:space="preserve">
+    <value>Business signal write failed.</value>
+  </data>
+  <data name="monitor.error.station_operation_busy" xml:space="preserve">
+    <value>Operation is running.</value>
+  </data>
+  <data name="monitor.error.station_report_failed" xml:space="preserve">
+    <value>Report operation failed.</value>
+  </data>
+  <data name="monitor.error.finish_quantity_read_failed" xml:space="preserve">
+    <value>Finish quantity read failed.</value>
+  </data>
+  <data name="monitor.error.device_alarm" xml:space="preserve">
+    <value>Device alarm.</value>
   </data>
   <data name="monitor.error.work_id_read_failed" xml:space="preserve">
     <value>Work ID read failed.</value>
