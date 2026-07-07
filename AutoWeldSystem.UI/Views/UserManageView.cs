@@ -185,6 +185,8 @@ public partial class UserManageView : BaseView
         queryRoles.QueryClick += (_, keyword) => ApplyRoleFilter(keyword);
 
         dgvRoles.CellDoubleClick += (_, _) => BtnEditRole_Click(this, EventArgs.Empty);
+        // 点击角色行后立即刷新右侧权限树，避免必须手动刷新角色列表。
+        dgvRoles.SelectionChanged += DgvRoles_SelectionChanged;
         dgvUsers.CellDoubleClick += (_, _) => BtnEditUser_Click(this, EventArgs.Empty);
         tvPermissions.AfterCheck += TvPermissions_AfterCheck;
 
@@ -367,8 +369,24 @@ public partial class UserManageView : BaseView
         }
 
         tvPermissions.ExpandAll();
+        ScrollPermissionTreeToTop();
         tvPermissions.EndUpdate();
         _handlingTreeCheck = false;
+    }
+
+    /// <summary>
+    /// 权限树展开后，WinForms 可能自动滚动到最后一个节点，这里统一恢复到顶部。
+    /// </summary>
+    private void ScrollPermissionTreeToTop()
+    {
+        if (tvPermissions.Nodes.Count == 0)
+        {
+            return;
+        }
+
+        var firstNode = tvPermissions.Nodes[0];
+        tvPermissions.TopNode = firstNode;
+        firstNode.EnsureVisible();
     }
 
     private TreeNode CreatePermissionNode(PermissionTreeNode node)

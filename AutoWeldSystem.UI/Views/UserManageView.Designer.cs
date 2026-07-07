@@ -180,14 +180,12 @@ namespace AutoWeldSystem.UI.Views
             queryUsers.AutoSize = true;
             queryUsers.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             queryUsers.Dock = DockStyle.Right;
-            queryUsers.IsShowQueryButton = true;
-            queryUsers.IsShowRefreshButton = true;
-            queryUsers.Location = new Point(1157, 0);
+            queryUsers.Location = new Point(989, 0);
             queryUsers.Margin = new Padding(0);
             queryUsers.MinimumSize = new Size(125, 46);
             queryUsers.Name = "queryUsers";
             queryUsers.QueryChanged = null;
-            queryUsers.Size = new Size(155, 53);
+            queryUsers.Size = new Size(323, 53);
             queryUsers.TabIndex = 1;
             // 
             // dgvUsers
@@ -349,14 +347,12 @@ namespace AutoWeldSystem.UI.Views
             queryRoles.AutoSize = true;
             queryRoles.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             queryRoles.Dock = DockStyle.Right;
-            queryRoles.IsShowQueryButton = true;
-            queryRoles.IsShowRefreshButton = true;
-            queryRoles.Location = new Point(1069, 0);
+            queryRoles.Location = new Point(901, 0);
             queryRoles.Margin = new Padding(0);
             queryRoles.MinimumSize = new Size(125, 46);
             queryRoles.Name = "queryRoles";
             queryRoles.QueryChanged = null;
-            queryRoles.Size = new Size(155, 53);
+            queryRoles.Size = new Size(323, 53);
             queryRoles.TabIndex = 1;
             // 
             // btnSavePermissions
