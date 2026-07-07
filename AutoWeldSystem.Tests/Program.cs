@@ -15,6 +15,7 @@ using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Core.Runtime;
 using AutoWeldSystem.Core.ViewModels;
 using AutoWeldSystem.Services.Mes;
+using AutoWeldSystem.Services.Log;
 using AutoWeldSystem.Services.Production;
 using System.Net;
 using System.Text;
@@ -64,6 +65,10 @@ var tests = new (string Name, Action Run)[]
     ("MES device status rules format station remarks", MesDeviceStatusRulesFormatStationRemarks),
     ("Log timestamp display rules switch date visibility", LogTimestampDisplayRulesSwitchDateVisibility),
     ("Antd table selection helper maps selected indexes", AntdTableSelectionHelperMapsSelectedIndexes),
+    ("Device status local log store resolves directories", DeviceStatusLocalLogStoreResolvesDirectories),
+    ("Device status local log store writes and reads jsonl", DeviceStatusLocalLogStoreWritesAndReadsJsonl),
+    ("LogManageView device status tab exposes open folder button", LogManageViewDeviceStatusTabExposesOpenFolderButton),
+    ("DataManageView static grids define bound columns", DataManageViewStaticGridsDefineBoundColumns),
     ("Device API status query returns current MES status", DeviceApiStatusQueryReturnsCurrentMesStatus),
     ("Device API status query rejects mismatched device id", DeviceApiStatusQueryRejectsMismatchedDeviceId),
     ("Device API set device id saves local settings as synced", DeviceApiSetDeviceIdSavesLocalSettingsAsSynced),
@@ -109,6 +114,8 @@ var tests = new (string Name, Action Run)[]
     ("Program remark rules default by action", ProgramRemarkRulesDefaultByAction),
     ("Program MES write payload omits recipe code", ProgramMesWritePayloadOmitsRecipeCode),
     ("Monitor report button rules follow MES and task state", MonitorReportButtonRulesFollowMesAndTaskState),
+    ("Monitor view uses one online report button", MonitorViewUsesOneOnlineReportButton),
+    ("Monitor runtime tips use localized summaries", MonitorRuntimeTipsUseLocalizedSummaries),
     ("Program content rows come from dictionary items", ProgramContentRowsComeFromDictionaryItems),
     ("Program content JSON keeps only rows with standard values", ProgramContentJsonKeepsOnlyRowsWithStandardValues),
     ("Program content JSON merges existing values and preserves unknown keys", ProgramContentJsonMergesExistingValuesAndPreservesUnknownKeys),
@@ -745,7 +752,7 @@ static void ProcessParameterIsTestFollowsGlobalSettingAndDeviceType()
         IsTest = ProcessParameterIsTestRules.Resolve(recordIsTest: false, showTestFlagInHistory: true, ProductionConstants.ProcessParameterDeviceTypes.WholePieceWeld)
     };
     var weldJson = JsonSerializer.Serialize(weldItem);
-    AssertTrue(weldJson.Contains("\"IsTest\":false", StringComparison.Ordinal), "点焊设备开启全局试焊件后，即使 false 也必须输出 IsTest 字段。");
+    AssertTrue(weldJson.Contains("\"IsTest\":0", StringComparison.Ordinal), "点焊设备开启全局试焊件后，即使 false 也必须输出 IsTest=0。");
 
     var testItem = new ProcessParameterUploadItem
     {
@@ -753,7 +760,7 @@ static void ProcessParameterIsTestFollowsGlobalSettingAndDeviceType()
         IsTest = ProcessParameterIsTestRules.Resolve(recordIsTest: true, showTestFlagInHistory: true, ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic)
     };
     var testJson = JsonSerializer.Serialize(testItem);
-    AssertTrue(testJson.Contains("\"IsTest\":true", StringComparison.Ordinal), "电磁设备标记试焊件后必须输出 IsTest=true。");
+    AssertTrue(testJson.Contains("\"IsTest\":1", StringComparison.Ordinal), "电磁设备标记试焊件后必须输出 IsTest=1。");
 
     var checkItem = new ProcessParameterUploadItem
     {
@@ -914,6 +921,135 @@ static void AntdTableSelectionHelperMapsSelectedIndexes()
         addressViewCode.Contains("GetSelectedAlarmRows()", StringComparison.Ordinal)
             && addressViewCode.Contains("DeleteAlarmAddress_Click", StringComparison.Ordinal),
         "报警地址删除按钮必须通过统一选择读取方法支持多行删除。");
+}
+
+static void DeviceStatusLocalLogStoreResolvesDirectories()
+{
+    var root = Path.Combine(Path.GetTempPath(), "AutoWeldSystemDeviceStatusLogs");
+    var configured = new AppSettings { LogDirectory = root };
+    var fallback = new AppSettings { LogDirectory = " " };
+
+    AssertEqual(
+        Path.Combine(root, AppConstants.LogCategories.DeviceStatus),
+        DeviceStatusLocalLogStore.GetLogDirectory(configured),
+        "配置了日志根目录时，设备状态日志应写入 DeviceStatus 子目录。");
+    AssertEqual(
+        Path.Combine(AppContext.BaseDirectory, "Logs", AppConstants.LogCategories.DeviceStatus),
+        DeviceStatusLocalLogStore.GetLogDirectory(fallback),
+        "日志根目录为空时，应回退到程序目录 Logs/DeviceStatus。");
+}
+
+static void DeviceStatusLocalLogStoreWritesAndReadsJsonl()
+{
+    var root = Path.Combine(Path.GetTempPath(), "AutoWeldSystemDeviceStatusLogTests", Guid.NewGuid().ToString("N"));
+    var settings = new AppSettings { LogDirectory = root };
+    var reportTime = new DateTime(2026, 7, 4, 9, 1, 2);
+    var older = new BizDeviceStatusLog
+    {
+        Id = 1,
+        DeviceId = "D-001",
+        StationNo = 1,
+        DeviceStatus = ProductionConstants.MesDeviceStatuses.PoweredOn,
+        StatusName = DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.PoweredOn),
+        Source = "Software",
+        OccurredTime = new DateTime(2026, 7, 4, 8, 0, 0),
+        ReportStatus = ProductionConstants.UploadStatuses.Failed,
+        ReportMessage = "MES 离线"
+    };
+    var latest = new BizDeviceStatusLog
+    {
+        Id = 2,
+        DeviceId = "D-001",
+        StationNo = 1,
+        DeviceStatus = ProductionConstants.MesDeviceStatuses.Stopped,
+        StatusName = DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.Stopped),
+        Source = "Software",
+        OccurredTime = new DateTime(2026, 7, 4, 9, 0, 0),
+        ReportStatus = ProductionConstants.UploadStatuses.Uploaded,
+        ReportTime = reportTime,
+        ReportMessage = "成功"
+    };
+
+    try
+    {
+        AssertTrue(DeviceStatusLocalLogStore.TryAppend(older, settings), "第一条设备状态日志应写入 JSONL。");
+        AssertTrue(DeviceStatusLocalLogStore.TryAppend(latest, settings), "第二条设备状态日志应写入 JSONL。");
+
+        var filePath = Path.Combine(root, AppConstants.LogCategories.DeviceStatus, "2026-07-04.jsonl");
+        AssertTrue(File.Exists(filePath), "设备状态日志文件必须按日期落盘。");
+
+        var json = File.ReadAllText(filePath, Encoding.UTF8);
+        AssertTrue(json.Contains("\"ReportStatus\": \"Uploaded\"", StringComparison.Ordinal), "本地 JSONL 必须记录最终上报状态。");
+        AssertTrue(json.Contains("\"ReportMessage\": \"成功\"", StringComparison.Ordinal), "本地 JSONL 必须记录最终上报消息。");
+
+        var logs = DeviceStatusLocalLogStore.Read(
+            settings,
+            new DateTime(2026, 7, 4),
+            new DateTime(2026, 7, 4, 23, 59, 59),
+            maxCount: 1);
+
+        AssertEqual(1, logs.Count, "读取本地 JSONL 时应遵守 maxCount。");
+        AssertEqual(2, logs[0].Id, "设备状态日志应按发生时间倒序读取。");
+        AssertEqual(reportTime, logs[0].ReportTime, "读取出的设备状态日志应保留上报时间。");
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}
+
+static void LogManageViewDeviceStatusTabExposesOpenFolderButton()
+{
+    var designer = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "LogManageView.Designer.cs"), Encoding.UTF8);
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "LogManageView.cs"), Encoding.UTF8);
+
+    AssertTrue(
+        designer.Contains("btnOpenDeviceStatusFolder = new AntdUI.Button();", StringComparison.Ordinal),
+        "设备状态日志页签应在 Designer.cs 中静态声明打开目录按钮。");
+    AssertTrue(
+        designer.Contains("deviceStatusToolbar.Controls.Add(btnOpenDeviceStatusFolder, 4, 0);", StringComparison.Ordinal),
+        "设备状态日志打开目录按钮应放入页签右上角工具栏。");
+    AssertTrue(
+        designer.Contains("btnOpenDeviceStatusFolder.Tag = \"perm:button.log.open-folder:enabled\";", StringComparison.Ordinal),
+        "设备状态日志打开目录按钮应复用日志打开目录权限。");
+    AssertTrue(
+        viewCode.Contains("btnOpenDeviceStatusFolder.Click += (_, _) => OpenDeviceStatusLogFolder();", StringComparison.Ordinal),
+        "设备状态日志打开目录按钮必须绑定点击事件。");
+    AssertTrue(
+        viewCode.Contains("_deviceStatusService.GetLogDirectory()", StringComparison.Ordinal),
+        "设备状态日志打开目录逻辑必须走 IDeviceStatusService.GetLogDirectory。");
+}
+
+static void DataManageViewStaticGridsDefineBoundColumns()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "DataManageView.cs"), Encoding.UTF8);
+
+    AssertTrue(
+        viewCode.Contains("dgvWorkOrders.Columns.AddRange", StringComparison.Ordinal),
+        "历史工单表关闭自动生成列后，必须显式添加静态列。");
+    AssertTrue(
+        viewCode.Contains("dgvCollectionRecords.Columns.AddRange", StringComparison.Ordinal),
+        "采集数据表关闭自动生成列后，必须显式添加静态列。");
+    AssertTrue(
+        viewCode.Contains("dgvReportFiles.Columns.AddRange", StringComparison.Ordinal),
+        "报告文件表关闭自动生成列后，必须显式添加静态列。");
+
+    var requiredBindings = new[]
+    {
+        "nameof(DataHistoryWorkOrderRow.WorkOrderId)",
+        "nameof(DataHistoryCollectionRow.SequenceNo)",
+        "nameof(DataHistoryReportFileRow.FileName)"
+    };
+
+    foreach (var binding in requiredBindings)
+    {
+        AssertTrue(
+            viewCode.Contains(binding, StringComparison.Ordinal),
+            $"DataManageView 静态列必须使用 {binding} 绑定 DTO 属性。");
+    }
 }
 
 static void DeviceApiStatusQueryReturnsCurrentMesStatus()
@@ -2001,8 +2137,8 @@ static void MonitorReportButtonRulesFollowMesAndTaskState()
         mesConnected: true,
         hasOnlineRunningTask: false,
         hasOfflineRunningTask: false);
-    AssertTrue(idleOnline.ShowStartReportButton, "在线空闲时应显示开工上报。");
-    AssertFalse(idleOnline.ShowFinishReportButton, "在线空闲时不应显示完工上报。");
+    AssertTrue(idleOnline.ShowOnlineReportButton, "在线空闲时应显示在线上报按钮。");
+    AssertEqual(MonitorOnlineReportAction.Start, idleOnline.OnlineReportAction, "在线空闲时在线按钮应执行开工上报。");
     AssertTrue(idleOnline.OnlineReportEnabled, "MES 在线时在线上报按钮应可用。");
     AssertFalse(idleOnline.LocalWorkOrderEnabled, "MES 在线空闲时应禁用离线开工。");
 
@@ -2011,8 +2147,8 @@ static void MonitorReportButtonRulesFollowMesAndTaskState()
         mesConnected: true,
         hasOnlineRunningTask: true,
         hasOfflineRunningTask: false);
-    AssertFalse(runningOnline.ShowStartReportButton, "在线开工后不应继续显示开工上报。");
-    AssertTrue(runningOnline.ShowFinishReportButton, "在线开工后应显示完工上报。");
+    AssertTrue(runningOnline.ShowOnlineReportButton, "在线开工后仍应显示在线上报按钮。");
+    AssertEqual(MonitorOnlineReportAction.Finish, runningOnline.OnlineReportAction, "在线开工后在线按钮应执行完工上报。");
 
     var offline = MonitorReportButtonRules.Decide(
         isReadOnly: false,
@@ -2028,6 +2164,71 @@ static void MonitorReportButtonRulesFollowMesAndTaskState()
         hasOnlineRunningTask: false,
         hasOfflineRunningTask: true);
     AssertTrue(offlineTaskWhenMesBack.LocalWorkOrderEnabled, "已有离线未完工任务时即使 MES 恢复也应允许本地完工。");
+}
+
+static void MonitorViewUsesOneOnlineReportButton()
+{
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.Designer.cs"), Encoding.UTF8);
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+
+    AssertFalse(designerCode.Contains("btnExpEnd", StringComparison.Ordinal), "监控页 Designer 不应再保留独立完工上报按钮。");
+    AssertTrue(designerCode.Contains("btnOnlineReport", StringComparison.Ordinal), "监控页 Designer 应保留单一在线上报按钮。");
+    AssertTrue(viewCode.Contains("PermissionCodes.Buttons.Monitor.StartReport", StringComparison.Ordinal), "在线按钮开工状态必须检查开工权限。");
+    AssertTrue(viewCode.Contains("PermissionCodes.Buttons.Monitor.FinishReport", StringComparison.Ordinal), "在线按钮完工状态必须检查完工权限。");
+    AssertTrue(viewCode.Contains("OnlineReport_Click", StringComparison.Ordinal), "在线按钮点击入口必须统一分派开工或完工流程。");
+}
+
+static void MonitorRuntimeTipsUseLocalizedSummaries()
+{
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.Designer.cs"), Encoding.UTF8);
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var textKeysCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Constants", "TextKeys.cs"), Encoding.UTF8);
+    var zhResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.resx"), Encoding.UTF8);
+    var enResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.en.resx"), Encoding.UTF8);
+
+    AssertTrue(designerCode.Contains("btnClearErrorTips", StringComparison.Ordinal), "异常提示区域必须声明清除按钮。");
+    AssertTrue(viewCode.Contains("btnClearErrorTips.Click += (_, _) => ClearRuntimeError();", StringComparison.Ordinal), "清除按钮必须复用当前运行异常清空逻辑。");
+    AssertTrue(viewCode.Contains("btnClearErrorTips.Visible = hasError;", StringComparison.Ordinal), "清除按钮显隐必须跟随当前异常摘要。");
+
+    var requiredKeys = new[]
+    {
+        "monitor.button.clear_error_tips",
+        "monitor.runtime.program_confirmed",
+        "monitor.runtime.work_order_loaded",
+        "monitor.runtime.process_selected",
+        "monitor.runtime.local_start_succeeded",
+        "monitor.runtime.online_start_succeeded",
+        "monitor.runtime.online_finish_succeeded",
+        "monitor.runtime.local_finish_succeeded",
+        "monitor.runtime.product_data_collected",
+        "monitor.runtime.recipe_code_write_succeeded",
+        "monitor.runtime.recipe_code_validation_succeeded",
+        "monitor.runtime.test_flag_updated",
+        "monitor.error.read_only_operation_blocked",
+        "monitor.error.work_order_required",
+        "monitor.error.active_task_blocks_edit",
+        "monitor.error.program_name_required",
+        "monitor.error.start_info_required",
+        "monitor.error.test_flag_update_failed",
+        "monitor.error.recipe_validation_failed",
+        "monitor.error.business_signal_write_failed",
+        "monitor.error.station_operation_busy",
+        "monitor.error.station_report_failed",
+        "monitor.error.finish_quantity_read_failed",
+        "monitor.error.device_alarm"
+    };
+
+    foreach (var key in requiredKeys)
+    {
+        AssertTrue(textKeysCode.Contains(key, StringComparison.Ordinal), $"TextKeys 必须声明 {key}。");
+        AssertTrue(zhResources.Contains($"name=\"{key}\"", StringComparison.Ordinal), $"中文资源必须包含 {key}。");
+        AssertTrue(enResources.Contains($"name=\"{key}\"", StringComparison.Ordinal), $"英文资源必须包含 {key}。");
+    }
+
+    AssertTrue(viewCode.Contains("SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.ProgramConfirmed)", StringComparison.Ordinal), "加工程序确认提示必须保存本地化资源键。");
+    AssertTrue(viewCode.Contains("SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.WorkOrderLoaded)", StringComparison.Ordinal), "工单获取完成提示必须保存本地化资源键。");
+    AssertTrue(viewCode.Contains("SetRuntimeError(TextKeys.Monitor.RuntimeError.BusinessSignalWriteFailed)", StringComparison.Ordinal), "业务信号写入失败摘要必须保存本地化资源键。");
+    AssertTrue(viewCode.Contains("SetRuntimeErrorWithSource(TextKeys.Monitor.RuntimeError.DeviceAlarm", StringComparison.Ordinal), "设备报警摘要必须保存带来源的本地化资源键。");
 }
 
 static void ProgramContentRowsComeFromDictionaryItems()
@@ -2545,6 +2746,8 @@ sealed class FakeDeviceStatusService : IDeviceStatusService
     }
 
     public IReadOnlyList<BizDeviceStatusLog> GetLogs(DateTime? from = null, DateTime? to = null, int maxCount = 200) => Array.Empty<BizDeviceStatusLog>();
+
+    public string GetLogDirectory() => string.Empty;
 
     public Task<BizDeviceStatusLog> ChangeStatusAsync(
         string deviceStatus,
