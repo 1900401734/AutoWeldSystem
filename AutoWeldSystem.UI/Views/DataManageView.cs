@@ -15,6 +15,7 @@ namespace AutoWeldSystem.UI.Views;
 public partial class DataManageView : BaseView
 {
     private const string DynamicColumnTagPrefix = "data-history-dynamic:";
+    private const string DateTimeDisplayFormat = "yyyy-MM-dd HH:mm:ss";
 
     private readonly IDataHistoryQueryService _historyQueryService = null!;
     private readonly ILocalizationService _localizer = null!;
@@ -86,10 +87,135 @@ public partial class DataManageView : BaseView
 
     private void ConfigureGrids()
     {
+        ConfigureStaticGridColumns();
         ConfigureGrid(dgvWorkOrders, DataGridViewAutoSizeColumnsMode.DisplayedCells);
         ConfigureGrid(dgvWeldParameters, DataGridViewAutoSizeColumnsMode.DisplayedCells);
         ConfigureGrid(dgvCollectionRecords, DataGridViewAutoSizeColumnsMode.DisplayedCells);
         ConfigureGrid(dgvReportFiles, DataGridViewAutoSizeColumnsMode.Fill);
+    }
+
+    /// <summary>
+    /// Configures fixed DataGridView columns that cannot be auto-generated.
+    /// </summary>
+    private void ConfigureStaticGridColumns()
+    {
+        ConfigureColumn(colTaskStation, nameof(DataHistoryWorkOrderRow.StationNo));
+        ConfigureColumn(colTaskWorkOrder, nameof(DataHistoryWorkOrderRow.WorkOrderId));
+        ConfigureColumn(colTaskProductNum, nameof(DataHistoryWorkOrderRow.ProductNum));
+        ConfigureColumn(colTaskBatch, nameof(DataHistoryWorkOrderRow.Batch));
+        ConfigureColumn(colTaskProductName, nameof(DataHistoryWorkOrderRow.ProductName));
+        ConfigureColumn(colTaskProcess, nameof(DataHistoryWorkOrderRow.ProcessDisplay));
+        ConfigureColumn(colTaskRecipe, nameof(DataHistoryWorkOrderRow.RecipeCode));
+        ConfigureColumn(colTaskPlannedQty, nameof(DataHistoryWorkOrderRow.PlannedQty));
+        ConfigureColumn(colTaskActualQty, nameof(DataHistoryWorkOrderRow.ActualQty));
+        ConfigureColumn(colTaskQualifiedQty, nameof(DataHistoryWorkOrderRow.QualifiedQty));
+        ConfigureColumn(colTaskFailedQty, nameof(DataHistoryWorkOrderRow.FailedQty));
+        ConfigureColumn(colTaskOperator, nameof(DataHistoryWorkOrderRow.OperatorNumber));
+        ConfigureColumn(colTaskStartTime, nameof(DataHistoryWorkOrderRow.StartTime), DateTimeDisplayFormat);
+        ConfigureColumn(colTaskEndTime, nameof(DataHistoryWorkOrderRow.EndTime), DateTimeDisplayFormat);
+        ConfigureColumn(colTaskStatus, nameof(DataHistoryWorkOrderRow.TaskStatus));
+        ConfigureColumn(colTaskUploadStatus, nameof(DataHistoryWorkOrderRow.UploadStatus));
+        if (dgvWorkOrders.Columns.Count == 0)
+        {
+            dgvWorkOrders.Columns.AddRange(new DataGridViewColumn[]
+            {
+                colTaskStation,
+                colTaskWorkOrder,
+                colTaskProductNum,
+                colTaskBatch,
+                colTaskProductName,
+                colTaskProcess,
+                colTaskRecipe,
+                colTaskPlannedQty,
+                colTaskActualQty,
+                colTaskQualifiedQty,
+                colTaskFailedQty,
+                colTaskOperator,
+                colTaskStartTime,
+                colTaskEndTime,
+                colTaskStatus,
+                colTaskUploadStatus
+            });
+        }
+
+        ConfigureColumn(colParameterStation, nameof(DataHistoryWeldParameterRow.StationNo));
+        ConfigureColumn(colParameterProductNo, nameof(DataHistoryWeldParameterRow.ProductNo));
+        ConfigureColumn(colParameterTouchNo, nameof(DataHistoryWeldParameterRow.TouchNo));
+        ConfigureColumn(colParameterResult, nameof(DataHistoryWeldParameterRow.TestResult));
+        ConfigureColumn(colParameterRecordTime, nameof(DataHistoryWeldParameterRow.RecordTime), DateTimeDisplayFormat);
+        if (dgvWeldParameters.Columns.Count == 0)
+        {
+            dgvWeldParameters.Columns.AddRange(new DataGridViewColumn[]
+            {
+                colParameterStation,
+                colParameterProductNo,
+                colParameterTouchNo,
+                colParameterResult,
+                colParameterRecordTime
+            });
+        }
+
+        ConfigureColumn(colCollectionSequence, nameof(DataHistoryCollectionRow.SequenceNo));
+        ConfigureColumn(colCollectionStation, nameof(DataHistoryCollectionRow.StationNo));
+        ConfigureColumn(colCollectionProductNo, nameof(DataHistoryCollectionRow.ProductNo));
+        ConfigureColumn(colCollectionTouchNo, nameof(DataHistoryCollectionRow.TouchNo));
+        ConfigureColumn(colCollectionResult, nameof(DataHistoryCollectionRow.TestResult));
+        ConfigureColumn(colCollectionIsTest, nameof(DataHistoryCollectionRow.IsTest));
+        ConfigureColumn(colCollectionCompleted, nameof(DataHistoryCollectionRow.ProductCompleted));
+        ConfigureColumn(colCollectionUploadStatus, nameof(DataHistoryCollectionRow.UploadStatus));
+        ConfigureColumn(colCollectionOperator, nameof(DataHistoryCollectionRow.OperatorNo));
+        ConfigureColumn(colCollectionRecordTime, nameof(DataHistoryCollectionRow.RecordTime), DateTimeDisplayFormat);
+        if (dgvCollectionRecords.Columns.Count == 0)
+        {
+            dgvCollectionRecords.Columns.AddRange(new DataGridViewColumn[]
+            {
+                colCollectionSequence,
+                colCollectionStation,
+                colCollectionProductNo,
+                colCollectionTouchNo,
+                colCollectionResult,
+                colCollectionIsTest,
+                colCollectionCompleted,
+                colCollectionUploadStatus,
+                colCollectionOperator,
+                colCollectionRecordTime
+            });
+        }
+
+        ConfigureColumn(colReportFileName, nameof(DataHistoryReportFileRow.FileName));
+        ConfigureColumn(colReportFormat, nameof(DataHistoryReportFileRow.FileFormat));
+        ConfigureColumn(colReportPath, nameof(DataHistoryReportFileRow.FilePath));
+        ConfigureColumn(colReportUploadStatus, nameof(DataHistoryReportFileRow.UploadStatus));
+        ConfigureColumn(colReportCreatedTime, nameof(DataHistoryReportFileRow.CreatedTime), DateTimeDisplayFormat);
+        ConfigureColumn(colReportUpdatedTime, nameof(DataHistoryReportFileRow.UpdatedTime), DateTimeDisplayFormat);
+        if (dgvReportFiles.Columns.Count == 0)
+        {
+            dgvReportFiles.Columns.AddRange(new DataGridViewColumn[]
+            {
+                colReportFileName,
+                colReportFormat,
+                colReportPath,
+                colReportUploadStatus,
+                colReportCreatedTime,
+                colReportUpdatedTime
+            });
+        }
+    }
+
+    /// <summary>
+    /// Binds one static grid column to one DTO property.
+    /// </summary>
+    private static void ConfigureColumn(
+        DataGridViewColumn column,
+        string propertyName,
+        string? displayFormat = null)
+    {
+        column.DataPropertyName = propertyName;
+        column.ReadOnly = true;
+        if (!string.IsNullOrWhiteSpace(displayFormat))
+        {
+            column.DefaultCellStyle.Format = displayFormat;
+        }
     }
 
     private static void ConfigureGrid(DataGridView grid, DataGridViewAutoSizeColumnsMode autoSizeMode)
