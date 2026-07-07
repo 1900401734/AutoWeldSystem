@@ -1128,14 +1128,6 @@ namespace AutoWeldSystem.UI.Views
         private SplitContainer schemeDetailSplitContainer;
         private TreeView treeSchemeDetails;
         private DataGridView schemeDetailRoleGrid;
-        private DataGridViewTextBoxColumn colSchemeDetailItemName;
-        private DataGridViewTextBoxColumn colSchemeDetailRoleName;
-        private DataGridViewCheckBoxColumn colSchemeDetailEnabled;
-        private DataGridViewTextBoxColumn colSchemeDetailHeaderText;
-        private DataGridViewCheckBoxColumn colSchemeDetailSaveEnabled;
-        private DataGridViewCheckBoxColumn colSchemeDetailReportEnabled;
-        private DataGridViewCheckBoxColumn colSchemeDetailMesEnabled;
-        private DataGridViewTextBoxColumn colSchemeDetailMesFieldName;
         private TabPage tabTestItems;
         private TableLayoutPanel testItemLayout;
         private Label lblTestItemHint;
