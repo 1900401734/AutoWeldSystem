@@ -482,7 +482,7 @@ public sealed class ProgramManageService : IProgramManageService
 
     private async Task<string> SyncCreateAsync(BizProgram entity, CancellationToken cancellationToken)
     {
-        var request = ProgramMesPayloadRules.ToWriteRequest(
+        var request = ProgramMesPayloadRules.ToCreateRequest(
             entity,
             ProgramRemarkRules.ResolveForAction(entity.Remark, AppConstants.ProgramSyncActions.Create));
         var response = await _mesProvider.AddExpProgramAsync(request, cancellationToken);
