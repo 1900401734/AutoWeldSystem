@@ -67,6 +67,67 @@ public static class ProgramContentJsonRules
     }
 
     /// <summary>
+    /// 构建开工预览/微调表格行，将字典项与已下载程序内容映射为带“修改值”列的预览行。
+    /// </summary>
+    public static IReadOnlyList<ProgramContentReviewRow> BuildReviewRows(
+        IEnumerable<DimTestItem>? dictionaryItems,
+        string? existingJson)
+    {
+        var rows = BuildRows(dictionaryItems, existingJson);
+        return rows
+            .Select(row => new ProgramContentReviewRow
+            {
+                ItemName = row.ItemName,
+                StandardValue = row.StandardValue,
+                ModifiedValue = string.Empty,
+                IsDictionaryItem = row.IsDictionaryItem
+            })
+            .ToList();
+    }
+
+    /// <summary>
+    /// 合并预览/微调行为 MES 需要的 ProgramContent JSON 字符串。
+    /// 有效值取 <see cref="ProgramContentReviewRow.ModifiedValue"/>，为空时回退到 <see cref="ProgramContentReviewRow.StandardValue"/>。
+    /// </summary>
+    public static string MergeReviewRowsToJson(IEnumerable<ProgramContentReviewRow> rows)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+
+        var mergedRows = rows
+            .Select(row => new ProgramContentItemRow
+            {
+                ItemName = row.ItemName,
+                StandardValue = string.IsNullOrWhiteSpace(row.ModifiedValue) ? row.StandardValue : row.ModifiedValue,
+                IsDictionaryItem = row.IsDictionaryItem
+            })
+            .ToList();
+
+        return ToJson(mergedRows);
+    }
+
+    /// <summary>
+    /// 尝试合并预览/微调行为 ProgramContent JSON，失败时返回可展示给用户的错误。
+    /// </summary>
+    public static bool TryMergeReviewRowsToJson(
+        IEnumerable<ProgramContentReviewRow> rows,
+        out string json,
+        out string errorMessage)
+    {
+        try
+        {
+            json = MergeReviewRowsToJson(rows);
+            errorMessage = string.Empty;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            json = "{}";
+            errorMessage = ex.Message;
+            return false;
+        }
+    }
+
+    /// <summary>
     /// 将程序内容表格行转换成 MES 需要的 JSON 字符串。
     /// </summary>
     public static string ToJson(IEnumerable<ProgramContentItemRow> rows)
