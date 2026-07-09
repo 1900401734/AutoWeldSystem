@@ -296,7 +296,7 @@ public class WeldTaskService : IWeldTaskService
         }
 
         var settings = CurrentSettings;
-        // 当前开工逻辑由程序名称反推产品工号和配方号，因此程序列表不能再被工单产品工号提前收窄。
+        // 未开启“按产品工号筛选程序”时返回本地同步的全量程序；开启后按工单产品工号在客户端筛选。
         var response = await _mesProvider.GetProgramListAsync(
             settings.DeviceId,
             null,
@@ -311,7 +311,11 @@ public class WeldTaskService : IWeldTaskService
             return Array.Empty<MesProgramListItemData>();
         }
 
-        station.AvailablePrograms = response.Data;
+        var workOrderProdNum = station.CurrentWorkOrder?.ProdNum;
+        station.AvailablePrograms = ProgramListFilterRules.Filter(
+            response.Data,
+            settings.UseProductNumberFilter,
+            workOrderProdNum).ToList();
         station.UpdatedTime = DateTime.Now;
         RefreshCompatibilityState(normalizedStationNo);
         NotifyStateChanged();
