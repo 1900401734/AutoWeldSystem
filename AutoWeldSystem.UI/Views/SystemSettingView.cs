@@ -79,7 +79,6 @@ public partial class SystemSettingView : BaseView
     private bool _syncingPlcTypeSelection;
     private bool _syncingPlcStringNumericFormatModeSelection;
     private bool _syncingUploadModeSelection;
-    private bool _syncingDualModeSelection;
     private bool _syncingProcessParameterDeviceTypeSelection;
     private bool _syncingCenterServerSystemTypeSelection;
     private string _selectedPlcType = AppConstants.PlcTypes.ModbusTcp;
@@ -151,8 +150,6 @@ public partial class SystemSettingView : BaseView
         chkEnablePlcAlarmReading.CheckedChanged += ChkEnablePlcAlarmReading_CheckedChanged;
         selectPlcStringNumericFormatMode.SelectedIndexChanged += SelectPlcStringNumericFormatMode_SelectedIndexChanged;
         selectUploadMode.SelectedIndexChanged += SelectUploadMode_SelectedIndexChanged;
-        chkEnableDualStation.CheckedChanged += ChkEnableDualStation_CheckedChanged;
-        chkEnableDualWorkOrder.CheckedChanged += ChkEnableDualWorkOrder_CheckedChanged;
         chkEnableAutoStart.CheckedChanged += ChkEnableAutoStart_CheckedChanged;
         chkEnablePostDataCustomHeader.CheckedChanged += ChkEnablePostDataCustomHeader_CheckedChanged;
         selectProcessParameterDeviceType.SelectedIndexChanged += SelectProcessParameterDeviceType_SelectedIndexChanged;
@@ -369,34 +366,6 @@ public partial class SystemSettingView : BaseView
         _selectedCenterServerSystemType = CenterServerSystemTypeOptions[e.Value].Value;
     }
 
-    private void ChkEnableDualStation_CheckedChanged(object sender, AntdUI.BoolEventArgs e)
-    {
-        if (_syncingDualModeSelection)
-        {
-            return;
-        }
-
-        // 双工单必须依赖双工位；取消双工位时同步取消双工单，避免保存非法组合。
-        if (!e.Value && chkEnableDualWorkOrder.Checked)
-        {
-            SetDualModeCheckboxes(enableDualStation: false, enableDualWorkOrder: false);
-        }
-    }
-
-    private void ChkEnableDualWorkOrder_CheckedChanged(object sender, AntdUI.BoolEventArgs e)
-    {
-        if (_syncingDualModeSelection)
-        {
-            return;
-        }
-
-        // 用户勾选双工单时自动开启双工位，表达“双工位双工单”模式。
-        if (e.Value && !chkEnableDualStation.Checked)
-        {
-            SetDualModeCheckboxes(enableDualStation: true, enableDualWorkOrder: true);
-        }
-    }
-
     private void ChkEnableAutoStart_CheckedChanged(object sender, AntdUI.BoolEventArgs e)
     {
         UpdateElevatedAutoStartEnabled();
@@ -484,10 +453,11 @@ public partial class SystemSettingView : BaseView
         input_BaseUrl.Text = settings.MesBaseUrl;
         BindMesEndpointSettings(settings);
         chkUseProductNumberFilter.Checked = settings.UseProductNumberFilter;
+        chkUseOperatorInputDialog.Checked = settings.UseOperatorInputDialog != false;
         chkShowTestFlagInHistory.Checked = settings.ShowTestFlagInHistory != false;
         chkEnableDeviceStatusReport.Checked = settings.EnableDeviceStatusReport != false;
         chkEnableWorkOrderStatusReport.Checked = settings.EnableWorkOrderStatusReport != false;
-        SetDualModeCheckboxes(settings.EnableDualStation, settings.EnableDualWorkOrder);
+        chkEnableDualStation.Checked = settings.EnableDualStation || settings.EnableDualWorkOrder;
         chkValidateRecipeBeforeStart.Checked = settings.ValidateRecipeAfterStart;
         chkEnableFinishExpQtyPrompt.Checked = settings.EnableFinishExpQtyPrompt;
         inputPlcHeartbeatInterval.Text = Math.Clamp(settings.PlcHeartbeatReadIntervalMilliseconds <= 0 ? 300 : settings.PlcHeartbeatReadIntervalMilliseconds, 100, 5000).ToString(CultureInfo.InvariantCulture);
@@ -597,12 +567,12 @@ public partial class SystemSettingView : BaseView
         BindProcessParameterDeviceTypeOptions();
 
         chkUseProductNumberFilter.Text = _localizer.GetString(TextKeys.SystemSetting.ChkUseProductNumberFilter);
+        chkUseOperatorInputDialog.Text = _localizer.GetString(TextKeys.SystemSetting.ChkUseOperatorInputDialog);
         chkEnableDeviceStatusReport.Text = "启用设备状态上报";
         chkEnableWorkOrderStatusReport.Text = "启用工单状态上报";
         chkValidateRecipeBeforeStart.Text = _localizer.GetString(TextKeys.SystemSetting.ChkValidateRecipeAfterStart);
         chkEnableFinishExpQtyPrompt.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableFinishExpQtyPrompt);
         chkEnableDualStation.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableDualStation);
-        chkEnableDualWorkOrder.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableDualWorkOrder);
 
         btnConnectPlc.Text = _localizer.GetString(TextKeys.SystemSetting.ButtonConnect);
         btnSyncDevice.Text = _localizer.GetString(TextKeys.SystemSetting.ButtonSyncDevice);
@@ -736,23 +706,6 @@ public partial class SystemSettingView : BaseView
         var enabled = chkEnablePostDataCustomHeader.Checked;
         inputPostDataHeaderKey.Enabled = enabled;
         inputPostDataHeaderValue.Enabled = enabled;
-    }
-
-    /// <summary>
-    /// 从配置回填双工位/双工单开关时临时屏蔽联动事件，避免加载配置时反复触发 UI 逻辑。
-    /// </summary>
-    private void SetDualModeCheckboxes(bool enableDualStation, bool enableDualWorkOrder)
-    {
-        _syncingDualModeSelection = true;
-        try
-        {
-            chkEnableDualStation.Checked = enableDualStation || enableDualWorkOrder;
-            chkEnableDualWorkOrder.Checked = enableDualWorkOrder;
-        }
-        finally
-        {
-            _syncingDualModeSelection = false;
-        }
     }
 
     private async Task<bool> SyncDeviceToMesAsync(AddDeviceReq request, Control triggerButton, bool showSuccessMessage)
@@ -961,12 +914,6 @@ public partial class SystemSettingView : BaseView
 
         var mesTimeout = input_MesTimeout.Text;
         var enableDualStation = chkEnableDualStation.Checked;
-        var enableDualWorkOrder = chkEnableDualWorkOrder.Checked;
-        if (enableDualWorkOrder && !enableDualStation)
-        {
-            ShowWarningMessage("启用双工单时必须同时启用双工位。");
-            return false;
-        }
 
         settings.DeviceId = deviceId;
         settings.DeviceName = deviceName;
@@ -989,11 +936,12 @@ public partial class SystemSettingView : BaseView
         settings.MesBaseUrl = mesBaseUrl;
         settings.MesTimeoutSeconds = int.TryParse(mesTimeout, NumberStyles.Integer, CultureInfo.InvariantCulture, out var timeout) && timeout > 0 ? timeout : 10;
         settings.UseProductNumberFilter = chkUseProductNumberFilter.Checked;
+        settings.UseOperatorInputDialog = chkUseOperatorInputDialog.Checked;
         settings.ShowTestFlagInHistory = chkShowTestFlagInHistory.Checked;
         settings.EnableDeviceStatusReport = chkEnableDeviceStatusReport.Checked;
         settings.EnableWorkOrderStatusReport = chkEnableWorkOrderStatusReport.Checked;
         settings.EnableDualStation = enableDualStation;
-        settings.EnableDualWorkOrder = enableDualWorkOrder;
+        settings.EnableDualWorkOrder = enableDualStation && CurrentSettings.EnableDualWorkOrder;
         settings.ValidateRecipeAfterStart = chkValidateRecipeBeforeStart.Checked;
         settings.EnableFinishExpQtyPrompt = chkEnableFinishExpQtyPrompt.Checked;
         settings.PlcHeartbeatReadIntervalMilliseconds = Math.Clamp(heartbeatInterval, 100, 5000);

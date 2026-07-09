@@ -426,6 +426,9 @@
   <data name="system.checkbox.use_product_number_filter" xml:space="preserve">
     <value>Filter programs by product No.</value>
   </data>
+  <data name="system.checkbox.use_operator_input_dialog" xml:space="preserve">
+    <value>Operator modal input</value>
+  </data>
   <data name="system.checkbox.enable_auto_start" xml:space="preserve">
     <value>Start with Windows</value>
   </data>
@@ -1185,6 +1188,9 @@
   <data name="monitor.runtime.validating_operator" xml:space="preserve">
     <value>Validating operator...</value>
   </data>
+  <data name="monitor.runtime.operator_validated" xml:space="preserve">
+    <value>Operator validation succeeded.</value>
+  </data>
   <data name="monitor.runtime.submitting_start" xml:space="preserve">
     <value>Submitting start report...</value>
   </data>
@@ -1202,6 +1208,18 @@
   </data>
   <data name="monitor.error.program_name_required" xml:space="preserve">
     <value>Select a program name.</value>
+  </data>
+  <data name="monitor.error.program_selection_required" xml:space="preserve">
+    <value>Select a program name first.</value>
+  </data>
+  <data name="monitor.error.operator_number_required" xml:space="preserve">
+    <value>Employee number is required.</value>
+  </data>
+  <data name="monitor.error.operator_validation_failed_inline" xml:space="preserve">
+    <value>Employee number validation failed.</value>
+  </data>
+  <data name="monitor.error.operator_validation_required" xml:space="preserve">
+    <value>Press Enter to validate employee number first.</value>
   </data>
   <data name="monitor.error.start_info_required" xml:space="preserve">
     <value>Confirm start info first.</value>

@@ -125,17 +125,36 @@ var tests = new (string Name, Action Run)[]
     ("Program MES executable action never creates when MES id exists", ProgramMesExecutableActionNeverCreatesWhenMesIdExists),
     ("Program remark rules default by action", ProgramRemarkRulesDefaultByAction),
     ("Program MES write payload omits recipe code", ProgramMesWritePayloadOmitsRecipeCode),
+    ("Program MES create payload clears file fields for empty content", ProgramMesCreatePayloadClearsFileFieldsForEmptyContent),
     ("Monitor report button rules follow MES and task state", MonitorReportButtonRulesFollowMesAndTaskState),
     ("Monitor view uses one online report button", MonitorViewUsesOneOnlineReportButton),
     ("Monitor runtime tips use localized summaries", MonitorRuntimeTipsUseLocalizedSummaries),
+    ("Monitor view shows operator validation success after employee validation", MonitorViewShowsOperatorValidationSuccessAfterEmployeeValidation),
     ("Monitor view auto loads work order without query button", MonitorViewAutoLoadsWorkOrderWithoutQueryButton),
+    ("Monitor view preserves online inputs during refresh", MonitorViewPreservesOnlineInputsDuringRefresh),
+    ("Monitor view reloads online programs after process change", MonitorViewReloadsOnlineProgramsAfterProcessChange),
+    ("Monitor view defaults first process inputs after work order load", MonitorViewDefaultsFirstProcessInputsAfterWorkOrderLoad),
+    ("Monitor view process selection uses shared input binder", MonitorViewProcessSelectionUsesSharedInputBinder),
+    ("Monitor view exposes dual work order toggle beside work order", MonitorViewExposesDualWorkOrderToggleBesideWorkOrder),
+    ("Monitor view saves dual work order toggle with old rules", MonitorViewSavesDualWorkOrderToggleWithOldRules),
+    ("System setting view no longer edits dual work order", SystemSettingViewNoLongerEditsDualWorkOrder),
+    ("Monitor view finish report uses start operator without prompt", MonitorViewFinishReportUsesStartOperatorWithoutPrompt),
+    ("Weld task finish uses MES start id for retry payloads", WeldTaskFinishUsesMesStartIdForRetryPayloads),
+    ("Weld task restore unfinished task is idempotent", WeldTaskRestoreUnfinishedTaskIsIdempotent),
     ("Permission catalog omits get work order button", PermissionCatalogOmitsGetWorkOrderButton),
     ("Program content rows come from dictionary items", ProgramContentRowsComeFromDictionaryItems),
     ("Program content JSON keeps only rows with standard values", ProgramContentJsonKeepsOnlyRowsWithStandardValues),
     ("Program content JSON merges existing values and preserves unknown keys", ProgramContentJsonMergesExistingValuesAndPreservesUnknownKeys),
     ("Program content JSON rejects duplicate valued item names", ProgramContentJsonRejectsDuplicateValuedItemNames),
     ("Program file rules build safe json file and base64", ProgramFileRulesBuildSafeJsonFileAndBase64),
-    ("Work-order auto query skips duplicates and running tasks", WorkOrderAutoQuerySkipsDuplicatesAndRunningTasks)
+    ("Work-order auto query skips duplicates and running tasks", WorkOrderAutoQuerySkipsDuplicatesAndRunningTasks),
+    ("Program list filter returns all when disabled", ProgramListFilterReturnsAllWhenDisabled),
+    ("Program list filter narrows by product number when enabled", ProgramListFilterNarrowsByProductNumberWhenEnabled),
+    ("Program list filter returns all when work order product number is blank", ProgramListFilterReturnsAllWhenWorkOrderProductNumberIsBlank),
+    ("Program content review rows apply modified values", ProgramContentReviewRowsApplyModifiedValues),
+    ("Program content review keeps standard value when modified value empty", ProgramContentReviewKeepsStandardValueWhenModifiedValueEmpty),
+    ("Program content review rejects duplicate item names", ProgramContentReviewRejectsDuplicateItemNames),
+    ("LoadPrograms filters available programs by work order product number", LoadProgramsFiltersAvailableProgramsByWorkOrderProductNumber)
 };
 
 foreach (var test in tests)
@@ -2343,6 +2362,21 @@ static void ProgramMesWritePayloadOmitsRecipeCode()
     AssertEqual(".json", fileType.GetString(), "MES 写入请求中的 FileType 应使用带点小写扩展名。");
 }
 
+static void ProgramMesCreatePayloadClearsFileFieldsForEmptyContent()
+{
+    var program = BuildSyncedProgram();
+    program.ProgramId = null;
+    program.ProgramContent = "  { \r\n }  ";
+    program.ProgramFile = ProgramFileRules.EncodeJsonToBase64(program.ProgramContent);
+    program.ProgramFileName = "P1.json";
+
+    var payload = ProgramMesPayloadRules.ToCreateRequest(program, AppConstants.ProgramRemarkActions.Create);
+
+    AssertEqual(string.Empty, payload.ProgramContent, "新增程序未填写设定值时，ProgramContent 应留空。");
+    AssertEqual(string.Empty, payload.ProgramFile, "新增程序未填写设定值时，ProgramFile 应留空。");
+    AssertEqual(string.Empty, payload.FileType, "新增程序未填写设定值时，FileType 应留空。");
+}
+
 static void MonitorReportButtonRulesFollowMesAndTaskState()
 {
     var idleOnline = MonitorReportButtonRules.Decide(
@@ -2444,6 +2478,41 @@ static void MonitorRuntimeTipsUseLocalizedSummaries()
     AssertTrue(viewCode.Contains("SetRuntimeErrorWithSource(TextKeys.Monitor.RuntimeError.DeviceAlarm", StringComparison.Ordinal), "设备报警摘要必须保存带来源的本地化资源键。");
 }
 
+static void MonitorViewShowsOperatorValidationSuccessAfterEmployeeValidation()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var textKeysCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Constants", "TextKeys.cs"), Encoding.UTF8);
+    var zhResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.resx"), Encoding.UTF8);
+    var enResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.en.resx"), Encoding.UTF8);
+    var promptMethod = ExtractMethodText(
+        viewCode,
+        "private async Task<string> PromptValidatedOperatorAsync",
+        "private void BindMesOperatorInfo");
+    var inlineMethod = ExtractMethodText(
+        viewCode,
+        "private async Task ValidateOperatorInlineAsync",
+        "private bool TryPromptNonNegativeInt");
+
+    AssertTrue(textKeysCode.Contains("OperatorValidated", StringComparison.Ordinal), "TextKeys 必须声明员工身份校验通过运行状态键。");
+    AssertTrue(textKeysCode.Contains("monitor.runtime.operator_validated", StringComparison.Ordinal), "TextKeys 必须声明 monitor.runtime.operator_validated。");
+    AssertTrue(zhResources.Contains("name=\"monitor.runtime.operator_validated\"", StringComparison.Ordinal), "中文资源必须包含员工身份校验通过运行状态。");
+    AssertTrue(zhResources.Contains("<value>员工身份校验通过</value>", StringComparison.Ordinal), "中文资源必须显示员工身份校验通过。");
+    AssertTrue(enResources.Contains("name=\"monitor.runtime.operator_validated\"", StringComparison.Ordinal), "英文资源必须包含员工身份校验通过运行状态。");
+    AssertTrue(enResources.Contains("<value>Operator validation succeeded.</value>", StringComparison.Ordinal), "英文资源必须显示员工身份校验通过。");
+
+    var promptBindIndex = promptMethod.IndexOf("BindMesOperatorInfo(response.Data, form.EmployeeNumber);", StringComparison.Ordinal);
+    var promptSuccessIndex = promptMethod.IndexOf("SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.OperatorValidated);", StringComparison.Ordinal);
+    var inlineBindIndex = inlineMethod.IndexOf("BindMesOperatorInfo(response.Data, employeeNumber);", StringComparison.Ordinal);
+    var inlineSuccessIndex = inlineMethod.IndexOf("SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.OperatorValidated);", StringComparison.Ordinal);
+
+    AssertTrue(promptBindIndex >= 0, "弹窗校验成功后必须回填员工信息。");
+    AssertTrue(promptSuccessIndex > promptBindIndex, "弹窗校验成功回填员工信息后必须同步显示员工身份校验通过。");
+    AssertTrue(inlineBindIndex >= 0, "内联校验成功后必须回填员工信息。");
+    AssertTrue(inlineSuccessIndex > inlineBindIndex, "内联校验成功回填员工信息后必须同步显示员工身份校验通过。");
+    AssertTrue(promptMethod.Contains("TextKeys.Monitor.Message.OperatorValidationFailed", StringComparison.Ordinal), "弹窗校验失败仍应保留现有失败提示。");
+    AssertTrue(inlineMethod.Contains("SetRuntimeError(TextKeys.Monitor.RuntimeError.OperatorValidationFailedInline);", StringComparison.Ordinal), "内联校验失败仍应保留现有失败提示。");
+}
+
 static void MonitorViewAutoLoadsWorkOrderWithoutQueryButton()
 {
     var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.Designer.cs"), Encoding.UTF8);
@@ -2457,6 +2526,164 @@ static void MonitorViewAutoLoadsWorkOrderWithoutQueryButton()
     AssertTrue(viewCode.Contains("_manualWorkOrderQueryTimer", StringComparison.Ordinal), "工单号手动输入必须使用防抖定时器。");
     AssertTrue(viewCode.Contains("TriggerManualWorkOrderQuery();", StringComparison.Ordinal), "工单号手动输入必须进入手动查询入口。");
     AssertTrue(viewCode.Contains("AutoLoadWorkOrderInfoAsync(stationNo, workId)", StringComparison.Ordinal), "PLC 和手动输入应复用同一套自动加载工单流程。");
+}
+
+static void MonitorViewPreservesOnlineInputsDuringRefresh()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+
+    AssertTrue(viewCode.Contains("_pendingOnlineProgramName", StringComparison.Ordinal), "在线程序已选但未确认时必须缓存程序名称，避免 StateChanged 刷空下拉框。");
+    AssertTrue(viewCode.Contains("ApplyOnlineProgramSelectionPreview", StringComparison.Ordinal), "在线选择程序后必须立即联动显示程序名称和配方号。");
+    AssertTrue(viewCode.Contains("DownloadSelectedOnlineProgramAsync(programListItem, CurrentStationNo)", StringComparison.Ordinal), "在线程序下载必须使用事件解析出的程序项，避免 StateChanged 刷新后按控件索引取空。");
+    AssertTrue(viewCode.Contains("ResetOnlineProgramSelectionForRepeatSelection(detail);", StringComparison.Ordinal), "在线程序确认后应保留显示并重置选中索引，允许未开工时重复选择同一程序。");
+    AssertTrue(viewCode.Contains("ResolveRecipeCodeForPendingProgram", StringComparison.Ordinal), "配方号应按已选程序从本地同步程序表解析。");
+    AssertTrue(viewCode.Contains("ShouldPreserveDraftOperatorNumber", StringComparison.Ordinal), "在线员工号未校验时刷新必须保留正在输入的员工号。");
+    AssertTrue(viewCode.Contains("ClearMesOperatorDisplayInfo();", StringComparison.Ordinal), "保留员工号时只应清空姓名、部门和班组显示。");
+}
+
+static void MonitorViewReloadsOnlineProgramsAfterProcessChange()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var processHandler = ExtractMethodText(
+        viewCode,
+        "private async void ProcessSelection_SelectedIndexChanged",
+        "private void WorkOrderInput_TextChanged");
+
+    AssertTrue(processHandler.Contains("ClearPendingOnlineProgramSelection();", StringComparison.Ordinal), "在线切换工序时必须清空上一工序的待确认程序选择。");
+    AssertTrue(processHandler.Contains("ReloadProgramsAfterProcessSelectionAsync(CurrentStationNo)", StringComparison.Ordinal), "在线切换工序后必须重新拉取程序列表，否则 StateChanged 会把程序下拉刷为空。");
+}
+
+static void MonitorViewDefaultsFirstProcessInputsAfterWorkOrderLoad()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var loadMethod = ExtractMethodText(
+        viewCode,
+        "private async Task<bool> LoadWorkOrderInfoAsync",
+        "private void HandleWorkOrderLoadFailure");
+
+    var selectIndex = loadMethod.IndexOf("_weldTaskService.SelectProcess(defaultProcess, stationNo);", StringComparison.Ordinal);
+    var bindIndex = loadMethod.IndexOf("ApplySelectedProcessInputs(defaultProcess);", StringComparison.Ordinal);
+
+    AssertTrue(selectIndex >= 0, "获取工单成功后必须默认选择工序列表第一项。");
+    AssertTrue(bindIndex > selectIndex, "默认选择第一道工序后必须立即回填工序名称、工序号和生产数量控件。");
+}
+
+static void MonitorViewProcessSelectionUsesSharedInputBinder()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var processHandler = ExtractMethodText(
+        viewCode,
+        "private async void ProcessSelection_SelectedIndexChanged",
+        "private async Task<bool> ReloadProgramsAfterProcessSelectionAsync");
+    var binder = ExtractMethodText(
+        viewCode,
+        "private void ApplySelectedProcessInputs(ExpItemData process)",
+        "private void ClearProcessSelectionDisplay");
+
+    AssertTrue(processHandler.Contains("ApplySelectedProcessInputs(process);", StringComparison.Ordinal), "手动切换工序也应复用同一个工序详情回填方法。");
+    AssertTrue(binder.Contains("selectItemName.Text = GetProcessDisplayName(process);", StringComparison.Ordinal), "工序详情回填必须设置工序名称。");
+    AssertTrue(binder.Contains("inputProcessNo.Text = process.ProcessNo ?? string.Empty;", StringComparison.Ordinal), "工序详情回填必须设置工序号。");
+    AssertTrue(binder.Contains("inputStartAmount.Text = process.StartAmount.ToString(CultureInfo.InvariantCulture);", StringComparison.Ordinal), "工序详情回填必须设置生产数量。");
+}
+
+static void MonitorViewExposesDualWorkOrderToggleBesideWorkOrder()
+{
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.Designer.cs"), Encoding.UTF8);
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+
+    AssertTrue(designerCode.Contains("chkEnableDualWorkOrder = new AntdUI.Checkbox();", StringComparison.Ordinal), "监控页必须声明启用双工单复选框。");
+    AssertTrue(designerCode.Contains("tlpStationInfo.ColumnCount = 3;", StringComparison.Ordinal), "工单号行必须预留双工单复选框列。");
+    AssertTrue(designerCode.Contains("tlpStationInfo.Controls.Add(chkEnableDualWorkOrder, 2, 0);", StringComparison.Ordinal), "启用双工单复选框必须与工单号并排显示。");
+    AssertTrue(viewCode.Contains("chkEnableDualWorkOrder.CheckedChanged += DualWorkOrder_CheckedChanged;", StringComparison.Ordinal), "监控页必须监听双工单快捷开关。");
+    AssertTrue(viewCode.Contains("chkEnableDualWorkOrder.CheckedChanged -= DualWorkOrder_CheckedChanged;", StringComparison.Ordinal), "监控页销毁时必须解绑双工单快捷开关。");
+    AssertTrue(viewCode.Contains("chkEnableDualWorkOrder.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableDualWorkOrder);", StringComparison.Ordinal), "监控页双工单复选框必须复用现有本地化文本。");
+}
+
+static void MonitorViewSavesDualWorkOrderToggleWithOldRules()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var saveMethod = ExtractMethodText(
+        viewCode,
+        "private void SaveDualWorkOrderMode(bool enableDualWorkOrder)",
+        "private void SyncDualWorkOrderToggle");
+
+    AssertTrue(saveMethod.Contains("settings.EnableDualWorkOrder = enableDualWorkOrder;", StringComparison.Ordinal), "监控页切换双工单必须保存 EnableDualWorkOrder。");
+    AssertTrue(saveMethod.Contains("settings.EnableDualStation = true;", StringComparison.Ordinal), "勾选双工单时必须沿用旧逻辑自动启用双工位。");
+    AssertTrue(saveMethod.Contains("if (!CanSaveDualModeChange(previousSettings, settings))", StringComparison.Ordinal), "双工位/双工单变化必须保留未完工任务保护。");
+    AssertTrue(saveMethod.Contains("_settingsService.Save(settings);", StringComparison.Ordinal), "监控页双工单快捷开关必须持久化到系统设置。");
+    AssertTrue(viewCode.Contains("private bool HasAnyUnfinishedTask()", StringComparison.Ordinal), "监控页必须检查是否存在未完工任务。");
+    AssertTrue(viewCode.Contains("_weldTaskService.GetUnfinishedTask(1) is not null", StringComparison.Ordinal), "未完工任务检查必须覆盖工位1。");
+    AssertTrue(viewCode.Contains("_weldTaskService.GetUnfinishedTask(2) is not null", StringComparison.Ordinal), "未完工任务检查必须覆盖工位2。");
+}
+
+static void SystemSettingViewNoLongerEditsDualWorkOrder()
+{
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.Designer.cs"), Encoding.UTF8);
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.cs"), Encoding.UTF8);
+
+    AssertFalse(designerCode.Contains("tlpProductConfig.Controls.Add(chkEnableDualWorkOrder", StringComparison.Ordinal), "系统设置页不应再显示启用双工单复选框。");
+    AssertFalse(viewCode.Contains("chkEnableDualWorkOrder.CheckedChanged", StringComparison.Ordinal), "系统设置页不应再处理双工单复选框事件。");
+    AssertFalse(viewCode.Contains("var enableDualWorkOrder = chkEnableDualWorkOrder.Checked", StringComparison.Ordinal), "系统设置页不应再从双工单复选框读取保存值。");
+    AssertTrue(viewCode.Contains("chkEnableDualStation.Checked = settings.EnableDualStation || settings.EnableDualWorkOrder;", StringComparison.Ordinal), "系统设置页仍需在双工单已启用时显示双工位为开启。");
+    AssertTrue(viewCode.Contains("settings.EnableDualWorkOrder = enableDualStation && CurrentSettings.EnableDualWorkOrder;", StringComparison.Ordinal), "系统设置保存时应保留既有双工单设置，并在关闭双工位时同步关闭双工单。");
+}
+
+static void MonitorViewFinishReportUsesStartOperatorWithoutPrompt()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var onlineHandler = ExtractMethodText(
+        viewCode,
+        "private async void OnlineReport_Click",
+        "private async Task RunStartReportAsync()");
+    var finishMethod = ExtractMethodText(
+        viewCode,
+        "private async Task RunFinishReportAsync()",
+        "#region WinForms 生命周期事件");
+
+    AssertTrue(onlineHandler.Contains("activeTask is { IsOfflineCreated: false, EndTime: null }", StringComparison.Ordinal), "在线开工任务未完工时必须继续走在线完工入口。");
+    AssertTrue(onlineHandler.Contains("await RunFinishReportAsync();", StringComparison.Ordinal), "在线开工后即使 MES 断线，也应由 FinishAsync 负责本地完工和补传队列。");
+    AssertFalse(onlineHandler.Contains("FinishLocalWorkOrderAsync", StringComparison.Ordinal), "在线开工任务不应切换到本地完工入口。");
+    AssertFalse(finishMethod.Contains("PromptValidatedOperatorAsync", StringComparison.Ordinal), "在线完工不应再弹员工号输入窗或二次校验员工身份。");
+    AssertTrue(finishMethod.Contains("var employeeNumber = activeTask.UserNumber?.Trim() ?? string.Empty;", StringComparison.Ordinal), "在线完工员工号必须直接取开工任务保存的员工号。");
+    AssertTrue(finishMethod.Contains("await _weldTaskService.FinishAsync(employeeNumber, actualQty, qualifiedQty, failedQty, stationNo);", StringComparison.Ordinal), "在线完工必须把开工员工号传给 FinishAsync。");
+}
+
+static void WeldTaskFinishUsesMesStartIdForRetryPayloads()
+{
+    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "WeldTaskService.cs"), Encoding.UTF8);
+    var finishMethod = ExtractMethodText(
+        serviceCode,
+        "public async Task<BizWeldTask> FinishAsync(string employeeNumber, int actualQty, int qualifiedQty, int failedQty,",
+        "public async Task<BizWeldTask> FinishLocalAsync(");
+    var buildEndRequest = ExtractMethodText(
+        serviceCode,
+        "private static ExperimentEndReq BuildEndRequest(",
+        "private static ReportExperimentStatusReq BuildStatusRequest");
+
+    AssertTrue(finishMethod.Contains("ExpStartId = task.ExpStartId,", StringComparison.Ordinal), "在线完工即时请求必须使用开工 MES 返回的 ExpStartId。");
+    AssertTrue(finishMethod.Contains("EnqueueFinishReportTask(\r\n            task,\r\n            finishRequest", StringComparison.Ordinal), "MES 断线时排队补传的完工任务必须复用同一个 finishRequest。");
+    AssertFalse(finishMethod.Contains("LocalExpStartId", StringComparison.Ordinal), "在线完工路径不应把 LocalExpStartId 当成 MES 完工任务 ID。");
+    AssertTrue(buildEndRequest.Contains("ExpStartId = task.ExpStartId ?? string.Empty", StringComparison.Ordinal), "离线补传完工请求也必须使用任务中的 MES ExpStartId。");
+    AssertFalse(buildEndRequest.Contains("LocalExpStartId", StringComparison.Ordinal), "BuildEndRequest 不应把 LocalExpStartId 写入 MES ExpStartId 字段。");
+}
+
+static void WeldTaskRestoreUnfinishedTaskIsIdempotent()
+{
+    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "WeldTaskService.cs"), Encoding.UTF8);
+    var restoreMethod = ExtractMethodText(
+        serviceCode,
+        "public BizWeldTask? RestoreUnfinishedTask(int stationNo = ProductionConstants.Stations.DefaultStationNo)",
+        "public async Task<BasicRes<ServerTimeRes>> SyncServerTimeAsync");
+
+    var alreadyRestoredIndex = restoreMethod.IndexOf("if (alreadyRestored)", StringComparison.Ordinal);
+    var returnIndex = alreadyRestoredIndex < 0
+        ? -1
+        : restoreMethod.IndexOf("return unfinishedTask;", alreadyRestoredIndex, StringComparison.Ordinal);
+    var notifyIndex = restoreMethod.IndexOf("NotifyStateChanged();", StringComparison.Ordinal);
+
+    AssertTrue(alreadyRestoredIndex >= 0, "恢复未完工任务时，同一任务已恢复必须有幂等分支。");
+    AssertTrue(returnIndex > alreadyRestoredIndex, "同一任务已恢复时必须直接返回当前未完工任务。");
+    AssertTrue(returnIndex < notifyIndex, "同一任务已恢复时必须在 NotifyStateChanged 前返回，避免 UI 刷新递归触发 StackOverflow。");
 }
 
 static void PermissionCatalogOmitsGetWorkOrderButton()
@@ -2666,16 +2893,139 @@ static BasicRes<ServerTimeRes> SuccessServerTime(string currentTime)
     };
 }
 
+static void ProgramListFilterReturnsAllWhenDisabled()
+{
+    var programs = new List<MesProgramListItemData>
+    {
+        new() { ProgramName = "P-A", ProductNum = "X-1" },
+        new() { ProgramName = "P-B", ProductNum = "X-2" }
+    };
+
+    var filtered = ProgramListFilterRules.Filter(programs, useProductNumberFilter: false, workOrderProdNum: "X-1");
+    AssertEqual(2, filtered.Count, "未开启按产品工号筛选时不应收窄程序列表。");
+}
+
+static void ProgramListFilterNarrowsByProductNumberWhenEnabled()
+{
+    var programs = new List<MesProgramListItemData>
+    {
+        new() { ProgramName = "P-A", ProductNum = "X-1" },
+        new() { ProgramName = "P-B", ProductNum = "x-1" },
+        new() { ProgramName = "P-C", ProductNum = "X-2" }
+    };
+
+    var filtered = ProgramListFilterRules.Filter(programs, useProductNumberFilter: true, workOrderProdNum: "X-1");
+    AssertEqual(2, filtered.Count, "开启筛选后应按工单产品工号忽略大小写收窄。");
+    AssertTrue(filtered.All(program => string.Equals(program.ProductNum, "X-1", StringComparison.OrdinalIgnoreCase)), "筛选结果产品工号必须与工单一致。");
+}
+
+static void ProgramListFilterReturnsAllWhenWorkOrderProductNumberIsBlank()
+{
+    var programs = new List<MesProgramListItemData>
+    {
+        new() { ProgramName = "P-A", ProductNum = "X-1" },
+        new() { ProgramName = "P-B", ProductNum = "X-2" }
+    };
+
+    var filtered = ProgramListFilterRules.Filter(programs, useProductNumberFilter: true, workOrderProdNum: null);
+    AssertEqual(2, filtered.Count, "工单产品工号空白时不应收窄程序列表。");
+}
+
+static void ProgramContentReviewRowsApplyModifiedValues()
+{
+    var rows = new List<ProgramContentReviewRow>
+    {
+        new() { ItemName = "高度", StandardValue = "12.5", ModifiedValue = "13.0" },
+        new() { ItemName = "压力", StandardValue = "20", ModifiedValue = "" },
+        new() { ItemName = "", StandardValue = "skip", ModifiedValue = "" }
+    };
+
+    var json = ProgramContentJsonRules.MergeReviewRowsToJson(rows);
+    using var document = JsonDocument.Parse(json);
+    AssertTrue(document.RootElement.GetProperty("高度").GetString() == "13.0", "修改值非空时应覆盖设定值进入 JSON。");
+    AssertTrue(document.RootElement.GetProperty("压力").GetString() == "20", "修改值为空时应回退到设定值/标准值。");
+    AssertFalse(document.RootElement.TryGetProperty("", out _), "测试项名称为空的行不应进入 JSON。");
+}
+
+static void ProgramContentReviewKeepsStandardValueWhenModifiedValueEmpty()
+{
+    var rows = new List<ProgramContentReviewRow>
+    {
+        new() { ItemName = "电流", StandardValue = "180", ModifiedValue = "  " }
+    };
+
+    var json = ProgramContentJsonRules.MergeReviewRowsToJson(rows);
+    using var document = JsonDocument.Parse(json);
+    AssertTrue(document.RootElement.GetProperty("电流").GetString() == "180", "空白修改值回退标准值后仍需进入 JSON。");
+}
+
+static void ProgramContentReviewRejectsDuplicateItemNames()
+{
+    var rows = new List<ProgramContentReviewRow>
+    {
+        new() { ItemName = "高度", StandardValue = "12.5", ModifiedValue = "13.0" },
+        new() { ItemName = "高度", StandardValue = "12.5", ModifiedValue = "14.0" }
+    };
+
+    var ok = ProgramContentJsonRules.TryMergeReviewRowsToJson(rows, out _, out var errorMessage);
+    AssertFalse(ok, "重复测试项名称必须阻止合并。");
+    AssertTrue(errorMessage.Contains("重复", StringComparison.Ordinal), "合并失败错误信息应提示重复测试项。");
+}
+
+static void LoadProgramsFiltersAvailableProgramsByWorkOrderProductNumber()
+{
+    var mes = new FakeMesProvider
+    {
+        WorkOrderInfoResponse = new BasicRes<WorkOrderRes>
+        {
+            Status = AppConstants.MesStatus.Success,
+            Msg = "OK",
+            Data = new WorkOrderRes
+            {
+                SN = "WO-1",
+                ProdNum = "X-1",
+                ExpItems = [new ExpItemData { ItemId = 1, ProcessNo = "OP10", ItemName = "焊接", StartAmount = 10 }]
+            }
+        },
+        ProgramListResponse = new BasicRes<List<MesProgramListItemData>>
+        {
+            Status = AppConstants.MesStatus.Success,
+            Msg = "OK",
+            Data = new List<MesProgramListItemData>
+            {
+                new() { Id = "1", ProgramName = "P-A", ProductNum = "X-1" },
+                new() { Id = "3", ProgramName = "P-C", ProductNum = "X-2" }
+            }
+        }
+    };
+    var appSettings = new FakeAppSettingsService
+    {
+        Current = new AppSettings { DeviceId = "D-001", UseProductNumberFilter = true }
+    };
+    var service = CreateWeldTaskService(
+        mes,
+        new FakeSystemClockService(),
+        new FakeOperationLogService(),
+        appSettingsService: appSettings);
+
+    var workOrder = service.GetWorkOrderInfoAsync("WO-1").GetAwaiter().GetResult();
+    AssertTrue(workOrder is not null, "工单信息应加载成功。");
+    var programs = service.LoadProgramsAsync(ProductionConstants.Stations.DefaultStationNo).GetAwaiter().GetResult();
+    AssertEqual(1, programs.Count, "开启按产品工号筛选后，AvailablePrograms 只应含匹配工单产品工号的程序。");
+    AssertEqual("P-A", programs[0].ProgramName, "筛选后保留的应是产品工号匹配的程序。");
+}
+
 static WeldTaskService CreateWeldTaskService(
     FakeMesProvider mesProvider,
     ISystemClockService clockService,
     FakeOperationLogService operationLogService,
-    FakeDeviceLifecycleLogService? lifecycleLogService = null)
+    FakeDeviceLifecycleLogService? lifecycleLogService = null,
+    FakeAppSettingsService? appSettingsService = null)
 {
     return new WeldTaskService(
         null!,
         mesProvider,
-        new FakeAppSettingsService(),
+        appSettingsService ?? new FakeAppSettingsService(),
         operationLogService,
         new FakeLocalizationService(),
         new FakeUploadTaskService(),
@@ -2866,13 +3216,22 @@ sealed class FakeMesProvider : IMesProvider
         Msg = "操作成功"
     };
 
+    public BasicRes<WorkOrderRes>? WorkOrderInfoResponse { get; set; }
+
+    public BasicRes<List<MesProgramListItemData>> ProgramListResponse { get; set; } = new()
+    {
+        Status = AppConstants.MesStatus.Success,
+        Msg = "操作成功",
+        Data = new List<MesProgramListItemData>()
+    };
+
     public Task<BasicRes<ServerTimeRes>> GetServerTimeAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(ServerTimeResponse);
 
-    public Task<BasicRes<UserInfoRes>> GetUserInfoAsync(string userNumber, CancellationToken cancellationToken = default)
-        => throw new NotSupportedException();
-
     public Task<BasicRes<WorkOrderRes>> GetWorkOrderInfoAsync(string workId, CancellationToken cancellationToken = default)
+        => Task.FromResult(WorkOrderInfoResponse ?? throw new NotSupportedException());
+
+    public Task<BasicRes<UserInfoRes>> GetUserInfoAsync(string userNumber, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     public Task<BasicRes<object>> SetDeviceIdAsync(AddDeviceReq addDeviceRequest, CancellationToken cancellationToken = default)
@@ -2888,7 +3247,7 @@ sealed class FakeMesProvider : IMesProvider
         => throw new NotSupportedException();
 
     public Task<BasicRes<List<MesProgramListItemData>>> GetProgramListAsync(string deviceId, string? productNum = null, CancellationToken cancellationToken = default)
-        => throw new NotSupportedException();
+        => Task.FromResult(ProgramListResponse);
 
     public Task<BasicRes<ProgramDataRes>> DownloadProgramAsync(string deviceId, string programId, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();

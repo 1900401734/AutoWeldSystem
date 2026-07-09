@@ -95,6 +95,14 @@ public class AppSettings
     public bool UseProductNumberFilter { get; set; }
 
     /// <summary>
+    /// Whether the operator employee number is captured via a modal dialog during start report.
+    /// When disabled, the employee number is entered directly in the MonitorView MesUserNumber control.
+    /// 默认启用，保持历史由弹窗收集员工号的行为。
+    /// </summary>
+    [SugarColumn(ColumnDescription = "是否启用操作员弹窗输入", IsNullable = true)]
+    public bool? UseOperatorInputDialog { get; set; } = true;
+
+    /// <summary>
     /// Whether MES device-status uploads are enabled. Local device-status logs are still written when disabled.
     /// </summary>
     [SugarColumn(ColumnDescription = "是否启用设备状态上报", IsNullable = true)]

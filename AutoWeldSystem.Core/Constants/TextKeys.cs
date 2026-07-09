@@ -420,6 +420,10 @@ public static class TextKeys
             /// 正在校验员工信息...
             /// </summary>
             public const string ValidatingOperator = "monitor.runtime.validating_operator";
+            /// <summary>
+            /// 员工身份校验通过
+            /// </summary>
+            public const string OperatorValidated = "monitor.runtime.operator_validated";
         }
 
         public static class RuntimeError
@@ -440,6 +444,22 @@ public static class TextKeys
             /// 请选择程序名称
             /// </summary>
             public const string ProgramNameRequired = "monitor.error.program_name_required";
+            /// <summary>
+            /// 请先选择程序名称
+            /// </summary>
+            public const string ProgramSelectionRequired = "monitor.error.program_selection_required";
+            /// <summary>
+            /// 员工号必填
+            /// </summary>
+            public const string OperatorNumberRequired = "monitor.error.operator_number_required";
+            /// <summary>
+            /// 员工号校验失败
+            /// </summary>
+            public const string OperatorValidationFailedInline = "monitor.error.operator_validation_failed_inline";
+            /// <summary>
+            /// 开工前必须先完成员工号身份校验
+            /// </summary>
+            public const string OperatorValidationRequired = "monitor.error.operator_validation_required";
             /// <summary>
             /// 请先确认开工信息
             /// </summary>
@@ -1079,6 +1099,7 @@ public static class TextKeys
         public const string PlcHeartbeatRate = "system.label.plc_heartbeat_rate";
 
         public const string ChkUseProductNumberFilter = "system.checkbox.use_product_number_filter";
+        public const string ChkUseOperatorInputDialog = "system.checkbox.use_operator_input_dialog";
         public const string ChkEnableAutoStart = "system.checkbox.enable_auto_start";
         public const string ChkEnableElevatedAutoStart = "system.checkbox.enable_elevated_auto_start";
         public const string ChkValidateRecipeAfterStart = "system.checkbox.validate_recipe_after_start";

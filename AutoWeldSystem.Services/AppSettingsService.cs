@@ -133,6 +133,7 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
         settings.ShowTestFlagInHistory ??= true;
         settings.EnablePlcStringNumericFormatting ??= true;
         settings.EnablePlcAlarmReading ??= true;
+        settings.UseOperatorInputDialog ??= true;
         settings.EnableDeviceStatusReport ??= true;
         settings.EnableWorkOrderStatusReport ??= true;
         settings.PlcStringNumericFormatMode = PlcStringNumericFormatter.NormalizeMode(settings.PlcStringNumericFormatMode);

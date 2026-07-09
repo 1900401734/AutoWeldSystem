@@ -88,8 +88,10 @@
 ```
 
 **关键方法：**
-- `PrepareWorkOrderAsync()` - 准备工单
-- `PrepareProgramForCurrentWorkOrderAsync()` - 准备程序
+- `LoadWorkOrderInfoAsync()` - 加载工单并绑定默认工序
+- `LoadProgramListForWorkOrderAsync()` - 工单加载成功后立即拉取并按产品工号筛选程序列表，填充 `selectProgramName` 下拉
+- `DownloadSelectedOnlineProgramAsync()` - 用户选定程序后立即下载并弹程序内容预览/微调窗
+- `RunStartReportAsync()` - 从主界面控件构造本次开工快照并上报
 
 **涉及的服务：**
 - `IWeldTaskService` - 工单查询

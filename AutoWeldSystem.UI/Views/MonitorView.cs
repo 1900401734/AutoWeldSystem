@@ -122,10 +122,19 @@ public partial class MonitorView : BaseView
     private bool _syncingStationSelection;
     private bool _syncingProcessSelection;
     private bool _syncingOfflineProgramSelection;
+    private bool _syncingOnlineProgramSelection;
     private bool _syncingOfflineInputs;
     private bool _syncingWorkOrderInput;
+    private bool _syncingOperatorInput;
+    private bool _syncingDualWorkOrderToggle;
+    private string? _validatedOperatorNumber;
+    private string? _pendingOnlineProgramName;
+    private string? _pendingOnlineProgramWorkOrderKey;
+    private string _pendingOnlineProgramRecipeCode = string.Empty;
+    private int _pendingOnlineProgramIndex = -1;
     private bool _offlineWorkOrderEditedByUser;
     private bool _manualWorkOrderEditedByUser;
+    private string? _lastBoundOnlineWorkOrderKey;
     private bool _dualStationEnabled;
     private bool _adjustingTitleFont;
     private Font? _titleFont;
@@ -142,7 +151,6 @@ public partial class MonitorView : BaseView
     private ProductIdentity? _currentProductIdentity;
     private DateTime _lastSchemePreviewRefreshTime = DateTime.MinValue;
     private string _lastSchemePreviewKey = string.Empty;
-    private string _confirmedProgramFingerprint = string.Empty;
     private string _weldParameterLayoutKey = string.Empty;
     private string _weldParameterPreviewSchemaKey = string.Empty;
     private string _weldParameterVisibleValueKey = string.Empty;
@@ -462,11 +470,9 @@ public partial class MonitorView : BaseView
         var canOperate = !_stationViewReadOnly;
 
         btnLocalWorkOrder.Visible = canOperate;
-        btnEditWO.Visible = canOperate;
         btnOnlineReport.Visible = canOperate;
 
         btnLocalWorkOrder.Enabled = canOperate;
-        btnEditWO.Enabled = canOperate;
         btnOnlineReport.Enabled = canOperate;
         ApplyReportButtonState();
     }
@@ -698,12 +704,14 @@ public partial class MonitorView : BaseView
         GlobalContext.SessionChanged += GlobalContext_SessionChanged;
 
         btnLocalWorkOrder.Click += LocalWorkOrder_Click;
-        btnEditWO.Click += EditWorkOrder_Click;
         btnOnlineReport.Click += OnlineReport_Click;
         btnClearErrorTips.Click += (_, _) => ClearRuntimeError();
+        chkEnableDualWorkOrder.CheckedChanged += DualWorkOrder_CheckedChanged;
         inputSN.TextChanged += WorkOrderInput_TextChanged;
         inputSN.KeyDown += WorkOrderInput_KeyDown;
         selectProgramName.SelectedIndexChanged += ProgramNameSelection_SelectedIndexChanged;
+        MesUserNumber.KeyDown += OperatorInput_KeyDown;
+        MesUserNumber.TextChanged += OperatorInput_TextChanged;
 
         _timer.Tick += Timer_Tick;
         _realtimePreviewPaintTimer.Tick += RealtimePreviewPaintTimer_Tick;
@@ -778,49 +786,205 @@ public partial class MonitorView : BaseView
     #region 按钮事件
 
     /// <summary>
-    /// 处理微调工单按钮点击事件。
+    /// 异步下载下拉框当前选中的在线程序详情，并在下载成功后弹程序内容预览/微调窗。
+    /// 失败统一记录业务日志并在提示区报错，不弹业务警告窗。
     /// </summary>
-    /// <param name="sender">事件发送者。</param>
-    /// <param name="e">事件参数。</param>
-    private async void EditWorkOrder_Click(object? sender, EventArgs e)
+    private async Task DownloadSelectedOnlineProgramAsync(MesProgramListItemData programListItem, int stationNo)
     {
-        if (IsReadOnlyOperationBlocked("微调工单"))
+        await RunUiOperationAsync(async () =>
         {
-            return;
-        }
+            var state = GetCurrentStationState();
+            if (!IsOnlineStartInputEditable(state))
+            {
+                return;
+            }
 
-        SelectStationForOperation(CurrentStationNo);
-        var state = GetCurrentStationState();
-        if (state.CurrentWorkOrder is null)
-        {
-            ShowWarning(TextKeys.Monitor.RuntimeError.WorkOrderRequired);
-            return;
-        }
+            SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.DownloadingProgram);
+            var detail = await _weldTaskService.DownloadProgramAsync(programListItem, stationNo);
+            if (detail is null)
+            {
+                _exceptionLogService.WriteBusiness(
+                    "MES.DownloadProgram",
+                    _localizer.GetString(TextKeys.Monitor.Message.ProgramDownloadFailed),
+                    "MES 程序详情下载失败或返回空数据。",
+                    FormatProgram(programListItem));
+                SetRuntimeError(TextKeys.Monitor.Message.ProgramDownloadFailed);
+                return;
+            }
 
-        if (state.ActiveTask is not null)
-        {
-            ShowWarning(TextKeys.Monitor.RuntimeError.ActiveTaskBlocksEdit);
-            return;
-        }
+            ClearPendingOnlineProgramSelection();
 
-        if (state.SelectedProcess is null)
-        {
-            ShowWarning(TextKeys.Monitor.Message.ProcessRequired);
-            return;
-        }
+            // 程序内容预览/微调窗：OK 时把合并后的内容写回选中程序（只对本次开工生效）。
+            using var form = new ProgramContentReviewForm(detail, _testSchemeConfigService.GetItems());
+            if (form.ShowDialog(this) != DialogResult.OK)
+            {
+                // 取消则保留下载的默认内容，不做任何修改。
+                RefreshProductionRuntimeState();
+                ResetOnlineProgramSelectionForRepeatSelection(detail);
+                return;
+            }
 
-        if (state.SelectedProgram is null)
-        {
-            await PrepareProgramForCurrentWorkOrderAsync(CurrentStationNo);
-            return;
-        }
-
-        if (TryConfirmStartData(state.CurrentWorkOrder, state.SelectedProcess, state.SelectedProgram, CurrentStationNo))
-        {
+            detail.ProgramContent = form.MergedContentJson;
+            _weldTaskService.ApplyStartAdjustment(
+                state.CurrentWorkOrder!,
+                state.SelectedProcess,
+                detail,
+                stationNo);
             RefreshProductionRuntimeState();
+            ResetOnlineProgramSelectionForRepeatSelection(detail);
             ClearRuntimeError();
             SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.ProgramConfirmed);
+        });
+    }
+
+    /// <summary>
+    /// 从当前工位已加载的程序列表解析下拉框选中的程序项。
+    /// </summary>
+    private MesProgramListItemData? ResolveSelectedOnlineProgramListItem()
+    {
+        return ResolveOnlineProgramListItemByIndex(selectProgramName.SelectedIndex);
+    }
+
+    /// <summary>
+    /// 按下拉框索引解析在线程序列表项。
+    /// AntdUI 选择事件触发时控件属性可能尚未完全稳定，因此允许直接使用事件值。
+    /// </summary>
+    /// <param name="selectedIndex">下拉框选中索引。</param>
+    /// <returns>解析到的程序；未选中或越界时返回 null。</returns>
+    private MesProgramListItemData? ResolveOnlineProgramListItemByIndex(int selectedIndex)
+    {
+        if (selectedIndex < 0)
+        {
+            return null;
         }
+
+        var programs = GetCurrentStationState().AvailablePrograms;
+        var programNames = programs
+            .Select(program => program.ProgramName?.Trim() ?? string.Empty)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (selectedIndex >= programNames.Count)
+        {
+            return null;
+        }
+
+        var selectedName = programNames[selectedIndex];
+        return programs.FirstOrDefault(program =>
+            string.Equals(program.ProgramName?.Trim(), selectedName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// 预览在线程序选择，避免后台 StateChanged 在详情下载前清空下拉框和配方号。
+    /// </summary>
+    /// <param name="programListItem">当前下拉选中的在线程序列表项。</param>
+    /// <param name="selectedIndex">当前下拉选中索引。</param>
+    private void ApplyOnlineProgramSelectionPreview(MesProgramListItemData? programListItem, int selectedIndex)
+    {
+        if (programListItem is null || !IsOnlineStartInputEditable(GetCurrentStationState()))
+        {
+            ClearPendingOnlineProgramSelection();
+            return;
+        }
+
+        _pendingOnlineProgramIndex = selectedIndex;
+        _pendingOnlineProgramName = programListItem.ProgramName?.Trim();
+        _pendingOnlineProgramWorkOrderKey = GetCurrentStationState().CurrentWorkOrder?.SN?.Trim();
+        _pendingOnlineProgramRecipeCode = ResolveRecipeCodeForPendingProgram(programListItem);
+
+        _syncingOnlineProgramSelection = true;
+        try
+        {
+            selectProgramName.SelectedIndex = selectedIndex;
+            selectProgramName.Text = _pendingOnlineProgramName ?? string.Empty;
+            selectRecipeCode.Text = _pendingOnlineProgramRecipeCode;
+        }
+        finally
+        {
+            _syncingOnlineProgramSelection = false;
+        }
+    }
+
+    /// <summary>
+    /// 清空尚未完成下载确认的在线程序预览状态。
+    /// </summary>
+    private void ClearPendingOnlineProgramSelection()
+    {
+        _pendingOnlineProgramIndex = -1;
+        _pendingOnlineProgramName = null;
+        _pendingOnlineProgramWorkOrderKey = null;
+        _pendingOnlineProgramRecipeCode = string.Empty;
+    }
+
+    /// <summary>
+    /// 下载/微调流程结束后保留程序显示，但释放下拉选中索引，允许再次选择同一程序触发下载。
+    /// </summary>
+    /// <param name="program">本次下载得到的程序详情。</param>
+    private void ResetOnlineProgramSelectionForRepeatSelection(ProgramDataRes program)
+    {
+        _syncingOnlineProgramSelection = true;
+        try
+        {
+            selectProgramName.SelectedIndex = -1;
+            selectProgramName.Text = program.ProgramName?.Trim() ?? string.Empty;
+            selectRecipeCode.Text = ResolveRecipeCodeForDisplay(activeTask: null, program);
+        }
+        finally
+        {
+            _syncingOnlineProgramSelection = false;
+        }
+    }
+
+    /// <summary>
+    /// 从主界面控件构造本次开工的工单快照（可空项允许空串）。
+    /// 产品工号/型号/配方号跟随程序，不由工单输入框覆盖。
+    /// </summary>
+    private WorkOrderRes BuildAdjustedWorkOrderFromInputs(WorkOrderRes source)
+    {
+        var program = GetCurrentStationState().SelectedProgram;
+        var localProgram = program is null ? null : ResolveLocalProgramByProgramId(program.Id);
+        return new WorkOrderRes
+        {
+            SN = inputSN.Text.Trim(),
+            ProdNum = FirstNonEmpty(program?.ProductNum, source.ProdNum),
+            ProdModel = FirstNonEmpty(localProgram?.ProductModel, source.ProdModel),
+            Spec = inputSpec.Text.Trim(),
+            Batch = inputBatch.Text.Trim(),
+            ProductName = inputProductName.Text.Trim(),
+            DrawingNo = inputDrawingNo.Text.Trim(),
+            ProjectFrom = source.ProjectFrom,
+            ExpItems = source.ExpItems?.Select(CloneExpItem).ToList() ?? []
+        };
+    }
+
+    /// <summary>
+    /// 从主界面控件构造本次开工的工序快照；StartAmount 解析失败时保留原值。
+    /// </summary>
+    private ExpItemData BuildAdjustedProcessFromInputs(ExpItemData source)
+    {
+        var process = CloneExpItem(source);
+        process.ProcessNo = inputProcessNo.Text.Trim();
+        process.ItemName = string.IsNullOrWhiteSpace(selectItemName.Text)
+            ? source.ItemName
+            : selectItemName.Text.Trim();
+        process.StartAmount = int.TryParse(inputStartAmount.Text.Trim(), out var quantity) && quantity > 0
+            ? quantity
+            : source.StartAmount;
+        return process;
+    }
+
+    private static ExpItemData CloneExpItem(ExpItemData source)
+    {
+        return new ExpItemData
+        {
+            ItemId = source.ItemId,
+            ItemTitle = source.ItemTitle,
+            ItemCont = source.ItemCont,
+            SequenceNo = source.SequenceNo,
+            ItemName = source.ItemName,
+            ProcessNo = source.ProcessNo,
+            StartAmount = source.StartAmount
+        };
     }
 
     /// <summary>
@@ -937,35 +1101,68 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        // 工单和工序通过后才下载程序，避免“只查看工单”时提前占用 MES 下载资源。
-        if (state.CurrentWorkOrder is not null
-            && state.SelectedProcess is not null
-            && state.SelectedProgram is null
-            && !await PrepareProgramForCurrentWorkOrderAsync(stationNo))
+        // 下拉有选中项但程序尚未下载时，先内联补一次下载（下载失败不弹窗，仅提示区报错）。
+        if (state.SelectedProgram is null && selectProgramName.SelectedIndex >= 0)
         {
+            var programListItem = ResolveSelectedOnlineProgramListItem();
+            if (programListItem is not null)
+            {
+                await DownloadSelectedOnlineProgramAsync(programListItem, stationNo);
+            }
+
+            state = GetCurrentStationState();
+        }
+
+        if (state.SelectedProgram is null)
+        {
+            SetRuntimeError(TextKeys.Monitor.RuntimeError.ProgramSelectionRequired);
             return;
         }
 
-        state = GetCurrentStationState();
-        if (state.CurrentWorkOrder is null || state.SelectedProcess is null || state.SelectedProgram is null)
+        // 工序号在主界面控件中编辑，开工前必须非空。
+        var processNo = inputProcessNo.Text.Trim();
+        if (string.IsNullOrWhiteSpace(processNo))
         {
-            SetRuntimeError(TextKeys.Monitor.Message.StartPrerequisiteMissing);
+            SetRuntimeError(TextKeys.Monitor.Message.ProcessRequired);
             return;
         }
 
-        // 程序名称关联的产品工号、配方编号和内容会影响测试方案，开工前必须由操作员确认。
-        if (!IsProgramContentConfirmed(state.SelectedProgram, stationNo)
-            && !TryConfirmStartData(state.CurrentWorkOrder, state.SelectedProcess, state.SelectedProgram, stationNo))
-        {
-            return;
-        }
+        // 从控件构造本次开工的工单/工序快照，可空项允许空串，应用为内存态（只对本次生效，不落库）。
+        var adjustedWorkOrder = BuildAdjustedWorkOrderFromInputs(state.CurrentWorkOrder!);
+        var adjustedProcess = BuildAdjustedProcessFromInputs(state.SelectedProcess!);
+        var adjustedProgram = state.SelectedProgram!;
+        _weldTaskService.ApplyStartAdjustment(adjustedWorkOrder, adjustedProcess, adjustedProgram, stationNo);
 
         var actualQty = 0;
 
-        var employeeNumber = await PromptValidatedOperatorAsync(stationNo);
-        if (string.IsNullOrWhiteSpace(employeeNumber))
+        var settings = _currentSettings;
+        var useOperatorDialog = settings.UseOperatorInputDialog ?? true;
+        string employeeNumber;
+        if (useOperatorDialog)
         {
-            return;
+            employeeNumber = await PromptValidatedOperatorAsync(stationNo);
+            if (string.IsNullOrWhiteSpace(employeeNumber))
+            {
+                return;
+            }
+        }
+        else
+        {
+            employeeNumber = MesUserNumber.Text.Trim();
+            if (string.IsNullOrWhiteSpace(employeeNumber))
+            {
+                SetRuntimeError(TextKeys.Monitor.RuntimeError.OperatorNumberRequired);
+                return;
+            }
+
+            // 员工号已输入但尚未按回车完成内联身份校验（或校验后又修改了内容）。
+            if (!string.Equals(employeeNumber, _validatedOperatorNumber, StringComparison.Ordinal))
+            {
+                SetRuntimeError(TextKeys.Monitor.RuntimeError.OperatorValidationRequired);
+                return;
+            }
+
+            // 已通过身份校验；WeldTaskService 已存储本次校验的操作员信息，直接使用缓存结果。
         }
 
         await RunReportOperationAsync(stationNo, "开工上报", async () =>
@@ -979,7 +1176,7 @@ public partial class MonitorView : BaseView
         });
 
         // PLC 业务信号独立写入；失败只提示和记录日志，不回滚已经成功的在线开工。
-        await SafeWriteStartBusinessSignalsAsync(state.SelectedProgram, stationNo);
+        await SafeWriteStartBusinessSignalsAsync(adjustedProgram, stationNo);
     }
 
     /// <summary>
@@ -1001,11 +1198,8 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        var employeeNumber = await PromptValidatedOperatorAsync(stationNo);
-        if (string.IsNullOrWhiteSpace(employeeNumber))
-        {
-            return;
-        }
+        // 完工不再二次弹窗校验员工，直接沿用在线开工时写入任务的员工号。
+        var employeeNumber = activeTask.UserNumber?.Trim() ?? string.Empty;
 
         // 完工数量优先来自 PLC；配置允许时才通过弹窗补录，避免上报数量与设备数据不一致。
         if (!TryResolveFinishQuantities(stationNo, out var actualQty, out var qualifiedQty, out var failedQty))
@@ -1040,6 +1234,7 @@ public partial class MonitorView : BaseView
         _timer.Start();
         _realtimePreviewPaintTimer.Start();
         ApplyLocalizedTexts();
+        SyncDualWorkOrderToggle(_currentSettings.EnableDualWorkOrder);
         UpdateCurrentTime();
         ConfigureDeviceMode();
         _weldTaskService.RestoreUnfinishedTask(CurrentStationNo);
@@ -1123,7 +1318,10 @@ public partial class MonitorView : BaseView
         _uploadTaskService.TaskStatusChanged -= UploadTaskService_TaskStatusChanged;
         inputSN.TextChanged -= WorkOrderInput_TextChanged;
         inputSN.KeyDown -= WorkOrderInput_KeyDown;
+        chkEnableDualWorkOrder.CheckedChanged -= DualWorkOrder_CheckedChanged;
         selectProgramName.SelectedIndexChanged -= ProgramNameSelection_SelectedIndexChanged;
+        MesUserNumber.KeyDown -= OperatorInput_KeyDown;
+        MesUserNumber.TextChanged -= OperatorInput_TextChanged;
         tableHistory1.CellClick -= ProductHistoryTable_CellClick;
         tableHistory2.CellClick -= ProductHistoryTable_CellClick;
         UnwireWeldPreviewGridEvents(dgvPreview1);
@@ -1186,7 +1384,7 @@ public partial class MonitorView : BaseView
     /// </summary>
     /// <param name="sender">事件发送者。</param>
     /// <param name="e">事件参数。</param>
-    private void ProcessSelection_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
+    private async void ProcessSelection_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
     {
         if (_syncingProcessSelection)
         {
@@ -1213,12 +1411,25 @@ public partial class MonitorView : BaseView
 
         var process = processes[selectedIndex];
         SelectStationForOperation(CurrentStationNo);
+        ClearPendingOnlineProgramSelection();
         _weldTaskService.SelectProcess(process, CurrentStationNo);
-        selectItemName.Text = GetProcessDisplayName(process);
-        inputProcessNo.Text = process.ProcessNo ?? string.Empty;
-        inputStartAmount.Text = process.StartAmount.ToString(CultureInfo.InvariantCulture);
+        ApplySelectedProcessInputs(process);
         ClearRuntimeError();
-        SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.ProcessSelected);
+        if (await ReloadProgramsAfterProcessSelectionAsync(CurrentStationNo))
+        {
+            SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.ProcessSelected);
+        }
+    }
+
+    /// <summary>
+    /// 在线切换工序后重新加载可选程序，避免服务层清空程序列表后下拉无法再次下载。
+    /// </summary>
+    /// <param name="stationNo">工位编号。</param>
+    /// <returns>程序列表加载成功且存在可选程序返回 true。</returns>
+    private async Task<bool> ReloadProgramsAfterProcessSelectionAsync(int stationNo)
+    {
+        await LoadProgramListForWorkOrderAsync(stationNo);
+        return GetCurrentStationState().AvailablePrograms.Count > 0;
     }
 
     /// <summary>
@@ -1248,9 +1459,15 @@ public partial class MonitorView : BaseView
         var workId = inputSN.Text?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(workId))
         {
+            ClearPendingOnlineProgramSelection();
             _manualWorkOrderEditedByUser = false;
             _manualWorkOrderQueryTimer.Stop();
             return;
+        }
+
+        if (!string.Equals(workId, state.CurrentWorkOrder?.SN?.Trim(), StringComparison.Ordinal))
+        {
+            ClearPendingOnlineProgramSelection();
         }
 
         _manualWorkOrderEditedByUser = true;
@@ -1274,6 +1491,36 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
+    /// 处理员工号输入框回车键，触发内联身份校验。
+    /// 仅在"操作员弹窗输入"关闭且在线空闲时有效，其余状态忽略。
+    /// </summary>
+    private void OperatorInput_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode != Keys.Enter)
+        {
+            return;
+        }
+
+        e.SuppressKeyPress = true;
+        _ = ValidateOperatorInlineAsync(CurrentStationNo);
+    }
+
+    /// <summary>
+    /// 员工号输入框内容变化时，清除已校验状态并清空关联显示字段。
+    /// 程序性赋值（BindMesOperatorInfo / ClearMesOperatorInfo）通过 _syncingOperatorInput 旗标绕过此逻辑。
+    /// </summary>
+    private void OperatorInput_TextChanged(object? sender, EventArgs e)
+    {
+        if (_syncingOperatorInput || _validatedOperatorNumber is null)
+        {
+            return;
+        }
+
+        _validatedOperatorNumber = null;
+        ClearMesOperatorDisplayInfo();
+    }
+
+    /// <summary>
     /// 手动输入停顿达到防抖时间后自动查询工单。
     /// </summary>
     /// <param name="sender">事件发送者。</param>
@@ -1291,17 +1538,39 @@ public partial class MonitorView : BaseView
     /// <param name="e">事件参数。</param>
     private void ProgramNameSelection_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
     {
-        if (_syncingOfflineProgramSelection)
+        // 离线可编辑态走本地程序联动；在线空闲态走 MES 下载与程序内容预览。
+        var state = GetCurrentStationState();
+        if (IsOfflineInputEditable(state))
+        {
+            if (_syncingOfflineProgramSelection)
+            {
+                return;
+            }
+
+            var option = GetSelectedOfflineProgramNameOption();
+            ApplyOfflineProgramNameOption(option);
+            if (option is not null)
+            {
+                QueueRefreshSchemePreview(force: true);
+            }
+
+            return;
+        }
+
+        if (_syncingOnlineProgramSelection)
         {
             return;
         }
 
-        var option = GetSelectedOfflineProgramNameOption();
-        ApplyOfflineProgramNameOption(option);
-        if (option is not null)
+        var programListItem = ResolveOnlineProgramListItemByIndex(e.Value);
+        ApplyOnlineProgramSelectionPreview(programListItem, e.Value);
+        if (programListItem is null)
         {
-            QueueRefreshSchemePreview(force: true);
+            return;
         }
+
+        // 在线选定程序后立即下载详情并弹程序内容预览窗，不自动选中以避免 PLC 扫码自动加载触发模态窗。
+        _ = DownloadSelectedOnlineProgramAsync(programListItem, CurrentStationNo);
     }
 
     #endregion
@@ -1561,12 +1830,90 @@ public partial class MonitorView : BaseView
         {
             lblTitle.Text = _currentSettings.DeviceName;
             ApplyDeviceIdText();
+            SyncDualWorkOrderToggle(_currentSettings.EnableDualWorkOrder);
         }, "MonitorView.SettingsChanged.DeviceIdentity");
         var currentShowTestFlag = e.CurrentSettings.ShowTestFlagInHistory != false;
         if (previousShowTestFlag != currentShowTestFlag)
         {
             RunOnUiThread(RefreshProductHistoryPreview, "MonitorView.SettingsChanged.ShowTestFlag");
         }
+    }
+
+    /// <summary>
+    /// 处理监控页双工单快捷开关。
+    /// </summary>
+    private void DualWorkOrder_CheckedChanged(object? sender, AntdUI.BoolEventArgs e)
+    {
+        if (_syncingDualWorkOrderToggle)
+        {
+            return;
+        }
+
+        SaveDualWorkOrderMode(e.Value);
+    }
+
+    /// <summary>
+    /// 保存双工单模式。勾选双工单时沿用系统设置页旧逻辑：自动启用双工位。
+    /// </summary>
+    private void SaveDualWorkOrderMode(bool enableDualWorkOrder)
+    {
+        var previousSettings = _currentSettings;
+        var settings = previousSettings.Clone();
+        settings.EnableDualWorkOrder = enableDualWorkOrder;
+        if (enableDualWorkOrder)
+        {
+            settings.EnableDualStation = true;
+        }
+
+        if (!CanSaveDualModeChange(previousSettings, settings))
+        {
+            SyncDualWorkOrderToggle(previousSettings.EnableDualWorkOrder);
+            ShowWarningText("存在未完工任务，不能切换双工位/双工单模式，请先完工后再调整。");
+            return;
+        }
+
+        var savedSettings = _settingsService.Save(settings);
+        UpdateSettingsSnapshot(savedSettings);
+        SyncDualWorkOrderToggle(savedSettings.EnableDualWorkOrder);
+    }
+
+    /// <summary>
+    /// 同步双工单复选框状态，避免程序性赋值再次触发保存。
+    /// </summary>
+    private void SyncDualWorkOrderToggle(bool enableDualWorkOrder)
+    {
+        _syncingDualWorkOrderToggle = true;
+        try
+        {
+            chkEnableDualWorkOrder.Checked = enableDualWorkOrder;
+        }
+        finally
+        {
+            _syncingDualWorkOrderToggle = false;
+        }
+    }
+
+    /// <summary>
+    /// 判断运行模式是否允许变更。存在未完工任务时禁止切换双工位/双工单模式。
+    /// </summary>
+    private bool CanSaveDualModeChange(AppSettings previousSettings, AppSettings newSettings)
+    {
+        if (previousSettings.EnableDualStation == newSettings.EnableDualStation
+            && previousSettings.EnableDualWorkOrder == newSettings.EnableDualWorkOrder)
+        {
+            return true;
+        }
+
+        return !HasAnyUnfinishedTask();
+    }
+
+    /// <summary>
+    /// 检查任一工位是否存在未完工任务。
+    /// </summary>
+    private bool HasAnyUnfinishedTask()
+    {
+        return _weldTaskService.GetUnfinishedTask(1) is not null
+            || _weldTaskService.GetUnfinishedTask(2) is not null;
     }
 
     #endregion
@@ -2499,9 +2846,15 @@ public partial class MonitorView : BaseView
             _weldTaskService.SelectProcess(defaultProcess, stationNo);
             if (stationNo == CurrentStationNo)
             {
+                ClearPendingOnlineProgramSelection();
+                ApplySelectedProcessInputs(defaultProcess);
                 _manualWorkOrderEditedByUser = false;
                 _manualWorkOrderQueryTimer.Stop();
             }
+
+            // 工单加载成功后立即拉取程序列表，按“按产品工号筛选程序”设置在客户端筛选，
+            // 并把可程序名称填充到下拉框，供操作员在控件内直接选定程序。
+            await LoadProgramListForWorkOrderAsync(stationNo);
 
             RefreshProductionRuntimeState();
             ClearMesOperatorInfo();
@@ -2540,9 +2893,8 @@ public partial class MonitorView : BaseView
     /// </summary>
     /// <param name="stationNo">工位编号。</param>
     /// <returns>异步操作成功返回 true，否则返回 false。</returns>
-    private async Task<bool> PrepareProgramForCurrentWorkOrderAsync(int stationNo)
+    private async Task LoadProgramListForWorkOrderAsync(int stationNo)
     {
-        var isReady = false;
         await RunUiOperationAsync(async () =>
         {
             var state = GetCurrentStationState();
@@ -2556,43 +2908,67 @@ public partial class MonitorView : BaseView
             var programs = await _weldTaskService.LoadProgramsAsync(stationNo);
             if (programs.Count == 0)
             {
-                ShowBusinessWarning(
+                // 列表为空不弹窗，按自动查询失败模式记录业务日志并在提示区报错。
+                var detail = "MES 返回的程序列表为空，或按产品工号筛选后无匹配程序。";
+                _exceptionLogService.WriteBusiness(
                     "MES.GetProgramList",
-                    TextKeys.Monitor.Message.ProgramListEmpty,
-                    "MES 返回的程序列表为空。",
+                    _localizer.GetString(TextKeys.Monitor.Message.ProgramListEmpty),
+                    detail,
                     $"WorkId={workOrder.SN}; ProductNumber={workOrder.ProdNum}");
+                SetRuntimeError(TextKeys.Monitor.Message.ProgramListEmpty);
+                BindOnlineProgramNameOptions();
                 return;
             }
 
-            if (!TrySelectProgram(programs, out var program))
-            {
-                return;
-            }
-
-            // 操作员选定程序后再下载详情，保证确认窗展示的是本次实际要开工的内容。
-            SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.DownloadingProgram);
-            var detail = await _weldTaskService.DownloadProgramAsync(program, stationNo);
-            if (detail is null)
-            {
-                ShowBusinessWarning(
-                    "MES.DownloadProgram",
-                    TextKeys.Monitor.Message.ProgramDownloadFailed,
-                    "MES 程序详情下载失败或返回空数据。",
-                    FormatProgram(program));
-                return;
-            }
-
-            var refreshedState = GetCurrentStationState();
-            if (!TryConfirmStartData(refreshedState.CurrentWorkOrder, refreshedState.SelectedProcess, detail, stationNo))
-            {
-                return;
-            }
-
-            RefreshProductionRuntimeState();
-            isReady = true;
+            BindOnlineProgramNameOptions();
         });
+    }
 
-        return isReady;
+    /// <summary>
+    /// 用当前工位已加载的程序列表填充在线程序名称下拉框（镜像离线版绑定，但不自动选中）。
+    /// </summary>
+    private void BindOnlineProgramNameOptions()
+    {
+        var state = GetCurrentStationState();
+        var programs = state.AvailablePrograms;
+        var programNames = programs
+            .Select(program => program.ProgramName?.Trim() ?? string.Empty)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        _syncingOnlineProgramSelection = true;
+        try
+        {
+            selectProgramName.Items.Clear();
+            selectProgramName.Items.AddRange(programNames.Cast<object>().ToArray());
+
+            // 已确认程序优先；尚未确认时保留用户刚选的在线程序，避免 StateChanged 刷空下拉框。
+            var currentProgramName = state.SelectedProgram?.ProgramName?.Trim();
+            if (string.IsNullOrWhiteSpace(currentProgramName) && HasPendingOnlineProgramSelection(state))
+            {
+                currentProgramName = _pendingOnlineProgramName;
+            }
+
+            var selectedIndex = -1;
+            if (!string.IsNullOrWhiteSpace(currentProgramName))
+            {
+                selectedIndex = programNames.FindIndex(
+                    name => string.Equals(name, currentProgramName, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (selectedIndex < 0 && HasPendingOnlineProgramSelection(state))
+            {
+                ClearPendingOnlineProgramSelection();
+            }
+
+            selectProgramName.SelectedIndex = selectedIndex;
+            selectProgramName.Text = selectedIndex >= 0 ? programNames[selectedIndex] : string.Empty;
+        }
+        finally
+        {
+            _syncingOnlineProgramSelection = false;
+        }
     }
 
     #endregion
@@ -2609,8 +2985,10 @@ public partial class MonitorView : BaseView
         if (normalizedStationNo != CurrentStationNo)
         {
             _viewStationNo = normalizedStationNo;
+            ClearPendingOnlineProgramSelection();
             _offlineWorkOrderEditedByUser = false;
             _manualWorkOrderEditedByUser = false;
+            _validatedOperatorNumber = null;
             _manualWorkOrderQueryTimer.Stop();
             _weldTaskService.RestoreUnfinishedTask(normalizedStationNo);
         }
@@ -2662,8 +3040,10 @@ public partial class MonitorView : BaseView
         }
 
         var canEditOnlineWorkOrder = IsManualOnlineWorkOrderInputEditable(state);
+        var onlineEditable = IsOnlineStartInputEditable(state);
         ApplyOfflineInputReadOnly(readOnly: true);
         inputSN.ReadOnly = !canEditOnlineWorkOrder;
+        ApplyOnlineStartInputReadOnly(onlineEditable);
         _offlineWorkOrderEditedByUser = false;
         if (!canEditOnlineWorkOrder)
         {
@@ -2679,18 +3059,36 @@ public partial class MonitorView : BaseView
             SetWorkOrderInputText(workOrderText);
         }
 
+        // 在线可编辑字段仅在工作单变化（或首次绑定）时用工单值刷新，避免刷新周期覆盖操作员手改值。
+        var workOrderKey = workOrder?.SN ?? string.Empty;
+        var workOrderChanged = !string.Equals(workOrderKey, _lastBoundOnlineWorkOrderKey, StringComparison.Ordinal);
+        if (workOrderChanged)
+        {
+            _lastBoundOnlineWorkOrderKey = string.IsNullOrEmpty(workOrderKey) ? null : workOrderKey;
+        }
+
         inputProdNum.Text = workOrder?.ProdNum ?? currentIdentity?.ProductNum ?? string.Empty;
-        inputBatch.Text = workOrder?.Batch ?? string.Empty;
-        inputProductName.Text = workOrder?.ProductName ?? string.Empty;
-        inputDrawingNo.Text = workOrder?.DrawingNo ?? string.Empty;
+        // 不可编辑或有运行任务时用工单值覆盖；可编辑且工单未变化时保留操作员输入。
+        if (!onlineEditable || activeTask is not null || workOrderChanged)
+        {
+            inputBatch.Text = workOrder?.Batch ?? string.Empty;
+            inputProductName.Text = workOrder?.ProductName ?? string.Empty;
+            inputDrawingNo.Text = workOrder?.DrawingNo ?? string.Empty;
+            inputSpec.Text = workOrder?.Spec ?? string.Empty;
+            inputProcessNo.Text = process?.ProcessNo ?? string.Empty;
+            inputStartAmount.Text = process is null ? string.Empty : process.StartAmount.ToString(CultureInfo.InvariantCulture);
+        }
+
         inputProdModel.Text = workOrder?.ProdModel ?? currentIdentity?.ProductModel ?? string.Empty;
-        inputSpec.Text = workOrder?.Spec ?? string.Empty;
         BindProcessSelection(workOrder, process, activeTask is not null);
-        inputProcessNo.Text = process?.ProcessNo ?? string.Empty;
-        inputStartAmount.Text = process is null ? string.Empty : process.StartAmount.ToString(CultureInfo.InvariantCulture);
-        selectProgramName.Text = program?.ProgramName ?? string.Empty;
-        selectRecipeCode.Text = ResolveRecipeCodeForDisplay(activeTask, program);
-        BindRuntimeOperatorInfo(state, activeTask);
+        var usePendingProgram = program is null && activeTask is null && HasPendingOnlineProgramSelection(state);
+        selectProgramName.Text = usePendingProgram
+            ? _pendingOnlineProgramName ?? string.Empty
+            : program?.ProgramName ?? string.Empty;
+        selectRecipeCode.Text = usePendingProgram
+            ? _pendingOnlineProgramRecipeCode
+            : ResolveRecipeCodeForDisplay(activeTask, program);
+        BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(state, activeTask, onlineEditable));
         ApplyTaskStatusTag(state);
         btnLocalWorkOrder.Text = activeTask is { IsOfflineCreated: true, EndTime: null }
             ? "本地完工"
@@ -2721,6 +3119,38 @@ public partial class MonitorView : BaseView
             && _mesConnectionMonitorService.Current.IsConnected
             && !IsRunningWeldTask(state.ActiveTask)
             && _weldTaskService.GetUnfinishedTask(CurrentStationNo) is null;
+    }
+
+    /// <summary>
+    /// 判断在线空闲且工单已加载时，是否允许在主界面直接编辑本次开工的中段字段并选定程序。
+    /// </summary>
+    private bool IsOnlineStartInputEditable(ProductionStationRuntimeState state)
+    {
+        return IsManualOnlineWorkOrderInputEditable(state)
+            && state.CurrentWorkOrder is not null;
+    }
+
+    /// <summary>
+    /// 设置在线开工输入控件的只读状态。
+    /// 产品工号/产品型号/配方号跟随程序，始终只读；员工号依“操作员弹窗输入”设置。
+    /// </summary>
+    private void ApplyOnlineStartInputReadOnly(bool editable)
+    {
+        var fieldReadOnly = !editable;
+        inputBatch.ReadOnly = fieldReadOnly;
+        inputSpec.ReadOnly = fieldReadOnly;
+        inputProductName.ReadOnly = fieldReadOnly;
+        inputDrawingNo.ReadOnly = fieldReadOnly;
+        inputProcessNo.ReadOnly = fieldReadOnly;
+        inputStartAmount.ReadOnly = fieldReadOnly;
+        selectProgramName.ReadOnly = fieldReadOnly;
+
+        inputProdNum.ReadOnly = true;
+        inputProdModel.ReadOnly = true;
+        selectRecipeCode.ReadOnly = true;
+
+        var useOperatorDialog = _currentSettings.UseOperatorInputDialog ?? true;
+        MesUserNumber.ReadOnly = fieldReadOnly || useOperatorDialog;
     }
 
     /// <summary>
@@ -2940,6 +3370,17 @@ public partial class MonitorView : BaseView
         {
             _syncingProcessSelection = false;
         }
+    }
+
+    /// <summary>
+    /// 将当前选中工序同步到工序名称、工序号和生产数量控件。
+    /// </summary>
+    /// <param name="process">当前选中的工序。</param>
+    private void ApplySelectedProcessInputs(ExpItemData process)
+    {
+        selectItemName.Text = GetProcessDisplayName(process);
+        inputProcessNo.Text = process.ProcessNo ?? string.Empty;
+        inputStartAmount.Text = process.StartAmount.ToString(CultureInfo.InvariantCulture);
     }
 
     /// <summary>
@@ -3392,6 +3833,7 @@ public partial class MonitorView : BaseView
         lblTitle.Text = _currentSettings.DeviceName;
         ApplyDeviceIdText();
         lblWorkOrder.Text = _localizer.GetString(TextKeys.Monitor.Label.WorkOrderNo);
+        chkEnableDualWorkOrder.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableDualWorkOrder);
         lblProgramName.Text = _localizer.GetString(TextKeys.Monitor.Label.ProgramName);
         lblProductNo.Text = _localizer.GetString(TextKeys.Monitor.Label.ProductNumber);
         lblProdModel.Text = _localizer.GetString(TextKeys.Monitor.Label.ProductModel);
@@ -3416,7 +3858,6 @@ public partial class MonitorView : BaseView
 
         btnOnlineReport.Text = _localizer.GetString(TextKeys.Monitor.Button.StartReport);
         btnLocalWorkOrder.Text = _localizer.GetString(TextKeys.Monitor.Button.LocalWorkOrder);
-        btnEditWO.Text = _localizer.GetString(TextKeys.Monitor.Button.EditWO);
         btnClearErrorTips.Text = _localizer.GetString(TextKeys.Monitor.Button.ClearErrorTips);
 
         grpErrorTips.Text = _localizer.GetString(TextKeys.Monitor.Group.ExceptionTips);
@@ -6675,105 +7116,6 @@ public partial class MonitorView : BaseView
 
     #endregion
 
-    #region 操作员与程序确认
-
-    /// <summary>
-    /// 尝试选择程序。
-    /// </summary>
-    /// <param name="programs">可选程序列表。</param>
-    /// <param name="program">程序数据。</param>
-    /// <returns>条件满足返回 true，否则返回 false。</returns>
-    private bool TrySelectProgram(IReadOnlyList<MesProgramListItemData> programs, out MesProgramListItemData program)
-    {
-        var columns = new[]
-        {
-            new SelectionDialogColumn<MesProgramListItemData>(
-                "程序名称",
-                program => program.ProgramName,
-                58F),
-            new SelectionDialogColumn<MesProgramListItemData>(
-                "产品工号",
-                program => program.ProductNum,
-                24F,
-                DataGridViewContentAlignment.MiddleCenter),
-            new SelectionDialogColumn<MesProgramListItemData>(
-                "程序类型",
-                program => program.ProgramType,
-                18F,
-                DataGridViewContentAlignment.MiddleCenter)
-        };
-
-        return SelectionDialog.TrySelect(
-            this,
-            _localizer.GetString(TextKeys.Monitor.Dialog.SelectProgramTitle),
-            _localizer.GetString(TextKeys.Monitor.Dialog.SelectProgramPrompt),
-            programs,
-            columns,
-            _localizer.GetString(TextKeys.Common.ActionApply),
-            _localizer.GetString(TextKeys.Common.ActionCancel),
-            out program);
-    }
-
-    /// <summary>
-    /// 尝试确认开工数据。
-    /// </summary>
-    /// <param name="workOrder">MES 工单数据。</param>
-    /// <param name="process">工序数据。</param>
-    /// <param name="program">程序数据。</param>
-    /// <param name="stationNo">工位编号。</param>
-    /// <returns>条件满足返回 true，否则返回 false。</returns>
-    private bool TryConfirmStartData(WorkOrderRes? workOrder, ExpItemData? process, ProgramDataRes program, int stationNo)
-    {
-        if (workOrder is null)
-        {
-            ShowWarning(TextKeys.Monitor.RuntimeError.StartInfoRequired);
-            return false;
-        }
-
-        using var form = new ProgramContentConfirmForm(
-            workOrder,
-            process,
-            program,
-            _programManageService.GetPrograms());
-        if (form.ShowDialog(this) != DialogResult.OK)
-        {
-            return false;
-        }
-
-        _weldTaskService.ApplyStartAdjustment(form.AdjustedWorkOrder, form.AdjustedProcess, form.AdjustedProgram, stationNo);
-        var refreshedProgram = GetCurrentStationState().SelectedProgram ?? program;
-        _confirmedProgramFingerprint = BuildProgramFingerprint(refreshedProgram, stationNo);
-        QueueRefreshSchemePreview(force: true);
-        return true;
-    }
-
-    /// <summary>
-    /// 判断程序内容已确认。
-    /// </summary>
-    /// <param name="program">程序数据。</param>
-    /// <param name="stationNo">工位编号。</param>
-    /// <returns>条件满足返回 true，否则返回 false。</returns>
-    private bool IsProgramContentConfirmed(ProgramDataRes program, int stationNo)
-    {
-        return string.Equals(
-            _confirmedProgramFingerprint,
-            BuildProgramFingerprint(program, stationNo),
-            StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// 构建程序指纹。
-    /// </summary>
-    /// <param name="program">程序数据。</param>
-    /// <param name="stationNo">工位编号。</param>
-    /// <returns>处理后的文本。</returns>
-    private static string BuildProgramFingerprint(ProgramDataRes program, int stationNo)
-    {
-        return $"{stationNo}|{program.Id}|{program.ProgramName}|{program.ProgramContent}";
-    }
-
-    #endregion
-
     #region 配方下发与校验
 
     /// <summary>
@@ -7423,6 +7765,43 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
+    /// 判断是否存在属于当前工单的在线程序待确认选择。
+    /// </summary>
+    /// <param name="state">当前工位运行态。</param>
+    /// <returns>存在有效待确认选择返回 true。</returns>
+    private bool HasPendingOnlineProgramSelection(ProductionStationRuntimeState state)
+    {
+        if (string.IsNullOrWhiteSpace(_pendingOnlineProgramName))
+        {
+            return false;
+        }
+
+        var workOrderKey = state.CurrentWorkOrder?.SN?.Trim();
+        return !string.IsNullOrWhiteSpace(workOrderKey)
+            && string.Equals(workOrderKey, _pendingOnlineProgramWorkOrderKey, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 解析待确认在线程序对应的本地配方号。
+    /// </summary>
+    /// <param name="programListItem">MES 程序列表项。</param>
+    /// <returns>解析到的配方号；不存在时返回空串。</returns>
+    private string ResolveRecipeCodeForPendingProgram(MesProgramListItemData programListItem)
+    {
+        var localProgram = ResolveLocalProgramByProgramId(programListItem.Id);
+        if (localProgram is not null)
+        {
+            return localProgram.RecipeCode?.Trim() ?? string.Empty;
+        }
+
+        return _programManageService.GetPrograms()
+            .FirstOrDefault(program =>
+                SameText(program.ProgramName, programListItem.ProgramName)
+                && SameText(program.ProductNum, programListItem.ProductNum))
+            ?.RecipeCode?.Trim() ?? string.Empty;
+    }
+
+    /// <summary>
     /// 解析本地程序。
     /// </summary>
     /// <param name="program">程序数据。</param>
@@ -7567,6 +7946,7 @@ public partial class MonitorView : BaseView
             if (response.IsSuccess)
             {
                 BindMesOperatorInfo(response.Data, form.EmployeeNumber);
+                SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.OperatorValidated);
                 return string.IsNullOrWhiteSpace(response.Data?.UserNumber)
                     ? form.EmployeeNumber
                     : response.Data.UserNumber.Trim();
@@ -7587,12 +7967,20 @@ public partial class MonitorView : BaseView
     /// <param name="fallbackEmployeeNumber">兜底员工编号。</param>
     private void BindMesOperatorInfo(UserInfoRes? userInfo, string fallbackEmployeeNumber)
     {
-        MesUserName.Text = userInfo?.UserName?.Trim() ?? string.Empty;
-        MesUserNumber.Text = string.IsNullOrWhiteSpace(userInfo?.UserNumber)
-            ? fallbackEmployeeNumber.Trim()
-            : userInfo.UserNumber.Trim();
-        inputDeptName.Text = userInfo?.DeptName?.Trim() ?? string.Empty;
-        TeamName.Text = userInfo?.TeamName?.Trim() ?? string.Empty;
+        _syncingOperatorInput = true;
+        try
+        {
+            MesUserName.Text = userInfo?.UserName?.Trim() ?? string.Empty;
+            MesUserNumber.Text = string.IsNullOrWhiteSpace(userInfo?.UserNumber)
+                ? fallbackEmployeeNumber.Trim()
+                : userInfo.UserNumber.Trim();
+            inputDeptName.Text = userInfo?.DeptName?.Trim() ?? string.Empty;
+            TeamName.Text = userInfo?.TeamName?.Trim() ?? string.Empty;
+        }
+        finally
+        {
+            _syncingOperatorInput = false;
+        }
     }
 
     /// <summary>
@@ -7600,7 +7988,11 @@ public partial class MonitorView : BaseView
     /// </summary>
     /// <param name="state">工位运行状态。</param>
     /// <param name="activeTask">active任务。</param>
-    private void BindRuntimeOperatorInfo(ProductionStationRuntimeState state, BizWeldTask? activeTask)
+    /// <param name="preserveDraftEmployeeNumber">是否保留未校验的员工号输入。</param>
+    private void BindRuntimeOperatorInfo(
+        ProductionStationRuntimeState state,
+        BizWeldTask? activeTask,
+        bool preserveDraftEmployeeNumber = false)
     {
         var taskOperator = CreateTaskOperatorInfo(activeTask);
         if (taskOperator is not null)
@@ -7621,7 +8013,32 @@ public partial class MonitorView : BaseView
             return;
         }
 
+        if (preserveDraftEmployeeNumber)
+        {
+            ClearMesOperatorDisplayInfo();
+            return;
+        }
+
         ClearMesOperatorInfo();
+    }
+
+    /// <summary>
+    /// 判断刷新运行态时是否保留正在输入但尚未校验的员工号。
+    /// </summary>
+    /// <param name="state">当前工位运行态。</param>
+    /// <param name="activeTask">当前任务。</param>
+    /// <param name="onlineEditable">在线开工字段是否可编辑。</param>
+    /// <returns>需要保留返回 true。</returns>
+    private bool ShouldPreserveDraftOperatorNumber(
+        ProductionStationRuntimeState state,
+        BizWeldTask? activeTask,
+        bool onlineEditable)
+    {
+        return onlineEditable
+            && activeTask is null
+            && state.MesOperatorInfo is null
+            && string.IsNullOrWhiteSpace(state.MesOperatorNumber)
+            && !string.IsNullOrWhiteSpace(MesUserNumber.Text);
     }
 
     /// <summary>
@@ -7662,10 +8079,88 @@ public partial class MonitorView : BaseView
     /// </summary>
     private void ClearMesOperatorInfo()
     {
-        MesUserName.Text = string.Empty;
-        MesUserNumber.Text = string.Empty;
-        inputDeptName.Text = string.Empty;
-        TeamName.Text = string.Empty;
+        _syncingOperatorInput = true;
+        try
+        {
+            _validatedOperatorNumber = null;
+            MesUserName.Text = string.Empty;
+            MesUserNumber.Text = string.Empty;
+            inputDeptName.Text = string.Empty;
+            TeamName.Text = string.Empty;
+        }
+        finally
+        {
+            _syncingOperatorInput = false;
+        }
+    }
+
+    /// <summary>
+    /// 仅清空员工关联显示字段（姓名、部门、班组），不清空员工号输入框本身。
+    /// 用于用户修改员工号时即时撤销显示信息。
+    /// </summary>
+    private void ClearMesOperatorDisplayInfo()
+    {
+        _syncingOperatorInput = true;
+        try
+        {
+            MesUserName.Text = string.Empty;
+            inputDeptName.Text = string.Empty;
+            TeamName.Text = string.Empty;
+        }
+        finally
+        {
+            _syncingOperatorInput = false;
+        }
+    }
+
+    /// <summary>
+    /// 内联校验员工号身份。
+    /// 仅在"操作员弹窗输入"关闭且当前工位处于在线空闲状态时执行；
+    /// 成功后回填员工信息并设置校验通过标记，失败则记录业务日志并在提示区报错。
+    /// </summary>
+    private async Task ValidateOperatorInlineAsync(int stationNo)
+    {
+        var settings = _currentSettings;
+        if (settings.UseOperatorInputDialog ?? true)
+        {
+            return;
+        }
+
+        await RunUiOperationAsync(async () =>
+        {
+            var state = GetCurrentStationState();
+            if (!IsOnlineStartInputEditable(state))
+            {
+                return;
+            }
+
+            var employeeNumber = MesUserNumber.Text.Trim();
+            if (string.IsNullOrWhiteSpace(employeeNumber))
+            {
+                SetRuntimeError(TextKeys.Monitor.RuntimeError.OperatorNumberRequired);
+                return;
+            }
+
+            ClearRuntimeError();
+            SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.ValidatingOperator);
+            var response = await _weldTaskService.ValidateMesOperatorAsync(employeeNumber, stationNo);
+            if (!response.IsSuccess)
+            {
+                _exceptionLogService.WriteBusiness(
+                    "MES.ValidateOperator",
+                    _localizer.GetString(TextKeys.Monitor.Message.OperatorValidationFailed),
+                    response.Msg,
+                    $"EmployeeNumber={employeeNumber}");
+                SetRuntimeError(TextKeys.Monitor.RuntimeError.OperatorValidationFailedInline);
+                _validatedOperatorNumber = null;
+                return;
+            }
+
+            _validatedOperatorNumber = employeeNumber;
+            BindMesOperatorInfo(response.Data, employeeNumber);
+            ClearRuntimeError();
+            SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.OperatorValidated);
+        });
     }
 
     /// <summary>

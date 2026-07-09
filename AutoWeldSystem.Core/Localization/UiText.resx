@@ -426,6 +426,9 @@
   <data name="system.checkbox.use_product_number_filter" xml:space="preserve">
     <value>按产品工号筛选程序</value>
   </data>
+  <data name="system.checkbox.use_operator_input_dialog" xml:space="preserve">
+    <value>操作员弹窗输入</value>
+  </data>
   <data name="system.checkbox.enable_auto_start" xml:space="preserve">
     <value>开机自启</value>
   </data>
@@ -1185,6 +1188,9 @@
   <data name="monitor.runtime.validating_operator" xml:space="preserve">
     <value>正在校验员工信息...</value>
   </data>
+  <data name="monitor.runtime.operator_validated" xml:space="preserve">
+    <value>员工身份校验通过</value>
+  </data>
   <data name="monitor.runtime.submitting_start" xml:space="preserve">
     <value>正在开工上报...</value>
   </data>
@@ -1202,6 +1208,18 @@
   </data>
   <data name="monitor.error.program_name_required" xml:space="preserve">
     <value>请选择程序名称</value>
+  </data>
+  <data name="monitor.error.program_selection_required" xml:space="preserve">
+    <value>请先选择程序名称</value>
+  </data>
+  <data name="monitor.error.operator_number_required" xml:space="preserve">
+    <value>员工号必填</value>
+  </data>
+  <data name="monitor.error.operator_validation_failed_inline" xml:space="preserve">
+    <value>员工号校验失败</value>
+  </data>
+  <data name="monitor.error.operator_validation_required" xml:space="preserve">
+    <value>请先按回车完成员工号身份校验</value>
   </data>
   <data name="monitor.error.start_info_required" xml:space="preserve">
     <value>请先确认开工信息</value>
