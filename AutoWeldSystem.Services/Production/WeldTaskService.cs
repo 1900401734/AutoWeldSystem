@@ -107,6 +107,12 @@ public class WeldTaskService : IWeldTaskService
 
         var station = GetStation(normalizedStationNo);
         var alreadyRestored = station.ActiveTask?.Id == unfinishedTask.Id;
+        if (alreadyRestored)
+        {
+            // UI 状态刷新会重复检查未完工任务；同一任务已恢复时直接返回，避免递归触发 StateChanged。
+            return unfinishedTask;
+        }
+
         var process = CreateProcessSnapshot(unfinishedTask);
         var workOrder = CreateWorkOrderSnapshot(unfinishedTask, process);
         var program = CreateProgramSnapshot(unfinishedTask);
@@ -114,12 +120,9 @@ public class WeldTaskService : IWeldTaskService
 
         ApplyStartedRuntimeState(normalizedStationNo, workOrder, process, program, unfinishedTask, operatorNumber);
         ApplySharedStartedRuntimeStateIfNeeded(normalizedStationNo, workOrder, process, program, unfinishedTask, operatorNumber);
-        if (!alreadyRestored)
-        {
-            _operationLogService.Write(
-                "TaskRecovery",
-                $"Unfinished task restored, Station={unfinishedTask.StationNo}, WorkOrder={unfinishedTask.SN}, MES Id={unfinishedTask.ExpStartId}");
-        }
+        _operationLogService.Write(
+            "TaskRecovery",
+            $"Unfinished task restored, Station={unfinishedTask.StationNo}, WorkOrder={unfinishedTask.SN}, MES Id={unfinishedTask.ExpStartId}");
 
         NotifyStateChanged();
         return unfinishedTask;
