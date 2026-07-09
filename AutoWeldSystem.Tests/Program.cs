@@ -154,7 +154,9 @@ var tests = new (string Name, Action Run)[]
     ("Program content review rows apply modified values", ProgramContentReviewRowsApplyModifiedValues),
     ("Program content review keeps standard value when modified value empty", ProgramContentReviewKeepsStandardValueWhenModifiedValueEmpty),
     ("Program content review rejects duplicate item names", ProgramContentReviewRejectsDuplicateItemNames),
-    ("LoadPrograms filters available programs by work order product number", LoadProgramsFiltersAvailableProgramsByWorkOrderProductNumber)
+    ("LoadPrograms filters available programs by work order product number", LoadProgramsFiltersAvailableProgramsByWorkOrderProductNumber),
+    ("Select list rules resolve selection by display text", SelectListRulesResolveSelectionByDisplayText),
+    ("Select list rules disambiguate duplicate display texts by event index", SelectListRulesDisambiguateDuplicateDisplayTextsByEventIndex)
 };
 
 foreach (var test in tests)
@@ -2535,7 +2537,7 @@ static void MonitorViewPreservesOnlineInputsDuringRefresh()
     AssertTrue(viewCode.Contains("_pendingOnlineProgramName", StringComparison.Ordinal), "在线程序已选但未确认时必须缓存程序名称，避免 StateChanged 刷空下拉框。");
     AssertTrue(viewCode.Contains("ApplyOnlineProgramSelectionPreview", StringComparison.Ordinal), "在线选择程序后必须立即联动显示程序名称和配方号。");
     AssertTrue(viewCode.Contains("DownloadSelectedOnlineProgramAsync(programListItem, CurrentStationNo)", StringComparison.Ordinal), "在线程序下载必须使用事件解析出的程序项，避免 StateChanged 刷新后按控件索引取空。");
-    AssertTrue(viewCode.Contains("ResetOnlineProgramSelectionForRepeatSelection(detail);", StringComparison.Ordinal), "在线程序确认后应保留显示并重置选中索引，允许未开工时重复选择同一程序。");
+    AssertTrue(viewCode.Contains("SyncOnlineProgramSelectionAfterDownload(detail);", StringComparison.Ordinal), "在线程序确认后应保持下拉选中该程序，重复点击同一项仍会触发 SelectedIndexChanged，无需释放选中索引。");
     AssertTrue(viewCode.Contains("ResolveRecipeCodeForPendingProgram", StringComparison.Ordinal), "配方号应按已选程序从本地同步程序表解析。");
     AssertTrue(viewCode.Contains("ShouldPreserveDraftOperatorNumber", StringComparison.Ordinal), "在线员工号未校验时刷新必须保留正在输入的员工号。");
     AssertTrue(viewCode.Contains("ClearMesOperatorDisplayInfo();", StringComparison.Ordinal), "保留员工号时只应清空姓名、部门和班组显示。");
@@ -3120,6 +3122,50 @@ static int CountOccurrences(string text, string value)
     }
 
     return count;
+}
+
+static void SelectListRulesResolveSelectionByDisplayText()
+{
+    var displayTexts = new List<string?> { "P-A", "P-B", "P-C" };
+
+    AssertEqual(
+        1,
+        SelectListRules.ResolveSelectedIndex(displayTexts, "P-B", 1),
+        "事件索引与选中文本一致时应直接采信事件索引。");
+    AssertEqual(
+        1,
+        SelectListRules.ResolveSelectedIndex(displayTexts, "P-B", 0),
+        "AntdUI 筛选态下拉的事件索引指向筛选后子列表，必须按文本回查完整列表。");
+    AssertEqual(
+        2,
+        SelectListRules.ResolveSelectedIndex(displayTexts, " P-C ", 9),
+        "选中文本应修剪后匹配，事件索引越界不应影响文本解析。");
+    AssertEqual(
+        -1,
+        SelectListRules.ResolveSelectedIndex(displayTexts, string.Empty, 0),
+        "空文本代表清空选择，应返回 -1。");
+    AssertEqual(
+        -1,
+        SelectListRules.ResolveSelectedIndex(displayTexts, "P-X", 0),
+        "文本不在完整列表中时应返回 -1，不得回落到事件索引。");
+    AssertEqual(
+        -1,
+        SelectListRules.ResolveSelectedIndex(new List<string?>(), "P-A", 0),
+        "选项列表为空（程序列表重载间隙）时应返回 -1。");
+}
+
+static void SelectListRulesDisambiguateDuplicateDisplayTextsByEventIndex()
+{
+    var displayTexts = new List<string?> { "OP10 焊接", "OP20 检验", "OP10 焊接" };
+
+    AssertEqual(
+        2,
+        SelectListRules.ResolveSelectedIndex(displayTexts, "OP10 焊接", 2),
+        "显示文本重复时应优先采信与事件索引一致的项。");
+    AssertEqual(
+        0,
+        SelectListRules.ResolveSelectedIndex(displayTexts, "OP10 焊接", 1),
+        "事件索引与选中文本不符时应回退到首个文本匹配项。");
 }
 
 static string ExtractMethodText(string source, string startMarker, string endMarker)

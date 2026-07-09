@@ -131,7 +131,6 @@ public partial class MonitorView : BaseView
     private string? _pendingOnlineProgramName;
     private string? _pendingOnlineProgramWorkOrderKey;
     private string _pendingOnlineProgramRecipeCode = string.Empty;
-    private int _pendingOnlineProgramIndex = -1;
     private bool _offlineWorkOrderEditedByUser;
     private bool _manualWorkOrderEditedByUser;
     private string? _lastBoundOnlineWorkOrderKey;
@@ -710,6 +709,9 @@ public partial class MonitorView : BaseView
         inputSN.TextChanged += WorkOrderInput_TextChanged;
         inputSN.KeyDown += WorkOrderInput_KeyDown;
         selectProgramName.SelectedIndexChanged += ProgramNameSelection_SelectedIndexChanged;
+        // 滚轮换选会静默改变程序/工序并触发下载或工序重载，禁用避免误操作。
+        selectProgramName.WheelModifyEnabled = false;
+        selectItemName.WheelModifyEnabled = false;
         MesUserNumber.KeyDown += OperatorInput_KeyDown;
         MesUserNumber.TextChanged += OperatorInput_TextChanged;
 
@@ -820,7 +822,7 @@ public partial class MonitorView : BaseView
             {
                 // 取消则保留下载的默认内容，不做任何修改。
                 RefreshProductionRuntimeState();
-                ResetOnlineProgramSelectionForRepeatSelection(detail);
+                SyncOnlineProgramSelectionAfterDownload(detail);
                 return;
             }
 
@@ -831,7 +833,7 @@ public partial class MonitorView : BaseView
                 detail,
                 stationNo);
             RefreshProductionRuntimeState();
-            ResetOnlineProgramSelectionForRepeatSelection(detail);
+            SyncOnlineProgramSelectionAfterDownload(detail);
             ClearRuntimeError();
             SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.ProgramConfirmed);
         });
@@ -842,67 +844,58 @@ public partial class MonitorView : BaseView
     /// </summary>
     private MesProgramListItemData? ResolveSelectedOnlineProgramListItem()
     {
-        return ResolveOnlineProgramListItemByIndex(selectProgramName.SelectedIndex);
+        return ResolveOnlineProgramListItemByName(GetProgramNameSelectionText());
     }
 
     /// <summary>
-    /// 按下拉框索引解析在线程序列表项。
-    /// AntdUI 选择事件触发时控件属性可能尚未完全稳定，因此允许直接使用事件值。
+    /// 获取程序名称下拉当前选中文本。
+    /// AntdUI 筛选态下拉的事件索引指向筛选后的子列表，选中文本才是跨状态稳定的唯一键。
     /// </summary>
-    /// <param name="selectedIndex">下拉框选中索引。</param>
-    /// <returns>解析到的程序；未选中或越界时返回 null。</returns>
-    private MesProgramListItemData? ResolveOnlineProgramListItemByIndex(int selectedIndex)
+    private string GetProgramNameSelectionText()
     {
-        if (selectedIndex < 0)
+        return (selectProgramName.SelectedValue as string ?? selectProgramName.Text)?.Trim() ?? string.Empty;
+    }
+
+    /// <summary>
+    /// 按程序名称解析在线程序列表项。
+    /// </summary>
+    /// <param name="selectedName">下拉选中的程序名称。</param>
+    /// <returns>解析到的程序；名称为空或列表中不存在时返回 null。</returns>
+    private MesProgramListItemData? ResolveOnlineProgramListItemByName(string? selectedName)
+    {
+        var name = selectedName?.Trim();
+        if (string.IsNullOrWhiteSpace(name))
         {
             return null;
         }
 
-        var programs = GetCurrentStationState().AvailablePrograms;
-        var programNames = programs
-            .Select(program => program.ProgramName?.Trim() ?? string.Empty)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        if (selectedIndex >= programNames.Count)
-        {
-            return null;
-        }
-
-        var selectedName = programNames[selectedIndex];
-        return programs.FirstOrDefault(program =>
-            string.Equals(program.ProgramName?.Trim(), selectedName, StringComparison.OrdinalIgnoreCase));
+        return GetCurrentStationState().AvailablePrograms.FirstOrDefault(program =>
+            string.Equals(program.ProgramName?.Trim(), name, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
     /// 预览在线程序选择，避免后台 StateChanged 在详情下载前清空下拉框和配方号。
+    /// 程序列表恰在重载（工单加载/工序切换后列表短暂为空）时保留名称预览，
+    /// 等列表就绪后由 <see cref="BindOnlineProgramNameOptions"/> 恢复选中，开工前再补下载。
     /// </summary>
-    /// <param name="programListItem">当前下拉选中的在线程序列表项。</param>
-    /// <param name="selectedIndex">当前下拉选中索引。</param>
-    private void ApplyOnlineProgramSelectionPreview(MesProgramListItemData? programListItem, int selectedIndex)
+    /// <param name="programListItem">按名称解析到的在线程序列表项；列表重载期间可为 null。</param>
+    /// <param name="selectedName">当前下拉选中的程序名称。</param>
+    private void ApplyOnlineProgramSelectionPreview(MesProgramListItemData? programListItem, string? selectedName)
     {
-        if (programListItem is null || !IsOnlineStartInputEditable(GetCurrentStationState()))
+        var name = programListItem?.ProgramName?.Trim() ?? selectedName?.Trim();
+        if (string.IsNullOrWhiteSpace(name) || !IsOnlineStartInputEditable(GetCurrentStationState()))
         {
             ClearPendingOnlineProgramSelection();
             return;
         }
 
-        _pendingOnlineProgramIndex = selectedIndex;
-        _pendingOnlineProgramName = programListItem.ProgramName?.Trim();
+        _pendingOnlineProgramName = name;
         _pendingOnlineProgramWorkOrderKey = GetCurrentStationState().CurrentWorkOrder?.SN?.Trim();
-        _pendingOnlineProgramRecipeCode = ResolveRecipeCodeForPendingProgram(programListItem);
+        _pendingOnlineProgramRecipeCode = programListItem is not null
+            ? ResolveRecipeCodeForPendingProgram(programListItem)
+            : ResolveRecipeCodeByProgramName(name);
 
-        _syncingOnlineProgramSelection = true;
-        try
-        {
-            selectProgramName.SelectedIndex = selectedIndex;
-            selectProgramName.Text = _pendingOnlineProgramName ?? string.Empty;
-            selectRecipeCode.Text = _pendingOnlineProgramRecipeCode;
-        }
-        finally
-        {
-            _syncingOnlineProgramSelection = false;
-        }
+        SyncProgramNameSelectionDisplay(name, _pendingOnlineProgramRecipeCode);
     }
 
     /// <summary>
@@ -910,28 +903,79 @@ public partial class MonitorView : BaseView
     /// </summary>
     private void ClearPendingOnlineProgramSelection()
     {
-        _pendingOnlineProgramIndex = -1;
         _pendingOnlineProgramName = null;
         _pendingOnlineProgramWorkOrderKey = null;
         _pendingOnlineProgramRecipeCode = string.Empty;
     }
 
     /// <summary>
-    /// 下载/微调流程结束后保留程序显示，但释放下拉选中索引，允许再次选择同一程序触发下载。
+    /// 下载/微调流程结束后保持下拉选中该程序并同步配方号。
+    /// AntdUI 下拉重复点击同一项仍会触发 SelectedIndexChanged，无需释放选中索引即可再次下载。
     /// </summary>
     /// <param name="program">本次下载得到的程序详情。</param>
-    private void ResetOnlineProgramSelectionForRepeatSelection(ProgramDataRes program)
+    private void SyncOnlineProgramSelectionAfterDownload(ProgramDataRes program)
+    {
+        SyncProgramNameSelectionDisplay(
+            program.ProgramName?.Trim() ?? string.Empty,
+            ResolveRecipeCodeForDisplay(activeTask: null, program));
+    }
+
+    /// <summary>
+    /// 以程序名称同步下拉选中态和配方号显示，始终在同步旗标内执行，不触发用户选择逻辑。
+    /// </summary>
+    private void SyncProgramNameSelectionDisplay(string programName, string recipeCode)
     {
         _syncingOnlineProgramSelection = true;
         try
         {
-            selectProgramName.SelectedIndex = -1;
-            selectProgramName.Text = program.ProgramName?.Trim() ?? string.Empty;
-            selectRecipeCode.Text = ResolveRecipeCodeForDisplay(activeTask: null, program);
+            ForceProgramNameSelection(FindProgramNameItemIndex(programName), programName);
+            selectRecipeCode.Text = recipeCode;
         }
         finally
         {
             _syncingOnlineProgramSelection = false;
+        }
+    }
+
+    /// <summary>
+    /// 在程序名称下拉选项中定位指定名称。
+    /// </summary>
+    /// <returns>选项索引；不存在时返回 -1。</returns>
+    private int FindProgramNameItemIndex(string programName)
+    {
+        for (var i = 0; i < selectProgramName.Items.Count; i++)
+        {
+            if (string.Equals(selectProgramName.Items[i]?.ToString()?.Trim(), programName, StringComparison.OrdinalIgnoreCase))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// 强制程序名称下拉选中态与目标一致。
+    /// AntdUI 重建 Items 不会复位内部索引，直接赋相同索引会被短路导致 Text 与 Items 脱节，
+    /// 因此先归位 -1 再赋目标索引；索引赋值内部同步 Text、不触发筛选，并顺带清空残留筛选文本。
+    /// 名称不在选项中时仅保留文本显示（如列表重载间隙或任务恢复的历史程序）。
+    /// </summary>
+    private void ForceProgramNameSelection(int index, string text)
+    {
+        if (selectProgramName.SelectedIndex != -1)
+        {
+            selectProgramName.SelectedIndex = -1;
+        }
+
+        if (index >= 0)
+        {
+            selectProgramName.SelectedIndex = index;
+            return;
+        }
+
+        if (!string.Equals(selectProgramName.Text, text, StringComparison.Ordinal))
+        {
+            selectProgramName.Text = text;
         }
     }
 
@@ -1101,8 +1145,8 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        // 下拉有选中项但程序尚未下载时，先内联补一次下载（下载失败不弹窗，仅提示区报错）。
-        if (state.SelectedProgram is null && selectProgramName.SelectedIndex >= 0)
+        // 下拉已选定程序但详情尚未下载时，先内联补一次下载（下载失败不弹窗，仅提示区报错）。
+        if (state.SelectedProgram is null)
         {
             var programListItem = ResolveSelectedOnlineProgramListItem();
             if (programListItem is not null)
@@ -1398,9 +1442,12 @@ public partial class MonitorView : BaseView
 
         var state = GetCurrentStationState();
         var processes = state.CurrentWorkOrder?.ExpItems ?? [];
-        // AntdUI raises SelectedIndexChanged before every control property is stable,
-        // so use the event value as the source of truth for the user's new selection.
-        var selectedIndex = e.Value;
+        // AntdUI 筛选态下拉的事件索引指向筛选后的子列表，按显示文本回查真实工序，
+        // 事件索引仅在工序显示名重复时用于消歧。
+        var selectedIndex = SelectListRules.ResolveSelectedIndex(
+            processes.Select(GetProcessDisplayName).ToList(),
+            selectItemName.SelectedValue as string ?? selectItemName.Text,
+            e.Value);
         if (selectedIndex < 0 || selectedIndex >= processes.Count)
         {
             ClearProcessSelectionDisplay();
@@ -1562,8 +1609,10 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        var programListItem = ResolveOnlineProgramListItemByIndex(e.Value);
-        ApplyOnlineProgramSelectionPreview(programListItem, e.Value);
+        // AntdUI 筛选态下拉的事件索引指向筛选后的子列表，统一按选中文本解析程序。
+        var selectedName = GetProgramNameSelectionText();
+        var programListItem = ResolveOnlineProgramListItemByName(selectedName);
+        ApplyOnlineProgramSelectionPreview(programListItem, selectedName);
         if (programListItem is null)
         {
             return;
@@ -2957,13 +3006,17 @@ public partial class MonitorView : BaseView
                     name => string.Equals(name, currentProgramName, StringComparison.OrdinalIgnoreCase));
             }
 
-            if (selectedIndex < 0 && HasPendingOnlineProgramSelection(state))
+            // 列表为空多半是重载间隙或临时加载失败，保留待确认程序等待下次加载恢复；
+            // 列表非空但不含待确认程序时选择才真正失效。
+            if (selectedIndex < 0 && programNames.Count > 0 && HasPendingOnlineProgramSelection(state))
             {
                 ClearPendingOnlineProgramSelection();
+                currentProgramName = state.SelectedProgram?.ProgramName?.Trim();
             }
 
-            selectProgramName.SelectedIndex = selectedIndex;
-            selectProgramName.Text = selectedIndex >= 0 ? programNames[selectedIndex] : string.Empty;
+            ForceProgramNameSelection(
+                selectedIndex,
+                selectedIndex >= 0 ? programNames[selectedIndex] : currentProgramName ?? string.Empty);
         }
         finally
         {
@@ -3257,8 +3310,10 @@ public partial class MonitorView : BaseView
                 selectedIndex = 0;
             }
 
-            selectProgramName.SelectedIndex = selectedIndex;
-            selectProgramName.Text = selectedIndex >= 0 ? options[selectedIndex].DisplayText : string.Empty;
+            // 重建 Items 后必须强制归位，避免 AntdUI 相同索引短路使 SelectedValue 与新列表脱节。
+            ForceProgramNameSelection(
+                selectedIndex,
+                selectedIndex >= 0 ? options[selectedIndex].DisplayText : string.Empty);
         }
         finally
         {
@@ -3283,11 +3338,15 @@ public partial class MonitorView : BaseView
 
     /// <summary>
     /// 获取当前程序名称下拉选中的本地程序。
+    /// AntdUI 筛选态下拉的 SelectedIndex 指向筛选后的子列表，因此按显示文本回查完整选项。
     /// </summary>
     /// <returns>选中的程序；未选中时返回 null。</returns>
     private OfflineProgramNameOption? GetSelectedOfflineProgramNameOption()
     {
-        var selectedIndex = selectProgramName.SelectedIndex;
+        var selectedIndex = SelectListRules.ResolveSelectedIndex(
+            _offlineProgramNameOptions.Select(option => option.DisplayText).ToList(),
+            selectProgramName.SelectedValue as string ?? selectProgramName.Text,
+            selectProgramName.SelectedIndex);
         return selectedIndex >= 0 && selectedIndex < _offlineProgramNameOptions.Count
             ? _offlineProgramNameOptions[selectedIndex]
             : null;
@@ -7798,6 +7857,18 @@ public partial class MonitorView : BaseView
             .FirstOrDefault(program =>
                 SameText(program.ProgramName, programListItem.ProgramName)
                 && SameText(program.ProductNum, programListItem.ProductNum))
+            ?.RecipeCode?.Trim() ?? string.Empty;
+    }
+
+    /// <summary>
+    /// 仅按程序名称解析本地配方号，用于程序列表重载间隙时的名称预览。
+    /// </summary>
+    /// <param name="programName">程序名称。</param>
+    /// <returns>解析到的配方号；不存在时返回空串。</returns>
+    private string ResolveRecipeCodeByProgramName(string programName)
+    {
+        return _programManageService.GetPrograms()
+            .FirstOrDefault(program => SameText(program.ProgramName, programName))
             ?.RecipeCode?.Trim() ?? string.Empty;
     }
 
