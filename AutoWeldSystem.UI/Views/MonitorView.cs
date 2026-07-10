@@ -123,6 +123,7 @@ public partial class MonitorView : BaseView
     private bool _syncingProcessSelection;
     private bool _syncingOfflineProgramSelection;
     private bool _syncingOnlineProgramSelection;
+    private bool _syncingRecipeCodeSelection;
     private bool _syncingOfflineInputs;
     private bool _syncingWorkOrderInput;
     private bool _syncingOperatorInput;
@@ -709,8 +710,10 @@ public partial class MonitorView : BaseView
         inputSN.TextChanged += WorkOrderInput_TextChanged;
         inputSN.KeyDown += WorkOrderInput_KeyDown;
         selectProgramName.SelectedIndexChanged += ProgramNameSelection_SelectedIndexChanged;
-        // 滚轮换选会静默改变程序/工序并触发下载或工序重载，禁用避免误操作。
+        selectRecipeCode.SelectedIndexChanged += RecipeCodeSelection_SelectedIndexChanged;
+        // 滚轮换选会静默改变程序/配方/工序并触发下载或工序重载，禁用避免误操作。
         selectProgramName.WheelModifyEnabled = false;
+        selectRecipeCode.WheelModifyEnabled = false;
         selectItemName.WheelModifyEnabled = false;
         MesUserNumber.KeyDown += OperatorInput_KeyDown;
         MesUserNumber.TextChanged += OperatorInput_TextChanged;
@@ -857,6 +860,15 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
+    /// 获取配方号下拉当前选中文本。
+    /// </summary>
+    /// <returns>当前配方号文本。</returns>
+    private string GetRecipeCodeSelectionText()
+    {
+        return (selectRecipeCode.SelectedValue as string ?? selectRecipeCode.Text)?.Trim() ?? string.Empty;
+    }
+
+    /// <summary>
     /// 按程序名称解析在线程序列表项。
     /// </summary>
     /// <param name="selectedName">下拉选中的程序名称。</param>
@@ -871,6 +883,24 @@ public partial class MonitorView : BaseView
 
         return GetCurrentStationState().AvailablePrograms.FirstOrDefault(program =>
             string.Equals(program.ProgramName?.Trim(), name, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// 按配方号解析在线程序列表项，用于配方号下拉反向联动程序名称。
+    /// MES 列表项不带配方号，因此必须使用本地同步程序表解析。
+    /// </summary>
+    /// <param name="selectedRecipeCode">下拉选中的配方号。</param>
+    /// <returns>解析到的 MES 程序列表项；不存在时返回 null。</returns>
+    private MesProgramListItemData? ResolveOnlineProgramListItemByRecipeCode(string? selectedRecipeCode)
+    {
+        var recipeCode = NormalizeRecipeCode(selectedRecipeCode);
+        if (string.IsNullOrWhiteSpace(recipeCode))
+        {
+            return null;
+        }
+
+        return GetCurrentStationState().AvailablePrograms.FirstOrDefault(program =>
+            SameText(ResolveRecipeCodeForPendingProgram(program), recipeCode));
     }
 
     /// <summary>
@@ -926,14 +956,16 @@ public partial class MonitorView : BaseView
     private void SyncProgramNameSelectionDisplay(string programName, string recipeCode)
     {
         _syncingOnlineProgramSelection = true;
+        _syncingRecipeCodeSelection = true;
         try
         {
             ForceProgramNameSelection(FindProgramNameItemIndex(programName), programName);
-            selectRecipeCode.Text = recipeCode;
+            ForceRecipeCodeSelection(FindRecipeCodeItemIndex(recipeCode), recipeCode);
         }
         finally
         {
             _syncingOnlineProgramSelection = false;
+            _syncingRecipeCodeSelection = false;
         }
     }
 
@@ -946,6 +978,30 @@ public partial class MonitorView : BaseView
         for (var i = 0; i < selectProgramName.Items.Count; i++)
         {
             if (string.Equals(selectProgramName.Items[i]?.ToString()?.Trim(), programName, StringComparison.OrdinalIgnoreCase))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// 在配方号下拉选项中定位指定配方。
+    /// </summary>
+    /// <param name="recipeCode">配方号。</param>
+    /// <returns>选项索引；不存在时返回 -1。</returns>
+    private int FindRecipeCodeItemIndex(string recipeCode)
+    {
+        var normalizedRecipeCode = NormalizeRecipeCode(recipeCode);
+        if (string.IsNullOrWhiteSpace(normalizedRecipeCode))
+        {
+            return -1;
+        }
+
+        for (var i = 0; i < selectRecipeCode.Items.Count; i++)
+        {
+            if (SameText(NormalizeRecipeCode(selectRecipeCode.Items[i]?.ToString()), normalizedRecipeCode))
             {
                 return i;
             }
@@ -976,6 +1032,30 @@ public partial class MonitorView : BaseView
         if (!string.Equals(selectProgramName.Text, text, StringComparison.Ordinal))
         {
             selectProgramName.Text = text;
+        }
+    }
+
+    /// <summary>
+    /// 强制配方号下拉选中态与目标一致，用于程序名联动、PLC 离线回填和列表刷新。
+    /// </summary>
+    /// <param name="index">目标索引；不存在时传 -1。</param>
+    /// <param name="text">需要显示的配方号。</param>
+    private void ForceRecipeCodeSelection(int index, string text)
+    {
+        if (selectRecipeCode.SelectedIndex != -1)
+        {
+            selectRecipeCode.SelectedIndex = -1;
+        }
+
+        if (index >= 0)
+        {
+            selectRecipeCode.SelectedIndex = index;
+            return;
+        }
+
+        if (!string.Equals(selectRecipeCode.Text, text, StringComparison.Ordinal))
+        {
+            selectRecipeCode.Text = text;
         }
     }
 
@@ -1200,7 +1280,7 @@ public partial class MonitorView : BaseView
             }
 
             // 员工号已输入但尚未按回车完成内联身份校验（或校验后又修改了内容）。
-            if (!string.Equals(employeeNumber, _validatedOperatorNumber, StringComparison.Ordinal))
+            if (!IsInlineOperatorValidated(employeeNumber))
             {
                 SetRuntimeError(TextKeys.Monitor.RuntimeError.OperatorValidationRequired);
                 return;
@@ -1257,6 +1337,7 @@ public partial class MonitorView : BaseView
             SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.SubmittingFinish);
             await RefreshRecipeCodeFromPlcBeforeFinishAsync(activeTask, stationNo);
             await _weldTaskService.FinishAsync(employeeNumber, actualQty, qualifiedQty, failedQty, stationNo);
+            ClearFinishedProductIdentity(stationNo);
             // 完工后立即禁止 PLC 继续生产，防止操作员未重新开工时设备继续采集。
             await WriteFinishBusinessSignalsAsync(stationNo);
             RefreshProductionRuntimeState();
@@ -1364,6 +1445,7 @@ public partial class MonitorView : BaseView
         inputSN.KeyDown -= WorkOrderInput_KeyDown;
         chkEnableDualWorkOrder.CheckedChanged -= DualWorkOrder_CheckedChanged;
         selectProgramName.SelectedIndexChanged -= ProgramNameSelection_SelectedIndexChanged;
+        selectRecipeCode.SelectedIndexChanged -= RecipeCodeSelection_SelectedIndexChanged;
         MesUserNumber.KeyDown -= OperatorInput_KeyDown;
         MesUserNumber.TextChanged -= OperatorInput_TextChanged;
         tableHistory1.CellClick -= ProductHistoryTable_CellClick;
@@ -1622,6 +1704,45 @@ public partial class MonitorView : BaseView
         _ = DownloadSelectedOnlineProgramAsync(programListItem, CurrentStationNo);
     }
 
+    /// <summary>
+    /// 同步配方号下拉选中项关联的程序名称。
+    /// 在线开工时选择配方号等价于选择对应 MES 程序，会继续下载并弹出程序内容微调窗。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
+    private void RecipeCodeSelection_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
+    {
+        var state = GetCurrentStationState();
+        if (IsOfflineInputEditable(state))
+        {
+            if (_syncingOfflineProgramSelection || _syncingRecipeCodeSelection)
+            {
+                return;
+            }
+
+            if (ApplyOfflineRecipeCodeSelection(GetRecipeCodeSelectionText()))
+            {
+                QueueRefreshSchemePreview(force: true);
+            }
+
+            return;
+        }
+
+        if (_syncingOnlineProgramSelection || _syncingRecipeCodeSelection || !IsOnlineStartInputEditable(state))
+        {
+            return;
+        }
+
+        var programListItem = ResolveOnlineProgramListItemByRecipeCode(GetRecipeCodeSelectionText());
+        if (programListItem is null)
+        {
+            return;
+        }
+
+        ApplyOnlineProgramSelectionPreview(programListItem, programListItem.ProgramName);
+        _ = DownloadSelectedOnlineProgramAsync(programListItem, CurrentStationNo);
+    }
+
     #endregion
 
     #region 服务事件处理
@@ -1768,12 +1889,29 @@ public partial class MonitorView : BaseView
             return;
         }
 
+        if (!IsOfflineInputEditable(state))
+        {
+            return;
+        }
+
         var recipeCode = snapshot.IsSuccess && !string.IsNullOrWhiteSpace(snapshot.RecipeCode)
             ? snapshot.RecipeCode
             : "--";
-        if (!string.Equals(selectRecipeCode.Text, recipeCode, StringComparison.Ordinal))
+        if (snapshot.IsSuccess && !string.IsNullOrWhiteSpace(snapshot.RecipeCode))
         {
-            selectRecipeCode.Text = recipeCode;
+            ApplyOfflineRecipeCodeSelection(recipeCode);
+        }
+        else if (!string.Equals(selectRecipeCode.Text, recipeCode, StringComparison.Ordinal))
+        {
+            _syncingRecipeCodeSelection = true;
+            try
+            {
+                ForceRecipeCodeSelection(-1, recipeCode);
+            }
+            finally
+            {
+                _syncingRecipeCodeSelection = false;
+            }
         }
 
         if (snapshot.IsSuccess && !string.IsNullOrWhiteSpace(snapshot.RecipeCode))
@@ -2621,6 +2759,7 @@ public partial class MonitorView : BaseView
                 qualifiedQty,
                 failedQty,
                 stationNo);
+            ClearFinishedProductIdentity(stationNo);
             await WriteFinishBusinessSignalsAsync(stationNo);
             RefreshProductionRuntimeState();
             SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.LocalFinishSucceeded);
@@ -2999,6 +3138,12 @@ public partial class MonitorView : BaseView
                 currentProgramName = _pendingOnlineProgramName;
             }
 
+            var currentRecipeCode = state.SelectedProgram is not null
+                ? ResolveRecipeCodeForDisplay(activeTask: null, state.SelectedProgram)
+                : HasPendingOnlineProgramSelection(state)
+                    ? _pendingOnlineProgramRecipeCode
+                    : ResolveRecipeCodeByProgramName(currentProgramName ?? string.Empty);
+
             var selectedIndex = -1;
             if (!string.IsNullOrWhiteSpace(currentProgramName))
             {
@@ -3012,15 +3157,55 @@ public partial class MonitorView : BaseView
             {
                 ClearPendingOnlineProgramSelection();
                 currentProgramName = state.SelectedProgram?.ProgramName?.Trim();
+                currentRecipeCode = state.SelectedProgram is null
+                    ? string.Empty
+                    : ResolveRecipeCodeForDisplay(activeTask: null, state.SelectedProgram);
             }
 
             ForceProgramNameSelection(
                 selectedIndex,
                 selectedIndex >= 0 ? programNames[selectedIndex] : currentProgramName ?? string.Empty);
+            BindOnlineRecipeCodeOptions(programs, currentRecipeCode);
         }
         finally
         {
             _syncingOnlineProgramSelection = false;
+        }
+    }
+
+    /// <summary>
+    /// 用当前在线 MES 程序列表填充配方号下拉框。
+    /// MES 程序列表项不包含配方号，配方号从本地同步程序维护表中解析。
+    /// </summary>
+    /// <param name="programs">当前工单可选的 MES 程序列表。</param>
+    /// <param name="currentRecipeCode">需要保持显示的当前配方号。</param>
+    private void BindOnlineRecipeCodeOptions(IReadOnlyList<MesProgramListItemData> programs, string? currentRecipeCode)
+    {
+        var recipeCodes = programs
+            .Select(ResolveRecipeCodeForPendingProgram)
+            .Select(NormalizeRecipeCode)
+            .Where(recipeCode => !string.IsNullOrWhiteSpace(recipeCode))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var recipeCode = NormalizeRecipeCode(currentRecipeCode);
+
+        var previousSyncingRecipe = _syncingRecipeCodeSelection;
+        _syncingRecipeCodeSelection = true;
+        try
+        {
+            selectRecipeCode.Items.Clear();
+            selectRecipeCode.Items.AddRange(recipeCodes.Cast<object>().ToArray());
+
+            var selectedIndex = string.IsNullOrWhiteSpace(recipeCode)
+                ? -1
+                : recipeCodes.FindIndex(item => SameText(item, recipeCode));
+            ForceRecipeCodeSelection(
+                selectedIndex,
+                selectedIndex >= 0 ? recipeCodes[selectedIndex] : recipeCode);
+        }
+        finally
+        {
+            _syncingRecipeCodeSelection = previousSyncingRecipe;
         }
     }
 
@@ -3077,9 +3262,7 @@ public partial class MonitorView : BaseView
         var program = state.SelectedProgram;
         var activeTask = state.ActiveTask;
         var liveWorkId = GetCurrentLiveWorkId();
-        var currentIdentity = _currentProductIdentity?.StationNo == CurrentStationNo
-            ? _currentProductIdentity
-            : null;
+        var currentIdentity = ResolveDisplayProductIdentity(state);
 
         SyncStationSelection();
         if (IsOfflineInputEditable(state))
@@ -3138,9 +3321,18 @@ public partial class MonitorView : BaseView
         selectProgramName.Text = usePendingProgram
             ? _pendingOnlineProgramName ?? string.Empty
             : program?.ProgramName ?? string.Empty;
-        selectRecipeCode.Text = usePendingProgram
-            ? _pendingOnlineProgramRecipeCode
-            : ResolveRecipeCodeForDisplay(activeTask, program);
+        _syncingRecipeCodeSelection = true;
+        try
+        {
+            selectRecipeCode.Text = usePendingProgram
+                ? _pendingOnlineProgramRecipeCode
+                : ResolveRecipeCodeForDisplay(activeTask, program);
+        }
+        finally
+        {
+            _syncingRecipeCodeSelection = false;
+        }
+
         BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(state, activeTask, onlineEditable));
         ApplyTaskStatusTag(state);
         btnLocalWorkOrder.Text = activeTask is { IsOfflineCreated: true, EndTime: null }
@@ -3184,6 +3376,46 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
+    /// 解析当前是否允许用缓存的产品身份回填产品工号/型号控件。
+    /// 在线完工后运行态已经清空，此时不能再用上一帧预览缓存把控件刷回旧产品。
+    /// </summary>
+    /// <param name="state">当前工位运行态。</param>
+    /// <returns>可用于显示的产品身份；不允许显示时返回 null。</returns>
+    private ProductIdentity? ResolveDisplayProductIdentity(ProductionStationRuntimeState state)
+    {
+        var currentIdentity = _currentProductIdentity;
+        if (currentIdentity is null
+            || currentIdentity.StationNo != CurrentStationNo
+            || string.IsNullOrWhiteSpace(currentIdentity.ProductNum))
+        {
+            return null;
+        }
+
+        if (state.ActiveTask is not null || state.CurrentWorkOrder is not null)
+        {
+            return currentIdentity;
+        }
+
+        return IsOfflineInputEditable(state)
+            ? currentIdentity
+            : null;
+    }
+
+    /// <summary>
+    /// 完工后清除当前工位的产品身份缓存，避免运行态刷新继续显示已完工产品。
+    /// </summary>
+    /// <param name="stationNo">已完工工位。</param>
+    private void ClearFinishedProductIdentity(int stationNo)
+    {
+        if (_currentProductIdentity?.StationNo == stationNo)
+        {
+            _currentProductIdentity = null;
+        }
+
+        _lastSchemePreviewKey = string.Empty;
+    }
+
+    /// <summary>
     /// 设置在线开工输入控件的只读状态。
     /// 产品工号/产品型号/配方号跟随程序，始终只读；员工号依“操作员弹窗输入”设置。
     /// </summary>
@@ -3200,7 +3432,7 @@ public partial class MonitorView : BaseView
 
         inputProdNum.ReadOnly = true;
         inputProdModel.ReadOnly = true;
-        selectRecipeCode.ReadOnly = true;
+        selectRecipeCode.ReadOnly = fieldReadOnly;
 
         var useOperatorDialog = _currentSettings.UseOperatorInputDialog ?? true;
         MesUserNumber.ReadOnly = fieldReadOnly || useOperatorDialog;
@@ -3255,7 +3487,7 @@ public partial class MonitorView : BaseView
         selectProgramName.ReadOnly = readOnly;
         inputProdNum.ReadOnly = true;
         inputProdModel.ReadOnly = true;
-        selectRecipeCode.ReadOnly = true;
+        selectRecipeCode.ReadOnly = readOnly;
     }
 
     /// <summary>
@@ -3310,14 +3542,53 @@ public partial class MonitorView : BaseView
                 selectedIndex = 0;
             }
 
+            var selectedRecipeCode = selectedIndex >= 0
+                ? options[selectedIndex].Program.RecipeCode
+                : string.Empty;
+
             // 重建 Items 后必须强制归位，避免 AntdUI 相同索引短路使 SelectedValue 与新列表脱节。
             ForceProgramNameSelection(
                 selectedIndex,
                 selectedIndex >= 0 ? options[selectedIndex].DisplayText : string.Empty);
+            BindOfflineRecipeCodeOptions(options, selectedRecipeCode);
         }
         finally
         {
             _syncingOfflineProgramSelection = false;
+        }
+    }
+
+    /// <summary>
+    /// 用本地程序列表填充离线配方号下拉框。
+    /// </summary>
+    /// <param name="options">离线程序名称选项。</param>
+    /// <param name="currentRecipeCode">需要保持显示的当前配方号。</param>
+    private void BindOfflineRecipeCodeOptions(IReadOnlyList<OfflineProgramNameOption> options, string? currentRecipeCode)
+    {
+        var recipeCodes = options
+            .Select(option => NormalizeRecipeCode(option.Program.RecipeCode))
+            .Where(recipeCode => !string.IsNullOrWhiteSpace(recipeCode))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var recipeCode = NormalizeRecipeCode(currentRecipeCode);
+
+        var previousSyncingRecipe = _syncingRecipeCodeSelection;
+        _syncingRecipeCodeSelection = true;
+        try
+        {
+            selectRecipeCode.Items.Clear();
+            selectRecipeCode.Items.AddRange(recipeCodes.Cast<object>().ToArray());
+
+            var selectedIndex = string.IsNullOrWhiteSpace(recipeCode)
+                ? -1
+                : recipeCodes.FindIndex(item => SameText(item, recipeCode));
+            ForceRecipeCodeSelection(
+                selectedIndex,
+                selectedIndex >= 0 ? recipeCodes[selectedIndex] : recipeCode);
+        }
+        finally
+        {
+            _syncingRecipeCodeSelection = previousSyncingRecipe;
         }
     }
 
@@ -3329,11 +3600,61 @@ public partial class MonitorView : BaseView
     {
         inputProdNum.Text = option?.Program.ProductNum ?? string.Empty;
         inputProdModel.Text = option?.Program.ProductModel ?? string.Empty;
-        selectRecipeCode.Text = option?.Program.RecipeCode ?? string.Empty;
+        var recipeCode = option?.Program.RecipeCode ?? string.Empty;
+        _syncingRecipeCodeSelection = true;
+        try
+        {
+            ForceRecipeCodeSelection(FindRecipeCodeItemIndex(recipeCode), recipeCode);
+        }
+        finally
+        {
+            _syncingRecipeCodeSelection = false;
+        }
+
         if (option is not null && IsOfflineInputEditable(GetCurrentStationState()))
         {
             selectProgramName.Text = option.DisplayText;
         }
+    }
+
+    /// <summary>
+    /// 按配方号反向联动离线程序名称、产品工号和产品型号。
+    /// </summary>
+    /// <param name="recipeCode">配方号。</param>
+    /// <returns>找到本地程序并完成联动返回 true。</returns>
+    private bool ApplyOfflineRecipeCodeSelection(string? recipeCode)
+    {
+        var normalizedRecipeCode = NormalizeRecipeCode(recipeCode);
+        if (string.IsNullOrWhiteSpace(normalizedRecipeCode))
+        {
+            return false;
+        }
+
+        var selectedIndex = _offlineProgramNameOptions.FindIndex(option =>
+            SameText(NormalizeRecipeCode(option.Program.RecipeCode), normalizedRecipeCode));
+        if (selectedIndex < 0)
+        {
+            ForceRecipeCodeSelection(FindRecipeCodeItemIndex(normalizedRecipeCode), normalizedRecipeCode);
+            return false;
+        }
+
+        var option = _offlineProgramNameOptions[selectedIndex];
+        _syncingOfflineProgramSelection = true;
+        _syncingRecipeCodeSelection = true;
+        try
+        {
+            ForceProgramNameSelection(selectedIndex, option.DisplayText);
+            ForceRecipeCodeSelection(FindRecipeCodeItemIndex(normalizedRecipeCode), normalizedRecipeCode);
+            inputProdNum.Text = option.Program.ProductNum ?? string.Empty;
+            inputProdModel.Text = option.Program.ProductModel ?? string.Empty;
+        }
+        finally
+        {
+            _syncingOfflineProgramSelection = false;
+            _syncingRecipeCodeSelection = false;
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -6382,8 +6703,12 @@ public partial class MonitorView : BaseView
         try
         {
             var stationNo = CurrentStationNo;
-            var identity = ResolveOnlineProductIdentity(stationNo)
-                ?? await ReadPlcRecipeProductIdentityAsync(stationNo);
+            var identity = ResolveOnlineProductIdentity(stationNo);
+            if (identity is null && IsOfflineInputEditable(GetCurrentStationState()))
+            {
+                identity = await ReadPlcRecipeProductIdentityAsync(stationNo);
+            }
+
             if (identity is null)
             {
                 // 没有产品身份时无法确定测试方案，保持当前提示行或上一帧预览。
@@ -6534,7 +6859,7 @@ public partial class MonitorView : BaseView
         }
 
         _currentProductIdentity = identity;
-        if (GetCurrentStationState().CurrentWorkOrder is null)
+        if (ShouldApplyProductIdentityToInputs(identity))
         {
             inputProdNum.Text = identity.ProductNum;
             inputProdModel.Text = identity.ProductModel;
@@ -6560,6 +6885,28 @@ public partial class MonitorView : BaseView
 
         _lastSchemePreviewKey = previewKey;
         ApplyWeldParameterRows(nextRows);
+    }
+
+    /// <summary>
+    /// 判断方案预览解析出的产品身份是否可以直接写入产品工号/型号控件。
+    /// 工单已加载时由工单绑定负责回填；在线空闲无工单时不应显示上一件产品。
+    /// </summary>
+    /// <param name="identity">方案预览解析出的产品身份。</param>
+    /// <returns>允许写入输入控件返回 true。</returns>
+    private bool ShouldApplyProductIdentityToInputs(ProductIdentity identity)
+    {
+        if (identity.StationNo != CurrentStationNo || string.IsNullOrWhiteSpace(identity.ProductNum))
+        {
+            return false;
+        }
+
+        var state = GetCurrentStationState();
+        if (state.CurrentWorkOrder is not null)
+        {
+            return false;
+        }
+
+        return state.ActiveTask is not null || IsOfflineInputEditable(state);
     }
 
     /// <summary>
@@ -7808,19 +8155,22 @@ public partial class MonitorView : BaseView
             return FirstNonEmpty(activeTask.RecipeCode, program?.RecipeCode);
         }
 
-        var snapshot = _plcRecipeReconcileMonitorService.GetCurrent(CurrentStationNo);
-        if (snapshot.IsSuccess && !string.IsNullOrWhiteSpace(snapshot.RecipeCode))
+        if (program is not null)
         {
-            return snapshot.RecipeCode;
+            var localProgram = ResolveLocalProgramById(program.Id);
+            return FirstNonEmpty(localProgram?.RecipeCode, program.RecipeCode);
         }
 
-        if (program is null)
+        if (IsOfflineInputEditable(GetCurrentStationState()))
         {
-            return "--";
+            var snapshot = _plcRecipeReconcileMonitorService.GetCurrent(CurrentStationNo);
+            if (snapshot.IsSuccess && !string.IsNullOrWhiteSpace(snapshot.RecipeCode))
+            {
+                return snapshot.RecipeCode;
+            }
         }
 
-        var localProgram = ResolveLocalProgramById(program.Id);
-        return FirstNonEmpty(localProgram?.RecipeCode, program.RecipeCode);
+        return "--";
     }
 
     /// <summary>
@@ -8185,6 +8535,26 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
+    /// 记录内联员工号校验成功时界面最终显示的员工号。
+    /// MES 可能返回规范化后的员工号，因此必须在回填控件后设置标记。
+    /// </summary>
+    private void MarkInlineOperatorValidated()
+    {
+        _validatedOperatorNumber = MesUserNumber.Text.Trim();
+    }
+
+    /// <summary>
+    /// 判断当前员工号是否仍是最近一次通过 MES 校验的员工号。
+    /// </summary>
+    /// <param name="employeeNumber">当前准备开工的员工号。</param>
+    /// <returns>当前员工号已校验返回 true。</returns>
+    private bool IsInlineOperatorValidated(string employeeNumber)
+    {
+        return !string.IsNullOrWhiteSpace(_validatedOperatorNumber)
+            && string.Equals(employeeNumber.Trim(), _validatedOperatorNumber?.Trim(), StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// 内联校验员工号身份。
     /// 仅在"操作员弹窗输入"关闭且当前工位处于在线空闲状态时执行；
     /// 成功后回填员工信息并设置校验通过标记，失败则记录业务日志并在提示区报错。
@@ -8227,8 +8597,8 @@ public partial class MonitorView : BaseView
                 return;
             }
 
-            _validatedOperatorNumber = employeeNumber;
             BindMesOperatorInfo(response.Data, employeeNumber);
+            MarkInlineOperatorValidated();
             ClearRuntimeError();
             SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.OperatorValidated);
         });
