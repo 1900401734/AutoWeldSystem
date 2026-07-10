@@ -15,6 +15,7 @@ x86/
 
 # Local runtime settings
 AutoWeldSystem.UI/appsettings.json
+.claude/
 
 # Logs and generated runtime data
 logs/
