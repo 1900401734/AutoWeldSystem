@@ -63,7 +63,7 @@ public static class OfflineStartInputRules
             WorkOrderId = NormalizeRequired(input.WorkOrderId, "工单号不能为空。"),
             Batch = Normalize(input.Batch),
             Spec = Normalize(input.Spec),
-            ProcessNo = FirstNonEmpty(input.ProcessNo, "OP10"),
+            ProcessNo = NormalizeRequired(input.ProcessNo, "工序号不能为空。"),
             ProcessName = FirstNonEmpty(input.ProcessName, "离线焊接"),
             PlannedQty = ResolvePlannedQty(input.PlannedQtyText),
             ProgramLocalId = program.Id,
@@ -73,8 +73,8 @@ public static class OfflineStartInputRules
             ProgramContent = FirstNonEmpty(program.ProgramContent, "{}"),
             ProductNum = NormalizeRequired(program.ProductNum, "产品工号不能为空。"),
             ProductModel = Normalize(program.ProductModel),
-            ProductName = NormalizeRequired(input.ProductName, "产品名称不能为空。"),
-            DrawingNo = NormalizeRequired(input.DrawingNo, "图号不能为空。"),
+            ProductName = Normalize(input.ProductName),
+            DrawingNo = Normalize(input.DrawingNo),
             RecipeCode = NormalizeRequired(program.RecipeCode, "配方号不能为空。")
         };
     }

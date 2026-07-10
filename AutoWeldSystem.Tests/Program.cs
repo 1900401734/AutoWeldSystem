@@ -129,6 +129,8 @@ var tests = new (string Name, Action Run)[]
     ("Program name rules reject invalid component code", ProgramNameRulesRejectInvalidComponentCode),
     ("Offline program dropdown displays program name", OfflineProgramDropdownDisplaysProgramName),
     ("Offline start request follows inline monitor input", OfflineStartRequestFollowsInlineMonitorInput),
+    ("Offline start allows empty part name and drawing number", OfflineStartAllowsEmptyPartNameAndDrawingNumber),
+    ("Offline start requires work order and process number", OfflineStartRequiresWorkOrderAndProcessNumber),
     ("Program MES sync ignores local-only fields", ProgramMesSyncIgnoresLocalOnlyFields),
     ("Program MES sync detects remote fields", ProgramMesSyncDetectsRemoteFields),
     ("Program MES save action uses update for remote program content", ProgramMesSaveActionUsesUpdateForRemoteProgramContent),
@@ -2427,7 +2429,7 @@ static void OfflineStartRequestFollowsInlineMonitorInput()
 
     AssertEqual(2, request.StationNo, "离线开工应使用当前 MonitorView 工位。");
     AssertEqual("WO-LOCAL", request.WorkOrderId, "离线开工应使用界面输入的工单号。");
-    AssertEqual("引出线", request.ProductName, "离线开工应使用界面输入的产品名称。");
+    AssertEqual("引出线", request.ProductName, "离线开工应使用界面输入的部件名称。");
     AssertEqual("DR-9", request.DrawingNo, "离线开工应使用界面输入的图号。");
     AssertEqual("OP20", request.ProcessNo, "离线开工应使用界面输入的工序号。");
     AssertEqual(12, request.PlannedQty, "离线开工应使用界面输入的计划数量。");
@@ -2435,6 +2437,82 @@ static void OfflineStartRequestFollowsInlineMonitorInput()
     AssertEqual("M-164", request.ProductModel, "离线开工应使用选中程序关联的产品型号。");
     AssertEqual("5", request.RecipeCode, "离线开工应使用选中程序关联的配方号。");
     AssertEqual("{\"steps\":3}", request.ProgramContent, "离线开工应使用选中程序的程序内容。");
+}
+
+static void OfflineStartAllowsEmptyPartNameAndDrawingNumber()
+{
+    var option = OfflineStartInputRules.BuildProgramNameOptions(new[]
+    {
+        new BizProgram
+        {
+            Id = 10,
+            ProgramName = "离线程序",
+            ProgramContent = "{}",
+            ProductNum = "164#J",
+            RecipeCode = "5"
+        }
+    }).Single();
+    var emptyOptionalFields = new OfflineStartInput(
+        StationNo: 1,
+        WorkOrderId: "WO-EMPTY",
+        Batch: string.Empty,
+        Spec: string.Empty,
+        ProcessNo: "OP10",
+        ProcessName: string.Empty,
+        PlannedQtyText: "1",
+        ProductName: "   ",
+        DrawingNo: "   ");
+
+    var emptyRequest = OfflineStartInputRules.BuildRequest(emptyOptionalFields, option);
+
+    AssertEqual(string.Empty, emptyRequest.ProductName, "离线开工的部件名称应允许为空并规范化为空字符串。");
+    AssertEqual(string.Empty, emptyRequest.DrawingNo, "离线开工的图号应允许为空并规范化为空字符串。");
+
+    var partOnlyRequest = OfflineStartInputRules.BuildRequest(
+        emptyOptionalFields with { ProductName = "  引出线  " },
+        option);
+    AssertEqual("引出线", partOnlyRequest.ProductName, "非空部件名称应去除首尾空格。");
+    AssertEqual(string.Empty, partOnlyRequest.DrawingNo, "仅填写部件名称时图号仍应允许为空。");
+
+    var drawingOnlyRequest = OfflineStartInputRules.BuildRequest(
+        emptyOptionalFields with { DrawingNo = "  DR-10  " },
+        option);
+    AssertEqual(string.Empty, drawingOnlyRequest.ProductName, "仅填写图号时部件名称仍应允许为空。");
+    AssertEqual("DR-10", drawingOnlyRequest.DrawingNo, "非空图号应去除首尾空格。");
+}
+
+static void OfflineStartRequiresWorkOrderAndProcessNumber()
+{
+    var option = OfflineStartInputRules.BuildProgramNameOptions(new[]
+    {
+        new BizProgram
+        {
+            Id = 11,
+            ProgramName = "离线程序",
+            ProgramContent = "{}",
+            ProductNum = "164#J",
+            RecipeCode = "5"
+        }
+    }).Single();
+    var validInput = new OfflineStartInput(
+        StationNo: 1,
+        WorkOrderId: "WO-REQUIRED",
+        Batch: string.Empty,
+        Spec: string.Empty,
+        ProcessNo: "OP10",
+        ProcessName: string.Empty,
+        PlannedQtyText: "1",
+        ProductName: string.Empty,
+        DrawingNo: string.Empty);
+
+    AssertInvalidOperationMessage(
+        () => OfflineStartInputRules.BuildRequest(validInput with { WorkOrderId = "   " }, option),
+        "工单号不能为空。",
+        "离线开工必须校验工单号。");
+    AssertInvalidOperationMessage(
+        () => OfflineStartInputRules.BuildRequest(validInput with { ProcessNo = "   " }, option),
+        "工序号不能为空。",
+        "离线开工必须校验工序号且不得自动回填 OP10。");
 }
 
 static void ProgramMesSyncIgnoresLocalOnlyFields()
@@ -3701,6 +3779,21 @@ static void AssertSequenceEqual<T>(IReadOnlyList<T> expected, IReadOnlyList<T> a
 
     throw new InvalidOperationException(
         $"{message} Expected=[{string.Join(",", expected)}], Actual=[{string.Join(",", actual)}]");
+}
+
+static void AssertInvalidOperationMessage(Action action, string expectedMessage, string message)
+{
+    try
+    {
+        action();
+    }
+    catch (InvalidOperationException ex)
+    {
+        AssertEqual(expectedMessage, ex.Message, message);
+        return;
+    }
+
+    throw new InvalidOperationException($"{message} Expected={nameof(InvalidOperationException)}, Actual=no exception");
 }
 
 static void AssertThrows<TException>(Action action, string message)
