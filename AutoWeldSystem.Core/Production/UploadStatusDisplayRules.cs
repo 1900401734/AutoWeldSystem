@@ -25,4 +25,23 @@ public static class UploadStatusDisplayRules
             _ => status ?? string.Empty
         };
     }
+
+    /// <summary>
+    /// Returns status text for the upload state page, using MES connection state for operator-facing pending hints.
+    /// </summary>
+    public static string GetDisplayText(string? status, bool mesConnected)
+    {
+        var normalizedStatus = status?.Trim();
+        if (!mesConnected && string.Equals(normalizedStatus, ProductionConstants.UploadStatuses.Failed, StringComparison.OrdinalIgnoreCase))
+        {
+            return "待上传";
+        }
+
+        if (mesConnected && string.Equals(normalizedStatus, UploadSummaryStatusResolver.NoData, StringComparison.Ordinal))
+        {
+            return "待上传";
+        }
+
+        return GetDisplayText(status);
+    }
 }

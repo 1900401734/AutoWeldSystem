@@ -18,6 +18,14 @@ public static class GlobalContext
 
     public static bool IsAdmin => CurrentUser?.Role == AppConstants.Roles.Admin;
 
+    /// <summary>
+    /// 开发者角色保留全权限兜底，便于开发和现场调试。
+    /// </summary>
+    public static bool IsDeveloper => string.Equals(
+        CurrentUser?.Role,
+        AppConstants.Roles.Developer,
+        StringComparison.OrdinalIgnoreCase);
+
     public static bool IsOperator => CurrentUser?.Role == AppConstants.Roles.Operator;
     //public static bool IsOperator => HasRole(UserRole.Operator);
 
@@ -48,7 +56,7 @@ public static class GlobalContext
             return false;
         }
 
-        return IsAdmin || _currentPermissions.Contains(permissionCode);
+        return IsDeveloper || _currentPermissions.Contains(permissionCode);
     }
 
     public static void SetCurrentUser(SysUser? user, IEnumerable<string>? permissions = null)

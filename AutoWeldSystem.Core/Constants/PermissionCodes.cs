@@ -114,4 +114,48 @@ public static class PermissionCodes
             public const string DeleteTestItem = "button.address.delete-test-item";
         }
     }
+
+    /// <summary>
+    /// 页面内部页签权限。
+    /// 页签权限只控制界面可见性，不改变后台业务任务的执行。
+    /// </summary>
+    public static class Tabs
+    {
+        public static class State
+        {
+            public const string WorkOrderInfo = "tab.state.work-order-info";
+            public const string StartReport = "tab.state.start-report";
+            public const string FinishReport = "tab.state.finish-report";
+            public const string ProcessParameter = "tab.state.process-parameter";
+            public const string ReportFile = "tab.state.report-file";
+            public const string WorkOrderStatus = "tab.state.work-order-status";
+            public const string DeviceStatus = "tab.state.device-status";
+            public const string ProgramFile = "tab.state.program-file";
+
+            /// <summary>
+            /// 待上传数据页签的固定显示顺序。
+            /// </summary>
+            public static IReadOnlyList<string> All { get; } =
+            [
+                WorkOrderInfo,
+                StartReport,
+                FinishReport,
+                ProcessParameter,
+                ReportFile,
+                WorkOrderStatus,
+                DeviceStatus,
+                ProgramFile
+            ];
+
+            /// <summary>
+            /// 客户角色首次安装或升级时默认可见的页签。
+            /// </summary>
+            public static IReadOnlyList<string> CustomerDefaults { get; } =
+            [
+                WorkOrderInfo,
+                DeviceStatus,
+                ProgramFile
+            ];
+        }
+    }
 }

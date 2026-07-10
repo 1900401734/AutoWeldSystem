@@ -223,7 +223,7 @@
     <value>Log Manage</value>
   </data>
   <data name="main.nav.state_manage" xml:space="preserve">
-    <value>Upload State</value>
+    <value>Pending Upload Data</value>
   </data>
   <data name="main.nav.system_setting" xml:space="preserve">
     <value>System Setting</value>
@@ -1041,6 +1041,30 @@
   <data name="permission.button.state.delete" xml:space="preserve">
     <value>Delete Upload Task</value>
   </data>
+  <data name="permission.tab.state.work_order_info" xml:space="preserve">
+    <value>Work Order Information Tab</value>
+  </data>
+  <data name="permission.tab.state.start_report" xml:space="preserve">
+    <value>Start Report Tab</value>
+  </data>
+  <data name="permission.tab.state.finish_report" xml:space="preserve">
+    <value>Finish Report Tab</value>
+  </data>
+  <data name="permission.tab.state.process_parameter" xml:space="preserve">
+    <value>Process Parameter Tab</value>
+  </data>
+  <data name="permission.tab.state.report_file" xml:space="preserve">
+    <value>Report File Tab</value>
+  </data>
+  <data name="permission.tab.state.work_order_status" xml:space="preserve">
+    <value>Work Order Status Tab</value>
+  </data>
+  <data name="permission.tab.state.device_status" xml:space="preserve">
+    <value>Device Status Tab</value>
+  </data>
+  <data name="permission.tab.state.program_file" xml:space="preserve">
+    <value>Program File Tab</value>
+  </data>
   <data name="permission.button.system.save" xml:space="preserve">
     <value>Save Settings</value>
   </data>
@@ -1518,9 +1542,6 @@
   <data name="program.label.product_num" xml:space="preserve">
     <value>Product No.</value>
   </data>
-  <data name="program.label.product_model" xml:space="preserve">
-    <value>Product Model</value>
-  </data>
   <data name="program.label.recipe_code" xml:space="preserve">
     <value>Recipe Code</value>
   </data>
@@ -1647,6 +1668,9 @@
   <data name="state.message.select_pending" xml:space="preserve">
     <value>Select a pending record first.</value>
   </data>
+  <data name="state.message.no_visible_tabs" xml:space="preserve">
+    <value>The current role has no visible pending-upload tabs.</value>
+  </data>
   <data name="grid.program.name" xml:space="preserve">
     <value>Program Name</value>
   </data>
@@ -1655,9 +1679,6 @@
   </data>
   <data name="grid.program.product_num" xml:space="preserve">
     <value>Product No.</value>
-  </data>
-  <data name="grid.program.product_model" xml:space="preserve">
-    <value>Product Model</value>
   </data>
   <data name="grid.program.recipe_code" xml:space="preserve">
     <value>Recipe Code</value>

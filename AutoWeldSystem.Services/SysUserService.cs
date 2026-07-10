@@ -6,6 +6,7 @@ using AutoWeldSystem.Core.DTOs;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Exceptions;
 using AutoWeldSystem.Core.Interfaces.UserManage;
+using AutoWeldSystem.Core.Security;
 using AutoWeldSystem.Data;
 
 namespace AutoWeldSystem.Services;
@@ -24,7 +25,7 @@ public class SysUserService : ISysUserService
     public void InitDb()
     {
         _dbContext.InitDatabase();
-        _rbacService.InitializeRbac();
+        InitializeRbacPermissions();
 
         var hasAnyUser = _dbContext.Db.Queryable<SysUser>().Any();
         if (!hasAnyUser)
@@ -68,6 +69,128 @@ public class SysUserService : ISysUserService
         }
 
         EnsureDeveloperUser();
+    }
+
+    /// <summary>
+    /// 初始化权限目录，并兼容旧版本中管理员会被自动补齐全部权限的行为。
+    /// 初始化前保存管理员的真实授权，初始化后恢复该授权，避免覆盖管理员手工取消的页面或按钮权限。
+    /// </summary>
+    private void InitializeRbacPermissions()
+    {
+        var stateTabCatalogWasMissing = !_rbacService.GetAllPermissions().Any(permission =>
+            PermissionCodes.Tabs.State.All.Contains(permission.Code, StringComparer.OrdinalIgnoreCase));
+        var rolesBeforeInitialization = _rbacService.GetAllRoles()
+            .ToDictionary(role => role.RoleCode, StringComparer.OrdinalIgnoreCase);
+        var adminPermissionsBeforeInitialization = CaptureRolePermissionCodes(
+            rolesBeforeInitialization,
+            AppConstants.Roles.Admin);
+
+        _rbacService.InitializeRbac();
+
+        RestoreConfigurableAdminPermissions(
+            rolesBeforeInitialization,
+            adminPermissionsBeforeInitialization,
+            stateTabCatalogWasMissing);
+        ApplyStateTabUpgradeDefaults(stateTabCatalogWasMissing, rolesBeforeInitialization);
+    }
+
+    /// <summary>
+    /// 读取指定内置角色在初始化前已经保存的权限编码。
+    /// 返回 null 表示这是首次安装，角色尚不存在。
+    /// </summary>
+    private IReadOnlyCollection<string>? CaptureRolePermissionCodes(
+        IReadOnlyDictionary<string, SysRole> roles,
+        string roleCode)
+    {
+        return roles.TryGetValue(roleCode, out var role)
+            ? _rbacService.GetPermissionCodesByRole(role.Id)
+            : null;
+    }
+
+    /// <summary>
+    /// 管理员改为严格按角色授权：旧库恢复原授权，新安装使用“全部页面和按钮 + 三个客户页签”。
+    /// </summary>
+    private void RestoreConfigurableAdminPermissions(
+        IReadOnlyDictionary<string, SysRole> rolesBeforeInitialization,
+        IReadOnlyCollection<string>? permissionsBeforeInitialization,
+        bool stateTabCatalogWasMissing)
+    {
+        var adminRole = _rbacService.GetRoleByCode(AppConstants.Roles.Admin);
+        if (adminRole is null)
+        {
+            return;
+        }
+
+        IReadOnlyCollection<string> targetCodes;
+        if (!rolesBeforeInitialization.ContainsKey(AppConstants.Roles.Admin))
+        {
+            targetCodes = RolePermissionInitializationRules.ResolveElevatedRoleDefaults(
+                AppConstants.Roles.Admin,
+                _rbacService.GetAllPermissions().Select(permission => permission.Code));
+        }
+        else
+        {
+            var originalCodes = permissionsBeforeInitialization ?? Array.Empty<string>();
+            var upgradeDefaults = RolePermissionInitializationRules.ResolveStateTabUpgradeDefaults(
+                AppConstants.Roles.Admin,
+                stateTabCatalogWasMissing,
+                originalCodes.Contains(PermissionCodes.Pages.StateManage, StringComparer.OrdinalIgnoreCase));
+            targetCodes = originalCodes
+                .Concat(upgradeDefaults)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        SaveRolePermissionCodes(adminRole.Id, targetCodes);
+    }
+
+    /// <summary>
+    /// 首次增加页签权限时，为已有待上传数据页面权限的非开发、非管理员角色补充客户默认页签。
+    /// 管理员已在 RestoreConfigurableAdminPermissions 中按快照单独处理。
+    /// </summary>
+    private void ApplyStateTabUpgradeDefaults(
+        bool stateTabCatalogWasMissing,
+        IReadOnlyDictionary<string, SysRole> rolesBeforeInitialization)
+    {
+        if (!stateTabCatalogWasMissing)
+        {
+            return;
+        }
+
+        foreach (var role in rolesBeforeInitialization.Values)
+        {
+            if (string.Equals(role.RoleCode, AppConstants.Roles.Admin, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var originalCodes = _rbacService.GetPermissionCodesByRole(role.Id);
+            var upgradeDefaults = RolePermissionInitializationRules.ResolveStateTabUpgradeDefaults(
+                role.RoleCode,
+                stateTabCatalogWasMissing,
+                originalCodes.Contains(PermissionCodes.Pages.StateManage, StringComparer.OrdinalIgnoreCase));
+            if (upgradeDefaults.Count == 0)
+            {
+                continue;
+            }
+
+            SaveRolePermissionCodes(
+                role.Id,
+                originalCodes.Concat(upgradeDefaults).Distinct(StringComparer.OrdinalIgnoreCase));
+        }
+    }
+
+    /// <summary>
+    /// 将权限编码转换为当前数据库权限 Id 后保存，忽略已从目录移除的历史编码。
+    /// </summary>
+    private void SaveRolePermissionCodes(int roleId, IEnumerable<string> permissionCodes)
+    {
+        var requestedCodes = permissionCodes.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var permissionIds = _rbacService.GetAllPermissions()
+            .Where(permission => requestedCodes.Contains(permission.Code))
+            .Select(permission => permission.Id)
+            .ToArray();
+        _rbacService.SaveRolePermissions(roleId, permissionIds);
     }
 
     public UserLoginResult Login(string userNumber, string password)

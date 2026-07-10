@@ -206,7 +206,7 @@
             tabSummary.Padding = new Padding(3);
             tabSummary.Size = new Size(1318, 0);
             tabSummary.TabIndex = 0;
-            tabSummary.Text = "上传总览";
+            tabSummary.Text = "工单信息";
             tabSummary.UseVisualStyleBackColor = true;
             // 
             // tabProcessParameters

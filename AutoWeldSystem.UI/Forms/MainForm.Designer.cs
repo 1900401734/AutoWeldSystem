@@ -55,7 +55,7 @@ partial class MainForm
         segmentedItem3.Text = "用户管理";
         segmentedItem4.Text = "程序管理";
         segmentedItem5.Text = "日志管理";
-        segmentedItem6.Text = "上传状态";
+        segmentedItem6.Text = "待上传数据 ";
         segmentedItem7.Text = "系统设置";
         segmentedItem8.Text = "地址维护";
         segmented1.Items.Add(segmentedItem1);

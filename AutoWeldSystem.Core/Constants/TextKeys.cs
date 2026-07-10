@@ -926,6 +926,14 @@ public static class TextKeys
         public const string ButtonStateRefresh = "permission.button.state.refresh";
         public const string ButtonStateUploadAll = "permission.button.state.upload_all";
         public const string ButtonStateDelete = "permission.button.state.delete";
+        public const string TabStateWorkOrderInfo = "permission.tab.state.work_order_info";
+        public const string TabStateStartReport = "permission.tab.state.start_report";
+        public const string TabStateFinishReport = "permission.tab.state.finish_report";
+        public const string TabStateProcessParameter = "permission.tab.state.process_parameter";
+        public const string TabStateReportFile = "permission.tab.state.report_file";
+        public const string TabStateWorkOrderStatus = "permission.tab.state.work_order_status";
+        public const string TabStateDeviceStatus = "permission.tab.state.device_status";
+        public const string TabStateProgramFile = "permission.tab.state.program_file";
         public const string ButtonSystemSave = "permission.button.system.save";
         public const string ButtonSystemConnectPlc = "permission.button.system.connect_plc";
         public const string ButtonSystemSyncDevice = "permission.button.system.sync_device";
@@ -962,7 +970,6 @@ public static class TextKeys
         public const string LabelProgramName = "program.label.program_name";
         public const string LabelProgramId = "program.label.program_id";
         public const string LabelProductNum = "program.label.product_num";
-        public const string LabelProductModel = "program.label.product_model";
         public const string LabelRecipeCode = "program.label.recipe_code";
         public const string LabelComponentCode = "program.label.component_code";
         public const string LabelSequenceNumber = "program.label.sequence_number";
@@ -1065,6 +1072,7 @@ public static class TextKeys
         public const string ButtonRetryAll = "state.button.retry_all";
         public const string SummaryPendingPrograms = "state.summary.pending_programs";
         public const string MessageSelectPending = "state.message.select_pending";
+        public const string MessageNoVisibleTabs = "state.message.no_visible_tabs";
     }
 
     /// <summary>
@@ -1429,7 +1437,6 @@ public static class TextKeys
         public const string ProgramName = "grid.program.name";
         public const string ProgramId = "grid.program.id";
         public const string ProgramProductNum = "grid.program.product_num";
-        public const string ProgramProductModel = "grid.program.product_model";
         public const string ProgramRecipeCode = "grid.program.recipe_code";
         public const string ProgramLocalRemark = "grid.program.local_remark";
         public const string ProgramVersionNumber = "grid.program.version_number";

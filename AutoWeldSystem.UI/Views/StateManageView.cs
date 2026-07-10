@@ -3,7 +3,9 @@ using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
 using AutoWeldSystem.Core.DTOs.Upload;
 using AutoWeldSystem.Core.Interfaces;
+using AutoWeldSystem.Core.Interfaces.MES;
 using AutoWeldSystem.Core.Production;
+using AutoWeldSystem.Core.ViewModels;
 using AutoWeldSystem.UI.Base;
 using AutoWeldSystem.UI.Infrastructure;
 
@@ -19,21 +21,27 @@ public partial class StateManageView : BaseView
     private readonly IUploadTaskService _uploadTaskService;
     private readonly IUploadStatusSummaryService _summaryService;
     private readonly ILocalizationService _localizer;
+    private readonly IMesConnectionMonitor _mesConnectionMonitor;
+    private readonly IReadOnlyList<StateUploadTabDefinition> _tabDefinitions;
     private readonly BindingSource _bindingSource = new();
     private bool _initialized;
+    private bool _applyingTabPermissions;
 
     public StateManageView(
         IProgramManageService programService,
         IUploadTaskService uploadTaskService,
         IUploadStatusSummaryService summaryService,
-        ILocalizationService localizer)
+        ILocalizationService localizer,
+        IMesConnectionMonitor mesConnectionMonitor)
     {
         _programService = programService;
         _uploadTaskService = uploadTaskService;
         _summaryService = summaryService;
         _localizer = localizer;
+        _mesConnectionMonitor = mesConnectionMonitor;
 
         InitializeComponent();
+        _tabDefinitions = BuildTabDefinitions();
         ConfigureGrid();
         WireEvents();
     }
@@ -49,14 +57,85 @@ public partial class StateManageView : BaseView
 
         _initialized = true;
         ApplyLocalizedTexts();
+        ApplyTabPermissions();
         ReloadActiveTasks();
     }
 
     protected override void OnLanguageChanged()
     {
         ApplyLocalizedTexts();
+        ApplyTabPermissions();
         ConfigureActiveGridColumns();
         dgvPending.Refresh();
+    }
+
+    protected override void OnHandleDestroyed(EventArgs e)
+    {
+        GlobalContext.SessionChanged -= GlobalContext_SessionChanged;
+        _mesConnectionMonitor.StatusChanged -= MesConnectionMonitor_StatusChanged;
+        base.OnHandleDestroyed(e);
+    }
+
+    private IReadOnlyList<StateUploadTabDefinition> BuildTabDefinitions()
+    {
+        return
+        [
+            new(tabSummary, PermissionCodes.Tabs.State.WorkOrderInfo),
+            new(tabStartReports, PermissionCodes.Tabs.State.StartReport),
+            new(tabFinishReports, PermissionCodes.Tabs.State.FinishReport),
+            new(tabProcessParameters, PermissionCodes.Tabs.State.ProcessParameter),
+            new(tabReportFiles, PermissionCodes.Tabs.State.ReportFile),
+            new(tabWorkOrderStatuses, PermissionCodes.Tabs.State.WorkOrderStatus),
+            new(tabDeviceStatuses, PermissionCodes.Tabs.State.DeviceStatus),
+            new(tabProgramFiles, PermissionCodes.Tabs.State.ProgramFile)
+        ];
+    }
+
+    private void ApplyTabPermissions()
+    {
+        var previousSelectedTab = tabUploadCategories.SelectedTab;
+
+        _applyingTabPermissions = true;
+        tabUploadCategories.SuspendLayout();
+        try
+        {
+            tabUploadCategories.TabPages.Clear();
+            foreach (var definition in _tabDefinitions)
+            {
+                if (GlobalContext.HasPermission(definition.PermissionCode))
+                {
+                    tabUploadCategories.TabPages.Add(definition.Page);
+                }
+            }
+
+            if (tabUploadCategories.TabPages.Count == 0)
+            {
+                SetNoVisibleTabState();
+                return;
+            }
+
+            tabUploadCategories.SelectedTab = previousSelectedTab is not null
+                && tabUploadCategories.TabPages.Contains(previousSelectedTab)
+                    ? previousSelectedTab
+                    : tabUploadCategories.TabPages[0];
+        }
+        finally
+        {
+            tabUploadCategories.ResumeLayout();
+            _applyingTabPermissions = false;
+        }
+
+        ConfigureActiveGridColumns();
+    }
+
+    private void SetNoVisibleTabState()
+    {
+        _bindingSource.DataSource = Array.Empty<object>();
+        dgvPending.Columns.Clear();
+        lblSummary.Text = _localizer.GetString(TextKeys.StateManage.MessageNoVisibleTabs);
+        btnRetrySelected.Enabled = false;
+        btnRetryAll.Enabled = false;
+        btnDeleteSelected.Enabled = false;
     }
 
     private void ConfigureGrid()
@@ -145,6 +224,8 @@ public partial class StateManageView : BaseView
         btnDeleteSelected.Click += DeleteSelected_Click;
         tabUploadCategories.SelectedIndexChanged += (_, _) => SwitchUploadCategory();
         dgvPending.CellFormatting += DgvPending_CellFormatting;
+        GlobalContext.SessionChanged += GlobalContext_SessionChanged;
+        _mesConnectionMonitor.StatusChanged += MesConnectionMonitor_StatusChanged;
         dgvPending.SelectionChanged += (_, _) =>
         {
             ApplyRetrySelectedPermissionForActiveTab();
@@ -162,7 +243,7 @@ public partial class StateManageView : BaseView
         ApplyRetryAllPermissionForActiveTab();
         ApplyDeletePermissionForActiveTab();
         btnRefresh.Text = _localizer.GetString(TextKeys.Common.ActionRefresh);
-        tabSummary.Text = "上传总览";
+        tabSummary.Text = "工单信息";
         tabStartReports.Text = "开工信息";
         tabFinishReports.Text = "完工信息";
         tabProcessParameters.Text = "过程参数";
@@ -175,6 +256,11 @@ public partial class StateManageView : BaseView
 
     private void SwitchUploadCategory()
     {
+        if (_applyingTabPermissions || !HasVisibleTabs())
+        {
+            return;
+        }
+
         btnRetryAll.Text = IsSummaryTab() ? "一键上传" : _localizer.GetString(TextKeys.StateManage.ButtonRetryAll);
         ApplyRetryAllPermissionForActiveTab();
         ApplyDeletePermissionForActiveTab();
@@ -182,8 +268,46 @@ public partial class StateManageView : BaseView
         ReloadActiveTasks();
     }
 
+    private void MesConnectionMonitor_StatusChanged(object? sender, MesConnectionSnapshot e)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        RunOnUiThread(
+            () =>
+            {
+                dgvPending.Invalidate();
+            },
+            "StateManageView.MesConnectionChanged");
+    }
+
+    private void GlobalContext_SessionChanged(object? sender, EventArgs e)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        RunOnUiThread(
+            () =>
+            {
+                ApplyLocalizedTexts();
+                ApplyTabPermissions();
+                ReloadActiveTasks();
+            },
+            "StateManageView.SessionChanged");
+    }
+
     private void ApplyRetryAllPermissionForActiveTab()
     {
+        if (!HasVisibleTabs())
+        {
+            btnRetryAll.Enabled = false;
+            return;
+        }
+
         var permissionCode = IsSummaryTab()
             ? PermissionCodes.Buttons.State.UploadAll
             : PermissionCodes.Buttons.State.RetryAll;
@@ -193,6 +317,12 @@ public partial class StateManageView : BaseView
 
     private void ApplyRetrySelectedPermissionForActiveTab()
     {
+        if (!HasVisibleTabs())
+        {
+            btnRetrySelected.Enabled = false;
+            return;
+        }
+
         if (IsSummaryTab())
         {
             btnRetrySelected.Enabled = false;
@@ -212,6 +342,12 @@ public partial class StateManageView : BaseView
 
     private void ApplyDeletePermissionForActiveTab()
     {
+        if (!HasVisibleTabs())
+        {
+            btnDeleteSelected.Enabled = false;
+            return;
+        }
+
         if (IsProgramFileTab())
         {
             btnDeleteSelected.Enabled = false;
@@ -247,6 +383,12 @@ public partial class StateManageView : BaseView
 
     private void ReloadActiveTasks()
     {
+        if (!HasVisibleTabs())
+        {
+            SetNoVisibleTabState();
+            return;
+        }
+
         ApplyRetrySelectedPermissionForActiveTab();
 
         if (IsSummaryTab())
@@ -282,7 +424,7 @@ public partial class StateManageView : BaseView
     {
         if (IsSummaryTab())
         {
-            ShowWarning("上传总览请使用一键上传。");
+            ShowWarning("工单信息请使用一键上传。");
             return;
         }
 
@@ -385,7 +527,7 @@ public partial class StateManageView : BaseView
         {
             _uploadTaskService.HideWeldTaskUploadState(summary.WeldTaskId);
             ReloadActiveTasks();
-            ShowInfo("已从上传总览隐藏选中的任务。");
+            ShowInfo("已从工单信息隐藏选中的任务。");
             return;
         }
 
@@ -558,7 +700,7 @@ public partial class StateManageView : BaseView
     {
         if (IsSummaryTab())
         {
-            return "上传总览";
+            return "工单信息";
         }
 
         if (tabUploadCategories.SelectedTab == tabReportFiles)
@@ -624,6 +766,11 @@ public partial class StateManageView : BaseView
         return tabUploadCategories.SelectedTab == tabSummary;
     }
 
+    private bool HasVisibleTabs()
+    {
+        return tabUploadCategories.TabPages.Count > 0;
+    }
+
     private string GetProgramSyncStatusText(string? status)
     {
         return status switch
@@ -649,9 +796,9 @@ public partial class StateManageView : BaseView
         };
     }
 
-    private static string GetUploadStatusText(string? status)
+    private string GetUploadStatusText(string? status)
     {
-        return UploadStatusDisplayRules.GetDisplayText(status);
+        return UploadStatusDisplayRules.GetDisplayText(status, _mesConnectionMonitor.Current.IsConnected);
     }
 
     private void ShowInfo(string message)
@@ -668,4 +815,6 @@ public partial class StateManageView : BaseView
     {
         MessageBox.Show(this, message, _localizer.GetString(TextKeys.Common.TitleError), MessageBoxButtons.OK, MessageBoxIcon.Error);
     }
+
+    private sealed record StateUploadTabDefinition(TabPage Page, string PermissionCode);
 }
