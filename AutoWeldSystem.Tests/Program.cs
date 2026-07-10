@@ -2860,8 +2860,33 @@ static void MonitorReportButtonRulesFollowMesAndTaskState()
         mesConnected: false,
         hasOnlineRunningTask: false,
         hasOfflineRunningTask: false);
-    AssertFalse(offline.OnlineReportEnabled, "MES 离线时在线上报按钮应禁用。");
+    AssertFalse(offline.OnlineReportEnabled, "MES 离线且无在线未完工任务时在线上报按钮应禁用。");
     AssertTrue(offline.LocalWorkOrderEnabled, "MES 离线空闲时离线开工应可用。");
+
+    var offlineWithOnlineTask = MonitorReportButtonRules.Decide(
+        isReadOnly: false,
+        mesConnected: false,
+        hasOnlineRunningTask: true,
+        hasOfflineRunningTask: false);
+    AssertEqual(MonitorOnlineReportAction.Finish, offlineWithOnlineTask.OnlineReportAction, "在线未完工任务耗时断网时在线按钮仍应执行完工上报。");
+    AssertTrue(offlineWithOnlineTask.OnlineReportEnabled, "断网但有在线未完工任务时必须允许完工上报，由 FinishAsync 负责入队补传。");
+    AssertFalse(offlineWithOnlineTask.LocalWorkOrderEnabled, "在线任务不应由离线按钮接管。");
+
+    var readOnlyOfflineWithOnlineTask = MonitorReportButtonRules.Decide(
+        isReadOnly: true,
+        mesConnected: false,
+        hasOnlineRunningTask: true,
+        hasOfflineRunningTask: false);
+    AssertFalse(readOnlyOfflineWithOnlineTask.OnlineReportEnabled, "只读工位即使断网且有在线未完工任务也不应允许完工上报。");
+    AssertFalse(readOnlyOfflineWithOnlineTask.LocalWorkOrderEnabled, "只读工位不应启用离线开工按钮。");
+
+    var bothRunningWhenOffline = MonitorReportButtonRules.Decide(
+        isReadOnly: false,
+        mesConnected: false,
+        hasOnlineRunningTask: true,
+        hasOfflineRunningTask: true);
+    AssertTrue(bothRunningWhenOffline.OnlineReportEnabled, "同时存在在线与离线未完工任务时应以在线完工按钮为准。");
+    AssertFalse(bothRunningWhenOffline.LocalWorkOrderEnabled, "同时存在在线未完工任务时不应由离线按钮接管在线完工。");
 
     var offlineTaskWhenMesBack = MonitorReportButtonRules.Decide(
         isReadOnly: false,
