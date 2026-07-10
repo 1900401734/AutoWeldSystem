@@ -3181,11 +3181,8 @@ public partial class MonitorView : BaseView
     /// <param name="currentRecipeCode">需要保持显示的当前配方号。</param>
     private void BindOnlineRecipeCodeOptions(IReadOnlyList<MesProgramListItemData> programs, string? currentRecipeCode)
     {
-        var recipeCodes = programs
-            .Select(ResolveRecipeCodeForPendingProgram)
-            .Select(NormalizeRecipeCode)
-            .Where(recipeCode => !string.IsNullOrWhiteSpace(recipeCode))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+        var recipeCodes = OfflineStartInputRules.BuildRecipeCodeOptions(
+            programs.Select(ResolveRecipeCodeForPendingProgram))
             .ToList();
         var recipeCode = NormalizeRecipeCode(currentRecipeCode);
 
@@ -3565,10 +3562,8 @@ public partial class MonitorView : BaseView
     /// <param name="currentRecipeCode">需要保持显示的当前配方号。</param>
     private void BindOfflineRecipeCodeOptions(IReadOnlyList<OfflineProgramNameOption> options, string? currentRecipeCode)
     {
-        var recipeCodes = options
-            .Select(option => NormalizeRecipeCode(option.Program.RecipeCode))
-            .Where(recipeCode => !string.IsNullOrWhiteSpace(recipeCode))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+        var recipeCodes = OfflineStartInputRules.BuildRecipeCodeOptions(
+            options.Select(option => option.Program.RecipeCode))
             .ToList();
         var recipeCode = NormalizeRecipeCode(currentRecipeCode);
 

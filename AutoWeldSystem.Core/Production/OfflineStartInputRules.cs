@@ -25,7 +25,6 @@ public static class OfflineStartInputRules
             .Where(program => !string.IsNullOrWhiteSpace(program.ProgramName))
             .Where(program => !string.IsNullOrWhiteSpace(program.ProductNum))
             .Where(program => !string.IsNullOrWhiteSpace(program.RecipeCode))
-            .Where(program => !string.IsNullOrWhiteSpace(program.ProgramContent))
             .OrderBy(program => program.ProgramName.Trim(), StringComparer.OrdinalIgnoreCase)
             .ThenBy(program => program.ProductNum, StringComparer.OrdinalIgnoreCase)
             .ThenBy(program => program.RecipeCode, StringComparer.OrdinalIgnoreCase)
@@ -42,6 +41,26 @@ public static class OfflineStartInputRules
             .Select(program => new OfflineProgramNameOption(
                 program,
                 ResolveDisplayText(program, duplicateProgramNames.Contains(Normalize(program.ProgramName)))))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Creates normalized recipe-code options for MonitorView dropdowns.
+    /// Numeric recipe codes use numeric ascending order so 10 is listed after 4.
+    /// </summary>
+    /// <param name="recipeCodes">Candidate recipe-code values from local programs or MES-program mappings.</param>
+    /// <returns>Distinct non-empty recipe codes in operator-friendly ascending order.</returns>
+    public static IReadOnlyList<string> BuildRecipeCodeOptions(IEnumerable<string?> recipeCodes)
+    {
+        ArgumentNullException.ThrowIfNull(recipeCodes);
+
+        return recipeCodes
+            .Select(Normalize)
+            .Where(recipeCode => !string.IsNullOrWhiteSpace(recipeCode))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(recipeCode => TryParseRecipeCodeNumber(recipeCode, out _) ? 0 : 1)
+            .ThenBy(recipeCode => TryParseRecipeCodeNumber(recipeCode, out var number) ? number : long.MaxValue)
+            .ThenBy(recipeCode => recipeCode, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
@@ -78,6 +97,9 @@ public static class OfflineStartInputRules
             RecipeCode = NormalizeRequired(program.RecipeCode, "配方号不能为空。")
         };
     }
+
+    private static bool TryParseRecipeCodeNumber(string recipeCode, out long number)
+        => long.TryParse(recipeCode, NumberStyles.Integer, CultureInfo.InvariantCulture, out number);
 
     private static string ResolveDisplayText(BizProgram program, bool includeIdentity)
     {

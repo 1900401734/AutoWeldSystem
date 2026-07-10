@@ -128,6 +128,8 @@ var tests = new (string Name, Action Run)[]
     ("Program name rules extract component code", ProgramNameRulesExtractComponentCode),
     ("Program name rules reject invalid component code", ProgramNameRulesRejectInvalidComponentCode),
     ("Offline program dropdown displays program name", OfflineProgramDropdownDisplaysProgramName),
+    ("Offline program dropdown includes empty-content program", OfflineProgramDropdownIncludesEmptyContentProgram),
+    ("Recipe code options sort numeric ascending", RecipeCodeOptionsSortNumericAscending),
     ("Offline start request follows inline monitor input", OfflineStartRequestFollowsInlineMonitorInput),
     ("Offline start allows empty part name and drawing number", OfflineStartAllowsEmptyPartNameAndDrawingNumber),
     ("Offline start requires work order and process number", OfflineStartRequiresWorkOrderAndProcessNumber),
@@ -149,6 +151,7 @@ var tests = new (string Name, Action Run)[]
     ("Monitor view auto loads work order without query button", MonitorViewAutoLoadsWorkOrderWithoutQueryButton),
     ("Monitor view preserves online inputs during refresh", MonitorViewPreservesOnlineInputsDuringRefresh),
     ("Monitor view links program and recipe selections for start input", MonitorViewLinksProgramAndRecipeSelectionsForStartInput),
+    ("Monitor view recipe dropdown uses sorted recipe options", MonitorViewRecipeDropdownUsesSortedRecipeOptions),
     ("Monitor view uses PLC recipe only for offline idle inputs", MonitorViewUsesPlcRecipeOnlyForOfflineIdleInputs),
     ("Monitor view reloads online programs after process change", MonitorViewReloadsOnlineProgramsAfterProcessChange),
     ("Monitor view defaults first process inputs after work order load", MonitorViewDefaultsFirstProcessInputsAfterWorkOrderLoad),
@@ -2398,6 +2401,47 @@ static void OfflineProgramDropdownDisplaysProgramName()
     AssertEqual("重复程序 | 产品工号=P-002 | 配方号=4", duplicateOption.DisplayText, "重名程序必须追加产品工号和配方号便于区分。");
 }
 
+static void OfflineProgramDropdownIncludesEmptyContentProgram()
+{
+    var programs = Enumerable.Range(1, 4)
+        .Select(id => new BizProgram
+        {
+            Id = id,
+            ProgramName = $"程序{id}",
+            ProductNum = $"P-{id}",
+            RecipeCode = $"{id}",
+            ProgramContent = id == 4 ? string.Empty : "{}"
+        })
+        .ToArray();
+
+    var options = OfflineStartInputRules.BuildProgramNameOptions(programs);
+
+    AssertEqual(4, options.Count, "本地程序列表中的空内容程序也应显示在 MonitorView 下拉框中。");
+    AssertTrue(options.Any(option => option.Program.Id == 4), "空内容程序不能因为 ProgramContent 为空而被下拉过滤。");
+}
+
+static void RecipeCodeOptionsSortNumericAscending()
+{
+    var options = OfflineStartInputRules.BuildRecipeCodeOptions(new[]
+    {
+        "3",
+        "1",
+        "10",
+        "2",
+        "4",
+        " 2 ",
+        string.Empty,
+        null,
+        "A2",
+        "A1"
+    });
+
+    AssertSequenceEqual(
+        new[] { "1", "2", "3", "4", "10", "A1", "A2" },
+        options,
+        "配方号候选列表应先按数字正序显示，非数字配方号排在数字后按文本正序显示。");
+}
+
 static void OfflineStartRequestFollowsInlineMonitorInput()
 {
     var option = OfflineStartInputRules.BuildProgramNameOptions(new[]
@@ -3027,6 +3071,26 @@ static void MonitorViewLinksProgramAndRecipeSelectionsForStartInput()
     AssertTrue(recipeHandler.Contains("ResolveOnlineProgramListItemByRecipeCode", StringComparison.Ordinal), "在线选择配方号后必须反向解析 MES 程序并触发下载预览。");
     AssertTrue(recipeHandler.Contains("ApplyOfflineRecipeCodeSelection", StringComparison.Ordinal), "离线选择配方号后必须反向联动本地程序名称、产品工号和产品型号。");
     AssertTrue(recipeHandler.Contains("DownloadSelectedOnlineProgramAsync(programListItem, CurrentStationNo)", StringComparison.Ordinal), "在线切换配方号应复用程序选择的下载和微调弹窗流程。");
+}
+
+static void MonitorViewRecipeDropdownUsesSortedRecipeOptions()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var onlineMethod = ExtractMethodText(
+        viewCode,
+        "private void BindOnlineRecipeCodeOptions",
+        "    #endregion");
+    var offlineMethod = ExtractMethodText(
+        viewCode,
+        "private void BindOfflineRecipeCodeOptions",
+        "private void ApplyOfflineProgramNameOption");
+
+    AssertTrue(
+        onlineMethod.Contains("OfflineStartInputRules.BuildRecipeCodeOptions", StringComparison.Ordinal),
+        "在线配方号下拉必须使用共享规则排序，避免 MES 程序列表顺序导致配方号乱序显示。");
+    AssertTrue(
+        offlineMethod.Contains("OfflineStartInputRules.BuildRecipeCodeOptions", StringComparison.Ordinal),
+        "离线配方号下拉必须使用共享规则排序，避免本地程序库顺序导致配方号乱序显示。");
 }
 
 static void MonitorViewUsesPlcRecipeOnlyForOfflineIdleInputs()
