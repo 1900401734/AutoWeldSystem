@@ -1,4 +1,5 @@
 ﻿using AutoWeldSystem.Core.Entities;
+using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Center;
 using AutoWeldSystem.Core.DTOs;
@@ -76,6 +77,9 @@ var tests = new (string Name, Action Run)[]
     ("Device status local log store keeps latest state per log id", DeviceStatusLocalLogStoreKeepsLatestStatePerLogId),
     ("LogManageView device status tab exposes open folder button", LogManageViewDeviceStatusTabExposesOpenFolderButton),
     ("DataManageView static grids define bound columns", DataManageViewStaticGridsDefineBoundColumns),
+    ("DataManageView ignores report selection while disposing", DataManageViewIgnoresReportSelectionWhileDisposing),
+    ("DataManageView ignores work order selection while disposing", DataManageViewIgnoresWorkOrderSelectionWhileDisposing),
+    ("DataManageView treats cancelled history queries as stale work", DataManageViewTreatsCancelledHistoryQueriesAsStaleWork),
     ("Device API status query returns current MES status", DeviceApiStatusQueryReturnsCurrentMesStatus),
     ("Device API status query rejects mismatched device id", DeviceApiStatusQueryRejectsMismatchedDeviceId),
     ("Device API set device id saves local settings as synced", DeviceApiSetDeviceIdSavesLocalSettingsAsSynced),
@@ -87,6 +91,13 @@ var tests = new (string Name, Action Run)[]
     ("Device API set device id writes lifecycle logs", DeviceApiSetDeviceIdWritesLifecycleLogs),
     ("Device API ignores lifecycle log failure", DeviceApiIgnoresLifecycleLogFailure),
     ("Upload status display rules localize status text", UploadStatusDisplayRulesLocalizeStatusText),
+    ("Upload status navigation uses pending upload data text", UploadStatusNavigationUsesPendingUploadDataText),
+    ("State manage summary tab uses work order info text", StateManageSummaryTabUsesWorkOrderInfoText),
+    ("State manage upload status display follows MES connection", StateManageUploadStatusDisplayFollowsMesConnection),
+    ("State manage tabs are cataloged as role permissions", StateManageTabsAreCatalogedAsRolePermissions),
+    ("Global permission checks separate developer and admin", GlobalPermissionChecksSeparateDeveloperAndAdmin),
+    ("State tab defaults keep customer tabs configurable", StateTabDefaultsKeepCustomerTabsConfigurable),
+    ("State manage view filters tabs by current permissions", StateManageViewFiltersTabsByCurrentPermissions),
     ("Skipped upload tasks are not retried", SkippedUploadTasksAreNotRetried),
     ("Status report settings default to enabled", StatusReportSettingsDefaultToEnabled),
     ("MES route settings default to current routes", MesRouteSettingsDefaultToCurrentRoutes),
@@ -126,12 +137,17 @@ var tests = new (string Name, Action Run)[]
     ("Program remark rules default by action", ProgramRemarkRulesDefaultByAction),
     ("Program MES write payload omits recipe code", ProgramMesWritePayloadOmitsRecipeCode),
     ("Program MES create payload clears file fields for empty content", ProgramMesCreatePayloadClearsFileFieldsForEmptyContent),
+    ("Program manage view hides product model", ProgramManageViewHidesProductModel),
+    ("Program manage save ignores product model input", ProgramManageSaveIgnoresProductModelInput),
     ("Monitor report button rules follow MES and task state", MonitorReportButtonRulesFollowMesAndTaskState),
     ("Monitor view uses one online report button", MonitorViewUsesOneOnlineReportButton),
     ("Monitor runtime tips use localized summaries", MonitorRuntimeTipsUseLocalizedSummaries),
     ("Monitor view shows operator validation success after employee validation", MonitorViewShowsOperatorValidationSuccessAfterEmployeeValidation),
+    ("Monitor view keeps inline operator validation marker after binding", MonitorViewKeepsInlineOperatorValidationMarkerAfterBinding),
     ("Monitor view auto loads work order without query button", MonitorViewAutoLoadsWorkOrderWithoutQueryButton),
     ("Monitor view preserves online inputs during refresh", MonitorViewPreservesOnlineInputsDuringRefresh),
+    ("Monitor view links program and recipe selections for start input", MonitorViewLinksProgramAndRecipeSelectionsForStartInput),
+    ("Monitor view uses PLC recipe only for offline idle inputs", MonitorViewUsesPlcRecipeOnlyForOfflineIdleInputs),
     ("Monitor view reloads online programs after process change", MonitorViewReloadsOnlineProgramsAfterProcessChange),
     ("Monitor view defaults first process inputs after work order load", MonitorViewDefaultsFirstProcessInputsAfterWorkOrderLoad),
     ("Monitor view process selection uses shared input binder", MonitorViewProcessSelectionUsesSharedInputBinder),
@@ -139,6 +155,7 @@ var tests = new (string Name, Action Run)[]
     ("Monitor view saves dual work order toggle with old rules", MonitorViewSavesDualWorkOrderToggleWithOldRules),
     ("System setting view no longer edits dual work order", SystemSettingViewNoLongerEditsDualWorkOrder),
     ("Monitor view finish report uses start operator without prompt", MonitorViewFinishReportUsesStartOperatorWithoutPrompt),
+    ("Monitor view clears product identity after finish report", MonitorViewClearsProductIdentityAfterFinishReport),
     ("Weld task finish uses MES start id for retry payloads", WeldTaskFinishUsesMesStartIdForRetryPayloads),
     ("Weld task restore unfinished task is idempotent", WeldTaskRestoreUnfinishedTaskIsIdempotent),
     ("Permission catalog omits get work order button", PermissionCatalogOmitsGetWorkOrderButton),
@@ -1192,6 +1209,97 @@ static void DataManageViewStaticGridsDefineBoundColumns()
     }
 }
 
+static void DataManageViewIgnoresReportSelectionWhileDisposing()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "DataManageView.cs"), Encoding.UTF8);
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "DataManageView.Designer.cs"), Encoding.UTF8);
+    var reportSelectionHandler = ExtractMethodText(
+        viewCode,
+        "private void ReportFiles_SelectionChanged",
+        "private void OpenSelectedReport()");
+    var selectedReportMethod = ExtractMethodText(
+        viewCode,
+        "private DataHistoryReportFileRow? GetSelectedReport()",
+        "private void ClearTaskDetails()");
+
+    AssertTrue(viewCode.Contains("private bool _disposing;", StringComparison.Ordinal), "DataManageView 必须记录释放中状态，避免 Dispose 期间继续处理选择事件。");
+    AssertTrue(designerCode.Contains("BeginDispose();", StringComparison.Ordinal), "Dispose 必须在 components.Dispose 前标记释放状态。");
+    AssertTrue(reportSelectionHandler.Contains("_disposing", StringComparison.Ordinal), "报告文件选择事件在释放中必须直接返回。");
+    AssertTrue(selectedReportMethod.Contains("reportBindingSource.Count <= 0", StringComparison.Ordinal), "读取报告文件选择前必须先检查 BindingSource 是否为空。");
+    AssertTrue(selectedReportMethod.Contains("reportBindingSource.Position", StringComparison.Ordinal), "读取报告文件选择前必须校验 BindingSource 当前索引。");
+    AssertTrue(selectedReportMethod.Contains("reportBindingSource.Current as DataHistoryReportFileRow", StringComparison.Ordinal), "报告文件选择应从 BindingSource.Current 获取，避免 DataGridView.CurrentRow 在释放时触发 CurrencyManager[0]。");
+    AssertFalse(selectedReportMethod.Contains("dgvReportFiles.CurrentRow", StringComparison.Ordinal), "GetSelectedReport 不能再访问 DataGridView.CurrentRow。");
+}
+
+static void DataManageViewIgnoresWorkOrderSelectionWhileDisposing()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "DataManageView.cs"), Encoding.UTF8);
+    var workOrderSelectionHandler = ExtractMethodText(
+        viewCode,
+        "private async void WorkOrders_SelectionChanged",
+        "private async Task QueryWorkOrdersAsync");
+    var selectedWorkOrderMethod = ExtractMethodText(
+        viewCode,
+        "private DataHistoryWorkOrderRow? GetSelectedWorkOrder()",
+        "private async Task QueryWorkOrdersAsync");
+    var collectionSelectionHandler = ExtractMethodText(
+        viewCode,
+        "private void CollectionRecords_SelectionChanged",
+        "private void ReportFiles_SelectionChanged");
+    var selectedCollectionMethod = ExtractMethodText(
+        viewCode,
+        "private DataHistoryCollectionRow? GetSelectedCollectionRecord()",
+        "private void RemoveDynamicParameterColumns()");
+    var beginDisposeMethod = ExtractMethodText(
+        viewCode,
+        "private void BeginDispose()",
+        "private void ClearTaskDetails()");
+
+    AssertTrue(workOrderSelectionHandler.Contains("_disposing", StringComparison.Ordinal), "工单选择事件在释放中必须直接返回，避免 Dispose 清绑定时读取失效行。");
+    AssertTrue(workOrderSelectionHandler.Contains("GetSelectedWorkOrder()", StringComparison.Ordinal), "工单选择事件必须通过 BindingSource 安全读取当前项。");
+    AssertTrue(selectedWorkOrderMethod.Contains("workOrderBindingSource.Count <= 0", StringComparison.Ordinal), "读取工单选择前必须先检查 BindingSource 是否为空。");
+    AssertTrue(selectedWorkOrderMethod.Contains("workOrderBindingSource.Position", StringComparison.Ordinal), "读取工单选择前必须校验 BindingSource 当前索引。");
+    AssertTrue(selectedWorkOrderMethod.Contains("workOrderBindingSource.Current as DataHistoryWorkOrderRow", StringComparison.Ordinal), "工单选择应从 BindingSource.Current 获取。");
+    AssertFalse(selectedWorkOrderMethod.Contains("dgvWorkOrders.CurrentRow", StringComparison.Ordinal), "GetSelectedWorkOrder 不能访问 DataGridView.CurrentRow。");
+    AssertTrue(collectionSelectionHandler.Contains("_disposing", StringComparison.Ordinal), "采集记录选择事件在释放中必须直接返回。");
+    AssertTrue(selectedCollectionMethod.Contains("collectionBindingSource.Current as DataHistoryCollectionRow", StringComparison.Ordinal), "采集记录明细也应从 BindingSource.Current 获取，避免释放时访问 DataGridView 行。");
+    AssertFalse(selectedCollectionMethod.Contains("dgvCollectionRecords.CurrentRow", StringComparison.Ordinal), "GetSelectedCollectionRecord 不能访问 DataGridView.CurrentRow。");
+    AssertTrue(beginDisposeMethod.Contains("dgvWorkOrders.SelectionChanged -= WorkOrders_SelectionChanged;", StringComparison.Ordinal), "释放时必须解绑工单选择事件。");
+    AssertTrue(beginDisposeMethod.Contains("dgvCollectionRecords.SelectionChanged -= CollectionRecords_SelectionChanged;", StringComparison.Ordinal), "释放时必须解绑采集记录选择事件。");
+}
+
+static void DataManageViewTreatsCancelledHistoryQueriesAsStaleWork()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "DataManageView.cs"), Encoding.UTF8);
+    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "DataHistoryQueryService.cs"), Encoding.UTF8);
+    var runQueryMethod = ExtractMethodText(
+        serviceCode,
+        "private Task<T> RunQueryAsync<T>",
+        "private PagedResult<DataHistoryWorkOrderRow> QueryWorkOrders");
+    var queryWorkOrdersMethod = ExtractMethodText(
+        viewCode,
+        "private async Task QueryWorkOrdersAsync",
+        "private async Task ResetQueryAsync");
+    var loadDetailsMethod = ExtractMethodText(
+        viewCode,
+        "private async Task LoadTaskDetailsAsync",
+        "private async Task LoadCollectionRecordsAsync");
+    var loadCollectionMethod = ExtractMethodText(
+        viewCode,
+        "private async Task LoadCollectionRecordsAsync",
+        "private void BindWeldParameters");
+
+    AssertFalse(runQueryMethod.Contains("ThrowIfCancellationRequested", StringComparison.Ordinal), "历史查询服务不应在线程池委托中主动抛 OperationCanceledException，避免调试器停在 RunQueryAsync。");
+    AssertFalse(runQueryMethod.Contains("}, cancellationToken);", StringComparison.Ordinal), "Task.Run 不应绑定 UI 查询取消令牌，否则取消可能在服务层表现为异常。");
+    AssertTrue(runQueryMethod.Contains("if (cancellationToken.IsCancellationRequested)", StringComparison.Ordinal), "历史查询服务仍应识别已取消查询并跳过过期工作。");
+    AssertFalse(queryWorkOrdersMethod.Contains("cancellationToken.ThrowIfCancellationRequested();", StringComparison.Ordinal), "工单查询取消后应直接返回，不应再抛取消异常。");
+    AssertFalse(loadDetailsMethod.Contains("cancellationToken.ThrowIfCancellationRequested();", StringComparison.Ordinal), "明细查询取消后应直接返回，不应再抛取消异常。");
+    AssertFalse(loadCollectionMethod.Contains("cancellationToken.ThrowIfCancellationRequested();", StringComparison.Ordinal), "采集分页查询取消后应直接返回，不应再抛取消异常。");
+    AssertTrue(queryWorkOrdersMethod.Contains("if (cancellationToken.IsCancellationRequested)", StringComparison.Ordinal), "工单查询完成后必须检查取消状态，避免旧结果覆盖新界面。");
+    AssertTrue(loadDetailsMethod.Contains("if (cancellationToken.IsCancellationRequested)", StringComparison.Ordinal), "明细查询完成后必须检查取消状态，避免旧结果覆盖新界面。");
+    AssertTrue(loadCollectionMethod.Contains("if (cancellationToken.IsCancellationRequested)", StringComparison.Ordinal), "采集分页查询完成后必须检查取消状态，避免旧结果覆盖新界面。");
+}
+
 static void DeviceApiStatusQueryReturnsCurrentMesStatus()
 {
     var settings = new FakeAppSettingsService
@@ -1467,9 +1575,200 @@ static void DeviceApiIgnoresLifecycleLogFailure()
 static void UploadStatusDisplayRulesLocalizeStatusText()
 {
     AssertEqual("待上传", UploadStatusDisplayRules.GetDisplayText(ProductionConstants.UploadStatuses.Pending), "Pending 应显示为待上传。");
-    AssertEqual("上传失败", UploadStatusDisplayRules.GetDisplayText(ProductionConstants.UploadStatuses.Failed), "Failed 应显示为上传失败。");
+    AssertEqual("上传失败", UploadStatusDisplayRules.GetDisplayText(ProductionConstants.UploadStatuses.Failed, mesConnected: true), "MES 在线时 Failed 应显示为上传失败。");
+    AssertEqual("待上传", UploadStatusDisplayRules.GetDisplayText(ProductionConstants.UploadStatuses.Failed, mesConnected: false), "MES 离线时 Failed 应显示为待上传。");
     AssertEqual("已跳过", UploadStatusDisplayRules.GetDisplayText(ProductionConstants.UploadStatuses.Skipped), "Skipped 应显示为已跳过。");
-    AssertEqual("无数据", UploadStatusDisplayRules.GetDisplayText(UploadSummaryStatusResolver.NoData), "NoData 应显示为无数据。");
+    AssertEqual("待上传", UploadStatusDisplayRules.GetDisplayText(UploadSummaryStatusResolver.NoData, mesConnected: true), "MES 在线时 NoData 应显示为待上传。");
+    AssertEqual("无数据", UploadStatusDisplayRules.GetDisplayText(UploadSummaryStatusResolver.NoData, mesConnected: false), "MES 离线时 NoData 应保留无数据。");
+}
+
+static void UploadStatusNavigationUsesPendingUploadDataText()
+{
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Forms", "MainForm.Designer.cs"), Encoding.UTF8);
+    var zhResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.resx"), Encoding.UTF8);
+    var enResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.en.resx"), Encoding.UTF8);
+
+    AssertTrue(designerCode.Contains("segmentedItem6.Text = \"待上传数据 \";", StringComparison.Ordinal), "MainForm 底部上传状态入口初始文本必须改为待上传数据并保留尾随空格。");
+    AssertFalse(designerCode.Contains("segmentedItem6.Text = \"上传状态\";", StringComparison.Ordinal), "MainForm 底部上传状态入口不应再显示上传状态。");
+    AssertTrue(zhResources.Contains("name=\"main.nav.state_manage\"", StringComparison.Ordinal), "中文资源必须包含主导航上传状态入口键。");
+    AssertTrue(zhResources.Contains("<value>待上传数据 </value>", StringComparison.Ordinal), "中文主导航上传状态入口必须显示待上传数据并保留尾随空格。");
+    AssertTrue(enResources.Contains("name=\"main.nav.state_manage\"", StringComparison.Ordinal), "英文资源必须包含主导航上传状态入口键。");
+    AssertTrue(enResources.Contains("<value>Pending Upload Data</value>", StringComparison.Ordinal), "英文主导航上传状态入口必须同步为 Pending Upload Data。");
+}
+
+static void StateManageSummaryTabUsesWorkOrderInfoText()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "StateManageView.cs"), Encoding.UTF8);
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "StateManageView.Designer.cs"), Encoding.UTF8);
+
+    AssertTrue(designerCode.Contains("tabSummary.Text = \"工单信息\";", StringComparison.Ordinal), "上传状态页总览页签 Designer 初始文本必须改为工单信息。");
+    AssertTrue(viewCode.Contains("tabSummary.Text = \"工单信息\";", StringComparison.Ordinal), "语言刷新后总览页签必须保持工单信息。");
+    AssertTrue(viewCode.Contains("return \"工单信息\";", StringComparison.Ordinal), "工单信息页签的统计前缀必须同步更新。");
+    AssertTrue(viewCode.Contains("ShowWarning(\"工单信息请使用一键上传。\")", StringComparison.Ordinal), "工单信息页签禁用单项重试提示必须同步更新。");
+    AssertTrue(viewCode.Contains("ShowInfo(\"已从工单信息隐藏选中的任务。\")", StringComparison.Ordinal), "隐藏任务提示必须同步更新为工单信息。");
+    AssertFalse(viewCode.Contains("tabSummary.Text = \"上传总览\";", StringComparison.Ordinal), "运行时页签文本不应再恢复上传总览。");
+    AssertFalse(viewCode.Contains("return \"上传总览\";", StringComparison.Ordinal), "统计前缀不应再使用上传总览。");
+    AssertFalse(viewCode.Contains("ShowWarning(\"上传总览请使用一键上传。\")", StringComparison.Ordinal), "提示文本不应再使用上传总览。");
+    AssertFalse(viewCode.Contains("ShowInfo(\"已从上传总览隐藏选中的任务。\")", StringComparison.Ordinal), "隐藏提示不应再使用上传总览。");
+}
+
+static void StateManageUploadStatusDisplayFollowsMesConnection()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "StateManageView.cs"), Encoding.UTF8);
+
+    AssertTrue(viewCode.Contains("using AutoWeldSystem.Core.Interfaces.MES;", StringComparison.Ordinal), "上传状态页必须引用 MES 连接监控接口命名空间。");
+    AssertTrue(viewCode.Contains("private readonly IMesConnectionMonitor _mesConnectionMonitor;", StringComparison.Ordinal), "上传状态页必须持有 MES 连接监控。");
+    AssertTrue(viewCode.Contains("IMesConnectionMonitor mesConnectionMonitor", StringComparison.Ordinal), "上传状态页构造函数必须注入 MES 连接监控。");
+    AssertTrue(viewCode.Contains("_mesConnectionMonitor.StatusChanged += MesConnectionMonitor_StatusChanged;", StringComparison.Ordinal), "上传状态页必须监听 MES 连接状态变化。");
+    AssertTrue(viewCode.Contains("_mesConnectionMonitor.StatusChanged -= MesConnectionMonitor_StatusChanged;", StringComparison.Ordinal), "上传状态页销毁时必须解绑 MES 连接状态变化。");
+    AssertTrue(viewCode.Contains("private void MesConnectionMonitor_StatusChanged", StringComparison.Ordinal), "上传状态页必须提供 MES 连接变化处理方法。");
+    AssertTrue(viewCode.Contains("dgvPending.Invalidate();", StringComparison.Ordinal), "MES 连接变化后必须刷新表格显示文本。");
+    AssertTrue(viewCode.Contains("UploadStatusDisplayRules.GetDisplayText(status, _mesConnectionMonitor.Current.IsConnected)", StringComparison.Ordinal), "上传状态显示必须按当前 MES 在线状态解析。");
+}
+
+static void StateManageTabsAreCatalogedAsRolePermissions()
+{
+    var expectedCodes = new[]
+    {
+        PermissionCodes.Tabs.State.WorkOrderInfo,
+        PermissionCodes.Tabs.State.StartReport,
+        PermissionCodes.Tabs.State.FinishReport,
+        PermissionCodes.Tabs.State.ProcessParameter,
+        PermissionCodes.Tabs.State.ReportFile,
+        PermissionCodes.Tabs.State.WorkOrderStatus,
+        PermissionCodes.Tabs.State.DeviceStatus,
+        PermissionCodes.Tabs.State.ProgramFile
+    };
+    var zhResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.resx"), Encoding.UTF8);
+    var enResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.en.resx"), Encoding.UTF8);
+
+    AssertSequenceEqual(expectedCodes, PermissionCodes.Tabs.State.All, "待上传数据的 8 个页签权限必须保持固定业务顺序。");
+    AssertEqual(expectedCodes.Length, expectedCodes.Distinct(StringComparer.OrdinalIgnoreCase).Count(), "页签权限编码必须唯一。");
+
+    var definitions = PermissionCatalog.All
+        .Where(permission => expectedCodes.Contains(permission.Code, StringComparer.OrdinalIgnoreCase))
+        .OrderBy(permission => permission.Sort)
+        .ToArray();
+    AssertEqual(expectedCodes.Length, definitions.Length, "8 个待上传数据页签都必须注册到权限目录。");
+    AssertTrue(definitions.All(permission => permission.Type == PermissionType.Tab), "待上传数据页签权限必须使用 Tab 类型。");
+    AssertTrue(definitions.All(permission => permission.ParentCode == PermissionCodes.Pages.StateManage), "页签权限必须挂在待上传数据页面权限下。");
+
+    foreach (var permissionCode in expectedCodes)
+    {
+        var textKey = PermissionTextKeyMapper.GetTextKey(permissionCode);
+        AssertFalse(string.IsNullOrWhiteSpace(textKey), $"页签权限 {permissionCode} 必须映射本地化键。");
+        AssertTrue(zhResources.Contains($"name=\"{textKey}\"", StringComparison.Ordinal), $"页签权限 {permissionCode} 必须包含中文名称。");
+        AssertTrue(enResources.Contains($"name=\"{textKey}\"", StringComparison.Ordinal), $"页签权限 {permissionCode} 必须包含英文名称。");
+    }
+}
+
+static void GlobalPermissionChecksSeparateDeveloperAndAdmin()
+{
+    try
+    {
+        GlobalContext.SetCurrentUser(new SysUser { Role = AppConstants.Roles.Admin }, Array.Empty<string>());
+        AssertFalse(GlobalContext.HasPermission(PermissionCodes.Pages.StateManage), "admin 未获页面权限时不能绕过角色授权。");
+        AssertFalse(GlobalContext.HasPermission(PermissionCodes.Buttons.State.Refresh), "admin 未获按钮权限时不能绕过角色授权。");
+        AssertFalse(GlobalContext.HasPermission(PermissionCodes.Tabs.State.WorkOrderInfo), "admin 未获页签权限时不能绕过角色授权。");
+
+        GlobalContext.SetCurrentUser(
+            new SysUser { Role = AppConstants.Roles.Admin },
+            new[]
+            {
+                PermissionCodes.Pages.StateManage,
+                PermissionCodes.Buttons.State.Refresh,
+                PermissionCodes.Tabs.State.WorkOrderInfo
+            });
+        AssertTrue(GlobalContext.HasPermission(PermissionCodes.Pages.StateManage), "admin 显式获得页面权限后应允许访问。");
+        AssertTrue(GlobalContext.HasPermission(PermissionCodes.Buttons.State.Refresh), "admin 显式获得按钮权限后应允许操作。");
+        AssertTrue(GlobalContext.HasPermission(PermissionCodes.Tabs.State.WorkOrderInfo), "admin 显式获得页签权限后应显示页签。");
+
+        GlobalContext.SetCurrentUser(new SysUser { Role = AppConstants.Roles.Developer }, Array.Empty<string>());
+        AssertTrue(GlobalContext.IsDeveloper, "Developer 角色必须被识别为开发者。");
+        AssertTrue(GlobalContext.HasPermission(PermissionCodes.Pages.StateManage), "dev 必须保留页面全权限兜底。");
+        AssertTrue(GlobalContext.HasPermission(PermissionCodes.Buttons.State.Refresh), "dev 必须保留按钮全权限兜底。");
+        AssertTrue(GlobalContext.HasPermission(PermissionCodes.Tabs.State.ProcessParameter), "dev 必须保留页签全权限兜底。");
+    }
+    finally
+    {
+        GlobalContext.Clear();
+    }
+}
+
+static void StateTabDefaultsKeepCustomerTabsConfigurable()
+{
+    var allPermissionCodes = PermissionCatalog.All.Select(permission => permission.Code).ToArray();
+    var developerDefaults = RolePermissionInitializationRules.ResolveElevatedRoleDefaults(
+        AppConstants.Roles.Developer,
+        allPermissionCodes);
+    var adminDefaults = RolePermissionInitializationRules.ResolveElevatedRoleDefaults(
+        AppConstants.Roles.Admin,
+        allPermissionCodes);
+
+    AssertSequenceEqual(
+        new[]
+        {
+            PermissionCodes.Tabs.State.WorkOrderInfo,
+            PermissionCodes.Tabs.State.DeviceStatus,
+            PermissionCodes.Tabs.State.ProgramFile
+        },
+        PermissionCodes.Tabs.State.CustomerDefaults,
+        "客户默认只显示工单信息、设备状态和程序文件。");
+    AssertTrue(PermissionCodes.Tabs.State.All.All(developerDefaults.Contains), "dev 默认权限必须包含全部待上传数据页签。");
+    AssertTrue(PermissionCodes.Tabs.State.CustomerDefaults.All(adminDefaults.Contains), "admin 默认权限必须包含三个客户页签。");
+    AssertFalse(adminDefaults.Contains(PermissionCodes.Tabs.State.StartReport), "admin 默认不应显示开工信息调试页签。");
+    AssertFalse(adminDefaults.Contains(PermissionCodes.Tabs.State.ProcessParameter), "admin 默认不应显示过程参数调试页签。");
+    AssertTrue(RolePermissionInitializationRules.ShouldAppendMissingDefaults(AppConstants.Roles.Developer), "启动时只应持续为 dev 补齐全部权限。");
+    AssertFalse(RolePermissionInitializationRules.ShouldAppendMissingDefaults(AppConstants.Roles.Admin), "启动时不能重新补回 admin 已取消的权限。");
+
+    var upgradeDefaults = RolePermissionInitializationRules.ResolveStateTabUpgradeDefaults(
+        AppConstants.Roles.Admin,
+        stateTabCatalogWasMissing: true,
+        hasStateManagePagePermission: true);
+    AssertSequenceEqual(PermissionCodes.Tabs.State.CustomerDefaults, upgradeDefaults, "首次升级时应为已有待上传页面权限的客户角色补齐三个默认页签。");
+    AssertEqual(
+        0,
+        RolePermissionInitializationRules.ResolveStateTabUpgradeDefaults(
+            AppConstants.Roles.Admin,
+            stateTabCatalogWasMissing: false,
+            hasStateManagePagePermission: true).Count,
+        "页签权限目录已存在时不能在后续启动重新补回权限。");
+
+    var userServiceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "SysUserService.cs"), Encoding.UTF8);
+    AssertTrue(userServiceCode.Contains("stateTabCatalogWasMissing", StringComparison.Ordinal), "RBAC 初始化协调必须记录页签权限目录是否为首次创建。");
+    AssertTrue(userServiceCode.Contains("ApplyStateTabUpgradeDefaults", StringComparison.Ordinal), "RBAC 初始化协调必须应用一次性客户页签升级授权。");
+    AssertTrue(userServiceCode.Contains("RestoreConfigurableAdminPermissions", StringComparison.Ordinal), "RBAC 初始化后必须恢复管理员的真实配置，避免旧补权逻辑覆盖人工设置。");
+    AssertTrue(userServiceCode.Contains("RolePermissionInitializationRules.ResolveElevatedRoleDefaults", StringComparison.Ordinal), "新安装管理员必须通过统一规则生成客户默认页签权限。");
+}
+
+static void StateManageViewFiltersTabsByCurrentPermissions()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "StateManageView.cs"), Encoding.UTF8);
+    var applyMethod = ExtractMethodText(
+        viewCode,
+        "private void ApplyTabPermissions()",
+        "private void SetNoVisibleTabState()");
+    var noVisibleMethod = ExtractMethodText(
+        viewCode,
+        "private void SetNoVisibleTabState()",
+        "private void ConfigureGrid()");
+
+    AssertTrue(viewCode.Contains("PermissionCodes.Tabs.State.WorkOrderInfo", StringComparison.Ordinal), "工单信息页签必须映射独立权限。");
+    AssertTrue(viewCode.Contains("PermissionCodes.Tabs.State.StartReport", StringComparison.Ordinal), "开工信息页签必须映射独立权限。");
+    AssertTrue(viewCode.Contains("PermissionCodes.Tabs.State.FinishReport", StringComparison.Ordinal), "完工信息页签必须映射独立权限。");
+    AssertTrue(viewCode.Contains("PermissionCodes.Tabs.State.ProcessParameter", StringComparison.Ordinal), "过程参数页签必须映射独立权限。");
+    AssertTrue(viewCode.Contains("PermissionCodes.Tabs.State.ReportFile", StringComparison.Ordinal), "报告文件页签必须映射独立权限。");
+    AssertTrue(viewCode.Contains("PermissionCodes.Tabs.State.WorkOrderStatus", StringComparison.Ordinal), "工单状态页签必须映射独立权限。");
+    AssertTrue(viewCode.Contains("PermissionCodes.Tabs.State.DeviceStatus", StringComparison.Ordinal), "设备状态页签必须映射独立权限。");
+    AssertTrue(viewCode.Contains("PermissionCodes.Tabs.State.ProgramFile", StringComparison.Ordinal), "程序文件页签必须映射独立权限。");
+    AssertTrue(applyMethod.Contains("tabUploadCategories.TabPages.Clear();", StringComparison.Ordinal), "应用页签权限时必须先清空 TabPages，不能依赖 TabPage.Visible。");
+    AssertTrue(applyMethod.Contains("GlobalContext.HasPermission(definition.PermissionCode)", StringComparison.Ordinal), "页签重建必须检查当前角色权限。");
+    AssertTrue(applyMethod.Contains("tabUploadCategories.TabPages.Add(definition.Page)", StringComparison.Ordinal), "有权限的页签必须按固定定义顺序重新加入。");
+    AssertTrue(viewCode.Contains("GlobalContext.SessionChanged += GlobalContext_SessionChanged;", StringComparison.Ordinal), "当前角色权限变化后页面必须立即刷新页签。");
+    AssertTrue(viewCode.Contains("GlobalContext.SessionChanged -= GlobalContext_SessionChanged;", StringComparison.Ordinal), "页面销毁时必须解绑角色变化事件。");
+    AssertTrue(noVisibleMethod.Contains("_bindingSource.DataSource = Array.Empty<object>();", StringComparison.Ordinal), "没有可见页签时必须清空旧数据。");
+    AssertTrue(noVisibleMethod.Contains("dgvPending.Columns.Clear();", StringComparison.Ordinal), "没有可见页签时必须清空旧列。");
+    AssertTrue(noVisibleMethod.Contains("TextKeys.StateManage.MessageNoVisibleTabs", StringComparison.Ordinal), "没有可见页签时必须显示明确提示。");
 }
 
 static void SkippedUploadTasksAreNotRetried()
@@ -2379,6 +2678,41 @@ static void ProgramMesCreatePayloadClearsFileFieldsForEmptyContent()
     AssertEqual(string.Empty, payload.FileType, "新增程序未填写设定值时，FileType 应留空。");
 }
 
+static void ProgramManageViewHidesProductModel()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.cs"), Encoding.UTF8);
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.Designer.cs"), Encoding.UTF8);
+    var textKeysCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Constants", "TextKeys.cs"), Encoding.UTF8);
+    var zhResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.resx"), Encoding.UTF8);
+    var enResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.en.resx"), Encoding.UTF8);
+
+    AssertFalse(designerCode.Contains("inputProductModel", StringComparison.Ordinal), "程序管理页 Designer 不应再声明产品型号输入框。");
+    AssertFalse(designerCode.Contains("lblProductModel", StringComparison.Ordinal), "程序管理页 Designer 不应再声明产品型号标签。");
+    AssertFalse(designerCode.Contains("tlpProductModel", StringComparison.Ordinal), "程序管理页 Designer 不应再声明产品型号布局行。");
+    AssertFalse(viewCode.Contains("nameof(BizProgram.ProductModel)", StringComparison.Ordinal), "程序管理页列表不应再绑定产品型号列。");
+    AssertFalse(viewCode.Contains("TextKeys.ProgramManage.LabelProductModel", StringComparison.Ordinal), "程序管理页不应再读取产品型号编辑标签资源。");
+    AssertFalse(viewCode.Contains("TextKeys.Grid.ProgramProductModel", StringComparison.Ordinal), "程序管理页不应再读取产品型号列表表头资源。");
+    AssertFalse(viewCode.Contains("Contains(program.ProductModel", StringComparison.Ordinal), "程序管理页搜索不应再匹配产品型号。");
+    AssertFalse(viewCode.Contains("NormalizeSortText(program.ProductModel)", StringComparison.Ordinal), "程序管理页排序不应再使用产品型号。");
+    AssertFalse(textKeysCode.Contains("program.label.product_model", StringComparison.Ordinal), "程序管理页产品型号编辑资源键应移除。");
+    AssertFalse(textKeysCode.Contains("grid.program.product_model", StringComparison.Ordinal), "程序管理页产品型号列表资源键应移除。");
+    AssertFalse(zhResources.Contains("program.label.product_model", StringComparison.Ordinal), "中文资源不应再包含程序管理产品型号编辑文本。");
+    AssertFalse(zhResources.Contains("grid.program.product_model", StringComparison.Ordinal), "中文资源不应再包含程序管理产品型号列表文本。");
+    AssertFalse(enResources.Contains("program.label.product_model", StringComparison.Ordinal), "英文资源不应再包含程序管理产品型号编辑文本。");
+    AssertFalse(enResources.Contains("grid.program.product_model", StringComparison.Ordinal), "英文资源不应再包含程序管理产品型号列表文本。");
+}
+
+static void ProgramManageSaveIgnoresProductModelInput()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.cs"), Encoding.UTF8);
+    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "ProgramManageService.cs"), Encoding.UTF8);
+
+    AssertFalse(viewCode.Contains("request.ProductModel", StringComparison.Ordinal), "程序管理页保存请求不应再从界面组包产品型号。");
+    AssertFalse(viewCode.Contains("inputProductModel", StringComparison.Ordinal), "程序管理页保存和绑定逻辑不应再访问产品型号输入框。");
+    AssertFalse(serviceCode.Contains("entity.ProductModel = request.ProductModel", StringComparison.Ordinal), "保存程序时不应再把请求中的产品型号写回程序实体。");
+    AssertFalse(serviceCode.Contains("request.ProductModel = request.ProductModel.Trim()", StringComparison.Ordinal), "保存程序请求规范化不应再处理产品型号。");
+}
+
 static void MonitorReportButtonRulesFollowMesAndTaskState()
 {
     var idleOnline = MonitorReportButtonRules.Decide(
@@ -2515,6 +2849,36 @@ static void MonitorViewShowsOperatorValidationSuccessAfterEmployeeValidation()
     AssertTrue(inlineMethod.Contains("SetRuntimeError(TextKeys.Monitor.RuntimeError.OperatorValidationFailedInline);", StringComparison.Ordinal), "内联校验失败仍应保留现有失败提示。");
 }
 
+static void MonitorViewKeepsInlineOperatorValidationMarkerAfterBinding()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var startMethod = ExtractMethodText(
+        viewCode,
+        "private async Task RunStartReportAsync()",
+        "private async Task RunFinishReportAsync()");
+    var inlineMethod = ExtractMethodText(
+        viewCode,
+        "private async Task ValidateOperatorInlineAsync",
+        "private bool TryPromptNonNegativeInt");
+    var markerMethod = ExtractMethodText(
+        viewCode,
+        "private void MarkInlineOperatorValidated",
+        "private bool IsInlineOperatorValidated");
+    var checkMethod = ExtractMethodText(
+        viewCode,
+        "private bool IsInlineOperatorValidated",
+        "private bool TryPromptNonNegativeInt");
+
+    var bindIndex = inlineMethod.IndexOf("BindMesOperatorInfo(response.Data, employeeNumber);", StringComparison.Ordinal);
+    var markerIndex = inlineMethod.IndexOf("MarkInlineOperatorValidated();", StringComparison.Ordinal);
+
+    AssertTrue(bindIndex >= 0, "内联员工校验成功后必须先回填员工信息。");
+    AssertTrue(markerIndex > bindIndex, "内联员工校验标记必须在员工号回填后更新，确保使用控件最终显示的员工号。");
+    AssertTrue(markerMethod.Contains("_validatedOperatorNumber = MesUserNumber.Text.Trim();", StringComparison.Ordinal), "内联校验标记必须使用回填后的 MesUserNumber.Text。");
+    AssertTrue(startMethod.Contains("if (!IsInlineOperatorValidated(employeeNumber))", StringComparison.Ordinal), "开工前员工号校验判断必须走统一 helper。");
+    AssertTrue(checkMethod.Contains("string.Equals(employeeNumber.Trim(), _validatedOperatorNumber?.Trim(), StringComparison.Ordinal)", StringComparison.Ordinal), "员工号校验比较必须修剪两侧文本，避免 MES 返回值格式化后误判。");
+}
+
 static void MonitorViewAutoLoadsWorkOrderWithoutQueryButton()
 {
     var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.Designer.cs"), Encoding.UTF8);
@@ -2541,6 +2905,73 @@ static void MonitorViewPreservesOnlineInputsDuringRefresh()
     AssertTrue(viewCode.Contains("ResolveRecipeCodeForPendingProgram", StringComparison.Ordinal), "配方号应按已选程序从本地同步程序表解析。");
     AssertTrue(viewCode.Contains("ShouldPreserveDraftOperatorNumber", StringComparison.Ordinal), "在线员工号未校验时刷新必须保留正在输入的员工号。");
     AssertTrue(viewCode.Contains("ClearMesOperatorDisplayInfo();", StringComparison.Ordinal), "保留员工号时只应清空姓名、部门和班组显示。");
+}
+
+static void MonitorViewLinksProgramAndRecipeSelectionsForStartInput()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var wireEvents = ExtractMethodText(
+        viewCode,
+        "private void WireEvents()",
+        "private void WireWeldPreviewGridEvents");
+    var destroyMethod = ExtractMethodText(
+        viewCode,
+        "protected override void OnHandleDestroyed(EventArgs e)",
+        "private void Station_SelectedIndexChanged");
+    var recipeHandler = ExtractMethodText(
+        viewCode,
+        "private void RecipeCodeSelection_SelectedIndexChanged",
+        "private void RealtimePreviewPaintTimer_Tick");
+    var onlineReadOnlyMethod = ExtractMethodText(
+        viewCode,
+        "private void ApplyOnlineStartInputReadOnly(bool editable)",
+        "private void BindOfflineEditableRuntimeState");
+    var offlineReadOnlyMethod = ExtractMethodText(
+        viewCode,
+        "private void ApplyOfflineInputReadOnly(bool readOnly)",
+        "private void SetWorkOrderInputText");
+    var onlineOptionsMethod = ExtractMethodText(
+        viewCode,
+        "private void BindOnlineProgramNameOptions()",
+        "private void SwitchStationFromUi");
+    var offlineOptionsMethod = ExtractMethodText(
+        viewCode,
+        "private void BindOfflineProgramNameOptions()",
+        "private void ApplyOfflineProgramNameOption");
+
+    AssertTrue(wireEvents.Contains("selectRecipeCode.SelectedIndexChanged += RecipeCodeSelection_SelectedIndexChanged;", StringComparison.Ordinal), "配方号下拉必须参与开工输入选择事件。");
+    AssertTrue(wireEvents.Contains("selectRecipeCode.WheelModifyEnabled = false;", StringComparison.Ordinal), "配方号下拉也应禁用鼠标滚轮误切换。");
+    AssertTrue(destroyMethod.Contains("selectRecipeCode.SelectedIndexChanged -= RecipeCodeSelection_SelectedIndexChanged;", StringComparison.Ordinal), "销毁 MonitorView 时必须解绑配方号下拉事件。");
+    AssertTrue(onlineReadOnlyMethod.Contains("selectRecipeCode.ReadOnly = fieldReadOnly;", StringComparison.Ordinal), "在线未开工且工单已加载时配方号应允许下拉选择。");
+    AssertTrue(offlineReadOnlyMethod.Contains("selectRecipeCode.ReadOnly = readOnly;", StringComparison.Ordinal), "离线未开工时配方号应允许下拉选择。");
+    AssertTrue(onlineOptionsMethod.Contains("BindOnlineRecipeCodeOptions(programs", StringComparison.Ordinal), "在线程序列表刷新时必须同步刷新配方号下拉选项。");
+    AssertTrue(offlineOptionsMethod.Contains("BindOfflineRecipeCodeOptions(options", StringComparison.Ordinal), "离线程序列表刷新时必须同步刷新配方号下拉选项。");
+    AssertTrue(recipeHandler.Contains("ResolveOnlineProgramListItemByRecipeCode", StringComparison.Ordinal), "在线选择配方号后必须反向解析 MES 程序并触发下载预览。");
+    AssertTrue(recipeHandler.Contains("ApplyOfflineRecipeCodeSelection", StringComparison.Ordinal), "离线选择配方号后必须反向联动本地程序名称、产品工号和产品型号。");
+    AssertTrue(recipeHandler.Contains("DownloadSelectedOnlineProgramAsync(programListItem, CurrentStationNo)", StringComparison.Ordinal), "在线切换配方号应复用程序选择的下载和微调弹窗流程。");
+}
+
+static void MonitorViewUsesPlcRecipeOnlyForOfflineIdleInputs()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var displayResolver = ExtractMethodText(
+        viewCode,
+        "private string ResolveRecipeCodeForDisplay",
+        "private bool HasPendingOnlineProgramSelection");
+    var idleSnapshotMethod = ExtractMethodText(
+        viewCode,
+        "private void ApplyIdleRecipeCodeSnapshot",
+        "private void ProductRealtimePreviewService_SnapshotChanged");
+    var previewRefreshMethod = ExtractMethodText(
+        viewCode,
+        "private async Task RefreshSchemePreviewAsync(bool force)",
+        "private ProductIdentity? ResolveOnlineProductIdentity");
+
+    AssertTrue(displayResolver.Contains("IsOfflineInputEditable(GetCurrentStationState())", StringComparison.Ordinal), "未开工显示 PLC 配方前必须确认当前是离线输入态。");
+    AssertTrue(displayResolver.IndexOf("ResolveLocalProgramById(program.Id)", StringComparison.Ordinal) < displayResolver.IndexOf("_plcRecipeReconcileMonitorService.GetCurrent(CurrentStationNo)", StringComparison.Ordinal), "在线已选程序的配方号必须优先于 PLC 当前配方。");
+    AssertTrue(idleSnapshotMethod.Contains("if (!IsOfflineInputEditable(state))", StringComparison.Ordinal), "PLC 空闲配方事件不能在在线空闲态覆盖配方号下拉。");
+    AssertTrue(idleSnapshotMethod.Contains("ApplyOfflineRecipeCodeSelection(recipeCode)", StringComparison.Ordinal), "离线 PLC 配方变化仍要按配方号反查并联动本地程序信息。");
+    AssertTrue(previewRefreshMethod.Contains("if (identity is null && IsOfflineInputEditable(GetCurrentStationState()))", StringComparison.Ordinal), "方案预览只有离线输入态才允许读取 PLC 配方反查产品身份。");
 }
 
 static void MonitorViewReloadsOnlineProgramsAfterProcessChange()
@@ -2648,6 +3079,52 @@ static void MonitorViewFinishReportUsesStartOperatorWithoutPrompt()
     AssertFalse(finishMethod.Contains("PromptValidatedOperatorAsync", StringComparison.Ordinal), "在线完工不应再弹员工号输入窗或二次校验员工身份。");
     AssertTrue(finishMethod.Contains("var employeeNumber = activeTask.UserNumber?.Trim() ?? string.Empty;", StringComparison.Ordinal), "在线完工员工号必须直接取开工任务保存的员工号。");
     AssertTrue(finishMethod.Contains("await _weldTaskService.FinishAsync(employeeNumber, actualQty, qualifiedQty, failedQty, stationNo);", StringComparison.Ordinal), "在线完工必须把开工员工号传给 FinishAsync。");
+}
+
+static void MonitorViewClearsProductIdentityAfterFinishReport()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var finishMethod = ExtractMethodText(
+        viewCode,
+        "private async Task RunFinishReportAsync()",
+        "#region WinForms 生命周期事件");
+    var localFinishMethod = ExtractMethodText(
+        viewCode,
+        "private async Task FinishLocalWorkOrderAsync",
+        "private async Task RefreshRecipeCodeFromPlcBeforeFinishAsync");
+    var bindMethod = ExtractMethodText(
+        viewCode,
+        "private void BindProductionRuntimeState()",
+        "private bool IsOfflineInputEditable");
+    var schemePreviewMethod = ExtractMethodText(
+        viewCode,
+        "private void ApplySchemePreview(ProductIdentity identity, bool force)",
+        "private IEnumerable<WeldParameterRow> BuildSchemePreviewRows");
+    var identityResolver = ExtractMethodText(
+        viewCode,
+        "private ProductIdentity? ResolveDisplayProductIdentity",
+        "private void ClearFinishedProductIdentity");
+    var clearHelper = ExtractMethodText(
+        viewCode,
+        "private void ClearFinishedProductIdentity",
+        "private void ApplyOnlineStartInputReadOnly");
+
+    var onlineFinishIndex = finishMethod.IndexOf("await _weldTaskService.FinishAsync(employeeNumber, actualQty, qualifiedQty, failedQty, stationNo);", StringComparison.Ordinal);
+    var onlineClearIndex = finishMethod.IndexOf("ClearFinishedProductIdentity(stationNo);", StringComparison.Ordinal);
+    var onlineRefreshIndex = finishMethod.IndexOf("RefreshProductionRuntimeState();", StringComparison.Ordinal);
+    var localFinishIndex = localFinishMethod.IndexOf("await _weldTaskService.FinishLocalAsync(", StringComparison.Ordinal);
+    var localClearIndex = localFinishMethod.IndexOf("ClearFinishedProductIdentity(stationNo);", StringComparison.Ordinal);
+    var localRefreshIndex = localFinishMethod.IndexOf("RefreshProductionRuntimeState();", StringComparison.Ordinal);
+
+    AssertTrue(onlineClearIndex > onlineFinishIndex && onlineClearIndex < onlineRefreshIndex, "在线完工成功后、刷新运行态前必须清除产品身份缓存。");
+    AssertTrue(localClearIndex > localFinishIndex && localClearIndex < localRefreshIndex, "本地完工成功后、刷新运行态前必须清除产品身份缓存。");
+    AssertTrue(bindMethod.Contains("var currentIdentity = ResolveDisplayProductIdentity(state);", StringComparison.Ordinal), "运行态绑定必须通过统一规则决定是否可用缓存产品身份。");
+    AssertTrue(identityResolver.Contains("IsOfflineInputEditable(state)", StringComparison.Ordinal), "离线未开工时仍允许使用 PLC/配方解析出的产品身份。");
+    AssertTrue(identityResolver.Contains("state.ActiveTask is not null", StringComparison.Ordinal), "运行中任务仍允许使用产品身份缓存。");
+    AssertTrue(identityResolver.Contains("return null;", StringComparison.Ordinal), "在线空闲且无工单时必须禁用旧产品身份缓存。");
+    AssertTrue(clearHelper.Contains("_currentProductIdentity = null;", StringComparison.Ordinal), "完工清理必须清空当前产品身份缓存。");
+    AssertTrue(clearHelper.Contains("_lastSchemePreviewKey = string.Empty;", StringComparison.Ordinal), "完工清理必须清空方案预览键，避免旧产品预览复用。");
+    AssertTrue(schemePreviewMethod.Contains("if (ShouldApplyProductIdentityToInputs(identity))", StringComparison.Ordinal), "方案预览写入产品工号/型号前必须检查当前状态是否允许回填。");
 }
 
 static void WeldTaskFinishUsesMesStartIdForRetryPayloads()
