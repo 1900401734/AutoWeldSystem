@@ -312,7 +312,6 @@ public sealed class ProgramManageService : IProgramManageService
             ? BuildProgramName(request.ProductNum, request.ComponentCode, request.SequenceNumber)
             : request.ProgramName;
         entity.ProductNum = request.ProductNum;
-        entity.ProductModel = request.ProductModel;
         entity.RecipeCode = request.RecipeCode;
         entity.ComponentCode = request.ComponentCode;
         entity.SequenceNumber = Math.Max(1, request.SequenceNumber);
@@ -604,7 +603,6 @@ public sealed class ProgramManageService : IProgramManageService
     {
         request.ProgramName = request.ProgramName.Trim();
         request.ProductNum = request.ProductNum.Trim();
-        request.ProductModel = request.ProductModel.Trim();
         request.RecipeCode = request.RecipeCode.Trim();
         request.ComponentCode = request.ComponentCode.Trim();
         request.ProgramType = request.ProgramType.Trim();

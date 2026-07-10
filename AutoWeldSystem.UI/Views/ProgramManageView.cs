@@ -72,7 +72,6 @@ public partial class ProgramManageView : BaseView
         dgvPrograms.Columns.Clear();
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.RecipeCode), 14));
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.ProductNum), 18));
-        dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.ProductModel), 18));
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.Description), 18));
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.VersionNumber), 8));
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.SyncStatus), 13));
@@ -139,7 +138,6 @@ public partial class ProgramManageView : BaseView
         lblProgramName.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramName);
         lblProgramId.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramId);
         lblProductNum.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProductNum);
-        lblProductModel.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProductModel);
         lblRecipeCode.Text = _localizer.GetString(TextKeys.ProgramManage.LabelRecipeCode);
         lblComponentCode.Text = _localizer.GetString(TextKeys.ProgramManage.LabelComponentCode);
         lblSequenceNumber.Text = _localizer.GetString(TextKeys.ProgramManage.LabelSequenceNumber);
@@ -154,7 +152,6 @@ public partial class ProgramManageView : BaseView
     {
         SetColumnHeader(dgvPrograms, nameof(BizProgram.RecipeCode), TextKeys.Grid.ProgramRecipeCode);
         SetColumnHeader(dgvPrograms, nameof(BizProgram.ProductNum), TextKeys.Grid.ProgramProductNum);
-        SetColumnHeader(dgvPrograms, nameof(BizProgram.ProductModel), TextKeys.Grid.ProgramProductModel);
         SetColumnHeader(dgvPrograms, nameof(BizProgram.Description), TextKeys.Grid.ProgramLocalRemark);
         SetColumnHeader(dgvPrograms, nameof(BizProgram.VersionNumber), TextKeys.Grid.ProgramVersionNumber);
         SetColumnHeader(dgvPrograms, nameof(BizProgram.SyncStatus), TextKeys.Grid.ProgramSyncStatus);
@@ -261,7 +258,6 @@ public partial class ProgramManageView : BaseView
                 || Contains(program.ProgramName, keyword)
                 || Contains(program.RecipeCode, keyword)
                 || Contains(program.ProductNum, keyword)
-                || Contains(program.ProductModel, keyword)
                 || Contains(program.ComponentCode, keyword)
                 || Contains(program.Description, keyword)
                 || Contains(program.SyncStatus, keyword)
@@ -270,7 +266,6 @@ public partial class ProgramManageView : BaseView
             .ThenBy(GetRecipeSortNumber)
             .ThenBy(program => NormalizeSortText(program.RecipeCode), StringComparer.OrdinalIgnoreCase)
             .ThenBy(program => NormalizeSortText(program.ProductNum), StringComparer.OrdinalIgnoreCase)
-            .ThenBy(program => NormalizeSortText(program.ProductModel), StringComparer.OrdinalIgnoreCase)
             .ThenBy(program => NormalizeSortText(program.ProgramName), StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -318,7 +313,6 @@ public partial class ProgramManageView : BaseView
         txtProgramId.Clear();
         inputProgramName.Clear();
         inputProductNum.Clear();
-        inputProductModel.Clear();
         inputRecipeCode.Text = string.Empty;
         inputComponentCode.Clear();
         inputSequenceNumber.Text = "1";
@@ -342,7 +336,6 @@ public partial class ProgramManageView : BaseView
         txtProgramId.Text = program.ProgramId ?? string.Empty;
         inputProgramName.Text = program.ProgramName;
         inputProductNum.Text = program.ProductNum;
-        inputProductModel.Text = program.ProductModel ?? string.Empty;
         inputRecipeCode.Text = program.RecipeCode ?? string.Empty;
         inputComponentCode.Text = program.ComponentCode ?? string.Empty;
         inputSequenceNumber.Text = program.SequenceNumber.ToString();
@@ -551,7 +544,6 @@ public partial class ProgramManageView : BaseView
 
         request.ProgramName = inputProgramName.Text.Trim();
         request.ProductNum = inputProductNum.Text.Trim();
-        request.ProductModel = inputProductModel.Text.Trim();
         request.RecipeCode = ResolveRecipeCodeForSave(GetEditingProgram());
         request.ComponentCode = inputComponentCode.Text.Trim();
         request.SequenceNumber = sequenceNumber;

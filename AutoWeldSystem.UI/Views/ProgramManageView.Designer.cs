@@ -63,9 +63,6 @@
             tlpProductNum = new TableLayoutPanel();
             lblProductNum = new AntdUI.Label();
             inputProductNum = new AntdUI.Input();
-            tlpProductModel = new TableLayoutPanel();
-            lblProductModel = new AntdUI.Label();
-            inputProductModel = new AntdUI.Input();
             tlpRecipeCode = new TableLayoutPanel();
             lblRecipeCode = new AntdUI.Label();
             inputRecipeCode = new AntdUI.InputNumber();
@@ -92,7 +89,6 @@
             tlpProgramName.SuspendLayout();
             tlpSequenceNumber.SuspendLayout();
             tlpProductNum.SuspendLayout();
-            tlpProductModel.SuspendLayout();
             tlpRecipeCode.SuspendLayout();
             tableLayoutPanel1.SuspendLayout();
             tableLayoutPanel2.SuspendLayout();
@@ -312,37 +308,33 @@
             // 
             editorLayout.ColumnCount = 1;
             editorLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            editorLayout.Controls.Add(tlpDescription, 0, 11);
-            editorLayout.Controls.Add(tlpRemark, 0, 10);
-            editorLayout.Controls.Add(tlpProgramFile, 0, 9);
-            editorLayout.Controls.Add(tlpComponentCode, 0, 5);
-            editorLayout.Controls.Add(tlpProgramId, 0, 8);
-            editorLayout.Controls.Add(tlpProgramType, 0, 7);
+            editorLayout.Controls.Add(tlpDescription, 0, 10);
+            editorLayout.Controls.Add(tlpRemark, 0, 9);
+            editorLayout.Controls.Add(tlpProgramFile, 0, 8);
+            editorLayout.Controls.Add(tlpComponentCode, 0, 4);
+            editorLayout.Controls.Add(tlpProgramId, 0, 7);
+            editorLayout.Controls.Add(tlpProgramType, 0, 6);
             editorLayout.Controls.Add(tlpProgramName, 0, 2);
-            editorLayout.Controls.Add(tlpSequenceNumber, 0, 6);
+            editorLayout.Controls.Add(tlpSequenceNumber, 0, 5);
             editorLayout.Controls.Add(tlpProductNum, 0, 3);
-            editorLayout.Controls.Add(tlpProductModel, 0, 4);
             editorLayout.Controls.Add(tlpRecipeCode, 0, 1);
             editorLayout.Controls.Add(lblCurrentInfo, 0, 0);
             editorLayout.Dock = DockStyle.Fill;
             editorLayout.Location = new Point(0, 0);
             editorLayout.Margin = new Padding(0);
             editorLayout.Name = "editorLayout";
-            editorLayout.RowCount = 12;
-            editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 8.333335F));
-            editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 8.333334F));
-            editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 8.333334F));
-            editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 8.333334F));
-            editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 8.333334F));
-            editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 8.333334F));
-            editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 8.333334F));
-            editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 8.333334F));
-            editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 8.333334F));
-            editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 8.333334F));
-            editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 8.333334F));
-            editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 8.333335F));
-            editorLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
-            editorLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
+            editorLayout.RowCount = 11;
+            editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 9.09091F));
+            editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 9.09091F));
+            editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 9.09091F));
+            editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 9.09091F));
+            editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 9.09091F));
+            editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 9.09091F));
+            editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 9.09091F));
+            editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 9.09091F));
+            editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 9.09091F));
+            editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 9.09091F));
+            editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 9.0909F));
             editorLayout.Size = new Size(471, 472);
             editorLayout.TabIndex = 1;
             // 
@@ -731,44 +723,6 @@
             inputProductNum.Name = "inputProductNum";
             inputProductNum.Size = new Size(397, 39);
             inputProductNum.TabIndex = 1;
-            // 
-            // tlpProductModel
-            // 
-            tlpProductModel.ColumnCount = 2;
-            tlpProductModel.ColumnStyles.Add(new ColumnStyle());
-            tlpProductModel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            tlpProductModel.Controls.Add(lblProductModel, 0, 0);
-            tlpProductModel.Controls.Add(inputProductModel, 1, 0);
-            tlpProductModel.Dock = DockStyle.Fill;
-            tlpProductModel.Location = new Point(0, 156);
-            tlpProductModel.Margin = new Padding(0);
-            tlpProductModel.Name = "tlpProductModel";
-            tlpProductModel.RowCount = 1;
-            tlpProductModel.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tlpProductModel.Size = new Size(471, 39);
-            tlpProductModel.TabIndex = 2;
-            // 
-            // lblProductModel
-            // 
-            lblProductModel.AutoSizeMode = AntdUI.TAutoSize.Width;
-            lblProductModel.Dock = DockStyle.Fill;
-            lblProductModel.Location = new Point(0, 0);
-            lblProductModel.Margin = new Padding(0);
-            lblProductModel.Name = "lblProductModel";
-            lblProductModel.Padding = new Padding(4, 0, 0, 0);
-            lblProductModel.Size = new Size(74, 39);
-            lblProductModel.TabIndex = 11;
-            lblProductModel.Text = "产品型号";
-            // 
-            // inputProductModel
-            // 
-            inputProductModel.Dock = DockStyle.Fill;
-            inputProductModel.Location = new Point(74, 0);
-            inputProductModel.Margin = new Padding(0);
-            inputProductModel.Name = "inputProductModel";
-            inputProductModel.Size = new Size(397, 39);
-            inputProductModel.TabIndex = 1;
-            // 
             // tlpRecipeCode
             // 
             tlpRecipeCode.ColumnCount = 2;
@@ -888,8 +842,6 @@
             tlpSequenceNumber.PerformLayout();
             tlpProductNum.ResumeLayout(false);
             tlpProductNum.PerformLayout();
-            tlpProductModel.ResumeLayout(false);
-            tlpProductModel.PerformLayout();
             tlpRecipeCode.ResumeLayout(false);
             tlpRecipeCode.PerformLayout();
             tableLayoutPanel1.ResumeLayout(false);
@@ -915,7 +867,6 @@
         private AntdUI.Label lblProgramName;
         private AntdUI.Button btnBuildName;
         private AntdUI.Label lblProductNum;
-        private AntdUI.Label lblProductModel;
         private AntdUI.Label lblRecipeCode;
         private AntdUI.Select cmbProgramType;
         private AntdUI.Button btnBrowseFile;
@@ -934,7 +885,6 @@
         private AntdUI.Label lblProgramContent;
         private AntdUI.Input inputProductNum;
         private TableLayoutPanel tlpProgramName;
-        private AntdUI.Input inputProductModel;
         private AntdUI.InputNumber inputRecipeCode;
         private AntdUI.Input txtProgramFile;
         private AntdUI.Input inputSequenceNumber;
@@ -947,7 +897,6 @@
         private TableLayoutPanel tlpProgramType;
         private TableLayoutPanel tlpSequenceNumber;
         private TableLayoutPanel tlpRecipeCode;
-        private TableLayoutPanel tlpProductModel;
         private TableLayoutPanel tlpProductNum;
         private TableLayoutPanel tlpDescription;
         private TableLayoutPanel tlpRemark;
