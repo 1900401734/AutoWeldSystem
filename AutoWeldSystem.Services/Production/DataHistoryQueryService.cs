@@ -58,16 +58,26 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
 
     private Task<T> RunQueryAsync<T>(Func<T> query, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(query);
+
         return Task.Run(() =>
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return default!;
+            }
+
             lock (_queryLock)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return default!;
+                }
+
                 _dbContext.InitDatabase();
                 return query();
             }
-        }, cancellationToken);
+        });
     }
 
     private PagedResult<DataHistoryWorkOrderRow> QueryWorkOrders(

@@ -8,7 +8,7 @@
         {
             if (disposing)
             {
-                _detailQueryCancellation?.Cancel();
+                BeginDispose();
                 _detailQueryCancellation?.Dispose();
                 components?.Dispose();
             }

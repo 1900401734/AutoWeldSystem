@@ -25,6 +25,7 @@ public partial class DataManageView : BaseView
     private bool _suppressWorkOrderSelection;
     private bool _updatingWorkOrderPagination;
     private bool _updatingCollectionPagination;
+    private bool _disposing;
     private int _selectedTaskId;
 
     /// <summary>
@@ -249,7 +250,7 @@ public partial class DataManageView : BaseView
         dgvWorkOrders.SelectionChanged += WorkOrders_SelectionChanged;
         dgvWeldParameters.CellFormatting += WeldParameters_CellFormatting;
         dgvCollectionRecords.SelectionChanged += CollectionRecords_SelectionChanged;
-        dgvReportFiles.SelectionChanged += (_, _) => UpdateReportButtons();
+        dgvReportFiles.SelectionChanged += ReportFiles_SelectionChanged;
         dgvReportFiles.CellDoubleClick += (_, e) =>
         {
             if (e.RowIndex >= 0)
@@ -292,13 +293,39 @@ public partial class DataManageView : BaseView
 
     private async void WorkOrders_SelectionChanged(object? sender, EventArgs e)
     {
-        if (_suppressWorkOrderSelection
-            || dgvWorkOrders.CurrentRow?.DataBoundItem is not DataHistoryWorkOrderRow row)
+        if (_disposing || IsDisposed || Disposing || _suppressWorkOrderSelection)
+        {
+            return;
+        }
+
+        var row = GetSelectedWorkOrder();
+        if (row is null)
         {
             return;
         }
 
         await LoadTaskDetailsAsync(row.TaskId);
+    }
+
+    /// <summary>
+    /// Safely reads the selected work-order row from the BindingSource.
+    /// During Dispose, DataGridView can still raise SelectionChanged while its row
+    /// collection is being cleared, so event handlers must not read CurrentRow.
+    /// </summary>
+    private DataHistoryWorkOrderRow? GetSelectedWorkOrder()
+    {
+        if (_disposing || workOrderBindingSource.Count <= 0)
+        {
+            return null;
+        }
+
+        var position = workOrderBindingSource.Position;
+        if (position < 0 || position >= workOrderBindingSource.Count)
+        {
+            return null;
+        }
+
+        return workOrderBindingSource.Current as DataHistoryWorkOrderRow;
     }
 
     private async Task QueryWorkOrdersAsync(
@@ -320,7 +347,10 @@ public partial class DataManageView : BaseView
                 pageIndex,
                 pageSize,
                 cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
 
             _suppressWorkOrderSelection = true;
             try
@@ -428,7 +458,10 @@ public partial class DataManageView : BaseView
                 cancellationToken);
             var reportTask = _historyQueryService.QueryReportFilesAsync(taskId, cancellationToken);
             await Task.WhenAll(parameterTask, collectionTask, reportTask);
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
 
             BindWeldParameters(await parameterTask);
             BindCollectionRecords(await collectionTask);
@@ -464,7 +497,11 @@ public partial class DataManageView : BaseView
                 pageIndex,
                 pageSize,
                 cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
             BindCollectionRecords(result);
         }
         catch (OperationCanceledException)
@@ -544,13 +581,51 @@ public partial class DataManageView : BaseView
 
     private void CollectionRecords_SelectionChanged(object? sender, EventArgs e)
     {
+        if (_disposing || IsDisposed || Disposing)
+        {
+            return;
+        }
+
         ShowSelectedRawData();
+    }
+
+    /// <summary>
+    /// Handles report-file selection changes. WinForms also raises this event while
+    /// disposing the grid, so shutdown paths must not query CurrentRow here.
+    /// </summary>
+    private void ReportFiles_SelectionChanged(object? sender, EventArgs e)
+    {
+        if (_disposing || IsDisposed || Disposing)
+        {
+            return;
+        }
+
+        UpdateReportButtons();
     }
 
     private void ShowSelectedRawData()
     {
-        var json = (dgvCollectionRecords.CurrentRow?.DataBoundItem as DataHistoryCollectionRow)?.RawDataJson;
+        var json = GetSelectedCollectionRecord()?.RawDataJson;
         txtRawData.Text = FormatJsonOrOriginal(json);
+    }
+
+    /// <summary>
+    /// Safely reads the selected collection row from the BindingSource.
+    /// </summary>
+    private DataHistoryCollectionRow? GetSelectedCollectionRecord()
+    {
+        if (_disposing || collectionBindingSource.Count <= 0)
+        {
+            return null;
+        }
+
+        var position = collectionBindingSource.Position;
+        if (position < 0 || position >= collectionBindingSource.Count)
+        {
+            return null;
+        }
+
+        return collectionBindingSource.Current as DataHistoryCollectionRow;
     }
 
     private void RemoveDynamicParameterColumns()
@@ -608,6 +683,11 @@ public partial class DataManageView : BaseView
 
     private void UpdateReportButtons()
     {
+        if (_disposing || IsDisposed || Disposing)
+        {
+            return;
+        }
+
         var report = GetSelectedReport();
         btnOpenReport.Enabled = report is not null && File.Exists(report.FilePath);
         var directory = report is null ? null : Path.GetDirectoryName(report.FilePath);
@@ -616,7 +696,32 @@ public partial class DataManageView : BaseView
 
     private DataHistoryReportFileRow? GetSelectedReport()
     {
-        return dgvReportFiles.CurrentRow?.DataBoundItem as DataHistoryReportFileRow;
+        if (_disposing || reportBindingSource.Count <= 0)
+        {
+            return null;
+        }
+
+        var position = reportBindingSource.Position;
+        if (position < 0 || position >= reportBindingSource.Count)
+        {
+            return null;
+        }
+
+        return reportBindingSource.Current as DataHistoryReportFileRow;
+    }
+
+    /// <summary>
+    /// Marks the view as disposing before the component container clears DataGridView
+    /// bindings. This prevents shutdown selection events from reading stale rows.
+    /// </summary>
+    private void BeginDispose()
+    {
+        _disposing = true;
+        _workOrderQueryCancellation?.Cancel();
+        _detailQueryCancellation?.Cancel();
+        dgvWorkOrders.SelectionChanged -= WorkOrders_SelectionChanged;
+        dgvCollectionRecords.SelectionChanged -= CollectionRecords_SelectionChanged;
+        dgvReportFiles.SelectionChanged -= ReportFiles_SelectionChanged;
     }
 
     private void ClearTaskDetails()
