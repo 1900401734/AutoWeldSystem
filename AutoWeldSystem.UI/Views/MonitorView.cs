@@ -136,6 +136,8 @@ public partial class MonitorView : BaseView
     private string? _pendingOnlineProgramWorkOrderKey;
     private string _pendingOnlineProgramRecipeCode = string.Empty;
     private bool _offlineWorkOrderEditedByUser;
+    // 记录操作员已显式选择离线程序或配方的工位。
+    private readonly HashSet<int> _offlineRecipeSelectedByUserStations = new();
     private bool _manualWorkOrderEditedByUser;
     private string? _lastBoundOnlineWorkOrderKey;
     private bool _dualStationEnabled;
@@ -1805,6 +1807,10 @@ public partial class MonitorView : BaseView
             }
 
             var option = GetSelectedOfflineProgramNameOption();
+            if (option is not null)
+            {
+                MarkOfflineRecipeSelectionByUser(CurrentStationNo);
+            }
             ApplyOfflineProgramNameOption(option);
             if (option is not null)
             {
@@ -1850,6 +1856,7 @@ public partial class MonitorView : BaseView
 
             if (ApplyOfflineRecipeCodeSelection(GetRecipeCodeSelectionText()))
             {
+                MarkOfflineRecipeSelectionByUser(CurrentStationNo);
                 QueueRefreshSchemePreview(force: true);
             }
 
@@ -2018,6 +2025,12 @@ public partial class MonitorView : BaseView
         }
 
         if (!IsOfflineInputEditable(state))
+        {
+            return;
+        }
+
+        // 人工选择在离开离线输入态或切换工位前始终优先。
+        if (HasOfflineRecipeSelectionByUser(CurrentStationNo))
         {
             return;
         }
@@ -3352,6 +3365,8 @@ public partial class MonitorView : BaseView
         var normalizedStationNo = Math.Clamp(stationNo, 1, 2);
         if (normalizedStationNo != CurrentStationNo)
         {
+            ClearOfflineRecipeSelectionByUser(CurrentStationNo);
+            ClearOfflineRecipeSelectionByUser(normalizedStationNo);
             _viewStationNo = normalizedStationNo;
             ClearPendingOnlineProgramSelection();
             _offlineWorkOrderEditedByUser = false;
@@ -3404,6 +3419,7 @@ public partial class MonitorView : BaseView
             return;
         }
 
+        ClearOfflineRecipeSelectionByUser(CurrentStationNo);
         var canEditOnlineWorkOrder = IsManualOnlineWorkOrderInputEditable(state);
         var onlineEditable = IsOnlineStartInputEditable(state);
         ApplyOfflineInputReadOnly(readOnly: true);
@@ -6791,7 +6807,15 @@ public partial class MonitorView : BaseView
             var identity = ResolveOnlineProductIdentity(stationNo);
             if (identity is null && IsOfflineInputEditable(GetCurrentStationState()))
             {
-                identity = await ReadPlcRecipeProductIdentityAsync(stationNo);
+                if (HasOfflineRecipeSelectionByUser(stationNo))
+                {
+                    identity = ResolveOfflineSelectedRecipeProductIdentity(stationNo);
+                }
+                else
+                {
+                    identity = await ReadPlcRecipeProductIdentityAsync(stationNo);
+                    identity ??= ResolveOfflineSelectedRecipeProductIdentity(stationNo);
+                }
             }
 
             if (identity is null)
@@ -6860,6 +6884,47 @@ public partial class MonitorView : BaseView
         return null;
     }
 
+    /// <summary>
+    /// 标记操作员已显式选择当前工位的离线配方。
+    /// </summary>
+    private void MarkOfflineRecipeSelectionByUser(int stationNo)
+    {
+        _offlineRecipeSelectedByUserStations.Add(NormalizeStationNo(stationNo));
+    }
+
+    /// <summary>
+    /// 判断操作员是否已显式选择指定工位的离线配方。
+    /// </summary>
+    private bool HasOfflineRecipeSelectionByUser(int stationNo)
+    {
+        return _offlineRecipeSelectedByUserStations.Contains(NormalizeStationNo(stationNo));
+    }
+
+    /// <summary>
+    /// 在离开编辑上下文时清除操作员选择的离线配方状态。
+    /// </summary>
+    private void ClearOfflineRecipeSelectionByUser(int stationNo)
+    {
+        _offlineRecipeSelectedByUserStations.Remove(NormalizeStationNo(stationNo));
+    }
+
+    /// <summary>
+    /// 根据离线界面当前选择的配方解析产品身份。
+    /// </summary>
+    private ProductIdentity? ResolveOfflineSelectedRecipeProductIdentity(int stationNo)
+    {
+        var localProgram = ResolveLocalProgramByRecipeCode(GetRecipeCodeSelectionText(), stationNo);
+        if (localProgram is null)
+        {
+            return null;
+        }
+
+        return new ProductIdentity(
+            stationNo,
+            localProgram.ProductNum?.Trim() ?? string.Empty,
+            localProgram.ProductModel?.Trim() ?? string.Empty,
+            "SelectedOfflineRecipe");
+    }
     /// <summary>
     /// 异步读取 PLC 配方编号并反查产品身份。
     /// </summary>

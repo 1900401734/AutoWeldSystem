@@ -3135,12 +3135,35 @@ static void MonitorViewUsesPlcRecipeOnlyForOfflineIdleInputs()
         viewCode,
         "private async Task RefreshSchemePreviewAsync(bool force)",
         "private ProductIdentity? ResolveOnlineProductIdentity");
+    var programSelectionMethod = ExtractMethodText(
+        viewCode,
+        "private void ProgramNameSelection_SelectedIndexChanged",
+        "private void RecipeCodeSelection_SelectedIndexChanged");
+    var recipeSelectionMethod = ExtractMethodText(
+        viewCode,
+        "private void RecipeCodeSelection_SelectedIndexChanged",
+        "private void RealtimePreviewPaintTimer_Tick");
+    var stationSwitchMethod = ExtractMethodText(
+        viewCode,
+        "private void SwitchStationFromUi",
+        "private void SelectStationForOperation");
+    var runtimeBindingMethod = ExtractMethodText(
+        viewCode,
+        "private void BindProductionRuntimeState",
+        "private bool IsOfflineInputEditable");
 
     AssertTrue(displayResolver.Contains("IsOfflineInputEditable(GetCurrentStationState())", StringComparison.Ordinal), "未开工显示 PLC 配方前必须确认当前是离线输入态。");
     AssertTrue(displayResolver.IndexOf("ResolveLocalProgramById(program.Id)", StringComparison.Ordinal) < displayResolver.IndexOf("_plcRecipeReconcileMonitorService.GetCurrent(CurrentStationNo)", StringComparison.Ordinal), "在线已选程序的配方号必须优先于 PLC 当前配方。");
     AssertTrue(idleSnapshotMethod.Contains("if (!IsOfflineInputEditable(state))", StringComparison.Ordinal), "PLC 空闲配方事件不能在在线空闲态覆盖配方号下拉。");
     AssertTrue(idleSnapshotMethod.Contains("ApplyOfflineRecipeCodeSelection(recipeCode)", StringComparison.Ordinal), "离线 PLC 配方变化仍要按配方号反查并联动本地程序信息。");
     AssertTrue(previewRefreshMethod.Contains("if (identity is null && IsOfflineInputEditable(GetCurrentStationState()))", StringComparison.Ordinal), "方案预览只有离线输入态才允许读取 PLC 配方反查产品身份。");
+    AssertTrue(programSelectionMethod.Contains("MarkOfflineRecipeSelectionByUser", StringComparison.Ordinal), "离线选择程序名称必须标记为人工配方选择。");
+    AssertTrue(recipeSelectionMethod.Contains("MarkOfflineRecipeSelectionByUser", StringComparison.Ordinal), "离线选择配方号必须标记为人工配方选择。");
+    AssertTrue(idleSnapshotMethod.Contains("HasOfflineRecipeSelectionByUser", StringComparison.Ordinal), "PLC 配方快照必须识别当前工位的人工配方选择并避免覆盖。");
+    AssertTrue(previewRefreshMethod.Contains("ResolveOfflineSelectedRecipeProductIdentity", StringComparison.Ordinal), "离线方案预览必须优先按当前本地配方解析产品工号。");
+    AssertTrue(previewRefreshMethod.IndexOf("ResolveOfflineSelectedRecipeProductIdentity", StringComparison.Ordinal) < previewRefreshMethod.IndexOf("ReadPlcRecipeProductIdentityAsync", StringComparison.Ordinal), "本地当前配方的产品工号必须优先于 PLC 配方反查结果。");
+    AssertTrue(stationSwitchMethod.Contains("ClearOfflineRecipeSelectionByUser", StringComparison.Ordinal), "切换工位必须清除上一工位和目标工位的人工离线配方标记。");
+    AssertTrue(runtimeBindingMethod.Contains("ClearOfflineRecipeSelectionByUser(CurrentStationNo)", StringComparison.Ordinal), "离开离线可编辑态后必须清除人工离线配方标记。");
 }
 
 static void MonitorViewReloadsOnlineProgramsAfterProcessChange()
