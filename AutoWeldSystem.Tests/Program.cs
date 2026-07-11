@@ -142,6 +142,8 @@ var tests = new (string Name, Action Run)[]
     ("Program remark rules default by action", ProgramRemarkRulesDefaultByAction),
     ("Program MES write payload omits recipe code", ProgramMesWritePayloadOmitsRecipeCode),
     ("Program MES create payload clears file fields for empty content", ProgramMesCreatePayloadClearsFileFieldsForEmptyContent),
+    ("Program content rules detect configured values", ProgramContentRulesDetectConfiguredValues),
+    ("Program manage service clears automatic file for empty content", ProgramManageServiceClearsAutomaticFileForEmptyContent),
     ("Program manage view hides product model", ProgramManageViewHidesProductModel),
     ("Program manage save ignores product model input", ProgramManageSaveIgnoresProductModelInput),
     ("Monitor report button rules follow MES and task state", MonitorReportButtonRulesFollowMesAndTaskState),
@@ -2833,6 +2835,32 @@ static void ProgramMesCreatePayloadClearsFileFieldsForEmptyContent()
     AssertEqual(string.Empty, payload.FileType, "新增程序未填写设定值时，FileType 应留空。");
 }
 
+static void ProgramContentRulesDetectConfiguredValues()
+{
+    AssertFalse(ProgramContentJsonRules.HasConfiguredValues(null), "空程序内容不应视为已填写设定值。");
+    AssertFalse(ProgramContentJsonRules.HasConfiguredValues("  { \r\n }  "), "空 JSON 对象不应视为已填写设定值。");
+    AssertTrue(ProgramContentJsonRules.HasConfiguredValues("{\"高度\":\"12.5\"}"), "包含设定项的 JSON 对象应视为已填写设定值。");
+    AssertTrue(ProgramContentJsonRules.HasConfiguredValues("[\"历史内容\"]"), "非对象历史内容不应被误判为空设定值。");
+    AssertTrue(ProgramContentJsonRules.HasConfiguredValues("not-json"), "非法历史内容不应被误判为空设定值。");
+}
+
+static void ProgramManageServiceClearsAutomaticFileForEmptyContent()
+{
+    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "ProgramManageService.cs"), Encoding.UTF8);
+    var applyRequestMethod = ExtractMethodText(
+        serviceCode,
+        "    private void ApplyRequest(BizProgram entity, SaveProgramReq request)",
+        "    private AppSettings CurrentSettings");
+
+    AssertTrue(applyRequestMethod.Contains("ProgramContentJsonRules.HasConfiguredValues(entity.ProgramContent)", StringComparison.Ordinal), "程序保存必须使用统一规则判断是否存在有效设定值。");
+    AssertTrue(applyRequestMethod.Contains("var previousProgramFilePath", StringComparison.Ordinal), "程序保存覆盖名称前必须保留旧自动文件路径。");
+    AssertTrue(applyRequestMethod.Contains("ClearProgramContentFile(entity, settings, previousProgramFilePath)", StringComparison.Ordinal), "清空设定值时必须同时清理旧名称对应的自动文件。");
+    var contentCheckIndex = applyRequestMethod.IndexOf("ProgramContentJsonRules.HasConfiguredValues(entity.ProgramContent)", StringComparison.Ordinal);
+    var writeFileIndex = applyRequestMethod.IndexOf("WriteProgramContentFile(entity, settings);", StringComparison.Ordinal);
+    AssertTrue(writeFileIndex > contentCheckIndex, "写入本地程序文件必须位于有效设定值判断的条件分支内。");
+    AssertTrue(serviceCode.Contains("entity.ProgramFile = string.Empty;", StringComparison.Ordinal), "清理自动文件后必须清空程序文件内容。");
+    AssertTrue(serviceCode.Contains("entity.ProgramFileName = string.Empty;", StringComparison.Ordinal), "清理自动文件后必须清空程序文件名。");
+}
 static void ProgramManageViewHidesProductModel()
 {
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.cs"), Encoding.UTF8);

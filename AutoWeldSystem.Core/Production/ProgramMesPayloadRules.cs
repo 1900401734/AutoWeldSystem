@@ -1,4 +1,3 @@
-using System.Text.Json;
 using AutoWeldSystem.Core.DTOs.Mes.Request;
 using AutoWeldSystem.Core.Entities;
 
@@ -42,7 +41,7 @@ public static class ProgramMesPayloadRules
     public static ProgramDataWriteReq ToCreateRequest(BizProgram entity, string? remark)
     {
         var request = ToWriteRequest(entity, remark);
-        if (!HasConfiguredProgramContent(entity.ProgramContent))
+        if (!ProgramContentJsonRules.HasConfiguredValues(entity.ProgramContent))
         {
             request.ProgramContent = string.Empty;
             request.ProgramFile = string.Empty;
@@ -50,34 +49,5 @@ public static class ProgramMesPayloadRules
         }
 
         return request;
-    }
-
-    /// <summary>
-    /// 判断程序内容中是否真的存在用户填写的设定值。
-    /// 空白或空 JSON 对象表示用户未填写任何有效设定值。
-    /// </summary>
-    private static bool HasConfiguredProgramContent(string? programContent)
-    {
-        var content = programContent?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(content))
-        {
-            return false;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(content);
-            if (document.RootElement.ValueKind != JsonValueKind.Object)
-            {
-                return true;
-            }
-
-            return document.RootElement.EnumerateObject().Any();
-        }
-        catch (JsonException)
-        {
-            // 历史或外部同步内容若不是合法 JSON，不能被误判为“未填写”。
-            return true;
-        }
     }
 }

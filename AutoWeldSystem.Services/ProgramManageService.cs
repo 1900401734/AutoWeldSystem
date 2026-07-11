@@ -307,6 +307,9 @@ public sealed class ProgramManageService : IProgramManageService
     private void ApplyRequest(BizProgram entity, SaveProgramReq request)
     {
         var settings = CurrentSettings;
+        var previousProgramFilePath = entity.Id > 0
+            ? ProgramFileRules.BuildFilePath(settings.ProgramFileDirectory, entity.RecipeCode, entity.ProgramName)
+            : null;
 
         entity.ProgramName = string.IsNullOrWhiteSpace(request.ProgramName)
             ? BuildProgramName(request.ProductNum, request.ComponentCode, request.SequenceNumber)
@@ -321,11 +324,18 @@ public sealed class ProgramManageService : IProgramManageService
         }
 
         entity.ProgramType = string.IsNullOrWhiteSpace(request.ProgramType) ? "0" : request.ProgramType;
-        entity.ProgramContent = string.IsNullOrWhiteSpace(request.ProgramContentJson) ? "{}" : request.ProgramContentJson;
+        entity.ProgramContent = string.IsNullOrWhiteSpace(request.ProgramContentJson) ? "{}" : request.ProgramContentJson.Trim();
         entity.Description = request.LocalRemark;
         entity.IsDeleted = false;
 
-        WriteProgramContentFile(entity, settings);
+        if (ProgramContentJsonRules.HasConfiguredValues(entity.ProgramContent))
+        {
+            WriteProgramContentFile(entity, settings);
+        }
+        else
+        {
+            ClearProgramContentFile(entity, settings, previousProgramFilePath);
+        }
 
         if (entity.Id == 0)
         {
@@ -455,6 +465,40 @@ public sealed class ProgramManageService : IProgramManageService
         entity.ProgramFileName = Path.GetFileName(filePath);
     }
 
+    /// <summary>
+    /// 删除当前程序及其改名前自动生成的 JSON 文件，并清空实体中的文件关联信息。
+    /// </summary>
+    private static void ClearProgramContentFile(
+        BizProgram entity,
+        AppSettings settings,
+        string? previousProgramFilePath)
+    {
+        var currentProgramFilePath = ProgramFileRules.BuildFilePath(
+            settings.ProgramFileDirectory,
+            entity.RecipeCode,
+            entity.ProgramName);
+        DeleteProgramContentFile(currentProgramFilePath);
+
+        if (!string.IsNullOrWhiteSpace(previousProgramFilePath)
+            && !string.Equals(previousProgramFilePath, currentProgramFilePath, StringComparison.OrdinalIgnoreCase))
+        {
+            DeleteProgramContentFile(previousProgramFilePath);
+        }
+
+        entity.ProgramFile = string.Empty;
+        entity.ProgramFileName = string.Empty;
+    }
+
+    /// <summary>
+    /// 删除单个系统自动生成的程序内容文件；文件不存在时视为已清理。
+    /// </summary>
+    private static void DeleteProgramContentFile(string filePath)
+    {
+        if (File.Exists(filePath))
+        {
+            File.Delete(filePath);
+        }
+    }
     private void AddRevision(BizProgram entity, string? commitMessage)
     {
         var user = GlobalContext.CurrentUser;

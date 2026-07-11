@@ -16,6 +16,30 @@ public static class ProgramContentJsonRules
     };
 
     /// <summary>
+    /// 判断程序内容是否包含至少一个有效设定项。
+    /// 空白和空 JSON 对象表示用户尚未填写设定值；非对象或非法历史内容保守地视为有效。
+    /// </summary>
+    public static bool HasConfiguredValues(string? programContent)
+    {
+        var content = programContent?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(content);
+            return document.RootElement.ValueKind != JsonValueKind.Object
+                || document.RootElement.EnumerateObject().Any();
+        }
+        catch (JsonException)
+        {
+            // 不能因无法解析历史内容而删除已有程序文件。
+            return true;
+        }
+    }
+    /// <summary>
     /// 根据测试项字典和已有 JSON 构建程序内容表格行。
     /// </summary>
     public static IReadOnlyList<ProgramContentItemRow> BuildRows(
