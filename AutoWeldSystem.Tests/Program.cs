@@ -130,6 +130,7 @@ var tests = new (string Name, Action Run)[]
     ("Offline program dropdown displays program name", OfflineProgramDropdownDisplaysProgramName),
     ("Offline program dropdown includes empty-content program", OfflineProgramDropdownIncludesEmptyContentProgram),
     ("Recipe code options sort numeric ascending", RecipeCodeOptionsSortNumericAscending),
+    ("Product history preview sorts latest product first", ProductHistoryPreviewSortsLatestProductFirst),
     ("Offline start request follows inline monitor input", OfflineStartRequestFollowsInlineMonitorInput),
     ("Offline start allows empty part name and drawing number", OfflineStartAllowsEmptyPartNameAndDrawingNumber),
     ("Offline start requires work order and process number", OfflineStartRequiresWorkOrderAndProcessNumber),
@@ -161,6 +162,7 @@ var tests = new (string Name, Action Run)[]
     ("System setting view no longer edits dual work order", SystemSettingViewNoLongerEditsDualWorkOrder),
     ("Monitor view finish report uses start operator without prompt", MonitorViewFinishReportUsesStartOperatorWithoutPrompt),
     ("Monitor view clears product identity after finish report", MonitorViewClearsProductIdentityAfterFinishReport),
+    ("Monitor view product history uses latest first ordering", MonitorViewProductHistoryUsesLatestFirstOrdering),
     ("Weld task finish uses MES start id for retry payloads", WeldTaskFinishUsesMesStartIdForRetryPayloads),
     ("Weld task restore unfinished task is idempotent", WeldTaskRestoreUnfinishedTaskIsIdempotent),
     ("Permission catalog omits get work order button", PermissionCatalogOmitsGetWorkOrderButton),
@@ -2444,6 +2446,35 @@ static void RecipeCodeOptionsSortNumericAscending()
         "配方号候选列表应先按数字正序显示，非数字配方号排在数字后按文本正序显示。");
 }
 
+static void ProductHistoryPreviewSortsLatestProductFirst()
+{
+    var older = new ProductHistoryProduct
+    {
+        ProductNo = "P-001",
+        LastRecordTime = new DateTime(2026, 7, 11, 8, 0, 0),
+        Points =
+        [
+            new ProductHistoryPoint { TouchNo = "1", SequenceNo = 1, RecordTime = new DateTime(2026, 7, 11, 8, 0, 0) },
+            new ProductHistoryPoint { TouchNo = "2", SequenceNo = 2, RecordTime = new DateTime(2026, 7, 11, 8, 0, 1) }
+        ]
+    };
+    var newer = new ProductHistoryProduct
+    {
+        ProductNo = "P-002",
+        LastRecordTime = new DateTime(2026, 7, 11, 8, 5, 0),
+        Points =
+        [
+            new ProductHistoryPoint { TouchNo = "1", SequenceNo = 1, RecordTime = new DateTime(2026, 7, 11, 8, 5, 0) }
+        ]
+    };
+
+    var sorted = ProductHistoryPreviewSortRules.OrderProductsLatestFirst([older, newer]);
+
+    AssertEqual("P-002", sorted[0].ProductNo, "产品历史预览应按最近采集时间倒序显示，最新产品在首屏顶部。");
+    AssertEqual("P-001", sorted[1].ProductNo, "较早产品应排在最新产品之后。");
+    AssertEqual("1", sorted[1].Points[0].TouchNo, "产品内焊点明细应保持原有顺序，不因父级倒序被反转。");
+    AssertEqual("2", sorted[1].Points[1].TouchNo, "产品内焊点明细应保持原有顺序。");
+}
 static void OfflineStartRequestFollowsInlineMonitorInput()
 {
     var option = OfflineStartInputRules.BuildProgramNameOptions(new[]
@@ -3319,6 +3350,17 @@ static void MonitorViewClearsProductIdentityAfterFinishReport()
     AssertTrue(schemePreviewMethod.Contains("if (ShouldApplyProductIdentityToInputs(identity))", StringComparison.Ordinal), "方案预览写入产品工号/型号前必须检查当前状态是否允许回填。");
 }
 
+static void MonitorViewProductHistoryUsesLatestFirstOrdering()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var bindSnapshotMethod = ExtractMethodText(
+        viewCode,
+        "private void BindProductHistorySnapshot(ProductHistorySnapshot snapshot, BizWeldTask activeTask)",
+        "    /// <summary>\r\n    /// 绑定产品历史行。");
+
+    AssertTrue(bindSnapshotMethod.Contains("ProductHistoryPreviewSortRules.OrderProductsLatestFirst(snapshot.Products)", StringComparison.Ordinal), "MonitorView 绑定产品历史预览时必须按最近产品优先排序。");
+    AssertFalse(bindSnapshotMethod.Contains("var rows = snapshot.Products\r\n            .Select(product => ToProductHistoryRow", StringComparison.Ordinal), "MonitorView 不应再直接按服务层原始顺序绑定历史预览。");
+}
 static void WeldTaskFinishUsesMesStartIdForRetryPayloads()
 {
     var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "WeldTaskService.cs"), Encoding.UTF8);

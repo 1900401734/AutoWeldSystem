@@ -5015,7 +5015,7 @@ public partial class MonitorView : BaseView
         var displayOptions = ResolveProductHistoryDisplayOptions(activeTask, snapshot.StationNo);
         var dynamicColumns = ResolveProductHistoryDynamicColumns(activeTask, snapshot);
         ConfigureProductHistoryTableColumns(table, dynamicColumns, snapshot.StationNo, displayOptions);
-        var rows = snapshot.Products
+        var rows = ProductHistoryPreviewSortRules.OrderProductsLatestFirst(snapshot.Products)
             .Select(product => ToProductHistoryRow(product, dynamicColumns, displayOptions))
             .ToList();
 
