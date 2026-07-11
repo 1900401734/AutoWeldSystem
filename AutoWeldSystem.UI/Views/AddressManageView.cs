@@ -399,6 +399,7 @@ public partial class AddressManageView : BaseView
         tabAddressCategories.SelectedIndexChanged += (_, _) => SwitchActiveFilterText();
 
         tableAddresses.CellClick += Table_CellClick;
+        tableAddresses.CellBeginEdit += TableSelect_CellBeginEdit;
         tableAddresses.CellEndEdit += Table_CellEndEdit;
         tableAddresses.CellEndValueEdit += Table_CellEndValueEdit;
         tableAddresses.CellEditComplete += Table_CellEditComplete;
@@ -414,6 +415,7 @@ public partial class AddressManageView : BaseView
         btnPasteAlarmAddresses.Click += PasteAlarmAddresses_Click;
 
         tableProcess.CellClick += Table_CellClick;
+        tableProcess.CellBeginEdit += TableSelect_CellBeginEdit;
         tableProcess.CellEndEdit += Table_CellEndEdit;
         tableProcess.CellEndValueEdit += Table_CellEndValueEdit;
         tableProcess.CellEditComplete += Table_CellEditComplete;
@@ -440,6 +442,31 @@ public partial class AddressManageView : BaseView
         tableTestItems.CellEditComplete += Table_CellEditComplete;
     }
 
+    /// <summary>
+    /// Limits visible options when an editable table select cell opens.
+    /// </summary>
+    private static bool TableSelect_CellBeginEdit(object sender, AntdUI.TableEventArgs e)
+    {
+        if (sender is not AntdUI.Table table
+            || e.Column is not AntdUI.ColumnSelect
+            || e.RowIndex < 0)
+        {
+            return true;
+        }
+
+        var row = table.GetRow(e.RowIndex);
+        if (row is null)
+        {
+            return true;
+        }
+        if (row.cells.TryGetValue(e.Column.Key, out var cellObject)
+            && cellObject is AntdUI.ICell cell)
+        {
+            cell.DropDownMaxCount = 10;
+        }
+
+        return true;
+    }
     /// <summary>
     /// Adds Ctrl+A row selection to AntdUI tables that support multi-row delete.
     /// </summary>

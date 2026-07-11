@@ -173,6 +173,7 @@ var tests = new (string Name, Action Run)[]
     ("Program content JSON merges existing values and preserves unknown keys", ProgramContentJsonMergesExistingValuesAndPreservesUnknownKeys),
     ("Program content JSON rejects duplicate valued item names", ProgramContentJsonRejectsDuplicateValuedItemNames),
     ("Program file rules build safe json file and base64", ProgramFileRulesBuildSafeJsonFileAndBase64),
+    ("All select controls limit dropdown items", AllSelectControlsLimitDropdownItems),
     ("Work-order auto query skips duplicates and running tasks", WorkOrderAutoQuerySkipsDuplicatesAndRunningTasks),
     ("Work-order input confirmation rules distinguish drafts and PLC values", WorkOrderInputConfirmationRulesDistinguishDraftsAndPlcValues),
     ("Monitor view confirms manual work orders and prioritizes PLC snapshots", MonitorViewConfirmsManualWorkOrdersAndPrioritizesPlcSnapshots),
@@ -3518,6 +3519,44 @@ static void ProgramFileRulesBuildSafeJsonFileAndBase64()
     AssertEqual(".json", ProgramFileRules.ResolveFileType(""), "文件名为空时应默认按自动生成的 JSON 程序文件处理。");
 }
 
+static void AllSelectControlsLimitDropdownItems()
+{
+    var designerPaths = new[]
+    {
+        new[] { "AutoWeldSystem.UI", "Views", "MonitorView.Designer.cs" },
+        new[] { "AutoWeldSystem.UI", "Views", "ProgramManageView.Designer.cs" },
+        new[] { "AutoWeldSystem.UI", "Views", "SystemSettingView.Designer.cs" },
+        new[] { "AutoWeldSystem.UI", "Views", "AddressManageView.Designer.cs" },
+        new[] { "AutoWeldSystem.UI", "Forms", "MainForm.Designer.cs" },
+        new[] { "AutoWeldSystem.UI", "Forms", "LoginForm.Designer.cs" },
+        new[] { "AutoWeldSystem.UI", "Forms", "PlcWriteDebugForm.Designer.cs" }
+    };
+
+    foreach (var pathParts in designerPaths)
+    {
+        var designerCode = File.ReadAllText(GetRepoFilePath(pathParts), Encoding.UTF8);
+        var selectControlNames = designerCode
+            .Split(new[] { "\r\n", "\n" }, StringSplitOptions.None)
+            .Where(line => line.Contains("= new AntdUI.Select();", StringComparison.Ordinal))
+            .Select(line => line.Trim().Split('=')[0].Trim())
+            .ToList();
+
+        AssertTrue(selectControlNames.Count > 0, $"{string.Join(Path.DirectorySeparatorChar, pathParts)} 必须至少包含一个 AntdUI.Select 控件。");
+        foreach (var controlName in selectControlNames)
+        {
+            AssertTrue(
+                designerCode.Contains($"{controlName}.MaxCount = 10;", StringComparison.Ordinal),
+                $"下拉控件 {controlName} 必须将 MaxCount 设为 10。");
+        }
+    }
+
+    var addressViewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "AddressManageView.cs"), Encoding.UTF8);
+    var columnFactoryRegion = addressViewCode.Substring(addressViewCode.IndexOf("private AntdUI.ColumnSelect CreateProgramProductNumColumn", StringComparison.Ordinal), addressViewCode.IndexOf("private static AntdUI.ColumnSwitch CreateAddressEnabledColumn", StringComparison.Ordinal) - addressViewCode.IndexOf("private AntdUI.ColumnSelect CreateProgramProductNumColumn", StringComparison.Ordinal));
+    AssertFalse(columnFactoryRegion.Contains("DropDownMaxCount = 10", StringComparison.Ordinal), "ColumnSelect 工厂不应直接设置不存在的 DropDownMaxCount 属性。");
+    AssertTrue(addressViewCode.Contains("tableAddresses.CellBeginEdit += TableSelect_CellBeginEdit;", StringComparison.Ordinal), "地址表格下拉编辑前必须配置显示数量。 ");
+    AssertTrue(addressViewCode.Contains("tableProcess.CellBeginEdit += TableSelect_CellBeginEdit;", StringComparison.Ordinal), "工艺表格下拉编辑前必须配置显示数量。 ");
+    AssertTrue(addressViewCode.Contains("cell.DropDownMaxCount = 10;", StringComparison.Ordinal), "表格下拉单元格必须将 DropDownMaxCount 设为 10。");
+}
 static void WorkOrderAutoQuerySkipsDuplicatesAndRunningTasks()
 {
     AssertTrue(

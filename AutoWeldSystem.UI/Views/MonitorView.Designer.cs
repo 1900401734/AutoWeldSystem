@@ -1514,6 +1514,7 @@ namespace AutoWeldSystem.UI.Views
             selectRecipeCode.Dock = DockStyle.Fill;
             selectRecipeCode.Location = new Point(233, 0);
             selectRecipeCode.Margin = new Padding(0);
+            selectRecipeCode.MaxCount = 10;
             selectRecipeCode.Name = "selectRecipeCode";
             selectRecipeCode.PrefixText = "配方号：";
             selectRecipeCode.ReadOnly = true;

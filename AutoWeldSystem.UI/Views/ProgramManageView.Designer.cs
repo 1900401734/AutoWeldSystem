@@ -593,6 +593,7 @@
             cmbProgramType.Dock = DockStyle.Fill;
             cmbProgramType.Location = new Point(74, 0);
             cmbProgramType.Margin = new Padding(0);
+            cmbProgramType.MaxCount = 10;
             cmbProgramType.Name = "cmbProgramType";
             cmbProgramType.Size = new Size(397, 39);
             cmbProgramType.TabIndex = 13;

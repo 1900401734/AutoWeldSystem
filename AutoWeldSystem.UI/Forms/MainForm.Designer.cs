@@ -113,6 +113,7 @@ partial class MainForm
         // 
         select_Lang.BackColor = SystemColors.Control;
         resources.ApplyResources(select_Lang, "select_Lang");
+        select_Lang.MaxCount = 10;
         select_Lang.Name = "select_Lang";
         select_Lang.TextAlign = HorizontalAlignment.Center;
         // 

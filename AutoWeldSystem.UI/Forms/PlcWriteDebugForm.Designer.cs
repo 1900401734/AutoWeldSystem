@@ -99,6 +99,7 @@ partial class PlcWriteDebugForm
         selectDataType.Dock = DockStyle.Fill;
         selectDataType.Location = new Point(65, 105);
         selectDataType.Margin = new Padding(0);
+        selectDataType.MaxCount = 10;
         selectDataType.Name = "selectDataType";
         selectDataType.Size = new Size(559, 47);
         selectDataType.TabIndex = 0;

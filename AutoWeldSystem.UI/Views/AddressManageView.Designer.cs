@@ -877,6 +877,7 @@ namespace AutoWeldSystem.UI.Views
             //
             selectSchemeDetailScheme.Location = new Point(78, 4);
             selectSchemeDetailScheme.Margin = new Padding(0, 0, 9, 0);
+            selectSchemeDetailScheme.MaxCount = 10;
             selectSchemeDetailScheme.Name = "selectSchemeDetailScheme";
             selectSchemeDetailScheme.Size = new Size(292, 34);
             selectSchemeDetailScheme.TabIndex = 1;

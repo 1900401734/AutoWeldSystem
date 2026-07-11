@@ -746,6 +746,7 @@ namespace AutoWeldSystem.UI.Views
             select_PlcType.Dock = DockStyle.Fill;
             select_PlcType.Location = new Point(40, 0);
             select_PlcType.Margin = new Padding(0);
+            select_PlcType.MaxCount = 10;
             select_PlcType.Name = "select_PlcType";
             select_PlcType.Size = new Size(251, 46);
             select_PlcType.TabIndex = 1;
@@ -796,6 +797,7 @@ namespace AutoWeldSystem.UI.Views
             selectPlcStringNumericFormatMode.Dock = DockStyle.Fill;
             selectPlcStringNumericFormatMode.Location = new Point(71, 0);
             selectPlcStringNumericFormatMode.Margin = new Padding(0);
+            selectPlcStringNumericFormatMode.MaxCount = 10;
             selectPlcStringNumericFormatMode.Name = "selectPlcStringNumericFormatMode";
             selectPlcStringNumericFormatMode.Size = new Size(220, 45);
             selectPlcStringNumericFormatMode.TabIndex = 1;
@@ -887,6 +889,7 @@ namespace AutoWeldSystem.UI.Views
             selectUploadMode.Dock = DockStyle.Fill;
             selectUploadMode.Location = new Point(71, 0);
             selectUploadMode.Margin = new Padding(0);
+            selectUploadMode.MaxCount = 10;
             selectUploadMode.Name = "selectUploadMode";
             selectUploadMode.Size = new Size(195, 34);
             selectUploadMode.TabIndex = 4;
@@ -1181,6 +1184,7 @@ namespace AutoWeldSystem.UI.Views
             selectProcessParameterDeviceType.Dock = DockStyle.Fill;
             selectProcessParameterDeviceType.Location = new Point(166, 0);
             selectProcessParameterDeviceType.Margin = new Padding(0);
+            selectProcessParameterDeviceType.MaxCount = 10;
             selectProcessParameterDeviceType.Name = "selectProcessParameterDeviceType";
             selectProcessParameterDeviceType.Size = new Size(201, 40);
             selectProcessParameterDeviceType.TabIndex = 3;
@@ -1829,6 +1833,7 @@ namespace AutoWeldSystem.UI.Views
             selectCenterServerSystemType.Dock = DockStyle.Fill;
             selectCenterServerSystemType.Location = new Point(71, 0);
             selectCenterServerSystemType.Margin = new Padding(0);
+            selectCenterServerSystemType.MaxCount = 10;
             selectCenterServerSystemType.Name = "selectCenterServerSystemType";
             selectCenterServerSystemType.Size = new Size(461, 40);
             selectCenterServerSystemType.TabIndex = 1;
