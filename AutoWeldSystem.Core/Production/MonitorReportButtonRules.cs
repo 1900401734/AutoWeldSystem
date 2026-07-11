@@ -24,8 +24,8 @@ public static class MonitorReportButtonRules
         return new MonitorReportButtonDecision(
             OnlineReportAction: hasOnlineRunningTask ? MonitorOnlineReportAction.Finish : MonitorOnlineReportAction.Start,
             ShowOnlineReportButton: canOperate,
-            OnlineReportEnabled: canOperate && mesConnected,
-            LocalWorkOrderEnabled: canOperate && (!mesConnected || hasOfflineRunningTask));
+            OnlineReportEnabled: canOperate && (mesConnected || hasOnlineRunningTask),
+            LocalWorkOrderEnabled: canOperate && (!mesConnected || hasOfflineRunningTask) && !hasOnlineRunningTask);
     }
 }
 
