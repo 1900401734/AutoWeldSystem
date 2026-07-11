@@ -39,7 +39,7 @@ public partial class MonitorView : BaseView
     private const int RuntimeSummaryMaxLength = 56;
     private const int PlcStatusToolTipRefreshIntervalMs = 500;
     private const int PlcStatusToolTipHoverPollIntervalMs = 100;
-    private const int ManualWorkOrderQueryDebounceMs = 2000;
+
     private const int PlcStatusToolTipMaxWidth = 520;
     private const int PlcStatusHistoryLimit = 10;
     private const int WmSetRedraw = 0x000B;
@@ -70,7 +70,7 @@ public partial class MonitorView : BaseView
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 1000 };
     private readonly System.Windows.Forms.Timer _realtimePreviewPaintTimer = new() { Interval = RealtimePreviewPaintIntervalMs };
     private readonly System.Windows.Forms.Timer _plcStatusToolTipTimer = new() { Interval = PlcStatusToolTipHoverPollIntervalMs };
-    private readonly System.Windows.Forms.Timer _manualWorkOrderQueryTimer = new() { Interval = ManualWorkOrderQueryDebounceMs };
+
 
     #endregion
 
@@ -116,7 +116,10 @@ public partial class MonitorView : BaseView
     private string? _deviceAlarmRuntimeErrorText;
     private readonly Dictionary<int, DateTime> _finishRecipeReadFailureLogTimes = new();
     private readonly Dictionary<int, string> _lastAutoQueriedWorkIds = new();
-    private readonly HashSet<int> _autoQueryStations = new();
+    // Stores the value that may be used for start; typing changes are drafts until Enter.
+    private readonly Dictionary<int, string> _confirmedWorkOrderInputs = new();
+    // One request per station is current. A PLC scan replaces a pending manual query immediately.
+    private readonly Dictionary<int, CancellationTokenSource> _workOrderLoadCancellationTokens = new();
     private readonly List<OfflineProgramNameOption> _offlineProgramNameOptions = new();
 
     private bool _syncingStationSelection;
@@ -721,7 +724,7 @@ public partial class MonitorView : BaseView
         _timer.Tick += Timer_Tick;
         _realtimePreviewPaintTimer.Tick += RealtimePreviewPaintTimer_Tick;
         _plcStatusToolTipTimer.Tick += PlcStatusToolTipTimer_Tick;
-        _manualWorkOrderQueryTimer.Tick += ManualWorkOrderQueryTimer_Tick;
+
 
         LeftTopLayout.SizeChanged += TitleLayout_Changed;
         lblTitle.SizeChanged += TitleLayout_Changed;
@@ -1219,6 +1222,12 @@ public partial class MonitorView : BaseView
             return;
         }
 
+        if (!WorkOrderInputConfirmationRules.IsConfirmed(inputSN.Text, GetConfirmedWorkOrderInput(stationNo)))
+        {
+            SetRuntimeError(TextKeys.Monitor.RuntimeError.WorkOrderRequired);
+            return;
+        }
+
         if (state.SelectedProcess is null)
         {
             SetRuntimeError(TextKeys.Monitor.Message.ProcessRequired);
@@ -1456,14 +1465,19 @@ public partial class MonitorView : BaseView
         HorizontalScrollBar2.ValueChanged -= Table2HorizontalScrollBar_ValueChanged;
         tagPLC.MouseEnter -= TagPLC_MouseEnter;
         tagPLC.MouseLeave -= TagPLC_MouseLeave;
+        foreach (var tokenSource in _workOrderLoadCancellationTokens.Values)
+        {
+            tokenSource.Cancel();
+            tokenSource.Dispose();
+        }
+        _workOrderLoadCancellationTokens.Clear();
+
         _timer.Stop();
         _realtimePreviewPaintTimer.Stop();
         _plcStatusToolTipTimer.Stop();
-        _manualWorkOrderQueryTimer.Stop();
         _timer.Dispose();
         _realtimePreviewPaintTimer.Dispose();
         _plcStatusToolTipTimer.Dispose();
-        _manualWorkOrderQueryTimer.Dispose();
         DisposePlcStatusToolTipPopup();
         _titleFont?.Dispose();
         _runtimeMessageFont?.Dispose();
@@ -1573,7 +1587,9 @@ public partial class MonitorView : BaseView
             return;
         }
 
+        var stationNo = CurrentStationNo;
         var state = GetCurrentStationState();
+        ClearConfirmedWorkOrderInput(stationNo);
         if (IsOfflineInputEditable(state))
         {
             _offlineWorkOrderEditedByUser = true;
@@ -1585,29 +1601,18 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        var workId = inputSN.Text?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(workId))
-        {
-            ClearPendingOnlineProgramSelection();
-            _manualWorkOrderEditedByUser = false;
-            _manualWorkOrderQueryTimer.Stop();
-            return;
-        }
-
-        if (!string.Equals(workId, state.CurrentWorkOrder?.SN?.Trim(), StringComparison.Ordinal))
+        if (!string.Equals(inputSN.Text?.Trim(), state.CurrentWorkOrder?.SN?.Trim(), StringComparison.Ordinal))
         {
             ClearPendingOnlineProgramSelection();
         }
 
+        // Manual typing is only a draft. The MES query starts after Enter confirms this value.
         _manualWorkOrderEditedByUser = true;
-        QueueManualWorkOrderQuery();
     }
 
     /// <summary>
-    /// 按回车时立即查询手动输入的工单，适配扫描枪和熟练操作员。
+    /// Confirms a manually entered work order. Online confirmation loads MES data; offline confirmation enables local start.
     /// </summary>
-    /// <param name="sender">事件发送者。</param>
-    /// <param name="e">键盘事件参数。</param>
     private void WorkOrderInput_KeyDown(object? sender, KeyEventArgs e)
     {
         if (e.KeyCode != Keys.Enter)
@@ -1616,7 +1621,136 @@ public partial class MonitorView : BaseView
         }
 
         e.SuppressKeyPress = true;
-        TriggerManualWorkOrderQuery();
+        var stationNo = CurrentStationNo;
+        var state = GetCurrentStationState();
+        if (!IsOfflineInputEditable(state) && !IsManualOnlineWorkOrderInputEditable(state))
+        {
+            return;
+        }
+
+        if (!ConfirmManualWorkOrderInput(stationNo))
+        {
+            return;
+        }
+
+        if (IsManualOnlineWorkOrderInputEditable(state))
+        {
+            _ = StartWorkOrderLoadAsync(GetConfirmedWorkOrderInput(stationNo), stationNo, showDialogOnFailure: true);
+        }
+    }
+
+    /// <summary>
+    /// Stores the current input as the work order confirmed by manual Enter.
+    /// </summary>
+    private bool ConfirmManualWorkOrderInput(int stationNo)
+    {
+        var workId = WorkOrderInputConfirmationRules.Normalize(inputSN.Text);
+        if (string.IsNullOrWhiteSpace(workId))
+        {
+            ClearConfirmedWorkOrderInput(stationNo);
+            SetRuntimeError(TextKeys.Monitor.RuntimeError.WorkOrderRequired);
+            return false;
+        }
+
+        SetWorkOrderInputText(workId);
+        _confirmedWorkOrderInputs[NormalizeStationNo(stationNo)] = workId;
+        return true;
+    }
+
+    /// <summary>
+    /// Applies an idle-station PLC work order with higher priority than an unconfirmed manual draft.
+    /// </summary>
+    private bool ApplyPlcWorkOrderInput(PlcWorkIdSnapshot snapshot)
+    {
+        var stationNo = NormalizeStationNo(snapshot.StationNo);
+        var state = _weldTaskService.CurrentState.GetOrCreateStation(stationNo);
+        var stationIsIdle = !IsRunningWeldTask(state.ActiveTask)
+            && _weldTaskService.GetUnfinishedTask(stationNo) is null;
+        if (!WorkOrderInputConfirmationRules.ShouldApplyPlcSnapshot(stationIsIdle, snapshot.IsSuccess, snapshot.WorkId))
+        {
+            return false;
+        }
+
+        var workId = WorkOrderInputConfirmationRules.Normalize(snapshot.WorkId);
+        var hasManualDraft = _offlineWorkOrderEditedByUser || _manualWorkOrderEditedByUser;
+        var isAlreadyApplied = !hasManualDraft
+            && WorkOrderInputConfirmationRules.IsConfirmed(inputSN.Text, GetConfirmedWorkOrderInput(stationNo))
+            && string.Equals(GetConfirmedWorkOrderInput(stationNo), workId, StringComparison.OrdinalIgnoreCase);
+        if (isAlreadyApplied)
+        {
+            return false;
+        }
+
+        _confirmedWorkOrderInputs[stationNo] = workId;
+        _offlineWorkOrderEditedByUser = false;
+        _manualWorkOrderEditedByUser = false;
+        ClearPendingOnlineProgramSelection();
+        SetWorkOrderInputText(workId);
+        return true;
+    }
+
+    /// <summary>
+    /// Clears the confirmed value when the operator changes the input after confirmation.
+    /// </summary>
+    private void ClearConfirmedWorkOrderInput(int stationNo)
+    {
+        _confirmedWorkOrderInputs.Remove(NormalizeStationNo(stationNo));
+    }
+
+    /// <summary>
+    /// Gets the work order currently confirmed for the specified station.
+    /// </summary>
+    private string GetConfirmedWorkOrderInput(int stationNo)
+    {
+        return _confirmedWorkOrderInputs.TryGetValue(NormalizeStationNo(stationNo), out var workId)
+            ? workId
+            : string.Empty;
+    }
+
+    /// <summary>
+    /// Starts the latest MES work-order request for a station and cancels a superseded request.
+    /// </summary>
+    private async Task StartWorkOrderLoadAsync(string workId, int stationNo, bool showDialogOnFailure)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var normalizedWorkId = WorkOrderInputConfirmationRules.Normalize(workId);
+        if (string.IsNullOrWhiteSpace(normalizedWorkId))
+        {
+            return;
+        }
+
+        if (_workOrderLoadCancellationTokens.Remove(normalizedStationNo, out var previousTokenSource))
+        {
+            previousTokenSource.Cancel();
+            previousTokenSource.Dispose();
+        }
+
+        using var tokenSource = new CancellationTokenSource();
+        _workOrderLoadCancellationTokens[normalizedStationNo] = tokenSource;
+        try
+        {
+            await LoadWorkOrderInfoAsync(normalizedWorkId, normalizedStationNo, showDialogOnFailure, tokenSource.Token);
+        }
+        catch (OperationCanceledException) when (tokenSource.IsCancellationRequested)
+        {
+            // A newer manual confirmation or PLC scan replaced this request.
+        }
+        catch (Exception ex)
+        {
+            _exceptionLogService.Write(ex, "MonitorView.StartWorkOrderLoad");
+            if (!tokenSource.IsCancellationRequested)
+            {
+                SetRuntimeError(TextKeys.Monitor.Message.WorkOrderLoadFailed);
+            }
+        }
+        finally
+        {
+            if (_workOrderLoadCancellationTokens.TryGetValue(normalizedStationNo, out var currentTokenSource)
+                && ReferenceEquals(currentTokenSource, tokenSource))
+            {
+                _workOrderLoadCancellationTokens.Remove(normalizedStationNo);
+            }
+        }
     }
 
     /// <summary>
@@ -1654,12 +1788,6 @@ public partial class MonitorView : BaseView
     /// </summary>
     /// <param name="sender">事件发送者。</param>
     /// <param name="e">事件参数。</param>
-    private void ManualWorkOrderQueryTimer_Tick(object? sender, EventArgs e)
-    {
-        _manualWorkOrderQueryTimer.Stop();
-        TriggerManualWorkOrderQuery();
-    }
-
     /// <summary>
     /// 同步离线程序名称下拉选中项关联的产品工号、产品型号和配方号。
     /// </summary>
@@ -3007,14 +3135,21 @@ public partial class MonitorView : BaseView
     /// <param name="stationNo">工位号。</param>
     /// <param name="showDialogOnFailure">失败时是否弹窗提示；自动扫码查询使用 false。</param>
     /// <returns>加载成功返回 true；否则返回 false。</returns>
-    private async Task<bool> LoadWorkOrderInfoAsync(string workId, int stationNo, bool showDialogOnFailure)
+    private async Task<bool> LoadWorkOrderInfoAsync(
+        string workId,
+        int stationNo,
+        bool showDialogOnFailure,
+        CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var isReady = false;
         await RunUiOperationAsync(async () =>
         {
+            cancellationToken.ThrowIfCancellationRequested();
             ClearRuntimeError();
             SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.LoadingWorkOrder);
-            var workOrder = await _weldTaskService.GetWorkOrderInfoAsync(workId, stationNo);
+            var workOrder = await _weldTaskService.GetWorkOrderInfoAsync(workId, stationNo, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             if (workOrder is null)
             {
                 HandleWorkOrderLoadFailure(workId, showDialogOnFailure);
@@ -3030,20 +3165,16 @@ public partial class MonitorView : BaseView
                 return;
             }
 
-            // 获取工单阶段只绑定默认工序，程序下载推迟到开工前，减少无效 MES 调用。
             _weldTaskService.SelectProcess(defaultProcess, stationNo);
             if (stationNo == CurrentStationNo)
             {
                 ClearPendingOnlineProgramSelection();
                 ApplySelectedProcessInputs(defaultProcess);
                 _manualWorkOrderEditedByUser = false;
-                _manualWorkOrderQueryTimer.Stop();
             }
 
-            // 工单加载成功后立即拉取程序列表，按“按产品工号筛选程序”设置在客户端筛选，
-            // 并把可程序名称填充到下拉框，供操作员在控件内直接选定程序。
-            await LoadProgramListForWorkOrderAsync(stationNo);
-
+            await LoadProgramListForWorkOrderAsync(stationNo, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             RefreshProductionRuntimeState();
             ClearMesOperatorInfo();
             SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.WorkOrderLoaded);
@@ -3052,7 +3183,6 @@ public partial class MonitorView : BaseView
 
         return isReady;
     }
-
     /// <summary>
     /// 统一处理工单加载失败提示，避免自动扫码查询频繁弹窗。
     /// </summary>
@@ -3081,10 +3211,12 @@ public partial class MonitorView : BaseView
     /// </summary>
     /// <param name="stationNo">工位编号。</param>
     /// <returns>异步操作成功返回 true，否则返回 false。</returns>
-    private async Task LoadProgramListForWorkOrderAsync(int stationNo)
+    private async Task LoadProgramListForWorkOrderAsync(int stationNo, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         await RunUiOperationAsync(async () =>
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var state = GetCurrentStationState();
             var workOrder = state.CurrentWorkOrder;
             if (workOrder is null)
@@ -3093,7 +3225,8 @@ public partial class MonitorView : BaseView
             }
 
             SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.LoadingPrograms);
-            var programs = await _weldTaskService.LoadProgramsAsync(stationNo);
+            var programs = await _weldTaskService.LoadProgramsAsync(stationNo, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             if (programs.Count == 0)
             {
                 // 列表为空不弹窗，按自动查询失败模式记录业务日志并在提示区报错。
@@ -3224,8 +3357,7 @@ public partial class MonitorView : BaseView
             _offlineWorkOrderEditedByUser = false;
             _manualWorkOrderEditedByUser = false;
             _validatedOperatorNumber = null;
-            _manualWorkOrderQueryTimer.Stop();
-            _weldTaskService.RestoreUnfinishedTask(normalizedStationNo);
+                _weldTaskService.RestoreUnfinishedTask(normalizedStationNo);
         }
 
         RefreshProductionRuntimeState();
@@ -3281,8 +3413,7 @@ public partial class MonitorView : BaseView
         if (!canEditOnlineWorkOrder)
         {
             _manualWorkOrderEditedByUser = false;
-            _manualWorkOrderQueryTimer.Stop();
-        }
+            }
 
         var workOrderText = activeTask is not null
             ? activeTask.SN
@@ -3690,7 +3821,7 @@ public partial class MonitorView : BaseView
             request = OfflineStartInputRules.BuildRequest(
                 new OfflineStartInput(
                     stationNo,
-                    inputSN.Text,
+                    GetConfirmedWorkOrderInput(stationNo),
                     inputBatch.Text,
                     inputSpec.Text,
                     inputProcessNo.Text,
@@ -3884,52 +4015,25 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        if (snapshot.IsSuccess)
+        if (ApplyPlcWorkOrderInput(snapshot))
         {
+            var stationNo = NormalizeStationNo(snapshot.StationNo);
+            var workId = WorkOrderInputConfirmationRules.Normalize(snapshot.WorkId);
+            var isNewPlcWorkOrder = !_lastAutoQueriedWorkIds.TryGetValue(stationNo, out var lastWorkId)
+                || !string.Equals(lastWorkId, workId, StringComparison.OrdinalIgnoreCase);
             BindProductionRuntimeState();
             QueueRefreshSchemePreview(force: true);
+            if (isNewPlcWorkOrder && _mesConnectionMonitorService.Current.IsConnected)
+            {
+                _lastAutoQueriedWorkIds[stationNo] = workId;
+                _ = StartWorkOrderLoadAsync(workId, stationNo, showDialogOnFailure: false);
+            }
         }
 
         if (!snapshot.IsSuccess && !string.IsNullOrWhiteSpace(snapshot.Message))
         {
             SetRuntimeError(TextKeys.Monitor.RuntimeError.WorkIdReadFailed);
         }
-    }
-
-    /// <summary>
-    /// 重启手动工单查询防抖计时，避免操作员输入过程中频繁请求 MES。
-    /// </summary>
-    private void QueueManualWorkOrderQuery()
-    {
-        _manualWorkOrderQueryTimer.Stop();
-        _manualWorkOrderQueryTimer.Start();
-    }
-
-    /// <summary>
-    /// 立即按当前输入框内容触发工单自动查询。
-    /// </summary>
-    private void TriggerManualWorkOrderQuery()
-    {
-        _manualWorkOrderQueryTimer.Stop();
-
-        var state = GetCurrentStationState();
-        if (!IsManualOnlineWorkOrderInputEditable(state))
-        {
-            return;
-        }
-
-        var workId = inputSN.Text?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(workId))
-        {
-            _manualWorkOrderEditedByUser = false;
-            return;
-        }
-
-        var stationNo = CurrentStationNo;
-        QueueAutoWorkOrderQuery(new PlcWorkIdSnapshot(true, workId, DateTime.Now, string.Empty)
-        {
-            StationNo = stationNo
-        });
     }
 
     /// <summary>
@@ -3940,9 +4044,8 @@ public partial class MonitorView : BaseView
     {
         var stationNo = NormalizeStationNo(snapshot.StationNo);
         var state = _weldTaskService.CurrentState.GetOrCreateStation(stationNo);
-        var workId = snapshot.WorkId?.Trim() ?? string.Empty;
+        var workId = WorkOrderInputConfirmationRules.Normalize(snapshot.WorkId);
         _lastAutoQueriedWorkIds.TryGetValue(stationNo, out var lastWorkId);
-        var queryInProgress = _autoQueryStations.Contains(stationNo);
         var hasRunningTask = IsRunningWeldTask(state.ActiveTask) || _weldTaskService.GetUnfinishedTask(stationNo) is not null;
 
         if (!WorkOrderAutoQueryRules.ShouldAutoQuery(
@@ -3951,13 +4054,12 @@ public partial class MonitorView : BaseView
                 snapshot.IsSuccess,
                 workId,
                 lastWorkId,
-                queryInProgress))
+                queryInProgress: false))
         {
             return;
         }
 
         _lastAutoQueriedWorkIds[stationNo] = workId;
-        _autoQueryStations.Add(stationNo);
         _ = AutoLoadWorkOrderInfoAsync(stationNo, workId);
     }
 
@@ -3967,21 +4069,9 @@ public partial class MonitorView : BaseView
     /// <param name="stationNo">Station number.</param>
     /// <param name="workId">Work order read from PLC.</param>
     /// <returns>Asynchronous operation.</returns>
-    private async Task AutoLoadWorkOrderInfoAsync(int stationNo, string workId)
+    private Task AutoLoadWorkOrderInfoAsync(int stationNo, string workId)
     {
-        try
-        {
-            await LoadWorkOrderInfoAsync(workId, stationNo, showDialogOnFailure: false);
-        }
-        catch (Exception ex)
-        {
-            _exceptionLogService.Write(ex, "MonitorView.AutoLoadWorkOrderInfo");
-            SetRuntimeError(TextKeys.Monitor.Message.WorkOrderLoadFailed);
-        }
-        finally
-        {
-            _autoQueryStations.Remove(stationNo);
-        }
+        return StartWorkOrderLoadAsync(workId, stationNo, showDialogOnFailure: false);
     }
 
     private void ApplyLatestWeldPointRecord(BizWeldPointRecord record)

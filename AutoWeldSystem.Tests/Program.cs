@@ -170,6 +170,8 @@ var tests = new (string Name, Action Run)[]
     ("Program content JSON rejects duplicate valued item names", ProgramContentJsonRejectsDuplicateValuedItemNames),
     ("Program file rules build safe json file and base64", ProgramFileRulesBuildSafeJsonFileAndBase64),
     ("Work-order auto query skips duplicates and running tasks", WorkOrderAutoQuerySkipsDuplicatesAndRunningTasks),
+    ("Work-order input confirmation rules distinguish drafts and PLC values", WorkOrderInputConfirmationRulesDistinguishDraftsAndPlcValues),
+    ("Monitor view confirms manual work orders and prioritizes PLC snapshots", MonitorViewConfirmsManualWorkOrdersAndPrioritizesPlcSnapshots),
     ("Program list filter returns all when disabled", ProgramListFilterReturnsAllWhenDisabled),
     ("Program list filter narrows by product number when enabled", ProgramListFilterNarrowsByProductNumberWhenEnabled),
     ("Program list filter returns all when work order product number is blank", ProgramListFilterReturnsAllWhenWorkOrderProductNumberIsBlank),
@@ -3036,8 +3038,8 @@ static void MonitorViewAutoLoadsWorkOrderWithoutQueryButton()
     AssertFalse(viewCode.Contains("GetWorkOrder_Click", StringComparison.Ordinal), "监控页不应再保留按钮驱动的获取工单入口。");
     AssertFalse(viewCode.Contains("PrepareWorkOrderAsync", StringComparison.Ordinal), "监控页不应再保留按钮驱动的准备工单流程。");
     AssertTrue(viewCode.Contains("inputSN.KeyDown += WorkOrderInput_KeyDown;", StringComparison.Ordinal), "工单号输入框必须支持回车立即自动查询。");
-    AssertTrue(viewCode.Contains("_manualWorkOrderQueryTimer", StringComparison.Ordinal), "工单号手动输入必须使用防抖定时器。");
-    AssertTrue(viewCode.Contains("TriggerManualWorkOrderQuery();", StringComparison.Ordinal), "工单号手动输入必须进入手动查询入口。");
+    AssertFalse(viewCode.Contains("_manualWorkOrderQueryTimer", StringComparison.Ordinal), "工单号人工输入不应再使用防抖自动查询。");
+    AssertTrue(viewCode.Contains("ConfirmManualWorkOrderInput", StringComparison.Ordinal), "工单号手动输入必须在回车后进入确认入口。");
     AssertTrue(viewCode.Contains("AutoLoadWorkOrderInfoAsync(stationNo, workId)", StringComparison.Ordinal), "PLC 和手动输入应复用同一套自动加载工单流程。");
 }
 
@@ -3486,6 +3488,47 @@ static void WorkOrderAutoQuerySkipsDuplicatesAndRunningTasks()
         "同一工位已有自动查询任务时，手动输入不应发起重复请求。");
 }
 
+static void WorkOrderInputConfirmationRulesDistinguishDraftsAndPlcValues()
+{
+    AssertFalse(
+        WorkOrderInputConfirmationRules.IsConfirmed("WO-100", string.Empty),
+        "人工输入但尚未回车时不能视为已确认工单。");
+    AssertTrue(
+        WorkOrderInputConfirmationRules.IsConfirmed(" WO-100 ", "WO-100"),
+        "回车确认后的工单号应忽略首尾空白并可用于开工。");
+    AssertTrue(
+        WorkOrderInputConfirmationRules.ShouldApplyPlcSnapshot(
+            stationIsIdle: true,
+            readSucceeded: true,
+            workId: " PLC-200 "),
+        "未开工时有效 PLC 快照应立即生效。");
+    AssertFalse(
+        WorkOrderInputConfirmationRules.ShouldApplyPlcSnapshot(
+            stationIsIdle: false,
+            readSucceeded: true,
+            workId: "PLC-200"),
+        "运行任务期间 PLC 快照不得覆盖任务关联工单。");
+}
+
+static void MonitorViewConfirmsManualWorkOrdersAndPrioritizesPlcSnapshots()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "WeldTaskService.cs"), Encoding.UTF8);
+    var inputChangedMethod = ExtractMethodText(viewCode, "private void WorkOrderInput_TextChanged", "private void WorkOrderInput_KeyDown");
+    var inputKeyDownMethod = ExtractMethodText(viewCode, "private void WorkOrderInput_KeyDown", "private void OperatorInput_KeyDown");
+    var plcSnapshotMethod = ExtractMethodText(viewCode, "private void ApplyWorkIdSnapshot", "private void QueueAutoWorkOrderQuery");
+    var offlineRequestMethod = ExtractMethodText(viewCode, "private bool TryBuildOfflineStartRequest", "private void BindProcessSelection");
+    var serviceMethod = ExtractMethodText(serviceCode, "public async Task<WorkOrderRes?> GetWorkOrderInfoAsync", "public void SelectStation");
+
+    AssertTrue(inputChangedMethod.Contains("ClearConfirmedWorkOrderInput", StringComparison.Ordinal), "人工修改工单号时必须清除已确认状态。");
+    AssertFalse(inputChangedMethod.Contains("QueueManualWorkOrderQuery", StringComparison.Ordinal), "人工输入过程中不得自动查询，必须等待回车确认。");
+    AssertTrue(inputKeyDownMethod.Contains("ConfirmManualWorkOrderInput", StringComparison.Ordinal), "工单号回车必须进入人工确认入口。");
+    AssertTrue(plcSnapshotMethod.Contains("ApplyPlcWorkOrderInput", StringComparison.Ordinal), "PLC 有效快照必须有独立入口，强制覆盖人工草稿。");
+    AssertTrue(plcSnapshotMethod.Contains("StartWorkOrderLoadAsync", StringComparison.Ordinal), "在线 PLC 快照必须立即启动最新工单查询。");
+    AssertTrue(offlineRequestMethod.Contains("GetConfirmedWorkOrderInput", StringComparison.Ordinal), "离线开工必须使用已确认工单号，而非未确认输入文本。");
+    AssertTrue(viewCode.Contains("CancellationTokenSource", StringComparison.Ordinal), "工单查询必须维护取消令牌，避免旧人工查询覆盖 PLC 查询。");
+    AssertTrue(serviceMethod.Contains("cancellationToken.ThrowIfCancellationRequested();", StringComparison.Ordinal), "服务层在 MES 返回后写入运行态前必须检查请求是否已经取消。");
+}
 static BizProgram BuildSyncedProgram()
 {
     return new BizProgram

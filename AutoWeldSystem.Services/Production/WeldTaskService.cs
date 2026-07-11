@@ -245,9 +245,11 @@ public class WeldTaskService : IWeldTaskService
         int stationNo = ProductionConstants.Stations.DefaultStationNo,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var normalizedStationNo = NormalizeStationNo(stationNo);
         ResetStationRuntime(normalizedStationNo);
         var response = await _mesProvider.GetWorkOrderInfoAsync(workId, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         if (!response.IsSuccess || response.Data is null)
         {
             CurrentState.LastServerSyncMessage = response.Msg;
