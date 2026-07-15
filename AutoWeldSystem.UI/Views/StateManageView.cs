@@ -2,6 +2,7 @@ using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
 using AutoWeldSystem.Core.DTOs.Upload;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.MES;
 using AutoWeldSystem.Core.Production;
@@ -19,23 +20,27 @@ public partial class StateManageView : BaseView
 {
     private readonly IProgramManageService _programService;
     private readonly IUploadTaskService _uploadTaskService;
+    private readonly IDeviceStatusService _deviceStatusService;
     private readonly IUploadStatusSummaryService _summaryService;
     private readonly ILocalizationService _localizer;
     private readonly IMesConnectionMonitor _mesConnectionMonitor;
     private readonly IReadOnlyList<StateUploadTabDefinition> _tabDefinitions;
     private readonly BindingSource _bindingSource = new();
+    private readonly Dictionary<int, BizDeviceStatusLog> _deviceStatusLogsById = new();
     private bool _initialized;
     private bool _applyingTabPermissions;
 
     public StateManageView(
         IProgramManageService programService,
         IUploadTaskService uploadTaskService,
+        IDeviceStatusService deviceStatusService,
         IUploadStatusSummaryService summaryService,
         ILocalizationService localizer,
         IMesConnectionMonitor mesConnectionMonitor)
     {
         _programService = programService;
         _uploadTaskService = uploadTaskService;
+        _deviceStatusService = deviceStatusService;
         _summaryService = summaryService;
         _localizer = localizer;
         _mesConnectionMonitor = mesConnectionMonitor;
@@ -73,6 +78,7 @@ public partial class StateManageView : BaseView
     {
         GlobalContext.SessionChanged -= GlobalContext_SessionChanged;
         _mesConnectionMonitor.StatusChanged -= MesConnectionMonitor_StatusChanged;
+        _deviceStatusService.LogsChanged -= DeviceStatusService_LogsChanged;
         base.OnHandleDestroyed(e);
     }
 
@@ -227,6 +233,7 @@ public partial class StateManageView : BaseView
         dgvPending.KeyDown += DgvPending_KeyDown;
         GlobalContext.SessionChanged += GlobalContext_SessionChanged;
         _mesConnectionMonitor.StatusChanged += MesConnectionMonitor_StatusChanged;
+        _deviceStatusService.LogsChanged += DeviceStatusService_LogsChanged;
         dgvPending.SelectionChanged += (_, _) =>
         {
             ApplyRetrySelectedPermissionForActiveTab();
@@ -299,6 +306,27 @@ public partial class StateManageView : BaseView
                 ReloadActiveTasks();
             },
             "StateManageView.SessionChanged");
+    }
+
+    /// <summary>
+    /// Refreshes the pending device-status projection after source logs change.
+    /// </summary>
+    private void DeviceStatusService_LogsChanged(object? sender, EventArgs e)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        RunOnUiThread(
+            () =>
+            {
+                if (IsDeviceStatusTab())
+                {
+                    ReloadActiveTasks();
+                }
+            },
+            "StateManageView.DeviceStatusLogsChanged");
     }
 
     private void ApplyRetryAllPermissionForActiveTab()
@@ -419,6 +447,11 @@ public partial class StateManageView : BaseView
             ApplyRetrySelectedPermissionForActiveTab();
             ApplyDeletePermissionForActiveTab();
             return;
+        }
+
+        if (IsDeviceStatusTab())
+        {
+            RefreshDeviceStatusLogIndex();
         }
 
         var tasks = IsProcessParameterTab()
@@ -606,13 +639,46 @@ public partial class StateManageView : BaseView
             return;
         }
 
-        foreach (var task in selectedTasks)
+        var selectedLogs = selectedTasks
+            .Where(task => task.DeviceStatusLogId is not null)
+            .Select(task => _deviceStatusLogsById.TryGetValue(task.DeviceStatusLogId!.Value, out var log) ? log : null)
+            .Where(log => log is not null)
+            .Cast<BizDeviceStatusLog>()
+            .ToList();
+        var selectedLogIds = selectedLogs.Select(log => log.Id).ToHashSet();
+        int deletedCount;
+        try
+        {
+            deletedCount = _deviceStatusService.DeleteLogs(selectedLogs);
+        }
+        catch (Exception ex)
+        {
+            ShowErrorMessage(ex.Message);
+            return;
+        }
+
+        foreach (var task in selectedTasks.Where(task => task.DeviceStatusLogId is null || !selectedLogIds.Contains(task.DeviceStatusLogId.Value)))
         {
             _uploadTaskService.DeleteTask(task.Id);
         }
 
         ReloadActiveTasks();
-        ShowInfo($"已删除选中的 {selectedTasks.Count} 条设备状态上传记录。");
+        dgvPending.ClearSelection();
+        ShowInfo($"已删除选中的 {deletedCount + selectedTasks.Count(task => task.DeviceStatusLogId is null || !selectedLogIds.Contains(task.DeviceStatusLogId.Value))} 条设备状态上传记录。");
+    }
+
+    /// <summary>
+    /// Caches the same pending/failed log objects used to reconcile device-status tasks.
+    /// </summary>
+    private void RefreshDeviceStatusLogIndex()
+    {
+        _deviceStatusLogsById.Clear();
+        foreach (var log in _deviceStatusService
+            .GetLogs(from: null, to: null, maxCount: 5000)
+            .Where(log => log.Id > 0 && DeviceStatusUploadVisibilityRules.ShouldInclude(log.ReportStatus)))
+        {
+            _deviceStatusLogsById[log.Id] = log;
+        }
     }
 
     /// <summary>

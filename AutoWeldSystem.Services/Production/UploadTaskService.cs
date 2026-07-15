@@ -52,10 +52,14 @@ public class UploadTaskService : IUploadTaskService
 
     public IReadOnlyList<UploadTaskSummary> GetTasks(string taskType, bool includeCompleted = false)
     {
+        var normalizedTaskType = NormalizeTaskType(taskType);
+        var deviceStatusLogIds = normalizedTaskType == ProductionConstants.UploadTaskTypes.DeviceStatus
+            ? SyncDeviceStatusTasksFromLogs()
+            : null;
+
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
-            var normalizedTaskType = NormalizeTaskType(taskType);
             var query = _dbContext.Db.Queryable<BizUploadTask>()
                 .Where(task => task.TaskType == normalizedTaskType && !task.IsDeleted);
 
@@ -64,11 +68,21 @@ public class UploadTaskService : IUploadTaskService
                 query = query.Where(task => task.Status != ProductionConstants.UploadStatuses.Uploaded);
             }
 
-            return query.ToList()
+            var rows = query.ToList()
                 .OrderByDescending(task => IsActionRequired(task.Status))
                 .ThenByDescending(task => task.UpdatedTime)
                 .Select(ToSummary)
                 .ToList();
+
+            if (deviceStatusLogIds is not null)
+            {
+                rows = rows
+                    .Where(row => row.DeviceStatusLogId is not null
+                        && deviceStatusLogIds.Contains(row.DeviceStatusLogId.Value))
+                    .ToList();
+            }
+
+            return rows;
         }
     }
 
@@ -142,6 +156,27 @@ public class UploadTaskService : IUploadTaskService
         }
 
         return query.ToList();
+    }
+
+    /// <summary>
+    /// Reconciles pending and failed device-status logs into the upload-task index.
+    /// </summary>
+    private HashSet<int> SyncDeviceStatusTasksFromLogs()
+    {
+        var logs = _deviceStatusService
+            .GetLogs(from: null, to: null, maxCount: 5000)
+            .Where(log => DeviceStatusUploadVisibilityRules.ShouldInclude(log.ReportStatus))
+            .ToList();
+
+        foreach (var log in logs)
+        {
+            _deviceStatusService.EnsurePendingUploadTask(log);
+        }
+
+        return logs
+            .Where(log => log.Id > 0)
+            .Select(log => log.Id)
+            .ToHashSet();
     }
 
     public BizUploadTask EnqueueOrUpdate(BizUploadTask task)
@@ -1265,6 +1300,8 @@ public class UploadTaskService : IUploadTaskService
         {
             DeviceStatusLocalLogStore.TryAppend(updatedLog, _settingsService.Get());
         }
+
+        _deviceStatusService.NotifyLogsChanged();
     }
 
     private bool TryPreserveLocalOccurredTime(BizDeviceStatusLog log)
@@ -1572,6 +1609,9 @@ public class UploadTaskService : IUploadTaskService
             TaskType = task.TaskType,
             Target = task.Target,
             BusinessId = task.BusinessId ?? string.Empty,
+            DeviceStatusLogId = string.Equals(task.TaskType, ProductionConstants.UploadTaskTypes.DeviceStatus, StringComparison.OrdinalIgnoreCase)
+                ? ReadDeviceStatusLogId(task.PayloadJson)
+                : null,
             TaskIdentity = ResolveTaskSummaryIdentity(task),
             StationNo = payload.StationNo,
             ProductNo = productText,
@@ -1681,6 +1721,25 @@ public class UploadTaskService : IUploadTaskService
         catch (JsonException)
         {
             return string.Empty;
+        }
+    }
+
+    private static int? ReadDeviceStatusLogId(string? payloadJson)
+    {
+        if (string.IsNullOrWhiteSpace(payloadJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            var logId = ReadInt(document.RootElement, "LogId");
+            return logId > 0 ? logId : null;
+        }
+        catch (JsonException)
+        {
+            return null;
         }
     }
 

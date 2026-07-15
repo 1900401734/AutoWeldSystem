@@ -38,6 +38,13 @@ public class DeviceStatusService : IDeviceStatusService
 
     public event EventHandler<BizDeviceStatusLog>? StatusChanged;
 
+    public event EventHandler? LogsChanged;
+
+    public void NotifyLogsChanged()
+    {
+        LogsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     public BizDeviceStatusLog GetCurrentStatus()
     {
         lock (_dbLock)
@@ -85,6 +92,109 @@ public class DeviceStatusService : IDeviceStatusService
     public string GetLogDirectory()
     {
         return DeviceStatusLocalLogStore.GetLogDirectory(CurrentSettings);
+    }
+
+    /// <summary>
+    /// Creates or synchronizes the upload task represented by one pending device-status log.
+    /// The log status is authoritative so a stale task row cannot hide a failed log.
+    /// </summary>
+    public BizUploadTask EnsurePendingUploadTask(BizDeviceStatusLog log)
+    {
+        if (log.Id <= 0)
+        {
+            throw new ArgumentException("设备状态日志必须先保存后才能创建上传任务。", nameof(log));
+        }
+
+        if (!DeviceStatusUploadVisibilityRules.ShouldInclude(log.ReportStatus))
+        {
+            throw new ArgumentException("只有未上传或上传失败的设备状态日志才能创建上传任务。", nameof(log));
+        }
+
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var task = BuildDeviceStatusUploadTask(log);
+            NormalizeUploadTask(task);
+            var existing = FindExistingUploadTask(task);
+            if (existing is null)
+            {
+                task.CreatedTime = DateTime.Now;
+                task.UpdatedTime = DateTime.Now;
+                return _dbContext.Db.Insertable(task).ExecuteReturnEntity();
+            }
+
+            existing.IsDeleted = false;
+            existing.DeletedTime = null;
+            existing.PayloadJson = task.PayloadJson;
+            existing.Status = task.Status;
+            existing.NextRetryTime = task.NextRetryTime;
+            existing.Message = task.Message;
+            existing.UpdatedTime = DateTime.Now;
+            _dbContext.Db.Updateable(existing).ExecuteCommand();
+            return _dbContext.Db.Queryable<BizUploadTask>().InSingle(existing.Id) ?? existing;
+        }
+    }
+
+    /// <summary>
+    /// Deletes selected device-status logs, all local JSONL versions, and related upload tasks.
+    /// </summary>
+    public int DeleteLogs(IReadOnlyCollection<BizDeviceStatusLog> logs)
+    {
+        var selectedLogs = logs
+            .Where(log => log.Id > 0)
+            .GroupBy(log => log.Id)
+            .Select(group => group.First())
+            .ToList();
+        if (selectedLogs.Count == 0)
+        {
+            return 0;
+        }
+
+        var deletedCount = selectedLogs.Count;
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var logIds = selectedLogs.Select(log => log.Id).ToArray();
+            var businessIds = logIds.Select(logId => $"device-status:{logId}").ToArray();
+            var now = DateTime.Now;
+            var transaction = _dbContext.Db.Ado.UseTran(() =>
+            {
+                var uploadTasks = _dbContext.Db.Queryable<BizUploadTask>()
+                    .Where(task => task.TaskType == ProductionConstants.UploadTaskTypes.DeviceStatus
+                        && businessIds.Contains(task.BusinessId!))
+                    .ToList();
+                foreach (var uploadTask in uploadTasks)
+                {
+                    uploadTask.IsDeleted = true;
+                    uploadTask.DeletedTime = now;
+                    uploadTask.UpdatedTime = now;
+                    uploadTask.Message = "Deleted with device status log.";
+                }
+
+                if (uploadTasks.Count > 0)
+                {
+                    _dbContext.Db.Updateable(uploadTasks).ExecuteCommand();
+                }
+
+                _dbContext.Db.Deleteable<BizDeviceStatusLog>()
+                    .Where(log => logIds.Contains(log.Id))
+                    .ExecuteCommand();
+
+                if (!DeviceStatusLocalLogStore.TryRemove(selectedLogs, CurrentSettings))
+                {
+                    throw new InvalidOperationException("无法删除设备状态本地日志。");
+                }
+            });
+
+            if (!transaction.IsSuccess)
+            {
+                throw transaction.ErrorException ?? new InvalidOperationException("删除设备状态日志失败。");
+            }
+
+        }
+
+        NotifyLogsChanged();
+        return deletedCount;
     }
 
     public async Task<BizDeviceStatusLog> ChangeStatusAsync(
@@ -140,7 +250,7 @@ public class DeviceStatusService : IDeviceStatusService
         {
             log = MarkSkipped(log, "Device status report is disabled in system settings.");
             WriteLocalStatusLog(log);
-            StatusChanged?.Invoke(this, log);
+            PublishStatusChanged(log);
             return log;
         }
 
@@ -148,7 +258,7 @@ public class DeviceStatusService : IDeviceStatusService
         {
             // 关机路径不能等待网络请求；先保留本地证据，再后台做一次 MES 尝试。
             WriteLocalStatusLog(log);
-            StatusChanged?.Invoke(this, log);
+            PublishStatusChanged(log);
             _ = Task.Run(() => ReportStatusInBackgroundAsync(log));
             return log;
         }
@@ -163,7 +273,7 @@ public class DeviceStatusService : IDeviceStatusService
         }
 
         WriteLocalStatusLog(log);
-        StatusChanged?.Invoke(this, log);
+        PublishStatusChanged(log);
         return log;
     }
 
@@ -217,7 +327,7 @@ public class DeviceStatusService : IDeviceStatusService
         {
             var updatedLog = await ReportStatusAsync(log, CancellationToken.None);
             WriteLocalStatusLog(updatedLog);
-            StatusChanged?.Invoke(this, updatedLog);
+            PublishStatusChanged(updatedLog);
         }
         catch (Exception ex)
         {
@@ -226,7 +336,7 @@ public class DeviceStatusService : IDeviceStatusService
             log.ReportMessage = ex.Message;
             TryEnqueueDeviceStatusUpload(log);
             WriteLocalStatusLog(log);
-            StatusChanged?.Invoke(this, log);
+            PublishStatusChanged(log);
         }
     }
 
@@ -244,7 +354,15 @@ public class DeviceStatusService : IDeviceStatusService
 
     private void EnqueueDeviceStatusUpload(BizDeviceStatusLog log)
     {
-        var task = new BizUploadTask
+        _ = EnsurePendingUploadTask(log);
+    }
+
+    private static BizUploadTask BuildDeviceStatusUploadTask(BizDeviceStatusLog log)
+    {
+        var status = string.Equals(log.ReportStatus, ProductionConstants.UploadStatuses.Failed, StringComparison.OrdinalIgnoreCase)
+            ? ProductionConstants.UploadStatuses.Failed
+            : ProductionConstants.UploadStatuses.Pending;
+        return new BizUploadTask
         {
             TaskType = ProductionConstants.UploadTaskTypes.DeviceStatus,
             Target = ProductionConstants.UploadTargets.Mes,
@@ -260,32 +378,12 @@ public class DeviceStatusService : IDeviceStatusService
                 Ts = log.OccurredTime.ToString("yyyy-MM-dd HH:mm:ss"),
                 Remark = log.Remark ?? string.Empty
             }),
-            Status = ProductionConstants.UploadStatuses.Pending,
+            Status = status,
             NextRetryTime = DateTime.Now,
-            Message = "Device status is queued for MES retry."
+            Message = string.IsNullOrWhiteSpace(log.ReportMessage)
+                ? "Device status is queued for MES retry."
+                : log.ReportMessage
         };
-
-        NormalizeUploadTask(task);
-        var existing = FindExistingUploadTask(task);
-        if (existing is null)
-        {
-            task.CreatedTime = DateTime.Now;
-            task.UpdatedTime = DateTime.Now;
-            _dbContext.Db.Insertable(task).ExecuteCommand();
-            return;
-        }
-
-        if (existing.IsDeleted || existing.Status == ProductionConstants.UploadStatuses.Uploaded)
-        {
-            return;
-        }
-
-        existing.PayloadJson = task.PayloadJson;
-        existing.Status = task.Status;
-        existing.NextRetryTime = task.NextRetryTime;
-        existing.Message = task.Message;
-        existing.UpdatedTime = DateTime.Now;
-        _dbContext.Db.Updateable(existing).ExecuteCommand();
     }
 
     private BizDeviceStatusLog CreateLog(
@@ -334,6 +432,15 @@ public class DeviceStatusService : IDeviceStatusService
     {
         // 本地文件只是现场排查证据，写入失败不能影响状态切换、MES 上报或界面实时刷新。
         _ = DeviceStatusLocalLogStore.TryAppend(log, CurrentSettings);
+    }
+
+    /// <summary>
+    /// Publishes both the live status update and the source-log refresh notification.
+    /// </summary>
+    private void PublishStatusChanged(BizDeviceStatusLog log)
+    {
+        StatusChanged?.Invoke(this, log);
+        NotifyLogsChanged();
     }
 
     private static string NormalizeStatus(string deviceStatus)

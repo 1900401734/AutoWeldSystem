@@ -73,8 +73,11 @@ var tests = new (string Name, Action Run)[]
     ("Antd table selection helper maps selected indexes", AntdTableSelectionHelperMapsSelectedIndexes),
     ("Device status local log store resolves directories", DeviceStatusLocalLogStoreResolvesDirectories),
     ("Device status local log store writes and reads jsonl", DeviceStatusLocalLogStoreWritesAndReadsJsonl),
+    ("Device status local log store removes selected log ids", DeviceStatusLocalLogStoreRemovesSelectedLogIds),
     ("Device status report keeps millisecond timestamp after MES upload", DeviceStatusReportKeepsMillisecondTimestampAfterMesUpload),
     ("Device status local log store keeps latest state per log id", DeviceStatusLocalLogStoreKeepsLatestStatePerLogId),
+    ("Device status pending source and task reconciliation are wired", DeviceStatusPendingSourceAndTaskReconciliationAreWired),
+    ("Device status log deletion refresh is wired across views", DeviceStatusLogDeletionRefreshIsWiredAcrossViews),
     ("LogManageView device status tab exposes open folder button", LogManageViewDeviceStatusTabExposesOpenFolderButton),
     ("DataManageView static grids define bound columns", DataManageViewStaticGridsDefineBoundColumns),
     ("DataManageView ignores report selection while disposing", DataManageViewIgnoresReportSelectionWhileDisposing),
@@ -1118,6 +1121,116 @@ static void DeviceStatusReportKeepsMillisecondTimestampAfterMesUpload()
     AssertFalse(
         skippedMethod.Contains("InSingle(log.Id)", StringComparison.Ordinal),
         "禁用 MES 上报时也不能用数据库回读对象覆盖本地毫秒时间。");
+}
+
+static void DeviceStatusLocalLogStoreRemovesSelectedLogIds()
+{
+    var root = Path.Combine(Path.GetTempPath(), "AutoWeldSystemDeviceStatusDeleteTests", Guid.NewGuid().ToString("N"));
+    var settings = new AppSettings { LogDirectory = root };
+    var firstDay = new DateTime(2026, 7, 8, 9, 30, 0);
+    var secondDay = firstDay.AddDays(1);
+    var selected = new BizDeviceStatusLog
+    {
+        Id = 101,
+        DeviceId = "D-DELETE",
+        DeviceStatus = ProductionConstants.MesDeviceStatuses.Stopped,
+        OccurredTime = firstDay,
+        ReportStatus = ProductionConstants.UploadStatuses.Pending
+    };
+    var selectedUploaded = new BizDeviceStatusLog
+    {
+        Id = selected.Id,
+        DeviceId = selected.DeviceId,
+        DeviceStatus = selected.DeviceStatus,
+        OccurredTime = firstDay,
+        ReportStatus = ProductionConstants.UploadStatuses.Failed
+    };
+    var retained = new BizDeviceStatusLog
+    {
+        Id = 102,
+        DeviceId = "D-RETAIN",
+        DeviceStatus = ProductionConstants.MesDeviceStatuses.PoweredOn,
+        OccurredTime = firstDay.AddMinutes(1),
+        ReportStatus = ProductionConstants.UploadStatuses.Pending
+    };
+    var otherDay = new BizDeviceStatusLog
+    {
+        Id = 103,
+        DeviceId = "D-OTHER",
+        DeviceStatus = ProductionConstants.MesDeviceStatuses.PoweredOn,
+        OccurredTime = secondDay,
+        ReportStatus = ProductionConstants.UploadStatuses.Pending
+    };
+
+    try
+    {
+        AssertTrue(DeviceStatusLocalLogStore.TryAppend(selected, settings), "待删除日志必须能写入本地 JSONL。");
+        AssertTrue(DeviceStatusLocalLogStore.TryAppend(selectedUploaded, settings), "同一日志 ID 的追加版本必须能写入本地 JSONL。");
+        AssertTrue(DeviceStatusLocalLogStore.TryAppend(retained, settings), "未选日志必须能写入本地 JSONL。");
+        AssertTrue(DeviceStatusLocalLogStore.TryAppend(otherDay, settings), "其他日期日志必须能写入本地 JSONL。");
+
+        var removeMethod = typeof(DeviceStatusLocalLogStore).GetMethod("TryRemove");
+        AssertTrue(removeMethod is not null, "设备状态本地日志必须提供按日志删除的方法。");
+
+        var removed = removeMethod!.Invoke(null, new object?[] { new[] { selected }, settings });
+        AssertEqual(true, removed, "删除本地设备状态日志必须成功。");
+
+        var firstDayLogs = DeviceStatusLocalLogStore.Read(settings, firstDay.Date, firstDay.Date.AddDays(1).AddTicks(-1), 10);
+        AssertSequenceEqual(new[] { retained.Id }, firstDayLogs.Select(entry => entry.Id).ToArray(), "删除后同一日志 ID 的所有追加版本都不能继续显示。");
+
+        var secondDayLogs = DeviceStatusLocalLogStore.Read(settings, secondDay.Date, secondDay.Date.AddDays(1).AddTicks(-1), 10);
+        AssertSequenceEqual(new[] { otherDay.Id }, secondDayLogs.Select(entry => entry.Id).ToArray(), "删除当天日志不能影响其他日期文件。");
+
+        var allLogs = DeviceStatusLocalLogStore.Read(settings, from: null, to: null, maxCount: 10);
+        AssertSequenceEqual(new[] { otherDay.Id, retained.Id }, allLogs.Select(entry => entry.Id).ToArray(), "无日期范围读取时必须覆盖全部设备状态日志文件。");
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}
+
+static void DeviceStatusPendingSourceAndTaskReconciliationAreWired()
+{
+    var interfaceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Interfaces", "IDeviceStatusService.cs"), Encoding.UTF8);
+    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "DeviceStatusService.cs"), Encoding.UTF8);
+    var uploadTaskCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "UploadTaskService.cs"), Encoding.UTF8);
+    var summaryCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "DTOs", "Upload", "UploadTaskSummary.cs"), Encoding.UTF8);
+
+    AssertTrue(DeviceStatusUploadVisibilityRules.ShouldInclude(ProductionConstants.UploadStatuses.Pending), "未上传设备状态日志必须进入待上传页签。");
+    AssertTrue(DeviceStatusUploadVisibilityRules.ShouldInclude(ProductionConstants.UploadStatuses.Failed), "上传失败设备状态日志必须进入待上传页签。");
+    AssertFalse(DeviceStatusUploadVisibilityRules.ShouldInclude(ProductionConstants.UploadStatuses.Uploaded), "已上传设备状态日志不能进入待上传页签。");
+    AssertFalse(DeviceStatusUploadVisibilityRules.ShouldInclude(ProductionConstants.UploadStatuses.Skipped), "已跳过设备状态日志不能进入待上传页签。");
+    AssertTrue(interfaceCode.Contains("EnsurePendingUploadTask", StringComparison.Ordinal), "设备状态服务必须暴露按日志幂等补建上传任务的方法。");
+    AssertTrue(serviceCode.Contains("DeviceStatusUploadVisibilityRules.ShouldInclude", StringComparison.Ordinal), "设备状态服务必须按日志上报状态筛选待上传记录。");
+    AssertTrue(serviceCode.Contains("var existing = FindExistingUploadTask(task);", StringComparison.Ordinal), "设备状态任务补建必须先按日志业务 ID 查找现有任务。");
+    AssertTrue(serviceCode.Contains("existing.IsDeleted = false;", StringComparison.Ordinal), "日志来源有效时应恢复旧的软删除任务。");
+    AssertTrue(uploadTaskCode.Contains("GetLogs(from: null, to: null, maxCount: 5000)", StringComparison.Ordinal), "设备状态上传任务查询必须以设备状态日志为来源。");
+    AssertTrue(uploadTaskCode.Contains("EnsurePendingUploadTask", StringComparison.Ordinal), "设备状态上传任务查询必须补建缺失的关联任务。");
+    AssertTrue(summaryCode.Contains("DeviceStatusLogId", StringComparison.Ordinal), "上传任务摘要必须携带设备状态日志 ID。");
+}
+
+static void DeviceStatusLogDeletionRefreshIsWiredAcrossViews()
+{
+    var interfaceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Interfaces", "IDeviceStatusService.cs"), Encoding.UTF8);
+    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "DeviceStatusService.cs"), Encoding.UTF8);
+    var logViewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "LogManageView.cs"), Encoding.UTF8);
+    var stateViewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "StateManageView.cs"), Encoding.UTF8);
+    var uploadTaskCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "UploadTaskService.cs"), Encoding.UTF8);
+
+    AssertTrue(interfaceCode.Contains("event EventHandler? LogsChanged", StringComparison.Ordinal), "设备状态服务必须提供日志删除/变更事件。");
+    AssertTrue(serviceCode.Contains("LogsChanged?.Invoke", StringComparison.Ordinal), "设备状态日志删除后必须发布日志变更事件。");
+    AssertTrue(serviceCode.Contains("UseTran", StringComparison.Ordinal), "设备状态日志、数据库记录和上传任务删除必须使用事务。");
+    AssertTrue(serviceCode.Contains("DeviceStatusLocalLogStore.TryRemove", StringComparison.Ordinal), "设备状态日志删除必须同步清理 JSONL 副本。");
+    AssertTrue(logViewCode.Contains("_deviceStatusService.LogsChanged +=", StringComparison.Ordinal), "日志管理页必须监听设备状态日志变更事件。");
+    AssertTrue(logViewCode.Contains("LoadDeviceStatusLogs();", StringComparison.Ordinal), "日志管理页收到日志变更后必须重新加载当前日期。");
+    AssertTrue(stateViewCode.Contains("IDeviceStatusService deviceStatusService", StringComparison.Ordinal), "待上传页必须注入设备状态日志服务。");
+    AssertTrue(stateViewCode.Contains("RefreshDeviceStatusLogIndex", StringComparison.Ordinal), "待上传页必须缓存日志来源以支持批量删除。");
+    AssertTrue(stateViewCode.Contains("_deviceStatusService.DeleteLogs", StringComparison.Ordinal), "待上传设备状态删除必须通过设备状态日志服务执行。");
+    AssertTrue(uploadTaskCode.Contains("_deviceStatusService.NotifyLogsChanged();", StringComparison.Ordinal), "上传任务完成后必须通知日志管理页刷新设备状态日志。");
 }
 
 static void DeviceStatusLocalLogStoreKeepsLatestStatePerLogId()
@@ -4456,6 +4569,10 @@ sealed class FakeDeviceStatusService : IDeviceStatusService
 {
     public event EventHandler<BizDeviceStatusLog>? StatusChanged;
 
+    public event EventHandler? LogsChanged;
+
+    public void NotifyLogsChanged() => LogsChanged?.Invoke(this, EventArgs.Empty);
+
     public List<BizDeviceStatusLog> Logs { get; } = new();
 
     public BizDeviceStatusLog CurrentStatus { get; set; } = new();
@@ -4474,7 +4591,27 @@ sealed class FakeDeviceStatusService : IDeviceStatusService
 
     public IReadOnlyList<BizDeviceStatusLog> GetLogs(DateTime? from = null, DateTime? to = null, int maxCount = 200) => Array.Empty<BizDeviceStatusLog>();
 
+    public BizUploadTask EnsurePendingUploadTask(BizDeviceStatusLog log)
+    {
+        return new BizUploadTask
+        {
+            Id = log.Id,
+            TaskType = ProductionConstants.UploadTaskTypes.DeviceStatus,
+            BusinessId = $"device-status:{log.Id}",
+            Status = log.ReportStatus
+        };
+    }
+
     public string GetLogDirectory() => string.Empty;
+
+    public int DeleteLogs(IReadOnlyCollection<BizDeviceStatusLog> logs)
+    {
+        var logIds = logs.Select(log => log.Id).ToHashSet();
+        var deletedCount = Logs.Count(log => logIds.Contains(log.Id));
+        Logs.RemoveAll(log => logIds.Contains(log.Id));
+        LogsChanged?.Invoke(this, EventArgs.Empty);
+        return deletedCount;
+    }
 
     public Task<BizDeviceStatusLog> ChangeStatusAsync(
         string deviceStatus,

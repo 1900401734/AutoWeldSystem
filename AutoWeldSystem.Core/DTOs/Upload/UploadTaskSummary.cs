@@ -14,6 +14,11 @@ public sealed class UploadTaskSummary
 
     public string BusinessId { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Related device-status log ID when this row represents a device-status upload.
+    /// </summary>
+    public int? DeviceStatusLogId { get; set; }
+
     public string TaskIdentity { get; set; } = string.Empty;
 
     /// <summary>

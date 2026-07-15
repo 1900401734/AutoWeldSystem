@@ -49,7 +49,12 @@ internal static class LocalJsonLogFormatter
     /// </summary>
     public static IEnumerable<string> ReadLatestRecords(string filePath, int take)
     {
-        var records = new Queue<string>(take);
+        if (take <= 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        var records = new Queue<string>(Math.Min(Math.Max(take, 1), 1024));
         var builder = new StringBuilder();
 
         foreach (var line in File.ReadLines(filePath, Encoding.UTF8))
@@ -78,6 +83,14 @@ internal static class LocalJsonLogFormatter
 
         EnqueueRecord(records, builder, take);
         return records;
+    }
+
+    /// <summary>
+    /// Reads every JSON record block from a local log file.
+    /// </summary>
+    public static IEnumerable<string> ReadAllRecords(string filePath)
+    {
+        return ReadLatestRecords(filePath, int.MaxValue);
     }
 
     private static string ConvertIndent(string json)

@@ -15,6 +15,16 @@ public interface IDeviceStatusService
     event EventHandler<BizDeviceStatusLog>? StatusChanged;
 
     /// <summary>
+    /// Raised after device-status log records are deleted or otherwise invalidated.
+    /// </summary>
+    event EventHandler? LogsChanged;
+
+    /// <summary>
+    /// Notifies consumers that persisted device-status log content was refreshed.
+    /// </summary>
+    void NotifyLogsChanged();
+
+    /// <summary>
     /// 获取当前设备状态。没有历史记录时返回一个未保存的默认状态。
     /// </summary>
     BizDeviceStatusLog GetCurrentStatus();
@@ -25,9 +35,19 @@ public interface IDeviceStatusService
     IReadOnlyList<BizDeviceStatusLog> GetLogs(DateTime? from = null, DateTime? to = null, int maxCount = 200);
 
     /// <summary>
+    /// Ensures a pending or failed device-status log has a matching upload task.
+    /// </summary>
+    BizUploadTask EnsurePendingUploadTask(BizDeviceStatusLog log);
+
+    /// <summary>
     /// 获取设备状态日志本地 JSONL 文件目录。
     /// </summary>
     string GetLogDirectory();
+
+    /// <summary>
+    /// Permanently removes selected device-status logs and their local copies.
+    /// </summary>
+    int DeleteLogs(IReadOnlyCollection<BizDeviceStatusLog> logs);
 
     /// <summary>
     /// 切换设备状态，写入本地日志，并按需上报 MES。

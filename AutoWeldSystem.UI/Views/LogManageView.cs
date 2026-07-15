@@ -242,6 +242,8 @@ public partial class LogManageView : BaseView
         dgvDeviceStatusLogs.SelectionChanged += (_, _) => ShowSelectedDeviceStatusDetails();
         _deviceStatusService.StatusChanged += DeviceStatusService_StatusChanged;
         Disposed += (_, _) => _deviceStatusService.StatusChanged -= DeviceStatusService_StatusChanged;
+        _deviceStatusService.LogsChanged += DeviceStatusService_LogsChanged;
+        Disposed += (_, _) => _deviceStatusService.LogsChanged -= DeviceStatusService_LogsChanged;
     }
 
     private void ShowLogDate_CheckedChanged(object? sender, AntdUI.BoolEventArgs e)
@@ -836,6 +838,25 @@ public partial class LogManageView : BaseView
         }
 
         RunOnUiThread(() => AddLiveDeviceStatusLog(entry), "LogManageView.DeviceStatusChanged");
+    }
+
+    /// <summary>
+    /// Reloads the current device-status date after a source log is deleted elsewhere.
+    /// </summary>
+    private void DeviceStatusService_LogsChanged(object? sender, EventArgs e)
+    {
+        if (IsDisposed || !IsHandleCreated)
+        {
+            return;
+        }
+
+        RunOnUiThread(
+            () =>
+            {
+                LoadDeviceStatusLogs();
+                ShowDeviceStatusDetails(null);
+            },
+            "LogManageView.DeviceStatusLogsChanged");
     }
 
     private void AddLiveMesLog(MesInteractionLogEntry entry)
