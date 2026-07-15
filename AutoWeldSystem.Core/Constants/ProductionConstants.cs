@@ -160,8 +160,8 @@ public static class ProductionConstants
     /// </summary>
     public static class MesDeviceStatuses
     {
-        public const string PoweredOn = "0";        // Software started
-        public const string Stopped = "1";          // Software stopped
+        public const string PoweredOn = "1";        // Software started
+        public const string Stopped = "0";          // Software stopped
         public const string Exception = "4";        // PLC alarm
         public const string Recovered = "5";        // PLC alarm recovered
         public const string ProgramStarted = "6";   // Program execution started

@@ -893,13 +893,14 @@ static void ProcessParameterUploadPayloadReadsProductScopeFields()
 
 static void MesDeviceStatusRulesUseConfiguredMesCodes()
 {
-    AssertEqual("0", ProductionConstants.MesDeviceStatuses.PoweredOn, "MES 设备状态 0 必须表示软件开机。");
-    AssertEqual("1", ProductionConstants.MesDeviceStatuses.Stopped, "MES 设备状态 1 必须表示软件停机。");
+    AssertEqual("1", ProductionConstants.MesDeviceStatuses.PoweredOn, "MES 设备状态 1 必须表示软件开机。");
+    AssertEqual("0", ProductionConstants.MesDeviceStatuses.Stopped, "MES 设备状态 0 必须表示软件停机。");
     AssertTrue(DeviceStatusReportRules.IsMesDeviceStatusCode("0"), "0 是合法 MES 设备状态。");
     AssertTrue(DeviceStatusReportRules.IsMesDeviceStatusCode("7"), "7 是合法 MES 设备状态。");
     AssertFalse(DeviceStatusReportRules.IsMesDeviceStatusCode("2"), "PLC 原始状态 2 不应作为 MES 设备状态上传。");
     AssertFalse(DeviceStatusReportRules.IsMesDeviceStatusCode("3"), "PLC 原始状态 3 不应作为 MES 设备状态上传。");
-    AssertEqual("开机", DeviceStatusReportRules.GetStatusName("0"), "状态名称需要按 MES 语义显示。");
+    AssertEqual("停机", DeviceStatusReportRules.GetStatusName("0"), "状态名称需要按 MES 语义显示。");
+    AssertEqual("开机", DeviceStatusReportRules.GetStatusName("1"), "状态名称需要按 MES 语义显示。");
     AssertEqual("程序执行结束", DeviceStatusReportRules.GetStatusName("7"), "状态 7 应显示程序执行结束。");
 }
 
@@ -934,8 +935,8 @@ static void MesDeviceStatusRulesUseLatestDeviceIdForReport()
 
 static void MesDeviceStatusRulesFormatStatusIdentity()
 {
-    AssertEqual("0-开机", DeviceStatusReportRules.FormatStatusIdentity("0"), "开机状态标识应包含状态码和描述。");
-    AssertEqual("1-停机", DeviceStatusReportRules.FormatStatusIdentity("1"), "停机状态标识应包含状态码和描述。");
+    AssertEqual("0-停机", DeviceStatusReportRules.FormatStatusIdentity("0"), "停机状态标识应包含状态码和描述。");
+    AssertEqual("1-开机", DeviceStatusReportRules.FormatStatusIdentity("1"), "开机状态标识应包含状态码和描述。");
     AssertEqual("6-程序执行开始", DeviceStatusReportRules.FormatStatusIdentity("6"), "程序执行开始状态标识应包含状态码和描述。");
 }
 
@@ -1334,7 +1335,7 @@ static void DeviceApiStatusQueryReturnsCurrentMesStatus()
     AssertEqual("成功", response.Msg, "成功响应消息需与平台示例保持一致。");
     AssertTrue(response.Data is not null, "成功查询必须返回 Data 节点。");
     AssertEqual("87261699027", response.Data!.DeviceId, "返回设备编号必须来自当前本地设置。");
-    AssertEqual("1", response.Data.DeviceStatus, "设备状态必须使用当前 MES 设备状态码。");
+    AssertEqual(ProductionConstants.MesDeviceStatuses.Stopped, response.Data.DeviceStatus, "设备状态必须使用当前 MES 设备状态码。");
 }
 
 static void DeviceApiStatusQueryRejectsMismatchedDeviceId()
