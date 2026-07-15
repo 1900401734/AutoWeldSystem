@@ -90,15 +90,14 @@ public sealed class ProgramManageService : IProgramManageService
             .ToList();
     }
 
-    public string BuildProgramName(string productNum, string componentCode, int sequenceNumber)
+    public string BuildProgramName(string productNum, string componentCode, int sequenceNumber, string? description = null)
     {
-        var settings = CurrentSettings;
-        var deviceId = NormalizeNamePart(settings.DeviceId);
-        var component = NormalizeNamePart(componentCode);
-        var product = NormalizeNamePart(productNum.Replace("#", string.Empty));
-        var sequence = Math.Max(1, sequenceNumber).ToString("000");
-
-        return $"{deviceId}_CX_{component}_DH_{sequence}_{product}";
+        return ProgramNameRules.BuildProgramName(
+            CurrentSettings.DeviceId,
+            componentCode,
+            sequenceNumber,
+            productNum,
+            description);
     }
 
     public async Task<BizProgram> SaveAsync(SaveProgramReq request, bool syncNow, CancellationToken cancellationToken = default)
@@ -311,9 +310,11 @@ public sealed class ProgramManageService : IProgramManageService
             ? ProgramFileRules.BuildFilePath(settings.ProgramFileDirectory, entity.RecipeCode, entity.ProgramName)
             : null;
 
-        entity.ProgramName = string.IsNullOrWhiteSpace(request.ProgramName)
-            ? BuildProgramName(request.ProductNum, request.ComponentCode, request.SequenceNumber)
-            : request.ProgramName;
+        entity.ProgramName = entity.Id == 0
+            ? BuildProgramName(request.ProductNum, request.ComponentCode, request.SequenceNumber, request.LocalRemark)
+            : string.IsNullOrWhiteSpace(request.ProgramName)
+                ? entity.ProgramName
+                : request.ProgramName;
         entity.ProductNum = request.ProductNum;
         entity.RecipeCode = request.RecipeCode;
         entity.ComponentCode = request.ComponentCode;
@@ -591,9 +592,25 @@ public sealed class ProgramManageService : IProgramManageService
         entity.ProgramContent = data.ProgramContent;
         entity.ProgramType = data.ProgramType;
         entity.ProductNum = data.ProductNum;
-        if (ProgramNameRules.TryExtractComponentCode(data.ProgramName, out var componentCode))
+        if (ProgramNameRules.TryParse(data.ProgramName, out var parsedName))
         {
-            entity.ComponentCode = componentCode;
+            entity.ComponentCode = parsedName.ComponentCode;
+            entity.SequenceNumber = parsedName.SequenceNumber;
+            entity.Description = parsedName.Description;
+        }
+        else
+        {
+            if (ProgramNameRules.TryExtractComponentCode(data.ProgramName, out var componentCode))
+            {
+                entity.ComponentCode = componentCode;
+            }
+
+            if (entity.SequenceNumber <= 0)
+            {
+                entity.SequenceNumber = 1;
+            }
+
+            entity.Description = string.Empty;
         }
 
         entity.ProgramFile = data.ProgramFile;
@@ -666,15 +683,6 @@ public sealed class ProgramManageService : IProgramManageService
         {
             throw new InvalidOperationException("零组件代码不能为空。");
         }
-    }
-
-    private static string NormalizeNamePart(string value)
-    {
-        var chars = value
-            .Where(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '#')
-            .ToArray();
-
-        return chars.Length == 0 ? "NA" : new string(chars);
     }
 
     private static string CreateCommitId(BizProgram entity, string? commitMessage)

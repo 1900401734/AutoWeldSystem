@@ -131,6 +131,8 @@ var tests = new (string Name, Action Run)[]
     ("Device lifecycle alarm logs enter change and recovery", DeviceLifecycleAlarmLogsEnterChangeAndRecovery),
     ("Program name rules extract component code", ProgramNameRulesExtractComponentCode),
     ("Program name rules reject invalid component code", ProgramNameRulesRejectInvalidComponentCode),
+    ("Program name rules build and parse optional description", ProgramNameRulesBuildAndParseOptionalDescription),
+    ("Program manage download backfills name fields", ProgramManageDownloadBackfillsNameFields),
     ("Offline program dropdown displays program name", OfflineProgramDropdownDisplaysProgramName),
     ("Offline program dropdown includes empty-content program", OfflineProgramDropdownIncludesEmptyContentProgram),
     ("Recipe code options sort numeric ascending", RecipeCodeOptionsSortNumericAscending),
@@ -2488,6 +2490,54 @@ static void ProgramNameRulesRejectInvalidComponentCode()
         ProgramNameRules.TryExtractComponentCode("D001_CX__DH_001_P001", out var emptyCode),
         "零组件代码片段为空时不能生成伪零组件代码。");
     AssertEqual(string.Empty, emptyCode, "空片段解析失败时输出必须为空。");
+}
+
+static void ProgramNameRulesBuildAndParseOptionalDescription()
+{
+    var buildMethod = typeof(ProgramNameRules).GetMethod(
+        "BuildProgramName",
+        new[] { typeof(string), typeof(string), typeof(int), typeof(string), typeof(string) });
+    AssertTrue(buildMethod is not null, "程序名称规则必须提供带可选备注的统一生成方法。");
+
+    var withoutDescription = Convert.ToString(buildMethod!.Invoke(
+        null,
+        new object?[] { "KFJ123456", "3", 1, "3#J", null })) ?? string.Empty;
+    AssertEqual("KFJ123456_CX_3_DH_001_3J", withoutDescription, "无备注时程序名称不能产生尾随下划线。");
+
+    var withDescription = Convert.ToString(buildMethod.Invoke(
+        null,
+        new object?[] { "KFJ123456", "3", 1, "3#J", "左侧组件" })) ?? string.Empty;
+    AssertEqual("KFJ123456_CX_3_DH_001_3J_左侧组件", withDescription, "有备注时程序名称必须追加 inputDescription。");
+    AssertFalse(withDescription.Contains('#'), "程序名称中的工号不能包含 #。");
+
+    var parseMethod = typeof(ProgramNameRules).GetMethod("TryParse");
+    AssertTrue(parseMethod is not null, "程序名称规则必须提供下载回填所需的解析方法。");
+
+    AssertTrue(ProgramNameRules.TryParse(withoutDescription, out var parsedWithoutDescription), "无备注名称必须可解析。");
+    AssertEqual("KFJ123456", parsedWithoutDescription.DeviceId, "解析结果必须保留设备编号。");
+    AssertEqual("3", parsedWithoutDescription.ComponentCode, "解析结果必须保留组件代码。");
+    AssertEqual(1, parsedWithoutDescription.SequenceNumber, "解析结果必须回填流水号。");
+    AssertEqual("3J", parsedWithoutDescription.ProductNum, "解析结果必须返回去除 # 的工号。");
+    AssertEqual(string.Empty, parsedWithoutDescription.Description, "无备注名称解析后备注必须为空。");
+
+    AssertTrue(ProgramNameRules.TryParse(withDescription, out var parsedWithDescription), "有备注名称必须可解析。");
+    AssertEqual("左侧组件", parsedWithDescription.Description, "解析结果必须回填名称尾段备注。");
+    AssertFalse(ProgramNameRules.TryParse("KFJ123456_CX_3_DH_001_3J_", out _), "空备注尾段不应被视为有效名称。");
+}
+
+static void ProgramManageDownloadBackfillsNameFields()
+{
+    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "ProgramManageService.cs"), Encoding.UTF8);
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.cs"), Encoding.UTF8);
+    var interfaceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Interfaces", "IProgramManageService.cs"), Encoding.UTF8);
+
+    AssertTrue(interfaceCode.Contains("string? description = null", StringComparison.Ordinal), "程序名称服务接口必须支持可选备注参数。");
+    AssertTrue(serviceCode.Contains("ProgramNameRules.BuildProgramName", StringComparison.Ordinal), "程序名称服务必须委托统一名称规则生成名称。");
+    AssertTrue(serviceCode.Contains("entity.SequenceNumber = parsedName.SequenceNumber", StringComparison.Ordinal), "MES 下载必须回填名称中的流水号。");
+    AssertTrue(serviceCode.Contains("entity.Description = parsedName.Description", StringComparison.Ordinal), "MES 下载必须从名称回填 inputDescription 对应的 Description。");
+    AssertTrue(serviceCode.Contains("? entity.ProgramName", StringComparison.Ordinal), "编辑已有程序且名称控件为空时必须保留原程序名称。");
+    AssertTrue(viewCode.Contains("inputDescription.Text.Trim()", StringComparison.Ordinal), "程序管理页面必须把 inputDescription 传入名称生成。");
+    AssertTrue(viewCode.Contains("_editingId <= 0", StringComparison.Ordinal), "新建与编辑程序必须区分名称生成策略。");
 }
 
 static void OfflineProgramDropdownDisplaysProgramName()

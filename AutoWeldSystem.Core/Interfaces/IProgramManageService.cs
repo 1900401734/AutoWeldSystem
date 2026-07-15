@@ -16,7 +16,7 @@ public interface IProgramManageService
 
     IReadOnlyList<ProgramSyncSummary> GetPendingSyncPrograms();
 
-    string BuildProgramName(string productNum, string componentCode, int sequenceNumber);
+    string BuildProgramName(string productNum, string componentCode, int sequenceNumber, string? description = null);
 
     Task<BizProgram> SaveAsync(SaveProgramReq request, bool syncNow, CancellationToken cancellationToken = default);
 

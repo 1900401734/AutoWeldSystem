@@ -542,11 +542,17 @@ public partial class ProgramManageView : BaseView
             return false;
         }
 
-        request.ProgramName = inputProgramName.Text.Trim();
         request.ProductNum = inputProductNum.Text.Trim();
         request.RecipeCode = ResolveRecipeCodeForSave(GetEditingProgram());
         request.ComponentCode = inputComponentCode.Text.Trim();
         request.SequenceNumber = sequenceNumber;
+        request.ProgramName = _editingId <= 0
+            ? _programService.BuildProgramName(
+                request.ProductNum,
+                request.ComponentCode,
+                request.SequenceNumber,
+                inputDescription.Text.Trim())
+            : inputProgramName.Text.Trim();
         request.ProgramType = cmbProgramType.SelectedIndex == 1 ? "1" : "0";
         tableProgramContent.EditModeClose();
         if (!ProgramContentJsonRules.TryToJson(_programContentRows, out var programContentJson, out var errorMessage))
@@ -642,7 +648,11 @@ public partial class ProgramManageView : BaseView
             sequenceNumber = 1;
         }
 
-        return _programService.BuildProgramName(inputProductNum.Text.Trim(), inputComponentCode.Text.Trim(), sequenceNumber);
+        return _programService.BuildProgramName(
+            inputProductNum.Text.Trim(),
+            inputComponentCode.Text.Trim(),
+            sequenceNumber,
+            inputDescription.Text.Trim());
     }
 
     private void BrowseProgramFile()
