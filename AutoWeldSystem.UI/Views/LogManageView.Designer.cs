@@ -143,6 +143,7 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanel7 = new TableLayoutPanel();
             deviceStatusToolbar = new TableLayoutPanel();
             btnOpenDeviceStatusFolder = new AntdUI.Button();
+            btnDeleteDeviceStatusLogs = new AntdUI.Button();
             dtpDeviceStatusDate = new DatePicker();
             lblDeviceStatusDate = new AntdUI.Label();
             queryDeviceStatusLogs = new AutoWeldSystem.UI.Controls.InputQuery(components);
@@ -152,6 +153,7 @@ namespace AutoWeldSystem.UI.Views
             lblDeviceStatusDescription = new Label();
             splitDeviceStatusContent = new SplitContainer();
             dgvDeviceStatusLogs = new DataGridView();
+            colDeviceStatusSelected = new DataGridViewCheckBoxColumn();
             colDeviceOccurredTime = new DataGridViewTextBoxColumn();
             colDeviceStation = new DataGridViewTextBoxColumn();
             colDeviceStatus = new DataGridViewTextBoxColumn();
@@ -1769,14 +1771,15 @@ namespace AutoWeldSystem.UI.Views
             // 
             deviceStatusToolbar.AutoSize = true;
             deviceStatusToolbar.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            deviceStatusToolbar.ColumnCount = 5;
+            deviceStatusToolbar.ColumnCount = 6;
+            deviceStatusToolbar.ColumnStyles.Add(new ColumnStyle());
             deviceStatusToolbar.ColumnStyles.Add(new ColumnStyle());
             deviceStatusToolbar.ColumnStyles.Add(new ColumnStyle());
             deviceStatusToolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             deviceStatusToolbar.ColumnStyles.Add(new ColumnStyle());
             deviceStatusToolbar.ColumnStyles.Add(new ColumnStyle());
-            deviceStatusToolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 20F));
-            deviceStatusToolbar.Controls.Add(btnOpenDeviceStatusFolder, 4, 0);
+            deviceStatusToolbar.Controls.Add(btnOpenDeviceStatusFolder, 5, 0);
+            deviceStatusToolbar.Controls.Add(btnDeleteDeviceStatusLogs, 4, 0);
             deviceStatusToolbar.Controls.Add(dtpDeviceStatusDate, 2, 0);
             deviceStatusToolbar.Controls.Add(lblDeviceStatusDate, 1, 0);
             deviceStatusToolbar.Controls.Add(queryDeviceStatusLogs, 3, 0);
@@ -1801,6 +1804,18 @@ namespace AutoWeldSystem.UI.Views
             btnOpenDeviceStatusFolder.TabIndex = 4;
             btnOpenDeviceStatusFolder.Tag = "perm:button.log.open-folder:enabled";
             btnOpenDeviceStatusFolder.Text = "Open";
+            //
+            // btnDeleteDeviceStatusLogs
+            //
+            btnDeleteDeviceStatusLogs.BorderWidth = 1F;
+            btnDeleteDeviceStatusLogs.Dock = DockStyle.Fill;
+            btnDeleteDeviceStatusLogs.IconSvg = "DeleteOutlined";
+            btnDeleteDeviceStatusLogs.Margin = new Padding(0);
+            btnDeleteDeviceStatusLogs.Name = "btnDeleteDeviceStatusLogs";
+            btnDeleteDeviceStatusLogs.Size = new Size(110, 51);
+            btnDeleteDeviceStatusLogs.TabIndex = 4;
+            btnDeleteDeviceStatusLogs.Tag = "perm:button.log.delete:enabled";
+            btnDeleteDeviceStatusLogs.Text = "Delete";
             // 
             // dtpDeviceStatusDate
             // 
@@ -1915,18 +1930,27 @@ namespace AutoWeldSystem.UI.Views
             dgvDeviceStatusLogs.AllowUserToDeleteRows = false;
             dgvDeviceStatusLogs.BackgroundColor = SystemColors.Window;
             dgvDeviceStatusLogs.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-            dgvDeviceStatusLogs.Columns.AddRange(new DataGridViewColumn[] { colDeviceOccurredTime, colDeviceStation, colDeviceStatus, colDeviceStatusName, colDeviceSource, colDeviceReportStatus, colDeviceReportMessage });
+            dgvDeviceStatusLogs.Columns.AddRange(new DataGridViewColumn[] { colDeviceStatusSelected, colDeviceOccurredTime, colDeviceStation, colDeviceStatus, colDeviceStatusName, colDeviceSource, colDeviceReportStatus, colDeviceReportMessage });
             dgvDeviceStatusLogs.Dock = DockStyle.Fill;
             dgvDeviceStatusLogs.Location = new Point(0, 0);
             dgvDeviceStatusLogs.MultiSelect = false;
             dgvDeviceStatusLogs.Name = "dgvDeviceStatusLogs";
-            dgvDeviceStatusLogs.ReadOnly = true;
+            dgvDeviceStatusLogs.ReadOnly = false;
             dgvDeviceStatusLogs.RowHeadersVisible = false;
             dgvDeviceStatusLogs.RowHeadersWidth = 51;
             dgvDeviceStatusLogs.RowTemplate.Height = 28;
             dgvDeviceStatusLogs.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             dgvDeviceStatusLogs.Size = new Size(808, 562);
             dgvDeviceStatusLogs.TabIndex = 0;
+            //
+            // colDeviceStatusSelected
+            //
+            colDeviceStatusSelected.DataPropertyName = "IsSelected";
+            colDeviceStatusSelected.FillWeight = 6F;
+            colDeviceStatusSelected.HeaderText = "选择";
+            colDeviceStatusSelected.MinimumWidth = 50;
+            colDeviceStatusSelected.Name = "colDeviceStatusSelected";
+            colDeviceStatusSelected.Width = 50;
             // 
             // colDeviceOccurredTime
             // 
@@ -2220,6 +2244,7 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Button btnOpenExceptionFolder;
         private AntdUI.Button btnOpenDeviceLifecycleFolder;
         private AntdUI.Button btnOpenDeviceStatusFolder;
+        private AntdUI.Button btnDeleteDeviceStatusLogs;
         private AntdUI.Button btnOpenExceptionSource;
         private AntdUI.Button btnCopyExceptionDetails;
 
@@ -2266,6 +2291,7 @@ namespace AutoWeldSystem.UI.Views
         private DataGridViewTextBoxColumn colLifecycleStation;
         private DataGridViewTextBoxColumn colLifecycleStatus;
         private DataGridViewTextBoxColumn colLifecycleSummary;
+        private DataGridViewCheckBoxColumn colDeviceStatusSelected;
         private DataGridViewTextBoxColumn colDeviceOccurredTime;
         private DataGridViewTextBoxColumn colDeviceStation;
         private DataGridViewTextBoxColumn colDeviceStatus;

@@ -1026,6 +1026,9 @@
   <data name="permission.button.log.copy_details" xml:space="preserve">
     <value>Copy Log Details</value>
   </data>
+  <data name="permission.button.log.delete" xml:space="preserve">
+    <value>Delete Logs</value>
+  </data>
   <data name="permission.button.state.retry_selected" xml:space="preserve">
     <value>Retry Selected Upload</value>
   </data>
@@ -1397,6 +1400,9 @@
   </data>
   <data name="log.button.open_folder" xml:space="preserve">
     <value>Open Folder</value>
+  </data>
+  <data name="log.button.delete" xml:space="preserve">
+    <value>Delete Selected</value>
   </data>
   <data name="log.button.open_source" xml:space="preserve">
     <value>Open Source</value>

@@ -87,6 +87,65 @@ public class DeviceStatusService : IDeviceStatusService
         return DeviceStatusLocalLogStore.GetLogDirectory(CurrentSettings);
     }
 
+    /// <summary>
+    /// 永久删除设备状态日志，并取消关联的 MES 上传任务，避免已删除记录被后台补传。
+    /// </summary>
+    public int DeleteLogs(IReadOnlyCollection<BizDeviceStatusLog> logs)
+    {
+        var selectedLogs = logs
+            .Where(log => log.Id > 0)
+            .GroupBy(log => log.Id)
+            .Select(group => group.First())
+            .ToList();
+        if (selectedLogs.Count == 0)
+        {
+            return 0;
+        }
+
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var logIds = selectedLogs.Select(log => log.Id).ToArray();
+            var businessIds = logIds.Select(logId => $"device-status:{logId}").ToArray();
+            var now = DateTime.Now;
+            var transaction = _dbContext.Db.Ado.UseTran(() =>
+            {
+                var uploadTasks = _dbContext.Db.Queryable<BizUploadTask>()
+                    .Where(task => task.TaskType == ProductionConstants.UploadTaskTypes.DeviceStatus
+                        && businessIds.Contains(task.BusinessId!))
+                    .ToList();
+                foreach (var uploadTask in uploadTasks.Where(task => !task.IsDeleted))
+                {
+                    uploadTask.IsDeleted = true;
+                    uploadTask.DeletedTime = now;
+                    uploadTask.UpdatedTime = now;
+                    uploadTask.Message = "Deleted with device status log.";
+                }
+
+                if (uploadTasks.Count > 0)
+                {
+                    _dbContext.Db.Updateable(uploadTasks).ExecuteCommand();
+                }
+
+                _dbContext.Db.Deleteable<BizDeviceStatusLog>()
+                    .Where(log => logIds.Contains(log.Id))
+                    .ExecuteCommand();
+
+                if (!DeviceStatusLocalLogStore.TryRemove(selectedLogs, CurrentSettings))
+                {
+                    throw new InvalidOperationException("无法删除设备状态本地日志。");
+                }
+            });
+
+            if (!transaction.IsSuccess)
+            {
+                throw transaction.ErrorException ?? new InvalidOperationException("删除设备状态日志失败。");
+            }
+
+            return selectedLogs.Count;
+        }
+    }
+
     public async Task<BizDeviceStatusLog> ChangeStatusAsync(
         string deviceStatus,
         string? remark = null,

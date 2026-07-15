@@ -47,6 +47,88 @@ public static class DeviceStatusLocalLogStore
     }
 
     /// <summary>
+    /// 删除所选设备状态日志在本地 JSONL 中的所有追加版本。
+    /// 删除失败时会恢复已替换的文件，避免留下部分删除结果。
+    /// </summary>
+    public static bool TryRemove(IReadOnlyCollection<BizDeviceStatusLog> entries, AppSettings settings)
+    {
+        var logIdsByDate = entries
+            .Where(entry => entry.Id > 0 && entry.OccurredTime != default)
+            .GroupBy(entry => entry.OccurredTime.Date)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(entry => entry.Id).ToHashSet());
+
+        if (logIdsByDate.Count == 0)
+        {
+            return true;
+        }
+
+        var rewrites = new List<LocalFileRewrite>();
+        try
+        {
+            foreach (var (date, logIds) in logIdsByDate)
+            {
+                var filePath = GetLogFilePath(settings, date);
+                if (!File.Exists(filePath))
+                {
+                    continue;
+                }
+
+                var retainedRecords = LocalJsonLogFormatter.ReadAllRecords(filePath)
+                    .Where(record => !ShouldRemove(record, logIds))
+                    .ToList();
+                rewrites.Add(new LocalFileRewrite(filePath, FormatRecords(retainedRecords)));
+            }
+
+            foreach (var rewrite in rewrites)
+            {
+                rewrite.TempPath = $"{rewrite.FilePath}.{Guid.NewGuid():N}.tmp";
+                File.WriteAllText(rewrite.TempPath, rewrite.Content, Encoding.UTF8);
+            }
+
+            foreach (var rewrite in rewrites)
+            {
+                rewrite.BackupPath = $"{rewrite.FilePath}.{Guid.NewGuid():N}.bak";
+                File.Copy(rewrite.FilePath, rewrite.BackupPath, overwrite: true);
+
+                if (string.IsNullOrEmpty(rewrite.Content))
+                {
+                    File.Delete(rewrite.FilePath);
+                }
+                else
+                {
+                    File.Move(rewrite.TempPath!, rewrite.FilePath, overwrite: true);
+                }
+
+                rewrite.Applied = true;
+            }
+
+            return true;
+        }
+        catch
+        {
+            foreach (var rewrite in rewrites.Where(rewrite => rewrite.Applied).Reverse())
+            {
+                if (!string.IsNullOrWhiteSpace(rewrite.BackupPath) && File.Exists(rewrite.BackupPath))
+                {
+                    File.Copy(rewrite.BackupPath, rewrite.FilePath, overwrite: true);
+                }
+            }
+
+            return false;
+        }
+        finally
+        {
+            foreach (var rewrite in rewrites)
+            {
+                TryDeleteFile(rewrite.TempPath);
+                TryDeleteFile(rewrite.BackupPath);
+            }
+        }
+    }
+
+    /// <summary>
     /// 从本地 JSONL 文件读取设备状态日志。
     /// 读取失败或没有文件时返回空集合，由业务服务决定是否回退数据库。
     /// </summary>
@@ -143,5 +225,46 @@ public static class DeviceStatusLocalLogStore
         {
             return null;
         }
+    }
+
+    private static bool ShouldRemove(string record, ISet<int> logIds)
+    {
+        var entry = TryDeserialize(record);
+        return entry is not null && logIds.Contains(entry.Id);
+    }
+
+    private static string FormatRecords(IEnumerable<string> records)
+    {
+        var values = records.ToList();
+        return values.Count == 0
+            ? string.Empty
+            : string.Join(Environment.NewLine + Environment.NewLine, values) + Environment.NewLine + Environment.NewLine;
+    }
+
+    private static void TryDeleteFile(string? filePath)
+    {
+        if (!string.IsNullOrWhiteSpace(filePath) && File.Exists(filePath))
+        {
+            File.Delete(filePath);
+        }
+    }
+
+    private sealed class LocalFileRewrite
+    {
+        public LocalFileRewrite(string filePath, string content)
+        {
+            FilePath = filePath;
+            Content = content;
+        }
+
+        public string FilePath { get; }
+
+        public string Content { get; }
+
+        public string? TempPath { get; set; }
+
+        public string? BackupPath { get; set; }
+
+        public bool Applied { get; set; }
     }
 }

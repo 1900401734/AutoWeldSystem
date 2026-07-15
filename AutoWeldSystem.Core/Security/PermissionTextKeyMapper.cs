@@ -50,6 +50,7 @@ public static class PermissionTextKeyMapper
             PermissionCodes.Buttons.Log.OpenFolder => TextKeys.Permission.ButtonLogOpenFolder,
             PermissionCodes.Buttons.Log.OpenSource => TextKeys.Permission.ButtonLogOpenSource,
             PermissionCodes.Buttons.Log.CopyDetails => TextKeys.Permission.ButtonLogCopyDetails,
+            PermissionCodes.Buttons.Log.Delete => TextKeys.Permission.ButtonLogDelete,
             PermissionCodes.Buttons.State.RetrySelected => TextKeys.Permission.ButtonStateRetrySelected,
             PermissionCodes.Buttons.State.RetryAll => TextKeys.Permission.ButtonStateRetryAll,
             PermissionCodes.Buttons.State.Refresh => TextKeys.Permission.ButtonStateRefresh,

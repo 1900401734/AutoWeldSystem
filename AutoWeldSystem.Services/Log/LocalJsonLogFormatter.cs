@@ -80,6 +80,41 @@ internal static class LocalJsonLogFormatter
         return records;
     }
 
+    /// <summary>
+    /// 读取文件中的全部日志记录块，供需要重写日志文件的维护操作使用。
+    /// </summary>
+    public static IReadOnlyList<string> ReadAllRecords(string filePath)
+    {
+        var records = new List<string>();
+        var builder = new StringBuilder();
+
+        foreach (var line in File.ReadLines(filePath, Encoding.UTF8))
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                AddRecord(records, builder);
+                continue;
+            }
+
+            if (builder.Length > 0
+                && line.TrimStart().StartsWith('{')
+                && IsCompleteJson(builder.ToString()))
+            {
+                AddRecord(records, builder);
+            }
+
+            if (builder.Length > 0)
+            {
+                builder.AppendLine();
+            }
+
+            builder.Append(line);
+        }
+
+        AddRecord(records, builder);
+        return records;
+    }
+
     private static string ConvertIndent(string json)
     {
         var lines = json.Replace("\r\n", "\n").Split('\n');
@@ -114,6 +149,16 @@ internal static class LocalJsonLogFormatter
         }
 
         records.Enqueue(record);
+    }
+
+    private static void AddRecord(ICollection<string> records, StringBuilder builder)
+    {
+        var record = builder.ToString().Trim();
+        builder.Clear();
+        if (!string.IsNullOrWhiteSpace(record))
+        {
+            records.Add(record);
+        }
     }
 
     private static bool IsCompleteJson(string record)
