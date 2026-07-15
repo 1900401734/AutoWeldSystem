@@ -73,11 +73,9 @@ var tests = new (string Name, Action Run)[]
     ("Antd table selection helper maps selected indexes", AntdTableSelectionHelperMapsSelectedIndexes),
     ("Device status local log store resolves directories", DeviceStatusLocalLogStoreResolvesDirectories),
     ("Device status local log store writes and reads jsonl", DeviceStatusLocalLogStoreWritesAndReadsJsonl),
-    ("Device status local log store removes selected log ids", DeviceStatusLocalLogStoreRemovesSelectedLogIds),
     ("Device status report keeps millisecond timestamp after MES upload", DeviceStatusReportKeepsMillisecondTimestampAfterMesUpload),
     ("Device status local log store keeps latest state per log id", DeviceStatusLocalLogStoreKeepsLatestStatePerLogId),
     ("LogManageView device status tab exposes open folder button", LogManageViewDeviceStatusTabExposesOpenFolderButton),
-    ("Device status batch deletion is wired across layers", DeviceStatusBatchDeletionIsWiredAcrossLayers),
     ("DataManageView static grids define bound columns", DataManageViewStaticGridsDefineBoundColumns),
     ("DataManageView ignores report selection while disposing", DataManageViewIgnoresReportSelectionWhileDisposing),
     ("DataManageView ignores work order selection while disposing", DataManageViewIgnoresWorkOrderSelectionWhileDisposing),
@@ -1093,73 +1091,6 @@ static void DeviceStatusLocalLogStoreWritesAndReadsJsonl()
     }
 }
 
-static void DeviceStatusLocalLogStoreRemovesSelectedLogIds()
-{
-    var root = Path.Combine(Path.GetTempPath(), "AutoWeldSystemDeviceStatusDeleteTests", Guid.NewGuid().ToString("N"));
-    var settings = new AppSettings { LogDirectory = root };
-    var firstDay = new DateTime(2026, 7, 8, 9, 30, 0);
-    var secondDay = firstDay.AddDays(1);
-    var selected = new BizDeviceStatusLog
-    {
-        Id = 101,
-        DeviceId = "D-DELETE",
-        DeviceStatus = ProductionConstants.MesDeviceStatuses.Stopped,
-        OccurredTime = firstDay,
-        ReportStatus = ProductionConstants.UploadStatuses.Pending
-    };
-    var selectedUploaded = new BizDeviceStatusLog
-    {
-        Id = selected.Id,
-        DeviceId = selected.DeviceId,
-        DeviceStatus = selected.DeviceStatus,
-        OccurredTime = firstDay,
-        ReportStatus = ProductionConstants.UploadStatuses.Uploaded
-    };
-    var retained = new BizDeviceStatusLog
-    {
-        Id = 102,
-        DeviceId = "D-RETAIN",
-        DeviceStatus = ProductionConstants.MesDeviceStatuses.PoweredOn,
-        OccurredTime = firstDay,
-        ReportStatus = ProductionConstants.UploadStatuses.Pending
-    };
-    var otherDay = new BizDeviceStatusLog
-    {
-        Id = 103,
-        DeviceId = "D-OTHER",
-        DeviceStatus = ProductionConstants.MesDeviceStatuses.Exception,
-        OccurredTime = secondDay,
-        ReportStatus = ProductionConstants.UploadStatuses.Pending
-    };
-
-    try
-    {
-        AssertTrue(DeviceStatusLocalLogStore.TryAppend(selected, settings), "待删除的设备状态日志必须能写入本地 JSONL。");
-        AssertTrue(DeviceStatusLocalLogStore.TryAppend(selectedUploaded, settings), "同一日志 ID 的上报更新必须追加到本地 JSONL。");
-        AssertTrue(DeviceStatusLocalLogStore.TryAppend(retained, settings), "未选中的同日设备状态日志必须能写入本地 JSONL。");
-        AssertTrue(DeviceStatusLocalLogStore.TryAppend(otherDay, settings), "其他日期设备状态日志必须能写入本地 JSONL。");
-
-        var removeMethod = typeof(DeviceStatusLocalLogStore).GetMethod("TryRemove");
-        AssertTrue(removeMethod is not null, "设备状态本地日志必须提供按所选记录删除的方法。");
-
-        var removed = removeMethod!.Invoke(null, new object?[] { new[] { selected }, settings });
-        AssertEqual(true, removed, "删除本地设备状态日志必须成功。");
-
-        var firstDayLogs = DeviceStatusLocalLogStore.Read(settings, firstDay.Date, firstDay.Date.AddDays(1).AddTicks(-1), 10);
-        AssertSequenceEqual(new[] { retained.Id }, firstDayLogs.Select(entry => entry.Id).ToArray(), "删除后同一日志 ID 的所有追加版本都不能继续显示。");
-
-        var secondDayLogs = DeviceStatusLocalLogStore.Read(settings, secondDay.Date, secondDay.Date.AddDays(1).AddTicks(-1), 10);
-        AssertSequenceEqual(new[] { otherDay.Id }, secondDayLogs.Select(entry => entry.Id).ToArray(), "删除当天日志不能影响其他日期文件。");
-    }
-    finally
-    {
-        if (Directory.Exists(root))
-        {
-            Directory.Delete(root, recursive: true);
-        }
-    }
-}
-
 static void DeviceStatusReportKeepsMillisecondTimestampAfterMesUpload()
 {
     var serviceCode = File.ReadAllText(
@@ -1249,7 +1180,7 @@ static void LogManageViewDeviceStatusTabExposesOpenFolderButton()
         designer.Contains("btnOpenDeviceStatusFolder = new AntdUI.Button();", StringComparison.Ordinal),
         "设备状态日志页签应在 Designer.cs 中静态声明打开目录按钮。");
     AssertTrue(
-        designer.Contains("deviceStatusToolbar.Controls.Add(btnOpenDeviceStatusFolder, 5, 0);", StringComparison.Ordinal),
+        designer.Contains("deviceStatusToolbar.Controls.Add(btnOpenDeviceStatusFolder, 4, 0);", StringComparison.Ordinal),
         "设备状态日志打开目录按钮应放入页签右上角工具栏。");
     AssertTrue(
         designer.Contains("btnOpenDeviceStatusFolder.Tag = \"perm:button.log.open-folder:enabled\";", StringComparison.Ordinal),
@@ -1260,24 +1191,6 @@ static void LogManageViewDeviceStatusTabExposesOpenFolderButton()
     AssertTrue(
         viewCode.Contains("_deviceStatusService.GetLogDirectory()", StringComparison.Ordinal),
         "设备状态日志打开目录逻辑必须走 IDeviceStatusService.GetLogDirectory。");
-}
-
-static void DeviceStatusBatchDeletionIsWiredAcrossLayers()
-{
-    var interfaceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Interfaces", "IDeviceStatusService.cs"), Encoding.UTF8);
-    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "DeviceStatusService.cs"), Encoding.UTF8);
-    var permissionCodes = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Constants", "PermissionCodes.cs"), Encoding.UTF8);
-    var designer = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "LogManageView.Designer.cs"), Encoding.UTF8);
-    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "LogManageView.cs"), Encoding.UTF8);
-
-    AssertTrue(interfaceCode.Contains("int DeleteLogs(", StringComparison.Ordinal), "设备状态服务接口必须暴露批量删除方法。");
-    AssertTrue(serviceCode.Contains("DeviceStatusLocalLogStore.TryRemove", StringComparison.Ordinal), "设备状态删除必须同步清理本地 JSONL 日志。");
-    AssertTrue(serviceCode.Contains("device-status:{logId}", StringComparison.Ordinal), "设备状态删除必须清理关联 MES 上传任务。");
-    AssertTrue(permissionCodes.Contains("public const string Delete = \"button.log.delete\";", StringComparison.Ordinal), "日志管理必须定义独立删除权限。");
-    AssertTrue(designer.Contains("btnDeleteDeviceStatusLogs = new AntdUI.Button();", StringComparison.Ordinal), "设备状态页签必须声明删除选中按钮。");
-    AssertTrue(designer.Contains("colDeviceStatusSelected = new DataGridViewCheckBoxColumn();", StringComparison.Ordinal), "设备状态表格必须提供首列勾选框。");
-    AssertTrue(viewCode.Contains("btnDeleteDeviceStatusLogs.Click += (_, _) => DeleteSelectedDeviceStatusLogs();", StringComparison.Ordinal), "删除选中按钮必须绑定批量删除事件。");
-    AssertTrue(viewCode.Contains("_deviceStatusService.DeleteLogs", StringComparison.Ordinal), "设备状态页签删除操作必须通过设备状态服务执行。");
 }
 
 static void DataManageViewStaticGridsDefineBoundColumns()
@@ -4549,14 +4462,6 @@ sealed class FakeDeviceStatusService : IDeviceStatusService
     public IReadOnlyList<BizDeviceStatusLog> GetLogs(DateTime? from = null, DateTime? to = null, int maxCount = 200) => Array.Empty<BizDeviceStatusLog>();
 
     public string GetLogDirectory() => string.Empty;
-
-    public int DeleteLogs(IReadOnlyCollection<BizDeviceStatusLog> logs)
-    {
-        var logIds = logs.Select(log => log.Id).ToHashSet();
-        var deletedCount = Logs.Count(log => logIds.Contains(log.Id));
-        Logs.RemoveAll(log => logIds.Contains(log.Id));
-        return deletedCount;
-    }
 
     public Task<BizDeviceStatusLog> ChangeStatusAsync(
         string deviceStatus,

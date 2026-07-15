@@ -30,11 +30,6 @@ public interface IDeviceStatusService
     string GetLogDirectory();
 
     /// <summary>
-    /// 永久删除所选设备状态日志及其本地日志副本。
-    /// </summary>
-    int DeleteLogs(IReadOnlyCollection<BizDeviceStatusLog> logs);
-
-    /// <summary>
     /// 切换设备状态，写入本地日志，并按需上报 MES。
     /// </summary>
     Task<BizDeviceStatusLog> ChangeStatusAsync(

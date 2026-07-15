@@ -54,7 +54,6 @@ public static class PermissionCatalog
         new(PermissionCodes.Buttons.Log.OpenFolder, "Open Log Folder", PermissionType.Button, PermissionCodes.Pages.LogManage, 520),
         new(PermissionCodes.Buttons.Log.OpenSource, "Open Source", PermissionType.Button, PermissionCodes.Pages.LogManage, 530),
         new(PermissionCodes.Buttons.Log.CopyDetails, "Copy Details", PermissionType.Button, PermissionCodes.Pages.LogManage, 540),
-        new(PermissionCodes.Buttons.Log.Delete, "Delete Logs", PermissionType.Button, PermissionCodes.Pages.LogManage, 550),
 
         new(PermissionCodes.Buttons.State.RetrySelected, "Retry Selected Upload", PermissionType.Button, PermissionCodes.Pages.StateManage, 610),
         new(PermissionCodes.Buttons.State.RetryAll, "Retry All Uploads", PermissionType.Button, PermissionCodes.Pages.StateManage, 620),

@@ -85,7 +85,6 @@ public static class PermissionCodes
             public const string OpenFolder = "button.log.open-folder";
             public const string OpenSource = "button.log.open-source";
             public const string CopyDetails = "button.log.copy-details";
-            public const string Delete = "button.log.delete";
         }
 
         public static class SystemSetting

@@ -921,7 +921,6 @@ public static class TextKeys
         public const string ButtonLogOpenFolder = "permission.button.log.open_folder";
         public const string ButtonLogOpenSource = "permission.button.log.open_source";
         public const string ButtonLogCopyDetails = "permission.button.log.copy_details";
-        public const string ButtonLogDelete = "permission.button.log.delete";
         public const string ButtonStateRetrySelected = "permission.button.state.retry_selected";
         public const string ButtonStateRetryAll = "permission.button.state.retry_all";
         public const string ButtonStateRefresh = "permission.button.state.refresh";
@@ -1024,7 +1023,6 @@ public static class TextKeys
         public const string ButtonOpenFolder = "log.button.open_folder";
         public const string ButtonOpenSource = "log.button.open_source";
         public const string ButtonCopyDetails = "log.button.copy_details";
-        public const string ButtonDelete = "log.button.delete";
         public const string ColumnSendTime = "log.column.send_time";
         public const string ColumnPurpose = "log.column.purpose";
         public const string ColumnMethod = "log.column.method";

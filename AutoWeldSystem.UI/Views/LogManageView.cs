@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
@@ -195,7 +194,6 @@ public partial class LogManageView : BaseView
         TableStyleHelper.ApplyDataGridView(dgvDeviceStatusLogs);
         dgvDeviceStatusLogs.AutoGenerateColumns = false;
         dgvDeviceStatusLogs.DataSource = _deviceStatusBindingSource;
-        colDeviceStatusSelected.ReadOnly = false;
         ApplyDeviceStatusGridHeaders();
     }
 
@@ -238,13 +236,10 @@ public partial class LogManageView : BaseView
         Disposed += (_, _) => _deviceLifecycleLogService.LogWritten -= DeviceLifecycleLogService_LogWritten;
 
         btnOpenDeviceStatusFolder.Click += (_, _) => OpenDeviceStatusLogFolder();
-        btnDeleteDeviceStatusLogs.Click += (_, _) => DeleteSelectedDeviceStatusLogs();
         dtpDeviceStatusDate.ValueChanged += (_, _) => LoadDeviceStatusLogs();
         chkDeviceStatusShowDate.CheckedChanged += ShowLogDate_CheckedChanged;
         queryDeviceStatusLogs.QueryClick += (_, keyword) => HandleDeviceStatusQuery(keyword);
         dgvDeviceStatusLogs.SelectionChanged += (_, _) => ShowSelectedDeviceStatusDetails();
-        dgvDeviceStatusLogs.CurrentCellDirtyStateChanged += DeviceStatusGrid_CurrentCellDirtyStateChanged;
-        dgvDeviceStatusLogs.CellValueChanged += DeviceStatusGrid_CellValueChanged;
         _deviceStatusService.StatusChanged += DeviceStatusService_StatusChanged;
         Disposed += (_, _) => _deviceStatusService.StatusChanged -= DeviceStatusService_StatusChanged;
     }
@@ -382,7 +377,6 @@ public partial class LogManageView : BaseView
         btnOpenExceptionFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
         btnOpenDeviceLifecycleFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
         btnOpenDeviceStatusFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
-        btnDeleteDeviceStatusLogs.Text = _localizer.GetString(TextKeys.Log.ButtonDelete);
         btnOpenExceptionSource.Text = _localizer.GetString(TextKeys.Log.ButtonOpenSource);
         btnCopyExceptionDetails.Text = _localizer.GetString(TextKeys.Log.ButtonCopyDetails);
         tabBasicInfo.Text = _localizer.GetString(TextKeys.Log.DetailBasicInfo);
@@ -463,7 +457,6 @@ public partial class LogManageView : BaseView
 
     private void ApplyDeviceStatusGridHeaders()
     {
-        colDeviceStatusSelected.HeaderText = "选择";
         colDeviceOccurredTime.HeaderText = "时间";
         colDeviceStation.HeaderText = "工位";
         colDeviceStatus.HeaderText = "状态码";
@@ -633,7 +626,6 @@ public partial class LogManageView : BaseView
             .ToList();
 
         _deviceStatusBindingSource.DataSource = rows;
-        UpdateDeviceStatusDeleteButton();
         if (rows.Count == 0)
         {
             ShowDeviceStatusDetails(null);
@@ -643,32 +635,6 @@ public partial class LogManageView : BaseView
         SelectFirstRowIfNeeded(dgvDeviceStatusLogs);
 
         ShowSelectedDeviceStatusDetails();
-    }
-
-    private void DeviceStatusGrid_CurrentCellDirtyStateChanged(object? sender, EventArgs e)
-    {
-        if (dgvDeviceStatusLogs.IsCurrentCellDirty
-            && dgvDeviceStatusLogs.CurrentCell?.OwningColumn == colDeviceStatusSelected)
-        {
-            dgvDeviceStatusLogs.CommitEdit(DataGridViewDataErrorContexts.Commit);
-        }
-    }
-
-    private void DeviceStatusGrid_CellValueChanged(object? sender, DataGridViewCellEventArgs e)
-    {
-        if (e.ColumnIndex == colDeviceStatusSelected.Index)
-        {
-            UpdateDeviceStatusDeleteButton();
-        }
-    }
-
-    private void UpdateDeviceStatusDeleteButton()
-    {
-        var hasSelection = _deviceStatusBindingSource.List
-            .OfType<DeviceStatusLogRow>()
-            .Any(row => row.IsSelected);
-        btnDeleteDeviceStatusLogs.Enabled = hasSelection
-            && GlobalContext.HasPermission(PermissionCodes.Buttons.Log.Delete);
     }
 
     /// <summary>
@@ -1396,53 +1362,6 @@ public partial class LogManageView : BaseView
         }
     }
 
-    /// <summary>
-    /// 永久删除勾选的设备状态日志及其关联的本地重试任务。
-    /// </summary>
-    private void DeleteSelectedDeviceStatusLogs()
-    {
-        dgvDeviceStatusLogs.EndEdit();
-        _deviceStatusBindingSource.EndEdit();
-        var selectedLogs = _deviceStatusBindingSource.List
-            .OfType<DeviceStatusLogRow>()
-            .Where(row => row.IsSelected)
-            .Select(row => row.Entry)
-            .ToList();
-        if (selectedLogs.Count == 0)
-        {
-            ShowWarning("请先勾选需要删除的设备状态日志。");
-            return;
-        }
-
-        if (!GlobalContext.HasPermission(PermissionCodes.Buttons.Log.Delete))
-        {
-            ShowWarning("当前用户没有删除设备状态日志的权限。");
-            return;
-        }
-
-        var confirmed = MessageBox.Show(
-            this,
-            $"确定永久删除选中的 {selectedLogs.Count} 条设备状态日志吗？\r\n本地日志和关联的 MES 上传任务也会删除，且无法恢复。",
-            _localizer.GetString(TextKeys.Common.TitleConfirmDelete),
-            MessageBoxButtons.YesNo,
-            MessageBoxIcon.Warning) == DialogResult.Yes;
-        if (!confirmed)
-        {
-            return;
-        }
-
-        try
-        {
-            var deletedCount = _deviceStatusService.DeleteLogs(selectedLogs);
-            LoadDeviceStatusLogs();
-            ShowInfo($"已删除 {deletedCount} 条设备状态日志。");
-        }
-        catch (Exception ex)
-        {
-            ShowError(ex.Message);
-        }
-    }
-
     private void OpenSelectedExceptionSource()
     {
         var entry = GetSelectedExceptionEntry();
@@ -1603,8 +1522,6 @@ public partial class LogManageView : BaseView
         }
 
         public BizDeviceStatusLog Entry { get; }
-
-        public bool IsSelected { get; set; }
 
         public string OccurredTime { get; }
 
