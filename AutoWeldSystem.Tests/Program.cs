@@ -98,6 +98,7 @@ var tests = new (string Name, Action Run)[]
     ("Global permission checks separate developer and admin", GlobalPermissionChecksSeparateDeveloperAndAdmin),
     ("State tab defaults keep customer tabs configurable", StateTabDefaultsKeepCustomerTabsConfigurable),
     ("State manage view filters tabs by current permissions", StateManageViewFiltersTabsByCurrentPermissions),
+    ("State manage device status tab supports multi delete", StateManageDeviceStatusTabSupportsMultiDelete),
     ("Skipped upload tasks are not retried", SkippedUploadTasksAreNotRetried),
     ("Status report settings default to enabled", StatusReportSettingsDefaultToEnabled),
     ("MES route settings default to current routes", MesRouteSettingsDefaultToCurrentRoutes),
@@ -1782,6 +1783,18 @@ static void StateManageViewFiltersTabsByCurrentPermissions()
     AssertTrue(noVisibleMethod.Contains("_bindingSource.DataSource = Array.Empty<object>();", StringComparison.Ordinal), "没有可见页签时必须清空旧数据。");
     AssertTrue(noVisibleMethod.Contains("dgvPending.Columns.Clear();", StringComparison.Ordinal), "没有可见页签时必须清空旧列。");
     AssertTrue(noVisibleMethod.Contains("TextKeys.StateManage.MessageNoVisibleTabs", StringComparison.Ordinal), "没有可见页签时必须显示明确提示。");
+}
+
+static void StateManageDeviceStatusTabSupportsMultiDelete()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "StateManageView.cs"), Encoding.UTF8);
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "StateManageView.Designer.cs"), Encoding.UTF8);
+
+    AssertTrue(designerCode.Contains("dgvPending.MultiSelect = true;", StringComparison.Ordinal), "待上传数据表格必须允许多行选择。");
+    AssertTrue(viewCode.Contains("dgvPending.KeyDown += DgvPending_KeyDown;", StringComparison.Ordinal), "设备状态页签必须绑定 Ctrl+A 全选事件。");
+    AssertTrue(viewCode.Contains("dgvPending.SelectedRows", StringComparison.Ordinal), "删除选中必须读取表格的多行选择结果。");
+    AssertTrue(viewCode.Contains("IsDeviceStatusTab()", StringComparison.Ordinal), "多行删除逻辑必须限定在设备状态页签。");
+    AssertTrue(viewCode.Contains("_uploadTaskService.DeleteTask(task.Id);", StringComparison.Ordinal), "设备状态多行删除必须复用上传任务删除服务。");
 }
 
 static void SkippedUploadTasksAreNotRetried()

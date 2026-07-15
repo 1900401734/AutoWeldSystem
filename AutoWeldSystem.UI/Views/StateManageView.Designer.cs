@@ -300,7 +300,7 @@
             dgvPending.Dock = DockStyle.Fill;
             dgvPending.Location = new Point(20, 170);
             dgvPending.Margin = new Padding(20, 0, 20, 20);
-            dgvPending.MultiSelect = false;
+            dgvPending.MultiSelect = true;
             dgvPending.Name = "dgvPending";
             dgvPending.ReadOnly = true;
             dgvPending.RowHeadersVisible = false;

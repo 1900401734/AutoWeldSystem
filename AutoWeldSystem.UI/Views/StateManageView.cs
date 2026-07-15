@@ -224,6 +224,7 @@ public partial class StateManageView : BaseView
         btnDeleteSelected.Click += DeleteSelected_Click;
         tabUploadCategories.SelectedIndexChanged += (_, _) => SwitchUploadCategory();
         dgvPending.CellFormatting += DgvPending_CellFormatting;
+        dgvPending.KeyDown += DgvPending_KeyDown;
         GlobalContext.SessionChanged += GlobalContext_SessionChanged;
         _mesConnectionMonitor.StatusChanged += MesConnectionMonitor_StatusChanged;
         dgvPending.SelectionChanged += (_, _) =>
@@ -351,6 +352,15 @@ public partial class StateManageView : BaseView
         if (IsProgramFileTab())
         {
             btnDeleteSelected.Enabled = false;
+            return;
+        }
+
+        if (IsDeviceStatusTab())
+        {
+            var selectedTasks = GetSelectedUploadTasks();
+            btnDeleteSelected.Enabled = selectedTasks.Count > 0
+                && selectedTasks.All(task => task.CanDelete)
+                && GlobalContext.HasPermission(PermissionCodes.Buttons.State.Delete);
             return;
         }
 
@@ -516,6 +526,12 @@ public partial class StateManageView : BaseView
 
     private void DeleteSelected_Click(object? sender, EventArgs e)
     {
+        if (IsDeviceStatusTab())
+        {
+            DeleteSelectedDeviceStatusTasks();
+            return;
+        }
+
         if (IsProgramFileTab())
         {
             ShowWarning("程序文件页签不支持在上传状态页删除，请到程序管理页处理。");
@@ -546,6 +562,73 @@ public partial class StateManageView : BaseView
         }
 
         ShowWarning(_localizer.GetString(TextKeys.StateManage.MessageSelectPending));
+    }
+
+    /// <summary>
+    /// Returns the selected upload task rows from the current grid.
+    /// </summary>
+    private IReadOnlyList<UploadTaskSummary> GetSelectedUploadTasks()
+    {
+        return dgvPending.SelectedRows
+            .Cast<DataGridViewRow>()
+            .Select(row => row.DataBoundItem)
+            .OfType<UploadTaskSummary>()
+            .ToList();
+    }
+
+    /// <summary>
+    /// Deletes all selected device-status upload tasks after an explicit confirmation.
+    /// </summary>
+    private void DeleteSelectedDeviceStatusTasks()
+    {
+        var selectedTasks = GetSelectedUploadTasks();
+        if (selectedTasks.Count == 0)
+        {
+            ShowWarning(_localizer.GetString(TextKeys.StateManage.MessageSelectPending));
+            return;
+        }
+
+        if (selectedTasks.Any(task => !task.CanDelete))
+        {
+            ShowWarning("所选设备状态记录中包含不可删除的任务。");
+            return;
+        }
+
+        var message = $"确定删除选中的 {selectedTasks.Count} 条设备状态上传记录吗？\n\n删除后不可恢复，并会清理关联的上传任务。";
+        var result = MessageBox.Show(
+            this,
+            message,
+            _localizer.GetString(TextKeys.Common.TitleConfirmDelete),
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning);
+        if (result != DialogResult.Yes)
+        {
+            return;
+        }
+
+        foreach (var task in selectedTasks)
+        {
+            _uploadTaskService.DeleteTask(task.Id);
+        }
+
+        ReloadActiveTasks();
+        ShowInfo($"已删除选中的 {selectedTasks.Count} 条设备状态上传记录。");
+    }
+
+    /// <summary>
+    /// Provides an explicit Ctrl+A shortcut for selecting every device-status row.
+    /// </summary>
+    private void DgvPending_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (!IsDeviceStatusTab() || !e.Control || e.KeyCode != Keys.A)
+        {
+            return;
+        }
+
+        dgvPending.SelectAll();
+        e.Handled = true;
+        e.SuppressKeyPress = true;
+        ApplyDeletePermissionForActiveTab();
     }
 
     private async Task<int> ExecuteAllPendingUploadsAsync()
