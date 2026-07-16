@@ -33,6 +33,7 @@ var tests = new (string Name, Action Run)[]
     ("MES-only collected roles stay visible in product history", MesOnlyCollectedRoleStaysVisibleInProductHistory),
     ("Disabled roles block save report and MES outputs", DisabledRoleBlocksEveryOutputChannel),
     ("Product cycle snapshots persist PLC product results", ProductCycleSnapshotsPersistPlcProductResults),
+    ("Missing point results do not fall back to product results", MissingPointResultDoesNotFallBackToProductResult),
     ("Stored PLC product results drive history without point aggregation", StoredPlcProductResultsDriveHistoryWithoutPointAggregation),
     ("Unavailable roles are cleared before save", UnavailableRolesAreCleared),
     ("Running task with changed PLC recipe requests reconciliation", RunningTaskWithChangedPlcRecipeRequestsReconciliation),
@@ -284,6 +285,28 @@ static void ProductCycleSnapshotsPersistPlcProductResults()
     AssertTrue(
         serviceCode.Contains("AddValue(values, \"product_result\", header.ProductResult);", StringComparison.Ordinal),
         "采集快照必须继续把标准化后的 PLC 产品结果写入 RawDataJson，兼容旧数据读取。");
+}
+
+static void MissingPointResultDoesNotFallBackToProductResult()
+{
+    var serviceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductCycleCollectionService.cs"),
+        Encoding.UTF8);
+    var readRecordMethod = ExtractMethodText(
+        serviceCode,
+        "private async Task<BizWeldPointRecord> ReadWeldPointRecordAsync(",
+        "private async Task ReadTestItemValuesAsync(");
+
+    AssertTrue(
+        readRecordMethod.Contains("var testResult = NormalizeTestResult(touchResultRaw);", StringComparison.Ordinal),
+        "焊点/拍照结果必须只标准化 touchResultRaw，不得读取产品结果作为回退。");
+    AssertFalse(
+        readRecordMethod.Contains("FirstValue(values, \"touch_result_raw\", \"product_result\")", StringComparison.Ordinal),
+        "焊点/拍照结果缺失时不得回退到 product_result。");
+    AssertEqual(
+        ProductionConstants.TestResults.Unknown,
+        TestResultRules.Normalize(null),
+        "焊点/拍照结果缺失时必须保持 Unknown，即使产品结果为 OK。");
 }
 
 static void StoredPlcProductResultsDriveHistoryWithoutPointAggregation()

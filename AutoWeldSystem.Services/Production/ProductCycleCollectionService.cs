@@ -276,7 +276,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         AddValue(values, "touch_no_raw", touchNo);
         AddValue(values, "touch_result_raw", touchResultRaw);
 
-        var testResult = NormalizeTestResult(FirstValue(values, "touch_result_raw", "product_result"));
+        var testResult = NormalizeTestResult(touchResultRaw);
         if (!TestResultRules.IsPreWeldNg(testResult))
         {
             foreach (var schemeItem in schemeItems)
