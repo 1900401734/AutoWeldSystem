@@ -165,6 +165,29 @@ public static class CenterProductReportFormat
     }
 
     /// <summary>
+    /// 同一中心报表的采集点固定列必须保持同一标题，避免后到工位被已有标题错误解释。
+    /// </summary>
+    public static void EnsureCompatiblePointHeaders(
+        IEnumerable<CenterProductReportColumn> existingColumns,
+        IEnumerable<CenterProductReportColumn> incomingColumns)
+    {
+        var existing = existingColumns.ToList();
+        var incoming = incomingColumns.ToList();
+        foreach (var key in new[] { ColumnTouchNo, ColumnTouchResult })
+        {
+            var existingTitle = FindColumnTitle(existing, key);
+            var incomingTitle = FindColumnTitle(incoming, key);
+            if (!string.IsNullOrWhiteSpace(existingTitle)
+                && !string.IsNullOrWhiteSpace(incomingTitle)
+                && !string.Equals(existingTitle, incomingTitle, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"同一中心报表的采集点表头不一致：{existingTitle} / {incomingTitle}。");
+            }
+        }
+    }
+
+    /// <summary>
     /// 构造同一产品内需要合并单元格的分组键。
     /// </summary>
     public static string BuildProductMergeKey(int stationNo, string? workOrder, string? productNo)
@@ -184,6 +207,14 @@ public static class CenterProductReportFormat
             key,
             string.IsNullOrWhiteSpace(equipmentColumn?.Title) ? title : equipmentColumn.Title.Trim(),
             mergeByProduct);
+    }
+
+    private static string? FindColumnTitle(
+        IReadOnlyList<CenterProductReportColumn> columns,
+        string key)
+    {
+        return columns.FirstOrDefault(
+            column => string.Equals(column.Key, key, StringComparison.OrdinalIgnoreCase))?.Title?.Trim();
     }
 
 }

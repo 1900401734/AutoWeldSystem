@@ -71,9 +71,13 @@ internal sealed class CenterProductReportWorkbookWriter
         IReadOnlyList<CenterProductReportColumn> columns)
     {
         var values = BuildFixedValues(row);
+        var applicableColumnKeys = ParseReportColumnKeys(row.ReportColumnKeysJson);
         foreach (var pair in ParseRawData(row.RawDataJson))
         {
-            values.TryAdd(pair.Key, pair.Value);
+            if (applicableColumnKeys.Count == 0 || applicableColumnKeys.Contains(pair.Key))
+            {
+                values.TryAdd(pair.Key, pair.Value);
+            }
         }
 
         for (var index = 0; index < columns.Count; index++)
@@ -289,6 +293,29 @@ internal sealed class CenterProductReportWorkbookWriter
         catch (JsonException)
         {
             return new Dictionary<string, string>();
+        }
+    }
+
+    /// <summary>
+    /// 新报表按每行声明的列键隔离工位专属值；空值表示旧报表，继续兼容原有全量读取行为。
+    /// </summary>
+    private static IReadOnlySet<string> ParseReportColumnKeys(string? columnKeysJson)
+    {
+        if (string.IsNullOrWhiteSpace(columnKeysJson))
+        {
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<string[]>(columnKeysJson)?
+                .Where(key => !string.IsNullOrWhiteSpace(key))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase)
+                ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        }
+        catch (JsonException)
+        {
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
     }
 }

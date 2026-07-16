@@ -1605,11 +1605,19 @@ public class WeldTaskService : IWeldTaskService
     /// </summary>
     private IReadOnlyList<BizUploadTask> EnqueueFinishUploadTasks(BizWeldTask task, UploadMode uploadMode)
     {
-        return new[]
+        var (reportFile, generationError) = GenerateLocalReportFile(task);
+        var uploadTasks = new List<BizUploadTask>
         {
-            EnqueueProcessParameterTask(task, uploadMode),
-            EnqueueReportFileTask(task, uploadMode)
+            EnqueueProcessParameterTask(task, uploadMode)
         };
+
+        // 本地报表始终生成；只有有效 ReportEnable 才创建 MES 文件上传任务。
+        if (_reportFileService.ShouldUploadReportFile(task))
+        {
+            uploadTasks.Add(EnqueueReportFileTask(task, uploadMode, reportFile, generationError));
+        }
+
+        return uploadTasks;
     }
 
     private BizUploadTask EnqueueProcessParameterTask(BizWeldTask task, UploadMode uploadMode)
@@ -1627,21 +1635,25 @@ public class WeldTaskService : IWeldTaskService
         });
     }
 
-    private BizUploadTask EnqueueReportFileTask(BizWeldTask task, UploadMode uploadMode)
+    private (BizProductionReportFile? ReportFile, string? GenerationError) GenerateLocalReportFile(BizWeldTask task)
     {
-        BizProductionReportFile? reportFile = null;
-        string? generationError = null;
-
         try
         {
-            reportFile = _reportFileService.GenerateXlsxReport(task);
+            return (_reportFileService.GenerateXlsxReport(task), null);
         }
         catch (Exception ex)
         {
-            generationError = ex.Message;
             _operationLogService.Write("ReportFile", $"Report file generation failed, WorkOrder={task.SN}, Error={ex.Message}");
+            return (null, ex.Message);
         }
+    }
 
+    private BizUploadTask EnqueueReportFileTask(
+        BizWeldTask task,
+        UploadMode uploadMode,
+        BizProductionReportFile? reportFile,
+        string? generationError)
+    {
         return _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
         {
             TaskType = ProductionConstants.UploadTaskTypes.ReportFile,

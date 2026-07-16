@@ -9,4 +9,9 @@ namespace AutoWeldSystem.Core.Interfaces;
 public interface IProductionReportFileService
 {
     BizProductionReportFile GenerateXlsxReport(BizWeldTask task);
+
+    /// <summary>
+    /// 判断当前任务是否存在可触发 MES 报表文件上传的有效 ReportEnable 角色。
+    /// </summary>
+    bool ShouldUploadReportFile(BizWeldTask task);
 }

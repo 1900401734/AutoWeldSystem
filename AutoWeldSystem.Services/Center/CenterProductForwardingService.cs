@@ -617,9 +617,6 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
 
     private static string BuildBusinessId(CenterProductReportRequest request)
     {
-        var raw = request.IsTaskFinishUpdate
-            ? $"center:finish:wo{request.WorkOrder}"
-            : $"center:s{request.StationNo}:wo{request.WorkOrder}:p{request.ProductNo}";
-        return raw.Length <= 100 ? raw : raw[..100];
+        return CenterProductForwardingRules.BuildBusinessId(request);
     }
 }

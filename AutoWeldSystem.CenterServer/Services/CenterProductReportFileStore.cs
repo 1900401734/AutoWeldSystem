@@ -27,6 +27,7 @@ public sealed class CenterProductReportFileStore
         var existing = _reader.Load(reportPath);
         var rows = MergeRows(existing.Rows, request);
         var requestColumns = CenterProductReportFormat.FromDtos(request.ReportColumns);
+        CenterProductReportFormat.EnsureCompatiblePointHeaders(existing.Columns, requestColumns);
         var columns = CenterProductReportFormat.BuildDetailColumns(existing.Columns.Concat(requestColumns));
         var taskState = ResolveTaskState(existing.TaskState, request);
 
@@ -52,12 +53,20 @@ public sealed class CenterProductReportFileStore
         var products = new List<CenterProductReportProductSummary>();
         foreach (var filePath in _pathResolver.EnumerateReportPaths(root))
         {
-            var state = _reader.Load(filePath);
-            products.AddRange(state.Rows
-                .Where(row => row.StationNo == stationNo
-                    && row.CompletedAt.Date == reportDate.Date
-                    && string.Equals(row.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase))
-                .Select(row => row.ToSummary()));
+            try
+            {
+                // 每个正式历史文件只解析一次；单个损坏文件不能阻断其余看板数据。
+                var state = _reader.Load(filePath);
+                products.AddRange(state.Rows
+                    .Where(row => row.StationNo == stationNo
+                        && row.CompletedAt.Date == reportDate.Date
+                        && string.Equals(row.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase))
+                    .Select(row => row.ToSummary()));
+            }
+            catch (Exception)
+            {
+                // 历史枚举采用隔离策略。目标文件的 Upsert 仍走严格读取并向上抛错，禁止覆盖损坏文件。
+            }
         }
 
         return products;

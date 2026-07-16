@@ -1,6 +1,7 @@
 using AutoWeldSystem.Core.Center;
 using AutoWeldSystem.Core.DTOs.CenterServer;
 using ClosedXML.Excel;
+using System.Text.Json;
 
 namespace AutoWeldSystem.CenterServer.Services;
 
@@ -141,6 +142,12 @@ internal sealed class CenterProductReportStoredRow
     public DateTime CompletedAt { get; set; } = DateTime.Now;
     public string RawDataJson { get; set; } = string.Empty;
 
+    /// <summary>
+    /// 记录该产品请求实际声明的列键，防止后续工位扩展列并集后读取到本行不适用的原始值。
+    /// 旧报表缺少此字段时保持空值，由写入器按兼容模式处理。
+    /// </summary>
+    public string ReportColumnKeysJson { get; set; } = string.Empty;
+
     public static CenterProductReportStoredRow FromRequest(
         CenterProductReportRequest request,
         CenterProductReportPointDto point)
@@ -169,7 +176,12 @@ internal sealed class CenterProductReportStoredRow
             TestResult = point.TestResult.Trim(),
             CollectedAt = point.CollectedAt == default ? DateTime.Now : point.CollectedAt,
             CompletedAt = request.CompletedAt == default ? DateTime.Now : request.CompletedAt,
-            RawDataJson = point.RawDataJson ?? string.Empty
+            RawDataJson = point.RawDataJson ?? string.Empty,
+            ReportColumnKeysJson = JsonSerializer.Serialize(
+                request.ReportColumns
+                    .Where(column => !string.IsNullOrWhiteSpace(column.Key))
+                    .Select(column => column.Key.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase))
         };
     }
 
@@ -207,7 +219,8 @@ internal sealed class CenterProductReportStoredRow
             [CenterProductReportDataColumns.TestResult] = TestResult,
             [CenterProductReportDataColumns.CollectedAt] = CollectedAt.ToString("O"),
             [CenterProductReportDataColumns.CompletedAt] = CompletedAt.ToString("O"),
-            [CenterProductReportDataColumns.RawDataJson] = RawDataJson
+            [CenterProductReportDataColumns.RawDataJson] = RawDataJson,
+            [CenterProductReportDataColumns.ReportColumnKeysJson] = ReportColumnKeysJson
         };
     }
 
@@ -235,7 +248,8 @@ internal sealed class CenterProductReportStoredRow
             TestResult = Get(worksheet, rowNumber, CenterProductReportDataColumns.TestResult),
             CollectedAt = GetDate(worksheet, rowNumber, CenterProductReportDataColumns.CollectedAt),
             CompletedAt = GetDate(worksheet, rowNumber, CenterProductReportDataColumns.CompletedAt),
-            RawDataJson = Get(worksheet, rowNumber, CenterProductReportDataColumns.RawDataJson)
+            RawDataJson = Get(worksheet, rowNumber, CenterProductReportDataColumns.RawDataJson),
+            ReportColumnKeysJson = Get(worksheet, rowNumber, CenterProductReportDataColumns.ReportColumnKeysJson)
         };
     }
 
@@ -275,12 +289,13 @@ internal static class CenterProductReportDataColumns
     public const string CollectedAt = "CollectedAt";
     public const string CompletedAt = "CompletedAt";
     public const string RawDataJson = "RawDataJson";
+    public const string ReportColumnKeysJson = "ReportColumnKeysJson";
 
     public static readonly IReadOnlyList<string> All =
     [
         DeviceId, DeviceName, SystemType, StationNo, StationName, WorkOrder, Batch, Quantity,
         PartName, ProcessNo, OperatorNo, ProductJobNo, ProductNo, ProductModel, ProductResult,
-        SequenceNo, TouchNo, TestResult, CollectedAt, CompletedAt, RawDataJson
+        SequenceNo, TouchNo, TestResult, CollectedAt, CompletedAt, RawDataJson, ReportColumnKeysJson
     ];
 
     public static int IndexOf(string columnName)

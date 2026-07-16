@@ -39,16 +39,20 @@ var tests = new (string Name, Action Run)[]
     ("Collection does not imply local save or upload", CollectionDoesNotImplyOutput),
     ("MES-only collected roles stay visible in product history", MesOnlyCollectedRoleStaysVisibleInProductHistory),
     ("Disabled roles block save report and MES outputs", DisabledRoleBlocksEveryOutputChannel),
+    ("Report file upload rule requires an enabled report role", ReportFileUploadRuleRequiresEnabledReportRole),
     ("Product cycle snapshots persist PLC product results", ProductCycleSnapshotsPersistPlcProductResults),
     ("Missing point results do not fall back to product results", MissingPointResultDoesNotFallBackToProductResult),
     ("Stored PLC product results drive history without point aggregation", StoredPlcProductResultsDriveHistoryWithoutPointAggregation),
     ("Production report writes customer template for single station", ProductionReportWritesCustomerTemplateForSingleStation),
     ("Production report writes configured dual station and product merges", ProductionReportWritesConfiguredDualStationAndProductMerges),
+    ("Production report unions station-specific columns without cross values", ProductionReportUnionsStationSpecificColumnsWithoutCrossValues),
+    ("Production and center reports reject conflicting point headers", ProductionAndCenterReportsRejectConflictingPointHeaders),
     ("Production report expands template beyond column J", ProductionReportExpandsTemplateBeyondColumnJ),
     ("Production report end-to-end matrix generates visual artifacts", ProductionReportEndToEndMatrixGeneratesVisualArtifacts),
     ("Production report rules reload latest persisted task", ProductionReportRulesReloadLatestPersistedTask),
     ("Production report rules select latest upload spreadsheet", ProductionReportRulesSelectLatestUploadSpreadsheet),
     ("Production report completion flow persists before final generation", ProductionReportCompletionFlowPersistsBeforeFinalGeneration),
+    ("Finish report generation is local while MES upload follows ReportEnable", FinishReportGenerationIsLocalWhileMesUploadFollowsReportEnable),
     ("Unavailable roles are cleared before save", UnavailableRolesAreCleared),
     ("Running task with changed PLC recipe requests reconciliation", RunningTaskWithChangedPlcRecipeRequestsReconciliation),
     ("Finished PLC work-order status skips recipe reconciliation", FinishedWorkOrderStatusSkipsRecipeReconciliation),
@@ -69,6 +73,7 @@ var tests = new (string Name, Action Run)[]
     ("Center telemetry snapshot carries station runtime data", CenterTelemetrySnapshotCarriesStationRuntimeData),
     ("Center dashboard device totals are calculated from station data", CenterDashboardDeviceTotalsAreCalculatedFromStationData),
     ("Center product report request carries one completed product", CenterProductReportRequestCarriesOneCompletedProduct),
+    ("Center forwarding business ids hash the full identity", CenterForwardingBusinessIdsHashFullIdentity),
     ("Center product report columns follow production Excel format", CenterProductReportColumnsFollowProductionExcelFormat),
     ("Center product report columns use forwarded equipment headers", CenterProductReportColumnsUseForwardedEquipmentHeaders),
     ("Center product report request carries production report fields", CenterProductReportRequestCarriesProductionReportFields),
@@ -84,6 +89,7 @@ var tests = new (string Name, Action Run)[]
     ("Center report path distinguishes sanitized collisions", CenterReportPathDistinguishesSanitizedCollisions),
     ("Center report keeps final header after late product retry", CenterReportKeepsFinalHeaderAfterLateProductRetry),
     ("Center report preserves corrupt existing workbook", CenterReportPreservesCorruptExistingWorkbook),
+    ("Center dashboard skips unrelated corrupt formal workbooks", CenterDashboardSkipsUnrelatedCorruptFormalWorkbooks),
     ("Center report atomic update leaves no temporary files", CenterReportAtomicUpdateLeavesNoTemporaryFiles),
     ("Center report lock preserves file when same report is busy", CenterReportLockPreservesFileWhenSameReportIsBusy),
     ("Center report lock does not block a different report", CenterReportLockDoesNotBlockDifferentReport),
@@ -274,6 +280,26 @@ static void CollectionDoesNotImplyOutput()
 
     detail.SaveActual = true;
     AssertTrue(SchemeDetailRoleRules.ShouldPersistRole(detail, SchemeDetailValueRole.Actual), "启用保存后应写入历史 RawDataJson。");
+}
+
+static void ReportFileUploadRuleRequiresEnabledReportRole()
+{
+    var ruleType = typeof(SchemeDetailRoleRules).Assembly.GetType(
+        "AutoWeldSystem.Core.Production.ReportFileUploadRules");
+    AssertTrue(ruleType is not null, "Core 必须提供 MES 报表文件上传纯规则。");
+    var shouldUpload = ruleType!.GetMethod(
+        "ShouldUploadReportFile",
+        System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public);
+    AssertTrue(shouldUpload is not null, "报表文件上传纯规则必须公开 ShouldUploadReportFile。");
+
+    bool Invoke(params BizSchemeDetail[] details)
+        => (bool)(shouldUpload!.Invoke(null, [details]) ?? false);
+
+    AssertFalse(Invoke(), "没有方案明细时不得创建 MES ReportFile 任务。");
+    AssertFalse(Invoke(new BizSchemeDetail { EnableActual = true, SaveActual = true }), "SaveEnable 独占角色不得触发 MES 报表文件上传。");
+    AssertFalse(Invoke(new BizSchemeDetail { EnableActual = true, MesActual = true }), "MesEnable 独占角色不得触发 MES 报表文件上传。");
+    AssertFalse(Invoke(new BizSchemeDetail { EnableActual = false, ReportActual = true }), "未启用采集的 ReportEnable 配置不得触发上传。");
+    AssertTrue(Invoke(new BizSchemeDetail { EnableActual = true, ReportActual = true }), "任一有效 Enable && ReportEnable 角色必须允许 MES 报表文件上传。");
 }
 
 static void MesOnlyCollectedRoleStaysVisibleInProductHistory()
@@ -557,6 +583,200 @@ static void ProductionReportWritesConfiguredDualStationAndProductMerges()
     finally
     {
         DeleteReportFixture(filePath);
+    }
+}
+
+static void ProductionReportUnionsStationSpecificColumnsWithoutCrossValues()
+{
+    var task = BuildReportTask(new DateTime(2026, 7, 17, 8, 0, 0), endTime: null);
+    task.SN = "FLOW-STATION-UNION";
+    var records = new[]
+    {
+        BuildReportPoint(task.Id, stationNo: 1, productNo: "LEFT-001", sequenceNo: 1, pointResult: ProductionConstants.TestResults.Ok),
+        BuildReportPoint(task.Id, stationNo: 2, productNo: "RIGHT-001", sequenceNo: 2, pointResult: ProductionConstants.TestResults.Ok)
+    };
+    records[0].RawDataJson = JsonSerializer.Serialize(new Dictionary<string, string>
+    {
+        ["max_electric"] = "1.11",
+        ["displacement"] = "错误串位值"
+    });
+    records[1].RawDataJson = JsonSerializer.Serialize(new Dictionary<string, string>
+    {
+        ["max_electric"] = "错误串位值",
+        ["displacement"] = "2.22"
+    });
+
+    var stationDefinitions = new[]
+    {
+        (
+            StationNo: 1,
+            Config: new BizProductProcessConfig
+            {
+                StationNo = 1,
+                SchemeId = "LEFT-SCHEME",
+                PointNoHeader = "拍照编号",
+                PointResultHeader = "拍照结果"
+            },
+            Item: new DimTestItem { ItemId = 1, ItemName = "峰值电流", ActualExpression = "0:F-0" },
+            Detail: new BizSchemeDetail
+            {
+                SchemeId = "LEFT-SCHEME",
+                ItemId = 1,
+                DetailId = 1,
+                EnableActual = true,
+                ReportActual = true,
+                ActualHeader = "左工位电流"
+            }),
+        (
+            StationNo: 2,
+            Config: new BizProductProcessConfig
+            {
+                StationNo = 2,
+                SchemeId = "RIGHT-SCHEME",
+                PointNoHeader = "拍照编号",
+                PointResultHeader = "拍照结果"
+            },
+            Item: new DimTestItem { ItemId = 2, ItemName = "位移", ActualExpression = "0:F-0" },
+            Detail: new BizSchemeDetail
+            {
+                SchemeId = "RIGHT-SCHEME",
+                ItemId = 2,
+                DetailId = 2,
+                EnableActual = true,
+                ReportActual = true,
+                ActualHeader = "右工位位移"
+            })
+    };
+    var reportPath = GenerateStationSpecificReportWorkbook(
+        new AppSettings { EnableDualStation = true, Station1DisplayName = "左工位", Station2DisplayName = "右工位" },
+        task,
+        records,
+        stationDefinitions);
+    var centerDirectory = CreateCenterReportFixtureDirectory();
+
+    try
+    {
+        using (var workbook = new XLWorkbook(reportPath))
+        {
+            var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+            AssertSequenceEqual(
+                new[] { "工位", "产品编号", "拍照编号", "拍照结果", "左工位电流", "右工位位移", "产品结果" },
+                ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow),
+                "设备端双工位同任务必须按稳定顺序合并两套 ReportEnable 动态列。");
+            AssertEqual("1.11", worksheet.Cell("E10").GetString(), "工位 1 必须读取本工位适用配置的动态值。");
+            AssertEqual(string.Empty, worksheet.Cell("F10").GetString(), "工位 1 不得读取工位 2 专属动态值。");
+            AssertEqual(string.Empty, worksheet.Cell("E11").GetString(), "工位 2 不得读取工位 1 专属动态值。");
+            AssertEqual("2.22", worksheet.Cell("F11").GetString(), "工位 2 必须读取本工位适用配置的动态值。");
+        }
+
+        var leftRequest = BuildCenterWorkbookRequest(
+            "DEVICE-UNION", task.SN, task.StartTime, null, 0, true, 1, "左工位", "LEFT-001", false, false, 1,
+            [new CenterProductReportColumnDto { Key = "max_electric", Title = "左工位电流", MergeByProduct = false }]);
+        leftRequest.Points[0].RawDataJson = JsonSerializer.Serialize(new Dictionary<string, string>
+        {
+            ["max_electric"] = "1.11",
+            ["displacement"] = "错误串位值"
+        });
+        var rightRequest = BuildCenterWorkbookRequest(
+            "DEVICE-UNION", task.SN, task.StartTime, null, 0, true, 2, "右工位", "RIGHT-001", false, false, 1,
+            [new CenterProductReportColumnDto { Key = "displacement", Title = "右工位位移", MergeByProduct = false }]);
+        rightRequest.Points[0].RawDataJson = JsonSerializer.Serialize(new Dictionary<string, string>
+        {
+            ["max_electric"] = "错误串位值",
+            ["displacement"] = "2.22"
+        });
+
+        var centerStore = new CenterProductReportFileStore();
+        centerStore.Upsert(centerDirectory, leftRequest);
+        var centerPath = centerStore.Upsert(centerDirectory, rightRequest);
+        using var centerWorkbook = new XLWorkbook(centerPath);
+        var centerWorksheet = centerWorkbook.Worksheet(CenterProductReportFormat.WorksheetName);
+        AssertSequenceEqual(
+            new[] { "工位", "产品编号", "拍照编号", "拍照结果", "左工位电流", "右工位位移", "产品结果" },
+            ReadHeaderRow(centerWorksheet, CenterProductReportFormat.DetailHeaderRow),
+            "中心端必须保持与设备端一致的双工位动态列并集语义。");
+        AssertEqual("1.11", centerWorksheet.Cell("E10").GetString(), "中心工位 1 不得串入工位 2 值。");
+        AssertEqual(string.Empty, centerWorksheet.Cell("F10").GetString(), "中心工位 1 的工位 2 专属列必须为空。");
+        AssertEqual(string.Empty, centerWorksheet.Cell("E11").GetString(), "中心工位 2 的工位 1 专属列必须为空。");
+        AssertEqual("2.22", centerWorksheet.Cell("F11").GetString(), "中心工位 2 必须写入本工位专属值。");
+    }
+    finally
+    {
+        DeleteReportFixture(reportPath);
+        DeleteDirectoryIfExists(centerDirectory);
+    }
+}
+
+static void ProductionAndCenterReportsRejectConflictingPointHeaders()
+{
+    var task = BuildReportTask(new DateTime(2026, 7, 17, 8, 0, 0), endTime: null);
+    task.SN = "FLOW-HEADER-CONFLICT";
+    var records = new[]
+    {
+        BuildReportPoint(task.Id, stationNo: 1, productNo: "LEFT-001", sequenceNo: 1, pointResult: ProductionConstants.TestResults.Ok),
+        BuildReportPoint(task.Id, stationNo: 2, productNo: "RIGHT-001", sequenceNo: 2, pointResult: ProductionConstants.TestResults.Ok)
+    };
+    var conflictingDefinitions = new[]
+    {
+        (
+            StationNo: 1,
+            Config: new BizProductProcessConfig { StationNo = 1, SchemeId = "S1", PointNoHeader = "拍照编号", PointResultHeader = "拍照结果" },
+            Item: new DimTestItem { ItemId = 1, ItemName = "峰值电流", ActualExpression = "0:F-0" },
+            Detail: new BizSchemeDetail { SchemeId = "S1", ItemId = 1, EnableActual = true, ReportActual = true }),
+        (
+            StationNo: 2,
+            Config: new BizProductProcessConfig { StationNo = 2, SchemeId = "S2", PointNoHeader = "焊点编号", PointResultHeader = "焊点结果" },
+            Item: new DimTestItem { ItemId = 2, ItemName = "位移", ActualExpression = "0:F-0" },
+            Detail: new BizSchemeDetail { SchemeId = "S2", ItemId = 2, EnableActual = true, ReportActual = true })
+    };
+
+    var deviceRejected = false;
+    try
+    {
+        GenerateStationSpecificReportWorkbook(
+            new AppSettings { EnableDualStation = true },
+            task,
+            records,
+            conflictingDefinitions);
+    }
+    catch (System.Reflection.TargetInvocationException ex) when (ex.InnerException is InvalidOperationException)
+    {
+        deviceRejected = true;
+    }
+
+    AssertTrue(deviceRejected, "设备端同一任务工位标题冲突时必须明确拒绝，不能用工位 1 标题解释工位 2。");
+
+    var outputDirectory = CreateCenterReportFixtureDirectory();
+    try
+    {
+        var firstRequest = BuildCenterWorkbookRequest(
+            "DEVICE-HEADER", task.SN, task.StartTime, null, 0, true, 1, "左工位", "LEFT-001", false, false, 1,
+            pointNoHeader: "拍照编号",
+            pointResultHeader: "拍照结果");
+        var secondRequest = BuildCenterWorkbookRequest(
+            "DEVICE-HEADER", task.SN, task.StartTime, null, 0, true, 2, "右工位", "RIGHT-001", false, false, 1,
+            pointNoHeader: "焊点编号",
+            pointResultHeader: "焊点结果");
+        var store = new CenterProductReportFileStore();
+        var reportPath = store.Upsert(outputDirectory, firstRequest);
+        var originalBytes = File.ReadAllBytes(reportPath);
+
+        var centerRejected = false;
+        try
+        {
+            store.Upsert(outputDirectory, secondRequest);
+        }
+        catch (InvalidOperationException)
+        {
+            centerRejected = true;
+        }
+
+        AssertTrue(centerRejected, "中心端同一任务固定采集点标题冲突时必须明确拒绝。");
+        AssertSequenceEqual(originalBytes, File.ReadAllBytes(reportPath), "中心端标题冲突失败时不得改写已有正式报表。");
+    }
+    finally
+    {
+        DeleteDirectoryIfExists(outputDirectory);
     }
 }
 
@@ -937,6 +1157,66 @@ static void ProductionReportCompletionFlowPersistsBeforeFinalGeneration()
     AssertTrue(
         buildReportRequestMethod.Contains("FirstNonEmpty(latestReportFilePath, task.FilePath)", StringComparison.Ordinal),
         "MES 报表上传必须优先使用最新报表记录，再回退上传任务旧路径。");
+}
+
+static void FinishReportGenerationIsLocalWhileMesUploadFollowsReportEnable()
+{
+    static IReadOnlyList<BizUploadTask> InvokeFinishEnqueue(
+        WeldTaskService service,
+        BizWeldTask task)
+    {
+        var enqueue = typeof(WeldTaskService).GetMethod(
+            "EnqueueFinishUploadTasks",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        AssertTrue(enqueue is not null, "完工流程必须保留上传任务编排入口。");
+        return (IReadOnlyList<BizUploadTask>)(enqueue!.Invoke(service, [task, UploadMode.Realtime])
+            ?? Array.Empty<BizUploadTask>());
+    }
+
+    var task = BuildReportTask(new DateTime(2026, 7, 17, 8, 0, 0), new DateTime(2026, 7, 17, 9, 0, 0));
+    var noReportUploadTasks = new FakeUploadTaskService();
+    var noReportFileService = new FakeProductionReportFileService
+    {
+        ShouldUploadReportFileResult = false,
+        GeneratedReport = new BizProductionReportFile { FilePath = "local-fixed-fields.xlsx" }
+    };
+    var noReportService = CreateWeldTaskService(
+        new FakeMesProvider(),
+        new FakeSystemClockService(),
+        new FakeOperationLogService(),
+        uploadTaskService: noReportUploadTasks,
+        reportFileService: noReportFileService);
+
+    var noReportResult = InvokeFinishEnqueue(noReportService, task);
+    AssertEqual(1, noReportFileService.GenerateCallCount, "无 ReportEnable 时仍必须生成固定公共字段本地 XLSX。");
+    AssertFalse(
+        noReportResult.Any(uploadTask => uploadTask.TaskType == ProductionConstants.UploadTaskTypes.ReportFile),
+        "无有效 ReportEnable 时不得创建 MES ReportFile 任务。");
+    AssertFalse(
+        noReportUploadTasks.Enqueued.Any(uploadTask => uploadTask.TaskType == ProductionConstants.UploadTaskTypes.ReportFile),
+        "无有效 ReportEnable 时上传队列不得出现 MES ReportFile 任务。");
+
+    var enabledUploadTasks = new FakeUploadTaskService();
+    var enabledReportFileService = new FakeProductionReportFileService
+    {
+        ShouldUploadReportFileResult = true,
+        GeneratedReport = new BizProductionReportFile { FilePath = "report-enabled.xlsx" }
+    };
+    var enabledService = CreateWeldTaskService(
+        new FakeMesProvider(),
+        new FakeSystemClockService(),
+        new FakeOperationLogService(),
+        uploadTaskService: enabledUploadTasks,
+        reportFileService: enabledReportFileService);
+
+    var enabledResult = InvokeFinishEnqueue(enabledService, task);
+    AssertEqual(1, enabledReportFileService.GenerateCallCount, "有 ReportEnable 时本地 XLSX 仍只生成一次。");
+    AssertTrue(
+        enabledResult.Any(uploadTask => uploadTask.TaskType == ProductionConstants.UploadTaskTypes.ReportFile),
+        "任一有效 ReportEnable 必须创建 MES ReportFile 任务。");
+    AssertTrue(
+        enabledUploadTasks.Enqueued.Any(uploadTask => uploadTask.TaskType == ProductionConstants.UploadTaskTypes.ReportFile),
+        "有效 ReportEnable 的 MES ReportFile 任务必须实际进入上传队列。");
 }
 
 static void UnavailableRolesAreCleared()
@@ -1344,6 +1624,38 @@ static void CenterProductReportRequestCarriesProductionReportFields()
     AssertEqual("OP10", request.ProcessNo, "Center report request must preserve process number for the Excel report.");
     AssertEqual("U001", request.OperatorNo, "Center report request must preserve task operator for the Excel report.");
     AssertEqual("U002", request.Points[0].OperatorNo, "Center report request must preserve point operator when available.");
+}
+
+static void CenterForwardingBusinessIdsHashFullIdentity()
+{
+    var buildBusinessId = typeof(CenterProductForwardingService).GetMethod(
+        "BuildBusinessId",
+        System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+    AssertTrue(buildBusinessId is not null, "中心转发服务必须保留 BusinessId 生产入口。");
+
+    var commonPrefix = new string('W', 120);
+    var firstRequest = new CenterProductReportRequest
+    {
+        StationNo = 1,
+        WorkOrder = commonPrefix + "-A",
+        ProductNo = new string('P', 120) + "-A"
+    };
+    var secondRequest = new CenterProductReportRequest
+    {
+        StationNo = 1,
+        WorkOrder = commonPrefix + "-B",
+        ProductNo = new string('P', 120) + "-B"
+    };
+
+    var firstId = (string?)buildBusinessId!.Invoke(null, [firstRequest]);
+    var repeatedId = (string?)buildBusinessId.Invoke(null, [firstRequest]);
+    var secondId = (string?)buildBusinessId.Invoke(null, [secondRequest]);
+
+    AssertFalse(string.IsNullOrWhiteSpace(firstId), "中心转发 BusinessId 不得为空。");
+    AssertTrue(firstId!.Length <= 100, "中心转发 BusinessId 必须保持在数据库 100 字符限制内。");
+    AssertEqual(firstId, repeatedId, "相同完整身份必须生成稳定的 BusinessId。");
+    AssertFalse(string.Equals(firstId, secondId, StringComparison.Ordinal), "仅在旧截断尾部不同的完整身份必须生成不同 BusinessId。");
+    AssertTrue(firstId.Contains(':', StringComparison.Ordinal), "BusinessId 必须保留可读前缀并附加完整身份哈希。");
 }
 
 static void CenterDynamicReportColumnsUseSaveEnableOnly()
@@ -1873,6 +2185,40 @@ static void CenterReportPreservesCorruptExistingWorkbook()
 
         AssertTrue(failed, "读取损坏的现有报表时必须失败并交给上传队列重试。");
         AssertSequenceEqual(corruptBytes, File.ReadAllBytes(reportPath), "损坏原文件不得被当作空报表覆盖。");
+    }
+    finally
+    {
+        DeleteDirectoryIfExists(outputDirectory);
+    }
+}
+
+static void CenterDashboardSkipsUnrelatedCorruptFormalWorkbooks()
+{
+    var outputDirectory = CreateCenterReportFixtureDirectory();
+    try
+    {
+        var store = new CenterProductReportFileStore();
+        var reportDate = new DateTime(2026, 7, 17, 8, 0, 0);
+        var historicalRequest = BuildCenterWorkbookRequest(
+            "DEVICE-VALID", "FLOW-HISTORY", reportDate, null, 0, false, 1, string.Empty, "P-HISTORY", false, false, 1);
+        var corruptRequest = BuildCenterWorkbookRequest(
+            "DEVICE-CORRUPT", "FLOW-CORRUPT-OTHER", reportDate, null, 0, false, 1, string.Empty, "P-CORRUPT", false, false, 1);
+        var currentRequest = BuildCenterWorkbookRequest(
+            "DEVICE-VALID", "FLOW-CURRENT", reportDate, null, 0, false, 1, string.Empty, "P-CURRENT", false, false, 1);
+
+        store.Upsert(outputDirectory, historicalRequest);
+        var corruptPath = store.Upsert(outputDirectory, corruptRequest);
+        var corruptBytes = Encoding.UTF8.GetBytes("unrelated-corrupt-formal-xlsx");
+        File.WriteAllBytes(corruptPath, corruptBytes);
+
+        var currentPath = store.Upsert(outputDirectory, currentRequest);
+        AssertTrue(File.Exists(currentPath), "存在无关损坏正式报表时，当前合法产品仍必须完成 ingest 写入。");
+        var products = store.LoadProducts(outputDirectory, "DEVICE-VALID", stationNo: 1, reportDate);
+        AssertSequenceEqual(
+            new[] { "P-CURRENT", "P-HISTORY" },
+            products.Select(product => product.ProductNo).OrderBy(productNo => productNo).ToArray(),
+            "中心看板必须从其余有效正式报表汇总产品，并跳过无关损坏文件。");
+        AssertSequenceEqual(corruptBytes, File.ReadAllBytes(corruptPath), "看板跳过损坏历史文件时不得改写其原字节。");
     }
     finally
     {
@@ -5762,7 +6108,9 @@ static WeldTaskService CreateWeldTaskService(
     ISystemClockService clockService,
     FakeOperationLogService operationLogService,
     FakeDeviceLifecycleLogService? lifecycleLogService = null,
-    FakeAppSettingsService? appSettingsService = null)
+    FakeAppSettingsService? appSettingsService = null,
+    FakeUploadTaskService? uploadTaskService = null,
+    FakeProductionReportFileService? reportFileService = null)
 {
     return new WeldTaskService(
         null!,
@@ -5770,9 +6118,9 @@ static WeldTaskService CreateWeldTaskService(
         appSettingsService ?? new FakeAppSettingsService(),
         operationLogService,
         new FakeLocalizationService(),
-        new FakeUploadTaskService(),
+        uploadTaskService ?? new FakeUploadTaskService(),
         new FakeCenterProductForwardingService(),
-        new FakeProductionReportFileService(),
+        reportFileService ?? new FakeProductionReportFileService(),
         lifecycleLogService ?? new FakeDeviceLifecycleLogService(),
         new FakeDeviceStatusService(),
         clockService);
@@ -6311,6 +6659,54 @@ static void PublishReportArtifact(string sourcePath, string destinationPath)
     {
         File.Delete(pendingPath);
     }
+}
+
+/// <summary>
+/// 使用生产服务的“已解析工位配置”入口生成真实 XLSX，验证双工位列并集和逐行工位隔离。
+/// </summary>
+static string GenerateStationSpecificReportWorkbook(
+    AppSettings settings,
+    BizWeldTask task,
+    IReadOnlyList<BizWeldPointRecord> records,
+    IReadOnlyList<(int StationNo, BizProductProcessConfig Config, DimTestItem Item, BizSchemeDetail Detail)> stationDefinitions)
+{
+    var serviceType = typeof(ProductionReportFileService);
+    var service = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(serviceType);
+    var settingsField = serviceType.GetField("_currentSettings", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+    AssertTrue(settingsField is not null, "生产报表服务必须保留当前设置快照。");
+    settingsField!.SetValue(service, settings);
+
+    var schemeReportItemType = GetNestedReportType(serviceType, "SchemeReportItem");
+    var resolvedStationType = GetNestedReportType(serviceType, "ResolvedStationReportConfig");
+    var resolvedStations = CreateGenericList(resolvedStationType);
+    foreach (var definition in stationDefinitions)
+    {
+        var schemeItems = CreateGenericList(schemeReportItemType);
+        schemeItems.Add(Activator.CreateInstance(schemeReportItemType, definition.Item, definition.Detail)
+            ?? throw new InvalidOperationException("无法构造工位专属动态项。"));
+        resolvedStations.Add(Activator.CreateInstance(
+                resolvedStationType,
+                definition.StationNo,
+                definition.Config,
+                schemeItems)
+            ?? throw new InvalidOperationException("无法构造已解析工位报表配置。"));
+    }
+
+    var buildSchema = serviceType.GetMethod(
+        "BuildReportSchemaForStations",
+        System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+    AssertTrue(buildSchema is not null, "生产报表服务必须提供已解析工位配置的 schema 构造入口。");
+    var schema = buildSchema!.Invoke(null, [resolvedStations])
+        ?? throw new InvalidOperationException("工位配置 schema 构造入口不得返回空值。");
+
+    var outputDirectory = Path.Combine(Path.GetTempPath(), "AutoWeldSystem.Tests", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(outputDirectory);
+    var filePath = Path.Combine(outputDirectory, "production-report-station-union.xlsx");
+    var writeMethod = serviceType.GetMethod("WriteXlsx", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+    AssertTrue(writeMethod is not null, "生产报表服务必须保留 XLSX 写入入口。");
+    writeMethod!.Invoke(service, [filePath, schema, records, task]);
+    AssertTrue(File.Exists(filePath), "工位配置并集入口必须生成真实 XLSX 文件。");
+    return filePath;
 }
 
 /// <summary>
@@ -6910,6 +7306,8 @@ sealed class FakeUploadTaskService : IUploadTaskService
 {
     public event EventHandler<UploadTaskStatusChangedEventArgs>? TaskStatusChanged;
 
+    public List<BizUploadTask> Enqueued { get; } = new();
+
     public IReadOnlyList<UploadTaskSummary> GetTasks(string taskType, bool includeCompleted = false) => Array.Empty<UploadTaskSummary>();
 
     public IReadOnlyList<UploadTaskSummary> GetProcessParameterRows(bool includeCompleted = false) => Array.Empty<UploadTaskSummary>();
@@ -6918,6 +7316,7 @@ sealed class FakeUploadTaskService : IUploadTaskService
 
     public BizUploadTask EnqueueOrUpdate(BizUploadTask task)
     {
+        Enqueued.Add(task);
         TaskStatusChanged?.Invoke(this, new UploadTaskStatusChangedEventArgs
         {
             UploadTaskId = task.Id,
@@ -6942,7 +7341,19 @@ sealed class FakeUploadTaskService : IUploadTaskService
 
 sealed class FakeProductionReportFileService : IProductionReportFileService
 {
-    public BizProductionReportFile GenerateXlsxReport(BizWeldTask task) => new();
+    public bool ShouldUploadReportFileResult { get; set; }
+
+    public int GenerateCallCount { get; private set; }
+
+    public BizProductionReportFile GeneratedReport { get; set; } = new();
+
+    public BizProductionReportFile GenerateXlsxReport(BizWeldTask task)
+    {
+        GenerateCallCount++;
+        return GeneratedReport;
+    }
+
+    public bool ShouldUploadReportFile(BizWeldTask task) => ShouldUploadReportFileResult;
 }
 
 sealed class FakeDeviceLifecycleLogService : IDeviceLifecycleLogService

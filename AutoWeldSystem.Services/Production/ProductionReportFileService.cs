@@ -73,7 +73,7 @@ public class ProductionReportFileService : IProductionReportFileService
                 .ToList();
 
             Directory.CreateDirectory(Path.GetDirectoryName(report.FilePath)!);
-            WriteXlsx(report.FilePath, BuildReportSchema(latestTask), records, latestTask);
+            WriteXlsx(report.FilePath, BuildReportSchema(latestTask, records), records, latestTask);
 
             report.FileFormat = ReportFormat;
             report.UploadStatus = ProductionConstants.UploadStatuses.Pending;
@@ -138,21 +138,38 @@ public class ProductionReportFileService : IProductionReportFileService
             : existingReports.Max(report => report.SequenceNo) + 1;
     }
 
-    private ReportSchema BuildReportSchema(BizWeldTask task)
+    private ReportSchema BuildReportSchema(
+        BizWeldTask task,
+        IReadOnlyList<BizWeldPointRecord> records)
     {
-        var config = ResolveProductProcessConfig(task);
-        var displayOptions = ReportDisplayOptions.FromConfig(config);
-        var schemeItems = GetSchemeItemsForConfig(config);
+        var stationConfigs = ResolveStationReportConfigs(task, records);
+        return BuildReportSchemaForStations(stationConfigs);
+    }
+
+    /// <summary>
+    /// 按工位顺序构造稳定、去重的动态列并集，同时保留每个工位自己的取值配置。
+    /// </summary>
+    private static ReportSchema BuildReportSchemaForStations(
+        IReadOnlyList<ResolvedStationReportConfig> stationConfigs)
+    {
+        var orderedConfigs = stationConfigs
+            .OrderBy(config => config.StationNo)
+            .ToList();
+        var displayOptions = ResolveCompatibleDisplayOptions(orderedConfigs);
         var leadingColumns = BuildLeadingColumns(displayOptions);
-        var dynamicColumns = schemeItems.SelectMany(BuildItemColumns);
+        var dynamicColumns = orderedConfigs
+            .SelectMany(config => config.SchemeItems.SelectMany(BuildItemColumns));
         var trailingColumns = BuildTrailingColumns();
         var columns = leadingColumns
             .Concat(dynamicColumns)
             .Concat(trailingColumns)
             .DistinctBy(column => column.Key, StringComparer.OrdinalIgnoreCase)
             .ToList();
+        var stationSchemeItems = orderedConfigs.ToDictionary(
+            config => config.StationNo,
+            config => config.SchemeItems);
 
-        return new ReportSchema(columns, schemeItems, displayOptions);
+        return new ReportSchema(columns, stationSchemeItems, displayOptions);
     }
 
     private void WriteXlsx(
@@ -206,6 +223,25 @@ public class ProductionReportFileService : IProductionReportFileService
                 block.EndColumn,
                 block.Label,
                 block.Value);
+        }
+    }
+
+    /// <inheritdoc />
+    public bool ShouldUploadReportFile(BizWeldTask task)
+    {
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var latestTask = ProductionReportFileRules.ResolveLatestTask(
+                task,
+                taskId => _dbContext.Db.Queryable<BizWeldTask>().InSingle(taskId));
+            var records = _dbContext.Db.Queryable<BizWeldPointRecord>()
+                .Where(record => record.TaskId == latestTask.Id)
+                .ToList();
+            var reportDetails = ResolveStationReportConfigs(latestTask, records)
+                .SelectMany(config => config.SchemeItems)
+                .Select(item => item.Detail);
+            return ReportFileUploadRules.ShouldUploadReportFile(reportDetails);
         }
     }
 
@@ -441,15 +477,15 @@ public class ProductionReportFileService : IProductionReportFileService
     private void AddDynamicValues(Dictionary<string, string> row, BizWeldPointRecord record, ReportSchema schema)
     {
         var rawValues = ParseRawData(record.RawDataJson);
-        AddSchemeDynamicValues(row, rawValues, schema);
+        AddSchemeDynamicValues(row, rawValues, schema.ResolveSchemeItems(record.StationNo));
     }
 
-    private void AddSchemeDynamicValues(
+    private static void AddSchemeDynamicValues(
         Dictionary<string, string> row,
         IReadOnlyDictionary<string, string> rawValues,
-        ReportSchema schema)
+        IReadOnlyList<SchemeReportItem> schemeItems)
     {
-        foreach (var schemeItem in schema.SchemeItems)
+        foreach (var schemeItem in schemeItems)
         {
             var item = schemeItem.Item;
             var detail = schemeItem.Detail;
@@ -514,25 +550,92 @@ public class ProductionReportFileService : IProductionReportFileService
             .ToList();
     }
 
-    private BizProductProcessConfig? ResolveProductProcessConfig(BizWeldTask task)
+    /// <summary>
+    /// 根据任务实际产生记录的工位选择各自配置；无记录时才回退任务工位。
+    /// </summary>
+    private IReadOnlyList<ResolvedStationReportConfig> ResolveStationReportConfigs(
+        BizWeldTask task,
+        IReadOnlyList<BizWeldPointRecord> records)
     {
         var productNum = ResolveTaskProductNum(task);
         if (string.IsNullOrWhiteSpace(productNum))
         {
-            return null;
+            return [];
         }
 
-        var stationNo = task.StationNo <= ProductionConstants.Stations.SharedStationNo
-            ? ProductionConstants.Stations.DefaultStationNo
-            : task.StationNo;
-
-        return _dbContext.Db.Queryable<BizProductProcessConfig>()
+        var configs = _dbContext.Db.Queryable<BizProductProcessConfig>()
             .Where(config => config.Enabled && config.ProductNum == productNum)
             .ToList()
-            .Where(config => config.StationNo == ProductionConstants.Stations.SharedStationNo || config.StationNo == stationNo)
-            .OrderByDescending(config => config.StationNo == stationNo)
-            .ThenBy(config => config.Id)
-            .FirstOrDefault();
+            .OrderBy(config => config.Id)
+            .ToList();
+        var schemeItemsBySchemeId = new Dictionary<string, IReadOnlyList<SchemeReportItem>>(StringComparer.OrdinalIgnoreCase);
+        var resolved = new List<ResolvedStationReportConfig>();
+        foreach (var stationNo in ResolveReportStationNumbers(task, records))
+        {
+            var config = configs
+                .Where(candidate => candidate.StationNo == ProductionConstants.Stations.SharedStationNo
+                    || candidate.StationNo == stationNo)
+                .OrderByDescending(candidate => candidate.StationNo == stationNo)
+                .ThenBy(candidate => candidate.Id)
+                .FirstOrDefault();
+            if (config is null)
+            {
+                continue;
+            }
+
+            if (!schemeItemsBySchemeId.TryGetValue(config.SchemeId, out var schemeItems))
+            {
+                schemeItems = GetSchemeItemsForConfig(config);
+                schemeItemsBySchemeId[config.SchemeId] = schemeItems;
+            }
+
+            resolved.Add(new ResolvedStationReportConfig(stationNo, config, schemeItems));
+        }
+
+        return resolved;
+    }
+
+    private static IReadOnlyList<int> ResolveReportStationNumbers(
+        BizWeldTask task,
+        IReadOnlyList<BizWeldPointRecord> records)
+    {
+        var stationNumbers = records
+            .Select(record => NormalizeStationNo(record.StationNo))
+            .Distinct()
+            .OrderBy(stationNo => stationNo)
+            .ToList();
+        return stationNumbers.Count > 0
+            ? stationNumbers
+            : [NormalizeStationNo(task.StationNo)];
+    }
+
+    private static int NormalizeStationNo(int stationNo)
+        => stationNo <= ProductionConstants.Stations.SharedStationNo
+            ? ProductionConstants.Stations.DefaultStationNo
+            : stationNo;
+
+    /// <summary>
+    /// 同一设备同一任务只能使用一组采集点标题，冲突时拒绝生成，避免静默错标。
+    /// </summary>
+    private static ReportDisplayOptions ResolveCompatibleDisplayOptions(
+        IReadOnlyList<ResolvedStationReportConfig> stationConfigs)
+    {
+        if (stationConfigs.Count == 0)
+        {
+            return ReportDisplayOptions.FromConfig(null);
+        }
+
+        var options = stationConfigs
+            .Select(config => ReportDisplayOptions.FromConfig(config.Config))
+            .Distinct()
+            .ToList();
+        if (options.Count > 1)
+        {
+            var stations = string.Join(", ", stationConfigs.Select(config => config.StationNo));
+            throw new InvalidOperationException($"同一任务的工位采集点表头不一致，无法安全生成报表。工位：{stations}。");
+        }
+
+        return options[0];
     }
 
     private static bool IsExactTextMatch(string? left, string? right)
@@ -724,10 +827,51 @@ public class ProductionReportFileService : IProductionReportFileService
 
     private sealed record ProductReportContext(string ProductResult);
 
-    private sealed record ReportSchema(
-        IReadOnlyList<ReportColumn> Columns,
-        IReadOnlyList<SchemeReportItem> SchemeItems,
-        ReportDisplayOptions DisplayOptions);
+    private sealed record ReportSchema
+    {
+        public ReportSchema(
+            IReadOnlyList<ReportColumn> columns,
+            IReadOnlyList<SchemeReportItem> schemeItems,
+            ReportDisplayOptions displayOptions)
+            : this(
+                columns,
+                new Dictionary<int, IReadOnlyList<SchemeReportItem>>
+                {
+                    [ProductionConstants.Stations.SharedStationNo] = schemeItems
+                },
+                displayOptions)
+        {
+        }
+
+        public ReportSchema(
+            IReadOnlyList<ReportColumn> columns,
+            IReadOnlyDictionary<int, IReadOnlyList<SchemeReportItem>> stationSchemeItems,
+            ReportDisplayOptions displayOptions)
+        {
+            Columns = columns;
+            StationSchemeItems = stationSchemeItems;
+            DisplayOptions = displayOptions;
+        }
+
+        public IReadOnlyList<ReportColumn> Columns { get; }
+
+        public IReadOnlyDictionary<int, IReadOnlyList<SchemeReportItem>> StationSchemeItems { get; }
+
+        public ReportDisplayOptions DisplayOptions { get; }
+
+        public IReadOnlyList<SchemeReportItem> ResolveSchemeItems(int stationNo)
+        {
+            var normalizedStationNo = NormalizeStationNo(stationNo);
+            if (StationSchemeItems.TryGetValue(normalizedStationNo, out var stationItems))
+            {
+                return stationItems;
+            }
+
+            return StationSchemeItems.TryGetValue(ProductionConstants.Stations.SharedStationNo, out var sharedItems)
+                ? sharedItems
+                : [];
+        }
+    }
 
     private sealed record ReportColumn(string Key, string Title, bool MergeByProduct);
 
@@ -748,6 +892,11 @@ public class ProductionReportFileService : IProductionReportFileService
     }
 
     private sealed record SchemeReportItem(DimTestItem Item, BizSchemeDetail Detail);
+
+    private sealed record ResolvedStationReportConfig(
+        int StationNo,
+        BizProductProcessConfig Config,
+        IReadOnlyList<SchemeReportItem> SchemeItems);
 
     private AppSettings CurrentSettings => Volatile.Read(ref _currentSettings);
 
