@@ -1,12 +1,12 @@
 # 生产报表模板与多通道测试项输出设计
 
-## Summary
+## 摘要
 
 将设备端和中心服务器的生产报表统一为客户提供的“生产报表”模板：公共任务字段放在表头，焊点/拍照明细和动态测试项放在明细区。报表固定输出中文，并按实际动态列数扩展表头合并范围。
 
-## Domain rules
+## 领域规则
 
-### Task and report scope
+### 任务与报表范围
 
 - 一个流转卡号/工单对应一个 `BizWeldTask`，生成一份报表。
 - 双工位设备可以同时生产同一工单；同一任务的两个工位记录合并到同一报表。
@@ -15,25 +15,25 @@
 - 任务未完工时结束时间留空，禁止使用当前时间或焊点采集时间替代。
 - 报表生成前按 `TaskId` 读取最新任务，确保时间和最终统计与工单持久化数据一致。
 
-### Header fields
+### 表头字段
 
-| Template field | Source | Rule |
+| 模板字段 | 数据来源 | 规则 |
 | --- | --- | --- |
-| 产品工号 | `BizWeldTask.ProductNum` | Task-level value |
-| 图号 | `BizWeldTask.DrawingNo` | Task-level value |
-| 批次 | `BizWeldTask.Batch` | Task-level value |
-| 流转卡号 | `BizWeldTask.SN` | Report identity |
-| 部件规格 | `BizWeldTask.Spec` | Task-level value |
-| 型号 | `BizWeldTask.ProductModel` | Task-level value |
-| 工序 | `BizWeldTask.ProcessNo` | Customer requires process number |
-| 生产数量 | `BizWeldTask.StartAmount` | Same value for one work order |
-| 合格数量 | `BizWeldTask.QualifiedQty` | Final task statistic |
+| 产品工号 | `BizWeldTask.ProductNum` | 任务级字段 |
+| 图号 | `BizWeldTask.DrawingNo` | 任务级字段 |
+| 批次 | `BizWeldTask.Batch` | 任务级字段 |
+| 流转卡号 | `BizWeldTask.SN` | 报表身份标识 |
+| 部件规格 | `BizWeldTask.Spec` | 任务级字段 |
+| 型号 | `BizWeldTask.ProductModel` | 任务级字段 |
+| 工序 | `BizWeldTask.ProcessNo` | 按客户要求使用工序号 |
+| 生产数量 | `BizWeldTask.StartAmount` | 同一工单使用同一个值 |
+| 合格数量 | `BizWeldTask.QualifiedQty` | 任务最终统计值 |
 | 开始时间 | `BizWeldTask.StartTime` | `yyyy-MM-dd HH:mm:ss` |
-| 结束时间 | `BizWeldTask.EndTime` | `yyyy-MM-dd HH:mm:ss`, blank before finish |
-| 操作人员 | `BizWeldTask.UserNumber` | Finish uses the same operator identity |
-| 备注 | none | Always blank for now |
+| 结束时间 | `BizWeldTask.EndTime` | `yyyy-MM-dd HH:mm:ss`，完工前留空 |
+| 操作人员 | `BizWeldTask.UserNumber` | 完工沿用开工操作员身份 |
+| 备注 | 无 | 当前始终留空 |
 
-### Detail fields
+### 明细字段
 
 - Single-station reports omit the station column completely.
 - Dual-station reports add a station column and resolve station number through the configurable mapping (`1` and `2` by default “左” and “右”).
@@ -42,9 +42,9 @@
 - Product result is the PLC-collected value, not an aggregation of point results.
 - Dynamic test-item columns are generated from the scheme details enabled for the relevant output channel.
 
-## Four-channel switch semantics
+## 四类开关语义
 
-The effective rule for every scheme-detail role is:
+每个方案明细角色均遵循以下生效规则：
 
 ```text
 Enable == false
@@ -57,9 +57,9 @@ Enable == true and MesEnable
     => upload process parameters to MES and show in product-history preview
 ```
 
-The same role may be enabled for more than one output channel. Each channel filters independently after the common collection gate.
+同一个角色可以同时启用多个输出通道；各通道都必须先通过公共采集门槛，再独立执行自己的筛选。
 
-## Report generation and upload
+## 报表生成与上传
 
 - Product completion refreshes the local report so that collected data is available during production.
 - A task finish persists `EndTime` and final quantity statistics before the final report is regenerated and queued for MES upload.
@@ -67,16 +67,16 @@ The same role may be enabled for more than one output channel. Each channel filt
 - Device and center-server XLSX files use the same visible template and Chinese headers.
 - The center-server report uses `SaveEnable` dynamic columns, while the device report uses `ReportEnable` dynamic columns.
 
-## Center-server protocol
+## 中心服务器协议
 
-The device and center server are upgraded together. The request adds task-level header data, resolved `StationName`, task `StartTime`/`EndTime`, and final statistics.
+设备端与中心服务器同步升级。请求新增任务级表头数据、解析后的 `StationName`、任务 `StartTime`/`EndTime` 和最终统计值。
 
 - Product-completion requests carry point rows and the current task snapshot; `EndTime` is empty before finish.
 - A task-finish update carries no duplicate point rows and updates the existing work-order report header with the persisted `EndTime` and final statistics.
 - Center reports are keyed by device and work-order identity; different work orders remain separate files.
 - A work order without any `SaveEnable` role still forwards its public fields and point results to the center server.
 
-## Station settings and localization
+## 工位设置与国际化
 
 - Add two editable station-name settings with defaults “左” and “右”.
 - Hide both inputs unless dual-station mode is enabled.
@@ -85,11 +85,11 @@ The device and center server are upgraded together. The request adds task-level 
 - Station-name values remain user data and stay as entered; default values remain Chinese even when the UI is English.
 - Excel output remains Chinese regardless of UI language.
 
-## Legacy data
+## 历史数据
 
-Add an explicit `ProductResult` field to `BizWeldPointRecord` and write the PLC product result at collection time. For legacy rows, read `RawDataJson["product_result"]` when present; if absent, show blank/unknown and never infer the value from point results.
+为 `BizWeldPointRecord` 增加独立的 `ProductResult` 字段，在采集时直接写入 PLC 产品结果。历史旧记录优先读取 `RawDataJson["product_result"]`；如果不存在，则显示为空/未知，绝不根据明细结果推算。
 
-## Verification requirements
+## 验证要求
 
 - Unit/rule tests cover the four-channel effective-output matrix and the PLC-result source rule.
 - Report tests verify exact header field sources, conditional station column, dynamic-column filtering, merge boundaries, and `yyyy-MM-dd HH:mm:ss` timestamps.
