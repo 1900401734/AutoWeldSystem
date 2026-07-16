@@ -4486,7 +4486,7 @@ static void StationDisplayNamesHaveLocalizedDualStationRules()
     AssertThrows<ArgumentException>(() => StationDisplayNameRules.NormalizeAndValidate(true, "Same", " same "), "双工位模式应不区分大小写地拒绝重复名称。");
 
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.cs"), Encoding.UTF8);
-    AssertTrue(viewCode.Contains("stationDisplayNameLayout.Visible = visible;", StringComparison.Ordinal), "界面应仅在启用双工位时显示名称输入区。");
+    AssertTrue(viewCode.Contains("stationDisplayNameLayout.Visible = chkEnableDualStation.Checked;", StringComparison.Ordinal), "界面应仅在启用双工位时显示名称输入区。");
 
     var zhResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.resx"), Encoding.UTF8);
     var enResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.en.resx"), Encoding.UTF8);
@@ -4512,6 +4512,7 @@ static void StationDisplayNamesLoadLegacyDefaultsAndCollapseHiddenRow()
     var collisionLoaded = StationDisplayNameRules.NormalizeForLoad(true, "", "左");
     AssertEqual("左", collisionLoaded.Station1, "旧数据回填与现有名称冲突时不应导致加载失败。");
     AssertEqual("右", collisionLoaded.Station2, "旧数据回填冲突时应恢复为可用的默认映射。");
+    AssertThrows<ArgumentException>(() => StationDisplayNameRules.NormalizeForLoad(true, "A", " a "), "两个原始名称均非空时，加载流程也必须拒绝规范化后的重复名称。");
     AssertThrows<ArgumentException>(() => StationDisplayNameRules.NormalizeAndValidate(true, "  ", "右"), "用户主动保存双工位空名称时仍必须拒绝。");
 
     var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "AppSettingsService.cs"), Encoding.UTF8);
@@ -4519,13 +4520,18 @@ static void StationDisplayNamesLoadLegacyDefaultsAndCollapseHiddenRow()
     AssertTrue(serviceCode.Contains("Normalize(settings, useLegacyStationNameFallback: false);", StringComparison.Ordinal), "Save 必须保持用户输入的严格校验。");
 
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.cs"), Encoding.UTF8);
-    AssertTrue(viewCode.Contains("stationNameRow.Height = visible ? StationDisplayNameRowHeight : 0F;", StringComparison.Ordinal), "隐藏名称输入区时必须同时折叠所在行。");
+    AssertFalse(viewCode.Contains("RowStyles[2]", StringComparison.Ordinal), "code-behind 不应直接修改 Designer 行样式。");
+    AssertFalse(viewCode.Contains("StationDisplayNameRowHeight", StringComparison.Ordinal), "code-behind 不应保留名称行高度常量。");
 
     var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.Designer.cs"), Encoding.UTF8);
     var productionLocation = ParseDesignerPointY(designerCode, "grpProductionConfig.Location");
     var productionHeight = ParseDesignerSizeHeight(designerCode, "grpProductionConfig.Size");
     var mesLocation = ParseDesignerPointY(designerCode, "grpMesConfig.Location");
+    var mesHeight = ParseDesignerSizeHeight(designerCode, "grpMesConfig.Size");
+    var centerServerLocation = ParseDesignerPointY(designerCode, "grpCenterServerConfig.Location");
     AssertTrue(productionLocation + productionHeight <= mesLocation, "生产配置与 MES 配置在提交布局中不得重叠。");
+    AssertTrue(mesLocation + mesHeight <= centerServerLocation, "MES 配置与中心服务器配置在提交布局中不得重叠。");
+    AssertTrue(designerCode.Contains("tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.AutoSize));", StringComparison.Ordinal), "Designer 必须将工位名称行设为 AutoSize，使隐藏容器时自动折叠。");
 }
 
 static int ParseDesignerPointY(string code, string propertyName)

@@ -848,7 +848,7 @@ namespace AutoWeldSystem.UI.Views
             tlpProductConfig.RowCount = 5;
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Percent, 20F));
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Percent, 20F));
-            tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Percent, 20F));
+            tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Percent, 20F));
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Percent, 20F));
             tlpProductConfig.Size = new Size(532, 172);

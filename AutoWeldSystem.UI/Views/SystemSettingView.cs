@@ -19,7 +19,6 @@ namespace AutoWeldSystem.UI.Views;
 
 public partial class SystemSettingView : BaseView
 {
-    private const float StationDisplayNameRowHeight = 45F;
     private static readonly PlcTypeOption[] PlcTypeOptions =
     {
         new(AppConstants.PlcTypes.ModbusTcp, TextKeys.SystemSetting.PlcTypeModbusTcp),
@@ -749,11 +748,7 @@ public partial class SystemSettingView : BaseView
     /// </summary>
     private void UpdateStationDisplayNameVisibility()
     {
-        var visible = chkEnableDualStation.Checked;
-        var stationNameRow = tlpProductConfig.RowStyles[2];
-        stationNameRow.SizeType = SizeType.Absolute;
-        stationNameRow.Height = visible ? StationDisplayNameRowHeight : 0F;
-        stationDisplayNameLayout.Visible = visible;
+        stationDisplayNameLayout.Visible = chkEnableDualStation.Checked;
     }
 
     private async Task<bool> SyncDeviceToMesAsync(AddDeviceReq request, Control triggerButton, bool showSuccessMessage)

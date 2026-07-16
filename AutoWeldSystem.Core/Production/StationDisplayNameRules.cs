@@ -18,21 +18,25 @@ public static class StationDisplayNameRules
         string? station1,
         string? station2)
     {
-        var station1WithFallback = string.IsNullOrWhiteSpace(station1)
+        var station1Missing = string.IsNullOrWhiteSpace(station1);
+        var station2Missing = string.IsNullOrWhiteSpace(station2);
+        var station1WithFallback = station1Missing
             ? DefaultStation1DisplayName
-            : station1;
-        var station2WithFallback = string.IsNullOrWhiteSpace(station2)
+            : station1!;
+        var station2WithFallback = station2Missing
             ? DefaultStation2DisplayName
-            : station2;
+            : station2!;
 
         var normalizedStation1 = station1WithFallback.Trim();
         var normalizedStation2 = station2WithFallback.Trim();
-        if (dualStationEnabled && string.Equals(normalizedStation1, normalizedStation2, StringComparison.OrdinalIgnoreCase))
+        if (dualStationEnabled
+            && (station1Missing || station2Missing)
+            && string.Equals(normalizedStation1, normalizedStation2, StringComparison.OrdinalIgnoreCase))
         {
             return new StationDisplayNames(DefaultStation1DisplayName, DefaultStation2DisplayName);
         }
 
-        return new StationDisplayNames(normalizedStation1, normalizedStation2);
+        return NormalizeAndValidate(dualStationEnabled, normalizedStation1, normalizedStation2);
     }
 
     /// <summary>
