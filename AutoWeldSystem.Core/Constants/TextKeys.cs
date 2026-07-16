@@ -1105,6 +1105,9 @@ public static class TextKeys
         public const string UploadMode = "system.label.upload_mode";
         public const string UploadBatchSize = "system.label.upload_batch_size";
         public const string PlcHeartbeatRate = "system.label.plc_heartbeat_rate";
+        public const string LabelStation1DisplayName = "system.label.station1_display_name";
+        public const string LabelStation2DisplayName = "system.label.station2_display_name";
+        public const string PlaceholderStationDisplayName = "system.placeholder.station_display_name";
 
         public const string ChkUseProductNumberFilter = "system.checkbox.use_product_number_filter";
         public const string ChkUseOperatorInputDialog = "system.checkbox.use_operator_input_dialog";
@@ -1137,6 +1140,8 @@ public static class TextKeys
         public const string MessageMesConnectionSuccess = "system.message.mes_connection_success";
         public const string MessageDeviceSyncSuccess = "system.message.device_sync_success";
         public const string MessageDeviceSyncFailed = "system.message.device_sync_failed";
+        public const string MessageStationDisplayNameRequired = "system.message.station_display_name_required";
+        public const string MessageStationDisplayNameDuplicate = "system.message.station_display_name_duplicate";
     }
 
     /// <summary>

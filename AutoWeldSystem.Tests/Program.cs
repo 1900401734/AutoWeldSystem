@@ -28,6 +28,7 @@ using System.Text.Json;
 
 var tests = new (string Name, Action Run)[]
 {
+    ("Station display names have localized dual-station rules", StationDisplayNamesHaveLocalizedDualStationRules),
     ("Only configured test item expressions create available roles", OnlyConfiguredExpressionsCreateRoles),
     ("Collection does not imply local save or upload", CollectionDoesNotImplyOutput),
     ("MES-only collected roles stay visible in product history", MesOnlyCollectedRoleStaysVisibleInProductHistory),
@@ -4465,6 +4466,41 @@ static void WaitUntil(Func<bool> condition, string message)
     }
 
     throw new InvalidOperationException(message);
+}
+
+static void StationDisplayNamesHaveLocalizedDualStationRules()
+{
+    var defaults = new AppSettings();
+    AssertEqual("左", defaults.Station1DisplayName, "工位 1 默认显示名称应为“左”。");
+    AssertEqual("右", defaults.Station2DisplayName, "工位 2 默认显示名称应为“右”。");
+
+    var singleStation = StationDisplayNameRules.NormalizeAndValidate(false, "  ", "  ");
+    AssertEqual(string.Empty, singleStation.Station1, "单工位模式不应强制填写名称。");
+    AssertEqual(string.Empty, singleStation.Station2, "单工位模式不应强制填写名称。");
+
+    var normalized = StationDisplayNameRules.NormalizeAndValidate(true, "  Left  ", "  Right  ");
+    AssertEqual("Left", normalized.Station1, "工位 1 名称应去除首尾空格。");
+    AssertEqual("Right", normalized.Station2, "工位 2 名称应去除首尾空格。");
+    AssertThrows<ArgumentException>(() => StationDisplayNameRules.NormalizeAndValidate(true, "", "Right"), "双工位模式应拒绝空名称。");
+    AssertThrows<ArgumentException>(() => StationDisplayNameRules.NormalizeAndValidate(true, "Same", " same "), "双工位模式应不区分大小写地拒绝重复名称。");
+
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.cs"), Encoding.UTF8);
+    AssertTrue(viewCode.Contains("stationDisplayNameLayout.Visible = chkEnableDualStation.Checked;", StringComparison.Ordinal), "界面应仅在启用双工位时显示名称输入区。");
+
+    var zhResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.resx"), Encoding.UTF8);
+    var enResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.en.resx"), Encoding.UTF8);
+    foreach (var key in new[]
+    {
+        "system.label.station1_display_name",
+        "system.label.station2_display_name",
+        "system.placeholder.station_display_name",
+        "system.message.station_display_name_required",
+        "system.message.station_display_name_duplicate"
+    })
+    {
+        AssertTrue(zhResources.Contains(key, StringComparison.Ordinal), $"中文资源必须包含 {key}。");
+        AssertTrue(enResources.Contains(key, StringComparison.Ordinal), $"英文资源必须包含 {key}。");
+    }
 }
 
 static void AssertTrue(bool condition, string message)

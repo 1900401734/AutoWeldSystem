@@ -136,6 +136,12 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
         settings.UseOperatorInputDialog ??= true;
         settings.EnableDeviceStatusReport ??= true;
         settings.EnableWorkOrderStatusReport ??= true;
+        var stationNames = StationDisplayNameRules.NormalizeAndValidate(
+            settings.EnableDualStation,
+            settings.Station1DisplayName ?? "左",
+            settings.Station2DisplayName ?? "右");
+        settings.Station1DisplayName = stationNames.Station1;
+        settings.Station2DisplayName = stationNames.Station2;
         settings.PlcStringNumericFormatMode = PlcStringNumericFormatter.NormalizeMode(settings.PlcStringNumericFormatMode);
         settings.ProgramFileDirectory = string.IsNullOrWhiteSpace(settings.ProgramFileDirectory)
             ? ProgramFileRules.DefaultProgramFileDirectory

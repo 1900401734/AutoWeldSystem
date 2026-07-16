@@ -1936,4 +1936,9 @@
   <data name="work_order.status.completed" xml:space="preserve">
     <value>已完工</value>
   </data>
+  <data name="system.label.station1_display_name" xml:space="preserve"><value>工位 1 显示名称</value></data>
+  <data name="system.label.station2_display_name" xml:space="preserve"><value>工位 2 显示名称</value></data>
+  <data name="system.placeholder.station_display_name" xml:space="preserve"><value>请输入工位显示名称</value></data>
+  <data name="system.message.station_display_name_required" xml:space="preserve"><value>启用双工位时，两个工位显示名称均为必填项。</value></data>
+  <data name="system.message.station_display_name_duplicate" xml:space="preserve"><value>两个工位显示名称不能重复。</value></data>
 </root>

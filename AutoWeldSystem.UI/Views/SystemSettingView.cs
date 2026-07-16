@@ -167,6 +167,7 @@ public partial class SystemSettingView : BaseView
         chkEnablePostDataCustomHeader.CheckedChanged += ChkEnablePostDataCustomHeader_CheckedChanged;
         selectProcessParameterDeviceType.SelectedIndexChanged += SelectProcessParameterDeviceType_SelectedIndexChanged;
         selectCenterServerSystemType.SelectedIndexChanged += SelectCenterServerSystemType_SelectedIndexChanged;
+        chkEnableDualStation.CheckedChanged += (_, _) => UpdateStationDisplayNameVisibility();
     }
 
     #region Events Handler
@@ -485,6 +486,8 @@ public partial class SystemSettingView : BaseView
         chkEnableDeviceStatusReport.Checked = settings.EnableDeviceStatusReport != false;
         chkEnableWorkOrderStatusReport.Checked = settings.EnableWorkOrderStatusReport != false;
         chkEnableDualStation.Checked = settings.EnableDualStation || settings.EnableDualWorkOrder;
+        inputStation1DisplayName.Text = settings.Station1DisplayName;
+        inputStation2DisplayName.Text = settings.Station2DisplayName;
         chkValidateRecipeBeforeStart.Checked = settings.ValidateRecipeAfterStart;
         chkEnableFinishExpQtyPrompt.Checked = settings.EnableFinishExpQtyPrompt;
         inputPlcHeartbeatInterval.Text = Math.Clamp(settings.PlcHeartbeatReadIntervalMilliseconds <= 0 ? 300 : settings.PlcHeartbeatReadIntervalMilliseconds, 100, 5000).ToString(CultureInfo.InvariantCulture);
@@ -504,6 +507,7 @@ public partial class SystemSettingView : BaseView
         UpdateUploadBatchSizeEnabled();
         UpdateElevatedAutoStartEnabled();
         UpdatePostDataHeaderInputsEnabled();
+        UpdateStationDisplayNameVisibility();
     }
 
     private void BindMesEndpointSettings(AppSettings settings)
@@ -579,6 +583,10 @@ public partial class SystemSettingView : BaseView
         lblUploadMode.Text = _localizer.GetString(TextKeys.SystemSetting.UploadMode);
         lblUploadBatchSize.Text = _localizer.GetString(TextKeys.SystemSetting.UploadBatchSize);
         lblPlcHeartbeatInterval.Text = _localizer.GetString(TextKeys.SystemSetting.PlcHeartbeatRate);
+        lblStation1DisplayName.Text = _localizer.GetString(TextKeys.SystemSetting.LabelStation1DisplayName);
+        lblStation2DisplayName.Text = _localizer.GetString(TextKeys.SystemSetting.LabelStation2DisplayName);
+        inputStation1DisplayName.PlaceholderText = _localizer.GetString(TextKeys.SystemSetting.PlaceholderStationDisplayName);
+        inputStation2DisplayName.PlaceholderText = _localizer.GetString(TextKeys.SystemSetting.PlaceholderStationDisplayName);
         chkEnableCenterServerSync.Text = "启用中心服务器同步";
         lblCenterServerBaseUrl.Text = "中心服务器地址";
         lblCenterServerSystemType.Text = "系统类型";
@@ -733,6 +741,14 @@ public partial class SystemSettingView : BaseView
         var enabled = chkEnablePostDataCustomHeader.Checked;
         inputPostDataHeaderKey.Enabled = enabled;
         inputPostDataHeaderValue.Enabled = enabled;
+    }
+
+    /// <summary>
+    /// 单工位模式不展示与当前生产无关的名称输入区。
+    /// </summary>
+    private void UpdateStationDisplayNameVisibility()
+    {
+        stationDisplayNameLayout.Visible = chkEnableDualStation.Checked;
     }
 
     private async Task<bool> SyncDeviceToMesAsync(AddDeviceReq request, Control triggerButton, bool showSuccessMessage)
@@ -941,6 +957,19 @@ public partial class SystemSettingView : BaseView
 
         var mesTimeout = input_MesTimeout.Text;
         var enableDualStation = chkEnableDualStation.Checked;
+        StationDisplayNames stationNames;
+        try
+        {
+            stationNames = StationDisplayNameRules.NormalizeAndValidate(
+                enableDualStation,
+                inputStation1DisplayName.Text,
+                inputStation2DisplayName.Text);
+        }
+        catch (ArgumentException ex)
+        {
+            ShowWarning(ex.Message);
+            return false;
+        }
 
         settings.DeviceId = deviceId;
         settings.DeviceName = deviceName;
@@ -968,6 +997,8 @@ public partial class SystemSettingView : BaseView
         settings.EnableDeviceStatusReport = chkEnableDeviceStatusReport.Checked;
         settings.EnableWorkOrderStatusReport = chkEnableWorkOrderStatusReport.Checked;
         settings.EnableDualStation = enableDualStation;
+        settings.Station1DisplayName = stationNames.Station1;
+        settings.Station2DisplayName = stationNames.Station2;
         settings.EnableDualWorkOrder = enableDualStation && CurrentSettings.EnableDualWorkOrder;
         settings.ValidateRecipeAfterStart = chkValidateRecipeBeforeStart.Checked;
         settings.EnableFinishExpQtyPrompt = chkEnableFinishExpQtyPrompt.Checked;

@@ -1935,4 +1935,9 @@
   <data name="work_order.status.completed" xml:space="preserve">
     <value>Completed</value>
   </data>
+  <data name="system.label.station1_display_name" xml:space="preserve"><value>Station 1 display name</value></data>
+  <data name="system.label.station2_display_name" xml:space="preserve"><value>Station 2 display name</value></data>
+  <data name="system.placeholder.station_display_name" xml:space="preserve"><value>Enter the station display name</value></data>
+  <data name="system.message.station_display_name_required" xml:space="preserve"><value>Both station display names are required when dual station is enabled.</value></data>
+  <data name="system.message.station_display_name_duplicate" xml:space="preserve"><value>The two station display names must be different.</value></data>
 </root>

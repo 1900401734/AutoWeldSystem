@@ -62,6 +62,11 @@ namespace AutoWeldSystem.UI.Views
             grpProductionConfig = new GroupBox();
             tlpProductConfig = new TableLayoutPanel();
             chkEnableDualStation = new AntdUI.Checkbox();
+            stationDisplayNameLayout = new TableLayoutPanel();
+            lblStation1DisplayName = new AntdUI.Label();
+            inputStation1DisplayName = new AntdUI.Input();
+            lblStation2DisplayName = new AntdUI.Label();
+            inputStation2DisplayName = new AntdUI.Input();
             tableLayoutPanel2 = new TableLayoutPanel();
             lblUploadMode = new AntdUI.Label();
             selectUploadMode = new AntdUI.Select();
@@ -172,6 +177,7 @@ namespace AutoWeldSystem.UI.Views
             tlpPlcStringNumericMode.SuspendLayout();
             grpProductionConfig.SuspendLayout();
             tlpProductConfig.SuspendLayout();
+            stationDisplayNameLayout.SuspendLayout();
             tableLayoutPanel2.SuspendLayout();
             tableLayoutPanel3.SuspendLayout();
             tableLayoutPanelHeartbeat.SuspendLayout();
@@ -819,7 +825,7 @@ namespace AutoWeldSystem.UI.Views
             grpProductionConfig.Controls.Add(tlpProductConfig);
             grpProductionConfig.Location = new Point(919, 6);
             grpProductionConfig.Name = "grpProductionConfig";
-            grpProductionConfig.Size = new Size(538, 164);
+            grpProductionConfig.Size = new Size(538, 198);
             grpProductionConfig.TabIndex = 4;
             grpProductionConfig.TabStop = false;
             grpProductionConfig.Text = "生产配置";
@@ -830,21 +836,67 @@ namespace AutoWeldSystem.UI.Views
             tlpProductConfig.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             tlpProductConfig.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             tlpProductConfig.Controls.Add(chkEnableDualStation, 0, 0);
-            tlpProductConfig.Controls.Add(tableLayoutPanel2, 0, 2);
+            tlpProductConfig.Controls.Add(stationDisplayNameLayout, 0, 2);
+            tlpProductConfig.Controls.Add(tableLayoutPanel2, 0, 3);
             tlpProductConfig.Controls.Add(chkValidateRecipeBeforeStart, 0, 1);
             tlpProductConfig.Controls.Add(chkEnableFinishExpQtyPrompt, 1, 1);
-            tlpProductConfig.Controls.Add(tableLayoutPanel3, 1, 2);
-            tlpProductConfig.Controls.Add(tableLayoutPanelHeartbeat, 0, 3);
+            tlpProductConfig.Controls.Add(tableLayoutPanel3, 1, 3);
+            tlpProductConfig.Controls.Add(tableLayoutPanelHeartbeat, 0, 4);
             tlpProductConfig.Dock = DockStyle.Fill;
             tlpProductConfig.Location = new Point(3, 23);
             tlpProductConfig.Name = "tlpProductConfig";
-            tlpProductConfig.RowCount = 4;
-            tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Percent, 25F));
-            tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Percent, 25F));
-            tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Percent, 25F));
-            tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Percent, 25F));
-            tlpProductConfig.Size = new Size(532, 138);
+            tlpProductConfig.RowCount = 5;
+            tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Percent, 20F));
+            tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Percent, 20F));
+            tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Percent, 20F));
+            tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Percent, 20F));
+            tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Percent, 20F));
+            tlpProductConfig.Size = new Size(532, 172);
             tlpProductConfig.TabIndex = 0;
+            //
+            // stationDisplayNameLayout
+            //
+            stationDisplayNameLayout.ColumnCount = 4;
+            tlpProductConfig.SetColumnSpan(stationDisplayNameLayout, 2);
+            stationDisplayNameLayout.ColumnStyles.Add(new ColumnStyle());
+            stationDisplayNameLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            stationDisplayNameLayout.ColumnStyles.Add(new ColumnStyle());
+            stationDisplayNameLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            stationDisplayNameLayout.Controls.Add(lblStation1DisplayName, 0, 0);
+            stationDisplayNameLayout.Controls.Add(inputStation1DisplayName, 1, 0);
+            stationDisplayNameLayout.Controls.Add(lblStation2DisplayName, 2, 0);
+            stationDisplayNameLayout.Controls.Add(inputStation2DisplayName, 3, 0);
+            stationDisplayNameLayout.Dock = DockStyle.Fill;
+            stationDisplayNameLayout.Name = "stationDisplayNameLayout";
+            stationDisplayNameLayout.TabIndex = 7;
+            //
+            // lblStation1DisplayName
+            //
+            lblStation1DisplayName.AutoSizeMode = AntdUI.TAutoSize.Width;
+            lblStation1DisplayName.Dock = DockStyle.Fill;
+            lblStation1DisplayName.Padding = new Padding(8, 0, 0, 0);
+            lblStation1DisplayName.Name = "lblStation1DisplayName";
+            lblStation1DisplayName.Text = "工位 1 显示名称";
+            //
+            // inputStation1DisplayName
+            //
+            inputStation1DisplayName.Dock = DockStyle.Fill;
+            inputStation1DisplayName.Name = "inputStation1DisplayName";
+            inputStation1DisplayName.Text = "左";
+            //
+            // lblStation2DisplayName
+            //
+            lblStation2DisplayName.AutoSizeMode = AntdUI.TAutoSize.Width;
+            lblStation2DisplayName.Dock = DockStyle.Fill;
+            lblStation2DisplayName.Padding = new Padding(8, 0, 0, 0);
+            lblStation2DisplayName.Name = "lblStation2DisplayName";
+            lblStation2DisplayName.Text = "工位 2 显示名称";
+            //
+            // inputStation2DisplayName
+            //
+            inputStation2DisplayName.Dock = DockStyle.Fill;
+            inputStation2DisplayName.Name = "inputStation2DisplayName";
+            inputStation2DisplayName.Text = "右";
             //
             // chkEnableDualStation
             //
@@ -2131,6 +2183,8 @@ namespace AutoWeldSystem.UI.Views
             tlpPlcStringNumericMode.PerformLayout();
             grpProductionConfig.ResumeLayout(false);
             tlpProductConfig.ResumeLayout(false);
+            stationDisplayNameLayout.ResumeLayout(false);
+            stationDisplayNameLayout.PerformLayout();
             tableLayoutPanel2.ResumeLayout(false);
             tableLayoutPanel2.PerformLayout();
             tableLayoutPanel3.ResumeLayout(false);
@@ -2268,6 +2322,11 @@ namespace AutoWeldSystem.UI.Views
         private GroupBox grpAppConfig;
         private TableLayoutPanel tableLayoutPanel2;
         private TableLayoutPanel tableLayoutPanel3;
+        private TableLayoutPanel stationDisplayNameLayout;
+        private AntdUI.Label lblStation1DisplayName;
+        private AntdUI.Input inputStation1DisplayName;
+        private AntdUI.Label lblStation2DisplayName;
+        private AntdUI.Input inputStation2DisplayName;
         private TableLayoutPanel tlpCheckbox1;
         private AntdUI.Label lblMesTimeout;
         private AntdUI.InputNumber input_MesTimeout;

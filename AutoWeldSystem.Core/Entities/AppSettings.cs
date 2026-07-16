@@ -181,6 +181,12 @@ public class AppSettings
     [SugarColumn(ColumnDescription = "是否启用双工位")]
     public bool EnableDualStation { get; set; }
 
+    [SugarColumn(Length = 50, ColumnDescription = "工位1显示名称")]
+    public string Station1DisplayName { get; set; } = "左";
+
+    [SugarColumn(Length = 50, ColumnDescription = "工位2显示名称")]
+    public string Station2DisplayName { get; set; } = "右";
+
     [SugarColumn(ColumnDescription = "是否启用双工单")]
     public bool EnableDualWorkOrder { get; set; }
 
