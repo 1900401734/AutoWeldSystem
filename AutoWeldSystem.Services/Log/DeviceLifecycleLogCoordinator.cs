@@ -121,7 +121,7 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
             {
                 await _deviceStatusService.ChangeStatusAsync(
                     ProductionConstants.MesDeviceStatuses.PoweredOn,
-                    "Software started successfully.",
+                    "开机",
                     SourceApplication,
                     stationNo: ProductionConstants.Stations.SharedStationNo,
                     occurredTime: occurredTime,
@@ -140,7 +140,7 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
         {
             _ = _deviceStatusService.ChangeStatusAsync(
                 ProductionConstants.MesDeviceStatuses.Stopped,
-                "Software is closing.",
+                "停机",
                 SourceApplication,
                 reportToMes: true,
                 stationNo: ProductionConstants.Stations.SharedStationNo,

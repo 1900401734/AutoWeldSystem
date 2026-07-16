@@ -128,6 +128,19 @@ public partial class SystemSettingView : BaseView
 
         _initialized = true;
         LoadSettings();
+        RefreshDeviceManagementEnabled();
+    }
+
+    /// <summary>
+    /// 页面重新显示时刷新设备管理模块状态，确保开工和完工后的界面权限及时更新。
+    /// </summary>
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        if (Visible && _initialized)
+        {
+            RefreshDeviceManagementEnabled();
+        }
     }
 
     /// <summary>
@@ -168,6 +181,13 @@ public partial class SystemSettingView : BaseView
         try
         {
             var previousSettings = _currentSettings;
+            if (!CanSaveDeviceManagementChange(previousSettings, settings))
+            {
+                BindSettings(previousSettings);
+                RefreshDeviceManagementEnabled();
+                return;
+            }
+
             if (!CanSaveRuntimeModeChange(previousSettings, settings))
             {
                 BindSettings(previousSettings);
@@ -213,6 +233,13 @@ public partial class SystemSettingView : BaseView
         try
         {
             var previousSettings = _currentSettings;
+            if (!CanSaveDeviceManagementChange(previousSettings, settings))
+            {
+                BindSettings(previousSettings);
+                RefreshDeviceManagementEnabled();
+                return;
+            }
+
             if (!CanSaveRuntimeModeChange(previousSettings, settings))
             {
                 BindSettings(previousSettings);
@@ -1012,6 +1039,28 @@ public partial class SystemSettingView : BaseView
 
         ShowWarningMessage("存在未完工任务，不能切换双工位/双工单模式，请先完工后再调整。");
         return false;
+    }
+
+    /// <summary>
+    /// 未完工期间禁止保存设备身份和设备通信地址，避免运行中的任务关联到变化后的设备。
+    /// </summary>
+    private bool CanSaveDeviceManagementChange(AppSettings previousSettings, AppSettings newSettings)
+    {
+        if (!HasDeviceIdentityChanged(previousSettings, newSettings) || !HasAnyUnfinishedTask())
+        {
+            return true;
+        }
+
+        ShowWarningMessage("存在未完工任务，请先完工后再修改设备管理信息。");
+        return false;
+    }
+
+    /// <summary>
+    /// 任一工位存在未完工任务时，统一禁用整个设备管理模块。
+    /// </summary>
+    private void RefreshDeviceManagementEnabled()
+    {
+        grpDeviceConfig.Enabled = !HasAnyUnfinishedTask();
     }
 
     private bool HasAnyUnfinishedTask()

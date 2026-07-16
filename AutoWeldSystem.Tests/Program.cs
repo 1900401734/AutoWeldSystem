@@ -124,6 +124,7 @@ var tests = new (string Name, Action Run)[]
     ("Device lifecycle self check summaries describe connection result", DeviceLifecycleSelfCheckSummariesDescribeConnectionResult),
     ("Device lifecycle software close entry records software close", DeviceLifecycleSoftwareCloseEntryRecordsSoftwareClose),
     ("Device lifecycle coordinator records software lifecycle statuses", DeviceLifecycleCoordinatorRecordsSoftwareLifecycleStatuses),
+    ("Device lifecycle coordinator reports Chinese software status remarks", DeviceLifecycleCoordinatorReportsChineseSoftwareStatusRemarks),
     ("Device lifecycle coordinator syncs software status timestamps", DeviceLifecycleCoordinatorSyncsSoftwareStatusTimestamps),
     ("Device lifecycle stop triggers background status upload", DeviceLifecycleStopTriggersBackgroundStatusUpload),
     ("Device lifecycle stop reports status when lifecycle log fails", DeviceLifecycleStopReportsStatusWhenLifecycleLogFails),
@@ -168,6 +169,7 @@ var tests = new (string Name, Action Run)[]
     ("Monitor view exposes dual work order toggle beside work order", MonitorViewExposesDualWorkOrderToggleBesideWorkOrder),
     ("Monitor view saves dual work order toggle with old rules", MonitorViewSavesDualWorkOrderToggleWithOldRules),
     ("System setting view no longer edits dual work order", SystemSettingViewNoLongerEditsDualWorkOrder),
+    ("System setting view locks device management during unfinished tasks", SystemSettingViewLocksDeviceManagementDuringUnfinishedTasks),
     ("Monitor view finish report uses start operator without prompt", MonitorViewFinishReportUsesStartOperatorWithoutPrompt),
     ("Monitor view clears product identity after finish report", MonitorViewClearsProductIdentityAfterFinishReport),
     ("Monitor view product history uses latest first ordering", MonitorViewProductHistoryUsesLatestFirstOrdering),
@@ -2339,6 +2341,28 @@ static void DeviceLifecycleCoordinatorRecordsSoftwareLifecycleStatuses()
         "软件启动和关闭的设备状态日志都必须强制写入，不能被相同状态去重。");
 }
 
+static void DeviceLifecycleCoordinatorReportsChineseSoftwareStatusRemarks()
+{
+    var lifecycleLogs = new FakeDeviceLifecycleLogService();
+    var statusService = new FakeDeviceStatusService();
+    var coordinator = CreateDeviceLifecycleLogCoordinator(lifecycleLogs, statusService);
+
+    coordinator.Start();
+    WaitUntil(
+        () => statusService.Logs.Any(log => log.DeviceStatus == ProductionConstants.MesDeviceStatuses.PoweredOn),
+        "开机设备状态日志应在启动后写入。");
+    coordinator.Stop();
+    WaitUntil(
+        () => statusService.Logs.Any(log => log.DeviceStatus == ProductionConstants.MesDeviceStatuses.Stopped),
+        "停机设备状态日志应在停止后写入。");
+
+    var poweredOn = statusService.Logs.Single(log => log.DeviceStatus == ProductionConstants.MesDeviceStatuses.PoweredOn);
+    var stopped = statusService.Logs.Single(log => log.DeviceStatus == ProductionConstants.MesDeviceStatuses.Stopped);
+
+    AssertEqual("开机", poweredOn.Remark, "软件启动设备状态上报 Remark 必须使用中文“开机”。");
+    AssertEqual("停机", stopped.Remark, "软件关闭设备状态上报 Remark 必须使用中文“停机”。");
+}
+
 static void DeviceLifecycleCoordinatorSyncsSoftwareStatusTimestamps()
 {
     var lifecycleLogs = new FakeDeviceLifecycleLogService();
@@ -3488,6 +3512,30 @@ static void SystemSettingViewNoLongerEditsDualWorkOrder()
     AssertFalse(viewCode.Contains("var enableDualWorkOrder = chkEnableDualWorkOrder.Checked", StringComparison.Ordinal), "系统设置页不应再从双工单复选框读取保存值。");
     AssertTrue(viewCode.Contains("chkEnableDualStation.Checked = settings.EnableDualStation || settings.EnableDualWorkOrder;", StringComparison.Ordinal), "系统设置页仍需在双工单已启用时显示双工位为开启。");
     AssertTrue(viewCode.Contains("settings.EnableDualWorkOrder = enableDualStation && CurrentSettings.EnableDualWorkOrder;", StringComparison.Ordinal), "系统设置保存时应保留既有双工单设置，并在关闭双工位时同步关闭双工单。");
+}
+
+static void SystemSettingViewLocksDeviceManagementDuringUnfinishedTasks()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.cs"), Encoding.UTF8);
+
+    AssertTrue(
+        viewCode.Contains("grpDeviceConfig.Enabled = !HasAnyUnfinishedTask();", StringComparison.Ordinal),
+        "任一工位存在未完工任务时，系统设置页必须禁用整个设备管理模块。");
+    AssertTrue(
+        viewCode.Contains("protected override void OnVisibleChanged(EventArgs e)", StringComparison.Ordinal),
+        "系统设置页重新显示时必须刷新设备管理模块的可编辑状态。");
+    AssertTrue(
+        viewCode.Contains("RefreshDeviceManagementEnabled();", StringComparison.Ordinal),
+        "系统设置页加载和重新显示时必须调用设备管理状态刷新方法。");
+    AssertTrue(
+        viewCode.Contains("private bool CanSaveDeviceManagementChange(", StringComparison.Ordinal),
+        "保存入口必须提供设备管理字段变更的防御性校验。");
+    AssertTrue(
+        viewCode.Contains("!HasDeviceIdentityChanged(previousSettings, newSettings) || !HasAnyUnfinishedTask()", StringComparison.Ordinal),
+        "只有未完工期间修改设备管理字段时才应阻止保存，其它设置仍可保存。");
+    AssertTrue(
+        CountOccurrences(viewCode, "CanSaveDeviceManagementChange(previousSettings, settings)") >= 2,
+        "整体保存和手动同步设备两个入口都必须执行设备管理变更校验。");
 }
 
 static void MonitorViewFinishReportUsesStartOperatorWithoutPrompt()
