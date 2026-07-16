@@ -24,4 +24,9 @@ public interface ICenterProductForwardingService : IAsyncDisposable
         BizWeldTask task,
         int stationNo,
         IReadOnlyList<BizWeldPointRecord> records);
+
+    /// <summary>
+    /// Queues one task-level finish update after EndTime and final quantities are persisted locally.
+    /// </summary>
+    void EnqueueTaskFinishUpdate(BizWeldTask task);
 }

@@ -26,6 +26,11 @@ public sealed class CenterProductReportRequest
     public int StationNo { get; set; } = 1;
 
     /// <summary>
+    /// Configured station display name. Single-station requests leave this empty.
+    /// </summary>
+    public string StationName { get; set; } = string.Empty;
+
+    /// <summary>
     /// Work order number of the product.
     /// </summary>
     public string WorkOrder { get; set; } = string.Empty;
@@ -61,6 +66,16 @@ public sealed class CenterProductReportRequest
     public string ProductJobNo { get; set; } = string.Empty;
 
     /// <summary>
+    /// Drawing number shown in the shared customer report header.
+    /// </summary>
+    public string DrawingNo { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Part specification shown in the shared customer report header.
+    /// </summary>
+    public string Spec { get; set; } = string.Empty;
+
+    /// <summary>
     /// PLC-collected product number.
     /// </summary>
     public string ProductNo { get; set; } = string.Empty;
@@ -74,6 +89,26 @@ public sealed class CenterProductReportRequest
     /// Product-level result resolved by the equipment client.
     /// </summary>
     public string ProductResult { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Persisted task start time. Product requests and finish updates must use the same task value.
+    /// </summary>
+    public DateTime StartTime { get; set; }
+
+    /// <summary>
+    /// Persisted task finish time. It stays empty until the work order is completed.
+    /// </summary>
+    public DateTime? EndTime { get; set; }
+
+    /// <summary>
+    /// Current or final qualified quantity stored on the task.
+    /// </summary>
+    public int QualifiedQty { get; set; }
+
+    /// <summary>
+    /// True when this request only refreshes task-level report headers after work-order completion.
+    /// </summary>
+    public bool IsTaskFinishUpdate { get; set; }
 
     /// <summary>
     /// Time when the product was completed on the equipment client.

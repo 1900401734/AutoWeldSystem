@@ -121,6 +121,40 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
     }
 
     /// <summary>
+    /// 将已持久化的工单完工统计放入现有中心服务器重试队列。
+    /// 完工请求只包含任务级字段，不重复携带产品点明细。
+    /// </summary>
+    public void EnqueueTaskFinishUpdate(BizWeldTask task)
+    {
+        var settings = _settingsService.Get();
+        if (!settings.EnableCenterServerSync)
+        {
+            return;
+        }
+
+        var request = BuildTaskFinishRequest(settings, task);
+        var uploadTask = _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
+        {
+            TaskType = ProductionConstants.UploadTaskTypes.CenterProductReport,
+            Target = ProductionConstants.UploadTargets.CentralServer,
+            BusinessId = BuildBusinessId(request),
+            WeldTaskId = task.Id,
+            PayloadJson = JsonSerializer.Serialize(request, JsonOptions),
+            Status = ProductionConstants.UploadStatuses.Pending,
+            NextRetryTime = DateTime.Now,
+            Message = "中心服务器工单完工更新已入队。"
+        });
+
+        _productionLogService.Write(
+            "CenterTaskFinishUpdateQueued",
+            "中心服务器工单完工更新已入队",
+            $"UploadTaskId={uploadTask.Id}, EndTime={request.EndTime:yyyy-MM-dd HH:mm:ss}, QualifiedQty={request.QualifiedQty}",
+            stationNo: request.StationNo,
+            workOrderId: request.WorkOrder,
+            programId: task.ProgramId ?? string.Empty);
+    }
+
+    /// <summary>
     /// Processes pending center forwarding tasks without blocking product collection.
     /// </summary>
     private async Task RunAsync(CancellationToken cancellationToken)
@@ -303,18 +337,25 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             DeviceName = settings.DeviceName.Trim(),
             SystemType = CenterTelemetryRules.NormalizeSystemType(settings.CenterServerSystemType),
             StationNo = stationNo,
+            StationName = ResolveStationName(settings, stationNo),
             WorkOrder = task.SN ?? string.Empty,
             Batch = task.Batch ?? string.Empty,
-            Quantity = task.StartAmount > 0 ? task.StartAmount : task.ActualQty,
+            Quantity = task.StartAmount,
             PartName = task.ProductName ?? string.Empty,
             ProcessNo = task.ProcessNo ?? string.Empty,
-            OperatorNo = first.OperatorNo ?? task.EndOperatorNumber ?? task.UserNumber ?? string.Empty,
+            OperatorNo = task.UserNumber ?? string.Empty,
             ProductJobNo = task.ProductNum ?? string.Empty,
+            DrawingNo = task.DrawingNo ?? string.Empty,
+            Spec = task.Spec ?? string.Empty,
             ProductNo = first.ProductNo,
             ProductModel = task.ProductModel ?? string.Empty,
-            ProductResult = TestResultRules.ResolveProductResult(orderedRecords.Select(record => record.TestResult)),
+            ProductResult = ResolveProductResult(orderedRecords),
+            StartTime = task.StartTime,
+            EndTime = task.EndTime,
+            QualifiedQty = task.QualifiedQty,
+            IsTaskFinishUpdate = false,
             CompletedAt = orderedRecords.Max(record => record.Ts),
-            ReportColumns = BuildReportColumns(task, stationNo),
+            ReportColumns = BuildReportColumns(settings, task, stationNo),
             Points = orderedRecords.Select(record => new CenterProductReportPointDto
             {
                 SequenceNo = record.SequenceNo,
@@ -327,18 +368,109 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
         };
     }
 
+    private static CenterProductReportRequest BuildTaskFinishRequest(AppSettings settings, BizWeldTask task)
+    {
+        return new CenterProductReportRequest
+        {
+            DeviceId = settings.DeviceId.Trim(),
+            DeviceName = settings.DeviceName.Trim(),
+            SystemType = CenterTelemetryRules.NormalizeSystemType(settings.CenterServerSystemType),
+            StationNo = task.StationNo <= ProductionConstants.Stations.SharedStationNo
+                ? ProductionConstants.Stations.DefaultStationNo
+                : task.StationNo,
+            StationName = ResolveStationName(settings, task.StationNo),
+            WorkOrder = task.SN ?? string.Empty,
+            Batch = task.Batch ?? string.Empty,
+            Quantity = task.StartAmount,
+            PartName = task.ProductName ?? string.Empty,
+            ProcessNo = task.ProcessNo ?? string.Empty,
+            OperatorNo = task.UserNumber ?? string.Empty,
+            ProductJobNo = task.ProductNum ?? string.Empty,
+            DrawingNo = task.DrawingNo ?? string.Empty,
+            Spec = task.Spec ?? string.Empty,
+            ProductModel = task.ProductModel ?? string.Empty,
+            StartTime = task.StartTime,
+            EndTime = task.EndTime,
+            QualifiedQty = task.QualifiedQty,
+            IsTaskFinishUpdate = true,
+            CompletedAt = task.EndTime ?? task.StartTime,
+            ReportColumns = [],
+            Points = []
+        };
+    }
+
+    private static string ResolveStationName(AppSettings settings, int stationNo)
+    {
+        if (!settings.EnableDualStation)
+        {
+            return string.Empty;
+        }
+
+        var names = StationDisplayNameRules.NormalizeForLoad(
+            dualStationEnabled: true,
+            settings.Station1DisplayName,
+            settings.Station2DisplayName);
+        return stationNo == 2
+            ? names.Station2
+            : names.Station1;
+    }
+
+    /// <summary>
+    /// 产品结果只读取 PLC 产品级字段；旧记录为空时回退 RawDataJson.product_result。
+    /// 禁止根据焊点 TestResult 聚合推算产品结果。
+    /// </summary>
+    private static string ResolveProductResult(IReadOnlyList<BizWeldPointRecord> records)
+    {
+        var persistedResult = records
+            .Select(record => record.ProductResult)
+            .FirstOrDefault(result => !string.IsNullOrWhiteSpace(result));
+        if (!string.IsNullOrWhiteSpace(persistedResult))
+        {
+            return TestResultRules.Normalize(persistedResult);
+        }
+
+        foreach (var record in records)
+        {
+            if (string.IsNullOrWhiteSpace(record.RawDataJson))
+            {
+                continue;
+            }
+
+            try
+            {
+                using var document = JsonDocument.Parse(record.RawDataJson);
+                if (document.RootElement.TryGetProperty(CenterProductReportFormat.ColumnProductResult, out var value))
+                {
+                    return TestResultRules.Normalize(value.ToString());
+                }
+            }
+            catch (JsonException)
+            {
+                // 历史原始数据损坏时保持 Unknown，不能退回焊点结果聚合。
+            }
+        }
+
+        return ProductionConstants.TestResults.Unknown;
+    }
+
     /// <summary>
     /// 生成设备端生产报表列定义。
     /// 中心服务器使用这份列定义，确保 Excel 表头跟设备端配置保持一致。
     /// </summary>
-    private List<CenterProductReportColumnDto> BuildReportColumns(BizWeldTask task, int stationNo)
+    private List<CenterProductReportColumnDto> BuildReportColumns(
+        AppSettings settings,
+        BizWeldTask task,
+        int stationNo)
     {
         var columns = new List<CenterProductReportColumnDto>();
         var config = ResolveProductProcessConfig(task, stationNo);
 
-        columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnStationNo, Title = "工位", MergeByProduct = true });
+        if (settings.EnableDualStation)
+        {
+            columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnStationNo, Title = "工位", MergeByProduct = true });
+        }
+
         columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnProductNo, Title = "产品编号", MergeByProduct = true });
-        columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnProductResult, Title = "产品结果", MergeByProduct = true });
         columns.Add(new CenterProductReportColumnDto
         {
             Key = CenterProductReportFormat.ColumnTouchNo,
@@ -353,13 +485,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
         });
 
         columns.AddRange(BuildDynamicReportColumns(config));
-        columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnWorkOrder, Title = "工号", MergeByProduct = true });
-        columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnBatch, Title = "批次", MergeByProduct = true });
-        columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnQuantity, Title = "数量", MergeByProduct = true });
-        columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnPartName, Title = "零部件名称", MergeByProduct = true });
-        columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnProcessNo, Title = "工序号", MergeByProduct = true });
-        columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnOperator, Title = "操作人员", MergeByProduct = true });
-        columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnRecordTime, Title = "日期", MergeByProduct = true });
+        columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnProductResult, Title = "产品结果", MergeByProduct = true });
         return columns;
     }
 
@@ -404,25 +530,34 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
 
         SchemeDetailRoleRules.ClearUnavailableRoles(detail, item);
         var itemKey = ResolveItemKey(item);
-        if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Actual))
+        if (ShouldForwardSavedRole(detail, SchemeDetailValueRole.Actual))
         {
             yield return BuildDynamicColumn(itemKey, detail.ActualHeader, SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Actual));
         }
 
-        if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Upper))
+        if (ShouldForwardSavedRole(detail, SchemeDetailValueRole.Upper))
         {
             yield return BuildDynamicColumn($"{itemKey}_upper", detail.UpperHeader, SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Upper));
         }
 
-        if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Lower))
+        if (ShouldForwardSavedRole(detail, SchemeDetailValueRole.Lower))
         {
             yield return BuildDynamicColumn($"{itemKey}_lower", detail.LowerHeader, SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Lower));
         }
 
-        if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Result))
+        if (ShouldForwardSavedRole(detail, SchemeDetailValueRole.Result))
         {
             yield return BuildDynamicColumn($"{itemKey}_result", detail.ResultHeader, SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Result));
         }
+    }
+
+    /// <summary>
+    /// 中心服务器只同步本地保存通道的数据；报表或 MES 独占字段不得进入中心报表协议。
+    /// </summary>
+    private static bool ShouldForwardSavedRole(BizSchemeDetail detail, SchemeDetailValueRole role)
+    {
+        return SchemeDetailRoleRules.ShouldPersistRole(detail, role)
+            && SchemeDetailRoleRules.IsSaveEnabled(detail, role);
     }
 
     private static CenterProductReportColumnDto BuildDynamicColumn(string key, string? title, string fallbackTitle)
@@ -482,7 +617,9 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
 
     private static string BuildBusinessId(CenterProductReportRequest request)
     {
-        var raw = $"center:s{request.StationNo}:wo{request.WorkOrder}:p{request.ProductNo}";
+        var raw = request.IsTaskFinishUpdate
+            ? $"center:finish:wo{request.WorkOrder}"
+            : $"center:s{request.StationNo}:wo{request.WorkOrder}:p{request.ProductNo}";
         return raw.Length <= 100 ? raw : raw[..100];
     }
 }

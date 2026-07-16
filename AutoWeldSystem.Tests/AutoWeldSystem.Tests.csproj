@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj" />
     <ProjectReference Include="..\AutoWeldSystem.Core\AutoWeldSystem.Core.csproj" />
     <ProjectReference Include="..\AutoWeldSystem.Services\AutoWeldSystem.Services.csproj" />
   </ItemGroup>

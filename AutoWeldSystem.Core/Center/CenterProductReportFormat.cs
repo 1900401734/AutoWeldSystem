@@ -4,13 +4,14 @@ namespace AutoWeldSystem.Core.Center;
 
 /// <summary>
 /// 生产报表共享格式定义。
-/// 设备端先使用模板行号和格式常量；中心服务器列协议保持现状，后续任务再接入模板布局。
+/// 设备端与中心服务器共同使用客户模板表头、列宽和明细列协议，避免两套硬编码漂移。
 /// </summary>
 public static class CenterProductReportFormat
 {
     public const string WorksheetName = "生产报表";
     public const int TemplateMinimumColumnCount = 10;
     public const int DetailHeaderRow = 9;
+    public const int DetailFirstDataRow = DetailHeaderRow + 1;
     public const string DateTimeFormat = "yyyy-MM-dd HH:mm:ss";
     public const string DataWorksheetName = "_Data";
     public const string ColumnsWorksheetName = "_Columns";
@@ -27,25 +28,19 @@ public static class CenterProductReportFormat
     public const string ColumnOperator = "operator";
     public const string ColumnRecordTime = "record_time";
 
-    private static readonly CenterProductReportColumn[] LeadingColumns =
-    [
-        new(ColumnStationNo, "工位", MergeByProduct: true),
-        new(ColumnProductNo, "产品编号", MergeByProduct: true),
-        new(ColumnProductResult, "产品结果", MergeByProduct: true),
-        new(ColumnTouchNo, "焊点编号", MergeByProduct: false),
-        new(ColumnTouchResult, "焊点结果", MergeByProduct: false)
-    ];
-
-    private static readonly CenterProductReportColumn[] TrailingColumns =
-    [
-        new(ColumnWorkOrder, "工号", MergeByProduct: true),
-        new(ColumnBatch, "批次", MergeByProduct: true),
-        new(ColumnQuantity, "数量", MergeByProduct: true),
-        new(ColumnPartName, "零部件名称", MergeByProduct: true),
-        new(ColumnProcessNo, "工序号", MergeByProduct: true),
-        new(ColumnOperator, "操作人员", MergeByProduct: true),
-        new(ColumnRecordTime, "日期", MergeByProduct: true)
-    ];
+    private static readonly IReadOnlyDictionary<int, double> TemplateColumnWidths = new Dictionary<int, double>
+    {
+        [1] = 5.8867d,
+        [2] = 10.2188d,
+        [3] = 10.4414d,
+        [4] = 10.7773d,
+        [5] = 9.8867d,
+        [6] = 9d,
+        [7] = 11d,
+        [8] = 11d,
+        [9] = 9.4414d,
+        [10] = 4d
+    };
 
     /// <summary>
     /// 根据动态字段名生成默认列定义。
@@ -57,7 +52,7 @@ public static class CenterProductReportFormat
             .Where(key => !string.IsNullOrWhiteSpace(key))
             .Select(key => new CenterProductReportColumn(key.Trim(), key.Trim(), MergeByProduct: false));
 
-        return BuildColumns(dynamicColumns);
+        return BuildDetailColumns(dynamicColumns);
     }
 
     /// <summary>
@@ -65,33 +60,93 @@ public static class CenterProductReportFormat
     /// </summary>
     public static IReadOnlyList<CenterProductReportColumn> BuildColumns(IEnumerable<CenterProductReportColumn> equipmentColumns)
     {
-        var equipmentColumnList = equipmentColumns.ToList();
-        var columns = LeadingColumns.Select(column => ApplyEquipmentOverride(column, equipmentColumnList)).ToList();
-        var seen = new HashSet<string>(columns.Select(column => column.Key), StringComparer.OrdinalIgnoreCase);
+        return BuildDetailColumns(equipmentColumns);
+    }
 
-        foreach (var column in equipmentColumns)
+    /// <summary>
+    /// 生成客户模板第九行使用的明细列。
+    /// 单工位由设备端省略工位列；固定列缺失时自动补齐，动态列保持设备端 SaveEnable 顺序。
+    /// </summary>
+    public static IReadOnlyList<CenterProductReportColumn> BuildDetailColumns(
+        IEnumerable<CenterProductReportColumn> equipmentColumns)
+    {
+        var equipmentColumnList = equipmentColumns
+            .Where(column => !string.IsNullOrWhiteSpace(column.Key))
+            .DistinctBy(column => column.Key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var includeStation = equipmentColumnList.Any(
+            column => string.Equals(column.Key, ColumnStationNo, StringComparison.OrdinalIgnoreCase));
+        var columns = new List<CenterProductReportColumn>();
+
+        if (includeStation)
         {
-            var key = column.Key?.Trim();
-            if (string.IsNullOrWhiteSpace(key) || IsTrailingColumn(key) || !seen.Add(key))
-            {
-                continue;
-            }
-
-            columns.Add(new CenterProductReportColumn(
-                key,
-                string.IsNullOrWhiteSpace(column.Title) ? key : column.Title.Trim(),
-                column.MergeByProduct));
+            columns.Add(ResolveDetailColumn(ColumnStationNo, "工位", mergeByProduct: true, equipmentColumnList));
         }
 
-        foreach (var column in TrailingColumns.Select(column => ApplyEquipmentOverride(column, equipmentColumnList)))
-        {
-            if (seen.Add(column.Key))
-            {
-                columns.Add(column);
-            }
-        }
+        columns.Add(ResolveDetailColumn(ColumnProductNo, "产品编号", mergeByProduct: true, equipmentColumnList));
+        columns.Add(ResolveDetailColumn(ColumnTouchNo, "焊点编号", mergeByProduct: false, equipmentColumnList));
+        columns.Add(ResolveDetailColumn(ColumnTouchResult, "焊点结果", mergeByProduct: false, equipmentColumnList));
 
+        var fixedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ColumnStationNo,
+            ColumnProductNo,
+            ColumnTouchNo,
+            ColumnTouchResult,
+            ColumnProductResult
+        };
+        columns.AddRange(equipmentColumnList.Where(column => !fixedKeys.Contains(column.Key)));
+        columns.Add(ResolveDetailColumn(ColumnProductResult, "产品结果", mergeByProduct: true, equipmentColumnList));
         return columns;
+    }
+
+    /// <summary>
+    /// 按客户模板定义生成四行任务表头合并块；最后一组会扩展到实际末列。
+    /// </summary>
+    public static IReadOnlyList<CenterProductReportHeaderBlock> BuildTemplateHeaderBlocks(
+        CenterProductReportHeaderValues values,
+        int lastColumn)
+    {
+        var normalizedLastColumn = Math.Max(TemplateMinimumColumnCount, lastColumn);
+        return
+        [
+            new(1, 1, 3, "产品工号：", values.ProductJobNo),
+            new(1, 4, 6, "图号：", values.DrawingNo),
+            new(1, 7, 8, "批次：", values.Batch),
+            new(1, 9, normalizedLastColumn, "流转卡号：", values.WorkOrder),
+            new(3, 1, 3, "部件规格：", values.Spec),
+            new(3, 4, 6, "型号：", values.ProductModel),
+            new(3, 7, normalizedLastColumn, "工序：", values.ProcessNo),
+            new(5, 1, 3, "生产数量：", values.Quantity),
+            new(5, 4, 6, "合格数量：", values.QualifiedQty),
+            new(5, 7, normalizedLastColumn, "备注：", null),
+            new(7, 1, 3, "开始时间：", values.StartTime),
+            new(7, 4, 6, "结束时间：", values.EndTime),
+            new(7, 7, normalizedLastColumn, "操作人员：", values.OperatorNo)
+        ];
+    }
+
+    /// <summary>
+    /// 读取客户 A:J 原始列宽；动态扩展列使用至少 12 的可读宽度。
+    /// </summary>
+    public static double ResolveTemplateColumnWidth(int columnIndex, double currentWidth)
+    {
+        return TemplateColumnWidths.TryGetValue(columnIndex, out var width)
+            ? width
+            : Math.Max(currentWidth, 12d);
+    }
+
+    /// <summary>
+    /// 将客户模板标签和值拼成单行文本。
+    /// </summary>
+    public static string BuildHeaderText(string label, object? value)
+    {
+        var valueText = value switch
+        {
+            DateTime dateTime => dateTime.ToString(DateTimeFormat),
+            _ => value?.ToString()?.Trim() ?? string.Empty
+        };
+        return string.Concat(label, valueText);
     }
 
     /// <summary>
@@ -116,30 +171,50 @@ public static class CenterProductReportFormat
         return $"{stationNo}\u001F{workOrder?.Trim()}\u001F{productNo?.Trim()}";
     }
 
-    private static bool IsTrailingColumn(string key)
-    {
-        return TrailingColumns.Any(column => string.Equals(column.Key, key, StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static CenterProductReportColumn ApplyEquipmentOverride(
-        CenterProductReportColumn defaultColumn,
+    private static CenterProductReportColumn ResolveDetailColumn(
+        string key,
+        string title,
+        bool mergeByProduct,
         IReadOnlyList<CenterProductReportColumn> equipmentColumns)
     {
-        var overrideColumn = equipmentColumns.FirstOrDefault(
-            column => string.Equals(column.Key, defaultColumn.Key, StringComparison.OrdinalIgnoreCase));
-        if (overrideColumn is null)
-        {
-            return defaultColumn;
-        }
-
+        var equipmentColumn = equipmentColumns.FirstOrDefault(
+            column => string.Equals(column.Key, key, StringComparison.OrdinalIgnoreCase));
         return new CenterProductReportColumn(
-            defaultColumn.Key,
-            string.IsNullOrWhiteSpace(overrideColumn.Title) ? defaultColumn.Title : overrideColumn.Title.Trim(),
-            defaultColumn.MergeByProduct);
+            key,
+            string.IsNullOrWhiteSpace(equipmentColumn?.Title) ? title : equipmentColumn.Title.Trim(),
+            mergeByProduct);
     }
+
 }
 
 /// <summary>
 /// 中心服务器 Excel 报表列定义。
 /// </summary>
 public sealed record CenterProductReportColumn(string Key, string Title, bool MergeByProduct);
+
+/// <summary>
+/// 客户模板任务级表头值。
+/// </summary>
+public sealed record CenterProductReportHeaderValues(
+    string ProductJobNo,
+    string DrawingNo,
+    string Batch,
+    string WorkOrder,
+    string Spec,
+    string ProductModel,
+    string ProcessNo,
+    int Quantity,
+    int QualifiedQty,
+    DateTime StartTime,
+    DateTime? EndTime,
+    string OperatorNo);
+
+/// <summary>
+/// 客户模板中的一个合并表头块。
+/// </summary>
+public sealed record CenterProductReportHeaderBlock(
+    int Row,
+    int StartColumn,
+    int EndColumn,
+    string Label,
+    object? Value);

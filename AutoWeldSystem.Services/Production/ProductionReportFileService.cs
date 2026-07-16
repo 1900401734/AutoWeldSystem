@@ -184,22 +184,29 @@ public class ProductionReportFileService : IProductionReportFileService
     /// </summary>
     private static void WriteTemplateHeader(IXLWorksheet worksheet, BizWeldTask task, int lastColumn)
     {
-        WriteHeaderBlock(worksheet, 1, 1, 3, "产品工号：", task.ProductNum);
-        WriteHeaderBlock(worksheet, 1, 4, 6, "图号：", task.DrawingNo);
-        WriteHeaderBlock(worksheet, 1, 7, 8, "批次：", task.Batch);
-        WriteHeaderBlock(worksheet, 1, 9, lastColumn, "流转卡号：", task.SN);
-
-        WriteHeaderBlock(worksheet, 3, 1, 3, "部件规格：", task.Spec);
-        WriteHeaderBlock(worksheet, 3, 4, 6, "型号：", task.ProductModel);
-        WriteHeaderBlock(worksheet, 3, 7, lastColumn, "工序：", task.ProcessNo);
-
-        WriteHeaderBlock(worksheet, 5, 1, 3, "生产数量：", task.StartAmount);
-        WriteHeaderBlock(worksheet, 5, 4, 6, "合格数量：", task.QualifiedQty);
-        WriteHeaderBlock(worksheet, 5, 7, lastColumn, "备注：", value: null);
-
-        WriteHeaderBlock(worksheet, 7, 1, 3, "开始时间：", task.StartTime);
-        WriteHeaderBlock(worksheet, 7, 4, 6, "结束时间：", task.EndTime);
-        WriteHeaderBlock(worksheet, 7, 7, lastColumn, "操作人员：", task.UserNumber);
+        var values = new CenterProductReportHeaderValues(
+            task.ProductNum,
+            task.DrawingNo,
+            task.Batch,
+            task.SN,
+            task.Spec,
+            task.ProductModel,
+            task.ProcessNo,
+            task.StartAmount,
+            task.QualifiedQty,
+            task.StartTime,
+            task.EndTime,
+            task.UserNumber ?? string.Empty);
+        foreach (var block in CenterProductReportFormat.BuildTemplateHeaderBlocks(values, lastColumn))
+        {
+            WriteHeaderBlock(
+                worksheet,
+                block.Row,
+                block.StartColumn,
+                block.EndColumn,
+                block.Label,
+                block.Value);
+        }
     }
 
     /// <summary>
@@ -215,17 +222,7 @@ public class ProductionReportFileService : IProductionReportFileService
     {
         var range = worksheet.Range(row, startColumn, row, Math.Max(startColumn, endColumn));
         range.Merge();
-        range.FirstCell().Value = BuildHeaderText(label, value);
-    }
-
-    private static string BuildHeaderText(string label, object? value)
-    {
-        var valueText = value switch
-        {
-            DateTime dateTime => dateTime.ToString(CenterProductReportFormat.DateTimeFormat),
-            _ => value?.ToString()?.Trim() ?? string.Empty
-        };
-        return string.Concat(label, valueText);
+        range.FirstCell().Value = CenterProductReportFormat.BuildHeaderText(label, value);
     }
 
     /// <summary>
@@ -301,26 +298,10 @@ public class ProductionReportFileService : IProductionReportFileService
     /// </summary>
     private static void ApplyTemplateDimensions(IXLWorksheet worksheet, int templateColumnCount)
     {
-        var templateWidths = new Dictionary<int, double>
-        {
-            [1] = 5.8867d,
-            [2] = 10.2188d,
-            [3] = 10.4414d,
-            [4] = 10.7773d,
-            [5] = 9.8867d,
-            [6] = 9d,
-            [7] = 11d,
-            [8] = 11d,
-            [9] = 9.4414d,
-            [10] = 4d
-        };
-
         for (var columnIndex = 1; columnIndex <= templateColumnCount; columnIndex++)
         {
             var column = worksheet.Column(columnIndex);
-            column.Width = templateWidths.TryGetValue(columnIndex, out var templateWidth)
-                ? templateWidth
-                : Math.Max(column.Width, 12d);
+            column.Width = CenterProductReportFormat.ResolveTemplateColumnWidth(columnIndex, column.Width);
         }
     }
 

@@ -28,6 +28,7 @@ public class WeldTaskService : IWeldTaskService
     private readonly IOperationLogService _operationLogService;
     private readonly ILocalizationService _localizer;
     private readonly IUploadTaskService _uploadTaskService;
+    private readonly ICenterProductForwardingService _centerProductForwardingService;
     private readonly IProductionReportFileService _reportFileService;
     private readonly IDeviceLifecycleLogService _deviceLifecycleLogService;
     private readonly IDeviceStatusService _deviceStatusService;
@@ -41,6 +42,7 @@ public class WeldTaskService : IWeldTaskService
         IOperationLogService operationLogService,
         ILocalizationService localizer,
         IUploadTaskService uploadTaskService,
+        ICenterProductForwardingService centerProductForwardingService,
         IProductionReportFileService reportFileService,
         IDeviceLifecycleLogService deviceLifecycleLogService,
         IDeviceStatusService deviceStatusService,
@@ -54,6 +56,7 @@ public class WeldTaskService : IWeldTaskService
         _operationLogService = operationLogService;
         _localizer = localizer;
         _uploadTaskService = uploadTaskService;
+        _centerProductForwardingService = centerProductForwardingService;
         _reportFileService = reportFileService;
         _deviceLifecycleLogService = deviceLifecycleLogService;
         _deviceStatusService = deviceStatusService;
@@ -678,6 +681,7 @@ public class WeldTaskService : IWeldTaskService
             : finishUploadMessage;
 
         _dbContext.Db.Updateable(task).ExecuteCommand();
+        _centerProductForwardingService.EnqueueTaskFinishUpdate(task);
         if (finishUploaded)
         {
             await RecordProgramEndedStatusAsync(task, cancellationToken);
@@ -737,6 +741,7 @@ public class WeldTaskService : IWeldTaskService
         task.UploadMessage = "Local finish completed offline. Finish data is queued for MES retry.";
 
         _dbContext.Db.Updateable(task).ExecuteCommand();
+        _centerProductForwardingService.EnqueueTaskFinishUpdate(task);
         EnqueueFinishReportTask(task, BuildEndRequest(task, endOperator, actualQty, qualifiedQty, failedQty));
         EnqueueWorkOrderStatusTask(task, ProductionConstants.MesWorkOrderStatuses.Completed);
         EnqueueFinishUploadTasks(task, CurrentSettings.UploadMode);

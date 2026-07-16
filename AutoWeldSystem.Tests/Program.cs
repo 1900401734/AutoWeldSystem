@@ -19,10 +19,14 @@ using AutoWeldSystem.Core.Interfaces.PLC;
 using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Core.Runtime;
 using AutoWeldSystem.Core.ViewModels;
+using AutoWeldSystem.CenterServer.Configuration;
+using AutoWeldSystem.CenterServer.Services;
+using AutoWeldSystem.Services.Center;
 using AutoWeldSystem.Services.Mes;
 using AutoWeldSystem.Services.Log;
 using AutoWeldSystem.Services.Production;
 using ClosedXML.Excel;
+using Microsoft.Extensions.Configuration;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -67,6 +71,15 @@ var tests = new (string Name, Action Run)[]
     ("Center product report columns follow production Excel format", CenterProductReportColumnsFollowProductionExcelFormat),
     ("Center product report columns use forwarded equipment headers", CenterProductReportColumnsUseForwardedEquipmentHeaders),
     ("Center product report request carries production report fields", CenterProductReportRequestCarriesProductionReportFields),
+    ("Center dynamic report columns use SaveEnable only", CenterDynamicReportColumnsUseSaveEnableOnly),
+    ("Center product request uses PLC result and task timestamps", CenterProductRequestUsesPlcResultAndTaskTimestamps),
+    ("Center product request resolves configured station name", CenterProductRequestResolvesConfiguredStationName),
+    ("Center report product then finish update keeps detail rows", CenterReportProductThenFinishUpdateKeepsDetailRows),
+    ("Center report keeps fixed details without dynamic save fields", CenterReportKeepsFixedDetailsWithoutDynamicSaveFields),
+    ("Center report renders single and dual station columns", CenterReportRendersSingleAndDualStationColumns),
+    ("Center report replaces duplicate product rows", CenterReportReplacesDuplicateProductRows),
+    ("Center report isolates device and work order files", CenterReportIsolatesDeviceAndWorkOrderFiles),
+    ("Center finish update queues after task persistence", CenterFinishUpdateQueuesAfterTaskPersistence),
     ("Finished task clears station runtime", FinishedTaskClearsStationRuntime),
     ("Offline start request uses local task id", OfflineStartRequestUsesLocalTaskId),
     ("Upload task identity prefers MES id then local id", UploadTaskIdentityPrefersMesIdThenLocalId),
@@ -1029,13 +1042,14 @@ static void CenterProductReportColumnsFollowProductionExcelFormat()
     var headers = columns.Select(column => column.Title).ToArray();
 
     AssertEqual("生产报表", CenterProductReportFormat.WorksheetName, "Center report sheet name must match equipment Excel reports.");
-    AssertEqual("工位", headers[0], "Center report must start with the same station column as equipment reports.");
-    AssertEqual("产品编号", headers[1], "Center report must use the same product number column as equipment reports.");
-    AssertEqual("产品结果", headers[2], "Center report must use the same product result column as equipment reports.");
-    AssertEqual("焊点编号", headers[3], "Center report must use the same point number column as equipment reports.");
-    AssertEqual("焊点结果", headers[4], "Center report must use the same point result column as equipment reports.");
-    AssertEqual("height", headers[5], "Dynamic collected values must be placed after point result columns.");
-    AssertEqual("工号", headers[^7], "Trailing work-order columns must follow the equipment report format.");
+    AssertEqual("产品编号", headers[0], "Single-station center details must start with product number.");
+    AssertEqual("焊点编号", headers[1], "Center report must use the same point number column as equipment reports.");
+    AssertEqual("焊点结果", headers[2], "Center report must use the same point result column as equipment reports.");
+    AssertEqual("height", headers[3], "Dynamic saved values must be placed after point result columns.");
+    AssertEqual("height_result", headers[4], "Dynamic saved result values must preserve equipment order.");
+    AssertEqual("产品结果", headers[^1], "PLC product result must remain the final fixed detail column.");
+    AssertFalse(headers.Contains("工位"), "Single-station center details must omit the station column.");
+    AssertFalse(headers.Contains("工号"), "Task fields belong in the customer template header, not repeated detail columns.");
     AssertFalse(headers.Contains("设备编号"), "Center-only device columns must not be inserted into the Excel report table.");
     AssertFalse(headers.Contains("设备名称"), "Center-only device columns must not be inserted into the Excel report table.");
     AssertFalse(headers.Contains("系统类型"), "Center-only system columns must not be inserted into the Excel report table.");
@@ -1050,9 +1064,9 @@ static void CenterProductReportColumnsUseForwardedEquipmentHeaders()
     ]);
     var headers = columns.Select(column => column.Title).ToArray();
 
-    AssertEqual("相机编号", headers[3], "Forwarded equipment point number header must override the center default.");
-    AssertEqual("相机结果", headers[4], "Forwarded equipment point result header must override the center default.");
-    AssertEqual("高度实际值", headers[5], "Forwarded equipment dynamic headers must be used in the center Excel report.");
+    AssertEqual("相机编号", headers[1], "Forwarded equipment point number header must override the center default.");
+    AssertEqual("相机结果", headers[2], "Forwarded equipment point result header must override the center default.");
+    AssertEqual("高度实际值", headers[3], "Forwarded equipment dynamic headers must be used in the center Excel report.");
 }
 
 static void CenterProductReportRequestCarriesProductionReportFields()
@@ -1079,6 +1093,401 @@ static void CenterProductReportRequestCarriesProductionReportFields()
     AssertEqual("OP10", request.ProcessNo, "Center report request must preserve process number for the Excel report.");
     AssertEqual("U001", request.OperatorNo, "Center report request must preserve task operator for the Excel report.");
     AssertEqual("U002", request.Points[0].OperatorNo, "Center report request must preserve point operator when available.");
+}
+
+static void CenterDynamicReportColumnsUseSaveEnableOnly()
+{
+    var item = new DimTestItem
+    {
+        ItemId = 1,
+        ItemName = "峰值电流",
+        ActualExpression = "0:F-0",
+        UpperExpression = "0:F-4",
+        LowerExpression = "0:F-8",
+        ResultExpression = "0:W-12"
+    };
+    var detail = new BizSchemeDetail
+    {
+        EnableActual = true,
+        SaveActual = true,
+        ActualHeader = "峰值电流保存值",
+        EnableUpper = true,
+        ReportUpper = true,
+        UpperHeader = "峰值电流报表上限",
+        EnableLower = true,
+        MesLower = true,
+        LowerHeader = "峰值电流 MES 下限",
+        EnableResult = true,
+        SaveResult = true,
+        ResultHeader = "峰值电流保存结果"
+    };
+
+    var columns = BuildCenterDynamicReportColumns(detail, item);
+
+    AssertSequenceEqual(
+        new[] { "峰值电流保存值", "峰值电流保存结果" },
+        columns.Select(column => column.Title).ToArray(),
+        "中心动态列只能包含已采集且 SaveEnable=true 的角色，ReportEnable/MesEnable 独占角色不得进入。");
+}
+
+static void CenterProductRequestUsesPlcResultAndTaskTimestamps()
+{
+    var startTime = new DateTime(2026, 7, 17, 8, 1, 2, DateTimeKind.Local);
+    var task = BuildReportTask(startTime, endTime: null);
+    task.ProductNum = string.Empty;
+    var point = BuildReportPoint(task.Id, stationNo: 1, productNo: "P-CENTER-001", sequenceNo: 1, pointResult: ProductionConstants.TestResults.Ok);
+    point.ProductResult = ProductionConstants.TestResults.Ng;
+
+    var request = BuildCenterProductRequest(
+        new AppSettings { DeviceId = "DEVICE-01", EnableDualStation = false },
+        task,
+        stationNo: 1,
+        [point]);
+
+    AssertEqual(ProductionConstants.TestResults.Ng, request.ProductResult, "中心产品结果必须读取 PLC ProductResult，不得聚合焊点 TestResult。");
+    AssertEqual(startTime, ReadCenterRequestProperty<DateTime>(request, "StartTime"), "中心产品请求开始时间必须只取任务 StartTime。");
+    AssertTrue(ReadCenterRequestProperty<DateTime?>(request, "EndTime") is null, "产品完成时任务未完工，中心请求 EndTime 必须为空。");
+    AssertEqual(task.QualifiedQty, ReadCenterRequestProperty<int>(request, "QualifiedQty"), "中心产品请求必须携带任务当前合格数量。");
+    AssertFalse(ReadCenterRequestProperty<bool>(request, "IsTaskFinishUpdate"), "产品完成请求不得标记为工单完工更新。");
+    AssertEqual(task.UserNumber, request.OperatorNo, "客户模板操作人员必须只取任务开工 UserNumber，不得被点操作员覆盖。");
+
+    task.StartAmount = 0;
+    task.ActualQty = 18;
+    var zeroQuantityRequest = BuildCenterProductRequest(
+        new AppSettings { DeviceId = "DEVICE-01", EnableDualStation = false },
+        task,
+        stationNo: 1,
+        [point]);
+    AssertEqual(0, zeroQuantityRequest.Quantity, "客户模板生产数量必须只取任务 StartAmount，不得回退 ActualQty。");
+}
+
+static void CenterProductRequestResolvesConfiguredStationName()
+{
+    var task = BuildReportTask(DateTime.Now, endTime: null);
+    task.ProductNum = string.Empty;
+    var point = BuildReportPoint(task.Id, stationNo: 2, productNo: "P-CENTER-002", sequenceNo: 1, pointResult: ProductionConstants.TestResults.Ok);
+    point.ProductResult = ProductionConstants.TestResults.Ok;
+
+    var singleStationRequest = BuildCenterProductRequest(
+        new AppSettings { DeviceId = "DEVICE-01", EnableDualStation = false },
+        task,
+        stationNo: 1,
+        [point]);
+    var dualStationRequest = BuildCenterProductRequest(
+        new AppSettings
+        {
+            DeviceId = "DEVICE-01",
+            EnableDualStation = true,
+            Station1DisplayName = " 左工位 ",
+            Station2DisplayName = " 右工位 "
+        },
+        task,
+        stationNo: 2,
+        [point]);
+
+    AssertEqual(string.Empty, ReadCenterRequestProperty<string>(singleStationRequest, "StationName"), "单工位请求不应要求或填充 StationName。");
+    AssertEqual("右工位", ReadCenterRequestProperty<string>(dualStationRequest, "StationName"), "双工位请求必须携带规范化后的配置名称。");
+}
+
+static void CenterReportProductThenFinishUpdateKeepsDetailRows()
+{
+    var outputDirectory = CreateCenterReportFixtureDirectory();
+    try
+    {
+        var startTime = new DateTime(2026, 7, 17, 8, 0, 0, DateTimeKind.Local);
+        var productRequest = BuildCenterWorkbookRequest(
+            deviceId: "DEVICE-01",
+            workOrder: "FLOW-CENTER-001",
+            startTime,
+            endTime: null,
+            qualifiedQty: 0,
+            enableDualStation: false,
+            stationNo: 1,
+            stationName: string.Empty,
+            productNo: "P001",
+            includeDynamicColumn: true,
+            isTaskFinishUpdate: false,
+            pointCount: 2);
+
+        var reportPath = WriteCenterReportWorkbook(outputDirectory, productRequest);
+        using (var workbook = new XLWorkbook(reportPath))
+        {
+            var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+            AssertEqual("产品工号：164#J", worksheet.Cell("A1").GetString(), "中心可见报表必须复用客户模板任务表头。");
+            AssertEqual("结束时间：", worksheet.Cell("D7").GetString(), "产品请求生成报表时 EndTime 必须为空。");
+            AssertEqual(2, CountCenterDataRows(workbook), "产品请求必须写入全部点明细。");
+        }
+
+        var finishTime = new DateTime(2026, 7, 17, 10, 30, 40, DateTimeKind.Local);
+        var finishRequest = BuildCenterWorkbookRequest(
+            deviceId: "DEVICE-01",
+            workOrder: "FLOW-CENTER-001",
+            startTime,
+            endTime: finishTime,
+            qualifiedQty: 19,
+            enableDualStation: false,
+            stationNo: 1,
+            stationName: string.Empty,
+            productNo: string.Empty,
+            includeDynamicColumn: false,
+            isTaskFinishUpdate: true,
+            pointCount: 0);
+
+        var updatedPath = WriteCenterReportWorkbook(outputDirectory, finishRequest);
+        AssertEqual(reportPath, updatedPath, "完工更新必须定位到同一设备和流转卡报表。");
+        using var updatedWorkbook = new XLWorkbook(updatedPath);
+        var updatedWorksheet = updatedWorkbook.Worksheet(CenterProductReportFormat.WorksheetName);
+        AssertEqual($"结束时间：{finishTime:yyyy-MM-dd HH:mm:ss}", updatedWorksheet.Cell("D7").GetString(), "完工更新必须精确刷新任务 EndTime。");
+        AssertEqual("合格数量：19", updatedWorksheet.Cell("D5").GetString(), "完工更新必须刷新最终 QualifiedQty。");
+        AssertEqual(2, CountCenterDataRows(updatedWorkbook), "完工更新不得重复携带或追加产品点明细。");
+        AssertEqual(11, updatedWorksheet.LastRowUsed()!.RowNumber(), "完工更新不得增加可见明细行数。");
+
+        var artifactPath = Environment.GetEnvironmentVariable("AUTOWELD_CENTER_REPORT_ARTIFACT");
+        if (!string.IsNullOrWhiteSpace(artifactPath))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(artifactPath))!);
+            File.Copy(updatedPath, artifactPath, overwrite: true);
+        }
+    }
+    finally
+    {
+        DeleteDirectoryIfExists(outputDirectory);
+    }
+}
+
+static void CenterReportKeepsFixedDetailsWithoutDynamicSaveFields()
+{
+    var outputDirectory = CreateCenterReportFixtureDirectory();
+    try
+    {
+        var request = BuildCenterWorkbookRequest(
+            "DEVICE-01",
+            "FLOW-CENTER-002",
+            new DateTime(2026, 7, 17, 8, 0, 0),
+            endTime: null,
+            qualifiedQty: 0,
+            enableDualStation: false,
+            stationNo: 1,
+            stationName: string.Empty,
+            productNo: "P001",
+            includeDynamicColumn: false,
+            isTaskFinishUpdate: false,
+            pointCount: 1);
+
+        var reportPath = WriteCenterReportWorkbook(outputDirectory, request);
+        using var workbook = new XLWorkbook(reportPath);
+        var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+
+        AssertSequenceEqual(
+            new[] { "产品编号", "拍照编号", "拍照结果", "产品结果" },
+            ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow),
+            "没有 SaveEnable 动态项时，中心报表仍必须保留固定产品、点和结果列。");
+        AssertEqual("P001", worksheet.Cell("A10").GetString(), "没有动态列时仍必须输出产品明细。");
+        AssertEqual(ProductionConstants.TestResults.Ok, worksheet.Cell("D10").GetString(), "固定产品结果列必须保留 PLC 产品结果。");
+    }
+    finally
+    {
+        DeleteDirectoryIfExists(outputDirectory);
+    }
+}
+
+static void CenterReportRendersSingleAndDualStationColumns()
+{
+    var outputDirectory = CreateCenterReportFixtureDirectory();
+    try
+    {
+        var singleRequest = BuildCenterWorkbookRequest(
+            "DEVICE-01",
+            "FLOW-SINGLE",
+            new DateTime(2026, 7, 17, 8, 0, 0),
+            endTime: null,
+            qualifiedQty: 0,
+            enableDualStation: false,
+            stationNo: 1,
+            stationName: string.Empty,
+            productNo: "P001",
+            includeDynamicColumn: false,
+            isTaskFinishUpdate: false,
+            pointCount: 1);
+        var dualRequest = BuildCenterWorkbookRequest(
+            "DEVICE-01",
+            "FLOW-DUAL",
+            new DateTime(2026, 7, 17, 8, 0, 0),
+            endTime: null,
+            qualifiedQty: 0,
+            enableDualStation: true,
+            stationNo: 2,
+            stationName: "右工位",
+            productNo: "P001",
+            includeDynamicColumn: false,
+            isTaskFinishUpdate: false,
+            pointCount: 1);
+
+        using var singleWorkbook = new XLWorkbook(WriteCenterReportWorkbook(outputDirectory, singleRequest));
+        using var dualWorkbook = new XLWorkbook(WriteCenterReportWorkbook(outputDirectory, dualRequest));
+        var singleSheet = singleWorkbook.Worksheet(CenterProductReportFormat.WorksheetName);
+        var dualSheet = dualWorkbook.Worksheet(CenterProductReportFormat.WorksheetName);
+
+        AssertFalse(ReadHeaderRow(singleSheet, CenterProductReportFormat.DetailHeaderRow).Contains("工位"), "单工位中心报表必须完全省略工位列。");
+        AssertEqual("工位", dualSheet.Cell("A9").GetString(), "双工位中心报表必须保留工位列。");
+        AssertEqual("右工位", dualSheet.Cell("A10").GetString(), "双工位中心报表必须显示设备端解析后的配置名称。");
+    }
+    finally
+    {
+        DeleteDirectoryIfExists(outputDirectory);
+    }
+}
+
+static void CenterReportReplacesDuplicateProductRows()
+{
+    var outputDirectory = CreateCenterReportFixtureDirectory();
+    try
+    {
+        var firstRequest = BuildCenterWorkbookRequest(
+            "DEVICE-01",
+            "FLOW-IDEMPOTENT",
+            new DateTime(2026, 7, 17, 8, 0, 0),
+            endTime: null,
+            qualifiedQty: 0,
+            enableDualStation: false,
+            stationNo: 1,
+            stationName: string.Empty,
+            productNo: "P001",
+            includeDynamicColumn: false,
+            isTaskFinishUpdate: false,
+            pointCount: 2);
+        var secondRequest = BuildCenterWorkbookRequest(
+            "DEVICE-01",
+            "FLOW-IDEMPOTENT",
+            new DateTime(2026, 7, 17, 8, 0, 0),
+            endTime: null,
+            qualifiedQty: 0,
+            enableDualStation: false,
+            stationNo: 1,
+            stationName: string.Empty,
+            productNo: "P001",
+            includeDynamicColumn: false,
+            isTaskFinishUpdate: false,
+            pointCount: 1);
+        secondRequest.ProductResult = ProductionConstants.TestResults.Ng;
+        secondRequest.Points[0].TestResult = ProductionConstants.TestResults.Ng;
+
+        WriteCenterReportWorkbook(outputDirectory, firstRequest);
+        var reportPath = WriteCenterReportWorkbook(outputDirectory, secondRequest);
+        using var workbook = new XLWorkbook(reportPath);
+        var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+
+        AssertEqual(1, CountCenterDataRows(workbook), "同一产品重试必须替换旧点行，不得重复累计。");
+        AssertEqual(ProductionConstants.TestResults.Ng, worksheet.Cell("C10").GetString(), "幂等替换后必须显示最新点结果。");
+        AssertEqual(ProductionConstants.TestResults.Ng, worksheet.Cell("D10").GetString(), "幂等替换后必须显示最新 PLC 产品结果。");
+    }
+    finally
+    {
+        DeleteDirectoryIfExists(outputDirectory);
+    }
+}
+
+static void CenterReportIsolatesDeviceAndWorkOrderFiles()
+{
+    var outputDirectory = CreateCenterReportFixtureDirectory();
+    try
+    {
+        var first = BuildCenterWorkbookRequest(
+            "DEVICE-01",
+            "FLOW-001",
+            new DateTime(2026, 7, 17, 8, 0, 0),
+            endTime: null,
+            qualifiedQty: 0,
+            enableDualStation: true,
+            stationNo: 1,
+            stationName: "左工位",
+            productNo: "P001",
+            includeDynamicColumn: false,
+            isTaskFinishUpdate: false,
+            pointCount: 1);
+        var sameDeviceAndWorkOrder = BuildCenterWorkbookRequest(
+            "DEVICE-01",
+            "FLOW-001",
+            new DateTime(2026, 7, 18, 8, 0, 0),
+            endTime: null,
+            qualifiedQty: 0,
+            enableDualStation: true,
+            stationNo: 2,
+            stationName: "右工位",
+            productNo: "P002",
+            includeDynamicColumn: false,
+            isTaskFinishUpdate: false,
+            pointCount: 1);
+        sameDeviceAndWorkOrder.DeviceName = "设备名称已变更";
+        var differentDevice = BuildCenterWorkbookRequest(
+            "DEVICE-02",
+            "FLOW-001",
+            new DateTime(2026, 7, 17, 8, 0, 0),
+            endTime: null,
+            qualifiedQty: 0,
+            enableDualStation: false,
+            stationNo: 1,
+            stationName: string.Empty,
+            productNo: "P001",
+            includeDynamicColumn: false,
+            isTaskFinishUpdate: false,
+            pointCount: 1);
+        var differentWorkOrder = BuildCenterWorkbookRequest(
+            "DEVICE-01",
+            "FLOW-002",
+            new DateTime(2026, 7, 17, 8, 0, 0),
+            endTime: null,
+            qualifiedQty: 0,
+            enableDualStation: false,
+            stationNo: 1,
+            stationName: string.Empty,
+            productNo: "P001",
+            includeDynamicColumn: false,
+            isTaskFinishUpdate: false,
+            pointCount: 1);
+
+        var firstPath = WriteCenterReportWorkbook(outputDirectory, first);
+        var samePath = WriteCenterReportWorkbook(outputDirectory, sameDeviceAndWorkOrder);
+        var differentDevicePath = WriteCenterReportWorkbook(outputDirectory, differentDevice);
+        var differentWorkOrderPath = WriteCenterReportWorkbook(outputDirectory, differentWorkOrder);
+
+        AssertEqual(firstPath, samePath, "同一设备编号和流转卡号必须定位同一中心报表，不应受日期、工位或设备名称变化影响。");
+        AssertFalse(string.Equals(firstPath, differentDevicePath, StringComparison.OrdinalIgnoreCase), "不同设备编号必须隔离中心报表文件。");
+        AssertFalse(string.Equals(firstPath, differentWorkOrderPath, StringComparison.OrdinalIgnoreCase), "不同流转卡号必须隔离中心报表文件。");
+    }
+    finally
+    {
+        DeleteDirectoryIfExists(outputDirectory);
+    }
+}
+
+static void CenterFinishUpdateQueuesAfterTaskPersistence()
+{
+    var enqueueMethod = typeof(ICenterProductForwardingService).GetMethod("EnqueueTaskFinishUpdate");
+    AssertTrue(enqueueMethod is not null, "中心转发接口必须提供工单完工更新入队入口。");
+
+    var serviceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "WeldTaskService.cs"),
+        Encoding.UTF8);
+    var finishMethod = ExtractMethodText(
+        serviceCode,
+        "public async Task<BizWeldTask> FinishAsync(",
+        "public async Task<BizWeldTask> FinishLocalAsync(");
+    var finishLocalMethod = ExtractMethodText(
+        serviceCode,
+        "public async Task<BizWeldTask> FinishLocalAsync(",
+        "public Task RetryPendingUploadsAsync(");
+
+    AssertSourceOrder(
+        finishMethod,
+        "_dbContext.Db.Updateable(task).ExecuteCommand();",
+        "_centerProductForwardingService.EnqueueTaskFinishUpdate(task);",
+        "在线完工必须先持久化 EndTime 和统计，再把中心完工更新放入可重试队列。");
+    AssertSourceOrder(
+        finishLocalMethod,
+        "_dbContext.Db.Updateable(task).ExecuteCommand();",
+        "_centerProductForwardingService.EnqueueTaskFinishUpdate(task);",
+        "离线完工必须先持久化 EndTime 和统计，再把中心完工更新放入可重试队列。");
 }
 
 static void FinishedTaskClearsStationRuntime()
@@ -4581,6 +4990,7 @@ static WeldTaskService CreateWeldTaskService(
         operationLogService,
         new FakeLocalizationService(),
         new FakeUploadTaskService(),
+        new FakeCenterProductForwardingService(),
         new FakeProductionReportFileService(),
         lifecycleLogService ?? new FakeDeviceLifecycleLogService(),
         new FakeDeviceStatusService(),
@@ -4892,6 +5302,205 @@ static BizWeldPointRecord BuildReportPoint(
             ["product_result"] = ProductionConstants.TestResults.PreWeldNg
         })
     };
+}
+
+static IReadOnlyList<CenterProductReportColumnDto> BuildCenterDynamicReportColumns(
+    BizSchemeDetail detail,
+    DimTestItem item)
+{
+    var method = typeof(CenterProductForwardingService).GetMethod(
+        "BuildDynamicReportColumns",
+        System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic,
+        binder: null,
+        types: [typeof(BizSchemeDetail), typeof(DimTestItem)],
+        modifiers: null);
+    AssertTrue(method is not null, "中心转发服务必须保留可验证的动态列纯规则入口。");
+    var result = method!.Invoke(null, [detail, item]) as IEnumerable<CenterProductReportColumnDto>;
+    AssertTrue(result is not null, "中心动态列规则必须返回列定义。");
+    return result!.ToList();
+}
+
+static CenterProductReportRequest BuildCenterProductRequest(
+    AppSettings settings,
+    BizWeldTask task,
+    int stationNo,
+    IReadOnlyList<BizWeldPointRecord> records)
+{
+    var serviceType = typeof(CenterProductForwardingService);
+    var service = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(serviceType);
+    var method = serviceType.GetMethod(
+        "BuildRequest",
+        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+    AssertTrue(method is not null, "中心产品请求必须保留可验证的请求构造入口。");
+    var request = method!.Invoke(service, [settings, task, stationNo, records]) as CenterProductReportRequest;
+    AssertTrue(request is not null, "中心产品请求构造入口必须返回请求对象。");
+    return request!;
+}
+
+static T ReadCenterRequestProperty<T>(CenterProductReportRequest request, string propertyName)
+{
+    var property = typeof(CenterProductReportRequest).GetProperty(propertyName);
+    AssertTrue(property is not null, $"中心产品请求必须公开 {propertyName}。");
+    var value = property!.GetValue(request);
+    return value is null ? default! : (T)value;
+}
+
+static void SetCenterRequestProperty<T>(CenterProductReportRequest request, string propertyName, T value)
+{
+    var property = typeof(CenterProductReportRequest).GetProperty(propertyName);
+    AssertTrue(property is not null, $"中心产品请求必须公开 {propertyName}。");
+    property!.SetValue(request, value);
+}
+
+static CenterProductReportRequest BuildCenterWorkbookRequest(
+    string deviceId,
+    string workOrder,
+    DateTime startTime,
+    DateTime? endTime,
+    int qualifiedQty,
+    bool enableDualStation,
+    int stationNo,
+    string stationName,
+    string productNo,
+    bool includeDynamicColumn,
+    bool isTaskFinishUpdate,
+    int pointCount)
+{
+    var columns = new List<CenterProductReportColumnDto>();
+    if (enableDualStation)
+    {
+        columns.Add(new CenterProductReportColumnDto
+        {
+            Key = CenterProductReportFormat.ColumnStationNo,
+            Title = "工位",
+            MergeByProduct = true
+        });
+    }
+
+    columns.Add(new CenterProductReportColumnDto
+    {
+        Key = CenterProductReportFormat.ColumnProductNo,
+        Title = "产品编号",
+        MergeByProduct = true
+    });
+    columns.Add(new CenterProductReportColumnDto
+    {
+        Key = CenterProductReportFormat.ColumnTouchNo,
+        Title = "拍照编号",
+        MergeByProduct = false
+    });
+    columns.Add(new CenterProductReportColumnDto
+    {
+        Key = CenterProductReportFormat.ColumnTouchResult,
+        Title = "拍照结果",
+        MergeByProduct = false
+    });
+    if (includeDynamicColumn)
+    {
+        columns.Add(new CenterProductReportColumnDto
+        {
+            Key = "max_electric",
+            Title = "峰值电流保存值",
+            MergeByProduct = false
+        });
+    }
+
+    columns.Add(new CenterProductReportColumnDto
+    {
+        Key = CenterProductReportFormat.ColumnProductResult,
+        Title = "产品结果",
+        MergeByProduct = true
+    });
+
+    var request = new CenterProductReportRequest
+    {
+        DeviceId = deviceId,
+        DeviceName = "自动焊设备",
+        SystemType = CenterServerConstants.SystemTypes.Electromagnetic,
+        StationNo = stationNo,
+        WorkOrder = workOrder,
+        Batch = "BATCH-01",
+        Quantity = 20,
+        PartName = "引出线",
+        ProcessNo = "OP10",
+        OperatorNo = "U001",
+        ProductJobNo = "164#J",
+        ProductNo = productNo,
+        ProductModel = "MODEL-01",
+        ProductResult = ProductionConstants.TestResults.Ok,
+        CompletedAt = endTime ?? startTime.AddMinutes(1),
+        ReportColumns = isTaskFinishUpdate ? [] : columns,
+        Points = Enumerable.Range(1, pointCount)
+            .Select(index => new CenterProductReportPointDto
+            {
+                SequenceNo = index,
+                TouchNo = index.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                TestResult = ProductionConstants.TestResults.Ok,
+                CollectedAt = startTime.AddMinutes(index),
+                OperatorNo = "POINT-OPERATOR",
+                RawDataJson = JsonSerializer.Serialize(new Dictionary<string, string>
+                {
+                    ["max_electric"] = (1.2m + index / 100m).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    ["report_only"] = "不得显示",
+                    ["mes_only"] = "不得显示"
+                })
+            })
+            .ToList()
+    };
+
+    SetCenterRequestProperty(request, "StationName", stationName);
+    SetCenterRequestProperty(request, "DrawingNo", "DR-001");
+    SetCenterRequestProperty(request, "Spec", "SPEC-01");
+    SetCenterRequestProperty(request, "StartTime", startTime);
+    SetCenterRequestProperty(request, "EndTime", endTime);
+    SetCenterRequestProperty(request, "QualifiedQty", qualifiedQty);
+    SetCenterRequestProperty(request, "IsTaskFinishUpdate", isTaskFinishUpdate);
+    return request;
+}
+
+static string CreateCenterReportFixtureDirectory()
+{
+    var outputDirectory = Path.Combine(Path.GetTempPath(), "AutoWeldSystem.Tests", "CenterReports", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(outputDirectory);
+    return outputDirectory;
+}
+
+static string WriteCenterReportWorkbook(string outputDirectory, CenterProductReportRequest request)
+{
+    var configuration = new ConfigurationBuilder().Build();
+    var settingsService = new CenterServerSettingsService(configuration);
+    settingsService.Save(new CenterServerLocalSettings
+    {
+        DataDirectory = outputDirectory,
+        LogDirectory = Path.Combine(outputDirectory, "Logs"),
+        OfflineTimeoutSeconds = CenterServerConstants.DefaultOfflineTimeoutSeconds
+    });
+    var service = new CenterProductReportIngestService(
+        null!,
+        null!,
+        settingsService,
+        new CenterDashboardChangeNotifier());
+    var writeMethod = typeof(CenterProductReportIngestService).GetMethod(
+        "WriteReportFile",
+        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+    AssertTrue(writeMethod is not null, "中心 ingest 必须保留真实 XLSX 写入 seam。");
+    var reportPath = writeMethod!.Invoke(service, [request.DeviceId.Trim(), request]) as string;
+    AssertTrue(!string.IsNullOrWhiteSpace(reportPath) && File.Exists(reportPath), "中心 ingest 必须生成真实 XLSX 文件。");
+    return reportPath!;
+}
+
+static int CountCenterDataRows(XLWorkbook workbook)
+{
+    var worksheet = workbook.Worksheet(CenterProductReportFormat.DataWorksheetName);
+    return Math.Max(0, (worksheet.LastRowUsed()?.RowNumber() ?? 1) - 1);
+}
+
+static void DeleteDirectoryIfExists(string path)
+{
+    if (Directory.Exists(path))
+    {
+        Directory.Delete(path, recursive: true);
+    }
 }
 
 /// <summary>
@@ -5424,6 +6033,26 @@ sealed class FakeLocalizationService : ILocalizationService
     public string GetString(string key, params object[] args) => string.Format(key, args);
 
     public void SetLanguage(string cultureCode) => LanguageChanged?.Invoke(this, EventArgs.Empty);
+}
+
+sealed class FakeCenterProductForwardingService : ICenterProductForwardingService
+{
+    public Task StartAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    public void EnqueueCompletedProduct(
+        BizWeldTask task,
+        int stationNo,
+        IReadOnlyList<BizWeldPointRecord> records)
+    {
+    }
+
+    public void EnqueueTaskFinishUpdate(BizWeldTask task)
+    {
+    }
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
 
 sealed class FakeUploadTaskService : IUploadTaskService
