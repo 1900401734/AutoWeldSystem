@@ -1127,16 +1127,10 @@ public class UploadTaskService : IUploadTaskService
             }
 
             // 产品增量刷新和完工刷新可能更新同一报表记录，上传时始终优先读取最新记录。
-            var latestReportFilePath = _dbContext.Db.Queryable<BizProductionReportFile>()
-                .Where(report => report.TaskId == weldTask.Id
-                    && report.FileCode == ProductionConstants.ReportFileCodes.Spreadsheet
-                    && report.FileFormat == "XLSX"
-                    && report.MesFileType == ProductionConstants.MesFileTypes.ReportFile)
-                .ToList()
-                .OrderByDescending(report => report.UpdatedTime)
-                .ThenByDescending(report => report.Id)
-                .Select(report => report.FilePath)
-                .FirstOrDefault();
+            var reportFiles = _dbContext.Db.Queryable<BizProductionReportFile>()
+                .Where(report => report.TaskId == weldTask.Id)
+                .ToList();
+            var latestReportFilePath = ProductionReportFileRules.SelectLatestUploadFilePath(reportFiles, weldTask.Id);
             var filePath = FirstNonEmpty(latestReportFilePath, task.FilePath);
 
             if (string.IsNullOrWhiteSpace(filePath))

@@ -60,9 +60,9 @@ public class ProductionReportFileService : IProductionReportFileService
         {
             _dbContext.InitDatabase();
             // 生成报表前必须重读任务，确保完工后持久化的 EndTime 和统计进入最终文件。
-            var latestTask = task.Id > 0
-                ? _dbContext.Db.Queryable<BizWeldTask>().InSingle(task.Id) ?? task
-                : task;
+            var latestTask = ProductionReportFileRules.ResolveLatestTask(
+                task,
+                taskId => _dbContext.Db.Queryable<BizWeldTask>().InSingle(taskId));
             var report = GetOrCreateReportRecord(latestTask);
             var records = _dbContext.Db.Queryable<BizWeldPointRecord>()
                 .Where(record => record.TaskId == latestTask.Id)
@@ -184,70 +184,48 @@ public class ProductionReportFileService : IProductionReportFileService
     /// </summary>
     private static void WriteTemplateHeader(IXLWorksheet worksheet, BizWeldTask task, int lastColumn)
     {
-        WriteHeaderField(worksheet, 1, 1, 2, 2, "产品工号：", task.ProductNum);
-        WriteHeaderField(worksheet, 1, 3, 4, 4, "图号：", task.DrawingNo);
-        WriteHeaderField(worksheet, 1, 5, 6, 6, "批次：", task.Batch);
-        WriteHeaderField(worksheet, 1, 7, 8, lastColumn, "流转卡号：", task.SN);
+        WriteHeaderBlock(worksheet, 1, 1, 3, "产品工号：", task.ProductNum);
+        WriteHeaderBlock(worksheet, 1, 4, 6, "图号：", task.DrawingNo);
+        WriteHeaderBlock(worksheet, 1, 7, 8, "批次：", task.Batch);
+        WriteHeaderBlock(worksheet, 1, 9, lastColumn, "流转卡号：", task.SN);
 
-        WriteHeaderField(worksheet, 3, 1, 2, 3, "部件规格：", task.Spec);
-        WriteHeaderField(worksheet, 3, 4, 5, 6, "型号：", task.ProductModel);
-        WriteHeaderField(worksheet, 3, 7, 8, lastColumn, "工序：", task.ProcessNo);
+        WriteHeaderBlock(worksheet, 3, 1, 3, "部件规格：", task.Spec);
+        WriteHeaderBlock(worksheet, 3, 4, 6, "型号：", task.ProductModel);
+        WriteHeaderBlock(worksheet, 3, 7, lastColumn, "工序：", task.ProcessNo);
 
-        WriteHeaderField(worksheet, 5, 1, 2, 3, "生产数量：", task.StartAmount);
-        WriteHeaderField(worksheet, 5, 4, 5, 6, "合格数量：", task.QualifiedQty);
-        WriteHeaderField(worksheet, 5, 7, 8, lastColumn, "备注：", string.Empty);
+        WriteHeaderBlock(worksheet, 5, 1, 3, "生产数量：", task.StartAmount);
+        WriteHeaderBlock(worksheet, 5, 4, 6, "合格数量：", task.QualifiedQty);
+        WriteHeaderBlock(worksheet, 5, 7, lastColumn, "备注：", value: null);
 
-        WriteHeaderField(worksheet, 7, 1, 2, 3, "开始时间：", task.StartTime, CenterProductReportFormat.DateTimeFormat);
-        WriteHeaderField(worksheet, 7, 4, 5, 6, "结束时间：", task.EndTime, CenterProductReportFormat.DateTimeFormat);
-        WriteHeaderField(worksheet, 7, 7, 8, lastColumn, "操作人员：", task.UserNumber ?? string.Empty);
+        WriteHeaderBlock(worksheet, 7, 1, 3, "开始时间：", task.StartTime);
+        WriteHeaderBlock(worksheet, 7, 4, 6, "结束时间：", task.EndTime);
+        WriteHeaderBlock(worksheet, 7, 7, lastColumn, "操作人员：", task.UserNumber);
     }
 
     /// <summary>
-    /// 写入一个标签和值区域；值区域使用合并单元格保持模板布局。
+    /// 按客户模板合并整块公共字段，并在锚点单元格写入“标签 + 值”。
     /// </summary>
-    private static void WriteHeaderField(
+    private static void WriteHeaderBlock(
         IXLWorksheet worksheet,
         int row,
-        int labelColumn,
-        int valueStartColumn,
-        int valueEndColumn,
+        int startColumn,
+        int endColumn,
         string label,
-        object? value,
-        string? numberFormat = null)
+        object? value)
     {
-        worksheet.Cell(row, labelColumn).Value = label;
-        var valueRange = worksheet.Range(row, valueStartColumn, row, Math.Max(valueStartColumn, valueEndColumn));
-        if (valueRange.ColumnCount() > 1)
-        {
-            valueRange.Merge();
-        }
+        var range = worksheet.Range(row, startColumn, row, Math.Max(startColumn, endColumn));
+        range.Merge();
+        range.FirstCell().Value = BuildHeaderText(label, value);
+    }
 
-        var valueCell = valueRange.FirstCell();
-        if (value is DateTime dateTime)
+    private static string BuildHeaderText(string label, object? value)
+    {
+        var valueText = value switch
         {
-            valueCell.Value = dateTime;
-        }
-        else if (value is int integer)
-        {
-            valueCell.Value = integer;
-        }
-        else if (value is string text)
-        {
-            // 空字符串不能写入共享字符串表，否则部分解析器会错误复用前一个数值。
-            if (!string.IsNullOrEmpty(text))
-            {
-                valueCell.Value = text;
-            }
-        }
-        else if (value is not null)
-        {
-            valueCell.Value = value.ToString();
-        }
-
-        if (!string.IsNullOrWhiteSpace(numberFormat))
-        {
-            valueRange.Style.DateFormat.Format = numberFormat;
-        }
+            DateTime dateTime => dateTime.ToString(CenterProductReportFormat.DateTimeFormat),
+            _ => value?.ToString()?.Trim() ?? string.Empty
+        };
+        return string.Concat(label, valueText);
     }
 
     /// <summary>
@@ -293,14 +271,11 @@ public class ProductionReportFileService : IProductionReportFileService
         templateRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
         templateRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
         templateRange.Style.Alignment.WrapText = false;
-        foreach (var row in new[] { 1, 3, 5, 7 })
-        {
-            worksheet.Cell(row, 1).Style.Font.Bold = true;
-            worksheet.Cell(row, 4).Style.Font.Bold = true;
-            worksheet.Cell(row, 7).Style.Font.Bold = true;
-        }
+        templateRange.Style.Alignment.ShrinkToFit = true;
+
         if (detailColumnCount <= 0)
         {
+            ApplyTemplateDimensions(worksheet, templateColumnCount);
             return;
         }
 
@@ -322,35 +297,30 @@ public class ProductionReportFileService : IProductionReportFileService
 
     /// <summary>
     /// 固定客户模板的标签和值列宽，避免中文标签被压成纵向多行。
-    /// 动态列超过九列时仅为新增列设置可读的最小宽度。
+    /// A:J 使用客户模板原始列宽；动态列超过 J 时为新增列设置可读宽度。
     /// </summary>
     private static void ApplyTemplateDimensions(IXLWorksheet worksheet, int templateColumnCount)
     {
-        var minimumWidths = new Dictionary<int, double>
+        var templateWidths = new Dictionary<int, double>
         {
-            [1] = 14d,
-            [2] = 16d,
-            [3] = 12d,
-            [4] = 16d,
-            [5] = 12d,
-            [6] = 16d,
-            [7] = 14d,
-            [8] = 16d,
-            [9] = 16d
+            [1] = 5.8867d,
+            [2] = 10.2188d,
+            [3] = 10.4414d,
+            [4] = 10.7773d,
+            [5] = 9.8867d,
+            [6] = 9d,
+            [7] = 11d,
+            [8] = 11d,
+            [9] = 9.4414d,
+            [10] = 4d
         };
 
         for (var columnIndex = 1; columnIndex <= templateColumnCount; columnIndex++)
         {
-            var minimumWidth = minimumWidths.TryGetValue(columnIndex, out var configuredWidth)
-                ? configuredWidth
-                : 12d;
             var column = worksheet.Column(columnIndex);
-            column.Width = Math.Max(column.Width, minimumWidth);
-        }
-
-        foreach (var rowIndex in new[] { 1, 3, 5, 7, DetailHeaderRow })
-        {
-            worksheet.Row(rowIndex).Height = 22d;
+            column.Width = templateWidths.TryGetValue(columnIndex, out var templateWidth)
+                ? templateWidth
+                : Math.Max(column.Width, 12d);
         }
     }
 

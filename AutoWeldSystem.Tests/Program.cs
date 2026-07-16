@@ -40,6 +40,9 @@ var tests = new (string Name, Action Run)[]
     ("Stored PLC product results drive history without point aggregation", StoredPlcProductResultsDriveHistoryWithoutPointAggregation),
     ("Production report writes customer template for single station", ProductionReportWritesCustomerTemplateForSingleStation),
     ("Production report writes configured dual station and product merges", ProductionReportWritesConfiguredDualStationAndProductMerges),
+    ("Production report expands template beyond column J", ProductionReportExpandsTemplateBeyondColumnJ),
+    ("Production report rules reload latest persisted task", ProductionReportRulesReloadLatestPersistedTask),
+    ("Production report rules select latest upload spreadsheet", ProductionReportRulesSelectLatestUploadSpreadsheet),
     ("Production report completion flow persists before final generation", ProductionReportCompletionFlowPersistsBeforeFinalGeneration),
     ("Unavailable roles are cleared before save", UnavailableRolesAreCleared),
     ("Running task with changed PLC recipe requests reconciliation", RunningTaskWithChangedPlcRecipeRequestsReconciliation),
@@ -425,22 +428,19 @@ static void ProductionReportWritesCustomerTemplateForSingleStation()
         using var workbook = new XLWorkbook(filePath);
         var worksheet = workbook.Worksheet("生产报表");
 
-        AssertEqual("产品工号：", worksheet.Cell("A1").GetString(), "模板第一行必须从产品工号开始。");
-        AssertEqual(task.ProductNum, worksheet.Cell("B1").GetString(), "产品工号必须来自持久化任务 ProductNum。");
-        AssertEqual("图号：", worksheet.Cell("C1").GetString(), "模板第一行必须包含图号。");
-        AssertEqual(task.DrawingNo, worksheet.Cell("D1").GetString(), "图号必须来自持久化任务 DrawingNo。");
-        AssertEqual(task.Batch, worksheet.Cell("F1").GetString(), "批次必须来自持久化任务 Batch。");
-        AssertEqual(task.SN, worksheet.Cell("H1").GetString(), "流转卡号必须来自持久化任务 SN。");
-        AssertEqual(task.Spec, worksheet.Cell("B3").GetString(), "部件规格必须来自持久化任务 Spec。");
-        AssertEqual(task.ProductModel, worksheet.Cell("E3").GetString(), "型号必须来自持久化任务 ProductModel。");
-        AssertEqual(task.ProcessNo, worksheet.Cell("H3").GetString(), "工序必须来自持久化任务 ProcessNo。");
-        AssertEqual(task.StartAmount, worksheet.Cell("B5").GetValue<int>(), "生产数量必须只取 StartAmount。");
-        AssertEqual(task.QualifiedQty, worksheet.Cell("E5").GetValue<int>(), "合格数量必须取 QualifiedQty。");
-        AssertEqual(XLDataType.Blank, worksheet.Cell("H5").DataType, "备注值单元格必须是真正的空白，不得写入空字符串共享项。");
-        AssertEqual(startTime, worksheet.Cell("B7").GetDateTime(), "开始时间必须与持久化 StartTime 完全一致。");
-        AssertEqual("yyyy-MM-dd HH:mm:ss", worksheet.Cell("B7").Style.DateFormat.Format, "开始时间必须使用客户模板时间格式。");
-        AssertTrue(worksheet.Cell("E7").IsEmpty(), "未完工任务的结束时间必须为空。");
-        AssertEqual(task.UserNumber, worksheet.Cell("H7").GetString(), "操作人员必须只取开工任务 UserNumber。");
+        AssertEqual($"产品工号：{task.ProductNum}", worksheet.Cell("A1").GetString(), "产品工号必须写入模板 A1:C1 合并单元格。");
+        AssertEqual($"图号：{task.DrawingNo}", worksheet.Cell("D1").GetString(), "图号必须写入模板 D1:F1 合并单元格。");
+        AssertEqual($"批次：{task.Batch}", worksheet.Cell("G1").GetString(), "批次必须写入模板 G1:H1 合并单元格。");
+        AssertEqual($"流转卡号：{task.SN}", worksheet.Cell("I1").GetString(), "流转卡号必须写入模板 I1:J1 合并单元格。");
+        AssertEqual($"部件规格：{task.Spec}", worksheet.Cell("A3").GetString(), "部件规格必须写入模板 A3:C3 合并单元格。");
+        AssertEqual($"型号：{task.ProductModel}", worksheet.Cell("D3").GetString(), "型号必须写入模板 D3:F3 合并单元格。");
+        AssertEqual($"工序：{task.ProcessNo}", worksheet.Cell("G3").GetString(), "工序必须写入模板 G3:J3 合并单元格。");
+        AssertEqual($"生产数量：{task.StartAmount}", worksheet.Cell("A5").GetString(), "生产数量必须只取 StartAmount。");
+        AssertEqual($"合格数量：{task.QualifiedQty}", worksheet.Cell("D5").GetString(), "合格数量必须取 QualifiedQty。");
+        AssertEqual("备注：", worksheet.Cell("G5").GetString(), "备注合并单元格必须只保留标签，不得写入业务值。");
+        AssertEqual($"开始时间：{startTime:yyyy-MM-dd HH:mm:ss}", worksheet.Cell("A7").GetString(), "开始时间必须来自持久化 StartTime 并使用模板格式。");
+        AssertEqual("结束时间：", worksheet.Cell("D7").GetString(), "未完工任务的结束时间必须只保留标签。");
+        AssertEqual($"操作人员：{task.UserNumber}", worksheet.Cell("G7").GetString(), "操作人员必须只取开工任务 UserNumber。");
 
         var detailHeaders = ReadHeaderRow(worksheet, rowNumber: 9);
         AssertSequenceEqual(
@@ -449,16 +449,28 @@ static void ProductionReportWritesCustomerTemplateForSingleStation()
             "单工位报表必须完全省略工位列，并保留固定公共列与 ReportEnable 动态列。");
         AssertFalse(detailHeaders.Contains("峰值电流上限"), "仅 SaveEnable 的动态角色不得进入设备报表。");
         AssertFalse(detailHeaders.Contains("峰值电流下限"), "仅 MesEnable 的动态角色不得进入设备报表。");
-        AssertMerged(worksheet, "H1:I1", "固定模板必须在 A:I 内容纳四组首行标签和值。");
-        AssertFalse(
-            worksheet.MergedRanges.Any(range => range.RangeAddress.LastAddress.ColumnNumber > 9),
-            "固定公共字段未超过九列时不得把模板扩展到 J 列以后。");
+        foreach (var mergedRange in new[]
+        {
+            "A1:C1", "D1:F1", "G1:H1", "I1:J1",
+            "A3:C3", "D3:F3", "G3:J3",
+            "A5:C5", "D5:F5", "G5:J5",
+            "A7:C7", "D7:F7", "G7:J7"
+        })
+        {
+            AssertMerged(worksheet, mergedRange, "公共表头必须匹配客户模板合并范围。");
+        }
         AssertTrue(
-            worksheet.RangeUsed(XLCellsUsedOptions.All)!.RangeAddress.LastAddress.ColumnNumber <= 9,
-            "固定公共字段未超过九列时不得通过样式创建隐藏的 J 列。");
+            worksheet.RangeUsed(XLCellsUsedOptions.All)!.RangeAddress.LastAddress.ColumnNumber <= 10,
+            "固定公共字段未超过十列时不得扩展到 K 列以后。");
         AssertFalse(worksheet.Cell("A1").Style.Alignment.WrapText, "客户模板中文标签必须保持单行显示。");
-        AssertTrue(worksheet.Column("A").Width >= 12d, "客户模板标签列必须足够宽，避免中文纵向堆叠。");
-        AssertTrue(worksheet.Row(1).Height >= 20d, "客户模板信息行必须提供清晰的单行高度。");
+        AssertTrue(worksheet.Cell("I1").Style.Alignment.ShrinkToFit, "公共表头必须自动缩小字体，避免长流转卡号在固定列宽内截断。");
+        var expectedWidths = new[] { 5.8867d, 10.2188d, 10.4414d, 10.7773d, 9.8867d, 9d, 11d, 11d, 9.4414d, 4d };
+        for (var columnIndex = 1; columnIndex <= expectedWidths.Length; columnIndex++)
+        {
+            AssertNearlyEqual(expectedWidths[columnIndex - 1], worksheet.Column(columnIndex).Width, 0.02d, $"第 {columnIndex} 列宽必须匹配客户模板。");
+        }
+        AssertTrue(worksheet.Cell("A9").Style.Font.Bold, "明细表头必须保持客户模板的粗体层级。");
+        AssertEqual(XLBorderStyleValues.Thin, worksheet.Cell("A9").Style.Border.TopBorder, "明细表头必须保留细边框。");
         AssertEqual(ProductionConstants.TestResults.Ok, worksheet.Cell("E10").GetString(), "产品结果必须读取 PLC ProductResult，不得聚合焊点结果。");
         AssertEqual(ProductionConstants.TestResults.Ng, worksheet.Cell("C10").GetString(), "点/拍照结果必须直接读取 TestResult。");
         AssertMerged(worksheet, "A10:A11", "同一产品的产品编号必须合并。");
@@ -507,8 +519,7 @@ static void ProductionReportWritesConfiguredDualStationAndProductMerges()
         AssertEqual("工位", worksheet.Cell("A9").GetString(), "双工位报表必须生成工位列。");
         AssertEqual("左工位", worksheet.Cell("A10").GetString(), "工位 1 必须使用规范化后的配置名称。");
         AssertEqual("右工位", worksheet.Cell("A12").GetString(), "工位 2 必须使用规范化后的配置名称。");
-        AssertEqual(endTime, worksheet.Cell("E7").GetDateTime(), "结束时间必须与持久化 EndTime 完全一致。");
-        AssertEqual("yyyy-MM-dd HH:mm:ss", worksheet.Cell("E7").Style.DateFormat.Format, "结束时间必须使用客户模板时间格式。");
+        AssertEqual($"结束时间：{endTime:yyyy-MM-dd HH:mm:ss}", worksheet.Cell("D7").GetString(), "结束时间必须与持久化 EndTime 一致并使用模板格式。");
         AssertMerged(worksheet, "A10:A11", "工位 1 公共字段必须按工位和产品编号合并。");
         AssertMerged(worksheet, "B10:B11", "工位 1 产品编号必须合并。");
         AssertMerged(worksheet, "F10:F11", "工位 1 产品结果必须合并。");
@@ -522,6 +533,83 @@ static void ProductionReportWritesConfiguredDualStationAndProductMerges()
     }
 }
 
+static void ProductionReportExpandsTemplateBeyondColumnJ()
+{
+    var task = BuildReportTask(new DateTime(2026, 7, 16, 8, 9, 10, DateTimeKind.Local), endTime: null);
+    var records = new[]
+    {
+        BuildReportPoint(task.Id, stationNo: 1, productNo: "P001", sequenceNo: 1, pointResult: ProductionConstants.TestResults.Ok)
+    };
+    records[0].ProductResult = ProductionConstants.TestResults.Ok;
+    var filePath = GenerateReportWorkbook(
+        new AppSettings { EnableDualStation = false },
+        task,
+        records,
+        extraDynamicColumnCount: 6);
+
+    try
+    {
+        using var workbook = new XLWorkbook(filePath);
+        var worksheet = workbook.Worksheet("生产报表");
+        var detailHeaders = ReadHeaderRow(worksheet, rowNumber: 9);
+
+        AssertEqual(11, detailHeaders.Length, "六个扩展动态列应让单工位明细超过 J 并到达 K 列。");
+        AssertMerged(worksheet, "I1:K1", "动态列超过 J 时首行最后一组公共字段必须扩展到 K。");
+        AssertMerged(worksheet, "G3:K3", "动态列超过 J 时第三行最后一组公共字段必须扩展到 K。");
+        AssertMerged(worksheet, "G5:K5", "动态列超过 J 时第五行最后一组公共字段必须扩展到 K。");
+        AssertMerged(worksheet, "G7:K7", "动态列超过 J 时第七行最后一组公共字段必须扩展到 K。");
+        AssertTrue(worksheet.Column(11).Width >= 12d, "K 及以后动态列必须保留可读的最小宽度。");
+    }
+    finally
+    {
+        DeleteReportFixture(filePath);
+    }
+}
+
+static void ProductionReportRulesReloadLatestPersistedTask()
+{
+    var supplied = new BizWeldTask { Id = 42, ProductNum = "OLD" };
+    var persisted = new BizWeldTask { Id = 42, ProductNum = "LATEST" };
+    var loadedTaskId = 0;
+    Func<int, BizWeldTask?> loader = taskId =>
+    {
+        loadedTaskId = taskId;
+        return persisted;
+    };
+
+    var resolved = ProductionReportFileRules.ResolveLatestTask(supplied, loader);
+    AssertTrue(ReferenceEquals(persisted, resolved), "已持久化任务存在时必须使用数据库最新对象。");
+    AssertEqual(42, loadedTaskId, "最新任务解析必须按传入 TaskId 查询。");
+
+    var unsaved = new BizWeldTask { Id = 0, ProductNum = "UNSAVED" };
+    var loaderCalled = false;
+    Func<int, BizWeldTask?> unsavedLoader = _ =>
+    {
+        loaderCalled = true;
+        return persisted;
+    };
+    var unsavedResolved = ProductionReportFileRules.ResolveLatestTask(unsaved, unsavedLoader);
+    AssertTrue(ReferenceEquals(unsaved, unsavedResolved), "未保存任务必须直接使用传入对象。");
+    AssertFalse(loaderCalled, "未保存任务不得发起数据库查询。");
+}
+
+static void ProductionReportRulesSelectLatestUploadSpreadsheet()
+{
+    var now = new DateTime(2026, 7, 16, 12, 0, 0, DateTimeKind.Local);
+    var reports = new List<BizProductionReportFile>
+    {
+        BuildReportFile(1, taskId: 42, "correct-old.xlsx", now.AddMinutes(-5)),
+        BuildReportFile(2, taskId: 42, "correct-new.xlsx", now),
+        BuildReportFile(3, taskId: 42, "wrong-code.xlsx", now.AddMinutes(5), fileCode: "PDF"),
+        BuildReportFile(4, taskId: 42, "wrong-format.xlsx", now.AddMinutes(6), fileFormat: "PDF"),
+        BuildReportFile(5, taskId: 42, "wrong-mes-type.xlsx", now.AddMinutes(7), mesFileType: -1),
+        BuildReportFile(6, taskId: 99, "wrong-task.xlsx", now.AddMinutes(8))
+    };
+
+    var selected = ProductionReportFileRules.SelectLatestUploadFilePath(reports, 42);
+    AssertEqual("correct-new.xlsx", selected, "必须选择同任务最新的 Spreadsheet/XLSX/ReportFile 路径。");
+}
+
 static void ProductionReportCompletionFlowPersistsBeforeFinalGeneration()
 {
     var reportServiceCode = File.ReadAllText(
@@ -531,7 +619,8 @@ static void ProductionReportCompletionFlowPersistsBeforeFinalGeneration()
         reportServiceCode,
         "public BizProductionReportFile GenerateXlsxReport(BizWeldTask task)",
         "private BizProductionReportFile GetOrCreateReportRecord");
-    AssertTrue(generateMethod.Contains("InSingle(task.Id)", StringComparison.Ordinal), "GenerateXlsxReport 内必须按 TaskId 重读最新任务。");
+    AssertTrue(generateMethod.Contains("ProductionReportFileRules.ResolveLatestTask(", StringComparison.Ordinal), "GenerateXlsxReport 必须调用已验证的最新任务解析规则。");
+    AssertTrue(generateMethod.Contains("InSingle(taskId)", StringComparison.Ordinal), "GenerateXlsxReport 必须把 TaskId 传给数据库读取入口。");
     AssertFalse(
         reportServiceCode.Contains("TestResultRules.ResolveProductResult(records.Select", StringComparison.Ordinal),
         "设备报表产品结果禁止调用焊点聚合计算。");
@@ -579,14 +668,11 @@ static void ProductionReportCompletionFlowPersistsBeforeFinalGeneration()
         "private UploadReportFileReq? BuildReportFileRequest(BizUploadTask task)",
         "private UploadTaskSummary? FinishExecution(");
     AssertTrue(
-        buildReportRequestMethod.Contains("var latestReportFilePath =", StringComparison.Ordinal),
-        "MES 报表上传必须先读取任务最新的报表记录。");
+        buildReportRequestMethod.Contains("ProductionReportFileRules.SelectLatestUploadFilePath(reportFiles, weldTask.Id)", StringComparison.Ordinal),
+        "MES 报表上传必须调用已验证的最新 XLSX 选择规则。");
     AssertTrue(
         buildReportRequestMethod.Contains("FirstNonEmpty(latestReportFilePath, task.FilePath)", StringComparison.Ordinal),
         "MES 报表上传必须优先使用最新报表记录，再回退上传任务旧路径。");
-    AssertTrue(buildReportRequestMethod.Contains("report.FileCode == ProductionConstants.ReportFileCodes.Spreadsheet", StringComparison.Ordinal), "最新报表查询必须限定电子表格文件代码。");
-    AssertTrue(buildReportRequestMethod.Contains("report.FileFormat == \"XLSX\"", StringComparison.Ordinal), "最新报表查询必须限定 XLSX 格式。");
-    AssertTrue(buildReportRequestMethod.Contains("report.MesFileType == ProductionConstants.MesFileTypes.ReportFile", StringComparison.Ordinal), "最新报表查询必须限定 MES 报表文件类型。");
 }
 
 static void UnavailableRolesAreCleared()
@@ -4760,6 +4846,27 @@ static BizWeldTask BuildReportTask(DateTime startTime, DateTime? endTime)
     };
 }
 
+static BizProductionReportFile BuildReportFile(
+    int id,
+    int taskId,
+    string filePath,
+    DateTime updatedTime,
+    string? fileCode = null,
+    string? fileFormat = null,
+    int? mesFileType = null)
+{
+    return new BizProductionReportFile
+    {
+        Id = id,
+        TaskId = taskId,
+        FileCode = fileCode ?? ProductionConstants.ReportFileCodes.Spreadsheet,
+        FileFormat = fileFormat ?? "XLSX",
+        MesFileType = mesFileType ?? ProductionConstants.MesFileTypes.ReportFile,
+        FilePath = filePath,
+        UpdatedTime = updatedTime
+    };
+}
+
 static BizWeldPointRecord BuildReportPoint(
     int taskId,
     int stationNo,
@@ -4794,7 +4901,8 @@ static BizWeldPointRecord BuildReportPoint(
 static string GenerateReportWorkbook(
     AppSettings settings,
     BizWeldTask task,
-    IReadOnlyList<BizWeldPointRecord> records)
+    IReadOnlyList<BizWeldPointRecord> records,
+    int extraDynamicColumnCount = 0)
 {
     var serviceType = typeof(ProductionReportFileService);
     var service = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(serviceType);
@@ -4843,6 +4951,16 @@ static string GenerateReportWorkbook(
     foreach (var column in dynamicColumns!)
     {
         columns.Add(column);
+    }
+
+    for (var index = 0; index < extraDynamicColumnCount; index++)
+    {
+        AddReportColumn(
+            columns,
+            reportColumnType,
+            $"extra_dynamic_{index + 1}",
+            $"扩展动态列{index + 1}",
+            mergeByProduct: false);
     }
 
     AddReportColumn(columns, reportColumnType, "product_result", "产品结果", mergeByProduct: true);
@@ -4955,6 +5073,14 @@ static void AssertEqual<T>(T expected, T actual, string message)
     if (!EqualityComparer<T>.Default.Equals(expected, actual))
     {
         throw new InvalidOperationException($"{message} Expected={expected}, Actual={actual}");
+    }
+}
+
+static void AssertNearlyEqual(double expected, double actual, double tolerance, string message)
+{
+    if (Math.Abs(expected - actual) > tolerance)
+    {
+        throw new InvalidOperationException($"{message} Expected={expected}, Actual={actual}, Tolerance={tolerance}");
     }
 }
 

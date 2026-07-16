@@ -9,7 +9,7 @@ namespace AutoWeldSystem.Core.Center;
 public static class CenterProductReportFormat
 {
     public const string WorksheetName = "生产报表";
-    public const int TemplateMinimumColumnCount = 9;
+    public const int TemplateMinimumColumnCount = 10;
     public const int DetailHeaderRow = 9;
     public const string DateTimeFormat = "yyyy-MM-dd HH:mm:ss";
     public const string DataWorksheetName = "_Data";
