@@ -1046,7 +1046,7 @@ namespace AutoWeldSystem.UI.Views
             // grpMesConfig
             //
             grpMesConfig.Controls.Add(tableLayoutPanelMesConfig);
-            grpMesConfig.Location = new Point(919, 176);
+            grpMesConfig.Location = new Point(919, 204);
             grpMesConfig.Name = "grpMesConfig";
             grpMesConfig.Size = new Size(538, 240);
             grpMesConfig.TabIndex = 3;
@@ -1779,7 +1779,7 @@ namespace AutoWeldSystem.UI.Views
             // grpCenterServerConfig
             //
             grpCenterServerConfig.Controls.Add(tableLayoutPanelCenterServer);
-            grpCenterServerConfig.Location = new Point(919, 422);
+            grpCenterServerConfig.Location = new Point(919, 444);
             grpCenterServerConfig.Name = "grpCenterServerConfig";
             grpCenterServerConfig.Size = new Size(538, 178);
             grpCenterServerConfig.TabIndex = 6;

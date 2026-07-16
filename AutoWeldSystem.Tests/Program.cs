@@ -29,6 +29,7 @@ using System.Text.Json;
 var tests = new (string Name, Action Run)[]
 {
     ("Station display names have localized dual-station rules", StationDisplayNamesHaveLocalizedDualStationRules),
+    ("Station display names load legacy defaults and collapse hidden row", StationDisplayNamesLoadLegacyDefaultsAndCollapseHiddenRow),
     ("Only configured test item expressions create available roles", OnlyConfiguredExpressionsCreateRoles),
     ("Collection does not imply local save or upload", CollectionDoesNotImplyOutput),
     ("MES-only collected roles stay visible in product history", MesOnlyCollectedRoleStaysVisibleInProductHistory),
@@ -4485,7 +4486,7 @@ static void StationDisplayNamesHaveLocalizedDualStationRules()
     AssertThrows<ArgumentException>(() => StationDisplayNameRules.NormalizeAndValidate(true, "Same", " same "), "双工位模式应不区分大小写地拒绝重复名称。");
 
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.cs"), Encoding.UTF8);
-    AssertTrue(viewCode.Contains("stationDisplayNameLayout.Visible = chkEnableDualStation.Checked;", StringComparison.Ordinal), "界面应仅在启用双工位时显示名称输入区。");
+    AssertTrue(viewCode.Contains("stationDisplayNameLayout.Visible = visible;", StringComparison.Ordinal), "界面应仅在启用双工位时显示名称输入区。");
 
     var zhResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.resx"), Encoding.UTF8);
     var enResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.en.resx"), Encoding.UTF8);
@@ -4501,6 +4502,42 @@ static void StationDisplayNamesHaveLocalizedDualStationRules()
         AssertTrue(zhResources.Contains(key, StringComparison.Ordinal), $"中文资源必须包含 {key}。");
         AssertTrue(enResources.Contains(key, StringComparison.Ordinal), $"英文资源必须包含 {key}。");
     }
+}
+
+static void StationDisplayNamesLoadLegacyDefaultsAndCollapseHiddenRow()
+{
+    var loaded = StationDisplayNameRules.NormalizeForLoad(true, "  ", null);
+    AssertEqual("左", loaded.Station1, "加载旧双工位配置时，空白工位 1 名称应回填“左”。");
+    AssertEqual("右", loaded.Station2, "加载旧双工位配置时，空白工位 2 名称应回填“右”。");
+    var collisionLoaded = StationDisplayNameRules.NormalizeForLoad(true, "", "左");
+    AssertEqual("左", collisionLoaded.Station1, "旧数据回填与现有名称冲突时不应导致加载失败。");
+    AssertEqual("右", collisionLoaded.Station2, "旧数据回填冲突时应恢复为可用的默认映射。");
+    AssertThrows<ArgumentException>(() => StationDisplayNameRules.NormalizeAndValidate(true, "  ", "右"), "用户主动保存双工位空名称时仍必须拒绝。");
+
+    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "AppSettingsService.cs"), Encoding.UTF8);
+    AssertTrue(serviceCode.Contains("Normalize(settings, useLegacyStationNameFallback: true);", StringComparison.Ordinal), "Get 加载流程必须启用旧数据名称回填。");
+    AssertTrue(serviceCode.Contains("Normalize(settings, useLegacyStationNameFallback: false);", StringComparison.Ordinal), "Save 必须保持用户输入的严格校验。");
+
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.cs"), Encoding.UTF8);
+    AssertTrue(viewCode.Contains("stationNameRow.Height = visible ? StationDisplayNameRowHeight : 0F;", StringComparison.Ordinal), "隐藏名称输入区时必须同时折叠所在行。");
+
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.Designer.cs"), Encoding.UTF8);
+    var productionLocation = ParseDesignerPointY(designerCode, "grpProductionConfig.Location");
+    var productionHeight = ParseDesignerSizeHeight(designerCode, "grpProductionConfig.Size");
+    var mesLocation = ParseDesignerPointY(designerCode, "grpMesConfig.Location");
+    AssertTrue(productionLocation + productionHeight <= mesLocation, "生产配置与 MES 配置在提交布局中不得重叠。");
+}
+
+static int ParseDesignerPointY(string code, string propertyName)
+{
+    var match = System.Text.RegularExpressions.Regex.Match(code, $@"{System.Text.RegularExpressions.Regex.Escape(propertyName)} = new Point\(\d+, (\d+)\);");
+    return match.Success ? int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) : throw new InvalidOperationException($"未找到 {propertyName}。");
+}
+
+static int ParseDesignerSizeHeight(string code, string propertyName)
+{
+    var match = System.Text.RegularExpressions.Regex.Match(code, $@"{System.Text.RegularExpressions.Regex.Escape(propertyName)} = new Size\(\d+, (\d+)\);");
+    return match.Success ? int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) : throw new InvalidOperationException($"未找到 {propertyName}。");
 }
 
 static void AssertTrue(bool condition, string message)

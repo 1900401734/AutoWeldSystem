@@ -55,7 +55,7 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
                 dbContext.Db.Insertable(settings).ExecuteCommand();
             }
 
-            Normalize(settings);
+            Normalize(settings, useLegacyStationNameFallback: true);
             _cachedSettings = settings.Clone();
 
             return _cachedSettings.Clone();
@@ -78,12 +78,12 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
             dbContext.InitDatabase();
 
             var dbPrevious = dbContext.Db.Queryable<AppSettings>().InSingle(1) ?? new AppSettings();
-            Normalize(dbPrevious);
+            Normalize(dbPrevious, useLegacyStationNameFallback: true);
             previousSnapshot = dbPrevious.Clone();
 
             settings.Id = 1;
             settings.UpdatedTime = DateTime.Now;
-            Normalize(settings);
+            Normalize(settings, useLegacyStationNameFallback: false);
 
             var exists = dbContext.Db.Queryable<AppSettings>().Any(it => it.Id == 1);
             if (exists)
@@ -96,7 +96,7 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
             }
 
             var dbCurrent = dbContext.Db.Queryable<AppSettings>().InSingle(1) ?? settings;
-            Normalize(dbCurrent);
+            Normalize(dbCurrent, useLegacyStationNameFallback: true);
             currentSnapshot = dbCurrent.Clone();
             changedProperties = ResolveChangedProperties(previousSnapshot, currentSnapshot);
 
@@ -126,7 +126,7 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
     /// <summary>
     /// 归一化过程参数设备类型，避免历史配置或空值导致上传接口映射落不到默认设备类型。
     /// </summary>
-    private static void Normalize(AppSettings settings)
+    private static void Normalize(AppSettings settings, bool useLegacyStationNameFallback)
     {
         settings.EnableAutoStart ??= true;
         settings.EnableElevatedAutoStart ??= true;
@@ -136,10 +136,15 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
         settings.UseOperatorInputDialog ??= true;
         settings.EnableDeviceStatusReport ??= true;
         settings.EnableWorkOrderStatusReport ??= true;
-        var stationNames = StationDisplayNameRules.NormalizeAndValidate(
-            settings.EnableDualStation,
-            settings.Station1DisplayName ?? "左",
-            settings.Station2DisplayName ?? "右");
+        var stationNames = useLegacyStationNameFallback
+            ? StationDisplayNameRules.NormalizeForLoad(
+                settings.EnableDualStation,
+                settings.Station1DisplayName,
+                settings.Station2DisplayName)
+            : StationDisplayNameRules.NormalizeAndValidate(
+                settings.EnableDualStation,
+                settings.Station1DisplayName,
+                settings.Station2DisplayName);
         settings.Station1DisplayName = stationNames.Station1;
         settings.Station2DisplayName = stationNames.Station2;
         settings.PlcStringNumericFormatMode = PlcStringNumericFormatter.NormalizeMode(settings.PlcStringNumericFormatMode);
