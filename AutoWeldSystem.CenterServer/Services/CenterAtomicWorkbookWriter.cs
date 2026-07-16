@@ -15,13 +15,18 @@ internal sealed class CenterAtomicWorkbookWriter
     {
         var directory = Path.GetDirectoryName(reportPath)!;
         var fileName = Path.GetFileName(reportPath);
-        var temporaryPath = Path.Combine(directory, $".{fileName}.tmp-{Guid.NewGuid():N}.xlsx");
+        var temporaryPath = Path.Combine(directory, $".{fileName}.tmp-{Guid.NewGuid():N}.pending");
         try
         {
             using (var workbook = new XLWorkbook())
             {
                 populateWorkbook(workbook);
-                workbook.SaveAs(temporaryPath);
+                using var output = new FileStream(
+                    temporaryPath,
+                    FileMode.CreateNew,
+                    FileAccess.Write,
+                    FileShare.None);
+                workbook.SaveAs(output);
             }
 
             Validate(temporaryPath);
@@ -45,7 +50,12 @@ internal sealed class CenterAtomicWorkbookWriter
 
     private static void Validate(string temporaryPath)
     {
-        using var workbook = new XLWorkbook(temporaryPath);
+        using var input = new FileStream(
+            temporaryPath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read);
+        using var workbook = new XLWorkbook(input);
         foreach (var worksheetName in new[]
         {
             CenterProductReportFormat.WorksheetName,

@@ -13,7 +13,7 @@ public sealed class CenterProductReportFileStore
     private readonly CenterProductReportWorkbookReader _reader = new();
     private readonly CenterProductReportWorkbookWriter _writer = new();
     private readonly CenterAtomicWorkbookWriter _atomicWriter = new();
-    private readonly object _syncRoot = new();
+    private readonly CenterReportPathLock _pathLock = new();
 
     /// <summary>
     /// 幂等写入产品明细，或只推进同一设备+流转卡的任务最终状态。
@@ -21,19 +21,17 @@ public sealed class CenterProductReportFileStore
     public string Upsert(string dataDirectory, CenterProductReportRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        lock (_syncRoot)
-        {
-            var reportPath = _pathResolver.BuildReportPath(dataDirectory, request.DeviceId, request.WorkOrder);
-            Directory.CreateDirectory(Path.GetDirectoryName(reportPath)!);
-            var existing = _reader.Load(reportPath);
-            var rows = MergeRows(existing.Rows, request);
-            var requestColumns = CenterProductReportFormat.FromDtos(request.ReportColumns);
-            var columns = CenterProductReportFormat.BuildDetailColumns(existing.Columns.Concat(requestColumns));
-            var taskState = ResolveTaskState(existing.TaskState, request);
+        var reportPath = _pathResolver.BuildReportPath(dataDirectory, request.DeviceId, request.WorkOrder);
+        Directory.CreateDirectory(Path.GetDirectoryName(reportPath)!);
+        using var pathLock = _pathLock.Acquire(reportPath);
+        var existing = _reader.Load(reportPath);
+        var rows = MergeRows(existing.Rows, request);
+        var requestColumns = CenterProductReportFormat.FromDtos(request.ReportColumns);
+        var columns = CenterProductReportFormat.BuildDetailColumns(existing.Columns.Concat(requestColumns));
+        var taskState = ResolveTaskState(existing.TaskState, request);
 
-            _atomicWriter.Write(reportPath, workbook => _writer.Populate(workbook, taskState, columns, rows));
-            return reportPath;
-        }
+        _atomicWriter.Write(reportPath, workbook => _writer.Populate(workbook, taskState, columns, rows));
+        return reportPath;
     }
 
     /// <summary>
@@ -45,27 +43,24 @@ public sealed class CenterProductReportFileStore
         int stationNo,
         DateTime reportDate)
     {
-        lock (_syncRoot)
+        var root = _pathResolver.NormalizeRoot(dataDirectory);
+        if (!Directory.Exists(root))
         {
-            var root = _pathResolver.NormalizeRoot(dataDirectory);
-            if (!Directory.Exists(root))
-            {
-                return [];
-            }
-
-            var products = new List<CenterProductReportProductSummary>();
-            foreach (var filePath in Directory.EnumerateFiles(root, "*.xlsx", SearchOption.AllDirectories))
-            {
-                var state = _reader.Load(filePath);
-                products.AddRange(state.Rows
-                    .Where(row => row.StationNo == stationNo
-                        && row.CompletedAt.Date == reportDate.Date
-                        && string.Equals(row.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase))
-                    .Select(row => row.ToSummary()));
-            }
-
-            return products;
+            return [];
         }
+
+        var products = new List<CenterProductReportProductSummary>();
+        foreach (var filePath in _pathResolver.EnumerateReportPaths(root))
+        {
+            var state = _reader.Load(filePath);
+            products.AddRange(state.Rows
+                .Where(row => row.StationNo == stationNo
+                    && row.CompletedAt.Date == reportDate.Date
+                    && string.Equals(row.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase))
+                .Select(row => row.ToSummary()));
+        }
+
+        return products;
     }
 
     private static IReadOnlyList<CenterProductReportStoredRow> MergeRows(

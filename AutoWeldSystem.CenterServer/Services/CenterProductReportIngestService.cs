@@ -1,10 +1,4 @@
-using AutoWeldSystem.CenterServer.Hubs;
-using AutoWeldSystem.Core.Center;
-using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs.CenterServer;
-using AutoWeldSystem.Core.Entities;
-using AutoWeldSystem.Data;
-using Microsoft.AspNetCore.SignalR;
 
 namespace AutoWeldSystem.CenterServer.Services;
 
@@ -14,25 +8,18 @@ namespace AutoWeldSystem.CenterServer.Services;
 /// </summary>
 public sealed class CenterProductReportIngestService
 {
-    private readonly SqlSugarDbContext _dbContext;
-    private readonly IHubContext<CenterDashboardHub> _hubContext;
     private readonly CenterServerSettingsService _settingsService;
-    private readonly CenterDashboardChangeNotifier _changeNotifier;
     private readonly CenterProductReportFileStore _fileStore;
-    private readonly object _dbLock = new();
+    private readonly ICenterProductReportIngestSideEffects _sideEffects;
 
     public CenterProductReportIngestService(
-        SqlSugarDbContext dbContext,
-        IHubContext<CenterDashboardHub> hubContext,
         CenterServerSettingsService settingsService,
-        CenterDashboardChangeNotifier changeNotifier,
-        CenterProductReportFileStore fileStore)
+        CenterProductReportFileStore fileStore,
+        ICenterProductReportIngestSideEffects sideEffects)
     {
-        _dbContext = dbContext;
-        _hubContext = hubContext;
         _settingsService = settingsService;
-        _changeNotifier = changeNotifier;
         _fileStore = fileStore;
+        _sideEffects = sideEffects;
     }
 
     /// <summary>
@@ -70,19 +57,7 @@ public sealed class CenterProductReportIngestService
 
         var settings = _settingsService.Get();
         var reportPath = _fileStore.Upsert(settings.DataDirectory, request);
-
-        lock (_dbLock)
-        {
-            _dbContext.InitDatabase();
-            UpsertDeviceNode(deviceId, request);
-            if (!request.IsTaskFinishUpdate)
-            {
-                RefreshStationCounts(settings.DataDirectory, deviceId, request);
-            }
-        }
-
-        _changeNotifier.Notify(deviceId);
-        await _hubContext.Clients.All.SendAsync("CenterDashboardChanged", deviceId, cancellationToken);
+        await _sideEffects.ApplyAsync(settings.DataDirectory, deviceId, request, cancellationToken);
 
         return new CenterTelemetryAck
         {
@@ -102,71 +77,4 @@ public sealed class CenterProductReportIngestService
         };
     }
 
-    /// <summary>
-    /// 产品上传也可以首次登记设备节点，保证新设备能出现在看板中。
-    /// </summary>
-    private void UpsertDeviceNode(string deviceId, CenterProductReportRequest request)
-    {
-        var now = DateTime.Now;
-        var node = _dbContext.Db.Queryable<CenterDeviceNode>().InSingle(deviceId);
-        if (node is null)
-        {
-            _dbContext.Db.Insertable(new CenterDeviceNode
-            {
-                DeviceId = deviceId,
-                DeviceName = request.DeviceName.Trim(),
-                SystemType = CenterTelemetryRules.NormalizeSystemType(request.SystemType),
-                FirstSeenAt = now,
-                LastSeenAt = now
-            }).ExecuteCommand();
-            return;
-        }
-
-        node.DeviceName = request.DeviceName.Trim();
-        node.SystemType = CenterTelemetryRules.NormalizeSystemType(request.SystemType);
-        node.LastSeenAt = now;
-        _dbContext.Db.Updateable(node).ExecuteCommand();
-    }
-
-    /// <summary>
-    /// 产品完成后从中心 XLSX 重算当天设备工位计数。
-    /// </summary>
-    private void RefreshStationCounts(
-        string dataDirectory,
-        string deviceId,
-        CenterProductReportRequest request)
-    {
-        var products = _fileStore.LoadProducts(dataDirectory, deviceId, request.StationNo, DateTime.Today)
-            .GroupBy(row => $"{row.WorkOrder}\u001F{row.ProductNo}", StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.First())
-            .ToList();
-        var snapshot = _dbContext.Db.Queryable<CenterDeviceStationRuntimeSnapshot>()
-            .First(item => item.DeviceId == deviceId && item.StationNo == request.StationNo);
-        snapshot ??= new CenterDeviceStationRuntimeSnapshot
-        {
-            DeviceId = deviceId,
-            StationNo = request.StationNo
-        };
-
-        snapshot.CurrentWorkOrder = request.WorkOrder.Trim();
-        snapshot.ProductJobNo = request.ProductJobNo.Trim();
-        snapshot.ProductModel = request.ProductModel.Trim();
-        snapshot.TodayTotalCount = products.Count;
-        snapshot.TodayQualifiedCount = products.Count(IsProductOk);
-        snapshot.TodayFailedCount = products.Count(item => !IsProductOk(item));
-        snapshot.CollectedAt = DateTime.Now;
-        snapshot.UpdatedAt = DateTime.Now;
-
-        if (snapshot.Id > 0)
-        {
-            _dbContext.Db.Updateable(snapshot).ExecuteCommand();
-        }
-        else
-        {
-            _dbContext.Db.Insertable(snapshot).ExecuteCommand();
-        }
-    }
-
-    private static bool IsProductOk(CenterProductReportProductSummary row)
-        => string.Equals(row.ProductResult, ProductionConstants.TestResults.Ok, StringComparison.OrdinalIgnoreCase);
 }

@@ -37,6 +37,28 @@ internal sealed class CenterProductReportPathResolver
         return Path.TrimEndingDirectorySeparator(Path.GetFullPath(dataDirectory.Trim()));
     }
 
+    /// <summary>
+    /// 只枚举由本解析器生成的两级正式 XLSX，排除临时、备份、锁文件和未知工作簿。
+    /// </summary>
+    public IEnumerable<string> EnumerateReportPaths(string root)
+    {
+        foreach (var deviceDirectory in Directory.EnumerateDirectories(root, "*", SearchOption.TopDirectoryOnly))
+        {
+            if (!IsSafeSegment(Path.GetFileName(deviceDirectory)))
+            {
+                continue;
+            }
+
+            foreach (var reportPath in Directory.EnumerateFiles(deviceDirectory, "*.xlsx", SearchOption.TopDirectoryOnly))
+            {
+                if (IsSafeSegment(Path.GetFileNameWithoutExtension(reportPath)))
+                {
+                    yield return reportPath;
+                }
+            }
+        }
+    }
+
     private static string BuildSafeSegment(string? value, string fallback)
     {
         var original = value ?? string.Empty;
@@ -69,6 +91,17 @@ internal sealed class CenterProductReportPathResolver
 
     private static bool IsUnsafeCharacter(char character)
         => character < 32 || character is '<' or '>' or ':' or '"' or '/' or '\\' or '|' or '?' or '*';
+
+    private static bool IsSafeSegment(string value)
+    {
+        var separatorIndex = value.LastIndexOf("--", StringComparison.Ordinal);
+        if (separatorIndex <= 0 || value.Length - separatorIndex - 2 != HashLength)
+        {
+            return false;
+        }
+
+        return value[(separatorIndex + 2)..].All(Uri.IsHexDigit);
+    }
 
     private static bool IsWindowsReservedName(string value)
     {

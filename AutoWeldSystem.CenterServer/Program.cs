@@ -38,6 +38,7 @@ builder.Services.AddSingleton<CenterPushJsonlLogService>();
 builder.Services.AddSingleton<CenterTelemetryIngestService>();
 builder.Services.AddSingleton<CenterDashboardQueryService>();
 builder.Services.AddSingleton<CenterProductReportFileStore>();
+builder.Services.AddSingleton<ICenterProductReportIngestSideEffects, CenterProductReportIngestSideEffects>();
 builder.Services.AddSingleton<CenterProductReportIngestService>();
 
 var app = builder.Build();
