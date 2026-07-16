@@ -1636,24 +1636,44 @@ static void CenterForwardingBusinessIdsHashFullIdentity()
     var commonPrefix = new string('W', 120);
     var firstRequest = new CenterProductReportRequest
     {
+        DeviceId = "DEVICE-A",
         StationNo = 1,
         WorkOrder = commonPrefix + "-A",
         ProductNo = new string('P', 120) + "-A"
     };
     var secondRequest = new CenterProductReportRequest
     {
+        DeviceId = "DEVICE-A",
         StationNo = 1,
         WorkOrder = commonPrefix + "-B",
         ProductNo = new string('P', 120) + "-B"
+    };
+    var differentDeviceRequest = new CenterProductReportRequest
+    {
+        DeviceId = "DEVICE-B",
+        StationNo = firstRequest.StationNo,
+        WorkOrder = firstRequest.WorkOrder,
+        ProductNo = firstRequest.ProductNo
+    };
+    var normalizedSameDeviceRequest = new CenterProductReportRequest
+    {
+        DeviceId = "  DEVICE-A  ",
+        StationNo = firstRequest.StationNo,
+        WorkOrder = firstRequest.WorkOrder,
+        ProductNo = firstRequest.ProductNo
     };
 
     var firstId = (string?)buildBusinessId!.Invoke(null, [firstRequest]);
     var repeatedId = (string?)buildBusinessId.Invoke(null, [firstRequest]);
     var secondId = (string?)buildBusinessId.Invoke(null, [secondRequest]);
+    var differentDeviceId = (string?)buildBusinessId.Invoke(null, [differentDeviceRequest]);
+    var normalizedSameDeviceId = (string?)buildBusinessId.Invoke(null, [normalizedSameDeviceRequest]);
 
     AssertFalse(string.IsNullOrWhiteSpace(firstId), "中心转发 BusinessId 不得为空。");
     AssertTrue(firstId!.Length <= 100, "中心转发 BusinessId 必须保持在数据库 100 字符限制内。");
     AssertEqual(firstId, repeatedId, "相同完整身份必须生成稳定的 BusinessId。");
+    AssertEqual(firstId, normalizedSameDeviceId, "DeviceId 首尾空格规范化后，相同完整身份必须保持稳定。");
+    AssertFalse(string.Equals(firstId, differentDeviceId, StringComparison.Ordinal), "仅 DeviceId 不同的完整身份必须生成不同 BusinessId。");
     AssertFalse(string.Equals(firstId, secondId, StringComparison.Ordinal), "仅在旧截断尾部不同的完整身份必须生成不同 BusinessId。");
     AssertTrue(firstId.Contains(':', StringComparison.Ordinal), "BusinessId 必须保留可读前缀并附加完整身份哈希。");
 }

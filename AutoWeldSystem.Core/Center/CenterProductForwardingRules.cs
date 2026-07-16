@@ -40,6 +40,7 @@ public static class CenterProductForwardingRules
     {
         var builder = new StringBuilder();
         AppendPart(builder, request.IsTaskFinishUpdate ? "finish" : "product");
+        AppendPart(builder, (request.DeviceId ?? string.Empty).Trim());
         AppendPart(builder, request.StationNo.ToString(System.Globalization.CultureInfo.InvariantCulture));
         AppendPart(builder, request.WorkOrder ?? string.Empty);
         AppendPart(builder, request.IsTaskFinishUpdate ? string.Empty : request.ProductNo ?? string.Empty);
