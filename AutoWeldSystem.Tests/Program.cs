@@ -79,6 +79,12 @@ var tests = new (string Name, Action Run)[]
     ("Center report renders single and dual station columns", CenterReportRendersSingleAndDualStationColumns),
     ("Center report replaces duplicate product rows", CenterReportReplacesDuplicateProductRows),
     ("Center report isolates device and work order files", CenterReportIsolatesDeviceAndWorkOrderFiles),
+    ("Center report path stays inside root for traversal names", CenterReportPathStaysInsideRootForTraversalNames),
+    ("Center report path distinguishes sanitized collisions", CenterReportPathDistinguishesSanitizedCollisions),
+    ("Center report keeps final header after late product retry", CenterReportKeepsFinalHeaderAfterLateProductRetry),
+    ("Center report preserves corrupt existing workbook", CenterReportPreservesCorruptExistingWorkbook),
+    ("Center report atomic update leaves no temporary files", CenterReportAtomicUpdateLeavesNoTemporaryFiles),
+    ("Center ingest validates product and finish requests separately", CenterIngestValidatesProductAndFinishRequestsSeparately),
     ("Center finish update queues after task persistence", CenterFinishUpdateQueuesAfterTaskPersistence),
     ("Finished task clears station runtime", FinishedTaskClearsStationRuntime),
     ("Offline start request uses local task id", OfflineStartRequestUsesLocalTaskId),
@@ -1454,6 +1460,258 @@ static void CenterReportIsolatesDeviceAndWorkOrderFiles()
         AssertEqual(firstPath, samePath, "同一设备编号和流转卡号必须定位同一中心报表，不应受日期、工位或设备名称变化影响。");
         AssertFalse(string.Equals(firstPath, differentDevicePath, StringComparison.OrdinalIgnoreCase), "不同设备编号必须隔离中心报表文件。");
         AssertFalse(string.Equals(firstPath, differentWorkOrderPath, StringComparison.OrdinalIgnoreCase), "不同流转卡号必须隔离中心报表文件。");
+    }
+    finally
+    {
+        DeleteDirectoryIfExists(outputDirectory);
+    }
+}
+
+static void CenterReportPathStaysInsideRootForTraversalNames()
+{
+    var outputDirectory = CreateCenterReportFixtureDirectory();
+    try
+    {
+        var request = BuildCenterWorkbookRequest(
+            "..",
+            "..",
+            new DateTime(2026, 7, 17, 8, 0, 0),
+            endTime: null,
+            qualifiedQty: 0,
+            enableDualStation: false,
+            stationNo: 1,
+            stationName: string.Empty,
+            productNo: "P001",
+            includeDynamicColumn: false,
+            isTaskFinishUpdate: false,
+            pointCount: 1);
+
+        var reportPath = new CenterProductReportFileStore().Upsert(outputDirectory, request);
+        var fullRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(outputDirectory)) + Path.DirectorySeparatorChar;
+        var fullReportPath = Path.GetFullPath(reportPath);
+
+        AssertTrue(fullReportPath.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase), "设备/SN 为 .. 时中心报表不得逃逸配置根目录。");
+        AssertTrue(File.Exists(fullReportPath), "安全路径内必须生成中心报表。");
+    }
+    finally
+    {
+        DeleteDirectoryIfExists(outputDirectory);
+    }
+}
+
+static void CenterReportPathDistinguishesSanitizedCollisions()
+{
+    var outputDirectory = CreateCenterReportFixtureDirectory();
+    try
+    {
+        var slashRequest = BuildCenterWorkbookRequest(
+            "DEVICE/A",
+            "FLOW/A",
+            new DateTime(2026, 7, 17, 8, 0, 0),
+            endTime: null,
+            qualifiedQty: 0,
+            enableDualStation: false,
+            stationNo: 1,
+            stationName: string.Empty,
+            productNo: "P001",
+            includeDynamicColumn: false,
+            isTaskFinishUpdate: false,
+            pointCount: 1);
+        var colonDeviceRequest = BuildCenterWorkbookRequest(
+            "DEVICE:A",
+            "FLOW/A",
+            new DateTime(2026, 7, 17, 8, 0, 0),
+            endTime: null,
+            qualifiedQty: 0,
+            enableDualStation: false,
+            stationNo: 1,
+            stationName: string.Empty,
+            productNo: "P001",
+            includeDynamicColumn: false,
+            isTaskFinishUpdate: false,
+            pointCount: 1);
+        var colonWorkOrderRequest = BuildCenterWorkbookRequest(
+            "DEVICE/A",
+            "FLOW:A",
+            new DateTime(2026, 7, 17, 8, 0, 0),
+            endTime: null,
+            qualifiedQty: 0,
+            enableDualStation: false,
+            stationNo: 1,
+            stationName: string.Empty,
+            productNo: "P001",
+            includeDynamicColumn: false,
+            isTaskFinishUpdate: false,
+            pointCount: 1);
+        var spacedDeviceRequest = BuildCenterWorkbookRequest(
+            " DEVICE/A ",
+            "FLOW/A",
+            new DateTime(2026, 7, 17, 8, 0, 0),
+            endTime: null,
+            qualifiedQty: 0,
+            enableDualStation: false,
+            stationNo: 1,
+            stationName: string.Empty,
+            productNo: "P001",
+            includeDynamicColumn: false,
+            isTaskFinishUpdate: false,
+            pointCount: 1);
+        var store = new CenterProductReportFileStore();
+
+        var slashPath = store.Upsert(outputDirectory, slashRequest);
+        var colonDevicePath = store.Upsert(outputDirectory, colonDeviceRequest);
+        var colonWorkOrderPath = store.Upsert(outputDirectory, colonWorkOrderRequest);
+        var spacedDevicePath = store.Upsert(outputDirectory, spacedDeviceRequest);
+
+        AssertFalse(string.Equals(slashPath, colonDevicePath, StringComparison.OrdinalIgnoreCase), "设备编号 A/B 与 A:B 不得碰撞。");
+        AssertFalse(string.Equals(slashPath, colonWorkOrderPath, StringComparison.OrdinalIgnoreCase), "流转卡号 A/B 与 A:B 不得碰撞。");
+        AssertFalse(string.Equals(slashPath, spacedDevicePath, StringComparison.OrdinalIgnoreCase), "哈希必须基于原始值，首尾空格不同的设备编号不得碰撞。");
+    }
+    finally
+    {
+        DeleteDirectoryIfExists(outputDirectory);
+    }
+}
+
+static void CenterReportKeepsFinalHeaderAfterLateProductRetry()
+{
+    var outputDirectory = CreateCenterReportFixtureDirectory();
+    try
+    {
+        var store = new CenterProductReportFileStore();
+        var startTime = new DateTime(2026, 7, 17, 8, 0, 0, DateTimeKind.Local);
+        var productRequest = BuildCenterWorkbookRequest(
+            "DEVICE-01", "FLOW-LATE", startTime, null, 1, false, 1, string.Empty, "P001", false, false, 2);
+        var finishTime = new DateTime(2026, 7, 17, 10, 20, 30, DateTimeKind.Local);
+        var finishRequest = BuildCenterWorkbookRequest(
+            "DEVICE-01", "FLOW-LATE", startTime, finishTime, 19, false, 1, string.Empty, string.Empty, false, true, 0);
+        var lateProductRequest = BuildCenterWorkbookRequest(
+            "DEVICE-01", "FLOW-LATE", startTime, null, 2, false, 1, string.Empty, "P002", false, false, 1);
+
+        store.Upsert(outputDirectory, productRequest);
+        store.Upsert(outputDirectory, finishRequest);
+        var reportPath = store.Upsert(outputDirectory, lateProductRequest);
+
+        using var workbook = new XLWorkbook(reportPath);
+        var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+        AssertEqual($"结束时间：{finishTime:yyyy-MM-dd HH:mm:ss}", worksheet.Cell("D7").GetString(), "迟到产品请求不得清空已完成 EndTime。");
+        AssertEqual("合格数量：19", worksheet.Cell("D5").GetString(), "迟到产品请求不得回退最终 QualifiedQty。");
+        AssertEqual(3, CountCenterDataRows(workbook), "迟到的新产品明细仍应正常追加。");
+    }
+    finally
+    {
+        DeleteDirectoryIfExists(outputDirectory);
+    }
+}
+
+static void CenterReportPreservesCorruptExistingWorkbook()
+{
+    var outputDirectory = CreateCenterReportFixtureDirectory();
+    try
+    {
+        var store = new CenterProductReportFileStore();
+        var request = BuildCenterWorkbookRequest(
+            "DEVICE-01", "FLOW-CORRUPT", new DateTime(2026, 7, 17, 8, 0, 0), null, 0, false, 1, string.Empty, "P001", false, false, 1);
+        var reportPath = store.Upsert(outputDirectory, request);
+        var corruptBytes = Encoding.UTF8.GetBytes("not-an-xlsx-workbook");
+        File.WriteAllBytes(reportPath, corruptBytes);
+
+        var failed = false;
+        try
+        {
+            store.Upsert(outputDirectory, request);
+        }
+        catch
+        {
+            failed = true;
+        }
+
+        AssertTrue(failed, "读取损坏的现有报表时必须失败并交给上传队列重试。");
+        AssertSequenceEqual(corruptBytes, File.ReadAllBytes(reportPath), "损坏原文件不得被当作空报表覆盖。");
+    }
+    finally
+    {
+        DeleteDirectoryIfExists(outputDirectory);
+    }
+}
+
+static void CenterReportAtomicUpdateLeavesNoTemporaryFiles()
+{
+    var outputDirectory = CreateCenterReportFixtureDirectory();
+    try
+    {
+        var store = new CenterProductReportFileStore();
+        var request = BuildCenterWorkbookRequest(
+            "DEVICE-01", "FLOW-ATOMIC", new DateTime(2026, 7, 17, 8, 0, 0), null, 0, false, 1, string.Empty, "P001", false, false, 1);
+
+        store.Upsert(outputDirectory, request);
+        request.Points[0].TestResult = ProductionConstants.TestResults.Ng;
+        store.Upsert(outputDirectory, request);
+
+        var temporaryFiles = Directory.EnumerateFiles(outputDirectory, "*.tmp-*", SearchOption.AllDirectories).ToArray();
+        AssertEqual(0, temporaryFiles.Length, "正常原子创建和替换后不得残留同目录临时文件。");
+    }
+    finally
+    {
+        DeleteDirectoryIfExists(outputDirectory);
+    }
+}
+
+static void CenterIngestValidatesProductAndFinishRequestsSeparately()
+{
+    var outputDirectory = CreateCenterReportFixtureDirectory();
+    try
+    {
+        var configuration = new ConfigurationBuilder().Build();
+        var settingsService = new CenterServerSettingsService(configuration);
+        settingsService.Save(new CenterServerLocalSettings
+        {
+            DataDirectory = outputDirectory,
+            LogDirectory = Path.Combine(outputDirectory, "Logs"),
+            OfflineTimeoutSeconds = CenterServerConstants.DefaultOfflineTimeoutSeconds
+        });
+        var service = new CenterProductReportIngestService(
+            null!,
+            null!,
+            settingsService,
+            new CenterDashboardChangeNotifier(),
+            new CenterProductReportFileStore());
+        var productRequest = new CenterProductReportRequest
+        {
+            DeviceId = "DEVICE-01",
+            StationNo = 1,
+            WorkOrder = "FLOW-VALIDATION",
+            IsTaskFinishUpdate = false,
+            Points = []
+        };
+        var finishRequest = new CenterProductReportRequest
+        {
+            DeviceId = "DEVICE-01",
+            StationNo = 1,
+            WorkOrder = string.Empty,
+            IsTaskFinishUpdate = true,
+            Points = []
+        };
+        var finishWithoutEndTimeRequest = new CenterProductReportRequest
+        {
+            DeviceId = "DEVICE-01",
+            StationNo = 1,
+            WorkOrder = "FLOW-VALIDATION",
+            IsTaskFinishUpdate = true,
+            EndTime = null,
+            Points = []
+        };
+
+        var productResult = service.IngestAsync(productRequest).GetAwaiter().GetResult();
+        var finishResult = service.IngestAsync(finishRequest).GetAwaiter().GetResult();
+        var finishWithoutEndTimeResult = service.IngestAsync(finishWithoutEndTimeRequest).GetAwaiter().GetResult();
+
+        AssertFalse(productResult.Success, "产品请求没有点明细时必须拒绝。");
+        AssertTrue(productResult.Message.Contains("points", StringComparison.OrdinalIgnoreCase), "产品请求验证必须明确指出点明细缺失。");
+        AssertFalse(finishResult.Success, "完工请求没有流转卡号时必须拒绝。");
+        AssertTrue(finishResult.Message.Contains("WorkOrder", StringComparison.OrdinalIgnoreCase), "完工请求允许空 Points，但必须验证任务定位字段。");
+        AssertFalse(finishWithoutEndTimeResult.Success, "完工请求没有最终 EndTime 时必须拒绝。");
+        AssertTrue(finishWithoutEndTimeResult.Message.Contains("EndTime", StringComparison.OrdinalIgnoreCase), "完工请求空 Points 应进入完工字段验证，而不是产品点明细验证。");
     }
     finally
     {
@@ -5467,26 +5725,9 @@ static string CreateCenterReportFixtureDirectory()
 
 static string WriteCenterReportWorkbook(string outputDirectory, CenterProductReportRequest request)
 {
-    var configuration = new ConfigurationBuilder().Build();
-    var settingsService = new CenterServerSettingsService(configuration);
-    settingsService.Save(new CenterServerLocalSettings
-    {
-        DataDirectory = outputDirectory,
-        LogDirectory = Path.Combine(outputDirectory, "Logs"),
-        OfflineTimeoutSeconds = CenterServerConstants.DefaultOfflineTimeoutSeconds
-    });
-    var service = new CenterProductReportIngestService(
-        null!,
-        null!,
-        settingsService,
-        new CenterDashboardChangeNotifier());
-    var writeMethod = typeof(CenterProductReportIngestService).GetMethod(
-        "WriteReportFile",
-        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-    AssertTrue(writeMethod is not null, "中心 ingest 必须保留真实 XLSX 写入 seam。");
-    var reportPath = writeMethod!.Invoke(service, [request.DeviceId.Trim(), request]) as string;
-    AssertTrue(!string.IsNullOrWhiteSpace(reportPath) && File.Exists(reportPath), "中心 ingest 必须生成真实 XLSX 文件。");
-    return reportPath!;
+    var reportPath = new CenterProductReportFileStore().Upsert(outputDirectory, request);
+    AssertTrue(File.Exists(reportPath), "中心文件存储 seam 必须生成真实 XLSX 文件。");
+    return reportPath;
 }
 
 static int CountCenterDataRows(XLWorkbook workbook)

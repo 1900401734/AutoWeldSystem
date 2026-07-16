@@ -15,6 +15,7 @@ public static class CenterProductReportFormat
     public const string DateTimeFormat = "yyyy-MM-dd HH:mm:ss";
     public const string DataWorksheetName = "_Data";
     public const string ColumnsWorksheetName = "_Columns";
+    public const string TaskWorksheetName = "_Task";
     public const string ColumnStationNo = "station_no";
     public const string ColumnProductNo = "product_no";
     public const string ColumnProductResult = "product_result";
