@@ -82,6 +82,13 @@ public class BizWeldPointRecord
     [SugarColumn(Length = 20, ColumnDescription = "测试结果")]
     public string TestResult { get; set; } = ProductionConstants.TestResults.Unknown;
 
+    /// <summary>
+    /// PLC product-level result. This value is independent from the weld-point <see cref="TestResult"/>.
+    /// Legacy rows can keep this column null and fall back to RawDataJson when displayed.
+    /// </summary>
+    [SugarColumn(Length = 20, IsNullable = true, ColumnDescription = "产品结果")]
+    public string? ProductResult { get; set; }
+
     [SugarColumn(Length = 50, IsNullable = true, ColumnDescription = "操作员工号")]
     public string? OperatorNo { get; set; }
 

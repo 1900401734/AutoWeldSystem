@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs.DataManagement;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
@@ -143,6 +144,7 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
             ProductNo = record.ProductNo,
             TouchNo = record.TouchNo,
             TestResult = record.TestResult,
+            ProductResult = ResolveProductResult(record),
             RecordTime = record.Ts,
             DynamicValues = BuildDynamicValues(record, schemeItems)
         }).ToList();
@@ -375,6 +377,21 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
         return null;
     }
 
+    /// <summary>
+    /// Reads the product result stored by the PLC collection path.
+    /// New rows use the dedicated column; legacy rows fall back to RawDataJson.
+    /// </summary>
+    private static string ResolveProductResult(BizWeldPointRecord record)
+    {
+        if (!string.IsNullOrWhiteSpace(record.ProductResult))
+        {
+            return TestResultRules.Normalize(record.ProductResult);
+        }
+
+        var rawProductResult = FirstRawValue(ParseRawData(record.RawDataJson), "product_result");
+        return TestResultRules.Normalize(rawProductResult);
+    }
+
     private static void AddColumn(
         ICollection<DataHistoryDynamicColumn> columns,
         bool enabled,
@@ -439,6 +456,7 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
             ProductNo = record.ProductNo,
             TouchNo = record.TouchNo,
             TestResult = record.TestResult,
+            ProductResult = ResolveProductResult(record),
             IsTest = record.IsTest,
             ProductCompleted = record.ProductCompleted,
             UploadStatus = record.UploadStatus,

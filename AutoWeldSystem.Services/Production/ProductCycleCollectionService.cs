@@ -302,6 +302,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             TouchNo = string.IsNullOrWhiteSpace(touchNo) ? touchIndex.ToString(CultureInfo.InvariantCulture) : touchNo.Trim(),
             StationNo = stationNo,
             TestResult = testResult,
+            ProductResult = header.ProductResult,
             OperatorNo = task.UserNumber ?? string.Empty,
             Ts = DateTime.Now,
             ProductCompleted = touchIndex >= header.ActualTouchCount,

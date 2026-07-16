@@ -30,6 +30,10 @@ var tests = new (string Name, Action Run)[]
 {
     ("Only configured test item expressions create available roles", OnlyConfiguredExpressionsCreateRoles),
     ("Collection does not imply local save or upload", CollectionDoesNotImplyOutput),
+    ("MES-only collected roles stay visible in product history", MesOnlyCollectedRoleStaysVisibleInProductHistory),
+    ("Disabled roles block save report and MES outputs", DisabledRoleBlocksEveryOutputChannel),
+    ("Product cycle snapshots persist PLC product results", ProductCycleSnapshotsPersistPlcProductResults),
+    ("Stored PLC product results drive history without point aggregation", StoredPlcProductResultsDriveHistoryWithoutPointAggregation),
     ("Unavailable roles are cleared before save", UnavailableRolesAreCleared),
     ("Running task with changed PLC recipe requests reconciliation", RunningTaskWithChangedPlcRecipeRequestsReconciliation),
     ("Finished PLC work-order status skips recipe reconciliation", FinishedWorkOrderStatusSkipsRecipeReconciliation),
@@ -233,6 +237,141 @@ static void CollectionDoesNotImplyOutput()
 
     detail.SaveActual = true;
     AssertTrue(SchemeDetailRoleRules.ShouldPersistRole(detail, SchemeDetailValueRole.Actual), "启用保存后应写入历史 RawDataJson。");
+}
+
+static void MesOnlyCollectedRoleStaysVisibleInProductHistory()
+{
+    var detail = new BizSchemeDetail
+    {
+        EnableActual = true,
+        SaveActual = false,
+        ReportActual = false,
+        MesActual = true
+    };
+
+    AssertTrue(
+        SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Actual),
+        "已采集且启用 MES 的角色即使未启用中心保存，也必须在产品历史中显示。");
+}
+
+static void DisabledRoleBlocksEveryOutputChannel()
+{
+    var detail = new BizSchemeDetail
+    {
+        EnableActual = false,
+        SaveActual = true,
+        ReportActual = true,
+        MesActual = true
+    };
+
+    AssertFalse(SchemeDetailRoleRules.ShouldPersistRole(detail, SchemeDetailValueRole.Actual), "未启用采集的角色不得写入历史数据。");
+    AssertFalse(SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Actual), "未启用采集的角色不得在产品历史中显示。");
+    AssertFalse(SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Actual), "未启用采集的角色不得写入设备端报表。");
+    AssertFalse(SchemeDetailRoleRules.ShouldUploadMesRole(detail, SchemeDetailValueRole.Actual), "未启用采集的角色不得上传 MES。");
+}
+
+static void ProductCycleSnapshotsPersistPlcProductResults()
+{
+    var productResultProperty = typeof(BizWeldPointRecord).GetProperty("ProductResult");
+    AssertTrue(productResultProperty is not null, "焊点采集记录必须包含独立的 PLC 产品结果字段。");
+
+    var serviceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductCycleCollectionService.cs"),
+        Encoding.UTF8);
+    AssertTrue(
+        serviceCode.Contains("ProductResult = header.ProductResult,", StringComparison.Ordinal),
+        "采集快照必须把标准化后的 PLC 产品结果写入实体字段。");
+    AssertTrue(
+        serviceCode.Contains("AddValue(values, \"product_result\", header.ProductResult);", StringComparison.Ordinal),
+        "采集快照必须继续把标准化后的 PLC 产品结果写入 RawDataJson，兼容旧数据读取。");
+}
+
+static void StoredPlcProductResultsDriveHistoryWithoutPointAggregation()
+{
+    var productHistoryResolver = typeof(ProductHistoryService).GetMethod(
+        "ResolveProductResult",
+        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+    AssertTrue(productHistoryResolver is not null, "产品历史服务必须保留独立的产品结果解析入口。");
+
+    var currentRecord = new BizWeldPointRecord
+    {
+        TestResult = ProductionConstants.TestResults.Ng,
+        RawDataJson = JsonSerializer.Serialize(new Dictionary<string, string>
+        {
+            ["product_result"] = ProductionConstants.TestResults.PreWeldNg
+        })
+    };
+    SetOptionalStringProperty(currentRecord, "ProductResult", ProductionConstants.TestResults.Ok);
+    var currentResult = (string?)productHistoryResolver!.Invoke(
+        null,
+        [new List<BizWeldPointRecord> { currentRecord }]);
+    AssertEqual(
+        ProductionConstants.TestResults.Ok,
+        currentResult,
+        "新记录必须优先读取实体 ProductResult，不得由 TestResult 聚合覆盖。");
+
+    var legacyRecord = new BizWeldPointRecord
+    {
+        TestResult = ProductionConstants.TestResults.Ok,
+        RawDataJson = JsonSerializer.Serialize(new Dictionary<string, string>
+        {
+            ["product_result"] = ProductionConstants.TestResults.PreWeldNg
+        })
+    };
+    SetOptionalStringProperty(legacyRecord, "ProductResult", null);
+    var legacyResult = (string?)productHistoryResolver.Invoke(
+        null,
+        [new List<BizWeldPointRecord> { legacyRecord }]);
+    AssertEqual(
+        ProductionConstants.TestResults.PreWeldNg,
+        legacyResult,
+        "旧记录实体字段为空时必须从 RawDataJson.product_result 回退读取。");
+
+    var missingRecord = new BizWeldPointRecord
+    {
+        TestResult = ProductionConstants.TestResults.Ng,
+        RawDataJson = "{}"
+    };
+    SetOptionalStringProperty(missingRecord, "ProductResult", null);
+    var missingResult = (string?)productHistoryResolver.Invoke(
+        null,
+        [new List<BizWeldPointRecord> { missingRecord }]);
+    AssertEqual(
+        ProductionConstants.TestResults.Unknown,
+        missingResult,
+        "实体和 JSON 都缺少产品结果时必须返回 Unknown，不得调用焊点结果聚合规则。");
+
+    var dataHistoryResolver = typeof(DataHistoryQueryService).GetMethod(
+        "ResolveProductResult",
+        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+    AssertTrue(dataHistoryResolver is not null, "数据历史服务必须使用统一的产品结果回退规则。");
+    AssertEqual(
+        ProductionConstants.TestResults.Ok,
+        (string?)dataHistoryResolver!.Invoke(null, [currentRecord]),
+        "数据历史必须优先读取实体 ProductResult。");
+    AssertEqual(
+        ProductionConstants.TestResults.PreWeldNg,
+        (string?)dataHistoryResolver.Invoke(null, [legacyRecord]),
+        "数据历史必须为旧记录读取 RawDataJson.product_result。");
+    AssertEqual(
+        ProductionConstants.TestResults.Unknown,
+        (string?)dataHistoryResolver.Invoke(null, [missingRecord]),
+        "数据历史缺少产品结果时必须返回 Unknown，不得使用 TestResult 推算。");
+
+    var weldParameterProductResult = typeof(AutoWeldSystem.Core.DTOs.DataManagement.DataHistoryWeldParameterRow)
+        .GetProperty("ProductResult");
+    var collectionProductResult = typeof(AutoWeldSystem.Core.DTOs.DataManagement.DataHistoryCollectionRow)
+        .GetProperty("ProductResult");
+    AssertTrue(weldParameterProductResult is not null, "焊接参数历史行必须公开独立的 ProductResult。");
+    AssertTrue(collectionProductResult is not null, "采集记录历史行必须公开独立的 ProductResult。");
+
+    var dataHistoryCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "DataHistoryQueryService.cs"),
+        Encoding.UTF8);
+    AssertEqual(
+        2,
+        CountOccurrences(dataHistoryCode, "ProductResult = ResolveProductResult(record),"),
+        "焊接参数行和采集记录行都必须填充独立的 ProductResult。");
 }
 
 static void UnavailableRolesAreCleared()
@@ -4315,6 +4454,13 @@ static void AssertTrue(bool condition, string message)
 
 static void AssertFalse(bool condition, string message)
     => AssertTrue(!condition, message);
+
+static void SetOptionalStringProperty(object target, string propertyName, string? value)
+{
+    var property = target.GetType().GetProperty(propertyName);
+    AssertTrue(property is not null, $"{target.GetType().Name} 必须包含 {propertyName} 属性。");
+    property!.SetValue(target, value);
+}
 
 static void AssertEqual<T>(T expected, T actual, string message)
 {

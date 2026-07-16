@@ -1,3 +1,5 @@
+using AutoWeldSystem.Core.Constants;
+
 namespace AutoWeldSystem.Core.DTOs.DataManagement;
 
 /// <summary>
@@ -110,6 +112,11 @@ public sealed class DataHistoryWeldParameterRow
 
     public string TestResult { get; init; } = string.Empty;
 
+    /// <summary>
+    /// PLC product-level result. It must not be inferred from weld-point results.
+    /// </summary>
+    public string ProductResult { get; init; } = ProductionConstants.TestResults.Unknown;
+
     public DateTime RecordTime { get; init; }
 
     public IReadOnlyDictionary<string, string> DynamicValues { get; init; }
@@ -144,6 +151,11 @@ public sealed class DataHistoryCollectionRow
     public string TouchNo { get; init; } = string.Empty;
 
     public string TestResult { get; init; } = string.Empty;
+
+    /// <summary>
+    /// PLC product-level result. It must not be inferred from weld-point results.
+    /// </summary>
+    public string ProductResult { get; init; } = ProductionConstants.TestResults.Unknown;
 
     public bool IsTest { get; init; }
 

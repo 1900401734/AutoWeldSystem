@@ -4,6 +4,7 @@ using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Core.ViewModels;
 using AutoWeldSystem.Data;
+using System.Text.Json;
 
 namespace AutoWeldSystem.Services.Production;
 
@@ -153,8 +154,65 @@ public sealed class ProductHistoryService : IProductHistoryService
         };
     }
 
+    /// <summary>
+    /// Reads the PLC product result without aggregating weld-point results.
+    /// Dedicated entity values take precedence; legacy JSON is used only when the new column is empty.
+    /// </summary>
     private static string ResolveProductResult(IReadOnlyList<BizWeldPointRecord> records)
-        => TestResultRules.ResolveProductResult(records.Select(record => record.TestResult));
+    {
+        var storedResult = records
+            .Select(record => record.ProductResult)
+            .FirstOrDefault(result => !string.IsNullOrWhiteSpace(result));
+        if (!string.IsNullOrWhiteSpace(storedResult))
+        {
+            return TestResultRules.Normalize(storedResult);
+        }
+
+        foreach (var record in records)
+        {
+            var legacyResult = ReadLegacyProductResult(record.RawDataJson);
+            if (!string.IsNullOrWhiteSpace(legacyResult))
+            {
+                return TestResultRules.Normalize(legacyResult);
+            }
+        }
+
+        return ProductionConstants.TestResults.Unknown;
+    }
+
+    /// <summary>
+    /// Reads product_result from one legacy RawDataJson object.
+    /// Invalid or unrelated JSON is treated as missing historical data.
+    /// </summary>
+    private static string? ReadLegacyProductResult(string? rawDataJson)
+    {
+        if (string.IsNullOrWhiteSpace(rawDataJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(rawDataJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Object
+                || !document.RootElement.TryGetProperty("product_result", out var value))
+            {
+                return null;
+            }
+
+            return value.ValueKind switch
+            {
+                JsonValueKind.String => value.GetString(),
+                JsonValueKind.Null => null,
+                JsonValueKind.Undefined => null,
+                _ => value.ToString()
+            };
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 
     private static string ResolveProductUploadStatus(IReadOnlyList<BizWeldPointRecord> records)
     {

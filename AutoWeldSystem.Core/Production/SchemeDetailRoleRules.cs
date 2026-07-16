@@ -215,7 +215,7 @@ public static class SchemeDetailRoleRules
     /// 判断角色是否在产品历史和历史数据页显示。
     /// </summary>
     public static bool ShouldShowHistoryRole(BizSchemeDetail detail, SchemeDetailValueRole role)
-        => IsCollectEnabled(detail, role) && IsSaveEnabled(detail, role);
+        => IsCollectEnabled(detail, role) && IsMesEnabled(detail, role);
 
     /// <summary>
     /// 判断角色是否输出到报表。
