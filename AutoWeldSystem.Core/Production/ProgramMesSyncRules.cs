@@ -7,7 +7,7 @@ namespace AutoWeldSystem.Core.Production;
 
 /// <summary>
 /// 判断程序保存是否影响 MES 上传字段。
-/// 本地辅助字段的变化不会触发 MES 更新，避免无意义地调用远端接口。
+/// 大多数本地辅助字段的变化不会触发 MES 更新；Description 会影响程序名称，因此属于 MES 同步字段。
 /// </summary>
 public static class ProgramMesSyncRules
 {
@@ -109,6 +109,7 @@ public static class ProgramMesSyncRules
             || !sameProgramContent
             || !Same(original.ProgramType, current.ProgramType)
             || !Same(original.ProductNum, current.ProductNum)
+            || !Same(original.Description, current.Description)
             || HasProgramFileChanged(original.ProgramFile, current.ProgramFile, current.ProgramContent, sameProgramContent)
             || !Same(original.Remark, current.Remark);
     }

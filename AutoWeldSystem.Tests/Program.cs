@@ -142,6 +142,7 @@ var tests = new (string Name, Action Run)[]
     ("Offline start allows empty part name and drawing number", OfflineStartAllowsEmptyPartNameAndDrawingNumber),
     ("Offline start requires work order and process number", OfflineStartRequiresWorkOrderAndProcessNumber),
     ("Program MES sync ignores local-only fields", ProgramMesSyncIgnoresLocalOnlyFields),
+    ("Program MES description changes trigger update", ProgramMesDescriptionChangesTriggerUpdate),
     ("Program MES sync detects remote fields", ProgramMesSyncDetectsRemoteFields),
     ("Program MES save action uses update for remote program content", ProgramMesSaveActionUsesUpdateForRemoteProgramContent),
     ("Program MES current save action separates pending actions", ProgramMesCurrentSaveActionSeparatesPendingActions),
@@ -151,6 +152,7 @@ var tests = new (string Name, Action Run)[]
     ("Program MES create payload clears file fields for empty content", ProgramMesCreatePayloadClearsFileFieldsForEmptyContent),
     ("Program content rules detect configured values", ProgramContentRulesDetectConfiguredValues),
     ("Program manage service clears automatic file for empty content", ProgramManageServiceClearsAutomaticFileForEmptyContent),
+    ("Program manage service removes renamed automatic file after write", ProgramManageServiceRemovesRenamedAutomaticFileAfterWrite),
     ("Program manage view hides product model", ProgramManageViewHidesProductModel),
     ("Program manage save ignores product model input", ProgramManageSaveIgnoresProductModelInput),
     ("Monitor report button rules follow MES and task state", MonitorReportButtonRulesFollowMesAndTaskState),
@@ -2807,7 +2809,6 @@ static void ProgramMesSyncIgnoresLocalOnlyFields()
     edited.RecipeCode = "8";
     edited.ProductModel = "M-2";
     edited.ComponentCode = "CX-2";
-    edited.Description = "只改本地备注";
     edited.SequenceNumber = 9;
     edited.ProgramFileName = "local-only.txt";
 
@@ -2835,6 +2836,46 @@ static void ProgramMesSyncIgnoresLocalOnlyFields()
         (string?)null,
         ProgramMesSyncRules.ResolveCurrentSaveAction(legacyFileOriginal, regeneratedFileEdited),
         "只改配方号导致本地程序文件重新生成时，本次保存不应产生 MES 同步动作。");
+}
+
+static void ProgramMesDescriptionChangesTriggerUpdate()
+{
+    var changes = new[]
+    {
+        (Original: string.Empty, Edited: "新增描述", Scenario: "新增"),
+        (Original: "原始描述", Edited: "修改后的描述", Scenario: "修改"),
+        (Original: "原始描述", Edited: string.Empty, Scenario: "删除")
+    };
+    foreach (var change in changes)
+    {
+        var original = BuildSyncedProgram();
+        original.Description = change.Original;
+
+        var edited = BuildSyncedProgram();
+        edited.Description = change.Edited;
+
+        AssertTrue(
+            ProgramMesSyncRules.HasMesUploadFieldChanges(original, edited),
+            $"Description {change.Scenario}时必须被识别为 MES 字段变化。");
+        AssertEqual(
+            AppConstants.ProgramSyncActions.Update,
+            ProgramMesSyncRules.ResolveCurrentSaveAction(original, edited),
+            $"Description {change.Scenario}时必须产生 Update 动作。");
+    }
+
+    var whitespaceOriginal = BuildSyncedProgram();
+    whitespaceOriginal.Description = "  相同描述  ";
+    var whitespaceEdited = BuildSyncedProgram();
+    whitespaceEdited.Description = "相同描述";
+    AssertFalse(
+        ProgramMesSyncRules.HasMesUploadFieldChanges(whitespaceOriginal, whitespaceEdited),
+        "Description 只有首尾空格变化时不应产生 MES 更新。");
+
+    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "ProgramManageService.cs"), Encoding.UTF8);
+    AssertTrue(serviceCode.Contains("descriptionChanged", StringComparison.Ordinal), "保存服务必须显式判断 inputDescription 是否发生变化。");
+    AssertTrue(
+        serviceCode.Contains("BuildProgramName(request.ProductNum, request.ComponentCode, request.SequenceNumber, request.LocalRemark)", StringComparison.Ordinal),
+        "Description 变化时必须使用当前字段重新生成标准程序名称。");
 }
 
 static void ProgramMesSyncDetectsRemoteFields()
@@ -2900,7 +2941,6 @@ static void ProgramMesCurrentSaveActionSeparatesPendingActions()
     localOnlyEdited.SyncStatus = AppConstants.ProgramSyncStatus.PendingUpdate;
     localOnlyEdited.ProductModel = "M-Local";
     localOnlyEdited.RecipeCode = "8";
-    localOnlyEdited.Description = "只改本地字段";
     localOnlyEdited.ProgramFileName = "P1.json";
 
     AssertEqual(
@@ -3004,6 +3044,7 @@ static void ProgramRemarkRulesDefaultByAction()
 static void ProgramMesWritePayloadOmitsRecipeCode()
 {
     var program = BuildSyncedProgram();
+    program.ProgramName = ProgramNameRules.BuildProgramName("D-1", "3", 1, "#3", "左侧组件");
     program.RecipeCode = "99";
     program.ProgramFileName = "1001_P1.JSON";
 
@@ -3015,7 +3056,7 @@ static void ProgramMesWritePayloadOmitsRecipeCode()
     AssertFalse(
         json.Contains(nameof(ProgramDataRes.RecipeCode), StringComparison.OrdinalIgnoreCase),
         "MES 新增/更新程序请求不应包含 RecipeCode。");
-    AssertEqual("P1", payload.ProgramName, "MES 写入请求仍应携带程序名称。");
+    AssertEqual("D-1_CX_3_DH_001_3_左侧组件", payload.ProgramName, "MES 写入请求应携带重建后的标准程序名称。");
     AssertEqual(AppConstants.ProgramRemarkActions.Update, payload.Remark, "MES 写入请求应携带解析后的备注。");
     AssertEqual(".json", payload.FileType, "MES 写入请求应携带程序文件扩展名字符串。");
     AssertEqual(JsonValueKind.String, fileType.ValueKind, "MES 写入请求中的 FileType 必须是字符串。");
@@ -3058,11 +3099,36 @@ static void ProgramManageServiceClearsAutomaticFileForEmptyContent()
     AssertTrue(applyRequestMethod.Contains("var previousProgramFilePath", StringComparison.Ordinal), "程序保存覆盖名称前必须保留旧自动文件路径。");
     AssertTrue(applyRequestMethod.Contains("ClearProgramContentFile(entity, settings, previousProgramFilePath)", StringComparison.Ordinal), "清空设定值时必须同时清理旧名称对应的自动文件。");
     var contentCheckIndex = applyRequestMethod.IndexOf("ProgramContentJsonRules.HasConfiguredValues(entity.ProgramContent)", StringComparison.Ordinal);
-    var writeFileIndex = applyRequestMethod.IndexOf("WriteProgramContentFile(entity, settings);", StringComparison.Ordinal);
+    var writeFileIndex = applyRequestMethod.IndexOf("WriteProgramContentFile(entity, settings, previousProgramFilePath);", StringComparison.Ordinal);
     AssertTrue(writeFileIndex > contentCheckIndex, "写入本地程序文件必须位于有效设定值判断的条件分支内。");
     AssertTrue(serviceCode.Contains("entity.ProgramFile = string.Empty;", StringComparison.Ordinal), "清理自动文件后必须清空程序文件内容。");
     AssertTrue(serviceCode.Contains("entity.ProgramFileName = string.Empty;", StringComparison.Ordinal), "清理自动文件后必须清空程序文件名。");
 }
+
+static void ProgramManageServiceRemovesRenamedAutomaticFileAfterWrite()
+{
+    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "ProgramManageService.cs"), Encoding.UTF8);
+    var applyRequestMethod = ExtractMethodText(
+        serviceCode,
+        "    private void ApplyRequest(BizProgram entity, SaveProgramReq request)",
+        "    private AppSettings CurrentSettings");
+    var writeMethod = ExtractMethodText(
+        serviceCode,
+        "    private static void WriteProgramContentFile(",
+        "    private static void ClearProgramContentFile(");
+
+    AssertTrue(
+        applyRequestMethod.Contains("WriteProgramContentFile(entity, settings, previousProgramFilePath);", StringComparison.Ordinal),
+        "写入改名后的自动程序文件时必须传入旧自动文件路径。");
+    AssertTrue(
+        writeMethod.Contains("!string.Equals(previousProgramFilePath, filePath, StringComparison.OrdinalIgnoreCase)", StringComparison.Ordinal),
+        "只有新旧自动文件路径不同时才允许删除旧文件。");
+
+    var writeIndex = writeMethod.IndexOf("File.WriteAllText(filePath", StringComparison.Ordinal);
+    var deleteIndex = writeMethod.IndexOf("DeleteProgramContentFile(previousProgramFilePath);", StringComparison.Ordinal);
+    AssertTrue(writeIndex >= 0 && deleteIndex > writeIndex, "必须先成功写入新文件，再删除旧名称对应的自动文件。");
+}
+
 static void ProgramManageViewHidesProductModel()
 {
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.cs"), Encoding.UTF8);

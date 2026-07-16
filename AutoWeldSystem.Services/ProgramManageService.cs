@@ -306,11 +306,17 @@ public sealed class ProgramManageService : IProgramManageService
     private void ApplyRequest(BizProgram entity, SaveProgramReq request)
     {
         var settings = CurrentSettings;
+        var previousDescription = entity.Description?.Trim() ?? string.Empty;
+        var currentDescription = request.LocalRemark.Trim();
+        var descriptionChanged = !string.Equals(
+            previousDescription,
+            currentDescription,
+            StringComparison.Ordinal);
         var previousProgramFilePath = entity.Id > 0
             ? ProgramFileRules.BuildFilePath(settings.ProgramFileDirectory, entity.RecipeCode, entity.ProgramName)
             : null;
 
-        entity.ProgramName = entity.Id == 0
+        entity.ProgramName = entity.Id == 0 || descriptionChanged
             ? BuildProgramName(request.ProductNum, request.ComponentCode, request.SequenceNumber, request.LocalRemark)
             : string.IsNullOrWhiteSpace(request.ProgramName)
                 ? entity.ProgramName
@@ -326,12 +332,12 @@ public sealed class ProgramManageService : IProgramManageService
 
         entity.ProgramType = string.IsNullOrWhiteSpace(request.ProgramType) ? "0" : request.ProgramType;
         entity.ProgramContent = string.IsNullOrWhiteSpace(request.ProgramContentJson) ? "{}" : request.ProgramContentJson.Trim();
-        entity.Description = request.LocalRemark;
+        entity.Description = currentDescription;
         entity.IsDeleted = false;
 
         if (ProgramContentJsonRules.HasConfiguredValues(entity.ProgramContent))
         {
-            WriteProgramContentFile(entity, settings);
+            WriteProgramContentFile(entity, settings, previousProgramFilePath);
         }
         else
         {
@@ -447,7 +453,13 @@ public sealed class ProgramManageService : IProgramManageService
             : throw new FileNotFoundException("程序文件不存在。", filePath);
     }
 
-    private static void WriteProgramContentFile(BizProgram entity, AppSettings settings)
+    /// <summary>
+    /// 写入当前名称对应的自动程序文件；新文件写入成功后，再清理改名前的旧自动文件。
+    /// </summary>
+    private static void WriteProgramContentFile(
+        BizProgram entity,
+        AppSettings settings,
+        string? previousProgramFilePath)
     {
         var json = string.IsNullOrWhiteSpace(entity.ProgramContent) ? "{}" : entity.ProgramContent.Trim();
         var filePath = ProgramFileRules.BuildFilePath(
@@ -461,6 +473,14 @@ public sealed class ProgramManageService : IProgramManageService
         }
 
         File.WriteAllText(filePath, json, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+        // previousProgramFilePath 由统一路径规则生成，只会清理系统自动目录中的旧名称文件。
+        if (!string.IsNullOrWhiteSpace(previousProgramFilePath)
+            && !string.Equals(previousProgramFilePath, filePath, StringComparison.OrdinalIgnoreCase))
+        {
+            DeleteProgramContentFile(previousProgramFilePath);
+        }
+
         entity.ProgramContent = json;
         entity.ProgramFile = ProgramFileRules.EncodeJsonToBase64(json);
         entity.ProgramFileName = Path.GetFileName(filePath);
