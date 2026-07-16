@@ -598,6 +598,23 @@ static void ProductionReportEndToEndMatrixGeneratesVisualArtifacts()
     // 常规回归始终在唯一临时目录运行，避免污染工作区或覆盖正在被人工检查的最终样例。
     var workingDirectory = Path.Combine(Path.GetTempPath(), "AutoWeldSystem.Tests", "Task5", Guid.NewGuid().ToString("N"));
     Directory.CreateDirectory(workingDirectory);
+
+    try
+    {
+        VerifyProductionReportEndToEndMatrix(workingDirectory);
+    }
+    finally
+    {
+        // 任何断言、工作簿写入或 artifact 发布失败都必须清理本次唯一临时目录。
+        DeleteDirectoryIfExists(workingDirectory);
+    }
+}
+
+/// <summary>
+/// 生成并验证任务 5 的三份跨层真实 XLSX；临时目录生命周期由外层测试统一管理。
+/// </summary>
+static void VerifyProductionReportEndToEndMatrix(string workingDirectory)
+{
     var singleSpotPath = Path.Combine(workingDirectory, "device-single-station-spot-welding.xlsx");
     var dualInspectionPath = Path.Combine(workingDirectory, "device-dual-station-inspection.xlsx");
     var centerCompletedPath = Path.Combine(workingDirectory, "center-server-completed.xlsx");
@@ -811,8 +828,6 @@ static void ProductionReportEndToEndMatrixGeneratesVisualArtifacts()
         PublishReportArtifact(dualInspectionPath, Path.Combine(artifactDirectory, Path.GetFileName(dualInspectionPath)));
         PublishReportArtifact(centerCompletedPath, Path.Combine(artifactDirectory, Path.GetFileName(centerCompletedPath)));
     }
-
-    DeleteDirectoryIfExists(workingDirectory);
 }
 
 static void ProductionReportRulesReloadLatestPersistedTask()
