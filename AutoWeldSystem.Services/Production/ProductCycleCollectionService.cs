@@ -98,7 +98,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             throw;
         }
 
-        GenerateReportAfterProductSaved(task, normalizedStationNo, header.ProductNo, records.Count);
+        RefreshReportAfterProductSaved(task, normalizedStationNo, header.ProductNo, records.Count);
 
         _productionLogService.Write(
             "ProductDataSaved",
@@ -117,10 +117,11 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
     }
 
     /// <summary>
-    /// 每完成一件产品就刷新一次 XLSX 报表，避免等到完工上报时才统一生成。
+    /// 每完成一件产品就增量刷新一次 XLSX 报表，避免等到完工上报时才统一生成。
+    /// 报表服务会根据 TaskId 重读持久化任务，完工时同一入口会覆盖为最终统计和结束时间。
     /// 报表生成失败不应阻断 PLC 采集反馈，因此这里只记录日志。
     /// </summary>
-    private void GenerateReportAfterProductSaved(BizWeldTask task, int stationNo, string productNo, int touchCount)
+    private void RefreshReportAfterProductSaved(BizWeldTask task, int stationNo, string productNo, int touchCount)
     {
         try
         {

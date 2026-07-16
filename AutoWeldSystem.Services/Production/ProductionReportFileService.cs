@@ -1,3 +1,4 @@
+using AutoWeldSystem.Core.Center;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
@@ -22,13 +23,6 @@ public class ProductionReportFileService : IProductionReportFileService
     private const string ColumnProductResult = "product_result";
     private const string ColumnTouchNo = "touch_no";
     private const string ColumnTouchResult = "touch_result";
-    private const string ColumnWorkOrder = "work_order";
-    private const string ColumnBatch = "batch";
-    private const string ColumnQuantity = "quantity";
-    private const string ColumnPartName = "part_name";
-    private const string ColumnProcessNo = "process_no";
-    private const string ColumnOperator = "operator";
-    private const string ColumnRecordTime = "record_time";
     private const string ReportRoleActual = "actual";
     private const string ReportRoleUpper = "upper";
     private const string ReportRoleLower = "lower";
@@ -38,14 +32,9 @@ public class ProductionReportFileService : IProductionReportFileService
     private const string HeaderProductResult = "产品结果";
     private const string HeaderTouchNo = "焊点编号";
     private const string HeaderTouchResult = "焊点结果";
-    private const string HeaderWorkOrder = "工号";
-    private const string HeaderBatch = "批次";
-    private const string HeaderQuantity = "数量";
-    private const string HeaderPartName = "零部件名称";
-    private const string HeaderProcessNo = "工序号";
-    private const string HeaderOperator = "操作人员";
-    private const string HeaderRecordTime = "日期";
     private const string ReportFormat = "XLSX";
+    private const int DetailHeaderRow = CenterProductReportFormat.DetailHeaderRow;
+    private const int DetailFirstDataRow = DetailHeaderRow + 1;
 
     private readonly SqlSugarDbContext _dbContext;
     private readonly IAppSettingsService _settingsService;
@@ -70,9 +59,13 @@ public class ProductionReportFileService : IProductionReportFileService
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
-            var report = GetOrCreateReportRecord(task);
+            // 生成报表前必须重读任务，确保完工后持久化的 EndTime 和统计进入最终文件。
+            var latestTask = task.Id > 0
+                ? _dbContext.Db.Queryable<BizWeldTask>().InSingle(task.Id) ?? task
+                : task;
+            var report = GetOrCreateReportRecord(latestTask);
             var records = _dbContext.Db.Queryable<BizWeldPointRecord>()
-                .Where(record => record.TaskId == task.Id)
+                .Where(record => record.TaskId == latestTask.Id)
                 .ToList()
                 .OrderBy(record => record.ProductNo)
                 .ThenBy(record => record.StationNo)
@@ -80,7 +73,7 @@ public class ProductionReportFileService : IProductionReportFileService
                 .ToList();
 
             Directory.CreateDirectory(Path.GetDirectoryName(report.FilePath)!);
-            WriteXlsx(report.FilePath, BuildReportSchema(task), records, task);
+            WriteXlsx(report.FilePath, BuildReportSchema(latestTask), records, latestTask);
 
             report.FileFormat = ReportFormat;
             report.UploadStatus = ProductionConstants.UploadStatuses.Pending;
@@ -169,63 +162,196 @@ public class ProductionReportFileService : IProductionReportFileService
         BizWeldTask task)
     {
         using var workbook = new XLWorkbook();
-        var worksheet = workbook.Worksheets.Add("生产报表");
-        WriteHeaderRow(worksheet, schema.Columns);
-        WriteDataRows(worksheet, schema, records, task);
-        MergeRepeatedProductFields(worksheet, schema.Columns, records);
-        ApplyWorksheetStyle(worksheet, schema.Columns.Count, records.Count);
+        var worksheet = workbook.Worksheets.Add(CenterProductReportFormat.WorksheetName);
+        var settings = CurrentSettings;
+        var detailColumns = ResolveDetailColumns(schema.Columns, settings.EnableDualStation);
+        var templateColumnCount = Math.Max(CenterProductReportFormat.TemplateMinimumColumnCount, detailColumns.Count);
+        var stationNames = StationDisplayNameRules.NormalizeForLoad(
+            settings.EnableDualStation,
+            settings.Station1DisplayName,
+            settings.Station2DisplayName);
+
+        WriteTemplateHeader(worksheet, task, templateColumnCount);
+        WriteDetailHeader(worksheet, detailColumns);
+        WriteDataRows(worksheet, schema, detailColumns, records, stationNames);
+        MergeRepeatedProductFields(worksheet, detailColumns, records);
+        ApplyWorksheetStyle(worksheet, detailColumns.Count, records.Count, templateColumnCount);
         workbook.SaveAs(filePath);
     }
 
-    private static void WriteHeaderRow(IXLWorksheet worksheet, IReadOnlyList<ReportColumn> columns)
+    /// <summary>
+    /// 写入客户模板的多行任务信息区。最后一组值会扩展到实际报表末列。
+    /// </summary>
+    private static void WriteTemplateHeader(IXLWorksheet worksheet, BizWeldTask task, int lastColumn)
+    {
+        WriteHeaderField(worksheet, 1, 1, 2, 2, "产品工号：", task.ProductNum);
+        WriteHeaderField(worksheet, 1, 3, 4, 4, "图号：", task.DrawingNo);
+        WriteHeaderField(worksheet, 1, 5, 6, 6, "批次：", task.Batch);
+        WriteHeaderField(worksheet, 1, 7, 8, lastColumn, "流转卡号：", task.SN);
+
+        WriteHeaderField(worksheet, 3, 1, 2, 3, "部件规格：", task.Spec);
+        WriteHeaderField(worksheet, 3, 4, 5, 6, "型号：", task.ProductModel);
+        WriteHeaderField(worksheet, 3, 7, 8, lastColumn, "工序：", task.ProcessNo);
+
+        WriteHeaderField(worksheet, 5, 1, 2, 3, "生产数量：", task.StartAmount);
+        WriteHeaderField(worksheet, 5, 4, 5, 6, "合格数量：", task.QualifiedQty);
+        WriteHeaderField(worksheet, 5, 7, 8, lastColumn, "备注：", string.Empty);
+
+        WriteHeaderField(worksheet, 7, 1, 2, 3, "开始时间：", task.StartTime, CenterProductReportFormat.DateTimeFormat);
+        WriteHeaderField(worksheet, 7, 4, 5, 6, "结束时间：", task.EndTime, CenterProductReportFormat.DateTimeFormat);
+        WriteHeaderField(worksheet, 7, 7, 8, lastColumn, "操作人员：", task.UserNumber ?? string.Empty);
+    }
+
+    /// <summary>
+    /// 写入一个标签和值区域；值区域使用合并单元格保持模板布局。
+    /// </summary>
+    private static void WriteHeaderField(
+        IXLWorksheet worksheet,
+        int row,
+        int labelColumn,
+        int valueStartColumn,
+        int valueEndColumn,
+        string label,
+        object? value,
+        string? numberFormat = null)
+    {
+        worksheet.Cell(row, labelColumn).Value = label;
+        var valueRange = worksheet.Range(row, valueStartColumn, row, Math.Max(valueStartColumn, valueEndColumn));
+        if (valueRange.ColumnCount() > 1)
+        {
+            valueRange.Merge();
+        }
+
+        var valueCell = valueRange.FirstCell();
+        if (value is DateTime dateTime)
+        {
+            valueCell.Value = dateTime;
+        }
+        else if (value is int integer)
+        {
+            valueCell.Value = integer;
+        }
+        else if (value is string text)
+        {
+            // 空字符串不能写入共享字符串表，否则部分解析器会错误复用前一个数值。
+            if (!string.IsNullOrEmpty(text))
+            {
+                valueCell.Value = text;
+            }
+        }
+        else if (value is not null)
+        {
+            valueCell.Value = value.ToString();
+        }
+
+        if (!string.IsNullOrWhiteSpace(numberFormat))
+        {
+            valueRange.Style.DateFormat.Format = numberFormat;
+        }
+    }
+
+    /// <summary>
+    /// 写入第九行明细表头。
+    /// </summary>
+    private static void WriteDetailHeader(IXLWorksheet worksheet, IReadOnlyList<ReportColumn> columns)
     {
         for (var columnIndex = 0; columnIndex < columns.Count; columnIndex++)
         {
-            worksheet.Cell(1, columnIndex + 1).Value = columns[columnIndex].Title;
+            worksheet.Cell(DetailHeaderRow, columnIndex + 1).Value = columns[columnIndex].Title;
         }
     }
 
     private void WriteDataRows(
         IXLWorksheet worksheet,
         ReportSchema schema,
+        IReadOnlyList<ReportColumn> detailColumns,
         IReadOnlyList<BizWeldPointRecord> records,
-        BizWeldTask task)
+        StationDisplayNames stationNames)
     {
         var productContexts = BuildProductContexts(records);
         for (var rowIndex = 0; rowIndex < records.Count; rowIndex++)
         {
             var record = records[rowIndex];
-            var row = BuildRow(record, task, ResolveProductContext(record, productContexts), schema);
-            for (var columnIndex = 0; columnIndex < schema.Columns.Count; columnIndex++)
+            var row = BuildRow(record, ResolveProductContext(record, productContexts), schema, stationNames);
+            for (var columnIndex = 0; columnIndex < detailColumns.Count; columnIndex++)
             {
-                var column = schema.Columns[columnIndex];
-                worksheet.Cell(rowIndex + 2, columnIndex + 1).Value = row.TryGetValue(column.Key, out var value)
+                var column = detailColumns[columnIndex];
+                worksheet.Cell(rowIndex + DetailFirstDataRow, columnIndex + 1).Value = row.TryGetValue(column.Key, out var value)
                     ? value
                     : string.Empty;
             }
         }
     }
 
-    private static void ApplyWorksheetStyle(IXLWorksheet worksheet, int columnCount, int dataRowCount)
+    private static void ApplyWorksheetStyle(
+        IXLWorksheet worksheet,
+        int detailColumnCount,
+        int dataRowCount,
+        int templateColumnCount)
     {
-        if (columnCount <= 0)
+        var templateRange = worksheet.Range(1, 1, 7, templateColumnCount);
+        templateRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        templateRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
+        templateRange.Style.Alignment.WrapText = false;
+        foreach (var row in new[] { 1, 3, 5, 7 })
+        {
+            worksheet.Cell(row, 1).Style.Font.Bold = true;
+            worksheet.Cell(row, 4).Style.Font.Bold = true;
+            worksheet.Cell(row, 7).Style.Font.Bold = true;
+        }
+        if (detailColumnCount <= 0)
         {
             return;
         }
 
-        var lastRow = Math.Max(1, dataRowCount + 1);
-        var usedRange = worksheet.Range(1, 1, lastRow, columnCount);
+        var lastRow = Math.Max(DetailHeaderRow, dataRowCount + DetailHeaderRow);
+        var usedRange = worksheet.Range(DetailHeaderRow, 1, lastRow, detailColumnCount);
         usedRange.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
         usedRange.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
         usedRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
         usedRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
         usedRange.Style.Alignment.WrapText = true;
 
-        var headerRange = worksheet.Range(1, 1, 1, columnCount);
+        var headerRange = worksheet.Range(DetailHeaderRow, 1, DetailHeaderRow, detailColumnCount);
         headerRange.Style.Font.Bold = true;
-        headerRange.Style.Fill.BackgroundColor = XLColor.FromHtml("#EAF2FF");
-        worksheet.SheetView.FreezeRows(1);
-        worksheet.Columns(1, columnCount).AdjustToContents();
+        headerRange.Style.Fill.BackgroundColor = XLColor.FromHtml("#D9E2F3");
+        worksheet.SheetView.FreezeRows(DetailHeaderRow);
+        worksheet.Columns(1, detailColumnCount).AdjustToContents();
+        ApplyTemplateDimensions(worksheet, templateColumnCount);
+    }
+
+    /// <summary>
+    /// 固定客户模板的标签和值列宽，避免中文标签被压成纵向多行。
+    /// 动态列超过九列时仅为新增列设置可读的最小宽度。
+    /// </summary>
+    private static void ApplyTemplateDimensions(IXLWorksheet worksheet, int templateColumnCount)
+    {
+        var minimumWidths = new Dictionary<int, double>
+        {
+            [1] = 14d,
+            [2] = 16d,
+            [3] = 12d,
+            [4] = 16d,
+            [5] = 12d,
+            [6] = 16d,
+            [7] = 14d,
+            [8] = 16d,
+            [9] = 16d
+        };
+
+        for (var columnIndex = 1; columnIndex <= templateColumnCount; columnIndex++)
+        {
+            var minimumWidth = minimumWidths.TryGetValue(columnIndex, out var configuredWidth)
+                ? configuredWidth
+                : 12d;
+            var column = worksheet.Column(columnIndex);
+            column.Width = Math.Max(column.Width, minimumWidth);
+        }
+
+        foreach (var rowIndex in new[] { 1, 3, 5, 7, DetailHeaderRow })
+        {
+            worksheet.Row(rowIndex).Height = 22d;
+        }
     }
 
     private static void MergeRepeatedProductFields(
@@ -244,20 +370,20 @@ public class ProductionReportFileService : IProductionReportFileService
             .Select(item => item.Index)
             .ToArray();
 
-        var groupStartRow = 2;
+        var groupStartRow = DetailFirstDataRow;
         var currentKey = BuildProductMergeKey(records[0]);
         for (var recordIndex = 1; recordIndex < records.Count; recordIndex++)
         {
             var key = BuildProductMergeKey(records[recordIndex]);
             if (!string.Equals(currentKey, key, StringComparison.OrdinalIgnoreCase))
             {
-                MergeProductColumns(worksheet, groupStartRow, recordIndex + 1, mergeColumns);
-                groupStartRow = recordIndex + 2;
+                MergeProductColumns(worksheet, groupStartRow, recordIndex + DetailHeaderRow, mergeColumns);
+                groupStartRow = recordIndex + DetailFirstDataRow;
                 currentKey = key;
             }
         }
 
-        MergeProductColumns(worksheet, groupStartRow, records.Count + 1, mergeColumns);
+        MergeProductColumns(worksheet, groupStartRow, records.Count + DetailHeaderRow, mergeColumns);
     }
 
     private static void MergeProductColumns(IXLWorksheet worksheet, int startRow, int endRow, IReadOnlyList<int> columns)
@@ -295,8 +421,7 @@ public class ProductionReportFileService : IProductionReportFileService
             .ToDictionary(
                 group => group.Key,
                 group => new ProductReportContext(
-                    ResolveProductResult(group),
-                    group.Max(record => record.Ts)),
+                    ResolveProductResult(group)),
                 StringComparer.OrdinalIgnoreCase);
     }
 
@@ -306,36 +431,60 @@ public class ProductionReportFileService : IProductionReportFileService
     {
         return contexts.TryGetValue(BuildProductMergeKey(record), out var context)
             ? context
-            : new ProductReportContext(record.TestResult, record.Ts);
+            : new ProductReportContext(ResolveProductResult([record]));
     }
 
+    /// <summary>
+    /// 产品结果只读取 PLC 产品级字段；旧记录为空时回退 RawDataJson.product_result。
+    /// 禁止根据焊点 TestResult 聚合推算产品结果。
+    /// </summary>
     private static string ResolveProductResult(IEnumerable<BizWeldPointRecord> records)
-        => TestResultRules.ResolveProductResult(records.Select(record => record.TestResult));
+    {
+        var recordList = records.ToList();
+        var persistedResult = recordList
+            .Select(record => record.ProductResult)
+            .FirstOrDefault(result => !string.IsNullOrWhiteSpace(result));
+        if (!string.IsNullOrWhiteSpace(persistedResult))
+        {
+            return TestResultRules.Normalize(persistedResult);
+        }
+
+        foreach (var record in recordList)
+        {
+            var rawProductResult = GetRawValue(ParseRawData(record.RawDataJson), ColumnProductResult);
+            if (!string.IsNullOrWhiteSpace(rawProductResult))
+            {
+                return TestResultRules.Normalize(rawProductResult);
+            }
+        }
+
+        return ProductionConstants.TestResults.Unknown;
+    }
 
     private Dictionary<string, string> BuildRow(
         BizWeldPointRecord record,
-        BizWeldTask task,
         ProductReportContext productContext,
-        ReportSchema schema)
+        ReportSchema schema,
+        StationDisplayNames stationNames)
     {
         var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            [ColumnStationNo] = record.StationNo.ToString(),
+            [ColumnStationNo] = ResolveStationDisplayName(record.StationNo, stationNames),
             [ColumnProductNo] = record.ProductNo,
             [ColumnProductResult] = productContext.ProductResult,
             [ColumnTouchNo] = string.IsNullOrWhiteSpace(record.TouchNo) ? record.SequenceNo.ToString() : record.TouchNo,
-            [ColumnTouchResult] = record.TestResult,
-            [ColumnWorkOrder] = task.SN,
-            [ColumnBatch] = task.Batch,
-            [ColumnQuantity] = ResolveReportQuantity(task).ToString(),
-            [ColumnPartName] = BuildPartName(task),
-            [ColumnProcessNo] = task.ProcessNo,
-            [ColumnOperator] = record.OperatorNo ?? task.EndOperatorNumber ?? task.UserNumber ?? string.Empty,
-            [ColumnRecordTime] = productContext.RecordTime.ToString("yyyy-MM-dd HH:mm:ss")
+            [ColumnTouchResult] = record.TestResult
         };
 
         AddDynamicValues(row, record, schema);
         return row;
+    }
+
+    private static string ResolveStationDisplayName(int stationNo, StationDisplayNames stationNames)
+    {
+        return stationNo == 2
+            ? stationNames.Station2
+            : stationNames.Station1;
     }
 
     private void AddDynamicValues(Dictionary<string, string> row, BizWeldPointRecord record, ReportSchema schema)
@@ -466,20 +615,26 @@ public class ProductionReportFileService : IProductionReportFileService
     {
         yield return new ReportColumn(ColumnStationNo, HeaderStationNo, MergeByProduct: true);
         yield return new ReportColumn(ColumnProductNo, HeaderProductNo, MergeByProduct: true);
-        yield return new ReportColumn(ColumnProductResult, HeaderProductResult, MergeByProduct: true);
         yield return new ReportColumn(ColumnTouchNo, displayOptions.PointNoHeader, MergeByProduct: false);
         yield return new ReportColumn(ColumnTouchResult, displayOptions.PointResultHeader, MergeByProduct: false);
     }
 
     private static IEnumerable<ReportColumn> BuildTrailingColumns()
     {
-        yield return new ReportColumn(ColumnWorkOrder, HeaderWorkOrder, MergeByProduct: true);
-        yield return new ReportColumn(ColumnBatch, HeaderBatch, MergeByProduct: true);
-        yield return new ReportColumn(ColumnQuantity, HeaderQuantity, MergeByProduct: true);
-        yield return new ReportColumn(ColumnPartName, HeaderPartName, MergeByProduct: true);
-        yield return new ReportColumn(ColumnProcessNo, HeaderProcessNo, MergeByProduct: true);
-        yield return new ReportColumn(ColumnOperator, HeaderOperator, MergeByProduct: true);
-        yield return new ReportColumn(ColumnRecordTime, HeaderRecordTime, MergeByProduct: true);
+        yield return new ReportColumn(ColumnProductResult, HeaderProductResult, MergeByProduct: true);
+    }
+
+    /// <summary>
+    /// 单工位模式完全移除工位列；双工位模式保留并使用配置显示名称。
+    /// </summary>
+    private static IReadOnlyList<ReportColumn> ResolveDetailColumns(
+        IReadOnlyList<ReportColumn> columns,
+        bool enableDualStation)
+    {
+        return columns
+            .Where(column => enableDualStation
+                || !string.Equals(column.Key, ColumnStationNo, StringComparison.OrdinalIgnoreCase))
+            .ToList();
     }
 
     private static IEnumerable<ReportColumn> BuildItemColumns(SchemeReportItem schemeItem)
@@ -605,18 +760,6 @@ public class ProductionReportFileService : IProductionReportFileService
             sequenceNo.ToString("D3")) + ".xlsx";
     }
 
-    private static string BuildPartName(BizWeldTask task)
-    {
-        return task.ProductName;
-    }
-
-    private static int ResolveReportQuantity(BizWeldTask task)
-    {
-        // StartAmount is captured from the selected MES process StartAmount at start time.
-        // It is the production quantity shown in the work-order process list.
-        return task.StartAmount > 0 ? task.StartAmount : task.ActualQty;
-    }
-
     private static string SanitizePathPart(string? value)
     {
         var normalized = string.IsNullOrWhiteSpace(value) ? "NA" : value.Trim();
@@ -628,7 +771,7 @@ public class ProductionReportFileService : IProductionReportFileService
         return SchemeDetailRoleRules.AllRoles.Any(role => SchemeDetailRoleRules.ShouldWriteReportRole(detail, role));
     }
 
-    private sealed record ProductReportContext(string ProductResult, DateTime RecordTime);
+    private sealed record ProductReportContext(string ProductResult);
 
     private sealed record ReportSchema(
         IReadOnlyList<ReportColumn> Columns,

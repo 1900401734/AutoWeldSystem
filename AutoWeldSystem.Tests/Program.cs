@@ -22,6 +22,7 @@ using AutoWeldSystem.Core.ViewModels;
 using AutoWeldSystem.Services.Mes;
 using AutoWeldSystem.Services.Log;
 using AutoWeldSystem.Services.Production;
+using ClosedXML.Excel;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -37,6 +38,9 @@ var tests = new (string Name, Action Run)[]
     ("Product cycle snapshots persist PLC product results", ProductCycleSnapshotsPersistPlcProductResults),
     ("Missing point results do not fall back to product results", MissingPointResultDoesNotFallBackToProductResult),
     ("Stored PLC product results drive history without point aggregation", StoredPlcProductResultsDriveHistoryWithoutPointAggregation),
+    ("Production report writes customer template for single station", ProductionReportWritesCustomerTemplateForSingleStation),
+    ("Production report writes configured dual station and product merges", ProductionReportWritesConfiguredDualStationAndProductMerges),
+    ("Production report completion flow persists before final generation", ProductionReportCompletionFlowPersistsBeforeFinalGeneration),
     ("Unavailable roles are cleared before save", UnavailableRolesAreCleared),
     ("Running task with changed PLC recipe requests reconciliation", RunningTaskWithChangedPlcRecipeRequestsReconciliation),
     ("Finished PLC work-order status skips recipe reconciliation", FinishedWorkOrderStatusSkipsRecipeReconciliation),
@@ -397,6 +401,192 @@ static void StoredPlcProductResultsDriveHistoryWithoutPointAggregation()
         2,
         CountOccurrences(dataHistoryCode, "ProductResult = ResolveProductResult(record),"),
         "焊接参数行和采集记录行都必须填充独立的 ProductResult。");
+}
+
+static void ProductionReportWritesCustomerTemplateForSingleStation()
+{
+    var startTime = new DateTime(2026, 7, 16, 8, 9, 10, DateTimeKind.Local);
+    var task = BuildReportTask(startTime, endTime: null);
+    var records = new[]
+    {
+        BuildReportPoint(task.Id, stationNo: 1, productNo: "P001", sequenceNo: 1, pointResult: ProductionConstants.TestResults.Ng),
+        BuildReportPoint(task.Id, stationNo: 1, productNo: "P001", sequenceNo: 2, pointResult: ProductionConstants.TestResults.Ok)
+    };
+    records[0].ProductResult = null;
+    records[1].ProductResult = ProductionConstants.TestResults.Ok;
+
+    var filePath = GenerateReportWorkbook(
+        new AppSettings { EnableDualStation = false },
+        task,
+        records);
+
+    try
+    {
+        using var workbook = new XLWorkbook(filePath);
+        var worksheet = workbook.Worksheet("生产报表");
+
+        AssertEqual("产品工号：", worksheet.Cell("A1").GetString(), "模板第一行必须从产品工号开始。");
+        AssertEqual(task.ProductNum, worksheet.Cell("B1").GetString(), "产品工号必须来自持久化任务 ProductNum。");
+        AssertEqual("图号：", worksheet.Cell("C1").GetString(), "模板第一行必须包含图号。");
+        AssertEqual(task.DrawingNo, worksheet.Cell("D1").GetString(), "图号必须来自持久化任务 DrawingNo。");
+        AssertEqual(task.Batch, worksheet.Cell("F1").GetString(), "批次必须来自持久化任务 Batch。");
+        AssertEqual(task.SN, worksheet.Cell("H1").GetString(), "流转卡号必须来自持久化任务 SN。");
+        AssertEqual(task.Spec, worksheet.Cell("B3").GetString(), "部件规格必须来自持久化任务 Spec。");
+        AssertEqual(task.ProductModel, worksheet.Cell("E3").GetString(), "型号必须来自持久化任务 ProductModel。");
+        AssertEqual(task.ProcessNo, worksheet.Cell("H3").GetString(), "工序必须来自持久化任务 ProcessNo。");
+        AssertEqual(task.StartAmount, worksheet.Cell("B5").GetValue<int>(), "生产数量必须只取 StartAmount。");
+        AssertEqual(task.QualifiedQty, worksheet.Cell("E5").GetValue<int>(), "合格数量必须取 QualifiedQty。");
+        AssertEqual(XLDataType.Blank, worksheet.Cell("H5").DataType, "备注值单元格必须是真正的空白，不得写入空字符串共享项。");
+        AssertEqual(startTime, worksheet.Cell("B7").GetDateTime(), "开始时间必须与持久化 StartTime 完全一致。");
+        AssertEqual("yyyy-MM-dd HH:mm:ss", worksheet.Cell("B7").Style.DateFormat.Format, "开始时间必须使用客户模板时间格式。");
+        AssertTrue(worksheet.Cell("E7").IsEmpty(), "未完工任务的结束时间必须为空。");
+        AssertEqual(task.UserNumber, worksheet.Cell("H7").GetString(), "操作人员必须只取开工任务 UserNumber。");
+
+        var detailHeaders = ReadHeaderRow(worksheet, rowNumber: 9);
+        AssertSequenceEqual(
+            new[] { "产品编号", "拍照编号", "拍照结果", "峰值电流", "产品结果" },
+            detailHeaders,
+            "单工位报表必须完全省略工位列，并保留固定公共列与 ReportEnable 动态列。");
+        AssertFalse(detailHeaders.Contains("峰值电流上限"), "仅 SaveEnable 的动态角色不得进入设备报表。");
+        AssertFalse(detailHeaders.Contains("峰值电流下限"), "仅 MesEnable 的动态角色不得进入设备报表。");
+        AssertMerged(worksheet, "H1:I1", "固定模板必须在 A:I 内容纳四组首行标签和值。");
+        AssertFalse(
+            worksheet.MergedRanges.Any(range => range.RangeAddress.LastAddress.ColumnNumber > 9),
+            "固定公共字段未超过九列时不得把模板扩展到 J 列以后。");
+        AssertTrue(
+            worksheet.RangeUsed(XLCellsUsedOptions.All)!.RangeAddress.LastAddress.ColumnNumber <= 9,
+            "固定公共字段未超过九列时不得通过样式创建隐藏的 J 列。");
+        AssertFalse(worksheet.Cell("A1").Style.Alignment.WrapText, "客户模板中文标签必须保持单行显示。");
+        AssertTrue(worksheet.Column("A").Width >= 12d, "客户模板标签列必须足够宽，避免中文纵向堆叠。");
+        AssertTrue(worksheet.Row(1).Height >= 20d, "客户模板信息行必须提供清晰的单行高度。");
+        AssertEqual(ProductionConstants.TestResults.Ok, worksheet.Cell("E10").GetString(), "产品结果必须读取 PLC ProductResult，不得聚合焊点结果。");
+        AssertEqual(ProductionConstants.TestResults.Ng, worksheet.Cell("C10").GetString(), "点/拍照结果必须直接读取 TestResult。");
+        AssertMerged(worksheet, "A10:A11", "同一产品的产品编号必须合并。");
+        AssertMerged(worksheet, "E10:E11", "同一产品的产品结果必须合并。");
+    }
+    finally
+    {
+        DeleteReportFixture(filePath);
+    }
+}
+
+static void ProductionReportWritesConfiguredDualStationAndProductMerges()
+{
+    var startTime = new DateTime(2026, 7, 16, 8, 9, 10, DateTimeKind.Local);
+    var endTime = new DateTime(2026, 7, 16, 10, 11, 12, DateTimeKind.Local);
+    var task = BuildReportTask(startTime, endTime);
+    var records = new[]
+    {
+        BuildReportPoint(task.Id, stationNo: 1, productNo: "P001", sequenceNo: 1, pointResult: ProductionConstants.TestResults.Ok),
+        BuildReportPoint(task.Id, stationNo: 1, productNo: "P001", sequenceNo: 2, pointResult: ProductionConstants.TestResults.Ok),
+        BuildReportPoint(task.Id, stationNo: 2, productNo: "P001", sequenceNo: 3, pointResult: ProductionConstants.TestResults.Ok),
+        BuildReportPoint(task.Id, stationNo: 2, productNo: "P001", sequenceNo: 4, pointResult: ProductionConstants.TestResults.Ok)
+    };
+    foreach (var record in records)
+    {
+        record.ProductResult = record.StationNo == 1
+            ? ProductionConstants.TestResults.Ng
+            : ProductionConstants.TestResults.Ok;
+    }
+
+    var filePath = GenerateReportWorkbook(
+        new AppSettings
+        {
+            EnableDualStation = true,
+            Station1DisplayName = "  左工位  ",
+            Station2DisplayName = "右工位"
+        },
+        task,
+        records);
+
+    try
+    {
+        using var workbook = new XLWorkbook(filePath);
+        var worksheet = workbook.Worksheet("生产报表");
+
+        AssertEqual("工位", worksheet.Cell("A9").GetString(), "双工位报表必须生成工位列。");
+        AssertEqual("左工位", worksheet.Cell("A10").GetString(), "工位 1 必须使用规范化后的配置名称。");
+        AssertEqual("右工位", worksheet.Cell("A12").GetString(), "工位 2 必须使用规范化后的配置名称。");
+        AssertEqual(endTime, worksheet.Cell("E7").GetDateTime(), "结束时间必须与持久化 EndTime 完全一致。");
+        AssertEqual("yyyy-MM-dd HH:mm:ss", worksheet.Cell("E7").Style.DateFormat.Format, "结束时间必须使用客户模板时间格式。");
+        AssertMerged(worksheet, "A10:A11", "工位 1 公共字段必须按工位和产品编号合并。");
+        AssertMerged(worksheet, "B10:B11", "工位 1 产品编号必须合并。");
+        AssertMerged(worksheet, "F10:F11", "工位 1 产品结果必须合并。");
+        AssertMerged(worksheet, "A12:A13", "工位 2 公共字段必须形成独立合并范围。");
+        AssertMerged(worksheet, "B12:B13", "相同产品编号跨工位不得合并成一个范围。");
+        AssertMerged(worksheet, "F12:F13", "不同工位的产品结果必须独立合并。");
+    }
+    finally
+    {
+        DeleteReportFixture(filePath);
+    }
+}
+
+static void ProductionReportCompletionFlowPersistsBeforeFinalGeneration()
+{
+    var reportServiceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductionReportFileService.cs"),
+        Encoding.UTF8);
+    var generateMethod = ExtractMethodText(
+        reportServiceCode,
+        "public BizProductionReportFile GenerateXlsxReport(BizWeldTask task)",
+        "private BizProductionReportFile GetOrCreateReportRecord");
+    AssertTrue(generateMethod.Contains("InSingle(task.Id)", StringComparison.Ordinal), "GenerateXlsxReport 内必须按 TaskId 重读最新任务。");
+    AssertFalse(
+        reportServiceCode.Contains("TestResultRules.ResolveProductResult(records.Select", StringComparison.Ordinal),
+        "设备报表产品结果禁止调用焊点聚合计算。");
+
+    var weldTaskServiceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "WeldTaskService.cs"),
+        Encoding.UTF8);
+    var finishMethod = ExtractMethodText(
+        weldTaskServiceCode,
+        "public async Task<BizWeldTask> FinishAsync(",
+        "public async Task<BizWeldTask> FinishLocalAsync(");
+    AssertTrue(finishMethod.Contains("var finishTime = DateTime.Now;", StringComparison.Ordinal), "在线完工必须只捕获一次结束时间。");
+    AssertTrue(finishMethod.Contains("EndTs = finishTime.ToString(\"yyyy-MM-dd HH:mm:ss\")", StringComparison.Ordinal), "MES 完工请求必须使用同一个结束时间。");
+    AssertTrue(finishMethod.Contains("task.EndTime = finishTime;", StringComparison.Ordinal), "持久化 EndTime 必须使用同一个结束时间。");
+    AssertSourceOrder(
+        finishMethod,
+        "_dbContext.Db.Updateable(task).ExecuteCommand();",
+        "EnqueueFinishUploadTasks(task, settings.UploadMode)",
+        "在线完工必须先持久化 EndTime 和统计，再生成最终报表并安排上传。");
+
+    var finishLocalMethod = ExtractMethodText(
+        weldTaskServiceCode,
+        "public async Task<BizWeldTask> FinishLocalAsync(",
+        "public Task RetryPendingUploadsAsync(");
+    AssertTrue(finishLocalMethod.Contains("var finishTime = DateTime.Now;", StringComparison.Ordinal), "离线完工必须只捕获一次结束时间。");
+    AssertTrue(finishLocalMethod.Contains("task.EndTime = finishTime;", StringComparison.Ordinal), "离线持久化 EndTime 必须使用捕获的结束时间。");
+    AssertSourceOrder(
+        finishLocalMethod,
+        "_dbContext.Db.Updateable(task).ExecuteCommand();",
+        "EnqueueFinishUploadTasks(task, CurrentSettings.UploadMode)",
+        "离线完工必须先持久化 EndTime 和统计，再生成最终报表并安排上传。");
+    var buildEndRequestMethod = ExtractMethodText(
+        weldTaskServiceCode,
+        "private static ExperimentEndReq BuildEndRequest(",
+        "private static ReportExperimentStatusReq BuildStatusRequest(");
+    AssertTrue(buildEndRequestMethod.Contains("var endTime = task.EndTime ?? DateTime.Now;", StringComparison.Ordinal), "离线 MES 完工请求必须优先复用持久化 EndTime。");
+    AssertTrue(buildEndRequestMethod.Contains("EndTs = endTime.ToString(\"yyyy-MM-dd HH:mm:ss\")", StringComparison.Ordinal), "离线 MES 完工时间必须来自统一 endTime。");
+    AssertTrue(buildEndRequestMethod.Contains("(endTime - task.StartTime).TotalHours", StringComparison.Ordinal), "离线 MES 工时必须使用统一 endTime。");
+
+    var uploadTaskServiceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "UploadTaskService.cs"),
+        Encoding.UTF8);
+    var buildReportRequestMethod = ExtractMethodText(
+        uploadTaskServiceCode,
+        "private UploadReportFileReq? BuildReportFileRequest(BizUploadTask task)",
+        "private UploadTaskSummary? FinishExecution(");
+    AssertTrue(
+        buildReportRequestMethod.Contains("var latestReportFilePath =", StringComparison.Ordinal),
+        "MES 报表上传必须先读取任务最新的报表记录。");
+    AssertTrue(
+        buildReportRequestMethod.Contains("FirstNonEmpty(latestReportFilePath, task.FilePath)", StringComparison.Ordinal),
+        "MES 报表上传必须优先使用最新报表记录，再回退上传任务旧路径。");
+    AssertTrue(buildReportRequestMethod.Contains("report.FileCode == ProductionConstants.ReportFileCodes.Spreadsheet", StringComparison.Ordinal), "最新报表查询必须限定电子表格文件代码。");
+    AssertTrue(buildReportRequestMethod.Contains("report.FileFormat == \"XLSX\"", StringComparison.Ordinal), "最新报表查询必须限定 XLSX 格式。");
+    AssertTrue(buildReportRequestMethod.Contains("report.MesFileType == ProductionConstants.MesFileTypes.ReportFile", StringComparison.Ordinal), "最新报表查询必须限定 MES 报表文件类型。");
 }
 
 static void UnavailableRolesAreCleared()
@@ -4544,6 +4734,202 @@ static int ParseDesignerSizeHeight(string code, string propertyName)
 {
     var match = System.Text.RegularExpressions.Regex.Match(code, $@"{System.Text.RegularExpressions.Regex.Escape(propertyName)} = new Size\(\d+, (\d+)\);");
     return match.Success ? int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) : throw new InvalidOperationException($"未找到 {propertyName}。");
+}
+
+static BizWeldTask BuildReportTask(DateTime startTime, DateTime? endTime)
+{
+    return new BizWeldTask
+    {
+        Id = 31001,
+        DeviceId = "DEVICE-01",
+        StationNo = ProductionConstants.Stations.DefaultStationNo,
+        ProductNum = "164#J",
+        DrawingNo = "DR-001",
+        Batch = "BATCH-01",
+        SN = "FLOW-001",
+        Spec = "SPEC-01",
+        ProductModel = "MODEL-01",
+        ProcessNo = "OP10",
+        StartAmount = 20,
+        ActualQty = 18,
+        QualifiedQty = 17,
+        StartTime = startTime,
+        EndTime = endTime,
+        UserNumber = "U001",
+        EndOperatorNumber = "U999"
+    };
+}
+
+static BizWeldPointRecord BuildReportPoint(
+    int taskId,
+    int stationNo,
+    string productNo,
+    int sequenceNo,
+    string pointResult)
+{
+    return new BizWeldPointRecord
+    {
+        TaskId = taskId,
+        StationNo = stationNo,
+        ProductNo = productNo,
+        SequenceNo = sequenceNo,
+        TouchNo = sequenceNo.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        TestResult = pointResult,
+        OperatorNo = "POINT-OPERATOR",
+        Ts = new DateTime(2026, 7, 16, 8, 10, sequenceNo, DateTimeKind.Local),
+        RawDataJson = JsonSerializer.Serialize(new Dictionary<string, string>
+        {
+            ["max_electric"] = (1.20m + sequenceNo / 100m).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["max_electric_upper"] = "2.00",
+            ["max_electric_lower"] = "1.00",
+            ["product_result"] = ProductionConstants.TestResults.PreWeldNg
+        })
+    };
+}
+
+/// <summary>
+/// 直接调用生产报表服务的内部写入路径生成真实 XLSX，避免回归测试依赖 MySQL。
+/// 私有类型只用于搭建现有生产入口所需的 schema，最终断言始终基于 ClosedXML 重新打开的文件。
+/// </summary>
+static string GenerateReportWorkbook(
+    AppSettings settings,
+    BizWeldTask task,
+    IReadOnlyList<BizWeldPointRecord> records)
+{
+    var serviceType = typeof(ProductionReportFileService);
+    var service = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(serviceType);
+    var settingsField = serviceType.GetField("_currentSettings", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+    AssertTrue(settingsField is not null, "生产报表服务必须保留当前设置快照。");
+    settingsField!.SetValue(service, settings);
+
+    var reportColumnType = GetNestedReportType(serviceType, "ReportColumn");
+    var schemeReportItemType = GetNestedReportType(serviceType, "SchemeReportItem");
+    var reportDisplayOptionsType = GetNestedReportType(serviceType, "ReportDisplayOptions");
+    var reportSchemaType = GetNestedReportType(serviceType, "ReportSchema");
+    var columns = CreateGenericList(reportColumnType);
+    AddReportColumn(columns, reportColumnType, "station_no", "工位", mergeByProduct: true);
+    AddReportColumn(columns, reportColumnType, "product_no", "产品编号", mergeByProduct: true);
+    AddReportColumn(columns, reportColumnType, "touch_no", "拍照编号", mergeByProduct: false);
+    AddReportColumn(columns, reportColumnType, "touch_result", "拍照结果", mergeByProduct: false);
+
+    var detail = new BizSchemeDetail
+    {
+        EnableActual = true,
+        ReportActual = true,
+        ActualHeader = "峰值电流",
+        EnableUpper = true,
+        SaveUpper = true,
+        ReportUpper = false,
+        UpperHeader = "峰值电流上限",
+        EnableLower = true,
+        MesLower = true,
+        ReportLower = false,
+        LowerHeader = "峰值电流下限"
+    };
+    var item = new DimTestItem
+    {
+        ItemId = 1,
+        ItemName = "峰值电流",
+        ActualExpression = "0:F-0",
+        UpperExpression = "0:F-4",
+        LowerExpression = "0:F-8"
+    };
+    var schemeItem = Activator.CreateInstance(schemeReportItemType, item, detail)
+        ?? throw new InvalidOperationException("无法构造生产报表动态项。");
+    var buildItemColumns = serviceType.GetMethod("BuildItemColumns", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+    AssertTrue(buildItemColumns is not null, "生产报表服务必须保留动态列构造入口。");
+    var dynamicColumns = (System.Collections.IEnumerable?)buildItemColumns!.Invoke(null, [schemeItem]);
+    AssertTrue(dynamicColumns is not null, "动态列构造入口必须返回列定义。");
+    foreach (var column in dynamicColumns!)
+    {
+        columns.Add(column);
+    }
+
+    AddReportColumn(columns, reportColumnType, "product_result", "产品结果", mergeByProduct: true);
+    var schemeItems = CreateGenericList(schemeReportItemType);
+    schemeItems.Add(schemeItem);
+    var displayOptions = Activator.CreateInstance(reportDisplayOptionsType, "拍照编号", "拍照结果")
+        ?? throw new InvalidOperationException("无法构造生产报表显示配置。");
+    var schema = Activator.CreateInstance(reportSchemaType, columns, schemeItems, displayOptions)
+        ?? throw new InvalidOperationException("无法构造生产报表 schema。");
+
+    var outputDirectory = Path.Combine(Path.GetTempPath(), "AutoWeldSystem.Tests", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(outputDirectory);
+    var fileName = settings.EnableDualStation
+        ? "production-report-dual-station.xlsx"
+        : "production-report-single-station.xlsx";
+    var filePath = Path.Combine(outputDirectory, fileName);
+    var writeMethod = serviceType.GetMethod("WriteXlsx", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+    AssertTrue(writeMethod is not null, "生产报表服务必须保留 XLSX 写入入口。");
+    writeMethod!.Invoke(service, [filePath, schema, records, task]);
+    AssertTrue(File.Exists(filePath), "生产报表写入入口必须生成真实 XLSX 文件。");
+    return filePath;
+}
+
+static Type GetNestedReportType(Type serviceType, string typeName)
+{
+    return serviceType.GetNestedType(typeName, System.Reflection.BindingFlags.NonPublic)
+        ?? throw new InvalidOperationException($"生产报表服务缺少内部类型 {typeName}。");
+}
+
+static System.Collections.IList CreateGenericList(Type itemType)
+{
+    var listType = typeof(List<>).MakeGenericType(itemType);
+    return (System.Collections.IList)(Activator.CreateInstance(listType)
+        ?? throw new InvalidOperationException($"无法构造 {listType.Name}。"));
+}
+
+static void AddReportColumn(
+    System.Collections.IList columns,
+    Type reportColumnType,
+    string key,
+    string title,
+    bool mergeByProduct)
+{
+    columns.Add(Activator.CreateInstance(reportColumnType, key, title, mergeByProduct)
+        ?? throw new InvalidOperationException($"无法构造生产报表列 {title}。"));
+}
+
+static string[] ReadHeaderRow(IXLWorksheet worksheet, int rowNumber)
+{
+    var lastCell = worksheet.Row(rowNumber).LastCellUsed();
+    AssertTrue(lastCell is not null, $"第 {rowNumber} 行必须存在报表明细表头。");
+    return worksheet.Range(rowNumber, 1, rowNumber, lastCell!.Address.ColumnNumber)
+        .Cells()
+        .Select(cell => cell.GetString())
+        .ToArray();
+}
+
+static void AssertMerged(IXLWorksheet worksheet, string rangeAddress, string message)
+{
+    AssertTrue(
+        worksheet.MergedRanges.Any(range => string.Equals(range.RangeAddress.ToString(), rangeAddress, StringComparison.OrdinalIgnoreCase)),
+        $"{message} Missing={rangeAddress}");
+}
+
+static void AssertSourceOrder(string source, string firstMarker, string secondMarker, string message)
+{
+    var firstIndex = source.IndexOf(firstMarker, StringComparison.Ordinal);
+    var secondIndex = source.IndexOf(secondMarker, StringComparison.Ordinal);
+    AssertTrue(firstIndex >= 0, $"{message} MissingFirst={firstMarker}");
+    AssertTrue(secondIndex >= 0, $"{message} MissingSecond={secondMarker}");
+    AssertTrue(firstIndex < secondIndex, message);
+}
+
+static void DeleteReportFixture(string filePath)
+{
+    var qaDirectory = Environment.GetEnvironmentVariable("AUTOWELD_REPORT_QA_DIR");
+    if (!string.IsNullOrWhiteSpace(qaDirectory))
+    {
+        Directory.CreateDirectory(qaDirectory);
+        File.Copy(filePath, Path.Combine(qaDirectory, Path.GetFileName(filePath)), overwrite: true);
+    }
+
+    var directory = Path.GetDirectoryName(filePath);
+    if (!string.IsNullOrWhiteSpace(directory) && Directory.Exists(directory))
+    {
+        Directory.Delete(directory, recursive: true);
+    }
 }
 
 static void AssertTrue(bool condition, string message)

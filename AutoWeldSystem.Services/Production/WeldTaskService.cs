@@ -620,6 +620,8 @@ public class WeldTaskService : IWeldTaskService
         var endOperator = string.IsNullOrWhiteSpace(employeeNumber)
             ? task.UserNumber ?? station.MesOperatorNumber
             : employeeNumber;
+        // 完工请求和本地任务必须共享同一个结束时间，避免报表与 MES 时间出现毫秒级漂移。
+        var finishTime = DateTime.Now;
 
         var finishRequest = new ExperimentEndReq
         {
@@ -627,10 +629,10 @@ public class WeldTaskService : IWeldTaskService
             DeviceId = task.DeviceId,
             SN = task.SN,
             ProcessNo = task.ProcessNo,
-            EndTs = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+            EndTs = finishTime.ToString("yyyy-MM-dd HH:mm:ss"),
             EndExperID = endOperator,
             ExpStatus = "1",
-            WorkHour = Convert.ToDecimal((DateTime.Now - task.StartTime).TotalHours),
+            WorkHour = Convert.ToDecimal((finishTime - task.StartTime).TotalHours),
             ExpQty = actualQty,
             QualifyNumber = qualifiedQty,
             FailureNumber = failedQty
@@ -665,7 +667,7 @@ public class WeldTaskService : IWeldTaskService
         task.QualifiedQty = qualifiedQty;
         task.FailedQty = failedQty;
         task.EndOperatorNumber = endOperator;
-        task.EndTime = DateTime.Now;
+        task.EndTime = finishTime;
         task.TaskStatus = TaskStatusCompleted;
         var settings = CurrentSettings;
         task.UploadStatus = finishUploaded
@@ -723,11 +725,13 @@ public class WeldTaskService : IWeldTaskService
         }
 
         var endOperator = ResolveLocalOperatorNumber(employeeNumber);
+        // 离线完工同样只捕获一次结束时间，持久化后再生成最终报表。
+        var finishTime = DateTime.Now;
         task.ActualQty = actualQty;
         task.QualifiedQty = qualifiedQty;
         task.FailedQty = failedQty;
         task.EndOperatorNumber = endOperator;
-        task.EndTime = DateTime.Now;
+        task.EndTime = finishTime;
         task.TaskStatus = TaskStatusCompleted;
         task.UploadStatus = ProductionConstants.UploadStatuses.Pending;
         task.UploadMessage = "Local finish completed offline. Finish data is queued for MES retry.";
@@ -870,16 +874,17 @@ public class WeldTaskService : IWeldTaskService
         int qualifiedQty,
         int failedQty)
     {
+        var endTime = task.EndTime ?? DateTime.Now;
         return new ExperimentEndReq
         {
             ExpStartId = task.ExpStartId ?? string.Empty,
             DeviceId = task.DeviceId,
             SN = task.SN,
             ProcessNo = task.ProcessNo,
-            EndTs = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+            EndTs = endTime.ToString("yyyy-MM-dd HH:mm:ss"),
             EndExperID = employeeNumber,
             ExpStatus = ProductionConstants.MesWorkOrderStatuses.Completed,
-            WorkHour = Convert.ToDecimal((DateTime.Now - task.StartTime).TotalHours),
+            WorkHour = Convert.ToDecimal((endTime - task.StartTime).TotalHours),
             ExpQty = actualQty,
             QualifyNumber = qualifiedQty,
             FailureNumber = failedQty

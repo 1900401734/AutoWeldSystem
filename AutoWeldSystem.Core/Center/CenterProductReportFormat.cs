@@ -3,12 +3,15 @@ using AutoWeldSystem.Core.DTOs.CenterServer;
 namespace AutoWeldSystem.Core.Center;
 
 /// <summary>
-/// 中心服务器产品 Excel 报表格式定义。
-/// 固定列保持与设备端生产报表一致，动态列优先使用设备端转发的列定义。
+/// 生产报表共享格式定义。
+/// 设备端先使用模板行号和格式常量；中心服务器列协议保持现状，后续任务再接入模板布局。
 /// </summary>
 public static class CenterProductReportFormat
 {
     public const string WorksheetName = "生产报表";
+    public const int TemplateMinimumColumnCount = 9;
+    public const int DetailHeaderRow = 9;
+    public const string DateTimeFormat = "yyyy-MM-dd HH:mm:ss";
     public const string DataWorksheetName = "_Data";
     public const string ColumnsWorksheetName = "_Columns";
     public const string ColumnStationNo = "station_no";
