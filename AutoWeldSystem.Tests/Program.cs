@@ -69,6 +69,12 @@ var tests = new (string Name, Action Run)[]
     ("PLC debug write rules parse bool aliases", PlcDebugWriteRulesParseBoolAliases),
     ("PLC debug write rules normalize unsupported data type", PlcDebugWriteRulesNormalizeUnsupportedDataType),
     ("Alarm address import rules parse engineering document rows", AlarmAddressImportRulesParseEngineeringDocumentRows),
+    ("PLC software alarm rules merge raw status and bool signals", PlcSoftwareAlarmRulesMergeRawStatusAndBoolSignals),
+    ("PLC alarm station discovery includes alarm-only stations", PlcAlarmStationDiscoveryIncludesAlarmOnlyStations),
+    ("PLC alarm rules aggregate bool read results", PlcAlarmRulesAggregateBoolReadResults),
+    ("PLC alarm projection keeps bool-only alarms local", PlcAlarmProjectionKeepsBoolOnlyAlarmsLocal),
+    ("PLC production monitor reads bool alarms independently", PlcProductionMonitorReadsBoolAlarmsIndependently),
+    ("PLC software alarms stay local to monitor view", PlcSoftwareAlarmsStayLocalToMonitorView),
     ("Pre-weld NG is treated as failed product result", PreWeldNgIsTreatedAsFailedProductResult),
     ("Center device key uses DeviceId only", CenterDeviceKeyUsesDeviceIdOnly),
     ("Center client online uses heartbeat freshness", CenterClientOnlineUsesHeartbeatFreshness),
@@ -252,6 +258,219 @@ foreach (var test in tests)
 {
     test.Run();
     Console.WriteLine($"PASS {test.Name}");
+}
+
+static void PlcSoftwareAlarmRulesMergeRawStatusAndBoolSignals()
+{
+    var boolOnly = PlcSoftwareAlarmRules.Resolve(
+        ProductionConstants.PlcDeviceStatuses.Running,
+        hasActiveBoolSignal: true,
+        ["安全门打开", "安全门打开", "气压低"]);
+    AssertTrue(boolOnly.IsActive, "原始设备状态不是 4 时，任一 Bool 报警为 true 仍应触发软件报警。");
+    AssertEqual("安全门打开；气压低", boolOnly.Message, "多个 Bool 报警内容应按读取顺序合并并去重。");
+
+    var rawAlarm = PlcSoftwareAlarmRules.Resolve(
+        ProductionConstants.PlcDeviceStatuses.Alarm,
+        hasActiveBoolSignal: false,
+        []);
+    AssertTrue(rawAlarm.IsActive, "PLC 原始设备状态为 4 时必须触发软件报警。");
+    AssertEqual(PlcSoftwareAlarmRules.GenericAlarmMessage, rawAlarm.Message, "状态 4 未匹配具体 Bool 原因时应使用通用报警提示。");
+
+    var inactive = PlcSoftwareAlarmRules.Resolve(
+        ProductionConstants.PlcDeviceStatuses.Running,
+        hasActiveBoolSignal: false,
+        ["读取失败不应成为报警"]);
+    AssertFalse(inactive.IsActive, "没有原始状态 4 或成功置位的 Bool 地址时不应触发软件报警。");
+    AssertEqual(string.Empty, inactive.Message, "软件报警未激活时不应保留报警内容。");
+}
+
+static void PlcAlarmStationDiscoveryIncludesAlarmOnlyStations()
+{
+    var alarms = new[]
+    {
+        new BizPlcAlarmAddress { StationNo = 0, Address = "DB1.0", AlarmContent = "共享报警", Enabled = true },
+        new BizPlcAlarmAddress { StationNo = 2, Address = "DB2.0", AlarmContent = "右工位报警", Enabled = true },
+        new BizPlcAlarmAddress { StationNo = 3, Address = " ", AlarmContent = "空地址", Enabled = true },
+        new BizPlcAlarmAddress { StationNo = 4, Address = "DB4.0", AlarmContent = "禁用报警", Enabled = false }
+    };
+
+    var stations = PlcSoftwareAlarmRules.ResolveStationNumbers([1], alarms);
+    AssertSequenceEqual([1, 2], stations, "生产地址工位与有效报警专用工位应合并、排序并去重。");
+
+    var alarmOnlyStations = PlcSoftwareAlarmRules.ResolveStationNumbers([], alarms);
+    AssertSequenceEqual([2], alarmOnlyStations, "仅存在工位专用报警配置时，该工位仍应参与生产轮询。");
+
+    var productionOnlyStations = PlcSoftwareAlarmRules.ResolveStationNumbers([2], []);
+    AssertSequenceEqual([2], productionOnlyStations, "关闭报警读取并传入空报警快照时，只应保留生产地址工位。");
+
+    var sharedOnly = PlcSoftwareAlarmRules.ResolveStationNumbers([], [alarms[0]]);
+    AssertSequenceEqual([ProductionConstants.Stations.DefaultStationNo], sharedOnly, "共享报警不应生成工位 0 轮询，且应保留默认工位兜底。");
+
+    var stationTwoAlarms = PlcSoftwareAlarmRules.ResolveAlarmAddressesForStation(alarms, 2);
+    AssertSequenceEqual(
+        ["DB1.0", "DB2.0"],
+        stationTwoAlarms.Select(alarm => alarm.Address).ToArray(),
+        "工位报警读取应包含共享地址与当前工位地址，并排除空地址、禁用项和其他工位。");
+}
+
+static void PlcAlarmRulesAggregateBoolReadResults()
+{
+    var aggregation = PlcSoftwareAlarmRules.AggregateAlarmSignals(
+        stationNo: 2,
+        [
+            new PlcAlarmSignalReadResult(0, "DB1.0", "安全门打开", IsSuccess: true, IsActive: true, FailureMessage: string.Empty),
+            new PlcAlarmSignalReadResult(2, "DB2.0", "安全门打开", IsSuccess: true, IsActive: true, FailureMessage: string.Empty),
+            new PlcAlarmSignalReadResult(2, "DB2.1", "气压低", IsSuccess: true, IsActive: false, FailureMessage: string.Empty),
+            new PlcAlarmSignalReadResult(2, "DB2.2", "温度异常", IsSuccess: false, IsActive: false, FailureMessage: "读取超时")
+        ]);
+
+    AssertTrue(aggregation.HasActiveSignal, "任一成功读取的 Bool=true 应激活聚合报警。");
+    AssertEqual("安全门打开", aggregation.Message, "激活报警内容应去重，false 与失败项不应进入提示。");
+    AssertEqual(ProductionConstants.Stations.SharedStationNo, aggregation.ScopeStationNo, "共享报警置位时报警范围应为共享工位。");
+    AssertEqual(1, aggregation.Failures.Count, "单个读取失败应保留为日志信息但不阻断其他结果。");
+    AssertEqual("DB2.2", aggregation.Failures[0].Address, "读取失败应保留对应 PLC 地址。");
+
+    var inactive = PlcSoftwareAlarmRules.AggregateAlarmSignals(
+        stationNo: 2,
+        [
+            new PlcAlarmSignalReadResult(2, "DB2.0", "未触发", IsSuccess: true, IsActive: false, FailureMessage: string.Empty),
+            new PlcAlarmSignalReadResult(2, "DB2.1", "读取失败", IsSuccess: false, IsActive: false, FailureMessage: "断线")
+        ]);
+    AssertFalse(inactive.HasActiveSignal, "false 与读取失败均不应误触发软件报警。");
+    AssertEqual(string.Empty, inactive.Message, "没有置位信号时聚合报警内容应为空。");
+    AssertEqual(1, inactive.Failures.Count, "读取失败应继续交给调用方记录业务日志。");
+}
+
+static void PlcAlarmProjectionKeepsBoolOnlyAlarmsLocal()
+{
+    var boolAggregation = new PlcAlarmSignalAggregation(
+        HasActiveSignal: true,
+        Message: "安全门打开",
+        ScopeStationNo: 2,
+        Failures: []);
+    var boolOnly = PlcSoftwareAlarmRules.ResolveProjection(
+        ProductionConstants.PlcDeviceStatuses.Running,
+        boolAggregation);
+    AssertTrue(boolOnly.IsSoftwareAlarmActive, "Bool-only 信号应触发本机软件报警。");
+    AssertEqual("安全门打开", boolOnly.SoftwareAlarmMessage, "Bool-only 软件报警应显示实际报警内容。");
+    AssertEqual(string.Empty, boolOnly.ExternalAlarmMessage, "Bool-only 报警不得写入 MES/生命周期/中心共用报警字段。");
+    AssertEqual<int?>(null, boolOnly.ExternalAlarmStationNo, "Bool-only 报警不得生成外部报警工位范围。");
+
+    var rawAlarm = PlcSoftwareAlarmRules.ResolveProjection(
+        ProductionConstants.PlcDeviceStatuses.Alarm,
+        PlcAlarmSignalAggregation.Empty(2));
+    AssertTrue(rawAlarm.IsSoftwareAlarmActive, "原始设备状态 4 在没有 Bool 原因时仍应报警。");
+    AssertEqual(PlcSoftwareAlarmRules.GenericAlarmMessage, rawAlarm.ExternalAlarmMessage, "原始状态 4 应生成可上报的通用报警内容。");
+    AssertEqual<int?>(2, rawAlarm.ExternalAlarmStationNo, "原始状态 4 应保留当前工位范围。");
+}
+
+static void PlcProductionMonitorReadsBoolAlarmsIndependently()
+{
+    var serviceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Plc", "ProductionMonitorService.cs"),
+        Encoding.UTF8);
+    var pollMethod = ExtractMethodText(
+        serviceCode,
+        "private async Task PollOnceAsync",
+        "private async Task<IReadOnlyList<BizPlcAddress>> GetAddressSnapshotAsync");
+
+    AssertEqual(
+        1,
+        CountOccurrences(pollMethod, "_settingsService.Get().EnablePlcAlarmReading != false"),
+        "每轮生产采集只能读取一次 PLC 报警开关，避免不同工位使用不同设置快照。");
+    AssertTrue(
+        pollMethod.Contains("IReadOnlyList<BizPlcAlarmAddress> alarmAddresses = alarmReadingEnabled\n            ? _plcAlarmAddressService.GetAll()\n            : [];", StringComparison.Ordinal),
+        "关闭 PLC 报警读取时不得访问报警配置服务，且工位发现应接收空报警快照。");
+    AssertSourceOrder(
+        pollMethod,
+        "var alarmReadingEnabled = _settingsService.Get().EnablePlcAlarmReading != false;",
+        "_plcAlarmAddressService.GetAll()",
+        "必须先读取报警开关，再决定是否加载报警配置。");
+    AssertSourceOrder(
+        pollMethod,
+        "_plcAlarmAddressService.GetAll()",
+        "ResolveStationNumbers(addresses, alarmAddresses)",
+        "启用时应先加载一次报警配置快照，再据此扩展轮询工位。");
+    AssertEqual(
+        1,
+        CountOccurrences(pollMethod, "_plcAlarmAddressService.GetAll()"),
+        "每轮生产采集应只加载一次报警地址快照，供工位发现和各工位读取共同复用。");
+    AssertTrue(
+        pollMethod.Contains("ResolveStationNumbers(addresses, alarmAddresses)", StringComparison.Ordinal),
+        "轮询工位必须同时由生产地址和报警地址配置发现。");
+    AssertTrue(
+        pollMethod.Contains("var alarmReadingEnabled = _settingsService.Get().EnablePlcAlarmReading != false;", StringComparison.Ordinal),
+        "每轮采集应先读取报警开关，明确决定是否扫描 Bool 报警地址。");
+    AssertTrue(
+        pollMethod.Contains("alarmReadingEnabled\n                ? await ReadActiveAlarmSnapshotAsync(alarmAddresses, stationNo, cancellationToken)", StringComparison.Ordinal),
+        "启用报警读取后应独立扫描当前工位及共享报警地址。");
+    AssertSourceOrder(
+        pollMethod,
+        "await ReadActiveAlarmSnapshotAsync(alarmAddresses, stationNo, cancellationToken)",
+        "if (deviceStatusAddress is null)",
+        "设备状态地址缺失时也必须先完成独立 Bool 报警扫描。");
+    AssertSourceOrder(
+        pollMethod,
+        "await ReadActiveAlarmSnapshotAsync(alarmAddresses, stationNo, cancellationToken)",
+        "if (!statusResult.IsSuccess)",
+        "设备状态读取失败时也必须先完成独立 Bool 报警扫描。");
+    AssertSourceOrder(
+        pollMethod,
+        "await ReadActiveAlarmSnapshotAsync(alarmAddresses, stationNo, cancellationToken)",
+        "if (ProductionConstants.PlcDeviceStatuses.IsReportable(plcStatusCode))",
+        "Bool 报警读取不应再依赖原始设备状态先等于 4。");
+    AssertTrue(
+        pollMethod.Contains("alarmProjection.IsSoftwareAlarmActive", StringComparison.Ordinal)
+        && pollMethod.Contains("alarmProjection.SoftwareAlarmMessage", StringComparison.Ordinal)
+        && pollMethod.Contains("plcStatusCode,", StringComparison.Ordinal),
+        "生产快照必须显式发布软件报警状态和内容，且不能改写原始 DeviceStatusCode。");
+    AssertFalse(
+        serviceCode.Contains("ReadActiveAlarmMessageAsync", StringComparison.Ordinal),
+        "重复且未使用的报警读取方法应移除，避免两套聚合规则再次漂移。");
+}
+
+static void PlcSoftwareAlarmsStayLocalToMonitorView()
+{
+    var monitorCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"),
+        Encoding.UTF8);
+    var applyDeviceStatus = ExtractMethodText(
+        monitorCode,
+        "private void ApplyDeviceStatus",
+        "private void ClearDeviceAlarmRuntimeErrorIfCurrent");
+    AssertTrue(
+        applyDeviceStatus.Contains("snapshot.IsSoftwareAlarmActive", StringComparison.Ordinal)
+        && applyDeviceStatus.Contains("snapshot.SoftwareAlarmMessage", StringComparison.Ordinal),
+        "MonitorView 应直接使用快照中的软件报警状态和内容。");
+    AssertFalse(
+        applyDeviceStatus.Contains("EnablePlcAlarmReading", StringComparison.Ordinal),
+        "MonitorView 不应再用设置开关屏蔽原始状态 4 触发的软件报警。");
+
+    var centerCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Center", "CenterTelemetrySyncService.cs"),
+        Encoding.UTF8);
+    var buildStationSnapshot = ExtractMethodText(
+        centerCode,
+        "private CenterTelemetryStationSnapshot BuildStationSnapshot",
+        "private BizDeviceStatusLog? GetLatestDeviceStatus");
+    AssertTrue(
+        buildStationSnapshot.Contains("AlarmMessage = FirstNonEmpty(production.AlarmMessage, latestStatus?.Remark)", StringComparison.Ordinal),
+        "中心遥测应继续使用原始 PLC 报警内容。");
+    AssertFalse(
+        buildStationSnapshot.Contains("SoftwareAlarmMessage", StringComparison.Ordinal),
+        "Bool-only 软件报警内容不得发送到中心服务器。");
+
+    var lifecycleCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Log", "DeviceLifecycleLogCoordinator.cs"),
+        Encoding.UTF8);
+    var recordAlarmChange = ExtractMethodText(
+        lifecycleCode,
+        "private void RecordAlarmChange",
+        "private static IEnumerable<int> ResolveStationNumbers");
+    AssertFalse(
+        recordAlarmChange.Contains("IsSoftwareAlarmActive", StringComparison.Ordinal)
+        || recordAlarmChange.Contains("SoftwareAlarmMessage", StringComparison.Ordinal),
+        "生命周期报警日志必须继续只跟随原始 PLC 状态 4 的转换。");
 }
 
 static void OnlyConfiguredExpressionsCreateRoles()

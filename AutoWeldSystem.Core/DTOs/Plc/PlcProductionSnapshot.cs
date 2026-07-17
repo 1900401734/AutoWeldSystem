@@ -36,6 +36,16 @@ public sealed record PlcProductionSnapshot(
     /// </summary>
     public int? AlarmStationNo { get; init; }
 
+    /// <summary>
+    /// 是否触发本机软件报警。该状态由 PLC 原始状态 4 或独立 Bool 报警地址共同决定。
+    /// </summary>
+    public bool IsSoftwareAlarmActive { get; init; }
+
+    /// <summary>
+    /// 本机软件报警显示内容，不参与 MES、生命周期日志或中心服务器报警上报。
+    /// </summary>
+    public string SoftwareAlarmMessage { get; init; } = string.Empty;
+
     public bool ProductionQuantitiesReadSuccess =>
         TotalProductionReadSuccess
         && AcceptedQuantityReadSuccess

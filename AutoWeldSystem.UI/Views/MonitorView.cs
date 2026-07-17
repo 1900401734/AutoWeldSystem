@@ -4686,12 +4686,11 @@ public partial class MonitorView : BaseView
         tagDeviceStatus.ForeColor = Color.White;
         tagDeviceStatus.BackColor = GetDeviceStatusColor(snapshot.DeviceStatusCode, snapshot.IsSuccess);
 
-        if (snapshot.DeviceStatusCode == ProductionConstants.PlcDeviceStatuses.Alarm
-            && (_currentSettings.EnablePlcAlarmReading != false))
+        if (snapshot.IsSoftwareAlarmActive)
         {
-            var alarmMessage = string.IsNullOrWhiteSpace(snapshot.AlarmMessage)
-                ? "PLC设备报警，未匹配到已启用的报警原因"
-                : snapshot.AlarmMessage;
+            var alarmMessage = string.IsNullOrWhiteSpace(snapshot.SoftwareAlarmMessage)
+                ? PlcSoftwareAlarmRules.GenericAlarmMessage
+                : snapshot.SoftwareAlarmMessage;
             _deviceAlarmRuntimeErrorText = NormalizeRuntimeSummary(alarmMessage);
             SetRuntimeErrorWithSource(TextKeys.Monitor.RuntimeError.DeviceAlarm, RuntimeErrorSourceDeviceAlarm);
             return;
