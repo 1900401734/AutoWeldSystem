@@ -139,6 +139,8 @@ public partial class AddressManageView : BaseView
         ConfigureProductProcessColumns();
         ConfigureTestSchemeColumns();
         ConfigureTestItemColumns();
+        ConfigureSchemeDetailRoleGrid();
+        BindSchemeDetailRoleRows();
         ApplyActiveFilter(GetActiveKeyword());
     }
 
@@ -193,7 +195,29 @@ public partial class AddressManageView : BaseView
     /// </summary>
     private void ConfigureSchemeDetailRoleGrid()
     {
+        schemeDetailRoleGrid.AutoGenerateColumns = false;
+        schemeDetailRoleGrid.Columns.Clear();
+        schemeDetailRoleGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(SchemeDetailRoleTableRow.ItemName), HeaderText = _localizer.GetString(TextKeys.Address.ColumnDetailItem), ReadOnly = true });
+        schemeDetailRoleGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(SchemeDetailRoleTableRow.RoleName), HeaderText = _localizer.GetString(TextKeys.Address.ColumnDetailRole), ReadOnly = true });
+        AddSchemeDetailRoleCheckColumn(nameof(SchemeDetailRoleTableRow.Enabled), TextKeys.Address.ColumnDetailEnabled);
+        schemeDetailRoleGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(SchemeDetailRoleTableRow.HeaderText), HeaderText = _localizer.GetString(TextKeys.Address.ColumnDetailHeader) });
+        AddSchemeDetailRoleCheckColumn(nameof(SchemeDetailRoleTableRow.SaveEnabled), TextKeys.Address.ColumnDetailSave);
+        AddSchemeDetailRoleCheckColumn(nameof(SchemeDetailRoleTableRow.ReportEnabled), TextKeys.Address.ColumnDetailReport);
+        AddSchemeDetailRoleCheckColumn(nameof(SchemeDetailRoleTableRow.MesEnabled), TextKeys.Address.ColumnDetailMes);
+        schemeDetailRoleGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(SchemeDetailRoleTableRow.MesFieldName), HeaderText = _localizer.GetString(TextKeys.Address.ColumnDetailMesField) });
         TableStyleHelper.ApplyDataGridView(schemeDetailRoleGrid);
+    }
+
+    /// <summary>
+    /// 添加方案明细角色的布尔配置列，统一绑定和本地化处理。
+    /// </summary>
+    private void AddSchemeDetailRoleCheckColumn(string propertyName, string headerKey)
+    {
+        schemeDetailRoleGrid.Columns.Add(new DataGridViewCheckBoxColumn
+        {
+            DataPropertyName = propertyName,
+            HeaderText = _localizer.GetString(headerKey)
+        });
     }
 
     #region 业务信号
@@ -1164,8 +1188,24 @@ public partial class AddressManageView : BaseView
     {
         foreach (var role in SchemeDetailRoleRules.GetAvailableRoles(item))
         {
-            yield return new SchemeDetailRoleTableRow(detail, item, role);
+            yield return new SchemeDetailRoleTableRow(detail, item, role, GetLocalizedSchemeDetailRoleName(role));
         }
+    }
+
+    /// <summary>
+    /// 获取方案明细角色的当前语言名称。
+    /// </summary>
+    private string GetLocalizedSchemeDetailRoleName(SchemeDetailValueRole role)
+    {
+        var textKey = role switch
+        {
+            SchemeDetailValueRole.Actual => TextKeys.Address.DetailRoleActual,
+            SchemeDetailValueRole.Upper => TextKeys.Address.DetailRoleUpper,
+            SchemeDetailValueRole.Lower => TextKeys.Address.DetailRoleLower,
+            SchemeDetailValueRole.Result => TextKeys.Address.DetailRoleResult,
+            _ => string.Empty
+        };
+        return string.IsNullOrWhiteSpace(textKey) ? string.Empty : _localizer.GetString(textKey);
     }
 
     private static BizSchemeDetail CreateEmptySchemeDetail(string schemeId, int itemId)
@@ -1734,16 +1774,7 @@ public partial class AddressManageView : BaseView
         => NormalizeNullableText(config.PointCountHeader) ?? $"{ResolvePointName(config)}数";
 
     private static string ResolveSchemeDetailHeader(BizSchemeDetail detail, DimTestItem item, SchemeDetailValueRole role)
-    {
-        return role switch
-        {
-            SchemeDetailValueRole.Actual => NormalizeNullableText(detail.ActualHeader) ?? $"{item.ItemName}实际值",
-            SchemeDetailValueRole.Upper => NormalizeNullableText(detail.UpperHeader) ?? $"{item.ItemName}上限",
-            SchemeDetailValueRole.Lower => NormalizeNullableText(detail.LowerHeader) ?? $"{item.ItemName}下限",
-            SchemeDetailValueRole.Result => NormalizeNullableText(detail.ResultHeader) ?? $"{item.ItemName}结果",
-            _ => item.ItemName
-        };
-    }
+        => SchemeDetailRoleRules.ResolveHeader(detail, item, role);
 
     private static string ResolveTouchNoBase(BizProductProcessConfig config)
         => string.IsNullOrWhiteSpace(config.TouchNoBase) ? config.TouchBase : config.TouchNoBase!.Trim();
@@ -2434,10 +2465,10 @@ public partial class AddressManageView : BaseView
                 throw new InvalidOperationException($"测试项ID“{detail.ItemId}”不存在。");
             }
 
-            detail.ActualHeader = NormalizeNullableText(detail.ActualHeader) ?? $"{item.ItemName}实际值";
-            detail.UpperHeader = NormalizeNullableText(detail.UpperHeader) ?? $"{item.ItemName}上限";
-            detail.LowerHeader = NormalizeNullableText(detail.LowerHeader) ?? $"{item.ItemName}下限";
-            detail.ResultHeader = NormalizeNullableText(detail.ResultHeader) ?? $"{item.ItemName}结果";
+            foreach (var role in SchemeDetailRoleRules.AllRoles)
+            {
+                SchemeDetailRoleRules.SetHeader(detail, role, SchemeDetailRoleRules.ResolveHeader(detail, item, role));
+            }
             detail.ActualMesFieldName = NormalizeNullableText(detail.ActualMesFieldName);
             detail.UpperMesFieldName = NormalizeNullableText(detail.UpperMesFieldName);
             detail.LowerMesFieldName = NormalizeNullableText(detail.LowerMesFieldName);
@@ -2769,7 +2800,7 @@ public partial class AddressManageView : BaseView
     /// 方案明细输出配置表格行。
     /// 同一个 BizSchemeDetail 会拆成四行，分别维护实际值、上限、下限和结果的输出配置。
     /// </summary>
-    private sealed class SchemeDetailRoleTableRow(BizSchemeDetail source, DimTestItem item, SchemeDetailValueRole role)
+    private sealed class SchemeDetailRoleTableRow(BizSchemeDetail source, DimTestItem item, SchemeDetailValueRole role, string roleName)
     {
         public BizSchemeDetail Source { get; } = source;
 
@@ -2779,14 +2810,7 @@ public partial class AddressManageView : BaseView
 
         public SchemeDetailValueRole Role { get; } = role;
 
-        public string RoleName => Role switch
-        {
-            SchemeDetailValueRole.Actual => "实际值",
-            SchemeDetailValueRole.Upper => "上限",
-            SchemeDetailValueRole.Lower => "下限",
-            SchemeDetailValueRole.Result => "结果",
-            _ => string.Empty
-        };
+        public string RoleName { get; } = roleName;
 
         public bool Enabled
         {
@@ -2831,16 +2855,7 @@ public partial class AddressManageView : BaseView
         }
 
         private static string ResolveDefaultHeader(DimTestItem item, SchemeDetailValueRole role)
-        {
-            return role switch
-            {
-                SchemeDetailValueRole.Actual => $"{item.ItemName}实际值",
-                SchemeDetailValueRole.Upper => $"{item.ItemName}上限",
-                SchemeDetailValueRole.Lower => $"{item.ItemName}下限",
-                SchemeDetailValueRole.Result => $"{item.ItemName}结果",
-                _ => item.ItemName
-            };
-        }
+            => SchemeDetailRoleRules.GetDefaultHeader(item, role);
 
         private static bool GetEnabled(BizSchemeDetail detail, SchemeDetailValueRole role)
         {

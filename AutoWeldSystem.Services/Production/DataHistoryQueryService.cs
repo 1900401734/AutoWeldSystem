@@ -280,10 +280,10 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
             var item = definition.Item!;
             var detail = definition.Detail;
             var itemKey = ResolveItemKey(item);
-            AddColumn(columns, SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Actual), itemKey, NormalizeDisplayText(detail.ActualHeader, $"{item.ItemName}实际值"));
-            AddColumn(columns, SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Upper), $"{itemKey}_upper", NormalizeDisplayText(detail.UpperHeader, $"{item.ItemName}上限"));
-            AddColumn(columns, SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Lower), $"{itemKey}_lower", NormalizeDisplayText(detail.LowerHeader, $"{item.ItemName}下限"));
-            AddColumn(columns, SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Result), $"{itemKey}_result", NormalizeDisplayText(detail.ResultHeader, $"{item.ItemName}结果"));
+            AddColumn(columns, SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Actual), itemKey, SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Actual));
+            AddColumn(columns, SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Upper), $"{itemKey}_upper", SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Upper));
+            AddColumn(columns, SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Lower), $"{itemKey}_lower", SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Lower));
+            AddColumn(columns, SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Result), $"{itemKey}_result", SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Result));
         }
 
         return columns;

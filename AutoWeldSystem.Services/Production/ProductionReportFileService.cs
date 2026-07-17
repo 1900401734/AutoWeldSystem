@@ -695,26 +695,25 @@ public class ProductionReportFileService : IProductionReportFileService
     {
         var item = schemeItem.Item;
         var detail = schemeItem.Detail;
-        var itemName = NormalizeDisplayText(item.ItemName, $"测试项{item.ItemId}");
 
         if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Actual))
         {
-            yield return new ReportColumn(BuildDynamicColumnKey(item, ReportRoleActual), NormalizeDisplayText(detail.ActualHeader, $"{itemName}实际值"), MergeByProduct: false);
+            yield return new ReportColumn(BuildDynamicColumnKey(item, ReportRoleActual), SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Actual), MergeByProduct: false);
         }
 
         if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Upper))
         {
-            yield return new ReportColumn(BuildDynamicColumnKey(item, ReportRoleUpper), NormalizeDisplayText(detail.UpperHeader, $"{itemName}上限"), MergeByProduct: false);
+            yield return new ReportColumn(BuildDynamicColumnKey(item, ReportRoleUpper), SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Upper), MergeByProduct: false);
         }
 
         if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Lower))
         {
-            yield return new ReportColumn(BuildDynamicColumnKey(item, ReportRoleLower), NormalizeDisplayText(detail.LowerHeader, $"{itemName}下限"), MergeByProduct: false);
+            yield return new ReportColumn(BuildDynamicColumnKey(item, ReportRoleLower), SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Lower), MergeByProduct: false);
         }
 
         if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Result))
         {
-            yield return new ReportColumn(BuildDynamicColumnKey(item, ReportRoleResult), NormalizeDisplayText(detail.ResultHeader, $"{itemName}结果"), MergeByProduct: false);
+            yield return new ReportColumn(BuildDynamicColumnKey(item, ReportRoleResult), SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Result), MergeByProduct: false);
         }
     }
 

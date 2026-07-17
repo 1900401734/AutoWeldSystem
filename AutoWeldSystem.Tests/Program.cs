@@ -33,6 +33,9 @@ using System.Text.Json;
 
 var tests = new (string Name, Action Run)[]
 {
+    ("Scheme detail role headers use centralized defaults", SchemeDetailRoleHeadersUseCentralizedDefaults),
+    ("Scheme detail role grid defines localized bound columns", SchemeDetailRoleGridDefinesLocalizedBoundColumns),
+    ("Scheme detail role names and monitor fallbacks are centralized", SchemeDetailRoleNamesAndMonitorFallbacksAreCentralized),
     ("Station display names have localized dual-station rules", StationDisplayNamesHaveLocalizedDualStationRules),
     ("Station display names load legacy defaults and collapse hidden row", StationDisplayNamesLoadLegacyDefaultsAndCollapseHiddenRow),
     ("Only configured test item expressions create available roles", OnlyConfiguredExpressionsCreateRoles),
@@ -280,6 +283,68 @@ static void CollectionDoesNotImplyOutput()
 
     detail.SaveActual = true;
     AssertTrue(SchemeDetailRoleRules.ShouldPersistRole(detail, SchemeDetailValueRole.Actual), "启用保存后应写入历史 RawDataJson。");
+}
+
+static void SchemeDetailRoleHeadersUseCentralizedDefaults()
+{
+    var item = new DimTestItem { ItemId = 1, ItemName = "峰值电流" };
+    var detail = new BizSchemeDetail { ActualHeader = "  客户电流  " };
+
+    AssertEqual("峰值电流", SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Actual), "实际值默认表头应直接使用测试项名称。");
+    AssertEqual("峰值电流上限", SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Upper), "上限默认表头应保留角色后缀。");
+    AssertEqual("峰值电流下限", SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Lower), "下限默认表头应保留角色后缀。");
+    AssertEqual("峰值电流结果", SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Result), "结果默认表头应保留角色后缀。");
+    AssertEqual("客户电流", SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Actual), "非空已存表头必须优先保留并去除首尾空白。");
+}
+
+static void SchemeDetailRoleGridDefinesLocalizedBoundColumns()
+{
+    var viewCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "AddressManageView.cs"),
+        Encoding.UTF8);
+    var configureMethod = ExtractMethodText(
+        viewCode,
+        "private void ConfigureSchemeDetailRoleGrid()",
+        "    #region 业务信号");
+
+    AssertTrue(configureMethod.Contains("AutoGenerateColumns = false", StringComparison.Ordinal), "方案角色表格必须关闭自动生成列，避免 Source、ItemId 和 Role 泄漏。" );
+    foreach (var propertyName in new[] { "ItemName", "RoleName", "HeaderText", "MesFieldName" })
+    {
+        AssertTrue(configureMethod.Contains($"DataPropertyName = nameof(SchemeDetailRoleTableRow.{propertyName})", StringComparison.Ordinal), $"方案角色表格必须显式绑定 {propertyName} 列。" );
+    }
+    foreach (var propertyName in new[] { "Enabled", "SaveEnabled", "ReportEnabled", "MesEnabled" })
+    {
+        AssertTrue(configureMethod.Contains($"AddSchemeDetailRoleCheckColumn(nameof(SchemeDetailRoleTableRow.{propertyName})", StringComparison.Ordinal), $"方案角色表格必须显式绑定 {propertyName} 复选列。" );
+    }
+
+    AssertFalse(configureMethod.Contains("DataPropertyName = nameof(SchemeDetailRoleTableRow.Source)", StringComparison.Ordinal), "Source 不得成为可见列。" );
+    AssertFalse(configureMethod.Contains("DataPropertyName = nameof(SchemeDetailRoleTableRow.ItemId)", StringComparison.Ordinal), "ItemId 不得成为可见列。" );
+    AssertFalse(configureMethod.Contains("DataPropertyName = nameof(SchemeDetailRoleTableRow.Role)", StringComparison.Ordinal), "Role 不得成为可见列。" );
+    AssertTrue(configureMethod.Contains("_localizer.GetString(TextKeys.Address.ColumnDetailRole)", StringComparison.Ordinal), "方案角色表格列标题必须走本地化资源。" );
+}
+
+static void SchemeDetailRoleNamesAndMonitorFallbacksAreCentralized()
+{
+    var addressViewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "AddressManageView.cs"), Encoding.UTF8);
+    var languageChangedMethod = ExtractMethodText(addressViewCode, "protected override void OnLanguageChanged()", "private void ConfigureTables()");
+    var createRowsMethod = ExtractMethodText(addressViewCode, "private IEnumerable<SchemeDetailRoleTableRow> CreateSchemeDetailRoleRows", "private static BizSchemeDetail CreateEmptySchemeDetail");
+    var rowModel = ExtractMethodText(addressViewCode, "private sealed class SchemeDetailRoleTableRow", "private static bool GetEnabled");
+
+    AssertTrue(languageChangedMethod.Contains("BindSchemeDetailRoleRows();", StringComparison.Ordinal), "切换语言后必须重建方案角色行，刷新已绑定的角色名称单元格。");
+    AssertTrue(createRowsMethod.Contains("GetLocalizedSchemeDetailRoleName(role)", StringComparison.Ordinal), "创建方案角色行时必须传入本地化角色名称。");
+    AssertTrue(rowModel.Contains("string roleName", StringComparison.Ordinal), "方案角色行模型应接收已本地化的角色名称。");
+    AssertFalse(rowModel.Contains("=> Role switch", StringComparison.Ordinal), "方案角色行模型不应硬编码中文角色名称。");
+
+    var textKeys = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Constants", "TextKeys.cs"), Encoding.UTF8);
+    foreach (var keyName in new[] { "DetailRoleActual", "DetailRoleUpper", "DetailRoleLower", "DetailRoleResult" })
+    {
+        AssertTrue(textKeys.Contains($"public const string {keyName}", StringComparison.Ordinal), $"必须声明角色本地化键 {keyName}。");
+    }
+
+    var monitorCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var previewColumnsMethod = ExtractMethodText(monitorCode, "private static IEnumerable<ProductHistoryDynamicColumn> CreateProductHistoryDynamicColumns(WeldPreviewItem previewItem)", "private static IEnumerable<ProductHistoryDynamicColumn> CreateProductHistoryDynamicColumnsFromScheme");
+    AssertTrue(previewColumnsMethod.Contains("SchemeDetailRoleRules.ResolveHeader(previewItem.ActualHeader, previewItem.Name, SchemeDetailValueRole.Actual)", StringComparison.Ordinal), "产品历史 Actual fallback 必须使用集中规则。");
+    AssertFalse(previewColumnsMethod.Contains("$\"{previewItem.Name}实际值\"", StringComparison.Ordinal), "产品历史 Actual fallback 不得继续拼接“实际值”后缀。");
 }
 
 static void ReportFileUploadRuleRequiresEnabledReportRole()

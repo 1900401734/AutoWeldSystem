@@ -367,5 +367,29 @@ public static class SchemeDetailRoleRules
     /// 获取角色默认显示表头。
     /// </summary>
     public static string GetDefaultHeader(DimTestItem item, SchemeDetailValueRole role)
-        => $"{item.ItemName}{GetRoleName(role)}";
+        => GetDefaultHeader(item.ItemName, role);
+
+    /// <summary>
+    /// 根据测试项名称获取角色默认显示表头，供没有完整测试项实体的展示模型复用。
+    /// </summary>
+    public static string GetDefaultHeader(string? itemName, SchemeDetailValueRole role)
+    {
+        var normalizedItemName = itemName?.Trim() ?? string.Empty;
+        return role == SchemeDetailValueRole.Actual ? normalizedItemName : $"{normalizedItemName}{GetRoleName(role)}";
+    }
+
+    /// <summary>
+    /// 获取最终显示表头；优先保留数据库中已有的非空配置，否则使用统一默认值。
+    /// </summary>
+    public static string ResolveHeader(BizSchemeDetail detail, DimTestItem item, SchemeDetailValueRole role)
+        => ResolveHeader(GetHeader(detail, role), item.ItemName, role);
+
+    /// <summary>
+    /// 解析已存表头与测试项名称，供 DTO 和界面预览统一使用。
+    /// </summary>
+    public static string ResolveHeader(string? storedHeader, string? itemName, SchemeDetailValueRole role)
+    {
+        var normalizedHeader = storedHeader?.Trim();
+        return string.IsNullOrWhiteSpace(normalizedHeader) ? GetDefaultHeader(itemName, role) : normalizedHeader;
+    }
 }

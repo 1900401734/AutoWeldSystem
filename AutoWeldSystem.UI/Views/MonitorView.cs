@@ -5535,7 +5535,7 @@ public partial class MonitorView : BaseView
                 candidate.ItemKey,
                 candidate.ItemName,
                 PreviewActualRole,
-                $"{candidate.ItemName}实际值",
+                SchemeDetailRoleRules.GetDefaultHeader(candidate.ItemName, SchemeDetailValueRole.Actual),
                 candidate.Sort + 3);
         }
 
@@ -5583,7 +5583,7 @@ public partial class MonitorView : BaseView
                 previewItem.Key,
                 previewItem.Name,
                 PreviewActualRole,
-                NormalizeDisplayText(previewItem.ActualHeader, $"{previewItem.Name}实际值"),
+                SchemeDetailRoleRules.ResolveHeader(previewItem.ActualHeader, previewItem.Name, SchemeDetailValueRole.Actual),
                 previewItem.Sort + 3);
         }
 
@@ -5612,22 +5612,22 @@ public partial class MonitorView : BaseView
 
         if (SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Upper))
         {
-            yield return CreateProductHistoryDynamicColumn(itemKey, itemName, PreviewUpperRole, NormalizeDisplayText(detail.UpperHeader, $"{itemName}上限"), schemeItem.Sort + 1);
+            yield return CreateProductHistoryDynamicColumn(itemKey, itemName, PreviewUpperRole, SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Upper), schemeItem.Sort + 1);
         }
 
         if (SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Lower))
         {
-            yield return CreateProductHistoryDynamicColumn(itemKey, itemName, PreviewLowerRole, NormalizeDisplayText(detail.LowerHeader, $"{itemName}下限"), schemeItem.Sort + 2);
+            yield return CreateProductHistoryDynamicColumn(itemKey, itemName, PreviewLowerRole, SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Lower), schemeItem.Sort + 2);
         }
 
         if (SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Actual))
         {
-            yield return CreateProductHistoryDynamicColumn(itemKey, itemName, PreviewActualRole, NormalizeDisplayText(detail.ActualHeader, $"{itemName}实际值"), schemeItem.Sort + 3);
+            yield return CreateProductHistoryDynamicColumn(itemKey, itemName, PreviewActualRole, SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Actual), schemeItem.Sort + 3);
         }
 
         if (SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Result))
         {
-            yield return CreateProductHistoryDynamicColumn(itemKey, itemName, PreviewResultRole, NormalizeDisplayText(detail.ResultHeader, $"{itemName}结果"), schemeItem.Sort + 4);
+            yield return CreateProductHistoryDynamicColumn(itemKey, itemName, PreviewResultRole, SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Result), schemeItem.Sort + 4);
         }
     }
 
@@ -5852,22 +5852,22 @@ public partial class MonitorView : BaseView
                 {
                     if (item.EnableUpper)
                     {
-                        AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewUpperRole), NormalizeDisplayText(item.UpperHeader, $"{item.Name}上限"), 118);
+                        AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewUpperRole), SchemeDetailRoleRules.ResolveHeader(item.UpperHeader, item.Name, SchemeDetailValueRole.Upper), 118);
                     }
 
                     if (item.EnableLower)
                     {
-                        AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewLowerRole), NormalizeDisplayText(item.LowerHeader, $"{item.Name}下限"), 118);
+                        AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewLowerRole), SchemeDetailRoleRules.ResolveHeader(item.LowerHeader, item.Name, SchemeDetailValueRole.Lower), 118);
                     }
 
                     if (item.EnableActual)
                     {
-                        AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewActualRole), NormalizeDisplayText(item.ActualHeader, $"{item.Name}实际值"), 136);
+                        AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewActualRole), SchemeDetailRoleRules.ResolveHeader(item.ActualHeader, item.Name, SchemeDetailValueRole.Actual), 136);
                     }
 
                     if (item.EnableResult)
                     {
-                        AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewResultRole), NormalizeDisplayText(item.ResultHeader, $"{item.Name}结果"), 118);
+                        AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewResultRole), SchemeDetailRoleRules.ResolveHeader(item.ResultHeader, item.Name, SchemeDetailValueRole.Result), 118);
                     }
                 }
 
@@ -7137,14 +7137,15 @@ public partial class MonitorView : BaseView
     private static string ResolveDetailHeader(BizSchemeDetail detail, DimTestItem item, string role)
     {
         var itemName = NormalizeDisplayText(item.ItemName, $"测试项{item.ItemId}");
-        return role switch
+        var schemeRole = role switch
         {
-            PreviewActualRole => NormalizeDisplayText(detail.ActualHeader, $"{itemName}实际值"),
-            PreviewUpperRole => NormalizeDisplayText(detail.UpperHeader, $"{itemName}上限"),
-            PreviewLowerRole => NormalizeDisplayText(detail.LowerHeader, $"{itemName}下限"),
-            PreviewResultRole => NormalizeDisplayText(detail.ResultHeader, $"{itemName}结果"),
-            _ => itemName
+            PreviewActualRole => SchemeDetailValueRole.Actual,
+            PreviewUpperRole => SchemeDetailValueRole.Upper,
+            PreviewLowerRole => SchemeDetailValueRole.Lower,
+            PreviewResultRole => SchemeDetailValueRole.Result,
+            _ => SchemeDetailValueRole.Actual
         };
+        return SchemeDetailRoleRules.ResolveHeader(SchemeDetailRoleRules.GetHeader(detail, schemeRole), itemName, schemeRole);
     }
 
     /// <summary>

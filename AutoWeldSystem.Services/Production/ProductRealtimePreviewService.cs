@@ -528,15 +528,15 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
 
     private static string ResolveDetailHeader(BizSchemeDetail detail, DimTestItem item, ProductRealtimePreviewRole role)
     {
-        var itemName = NormalizeNullableText(item.ItemName) ?? $"测试项{item.ItemId}";
-        return role switch
+        var schemeRole = role switch
         {
-            ProductRealtimePreviewRole.Actual => NormalizeNullableText(detail.ActualHeader) ?? $"{itemName}实际值",
-            ProductRealtimePreviewRole.Upper => NormalizeNullableText(detail.UpperHeader) ?? $"{itemName}上限",
-            ProductRealtimePreviewRole.Lower => NormalizeNullableText(detail.LowerHeader) ?? $"{itemName}下限",
-            ProductRealtimePreviewRole.Result => NormalizeNullableText(detail.ResultHeader) ?? $"{itemName}结果",
-            _ => itemName
+            ProductRealtimePreviewRole.Actual => SchemeDetailValueRole.Actual,
+            ProductRealtimePreviewRole.Upper => SchemeDetailValueRole.Upper,
+            ProductRealtimePreviewRole.Lower => SchemeDetailValueRole.Lower,
+            ProductRealtimePreviewRole.Result => SchemeDetailValueRole.Result,
+            _ => SchemeDetailValueRole.Actual
         };
+        return SchemeDetailRoleRules.ResolveHeader(detail, item, schemeRole);
     }
 
     private static string? NormalizeNullableText(string? value)

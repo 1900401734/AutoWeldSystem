@@ -239,10 +239,11 @@ public sealed class TestSchemeConfigService : ITestSchemeConfigService
     private static void NormalizeDetailOutput(BizSchemeDetail detail, DimTestItem? item)
     {
         var itemName = NormalizeNullable(item?.ItemName) ?? $"测试项{detail.ItemId}";
-        detail.ActualHeader = NormalizeNullable(detail.ActualHeader) ?? $"{itemName}实际值";
-        detail.UpperHeader = NormalizeNullable(detail.UpperHeader) ?? $"{itemName}上限";
-        detail.LowerHeader = NormalizeNullable(detail.LowerHeader) ?? $"{itemName}下限";
-        detail.ResultHeader = NormalizeNullable(detail.ResultHeader) ?? $"{itemName}结果";
+        foreach (var role in SchemeDetailRoleRules.AllRoles)
+        {
+            var header = SchemeDetailRoleRules.ResolveHeader(SchemeDetailRoleRules.GetHeader(detail, role), itemName, role);
+            SchemeDetailRoleRules.SetHeader(detail, role, header);
+        }
         detail.ActualMesFieldName = NormalizeNullable(detail.ActualMesFieldName);
         detail.UpperMesFieldName = NormalizeNullable(detail.UpperMesFieldName);
         detail.LowerMesFieldName = NormalizeNullable(detail.LowerMesFieldName);

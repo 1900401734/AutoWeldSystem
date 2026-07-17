@@ -1940,4 +1940,16 @@
   <data name="system.placeholder.station_display_name" xml:space="preserve"><value>Enter the station display name</value></data>
   <data name="system.message.station_display_name_required" xml:space="preserve"><value>Both station display names are required when dual station is enabled.</value></data>
   <data name="system.message.station_display_name_duplicate" xml:space="preserve"><value>The two station display names must be different.</value></data>
+  <data name="address.column.detail_item" xml:space="preserve"><value>Test Item</value></data>
+  <data name="address.column.detail_role" xml:space="preserve"><value>Value Role</value></data>
+  <data name="address.column.detail_enabled" xml:space="preserve"><value>Collect</value></data>
+  <data name="address.column.detail_header" xml:space="preserve"><value>Display Header</value></data>
+  <data name="address.column.detail_save" xml:space="preserve"><value>Save History</value></data>
+  <data name="address.column.detail_report" xml:space="preserve"><value>Write Report</value></data>
+  <data name="address.column.detail_mes" xml:space="preserve"><value>Upload MES</value></data>
+  <data name="address.column.detail_mes_field" xml:space="preserve"><value>MES Field</value></data>
+  <data name="address.detail_role.actual" xml:space="preserve"><value>Actual</value></data>
+  <data name="address.detail_role.upper" xml:space="preserve"><value>Upper Limit</value></data>
+  <data name="address.detail_role.lower" xml:space="preserve"><value>Lower Limit</value></data>
+  <data name="address.detail_role.result" xml:space="preserve"><value>Result</value></data>
 </root>
