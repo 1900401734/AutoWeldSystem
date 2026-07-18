@@ -34,6 +34,7 @@ using System.Text.Json;
 
 var tests = new (string Name, Action Run)[]
 {
+    ("System setting layout rules honor DPI breakpoints", SystemSettingLayoutRulesHonorDpiBreakpoints),
     ("PLC recipe name rules map slots without shifting codes", PlcRecipeNameRulesMapSlotsWithoutShiftingCodes),
     ("PLC recipe name config rules reject invalid station settings", PlcRecipeNameConfigRulesRejectInvalidStationSettings),
     ("PLC recipe name reader keeps successful slots after read failures", PlcRecipeNameReaderKeepsSuccessfulSlotsAfterReadFailures),
@@ -278,6 +279,22 @@ foreach (var test in tests)
 {
     test.Run();
     Console.WriteLine($"PASS {test.Name}");
+}
+
+static void SystemSettingLayoutRulesHonorDpiBreakpoints()
+{
+    AssertEqual(SystemSettingLayoutMode.SingleColumn, SystemSettingLayoutRules.ResolveMode(759, 96), "96 DPI 下 759 应为单列。");
+    AssertEqual(SystemSettingLayoutMode.TwoColumns, SystemSettingLayoutRules.ResolveMode(760, 96), "96 DPI 下 760 应进入两列。");
+    AssertEqual(SystemSettingLayoutMode.TwoColumns, SystemSettingLayoutRules.ResolveMode(1199, 96), "96 DPI 下 1199 应保持两列。");
+    AssertEqual(SystemSettingLayoutMode.ThreeColumns, SystemSettingLayoutRules.ResolveMode(1200, 96), "96 DPI 下 1200 应进入三列。");
+
+    AssertEqual(760, SystemSettingLayoutRules.ToLogicalWidth(950, 120), "125% DPI 应换算为 96 DPI 逻辑宽度。");
+    AssertEqual(SystemSettingLayoutMode.TwoColumns, SystemSettingLayoutRules.ResolveMode(950, 120), "125% DPI 下 950 设备像素应为两列。");
+    AssertEqual(SystemSettingLayoutMode.ThreeColumns, SystemSettingLayoutRules.ResolveMode(1500, 120), "125% DPI 下 1500 设备像素应为三列。");
+
+    AssertEqual(SystemSettingLayoutMode.TwoColumns, SystemSettingLayoutRules.ResolveMode(1140, 144), "150% DPI 下 1140 设备像素应为两列。");
+    AssertEqual(SystemSettingLayoutMode.ThreeColumns, SystemSettingLayoutRules.ResolveMode(1800, 144), "150% DPI 下 1800 设备像素应为三列。");
+    AssertEqual(SystemSettingLayoutMode.SingleColumn, SystemSettingLayoutRules.ResolveMode(-1, 0), "无效宽度和 DPI 必须安全回退。");
 }
 
 static void PlcRecipeNameRulesMapSlotsWithoutShiftingCodes()
