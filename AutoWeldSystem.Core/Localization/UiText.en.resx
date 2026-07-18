@@ -388,7 +388,7 @@
     <value>Production Config</value>
   </data>
   <data name="system.group.device" xml:space="preserve">
-    <value>Production Config</value>
+    <value>Device Config</value>
   </data>
   <data name="system.group.controller" xml:space="preserve">
     <value>Server Config</value>
@@ -1723,7 +1723,7 @@
     <value>MES Config</value>
   </data>
   <data name="system.tab.basic" xml:space="preserve">
-    <value>Basic Settrings</value>
+    <value>Basic Settings</value>
   </data>
   <data name="system.Checkbox.enable_dual_station" xml:space="preserve">
     <value>Enable dual station</value>
