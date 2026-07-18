@@ -87,6 +87,9 @@ public partial class SystemSettingView : BaseView
     private string _selectedProcessParameterDeviceType = ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic;
     private string _selectedCenterServerSystemType = CenterServerConstants.SystemTypes.Other;
     private AppSettings _currentSettings;
+    private SystemSettingLayoutMode? _lastLayoutMode;
+    private Size _lastLayoutViewportSize = Size.Empty;
+    private int _lastLayoutDpi;
 
     public SystemSettingView(
         IAppSettingsService settingsService,
@@ -115,6 +118,7 @@ public partial class SystemSettingView : BaseView
         ApplyLocalizedTexts();
         BindPlcTypeOptions();
         BindPlcStringNumericFormatModeOptions();
+        ApplyBasicSettingsLayout(force: true);
     }
 
     protected override void OnLoad(EventArgs e)
@@ -129,6 +133,7 @@ public partial class SystemSettingView : BaseView
         _initialized = true;
         LoadSettings();
         RefreshDeviceManagementEnabled();
+        ApplyBasicSettingsLayout(force: true);
     }
 
     /// <summary>
@@ -137,9 +142,114 @@ public partial class SystemSettingView : BaseView
     protected override void OnVisibleChanged(EventArgs e)
     {
         base.OnVisibleChanged(e);
+        if (Visible)
+        {
+            ApplyBasicSettingsLayout();
+        }
+
         if (Visible && _initialized)
         {
             RefreshDeviceManagementEnabled();
+        }
+    }
+
+    protected override void OnSizeChanged(EventArgs e)
+    {
+        base.OnSizeChanged(e);
+        ApplyBasicSettingsLayout();
+    }
+
+    protected override void OnDpiChangedAfterParent(EventArgs e)
+    {
+        base.OnDpiChangedAfterParent(e);
+        ApplyBasicSettingsLayout(force: true);
+    }
+
+    /// <summary>
+    /// 根据视口尺寸和 DPI 选择基础设置页的列数，并重复使用现有控件实例。
+    /// </summary>
+    private void ApplyBasicSettingsLayout(bool force = false)
+    {
+        if (basicSettingsViewport is null || basicSettingsViewport.IsDisposed)
+        {
+            return;
+        }
+
+        var viewportSize = basicSettingsViewport.ClientSize;
+        var mode = SystemSettingLayoutRules.ResolveMode(basicSettingsViewport.ClientSize.Width, DeviceDpi);
+        if (!force && mode == _lastLayoutMode && viewportSize == _lastLayoutViewportSize && DeviceDpi == _lastLayoutDpi)
+        {
+            return;
+        }
+
+        basicSettingsLayout.SuspendLayout();
+        try
+        {
+            ConfigureBasicSettingsGrid(mode);
+            _lastLayoutMode = mode;
+            _lastLayoutViewportSize = viewportSize;
+            _lastLayoutDpi = DeviceDpi;
+        }
+        catch (Exception ex)
+        {
+            Trace.TraceWarning("SystemSettingView responsive layout failed: {0}", ex);
+            ConfigureBasicSettingsGrid(SystemSettingLayoutMode.SingleColumn);
+        }
+        finally
+        {
+            basicSettingsLayout.ResumeLayout(true);
+        }
+    }
+
+    /// <summary>
+    /// 仅移动三个语义列面板，不重建任何输入控件或业务绑定。
+    /// </summary>
+    private void ConfigureBasicSettingsGrid(SystemSettingLayoutMode mode)
+    {
+        basicSettingsLayout.ColumnStyles.Clear();
+        basicSettingsLayout.RowStyles.Clear();
+        basicSettingsLayout.SetColumnSpan(leftSettingsColumn, 1);
+        basicSettingsLayout.SetColumnSpan(middleSettingsColumn, 1);
+        basicSettingsLayout.SetColumnSpan(rightSettingsColumn, 1);
+
+        switch (mode)
+        {
+            case SystemSettingLayoutMode.ThreeColumns:
+                basicSettingsLayout.ColumnCount = 3;
+                basicSettingsLayout.RowCount = 1;
+                basicSettingsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33333F));
+                basicSettingsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33333F));
+                basicSettingsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33334F));
+                basicSettingsLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+                basicSettingsLayout.SetCellPosition(leftSettingsColumn, new TableLayoutPanelCellPosition(0, 0));
+                basicSettingsLayout.SetCellPosition(middleSettingsColumn, new TableLayoutPanelCellPosition(1, 0));
+                basicSettingsLayout.SetCellPosition(rightSettingsColumn, new TableLayoutPanelCellPosition(2, 0));
+                break;
+
+            case SystemSettingLayoutMode.TwoColumns:
+                basicSettingsLayout.ColumnCount = 2;
+                basicSettingsLayout.RowCount = 2;
+                basicSettingsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+                basicSettingsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+                basicSettingsLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+                basicSettingsLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+                basicSettingsLayout.SetCellPosition(leftSettingsColumn, new TableLayoutPanelCellPosition(0, 0));
+                basicSettingsLayout.SetCellPosition(middleSettingsColumn, new TableLayoutPanelCellPosition(1, 0));
+                basicSettingsLayout.SetCellPosition(rightSettingsColumn, new TableLayoutPanelCellPosition(0, 1));
+                basicSettingsLayout.SetColumnSpan(rightSettingsColumn, 2);
+                break;
+
+            default:
+                basicSettingsLayout.ColumnCount = 1;
+                basicSettingsLayout.RowCount = 3;
+                basicSettingsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+                basicSettingsLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+                basicSettingsLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+                basicSettingsLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+                basicSettingsLayout.SetCellPosition(leftSettingsColumn, new TableLayoutPanelCellPosition(0, 0));
+                basicSettingsLayout.SetCellPosition(middleSettingsColumn, new TableLayoutPanelCellPosition(0, 1));
+                basicSettingsLayout.SetCellPosition(rightSettingsColumn, new TableLayoutPanelCellPosition(0, 2));
+                break;
         }
     }
 

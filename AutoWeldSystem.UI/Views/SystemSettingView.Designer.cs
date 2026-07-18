@@ -23,6 +23,11 @@ namespace AutoWeldSystem.UI.Views
             btnSaveAll = new AntdUI.Button();
             tabSettingCategories = new TabControl();
             tabBasicSettings = new TabPage();
+            basicSettingsViewport = new Panel();
+            basicSettingsLayout = new TableLayoutPanel();
+            leftSettingsColumn = new TableLayoutPanel();
+            middleSettingsColumn = new TableLayoutPanel();
+            rightSettingsColumn = new TableLayoutPanel();
             grpCenterServerConfig = new GroupBox();
             tableLayoutPanelCenterServer = new TableLayoutPanel();
             chkEnableCenterServerSync = new AntdUI.Checkbox();
@@ -164,6 +169,11 @@ namespace AutoWeldSystem.UI.Views
             titleLayout.SuspendLayout();
             tabSettingCategories.SuspendLayout();
             tabBasicSettings.SuspendLayout();
+            basicSettingsViewport.SuspendLayout();
+            basicSettingsLayout.SuspendLayout();
+            leftSettingsColumn.SuspendLayout();
+            middleSettingsColumn.SuspendLayout();
+            rightSettingsColumn.SuspendLayout();
             grpCenterServerConfig.SuspendLayout();
             tableLayoutPanelCenterServer.SuspendLayout();
             tlpCenterServerBaseUrl.SuspendLayout();
@@ -301,12 +311,7 @@ namespace AutoWeldSystem.UI.Views
             // 
             // tabBasicSettings
             // 
-            tabBasicSettings.Controls.Add(grpCenterServerConfig);
-            tabBasicSettings.Controls.Add(grpAppConfig);
-            tabBasicSettings.Controls.Add(grpMesConfig);
-            tabBasicSettings.Controls.Add(grpProductionConfig);
-            tabBasicSettings.Controls.Add(grpDeviceConfig);
-            tabBasicSettings.Controls.Add(grpPlcConfig);
+            tabBasicSettings.Controls.Add(basicSettingsViewport);
             tabBasicSettings.Location = new Point(4, 29);
             tabBasicSettings.Name = "tabBasicSettings";
             tabBasicSettings.Padding = new Padding(3);
@@ -314,14 +319,96 @@ namespace AutoWeldSystem.UI.Views
             tabBasicSettings.TabIndex = 0;
             tabBasicSettings.Text = "基础设置";
             tabBasicSettings.UseVisualStyleBackColor = true;
-            // 
+            //
+            // basicSettingsViewport
+            //
+            basicSettingsViewport.AutoScroll = true;
+            basicSettingsViewport.Controls.Add(basicSettingsLayout);
+            basicSettingsViewport.Dock = DockStyle.Fill;
+            basicSettingsViewport.Location = new Point(3, 3);
+            basicSettingsViewport.Name = "basicSettingsViewport";
+            basicSettingsViewport.Padding = new Padding(8);
+            basicSettingsViewport.Size = new Size(1457, 663);
+            basicSettingsViewport.TabIndex = 0;
+            //
+            // basicSettingsLayout
+            //
+            basicSettingsLayout.AutoSize = true;
+            basicSettingsLayout.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            basicSettingsLayout.ColumnCount = 3;
+            basicSettingsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33333F));
+            basicSettingsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33333F));
+            basicSettingsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33334F));
+            basicSettingsLayout.Controls.Add(leftSettingsColumn, 0, 0);
+            basicSettingsLayout.Controls.Add(middleSettingsColumn, 1, 0);
+            basicSettingsLayout.Controls.Add(rightSettingsColumn, 2, 0);
+            basicSettingsLayout.Dock = DockStyle.Top;
+            basicSettingsLayout.Location = new Point(8, 8);
+            basicSettingsLayout.Name = "basicSettingsLayout";
+            basicSettingsLayout.RowCount = 1;
+            basicSettingsLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            basicSettingsLayout.Size = new Size(1441, 661);
+            basicSettingsLayout.TabIndex = 0;
+            //
+            // leftSettingsColumn
+            //
+            leftSettingsColumn.AutoSize = true;
+            leftSettingsColumn.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            leftSettingsColumn.ColumnCount = 1;
+            leftSettingsColumn.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            leftSettingsColumn.Controls.Add(grpPlcConfig, 0, 0);
+            leftSettingsColumn.Controls.Add(grpDeviceConfig, 0, 1);
+            leftSettingsColumn.Dock = DockStyle.Top;
+            leftSettingsColumn.Location = new Point(0, 0);
+            leftSettingsColumn.Name = "leftSettingsColumn";
+            leftSettingsColumn.RowCount = 2;
+            leftSettingsColumn.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            leftSettingsColumn.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            leftSettingsColumn.Size = new Size(480, 536);
+            leftSettingsColumn.TabIndex = 0;
+            //
+            // middleSettingsColumn
+            //
+            middleSettingsColumn.AutoSize = true;
+            middleSettingsColumn.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            middleSettingsColumn.ColumnCount = 1;
+            middleSettingsColumn.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            middleSettingsColumn.Controls.Add(grpProductionConfig, 0, 0);
+            middleSettingsColumn.Controls.Add(grpAppConfig, 0, 1);
+            middleSettingsColumn.Controls.Add(grpCenterServerConfig, 0, 2);
+            middleSettingsColumn.Dock = DockStyle.Top;
+            middleSettingsColumn.Location = new Point(480, 0);
+            middleSettingsColumn.Name = "middleSettingsColumn";
+            middleSettingsColumn.RowCount = 3;
+            middleSettingsColumn.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            middleSettingsColumn.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            middleSettingsColumn.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            middleSettingsColumn.Size = new Size(480, 684);
+            middleSettingsColumn.TabIndex = 1;
+            //
+            // rightSettingsColumn
+            //
+            rightSettingsColumn.AutoSize = true;
+            rightSettingsColumn.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            rightSettingsColumn.ColumnCount = 1;
+            rightSettingsColumn.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            rightSettingsColumn.Controls.Add(grpMesConfig, 0, 0);
+            rightSettingsColumn.Dock = DockStyle.Top;
+            rightSettingsColumn.Location = new Point(960, 0);
+            rightSettingsColumn.Name = "rightSettingsColumn";
+            rightSettingsColumn.RowCount = 1;
+            rightSettingsColumn.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            rightSettingsColumn.Size = new Size(480, 215);
+            rightSettingsColumn.TabIndex = 2;
+            //
             // grpCenterServerConfig
-            // 
+            //
             grpCenterServerConfig.Controls.Add(tableLayoutPanelCenterServer);
-            grpCenterServerConfig.Location = new Point(780, 463);
-            grpCenterServerConfig.Margin = new Padding(0);
+            grpCenterServerConfig.Dock = DockStyle.Top;
+            grpCenterServerConfig.Location = new Point(780, 465);
+            grpCenterServerConfig.Margin = new Padding(6);
             grpCenterServerConfig.Name = "grpCenterServerConfig";
-            grpCenterServerConfig.Size = new Size(541, 182);
+            grpCenterServerConfig.Size = new Size(541, 204);
             grpCenterServerConfig.TabIndex = 6;
             grpCenterServerConfig.TabStop = false;
             grpCenterServerConfig.Text = "中心服务器";
@@ -342,7 +429,7 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanelCenterServer.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
             tableLayoutPanelCenterServer.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
             tableLayoutPanelCenterServer.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
-            tableLayoutPanelCenterServer.Size = new Size(535, 156);
+            tableLayoutPanelCenterServer.Size = new Size(535, 178);
             tableLayoutPanelCenterServer.TabIndex = 0;
             // 
             // chkEnableCenterServerSync
@@ -471,8 +558,9 @@ namespace AutoWeldSystem.UI.Views
             // grpAppConfig
             // 
             grpAppConfig.Controls.Add(tableLayoutPanel1);
+            grpAppConfig.Dock = DockStyle.Top;
             grpAppConfig.Location = new Point(317, 215);
-            grpAppConfig.Margin = new Padding(0);
+            grpAppConfig.Margin = new Padding(6);
             grpAppConfig.Name = "grpAppConfig";
             grpAppConfig.Size = new Size(455, 204);
             grpAppConfig.TabIndex = 5;
@@ -496,13 +584,15 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
             tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
             tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
-            tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
+            tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
             tableLayoutPanel1.Size = new Size(449, 178);
             tableLayoutPanel1.TabIndex = 6;
             // 
             // tableLayoutPanel4
             // 
+            tableLayoutPanel4.AutoSize = true;
+            tableLayoutPanel4.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             tableLayoutPanel4.ColumnCount = 2;
             tableLayoutPanel4.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             tableLayoutPanel4.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
@@ -511,8 +601,9 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanel4.Location = new Point(0, 135);
             tableLayoutPanel4.Margin = new Padding(0);
             tableLayoutPanel4.Name = "tableLayoutPanel4";
+            tableLayoutPanel4.MinimumSize = new Size(0, 45);
             tableLayoutPanel4.RowCount = 1;
-            tableLayoutPanel4.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            tableLayoutPanel4.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tableLayoutPanel4.Size = new Size(408, 45);
             tableLayoutPanel4.TabIndex = 7;
             // 
@@ -758,9 +849,11 @@ namespace AutoWeldSystem.UI.Views
             // grpMesConfig
             // 
             grpMesConfig.Controls.Add(tableLayoutPanelMesConfig);
+            grpMesConfig.Dock = DockStyle.Top;
             grpMesConfig.Location = new Point(780, 260);
-            grpMesConfig.Margin = new Padding(0);
+            grpMesConfig.Margin = new Padding(6);
             grpMesConfig.Name = "grpMesConfig";
+            grpMesConfig.MinimumSize = new Size(0, 240);
             grpMesConfig.Size = new Size(541, 203);
             grpMesConfig.TabIndex = 3;
             grpMesConfig.TabStop = false;
@@ -794,8 +887,8 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanelMesConfig.Name = "tableLayoutPanelMesConfig";
             tableLayoutPanelMesConfig.RowCount = 16;
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
-            tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
-            tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
+            tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
@@ -842,6 +935,8 @@ namespace AutoWeldSystem.UI.Views
             // 
             // tlpCheckbox2
             // 
+            tlpCheckbox2.AutoSize = true;
+            tlpCheckbox2.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             tlpCheckbox2.ColumnCount = 2;
             tlpCheckbox2.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             tlpCheckbox2.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
@@ -851,8 +946,9 @@ namespace AutoWeldSystem.UI.Views
             tlpCheckbox2.Location = new Point(0, 90);
             tlpCheckbox2.Margin = new Padding(0);
             tlpCheckbox2.Name = "tlpCheckbox2";
+            tlpCheckbox2.MinimumSize = new Size(0, 45);
             tlpCheckbox2.RowCount = 1;
-            tlpCheckbox2.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            tlpCheckbox2.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tlpCheckbox2.Size = new Size(535, 45);
             tlpCheckbox2.TabIndex = 7;
             // 
@@ -985,6 +1081,8 @@ namespace AutoWeldSystem.UI.Views
             // 
             // tlpCheckbox1
             // 
+            tlpCheckbox1.AutoSize = true;
+            tlpCheckbox1.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             tlpCheckbox1.ColumnCount = 2;
             tableLayoutPanelMesConfig.SetColumnSpan(tlpCheckbox1, 2);
             tlpCheckbox1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
@@ -995,9 +1093,9 @@ namespace AutoWeldSystem.UI.Views
             tlpCheckbox1.Location = new Point(0, 45);
             tlpCheckbox1.Margin = new Padding(0);
             tlpCheckbox1.Name = "tlpCheckbox1";
+            tlpCheckbox1.MinimumSize = new Size(0, 45);
             tlpCheckbox1.RowCount = 1;
-            tlpCheckbox1.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tlpCheckbox1.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
+            tlpCheckbox1.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tlpCheckbox1.Size = new Size(535, 45);
             tlpCheckbox1.TabIndex = 1;
             // 
@@ -1482,8 +1580,9 @@ namespace AutoWeldSystem.UI.Views
             // grpProductionConfig
             // 
             grpProductionConfig.Controls.Add(tlpProductConfig);
+            grpProductionConfig.Dock = DockStyle.Top;
             grpProductionConfig.Location = new Point(780, 5);
-            grpProductionConfig.Margin = new Padding(0);
+            grpProductionConfig.Margin = new Padding(6);
             grpProductionConfig.Name = "grpProductionConfig";
             grpProductionConfig.Size = new Size(541, 255);
             grpProductionConfig.TabIndex = 4;
@@ -1728,8 +1827,9 @@ namespace AutoWeldSystem.UI.Views
             // grpDeviceConfig
             // 
             grpDeviceConfig.Controls.Add(layoutDeviceNoConfig);
+            grpDeviceConfig.Dock = DockStyle.Top;
             grpDeviceConfig.Location = new Point(317, 4);
-            grpDeviceConfig.Margin = new Padding(0);
+            grpDeviceConfig.Margin = new Padding(6);
             grpDeviceConfig.Name = "grpDeviceConfig";
             grpDeviceConfig.Size = new Size(455, 211);
             grpDeviceConfig.TabIndex = 0;
@@ -1947,8 +2047,9 @@ namespace AutoWeldSystem.UI.Views
             // grpPlcConfig
             // 
             grpPlcConfig.Controls.Add(tlpPlcConfig);
+            grpPlcConfig.Dock = DockStyle.Top;
             grpPlcConfig.Location = new Point(3, 4);
-            grpPlcConfig.Margin = new Padding(0);
+            grpPlcConfig.Margin = new Padding(6);
             grpPlcConfig.Name = "grpPlcConfig";
             grpPlcConfig.Size = new Size(308, 295);
             grpPlcConfig.TabIndex = 1;
@@ -2192,6 +2293,15 @@ namespace AutoWeldSystem.UI.Views
             titleLayout.PerformLayout();
             tabSettingCategories.ResumeLayout(false);
             tabBasicSettings.ResumeLayout(false);
+            basicSettingsViewport.ResumeLayout(false);
+            basicSettingsLayout.ResumeLayout(false);
+            basicSettingsLayout.PerformLayout();
+            leftSettingsColumn.ResumeLayout(false);
+            leftSettingsColumn.PerformLayout();
+            middleSettingsColumn.ResumeLayout(false);
+            middleSettingsColumn.PerformLayout();
+            rightSettingsColumn.ResumeLayout(false);
+            rightSettingsColumn.PerformLayout();
             grpCenterServerConfig.ResumeLayout(false);
             tableLayoutPanelCenterServer.ResumeLayout(false);
             tlpCenterServerBaseUrl.ResumeLayout(false);
@@ -2344,6 +2454,11 @@ namespace AutoWeldSystem.UI.Views
         private Label lblDescription;
         private TabControl tabSettingCategories;
         private TabPage tabBasicSettings;
+        private Panel basicSettingsViewport;
+        private TableLayoutPanel basicSettingsLayout;
+        private TableLayoutPanel leftSettingsColumn;
+        private TableLayoutPanel middleSettingsColumn;
+        private TableLayoutPanel rightSettingsColumn;
         private GroupBox grpProductionConfig;
         private TableLayoutPanel tlpProductConfig;
         private GroupBox grpMesConfig;

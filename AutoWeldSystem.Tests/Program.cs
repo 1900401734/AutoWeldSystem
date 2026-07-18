@@ -35,6 +35,7 @@ using System.Text.Json;
 var tests = new (string Name, Action Run)[]
 {
     ("System setting layout rules honor DPI breakpoints", SystemSettingLayoutRulesHonorDpiBreakpoints),
+    ("System setting view uses responsive semantic columns", SystemSettingViewUsesResponsiveSemanticColumns),
     ("PLC recipe name rules map slots without shifting codes", PlcRecipeNameRulesMapSlotsWithoutShiftingCodes),
     ("PLC recipe name config rules reject invalid station settings", PlcRecipeNameConfigRulesRejectInvalidStationSettings),
     ("PLC recipe name reader keeps successful slots after read failures", PlcRecipeNameReaderKeepsSuccessfulSlotsAfterReadFailures),
@@ -7229,26 +7230,26 @@ static void StationDisplayNamesLoadLegacyDefaultsAndCollapseHiddenRow()
     AssertFalse(viewCode.Contains("StationDisplayNameRowHeight", StringComparison.Ordinal), "code-behind 不应保留名称行高度常量。");
 
     var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.Designer.cs"), Encoding.UTF8);
-    var productionLocation = ParseDesignerPointY(designerCode, "grpProductionConfig.Location");
-    var productionHeight = ParseDesignerSizeHeight(designerCode, "grpProductionConfig.Size");
-    var mesLocation = ParseDesignerPointY(designerCode, "grpMesConfig.Location");
-    var mesHeight = ParseDesignerSizeHeight(designerCode, "grpMesConfig.Size");
-    var centerServerLocation = ParseDesignerPointY(designerCode, "grpCenterServerConfig.Location");
-    AssertTrue(productionLocation + productionHeight <= mesLocation, "生产配置与 MES 配置在提交布局中不得重叠。");
-    AssertTrue(mesLocation + mesHeight <= centerServerLocation, "MES 配置与中心服务器配置在提交布局中不得重叠。");
     AssertTrue(designerCode.Contains("tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.AutoSize));", StringComparison.Ordinal), "Designer 必须将工位名称行设为 AutoSize，使隐藏容器时自动折叠。");
 }
 
-static int ParseDesignerPointY(string code, string propertyName)
+static void SystemSettingViewUsesResponsiveSemanticColumns()
 {
-    var match = System.Text.RegularExpressions.Regex.Match(code, $@"{System.Text.RegularExpressions.Regex.Escape(propertyName)} = new Point\(\d+, (\d+)\);");
-    return match.Success ? int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) : throw new InvalidOperationException($"未找到 {propertyName}。");
-}
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.Designer.cs"), Encoding.UTF8);
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.cs"), Encoding.UTF8);
 
-static int ParseDesignerSizeHeight(string code, string propertyName)
-{
-    var match = System.Text.RegularExpressions.Regex.Match(code, $@"{System.Text.RegularExpressions.Regex.Escape(propertyName)} = new Size\(\d+, (\d+)\);");
-    return match.Success ? int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) : throw new InvalidOperationException($"未找到 {propertyName}。");
+    AssertTrue(designerCode.Contains("private Panel basicSettingsViewport;", StringComparison.Ordinal), "Designer 必须声明基础设置滚动视口。");
+    AssertTrue(designerCode.Contains("private TableLayoutPanel basicSettingsLayout;", StringComparison.Ordinal), "Designer 必须声明响应式主表格。");
+    AssertTrue(designerCode.Contains("leftSettingsColumn.Controls.Add(grpPlcConfig, 0, 0);", StringComparison.Ordinal), "左列第一组必须是 PLC。");
+    AssertTrue(designerCode.Contains("leftSettingsColumn.Controls.Add(grpDeviceConfig, 0, 1);", StringComparison.Ordinal), "左列第二组必须是设备。");
+    AssertTrue(designerCode.Contains("middleSettingsColumn.Controls.Add(grpProductionConfig, 0, 0);", StringComparison.Ordinal), "中列第一组必须是生产。");
+    AssertTrue(designerCode.Contains("middleSettingsColumn.Controls.Add(grpAppConfig, 0, 1);", StringComparison.Ordinal), "中列第二组必须是应用。");
+    AssertTrue(designerCode.Contains("middleSettingsColumn.Controls.Add(grpCenterServerConfig, 0, 2);", StringComparison.Ordinal), "中列第三组必须是中心服务器。");
+    AssertTrue(designerCode.Contains("rightSettingsColumn.Controls.Add(grpMesConfig, 0, 0);", StringComparison.Ordinal), "右列必须是 MES。");
+    AssertTrue(designerCode.Contains("tableLayoutPanelMesConfig.AutoScroll = true;", StringComparison.Ordinal), "MES 内容必须独立滚动。");
+    AssertFalse(designerCode.Contains("tabBasicSettings.Controls.Add(grpPlcConfig);", StringComparison.Ordinal), "分组不应继续直接使用页签绝对坐标。");
+    AssertTrue(viewCode.Contains("SystemSettingLayoutRules.ResolveMode(basicSettingsViewport.ClientSize.Width, DeviceDpi)", StringComparison.Ordinal), "运行时必须按 DPI 逻辑宽度选择布局。");
+    AssertTrue(viewCode.Contains("private void ApplyBasicSettingsLayout(bool force = false)", StringComparison.Ordinal), "代码后置文件必须提供统一重排入口。");
 }
 
 static BizWeldTask BuildReportTask(DateTime startTime, DateTime? endTime)
