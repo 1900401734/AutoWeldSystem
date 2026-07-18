@@ -36,6 +36,7 @@ using System.Text.Json;
 var tests = new (string Name, Action Run)[]
 {
     ("System setting layout rules honor DPI breakpoints", SystemSettingLayoutRulesHonorDpiBreakpoints),
+    ("System setting view avoids repeated layout rebuilds during resize", SystemSettingViewAvoidsRepeatedLayoutRebuilds),
     ("System setting view uses responsive semantic columns", SystemSettingViewUsesResponsiveSemanticColumns),
     ("System setting localization resources are complete", SystemSettingLocalizationResourcesAreComplete),
     ("MES endpoint validation returns stable error codes", MesEndpointValidationReturnsStableErrorCodes),
@@ -300,6 +301,14 @@ static void SystemSettingLayoutRulesHonorDpiBreakpoints()
     AssertEqual(SystemSettingLayoutMode.TwoColumns, SystemSettingLayoutRules.ResolveMode(1140, 144), "150% DPI 下 1140 设备像素应为两列。");
     AssertEqual(SystemSettingLayoutMode.ThreeColumns, SystemSettingLayoutRules.ResolveMode(1800, 144), "150% DPI 下 1800 设备像素应为三列。");
     AssertEqual(SystemSettingLayoutMode.SingleColumn, SystemSettingLayoutRules.ResolveMode(-1, 0), "无效宽度和 DPI 必须安全回退。");
+}
+
+static void SystemSettingViewAvoidsRepeatedLayoutRebuilds()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.cs"), Encoding.UTF8);
+
+    AssertTrue(viewCode.Contains("if (!force && mode == _lastLayoutMode)", StringComparison.Ordinal), "同一列模式下调整窗口大小不应重复重建布局。");
+    AssertFalse(viewCode.Contains("viewportSize == _lastLayoutViewportSize", StringComparison.Ordinal), "视口尺寸变化不应成为每次重建响应式网格的条件。");
 }
 
 static void PlcRecipeNameRulesMapSlotsWithoutShiftingCodes()

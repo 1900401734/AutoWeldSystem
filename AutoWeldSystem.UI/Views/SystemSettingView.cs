@@ -88,8 +88,6 @@ public partial class SystemSettingView : BaseView
     private string _selectedCenterServerSystemType = CenterServerConstants.SystemTypes.Other;
     private AppSettings _currentSettings;
     private SystemSettingLayoutMode? _lastLayoutMode;
-    private Size _lastLayoutViewportSize = Size.Empty;
-    private int _lastLayoutDpi;
 
     public SystemSettingView(
         IAppSettingsService settingsService,
@@ -183,9 +181,8 @@ public partial class SystemSettingView : BaseView
             return;
         }
 
-        var viewportSize = basicSettingsViewport.ClientSize;
         var mode = SystemSettingLayoutRules.ResolveMode(basicSettingsViewport.ClientSize.Width, DeviceDpi);
-        if (!force && mode == _lastLayoutMode && viewportSize == _lastLayoutViewportSize && DeviceDpi == _lastLayoutDpi)
+        if (!force && mode == _lastLayoutMode)
         {
             return;
         }
@@ -195,8 +192,6 @@ public partial class SystemSettingView : BaseView
         {
             ConfigureBasicSettingsGrid(mode);
             _lastLayoutMode = mode;
-            _lastLayoutViewportSize = viewportSize;
-            _lastLayoutDpi = DeviceDpi;
         }
         catch (Exception ex)
         {
