@@ -261,7 +261,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             AppConstants.PlcLogicalKeys.PlcRecipeCode,
             normalizedStationNo,
             cancellationToken);
-        var localProgram = ResolveLocalProgramByRecipeCode(recipeCode);
+        var localProgram = ResolveLocalProgramByRecipeCode(recipeCode, normalizedStationNo);
         if (localProgram is null)
         {
             return null;
@@ -628,7 +628,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             .FirstOrDefault();
     }
 
-    private BizProgram? ResolveLocalProgramByRecipeCode(string? recipeCode)
+    private BizProgram? ResolveLocalProgramByRecipeCode(string? recipeCode, int stationNo)
     {
         var normalizedRecipeCode = NormalizePlcText(recipeCode);
         if (string.IsNullOrWhiteSpace(normalizedRecipeCode))
@@ -637,7 +637,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         }
 
         return _programManageService.GetPrograms()
-            .Where(program => SameText(program.RecipeCode, normalizedRecipeCode))
+            .Where(program => ProgramRecipeMappingRules.Matches(program, stationNo, normalizedRecipeCode))
             .OrderByDescending(program => program.UpdatedTime)
             .FirstOrDefault();
     }

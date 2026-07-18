@@ -344,7 +344,9 @@ public class WeldTaskService : IWeldTaskService
 
         var detail = MergeProgramListSnapshot(response.Data, program);
         var localProgram = UpsertProgram(detail, settings.DeviceId);
-        detail.RecipeCode = FirstNonEmpty(localProgram?.RecipeCode, detail.RecipeCode);
+        detail.RecipeCode = FirstNonEmpty(
+            ProgramRecipeMappingRules.Resolve(localProgram, normalizedStationNo),
+            ProgramRecipeMappingRules.Normalize(detail.RecipeCode));
         station.SelectedProgram = detail;
         station.UpdatedTime = DateTime.Now;
         RefreshCompatibilityState(normalizedStationNo);
@@ -456,7 +458,7 @@ public class WeldTaskService : IWeldTaskService
             ActualQty = actualQty,
             ProgramId = program.Id,
             ProgramName = program.ProgramName,
-            RecipeCode = ResolveProgramRecipeCode(program, settings.DeviceId),
+            RecipeCode = ResolveProgramRecipeCode(program, settings.DeviceId, normalizedStationNo),
             UserNumber = startOperatorNumber,
             UserName = operatorInfo.UserName,
             DeptName = operatorInfo.DeptName,
@@ -1141,7 +1143,7 @@ public class WeldTaskService : IWeldTaskService
     /// <summary>
     /// Resolves the recipe code from the local program record selected by the MES program ID.
     /// </summary>
-    private string ResolveProgramRecipeCode(ProgramDataRes program, string deviceId)
+    private string ResolveProgramRecipeCode(ProgramDataRes program, string deviceId, int stationNo)
     {
         _dbContext.InitDatabase();
         var programId = NormalizeText(program.Id);
@@ -1153,7 +1155,9 @@ public class WeldTaskService : IWeldTaskService
                 .FirstOrDefault()
             : null;
 
-        return FirstNonEmpty(localProgram?.RecipeCode, program.RecipeCode);
+        return FirstNonEmpty(
+            ProgramRecipeMappingRules.Resolve(localProgram, stationNo),
+            ProgramRecipeMappingRules.Normalize(program.RecipeCode));
     }
 
     private void EnsureReadyForStart(ProductionStationRuntimeState station)

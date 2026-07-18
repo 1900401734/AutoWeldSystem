@@ -94,7 +94,9 @@ public static class OfflineStartInputRules
             ProductModel = Normalize(program.ProductModel),
             ProductName = Normalize(input.ProductName),
             DrawingNo = Normalize(input.DrawingNo),
-            RecipeCode = NormalizeRequired(program.RecipeCode, "配方号不能为空。")
+            RecipeCode = NormalizeRequired(
+                ProgramRecipeMappingRules.Resolve(program, input.StationNo),
+                "配方号不能为空。")
         };
     }
 

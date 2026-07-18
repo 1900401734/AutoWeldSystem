@@ -43,7 +43,9 @@ var tests = new (string Name, Action Run)[]
     ("Program save recipe rules require positive station codes", ProgramSaveRecipeRulesRequirePositiveStationCodes),
     ("Program recipe mapping resolves station-specific codes", ProgramRecipeMappingResolvesStationSpecificCodes),
     ("Program shared recipe targets resolve independently", ProgramSharedRecipeTargetsResolveIndependently),
+    ("Shared task recipe boundaries resolve per station", SharedTaskRecipeBoundariesResolvePerStation),
     ("Program recipe station 2 fields persist locally", ProgramRecipeStation2FieldsPersistLocally),
+    ("Program runtime resolves recipes by current station", ProgramRuntimeResolvesRecipesByCurrentStation),
     ("Program MES write payload omits recipe code", ProgramMesWritePayloadOmitsRecipeCode),
     ("Program manage initial load keeps selected program details", ProgramManageInitialLoadKeepsSelectedProgramDetails),
     ("Program manage recipe name selectors bind station recipe codes", ProgramManageRecipeNameSelectorsBindStationRecipeCodes),
@@ -5398,6 +5400,43 @@ static void ProgramSharedRecipeTargetsResolveIndependently()
     AssertEqual("8", targets[1].RecipeCode, "工位 2 应使用 Station2RecipeCode。 ");
 }
 
+static void SharedTaskRecipeBoundariesResolvePerStation()
+{
+    var monitorCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var reconcileCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Plc", "RecipeCodeReconcileMonitorService.cs"), Encoding.UTF8);
+
+    var dispatchMethod = ExtractMethodText(
+        monitorCode,
+        "private async Task DispatchRecipeCodeAfterStartAsync",
+        "private static string BuildRecipeResolveFailureDetail");
+    AssertTrue(dispatchMethod.Contains("ResolveRecipeCodeForStartedTask(task, selectedProgram, targetStationNo)", StringComparison.Ordinal), "共享开工下发应为每个目标工位重新解析配方号。 ");
+    AssertTrue(dispatchMethod.Contains("targetRecipeCode", StringComparison.Ordinal), "写入和校验必须使用目标工位配方号，不能复用源工位变量。 ");
+
+    AssertTrue(reconcileCode.Contains("var expectedRecipe = ResolveExpectedRecipe(task, stationNo);", StringComparison.Ordinal), "持续调和应按当前监控工位解析期望配方。 ");
+    AssertTrue(reconcileCode.Contains("var recipeTargets = ProgramRecipeMappingRules.ResolveTargets(localProgram, targetStations);", StringComparison.Ordinal), "共享调和应按每个目标工位分别解析期望配方。 ");
+    AssertTrue(reconcileCode.Contains("private readonly IProgramManageService _programManageService;", StringComparison.Ordinal), "调和服务应从本地程序映射读取工位配方，而不是依赖共享任务字段。 ");
+
+    var displayMethod = ExtractMethodText(
+        monitorCode,
+        "private string ResolveRecipeCodeForDisplay",
+        "private bool HasPendingOnlineProgramSelection");
+    AssertTrue(displayMethod.Contains("ProgramRecipeMappingRules.Resolve(localProgram, CurrentStationNo)", StringComparison.Ordinal), "运行中显示应优先使用当前工位的本地程序映射。 ");
+
+    var finishMethod = ExtractMethodText(
+        monitorCode,
+        "private async Task RefreshRecipeCodeFromPlcBeforeFinishAsync",
+        "private void WriteFinishRecipeReadFailureLog");
+    AssertTrue(finishMethod.Contains("if (!SharesRecipeTaskAcrossStations())", StringComparison.Ordinal), "同工单双工位完工回读不得覆盖共享任务的单一 RecipeCode。 ");
+
+    var devicePriorityMethod = ExtractMethodText(
+        monitorCode,
+        "private BizProgram? ResolveLocalProgramByNameAndProduct",
+        "private async Task DispatchRecipeCodeAfterStartAsync");
+    var devicePriorityIndex = devicePriorityMethod.IndexOf("OrderByDescending(program => SameText(program.DeviceId, settings.DeviceId))", StringComparison.Ordinal);
+    var updatedTimeIndex = devicePriorityMethod.IndexOf("ThenByDescending(program => program.UpdatedTime)", StringComparison.Ordinal);
+    AssertTrue(devicePriorityIndex >= 0 && updatedTimeIndex > devicePriorityIndex, "同名同产品程序应先按当前 DeviceId 匹配，再按更新时间选择。 ");
+}
+
 static void ProgramRecipeStation2FieldsPersistLocally()
 {
     var station2ProgramProperty = typeof(BizProgram).GetProperty("Station2RecipeCode");
@@ -5418,6 +5457,22 @@ static void ProgramRecipeStation2FieldsPersistLocally()
     station2ProgramProperty!.SetValue(original, "2");
     station2ProgramProperty.SetValue(current, "3");
     AssertEqual<string?>(null, ProgramMesSyncRules.ResolveCurrentSaveAction(original, current), "工位 2 配方号仅在本地使用，不应触发 MES 更新。 ");
+}
+
+static void ProgramRuntimeResolvesRecipesByCurrentStation()
+{
+    var offlineRulesCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Production", "OfflineStartInputRules.cs"), Encoding.UTF8);
+    var weldTaskCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "WeldTaskService.cs"), Encoding.UTF8);
+    var previewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductRealtimePreviewService.cs"), Encoding.UTF8);
+    var monitorCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var localFormCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Forms", "LocalWorkOrderForm.cs"), Encoding.UTF8);
+
+    AssertTrue(offlineRulesCode.Contains("ProgramRecipeMappingRules.Resolve(program, input.StationNo)", StringComparison.Ordinal), "离线开工请求应使用当前工位配方号。 ");
+    AssertTrue(weldTaskCode.Contains("ResolveProgramRecipeCode(program, settings.DeviceId, normalizedStationNo)", StringComparison.Ordinal), "在线开工任务应按当前工位解析本地配方号。 ");
+    AssertTrue(weldTaskCode.Contains("ProgramRecipeMappingRules.Resolve(localProgram, stationNo)", StringComparison.Ordinal), "WeldTaskService 应复用集中映射规则。 ");
+    AssertTrue(previewCode.Contains("ProgramRecipeMappingRules.Matches(program, stationNo, normalizedRecipeCode)", StringComparison.Ordinal), "PLC 配方反查产品预览时应按工位匹配。 ");
+    AssertTrue(monitorCode.Contains("ProgramRecipeMappingRules.Resolve(localProgram, stationNo)", StringComparison.Ordinal), "MonitorView 配方下发和反查应复用工位映射规则。 ");
+    AssertTrue(localFormCode.Contains("ProgramRecipeMappingRules.Resolve(program, _stationNo)", StringComparison.Ordinal), "本地工单窗口应显示并提交当前工位配方号。 ");
 }
 
 static void ProgramMesDescriptionChangesTriggerUpdate()

@@ -71,7 +71,7 @@ public partial class LocalWorkOrderForm : BaseWindow
         var program = SelectedProgram;
         txtProductNum.Text = program?.ProductNum ?? string.Empty;
         txtProgramName.Text = program?.ProgramName ?? string.Empty;
-        txtRecipeCode.Text = program?.RecipeCode ?? string.Empty;
+        txtRecipeCode.Text = ProgramRecipeMappingRules.Resolve(program, _stationNo);
     }
 
     private string ResolveInitialWorkOrderId()
@@ -146,7 +146,8 @@ public partial class LocalWorkOrderForm : BaseWindow
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(program.RecipeCode))
+        var recipeCode = ProgramRecipeMappingRules.Resolve(program, _stationNo);
+        if (string.IsNullOrWhiteSpace(recipeCode))
         {
             MessageBox.Show(this, "所选本地程序缺少配方编号，无法离线开工。", "本地工单", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
@@ -188,7 +189,7 @@ public partial class LocalWorkOrderForm : BaseWindow
             ProductModel = program.ProductModel?.Trim() ?? string.Empty,
             ProductName = txtProductName.Text.Trim(),
             DrawingNo = txtDrawingNo.Text.Trim(),
-            RecipeCode = program.RecipeCode.Trim()
+            RecipeCode = recipeCode
         };
 
         DialogResult = DialogResult.OK;

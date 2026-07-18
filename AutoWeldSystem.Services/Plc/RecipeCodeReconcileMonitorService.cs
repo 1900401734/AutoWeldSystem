@@ -25,6 +25,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
     private readonly IPlcCommunicationService _plcCommunicationService;
     private readonly IPlcBusinessSignalService _plcBusinessSignalService;
     private readonly IWeldTaskService _weldTaskService;
+    private readonly IProgramManageService _programManageService;
     private readonly IProductionFlowLogService _productionLogService;
     private readonly IProgramExceptionLogService _exceptionLogService;
     private readonly object _stateSync = new();
@@ -40,6 +41,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
         IPlcCommunicationService plcCommunicationService,
         IPlcBusinessSignalService plcBusinessSignalService,
         IWeldTaskService weldTaskService,
+        IProgramManageService programManageService,
         IProductionFlowLogService productionLogService,
         IProgramExceptionLogService exceptionLogService)
     {
@@ -47,6 +49,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
         _plcCommunicationService = plcCommunicationService;
         _plcBusinessSignalService = plcBusinessSignalService;
         _weldTaskService = weldTaskService;
+        _programManageService = programManageService;
         _productionLogService = productionLogService;
         _exceptionLogService = exceptionLogService;
         _currentSettings = settingsService.Get();
@@ -213,7 +216,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
             return;
         }
 
-        var expectedRecipe = NormalizeRecipeCode(task.RecipeCode);
+        var expectedRecipe = ResolveExpectedRecipe(task, stationNo);
         if (string.IsNullOrWhiteSpace(expectedRecipe))
         {
             ResetStationMismatch(stationNo);
@@ -320,11 +323,20 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
             settings.EnableDualStation,
             settings.EnableDualWorkOrder,
             stationNo);
-        foreach (var targetStationNo in targetStations)
+        var localProgram = ResolveLocalProgram(task);
+        var recipeTargets = ProgramRecipeMappingRules.ResolveTargets(localProgram, targetStations);
+        foreach (var target in recipeTargets)
         {
+            var targetStationNo = target.StationNo;
+            var targetExpectedRecipe = FirstNonEmpty(target.RecipeCode, task.RecipeCode);
+            if (string.IsNullOrWhiteSpace(targetExpectedRecipe))
+            {
+                continue;
+            }
+
             var syncResult = await _plcBusinessSignalService.SyncRecipeCodeAsync(
                 targetStationNo,
-                decision.ExpectedRecipeCode,
+                targetExpectedRecipe,
                 ReconcileTimeout,
                 cancellationToken);
             if (syncResult.IsSuccess)
@@ -332,7 +344,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
                 WriteRecipeFlowLog(
                     "RecipeCodeReconcileSucceeded",
                     $"配方号调和成功：{syncResult.PcRecipeCode}",
-                    $"Station={targetStationNo}; SourceStation={stationNo}; TaskId={task.Id}; ChangedPlcRecipeCode={decision.PlcRecipeCode}; ExpectedRecipeCode={syncResult.PcRecipeCode}; SyncedPlcRecipeCode={syncResult.PlcRecipeCode}",
+                    $"Station={targetStationNo}; SourceStation={stationNo}; TaskId={task.Id}; ChangedPlcRecipeCode={decision.PlcRecipeCode}; ExpectedRecipeCode={targetExpectedRecipe}; SyncedPlcRecipeCode={syncResult.PlcRecipeCode}",
                     targetStationNo,
                     task,
                     level: "Info",
@@ -347,7 +359,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
             WriteRecipeFlowLog(
                 "RecipeCodeReconcileFailed",
                 "PLC recipe code reconcile failed",
-                $"Station={targetStationNo}; SourceStation={stationNo}; TaskId={task.Id}; ChangedPlcRecipeCode={decision.PlcRecipeCode}; ExpectedRecipeCode={syncResult.PcRecipeCode}; PlcRecipeCode={currentPlcRecipe}; Detail={syncResult.Message}",
+                $"Station={targetStationNo}; SourceStation={stationNo}; TaskId={task.Id}; ChangedPlcRecipeCode={decision.PlcRecipeCode}; ExpectedRecipeCode={targetExpectedRecipe}; PlcRecipeCode={currentPlcRecipe}; Detail={syncResult.Message}",
                 targetStationNo,
                 task,
                 level: "Error",
@@ -357,7 +369,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
             WriteBusinessFailureLog(
                 targetStationNo,
                 "PLC recipe code reconcile failed",
-                $"Station={targetStationNo}; SourceStation={stationNo}; TaskId={task.Id}; Expected={decision.ExpectedRecipeCode}; PLC={currentPlcRecipe}; Detail={syncResult.Message}");
+                $"Station={targetStationNo}; SourceStation={stationNo}; TaskId={task.Id}; Expected={targetExpectedRecipe}; PLC={currentPlcRecipe}; Detail={syncResult.Message}");
             state.NextRetryTime = DateTime.Now + BusinessLogInterval;
             return;
         }
@@ -477,6 +489,52 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
         return task is not null
             && task.EndTime is null
             && string.Equals(task.TaskStatus, ProductionConstants.ProductInstanceStatuses.Running, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// 从本地程序记录解析指定工位的期望配方号；找不到程序时保留任务字段作为旧数据回退。
+    /// </summary>
+    private string ResolveExpectedRecipe(BizWeldTask task, int stationNo)
+    {
+        var localProgram = ResolveLocalProgram(task);
+        return FirstNonEmpty(
+            ProgramRecipeMappingRules.Resolve(localProgram, stationNo),
+            task.RecipeCode);
+    }
+
+    /// <summary>
+    /// 按本地 ID、MES 程序 ID或名称/产品工号恢复任务对应程序，始终优先当前设备记录。
+    /// </summary>
+    private BizProgram? ResolveLocalProgram(BizWeldTask task)
+    {
+        var programs = _programManageService.GetPrograms();
+        var programId = task.ProgramId?.Trim() ?? string.Empty;
+        if (programId.StartsWith("local-", StringComparison.OrdinalIgnoreCase)
+            && int.TryParse(programId["local-".Length..], out var localProgramId))
+        {
+            var byLocalId = programs.FirstOrDefault(program => program.Id == localProgramId);
+            if (byLocalId is not null)
+            {
+                return byLocalId;
+            }
+        }
+
+        var byProgramId = programs
+            .Where(program => !string.IsNullOrWhiteSpace(programId) && SameText(program.ProgramId, programId))
+            .OrderByDescending(program => SameText(program.DeviceId, task.DeviceId))
+            .ThenByDescending(program => program.UpdatedTime)
+            .FirstOrDefault();
+        if (byProgramId is not null)
+        {
+            return byProgramId;
+        }
+
+        return programs
+            .Where(program => SameText(program.ProgramName, task.ProgramName))
+            .Where(program => string.IsNullOrWhiteSpace(task.ProductNum) || SameText(program.ProductNum, task.ProductNum))
+            .OrderByDescending(program => SameText(program.DeviceId, task.DeviceId))
+            .ThenByDescending(program => program.UpdatedTime)
+            .FirstOrDefault();
     }
 
     /// <summary>
@@ -630,7 +688,16 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
     }
 
     private static string NormalizeRecipeCode(string? value)
-        => (value ?? string.Empty).Trim().Trim('\0');
+        => ProgramRecipeMappingRules.Normalize(value);
+
+    private static string FirstNonEmpty(params string?[] values)
+        => values
+            .Select(NormalizeRecipeCode)
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
+            ?? string.Empty;
+
+    private static bool SameText(string? left, string? right)
+        => string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
 
     private static int NormalizeStationNo(int stationNo)
         => stationNo <= ProductionConstants.Stations.SharedStationNo

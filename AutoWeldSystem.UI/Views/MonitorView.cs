@@ -596,6 +596,15 @@ public partial class MonitorView : BaseView
             NormalizeStatusStationNo(stationNo));
     }
 
+    /// <summary>
+    /// 判断两个工位是否共享同一个生产任务；共享任务不能把单一 RecipeCode 当作各工位配方真值。
+    /// </summary>
+    private bool SharesRecipeTaskAcrossStations()
+    {
+        var settings = _currentSettings;
+        return settings.EnableDualStation && !settings.EnableDualWorkOrder;
+    }
+
     private DataGridView CurrentWeldPreviewGrid => GetWeldPreviewGrid(CurrentStationNo);
 
     private SlimHorizontalScrollBar CurrentWeldPreviewScrollBar
@@ -2946,13 +2955,17 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        if (!_weldTaskService.TryUpdateRecipeCode(activeTask.Id, plcRecipeCode, stationNo))
+        if (!SharesRecipeTaskAcrossStations())
         {
-            WriteFinishRecipeReadFailureLog(stationNo, activeTask, "Local task recipe update failed.");
-            return;
+            if (!_weldTaskService.TryUpdateRecipeCode(activeTask.Id, plcRecipeCode, stationNo))
+            {
+                WriteFinishRecipeReadFailureLog(stationNo, activeTask, "Local task recipe update failed.");
+                return;
+            }
+
+            activeTask.RecipeCode = plcRecipeCode;
         }
 
-        activeTask.RecipeCode = plcRecipeCode;
         if (NormalizeStationNo(stationNo) == CurrentStationNo)
         {
             selectRecipeCode.Text = plcRecipeCode;
@@ -3687,7 +3700,7 @@ public partial class MonitorView : BaseView
             }
 
             var selectedRecipeCode = selectedIndex >= 0
-                ? options[selectedIndex].Program.RecipeCode
+                ? ProgramRecipeMappingRules.Resolve(options[selectedIndex].Program, CurrentStationNo)
                 : string.Empty;
 
             // 重建 Items 后必须强制归位，避免 AntdUI 相同索引短路使 SelectedValue 与新列表脱节。
@@ -3710,7 +3723,7 @@ public partial class MonitorView : BaseView
     private void BindOfflineRecipeCodeOptions(IReadOnlyList<OfflineProgramNameOption> options, string? currentRecipeCode)
     {
         var recipeCodes = OfflineStartInputRules.BuildRecipeCodeOptions(
-            options.Select(option => option.Program.RecipeCode))
+            options.Select(option => ProgramRecipeMappingRules.Resolve(option.Program, CurrentStationNo)))
             .ToList();
         var recipeCode = NormalizeRecipeCode(currentRecipeCode);
 
@@ -3742,7 +3755,7 @@ public partial class MonitorView : BaseView
     {
         inputProdNum.Text = option?.Program.ProductNum ?? string.Empty;
         inputProdModel.Text = option?.Program.ProductModel ?? string.Empty;
-        var recipeCode = option?.Program.RecipeCode ?? string.Empty;
+        var recipeCode = ProgramRecipeMappingRules.Resolve(option?.Program, CurrentStationNo);
         _syncingRecipeCodeSelection = true;
         try
         {
@@ -3773,7 +3786,7 @@ public partial class MonitorView : BaseView
         }
 
         var selectedIndex = _offlineProgramNameOptions.FindIndex(option =>
-            SameText(NormalizeRecipeCode(option.Program.RecipeCode), normalizedRecipeCode));
+            ProgramRecipeMappingRules.Matches(option.Program, CurrentStationNo, normalizedRecipeCode));
         if (selectedIndex < 0)
         {
             ForceRecipeCodeSelection(FindRecipeCodeItemIndex(normalizedRecipeCode), normalizedRecipeCode);
@@ -7680,24 +7693,31 @@ public partial class MonitorView : BaseView
     /// <param name="task">焊接任务。</param>
     /// <param name="selectedProgram">当前选中的程序。</param>
     /// <returns>解析到的对象；不存在时返回 null。</returns>
-    private RecipeCodeResolution ResolveRecipeCodeForStartedTask(BizWeldTask task, ProgramDataRes? selectedProgram)
+    private RecipeCodeResolution ResolveRecipeCodeForStartedTask(
+        BizWeldTask task,
+        ProgramDataRes? selectedProgram,
+        int stationNo)
     {
         if (task.IsOfflineCreated)
         {
             var productNum = FirstNonEmpty(task.ProductNum, selectedProgram?.ProductNum);
-            var localProgram = ResolveLocalProgramByProductNum(productNum);
+            var offlineProgramId = FirstNonEmpty(selectedProgram?.Id, task.ProgramId);
+            var localProgram = ResolveLocalProgramByProgramId(offlineProgramId)
+                ?? ResolveLocalProgramByNameAndProduct(selectedProgram?.ProgramName ?? task.ProgramName, productNum);
+            var mappedRecipeCode = ProgramRecipeMappingRules.Resolve(localProgram, stationNo);
             return new RecipeCodeResolution(
-                FirstNonEmpty(localProgram?.RecipeCode, task.RecipeCode),
-                "ProductNumber",
-                $"ProductNumber={productNum}; LocalProgramMatched={localProgram is not null}; LocalProgramId={localProgram?.Id}; RecipeCodePresent={!string.IsNullOrWhiteSpace(localProgram?.RecipeCode)}; TaskGuid={task.LocalExpStartId}");
+                FirstNonEmpty(mappedRecipeCode, task.RecipeCode),
+                "LocalProgram",
+                $"ProgramId={offlineProgramId}; ProductNumber={productNum}; LocalProgramMatched={localProgram is not null}; LocalProgramId={localProgram?.Id}; RecipeCodePresent={!string.IsNullOrWhiteSpace(mappedRecipeCode)}; TaskGuid={task.LocalExpStartId}");
         }
 
         var programId = FirstNonEmpty(selectedProgram?.Id, task.ProgramId);
         var localProgramById = ResolveLocalProgramByProgramId(programId);
+        var mappedRecipeCodeById = ProgramRecipeMappingRules.Resolve(localProgramById, stationNo);
         return new RecipeCodeResolution(
-            FirstNonEmpty(localProgramById?.RecipeCode, task.RecipeCode, selectedProgram?.RecipeCode),
+            FirstNonEmpty(mappedRecipeCodeById, task.RecipeCode, selectedProgram?.RecipeCode),
             "ProgramId",
-            $"ProgramId={programId}; LocalProgramMatched={localProgramById is not null}; LocalProgramId={localProgramById?.Id}; RecipeCodePresent={!string.IsNullOrWhiteSpace(localProgramById?.RecipeCode)}; ExpStartId={task.ExpStartId}");
+            $"ProgramId={programId}; LocalProgramMatched={localProgramById is not null}; LocalProgramId={localProgramById?.Id}; RecipeCodePresent={!string.IsNullOrWhiteSpace(mappedRecipeCodeById)}; ExpStartId={task.ExpStartId}");
     }
 
     /// <summary>
@@ -7713,8 +7733,19 @@ public partial class MonitorView : BaseView
             return null;
         }
 
+        var programs = _programManageService.GetPrograms();
+        if (normalizedProgramId.StartsWith("local-", StringComparison.OrdinalIgnoreCase)
+            && int.TryParse(normalizedProgramId["local-".Length..], out var localProgramId))
+        {
+            var localProgram = programs.FirstOrDefault(program => program.Id == localProgramId);
+            if (localProgram is not null)
+            {
+                return localProgram;
+            }
+        }
+
         var settings = _currentSettings;
-        return _programManageService.GetPrograms()
+        return programs
             .Where(program => string.Equals(program.ProgramId?.Trim(), normalizedProgramId, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(program => SameText(program.DeviceId, settings.DeviceId))
             .ThenByDescending(program => program.UpdatedTime)
@@ -7722,21 +7753,21 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// 解析本地程序按产品Num。
+    /// 离线任务按程序名称和产品工号恢复准确的本地程序，避免同一产品多个程序时误取最新记录。
     /// </summary>
-    /// <param name="productNum">产品工号。</param>
-    /// <returns>解析到的对象；不存在时返回 null。</returns>
-    private BizProgram? ResolveLocalProgramByProductNum(string? productNum)
+    private BizProgram? ResolveLocalProgramByNameAndProduct(string? programName, string? productNum)
     {
+        var normalizedProgramName = programName?.Trim();
         var normalizedProductNum = productNum?.Trim();
-        if (string.IsNullOrWhiteSpace(normalizedProductNum))
+        if (string.IsNullOrWhiteSpace(normalizedProgramName))
         {
             return null;
         }
 
         var settings = _currentSettings;
         return _programManageService.GetPrograms()
-            .Where(program => string.Equals(program.ProductNum?.Trim(), normalizedProductNum, StringComparison.OrdinalIgnoreCase))
+            .Where(program => SameText(program.ProgramName, normalizedProgramName))
+            .Where(program => string.IsNullOrWhiteSpace(normalizedProductNum) || SameText(program.ProductNum, normalizedProductNum))
             .OrderByDescending(program => SameText(program.DeviceId, settings.DeviceId))
             .ThenByDescending(program => program.UpdatedTime)
             .FirstOrDefault();
@@ -7751,31 +7782,45 @@ public partial class MonitorView : BaseView
     /// <returns>表示异步操作的任务。</returns>
     private async Task DispatchRecipeCodeAfterStartAsync(BizWeldTask task, ProgramDataRes? selectedProgram, int stationNo)
     {
-        var resolution = ResolveRecipeCodeForStartedTask(task, selectedProgram);
-        var recipeCode = NormalizeRecipeCode(resolution.RecipeCode);
-        if (string.IsNullOrWhiteSpace(recipeCode))
+        var sourceResolution = ResolveRecipeCodeForStartedTask(task, selectedProgram, stationNo);
+        var sourceRecipeCode = NormalizeRecipeCode(sourceResolution.RecipeCode);
+        if (string.IsNullOrWhiteSpace(sourceRecipeCode))
         {
             WriteRecipeFlowLog(
                 "RecipeCodeResolveFailed",
                 "配方编号解析失败",
-                $"{resolution.Source}; {resolution.Detail}",
+                $"{sourceResolution.Source}; {sourceResolution.Detail}",
                 stationNo,
                 "Error");
             throw new BusinessOperationException(
                 "PLC.RecipeCode",
                 "配方编号解析失败",
-                BuildRecipeResolveFailureDetail(task, resolution));
+                BuildRecipeResolveFailureDetail(task, sourceResolution));
         }
 
-        task.RecipeCode = recipeCode;
-        selectRecipeCode.Text = recipeCode;
+        if (!SharesRecipeTaskAcrossStations())
+        {
+            task.RecipeCode = sourceRecipeCode;
+        }
+
+        selectRecipeCode.Text = sourceRecipeCode;
         var validateRecipe = _currentSettings.ValidateRecipeAfterStart;
         foreach (var targetStationNo in ResolveWorkOrderSignalStations(stationNo))
         {
+            var resolution = ResolveRecipeCodeForStartedTask(task, selectedProgram, targetStationNo);
+            var targetRecipeCode = NormalizeRecipeCode(resolution.RecipeCode);
+            if (string.IsNullOrWhiteSpace(targetRecipeCode))
+            {
+                throw new BusinessOperationException(
+                    "PLC.RecipeCode",
+                    "配方编号解析失败",
+                    BuildRecipeResolveFailureDetail(task, resolution));
+            }
+
             WriteRecipeFlowLog(
                 "RecipeCodeWriteStarted",
                 "配方编号准备下发",
-                $"{resolution.Source}; {resolution.Detail}; RecipeCode={recipeCode}",
+                $"{resolution.Source}; {resolution.Detail}; RecipeCode={targetRecipeCode}",
                 targetStationNo,
                 plcSignal: AppConstants.PlcLogicalKeys.PcRecipeCode);
 
@@ -7785,13 +7830,13 @@ public partial class MonitorView : BaseView
                 var writeResult = await _plcBusinessSignalService.WriteTextAsync(
                     AppConstants.PlcLogicalKeys.PcRecipeCode,
                     targetStationNo,
-                    recipeCode);
+                    targetRecipeCode);
                 if (!writeResult.IsSuccess)
                 {
                     WriteRecipeFlowLog(
                         "RecipeCodeWriteFailed",
                         "配方编号下发失败",
-                        $"{resolution.Source}; {resolution.Detail}; RecipeCode={recipeCode}; Detail={writeResult.Message}",
+                        $"{resolution.Source}; {resolution.Detail}; RecipeCode={targetRecipeCode}; Detail={writeResult.Message}",
                         targetStationNo,
                         "Error",
                         AppConstants.PlcLogicalKeys.PcRecipeCode,
@@ -7799,13 +7844,13 @@ public partial class MonitorView : BaseView
                     throw new BusinessOperationException(
                         "PLC.RecipeCode",
                         "配方编号下发失败",
-                        $"Station={targetStationNo}; RecipeCode={recipeCode}; Detail={writeResult.Message}");
+                        $"Station={targetStationNo}; RecipeCode={targetRecipeCode}; Detail={writeResult.Message}");
                 }
 
                 WriteRecipeFlowLog(
                     "RecipeCodeWriteSucceeded",
                     "配方编号已下发",
-                    $"{resolution.Source}; {resolution.Detail}; RecipeCode={recipeCode}; ValidateRecipe=false",
+                    $"{resolution.Source}; {resolution.Detail}; RecipeCode={targetRecipeCode}; ValidateRecipe=false",
                     targetStationNo,
                     plcSignal: AppConstants.PlcLogicalKeys.PcRecipeCode,
                     plcAddress: writeResult.Address);
@@ -7815,7 +7860,7 @@ public partial class MonitorView : BaseView
             // 启用校验时同步写 PC 配方并等待 PLC 配方回读一致，防止设备使用错误配方。
             var syncResult = await _plcBusinessSignalService.SyncRecipeCodeAsync(
                 targetStationNo,
-                recipeCode,
+                targetRecipeCode,
                 RecipePreparationTimeout);
             if (!syncResult.IsSuccess)
             {
@@ -8302,13 +8347,20 @@ public partial class MonitorView : BaseView
     {
         if (activeTask is not null && IsRunningWeldTask(activeTask))
         {
-            return FirstNonEmpty(activeTask.RecipeCode, program?.RecipeCode);
+            var localProgram = ResolveLocalProgramByProgramId(FirstNonEmpty(program?.Id, activeTask.ProgramId))
+                ?? ResolveLocalProgramByNameAndProduct(program?.ProgramName ?? activeTask.ProgramName, activeTask.ProductNum);
+            return FirstNonEmpty(
+                ProgramRecipeMappingRules.Resolve(localProgram, CurrentStationNo),
+                activeTask.RecipeCode,
+                program?.RecipeCode);
         }
 
         if (program is not null)
         {
             var localProgram = ResolveLocalProgramById(program.Id);
-            return FirstNonEmpty(localProgram?.RecipeCode, program.RecipeCode);
+            return FirstNonEmpty(
+                ProgramRecipeMappingRules.Resolve(localProgram, CurrentStationNo),
+                program.RecipeCode);
         }
 
         if (IsOfflineInputEditable(GetCurrentStationState()))
@@ -8350,14 +8402,14 @@ public partial class MonitorView : BaseView
         var localProgram = ResolveLocalProgramByProgramId(programListItem.Id);
         if (localProgram is not null)
         {
-            return localProgram.RecipeCode?.Trim() ?? string.Empty;
+            return ProgramRecipeMappingRules.Resolve(localProgram, CurrentStationNo);
         }
 
-        return _programManageService.GetPrograms()
+        var matchedProgram = _programManageService.GetPrograms()
             .FirstOrDefault(program =>
                 SameText(program.ProgramName, programListItem.ProgramName)
-                && SameText(program.ProductNum, programListItem.ProductNum))
-            ?.RecipeCode?.Trim() ?? string.Empty;
+                && SameText(program.ProductNum, programListItem.ProductNum));
+        return ProgramRecipeMappingRules.Resolve(matchedProgram, CurrentStationNo);
     }
 
     /// <summary>
@@ -8367,9 +8419,9 @@ public partial class MonitorView : BaseView
     /// <returns>解析到的配方号；不存在时返回空串。</returns>
     private string ResolveRecipeCodeByProgramName(string programName)
     {
-        return _programManageService.GetPrograms()
-            .FirstOrDefault(program => SameText(program.ProgramName, programName))
-            ?.RecipeCode?.Trim() ?? string.Empty;
+        var localProgram = _programManageService.GetPrograms()
+            .FirstOrDefault(program => SameText(program.ProgramName, programName));
+        return ProgramRecipeMappingRules.Resolve(localProgram, CurrentStationNo);
     }
 
     /// <summary>
@@ -8445,7 +8497,7 @@ public partial class MonitorView : BaseView
 
         var settings = _currentSettings;
         return _programManageService.GetPrograms()
-            .Where(program => string.Equals(NormalizeRecipeCode(program.RecipeCode), normalizedRecipeCode, StringComparison.OrdinalIgnoreCase))
+            .Where(program => ProgramRecipeMappingRules.Matches(program, stationNo, normalizedRecipeCode))
             .OrderByDescending(program => SameText(program.DeviceId, settings.DeviceId))
             .ThenByDescending(program => program.UpdatedTime)
             .FirstOrDefault();
@@ -8458,7 +8510,7 @@ public partial class MonitorView : BaseView
     /// <returns>处理后的文本。</returns>
     private static string NormalizeRecipeCode(string? value)
     {
-        return NormalizePlcText(value);
+        return ProgramRecipeMappingRules.Normalize(NormalizePlcText(value));
     }
 
     /// <summary>
