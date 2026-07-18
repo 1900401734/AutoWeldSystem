@@ -41,7 +41,10 @@
             inputRemark = new AntdUI.Input();
             tlpRecipeCode = new TableLayoutPanel();
             lblRecipeCode = new AntdUI.Label();
-            inputRecipeCode = new AntdUI.InputNumber();
+            selectStation1Recipe = new AntdUI.Select();
+            tlpStation2RecipeCode = new TableLayoutPanel();
+            lblStation2RecipeCode = new AntdUI.Label();
+            selectStation2Recipe = new AntdUI.Select();
             tlpProgramType = new TableLayoutPanel();
             lblProgramType = new AntdUI.Label();
             cmbProgramType = new AntdUI.Select();
@@ -84,6 +87,7 @@
             tlpProgramId.SuspendLayout();
             tlpRemark.SuspendLayout();
             tlpRecipeCode.SuspendLayout();
+            tlpStation2RecipeCode.SuspendLayout();
             tlpProgramType.SuspendLayout();
             tlpComponentCode.SuspendLayout();
             tlpSequenceNumber.SuspendLayout();
@@ -325,10 +329,11 @@
             editorLayout.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             editorLayout.ColumnCount = 1;
             editorLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            editorLayout.Controls.Add(tlpProgramId, 0, 10);
-            editorLayout.Controls.Add(tlpRemark, 0, 9);
+            editorLayout.Controls.Add(tlpProgramId, 0, 11);
+            editorLayout.Controls.Add(tlpRemark, 0, 10);
             editorLayout.Controls.Add(tlpRecipeCode, 0, 7);
-            editorLayout.Controls.Add(tlpProgramType, 0, 8);
+            editorLayout.Controls.Add(tlpStation2RecipeCode, 0, 8);
+            editorLayout.Controls.Add(tlpProgramType, 0, 9);
             editorLayout.Controls.Add(tlpComponentCode, 0, 3);
             editorLayout.Controls.Add(tlpSequenceNumber, 0, 4);
             editorLayout.Controls.Add(tlpProductNum, 0, 2);
@@ -340,7 +345,7 @@
             editorLayout.Location = new Point(0, 0);
             editorLayout.Margin = new Padding(0);
             editorLayout.Name = "editorLayout";
-            editorLayout.RowCount = 11;
+            editorLayout.RowCount = 12;
             editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 12.5F));
             editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 12.5F));
             editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 12.5F));
@@ -349,6 +354,7 @@
             editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 12.5F));
             editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 12.5F));
             editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 12.5F));
+            editorLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 0F));
             editorLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 0F));
             editorLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 0F));
             editorLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 0F));
@@ -436,7 +442,7 @@
             tlpRecipeCode.ColumnStyles.Add(new ColumnStyle());
             tlpRecipeCode.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             tlpRecipeCode.Controls.Add(lblRecipeCode, 0, 0);
-            tlpRecipeCode.Controls.Add(inputRecipeCode, 1, 0);
+            tlpRecipeCode.Controls.Add(selectStation1Recipe, 1, 0);
             tlpRecipeCode.Dock = DockStyle.Fill;
             tlpRecipeCode.Location = new Point(0, 308);
             tlpRecipeCode.Margin = new Padding(0);
@@ -458,15 +464,56 @@
             lblRecipeCode.TabIndex = 11;
             lblRecipeCode.Text = "配方编号";
             // 
-            // inputRecipeCode
+            // selectStation1Recipe
             // 
-            inputRecipeCode.Dock = DockStyle.Fill;
-            inputRecipeCode.Location = new Point(74, 0);
-            inputRecipeCode.Margin = new Padding(0);
-            inputRecipeCode.Name = "inputRecipeCode";
-            inputRecipeCode.Size = new Size(371, 44);
-            inputRecipeCode.TabIndex = 1;
-            inputRecipeCode.Text = "0";
+            selectStation1Recipe.Dock = DockStyle.Fill;
+            selectStation1Recipe.Location = new Point(74, 0);
+            selectStation1Recipe.Margin = new Padding(0);
+            selectStation1Recipe.MaxCount = 10;
+            selectStation1Recipe.Name = "selectStation1Recipe";
+            selectStation1Recipe.Size = new Size(371, 44);
+            selectStation1Recipe.TabIndex = 1;
+            selectStation1Recipe.WheelModifyEnabled = false;
+            // 
+            // tlpStation2RecipeCode
+            // 
+            tlpStation2RecipeCode.ColumnCount = 2;
+            tlpStation2RecipeCode.ColumnStyles.Add(new ColumnStyle());
+            tlpStation2RecipeCode.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            tlpStation2RecipeCode.Controls.Add(lblStation2RecipeCode, 0, 0);
+            tlpStation2RecipeCode.Controls.Add(selectStation2Recipe, 1, 0);
+            tlpStation2RecipeCode.Dock = DockStyle.Fill;
+            tlpStation2RecipeCode.Location = new Point(0, 352);
+            tlpStation2RecipeCode.Margin = new Padding(0);
+            tlpStation2RecipeCode.Name = "tlpStation2RecipeCode";
+            tlpStation2RecipeCode.RowCount = 1;
+            tlpStation2RecipeCode.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            tlpStation2RecipeCode.Size = new Size(445, 1);
+            tlpStation2RecipeCode.TabIndex = 5;
+            tlpStation2RecipeCode.Visible = false;
+            // 
+            // lblStation2RecipeCode
+            // 
+            lblStation2RecipeCode.AutoSizeMode = AntdUI.TAutoSize.Width;
+            lblStation2RecipeCode.Dock = DockStyle.Fill;
+            lblStation2RecipeCode.Location = new Point(0, 0);
+            lblStation2RecipeCode.Margin = new Padding(0);
+            lblStation2RecipeCode.Name = "lblStation2RecipeCode";
+            lblStation2RecipeCode.Padding = new Padding(4, 0, 0, 0);
+            lblStation2RecipeCode.Size = new Size(88, 1);
+            lblStation2RecipeCode.TabIndex = 0;
+            lblStation2RecipeCode.Text = "工位2配方";
+            // 
+            // selectStation2Recipe
+            // 
+            selectStation2Recipe.Dock = DockStyle.Fill;
+            selectStation2Recipe.Location = new Point(88, 0);
+            selectStation2Recipe.Margin = new Padding(0);
+            selectStation2Recipe.MaxCount = 10;
+            selectStation2Recipe.Name = "selectStation2Recipe";
+            selectStation2Recipe.Size = new Size(357, 1);
+            selectStation2Recipe.TabIndex = 1;
+            selectStation2Recipe.WheelModifyEnabled = false;
             // 
             // tlpProgramType
             // 
@@ -837,6 +884,8 @@
             tlpRemark.PerformLayout();
             tlpRecipeCode.ResumeLayout(false);
             tlpRecipeCode.PerformLayout();
+            tlpStation2RecipeCode.ResumeLayout(false);
+            tlpStation2RecipeCode.PerformLayout();
             tlpProgramType.ResumeLayout(false);
             tlpProgramType.PerformLayout();
             tlpComponentCode.ResumeLayout(false);
@@ -890,7 +939,9 @@
         private AntdUI.Label lblProgramContent;
         private AntdUI.Input inputProductNum;
         private TableLayoutPanel tlpProgramName;
-        private AntdUI.InputNumber inputRecipeCode;
+        private AntdUI.Select selectStation1Recipe;
+        private AntdUI.Select selectStation2Recipe;
+        private AntdUI.Label lblStation2RecipeCode;
         private AntdUI.Input txtProgramFile;
         private AntdUI.Input inputSequenceNumber;
         private AntdUI.Input inputComponentCode;
@@ -902,6 +953,7 @@
         private TableLayoutPanel tlpProgramType;
         private TableLayoutPanel tlpSequenceNumber;
         private TableLayoutPanel tlpRecipeCode;
+        private TableLayoutPanel tlpStation2RecipeCode;
         private TableLayoutPanel tlpProductNum;
         private TableLayoutPanel tlpDescription;
         private TableLayoutPanel tlpRemark;

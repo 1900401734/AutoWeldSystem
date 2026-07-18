@@ -1953,6 +1953,10 @@
   <data name="address.detail_role.upper" xml:space="preserve"><value>上限</value></data>
   <data name="address.detail_role.lower" xml:space="preserve"><value>下限</value></data>
   <data name="address.detail_role.result" xml:space="preserve"><value>结果</value></data>
+  <data name="program.label.station1_recipe" xml:space="preserve"><value>工位1配方</value></data>
+  <data name="program.label.station2_recipe" xml:space="preserve"><value>工位2配方</value></data>
+  <data name="program.placeholder.recipe_select" xml:space="preserve"><value>请选择 PLC 配方名称</value></data>
+  <data name="program.placeholder.recipe_manual" xml:space="preserve"><value>PLC 读取失败，可临时输入正整数配方号</value></data>
   <data name="address.tab.recipe_names" xml:space="preserve"><value>配方名称地址</value></data>
   <data name="address.recipe_name.hint" xml:space="preserve"><value>第 N 个地址对应配方号 N，地址按基地址和固定字节偏移计算；双工位分别维护。</value></data>
   <data name="address.recipe_name.preview_title" xml:space="preserve"><value>读取结果</value></data>
@@ -1967,4 +1971,7 @@
   <data name="address.column.recipe_error" xml:space="preserve"><value>错误信息</value></data>
   <data name="address.message.recipe_config_saved" xml:space="preserve"><value>PLC 配方名称地址配置已保存。</value></data>
   <data name="address.message.recipe_read_failed" xml:space="preserve"><value>读取 PLC 配方名称失败：{0}</value></data>
+  <data name="program.message.recipe_code_invalid" xml:space="preserve"><value>请选择 PLC 配方名称，或在读取失败时输入有效的正整数配方号。</value></data>
+  <data name="program.option.missing_recipe" xml:space="preserve"><value>配方号 {0}（PLC 列表中不存在）</value></data>
+  <data name="program.option.duplicate_recipe" xml:space="preserve"><value>{0}（配方号 {1}）</value></data>
 </root>

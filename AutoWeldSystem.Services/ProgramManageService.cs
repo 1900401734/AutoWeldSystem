@@ -323,6 +323,7 @@ public sealed class ProgramManageService : IProgramManageService
                 : request.ProgramName;
         entity.ProductNum = request.ProductNum;
         entity.RecipeCode = request.RecipeCode;
+        entity.Station2RecipeCode = request.Station2RecipeCode;
         entity.ComponentCode = request.ComponentCode;
         entity.SequenceNumber = Math.Max(1, request.SequenceNumber);
         if (entity.Id == 0)
@@ -423,6 +424,7 @@ public sealed class ProgramManageService : IProgramManageService
             ProgramFile = source.ProgramFile,
             Remark = source.Remark,
             RecipeCode = source.RecipeCode,
+            Station2RecipeCode = source.Station2RecipeCode,
             ProductModel = source.ProductModel,
             ComponentCode = source.ComponentCode,
             SequenceNumber = source.SequenceNumber,
@@ -533,6 +535,7 @@ public sealed class ProgramManageService : IProgramManageService
             ProgramName = entity.ProgramName,
             ProductNum = entity.ProductNum,
             RecipeCode = entity.RecipeCode,
+            Station2RecipeCode = entity.Station2RecipeCode,
             ProgramContentJson = entity.ProgramContent,
             LocalRemark = entity.Description,
             ProgramFileBase64 = entity.ProgramFile,
@@ -680,11 +683,12 @@ public sealed class ProgramManageService : IProgramManageService
         };
     }
 
-    private static void NormalizeRequest(SaveProgramReq request)
+    private void NormalizeRequest(SaveProgramReq request)
     {
         request.ProgramName = request.ProgramName.Trim();
         request.ProductNum = request.ProductNum.Trim();
-        request.RecipeCode = request.RecipeCode.Trim();
+        request.RecipeCode = ProgramRecipeMappingRules.Normalize(request.RecipeCode);
+        request.Station2RecipeCode = ProgramRecipeMappingRules.Normalize(request.Station2RecipeCode);
         request.ComponentCode = request.ComponentCode.Trim();
         request.ProgramType = request.ProgramType.Trim();
         request.ProgramContentJson = request.ProgramContentJson.Trim();
@@ -693,6 +697,11 @@ public sealed class ProgramManageService : IProgramManageService
         request.RobotJobName = request.RobotJobName.Trim();
         request.MesRemark = request.MesRemark.Trim();
         request.LocalRemark = request.LocalRemark.Trim();
+
+        ProgramSaveRecipeRules.Validate(
+            request.RecipeCode,
+            request.Station2RecipeCode,
+            CurrentSettings.EnableDualStation);
 
         if (string.IsNullOrWhiteSpace(request.ProductNum))
         {
@@ -712,6 +721,7 @@ public sealed class ProgramManageService : IProgramManageService
             entity.ProgramName,
             entity.ProductNum,
             entity.RecipeCode,
+            entity.Station2RecipeCode,
             LocalRemark = entity.Description,
             entity.ProgramContent,
             entity.ProgramFile,

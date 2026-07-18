@@ -16,6 +16,11 @@ public sealed class SaveProgramReq
 
     public string RecipeCode { get; set; } = string.Empty;
 
+    /// <summary>
+    /// 双工位设备工位 2 使用的本地 PLC 配方编号，不上传到 MES。
+    /// </summary>
+    public string? Station2RecipeCode { get; set; }
+
     public string ComponentCode { get; set; } = string.Empty;
 
     public int SequenceNumber { get; set; } = 1;

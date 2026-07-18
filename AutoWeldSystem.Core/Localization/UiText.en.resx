@@ -1952,6 +1952,10 @@
   <data name="address.detail_role.upper" xml:space="preserve"><value>Upper Limit</value></data>
   <data name="address.detail_role.lower" xml:space="preserve"><value>Lower Limit</value></data>
   <data name="address.detail_role.result" xml:space="preserve"><value>Result</value></data>
+  <data name="program.label.station1_recipe" xml:space="preserve"><value>Station 1 Recipe</value></data>
+  <data name="program.label.station2_recipe" xml:space="preserve"><value>Station 2 Recipe</value></data>
+  <data name="program.placeholder.recipe_select" xml:space="preserve"><value>Select a PLC recipe name</value></data>
+  <data name="program.placeholder.recipe_manual" xml:space="preserve"><value>PLC read failed; enter a positive recipe code</value></data>
   <data name="address.tab.recipe_names" xml:space="preserve"><value>Recipe Name Addresses</value></data>
   <data name="address.recipe_name.hint" xml:space="preserve"><value>Address N maps to recipe code N and is calculated from the base address and fixed byte offset. Configure stations separately.</value></data>
   <data name="address.recipe_name.preview_title" xml:space="preserve"><value>Read Results</value></data>
@@ -1966,4 +1970,7 @@
   <data name="address.column.recipe_error" xml:space="preserve"><value>Error</value></data>
   <data name="address.message.recipe_config_saved" xml:space="preserve"><value>PLC recipe name address settings saved.</value></data>
   <data name="address.message.recipe_read_failed" xml:space="preserve"><value>Failed to read PLC recipe names: {0}</value></data>
+  <data name="program.message.recipe_code_invalid" xml:space="preserve"><value>Select a PLC recipe name, or enter a positive recipe code when reading fails.</value></data>
+  <data name="program.option.missing_recipe" xml:space="preserve"><value>Recipe {0} (not found in PLC list)</value></data>
+  <data name="program.option.duplicate_recipe" xml:space="preserve"><value>{0} (Recipe {1})</value></data>
 </root>

@@ -39,6 +39,14 @@ var tests = new (string Name, Action Run)[]
     ("PLC recipe name reader keeps successful slots after read failures", PlcRecipeNameReaderKeepsSuccessfulSlotsAfterReadFailures),
     ("PLC recipe name reader accepts in-memory configuration", PlcRecipeNameReaderAcceptsInMemoryConfiguration),
     ("PLC recipe name reader returns invalid config failures", PlcRecipeNameReaderReturnsInvalidConfigFailures),
+    ("Program recipe mapping normalizes positive numeric codes", ProgramRecipeMappingNormalizesPositiveNumericCodes),
+    ("Program save recipe rules require positive station codes", ProgramSaveRecipeRulesRequirePositiveStationCodes),
+    ("Program recipe mapping resolves station-specific codes", ProgramRecipeMappingResolvesStationSpecificCodes),
+    ("Program shared recipe targets resolve independently", ProgramSharedRecipeTargetsResolveIndependently),
+    ("Program recipe station 2 fields persist locally", ProgramRecipeStation2FieldsPersistLocally),
+    ("Program MES write payload omits recipe code", ProgramMesWritePayloadOmitsRecipeCode),
+    ("Program manage initial load keeps selected program details", ProgramManageInitialLoadKeepsSelectedProgramDetails),
+    ("Program manage recipe name selectors bind station recipe codes", ProgramManageRecipeNameSelectorsBindStationRecipeCodes),
     ("Address manage exposes PLC recipe name configuration", AddressManageExposesPlcRecipeNameConfiguration),
     ("PLC recipe name config service reads latest station row", PlcRecipeNameConfigServiceReadsLatestStationRow),
     ("Scheme detail role headers use centralized defaults", SchemeDetailRoleHeadersUseCentralizedDefaults),
@@ -212,7 +220,6 @@ var tests = new (string Name, Action Run)[]
     ("Program MES current save action separates pending actions", ProgramMesCurrentSaveActionSeparatesPendingActions),
     ("Program MES executable action never creates when MES id exists", ProgramMesExecutableActionNeverCreatesWhenMesIdExists),
     ("Program remark rules default by action", ProgramRemarkRulesDefaultByAction),
-    ("Program MES write payload omits recipe code", ProgramMesWritePayloadOmitsRecipeCode),
     ("Program MES create payload clears file fields for empty content", ProgramMesCreatePayloadClearsFileFieldsForEmptyContent),
     ("Program content rules detect configured values", ProgramContentRulesDetectConfiguredValues),
     ("Program manage service clears automatic file for empty content", ProgramManageServiceClearsAutomaticFileForEmptyContent),
@@ -432,6 +439,29 @@ static void PlcRecipeNameReaderReturnsInvalidConfigFailures()
     AssertFalse(result.IsSuccess, "历史非法配置应返回读取失败，而不是向界面抛出异常。 ");
     AssertTrue(result.Message.Contains("基地址不能为空", StringComparison.Ordinal), "失败消息应包含具体配置错误。 ");
     AssertEqual(0, result.Options.Count, "配置无效时不应生成配方选项。 ");
+}
+
+static void ProgramSaveRecipeRulesRequirePositiveStationCodes()
+{
+    ProgramSaveRecipeRules.Validate("1", null, enableDualStation: false);
+    ProgramSaveRecipeRules.Validate("2", "9", enableDualStation: true);
+
+    AssertInvalidOperationMessage(
+        () => ProgramSaveRecipeRules.Validate(string.Empty, null, enableDualStation: false),
+        "工位 1 配方号必须是正整数。",
+        "单工位保存也必须要求工位 1 配方号。 ");
+    AssertInvalidOperationMessage(
+        () => ProgramSaveRecipeRules.Validate("legacy", null, enableDualStation: false),
+        "工位 1 配方号必须是正整数。",
+        "历史非数字配方号不得继续静默保存。 ");
+    AssertInvalidOperationMessage(
+        () => ProgramSaveRecipeRules.Validate("1", null, enableDualStation: true),
+        "工位 2 配方号必须是正整数。",
+        "双工位保存必须要求工位 2 配方号。 ");
+    AssertInvalidOperationMessage(
+        () => ProgramSaveRecipeRules.Validate("1", "0", enableDualStation: true),
+        "工位 2 配方号必须是正整数。",
+        "工位 2 配方号不得为零。 ");
 }
 
 static void PlcSoftwareAlarmRulesMergeRawStatusAndBoolSignals()
@@ -5292,6 +5322,104 @@ static void ProgramMesSyncIgnoresLocalOnlyFields()
         "只改配方号导致本地程序文件重新生成时，本次保存不应产生 MES 同步动作。");
 }
 
+static void ProgramRecipeMappingNormalizesPositiveNumericCodes()
+{
+    var rulesType = typeof(BizProgram).Assembly.GetType(
+        "AutoWeldSystem.Core.Production.ProgramRecipeMappingRules",
+        throwOnError: false);
+    AssertTrue(rulesType is not null, "应提供集中管理工位配方号的 ProgramRecipeMappingRules。 ");
+
+    var normalize = rulesType!.GetMethod("Normalize", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+    AssertTrue(normalize is not null, "配方映射规则应公开统一的正整数规范化入口。 ");
+
+    string Invoke(string? value) => (string)(normalize!.Invoke(null, [value]) ?? string.Empty);
+
+    AssertEqual("7", Invoke(" 007 "), "有效数字配方号应去除空白和无意义前导零。 ");
+    AssertEqual(string.Empty, Invoke("0"), "配方号 0 不是有效 PLC 槽位。 ");
+    AssertEqual(string.Empty, Invoke("-2"), "负数不是有效 PLC 配方号。 ");
+    AssertEqual(string.Empty, Invoke("A3"), "非数字文本不得进入 PLC 配方下发链路。 ");
+}
+
+static void ProgramRecipeMappingResolvesStationSpecificCodes()
+{
+    var rulesType = typeof(BizProgram).Assembly.GetType(
+        "AutoWeldSystem.Core.Production.ProgramRecipeMappingRules",
+        throwOnError: false);
+    AssertTrue(rulesType is not null, "应提供集中管理工位配方号的 ProgramRecipeMappingRules。 ");
+
+    var station2Property = typeof(BizProgram).GetProperty("Station2RecipeCode");
+    AssertTrue(station2Property is not null, "BizProgram 应保存工位 2 的本地配方号。 ");
+    var resolve = rulesType!.GetMethod(
+        "Resolve",
+        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
+        binder: null,
+        types: [typeof(BizProgram), typeof(int)],
+        modifiers: null);
+    AssertTrue(resolve is not null, "配方映射规则应能按程序和当前工位解析配方号。 ");
+
+    var program = new BizProgram { RecipeCode = " 3 " };
+    station2Property!.SetValue(program, " 8 ");
+
+    AssertEqual("3", (string)(resolve!.Invoke(null, [program, 1]) ?? string.Empty), "单工位和工位 1 应使用原 RecipeCode。 ");
+    AssertEqual("8", (string)(resolve.Invoke(null, [program, 2]) ?? string.Empty), "工位 2 应优先使用 Station2RecipeCode。 ");
+
+    station2Property.SetValue(program, "0");
+    AssertEqual("3", (string)(resolve.Invoke(null, [program, 2]) ?? string.Empty), "旧程序缺少有效工位 2 配方时应回退 RecipeCode。 ");
+}
+
+static void ProgramSharedRecipeTargetsResolveIndependently()
+{
+    var rulesType = typeof(BizProgram).Assembly.GetType(
+        "AutoWeldSystem.Core.Production.ProgramRecipeMappingRules",
+        throwOnError: false);
+    AssertTrue(rulesType is not null, "应提供集中管理工位配方号的 ProgramRecipeMappingRules。 ");
+
+    var resolveTargets = rulesType!.GetMethod("ResolveTargets", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+    AssertTrue(resolveTargets is not null, "配方映射规则应能一次解析共享任务的所有目标工位。 ");
+
+    var program = new BizProgram { RecipeCode = "3", Station2RecipeCode = "8" };
+    var sharedStations = RecipeStationScopeRules.ResolveSharedRecipeStations(
+        enableDualStation: true,
+        enableDualWorkOrder: false,
+        stationNo: 1);
+    var targets = ((System.Collections.IEnumerable)resolveTargets!.Invoke(null, [program, sharedStations])!)
+        .Cast<object>()
+        .Select(target => new
+        {
+            StationNo = (int)target.GetType().GetProperty("StationNo")!.GetValue(target)!,
+            RecipeCode = (string)target.GetType().GetProperty("RecipeCode")!.GetValue(target)!
+        })
+        .ToList();
+
+    AssertEqual(2, targets.Count, "同工单双工位应分别生成两个配方下发目标。 ");
+    AssertEqual(1, targets[0].StationNo, "第一个目标应为工位 1。 ");
+    AssertEqual("3", targets[0].RecipeCode, "工位 1 应使用 RecipeCode。 ");
+    AssertEqual(2, targets[1].StationNo, "第二个目标应为工位 2。 ");
+    AssertEqual("8", targets[1].RecipeCode, "工位 2 应使用 Station2RecipeCode。 ");
+}
+
+static void ProgramRecipeStation2FieldsPersistLocally()
+{
+    var station2ProgramProperty = typeof(BizProgram).GetProperty("Station2RecipeCode");
+    var station2RequestProperty = typeof(SaveProgramReq).GetProperty("Station2RecipeCode");
+    var station2RevisionProperty = typeof(BizProgramRevision).GetProperty("Station2RecipeCode");
+    AssertTrue(station2ProgramProperty is not null, "BizProgram 应增加工位 2 配方号。 ");
+    AssertTrue(station2RequestProperty is not null, "SaveProgramReq 应携带工位 2 配方号。 ");
+    AssertTrue(station2RevisionProperty is not null, "程序版本快照应保存工位 2 配方号。 ");
+
+    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "ProgramManageService.cs"), Encoding.UTF8);
+    AssertTrue(serviceCode.Contains("entity.Station2RecipeCode = request.Station2RecipeCode;", StringComparison.Ordinal), "保存程序时应写入工位 2 配方号。 ");
+    AssertTrue(serviceCode.Contains("Station2RecipeCode = source.Station2RecipeCode", StringComparison.Ordinal), "保存前快照应复制工位 2 配方号。 ");
+    AssertTrue(serviceCode.Contains("Station2RecipeCode = entity.Station2RecipeCode", StringComparison.Ordinal), "版本快照应记录工位 2 配方号。 ");
+    AssertTrue(serviceCode.Contains("request.Station2RecipeCode = ProgramRecipeMappingRules.Normalize", StringComparison.Ordinal), "保存入口应统一规范化工位 2 配方号。 ");
+
+    var original = new BizProgram { Id = 1, ProgramId = "mes-1", RecipeCode = "1" };
+    var current = new BizProgram { Id = 1, ProgramId = "mes-1", RecipeCode = "1" };
+    station2ProgramProperty!.SetValue(original, "2");
+    station2ProgramProperty.SetValue(current, "3");
+    AssertEqual<string?>(null, ProgramMesSyncRules.ResolveCurrentSaveAction(original, current), "工位 2 配方号仅在本地使用，不应触发 MES 更新。 ");
+}
+
 static void ProgramMesDescriptionChangesTriggerUpdate()
 {
     var changes = new[]
@@ -6032,6 +6160,75 @@ static void SystemSettingViewNoLongerEditsDualWorkOrder()
     AssertFalse(viewCode.Contains("var enableDualWorkOrder = chkEnableDualWorkOrder.Checked", StringComparison.Ordinal), "系统设置页不应再从双工单复选框读取保存值。");
     AssertTrue(viewCode.Contains("chkEnableDualStation.Checked = settings.EnableDualStation || settings.EnableDualWorkOrder;", StringComparison.Ordinal), "系统设置页仍需在双工单已启用时显示双工位为开启。");
     AssertTrue(viewCode.Contains("settings.EnableDualWorkOrder = enableDualStation && CurrentSettings.EnableDualWorkOrder;", StringComparison.Ordinal), "系统设置保存时应保留既有双工单设置，并在关闭双工位时同步关闭双工单。");
+}
+
+static void ProgramManageInitialLoadKeepsSelectedProgramDetails()
+{
+    var viewCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.cs"),
+        Encoding.UTF8);
+    var onLoadMethod = ExtractMethodText(
+        viewCode,
+        "protected override void OnLoad(EventArgs e)",
+        "protected override void OnLanguageChanged()");
+
+    AssertTrue(
+        onLoadMethod.Contains("ReloadPrograms();", StringComparison.Ordinal),
+        "程序管理页首次加载必须读取程序列表。");
+    AssertTrue(
+        System.Text.RegularExpressions.Regex.IsMatch(
+            onLoadMethod,
+            @"if\s*\(\s*_programs\.Count\s*==\s*0\s*\)\s*\{\s*StartNewProgram\(\);\s*\}",
+            System.Text.RegularExpressions.RegexOptions.Singleline),
+        "仅当程序列表为空时才应显示新增程序详情。");
+    AssertEqual(
+        1,
+        System.Text.RegularExpressions.Regex.Matches(onLoadMethod, @"StartNewProgram\s*\(\s*\)").Count,
+        "首次加载方法中不得在空列表条件之外再次清空程序详情。");
+
+    var startNewMethod = ExtractMethodText(
+        viewCode,
+        "private void StartNewProgram()",
+        "private void BindSelectedProgram()");
+    AssertTrue(
+        startNewMethod.Contains("dgvPrograms.ClearSelection();", StringComparison.Ordinal)
+        && startNewMethod.Contains("dgvPrograms.CurrentCell = null;", StringComparison.Ordinal),
+        "进入新增状态时必须清除程序表格当前选择，确保再次点击原行会重新触发详情绑定。");
+}
+
+static void ProgramManageRecipeNameSelectorsBindStationRecipeCodes()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.cs"), Encoding.UTF8);
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.Designer.cs"), Encoding.UTF8);
+    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "ProgramManageService.cs"), Encoding.UTF8);
+
+    AssertTrue(viewCode.Contains("IPlcRecipeNameReaderService", StringComparison.Ordinal), "程序管理页必须注入 PLC 配方名称读取服务。");
+    AssertTrue(viewCode.Contains("IAppSettingsService", StringComparison.Ordinal), "程序管理页必须读取系统设置判断双工位。");
+    AssertTrue(viewCode.Contains("Station2RecipeCode", StringComparison.Ordinal), "程序管理页保存和恢复时必须绑定工位 2 配方号。");
+    AssertTrue(viewCode.Contains("ReadStationAsync", StringComparison.Ordinal), "程序管理页加载或刷新时必须读取 PLC 配方名称。");
+    AssertTrue(viewCode.Contains("select.List = result.IsSuccess;", StringComparison.Ordinal), "PLC 名称读取成功时下拉必须切换为列表选择模式，失败时允许临时输入。");
+    AssertTrue(designerCode.Contains("selectStation1Recipe = new AntdUI.Select();", StringComparison.Ordinal), "Designer 必须声明工位 1 配方名称下拉。");
+    AssertTrue(designerCode.Contains("selectStation2Recipe = new AntdUI.Select();", StringComparison.Ordinal), "Designer 必须声明工位 2 配方名称下拉。");
+    AssertTrue(designerCode.Contains("selectStation1Recipe.MaxCount = 10;", StringComparison.Ordinal), "工位 1 配方名称下拉必须限制下拉项数量。");
+    AssertTrue(designerCode.Contains("selectStation2Recipe.MaxCount = 10;", StringComparison.Ordinal), "工位 2 配方名称下拉必须限制下拉项数量。");
+    AssertTrue(designerCode.Contains("tlpStation2RecipeCode", StringComparison.Ordinal), "工位 2 配方名称行的静态布局必须放在 Designer 中。");
+    AssertTrue(viewCode.Contains("tlpStation2RecipeCode.Visible =", StringComparison.Ordinal), "单工位时必须在运行期折叠工位 2 配方行。");
+    var refreshMethod = ExtractMethodText(viewCode, "private async Task RefreshRecipeNameOptionsAsync()", "private void ApplyStationRecipeLayout");
+    var awaitIndex = refreshMethod.IndexOf("await _recipeNameReaderService.ReadStationAsync(stationNo)", StringComparison.Ordinal);
+    var liveValueIndex = refreshMethod.IndexOf("ResolveSelectedRecipeCode(select, stationNo)", awaitIndex, StringComparison.Ordinal);
+    AssertTrue(awaitIndex >= 0 && liveValueIndex > awaitIndex, "每次 PLC 读取返回后必须重新获取编辑器当前配方号，避免旧请求覆盖新增或切换后的程序。");
+    AssertTrue(viewCode.Contains("GetRecipeOptionDisplayText", StringComparison.Ordinal), "配方名称、重复名称和缺失配方的显示文本必须通过本地化 helper 生成。");
+    AssertTrue(viewCode.Contains("RefreshRecipeSelectorTexts();", StringComparison.Ordinal), "语言切换时必须原地刷新配方选项和占位提示，不得保留旧语言文本。");
+    AssertTrue(viewCode.Contains("editingProgram?.Station2RecipeCode", StringComparison.Ordinal)
+        && viewCode.Contains("_editingId > 0", StringComparison.Ordinal), "单工位编辑历史程序时必须保留已有工位 2 配方号。");
+    var saveResolver = ExtractMethodText(viewCode, "private string ResolveRecipeCodeForSave", "private async Task RefreshRecipeNameOptionsAsync()");
+    AssertFalse(saveResolver.Contains("!int.TryParse", StringComparison.Ordinal), "程序管理 UI 不得继续透传历史非数字配方号。");
+    AssertTrue(serviceCode.Contains("ProgramSaveRecipeRules.Validate(", StringComparison.Ordinal)
+        && serviceCode.Contains("CurrentSettings.EnableDualStation", StringComparison.Ordinal), "服务保存入口必须在规范化后按当前单双工位设置校验配方号。");
+    AssertTrue(viewCode.Contains("Interlocked.Increment(ref _recipeNameRefreshVersion)", StringComparison.Ordinal), "每次配方名称刷新必须递增版本号。");
+    AssertTrue(viewCode.Contains("refreshVersion != Volatile.Read(ref _recipeNameRefreshVersion)", StringComparison.Ordinal), "旧刷新返回时必须通过版本号阻止覆盖新状态。");
+    AssertTrue(viewCode.Contains("catch (Exception ex)", StringComparison.Ordinal)
+        && viewCode.Contains("BindRecipeNameReadFailure", StringComparison.Ordinal), "刷新异常必须转成手工输入回退状态，不得成为未观察任务异常。");
 }
 
 static void AddressManageExposesPlcRecipeNameConfiguration()

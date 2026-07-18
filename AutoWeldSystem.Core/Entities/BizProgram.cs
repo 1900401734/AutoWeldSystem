@@ -49,6 +49,12 @@ public class BizProgram
     [SugarColumn(Length = 50, ColumnDescription = "配方编号", IsNullable = true)]
     public string? RecipeCode { get; set; }
 
+    /// <summary>
+    /// 双工位设备的工位 2 配方编号；为空时按旧数据兼容规则回退到 RecipeCode。
+    /// </summary>
+    [SugarColumn(Length = 50, ColumnDescription = "工位2配方编号", IsNullable = true)]
+    public string? Station2RecipeCode { get; set; }
+
     [SugarColumn(Length = 50, ColumnDescription = "产品型号", IsNullable = true)]
     public string? ProductModel { get; set; }
 

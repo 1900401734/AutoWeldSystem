@@ -36,6 +36,12 @@ public class BizProgramRevision
     [SugarColumn(Length = 50, ColumnDescription = "配方编号", IsNullable = true)]
     public string? RecipeCode { get; set; }
 
+    /// <summary>
+    /// 保存本次版本对应的工位 2 配方编号。
+    /// </summary>
+    [SugarColumn(Length = 50, ColumnDescription = "工位2配方编号", IsNullable = true)]
+    public string? Station2RecipeCode { get; set; }
+
     [SugarColumn(ColumnDataType = "text", ColumnDescription = "工艺参数JSON", IsNullable = true)]
     public string? ProgramContentJson { get; set; }
 
