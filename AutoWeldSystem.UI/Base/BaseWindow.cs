@@ -41,6 +41,7 @@ public class BaseWindow : Window
 
     protected override void OnHandleDestroyed(EventArgs e)
     {
+        CompleteInteractiveResize(repaint: false);
         GlobalContext.LanguageChanged -= GlobalContext_LanguageChanged;
         base.OnHandleDestroyed(e);
     }
@@ -57,12 +58,32 @@ public class BaseWindow : Window
         }
 
         _interactiveResizeActive = true;
-        if (IsHandleCreated)
+        try
         {
-            SendMessage(Handle, WmSetRedraw, IntPtr.Zero, IntPtr.Zero);
-        }
+            if (IsHandleCreated)
+            {
+                SendMessage(Handle, WmSetRedraw, IntPtr.Zero, IntPtr.Zero);
+            }
 
-        SuspendLayoutRecursive(this);
+            SuspendLayoutRecursive(this);
+        }
+        catch
+        {
+            try
+            {
+                ResumeLayoutRecursive(this);
+            }
+            finally
+            {
+                _interactiveResizeActive = false;
+                if (IsHandleCreated)
+                {
+                    SendMessage(Handle, WmSetRedraw, new IntPtr(1), IntPtr.Zero);
+                }
+            }
+
+            throw;
+        }
     }
 
     /// <summary>
@@ -153,7 +174,7 @@ public class BaseWindow : Window
         }
     }
 
-    private void CompleteInteractiveResize()
+    private void CompleteInteractiveResize(bool repaint = true)
     {
         if (!_interactiveResizeActive)
         {
@@ -163,18 +184,24 @@ public class BaseWindow : Window
         try
         {
             ResumeLayoutRecursive(this);
-            PerformLayout();
+            if (repaint)
+            {
+                PerformLayout();
+            }
         }
         finally
         {
             _interactiveResizeActive = false;
-            if (IsHandleCreated)
+            if (repaint && IsHandleCreated)
             {
                 SendMessage(Handle, WmSetRedraw, new IntPtr(1), IntPtr.Zero);
             }
 
-            Invalidate(true);
-            Update();
+            if (repaint)
+            {
+                Invalidate(true);
+                Update();
+            }
         }
     }
 

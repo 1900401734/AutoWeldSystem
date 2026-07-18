@@ -321,6 +321,7 @@ static void BaseWindowBatchesInteractiveResize()
     AssertTrue(baseWindowCode.Contains("SuspendLayoutRecursive(this)", StringComparison.Ordinal), "调整尺寸期间必须暂停整个控件树的布局。");
     AssertTrue(baseWindowCode.Contains("SendMessage(Handle, WmSetRedraw, IntPtr.Zero", StringComparison.Ordinal), "调整尺寸期间必须暂时关闭重绘。");
     AssertTrue(baseWindowCode.Contains("ResumeLayoutRecursive(this)", StringComparison.Ordinal), "调整尺寸结束时必须恢复整个控件树的布局。");
+    AssertTrue(baseWindowCode.Contains("CompleteInteractiveResize(repaint: false)", StringComparison.Ordinal), "句柄销毁时必须取消未完成的调整尺寸批处理。");
 }
 
 static void PlcRecipeNameRulesMapSlotsWithoutShiftingCodes()
