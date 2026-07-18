@@ -37,6 +37,7 @@ var tests = new (string Name, Action Run)[]
 {
     ("System setting layout rules honor DPI breakpoints", SystemSettingLayoutRulesHonorDpiBreakpoints),
     ("System setting view avoids repeated layout rebuilds during resize", SystemSettingViewAvoidsRepeatedLayoutRebuilds),
+    ("Base window batches layout and redraw during interactive resize", BaseWindowBatchesInteractiveResize),
     ("System setting view uses responsive semantic columns", SystemSettingViewUsesResponsiveSemanticColumns),
     ("System setting localization resources are complete", SystemSettingLocalizationResourcesAreComplete),
     ("MES endpoint validation returns stable error codes", MesEndpointValidationReturnsStableErrorCodes),
@@ -309,6 +310,17 @@ static void SystemSettingViewAvoidsRepeatedLayoutRebuilds()
 
     AssertTrue(viewCode.Contains("if (!force && mode == _lastLayoutMode)", StringComparison.Ordinal), "同一列模式下调整窗口大小不应重复重建布局。");
     AssertFalse(viewCode.Contains("viewportSize == _lastLayoutViewportSize", StringComparison.Ordinal), "视口尺寸变化不应成为每次重建响应式网格的条件。");
+}
+
+static void BaseWindowBatchesInteractiveResize()
+{
+    var baseWindowCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Base", "BaseWindow.cs"), Encoding.UTF8);
+
+    AssertTrue(baseWindowCode.Contains("protected override void OnResizeBegin", StringComparison.Ordinal), "基础窗体必须在系统调整尺寸开始时进入批量布局模式。");
+    AssertTrue(baseWindowCode.Contains("protected override void OnResizeEnd", StringComparison.Ordinal), "基础窗体必须在系统调整尺寸结束时恢复布局。");
+    AssertTrue(baseWindowCode.Contains("SuspendLayoutRecursive(this)", StringComparison.Ordinal), "调整尺寸期间必须暂停整个控件树的布局。");
+    AssertTrue(baseWindowCode.Contains("SendMessage(Handle, WmSetRedraw, IntPtr.Zero", StringComparison.Ordinal), "调整尺寸期间必须暂时关闭重绘。");
+    AssertTrue(baseWindowCode.Contains("ResumeLayoutRecursive(this)", StringComparison.Ordinal), "调整尺寸结束时必须恢复整个控件树的布局。");
 }
 
 static void PlcRecipeNameRulesMapSlotsWithoutShiftingCodes()

@@ -13,6 +13,7 @@ public class BaseWindow : Window
 {
     private const int WmSetRedraw = 0x000B;
     private bool _tabOrderInitialized;
+    private bool _interactiveResizeActive;
 
     public BaseWindow()
     {
@@ -42,6 +43,41 @@ public class BaseWindow : Window
     {
         GlobalContext.LanguageChanged -= GlobalContext_LanguageChanged;
         base.OnHandleDestroyed(e);
+    }
+
+    /// <summary>
+    /// 用户拖动窗口边框时暂停控件树布局和重绘，避免复杂页面反复递归测量。
+    /// </summary>
+    protected override void OnResizeBegin(EventArgs e)
+    {
+        base.OnResizeBegin(e);
+        if (_interactiveResizeActive)
+        {
+            return;
+        }
+
+        _interactiveResizeActive = true;
+        if (IsHandleCreated)
+        {
+            SendMessage(Handle, WmSetRedraw, IntPtr.Zero, IntPtr.Zero);
+        }
+
+        SuspendLayoutRecursive(this);
+    }
+
+    /// <summary>
+    /// 窗口调整结束后只执行一次完整布局和重绘。
+    /// </summary>
+    protected override void OnResizeEnd(EventArgs e)
+    {
+        try
+        {
+            base.OnResizeEnd(e);
+        }
+        finally
+        {
+            CompleteInteractiveResize();
+        }
     }
 
     public void ApplyLanguage()
@@ -104,6 +140,34 @@ public class BaseWindow : Window
         {
             ResumeLayoutRecursive(this);
 
+            if (IsHandleCreated && !_interactiveResizeActive)
+            {
+                SendMessage(Handle, WmSetRedraw, new IntPtr(1), IntPtr.Zero);
+            }
+
+            if (!_interactiveResizeActive)
+            {
+                Invalidate(true);
+                Update();
+            }
+        }
+    }
+
+    private void CompleteInteractiveResize()
+    {
+        if (!_interactiveResizeActive)
+        {
+            return;
+        }
+
+        try
+        {
+            ResumeLayoutRecursive(this);
+            PerformLayout();
+        }
+        finally
+        {
+            _interactiveResizeActive = false;
             if (IsHandleCreated)
             {
                 SendMessage(Handle, WmSetRedraw, new IntPtr(1), IntPtr.Zero);
