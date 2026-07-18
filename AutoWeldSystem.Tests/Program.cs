@@ -24,6 +24,7 @@ using AutoWeldSystem.CenterServer.Services;
 using AutoWeldSystem.Services.Center;
 using AutoWeldSystem.Services.Mes;
 using AutoWeldSystem.Services.Log;
+using AutoWeldSystem.Services.Plc;
 using AutoWeldSystem.Services.Production;
 using ClosedXML.Excel;
 using Microsoft.Extensions.Configuration;
@@ -33,6 +34,13 @@ using System.Text.Json;
 
 var tests = new (string Name, Action Run)[]
 {
+    ("PLC recipe name rules map slots without shifting codes", PlcRecipeNameRulesMapSlotsWithoutShiftingCodes),
+    ("PLC recipe name config rules reject invalid station settings", PlcRecipeNameConfigRulesRejectInvalidStationSettings),
+    ("PLC recipe name reader keeps successful slots after read failures", PlcRecipeNameReaderKeepsSuccessfulSlotsAfterReadFailures),
+    ("PLC recipe name reader accepts in-memory configuration", PlcRecipeNameReaderAcceptsInMemoryConfiguration),
+    ("PLC recipe name reader returns invalid config failures", PlcRecipeNameReaderReturnsInvalidConfigFailures),
+    ("Address manage exposes PLC recipe name configuration", AddressManageExposesPlcRecipeNameConfiguration),
+    ("PLC recipe name config service reads latest station row", PlcRecipeNameConfigServiceReadsLatestStationRow),
     ("Scheme detail role headers use centralized defaults", SchemeDetailRoleHeadersUseCentralizedDefaults),
     ("Scheme detail role grid defines localized bound columns", SchemeDetailRoleGridDefinesLocalizedBoundColumns),
     ("Scheme detail role names and monitor fallbacks are centralized", SchemeDetailRoleNamesAndMonitorFallbacksAreCentralized),
@@ -258,6 +266,172 @@ foreach (var test in tests)
 {
     test.Run();
     Console.WriteLine($"PASS {test.Name}");
+}
+
+static void PlcRecipeNameRulesMapSlotsWithoutShiftingCodes()
+{
+    var config = new BizPlcRecipeNameConfig
+    {
+        StationNo = 2,
+        BaseAddress = "DB20.100",
+        RecipeCount = 4,
+        AddressOffset = 12,
+        StringLength = 20,
+        Enabled = true
+    };
+
+    var options = PlcRecipeNameRules.BuildOptions(
+        config,
+        new Dictionary<int, string?>
+        {
+            [1] = " 工艺A ",
+            [2] = string.Empty,
+            [3] = "工艺A",
+            [4] = "工艺B"
+        });
+
+    AssertEqual(3, options.Count, "空白配方名称不应生成下拉选项。 ");
+    AssertEqual(1, options[0].RecipeCode, "第一个地址应映射配方号 1。 ");
+    AssertEqual("DB20.100", options[0].Address, "配方号 1 应使用基地址。 ");
+    AssertEqual("工艺A", options[0].DisplayText, "核心配方选项应保持语言中性，由界面负责重名消歧。 ");
+    AssertEqual(3, options[1].RecipeCode, "跳过空名称时不得压缩后续配方号。 ");
+    AssertEqual("DB20.124", options[1].Address, "配方号 3 应使用两倍字节偏移。 ");
+    AssertEqual("工艺A", options[1].DisplayText, "同名核心选项不应包含特定语言后缀。 ");
+    AssertEqual("工艺B", options[2].DisplayText, "唯一名称不需要附加配方号。 ");
+}
+
+static void PlcRecipeNameConfigRulesRejectInvalidStationSettings()
+{
+    var valid = new BizPlcRecipeNameConfig
+    {
+        StationNo = 1,
+        BaseAddress = " DB10.0 ",
+        RecipeCount = 10,
+        AddressOffset = 16,
+        StringLength = 12,
+        Enabled = true
+    };
+
+    var normalized = PlcRecipeNameConfigRules.NormalizeAndValidate([valid], new DateTime(2026, 7, 17, 9, 0, 0));
+    AssertEqual("DB10.0", normalized[0].BaseAddress, "保存前应清理基地址首尾空白。 ");
+    AssertEqual(new DateTime(2026, 7, 17, 9, 0, 0), normalized[0].UpdatedTime, "规范化时应刷新更新时间。 ");
+
+    AssertInvalidOperationMessage(
+        () => PlcRecipeNameConfigRules.NormalizeAndValidate(
+            [new BizPlcRecipeNameConfig
+            {
+                StationNo = ProductionConstants.Stations.SharedStationNo,
+                BaseAddress = valid.BaseAddress,
+                RecipeCount = valid.RecipeCount,
+                AddressOffset = valid.AddressOffset,
+                StringLength = valid.StringLength,
+                Enabled = valid.Enabled
+            }],
+            DateTime.Now),
+        "配方名称配置不支持共享工位。",
+        "工位 0 不得用于配方名称配置。 ");
+    AssertInvalidOperationMessage(
+        () => PlcRecipeNameConfigRules.NormalizeAndValidate(
+            [new BizPlcRecipeNameConfig
+            {
+                StationNo = valid.StationNo,
+                BaseAddress = valid.BaseAddress,
+                RecipeCount = valid.RecipeCount,
+                AddressOffset = 0,
+                StringLength = valid.StringLength,
+                Enabled = valid.Enabled
+            }],
+            DateTime.Now),
+        "配方名称地址偏移量必须大于 0。",
+        "相邻配方地址必须使用正字节偏移。 ");
+    AssertInvalidOperationMessage(
+        () => PlcRecipeNameConfigRules.NormalizeAndValidate(
+            [valid, new BizPlcRecipeNameConfig
+            {
+                StationNo = valid.StationNo,
+                BaseAddress = "DB11.0",
+                RecipeCount = valid.RecipeCount,
+                AddressOffset = valid.AddressOffset,
+                StringLength = valid.StringLength,
+                Enabled = valid.Enabled
+            }],
+            DateTime.Now),
+        "工位 1 的配方名称配置重复。",
+        "每个工位只能保存一条配方名称配置。 ");
+}
+
+static void PlcRecipeNameReaderKeepsSuccessfulSlotsAfterReadFailures()
+{
+    var config = new BizPlcRecipeNameConfig
+    {
+        StationNo = 2,
+        BaseAddress = "DB30.0",
+        RecipeCount = 4,
+        AddressOffset = 10,
+        StringLength = 18,
+        Enabled = true
+    };
+    var configService = new FakePlcRecipeNameConfigService(config);
+    var plcService = new FakePlcCommunicationService();
+    plcService.StringReadResults["DB30.0"] = PlcServiceResult<string>.Success("工艺甲");
+    plcService.StringReadResults["DB30.10"] = PlcServiceResult<string>.Fail("PLC timeout");
+    plcService.StringReadResults["DB30.20"] = PlcServiceResult<string>.Success("   ");
+    plcService.StringReadResults["DB30.30"] = PlcServiceResult<string>.Success("工艺乙");
+    var reader = new PlcRecipeNameReaderService(configService, plcService);
+
+    var result = reader.ReadStationAsync(2).GetAwaiter().GetResult();
+
+    AssertEqual(2, result.Options.Count, "读取失败和空白名称不应阻断其他有效配方。 ");
+    AssertEqual(1, result.Options[0].RecipeCode, "第一个有效配方应保留槽位编号。 ");
+    AssertEqual(4, result.Options[1].RecipeCode, "失败与空白槽位之后的配方号不得前移。 ");
+    AssertEqual(1, result.Failures.Count, "单项读取失败应记录供界面提示和日志使用。 ");
+    AssertEqual(2, result.Failures[0].RecipeCode, "失败记录应保留原配方号。 ");
+    AssertEqual("DB30.10", result.Failures[0].Address, "失败记录应保留计算后的 PLC 地址。 ");
+    AssertEqual(4, plcService.StringReadRequests.Count, "启用配置后应读取固定数量内的全部地址。 ");
+    AssertTrue(plcService.StringReadRequests.All(request => request.Length == 18), "每次读取均应使用配置的字符串长度。 ");
+}
+
+static void PlcRecipeNameReaderAcceptsInMemoryConfiguration()
+{
+    var configService = new FakePlcRecipeNameConfigService();
+    var plcService = new FakePlcCommunicationService();
+    plcService.StringReadResults["DB40.0"] = PlcServiceResult<string>.Success("临时配方");
+    var reader = new PlcRecipeNameReaderService(configService, plcService);
+    var inMemoryConfig = new BizPlcRecipeNameConfig
+    {
+        StationNo = 1,
+        BaseAddress = "DB40.0",
+        RecipeCount = 1,
+        AddressOffset = 16,
+        StringLength = 20,
+        Enabled = true
+    };
+
+    var result = reader.ReadConfigAsync(inMemoryConfig).GetAwaiter().GetResult();
+
+    AssertTrue(result.IsSuccess, "内存配置有效且读取成功时应直接返回配方名称。 ");
+    AssertEqual("临时配方", result.Options.Single().Name, "读取结果必须来自传入的内存配置。 ");
+    AssertEqual(0, configService.SaveCallCount, "预览读取不得为了使用未保存配置而写入数据库。 ");
+}
+
+static void PlcRecipeNameReaderReturnsInvalidConfigFailures()
+{
+    var configService = new FakePlcRecipeNameConfigService(new BizPlcRecipeNameConfig
+    {
+        StationNo = 1,
+        BaseAddress = string.Empty,
+        RecipeCount = 5,
+        AddressOffset = 10,
+        StringLength = 20,
+        Enabled = true
+    });
+    var reader = new PlcRecipeNameReaderService(configService, new FakePlcCommunicationService());
+
+    var result = reader.ReadStationAsync(1).GetAwaiter().GetResult();
+
+    AssertFalse(result.IsSuccess, "历史非法配置应返回读取失败，而不是向界面抛出异常。 ");
+    AssertTrue(result.Message.Contains("基地址不能为空", StringComparison.Ordinal), "失败消息应包含具体配置错误。 ");
+    AssertEqual(0, result.Options.Count, "配置无效时不应生成配方选项。 ");
 }
 
 static void PlcSoftwareAlarmRulesMergeRawStatusAndBoolSignals()
@@ -5860,6 +6034,45 @@ static void SystemSettingViewNoLongerEditsDualWorkOrder()
     AssertTrue(viewCode.Contains("settings.EnableDualWorkOrder = enableDualStation && CurrentSettings.EnableDualWorkOrder;", StringComparison.Ordinal), "系统设置保存时应保留既有双工单设置，并在关闭双工位时同步关闭双工单。");
 }
 
+static void AddressManageExposesPlcRecipeNameConfiguration()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "AddressManageView.cs"), Encoding.UTF8);
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "AddressManageView.Designer.cs"), Encoding.UTF8);
+
+    AssertTrue(viewCode.Contains("IPlcRecipeNameConfigService", StringComparison.Ordinal), "地址维护页必须注入 PLC 配方名称配置服务。");
+    AssertTrue(viewCode.Contains("IPlcRecipeNameReaderService", StringComparison.Ordinal), "地址维护页必须注入 PLC 配方名称读取服务。");
+    AssertTrue(viewCode.Contains("SaveRecipeNameConfigs", StringComparison.Ordinal), "地址维护页必须提供配方名称地址配置保存入口。");
+    AssertTrue(viewCode.Contains("ReadRecipeNamePreviewAsync", StringComparison.Ordinal), "地址维护页必须提供配方名称地址读取预览入口。");
+    AssertTrue(viewCode.Contains("IAppSettingsService", StringComparison.Ordinal), "地址维护页必须按系统双工位设置筛选可见配置行。");
+    var previewMethod = ExtractMethodText(viewCode, "private async Task ReadRecipeNamePreviewAsync()", "private async Task RefreshAddressDependentServicesQuietlyAsync()");
+    AssertFalse(previewMethod.Contains("SaveRecipeNameConfigs", StringComparison.Ordinal), "配方名称预览不得隐式保存当前编辑配置。");
+    AssertTrue(previewMethod.Contains("ReadConfigAsync(config)", StringComparison.Ordinal), "配方名称预览必须直接读取当前内存配置。");
+    AssertTrue(viewCode.Contains("BindVisibleRecipeNameConfigs", StringComparison.Ordinal), "单工位模式只应绑定工位 1 配方配置。");
+    AssertTrue(viewCode.Contains("var configsToSave = _recipeNameConfigs", StringComparison.Ordinal)
+        && viewCode.Contains("_plcRecipeNameConfigService.SaveAll(configsToSave", StringComparison.Ordinal), "保存时必须从内部完整配置生成保存集合，保留隐藏工位 2 配置。");
+    AssertTrue(viewCode.Contains("GroupBy(config => config.StationNo)", StringComparison.Ordinal)
+        && viewCode.Contains("OrderByDescending(config => config.UpdatedTime)", StringComparison.Ordinal), "历史重复工位配置必须按更新时间确定性择一。");
+    AssertTrue(designerCode.Contains("tabRecipeNames", StringComparison.Ordinal), "Designer 必须声明配方名称地址页签。");
+    AssertTrue(designerCode.Contains("tableRecipeNames", StringComparison.Ordinal), "Designer 必须声明配方名称配置表格。");
+    AssertTrue(designerCode.Contains("tableRecipeNamePreview", StringComparison.Ordinal), "Designer 必须声明配方名称读取预览表格。");
+    AssertTrue(designerCode.Contains("btnPreviewRecipeNames", StringComparison.Ordinal), "Designer 必须声明配方名称读取按钮。");
+    AssertTrue(viewCode.Contains("BaseAddress", StringComparison.Ordinal)
+        && viewCode.Contains("RecipeCount", StringComparison.Ordinal)
+        && viewCode.Contains("AddressOffset", StringComparison.Ordinal)
+        && viewCode.Contains("StringLength", StringComparison.Ordinal), "地址维护页必须展示基地址、数量、偏移和字符串长度字段。");
+}
+
+static void PlcRecipeNameConfigServiceReadsLatestStationRow()
+{
+    var serviceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Plc", "PlcRecipeNameConfigService.cs"),
+        Encoding.UTF8);
+    var method = ExtractMethodText(serviceCode, "public BizPlcRecipeNameConfig? GetForStation", "public void SaveAll");
+
+    AssertTrue(method.Contains("OrderBy(config => config.UpdatedTime, OrderByType.Desc)", StringComparison.Ordinal), "读取工位配置必须优先选择最新更新时间。");
+    AssertTrue(method.Contains("OrderBy(config => config.Id, OrderByType.Desc)", StringComparison.Ordinal), "更新时间相同时必须再按主键倒序确定唯一配置。");
+}
+
 static void SystemSettingViewLocksDeviceManagementDuringUnfinishedTasks()
 {
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.cs"), Encoding.UTF8);
@@ -7414,6 +7627,10 @@ sealed class FakeOperationLogService : IOperationLogService
 
 sealed class FakePlcCommunicationService : IPlcCommunicationService
 {
+    public Dictionary<string, PlcServiceResult<string>> StringReadResults { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public List<(string Address, ushort Length)> StringReadRequests { get; } = new();
+
     public event EventHandler<PlcConnectionSnapshot>? StatusChanged
     {
         add { }
@@ -7449,7 +7666,13 @@ sealed class FakePlcCommunicationService : IPlcCommunicationService
         => Task.FromResult(PlcServiceResult<float>.Fail("Not configured."));
 
     public Task<PlcServiceResult<string>> ReadStringAsync(string address, ushort length, CancellationToken cancellationToken = default)
-        => Task.FromResult(PlcServiceResult<string>.Fail("Not configured."));
+    {
+        StringReadRequests.Add((address, length));
+        return Task.FromResult(
+            StringReadResults.TryGetValue(address, out var result)
+                ? result
+                : PlcServiceResult<string>.Fail("Not configured."));
+    }
 
     public Task<PlcServiceResult> WriteBoolAsync(string address, bool value, CancellationToken cancellationToken = default)
         => Task.FromResult(PlcServiceResult.Fail("Not configured."));
@@ -7589,6 +7812,21 @@ sealed class FakeCenterProductForwardingService : ICenterProductForwardingServic
     }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}
+
+sealed class FakePlcRecipeNameConfigService(params BizPlcRecipeNameConfig[] configs) : IPlcRecipeNameConfigService
+{
+    private readonly IReadOnlyList<BizPlcRecipeNameConfig> _configs = configs;
+
+    public int SaveCallCount { get; private set; }
+
+    public IReadOnlyList<BizPlcRecipeNameConfig> GetAll() => _configs;
+
+    public BizPlcRecipeNameConfig? GetForStation(int stationNo)
+        => _configs.FirstOrDefault(config => config.StationNo == stationNo);
+
+    public void SaveAll(IEnumerable<BizPlcRecipeNameConfig> configs)
+        => SaveCallCount++;
 }
 
 sealed class FakeCenterProductReportIngestSideEffects : ICenterProductReportIngestSideEffects

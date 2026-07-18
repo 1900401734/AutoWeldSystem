@@ -28,6 +28,9 @@ public partial class AddressManageView : BaseView
 
     private readonly IPlcAddressService _addressService;
     private readonly IPlcAlarmAddressService _plcAlarmAddressService;
+    private readonly IPlcRecipeNameConfigService _plcRecipeNameConfigService;
+    private readonly IPlcRecipeNameReaderService _plcRecipeNameReaderService;
+    private readonly IAppSettingsService _appSettingsService;
     private readonly IProductProcessConfigService _productProcessConfigService;
     private readonly ITestSchemeConfigService _testSchemeConfigService;
     private readonly IProgramManageService _programManageService;
@@ -42,6 +45,8 @@ public partial class AddressManageView : BaseView
 
     private readonly List<BizPlcAddress> _allAddresses = new();
     private readonly List<BizPlcAlarmAddress> _alarmAddresses = new();
+    private readonly List<BizPlcRecipeNameConfig> _recipeNameConfigs = new();
+    private List<BizPlcRecipeNameConfig> _visibleRecipeNameConfigs = new();
     private readonly List<BizProductProcessConfig> _productProcessConfigs = new();
     private readonly List<BizTestScheme> _testSchemes = new();
     private readonly List<BizSchemeDetail> _schemeDetails = new();
@@ -51,6 +56,7 @@ public partial class AddressManageView : BaseView
 
     private List<PlcAddressTableRow> _currentRows = new();
     private List<AlarmAddressTableRow> _currentAlarmRows = new();
+    private List<RecipeNamePreviewRow> _currentRecipeNamePreviewRows = new();
     private List<ProductProcessTableRow> _currentProductProcessRows = new();
     private List<TestSchemeTableRow> _currentSchemeRows = new();
     private List<TestItemTableRow> _currentItemRows = new();
@@ -84,6 +90,9 @@ public partial class AddressManageView : BaseView
     public AddressManageView(
         IPlcAddressService addressService,
         IPlcAlarmAddressService plcAlarmAddressService,
+        IPlcRecipeNameConfigService plcRecipeNameConfigService,
+        IPlcRecipeNameReaderService plcRecipeNameReaderService,
+        IAppSettingsService appSettingsService,
         IProductProcessConfigService productProcessConfigService,
         ITestSchemeConfigService testSchemeConfigService,
         IProgramManageService programManageService,
@@ -98,6 +107,9 @@ public partial class AddressManageView : BaseView
     {
         _addressService = addressService;
         _plcAlarmAddressService = plcAlarmAddressService;
+        _plcRecipeNameConfigService = plcRecipeNameConfigService;
+        _plcRecipeNameReaderService = plcRecipeNameReaderService;
+        _appSettingsService = appSettingsService;
         _productProcessConfigService = productProcessConfigService;
         _testSchemeConfigService = testSchemeConfigService;
         _programManageService = programManageService;
@@ -136,6 +148,7 @@ public partial class AddressManageView : BaseView
         ApplyLocalizedTexts();
         ConfigureBusinessAddressColumns();
         ConfigureAlarmAddressColumns();
+        ConfigureRecipeNameColumns();
         ConfigureProductProcessColumns();
         ConfigureTestSchemeColumns();
         ConfigureTestItemColumns();
@@ -151,6 +164,8 @@ public partial class AddressManageView : BaseView
     {
         TableStyleHelper.ApplyAntdTable(tableAddresses);
         TableStyleHelper.ApplyAntdTable(tableAlarmAddresses);
+        TableStyleHelper.ApplyAntdTable(tableRecipeNames);
+        TableStyleHelper.ApplyAntdTable(tableRecipeNamePreview);
         TableStyleHelper.ApplyAntdTable(tableProcess);
         TableStyleHelper.ApplyAntdTable(tableTestSchemes);
         TableStyleHelper.ApplyAntdTable(tableTestItems);
@@ -158,6 +173,7 @@ public partial class AddressManageView : BaseView
         tableAddresses.EditLostFocus = true;
         tableAddresses.LostFocusClearSelection = false;
         tableAlarmAddresses.EditLostFocus = true;
+        tableRecipeNames.EditLostFocus = true;
         AntdTableSelectionHelper.EnableMultiRowSelection(tableAlarmAddresses);
         tableProcess.EditLostFocus = true;
         AntdTableSelectionHelper.EnableMultiRowSelection(tableProcess);
@@ -169,6 +185,7 @@ public partial class AddressManageView : BaseView
 
         ConfigureBusinessAddressColumns();
         ConfigureAlarmAddressColumns();
+        ConfigureRecipeNameColumns();
         ConfigureProductProcessColumns();
         ConfigureTestSchemeColumns();
         ConfigureTestItemColumns();
@@ -249,6 +266,26 @@ public partial class AddressManageView : BaseView
         tableAlarmAddresses.Columns.Add(CreateAlarmAddressEnabledColumn());
         tableAlarmAddresses.Columns.Add(CreateRawColumn(nameof(AlarmAddressTableRow.UpdatedTime), "更新时间", readOnly: true, displayFormat: "yyyy-MM-dd HH:mm:ss"));
         TableStyleHelper.ApplyAntdColumnDefaults(tableAlarmAddresses);
+    }
+
+    private void ConfigureRecipeNameColumns()
+    {
+        tableRecipeNames.Columns.Clear();
+        tableRecipeNames.Columns.Add(CreateRawColumn(nameof(BizPlcRecipeNameConfig.StationNo), _localizer.GetString(TextKeys.Address.ColumnRecipeStation), readOnly: true));
+        tableRecipeNames.Columns.Add(CreateRawColumn(nameof(BizPlcRecipeNameConfig.BaseAddress), _localizer.GetString(TextKeys.Address.ColumnRecipeBaseAddress)));
+        tableRecipeNames.Columns.Add(CreateRawColumn(nameof(BizPlcRecipeNameConfig.RecipeCount), _localizer.GetString(TextKeys.Address.ColumnRecipeCount)));
+        tableRecipeNames.Columns.Add(CreateRawColumn(nameof(BizPlcRecipeNameConfig.AddressOffset), _localizer.GetString(TextKeys.Address.ColumnRecipeOffset)));
+        tableRecipeNames.Columns.Add(CreateRawColumn(nameof(BizPlcRecipeNameConfig.StringLength), _localizer.GetString(TextKeys.Address.ColumnRecipeStringLength)));
+        tableRecipeNames.Columns.Add(new AntdUI.ColumnSwitch(nameof(BizPlcRecipeNameConfig.Enabled), _localizer.GetString(TextKeys.Grid.Enabled)));
+        TableStyleHelper.ApplyAntdColumnDefaults(tableRecipeNames);
+
+        tableRecipeNamePreview.Columns.Clear();
+        tableRecipeNamePreview.Columns.Add(CreateRawColumn(nameof(RecipeNamePreviewRow.StationNo), _localizer.GetString(TextKeys.Address.ColumnRecipeStation), readOnly: true));
+        tableRecipeNamePreview.Columns.Add(CreateRawColumn(nameof(RecipeNamePreviewRow.RecipeCode), _localizer.GetString(TextKeys.Address.ColumnRecipeCode), readOnly: true));
+        tableRecipeNamePreview.Columns.Add(CreateRawColumn(nameof(RecipeNamePreviewRow.Address), _localizer.GetString(TextKeys.Grid.Address), readOnly: true));
+        tableRecipeNamePreview.Columns.Add(CreateRawColumn(nameof(RecipeNamePreviewRow.Name), _localizer.GetString(TextKeys.Address.ColumnRecipeName), readOnly: true));
+        tableRecipeNamePreview.Columns.Add(CreateRawColumn(nameof(RecipeNamePreviewRow.Error), _localizer.GetString(TextKeys.Address.ColumnRecipeError), readOnly: true));
+        TableStyleHelper.ApplyAntdColumnDefaults(tableRecipeNamePreview);
     }
 
 
@@ -419,6 +456,7 @@ public partial class AddressManageView : BaseView
         btnSave.Click += Save_Click;
         btnRefresh.Click += (_, _) => LoadData();
         btnTest.Click += TestSelected_Click;
+        btnPreviewRecipeNames.Click += async (_, _) => await ReadRecipeNamePreviewAsync();
         queryAddresses.QueryClick += (_, keyword) => ApplyActiveFilter(keyword);
         tabAddressCategories.SelectedIndexChanged += (_, _) => SwitchActiveFilterText();
 
@@ -545,6 +583,10 @@ public partial class AddressManageView : BaseView
         btnRefresh.Text = _localizer.GetString(TextKeys.Address.ButtonRefresh);
         btnTest.Text = _localizer.GetString(TextKeys.Address.ButtonTest);
         tabBusinessAddresses.Text = "业务信号地址";
+        tabRecipeNames.Text = _localizer.GetString(TextKeys.Address.TabRecipeNames);
+        lblRecipeNameHint.Text = _localizer.GetString(TextKeys.Address.RecipeNameHint);
+        lblRecipeNamePreview.Text = _localizer.GetString(TextKeys.Address.RecipeNamePreviewTitle);
+        btnPreviewRecipeNames.Text = _localizer.GetString(TextKeys.Address.ButtonReadRecipeNames);
         tabTestItemAddresses.Text = "产品工艺";
         tabTestSchemes.Text = "测试方案";
         tabSchemeDetails.Text = "方案明细";
@@ -580,6 +622,7 @@ public partial class AddressManageView : BaseView
             _allAddresses.AddRange(_addressService.GetAll());
             _alarmAddresses.Clear();
             _alarmAddresses.AddRange(_plcAlarmAddressService.GetAll());
+            LoadRecipeNameConfigs();
             _programOptions.Clear();
             _programOptions.AddRange(_programManageService.GetPrograms());
             _testSchemes.Clear();
@@ -593,9 +636,11 @@ public partial class AddressManageView : BaseView
             _productProcessConfigs.AddRange(_productProcessConfigService.GetAll(includeDisabled: true));
 
             ConfigureProductProcessColumns();
+            ConfigureRecipeNameColumns();
             ConfigureSchemeDetailColumns();
             ApplyAddressFilter(_addressKeyword);
             ApplyAlarmAddressFilter(_alarmKeyword);
+            BindVisibleRecipeNameConfigs();
             ApplyProductProcessFilter(_productProcessKeyword);
             ApplySchemeFilter(_schemeKeyword);
             ApplyDetailFilter(_detailKeyword);
@@ -625,6 +670,11 @@ public partial class AddressManageView : BaseView
         if (tabAddressCategories.SelectedTab == tabAlarmAddresses)
         {
             ApplyAlarmAddressFilter(keyword);
+            return;
+        }
+
+        if (tabAddressCategories.SelectedTab == tabRecipeNames)
+        {
             return;
         }
 
@@ -659,6 +709,11 @@ public partial class AddressManageView : BaseView
         if (tabAddressCategories.SelectedTab == tabAlarmAddresses)
         {
             return _alarmKeyword;
+        }
+
+        if (tabAddressCategories.SelectedTab == tabRecipeNames)
+        {
+            return string.Empty;
         }
 
         if (tabAddressCategories.SelectedTab == tabTestItemAddresses)
@@ -1287,6 +1342,12 @@ public partial class AddressManageView : BaseView
                 return;
             }
 
+            if (tabAddressCategories.SelectedTab == tabRecipeNames)
+            {
+                SaveRecipeNameConfigs();
+                return;
+            }
+
             if (tabAddressCategories.SelectedTab == tabTestItemAddresses)
             {
                 SaveProductProcesses();
@@ -1333,6 +1394,115 @@ public partial class AddressManageView : BaseView
         NormalizeAlarmAddresses(_alarmAddresses);
         _plcAlarmAddressService.SaveAll(_alarmAddresses);
         ShowPostSaveResult("报警地址配置已保存。", TryReloadDataAfterSave("AddressManageView.ReloadAfterAlarmAddressSave"));
+    }
+
+    private void SaveRecipeNameConfigs(bool showMessage = true)
+    {
+        EndTableEdit();
+        var configsToSave = _recipeNameConfigs
+            .Where(config => config.Enabled || !string.IsNullOrWhiteSpace(config.BaseAddress))
+            .ToList();
+        _plcRecipeNameConfigService.SaveAll(configsToSave);
+        if (showMessage)
+        {
+            ShowInfo(_localizer.GetString(TextKeys.Address.MessageRecipeConfigSaved));
+        }
+    }
+
+    private void LoadRecipeNameConfigs()
+    {
+        _recipeNameConfigs.Clear();
+        _recipeNameConfigs.AddRange(_plcRecipeNameConfigService.GetAll()
+            .GroupBy(config => config.StationNo)
+            .Select(group => group
+                .OrderByDescending(config => config.UpdatedTime)
+                .ThenByDescending(config => config.Id)
+                .First()));
+        EnsureRecipeNameConfig(1);
+        EnsureRecipeNameConfig(2);
+        _recipeNameConfigs.Sort((left, right) => left.StationNo.CompareTo(right.StationNo));
+    }
+
+    private void BindVisibleRecipeNameConfigs()
+    {
+        var enableDualStation = _appSettingsService.Get().EnableDualStation;
+        _visibleRecipeNameConfigs = _recipeNameConfigs
+            .Where(config => enableDualStation || config.StationNo == 1)
+            .OrderBy(config => config.StationNo)
+            .ToList();
+        tableRecipeNames.DataSource = _visibleRecipeNameConfigs;
+        tableRecipeNames.Refresh();
+    }
+
+    private void EnsureRecipeNameConfig(int stationNo)
+    {
+        if (_recipeNameConfigs.Any(config => config.StationNo == stationNo))
+        {
+            return;
+        }
+
+        _recipeNameConfigs.Add(new BizPlcRecipeNameConfig
+        {
+            StationNo = stationNo,
+            RecipeCount = 1,
+            AddressOffset = 32,
+            StringLength = 32,
+            Enabled = false
+        });
+    }
+
+    private async Task ReadRecipeNamePreviewAsync()
+    {
+        btnPreviewRecipeNames.Enabled = false;
+        try
+        {
+            var previewRows = new List<RecipeNamePreviewRow>();
+            foreach (var config in _visibleRecipeNameConfigs.Where(config => config.Enabled).OrderBy(config => config.StationNo))
+            {
+                BizPlcRecipeNameConfig normalizedConfig;
+                try
+                {
+                    normalizedConfig = PlcRecipeNameConfigRules.NormalizeAndValidate([config], DateTime.Now)[0];
+                }
+                catch (InvalidOperationException ex)
+                {
+                    previewRows.Add(new RecipeNamePreviewRow(
+                        config.StationNo,
+                        0,
+                        config.BaseAddress,
+                        string.Empty,
+                        ex.Message));
+                    continue;
+                }
+
+                var result = await _plcRecipeNameReaderService.ReadConfigAsync(config);
+                var optionByCode = result.Options.ToDictionary(option => option.RecipeCode);
+                var failureByCode = result.Failures.ToDictionary(failure => failure.RecipeCode);
+                for (var recipeCode = 1; recipeCode <= normalizedConfig.RecipeCount; recipeCode++)
+                {
+                    optionByCode.TryGetValue(recipeCode, out var option);
+                    failureByCode.TryGetValue(recipeCode, out var failure);
+                    previewRows.Add(new RecipeNamePreviewRow(
+                        config.StationNo,
+                        recipeCode,
+                        PlcRecipeNameRules.ResolveAddress(normalizedConfig, recipeCode),
+                        option?.Name ?? string.Empty,
+                        failure?.Message ?? string.Empty));
+                }
+            }
+
+            _currentRecipeNamePreviewRows = previewRows;
+            tableRecipeNamePreview.DataSource = _currentRecipeNamePreviewRows;
+            tableRecipeNamePreview.Refresh();
+        }
+        catch (Exception ex)
+        {
+            ShowWarning(_localizer.GetString(TextKeys.Address.MessageRecipeReadFailed, ex.Message));
+        }
+        finally
+        {
+            btnPreviewRecipeNames.Enabled = true;
+        }
     }
 
     /// <summary>
@@ -3366,6 +3536,16 @@ public partial class AddressManageView : BaseView
             Source.Description = NormalizeNullableText(Source.Description);
         }
     }
+
+    /// <summary>
+    /// PLC 配方名称读取预览行。
+    /// </summary>
+    private sealed record RecipeNamePreviewRow(
+        int StationNo,
+        int RecipeCode,
+        string Address,
+        string Name,
+        string Error);
 
     /// <summary>
     /// 测试项字典表格行。

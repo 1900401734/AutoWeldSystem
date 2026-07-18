@@ -1953,4 +1953,18 @@
   <data name="address.detail_role.upper" xml:space="preserve"><value>上限</value></data>
   <data name="address.detail_role.lower" xml:space="preserve"><value>下限</value></data>
   <data name="address.detail_role.result" xml:space="preserve"><value>结果</value></data>
+  <data name="address.tab.recipe_names" xml:space="preserve"><value>配方名称地址</value></data>
+  <data name="address.recipe_name.hint" xml:space="preserve"><value>第 N 个地址对应配方号 N，地址按基地址和固定字节偏移计算；双工位分别维护。</value></data>
+  <data name="address.recipe_name.preview_title" xml:space="preserve"><value>读取结果</value></data>
+  <data name="address.button.read_recipe_names" xml:space="preserve"><value>读取配方名称</value></data>
+  <data name="address.column.recipe_station" xml:space="preserve"><value>工位</value></data>
+  <data name="address.column.recipe_base_address" xml:space="preserve"><value>配方名称基地址</value></data>
+  <data name="address.column.recipe_count" xml:space="preserve"><value>配方数量</value></data>
+  <data name="address.column.recipe_offset" xml:space="preserve"><value>地址偏移量（字节）</value></data>
+  <data name="address.column.recipe_string_length" xml:space="preserve"><value>字符串长度</value></data>
+  <data name="address.column.recipe_code" xml:space="preserve"><value>配方号</value></data>
+  <data name="address.column.recipe_name" xml:space="preserve"><value>配方名称</value></data>
+  <data name="address.column.recipe_error" xml:space="preserve"><value>错误信息</value></data>
+  <data name="address.message.recipe_config_saved" xml:space="preserve"><value>PLC 配方名称地址配置已保存。</value></data>
+  <data name="address.message.recipe_read_failed" xml:space="preserve"><value>读取 PLC 配方名称失败：{0}</value></data>
 </root>

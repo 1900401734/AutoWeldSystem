@@ -62,6 +62,7 @@ public class SqlSugarDbContext : IDisposable
                     typeof(BizRuntimeTipState),
                     typeof(BizPlcAddress),
                     typeof(BizPlcAlarmAddress),
+                    typeof(BizPlcRecipeNameConfig),
                     typeof(CenterDeviceNode),
                     typeof(CenterDeviceRuntimeSnapshot),
                     typeof(CenterDeviceStationRuntimeSnapshot));

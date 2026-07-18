@@ -40,6 +40,14 @@ namespace AutoWeldSystem.UI.Views
             lblBindingArrow5 = new Label();
             lblBindingPreview = new Label();
             tabAddressCategories = new TabControl();
+            tabRecipeNames = new TabPage();
+            recipeNameLayout = new TableLayoutPanel();
+            lblRecipeNameHint = new Label();
+            recipeNameToolbar = new FlowLayoutPanel();
+            btnPreviewRecipeNames = new AntdUI.Button();
+            tableRecipeNames = new AntdUI.Table();
+            lblRecipeNamePreview = new Label();
+            tableRecipeNamePreview = new AntdUI.Table();
             tabBusinessAddresses = new TabPage();
             tableAddresses = new AntdUI.Table();
             tabAlarmAddresses = new TabPage();
@@ -89,6 +97,9 @@ namespace AutoWeldSystem.UI.Views
             SaveLayout.SuspendLayout();
             bindingFlowPanel.SuspendLayout();
             tabAddressCategories.SuspendLayout();
+            tabRecipeNames.SuspendLayout();
+            recipeNameLayout.SuspendLayout();
+            recipeNameToolbar.SuspendLayout();
             tabBusinessAddresses.SuspendLayout();
             tabAlarmAddresses.SuspendLayout();
             alarmAddressLayout.SuspendLayout();
@@ -426,6 +437,7 @@ namespace AutoWeldSystem.UI.Views
             // tabAddressCategories
             // 
             tabAddressCategories.Controls.Add(tabBusinessAddresses);
+            tabAddressCategories.Controls.Add(tabRecipeNames);
             tabAddressCategories.Controls.Add(tabAlarmAddresses);
             tabAddressCategories.Controls.Add(tabTestItemAddresses);
             tabAddressCategories.Controls.Add(tabTestSchemes);
@@ -439,6 +451,103 @@ namespace AutoWeldSystem.UI.Views
             tabAddressCategories.SelectedIndex = 0;
             tabAddressCategories.Size = new Size(1250, 545);
             tabAddressCategories.TabIndex = 2;
+            // 
+            // tabRecipeNames
+            // 
+            tabRecipeNames.Controls.Add(recipeNameLayout);
+            tabRecipeNames.Location = new Point(4, 29);
+            tabRecipeNames.Name = "tabRecipeNames";
+            tabRecipeNames.Padding = new Padding(3);
+            tabRecipeNames.Size = new Size(1242, 512);
+            tabRecipeNames.TabIndex = 1;
+            tabRecipeNames.Text = "配方名称地址";
+            tabRecipeNames.UseVisualStyleBackColor = true;
+            // 
+            // recipeNameLayout
+            // 
+            recipeNameLayout.ColumnCount = 1;
+            recipeNameLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            recipeNameLayout.Controls.Add(lblRecipeNameHint, 0, 0);
+            recipeNameLayout.Controls.Add(recipeNameToolbar, 0, 1);
+            recipeNameLayout.Controls.Add(tableRecipeNames, 0, 2);
+            recipeNameLayout.Controls.Add(lblRecipeNamePreview, 0, 3);
+            recipeNameLayout.Controls.Add(tableRecipeNamePreview, 0, 4);
+            recipeNameLayout.Dock = DockStyle.Fill;
+            recipeNameLayout.Location = new Point(3, 3);
+            recipeNameLayout.Margin = new Padding(0);
+            recipeNameLayout.Name = "recipeNameLayout";
+            recipeNameLayout.RowCount = 5;
+            recipeNameLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
+            recipeNameLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44F));
+            recipeNameLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 42F));
+            recipeNameLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
+            recipeNameLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 58F));
+            recipeNameLayout.Size = new Size(1236, 506);
+            recipeNameLayout.TabIndex = 0;
+            // 
+            // lblRecipeNameHint
+            // 
+            lblRecipeNameHint.Dock = DockStyle.Fill;
+            lblRecipeNameHint.ForeColor = SystemColors.GrayText;
+            lblRecipeNameHint.Location = new Point(0, 0);
+            lblRecipeNameHint.Margin = new Padding(0);
+            lblRecipeNameHint.Name = "lblRecipeNameHint";
+            lblRecipeNameHint.Size = new Size(1236, 34);
+            lblRecipeNameHint.TabIndex = 0;
+            lblRecipeNameHint.Text = "第 N 个地址对应配方号 N，地址按基地址和固定字节偏移计算；双工位分别维护。";
+            lblRecipeNameHint.TextAlign = ContentAlignment.MiddleLeft;
+            // 
+            // recipeNameToolbar
+            // 
+            recipeNameToolbar.Controls.Add(btnPreviewRecipeNames);
+            recipeNameToolbar.Dock = DockStyle.Fill;
+            recipeNameToolbar.Location = new Point(0, 34);
+            recipeNameToolbar.Margin = new Padding(0);
+            recipeNameToolbar.Name = "recipeNameToolbar";
+            recipeNameToolbar.Padding = new Padding(0, 5, 0, 5);
+            recipeNameToolbar.Size = new Size(1236, 44);
+            recipeNameToolbar.TabIndex = 1;
+            // 
+            // btnPreviewRecipeNames
+            // 
+            btnPreviewRecipeNames.BorderWidth = 1F;
+            btnPreviewRecipeNames.IconSvg = "ApiOutlined";
+            btnPreviewRecipeNames.Location = new Point(0, 5);
+            btnPreviewRecipeNames.Margin = new Padding(0, 0, 8, 0);
+            btnPreviewRecipeNames.Name = "btnPreviewRecipeNames";
+            btnPreviewRecipeNames.Size = new Size(150, 34);
+            btnPreviewRecipeNames.TabIndex = 0;
+            btnPreviewRecipeNames.Text = "读取配方名称";
+            // 
+            // tableRecipeNames
+            // 
+            tableRecipeNames.Dock = DockStyle.Fill;
+            tableRecipeNames.EditMode = AntdUI.TEditMode.DoubleClick;
+            tableRecipeNames.Location = new Point(0, 78);
+            tableRecipeNames.Margin = new Padding(0);
+            tableRecipeNames.Name = "tableRecipeNames";
+            tableRecipeNames.Size = new Size(1236, 166);
+            tableRecipeNames.TabIndex = 2;
+            // 
+            // lblRecipeNamePreview
+            // 
+            lblRecipeNamePreview.Dock = DockStyle.Fill;
+            lblRecipeNamePreview.Location = new Point(0, 244);
+            lblRecipeNamePreview.Margin = new Padding(0);
+            lblRecipeNamePreview.Name = "lblRecipeNamePreview";
+            lblRecipeNamePreview.Size = new Size(1236, 32);
+            lblRecipeNamePreview.TabIndex = 3;
+            lblRecipeNamePreview.Text = "读取结果";
+            lblRecipeNamePreview.TextAlign = ContentAlignment.MiddleLeft;
+            // 
+            // tableRecipeNamePreview
+            // 
+            tableRecipeNamePreview.Dock = DockStyle.Fill;
+            tableRecipeNamePreview.Location = new Point(0, 276);
+            tableRecipeNamePreview.Margin = new Padding(0);
+            tableRecipeNamePreview.Name = "tableRecipeNamePreview";
+            tableRecipeNamePreview.Size = new Size(1236, 230);
+            tableRecipeNamePreview.TabIndex = 4;
             // 
             // tabBusinessAddresses
             // 
@@ -1042,6 +1151,9 @@ namespace AutoWeldSystem.UI.Views
             bindingFlowPanel.ResumeLayout(false);
             bindingFlowPanel.PerformLayout();
             tabAddressCategories.ResumeLayout(false);
+            tabRecipeNames.ResumeLayout(false);
+            recipeNameLayout.ResumeLayout(false);
+            recipeNameToolbar.ResumeLayout(false);
             tabBusinessAddresses.ResumeLayout(false);
             tabAlarmAddresses.ResumeLayout(false);
             alarmAddressLayout.ResumeLayout(false);
@@ -1093,6 +1205,14 @@ namespace AutoWeldSystem.UI.Views
         private Label lblBindingArrow5;
         private Label lblBindingPreview;
         private TabControl tabAddressCategories;
+        private TabPage tabRecipeNames;
+        private TableLayoutPanel recipeNameLayout;
+        private Label lblRecipeNameHint;
+        private FlowLayoutPanel recipeNameToolbar;
+        private AntdUI.Button btnPreviewRecipeNames;
+        private AntdUI.Table tableRecipeNames;
+        private Label lblRecipeNamePreview;
+        private AntdUI.Table tableRecipeNamePreview;
         private TabPage tabBusinessAddresses;
         private AntdUI.Table tableAddresses;
         private TabPage tabAlarmAddresses;
