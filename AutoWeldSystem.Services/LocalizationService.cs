@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Resources;
+using System.Diagnostics;
 using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Interfaces;
@@ -38,7 +39,14 @@ public class LocalizationService : ILocalizationService
     public string GetString(string key)
     {
         var culture = new CultureInfo(CurrentLanguage);
-        return ResourceManager.GetString(key, culture) ?? key;
+        var value = ResourceManager.GetString(key, culture);
+        if (value is null)
+        {
+            Trace.TraceWarning("Missing localization resource '{0}' for culture '{1}'.", key, CurrentLanguage);
+            return key;
+        }
+
+        return value;
     }
 
     public string GetString(string key, params object[] args)

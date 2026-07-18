@@ -1099,6 +1099,7 @@ public static class TextKeys
         public const string GroupDevice = "system.group.device";
         public const string GroupProduction = "system.group.production";
         public const string GroupMes = "system.group.mes";
+        public const string GroupCenterServer = "system.group.center_server";
 
         public const string LabelIp = "system.label.ip";
         public const string LabelPort = "system.label.port";
@@ -1109,6 +1110,15 @@ public static class TextKeys
         public const string LabelLogPath = "system.label.log_path";
         public const string LabelDataPath = "system.label.data_path";
         public const string LabelMesUrl = "system.label.mes_url";
+        public const string LabelPlcFormatMode = "system.label.plc_format_mode";
+        public const string LabelMesTimeout = "system.label.mes_timeout";
+        public const string LabelProgramPath = "system.label.program_path";
+        public const string LabelCenterServerUrl = "system.label.center_server_url";
+        public const string LabelCenterServerSystemType = "system.label.center_server_system_type";
+        public const string LabelCenterServerHeartbeat = "system.label.center_server_heartbeat";
+        public const string LabelProcessParameterDeviceType = "system.label.process_parameter_device_type";
+        public const string LabelPostDataHeaderKey = "system.label.postdata_header_key";
+        public const string LabelPostDataHeaderValue = "system.label.postdata_header_value";
         public const string UploadMode = "system.label.upload_mode";
         public const string UploadBatchSize = "system.label.upload_batch_size";
         public const string PlcHeartbeatRate = "system.label.plc_heartbeat_rate";
@@ -1124,6 +1134,13 @@ public static class TextKeys
         public const string ChkEnableFinishExpQtyPrompt = "system.checkbox.enable_finish_exp_qty_prompt";
         public const string ChkEnableDualStation = "system.Checkbox.enable_dual_station";
         public const string ChkEnableDualWorkOrder = "system.Checkbox.enable_dual_work_order";
+        public const string ChkEnablePlcStringFormatting = "system.checkbox.enable_plc_string_formatting";
+        public const string ChkEnablePlcAlarmReading = "system.checkbox.enable_plc_alarm_reading";
+        public const string ChkEnableCenterServerSync = "system.checkbox.enable_center_server_sync";
+        public const string ChkEnablePostDataHeader = "system.checkbox.enable_postdata_header";
+        public const string ChkShowTestFlagInHistory = "system.checkbox.show_test_flag_history";
+        public const string ChkEnableDeviceStatusReport = "system.checkbox.enable_device_status_report";
+        public const string ChkEnableWorkOrderStatusReport = "system.checkbox.enable_work_order_status_report";
 
         public const string ButtonConnect = "system.button.connect";
         public const string ButtonSyncDevice = "system.button.sync_device";
@@ -1135,6 +1152,28 @@ public static class TextKeys
         public const string PlcTypeModbusTcp = "system.plc_type.modbus_tcp";
         public const string PlcTypeTcpSocket = "system.plc_type.tcp_socket";
         public const string PlcTypeSiemensS71200 = "system.plc_type.siemens_s7";
+        public const string OptionPlcFormatTruncate = "system.option.plc_format.truncate";
+        public const string OptionPlcFormatRound = "system.option.plc_format.round";
+        public const string OptionUploadRealtime = "system.option.upload.realtime";
+        public const string OptionUploadQuantity = "system.option.upload.quantity";
+        public const string OptionUploadBatch = "system.option.upload.batch";
+        public const string OptionDeviceElectromagnetic = "system.option.device.electromagnetic";
+        public const string OptionDeviceWholePieceCheck = "system.option.device.whole_piece_check";
+        public const string OptionDeviceWholePieceWeld = "system.option.device.whole_piece_weld";
+        public const string OptionCenterWholePiece = "system.option.center.whole_piece";
+        public const string OptionCenterOther = "system.option.center.other";
+
+        public const string RouteUser = "system.route.user";
+        public const string RouteWorkOrder = "system.route.work_order";
+        public const string RouteServerTime = "system.route.server_time";
+        public const string RouteProgram = "system.route.program";
+        public const string RouteStartWork = "system.route.start_work";
+        public const string RouteWorkStatus = "system.route.work_status";
+        public const string RouteEndWork = "system.route.end_work";
+        public const string RouteReportFile = "system.route.report_file";
+        public const string RoutePostData = "system.route.post_data";
+        public const string RouteDevice = "system.route.device";
+        public const string RouteDeviceStatus = "system.route.device_status";
 
         public const string MessageValueRequired = "system.message.value_required";
         public const string MessageInvalidIp = "system.message.invalid_ip";
@@ -1149,6 +1188,15 @@ public static class TextKeys
         public const string MessageDeviceSyncFailed = "system.message.device_sync_failed";
         public const string MessageStationDisplayNameRequired = "system.message.station_display_name_required";
         public const string MessageStationDisplayNameDuplicate = "system.message.station_display_name_duplicate";
+        public const string MessageRuntimeModeLocked = "system.message.runtime_mode_locked";
+        public const string MessageDeviceManagementLocked = "system.message.device_management_locked";
+        public const string MessagePositiveIntegerRequired = "system.message.positive_integer_required";
+        public const string MessageRouteRequired = "system.message.route_required";
+        public const string MessageRelativeRouteRequired = "system.message.relative_route_required";
+        public const string MessageRouteQueryNotAllowed = "system.message.route_query_not_allowed";
+        public const string MessageHeaderKeyInvalid = "system.message.header_key_invalid";
+        public const string MessageHeaderValueRequired = "system.message.header_value_required";
+        public const string MessageStartupIntegrationFailed = "system.message.startup_integration_failed";
     }
 
     /// <summary>

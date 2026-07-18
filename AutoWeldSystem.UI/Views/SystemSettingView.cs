@@ -19,53 +19,53 @@ namespace AutoWeldSystem.UI.Views;
 
 public partial class SystemSettingView : BaseView
 {
-    private static readonly PlcTypeOption[] PlcTypeOptions =
+    private static readonly LocalizedOption<string>[] PlcTypeOptions =
     {
         new(AppConstants.PlcTypes.ModbusTcp, TextKeys.SystemSetting.PlcTypeModbusTcp),
         new(AppConstants.PlcTypes.TcpSocket, TextKeys.SystemSetting.PlcTypeTcpSocket),
         new(AppConstants.PlcTypes.SiemensS71200, TextKeys.SystemSetting.PlcTypeSiemensS71200)
     };
 
-    private static readonly PlcStringNumericFormatModeOption[] PlcStringNumericFormatModeOptions =
+    private static readonly LocalizedOption<string>[] PlcStringNumericFormatModeOptions =
     {
-        new("固定长度裁切", AppConstants.PlcStringNumericFormatModes.Truncate),
-        new("四舍五入", AppConstants.PlcStringNumericFormatModes.Round)
+        new(AppConstants.PlcStringNumericFormatModes.Truncate, TextKeys.SystemSetting.OptionPlcFormatTruncate),
+        new(AppConstants.PlcStringNumericFormatModes.Round, TextKeys.SystemSetting.OptionPlcFormatRound)
     };
 
-    private static readonly UploadModeOption[] UploadModeOptions =
+    private static readonly LocalizedOption<UploadMode>[] UploadModeOptions =
     {
-        new(UploadMode.Realtime, "单件实时上传"),
-        new(UploadMode.Quantity, "按特定数量上传"),
-        new(UploadMode.Batch, "完工批量上传")
+        new(UploadMode.Realtime, TextKeys.SystemSetting.OptionUploadRealtime),
+        new(UploadMode.Quantity, TextKeys.SystemSetting.OptionUploadQuantity),
+        new(UploadMode.Batch, TextKeys.SystemSetting.OptionUploadBatch)
     };
 
-    private static readonly ProcessParameterDeviceTypeOption[] ProcessParameterDeviceTypeOptions =
+    private static readonly LocalizedOption<string>[] ProcessParameterDeviceTypeOptions =
     {
-        new("电磁系统", ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic),
-        new("整件系统-检测设备", ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck),
-        new("整件系统-点焊设备", ProductionConstants.ProcessParameterDeviceTypes.WholePieceWeld)
+        new(ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic, TextKeys.SystemSetting.OptionDeviceElectromagnetic),
+        new(ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck, TextKeys.SystemSetting.OptionDeviceWholePieceCheck),
+        new(ProductionConstants.ProcessParameterDeviceTypes.WholePieceWeld, TextKeys.SystemSetting.OptionDeviceWholePieceWeld)
     };
 
-    private static readonly CenterServerOption[] CenterServerSystemTypeOptions =
+    private static readonly LocalizedOption<string>[] CenterServerSystemTypeOptions =
     {
-        new("电磁系统", CenterServerConstants.SystemTypes.Electromagnetic),
-        new("整件系统", CenterServerConstants.SystemTypes.WholePiece),
-        new("其它", CenterServerConstants.SystemTypes.Other)
+        new(CenterServerConstants.SystemTypes.Electromagnetic, TextKeys.SystemSetting.OptionDeviceElectromagnetic),
+        new(CenterServerConstants.SystemTypes.WholePiece, TextKeys.SystemSetting.OptionCenterWholePiece),
+        new(CenterServerConstants.SystemTypes.Other, TextKeys.SystemSetting.OptionCenterOther)
     };
 
     private static readonly MesRouteInputDefinition[] MesRouteInputDefinitions =
     {
-        new("User", "员工信息路由", MesEndpointRouteRules.UserDefaultRoute, settings => settings.MesUserRoute, (settings, route) => settings.MesUserRoute = route),
-        new("WorkOrder", "工单信息路由", MesEndpointRouteRules.WorkOrderDefaultRoute, settings => settings.MesWorkOrderRoute, (settings, route) => settings.MesWorkOrderRoute = route),
-        new("ServerTime", "服务器时间路由", MesEndpointRouteRules.ServerTimeDefaultRoute, settings => settings.MesServerTimeRoute, (settings, route) => settings.MesServerTimeRoute = route),
-        new("ProgramManage", "程序管理路由", MesEndpointRouteRules.ProgramManageDefaultRoute, settings => settings.MesProgramManageRoute, (settings, route) => settings.MesProgramManageRoute = route),
-        new("StartWork", "开工上报路由", MesEndpointRouteRules.StartWorkDefaultRoute, settings => settings.MesStartWorkRoute, (settings, route) => settings.MesStartWorkRoute = route),
-        new("WorkStatus", "工单状态路由", MesEndpointRouteRules.WorkStatusDefaultRoute, settings => settings.MesWorkStatusRoute, (settings, route) => settings.MesWorkStatusRoute = route),
-        new("EndWork", "完工上报路由", MesEndpointRouteRules.EndWorkDefaultRoute, settings => settings.MesEndWorkRoute, (settings, route) => settings.MesEndWorkRoute = route),
-        new("ReportFile", "报告文件路由", MesEndpointRouteRules.ReportFileDefaultRoute, settings => settings.MesReportFileRoute, (settings, route) => settings.MesReportFileRoute = route),
-        new("PostData", "PostData路由", MesEndpointRouteRules.PostDataDefaultRoute, settings => settings.MesPostDataRoute, (settings, route) => settings.MesPostDataRoute = route),
-        new("Device", "设备编号路由", MesEndpointRouteRules.DeviceDefaultRoute, settings => settings.MesDeviceRoute, (settings, route) => settings.MesDeviceRoute = route),
-        new("DeviceStatus", "设备状态路由", MesEndpointRouteRules.DeviceStatusDefaultRoute, settings => settings.MesDeviceStatusRoute, (settings, route) => settings.MesDeviceStatusRoute = route)
+        new("User", TextKeys.SystemSetting.RouteUser, MesEndpointRouteRules.UserDefaultRoute, settings => settings.MesUserRoute, (settings, route) => settings.MesUserRoute = route),
+        new("WorkOrder", TextKeys.SystemSetting.RouteWorkOrder, MesEndpointRouteRules.WorkOrderDefaultRoute, settings => settings.MesWorkOrderRoute, (settings, route) => settings.MesWorkOrderRoute = route),
+        new("ServerTime", TextKeys.SystemSetting.RouteServerTime, MesEndpointRouteRules.ServerTimeDefaultRoute, settings => settings.MesServerTimeRoute, (settings, route) => settings.MesServerTimeRoute = route),
+        new("ProgramManage", TextKeys.SystemSetting.RouteProgram, MesEndpointRouteRules.ProgramManageDefaultRoute, settings => settings.MesProgramManageRoute, (settings, route) => settings.MesProgramManageRoute = route),
+        new("StartWork", TextKeys.SystemSetting.RouteStartWork, MesEndpointRouteRules.StartWorkDefaultRoute, settings => settings.MesStartWorkRoute, (settings, route) => settings.MesStartWorkRoute = route),
+        new("WorkStatus", TextKeys.SystemSetting.RouteWorkStatus, MesEndpointRouteRules.WorkStatusDefaultRoute, settings => settings.MesWorkStatusRoute, (settings, route) => settings.MesWorkStatusRoute = route),
+        new("EndWork", TextKeys.SystemSetting.RouteEndWork, MesEndpointRouteRules.EndWorkDefaultRoute, settings => settings.MesEndWorkRoute, (settings, route) => settings.MesEndWorkRoute = route),
+        new("ReportFile", TextKeys.SystemSetting.RouteReportFile, MesEndpointRouteRules.ReportFileDefaultRoute, settings => settings.MesReportFileRoute, (settings, route) => settings.MesReportFileRoute = route),
+        new("PostData", TextKeys.SystemSetting.RoutePostData, MesEndpointRouteRules.PostDataDefaultRoute, settings => settings.MesPostDataRoute, (settings, route) => settings.MesPostDataRoute = route),
+        new("Device", TextKeys.SystemSetting.RouteDevice, MesEndpointRouteRules.DeviceDefaultRoute, settings => settings.MesDeviceRoute, (settings, route) => settings.MesDeviceRoute = route),
+        new("DeviceStatus", TextKeys.SystemSetting.RouteDeviceStatus, MesEndpointRouteRules.DeviceStatusDefaultRoute, settings => settings.MesDeviceStatusRoute, (settings, route) => settings.MesDeviceStatusRoute = route)
     };
 
     private readonly IAppSettingsService _settingsService;
@@ -115,10 +115,18 @@ public partial class SystemSettingView : BaseView
 
     protected override void OnLanguageChanged()
     {
+        var scrollOffset = new Point(
+            -basicSettingsViewport.AutoScrollPosition.X,
+            -basicSettingsViewport.AutoScrollPosition.Y);
+
         ApplyLocalizedTexts();
         BindPlcTypeOptions();
         BindPlcStringNumericFormatModeOptions();
+        BindUploadModeOptions();
+        BindProcessParameterDeviceTypeOptions();
+        BindCenterServerSystemTypeOptions();
         ApplyBasicSettingsLayout(force: true);
+        basicSettingsViewport.AutoScrollPosition = scrollOffset;
     }
 
     protected override void OnLoad(EventArgs e)
@@ -655,6 +663,25 @@ public partial class SystemSettingView : BaseView
         };
     }
 
+    private AntdUI.Label? GetMesRouteLabel(string key)
+    {
+        return key switch
+        {
+            "User" => lblMesUserRoute,
+            "WorkOrder" => lblMesWorkOrderRoute,
+            "ServerTime" => lblMesServerTimeRoute,
+            "ProgramManage" => lblMesProgramManageRoute,
+            "StartWork" => lblMesStartWorkRoute,
+            "WorkStatus" => lblMesWorkStatusRoute,
+            "EndWork" => lblMesEndWorkRoute,
+            "ReportFile" => lblMesReportFileRoute,
+            "PostData" => lblMesPostDataRoute,
+            "Device" => lblMesDeviceRoute,
+            "DeviceStatus" => lblMesDeviceStatusRoute,
+            _ => null
+        };
+    }
+
     /// <summary>
     /// 根据当前语言回填页面静态文本。
     /// </summary>
@@ -667,7 +694,16 @@ public partial class SystemSettingView : BaseView
         grpDeviceConfig.Text = _localizer.GetString(TextKeys.SystemSetting.GroupDevice);
         grpProductionConfig.Text = _localizer.GetString(TextKeys.SystemSetting.GroupProduction);
         grpMesConfig.Text = _localizer.GetString(TextKeys.SystemSetting.GroupMes);
-        grpCenterServerConfig.Text = "中心服务器";
+        grpCenterServerConfig.Text = _localizer.GetString(TextKeys.SystemSetting.GroupCenterServer);
+
+        foreach (var definition in MesRouteInputDefinitions)
+        {
+            var label = GetMesRouteLabel(definition.Key);
+            if (label is not null)
+            {
+                label.Text = _localizer.GetString(definition.TextKey);
+            }
+        }
 
         lblTitle.Text = _localizer.GetString(TextKeys.SystemSetting.Title);
         lblDescription.Text = _localizer.GetString(TextKeys.SystemSetting.Description);
@@ -675,19 +711,19 @@ public partial class SystemSettingView : BaseView
         lblPlcIp.Text = _localizer.GetString(TextKeys.SystemSetting.LabelIp);
         lblPlcPort.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPort);
         lblPlcType.Text = _localizer.GetString(TextKeys.SystemSetting.LabelType);
-        chkEnablePlcStringNumericFormatting.Text = "启用 PLC 字符串数值处理";
-        chkEnablePlcAlarmReading.Text = "启用PLC报警读取";
-        lblPlcStringNumericFormatMode.Text = "处理方式";
+        chkEnablePlcStringNumericFormatting.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnablePlcStringFormatting);
+        chkEnablePlcAlarmReading.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnablePlcAlarmReading);
+        lblPlcStringNumericFormatMode.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPlcFormatMode);
 
         lblDeviceId.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDeviceId);
         lblDeviceName.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDeviceName);
         lblDeviceUrl.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDeviceStatusUrl);
         lblMesUrl.Text = _localizer.GetString(TextKeys.SystemSetting.LabelMesUrl);
-        lblMesTimeout.Text = "MES超时(s)";
+        lblMesTimeout.Text = _localizer.GetString(TextKeys.SystemSetting.LabelMesTimeout);
 
         lblLogPath.Text = _localizer.GetString(TextKeys.SystemSetting.LabelLogPath);
         lblDataPath.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDataPath);
-        lblProgramFilePath.Text = "程序目录";
+        lblProgramFilePath.Text = _localizer.GetString(TextKeys.SystemSetting.LabelProgramPath);
         chkEnableAutoStart.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableAutoStart);
         chkEnableElevatedAutoStart.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableElevatedAutoStart);
         lblUploadMode.Text = _localizer.GetString(TextKeys.SystemSetting.UploadMode);
@@ -697,24 +733,20 @@ public partial class SystemSettingView : BaseView
         lblStation2DisplayName.Text = _localizer.GetString(TextKeys.SystemSetting.LabelStation2DisplayName);
         inputStation1DisplayName.PlaceholderText = _localizer.GetString(TextKeys.SystemSetting.PlaceholderStationDisplayName);
         inputStation2DisplayName.PlaceholderText = _localizer.GetString(TextKeys.SystemSetting.PlaceholderStationDisplayName);
-        chkEnableCenterServerSync.Text = "启用中心服务器同步";
-        lblCenterServerBaseUrl.Text = "中心服务器地址";
-        lblCenterServerSystemType.Text = "系统类型";
-        lblCenterServerHeartbeatInterval.Text = "心跳间隔(s)";
-        lblProcessParameterDeviceType.Text = "过程参数设备类型";
-        chkEnablePostDataCustomHeader.Text = "启用PostData自定义Header";
-        lblPostDataHeaderKey.Text = "Header Key";
-        lblPostDataHeaderValue.Text = "Header Value";
-        chkShowTestFlagInHistory.Text = "产品历史显示试焊件";
-
-        BindUploadModeOptions();
-        BindPlcStringNumericFormatModeOptions();
-        BindProcessParameterDeviceTypeOptions();
+        chkEnableCenterServerSync.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableCenterServerSync);
+        lblCenterServerBaseUrl.Text = _localizer.GetString(TextKeys.SystemSetting.LabelCenterServerUrl);
+        lblCenterServerSystemType.Text = _localizer.GetString(TextKeys.SystemSetting.LabelCenterServerSystemType);
+        lblCenterServerHeartbeatInterval.Text = _localizer.GetString(TextKeys.SystemSetting.LabelCenterServerHeartbeat);
+        lblProcessParameterDeviceType.Text = _localizer.GetString(TextKeys.SystemSetting.LabelProcessParameterDeviceType);
+        chkEnablePostDataCustomHeader.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnablePostDataHeader);
+        lblPostDataHeaderKey.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPostDataHeaderKey);
+        lblPostDataHeaderValue.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPostDataHeaderValue);
+        chkShowTestFlagInHistory.Text = _localizer.GetString(TextKeys.SystemSetting.ChkShowTestFlagInHistory);
 
         chkUseProductNumberFilter.Text = _localizer.GetString(TextKeys.SystemSetting.ChkUseProductNumberFilter);
         chkUseOperatorInputDialog.Text = _localizer.GetString(TextKeys.SystemSetting.ChkUseOperatorInputDialog);
-        chkEnableDeviceStatusReport.Text = "启用设备状态上报";
-        chkEnableWorkOrderStatusReport.Text = "启用工单状态上报";
+        chkEnableDeviceStatusReport.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableDeviceStatusReport);
+        chkEnableWorkOrderStatusReport.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableWorkOrderStatusReport);
         chkValidateRecipeBeforeStart.Text = _localizer.GetString(TextKeys.SystemSetting.ChkValidateRecipeAfterStart);
         chkEnableFinishExpQtyPrompt.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableFinishExpQtyPrompt);
         chkEnableDualStation.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableDualStation);
@@ -755,7 +787,7 @@ public partial class SystemSettingView : BaseView
         {
             selectPlcStringNumericFormatMode.Items.Clear();
             selectPlcStringNumericFormatMode.Items.AddRange(PlcStringNumericFormatModeOptions
-                .Select(option => (object)option.DisplayName)
+                .Select(option => (object)_localizer.GetString(option.TextKey))
                 .ToArray());
 
             var selectedIndex = Array.FindIndex(PlcStringNumericFormatModeOptions, option =>
@@ -775,7 +807,7 @@ public partial class SystemSettingView : BaseView
         {
             selectUploadMode.Items.Clear();
             selectUploadMode.Items.AddRange(UploadModeOptions
-                .Select(option => (object)option.DisplayName)
+                .Select(option => (object)_localizer.GetString(option.TextKey))
                 .ToArray());
 
             var selectedIndex = Array.FindIndex(UploadModeOptions, option => option.Value == _selectedUploadMode);
@@ -794,7 +826,7 @@ public partial class SystemSettingView : BaseView
         {
             selectProcessParameterDeviceType.Items.Clear();
             selectProcessParameterDeviceType.Items.AddRange(ProcessParameterDeviceTypeOptions
-                .Select(option => (object)option.DisplayName)
+                .Select(option => (object)_localizer.GetString(option.TextKey))
                 .ToArray());
 
             var selectedIndex = Array.FindIndex(ProcessParameterDeviceTypeOptions, option =>
@@ -814,7 +846,7 @@ public partial class SystemSettingView : BaseView
         {
             selectCenterServerSystemType.Items.Clear();
             selectCenterServerSystemType.Items.AddRange(CenterServerSystemTypeOptions
-                .Select(option => (object)option.DisplayName)
+                .Select(option => (object)_localizer.GetString(option.TextKey))
                 .ToArray());
 
             var selectedIndex = Array.FindIndex(CenterServerSystemTypeOptions, option =>
@@ -957,7 +989,7 @@ public partial class SystemSettingView : BaseView
         var startupResult = _windowsShellIntegrationService.ApplyStartupIntegration(settings);
         if (!startupResult.Success)
         {
-            ShowWarningMessage(startupResult.Message);
+            ShowWarning(TextKeys.SystemSetting.MessageStartupIntegrationFailed, startupResult.Message);
         }
     }
 
@@ -1136,11 +1168,10 @@ public partial class SystemSettingView : BaseView
 
             if (!MesEndpointRouteRules.TryNormalizeRequiredRoute(
                     input.Text,
-                    definition.DisplayName,
                     out var route,
-                    out var errorMessage))
+                    out var error))
             {
-                ShowWarningMessage(errorMessage);
+                ShowWarningMessage(GetMesValidationMessage(error, _localizer.GetString(definition.TextKey)));
                 return false;
             }
 
@@ -1156,7 +1187,7 @@ public partial class SystemSettingView : BaseView
                 out var headerValue,
                 out var headerError))
         {
-            ShowWarningMessage(headerError);
+            ShowWarningMessage(GetMesValidationMessage(headerError));
             return false;
         }
 
@@ -1164,6 +1195,23 @@ public partial class SystemSettingView : BaseView
         settings.PostDataHeaderKey = headerKey;
         settings.PostDataHeaderValue = headerValue;
         return true;
+    }
+
+    private string GetMesValidationMessage(MesEndpointValidationError error, string fieldName = "")
+    {
+        var key = error switch
+        {
+            MesEndpointValidationError.Required => TextKeys.SystemSetting.MessageRouteRequired,
+            MesEndpointValidationError.AbsoluteUrlNotAllowed => TextKeys.SystemSetting.MessageRelativeRouteRequired,
+            MesEndpointValidationError.QueryOrFragmentNotAllowed => TextKeys.SystemSetting.MessageRouteQueryNotAllowed,
+            MesEndpointValidationError.InvalidHeaderKey => TextKeys.SystemSetting.MessageHeaderKeyInvalid,
+            MesEndpointValidationError.HeaderValueRequired => TextKeys.SystemSetting.MessageHeaderValueRequired,
+            _ => string.Empty
+        };
+
+        return string.IsNullOrEmpty(key)
+            ? string.Empty
+            : _localizer.GetString(key, fieldName);
     }
 
     private bool CanSaveRuntimeModeChange(AppSettings previousSettings, AppSettings newSettings)
@@ -1178,7 +1226,7 @@ public partial class SystemSettingView : BaseView
             return true;
         }
 
-        ShowWarningMessage("存在未完工任务，不能切换双工位/双工单模式，请先完工后再调整。");
+        ShowWarning(TextKeys.SystemSetting.MessageRuntimeModeLocked);
         return false;
     }
 
@@ -1192,7 +1240,7 @@ public partial class SystemSettingView : BaseView
             return true;
         }
 
-        ShowWarningMessage("存在未完工任务，请先完工后再修改设备管理信息。");
+        ShowWarning(TextKeys.SystemSetting.MessageDeviceManagementLocked);
         return false;
     }
 
@@ -1307,12 +1355,7 @@ public partial class SystemSettingView : BaseView
             return true;
         }
 
-        MessageBox.Show(
-            this,
-            $"{fieldName} 必须是大于 0 的整数。",
-            _localizer.GetString(TextKeys.Common.TitleWarning),
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Warning);
+        ShowWarning(TextKeys.SystemSetting.MessagePositiveIntegerRequired, fieldName);
         return false;
     }
 
@@ -1398,19 +1441,11 @@ public partial class SystemSettingView : BaseView
         MessageBox.Show(this, message, _localizer.GetString(TextKeys.Common.TitleError), MessageBoxButtons.OK, MessageBoxIcon.Error);
     }
 
-    private sealed record PlcTypeOption(string Value, string TextKey);
-
-    private sealed record PlcStringNumericFormatModeOption(string DisplayName, string Value);
-
-    private sealed record UploadModeOption(UploadMode Value, string DisplayName);
-
-    private sealed record ProcessParameterDeviceTypeOption(string DisplayName, string Value);
-
-    private sealed record CenterServerOption(string DisplayName, string Value);
+    private sealed record LocalizedOption<T>(T Value, string TextKey);
 
     private sealed record MesRouteInputDefinition(
         string Key,
-        string DisplayName,
+        string TextKey,
         string DefaultRoute,
         Func<AppSettings, string?> GetRoute,
         Action<AppSettings, string> SetRoute);

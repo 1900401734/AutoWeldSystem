@@ -16,6 +16,7 @@ using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.MES;
 using AutoWeldSystem.Core.Interfaces.PLC;
+using AutoWeldSystem.Core.Mes;
 using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Core.Runtime;
 using AutoWeldSystem.Core.ViewModels;
@@ -36,6 +37,9 @@ var tests = new (string Name, Action Run)[]
 {
     ("System setting layout rules honor DPI breakpoints", SystemSettingLayoutRulesHonorDpiBreakpoints),
     ("System setting view uses responsive semantic columns", SystemSettingViewUsesResponsiveSemanticColumns),
+    ("System setting localization resources are complete", SystemSettingLocalizationResourcesAreComplete),
+    ("MES endpoint validation returns stable error codes", MesEndpointValidationReturnsStableErrorCodes),
+    ("Localization service reports missing resource keys", LocalizationServiceReportsMissingResourceKeys),
     ("PLC recipe name rules map slots without shifting codes", PlcRecipeNameRulesMapSlotsWithoutShiftingCodes),
     ("PLC recipe name config rules reject invalid station settings", PlcRecipeNameConfigRulesRejectInvalidStationSettings),
     ("PLC recipe name reader keeps successful slots after read failures", PlcRecipeNameReaderKeepsSuccessfulSlotsAfterReadFailures),
@@ -4567,6 +4571,77 @@ static void MesRouteSettingsDefaultToCurrentRoutes()
     AssertEqual("api/Device", settings.MesDeviceRoute, "设备编号同步接口默认路由必须保持原值。");
     AssertEqual("api/DeviceStatusV2", settings.MesDeviceStatusRoute, "设备状态上报接口默认路由必须保持原值。");
     AssertFalse(settings.EnablePostDataCustomHeader == true, "PostData 自定义 Header 默认关闭，避免升级后影响现场接口。");
+}
+
+static void SystemSettingLocalizationResourcesAreComplete()
+{
+    var zhResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.resx"), Encoding.UTF8);
+    var enResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.en.resx"), Encoding.UTF8);
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.cs"), Encoding.UTF8);
+    var keys = typeof(TextKeys.SystemSetting)
+        .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+        .Where(field => field.IsLiteral && !field.IsInitOnly && field.FieldType == typeof(string))
+        .Select(field => (string)field.GetRawConstantValue()!)
+        .ToArray();
+
+    foreach (var key in keys)
+    {
+        AssertTrue(zhResources.Contains($"name=\"{key}\"", StringComparison.Ordinal), $"中文资源必须包含 {key}。");
+        AssertTrue(enResources.Contains($"name=\"{key}\"", StringComparison.Ordinal), $"英文资源必须包含 {key}。");
+    }
+
+    var chineseLiteral = System.Text.RegularExpressions.Regex.Match(
+        viewCode,
+        "\"[^\"\\r\\n]*[\\u4e00-\\u9fff][^\"\\r\\n]*\"");
+    AssertFalse(chineseLiteral.Success, $"SystemSettingView.cs 不应保留中文字符串字面量：{chineseLiteral.Value}");
+    AssertTrue(viewCode.Contains("private sealed record LocalizedOption<T>(T Value, string TextKey);", StringComparison.Ordinal), "本地化选项必须统一保存稳定值和资源键。");
+    AssertFalse(viewCode.Contains("record UploadModeOption", StringComparison.Ordinal), "不应继续为各下拉框维护重复的 DisplayName record。");
+    AssertTrue(viewCode.Contains("ShowWarning(ex.Message);", StringComparison.Ordinal), "站点名称校验抛出的资源键必须经过本地化服务显示。");
+}
+
+static void MesEndpointValidationReturnsStableErrorCodes()
+{
+    AssertFalse(MesEndpointRouteRules.TryNormalizeRequiredRoute(" ", out _, out var required), "空路由必须失败。");
+    AssertEqual(MesEndpointValidationError.Required, required, "空路由应返回 Required。");
+
+    AssertFalse(MesEndpointRouteRules.TryNormalizeRequiredRoute("https://mes/api/Test", out _, out var absolute), "完整 URL 必须失败。");
+    AssertEqual(MesEndpointValidationError.AbsoluteUrlNotAllowed, absolute, "完整 URL 应返回 AbsoluteUrlNotAllowed。");
+
+    AssertFalse(MesEndpointRouteRules.TryNormalizeRequiredRoute("api/Test?id=1", out _, out var query), "带查询参数的路由必须失败。");
+    AssertEqual(MesEndpointValidationError.QueryOrFragmentNotAllowed, query, "查询参数应返回 QueryOrFragmentNotAllowed。");
+
+    AssertTrue(MesEndpointRouteRules.TryNormalizeRequiredRoute("/api/Test", out var route, out var routeError), "合法相对路由应通过。");
+    AssertEqual("api/Test", route, "合法路由应去掉前导斜杠。");
+    AssertEqual(MesEndpointValidationError.None, routeError, "合法路由应返回 None。");
+
+    AssertFalse(MesEndpointRouteRules.TryValidatePostDataHeader(true, "Bad Key", "value", out _, out _, out var keyError), "非法 Header Key 必须失败。");
+    AssertEqual(MesEndpointValidationError.InvalidHeaderKey, keyError, "非法 Header Key 应返回 InvalidHeaderKey。");
+
+    AssertFalse(MesEndpointRouteRules.TryValidatePostDataHeader(true, "X-Test", " ", out _, out _, out var valueError), "空 Header Value 必须失败。");
+    AssertEqual(MesEndpointValidationError.HeaderValueRequired, valueError, "空 Header Value 应返回 HeaderValueRequired。");
+
+    AssertTrue(MesEndpointRouteRules.TryValidatePostDataHeader(false, "", "", out _, out _, out var disabledError), "未启用自定义 Header 时空值应通过。");
+    AssertEqual(MesEndpointValidationError.None, disabledError, "未启用时应返回 None。");
+}
+
+static void LocalizationServiceReportsMissingResourceKeys()
+{
+    var settings = new FakeAppSettingsService();
+    var localizer = new AutoWeldSystem.Services.LocalizationService(settings);
+    using var writer = new StringWriter();
+    using var listener = new System.Diagnostics.TextWriterTraceListener(writer);
+    System.Diagnostics.Trace.Listeners.Add(listener);
+    try
+    {
+        const string missingKey = "system.test.missing_key";
+        AssertEqual(missingKey, localizer.GetString(missingKey), "缺失资源必须回退为原键。");
+        listener.Flush();
+        AssertTrue(writer.ToString().Contains(missingKey, StringComparison.Ordinal), "缺失资源必须写入 Trace 警告。");
+    }
+    finally
+    {
+        System.Diagnostics.Trace.Listeners.Remove(listener);
+    }
 }
 
 static void MesProviderUsesConfiguredRoutes()

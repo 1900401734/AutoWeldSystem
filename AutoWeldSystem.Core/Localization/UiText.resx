@@ -1974,4 +1974,51 @@
   <data name="program.message.recipe_code_invalid" xml:space="preserve"><value>请选择 PLC 配方名称，或在读取失败时输入有效的正整数配方号。</value></data>
   <data name="program.option.missing_recipe" xml:space="preserve"><value>配方号 {0}（PLC 列表中不存在）</value></data>
   <data name="program.option.duplicate_recipe" xml:space="preserve"><value>{0}（配方号 {1}）</value></data>
+  <data name="system.group.center_server" xml:space="preserve"><value>中心服务器</value></data>
+  <data name="system.label.plc_format_mode" xml:space="preserve"><value>处理方式</value></data>
+  <data name="system.label.mes_timeout" xml:space="preserve"><value>MES 超时（秒）</value></data>
+  <data name="system.label.program_path" xml:space="preserve"><value>程序目录</value></data>
+  <data name="system.label.center_server_url" xml:space="preserve"><value>中心服务器地址</value></data>
+  <data name="system.label.center_server_system_type" xml:space="preserve"><value>系统类型</value></data>
+  <data name="system.label.center_server_heartbeat" xml:space="preserve"><value>心跳间隔（秒）</value></data>
+  <data name="system.label.process_parameter_device_type" xml:space="preserve"><value>过程参数设备类型</value></data>
+  <data name="system.label.postdata_header_key" xml:space="preserve"><value>Header Key</value></data>
+  <data name="system.label.postdata_header_value" xml:space="preserve"><value>Header Value</value></data>
+  <data name="system.checkbox.enable_plc_string_formatting" xml:space="preserve"><value>启用 PLC 字符串数值处理</value></data>
+  <data name="system.checkbox.enable_plc_alarm_reading" xml:space="preserve"><value>启用 PLC 报警读取</value></data>
+  <data name="system.checkbox.enable_center_server_sync" xml:space="preserve"><value>启用中心服务器同步</value></data>
+  <data name="system.checkbox.enable_postdata_header" xml:space="preserve"><value>启用 PostData 自定义 Header</value></data>
+  <data name="system.checkbox.show_test_flag_history" xml:space="preserve"><value>产品历史显示试焊件</value></data>
+  <data name="system.checkbox.enable_device_status_report" xml:space="preserve"><value>启用设备状态上报</value></data>
+  <data name="system.checkbox.enable_work_order_status_report" xml:space="preserve"><value>启用工单状态上报</value></data>
+  <data name="system.option.plc_format.truncate" xml:space="preserve"><value>固定长度裁切</value></data>
+  <data name="system.option.plc_format.round" xml:space="preserve"><value>四舍五入</value></data>
+  <data name="system.option.upload.realtime" xml:space="preserve"><value>单件实时上传</value></data>
+  <data name="system.option.upload.quantity" xml:space="preserve"><value>按特定数量上传</value></data>
+  <data name="system.option.upload.batch" xml:space="preserve"><value>完工批量上传</value></data>
+  <data name="system.option.device.electromagnetic" xml:space="preserve"><value>电磁系统</value></data>
+  <data name="system.option.device.whole_piece_check" xml:space="preserve"><value>整件系统-检测设备</value></data>
+  <data name="system.option.device.whole_piece_weld" xml:space="preserve"><value>整件系统-点焊设备</value></data>
+  <data name="system.option.center.whole_piece" xml:space="preserve"><value>整件系统</value></data>
+  <data name="system.option.center.other" xml:space="preserve"><value>其它</value></data>
+  <data name="system.route.user" xml:space="preserve"><value>员工信息路由</value></data>
+  <data name="system.route.work_order" xml:space="preserve"><value>工单信息路由</value></data>
+  <data name="system.route.server_time" xml:space="preserve"><value>服务器时间路由</value></data>
+  <data name="system.route.program" xml:space="preserve"><value>程序管理路由</value></data>
+  <data name="system.route.start_work" xml:space="preserve"><value>开工上报路由</value></data>
+  <data name="system.route.work_status" xml:space="preserve"><value>工单状态路由</value></data>
+  <data name="system.route.end_work" xml:space="preserve"><value>完工上报路由</value></data>
+  <data name="system.route.report_file" xml:space="preserve"><value>报告文件路由</value></data>
+  <data name="system.route.post_data" xml:space="preserve"><value>PostData 路由</value></data>
+  <data name="system.route.device" xml:space="preserve"><value>设备编号路由</value></data>
+  <data name="system.route.device_status" xml:space="preserve"><value>设备状态路由</value></data>
+  <data name="system.message.runtime_mode_locked" xml:space="preserve"><value>存在未完工任务，不能切换双工位/双工单模式，请先完工后再调整。</value></data>
+  <data name="system.message.device_management_locked" xml:space="preserve"><value>存在未完工任务，请先完工后再修改设备管理信息。</value></data>
+  <data name="system.message.positive_integer_required" xml:space="preserve"><value>{0} 必须是大于 0 的整数。</value></data>
+  <data name="system.message.route_required" xml:space="preserve"><value>{0}不能为空。</value></data>
+  <data name="system.message.relative_route_required" xml:space="preserve"><value>{0}请填写相对路由，例如 api/ExpProgram，不要填写完整 URL。</value></data>
+  <data name="system.message.route_query_not_allowed" xml:space="preserve"><value>{0}不能包含查询参数或锚点。</value></data>
+  <data name="system.message.header_key_invalid" xml:space="preserve"><value>PostData Header Key 不能为空，且不能包含空格、冒号或中文字符。</value></data>
+  <data name="system.message.header_value_required" xml:space="preserve"><value>PostData Header Value 不能为空。</value></data>
+  <data name="system.message.startup_integration_failed" xml:space="preserve"><value>开机自启设置失败：{0}</value></data>
 </root>

@@ -1,6 +1,19 @@
 namespace AutoWeldSystem.Core.Mes;
 
 /// <summary>
+/// MES 路由和自定义 Header 校验失败原因。
+/// </summary>
+public enum MesEndpointValidationError
+{
+    None,
+    Required,
+    AbsoluteUrlNotAllowed,
+    QueryOrFragmentNotAllowed,
+    InvalidHeaderKey,
+    HeaderValueRequired
+}
+
+/// <summary>
 /// MES 接口路由和可选 Header 的统一规则。
 /// 路由只保存相对路径，MES 基础地址仍由 MesBaseUrl 单独配置。
 /// </summary>
@@ -38,36 +51,35 @@ public static class MesEndpointRouteRules
     /// </summary>
     public static bool TryNormalizeRequiredRoute(
         string? route,
-        string displayName,
         out string normalizedRoute,
-        out string errorMessage)
+        out MesEndpointValidationError error)
     {
         normalizedRoute = string.Empty;
-        errorMessage = string.Empty;
+        error = MesEndpointValidationError.None;
 
         if (string.IsNullOrWhiteSpace(route))
         {
-            errorMessage = $"{displayName}不能为空。";
+            error = MesEndpointValidationError.Required;
             return false;
         }
 
         normalizedRoute = route.Trim().Replace('\\', '/').TrimStart('/');
         if (string.IsNullOrWhiteSpace(normalizedRoute))
         {
-            errorMessage = $"{displayName}不能为空。";
+            error = MesEndpointValidationError.Required;
             return false;
         }
 
         if (Uri.TryCreate(normalizedRoute, UriKind.Absolute, out _))
         {
-            errorMessage = $"{displayName}请填写相对路由，例如 api/ExpProgram，不要填写完整 URL。";
+            error = MesEndpointValidationError.AbsoluteUrlNotAllowed;
             return false;
         }
 
         if (normalizedRoute.Contains('?', StringComparison.Ordinal)
             || normalizedRoute.Contains('#', StringComparison.Ordinal))
         {
-            errorMessage = $"{displayName}不能包含查询参数或锚点。";
+            error = MesEndpointValidationError.QueryOrFragmentNotAllowed;
             return false;
         }
 
@@ -100,11 +112,11 @@ public static class MesEndpointRouteRules
         string? headerValue,
         out string normalizedHeaderKey,
         out string normalizedHeaderValue,
-        out string errorMessage)
+        out MesEndpointValidationError error)
     {
         normalizedHeaderKey = NormalizeHeaderKey(headerKey);
         normalizedHeaderValue = NormalizeHeaderValue(headerValue);
-        errorMessage = string.Empty;
+        error = MesEndpointValidationError.None;
 
         if (!enabled)
         {
@@ -113,13 +125,13 @@ public static class MesEndpointRouteRules
 
         if (!IsValidHeaderKey(normalizedHeaderKey))
         {
-            errorMessage = "PostData Header Key 不能为空，且不能包含空格、冒号或中文字符。";
+            error = MesEndpointValidationError.InvalidHeaderKey;
             return false;
         }
 
         if (string.IsNullOrWhiteSpace(normalizedHeaderValue))
         {
-            errorMessage = "PostData Header Value 不能为空。";
+            error = MesEndpointValidationError.HeaderValueRequired;
             return false;
         }
 
