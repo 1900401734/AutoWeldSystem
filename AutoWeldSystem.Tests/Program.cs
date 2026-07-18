@@ -51,6 +51,8 @@ var tests = new (string Name, Action Run)[]
     ("Program manage recipe name selectors bind station recipe codes", ProgramManageRecipeNameSelectorsBindStationRecipeCodes),
     ("Address manage exposes PLC recipe name configuration", AddressManageExposesPlcRecipeNameConfiguration),
     ("PLC recipe name config service reads latest station row", PlcRecipeNameConfigServiceReadsLatestStationRow),
+    ("Product process draft copies business fields and resets identity", ProductProcessDraftCopiesBusinessFieldsAndResetsIdentity),
+    ("Product process draft keeps existing defaults without source", ProductProcessDraftKeepsExistingDefaultsWithoutSource),
     ("Scheme detail role headers use centralized defaults", SchemeDetailRoleHeadersUseCentralizedDefaults),
     ("Scheme detail role grid defines localized bound columns", SchemeDetailRoleGridDefinesLocalizedBoundColumns),
     ("Scheme detail role names and monitor fallbacks are centralized", SchemeDetailRoleNamesAndMonitorFallbacksAreCentralized),
@@ -441,6 +443,93 @@ static void PlcRecipeNameReaderReturnsInvalidConfigFailures()
     AssertFalse(result.IsSuccess, "历史非法配置应返回读取失败，而不是向界面抛出异常。 ");
     AssertTrue(result.Message.Contains("基地址不能为空", StringComparison.Ordinal), "失败消息应包含具体配置错误。 ");
     AssertEqual(0, result.Options.Count, "配置无效时不应生成配方选项。 ");
+}
+
+static void ProductProcessDraftCopiesBusinessFieldsAndResetsIdentity()
+{
+    var source = new BizProductProcessConfig
+    {
+        Id = 42,
+        SchemeId = "S09",
+        ProductNum = "P-001",
+        StationNo = 2,
+        TouchCount = 8,
+        PointName = "相机",
+        PointNoHeader = "相机序号",
+        PointResultHeader = "相机结果",
+        PointCountHeader = "相机数",
+        ShowTestFlagInHistory = false,
+        ProductBase = "DB20.0",
+        ProductLen = 64,
+        ProductNoExpr = "0:S-16",
+        ProductResultExpr = "16:I-0",
+        ActualTouchCountExpr = "18:I-0",
+        PresetTouchCountExpr = "20:I-0",
+        TouchBase = "DB20.64",
+        TouchNoBase = "DB21.0",
+        TouchResultBase = "DB22.0",
+        TouchHeaderLen = 24,
+        TouchNoExpr = "0:I-0",
+        TouchResultExpr = "4:H-4",
+        TestBase = "DB23.0",
+        TestAreaLen = 96,
+        Enabled = false,
+        CreatedTime = new DateTime(2025, 1, 1),
+        UpdatedTime = new DateTime(2025, 2, 1)
+    };
+    var draftTime = new DateTime(2026, 7, 18, 14, 30, 0);
+
+    var draft = ProductProcessDraftRules.CreateDraft(source, "DEFAULT-P", "S01", draftTime);
+
+    AssertEqual(0, draft.Id, "复制草稿必须保持新增身份。 ");
+    AssertEqual(source.ProductNum, draft.ProductNum, "复制草稿应暂时保留源产品工号。 ");
+    AssertEqual(source.SchemeId, draft.SchemeId, "测试方案应复制。 ");
+    AssertEqual(source.StationNo, draft.StationNo, "工位应复制。 ");
+    AssertEqual(source.TouchCount, draft.TouchCount, "焊点数量应复制。 ");
+    AssertEqual(source.PointName, draft.PointName, "采集点名称应复制。 ");
+    AssertEqual(source.PointNoHeader, draft.PointNoHeader, "编号表头应复制。 ");
+    AssertEqual(source.PointResultHeader, draft.PointResultHeader, "结果表头应复制。 ");
+    AssertEqual(source.PointCountHeader, draft.PointCountHeader, "数量表头应复制。 ");
+    AssertEqual(source.ShowTestFlagInHistory, draft.ShowTestFlagInHistory, "历史显示选项应复制。 ");
+    AssertEqual(source.ProductBase, draft.ProductBase, "产品头基地址应复制。 ");
+    AssertEqual(source.ProductLen, draft.ProductLen, "产品头长度应复制。 ");
+    AssertEqual(source.ProductNoExpr, draft.ProductNoExpr, "产品编号偏移应复制。 ");
+    AssertEqual(source.ProductResultExpr, draft.ProductResultExpr, "产品结果偏移应复制。 ");
+    AssertEqual(source.ActualTouchCountExpr, draft.ActualTouchCountExpr, "实际焊点数偏移应复制。 ");
+    AssertEqual(source.PresetTouchCountExpr, draft.PresetTouchCountExpr, "预设焊点数偏移应复制。 ");
+    AssertEqual(source.TouchBase, draft.TouchBase, "兼容焊点头基地址应复制。 ");
+    AssertEqual(source.TouchNoBase, draft.TouchNoBase, "焊点编号基地址应复制。 ");
+    AssertEqual(source.TouchResultBase, draft.TouchResultBase, "焊点结果基地址应复制。 ");
+    AssertEqual(source.TouchHeaderLen, draft.TouchHeaderLen, "焊点头长度应复制。 ");
+    AssertEqual(source.TouchNoExpr, draft.TouchNoExpr, "焊点编号偏移应复制。 ");
+    AssertEqual(source.TouchResultExpr, draft.TouchResultExpr, "焊点结果偏移应复制。 ");
+    AssertEqual(source.TestBase, draft.TestBase, "测试项基地址应复制。 ");
+    AssertEqual(source.TestAreaLen, draft.TestAreaLen, "测试区长度应复制。 ");
+    AssertEqual(source.Enabled, draft.Enabled, "启用状态应复制。 ");
+    AssertEqual(draftTime, draft.CreatedTime, "复制草稿应使用新的创建时间。 ");
+    AssertEqual(draftTime, draft.UpdatedTime, "复制草稿应使用新的更新时间。 ");
+
+    draft.ProductBase = "DB99.0";
+    AssertEqual("DB20.0", source.ProductBase, "修改草稿不得改变源配置。 ");
+}
+
+static void ProductProcessDraftKeepsExistingDefaultsWithoutSource()
+{
+    var draftTime = new DateTime(2026, 7, 18, 14, 35, 0);
+
+    var draft = ProductProcessDraftRules.CreateDraft(null, "P-DEFAULT", "S-DEFAULT", draftTime);
+
+    AssertEqual("P-DEFAULT", draft.ProductNum, "无源草稿应使用默认产品工号。 ");
+    AssertEqual("S-DEFAULT", draft.SchemeId, "无源草稿应使用默认测试方案。 ");
+    AssertEqual(ProductionConstants.Stations.SharedStationNo, draft.StationNo, "无源草稿应保持共享工位。 ");
+    AssertEqual("DB8.0", draft.ProductBase, "无源草稿应保持原产品头基地址。 ");
+    AssertEqual(32, draft.ProductLen, "无源草稿应保持原产品头长度。 ");
+    AssertEqual("0:I-0", draft.ProductNoExpr, "无源草稿应保持原产品编号偏移。 ");
+    AssertEqual("4:H-4", draft.ProductResultExpr, "无源草稿应保持原产品结果偏移。 ");
+    AssertEqual("DB8.32", draft.TouchBase, "无源草稿应保持原焊点头基地址。 ");
+    AssertEqual("DB8.100", draft.TestBase, "无源草稿应保持原测试项基地址。 ");
+    AssertEqual(draftTime, draft.CreatedTime, "无源草稿应使用调用方时间。 ");
+    AssertEqual(draftTime, draft.UpdatedTime, "无源草稿应使用调用方时间。 ");
 }
 
 static void ProgramSaveRecipeRulesRequirePositiveStationCodes()
