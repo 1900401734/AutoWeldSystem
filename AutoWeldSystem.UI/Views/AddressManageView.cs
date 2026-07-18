@@ -1960,31 +1960,12 @@ public partial class AddressManageView : BaseView
             .FirstOrDefault(productNum => !string.IsNullOrWhiteSpace(productNum)) ?? string.Empty;
         var schemeId = _testSchemes.FirstOrDefault()?.SchemeId ?? "S01";
 
-        var config = new BizProductProcessConfig
-        {
-            ProductNum = productNum,
-            SchemeId = schemeId,
-            StationNo = ProductionConstants.Stations.SharedStationNo,
-            TouchCount = 1,
-            PointName = "焊点",
-            PointNoHeader = "焊点序号",
-            PointResultHeader = "焊点结果",
-            PointCountHeader = "焊点数",
-            ShowTestFlagInHistory = true,
-            ProductBase = "DB8.0",
-            ProductLen = 32,
-            ProductNoExpr = "0:I-0",
-            ProductResultExpr = "4:H-4",
-            TouchBase = "DB8.32",
-            TouchNoBase = "DB8.32",
-            TouchResultBase = "DB8.32",
-            TouchHeaderLen = 16,
-            TouchNoExpr = "0:I-0",
-            TouchResultExpr = "4:H-4",
-            TestBase = "DB8.100",
-            TestAreaLen = 48,
-            Enabled = true
-        };
+        // 选中已有工艺时以该行为模板；未选中时继续使用原有默认配置。
+        var config = ProductProcessDraftRules.CreateDraft(
+            _selectedProductProcessRow?.Source,
+            productNum,
+            schemeId,
+            DateTime.Now);
 
         _productProcessConfigs.Add(config);
         ApplyProductProcessFilter(_productProcessKeyword);

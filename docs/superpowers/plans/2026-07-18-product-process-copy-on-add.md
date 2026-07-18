@@ -272,12 +272,13 @@ Expected: 只提交规则、对应测试和实施计划，不包含两个 Design
 **Files:**
 - Modify: `AutoWeldSystem.UI/Views/AddressManageView.cs`
 - Modify: `AutoWeldSystem.Tests/Program.cs`
+- Modify: `docs/superpowers/plans/2026-07-18-product-process-copy-on-add.md`
 
 **Interfaces:**
 - Consumes: `ProductProcessDraftRules.CreateDraft(BizProductProcessConfig? source, string? defaultProductNum, string? defaultSchemeId, DateTime draftTime)`。
 - Produces: “新增”按钮使用 `_selectedProductProcessRow?.Source` 作为可选复制源，并保持现有刷新、选中和命令状态同步流程。
 
-- [ ] **Step 1: 注册并编写页面接线失败测试**
+- [x] **Step 1: 注册并编写页面接线失败测试**
 
 在测试列表中增加：
 
@@ -303,7 +304,7 @@ static void AddressManageCopiesSelectedProductProcessOnAdd()
 }
 ```
 
-- [ ] **Step 2: 运行回归测试并确认红灯**
+- [x] **Step 2: 运行回归测试并确认红灯**
 
 Run:
 
@@ -313,7 +314,7 @@ dotnet run --project AutoWeldSystem.Tests\AutoWeldSystem.Tests.csproj --no-resto
 
 Expected: 新增页面接线测试失败，消息为“产品工艺新增入口必须复用核心草稿规则”。
 
-- [ ] **Step 3: 将新增事件接入草稿工厂**
+- [x] **Step 3: 将新增事件接入草稿工厂**
 
 在 `AddressManageView.AddProductProcess_Click` 中保留默认产品工号和方案 ID 的计算，使用以下代码替换内联实体初始化：
 
@@ -327,7 +328,7 @@ var config = ProductProcessDraftRules.CreateDraft(
 
 保留后续 `_productProcessConfigs.Add(config)`、筛选刷新、选中新行、摘要刷新和命令状态同步代码不变。
 
-- [ ] **Step 4: 运行完整测试和解决方案构建**
+- [x] **Step 4: 运行完整测试和解决方案构建**
 
 Run:
 
@@ -338,21 +339,21 @@ dotnet build AutoWeldSystem.sln --no-restore -p:BaseOutputPath=..\artifacts\veri
 
 Expected: 测试进程退出码为 `0`；构建退出码为 `0` 且 `0` 个错误。
 
-- [ ] **Step 5: 检查功能范围并提交 UI 接线**
+- [x] **Step 5: 检查功能范围并提交 UI 接线**
 
 Run:
 
 ```powershell
 git diff --check
-git diff -- AutoWeldSystem.UI/Views/AddressManageView.cs AutoWeldSystem.Tests/Program.cs
+git diff -- AutoWeldSystem.UI/Views/AddressManageView.cs AutoWeldSystem.Tests/Program.cs docs/superpowers/plans/2026-07-18-product-process-copy-on-add.md
 git status --short
-git add -- AutoWeldSystem.UI/Views/AddressManageView.cs AutoWeldSystem.Tests/Program.cs
+git add -- AutoWeldSystem.UI/Views/AddressManageView.cs AutoWeldSystem.Tests/Program.cs docs/superpowers/plans/2026-07-18-product-process-copy-on-add.md
 git diff --cached --check
 git diff --cached
 git commit -m "feat(address): copy selected product process on add"
 ```
 
-Expected: 提交只包含页面接线和接线回归测试；两个既有 Designer 改动仍留在工作区。
+Expected: 提交只包含页面接线、接线回归测试和实施进度；两个既有 Designer 改动仍留在工作区。
 
 ### Task 3: Final Verification
 

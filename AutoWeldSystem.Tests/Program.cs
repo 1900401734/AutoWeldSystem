@@ -53,6 +53,7 @@ var tests = new (string Name, Action Run)[]
     ("PLC recipe name config service reads latest station row", PlcRecipeNameConfigServiceReadsLatestStationRow),
     ("Product process draft copies business fields and resets identity", ProductProcessDraftCopiesBusinessFieldsAndResetsIdentity),
     ("Product process draft keeps existing defaults without source", ProductProcessDraftKeepsExistingDefaultsWithoutSource),
+    ("Address manage copies selected product process on add", AddressManageCopiesSelectedProductProcessOnAdd),
     ("Scheme detail role headers use centralized defaults", SchemeDetailRoleHeadersUseCentralizedDefaults),
     ("Scheme detail role grid defines localized bound columns", SchemeDetailRoleGridDefinesLocalizedBoundColumns),
     ("Scheme detail role names and monitor fallbacks are centralized", SchemeDetailRoleNamesAndMonitorFallbacksAreCentralized),
@@ -530,6 +531,20 @@ static void ProductProcessDraftKeepsExistingDefaultsWithoutSource()
     AssertEqual("DB8.100", draft.TestBase, "无源草稿应保持原测试项基地址。 ");
     AssertEqual(draftTime, draft.CreatedTime, "无源草稿应使用调用方时间。 ");
     AssertEqual(draftTime, draft.UpdatedTime, "无源草稿应使用调用方时间。 ");
+}
+
+static void AddressManageCopiesSelectedProductProcessOnAdd()
+{
+    var viewCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "AddressManageView.cs"),
+        Encoding.UTF8);
+
+    AssertTrue(
+        viewCode.Contains("ProductProcessDraftRules.CreateDraft(", StringComparison.Ordinal),
+        "产品工艺新增入口必须复用核心草稿规则。 ");
+    AssertTrue(
+        viewCode.Contains("_selectedProductProcessRow?.Source", StringComparison.Ordinal),
+        "产品工艺新增入口必须把当前选中行作为可选复制源。 ");
 }
 
 static void ProgramSaveRecipeRulesRequirePositiveStationCodes()
