@@ -31,6 +31,7 @@ public partial class MainForm : BaseWindow
     private AppSettings _currentSettings;
     private StationDisplayForm? _station2DisplayForm;
     private CancellationTokenSource? _station2DisplayCreateRetryCts;
+    private Label? _emptyPermissionLabel;
 
     private readonly PermissionUiBinder _permissionUiBinder;
     private readonly PlcWriteDebugMessageFilter _plcWriteDebugMessageFilter;
@@ -277,9 +278,8 @@ public partial class MainForm : BaseWindow
         }
 
         var page = _visiblePages[viewIndex];
-        if (_viewCache.TryGetValue(page.PermissionCode, out var cachedView))
+        if (_viewCache.ContainsKey(page.PermissionCode))
         {
-            _permissionUiBinder.Apply(cachedView);
             return;
         }
 
@@ -302,9 +302,34 @@ public partial class MainForm : BaseWindow
             return;
         }
 
-        pnlContent.Controls.Clear();
-        pnlContent.Tag = page.PermissionCode;
-        pnlContent.Controls.Add(view);
+        if (ReferenceEquals(view.Parent, pnlContent)
+            && view.Visible
+            && string.Equals(pnlContent.Tag as string, page.PermissionCode, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        pnlContent.SuspendLayout();
+        try
+        {
+            if (!ReferenceEquals(view.Parent, pnlContent))
+            {
+                view.Visible = false;
+                pnlContent.Controls.Add(view);
+            }
+
+            foreach (Control cachedView in pnlContent.Controls)
+            {
+                cachedView.Visible = ReferenceEquals(cachedView, view);
+            }
+
+            view.BringToFront();
+            pnlContent.Tag = page.PermissionCode;
+        }
+        finally
+        {
+            pnlContent.ResumeLayout(true);
+        }
     }
 
     private string? GetCurrentPagePermissionCode()
@@ -314,14 +339,34 @@ public partial class MainForm : BaseWindow
 
     private void ShowEmptyPermissionPage()
     {
-        pnlContent.Controls.Clear();
-        pnlContent.Tag = null;
-        pnlContent.Controls.Add(new Label
+        pnlContent.SuspendLayout();
+        try
         {
-            Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Text = _localizer.GetString(TextKeys.Main.EmptyPermissionPage)
-        });
+            foreach (Control cachedView in pnlContent.Controls)
+            {
+                cachedView.Visible = false;
+            }
+
+            _emptyPermissionLabel ??= new Label
+            {
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+            _emptyPermissionLabel.Text = _localizer.GetString(TextKeys.Main.EmptyPermissionPage);
+
+            if (!ReferenceEquals(_emptyPermissionLabel.Parent, pnlContent))
+            {
+                pnlContent.Controls.Add(_emptyPermissionLabel);
+            }
+
+            _emptyPermissionLabel.Visible = true;
+            _emptyPermissionLabel.BringToFront();
+            pnlContent.Tag = null;
+        }
+        finally
+        {
+            pnlContent.ResumeLayout(true);
+        }
     }
 
     private void Language_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)

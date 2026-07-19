@@ -81,6 +81,7 @@ public partial class SystemSettingView : BaseView
     private bool _syncingUploadModeSelection;
     private bool _syncingProcessParameterDeviceTypeSelection;
     private bool _syncingCenterServerSystemTypeSelection;
+    private bool _deviceManagementStateKnown;
     private string _selectedPlcType = AppConstants.PlcTypes.ModbusTcp;
     private string _selectedPlcStringNumericFormatMode = AppConstants.PlcStringNumericFormatModes.Truncate;
     private UploadMode _selectedUploadMode = UploadMode.Quantity;
@@ -107,6 +108,7 @@ public partial class SystemSettingView : BaseView
         _plcCommunicationService = plcCommunicationService;
         _weldTaskService = weldTaskService;
         _windowsShellIntegrationService = windowsShellIntegrationService;
+        _weldTaskService.StateChanged += WeldTaskService_StateChanged;
 
         WireEvents();
     }
@@ -118,6 +120,11 @@ public partial class SystemSettingView : BaseView
             -basicSettingsViewport.AutoScrollPosition.Y);
 
         ApplyLocalizedTexts();
+        if (!_initialized)
+        {
+            return;
+        }
+
         BindPlcTypeOptions();
         BindPlcStringNumericFormatModeOptions();
         BindUploadModeOptions();
@@ -138,7 +145,7 @@ public partial class SystemSettingView : BaseView
 
         _initialized = true;
         LoadSettings();
-        RefreshDeviceManagementEnabled();
+        RefreshDeviceManagementEnabled(force: true);
         ApplyBasicSettingsLayout(force: true);
     }
 
@@ -298,7 +305,7 @@ public partial class SystemSettingView : BaseView
             if (!CanSaveDeviceManagementChange(previousSettings, settings))
             {
                 BindSettings(previousSettings);
-                RefreshDeviceManagementEnabled();
+                RefreshDeviceManagementEnabled(force: true);
                 return;
             }
 
@@ -350,7 +357,7 @@ public partial class SystemSettingView : BaseView
             if (!CanSaveDeviceManagementChange(previousSettings, settings))
             {
                 BindSettings(previousSettings);
-                RefreshDeviceManagementEnabled();
+                RefreshDeviceManagementEnabled(force: true);
                 return;
             }
 
@@ -548,13 +555,34 @@ public partial class SystemSettingView : BaseView
     private void LoadSettings()
     {
         BindSettings(CurrentSettings);
-        ApplyLocalizedTexts();
     }
 
     protected override void OnHandleDestroyed(EventArgs e)
     {
         _settingsService.SettingsChanged -= SettingsService_SettingsChanged;
+        _weldTaskService.StateChanged -= WeldTaskService_StateChanged;
         base.OnHandleDestroyed(e);
+    }
+
+    private void WeldTaskService_StateChanged(object? sender, EventArgs e)
+    {
+        Volatile.Write(ref _deviceManagementStateKnown, false);
+        if (IsDisposed || !IsHandleCreated)
+        {
+            return;
+        }
+
+        RunOnUiThread(
+            () =>
+            {
+                if (!Visible)
+                {
+                    return;
+                }
+
+                RefreshDeviceManagementEnabled(force: true);
+            },
+            "SystemSettingView.WeldTaskStateChanged");
     }
 
     private void SettingsService_SettingsChanged(object? sender, AppSettingsChangedEventArgs e)
@@ -1242,9 +1270,15 @@ public partial class SystemSettingView : BaseView
     /// <summary>
     /// 任一工位存在未完工任务时，统一禁用整个设备管理模块。
     /// </summary>
-    private void RefreshDeviceManagementEnabled()
+    private void RefreshDeviceManagementEnabled(bool force = false)
     {
+        if (!force && Volatile.Read(ref _deviceManagementStateKnown))
+        {
+            return;
+        }
+
         grpDeviceConfig.Enabled = !HasAnyUnfinishedTask();
+        Volatile.Write(ref _deviceManagementStateKnown, true);
     }
 
     private bool HasAnyUnfinishedTask()

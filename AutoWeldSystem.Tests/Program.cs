@@ -38,6 +38,9 @@ var tests = new (string Name, Action Run)[]
     ("System setting layout rules honor DPI breakpoints", SystemSettingLayoutRulesHonorDpiBreakpoints),
     ("System setting view avoids repeated layout rebuilds during resize", SystemSettingViewAvoidsRepeatedLayoutRebuilds),
     ("Base window batches layout and redraw during interactive resize", BaseWindowBatchesInteractiveResize),
+    ("Main form keeps cached pages mounted during navigation", MainFormKeepsCachedPagesMountedDuringNavigation),
+    ("System setting initial load avoids duplicate localization and binding", SystemSettingInitialLoadAvoidsDuplicateWork),
+    ("System setting caches device lock state between displays", SystemSettingCachesDeviceLockStateBetweenDisplays),
     ("System setting view uses responsive semantic columns", SystemSettingViewUsesResponsiveSemanticColumns),
     ("System setting localization resources are complete", SystemSettingLocalizationResourcesAreComplete),
     ("MES endpoint validation returns stable error codes", MesEndpointValidationReturnsStableErrorCodes),
@@ -322,6 +325,60 @@ static void BaseWindowBatchesInteractiveResize()
     AssertTrue(baseWindowCode.Contains("SendMessage(Handle, WmSetRedraw, IntPtr.Zero", StringComparison.Ordinal), "调整尺寸期间必须暂时关闭重绘。");
     AssertTrue(baseWindowCode.Contains("ResumeLayoutRecursive(this)", StringComparison.Ordinal), "调整尺寸结束时必须恢复整个控件树的布局。");
     AssertTrue(baseWindowCode.Contains("CompleteInteractiveResize(repaint: false)", StringComparison.Ordinal), "句柄销毁时必须取消未完成的调整尺寸批处理。");
+}
+
+static void MainFormKeepsCachedPagesMountedDuringNavigation()
+{
+    var mainFormCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Forms", "MainForm.cs"), Encoding.UTF8);
+    var ensureStart = mainFormCode.IndexOf("private void EnsureViewLoaded", StringComparison.Ordinal);
+    var displayStart = mainFormCode.IndexOf("private void DisplayView", StringComparison.Ordinal);
+    var currentPageStart = mainFormCode.IndexOf("private string? GetCurrentPagePermissionCode", StringComparison.Ordinal);
+    var emptyPageStart = mainFormCode.IndexOf("private void ShowEmptyPermissionPage", StringComparison.Ordinal);
+    var languageStart = mainFormCode.IndexOf("private void Language_SelectedIndexChanged", StringComparison.Ordinal);
+
+    AssertTrue(ensureStart >= 0 && displayStart > ensureStart && currentPageStart > displayStart && emptyPageStart > currentPageStart && languageStart > emptyPageStart, "MainForm 必须保留页面加载、显示和空状态方法边界。");
+
+    var ensureCode = mainFormCode[ensureStart..displayStart];
+    var displayCode = mainFormCode[displayStart..currentPageStart];
+    var emptyPageCode = mainFormCode[emptyPageStart..languageStart];
+    AssertFalse(ensureCode.Contains("_permissionUiBinder.Apply(cachedView)", StringComparison.Ordinal), "已缓存页面切换时不应重复递归应用权限。");
+    AssertFalse(displayCode.Contains("pnlContent.Controls.Clear()", StringComparison.Ordinal), "页面切换不应反复清空并重挂载内容控件。");
+    AssertTrue(displayCode.Contains("view.BringToFront()", StringComparison.Ordinal), "页面切换应通过调整前后层级显示缓存页面。");
+    AssertFalse(emptyPageCode.Contains("pnlContent.Controls.Clear()", StringComparison.Ordinal), "空权限状态不得移除缓存页面，否则换用户后可能保留旧权限。");
+}
+
+static void SystemSettingInitialLoadAvoidsDuplicateWork()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.cs"), Encoding.UTF8);
+    var languageStart = viewCode.IndexOf("protected override void OnLanguageChanged", StringComparison.Ordinal);
+    var loadStart = viewCode.IndexOf("protected override void OnLoad", StringComparison.Ordinal);
+    var loadSettingsStart = viewCode.IndexOf("private void LoadSettings", StringComparison.Ordinal);
+    var handleDestroyedStart = viewCode.IndexOf("protected override void OnHandleDestroyed", StringComparison.Ordinal);
+
+    AssertTrue(languageStart >= 0 && loadStart > languageStart && loadSettingsStart > loadStart && handleDestroyedStart > loadSettingsStart, "SystemSettingView 必须保留语言和加载方法边界。");
+
+    var languageCode = viewCode[languageStart..loadStart];
+    var loadSettingsCode = viewCode[loadSettingsStart..handleDestroyedStart];
+    AssertTrue(languageCode.Contains("if (!_initialized)", StringComparison.Ordinal), "首次 OnLoad 的语言回调应跳过下拉绑定和强制布局。");
+    AssertFalse(loadSettingsCode.Contains("ApplyLocalizedTexts();", StringComparison.Ordinal), "配置首次加载不应再次国际化全部控件。");
+}
+
+static void SystemSettingCachesDeviceLockStateBetweenDisplays()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.cs"), Encoding.UTF8);
+    var stateChangedStart = viewCode.IndexOf("private void WeldTaskService_StateChanged", StringComparison.Ordinal);
+    var settingsChangedStart = viewCode.IndexOf("private void SettingsService_SettingsChanged", StringComparison.Ordinal);
+
+    AssertTrue(viewCode.Contains("private bool _deviceManagementStateKnown;", StringComparison.Ordinal), "系统设置页必须缓存已查询的设备管理锁定状态。");
+    AssertTrue(viewCode.Contains("_weldTaskService.StateChanged += WeldTaskService_StateChanged;", StringComparison.Ordinal), "系统设置页必须在生产任务状态变化时失效设备管理缓存。");
+    AssertTrue(viewCode.Contains("private void RefreshDeviceManagementEnabled(bool force = false)", StringComparison.Ordinal), "设备管理刷新入口必须支持仅在缓存失效时查询。");
+    AssertTrue(viewCode.Contains("RefreshDeviceManagementEnabled(force: true);", StringComparison.Ordinal), "首次加载和任务变化必须强制刷新设备管理状态。");
+    AssertTrue(stateChangedStart >= 0 && settingsChangedStart > stateChangedStart, "系统设置页必须保留生产任务状态变化处理器边界。");
+
+    var stateChangedCode = viewCode[stateChangedStart..settingsChangedStart];
+    var dispatcherStart = stateChangedCode.IndexOf("RunOnUiThread", StringComparison.Ordinal);
+    var visibilityCheck = stateChangedCode.IndexOf("!Visible", StringComparison.Ordinal);
+    AssertTrue(dispatcherStart >= 0 && visibilityCheck > dispatcherStart, "后台任务状态事件必须在切换到 UI 线程后再读取控件可见性。");
 }
 
 static void PlcRecipeNameRulesMapSlotsWithoutShiftingCodes()
