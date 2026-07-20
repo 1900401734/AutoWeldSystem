@@ -100,10 +100,7 @@ namespace AutoWeldSystem.UI.Views
             colExceptionOccurredTime = new DataGridViewTextBoxColumn();
             colExceptionCategory = new DataGridViewTextBoxColumn();
             colExceptionSeverity = new DataGridViewTextBoxColumn();
-            colExceptionType = new DataGridViewTextBoxColumn();
             colExceptionMessage = new DataGridViewTextBoxColumn();
-            colExceptionSource = new DataGridViewTextBoxColumn();
-            colExceptionSourceLocation = new DataGridViewTextBoxColumn();
             exceptionDetailsLayout = new TableLayoutPanel();
             exceptionDetailToolbar = new FlowLayoutPanel();
             btnOpenExceptionSource = new AntdUI.Button();
@@ -1187,7 +1184,7 @@ namespace AutoWeldSystem.UI.Views
             dgvExceptionLogs.AllowUserToDeleteRows = false;
             dgvExceptionLogs.BackgroundColor = SystemColors.Window;
             dgvExceptionLogs.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-            dgvExceptionLogs.Columns.AddRange(new DataGridViewColumn[] { colExceptionOccurredTime, colExceptionCategory, colExceptionSeverity, colExceptionType, colExceptionMessage, colExceptionSource, colExceptionSourceLocation });
+            dgvExceptionLogs.Columns.AddRange(new DataGridViewColumn[] { colExceptionOccurredTime, colExceptionCategory, colExceptionSeverity, colExceptionMessage });
             dgvExceptionLogs.Dock = DockStyle.Fill;
             dgvExceptionLogs.Location = new Point(0, 0);
             dgvExceptionLogs.MultiSelect = false;
@@ -1230,16 +1227,6 @@ namespace AutoWeldSystem.UI.Views
             colExceptionSeverity.ReadOnly = true;
             colExceptionSeverity.Width = 125;
             // 
-            // colExceptionType
-            // 
-            colExceptionType.DataPropertyName = "ExceptionType";
-            colExceptionType.FillWeight = 16F;
-            colExceptionType.HeaderText = "Exception Type";
-            colExceptionType.MinimumWidth = 88;
-            colExceptionType.Name = "colExceptionType";
-            colExceptionType.ReadOnly = true;
-            colExceptionType.Width = 125;
-            // 
             // colExceptionMessage
             // 
             colExceptionMessage.DataPropertyName = "Message";
@@ -1249,26 +1236,6 @@ namespace AutoWeldSystem.UI.Views
             colExceptionMessage.Name = "colExceptionMessage";
             colExceptionMessage.ReadOnly = true;
             colExceptionMessage.Width = 125;
-            // 
-            // colExceptionSource
-            // 
-            colExceptionSource.DataPropertyName = "Source";
-            colExceptionSource.FillWeight = 16F;
-            colExceptionSource.HeaderText = "Source";
-            colExceptionSource.MinimumWidth = 88;
-            colExceptionSource.Name = "colExceptionSource";
-            colExceptionSource.ReadOnly = true;
-            colExceptionSource.Width = 125;
-            // 
-            // colExceptionSourceLocation
-            // 
-            colExceptionSourceLocation.DataPropertyName = "SourceLocation";
-            colExceptionSourceLocation.FillWeight = 22F;
-            colExceptionSourceLocation.HeaderText = "Location";
-            colExceptionSourceLocation.MinimumWidth = 88;
-            colExceptionSourceLocation.Name = "colExceptionSourceLocation";
-            colExceptionSourceLocation.ReadOnly = true;
-            colExceptionSourceLocation.Width = 125;
             // 
             // exceptionDetailsLayout
             // 
@@ -2256,10 +2223,7 @@ namespace AutoWeldSystem.UI.Views
         private DataGridViewTextBoxColumn colExceptionOccurredTime;
         private DataGridViewTextBoxColumn colExceptionCategory;
         private DataGridViewTextBoxColumn colExceptionSeverity;
-        private DataGridViewTextBoxColumn colExceptionType;
         private DataGridViewTextBoxColumn colExceptionMessage;
-        private DataGridViewTextBoxColumn colExceptionSource;
-        private DataGridViewTextBoxColumn colExceptionSourceLocation;
         private DataGridViewTextBoxColumn colLifecycleOccurredTime;
         private DataGridViewTextBoxColumn colLifecycleLevel;
         private DataGridViewTextBoxColumn colLifecycleEventType;

@@ -457,10 +457,7 @@ public partial class LogManageView : BaseView
         colExceptionOccurredTime.HeaderText = _localizer.GetString(TextKeys.Log.ColumnOccurredTime);
         colExceptionCategory.HeaderText = _localizer.GetString(TextKeys.Log.ColumnCategory);
         colExceptionSeverity.HeaderText = _localizer.GetString(TextKeys.Log.ColumnSeverity);
-        colExceptionType.HeaderText = _localizer.GetString(TextKeys.Log.ColumnExceptionType);
         colExceptionMessage.HeaderText = _localizer.GetString(TextKeys.Log.ColumnMessage);
-        colExceptionSource.HeaderText = _localizer.GetString(TextKeys.Log.ColumnSource);
-        colExceptionSourceLocation.HeaderText = _localizer.GetString(TextKeys.Log.ColumnSourceLine);
     }
 
     private void ApplyDeviceLifecycleGridHeaders()
@@ -1734,41 +1731,6 @@ public partial class LogManageView : BaseView
 
         public string Severity => Entry.Severity;
 
-        public string ExceptionType => GetShortTypeName(Entry.ExceptionType);
-
         public string Message => Entry.Message;
-
-        public string Source => Entry.Source;
-
-        public string SourceLocation
-        {
-            get
-            {
-                if (!string.IsNullOrWhiteSpace(Entry.SourceFilePath))
-                {
-                    var fileName = Path.GetFileName(Entry.SourceFilePath);
-                    return Entry.SourceLineNumber > 0
-                        ? $"{fileName}:{Entry.SourceLineNumber}"
-                        : fileName;
-                }
-
-                return string.IsNullOrWhiteSpace(Entry.SourceMemberName)
-                    ? "-"
-                    : Entry.SourceMemberName;
-            }
-        }
-
-        private static string GetShortTypeName(string typeName)
-        {
-            if (string.IsNullOrWhiteSpace(typeName))
-            {
-                return "-";
-            }
-
-            var lastDotIndex = typeName.LastIndexOf('.');
-            return lastDotIndex >= 0 && lastDotIndex < typeName.Length - 1
-                ? typeName[(lastDotIndex + 1)..]
-                : typeName;
-        }
     }
 }

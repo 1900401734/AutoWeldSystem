@@ -44,6 +44,8 @@ var tests = new (string Name, Action Run)[]
     ("PLC alarm read failures are merged and labeled precisely", PlcAlarmReadFailuresAreMergedAndLabeledPrecisely),
     ("Program exception log view batches live updates", ProgramExceptionLogViewBatchesLiveUpdates),
     ("Program exception log view normalizes legacy alarm entries", ProgramExceptionLogViewNormalizesLegacyAlarmEntries),
+    ("Exception grid omits source columns but keeps detail source", ExceptionGridOmitsSourceColumns),
+    ("Exception grid omits exception type but keeps diagnostics", ExceptionGridOmitsExceptionTypeColumn),
     ("Program exception history uses bounded tail reads", ProgramExceptionHistoryUsesBoundedTailReads),
     ("System setting view uses responsive semantic columns", SystemSettingViewUsesResponsiveSemanticColumns),
     ("System setting localization resources are complete", SystemSettingLocalizationResourcesAreComplete),
@@ -896,6 +898,64 @@ static void ProgramExceptionLogViewNormalizesLegacyAlarmEntries()
     AssertTrue(loadMethod.Contains(".Select(NormalizeLegacyPlcAlarmEntry)", StringComparison.Ordinal), "加载历史异常日志时必须应用旧报警记录归一化。");
     AssertTrue(viewCode.Contains("TextKeys.Monitor.RuntimeError.PlcAlarmReadFailed", StringComparison.Ordinal), "旧报警记录的消息列必须改用 PLC 报警读取失败专属文案。");
     AssertFalse(contextMethod.Contains("builder.AppendLine(\"Context:\");", StringComparison.Ordinal), "上下文页签不应再额外嵌套一层 Context 标题。");
+}
+
+static void ExceptionGridOmitsSourceColumns()
+{
+    var designerCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "LogManageView.Designer.cs"),
+        Encoding.UTF8);
+    var viewCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "LogManageView.cs"),
+        Encoding.UTF8);
+    var basicInfoMethod = ExtractMethodText(
+        viewCode,
+        "private static string BuildExceptionBasicInfo",
+        "private static string BuildExceptionContext");
+
+    AssertFalse(
+        designerCode.Contains("colExceptionSource", StringComparison.Ordinal),
+        "异常日志表格不得声明或注册 Source 列。");
+    AssertFalse(
+        designerCode.Contains("colExceptionSourceLocation", StringComparison.Ordinal),
+        "异常日志表格不得声明或注册 SourceLocation 列。");
+    AssertTrue(
+        basicInfoMethod.Contains("Source: {entry.Source}", StringComparison.Ordinal),
+        "异常基本信息必须继续显示 Source。");
+    AssertTrue(
+        basicInfoMethod.Contains("SourceFile: {GetSourceLocation(entry)}", StringComparison.Ordinal),
+        "异常基本信息必须继续显示 SourceFile。");
+    AssertTrue(
+        basicInfoMethod.Contains("SourceMember: {entry.SourceMemberName}", StringComparison.Ordinal),
+        "异常基本信息必须继续显示 SourceMember。");
+}
+
+static void ExceptionGridOmitsExceptionTypeColumn()
+{
+    var designerCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "LogManageView.Designer.cs"),
+        Encoding.UTF8);
+    var viewCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "LogManageView.cs"),
+        Encoding.UTF8);
+    var basicInfoMethod = ExtractMethodText(
+        viewCode,
+        "private static string BuildExceptionBasicInfo",
+        "private static string BuildExceptionContext");
+    var filterMethod = ExtractMethodText(
+        viewCode,
+        "private static bool IsExceptionLogMatched",
+        "private static bool IsDeviceLifecycleLogMatched");
+
+    AssertFalse(
+        designerCode.Contains("colExceptionType", StringComparison.Ordinal),
+        "异常日志表格不得声明或注册 ExceptionType 列。");
+    AssertTrue(
+        basicInfoMethod.Contains("ExceptionType: {entry.ExceptionType}", StringComparison.Ordinal),
+        "异常基本信息必须继续显示 ExceptionType。");
+    AssertTrue(
+        filterMethod.Contains("Contains(entry.ExceptionType, keyword)", StringComparison.Ordinal),
+        "异常日志搜索必须继续支持 ExceptionType。");
 }
 
 static void ProgramExceptionHistoryUsesBoundedTailReads()
