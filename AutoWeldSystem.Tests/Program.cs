@@ -41,6 +41,10 @@ var tests = new (string Name, Action Run)[]
     ("Main form keeps cached pages mounted during navigation", MainFormKeepsCachedPagesMountedDuringNavigation),
     ("System setting initial load avoids duplicate localization and binding", SystemSettingInitialLoadAvoidsDuplicateWork),
     ("System setting caches device lock state between displays", SystemSettingCachesDeviceLockStateBetweenDisplays),
+    ("PLC alarm read failures are merged and labeled precisely", PlcAlarmReadFailuresAreMergedAndLabeledPrecisely),
+    ("Program exception log view batches live updates", ProgramExceptionLogViewBatchesLiveUpdates),
+    ("Program exception log view normalizes legacy alarm entries", ProgramExceptionLogViewNormalizesLegacyAlarmEntries),
+    ("Program exception history uses bounded tail reads", ProgramExceptionHistoryUsesBoundedTailReads),
     ("System setting view uses responsive semantic columns", SystemSettingViewUsesResponsiveSemanticColumns),
     ("System setting localization resources are complete", SystemSettingLocalizationResourcesAreComplete),
     ("MES endpoint validation returns stable error codes", MesEndpointValidationReturnsStableErrorCodes),
@@ -839,6 +843,109 @@ static void PlcProductionMonitorReadsBoolAlarmsIndependently()
     AssertFalse(
         serviceCode.Contains("ReadActiveAlarmMessageAsync", StringComparison.Ordinal),
         "重复且未使用的报警读取方法应移除，避免两套聚合规则再次漂移。");
+}
+
+static void PlcAlarmReadFailuresAreMergedAndLabeledPrecisely()
+{
+    var serviceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Plc", "ProductionMonitorService.cs"),
+        Encoding.UTF8);
+    var readMethod = ExtractMethodText(
+        serviceCode,
+        "private async Task<PlcAlarmSignalAggregation> ReadActiveAlarmSnapshotAsync",
+        "private static string BuildDeviceStatusRemark");
+
+    AssertTrue(readMethod.Contains("WriteAlarmReadFailureLog(stationNo, aggregation.Failures);", StringComparison.Ordinal), "一轮报警读取失败必须合并为一条日志，不能按地址逐条写入。");
+    AssertFalse(readMethod.Contains("WriteBusinessFailureLog(", StringComparison.Ordinal), "报警地址读取失败不得复用生产数据采集失败的通用日志入口。");
+    AssertTrue(serviceCode.Contains("TextKeys.Monitor.RuntimeError.PlcAlarmReadFailed", StringComparison.Ordinal), "报警读取失败必须使用专属异常消息键。");
+    AssertTrue(serviceCode.Contains("_activeAlarmFailureKeys", StringComparison.Ordinal), "持续相同的报警读取失败必须抑制重复写入。");
+    AssertTrue(serviceCode.Contains("ClearAlarmReadFailureState(stationNo);", StringComparison.Ordinal), "报警读取恢复后必须清除抑制状态，下一次失败仍可记录。");
+}
+
+static void ProgramExceptionLogViewBatchesLiveUpdates()
+{
+    var viewCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "LogManageView.cs"),
+        Encoding.UTF8);
+    var eventHandler = ExtractMethodText(
+        viewCode,
+        "private void ExceptionLogService_LogWritten",
+        "private void DeviceLifecycleLogService_LogWritten");
+
+    AssertTrue(viewCode.Contains("_pendingExceptionLogs", StringComparison.Ordinal), "程序异常日志页必须缓存待刷新的实时日志，避免每条事件都重绑表格。");
+    AssertTrue(viewCode.Contains("FlushPendingExceptionLogs", StringComparison.Ordinal), "程序异常日志页必须提供批量刷新入口。");
+    AssertTrue(eventHandler.Contains("FlushPendingExceptionLogs", StringComparison.Ordinal), "程序异常日志事件必须调度批量刷新，而不是逐条刷新表格。");
+    AssertFalse(eventHandler.Contains("RunOnUiThread(() => AddLiveExceptionLog", StringComparison.Ordinal), "程序异常日志事件不得逐条投递 UI 重绑定操作。");
+}
+
+static void ProgramExceptionLogViewNormalizesLegacyAlarmEntries()
+{
+    var viewCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "LogManageView.cs"),
+        Encoding.UTF8);
+    var loadMethod = ExtractMethodText(
+        viewCode,
+        "private void LoadExceptionLogs()",
+        "private void LoadDeviceLifecycleLogs()");
+    var contextMethod = ExtractMethodText(
+        viewCode,
+        "private static string BuildExceptionContext",
+        "private static string BuildExceptionFullDetails");
+
+    AssertTrue(viewCode.Contains("NormalizeLegacyPlcAlarmEntry", StringComparison.Ordinal), "旧版 PLC 报警读取日志必须在显示前修正消息和上下文。");
+    AssertTrue(loadMethod.Contains(".Select(NormalizeLegacyPlcAlarmEntry)", StringComparison.Ordinal), "加载历史异常日志时必须应用旧报警记录归一化。");
+    AssertTrue(viewCode.Contains("TextKeys.Monitor.RuntimeError.PlcAlarmReadFailed", StringComparison.Ordinal), "旧报警记录的消息列必须改用 PLC 报警读取失败专属文案。");
+    AssertFalse(contextMethod.Contains("builder.AppendLine(\"Context:\");", StringComparison.Ordinal), "上下文页签不应再额外嵌套一层 Context 标题。");
+}
+
+static void ProgramExceptionHistoryUsesBoundedTailReads()
+{
+    var formatterCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Log", "LocalJsonLogFormatter.cs"),
+        Encoding.UTF8);
+    var serviceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Log", "ProgramExceptionLogService.cs"),
+        Encoding.UTF8);
+
+    AssertTrue(formatterCode.Contains("maxBytes", StringComparison.Ordinal), "日志格式化器必须支持限制历史文件读取范围。");
+    AssertTrue(formatterCode.Contains("Seek", StringComparison.Ordinal), "历史日志读取必须从文件尾部定位，避免扫描整个异常日志文件。");
+    AssertTrue(serviceCode.Contains("MaxHistoryReadBytes", StringComparison.Ordinal), "程序异常日志服务必须限制单次历史读取大小。");
+
+    var root = Path.Combine(Path.GetTempPath(), "AutoWeldSystemExceptionTailReadTests", Guid.NewGuid().ToString("N"));
+    var logDate = new DateTime(2026, 7, 20, 10, 0, 0);
+    var settingsService = new FakeAppSettingsService
+    {
+        Current = new AppSettings { LogDirectory = root }
+    };
+    var logService = new ProgramExceptionLogService(settingsService);
+    var filePath = Path.Combine(logService.GetLogDirectory(), $"{logDate:yyyy-MM-dd}.jsonl");
+
+    try
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+        File.WriteAllText(filePath, new string('X', 9 * 1024 * 1024) + Environment.NewLine, Encoding.UTF8);
+
+        var tailEntries = new[]
+        {
+            new ProgramExceptionLogEntry { TraceId = "tail-1", OccurredTime = logDate, Message = "first tail record" },
+            new ProgramExceptionLogEntry { TraceId = "tail-2", OccurredTime = logDate.AddSeconds(1), Message = "second tail record" }
+        };
+        File.AppendAllLines(filePath, tailEntries.Select(entry => JsonSerializer.Serialize(entry)), Encoding.UTF8);
+
+        var records = logService.GetByDate(logDate, take: 10);
+
+        AssertSequenceEqual(
+            new[] { "tail-2", "tail-1" },
+            records.Select(entry => entry.TraceId).ToArray(),
+            "历史异常日志从超大文件尾部读取时必须丢弃起点处的半行，并按时间倒序返回有效记录。");
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
 }
 
 static void PlcSoftwareAlarmsStayLocalToMonitorView()

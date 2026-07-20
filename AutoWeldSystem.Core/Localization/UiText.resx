@@ -1275,6 +1275,9 @@
   <data name="monitor.error.production_collect_failed" xml:space="preserve">
     <value>生产数据采集失败</value>
   </data>
+  <data name="monitor.error.plc_alarm_read_failed" xml:space="preserve">
+    <value>PLC 报警地址读取失败</value>
+  </data>
   <data name="monitor.error.operation_failed" xml:space="preserve">
     <value>操作失败</value>
   </data>

@@ -17,6 +17,9 @@ namespace AutoWeldSystem.Services.Log;
 /// </summary>
 public sealed class ProgramExceptionLogService : IProgramExceptionLogService
 {
+    private const long MaxLogFileBytes = 16L * 1024 * 1024;
+    private const long MaxHistoryReadBytes = 8L * 1024 * 1024;
+    private const int RetainedLogRecordCount = 2000;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -68,6 +71,7 @@ public sealed class ProgramExceptionLogService : IProgramExceptionLogService
             lock (_writeLock)
             {
                 File.AppendAllText(filePath, json + Environment.NewLine + Environment.NewLine, Encoding.UTF8);
+                TrimLogFileIfNeeded(filePath);
             }
 
             LogWritten?.Invoke(this, entry);
@@ -88,7 +92,7 @@ public sealed class ProgramExceptionLogService : IProgramExceptionLogService
                 return Array.Empty<ProgramExceptionLogEntry>();
             }
 
-            return LocalJsonLogFormatter.ReadLatestRecords(filePath, Math.Max(1, take))
+            return LocalJsonLogFormatter.ReadLatestRecords(filePath, Math.Max(1, take), MaxHistoryReadBytes)
                 .Reverse()
                 .Select(TryDeserialize)
                 .Where(entry => entry is not null)
@@ -205,6 +209,27 @@ public sealed class ProgramExceptionLogService : IProgramExceptionLogService
     private string GetLogFilePath(DateTime date)
     {
         return Path.Combine(GetLogDirectory(), $"{date:yyyy-MM-dd}.jsonl");
+    }
+
+    private static void TrimLogFileIfNeeded(string filePath)
+    {
+        if (new FileInfo(filePath).Length <= MaxLogFileBytes)
+        {
+            return;
+        }
+
+        var records = LocalJsonLogFormatter
+            .ReadLatestRecords(filePath, RetainedLogRecordCount, MaxHistoryReadBytes)
+            .ToList();
+        if (records.Count == 0)
+        {
+            return;
+        }
+
+        File.WriteAllText(
+            filePath,
+            string.Join(Environment.NewLine + Environment.NewLine, records) + Environment.NewLine + Environment.NewLine,
+            Encoding.UTF8);
     }
 
     private static SourceFrameInfo GetBestSourceFrame(Exception exception)

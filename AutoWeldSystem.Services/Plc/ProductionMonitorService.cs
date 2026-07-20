@@ -32,6 +32,7 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
     private readonly object _snapshotSync = new();
     private List<BizPlcAddress> _addresses = [];
     private readonly Dictionary<int, PlcProductionSnapshot> _stationSnapshots = new();
+    private readonly Dictionary<int, string> _activeAlarmFailureKeys = new();
     private CancellationTokenSource? _cts;
     private Task? _loopTask;
     private string _lastBusinessLogKey = string.Empty;
@@ -205,6 +206,11 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
     {
         var addresses = await GetAddressSnapshotAsync(cancellationToken);
         var alarmReadingEnabled = _settingsService.Get().EnablePlcAlarmReading != false;
+        if (!alarmReadingEnabled)
+        {
+            ClearAlarmReadFailureStates();
+        }
+
         IReadOnlyList<BizPlcAlarmAddress> alarmAddresses = alarmReadingEnabled
             ? _plcAlarmAddressService.GetAll()
             : [];
@@ -428,11 +434,13 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
         }
 
         var aggregation = PlcSoftwareAlarmRules.AggregateAlarmSignals(stationNo, readResults);
-        foreach (var failure in aggregation.Failures)
+        if (aggregation.Failures.Count > 0)
         {
-            WriteBusinessFailureLog(
-                stationNo,
-                $"报警地址“{failure.Address}”读取失败：{failure.Message}");
+            WriteAlarmReadFailureLog(stationNo, aggregation.Failures);
+        }
+        else
+        {
+            ClearAlarmReadFailureState(stationNo);
         }
 
         return aggregation;
@@ -671,6 +679,57 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
             summary,
             detail,
             $"读取设备状态、加工总数、合格数量或不良数量失败。Station={stationNo}");
+    }
+
+    private void WriteAlarmReadFailureLog(int stationNo, IReadOnlyList<PlcAlarmReadFailure> failures)
+    {
+        var details = failures
+            .OrderBy(failure => failure.Address, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(failure => failure.Message, StringComparer.OrdinalIgnoreCase)
+            .Select(failure => $"报警地址“{failure.Address}”读取失败：{failure.Message}")
+            .ToList();
+        if (details.Count == 0)
+        {
+            ClearAlarmReadFailureState(stationNo);
+            return;
+        }
+
+        var fingerprint = string.Join("\n", details);
+        lock (_businessLogSync)
+        {
+            if (string.Equals(
+                _activeAlarmFailureKeys.GetValueOrDefault(stationNo),
+                fingerprint,
+                StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _activeAlarmFailureKeys[stationNo] = fingerprint;
+        }
+
+        var summary = _localizer.GetString(TextKeys.Monitor.RuntimeError.PlcAlarmReadFailed);
+        _exceptionLogService.WriteBusiness(
+            "PLC.ProductionMonitor.AlarmRead",
+            summary,
+            string.Join(Environment.NewLine, details),
+            $"{summary} Station={stationNo}");
+    }
+
+    private void ClearAlarmReadFailureState(int stationNo)
+    {
+        lock (_businessLogSync)
+        {
+            _activeAlarmFailureKeys.Remove(stationNo);
+        }
+    }
+
+    private void ClearAlarmReadFailureStates()
+    {
+        lock (_businessLogSync)
+        {
+            _activeAlarmFailureKeys.Clear();
+        }
     }
 
     private bool ShouldWriteBusinessLog(int stationNo, string summary, string detail)

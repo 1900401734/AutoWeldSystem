@@ -47,7 +47,7 @@ internal static class LocalJsonLogFormatter
     /// 读取最近的日志记录块。
     /// 新格式按空行分隔；旧格式如果是一行一条 JSON，也会在识别到新对象时自动切分。
     /// </summary>
-    public static IEnumerable<string> ReadLatestRecords(string filePath, int take)
+    public static IEnumerable<string> ReadLatestRecords(string filePath, int take, long maxBytes = 0)
     {
         if (take <= 0)
         {
@@ -56,8 +56,18 @@ internal static class LocalJsonLogFormatter
 
         var records = new Queue<string>(Math.Min(Math.Max(take, 1), 1024));
         var builder = new StringBuilder();
+        using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        var startOffset = maxBytes > 0 && stream.Length > maxBytes
+            ? stream.Length - maxBytes
+            : 0;
+        stream.Seek(startOffset, SeekOrigin.Begin);
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: startOffset == 0);
+        if (startOffset > 0)
+        {
+            reader.ReadLine();
+        }
 
-        foreach (var line in File.ReadLines(filePath, Encoding.UTF8))
+        while (reader.ReadLine() is { } line)
         {
             if (string.IsNullOrWhiteSpace(line))
             {

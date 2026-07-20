@@ -21,6 +21,8 @@ namespace AutoWeldSystem.UI.Views;
 public partial class LogManageView : BaseView
 {
     private const int MaxDisplayCount = 1000;
+    private const int MaxExceptionDisplayCount = 200;
+    private const int MaxLiveExceptionBatchCount = 200;
     private const string ColumnResultName = "colResult";
     private const string ColumnProductionLevelName = "colProductionLevel";
     private const string ColumnExceptionCategoryName = "colExceptionCategory";
@@ -46,6 +48,8 @@ public partial class LogManageView : BaseView
     private readonly List<MesInteractionLogEntry> _mesLogs = new();
     private readonly List<ProductionFlowLogEntry> _productionLogs = new();
     private readonly List<ProgramExceptionLogEntry> _exceptionLogs = new();
+    private readonly object _exceptionLiveSync = new();
+    private readonly Queue<ProgramExceptionLogEntry> _pendingExceptionLogs = new();
     private readonly List<DeviceLifecycleLogEntry> _deviceLifecycleLogs = new();
     private readonly List<BizDeviceStatusLog> _deviceStatusLogs = new();
     private bool _initialized;
@@ -56,6 +60,8 @@ public partial class LogManageView : BaseView
     private string _deviceStatusKeyword = string.Empty;
     private bool _showLogDate;
     private bool _syncingShowDateChecks;
+    private bool _exceptionLiveUpdateQueued;
+    private int _viewVisible;
 
     /// <summary>
     /// Parameterless constructor used only by the WinForms designer.
@@ -110,6 +116,16 @@ public partial class LogManageView : BaseView
         LoadExceptionLogs();
         LoadDeviceLifecycleLogs();
         LoadDeviceStatusLogs();
+    }
+
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        Volatile.Write(ref _viewVisible, Visible ? 1 : 0);
+        if (Visible && _initialized)
+        {
+            QueueExceptionLogFlush();
+        }
     }
 
     protected override void OnLanguageChanged()
@@ -506,7 +522,9 @@ public partial class LogManageView : BaseView
         {
             var date = GetSelectedDate(dtpExceptionDate);
             _exceptionLogs.Clear();
-            _exceptionLogs.AddRange(_exceptionLogService.GetByDate(date, MaxDisplayCount));
+            _exceptionLogs.AddRange(_exceptionLogService
+                .GetByDate(date, MaxExceptionDisplayCount)
+                .Select(NormalizeLegacyPlcAlarmEntry));
             ApplyExceptionFilter();
         }
         catch (Exception ex)
@@ -817,7 +835,107 @@ public partial class LogManageView : BaseView
             return;
         }
 
-        RunOnUiThread(() => AddLiveExceptionLog(entry), "LogManageView.ExceptionLogWritten");
+        lock (_exceptionLiveSync)
+        {
+            if (_pendingExceptionLogs.Count >= MaxExceptionDisplayCount)
+            {
+                _pendingExceptionLogs.Dequeue();
+            }
+
+            _pendingExceptionLogs.Enqueue(entry);
+        }
+
+        if (Volatile.Read(ref _viewVisible) != 0)
+        {
+            QueueExceptionLogFlush();
+        }
+    }
+
+    private void QueueExceptionLogFlush()
+    {
+        lock (_exceptionLiveSync)
+        {
+            if (_exceptionLiveUpdateQueued || _pendingExceptionLogs.Count == 0)
+            {
+                return;
+            }
+
+            _exceptionLiveUpdateQueued = true;
+        }
+
+        if (!RunOnUiThread(FlushPendingExceptionLogs, "LogManageView.ExceptionLogBatch"))
+        {
+            lock (_exceptionLiveSync)
+            {
+                _exceptionLiveUpdateQueued = false;
+            }
+        }
+    }
+
+    private void FlushPendingExceptionLogs()
+    {
+        if (!Visible)
+        {
+            lock (_exceptionLiveSync)
+            {
+                _exceptionLiveUpdateQueued = false;
+            }
+
+            return;
+        }
+
+        var pending = new List<ProgramExceptionLogEntry>(MaxLiveExceptionBatchCount);
+        lock (_exceptionLiveSync)
+        {
+            while (pending.Count < MaxLiveExceptionBatchCount && _pendingExceptionLogs.Count > 0)
+            {
+                pending.Add(_pendingExceptionLogs.Dequeue());
+            }
+        }
+
+        foreach (var entry in pending)
+        {
+            AddLiveExceptionLog(entry, refresh: false);
+        }
+
+        if (pending.Count > 0)
+        {
+            ApplyExceptionFilter();
+        }
+
+        bool hasMore;
+        lock (_exceptionLiveSync)
+        {
+            hasMore = _pendingExceptionLogs.Count > 0;
+            if (!hasMore)
+            {
+                _exceptionLiveUpdateQueued = false;
+            }
+        }
+
+        if (!hasMore)
+        {
+            return;
+        }
+
+        try
+        {
+            BeginInvoke(new Action(FlushPendingExceptionLogs));
+        }
+        catch (ObjectDisposedException)
+        {
+            lock (_exceptionLiveSync)
+            {
+                _exceptionLiveUpdateQueued = false;
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            lock (_exceptionLiveSync)
+            {
+                _exceptionLiveUpdateQueued = false;
+            }
+        }
     }
 
     private void DeviceLifecycleLogService_LogWritten(object? sender, DeviceLifecycleLogEntry entry)
@@ -896,20 +1014,57 @@ public partial class LogManageView : BaseView
         ApplyProductionFilter();
     }
 
-    private void AddLiveExceptionLog(ProgramExceptionLogEntry entry)
+    private void AddLiveExceptionLog(ProgramExceptionLogEntry entry, bool refresh = true)
     {
+        entry = NormalizeLegacyPlcAlarmEntry(entry);
         if (entry.OccurredTime.Date != GetSelectedDate(dtpExceptionDate))
         {
             return;
         }
 
         _exceptionLogs.Insert(0, entry);
-        if (_exceptionLogs.Count > MaxDisplayCount)
+        if (_exceptionLogs.Count > MaxExceptionDisplayCount)
         {
-            _exceptionLogs.RemoveRange(MaxDisplayCount, _exceptionLogs.Count - MaxDisplayCount);
+            _exceptionLogs.RemoveRange(MaxExceptionDisplayCount, _exceptionLogs.Count - MaxExceptionDisplayCount);
         }
 
-        ApplyExceptionFilter();
+        if (refresh)
+        {
+            ApplyExceptionFilter();
+        }
+    }
+
+    private ProgramExceptionLogEntry NormalizeLegacyPlcAlarmEntry(ProgramExceptionLogEntry entry)
+    {
+        if (!IsBusinessException(entry)
+            || !string.Equals(entry.Source, "PLC.ProductionMonitor", StringComparison.OrdinalIgnoreCase)
+            || !Contains(entry.Context, "报警地址")
+            || !Contains(entry.Context, "读取失败"))
+        {
+            return entry;
+        }
+
+        entry.Message = _localizer.GetString(TextKeys.Monitor.RuntimeError.PlcAlarmReadFailed);
+        entry.Context = ExtractLegacyAlarmDetail(entry.Context);
+        return entry;
+    }
+
+    private static string ExtractLegacyAlarmDetail(string context)
+    {
+        const string detailHeader = "Detail:";
+        const string contextHeader = "Context:";
+        var detailStart = context.IndexOf(detailHeader, StringComparison.OrdinalIgnoreCase);
+        if (detailStart < 0)
+        {
+            return context;
+        }
+
+        detailStart += detailHeader.Length;
+        var contextStart = context.IndexOf(contextHeader, detailStart, StringComparison.OrdinalIgnoreCase);
+        var detail = contextStart > detailStart
+            ? context[detailStart..contextStart]
+            : context[detailStart..];
+        return $"{detailHeader}{Environment.NewLine}{detail.Trim()}";
     }
 
     private void AddLiveDeviceLifecycleLog(DeviceLifecycleLogEntry entry)
@@ -1157,8 +1312,7 @@ public partial class LogManageView : BaseView
         var builder = new StringBuilder();
         if (!string.IsNullOrWhiteSpace(entry.Context))
         {
-            builder.AppendLine("Context:");
-            builder.AppendLine(entry.Context);
+            builder.AppendLine(entry.Context.Trim());
             builder.AppendLine();
         }
 

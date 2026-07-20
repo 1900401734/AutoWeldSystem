@@ -501,6 +501,10 @@ public static class TextKeys
             /// </summary>
             public const string ProductionCollectFailed = "monitor.error.production_collect_failed";
             /// <summary>
+            /// PLC 报警地址读取失败
+            /// </summary>
+            public const string PlcAlarmReadFailed = "monitor.error.plc_alarm_read_failed";
+            /// <summary>
             /// 工单号读取失败
             /// </summary>
             public const string WorkIdReadFailed = "monitor.error.work_id_read_failed";
