@@ -9,7 +9,6 @@
             if (disposing)
             {
                 BeginDispose();
-                _detailQueryCancellation?.Dispose();
                 components?.Dispose();
             }
 

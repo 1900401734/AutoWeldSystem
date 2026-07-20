@@ -170,6 +170,7 @@ var tests = new (string Name, Action Run)[]
     ("DataManageView static grids define bound columns", DataManageViewStaticGridsDefineBoundColumns),
     ("DataManageView ignores report selection while disposing", DataManageViewIgnoresReportSelectionWhileDisposing),
     ("DataManageView ignores work order selection while disposing", DataManageViewIgnoresWorkOrderSelectionWhileDisposing),
+    ("DataManageView releases query cancellation sources once", DataManageViewReleasesQueryCancellationSourcesOnce),
     ("DataManageView treats cancelled history queries as stale work", DataManageViewTreatsCancelledHistoryQueriesAsStaleWork),
     ("Device API status query returns current MES status", DeviceApiStatusQueryReturnsCurrentMesStatus),
     ("Device API status query rejects mismatched device id", DeviceApiStatusQueryRejectsMismatchedDeviceId),
@@ -4090,6 +4091,21 @@ static void DataManageViewIgnoresWorkOrderSelectionWhileDisposing()
     AssertFalse(selectedCollectionMethod.Contains("dgvCollectionRecords.CurrentRow", StringComparison.Ordinal), "GetSelectedCollectionRecord 不能访问 DataGridView.CurrentRow。");
     AssertTrue(beginDisposeMethod.Contains("dgvWorkOrders.SelectionChanged -= WorkOrders_SelectionChanged;", StringComparison.Ordinal), "释放时必须解绑工单选择事件。");
     AssertTrue(beginDisposeMethod.Contains("dgvCollectionRecords.SelectionChanged -= CollectionRecords_SelectionChanged;", StringComparison.Ordinal), "释放时必须解绑采集记录选择事件。");
+}
+
+static void DataManageViewReleasesQueryCancellationSourcesOnce()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "DataManageView.cs"), Encoding.UTF8);
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "DataManageView.Designer.cs"), Encoding.UTF8);
+    var beginDisposeMethod = ExtractMethodText(
+        viewCode,
+        "private void BeginDispose()",
+        "private void ClearTaskDetails()");
+
+    AssertTrue(beginDisposeMethod.Contains("if (_disposing)", StringComparison.Ordinal), "DataManageView 重复释放时必须直接返回，避免再次取消已释放的令牌源。");
+    AssertTrue(beginDisposeMethod.Contains("CancelAndDispose(ref _workOrderQueryCancellation);", StringComparison.Ordinal), "释放页面时必须取消、释放并清空工单查询令牌源。");
+    AssertTrue(beginDisposeMethod.Contains("CancelAndDispose(ref _detailQueryCancellation);", StringComparison.Ordinal), "释放页面时必须取消、释放并清空明细查询令牌源。");
+    AssertFalse(designerCode.Contains("_detailQueryCancellation?.Dispose();", StringComparison.Ordinal), "Designer Dispose 不应单独释放查询令牌源，避免字段保留已释放对象。");
 }
 
 static void DataManageViewTreatsCancelledHistoryQueriesAsStaleWork()

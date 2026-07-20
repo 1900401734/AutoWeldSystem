@@ -716,9 +716,14 @@ public partial class DataManageView : BaseView
     /// </summary>
     private void BeginDispose()
     {
+        if (_disposing)
+        {
+            return;
+        }
+
         _disposing = true;
-        _workOrderQueryCancellation?.Cancel();
-        _detailQueryCancellation?.Cancel();
+        CancelAndDispose(ref _workOrderQueryCancellation);
+        CancelAndDispose(ref _detailQueryCancellation);
         dgvWorkOrders.SelectionChanged -= WorkOrders_SelectionChanged;
         dgvCollectionRecords.SelectionChanged -= CollectionRecords_SelectionChanged;
         dgvReportFiles.SelectionChanged -= ReportFiles_SelectionChanged;
