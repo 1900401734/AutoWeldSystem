@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 从程序异常日志表格移除 `Source` 和 `SourceLocation` 两列，同时保留详情面板中的来源信息并将版本更新到 `1.0.3`。
+**Goal:** 从程序异常日志表格移除 `ExceptionType`、`Source` 和 `SourceLocation` 三列，同时保留详情面板中的诊断信息并将版本更新到 `1.0.4`。
 
 **Architecture:** 只修改 WinForms 异常日志视图的列声明/绑定和共享版本属性。日志实体、落盘格式、详情构建和其他日志页保持不变；回归测试继续使用当前控制台测试 harness 的源码断言模式。
 
@@ -10,10 +10,11 @@
 
 ## Global Constraints
 
-- 本次属于缺陷修复/小范围优化，版本从 `1.0.2` 调整为 `1.0.3`，`AssemblyVersion` 和 `FileVersion` 为 `1.0.3.0`。
+- 本次属于缺陷修复/小范围优化，版本从 `1.0.2` 调整为 `1.0.4`，`AssemblyVersion` 和 `FileVersion` 为 `1.0.4.0`。
 - `ProgramExceptionLogEntry.Source`、`SourceFilePath`、`SourceMemberName` 必须保留并继续出现在 `BuildExceptionBasicInfo`。
+- `ProgramExceptionLogEntry.ExceptionType` 必须保留并继续出现在 `BuildExceptionBasicInfo`，且异常日志搜索仍可匹配该字段。
 - 不修改日志 JSONL 格式、筛选行为、选中行行为或其他日志页。
-- `LogManageView.Designer.cs` 当前存在用户的设备生命周期布局差异，只删除异常表格两列相关代码，不覆盖其他差异。
+- `LogManageView.Designer.cs` 当前存在用户的设备生命周期布局差异，只删除异常表格三列相关代码，不覆盖其他差异。
 - 不提交 `AGENTS.md`、`AddressManageView.Designer.cs`、`SystemSettingView.Designer.cs`、`docs/QUICK_START.md`。
 
 ---
@@ -26,7 +27,7 @@
 
 **Interfaces:**
 - Consumes: `GetRepoFilePath`, `ExtractMethodText`, `AssertTrue`, `AssertFalse` from the existing test harness.
-- Produces: A failing regression test that requires the two grid columns to be absent while requiring source details to remain.
+- Produces: Failing regression tests that require the three grid columns to be absent while requiring detail fields and exception-type search to remain.
 
 - [ ] **Step 1: Add the test registration and assertion method before production edits**
 
@@ -63,38 +64,39 @@ static void ExceptionGridOmitsSourceColumns()
 
 Run: `dotnet run --project AutoWeldSystem.Tests\\AutoWeldSystem.Tests.csproj --no-restore`
 
-Expected: the new test fails with `异常日志表格不得声明或注册 Source 列。` because the current Designer still contains the two columns. The existing unrelated Designer assertion may stop later in the same harness; the new failure must appear before that stop.
+Expected: the new tests fail because the current Designer still contains the three columns. The existing unrelated Designer assertion may stop later in the same harness; the new failures must appear before that stop.
 
-### Task 2: Remove the two grid columns
+### Task 2: Remove the redundant grid columns
 
 **Files:**
-- Modify: `AutoWeldSystem.UI/Views/LogManageView.Designer.cs` at the exception column declarations, initialization, `Columns.AddRange`, and two column property blocks.
+- Modify: `AutoWeldSystem.UI/Views/LogManageView.Designer.cs` at the exception column declarations, initialization, `Columns.AddRange`, and three column property blocks.
 - Modify: `AutoWeldSystem.UI/Views/LogManageView.cs` in `ApplyExceptionGridHeaders` and the nested `ExceptionLogRow`.
 
 **Interfaces:**
 - Consumes: Existing `dgvExceptionLogs` binding to `ExceptionLogRow`.
-- Produces: A grid with only time, category, severity, exception type, and message columns; detail panel remains unchanged.
+- Produces: A grid with only time, category, severity, and message columns; detail panel remains unchanged.
 
-- [ ] **Step 1: Delete only the Designer references for the two columns**
+- [ ] **Step 1: Delete only the Designer references for the redundant columns**
 
-Remove `colExceptionSource` and `colExceptionSourceLocation` from their field declarations, constructor initialization, `dgvExceptionLogs.Columns.AddRange(...)`, and their individual configuration blocks. Leave all unrelated Designer changes untouched.
+Remove `colExceptionType`, `colExceptionSource`, and `colExceptionSourceLocation` from their field declarations, constructor initialization, `dgvExceptionLogs.Columns.AddRange(...)`, and their individual configuration blocks. Leave all unrelated Designer changes untouched.
 
 - [ ] **Step 2: Remove only the runtime header assignments and row properties**
 
-Delete these two assignments from `ApplyExceptionGridHeaders`:
+Delete these three assignments from `ApplyExceptionGridHeaders`:
 
 ```csharp
+colExceptionType.HeaderText = _localizer.GetString(TextKeys.Log.ColumnExceptionType);
 colExceptionSource.HeaderText = _localizer.GetString(TextKeys.Log.ColumnSource);
 colExceptionSourceLocation.HeaderText = _localizer.GetString(TextKeys.Log.ColumnSourceLine);
 ```
 
-Delete `ExceptionLogRow.Source` and `ExceptionLogRow.SourceLocation`; keep `ExceptionLogRow.Entry`, time, category, severity, exception type, message, and its type-name helper.
+Delete `ExceptionLogRow.ExceptionType`, `ExceptionLogRow.Source` and `ExceptionLogRow.SourceLocation`; keep `ExceptionLogRow.Entry`, time, category, severity and message. Keep the source/type fields in the detail builder and the exception type filter.
 
 - [ ] **Step 3: Run the focused harness and verify GREEN for the new behavior**
 
 Run: `dotnet run --project AutoWeldSystem.Tests\\AutoWeldSystem.Tests.csproj --no-restore`
 
-Expected: `PASS Exception grid omits source columns but keeps detail source`; the harness may later stop at the pre-existing `SystemSettingView.Designer.cs` `AutoSize` assertion.
+Expected: `PASS Exception grid omits source columns but keeps detail source` and `PASS Exception grid omits exception type but keeps diagnostics`; the harness may later stop at the pre-existing `SystemSettingView.Designer.cs` `AutoSize` assertion.
 
 ### Task 3: Bump the semantic version
 
@@ -103,15 +105,15 @@ Expected: `PASS Exception grid omits source columns but keeps detail source`; th
 
 **Interfaces:**
 - Consumes: Current authoritative version `1.0.2`.
-- Produces: Build metadata `1.0.3`, assembly/file metadata `1.0.3.0`.
+- Produces: Build metadata `1.0.4`, assembly/file metadata `1.0.4.0`.
 
 - [ ] **Step 1: Update all four version properties together**
 
 ```xml
-<Version>1.0.3</Version>
-<AssemblyVersion>1.0.3.0</AssemblyVersion>
-<FileVersion>1.0.3.0</FileVersion>
-<InformationalVersion>1.0.3</InformationalVersion>
+<Version>1.0.4</Version>
+<AssemblyVersion>1.0.4.0</AssemblyVersion>
+<FileVersion>1.0.4.0</FileVersion>
+<InformationalVersion>1.0.4</InformationalVersion>
 ```
 
 - [ ] **Step 2: Verify the versioned solution build**
@@ -145,7 +147,7 @@ git diff --cached --stat
 - [ ] **Step 3: Commit the atomic change**
 
 ```powershell
-git commit -m "fix(logs): remove redundant exception source columns"
+git commit -m "fix(logs): remove redundant exception grid columns"
 ```
 
 - [ ] **Step 4: Confirm the commit and worktree boundary**
