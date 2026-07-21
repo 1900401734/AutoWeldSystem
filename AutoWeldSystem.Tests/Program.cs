@@ -46,6 +46,7 @@ var tests = new (string Name, Action Run)[]
     ("Program exception log view normalizes legacy alarm entries", ProgramExceptionLogViewNormalizesLegacyAlarmEntries),
     ("Exception grid omits source columns but keeps detail source", ExceptionGridOmitsSourceColumns),
     ("Exception grid omits exception type but keeps diagnostics", ExceptionGridOmitsExceptionTypeColumn),
+    ("Device lifecycle ignores transient PLC connection states", DeviceLifecycleIgnoresTransientPlcConnectionStates),
     ("Program exception history uses bounded tail reads", ProgramExceptionHistoryUsesBoundedTailReads),
     ("System setting view uses responsive semantic columns", SystemSettingViewUsesResponsiveSemanticColumns),
     ("System setting localization resources are complete", SystemSettingLocalizationResourcesAreComplete),
@@ -5398,6 +5399,97 @@ static void DeviceLifecycleConnectionLogsOnlyWhenStateChanges()
     AssertEqual(1, entry.StationNo, "PLC 自检日志必须携带工位。");
 }
 
+static void DeviceLifecycleIgnoresTransientPlcConnectionStates()
+{
+    var lifecycleLogs = new FakeDeviceLifecycleLogService();
+    var plcService = new FakePlcCommunicationService
+    {
+        Current = new PlcConnectionSnapshot(
+            PlcConnectionState.Reconnecting,
+            IsConnected: false,
+            Endpoint: "SiemensS7-1200@127.0.0.1:102",
+            LastConnectedTime: null,
+            LastHeartbeatTime: null,
+            Message: "正在连接 SiemensS7-1200@127.0.0.1:102。")
+    };
+    var coordinator = new DeviceLifecycleLogCoordinator(
+        new FakeAppSettingsService
+        {
+            Current = new AppSettings
+            {
+                DeviceId = "D-001",
+                EnableDualStation = true
+            }
+        },
+        lifecycleLogs,
+        plcService,
+        new FakeMesConnectionMonitor(),
+        new FakeCenterTelemetrySyncService(),
+        new FakePlcProductionMonitorService(),
+        new FakeDeviceStatusService());
+
+    coordinator.Start();
+    try
+    {
+        AssertEqual(0, CountPlcConnectionLogs(lifecycleLogs), "启动中的 Reconnecting 快照不得写成 PLC 连接失败。");
+
+        plcService.PublishStatus(CreatePlcSnapshot(1, PlcConnectionState.Connected, true, "PLC 已连接"));
+        plcService.PublishStatus(CreatePlcSnapshot(2, PlcConnectionState.Connected, true, "PLC 已连接"));
+        AssertEqual(2, CountPlcConnectionLogs(lifecycleLogs), "双工位首次连接成功必须各记录一条成功日志。");
+
+        plcService.PublishStatus(CreatePlcSnapshot(1, PlcConnectionState.Stopped, false, "PLC 服务已停止"));
+        plcService.PublishStatus(CreatePlcSnapshot(1, PlcConnectionState.Connecting, false, "PLC 正在连接"));
+        plcService.PublishStatus(CreatePlcSnapshot(1, PlcConnectionState.Reconnecting, false, "PLC 正在重连"));
+        AssertEqual(2, CountPlcConnectionLogs(lifecycleLogs), "主动重启中的瞬态状态不得产生失败或成功噪声。");
+
+        plcService.PublishStatus(CreatePlcSnapshot(1, PlcConnectionState.Disconnected, false, "PLC 已断开"));
+        plcService.PublishStatus(CreatePlcSnapshot(1, PlcConnectionState.Disconnected, false, "PLC 仍未连接"));
+        AssertEqual(3, CountPlcConnectionLogs(lifecycleLogs), "真实断线必须记录一次，重复断线不得重复记录。");
+
+        plcService.PublishStatus(CreatePlcSnapshot(1, PlcConnectionState.Connected, true, "PLC 已恢复"));
+        plcService.PublishStatus(CreatePlcSnapshot(2, PlcConnectionState.Faulted, false, "PLC 通讯异常"));
+        plcService.PublishStatus(CreatePlcSnapshot(2, PlcConnectionState.Connected, true, "PLC 已恢复"));
+        plcService.PublishStatus(CreatePlcSnapshot(2, PlcConnectionState.Unverified, false, "PLC 业务地址验证失败"));
+
+        var plcEntries = lifecycleLogs.Entries
+            .Where(entry => string.Equals(entry.Source, "PLC", StringComparison.Ordinal))
+            .ToList();
+        AssertEqual(7, plcEntries.Count, "Connected、Disconnected、Faulted、Unverified 状态必须继续按状态变化记录。");
+        AssertEqual("Failed", plcEntries[^1].Status, "Unverified 必须继续记录为真实失败。");
+    }
+    finally
+    {
+        coordinator.Stop();
+    }
+}
+
+static int CountPlcConnectionLogs(FakeDeviceLifecycleLogService lifecycleLogs)
+{
+    return lifecycleLogs.Entries.Count(entry =>
+        string.Equals(entry.Source, "PLC", StringComparison.Ordinal)
+        && string.Equals(entry.EventType, AppConstants.DeviceLifecycleEventTypes.SelfCheck, StringComparison.Ordinal));
+}
+
+static PlcConnectionSnapshot CreatePlcSnapshot(
+    int stationNo,
+    PlcConnectionState state,
+    bool isConnected,
+    string message)
+{
+    return new PlcConnectionSnapshot(
+        state,
+        isConnected,
+        "SiemensS7-1200@127.0.0.1:102",
+        isConnected || state == PlcConnectionState.Stopped
+            ? new DateTime(2026, 7, 21, 8, 20, 5)
+            : null,
+        null,
+        message)
+    {
+        StationNo = stationNo
+    };
+}
+
 static void DeviceLifecycleAlarmLogsEnterChangeAndRecovery()
 {
     var enter = DeviceLifecycleLogRules.DecideAlarmTransition(
@@ -8342,13 +8434,9 @@ sealed class FakePlcCommunicationService : IPlcCommunicationService
 
     public List<(string Address, ushort Length)> StringReadRequests { get; } = new();
 
-    public event EventHandler<PlcConnectionSnapshot>? StatusChanged
-    {
-        add { }
-        remove { }
-    }
+    public event EventHandler<PlcConnectionSnapshot>? StatusChanged;
 
-    public PlcConnectionSnapshot Current { get; } = new(
+    public PlcConnectionSnapshot Current { get; set; } = new(
         PlcConnectionState.Stopped,
         IsConnected: false,
         Endpoint: string.Empty,
@@ -8357,6 +8445,12 @@ sealed class FakePlcCommunicationService : IPlcCommunicationService
         Message: string.Empty);
 
     public PlcConnectionSnapshot GetCurrent(int stationNo) => Current with { StationNo = stationNo };
+
+    public void PublishStatus(PlcConnectionSnapshot snapshot)
+    {
+        Current = snapshot;
+        StatusChanged?.Invoke(this, snapshot);
+    }
 
     public Task StartAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 

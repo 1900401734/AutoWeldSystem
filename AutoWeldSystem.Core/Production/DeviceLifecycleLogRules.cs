@@ -1,4 +1,5 @@
 using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.Enums;
 using AutoWeldSystem.Core.ViewModels;
 
 namespace AutoWeldSystem.Core.Production;
@@ -21,6 +22,16 @@ public static class DeviceLifecycleLogRules
     /// </summary>
     public static bool HasConnectionStatusChanged(bool? previousConnected, bool currentConnected)
         => !previousConnected.HasValue || previousConnected.Value != currentConnected;
+
+    /// <summary>
+    /// Returns true only for PLC states that represent a completed connection result.
+    /// Starting, reconnecting, and stopping are operational transitions rather than failures.
+    /// </summary>
+    public static bool ShouldRecordPlcConnectionState(PlcConnectionState state)
+        => state is PlcConnectionState.Connected
+            or PlcConnectionState.Disconnected
+            or PlcConnectionState.Faulted
+            or PlcConnectionState.Unverified;
 
     /// <summary>
     /// Creates a device lifecycle self-check entry for PLC, MES, or center-server connectivity.

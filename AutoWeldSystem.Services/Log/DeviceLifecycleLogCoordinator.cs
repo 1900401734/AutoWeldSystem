@@ -204,7 +204,7 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
 
     private void RecordPlcConnection(PlcConnectionSnapshot snapshot)
     {
-        if (snapshot.State == Core.Enums.PlcConnectionState.Stopped && snapshot.LastConnectedTime is null)
+        if (!DeviceLifecycleLogRules.ShouldRecordPlcConnectionState(snapshot.State))
         {
             return;
         }
