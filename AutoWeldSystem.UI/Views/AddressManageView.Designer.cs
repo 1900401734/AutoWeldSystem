@@ -40,6 +40,8 @@ namespace AutoWeldSystem.UI.Views
             lblBindingArrow5 = new Label();
             lblBindingPreview = new Label();
             tabAddressCategories = new TabControl();
+            tabBusinessAddresses = new TabPage();
+            tableAddresses = new AntdUI.Table();
             tabRecipeNames = new TabPage();
             recipeNameLayout = new TableLayoutPanel();
             lblRecipeNameHint = new Label();
@@ -48,8 +50,6 @@ namespace AutoWeldSystem.UI.Views
             tableRecipeNames = new AntdUI.Table();
             lblRecipeNamePreview = new Label();
             tableRecipeNamePreview = new AntdUI.Table();
-            tabBusinessAddresses = new TabPage();
-            tableAddresses = new AntdUI.Table();
             tabAlarmAddresses = new TabPage();
             alarmAddressLayout = new TableLayoutPanel();
             lblAlarmAddressHint = new Label();
@@ -97,10 +97,10 @@ namespace AutoWeldSystem.UI.Views
             SaveLayout.SuspendLayout();
             bindingFlowPanel.SuspendLayout();
             tabAddressCategories.SuspendLayout();
+            tabBusinessAddresses.SuspendLayout();
             tabRecipeNames.SuspendLayout();
             recipeNameLayout.SuspendLayout();
             recipeNameToolbar.SuspendLayout();
-            tabBusinessAddresses.SuspendLayout();
             tabAlarmAddresses.SuspendLayout();
             alarmAddressLayout.SuspendLayout();
             alarmAddressToolbar.SuspendLayout();
@@ -451,6 +451,29 @@ namespace AutoWeldSystem.UI.Views
             tabAddressCategories.SelectedIndex = 0;
             tabAddressCategories.Size = new Size(1250, 545);
             tabAddressCategories.TabIndex = 2;
+            //
+            // tabBusinessAddresses
+            //
+            tabBusinessAddresses.Controls.Add(tableAddresses);
+            tabBusinessAddresses.Location = new Point(4, 29);
+            tabBusinessAddresses.Name = "tabBusinessAddresses";
+            tabBusinessAddresses.Padding = new Padding(3);
+            tabBusinessAddresses.Size = new Size(1242, 512);
+            tabBusinessAddresses.TabIndex = 0;
+            tabBusinessAddresses.Text = "业务信号地址";
+            tabBusinessAddresses.UseVisualStyleBackColor = true;
+            //
+            // tableAddresses
+            //
+            tableAddresses.Dock = DockStyle.Fill;
+            tableAddresses.EditMode = AntdUI.TEditMode.DoubleClick;
+            tableAddresses.Gap = 12;
+            tableAddresses.Location = new Point(3, 3);
+            tableAddresses.Margin = new Padding(0);
+            tableAddresses.Name = "tableAddresses";
+            tableAddresses.Size = new Size(1236, 506);
+            tableAddresses.TabIndex = 0;
+            tableAddresses.Text = "tableAddresses";
             // 
             // tabRecipeNames
             // 
@@ -477,11 +500,11 @@ namespace AutoWeldSystem.UI.Views
             recipeNameLayout.Margin = new Padding(0);
             recipeNameLayout.Name = "recipeNameLayout";
             recipeNameLayout.RowCount = 5;
-            recipeNameLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
-            recipeNameLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44F));
-            recipeNameLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 42F));
-            recipeNameLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
-            recipeNameLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 58F));
+            recipeNameLayout.RowStyles.Add(new RowStyle());
+            recipeNameLayout.RowStyles.Add(new RowStyle());
+            recipeNameLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 20F));
+            recipeNameLayout.RowStyles.Add(new RowStyle());
+            recipeNameLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 80F));
             recipeNameLayout.Size = new Size(1236, 506);
             recipeNameLayout.TabIndex = 0;
             // 
@@ -523,16 +546,17 @@ namespace AutoWeldSystem.UI.Views
             // 
             tableRecipeNames.Dock = DockStyle.Fill;
             tableRecipeNames.EditMode = AntdUI.TEditMode.DoubleClick;
+            tableRecipeNames.Gap = 12;
             tableRecipeNames.Location = new Point(0, 78);
             tableRecipeNames.Margin = new Padding(0);
             tableRecipeNames.Name = "tableRecipeNames";
-            tableRecipeNames.Size = new Size(1236, 166);
+            tableRecipeNames.Size = new Size(1236, 79);
             tableRecipeNames.TabIndex = 2;
             // 
             // lblRecipeNamePreview
             // 
             lblRecipeNamePreview.Dock = DockStyle.Fill;
-            lblRecipeNamePreview.Location = new Point(0, 244);
+            lblRecipeNamePreview.Location = new Point(0, 157);
             lblRecipeNamePreview.Margin = new Padding(0);
             lblRecipeNamePreview.Name = "lblRecipeNamePreview";
             lblRecipeNamePreview.Size = new Size(1236, 32);
@@ -543,34 +567,12 @@ namespace AutoWeldSystem.UI.Views
             // tableRecipeNamePreview
             // 
             tableRecipeNamePreview.Dock = DockStyle.Fill;
-            tableRecipeNamePreview.Location = new Point(0, 276);
+            tableRecipeNamePreview.Gap = 12;
+            tableRecipeNamePreview.Location = new Point(0, 189);
             tableRecipeNamePreview.Margin = new Padding(0);
             tableRecipeNamePreview.Name = "tableRecipeNamePreview";
-            tableRecipeNamePreview.Size = new Size(1236, 230);
+            tableRecipeNamePreview.Size = new Size(1236, 317);
             tableRecipeNamePreview.TabIndex = 4;
-            // 
-            // tabBusinessAddresses
-            // 
-            tabBusinessAddresses.Controls.Add(tableAddresses);
-            tabBusinessAddresses.Location = new Point(4, 29);
-            tabBusinessAddresses.Name = "tabBusinessAddresses";
-            tabBusinessAddresses.Padding = new Padding(3);
-            tabBusinessAddresses.Size = new Size(1242, 512);
-            tabBusinessAddresses.TabIndex = 0;
-            tabBusinessAddresses.Text = "业务信号地址";
-            tabBusinessAddresses.UseVisualStyleBackColor = true;
-            // 
-            // tableAddresses
-            // 
-            tableAddresses.Dock = DockStyle.Fill;
-            tableAddresses.EditMode = AntdUI.TEditMode.DoubleClick;
-            tableAddresses.Gap = 12;
-            tableAddresses.Location = new Point(3, 3);
-            tableAddresses.Margin = new Padding(0);
-            tableAddresses.Name = "tableAddresses";
-            tableAddresses.Size = new Size(1236, 506);
-            tableAddresses.TabIndex = 0;
-            tableAddresses.Text = "tableAddresses";
             // 
             // tabAlarmAddresses
             // 
@@ -1151,10 +1153,10 @@ namespace AutoWeldSystem.UI.Views
             bindingFlowPanel.ResumeLayout(false);
             bindingFlowPanel.PerformLayout();
             tabAddressCategories.ResumeLayout(false);
+            tabBusinessAddresses.ResumeLayout(false);
             tabRecipeNames.ResumeLayout(false);
             recipeNameLayout.ResumeLayout(false);
             recipeNameToolbar.ResumeLayout(false);
-            tabBusinessAddresses.ResumeLayout(false);
             tabAlarmAddresses.ResumeLayout(false);
             alarmAddressLayout.ResumeLayout(false);
             alarmAddressToolbar.ResumeLayout(false);
