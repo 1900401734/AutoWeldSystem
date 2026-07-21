@@ -13,7 +13,7 @@ AutoWeldSystem 是一套运行在 Windows 工控机上的 .NET 8 WinForms 上位
 - `Core`、`Data`：两个进程共享的模型、规则和数据库实现；`Services` 主要由设备端 UI 使用。
 - `AutoWeldSystem.Tests`：自包含的控制台回归测试入口，不是常规 xUnit/NUnit 项目。
 
-当前程序集版本以 `Directory.Build.props` 为准，为 `1.0.7`；`README.md` 中的旧版本号可能未同步。
+当前程序集版本以 `Directory.Build.props` 为准，为 `1.0.8`；`README.md` 中的旧版本号可能未同步。
 
 ## 2. 建议的 10 分钟阅读顺序
 

@@ -51,6 +51,7 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
     private readonly Dictionary<int, StationHeartbeatRuntime> _heartbeatStates = new();
     private readonly Dictionary<int, PlcConnectionSnapshot> _stationSnapshots = new();
     private readonly object _snapshotSync = new();
+    private int _stopping;
     private bool _disposed;
 
     public CommunicationService(
@@ -94,6 +95,7 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
             return Task.CompletedTask;
         }
 
+        Volatile.Write(ref _stopping, 0);
         _settings = CurrentSettings;
         _heartbeatAddresses = LoadHeartbeatAddresses(_settings);
         ResetHeartbeatStates(ResolveRuntimeStationNumbers(_settings, _heartbeatAddresses));
@@ -200,16 +202,20 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
 
     private async Task StopInternalAsync(bool closeClient, CancellationToken cancellationToken)
     {
-        if (_loopCts is not null)
+        Volatile.Write(ref _stopping, 1);
+        var loopCts = Volatile.Read(ref _loopCts);
+        var loopTask = Volatile.Read(ref _loopTask);
+
+        if (loopCts is not null)
         {
-            await _loopCts.CancelAsync();
+            await loopCts.CancelAsync();
         }
 
-        if (_loopTask is not null)
+        if (loopTask is not null)
         {
             try
             {
-                await _loopTask.WaitAsync(TimeSpan.FromSeconds(3), cancellationToken);
+                await loopTask.WaitAsync(TimeSpan.FromSeconds(3), cancellationToken);
             }
             catch (OperationCanceledException)
             {
@@ -225,14 +231,8 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
 
         if (closeClient)
         {
-            try
-            {
-                await CloseClientAsync(closeVendorConnection: true);
-            }
-            catch
-            {
-                ForgetClientReference();
-            }
+            await CloseClientAsync(closeVendorConnection: true, cancellationToken);
+            await DrainCommunicationLockAsync(cancellationToken);
         }
         else
         {
@@ -240,11 +240,51 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
             ForgetClientReference();
         }
 
+        DetachStoppedLoop(loopCts, loopTask);
+
         PublishForStations(
             ResolveRuntimeStationNumbers(CurrentSettings, _heartbeatAddresses),
             PlcConnectionState.Stopped,
             false,
             Text(TextKeys.Plc.MessageServiceStopped));
+    }
+
+    /// <summary>
+    /// 从当前生命周期字段中摘除已取消的循环，允许重启创建新循环。
+    /// 超时未结束的旧循环仍由其取消令牌阻止发布连接状态或处理迟到的 PLC 结果。
+    /// </summary>
+    /// <param name="loopCts">本次停止对应的循环令牌源。</param>
+    /// <param name="loopTask">本次停止对应的循环任务。</param>
+    private void DetachStoppedLoop(CancellationTokenSource? loopCts, Task? loopTask)
+    {
+        if (loopTask is not null)
+        {
+            Interlocked.CompareExchange(ref _loopTask, null, loopTask);
+        }
+
+        if (loopCts is null
+            || !ReferenceEquals(Interlocked.CompareExchange(ref _loopCts, null, loopCts), loopCts))
+        {
+            return;
+        }
+
+        if (loopTask is null || loopTask.IsCompleted)
+        {
+            loopCts.Dispose();
+            return;
+        }
+
+        // 第三方调用可能晚于有界停止返回；等待旧任务结束后再释放 CTS，避免令牌注册与释放竞态。
+        _ = loopTask.ContinueWith(
+            static (completedTask, state) =>
+            {
+                _ = completedTask.Exception;
+                ((CancellationTokenSource)state!).Dispose();
+            },
+            loopCts,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
     }
 
     private void DisposeCore()
@@ -254,10 +294,21 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
             return;
         }
 
+        // 先阻止新调用进入；已有调用持锁时保留信号量，确保其最终 Release 不访问已释放对象。
+        Volatile.Write(ref _disposed, true);
         _loopCts?.Dispose();
         _settingsService.SettingsChanged -= SettingsService_SettingsChanged;
-        _sync.Dispose();
-        _disposed = true;
+        try
+        {
+            if (_sync.Wait(0))
+            {
+                _sync.Dispose();
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            // A concurrent disposal has already completed semaphore cleanup.
+        }
     }
 
     /// <summary>
@@ -364,7 +415,11 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
                 var heartbeatStationCount = stationNumbers.Count(stationNo => ShouldUsePlcHeartbeat(ResolveHeartbeatAddressPair(heartbeatAddresses, stationNo)));
                 if (heartbeatStationCount > 0 && disconnectedHeartbeatStations.Count >= heartbeatStationCount)
                 {
-                    await MarkDisconnectedAsync("PLC heartbeat reads failed for all enabled stations.", endpoint, stationNumbers);
+                    await MarkDisconnectedAsync(
+                        "PLC heartbeat reads failed for all enabled stations.",
+                        endpoint,
+                        stationNumbers,
+                        cancellationToken);
                     reconnectDelay = TimeSpan.Zero;
                     continue;
                 }
@@ -375,6 +430,10 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+        }
+        catch (Exception) when (cancellationToken.IsCancellationRequested)
+        {
+            // 停止期间第三方调用或信号量释放产生的异常属于预期退出，不再发布故障状态。
         }
         catch (Exception ex)
         {
@@ -402,9 +461,20 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
     /// </summary>
     private async Task<PlcServiceResult> ConnectAsync(AppSettings settings, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (Volatile.Read(ref _disposed) || Volatile.Read(ref _stopping) != 0)
+        {
+            return PlcServiceResult.Fail(Text(TextKeys.Plc.MessageServiceStopped));
+        }
+
         await _sync.WaitAsync(cancellationToken);
         try
         {
+            if (Volatile.Read(ref _disposed) || Volatile.Read(ref _stopping) != 0)
+            {
+                return PlcServiceResult.Fail(Text(TextKeys.Plc.MessageServiceStopped));
+            }
+
             var endpointValidation = ValidateEndpointSettings(settings);
             if (!endpointValidation.IsSuccess)
             {
@@ -425,18 +495,63 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
             }
 
             var client = clientResult.Value;
-            var connectResult = await client.ConnectServerAsync();
+            OperateResult connectResult;
+            try
+            {
+                connectResult = await client.ConnectServerAsync();
+            }
+            catch (Exception ex) when (cancellationToken.IsCancellationRequested)
+            {
+                await CloseVendorClientAsync(client, CancellationToken.None);
+                throw new OperationCanceledException("PLC connection was cancelled.", ex, cancellationToken);
+            }
+
+            if (cancellationToken.IsCancellationRequested || Volatile.Read(ref _stopping) != 0)
+            {
+                await CloseVendorClientAsync(client, CancellationToken.None);
+                cancellationToken.ThrowIfCancellationRequested();
+                return PlcServiceResult.Fail(Text(TextKeys.Plc.MessageServiceStopped));
+            }
+
             if (!connectResult.IsSuccess)
             {
                 SafeCloseClient(client);
                 return PlcServiceResult.Fail(connectResult.Message);
             }
 
-            _client = client;
+            // 连接成功后才原子发布引用；StopAsync 可能并发摘除，因此发布后必须再次检查生命周期。
+            var publishedClient = Interlocked.CompareExchange(ref _client, client, null);
+            if (publishedClient is not null)
+            {
+                await CloseVendorClientAsync(client, CancellationToken.None);
+                return PlcServiceResult.Success(Text(TextKeys.Plc.MessageAlreadyConnected));
+            }
+
+            if (cancellationToken.IsCancellationRequested
+                || Volatile.Read(ref _stopping) != 0
+                || Volatile.Read(ref _disposed))
+            {
+                if (ReferenceEquals(Interlocked.CompareExchange(ref _client, null, client), client))
+                {
+                    await CloseVendorClientAsync(client, CancellationToken.None);
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                return PlcServiceResult.Fail(Text(TextKeys.Plc.MessageServiceStopped));
+            }
+
             var endpoint = BuildEndpoint(settings);
 
             WriteOperationLog("Connected", endpoint);
             return PlcServiceResult.Success(Text(TextKeys.Plc.MessageConnected, endpoint));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (cancellationToken.IsCancellationRequested)
+        {
+            throw new OperationCanceledException("PLC connection was cancelled.", ex, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -844,21 +959,32 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
         Func<NetworkDeviceBase, Task<OperateResult<T>>> action,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         await _sync.WaitAsync(cancellationToken);
         try
         {
-            if (_client is null)
+            var client = Volatile.Read(ref _client);
+            if (client is null)
             {
                 return PlcServiceResult<T>.Fail(Text(TextKeys.Plc.MessageNotConnected));
             }
 
-            var result = await action(_client);
+            var result = await action(client);
+            cancellationToken.ThrowIfCancellationRequested();
             if (result.IsSuccess)
             {
                 return PlcServiceResult<T>.Success(result.Content);
             }
 
             return PlcServiceResult<T>.Fail(result.Message);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (cancellationToken.IsCancellationRequested)
+        {
+            throw new OperationCanceledException("PLC read was cancelled.", ex, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -901,21 +1027,32 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
         Func<NetworkDeviceBase, Task<OperateResult>> action,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         await _sync.WaitAsync(cancellationToken);
         try
         {
-            if (_client is null)
+            var client = Volatile.Read(ref _client);
+            if (client is null)
             {
                 return PlcServiceResult.Fail(Text(TextKeys.Plc.MessageNotConnected));
             }
 
-            var result = await action(_client);
+            var result = await action(client);
+            cancellationToken.ThrowIfCancellationRequested();
             if (result.IsSuccess)
             {
                 return PlcServiceResult.Success(Text(TextKeys.Plc.MessageWriteSucceeded));
             }
 
             return PlcServiceResult.Fail(result.Message);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (cancellationToken.IsCancellationRequested)
+        {
+            throw new OperationCanceledException("PLC write was cancelled.", ex, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -973,11 +1110,20 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
         Publish(stationNo, PlcConnectionState.Connected, true, message, now, connectedTime, endpoint);
     }
 
-    private async Task MarkDisconnectedAsync(string message, string endpoint, IReadOnlyList<int> stationNumbers)
+    private async Task MarkDisconnectedAsync(
+        string message,
+        string endpoint,
+        IReadOnlyList<int> stationNumbers,
+        CancellationToken cancellationToken)
     {
-        await _sync.WaitAsync();
+        await _sync.WaitAsync(cancellationToken);
         try
         {
+            if (Volatile.Read(ref _stopping) != 0)
+            {
+                return;
+            }
+
             await MarkDisconnectedCoreAsync(message, endpoint, stationNumbers);
         }
         finally
@@ -995,14 +1141,71 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
         return Task.CompletedTask;
     }
 
-    private async Task CloseClientAsync(bool closeVendorConnection)
+    private async Task CloseClientAsync(bool closeVendorConnection, CancellationToken cancellationToken)
+    {
+        var client = Interlocked.Exchange(ref _client, null);
+        if (!closeVendorConnection || client is null)
+        {
+            return;
+        }
+
+        await CloseVendorClientAsync(client, cancellationToken);
+    }
+
+    /// <summary>
+    /// 请求关闭第三方 PLC 客户端，并限制等待时间，避免 socket 清理阻塞程序退出。
+    /// </summary>
+    /// <param name="client">待关闭的 PLC 客户端。</param>
+    /// <param name="cancellationToken">停止流程取消令牌。</param>
+    private static async Task CloseVendorClientAsync(NetworkDeviceBase client, CancellationToken cancellationToken)
+    {
+        Task? closeTask = null;
+        try
+        {
+            closeTask = client.ConnectCloseAsync();
+            await closeTask.WaitAsync(
+                TimeSpan.FromMilliseconds(PlcCommunicationTimeoutMilliseconds),
+                cancellationToken);
+        }
+        catch
+        {
+            // 第三方关闭调用失败或超时时保留已摘除状态，进程退出会回收剩余 socket。
+            if (closeTask is not null)
+            {
+                // WaitAsync 不会取消第三方任务；继续观察迟到异常，避免触发未观察任务异常。
+                _ = closeTask.ContinueWith(
+                    static completedTask => _ = completedTask.Exception,
+                    CancellationToken.None,
+                    TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
+            }
+        }
+    }
+
+    private void CloseClientCore(bool closeVendorConnection)
+    {
+        var client = Interlocked.Exchange(ref _client, null);
+
+        if (!closeVendorConnection || client is null)
+        {
+            return;
+        }
+
+        SafeCloseClient(client);
+    }
+
+    private async Task DrainCommunicationLockAsync(CancellationToken cancellationToken)
     {
         var lockTaken = false;
         try
         {
-            await _sync.WaitAsync();
-            lockTaken = true;
-            CloseClientCore(closeVendorConnection);
+            lockTaken = await _sync.WaitAsync(
+                TimeSpan.FromMilliseconds(PlcCommunicationTimeoutMilliseconds),
+                cancellationToken);
+        }
+        catch
+        {
+            // 关闭路径不得因残留 PLC 调用或外部取消而阻塞进程退出。
         }
         finally
         {
@@ -1013,22 +1216,9 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
         }
     }
 
-    private void CloseClientCore(bool closeVendorConnection)
-    {
-        var client = _client;
-        _client = null;
-
-        if (!closeVendorConnection || client is null)
-        {
-            return;
-        }
-
-        SafeCloseClient(client);
-    }
-
     private void ForgetClientReference()
     {
-        _client = null;
+        Interlocked.Exchange(ref _client, null);
     }
 
     private static void SafeCloseClient(NetworkDeviceBase client)

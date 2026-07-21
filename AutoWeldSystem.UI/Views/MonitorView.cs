@@ -169,6 +169,7 @@ public partial class MonitorView : BaseView
     private bool _weldParameterTableBound;
     private bool _realtimePreviewApplyPosted;
     private bool _syncingWeldPreviewHorizontalScroll;
+    private CancellationTokenSource? _businessSignalReconcileCancellation = new();
     private bool _deviceModeReconcileRunning;
     private bool _workOrderStatusReconcileRunning;
     private bool _lastMesConnected;
@@ -1449,6 +1450,7 @@ public partial class MonitorView : BaseView
     /// <param name="e">事件参数。</param>
     protected override void OnHandleDestroyed(EventArgs e)
     {
+        CancelAndDispose(ref _businessSignalReconcileCancellation);
         GlobalContext.SessionChanged -= GlobalContext_SessionChanged;
         _settingsService.SettingsChanged -= OnSettingsChanged;
         _weldTaskService.StateChanged -= WeldTaskService_StateChanged;
@@ -4441,25 +4443,59 @@ public partial class MonitorView : BaseView
     /// <param name="includeWorkOrderStatus">是否调和工单状态。</param>
     private void QueueBusinessSignalReconciliation(string source, bool includeDeviceMode = true, bool includeWorkOrderStatus = true)
     {
+        var cancellationSource = Volatile.Read(ref _businessSignalReconcileCancellation);
+        if (cancellationSource is null || cancellationSource.IsCancellationRequested)
+        {
+            return;
+        }
+
+        CancellationToken cancellationToken;
+        try
+        {
+            cancellationToken = cancellationSource.Token;
+        }
+        catch (ObjectDisposedException)
+        {
+            // 页面可能在状态事件到达的同时被销毁，此时无需再启动调和任务。
+            return;
+        }
+
         if (includeDeviceMode)
         {
             // 调和任务允许后台执行；方法内部有运行标记，避免重复并发。
-            _ = ReconcileDeviceModeAsync(source);
+            _ = ReconcileDeviceModeAsync(source, cancellationToken);
         }
 
         if (includeWorkOrderStatus)
         {
             // 工单状态调和同样后台执行，避免阻塞 PLC 状态事件回调。
-            _ = ReconcileWorkOrderStatusAsync(source);
+            _ = ReconcileWorkOrderStatusAsync(source, cancellationToken);
         }
+    }
+
+    /// <summary>
+    /// 原子移除并释放页面生命周期令牌源，确保重复销毁不会再次访问已释放对象。
+    /// </summary>
+    /// <param name="source">待取消并释放的令牌源。</param>
+    private static void CancelAndDispose(ref CancellationTokenSource? source)
+    {
+        var cancellationSource = Interlocked.Exchange(ref source, null);
+        if (cancellationSource is null)
+        {
+            return;
+        }
+
+        cancellationSource.Cancel();
+        cancellationSource.Dispose();
     }
 
     /// <summary>
     /// 异步调和 PLC 设备模式，确保 PLC 与当前软件设置一致。
     /// </summary>
     /// <param name="source">触发来源或日志来源。</param>
+    /// <param name="cancellationToken">页面生命周期取消令牌。</param>
     /// <returns>表示异步操作的任务。</returns>
-    private async Task ReconcileDeviceModeAsync(string source)
+    private async Task ReconcileDeviceModeAsync(string source, CancellationToken cancellationToken)
     {
         if (_deviceModeReconcileRunning)
         {
@@ -4472,6 +4508,7 @@ public partial class MonitorView : BaseView
             var deviceMode = ResolvePlcDeviceMode();
             foreach (var stationNo in ResolveBusinessSignalReconcileStations())
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 if (!_plcCommunicationService.GetCurrent(stationNo).IsConnected)
                 {
                     // 未连接工位不写 PLC，避免把通讯异常误判为业务写入失败。
@@ -4484,8 +4521,12 @@ public partial class MonitorView : BaseView
                     "PLC.DeviceMode.Reconcile",
                     "Device mode reconcile failed.",
                     source,
-                    writeOnReadFailure: false);
+                    writeOnReadFailure: false,
+                    cancellationToken);
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
         }
         catch (Exception ex)
         {
@@ -4501,8 +4542,9 @@ public partial class MonitorView : BaseView
     /// 异步调和 PLC 工单状态，确保 PLC 与当前任务状态一致。
     /// </summary>
     /// <param name="source">触发来源或日志来源。</param>
+    /// <param name="cancellationToken">页面生命周期取消令牌。</param>
     /// <returns>表示异步操作的任务。</returns>
-    private async Task ReconcileWorkOrderStatusAsync(string source)
+    private async Task ReconcileWorkOrderStatusAsync(string source, CancellationToken cancellationToken)
     {
         if (_workOrderStatusReconcileRunning)
         {
@@ -4514,6 +4556,7 @@ public partial class MonitorView : BaseView
         {
             foreach (var stationNo in ResolveBusinessSignalReconcileStations())
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 if (!_plcCommunicationService.GetCurrent(stationNo).IsConnected)
                 {
                     // 工位离线时跳过调和，等待下一次连接恢复事件再处理。
@@ -4527,8 +4570,12 @@ public partial class MonitorView : BaseView
                     "Work order status reconcile failed.",
                     source,
                     writeOnReadFailure: false,
-                    mirrorWorkOrderStations: false);
+                    mirrorWorkOrderStations: false,
+                    cancellationToken);
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
         }
         catch (Exception ex)
         {
@@ -8036,9 +8083,11 @@ public partial class MonitorView : BaseView
     /// <param name="context">业务上下文说明。</param>
     /// <param name="writeOnReadFailure">读取失败时是否仍尝试写入。</param>
     /// <param name="mirrorWorkOrderStations">是否同步写入同一工单关联的工位。</param>
+    /// <param name="cancellationToken">调和任务取消令牌；显式业务操作使用默认令牌。</param>
     /// <returns>表示异步操作的任务。</returns>
     private async Task EnsureWorkOrderStatusAsync(int stationNo, int expectedStatus, string source,
-        string summary, string context, bool writeOnReadFailure, bool mirrorWorkOrderStations)
+        string summary, string context, bool writeOnReadFailure, bool mirrorWorkOrderStations,
+        CancellationToken cancellationToken = default)
     {
         var targetStations = mirrorWorkOrderStations
             ? ResolveWorkOrderSignalStations(stationNo)
@@ -8055,7 +8104,8 @@ public partial class MonitorView : BaseView
                 writeOnReadFailure,
                 _lastWorkOrderStatusSnapshots,
                 GetWorkOrderStatusLock(targetStationNo),
-                (target, value) => _plcBusinessSignalService.WriteWorkOrderStatusAsync(target, value));
+                (target, value) => _plcBusinessSignalService.WriteWorkOrderStatusAsync(target, value, cancellationToken),
+                cancellationToken);
         }
     }
 
@@ -8068,8 +8118,10 @@ public partial class MonitorView : BaseView
     /// <param name="summary">日志摘要。</param>
     /// <param name="context">业务上下文说明。</param>
     /// <param name="writeOnReadFailure">读取失败时是否仍尝试写入。</param>
+    /// <param name="cancellationToken">调和任务取消令牌；显式业务操作使用默认令牌。</param>
     /// <returns>表示异步操作的任务。</returns>
-    private Task EnsureDeviceModeAsync(int stationNo, int expectedMode, string source, string summary, string context, bool writeOnReadFailure)
+    private Task EnsureDeviceModeAsync(int stationNo, int expectedMode, string source, string summary, string context,
+        bool writeOnReadFailure, CancellationToken cancellationToken = default)
     {
         var targetStationNo = NormalizeStatusStationNo(stationNo);
         return EnsureIntegerBusinessSignalAsync(
@@ -8082,7 +8134,8 @@ public partial class MonitorView : BaseView
             writeOnReadFailure,
             _lastDeviceModeSnapshots,
             GetDeviceModeLock(targetStationNo),
-            (target, value) => _plcBusinessSignalService.WriteDeviceModeAsync(target, value));
+            (target, value) => _plcBusinessSignalService.WriteDeviceModeAsync(target, value, cancellationToken),
+            cancellationToken);
     }
 
     /// <summary>
@@ -8098,15 +8151,17 @@ public partial class MonitorView : BaseView
     /// <param name="lastSuccessCache">上次成功值缓存。</param>
     /// <param name="signalLock">当前信号的串行写入锁。</param>
     /// <param name="writeAsync">实际执行 PLC 写入的异步委托。</param>
+    /// <param name="cancellationToken">调和任务取消令牌。</param>
     /// <returns>表示异步操作的任务。</returns>
     private async Task EnsureIntegerBusinessSignalAsync(int stationNo, string logicalKey, int expectedValue, string source, string summary, string context,
-        bool writeOnReadFailure, IDictionary<int, int> lastSuccessCache, SemaphoreSlim signalLock, Func<int, int, Task<PlcBusinessSignalResult>> writeAsync)
+        bool writeOnReadFailure, IDictionary<int, int> lastSuccessCache, SemaphoreSlim signalLock,
+        Func<int, int, Task<PlcBusinessSignalResult>> writeAsync, CancellationToken cancellationToken = default)
     {
         var targetStationNo = NormalizeStatusStationNo(stationNo);
-        await signalLock.WaitAsync();
+        await signalLock.WaitAsync(cancellationToken);
         try
         {
-            var readResult = await _plcBusinessSignalService.ReadTextAsync(logicalKey, targetStationNo);
+            var readResult = await _plcBusinessSignalService.ReadTextAsync(logicalKey, targetStationNo, cancellationToken);
             var readValueParsed = TryParsePlcSignalInt(readResult.Value, out var currentValue);
             var shouldWrite = !readResult.IsSuccess || !readValueParsed || currentValue != expectedValue;
             PlcBusinessSignalResult? writeResult = null;

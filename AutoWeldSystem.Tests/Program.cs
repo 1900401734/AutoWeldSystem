@@ -47,6 +47,9 @@ var tests = new (string Name, Action Run)[]
     ("Exception grid omits source columns but keeps detail source", ExceptionGridOmitsSourceColumns),
     ("Exception grid omits exception type but keeps diagnostics", ExceptionGridOmitsExceptionTypeColumn),
     ("Device lifecycle ignores transient PLC connection states", DeviceLifecycleIgnoresTransientPlcConnectionStates),
+    ("PLC shutdown returns while communication lock is held", PlcShutdownReturnsWhileCommunicationLockIsHeld),
+    ("PLC shutdown detaches the client before bounded close", PlcShutdownDetachesClientBeforeBoundedClose),
+    ("Monitor view cancels business signal reconciliation on destroy", MonitorViewCancelsBusinessSignalReconciliationOnDestroy),
     ("Program exception history uses bounded tail reads", ProgramExceptionHistoryUsesBoundedTailReads),
     ("System setting view uses responsive semantic columns", SystemSettingViewUsesResponsiveSemanticColumns),
     ("System setting localization resources are complete", SystemSettingLocalizationResourcesAreComplete),
@@ -321,6 +324,114 @@ static void SystemSettingViewAvoidsRepeatedLayoutRebuilds()
 
     AssertTrue(viewCode.Contains("if (!force && mode == _lastLayoutMode)", StringComparison.Ordinal), "同一列模式下调整窗口大小不应重复重建布局。");
     AssertFalse(viewCode.Contains("viewportSize == _lastLayoutViewportSize", StringComparison.Ordinal), "视口尺寸变化不应成为每次重建响应式网格的条件。");
+}
+
+static void PlcShutdownReturnsWhileCommunicationLockIsHeld()
+{
+    var service = new CommunicationService(
+        new FakeAppSettingsService(),
+        new FakeOperationLogService(),
+        new FakePlcAddressService(),
+        new FakeLocalizationService());
+    var syncField = typeof(CommunicationService).GetField(
+        "_sync",
+        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+    var communicationLock = (SemaphoreSlim?)syncField?.GetValue(service)
+        ?? throw new InvalidOperationException("CommunicationService must keep the shared communication lock.");
+    Task stopTask = Task.CompletedTask;
+
+    communicationLock.Wait();
+    try
+    {
+        stopTask = service.StopAsync();
+        AssertTrue(
+            stopTask.Wait(TimeSpan.FromSeconds(5)),
+            "PLC stop must apply its own timeout when a communication operation owns the shared lock.");
+
+        // Dispose must not release the semaphore while the simulated PLC call still owns it.
+        // Releasing it below is the behavioral check for the late-read ObjectDisposedException.
+        service.Dispose();
+    }
+    finally
+    {
+        communicationLock.Release();
+        stopTask.GetAwaiter().GetResult();
+        service.Dispose();
+    }
+}
+
+static void PlcShutdownDetachesClientBeforeBoundedClose()
+{
+    var serviceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Plc", "CommunicationService.cs"),
+        Encoding.UTF8);
+    var closeMethod = ExtractMethodText(
+        serviceCode,
+        "private async Task CloseClientAsync",
+        "private async Task DrainCommunicationLockAsync");
+    var drainMethod = ExtractMethodText(
+        serviceCode,
+        "private async Task DrainCommunicationLockAsync",
+        "private void ForgetClientReference");
+    var connectMethod = ExtractMethodText(
+        serviceCode,
+        "private async Task<PlcServiceResult> ConnectAsync",
+        "private PlcServiceResult<NetworkDeviceBase> CreateClient");
+    var connectionLoopMethod = ExtractMethodText(
+        serviceCode,
+        "private async Task RunConnectionLoopAsync",
+        "private static TimeSpan ResolvePlcHeartbeatReadInterval");
+    var disposeMethod = ExtractMethodText(
+        serviceCode,
+        "private void DisposeCore()",
+        "private async Task RunConnectionLoopAsync");
+
+    AssertTrue(closeMethod.Contains("Interlocked.Exchange(ref _client, null)", StringComparison.Ordinal), "停止 PLC 时必须先原子移除旧客户端。");
+    AssertFalse(closeMethod.Contains("_sync.WaitAsync", StringComparison.Ordinal), "关闭客户端不得再次无限等待通讯锁。");
+    AssertTrue(closeMethod.Contains("ConnectCloseAsync()", StringComparison.Ordinal), "停止 PLC 时必须异步请求关闭第三方客户端。");
+    AssertTrue(closeMethod.Contains("WaitAsync", StringComparison.Ordinal), "第三方客户端关闭必须有等待边界。");
+    AssertTrue(drainMethod.Contains("_sync.WaitAsync", StringComparison.Ordinal), "关闭客户端后必须有界排空通讯锁。");
+    AssertTrue(drainMethod.Contains("PlcCommunicationTimeoutMilliseconds", StringComparison.Ordinal), "通讯锁排空必须沿用 PLC 通讯超时。");
+    AssertTrue(connectMethod.Contains("Volatile.Read(ref _stopping) != 0", StringComparison.Ordinal), "连接完成后必须再次检查停止状态。");
+    AssertTrue(connectMethod.Contains("Interlocked.CompareExchange(ref _client, null, client)", StringComparison.Ordinal), "退出期间完成的连接必须从服务中原子移除。");
+    AssertTrue(connectionLoopMethod.Contains("catch (Exception) when (cancellationToken.IsCancellationRequested)", StringComparison.Ordinal), "停止期间旧连接循环的退出异常不得发布为 PLC 故障。");
+    AssertTrue(disposeMethod.Contains("_sync.Wait(0)", StringComparison.Ordinal), "仍有通讯任务占锁时不得提前释放 SemaphoreSlim。");
+}
+
+static void MonitorViewCancelsBusinessSignalReconciliationOnDestroy()
+{
+    var viewCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"),
+        Encoding.UTF8);
+    var destroyMethod = ExtractMethodText(
+        viewCode,
+        "protected override void OnHandleDestroyed(EventArgs e)",
+        "#endregion");
+    var queueMethod = ExtractMethodText(
+        viewCode,
+        "private void QueueBusinessSignalReconciliation",
+        "private async Task ReconcileDeviceModeAsync");
+    var reconcileMethods = ExtractMethodText(
+        viewCode,
+        "private async Task ReconcileDeviceModeAsync",
+        "private IReadOnlyList<int> ResolveBusinessSignalReconcileStations");
+    var ensureMethod = ExtractMethodText(
+        viewCode,
+        "private async Task EnsureIntegerBusinessSignalAsync",
+        "private SemaphoreSlim GetWorkOrderStatusLock");
+    var ensureSignalMethods = ExtractMethodText(
+        viewCode,
+        "private async Task EnsureWorkOrderStatusAsync",
+        "private async Task EnsureIntegerBusinessSignalAsync");
+
+    AssertTrue(viewCode.Contains("CancellationTokenSource? _businessSignalReconcileCancellation", StringComparison.Ordinal), "监控页必须维护业务信号调和生命周期令牌。");
+    AssertTrue(destroyMethod.Contains("CancelAndDispose(ref _businessSignalReconcileCancellation)", StringComparison.Ordinal), "销毁监控页时必须取消并释放调和令牌。");
+    AssertTrue(queueMethod.Contains("cancellationToken", StringComparison.Ordinal), "调和排队入口必须向后台任务传递页面生命周期令牌。");
+    AssertTrue(reconcileMethods.Contains("OperationCanceledException", StringComparison.Ordinal), "页面销毁触发的预期取消不得写成程序异常。");
+    AssertTrue(ensureMethod.Contains("signalLock.WaitAsync(cancellationToken)", StringComparison.Ordinal), "等待业务信号锁时必须响应页面取消。");
+    AssertTrue(ensureMethod.Contains("ReadTextAsync(logicalKey, targetStationNo, cancellationToken)", StringComparison.Ordinal), "PLC 业务信号读取必须接收页面生命周期令牌。");
+    AssertTrue(ensureSignalMethods.Contains("WriteWorkOrderStatusAsync(target, value, cancellationToken)", StringComparison.Ordinal), "PLC 工单状态写入必须接收页面生命周期令牌。");
+    AssertTrue(ensureSignalMethods.Contains("WriteDeviceModeAsync(target, value, cancellationToken)", StringComparison.Ordinal), "PLC 设备模式写入必须接收页面生命周期令牌。");
 }
 
 static void BaseWindowBatchesInteractiveResize()
@@ -8426,6 +8537,17 @@ sealed class FakeOperationLogService : IOperationLogService
         => Entries.Add((action, detail, level));
 
     public IReadOnlyList<SysOperationLog> GetRecent(int take = 200) => Array.Empty<SysOperationLog>();
+}
+
+sealed class FakePlcAddressService : IPlcAddressService
+{
+    public IReadOnlyList<BizPlcAddress> GetAll() => Array.Empty<BizPlcAddress>();
+
+    public BizPlcAddress? GetAddress(string logicalKey, int stationNo) => null;
+
+    public void SaveAll(IEnumerable<BizPlcAddress> addresses)
+    {
+    }
 }
 
 sealed class FakePlcCommunicationService : IPlcCommunicationService
