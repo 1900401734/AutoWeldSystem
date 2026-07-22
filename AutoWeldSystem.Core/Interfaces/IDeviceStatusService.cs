@@ -4,13 +4,12 @@ using AutoWeldSystem.Core.Entities;
 
 namespace AutoWeldSystem.Core.Interfaces;
 
+/// <summary>
+/// 设备状态 JSONL 查询、写入和 MES 上报服务。
+/// </summary>
 public interface IDeviceStatusService
 {
-    event EventHandler<BizDeviceStatusLog>? StatusChanged;
-
     event EventHandler? LogsChanged;
-
-    void NotifyLogsChanged();
 
     BizDeviceStatusLog? GetCurrentStatus();
 

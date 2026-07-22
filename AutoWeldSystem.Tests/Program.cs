@@ -182,6 +182,9 @@ var tests = new (string Name, Action Run)[]
     ("Device status upload task payload contains only record key", DeviceStatusUploadTaskPayloadContainsOnlyRecordKey),
     ("Device status upload execution revalidates jsonl source", DeviceStatusUploadExecutionRevalidatesJsonlSource),
     ("Device status pending projection preserves uploaded history", DeviceStatusPendingProjectionPreservesUploadedHistory),
+    ("Device status API rejects missing jsonl record", DeviceStatusApiRejectsMissingJsonlRecord),
+    ("Device status consumers do not query legacy table", DeviceStatusConsumersDoNotQueryLegacyTable),
+    ("Log manage reloads device status jsonl on reentry", LogManageReloadsDeviceStatusJsonlOnReentry),
     ("Device status report keeps millisecond timestamp after MES upload", DeviceStatusReportKeepsMillisecondTimestampAfterMesUpload),
     ("Device status local log store keeps latest state per log id", DeviceStatusLocalLogStoreKeepsLatestStatePerLogId),
     ("Device status pending source and task reconciliation are wired", DeviceStatusPendingSourceAndTaskReconciliationAreWired),
@@ -1223,13 +1226,16 @@ static void PlcSoftwareAlarmsStayLocalToMonitorView()
     var buildStationSnapshot = ExtractMethodText(
         centerCode,
         "private CenterTelemetryStationSnapshot BuildStationSnapshot",
-        "private BizDeviceStatusLog? GetLatestDeviceStatus");
+        "private TodayProductionSummary GetTodayProductionSummary");
     AssertTrue(
         buildStationSnapshot.Contains("AlarmMessage = FirstNonEmpty(production.AlarmMessage, latestStatus?.Remark)", StringComparison.Ordinal),
         "中心遥测应继续使用原始 PLC 报警内容。");
     AssertFalse(
         buildStationSnapshot.Contains("SoftwareAlarmMessage", StringComparison.Ordinal),
         "Bool-only 软件报警内容不得发送到中心服务器。");
+    AssertTrue(
+        buildStationSnapshot.Contains("_deviceStatusService.GetLatestStatus(stationNo)", StringComparison.Ordinal),
+        "PLC 无有效值时中心遥测必须从设备状态 JSONL 获取回退状态。");
 
     var lifecycleCode = File.ReadAllText(
         GetRepoFilePath("AutoWeldSystem.Services", "Log", "DeviceLifecycleLogCoordinator.cs"),
@@ -4393,6 +4399,64 @@ static void DeviceStatusPendingProjectionPreservesUploadedHistory()
     AssertTrue(reconcileMethod.Contains("task.Status != ProductionConstants.UploadStatuses.Uploaded", StringComparison.Ordinal), "来源缺失清理必须排除已经上传的任务。");
     AssertTrue(reconcileMethod.Contains("task.IsDeleted = true", StringComparison.Ordinal), "来源缺失的未成功任务必须软删除。");
     AssertFalse(reconcileMethod.Contains("Deleteable<BizUploadTask>", StringComparison.Ordinal), "派生任务清理不能物理删除诊断记录。");
+}
+
+static void DeviceStatusApiRejectsMissingJsonlRecord()
+{
+    var settings = new FakeAppSettingsService
+    {
+        Current = new AppSettings { DeviceId = "D-001" }
+    };
+    var statusService = new FakeDeviceStatusService { CurrentStatus = null };
+    var service = CreateDeviceApiEndpointService(settings, statusService);
+
+    var response = service.GetDeviceStatus("D-001");
+
+    AssertFalse(response.IsSuccess, "JSONL 没有有效记录时设备状态 API 必须返回失败。");
+    AssertEqual("暂无设备状态记录", response.Msg, "无来源失败消息必须稳定，不能伪造默认开机状态。");
+    AssertEqual(null, response.Data, "无来源时不能返回设备状态 Data。");
+    AssertEqual(1, statusService.GetCurrentStatusCallCount, "设备编号校验通过后应读取一次 JSONL 当前状态。");
+}
+
+static void DeviceStatusConsumersDoNotQueryLegacyTable()
+{
+    var apiCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "DeviceApiEndpointService.cs"),
+        Encoding.UTF8);
+    var centerCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Center", "CenterTelemetrySyncService.cs"),
+        Encoding.UTF8);
+    var interfaceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Core", "Interfaces", "IDeviceStatusService.cs"),
+        Encoding.UTF8);
+
+    AssertTrue(apiCode.Contains("var currentStatus = _deviceStatusService.GetCurrentStatus();", StringComparison.Ordinal), "设备 API 必须通过设备状态服务读取 JSONL。");
+    AssertTrue(apiCode.Contains("暂无设备状态记录", StringComparison.Ordinal), "设备 API 必须显式处理空 JSONL。");
+    AssertTrue(centerCode.Contains("_deviceStatusService.GetLatestStatus(stationNo)", StringComparison.Ordinal), "中心遥测必须通过设备状态服务读取工位最新 JSONL。");
+    AssertFalse(centerCode.Contains("Queryable<BizDeviceStatusLog>", StringComparison.Ordinal), "中心遥测不能再查询设备状态旧表。");
+    AssertFalse(interfaceCode.Contains("StatusChanged", StringComparison.Ordinal), "最终接口只保留来源重载事件，不能保留重复实时插入事件。");
+    AssertFalse(interfaceCode.Contains("NotifyLogsChanged", StringComparison.Ordinal), "最终接口不能允许外部伪造来源变更通知。");
+}
+
+static void LogManageReloadsDeviceStatusJsonlOnReentry()
+{
+    var viewCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "LogManageView.cs"),
+        Encoding.UTF8);
+    var visibleMethod = ExtractMethodText(
+        viewCode,
+        "protected override void OnVisibleChanged",
+        "protected override void OnLanguageChanged");
+    var wireMethod = ExtractMethodText(
+        viewCode,
+        "private void WireEvents()",
+        "private void ShowLogDate_CheckedChanged");
+
+    AssertTrue(visibleMethod.Contains("LoadDeviceStatusLogs();", StringComparison.Ordinal), "重新进入日志管理页必须重读当前日期 JSONL。");
+    AssertTrue(wireMethod.Contains("_deviceStatusService.LogsChanged +=", StringComparison.Ordinal), "日志页必须监听持久化来源变化。");
+    AssertFalse(wireMethod.Contains("_deviceStatusService.StatusChanged +=", StringComparison.Ordinal), "日志页不能同时监听实时行事件造成重复插入。");
+    AssertFalse(viewCode.Contains("AddLiveDeviceStatusLog", StringComparison.Ordinal), "设备状态行只能从 JSONL 重载，不能直接附加内存对象。");
+    AssertFalse(viewCode.Contains("FileSystemWatcher", StringComparison.Ordinal), "外部删除不增加文件监听器。");
 }
 
 static void DeviceStatusLocalLogStoreWritesAndReadsJsonl()
@@ -9294,11 +9358,7 @@ sealed class FakeProgramExceptionLogService : IProgramExceptionLogService
 
 sealed class FakeDeviceStatusService : IDeviceStatusService
 {
-    public event EventHandler<BizDeviceStatusLog>? StatusChanged;
-
     public event EventHandler? LogsChanged;
-
-    public void NotifyLogsChanged() => LogsChanged?.Invoke(this, EventArgs.Empty);
 
     public List<BizDeviceStatusLog> Logs { get; } = new();
 
@@ -9419,7 +9479,7 @@ sealed class FakeDeviceStatusService : IDeviceStatusService
             ReportStatus = ProductionConstants.UploadStatuses.Pending
         };
         Logs.Add(log);
-        StatusChanged?.Invoke(this, log);
+        LogsChanged?.Invoke(this, EventArgs.Empty);
         return Task.FromResult(log);
     }
 }

@@ -39,11 +39,7 @@ public class DeviceStatusService : IDeviceStatusService
         _settingsService.SettingsChanged += SettingsService_SettingsChanged;
     }
 
-    public event EventHandler<BizDeviceStatusLog>? StatusChanged;
-
     public event EventHandler? LogsChanged;
-
-    public void NotifyLogsChanged() => RaiseLogsChanged();
 
     public BizDeviceStatusLog? GetCurrentStatus()
         => GetLogs(from: null, to: null, maxCount: 1).FirstOrDefault();

@@ -57,6 +57,12 @@ public sealed class DeviceApiEndpointService : IDeviceApiEndpointService
             }
 
             var currentStatus = _deviceStatusService.GetCurrentStatus();
+            if (currentStatus is null)
+            {
+                response = Failure<DeviceStatusQueryRes>("暂无设备状态记录");
+                return response;
+            }
+
             var statusCode = DeviceStatusReportRules.NormalizeMesDeviceStatusCode(currentStatus.DeviceStatus);
             response = Success(new DeviceStatusQueryRes
             {

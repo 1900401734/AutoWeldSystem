@@ -18,6 +18,7 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
 {
     private readonly SqlSugarDbContext _dbContext;
     private readonly IAppSettingsService _settingsService;
+    private readonly IDeviceStatusService _deviceStatusService;
     private readonly IPlcCommunicationService _plcCommunicationService;
     private readonly IPlcProductionMonitorService _productionMonitorService;
     private readonly IProgramExceptionLogService _exceptionLogService;
@@ -31,6 +32,7 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
     public CenterTelemetrySyncService(
         SqlSugarDbContext dbContext,
         IAppSettingsService settingsService,
+        IDeviceStatusService deviceStatusService,
         IPlcCommunicationService plcCommunicationService,
         IPlcProductionMonitorService productionMonitorService,
         IProgramExceptionLogService exceptionLogService,
@@ -38,6 +40,7 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
     {
         _dbContext = dbContext;
         _settingsService = settingsService;
+        _deviceStatusService = deviceStatusService;
         _plcCommunicationService = plcCommunicationService;
         _productionMonitorService = productionMonitorService;
         _exceptionLogService = exceptionLogService;
@@ -163,13 +166,13 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
     }
 
     /// <summary>
-    /// Builds one station snapshot from the latest PLC monitor value and local task fallback.
+    /// Builds one station snapshot from the latest PLC monitor value and device-status JSONL fallback.
     /// </summary>
     private CenterTelemetryStationSnapshot BuildStationSnapshot(int stationNo)
     {
         var connection = _plcCommunicationService.Current;
         var production = _productionMonitorService.GetCurrent(stationNo);
-        var latestStatus = GetLatestDeviceStatus(stationNo);
+        var latestStatus = _deviceStatusService.GetLatestStatus(stationNo);
         var summary = GetTodayProductionSummary(stationNo);
         var statusCode = ResolvePlcStatusCode(production, latestStatus);
         var counts = ResolveProductionCounts(production, summary);
@@ -190,18 +193,6 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
             TodayFailedCount = counts.Failed,
             CollectedAt = DateTime.Now
         };
-    }
-
-    private BizDeviceStatusLog? GetLatestDeviceStatus(int stationNo)
-    {
-        lock (_dbLock)
-        {
-            _dbContext.InitDatabase();
-            return _dbContext.Db.Queryable<BizDeviceStatusLog>()
-                .Where(it => it.StationNo == stationNo)
-                .OrderByDescending(it => it.OccurredTime)
-                .First();
-        }
     }
 
     private TodayProductionSummary GetTodayProductionSummary(int stationNo)

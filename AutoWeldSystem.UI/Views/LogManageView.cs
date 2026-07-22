@@ -125,6 +125,7 @@ public partial class LogManageView : BaseView
         if (Visible && _initialized)
         {
             QueueExceptionLogFlush();
+            LoadDeviceStatusLogs();
         }
     }
 
@@ -256,8 +257,6 @@ public partial class LogManageView : BaseView
         chkDeviceStatusShowDate.CheckedChanged += ShowLogDate_CheckedChanged;
         queryDeviceStatusLogs.QueryClick += (_, keyword) => HandleDeviceStatusQuery(keyword);
         dgvDeviceStatusLogs.SelectionChanged += (_, _) => ShowSelectedDeviceStatusDetails();
-        _deviceStatusService.StatusChanged += DeviceStatusService_StatusChanged;
-        Disposed += (_, _) => _deviceStatusService.StatusChanged -= DeviceStatusService_StatusChanged;
         _deviceStatusService.LogsChanged += DeviceStatusService_LogsChanged;
         Disposed += (_, _) => _deviceStatusService.LogsChanged -= DeviceStatusService_LogsChanged;
     }
@@ -945,16 +944,6 @@ public partial class LogManageView : BaseView
         RunOnUiThread(() => AddLiveDeviceLifecycleLog(entry), "LogManageView.DeviceLifecycleLogWritten");
     }
 
-    private void DeviceStatusService_StatusChanged(object? sender, BizDeviceStatusLog entry)
-    {
-        if (IsDisposed || !IsHandleCreated)
-        {
-            return;
-        }
-
-        RunOnUiThread(() => AddLiveDeviceStatusLog(entry), "LogManageView.DeviceStatusChanged");
-    }
-
     /// <summary>
     /// Reloads the current device-status date after a source log is deleted elsewhere.
     /// </summary>
@@ -1078,22 +1067,6 @@ public partial class LogManageView : BaseView
         }
 
         ApplyDeviceLifecycleFilter();
-    }
-
-    private void AddLiveDeviceStatusLog(BizDeviceStatusLog entry)
-    {
-        if (entry.OccurredTime.Date != GetSelectedDate(dtpDeviceStatusDate))
-        {
-            return;
-        }
-
-        _deviceStatusLogs.Insert(0, entry);
-        if (_deviceStatusLogs.Count > MaxDisplayCount)
-        {
-            _deviceStatusLogs.RemoveRange(MaxDisplayCount, _deviceStatusLogs.Count - MaxDisplayCount);
-        }
-
-        ApplyDeviceStatusFilter();
     }
 
     private void ShowSelectedMesLogDetails()
