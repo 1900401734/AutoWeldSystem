@@ -9,7 +9,6 @@ using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.MES;
 using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Data;
-using AutoWeldSystem.Services.Log;
 using System.Globalization;
 using System.Text.Json;
 
@@ -53,7 +52,7 @@ public class UploadTaskService : IUploadTaskService
     public IReadOnlyList<UploadTaskSummary> GetTasks(string taskType, bool includeCompleted = false)
     {
         var normalizedTaskType = NormalizeTaskType(taskType);
-        var deviceStatusLogIds = normalizedTaskType == ProductionConstants.UploadTaskTypes.DeviceStatus
+        var deviceStatusRecordKeys = normalizedTaskType == ProductionConstants.UploadTaskTypes.DeviceStatus
             ? SyncDeviceStatusTasksFromLogs()
             : null;
 
@@ -74,11 +73,11 @@ public class UploadTaskService : IUploadTaskService
                 .Select(ToSummary)
                 .ToList();
 
-            if (deviceStatusLogIds is not null)
+            if (deviceStatusRecordKeys is not null)
             {
                 rows = rows
-                    .Where(row => row.DeviceStatusLogId is not null
-                        && deviceStatusLogIds.Contains(row.DeviceStatusLogId.Value))
+                    .Where(row => !string.IsNullOrWhiteSpace(row.DeviceStatusRecordKey)
+                        && deviceStatusRecordKeys.Contains(row.DeviceStatusRecordKey))
                     .ToList();
             }
 
@@ -161,22 +160,50 @@ public class UploadTaskService : IUploadTaskService
     /// <summary>
     /// Reconciles pending and failed device-status logs into the upload-task index.
     /// </summary>
-    private HashSet<int> SyncDeviceStatusTasksFromLogs()
+    private HashSet<string> SyncDeviceStatusTasksFromLogs()
     {
-        var logs = _deviceStatusService
-            .GetLogs(from: null, to: null, maxCount: 5000)
-            .Where(log => DeviceStatusUploadVisibilityRules.ShouldInclude(log.ReportStatus))
-            .ToList();
+        var logs = _deviceStatusService.GetPendingLogs().ToList();
+        var activeRecordKeys = logs
+            .Select(DeviceStatusRecordIdentityRules.GetRecordKey)
+            .Where(recordKey => recordKey is not null)
+            .Cast<string>()
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         foreach (var log in logs)
         {
-            _deviceStatusService.EnsurePendingUploadTask(log);
+            _ = _deviceStatusService.EnsurePendingUploadTask(log);
         }
 
-        return logs
-            .Where(log => log.Id > 0)
-            .Select(log => log.Id)
-            .ToHashSet();
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var now = DateTime.Now;
+            var staleTasks = _dbContext.Db.Queryable<BizUploadTask>()
+                .Where(task => task.TaskType == ProductionConstants.UploadTaskTypes.DeviceStatus
+                    && !task.IsDeleted
+                    && task.Status != ProductionConstants.UploadStatuses.Uploaded)
+                .ToList()
+                .Where(task =>
+                {
+                    var recordKey = DeviceStatusRecordIdentityRules.ReadTaskRecordKey(task.BusinessId, task.PayloadJson);
+                    return recordKey is null || !activeRecordKeys.Contains(recordKey);
+                })
+                .ToList();
+            foreach (var task in staleTasks)
+            {
+                task.IsDeleted = true;
+                task.DeletedTime = now;
+                task.UpdatedTime = now;
+                task.Message = "Device status JSONL source is missing or no longer pending.";
+            }
+
+            if (staleTasks.Count > 0)
+            {
+                _dbContext.Db.Updateable(staleTasks).ExecuteCommand();
+            }
+        }
+
+        return activeRecordKeys;
     }
 
     public BizUploadTask EnqueueOrUpdate(BizUploadTask task)
@@ -220,29 +247,67 @@ public class UploadTaskService : IUploadTaskService
         }
     }
 
-    public async Task<UploadTaskSummary?> ExecuteAsync(int id, CancellationToken cancellationToken = default)
+    public async Task<UploadTaskSummary?> ExecuteAsync(
+        int id,
+        CancellationToken cancellationToken = default)
     {
+        var candidate = GetRetryableTask(id);
+        if (candidate is null)
+        {
+            return null;
+        }
+
+        string? recordKey = null;
+        if (string.Equals(
+            candidate.TaskType,
+            ProductionConstants.UploadTaskTypes.DeviceStatus,
+            StringComparison.OrdinalIgnoreCase))
+        {
+            recordKey = DeviceStatusRecordIdentityRules.ReadTaskRecordKey(
+                candidate.BusinessId,
+                candidate.PayloadJson);
+            var source = recordKey is null ? null : _deviceStatusService.GetLog(recordKey);
+            if (source is null || !DeviceStatusUploadVisibilityRules.ShouldInclude(source.ReportStatus))
+            {
+                SoftDeleteDeviceStatusTask(candidate.Id, "Device status JSONL source is missing or no longer pending.");
+                return null;
+            }
+        }
+
         var task = MarkUploading(id);
         if (task is null)
         {
             return null;
         }
 
-        var response = await ExecuteByTypeAsync(task, cancellationToken);
-        var summary = FinishExecution(task.Id, response);
-        return summary;
+        BasicRes<object>? response = recordKey is null
+            ? await ExecuteByTypeAsync(task, cancellationToken)
+            : await UploadDeviceStatusAsync(recordKey, cancellationToken);
+        if (response is null)
+        {
+            SoftDeleteDeviceStatusTask(task.Id, "Device status JSONL source was removed before MES upload.");
+            return null;
+        }
+
+        return FinishExecution(task.Id, response);
     }
 
-    public async Task<int> ExecuteAllPendingAsync(string taskType, CancellationToken cancellationToken = default)
+    public async Task<int> ExecuteAllPendingAsync(
+        string taskType,
+        CancellationToken cancellationToken = default)
     {
+        var normalizedTaskType = NormalizeTaskType(taskType);
+        if (normalizedTaskType == ProductionConstants.UploadTaskTypes.DeviceStatus)
+        {
+            _ = SyncDeviceStatusTasksFromLogs();
+        }
+
         List<int> taskIds;
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
-            var normalizedTaskType = NormalizeTaskType(taskType);
             taskIds = _dbContext.Db.Queryable<BizUploadTask>()
-                .Where(task => task.TaskType == normalizedTaskType
-                    && !task.IsDeleted)
+                .Where(task => task.TaskType == normalizedTaskType && !task.IsDeleted)
                 .ToList()
                 .Where(UploadTaskVisibilityRules.ShouldRetry)
                 .Select(task => task.Id)
@@ -284,11 +349,16 @@ public class UploadTaskService : IUploadTaskService
 
     public int RequestRetryAll(string taskType)
     {
+        var normalizedTaskType = NormalizeTaskType(taskType);
+        if (normalizedTaskType == ProductionConstants.UploadTaskTypes.DeviceStatus)
+        {
+            _ = SyncDeviceStatusTasksFromLogs();
+        }
+
         var changes = new List<UploadTaskStatusChangedEventArgs>();
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
-            var normalizedTaskType = NormalizeTaskType(taskType);
             var tasks = _dbContext.Db.Queryable<BizUploadTask>()
                 .Where(task => task.TaskType == normalizedTaskType
                     && !task.IsDeleted)
@@ -362,6 +432,43 @@ public class UploadTaskService : IUploadTaskService
         PublishTaskStatusChanged(changed);
     }
 
+    private BizUploadTask? GetRetryableTask(int id)
+    {
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var task = _dbContext.Db.Queryable<BizUploadTask>().InSingle(id);
+            return task is not null && UploadTaskVisibilityRules.ShouldRetry(task)
+                ? task
+                : null;
+        }
+    }
+
+    private void SoftDeleteDeviceStatusTask(int id, string message)
+    {
+        UploadTaskStatusChangedEventArgs? changed = null;
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var task = _dbContext.Db.Queryable<BizUploadTask>().InSingle(id);
+            if (task is null
+                || task.IsDeleted
+                || task.Status == ProductionConstants.UploadStatuses.Uploaded)
+            {
+                return;
+            }
+
+            task.IsDeleted = true;
+            task.DeletedTime = DateTime.Now;
+            task.UpdatedTime = DateTime.Now;
+            task.Message = message;
+            _dbContext.Db.Updateable(task).ExecuteCommand();
+            changed = ToStatusChangedEvent(task, "Deleted");
+        }
+
+        PublishTaskStatusChanged(changed);
+    }
+
     private BizUploadTask? MarkUploading(int id)
     {
         lock (_dbLock)
@@ -389,7 +496,6 @@ public class UploadTaskService : IUploadTaskService
             ProductionConstants.UploadTaskTypes.StartReport => await UploadStartReportAsync(task, cancellationToken),
             ProductionConstants.UploadTaskTypes.FinishReport => await UploadFinishReportAsync(task, cancellationToken),
             ProductionConstants.UploadTaskTypes.WorkOrderStatus => await UploadWorkOrderStatusAsync(task, cancellationToken),
-            ProductionConstants.UploadTaskTypes.DeviceStatus => await UploadDeviceStatusAsync(task, cancellationToken),
             ProductionConstants.UploadTaskTypes.ReportFile => await UploadReportFileAsync(task, cancellationToken),
             ProductionConstants.UploadTaskTypes.ProcessParameter => await UploadProcessParametersAsync(task, cancellationToken),
             ProductionConstants.UploadTaskTypes.ProgramFile => Unsupported("程序文件上传由程序管理服务处理。"),
@@ -566,33 +672,10 @@ public class UploadTaskService : IUploadTaskService
         return await _mesProvider.ChangeWorkStatusAsync(request, cancellationToken);
     }
 
-    private async Task<BasicRes<object>> UploadDeviceStatusAsync(BizUploadTask task, CancellationToken cancellationToken)
-    {
-        var request = ReadDeviceStatusRequest(task.PayloadJson);
-        if (request is null)
-        {
-            return Unsupported("Device status task payload is missing.");
-        }
-
-        if (!IsDeviceStatusReportEnabled())
-        {
-            var skipped = Skipped("Device status report is disabled in system settings.");
-            UpdateDeviceStatusLog(request.LogId, skipped);
-            return skipped;
-        }
-
-        request.Request.DeviceId = DeviceStatusReportRules.ResolveReportDeviceId(
-            _settingsService.Get().DeviceId,
-            request.Request.DeviceId);
-        if (string.IsNullOrWhiteSpace(request.Request.DeviceId))
-        {
-            return Unsupported("Device status task payload is missing device id.");
-        }
-
-        var response = await _mesProvider.ReportDeviceStatusAsync(request.Request, cancellationToken);
-        UpdateDeviceStatusLog(request.LogId, response);
-        return response;
-    }
+    private Task<BasicRes<object>?> UploadDeviceStatusAsync(
+        string recordKey,
+        CancellationToken cancellationToken)
+        => _deviceStatusService.RetryUploadAsync(recordKey, cancellationToken);
 
     private async Task<BasicRes<object>> UploadProcessParametersAsync(BizUploadTask task, CancellationToken cancellationToken)
     {
@@ -1262,61 +1345,6 @@ public class UploadTaskService : IUploadTaskService
         _dbContext.Db.Updateable(report).ExecuteCommand();
     }
 
-    private void UpdateDeviceStatusLog(int logId, BasicRes<object> response)
-    {
-        if (logId <= 0)
-        {
-            return;
-        }
-
-        BizDeviceStatusLog? updatedLog;
-        lock (_dbLock)
-        {
-            _dbContext.InitDatabase();
-            updatedLog = _dbContext.Db.Queryable<BizDeviceStatusLog>().InSingle(logId);
-            if (updatedLog is null)
-            {
-                return;
-            }
-
-            updatedLog.ReportStatus = IsSkippedResponse(response)
-                ? ProductionConstants.UploadStatuses.Skipped
-                : response.IsSuccess
-                    ? ProductionConstants.UploadStatuses.Uploaded
-                    : ProductionConstants.UploadStatuses.Failed;
-            updatedLog.ReportTime = DateTime.Now;
-            updatedLog.ReportMessage = response.Msg;
-            _dbContext.Db.Updateable(updatedLog)
-                .UpdateColumns(it => new { it.ReportStatus, it.ReportTime, it.ReportMessage })
-                .Where(it => it.Id == updatedLog.Id)
-                .ExecuteCommand();
-        }
-
-        if (TryPreserveLocalOccurredTime(updatedLog))
-        {
-            DeviceStatusLocalLogStore.TryAppend(updatedLog, _settingsService.Get());
-        }
-
-        _deviceStatusService.NotifyLogsChanged();
-    }
-
-    private bool TryPreserveLocalOccurredTime(BizDeviceStatusLog log)
-    {
-        var dayStart = log.OccurredTime.Date;
-        var dayEnd = dayStart.AddDays(1).AddTicks(-1);
-        var localLog = DeviceStatusLocalLogStore
-            .Read(_settingsService.Get(), dayStart, dayEnd, maxCount: 5000)
-            .FirstOrDefault(entry => entry.Id == log.Id);
-
-        if (localLog is not null && localLog.OccurredTime != default)
-        {
-            log.OccurredTime = localLog.OccurredTime;
-            return true;
-        }
-
-        return false;
-    }
-
     private static BasicRes<object> Success(string message)
     {
         return new BasicRes<object>
@@ -1449,36 +1477,6 @@ public class UploadTaskService : IUploadTaskService
         return string.Empty;
     }
 
-    private static DeviceStatusUploadRequest? ReadDeviceStatusRequest(string? payloadJson)
-    {
-        if (string.IsNullOrWhiteSpace(payloadJson))
-        {
-            return null;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(payloadJson);
-            var root = document.RootElement;
-            var logId = ReadInt(root, "LogId");
-            var request = new ReportDeviceStatusReq
-            {
-                DeviceId = ReadString(root, "DeviceId"),
-                DevStatus = ReadString(root, "DevStatus"),
-                Ts = ReadString(root, "Ts"),
-                Remark = ReadString(root, "Remark")
-            };
-
-            return !DeviceStatusReportRules.IsMesDeviceStatusCode(request.DevStatus)
-                ? null
-                : new DeviceStatusUploadRequest(logId, request);
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
-
     private static UploadPayloadInfo ReadUploadPayload(string? payloadJson)
     {
         if (string.IsNullOrWhiteSpace(payloadJson))
@@ -1579,9 +1577,6 @@ public class UploadTaskService : IUploadTaskService
             or ProductionConstants.UploadStatuses.Retrying;
     }
 
-    private bool IsDeviceStatusReportEnabled()
-        => _settingsService.Get().EnableDeviceStatusReport != false;
-
     private bool IsWorkOrderStatusReportEnabled()
         => _settingsService.Get().EnableWorkOrderStatusReport != false;
 
@@ -1598,6 +1593,13 @@ public class UploadTaskService : IUploadTaskService
             ? string.Join(", ", productNos)
             : payload.ProductNo;
         var message = task.Message ?? string.Empty;
+        var recordKey = string.Equals(
+            task.TaskType,
+            ProductionConstants.UploadTaskTypes.DeviceStatus,
+            StringComparison.OrdinalIgnoreCase)
+                ? DeviceStatusRecordIdentityRules.ReadTaskRecordKey(task.BusinessId, task.PayloadJson)
+                : null;
+        var deviceStatusLog = recordKey is null ? null : _deviceStatusService.GetLog(recordKey);
 
         return new UploadTaskSummary
         {
@@ -1605,11 +1607,9 @@ public class UploadTaskService : IUploadTaskService
             TaskType = task.TaskType,
             Target = task.Target,
             BusinessId = task.BusinessId ?? string.Empty,
-            DeviceStatusLogId = string.Equals(task.TaskType, ProductionConstants.UploadTaskTypes.DeviceStatus, StringComparison.OrdinalIgnoreCase)
-                ? ReadDeviceStatusLogId(task.PayloadJson)
-                : null,
-            TaskIdentity = ResolveTaskSummaryIdentity(task),
-            StationNo = payload.StationNo,
+            DeviceStatusRecordKey = recordKey ?? string.Empty,
+            TaskIdentity = ResolveTaskSummaryIdentity(task, deviceStatusLog),
+            StationNo = deviceStatusLog?.StationNo ?? payload.StationNo,
             ProductNo = productText,
             Status = task.Status,
             IsVirtual = false,
@@ -1676,15 +1676,13 @@ public class UploadTaskService : IUploadTaskService
     /// Resolves the first column text for an upload-status detail row.
     /// Device-status tasks use their status code and name instead of a weld task id.
     /// </summary>
-    private string ResolveTaskSummaryIdentity(BizUploadTask task)
+    private string ResolveTaskSummaryIdentity(
+        BizUploadTask task,
+        BizDeviceStatusLog? deviceStatusLog)
     {
-        if (string.Equals(task.TaskType, ProductionConstants.UploadTaskTypes.DeviceStatus, StringComparison.OrdinalIgnoreCase))
+        if (deviceStatusLog is not null)
         {
-            var deviceStatus = ReadDeviceStatusCode(task.PayloadJson);
-            if (!string.IsNullOrWhiteSpace(deviceStatus))
-            {
-                return DeviceStatusReportRules.FormatStatusIdentity(deviceStatus);
-            }
+            return DeviceStatusReportRules.FormatStatusIdentity(deviceStatusLog.DeviceStatus);
         }
 
         return ResolveTaskIdentity(task);
@@ -1702,43 +1700,6 @@ public class UploadTaskService : IUploadTaskService
         return UploadTaskIdentityRules.Resolve(weldTask, task.WeldTaskId, task.BusinessId);
     }
 
-    private static string ReadDeviceStatusCode(string? payloadJson)
-    {
-        if (string.IsNullOrWhiteSpace(payloadJson))
-        {
-            return string.Empty;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(payloadJson);
-            return ReadString(document.RootElement, "DevStatus");
-        }
-        catch (JsonException)
-        {
-            return string.Empty;
-        }
-    }
-
-    private static int? ReadDeviceStatusLogId(string? payloadJson)
-    {
-        if (string.IsNullOrWhiteSpace(payloadJson))
-        {
-            return null;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(payloadJson);
-            var logId = ReadInt(document.RootElement, "LogId");
-            return logId > 0 ? logId : null;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
-
     private sealed record UploadPayloadInfo
     {
         public int StationNo { get; init; }
@@ -1747,8 +1708,6 @@ public class UploadTaskService : IUploadTaskService
 
         public string ProductNo { get; init; } = string.Empty;
     }
-
-    private sealed record DeviceStatusUploadRequest(int LogId, ReportDeviceStatusReq Request);
 
     private sealed record ProcessParameterSchemeItem(DimTestItem Item, BizSchemeDetail Detail);
 

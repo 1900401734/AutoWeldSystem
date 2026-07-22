@@ -179,6 +179,9 @@ var tests = new (string Name, Action Run)[]
     ("Device status service writes jsonl before MES", DeviceStatusServiceWritesJsonlBeforeMes),
     ("Device status service stops when first jsonl write fails", DeviceStatusServiceStopsWhenFirstJsonlWriteFails),
     ("Device status runtime no longer persists database log rows", DeviceStatusRuntimeNoLongerPersistsDatabaseLogRows),
+    ("Device status upload task payload contains only record key", DeviceStatusUploadTaskPayloadContainsOnlyRecordKey),
+    ("Device status upload execution revalidates jsonl source", DeviceStatusUploadExecutionRevalidatesJsonlSource),
+    ("Device status pending projection preserves uploaded history", DeviceStatusPendingProjectionPreservesUploadedHistory),
     ("Device status report keeps millisecond timestamp after MES upload", DeviceStatusReportKeepsMillisecondTimestampAfterMesUpload),
     ("Device status local log store keeps latest state per log id", DeviceStatusLocalLogStoreKeepsLatestStatePerLogId),
     ("Device status pending source and task reconciliation are wired", DeviceStatusPendingSourceAndTaskReconciliationAreWired),
@@ -4327,6 +4330,71 @@ static void DeviceStatusRuntimeNoLongerPersistsDatabaseLogRows()
     AssertTrue(serviceCode.Contains("IProgramExceptionLogService", StringComparison.Ordinal), "JSONL 写入失败必须接入程序异常日志。");
 }
 
+static void DeviceStatusUploadTaskPayloadContainsOnlyRecordKey()
+{
+    var serviceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "DeviceStatusService.cs"),
+        Encoding.UTF8);
+    var buildTaskMethod = ExtractMethodText(
+        serviceCode,
+        "private static BizUploadTask BuildDeviceStatusUploadTask",
+        "private BizUploadTask? FindExistingUploadTask");
+
+    AssertTrue(buildTaskMethod.Contains("new { RecordKey = recordKey }", StringComparison.Ordinal), "新任务 payload 必须只保存记录键。");
+    AssertFalse(buildTaskMethod.Contains("LogId =", StringComparison.Ordinal), "新任务不能继续保存数据库日志 Id。");
+    AssertFalse(buildTaskMethod.Contains("DeviceId =", StringComparison.Ordinal), "任务 payload 不能复制设备编号作为权威来源。");
+    AssertFalse(buildTaskMethod.Contains("DevStatus =", StringComparison.Ordinal), "任务 payload 不能复制设备状态正文。");
+    AssertFalse(buildTaskMethod.Contains("Remark =", StringComparison.Ordinal), "任务 payload 不能复制备注正文。");
+}
+
+static void DeviceStatusUploadExecutionRevalidatesJsonlSource()
+{
+    var uploadCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "UploadTaskService.cs"),
+        Encoding.UTF8);
+    var executeMethod = ExtractMethodText(
+        uploadCode,
+        "public async Task<UploadTaskSummary?> ExecuteAsync",
+        "public async Task<int> ExecuteAllPendingAsync");
+    var executeAllMethod = ExtractMethodText(
+        uploadCode,
+        "public async Task<int> ExecuteAllPendingAsync",
+        "public void RequestRetry");
+    var uploadMethod = ExtractMethodText(
+        uploadCode,
+        "private Task<BasicRes<object>?> UploadDeviceStatusAsync",
+        "private async Task<BasicRes<object>> UploadProcessParametersAsync");
+
+    AssertSourceOrder(
+        executeMethod,
+        "_deviceStatusService.GetLog(recordKey)",
+        "MarkUploading(id)",
+        "单条执行必须先重新读取 JSONL，再把任务改为 Uploading。");
+    AssertTrue(executeMethod.Contains("SoftDeleteDeviceStatusTask", StringComparison.Ordinal), "来源缺失时单条执行必须软删除未成功投影。");
+    AssertTrue(executeAllMethod.Contains("SyncDeviceStatusTasksFromLogs", StringComparison.Ordinal), "批量执行查询任务前必须先按 JSONL 对账。");
+    AssertTrue(executeAllMethod.Contains("await ExecuteAsync(taskId", StringComparison.Ordinal), "批量执行的每一条仍必须复用单条门禁。");
+    AssertTrue(uploadMethod.Contains("_deviceStatusService.RetryUploadAsync", StringComparison.Ordinal), "实际 MES 请求必须由设备状态服务从 JSONL 构造。");
+    AssertFalse(uploadCode.Contains("Queryable<BizDeviceStatusLog>", StringComparison.Ordinal), "上传任务服务不能再查询设备状态旧表。");
+    AssertFalse(uploadCode.Contains("Updateable(updatedLog)", StringComparison.Ordinal), "上传任务服务不能再更新设备状态旧表。");
+    AssertFalse(uploadCode.Contains("ReadDeviceStatusRequest", StringComparison.Ordinal), "上传任务不能再从复制 payload 还原设备状态正文。");
+}
+
+static void DeviceStatusPendingProjectionPreservesUploadedHistory()
+{
+    var uploadCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "UploadTaskService.cs"),
+        Encoding.UTF8);
+    var reconcileMethod = ExtractMethodText(
+        uploadCode,
+        "private HashSet<string> SyncDeviceStatusTasksFromLogs",
+        "public BizUploadTask EnqueueOrUpdate");
+
+    AssertTrue(reconcileMethod.Contains("GetPendingLogs()", StringComparison.Ordinal), "待上传设备状态必须直接来自全部 JSONL 最新版本。");
+    AssertTrue(reconcileMethod.Contains("task.Status != ProductionConstants.UploadStatuses.Uploaded", StringComparison.Ordinal), "来源缺失清理必须排除已经上传的任务。");
+    AssertTrue(reconcileMethod.Contains("task.IsDeleted = true", StringComparison.Ordinal), "来源缺失的未成功任务必须软删除。");
+    AssertFalse(reconcileMethod.Contains("Deleteable<BizUploadTask>", StringComparison.Ordinal), "派生任务清理不能物理删除诊断记录。");
+}
+
 static void DeviceStatusLocalLogStoreWritesAndReadsJsonl()
 {
     var root = Path.Combine(Path.GetTempPath(), "AutoWeldSystemDeviceStatusLogTests", Guid.NewGuid().ToString("N"));
@@ -4499,9 +4567,12 @@ static void DeviceStatusPendingSourceAndTaskReconciliationAreWired()
     AssertTrue(serviceCode.Contains("DeviceStatusUploadVisibilityRules.ShouldInclude", StringComparison.Ordinal), "设备状态服务必须按日志上报状态筛选待上传记录。");
     AssertTrue(serviceCode.Contains("var existing = FindExistingUploadTask(recordKey);", StringComparison.Ordinal), "设备状态任务补建必须按 JSONL 记录键兼容查找现有任务。");
     AssertTrue(serviceCode.Contains("existing.IsDeleted = false;", StringComparison.Ordinal), "日志来源有效时应恢复旧的软删除任务。");
-    AssertTrue(uploadTaskCode.Contains("GetLogs(from: null, to: null, maxCount: 5000)", StringComparison.Ordinal), "设备状态上传任务查询必须以设备状态日志为来源。");
-    AssertTrue(uploadTaskCode.Contains("EnsurePendingUploadTask", StringComparison.Ordinal), "设备状态上传任务查询必须补建缺失的关联任务。");
-    AssertTrue(summaryCode.Contains("DeviceStatusLogId", StringComparison.Ordinal), "上传任务摘要必须携带设备状态日志 ID。");
+    AssertTrue(interfaceCode.Contains("GetPendingLogs", StringComparison.Ordinal), "接口必须直接暴露 JSONL 待上传来源。");
+    AssertTrue(interfaceCode.Contains("RetryUploadAsync", StringComparison.Ordinal), "接口必须提供按记录键重新读取并上报的方法。");
+    AssertTrue(uploadTaskCode.Contains("GetPendingLogs()", StringComparison.Ordinal), "任务查询必须以全部 JSONL 最新版本为来源。");
+    AssertTrue(uploadTaskCode.Contains("SyncDeviceStatusTasksFromLogs", StringComparison.Ordinal), "任务查询和批量执行必须先对账来源。");
+    AssertTrue(summaryCode.Contains("DeviceStatusRecordKey", StringComparison.Ordinal), "上传摘要必须携带 JSONL 记录键。");
+    AssertFalse(summaryCode.Contains("DeviceStatusLogId", StringComparison.Ordinal), "上传摘要不能继续依赖数据库日志 Id。");
 }
 
 static void DeviceStatusLogDeletionRefreshIsWiredAcrossViews()
@@ -4522,7 +4593,8 @@ static void DeviceStatusLogDeletionRefreshIsWiredAcrossViews()
     AssertTrue(stateViewCode.Contains("IDeviceStatusService deviceStatusService", StringComparison.Ordinal), "待上传页必须注入设备状态日志服务。");
     AssertTrue(stateViewCode.Contains("RefreshDeviceStatusLogIndex", StringComparison.Ordinal), "待上传页必须缓存日志来源以支持批量删除。");
     AssertTrue(stateViewCode.Contains("_deviceStatusService.DeleteLogs", StringComparison.Ordinal), "待上传设备状态删除必须通过设备状态日志服务执行。");
-    AssertTrue(uploadTaskCode.Contains("_deviceStatusService.NotifyLogsChanged();", StringComparison.Ordinal), "上传任务完成后必须通知日志管理页刷新设备状态日志。");
+    AssertTrue(uploadTaskCode.Contains("_deviceStatusService.RetryUploadAsync", StringComparison.Ordinal), "设备状态补传结果和刷新必须统一由设备状态服务处理。");
+    AssertFalse(uploadTaskCode.Contains("NotifyLogsChanged", StringComparison.Ordinal), "上传任务服务不能绕过设备状态服务公开触发日志刷新。");
 }
 
 static void DeviceStatusLocalLogStoreKeepsLatestStatePerLogId()
