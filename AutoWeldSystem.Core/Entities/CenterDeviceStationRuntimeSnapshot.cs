@@ -37,13 +37,13 @@ public sealed class CenterDeviceStationRuntimeSnapshot
     public string PlcConnectionState { get; set; } = string.Empty;
 
     /// <summary>
-    /// PLC raw device status code.
+    /// PLC raw status code or device-status JSONL fallback code.
     /// </summary>
     [SugarColumn(Length = 20)]
     public string DeviceStatusCode { get; set; } = string.Empty;
 
     /// <summary>
-    /// PLC device status display name.
+    /// Display name matching the selected status source.
     /// </summary>
     [SugarColumn(Length = 50)]
     public string DeviceStatusName { get; set; } = string.Empty;

@@ -186,20 +186,30 @@ public class UploadTaskService : IUploadTaskService
                 .Where(task =>
                 {
                     var recordKey = DeviceStatusRecordIdentityRules.ReadTaskRecordKey(task.BusinessId, task.PayloadJson);
-                    return recordKey is null || !activeRecordKeys.Contains(recordKey);
+                    return (recordKey is null || !activeRecordKeys.Contains(recordKey))
+                        && !_deviceStatusService.ShouldPreserveUploadingTask(task);
                 })
                 .ToList();
             foreach (var task in staleTasks)
             {
+                var existingStatus = task.Status;
+                var existingLastAttemptTime = task.LastAttemptTime;
                 task.IsDeleted = true;
                 task.DeletedTime = now;
                 task.UpdatedTime = now;
                 task.Message = "Device status JSONL source is missing or no longer pending.";
-            }
-
-            if (staleTasks.Count > 0)
-            {
-                _dbContext.Db.Updateable(staleTasks).ExecuteCommand();
+                _ = _dbContext.Db.Updateable(task)
+                    .UpdateColumns(taskRow => new
+                    {
+                        taskRow.IsDeleted,
+                        taskRow.DeletedTime,
+                        taskRow.UpdatedTime,
+                        taskRow.Message
+                    })
+                    .Where(taskRow => taskRow.Id == task.Id
+                        && taskRow.Status == existingStatus
+                        && taskRow.LastAttemptTime == existingLastAttemptTime)
+                    .ExecuteCommand();
             }
         }
 
@@ -269,7 +279,7 @@ public class UploadTaskService : IUploadTaskService
             var source = recordKey is null ? null : _deviceStatusService.GetLog(recordKey);
             if (source is null || !DeviceStatusUploadVisibilityRules.ShouldInclude(source.ReportStatus))
             {
-                SoftDeleteDeviceStatusTask(candidate.Id, "Device status JSONL source is missing or no longer pending.");
+                SoftDeleteDeviceStatusTask(candidate, "Device status JSONL source is missing or no longer pending.");
                 return null;
             }
         }
@@ -285,7 +295,7 @@ public class UploadTaskService : IUploadTaskService
             : await UploadDeviceStatusAsync(recordKey, cancellationToken);
         if (response is null)
         {
-            SoftDeleteDeviceStatusTask(task.Id, "Device status JSONL source was removed before MES upload.");
+            SoftDeleteDeviceStatusTask(task, "Device status JSONL source was removed before MES upload.");
             return null;
         }
 
@@ -444,13 +454,15 @@ public class UploadTaskService : IUploadTaskService
         }
     }
 
-    private void SoftDeleteDeviceStatusTask(int id, string message)
+    private void SoftDeleteDeviceStatusTask(BizUploadTask expectedTask, string message)
     {
         UploadTaskStatusChangedEventArgs? changed = null;
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
-            var task = _dbContext.Db.Queryable<BizUploadTask>().InSingle(id);
+            var expectedStatus = expectedTask.Status;
+            var expectedLastAttemptTime = expectedTask.LastAttemptTime;
+            var task = _dbContext.Db.Queryable<BizUploadTask>().InSingle(expectedTask.Id);
             if (task is null
                 || task.IsDeleted
                 || task.Status == ProductionConstants.UploadStatuses.Uploaded)
@@ -462,8 +474,22 @@ public class UploadTaskService : IUploadTaskService
             task.DeletedTime = DateTime.Now;
             task.UpdatedTime = DateTime.Now;
             task.Message = message;
-            _dbContext.Db.Updateable(task).ExecuteCommand();
-            changed = ToStatusChangedEvent(task, "Deleted");
+            var affectedRows = _dbContext.Db.Updateable(task)
+                .UpdateColumns(taskRow => new
+                {
+                    taskRow.IsDeleted,
+                    taskRow.DeletedTime,
+                    taskRow.UpdatedTime,
+                    taskRow.Message
+                })
+                .Where(taskRow => taskRow.Id == expectedTask.Id
+                    && taskRow.Status == expectedStatus
+                    && taskRow.LastAttemptTime == expectedLastAttemptTime)
+                .ExecuteCommand();
+            if (affectedRows > 0)
+            {
+                changed = ToStatusChangedEvent(task, "Deleted");
+            }
         }
 
         PublishTaskStatusChanged(changed);

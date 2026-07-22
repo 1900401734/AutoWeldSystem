@@ -6,6 +6,7 @@ using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.PLC;
+using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Core.ViewModels;
 using AutoWeldSystem.Data;
 
@@ -172,9 +173,15 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
     {
         var connection = _plcCommunicationService.Current;
         var production = _productionMonitorService.GetCurrent(stationNo);
-        var latestStatus = _deviceStatusService.GetLatestStatus(stationNo);
+        var stationStatus = _deviceStatusService.GetLatestStatus(stationNo);
         var summary = GetTodayProductionSummary(stationNo);
-        var statusCode = ResolvePlcStatusCode(production, latestStatus);
+        var plcStatusCode = ResolvePlcStatusCode(production);
+        var latestStatus = plcStatusCode is null
+            ? CenterTelemetryRules.ResolveLatestDeviceStatus(
+                stationStatus,
+                _deviceStatusService.GetLatestStatus(ProductionConstants.Stations.SharedStationNo))
+            : stationStatus;
+        var statusCode = plcStatusCode ?? latestStatus?.DeviceStatus ?? string.Empty;
         var counts = ResolveProductionCounts(production, summary);
 
         return new CenterTelemetryStationSnapshot
@@ -183,8 +190,12 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
             PlcConnected = connection.IsConnected,
             PlcConnectionState = connection.State.ToString(),
             DeviceStatusCode = statusCode,
-            DeviceStatusName = CenterTelemetryRules.ResolvePlcStatusName(statusCode, latestStatus?.StatusName),
-            AlarmMessage = FirstNonEmpty(production.AlarmMessage, latestStatus?.Remark),
+            DeviceStatusName = CenterTelemetryRules.ResolveReportedStatusName(
+                statusCode,
+                plcStatusCode is null
+                    ? FirstNonEmpty(latestStatus?.StatusName, DeviceStatusReportRules.GetStatusName(statusCode))
+                    : null),
+            AlarmMessage = FirstNonEmpty(production.AlarmMessage, stationStatus?.Remark),
             CurrentWorkOrder = summary.CurrentWorkOrder,
             ProductJobNo = summary.ProductJobNo,
             ProductModel = summary.ProductModel,
@@ -240,7 +251,7 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
         StatusChanged?.Invoke(this, snapshot);
     }
 
-    private static string ResolvePlcStatusCode(PlcProductionSnapshot production, BizDeviceStatusLog? latestStatus)
+    private static string? ResolvePlcStatusCode(PlcProductionSnapshot production)
     {
         if (production.DeviceStatusCode.HasValue
             && ProductionConstants.PlcDeviceStatuses.IsReportable(production.DeviceStatusCode.Value))
@@ -248,7 +259,7 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
             return production.DeviceStatusCode.Value.ToString();
         }
 
-        return latestStatus?.DeviceStatus ?? string.Empty;
+        return null;
     }
 
     /// <summary>

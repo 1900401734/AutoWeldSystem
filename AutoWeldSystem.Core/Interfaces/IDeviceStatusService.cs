@@ -26,6 +26,8 @@ public interface IDeviceStatusService
 
     BizUploadTask? EnsurePendingUploadTask(BizDeviceStatusLog log);
 
+    bool ShouldPreserveUploadingTask(BizUploadTask task);
+
     string GetLogDirectory();
 
     int DeleteLogs(IReadOnlyCollection<BizDeviceStatusLog> logs);
