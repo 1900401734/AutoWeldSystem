@@ -4,6 +4,7 @@ using AutoWeldSystem.Core.DTOs.Mes.Request;
 using AutoWeldSystem.Core.DTOs.Mes.Response;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
+using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.MES;
 using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Core.Runtime;
@@ -13,109 +14,76 @@ using AutoWeldSystem.Services.Log;
 namespace AutoWeldSystem.Services.Production;
 
 /// <summary>
-/// Device status service.
-/// Status codes stored here use MES device-status values, not PLC raw running states.
+/// 设备状态 JSONL 写入、查询和 MES 上报服务。
 /// </summary>
 public class DeviceStatusService : IDeviceStatusService
 {
     private readonly SqlSugarDbContext _dbContext;
     private readonly IAppSettingsService _settingsService;
     private readonly IMesProvider _mesProvider;
+    private readonly IProgramExceptionLogService _exceptionLogService;
     private readonly object _dbLock = new();
     private AppSettings _currentSettings;
 
     public DeviceStatusService(
         SqlSugarDbContext dbContext,
         IAppSettingsService settingsService,
-        IMesProvider mesProvider)
+        IMesProvider mesProvider,
+        IProgramExceptionLogService exceptionLogService)
     {
         _dbContext = dbContext;
         _settingsService = settingsService;
+        _mesProvider = mesProvider;
+        _exceptionLogService = exceptionLogService;
         _currentSettings = settingsService.Get();
         _settingsService.SettingsChanged += SettingsService_SettingsChanged;
-        _mesProvider = mesProvider;
     }
 
     public event EventHandler<BizDeviceStatusLog>? StatusChanged;
 
     public event EventHandler? LogsChanged;
 
-    public void NotifyLogsChanged()
-    {
-        LogsChanged?.Invoke(this, EventArgs.Empty);
-    }
+    public void NotifyLogsChanged() => RaiseLogsChanged();
 
-    public BizDeviceStatusLog GetCurrentStatus()
-    {
-        lock (_dbLock)
-        {
-            _dbContext.InitDatabase();
-            var latest = _dbContext.Db.Queryable<BizDeviceStatusLog>()
-                .OrderByDescending(it => it.OccurredTime)
-                .First();
+    public BizDeviceStatusLog? GetCurrentStatus()
+        => GetLogs(from: null, to: null, maxCount: 1).FirstOrDefault();
 
-            return latest ?? BuildDefaultStatus();
-        }
-    }
+    public BizDeviceStatusLog? GetLatestStatus(int stationNo)
+        => DeviceStatusLocalLogStore.ReadLatestForStation(
+            CurrentSettings,
+            NormalizeStationNo(stationNo),
+            WriteLocalReadError);
 
-    public IReadOnlyList<BizDeviceStatusLog> GetLogs(DateTime? from = null, DateTime? to = null, int maxCount = 200)
-    {
-        var localLogs = DeviceStatusLocalLogStore.Read(CurrentSettings, from, to, maxCount);
-        if (localLogs.Count > 0)
-        {
-            return localLogs;
-        }
+    public IReadOnlyList<BizDeviceStatusLog> GetLogs(
+        DateTime? from = null,
+        DateTime? to = null,
+        int maxCount = 200)
+        => DeviceStatusLocalLogStore.Read(CurrentSettings, from, to, maxCount, WriteLocalReadError);
 
-        // 旧版本只写数据库。没有本地 JSONL 文件时继续回退数据库，避免升级后旧日志不可见。
-        lock (_dbLock)
-        {
-            _dbContext.InitDatabase();
-            var query = _dbContext.Db.Queryable<BizDeviceStatusLog>();
+    public IReadOnlyList<BizDeviceStatusLog> GetPendingLogs()
+        => DeviceStatusLocalLogStore.ReadPending(CurrentSettings, WriteLocalReadError);
 
-            if (from is not null)
-            {
-                query = query.Where(it => it.OccurredTime >= from.Value);
-            }
-
-            if (to is not null)
-            {
-                query = query.Where(it => it.OccurredTime <= to.Value);
-            }
-
-            return query
-                .OrderByDescending(it => it.OccurredTime)
-                .Take(Math.Clamp(maxCount, 1, 5000))
-                .ToList();
-        }
-    }
+    public BizDeviceStatusLog? GetLog(string recordKey)
+        => DeviceStatusLocalLogStore.ReadByRecordKey(CurrentSettings, recordKey, WriteLocalReadError);
 
     public string GetLogDirectory()
-    {
-        return DeviceStatusLocalLogStore.GetLogDirectory(CurrentSettings);
-    }
+        => DeviceStatusLocalLogStore.GetLogDirectory(CurrentSettings);
 
-    /// <summary>
-    /// Creates or synchronizes the upload task represented by one pending device-status log.
-    /// The log status is authoritative so a stale task row cannot hide a failed log.
-    /// </summary>
-    public BizUploadTask EnsurePendingUploadTask(BizDeviceStatusLog log)
+    public BizUploadTask? EnsurePendingUploadTask(BizDeviceStatusLog log)
     {
-        if (log.Id <= 0)
+        var recordKey = DeviceStatusRecordIdentityRules.GetRecordKey(log)
+            ?? throw new ArgumentException("设备状态日志缺少有效记录键。", nameof(log));
+        var source = GetLog(recordKey);
+        if (source is null || !DeviceStatusUploadVisibilityRules.ShouldInclude(source.ReportStatus))
         {
-            throw new ArgumentException("设备状态日志必须先保存后才能创建上传任务。", nameof(log));
-        }
-
-        if (!DeviceStatusUploadVisibilityRules.ShouldInclude(log.ReportStatus))
-        {
-            throw new ArgumentException("只有未上传或上传失败的设备状态日志才能创建上传任务。", nameof(log));
+            return null;
         }
 
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
-            var task = BuildDeviceStatusUploadTask(log);
-            NormalizeUploadTask(task);
-            var existing = FindExistingUploadTask(task);
+            var task = BuildDeviceStatusUploadTask(source, recordKey);
+            var existing = FindExistingUploadTask(recordKey);
             if (existing is null)
             {
                 task.CreatedTime = DateTime.Now;
@@ -125,6 +93,7 @@ public class DeviceStatusService : IDeviceStatusService
 
             existing.IsDeleted = false;
             existing.DeletedTime = null;
+            existing.BusinessId = task.BusinessId;
             existing.PayloadJson = task.PayloadJson;
             existing.Status = task.Status;
             existing.NextRetryTime = task.NextRetryTime;
@@ -135,14 +104,16 @@ public class DeviceStatusService : IDeviceStatusService
         }
     }
 
-    /// <summary>
-    /// Deletes selected device-status logs, all local JSONL versions, and related upload tasks.
-    /// </summary>
     public int DeleteLogs(IReadOnlyCollection<BizDeviceStatusLog> logs)
     {
         var selectedLogs = logs
-            .Where(log => log.Id > 0)
-            .GroupBy(log => log.Id)
+            .Select(log => new
+            {
+                Log = log,
+                RecordKey = DeviceStatusRecordIdentityRules.GetRecordKey(log)
+            })
+            .Where(item => item.RecordKey is not null)
+            .GroupBy(item => item.RecordKey!, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
             .ToList();
         if (selectedLogs.Count == 0)
@@ -150,51 +121,16 @@ public class DeviceStatusService : IDeviceStatusService
             return 0;
         }
 
-        var deletedCount = selectedLogs.Count;
-        lock (_dbLock)
+        if (!DeviceStatusLocalLogStore.TryRemove(selectedLogs.Select(item => item.Log).ToList(), CurrentSettings))
         {
-            _dbContext.InitDatabase();
-            var logIds = selectedLogs.Select(log => log.Id).ToArray();
-            var businessIds = logIds.Select(logId => $"device-status:{logId}").ToArray();
-            var now = DateTime.Now;
-            var transaction = _dbContext.Db.Ado.UseTran(() =>
-            {
-                var uploadTasks = _dbContext.Db.Queryable<BizUploadTask>()
-                    .Where(task => task.TaskType == ProductionConstants.UploadTaskTypes.DeviceStatus
-                        && businessIds.Contains(task.BusinessId!))
-                    .ToList();
-                foreach (var uploadTask in uploadTasks)
-                {
-                    uploadTask.IsDeleted = true;
-                    uploadTask.DeletedTime = now;
-                    uploadTask.UpdatedTime = now;
-                    uploadTask.Message = "Deleted with device status log.";
-                }
-
-                if (uploadTasks.Count > 0)
-                {
-                    _dbContext.Db.Updateable(uploadTasks).ExecuteCommand();
-                }
-
-                _dbContext.Db.Deleteable<BizDeviceStatusLog>()
-                    .Where(log => logIds.Contains(log.Id))
-                    .ExecuteCommand();
-
-                if (!DeviceStatusLocalLogStore.TryRemove(selectedLogs, CurrentSettings))
-                {
-                    throw new InvalidOperationException("无法删除设备状态本地日志。");
-                }
-            });
-
-            if (!transaction.IsSuccess)
-            {
-                throw transaction.ErrorException ?? new InvalidOperationException("删除设备状态日志失败。");
-            }
-
+            throw new InvalidOperationException("无法删除设备状态 JSONL 日志。");
         }
 
-        NotifyLogsChanged();
-        return deletedCount;
+        SoftDeleteUnfinishedUploadTasks(selectedLogs
+            .Select(item => item.RecordKey!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase));
+        RaiseLogsChanged();
+        return selectedLogs.Count;
     }
 
     public async Task<BizDeviceStatusLog> ChangeStatusAsync(
@@ -210,81 +146,119 @@ public class DeviceStatusService : IDeviceStatusService
         bool reportInBackground = false,
         CancellationToken cancellationToken = default)
     {
-        var normalizedStatus = NormalizeStatus(deviceStatus);
+        var normalizedStatus = DeviceStatusReportRules.NormalizeMesDeviceStatusCode(deviceStatus);
         var normalizedStationNo = NormalizeStationNo(stationNo);
-        BizDeviceStatusLog log;
-
-        lock (_dbLock)
+        var latest = GetLatestStatus(normalizedStationNo);
+        if (!forceWrite)
         {
-            _dbContext.InitDatabase();
-            var latest = _dbContext.Db.Queryable<BizDeviceStatusLog>()
-                .Where(it => it.StationNo == normalizedStationNo)
-                .OrderByDescending(it => it.OccurredTime)
-                .First();
-
-            if (!forceWrite)
+            var existingBoundary = FindExistingProgramBoundaryLog(normalizedStationNo, normalizedStatus, weldTaskId);
+            if (existingBoundary is not null)
             {
-                var existingProgramBoundaryLog = FindExistingProgramBoundaryLog(normalizedStationNo, normalizedStatus, weldTaskId);
-                if (existingProgramBoundaryLog is not null)
-                {
-                    return existingProgramBoundaryLog;
-                }
-
-                if (ShouldReuseLatestProgramBoundaryStatus(latest, normalizedStatus, weldTaskId))
-                {
-                    return latest!;
-                }
-
-                // 普通状态码没有变化时，不重复落库、上传或进入重试队列。
-                if (DeviceStatusReportRules.ShouldSuppressDuplicateStatus(latest, normalizedStatus, weldTaskId, forceWrite))
-                {
-                    return latest!;
-                }
+                return existingBoundary;
             }
 
-            log = CreateLog(normalizedStatus, remark, source, normalizedStationNo, weldTaskId, workOrderId, occurredTime);
-            log = _dbContext.Db.Insertable(log).ExecuteReturnEntity();
+            if (ShouldReuseLatestProgramBoundaryStatus(latest, normalizedStatus, weldTaskId)
+                || DeviceStatusReportRules.ShouldSuppressDuplicateStatus(
+                    latest,
+                    normalizedStatus,
+                    weldTaskId,
+                    forceWrite))
+            {
+                return latest!;
+            }
         }
 
+        var log = CreateLog(
+            normalizedStatus,
+            remark,
+            source,
+            normalizedStationNo,
+            weldTaskId,
+            workOrderId,
+            occurredTime);
         if (CurrentSettings.EnableDeviceStatusReport == false)
         {
-            log = MarkSkipped(log, "Device status report is disabled in system settings.");
-            WriteLocalStatusLog(log);
-            PublishStatusChanged(log);
+            log.ReportStatus = ProductionConstants.UploadStatuses.Skipped;
+            log.ReportTime = DateTime.Now;
+            log.ReportMessage = "Device status report is disabled in system settings.";
+        }
+
+        if (!DeviceStatusLocalLogStore.TryAppend(log, CurrentSettings))
+        {
+            log.ReportStatus = ProductionConstants.UploadStatuses.Failed;
+            log.ReportMessage = "Device status JSONL initial write failed.";
+            WriteAppendFailure(log, log.ReportMessage);
             return log;
         }
 
-        if (reportToMes && reportInBackground)
+        if (log.ReportStatus == ProductionConstants.UploadStatuses.Skipped)
         {
-            // 关机路径不能等待网络请求；先保留本地证据，再后台做一次 MES 尝试。
-            WriteLocalStatusLog(log);
-            PublishStatusChanged(log);
-            _ = Task.Run(() => ReportStatusInBackgroundAsync(log));
+            RaiseLogsChanged();
             return log;
         }
 
-        if (reportToMes)
+        var recordKey = DeviceStatusRecordIdentityRules.GetRecordKey(log)!;
+        if (!reportToMes)
         {
-            log = await ReportStatusAsync(log, cancellationToken);
+            TryEnsurePendingUploadTask(log);
+            RaiseLogsChanged();
+            return log;
+        }
+
+        RaiseLogsChanged();
+        if (reportInBackground)
+        {
+            _ = Task.Run(() => RetryInBackgroundAsync(recordKey));
+            return log;
+        }
+
+        await RetryUploadAsync(recordKey, cancellationToken);
+        return GetLog(recordKey) ?? log;
+    }
+
+    public async Task<BasicRes<object>?> RetryUploadAsync(
+        string recordKey,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedRecordKey = DeviceStatusRecordIdentityRules.NormalizeRecordKey(recordKey);
+        if (normalizedRecordKey is null)
+        {
+            return null;
+        }
+
+        var log = GetLog(normalizedRecordKey);
+        if (log is null || !DeviceStatusUploadVisibilityRules.ShouldInclude(log.ReportStatus))
+        {
+            return null;
+        }
+
+        BasicRes<object> response;
+        if (CurrentSettings.EnableDeviceStatusReport == false)
+        {
+            response = new BasicRes<object>
+            {
+                Status = ProductionConstants.UploadStatuses.Skipped,
+                Msg = "Device status report is disabled in system settings.",
+                Data = new object()
+            };
         }
         else
         {
-            EnqueueDeviceStatusUpload(log);
+            response = await SendToMesAsync(log, cancellationToken);
         }
 
-        WriteLocalStatusLog(log);
-        PublishStatusChanged(log);
-        return log;
+        return PersistReportResult(log, normalizedRecordKey, response);
     }
 
-    private async Task<BizDeviceStatusLog> ReportStatusAsync(BizDeviceStatusLog log, CancellationToken cancellationToken)
+    private async Task<BasicRes<object>> SendToMesAsync(
+        BizDeviceStatusLog log,
+        CancellationToken cancellationToken)
     {
-        BasicRes<object> response;
         try
         {
-            response = await _mesProvider.ReportDeviceStatusAsync(new ReportDeviceStatusReq
+            return await _mesProvider.ReportDeviceStatusAsync(new ReportDeviceStatusReq
             {
-                DeviceId = DeviceStatusReportRules.ResolveReportDeviceId(_settingsService.Get().DeviceId, log.DeviceId),
+                DeviceId = DeviceStatusReportRules.ResolveReportDeviceId(CurrentSettings.DeviceId, log.DeviceId),
                 DevStatus = log.DeviceStatus,
                 Ts = log.OccurredTime.ToString("yyyy-MM-dd HH:mm:ss"),
                 Remark = log.Remark ?? string.Empty
@@ -292,98 +266,139 @@ public class DeviceStatusService : IDeviceStatusService
         }
         catch (Exception ex)
         {
-            response = new BasicRes<object>
+            return new BasicRes<object>
             {
                 Status = AppConstants.MesStatus.Error,
                 Msg = ex.Message
             };
         }
-
-        lock (_dbLock)
-        {
-            log.ReportStatus = response.IsSuccess
-                ? ProductionConstants.UploadStatuses.Uploaded
-                : ProductionConstants.UploadStatuses.Failed;
-            log.ReportTime = DateTime.Now;
-            log.ReportMessage = response.Msg;
-
-            _dbContext.Db.Updateable(log)
-                .UpdateColumns(it => new { it.ReportStatus, it.ReportTime, it.ReportMessage })
-                .Where(it => it.Id == log.Id)
-                .ExecuteCommand();
-
-            if (!response.IsSuccess)
-            {
-                EnqueueDeviceStatusUpload(log);
-            }
-
-            return log;
-        }
     }
 
-    private async Task ReportStatusInBackgroundAsync(BizDeviceStatusLog log)
+    private BasicRes<object>? PersistReportResult(
+        BizDeviceStatusLog log,
+        string recordKey,
+        BasicRes<object> response)
+    {
+        var previousStatus = log.ReportStatus;
+        var previousTime = log.ReportTime;
+        var previousMessage = log.ReportMessage;
+        log.ReportStatus = IsSkippedResponse(response)
+            ? ProductionConstants.UploadStatuses.Skipped
+            : response.IsSuccess
+                ? ProductionConstants.UploadStatuses.Uploaded
+                : ProductionConstants.UploadStatuses.Failed;
+        log.ReportTime = DateTime.Now;
+        log.ReportMessage = response.Msg;
+
+        if (!DeviceStatusLocalLogStore.TryAppendVersion(log, CurrentSettings))
+        {
+            log.ReportStatus = previousStatus;
+            log.ReportTime = previousTime;
+            log.ReportMessage = previousMessage;
+            if (GetLog(recordKey) is null)
+            {
+                return null;
+            }
+
+            WriteAppendFailure(log, "MES result could not be appended to device status JSONL.");
+            TryEnsurePendingUploadTask(log);
+            RaiseLogsChanged();
+            return new BasicRes<object>
+            {
+                Status = AppConstants.MesStatus.Error,
+                Msg = "MES 响应已返回，但设备状态结果未能写入 JSONL，任务保持待重试。"
+            };
+        }
+
+        if (!response.IsSuccess && !IsSkippedResponse(response))
+        {
+            TryEnsurePendingUploadTask(log);
+        }
+
+        RaiseLogsChanged();
+        return response;
+    }
+
+    private async Task RetryInBackgroundAsync(string recordKey)
     {
         try
         {
-            var updatedLog = await ReportStatusAsync(log, CancellationToken.None);
-            WriteLocalStatusLog(updatedLog);
-            PublishStatusChanged(updatedLog);
+            await RetryUploadAsync(recordKey, CancellationToken.None);
         }
         catch (Exception ex)
         {
-            log.ReportStatus = ProductionConstants.UploadStatuses.Failed;
-            log.ReportTime = DateTime.Now;
-            log.ReportMessage = ex.Message;
-            TryEnqueueDeviceStatusUpload(log);
-            WriteLocalStatusLog(log);
-            PublishStatusChanged(log);
+            _exceptionLogService.Write(ex, "DeviceStatusService.BackgroundUpload", $"RecordKey={recordKey}");
         }
     }
 
-    private void TryEnqueueDeviceStatusUpload(BizDeviceStatusLog log)
+    private static BizUploadTask BuildDeviceStatusUploadTask(BizDeviceStatusLog log, string recordKey)
     {
-        try
-        {
-            EnqueueDeviceStatusUpload(log);
-        }
-        catch
-        {
-            // 后台关机上报不能抛出异常；本地 failed 状态仍会写入，便于现场排查。
-        }
-    }
-
-    private void EnqueueDeviceStatusUpload(BizDeviceStatusLog log)
-    {
-        _ = EnsurePendingUploadTask(log);
-    }
-
-    private static BizUploadTask BuildDeviceStatusUploadTask(BizDeviceStatusLog log)
-    {
-        var status = string.Equals(log.ReportStatus, ProductionConstants.UploadStatuses.Failed, StringComparison.OrdinalIgnoreCase)
-            ? ProductionConstants.UploadStatuses.Failed
-            : ProductionConstants.UploadStatuses.Pending;
+        var status = string.Equals(
+            log.ReportStatus,
+            ProductionConstants.UploadStatuses.Failed,
+            StringComparison.OrdinalIgnoreCase)
+                ? ProductionConstants.UploadStatuses.Failed
+                : ProductionConstants.UploadStatuses.Pending;
         return new BizUploadTask
         {
             TaskType = ProductionConstants.UploadTaskTypes.DeviceStatus,
             Target = ProductionConstants.UploadTargets.Mes,
-            BusinessId = $"device-status:{log.Id}",
-            PayloadJson = JsonSerializer.Serialize(new
-            {
-                LogId = log.Id,
-                log.DeviceId,
-                log.StationNo,
-                log.WeldTaskId,
-                log.WorkOrderId,
-                DevStatus = log.DeviceStatus,
-                Ts = log.OccurredTime.ToString("yyyy-MM-dd HH:mm:ss"),
-                Remark = log.Remark ?? string.Empty
-            }),
+            BusinessId = DeviceStatusRecordIdentityRules.BuildBusinessId(recordKey),
+            PayloadJson = JsonSerializer.Serialize(new { RecordKey = recordKey }),
             Status = status,
             NextRetryTime = DateTime.Now,
             Message = string.IsNullOrWhiteSpace(log.ReportMessage)
                 ? "Device status is queued for MES retry."
                 : log.ReportMessage
         };
+    }
+
+    private BizUploadTask? FindExistingUploadTask(string recordKey)
+    {
+        var businessIds = DeviceStatusRecordIdentityRules.GetCompatibleBusinessIds(recordKey).ToArray();
+        return _dbContext.Db.Queryable<BizUploadTask>()
+            .First(task => task.TaskType == ProductionConstants.UploadTaskTypes.DeviceStatus
+                && task.Target == ProductionConstants.UploadTargets.Mes
+                && businessIds.Contains(task.BusinessId!));
+    }
+
+    private void SoftDeleteUnfinishedUploadTasks(ISet<string> recordKeys)
+    {
+        try
+        {
+            lock (_dbLock)
+            {
+                _dbContext.InitDatabase();
+                var now = DateTime.Now;
+                var tasks = _dbContext.Db.Queryable<BizUploadTask>()
+                    .Where(task => task.TaskType == ProductionConstants.UploadTaskTypes.DeviceStatus
+                        && !task.IsDeleted
+                        && task.Status != ProductionConstants.UploadStatuses.Uploaded)
+                    .ToList()
+                    .Where(task =>
+                    {
+                        var recordKey = DeviceStatusRecordIdentityRules.ReadTaskRecordKey(task.BusinessId, task.PayloadJson);
+                        return recordKey is not null && recordKeys.Contains(recordKey);
+                    })
+                    .ToList();
+                foreach (var task in tasks)
+                {
+                    task.IsDeleted = true;
+                    task.DeletedTime = now;
+                    task.UpdatedTime = now;
+                    task.Message = "Device status JSONL source was deleted.";
+                }
+
+                if (tasks.Count > 0)
+                {
+                    _dbContext.Db.Updateable(tasks).ExecuteCommand();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _exceptionLogService.Write(ex, "DeviceStatusService.DeleteUploadProjection");
+        }
     }
 
     private BizDeviceStatusLog CreateLog(
@@ -398,6 +413,7 @@ public class DeviceStatusService : IDeviceStatusService
         var settings = CurrentSettings;
         return new BizDeviceStatusLog
         {
+            RecordId = Guid.NewGuid().ToString("N"),
             DeviceId = settings.DeviceId,
             StationNo = stationNo,
             WeldTaskId = weldTaskId,
@@ -411,83 +427,60 @@ public class DeviceStatusService : IDeviceStatusService
         };
     }
 
-    private BizDeviceStatusLog BuildDefaultStatus()
+    private BizDeviceStatusLog? FindExistingProgramBoundaryLog(
+        int stationNo,
+        string normalizedStatus,
+        int? weldTaskId)
     {
-        var settings = CurrentSettings;
-        var defaultStatus = ProductionConstants.MesDeviceStatuses.PoweredOn;
-        return new BizDeviceStatusLog
+        if (weldTaskId is null
+            || normalizedStatus is not (ProductionConstants.MesDeviceStatuses.ProgramStarted
+                or ProductionConstants.MesDeviceStatuses.ProgramEnded))
         {
-            DeviceId = settings.DeviceId,
-            StationNo = ProductionConstants.Stations.DefaultStationNo,
-            DeviceStatus = defaultStatus,
-            StatusName = DeviceStatusReportRules.GetStatusName(defaultStatus),
-            Source = "Software",
-            Remark = "No device status log yet.",
-            OccurredTime = DateTime.Now,
-            ReportStatus = ProductionConstants.UploadStatuses.Skipped
-        };
+            return null;
+        }
+
+        return GetLogs(from: null, to: null, maxCount: 5000)
+            .Where(log => log.StationNo == stationNo
+                && log.WeldTaskId == weldTaskId
+                && string.Equals(log.DeviceStatus, normalizedStatus, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(log => log.OccurredTime)
+            .FirstOrDefault();
     }
 
-    private void WriteLocalStatusLog(BizDeviceStatusLog log)
+    private void TryEnsurePendingUploadTask(BizDeviceStatusLog log)
     {
-        // 本地文件只是现场排查证据，写入失败不能影响状态切换、MES 上报或界面实时刷新。
-        _ = DeviceStatusLocalLogStore.TryAppend(log, CurrentSettings);
-    }
-
-    /// <summary>
-    /// Publishes both the live status update and the source-log refresh notification.
-    /// </summary>
-    private void PublishStatusChanged(BizDeviceStatusLog log)
-    {
-        StatusChanged?.Invoke(this, log);
-        NotifyLogsChanged();
-    }
-
-    private static string NormalizeStatus(string deviceStatus)
-    {
-        return DeviceStatusReportRules.NormalizeMesDeviceStatusCode(deviceStatus);
-    }
-
-    private AppSettings CurrentSettings => Volatile.Read(ref _currentSettings);
-
-    private void SettingsService_SettingsChanged(object? sender, AppSettingsChangedEventArgs e)
-    {
-        Interlocked.Exchange(ref _currentSettings, e.CurrentSettings);
-    }
-
-    private BizDeviceStatusLog MarkSkipped(BizDeviceStatusLog log, string message)
-    {
-        lock (_dbLock)
+        try
         {
-            log.ReportStatus = ProductionConstants.UploadStatuses.Skipped;
-            log.ReportTime = DateTime.Now;
-            log.ReportMessage = message;
-            _dbContext.Db.Updateable(log)
-                .UpdateColumns(it => new { it.ReportStatus, it.ReportTime, it.ReportMessage })
-                .Where(it => it.Id == log.Id)
-                .ExecuteCommand();
-
-            return log;
+            _ = EnsurePendingUploadTask(log);
+        }
+        catch (Exception ex)
+        {
+            var recordKey = DeviceStatusRecordIdentityRules.GetRecordKey(log) ?? "invalid";
+            _exceptionLogService.Write(ex, "DeviceStatusService.UploadProjection", $"RecordKey={recordKey}");
         }
     }
 
-    private BizUploadTask? FindExistingUploadTask(BizUploadTask task)
+    private void WriteAppendFailure(BizDeviceStatusLog log, string message)
     {
-        return _dbContext.Db.Queryable<BizUploadTask>()
-            .First(existing => existing.TaskType == task.TaskType
-                && existing.Target == task.Target
-                && existing.BusinessId == task.BusinessId);
+        var recordKey = DeviceStatusRecordIdentityRules.GetRecordKey(log) ?? "invalid";
+        _exceptionLogService.WriteBusiness(
+            "DeviceStatusLocalLogStore",
+            "设备状态 JSONL 写入失败",
+            $"{message} RecordKey={recordKey}; Status={log.DeviceStatus}; Station={log.StationNo}",
+            $"Directory={GetLogDirectory()}");
     }
 
-    private static void NormalizeUploadTask(BizUploadTask task)
-    {
-        task.Target = string.IsNullOrWhiteSpace(task.Target)
-            ? ProductionConstants.UploadTargets.Mes
-            : task.Target.Trim();
-        task.BusinessId = string.IsNullOrWhiteSpace(task.BusinessId)
-            ? throw new InvalidOperationException("Device status upload task business id cannot be empty.")
-            : task.BusinessId.Trim();
-    }
+    private void WriteLocalReadError(Exception exception, string context)
+        => _exceptionLogService.Write(exception, "DeviceStatusLocalLogStore.Read", context);
+
+    private void RaiseLogsChanged()
+        => LogsChanged?.Invoke(this, EventArgs.Empty);
+
+    private static bool IsSkippedResponse(BasicRes<object> response)
+        => string.Equals(
+            response.Status,
+            ProductionConstants.UploadStatuses.Skipped,
+            StringComparison.OrdinalIgnoreCase);
 
     private static bool ShouldReuseLatestProgramBoundaryStatus(
         BizDeviceStatusLog? latest,
@@ -506,31 +499,6 @@ public class DeviceStatusService : IDeviceStatusService
             && string.Equals(latest.DeviceStatus, normalizedStatus, StringComparison.OrdinalIgnoreCase);
     }
 
-    private BizDeviceStatusLog? FindExistingProgramBoundaryLog(
-        int stationNo,
-        string normalizedStatus,
-        int? weldTaskId)
-    {
-        if (weldTaskId is null)
-        {
-            return null;
-        }
-
-        var isProgramBoundaryStatus = normalizedStatus is ProductionConstants.MesDeviceStatuses.ProgramStarted
-            or ProductionConstants.MesDeviceStatuses.ProgramEnded;
-        if (!isProgramBoundaryStatus)
-        {
-            return null;
-        }
-
-        return _dbContext.Db.Queryable<BizDeviceStatusLog>()
-            .Where(it => it.StationNo == stationNo
-                && it.WeldTaskId == weldTaskId
-                && it.DeviceStatus == normalizedStatus)
-            .OrderByDescending(it => it.OccurredTime)
-            .First();
-    }
-
     private static string? NormalizeNullable(string? value)
     {
         var normalized = value?.Trim();
@@ -538,9 +506,12 @@ public class DeviceStatusService : IDeviceStatusService
     }
 
     private static int NormalizeStationNo(int stationNo)
-    {
-        return stationNo <= ProductionConstants.Stations.SharedStationNo
+        => stationNo <= ProductionConstants.Stations.SharedStationNo
             ? ProductionConstants.Stations.SharedStationNo
             : stationNo;
-    }
+
+    private AppSettings CurrentSettings => Volatile.Read(ref _currentSettings);
+
+    private void SettingsService_SettingsChanged(object? sender, AppSettingsChangedEventArgs e)
+        => Interlocked.Exchange(ref _currentSettings, e.CurrentSettings);
 }

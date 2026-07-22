@@ -58,7 +58,6 @@ public class SqlSugarDbContext : IDisposable
                     typeof(DimTestItem),
                     typeof(BizProductionReportFile),
                     typeof(BizUploadTask),
-                    typeof(BizDeviceStatusLog),
                     typeof(BizRuntimeTipState),
                     typeof(BizPlcAddress),
                     typeof(BizPlcAlarmAddress),
