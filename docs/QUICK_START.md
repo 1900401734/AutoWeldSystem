@@ -196,8 +196,8 @@ flowchart LR
 ### 6.5 日志
 
 - `OperationLogService` 把用户操作写入数据库表 `SysOperationLog`。
-- `MesInteractionLogService`、`ProductionFlowLogService`、`ProgramExceptionLogService` 和 `DeviceLifecycleLogService` 把 JSONL 日志写到配置的日志目录，并通过 `LogWritten` 事件通知界面。
-- `LogManageView` 是查看入口；设备状态还同时涉及 `BizDeviceStatusLog` 和 `DeviceStatusLocalLogStore`，不要套用旧文档中的“四类日志”结论。
+- `MesInteractionLogService`、`ProductionFlowLogService`、`ProgramExceptionLogService`、`DeviceLifecycleLogService` 和 `DeviceStatusLocalLogStore` 把 JSONL 日志写到配置的日志目录。
+- `LogManageView` 是查看入口；设备状态只以 `DeviceStatus/*.jsonl` 为事实来源，不再读写 `Biz_DeviceStatusLog`。`BizUploadTask` 仅保存可由 JSONL 重建的设备状态补传索引。
 
 ## 7. 关键实体与不变量
 
@@ -208,7 +208,7 @@ flowchart LR
 | 程序 | `BizProgram`、`BizProgramRevision` | 一个程序对应多个本地版本快照 |
 | 生产 | `BizWeldTask`、`BizWeldPointRecord` | 一个生产任务对应多个工位/产品/焊点记录 |
 | 工艺 | `BizProductProcessConfig`、`BizTestScheme`、`BizSchemeDetail`、`DimTestItem` | 决定 PLC 表达式、采集字段和报表动态列 |
-| 上传 | `BizUploadTask`、`BizProductionReportFile`、`BizDeviceStatusLog` | 保存待传、重试、失败和本地报告状态 |
+| 上传 | `BizUploadTask`、`BizProductionReportFile` | 保存通用待传、重试、失败和本地报告状态；设备状态正文只保存在 JSONL |
 | PLC 配置 | `BizPlcAddress`、`BizPlcAlarmAddress`、`BizPlcRecipeNameConfig` | 逻辑信号到现场 PLC 地址的本地映射 |
 | 中心快照 | `CenterDeviceNode`、`CenterDeviceRuntimeSnapshot`、`CenterDeviceStationRuntimeSnapshot` | 中心看板的设备和逐工位最新状态 |
 

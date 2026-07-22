@@ -182,6 +182,7 @@ var tests = new (string Name, Action Run)[]
     ("Device status upload task payload contains only record key", DeviceStatusUploadTaskPayloadContainsOnlyRecordKey),
     ("Device status upload execution revalidates jsonl source", DeviceStatusUploadExecutionRevalidatesJsonlSource),
     ("Device status pending projection preserves uploaded history", DeviceStatusPendingProjectionPreservesUploadedHistory),
+    ("Device status jsonl source behavior is documented", DeviceStatusJsonlSourceBehaviorIsDocumented),
     ("Device status API rejects missing jsonl record", DeviceStatusApiRejectsMissingJsonlRecord),
     ("Device status consumers do not query legacy table", DeviceStatusConsumersDoNotQueryLegacyTable),
     ("Log manage reloads device status jsonl on reentry", LogManageReloadsDeviceStatusJsonlOnReentry),
@@ -4399,6 +4400,18 @@ static void DeviceStatusPendingProjectionPreservesUploadedHistory()
     AssertTrue(reconcileMethod.Contains("task.Status != ProductionConstants.UploadStatuses.Uploaded", StringComparison.Ordinal), "来源缺失清理必须排除已经上传的任务。");
     AssertTrue(reconcileMethod.Contains("task.IsDeleted = true", StringComparison.Ordinal), "来源缺失的未成功任务必须软删除。");
     AssertFalse(reconcileMethod.Contains("Deleteable<BizUploadTask>", StringComparison.Ordinal), "派生任务清理不能物理删除诊断记录。");
+}
+
+static void DeviceStatusJsonlSourceBehaviorIsDocumented()
+{
+    var readme = File.ReadAllText(GetRepoFilePath("README.md"), Encoding.UTF8);
+    var quickStart = File.ReadAllText(GetRepoFilePath("docs", "QUICK_START.md"), Encoding.UTF8);
+
+    AssertTrue(readme.Contains("设备状态 JSONL 是唯一事实来源", StringComparison.Ordinal), "README 必须说明设备状态唯一来源。");
+    AssertTrue(readme.Contains("未成功上传", StringComparison.Ordinal), "README 必须说明删除来源会取消未成功记录的补传资格。");
+    AssertTrue(readme.Contains("已成功上传", StringComparison.Ordinal), "README 必须说明已上传结果不因本地删除而撤销。");
+    AssertTrue(readme.Contains("程序异常日志", StringComparison.Ordinal), "README 必须给出落盘失败排障入口。");
+    AssertTrue(quickStart.Contains("不再读写 `Biz_DeviceStatusLog`", StringComparison.Ordinal), "快速入门不能继续描述数据库与 JSONL 双来源。");
 }
 
 static void DeviceStatusApiRejectsMissingJsonlRecord()
