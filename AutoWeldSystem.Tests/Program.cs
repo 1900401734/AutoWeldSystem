@@ -173,6 +173,9 @@ var tests = new (string Name, Action Run)[]
     ("Device status local log store resolves directories", DeviceStatusLocalLogStoreResolvesDirectories),
     ("Device status local log store writes and reads jsonl", DeviceStatusLocalLogStoreWritesAndReadsJsonl),
     ("Device status local log store removes selected log ids", DeviceStatusLocalLogStoreRemovesSelectedLogIds),
+    ("Device status record identity supports guid and legacy keys", DeviceStatusRecordIdentitySupportsGuidAndLegacyKeys),
+    ("Device status local log store uses record keys", DeviceStatusLocalLogStoreUsesRecordKeys),
+    ("Device status local log store skips invalid identities", DeviceStatusLocalLogStoreSkipsInvalidIdentities),
     ("Device status report keeps millisecond timestamp after MES upload", DeviceStatusReportKeepsMillisecondTimestampAfterMesUpload),
     ("Device status local log store keeps latest state per log id", DeviceStatusLocalLogStoreKeepsLatestStatePerLogId),
     ("Device status pending source and task reconciliation are wired", DeviceStatusPendingSourceAndTaskReconciliationAreWired),
@@ -4079,6 +4082,130 @@ static void DeviceStatusLocalLogStoreResolvesDirectories()
         Path.Combine(AppContext.BaseDirectory, "Logs", AppConstants.LogCategories.DeviceStatus),
         DeviceStatusLocalLogStore.GetLogDirectory(fallback),
         "日志根目录为空时，应回退到程序目录 Logs/DeviceStatus。");
+}
+
+static void DeviceStatusRecordIdentitySupportsGuidAndLegacyKeys()
+{
+    var guid = Guid.Parse("A7A2A606-7840-4A3D-9CE4-8B8C7BE8357B");
+    var current = new BizDeviceStatusLog { RecordId = guid.ToString("D"), Id = 42 };
+    var legacy = new BizDeviceStatusLog { Id = 42 };
+
+    AssertEqual(guid.ToString("N"), DeviceStatusRecordIdentityRules.GetRecordKey(current), "新记录必须把 GUID 规范化为 N 格式。");
+    AssertEqual("legacy:42", DeviceStatusRecordIdentityRules.GetRecordKey(legacy), "旧记录必须使用 legacy:{Id}。");
+    AssertEqual(null, DeviceStatusRecordIdentityRules.GetRecordKey(new BizDeviceStatusLog()), "无 GUID 且无旧 Id 的记录没有可靠身份。");
+    AssertEqual(
+        "legacy:42",
+        DeviceStatusRecordIdentityRules.ReadTaskRecordKey("device-status:42", "{\"LogId\":42}"),
+        "旧任务的整数 BusinessId 和 LogId 必须继续可解析。");
+    AssertEqual(
+        guid.ToString("N"),
+        DeviceStatusRecordIdentityRules.ReadTaskRecordKey(
+            $"device-status:{guid:N}",
+            $"{{\"RecordKey\":\"{guid:D}\"}}"),
+        "新任务必须从只含 RecordKey 的 payload 定位 JSONL。");
+    AssertSequenceEqual(
+        new[] { "device-status:legacy:42", "device-status:42" },
+        DeviceStatusRecordIdentityRules.GetCompatibleBusinessIds("legacy:42").ToArray(),
+        "旧记录查重时必须同时识别规范和历史 BusinessId。");
+}
+
+static void DeviceStatusLocalLogStoreUsesRecordKeys()
+{
+    var root = Path.Combine(Path.GetTempPath(), "AutoWeldSystemDeviceStatusRecordKeyTests", Guid.NewGuid().ToString("N"));
+    var settings = new AppSettings { LogDirectory = root };
+    var occurredTime = new DateTime(2026, 7, 22, 8, 30, 0, 123);
+    var recordId = Guid.NewGuid().ToString("N");
+
+    try
+    {
+        var pending = new BizDeviceStatusLog
+        {
+            RecordId = recordId,
+            DeviceId = "D-001",
+            StationNo = 1,
+            DeviceStatus = ProductionConstants.MesDeviceStatuses.Exception,
+            StatusName = DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.Exception),
+            OccurredTime = occurredTime,
+            ReportStatus = ProductionConstants.UploadStatuses.Pending
+        };
+        var failed = new BizDeviceStatusLog
+        {
+            RecordId = recordId,
+            DeviceId = "D-001",
+            StationNo = 1,
+            DeviceStatus = ProductionConstants.MesDeviceStatuses.Exception,
+            StatusName = DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.Exception),
+            OccurredTime = occurredTime,
+            ReportStatus = ProductionConstants.UploadStatuses.Failed,
+            ReportTime = occurredTime.AddSeconds(1),
+            ReportMessage = "MES offline"
+        };
+        var retained = new BizDeviceStatusLog
+        {
+            RecordId = Guid.NewGuid().ToString("N"),
+            DeviceId = "D-001",
+            StationNo = 2,
+            DeviceStatus = ProductionConstants.MesDeviceStatuses.Recovered,
+            StatusName = DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.Recovered),
+            OccurredTime = occurredTime.AddMinutes(1),
+            ReportStatus = ProductionConstants.UploadStatuses.Uploaded
+        };
+
+        AssertTrue(DeviceStatusLocalLogStore.TryAppend(pending, settings), "Pending 首版本必须成功落盘。");
+        AssertTrue(DeviceStatusLocalLogStore.TryAppendVersion(failed, settings), "同一记录键的 Failed 版本必须追加到既有来源。");
+        AssertTrue(DeviceStatusLocalLogStore.TryAppend(retained, settings), "另一条记录必须成功落盘。");
+
+        var latest = DeviceStatusLocalLogStore.ReadByRecordKey(settings, recordId);
+        AssertTrue(latest is not null, "必须能按 GUID 记录键读取来源。");
+        AssertEqual(ProductionConstants.UploadStatuses.Failed, latest!.ReportStatus, "同一键最后追加的版本必须生效。");
+        AssertEqual(1, DeviceStatusLocalLogStore.ReadPending(settings).Count, "只有 Pending/Failed 最新版本进入待上传来源。");
+        AssertEqual(recordId, DeviceStatusRecordIdentityRules.GetRecordKey(DeviceStatusLocalLogStore.ReadLatestForStation(settings, 1)), "工位最新状态必须来自 JSONL。");
+
+        AssertTrue(DeviceStatusLocalLogStore.TryRemove(new[] { failed }, settings), "按记录键删除必须成功。");
+        AssertEqual(null, DeviceStatusLocalLogStore.ReadByRecordKey(settings, recordId), "删除后同一键的全部追加版本都必须消失。");
+        AssertEqual(1, DeviceStatusLocalLogStore.Read(settings, maxCount: 10).Count, "删除不能影响其他记录键。");
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}
+
+static void DeviceStatusLocalLogStoreSkipsInvalidIdentities()
+{
+    var root = Path.Combine(Path.GetTempPath(), "AutoWeldSystemDeviceStatusInvalidIdentityTests", Guid.NewGuid().ToString("N"));
+    var settings = new AppSettings { LogDirectory = root };
+    var directory = DeviceStatusLocalLogStore.GetLogDirectory(settings);
+    var filePath = Path.Combine(directory, "2026-07-22.jsonl");
+    var errors = new List<string>();
+
+    try
+    {
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(
+            filePath,
+            "{\"DeviceId\":\"D-001\",\"DeviceStatus\":\"1\",\"OccurredTime\":\"2026-07-22T09:00:00\"}" + Environment.NewLine,
+            Encoding.UTF8);
+
+        var logs = DeviceStatusLocalLogStore.Read(
+            settings,
+            maxCount: 10,
+            onError: (_, context) => errors.Add(context));
+
+        AssertEqual(0, logs.Count, "无 RecordId 和旧 Id 的记录必须跳过。");
+        AssertEqual(1, errors.Count, "跳过无效身份时必须向业务服务暴露一次诊断。");
+        AssertTrue(errors[0].Contains("2026-07-22.jsonl", StringComparison.OrdinalIgnoreCase), "诊断必须包含损坏来源文件。");
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
 }
 
 static void DeviceStatusLocalLogStoreWritesAndReadsJsonl()
