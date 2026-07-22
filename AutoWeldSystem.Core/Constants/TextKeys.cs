@@ -218,6 +218,26 @@ public static class TextKeys
             public const string ProductionQuantity = "monitor.label.production_quantity";
         }
 
+        /// <summary>
+        /// PLC 状态悬浮面板文本键。
+        /// </summary>
+        public static class PlcToolTip
+        {
+            public const string Title = "monitor.plc_tooltip.title";
+            public const string Station = "monitor.plc_tooltip.station";
+            public const string CurrentState = "monitor.plc_tooltip.current_state";
+            public const string Connected = "monitor.plc_tooltip.connected";
+            public const string Endpoint = "monitor.plc_tooltip.endpoint";
+            public const string LastConnected = "monitor.plc_tooltip.last_connected";
+            public const string LastHeartbeat = "monitor.plc_tooltip.last_heartbeat";
+            public const string CurrentMessage = "monitor.plc_tooltip.current_message";
+            public const string RecentHistory = "monitor.plc_tooltip.recent_history";
+            public const string NoHistory = "monitor.plc_tooltip.no_history";
+            public const string Yes = "monitor.plc_tooltip.yes";
+            public const string No = "monitor.plc_tooltip.no";
+            public const string HistoryEntry = "monitor.plc_tooltip.history_entry";
+        }
+
         public static class Group
         {
             /// <summary>

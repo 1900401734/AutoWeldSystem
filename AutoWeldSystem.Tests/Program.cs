@@ -50,6 +50,7 @@ var tests = new (string Name, Action Run)[]
     ("PLC shutdown returns while communication lock is held", PlcShutdownReturnsWhileCommunicationLockIsHeld),
     ("PLC shutdown detaches the client before bounded close", PlcShutdownDetachesClientBeforeBoundedClose),
     ("Monitor view cancels business signal reconciliation on destroy", MonitorViewCancelsBusinessSignalReconciliationOnDestroy),
+    ("PLC status tooltip uses compact localized acrylic panel", PlcStatusTooltipUsesCompactLocalizedAcrylicPanel),
     ("Program exception history uses bounded tail reads", ProgramExceptionHistoryUsesBoundedTailReads),
     ("System setting view uses responsive semantic columns", SystemSettingViewUsesResponsiveSemanticColumns),
     ("System setting localization resources are complete", SystemSettingLocalizationResourcesAreComplete),
@@ -432,6 +433,76 @@ static void MonitorViewCancelsBusinessSignalReconciliationOnDestroy()
     AssertTrue(ensureMethod.Contains("ReadTextAsync(logicalKey, targetStationNo, cancellationToken)", StringComparison.Ordinal), "PLC 业务信号读取必须接收页面生命周期令牌。");
     AssertTrue(ensureSignalMethods.Contains("WriteWorkOrderStatusAsync(target, value, cancellationToken)", StringComparison.Ordinal), "PLC 工单状态写入必须接收页面生命周期令牌。");
     AssertTrue(ensureSignalMethods.Contains("WriteDeviceModeAsync(target, value, cancellationToken)", StringComparison.Ordinal), "PLC 设备模式写入必须接收页面生命周期令牌。");
+}
+
+static void PlcStatusTooltipUsesCompactLocalizedAcrylicPanel()
+{
+    var viewCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"),
+        Encoding.UTF8);
+    var zhResources = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.resx"),
+        Encoding.UTF8);
+    var enResources = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.en.resx"),
+        Encoding.UTF8);
+    var updateMethod = ExtractMethodText(
+        viewCode,
+        "private void UpdatePlcStatusToolTipText(string text)",
+        "private void ShowPlcStatusToolTipPopup()");
+    var buildMethod = ExtractMethodText(
+        viewCode,
+        "private string BuildPlcStatusToolTipText(PlcConnectionSnapshot snapshot)",
+        "private string FormatCompactPlcStatusHistoryEntry(PlcStatusHistoryEntry entry)");
+    var historyMethod = ExtractMethodText(
+        viewCode,
+        "private string FormatCompactPlcStatusHistoryEntry(PlcStatusHistoryEntry entry)",
+        "private void RecordPlcStatusChange(PlcConnectionSnapshot snapshot)");
+
+    AssertTrue(
+        viewCode.Contains("AntdUI.Panel? _plcStatusToolTipPanel", StringComparison.Ordinal),
+        "PLC 状态悬浮提示必须使用现有 AntdUI.Panel。");
+    AssertTrue(
+        viewCode.Contains("private const int PlcStatusHistoryLimit = 5;", StringComparison.Ordinal),
+        "PLC 状态历史必须限制为最近五条。");
+    AssertTrue(
+        viewCode.Contains("FormatCompactPlcStatusHistoryEntry", StringComparison.Ordinal),
+        "PLC 状态历史必须使用紧凑格式。");
+    AssertFalse(
+        viewCode.Contains("当前读取时间", StringComparison.Ordinal),
+        "悬浮提示不应每次刷新都显示当前读取时间。");
+    AssertTrue(
+        viewCode.Contains("Screen.FromControl(tagPLC).WorkingArea", StringComparison.Ordinal),
+        "悬浮提示定位必须受当前屏幕工作区约束。");
+    AssertTrue(
+        updateMethod.Contains("_lastPlcStatusToolTipClientWidth == currentClientWidth", StringComparison.Ordinal)
+        && updateMethod.Contains("_lastPlcStatusToolTipDpi == currentDpi", StringComparison.Ordinal),
+        "悬浮提示必须在客户区宽度或 DPI 变化后重新测量。");
+    AssertTrue(
+        viewCode.Contains("ShadowColor = Color.FromArgb(15, 23, 42)", StringComparison.Ordinal),
+        "悬浮提示阴影颜色不应与 ShadowOpacity 重复叠加透明度。");
+    AssertTrue(
+        buildMethod.Contains("FormatToolTipValue(snapshot.Message)", StringComparison.Ordinal),
+        "当前 PLC 消息必须保留完整原始诊断内容。");
+    AssertTrue(
+        historyMethod.Contains("ToString(\"HH:mm:ss\"", StringComparison.Ordinal)
+        && historyMethod.Contains("NormalizeRuntimeSummary(entry.Message)", StringComparison.Ordinal),
+        "历史状态必须使用短时间并限制原始消息长度。");
+    AssertFalse(
+        historyMethod.Contains("entry.IsConnected", StringComparison.Ordinal)
+        || historyMethod.Contains("FormatYesNo", StringComparison.Ordinal),
+        "紧凑历史不应重复连接状态字段。");
+
+    var tooltipKeys = typeof(TextKeys.Monitor.PlcToolTip)
+        .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+        .Where(field => field.IsLiteral && !field.IsInitOnly && field.FieldType == typeof(string))
+        .Select(field => (string)field.GetRawConstantValue()!)
+        .ToArray();
+    foreach (var key in tooltipKeys)
+    {
+        AssertTrue(zhResources.Contains($"name=\"{key}\"", StringComparison.Ordinal), $"中文资源必须包含 {key}。");
+        AssertTrue(enResources.Contains($"name=\"{key}\"", StringComparison.Ordinal), $"英文资源必须包含 {key}。");
+    }
 }
 
 static void BaseWindowBatchesInteractiveResize()

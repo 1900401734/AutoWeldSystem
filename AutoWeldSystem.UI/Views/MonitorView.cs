@@ -40,8 +40,13 @@ public partial class MonitorView : BaseView
     private const int PlcStatusToolTipRefreshIntervalMs = 500;
     private const int PlcStatusToolTipHoverPollIntervalMs = 100;
 
-    private const int PlcStatusToolTipMaxWidth = 520;
-    private const int PlcStatusHistoryLimit = 10;
+    private const int PlcStatusToolTipMaxWidth = 480;
+    private const int PlcStatusHistoryLimit = 5;
+    private const int PlcStatusToolTipPadding = 10;
+    private const int PlcStatusToolTipRadius = 8;
+    private const int PlcStatusToolTipShadow = 6;
+    private const int PlcStatusToolTipGap = 4;
+    private const float PlcStatusToolTipFontSize = 9F;
     private const int WmSetRedraw = 0x000B;
 
     private static readonly TimeSpan RecipePreparationTimeout = TimeSpan.FromSeconds(5);
@@ -182,8 +187,11 @@ public partial class MonitorView : BaseView
 
     private DateTime _lastPlcStatusToolTipRefreshTime = DateTime.MinValue;
     private string _lastPlcStatusToolTipText = string.Empty;
-    private Panel? _plcStatusToolTipPanel;
+    private int _lastPlcStatusToolTipClientWidth = -1;
+    private int _lastPlcStatusToolTipDpi = -1;
+    private AntdUI.Panel? _plcStatusToolTipPanel;
     private Label? _plcStatusToolTipLabel;
+    private Font? _plcStatusToolTipFont;
 
     private readonly Dictionary<int, PlcConnectionSnapshot> _lastPlcHistorySnapshots = new();
     private readonly List<PlcStatusHistoryEntry> _plcStatusHistory = new();
@@ -2639,23 +2647,35 @@ public partial class MonitorView : BaseView
             return;
         }
 
+        var backgroundColor = UiColors.Table.HeaderBackColor;
+        _plcStatusToolTipFont = new Font(
+            tagPLC.Font.FontFamily,
+            PlcStatusToolTipFontSize,
+            FontStyle.Regular,
+            GraphicsUnit.Point);
         _plcStatusToolTipLabel = new Label
         {
-            AutoSize = true,
-            BackColor = SystemColors.Info,
-            ForeColor = SystemColors.InfoText,
-            Font = tagPLC.Font,
-            MaximumSize = new Size(PlcStatusToolTipMaxWidth, 0),
-            Padding = new Padding(10),
+            AutoSize = false,
+            BackColor = backgroundColor,
+            ForeColor = UiColors.Table.TextColor,
+            Font = _plcStatusToolTipFont,
+            MaximumSize = new Size(ScalePlcStatusToolTipMetric(PlcStatusToolTipMaxWidth), 0),
+            Padding = Padding.Empty,
             TextAlign = ContentAlignment.TopLeft
         };
 
-        _plcStatusToolTipPanel = new Panel
+        _plcStatusToolTipPanel = new AntdUI.Panel
         {
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            BackColor = SystemColors.Info,
-            BorderStyle = BorderStyle.FixedSingle,
+            AutoSize = false,
+            Back = backgroundColor,
+            BackColor = backgroundColor,
+            BorderColor = UiColors.Table.GridLineColor,
+            BorderWidth = 1F,
+            Radius = PlcStatusToolTipRadius,
+            Shadow = PlcStatusToolTipShadow,
+            ShadowColor = Color.FromArgb(15, 23, 42),
+            ShadowOpacity = 0.18F,
+            ShadowOpacityAnimation = false,
             Margin = Padding.Empty,
             Padding = Padding.Empty,
             Visible = false
@@ -2672,20 +2692,39 @@ public partial class MonitorView : BaseView
     {
         EnsurePlcStatusToolTipPopup();
 
-        if (_plcStatusToolTipLabel is null
-            || _plcStatusToolTipPanel is null
-            || string.Equals(_lastPlcStatusToolTipText, text, StringComparison.Ordinal))
+        if (_plcStatusToolTipLabel is null || _plcStatusToolTipPanel is null)
+        {
+            return;
+        }
+
+        var currentDpi = DeviceDpi <= 0 ? 96 : DeviceDpi;
+        var currentClientWidth = ClientSize.Width;
+        if (string.Equals(_lastPlcStatusToolTipText, text, StringComparison.Ordinal)
+            && _lastPlcStatusToolTipClientWidth == currentClientWidth
+            && _lastPlcStatusToolTipDpi == currentDpi)
         {
             return;
         }
 
         _lastPlcStatusToolTipText = text;
+        _lastPlcStatusToolTipClientWidth = currentClientWidth;
+        _lastPlcStatusToolTipDpi = currentDpi;
         _plcStatusToolTipLabel.Text = text;
 
-        // Update the existing tooltip text without recreating the native tooltip window every 500 ms.
-        var preferredSize = _plcStatusToolTipLabel.GetPreferredSize(new Size(PlcStatusToolTipMaxWidth, 0));
+        // Reuse the card unless its text, available width, or DPI requires a new measurement.
+        var cardInset = ScalePlcStatusToolTipMetric(PlcStatusToolTipPadding + PlcStatusToolTipShadow);
+        var availableWidth = Math.Max(1, ClientSize.Width - cardInset * 2);
+        var maxCardWidth = Math.Min(
+            ScalePlcStatusToolTipMetric(PlcStatusToolTipMaxWidth),
+            availableWidth);
+        var maxLabelWidth = Math.Max(1, maxCardWidth - cardInset * 2);
+        _plcStatusToolTipLabel.MaximumSize = new Size(maxLabelWidth, 0);
+        var preferredSize = _plcStatusToolTipLabel.GetPreferredSize(new Size(maxLabelWidth, 0));
+        _plcStatusToolTipLabel.Location = new Point(cardInset, cardInset);
         _plcStatusToolTipLabel.Size = preferredSize;
-        _plcStatusToolTipPanel.Size = new Size(preferredSize.Width + 2, preferredSize.Height + 2);
+        _plcStatusToolTipPanel.Size = new Size(
+            preferredSize.Width + cardInset * 2,
+            preferredSize.Height + cardInset * 2);
     }
 
     /// <summary>
@@ -2700,9 +2739,41 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        _plcStatusToolTipPanel.Location = PointToClient(tagPLC.PointToScreen(new Point(0, tagPLC.Height + 4)));
+        var gap = ScalePlcStatusToolTipMetric(PlcStatusToolTipGap);
+        var popupSize = _plcStatusToolTipPanel.Size;
+        var workingArea = Screen.FromControl(tagPLC).WorkingArea;
+        var tagTopLeft = tagPLC.PointToScreen(Point.Empty);
+        var anchor = tagPLC.PointToScreen(new Point(0, tagPLC.Height + gap));
+        var x = Math.Clamp(
+            anchor.X,
+            workingArea.Left,
+            Math.Max(workingArea.Left, workingArea.Right - popupSize.Width));
+        var y = anchor.Y + popupSize.Height <= workingArea.Bottom
+            ? anchor.Y
+            : Math.Max(workingArea.Top, tagTopLeft.Y - popupSize.Height - gap);
+        var clientLocation = PointToClient(new Point(x, y));
+        clientLocation.X = Math.Clamp(
+            clientLocation.X,
+            0,
+            Math.Max(0, ClientSize.Width - popupSize.Width));
+        clientLocation.Y = Math.Clamp(
+            clientLocation.Y,
+            0,
+            Math.Max(0, ClientSize.Height - popupSize.Height));
+        _plcStatusToolTipPanel.Location = clientLocation;
         _plcStatusToolTipPanel.Visible = true;
         _plcStatusToolTipPanel.BringToFront();
+    }
+
+    /// <summary>
+    /// 将悬浮面板逻辑尺寸换算为当前 DPI 下的控件尺寸。
+    /// </summary>
+    /// <param name="logicalValue">96 DPI 下的逻辑尺寸。</param>
+    /// <returns>当前 DPI 下的尺寸。</returns>
+    private int ScalePlcStatusToolTipMetric(int logicalValue)
+    {
+        var dpi = DeviceDpi <= 0 ? 96 : DeviceDpi;
+        return Math.Max(1, (int)Math.Round(logicalValue * dpi / 96F));
     }
 
     /// <summary>
@@ -2722,9 +2793,13 @@ public partial class MonitorView : BaseView
     private void DisposePlcStatusToolTipPopup()
     {
         _plcStatusToolTipPanel?.Dispose();
+        _plcStatusToolTipFont?.Dispose();
         _plcStatusToolTipPanel = null;
         _plcStatusToolTipLabel = null;
+        _plcStatusToolTipFont = null;
         _lastPlcStatusToolTipText = string.Empty;
+        _lastPlcStatusToolTipClientWidth = -1;
+        _lastPlcStatusToolTipDpi = -1;
     }
 
     /// <summary>
@@ -2739,33 +2814,58 @@ public partial class MonitorView : BaseView
             .Take(PlcStatusHistoryLimit)
             .ToList();
         var builder = new StringBuilder();
-        builder.AppendLine($"Station: {NormalizeStatusStationNo(snapshot.StationNo)}");
-        builder.AppendLine("PLC 当前详情");
-        builder.AppendLine($"当前状态：{GetLocalizedPlcStateText(snapshot.State)} ({snapshot.State})");
-        builder.AppendLine($"是否连接：{FormatYesNo(snapshot.IsConnected)}");
-        builder.AppendLine($"端点：{FormatToolTipValue(snapshot.Endpoint)}");
-        builder.AppendLine($"最近连接时间：{FormatOptionalTime(snapshot.LastConnectedTime)}");
-        builder.AppendLine($"最近心跳时间：{FormatOptionalTime(snapshot.LastHeartbeatTime)}");
-        builder.AppendLine($"当前消息：{FormatToolTipValue(snapshot.Message)}");
-        builder.AppendLine($"当前读取时间：{FormatTime(DateTime.Now)}");
+        builder.AppendLine(_localizer.GetString(TextKeys.Monitor.PlcToolTip.Title));
+        builder.AppendLine(_localizer.GetString(
+            TextKeys.Monitor.PlcToolTip.Station,
+            NormalizeStatusStationNo(snapshot.StationNo)));
+        builder.AppendLine(_localizer.GetString(
+            TextKeys.Monitor.PlcToolTip.CurrentState,
+            GetLocalizedPlcStateText(snapshot.State)));
+        builder.AppendLine(_localizer.GetString(
+            TextKeys.Monitor.PlcToolTip.Connected,
+            FormatYesNo(snapshot.IsConnected)));
+        builder.AppendLine(_localizer.GetString(
+            TextKeys.Monitor.PlcToolTip.Endpoint,
+            FormatToolTipValue(snapshot.Endpoint)));
+        builder.AppendLine(_localizer.GetString(
+            TextKeys.Monitor.PlcToolTip.LastConnected,
+            FormatOptionalTime(snapshot.LastConnectedTime)));
+        builder.AppendLine(_localizer.GetString(
+            TextKeys.Monitor.PlcToolTip.LastHeartbeat,
+            FormatOptionalTime(snapshot.LastHeartbeatTime)));
+        builder.AppendLine(_localizer.GetString(
+            TextKeys.Monitor.PlcToolTip.CurrentMessage,
+            FormatToolTipValue(snapshot.Message)));
         builder.AppendLine();
-        builder.AppendLine("最近 10 条状态变化：");
+        builder.AppendLine(_localizer.GetString(TextKeys.Monitor.PlcToolTip.RecentHistory));
 
         if (history.Count == 0)
         {
-            builder.AppendLine("暂无记录");
+            builder.AppendLine(_localizer.GetString(TextKeys.Monitor.PlcToolTip.NoHistory));
             return builder.ToString();
         }
 
-        for (var i = 0; i < history.Count; i++)
+        foreach (var entry in history)
         {
-            var entry = history[i];
-            builder.AppendLine(
-                $"{i + 1}. {FormatTime(entry.ChangedTime)} | {GetLocalizedPlcStateText(entry.State)} ({entry.State}) | 连接：{FormatYesNo(entry.IsConnected)}");
-            builder.AppendLine($"   消息：{FormatToolTipValue(entry.Message)}");
+            builder.AppendLine(FormatCompactPlcStatusHistoryEntry(entry));
         }
 
         return builder.ToString();
+    }
+
+    /// <summary>
+    /// 格式化紧凑的 PLC 状态历史项，保留原始诊断消息但限制其长度。
+    /// </summary>
+    /// <param name="entry">状态历史项。</param>
+    /// <returns>本地化后的单行历史文本。</returns>
+    private string FormatCompactPlcStatusHistoryEntry(PlcStatusHistoryEntry entry)
+    {
+        var message = NormalizeRuntimeSummary(entry.Message);
+        return _localizer.GetString(
+            TextKeys.Monitor.PlcToolTip.HistoryEntry,
+            entry.ChangedTime.ToString("HH:mm:ss", CultureInfo.CurrentCulture),
+            GetLocalizedPlcStateText(entry.State),
+            string.IsNullOrWhiteSpace(message) ? "--" : message);
     }
 
     /// <summary>
@@ -2815,9 +2915,11 @@ public partial class MonitorView : BaseView
     /// </summary>
     /// <param name="value">待处理值。</param>
     /// <returns>处理后的文本。</returns>
-    private static string FormatYesNo(bool value)
+    private string FormatYesNo(bool value)
     {
-        return value ? "是" : "否";
+        return _localizer.GetString(value
+            ? TextKeys.Monitor.PlcToolTip.Yes
+            : TextKeys.Monitor.PlcToolTip.No);
     }
 
     /// <summary>

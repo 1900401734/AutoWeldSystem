@@ -903,6 +903,45 @@
   <data name="monitor.label.production_quantity" xml:space="preserve">
     <value>生产数量</value>
   </data>
+  <data name="monitor.plc_tooltip.title" xml:space="preserve">
+    <value>PLC 状态详情</value>
+  </data>
+  <data name="monitor.plc_tooltip.station" xml:space="preserve">
+    <value>工位：{0}</value>
+  </data>
+  <data name="monitor.plc_tooltip.current_state" xml:space="preserve">
+    <value>当前状态：{0}</value>
+  </data>
+  <data name="monitor.plc_tooltip.connected" xml:space="preserve">
+    <value>是否连接：{0}</value>
+  </data>
+  <data name="monitor.plc_tooltip.endpoint" xml:space="preserve">
+    <value>端点：{0}</value>
+  </data>
+  <data name="monitor.plc_tooltip.last_connected" xml:space="preserve">
+    <value>最近连接：{0}</value>
+  </data>
+  <data name="monitor.plc_tooltip.last_heartbeat" xml:space="preserve">
+    <value>最近心跳：{0}</value>
+  </data>
+  <data name="monitor.plc_tooltip.current_message" xml:space="preserve">
+    <value>当前消息：{0}</value>
+  </data>
+  <data name="monitor.plc_tooltip.recent_history" xml:space="preserve">
+    <value>最近 5 条状态变化</value>
+  </data>
+  <data name="monitor.plc_tooltip.no_history" xml:space="preserve">
+    <value>暂无状态变化</value>
+  </data>
+  <data name="monitor.plc_tooltip.yes" xml:space="preserve">
+    <value>是</value>
+  </data>
+  <data name="monitor.plc_tooltip.no" xml:space="preserve">
+    <value>否</value>
+  </data>
+  <data name="monitor.plc_tooltip.history_entry" xml:space="preserve">
+    <value>{0}  {1}  {2}</value>
+  </data>
   <data name="monitor.group.exception_tips" xml:space="preserve">
     <value>异常提示：</value>
   </data>

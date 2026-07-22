@@ -903,6 +903,45 @@
   <data name="monitor.label.production_quantity" xml:space="preserve">
     <value>Production Qty</value>
   </data>
+  <data name="monitor.plc_tooltip.title" xml:space="preserve">
+    <value>PLC Status Details</value>
+  </data>
+  <data name="monitor.plc_tooltip.station" xml:space="preserve">
+    <value>Station: {0}</value>
+  </data>
+  <data name="monitor.plc_tooltip.current_state" xml:space="preserve">
+    <value>Current status: {0}</value>
+  </data>
+  <data name="monitor.plc_tooltip.connected" xml:space="preserve">
+    <value>Connected: {0}</value>
+  </data>
+  <data name="monitor.plc_tooltip.endpoint" xml:space="preserve">
+    <value>Endpoint: {0}</value>
+  </data>
+  <data name="monitor.plc_tooltip.last_connected" xml:space="preserve">
+    <value>Last connected: {0}</value>
+  </data>
+  <data name="monitor.plc_tooltip.last_heartbeat" xml:space="preserve">
+    <value>Last heartbeat: {0}</value>
+  </data>
+  <data name="monitor.plc_tooltip.current_message" xml:space="preserve">
+    <value>Current message: {0}</value>
+  </data>
+  <data name="monitor.plc_tooltip.recent_history" xml:space="preserve">
+    <value>Recent 5 status changes</value>
+  </data>
+  <data name="monitor.plc_tooltip.no_history" xml:space="preserve">
+    <value>No status changes</value>
+  </data>
+  <data name="monitor.plc_tooltip.yes" xml:space="preserve">
+    <value>Yes</value>
+  </data>
+  <data name="monitor.plc_tooltip.no" xml:space="preserve">
+    <value>No</value>
+  </data>
+  <data name="monitor.plc_tooltip.history_entry" xml:space="preserve">
+    <value>{0}  {1}  {2}</value>
+  </data>
   <data name="monitor.group.exception_tips" xml:space="preserve">
     <value>Exception Tips:</value>
   </data>
