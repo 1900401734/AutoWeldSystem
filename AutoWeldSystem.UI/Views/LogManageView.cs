@@ -436,7 +436,6 @@ public partial class LogManageView : BaseView
         colMesPurpose.HeaderText = _localizer.GetString(TextKeys.Log.ColumnPurpose);
         colMesMethod.HeaderText = _localizer.GetString(TextKeys.Log.ColumnMethod);
         colMesHttpStatus.HeaderText = _localizer.GetString(TextKeys.Log.ColumnHttpStatus);
-        colMesStatus.HeaderText = _localizer.GetString(TextKeys.Log.ColumnMesStatus);
         colResult.HeaderText = _localizer.GetString(TextKeys.Log.ColumnSuccess);
         colMesDuration.HeaderText = _localizer.GetString(TextKeys.Log.ColumnDuration);
     }
@@ -445,7 +444,6 @@ public partial class LogManageView : BaseView
     {
         colProductionOccurredTime.HeaderText = "时间";
         colProductionLevel.HeaderText = "级别";
-        colProductionStep.HeaderText = "步骤";
         colProductionSummary.HeaderText = "摘要";
         colProductionStation.HeaderText = "工位";
         colProductionPlcSignal.HeaderText = "PLC信号";
@@ -464,7 +462,6 @@ public partial class LogManageView : BaseView
         colLifecycleOccurredTime.HeaderText = _localizer.GetString(TextKeys.Log.ColumnOccurredTime);
         colLifecycleLevel.HeaderText = _localizer.GetString(TextKeys.Log.ColumnLevel);
         colLifecycleEventType.HeaderText = _localizer.GetString(TextKeys.Log.ColumnEvent);
-        colLifecycleStation.HeaderText = _localizer.GetString(TextKeys.Log.ColumnStation);
         colLifecycleStatus.HeaderText = _localizer.GetString(TextKeys.Log.ColumnStatus);
         colLifecycleSummary.HeaderText = _localizer.GetString(TextKeys.Log.ColumnSummary);
     }
@@ -472,10 +469,8 @@ public partial class LogManageView : BaseView
     private void ApplyDeviceStatusGridHeaders()
     {
         colDeviceOccurredTime.HeaderText = "时间";
-        colDeviceStation.HeaderText = "工位";
         colDeviceStatus.HeaderText = "状态码";
         colDeviceStatusName.HeaderText = "状态名称";
-        colDeviceSource.HeaderText = "来源";
         colDeviceReportStatus.HeaderText = "上传状态";
         colDeviceReportMessage.HeaderText = "上传消息";
     }
@@ -709,6 +704,12 @@ public partial class LogManageView : BaseView
             || Contains(entry.TraceId, keyword);
     }
 
+    private static string FormatProductionSummary(ProductionFlowLogEntry entry, ILocalizationService localizer)
+    {
+        var summary = ProductionFlowLogTexts.NormalizeLegacySummary(entry.Summary);
+        return PlcBusinessSignalDisplayHelper.FormatSignalReferences(summary, localizer);
+    }
+
     private static bool IsProductionLogMatched(ProductionFlowLogEntry entry, string keyword, ILocalizationService localizer)
     {
         if (string.IsNullOrWhiteSpace(keyword))
@@ -716,7 +717,7 @@ public partial class LogManageView : BaseView
             return true;
         }
 
-        var localizedSummary = PlcBusinessSignalDisplayHelper.FormatSignalReferences(entry.Summary, localizer);
+        var localizedSummary = FormatProductionSummary(entry, localizer);
         var localizedPlcSignal = PlcBusinessSignalDisplayHelper.FormatSignalName(entry.PlcSignal, localizer);
 
         return Contains(entry.TraceId, keyword)
@@ -783,6 +784,8 @@ public partial class LogManageView : BaseView
             || Contains(entry.DeviceId, keyword)
             || Contains(entry.DeviceStatus, keyword)
             || Contains(entry.StatusName, keyword)
+            || Contains(entry.AlarmAddress, keyword)
+            || Contains(entry.AlarmContent, keyword)
             || Contains(entry.Source, keyword)
             || Contains(entry.WorkOrderId, keyword)
             || Contains(entry.ReportStatus, keyword)
@@ -1212,7 +1215,7 @@ public partial class LogManageView : BaseView
         builder.AppendLine($"Time: {entry.OccurredTime:yyyy-MM-dd HH:mm:ss.fff}");
         builder.AppendLine($"Level: {entry.Level}");
         builder.AppendLine($"Step: {entry.Step}");
-        builder.AppendLine($"Summary: {PlcBusinessSignalDisplayHelper.FormatSignalReferences(entry.Summary, _localizer)}");
+        builder.AppendLine($"Summary: {FormatProductionSummary(entry, _localizer)}");
         builder.AppendLine($"Station: {entry.StationNo}");
         builder.AppendLine($"WorkOrder: {entry.WorkOrder}");
         builder.AppendLine($"ProductNumber: {entry.ProductNo}");
@@ -1268,6 +1271,8 @@ public partial class LogManageView : BaseView
         builder.AppendLine($"WorkOrder: {entry.WorkOrderId ?? "-"}");
         builder.AppendLine($"DeviceState: {entry.DeviceStatus}");
         builder.AppendLine($"StatusName: {entry.StatusName}");
+        builder.AppendLine($"AlarmAddress: {entry.AlarmAddress ?? "-"}");
+        builder.AppendLine($"AlarmContent: {entry.AlarmContent ?? "-"}");
         builder.AppendLine($"Source: {entry.Source}");
         builder.AppendLine($"OccurredTime: {entry.OccurredTime:yyyy-MM-dd HH:mm:ss.fff}");
         builder.AppendLine($"ReportStatus: {UploadStatusDisplayRules.GetDisplayText(entry.ReportStatus)}");
@@ -1600,8 +1605,6 @@ public partial class LogManageView : BaseView
 
         public string HttpStatus => Entry.HttpStatusCode?.ToString() ?? "-";
 
-        public string MesStatus => string.IsNullOrWhiteSpace(Entry.MesStatus) ? "-" : Entry.MesStatus;
-
         public string Result { get; }
 
         public string Duration => Entry.DurationMilliseconds.ToString();
@@ -1614,7 +1617,7 @@ public partial class LogManageView : BaseView
         {
             Entry = entry;
             OccurredTime = LogTimestampDisplayRules.Format(entry.OccurredTime, showDate);
-            Summary = PlcBusinessSignalDisplayHelper.FormatSignalReferences(entry.Summary, localizer);
+            Summary = FormatProductionSummary(entry, localizer);
             PlcSignal = PlcBusinessSignalDisplayHelper.FormatSignalName(entry.PlcSignal, localizer);
         }
 
@@ -1623,8 +1626,6 @@ public partial class LogManageView : BaseView
         public string OccurredTime { get; }
 
         public string Level => Entry.Level;
-
-        public string Step => Entry.Step;
 
         public string Summary { get; }
 
@@ -1651,8 +1652,6 @@ public partial class LogManageView : BaseView
 
         public string DeviceId => string.IsNullOrWhiteSpace(Entry.DeviceId) ? "-" : Entry.DeviceId;
 
-        public string Station => Entry.StationNo <= 0 ? "-" : Entry.StationNo.ToString();
-
         public string Status => string.IsNullOrWhiteSpace(Entry.Status) ? "-" : Entry.Status;
 
         public string Summary => string.IsNullOrWhiteSpace(Entry.Summary) ? "-" : Entry.Summary;
@@ -1670,15 +1669,11 @@ public partial class LogManageView : BaseView
 
         public string OccurredTime { get; }
 
-        public string Station => Entry.StationNo <= 0 ? "-" : Entry.StationNo.ToString();
-
         public string DeviceStatus => Entry.DeviceStatus;
 
         public string StatusName => string.IsNullOrWhiteSpace(Entry.StatusName) ? "-" : Entry.StatusName;
 
         public string WorkOrderId => string.IsNullOrWhiteSpace(Entry.WorkOrderId) ? "-" : Entry.WorkOrderId;
-
-        public string Source => string.IsNullOrWhiteSpace(Entry.Source) ? "-" : Entry.Source;
 
         public string ReportStatus => string.IsNullOrWhiteSpace(Entry.ReportStatus)
             ? "-"

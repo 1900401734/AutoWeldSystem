@@ -46,7 +46,6 @@ namespace AutoWeldSystem.UI.Views
             colMesPurpose = new DataGridViewTextBoxColumn();
             colMesMethod = new DataGridViewTextBoxColumn();
             colMesHttpStatus = new DataGridViewTextBoxColumn();
-            colMesStatus = new DataGridViewTextBoxColumn();
             colResult = new DataGridViewTextBoxColumn();
             colMesDuration = new DataGridViewTextBoxColumn();
             tabMesDetails = new TabControl();
@@ -62,7 +61,6 @@ namespace AutoWeldSystem.UI.Views
             dgvProductionLogs = new DataGridView();
             colProductionOccurredTime = new DataGridViewTextBoxColumn();
             colProductionLevel = new DataGridViewTextBoxColumn();
-            colProductionStep = new DataGridViewTextBoxColumn();
             colProductionSummary = new DataGridViewTextBoxColumn();
             colProductionStation = new DataGridViewTextBoxColumn();
             colProductionPlcSignal = new DataGridViewTextBoxColumn();
@@ -130,7 +128,6 @@ namespace AutoWeldSystem.UI.Views
             colLifecycleOccurredTime = new DataGridViewTextBoxColumn();
             colLifecycleLevel = new DataGridViewTextBoxColumn();
             colLifecycleEventType = new DataGridViewTextBoxColumn();
-            colLifecycleStation = new DataGridViewTextBoxColumn();
             colLifecycleStatus = new DataGridViewTextBoxColumn();
             colLifecycleSummary = new DataGridViewTextBoxColumn();
             txtDeviceLifecycleDetail = new TextBox();
@@ -150,10 +147,8 @@ namespace AutoWeldSystem.UI.Views
             splitDeviceStatusContent = new SplitContainer();
             dgvDeviceStatusLogs = new DataGridView();
             colDeviceOccurredTime = new DataGridViewTextBoxColumn();
-            colDeviceStation = new DataGridViewTextBoxColumn();
             colDeviceStatus = new DataGridViewTextBoxColumn();
             colDeviceStatusName = new DataGridViewTextBoxColumn();
-            colDeviceSource = new DataGridViewTextBoxColumn();
             colDeviceReportStatus = new DataGridViewTextBoxColumn();
             colDeviceReportMessage = new DataGridViewTextBoxColumn();
             txtDeviceStatusDetail = new TextBox();
@@ -453,7 +448,7 @@ namespace AutoWeldSystem.UI.Views
             dgvMesLogs.AllowUserToDeleteRows = false;
             dgvMesLogs.BackgroundColor = SystemColors.Window;
             dgvMesLogs.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-            dgvMesLogs.Columns.AddRange(new DataGridViewColumn[] { colMesSendTime, colMesPurpose, colMesMethod, colMesHttpStatus, colMesStatus, colResult, colMesDuration });
+            dgvMesLogs.Columns.AddRange(new DataGridViewColumn[] { colMesSendTime, colMesPurpose, colMesMethod, colMesHttpStatus, colResult, colMesDuration });
             dgvMesLogs.Dock = DockStyle.Fill;
             dgvMesLogs.Location = new Point(0, 0);
             dgvMesLogs.Margin = new Padding(0);
@@ -506,17 +501,6 @@ namespace AutoWeldSystem.UI.Views
             colMesHttpStatus.Name = "colMesHttpStatus";
             colMesHttpStatus.ReadOnly = true;
             colMesHttpStatus.Width = 125;
-            // 
-            // colMesStatus
-            // 
-            colMesStatus.DataPropertyName = "MesStatus";
-            colMesStatus.FillWeight = 8F;
-            colMesStatus.HeaderText = "MES Status";
-            colMesStatus.MinimumWidth = 88;
-            colMesStatus.Name = "colMesStatus";
-            colMesStatus.ReadOnly = true;
-            colMesStatus.Width = 125;
-            // 
             // colResult
             // 
             colResult.DataPropertyName = "Result";
@@ -681,7 +665,7 @@ namespace AutoWeldSystem.UI.Views
             dgvProductionLogs.AllowUserToDeleteRows = false;
             dgvProductionLogs.BackgroundColor = SystemColors.Window;
             dgvProductionLogs.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-            dgvProductionLogs.Columns.AddRange(new DataGridViewColumn[] { colProductionOccurredTime, colProductionLevel, colProductionStep, colProductionSummary, colProductionStation, colProductionPlcSignal });
+            dgvProductionLogs.Columns.AddRange(new DataGridViewColumn[] { colProductionOccurredTime, colProductionLevel, colProductionSummary, colProductionStation, colProductionPlcSignal });
             dgvProductionLogs.Dock = DockStyle.Fill;
             dgvProductionLogs.Location = new Point(0, 0);
             dgvProductionLogs.Name = "dgvProductionLogs";
@@ -712,16 +696,6 @@ namespace AutoWeldSystem.UI.Views
             colProductionLevel.Name = "colProductionLevel";
             colProductionLevel.ReadOnly = true;
             colProductionLevel.Width = 125;
-            // 
-            // colProductionStep
-            // 
-            colProductionStep.DataPropertyName = "Step";
-            colProductionStep.FillWeight = 16F;
-            colProductionStep.HeaderText = "Step";
-            colProductionStep.MinimumWidth = 88;
-            colProductionStep.Name = "colProductionStep";
-            colProductionStep.ReadOnly = true;
-            colProductionStep.Width = 125;
             // 
             // colProductionSummary
             // 
@@ -1590,7 +1564,7 @@ namespace AutoWeldSystem.UI.Views
             dgvDeviceLifecycleLogs.AllowUserToDeleteRows = false;
             dgvDeviceLifecycleLogs.BackgroundColor = SystemColors.Window;
             dgvDeviceLifecycleLogs.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-            dgvDeviceLifecycleLogs.Columns.AddRange(new DataGridViewColumn[] { colLifecycleOccurredTime, colLifecycleLevel, colLifecycleEventType, colLifecycleStation, colLifecycleStatus, colLifecycleSummary });
+            dgvDeviceLifecycleLogs.Columns.AddRange(new DataGridViewColumn[] { colLifecycleOccurredTime, colLifecycleLevel, colLifecycleEventType, colLifecycleStatus, colLifecycleSummary });
             dgvDeviceLifecycleLogs.Dock = DockStyle.Fill;
             dgvDeviceLifecycleLogs.Location = new Point(0, 0);
             dgvDeviceLifecycleLogs.MultiSelect = false;
@@ -1629,15 +1603,6 @@ namespace AutoWeldSystem.UI.Views
             colLifecycleEventType.Name = "colLifecycleEventType";
             colLifecycleEventType.ReadOnly = true;
             colLifecycleEventType.Width = 150;
-            // 
-            // colLifecycleStation
-            // 
-            colLifecycleStation.DataPropertyName = "Station";
-            colLifecycleStation.HeaderText = "Station";
-            colLifecycleStation.MinimumWidth = 70;
-            colLifecycleStation.Name = "colLifecycleStation";
-            colLifecycleStation.ReadOnly = true;
-            colLifecycleStation.Width = 80;
             // 
             // colLifecycleStatus
             // 
@@ -1882,7 +1847,7 @@ namespace AutoWeldSystem.UI.Views
             dgvDeviceStatusLogs.AllowUserToDeleteRows = false;
             dgvDeviceStatusLogs.BackgroundColor = SystemColors.Window;
             dgvDeviceStatusLogs.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-            dgvDeviceStatusLogs.Columns.AddRange(new DataGridViewColumn[] { colDeviceOccurredTime, colDeviceStation, colDeviceStatus, colDeviceStatusName, colDeviceSource, colDeviceReportStatus, colDeviceReportMessage });
+            dgvDeviceStatusLogs.Columns.AddRange(new DataGridViewColumn[] { colDeviceOccurredTime, colDeviceStatus, colDeviceStatusName, colDeviceReportStatus, colDeviceReportMessage });
             dgvDeviceStatusLogs.Dock = DockStyle.Fill;
             dgvDeviceStatusLogs.Location = new Point(0, 0);
             dgvDeviceStatusLogs.MultiSelect = false;
@@ -1905,16 +1870,6 @@ namespace AutoWeldSystem.UI.Views
             colDeviceOccurredTime.ReadOnly = true;
             colDeviceOccurredTime.Width = 125;
             // 
-            // colDeviceStation
-            // 
-            colDeviceStation.DataPropertyName = "Station";
-            colDeviceStation.FillWeight = 8F;
-            colDeviceStation.HeaderText = "Station";
-            colDeviceStation.MinimumWidth = 88;
-            colDeviceStation.Name = "colDeviceStation";
-            colDeviceStation.ReadOnly = true;
-            colDeviceStation.Width = 125;
-            // 
             // colDeviceStatus
             // 
             colDeviceStatus.DataPropertyName = "DeviceStatus";
@@ -1934,17 +1889,6 @@ namespace AutoWeldSystem.UI.Views
             colDeviceStatusName.Name = "colDeviceStatusName";
             colDeviceStatusName.ReadOnly = true;
             colDeviceStatusName.Width = 125;
-            // 
-            // colDeviceSource
-            // 
-            colDeviceSource.DataPropertyName = "Source";
-            colDeviceSource.FillWeight = 13F;
-            colDeviceSource.HeaderText = "Source";
-            colDeviceSource.MinimumWidth = 88;
-            colDeviceSource.Name = "colDeviceSource";
-            colDeviceSource.ReadOnly = true;
-            colDeviceSource.Width = 125;
-            // 
             // colDeviceReportStatus
             // 
             colDeviceReportStatus.DataPropertyName = "ReportStatus";
@@ -2211,12 +2155,10 @@ namespace AutoWeldSystem.UI.Views
         private DataGridViewTextBoxColumn colMesPurpose;
         private DataGridViewTextBoxColumn colMesMethod;
         private DataGridViewTextBoxColumn colMesHttpStatus;
-        private DataGridViewTextBoxColumn colMesStatus;
         private DataGridViewTextBoxColumn colResult;
         private DataGridViewTextBoxColumn colMesDuration;
         private DataGridViewTextBoxColumn colProductionOccurredTime;
         private DataGridViewTextBoxColumn colProductionLevel;
-        private DataGridViewTextBoxColumn colProductionStep;
         private DataGridViewTextBoxColumn colProductionSummary;
         private DataGridViewTextBoxColumn colProductionStation;
         private DataGridViewTextBoxColumn colProductionPlcSignal;
@@ -2227,14 +2169,11 @@ namespace AutoWeldSystem.UI.Views
         private DataGridViewTextBoxColumn colLifecycleOccurredTime;
         private DataGridViewTextBoxColumn colLifecycleLevel;
         private DataGridViewTextBoxColumn colLifecycleEventType;
-        private DataGridViewTextBoxColumn colLifecycleStation;
         private DataGridViewTextBoxColumn colLifecycleStatus;
         private DataGridViewTextBoxColumn colLifecycleSummary;
         private DataGridViewTextBoxColumn colDeviceOccurredTime;
-        private DataGridViewTextBoxColumn colDeviceStation;
         private DataGridViewTextBoxColumn colDeviceStatus;
         private DataGridViewTextBoxColumn colDeviceStatusName;
-        private DataGridViewTextBoxColumn colDeviceSource;
         private DataGridViewTextBoxColumn colDeviceReportStatus;
         private DataGridViewTextBoxColumn colDeviceReportMessage;
     }
