@@ -27,6 +27,10 @@ public class BizDeviceStatusLog
 
     public string? Remark { get; set; }
 
+    public string? AlarmAddress { get; set; }
+
+    public string? AlarmContent { get; set; }
+
     public DateTime OccurredTime { get; set; } = DateTime.Now;
 
     public string ReportStatus { get; set; } = ProductionConstants.UploadStatuses.Pending;

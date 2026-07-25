@@ -830,6 +830,7 @@ public class WeldTaskService : IWeldTaskService
 
     private async Task RetryPendingUploadsInternalAsync(CancellationToken cancellationToken)
     {
+        await _deviceStatusService.RetryPendingUploadsAsync(cancellationToken);
         var executedCount = 0;
         executedCount += await _uploadTaskService.ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.StartReport, cancellationToken);
         executedCount += await _uploadTaskService.ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.ProcessParameter, cancellationToken);

@@ -190,7 +190,8 @@ public class DeviceStatusService : IDeviceStatusService
         string? workOrderId = null,
         DateTime? occurredTime = null,
         bool forceWrite = false,
-        bool reportInBackground = false,
+        string? alarmAddress = null,
+        string? alarmContent = null,
         CancellationToken cancellationToken = default)
     {
         var normalizedStatus = DeviceStatusReportRules.NormalizeMesDeviceStatusCode(deviceStatus);
@@ -198,13 +199,25 @@ public class DeviceStatusService : IDeviceStatusService
         BizDeviceStatusLog log;
         lock (_statusChangeLock)
         {
-            var latest = GetLatestStatus(normalizedStationNo);
             if (!forceWrite)
             {
+                // 关闭期间取消的普通状态不能越过最终停机；生命周期 0/1 使用 forceWrite 仍保证落盘。
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            if (!forceWrite)
+            {
+                var latest = GetLatestStatus(normalizedStationNo);
                 var existingBoundary = FindExistingProgramBoundaryLog(normalizedStationNo, normalizedStatus, weldTaskId);
                 if (existingBoundary is not null)
                 {
                     return existingBoundary;
+                }
+
+                var existingAlarm = FindExistingAlarmStatusLog(normalizedStationNo, normalizedStatus, alarmAddress);
+                if (existingAlarm is not null)
+                {
+                    return existingAlarm;
                 }
 
                 if (ShouldReuseLatestProgramBoundaryStatus(latest, normalizedStatus, weldTaskId)
@@ -212,7 +225,8 @@ public class DeviceStatusService : IDeviceStatusService
                         latest,
                         normalizedStatus,
                         weldTaskId,
-                        forceWrite))
+                        forceWrite,
+                        alarmAddress))
                 {
                     return latest!;
                 }
@@ -225,7 +239,9 @@ public class DeviceStatusService : IDeviceStatusService
                 normalizedStationNo,
                 weldTaskId,
                 workOrderId,
-                occurredTime);
+                occurredTime,
+                alarmAddress,
+                alarmContent);
             if (CurrentSettings.EnableDeviceStatusReport == false)
             {
                 log.ReportStatus = ProductionConstants.UploadStatuses.Skipped;
@@ -240,6 +256,7 @@ public class DeviceStatusService : IDeviceStatusService
                 WriteAppendFailure(log, log.ReportMessage);
                 return log;
             }
+
         }
 
         if (log.ReportStatus == ProductionConstants.UploadStatuses.Skipped)
@@ -257,13 +274,7 @@ public class DeviceStatusService : IDeviceStatusService
         }
 
         RaiseLogsChanged();
-        if (reportInBackground)
-        {
-            _ = Task.Run(() => RetryInBackgroundAsync(recordKey));
-            return log;
-        }
-
-        await RetryUploadAsync(recordKey, cancellationToken);
+        await RetryPendingUploadsAsync(cancellationToken).ConfigureAwait(false);
         return GetLog(recordKey) ?? log;
     }
 
@@ -298,7 +309,28 @@ public class DeviceStatusService : IDeviceStatusService
             _ = CompleteSharedUploadAsync(normalizedRecordKey, starter, cancellationToken);
         }
 
-        return await activeUpload.WaitAsync(cancellationToken);
+        return await activeUpload.WaitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 按发生时间从旧到新补传全部 JSONL 待上传状态。
+    /// 整批复用现有上传门禁，避免后续实时状态插入旧状态之间造成 MES 最终状态倒退。
+    /// </summary>
+    public async Task RetryPendingUploadsAsync(CancellationToken cancellationToken = default)
+    {
+        await _uploadGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            // 先取得顺序门禁，再把 JSONL 扫描和 MES 请求切到默认调度器，避免捕获已停止泵消息的 UI 上下文。
+            _ = await Task.Run(
+                    () => RetryPendingUploadsCoreAsync(cancellationToken),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            _uploadGate.Release();
+        }
     }
 
     private async Task CompleteSharedUploadAsync(
@@ -308,7 +340,8 @@ public class DeviceStatusService : IDeviceStatusService
     {
         try
         {
-            completion.TrySetResult(await RetryUploadSerializedAsync(normalizedRecordKey, cancellationToken));
+            completion.TrySetResult(
+                await RetryUploadSerializedAsync(normalizedRecordKey, cancellationToken).ConfigureAwait(false));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -335,15 +368,89 @@ public class DeviceStatusService : IDeviceStatusService
         string normalizedRecordKey,
         CancellationToken cancellationToken)
     {
-        await _uploadGate.WaitAsync(cancellationToken);
+        await _uploadGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            return await RetryUploadCoreAsync(normalizedRecordKey, cancellationToken);
+            var response = await RetryPendingUploadsCoreAsync(cancellationToken, normalizedRecordKey)
+                .ConfigureAwait(false);
+            return response ?? ResolveRetryResult(normalizedRecordKey);
         }
         finally
         {
             _uploadGate.Release();
         }
+    }
+
+    private async Task<BasicRes<object>?> RetryPendingUploadsCoreAsync(
+        CancellationToken cancellationToken,
+        string? requestedRecordKey = null)
+    {
+        BasicRes<object>? requestedResponse = null;
+        var pendingLogs = GetPendingLogs()
+            .OrderBy(log => log.OccurredTime)
+            .ToList();
+        foreach (var log in pendingLogs)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var recordKey = DeviceStatusRecordIdentityRules.GetRecordKey(log);
+            if (recordKey is not null)
+            {
+                var response = await RetryUploadCoreAsync(recordKey, cancellationToken).ConfigureAwait(false);
+                if (string.Equals(recordKey, requestedRecordKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    requestedResponse = response;
+                }
+
+                if (response is not null && !response.IsSuccess && !IsSkippedResponse(response))
+                {
+                    break;
+                }
+            }
+        }
+
+        return requestedResponse;
+    }
+
+    private BasicRes<object>? ResolveRetryResult(string recordKey)
+    {
+        var log = GetLog(recordKey);
+        if (log is null)
+        {
+            return null;
+        }
+
+        if (string.Equals(log.ReportStatus, ProductionConstants.UploadStatuses.Uploaded, StringComparison.OrdinalIgnoreCase))
+        {
+            return new BasicRes<object>
+            {
+                Status = AppConstants.MesStatus.Success,
+                Msg = log.ReportMessage ?? string.Empty,
+                Data = new object()
+            };
+        }
+
+        if (string.Equals(log.ReportStatus, ProductionConstants.UploadStatuses.Skipped, StringComparison.OrdinalIgnoreCase))
+        {
+            return new BasicRes<object>
+            {
+                Status = ProductionConstants.UploadStatuses.Skipped,
+                Msg = log.ReportMessage ?? string.Empty,
+                Data = new object()
+            };
+        }
+
+        return new BasicRes<object>
+        {
+            Status = string.Equals(
+                log.ReportStatus,
+                ProductionConstants.UploadStatuses.Pending,
+                StringComparison.OrdinalIgnoreCase)
+                    ? ProductionConstants.UploadStatuses.Pending
+                    : AppConstants.MesStatus.Error,
+            Msg = string.IsNullOrWhiteSpace(log.ReportMessage)
+                ? "设备状态正在等待更早记录先完成上传。"
+                : log.ReportMessage
+        };
     }
 
     private async Task<BasicRes<object>?> RetryUploadCoreAsync(
@@ -388,7 +495,7 @@ public class DeviceStatusService : IDeviceStatusService
         }
         else
         {
-            response = await SendToMesAsync(log, cancellationToken);
+            response = await SendToMesAsync(log, cancellationToken).ConfigureAwait(false);
         }
 
         return PersistReportResult(log, normalizedRecordKey, response);
@@ -405,8 +512,8 @@ public class DeviceStatusService : IDeviceStatusService
                 DeviceId = DeviceStatusReportRules.ResolveReportDeviceId(CurrentSettings.DeviceId, log.DeviceId),
                 DevStatus = log.DeviceStatus,
                 Ts = log.OccurredTime.ToString("yyyy-MM-dd HH:mm:ss"),
-                Remark = log.Remark ?? string.Empty
-            }, cancellationToken);
+                Remark = ResolveMesRemark(log)
+            }, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -417,6 +524,38 @@ public class DeviceStatusService : IDeviceStatusService
             };
         }
     }
+
+    private static string ResolveMesRemark(BizDeviceStatusLog log)
+    {
+        if (log.DeviceStatus == ProductionConstants.MesDeviceStatuses.Recovered)
+        {
+            // 旧恢复记录没有逐地址明细，补传时必须保留原 Remark 兼容历史数据。
+            if (string.IsNullOrWhiteSpace(log.AlarmAddress))
+            {
+                return log.Remark ?? string.Empty;
+            }
+
+            return DeviceStatusReportRules.FormatRecoveryRemark(
+                log.AlarmContent,
+                log.StationNo,
+                IsSharedAlarm(log));
+        }
+
+        if (log.DeviceStatus != ProductionConstants.MesDeviceStatuses.Exception)
+        {
+            return log.Remark ?? string.Empty;
+        }
+
+        // 新记录用 StationNo=0 表示共享；旧 JSONL 没有该约定时只兼容原有“双工位”标记。
+        return DeviceStatusReportRules.FormatExceptionRemark(
+            log.AlarmContent,
+            log.StationNo,
+            IsSharedAlarm(log));
+    }
+
+    private static bool IsSharedAlarm(BizDeviceStatusLog log)
+        => log.StationNo <= ProductionConstants.Stations.SharedStationNo
+            || log.Remark?.Contains("工位：双工位", StringComparison.Ordinal) == true;
 
     private BasicRes<object>? PersistReportResult(
         BizDeviceStatusLog log,
@@ -440,6 +579,7 @@ public class DeviceStatusService : IDeviceStatusService
             {
                 if (response.IsSuccess)
                 {
+                    TryCompleteUploadTaskProjection(log, recordKey);
                     WriteAppendFailure(log, "MES upload succeeded after the device status JSONL source was removed.");
                     return response;
                 }
@@ -460,25 +600,17 @@ public class DeviceStatusService : IDeviceStatusService
             };
         }
 
-        if (!response.IsSuccess && !IsSkippedResponse(response))
+        if (response.IsSuccess || IsSkippedResponse(response))
+        {
+            TryCompleteUploadTaskProjection(log, recordKey);
+        }
+        else
         {
             TryEnsurePendingUploadTask(log);
         }
 
         RaiseLogsChanged();
         return response;
-    }
-
-    private async Task RetryInBackgroundAsync(string recordKey)
-    {
-        try
-        {
-            await RetryUploadAsync(recordKey, CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            _exceptionLogService.Write(ex, "DeviceStatusService.BackgroundUpload", $"RecordKey={recordKey}");
-        }
     }
 
     private static BizUploadTask BuildDeviceStatusUploadTask(BizDeviceStatusLog log, string recordKey)
@@ -569,7 +701,9 @@ public class DeviceStatusService : IDeviceStatusService
         int stationNo,
         int? weldTaskId,
         string? workOrderId,
-        DateTime? occurredTime)
+        DateTime? occurredTime,
+        string? alarmAddress,
+        string? alarmContent)
     {
         var settings = CurrentSettings;
         return new BizDeviceStatusLog
@@ -583,6 +717,8 @@ public class DeviceStatusService : IDeviceStatusService
             StatusName = DeviceStatusReportRules.GetStatusName(deviceStatus),
             Source = string.IsNullOrWhiteSpace(source) ? "Software" : source.Trim(),
             Remark = NormalizeNullable(remark),
+            AlarmAddress = NormalizeNullable(alarmAddress),
+            AlarmContent = NormalizeNullable(alarmContent),
             OccurredTime = occurredTime ?? DateTime.Now,
             ReportStatus = ProductionConstants.UploadStatuses.Pending
         };
@@ -608,6 +744,48 @@ public class DeviceStatusService : IDeviceStatusService
             .FirstOrDefault();
     }
 
+    private BizDeviceStatusLog? FindExistingAlarmStatusLog(
+        int stationNo,
+        string normalizedStatus,
+        string? alarmAddress)
+    {
+        if (normalizedStatus is not (ProductionConstants.MesDeviceStatuses.Exception
+                or ProductionConstants.MesDeviceStatuses.Recovered)
+            || string.IsNullOrWhiteSpace(alarmAddress))
+        {
+            return null;
+        }
+
+        var normalizedAddress = AlarmAddressImportRules.NormalizeAddress(alarmAddress);
+        foreach (var log in GetLogs(from: null, to: null, maxCount: 5000)
+                     .Where(log => log.StationNo == stationNo)
+                     .OrderByDescending(log => log.OccurredTime))
+        {
+            if (log.DeviceStatus == ProductionConstants.MesDeviceStatuses.Recovered)
+            {
+                if (string.IsNullOrWhiteSpace(log.AlarmAddress)
+                    && normalizedStatus == ProductionConstants.MesDeviceStatuses.Exception)
+                {
+                    return null;
+                }
+            }
+
+            if (log.DeviceStatus is not (ProductionConstants.MesDeviceStatuses.Exception
+                    or ProductionConstants.MesDeviceStatuses.Recovered)
+                || !string.Equals(
+                    AlarmAddressImportRules.NormalizeAddress(log.AlarmAddress),
+                    normalizedAddress,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            return log.DeviceStatus == normalizedStatus ? log : null;
+        }
+
+        return null;
+    }
+
     private void TryEnsurePendingUploadTask(BizDeviceStatusLog log)
     {
         try
@@ -618,6 +796,48 @@ public class DeviceStatusService : IDeviceStatusService
         {
             var recordKey = DeviceStatusRecordIdentityRules.GetRecordKey(log) ?? "invalid";
             _exceptionLogService.Write(ex, "DeviceStatusService.UploadProjection", $"RecordKey={recordKey}");
+        }
+    }
+
+    private void TryCompleteUploadTaskProjection(BizDeviceStatusLog log, string recordKey)
+    {
+        try
+        {
+            lock (_dbLock)
+            {
+                _dbContext.InitDatabase();
+                var task = FindExistingUploadTask(recordKey);
+                if (task is null || task.IsDeleted)
+                {
+                    return;
+                }
+
+                var existingStatus = task.Status;
+                var existingLastAttemptTime = task.LastAttemptTime;
+                task.Status = log.ReportStatus;
+                task.CompletedTime = log.ReportTime ?? DateTime.Now;
+                task.NextRetryTime = null;
+                task.Message = log.ReportMessage;
+                task.UpdatedTime = DateTime.Now;
+                _ = _dbContext.Db.Updateable(task)
+                    .UpdateColumns(taskRow => new
+                    {
+                        taskRow.Status,
+                        taskRow.CompletedTime,
+                        taskRow.NextRetryTime,
+                        taskRow.Message,
+                        taskRow.UpdatedTime
+                    })
+                    .Where(taskRow => taskRow.Id == task.Id
+                        && !taskRow.IsDeleted
+                        && taskRow.Status == existingStatus
+                        && taskRow.LastAttemptTime == existingLastAttemptTime)
+                    .ExecuteCommand();
+            }
+        }
+        catch
+        {
+            // JSONL 已保存 MES 终态；派生任务投影失败时由下次待上传页面对账修复。
         }
     }
 

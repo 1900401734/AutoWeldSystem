@@ -37,7 +37,7 @@ public sealed record PlcProductionSnapshot(
     public int? AlarmStationNo { get; init; }
 
     /// <summary>
-    /// 是否触发本机软件报警。该状态由 PLC 原始状态 4 或独立 Bool 报警地址共同决定。
+    /// 是否触发按当前系统设置判定后的本机有效报警。
     /// </summary>
     public bool IsSoftwareAlarmActive { get; init; }
 
@@ -45,6 +45,16 @@ public sealed record PlcProductionSnapshot(
     /// 本机软件报警显示内容，不参与 MES、生命周期日志或中心服务器报警上报。
     /// </summary>
     public string SoftwareAlarmMessage { get; init; } = string.Empty;
+
+    /// <summary>
+    /// 双条件模式下 PLC 原始状态为 4，但本轮没有匹配到有效报警地址。
+    /// </summary>
+    public bool IsAlarmPendingConfirmation { get; init; }
+
+    /// <summary>
+    /// 仅地址模式中原始状态 4 没有任何有效报警地址，界面按未知状态显示。
+    /// </summary>
+    public bool IsRawAlarmUnconfirmed { get; init; }
 
     public bool ProductionQuantitiesReadSuccess =>
         TotalProductionReadSuccess

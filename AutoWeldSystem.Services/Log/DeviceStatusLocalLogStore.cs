@@ -110,7 +110,9 @@ public static class DeviceStatusLocalLogStore
         int maxCount = 200,
         Action<Exception, string>? onError = null)
     {
-        var take = Math.Clamp(maxCount, 1, 5000);
+        var take = maxCount == int.MaxValue
+            ? int.MaxValue
+            : Math.Clamp(maxCount, 1, 5000);
         lock (SyncRoot)
         {
             return ReadLatestCore(settings, from, to, onError)
@@ -193,6 +195,7 @@ public static class DeviceStatusLocalLogStore
         Action<Exception, string>? onError)
     {
         var latestByKey = new Dictionary<string, BizDeviceStatusLog>(StringComparer.OrdinalIgnoreCase);
+        var recordKeyOrder = new List<string>();
         IEnumerable<string> filePaths;
         try
         {
@@ -217,11 +220,16 @@ public static class DeviceStatusLocalLogStore
                     continue;
                 }
 
+                if (!latestByKey.ContainsKey(recordKey))
+                {
+                    recordKeyOrder.Add(recordKey);
+                }
+
                 latestByKey[recordKey] = entry;
             }
         }
 
-        return latestByKey.Values.ToList();
+        return recordKeyOrder.Select(recordKey => latestByKey[recordKey]).ToList();
     }
 
     private static IReadOnlyList<BizDeviceStatusLog> ReadFile(

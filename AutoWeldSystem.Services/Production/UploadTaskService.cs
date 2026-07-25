@@ -184,22 +184,54 @@ public class UploadTaskService : IUploadTaskService
         {
             _dbContext.InitDatabase();
             var now = DateTime.Now;
-            var staleTasks = _dbContext.Db.Queryable<BizUploadTask>()
+            var projectedTasks = _dbContext.Db.Queryable<BizUploadTask>()
                 .Where(task => task.TaskType == ProductionConstants.UploadTaskTypes.DeviceStatus
                     && !task.IsDeleted
                     && task.Status != ProductionConstants.UploadStatuses.Uploaded)
-                .ToList()
-                .Where(task =>
-                {
-                    var recordKey = DeviceStatusRecordIdentityRules.ReadTaskRecordKey(task.BusinessId, task.PayloadJson);
-                    return (recordKey is null || !activeRecordKeys.Contains(recordKey))
-                        && !_deviceStatusService.ShouldPreserveUploadingTask(task);
-                })
                 .ToList();
-            foreach (var task in staleTasks)
+            foreach (var task in projectedTasks)
             {
+                var recordKey = DeviceStatusRecordIdentityRules.ReadTaskRecordKey(task.BusinessId, task.PayloadJson);
+                if ((recordKey is not null && activeRecordKeys.Contains(recordKey))
+                    || _deviceStatusService.ShouldPreserveUploadingTask(task))
+                {
+                    continue;
+                }
+
                 var existingStatus = task.Status;
                 var existingLastAttemptTime = task.LastAttemptTime;
+                var source = recordKey is null ? null : _deviceStatusService.GetLog(recordKey);
+                if (source is not null
+                    && (string.Equals(
+                            source.ReportStatus,
+                            ProductionConstants.UploadStatuses.Uploaded,
+                            StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(
+                            source.ReportStatus,
+                            ProductionConstants.UploadStatuses.Skipped,
+                            StringComparison.OrdinalIgnoreCase)))
+                {
+                    task.Status = source.ReportStatus;
+                    task.CompletedTime = source.ReportTime ?? now;
+                    task.NextRetryTime = null;
+                    task.UpdatedTime = now;
+                    task.Message = source.ReportMessage;
+                    _ = _dbContext.Db.Updateable(task)
+                        .UpdateColumns(taskRow => new
+                        {
+                            taskRow.Status,
+                            taskRow.CompletedTime,
+                            taskRow.NextRetryTime,
+                            taskRow.UpdatedTime,
+                            taskRow.Message
+                        })
+                        .Where(taskRow => taskRow.Id == task.Id
+                            && taskRow.Status == existingStatus
+                            && taskRow.LastAttemptTime == existingLastAttemptTime)
+                        .ExecuteCommand();
+                    continue;
+                }
+
                 task.IsDeleted = true;
                 task.DeletedTime = now;
                 task.UpdatedTime = now;
@@ -697,9 +729,23 @@ public class UploadTaskService : IUploadTaskService
         }
 
         UpdateTaskExpStartId(task, response.Data.Id);
-        WriteStartReportLifecycleLog(task, response.Data.Id);
-        await RecordProgramStartedStatusAsync(task, cancellationToken);
-        return Success(string.IsNullOrWhiteSpace(response.Msg) ? "Start report uploaded." : response.Msg);
+        var successMessage = string.IsNullOrWhiteSpace(response.Msg) ? "Start report uploaded." : response.Msg;
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Success(successMessage);
+        }
+
+        try
+        {
+            WriteStartReportLifecycleLog(task, response.Data.Id);
+            await RecordProgramStartedStatusAsync(task, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // MES 已确认开工成功，关闭期间取消状态 6 的附加处理不能让上传任务永久停在 Uploading。
+        }
+
+        return Success(successMessage);
     }
 
     /// <summary>
@@ -803,9 +849,16 @@ public class UploadTaskService : IUploadTaskService
         request.FailureNumber = request.FailureNumber <= 0 ? weldTask.FailedQty : request.FailureNumber;
 
         var response = await _mesProvider.EndWorkAsync(request, cancellationToken);
-        if (response.IsSuccess)
+        if (response.IsSuccess && !cancellationToken.IsCancellationRequested)
         {
-            await RecordProgramEndedStatusAsync(weldTask, cancellationToken);
+            try
+            {
+                await RecordProgramEndedStatusAsync(weldTask, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // MES 已确认完工成功，关闭期间取消状态 7 的附加处理不能阻断任务完成态落库。
+            }
         }
 
         return response;
@@ -1419,14 +1472,24 @@ public class UploadTaskService : IUploadTaskService
                 return null;
             }
 
-            task.Status = IsSkippedResponse(response)
-                ? ProductionConstants.UploadStatuses.Skipped
-                : response.IsSuccess
-                    ? ProductionConstants.UploadStatuses.Uploaded
-                    : ProductionConstants.UploadStatuses.Failed;
-            task.Message = response.Msg;
-            task.CompletedTime = response.IsSuccess || IsSkippedResponse(response) ? DateTime.Now : null;
-            task.NextRetryTime = response.IsSuccess || IsSkippedResponse(response) ? null : DateTime.Now.AddMinutes(1);
+            var deviceStatusLog = ResolveDeviceStatusLog(task);
+            task.Status = deviceStatusLog?.ReportStatus
+                ?? (IsSkippedResponse(response)
+                    ? ProductionConstants.UploadStatuses.Skipped
+                    : response.IsSuccess
+                        ? ProductionConstants.UploadStatuses.Uploaded
+                        : ProductionConstants.UploadStatuses.Failed);
+            task.Message = deviceStatusLog?.ReportMessage ?? response.Msg;
+            var completed = string.Equals(
+                    task.Status,
+                    ProductionConstants.UploadStatuses.Uploaded,
+                    StringComparison.OrdinalIgnoreCase)
+                || string.Equals(
+                    task.Status,
+                    ProductionConstants.UploadStatuses.Skipped,
+                    StringComparison.OrdinalIgnoreCase);
+            task.CompletedTime = completed ? DateTime.Now : null;
+            task.NextRetryTime = completed ? null : DateTime.Now.AddMinutes(1);
             task.UpdatedTime = DateTime.Now;
             _dbContext.Db.Updateable(task).ExecuteCommand();
             UpdateReportFileStatus(task, response);
@@ -1436,6 +1499,20 @@ public class UploadTaskService : IUploadTaskService
 
         PublishTaskStatusChanged(changed);
         return summary;
+    }
+
+    private BizDeviceStatusLog? ResolveDeviceStatusLog(BizUploadTask task)
+    {
+        if (!string.Equals(
+                task.TaskType,
+                ProductionConstants.UploadTaskTypes.DeviceStatus,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var recordKey = DeviceStatusRecordIdentityRules.ReadTaskRecordKey(task.BusinessId, task.PayloadJson);
+        return recordKey is null ? null : _deviceStatusService.GetLog(recordKey);
     }
 
     private void WriteUploadFlowLog(BizUploadTask task, BasicRes<object> response)

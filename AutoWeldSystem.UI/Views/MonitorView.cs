@@ -178,7 +178,9 @@ public partial class MonitorView : BaseView
     private bool _deviceModeReconcileRunning;
     private bool _workOrderStatusReconcileRunning;
     private bool _lastMesConnected;
-    private bool _pendingUploadRetryRunning;
+    private CancellationTokenSource? _pendingUploadRetryCancellation = new();
+    private Task? _pendingUploadRetryTask;
+    private int _pendingUploadRetryRunning;
     private bool _plcStatusToolTipVisible;
 
     #endregion
@@ -1458,6 +1460,7 @@ public partial class MonitorView : BaseView
     /// <param name="e">事件参数。</param>
     protected override void OnHandleDestroyed(EventArgs e)
     {
+        CancelPendingUploadRetry();
         CancelAndDispose(ref _businessSignalReconcileCancellation);
         GlobalContext.SessionChanged -= GlobalContext_SessionChanged;
         _settingsService.SettingsChanged -= OnSettingsChanged;
@@ -4592,6 +4595,32 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
+    /// 页面关闭时取消 MES 重连补传；最终停机状态由应用生命周期在同一个 MES 超时窗口内处理。
+    /// </summary>
+    private void CancelPendingUploadRetry()
+    {
+        var cancellationSource = Interlocked.Exchange(ref _pendingUploadRetryCancellation, null);
+        var retryTask = Interlocked.Exchange(ref _pendingUploadRetryTask, null);
+        cancellationSource?.Cancel();
+        if (cancellationSource is null)
+        {
+            return;
+        }
+
+        if (retryTask is null)
+        {
+            cancellationSource.Dispose();
+            return;
+        }
+
+        _ = retryTask.ContinueWith(
+            _ => cancellationSource.Dispose(),
+            CancellationToken.None,
+            TaskContinuationOptions.None,
+            TaskScheduler.Default);
+    }
+
+    /// <summary>
     /// 异步调和 PLC 设备模式，确保 PLC 与当前软件设置一致。
     /// </summary>
     /// <param name="source">触发来源或日志来源。</param>
@@ -4779,17 +4808,38 @@ public partial class MonitorView : BaseView
     /// </summary>
     private void QueuePendingUploadRetry()
     {
-        if (_pendingUploadRetryRunning)
+        if (Interlocked.CompareExchange(ref _pendingUploadRetryRunning, 1, 0) != 0)
         {
             return;
         }
 
-        _pendingUploadRetryRunning = true;
-        _ = Task.Run(async () =>
+        var cancellationSource = Volatile.Read(ref _pendingUploadRetryCancellation);
+        if (cancellationSource is null)
+        {
+            Interlocked.Exchange(ref _pendingUploadRetryRunning, 0);
+            return;
+        }
+
+        CancellationToken cancellationToken;
+        try
+        {
+            cancellationToken = cancellationSource.Token;
+        }
+        catch (ObjectDisposedException)
+        {
+            Interlocked.Exchange(ref _pendingUploadRetryRunning, 0);
+            return;
+        }
+
+        _pendingUploadRetryTask = Task.Run(async () =>
         {
             try
             {
-                await _weldTaskService.RetryPendingUploadsAsync();
+                await _weldTaskService.RetryPendingUploadsAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // 页面关闭会取消重连补传，最终停机状态由应用生命周期统一处理。
             }
             catch (Exception ex)
             {
@@ -4797,7 +4847,7 @@ public partial class MonitorView : BaseView
             }
             finally
             {
-                _pendingUploadRetryRunning = false;
+                Interlocked.Exchange(ref _pendingUploadRetryRunning, 0);
             }
         });
     }
@@ -4840,21 +4890,33 @@ public partial class MonitorView : BaseView
     /// <param name="snapshot">状态快照。</param>
     private void ApplyDeviceStatus(PlcProductionSnapshot snapshot)
     {
-        var stateKey = GetDeviceStatusKey(snapshot.DeviceStatusCode);
+        var stateKey = snapshot.IsSoftwareAlarmActive
+            ? TextKeys.DeviceStatus.Alarm
+            : snapshot.IsAlarmPendingConfirmation
+                ? TextKeys.DeviceStatus.AlarmPendingConfirmation
+                : snapshot.IsRawAlarmUnconfirmed
+                    ? TextKeys.DeviceStatus.Unknown
+                    : GetDeviceStatusKey(snapshot.DeviceStatusCode);
         var stateText = _localizer.GetString(stateKey);
 
         // The dynamic state is placed first so it stays visible even if the Tag only paints one line.
         tagDeviceStatus.Text = $"{stateText}\r\n{_localizer.GetString(TextKeys.Monitor.Label.DeviceState)}";
         tagDeviceStatus.ForeColor = Color.White;
-        tagDeviceStatus.BackColor = GetDeviceStatusColor(snapshot.DeviceStatusCode, snapshot.IsSuccess);
+        tagDeviceStatus.BackColor = snapshot.IsSoftwareAlarmActive
+            ? UiColors.Status.Danger
+            : snapshot.IsAlarmPendingConfirmation
+                ? UiColors.Status.Warning
+                : snapshot.IsRawAlarmUnconfirmed
+                    ? UiColors.Status.Muted
+                    : GetDeviceStatusColor(snapshot.DeviceStatusCode, snapshot.IsSuccess);
 
-        if (snapshot.IsSoftwareAlarmActive)
+        if (snapshot.IsSoftwareAlarmActive || snapshot.IsAlarmPendingConfirmation)
         {
             var alarmMessage = string.IsNullOrWhiteSpace(snapshot.SoftwareAlarmMessage)
                 ? PlcSoftwareAlarmRules.GenericAlarmMessage
                 : snapshot.SoftwareAlarmMessage;
-            _deviceAlarmRuntimeErrorText = NormalizeRuntimeSummary(alarmMessage);
-            SetRuntimeErrorWithSource(TextKeys.Monitor.RuntimeError.DeviceAlarm, RuntimeErrorSourceDeviceAlarm);
+            _deviceAlarmRuntimeErrorText = alarmMessage.Trim();
+            SetRuntimeErrorText(_deviceAlarmRuntimeErrorText, RuntimeErrorSourceDeviceAlarm);
             return;
         }
 

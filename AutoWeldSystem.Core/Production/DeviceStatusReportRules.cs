@@ -96,6 +96,29 @@ public static class DeviceStatusReportRules
     }
 
     /// <summary>
+    /// 格式化 MES 异常备注；共享报警只保留原因，不附加工位前缀。
+    /// </summary>
+    public static string FormatExceptionRemark(string? alarmContent, int stationNo, bool isSharedAlarm)
+    {
+        var content = NormalizeAlarmContent(alarmContent);
+
+        return isSharedAlarm
+            ? $"{content}；"
+            : $"工位{stationNo}：{content}；";
+    }
+
+    /// <summary>
+    /// 生成逐地址异常恢复备注，报警地址仅保留在 JSONL 明细中，不进入 MES Remark。
+    /// </summary>
+    public static string FormatRecoveryRemark(string? alarmContent, int stationNo, bool isSharedAlarm)
+    {
+        var content = NormalizeAlarmContent(alarmContent);
+        return isSharedAlarm
+            ? $"异常恢复：{content}；"
+            : $"异常恢复-工位{stationNo}：{content}；";
+    }
+
+    /// <summary>
     /// Returns true when a new device-status request should reuse the latest row instead of writing a duplicate.
     /// Software lifecycle events pass forceWrite=true so each startup/shutdown remains auditable.
     /// </summary>
@@ -103,7 +126,8 @@ public static class DeviceStatusReportRules
         BizDeviceStatusLog? latest,
         string normalizedStatus,
         int? weldTaskId,
-        bool forceWrite)
+        bool forceWrite,
+        string? alarmAddress = null)
     {
         if (forceWrite || latest is null)
         {
@@ -116,6 +140,14 @@ public static class DeviceStatusReportRules
         {
             return latest.WeldTaskId == weldTaskId
                 && string.Equals(latest.DeviceStatus, normalizedStatus, StringComparison.OrdinalIgnoreCase);
+        }
+
+        if ((normalizedStatus is ProductionConstants.MesDeviceStatuses.Exception
+                or ProductionConstants.MesDeviceStatuses.Recovered)
+            && !string.IsNullOrWhiteSpace(alarmAddress))
+        {
+            return string.Equals(latest.DeviceStatus, normalizedStatus, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(latest.AlarmAddress, alarmAddress.Trim(), StringComparison.OrdinalIgnoreCase);
         }
 
         return string.Equals(latest.DeviceStatus, normalizedStatus, StringComparison.OrdinalIgnoreCase);
@@ -140,4 +172,10 @@ public static class DeviceStatusReportRules
 
     private static string NormalizeText(string? value)
         => value?.Trim() ?? string.Empty;
+
+    private static string NormalizeAlarmContent(string? value)
+    {
+        var content = NormalizeText(value).TrimEnd('；', ';').TrimEnd();
+        return string.IsNullOrWhiteSpace(content) ? "设备异常" : content;
+    }
 }

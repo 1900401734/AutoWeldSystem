@@ -32,6 +32,8 @@ public interface IDeviceStatusService
 
     int DeleteLogs(IReadOnlyCollection<BizDeviceStatusLog> logs);
 
+    Task RetryPendingUploadsAsync(CancellationToken cancellationToken = default);
+
     Task<BasicRes<object>?> RetryUploadAsync(
         string recordKey,
         CancellationToken cancellationToken = default);
@@ -46,6 +48,7 @@ public interface IDeviceStatusService
         string? workOrderId = null,
         DateTime? occurredTime = null,
         bool forceWrite = false,
-        bool reportInBackground = false,
+        string? alarmAddress = null,
+        string? alarmContent = null,
         CancellationToken cancellationToken = default);
 }

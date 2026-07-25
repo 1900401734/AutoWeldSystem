@@ -48,6 +48,9 @@ public class AppSettings
     [SugarColumn(ColumnDescription = "是否启用PLC报警读取", IsNullable = true)]
     public bool? EnablePlcAlarmReading { get; set; } = true;
 
+    [SugarColumn(Length = 30, ColumnDescription = "PLC报警触发模式", IsNullable = true)]
+    public string? PlcAlarmTriggerMode { get; set; } = AppConstants.PlcAlarmTriggerModes.DeviceStatusAndAddress;
+
     #endregion
 
     #region 中心服务器配置
