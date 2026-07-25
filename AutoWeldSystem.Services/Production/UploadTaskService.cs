@@ -52,9 +52,15 @@ public class UploadTaskService : IUploadTaskService
     public IReadOnlyList<UploadTaskSummary> GetTasks(string taskType, bool includeCompleted = false)
     {
         var normalizedTaskType = NormalizeTaskType(taskType);
-        var deviceStatusRecordKeys = normalizedTaskType == ProductionConstants.UploadTaskTypes.DeviceStatus
-            ? SyncDeviceStatusTasksFromLogs()
-            : null;
+        HashSet<string>? deviceStatusRecordKeys = null;
+        if (normalizedTaskType == ProductionConstants.UploadTaskTypes.DeviceStatus)
+        {
+            deviceStatusRecordKeys = SyncDeviceStatusTasksFromLogs();
+        }
+        else if (normalizedTaskType == ProductionConstants.UploadTaskTypes.ReportFile)
+        {
+            SyncReportFileTasksFromReports();
+        }
 
         lock (_dbLock)
         {
@@ -257,6 +263,139 @@ public class UploadTaskService : IUploadTaskService
         }
     }
 
+    private void SyncReportFileTasksFromReports()
+    {
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var reports = _dbContext.Db.Queryable<BizProductionReportFile>()
+                .Where(report => report.FileCode == ProductionConstants.ReportFileCodes.Spreadsheet
+                    && report.MesFileType == ProductionConstants.MesFileTypes.ReportFile)
+                .ToList()
+                .Where(ShouldSyncReportFileTask)
+                .GroupBy(report => report.TaskId)
+                .Select(group => group
+                    .OrderByDescending(report => report.UpdatedTime)
+                    .ThenByDescending(report => report.Id)
+                    .First())
+                .ToList();
+            if (reports.Count == 0)
+            {
+                return;
+            }
+
+            var taskIds = reports.Select(report => report.TaskId).Distinct().ToList();
+            var weldTasks = _dbContext.Db.Queryable<BizWeldTask>()
+                .Where(task => taskIds.Contains(task.Id))
+                .ToList()
+                .ToDictionary(task => task.Id);
+
+            foreach (var report in reports)
+            {
+                if (!weldTasks.TryGetValue(report.TaskId, out var weldTask))
+                {
+                    continue;
+                }
+
+                UpsertReportFileUploadTask(weldTask, report);
+            }
+        }
+    }
+
+    private void UpsertReportFileUploadTask(BizWeldTask weldTask, BizProductionReportFile report)
+    {
+        var now = DateTime.Now;
+        var businessId = BuildUploadBusinessId(weldTask, "report-file");
+        var existing = _dbContext.Db.Queryable<BizUploadTask>()
+            .Where(task => task.TaskType == ProductionConstants.UploadTaskTypes.ReportFile
+                && task.Target == ProductionConstants.UploadTargets.Mes
+                && (task.BusinessId == businessId || task.WeldTaskId == weldTask.Id))
+            .ToList()
+            .OrderBy(task => task.IsDeleted)
+            .ThenByDescending(task => task.UpdatedTime)
+            .FirstOrDefault();
+        if (existing is null)
+        {
+            var uploadTask = BuildReportFileUploadTask(weldTask, report, businessId, now);
+            Normalize(uploadTask);
+            _dbContext.Db.Insertable(uploadTask).ExecuteCommand();
+            return;
+        }
+
+        if (existing.IsDeleted
+            || existing.Status == ProductionConstants.UploadStatuses.Uploaded
+            || existing.Status == ProductionConstants.UploadStatuses.Uploading)
+        {
+            return;
+        }
+
+        existing.WeldTaskId = weldTask.Id;
+        existing.PayloadJson = BuildReportFileUploadPayload(weldTask);
+        existing.FilePath = report.FilePath;
+        existing.Status = NormalizeStatus(report.UploadStatus);
+        existing.Target = ProductionConstants.UploadTargets.Mes;
+        existing.NextRetryTime = now;
+        existing.Message = "Report file restored from generated XLSX record.";
+        existing.UpdatedTime = now;
+        Normalize(existing);
+        _dbContext.Db.Updateable(existing).ExecuteCommand();
+    }
+
+    private static bool ShouldSyncReportFileTask(BizProductionReportFile report)
+    {
+        return !string.IsNullOrWhiteSpace(report.FilePath)
+            && string.Equals(report.FileFormat, "XLSX", StringComparison.OrdinalIgnoreCase)
+            && IsActionRequired(NormalizeStatus(report.UploadStatus));
+    }
+
+    private static BizUploadTask BuildReportFileUploadTask(
+        BizWeldTask weldTask,
+        BizProductionReportFile report,
+        string businessId,
+        DateTime now)
+    {
+        return new BizUploadTask
+        {
+            TaskType = ProductionConstants.UploadTaskTypes.ReportFile,
+            Target = ProductionConstants.UploadTargets.Mes,
+            BusinessId = businessId,
+            WeldTaskId = weldTask.Id,
+            PayloadJson = BuildReportFileUploadPayload(weldTask),
+            FilePath = report.FilePath,
+            Status = NormalizeStatus(report.UploadStatus),
+            NextRetryTime = now,
+            Message = "Report file restored from generated XLSX record.",
+            CreatedTime = now,
+            UpdatedTime = now
+        };
+    }
+
+    private static string BuildReportFileUploadPayload(BizWeldTask task)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            TaskType = ProductionConstants.UploadTaskTypes.ReportFile,
+            UploadMode = "Batch",
+            WeldTaskId = task.Id,
+            task.StationNo,
+            task.ExpStartId,
+            task.IsOfflineCreated,
+            task.DeviceId,
+            SN = task.SN,
+            task.ProductNum,
+            task.ProductModel,
+            task.RecipeCode,
+            task.Batch,
+            task.ProcessNo,
+            task.ProcessName,
+            task.ActualQty,
+            task.QualifiedQty,
+            task.FailedQty,
+            StartTime = task.StartTime.ToString("yyyy-MM-dd HH:mm:ss"),
+            EndTime = task.EndTime?.ToString("yyyy-MM-dd HH:mm:ss"),
+            OperatorNumber = task.EndOperatorNumber ?? task.UserNumber
+        });
+    }
     public async Task<UploadTaskSummary?> ExecuteAsync(
         int id,
         CancellationToken cancellationToken = default)
@@ -311,6 +450,10 @@ public class UploadTaskService : IUploadTaskService
         {
             _ = SyncDeviceStatusTasksFromLogs();
         }
+        else if (normalizedTaskType == ProductionConstants.UploadTaskTypes.ReportFile)
+        {
+            SyncReportFileTasksFromReports();
+        }
 
         List<int> taskIds;
         lock (_dbLock)
@@ -363,6 +506,10 @@ public class UploadTaskService : IUploadTaskService
         if (normalizedTaskType == ProductionConstants.UploadTaskTypes.DeviceStatus)
         {
             _ = SyncDeviceStatusTasksFromLogs();
+        }
+        else if (normalizedTaskType == ProductionConstants.UploadTaskTypes.ReportFile)
+        {
+            SyncReportFileTasksFromReports();
         }
 
         var changes = new List<UploadTaskStatusChangedEventArgs>();
@@ -1606,6 +1753,15 @@ public class UploadTaskService : IUploadTaskService
     private bool IsWorkOrderStatusReportEnabled()
         => _settingsService.Get().EnableWorkOrderStatusReport != false;
 
+    private static string BuildUploadBusinessId(BizWeldTask task, string uploadKind)
+    {
+        var stableTaskId = FirstNonEmpty(
+            task.ExpStartId,
+            task.LocalExpStartId,
+            task.Id.ToString("x").PadLeft(32, '0'));
+
+        return $"{stableTaskId}:{uploadKind}";
+    }
     private static string FirstNonEmpty(params string?[] values)
     {
         return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
