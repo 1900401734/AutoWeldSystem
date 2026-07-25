@@ -4,6 +4,7 @@ using AutoWeldSystem.Core.Exceptions;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.PLC;
+using AutoWeldSystem.Core.Production;
 
 namespace AutoWeldSystem.Services.Plc;
 
@@ -232,7 +233,7 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
             {
                 WriteProductionLog(
                     "ProductDataReadyReset",
-                    "PLC已清空产品数据就绪信号",
+                    ProductionFlowLogTexts.Summaries.ProductDataReadyReset,
                     $"ReadyValue={readyValue}",
                     task,
                     stationNo: stationState.StationNo,
@@ -253,7 +254,7 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
 
         WriteProductionLog(
             "ProductDataReady",
-            "检测到产品数据就绪信号",
+            ProductionFlowLogTexts.Summaries.ProductDataReady,
             $"ReadyValue={readyValue}, ReadyAddress={stationState.ProductDataReadyAddress?.Address}, FeedbackAddress={stationState.ProductCollectionFeedbackAddress?.Address}",
             task,
             stationNo: stationState.StationNo,
@@ -331,7 +332,7 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
         {
             WriteProductionLog(
                 "ProductCollectionStart",
-                "开始读取整件产品数据",
+                ProductionFlowLogTexts.Summaries.ProductCollectionStart,
                 $"ProgramId={task.ProgramId}, ReadyAddress={stationState.ProductDataReadyAddress?.Address}",
                 task,
                 stationNo: stationState.StationNo,
@@ -343,7 +344,7 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
             stationState.ProductFeedbackWritten = true;
             WriteProductionLog(
                 "ProductCollectionFeedback",
-                "已反馈PLC采集成功",
+                ProductionFlowLogTexts.Summaries.ProductCollectionFeedbackSucceeded,
                 $"Feedback=1, Records={records.Count}, Address={stationState.ProductCollectionFeedbackAddress?.Address}",
                 task,
                 stationNo: stationState.StationNo,
@@ -371,7 +372,7 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
             stationState.ProductFeedbackWritten = true;
             WriteProductionLog(
                 "ProductCollectionFeedback",
-                "已反馈PLC采集失败",
+                ProductionFlowLogTexts.Summaries.ProductCollectionFeedbackFailed,
                 ex.Detail,
                 task,
                 stationNo: stationState.StationNo,
@@ -392,7 +393,7 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
             stationState.ProductFeedbackWritten = true;
             WriteProductionLog(
                 "ProductCollectionFeedback",
-                "已反馈PLC采集失败",
+                ProductionFlowLogTexts.Summaries.ProductCollectionFeedbackFailed,
                 ex.Message,
                 task,
                 stationNo: stationState.StationNo,

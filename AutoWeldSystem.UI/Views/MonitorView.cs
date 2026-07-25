@@ -4296,31 +4296,31 @@ public partial class MonitorView : BaseView
     {
         return entry.Step switch
         {
-            "ProductDataReady" => RuntimeTip(TextKeys.Monitor.ProductionHint.ProductDataReady),
-            "ProductCollectionStart" => RuntimeTip(TextKeys.Monitor.ProductionHint.ProductCollectionStart),
-            "ProductDataReadStart" => RuntimeTip(TextKeys.Monitor.ProductionHint.ProductDataReadStart),
-            "ProductDataSaved" => RuntimeTip(TextKeys.Monitor.ProductionHint.ProductDataSaved),
-            "ProductDataSaveFailed" => RuntimeTip(TextKeys.Monitor.ProductionHint.ProductDataSaveFailed),
+            "ProductDataReady" => RuntimeTip(ProductionFlowLogTexts.ResourceKeys.ProductDataReady),
+            "ProductCollectionStart" => RuntimeTip(ProductionFlowLogTexts.ResourceKeys.ProductCollectionStart),
+            "ProductDataReadStart" => RuntimeTip(ProductionFlowLogTexts.ResourceKeys.ProductDataReadStart),
+            "ProductDataSaved" => RuntimeTip(ProductionFlowLogTexts.ResourceKeys.ProductDataSaved),
+            "ProductDataSaveFailed" => RuntimeTip(ProductionFlowLogTexts.ResourceKeys.ProductDataSaveFailed),
             "ProductCollectionFeedback" => entry.Level.Equals("Error", StringComparison.OrdinalIgnoreCase)
-                ? RuntimeTip(TextKeys.Monitor.ProductionHint.ProductCollectionFeedbackFailed)
-                : RuntimeTip(TextKeys.Monitor.ProductionHint.ProductCollectionFeedbackSucceeded),
-            "RecipeCodeWriteSucceeded" => RuntimeTip(TextKeys.Monitor.ProductionHint.RecipeCodeWriteSucceeded),
-            "RecipeCodeWriteFailed" => RuntimeTip(TextKeys.Monitor.ProductionHint.RecipeCodeWriteFailed),
-            "RecipeCodeValidationSucceeded" => RuntimeTip(TextKeys.Monitor.ProductionHint.RecipeCodeValidationSucceeded),
-            "RecipeCodeValidationFailed" => RuntimeTip(TextKeys.Monitor.ProductionHint.RecipeCodeValidationFailed),
+                ? RuntimeTip(ProductionFlowLogTexts.ResourceKeys.ProductCollectionFeedbackFailed)
+                : RuntimeTip(ProductionFlowLogTexts.ResourceKeys.ProductCollectionFeedbackSucceeded),
+            "RecipeCodeWriteSucceeded" => RuntimeTip(ProductionFlowLogTexts.ResourceKeys.RecipeCodeWriteSucceeded),
+            "RecipeCodeWriteFailed" => RuntimeTip(ProductionFlowLogTexts.ResourceKeys.RecipeCodeWriteFailed),
+            "RecipeCodeValidationSucceeded" => RuntimeTip(ProductionFlowLogTexts.ResourceKeys.RecipeCodeValidationSucceeded),
+            "RecipeCodeValidationFailed" => RuntimeTip(ProductionFlowLogTexts.ResourceKeys.RecipeCodeValidationFailed),
             "RecipeCodeChangedDetected" => RuntimeTip(
-                TextKeys.Monitor.ProductionHint.RecipeCodeChangedDetected,
+                ProductionFlowLogTexts.ResourceKeys.RecipeCodeChangedDetected,
                 GetProductionLogDetailValue(entry, "PlcRecipeCode")),
             "RecipeCodeReconcileSucceeded" => RuntimeTip(
-                TextKeys.Monitor.ProductionHint.RecipeCodeReconcileSucceeded,
+                ProductionFlowLogTexts.ResourceKeys.RecipeCodeReconcileSucceeded,
                 GetProductionLogDetailValue(entry, "ExpectedRecipeCode")),
             "RecipeCodeReconcileFailed" => RuntimeTip(
-                TextKeys.Monitor.ProductionHint.RecipeCodeReconcileFailed,
+                ProductionFlowLogTexts.ResourceKeys.RecipeCodeReconcileFailed,
                 GetProductionLogDetailValue(entry, "ExpectedRecipeCode"),
                 GetProductionLogDetailValue(entry, "PlcRecipeCode")),
             "BusinessSignalWrite" => entry.Level.Equals("Error", StringComparison.OrdinalIgnoreCase)
-                ? RuntimeTip(TextKeys.Monitor.ProductionHint.BusinessSignalWriteFailed)
-                : RuntimeTip(TextKeys.Monitor.ProductionHint.BusinessSignalWriteSucceeded),
+                ? RuntimeTip(ProductionFlowLogTexts.ResourceKeys.BusinessSignalWriteFailed)
+                : RuntimeTip(ProductionFlowLogTexts.ResourceKeys.BusinessSignalWriteSucceeded),
             _ => RuntimeTip(TextKeys.Monitor.RuntimeStatus.ProductDataCollected)
         };
     }
@@ -4621,7 +4621,7 @@ public partial class MonitorView : BaseView
                     stationNo,
                     deviceMode,
                     "PLC.DeviceMode.Reconcile",
-                    "Device mode reconcile failed.",
+                    ProductionFlowLogTexts.Summaries.DeviceModeReconcileFailed,
                     source,
                     writeOnReadFailure: false,
                     cancellationToken);
@@ -4669,7 +4669,7 @@ public partial class MonitorView : BaseView
                     stationNo,
                     ResolveExpectedPlcWorkOrderStatus(stationNo),
                     "PLC.WorkOrderStatus.Reconcile",
-                    "Work order status reconcile failed.",
+                    ProductionFlowLogTexts.Summaries.WorkOrderStatusReconcileFailed,
                     source,
                     writeOnReadFailure: false,
                     mirrorWorkOrderStations: false,
@@ -7937,7 +7937,7 @@ public partial class MonitorView : BaseView
         {
             WriteRecipeFlowLog(
                 "RecipeCodeResolveFailed",
-                "配方编号解析失败",
+                ProductionFlowLogTexts.Summaries.RecipeCodeResolveFailed,
                 $"{sourceResolution.Source}; {sourceResolution.Detail}",
                 stationNo,
                 "Error");
@@ -7968,7 +7968,7 @@ public partial class MonitorView : BaseView
 
             WriteRecipeFlowLog(
                 "RecipeCodeWriteStarted",
-                "配方编号准备下发",
+                ProductionFlowLogTexts.Summaries.RecipeCodeWriteStarted,
                 $"{resolution.Source}; {resolution.Detail}; RecipeCode={targetRecipeCode}",
                 targetStationNo,
                 plcSignal: AppConstants.PlcLogicalKeys.PcRecipeCode);
@@ -7984,7 +7984,7 @@ public partial class MonitorView : BaseView
                 {
                     WriteRecipeFlowLog(
                         "RecipeCodeWriteFailed",
-                        "配方编号下发失败",
+                        ProductionFlowLogTexts.Summaries.RecipeCodeWriteFailed,
                         $"{resolution.Source}; {resolution.Detail}; RecipeCode={targetRecipeCode}; Detail={writeResult.Message}",
                         targetStationNo,
                         "Error",
@@ -7998,7 +7998,7 @@ public partial class MonitorView : BaseView
 
                 WriteRecipeFlowLog(
                     "RecipeCodeWriteSucceeded",
-                    "配方编号已下发",
+                    ProductionFlowLogTexts.Summaries.RecipeCodeWriteSucceeded,
                     $"{resolution.Source}; {resolution.Detail}; RecipeCode={targetRecipeCode}; ValidateRecipe=false",
                     targetStationNo,
                     plcSignal: AppConstants.PlcLogicalKeys.PcRecipeCode,
@@ -8015,7 +8015,7 @@ public partial class MonitorView : BaseView
             {
                 WriteRecipeFlowLog(
                     "RecipeCodeValidationFailed",
-                    "配方编号校验失败",
+                    ProductionFlowLogTexts.Summaries.RecipeCodeValidationFailed,
                     $"{resolution.Source}; {resolution.Detail}; PC={syncResult.PcRecipeCode}; PLC={syncResult.PlcRecipeCode}; Detail={syncResult.Message}",
                     targetStationNo,
                     "Error",
@@ -8028,7 +8028,7 @@ public partial class MonitorView : BaseView
 
             WriteRecipeFlowLog(
                 "RecipeCodeValidationSucceeded",
-                "配方编号校验通过",
+                ProductionFlowLogTexts.Summaries.RecipeCodeValidationSucceeded,
                 $"{resolution.Source}; {resolution.Detail}; RecipeCode={syncResult.PcRecipeCode}; PLC={syncResult.PlcRecipeCode}",
                 targetStationNo,
                 plcSignal: AppConstants.PlcLogicalKeys.PlcRecipeCode);
@@ -8122,7 +8122,7 @@ public partial class MonitorView : BaseView
             stationNo,
             ProductionConstants.PlcWorkOrderStatuses.StartedAllowProduction,
             "PLC.WorkOrderStatus.Start",
-            "Work order status write failed.",
+            ProductionFlowLogTexts.Summaries.WorkOrderStatusWriteFailed,
             writeOnReadFailure: true,
             mirrorWorkOrderStations: true);
 
@@ -8142,7 +8142,7 @@ public partial class MonitorView : BaseView
             stationNo,
             ProductionConstants.PlcWorkOrderStatuses.FinishedForbidProduction,
             "PLC.WorkOrderStatus.Finish",
-            "Work order status write failed.",
+            ProductionFlowLogTexts.Summaries.WorkOrderStatusWriteFailed,
             writeOnReadFailure: true,
             mirrorWorkOrderStations: true);
     }
@@ -8425,12 +8425,12 @@ public partial class MonitorView : BaseView
     {
         if (!readResult.IsSuccess && writeResult is null)
         {
-            return $"{plcSignal}读取失败，未执行调和写入";
+            return ProductionFlowLogTexts.Summaries.FormatSignalReadFailed(plcSignal);
         }
 
         if (writeResult is { IsSuccess: true })
         {
-            return $"{plcSignal}调和写入成功";
+            return ProductionFlowLogTexts.Summaries.FormatSignalReconcileSucceeded(plcSignal);
         }
 
         return failureSummary;

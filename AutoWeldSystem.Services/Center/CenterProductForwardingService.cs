@@ -112,7 +112,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
 
         _productionLogService.Write(
             "CenterProductForwardQueued",
-            "中心服务器产品数据转发已入队",
+            ProductionFlowLogTexts.Summaries.CenterProductForwardQueued,
             $"UploadTaskId={uploadTask.Id}, ProductNo={request.ProductNo}, PointCount={request.Points.Count}",
             stationNo: stationNo,
             workOrderId: task.SN,
@@ -147,7 +147,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
 
         _productionLogService.Write(
             "CenterTaskFinishUpdateQueued",
-            "中心服务器工单完工更新已入队",
+            ProductionFlowLogTexts.Summaries.CenterTaskFinishUpdateQueued,
             $"UploadTaskId={uploadTask.Id}, EndTime={request.EndTime:yyyy-MM-dd HH:mm:ss}, QualifiedQty={request.QualifiedQty}",
             stationNo: request.StationNo,
             workOrderId: request.WorkOrder,
@@ -254,7 +254,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             MarkUploaded(task, response.Message);
             _productionLogService.Write(
                 "CenterProductForwardSucceeded",
-                "中心服务器产品数据转发成功",
+                ProductionFlowLogTexts.Summaries.CenterProductForwardSucceeded,
                 $"UploadTaskId={task.Id}, ProductNo={request.ProductNo}, PointCount={request.Points.Count}",
                 stationNo: request.StationNo,
                 workOrderId: request.WorkOrder,
@@ -265,7 +265,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
         MarkRetry(task, response.Message);
         _productionLogService.Write(
             "CenterProductForwardFailed",
-            "中心服务器产品数据转发失败，等待重试",
+            ProductionFlowLogTexts.Summaries.CenterProductForwardFailed,
             $"UploadTaskId={task.Id}, ProductNo={request.ProductNo}, Error={response.Message}",
             "Warning",
             request.StationNo,

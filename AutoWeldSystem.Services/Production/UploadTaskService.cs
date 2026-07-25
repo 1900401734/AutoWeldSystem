@@ -1488,9 +1488,15 @@ public class UploadTaskService : IUploadTaskService
     {
         return taskType switch
         {
-            ProductionConstants.UploadTaskTypes.ProcessParameter => success ? "过程参数上传成功" : "过程参数上传失败",
-            ProductionConstants.UploadTaskTypes.ReportFile => success ? "报告文件上传成功" : "报告文件上传失败",
-            _ => success ? "上传成功" : "上传失败"
+            ProductionConstants.UploadTaskTypes.ProcessParameter => success
+                ? ProductionFlowLogTexts.Summaries.ProcessParameterUploadSucceeded
+                : ProductionFlowLogTexts.Summaries.ProcessParameterUploadFailed,
+            ProductionConstants.UploadTaskTypes.ReportFile => success
+                ? ProductionFlowLogTexts.Summaries.ReportFileUploadSucceeded
+                : ProductionFlowLogTexts.Summaries.ReportFileUploadFailed,
+            _ => success
+                ? ProductionFlowLogTexts.Summaries.UploadSucceeded
+                : ProductionFlowLogTexts.Summaries.UploadFailed
         };
     }
 
