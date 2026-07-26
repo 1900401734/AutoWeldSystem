@@ -211,9 +211,9 @@
                 <span>类型</span>
                 <select class="text-input" @bind="_logRequestType">
                     <option value="">全部类型</option>
-                    <option value="telemetry">telemetry</option>
-                    <option value="heartbeat">heartbeat</option>
-                    <option value="product-report">product-report</option>
+                    <option value="heartbeat">心跳</option>
+                    <option value="product-report">产品数据</option>
+                    <option value="telemetry">设备状态</option>
                 </select>
             </label>
             <label>
@@ -249,7 +249,7 @@
                             var message = FirstNonEmpty(log.Error, log.Message, "--");
                             <tr class="@(log.Success ? "log-success" : "log-failed")">
                                 <td class="log-time">@log.ReceivedAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
-                                <td><span class="@ResolveLogTypeClass(log.RequestType)">@FirstNonEmpty(log.RequestType, "--")</span></td>
+                                <td><span class="@ResolveLogTypeClass(log.RequestType)">@ResolveLogTypeName(log.RequestType)</span></td>
                                 <td>@FirstNonEmpty(log.DeviceName, log.DeviceId, "--")</td>
                                 <td class="log-station">@(log.StationNo <= 0 ? "--" : log.StationNo)</td>
                                 <td>
@@ -415,6 +415,18 @@
             "heartbeat" => "type-chip type-heartbeat",
             "product-report" => "type-chip type-report",
             _ => "type-chip"
+        };
+    }
+
+    /// <summary>把推送请求类型标识转换成看板中文名称，未知类型回退显示原值。</summary>
+    private static string ResolveLogTypeName(string? requestType)
+    {
+        return requestType switch
+        {
+            "heartbeat" => "心跳",
+            "product-report" => "产品数据",
+            "telemetry" => "设备状态",
+            _ => FirstNonEmpty(requestType, "--")
         };
     }
 
