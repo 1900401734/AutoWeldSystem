@@ -129,7 +129,7 @@ public sealed class CenterTelemetryIngestService
             snapshot.PlcConnected = station.PlcConnected;
             snapshot.PlcConnectionState = station.PlcConnectionState.Trim();
             snapshot.DeviceStatusCode = station.DeviceStatusCode.Trim();
-            snapshot.DeviceStatusName = CenterTelemetryRules.ResolvePlcStatusName(
+            snapshot.DeviceStatusName = CenterTelemetryRules.ResolveReportedStatusName(
                 station.DeviceStatusCode,
                 station.DeviceStatusName);
             snapshot.AlarmMessage = station.AlarmMessage.Trim();

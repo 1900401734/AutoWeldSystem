@@ -530,74 +530,6 @@ public static class TextKeys
             public const string WorkIdReadFailed = "monitor.error.work_id_read_failed";
         }
 
-        public static class ProductionHint
-        {
-            /// <summary>
-            /// PLC业务信号写入失败
-            /// </summary>
-            public const string BusinessSignalWriteFailed = "monitor.production_hint.business_signal_write_failed";
-            /// <summary>
-            /// PLC业务信号写入成功
-            /// </summary>
-            public const string BusinessSignalWriteSucceeded = "monitor.production_hint.business_signal_write_succeeded";
-            /// <summary>
-            /// PLC采集反馈失败
-            /// </summary>
-            public const string ProductCollectionFeedbackFailed = "monitor.production_hint.product_collection_feedback_failed";
-            /// <summary>
-            /// PLC采集反馈成功
-            /// </summary>
-            public const string ProductCollectionFeedbackSucceeded = "monitor.production_hint.product_collection_feedback_succeeded";
-            /// <summary>
-            /// 正在采集产品数据
-            /// </summary>
-            public const string ProductCollectionStart = "monitor.production_hint.product_collection_start";
-            /// <summary>
-            /// PLC触发采集数据
-            /// </summary>
-            public const string ProductDataReady = "monitor.production_hint.product_data_ready";
-            /// <summary>
-            /// 正在采集产品数据
-            /// </summary>
-            public const string ProductDataReadStart = "monitor.production_hint.product_data_read_start";
-            /// <summary>
-            /// 数据保存成功
-            /// </summary>
-            public const string ProductDataSaved = "monitor.production_hint.product_data_saved";
-            /// <summary>
-            /// 数据保存失败
-            /// </summary>
-            public const string ProductDataSaveFailed = "monitor.production_hint.product_data_save_failed";
-            /// <summary>
-            /// 配方编号校验失败
-            /// </summary>
-            public const string RecipeCodeValidationFailed = "monitor.production_hint.recipe_code_validation_failed";
-            /// <summary>
-            /// 配方编号校验通过
-            /// </summary>
-            public const string RecipeCodeValidationSucceeded = "monitor.production_hint.recipe_code_validation_succeeded";
-            /// <summary>
-            /// 配方编号下发失败
-            /// </summary>
-            public const string RecipeCodeWriteFailed = "monitor.production_hint.recipe_code_write_failed";
-            /// <summary>
-            /// 配方编号已下发
-            /// </summary>
-            public const string RecipeCodeWriteSucceeded = "monitor.production_hint.recipe_code_write_succeeded";
-            /// <summary>
-            /// PLC侧配方号变更
-            /// </summary>
-            public const string RecipeCodeChangedDetected = "monitor.production_hint.recipe_code_changed_detected";
-            /// <summary>
-            /// 配方号调和成功
-            /// </summary>
-            public const string RecipeCodeReconcileSucceeded = "monitor.production_hint.recipe_code_reconcile_succeeded";
-            /// <summary>
-            /// 配方号调和失败
-            /// </summary>
-            public const string RecipeCodeReconcileFailed = "monitor.production_hint.recipe_code_reconcile_failed";
-        }
-
         public static class Dialog
         {
             public const string ScanWorkIdTitle = "monitor.dialog.scan_work_id_title";
@@ -1135,6 +1067,7 @@ public static class TextKeys
         public const string LabelDataPath = "system.label.data_path";
         public const string LabelMesUrl = "system.label.mes_url";
         public const string LabelPlcFormatMode = "system.label.plc_format_mode";
+        public const string LabelPlcAlarmTriggerMode = "system.label.plc_alarm_trigger_mode";
         public const string LabelMesTimeout = "system.label.mes_timeout";
         public const string LabelProgramPath = "system.label.program_path";
         public const string LabelCenterServerUrl = "system.label.center_server_url";
@@ -1178,6 +1111,8 @@ public static class TextKeys
         public const string PlcTypeSiemensS71200 = "system.plc_type.siemens_s7";
         public const string OptionPlcFormatTruncate = "system.option.plc_format.truncate";
         public const string OptionPlcFormatRound = "system.option.plc_format.round";
+        public const string OptionPlcAlarmAddressOnly = "system.option.plc_alarm.address_only";
+        public const string OptionPlcAlarmDeviceStatusAndAddress = "system.option.plc_alarm.device_status_and_address";
         public const string OptionUploadRealtime = "system.option.upload.realtime";
         public const string OptionUploadQuantity = "system.option.upload.quantity";
         public const string OptionUploadBatch = "system.option.upload.batch";
@@ -1319,6 +1254,10 @@ public static class TextKeys
         /// 报警
         /// </summary>
         public const string Alarm = "device.status.alarm";
+        /// <summary>
+        /// PLC 状态 4 尚未匹配到报警地址
+        /// </summary>
+        public const string AlarmPendingConfirmation = "device.status.alarm_pending_confirmation";
         /// <summary>
         /// 未知
         /// </summary>

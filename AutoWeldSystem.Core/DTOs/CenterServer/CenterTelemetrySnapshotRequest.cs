@@ -52,12 +52,12 @@ public sealed class CenterTelemetryStationSnapshot
     public string PlcConnectionState { get; set; } = string.Empty;
 
     /// <summary>
-    /// PLC raw device status code: 1 running, 2 paused/idle, 3 stopped, 4 alarm.
+    /// PLC raw status code when available; otherwise the latest device-status JSONL MES code.
     /// </summary>
     public string DeviceStatusCode { get; set; } = string.Empty;
 
     /// <summary>
-    /// Display name of the PLC device status.
+    /// Display name matching the selected PLC or JSONL source.
     /// </summary>
     public string DeviceStatusName { get; set; } = string.Empty;
 

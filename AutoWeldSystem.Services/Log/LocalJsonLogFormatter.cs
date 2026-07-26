@@ -64,11 +64,15 @@ internal static class LocalJsonLogFormatter
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: startOffset == 0);
         if (startOffset > 0)
         {
+            // 尾读从任意字节开始。只跳过截断处残片，避免把随后第一条完整单行 JSON 一并丢掉。
             reader.ReadLine();
         }
 
         while (reader.ReadLine() is { } line)
         {
+            // AppendAllLines may leave a UTF-8 preamble before a later JSON block.
+            // Treat it as a line prefix so record-boundary detection still sees '{'.
+            line = line.TrimStart('\uFEFF');
             if (string.IsNullOrWhiteSpace(line))
             {
                 EnqueueRecord(records, builder, take);

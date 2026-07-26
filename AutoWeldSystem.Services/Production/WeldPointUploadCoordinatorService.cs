@@ -200,7 +200,7 @@ public sealed class WeldPointUploadCoordinatorService : IWeldPointUploadCoordina
         _operationLogService.Write("WeldPointUpload", $"Quantity process-parameter upload batch created. {detail}");
         _productionLogService.Write(
             "ProcessParameterQuantityBatchCreated",
-            "过程参数达到特定数量，已创建批次上传任务",
+            ProductionFlowLogTexts.Summaries.ProcessParameterQuantityBatchCreated,
             detail,
             "Info",
             record.StationNo,

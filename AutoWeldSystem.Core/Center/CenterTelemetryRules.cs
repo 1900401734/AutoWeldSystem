@@ -1,5 +1,6 @@
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs.CenterServer;
+using AutoWeldSystem.Core.Entities;
 
 namespace AutoWeldSystem.Core.Center;
 
@@ -47,7 +48,7 @@ public static class CenterTelemetryRules
             PlcConnected = snapshot.PlcConnected,
             PlcConnectionState = snapshot.PlcConnectionState.Trim(),
             PlcDeviceStatusCode = snapshot.PlcDeviceStatusCode.Trim(),
-            PlcDeviceStatusName = ResolvePlcStatusName(snapshot.PlcDeviceStatusCode, snapshot.PlcDeviceStatusName),
+            PlcDeviceStatusName = ResolveReportedStatusName(snapshot.PlcDeviceStatusCode, snapshot.PlcDeviceStatusName),
             AlarmMessage = snapshot.AlarmMessage.Trim(),
             LastSeenAt = snapshot.LastSeenAt,
             CollectedAt = snapshot.CollectedAt
@@ -90,6 +91,31 @@ public static class CenterTelemetryRules
             "4" => "报警",
             _ => string.IsNullOrWhiteSpace(fallbackName) ? "未知" : fallbackName.Trim()
         };
+    }
+
+    /// <summary>
+    /// Preserves a source-aware status name and only derives a PLC name when the sender omitted it.
+    /// </summary>
+    public static string ResolveReportedStatusName(string? statusCode, string? reportedName)
+        => string.IsNullOrWhiteSpace(reportedName)
+            ? ResolvePlcStatusName(statusCode)
+            : reportedName.Trim();
+
+    /// <summary>
+    /// 在工位与共享设备状态间选择较新的 JSONL 记录；时间相同时保留工位记录。
+    /// </summary>
+    public static BizDeviceStatusLog? ResolveLatestDeviceStatus(
+        BizDeviceStatusLog? stationStatus,
+        BizDeviceStatusLog? sharedStatus)
+    {
+        if (stationStatus is null)
+        {
+            return sharedStatus;
+        }
+
+        return sharedStatus is not null && sharedStatus.OccurredTime > stationStatus.OccurredTime
+            ? sharedStatus
+            : stationStatus;
     }
 
     /// <summary>

@@ -129,6 +129,8 @@ public static class Program
             plcServiceStarted = true;
             AppHost.Services.GetRequiredService<IMesConnectionMonitor>().StartAsync().GetAwaiter().GetResult();
             mesMonitorStarted = true;
+            AppHost.Services.GetRequiredService<IDeviceLifecycleLogCoordinator>().Start();
+            deviceLifecycleLogStarted = true;
             AppHost.Services.GetRequiredService<IPlcProductionMonitorService>().StartAsync().GetAwaiter().GetResult();
             productionMonitorStarted = true;
             AppHost.Services.GetRequiredService<IPlcWorkIdMonitorService>().StartAsync().GetAwaiter().GetResult();
@@ -143,8 +145,6 @@ public static class Program
             centerTelemetrySyncStarted = true;
             AppHost.Services.GetRequiredService<ICenterProductForwardingService>().StartAsync().GetAwaiter().GetResult();
             centerProductForwardingStarted = true;
-            AppHost.Services.GetRequiredService<IDeviceLifecycleLogCoordinator>().Start();
-            deviceLifecycleLogStarted = true;
 
             while (true)
             {
@@ -269,62 +269,78 @@ public static class Program
         bool mesMonitorStarted,
         bool plcServiceStarted)
     {
+        if (deviceApiServerStarted)
+        {
+            TryStopBackgroundService(
+                () => AppHost?.Services.GetRequiredService<IDeviceApiServerService>().StopAsync().GetAwaiter().GetResult());
+        }
+
+        if (productionMonitorStarted)
+        {
+            TryStopBackgroundService(
+                () => AppHost?.Services.GetRequiredService<IPlcProductionMonitorService>().StopAsync().GetAwaiter().GetResult());
+        }
+
+        if (centerProductForwardingStarted)
+        {
+            TryStopBackgroundService(
+                () => AppHost?.Services.GetRequiredService<ICenterProductForwardingService>().StopAsync().GetAwaiter().GetResult());
+        }
+
+        if (centerTelemetrySyncStarted)
+        {
+            TryStopBackgroundService(
+                () => AppHost?.Services.GetRequiredService<ICenterTelemetrySyncService>().StopAsync().GetAwaiter().GetResult());
+        }
+
+        if (realtimePreviewStarted)
+        {
+            TryStopBackgroundService(
+                () => AppHost?.Services.GetRequiredService<IProductRealtimePreviewService>().StopAsync().GetAwaiter().GetResult());
+        }
+
+        if (recipeReconcileMonitorStarted)
+        {
+            TryStopBackgroundService(
+                () => AppHost?.Services.GetRequiredService<IPlcRecipeReconcileMonitorService>().StopAsync().GetAwaiter().GetResult());
+        }
+
+        if (weldCycleMonitorStarted)
+        {
+            TryStopBackgroundService(
+                () => AppHost?.Services.GetRequiredService<IPlcWeldCycleMonitorService>().StopAsync().GetAwaiter().GetResult());
+        }
+
+        if (workIdMonitorStarted)
+        {
+            TryStopBackgroundService(
+                () => AppHost?.Services.GetRequiredService<IPlcWorkIdMonitorService>().StopAsync().GetAwaiter().GetResult());
+        }
+
+        if (deviceLifecycleLogStarted)
+        {
+            TryStopBackgroundService(
+                () => AppHost?.Services.GetRequiredService<IDeviceLifecycleLogCoordinator>().Stop());
+        }
+
+        if (mesMonitorStarted)
+        {
+            TryStopBackgroundService(
+                () => AppHost?.Services.GetRequiredService<IMesConnectionMonitor>().StopAsync().GetAwaiter().GetResult());
+        }
+
+        if (plcServiceStarted)
+        {
+            TryStopBackgroundService(
+                () => AppHost?.Services.GetRequiredService<IPlcCommunicationService>().StopAsync().GetAwaiter().GetResult());
+        }
+    }
+
+    private static void TryStopBackgroundService(Action stop)
+    {
         try
         {
-            if (deviceApiServerStarted)
-            {
-                AppHost?.Services.GetRequiredService<IDeviceApiServerService>().StopAsync().GetAwaiter().GetResult();
-            }
-
-            if (deviceLifecycleLogStarted)
-            {
-                AppHost?.Services.GetRequiredService<IDeviceLifecycleLogCoordinator>().Stop();
-            }
-
-            if (centerProductForwardingStarted)
-            {
-                AppHost?.Services.GetRequiredService<ICenterProductForwardingService>().StopAsync().GetAwaiter().GetResult();
-            }
-
-            if (centerTelemetrySyncStarted)
-            {
-                AppHost?.Services.GetRequiredService<ICenterTelemetrySyncService>().StopAsync().GetAwaiter().GetResult();
-            }
-
-            if (realtimePreviewStarted)
-            {
-                AppHost?.Services.GetRequiredService<IProductRealtimePreviewService>().StopAsync().GetAwaiter().GetResult();
-            }
-
-            if (recipeReconcileMonitorStarted)
-            {
-                AppHost?.Services.GetRequiredService<IPlcRecipeReconcileMonitorService>().StopAsync().GetAwaiter().GetResult();
-            }
-
-            if (weldCycleMonitorStarted)
-            {
-                AppHost?.Services.GetRequiredService<IPlcWeldCycleMonitorService>().StopAsync().GetAwaiter().GetResult();
-            }
-
-            if (workIdMonitorStarted)
-            {
-                AppHost?.Services.GetRequiredService<IPlcWorkIdMonitorService>().StopAsync().GetAwaiter().GetResult();
-            }
-
-            if (productionMonitorStarted)
-            {
-                AppHost?.Services.GetRequiredService<IPlcProductionMonitorService>().StopAsync().GetAwaiter().GetResult();
-            }
-
-            if (mesMonitorStarted)
-            {
-                AppHost?.Services.GetRequiredService<IMesConnectionMonitor>().StopAsync().GetAwaiter().GetResult();
-            }
-
-            if (plcServiceStarted)
-            {
-                AppHost?.Services.GetRequiredService<IPlcCommunicationService>().StopAsync().GetAwaiter().GetResult();
-            }
+            stop();
         }
         catch
         {

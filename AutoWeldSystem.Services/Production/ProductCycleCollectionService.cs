@@ -59,7 +59,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
 
         _productionLogService.Write(
             "ProductDataReadStart",
-            "开始采集产品周期数据",
+            ProductionFlowLogTexts.Summaries.ProductDataReadStart,
             $"SchemeId={processConfig.SchemeId}, ProductBase={processConfig.ProductBase}, TouchBase={processConfig.TouchBase}, TestBase={processConfig.TestBase}, TouchCount={processConfig.TouchCount}",
             stationNo: normalizedStationNo,
             workOrderId: task.SN,
@@ -88,7 +88,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         {
             _productionLogService.Write(
                 "ProductDataSaveFailed",
-                "产品采集数据保存失败",
+                ProductionFlowLogTexts.Summaries.ProductDataSaveFailed,
                 $"ProductNumber={header.ProductNo}, TouchCount={records.Count}, Error={ex.Message}",
                 "Error",
                 normalizedStationNo,
@@ -102,7 +102,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
 
         _productionLogService.Write(
             "ProductDataSaved",
-            "产品采集数据已保存",
+            ProductionFlowLogTexts.Summaries.ProductDataSaved,
             $"ProductNumber={header.ProductNo}, TouchCount={records.Count}, Result={header.ProductResult}",
             stationNo: normalizedStationNo,
             workOrderId: task.SN,

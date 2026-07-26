@@ -178,7 +178,9 @@ public partial class MonitorView : BaseView
     private bool _deviceModeReconcileRunning;
     private bool _workOrderStatusReconcileRunning;
     private bool _lastMesConnected;
-    private bool _pendingUploadRetryRunning;
+    private CancellationTokenSource? _pendingUploadRetryCancellation = new();
+    private Task? _pendingUploadRetryTask;
+    private int _pendingUploadRetryRunning;
     private bool _plcStatusToolTipVisible;
 
     #endregion
@@ -1458,6 +1460,7 @@ public partial class MonitorView : BaseView
     /// <param name="e">事件参数。</param>
     protected override void OnHandleDestroyed(EventArgs e)
     {
+        CancelPendingUploadRetry();
         CancelAndDispose(ref _businessSignalReconcileCancellation);
         GlobalContext.SessionChanged -= GlobalContext_SessionChanged;
         _settingsService.SettingsChanged -= OnSettingsChanged;
@@ -4296,31 +4299,31 @@ public partial class MonitorView : BaseView
     {
         return entry.Step switch
         {
-            "ProductDataReady" => RuntimeTip(TextKeys.Monitor.ProductionHint.ProductDataReady),
-            "ProductCollectionStart" => RuntimeTip(TextKeys.Monitor.ProductionHint.ProductCollectionStart),
-            "ProductDataReadStart" => RuntimeTip(TextKeys.Monitor.ProductionHint.ProductDataReadStart),
-            "ProductDataSaved" => RuntimeTip(TextKeys.Monitor.ProductionHint.ProductDataSaved),
-            "ProductDataSaveFailed" => RuntimeTip(TextKeys.Monitor.ProductionHint.ProductDataSaveFailed),
+            "ProductDataReady" => RuntimeTip(ProductionFlowLogTexts.ResourceKeys.ProductDataReady),
+            "ProductCollectionStart" => RuntimeTip(ProductionFlowLogTexts.ResourceKeys.ProductCollectionStart),
+            "ProductDataReadStart" => RuntimeTip(ProductionFlowLogTexts.ResourceKeys.ProductDataReadStart),
+            "ProductDataSaved" => RuntimeTip(ProductionFlowLogTexts.ResourceKeys.ProductDataSaved),
+            "ProductDataSaveFailed" => RuntimeTip(ProductionFlowLogTexts.ResourceKeys.ProductDataSaveFailed),
             "ProductCollectionFeedback" => entry.Level.Equals("Error", StringComparison.OrdinalIgnoreCase)
-                ? RuntimeTip(TextKeys.Monitor.ProductionHint.ProductCollectionFeedbackFailed)
-                : RuntimeTip(TextKeys.Monitor.ProductionHint.ProductCollectionFeedbackSucceeded),
-            "RecipeCodeWriteSucceeded" => RuntimeTip(TextKeys.Monitor.ProductionHint.RecipeCodeWriteSucceeded),
-            "RecipeCodeWriteFailed" => RuntimeTip(TextKeys.Monitor.ProductionHint.RecipeCodeWriteFailed),
-            "RecipeCodeValidationSucceeded" => RuntimeTip(TextKeys.Monitor.ProductionHint.RecipeCodeValidationSucceeded),
-            "RecipeCodeValidationFailed" => RuntimeTip(TextKeys.Monitor.ProductionHint.RecipeCodeValidationFailed),
+                ? RuntimeTip(ProductionFlowLogTexts.ResourceKeys.ProductCollectionFeedbackFailed)
+                : RuntimeTip(ProductionFlowLogTexts.ResourceKeys.ProductCollectionFeedbackSucceeded),
+            "RecipeCodeWriteSucceeded" => RuntimeTip(ProductionFlowLogTexts.ResourceKeys.RecipeCodeWriteSucceeded),
+            "RecipeCodeWriteFailed" => RuntimeTip(ProductionFlowLogTexts.ResourceKeys.RecipeCodeWriteFailed),
+            "RecipeCodeValidationSucceeded" => RuntimeTip(ProductionFlowLogTexts.ResourceKeys.RecipeCodeValidationSucceeded),
+            "RecipeCodeValidationFailed" => RuntimeTip(ProductionFlowLogTexts.ResourceKeys.RecipeCodeValidationFailed),
             "RecipeCodeChangedDetected" => RuntimeTip(
-                TextKeys.Monitor.ProductionHint.RecipeCodeChangedDetected,
+                ProductionFlowLogTexts.ResourceKeys.RecipeCodeChangedDetected,
                 GetProductionLogDetailValue(entry, "PlcRecipeCode")),
             "RecipeCodeReconcileSucceeded" => RuntimeTip(
-                TextKeys.Monitor.ProductionHint.RecipeCodeReconcileSucceeded,
+                ProductionFlowLogTexts.ResourceKeys.RecipeCodeReconcileSucceeded,
                 GetProductionLogDetailValue(entry, "ExpectedRecipeCode")),
             "RecipeCodeReconcileFailed" => RuntimeTip(
-                TextKeys.Monitor.ProductionHint.RecipeCodeReconcileFailed,
+                ProductionFlowLogTexts.ResourceKeys.RecipeCodeReconcileFailed,
                 GetProductionLogDetailValue(entry, "ExpectedRecipeCode"),
                 GetProductionLogDetailValue(entry, "PlcRecipeCode")),
             "BusinessSignalWrite" => entry.Level.Equals("Error", StringComparison.OrdinalIgnoreCase)
-                ? RuntimeTip(TextKeys.Monitor.ProductionHint.BusinessSignalWriteFailed)
-                : RuntimeTip(TextKeys.Monitor.ProductionHint.BusinessSignalWriteSucceeded),
+                ? RuntimeTip(ProductionFlowLogTexts.ResourceKeys.BusinessSignalWriteFailed)
+                : RuntimeTip(ProductionFlowLogTexts.ResourceKeys.BusinessSignalWriteSucceeded),
             _ => RuntimeTip(TextKeys.Monitor.RuntimeStatus.ProductDataCollected)
         };
     }
@@ -4592,6 +4595,32 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
+    /// 页面关闭时取消 MES 重连补传；最终停机状态由应用生命周期在同一个 MES 超时窗口内处理。
+    /// </summary>
+    private void CancelPendingUploadRetry()
+    {
+        var cancellationSource = Interlocked.Exchange(ref _pendingUploadRetryCancellation, null);
+        var retryTask = Interlocked.Exchange(ref _pendingUploadRetryTask, null);
+        cancellationSource?.Cancel();
+        if (cancellationSource is null)
+        {
+            return;
+        }
+
+        if (retryTask is null)
+        {
+            cancellationSource.Dispose();
+            return;
+        }
+
+        _ = retryTask.ContinueWith(
+            _ => cancellationSource.Dispose(),
+            CancellationToken.None,
+            TaskContinuationOptions.None,
+            TaskScheduler.Default);
+    }
+
+    /// <summary>
     /// 异步调和 PLC 设备模式，确保 PLC 与当前软件设置一致。
     /// </summary>
     /// <param name="source">触发来源或日志来源。</param>
@@ -4621,7 +4650,7 @@ public partial class MonitorView : BaseView
                     stationNo,
                     deviceMode,
                     "PLC.DeviceMode.Reconcile",
-                    "Device mode reconcile failed.",
+                    ProductionFlowLogTexts.Summaries.DeviceModeReconcileFailed,
                     source,
                     writeOnReadFailure: false,
                     cancellationToken);
@@ -4669,7 +4698,7 @@ public partial class MonitorView : BaseView
                     stationNo,
                     ResolveExpectedPlcWorkOrderStatus(stationNo),
                     "PLC.WorkOrderStatus.Reconcile",
-                    "Work order status reconcile failed.",
+                    ProductionFlowLogTexts.Summaries.WorkOrderStatusReconcileFailed,
                     source,
                     writeOnReadFailure: false,
                     mirrorWorkOrderStations: false,
@@ -4779,17 +4808,38 @@ public partial class MonitorView : BaseView
     /// </summary>
     private void QueuePendingUploadRetry()
     {
-        if (_pendingUploadRetryRunning)
+        if (Interlocked.CompareExchange(ref _pendingUploadRetryRunning, 1, 0) != 0)
         {
             return;
         }
 
-        _pendingUploadRetryRunning = true;
-        _ = Task.Run(async () =>
+        var cancellationSource = Volatile.Read(ref _pendingUploadRetryCancellation);
+        if (cancellationSource is null)
+        {
+            Interlocked.Exchange(ref _pendingUploadRetryRunning, 0);
+            return;
+        }
+
+        CancellationToken cancellationToken;
+        try
+        {
+            cancellationToken = cancellationSource.Token;
+        }
+        catch (ObjectDisposedException)
+        {
+            Interlocked.Exchange(ref _pendingUploadRetryRunning, 0);
+            return;
+        }
+
+        _pendingUploadRetryTask = Task.Run(async () =>
         {
             try
             {
-                await _weldTaskService.RetryPendingUploadsAsync();
+                await _weldTaskService.RetryPendingUploadsAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // 页面关闭会取消重连补传，最终停机状态由应用生命周期统一处理。
             }
             catch (Exception ex)
             {
@@ -4797,7 +4847,7 @@ public partial class MonitorView : BaseView
             }
             finally
             {
-                _pendingUploadRetryRunning = false;
+                Interlocked.Exchange(ref _pendingUploadRetryRunning, 0);
             }
         });
     }
@@ -4840,21 +4890,33 @@ public partial class MonitorView : BaseView
     /// <param name="snapshot">状态快照。</param>
     private void ApplyDeviceStatus(PlcProductionSnapshot snapshot)
     {
-        var stateKey = GetDeviceStatusKey(snapshot.DeviceStatusCode);
+        var stateKey = snapshot.IsSoftwareAlarmActive
+            ? TextKeys.DeviceStatus.Alarm
+            : snapshot.IsAlarmPendingConfirmation
+                ? TextKeys.DeviceStatus.AlarmPendingConfirmation
+                : snapshot.IsRawAlarmUnconfirmed
+                    ? TextKeys.DeviceStatus.Unknown
+                    : GetDeviceStatusKey(snapshot.DeviceStatusCode);
         var stateText = _localizer.GetString(stateKey);
 
         // The dynamic state is placed first so it stays visible even if the Tag only paints one line.
         tagDeviceStatus.Text = $"{stateText}\r\n{_localizer.GetString(TextKeys.Monitor.Label.DeviceState)}";
         tagDeviceStatus.ForeColor = Color.White;
-        tagDeviceStatus.BackColor = GetDeviceStatusColor(snapshot.DeviceStatusCode, snapshot.IsSuccess);
+        tagDeviceStatus.BackColor = snapshot.IsSoftwareAlarmActive
+            ? UiColors.Status.Danger
+            : snapshot.IsAlarmPendingConfirmation
+                ? UiColors.Status.Warning
+                : snapshot.IsRawAlarmUnconfirmed
+                    ? UiColors.Status.Muted
+                    : GetDeviceStatusColor(snapshot.DeviceStatusCode, snapshot.IsSuccess);
 
-        if (snapshot.IsSoftwareAlarmActive)
+        if (snapshot.IsSoftwareAlarmActive || snapshot.IsAlarmPendingConfirmation)
         {
             var alarmMessage = string.IsNullOrWhiteSpace(snapshot.SoftwareAlarmMessage)
                 ? PlcSoftwareAlarmRules.GenericAlarmMessage
                 : snapshot.SoftwareAlarmMessage;
-            _deviceAlarmRuntimeErrorText = NormalizeRuntimeSummary(alarmMessage);
-            SetRuntimeErrorWithSource(TextKeys.Monitor.RuntimeError.DeviceAlarm, RuntimeErrorSourceDeviceAlarm);
+            _deviceAlarmRuntimeErrorText = alarmMessage.Trim();
+            SetRuntimeErrorText(_deviceAlarmRuntimeErrorText, RuntimeErrorSourceDeviceAlarm);
             return;
         }
 
@@ -7937,7 +7999,7 @@ public partial class MonitorView : BaseView
         {
             WriteRecipeFlowLog(
                 "RecipeCodeResolveFailed",
-                "配方编号解析失败",
+                ProductionFlowLogTexts.Summaries.RecipeCodeResolveFailed,
                 $"{sourceResolution.Source}; {sourceResolution.Detail}",
                 stationNo,
                 "Error");
@@ -7968,7 +8030,7 @@ public partial class MonitorView : BaseView
 
             WriteRecipeFlowLog(
                 "RecipeCodeWriteStarted",
-                "配方编号准备下发",
+                ProductionFlowLogTexts.Summaries.RecipeCodeWriteStarted,
                 $"{resolution.Source}; {resolution.Detail}; RecipeCode={targetRecipeCode}",
                 targetStationNo,
                 plcSignal: AppConstants.PlcLogicalKeys.PcRecipeCode);
@@ -7984,7 +8046,7 @@ public partial class MonitorView : BaseView
                 {
                     WriteRecipeFlowLog(
                         "RecipeCodeWriteFailed",
-                        "配方编号下发失败",
+                        ProductionFlowLogTexts.Summaries.RecipeCodeWriteFailed,
                         $"{resolution.Source}; {resolution.Detail}; RecipeCode={targetRecipeCode}; Detail={writeResult.Message}",
                         targetStationNo,
                         "Error",
@@ -7998,7 +8060,7 @@ public partial class MonitorView : BaseView
 
                 WriteRecipeFlowLog(
                     "RecipeCodeWriteSucceeded",
-                    "配方编号已下发",
+                    ProductionFlowLogTexts.Summaries.RecipeCodeWriteSucceeded,
                     $"{resolution.Source}; {resolution.Detail}; RecipeCode={targetRecipeCode}; ValidateRecipe=false",
                     targetStationNo,
                     plcSignal: AppConstants.PlcLogicalKeys.PcRecipeCode,
@@ -8015,7 +8077,7 @@ public partial class MonitorView : BaseView
             {
                 WriteRecipeFlowLog(
                     "RecipeCodeValidationFailed",
-                    "配方编号校验失败",
+                    ProductionFlowLogTexts.Summaries.RecipeCodeValidationFailed,
                     $"{resolution.Source}; {resolution.Detail}; PC={syncResult.PcRecipeCode}; PLC={syncResult.PlcRecipeCode}; Detail={syncResult.Message}",
                     targetStationNo,
                     "Error",
@@ -8028,7 +8090,7 @@ public partial class MonitorView : BaseView
 
             WriteRecipeFlowLog(
                 "RecipeCodeValidationSucceeded",
-                "配方编号校验通过",
+                ProductionFlowLogTexts.Summaries.RecipeCodeValidationSucceeded,
                 $"{resolution.Source}; {resolution.Detail}; RecipeCode={syncResult.PcRecipeCode}; PLC={syncResult.PlcRecipeCode}",
                 targetStationNo,
                 plcSignal: AppConstants.PlcLogicalKeys.PlcRecipeCode);
@@ -8122,7 +8184,7 @@ public partial class MonitorView : BaseView
             stationNo,
             ProductionConstants.PlcWorkOrderStatuses.StartedAllowProduction,
             "PLC.WorkOrderStatus.Start",
-            "Work order status write failed.",
+            ProductionFlowLogTexts.Summaries.WorkOrderStatusWriteFailed,
             writeOnReadFailure: true,
             mirrorWorkOrderStations: true);
 
@@ -8142,7 +8204,7 @@ public partial class MonitorView : BaseView
             stationNo,
             ProductionConstants.PlcWorkOrderStatuses.FinishedForbidProduction,
             "PLC.WorkOrderStatus.Finish",
-            "Work order status write failed.",
+            ProductionFlowLogTexts.Summaries.WorkOrderStatusWriteFailed,
             writeOnReadFailure: true,
             mirrorWorkOrderStations: true);
     }
@@ -8425,12 +8487,12 @@ public partial class MonitorView : BaseView
     {
         if (!readResult.IsSuccess && writeResult is null)
         {
-            return $"{plcSignal}读取失败，未执行调和写入";
+            return ProductionFlowLogTexts.Summaries.FormatSignalReadFailed(plcSignal);
         }
 
         if (writeResult is { IsSuccess: true })
         {
-            return $"{plcSignal}调和写入成功";
+            return ProductionFlowLogTexts.Summaries.FormatSignalReconcileSucceeded(plcSignal);
         }
 
         return failureSummary;

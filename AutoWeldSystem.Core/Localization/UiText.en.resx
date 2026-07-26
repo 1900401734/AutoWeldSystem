@@ -771,6 +771,9 @@
   <data name="device.status.alarm" xml:space="preserve">
     <value>Alarm</value>
   </data>
+  <data name="device.status.alarm_pending_confirmation" xml:space="preserve">
+    <value>Alarm pending confirmation</value>
+  </data>
   <data name="device.status.unknown" xml:space="preserve">
     <value>Unknown</value>
   </data>
@@ -2017,6 +2020,7 @@
   <data name="program.option.duplicate_recipe" xml:space="preserve"><value>{0} (Recipe {1})</value></data>
   <data name="system.group.center_server" xml:space="preserve"><value>Center Server</value></data>
   <data name="system.label.plc_format_mode" xml:space="preserve"><value>Processing mode</value></data>
+  <data name="system.label.plc_alarm_trigger_mode" xml:space="preserve"><value>Alarm mode</value></data>
   <data name="system.label.mes_timeout" xml:space="preserve"><value>MES timeout (s)</value></data>
   <data name="system.label.program_path" xml:space="preserve"><value>Program directory</value></data>
   <data name="system.label.center_server_url" xml:space="preserve"><value>Center server URL</value></data>
@@ -2034,6 +2038,8 @@
   <data name="system.checkbox.enable_work_order_status_report" xml:space="preserve"><value>Enable work order status reporting</value></data>
   <data name="system.option.plc_format.truncate" xml:space="preserve"><value>Fixed-length truncation</value></data>
   <data name="system.option.plc_format.round" xml:space="preserve"><value>Round</value></data>
+  <data name="system.option.plc_alarm.address_only" xml:space="preserve"><value>Alarm address only</value></data>
+  <data name="system.option.plc_alarm.device_status_and_address" xml:space="preserve"><value>Abnormal device status and active alarm address</value></data>
   <data name="system.option.upload.realtime" xml:space="preserve"><value>Real-time per item</value></data>
   <data name="system.option.upload.quantity" xml:space="preserve"><value>Upload by quantity</value></data>
   <data name="system.option.upload.batch" xml:space="preserve"><value>Batch on completion</value></data>

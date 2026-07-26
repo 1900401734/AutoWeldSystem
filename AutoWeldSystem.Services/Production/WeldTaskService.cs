@@ -830,6 +830,7 @@ public class WeldTaskService : IWeldTaskService
 
     private async Task RetryPendingUploadsInternalAsync(CancellationToken cancellationToken)
     {
+        await _deviceStatusService.RetryPendingUploadsAsync(cancellationToken);
         var executedCount = 0;
         executedCount += await _uploadTaskService.ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.StartReport, cancellationToken);
         executedCount += await _uploadTaskService.ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.ProcessParameter, cancellationToken);
@@ -1615,8 +1616,8 @@ public class WeldTaskService : IWeldTaskService
             EnqueueProcessParameterTask(task, uploadMode)
         };
 
-        // 本地报表始终生成；只有有效 ReportEnable 才创建 MES 文件上传任务。
-        if (_reportFileService.ShouldUploadReportFile(task))
+        // 本地 XLSX 已生成时必须进入上传任务体系；生成失败时再按 ReportEnable 暴露失败任务。
+        if (reportFile is not null || _reportFileService.ShouldUploadReportFile(task))
         {
             uploadTasks.Add(EnqueueReportFileTask(task, uploadMode, reportFile, generationError));
         }

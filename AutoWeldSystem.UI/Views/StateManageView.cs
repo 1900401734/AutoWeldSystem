@@ -26,7 +26,8 @@ public partial class StateManageView : BaseView
     private readonly IMesConnectionMonitor _mesConnectionMonitor;
     private readonly IReadOnlyList<StateUploadTabDefinition> _tabDefinitions;
     private readonly BindingSource _bindingSource = new();
-    private readonly Dictionary<int, BizDeviceStatusLog> _deviceStatusLogsById = new();
+    private readonly Dictionary<string, BizDeviceStatusLog> _deviceStatusLogsByRecordKey =
+        new(StringComparer.OrdinalIgnoreCase);
     private bool _initialized;
     private bool _applyingTabPermissions;
 
@@ -640,12 +641,16 @@ public partial class StateManageView : BaseView
         }
 
         var selectedLogs = selectedTasks
-            .Where(task => task.DeviceStatusLogId is not null)
-            .Select(task => _deviceStatusLogsById.TryGetValue(task.DeviceStatusLogId!.Value, out var log) ? log : null)
+            .Where(task => !string.IsNullOrWhiteSpace(task.DeviceStatusRecordKey))
+            .Select(task => _deviceStatusLogsByRecordKey.TryGetValue(task.DeviceStatusRecordKey, out var log) ? log : null)
             .Where(log => log is not null)
             .Cast<BizDeviceStatusLog>()
             .ToList();
-        var selectedLogIds = selectedLogs.Select(log => log.Id).ToHashSet();
+        var selectedRecordKeys = selectedLogs
+            .Select(DeviceStatusRecordIdentityRules.GetRecordKey)
+            .Where(recordKey => recordKey is not null)
+            .Cast<string>()
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         int deletedCount;
         try
         {
@@ -657,14 +662,18 @@ public partial class StateManageView : BaseView
             return;
         }
 
-        foreach (var task in selectedTasks.Where(task => task.DeviceStatusLogId is null || !selectedLogIds.Contains(task.DeviceStatusLogId.Value)))
+        var orphanTasks = selectedTasks
+            .Where(task => string.IsNullOrWhiteSpace(task.DeviceStatusRecordKey)
+                || !selectedRecordKeys.Contains(task.DeviceStatusRecordKey))
+            .ToList();
+        foreach (var task in orphanTasks)
         {
             _uploadTaskService.DeleteTask(task.Id);
         }
 
         ReloadActiveTasks();
         dgvPending.ClearSelection();
-        ShowInfo($"已删除选中的 {deletedCount + selectedTasks.Count(task => task.DeviceStatusLogId is null || !selectedLogIds.Contains(task.DeviceStatusLogId.Value))} 条设备状态上传记录。");
+        ShowInfo($"已删除选中的 {deletedCount + orphanTasks.Count} 条设备状态上传记录。");
     }
 
     /// <summary>
@@ -672,12 +681,14 @@ public partial class StateManageView : BaseView
     /// </summary>
     private void RefreshDeviceStatusLogIndex()
     {
-        _deviceStatusLogsById.Clear();
-        foreach (var log in _deviceStatusService
-            .GetLogs(from: null, to: null, maxCount: 5000)
-            .Where(log => log.Id > 0 && DeviceStatusUploadVisibilityRules.ShouldInclude(log.ReportStatus)))
+        _deviceStatusLogsByRecordKey.Clear();
+        foreach (var log in _deviceStatusService.GetPendingLogs())
         {
-            _deviceStatusLogsById[log.Id] = log;
+            var recordKey = DeviceStatusRecordIdentityRules.GetRecordKey(log);
+            if (recordKey is not null)
+            {
+                _deviceStatusLogsByRecordKey[recordKey] = log;
+            }
         }
     }
 

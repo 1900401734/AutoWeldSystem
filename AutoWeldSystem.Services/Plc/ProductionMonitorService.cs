@@ -33,6 +33,10 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
     private List<BizPlcAddress> _addresses = [];
     private readonly Dictionary<int, PlcProductionSnapshot> _stationSnapshots = new();
     private readonly Dictionary<int, string> _activeAlarmFailureKeys = new();
+    private readonly HashSet<string> _sourceRemovedAlarmKeysAwaitingClear = new(StringComparer.OrdinalIgnoreCase);
+    private PlcDeviceAlarmCycleState? _alarmCycleState;
+    private PlcDeviceAlarmCycleState? _effectiveAlarmState;
+    private PlcActiveAlarm? _pendingExceptionReassertion;
     private CancellationTokenSource? _cts;
     private Task? _loopTask;
     private string _lastBusinessLogKey = string.Empty;
@@ -205,7 +209,8 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
     private async Task PollOnceAsync(CancellationToken cancellationToken)
     {
         var addresses = await GetAddressSnapshotAsync(cancellationToken);
-        var alarmReadingEnabled = _settingsService.Get().EnablePlcAlarmReading != false;
+        var settings = _settingsService.Get();
+        var alarmReadingEnabled = settings.EnablePlcAlarmReading != false;
         if (!alarmReadingEnabled)
         {
             ClearAlarmReadFailureStates();
@@ -214,11 +219,55 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
         IReadOnlyList<BizPlcAlarmAddress> alarmAddresses = alarmReadingEnabled
             ? _plcAlarmAddressService.GetAll()
             : [];
-        var stationNumbers = ResolveStationNumbers(addresses, alarmAddresses);
+        var stationNumbers = ResolveStationNumbers(addresses, alarmAddresses)
+            .Concat(settings.EnableDualStation
+                ? [ProductionConstants.Stations.DefaultStationNo, 2]
+                : [ProductionConstants.Stations.DefaultStationNo])
+            .Distinct()
+            .OrderBy(stationNo => stationNo)
+            .ToList();
         if (!stationNumbers.Any(IsPlcConnected))
         {
             PublishIdleForStations(stationNumbers);
+            if (alarmReadingEnabled)
+            {
+                // PLC 全部离线时，仍需让已删除或禁用的配置闭合既有报警；保留仍配置的地址，避免离线误判恢复。
+                await RecordDeviceAlarmCycleAsync(
+                    settings.PlcAlarmTriggerMode,
+                    stationNumbers.ToDictionary(stationNo => stationNo, _ => (short?)null),
+                    [],
+                    PlcDeviceAlarmCycleRules.ToConfiguredAlarms(alarmAddresses),
+                    stationNumbers,
+                    cancellationToken);
+            }
+            else
+            {
+                EnsureAlarmCycleState();
+                ApplyEffectiveAlarmSnapshots(
+                    stationNumbers,
+                    new Dictionary<int, short?>(),
+                    AppConstants.PlcAlarmTriggerModes.Normalize(settings.PlcAlarmTriggerMode));
+            }
             return;
+        }
+
+        // 未连接、地址缺失或读取失败都保留为 null，双条件共享报警据此冻结而非误判恢复。
+        var deviceStatuses = stationNumbers.ToDictionary(stationNo => stationNo, _ => (short?)null);
+        var alarmReadResults = alarmReadingEnabled
+            ? await ReadAlarmSignalsAsync(alarmAddresses, cancellationToken)
+            : [];
+        if (alarmReadingEnabled)
+        {
+            foreach (var stationNo in stationNumbers)
+            {
+                var failures = alarmReadResults
+                    .Where(result => result.StationNo <= ProductionConstants.Stations.SharedStationNo
+                        || result.StationNo == stationNo)
+                    .Where(result => !result.IsSuccess)
+                    .Select(result => new PlcAlarmReadFailure(result.Address.Trim(), result.FailureMessage.Trim()))
+                    .ToList();
+                UpdateAlarmReadFailureLog(stationNo, failures);
+            }
         }
 
         foreach (var stationNo in stationNumbers)
@@ -230,52 +279,35 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
             }
 
             var activeAlarm = alarmReadingEnabled
-                ? await ReadActiveAlarmSnapshotAsync(alarmAddresses, stationNo, cancellationToken)
+                ? PlcSoftwareAlarmRules.AggregateAlarmSignals(
+                    stationNo,
+                    alarmReadResults.Where(result =>
+                        result.StationNo <= ProductionConstants.Stations.SharedStationNo
+                        || result.StationNo == stationNo))
                 : PlcAlarmSignalAggregation.Empty(stationNo);
-            var boolOnlyProjection = PlcSoftwareAlarmRules.ResolveProjection(null, activeAlarm);
-            var boolOnlySoftwareAlarm = new PlcSoftwareAlarmState(
-                boolOnlyProjection.IsSoftwareAlarmActive,
-                boolOnlyProjection.SoftwareAlarmMessage);
-
             var deviceStatusAddress = GetAddress(addresses, AppConstants.PlcLogicalKeys.DeviceStatus, stationNo);
             if (deviceStatusAddress is null)
             {
-                PublishFailureForStations([stationNo], "设备状态地址未配置。", boolOnlySoftwareAlarm);
+                deviceStatuses[stationNo] = null;
+                PublishFailureForStations([stationNo], "设备状态地址未配置。");
                 continue;
             }
 
             var statusResult = await _plcCommunicationService.ReadInt16Async(deviceStatusAddress.Address!, cancellationToken);
             if (!statusResult.IsSuccess)
             {
-                PublishFailureForStations([stationNo], statusResult.Message, boolOnlySoftwareAlarm);
+                deviceStatuses[stationNo] = null;
+                PublishFailureForStations([stationNo], statusResult.Message);
                 continue;
             }
 
-            var previousSnapshot = GetCurrent(stationNo);
             var plcStatusCode = statusResult.Value;
+            deviceStatuses[stationNo] = plcStatusCode;
             var statusMessage = BuildDeviceStatusValidationMessage(plcStatusCode);
-            var alarmProjection = PlcSoftwareAlarmRules.ResolveProjection(plcStatusCode, activeAlarm);
-            var externalAlarm = AlarmReadSnapshot.FromProjection(alarmProjection, stationNo);
+            var externalAlarm = BuildExternalAlarmSnapshot(plcStatusCode, activeAlarm, stationNo);
 
-            if (ProductionConstants.PlcDeviceStatuses.IsReportable(plcStatusCode))
-            {
-                var mesStatusCode = DeviceStatusReportRules.ResolvePlcAlarmTransition(
-                    previousSnapshot.DeviceStatusCode,
-                    plcStatusCode);
-                if (mesStatusCode is not null)
-                {
-                    var statusAlarm = plcStatusCode == ProductionConstants.PlcDeviceStatuses.Alarm
-                        ? externalAlarm
-                        : AlarmReadSnapshot.FromPrevious(previousSnapshot, stationNo);
-                    await RecordDeviceStatusChangeAsync(
-                        stationNo,
-                        mesStatusCode,
-                        plcStatusCode,
-                        statusAlarm,
-                        cancellationToken);
-                }
-            }
-            else if (!string.IsNullOrWhiteSpace(statusMessage))
+            if (!ProductionConstants.PlcDeviceStatuses.IsReportable(plcStatusCode)
+                && !string.IsNullOrWhiteSpace(statusMessage))
             {
                 WriteBusinessFailureLog(stationNo, statusMessage);
             }
@@ -318,8 +350,66 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
                 plcStatusCode == ProductionConstants.PlcDeviceStatuses.Alarm
                     ? externalAlarm.ScopeStationNo
                     : null,
-                alarmProjection.IsSoftwareAlarmActive,
-                alarmProjection.SoftwareAlarmMessage));
+                false,
+                string.Empty));
+        }
+
+        if (alarmReadingEnabled)
+        {
+            await RecordDeviceAlarmCycleAsync(
+                settings.PlcAlarmTriggerMode,
+                deviceStatuses,
+                alarmReadResults,
+                PlcDeviceAlarmCycleRules.ToConfiguredAlarms(alarmAddresses),
+                stationNumbers,
+                cancellationToken);
+        }
+        else
+        {
+            EnsureAlarmCycleState();
+            ApplyEffectiveAlarmSnapshots(
+                stationNumbers,
+                deviceStatuses,
+                AppConstants.PlcAlarmTriggerModes.Normalize(settings.PlcAlarmTriggerMode));
+        }
+    }
+
+    private void ApplyEffectiveAlarmSnapshots(
+        IReadOnlyList<int> stationNumbers,
+        IReadOnlyDictionary<int, short?> deviceStatuses,
+        string triggerMode)
+    {
+        var activeAlarms = (_effectiveAlarmState ?? _alarmCycleState)?.ActiveAlarms ?? [];
+        var sharedAlarms = activeAlarms
+            .Where(alarm => alarm.StationNo <= ProductionConstants.Stations.SharedStationNo)
+            .ToList();
+        foreach (var stationNo in stationNumbers)
+        {
+            var stationAlarms = activeAlarms
+                .Where(alarm => alarm.StationNo == stationNo)
+                .Concat(sharedAlarms)
+                .DistinctBy(PlcDeviceAlarmCycleRules.GetAlarmKey, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var message = string.Join(
+                "；",
+                stationAlarms
+                    .Select(alarm => alarm.AlarmContent.Trim())
+                    .Where(content => !string.IsNullOrWhiteSpace(content))
+                    .Distinct(StringComparer.OrdinalIgnoreCase));
+            var pendingConfirmation = triggerMode == AppConstants.PlcAlarmTriggerModes.DeviceStatusAndAddress
+                && deviceStatuses.GetValueOrDefault(stationNo) == ProductionConstants.PlcDeviceStatuses.Alarm
+                && stationAlarms.Count == 0;
+            var rawAlarmUnconfirmed = triggerMode == AppConstants.PlcAlarmTriggerModes.AddressOnly
+                && deviceStatuses.GetValueOrDefault(stationNo) == ProductionConstants.PlcDeviceStatuses.Alarm
+                && stationAlarms.Count == 0;
+            var current = GetCurrent(stationNo);
+            Publish(current with
+            {
+                IsSoftwareAlarmActive = stationAlarms.Count > 0,
+                SoftwareAlarmMessage = message,
+                IsAlarmPendingConfirmation = pendingConfirmation,
+                IsRawAlarmUnconfirmed = rawAlarmUnconfirmed
+            });
         }
     }
 
@@ -388,95 +478,321 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
         return _plcCommunicationService.GetCurrent(stationNo).IsConnected;
     }
 
-    private async Task RecordDeviceStatusChangeAsync(
-        int stationNo,
-        string mesStatusCode,
-        short plcStatusCode,
-        AlarmReadSnapshot alarm,
+    private async Task RecordDeviceAlarmCycleAsync(
+        string? triggerMode,
+        IReadOnlyDictionary<int, short?> deviceStatuses,
+        IReadOnlyList<PlcAlarmSignalReadResult> readResults,
+        IReadOnlyList<PlcActiveAlarm> configuredAlarms,
+        IReadOnlyList<int> stationNumbers,
         CancellationToken cancellationToken)
     {
-        var normalizedStationNo = NormalizeStationNo(stationNo);
-        var activeTask = _weldTaskService.CurrentState.StationStates.TryGetValue(normalizedStationNo, out var stationState)
-            ? stationState.ActiveTask
-            : _weldTaskService.CurrentState.ActiveTask;
+        ClearSourceRemovedAlarmSuppressions(triggerMode, deviceStatuses, readResults, configuredAlarms);
+        var state = EnsureAlarmCycleState();
+        var decision = PlcDeviceAlarmCycleRules.Decide(
+            state,
+            triggerMode,
+            deviceStatuses,
+            readResults,
+            configuredAlarms);
+        _effectiveAlarmState = decision.NextState;
+        ApplyEffectiveAlarmSnapshots(
+            stationNumbers,
+            deviceStatuses,
+            AppConstants.PlcAlarmTriggerModes.Normalize(triggerMode));
+        var persistedAlarms = state.ActiveAlarms.ToDictionary(
+            PlcDeviceAlarmCycleRules.GetAlarmKey,
+            StringComparer.OrdinalIgnoreCase);
+        var sourceActiveAlarmKeys = decision.RecoveredAlarms.Count > 0
+            ? GetSourceActiveAlarmKeys()
+            : null;
+        var hasRecordedRecovery = false;
+        var hasRecordedNewException = false;
+        var nextOccurredTime = DateTime.Now;
 
-        await _deviceStatusService.ChangeStatusAsync(
+        foreach (var alarm in decision.RecoveredAlarms)
+        {
+            var alarmKey = PlcDeviceAlarmCycleRules.GetAlarmKey(alarm);
+            if (sourceActiveAlarmKeys is not null && !sourceActiveAlarmKeys.Contains(alarmKey))
+            {
+                // JSONL 已删除时不重建状态 5；等 PLC 明确归零后才允许同地址进入下一周期。
+                persistedAlarms.Remove(alarmKey);
+                _sourceRemovedAlarmKeysAwaitingClear.Add(alarmKey);
+                nextOccurredTime = nextOccurredTime.AddMilliseconds(1);
+                continue;
+            }
+
+            if (await RecordDeviceStatusChangeAsync(
+                    alarm.StationNo,
+                    ProductionConstants.MesDeviceStatuses.Recovered,
+                    alarm,
+                    nextOccurredTime,
+                    cancellationToken))
+            {
+                persistedAlarms.Remove(alarmKey);
+                hasRecordedRecovery = true;
+            }
+            nextOccurredTime = nextOccurredTime.AddMilliseconds(1);
+        }
+
+        foreach (var alarm in decision.NewAlarms)
+        {
+            var alarmKey = PlcDeviceAlarmCycleRules.GetAlarmKey(alarm);
+            if (_sourceRemovedAlarmKeysAwaitingClear.Contains(alarmKey))
+            {
+                nextOccurredTime = nextOccurredTime.AddMilliseconds(1);
+                continue;
+            }
+
+            if (await RecordDeviceStatusChangeAsync(
+                    alarm.StationNo,
+                    ProductionConstants.MesDeviceStatuses.Exception,
+                    alarm,
+                    nextOccurredTime,
+                    cancellationToken))
+            {
+                persistedAlarms[alarmKey] = alarm;
+                hasRecordedNewException = true;
+            }
+            nextOccurredTime = nextOccurredTime.AddMilliseconds(1);
+        }
+
+        if (decision.ShouldReassertException && hasRecordedRecovery)
+        {
+            var remainingAlarm = decision.NextState.ActiveAlarms.First();
+            var remainingAlarmKey = PlcDeviceAlarmCycleRules.GetAlarmKey(remainingAlarm);
+            if (sourceActiveAlarmKeys?.Contains(remainingAlarmKey) == true)
+            {
+                _pendingExceptionReassertion = remainingAlarm;
+            }
+        }
+
+        if (hasRecordedNewException)
+        {
+            _pendingExceptionReassertion = null;
+        }
+        else
+        {
+            await RetryPendingExceptionReassertionAsync(
+                decision.NextState,
+                sourceActiveAlarmKeys,
+                nextOccurredTime,
+                cancellationToken);
+        }
+
+        _alarmCycleState = new PlcDeviceAlarmCycleState(persistedAlarms.Values);
+    }
+
+    /// <summary>
+    /// 部分恢复后的状态 4 必须在状态 5 后成功落盘；首次写入失败时下轮继续尝试，避免 MES 最终停在恢复状态。
+    /// </summary>
+    private async Task RetryPendingExceptionReassertionAsync(
+        PlcDeviceAlarmCycleState effectiveState,
+        HashSet<string>? sourceActiveAlarmKeys,
+        DateTime occurredTime,
+        CancellationToken cancellationToken)
+    {
+        if (_pendingExceptionReassertion is not { } alarm)
+        {
+            return;
+        }
+
+        var alarmKey = PlcDeviceAlarmCycleRules.GetAlarmKey(alarm);
+        if (!effectiveState.ActiveAlarms.Any(activeAlarm =>
+                string.Equals(
+                    PlcDeviceAlarmCycleRules.GetAlarmKey(activeAlarm),
+                    alarmKey,
+                    StringComparison.OrdinalIgnoreCase)))
+        {
+            _pendingExceptionReassertion = null;
+            return;
+        }
+
+        var activeSourceKeys = sourceActiveAlarmKeys ?? GetSourceActiveAlarmKeys();
+        if (!activeSourceKeys.Contains(alarmKey))
+        {
+            _pendingExceptionReassertion = null;
+            return;
+        }
+
+        if (await RecordDeviceStatusChangeAsync(
+                alarm.StationNo,
+                ProductionConstants.MesDeviceStatuses.Exception,
+                alarm,
+                occurredTime,
+                cancellationToken))
+        {
+            _pendingExceptionReassertion = null;
+        }
+    }
+
+    /// <summary>
+    /// JSONL 被人工删除不是 PLC 状态变化；仅在成功读到清除后，才允许相同地址重新开启一个新周期。
+    /// </summary>
+    private void ClearSourceRemovedAlarmSuppressions(
+        string? triggerMode,
+        IReadOnlyDictionary<int, short?> deviceStatuses,
+        IReadOnlyList<PlcAlarmSignalReadResult> readResults,
+        IReadOnlyList<PlcActiveAlarm> configuredAlarms)
+    {
+        foreach (var alarmKey in _sourceRemovedAlarmKeysAwaitingClear.ToList())
+        {
+            var configuredAlarm = configuredAlarms.FirstOrDefault(alarm =>
+                string.Equals(PlcDeviceAlarmCycleRules.GetAlarmKey(alarm), alarmKey, StringComparison.OrdinalIgnoreCase));
+            var readResult = readResults.LastOrDefault(result =>
+                string.Equals(
+                    PlcDeviceAlarmCycleRules.GetAlarmKey(result.StationNo, result.Address),
+                    alarmKey,
+                    StringComparison.OrdinalIgnoreCase));
+            if (configuredAlarm is null || readResult is null || !readResult.IsSuccess)
+            {
+                continue;
+            }
+
+            var clearDecision = PlcDeviceAlarmCycleRules.Decide(
+                new PlcDeviceAlarmCycleState([configuredAlarm]),
+                triggerMode,
+                deviceStatuses,
+                [readResult],
+                [configuredAlarm]);
+            if (clearDecision.RecoveredAlarms.Count > 0)
+            {
+                _sourceRemovedAlarmKeysAwaitingClear.Remove(alarmKey);
+            }
+        }
+    }
+
+    private HashSet<string> GetSourceActiveAlarmKeys()
+        => PlcDeviceAlarmCycleRules.Restore(
+                _deviceStatusService.GetLogs(from: null, to: null, maxCount: int.MaxValue))
+            .ActiveAlarms
+            .Select(PlcDeviceAlarmCycleRules.GetAlarmKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private PlcDeviceAlarmCycleState EnsureAlarmCycleState()
+    {
+        if (_alarmCycleState is not null)
+        {
+            return _alarmCycleState;
+        }
+
+        _alarmCycleState = PlcDeviceAlarmCycleRules.Restore(
+            _deviceStatusService.GetLogs(from: null, to: null, maxCount: int.MaxValue));
+        _effectiveAlarmState ??= _alarmCycleState;
+        return _alarmCycleState;
+    }
+
+    private async Task<bool> RecordDeviceStatusChangeAsync(
+        int stationNo,
+        string mesStatusCode,
+        PlcActiveAlarm? alarm,
+        DateTime occurredTime,
+        CancellationToken cancellationToken)
+    {
+        var normalizedStationNo = stationNo <= ProductionConstants.Stations.SharedStationNo
+            ? ProductionConstants.Stations.SharedStationNo
+            : NormalizeStationNo(stationNo);
+        var taskStationNo = normalizedStationNo <= ProductionConstants.Stations.SharedStationNo
+            ? ProductionConstants.Stations.DefaultStationNo
+            : normalizedStationNo;
+        var activeTask = normalizedStationNo <= ProductionConstants.Stations.SharedStationNo
+            ? null
+            : _weldTaskService.CurrentState.StationStates.TryGetValue(taskStationNo, out var stationState)
+                ? stationState.ActiveTask
+                : _weldTaskService.CurrentState.ActiveTask;
+
+        var log = await _deviceStatusService.ChangeStatusAsync(
             mesStatusCode,
-            BuildDeviceStatusRemark(normalizedStationNo, mesStatusCode, plcStatusCode, alarm),
+            BuildDeviceStatusRemark(normalizedStationNo, mesStatusCode, alarm),
             $"PLC-S{normalizedStationNo}",
             reportToMes: _mesConnectionMonitorService.Current.IsConnected,
             stationNo: normalizedStationNo,
             weldTaskId: activeTask?.Id,
             workOrderId: activeTask?.SN,
+            occurredTime: occurredTime,
+            forceWrite: mesStatusCode == ProductionConstants.MesDeviceStatuses.Exception
+                && _alarmCycleState?.ActiveAlarms.Any(activeAlarm =>
+                    string.Equals(activeAlarm.Address, alarm?.Address, StringComparison.OrdinalIgnoreCase)
+                    && activeAlarm.StationNo == alarm?.StationNo) == true,
+            alarmAddress: alarm?.Address,
+            alarmContent: alarm?.AlarmContent,
             cancellationToken: cancellationToken);
+        var recordKey = DeviceStatusRecordIdentityRules.GetRecordKey(log);
+        return recordKey is not null && _deviceStatusService.GetLog(recordKey) is not null;
     }
 
-    private async Task<PlcAlarmSignalAggregation> ReadActiveAlarmSnapshotAsync(
-        IReadOnlyList<BizPlcAlarmAddress> alarmAddressSnapshot,
-        int stationNo,
+    private async Task<IReadOnlyList<PlcAlarmSignalReadResult>> ReadAlarmSignalsAsync(
+        IEnumerable<BizPlcAlarmAddress> alarmAddresses,
         CancellationToken cancellationToken)
     {
-        var alarmAddresses = PlcSoftwareAlarmRules.ResolveAlarmAddressesForStation(
-            alarmAddressSnapshot,
-            stationNo);
         var readResults = new List<PlcAlarmSignalReadResult>();
 
-        foreach (var alarm in alarmAddresses)
+        var configuredAlarms = alarmAddresses
+            .Where(alarm => alarm.Enabled && !string.IsNullOrWhiteSpace(alarm.Address))
+            .DistinctBy(
+                alarm => PlcDeviceAlarmCycleRules.GetAlarmKey(alarm.StationNo, alarm.Address),
+                StringComparer.OrdinalIgnoreCase)
+            .OrderBy(alarm => alarm.Sort)
+            .ThenBy(alarm => alarm.Id)
+            .ToList();
+        foreach (var addressGroup in configuredAlarms.GroupBy(
+                     alarm => AlarmAddressImportRules.NormalizeAddress(alarm.Address),
+                     StringComparer.OrdinalIgnoreCase))
         {
-            var readResult = await _plcCommunicationService.ReadBoolAsync(alarm.Address, cancellationToken);
-            readResults.Add(new PlcAlarmSignalReadResult(
-                alarm.StationNo,
-                alarm.Address,
-                alarm.AlarmContent,
-                readResult.IsSuccess,
-                readResult.IsSuccess && readResult.Value,
-                readResult.Message));
+            var plcAddress = addressGroup.Key;
+            var readResult = await _plcCommunicationService.ReadBoolAsync(plcAddress, cancellationToken);
+            foreach (var alarm in addressGroup)
+            {
+                readResults.Add(new PlcAlarmSignalReadResult(
+                    alarm.StationNo,
+                    plcAddress,
+                    alarm.AlarmContent,
+                    readResult.IsSuccess,
+                    readResult.IsSuccess && readResult.Value,
+                    readResult.Message));
+            }
         }
 
-        var aggregation = PlcSoftwareAlarmRules.AggregateAlarmSignals(stationNo, readResults);
-        if (aggregation.Failures.Count > 0)
+        return readResults;
+    }
+
+    private void UpdateAlarmReadFailureLog(int stationNo, IReadOnlyList<PlcAlarmReadFailure> failures)
+    {
+        if (failures.Count > 0)
         {
-            WriteAlarmReadFailureLog(stationNo, aggregation.Failures);
+            WriteAlarmReadFailureLog(stationNo, failures);
         }
         else
         {
             ClearAlarmReadFailureState(stationNo);
         }
-
-        return aggregation;
-    }
-
-    private static string BuildDeviceStatusRemark(int stationNo, short plcStatusCode, string alarmMessage)
-    {
-        if (plcStatusCode == ProductionConstants.PlcDeviceStatuses.Alarm
-            && !string.IsNullOrWhiteSpace(alarmMessage))
-        {
-            return alarmMessage.Trim();
-        }
-
-        return $"PLC status station={stationNo}, code={plcStatusCode}";
     }
 
     private static string BuildDeviceStatusRemark(
         int stationNo,
         string mesStatusCode,
-        short plcStatusCode,
-        AlarmReadSnapshot alarm)
+        PlcActiveAlarm? alarm)
     {
-        if (string.Equals(mesStatusCode, ProductionConstants.MesDeviceStatuses.Exception, StringComparison.Ordinal))
+        if (string.Equals(mesStatusCode, ProductionConstants.MesDeviceStatuses.Exception, StringComparison.Ordinal)
+            && alarm is not null)
         {
-            var message = string.IsNullOrWhiteSpace(alarm.Message)
-                ? "PLC设备报警，未匹配到已启用的报警原因"
-                : alarm.Message.Trim();
-            return DeviceStatusReportRules.AppendStationRemark(message, alarm.ScopeStationNo);
+            return DeviceStatusReportRules.FormatExceptionRemark(
+                alarm.AlarmContent,
+                stationNo,
+                alarm.StationNo <= ProductionConstants.Stations.SharedStationNo);
         }
 
-        if (string.Equals(mesStatusCode, ProductionConstants.MesDeviceStatuses.Recovered, StringComparison.Ordinal))
+        if (string.Equals(mesStatusCode, ProductionConstants.MesDeviceStatuses.Recovered, StringComparison.Ordinal)
+            && alarm is not null)
         {
-            return DeviceStatusReportRules.AppendStationRemark("设备异常恢复", alarm.ScopeStationNo);
+            return DeviceStatusReportRules.FormatRecoveryRemark(
+                alarm.AlarmContent,
+                stationNo,
+                alarm.StationNo <= ProductionConstants.Stations.SharedStationNo);
         }
 
-        return $"PLC status station={stationNo}, code={plcStatusCode}";
+        return DeviceStatusReportRules.AppendStationRemark(
+            DeviceStatusReportRules.GetStatusName(mesStatusCode),
+            stationNo);
     }
 
     private static int? ToInteger(PlcServiceResult<bool> result)
@@ -681,6 +997,23 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
             $"读取设备状态、加工总数、合格数量或不良数量失败。Station={stationNo}");
     }
 
+    private static AlarmReadSnapshot BuildExternalAlarmSnapshot(
+        short plcStatusCode,
+        PlcAlarmSignalAggregation activeAlarm,
+        int stationNo)
+    {
+        if (plcStatusCode != ProductionConstants.PlcDeviceStatuses.Alarm)
+        {
+            return AlarmReadSnapshot.Empty(stationNo);
+        }
+
+        return new AlarmReadSnapshot(
+            string.IsNullOrWhiteSpace(activeAlarm.Message)
+                ? PlcSoftwareAlarmRules.GenericAlarmMessage
+                : activeAlarm.Message.Trim(),
+            activeAlarm.ScopeStationNo);
+    }
+
     private void WriteAlarmReadFailureLog(int stationNo, IReadOnlyList<PlcAlarmReadFailure> failures)
     {
         var details = failures
@@ -879,15 +1212,9 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
 
     private sealed record AlarmReadSnapshot(string Message, int ScopeStationNo)
     {
-        public static AlarmReadSnapshot FromPrevious(PlcProductionSnapshot previousSnapshot, int stationNo)
-            => new(previousSnapshot.AlarmMessage, previousSnapshot.AlarmStationNo ?? NormalizeStationNo(stationNo));
+        public static AlarmReadSnapshot Empty(int stationNo)
+            => new(string.Empty, NormalizeStationNo(stationNo));
 
-        public static AlarmReadSnapshot FromProjection(
-            PlcProductionAlarmProjection projection,
-            int stationNo)
-            => new(
-                projection.ExternalAlarmMessage,
-                projection.ExternalAlarmStationNo ?? NormalizeStationNo(stationNo));
     }
 
     private sealed record PlcQuantityReadResult(bool IsSuccess, int Value, string Message)

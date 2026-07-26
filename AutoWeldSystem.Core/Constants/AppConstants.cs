@@ -95,6 +95,20 @@ public static class AppConstants
     }
 
     /// <summary>
+    /// PLC 报警生效条件。持久化值保持稳定，未知值统一回退到双条件模式。
+    /// </summary>
+    public static class PlcAlarmTriggerModes
+    {
+        public const string AddressOnly = "AddressOnly";
+        public const string DeviceStatusAndAddress = "DeviceStatusAndAddress";
+
+        public static string Normalize(string? value)
+            => string.Equals(value?.Trim(), AddressOnly, StringComparison.OrdinalIgnoreCase)
+                ? AddressOnly
+                : DeviceStatusAndAddress;
+    }
+
+    /// <summary>
     /// MES固定状态码常量
     /// </summary>
     public static class MesStatus

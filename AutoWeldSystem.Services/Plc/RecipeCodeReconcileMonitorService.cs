@@ -310,7 +310,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
             state.NextRetryTime = default;
             WriteRecipeFlowLog(
                 "RecipeCodeChangedDetected",
-                $"PLC侧配方号变更至：{decision.PlcRecipeCode}",
+                ProductionFlowLogTexts.Summaries.FormatRecipeCodeChanged(decision.PlcRecipeCode),
                 $"Station={stationNo}; TaskId={task.Id}; ExpectedRecipeCode={decision.ExpectedRecipeCode}; PlcRecipeCode={decision.PlcRecipeCode}",
                 stationNo,
                 task,
@@ -343,7 +343,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
             {
                 WriteRecipeFlowLog(
                     "RecipeCodeReconcileSucceeded",
-                    $"配方号调和成功：{syncResult.PcRecipeCode}",
+                    ProductionFlowLogTexts.Summaries.FormatRecipeCodeReconcileSucceeded(syncResult.PcRecipeCode),
                     $"Station={targetStationNo}; SourceStation={stationNo}; TaskId={task.Id}; ChangedPlcRecipeCode={decision.PlcRecipeCode}; ExpectedRecipeCode={targetExpectedRecipe}; SyncedPlcRecipeCode={syncResult.PlcRecipeCode}",
                     targetStationNo,
                     task,
@@ -358,7 +358,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
                 : syncResult.PlcRecipeCode;
             WriteRecipeFlowLog(
                 "RecipeCodeReconcileFailed",
-                "PLC recipe code reconcile failed",
+                ProductionFlowLogTexts.Summaries.RecipeCodeReconcileFailed,
                 $"Station={targetStationNo}; SourceStation={stationNo}; TaskId={task.Id}; ChangedPlcRecipeCode={decision.PlcRecipeCode}; ExpectedRecipeCode={targetExpectedRecipe}; PlcRecipeCode={currentPlcRecipe}; Detail={syncResult.Message}",
                 targetStationNo,
                 task,
@@ -368,7 +368,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
 
             WriteBusinessFailureLog(
                 targetStationNo,
-                "PLC recipe code reconcile failed",
+                ProductionFlowLogTexts.Summaries.RecipeCodeReconcileFailed,
                 $"Station={targetStationNo}; SourceStation={stationNo}; TaskId={task.Id}; Expected={targetExpectedRecipe}; PLC={currentPlcRecipe}; Detail={syncResult.Message}");
             state.NextRetryTime = DateTime.Now + BusinessLogInterval;
             return;

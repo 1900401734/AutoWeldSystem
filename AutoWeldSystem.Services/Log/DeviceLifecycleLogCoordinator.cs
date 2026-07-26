@@ -1,5 +1,4 @@
 using AutoWeldSystem.Core.Constants;
-using AutoWeldSystem.Core.DTOs.Plc;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
@@ -28,13 +27,13 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
     private readonly IPlcCommunicationService _plcCommunicationService;
     private readonly IMesConnectionMonitor _mesConnectionMonitor;
     private readonly ICenterTelemetrySyncService _centerTelemetrySyncService;
-    private readonly IPlcProductionMonitorService _plcProductionMonitorService;
     private readonly IDeviceStatusService _deviceStatusService;
     private readonly object _sync = new();
     private readonly Dictionary<string, bool> _connectionStates = new();
-    private readonly Dictionary<int, AlarmState> _alarmStates = new();
 
     private AppSettings _currentSettings;
+    private CancellationTokenSource? _startupReplayCancellation;
+    private Task? _startupReplayTask;
     private bool _started;
 
     public DeviceLifecycleLogCoordinator(
@@ -43,7 +42,6 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
         IPlcCommunicationService plcCommunicationService,
         IMesConnectionMonitor mesConnectionMonitor,
         ICenterTelemetrySyncService centerTelemetrySyncService,
-        IPlcProductionMonitorService plcProductionMonitorService,
         IDeviceStatusService deviceStatusService)
     {
         _settingsService = settingsService;
@@ -51,7 +49,6 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
         _plcCommunicationService = plcCommunicationService;
         _mesConnectionMonitor = mesConnectionMonitor;
         _centerTelemetrySyncService = centerTelemetrySyncService;
-        _plcProductionMonitorService = plcProductionMonitorService;
         _deviceStatusService = deviceStatusService;
         _currentSettings = settingsService.Get();
     }
@@ -70,7 +67,6 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
             _plcCommunicationService.StatusChanged += PlcCommunicationService_StatusChanged;
             _mesConnectionMonitor.StatusChanged += MesConnectionMonitor_StatusChanged;
             _centerTelemetrySyncService.StatusChanged += CenterTelemetrySyncService_StatusChanged;
-            _plcProductionMonitorService.StatusChanged += PlcProductionMonitorService_StatusChanged;
         }
 
         var occurredTime = DateTime.Now;
@@ -81,6 +77,8 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
 
     public void Stop()
     {
+        CancellationTokenSource? startupReplayCancellation;
+        Task? startupReplayTask;
         lock (_sync)
         {
             if (!_started)
@@ -93,7 +91,8 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
             _plcCommunicationService.StatusChanged -= PlcCommunicationService_StatusChanged;
             _mesConnectionMonitor.StatusChanged -= MesConnectionMonitor_StatusChanged;
             _centerTelemetrySyncService.StatusChanged -= CenterTelemetrySyncService_StatusChanged;
-            _plcProductionMonitorService.StatusChanged -= PlcProductionMonitorService_StatusChanged;
+            startupReplayCancellation = _startupReplayCancellation;
+            startupReplayTask = _startupReplayTask;
         }
 
         var occurredTime = DateTime.Now;
@@ -106,7 +105,7 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
             // 软件关闭状态上报比生命周期日志写入更关键，日志失败不能阻断停机状态上传。
         }
 
-        RecordSoftwareStoppedStatus(occurredTime);
+        RecordSoftwareStoppedStatus(occurredTime, startupReplayCancellation, startupReplayTask);
     }
 
     private string CurrentDeviceId => Volatile.Read(ref _currentSettings).DeviceId?.Trim() ?? string.Empty;
@@ -115,42 +114,118 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
 
     private void RecordSoftwareStartedStatus(DateTime occurredTime)
     {
-        _ = Task.Run(async () =>
+        try
         {
-            try
-            {
-                await _deviceStatusService.ChangeStatusAsync(
+            _deviceStatusService.ChangeStatusAsync(
                     ProductionConstants.MesDeviceStatuses.PoweredOn,
                     "开机",
                     SourceApplication,
+                    reportToMes: false,
                     stationNo: ProductionConstants.Stations.SharedStationNo,
                     occurredTime: occurredTime,
-                    forceWrite: true);
-            }
-            catch
-            {
-                // Startup status reporting must not block the main application.
-            }
-        });
-    }
-
-    private void RecordSoftwareStoppedStatus(DateTime occurredTime)
-    {
-        try
-        {
-            _ = _deviceStatusService.ChangeStatusAsync(
-                ProductionConstants.MesDeviceStatuses.Stopped,
-                "停机",
-                SourceApplication,
-                reportToMes: true,
-                stationNo: ProductionConstants.Stations.SharedStationNo,
-                occurredTime: occurredTime,
-                forceWrite: true,
-                reportInBackground: true);
+                    forceWrite: true)
+                .GetAwaiter()
+                .GetResult();
         }
         catch
         {
-            // Shutdown must continue even if the local status log cannot be written.
+            // 开机状态写入失败不能阻断主程序启动，后续补传仍可处理已有 JSONL。
+        }
+
+        var replayCancellation = new CancellationTokenSource();
+        lock (_sync)
+        {
+            if (!_started)
+            {
+                replayCancellation.Dispose();
+                return;
+            }
+
+            var replayTask = RetryPendingUploadsSafelyAsync(replayCancellation.Token);
+            _startupReplayCancellation = replayCancellation;
+            _startupReplayTask = replayTask;
+            ObserveStartupReplayCompletion(replayCancellation, replayTask);
+        }
+    }
+
+    private void ObserveStartupReplayCompletion(CancellationTokenSource replayCancellation, Task replayTask)
+    {
+        _ = replayTask.ContinueWith(
+            _ =>
+            {
+                lock (_sync)
+                {
+                    if (ReferenceEquals(_startupReplayCancellation, replayCancellation))
+                    {
+                        _startupReplayCancellation = null;
+                    }
+
+                    if (ReferenceEquals(_startupReplayTask, replayTask))
+                    {
+                        _startupReplayTask = null;
+                    }
+                }
+
+                replayCancellation.Dispose();
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.None,
+            TaskScheduler.Default);
+    }
+
+    private void RecordSoftwareStoppedStatus(
+        DateTime occurredTime,
+        CancellationTokenSource? startupReplayCancellation,
+        Task? startupReplayTask)
+    {
+        try
+        {
+            var timeoutSeconds = Math.Max(3, CurrentSettings.MesTimeoutSeconds);
+            using var timeoutSource = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+            var timeoutToken = timeoutSource.Token;
+            try
+            {
+                startupReplayCancellation?.Cancel();
+            }
+            catch (Exception)
+            {
+                // 取消源已释放或取消回调异常都不能阻断最终停机状态落盘和上传。
+            }
+
+            // 设备状态调用在首次 await 前仍会同步等待 JSONL 锁并写文件，放到线程池后才能让整个退出等待受同一超时约束。
+            var stopUploadTask = Task.Run(
+                () => _deviceStatusService.ChangeStatusAsync(
+                    ProductionConstants.MesDeviceStatuses.Stopped,
+                    "停机",
+                    SourceApplication,
+                    reportToMes: true,
+                    stationNo: ProductionConstants.Stations.SharedStationNo,
+                    occurredTime: occurredTime,
+                    forceWrite: true,
+                    cancellationToken: timeoutToken),
+                CancellationToken.None);
+            startupReplayTask?.WaitAsync(timeoutToken).GetAwaiter().GetResult();
+            stopUploadTask.WaitAsync(timeoutToken).GetAwaiter().GetResult();
+        }
+        catch
+        {
+            // 超时或写入失败时继续退出；已落盘的 Pending/Failed 状态由下次启动补传。
+        }
+    }
+
+    private async Task RetryPendingUploadsSafelyAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _deviceStatusService.RetryPendingUploadsAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // 退出时取消启动补传，让最终停机状态在同一超时预算内取得上传门禁。
+        }
+        catch
+        {
+            // 启动补传失败保留 JSONL 待传状态，不阻断登录界面。
         }
     }
 
@@ -197,11 +272,6 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
         RecordConnection(SourceCenterServer, 0, snapshot.IsConnected, snapshot.Message);
     }
 
-    private void PlcProductionMonitorService_StatusChanged(object? sender, PlcProductionSnapshot snapshot)
-    {
-        RecordAlarmChange(snapshot);
-    }
-
     private void RecordPlcConnection(PlcConnectionSnapshot snapshot)
     {
         if (!DeviceLifecycleLogRules.ShouldRecordPlcConnectionState(snapshot.State))
@@ -236,34 +306,6 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
             DateTime.Now));
     }
 
-    private void RecordAlarmChange(PlcProductionSnapshot snapshot)
-    {
-        var stationNo = Math.Max(1, snapshot.StationNo);
-        DeviceAlarmLogDecision decision;
-        lock (_sync)
-        {
-            _alarmStates.TryGetValue(stationNo, out var previous);
-            decision = DeviceLifecycleLogRules.DecideAlarmTransition(
-                previous.StatusCode,
-                previous.AlarmMessage,
-                snapshot.DeviceStatusCode,
-                snapshot.AlarmMessage);
-            _alarmStates[stationNo] = new AlarmState(snapshot.DeviceStatusCode, snapshot.AlarmMessage);
-        }
-
-        if (!decision.ShouldWrite)
-        {
-            return;
-        }
-
-        _logService.Write(DeviceLifecycleLogRules.CreateAlarmEntry(
-            CurrentDeviceId,
-            stationNo,
-            decision.EventType,
-            snapshot.AlarmMessage,
-            snapshot.UpdatedTime == default ? DateTime.Now : snapshot.UpdatedTime));
-    }
-
     private static IEnumerable<int> ResolveStationNumbers(AppSettings settings)
     {
         yield return ProductionConstants.Stations.DefaultStationNo;
@@ -273,5 +315,4 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
         }
     }
 
-    private readonly record struct AlarmState(short? StatusCode, string? AlarmMessage);
 }

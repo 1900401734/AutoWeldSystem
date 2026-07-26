@@ -39,6 +39,9 @@ namespace AutoWeldSystem.UI.Views
             lblPlcType = new AntdUI.Label();
             select_PlcType = new AntdUI.Select();
             chkEnablePlcAlarmReading = new AntdUI.Checkbox();
+            tlpPlcAlarmTriggerMode = new TableLayoutPanel();
+            lblPlcAlarmTriggerMode = new AntdUI.Label();
+            selectPlcAlarmTriggerMode = new AntdUI.Select();
             tlpPlcStringNumericMode = new TableLayoutPanel();
             lblPlcStringNumericFormatMode = new AntdUI.Label();
             selectPlcStringNumericFormatMode = new AntdUI.Select();
@@ -177,6 +180,7 @@ namespace AutoWeldSystem.UI.Views
             tlpPlcIp.SuspendLayout();
             tlpPlcPort.SuspendLayout();
             tableLayoutPanel7.SuspendLayout();
+            tlpPlcAlarmTriggerMode.SuspendLayout();
             tlpPlcStringNumericMode.SuspendLayout();
             grpDeviceConfig.SuspendLayout();
             layoutDeviceNoConfig.SuspendLayout();
@@ -374,7 +378,7 @@ namespace AutoWeldSystem.UI.Views
             grpPlcConfig.Location = new Point(6, 6);
             grpPlcConfig.Margin = new Padding(6);
             grpPlcConfig.Name = "grpPlcConfig";
-            grpPlcConfig.Size = new Size(455, 295);
+            grpPlcConfig.Size = new Size(455, 340);
             grpPlcConfig.TabIndex = 1;
             grpPlcConfig.TabStop = false;
             grpPlcConfig.Text = "PLC配置";
@@ -389,19 +393,21 @@ namespace AutoWeldSystem.UI.Views
             tlpPlcConfig.Controls.Add(tlpPlcPort, 0, 1);
             tlpPlcConfig.Controls.Add(tableLayoutPanel7, 0, 2);
             tlpPlcConfig.Controls.Add(chkEnablePlcAlarmReading, 0, 3);
-            tlpPlcConfig.Controls.Add(tlpPlcStringNumericMode, 0, 5);
-            tlpPlcConfig.Controls.Add(chkEnablePlcStringNumericFormatting, 0, 4);
+            tlpPlcConfig.Controls.Add(tlpPlcAlarmTriggerMode, 0, 4);
+            tlpPlcConfig.Controls.Add(chkEnablePlcStringNumericFormatting, 0, 5);
+            tlpPlcConfig.Controls.Add(tlpPlcStringNumericMode, 0, 6);
             tlpPlcConfig.Dock = DockStyle.Fill;
             tlpPlcConfig.Location = new Point(3, 23);
             tlpPlcConfig.Name = "tlpPlcConfig";
-            tlpPlcConfig.RowCount = 6;
+            tlpPlcConfig.RowCount = 7;
             tlpPlcConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
             tlpPlcConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
             tlpPlcConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
             tlpPlcConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
             tlpPlcConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
             tlpPlcConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
-            tlpPlcConfig.Size = new Size(449, 269);
+            tlpPlcConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
+            tlpPlcConfig.Size = new Size(449, 314);
             tlpPlcConfig.TabIndex = 0;
             // 
             // tlpPlcIp
@@ -550,6 +556,46 @@ namespace AutoWeldSystem.UI.Views
             chkEnablePlcAlarmReading.Size = new Size(449, 45);
             chkEnablePlcAlarmReading.TabIndex = 5;
             chkEnablePlcAlarmReading.Text = "启用报警信息读取";
+            //
+            // tlpPlcAlarmTriggerMode
+            //
+            tlpPlcAlarmTriggerMode.AutoSize = true;
+            tlpPlcAlarmTriggerMode.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            tlpPlcAlarmTriggerMode.ColumnCount = 2;
+            tlpPlcAlarmTriggerMode.ColumnStyles.Add(new ColumnStyle());
+            tlpPlcAlarmTriggerMode.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            tlpPlcAlarmTriggerMode.Controls.Add(lblPlcAlarmTriggerMode, 0, 0);
+            tlpPlcAlarmTriggerMode.Controls.Add(selectPlcAlarmTriggerMode, 1, 0);
+            tlpPlcAlarmTriggerMode.Dock = DockStyle.Fill;
+            tlpPlcAlarmTriggerMode.Location = new Point(0, 180);
+            tlpPlcAlarmTriggerMode.Margin = new Padding(0);
+            tlpPlcAlarmTriggerMode.Name = "tlpPlcAlarmTriggerMode";
+            tlpPlcAlarmTriggerMode.RowCount = 1;
+            tlpPlcAlarmTriggerMode.RowStyles.Add(new RowStyle());
+            tlpPlcAlarmTriggerMode.Size = new Size(449, 45);
+            tlpPlcAlarmTriggerMode.TabIndex = 4;
+            //
+            // lblPlcAlarmTriggerMode
+            //
+            lblPlcAlarmTriggerMode.AutoSizeMode = AntdUI.TAutoSize.Width;
+            lblPlcAlarmTriggerMode.Dock = DockStyle.Fill;
+            lblPlcAlarmTriggerMode.Location = new Point(0, 0);
+            lblPlcAlarmTriggerMode.Margin = new Padding(0);
+            lblPlcAlarmTriggerMode.Name = "lblPlcAlarmTriggerMode";
+            lblPlcAlarmTriggerMode.Padding = new Padding(8, 0, 0, 0);
+            lblPlcAlarmTriggerMode.Size = new Size(71, 45);
+            lblPlcAlarmTriggerMode.TabIndex = 0;
+            lblPlcAlarmTriggerMode.Text = "报警模式";
+            //
+            // selectPlcAlarmTriggerMode
+            //
+            selectPlcAlarmTriggerMode.Dock = DockStyle.Fill;
+            selectPlcAlarmTriggerMode.Location = new Point(71, 0);
+            selectPlcAlarmTriggerMode.Margin = new Padding(0);
+            selectPlcAlarmTriggerMode.MaxCount = 10;
+            selectPlcAlarmTriggerMode.Name = "selectPlcAlarmTriggerMode";
+            selectPlcAlarmTriggerMode.Size = new Size(378, 45);
+            selectPlcAlarmTriggerMode.TabIndex = 1;
             // 
             // tlpPlcStringNumericMode
             // 
@@ -561,7 +607,7 @@ namespace AutoWeldSystem.UI.Views
             tlpPlcStringNumericMode.Controls.Add(lblPlcStringNumericFormatMode, 0, 0);
             tlpPlcStringNumericMode.Controls.Add(selectPlcStringNumericFormatMode, 1, 0);
             tlpPlcStringNumericMode.Dock = DockStyle.Fill;
-            tlpPlcStringNumericMode.Location = new Point(0, 225);
+            tlpPlcStringNumericMode.Location = new Point(0, 270);
             tlpPlcStringNumericMode.Margin = new Padding(0);
             tlpPlcStringNumericMode.Name = "tlpPlcStringNumericMode";
             tlpPlcStringNumericMode.RowCount = 1;
@@ -596,7 +642,7 @@ namespace AutoWeldSystem.UI.Views
             chkEnablePlcStringNumericFormatting.Checked = true;
             chkEnablePlcStringNumericFormatting.CheckState = CheckState.Checked;
             chkEnablePlcStringNumericFormatting.Dock = DockStyle.Fill;
-            chkEnablePlcStringNumericFormatting.Location = new Point(0, 180);
+            chkEnablePlcStringNumericFormatting.Location = new Point(0, 225);
             chkEnablePlcStringNumericFormatting.Margin = new Padding(0);
             chkEnablePlcStringNumericFormatting.Name = "chkEnablePlcStringNumericFormatting";
             chkEnablePlcStringNumericFormatting.Padding = new Padding(8, 0, 0, 0);
@@ -608,7 +654,7 @@ namespace AutoWeldSystem.UI.Views
             // 
             grpDeviceConfig.Controls.Add(layoutDeviceNoConfig);
             grpDeviceConfig.Dock = DockStyle.Top;
-            grpDeviceConfig.Location = new Point(6, 313);
+            grpDeviceConfig.Location = new Point(6, 358);
             grpDeviceConfig.Margin = new Padding(6);
             grpDeviceConfig.Name = "grpDeviceConfig";
             grpDeviceConfig.Size = new Size(455, 211);
@@ -2308,6 +2354,8 @@ namespace AutoWeldSystem.UI.Views
             tlpPlcPort.PerformLayout();
             tableLayoutPanel7.ResumeLayout(false);
             tableLayoutPanel7.PerformLayout();
+            tlpPlcAlarmTriggerMode.ResumeLayout(false);
+            tlpPlcAlarmTriggerMode.PerformLayout();
             tlpPlcStringNumericMode.ResumeLayout(false);
             tlpPlcStringNumericMode.PerformLayout();
             grpDeviceConfig.ResumeLayout(false);
@@ -2527,6 +2575,9 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Label lblCenterServerHeartbeatInterval;
         private AntdUI.Input inputCenterServerHeartbeatInterval;
         private AntdUI.Checkbox chkEnablePlcAlarmReading;
+        private TableLayoutPanel tlpPlcAlarmTriggerMode;
+        private AntdUI.Label lblPlcAlarmTriggerMode;
+        private AntdUI.Select selectPlcAlarmTriggerMode;
         private TableLayoutPanel tlpProcessParameterType;
         private TableLayoutPanel tlpCheckbox2;
         private TableLayoutPanel tlpCheckbox3;

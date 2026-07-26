@@ -32,6 +32,12 @@ public partial class SystemSettingView : BaseView
         new(AppConstants.PlcStringNumericFormatModes.Round, TextKeys.SystemSetting.OptionPlcFormatRound)
     };
 
+    private static readonly LocalizedOption<string>[] PlcAlarmTriggerModeOptions =
+    {
+        new(AppConstants.PlcAlarmTriggerModes.AddressOnly, TextKeys.SystemSetting.OptionPlcAlarmAddressOnly),
+        new(AppConstants.PlcAlarmTriggerModes.DeviceStatusAndAddress, TextKeys.SystemSetting.OptionPlcAlarmDeviceStatusAndAddress)
+    };
+
     private static readonly LocalizedOption<UploadMode>[] UploadModeOptions =
     {
         new(UploadMode.Realtime, TextKeys.SystemSetting.OptionUploadRealtime),
@@ -78,12 +84,14 @@ public partial class SystemSettingView : BaseView
     private bool _initialized;
     private bool _syncingPlcTypeSelection;
     private bool _syncingPlcStringNumericFormatModeSelection;
+    private bool _syncingPlcAlarmTriggerModeSelection;
     private bool _syncingUploadModeSelection;
     private bool _syncingProcessParameterDeviceTypeSelection;
     private bool _syncingCenterServerSystemTypeSelection;
     private bool _deviceManagementStateKnown;
     private string _selectedPlcType = AppConstants.PlcTypes.ModbusTcp;
     private string _selectedPlcStringNumericFormatMode = AppConstants.PlcStringNumericFormatModes.Truncate;
+    private string _selectedPlcAlarmTriggerMode = AppConstants.PlcAlarmTriggerModes.DeviceStatusAndAddress;
     private UploadMode _selectedUploadMode = UploadMode.Quantity;
     private string _selectedProcessParameterDeviceType = ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic;
     private string _selectedCenterServerSystemType = CenterServerConstants.SystemTypes.Other;
@@ -127,6 +135,7 @@ public partial class SystemSettingView : BaseView
 
         BindPlcTypeOptions();
         BindPlcStringNumericFormatModeOptions();
+        BindPlcAlarmTriggerModeOptions();
         BindUploadModeOptions();
         BindProcessParameterDeviceTypeOptions();
         BindCenterServerSystemTypeOptions();
@@ -281,6 +290,7 @@ public partial class SystemSettingView : BaseView
         select_PlcType.SelectedIndexChanged += Select_PlcType_SelectedIndexChanged;
         chkEnablePlcStringNumericFormatting.CheckedChanged += ChkEnablePlcStringNumericFormatting_CheckedChanged;
         chkEnablePlcAlarmReading.CheckedChanged += ChkEnablePlcAlarmReading_CheckedChanged;
+        selectPlcAlarmTriggerMode.SelectedIndexChanged += SelectPlcAlarmTriggerMode_SelectedIndexChanged;
         selectPlcStringNumericFormatMode.SelectedIndexChanged += SelectPlcStringNumericFormatMode_SelectedIndexChanged;
         selectUploadMode.SelectedIndexChanged += SelectUploadMode_SelectedIndexChanged;
         chkEnableAutoStart.CheckedChanged += ChkEnableAutoStart_CheckedChanged;
@@ -450,6 +460,19 @@ public partial class SystemSettingView : BaseView
 
     private void ChkEnablePlcAlarmReading_CheckedChanged(object sender, AntdUI.BoolEventArgs e)
     {
+        UpdatePlcAlarmTriggerModeEnabled();
+    }
+
+    private void SelectPlcAlarmTriggerMode_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
+    {
+        if (_syncingPlcAlarmTriggerModeSelection
+            || e.Value < 0
+            || e.Value >= PlcAlarmTriggerModeOptions.Length)
+        {
+            return;
+        }
+
+        _selectedPlcAlarmTriggerMode = PlcAlarmTriggerModeOptions[e.Value].Value;
     }
 
     private void SelectPlcStringNumericFormatMode_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
@@ -635,16 +658,19 @@ public partial class SystemSettingView : BaseView
 
         _selectedPlcType = NormalizePlcType(settings.PlcType);
         _selectedPlcStringNumericFormatMode = NormalizePlcStringNumericFormatMode(settings.PlcStringNumericFormatMode);
+        _selectedPlcAlarmTriggerMode = AppConstants.PlcAlarmTriggerModes.Normalize(settings.PlcAlarmTriggerMode);
         _selectedUploadMode = NormalizeUploadMode(settings.UploadMode);
         _selectedProcessParameterDeviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
         _selectedCenterServerSystemType = NormalizeCenterServerSystemType(settings.CenterServerSystemType);
         inputUploadBatchSize.Text = Math.Max(1, settings.UploadBatchSize).ToString(CultureInfo.InvariantCulture);
         BindPlcTypeOptions();
         BindPlcStringNumericFormatModeOptions();
+        BindPlcAlarmTriggerModeOptions();
         BindUploadModeOptions();
         BindProcessParameterDeviceTypeOptions();
         BindCenterServerSystemTypeOptions();
         UpdatePlcStringNumericFormatModeEnabled();
+        UpdatePlcAlarmTriggerModeEnabled();
         UpdateUploadBatchSizeEnabled();
         UpdateElevatedAutoStartEnabled();
         UpdatePostDataHeaderInputsEnabled();
@@ -736,6 +762,7 @@ public partial class SystemSettingView : BaseView
         lblPlcType.Text = _localizer.GetString(TextKeys.SystemSetting.LabelType);
         chkEnablePlcStringNumericFormatting.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnablePlcStringFormatting);
         chkEnablePlcAlarmReading.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnablePlcAlarmReading);
+        lblPlcAlarmTriggerMode.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPlcAlarmTriggerMode);
         lblPlcStringNumericFormatMode.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPlcFormatMode);
 
         lblDeviceId.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDeviceId);
@@ -823,6 +850,25 @@ public partial class SystemSettingView : BaseView
         }
     }
 
+    private void BindPlcAlarmTriggerModeOptions()
+    {
+        _syncingPlcAlarmTriggerModeSelection = true;
+        try
+        {
+            selectPlcAlarmTriggerMode.Items.Clear();
+            selectPlcAlarmTriggerMode.Items.AddRange(PlcAlarmTriggerModeOptions
+                .Select(option => (object)_localizer.GetString(option.TextKey))
+                .ToArray());
+            var selectedIndex = Array.FindIndex(PlcAlarmTriggerModeOptions, option =>
+                string.Equals(option.Value, _selectedPlcAlarmTriggerMode, StringComparison.OrdinalIgnoreCase));
+            selectPlcAlarmTriggerMode.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 1;
+        }
+        finally
+        {
+            _syncingPlcAlarmTriggerModeSelection = false;
+        }
+    }
+
     private void BindUploadModeOptions()
     {
         _syncingUploadModeSelection = true;
@@ -894,6 +940,11 @@ public partial class SystemSettingView : BaseView
     private void UpdatePlcStringNumericFormatModeEnabled()
     {
         selectPlcStringNumericFormatMode.Enabled = chkEnablePlcStringNumericFormatting.Checked;
+    }
+
+    private void UpdatePlcAlarmTriggerModeEnabled()
+    {
+        selectPlcAlarmTriggerMode.Enabled = chkEnablePlcAlarmReading.Checked;
     }
 
     private void UpdateElevatedAutoStartEnabled()
@@ -1144,6 +1195,7 @@ public partial class SystemSettingView : BaseView
         settings.PlcType = NormalizePlcType(_selectedPlcType);
         settings.EnablePlcStringNumericFormatting = chkEnablePlcStringNumericFormatting.Checked;
         settings.EnablePlcAlarmReading = chkEnablePlcAlarmReading.Checked;
+        settings.PlcAlarmTriggerMode = AppConstants.PlcAlarmTriggerModes.Normalize(_selectedPlcAlarmTriggerMode);
         settings.PlcStringNumericFormatMode = NormalizePlcStringNumericFormatMode(_selectedPlcStringNumericFormatMode);
         settings.LogDirectory = logDirectory;
         settings.DataDirectory = dataDirectory;
