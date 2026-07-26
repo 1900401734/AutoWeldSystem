@@ -1,4 +1,4 @@
-﻿using AutoWeldSystem.Core.Entities;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Center;
@@ -50,10 +50,12 @@ var tests = new (string Name, Action Run)[]
     ("PLC shutdown returns while communication lock is held", PlcShutdownReturnsWhileCommunicationLockIsHeld),
     ("PLC shutdown detaches the client before bounded close", PlcShutdownDetachesClientBeforeBoundedClose),
     ("Monitor view cancels business signal reconciliation on destroy", MonitorViewCancelsBusinessSignalReconciliationOnDestroy),
+    ("Monitor view cancels pending upload retry on destroy", MonitorViewCancelsPendingUploadRetryOnDestroy),
     ("PLC status tooltip uses compact localized acrylic panel", PlcStatusTooltipUsesCompactLocalizedAcrylicPanel),
     ("Program exception history uses bounded tail reads", ProgramExceptionHistoryUsesBoundedTailReads),
     ("System setting view uses responsive semantic columns", SystemSettingViewUsesResponsiveSemanticColumns),
     ("System setting localization resources are complete", SystemSettingLocalizationResourcesAreComplete),
+    ("System setting configures PLC alarm trigger mode", SystemSettingConfiguresPlcAlarmTriggerMode),
     ("MES endpoint validation returns stable error codes", MesEndpointValidationReturnsStableErrorCodes),
     ("Localization service reports missing resource keys", LocalizationServiceReportsMissingResourceKeys),
     ("PLC recipe name rules map slots without shifting codes", PlcRecipeNameRulesMapSlotsWithoutShiftingCodes),
@@ -98,7 +100,8 @@ var tests = new (string Name, Action Run)[]
     ("Production report rules reload latest persisted task", ProductionReportRulesReloadLatestPersistedTask),
     ("Production report rules select latest upload spreadsheet", ProductionReportRulesSelectLatestUploadSpreadsheet),
     ("Production report completion flow persists before final generation", ProductionReportCompletionFlowPersistsBeforeFinalGeneration),
-    ("Finish report generation is local while MES upload follows ReportEnable", FinishReportGenerationIsLocalWhileMesUploadFollowsReportEnable),
+    ("Finish report queues generated XLSX even without ReportEnable", FinishReportQueuesGeneratedXlsxEvenWithoutReportEnable),
+    ("Report file upload tasks reconcile generated XLSX records", ReportFileUploadTasksReconcileGeneratedXlsxRecords),
     ("Unavailable roles are cleared before save", UnavailableRolesAreCleared),
     ("Running task with changed PLC recipe requests reconciliation", RunningTaskWithChangedPlcRecipeRequestsReconciliation),
     ("Finished PLC work-order status skips recipe reconciliation", FinishedWorkOrderStatusSkipsRecipeReconciliation),
@@ -116,6 +119,9 @@ var tests = new (string Name, Action Run)[]
     ("PLC alarm station discovery includes alarm-only stations", PlcAlarmStationDiscoveryIncludesAlarmOnlyStations),
     ("PLC alarm rules aggregate bool read results", PlcAlarmRulesAggregateBoolReadResults),
     ("PLC alarm projection keeps bool-only alarms local", PlcAlarmProjectionKeepsBoolOnlyAlarmsLocal),
+    ("PLC alarm trigger modes select effective alarms", PlcAlarmTriggerModesSelectEffectiveAlarms),
+    ("PLC alarm cycle tracks per-address recovery", PlcAlarmCycleTracksPerAddressRecovery),
+    ("PLC device alarm cycle restores from jsonl", PlcDeviceAlarmCycleRestoresFromJsonl),
     ("PLC production monitor reads bool alarms independently", PlcProductionMonitorReadsBoolAlarmsIndependently),
     ("PLC software alarms stay local to monitor view", PlcSoftwareAlarmsStayLocalToMonitorView),
     ("Pre-weld NG is treated as failed product result", PreWeldNgIsTreatedAsFailedProductResult),
@@ -168,20 +174,33 @@ var tests = new (string Name, Action Run)[]
     ("MES device status rules use latest device id for report", MesDeviceStatusRulesUseLatestDeviceIdForReport),
     ("MES device status rules format status identity", MesDeviceStatusRulesFormatStatusIdentity),
     ("MES device status rules format station remarks", MesDeviceStatusRulesFormatStationRemarks),
+    ("MES device status rules format concise exception remarks", MesDeviceStatusRulesFormatConciseExceptionRemarks),
+    ("MES device status rules format concise recovery remarks", MesDeviceStatusRulesFormatConciseRecoveryRemarks),
     ("MES device status duplicate suppression honors lifecycle force write", MesDeviceStatusDuplicateSuppressionHonorsLifecycleForceWrite),
     ("Log timestamp display rules switch date visibility", LogTimestampDisplayRulesSwitchDateVisibility),
     ("Antd table selection helper maps selected indexes", AntdTableSelectionHelperMapsSelectedIndexes),
     ("Device status local log store resolves directories", DeviceStatusLocalLogStoreResolvesDirectories),
     ("Device status local log store writes and reads jsonl", DeviceStatusLocalLogStoreWritesAndReadsJsonl),
+    ("Device status local log store permits full source scans", DeviceStatusLocalLogStorePermitsFullSourceScans),
     ("Device status local log store removes selected log ids", DeviceStatusLocalLogStoreRemovesSelectedLogIds),
     ("Device status record identity supports guid and legacy keys", DeviceStatusRecordIdentitySupportsGuidAndLegacyKeys),
     ("Device status local log store uses record keys", DeviceStatusLocalLogStoreUsesRecordKeys),
     ("Device status local log store skips invalid identities", DeviceStatusLocalLogStoreSkipsInvalidIdentities),
     ("Device status service writes jsonl before MES", DeviceStatusServiceWritesJsonlBeforeMes),
+    ("Device status alarm details persist and reach MES remark", DeviceStatusAlarmDetailsPersistAndReachMesRemark),
+    ("Device status pending exceptions use concise MES remarks", DeviceStatusPendingExceptionsUseConciseMesRemarks),
+    ("Device status pending recoveries use concise MES remarks", DeviceStatusPendingRecoveriesUseConciseMesRemarks),
     ("Device status service serializes concurrent status changes", DeviceStatusServiceSerializesConcurrentStatusChanges),
     ("Device status service preserves MES success after source deletion", DeviceStatusServicePreservesMesSuccessAfterSourceDeletion),
     ("Device status service serializes concurrent retries", DeviceStatusServiceSerializesConcurrentRetries),
     ("Device status service shares concurrent retry results", DeviceStatusServiceSharesConcurrentRetryResults),
+    ("Device status service retries pending logs in occurred order", DeviceStatusServiceRetriesPendingLogsInOccurredOrder),
+    ("Device status pending replay yields after acquiring order gate", DeviceStatusPendingReplayYieldsAfterAcquiringOrderGate),
+    ("Device status force write skips latest history scan", DeviceStatusForceWriteSkipsLatestHistoryScan),
+    ("Device status pending replay blocks newer uploads", DeviceStatusPendingReplayBlocksNewerUploads),
+    ("Device status newer change waits after older failure", DeviceStatusNewerChangeWaitsAfterOlderFailure),
+    ("Device status manual retry preserves pending order", DeviceStatusManualRetryPreservesPendingOrder),
+    ("Device status pending replay skips deleted source", DeviceStatusPendingReplaySkipsDeletedSource),
     ("Device status service stops when first jsonl write fails", DeviceStatusServiceStopsWhenFirstJsonlWriteFails),
     ("Device status runtime no longer persists database log rows", DeviceStatusRuntimeNoLongerPersistsDatabaseLogRows),
     ("Device status upload task payload contains only record key", DeviceStatusUploadTaskPayloadContainsOnlyRecordKey),
@@ -198,6 +217,9 @@ var tests = new (string Name, Action Run)[]
     ("Device status pending source and task reconciliation are wired", DeviceStatusPendingSourceAndTaskReconciliationAreWired),
     ("Device status log deletion refresh is wired across views", DeviceStatusLogDeletionRefreshIsWiredAcrossViews),
     ("LogManageView device status tab exposes open folder button", LogManageViewDeviceStatusTabExposesOpenFolderButton),
+    ("LogManageView device status tab shows alarm details", LogManageViewDeviceStatusTabShowsAlarmDetails),
+    ("LogManageView keeps hidden log fields in details only", LogManageViewKeepsHiddenLogFieldsInDetailsOnly),
+    ("Production flow summaries use centralized Chinese text", ProductionFlowSummariesUseCentralizedChineseText),
     ("DataManageView static grids define bound columns", DataManageViewStaticGridsDefineBoundColumns),
     ("DataManageView ignores report selection while disposing", DataManageViewIgnoresReportSelectionWhileDisposing),
     ("DataManageView ignores work order selection while disposing", DataManageViewIgnoresWorkOrderSelectionWhileDisposing),
@@ -223,6 +245,7 @@ var tests = new (string Name, Action Run)[]
     ("State manage view filters tabs by current permissions", StateManageViewFiltersTabsByCurrentPermissions),
     ("State manage device status tab supports multi delete", StateManageDeviceStatusTabSupportsMultiDelete),
     ("Skipped upload tasks are not retried", SkippedUploadTasksAreNotRetried),
+    ("Weld task pending retry includes device status", WeldTaskPendingRetryIncludesDeviceStatus),
     ("Status report settings default to enabled", StatusReportSettingsDefaultToEnabled),
     ("MES route settings default to current routes", MesRouteSettingsDefaultToCurrentRoutes),
     ("MES provider uses configured routes", MesProviderUsesConfiguredRoutes),
@@ -246,10 +269,18 @@ var tests = new (string Name, Action Run)[]
     ("Device lifecycle coordinator records software lifecycle statuses", DeviceLifecycleCoordinatorRecordsSoftwareLifecycleStatuses),
     ("Device lifecycle coordinator reports Chinese software status remarks", DeviceLifecycleCoordinatorReportsChineseSoftwareStatusRemarks),
     ("Device lifecycle coordinator syncs software status timestamps", DeviceLifecycleCoordinatorSyncsSoftwareStatusTimestamps),
-    ("Device lifecycle stop triggers background status upload", DeviceLifecycleStopTriggersBackgroundStatusUpload),
+    ("Device lifecycle orders status producers around final states", DeviceLifecycleOrdersStatusProducersAroundFinalStates),
+    ("Device lifecycle stop survives earlier shutdown failures", DeviceLifecycleStopSurvivesEarlierShutdownFailures),
+    ("Device lifecycle start persists powered on before pending replay", DeviceLifecycleStartPersistsPoweredOnBeforePendingReplay),
+    ("Device lifecycle stop cancels startup pending replay", DeviceLifecycleStopCancelsStartupPendingReplay),
+    ("Device lifecycle stop still waits after replay cancellation", DeviceLifecycleStopStillWaitsAfterReplayCancellation),
+    ("Device lifecycle keeps timed out startup replay tracked", DeviceLifecycleKeepsTimedOutStartupReplayTracked),
+    ("Device lifecycle stop waits for bounded status upload", DeviceLifecycleStopWaitsForBoundedStatusUpload),
+    ("Device lifecycle stop bounds synchronous status startup", DeviceLifecycleStopBoundsSynchronousStatusStartup),
     ("Device lifecycle stop reports status when lifecycle log fails", DeviceLifecycleStopReportsStatusWhenLifecycleLogFails),
+    ("Upload task MES success survives status cancellation", UploadTaskMesSuccessSurvivesStatusCancellation),
     ("Device lifecycle connection logs only when state changes", DeviceLifecycleConnectionLogsOnlyWhenStateChanges),
-    ("Device lifecycle alarm logs enter change and recovery", DeviceLifecycleAlarmLogsEnterChangeAndRecovery),
+    ("Device lifecycle no longer subscribes to alarm snapshots", DeviceLifecycleNoLongerSubscribesToAlarmSnapshots),
     ("Program name rules extract component code", ProgramNameRulesExtractComponentCode),
     ("Program name rules reject invalid component code", ProgramNameRulesRejectInvalidComponentCode),
     ("Program name rules build and parse optional description", ProgramNameRulesBuildAndParseOptionalDescription),
@@ -453,6 +484,33 @@ static void MonitorViewCancelsBusinessSignalReconciliationOnDestroy()
     AssertTrue(ensureMethod.Contains("ReadTextAsync(logicalKey, targetStationNo, cancellationToken)", StringComparison.Ordinal), "PLC 业务信号读取必须接收页面生命周期令牌。");
     AssertTrue(ensureSignalMethods.Contains("WriteWorkOrderStatusAsync(target, value, cancellationToken)", StringComparison.Ordinal), "PLC 工单状态写入必须接收页面生命周期令牌。");
     AssertTrue(ensureSignalMethods.Contains("WriteDeviceModeAsync(target, value, cancellationToken)", StringComparison.Ordinal), "PLC 设备模式写入必须接收页面生命周期令牌。");
+}
+
+static void MonitorViewCancelsPendingUploadRetryOnDestroy()
+{
+    var viewCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"),
+        Encoding.UTF8);
+    var destroyMethod = ExtractMethodText(
+        viewCode,
+        "protected override void OnHandleDestroyed(EventArgs e)",
+        "#endregion");
+    var retryMethod = ExtractMethodText(
+        viewCode,
+        "private void QueuePendingUploadRetry()",
+        "private static string GetMesStateKey");
+    var cancelMethod = ExtractMethodText(
+        viewCode,
+        "private void CancelPendingUploadRetry()",
+        "private async Task ReconcileDeviceModeAsync");
+
+    AssertTrue(viewCode.Contains("CancellationTokenSource? _pendingUploadRetryCancellation", StringComparison.Ordinal), "监控页必须维护 MES 重连补传的生命周期令牌。");
+    AssertTrue(viewCode.Contains("Task? _pendingUploadRetryTask", StringComparison.Ordinal), "监控页必须跟踪 MES 重连补传任务。");
+    AssertTrue(destroyMethod.Contains("CancelPendingUploadRetry();", StringComparison.Ordinal), "窗口销毁时必须取消 MES 重连补传任务。");
+    AssertFalse(cancelMethod.Contains(".Wait(", StringComparison.Ordinal), "窗口销毁不能在停机上传前再等待一个 MES 超时。");
+    AssertTrue(cancelMethod.Contains("ContinueWith(", StringComparison.Ordinal), "重连补传取消源必须在任务完成后释放。");
+    AssertTrue(retryMethod.Contains("_weldTaskService.RetryPendingUploadsAsync(cancellationToken)", StringComparison.Ordinal), "MES 重连补传必须把页面生命周期令牌传给上传服务。");
+    AssertTrue(retryMethod.Contains("OperationCanceledException", StringComparison.Ordinal), "页面销毁触发的 MES 重连补传取消不得记录为异常。");
 }
 
 static void PlcStatusTooltipUsesCompactLocalizedAcrylicPanel()
@@ -948,6 +1006,7 @@ static void PlcAlarmRulesAggregateBoolReadResults()
     AssertTrue(aggregation.HasActiveSignal, "任一成功读取的 Bool=true 应激活聚合报警。");
     AssertEqual("安全门打开", aggregation.Message, "激活报警内容应去重，false 与失败项不应进入提示。");
     AssertEqual(ProductionConstants.Stations.SharedStationNo, aggregation.ScopeStationNo, "共享报警置位时报警范围应为共享工位。");
+    AssertEqual(ProductionConstants.Stations.SharedStationNo, aggregation.ActiveAlarms[0].StationNo, "共享报警明细必须保留共享工位范围。");
     AssertEqual(1, aggregation.Failures.Count, "单个读取失败应保留为日志信息但不阻断其他结果。");
     AssertEqual("DB2.2", aggregation.Failures[0].Address, "读取失败应保留对应 PLC 地址。");
 
@@ -968,6 +1027,7 @@ static void PlcAlarmProjectionKeepsBoolOnlyAlarmsLocal()
         HasActiveSignal: true,
         Message: "安全门打开",
         ScopeStationNo: 2,
+        ActiveAlarms: [new PlcActiveAlarm(2, "DB2.0", "安全门打开")],
         Failures: []);
     var boolOnly = PlcSoftwareAlarmRules.ResolveProjection(
         ProductionConstants.PlcDeviceStatuses.Running,
@@ -985,6 +1045,240 @@ static void PlcAlarmProjectionKeepsBoolOnlyAlarmsLocal()
     AssertEqual<int?>(2, rawAlarm.ExternalAlarmStationNo, "原始状态 4 应保留当前工位范围。");
 }
 
+static void PlcAlarmTriggerModesSelectEffectiveAlarms()
+{
+    AssertEqual(
+        AppConstants.PlcAlarmTriggerModes.DeviceStatusAndAddress,
+        AppConstants.PlcAlarmTriggerModes.Normalize(null),
+        "旧配置空值必须回退到设备状态异常且报警地址触发模式。");
+    AssertEqual(
+        AppConstants.PlcAlarmTriggerModes.DeviceStatusAndAddress,
+        AppConstants.PlcAlarmTriggerModes.Normalize("future-mode"),
+        "未知持久化值必须安全回退到双条件模式。");
+    var state = new PlcDeviceAlarmCycleState();
+    var firstAlarm = new PlcActiveAlarm(1, "DB10.DBX2.0", "安全门打开");
+    var sharedAlarm = new PlcActiveAlarm(0, "DB10.DBX2.9", "急停");
+    var readResults = new[]
+    {
+        new PlcAlarmSignalReadResult(1, firstAlarm.Address, firstAlarm.AlarmContent, IsSuccess: true, IsActive: true, FailureMessage: string.Empty),
+        new PlcAlarmSignalReadResult(0, sharedAlarm.Address, sharedAlarm.AlarmContent, IsSuccess: true, IsActive: true, FailureMessage: string.Empty)
+    };
+
+    var addressOnly = PlcDeviceAlarmCycleRules.Decide(
+        state,
+        AppConstants.PlcAlarmTriggerModes.AddressOnly,
+        new Dictionary<int, short?> { [1] = ProductionConstants.PlcDeviceStatuses.Running },
+        readResults,
+        configuredAlarms: [firstAlarm, sharedAlarm]);
+    AssertSequenceEqual(
+        ["0:DB10.DBX2.9", "1:DB10.2.0"],
+        addressOnly.NewAlarms.Select(PlcDeviceAlarmCycleRules.GetAlarmKey).Order().ToArray(),
+        "仅地址模式必须忽略原始设备状态，并保留共享报警的独立身份。");
+
+    var gatedWithoutStatus = PlcDeviceAlarmCycleRules.Decide(
+        state,
+        AppConstants.PlcAlarmTriggerModes.DeviceStatusAndAddress,
+        new Dictionary<int, short?> { [1] = ProductionConstants.PlcDeviceStatuses.Running, [2] = ProductionConstants.PlcDeviceStatuses.Running },
+        readResults,
+        configuredAlarms: [firstAlarm, sharedAlarm]);
+    AssertEqual(0, gatedWithoutStatus.NewAlarms.Count, "双条件模式中没有任一状态 4 时，工位和共享地址都不得生效。");
+
+    var gated = PlcDeviceAlarmCycleRules.Decide(
+        state,
+        AppConstants.PlcAlarmTriggerModes.DeviceStatusAndAddress,
+        new Dictionary<int, short?> { [1] = ProductionConstants.PlcDeviceStatuses.Alarm, [2] = ProductionConstants.PlcDeviceStatuses.Running },
+        readResults,
+        configuredAlarms: [firstAlarm, sharedAlarm]);
+    AssertEqual(2, gated.NewAlarms.Count, "双条件模式中工位状态 4 应激活本工位地址，并让共享地址设备级生效一次。");
+
+    var switchedToAddressOnly = PlcDeviceAlarmCycleRules.Decide(
+        gated.NextState,
+        AppConstants.PlcAlarmTriggerModes.AddressOnly,
+        new Dictionary<int, short?> { [1] = ProductionConstants.PlcDeviceStatuses.Running, [2] = ProductionConstants.PlcDeviceStatuses.Running },
+        readResults,
+        configuredAlarms: [firstAlarm, sharedAlarm]);
+    AssertEqual(0, switchedToAddressOnly.NewAlarms.Count, "运行中切换到仅地址模式时持续置位的地址不得重复触发。");
+    AssertEqual(2, switchedToAddressOnly.NextState.ActiveAlarms.Count, "运行中切换模式必须立即按当前读取结果重算有效集合。");
+
+    var switchedToGatedMode = PlcDeviceAlarmCycleRules.Decide(
+        switchedToAddressOnly.NextState,
+        AppConstants.PlcAlarmTriggerModes.DeviceStatusAndAddress,
+        new Dictionary<int, short?> { [1] = ProductionConstants.PlcDeviceStatuses.Running, [2] = ProductionConstants.PlcDeviceStatuses.Running },
+        readResults,
+        configuredAlarms: [firstAlarm, sharedAlarm]);
+    AssertEqual(2, switchedToGatedMode.RecoveredAlarms.Count, "运行中切回双条件模式时不满足状态 4 的既有地址必须逐条恢复。");
+
+    var statusReadFailure = PlcDeviceAlarmCycleRules.Decide(
+        new PlcDeviceAlarmCycleState([firstAlarm]),
+        AppConstants.PlcAlarmTriggerModes.DeviceStatusAndAddress,
+        new Dictionary<int, short?> { [1] = null },
+        [readResults[0]],
+        configuredAlarms: [firstAlarm]);
+    AssertEqual(0, statusReadFailure.RecoveredAlarms.Count, "状态读取失败不得把已生效报警误判为恢复。");
+    AssertEqual(1, statusReadFailure.NextState.ActiveAlarms.Count, "状态读取失败时必须冻结已生效报警。");
+
+    var statusFailureWithClearedAddress = PlcDeviceAlarmCycleRules.Decide(
+        new PlcDeviceAlarmCycleState([firstAlarm]),
+        AppConstants.PlcAlarmTriggerModes.DeviceStatusAndAddress,
+        new Dictionary<int, short?> { [1] = null },
+        [new PlcAlarmSignalReadResult(1, firstAlarm.Address, firstAlarm.AlarmContent, IsSuccess: true, IsActive: false, FailureMessage: string.Empty)],
+        configuredAlarms: [firstAlarm]);
+    AssertEqual(0, statusFailureWithClearedAddress.RecoveredAlarms.Count, "双条件模式的状态读取失败不能把已归零地址误判为恢复。");
+    AssertEqual(1, statusFailureWithClearedAddress.NextState.ActiveAlarms.Count, "状态读取失败时必须保留既有报警快照。");
+
+    var sharedStatusUnknown = PlcDeviceAlarmCycleRules.Decide(
+        new PlcDeviceAlarmCycleState([sharedAlarm]),
+        AppConstants.PlcAlarmTriggerModes.DeviceStatusAndAddress,
+        new Dictionary<int, short?>
+        {
+            [1] = ProductionConstants.PlcDeviceStatuses.Running,
+            [2] = null
+        },
+        [new PlcAlarmSignalReadResult(0, sharedAlarm.Address, sharedAlarm.AlarmContent, IsSuccess: true, IsActive: false, FailureMessage: string.Empty)],
+        configuredAlarms: [sharedAlarm]);
+    AssertEqual(0, sharedStatusUnknown.RecoveredAlarms.Count, "共享报警任一工位状态未知时不得误判恢复。");
+    AssertEqual(1, sharedStatusUnknown.NextState.ActiveAlarms.Count, "共享报警状态未知时必须保留既有活动快照。");
+}
+
+static void PlcAlarmCycleTracksPerAddressRecovery()
+{
+    var firstAlarm = new PlcActiveAlarm(1, "DB10.DBX2.0", "安全门打开");
+    var secondAlarm = new PlcActiveAlarm(1, "DB10.DBX2.1", "气压低");
+    var state = new PlcDeviceAlarmCycleState([firstAlarm, secondAlarm]);
+    var results = new[]
+    {
+        new PlcAlarmSignalReadResult(1, firstAlarm.Address, firstAlarm.AlarmContent, IsSuccess: true, IsActive: false, FailureMessage: string.Empty),
+        new PlcAlarmSignalReadResult(1, secondAlarm.Address, secondAlarm.AlarmContent, IsSuccess: true, IsActive: true, FailureMessage: string.Empty)
+    };
+
+    var partialRecovery = PlcDeviceAlarmCycleRules.Decide(
+        state,
+        AppConstants.PlcAlarmTriggerModes.AddressOnly,
+        new Dictionary<int, short?>(),
+        results,
+        configuredAlarms: [firstAlarm, secondAlarm]);
+    AssertSequenceEqual([firstAlarm.Address], partialRecovery.RecoveredAlarms.Select(alarm => alarm.Address).ToArray(), "明确读到 false 的地址必须逐条恢复。");
+    AssertSequenceEqual([secondAlarm.Address], partialRecovery.NextState.ActiveAlarms.Select(alarm => alarm.Address).ToArray(), "部分恢复后其他活动报警必须保留。");
+    AssertTrue(partialRecovery.ShouldReassertException, "部分恢复且没有新异常时必须重申剩余状态 4。");
+
+    var readFailure = PlcDeviceAlarmCycleRules.Decide(
+        state,
+        AppConstants.PlcAlarmTriggerModes.AddressOnly,
+        new Dictionary<int, short?>(),
+        [new PlcAlarmSignalReadResult(1, firstAlarm.Address, firstAlarm.AlarmContent, IsSuccess: false, IsActive: false, FailureMessage: "timeout")],
+        configuredAlarms: [firstAlarm, secondAlarm]);
+    AssertEqual(0, readFailure.RecoveredAlarms.Count, "报警地址读取失败不得误判为恢复。");
+    AssertEqual(2, readFailure.NextState.ActiveAlarms.Count, "读取失败必须冻结已有活动报警。");
+
+    var removedConfig = PlcDeviceAlarmCycleRules.Decide(
+        state,
+        AppConstants.PlcAlarmTriggerModes.AddressOnly,
+        new Dictionary<int, short?>(),
+        [new PlcAlarmSignalReadResult(1, secondAlarm.Address, secondAlarm.AlarmContent, IsSuccess: true, IsActive: true, FailureMessage: string.Empty)],
+        configuredAlarms: [secondAlarm]);
+    AssertSequenceEqual([firstAlarm.Address], removedConfig.RecoveredAlarms.Select(alarm => alarm.Address).ToArray(), "活动地址被删除或禁用时必须使用触发时快照生成恢复。");
+
+    var removedConfigWhilePlcOffline = PlcDeviceAlarmCycleRules.Decide(
+        state,
+        AppConstants.PlcAlarmTriggerModes.AddressOnly,
+        new Dictionary<int, short?>(),
+        readResults: [],
+        configuredAlarms: [secondAlarm]);
+    AssertSequenceEqual([firstAlarm.Address], removedConfigWhilePlcOffline.RecoveredAlarms.Select(alarm => alarm.Address).ToArray(), "PLC 离线时删除或禁用活动地址仍必须生成恢复。");
+    AssertSequenceEqual([secondAlarm.Address], removedConfigWhilePlcOffline.NextState.ActiveAlarms.Select(alarm => alarm.Address).ToArray(), "PLC 离线不能把仍配置的活动地址误判为恢复。");
+
+    var allConfigsRemovedWhilePlcOffline = PlcDeviceAlarmCycleRules.Decide(
+        state,
+        AppConstants.PlcAlarmTriggerModes.AddressOnly,
+        new Dictionary<int, short?> { [1] = null },
+        readResults: [],
+        configuredAlarms: []);
+    AssertSequenceEqual(
+        [firstAlarm.Address, secondAlarm.Address],
+        allConfigsRemovedWhilePlcOffline.RecoveredAlarms.Select(alarm => alarm.Address).ToArray(),
+        "报警读取开启且 PLC 全部离线时，删除全部活动配置仍必须逐条恢复。");
+
+    var readingDisabled = PlcDeviceAlarmCycleRules.Decide(
+        state,
+        AppConstants.PlcAlarmTriggerModes.AddressOnly,
+        new Dictionary<int, short?>(),
+        readResults: [],
+        configuredAlarms: []);
+    AssertEqual(0, readingDisabled.RecoveredAlarms.Count, "关闭报警读取时不得把空配置快照当作恢复。");
+    AssertEqual(2, readingDisabled.NextState.ActiveAlarms.Count, "关闭报警读取时必须冻结完整活动报警集合。");
+}
+
+static void PlcDeviceAlarmCycleRestoresFromJsonl()
+{
+    var logs = new[]
+    {
+        new BizDeviceStatusLog
+        {
+            StationNo = 1,
+            DeviceStatus = ProductionConstants.MesDeviceStatuses.Exception,
+            AlarmAddress = "DB10.DBX2.0",
+            AlarmContent = "安全门打开",
+            OccurredTime = new DateTime(2026, 7, 22, 9, 0, 0)
+        },
+        new BizDeviceStatusLog
+        {
+            StationNo = 1,
+            DeviceStatus = ProductionConstants.MesDeviceStatuses.Exception,
+            AlarmAddress = "DB10.DBX2.1",
+            AlarmContent = "气压低",
+            OccurredTime = new DateTime(2026, 7, 22, 9, 1, 0)
+        }
+    };
+
+    var restored = PlcDeviceAlarmCycleRules.Restore(logs);
+    AssertSequenceEqual(
+        new[] { "1:DB10.2.0", "1:DB10.2.1" },
+        restored.ActiveAlarms.Select(PlcDeviceAlarmCycleRules.GetAlarmKey).OrderBy(key => key, StringComparer.OrdinalIgnoreCase).ToArray(),
+        "重启后必须从 JSONL 恢复最近未闭合报警周期的地址。");
+
+    var unrelatedStatus = PlcDeviceAlarmCycleRules.Restore(logs.Append(new BizDeviceStatusLog
+    {
+        StationNo = 1,
+        DeviceStatus = ProductionConstants.MesDeviceStatuses.ProgramStarted,
+        OccurredTime = new DateTime(2026, 7, 22, 9, 1, 30)
+    }));
+    AssertEqual(2, unrelatedStatus.ActiveAlarms.Count, "状态 0/1/6/7 不得在重启恢复时擅自闭合报警周期，只有状态 5 可以闭合。");
+
+    var persistentAlarm = PlcDeviceAlarmCycleRules.Decide(
+        restored,
+        AppConstants.PlcAlarmTriggerModes.AddressOnly,
+        new Dictionary<int, short?>(),
+        [new PlcAlarmSignalReadResult(1, "DB10.DBX2.0", "安全门打开", IsSuccess: true, IsActive: true, FailureMessage: string.Empty)],
+        configuredAlarms: [new PlcActiveAlarm(1, "DB10.DBX2.0", "安全门打开"), new PlcActiveAlarm(1, "DB10.DBX2.1", "气压低")]);
+    AssertEqual(0, persistentAlarm.NewAlarms.Count, "重启后持续置位的既有地址不得重复记录。");
+
+    var recovered = PlcDeviceAlarmCycleRules.Decide(
+        persistentAlarm.NextState,
+        AppConstants.PlcAlarmTriggerModes.AddressOnly,
+        new Dictionary<int, short?>(),
+        [new PlcAlarmSignalReadResult(1, "DB10.DBX2.0", "安全门打开", IsSuccess: true, IsActive: false, FailureMessage: string.Empty)],
+        configuredAlarms: [new PlcActiveAlarm(1, "DB10.DBX2.0", "安全门打开")]);
+    AssertEqual(2, recovered.RecoveredAlarms.Count, "重启后明确归零和已删除配置必须分别补全状态 5。");
+
+    var partiallyClosed = PlcDeviceAlarmCycleRules.Restore(logs.Append(new BizDeviceStatusLog
+    {
+        StationNo = 1,
+        DeviceStatus = ProductionConstants.MesDeviceStatuses.Recovered,
+        AlarmAddress = "DB10.DBX2.0",
+        AlarmContent = "安全门打开",
+        OccurredTime = new DateTime(2026, 7, 22, 9, 1, 30)
+    }));
+    AssertSequenceEqual(["DB10.DBX2.1"], partiallyClosed.ActiveAlarms.Select(alarm => alarm.Address).ToArray(), "带地址的状态 5 只能关闭对应报警。");
+
+    var closed = PlcDeviceAlarmCycleRules.Restore(logs.Append(new BizDeviceStatusLog
+    {
+        StationNo = 1,
+        DeviceStatus = ProductionConstants.MesDeviceStatuses.Recovered,
+        OccurredTime = new DateTime(2026, 7, 22, 9, 2, 0)
+    }));
+    AssertEqual(0, closed.ActiveAlarms.Count, "无地址的旧状态 5 必须继续兼容整周期关闭。");
+}
+
 static void PlcProductionMonitorReadsBoolAlarmsIndependently()
 {
     var serviceCode = File.ReadAllText(
@@ -997,14 +1291,14 @@ static void PlcProductionMonitorReadsBoolAlarmsIndependently()
 
     AssertEqual(
         1,
-        CountOccurrences(pollMethod, "_settingsService.Get().EnablePlcAlarmReading != false"),
+        CountOccurrences(pollMethod, "settings.EnablePlcAlarmReading != false"),
         "每轮生产采集只能读取一次 PLC 报警开关，避免不同工位使用不同设置快照。");
     AssertTrue(
         pollMethod.Contains("IReadOnlyList<BizPlcAlarmAddress> alarmAddresses = alarmReadingEnabled\n            ? _plcAlarmAddressService.GetAll()\n            : [];", StringComparison.Ordinal),
         "关闭 PLC 报警读取时不得访问报警配置服务，且工位发现应接收空报警快照。");
     AssertSourceOrder(
         pollMethod,
-        "var alarmReadingEnabled = _settingsService.Get().EnablePlcAlarmReading != false;",
+        "var alarmReadingEnabled = settings.EnablePlcAlarmReading != false;",
         "_plcAlarmAddressService.GetAll()",
         "必须先读取报警开关，再决定是否加载报警配置。");
     AssertSourceOrder(
@@ -1020,34 +1314,81 @@ static void PlcProductionMonitorReadsBoolAlarmsIndependently()
         pollMethod.Contains("ResolveStationNumbers(addresses, alarmAddresses)", StringComparison.Ordinal),
         "轮询工位必须同时由生产地址和报警地址配置发现。");
     AssertTrue(
-        pollMethod.Contains("var alarmReadingEnabled = _settingsService.Get().EnablePlcAlarmReading != false;", StringComparison.Ordinal),
+        pollMethod.Contains("var alarmReadingEnabled = settings.EnablePlcAlarmReading != false;", StringComparison.Ordinal),
         "每轮采集应先读取报警开关，明确决定是否扫描 Bool 报警地址。");
     AssertTrue(
-        pollMethod.Contains("alarmReadingEnabled\n                ? await ReadActiveAlarmSnapshotAsync(alarmAddresses, stationNo, cancellationToken)", StringComparison.Ordinal),
-        "启用报警读取后应独立扫描当前工位及共享报警地址。");
+        pollMethod.Contains("? await ReadAlarmSignalsAsync(alarmAddresses, cancellationToken)", StringComparison.Ordinal),
+        "启用报警读取后应按唯一报警键扫描一次完整地址快照。");
     AssertSourceOrder(
         pollMethod,
-        "await ReadActiveAlarmSnapshotAsync(alarmAddresses, stationNo, cancellationToken)",
-        "if (deviceStatusAddress is null)",
-        "设备状态地址缺失时也必须先完成独立 Bool 报警扫描。");
-    AssertSourceOrder(
-        pollMethod,
-        "await ReadActiveAlarmSnapshotAsync(alarmAddresses, stationNo, cancellationToken)",
-        "if (!statusResult.IsSuccess)",
-        "设备状态读取失败时也必须先完成独立 Bool 报警扫描。");
-    AssertSourceOrder(
-        pollMethod,
-        "await ReadActiveAlarmSnapshotAsync(alarmAddresses, stationNo, cancellationToken)",
-        "if (ProductionConstants.PlcDeviceStatuses.IsReportable(plcStatusCode))",
-        "Bool 报警读取不应再依赖原始设备状态先等于 4。");
+        "await ReadAlarmSignalsAsync(alarmAddresses, cancellationToken)",
+        "foreach (var stationNo in stationNumbers)",
+        "必须先收集全部报警地址，再逐工位读取原始状态。");
+    var regularCycleStart = pollMethod.LastIndexOf("await RecordDeviceAlarmCycleAsync(", StringComparison.Ordinal);
+    var stationReadLoopStart = pollMethod.IndexOf("foreach (var stationNo in stationNumbers)", StringComparison.Ordinal);
+    var alarmReadStart = pollMethod.IndexOf("await ReadAlarmSignalsAsync(alarmAddresses, cancellationToken)", StringComparison.Ordinal);
     AssertTrue(
-        pollMethod.Contains("alarmProjection.IsSoftwareAlarmActive", StringComparison.Ordinal)
-        && pollMethod.Contains("alarmProjection.SoftwareAlarmMessage", StringComparison.Ordinal)
+        stationReadLoopStart >= 0 && regularCycleStart > stationReadLoopStart,
+        "常规连接路径必须收集完各工位状态后再统一计算报警差集。");
+    AssertTrue(
+        alarmReadStart >= 0 && regularCycleStart > alarmReadStart,
+        "常规连接路径的 Bool 报警读取不应再依赖原始设备状态先等于 4。");
+    var disconnectedStart = pollMethod.IndexOf("if (!stationNumbers.Any(IsPlcConnected))", StringComparison.Ordinal);
+    var disconnectedCycle = pollMethod.IndexOf("await RecordDeviceAlarmCycleAsync(", disconnectedStart, StringComparison.Ordinal);
+    var disconnectedReturn = pollMethod.IndexOf("return;", disconnectedStart, StringComparison.Ordinal);
+    AssertTrue(
+        disconnectedStart >= 0 && disconnectedCycle > disconnectedStart && disconnectedCycle < disconnectedReturn,
+        "PLC 全部离线时仍须按当前配置闭合已删除或禁用的活动报警。");
+    AssertTrue(
+        pollMethod.Contains("stationNumbers.ToDictionary(stationNo => stationNo, _ => (short?)null)", StringComparison.Ordinal),
+        "PLC 全部离线但报警读取开启时必须保留未知工位状态，与关闭报警读取的冻结语义区分。 ");
+    AssertFalse(
+        pollMethod.Contains("if (ProductionConstants.PlcDeviceStatuses.IsReportable(plcStatusCode))\n            {\n                await RecordDeviceAlarmCycleAsync", StringComparison.Ordinal),
+        "报警周期判定不得受可上报状态门禁限制，任意非 4 状态都表示恢复。");
+    AssertTrue(
+        serviceCode.Contains("ApplyEffectiveAlarmSnapshots", StringComparison.Ordinal)
+        && serviceCode.Contains("IsSoftwareAlarmActive = stationAlarms.Count > 0", StringComparison.Ordinal)
         && pollMethod.Contains("plcStatusCode,", StringComparison.Ordinal),
-        "生产快照必须显式发布软件报警状态和内容，且不能改写原始 DeviceStatusCode。");
+        "生产快照必须由有效报警集合发布软件报警状态，且不能改写原始 DeviceStatusCode。");
     AssertFalse(
         serviceCode.Contains("ReadActiveAlarmMessageAsync", StringComparison.Ordinal),
         "重复且未使用的报警读取方法应移除，避免两套聚合规则再次漂移。");
+    var remarkMethod = ExtractMethodText(
+        serviceCode,
+        "private static string BuildDeviceStatusRemark",
+        "private static int? ToInteger");
+    AssertTrue(remarkMethod.Contains("FormatExceptionRemark", StringComparison.Ordinal), "PLC 新异常必须使用统一的精简 Remark 规则。");
+    AssertTrue(remarkMethod.Contains("FormatRecoveryRemark", StringComparison.Ordinal), "PLC 逐地址恢复必须使用统一的恢复 Remark 规则。");
+    AssertFalse(remarkMethod.Contains("alarm.Address", StringComparison.Ordinal), "PLC 新异常 Remark 不得拼接报警地址。");
+    AssertTrue(
+        serviceCode.Contains("var nextOccurredTime = DateTime.Now;", StringComparison.Ordinal)
+        && CountOccurrences(serviceCode, "nextOccurredTime = nextOccurredTime.AddMilliseconds(1);") >= 2,
+        "同批恢复、新异常和状态重申必须使用单调递增时间。");
+    AssertTrue(
+        serviceCode.Contains("stationNo <= ProductionConstants.Stations.SharedStationNo", StringComparison.Ordinal)
+        && serviceCode.Contains("? ProductionConstants.Stations.SharedStationNo", StringComparison.Ordinal),
+        "共享报警必须以 StationNo=0 落盘，而不能归属任一工位。");
+    var recordAlarmCycle = ExtractMethodText(
+        serviceCode,
+        "private async Task RecordDeviceAlarmCycleAsync",
+        "private PlcDeviceAlarmCycleState EnsureAlarmCycleState");
+    AssertTrue(
+        recordAlarmCycle.Contains("GetSourceActiveAlarmKeys()", StringComparison.Ordinal)
+        && recordAlarmCycle.Contains("_sourceRemovedAlarmKeysAwaitingClear.Add(alarmKey)", StringComparison.Ordinal)
+        && recordAlarmCycle.Contains("decision.ShouldReassertException && hasRecordedRecovery", StringComparison.Ordinal)
+        && recordAlarmCycle.Contains("sourceActiveAlarmKeys?.Contains(remainingAlarmKey) == true", StringComparison.Ordinal)
+        && recordAlarmCycle.Contains("_pendingExceptionReassertion = remainingAlarm;", StringComparison.Ordinal)
+        && recordAlarmCycle.Contains("if (hasRecordedNewException)", StringComparison.Ordinal)
+        && recordAlarmCycle.Contains("await RetryPendingExceptionReassertionAsync(", StringComparison.Ordinal),
+        "JSONL 源被删除时不得补写状态 5 或部分恢复后的既有状态 4，且地址持续置位必须等待明确清除后才可重启周期。");
+    var deviceStatusStoreCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Log", "DeviceStatusLocalLogStore.cs"),
+        Encoding.UTF8);
+    AssertTrue(
+        deviceStatusStoreCode.Contains("maxCount == int.MaxValue", StringComparison.Ordinal)
+        && deviceStatusStoreCode.Contains("Math.Clamp(maxCount, 1, 5000)", StringComparison.Ordinal)
+        && recordAlarmCycle.Contains("maxCount: int.MaxValue", StringComparison.Ordinal),
+        "报警周期恢复和删除复核必须扫描全部日期 JSONL，不能受日志管理页的 5000 条显示上限截断。");
 }
 
 static void PlcAlarmReadFailuresAreMergedAndLabeledPrecisely()
@@ -1057,10 +1398,10 @@ static void PlcAlarmReadFailuresAreMergedAndLabeledPrecisely()
         Encoding.UTF8);
     var readMethod = ExtractMethodText(
         serviceCode,
-        "private async Task<PlcAlarmSignalAggregation> ReadActiveAlarmSnapshotAsync",
+        "private async Task<IReadOnlyList<PlcAlarmSignalReadResult>> ReadAlarmSignalsAsync",
         "private static string BuildDeviceStatusRemark");
 
-    AssertTrue(readMethod.Contains("WriteAlarmReadFailureLog(stationNo, aggregation.Failures);", StringComparison.Ordinal), "一轮报警读取失败必须合并为一条日志，不能按地址逐条写入。");
+    AssertTrue(serviceCode.Contains("WriteAlarmReadFailureLog(stationNo, failures);", StringComparison.Ordinal), "一轮报警读取失败必须合并为一条日志，不能按地址逐条写入。");
     AssertFalse(readMethod.Contains("WriteBusinessFailureLog(", StringComparison.Ordinal), "报警地址读取失败不得复用生产数据采集失败的通用日志入口。");
     AssertTrue(serviceCode.Contains("TextKeys.Monitor.RuntimeError.PlcAlarmReadFailed", StringComparison.Ordinal), "报警读取失败必须使用专属异常消息键。");
     AssertTrue(serviceCode.Contains("_activeAlarmFailureKeys", StringComparison.Ordinal), "持续相同的报警读取失败必须抑制重复写入。");
@@ -1227,6 +1568,17 @@ static void PlcSoftwareAlarmsStayLocalToMonitorView()
     AssertFalse(
         applyDeviceStatus.Contains("EnablePlcAlarmReading", StringComparison.Ordinal),
         "MonitorView 不应再用设置开关屏蔽原始状态 4 触发的软件报警。");
+    AssertTrue(
+        applyDeviceStatus.Contains("snapshot.IsAlarmPendingConfirmation", StringComparison.Ordinal)
+        && applyDeviceStatus.Contains("snapshot.IsRawAlarmUnconfirmed", StringComparison.Ordinal),
+        "MonitorView 必须区分双条件模式黄色待确认与仅地址模式灰色未知。");
+    AssertTrue(
+        applyDeviceStatus.Contains("_deviceAlarmRuntimeErrorText = alarmMessage.Trim();", StringComparison.Ordinal),
+        "异常详情必须展示完整的当前有效报警集合，不得按运行摘要长度截断。");
+    AssertTrue(
+        applyDeviceStatus.Contains("snapshot.IsSoftwareAlarmActive || snapshot.IsAlarmPendingConfirmation", StringComparison.Ordinal)
+        && applyDeviceStatus.Contains("PlcSoftwareAlarmRules.GenericAlarmMessage", StringComparison.Ordinal),
+        "双条件模式状态 4 未匹配报警地址时，异常详情必须展示待确认原因。");
 
     var centerCode = File.ReadAllText(
         GetRepoFilePath("AutoWeldSystem.Services", "Center", "CenterTelemetrySyncService.cs"),
@@ -1248,14 +1600,10 @@ static void PlcSoftwareAlarmsStayLocalToMonitorView()
     var lifecycleCode = File.ReadAllText(
         GetRepoFilePath("AutoWeldSystem.Services", "Log", "DeviceLifecycleLogCoordinator.cs"),
         Encoding.UTF8);
-    var recordAlarmChange = ExtractMethodText(
-        lifecycleCode,
-        "private void RecordAlarmChange",
-        "private static IEnumerable<int> ResolveStationNumbers");
     AssertFalse(
-        recordAlarmChange.Contains("IsSoftwareAlarmActive", StringComparison.Ordinal)
-        || recordAlarmChange.Contains("SoftwareAlarmMessage", StringComparison.Ordinal),
-        "生命周期报警日志必须继续只跟随原始 PLC 状态 4 的转换。");
+        lifecycleCode.Contains("RecordAlarmChange", StringComparison.Ordinal)
+        || lifecycleCode.Contains("_plcProductionMonitorService.StatusChanged", StringComparison.Ordinal),
+        "设备日志不得再接收原始状态或 Bool 报警，报警只写入设备状态日志。");
 }
 
 static void OnlyConfiguredExpressionsCreateRoles()
@@ -2228,7 +2576,7 @@ static void ProductionReportCompletionFlowPersistsBeforeFinalGeneration()
         "MES 报表上传必须优先使用最新报表记录，再回退上传任务旧路径。");
 }
 
-static void FinishReportGenerationIsLocalWhileMesUploadFollowsReportEnable()
+static void FinishReportQueuesGeneratedXlsxEvenWithoutReportEnable()
 {
     static IReadOnlyList<BizUploadTask> InvokeFinishEnqueue(
         WeldTaskService service,
@@ -2258,12 +2606,13 @@ static void FinishReportGenerationIsLocalWhileMesUploadFollowsReportEnable()
 
     var noReportResult = InvokeFinishEnqueue(noReportService, task);
     AssertEqual(1, noReportFileService.GenerateCallCount, "无 ReportEnable 时仍必须生成固定公共字段本地 XLSX。");
-    AssertFalse(
+    AssertTrue(
         noReportResult.Any(uploadTask => uploadTask.TaskType == ProductionConstants.UploadTaskTypes.ReportFile),
-        "无有效 ReportEnable 时不得创建 MES ReportFile 任务。");
-    AssertFalse(
-        noReportUploadTasks.Enqueued.Any(uploadTask => uploadTask.TaskType == ProductionConstants.UploadTaskTypes.ReportFile),
-        "无有效 ReportEnable 时上传队列不得出现 MES ReportFile 任务。");
+        "已生成 XLSX 时，即使无有效 ReportEnable 也必须创建 MES ReportFile 任务。");
+    AssertTrue(
+        noReportUploadTasks.Enqueued.Any(uploadTask => uploadTask.TaskType == ProductionConstants.UploadTaskTypes.ReportFile
+            && uploadTask.FilePath == "local-fixed-fields.xlsx"),
+        "已生成 XLSX 的 MES ReportFile 任务必须实际进入上传队列并保留文件路径。");
 
     var enabledUploadTasks = new FakeUploadTaskService();
     var enabledReportFileService = new FakeProductionReportFileService
@@ -2288,6 +2637,49 @@ static void FinishReportGenerationIsLocalWhileMesUploadFollowsReportEnable()
         "有效 ReportEnable 的 MES ReportFile 任务必须实际进入上传队列。");
 }
 
+static void ReportFileUploadTasksReconcileGeneratedXlsxRecords()
+{
+    var uploadTaskServiceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "UploadTaskService.cs"),
+        Encoding.UTF8);
+    var getTasksMethod = ExtractMethodText(
+        uploadTaskServiceCode,
+        "public IReadOnlyList<UploadTaskSummary> GetTasks",
+        "public IReadOnlyList<UploadTaskSummary> GetProcessParameterRows");
+    var executeAllMethod = ExtractMethodText(
+        uploadTaskServiceCode,
+        "public async Task<int> ExecuteAllPendingAsync",
+        "public void RequestRetry");
+    var retryAllMethod = ExtractMethodText(
+        uploadTaskServiceCode,
+        "public int RequestRetryAll",
+        "public void DeleteTask");
+    var reconcileMethod = ExtractMethodText(
+        uploadTaskServiceCode,
+        "private void SyncReportFileTasksFromReports",
+        "public async Task<UploadTaskSummary?> ExecuteAsync");
+    var upsertMethod = ExtractMethodText(
+        uploadTaskServiceCode,
+        "private void UpsertReportFileUploadTask",
+        "private static bool ShouldSyncReportFileTask");
+    var shouldSyncMethod = ExtractMethodText(
+        uploadTaskServiceCode,
+        "private static bool ShouldSyncReportFileTask",
+        "private static BizUploadTask BuildReportFileUploadTask");
+
+    AssertTrue(getTasksMethod.Contains("SyncReportFileTasksFromReports();", StringComparison.Ordinal), "报表待上传页必须先补齐已生成 XLSX 的上传任务。");
+    AssertTrue(executeAllMethod.Contains("SyncReportFileTasksFromReports();", StringComparison.Ordinal), "批量自动补传报表前必须先补齐孤儿报表任务。");
+    AssertTrue(retryAllMethod.Contains("SyncReportFileTasksFromReports();", StringComparison.Ordinal), "人工全部重试报表前必须先补齐孤儿报表任务。");
+    AssertTrue(reconcileMethod.Contains("Queryable<BizProductionReportFile>", StringComparison.Ordinal), "报表补齐必须以已生成的 BizProductionReportFile 为来源。");
+    AssertTrue(reconcileMethod.Contains("ShouldSyncReportFileTask", StringComparison.Ordinal), "报表补齐必须只处理 Pending/Failed/Retrying 的 XLSX 报表。");
+    AssertTrue(reconcileMethod.Contains("UpsertReportFileUploadTask(weldTask, report)", StringComparison.Ordinal), "有效报表记录必须补齐成 ReportFile 上传任务。");
+    AssertTrue(upsertMethod.Contains("task.WeldTaskId == weldTask.Id", StringComparison.Ordinal), "报表补齐查重必须覆盖旧 LocalExpStartId business id，避免开工补传后重复建任务。");
+    AssertTrue(upsertMethod.Contains("existing.IsDeleted", StringComparison.Ordinal), "用户删除过的报表上传任务不能被补齐逻辑反复恢复。");
+    AssertTrue(upsertMethod.Contains("existing.Status == ProductionConstants.UploadStatuses.Uploaded", StringComparison.Ordinal), "已上传报表不能被补齐逻辑回退为待上传。");
+    AssertTrue(upsertMethod.Contains("existing.Status == ProductionConstants.UploadStatuses.Uploading", StringComparison.Ordinal), "正在上传的报表任务不能被补齐逻辑覆盖。");
+    AssertTrue(upsertMethod.Contains("Insertable(uploadTask)", StringComparison.Ordinal), "缺失的报表上传任务必须被创建。");
+    AssertTrue(shouldSyncMethod.Contains("NormalizeStatus(report.UploadStatus)", StringComparison.Ordinal), "历史报表上传状态必须先归一化后判断是否需要补齐。");
+}
 static void UnavailableRolesAreCleared()
 {
     var item = new DimTestItem
@@ -4201,6 +4593,42 @@ static void DeviceStatusLocalLogStoreResolvesDirectories()
         "日志根目录为空时，应回退到程序目录 Logs/DeviceStatus。");
 }
 
+static void MesDeviceStatusRulesFormatConciseExceptionRemarks()
+{
+    AssertEqual(
+        "工位1：左电极使用寿命到达，请更换；",
+        DeviceStatusReportRules.FormatExceptionRemark(" 左电极使用寿命到达，请更换；; ", 1, isSharedAlarm: false),
+        "工位报警必须使用工位前缀，并把末尾分号规范为一个中文分号。");
+    AssertEqual(
+        "左电极使用寿命到达，请更换；",
+        DeviceStatusReportRules.FormatExceptionRemark("左电极使用寿命到达，请更换", 1, isSharedAlarm: true),
+        "共享报警不得携带工位前缀。");
+    AssertEqual(
+        "工位2：设备异常；",
+        DeviceStatusReportRules.FormatExceptionRemark(null, 2, isSharedAlarm: false),
+        "旧记录缺少报警内容时必须使用通用异常原因。");
+    AssertEqual(
+        "设备异常；",
+        DeviceStatusReportRules.FormatExceptionRemark(" ", 0, isSharedAlarm: true),
+        "旧共享记录缺少报警内容时不得添加共享工位前缀。");
+}
+
+static void MesDeviceStatusRulesFormatConciseRecoveryRemarks()
+{
+    AssertEqual(
+        "异常恢复-工位1：左电极使用寿命到达，请更换；",
+        DeviceStatusReportRules.FormatRecoveryRemark(" 左电极使用寿命到达，请更换；; ", 1, isSharedAlarm: false),
+        "工位恢复必须包含恢复前缀、工位和报警内容，并规范末尾分号。");
+    AssertEqual(
+        "异常恢复：左电极使用寿命到达，请更换；",
+        DeviceStatusReportRules.FormatRecoveryRemark("左电极使用寿命到达，请更换", 0, isSharedAlarm: true),
+        "共享恢复不得绑定任一工位。");
+    AssertEqual(
+        "异常恢复-工位2：设备异常；",
+        DeviceStatusReportRules.FormatRecoveryRemark(null, 2, isSharedAlarm: false),
+        "恢复记录缺少报警内容时必须使用设备异常兜底。");
+}
+
 static void DeviceStatusRecordIdentitySupportsGuidAndLegacyKeys()
 {
     var guid = Guid.Parse("A7A2A606-7840-4A3D-9CE4-8B8C7BE8357B");
@@ -4370,6 +4798,296 @@ static void DeviceStatusServiceWritesJsonlBeforeMes()
         AssertEqual(result.OccurredTime, persistedResult.OccurredTime, "追加结果不能丢失原始毫秒时间。");
         AssertTrue(notifications >= 2, "Pending 首版本和 Uploaded 结果版本都必须通知 UI 重载。");
         AssertEqual(0, exceptionLogs.Entries.Count, "正常落盘和上报不应写程序异常日志。");
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}
+
+static void DeviceStatusAlarmDetailsPersistAndReachMesRemark()
+{
+    var root = Path.Combine(Path.GetTempPath(), "AutoWeldSystemDeviceAlarmDetailTests", Guid.NewGuid().ToString("N"));
+    var settings = new FakeAppSettingsService
+    {
+        Current = new AppSettings
+        {
+            DeviceId = "D-001",
+            LogDirectory = root,
+            EnableDeviceStatusReport = true
+        }
+    };
+    var mes = new FakeMesProvider();
+    using var dbContext = new AutoWeldSystem.Data.SqlSugarDbContext("server=127.0.0.1;database=unused;uid=unused;pwd=unused;");
+    var service = new DeviceStatusService(dbContext, settings, mes, new FakeProgramExceptionLogService());
+
+    try
+    {
+        var result = service.ChangeStatusAsync(
+                ProductionConstants.MesDeviceStatuses.Exception,
+                "工位1：安全门打开；",
+                "PLC-S1",
+                stationNo: 1,
+                alarmAddress: "DB10.DBX2.0",
+                alarmContent: "安全门打开")
+            .GetAwaiter()
+            .GetResult();
+        var persisted = service.GetLog(result.RecordId!);
+
+        AssertTrue(persisted is not null, "报警设备状态必须写入 JSONL。");
+        AssertEqual("DB10.DBX2.0", persisted!.AlarmAddress, "JSONL 最新版本必须保留报警地址。");
+        AssertEqual("安全门打开", persisted.AlarmContent, "JSONL 最新版本必须保留报警内容。");
+        AssertEqual(1, mes.DeviceStatusRequests.Count, "报警设备状态应上传一次 MES。");
+        AssertEqual("工位1：安全门打开；", mes.DeviceStatusRequests[0].Remark, "MES 异常 Remark 必须精简为工位和报警内容。");
+        AssertFalse(mes.DeviceStatusRequests[0].Remark.Contains("DB10.DBX2.0", StringComparison.Ordinal), "MES 异常 Remark 不得包含报警地址。");
+
+        var duplicate = service.ChangeStatusAsync(
+                ProductionConstants.MesDeviceStatuses.Exception,
+                "工位1：安全门打开；",
+                "PLC-S1",
+                stationNo: 1,
+                alarmAddress: "DB10.DBX2.0",
+                alarmContent: "安全门打开")
+            .GetAwaiter()
+            .GetResult();
+        AssertEqual(result.RecordId, duplicate.RecordId, "同一报警周期内同一地址必须复用既有记录。");
+        AssertEqual(1, mes.DeviceStatusRequests.Count, "同一报警地址不得重复上传。");
+
+        _ = service.ChangeStatusAsync(
+                ProductionConstants.MesDeviceStatuses.Exception,
+                "工位1：气压低；",
+                "PLC-S1",
+                stationNo: 1,
+                alarmAddress: "DB10.DBX2.1",
+                alarmContent: "气压低")
+            .GetAwaiter()
+            .GetResult();
+        AssertEqual(2, mes.DeviceStatusRequests.Count, "状态仍为 4 时新报警地址必须独立上传。");
+
+        _ = service.ChangeStatusAsync(
+                ProductionConstants.MesDeviceStatuses.Recovered,
+                "异常恢复；工位：工位1",
+                "PLC-S1",
+                stationNo: 1)
+            .GetAwaiter()
+            .GetResult();
+        var nextCycle = service.ChangeStatusAsync(
+                ProductionConstants.MesDeviceStatuses.Exception,
+                "工位1：安全门打开；",
+                "PLC-S1",
+                stationNo: 1,
+                alarmAddress: "DB10.DBX2.0",
+                alarmContent: "安全门打开")
+            .GetAwaiter()
+            .GetResult();
+        AssertFalse(result.RecordId == nextCycle.RecordId, "状态 5 闭合后，同一报警地址必须能在下一周期重新记录。");
+        AssertEqual(4, mes.DeviceStatusRequests.Count, "恢复和下一周期异常必须分别上传 MES。");
+
+        var addressRecovery = service.ChangeStatusAsync(
+                ProductionConstants.MesDeviceStatuses.Recovered,
+                "异常恢复-工位1：安全门打开；",
+                "PLC-S1",
+                stationNo: 1,
+                alarmAddress: "DB10.DBX2.0",
+                alarmContent: "安全门打开")
+            .GetAwaiter()
+            .GetResult();
+        var duplicateAddressRecovery = service.ChangeStatusAsync(
+                ProductionConstants.MesDeviceStatuses.Recovered,
+                "异常恢复-工位1：安全门打开；",
+                "PLC-S1",
+                stationNo: 1,
+                alarmAddress: "DB10.DBX2.0",
+                alarmContent: "安全门打开")
+            .GetAwaiter()
+            .GetResult();
+        AssertEqual(addressRecovery.RecordId, duplicateAddressRecovery.RecordId, "同一报警地址的状态 5 必须复用既有恢复记录。");
+        AssertEqual(5, mes.DeviceStatusRequests.Count, "同一地址的重复恢复不得重复上传 MES。");
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}
+
+static void DeviceStatusPendingExceptionsUseConciseMesRemarks()
+{
+    var root = Path.Combine(Path.GetTempPath(), "AutoWeldSystemDeviceStatusConciseRemarkTests", Guid.NewGuid().ToString("N"));
+    var settings = new FakeAppSettingsService
+    {
+        Current = new AppSettings
+        {
+            DeviceId = "D-001",
+            LogDirectory = root,
+            EnableDeviceStatusReport = true
+        }
+    };
+    var mes = new FakeMesProvider();
+    using var dbContext = new AutoWeldSystem.Data.SqlSugarDbContext("server=127.0.0.1;database=unused;uid=unused;pwd=unused;");
+    var service = new DeviceStatusService(dbContext, settings, mes, new FakeProgramExceptionLogService());
+    var occurredTime = new DateTime(2026, 7, 23, 9, 0, 0);
+    var logs = new[]
+    {
+        new BizDeviceStatusLog
+        {
+            RecordId = Guid.NewGuid().ToString("N"),
+            DeviceId = "D-001",
+            StationNo = 1,
+            DeviceStatus = ProductionConstants.MesDeviceStatuses.Exception,
+            AlarmAddress = "DB10.DBX2.0",
+            AlarmContent = "左电极使用寿命到达，请更换",
+            Remark = "左电极使用寿命到达，请更换；报警地址：DB10.DBX2.0；工位：工位1",
+            OccurredTime = occurredTime,
+            ReportStatus = ProductionConstants.UploadStatuses.Pending
+        },
+        new BizDeviceStatusLog
+        {
+            RecordId = Guid.NewGuid().ToString("N"),
+            DeviceId = "D-001",
+            StationNo = 1,
+            DeviceStatus = ProductionConstants.MesDeviceStatuses.Exception,
+            AlarmAddress = "DB10.DBX2.1",
+            AlarmContent = "安全门打开",
+            Remark = "安全门打开；报警地址：DB10.DBX2.1；工位：双工位",
+            OccurredTime = occurredTime.AddSeconds(1),
+            ReportStatus = ProductionConstants.UploadStatuses.Failed
+        },
+        new BizDeviceStatusLog
+        {
+            RecordId = Guid.NewGuid().ToString("N"),
+            DeviceId = "D-001",
+            StationNo = 2,
+            DeviceStatus = ProductionConstants.MesDeviceStatuses.Exception,
+            AlarmAddress = "DB10.DBX2.2",
+            AlarmContent = null,
+            Remark = "旧异常；报警地址：DB10.DBX2.2；工位：工位2",
+            OccurredTime = occurredTime.AddSeconds(2),
+            ReportStatus = ProductionConstants.UploadStatuses.Pending
+        },
+        new BizDeviceStatusLog
+        {
+            RecordId = Guid.NewGuid().ToString("N"),
+            DeviceId = "D-001",
+            StationNo = 1,
+            DeviceStatus = ProductionConstants.MesDeviceStatuses.Recovered,
+            Remark = "原异常恢复备注",
+            OccurredTime = occurredTime.AddSeconds(3),
+            ReportStatus = ProductionConstants.UploadStatuses.Pending
+        }
+    };
+
+    try
+    {
+        foreach (var log in logs)
+        {
+            AssertTrue(DeviceStatusLocalLogStore.TryAppend(log, settings.Current), "历史待传测试记录必须写入 JSONL。");
+        }
+
+        service.RetryPendingUploadsAsync().GetAwaiter().GetResult();
+
+        AssertSequenceEqual(
+            new[]
+            {
+                "工位1：左电极使用寿命到达，请更换；",
+                "安全门打开；",
+                "工位2：设备异常；",
+                "原异常恢复备注"
+            },
+            mes.DeviceStatusRequests.Select(request => request.Remark).ToArray(),
+            "历史异常补传必须使用精简格式，共享报警无前缀，非异常状态保持原 Remark。");
+        AssertTrue(
+            mes.DeviceStatusRequests.Take(3).All(request => !request.Remark.Contains("报警地址", StringComparison.Ordinal)),
+            "历史异常补传不得继续发送报警地址。");
+        AssertSequenceEqual(
+            logs.Take(3).Select(log => log.Remark).ToArray(),
+            logs.Take(3).Select(log => service.GetLog(log.RecordId!)?.Remark).ToArray(),
+            "补传时只应规范 MES 请求，不得改写 JSONL 中保存的历史异常 Remark。");
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}
+
+static void DeviceStatusPendingRecoveriesUseConciseMesRemarks()
+{
+    var root = Path.Combine(Path.GetTempPath(), "AutoWeldSystemDeviceRecoveryRemarkTests", Guid.NewGuid().ToString("N"));
+    var settings = new FakeAppSettingsService
+    {
+        Current = new AppSettings
+        {
+            DeviceId = "D-001",
+            LogDirectory = root,
+            EnableDeviceStatusReport = true
+        }
+    };
+    var mes = new FakeMesProvider();
+    using var dbContext = new AutoWeldSystem.Data.SqlSugarDbContext("server=127.0.0.1;database=unused;uid=unused;pwd=unused;");
+    var service = new DeviceStatusService(dbContext, settings, mes, new FakeProgramExceptionLogService());
+    var occurredTime = new DateTime(2026, 7, 23, 10, 0, 0);
+    var logs = new[]
+    {
+        new BizDeviceStatusLog
+        {
+            RecordId = Guid.NewGuid().ToString("N"),
+            DeviceId = "D-001",
+            StationNo = 1,
+            DeviceStatus = ProductionConstants.MesDeviceStatuses.Recovered,
+            AlarmAddress = "DB10.DBX2.0",
+            AlarmContent = "左电极使用寿命到达，请更换",
+            Remark = "旧恢复；报警地址：DB10.DBX2.0",
+            OccurredTime = occurredTime,
+            ReportStatus = ProductionConstants.UploadStatuses.Pending
+        },
+        new BizDeviceStatusLog
+        {
+            RecordId = Guid.NewGuid().ToString("N"),
+            DeviceId = "D-001",
+            StationNo = 0,
+            DeviceStatus = ProductionConstants.MesDeviceStatuses.Recovered,
+            AlarmAddress = "DB10.DBX2.9",
+            AlarmContent = "急停",
+            Remark = "旧共享恢复",
+            OccurredTime = occurredTime.AddMilliseconds(1),
+            ReportStatus = ProductionConstants.UploadStatuses.Pending
+        },
+        new BizDeviceStatusLog
+        {
+            RecordId = Guid.NewGuid().ToString("N"),
+            DeviceId = "D-001",
+            StationNo = 1,
+            DeviceStatus = ProductionConstants.MesDeviceStatuses.Recovered,
+            Remark = "旧整周期恢复",
+            OccurredTime = occurredTime.AddMilliseconds(2),
+            ReportStatus = ProductionConstants.UploadStatuses.Pending
+        }
+    };
+
+    try
+    {
+        foreach (var log in logs)
+        {
+            AssertTrue(DeviceStatusLocalLogStore.TryAppend(log, settings.Current), "恢复补传测试记录必须写入 JSONL。");
+        }
+
+        service.RetryPendingUploadsAsync().GetAwaiter().GetResult();
+        AssertSequenceEqual(
+            ["异常恢复-工位1：左电极使用寿命到达，请更换；", "异常恢复：急停；", "旧整周期恢复"],
+            mes.DeviceStatusRequests.Select(request => request.Remark).ToArray(),
+            "有地址恢复必须按工位或共享格式重建 Remark，无地址旧恢复必须原样兼容。");
+        AssertSequenceEqual(
+            logs.Select(log => log.Remark).ToArray(),
+            logs.Select(log => service.GetLog(log.RecordId!)?.Remark).ToArray(),
+            "恢复补传不得改写历史 JSONL Remark。");
     }
     finally
     {
@@ -4601,6 +5319,545 @@ static void DeviceStatusServiceSharesConcurrentRetryResults()
         "MES 成功且来源同时被删时，所有等待方都必须共享成功结果。");
 }
 
+static void DeviceStatusServiceRetriesPendingLogsInOccurredOrder()
+{
+    var root = Path.Combine(Path.GetTempPath(), "AutoWeldSystemDeviceStatusPendingOrderTests", Guid.NewGuid().ToString("N"));
+    var settings = new FakeAppSettingsService
+    {
+        Current = new AppSettings
+        {
+            DeviceId = "D-001",
+            LogDirectory = root,
+            EnableDeviceStatusReport = true
+        }
+    };
+    var requestStatuses = new List<string>();
+    var mes = new FakeMesProvider
+    {
+        DeviceStatusHandler = (request, _) =>
+        {
+            requestStatuses.Add(request.DevStatus);
+            return Task.FromResult(new BasicRes<object>
+            {
+                Status = AppConstants.MesStatus.Success,
+                Msg = "操作成功"
+            });
+        }
+    };
+    using var dbContext = new AutoWeldSystem.Data.SqlSugarDbContext("server=127.0.0.1;database=unused;uid=unused;pwd=unused;");
+    var service = new DeviceStatusService(dbContext, settings, mes, new FakeProgramExceptionLogService());
+    var stopped = new BizDeviceStatusLog
+    {
+        RecordId = Guid.NewGuid().ToString("N"),
+        DeviceId = "D-001",
+        StationNo = ProductionConstants.Stations.SharedStationNo,
+        DeviceStatus = ProductionConstants.MesDeviceStatuses.Stopped,
+        StatusName = DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.Stopped),
+        OccurredTime = new DateTime(2026, 7, 23, 8, 9, 20),
+        ReportStatus = ProductionConstants.UploadStatuses.Pending
+    };
+    var poweredOn = new BizDeviceStatusLog
+    {
+        RecordId = Guid.NewGuid().ToString("N"),
+        DeviceId = "D-001",
+        StationNo = ProductionConstants.Stations.SharedStationNo,
+        DeviceStatus = ProductionConstants.MesDeviceStatuses.PoweredOn,
+        StatusName = DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.PoweredOn),
+        OccurredTime = new DateTime(2026, 7, 23, 8, 9, 29),
+        ReportStatus = ProductionConstants.UploadStatuses.Pending
+    };
+
+    try
+    {
+        AssertTrue(DeviceStatusLocalLogStore.TryAppend(poweredOn, settings.Current), "较新的开机状态必须先写入测试 JSONL。");
+        AssertTrue(DeviceStatusLocalLogStore.TryAppend(stopped, settings.Current), "较旧的停机状态必须后写入测试 JSONL。");
+
+        service.RetryPendingUploadsAsync().GetAwaiter().GetResult();
+
+        AssertSequenceEqual(
+            new[]
+            {
+                ProductionConstants.MesDeviceStatuses.Stopped,
+                ProductionConstants.MesDeviceStatuses.PoweredOn
+            },
+            requestStatuses,
+            "自动补传必须按状态发生时间从旧到新执行。");
+        AssertEqual(ProductionConstants.UploadStatuses.Uploaded, service.GetLog(stopped.RecordId)!.ReportStatus, "旧停机状态必须更新为已上传。");
+        AssertEqual(ProductionConstants.UploadStatuses.Uploaded, service.GetLog(poweredOn.RecordId)!.ReportStatus, "新开机状态必须更新为已上传。");
+
+        requestStatuses.Clear();
+        var sameTime = new DateTime(2026, 7, 23, 8, 10, 0);
+        var firstAtSameTime = new BizDeviceStatusLog
+        {
+            RecordId = new string('f', 32),
+            DeviceId = "D-001",
+            StationNo = ProductionConstants.Stations.SharedStationNo,
+            DeviceStatus = ProductionConstants.MesDeviceStatuses.Stopped,
+            StatusName = DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.Stopped),
+            OccurredTime = sameTime,
+            ReportStatus = ProductionConstants.UploadStatuses.Pending
+        };
+        var secondAtSameTime = new BizDeviceStatusLog
+        {
+            RecordId = new string('0', 32),
+            DeviceId = "D-001",
+            StationNo = ProductionConstants.Stations.SharedStationNo,
+            DeviceStatus = ProductionConstants.MesDeviceStatuses.PoweredOn,
+            StatusName = DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.PoweredOn),
+            OccurredTime = sameTime,
+            ReportStatus = ProductionConstants.UploadStatuses.Pending
+        };
+        AssertTrue(DeviceStatusLocalLogStore.TryAppend(firstAtSameTime, settings.Current), "同时间首条停机状态必须写入测试 JSONL。");
+        AssertTrue(DeviceStatusLocalLogStore.TryAppend(secondAtSameTime, settings.Current), "同时间次条开机状态必须写入测试 JSONL。");
+
+        service.RetryPendingUploadsAsync().GetAwaiter().GetResult();
+
+        AssertSequenceEqual(
+            new[]
+            {
+                ProductionConstants.MesDeviceStatuses.Stopped,
+                ProductionConstants.MesDeviceStatuses.PoweredOn
+            },
+            requestStatuses,
+            "发生时间相同时必须保留 JSONL 首次追加顺序，不能按随机记录键重排。");
+    }
+    finally
+    {
+        DeleteDirectoryIfExists(root);
+    }
+}
+
+static void DeviceStatusPendingReplayYieldsAfterAcquiringOrderGate()
+{
+    var root = Path.Combine(Path.GetTempPath(), "AutoWeldSystemDeviceStatusReplayYieldTests", Guid.NewGuid().ToString("N"));
+    var settings = new FakeAppSettingsService
+    {
+        Current = new AppSettings
+        {
+            DeviceId = "D-001",
+            LogDirectory = root,
+            EnableDeviceStatusReport = true
+        }
+    };
+    var requestStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var releaseRequest = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var mes = new FakeMesProvider
+    {
+        DeviceStatusHandler = async (_, cancellationToken) =>
+        {
+            requestStarted.TrySetResult();
+            await releaseRequest.Task.WaitAsync(cancellationToken);
+            return new BasicRes<object>
+            {
+                Status = AppConstants.MesStatus.Success,
+                Msg = "操作成功"
+            };
+        }
+    };
+    using var dbContext = new AutoWeldSystem.Data.SqlSugarDbContext("server=127.0.0.1;database=unused;uid=unused;pwd=unused;");
+    var service = new DeviceStatusService(dbContext, settings, mes, new FakeProgramExceptionLogService());
+    var previousContext = SynchronizationContext.Current;
+    var queuedContext = new QueuedSynchronizationContext();
+    var pending = new BizDeviceStatusLog
+    {
+        RecordId = Guid.NewGuid().ToString("N"),
+        DeviceId = "D-001",
+        StationNo = ProductionConstants.Stations.SharedStationNo,
+        DeviceStatus = ProductionConstants.MesDeviceStatuses.Stopped,
+        StatusName = DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.Stopped),
+        OccurredTime = new DateTime(2026, 7, 23, 8, 9, 20),
+        ReportStatus = ProductionConstants.UploadStatuses.Pending
+    };
+
+    try
+    {
+        AssertTrue(DeviceStatusLocalLogStore.TryAppend(pending, settings.Current), "待补传状态必须写入测试 JSONL。");
+        SynchronizationContext.SetSynchronizationContext(queuedContext);
+        var replay = service.RetryPendingUploadsAsync();
+
+        AssertTrue(requestStarted.Task.Wait(TimeSpan.FromSeconds(3)), "补传核心必须在默认调度器执行，不能等待 UI 上下文继续泵消息。");
+        AssertFalse(replay.IsCompleted, "MES 请求完成前补传任务不能提前结束。");
+        releaseRequest.TrySetResult();
+        replay.GetAwaiter().GetResult();
+
+        var stopUpload = service.ChangeStatusAsync(
+            ProductionConstants.MesDeviceStatuses.Stopped,
+            reportToMes: true,
+            forceWrite: true);
+        AssertTrue(stopUpload.Wait(TimeSpan.FromSeconds(3)), "同步停机等待不得依赖已停止泵消息的 UI 上下文。");
+    }
+    finally
+    {
+        releaseRequest.TrySetResult();
+        SynchronizationContext.SetSynchronizationContext(previousContext);
+        queuedContext.RunAll();
+        DeleteDirectoryIfExists(root);
+    }
+}
+
+static void DeviceStatusForceWriteSkipsLatestHistoryScan()
+{
+    var serviceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "DeviceStatusService.cs"),
+        Encoding.UTF8);
+    var changeMethod = ExtractMethodText(
+        serviceCode,
+        "public async Task<BizDeviceStatusLog> ChangeStatusAsync(",
+        "public async Task<BasicRes<object>?> RetryUploadAsync(");
+
+    AssertSourceOrder(
+        changeMethod,
+        "if (!forceWrite)",
+        "var latest = GetLatestStatus(normalizedStationNo);",
+        "生命周期强制写入不得在落盘前扫描全部设备状态历史。");
+}
+
+static void DeviceStatusPendingReplayBlocksNewerUploads()
+{
+    var root = Path.Combine(Path.GetTempPath(), "AutoWeldSystemDeviceStatusPendingGateTests", Guid.NewGuid().ToString("N"));
+    var settings = new FakeAppSettingsService
+    {
+        Current = new AppSettings
+        {
+            DeviceId = "D-001",
+            LogDirectory = root,
+            EnableDeviceStatusReport = true
+        }
+    };
+    var requestStatuses = new List<string>();
+    var firstRequestStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var releaseFirstRequest = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var mes = new FakeMesProvider
+    {
+        DeviceStatusHandler = async (request, cancellationToken) =>
+        {
+            lock (requestStatuses)
+            {
+                requestStatuses.Add(request.DevStatus);
+            }
+
+            if (request.DevStatus == ProductionConstants.MesDeviceStatuses.Stopped)
+            {
+                firstRequestStarted.TrySetResult();
+                await releaseFirstRequest.Task.WaitAsync(cancellationToken);
+            }
+
+            return new BasicRes<object>
+            {
+                Status = AppConstants.MesStatus.Success,
+                Msg = "操作成功"
+            };
+        }
+    };
+    using var dbContext = new AutoWeldSystem.Data.SqlSugarDbContext("server=127.0.0.1;database=unused;uid=unused;pwd=unused;");
+    var service = new DeviceStatusService(dbContext, settings, mes, new FakeProgramExceptionLogService());
+    var stopped = new BizDeviceStatusLog
+    {
+        RecordId = Guid.NewGuid().ToString("N"),
+        DeviceId = "D-001",
+        StationNo = ProductionConstants.Stations.SharedStationNo,
+        DeviceStatus = ProductionConstants.MesDeviceStatuses.Stopped,
+        StatusName = DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.Stopped),
+        OccurredTime = new DateTime(2026, 7, 23, 8, 9, 20),
+        ReportStatus = ProductionConstants.UploadStatuses.Pending
+    };
+    var poweredOn = new BizDeviceStatusLog
+    {
+        RecordId = Guid.NewGuid().ToString("N"),
+        DeviceId = "D-001",
+        StationNo = ProductionConstants.Stations.SharedStationNo,
+        DeviceStatus = ProductionConstants.MesDeviceStatuses.PoweredOn,
+        StatusName = DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.PoweredOn),
+        OccurredTime = new DateTime(2026, 7, 23, 8, 9, 29),
+        ReportStatus = ProductionConstants.UploadStatuses.Pending
+    };
+
+    try
+    {
+        AssertTrue(DeviceStatusLocalLogStore.TryAppend(stopped, settings.Current), "旧停机状态必须写入测试 JSONL。");
+        AssertTrue(DeviceStatusLocalLogStore.TryAppend(poweredOn, settings.Current), "新开机状态必须写入测试 JSONL。");
+
+        var replay = service.RetryPendingUploadsAsync();
+        AssertTrue(firstRequestStarted.Task.Wait(TimeSpan.FromSeconds(3)), "补传首个 MES 请求必须在超时前开始。");
+        var liveUpload = service.ChangeStatusAsync(
+            ProductionConstants.MesDeviceStatuses.ProgramStarted,
+            "程序执行开始",
+            "Test",
+            stationNo: 1,
+            occurredTime: new DateTime(2026, 7, 23, 8, 10, 0),
+            forceWrite: true);
+
+        Thread.Sleep(100);
+        lock (requestStatuses)
+        {
+            AssertFalse(
+                requestStatuses.Contains(ProductionConstants.MesDeviceStatuses.ProgramStarted),
+                "补传批次完成前，较新的实时状态不能越过旧状态上传。");
+        }
+
+        releaseFirstRequest.TrySetResult();
+        Task.WhenAll(replay, liveUpload).GetAwaiter().GetResult();
+
+        lock (requestStatuses)
+        {
+            AssertSequenceEqual(
+                new[]
+                {
+                    ProductionConstants.MesDeviceStatuses.Stopped,
+                    ProductionConstants.MesDeviceStatuses.PoweredOn,
+                    ProductionConstants.MesDeviceStatuses.ProgramStarted
+                },
+                requestStatuses,
+                "补传批次必须完整执行后才允许上传后来状态。");
+        }
+    }
+    finally
+    {
+        releaseFirstRequest.TrySetResult();
+        DeleteDirectoryIfExists(root);
+    }
+}
+
+static void DeviceStatusNewerChangeWaitsAfterOlderFailure()
+{
+    var root = Path.Combine(Path.GetTempPath(), "AutoWeldSystemDeviceStatusPendingFailureTests", Guid.NewGuid().ToString("N"));
+    var settings = new FakeAppSettingsService
+    {
+        Current = new AppSettings
+        {
+            DeviceId = "D-001",
+            LogDirectory = root,
+            EnableDeviceStatusReport = true
+        }
+    };
+    var requestStatuses = new List<string>();
+    var failStopped = true;
+    var mes = new FakeMesProvider
+    {
+        DeviceStatusHandler = (request, _) =>
+        {
+            requestStatuses.Add(request.DevStatus);
+            return Task.FromResult(new BasicRes<object>
+            {
+                Status = failStopped && request.DevStatus == ProductionConstants.MesDeviceStatuses.Stopped
+                    ? AppConstants.MesStatus.Error
+                    : AppConstants.MesStatus.Success,
+                Msg = failStopped && request.DevStatus == ProductionConstants.MesDeviceStatuses.Stopped
+                    ? "MES 暂时不可用"
+                    : "操作成功"
+            });
+        }
+    };
+    using var dbContext = new AutoWeldSystem.Data.SqlSugarDbContext("server=127.0.0.1;database=unused;uid=unused;pwd=unused;");
+    var service = new DeviceStatusService(dbContext, settings, mes, new FakeProgramExceptionLogService());
+    var stopped = new BizDeviceStatusLog
+    {
+        RecordId = Guid.NewGuid().ToString("N"),
+        DeviceId = "D-001",
+        StationNo = ProductionConstants.Stations.SharedStationNo,
+        DeviceStatus = ProductionConstants.MesDeviceStatuses.Stopped,
+        StatusName = DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.Stopped),
+        OccurredTime = new DateTime(2026, 7, 23, 8, 0, 0),
+        ReportStatus = ProductionConstants.UploadStatuses.Pending
+    };
+
+    try
+    {
+        AssertTrue(DeviceStatusLocalLogStore.TryAppend(stopped, settings.Current), "旧停机状态必须先写入 JSONL。");
+
+        var poweredOn = service.ChangeStatusAsync(
+                ProductionConstants.MesDeviceStatuses.PoweredOn,
+                "开机",
+                "Test",
+                stationNo: ProductionConstants.Stations.SharedStationNo,
+                occurredTime: new DateTime(2026, 7, 23, 8, 0, 10),
+                forceWrite: true)
+            .GetAwaiter()
+            .GetResult();
+
+        AssertSequenceEqual(
+            new[] { ProductionConstants.MesDeviceStatuses.Stopped },
+            requestStatuses,
+            "旧停机状态失败时，新的开机状态不得越过它上传。");
+        AssertEqual(ProductionConstants.UploadStatuses.Failed, service.GetLog(stopped.RecordId)!.ReportStatus, "旧停机状态应保留失败结果。");
+        AssertEqual(ProductionConstants.UploadStatuses.Pending, service.GetLog(poweredOn.RecordId!)!.ReportStatus, "新开机状态必须继续等待旧状态成功。");
+
+        failStopped = false;
+        service.RetryPendingUploadsAsync().GetAwaiter().GetResult();
+
+        AssertSequenceEqual(
+            new[]
+            {
+                ProductionConstants.MesDeviceStatuses.Stopped,
+                ProductionConstants.MesDeviceStatuses.Stopped,
+                ProductionConstants.MesDeviceStatuses.PoweredOn
+            },
+            requestStatuses,
+            "下次补传必须先重试旧停机，成功后才能上传新开机。");
+        AssertEqual(ProductionConstants.UploadStatuses.Uploaded, service.GetLog(stopped.RecordId)!.ReportStatus, "旧停机重试后必须标记为已上传。");
+        AssertEqual(ProductionConstants.UploadStatuses.Uploaded, service.GetLog(poweredOn.RecordId!)!.ReportStatus, "新开机必须在旧停机成功后上传。");
+    }
+    finally
+    {
+        DeleteDirectoryIfExists(root);
+    }
+}
+
+static void DeviceStatusManualRetryPreservesPendingOrder()
+{
+    var root = Path.Combine(Path.GetTempPath(), "AutoWeldSystemDeviceStatusManualRetryOrderTests", Guid.NewGuid().ToString("N"));
+    var settings = new FakeAppSettingsService
+    {
+        Current = new AppSettings
+        {
+            DeviceId = "D-001",
+            LogDirectory = root,
+            EnableDeviceStatusReport = true
+        }
+    };
+    var requestStatuses = new List<string>();
+    var mes = new FakeMesProvider
+    {
+        DeviceStatusHandler = (request, _) =>
+        {
+            requestStatuses.Add(request.DevStatus);
+            return Task.FromResult(new BasicRes<object>
+            {
+                Status = request.DevStatus == ProductionConstants.MesDeviceStatuses.Stopped
+                    ? AppConstants.MesStatus.Error
+                    : AppConstants.MesStatus.Success,
+                Msg = request.DevStatus == ProductionConstants.MesDeviceStatuses.Stopped
+                    ? "MES 暂时不可用"
+                    : "操作成功"
+            });
+        }
+    };
+    using var dbContext = new AutoWeldSystem.Data.SqlSugarDbContext("server=127.0.0.1;database=unused;uid=unused;pwd=unused;");
+    var service = new DeviceStatusService(dbContext, settings, mes, new FakeProgramExceptionLogService());
+    var stopped = new BizDeviceStatusLog
+    {
+        RecordId = Guid.NewGuid().ToString("N"),
+        DeviceId = "D-001",
+        StationNo = ProductionConstants.Stations.SharedStationNo,
+        DeviceStatus = ProductionConstants.MesDeviceStatuses.Stopped,
+        StatusName = DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.Stopped),
+        OccurredTime = new DateTime(2026, 7, 23, 8, 0, 0),
+        ReportStatus = ProductionConstants.UploadStatuses.Pending
+    };
+    var poweredOn = new BizDeviceStatusLog
+    {
+        RecordId = Guid.NewGuid().ToString("N"),
+        DeviceId = "D-001",
+        StationNo = ProductionConstants.Stations.SharedStationNo,
+        DeviceStatus = ProductionConstants.MesDeviceStatuses.PoweredOn,
+        StatusName = DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.PoweredOn),
+        OccurredTime = new DateTime(2026, 7, 23, 8, 0, 10),
+        ReportStatus = ProductionConstants.UploadStatuses.Pending
+    };
+
+    try
+    {
+        AssertTrue(DeviceStatusLocalLogStore.TryAppend(stopped, settings.Current), "较旧停机状态必须先写入 JSONL。");
+        AssertTrue(DeviceStatusLocalLogStore.TryAppend(poweredOn, settings.Current), "较新开机状态必须先写入 JSONL。");
+
+        var response = service.RetryUploadAsync(poweredOn.RecordId).GetAwaiter().GetResult();
+
+        AssertSequenceEqual(
+            new[] { ProductionConstants.MesDeviceStatuses.Stopped },
+            requestStatuses,
+            "人工重试较新状态时，旧状态失败不得被越过。");
+        AssertEqual(ProductionConstants.UploadStatuses.Failed, service.GetLog(stopped.RecordId)!.ReportStatus, "旧停机状态必须保留失败结果。");
+        AssertEqual(ProductionConstants.UploadStatuses.Pending, service.GetLog(poweredOn.RecordId)!.ReportStatus, "较新开机状态必须继续等待旧状态成功。");
+        AssertEqual(ProductionConstants.UploadStatuses.Pending, response!.Status, "未实际发送的人工重试项必须保持 Pending，不能误标为 Failed。");
+    }
+    finally
+    {
+        DeleteDirectoryIfExists(root);
+    }
+}
+
+static void DeviceStatusPendingReplaySkipsDeletedSource()
+{
+    var root = Path.Combine(Path.GetTempPath(), "AutoWeldSystemDeviceStatusPendingDeleteTests", Guid.NewGuid().ToString("N"));
+    var settings = new FakeAppSettingsService
+    {
+        Current = new AppSettings
+        {
+            DeviceId = "D-001",
+            LogDirectory = root,
+            EnableDeviceStatusReport = true
+        }
+    };
+    var requestStatuses = new List<string>();
+    var firstRequestStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var releaseFirstRequest = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var mes = new FakeMesProvider
+    {
+        DeviceStatusHandler = async (request, cancellationToken) =>
+        {
+            requestStatuses.Add(request.DevStatus);
+            if (request.DevStatus == ProductionConstants.MesDeviceStatuses.Stopped)
+            {
+                firstRequestStarted.TrySetResult();
+                await releaseFirstRequest.Task.WaitAsync(cancellationToken);
+            }
+
+            return new BasicRes<object>
+            {
+                Status = AppConstants.MesStatus.Success,
+                Msg = "操作成功"
+            };
+        }
+    };
+    using var dbContext = new AutoWeldSystem.Data.SqlSugarDbContext("server=127.0.0.1;database=unused;uid=unused;pwd=unused;");
+    var service = new DeviceStatusService(dbContext, settings, mes, new FakeProgramExceptionLogService());
+    var stopped = new BizDeviceStatusLog
+    {
+        RecordId = Guid.NewGuid().ToString("N"),
+        DeviceId = "D-001",
+        StationNo = ProductionConstants.Stations.SharedStationNo,
+        DeviceStatus = ProductionConstants.MesDeviceStatuses.Stopped,
+        StatusName = DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.Stopped),
+        OccurredTime = new DateTime(2026, 7, 23, 8, 0, 0),
+        ReportStatus = ProductionConstants.UploadStatuses.Pending
+    };
+    var poweredOn = new BizDeviceStatusLog
+    {
+        RecordId = Guid.NewGuid().ToString("N"),
+        DeviceId = "D-001",
+        StationNo = ProductionConstants.Stations.SharedStationNo,
+        DeviceStatus = ProductionConstants.MesDeviceStatuses.PoweredOn,
+        StatusName = DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.PoweredOn),
+        OccurredTime = new DateTime(2026, 7, 24, 8, 0, 0),
+        ReportStatus = ProductionConstants.UploadStatuses.Pending
+    };
+
+    try
+    {
+        AssertTrue(DeviceStatusLocalLogStore.TryAppend(stopped, settings.Current), "较旧停机状态必须写入首日 JSONL。");
+        AssertTrue(DeviceStatusLocalLogStore.TryAppend(poweredOn, settings.Current), "较新开机状态必须写入次日 JSONL。");
+        var poweredOnFile = Path.Combine(root, AppConstants.LogCategories.DeviceStatus, "2026-07-24.jsonl");
+        AssertTrue(File.Exists(poweredOnFile), "待删除的次日设备状态 JSONL 必须存在。");
+
+        var replay = service.RetryPendingUploadsAsync();
+        AssertTrue(firstRequestStarted.Task.Wait(TimeSpan.FromSeconds(3)), "批次首条 MES 请求必须在超时前开始。");
+        File.Delete(poweredOnFile);
+        releaseFirstRequest.TrySetResult();
+        replay.GetAwaiter().GetResult();
+
+        AssertSequenceEqual(
+            new[] { ProductionConstants.MesDeviceStatuses.Stopped },
+            requestStatuses,
+            "批次扫描后被删除的 JSONL 状态必须在实际上传前重新校验并跳过。");
+        AssertTrue(service.GetLog(poweredOn.RecordId) is null, "删除后的设备状态不能被补传流程重建。");
+    }
+    finally
+    {
+        releaseFirstRequest.TrySetResult();
+        DeleteDirectoryIfExists(root);
+    }
+}
+
 static (int RequestCount, BasicRes<object>?[] Responses) RunConcurrentDeviceStatusRetryScenario(
     BasicRes<object> response,
     bool deleteSourceBeforeResponse)
@@ -4786,11 +6043,21 @@ static void DeviceStatusPendingProjectionPreservesUploadedHistory()
         uploadCode,
         "private HashSet<string> SyncDeviceStatusTasksFromLogs",
         "public BizUploadTask EnqueueOrUpdate");
+    var finishMethod = ExtractMethodText(
+        uploadCode,
+        "private UploadTaskSummary? FinishExecution",
+        "private void WriteUploadFlowLog");
+    var serviceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "DeviceStatusService.cs"),
+        Encoding.UTF8);
 
     AssertTrue(reconcileMethod.Contains("GetPendingLogs()", StringComparison.Ordinal), "待上传设备状态必须直接来自全部 JSONL 最新版本。");
     AssertTrue(reconcileMethod.Contains("task.Status != ProductionConstants.UploadStatuses.Uploaded", StringComparison.Ordinal), "来源缺失清理必须排除已经上传的任务。");
+    AssertTrue(reconcileMethod.Contains("task.Status = source.ReportStatus;", StringComparison.Ordinal), "自动补传终态必须按 JSONL 回写已有上传任务投影。");
     AssertTrue(reconcileMethod.Contains("task.IsDeleted = true", StringComparison.Ordinal), "来源缺失的未成功任务必须软删除。");
     AssertFalse(reconcileMethod.Contains("Deleteable<BizUploadTask>", StringComparison.Ordinal), "派生任务清理不能物理删除诊断记录。");
+    AssertTrue(finishMethod.Contains("deviceStatusLog?.ReportStatus", StringComparison.Ordinal), "人工重试任务状态必须以 JSONL 终态为准，未发送项不能误标失败。");
+    AssertTrue(serviceCode.Contains("TryCompleteUploadTaskProjection(log, recordKey);", StringComparison.Ordinal), "自动补传成功后必须立即保存 Uploaded/Skipped 任务历史。");
 }
 
 static void DeviceStatusPendingProjectionPreservesActiveUploads()
@@ -5075,7 +6342,7 @@ static void DeviceStatusReportKeepsMillisecondTimestampAfterMesUpload()
     var persistMethod = ExtractMethodText(
         serviceCode,
         "private BasicRes<object>? PersistReportResult",
-        "private async Task RetryInBackgroundAsync");
+        "private static BizUploadTask BuildDeviceStatusUploadTask");
 
     AssertTrue(
         sendMethod.Contains("Ts = log.OccurredTime.ToString(\"yyyy-MM-dd HH:mm:ss\")", StringComparison.Ordinal),
@@ -5086,6 +6353,59 @@ static void DeviceStatusReportKeepsMillisecondTimestampAfterMesUpload()
     AssertFalse(
         persistMethod.Contains("InSingle", StringComparison.Ordinal),
         "结果追加不能用数据库回读对象覆盖原始毫秒时间。");
+}
+
+static void DeviceStatusLocalLogStorePermitsFullSourceScans()
+{
+    const int entryCount = 5001;
+    var root = Path.Combine(Path.GetTempPath(), "AutoWeldSystemDeviceStatusFullReadTests", Guid.NewGuid().ToString("N"));
+    var settings = new AppSettings { LogDirectory = root };
+    var occurredTime = new DateTime(2026, 7, 24, 8, 0, 0);
+    var directory = DeviceStatusLocalLogStore.GetLogDirectory(settings);
+    var filePath = Path.Combine(directory, "2026-07-24.jsonl");
+
+    try
+    {
+        Directory.CreateDirectory(directory);
+        using (var writer = new StreamWriter(filePath, append: false, Encoding.UTF8))
+        {
+            for (var index = 0; index < entryCount; index++)
+            {
+                var deviceStatus = index == 0
+                    ? ProductionConstants.MesDeviceStatuses.Exception
+                    : ProductionConstants.MesDeviceStatuses.PoweredOn;
+                writer.WriteLine(JsonSerializer.Serialize(new BizDeviceStatusLog
+                {
+                    Id = index + 1,
+                    DeviceId = "D-001",
+                    StationNo = 1,
+                    DeviceStatus = deviceStatus,
+                    StatusName = DeviceStatusReportRules.GetStatusName(deviceStatus),
+                    Source = "Test",
+                    AlarmAddress = index == 0 ? "DB10.DBX2.0" : null,
+                    AlarmContent = index == 0 ? "安全门打开" : null,
+                    OccurredTime = occurredTime.AddTicks(index),
+                    ReportStatus = ProductionConstants.UploadStatuses.Uploaded
+                }));
+            }
+        }
+
+        AssertEqual(5000, DeviceStatusLocalLogStore.Read(settings, maxCount: entryCount).Count, "普通日志查询仍必须保留 5000 条上限。");
+        var allLogs = DeviceStatusLocalLogStore.Read(settings, maxCount: int.MaxValue);
+        AssertEqual(entryCount, allLogs.Count, "监控恢复显式请求全量时不得丢失第 5001 条设备状态。 ");
+        AssertEqual(entryCount, allLogs[0].Id, "全量读取仍必须按发生时间倒序返回。 ");
+        AssertSequenceEqual(
+            ["DB10.DBX2.0"],
+            PlcDeviceAlarmCycleRules.Restore(allLogs).ActiveAlarms.Select(alarm => alarm.Address).ToArray(),
+            "超过 5000 条后，最早的未闭合异常仍必须参与重启报警周期恢复。 ");
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
 }
 
 static void DeviceStatusLocalLogStoreRemovesSelectedLogIds()
@@ -5363,6 +6683,77 @@ static void DataManageViewIgnoresWorkOrderSelectionWhileDisposing()
     AssertFalse(selectedCollectionMethod.Contains("dgvCollectionRecords.CurrentRow", StringComparison.Ordinal), "GetSelectedCollectionRecord 不能访问 DataGridView.CurrentRow。");
     AssertTrue(beginDisposeMethod.Contains("dgvWorkOrders.SelectionChanged -= WorkOrders_SelectionChanged;", StringComparison.Ordinal), "释放时必须解绑工单选择事件。");
     AssertTrue(beginDisposeMethod.Contains("dgvCollectionRecords.SelectionChanged -= CollectionRecords_SelectionChanged;", StringComparison.Ordinal), "释放时必须解绑采集记录选择事件。");
+}
+
+static void LogManageViewDeviceStatusTabShowsAlarmDetails()
+{
+    var designer = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "LogManageView.Designer.cs"), Encoding.UTF8);
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "LogManageView.cs"), Encoding.UTF8);
+
+    AssertFalse(designer.Contains("colDeviceAlarmAddress", StringComparison.Ordinal), "设备状态表格不得再声明报警地址列。");
+    AssertFalse(designer.Contains("colDeviceAlarmContent", StringComparison.Ordinal), "设备状态表格不得再声明报警内容列。");
+    AssertTrue(viewCode.Contains("Contains(entry.AlarmAddress, keyword)", StringComparison.Ordinal), "报警地址必须参与日志搜索。");
+    AssertTrue(viewCode.Contains("Contains(entry.AlarmContent, keyword)", StringComparison.Ordinal), "报警内容必须参与日志搜索。");
+    AssertTrue(viewCode.Contains("AlarmAddress: {entry.AlarmAddress", StringComparison.Ordinal), "设备状态详情必须显示报警地址。");
+    AssertTrue(viewCode.Contains("AlarmContent: {entry.AlarmContent", StringComparison.Ordinal), "设备状态详情必须显示报警内容。");
+}
+
+static void LogManageViewKeepsHiddenLogFieldsInDetailsOnly()
+{
+    var designer = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "LogManageView.Designer.cs"), Encoding.UTF8);
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "LogManageView.cs"), Encoding.UTF8);
+
+    AssertFalse(designer.Contains("colDeviceSource", StringComparison.Ordinal), "设备状态表格不得再声明来源列。");
+    AssertFalse(designer.Contains("colDeviceStation", StringComparison.Ordinal), "设备状态表格不得再声明工位列。");
+    AssertFalse(designer.Contains("colProductionStep", StringComparison.Ordinal), "生产流程表格不得再声明步骤列。");
+    AssertFalse(designer.Contains("colLifecycleStation", StringComparison.Ordinal), "设备日志表格不得再声明工位列。");
+    AssertTrue(viewCode.Contains("Source: {entry.Source}", StringComparison.Ordinal), "设备状态详情必须继续显示来源。");
+    AssertTrue(viewCode.Contains("Station: {entry.StationNo}", StringComparison.Ordinal), "设备状态详情必须继续显示工位。");
+    AssertTrue(viewCode.Contains("Step: {entry.Step}", StringComparison.Ordinal), "生产流程详情必须继续显示步骤。");
+    AssertTrue(viewCode.Contains("Station: {(entry.StationNo", StringComparison.Ordinal), "设备日志详情必须继续显示工位。");
+    AssertTrue(viewCode.Contains("Contains(entry.Source, keyword)", StringComparison.Ordinal), "设备状态来源必须继续参与搜索。");
+    AssertTrue(viewCode.Contains("Contains(entry.Step, keyword)", StringComparison.Ordinal), "生产流程步骤必须继续参与搜索。");
+    var lifecycleFilter = ExtractMethodText(
+        viewCode,
+        "private static bool IsDeviceLifecycleLogMatched",
+        "private static bool IsDeviceStatusLogMatched");
+    AssertTrue(lifecycleFilter.Contains("entry.StationNo.ToString()", StringComparison.Ordinal), "设备日志工位必须继续参与搜索。");
+    var deviceStatusFilter = ExtractMethodText(
+        viewCode,
+        "private static bool IsDeviceStatusLogMatched",
+        "private static bool ShouldShowMesLog");
+    AssertTrue(deviceStatusFilter.Contains("entry.StationNo.ToString()", StringComparison.Ordinal), "设备状态工位必须继续参与搜索。");
+}
+
+static void ProductionFlowSummariesUseCentralizedChineseText()
+{
+    var catalogPath = GetRepoFilePath("AutoWeldSystem.Core", "Production", "ProductionFlowLogTexts.cs");
+    AssertTrue(File.Exists(catalogPath), "生产流程摘要文本和资源键必须集中在 Core 摘要目录中。");
+
+    var catalog = File.ReadAllText(catalogPath, Encoding.UTF8);
+    var monitorCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var reconcileCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Plc", "RecipeCodeReconcileMonitorService.cs"), Encoding.UTF8);
+    AssertTrue(catalog.Contains("PLC配方号调和失败", StringComparison.Ordinal), "摘要目录必须提供中文配方号调和失败文本。");
+    AssertTrue(catalog.Contains("monitor.production_hint.recipe_code_reconcile_failed", StringComparison.Ordinal), "摘要目录必须集中保存对应资源键。");
+    AssertEqual(
+        ProductionFlowLogTexts.Summaries.RecipeCodeReconcileFailed,
+        ProductionFlowLogTexts.NormalizeLegacySummary("PLC recipe code reconcile failed"),
+        "旧配方号调和英文摘要必须在显示时转换为中文。");
+    AssertEqual(
+        ProductionFlowLogTexts.Summaries.DeviceModeReconcileFailed,
+        ProductionFlowLogTexts.NormalizeLegacySummary("Device mode reconcile failed."),
+        "旧设备模式英文摘要必须在显示时转换为中文。");
+    AssertEqual(
+        ProductionFlowLogTexts.Summaries.WorkOrderStatusReconcileFailed,
+        ProductionFlowLogTexts.NormalizeLegacySummary("Work order status reconcile failed."),
+        "旧工单状态调和英文摘要必须在显示时转换为中文。");
+    AssertEqual(
+        ProductionFlowLogTexts.Summaries.WorkOrderStatusWriteFailed,
+        ProductionFlowLogTexts.NormalizeLegacySummary("Work order status write failed."),
+        "旧工单状态写入英文摘要必须在显示时转换为中文。");
+    AssertFalse(monitorCode.Contains("Work order status write failed.", StringComparison.Ordinal), "生产流程摘要调用点不得继续硬编码英文工单状态写入失败。");
+    AssertFalse(monitorCode.Contains("Device mode reconcile failed.", StringComparison.Ordinal), "生产流程摘要调用点不得继续硬编码英文设备模式调和失败。");
+    AssertFalse(reconcileCode.Contains("PLC recipe code reconcile failed", StringComparison.Ordinal), "配方号调和生产流程摘要不得继续写入英文。");
 }
 
 static void DataManageViewReleasesQueryCancellationSourcesOnce()
@@ -5914,6 +7305,52 @@ static void SkippedUploadTasksAreNotRetried()
         "只有已跳过任务时，汇总状态也应显示已跳过。");
 }
 
+static void WeldTaskPendingRetryIncludesDeviceStatus()
+{
+    var deviceStatusService = new FakeDeviceStatusService();
+    var service = CreateWeldTaskService(
+        new FakeMesProvider(),
+        new FakeSystemClockService(),
+        new FakeOperationLogService(),
+        deviceStatusService: deviceStatusService);
+
+    service.RetryPendingUploadsAsync().GetAwaiter().GetResult();
+
+    AssertEqual(1, deviceStatusService.RetryPendingUploadsCallCount, "MES 重连补传入口必须同时补传 JSONL 设备状态。");
+
+    var uploadCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "UploadTaskService.cs"),
+        Encoding.UTF8);
+    var startMethod = ExtractMethodText(
+        uploadCode,
+        "private async Task<BasicRes<object>> UploadStartReportAsync",
+        "private void ApplyOfflineStartRequestId");
+    var finishMethod = ExtractMethodText(
+        uploadCode,
+        "private async Task<BasicRes<object>> UploadFinishReportAsync",
+        "private async Task<BasicRes<object>> UploadWorkOrderStatusAsync");
+    AssertSourceOrder(
+        startMethod,
+        "if (cancellationToken.IsCancellationRequested)",
+        "WriteStartReportLifecycleLog",
+        "窗口关闭后晚返回的开工响应不能再追加程序开始状态。");
+    AssertTrue(
+        finishMethod.Contains("response.IsSuccess && !cancellationToken.IsCancellationRequested", StringComparison.Ordinal),
+        "窗口关闭后晚返回的完工响应不能再追加程序结束状态。");
+    var deviceStatusCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "DeviceStatusService.cs"),
+        Encoding.UTF8);
+    var changeMethod = ExtractMethodText(
+        deviceStatusCode,
+        "public async Task<BizDeviceStatusLog> ChangeStatusAsync(",
+        "public async Task<BasicRes<object>?> RetryUploadAsync(");
+    AssertSourceOrder(
+        changeMethod,
+        "cancellationToken.ThrowIfCancellationRequested();",
+        "DeviceStatusLocalLogStore.TryAppend(log, CurrentSettings)",
+        "取消后的普通状态必须在 JSONL 落盘前停止，避免越过最终停机状态。");
+}
+
 static void StatusReportSettingsDefaultToEnabled()
 {
     var settings = new AppSettings();
@@ -6439,7 +7876,41 @@ static void DeviceLifecycleCoordinatorSyncsSoftwareStatusTimestamps()
     AssertEqual(softwareStopped.OccurredTime, stopped.OccurredTime, "设备日志的软件关闭时间必须和设备状态停机时间一致。");
 }
 
-static void DeviceLifecycleStopTriggersBackgroundStatusUpload()
+static void DeviceLifecycleOrdersStatusProducersAroundFinalStates()
+{
+    var programCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Program.cs"), Encoding.UTF8);
+
+    AssertSourceOrder(
+        programCode,
+        "IDeviceLifecycleLogCoordinator>().Start();",
+        "IPlcProductionMonitorService>().StartAsync().GetAwaiter().GetResult();",
+        "启动时必须先落盘开机并取得补传顺序所有权，再启动 PLC 设备状态生产者。");
+    AssertSourceOrder(
+        programCode,
+        "IPlcProductionMonitorService>().StopAsync().GetAwaiter().GetResult()",
+        "IDeviceLifecycleLogCoordinator>().Stop()",
+        "退出时必须先停止 PLC 设备状态生产者，再上传最终停机状态。");
+}
+
+static void DeviceLifecycleStopSurvivesEarlierShutdownFailures()
+{
+    var programCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Program.cs"), Encoding.UTF8);
+    var shutdownMethod = ExtractMethodText(
+        programCode,
+        "private static void StopBackgroundServices(",
+        "private static void TryStopBackgroundService(Action stop)");
+
+    AssertTrue(
+        shutdownMethod.Contains(
+            "() => AppHost?.Services.GetRequiredService<IDeviceLifecycleLogCoordinator>().Stop());",
+            StringComparison.Ordinal),
+        "最终停机状态必须使用独立异常边界，不能被更早的服务停止失败跳过。");
+    AssertTrue(
+        programCode.Contains("private static void TryStopBackgroundService(Action stop)", StringComparison.Ordinal),
+        "后台服务停止动作必须逐项隔离异常并继续后续清理。");
+}
+
+static void DeviceLifecycleStartPersistsPoweredOnBeforePendingReplay()
 {
     var lifecycleLogs = new FakeDeviceLifecycleLogService();
     var statusService = new FakeDeviceStatusService();
@@ -6447,18 +7918,220 @@ static void DeviceLifecycleStopTriggersBackgroundStatusUpload()
 
     coordinator.Start();
     WaitUntil(
+        () => statusService.RetryPendingUploadsCallCount == 1,
+        "开机状态落盘后必须触发一次后台设备状态补传。");
+
+    AssertEqual(false, statusService.LastReportToMes, "开机状态必须先只落盘，不能绕过旧状态直接上传。");
+    AssertSequenceEqual(
+        new[]
+        {
+            $"Change:{ProductionConstants.MesDeviceStatuses.PoweredOn}:False",
+            "RetryPending"
+        },
+        statusService.OperationSequence,
+        "启动时必须先写入当前开机状态，再补传 JSONL 中全部未成功状态。");
+}
+
+static void DeviceLifecycleStopCancelsStartupPendingReplay()
+{
+    var lifecycleLogs = new FakeDeviceLifecycleLogService();
+    var statusService = new FakeDeviceStatusService();
+    var replayStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var replayCancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var releaseReplay = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    statusService.RetryPendingUploadsHandler = async cancellationToken =>
+    {
+        using var throwingRegistration = cancellationToken.Register(
+            static () => throw new InvalidOperationException("测试取消回调异常"));
+        replayStarted.TrySetResult();
+        try
+        {
+            await releaseReplay.Task.WaitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            replayCancelled.TrySetResult();
+            throw;
+        }
+    };
+    var coordinator = CreateDeviceLifecycleLogCoordinator(
+        lifecycleLogs,
+        statusService,
+        new AppSettings { DeviceId = "D-001", MesTimeoutSeconds = 3 });
+
+    try
+    {
+        coordinator.Start();
+        AssertTrue(replayStarted.Task.Wait(TimeSpan.FromSeconds(3)), "启动设备状态补传必须在超时前开始。");
+
+        coordinator.Stop();
+
+        AssertTrue(replayCancelled.Task.Wait(TimeSpan.FromSeconds(1)), "停止协调器时必须取消尚未完成的启动补传。");
+        AssertTrue(
+            statusService.Logs.Any(log => log.DeviceStatus == ProductionConstants.MesDeviceStatuses.Stopped),
+            "取消启动补传后仍必须写入并处理最终停机状态。");
+    }
+    finally
+    {
+        releaseReplay.TrySetResult();
+    }
+}
+
+static void DeviceLifecycleStopStillWaitsAfterReplayCancellation()
+{
+    var lifecycleLogs = new FakeDeviceLifecycleLogService();
+    var statusService = new FakeDeviceStatusService();
+    var replayStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var stopUploadStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var releaseStopUpload = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    statusService.RetryPendingUploadsHandler = async cancellationToken =>
+    {
+        replayStarted.TrySetResult();
+        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+    };
+    statusService.ChangeStatusHandler = async (log, _, cancellationToken) =>
+    {
+        if (log.DeviceStatus == ProductionConstants.MesDeviceStatuses.Stopped)
+        {
+            stopUploadStarted.TrySetResult();
+            await releaseStopUpload.Task.WaitAsync(cancellationToken);
+        }
+    };
+    var coordinator = CreateDeviceLifecycleLogCoordinator(
+        lifecycleLogs,
+        statusService,
+        new AppSettings { DeviceId = "D-001", MesTimeoutSeconds = 3 });
+
+    coordinator.Start();
+    AssertTrue(replayStarted.Task.Wait(TimeSpan.FromSeconds(3)), "启动补传必须先进入等待状态。");
+
+    var stopTask = Task.Run(coordinator.Stop);
+    AssertTrue(stopUploadStarted.Task.Wait(TimeSpan.FromSeconds(3)), "取消启动补传后仍必须开始停机上传。");
+    AssertFalse(stopTask.Wait(TimeSpan.FromMilliseconds(100)), "启动补传取消完成不能让退出提前跳过停机上传等待。");
+
+    releaseStopUpload.TrySetResult();
+    AssertTrue(stopTask.Wait(TimeSpan.FromSeconds(3)), "停机上传完成后退出应正常结束。");
+}
+
+static void DeviceLifecycleKeepsTimedOutStartupReplayTracked()
+{
+    var coordinatorCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Log", "DeviceLifecycleLogCoordinator.cs"),
+        Encoding.UTF8);
+    var stopMethod = ExtractMethodText(
+        coordinatorCode,
+        "public void Stop()",
+        "private string CurrentDeviceId");
+
+    AssertFalse(stopMethod.Contains("_startupReplayCancellation = null;", StringComparison.Ordinal), "启动补传超时前不得丢失取消源引用。");
+    AssertFalse(stopMethod.Contains("_startupReplayTask = null;", StringComparison.Ordinal), "启动补传超时前不得丢失任务引用。");
+    AssertTrue(coordinatorCode.Contains("ObserveStartupReplayCompletion", StringComparison.Ordinal), "启动补传任务必须注册完成后的清理逻辑。");
+    AssertTrue(coordinatorCode.Contains("ContinueWith(", StringComparison.Ordinal), "启动补传完成后必须异步清理任务和取消源引用。");
+    AssertTrue(coordinatorCode.Contains("RetryPendingUploadsAsync(cancellationToken).ConfigureAwait(false)", StringComparison.Ordinal), "启动补传完成不得依赖 UI 同步上下文继续泵消息。");
+}
+
+static void DeviceLifecycleStopWaitsForBoundedStatusUpload()
+{
+    var lifecycleLogs = new FakeDeviceLifecycleLogService();
+    var statusService = new FakeDeviceStatusService();
+    var stopUploadStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var releaseStopUpload = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    statusService.ChangeStatusHandler = async (log, _, cancellationToken) =>
+    {
+        if (log.DeviceStatus != ProductionConstants.MesDeviceStatuses.Stopped)
+        {
+            return;
+        }
+
+        stopUploadStarted.TrySetResult();
+        await releaseStopUpload.Task.WaitAsync(cancellationToken);
+    };
+    var coordinator = CreateDeviceLifecycleLogCoordinator(
+        lifecycleLogs,
+        statusService,
+        new AppSettings { DeviceId = "D-001", MesTimeoutSeconds = 3 });
+
+    coordinator.Start();
+    WaitUntil(
         () => statusService.Logs.Any(log => log.DeviceStatus == ProductionConstants.MesDeviceStatuses.PoweredOn),
         "开机设备状态日志应在启动后写入。");
 
-    coordinator.Stop();
-    WaitUntil(
-        () => statusService.Logs.Any(log => log.DeviceStatus == ProductionConstants.MesDeviceStatuses.Stopped),
-        "停机设备状态日志应在停止后写入。");
+    var stopTask = Task.Run(coordinator.Stop);
+    AssertTrue(stopUploadStarted.Task.Wait(TimeSpan.FromSeconds(3)), "停机 MES 上传必须在超时前开始。");
+    AssertFalse(stopTask.Wait(TimeSpan.FromMilliseconds(100)), "停机上传完成前，后台清理进程不能提前结束。");
+    AssertTrue(statusService.LastCancellationToken.CanBeCanceled, "停机上传必须携带 MES 超时取消令牌。");
+
+    releaseStopUpload.TrySetResult();
+    AssertTrue(stopTask.Wait(TimeSpan.FromSeconds(3)), "停机 MES 上传完成后，后台清理必须正常结束。");
 
     var stopped = statusService.Logs.Single(log => log.DeviceStatus == ProductionConstants.MesDeviceStatuses.Stopped);
     AssertEqual(ProductionConstants.MesDeviceStatuses.Stopped, stopped.DeviceStatus, "停止协调器时必须写入停机状态。");
-    AssertTrue(statusService.LastReportInBackground == true, "停机状态应触发后台上传，不能同步阻塞 UI。");
     AssertTrue(statusService.LastReportToMes == true, "停机状态应先尝试 MES 上传，而不是只进入待上传队列。");
+}
+
+static void DeviceLifecycleStopBoundsSynchronousStatusStartup()
+{
+    var lifecycleLogs = new FakeDeviceLifecycleLogService();
+    var statusService = new FakeDeviceStatusService();
+    using var releaseSynchronousStart = new ManualResetEventSlim();
+    var synchronousStartEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    statusService.ChangeStatusHandler = (log, _, _) =>
+    {
+        if (log.DeviceStatus == ProductionConstants.MesDeviceStatuses.Stopped)
+        {
+            synchronousStartEntered.TrySetResult();
+            releaseSynchronousStart.Wait();
+        }
+
+        return Task.CompletedTask;
+    };
+    var coordinator = CreateDeviceLifecycleLogCoordinator(
+        lifecycleLogs,
+        statusService,
+        new AppSettings { DeviceId = "D-001", MesTimeoutSeconds = 3 });
+
+    coordinator.Start();
+    var stopTask = Task.Run(coordinator.Stop);
+    try
+    {
+        AssertTrue(
+            synchronousStartEntered.Task.Wait(TimeSpan.FromSeconds(1)),
+            "停机状态处理必须开始执行。");
+        AssertTrue(
+            stopTask.Wait(TimeSpan.FromSeconds(4)),
+            "即使设备状态调用在首次 await 前同步阻塞，退出也必须受一个 MES 超时约束。");
+    }
+    finally
+    {
+        releaseSynchronousStart.Set();
+        stopTask.Wait(TimeSpan.FromSeconds(1));
+    }
+}
+
+static void UploadTaskMesSuccessSurvivesStatusCancellation()
+{
+    var uploadCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "UploadTaskService.cs"),
+        Encoding.UTF8);
+    var startMethod = ExtractMethodText(
+        uploadCode,
+        "private async Task<BasicRes<object>> UploadStartReportAsync",
+        "private void ApplyOfflineStartRequestId");
+    var finishMethod = ExtractMethodText(
+        uploadCode,
+        "private async Task<BasicRes<object>> UploadFinishReportAsync",
+        "private async Task<BasicRes<object>> UploadWorkOrderStatusAsync");
+
+    AssertTrue(
+        startMethod.Contains(
+            "catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)",
+            StringComparison.Ordinal),
+        "开工 MES 已成功后，设备状态取消不能阻断上传任务写入 Uploaded。");
+    AssertTrue(
+        finishMethod.Contains(
+            "catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)",
+            StringComparison.Ordinal),
+        "完工 MES 已成功后，设备状态取消不能阻断上传任务写入 Uploaded。");
 }
 
 static void DeviceLifecycleStopReportsStatusWhenLifecycleLogFails()
@@ -6478,8 +8151,8 @@ static void DeviceLifecycleStopReportsStatusWhenLifecycleLogFails()
         () => statusService.Logs.Any(log => log.DeviceStatus == ProductionConstants.MesDeviceStatuses.Stopped),
         "软件关闭日志写入失败时，停机设备状态仍应写入。");
 
-    AssertTrue(statusService.LastReportInBackground == true, "软件关闭日志失败也不能让停机状态改成同步上传。");
     AssertTrue(statusService.LastReportToMes == true, "软件关闭日志失败也必须先尝试 MES 停机状态上传。");
+    AssertTrue(statusService.LastCancellationToken.CanBeCanceled, "软件关闭日志失败时仍必须保留停机上传超时边界。");
 }
 
 static void DeviceLifecycleConnectionLogsOnlyWhenStateChanges()
@@ -6529,7 +8202,6 @@ static void DeviceLifecycleIgnoresTransientPlcConnectionStates()
         plcService,
         new FakeMesConnectionMonitor(),
         new FakeCenterTelemetrySyncService(),
-        new FakePlcProductionMonitorService(),
         new FakeDeviceStatusService());
 
     coordinator.Start();
@@ -6594,38 +8266,14 @@ static PlcConnectionSnapshot CreatePlcSnapshot(
     };
 }
 
-static void DeviceLifecycleAlarmLogsEnterChangeAndRecovery()
+static void DeviceLifecycleNoLongerSubscribesToAlarmSnapshots()
 {
-    var enter = DeviceLifecycleLogRules.DecideAlarmTransition(
-        previousStatusCode: null,
-        previousAlarmMessage: "",
-        currentStatusCode: ProductionConstants.PlcDeviceStatuses.Alarm,
-        currentAlarmMessage: "气压低");
-    AssertTrue(enter.ShouldWrite, "PLC 首次进入报警时必须写设备日志。");
-    AssertEqual(AppConstants.DeviceLifecycleEventTypes.FaultAlarm, enter.EventType, "进入报警应记录 FaultAlarm。");
+    var coordinatorCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Log", "DeviceLifecycleLogCoordinator.cs"),
+        Encoding.UTF8);
 
-    var duplicate = DeviceLifecycleLogRules.DecideAlarmTransition(
-        previousStatusCode: ProductionConstants.PlcDeviceStatuses.Alarm,
-        previousAlarmMessage: "气压低",
-        currentStatusCode: ProductionConstants.PlcDeviceStatuses.Alarm,
-        currentAlarmMessage: "气压低");
-    AssertFalse(duplicate.ShouldWrite, "报警状态和原因都未变化时不应重复写设备日志。");
-
-    var changed = DeviceLifecycleLogRules.DecideAlarmTransition(
-        previousStatusCode: ProductionConstants.PlcDeviceStatuses.Alarm,
-        previousAlarmMessage: "气压低",
-        currentStatusCode: ProductionConstants.PlcDeviceStatuses.Alarm,
-        currentAlarmMessage: "安全门打开");
-    AssertTrue(changed.ShouldWrite, "报警原因变化时需要再次写设备日志。");
-    AssertEqual(AppConstants.DeviceLifecycleEventTypes.FaultAlarm, changed.EventType, "报警原因变化仍属于 FaultAlarm。");
-
-    var recovered = DeviceLifecycleLogRules.DecideAlarmTransition(
-        previousStatusCode: ProductionConstants.PlcDeviceStatuses.Alarm,
-        previousAlarmMessage: "安全门打开",
-        currentStatusCode: ProductionConstants.PlcDeviceStatuses.Running,
-        currentAlarmMessage: "");
-    AssertTrue(recovered.ShouldWrite, "PLC 从报警恢复到非报警时必须写恢复日志。");
-    AssertEqual(AppConstants.DeviceLifecycleEventTypes.FaultRecovered, recovered.EventType, "报警恢复应记录 FaultRecovered。");
+    AssertFalse(coordinatorCode.Contains("_plcProductionMonitorService.StatusChanged", StringComparison.Ordinal), "设备日志不得再订阅生产快照写入报警记录。");
+    AssertFalse(coordinatorCode.Contains("RecordAlarmChange", StringComparison.Ordinal), "设备日志不得保留报警写入入口。");
 }
 
 static void ProgramNameRulesExtractComponentCode()
@@ -7579,7 +9227,7 @@ static void MonitorRuntimeTipsUseLocalizedSummaries()
     AssertTrue(viewCode.Contains("SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.ProgramConfirmed)", StringComparison.Ordinal), "加工程序确认提示必须保存本地化资源键。");
     AssertTrue(viewCode.Contains("SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.WorkOrderLoaded)", StringComparison.Ordinal), "工单获取完成提示必须保存本地化资源键。");
     AssertTrue(viewCode.Contains("SetRuntimeError(TextKeys.Monitor.RuntimeError.BusinessSignalWriteFailed)", StringComparison.Ordinal), "业务信号写入失败摘要必须保存本地化资源键。");
-    AssertTrue(viewCode.Contains("SetRuntimeErrorWithSource(TextKeys.Monitor.RuntimeError.DeviceAlarm", StringComparison.Ordinal), "设备报警摘要必须保存带来源的本地化资源键。");
+    AssertTrue(viewCode.Contains("SetRuntimeErrorText(_deviceAlarmRuntimeErrorText, RuntimeErrorSourceDeviceAlarm)", StringComparison.Ordinal), "设备报警详情必须保存当前所有有效报警内容及专属来源。");
 }
 
 static void MonitorViewShowsOperatorValidationSuccessAfterEmployeeValidation()
@@ -8534,7 +10182,8 @@ static WeldTaskService CreateWeldTaskService(
     FakeDeviceLifecycleLogService? lifecycleLogService = null,
     FakeAppSettingsService? appSettingsService = null,
     FakeUploadTaskService? uploadTaskService = null,
-    FakeProductionReportFileService? reportFileService = null)
+    FakeProductionReportFileService? reportFileService = null,
+    FakeDeviceStatusService? deviceStatusService = null)
 {
     return new WeldTaskService(
         null!,
@@ -8546,21 +10195,21 @@ static WeldTaskService CreateWeldTaskService(
         new FakeCenterProductForwardingService(),
         reportFileService ?? new FakeProductionReportFileService(),
         lifecycleLogService ?? new FakeDeviceLifecycleLogService(),
-        new FakeDeviceStatusService(),
+        deviceStatusService ?? new FakeDeviceStatusService(),
         clockService);
 }
 
 static DeviceLifecycleLogCoordinator CreateDeviceLifecycleLogCoordinator(
     FakeDeviceLifecycleLogService lifecycleLogService,
-    FakeDeviceStatusService deviceStatusService)
+    FakeDeviceStatusService deviceStatusService,
+    AppSettings? settings = null)
 {
     return new DeviceLifecycleLogCoordinator(
-        new FakeAppSettingsService { Current = new AppSettings { DeviceId = "D-001" } },
+        new FakeAppSettingsService { Current = settings ?? new AppSettings { DeviceId = "D-001" } },
         lifecycleLogService,
         new FakePlcCommunicationService(),
         new FakeMesConnectionMonitor(),
         new FakeCenterTelemetrySyncService(),
-        new FakePlcProductionMonitorService(),
         deviceStatusService);
 }
 
@@ -8783,6 +10432,29 @@ static void SystemSettingViewUsesResponsiveSemanticColumns()
     AssertFalse(designerCode.Contains("tabBasicSettings.Controls.Add(grpPlcConfig);", StringComparison.Ordinal), "分组不应继续直接使用页签绝对坐标。");
     AssertTrue(viewCode.Contains("SystemSettingLayoutRules.ResolveMode(basicSettingsViewport.ClientSize.Width, DeviceDpi)", StringComparison.Ordinal), "运行时必须按 DPI 逻辑宽度选择布局。");
     AssertTrue(viewCode.Contains("private void ApplyBasicSettingsLayout(bool force = false)", StringComparison.Ordinal), "代码后置文件必须提供统一重排入口。");
+}
+
+static void SystemSettingConfiguresPlcAlarmTriggerMode()
+{
+    var defaults = new AppSettings();
+    AssertEqual(
+        AppConstants.PlcAlarmTriggerModes.DeviceStatusAndAddress,
+        defaults.PlcAlarmTriggerMode,
+        "新配置默认必须使用设备状态异常且报警地址触发模式。");
+
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.cs"), Encoding.UTF8);
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.Designer.cs"), Encoding.UTF8);
+    AssertTrue(designerCode.Contains("selectPlcAlarmTriggerMode", StringComparison.Ordinal), "Designer 必须声明 PLC 报警模式双选控件。");
+    AssertTrue(viewCode.Contains("PlcAlarmTriggerModeOptions", StringComparison.Ordinal), "报警模式选项必须绑定稳定持久化值。");
+    AssertTrue(viewCode.Contains("selectPlcAlarmTriggerMode.Enabled = chkEnablePlcAlarmReading.Checked;", StringComparison.Ordinal), "关闭报警读取时必须禁用报警模式控件。");
+    AssertTrue(viewCode.Contains("settings.PlcAlarmTriggerMode = AppConstants.PlcAlarmTriggerModes.Normalize", StringComparison.Ordinal), "保存时必须规范化报警模式。");
+
+    foreach (var resourceFile in new[] { "UiText.resx", "UiText.en.resx" })
+    {
+        var resources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", resourceFile), Encoding.UTF8);
+        AssertTrue(resources.Contains("system.option.plc_alarm.address_only", StringComparison.Ordinal), $"{resourceFile} 必须包含仅地址模式。");
+        AssertTrue(resources.Contains("system.option.plc_alarm.device_status_and_address", StringComparison.Ordinal), $"{resourceFile} 必须包含双条件模式。");
+    }
 }
 
 static BizWeldTask BuildReportTask(DateTime startTime, DateTime? endTime)
@@ -9925,7 +11597,15 @@ sealed class FakeDeviceStatusService : IDeviceStatusService
 
     public bool? LastReportToMes { get; private set; }
 
-    public bool? LastReportInBackground { get; private set; }
+    public int RetryPendingUploadsCallCount { get; private set; }
+
+    public Func<CancellationToken, Task>? RetryPendingUploadsHandler { get; set; }
+
+    public Func<BizDeviceStatusLog, bool, CancellationToken, Task>? ChangeStatusHandler { get; set; }
+
+    public List<string> OperationSequence { get; } = new();
+
+    public CancellationToken LastCancellationToken { get; private set; }
 
     public BizDeviceStatusLog? GetCurrentStatus()
     {
@@ -9984,6 +11664,13 @@ sealed class FakeDeviceStatusService : IDeviceStatusService
         return Task.FromResult(RetryResponse);
     }
 
+    public Task RetryPendingUploadsAsync(CancellationToken cancellationToken = default)
+    {
+        RetryPendingUploadsCallCount++;
+        OperationSequence.Add("RetryPending");
+        return RetryPendingUploadsHandler?.Invoke(cancellationToken) ?? Task.CompletedTask;
+    }
+
     public string GetLogDirectory() => string.Empty;
 
     public int DeleteLogs(IReadOnlyCollection<BizDeviceStatusLog> logs)
@@ -10002,7 +11689,7 @@ sealed class FakeDeviceStatusService : IDeviceStatusService
         return deletedCount;
     }
 
-    public Task<BizDeviceStatusLog> ChangeStatusAsync(
+    public async Task<BizDeviceStatusLog> ChangeStatusAsync(
         string deviceStatus,
         string? remark = null,
         string source = "Software",
@@ -10012,16 +11699,20 @@ sealed class FakeDeviceStatusService : IDeviceStatusService
         string? workOrderId = null,
         DateTime? occurredTime = null,
         bool forceWrite = false,
-        bool reportInBackground = false,
+        string? alarmAddress = null,
+        string? alarmContent = null,
         CancellationToken cancellationToken = default)
     {
         LastReportToMes = reportToMes;
-        LastReportInBackground = reportInBackground;
+        LastCancellationToken = cancellationToken;
+        OperationSequence.Add($"Change:{deviceStatus}:{reportToMes}");
         var log = new BizDeviceStatusLog
         {
             RecordId = Guid.NewGuid().ToString("N"),
             DeviceStatus = deviceStatus,
             Remark = remark,
+            AlarmAddress = alarmAddress,
+            AlarmContent = alarmContent,
             Source = source,
             StationNo = stationNo,
             WeldTaskId = weldTaskId,
@@ -10031,7 +11722,28 @@ sealed class FakeDeviceStatusService : IDeviceStatusService
         };
         Logs.Add(log);
         LogsChanged?.Invoke(this, EventArgs.Empty);
-        return Task.FromResult(log);
+        if (ChangeStatusHandler is not null)
+        {
+            await ChangeStatusHandler(log, reportToMes, cancellationToken);
+        }
+
+        return log;
+    }
+}
+
+sealed class QueuedSynchronizationContext : SynchronizationContext
+{
+    private readonly Queue<(SendOrPostCallback Callback, object? State)> _callbacks = new();
+
+    public override void Post(SendOrPostCallback callback, object? state)
+        => _callbacks.Enqueue((callback, state));
+
+    public void RunAll()
+    {
+        while (_callbacks.TryDequeue(out var callback))
+        {
+            callback.Callback(callback.State);
+        }
     }
 }
 
