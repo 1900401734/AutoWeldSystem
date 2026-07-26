@@ -152,6 +152,34 @@ namespace AutoWeldSystem.UI.Views
             colDeviceReportStatus = new DataGridViewTextBoxColumn();
             colDeviceReportMessage = new DataGridViewTextBoxColumn();
             txtDeviceStatusDetail = new TextBox();
+            tabCenterLogs = new TabPage();
+            centerRootLayout = new TableLayoutPanel();
+            centerHeaderLayout = new TableLayoutPanel();
+            centerToolbarHost = new TableLayoutPanel();
+            centerToolbar = new TableLayoutPanel();
+            btnOpenCenterFolder = new AntdUI.Button();
+            dtpCenterDate = new DatePicker();
+            lblCenterDate = new AntdUI.Label();
+            queryCenterLogs = new AutoWeldSystem.UI.Controls.InputQuery(components);
+            chkCenterShowDate = new Checkbox();
+            centerTitleLayout = new TableLayoutPanel();
+            lblCenterTitle = new Label();
+            lblCenterDescription = new Label();
+            splitCenterContent = new SplitContainer();
+            dgvCenterLogs = new DataGridView();
+            colCenterSendTime = new DataGridViewTextBoxColumn();
+            colCenterType = new DataGridViewTextBoxColumn();
+            colCenterResult = new DataGridViewTextBoxColumn();
+            colCenterHttpStatus = new DataGridViewTextBoxColumn();
+            colCenterDuration = new DataGridViewTextBoxColumn();
+            colCenterMessage = new DataGridViewTextBoxColumn();
+            tabCenterDetails = new TabControl();
+            tabCenterBasicInfo = new TabPage();
+            txtCenterBasicInfo = new TextBox();
+            tabCenterRequestBody = new TabPage();
+            txtCenterRequestBody = new TextBox();
+            tabCenterResponseBody = new TabPage();
+            txtCenterResponseBody = new TextBox();
             tabLogCategories.SuspendLayout();
             tabMesLogs.SuspendLayout();
             mesRootLayout.SuspendLayout();
@@ -221,6 +249,21 @@ namespace AutoWeldSystem.UI.Views
             splitDeviceStatusContent.Panel2.SuspendLayout();
             splitDeviceStatusContent.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)dgvDeviceStatusLogs).BeginInit();
+            tabCenterLogs.SuspendLayout();
+            centerRootLayout.SuspendLayout();
+            centerHeaderLayout.SuspendLayout();
+            centerToolbarHost.SuspendLayout();
+            centerToolbar.SuspendLayout();
+            centerTitleLayout.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)splitCenterContent).BeginInit();
+            splitCenterContent.Panel1.SuspendLayout();
+            splitCenterContent.Panel2.SuspendLayout();
+            splitCenterContent.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)dgvCenterLogs).BeginInit();
+            tabCenterDetails.SuspendLayout();
+            tabCenterBasicInfo.SuspendLayout();
+            tabCenterRequestBody.SuspendLayout();
+            tabCenterResponseBody.SuspendLayout();
             SuspendLayout();
             // 
             // tabLogCategories
@@ -230,6 +273,7 @@ namespace AutoWeldSystem.UI.Views
             tabLogCategories.Controls.Add(tabExceptionLogs);
             tabLogCategories.Controls.Add(tabDeviceLifecycleLogs);
             tabLogCategories.Controls.Add(tabDeviceStatusLogs);
+            tabLogCategories.Controls.Add(tabCenterLogs);
             tabLogCategories.Dock = DockStyle.Fill;
             tabLogCategories.HotTrack = true;
             tabLogCategories.Location = new Point(0, 0);
@@ -1923,9 +1967,383 @@ namespace AutoWeldSystem.UI.Views
             txtDeviceStatusDetail.Size = new Size(475, 562);
             txtDeviceStatusDetail.TabIndex = 0;
             txtDeviceStatusDetail.WordWrap = false;
-            // 
+            //
+            // tabCenterLogs
+            //
+            tabCenterLogs.Controls.Add(centerRootLayout);
+            tabCenterLogs.Location = new Point(4, 29);
+            tabCenterLogs.Name = "tabCenterLogs";
+            tabCenterLogs.Padding = new Padding(3);
+            tabCenterLogs.Size = new Size(1358, 712);
+            tabCenterLogs.TabIndex = 5;
+            tabCenterLogs.Text = "Center Server";
+            tabCenterLogs.UseVisualStyleBackColor = true;
+            //
+            // centerRootLayout
+            //
+            centerRootLayout.ColumnCount = 1;
+            centerRootLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            centerRootLayout.Controls.Add(centerHeaderLayout, 0, 0);
+            centerRootLayout.Controls.Add(splitCenterContent, 0, 1);
+            centerRootLayout.Dock = DockStyle.Fill;
+            centerRootLayout.Location = new Point(3, 3);
+            centerRootLayout.Name = "centerRootLayout";
+            centerRootLayout.RowCount = 2;
+            centerRootLayout.RowStyles.Add(new RowStyle());
+            centerRootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            centerRootLayout.Size = new Size(1352, 706);
+            centerRootLayout.TabIndex = 0;
+            //
+            // centerHeaderLayout
+            //
+            centerHeaderLayout.ColumnCount = 2;
+            centerHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40F));
+            centerHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60F));
+            centerHeaderLayout.Controls.Add(centerToolbarHost, 1, 0);
+            centerHeaderLayout.Controls.Add(centerTitleLayout, 0, 0);
+            centerHeaderLayout.Dock = DockStyle.Fill;
+            centerHeaderLayout.Location = new Point(20, 14);
+            centerHeaderLayout.Margin = new Padding(20, 14, 20, 8);
+            centerHeaderLayout.Name = "centerHeaderLayout";
+            centerHeaderLayout.RowCount = 1;
+            centerHeaderLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            centerHeaderLayout.Size = new Size(1312, 104);
+            centerHeaderLayout.TabIndex = 0;
+            //
+            // centerToolbarHost
+            //
+            centerToolbarHost.AutoSize = true;
+            centerToolbarHost.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            centerToolbarHost.ColumnCount = 1;
+            centerToolbarHost.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            centerToolbarHost.Controls.Add(centerToolbar, 0, 1);
+            centerToolbarHost.Dock = DockStyle.Fill;
+            centerToolbarHost.Location = new Point(524, 0);
+            centerToolbarHost.Margin = new Padding(0);
+            centerToolbarHost.Name = "centerToolbarHost";
+            centerToolbarHost.RowCount = 3;
+            centerToolbarHost.RowStyles.Add(new RowStyle(SizeType.Percent, 22.2222214F));
+            centerToolbarHost.RowStyles.Add(new RowStyle(SizeType.Percent, 55.5555573F));
+            centerToolbarHost.RowStyles.Add(new RowStyle(SizeType.Percent, 22.2222214F));
+            centerToolbarHost.Size = new Size(788, 104);
+            centerToolbarHost.TabIndex = 1;
+            //
+            // centerToolbar
+            //
+            centerToolbar.AutoSize = true;
+            centerToolbar.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            centerToolbar.ColumnCount = 5;
+            centerToolbar.ColumnStyles.Add(new ColumnStyle());
+            centerToolbar.ColumnStyles.Add(new ColumnStyle());
+            centerToolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            centerToolbar.ColumnStyles.Add(new ColumnStyle());
+            centerToolbar.ColumnStyles.Add(new ColumnStyle());
+            centerToolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 20F));
+            centerToolbar.Controls.Add(btnOpenCenterFolder, 4, 0);
+            centerToolbar.Controls.Add(dtpCenterDate, 2, 0);
+            centerToolbar.Controls.Add(lblCenterDate, 1, 0);
+            centerToolbar.Controls.Add(queryCenterLogs, 3, 0);
+            centerToolbar.Controls.Add(chkCenterShowDate, 0, 0);
+            centerToolbar.Dock = DockStyle.Fill;
+            centerToolbar.Location = new Point(3, 26);
+            centerToolbar.Name = "centerToolbar";
+            centerToolbar.RowCount = 1;
+            centerToolbar.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            centerToolbar.Size = new Size(782, 51);
+            centerToolbar.TabIndex = 1;
+            //
+            // btnOpenCenterFolder
+            //
+            btnOpenCenterFolder.BorderWidth = 1F;
+            btnOpenCenterFolder.Dock = DockStyle.Fill;
+            btnOpenCenterFolder.IconSvg = "FolderOpenOutlined";
+            btnOpenCenterFolder.Location = new Point(681, 0);
+            btnOpenCenterFolder.Margin = new Padding(0);
+            btnOpenCenterFolder.Name = "btnOpenCenterFolder";
+            btnOpenCenterFolder.Size = new Size(101, 51);
+            btnOpenCenterFolder.TabIndex = 4;
+            btnOpenCenterFolder.Tag = "perm:button.log.open-folder:enabled";
+            btnOpenCenterFolder.Text = "Open";
+            //
+            // dtpCenterDate
+            //
+            dtpCenterDate.Dock = DockStyle.Fill;
+            dtpCenterDate.Location = new Point(175, 0);
+            dtpCenterDate.Margin = new Padding(0);
+            dtpCenterDate.Name = "dtpCenterDate";
+            dtpCenterDate.Size = new Size(183, 51);
+            dtpCenterDate.TabIndex = 1;
+            //
+            // lblCenterDate
+            //
+            lblCenterDate.AutoSizeMode = TAutoSize.Width;
+            lblCenterDate.Dock = DockStyle.Fill;
+            lblCenterDate.Location = new Point(135, 0);
+            lblCenterDate.Margin = new Padding(0);
+            lblCenterDate.Name = "lblCenterDate";
+            lblCenterDate.Size = new Size(40, 51);
+            lblCenterDate.TabIndex = 0;
+            lblCenterDate.Text = "Date";
+            //
+            // queryCenterLogs
+            //
+            queryCenterLogs.AutoSize = true;
+            queryCenterLogs.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            queryCenterLogs.Dock = DockStyle.Fill;
+            queryCenterLogs.Location = new Point(358, 0);
+            queryCenterLogs.Margin = new Padding(0);
+            queryCenterLogs.MinimumSize = new Size(100, 40);
+            queryCenterLogs.Name = "queryCenterLogs";
+            queryCenterLogs.QueryChanged = null;
+            queryCenterLogs.Size = new Size(323, 51);
+            queryCenterLogs.TabIndex = 2;
+            //
+            // chkCenterShowDate
+            //
+            chkCenterShowDate.AutoSizeMode = TAutoSize.Width;
+            chkCenterShowDate.Dock = DockStyle.Fill;
+            chkCenterShowDate.Location = new Point(0, 0);
+            chkCenterShowDate.Margin = new Padding(0);
+            chkCenterShowDate.Name = "chkCenterShowDate";
+            chkCenterShowDate.Size = new Size(135, 51);
+            chkCenterShowDate.TabIndex = 3;
+            chkCenterShowDate.Text = "Show date";
+            //
+            // centerTitleLayout
+            //
+            centerTitleLayout.ColumnCount = 1;
+            centerTitleLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            centerTitleLayout.Controls.Add(lblCenterTitle, 0, 0);
+            centerTitleLayout.Controls.Add(lblCenterDescription, 0, 1);
+            centerTitleLayout.Dock = DockStyle.Fill;
+            centerTitleLayout.Location = new Point(0, 0);
+            centerTitleLayout.Margin = new Padding(0);
+            centerTitleLayout.Name = "centerTitleLayout";
+            centerTitleLayout.RowCount = 2;
+            centerTitleLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
+            centerTitleLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            centerTitleLayout.Size = new Size(524, 104);
+            centerTitleLayout.TabIndex = 0;
+            //
+            // lblCenterTitle
+            //
+            lblCenterTitle.AutoSize = true;
+            lblCenterTitle.Dock = DockStyle.Fill;
+            lblCenterTitle.Font = new Font("Microsoft YaHei UI", 14F, FontStyle.Bold);
+            lblCenterTitle.Location = new Point(0, 0);
+            lblCenterTitle.Margin = new Padding(0);
+            lblCenterTitle.Name = "lblCenterTitle";
+            lblCenterTitle.Size = new Size(524, 34);
+            lblCenterTitle.TabIndex = 0;
+            lblCenterTitle.Text = "Center Server";
+            lblCenterTitle.TextAlign = ContentAlignment.MiddleLeft;
+            //
+            // lblCenterDescription
+            //
+            lblCenterDescription.AutoEllipsis = true;
+            lblCenterDescription.Dock = DockStyle.Fill;
+            lblCenterDescription.ForeColor = SystemColors.GrayText;
+            lblCenterDescription.Location = new Point(0, 34);
+            lblCenterDescription.Margin = new Padding(0);
+            lblCenterDescription.Name = "lblCenterDescription";
+            lblCenterDescription.Size = new Size(524, 70);
+            lblCenterDescription.TabIndex = 1;
+            lblCenterDescription.Text = "Center server interactions";
+            lblCenterDescription.TextAlign = ContentAlignment.MiddleLeft;
+            //
+            // splitCenterContent
+            //
+            splitCenterContent.Dock = DockStyle.Fill;
+            splitCenterContent.Location = new Point(20, 126);
+            splitCenterContent.Margin = new Padding(20, 0, 20, 18);
+            splitCenterContent.Name = "splitCenterContent";
+            //
+            // splitCenterContent.Panel1
+            //
+            splitCenterContent.Panel1.Controls.Add(dgvCenterLogs);
+            splitCenterContent.Panel1.Padding = new Padding(0, 0, 12, 0);
+            //
+            // splitCenterContent.Panel2
+            //
+            splitCenterContent.Panel2.Controls.Add(tabCenterDetails);
+            splitCenterContent.Panel2.Padding = new Padding(12, 0, 0, 0);
+            splitCenterContent.Size = new Size(1312, 562);
+            splitCenterContent.SplitterDistance = 850;
+            splitCenterContent.SplitterWidth = 5;
+            splitCenterContent.TabIndex = 1;
+            //
+            // dgvCenterLogs
+            //
+            dgvCenterLogs.AllowUserToAddRows = false;
+            dgvCenterLogs.AllowUserToDeleteRows = false;
+            dgvCenterLogs.BackgroundColor = SystemColors.Window;
+            dgvCenterLogs.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
+            dgvCenterLogs.Columns.AddRange(new DataGridViewColumn[] { colCenterSendTime, colCenterType, colCenterResult, colCenterHttpStatus, colCenterDuration, colCenterMessage });
+            dgvCenterLogs.Dock = DockStyle.Fill;
+            dgvCenterLogs.Location = new Point(0, 0);
+            dgvCenterLogs.MultiSelect = false;
+            dgvCenterLogs.Name = "dgvCenterLogs";
+            dgvCenterLogs.ReadOnly = true;
+            dgvCenterLogs.RowHeadersVisible = false;
+            dgvCenterLogs.RowHeadersWidth = 51;
+            dgvCenterLogs.RowTemplate.Height = 28;
+            dgvCenterLogs.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            dgvCenterLogs.Size = new Size(838, 562);
+            dgvCenterLogs.TabIndex = 0;
+            //
+            // colCenterSendTime
+            //
+            colCenterSendTime.DataPropertyName = "SendTime";
+            colCenterSendTime.FillWeight = 16F;
+            colCenterSendTime.HeaderText = "Send Time";
+            colCenterSendTime.MinimumWidth = 88;
+            colCenterSendTime.Name = "colCenterSendTime";
+            colCenterSendTime.ReadOnly = true;
+            colCenterSendTime.Width = 125;
+            //
+            // colCenterType
+            //
+            colCenterType.DataPropertyName = "Type";
+            colCenterType.FillWeight = 12F;
+            colCenterType.HeaderText = "Type";
+            colCenterType.MinimumWidth = 88;
+            colCenterType.Name = "colCenterType";
+            colCenterType.ReadOnly = true;
+            colCenterType.Width = 110;
+            //
+            // colCenterResult
+            //
+            colCenterResult.DataPropertyName = "Result";
+            colCenterResult.FillWeight = 10F;
+            colCenterResult.HeaderText = "Result";
+            colCenterResult.MinimumWidth = 70;
+            colCenterResult.Name = "colCenterResult";
+            colCenterResult.ReadOnly = true;
+            colCenterResult.Width = 90;
+            //
+            // colCenterHttpStatus
+            //
+            colCenterHttpStatus.DataPropertyName = "HttpStatus";
+            colCenterHttpStatus.FillWeight = 8F;
+            colCenterHttpStatus.HeaderText = "HTTP";
+            colCenterHttpStatus.MinimumWidth = 60;
+            colCenterHttpStatus.Name = "colCenterHttpStatus";
+            colCenterHttpStatus.ReadOnly = true;
+            colCenterHttpStatus.Width = 80;
+            //
+            // colCenterDuration
+            //
+            colCenterDuration.DataPropertyName = "Duration";
+            colCenterDuration.FillWeight = 8F;
+            colCenterDuration.HeaderText = "Duration";
+            colCenterDuration.MinimumWidth = 70;
+            colCenterDuration.Name = "colCenterDuration";
+            colCenterDuration.ReadOnly = true;
+            colCenterDuration.Width = 90;
+            //
+            // colCenterMessage
+            //
+            colCenterMessage.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+            colCenterMessage.DataPropertyName = "Message";
+            colCenterMessage.HeaderText = "Message";
+            colCenterMessage.MinimumWidth = 160;
+            colCenterMessage.Name = "colCenterMessage";
+            colCenterMessage.ReadOnly = true;
+            //
+            // tabCenterDetails
+            //
+            tabCenterDetails.Controls.Add(tabCenterBasicInfo);
+            tabCenterDetails.Controls.Add(tabCenterRequestBody);
+            tabCenterDetails.Controls.Add(tabCenterResponseBody);
+            tabCenterDetails.Dock = DockStyle.Fill;
+            tabCenterDetails.Location = new Point(12, 0);
+            tabCenterDetails.Margin = new Padding(0);
+            tabCenterDetails.Name = "tabCenterDetails";
+            tabCenterDetails.Padding = new Point(0, 0);
+            tabCenterDetails.SelectedIndex = 0;
+            tabCenterDetails.Size = new Size(445, 562);
+            tabCenterDetails.TabIndex = 0;
+            //
+            // tabCenterBasicInfo
+            //
+            tabCenterBasicInfo.Controls.Add(txtCenterBasicInfo);
+            tabCenterBasicInfo.Location = new Point(4, 29);
+            tabCenterBasicInfo.Name = "tabCenterBasicInfo";
+            tabCenterBasicInfo.Padding = new Padding(3);
+            tabCenterBasicInfo.Size = new Size(437, 529);
+            tabCenterBasicInfo.TabIndex = 0;
+            tabCenterBasicInfo.Text = "Basic";
+            tabCenterBasicInfo.UseVisualStyleBackColor = true;
+            //
+            // txtCenterBasicInfo
+            //
+            txtCenterBasicInfo.BackColor = SystemColors.Window;
+            txtCenterBasicInfo.BorderStyle = BorderStyle.FixedSingle;
+            txtCenterBasicInfo.Dock = DockStyle.Fill;
+            txtCenterBasicInfo.Font = new Font("Consolas", 10F);
+            txtCenterBasicInfo.Location = new Point(3, 3);
+            txtCenterBasicInfo.Multiline = true;
+            txtCenterBasicInfo.Name = "txtCenterBasicInfo";
+            txtCenterBasicInfo.ReadOnly = true;
+            txtCenterBasicInfo.ScrollBars = ScrollBars.Both;
+            txtCenterBasicInfo.Size = new Size(431, 523);
+            txtCenterBasicInfo.TabIndex = 0;
+            txtCenterBasicInfo.WordWrap = false;
+            //
+            // tabCenterRequestBody
+            //
+            tabCenterRequestBody.Controls.Add(txtCenterRequestBody);
+            tabCenterRequestBody.Location = new Point(4, 29);
+            tabCenterRequestBody.Name = "tabCenterRequestBody";
+            tabCenterRequestBody.Padding = new Padding(3);
+            tabCenterRequestBody.Size = new Size(437, 529);
+            tabCenterRequestBody.TabIndex = 1;
+            tabCenterRequestBody.Text = "Request";
+            tabCenterRequestBody.UseVisualStyleBackColor = true;
+            //
+            // txtCenterRequestBody
+            //
+            txtCenterRequestBody.BackColor = SystemColors.Window;
+            txtCenterRequestBody.BorderStyle = BorderStyle.FixedSingle;
+            txtCenterRequestBody.Dock = DockStyle.Fill;
+            txtCenterRequestBody.Font = new Font("Consolas", 10F);
+            txtCenterRequestBody.Location = new Point(3, 3);
+            txtCenterRequestBody.Multiline = true;
+            txtCenterRequestBody.Name = "txtCenterRequestBody";
+            txtCenterRequestBody.ReadOnly = true;
+            txtCenterRequestBody.ScrollBars = ScrollBars.Both;
+            txtCenterRequestBody.Size = new Size(431, 523);
+            txtCenterRequestBody.TabIndex = 0;
+            txtCenterRequestBody.WordWrap = false;
+            //
+            // tabCenterResponseBody
+            //
+            tabCenterResponseBody.Controls.Add(txtCenterResponseBody);
+            tabCenterResponseBody.Location = new Point(4, 29);
+            tabCenterResponseBody.Name = "tabCenterResponseBody";
+            tabCenterResponseBody.Padding = new Padding(3);
+            tabCenterResponseBody.Size = new Size(437, 529);
+            tabCenterResponseBody.TabIndex = 2;
+            tabCenterResponseBody.Text = "Response";
+            tabCenterResponseBody.UseVisualStyleBackColor = true;
+            //
+            // txtCenterResponseBody
+            //
+            txtCenterResponseBody.BackColor = SystemColors.Window;
+            txtCenterResponseBody.BorderStyle = BorderStyle.FixedSingle;
+            txtCenterResponseBody.Dock = DockStyle.Fill;
+            txtCenterResponseBody.Font = new Font("Consolas", 10F);
+            txtCenterResponseBody.Location = new Point(3, 3);
+            txtCenterResponseBody.Multiline = true;
+            txtCenterResponseBody.Name = "txtCenterResponseBody";
+            txtCenterResponseBody.ReadOnly = true;
+            txtCenterResponseBody.ScrollBars = ScrollBars.Both;
+            txtCenterResponseBody.Size = new Size(431, 523);
+            txtCenterResponseBody.TabIndex = 0;
+            txtCenterResponseBody.WordWrap = false;
+            //
             // LogManageView
-            // 
+            //
             AutoScaleDimensions = new SizeF(10F, 23F);
             AutoScaleMode = AutoScaleMode.Font;
             Controls.Add(tabLogCategories);
@@ -2034,6 +2452,28 @@ namespace AutoWeldSystem.UI.Views
             ((System.ComponentModel.ISupportInitialize)splitDeviceStatusContent).EndInit();
             splitDeviceStatusContent.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)dgvDeviceStatusLogs).EndInit();
+            tabCenterLogs.ResumeLayout(false);
+            centerRootLayout.ResumeLayout(false);
+            centerHeaderLayout.ResumeLayout(false);
+            centerHeaderLayout.PerformLayout();
+            centerToolbarHost.ResumeLayout(false);
+            centerToolbarHost.PerformLayout();
+            centerToolbar.ResumeLayout(false);
+            centerToolbar.PerformLayout();
+            centerTitleLayout.ResumeLayout(false);
+            centerTitleLayout.PerformLayout();
+            splitCenterContent.Panel1.ResumeLayout(false);
+            splitCenterContent.Panel2.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)splitCenterContent).EndInit();
+            splitCenterContent.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)dgvCenterLogs).EndInit();
+            tabCenterDetails.ResumeLayout(false);
+            tabCenterBasicInfo.ResumeLayout(false);
+            tabCenterBasicInfo.PerformLayout();
+            tabCenterRequestBody.ResumeLayout(false);
+            tabCenterRequestBody.PerformLayout();
+            tabCenterResponseBody.ResumeLayout(false);
+            tabCenterResponseBody.PerformLayout();
             ResumeLayout(false);
         }
 
@@ -2176,5 +2616,34 @@ namespace AutoWeldSystem.UI.Views
         private DataGridViewTextBoxColumn colDeviceStatusName;
         private DataGridViewTextBoxColumn colDeviceReportStatus;
         private DataGridViewTextBoxColumn colDeviceReportMessage;
+
+        private TabPage tabCenterLogs;
+        private TableLayoutPanel centerRootLayout;
+        private TableLayoutPanel centerHeaderLayout;
+        private TableLayoutPanel centerToolbarHost;
+        private TableLayoutPanel centerToolbar;
+        private TableLayoutPanel centerTitleLayout;
+        private AntdUI.Button btnOpenCenterFolder;
+        private AntdUI.DatePicker dtpCenterDate;
+        private AntdUI.Label lblCenterDate;
+        private Controls.InputQuery queryCenterLogs;
+        private AntdUI.Checkbox chkCenterShowDate;
+        private Label lblCenterTitle;
+        private Label lblCenterDescription;
+        private SplitContainer splitCenterContent;
+        private DataGridView dgvCenterLogs;
+        private DataGridViewTextBoxColumn colCenterSendTime;
+        private DataGridViewTextBoxColumn colCenterType;
+        private DataGridViewTextBoxColumn colCenterResult;
+        private DataGridViewTextBoxColumn colCenterHttpStatus;
+        private DataGridViewTextBoxColumn colCenterDuration;
+        private DataGridViewTextBoxColumn colCenterMessage;
+        private TabControl tabCenterDetails;
+        private TabPage tabCenterBasicInfo;
+        private TabPage tabCenterRequestBody;
+        private TabPage tabCenterResponseBody;
+        private TextBox txtCenterBasicInfo;
+        private TextBox txtCenterRequestBody;
+        private TextBox txtCenterResponseBody;
     }
 }

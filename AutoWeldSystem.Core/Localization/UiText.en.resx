@@ -1557,6 +1557,21 @@
   <data name="log.message.exception_logged" xml:space="preserve">
     <value>An application exception occurred and was written to the exception log. TraceId: {0}</value>
   </data>
+  <data name="log.tab.center_server" xml:space="preserve">
+    <value>Center Server Logs</value>
+  </data>
+  <data name="log.description.center_server" xml:space="preserve">
+    <value>Records device-status pushes and product-data reports to the center server, including requests, responses, and errors.</value>
+  </data>
+  <data name="log.column.type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="log.value.center_telemetry" xml:space="preserve">
+    <value>Device Status</value>
+  </data>
+  <data name="log.value.center_product_report" xml:space="preserve">
+    <value>Product Data</value>
+  </data>
   <data name="program.button.sync_mes" xml:space="preserve">
     <value>Sync MES</value>
   </data>

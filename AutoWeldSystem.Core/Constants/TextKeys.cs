@@ -1022,6 +1022,11 @@ public static class TextKeys
         public const string MessageSourceMissing = "log.message.source_missing";
         public const string MessageDetailsCopied = "log.message.details_copied";
         public const string MessageExceptionLogged = "log.message.exception_logged";
+        public const string TabCenterServer = "log.tab.center_server";
+        public const string DescriptionCenterServer = "log.description.center_server";
+        public const string ColumnType = "log.column.type";
+        public const string ValueCenterTelemetry = "log.value.center_telemetry";
+        public const string ValueCenterProductReport = "log.value.center_product_report";
     }
 
     /// <summary>

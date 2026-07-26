@@ -27,6 +27,7 @@ public partial class LogManageView : BaseView
     private const string ColumnProductionLevelName = "colProductionLevel";
     private const string ColumnExceptionCategoryName = "colExceptionCategory";
     private const string ColumnExceptionSeverityName = "colExceptionSeverity";
+    private const string ColumnCenterResultName = "colCenterResult";
 
     private static readonly JsonSerializerOptions PrettyJsonOptions = new()
     {
@@ -39,12 +40,14 @@ public partial class LogManageView : BaseView
     private readonly IProgramExceptionLogService _exceptionLogService = null!;
     private readonly IDeviceLifecycleLogService _deviceLifecycleLogService = null!;
     private readonly IDeviceStatusService _deviceStatusService = null!;
+    private readonly ICenterInteractionLogService _centerLogService = null!;
     private readonly ILocalizationService _localizer = null!;
     private readonly BindingSource _mesBindingSource = new();
     private readonly BindingSource _productionBindingSource = new();
     private readonly BindingSource _exceptionBindingSource = new();
     private readonly BindingSource _deviceLifecycleBindingSource = new();
     private readonly BindingSource _deviceStatusBindingSource = new();
+    private readonly BindingSource _centerBindingSource = new();
     private readonly List<MesInteractionLogEntry> _mesLogs = new();
     private readonly List<ProductionFlowLogEntry> _productionLogs = new();
     private readonly List<ProgramExceptionLogEntry> _exceptionLogs = new();
@@ -52,12 +55,14 @@ public partial class LogManageView : BaseView
     private readonly Queue<ProgramExceptionLogEntry> _pendingExceptionLogs = new();
     private readonly List<DeviceLifecycleLogEntry> _deviceLifecycleLogs = new();
     private readonly List<BizDeviceStatusLog> _deviceStatusLogs = new();
+    private readonly List<CenterInteractionLogEntry> _centerLogs = new();
     private bool _initialized;
     private string _keyword = string.Empty;
     private string _productionKeyword = string.Empty;
     private string _exceptionKeyword = string.Empty;
     private string _deviceLifecycleKeyword = string.Empty;
     private string _deviceStatusKeyword = string.Empty;
+    private string _centerKeyword = string.Empty;
     private bool _showLogDate;
     private bool _syncingShowDateChecks;
     private bool _exceptionLiveUpdateQueued;
@@ -78,6 +83,7 @@ public partial class LogManageView : BaseView
         IProgramExceptionLogService exceptionLogService,
         IDeviceLifecycleLogService deviceLifecycleLogService,
         IDeviceStatusService deviceStatusService,
+        ICenterInteractionLogService centerLogService,
         ILocalizationService localizer)
     {
         _mesLogService = mesLogService;
@@ -85,6 +91,7 @@ public partial class LogManageView : BaseView
         _exceptionLogService = exceptionLogService;
         _deviceLifecycleLogService = deviceLifecycleLogService;
         _deviceStatusService = deviceStatusService;
+        _centerLogService = centerLogService;
         _localizer = localizer;
 
         InitializeComponent();
@@ -93,6 +100,7 @@ public partial class LogManageView : BaseView
         ConfigureExceptionGrid();
         ConfigureDeviceLifecycleGrid();
         ConfigureDeviceStatusGrid();
+        ConfigureCenterGrid();
         WireEvents();
     }
 
@@ -111,11 +119,13 @@ public partial class LogManageView : BaseView
         dtpExceptionDate.Value = DateTime.Today;
         dtpDeviceLifecycleDate.Value = DateTime.Today;
         dtpDeviceStatusDate.Value = DateTime.Today;
+        dtpCenterDate.Value = DateTime.Today;
         LoadMesLogs();
         LoadProductionLogs();
         LoadExceptionLogs();
         LoadDeviceLifecycleLogs();
         LoadDeviceStatusLogs();
+        LoadCenterLogs();
     }
 
     protected override void OnVisibleChanged(EventArgs e)
@@ -142,11 +152,13 @@ public partial class LogManageView : BaseView
         ApplyExceptionGridHeaders();
         ApplyDeviceLifecycleGridHeaders();
         ApplyDeviceStatusGridHeaders();
+        ApplyCenterGridHeaders();
         ApplyMesFilter();
         ApplyProductionFilter();
         ApplyExceptionFilter();
         ApplyDeviceLifecycleFilter();
         ApplyDeviceStatusFilter();
+        ApplyCenterFilter();
     }
 
     private bool IsDesignEnvironment
@@ -214,6 +226,17 @@ public partial class LogManageView : BaseView
         ApplyDeviceStatusGridHeaders();
     }
 
+    /// <summary>
+    /// Applies the shared runtime style and binds the center-server interaction log data source.
+    /// </summary>
+    private void ConfigureCenterGrid()
+    {
+        TableStyleHelper.ApplyDataGridView(dgvCenterLogs);
+        dgvCenterLogs.AutoGenerateColumns = false;
+        dgvCenterLogs.DataSource = _centerBindingSource;
+        ApplyCenterGridHeaders();
+    }
+
     private void WireEvents()
     {
         btnOpenMesFolder.Click += (_, _) => OpenMesLogFolder();
@@ -259,6 +282,15 @@ public partial class LogManageView : BaseView
         dgvDeviceStatusLogs.SelectionChanged += (_, _) => ShowSelectedDeviceStatusDetails();
         _deviceStatusService.LogsChanged += DeviceStatusService_LogsChanged;
         Disposed += (_, _) => _deviceStatusService.LogsChanged -= DeviceStatusService_LogsChanged;
+
+        btnOpenCenterFolder.Click += (_, _) => OpenCenterLogFolder();
+        dtpCenterDate.ValueChanged += (_, _) => LoadCenterLogs();
+        chkCenterShowDate.CheckedChanged += ShowLogDate_CheckedChanged;
+        queryCenterLogs.QueryClick += (_, keyword) => HandleCenterQuery(keyword);
+        dgvCenterLogs.SelectionChanged += (_, _) => ShowSelectedCenterLogDetails();
+        dgvCenterLogs.CellFormatting += DgvCenterLogs_CellFormatting;
+        _centerLogService.LogWritten += CenterLogService_LogWritten;
+        Disposed += (_, _) => _centerLogService.LogWritten -= CenterLogService_LogWritten;
     }
 
     private void ShowLogDate_CheckedChanged(object? sender, AntdUI.BoolEventArgs e)
@@ -294,6 +326,7 @@ public partial class LogManageView : BaseView
             chkExceptionShowDate.Checked = _showLogDate;
             chkDeviceLifecycleShowDate.Checked = _showLogDate;
             chkDeviceStatusShowDate.Checked = _showLogDate;
+            chkCenterShowDate.Checked = _showLogDate;
         }
         finally
         {
@@ -308,6 +341,7 @@ public partial class LogManageView : BaseView
         ApplyExceptionFilter();
         ApplyDeviceLifecycleFilter();
         ApplyDeviceStatusFilter();
+        ApplyCenterFilter();
     }
 
     private void HandleMesQuery(string keyword)
@@ -340,6 +374,11 @@ public partial class LogManageView : BaseView
         HandleLogQuery(queryDeviceStatusLogs, keyword, value => _deviceStatusKeyword = value, LoadDeviceStatusLogs, ApplyDeviceStatusFilter);
     }
 
+    private void HandleCenterQuery(string keyword)
+    {
+        HandleLogQuery(queryCenterLogs, keyword, value => _centerKeyword = value, LoadCenterLogs, ApplyCenterFilter);
+    }
+
     /// <summary>
     /// Applies InputQuery semantics for log pages: search filters loaded rows, refresh clears and reloads.
     /// </summary>
@@ -369,6 +408,7 @@ public partial class LogManageView : BaseView
         tabExceptionLogs.Text = _localizer.GetString(TextKeys.Log.TabProgramException);
         tabDeviceLifecycleLogs.Text = _localizer.GetString(TextKeys.Log.TabDeviceLifecycle);
         tabDeviceStatusLogs.Text = "设备状态日志";
+        tabCenterLogs.Text = _localizer.GetString(TextKeys.Log.TabCenterServer);
         lblMesTitle.Text = _localizer.GetString(TextKeys.Log.TitleMesInteraction);
         lblMesDescription.Text = _localizer.GetString(TextKeys.Log.DescriptionMesInteraction);
         lblProductionTitle.Text = _localizer.GetString(TextKeys.Log.TabProductionFlow);
@@ -379,21 +419,26 @@ public partial class LogManageView : BaseView
         lblDeviceLifecycleDescription.Text = _localizer.GetString(TextKeys.Log.DescriptionDeviceLifecycle);
         lblDeviceStatusTitle.Text = "设备状态日志";
         lblDeviceStatusDescription.Text = "只记录设备状态变化，并显示 PLC 原始状态上报结果。";
+        lblCenterTitle.Text = _localizer.GetString(TextKeys.Log.TabCenterServer);
+        lblCenterDescription.Text = _localizer.GetString(TextKeys.Log.DescriptionCenterServer);
         lblMesDate.Text = _localizer.GetString(TextKeys.Log.LabelDate);
         lblProductionDate.Text = _localizer.GetString(TextKeys.Log.LabelDate);
         lblExceptionDate.Text = _localizer.GetString(TextKeys.Log.LabelDate);
         lblDeviceLifecycleDate.Text = _localizer.GetString(TextKeys.Log.LabelDate);
         lblDeviceStatusDate.Text = _localizer.GetString(TextKeys.Log.LabelDate);
+        lblCenterDate.Text = _localizer.GetString(TextKeys.Log.LabelDate);
         chkMesShowDate.Text = _localizer.GetString(TextKeys.Log.CheckShowDate);
         chkProductionShowDate.Text = _localizer.GetString(TextKeys.Log.CheckShowDate);
         chkExceptionShowDate.Text = _localizer.GetString(TextKeys.Log.CheckShowDate);
         chkDeviceLifecycleShowDate.Text = _localizer.GetString(TextKeys.Log.CheckShowDate);
         chkDeviceStatusShowDate.Text = _localizer.GetString(TextKeys.Log.CheckShowDate);
+        chkCenterShowDate.Text = _localizer.GetString(TextKeys.Log.CheckShowDate);
         btnOpenMesFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
         btnOpenProductionFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
         btnOpenExceptionFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
         btnOpenDeviceLifecycleFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
         btnOpenDeviceStatusFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
+        btnOpenCenterFolder.Text = _localizer.GetString(TextKeys.Log.ButtonOpenFolder);
         btnOpenExceptionSource.Text = _localizer.GetString(TextKeys.Log.ButtonOpenSource);
         btnCopyExceptionDetails.Text = _localizer.GetString(TextKeys.Log.ButtonCopyDetails);
         tabBasicInfo.Text = _localizer.GetString(TextKeys.Log.DetailBasicInfo);
@@ -404,6 +449,9 @@ public partial class LogManageView : BaseView
         tabExceptionBasicInfo.Text = _localizer.GetString(TextKeys.Log.DetailBasicInfo);
         tabExceptionStackTrace.Text = _localizer.GetString(TextKeys.Log.DetailStackTrace);
         tabExceptionContext.Text = _localizer.GetString(TextKeys.Log.DetailContext);
+        tabCenterBasicInfo.Text = _localizer.GetString(TextKeys.Log.DetailBasicInfo);
+        tabCenterRequestBody.Text = _localizer.GetString(TextKeys.Log.DetailRequest);
+        tabCenterResponseBody.Text = _localizer.GetString(TextKeys.Log.DetailResponse);
         if (dgvMesLogs.CurrentRow?.DataBoundItem is null)
         {
             ShowMesLogDetails(null);
@@ -427,6 +475,11 @@ public partial class LogManageView : BaseView
         if (dgvDeviceStatusLogs.CurrentRow?.DataBoundItem is null)
         {
             ShowDeviceStatusDetails(null);
+        }
+
+        if (dgvCenterLogs.CurrentRow?.DataBoundItem is null)
+        {
+            ShowCenterLogDetails(null);
         }
     }
 
@@ -473,6 +526,16 @@ public partial class LogManageView : BaseView
         colDeviceStatusName.HeaderText = "状态名称";
         colDeviceReportStatus.HeaderText = "上传状态";
         colDeviceReportMessage.HeaderText = "上传消息";
+    }
+
+    private void ApplyCenterGridHeaders()
+    {
+        colCenterSendTime.HeaderText = _localizer.GetString(TextKeys.Log.ColumnSendTime);
+        colCenterType.HeaderText = _localizer.GetString(TextKeys.Log.ColumnType);
+        colCenterResult.HeaderText = _localizer.GetString(TextKeys.Log.ColumnSuccess);
+        colCenterHttpStatus.HeaderText = _localizer.GetString(TextKeys.Log.ColumnHttpStatus);
+        colCenterDuration.HeaderText = _localizer.GetString(TextKeys.Log.ColumnDuration);
+        colCenterMessage.HeaderText = _localizer.GetString(TextKeys.Log.ColumnMessage);
     }
 
     private void LoadMesLogs()
@@ -547,6 +610,21 @@ public partial class LogManageView : BaseView
             _deviceStatusLogs.Clear();
             _deviceStatusLogs.AddRange(_deviceStatusService.GetLogs(date, date.AddDays(1).AddTicks(-1), MaxDisplayCount));
             ApplyDeviceStatusFilter();
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex.Message);
+        }
+    }
+
+    private void LoadCenterLogs()
+    {
+        try
+        {
+            var date = GetSelectedDate(dtpCenterDate);
+            _centerLogs.Clear();
+            _centerLogs.AddRange(_centerLogService.GetByDate(date, MaxDisplayCount));
+            ApplyCenterFilter();
         }
         catch (Exception ex)
         {
@@ -648,6 +726,25 @@ public partial class LogManageView : BaseView
         ShowSelectedDeviceStatusDetails();
     }
 
+    private void ApplyCenterFilter()
+    {
+        var rows = _centerLogs
+            .Where(entry => IsCenterLogMatched(entry, _centerKeyword))
+            .Select(CreateCenterLogRow)
+            .ToList();
+
+        _centerBindingSource.DataSource = rows;
+        if (rows.Count == 0)
+        {
+            ShowCenterLogDetails(null);
+            return;
+        }
+
+        SelectFirstRowIfNeeded(dgvCenterLogs);
+
+        ShowSelectedCenterLogDetails();
+    }
+
     /// <summary>
     /// Selects the first visible data row only when both a row and a column exist.
     /// This protects the page from incomplete designer column definitions.
@@ -684,6 +781,33 @@ public partial class LogManageView : BaseView
         return string.Equals(category, AppConstants.ExceptionLogCategories.Business, StringComparison.OrdinalIgnoreCase)
             ? _localizer.GetString(TextKeys.Log.ValueBusinessException)
             : _localizer.GetString(TextKeys.Log.ValueProgramException);
+    }
+
+    private CenterInteractionLogRow CreateCenterLogRow(CenterInteractionLogEntry entry)
+    {
+        return new CenterInteractionLogRow(
+            entry,
+            GetCenterTypeText(entry.InteractionType),
+            entry.IsSuccess
+                ? _localizer.GetString(TextKeys.Log.ValueSuccess)
+                : _localizer.GetString(TextKeys.Log.ValueFailed),
+            _showLogDate);
+    }
+
+    /// <summary>把交互类型原始值映射为界面显示名，未知类型回退显示原始值。</summary>
+    private string GetCenterTypeText(string interactionType)
+    {
+        if (string.Equals(interactionType, AppConstants.CenterInteractionTypes.Telemetry, StringComparison.OrdinalIgnoreCase))
+        {
+            return _localizer.GetString(TextKeys.Log.ValueCenterTelemetry);
+        }
+
+        if (string.Equals(interactionType, AppConstants.CenterInteractionTypes.ProductReport, StringComparison.OrdinalIgnoreCase))
+        {
+            return _localizer.GetString(TextKeys.Log.ValueCenterProductReport);
+        }
+
+        return string.IsNullOrWhiteSpace(interactionType) ? "-" : interactionType;
     }
 
     private static bool IsMesLogMatched(MesInteractionLogEntry entry, string keyword)
@@ -791,6 +915,24 @@ public partial class LogManageView : BaseView
             || Contains(entry.ReportStatus, keyword)
             || Contains(entry.ReportMessage, keyword)
             || Contains(entry.Remark, keyword);
+    }
+
+    private bool IsCenterLogMatched(CenterInteractionLogEntry entry, string keyword)
+    {
+        if (string.IsNullOrWhiteSpace(keyword))
+        {
+            return true;
+        }
+
+        return Contains(entry.TraceId, keyword)
+            || Contains(entry.InteractionType, keyword)
+            || Contains(GetCenterTypeText(entry.InteractionType), keyword)
+            || Contains(entry.Url, keyword)
+            || Contains(entry.RequestBody, keyword)
+            || Contains(entry.ResponseBody, keyword)
+            || Contains(entry.AckMessage, keyword)
+            || Contains(entry.ErrorMessage, keyword)
+            || Contains(entry.HttpStatusCode?.ToString(), keyword);
     }
 
     private static bool ShouldShowMesLog(MesInteractionLogEntry entry)
@@ -966,6 +1108,16 @@ public partial class LogManageView : BaseView
             "LogManageView.DeviceStatusLogsChanged");
     }
 
+    private void CenterLogService_LogWritten(object? sender, CenterInteractionLogEntry entry)
+    {
+        if (IsDisposed || !IsHandleCreated)
+        {
+            return;
+        }
+
+        RunOnUiThread(() => AddLiveCenterLog(entry), "LogManageView.CenterLogWritten");
+    }
+
     private void AddLiveMesLog(MesInteractionLogEntry entry)
     {
         if (entry.SendTime.Date != GetSelectedDate(dtpMesDate))
@@ -1072,6 +1224,22 @@ public partial class LogManageView : BaseView
         ApplyDeviceLifecycleFilter();
     }
 
+    private void AddLiveCenterLog(CenterInteractionLogEntry entry)
+    {
+        if (entry.SendTime.Date != GetSelectedDate(dtpCenterDate))
+        {
+            return;
+        }
+
+        _centerLogs.Insert(0, entry);
+        if (_centerLogs.Count > MaxDisplayCount)
+        {
+            _centerLogs.RemoveRange(MaxDisplayCount, _centerLogs.Count - MaxDisplayCount);
+        }
+
+        ApplyCenterFilter();
+    }
+
     private void ShowSelectedMesLogDetails()
     {
         var row = dgvMesLogs.CurrentRow?.DataBoundItem as MesLogRow;
@@ -1099,6 +1267,12 @@ public partial class LogManageView : BaseView
     {
         var row = dgvDeviceStatusLogs.CurrentRow?.DataBoundItem as DeviceStatusLogRow;
         ShowDeviceStatusDetails(row?.Entry);
+    }
+
+    private void ShowSelectedCenterLogDetails()
+    {
+        var row = dgvCenterLogs.CurrentRow?.DataBoundItem as CenterInteractionLogRow;
+        ShowCenterLogDetails(row?.Entry);
     }
 
     private void ShowMesLogDetails(MesInteractionLogEntry? entry)
@@ -1178,6 +1352,21 @@ public partial class LogManageView : BaseView
         txtDeviceStatusDetail.Text = entry is null
             ? _localizer.GetString(TextKeys.Log.DetailNoSelection)
             : BuildDeviceStatusBasicInfo(entry);
+    }
+
+    private void ShowCenterLogDetails(CenterInteractionLogEntry? entry)
+    {
+        if (entry is null)
+        {
+            txtCenterBasicInfo.Text = _localizer.GetString(TextKeys.Log.DetailNoSelection);
+            txtCenterRequestBody.Clear();
+            txtCenterResponseBody.Clear();
+            return;
+        }
+
+        txtCenterBasicInfo.Text = BuildCenterBasicInfo(entry);
+        txtCenterRequestBody.Text = PrettyPrintJson(entry.RequestBody);
+        txtCenterResponseBody.Text = PrettyPrintJson(entry.ResponseBody);
     }
 
     private ProgramExceptionLogEntry? GetSelectedExceptionEntry()
@@ -1279,6 +1468,29 @@ public partial class LogManageView : BaseView
         builder.AppendLine($"ReportTime: {entry.ReportTime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-"}");
         builder.AppendLine($"ReportMessage: {entry.ReportMessage ?? "-"}");
         builder.AppendLine($"Remark: {entry.Remark ?? "-"}");
+        return builder.ToString();
+    }
+
+    private string BuildCenterBasicInfo(CenterInteractionLogEntry entry)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine($"TraceId: {entry.TraceId}");
+        builder.AppendLine($"Type: {GetCenterTypeText(entry.InteractionType)} ({entry.InteractionType})");
+        builder.AppendLine($"Method: {entry.Method}");
+        builder.AppendLine($"Url: {entry.Url}");
+        builder.AppendLine($"SendTime: {entry.SendTime:yyyy-MM-dd HH:mm:ss.fff}");
+        builder.AppendLine($"ReceiveTime: {entry.ReceiveTime:yyyy-MM-dd HH:mm:ss.fff}");
+        builder.AppendLine($"Duration: {entry.DurationMilliseconds} ms");
+        builder.AppendLine($"HTTP: {entry.HttpStatusCode?.ToString() ?? "-"}");
+        builder.AppendLine($"Ack Message: {entry.AckMessage}");
+        builder.AppendLine($"ServerTime: {entry.ServerTime?.ToString("yyyy-MM-dd HH:mm:ss.fff") ?? "-"}");
+        builder.AppendLine($"Success: {entry.IsSuccess}");
+
+        if (!string.IsNullOrWhiteSpace(entry.ErrorMessage))
+        {
+            builder.AppendLine($"Error: {entry.ErrorMessage}");
+        }
+
         return builder.ToString();
     }
 
@@ -1406,6 +1618,21 @@ public partial class LogManageView : BaseView
         }
     }
 
+    private void DgvCenterLogs_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
+    {
+        if (!IsValidCell(dgvCenterLogs, e)
+            || dgvCenterLogs.Rows[e.RowIndex].DataBoundItem is not CenterInteractionLogRow row)
+        {
+            return;
+        }
+
+        if (e.CellStyle is not null && dgvCenterLogs.Columns[e.ColumnIndex].Name == ColumnCenterResultName)
+        {
+            e.CellStyle.ForeColor = row.Entry.IsSuccess ? UiColors.Status.Success : UiColors.Status.Danger;
+            e.CellStyle.Font = new Font(dgvCenterLogs.Font, FontStyle.Bold);
+        }
+    }
+
     /// <summary>
     /// Validates row and column indexes supplied by DataGridView formatting events.
     /// </summary>
@@ -1499,6 +1726,24 @@ public partial class LogManageView : BaseView
         try
         {
             var folder = _deviceStatusService.GetLogDirectory();
+            Directory.CreateDirectory(folder);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = folder,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex.Message);
+        }
+    }
+
+    private void OpenCenterLogFolder()
+    {
+        try
+        {
+            var folder = _centerLogService.GetLogDirectory();
             Directory.CreateDirectory(folder);
             Process.Start(new ProcessStartInfo
             {
@@ -1680,6 +1925,42 @@ public partial class LogManageView : BaseView
             : UploadStatusDisplayRules.GetDisplayText(Entry.ReportStatus);
 
         public string ReportMessage => string.IsNullOrWhiteSpace(Entry.ReportMessage) ? "-" : Entry.ReportMessage;
+    }
+
+    private sealed class CenterInteractionLogRow
+    {
+        public CenterInteractionLogRow(CenterInteractionLogEntry entry, string type, string result, bool showDate)
+        {
+            Entry = entry;
+            SendTime = LogTimestampDisplayRules.Format(entry.SendTime, showDate);
+            Type = type;
+            Result = result;
+        }
+
+        public CenterInteractionLogEntry Entry { get; }
+
+        public string SendTime { get; }
+
+        public string Type { get; }
+
+        public string Result { get; }
+
+        public string HttpStatus => Entry.HttpStatusCode?.ToString() ?? "-";
+
+        public string Duration => Entry.DurationMilliseconds.ToString();
+
+        public string Message
+        {
+            get
+            {
+                if (!string.IsNullOrWhiteSpace(Entry.AckMessage))
+                {
+                    return Entry.AckMessage;
+                }
+
+                return string.IsNullOrWhiteSpace(Entry.ErrorMessage) ? "-" : Entry.ErrorMessage;
+            }
+        }
     }
 
     private sealed class ExceptionLogRow
