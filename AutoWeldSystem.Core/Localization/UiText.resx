@@ -1557,6 +1557,21 @@
   <data name="log.message.exception_logged" xml:space="preserve">
     <value>程序发生异常，已写入异常日志。TraceId：{0}</value>
   </data>
+  <data name="log.tab.center_server" xml:space="preserve">
+    <value>服务器日志</value>
+  </data>
+  <data name="log.description.center_server" xml:space="preserve">
+    <value>记录本机与中心服务器的设备状态推送和产品数据上报，含请求、响应与错误。</value>
+  </data>
+  <data name="log.column.type" xml:space="preserve">
+    <value>类型</value>
+  </data>
+  <data name="log.value.center_telemetry" xml:space="preserve">
+    <value>设备状态</value>
+  </data>
+  <data name="log.value.center_product_report" xml:space="preserve">
+    <value>产品数据</value>
+  </data>
   <data name="program.button.sync_mes" xml:space="preserve">
     <value>同步MES</value>
   </data>
