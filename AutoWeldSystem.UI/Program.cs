@@ -62,6 +62,7 @@ public static class Program
                     services.AddSingleton<IPlcBusinessSignalService, BusinessSignalService>();
                     services.AddSingleton<IOperationLogService, OperationLogService>();
                     services.AddSingleton<IMesInteractionLogService, MesInteractionLogService>();
+                    services.AddSingleton<ICenterInteractionLogService, CenterInteractionLogService>();
                     services.AddSingleton<IProductionFlowLogService, ProductionFlowLogService>();
                     services.AddSingleton<IProgramExceptionLogService, ProgramExceptionLogService>();
                     services.AddSingleton<IDeviceLifecycleLogService, DeviceLifecycleLogService>();

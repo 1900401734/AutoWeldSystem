@@ -128,6 +128,16 @@ public static class AppConstants
         public const string ProgramException = "ProgramException";
         public const string DeviceLifecycle = "DeviceLifecycle";
         public const string DeviceStatus = "DeviceStatus";
+        public const string CenterServer = "CenterServer";
+    }
+
+    /// <summary>
+    /// 中心服务器交互类型。原始值与中心服务器 API 路径段及看板筛选值保持一致。
+    /// </summary>
+    public static class CenterInteractionTypes
+    {
+        public const string Telemetry = "telemetry";
+        public const string ProductReport = "product-report";
     }
 
     /// <summary>
