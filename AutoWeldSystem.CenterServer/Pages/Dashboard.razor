@@ -8,6 +8,7 @@
 @inject AutoWeldSystem.CenterServer.Services.CenterPushJsonlLogService PushLogService
 @inject AutoWeldSystem.CenterServer.Services.CenterServerSettingsService SettingsService
 @inject AutoWeldSystem.CenterServer.Services.CenterDashboardChangeNotifier ChangeNotifier
+@inject AutoWeldSystem.CenterServer.Services.CenterDeviceRemovalService DeviceRemovalService
 @implements IAsyncDisposable
 
 <main class="dashboard-shell">
@@ -129,9 +130,14 @@
                                 <h3>@FirstNonEmpty(device.DeviceName, device.DeviceId)</h3>
                                 <p>@device.DeviceId</p>
                             </div>
-                            <span class="online-badge @(device.State.ClientOnline ? "online" : "offline")">
-                                <i class="dot" aria-hidden="true"></i>@(device.State.ClientOnline ? "在线" : "离线")
-                            </span>
+                            <div class="device-card-side">
+                                <span class="online-badge @(device.State.ClientOnline ? "online" : "offline")">
+                                    <i class="dot" aria-hidden="true"></i>@(device.State.ClientOnline ? "在线" : "离线")
+                                </span>
+                                <button type="button" class="icon-button" title="删除设备" aria-label="删除设备" @onclick="() => OpenDeleteDialog(device)">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" /></svg>
+                                </button>
+                            </div>
                         </div>
 
                         @if (device.Stations.Count == 0)
@@ -265,6 +271,25 @@
             </div>
         }
     </section>
+
+    @if (_pendingDeleteDevice is not null)
+    {
+        <div class="modal-mask" @onclick="CancelDelete">
+            <div class="modal-card" role="dialog" aria-modal="true" @onclick:stopPropagation>
+                <h3>删除设备</h3>
+                <p class="modal-text">确认从看板删除设备 <strong>@FirstNonEmpty(_pendingDeleteDevice.DeviceName, _pendingDeleteDevice.DeviceId)</strong>（@_pendingDeleteDevice.DeviceId）？</p>
+                <p class="modal-hint">仅清除看板中的设备与工位快照；历史推送日志与报表文件保留。若设备仍在推送，会自动重新注册并再次出现。</p>
+                @if (!string.IsNullOrEmpty(_deleteError))
+                {
+                    <p class="modal-error">@_deleteError</p>
+                }
+                <div class="modal-actions">
+                    <button type="button" class="ghost-button" disabled="@_deleting" @onclick="CancelDelete">取消</button>
+                    <button type="button" class="danger-button" disabled="@_deleting" @onclick="ConfirmDeleteAsync">@(_deleting ? "删除中…" : "确认删除")</button>
+                </div>
+            </div>
+        </div>
+    }
 </main>
 
 @code {
@@ -280,6 +305,10 @@
     private string _logStationText = string.Empty;
     private string _logRequestType = string.Empty;
     private string _logKeyword = string.Empty;
+    private CenterDashboardDeviceDto? _pendingDeleteDevice;
+    private bool _deleting;
+    private string? _deleteError;
+    private bool _disposed;
 
     protected override Task OnInitializedAsync()
     {
@@ -299,6 +328,11 @@
     {
         _ = InvokeAsync(() =>
         {
+            if (_disposed)
+            {
+                return;
+            }
+
             RefreshDashboardSnapshot();
             _lastRealtimeRefreshAt = e.ChangedAt;
             StateHasChanged();
@@ -341,6 +375,66 @@
         RefreshLogs();
     }
 
+    private void OpenDeleteDialog(CenterDashboardDeviceDto device)
+    {
+        if (_deleting)
+        {
+            return;
+        }
+
+        // 捕获设备 DTO 快照，弹窗打开期间后台刷新替换 _snapshot 也不影响弹窗内容。
+        _pendingDeleteDevice = device;
+        _deleteError = null;
+    }
+
+    private void CancelDelete()
+    {
+        if (_deleting)
+        {
+            return;
+        }
+
+        _pendingDeleteDevice = null;
+        _deleteError = null;
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (_deleting || _pendingDeleteDevice is null)
+        {
+            return;
+        }
+
+        _deleting = true;
+        _deleteError = null;
+        try
+        {
+            // 不传页面 CancellationToken：确认后的删除应完整执行，不因关闭页面中断半途。
+            await DeviceRemovalService.RemoveDeviceAsync(_pendingDeleteDevice.DeviceId);
+            if (_disposed)
+            {
+                return;
+            }
+
+            // 未删到行说明设备已被其它会话删除，结果等价，同样关闭弹窗并刷新。
+            _pendingDeleteDevice = null;
+            RefreshDashboardSnapshot();
+        }
+        catch (Exception ex)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _deleteError = $"删除失败：{ex.Message}";
+        }
+        finally
+        {
+            _deleting = false;
+        }
+    }
+
     private void RefreshLogs()
     {
         _logs = PushLogService.QueryRecent(new CenterPushLogQuery
@@ -355,6 +449,7 @@
 
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
         _cts?.Cancel();
         ChangeNotifier.DashboardChanged -= ChangeNotifier_DashboardChanged;
         _timer?.Dispose();

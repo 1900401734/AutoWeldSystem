@@ -37,6 +37,7 @@ builder.Services.AddSingleton<CenterDashboardChangeNotifier>();
 builder.Services.AddSingleton<CenterPushJsonlLogService>();
 builder.Services.AddSingleton<CenterTelemetryIngestService>();
 builder.Services.AddSingleton<CenterDashboardQueryService>();
+builder.Services.AddSingleton<CenterDeviceRemovalService>();
 builder.Services.AddSingleton<CenterProductReportFileStore>();
 builder.Services.AddSingleton<ICenterProductReportIngestSideEffects, CenterProductReportIngestSideEffects>();
 builder.Services.AddSingleton<CenterProductReportIngestService>();
