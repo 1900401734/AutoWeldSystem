@@ -137,6 +137,7 @@ public static class AppConstants
     public static class CenterInteractionTypes
     {
         public const string Telemetry = "telemetry";
+        public const string Heartbeat = "heartbeat";
         public const string ProductReport = "product-report";
     }
 

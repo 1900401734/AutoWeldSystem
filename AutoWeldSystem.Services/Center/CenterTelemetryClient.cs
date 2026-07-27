@@ -26,6 +26,9 @@ public sealed class CenterTelemetryClient
     private readonly HttpClient _httpClient;
     private readonly ICenterInteractionLogService _interactionLogService;
 
+    // 心跳日志只记状态转换：初始视为健康，启动后的连续成功心跳不产生日志。
+    private bool _lastHeartbeatSucceeded = true;
+
     public CenterTelemetryClient(HttpClient httpClient, ICenterInteractionLogService interactionLogService)
     {
         _httpClient = httpClient;
@@ -41,6 +44,17 @@ public sealed class CenterTelemetryClient
         CancellationToken cancellationToken = default)
     {
         return UploadCoreAsync(settings, AppConstants.CenterInteractionTypes.Telemetry, "api/center/telemetry", request, cancellationToken);
+    }
+
+    /// <summary>
+    /// Uploads one lightweight keep-alive heartbeat (no station payload) to the center server.
+    /// </summary>
+    public Task<CenterTelemetryAck> UploadHeartbeatAsync(
+        AppSettings settings,
+        CenterTelemetrySnapshotRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return UploadCoreAsync(settings, AppConstants.CenterInteractionTypes.Heartbeat, "api/center/heartbeat", request, cancellationToken);
     }
 
     /// <summary>
@@ -73,6 +87,7 @@ public sealed class CenterTelemetryClient
         int? httpStatusCode = null;
         CenterTelemetryAck? ack = null;
         var errorMessage = string.Empty;
+        var canceled = false;
 
         try
         {
@@ -103,6 +118,12 @@ public sealed class CenterTelemetryClient
             };
             return ack;
         }
+        catch (OperationCanceledException ex)
+        {
+            errorMessage = ex.Message;
+            canceled = true;
+            throw;
+        }
         catch (Exception ex)
         {
             errorMessage = ex.Message;
@@ -111,22 +132,46 @@ public sealed class CenterTelemetryClient
         finally
         {
             stopwatch.Stop();
-            _interactionLogService.Write(new CenterInteractionLogEntry
+            if (ShouldWriteLog(interactionType, ack?.Success == true, canceled))
             {
-                InteractionType = interactionType,
-                Method = "POST",
-                Url = url,
-                RequestBody = requestBody,
-                ResponseBody = responseBody,
-                HttpStatusCode = httpStatusCode,
-                AckMessage = ack?.Message ?? string.Empty,
-                ServerTime = ack?.ServerTime,
-                IsSuccess = ack?.Success == true,
-                ErrorMessage = errorMessage,
-                SendTime = sendTime,
-                ReceiveTime = DateTime.Now,
-                DurationMilliseconds = stopwatch.ElapsedMilliseconds
-            });
+                _interactionLogService.Write(new CenterInteractionLogEntry
+                {
+                    InteractionType = interactionType,
+                    Method = "POST",
+                    Url = url,
+                    RequestBody = requestBody,
+                    ResponseBody = responseBody,
+                    HttpStatusCode = httpStatusCode,
+                    AckMessage = ack?.Message ?? string.Empty,
+                    ServerTime = ack?.ServerTime,
+                    IsSuccess = ack?.Success == true,
+                    ErrorMessage = errorMessage,
+                    SendTime = sendTime,
+                    ReceiveTime = DateTime.Now,
+                    DurationMilliseconds = stopwatch.ElapsedMilliseconds
+                });
+            }
         }
+    }
+
+    /// <summary>
+    /// 心跳每几秒一次，全量记录会刷屏：仅在成败发生转换（故障发生/恢复）时记录一条；
+    /// 软件关闭引起的取消不记也不更新状态。设备状态与产品数据照旧全量记录。
+    /// </summary>
+    private bool ShouldWriteLog(string interactionType, bool isSuccess, bool canceled)
+    {
+        if (interactionType != AppConstants.CenterInteractionTypes.Heartbeat)
+        {
+            return true;
+        }
+
+        if (canceled)
+        {
+            return false;
+        }
+
+        var changed = isSuccess != _lastHeartbeatSucceeded;
+        _lastHeartbeatSucceeded = isSuccess;
+        return changed;
     }
 }
