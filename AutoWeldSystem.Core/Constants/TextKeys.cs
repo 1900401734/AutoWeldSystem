@@ -1026,6 +1026,7 @@ public static class TextKeys
         public const string DescriptionCenterServer = "log.description.center_server";
         public const string ColumnType = "log.column.type";
         public const string ValueCenterTelemetry = "log.value.center_telemetry";
+        public const string ValueCenterHeartbeat = "log.value.center_heartbeat";
         public const string ValueCenterProductReport = "log.value.center_product_report";
     }
 

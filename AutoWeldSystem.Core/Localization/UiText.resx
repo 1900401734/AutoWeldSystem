@@ -1561,13 +1561,16 @@
     <value>服务器日志</value>
   </data>
   <data name="log.description.center_server" xml:space="preserve">
-    <value>记录本机与中心服务器的设备状态推送和产品数据上报，含请求、响应与错误。</value>
+    <value>记录本机与中心服务器的心跳、设备状态推送和产品数据上报；心跳仅记录失败与恢复。</value>
   </data>
   <data name="log.column.type" xml:space="preserve">
     <value>类型</value>
   </data>
   <data name="log.value.center_telemetry" xml:space="preserve">
     <value>设备状态</value>
+  </data>
+  <data name="log.value.center_heartbeat" xml:space="preserve">
+    <value>心跳</value>
   </data>
   <data name="log.value.center_product_report" xml:space="preserve">
     <value>产品数据</value>

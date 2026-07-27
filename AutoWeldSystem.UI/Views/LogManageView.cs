@@ -802,6 +802,11 @@ public partial class LogManageView : BaseView
             return _localizer.GetString(TextKeys.Log.ValueCenterTelemetry);
         }
 
+        if (string.Equals(interactionType, AppConstants.CenterInteractionTypes.Heartbeat, StringComparison.OrdinalIgnoreCase))
+        {
+            return _localizer.GetString(TextKeys.Log.ValueCenterHeartbeat);
+        }
+
         if (string.Equals(interactionType, AppConstants.CenterInteractionTypes.ProductReport, StringComparison.OrdinalIgnoreCase))
         {
             return _localizer.GetString(TextKeys.Log.ValueCenterProductReport);

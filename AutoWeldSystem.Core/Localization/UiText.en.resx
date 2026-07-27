@@ -1561,13 +1561,16 @@
     <value>Center Server Logs</value>
   </data>
   <data name="log.description.center_server" xml:space="preserve">
-    <value>Records device-status pushes and product-data reports to the center server, including requests, responses, and errors.</value>
+    <value>Records heartbeats, device-status pushes, and product-data reports to the center server; heartbeats are logged only on failure and recovery.</value>
   </data>
   <data name="log.column.type" xml:space="preserve">
     <value>Type</value>
   </data>
   <data name="log.value.center_telemetry" xml:space="preserve">
     <value>Device Status</value>
+  </data>
+  <data name="log.value.center_heartbeat" xml:space="preserve">
+    <value>Heartbeat</value>
   </data>
   <data name="log.value.center_product_report" xml:space="preserve">
     <value>Product Data</value>
