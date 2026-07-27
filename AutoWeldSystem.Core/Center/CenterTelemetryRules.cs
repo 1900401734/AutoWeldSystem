@@ -123,4 +123,36 @@ public static class CenterTelemetryRules
     /// </summary>
     public static string NormalizeSystemType(string? value)
         => string.IsNullOrWhiteSpace(value) ? CenterServerConstants.SystemTypes.Other : value.Trim();
+
+    /// <summary>
+    /// 计算遥测快照的内容签名，用于判断本周期是否需要推送全量数据。
+    /// 刻意排除 HeartbeatAt 与 CollectedAt：这两个时间戳每周期必变，纳入会使签名永远不同。
+    /// </summary>
+    public static string BuildSnapshotSignature(CenterTelemetrySnapshotRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var builder = new System.Text.StringBuilder();
+        builder.Append(request.DeviceId.Trim()).Append('\n');
+        builder.Append(request.DeviceName.Trim()).Append('\n');
+        builder.Append(request.SystemType.Trim()).Append('\n');
+
+        foreach (var station in request.Stations.OrderBy(it => it.StationNo))
+        {
+            builder.Append(station.StationNo).Append('|');
+            builder.Append(station.PlcConnected).Append('|');
+            builder.Append(station.PlcConnectionState).Append('|');
+            builder.Append(station.DeviceStatusCode).Append('|');
+            builder.Append(station.DeviceStatusName).Append('|');
+            builder.Append(station.AlarmMessage).Append('|');
+            builder.Append(station.CurrentWorkOrder).Append('|');
+            builder.Append(station.ProductJobNo).Append('|');
+            builder.Append(station.ProductModel).Append('|');
+            builder.Append(station.TodayTotalCount).Append('|');
+            builder.Append(station.TodayQualifiedCount).Append('|');
+            builder.Append(station.TodayFailedCount).Append('\n');
+        }
+
+        return builder.ToString();
+    }
 }

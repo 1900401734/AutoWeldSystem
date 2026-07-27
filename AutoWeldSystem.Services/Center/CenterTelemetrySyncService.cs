@@ -30,6 +30,10 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
     private Task? _loopTask;
     private DateTime _lastFailureLogTime = DateTime.MinValue;
 
+    // 变更驱动推送：内容签名未变化时改推轻量心跳，避免看板日志被全量遥测刷屏。
+    private string? _lastUploadedSignature;
+    private DateTime _lastFullUploadAt = DateTime.MinValue;
+
     public CenterTelemetrySyncService(
         SqlSugarDbContext dbContext,
         IAppSettingsService settingsService,
@@ -100,10 +104,28 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
         try
         {
             var request = BuildRequest(settings);
-            var response = await _client.UploadAsync(settings, request, cancellationToken);
+            var signature = CenterTelemetryRules.BuildSnapshotSignature(request);
+            var needFullUpload = !string.Equals(signature, _lastUploadedSignature, StringComparison.Ordinal)
+                || DateTime.Now - _lastFullUploadAt >= TimeSpan.FromSeconds(CenterServerConstants.TelemetryFullRefreshIntervalSeconds);
+
+            CenterTelemetryAck response;
+            if (needFullUpload)
+            {
+                response = await _client.UploadAsync(settings, request, cancellationToken);
+                if (response.Success)
+                {
+                    _lastUploadedSignature = signature;
+                    _lastFullUploadAt = DateTime.Now;
+                }
+            }
+            else
+            {
+                // 内容未变化：改推空工位心跳保活，服务器侧只刷新在线时间、不动工位快照。
+                response = await _client.UploadHeartbeatAsync(settings, BuildHeartbeatRequest(settings), cancellationToken);
+            }
+
             if (!response.Success)
             {
-                Publish(false, response.Message);
                 throw new InvalidOperationException(response.Message);
             }
 
@@ -115,6 +137,8 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
         }
         catch (Exception ex)
         {
+            // 推送失败后清空签名：恢复连接的下一周期强制全量，兜底服务器重启或看板删除设备后的数据缺失。
+            _lastUploadedSignature = null;
             Publish(false, ex.Message);
             throw;
         }
@@ -163,6 +187,20 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
             Stations = ResolveStationNumbers(settings)
                 .Select(BuildStationSnapshot)
                 .ToList()
+        };
+    }
+
+    /// <summary>
+    /// 构建不带工位数据的保活心跳请求，服务器侧只刷新设备在线时间。
+    /// </summary>
+    private static CenterTelemetrySnapshotRequest BuildHeartbeatRequest(AppSettings settings)
+    {
+        return new CenterTelemetrySnapshotRequest
+        {
+            DeviceId = settings.DeviceId.Trim(),
+            DeviceName = settings.DeviceName.Trim(),
+            SystemType = CenterTelemetryRules.NormalizeSystemType(settings.CenterServerSystemType),
+            HeartbeatAt = DateTime.Now
         };
     }
 
