@@ -9319,8 +9319,12 @@ static void MonitorViewLinksProgramAndRecipeSelectionsForStartInput()
     AssertFalse(viewCode.Contains("BindOnlineRecipeCodeOptions", StringComparison.Ordinal), "在线程序列表不得再构建配方号下拉。");
     AssertFalse(designerCode.Contains("selectRecipeCode", StringComparison.Ordinal), "MonitorView Designer 必须移除业务配方号控件。");
     var localDesignerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Forms", "LocalWorkOrderForm.Designer.cs"), Encoding.UTF8);
+    var readme = File.ReadAllText(GetRepoFilePath("README.md"), Encoding.UTF8);
     AssertFalse(localDesignerCode.Contains("txtRecipeCode", StringComparison.Ordinal)
         || localDesignerCode.Contains("配方编号", StringComparison.Ordinal), "本地工单窗口不得显示数字配方号。");
+    AssertTrue(readme.Contains("按工位选择 PLC 配方名称", StringComparison.Ordinal)
+        && readme.Contains("地址维护 -> 配方名称地址", StringComparison.Ordinal)
+        && readme.Contains("不会出现在相应工位的可生产列表", StringComparison.Ordinal), "README 必须说明新的配方名称关联和生产可用性规则。");
     AssertTrue(offlineOptionsMethod.Contains("CurrentStationNo", StringComparison.Ordinal)
         && offlineOptionsMethod.Contains("EnableDualStation && !_currentSettings.EnableDualWorkOrder", StringComparison.Ordinal), "离线程序必须按当前工位和同工单规则过滤。");
 }
