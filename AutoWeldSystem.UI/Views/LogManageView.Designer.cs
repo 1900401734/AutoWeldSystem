@@ -289,6 +289,7 @@ namespace AutoWeldSystem.UI.Views
             tabMesLogs.Controls.Add(mesRootLayout);
             tabMesLogs.Location = new Point(4, 32);
             tabMesLogs.Name = "tabMesLogs";
+            tabMesLogs.Padding = new Padding(3);
             tabMesLogs.Size = new Size(1358, 709);
             tabMesLogs.TabIndex = 0;
             tabMesLogs.Text = "MES Interaction";
@@ -301,19 +302,19 @@ namespace AutoWeldSystem.UI.Views
             mesRootLayout.Controls.Add(mesInteractionHeaderLayout, 0, 0);
             mesRootLayout.Controls.Add(splitterMesContent, 0, 1);
             mesRootLayout.Dock = DockStyle.Fill;
-            mesRootLayout.Location = new Point(0, 0);
+            mesRootLayout.Location = new Point(3, 3);
             mesRootLayout.Name = "mesRootLayout";
             mesRootLayout.RowCount = 2;
             mesRootLayout.RowStyles.Add(new RowStyle());
             mesRootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            mesRootLayout.Size = new Size(1358, 709);
+            mesRootLayout.Size = new Size(1352, 703);
             mesRootLayout.TabIndex = 0;
             // 
             // mesInteractionHeaderLayout
             // 
             mesInteractionHeaderLayout.ColumnCount = 2;
-            mesInteractionHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40F));
-            mesInteractionHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60F));
+            mesInteractionHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            mesInteractionHeaderLayout.ColumnStyles.Add(new ColumnStyle());
             mesInteractionHeaderLayout.Controls.Add(tableLayoutPanel9, 1, 0);
             mesInteractionHeaderLayout.Controls.Add(mesInteractionTitleLayout, 0, 0);
             mesInteractionHeaderLayout.Dock = DockStyle.Fill;
@@ -322,7 +323,7 @@ namespace AutoWeldSystem.UI.Views
             mesInteractionHeaderLayout.Name = "mesInteractionHeaderLayout";
             mesInteractionHeaderLayout.RowCount = 1;
             mesInteractionHeaderLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            mesInteractionHeaderLayout.Size = new Size(1318, 105);
+            mesInteractionHeaderLayout.Size = new Size(1312, 105);
             mesInteractionHeaderLayout.TabIndex = 4;
             // 
             // tableLayoutPanel9
@@ -331,17 +332,16 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanel9.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             tableLayoutPanel9.ColumnCount = 1;
             tableLayoutPanel9.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            tableLayoutPanel9.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 20F));
             tableLayoutPanel9.Controls.Add(tlpMesToolBar, 0, 1);
             tableLayoutPanel9.Dock = DockStyle.Fill;
-            tableLayoutPanel9.Location = new Point(527, 0);
+            tableLayoutPanel9.Location = new Point(524, 0);
             tableLayoutPanel9.Margin = new Padding(0);
             tableLayoutPanel9.Name = "tableLayoutPanel9";
             tableLayoutPanel9.RowCount = 3;
-            tableLayoutPanel9.RowStyles.Add(new RowStyle(SizeType.Percent, 22.2222214F));
+            tableLayoutPanel9.RowStyles.Add(new RowStyle(SizeType.Percent, 22.22222F));
             tableLayoutPanel9.RowStyles.Add(new RowStyle(SizeType.Percent, 55.5555573F));
             tableLayoutPanel9.RowStyles.Add(new RowStyle(SizeType.Percent, 22.2222214F));
-            tableLayoutPanel9.Size = new Size(791, 105);
+            tableLayoutPanel9.Size = new Size(788, 105);
             tableLayoutPanel9.TabIndex = 1;
             // 
             // tlpMesToolBar
@@ -364,7 +364,7 @@ namespace AutoWeldSystem.UI.Views
             tlpMesToolBar.Name = "tlpMesToolBar";
             tlpMesToolBar.RowCount = 1;
             tlpMesToolBar.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tlpMesToolBar.Size = new Size(785, 52);
+            tlpMesToolBar.Size = new Size(782, 52);
             tlpMesToolBar.TabIndex = 2;
             // 
             // btnOpenMesFolder
@@ -372,10 +372,10 @@ namespace AutoWeldSystem.UI.Views
             btnOpenMesFolder.BorderWidth = 1F;
             btnOpenMesFolder.Dock = DockStyle.Fill;
             btnOpenMesFolder.IconSvg = "FolderOpenOutlined";
-            btnOpenMesFolder.Location = new Point(648, 0);
+            btnOpenMesFolder.Location = new Point(681, 0);
             btnOpenMesFolder.Margin = new Padding(0);
             btnOpenMesFolder.Name = "btnOpenMesFolder";
-            btnOpenMesFolder.Size = new Size(137, 52);
+            btnOpenMesFolder.Size = new Size(101, 52);
             btnOpenMesFolder.TabIndex = 5;
             btnOpenMesFolder.Tag = "perm:button.log.open-folder:enabled";
             btnOpenMesFolder.Text = "Open";
@@ -397,7 +397,7 @@ namespace AutoWeldSystem.UI.Views
             dtpMesDate.Location = new Point(175, 0);
             dtpMesDate.Margin = new Padding(0);
             dtpMesDate.Name = "dtpMesDate";
-            dtpMesDate.Size = new Size(150, 52);
+            dtpMesDate.Size = new Size(183, 52);
             dtpMesDate.TabIndex = 1;
             // 
             // lblMesDate
@@ -416,7 +416,7 @@ namespace AutoWeldSystem.UI.Views
             queryMesLogs.AutoSize = true;
             queryMesLogs.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             queryMesLogs.Dock = DockStyle.Fill;
-            queryMesLogs.Location = new Point(325, 0);
+            queryMesLogs.Location = new Point(358, 0);
             queryMesLogs.Margin = new Padding(0);
             queryMesLogs.MinimumSize = new Size(100, 40);
             queryMesLogs.Name = "queryMesLogs";
@@ -437,7 +437,7 @@ namespace AutoWeldSystem.UI.Views
             mesInteractionTitleLayout.RowCount = 2;
             mesInteractionTitleLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
             mesInteractionTitleLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            mesInteractionTitleLayout.Size = new Size(527, 105);
+            mesInteractionTitleLayout.Size = new Size(524, 105);
             mesInteractionTitleLayout.TabIndex = 0;
             // 
             // lblMesTitle
@@ -448,7 +448,7 @@ namespace AutoWeldSystem.UI.Views
             lblMesTitle.Location = new Point(0, 0);
             lblMesTitle.Margin = new Padding(0);
             lblMesTitle.Name = "lblMesTitle";
-            lblMesTitle.Size = new Size(527, 34);
+            lblMesTitle.Size = new Size(524, 34);
             lblMesTitle.TabIndex = 0;
             lblMesTitle.Text = "MES Interaction";
             lblMesTitle.TextAlign = ContentAlignment.MiddleLeft;
@@ -461,7 +461,7 @@ namespace AutoWeldSystem.UI.Views
             lblMesDescription.Location = new Point(0, 34);
             lblMesDescription.Margin = new Padding(0);
             lblMesDescription.Name = "lblMesDescription";
-            lblMesDescription.Size = new Size(527, 71);
+            lblMesDescription.Size = new Size(524, 71);
             lblMesDescription.TabIndex = 1;
             lblMesDescription.Text = "MES Intraction Detail";
             lblMesDescription.TextAlign = ContentAlignment.MiddleLeft;
@@ -482,8 +482,9 @@ namespace AutoWeldSystem.UI.Views
             // 
             splitterMesContent.Panel2.Controls.Add(tabMesDetails);
             splitterMesContent.Panel2.Padding = new Padding(12, 0, 0, 0);
-            splitterMesContent.Size = new Size(1318, 564);
-            splitterMesContent.SplitterDistance = 894;
+            splitterMesContent.Size = new Size(1312, 558);
+            splitterMesContent.SplitterDistance = 820;
+            splitterMesContent.SplitterWidth = 5;
             splitterMesContent.TabIndex = 2;
             // 
             // dgvMesLogs
@@ -503,7 +504,7 @@ namespace AutoWeldSystem.UI.Views
             dgvMesLogs.RowHeadersWidth = 51;
             dgvMesLogs.RowTemplate.Height = 28;
             dgvMesLogs.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgvMesLogs.Size = new Size(882, 564);
+            dgvMesLogs.Size = new Size(808, 558);
             dgvMesLogs.TabIndex = 0;
             // 
             // colMesSendTime
@@ -545,6 +546,7 @@ namespace AutoWeldSystem.UI.Views
             colMesHttpStatus.Name = "colMesHttpStatus";
             colMesHttpStatus.ReadOnly = true;
             colMesHttpStatus.Width = 125;
+            //
             // colResult
             // 
             colResult.DataPropertyName = "Result";
@@ -576,7 +578,7 @@ namespace AutoWeldSystem.UI.Views
             tabMesDetails.Name = "tabMesDetails";
             tabMesDetails.Padding = new Point(0, 0);
             tabMesDetails.SelectedIndex = 0;
-            tabMesDetails.Size = new Size(408, 564);
+            tabMesDetails.Size = new Size(475, 558);
             tabMesDetails.TabIndex = 0;
             // 
             // tabBasicInfo
@@ -700,7 +702,8 @@ namespace AutoWeldSystem.UI.Views
             splitterProductionContent.Panel2.Controls.Add(tabProductionDetails);
             splitterProductionContent.Panel2.Padding = new Padding(12, 0, 0, 0);
             splitterProductionContent.Size = new Size(1312, 561);
-            splitterProductionContent.SplitterDistance = 847;
+            splitterProductionContent.SplitterDistance = 820;
+            splitterProductionContent.SplitterWidth = 5;
             splitterProductionContent.TabIndex = 1;
             // 
             // dgvProductionLogs
@@ -718,7 +721,7 @@ namespace AutoWeldSystem.UI.Views
             dgvProductionLogs.RowHeadersWidth = 51;
             dgvProductionLogs.RowTemplate.Height = 28;
             dgvProductionLogs.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgvProductionLogs.Size = new Size(835, 561);
+            dgvProductionLogs.Size = new Size(808, 561);
             dgvProductionLogs.TabIndex = 0;
             // 
             // colProductionOccurredTime
@@ -777,9 +780,11 @@ namespace AutoWeldSystem.UI.Views
             tabProductionDetails.Controls.Add(tabProductionDetail);
             tabProductionDetails.Dock = DockStyle.Fill;
             tabProductionDetails.Location = new Point(12, 0);
+            tabProductionDetails.Margin = new Padding(0);
             tabProductionDetails.Name = "tabProductionDetails";
+            tabProductionDetails.Padding = new Point(0, 0);
             tabProductionDetails.SelectedIndex = 0;
-            tabProductionDetails.Size = new Size(449, 561);
+            tabProductionDetails.Size = new Size(475, 561);
             tabProductionDetails.TabIndex = 0;
             // 
             // tabProductionBasicInfo
@@ -814,7 +819,7 @@ namespace AutoWeldSystem.UI.Views
             tabProductionDetail.Location = new Point(4, 29);
             tabProductionDetail.Name = "tabProductionDetail";
             tabProductionDetail.Padding = new Padding(3);
-            tabProductionDetail.Size = new Size(441, 528);
+            tabProductionDetail.Size = new Size(441, 525);
             tabProductionDetail.TabIndex = 1;
             tabProductionDetail.Text = "Detail";
             tabProductionDetail.UseVisualStyleBackColor = true;
@@ -830,15 +835,15 @@ namespace AutoWeldSystem.UI.Views
             txtProductionDetail.Name = "txtProductionDetail";
             txtProductionDetail.ReadOnly = true;
             txtProductionDetail.ScrollBars = ScrollBars.Both;
-            txtProductionDetail.Size = new Size(435, 522);
+            txtProductionDetail.Size = new Size(435, 519);
             txtProductionDetail.TabIndex = 0;
             txtProductionDetail.WordWrap = false;
             // 
             // productionHeaderLayout
             // 
             productionHeaderLayout.ColumnCount = 2;
-            productionHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40F));
-            productionHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60F));
+            productionHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            productionHeaderLayout.ColumnStyles.Add(new ColumnStyle());
             productionHeaderLayout.Controls.Add(tableLayoutPanel3, 1, 0);
             productionHeaderLayout.Controls.Add(productionTitleLayout, 0, 0);
             productionHeaderLayout.Dock = DockStyle.Fill;
@@ -875,7 +880,7 @@ namespace AutoWeldSystem.UI.Views
             tlpProductionToolbar.ColumnCount = 5;
             tlpProductionToolbar.ColumnStyles.Add(new ColumnStyle());
             tlpProductionToolbar.ColumnStyles.Add(new ColumnStyle());
-            tlpProductionToolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            tlpProductionToolbar.ColumnStyles.Add(new ColumnStyle());
             tlpProductionToolbar.ColumnStyles.Add(new ColumnStyle());
             tlpProductionToolbar.ColumnStyles.Add(new ColumnStyle());
             tlpProductionToolbar.Controls.Add(btnOpenProductionFolder, 4, 0);
@@ -893,14 +898,13 @@ namespace AutoWeldSystem.UI.Views
             // 
             // btnOpenProductionFolder
             // 
-            btnOpenProductionFolder.AutoSizeMode = TAutoSize.Width;
             btnOpenProductionFolder.BorderWidth = 1F;
             btnOpenProductionFolder.Dock = DockStyle.Fill;
             btnOpenProductionFolder.IconSvg = "FolderOpenOutlined";
-            btnOpenProductionFolder.Location = new Point(623, 0);
+            btnOpenProductionFolder.Location = new Point(681, 0);
             btnOpenProductionFolder.Margin = new Padding(0);
             btnOpenProductionFolder.Name = "btnOpenProductionFolder";
-            btnOpenProductionFolder.Size = new Size(159, 52);
+            btnOpenProductionFolder.Size = new Size(101, 52);
             btnOpenProductionFolder.TabIndex = 5;
             btnOpenProductionFolder.Tag = "perm:button.log.open-folder:enabled";
             btnOpenProductionFolder.Text = "Open Folder";
@@ -911,7 +915,7 @@ namespace AutoWeldSystem.UI.Views
             dtpProductionDate.Location = new Point(175, 0);
             dtpProductionDate.Margin = new Padding(0);
             dtpProductionDate.Name = "dtpProductionDate";
-            dtpProductionDate.Size = new Size(125, 52);
+            dtpProductionDate.Size = new Size(183, 52);
             dtpProductionDate.TabIndex = 1;
             // 
             // lblProductionDate
@@ -930,7 +934,7 @@ namespace AutoWeldSystem.UI.Views
             queryProductionLogs.AutoSize = true;
             queryProductionLogs.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             queryProductionLogs.Dock = DockStyle.Fill;
-            queryProductionLogs.Location = new Point(300, 0);
+            queryProductionLogs.Location = new Point(358, 0);
             queryProductionLogs.Margin = new Padding(0);
             queryProductionLogs.MinimumSize = new Size(100, 40);
             queryProductionLogs.Name = "queryProductionLogs";
@@ -994,10 +998,10 @@ namespace AutoWeldSystem.UI.Views
             // tabExceptionLogs
             // 
             tabExceptionLogs.Controls.Add(exceptionRootLayout);
-            tabExceptionLogs.Location = new Point(4, 32);
+            tabExceptionLogs.Location = new Point(4, 29);
             tabExceptionLogs.Name = "tabExceptionLogs";
             tabExceptionLogs.Padding = new Padding(3);
-            tabExceptionLogs.Size = new Size(1358, 709);
+            tabExceptionLogs.Size = new Size(1358, 712);
             tabExceptionLogs.TabIndex = 2;
             tabExceptionLogs.Text = "Program Exceptions";
             tabExceptionLogs.UseVisualStyleBackColor = true;
@@ -1014,14 +1018,14 @@ namespace AutoWeldSystem.UI.Views
             exceptionRootLayout.RowCount = 2;
             exceptionRootLayout.RowStyles.Add(new RowStyle());
             exceptionRootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            exceptionRootLayout.Size = new Size(1352, 703);
+            exceptionRootLayout.Size = new Size(1352, 706);
             exceptionRootLayout.TabIndex = 0;
             // 
             // exceptionHeaderLayout
             // 
             exceptionHeaderLayout.ColumnCount = 2;
-            exceptionHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40F));
-            exceptionHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60F));
+            exceptionHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            exceptionHeaderLayout.ColumnStyles.Add(new ColumnStyle());
             exceptionHeaderLayout.Controls.Add(tableLayoutPanel5, 1, 0);
             exceptionHeaderLayout.Controls.Add(exceptionTitleLayout, 0, 0);
             exceptionHeaderLayout.Dock = DockStyle.Fill;
@@ -1058,10 +1062,9 @@ namespace AutoWeldSystem.UI.Views
             tlpExceptionToolBar.ColumnCount = 5;
             tlpExceptionToolBar.ColumnStyles.Add(new ColumnStyle());
             tlpExceptionToolBar.ColumnStyles.Add(new ColumnStyle());
-            tlpExceptionToolBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             tlpExceptionToolBar.ColumnStyles.Add(new ColumnStyle());
             tlpExceptionToolBar.ColumnStyles.Add(new ColumnStyle());
-            tlpExceptionToolBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 20F));
+            tlpExceptionToolBar.ColumnStyles.Add(new ColumnStyle());
             tlpExceptionToolBar.Controls.Add(btnOpenExceptionFolder, 4, 0);
             tlpExceptionToolBar.Controls.Add(dtpExceptionDate, 2, 0);
             tlpExceptionToolBar.Controls.Add(lblExceptionDate, 1, 0);
@@ -1077,14 +1080,13 @@ namespace AutoWeldSystem.UI.Views
             // 
             // btnOpenExceptionFolder
             // 
-            btnOpenExceptionFolder.AutoSizeMode = TAutoSize.Width;
             btnOpenExceptionFolder.BorderWidth = 1F;
             btnOpenExceptionFolder.Dock = DockStyle.Fill;
             btnOpenExceptionFolder.IconSvg = "FolderOpenOutlined";
-            btnOpenExceptionFolder.Location = new Point(623, 0);
+            btnOpenExceptionFolder.Location = new Point(681, 0);
             btnOpenExceptionFolder.Margin = new Padding(0);
             btnOpenExceptionFolder.Name = "btnOpenExceptionFolder";
-            btnOpenExceptionFolder.Size = new Size(159, 51);
+            btnOpenExceptionFolder.Size = new Size(101, 51);
             btnOpenExceptionFolder.TabIndex = 5;
             btnOpenExceptionFolder.Tag = "perm:button.log.open-folder:enabled";
             btnOpenExceptionFolder.Text = "Open Folder";
@@ -1095,7 +1097,7 @@ namespace AutoWeldSystem.UI.Views
             dtpExceptionDate.Location = new Point(175, 0);
             dtpExceptionDate.Margin = new Padding(0);
             dtpExceptionDate.Name = "dtpExceptionDate";
-            dtpExceptionDate.Size = new Size(125, 51);
+            dtpExceptionDate.Size = new Size(183, 51);
             dtpExceptionDate.TabIndex = 1;
             // 
             // lblExceptionDate
@@ -1114,7 +1116,7 @@ namespace AutoWeldSystem.UI.Views
             queryExceptionLogs.AutoSize = true;
             queryExceptionLogs.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             queryExceptionLogs.Dock = DockStyle.Fill;
-            queryExceptionLogs.Location = new Point(300, 0);
+            queryExceptionLogs.Location = new Point(358, 0);
             queryExceptionLogs.Margin = new Padding(0);
             queryExceptionLogs.MinimumSize = new Size(100, 40);
             queryExceptionLogs.Name = "queryExceptionLogs";
@@ -1191,8 +1193,8 @@ namespace AutoWeldSystem.UI.Views
             // 
             splitExceptionContent.Panel2.Controls.Add(exceptionDetailsLayout);
             splitExceptionContent.Panel2.Padding = new Padding(12, 0, 0, 0);
-            splitExceptionContent.Size = new Size(1312, 559);
-            splitExceptionContent.SplitterDistance = 760;
+            splitExceptionContent.Size = new Size(1312, 562);
+            splitExceptionContent.SplitterDistance = 820;
             splitExceptionContent.SplitterWidth = 5;
             splitExceptionContent.TabIndex = 1;
             // 
@@ -1212,7 +1214,7 @@ namespace AutoWeldSystem.UI.Views
             dgvExceptionLogs.RowHeadersWidth = 51;
             dgvExceptionLogs.RowTemplate.Height = 28;
             dgvExceptionLogs.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgvExceptionLogs.Size = new Size(748, 559);
+            dgvExceptionLogs.Size = new Size(808, 562);
             dgvExceptionLogs.TabIndex = 0;
             // 
             // colExceptionOccurredTime
@@ -1267,7 +1269,7 @@ namespace AutoWeldSystem.UI.Views
             exceptionDetailsLayout.RowCount = 2;
             exceptionDetailsLayout.RowStyles.Add(new RowStyle());
             exceptionDetailsLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            exceptionDetailsLayout.Size = new Size(535, 559);
+            exceptionDetailsLayout.Size = new Size(475, 562);
             exceptionDetailsLayout.TabIndex = 0;
             // 
             // exceptionDetailToolbar
@@ -1279,7 +1281,7 @@ namespace AutoWeldSystem.UI.Views
             exceptionDetailToolbar.Location = new Point(0, 0);
             exceptionDetailToolbar.Margin = new Padding(0, 0, 0, 8);
             exceptionDetailToolbar.Name = "exceptionDetailToolbar";
-            exceptionDetailToolbar.Size = new Size(535, 46);
+            exceptionDetailToolbar.Size = new Size(475, 46);
             exceptionDetailToolbar.TabIndex = 0;
             exceptionDetailToolbar.WrapContents = false;
             // 
@@ -1313,10 +1315,12 @@ namespace AutoWeldSystem.UI.Views
             tabExceptionDetails.Controls.Add(tabExceptionStackTrace);
             tabExceptionDetails.Controls.Add(tabExceptionContext);
             tabExceptionDetails.Dock = DockStyle.Fill;
-            tabExceptionDetails.Location = new Point(3, 57);
+            tabExceptionDetails.Location = new Point(0, 54);
+            tabExceptionDetails.Margin = new Padding(0);
             tabExceptionDetails.Name = "tabExceptionDetails";
+            tabExceptionDetails.Padding = new Point(0, 0);
             tabExceptionDetails.SelectedIndex = 0;
-            tabExceptionDetails.Size = new Size(529, 499);
+            tabExceptionDetails.Size = new Size(475, 508);
             tabExceptionDetails.TabIndex = 1;
             // 
             // tabExceptionBasicInfo
@@ -1325,7 +1329,7 @@ namespace AutoWeldSystem.UI.Views
             tabExceptionBasicInfo.Location = new Point(4, 32);
             tabExceptionBasicInfo.Name = "tabExceptionBasicInfo";
             tabExceptionBasicInfo.Padding = new Padding(3);
-            tabExceptionBasicInfo.Size = new Size(521, 463);
+            tabExceptionBasicInfo.Size = new Size(521, 466);
             tabExceptionBasicInfo.TabIndex = 0;
             tabExceptionBasicInfo.Text = "Basic";
             tabExceptionBasicInfo.UseVisualStyleBackColor = true;
@@ -1341,7 +1345,7 @@ namespace AutoWeldSystem.UI.Views
             txtExceptionBasicInfo.Name = "txtExceptionBasicInfo";
             txtExceptionBasicInfo.ReadOnly = true;
             txtExceptionBasicInfo.ScrollBars = ScrollBars.Both;
-            txtExceptionBasicInfo.Size = new Size(515, 457);
+            txtExceptionBasicInfo.Size = new Size(515, 460);
             txtExceptionBasicInfo.TabIndex = 0;
             txtExceptionBasicInfo.WordWrap = false;
             // 
@@ -1426,8 +1430,8 @@ namespace AutoWeldSystem.UI.Views
             // deviceLifecycleHeaderLayout
             // 
             deviceLifecycleHeaderLayout.ColumnCount = 2;
-            deviceLifecycleHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40F));
-            deviceLifecycleHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60F));
+            deviceLifecycleHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            deviceLifecycleHeaderLayout.ColumnStyles.Add(new ColumnStyle());
             deviceLifecycleHeaderLayout.Controls.Add(tableLayoutPanel6, 1, 0);
             deviceLifecycleHeaderLayout.Controls.Add(deviceLifecycleTitleLayout, 0, 0);
             deviceLifecycleHeaderLayout.Dock = DockStyle.Fill;
@@ -1465,10 +1469,9 @@ namespace AutoWeldSystem.UI.Views
             deviceLifecycleToolbar.ColumnCount = 5;
             deviceLifecycleToolbar.ColumnStyles.Add(new ColumnStyle());
             deviceLifecycleToolbar.ColumnStyles.Add(new ColumnStyle());
-            deviceLifecycleToolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             deviceLifecycleToolbar.ColumnStyles.Add(new ColumnStyle());
             deviceLifecycleToolbar.ColumnStyles.Add(new ColumnStyle());
-            deviceLifecycleToolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 20F));
+            deviceLifecycleToolbar.ColumnStyles.Add(new ColumnStyle());
             deviceLifecycleToolbar.Controls.Add(btnOpenDeviceLifecycleFolder, 4, 0);
             deviceLifecycleToolbar.Controls.Add(dtpDeviceLifecycleDate, 2, 0);
             deviceLifecycleToolbar.Controls.Add(lblDeviceLifecycleDate, 1, 0);
@@ -1710,8 +1713,8 @@ namespace AutoWeldSystem.UI.Views
             // deviceStatusHeaderLayout
             // 
             deviceStatusHeaderLayout.ColumnCount = 2;
-            deviceStatusHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40F));
-            deviceStatusHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60F));
+            deviceStatusHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            deviceStatusHeaderLayout.ColumnStyles.Add(new ColumnStyle());
             deviceStatusHeaderLayout.Controls.Add(tableLayoutPanel7, 1, 0);
             deviceStatusHeaderLayout.Controls.Add(deviceStatusTitleLayout, 0, 0);
             deviceStatusHeaderLayout.Dock = DockStyle.Fill;
@@ -1748,10 +1751,9 @@ namespace AutoWeldSystem.UI.Views
             deviceStatusToolbar.ColumnCount = 5;
             deviceStatusToolbar.ColumnStyles.Add(new ColumnStyle());
             deviceStatusToolbar.ColumnStyles.Add(new ColumnStyle());
-            deviceStatusToolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             deviceStatusToolbar.ColumnStyles.Add(new ColumnStyle());
             deviceStatusToolbar.ColumnStyles.Add(new ColumnStyle());
-            deviceStatusToolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 20F));
+            deviceStatusToolbar.ColumnStyles.Add(new ColumnStyle());
             deviceStatusToolbar.Controls.Add(btnOpenDeviceStatusFolder, 4, 0);
             deviceStatusToolbar.Controls.Add(dtpDeviceStatusDate, 2, 0);
             deviceStatusToolbar.Controls.Add(lblDeviceStatusDate, 1, 0);
@@ -1933,6 +1935,7 @@ namespace AutoWeldSystem.UI.Views
             colDeviceStatusName.Name = "colDeviceStatusName";
             colDeviceStatusName.ReadOnly = true;
             colDeviceStatusName.Width = 125;
+            //
             // colDeviceReportStatus
             // 
             colDeviceReportStatus.DataPropertyName = "ReportStatus";
@@ -1997,8 +2000,8 @@ namespace AutoWeldSystem.UI.Views
             // centerHeaderLayout
             //
             centerHeaderLayout.ColumnCount = 2;
-            centerHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40F));
-            centerHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60F));
+            centerHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            centerHeaderLayout.ColumnStyles.Add(new ColumnStyle());
             centerHeaderLayout.Controls.Add(centerToolbarHost, 1, 0);
             centerHeaderLayout.Controls.Add(centerTitleLayout, 0, 0);
             centerHeaderLayout.Dock = DockStyle.Fill;
@@ -2022,7 +2025,7 @@ namespace AutoWeldSystem.UI.Views
             centerToolbarHost.Margin = new Padding(0);
             centerToolbarHost.Name = "centerToolbarHost";
             centerToolbarHost.RowCount = 3;
-            centerToolbarHost.RowStyles.Add(new RowStyle(SizeType.Percent, 22.2222214F));
+            centerToolbarHost.RowStyles.Add(new RowStyle(SizeType.Percent, 22.22222F));
             centerToolbarHost.RowStyles.Add(new RowStyle(SizeType.Percent, 55.5555573F));
             centerToolbarHost.RowStyles.Add(new RowStyle(SizeType.Percent, 22.2222214F));
             centerToolbarHost.Size = new Size(788, 104);
@@ -2035,10 +2038,9 @@ namespace AutoWeldSystem.UI.Views
             centerToolbar.ColumnCount = 5;
             centerToolbar.ColumnStyles.Add(new ColumnStyle());
             centerToolbar.ColumnStyles.Add(new ColumnStyle());
-            centerToolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             centerToolbar.ColumnStyles.Add(new ColumnStyle());
             centerToolbar.ColumnStyles.Add(new ColumnStyle());
-            centerToolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 20F));
+            centerToolbar.ColumnStyles.Add(new ColumnStyle());
             centerToolbar.Controls.Add(btnOpenCenterFolder, 4, 0);
             centerToolbar.Controls.Add(dtpCenterDate, 2, 0);
             centerToolbar.Controls.Add(lblCenterDate, 1, 0);
@@ -2168,7 +2170,7 @@ namespace AutoWeldSystem.UI.Views
             splitCenterContent.Panel2.Controls.Add(tabCenterDetails);
             splitCenterContent.Panel2.Padding = new Padding(12, 0, 0, 0);
             splitCenterContent.Size = new Size(1312, 562);
-            splitCenterContent.SplitterDistance = 850;
+            splitCenterContent.SplitterDistance = 820;
             splitCenterContent.SplitterWidth = 5;
             splitCenterContent.TabIndex = 1;
             //
@@ -2188,7 +2190,7 @@ namespace AutoWeldSystem.UI.Views
             dgvCenterLogs.RowHeadersWidth = 51;
             dgvCenterLogs.RowTemplate.Height = 28;
             dgvCenterLogs.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgvCenterLogs.Size = new Size(838, 562);
+            dgvCenterLogs.Size = new Size(808, 562);
             dgvCenterLogs.TabIndex = 0;
             //
             // colCenterSendTime
@@ -2261,16 +2263,16 @@ namespace AutoWeldSystem.UI.Views
             tabCenterDetails.Name = "tabCenterDetails";
             tabCenterDetails.Padding = new Point(0, 0);
             tabCenterDetails.SelectedIndex = 0;
-            tabCenterDetails.Size = new Size(445, 562);
+            tabCenterDetails.Size = new Size(475, 562);
             tabCenterDetails.TabIndex = 0;
             //
             // tabCenterBasicInfo
             //
             tabCenterBasicInfo.Controls.Add(txtCenterBasicInfo);
-            tabCenterBasicInfo.Location = new Point(4, 29);
+            tabCenterBasicInfo.Location = new Point(4, 32);
             tabCenterBasicInfo.Name = "tabCenterBasicInfo";
             tabCenterBasicInfo.Padding = new Padding(3);
-            tabCenterBasicInfo.Size = new Size(437, 529);
+            tabCenterBasicInfo.Size = new Size(437, 526);
             tabCenterBasicInfo.TabIndex = 0;
             tabCenterBasicInfo.Text = "Basic";
             tabCenterBasicInfo.UseVisualStyleBackColor = true;
@@ -2286,7 +2288,7 @@ namespace AutoWeldSystem.UI.Views
             txtCenterBasicInfo.Name = "txtCenterBasicInfo";
             txtCenterBasicInfo.ReadOnly = true;
             txtCenterBasicInfo.ScrollBars = ScrollBars.Both;
-            txtCenterBasicInfo.Size = new Size(431, 523);
+            txtCenterBasicInfo.Size = new Size(431, 520);
             txtCenterBasicInfo.TabIndex = 0;
             txtCenterBasicInfo.WordWrap = false;
             //
@@ -2296,7 +2298,7 @@ namespace AutoWeldSystem.UI.Views
             tabCenterRequestBody.Location = new Point(4, 29);
             tabCenterRequestBody.Name = "tabCenterRequestBody";
             tabCenterRequestBody.Padding = new Padding(3);
-            tabCenterRequestBody.Size = new Size(437, 529);
+            tabCenterRequestBody.Size = new Size(437, 526);
             tabCenterRequestBody.TabIndex = 1;
             tabCenterRequestBody.Text = "Request";
             tabCenterRequestBody.UseVisualStyleBackColor = true;
@@ -2312,7 +2314,7 @@ namespace AutoWeldSystem.UI.Views
             txtCenterRequestBody.Name = "txtCenterRequestBody";
             txtCenterRequestBody.ReadOnly = true;
             txtCenterRequestBody.ScrollBars = ScrollBars.Both;
-            txtCenterRequestBody.Size = new Size(431, 523);
+            txtCenterRequestBody.Size = new Size(431, 520);
             txtCenterRequestBody.TabIndex = 0;
             txtCenterRequestBody.WordWrap = false;
             //
@@ -2322,7 +2324,7 @@ namespace AutoWeldSystem.UI.Views
             tabCenterResponseBody.Location = new Point(4, 29);
             tabCenterResponseBody.Name = "tabCenterResponseBody";
             tabCenterResponseBody.Padding = new Padding(3);
-            tabCenterResponseBody.Size = new Size(437, 529);
+            tabCenterResponseBody.Size = new Size(437, 526);
             tabCenterResponseBody.TabIndex = 2;
             tabCenterResponseBody.Text = "Response";
             tabCenterResponseBody.UseVisualStyleBackColor = true;
@@ -2338,7 +2340,7 @@ namespace AutoWeldSystem.UI.Views
             txtCenterResponseBody.Name = "txtCenterResponseBody";
             txtCenterResponseBody.ReadOnly = true;
             txtCenterResponseBody.ScrollBars = ScrollBars.Both;
-            txtCenterResponseBody.Size = new Size(431, 523);
+            txtCenterResponseBody.Size = new Size(431, 520);
             txtCenterResponseBody.TabIndex = 0;
             txtCenterResponseBody.WordWrap = false;
             //
