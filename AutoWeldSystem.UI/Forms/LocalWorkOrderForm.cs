@@ -148,7 +148,7 @@ public partial class LocalWorkOrderForm : BaseWindow
         var recipeCode = ProgramRecipeMappingRules.Resolve(program, _stationNo);
         if (string.IsNullOrWhiteSpace(recipeCode))
         {
-            MessageBox.Show(this, "所选本地程序缺少配方编号，无法离线开工。", "本地工单", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show(this, "所选本地程序未配置当前工位 PLC 配方，无法离线开工。", "本地工单", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 

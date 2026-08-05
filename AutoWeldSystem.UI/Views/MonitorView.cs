@@ -7743,7 +7743,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
                 "Error");
             throw new BusinessOperationException(
                 "PLC.RecipeCode",
-                "配方编号解析失败",
+                "PLC 配方未配置",
                 BuildRecipeResolveFailureDetail(task, sourceResolution));
         }
 
@@ -7760,7 +7760,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             {
                 throw new BusinessOperationException(
                     "PLC.RecipeCode",
-                    "配方编号解析失败",
+                    "PLC 配方未配置",
                     BuildRecipeResolveFailureDetail(task, resolution));
             }
 
@@ -7790,7 +7790,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
                         writeResult.Address);
                     throw new BusinessOperationException(
                         "PLC.RecipeCode",
-                        "配方编号下发失败",
+                        "PLC 配方下发失败",
                         $"Station={targetStationNo}; RecipeCode={targetRecipeCode}; Detail={writeResult.Message}");
                 }
 
@@ -7820,7 +7820,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
                     AppConstants.PlcLogicalKeys.PlcRecipeCode);
                 throw new BusinessOperationException(
                     "PLC.RecipeCodeCheck",
-                    "配方编号校验失败",
+                    "PLC 配方校验失败",
                     $"Station={targetStationNo}; PC={syncResult.PcRecipeCode}; PLC={syncResult.PlcRecipeCode}; Detail={syncResult.Message}");
             }
 
@@ -7912,7 +7912,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         {
             throw new BusinessOperationException(
                 "PLC.RecipeCode",
-                "配方编号下发失败",
+                "PLC 配方下发失败",
                 $"No started task exists for station {stationNo}.");
         }
 

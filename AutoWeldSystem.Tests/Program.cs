@@ -9318,6 +9318,9 @@ static void MonitorViewLinksProgramAndRecipeSelectionsForStartInput()
     AssertFalse(viewCode.Contains("ApplyOfflineRecipeCodeSelection", StringComparison.Ordinal), "离线流程不得通过配方号反向选择程序。");
     AssertFalse(viewCode.Contains("BindOnlineRecipeCodeOptions", StringComparison.Ordinal), "在线程序列表不得再构建配方号下拉。");
     AssertFalse(designerCode.Contains("selectRecipeCode", StringComparison.Ordinal), "MonitorView Designer 必须移除业务配方号控件。");
+    AssertFalse(viewCode.Contains("配方编号解析失败", StringComparison.Ordinal)
+        || viewCode.Contains("配方编号下发失败", StringComparison.Ordinal)
+        || viewCode.Contains("配方编号校验失败", StringComparison.Ordinal), "MonitorView 普通业务提示不得暴露数字配方号术语。");
     var localDesignerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Forms", "LocalWorkOrderForm.Designer.cs"), Encoding.UTF8);
     var readme = File.ReadAllText(GetRepoFilePath("README.md"), Encoding.UTF8);
     AssertFalse(localDesignerCode.Contains("txtRecipeCode", StringComparison.Ordinal)
