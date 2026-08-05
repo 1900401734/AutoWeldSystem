@@ -8686,6 +8686,13 @@ static void SharedTaskRecipeBoundariesResolvePerStation()
     AssertTrue(reconcileCode.Contains("var expectedRecipe = ResolveExpectedRecipe(task, stationNo);", StringComparison.Ordinal), "持续调和应按当前监控工位解析期望配方。 ");
     AssertTrue(reconcileCode.Contains("var recipeTargets = ProgramRecipeMappingRules.ResolveTargets(localProgram, targetStations);", StringComparison.Ordinal), "共享调和应按每个目标工位分别解析期望配方。 ");
     AssertTrue(reconcileCode.Contains("private readonly IProgramManageService _programManageService;", StringComparison.Ordinal), "调和服务应从本地程序映射读取工位配方，而不是依赖共享任务字段。 ");
+    AssertTrue(reconcileCode.Contains("private readonly HashSet<int> _restoredTaskIds = new();", StringComparison.Ordinal), "调和服务必须只为恢复任务记录兼容回退标识。");
+    var expectedMethod = ExtractMethodText(reconcileCode, "private string ResolveExpectedRecipe", "private BizProgram? ResolveLocalProgram");
+    AssertTrue(expectedMethod.Contains("_restoredTaskIds.Contains(task.Id)", StringComparison.Ordinal), "只有恢复任务才允许检查任务配方快照。");
+    AssertTrue(expectedMethod.Contains("stationNo == task.StationNo", StringComparison.Ordinal), "恢复任务快照只能用于任务本站。");
+    var reconcileMethod = ExtractMethodText(reconcileCode, "private async Task ReconcileRecipeAsync", "private async Task<int?> ReadWorkOrderStatusAsync");
+    AssertFalse(reconcileMethod.Contains("FirstNonEmpty(target.RecipeCode, task.RecipeCode)", StringComparison.Ordinal), "共享调和不得用源任务配方补齐其他工位。");
+    AssertTrue(reconcileMethod.Contains("recipeTargets.Any(target => string.IsNullOrWhiteSpace(target.RecipeCode))", StringComparison.Ordinal), "任一目标缺失配方时必须在 PLC 写入前整体退出。");
     var displayMethod = ExtractMethodText(
         monitorCode,
         "private string ResolveRecipeCodeForDisplay",
