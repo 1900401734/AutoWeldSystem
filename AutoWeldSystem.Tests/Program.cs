@@ -1,4 +1,4 @@
-using AutoWeldSystem.Core.Entities;
+﻿using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Center;
@@ -920,6 +920,8 @@ static void ProgramSaveRecipeRulesRequirePositiveStationCodes()
 {
     ProgramSaveRecipeRules.Validate("1", null, enableDualStation: false);
     ProgramSaveRecipeRules.Validate("2", "9", enableDualStation: true);
+    ProgramSaveRecipeRules.Validate("2", null, enableDualStation: true);
+    ProgramSaveRecipeRules.Validate(null, "9", enableDualStation: true);
 
     AssertInvalidOperationMessage(
         () => ProgramSaveRecipeRules.Validate(string.Empty, null, enableDualStation: false),
@@ -930,13 +932,17 @@ static void ProgramSaveRecipeRulesRequirePositiveStationCodes()
         "工位 1 配方号必须是正整数。",
         "历史非数字配方号不得继续静默保存。 ");
     AssertInvalidOperationMessage(
-        () => ProgramSaveRecipeRules.Validate("1", null, enableDualStation: true),
-        "工位 2 配方号必须是正整数。",
-        "双工位保存必须要求工位 2 配方号。 ");
+        () => ProgramSaveRecipeRules.Validate(null, null, enableDualStation: true),
+        "至少选择一个适用工位配方。",
+        "双工位程序不能同时把两个工位设为不适用。 ");
     AssertInvalidOperationMessage(
         () => ProgramSaveRecipeRules.Validate("1", "0", enableDualStation: true),
         "工位 2 配方号必须是正整数。",
         "工位 2 配方号不得为零。 ");
+    AssertInvalidOperationMessage(
+        () => ProgramSaveRecipeRules.Validate("0", "2", enableDualStation: true),
+        "工位 1 配方号必须是正整数。",
+        "工位 1 非空时也必须为正整数。 ");
 }
 
 static void PlcSoftwareAlarmRulesMergeRawStatusAndBoolSignals()
@@ -8483,7 +8489,8 @@ static void OfflineStartRequestFollowsInlineMonitorInput()
             ProgramContent = "{\"steps\":3}",
             ProductNum = "164#J",
             ProductModel = "M-164",
-            RecipeCode = "5"
+            RecipeCode = "2",
+            Station2RecipeCode = "5"
         }
     }).Single();
     var input = new OfflineStartInput(
@@ -8669,7 +8676,7 @@ static void ProgramRecipeMappingResolvesStationSpecificCodes()
     AssertEqual("8", (string)(resolve.Invoke(null, [program, 2]) ?? string.Empty), "工位 2 应优先使用 Station2RecipeCode。 ");
 
     station2Property.SetValue(program, "0");
-    AssertEqual("3", (string)(resolve.Invoke(null, [program, 2]) ?? string.Empty), "旧程序缺少有效工位 2 配方时应回退 RecipeCode。 ");
+    AssertEqual(string.Empty, (string)(resolve.Invoke(null, [program, 2]) ?? string.Empty), "工位 2 缺少有效配方时不得回退工位 1。 ");
 }
 
 static void ProgramSharedRecipeTargetsResolveIndependently()
@@ -8701,6 +8708,13 @@ static void ProgramSharedRecipeTargetsResolveIndependently()
     AssertEqual("3", targets[0].RecipeCode, "工位 1 应使用 RecipeCode。 ");
     AssertEqual(2, targets[1].StationNo, "第二个目标应为工位 2。 ");
     AssertEqual("8", targets[1].RecipeCode, "工位 2 应使用 Station2RecipeCode。 ");
+
+    program.Station2RecipeCode = null;
+    var missingStation2Targets = ((System.Collections.IEnumerable)resolveTargets.Invoke(null, [program, sharedStations])!)
+        .Cast<object>()
+        .Select(target => (string)target.GetType().GetProperty("RecipeCode")!.GetValue(target)!)
+        .ToList();
+    AssertEqual(string.Empty, missingStation2Targets[1], "共享目标缺少工位 2 关联时必须保留为空，不能借用工位 1。 ");
 }
 
 static void SharedTaskRecipeBoundariesResolvePerStation()

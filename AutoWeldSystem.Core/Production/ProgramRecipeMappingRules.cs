@@ -1,11 +1,11 @@
-using System.Globalization;
+﻿using System.Globalization;
 using AutoWeldSystem.Core.Entities;
 
 namespace AutoWeldSystem.Core.Production;
 
 /// <summary>
 /// 集中处理加工程序与 PLC 工位配方号之间的映射。
-/// RecipeCode 始终代表单工位或工位 1；工位 2 优先使用 Station2RecipeCode。
+/// RecipeCode 始终代表单工位或工位 1；Station2RecipeCode 仅代表工位 2。
 /// </summary>
 public static class ProgramRecipeMappingRules
 {
@@ -28,8 +28,8 @@ public static class ProgramRecipeMappingRules
     }
 
     /// <summary>
-    /// 根据当前工位解析程序实际使用的 PLC 配方号。
-    /// 旧程序没有有效工位 2 配方号时，安全回退到原 RecipeCode。
+    /// 根据当前工位严格解析程序实际使用的 PLC 配方号。
+    /// 工位 2 未配置时返回空值，禁止复用工位 1 配方号。
     /// </summary>
     public static string Resolve(BizProgram? program, int stationNo)
     {
@@ -38,16 +38,9 @@ public static class ProgramRecipeMappingRules
             return string.Empty;
         }
 
-        var primaryRecipeCode = Normalize(program.RecipeCode);
-        if (stationNo != Station2)
-        {
-            return primaryRecipeCode;
-        }
-
-        var station2RecipeCode = Normalize(program.Station2RecipeCode);
-        return string.IsNullOrWhiteSpace(station2RecipeCode)
-            ? primaryRecipeCode
-            : station2RecipeCode;
+        return stationNo == Station2
+            ? Normalize(program.Station2RecipeCode)
+            : Normalize(program.RecipeCode);
     }
 
     /// <summary>
