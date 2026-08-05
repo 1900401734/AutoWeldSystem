@@ -9576,31 +9576,29 @@ static void ProgramManageRecipeNameSelectorsBindStationRecipeCodes()
 
     AssertTrue(viewCode.Contains("IPlcRecipeNameReaderService", StringComparison.Ordinal), "程序管理页必须注入 PLC 配方名称读取服务。");
     AssertTrue(viewCode.Contains("IAppSettingsService", StringComparison.Ordinal), "程序管理页必须读取系统设置判断双工位。");
-    AssertTrue(viewCode.Contains("Station2RecipeCode", StringComparison.Ordinal), "程序管理页保存和恢复时必须绑定工位 2 配方号。");
-    AssertTrue(viewCode.Contains("ReadStationAsync", StringComparison.Ordinal), "程序管理页加载或刷新时必须读取 PLC 配方名称。");
-    AssertTrue(viewCode.Contains("select.List = result.IsSuccess;", StringComparison.Ordinal), "PLC 名称读取成功时下拉必须切换为列表选择模式，失败时允许临时输入。");
+    AssertTrue(viewCode.Contains("private enum RecipeSelectionKind", StringComparison.Ordinal)
+        && viewCode.Contains("private sealed record RecipeSelectionItem", StringComparison.Ordinal), "配方选择必须通过显式状态模型承载显示和值。");
+    AssertTrue(viewCode.Contains("Dictionary<int, List<RecipeSelectionItem>>", StringComparison.Ordinal), "每个工位必须保存与 SelectedIndex 平行的配方选项。");
+    AssertFalse(viewCode.Contains("CreateTextColumn(nameof(BizProgram.RecipeCode)", StringComparison.Ordinal), "程序列表不得显示配方号列。");
+    AssertFalse(viewCode.Contains("SetColumnHeader(dgvPrograms, nameof(BizProgram.RecipeCode)", StringComparison.Ordinal), "程序列表不得设置配方号表头。");
+    AssertFalse(viewCode.Contains("GetRecipeSortBucket", StringComparison.Ordinal), "程序列表不得继续按配方号排序。");
+    AssertFalse(viewCode.Contains("int.TryParse(selectedText", StringComparison.Ordinal), "配方保存不得解析选择器显示文本中的数字。");
+    AssertTrue(viewCode.Contains("RecipeSelectionKind.NotApplicable", StringComparison.Ordinal), "双工位下拉必须提供不适用状态。");
+    AssertTrue(viewCode.Contains("RecipeSelectionKind.MissingExisting", StringComparison.Ordinal), "历史失效关联必须使用不暴露数字的状态项。");
+    AssertTrue(viewCode.Contains("select.List = true;", StringComparison.Ordinal), "配方选择器必须始终保持列表模式。");
+    AssertTrue(viewCode.Contains("select.ReadOnly = !result.IsSuccess;", StringComparison.Ordinal), "读取失败时选择器必须只读且禁止手工输入。");
+    AssertFalse(viewCode.Contains("PlaceholderRecipeManual", StringComparison.Ordinal), "读取失败时不得提供手工配方号输入提示。");
     AssertTrue(designerCode.Contains("selectStation1Recipe = new AntdUI.Select();", StringComparison.Ordinal), "Designer 必须声明工位 1 配方名称下拉。");
     AssertTrue(designerCode.Contains("selectStation2Recipe = new AntdUI.Select();", StringComparison.Ordinal), "Designer 必须声明工位 2 配方名称下拉。");
-    AssertTrue(designerCode.Contains("selectStation1Recipe.MaxCount = 10;", StringComparison.Ordinal), "工位 1 配方名称下拉必须限制下拉项数量。");
-    AssertTrue(designerCode.Contains("selectStation2Recipe.MaxCount = 10;", StringComparison.Ordinal), "工位 2 配方名称下拉必须限制下拉项数量。");
-    AssertTrue(designerCode.Contains("tlpStation2RecipeCode", StringComparison.Ordinal), "工位 2 配方名称行的静态布局必须放在 Designer 中。");
-    AssertTrue(viewCode.Contains("tlpStation2RecipeCode.Visible =", StringComparison.Ordinal), "单工位时必须在运行期折叠工位 2 配方行。");
-    var refreshMethod = ExtractMethodText(viewCode, "private async Task RefreshRecipeNameOptionsAsync()", "private void ApplyStationRecipeLayout");
-    var awaitIndex = refreshMethod.IndexOf("await _recipeNameReaderService.ReadStationAsync(stationNo)", StringComparison.Ordinal);
-    var liveValueIndex = refreshMethod.IndexOf("ResolveSelectedRecipeCode(select, stationNo)", awaitIndex, StringComparison.Ordinal);
-    AssertTrue(awaitIndex >= 0 && liveValueIndex > awaitIndex, "每次 PLC 读取返回后必须重新获取编辑器当前配方号，避免旧请求覆盖新增或切换后的程序。");
-    AssertTrue(viewCode.Contains("GetRecipeOptionDisplayText", StringComparison.Ordinal), "配方名称、重复名称和缺失配方的显示文本必须通过本地化 helper 生成。");
-    AssertTrue(viewCode.Contains("RefreshRecipeSelectorTexts();", StringComparison.Ordinal), "语言切换时必须原地刷新配方选项和占位提示，不得保留旧语言文本。");
+    AssertTrue(designerCode.Contains("selectStation1Recipe.List = true;", StringComparison.Ordinal)
+        && designerCode.Contains("selectStation2Recipe.List = true;", StringComparison.Ordinal), "Designer 必须将两个配方选择器固定为列表模式。");
     AssertTrue(viewCode.Contains("editingProgram?.Station2RecipeCode", StringComparison.Ordinal)
         && viewCode.Contains("_editingId > 0", StringComparison.Ordinal), "单工位编辑历史程序时必须保留已有工位 2 配方号。");
-    var saveResolver = ExtractMethodText(viewCode, "private string ResolveRecipeCodeForSave", "private async Task RefreshRecipeNameOptionsAsync()");
-    AssertFalse(saveResolver.Contains("!int.TryParse", StringComparison.Ordinal), "程序管理 UI 不得继续透传历史非数字配方号。");
+    AssertTrue(viewCode.Contains("ProgramSaveRecipeRules.Validate(", StringComparison.Ordinal), "程序管理保存前必须应用单双工位配方完整性规则。");
     AssertTrue(serviceCode.Contains("ProgramSaveRecipeRules.Validate(", StringComparison.Ordinal)
         && serviceCode.Contains("CurrentSettings.EnableDualStation", StringComparison.Ordinal), "服务保存入口必须在规范化后按当前单双工位设置校验配方号。");
     AssertTrue(viewCode.Contains("Interlocked.Increment(ref _recipeNameRefreshVersion)", StringComparison.Ordinal), "每次配方名称刷新必须递增版本号。");
     AssertTrue(viewCode.Contains("refreshVersion != Volatile.Read(ref _recipeNameRefreshVersion)", StringComparison.Ordinal), "旧刷新返回时必须通过版本号阻止覆盖新状态。");
-    AssertTrue(viewCode.Contains("catch (Exception ex)", StringComparison.Ordinal)
-        && viewCode.Contains("BindRecipeNameReadFailure", StringComparison.Ordinal), "刷新异常必须转成手工输入回退状态，不得成为未观察任务异常。");
 }
 
 static void AddressManageExposesPlcRecipeNameConfiguration()

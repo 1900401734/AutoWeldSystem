@@ -930,9 +930,9 @@ public static class TextKeys
         public const string LabelStation1Recipe = "program.label.station1_recipe";
         public const string LabelStation2Recipe = "program.label.station2_recipe";
         public const string PlaceholderRecipeSelect = "program.placeholder.recipe_select";
-        public const string PlaceholderRecipeManual = "program.placeholder.recipe_manual";
+        public const string RecipeNotApplicable = "program.option.recipe_not_applicable";
         public const string MissingRecipeOption = "program.option.missing_recipe";
-        public const string DuplicateRecipeOption = "program.option.duplicate_recipe";
+        public const string RecipeReadFailed = "program.message.recipe_read_failed";
         public const string LabelComponentCode = "program.label.component_code";
         public const string LabelSequenceNumber = "program.label.sequence_number";
         public const string LabelProgramType = "program.label.program_type";

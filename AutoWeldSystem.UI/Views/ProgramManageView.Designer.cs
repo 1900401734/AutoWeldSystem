@@ -462,11 +462,12 @@
             lblRecipeCode.Padding = new Padding(4, 0, 0, 0);
             lblRecipeCode.Size = new Size(74, 44);
             lblRecipeCode.TabIndex = 11;
-            lblRecipeCode.Text = "配方编号";
+            lblRecipeCode.Text = "工位1配方名称";
             // 
             // selectStation1Recipe
             // 
             selectStation1Recipe.Dock = DockStyle.Fill;
+            selectStation1Recipe.List = true;
             selectStation1Recipe.Location = new Point(74, 0);
             selectStation1Recipe.Margin = new Padding(0);
             selectStation1Recipe.MaxCount = 10;
@@ -502,11 +503,12 @@
             lblStation2RecipeCode.Padding = new Padding(4, 0, 0, 0);
             lblStation2RecipeCode.Size = new Size(88, 1);
             lblStation2RecipeCode.TabIndex = 0;
-            lblStation2RecipeCode.Text = "工位2配方";
+            lblStation2RecipeCode.Text = "工位2配方名称";
             // 
             // selectStation2Recipe
             // 
             selectStation2Recipe.Dock = DockStyle.Fill;
+            selectStation2Recipe.List = true;
             selectStation2Recipe.Location = new Point(88, 0);
             selectStation2Recipe.Margin = new Padding(0);
             selectStation2Recipe.MaxCount = 10;
