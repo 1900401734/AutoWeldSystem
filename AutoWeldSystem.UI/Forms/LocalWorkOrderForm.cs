@@ -47,7 +47,7 @@ public partial class LocalWorkOrderForm : BaseWindow
 
     private void BindPrograms()
     {
-        var items = OfflineStartInputRules.BuildProgramNameOptions(_programs)
+        var items = OfflineStartInputRules.BuildProgramNameOptions(_programs, _stationNo, requireBothStations: false)
             .Select(option => new LocalProgramItem(option))
             .ToList();
 
@@ -71,7 +71,6 @@ public partial class LocalWorkOrderForm : BaseWindow
         var program = SelectedProgram;
         txtProductNum.Text = program?.ProductNum ?? string.Empty;
         txtProgramName.Text = program?.ProgramName ?? string.Empty;
-        txtRecipeCode.Text = ProgramRecipeMappingRules.Resolve(program, _stationNo);
     }
 
     private string ResolveInitialWorkOrderId()

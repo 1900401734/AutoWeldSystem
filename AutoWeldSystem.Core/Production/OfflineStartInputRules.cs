@@ -16,7 +16,10 @@ public static class OfflineStartInputRules
     /// </summary>
     /// <param name="programs">Local program records maintained in the program library.</param>
     /// <returns>Options sorted by program name, product number, recipe code and local program id.</returns>
-    public static IReadOnlyList<OfflineProgramNameOption> BuildProgramNameOptions(IEnumerable<BizProgram> programs)
+    public static IReadOnlyList<OfflineProgramNameOption> BuildProgramNameOptions(
+        IEnumerable<BizProgram> programs,
+        int stationNo,
+        bool requireBothStations)
     {
         ArgumentNullException.ThrowIfNull(programs);
 
@@ -24,10 +27,12 @@ public static class OfflineStartInputRules
             .Where(program => !program.IsDeleted)
             .Where(program => !string.IsNullOrWhiteSpace(program.ProgramName))
             .Where(program => !string.IsNullOrWhiteSpace(program.ProductNum))
-            .Where(program => !string.IsNullOrWhiteSpace(program.RecipeCode))
+            .Where(program => !string.IsNullOrWhiteSpace(ProgramRecipeMappingRules.Resolve(program, stationNo)))
+            .Where(program => !requireBothStations
+                || (!string.IsNullOrWhiteSpace(ProgramRecipeMappingRules.Resolve(program, 1))
+                    && !string.IsNullOrWhiteSpace(ProgramRecipeMappingRules.Resolve(program, 2))))
             .OrderBy(program => program.ProgramName.Trim(), StringComparer.OrdinalIgnoreCase)
             .ThenBy(program => program.ProductNum, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(program => program.RecipeCode, StringComparer.OrdinalIgnoreCase)
             .ThenBy(program => program.Id)
             .ToList();
 
@@ -41,26 +46,6 @@ public static class OfflineStartInputRules
             .Select(program => new OfflineProgramNameOption(
                 program,
                 ResolveDisplayText(program, duplicateProgramNames.Contains(Normalize(program.ProgramName)))))
-            .ToList();
-    }
-
-    /// <summary>
-    /// Creates normalized recipe-code options for MonitorView dropdowns.
-    /// Numeric recipe codes use numeric ascending order so 10 is listed after 4.
-    /// </summary>
-    /// <param name="recipeCodes">Candidate recipe-code values from local programs or MES-program mappings.</param>
-    /// <returns>Distinct non-empty recipe codes in operator-friendly ascending order.</returns>
-    public static IReadOnlyList<string> BuildRecipeCodeOptions(IEnumerable<string?> recipeCodes)
-    {
-        ArgumentNullException.ThrowIfNull(recipeCodes);
-
-        return recipeCodes
-            .Select(Normalize)
-            .Where(recipeCode => !string.IsNullOrWhiteSpace(recipeCode))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(recipeCode => TryParseRecipeCodeNumber(recipeCode, out _) ? 0 : 1)
-            .ThenBy(recipeCode => TryParseRecipeCodeNumber(recipeCode, out var number) ? number : long.MaxValue)
-            .ThenBy(recipeCode => recipeCode, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
@@ -100,19 +85,15 @@ public static class OfflineStartInputRules
         };
     }
 
-    private static bool TryParseRecipeCodeNumber(string recipeCode, out long number)
-        => long.TryParse(recipeCode, NumberStyles.Integer, CultureInfo.InvariantCulture, out number);
-
-    private static string ResolveDisplayText(BizProgram program, bool includeIdentity)
+private static string ResolveDisplayText(BizProgram program, bool includeIdentity)
     {
         var programName = Normalize(program.ProgramName);
         if (!includeIdentity)
         {
             return programName;
         }
-
-        // 程序名称重名时追加关键身份字段，避免操作员选错配方。
-        return $"{programName} | 产品工号={Normalize(program.ProductNum)} | 配方号={Normalize(program.RecipeCode)}";
+        // 程序名称重名时只追加产品身份，数字配方号保持隐藏。
+        return $"{programName} | 产品工号={Normalize(program.ProductNum)}";
     }
 
     private static int ResolvePlannedQty(string? value)

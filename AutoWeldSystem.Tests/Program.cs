@@ -287,7 +287,6 @@ var tests = new (string Name, Action Run)[]
     ("Program manage download backfills name fields", ProgramManageDownloadBackfillsNameFields),
     ("Offline program dropdown displays program name", OfflineProgramDropdownDisplaysProgramName),
     ("Offline program dropdown includes empty-content program", OfflineProgramDropdownIncludesEmptyContentProgram),
-    ("Recipe code options sort numeric ascending", RecipeCodeOptionsSortNumericAscending),
     ("Product history preview sorts latest product first", ProductHistoryPreviewSortsLatestProductFirst),
     ("Offline start request follows inline monitor input", OfflineStartRequestFollowsInlineMonitorInput),
     ("Offline start allows empty part name and drawing number", OfflineStartAllowsEmptyPartNameAndDrawingNumber),
@@ -8365,45 +8364,22 @@ static void OfflineProgramDropdownDisplaysProgramName()
 {
     var programs = new[]
     {
-        new BizProgram
-        {
-            Id = 7,
-            ProgramName = "程序A",
-            ProgramContent = "内容A",
-            ProductNum = "P-001",
-            RecipeCode = "3",
-            UpdatedTime = new DateTime(2026, 6, 26, 8, 0, 0)
-        },
-        new BizProgram
-        {
-            Id = 8,
-            ProgramName = "重复程序",
-            ProgramContent = "内容B",
-            ProductNum = "P-002",
-            RecipeCode = "4",
-            UpdatedTime = new DateTime(2026, 6, 26, 9, 0, 0)
-        },
-        new BizProgram
-        {
-            Id = 9,
-            ProgramName = "重复程序",
-            ProgramContent = "内容C",
-            ProductNum = "P-003",
-            RecipeCode = "5",
-            UpdatedTime = new DateTime(2026, 6, 26, 10, 0, 0)
-        }
+        new BizProgram { Id = 7, ProgramName = "程序A", ProductNum = "P-001", RecipeCode = "3" },
+        new BizProgram { Id = 8, ProgramName = "重复程序", ProductNum = "P-002", RecipeCode = "4", Station2RecipeCode = "8" },
+        new BizProgram { Id = 9, ProgramName = "重复程序", ProductNum = "P-003", RecipeCode = "5" },
+        new BizProgram { Id = 10, ProgramName = "仅工位2", ProductNum = "P-004", Station2RecipeCode = "6" }
     };
 
-    var options = OfflineStartInputRules.BuildProgramNameOptions(programs);
+    var station1Options = OfflineStartInputRules.BuildProgramNameOptions(programs, stationNo: 1, requireBothStations: false);
+    var station2Options = OfflineStartInputRules.BuildProgramNameOptions(programs, stationNo: 2, requireBothStations: false);
+    var sharedOptions = OfflineStartInputRules.BuildProgramNameOptions(programs, stationNo: 1, requireBothStations: true);
 
-    AssertEqual(3, options.Count, "可用本地程序应生成离线程序名称选项。");
-    var uniqueOption = options.Single(option => option.Program.Id == 7);
-    AssertEqual("程序A", uniqueOption.DisplayText, "唯一程序名称下拉必须优先显示程序名称。");
-    AssertEqual("P-001", uniqueOption.Program.ProductNum, "选中程序名称后仍需保留产品工号用于联动回填。");
-    AssertEqual("3", uniqueOption.Program.RecipeCode, "选中程序名称后仍需保留配方号用于联动回填。");
-
-    var duplicateOption = options.Single(option => option.Program.Id == 8);
-    AssertEqual("重复程序 | 产品工号=P-002 | 配方号=4", duplicateOption.DisplayText, "重名程序必须追加产品工号和配方号便于区分。");
+    AssertEqual(3, station1Options.Count, "工位 1 只能显示配置了工位 1 配方的程序。");
+    AssertEqual(2, station2Options.Count, "工位 2 只能显示配置了工位 2 配方的程序。");
+    AssertEqual(1, sharedOptions.Count, "双工位同工单只允许两个工位都配置的程序。");
+    AssertEqual("程序A", station1Options.Single(option => option.Program.Id == 7).DisplayText, "唯一名称只显示程序名称。");
+    AssertEqual("重复程序 | 产品工号=P-002", station1Options.Single(option => option.Program.Id == 8).DisplayText, "重名提示不得显示配方号。");
+    AssertFalse(station1Options.Any(option => option.DisplayText.Contains("配方号", StringComparison.Ordinal)), "离线程序下拉不得暴露数字配方号。");
 }
 
 static void OfflineProgramDropdownIncludesEmptyContentProgram()
@@ -8419,32 +8395,10 @@ static void OfflineProgramDropdownIncludesEmptyContentProgram()
         })
         .ToArray();
 
-    var options = OfflineStartInputRules.BuildProgramNameOptions(programs);
+    var options = OfflineStartInputRules.BuildProgramNameOptions(programs, stationNo: 1, requireBothStations: false);
 
     AssertEqual(4, options.Count, "本地程序列表中的空内容程序也应显示在 MonitorView 下拉框中。");
     AssertTrue(options.Any(option => option.Program.Id == 4), "空内容程序不能因为 ProgramContent 为空而被下拉过滤。");
-}
-
-static void RecipeCodeOptionsSortNumericAscending()
-{
-    var options = OfflineStartInputRules.BuildRecipeCodeOptions(new[]
-    {
-        "3",
-        "1",
-        "10",
-        "2",
-        "4",
-        " 2 ",
-        string.Empty,
-        null,
-        "A2",
-        "A1"
-    });
-
-    AssertSequenceEqual(
-        new[] { "1", "2", "3", "4", "10", "A1", "A2" },
-        options,
-        "配方号候选列表应先按数字正序显示，非数字配方号排在数字后按文本正序显示。");
 }
 
 static void ProductHistoryPreviewSortsLatestProductFirst()
@@ -8492,7 +8446,7 @@ static void OfflineStartRequestFollowsInlineMonitorInput()
             RecipeCode = "2",
             Station2RecipeCode = "5"
         }
-    }).Single();
+    }, stationNo: 2, requireBothStations: false).Single();
     var input = new OfflineStartInput(
         StationNo: 2,
         WorkOrderId: "WO-LOCAL",
@@ -8530,7 +8484,7 @@ static void OfflineStartAllowsEmptyPartNameAndDrawingNumber()
             ProductNum = "164#J",
             RecipeCode = "5"
         }
-    }).Single();
+    }, stationNo: 1, requireBothStations: false).Single();
     var emptyOptionalFields = new OfflineStartInput(
         StationNo: 1,
         WorkOrderId: "WO-EMPTY",
@@ -8572,7 +8526,7 @@ static void OfflineStartRequiresWorkOrderAndProcessNumber()
             ProductNum = "164#J",
             RecipeCode = "5"
         }
-    }).Single();
+    }, stationNo: 1, requireBothStations: false).Single();
     var validInput = new OfflineStartInput(
         StationNo: 1,
         WorkOrderId: "WO-REQUIRED",
@@ -8732,7 +8686,6 @@ static void SharedTaskRecipeBoundariesResolvePerStation()
     AssertTrue(reconcileCode.Contains("var expectedRecipe = ResolveExpectedRecipe(task, stationNo);", StringComparison.Ordinal), "持续调和应按当前监控工位解析期望配方。 ");
     AssertTrue(reconcileCode.Contains("var recipeTargets = ProgramRecipeMappingRules.ResolveTargets(localProgram, targetStations);", StringComparison.Ordinal), "共享调和应按每个目标工位分别解析期望配方。 ");
     AssertTrue(reconcileCode.Contains("private readonly IProgramManageService _programManageService;", StringComparison.Ordinal), "调和服务应从本地程序映射读取工位配方，而不是依赖共享任务字段。 ");
-
     var displayMethod = ExtractMethodText(
         monitorCode,
         "private string ResolveRecipeCodeForDisplay",
@@ -8787,6 +8740,12 @@ static void ProgramRuntimeResolvesRecipesByCurrentStation()
     AssertTrue(offlineRulesCode.Contains("ProgramRecipeMappingRules.Resolve(program, input.StationNo)", StringComparison.Ordinal), "离线开工请求应使用当前工位配方号。 ");
     AssertTrue(weldTaskCode.Contains("ResolveProgramRecipeCode(program, settings.DeviceId, normalizedStationNo)", StringComparison.Ordinal), "在线开工任务应按当前工位解析本地配方号。 ");
     AssertTrue(weldTaskCode.Contains("ProgramRecipeMappingRules.Resolve(localProgram, stationNo)", StringComparison.Ordinal), "WeldTaskService 应复用集中映射规则。 ");
+    var serviceResolver = ExtractMethodText(weldTaskCode, "private string ResolveProgramRecipeCode", "private void EnsureReadyForStart");
+    AssertFalse(serviceResolver.Contains("ProgramRecipeMappingRules.Normalize(program.RecipeCode)", StringComparison.Ordinal), "在线开工不得回退 MES 程序配方号。");
+    AssertTrue(serviceResolver.Contains("throw new BusinessOperationException", StringComparison.Ordinal), "本机程序当前工位未配置配方时必须拒绝开工。");
+    var monitorResolver = ExtractMethodText(monitorCode, "private RecipeCodeResolution ResolveRecipeCodeForStartedTask", "private BizProgram? ResolveLocalProgramByProgramId");
+    AssertFalse(monitorResolver.Contains("task.RecipeCode", StringComparison.Ordinal), "新任务运行时解析不得回退任务配方快照。");
+    AssertFalse(monitorResolver.Contains("selectedProgram?.RecipeCode", StringComparison.Ordinal), "新任务运行时解析不得回退 MES 程序配方号。");
     AssertTrue(previewCode.Contains("ProgramRecipeMappingRules.Matches(program, stationNo, normalizedRecipeCode)", StringComparison.Ordinal), "PLC 配方反查产品预览时应按工位匹配。 ");
     AssertTrue(monitorCode.Contains("ProgramRecipeMappingRules.Resolve(localProgram, stationNo)", StringComparison.Ordinal), "MonitorView 配方下发和反查应复用工位映射规则。 ");
     AssertTrue(localFormCode.Contains("ProgramRecipeMappingRules.Resolve(program, _stationNo)", StringComparison.Ordinal), "本地工单窗口应显示并提交当前工位配方号。 ");
@@ -9340,74 +9299,34 @@ static void MonitorViewPreservesOnlineInputsDuringRefresh()
 static void MonitorViewLinksProgramAndRecipeSelectionsForStartInput()
 {
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
-    var wireEvents = ExtractMethodText(
-        viewCode,
-        "private void WireEvents()",
-        "private void WireWeldPreviewGridEvents");
-    var destroyMethod = ExtractMethodText(
-        viewCode,
-        "protected override void OnHandleDestroyed(EventArgs e)",
-        "private void Station_SelectedIndexChanged");
-    var recipeHandler = ExtractMethodText(
-        viewCode,
-        "private void RecipeCodeSelection_SelectedIndexChanged",
-        "private void RealtimePreviewPaintTimer_Tick");
-    var onlineReadOnlyMethod = ExtractMethodText(
-        viewCode,
-        "private void ApplyOnlineStartInputReadOnly(bool editable)",
-        "private void BindOfflineEditableRuntimeState");
-    var offlineReadOnlyMethod = ExtractMethodText(
-        viewCode,
-        "private void ApplyOfflineInputReadOnly(bool readOnly)",
-        "private void SetWorkOrderInputText");
-    var onlineOptionsMethod = ExtractMethodText(
-        viewCode,
-        "private void BindOnlineProgramNameOptions()",
-        "private void SwitchStationFromUi");
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.Designer.cs"), Encoding.UTF8);
+    var wireEvents = ExtractMethodText(viewCode, "private void WireEvents()", "private void WireWeldPreviewGridEvents");
     var offlineOptionsMethod = ExtractMethodText(
         viewCode,
         "private void BindOfflineProgramNameOptions()",
         "private void ApplyOfflineProgramNameOption");
 
-    AssertTrue(wireEvents.Contains("selectRecipeCode.SelectedIndexChanged += RecipeCodeSelection_SelectedIndexChanged;", StringComparison.Ordinal), "配方号下拉必须参与开工输入选择事件。");
-    AssertTrue(wireEvents.Contains("selectRecipeCode.WheelModifyEnabled = false;", StringComparison.Ordinal), "配方号下拉也应禁用鼠标滚轮误切换。");
-    AssertTrue(destroyMethod.Contains("selectRecipeCode.SelectedIndexChanged -= RecipeCodeSelection_SelectedIndexChanged;", StringComparison.Ordinal), "销毁 MonitorView 时必须解绑配方号下拉事件。");
-    AssertTrue(onlineReadOnlyMethod.Contains("selectRecipeCode.ReadOnly = fieldReadOnly;", StringComparison.Ordinal), "在线未开工且工单已加载时配方号应允许下拉选择。");
-    AssertTrue(offlineReadOnlyMethod.Contains("selectRecipeCode.ReadOnly = readOnly;", StringComparison.Ordinal), "离线未开工时配方号应允许下拉选择。");
-    AssertTrue(onlineOptionsMethod.Contains("BindOnlineRecipeCodeOptions(programs", StringComparison.Ordinal), "在线程序列表刷新时必须同步刷新配方号下拉选项。");
-    AssertTrue(offlineOptionsMethod.Contains("BindOfflineRecipeCodeOptions(options", StringComparison.Ordinal), "离线程序列表刷新时必须同步刷新配方号下拉选项。");
-    AssertTrue(recipeHandler.Contains("ResolveOnlineProgramListItemByRecipeCode", StringComparison.Ordinal), "在线选择配方号后必须反向解析 MES 程序并触发下载预览。");
-    AssertTrue(recipeHandler.Contains("ApplyOfflineRecipeCodeSelection", StringComparison.Ordinal), "离线选择配方号后必须反向联动本地程序名称、产品工号和产品型号。");
-    AssertTrue(recipeHandler.Contains("DownloadSelectedOnlineProgramAsync(programListItem, CurrentStationNo)", StringComparison.Ordinal), "在线切换配方号应复用程序选择的下载和微调弹窗流程。");
+    AssertFalse(wireEvents.Contains("RecipeCodeSelection_SelectedIndexChanged", StringComparison.Ordinal), "MonitorView 不得再绑定配方号选择事件。");
+    AssertFalse(viewCode.Contains("BindOfflineRecipeCodeOptions", StringComparison.Ordinal), "离线程序列表不得再构建配方号下拉。");
+    AssertFalse(viewCode.Contains("ApplyOfflineRecipeCodeSelection", StringComparison.Ordinal), "离线流程不得通过配方号反向选择程序。");
+    AssertFalse(viewCode.Contains("BindOnlineRecipeCodeOptions", StringComparison.Ordinal), "在线程序列表不得再构建配方号下拉。");
+    AssertFalse(designerCode.Contains("selectRecipeCode", StringComparison.Ordinal), "MonitorView Designer 必须移除业务配方号控件。");
+    var localDesignerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Forms", "LocalWorkOrderForm.Designer.cs"), Encoding.UTF8);
+    AssertFalse(localDesignerCode.Contains("txtRecipeCode", StringComparison.Ordinal)
+        || localDesignerCode.Contains("配方编号", StringComparison.Ordinal), "本地工单窗口不得显示数字配方号。");
+    AssertTrue(offlineOptionsMethod.Contains("CurrentStationNo", StringComparison.Ordinal)
+        && offlineOptionsMethod.Contains("EnableDualStation && !_currentSettings.EnableDualWorkOrder", StringComparison.Ordinal), "离线程序必须按当前工位和同工单规则过滤。");
 }
 
 static void MonitorViewRecipeDropdownUsesSortedRecipeOptions()
 {
-    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
-    var onlineMethod = ExtractMethodText(
-        viewCode,
-        "private void BindOnlineRecipeCodeOptions",
-        "    #endregion");
-    var offlineMethod = ExtractMethodText(
-        viewCode,
-        "private void BindOfflineRecipeCodeOptions",
-        "private void ApplyOfflineProgramNameOption");
-
-    AssertTrue(
-        onlineMethod.Contains("OfflineStartInputRules.BuildRecipeCodeOptions", StringComparison.Ordinal),
-        "在线配方号下拉必须使用共享规则排序，避免 MES 程序列表顺序导致配方号乱序显示。");
-    AssertTrue(
-        offlineMethod.Contains("OfflineStartInputRules.BuildRecipeCodeOptions", StringComparison.Ordinal),
-        "离线配方号下拉必须使用共享规则排序，避免本地程序库顺序导致配方号乱序显示。");
+    var rulesCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Production", "OfflineStartInputRules.cs"), Encoding.UTF8);
+    AssertFalse(rulesCode.Contains("BuildRecipeCodeOptions", StringComparison.Ordinal), "普通业务界面移除配方号下拉后不应保留数字选项构建规则。");
 }
 
 static void MonitorViewUsesPlcRecipeOnlyForOfflineIdleInputs()
 {
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
-    var displayResolver = ExtractMethodText(
-        viewCode,
-        "private string ResolveRecipeCodeForDisplay",
-        "private bool HasPendingOnlineProgramSelection");
     var idleSnapshotMethod = ExtractMethodText(
         viewCode,
         "private void ApplyIdleRecipeCodeSnapshot",
@@ -9419,10 +9338,6 @@ static void MonitorViewUsesPlcRecipeOnlyForOfflineIdleInputs()
     var programSelectionMethod = ExtractMethodText(
         viewCode,
         "private void ProgramNameSelection_SelectedIndexChanged",
-        "private void RecipeCodeSelection_SelectedIndexChanged");
-    var recipeSelectionMethod = ExtractMethodText(
-        viewCode,
-        "private void RecipeCodeSelection_SelectedIndexChanged",
         "private void RealtimePreviewPaintTimer_Tick");
     var stationSwitchMethod = ExtractMethodText(
         viewCode,
@@ -9433,18 +9348,12 @@ static void MonitorViewUsesPlcRecipeOnlyForOfflineIdleInputs()
         "private void BindProductionRuntimeState",
         "private bool IsOfflineInputEditable");
 
-    AssertTrue(displayResolver.Contains("IsOfflineInputEditable(GetCurrentStationState())", StringComparison.Ordinal), "未开工显示 PLC 配方前必须确认当前是离线输入态。");
-    AssertTrue(displayResolver.IndexOf("ResolveLocalProgramById(program.Id)", StringComparison.Ordinal) < displayResolver.IndexOf("_plcRecipeReconcileMonitorService.GetCurrent(CurrentStationNo)", StringComparison.Ordinal), "在线已选程序的配方号必须优先于 PLC 当前配方。");
-    AssertTrue(idleSnapshotMethod.Contains("if (!IsOfflineInputEditable(state))", StringComparison.Ordinal), "PLC 空闲配方事件不能在在线空闲态覆盖配方号下拉。");
-    AssertTrue(idleSnapshotMethod.Contains("ApplyOfflineRecipeCodeSelection(recipeCode)", StringComparison.Ordinal), "离线 PLC 配方变化仍要按配方号反查并联动本地程序信息。");
+    AssertFalse(idleSnapshotMethod.Contains("ApplyOfflineRecipeCodeSelection", StringComparison.Ordinal), "PLC 空闲配方变化不得再反向切换业务程序选择。");
     AssertTrue(previewRefreshMethod.Contains("if (identity is null && IsOfflineInputEditable(GetCurrentStationState()))", StringComparison.Ordinal), "方案预览只有离线输入态才允许读取 PLC 配方反查产品身份。");
-    AssertTrue(programSelectionMethod.Contains("MarkOfflineRecipeSelectionByUser", StringComparison.Ordinal), "离线选择程序名称必须标记为人工配方选择。");
-    AssertTrue(recipeSelectionMethod.Contains("MarkOfflineRecipeSelectionByUser", StringComparison.Ordinal), "离线选择配方号必须标记为人工配方选择。");
-    AssertTrue(idleSnapshotMethod.Contains("HasOfflineRecipeSelectionByUser", StringComparison.Ordinal), "PLC 配方快照必须识别当前工位的人工配方选择并避免覆盖。");
-    AssertTrue(previewRefreshMethod.Contains("ResolveOfflineSelectedRecipeProductIdentity", StringComparison.Ordinal), "离线方案预览必须优先按当前本地配方解析产品工号。");
-    AssertTrue(previewRefreshMethod.IndexOf("ResolveOfflineSelectedRecipeProductIdentity", StringComparison.Ordinal) < previewRefreshMethod.IndexOf("ReadPlcRecipeProductIdentityAsync", StringComparison.Ordinal), "本地当前配方的产品工号必须优先于 PLC 配方反查结果。");
-    AssertTrue(stationSwitchMethod.Contains("ClearOfflineRecipeSelectionByUser", StringComparison.Ordinal), "切换工位必须清除上一工位和目标工位的人工离线配方标记。");
-    AssertTrue(runtimeBindingMethod.Contains("ClearOfflineRecipeSelectionByUser(CurrentStationNo)", StringComparison.Ordinal), "离开离线可编辑态后必须清除人工离线配方标记。");
+    AssertTrue(programSelectionMethod.Contains("MarkOfflineProgramSelectionByUser", StringComparison.Ordinal), "离线选择程序名称必须标记为人工程序选择。");
+    AssertTrue(previewRefreshMethod.Contains("ResolveOfflineSelectedRecipeProductIdentity", StringComparison.Ordinal), "离线方案预览必须优先按当前所选程序解析产品工号。");
+    AssertTrue(stationSwitchMethod.Contains("ClearOfflineProgramSelectionByUser", StringComparison.Ordinal), "切换工位必须清除人工离线程序标记。");
+    AssertTrue(runtimeBindingMethod.Contains("ClearOfflineProgramSelectionByUser(CurrentStationNo)", StringComparison.Ordinal), "离开离线可编辑态后必须清除人工离线程序标记。");
 }
 
 static void MonitorViewReloadsOnlineProgramsAfterProcessChange()

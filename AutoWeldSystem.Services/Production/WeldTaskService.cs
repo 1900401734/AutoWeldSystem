@@ -1153,12 +1153,19 @@ public class WeldTaskService : IWeldTaskService
                 .Where(item => item.ProgramId == programId)
                 .ToList()
                 .OrderByDescending(item => SameText(item.DeviceId, deviceId))
+                .ThenByDescending(item => item.UpdatedTime)
                 .FirstOrDefault()
             : null;
+        var recipeCode = ProgramRecipeMappingRules.Resolve(localProgram, stationNo);
+        if (string.IsNullOrWhiteSpace(recipeCode))
+        {
+            throw new BusinessOperationException(
+                "PLC.RecipeCode",
+                "开工失败",
+                $"本机程序未配置工位 {stationNo} 的 PLC 配方，请先在程序管理中选择配方名称。");
+        }
 
-        return FirstNonEmpty(
-            ProgramRecipeMappingRules.Resolve(localProgram, stationNo),
-            ProgramRecipeMappingRules.Normalize(program.RecipeCode));
+        return recipeCode;
     }
 
     private void EnsureReadyForStart(ProductionStationRuntimeState station)

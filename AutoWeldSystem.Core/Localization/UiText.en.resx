@@ -1605,9 +1605,6 @@
   <data name="program.label.product_num" xml:space="preserve">
     <value>Product No.</value>
   </data>
-  <data name="program.label.recipe_code" xml:space="preserve">
-    <value>Recipe Code</value>
-  </data>
   <data name="program.label.component_code" xml:space="preserve">
     <value>Component Code</value>
   </data>
@@ -1742,9 +1739,6 @@
   </data>
   <data name="grid.program.product_num" xml:space="preserve">
     <value>Product No.</value>
-  </data>
-  <data name="grid.program.recipe_code" xml:space="preserve">
-    <value>Recipe Code</value>
   </data>
   <data name="grid.program.local_remark" xml:space="preserve">
     <value>Local Remark</value>
@@ -2032,7 +2026,6 @@
   <data name="address.column.recipe_error" xml:space="preserve"><value>Error</value></data>
   <data name="address.message.recipe_config_saved" xml:space="preserve"><value>PLC recipe name address settings saved.</value></data>
   <data name="address.message.recipe_read_failed" xml:space="preserve"><value>Failed to read PLC recipe names: {0}</value></data>
-  <data name="program.message.recipe_code_invalid" xml:space="preserve"><value>Select a PLC recipe name, or enter a positive recipe code when reading fails.</value></data>
   <data name="program.option.missing_recipe" xml:space="preserve"><value>Previously linked recipe is unavailable</value></data>
   <data name="program.option.recipe_not_applicable" xml:space="preserve"><value>Not applicable</value></data>
   <data name="program.message.recipe_read_failed" xml:space="preserve"><value>Failed to read PLC recipe names. Check the PLC connection or address configuration.</value></data>

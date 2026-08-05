@@ -1605,9 +1605,6 @@
   <data name="program.label.product_num" xml:space="preserve">
     <value>产品工号</value>
   </data>
-  <data name="program.label.recipe_code" xml:space="preserve">
-    <value>配方编号</value>
-  </data>
   <data name="program.label.component_code" xml:space="preserve">
     <value>零组件代码</value>
   </data>
@@ -1742,9 +1739,6 @@
   </data>
   <data name="grid.program.product_num" xml:space="preserve">
     <value>产品工号</value>
-  </data>
-  <data name="grid.program.recipe_code" xml:space="preserve">
-    <value>配方编号</value>
   </data>
   <data name="grid.program.local_remark" xml:space="preserve">
     <value>本地备注</value>
@@ -2033,7 +2027,6 @@
   <data name="address.column.recipe_error" xml:space="preserve"><value>错误信息</value></data>
   <data name="address.message.recipe_config_saved" xml:space="preserve"><value>PLC 配方名称地址配置已保存。</value></data>
   <data name="address.message.recipe_read_failed" xml:space="preserve"><value>读取 PLC 配方名称失败：{0}</value></data>
-  <data name="program.message.recipe_code_invalid" xml:space="preserve"><value>请选择 PLC 配方名称，或在读取失败时输入有效的正整数配方号。</value></data>
   <data name="program.option.missing_recipe" xml:space="preserve"><value>原关联配方已不可用</value></data>
   <data name="program.option.recipe_not_applicable" xml:space="preserve"><value>不适用</value></data>
   <data name="program.message.recipe_read_failed" xml:space="preserve"><value>PLC 配方名称读取失败，请检查 PLC 连接或地址配置。</value></data>
