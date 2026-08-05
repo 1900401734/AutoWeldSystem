@@ -16,6 +16,18 @@ namespace AutoWeldSystem.UI.Views;
 /// </summary>
 public partial class ProgramManageView : BaseView
 {
+    private enum RecipeSelectionKind
+    {
+        PlcOption,
+        NotApplicable,
+        MissingExisting
+    }
+
+    private sealed record RecipeSelectionItem(
+        string DisplayText,
+        string? RecipeCode,
+        RecipeSelectionKind Kind);
+
     private readonly IProgramManageService _programService;
     private readonly ITestSchemeConfigService _testSchemeConfigService;
     private readonly IPlcRecipeNameReaderService _recipeNameReaderService;
@@ -25,12 +37,13 @@ public partial class ProgramManageView : BaseView
     private readonly BindingSource _revisionBindingSource = new();
     private readonly List<BizProgram> _programs = new();
     private readonly List<ProgramContentItemRow> _programContentRows = new();
-    private readonly Dictionary<int, List<PlcRecipeNameOption>> _recipeNameOptions = new();
+    private readonly Dictionary<int, List<RecipeSelectionItem>> _recipeSelectionItems = new();
     private readonly Dictionary<int, bool> _recipeNameReadSucceeded = new();
     private int _editingId;
     private bool _initialized;
     private bool _programContentDictionaryAvailable;
     private int _recipeNameRefreshVersion;
+    private bool _enableDualStation;
 
     public ProgramManageView(
         IProgramManageService programService,
@@ -86,7 +99,6 @@ public partial class ProgramManageView : BaseView
         TableStyleHelper.ApplyDataGridView(dgvPrograms);
         dgvPrograms.AutoGenerateColumns = false;
         dgvPrograms.Columns.Clear();
-        dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.RecipeCode), 14));
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.ProductNum), 18));
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.Description), 18));
         dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.VersionNumber), 8));
@@ -171,7 +183,6 @@ public partial class ProgramManageView : BaseView
 
     private void ApplyGridHeaders()
     {
-        SetColumnHeader(dgvPrograms, nameof(BizProgram.RecipeCode), TextKeys.Grid.ProgramRecipeCode);
         SetColumnHeader(dgvPrograms, nameof(BizProgram.ProductNum), TextKeys.Grid.ProgramProductNum);
         SetColumnHeader(dgvPrograms, nameof(BizProgram.Description), TextKeys.Grid.ProgramLocalRemark);
         SetColumnHeader(dgvPrograms, nameof(BizProgram.VersionNumber), TextKeys.Grid.ProgramVersionNumber);
@@ -277,17 +288,14 @@ public partial class ProgramManageView : BaseView
         var filtered = _programs
             .Where(program => string.IsNullOrWhiteSpace(keyword)
                 || Contains(program.ProgramName, keyword)
-                || Contains(program.RecipeCode, keyword)
                 || Contains(program.ProductNum, keyword)
                 || Contains(program.ComponentCode, keyword)
                 || Contains(program.Description, keyword)
                 || Contains(program.SyncStatus, keyword)
                 || Contains(GetSyncStatusText(program.SyncStatus), keyword))
-            .OrderBy(GetRecipeSortBucket)
-            .ThenBy(GetRecipeSortNumber)
-            .ThenBy(program => NormalizeSortText(program.RecipeCode), StringComparer.OrdinalIgnoreCase)
-            .ThenBy(program => NormalizeSortText(program.ProductNum), StringComparer.OrdinalIgnoreCase)
+            .OrderBy(program => NormalizeSortText(program.ProductNum), StringComparer.OrdinalIgnoreCase)
             .ThenBy(program => NormalizeSortText(program.ProgramName), StringComparer.OrdinalIgnoreCase)
+            .ThenByDescending(program => program.UpdatedTime)
             .ToList();
 
         _programBindingSource.DataSource = filtered;
@@ -311,20 +319,6 @@ public partial class ProgramManageView : BaseView
     /// <summary>
     /// 配方编号通常是数字。这里把数字编号排在前面，文本编号排在后面，空值放到最后。
     /// </summary>
-    private static int GetRecipeSortBucket(BizProgram program)
-    {
-        var recipeCode = program.RecipeCode?.Trim();
-        if (string.IsNullOrWhiteSpace(recipeCode))
-        {
-            return 2;
-        }
-
-        return int.TryParse(recipeCode, out _) ? 0 : 1;
-    }
-
-    private static int GetRecipeSortNumber(BizProgram program)
-        => int.TryParse(program.RecipeCode?.Trim(), out var recipeNumber) ? recipeNumber : 0;
-
     private static string NormalizeSortText(string? value)
         => value?.Trim() ?? string.Empty;
 
@@ -361,8 +355,8 @@ public partial class ProgramManageView : BaseView
         txtProgramId.Text = program.ProgramId ?? string.Empty;
         inputProgramName.Text = program.ProgramName;
         inputProductNum.Text = program.ProductNum;
-        SetRecipeSelection(selectStation1Recipe, 1, program.RecipeCode);
-        SetRecipeSelection(selectStation2Recipe, 2, program.Station2RecipeCode);
+        SetRecipeSelection(selectStation1Recipe, 1, program.RecipeCode, selectNotApplicable: true);
+        SetRecipeSelection(selectStation2Recipe, 2, program.Station2RecipeCode, selectNotApplicable: true);
         inputComponentCode.Text = program.ComponentCode ?? string.Empty;
         inputSequenceNumber.Text = program.SequenceNumber.ToString();
         cmbProgramType.SelectedIndex = program.ProgramType == "1" ? 1 : 0;
@@ -570,16 +564,28 @@ public partial class ProgramManageView : BaseView
 
         request.ProductNum = inputProductNum.Text.Trim();
         var editingProgram = GetEditingProgram();
-        request.RecipeCode = ResolveRecipeCodeForSave(selectStation1Recipe, 1);
+        if (_editingId <= 0
+            && (!_recipeNameReadSucceeded.TryGetValue(1, out var station1ReadSucceeded) || !station1ReadSucceeded
+                || (_enableDualStation
+                    && (!_recipeNameReadSucceeded.TryGetValue(2, out var station2ReadSucceeded) || !station2ReadSucceeded))))
+        {
+            ShowWarning(TextKeys.ProgramManage.RecipeReadFailed);
+            return false;
+        }
+
+        request.RecipeCode = ResolveRecipeCodeForSave(selectStation1Recipe, 1, editingProgram) ?? string.Empty;
         request.Station2RecipeCode = tlpStation2RecipeCode.Visible
-            ? ResolveRecipeCodeForSave(selectStation2Recipe, 2)
+            ? ResolveRecipeCodeForSave(selectStation2Recipe, 2, editingProgram)
             : _editingId > 0
                 ? editingProgram?.Station2RecipeCode
                 : null;
-        if (string.IsNullOrWhiteSpace(request.RecipeCode)
-            || (tlpStation2RecipeCode.Visible && string.IsNullOrWhiteSpace(request.Station2RecipeCode)))
+        try
         {
-            ShowWarning(TextKeys.ProgramManage.RecipeCodeInvalid);
+            ProgramSaveRecipeRules.Validate(request.RecipeCode, request.Station2RecipeCode, _enableDualStation);
+        }
+        catch (InvalidOperationException ex)
+        {
+            ShowWarningMessage(ex.Message);
             return false;
         }
         request.ComponentCode = inputComponentCode.Text.Trim();
@@ -623,13 +629,19 @@ public partial class ProgramManageView : BaseView
             : current;
     }
 
-    private string ResolveRecipeCodeForSave(AntdUI.Select select, int stationNo)
+    private string? ResolveRecipeCodeForSave(AntdUI.Select select, int stationNo, BizProgram? editingProgram)
     {
+        if (_editingId > 0
+            && (!_recipeNameReadSucceeded.TryGetValue(stationNo, out var readSucceeded) || !readSucceeded))
+        {
+            return stationNo == 2 ? editingProgram?.Station2RecipeCode : editingProgram?.RecipeCode;
+        }
+
         return ResolveSelectedRecipeCode(select, stationNo);
     }
 
     /// <summary>
-    /// 从 PLC 刷新配方名称列表。读取成功时只允许选择；读取失败时允许临时输入正整数配方号。
+    /// 从 PLC 刷新配方名称列表；业务界面始终只允许选择名称，不接受手工配方号。
     /// </summary>
     private async Task RefreshRecipeNameOptionsAsync()
     {
@@ -651,6 +663,10 @@ public partial class ProgramManageView : BaseView
 
                 // PLC 读取期间用户可能点击新增或切换程序，必须以 await 返回后的实时编辑值为准。
                 var liveRecipeCode = ResolveSelectedRecipeCode(select, stationNo);
+                if (string.IsNullOrWhiteSpace(liveRecipeCode) && GetEditingProgram() is { } editingProgram)
+                {
+                    liveRecipeCode = stationNo == 2 ? editingProgram.Station2RecipeCode : editingProgram.RecipeCode;
+                }
                 BindRecipeNameOptions(select, stationNo, result, liveRecipeCode);
             }
         }
@@ -672,13 +688,15 @@ public partial class ProgramManageView : BaseView
     private void BindRecipeNameReadFailure(AntdUI.Select select, int stationNo, Exception exception)
     {
         _ = exception;
-        var liveRecipeCode = ResolveSelectedRecipeCode(select, stationNo);
+        var editingProgram = GetEditingProgram();
+        var currentRecipeCode = stationNo == 2 ? editingProgram?.Station2RecipeCode : editingProgram?.RecipeCode;
         _recipeNameReadSucceeded[stationNo] = false;
-        select.List = false;
-        select.ReadOnly = false;
-        RefreshRecipeSelectorItems(select, stationNo, liveRecipeCode);
-        RefreshRecipePlaceholder(select, readSucceeded: false);
-        SetRecipeSelection(select, stationNo, liveRecipeCode);
+        _recipeSelectionItems[stationNo] = BuildUnavailableItems(currentRecipeCode);
+        select.List = true;
+        select.ReadOnly = true;
+        RefreshRecipeSelectorItems(select, stationNo);
+        select.PlaceholderText = _localizer.GetString(TextKeys.ProgramManage.RecipeReadFailed);
+        SetRecipeSelection(select, stationNo, currentRecipeCode);
     }
 
     /// <summary>
@@ -686,6 +704,7 @@ public partial class ProgramManageView : BaseView
     /// </summary>
     private void ApplyStationRecipeLayout(bool enableDualStation)
     {
+        _enableDualStation = enableDualStation;
         tlpStation2RecipeCode.Visible = enableDualStation;
         editorLayout.RowStyles[8].SizeType = SizeType.Absolute;
         editorLayout.RowStyles[8].Height = enableDualStation ? 44F : 0F;
@@ -697,79 +716,93 @@ public partial class ProgramManageView : BaseView
         PlcRecipeNameReadResult result,
         string? currentRecipeCode)
     {
-        var options = result.Options.ToList();
-        AddMissingRecipeOption(options, stationNo, currentRecipeCode);
-        _recipeNameOptions[stationNo] = options;
         _recipeNameReadSucceeded[stationNo] = result.IsSuccess;
+        var items = result.IsSuccess
+            ? result.Options.Select(option => new RecipeSelectionItem(
+                option.Name,
+                option.RecipeCode.ToString(),
+                RecipeSelectionKind.PlcOption)).ToList()
+            : BuildUnavailableItems(currentRecipeCode);
 
-        // AntdUI Select 的 List 模式只允许选择列表项；关闭后可临时手工输入配方号。
-        select.List = result.IsSuccess;
-        select.ReadOnly = false;
-        RefreshRecipeSelectorItems(select, stationNo, currentRecipeCode);
-        RefreshRecipePlaceholder(select, result.IsSuccess);
-        SetRecipeSelection(select, stationNo, currentRecipeCode);
+        if (result.IsSuccess && _enableDualStation)
+        {
+            items.Add(new RecipeSelectionItem(
+                _localizer.GetString(TextKeys.ProgramManage.RecipeNotApplicable),
+                null,
+                RecipeSelectionKind.NotApplicable));
+        }
+
+        AddMissingRecipeOption(items, currentRecipeCode);
+        _recipeSelectionItems[stationNo] = items;
+        select.List = true;
+        select.ReadOnly = !result.IsSuccess;
+        RefreshRecipeSelectorItems(select, stationNo);
+        select.PlaceholderText = _localizer.GetString(result.IsSuccess
+            ? TextKeys.ProgramManage.PlaceholderRecipeSelect
+            : TextKeys.ProgramManage.RecipeReadFailed);
+        SetRecipeSelection(
+            select,
+            stationNo,
+            currentRecipeCode,
+            selectNotApplicable: result.IsSuccess && _editingId > 0);
     }
 
-    private static void AddMissingRecipeOption(
-        ICollection<PlcRecipeNameOption> options,
-        int stationNo,
-        string? recipeCode)
+    private List<RecipeSelectionItem> BuildUnavailableItems(string? recipeCode)
     {
-        if (!int.TryParse(recipeCode?.Trim(), out var parsedRecipeCode)
-            || parsedRecipeCode <= 0
-            || options.Any(option => option.RecipeCode == parsedRecipeCode))
+        var items = new List<RecipeSelectionItem>();
+        AddMissingRecipeOption(items, recipeCode);
+        return items;
+    }
+
+    private void AddMissingRecipeOption(ICollection<RecipeSelectionItem> items, string? recipeCode)
+    {
+        var normalized = ProgramRecipeMappingRules.Normalize(recipeCode);
+        if (string.IsNullOrWhiteSpace(normalized)
+            || items.Any(item => string.Equals(item.RecipeCode, normalized, StringComparison.Ordinal)))
         {
             return;
         }
 
-        options.Add(new PlcRecipeNameOption(
-            stationNo,
-            parsedRecipeCode,
-            string.Empty,
-            string.Empty,
-            string.Empty));
+        items.Add(new RecipeSelectionItem(
+            _localizer.GetString(TextKeys.ProgramManage.MissingRecipeOption),
+            normalized,
+            RecipeSelectionKind.MissingExisting));
     }
 
-    private void SetRecipeSelection(AntdUI.Select select, int stationNo, string? recipeCode)
+    private void SetRecipeSelection(
+        AntdUI.Select select,
+        int stationNo,
+        string? recipeCode,
+        bool selectNotApplicable = false)
     {
-        var normalizedRecipeCode = recipeCode?.Trim() ?? string.Empty;
-        if (!_recipeNameOptions.TryGetValue(stationNo, out var options))
+        var normalized = ProgramRecipeMappingRules.Normalize(recipeCode);
+        if (!_recipeSelectionItems.TryGetValue(stationNo, out var items))
         {
-            options = [];
-            _recipeNameOptions[stationNo] = options;
+            items = [];
+            _recipeSelectionItems[stationNo] = items;
         }
-        AddMissingRecipeOption(options, stationNo, normalizedRecipeCode);
 
-        RefreshRecipeSelectorItems(select, stationNo, normalizedRecipeCode);
-
-        var selectedIndex = int.TryParse(normalizedRecipeCode, out var parsedRecipeCode)
-            ? options.FindIndex(option => option.RecipeCode == parsedRecipeCode)
-            : -1;
+        AddMissingRecipeOption(items, normalized);
+        RefreshRecipeSelectorItems(select, stationNo);
+        var selectedIndex = !string.IsNullOrWhiteSpace(normalized)
+            ? items.FindIndex(item => string.Equals(item.RecipeCode, normalized, StringComparison.Ordinal))
+            : selectNotApplicable
+                ? items.FindIndex(item => item.Kind == RecipeSelectionKind.NotApplicable)
+                : -1;
         select.SelectedIndex = selectedIndex;
-        select.Text = selectedIndex >= 0 ? GetRecipeOptionDisplayText(options, options[selectedIndex]) : normalizedRecipeCode;
+        select.Text = selectedIndex >= 0 ? items[selectedIndex].DisplayText : string.Empty;
     }
 
-    private string ResolveSelectedRecipeCode(AntdUI.Select select, int stationNo)
+    private string? ResolveSelectedRecipeCode(AntdUI.Select select, int stationNo)
     {
-        var selectedText = (select.SelectedValue as string ?? select.Text)?.Trim() ?? string.Empty;
-        if (_recipeNameOptions.TryGetValue(stationNo, out var options))
+        if (!_recipeSelectionItems.TryGetValue(stationNo, out var items)
+            || select.SelectedIndex < 0
+            || select.SelectedIndex >= items.Count)
         {
-            if (select.SelectedIndex >= 0 && select.SelectedIndex < options.Count)
-            {
-                return options[select.SelectedIndex].RecipeCode.ToString();
-            }
-
-            var option = options.FirstOrDefault(item =>
-                string.Equals(GetRecipeOptionDisplayText(options, item), selectedText, StringComparison.Ordinal));
-            if (option is not null)
-            {
-                return option.RecipeCode.ToString();
-            }
+            return null;
         }
 
-        return int.TryParse(selectedText, out var recipeCode) && recipeCode > 0
-            ? recipeCode.ToString()
-            : string.Empty;
+        return items[select.SelectedIndex].RecipeCode;
     }
 
     private void RefreshRecipeSelectorTexts()
@@ -781,50 +814,59 @@ public partial class ProgramManageView : BaseView
     private void RefreshRecipeSelectorText(AntdUI.Select select, int stationNo)
     {
         var recipeCode = ResolveSelectedRecipeCode(select, stationNo);
-        RefreshRecipeSelectorItems(select, stationNo, recipeCode);
-        RefreshRecipePlaceholder(
-            select,
-            _recipeNameReadSucceeded.TryGetValue(stationNo, out var succeeded) && succeeded);
-        SetRecipeSelection(select, stationNo, recipeCode);
-    }
+        var kind = _recipeSelectionItems.TryGetValue(stationNo, out var items)
+            && select.SelectedIndex >= 0
+            && select.SelectedIndex < items.Count
+                ? items[select.SelectedIndex].Kind
+                : (RecipeSelectionKind?)null;
 
-    private void RefreshRecipeSelectorItems(AntdUI.Select select, int stationNo, string? currentRecipeCode)
-    {
-        if (!_recipeNameOptions.TryGetValue(stationNo, out var options))
+        if (items is not null)
         {
-            options = [];
-            _recipeNameOptions[stationNo] = options;
+            for (var index = 0; index < items.Count; index++)
+            {
+                var item = items[index];
+                items[index] = item.Kind switch
+                {
+                    RecipeSelectionKind.NotApplicable => item with
+                    {
+                        DisplayText = _localizer.GetString(TextKeys.ProgramManage.RecipeNotApplicable)
+                    },
+                    RecipeSelectionKind.MissingExisting => item with
+                    {
+                        DisplayText = _localizer.GetString(TextKeys.ProgramManage.MissingRecipeOption)
+                    },
+                    _ => item
+                };
+            }
         }
 
-        AddMissingRecipeOption(options, stationNo, currentRecipeCode);
+        RefreshRecipeSelectorItems(select, stationNo);
+        select.PlaceholderText = _localizer.GetString(
+            _recipeNameReadSucceeded.TryGetValue(stationNo, out var succeeded) && succeeded
+                ? TextKeys.ProgramManage.PlaceholderRecipeSelect
+                : TextKeys.ProgramManage.RecipeReadFailed);
+        if (kind == RecipeSelectionKind.NotApplicable)
+        {
+            var notApplicableIndex = items?.FindIndex(item => item.Kind == RecipeSelectionKind.NotApplicable) ?? -1;
+            select.SelectedIndex = notApplicableIndex;
+            select.Text = notApplicableIndex >= 0 ? items![notApplicableIndex].DisplayText : string.Empty;
+        }
+        else
+        {
+            SetRecipeSelection(select, stationNo, recipeCode);
+        }
+    }
+
+    private void RefreshRecipeSelectorItems(AntdUI.Select select, int stationNo)
+    {
+        if (!_recipeSelectionItems.TryGetValue(stationNo, out var items))
+        {
+            items = [];
+            _recipeSelectionItems[stationNo] = items;
+        }
+
         select.Items.Clear();
-        select.Items.AddRange(options
-            .Select(option => (object)GetRecipeOptionDisplayText(options, option))
-            .ToArray());
-    }
-
-    private string GetRecipeOptionDisplayText(
-        IReadOnlyCollection<PlcRecipeNameOption> options,
-        PlcRecipeNameOption option)
-    {
-        if (string.IsNullOrWhiteSpace(option.Address))
-        {
-            return _localizer.GetString(TextKeys.ProgramManage.MissingRecipeOption, option.RecipeCode);
-        }
-
-        var duplicateName = options.Count(candidate =>
-            !string.IsNullOrWhiteSpace(candidate.Address)
-            && string.Equals(candidate.Name, option.Name, StringComparison.OrdinalIgnoreCase)) > 1;
-        return duplicateName
-            ? _localizer.GetString(TextKeys.ProgramManage.DuplicateRecipeOption, option.Name, option.RecipeCode)
-            : option.Name;
-    }
-
-    private void RefreshRecipePlaceholder(AntdUI.Select select, bool readSucceeded)
-    {
-        select.PlaceholderText = _localizer.GetString(readSucceeded
-            ? TextKeys.ProgramManage.PlaceholderRecipeSelect
-            : TextKeys.ProgramManage.PlaceholderRecipeManual);
+        select.Items.AddRange(items.Select(item => (object)item.DisplayText).ToArray());
     }
 
     private static string GetAutoRemarkAction(BizProgram? program)

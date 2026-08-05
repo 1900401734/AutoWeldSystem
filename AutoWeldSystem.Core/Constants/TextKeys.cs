@@ -926,13 +926,12 @@ public static class TextKeys
         public const string LabelProgramName = "program.label.program_name";
         public const string LabelProgramId = "program.label.program_id";
         public const string LabelProductNum = "program.label.product_num";
-        public const string LabelRecipeCode = "program.label.recipe_code";
         public const string LabelStation1Recipe = "program.label.station1_recipe";
         public const string LabelStation2Recipe = "program.label.station2_recipe";
         public const string PlaceholderRecipeSelect = "program.placeholder.recipe_select";
-        public const string PlaceholderRecipeManual = "program.placeholder.recipe_manual";
+        public const string RecipeNotApplicable = "program.option.recipe_not_applicable";
         public const string MissingRecipeOption = "program.option.missing_recipe";
-        public const string DuplicateRecipeOption = "program.option.duplicate_recipe";
+        public const string RecipeReadFailed = "program.message.recipe_read_failed";
         public const string LabelComponentCode = "program.label.component_code";
         public const string LabelSequenceNumber = "program.label.sequence_number";
         public const string LabelProgramType = "program.label.program_type";
@@ -953,7 +952,6 @@ public static class TextKeys
         public const string SelectSync = "program.message.select_sync";
         public const string PullSuccess = "program.message.pull_success";
         public const string SequenceInvalid = "program.message.sequence_invalid";
-        public const string RecipeCodeInvalid = "program.message.recipe_code_invalid";
         public const string CycleTimeInvalid = "program.message.cycle_time_invalid";
         public const string DialogSelectFile = "program.dialog.select_file";
         public const string DialogFileFilterAll = "program.dialog.file_filter_all";
@@ -1492,7 +1490,6 @@ public static class TextKeys
         public const string ProgramName = "grid.program.name";
         public const string ProgramId = "grid.program.id";
         public const string ProgramProductNum = "grid.program.product_num";
-        public const string ProgramRecipeCode = "grid.program.recipe_code";
         public const string ProgramLocalRemark = "grid.program.local_remark";
         public const string ProgramVersionNumber = "grid.program.version_number";
         public const string ProgramSyncStatus = "grid.program.sync_status";

@@ -31,6 +31,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
     private readonly object _stateSync = new();
     private readonly Dictionary<int, StationRecipeReconcileState> _stationStates = new();
     private readonly Dictionary<int, PlcRecipeCodeSnapshot> _recipeSnapshots = new();
+    private readonly HashSet<int> _restoredTaskIds = new();
     private AppSettings _currentSettings;
     private CancellationTokenSource? _cts;
     private Task? _loopTask;
@@ -325,14 +326,23 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
             stationNo);
         var localProgram = ResolveLocalProgram(task);
         var recipeTargets = ProgramRecipeMappingRules.ResolveTargets(localProgram, targetStations);
+        if (recipeTargets.Any(target => string.IsNullOrWhiteSpace(target.RecipeCode)))
+        {
+            var missingStations = string.Join(",", recipeTargets
+                .Where(target => string.IsNullOrWhiteSpace(target.RecipeCode))
+                .Select(target => target.StationNo));
+            WriteBusinessFailureLog(
+                stationNo,
+                "PLC recipe reconcile skipped because local station recipe is missing.",
+                $"TaskId={task.Id}; MissingStations={missingStations}");
+            state.NextRetryTime = DateTime.Now + BusinessLogInterval;
+            return;
+        }
+
         foreach (var target in recipeTargets)
         {
             var targetStationNo = target.StationNo;
-            var targetExpectedRecipe = FirstNonEmpty(target.RecipeCode, task.RecipeCode);
-            if (string.IsNullOrWhiteSpace(targetExpectedRecipe))
-            {
-                continue;
-            }
+            var targetExpectedRecipe = target.RecipeCode;
 
             var syncResult = await _plcBusinessSignalService.SyncRecipeCodeAsync(
                 targetStationNo,
@@ -461,7 +471,16 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
         try
         {
             var restoredTask = _weldTaskService.RestoreUnfinishedTask(normalizedStationNo);
-            return IsRunningTask(restoredTask);
+            if (!IsRunningTask(restoredTask))
+            {
+                return false;
+            }
+
+            lock (_stateSync)
+            {
+                _restoredTaskIds.Add(restoredTask!.Id);
+            }
+            return true;
         }
         catch (Exception ex)
         {
@@ -496,15 +515,20 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
     /// </summary>
     private string ResolveExpectedRecipe(BizWeldTask task, int stationNo)
     {
-        var localProgram = ResolveLocalProgram(task);
-        return FirstNonEmpty(
-            ProgramRecipeMappingRules.Resolve(localProgram, stationNo),
-            task.RecipeCode);
+        var mappedRecipeCode = ProgramRecipeMappingRules.Resolve(ResolveLocalProgram(task), stationNo);
+        if (!string.IsNullOrWhiteSpace(mappedRecipeCode))
+        {
+            return mappedRecipeCode;
+        }
+
+        lock (_stateSync)
+        {
+            return _restoredTaskIds.Contains(task.Id) && stationNo == task.StationNo
+                ? NormalizeRecipeCode(task.RecipeCode)
+                : string.Empty;
+        }
     }
 
-    /// <summary>
-    /// 按本地 ID、MES 程序 ID或名称/产品工号恢复任务对应程序，始终优先当前设备记录。
-    /// </summary>
     private BizProgram? ResolveLocalProgram(BizWeldTask task)
     {
         var programs = _programManageService.GetPrograms();

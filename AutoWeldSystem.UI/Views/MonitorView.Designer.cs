@@ -128,7 +128,6 @@ namespace AutoWeldSystem.UI.Views
             tlpProductNum = new TableLayoutPanel();
             inputProdNum = new AntdUI.Input();
             lblProductNo = new AntdUI.Label();
-            selectRecipeCode = new AntdUI.Select();
             tlpProgramName = new TableLayoutPanel();
             selectProgramName = new AntdUI.Select();
             lblProgramName = new AntdUI.Label();
@@ -1468,13 +1467,12 @@ namespace AutoWeldSystem.UI.Views
             // 
             // tlpProductNum
             // 
-            tlpProductNum.ColumnCount = 3;
+            tlpProductNum.ColumnCount = 2;
             tlpProductNum.ColumnStyles.Add(new ColumnStyle());
             tlpProductNum.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             tlpProductNum.ColumnStyles.Add(new ColumnStyle());
             tlpProductNum.Controls.Add(inputProdNum, 1, 0);
             tlpProductNum.Controls.Add(lblProductNo, 0, 0);
-            tlpProductNum.Controls.Add(selectRecipeCode, 2, 0);
             tlpProductNum.Dock = DockStyle.Fill;
             tlpProductNum.Location = new Point(0, 108);
             tlpProductNum.Margin = new Padding(0);
@@ -1508,18 +1506,6 @@ namespace AutoWeldSystem.UI.Views
             lblProductNo.TabIndex = 24;
             lblProductNo.Text = "产品工号";
             // 
-            // selectRecipeCode
-            // 
-            selectRecipeCode.Dock = DockStyle.Fill;
-            selectRecipeCode.Location = new Point(233, 0);
-            selectRecipeCode.Margin = new Padding(0);
-            selectRecipeCode.MaxCount = 10;
-            selectRecipeCode.Name = "selectRecipeCode";
-            selectRecipeCode.PrefixText = "配方号：";
-            selectRecipeCode.ReadOnly = true;
-            selectRecipeCode.Size = new Size(168, 36);
-            selectRecipeCode.TabIndex = 25;
-            selectRecipeCode.Text = "--";
             // 
             // tlpProgramName
             // 
@@ -1958,7 +1944,6 @@ namespace AutoWeldSystem.UI.Views
         private Panel panelHistory2;
         private AntdUI.Table tableHistory1;
         private AntdUI.Input inputProdNum;
-        private AntdUI.Select selectRecipeCode;
         private AntdUI.TabPage tabsMetrics2;
         private AntdUI.Table tableMetric2;
         private AntdUI.Table tableHistory2;
