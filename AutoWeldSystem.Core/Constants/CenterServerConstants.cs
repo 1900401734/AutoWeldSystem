@@ -16,12 +16,6 @@ public static class CenterServerConstants
     public const int DefaultOfflineTimeoutSeconds = 15;
 
     /// <summary>
-    /// 变更检测的兜底全量周期：快照内容未变化时，至少每隔该秒数仍推送一次全量遥测，
-    /// 用于覆盖服务器重启、看板手动删除设备等服务器侧数据丢失场景。
-    /// </summary>
-    public const int TelemetryFullRefreshIntervalSeconds = 60;
-
-    /// <summary>
     /// Default local URL used when the center server address is not configured.
     /// </summary>
     public const string DefaultBaseUrl = "http://127.0.0.1:7099/";

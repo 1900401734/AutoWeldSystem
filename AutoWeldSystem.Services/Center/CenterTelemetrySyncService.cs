@@ -30,9 +30,8 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
     private Task? _loopTask;
     private DateTime _lastFailureLogTime = DateTime.MinValue;
 
-    // 变更驱动推送：内容签名未变化时改推轻量心跳，避免看板日志被全量遥测刷屏。
+    // 仅记录最后一次成功同步的内容签名；心跳失败不能清空，否则恢复后会误推未变化的遥测。
     private string? _lastUploadedSignature;
-    private DateTime _lastFullUploadAt = DateTime.MinValue;
 
     public CenterTelemetrySyncService(
         SqlSugarDbContext dbContext,
@@ -101,35 +100,50 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
             return;
         }
 
+        var request = BuildRequest(settings);
+        await PushRequestAsync(settings, request, cancellationToken);
+    }
+
+    /// <summary>
+    /// 先用心跳确认中心服务器可达，再按最后成功签名决定是否上传完整遥测。
+    /// 断线期间只保留最新快照；恢复后若内容确有变化，再补发一次最新值。
+    /// </summary>
+    internal async Task PushRequestAsync(
+        AppSettings settings,
+        CenterTelemetrySnapshotRequest request,
+        CancellationToken cancellationToken = default)
+    {
         try
         {
-            var request = BuildRequest(settings);
             var signature = CenterTelemetryRules.BuildSnapshotSignature(request);
-            var needFullUpload = !string.Equals(signature, _lastUploadedSignature, StringComparison.Ordinal)
-                || DateTime.Now - _lastFullUploadAt >= TimeSpan.FromSeconds(CenterServerConstants.TelemetryFullRefreshIntervalSeconds);
-
-            CenterTelemetryAck response;
-            if (needFullUpload)
+            var heartbeatResponse = await _client.UploadHeartbeatAsync(
+                settings,
+                BuildHeartbeatRequest(settings),
+                cancellationToken);
+            if (!heartbeatResponse.Success)
             {
-                response = await _client.UploadAsync(settings, request, cancellationToken);
-                if (response.Success)
-                {
-                    _lastUploadedSignature = signature;
-                    _lastFullUploadAt = DateTime.Now;
-                }
-            }
-            else
-            {
-                // 内容未变化：改推空工位心跳保活，服务器侧只刷新在线时间、不动工位快照。
-                response = await _client.UploadHeartbeatAsync(settings, BuildHeartbeatRequest(settings), cancellationToken);
+                throw new InvalidOperationException(heartbeatResponse.Message);
             }
 
-            if (!response.Success)
+            Publish(true, string.IsNullOrWhiteSpace(heartbeatResponse.Message) ? "Connected" : heartbeatResponse.Message);
+
+            if (string.Equals(signature, _lastUploadedSignature, StringComparison.Ordinal))
             {
-                throw new InvalidOperationException(response.Message);
+                return;
             }
 
-            Publish(true, string.IsNullOrWhiteSpace(response.Message) ? "Center telemetry uploaded." : response.Message);
+            var telemetryResponse = await _client.UploadAsync(settings, request, cancellationToken);
+            if (!telemetryResponse.Success)
+            {
+                // 服务端已经应答，说明连接仍然正常；保留旧签名以便下一周期继续重试最新快照。
+                var message = string.IsNullOrWhiteSpace(telemetryResponse.Message)
+                    ? "Center telemetry sync failed."
+                    : telemetryResponse.Message;
+                Publish(true, $"Connected; telemetry sync failed: {message}");
+                return;
+            }
+
+            _lastUploadedSignature = signature;
         }
         catch (OperationCanceledException)
         {
@@ -137,8 +151,6 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
         }
         catch (Exception ex)
         {
-            // 推送失败后清空签名：恢复连接的下一周期强制全量，兜底服务器重启或看板删除设备后的数据缺失。
-            _lastUploadedSignature = null;
             Publish(false, ex.Message);
             throw;
         }

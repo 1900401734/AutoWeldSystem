@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using AutoWeldSystem.CenterServer.Models;
+using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs.CenterServer;
 
 namespace AutoWeldSystem.CenterServer.Services;
@@ -69,7 +70,7 @@ public sealed class CenterPushJsonlLogService
         Write(new CenterPushLogRecord
         {
             ReceivedAt = DateTime.Now,
-            RequestType = "product-report",
+            RequestType = AppConstants.CenterInteractionTypes.ProductReport,
             DeviceId = request.DeviceId.Trim(),
             DeviceName = request.DeviceName.Trim(),
             SystemType = request.SystemType.Trim(),

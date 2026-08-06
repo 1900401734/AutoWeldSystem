@@ -128,6 +128,9 @@ var tests = new (string Name, Action Run)[]
     ("Center device key uses DeviceId only", CenterDeviceKeyUsesDeviceIdOnly),
     ("Center client online uses heartbeat freshness", CenterClientOnlineUsesHeartbeatFreshness),
     ("Center offline state keeps PLC status unchanged", CenterOfflineStateKeepsPlcStatusUnchanged),
+    ("Center telemetry signature tracks dashboard content only", CenterTelemetrySignatureTracksDashboardContentOnly),
+    ("Center telemetry sync gates snapshots behind heartbeat", CenterTelemetrySyncGatesSnapshotsBehindHeartbeat),
+    ("Center interaction types stay shared across client and server", CenterInteractionTypesStaySharedAcrossClientAndServer),
     ("Center telemetry jsonl fallback preserves MES status names", CenterTelemetryJsonlFallbackPreservesMesStatusNames),
     ("Center telemetry snapshot carries station runtime data", CenterTelemetrySnapshotCarriesStationRuntimeData),
     ("Center dashboard device totals are calculated from station data", CenterDashboardDeviceTotalsAreCalculatedFromStationData),
@@ -3092,6 +3095,220 @@ static void CenterProductReportRequestCarriesProductionReportFields()
     AssertEqual("U002", request.Points[0].OperatorNo, "Center report request must preserve point operator when available.");
 }
 
+static void CenterTelemetrySignatureTracksDashboardContentOnly()
+{
+    var baseline = CreateCenterTelemetryTestRequest();
+    var baselineSignature = CenterTelemetryRules.BuildSnapshotSignature(baseline);
+    var timestampOnly = CloneCenterTelemetryRequest(baseline);
+    timestampOnly.HeartbeatAt = timestampOnly.HeartbeatAt.AddMinutes(1);
+    timestampOnly.Stations[0].CollectedAt = timestampOnly.Stations[0].CollectedAt.AddMinutes(1);
+
+    AssertEqual(
+        baselineSignature,
+        CenterTelemetryRules.BuildSnapshotSignature(timestampOnly),
+        "心跳和采集时间变化不应触发全量遥测。");
+
+    var mutations = new (string Name, Action<CenterTelemetrySnapshotRequest> Apply)[]
+    {
+        ("DeviceName", request => request.DeviceName = "Device-B"),
+        ("SystemType", request => request.SystemType = CenterServerConstants.SystemTypes.Electromagnetic),
+        ("PlcConnected", request => request.Stations[0].PlcConnected = false),
+        ("PlcConnectionState", request => request.Stations[0].PlcConnectionState = "Disconnected"),
+        ("DeviceStatusCode", request => request.Stations[0].DeviceStatusCode = "4"),
+        ("DeviceStatusName", request => request.Stations[0].DeviceStatusName = "异常"),
+        ("AlarmMessage", request => request.Stations[0].AlarmMessage = "Alarm"),
+        ("CurrentWorkOrder", request => request.Stations[0].CurrentWorkOrder = "WO-2"),
+        ("ProductJobNo", request => request.Stations[0].ProductJobNo = "JOB-2"),
+        ("ProductModel", request => request.Stations[0].ProductModel = "MODEL-2"),
+        ("TodayTotalCount", request => request.Stations[0].TodayTotalCount++),
+        ("TodayQualifiedCount", request => request.Stations[0].TodayQualifiedCount++),
+        ("TodayFailedCount", request => request.Stations[0].TodayFailedCount++)
+    };
+
+    foreach (var mutation in mutations)
+    {
+        var changed = CloneCenterTelemetryRequest(baseline);
+        mutation.Apply(changed);
+        AssertFalse(
+            string.Equals(
+                baselineSignature,
+                CenterTelemetryRules.BuildSnapshotSignature(changed),
+                StringComparison.Ordinal),
+            $"中心看板字段 {mutation.Name} 变化时必须触发遥测同步。");
+    }
+}
+
+static void CenterTelemetrySyncGatesSnapshotsBehindHeartbeat()
+{
+    var settings = new AppSettings
+    {
+        EnableCenterServerSync = true,
+        CenterServerBaseUrl = "http://127.0.0.1:7099/",
+        CenterServerSystemType = CenterServerConstants.SystemTypes.Other,
+        DeviceId = "D-001",
+        DeviceName = "Device-A"
+    };
+    var handler = new CenterTelemetryHttpMessageHandler { IsAvailable = false };
+    var interactionLogs = new FakeCenterInteractionLogService();
+    using var httpClient = new HttpClient(handler);
+    var client = new CenterTelemetryClient(httpClient, interactionLogs);
+    using var dbContext = new AutoWeldSystem.Data.SqlSugarDbContext("server=127.0.0.1;database=unused;uid=unused;pwd=unused;");
+    var service = new CenterTelemetrySyncService(
+        dbContext,
+        new FakeAppSettingsService { Current = settings },
+        new FakeDeviceStatusService(),
+        new FakePlcCommunicationService(),
+        new FakePlcProductionMonitorService(),
+        new FakeProgramExceptionLogService(),
+        client);
+    var baseline = CreateCenterTelemetryTestRequest();
+
+    AssertThrows<HttpRequestException>(
+        () => service.PushRequestAsync(settings, baseline).GetAwaiter().GetResult(),
+        "中心服务器不可达时必须由心跳失败中止本周期。");
+    AssertThrows<HttpRequestException>(
+        () => service.PushRequestAsync(settings, baseline).GetAwaiter().GetResult(),
+        "持续不可达时仍应只执行心跳探测。");
+    AssertSequenceEqual(
+        ["api/center/heartbeat", "api/center/heartbeat"],
+        handler.RequestPaths,
+        "心跳失败时不得继续发送设备状态遥测。");
+    AssertEqual(1, interactionLogs.Entries.Count, "连续心跳失败只应记录首次故障。");
+    AssertEqual(
+        AppConstants.CenterInteractionTypes.Heartbeat,
+        interactionLogs.Entries[0].InteractionType,
+        "连接拒绝必须记录为心跳类型。");
+
+    handler.IsAvailable = true;
+    service.PushRequestAsync(settings, baseline).GetAwaiter().GetResult();
+    AssertSequenceEqual(
+        ["api/center/heartbeat", "api/center/telemetry"],
+        handler.RequestPaths.TakeLast(2).ToArray(),
+        "恢复连接后必须先心跳，再发送首次完整遥测。");
+    AssertEqual(3, interactionLogs.Entries.Count, "恢复应记录心跳成功和首次遥测成功。");
+    AssertEqual(
+        AppConstants.CenterInteractionTypes.Heartbeat,
+        interactionLogs.Entries[1].InteractionType,
+        "恢复连接日志必须保持心跳类型。");
+    AssertTrue(interactionLogs.Entries[1].IsSuccess, "恢复心跳日志必须标记为成功。");
+
+    var sameContent = CloneCenterTelemetryRequest(baseline);
+    sameContent.HeartbeatAt = sameContent.HeartbeatAt.AddMinutes(1);
+    sameContent.Stations[0].CollectedAt = sameContent.Stations[0].CollectedAt.AddMinutes(1);
+    service.PushRequestAsync(settings, sameContent).GetAwaiter().GetResult();
+    AssertEqual(
+        "api/center/heartbeat",
+        handler.RequestPaths[^1],
+        "内容未变化时只能发送心跳。");
+    AssertEqual(3, interactionLogs.Entries.Count, "连续成功心跳不应追加本地日志。");
+
+    handler.IsAvailable = false;
+    AssertThrows<HttpRequestException>(
+        () => service.PushRequestAsync(settings, sameContent).GetAwaiter().GetResult(),
+        "已同步快照断线时必须保留成功签名。");
+    handler.IsAvailable = true;
+    var requestCountBeforeRecovery = handler.RequestPaths.Count;
+    service.PushRequestAsync(settings, sameContent).GetAwaiter().GetResult();
+    AssertEqual(
+        requestCountBeforeRecovery + 1,
+        handler.RequestPaths.Count,
+        "无内容变化的断线恢复只能发送一条心跳。");
+    AssertEqual(
+        "api/center/heartbeat",
+        handler.RequestPaths[^1],
+        "断线恢复不得因清空签名误发遥测。");
+
+    var changed = CloneCenterTelemetryRequest(baseline);
+    changed.Stations[0].TodayTotalCount++;
+    service.PushRequestAsync(settings, changed).GetAwaiter().GetResult();
+    AssertSequenceEqual(
+        ["api/center/heartbeat", "api/center/telemetry"],
+        handler.RequestPaths.TakeLast(2).ToArray(),
+        "看板字段变化后必须在心跳成功后发送遥测。");
+
+    var rejected = CloneCenterTelemetryRequest(changed);
+    rejected.Stations[0].TodayQualifiedCount++;
+    handler.TelemetryAccepted = false;
+    service.PushRequestAsync(settings, rejected).GetAwaiter().GetResult();
+    AssertTrue(service.Current.IsConnected, "遥测业务拒绝不能误报中心服务器断线。");
+    handler.TelemetryAccepted = true;
+    service.PushRequestAsync(settings, rejected).GetAwaiter().GetResult();
+    AssertSequenceEqual(
+        ["api/center/heartbeat", "api/center/telemetry"],
+        handler.RequestPaths.TakeLast(2).ToArray(),
+        "遥测拒绝后必须保留待同步签名并在下一周期重试。");
+}
+
+static void CenterInteractionTypesStaySharedAcrossClientAndServer()
+{
+    var clientCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Center", "CenterTelemetryClient.cs"),
+        Encoding.UTF8);
+    var serverCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.CenterServer", "Program.cs"),
+        Encoding.UTF8);
+    var pushLogCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.CenterServer", "Services", "CenterPushJsonlLogService.cs"),
+        Encoding.UTF8);
+    var dashboardCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.CenterServer", "Pages", "Dashboard.razor"),
+        Encoding.UTF8);
+
+    foreach (var typeName in new[] { "Heartbeat", "Telemetry", "ProductReport" })
+    {
+        var sharedReference = $"AppConstants.CenterInteractionTypes.{typeName}";
+        AssertTrue(
+            clientCode.Contains(sharedReference, StringComparison.Ordinal),
+            $"设备端必须使用共享中心消息类型 {typeName}。");
+        AssertTrue(
+            serverCode.Contains(sharedReference, StringComparison.Ordinal)
+            || pushLogCode.Contains(sharedReference, StringComparison.Ordinal),
+            $"服务端接收或写日志必须使用共享中心消息类型 {typeName}。");
+        AssertTrue(
+            dashboardCode.Contains(sharedReference, StringComparison.Ordinal),
+            $"中心看板必须使用共享中心消息类型 {typeName}。");
+    }
+
+    AssertFalse(serverCode.Contains("HandleTelemetryAsync(\"heartbeat\"", StringComparison.Ordinal), "心跳入口不得保留独立字符串常量。");
+    AssertFalse(serverCode.Contains("HandleTelemetryAsync(\"telemetry\"", StringComparison.Ordinal), "遥测入口不得保留独立字符串常量。");
+    AssertFalse(pushLogCode.Contains("RequestType = \"product-report\"", StringComparison.Ordinal), "产品数据日志不得保留独立字符串常量。");
+}
+
+static CenterTelemetrySnapshotRequest CreateCenterTelemetryTestRequest()
+{
+    return new CenterTelemetrySnapshotRequest
+    {
+        DeviceId = "D-001",
+        DeviceName = "Device-A",
+        SystemType = CenterServerConstants.SystemTypes.Other,
+        HeartbeatAt = new DateTime(2026, 8, 6, 9, 0, 0),
+        Stations =
+        [
+            new CenterTelemetryStationSnapshot
+            {
+                StationNo = 1,
+                PlcConnected = true,
+                PlcConnectionState = "Connected",
+                DeviceStatusCode = "1",
+                DeviceStatusName = "运行",
+                AlarmMessage = string.Empty,
+                CurrentWorkOrder = "WO-1",
+                ProductJobNo = "JOB-1",
+                ProductModel = "MODEL-1",
+                TodayTotalCount = 10,
+                TodayQualifiedCount = 9,
+                TodayFailedCount = 1,
+                CollectedAt = new DateTime(2026, 8, 6, 9, 0, 0)
+            }
+        ]
+    };
+}
+
+static CenterTelemetrySnapshotRequest CloneCenterTelemetryRequest(CenterTelemetrySnapshotRequest request)
+{
+    return JsonSerializer.Deserialize<CenterTelemetrySnapshotRequest>(JsonSerializer.Serialize(request))
+        ?? throw new InvalidOperationException("无法克隆中心遥测测试快照。");
+}
 static void CenterTelemetryJsonlFallbackPreservesMesStatusNames()
 {
     var centerCode = File.ReadAllText(
@@ -11682,6 +11899,57 @@ sealed class QueuedSynchronizationContext : SynchronizationContext
     }
 }
 
+sealed class FakeCenterInteractionLogService : ICenterInteractionLogService
+{
+    public event EventHandler<CenterInteractionLogEntry>? LogWritten;
+
+    public List<CenterInteractionLogEntry> Entries { get; } = new();
+
+    public void Write(CenterInteractionLogEntry entry)
+    {
+        Entries.Add(entry);
+        LogWritten?.Invoke(this, entry);
+    }
+
+    public IReadOnlyList<CenterInteractionLogEntry> GetByDate(DateTime date, int take = 500)
+        => Entries.Where(entry => entry.SendTime.Date == date.Date).Take(take).ToList();
+
+    public string GetLogDirectory() => string.Empty;
+}
+
+sealed class CenterTelemetryHttpMessageHandler : HttpMessageHandler
+{
+    public bool IsAvailable { get; set; } = true;
+
+    public bool TelemetryAccepted { get; set; } = true;
+
+    public List<string> RequestPaths { get; } = new();
+
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var path = request.RequestUri?.AbsolutePath.TrimStart('/') ?? string.Empty;
+        RequestPaths.Add(path);
+
+        if (!IsAvailable)
+        {
+            throw new HttpRequestException("由于目标计算机积极拒绝，无法连接。");
+        }
+
+        var isTelemetry = string.Equals(path, "api/center/telemetry", StringComparison.OrdinalIgnoreCase);
+        var success = !isTelemetry || TelemetryAccepted;
+        var ack = new CenterTelemetryAck
+        {
+            Success = success,
+            Message = success ? "Accepted" : "Telemetry rejected",
+            ServerTime = DateTime.Now
+        };
+        var response = new HttpResponseMessage(success ? HttpStatusCode.OK : HttpStatusCode.BadRequest)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(ack), Encoding.UTF8, "application/json")
+        };
+        return Task.FromResult(response);
+    }
+}
 sealed class RecordingHttpMessageHandler : HttpMessageHandler
 {
     public List<RecordedHttpRequest> Requests { get; } = new();

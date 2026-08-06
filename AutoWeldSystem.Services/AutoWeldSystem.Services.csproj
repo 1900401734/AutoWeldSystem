@@ -7,6 +7,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="AutoWeldSystem.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.104.2" />
     <ProjectReference Include="..\AutoWeldSystem.Core\AutoWeldSystem.Core.csproj" />
     <ProjectReference Include="..\AutoWeldSystem.Data\AutoWeldSystem.Data.csproj" />

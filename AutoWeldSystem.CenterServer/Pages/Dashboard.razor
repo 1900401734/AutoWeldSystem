@@ -217,9 +217,9 @@
                 <span>类型</span>
                 <select class="text-input" @bind="_logRequestType">
                     <option value="">全部类型</option>
-                    <option value="heartbeat">心跳</option>
-                    <option value="product-report">产品数据</option>
-                    <option value="telemetry">设备状态</option>
+                    <option value="@AppConstants.CenterInteractionTypes.Heartbeat">心跳</option>
+                    <option value="@AppConstants.CenterInteractionTypes.ProductReport">产品数据</option>
+                    <option value="@AppConstants.CenterInteractionTypes.Telemetry">设备状态</option>
                 </select>
             </label>
             <label>
@@ -506,9 +506,9 @@
     {
         return requestType switch
         {
-            "telemetry" => "type-chip type-telemetry",
-            "heartbeat" => "type-chip type-heartbeat",
-            "product-report" => "type-chip type-report",
+            AppConstants.CenterInteractionTypes.Telemetry => "type-chip type-telemetry",
+            AppConstants.CenterInteractionTypes.Heartbeat => "type-chip type-heartbeat",
+            AppConstants.CenterInteractionTypes.ProductReport => "type-chip type-report",
             _ => "type-chip"
         };
     }
@@ -518,9 +518,9 @@
     {
         return requestType switch
         {
-            "heartbeat" => "心跳",
-            "product-report" => "产品数据",
-            "telemetry" => "设备状态",
+            AppConstants.CenterInteractionTypes.Heartbeat => "心跳",
+            AppConstants.CenterInteractionTypes.ProductReport => "产品数据",
+            AppConstants.CenterInteractionTypes.Telemetry => "设备状态",
             _ => FirstNonEmpty(requestType, "--")
         };
     }

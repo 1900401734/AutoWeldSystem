@@ -1,5 +1,6 @@
 using AutoWeldSystem.CenterServer.Hubs;
 using AutoWeldSystem.CenterServer.Services;
+using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs.CenterServer;
 using AutoWeldSystem.Data;
 using Serilog;
@@ -57,7 +58,7 @@ app.MapPost("/api/center/telemetry", async (
     CenterPushJsonlLogService pushLogService,
     CancellationToken cancellationToken) =>
 {
-    return await HandleTelemetryAsync("telemetry", request, service, pushLogService, cancellationToken);
+    return await HandleTelemetryAsync(AppConstants.CenterInteractionTypes.Telemetry, request, service, pushLogService, cancellationToken);
 });
 
 app.MapPost("/api/center/heartbeat", async (
@@ -66,7 +67,7 @@ app.MapPost("/api/center/heartbeat", async (
     CenterPushJsonlLogService pushLogService,
     CancellationToken cancellationToken) =>
 {
-    return await HandleTelemetryAsync("heartbeat", request, service, pushLogService, cancellationToken);
+    return await HandleTelemetryAsync(AppConstants.CenterInteractionTypes.Heartbeat, request, service, pushLogService, cancellationToken);
 });
 
 app.MapPost("/api/center/product-report", async (
