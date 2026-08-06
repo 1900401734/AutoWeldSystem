@@ -2071,7 +2071,7 @@
   <data name="system.route.device" xml:space="preserve"><value>Device route</value></data>
   <data name="system.route.device_status" xml:space="preserve"><value>Device status route</value></data>
   <data name="system.message.runtime_mode_locked" xml:space="preserve"><value>An unfinished task exists. Complete it before changing dual-station or dual-work-order mode.</value></data>
-  <data name="system.message.device_management_locked" xml:space="preserve"><value>An unfinished task exists. Complete it before changing device management settings.</value></data>
+  <data name="system.message.device_management_locked" xml:space="preserve"><value>Production is currently started. Complete the active task before changing device management settings.</value></data>
   <data name="system.message.positive_integer_required" xml:space="preserve"><value>{0} must be an integer greater than 0.</value></data>
   <data name="system.message.route_required" xml:space="preserve"><value>{0} is required.</value></data>
   <data name="system.message.relative_route_required" xml:space="preserve"><value>Enter a relative route for {0}, such as api/ExpProgram, not a full URL.</value></data>

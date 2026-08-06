@@ -323,7 +323,7 @@ var tests = new (string Name, Action Run)[]
     ("Monitor view exposes dual work order toggle beside work order", MonitorViewExposesDualWorkOrderToggleBesideWorkOrder),
     ("Monitor view saves dual work order toggle with old rules", MonitorViewSavesDualWorkOrderToggleWithOldRules),
     ("System setting view no longer edits dual work order", SystemSettingViewNoLongerEditsDualWorkOrder),
-    ("System setting view locks device management during unfinished tasks", SystemSettingViewLocksDeviceManagementDuringUnfinishedTasks),
+    ("System setting view locks device management during active runtime tasks", SystemSettingViewLocksDeviceManagementDuringActiveRuntimeTasks),
     ("Monitor view finish report uses start operator without prompt", MonitorViewFinishReportUsesStartOperatorWithoutPrompt),
     ("Monitor view clears product identity after finish report", MonitorViewClearsProductIdentityAfterFinishReport),
     ("Monitor view product history uses latest first ordering", MonitorViewProductHistoryUsesLatestFirstOrdering),
@@ -9780,30 +9780,80 @@ static void PlcRecipeNameConfigServiceReadsLatestStationRow()
     AssertTrue(method.Contains("OrderBy(config => config.Id, OrderByType.Desc)", StringComparison.Ordinal), "更新时间相同时必须再按主键倒序确定唯一配置。");
 }
 
-static void SystemSettingViewLocksDeviceManagementDuringUnfinishedTasks()
+static void SystemSettingViewLocksDeviceManagementDuringActiveRuntimeTasks()
 {
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.cs"), Encoding.UTF8);
+    var deviceSaveGuard = ExtractMethodText(
+        viewCode,
+        "private bool CanSaveDeviceManagementChange(",
+        "private void RefreshDeviceManagementEnabled");
+    var refreshMethod = ExtractMethodText(
+        viewCode,
+        "private void RefreshDeviceManagementEnabled",
+        "private bool HasAnyActiveRuntimeTask");
+    var activeTaskMethod = ExtractMethodText(
+        viewCode,
+        "private bool HasAnyActiveRuntimeTask",
+        "private static bool IsActiveRuntimeTask");
+    var activeTaskRule = ExtractMethodText(
+        viewCode,
+        "private static bool IsActiveRuntimeTask",
+        "private bool HasAnyUnfinishedTask");
+    var runtimeModeGuard = ExtractMethodText(
+        viewCode,
+        "private bool CanSaveRuntimeModeChange(",
+        "private bool CanSaveDeviceManagementChange");
+    var unfinishedTaskMethod = ExtractMethodText(
+        viewCode,
+        "private bool HasAnyUnfinishedTask",
+        "private static bool HasDualModeChanged");
 
     AssertTrue(
-        viewCode.Contains("grpDeviceConfig.Enabled = !HasAnyUnfinishedTask();", StringComparison.Ordinal),
-        "任一工位存在未完工任务时，系统设置页必须禁用整个设备管理模块。");
+        refreshMethod.Contains("grpDeviceConfig.Enabled = !HasAnyActiveRuntimeTask();", StringComparison.Ordinal),
+        "设备管理模块必须仅由当前软件运行态中的活动任务控制。");
     AssertTrue(
-        viewCode.Contains("protected override void OnVisibleChanged(EventArgs e)", StringComparison.Ordinal),
+        deviceSaveGuard.Contains("!HasDeviceIdentityChanged(previousSettings, newSettings) || !HasAnyActiveRuntimeTask()", StringComparison.Ordinal),
+        "设备管理保存防线必须与界面使用相同的当前运行态判断。");
+    AssertTrue(
+        activeTaskMethod.Contains("_weldTaskService.CurrentState", StringComparison.Ordinal)
+        && activeTaskMethod.Contains("state.ActiveTask", StringComparison.Ordinal)
+        && activeTaskMethod.Contains("state.StationStates.Values.Any", StringComparison.Ordinal)
+        && activeTaskMethod.Contains("station.ActiveTask", StringComparison.Ordinal),
+        "设备管理锁定必须覆盖兼容运行态及所有工位的 ActiveTask。");
+    AssertFalse(
+        activeTaskMethod.Contains("GetUnfinishedTask", StringComparison.Ordinal)
+        || activeTaskMethod.Contains("Plc", StringComparison.Ordinal)
+        || activeTaskMethod.Contains("DeviceStatus", StringComparison.Ordinal),
+        "设备管理锁定不得读取数据库未完工任务或 PLC 设备状态。");
+    AssertTrue(
+        activeTaskRule.Contains("task.EndTime is null", StringComparison.Ordinal)
+        && activeTaskRule.Contains("ProductionConstants.ProductInstanceStatuses.Completed", StringComparison.Ordinal)
+        && activeTaskRule.Contains("StringComparison.OrdinalIgnoreCase", StringComparison.Ordinal),
+        "当前 ActiveTask 必须在尚未完工且状态不是 Completed 时锁定，暂停任务仍保持锁定。");
+    AssertTrue(
+        runtimeModeGuard.Contains("HasAnyUnfinishedTask()", StringComparison.Ordinal),
+        "双工位和双工单模式修改必须继续保留数据库未完工任务保护。");
+    AssertTrue(
+        unfinishedTaskMethod.Contains("_weldTaskService.GetUnfinishedTask(1) is not null", StringComparison.Ordinal)
+        && unfinishedTaskMethod.Contains("_weldTaskService.GetUnfinishedTask(2) is not null", StringComparison.Ordinal),
+        "原未完工任务检查必须继续覆盖两个工位，仅供运行模式保护使用。");
+    AssertTrue(
+        viewCode.Contains("protected override void OnVisibleChanged(EventArgs e)", StringComparison.Ordinal)
+        && viewCode.Contains("RefreshDeviceManagementEnabled();", StringComparison.Ordinal),
         "系统设置页重新显示时必须刷新设备管理模块的可编辑状态。");
-    AssertTrue(
-        viewCode.Contains("RefreshDeviceManagementEnabled();", StringComparison.Ordinal),
-        "系统设置页加载和重新显示时必须调用设备管理状态刷新方法。");
-    AssertTrue(
-        viewCode.Contains("private bool CanSaveDeviceManagementChange(", StringComparison.Ordinal),
-        "保存入口必须提供设备管理字段变更的防御性校验。");
-    AssertTrue(
-        viewCode.Contains("!HasDeviceIdentityChanged(previousSettings, newSettings) || !HasAnyUnfinishedTask()", StringComparison.Ordinal),
-        "只有未完工期间修改设备管理字段时才应阻止保存，其它设置仍可保存。");
     AssertTrue(
         CountOccurrences(viewCode, "CanSaveDeviceManagementChange(previousSettings, settings)") >= 2,
         "整体保存和手动同步设备两个入口都必须执行设备管理变更校验。");
-}
 
+    var chineseResources = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.resx"),
+        Encoding.UTF8);
+    var englishResources = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.en.resx"),
+        Encoding.UTF8);
+    AssertTrue(chineseResources.Contains("软件已开工，请先完工后再修改设备管理信息。", StringComparison.Ordinal), "中文提示必须说明软件已开工。");
+    AssertTrue(englishResources.Contains("Production is currently started.", StringComparison.Ordinal), "英文提示必须同步说明软件已开工。");
+}
 static void MonitorViewFinishReportUsesStartOperatorWithoutPrompt()
 {
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);

@@ -1306,11 +1306,11 @@ public partial class SystemSettingView : BaseView
     }
 
     /// <summary>
-    /// 未完工期间禁止保存设备身份和设备通信地址，避免运行中的任务关联到变化后的设备。
+    /// 软件当前已开工时禁止保存设备身份和设备通信地址，避免活动任务关联到变化后的设备。
     /// </summary>
     private bool CanSaveDeviceManagementChange(AppSettings previousSettings, AppSettings newSettings)
     {
-        if (!HasDeviceIdentityChanged(previousSettings, newSettings) || !HasAnyUnfinishedTask())
+        if (!HasDeviceIdentityChanged(previousSettings, newSettings) || !HasAnyActiveRuntimeTask())
         {
             return true;
         }
@@ -1320,7 +1320,7 @@ public partial class SystemSettingView : BaseView
     }
 
     /// <summary>
-    /// 任一工位存在未完工任务时，统一禁用整个设备管理模块。
+    /// 任一工位在当前软件运行态中已经开工且尚未完工时，统一禁用整个设备管理模块。
     /// </summary>
     private void RefreshDeviceManagementEnabled(bool force = false)
     {
@@ -1329,8 +1329,25 @@ public partial class SystemSettingView : BaseView
             return;
         }
 
-        grpDeviceConfig.Enabled = !HasAnyUnfinishedTask();
+        grpDeviceConfig.Enabled = !HasAnyActiveRuntimeTask();
         Volatile.Write(ref _deviceManagementStateKnown, true);
+    }
+
+    private bool HasAnyActiveRuntimeTask()
+    {
+        var state = _weldTaskService.CurrentState;
+        return IsActiveRuntimeTask(state.ActiveTask)
+            || state.StationStates.Values.Any(station => IsActiveRuntimeTask(station.ActiveTask));
+    }
+
+    private static bool IsActiveRuntimeTask(BizWeldTask? task)
+    {
+        return task is not null
+            && task.EndTime is null
+            && !string.Equals(
+                task.TaskStatus,
+                ProductionConstants.ProductInstanceStatuses.Completed,
+                StringComparison.OrdinalIgnoreCase);
     }
 
     private bool HasAnyUnfinishedTask()

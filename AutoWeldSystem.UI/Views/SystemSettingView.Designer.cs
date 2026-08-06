@@ -2514,7 +2514,6 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Checkbox chkUseOperatorInputDialog;
         private TableLayoutPanel tableLayoutPanel1;
         private GroupBox grpAppConfig;
-        private TableLayoutPanel tableLayoutPanel2;
         private TableLayoutPanel tlpCheckbox1;
         private AntdUI.Label lblMesTimeout;
         private AntdUI.InputNumber input_MesTimeout;
