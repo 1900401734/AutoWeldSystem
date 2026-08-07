@@ -116,7 +116,7 @@
 
     @foreach (var group in _snapshot.Devices.GroupBy(it => string.IsNullOrWhiteSpace(it.SystemType) ? CenterServerConstants.SystemTypes.Other : it.SystemType))
     {
-        <section class="device-group">
+        <section class="device-group" @key="group.Key">
             <div class="group-header">
                 <h2>@ResolveSystemTypeName(group.Key)</h2>
                 <span class="group-count">@group.Count() 台设备</span>
@@ -124,7 +124,7 @@
             <div class="device-grid">
                 @foreach (var device in group)
                 {
-                    <article class="device-card @ResolveDeviceStatusClass(device)">
+                    <article class="device-card @ResolveDeviceStatusClass(device)" @key="device.DeviceId">
                         <div class="device-card-header">
                             <div>
                                 <h3>@FirstNonEmpty(device.DeviceName, device.DeviceId)</h3>
@@ -151,7 +151,7 @@
                         {
                             @foreach (var station in device.Stations)
                             {
-                                <section class="station-panel @ResolveStationStatusClass(station)">
+                                <section class="station-panel @ResolveStationStatusClass(station)" @key="station.StationNo">
                                     <div class="station-title">
                                         <strong>工位 @station.StationNo</strong>
                                         <span class="station-chip"><i class="dot" aria-hidden="true"></i>@FirstNonEmpty(station.State.PlcDeviceStatusName, "未知")</span>
@@ -296,7 +296,6 @@
     private CenterDashboardSnapshotDto _snapshot = new();
     private CenterServerLocalSettings _settings = new();
     private IReadOnlyList<CenterPushLogRecord> _logs = [];
-    private PeriodicTimer? _timer;
     private CancellationTokenSource? _cts;
     private string _settingsMessage = string.Empty;
     private DateTime? _lastRealtimeRefreshAt;
@@ -310,48 +309,72 @@
     private string? _deleteError;
     private bool _disposed;
 
-    protected override Task OnInitializedAsync()
+    /// <summary>设备推送置脏，由合并计时器统一渲染。多线程写入，故用 volatile。</summary>
+    private volatile bool _dirty;
+    private DateTime _lastSnapshotAt = DateTime.MinValue;
+
+    /// <summary>合并渲染的检查周期，最坏情况每秒渲染一次。</summary>
+    private static readonly TimeSpan RenderTickInterval = TimeSpan.FromSeconds(1);
+
+    /// <summary>无推送时的兜底刷新间隔，保持原有 10 秒轮询语义。</summary>
+    private const int MaxStaleSeconds = 10;
+
+    /// <summary>日志独立刷新间隔，与设备推送节奏解耦。</summary>
+    private static readonly TimeSpan LogRefreshInterval = TimeSpan.FromSeconds(15);
+
+    protected override void OnInitialized()
     {
+        // 预渲染阶段只取首屏数据；订阅与计时器留到 OnAfterRender，
+        // 避免 ServerPrerendered 下初始化跑两遍、预渲染实例挂在单例事件上。
         _settings = SettingsService.Get();
         _snapshot = DashboardQuery.GetSnapshot();
+        _lastSnapshotAt = DateTime.Now;
         RefreshLogs();
-        _cts = new CancellationTokenSource();
-        ChangeNotifier.DashboardChanged += ChangeNotifier_DashboardChanged;
         _settingsMessage = "实时刷新已启用，轮询每 10 秒兜底。";
-        _timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
-        _ = RefreshLoopAsync(_cts.Token);
-
-        return Task.CompletedTask;
     }
 
-    private void ChangeNotifier_DashboardChanged(object? sender, CenterDashboardChangedEventArgs e)
+    protected override void OnAfterRender(bool firstRender)
     {
-        _ = InvokeAsync(() =>
-        {
-            if (_disposed)
-            {
-                return;
-            }
-
-            RefreshDashboardSnapshot();
-            _lastRealtimeRefreshAt = e.ChangedAt;
-            StateHasChanged();
-        });
-    }
-
-    private async Task RefreshLoopAsync(CancellationToken cancellationToken)
-    {
-        if (_timer is null)
+        if (!firstRender)
         {
             return;
         }
 
+        _cts = new CancellationTokenSource();
+        ChangeNotifier.DashboardChanged += ChangeNotifier_DashboardChanged;
+        _ = RefreshLoopAsync(_cts.Token);
+        _ = LogRefreshLoopAsync(_cts.Token);
+    }
+
+    private void ChangeNotifier_DashboardChanged(object? sender, CenterDashboardChangedEventArgs e)
+    {
+        // 只置脏标记，不在此渲染：4 台设备 5 秒心跳会让推送几乎每秒到达，
+        // 逐次渲染会把整页重绘压在渲染器同步上下文上。
+        _dirty = true;
+        _lastRealtimeRefreshAt = e.ChangedAt;
+    }
+
+    private async Task RefreshLoopAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(RenderTickInterval);
+
         try
         {
-            while (await _timer.WaitForNextTickAsync(cancellationToken))
+            while (await timer.WaitForNextTickAsync(cancellationToken))
             {
+                var stale = (DateTime.Now - _lastSnapshotAt).TotalSeconds >= MaxStaleSeconds;
+                if (!_dirty && !stale)
+                {
+                    continue;
+                }
+
+                if (stale)
+                {
+                    _lastPollingRefreshAt = DateTime.Now;
+                }
+
+                _dirty = false;
                 RefreshDashboardSnapshot(cancellationToken);
-                _lastPollingRefreshAt = DateTime.Now;
                 await InvokeAsync(StateHasChanged);
             }
         }
@@ -361,18 +384,41 @@
         }
     }
 
+    /// <summary>
+    /// 日志按自己的节奏刷新。日志读取要扫描 JSONL 目录并逐行反序列化，
+    /// 不能挂在设备推送的节奏上（那样约每秒一次文件全扫描）。
+    /// </summary>
+    private async Task LogRefreshLoopAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(LogRefreshInterval);
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                RefreshLogs();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The dashboard page was closed; no further log refresh is required.
+        }
+    }
+
     private void SaveSettings()
     {
         SettingsService.Save(_settings);
         _settings = SettingsService.Get();
         _settingsMessage = $"已保存：{DateTime.Now:HH:mm:ss}";
+        // LogDirectory 就是日志源根目录，改动后必须重读，这是正确性耦合。
         RefreshLogs();
     }
 
     private void RefreshDashboardSnapshot(CancellationToken cancellationToken = default)
     {
         _snapshot = DashboardQuery.GetSnapshot(cancellationToken);
-        RefreshLogs();
+        _lastSnapshotAt = DateTime.Now;
     }
 
     private void OpenDeleteDialog(CenterDashboardDeviceDto device)
@@ -418,7 +464,9 @@
 
             // 未删到行说明设备已被其它会话删除，结果等价，同样关闭弹窗并刷新。
             _pendingDeleteDevice = null;
+            // 删除后立即反映，不等下一个合并 tick。
             RefreshDashboardSnapshot();
+            _dirty = false;
         }
         catch (Exception ex)
         {
@@ -450,9 +498,9 @@
     public async ValueTask DisposeAsync()
     {
         _disposed = true;
+        // circuit 未启动（预渲染实例）时 _cts 为 null，全部保持 null 安全。
         _cts?.Cancel();
         ChangeNotifier.DashboardChanged -= ChangeNotifier_DashboardChanged;
-        _timer?.Dispose();
         _cts?.Dispose();
         await Task.CompletedTask;
     }
