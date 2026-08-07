@@ -1,109 +1,19 @@
 @page "/Dashboard"
-@using AutoWeldSystem.CenterServer.Configuration
 @using AutoWeldSystem.CenterServer.Models
 @using AutoWeldSystem.CenterServer.Services
 @using AutoWeldSystem.Core.Constants
 @using AutoWeldSystem.Core.DTOs.CenterServer
 @inject AutoWeldSystem.CenterServer.Services.CenterDashboardQueryService DashboardQuery
-@inject AutoWeldSystem.CenterServer.Services.CenterPushJsonlLogService PushLogService
-@inject AutoWeldSystem.CenterServer.Services.CenterServerSettingsService SettingsService
 @inject AutoWeldSystem.CenterServer.Services.CenterDashboardChangeNotifier ChangeNotifier
 @inject AutoWeldSystem.CenterServer.Services.CenterDeviceRemovalService DeviceRemovalService
 @implements IAsyncDisposable
 
 <main class="dashboard-shell">
-    <header class="dashboard-hero">
-        <div class="hero-brand">
-            <div class="hero-mark" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" /></svg>
-            </div>
-            <div class="hero-title">
-                <h1>中心服务器看板</h1>
-                <p>动态汇总已接入设备的在线状态、工位状态和生产数据</p>
-            </div>
-        </div>
-        <div class="hero-clock">
-            <div class="hero-clock-time">@_snapshot.GeneratedAt.ToString("HH:mm:ss")</div>
-            <div class="hero-clock-date">@_snapshot.GeneratedAt.ToString("yyyy-MM-dd")</div>
-            <div class="hero-clock-meta">
-                <span><i class="live-dot" aria-hidden="true"></i>实时 @FormatClock(_lastRealtimeRefreshAt)</span>
-                <span>轮询 @FormatClock(_lastPollingRefreshAt)</span>
-            </div>
-        </div>
-    </header>
+    <HeaderBar Snapshot="_snapshot"
+               LastRealtimeRefreshAt="_lastRealtimeRefreshAt"
+               LastPollingRefreshAt="_lastPollingRefreshAt" />
 
-    <section class="summary-strip">
-        <div class="stat-tile">
-            <span class="stat-icon tone-accent" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="2" /><path d="M8 21h8" /><path d="M12 17v4" /></svg>
-            </span>
-            <span class="stat-meta"><span class="stat-label">设备数</span><strong class="stat-value">@_snapshot.Devices.Count</strong></span>
-        </div>
-        <div class="stat-tile">
-            <span class="stat-icon tone-good" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0" /><path d="M8.53 16.11a6 6 0 0 1 6.95 0" /><path d="M12 20h.01" /></svg>
-            </span>
-            <span class="stat-meta"><span class="stat-label">在线</span><strong class="stat-value">@_snapshot.Devices.Count(it => it.State.ClientOnline)</strong></span>
-        </div>
-        <div class="stat-tile">
-            <span class="stat-icon tone-crit" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>
-            </span>
-            <span class="stat-meta"><span class="stat-label">报警设备</span><strong class="stat-value @(_snapshot.Devices.Any(HasAlarmStation) ? "is-crit" : null)">@_snapshot.Devices.Count(HasAlarmStation)</strong></span>
-        </div>
-        <div class="stat-tile">
-            <span class="stat-icon tone-ink" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z" /><path d="m2 17 10 5 10-5" /><path d="m2 12 10 5 10-5" /></svg>
-            </span>
-            <span class="stat-meta"><span class="stat-label">今日总数</span><strong class="stat-value">@_snapshot.Devices.Sum(it => it.TodayTotalCount)</strong></span>
-        </div>
-        <div class="stat-tile">
-            <span class="stat-icon tone-good" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><path d="M22 4 12 14.01l-3-3" /></svg>
-            </span>
-            <span class="stat-meta"><span class="stat-label">合格</span><strong class="stat-value">@_snapshot.Devices.Sum(it => it.TodayQualifiedCount)</strong></span>
-        </div>
-        <div class="stat-tile">
-            <span class="stat-icon tone-serious" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" /><path d="m15 9-6 6" /><path d="m9 9 6 6" /></svg>
-            </span>
-            <span class="stat-meta"><span class="stat-label">不良</span><strong class="stat-value @(_snapshot.Devices.Sum(it => it.TodayFailedCount) > 0 ? "is-serious" : null)">@_snapshot.Devices.Sum(it => it.TodayFailedCount)</strong></span>
-        </div>
-    </section>
-
-    <section class="settings-panel">
-        <div class="section-title">
-            <h2>
-                <span class="section-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
-                </span>
-                中心服务器设置
-            </h2>
-            <span class="section-note">@_settingsMessage</span>
-        </div>
-        <div class="settings-grid">
-            <label class="switch-field">
-                <span class="switch-label">开机自启</span>
-                <span class="switch">
-                    <input type="checkbox" @bind="_settings.EnableAutoStart" />
-                    <span class="switch-track" aria-hidden="true"></span>
-                </span>
-            </label>
-            <label>
-                <span>日志路径</span>
-                <input class="text-input" @bind="_settings.LogDirectory" />
-            </label>
-            <label>
-                <span>数据路径</span>
-                <input class="text-input" @bind="_settings.DataDirectory" />
-            </label>
-            <label>
-                <span>离线超时（秒）</span>
-                <input class="text-input" type="number" min="3" max="3600" @bind="_settings.OfflineTimeoutSeconds" />
-            </label>
-            <button class="primary-button" @onclick="SaveSettings">保存设置</button>
-        </div>
-    </section>
+    <SettingsDrawer OnSaved="HandleSettingsSaved" />
 
     @if (_snapshot.Devices.Count == 0)
     {
@@ -124,153 +34,13 @@
             <div class="device-grid">
                 @foreach (var device in group)
                 {
-                    <article class="device-card @ResolveDeviceStatusClass(device)" @key="device.DeviceId">
-                        <div class="device-card-header">
-                            <div>
-                                <h3>@FirstNonEmpty(device.DeviceName, device.DeviceId)</h3>
-                                <p>@device.DeviceId</p>
-                            </div>
-                            <div class="device-card-side">
-                                <span class="online-badge @(device.State.ClientOnline ? "online" : "offline")">
-                                    <i class="dot" aria-hidden="true"></i>@(device.State.ClientOnline ? "在线" : "离线")
-                                </span>
-                                <button type="button" class="icon-button" title="删除设备" aria-label="删除设备" @onclick="() => OpenDeleteDialog(device)">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" /></svg>
-                                </button>
-                            </div>
-                        </div>
-
-                        @if (device.Stations.Count == 0)
-                        {
-                            <p class="empty-station-text">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg>
-                                尚未收到工位数据
-                            </p>
-                        }
-                        else
-                        {
-                            @foreach (var station in device.Stations)
-                            {
-                                <section class="station-panel @ResolveStationStatusClass(station)" @key="station.StationNo">
-                                    <div class="station-title">
-                                        <strong>工位 @station.StationNo</strong>
-                                        <span class="station-chip"><i class="dot" aria-hidden="true"></i>@FirstNonEmpty(station.State.PlcDeviceStatusName, "未知")</span>
-                                    </div>
-                                    <div class="status-row">
-                                        <span>PLC 连接</span>
-                                        <strong class="@(station.State.PlcConnected ? "value-good" : "value-crit")">@(station.State.PlcConnected ? "已连接" : "未连接")</strong>
-                                    </div>
-                                    <div class="status-row">
-                                        <span>当前工单</span>
-                                        <strong>@FirstNonEmpty(station.CurrentWorkOrder, "--")</strong>
-                                    </div>
-                                    <div class="status-row">
-                                        <span>产品工号</span>
-                                        <strong>@FirstNonEmpty(station.ProductJobNo, station.ProductModel, "--")</strong>
-                                    </div>
-                                    <div class="count-row">
-                                        <div><span>总数</span><strong>@station.TodayTotalCount</strong></div>
-                                        <div class="count-good"><span>合格</span><strong>@station.TodayQualifiedCount</strong></div>
-                                        <div class="count-bad"><span>不良</span><strong>@station.TodayFailedCount</strong></div>
-                                    </div>
-                                    @if (!string.IsNullOrWhiteSpace(station.State.AlarmMessage))
-                                    {
-                                        <p class="alarm-text">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>
-                                            <span>工位 @station.StationNo：@station.State.AlarmMessage</span>
-                                        </p>
-                                    }
-                                </section>
-                            }
-                        }
-
-                        <p class="update-text">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
-                            最后更新：@FormatTime(device.State.LastSeenAt)
-                        </p>
-                    </article>
+                    <DeviceCard @key="device.DeviceId" Device="device" OnDeleteRequested="OpenDeleteDialog" />
                 }
             </div>
         </section>
     }
 
-    <section class="log-panel">
-        <div class="section-title">
-            <h2>
-                <span class="section-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M16 13H8" /><path d="M16 17H8" /><path d="M10 9H8" /></svg>
-                </span>
-                设备推送日志
-            </h2>
-            <span class="section-note">读取 JSONL 文件，不依赖数据库</span>
-        </div>
-        <div class="log-filter">
-            <label>
-                <span>设备</span>
-                <input class="text-input" placeholder="设备名称/编号" @bind="_logDeviceKeyword" />
-            </label>
-            <label>
-                <span>工位</span>
-                <input class="text-input" placeholder="工位号" type="number" @bind="_logStationText" />
-            </label>
-            <label>
-                <span>类型</span>
-                <select class="text-input" @bind="_logRequestType">
-                    <option value="">全部类型</option>
-                    <option value="@AppConstants.CenterInteractionTypes.Heartbeat">心跳</option>
-                    <option value="@AppConstants.CenterInteractionTypes.ProductReport">产品数据</option>
-                    <option value="@AppConstants.CenterInteractionTypes.Telemetry">设备状态</option>
-                </select>
-            </label>
-            <label>
-                <span>关键字</span>
-                <input class="text-input" placeholder="消息关键字" @bind="_logKeyword" />
-            </label>
-            <button class="primary-button" @onclick="RefreshLogs">查询</button>
-        </div>
-        @if (_logs.Count == 0)
-        {
-            <div class="log-empty">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg>
-                <span>暂无匹配的日志记录</span>
-            </div>
-        }
-        else
-        {
-            <div class="log-table-wrap">
-                <table class="log-table">
-                    <thead>
-                        <tr>
-                            <th>时间</th>
-                            <th>类型</th>
-                            <th>设备</th>
-                            <th>工位</th>
-                            <th>结果</th>
-                            <th>消息</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var log in _logs)
-                        {
-                            var message = FirstNonEmpty(log.Error, log.Message, "--");
-                            <tr class="@(log.Success ? "log-success" : "log-failed")">
-                                <td class="log-time">@log.ReceivedAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
-                                <td><span class="@ResolveLogTypeClass(log.RequestType)">@ResolveLogTypeName(log.RequestType)</span></td>
-                                <td>@FirstNonEmpty(log.DeviceName, log.DeviceId, "--")</td>
-                                <td class="log-station">@(log.StationNo <= 0 ? "--" : log.StationNo)</td>
-                                <td>
-                                    <span class="result-chip @(log.Success ? "ok" : "fail")">
-                                        <i class="dot" aria-hidden="true"></i>@(log.Success ? "成功" : "失败")
-                                    </span>
-                                </td>
-                                <td class="log-message" title="@message">@message</td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        }
-    </section>
+    <LogRail @ref="_logRail" />
 
     @if (_pendingDeleteDevice is not null)
     {
@@ -293,17 +63,17 @@
 </main>
 
 @code {
+    /// <summary>合并渲染的检查周期，最坏情况每秒渲染一次。</summary>
+    private static readonly TimeSpan RenderTickInterval = TimeSpan.FromSeconds(1);
+
+    /// <summary>无推送时的兜底刷新间隔，保持原有 10 秒轮询语义。</summary>
+    private const int MaxStaleSeconds = 10;
+
     private CenterDashboardSnapshotDto _snapshot = new();
-    private CenterServerLocalSettings _settings = new();
-    private IReadOnlyList<CenterPushLogRecord> _logs = [];
     private CancellationTokenSource? _cts;
-    private string _settingsMessage = string.Empty;
+    private LogRail? _logRail;
     private DateTime? _lastRealtimeRefreshAt;
     private DateTime? _lastPollingRefreshAt;
-    private string _logDeviceKeyword = string.Empty;
-    private string _logStationText = string.Empty;
-    private string _logRequestType = string.Empty;
-    private string _logKeyword = string.Empty;
     private CenterDashboardDeviceDto? _pendingDeleteDevice;
     private bool _deleting;
     private string? _deleteError;
@@ -313,24 +83,12 @@
     private volatile bool _dirty;
     private DateTime _lastSnapshotAt = DateTime.MinValue;
 
-    /// <summary>合并渲染的检查周期，最坏情况每秒渲染一次。</summary>
-    private static readonly TimeSpan RenderTickInterval = TimeSpan.FromSeconds(1);
-
-    /// <summary>无推送时的兜底刷新间隔，保持原有 10 秒轮询语义。</summary>
-    private const int MaxStaleSeconds = 10;
-
-    /// <summary>日志独立刷新间隔，与设备推送节奏解耦。</summary>
-    private static readonly TimeSpan LogRefreshInterval = TimeSpan.FromSeconds(15);
-
     protected override void OnInitialized()
     {
         // 预渲染阶段只取首屏数据；订阅与计时器留到 OnAfterRender，
         // 避免 ServerPrerendered 下初始化跑两遍、预渲染实例挂在单例事件上。
-        _settings = SettingsService.Get();
         _snapshot = DashboardQuery.GetSnapshot();
         _lastSnapshotAt = DateTime.Now;
-        RefreshLogs();
-        _settingsMessage = "实时刷新已启用，轮询每 10 秒兜底。";
     }
 
     protected override void OnAfterRender(bool firstRender)
@@ -343,7 +101,6 @@
         _cts = new CancellationTokenSource();
         ChangeNotifier.DashboardChanged += ChangeNotifier_DashboardChanged;
         _ = RefreshLoopAsync(_cts.Token);
-        _ = LogRefreshLoopAsync(_cts.Token);
     }
 
     private void ChangeNotifier_DashboardChanged(object? sender, CenterDashboardChangedEventArgs e)
@@ -385,35 +142,10 @@
     }
 
     /// <summary>
-    /// 日志按自己的节奏刷新。日志读取要扫描 JSONL 目录并逐行反序列化，
-    /// 不能挂在设备推送的节奏上（那样约每秒一次文件全扫描）。
+    /// 设置保存后强制重读日志：LogDirectory 就是日志源根目录，
+    /// 改动后必须重新扫描，这是正确性耦合而非历史包袱。
     /// </summary>
-    private async Task LogRefreshLoopAsync(CancellationToken cancellationToken)
-    {
-        using var timer = new PeriodicTimer(LogRefreshInterval);
-
-        try
-        {
-            while (await timer.WaitForNextTickAsync(cancellationToken))
-            {
-                RefreshLogs();
-                await InvokeAsync(StateHasChanged);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // The dashboard page was closed; no further log refresh is required.
-        }
-    }
-
-    private void SaveSettings()
-    {
-        SettingsService.Save(_settings);
-        _settings = SettingsService.Get();
-        _settingsMessage = $"已保存：{DateTime.Now:HH:mm:ss}";
-        // LogDirectory 就是日志源根目录，改动后必须重读，这是正确性耦合。
-        RefreshLogs();
-    }
+    private void HandleSettingsSaved() => _logRail?.Reload();
 
     private void RefreshDashboardSnapshot(CancellationToken cancellationToken = default)
     {
@@ -483,18 +215,6 @@
         }
     }
 
-    private void RefreshLogs()
-    {
-        _logs = PushLogService.QueryRecent(new CenterPushLogQuery
-        {
-            DeviceKeyword = _logDeviceKeyword,
-            StationNo = int.TryParse(_logStationText, out var stationNo) && stationNo > 0 ? stationNo : null,
-            RequestType = _logRequestType,
-            Keyword = _logKeyword,
-            Limit = 200
-        });
-    }
-
     public async ValueTask DisposeAsync()
     {
         _disposed = true;
@@ -503,38 +223,6 @@
         ChangeNotifier.DashboardChanged -= ChangeNotifier_DashboardChanged;
         _cts?.Dispose();
         await Task.CompletedTask;
-    }
-
-    private static bool HasAlarmStation(CenterDashboardDeviceDto device)
-        => CenterDashboardStatusPresenter.HasAlarm(device);
-
-    private static string ResolveDeviceStatusClass(CenterDashboardDeviceDto device)
-        => CenterDashboardStatusPresenter.DeviceCardClass(device);
-
-    private static string ResolveStationStatusClass(CenterDashboardStationDto station)
-        => CenterDashboardStatusPresenter.StationStateClass(station);
-
-    private static string ResolveLogTypeClass(string? requestType)
-    {
-        return requestType switch
-        {
-            AppConstants.CenterInteractionTypes.Telemetry => "type-chip type-telemetry",
-            AppConstants.CenterInteractionTypes.Heartbeat => "type-chip type-heartbeat",
-            AppConstants.CenterInteractionTypes.ProductReport => "type-chip type-report",
-            _ => "type-chip"
-        };
-    }
-
-    /// <summary>把推送请求类型标识转换成看板中文名称，未知类型回退显示原值。</summary>
-    private static string ResolveLogTypeName(string? requestType)
-    {
-        return requestType switch
-        {
-            AppConstants.CenterInteractionTypes.Heartbeat => "心跳",
-            AppConstants.CenterInteractionTypes.ProductReport => "产品数据",
-            AppConstants.CenterInteractionTypes.Telemetry => "设备状态",
-            _ => FirstNonEmpty(requestType, "--")
-        };
     }
 
     private static string ResolveSystemTypeName(string value)
@@ -546,12 +234,6 @@
             _ => "其它"
         };
     }
-
-    private static string FormatTime(DateTime? value)
-        => value is null ? "--" : value.Value.ToString("yyyy-MM-dd HH:mm:ss");
-
-    private static string FormatClock(DateTime? value)
-        => value is null ? "--" : value.Value.ToString("HH:mm:ss");
 
     private static string FirstNonEmpty(params string?[] values)
         => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;

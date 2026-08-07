@@ -1,0 +1,181 @@
+@using AutoWeldSystem.CenterServer.Models
+@using AutoWeldSystem.CenterServer.Services
+@using AutoWeldSystem.Core.Constants
+@inject AutoWeldSystem.CenterServer.Services.CenterPushJsonlLogService PushLogService
+@implements IAsyncDisposable
+
+<section class="log-panel">
+    <div class="section-title">
+        <h2>
+            <span class="section-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M16 13H8" /><path d="M16 17H8" /><path d="M10 9H8" /></svg>
+            </span>
+            设备推送日志
+        </h2>
+        <span class="section-note">读取 JSONL 文件，不依赖数据库</span>
+    </div>
+    <div class="log-filter">
+        <label>
+            <span>设备</span>
+            <input class="text-input" placeholder="设备名称/编号" @bind="_logDeviceKeyword" />
+        </label>
+        <label>
+            <span>工位</span>
+            <input class="text-input" placeholder="工位号" type="number" @bind="_logStationText" />
+        </label>
+        <label>
+            <span>类型</span>
+            <select class="text-input" @bind="_logRequestType">
+                <option value="">全部类型</option>
+                <option value="@AppConstants.CenterInteractionTypes.Heartbeat">心跳</option>
+                <option value="@AppConstants.CenterInteractionTypes.ProductReport">产品数据</option>
+                <option value="@AppConstants.CenterInteractionTypes.Telemetry">设备状态</option>
+            </select>
+        </label>
+        <label>
+            <span>关键字</span>
+            <input class="text-input" placeholder="消息关键字" @bind="_logKeyword" />
+        </label>
+        <button class="primary-button" @onclick="Reload">查询</button>
+    </div>
+    @if (_logs.Count == 0)
+    {
+        <div class="log-empty">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg>
+            <span>暂无匹配的日志记录</span>
+        </div>
+    }
+    else
+    {
+        <div class="log-table-wrap">
+            <table class="log-table">
+                <thead>
+                    <tr>
+                        <th>时间</th>
+                        <th>类型</th>
+                        <th>设备</th>
+                        <th>工位</th>
+                        <th>结果</th>
+                        <th>消息</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var log in _logs)
+                    {
+                        var message = FirstNonEmpty(log.Error, log.Message, "--");
+                        <tr class="@(log.Success ? "log-success" : "log-failed")">
+                            <td class="log-time">@log.ReceivedAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                            <td><span class="@ResolveLogTypeClass(log.RequestType)">@ResolveLogTypeName(log.RequestType)</span></td>
+                            <td>@FirstNonEmpty(log.DeviceName, log.DeviceId, "--")</td>
+                            <td class="log-station">@(log.StationNo <= 0 ? "--" : log.StationNo)</td>
+                            <td>
+                                <span class="result-chip @(log.Success ? "ok" : "fail")">
+                                    <i class="dot" aria-hidden="true"></i>@(log.Success ? "成功" : "失败")
+                                </span>
+                            </td>
+                            <td class="log-message" title="@message">@message</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    /// <summary>日志刷新间隔。与设备推送节奏解耦，避免频繁扫描 JSONL 目录。</summary>
+    private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(15);
+
+    private const int QueryLimit = 200;
+
+    private IReadOnlyList<CenterPushLogRecord> _logs = [];
+    private CancellationTokenSource? _cts;
+    private string _logDeviceKeyword = string.Empty;
+    private string _logStationText = string.Empty;
+    private string _logRequestType = string.Empty;
+    private string _logKeyword = string.Empty;
+
+    protected override void OnInitialized() => LoadLogs();
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        // 预渲染阶段不启动计时器；OnAfterRender 在预渲染时不触发。
+        if (!firstRender)
+        {
+            return;
+        }
+
+        _cts = new CancellationTokenSource();
+        _ = RefreshLoopAsync(_cts.Token);
+    }
+
+    /// <summary>供父组件在设置保存（日志目录可能变更）后强制重读。</summary>
+    public void Reload()
+    {
+        LoadLogs();
+        StateHasChanged();
+    }
+
+    private async Task RefreshLoopAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(RefreshInterval);
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                LoadLogs();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 页面已关闭，无需继续刷新日志。
+        }
+    }
+
+    private void LoadLogs()
+    {
+        _logs = PushLogService.QueryRecent(new CenterPushLogQuery
+        {
+            DeviceKeyword = _logDeviceKeyword,
+            StationNo = int.TryParse(_logStationText, out var stationNo) && stationNo > 0 ? stationNo : null,
+            RequestType = _logRequestType,
+            Keyword = _logKeyword,
+            Limit = QueryLimit
+        });
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+        await Task.CompletedTask;
+    }
+
+    private static string ResolveLogTypeClass(string? requestType)
+    {
+        return requestType switch
+        {
+            AppConstants.CenterInteractionTypes.Telemetry => "type-chip type-telemetry",
+            AppConstants.CenterInteractionTypes.Heartbeat => "type-chip type-heartbeat",
+            AppConstants.CenterInteractionTypes.ProductReport => "type-chip type-report",
+            _ => "type-chip"
+        };
+    }
+
+    /// <summary>把推送请求类型标识转换成看板中文名称，未知类型回退显示原值。</summary>
+    private static string ResolveLogTypeName(string? requestType)
+    {
+        return requestType switch
+        {
+            AppConstants.CenterInteractionTypes.Heartbeat => "心跳",
+            AppConstants.CenterInteractionTypes.ProductReport => "产品数据",
+            AppConstants.CenterInteractionTypes.Telemetry => "设备状态",
+            _ => FirstNonEmpty(requestType, "--")
+        };
+    }
+
+    private static string FirstNonEmpty(params string?[] values)
+        => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
+}

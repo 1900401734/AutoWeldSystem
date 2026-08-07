@@ -1,0 +1,79 @@
+@using AutoWeldSystem.Core.DTOs.CenterServer
+@using AutoWeldSystem.CenterServer.Services
+
+<header class="dashboard-hero">
+    <div class="hero-brand">
+        <div class="hero-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" /></svg>
+        </div>
+        <div class="hero-title">
+            <h1>中心服务器看板</h1>
+            <p>动态汇总已接入设备的在线状态、工位状态和生产数据</p>
+        </div>
+    </div>
+    <div class="hero-clock">
+        <div class="hero-clock-time">@Snapshot.GeneratedAt.ToString("HH:mm:ss")</div>
+        <div class="hero-clock-date">@Snapshot.GeneratedAt.ToString("yyyy-MM-dd")</div>
+        <div class="hero-clock-meta">
+            <span><i class="live-dot" aria-hidden="true"></i>实时 @FormatClock(LastRealtimeRefreshAt)</span>
+            <span>轮询 @FormatClock(LastPollingRefreshAt)</span>
+        </div>
+    </div>
+</header>
+
+<section class="summary-strip">
+    <div class="stat-tile">
+        <span class="stat-icon tone-accent" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="2" /><path d="M8 21h8" /><path d="M12 17v4" /></svg>
+        </span>
+        <span class="stat-meta"><span class="stat-label">设备数</span><strong class="stat-value">@Snapshot.Devices.Count</strong></span>
+    </div>
+    <div class="stat-tile">
+        <span class="stat-icon tone-good" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0" /><path d="M8.53 16.11a6 6 0 0 1 6.95 0" /><path d="M12 20h.01" /></svg>
+        </span>
+        <span class="stat-meta"><span class="stat-label">在线</span><strong class="stat-value">@Snapshot.Devices.Count(it => it.State.ClientOnline)</strong></span>
+    </div>
+    <div class="stat-tile">
+        <span class="stat-icon tone-crit" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>
+        </span>
+        <span class="stat-meta"><span class="stat-label">报警设备</span><strong class="stat-value @(AlarmDeviceCount > 0 ? "is-crit" : null)">@AlarmDeviceCount</strong></span>
+    </div>
+    <div class="stat-tile">
+        <span class="stat-icon tone-ink" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z" /><path d="m2 17 10 5 10-5" /><path d="m2 12 10 5 10-5" /></svg>
+        </span>
+        <span class="stat-meta"><span class="stat-label">今日总数</span><strong class="stat-value">@Snapshot.Devices.Sum(it => it.TodayTotalCount)</strong></span>
+    </div>
+    <div class="stat-tile">
+        <span class="stat-icon tone-good" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><path d="M22 4 12 14.01l-3-3" /></svg>
+        </span>
+        <span class="stat-meta"><span class="stat-label">合格</span><strong class="stat-value">@Snapshot.Devices.Sum(it => it.TodayQualifiedCount)</strong></span>
+    </div>
+    <div class="stat-tile">
+        <span class="stat-icon tone-serious" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" /><path d="m15 9-6 6" /><path d="m9 9 6 6" /></svg>
+        </span>
+        <span class="stat-meta"><span class="stat-label">不良</span><strong class="stat-value @(FailedCount > 0 ? "is-serious" : null)">@FailedCount</strong></span>
+    </div>
+</section>
+
+@code {
+    [Parameter, EditorRequired]
+    public CenterDashboardSnapshotDto Snapshot { get; set; } = new();
+
+    [Parameter]
+    public DateTime? LastRealtimeRefreshAt { get; set; }
+
+    [Parameter]
+    public DateTime? LastPollingRefreshAt { get; set; }
+
+    private int AlarmDeviceCount => Snapshot.Devices.Count(CenterDashboardStatusPresenter.HasAlarm);
+
+    private int FailedCount => Snapshot.Devices.Sum(it => it.TodayFailedCount);
+
+    private static string FormatClock(DateTime? value)
+        => value is null ? "--" : value.Value.ToString("HH:mm:ss");
+}

@@ -1,0 +1,85 @@
+@using AutoWeldSystem.CenterServer.Services
+@using AutoWeldSystem.Core.DTOs.CenterServer
+
+<article class="device-card @CenterDashboardStatusPresenter.DeviceCardClass(Device)">
+    <div class="device-card-header">
+        <div>
+            <h3>@FirstNonEmpty(Device.DeviceName, Device.DeviceId)</h3>
+            <p>@Device.DeviceId</p>
+        </div>
+        <div class="device-card-side">
+            <span class="online-badge @(Device.State.ClientOnline ? "online" : "offline")">
+                <i class="dot" aria-hidden="true"></i>@(Device.State.ClientOnline ? "在线" : "离线")
+            </span>
+            <button type="button" class="icon-button" title="删除设备" aria-label="删除设备" @onclick="RequestDelete">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" /></svg>
+            </button>
+        </div>
+    </div>
+
+    @if (Device.Stations.Count == 0)
+    {
+        <p class="empty-station-text">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg>
+            尚未收到工位数据
+        </p>
+    }
+    else
+    {
+        @foreach (var station in Device.Stations)
+        {
+            <section class="station-panel @CenterDashboardStatusPresenter.StationStateClass(station)" @key="station.StationNo">
+                <div class="station-title">
+                    <strong>工位 @station.StationNo</strong>
+                    <span class="station-chip"><i class="dot" aria-hidden="true"></i>@FirstNonEmpty(station.State.PlcDeviceStatusName, "未知")</span>
+                </div>
+                <div class="status-row">
+                    <span>PLC 连接</span>
+                    <strong class="@(station.State.PlcConnected ? "value-good" : "value-crit")">@(station.State.PlcConnected ? "已连接" : "未连接")</strong>
+                </div>
+                <div class="status-row">
+                    <span>当前工单</span>
+                    <strong>@FirstNonEmpty(station.CurrentWorkOrder, "--")</strong>
+                </div>
+                <div class="status-row">
+                    <span>产品工号</span>
+                    <strong>@FirstNonEmpty(station.ProductJobNo, station.ProductModel, "--")</strong>
+                </div>
+                <div class="count-row">
+                    <div><span>总数</span><strong>@station.TodayTotalCount</strong></div>
+                    <div class="count-good"><span>合格</span><strong>@station.TodayQualifiedCount</strong></div>
+                    <div class="count-bad"><span>不良</span><strong>@station.TodayFailedCount</strong></div>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(station.State.AlarmMessage))
+                {
+                    <p class="alarm-text">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>
+                        <span>工位 @station.StationNo：@station.State.AlarmMessage</span>
+                    </p>
+                }
+            </section>
+        }
+    }
+
+    <p class="update-text">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
+        最后更新：@FormatTime(Device.State.LastSeenAt)
+    </p>
+</article>
+
+@code {
+    [Parameter, EditorRequired]
+    public CenterDashboardDeviceDto Device { get; set; } = new();
+
+    /// <summary>删除只上抛请求，弹窗与删除执行仍由 Dashboard 持有。</summary>
+    [Parameter]
+    public EventCallback<CenterDashboardDeviceDto> OnDeleteRequested { get; set; }
+
+    private Task RequestDelete() => OnDeleteRequested.InvokeAsync(Device);
+
+    private static string FormatTime(DateTime? value)
+        => value is null ? "--" : value.Value.ToString("yyyy-MM-dd HH:mm:ss");
+
+    private static string FirstNonEmpty(params string?[] values)
+        => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
+}
