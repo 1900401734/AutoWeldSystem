@@ -767,9 +767,10 @@ body {
 }
 
 /* 双工位在宽屏跨两列，工位面板得以左右分栏；
-   1366 下列宽本就紧张，用 @media 保护，不跨列。 */
+   1366 下列宽本就紧张，用 @media 保护，不跨列。
+   离线卡排除：骨架是单列堆叠，跨列会留半张空卡。 */
 @media (min-width: 1600px) {
-   .device-card.is-dual {
+   .device-card.is-dual:not(.offline-card) {
       grid-column: span 2;
    }
 }

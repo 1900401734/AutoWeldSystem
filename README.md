@@ -150,10 +150,10 @@ dotnet publish AutoWeldSystem.UI/AutoWeldSystem.UI.csproj -c Release -r win-x64 
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>1.1.0</Version>
-<AssemblyVersion>1.1.0.0</AssemblyVersion>
-<FileVersion>1.1.0.0</FileVersion>
-<InformationalVersion>1.1.0</InformationalVersion>
+<Version>1.2.0</Version>
+<AssemblyVersion>1.2.0.0</AssemblyVersion>
+<FileVersion>1.2.0.0</FileVersion>
+<InformationalVersion>1.2.0</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -165,9 +165,9 @@ dotnet publish AutoWeldSystem.UI/AutoWeldSystem.UI.csproj -c Release -r win-x64 
 发布新版本时：
 
 ```powershell
-git tag -a v1.1.0 -m "Release v1.1.0"
+git tag -a v1.2.0 -m "Release v1.2.0"
 git push origin main
-git push origin v1.1.0
+git push origin v1.2.0
 ```
 
 ## Git 使用

@@ -1,5 +1,12 @@
 # Center Server Dashboard Implementation Plan
 
+> **状态（2026-08-07）：Task 6「Build Center Dashboard UI」所描述的看板界面已被 v1.2.0 的看板改版取代。**
+> 该任务中的浅色单页布局（顶部 6 个统计块、页面中部内嵌的中心服务器设置表单、页面底部日志表格）
+> 已改为深色工业监控风格：KPI 并入 60px 顶栏且不含产量汇总、配置收进右侧抽屉、日志改为常驻侧栏、
+> 离线设备降级为骨架显示。本文件其余任务（1~5、7~9：项目骨架、共享契约、存储实体、遥测接收、
+> 快照查询、设备端设置与推送）仍然有效，通信协议、DTO 与数据库结构均未改动。
+> 改版后的界面结构参见 `AutoWeldSystem.CenterServer/Components/` 下的组件与 `Pages/Dashboard.razor`。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a center-server project that receives telemetry from multiple AutoWeldSystem devices, stores summarized production data, and shows real-time device status on a web dashboard.
