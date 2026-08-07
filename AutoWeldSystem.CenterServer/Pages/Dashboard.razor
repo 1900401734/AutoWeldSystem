@@ -458,49 +458,13 @@
     }
 
     private static bool HasAlarmStation(CenterDashboardDeviceDto device)
-        => device.Stations.Any(station => station.State.PlcDeviceStatusCode == "4");
+        => CenterDashboardStatusPresenter.HasAlarm(device);
 
     private static string ResolveDeviceStatusClass(CenterDashboardDeviceDto device)
-    {
-        if (!device.State.ClientOnline)
-        {
-            return "offline-card";
-        }
-
-        if (device.Stations.Any(station => station.State.PlcDeviceStatusCode == "4"))
-        {
-            return "alarm-card";
-        }
-
-        if (device.Stations.Any(station => station.State.PlcDeviceStatusCode == "1"))
-        {
-            return "running-card";
-        }
-
-        if (device.Stations.Any(station => station.State.PlcDeviceStatusCode == "2"))
-        {
-            return "paused-card";
-        }
-
-        if (device.Stations.Any(station => station.State.PlcDeviceStatusCode == "3"))
-        {
-            return "stopped-card";
-        }
-
-        return "unknown-card";
-    }
+        => CenterDashboardStatusPresenter.DeviceCardClass(device);
 
     private static string ResolveStationStatusClass(CenterDashboardStationDto station)
-    {
-        return station.State.PlcDeviceStatusCode switch
-        {
-            "1" => "station-running",
-            "2" => "station-paused",
-            "3" => "station-stopped",
-            "4" => "station-alarm",
-            _ => "station-unknown"
-        };
-    }
+        => CenterDashboardStatusPresenter.StationStateClass(station);
 
     private static string ResolveLogTypeClass(string? requestType)
     {

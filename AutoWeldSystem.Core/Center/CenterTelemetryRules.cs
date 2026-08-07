@@ -85,10 +85,10 @@ public static class CenterTelemetryRules
     {
         return statusCode?.Trim() switch
         {
-            "1" => "运行",
-            "2" => "暂停/空闲",
-            "3" => "停止",
-            "4" => "报警",
+            ProductionConstants.PlcDeviceStatuses.Text.Running => "运行",
+            ProductionConstants.PlcDeviceStatuses.Text.Paused => "暂停/空闲",
+            ProductionConstants.PlcDeviceStatuses.Text.Stopped => "停止",
+            ProductionConstants.PlcDeviceStatuses.Text.Alarm => "报警",
             _ => string.IsNullOrWhiteSpace(fallbackName) ? "未知" : fallbackName.Trim()
         };
     }
