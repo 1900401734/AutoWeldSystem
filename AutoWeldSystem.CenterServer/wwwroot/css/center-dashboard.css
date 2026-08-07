@@ -1,4 +1,73 @@
+/*
+ * 主题令牌。深色为默认（工厂现场常用），[data-theme="light"] 覆盖为浅色。
+ * data-theme 由 _Host.cshtml 的内联脚本在首次绘制前写到 <html> 上，避免闪烁。
+ */
 :root {
+   color-scheme: dark;
+
+   /* 页面与卡片 */
+   --page: #0f1620;
+   --surface: #17212e;
+   --surface-sub: #1d2937;
+   --hairline: #26313f;
+   --hairline-strong: #354354;
+
+   /* 文字 */
+   --ink: #e6edf5;
+   --ink-2: #9fb0c3;
+   --ink-3: #6d7f93;
+
+   /* 品牌与交互 */
+   --accent: #4a95e8;
+   --accent-deep: #2a78d6;
+   --accent-tint: #16283d;
+
+   /* 状态色（固定语义，图标+文字配对使用） */
+   --good: #35d07f;
+   --good-text: #7ee2b0;
+   --good-tint: #122a20;
+   --warn: #f0b429;
+   --warn-text: #f5cd6b;
+   --warn-tint: #2e2410;
+   --crit: #f0555a;
+   --crit-text: #ff8a8e;
+   --crit-tint: #331519;
+   --serious: #f08a5d;
+   --serious-text: #ffab86;
+   --serious-tint: #33211a;
+   --neutral: #7c8da1;
+   --neutral-text: #a9b8c9;
+   --neutral-tint: #1e2836;
+
+   /* 日志类型标识（分类色，固定顺序） */
+   --cat-blue-tint: #16283d;
+   --cat-blue-text: #7fb6f2;
+   --cat-orange-tint: #33211a;
+   --cat-orange-text: #f2a173;
+   --cat-aqua-tint: #122a26;
+   --cat-aqua-text: #5fd4ac;
+
+   /* 主题相关的复合值：这些原先散落为硬编码色值 */
+   --hero-grad: linear-gradient(120deg, #101b26 0%, #16283a 62%, #1a3450 100%);
+   --hero-ink: #f2f6fa;
+   --on-accent: #ffffff;
+   --input-bg: #131c27;
+   --row-hover: #1c2735;
+   --accent-sweep: linear-gradient(90deg, #4a95e8, #35d07f 60%, transparent);
+   --alarm-card-bg: linear-gradient(180deg, var(--surface) 62%, #2a1719 100%);
+   --alarm-soft-bg: #241417;
+   --alarm-border: #5c2b2f;
+   --offline-border: #46566a;
+   --page-glow: rgba(74, 149, 232, 0.10);
+
+   --radius: 14px;
+   --radius-sm: 9px;
+   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5), 0 10px 26px -18px rgba(0, 0, 0, 0.8);
+   --shadow-pop: 0 2px 6px rgba(0, 0, 0, 0.55), 0 18px 40px -20px rgba(0, 0, 0, 0.9);
+   --font: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", system-ui, -apple-system, sans-serif;
+}
+
+[data-theme="light"] {
    color-scheme: light;
 
    /* 页面与卡片 */
@@ -43,11 +112,20 @@
    --cat-aqua-tint: #e5f6ef;
    --cat-aqua-text: #0d7a53;
 
-   --radius: 14px;
-   --radius-sm: 9px;
+   --hero-grad: linear-gradient(120deg, #12202d 0%, #1a3148 62%, #1f3d5c 100%);
+   --hero-ink: #f2f6fa;
+   --on-accent: #ffffff;
+   --input-bg: #ffffff;
+   --row-hover: #f4f8fc;
+   --accent-sweep: linear-gradient(90deg, #2a78d6, #1baf7a 60%, transparent);
+   --alarm-card-bg: linear-gradient(180deg, #ffffff 62%, #fff7f7 100%);
+   --alarm-soft-bg: #fffafa;
+   --alarm-border: #f0c8c8;
+   --offline-border: #b3bfcb;
+   --page-glow: rgba(42, 120, 214, 0.09);
+
    --shadow-card: 0 1px 2px rgba(22, 35, 47, 0.04), 0 10px 30px -18px rgba(22, 35, 47, 0.25);
    --shadow-pop: 0 2px 5px rgba(22, 35, 47, 0.06), 0 18px 44px -20px rgba(22, 35, 47, 0.32);
-   --font: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", system-ui, -apple-system, sans-serif;
 }
 
 html,
@@ -55,7 +133,7 @@ body {
    margin: 0;
    min-height: 100%;
    background:
-      radial-gradient(1200px 320px at 18% -120px, rgba(42, 120, 214, 0.09), transparent 70%),
+      radial-gradient(1200px 320px at 18% -120px, var(--page-glow), transparent 70%),
       var(--page);
    color: var(--ink);
    font-family: var(--font);
@@ -82,8 +160,8 @@ body {
    background:
       radial-gradient(720px 220px at 82% -60px, rgba(42, 120, 214, 0.34), transparent 72%),
       radial-gradient(520px 200px at 8% 130%, rgba(27, 175, 122, 0.16), transparent 70%),
-      linear-gradient(120deg, #12202d 0%, #1a3148 62%, #1f3d5c 100%);
-   color: #f2f6fa;
+      var(--hero-grad);
+   color: var(--hero-ink);
    box-shadow: var(--shadow-pop);
 }
 
@@ -92,7 +170,7 @@ body {
    position: absolute;
    inset: auto 0 0 0;
    height: 3px;
-   background: linear-gradient(90deg, #2a78d6, #1baf7a 60%, transparent);
+   background: var(--accent-sweep);
    opacity: 0.85;
 }
 
@@ -112,7 +190,7 @@ body {
    border-radius: 13px;
    background: linear-gradient(150deg, rgba(42, 120, 214, 0.85), rgba(28, 92, 171, 0.9));
    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 8px 18px -8px rgba(0, 0, 0, 0.55);
-   color: #ffffff;
+   color: var(--on-accent);
 }
 
 .hero-mark svg {
@@ -173,9 +251,54 @@ body {
    width: 7px;
    height: 7px;
    border-radius: 50%;
-   background: #35d07f;
+   background: var(--good);
    box-shadow: 0 0 0 0 rgba(53, 208, 127, 0.45);
    animation: live-pulse 2.4s ease-out infinite;
+}
+
+/* ---------- 主题切换按钮 ---------- */
+
+.theme-toggle {
+   flex: 0 0 auto;
+   display: grid;
+   place-items: center;
+   width: 38px;
+   height: 38px;
+   padding: 0;
+   border: 1px solid rgba(255, 255, 255, 0.22);
+   border-radius: 10px;
+   background: rgba(255, 255, 255, 0.08);
+   color: var(--hero-ink);
+   cursor: pointer;
+   transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.theme-toggle:hover {
+   background: rgba(255, 255, 255, 0.16);
+   border-color: rgba(255, 255, 255, 0.38);
+}
+
+.theme-toggle:focus-visible {
+   outline: 2px solid var(--hero-ink);
+   outline-offset: 2px;
+}
+
+.theme-toggle svg {
+   width: 19px;
+   height: 19px;
+}
+
+/* 图标随主题互斥显示，纯 CSS，无需 C# 侧持有主题状态 */
+.theme-toggle .icon-moon {
+   display: none;
+}
+
+[data-theme="light"] .theme-toggle .icon-sun {
+   display: none;
+}
+
+[data-theme="light"] .theme-toggle .icon-moon {
+   display: block;
 }
 
 /* ---------- 通用卡片与标题 ---------- */
@@ -344,7 +467,7 @@ body {
    padding: 7px 11px;
    border: 1px solid var(--hairline-strong);
    border-radius: var(--radius-sm);
-   background: var(--surface);
+   background: var(--input-bg);
    color: var(--ink);
    font-family: inherit;
    font-size: 13.5px;
@@ -352,7 +475,7 @@ body {
 }
 
 .text-input:hover {
-   border-color: #a9bccd;
+   border-color: var(--ink-3);
 }
 
 .text-input:focus {
@@ -371,7 +494,7 @@ body {
    border: 0;
    border-radius: var(--radius-sm);
    background: linear-gradient(180deg, var(--accent), var(--accent-deep));
-   color: #ffffff;
+   color: var(--on-accent);
    font-family: inherit;
    font-size: 13.5px;
    font-weight: 600;
@@ -442,7 +565,7 @@ body {
    width: 16px;
    height: 16px;
    border-radius: 50%;
-   background: #ffffff;
+   background: var(--on-accent);
    box-shadow: 0 1px 2px rgba(22, 35, 47, 0.3);
    transition: transform 0.18s ease;
 }
@@ -489,7 +612,7 @@ body {
    width: 4px;
    height: 16px;
    border-radius: 2px;
-   background: linear-gradient(180deg, var(--accent), #1baf7a);
+   background: linear-gradient(180deg, var(--accent), var(--good));
 }
 
 .group-count {
@@ -626,13 +749,13 @@ body {
 }
 
 .alarm-card {
-   border-color: #f0c8c8;
+   border-color: var(--alarm-border);
    border-left-color: var(--crit);
-   background: linear-gradient(180deg, #ffffff 62%, #fff7f7 100%);
+   background: var(--alarm-card-bg);
 }
 
 .offline-card {
-   border-left-color: #b3bfcb;
+   border-left-color: var(--offline-border);
    opacity: 0.78;
 }
 
@@ -719,8 +842,8 @@ body {
 
 .station-panel.station-alarm {
    border-left-color: var(--crit);
-   border-color: #f0c8c8;
-   background: #fffafa;
+   border-color: var(--alarm-border);
+   background: var(--alarm-soft-bg);
 }
 
 .station-alarm .station-chip {
@@ -809,7 +932,7 @@ body {
    margin: 11px 0 0;
    padding: 9px 11px;
    background: var(--crit-tint);
-   border: 1px solid #f0c8c8;
+   border: 1px solid var(--alarm-border);
    border-radius: 8px;
    color: var(--crit-text);
    font-size: 12.5px;
@@ -934,7 +1057,7 @@ body {
 }
 
 .log-table tbody tr:hover {
-   background: #f4f8fc;
+   background: var(--row-hover);
 }
 
 .log-table tbody tr:last-child td {
@@ -1106,7 +1229,7 @@ body {
    margin: 10px 0 0;
    padding: 9px 11px;
    background: var(--crit-tint);
-   border: 1px solid #f0c8c8;
+   border: 1px solid var(--alarm-border);
    border-radius: 8px;
    color: var(--crit-text);
    font-size: 12.5px;
@@ -1135,7 +1258,7 @@ body {
 }
 
 .ghost-button:hover {
-   border-color: #a9bccd;
+   border-color: var(--hairline-strong);
    color: var(--ink);
 }
 
@@ -1149,8 +1272,8 @@ body {
    padding: 0 18px;
    border: 0;
    border-radius: var(--radius-sm);
-   background: linear-gradient(180deg, var(--crit), #b53232);
-   color: #ffffff;
+   background: linear-gradient(180deg, var(--crit), var(--crit-text));
+   color: var(--on-accent);
    font-family: inherit;
    font-size: 13.5px;
    font-weight: 600;
