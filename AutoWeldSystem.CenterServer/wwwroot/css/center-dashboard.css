@@ -60,6 +60,9 @@
    --offline-border: #46566a;
    --page-glow: rgba(74, 149, 232, 0.10);
 
+   /* 侧栏宽度：1920→420px / 1600→380px / 1366→340px */
+   --rail-w: 420px;
+
    --radius: 14px;
    --radius-sm: 9px;
    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5), 0 10px 26px -18px rgba(0, 0, 0, 0.8);
@@ -128,10 +131,15 @@
    --shadow-pop: 0 2px 5px rgba(22, 35, 47, 0.06), 0 18px 44px -20px rgba(22, 35, 47, 0.32);
 }
 
+/*
+ * 视口锁定：常驻侧栏要求主区与日志区各自独立滚动，
+ * 因此页面本身不滚动，滚动条下放到两个窗格内部。
+ */
 html,
 body {
    margin: 0;
-   min-height: 100%;
+   height: 100%;
+   overflow: hidden;
    background:
       radial-gradient(1200px 320px at 18% -120px, var(--page-glow), transparent 70%),
       var(--page);
@@ -141,25 +149,43 @@ body {
 }
 
 .dashboard-shell {
-   max-width: 1600px;
-   margin: 0 auto;
-   padding: 22px 24px 40px;
+   /* minmax(0, 1fr) 是必需的：纯 1fr 不会收缩到内容宽度以下，
+      日志内容会把设备区顶宽。 */
+   height: 100vh;
+   display: grid;
+   grid-template-rows: 60px minmax(0, 1fr);
+   grid-template-columns: minmax(0, 1fr) var(--rail-w);
+   grid-template-areas:
+      "head head"
+      "main rail";
+   gap: 12px;
+   padding: 12px 16px 16px;
+   box-sizing: border-box;
 }
 
-/* ---------- 顶部横幅 ---------- */
+.dashboard-main {
+   grid-area: main;
+   min-width: 0;
+   min-height: 0;
+   overflow-y: auto;
+   overflow-x: hidden;
+   padding-right: 4px;
+}
+
+/* ---------- 顶栏 ---------- */
 
 .dashboard-hero {
+   grid-area: head;
    position: relative;
-   display: flex;
+   display: grid;
+   grid-template-columns: auto auto 1fr auto auto;
    align-items: center;
-   justify-content: space-between;
-   gap: 24px;
+   gap: 18px;
    overflow: hidden;
-   padding: 24px 28px;
+   padding: 0 16px;
    border-radius: var(--radius);
    background:
       radial-gradient(720px 220px at 82% -60px, rgba(42, 120, 214, 0.34), transparent 72%),
-      radial-gradient(520px 200px at 8% 130%, rgba(27, 175, 122, 0.16), transparent 70%),
       var(--hero-grad);
    color: var(--hero-ink);
    box-shadow: var(--shadow-pop);
@@ -169,7 +195,7 @@ body {
    content: "";
    position: absolute;
    inset: auto 0 0 0;
-   height: 3px;
+   height: 2px;
    background: var(--accent-sweep);
    opacity: 0.85;
 }
@@ -177,7 +203,7 @@ body {
 .hero-brand {
    display: flex;
    align-items: center;
-   gap: 16px;
+   gap: 11px;
    min-width: 0;
 }
 
@@ -185,107 +211,152 @@ body {
    flex: 0 0 auto;
    display: grid;
    place-items: center;
-   width: 48px;
-   height: 48px;
-   border-radius: 13px;
+   width: 32px;
+   height: 32px;
+   border-radius: 9px;
    background: linear-gradient(150deg, rgba(42, 120, 214, 0.85), rgba(28, 92, 171, 0.9));
    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 8px 18px -8px rgba(0, 0, 0, 0.55);
    color: var(--on-accent);
 }
 
 .hero-mark svg {
-   width: 26px;
-   height: 26px;
+   width: 19px;
+   height: 19px;
 }
 
-.hero-title h1 {
-   margin: 0 0 5px;
-   font-size: 23px;
-   font-weight: 650;
-   letter-spacing: 0.01em;
-}
-
-.hero-title p {
+.hero-brand h1 {
    margin: 0;
-   color: rgba(226, 236, 246, 0.72);
-   font-size: 13.5px;
+   font-size: 16px;
+   font-weight: 700;
+   letter-spacing: 0.2px;
+   white-space: nowrap;
 }
+
+.hero-spacer {
+   min-width: 0;
+}
+
+/* ---------- 顶栏 KPI ---------- */
+
+.hero-kpis {
+   display: flex;
+   align-items: center;
+   gap: 8px;
+   padding-left: 18px;
+   border-left: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.kpi {
+   display: inline-flex;
+   align-items: baseline;
+   gap: 7px;
+   padding: 4px 11px;
+   border-radius: 8px;
+   background: rgba(255, 255, 255, 0.08);
+}
+
+.kpi-label {
+   font-size: 12px;
+   color: rgba(255, 255, 255, 0.72);
+}
+
+.kpi-value {
+   font-size: 17px;
+   font-weight: 700;
+   font-variant-numeric: tabular-nums;
+   line-height: 1;
+}
+
+.kpi-online {
+   color: #7ee2b0;
+}
+
+/* 报警数 >0 时套底色并脉冲，是顶栏唯一会动的元素 */
+.kpi-alarm-active {
+   background: var(--crit);
+   animation: alarm-pulse 1.9s ease-in-out infinite;
+}
+
+.kpi-alarm-active .kpi-label {
+   color: rgba(255, 255, 255, 0.9);
+}
+
+.kpi-alarm-active .kpi-value {
+   color: #ffffff;
+}
+
+/* ---------- 顶栏时钟与按钮 ---------- */
 
 .hero-clock {
-   flex: 0 0 auto;
-   text-align: right;
+   display: flex;
+   align-items: center;
+   gap: 12px;
+   white-space: nowrap;
 }
 
 .hero-clock-time {
-   font-size: 30px;
-   font-weight: 650;
-   line-height: 1.1;
+   font-size: 17px;
+   font-weight: 700;
    font-variant-numeric: tabular-nums;
-   letter-spacing: 0.02em;
-}
-
-.hero-clock-date {
-   margin-top: 3px;
-   color: rgba(226, 236, 246, 0.72);
-   font-size: 13px;
-   font-variant-numeric: tabular-nums;
+   letter-spacing: 0.5px;
 }
 
 .hero-clock-meta {
-   display: flex;
-   justify-content: flex-end;
-   gap: 14px;
-   margin-top: 9px;
-   color: rgba(226, 236, 246, 0.66);
-   font-size: 12px;
+   display: inline-flex;
+   align-items: center;
+   gap: 5px;
+   font-size: 11.5px;
+   color: rgba(255, 255, 255, 0.66);
    font-variant-numeric: tabular-nums;
 }
 
-.hero-clock-meta span {
-   display: inline-flex;
-   align-items: center;
-   gap: 6px;
-}
-
 .live-dot {
-   width: 7px;
-   height: 7px;
+   width: 6px;
+   height: 6px;
    border-radius: 50%;
    background: var(--good);
    box-shadow: 0 0 0 0 rgba(53, 208, 127, 0.45);
    animation: live-pulse 2.4s ease-out infinite;
 }
 
-/* ---------- 主题切换按钮 ---------- */
+.hero-actions {
+   display: flex;
+   align-items: center;
+   gap: 6px;
+}
 
-.theme-toggle {
-   flex: 0 0 auto;
+.hero-icon-button {
    display: grid;
    place-items: center;
-   width: 38px;
-   height: 38px;
+   width: 32px;
+   height: 32px;
    padding: 0;
-   border: 1px solid rgba(255, 255, 255, 0.22);
-   border-radius: 10px;
+   border: 1px solid rgba(255, 255, 255, 0.2);
+   border-radius: 8px;
    background: rgba(255, 255, 255, 0.08);
    color: var(--hero-ink);
    cursor: pointer;
-   transition: background 0.15s ease, border-color 0.15s ease;
+   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
-.theme-toggle:hover {
-   background: rgba(255, 255, 255, 0.16);
+.hero-icon-button:hover {
+   background: rgba(255, 255, 255, 0.18);
    border-color: rgba(255, 255, 255, 0.38);
 }
 
-.theme-toggle:focus-visible {
+.hero-icon-button:focus-visible {
    outline: 2px solid var(--hero-ink);
    outline-offset: 2px;
 }
 
-.theme-toggle svg {
-   width: 19px;
-   height: 19px;
+.hero-icon-button svg {
+   width: 17px;
+   height: 17px;
+}
+
+/* 宽屏侧栏常驻，切换按钮无意义 */
+.rail-toggle {
+   display: none;
 }
 
 /* 图标随主题互斥显示，纯 CSS，无需 C# 侧持有主题状态 */
@@ -303,38 +374,12 @@ body {
 
 /* ---------- 通用卡片与标题 ---------- */
 
-.settings-panel,
-.log-panel,
 .device-card,
-.stat-tile,
 .empty-hero {
    background: var(--surface);
    border: 1px solid var(--hairline);
    border-radius: var(--radius);
    box-shadow: var(--shadow-card);
-}
-
-.settings-panel,
-.log-panel {
-   margin-top: 18px;
-   padding: 20px 22px;
-}
-
-.section-title {
-   display: flex;
-   align-items: center;
-   justify-content: space-between;
-   gap: 16px;
-   margin-bottom: 16px;
-}
-
-.section-title h2 {
-   display: inline-flex;
-   align-items: center;
-   gap: 9px;
-   margin: 0;
-   font-size: 16.5px;
-   font-weight: 650;
 }
 
 .section-icon {
@@ -352,112 +397,24 @@ body {
    height: 16px;
 }
 
-.section-note {
-   color: var(--ink-3);
-   font-size: 12.5px;
-}
-
-/* ---------- 概览统计 ---------- */
-
-.summary-strip {
-   display: grid;
-   grid-template-columns: repeat(auto-fit, minmax(172px, 1fr));
-   gap: 14px;
-   margin-top: 18px;
-}
-
-.stat-tile {
-   display: flex;
-   align-items: center;
-   gap: 13px;
-   padding: 15px 17px;
-   transition: transform 0.18s ease, box-shadow 0.18s ease;
-}
-
-.stat-tile:hover {
-   transform: translateY(-2px);
-   box-shadow: var(--shadow-pop);
-}
-
-.stat-icon {
-   flex: 0 0 auto;
-   display: grid;
-   place-items: center;
-   width: 42px;
-   height: 42px;
-   border-radius: 11px;
-}
-
-.stat-icon svg {
-   width: 21px;
-   height: 21px;
-}
-
-.tone-accent {
-   background: var(--accent-tint);
-   color: var(--accent-deep);
-}
-
-.tone-good {
-   background: var(--good-tint);
-   color: var(--good-text);
-}
-
-.tone-crit {
-   background: var(--crit-tint);
-   color: var(--crit-text);
-}
-
-.tone-serious {
-   background: var(--serious-tint);
-   color: var(--serious-text);
-}
-
-.tone-ink {
-   background: var(--neutral-tint);
-   color: var(--neutral-text);
-}
-
-.stat-meta {
-   display: grid;
-   gap: 2px;
-   min-width: 0;
-}
-
-.stat-label {
-   color: var(--ink-2);
-   font-size: 12.5px;
-}
-
-.stat-value {
-   font-size: 25px;
-   font-weight: 650;
-   line-height: 1.15;
-}
-
-.stat-value.is-crit {
-   color: var(--crit-text);
-}
-
-.stat-value.is-serious {
-   color: var(--serious-text);
-}
-
 /* ---------- 表单控件 ---------- */
 
-.settings-grid {
-   display: grid;
-   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-   gap: 14px;
-   align-items: end;
-}
-
-.settings-grid label,
-.log-filter label {
+.drawer-body label,
+.log-filter-pop label {
    display: grid;
    gap: 6px;
    color: var(--ink-2);
    font-size: 12.5px;
+}
+
+.text-input.is-invalid {
+   border-color: var(--crit);
+}
+
+.field-error {
+   margin: -4px 0 0;
+   color: var(--crit-text);
+   font-size: 12px;
 }
 
 .text-input {
@@ -585,22 +542,32 @@ body {
 /* ---------- 设备分组 ---------- */
 
 .device-group {
-   margin-top: 26px;
+   margin-top: 14px;
 }
 
+.device-group:first-child {
+   margin-top: 0;
+}
+
+/* 分组标题降级为纤细分隔条：1366×768 下垂直空间最紧，
+   原来约 60px 的标题块换成约 24px。 */
 .group-header {
    display: flex;
-   align-items: baseline;
-   gap: 10px;
-   margin-bottom: 13px;
+   align-items: center;
+   gap: 9px;
+   margin-bottom: 9px;
+   height: 24px;
 }
 
 .group-header h2 {
    position: relative;
    margin: 0;
-   padding-left: 12px;
-   font-size: 17px;
+   padding-left: 10px;
+   font-size: 13px;
    font-weight: 650;
+   letter-spacing: 0.3px;
+   color: var(--ink-2);
+   text-transform: none;
 }
 
 .group-header h2::before {
@@ -609,24 +576,32 @@ body {
    left: 0;
    top: 50%;
    transform: translateY(-50%);
-   width: 4px;
-   height: 16px;
+   width: 3px;
+   height: 13px;
    border-radius: 2px;
    background: linear-gradient(180deg, var(--accent), var(--good));
 }
 
 .group-count {
-   padding: 2px 9px;
+   padding: 1px 8px;
    border-radius: 999px;
    background: var(--surface);
    border: 1px solid var(--hairline);
-   color: var(--ink-2);
-   font-size: 12px;
+   color: var(--ink-3);
+   font-size: 11.5px;
+}
+
+/* 分组标题右侧的细线，视觉上把分组区隔开而不占垂直空间 */
+.group-header::after {
+   content: "";
+   flex: 1;
+   height: 1px;
+   background: var(--hairline);
 }
 
 .device-grid {
    display: grid;
-   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+   grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
    gap: 16px;
    align-items: start;
 }
@@ -635,14 +610,11 @@ body {
 
 .device-card {
    position: relative;
-   padding: 17px 17px 14px;
+   padding: 14px 15px 11px;
    border-left: 4px solid var(--neutral);
-   transition: transform 0.18s ease, box-shadow 0.18s ease;
-}
-
-.device-card:hover {
-   transform: translateY(-2px);
-   box-shadow: var(--shadow-pop);
+   /* 日志侧栏重排不应波及设备网格 */
+   contain: layout paint;
+   transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
 .device-card-header {
@@ -650,20 +622,38 @@ body {
    gap: 12px;
    align-items: flex-start;
    justify-content: space-between;
-   margin-bottom: 13px;
+   margin-bottom: 11px;
 }
 
 .device-card h3 {
    margin: 0 0 3px;
-   font-size: 16px;
+   font-size: 15px;
    font-weight: 650;
 }
 
 .device-card-header p {
    margin: 0;
    color: var(--ink-3);
-   font-size: 12px;
+   font-size: 11.5px;
    font-variant-numeric: tabular-nums;
+}
+
+/* 单/双工位徽标：三重冗余线索之一，另两个是工位分栏与宽屏跨列 */
+.badge {
+   flex: 0 0 auto;
+   padding: 3px 9px;
+   border-radius: 6px;
+   font-size: 11.5px;
+   font-weight: 600;
+   border: 1px solid var(--hairline-strong);
+   color: var(--ink-2);
+   background: var(--surface-sub);
+}
+
+.badge-dual {
+   border-color: var(--accent);
+   color: var(--accent);
+   background: var(--accent-tint);
 }
 
 .online-badge {
@@ -752,30 +742,47 @@ body {
    border-color: var(--alarm-border);
    border-left-color: var(--crit);
    background: var(--alarm-card-bg);
+   animation: alarm-pulse 2.2s ease-in-out infinite;
 }
 
+/* 离线整卡降饱和 + 降透明，与在线卡片一眼可分 */
 .offline-card {
-   border-left-color: var(--offline-border);
-   opacity: 0.78;
-}
-
-.offline-card:hover {
-   opacity: 1;
+   border-left-color: var(--ink-3);
+   opacity: 0.72;
+   filter: saturate(0.4);
 }
 
 .unknown-card {
    border-left-color: var(--ink-3);
 }
 
+/* ---------- 工位分栏 ---------- */
+
+/* --st-cols 由 DeviceCard 内联给出（钳制 1~2），
+   这是单/双工位最主要的前注意线索。 */
+.station-strip {
+   display: grid;
+   grid-template-columns: repeat(var(--st-cols, 1), minmax(0, 1fr));
+   gap: 10px;
+}
+
+/* 双工位在宽屏跨两列，工位面板得以左右分栏；
+   1366 下列宽本就紧张，用 @media 保护，不跨列。 */
+@media (min-width: 1600px) {
+   .device-card.is-dual {
+      grid-column: span 2;
+   }
+}
+
 /* ---------- 工位面板 ---------- */
 
 .station-panel {
-   margin-top: 12px;
-   padding: 12px 13px;
+   padding: 10px 11px;
    border: 1px solid var(--hairline);
    border-left: 3px solid var(--neutral);
    border-radius: var(--radius-sm);
    background: var(--surface-sub);
+   min-width: 0;
 }
 
 .station-title {
@@ -865,10 +872,10 @@ body {
    display: flex;
    align-items: center;
    justify-content: space-between;
-   gap: 12px;
-   padding: 7px 0;
+   gap: 10px;
+   padding: 5px 0;
    border-top: 1px solid var(--hairline);
-   font-size: 13px;
+   font-size: 12.5px;
 }
 
 .status-row span {
@@ -876,9 +883,23 @@ body {
 }
 
 .status-row strong {
+   display: inline-flex;
+   align-items: center;
+   gap: 5px;
    font-weight: 600;
    text-align: right;
    overflow-wrap: anywhere;
+   font-variant-numeric: tabular-nums;
+}
+
+/* 状态一律圆点+文字+颜色三者齐备，绝不单靠颜色：
+   工控机常是劣质 TN 屏，且色觉障碍常见。 */
+.status-row strong .dot {
+   flex: 0 0 auto;
+   width: 6px;
+   height: 6px;
+   border-radius: 50%;
+   background: currentColor;
 }
 
 .value-good {
@@ -889,32 +910,38 @@ body {
    color: var(--crit-text);
 }
 
+.value-neutral {
+   color: var(--ink-3);
+}
+
 .count-row {
    display: grid;
    grid-template-columns: repeat(3, 1fr);
-   gap: 8px;
-   margin-top: 11px;
+   gap: 6px;
+   margin-top: 9px;
 }
 
 .count-row div {
-   padding: 8px 10px;
+   padding: 6px 8px;
    background: var(--surface);
    border: 1px solid var(--hairline);
    border-radius: 8px;
+   text-align: center;
 }
 
 .count-row span {
    display: block;
    color: var(--ink-2);
-   font-size: 11.5px;
+   font-size: 11px;
 }
 
 .count-row strong {
    display: block;
-   margin-top: 2px;
-   font-size: 18px;
+   margin-bottom: 1px;
+   font-size: 16px;
    font-weight: 650;
    line-height: 1.2;
+   font-variant-numeric: tabular-nums;
 }
 
 .count-good strong {
@@ -925,40 +952,120 @@ body {
    color: var(--serious-text);
 }
 
-.alarm-text {
+/* 合格率替代产量目标（协议中无目标字段），按阈值着色 */
+.qual-row {
+   display: flex;
+   align-items: center;
+   justify-content: space-between;
+   gap: 10px;
+   margin-top: 8px;
+   padding-top: 7px;
+   border-top: 1px solid var(--hairline);
+   font-size: 12.5px;
+}
+
+.qual-row > span {
+   color: var(--ink-2);
+}
+
+.qual-row strong {
+   font-size: 14px;
+   font-weight: 700;
+   font-variant-numeric: tabular-nums;
+}
+
+.rate-good {
+   color: var(--good-text);
+}
+
+.rate-warn {
+   color: var(--warn-text);
+}
+
+.rate-crit {
+   color: var(--crit-text);
+}
+
+.rate-none {
+   color: var(--ink-3);
+}
+
+/* 报警横幅：置于工位面板之上，整卡宽度，比工位内的提示更显眼 */
+.alarm-banner {
    display: flex;
    align-items: flex-start;
    gap: 8px;
-   margin: 11px 0 0;
-   padding: 9px 11px;
+   margin: 0 0 10px;
+   padding: 8px 10px;
    background: var(--crit-tint);
    border: 1px solid var(--alarm-border);
+   border-left: 3px solid var(--crit);
    border-radius: 8px;
    color: var(--crit-text);
    font-size: 12.5px;
-   line-height: 1.5;
+   line-height: 1.45;
+   font-weight: 600;
 }
 
-.alarm-text svg {
+.alarm-banner svg {
    flex: 0 0 auto;
    width: 15px;
    height: 15px;
    margin-top: 1px;
 }
 
+/* ---------- 离线骨架 ---------- */
+
+/* 用标记分支而非 CSS 隐藏：CSS 隐藏的陈旧数据仍在 DOM 里，
+   将来任何复制/导出都会把它带出来。 */
+.offline-skeleton {
+   display: grid;
+   gap: 8px;
+}
+
+.station-ghost {
+   display: flex;
+   align-items: center;
+   justify-content: space-between;
+   padding: 9px 11px;
+   border: 1px dashed var(--hairline-strong);
+   border-radius: var(--radius-sm);
+   background: var(--surface-sub);
+}
+
+.ghost-label {
+   color: var(--ink-2);
+   font-size: 12.5px;
+   font-weight: 600;
+}
+
+.ghost-placeholder {
+   color: var(--ink-3);
+   font-size: 13px;
+   letter-spacing: 1px;
+}
+
 .update-text {
    display: flex;
    align-items: center;
    gap: 6px;
-   margin: 12px 0 0;
+   margin: 10px 0 0;
    color: var(--ink-3);
    font-size: 11.5px;
    font-variant-numeric: tabular-nums;
 }
 
 .update-text svg {
+   flex: 0 0 auto;
    width: 13px;
    height: 13px;
+}
+
+/* 离线时长是离线卡片最重要的信息，需要突出 */
+.offline-elapsed {
+   color: var(--warn-text);
+   font-size: 13px;
+   font-weight: 650;
 }
 
 .empty-station-text {
@@ -1008,76 +1115,187 @@ body {
    font-size: 13px;
 }
 
-/* ---------- 日志面板 ---------- */
+/* ---------- 日志侧栏 ---------- */
 
-.log-filter {
+.log-rail {
+   grid-area: rail;
+   position: relative;
    display: grid;
-   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-   gap: 12px;
-   align-items: end;
-   margin-bottom: 14px;
+   grid-template-rows: auto minmax(0, 1fr);
+   min-height: 0;
+   border: 1px solid var(--hairline);
+   border-radius: var(--radius);
+   background: var(--surface);
+   box-shadow: var(--shadow-card);
 }
 
-.log-table-wrap {
-   overflow: auto;
-   max-height: 420px;
+.log-rail-head {
+   display: flex;
+   align-items: center;
+   justify-content: space-between;
+   gap: 10px;
+   padding: 10px 12px;
+   border-bottom: 1px solid var(--hairline);
+}
+
+.log-rail-head h2 {
+   display: inline-flex;
+   align-items: center;
+   gap: 8px;
+   margin: 0;
+   font-size: 14px;
+   font-weight: 650;
+}
+
+.log-rail-tools {
+   display: flex;
+   align-items: center;
+   gap: 5px;
+}
+
+/* 筛选生效时给出常驻提示：筛选表单收进弹出层后
+   否则用户看不出列表被过滤过。 */
+.filter-dot {
+   width: 6px;
+   height: 6px;
+   border-radius: 50%;
+   background: var(--accent);
+}
+
+.rail-icon-button {
+   display: grid;
+   place-items: center;
+   width: 27px;
+   height: 27px;
+   padding: 0;
    border: 1px solid var(--hairline);
+   border-radius: 7px;
+   background: var(--surface-sub);
+   color: var(--ink-2);
+   cursor: pointer;
+   transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.rail-icon-button:hover {
+   background: var(--accent-tint);
+   color: var(--accent);
+   border-color: var(--accent);
+}
+
+.rail-icon-button.is-active {
+   background: var(--accent-tint);
+   color: var(--accent);
+   border-color: var(--accent);
+}
+
+.rail-icon-button:focus-visible {
+   outline: 2px solid var(--accent);
+   outline-offset: 1px;
+}
+
+.rail-icon-button svg {
+   width: 15px;
+   height: 15px;
+}
+
+/* 筛选弹出层：340px 侧栏放不下常驻的 4 个字段 */
+.log-filter-pop {
+   position: absolute;
+   top: 46px;
+   right: 8px;
+   left: 8px;
+   z-index: 30;
+   display: grid;
+   gap: 9px;
+   padding: 12px;
+   border: 1px solid var(--hairline-strong);
    border-radius: var(--radius-sm);
    background: var(--surface);
+   box-shadow: var(--shadow-pop);
 }
 
-.log-table {
-   width: 100%;
-   border-collapse: collapse;
-   font-size: 13px;
+.log-filter-actions {
+   display: flex;
+   justify-content: flex-end;
+   gap: 8px;
+   margin-top: 2px;
 }
 
-.log-table th,
-.log-table td {
-   padding: 9px 13px;
-   border-bottom: 1px solid var(--hairline);
-   text-align: left;
-   white-space: nowrap;
+/* 日志重排不应波及设备网格 */
+.log-rail-body {
+   min-height: 0;
+   overflow-y: auto;
+   overflow-x: hidden;
+   padding: 8px;
+   contain: layout paint;
 }
 
-.log-table th {
-   position: sticky;
-   top: 0;
-   z-index: 1;
-   background: var(--surface-sub);
-   box-shadow: inset 0 -1px 0 var(--hairline-strong);
-   color: var(--ink-2);
-   font-size: 12px;
-   font-weight: 650;
-   letter-spacing: 0.03em;
+/* 侧栏宽度放不下 6 列表格，改为堆叠行 */
+.log-item {
+   padding: 7px 9px;
+   border-radius: 8px;
+   border-left: 3px solid transparent;
+   font-size: 12.5px;
 }
 
-.log-table tbody tr {
-   transition: background 0.12s ease;
-}
-
-.log-table tbody tr:hover {
+.log-item:hover {
    background: var(--row-hover);
 }
 
-.log-table tbody tr:last-child td {
-   border-bottom: 0;
+.log-item + .log-item {
+   margin-top: 2px;
+   border-top: 1px solid var(--hairline);
+   border-top-left-radius: 0;
+   border-top-right-radius: 0;
+}
+
+.log-item.log-failed {
+   border-left-color: var(--crit);
+   background: var(--crit-tint);
+}
+
+.log-item-top {
+   display: flex;
+   align-items: center;
+   gap: 7px;
+}
+
+.log-item-mid {
+   display: flex;
+   align-items: baseline;
+   gap: 8px;
+   margin-top: 3px;
+   min-width: 0;
+}
+
+.log-device {
+   color: var(--ink);
+   font-weight: 600;
+   overflow: hidden;
+   text-overflow: ellipsis;
+   white-space: nowrap;
+}
+
+.log-item-msg {
+   margin-top: 2px;
+   color: var(--ink-2);
+   line-height: 1.4;
+   /* 两行截断：长消息不该把侧栏撑长 */
+   display: -webkit-box;
+   -webkit-line-clamp: 2;
+   -webkit-box-orient: vertical;
+   overflow: hidden;
+}
+
+.log-failed .log-item-msg {
+   color: var(--crit-text);
 }
 
 .log-time,
 .log-station {
    font-variant-numeric: tabular-nums;
-   color: var(--ink-2);
-}
-
-.log-message {
-   max-width: 420px;
-   overflow: hidden;
-   text-overflow: ellipsis;
-}
-
-.log-failed .log-message {
-   color: var(--crit-text);
+   color: var(--ink-3);
+   font-size: 11.5px;
 }
 
 /* 类型与结果标识 */
@@ -1146,40 +1364,126 @@ body {
    display: grid;
    justify-items: center;
    gap: 8px;
-   padding: 44px 20px;
-   border: 1px dashed var(--hairline-strong);
-   border-radius: var(--radius-sm);
-   background: var(--surface-sub);
+   padding: 36px 16px;
    color: var(--ink-2);
-   font-size: 13px;
+   font-size: 12.5px;
    text-align: center;
 }
 
 .log-empty svg {
-   width: 32px;
-   height: 32px;
+   width: 28px;
+   height: 28px;
    color: var(--hairline-strong);
+}
+
+/* ---------- 设置抽屉 ---------- */
+
+.drawer-mask {
+   position: fixed;
+   inset: 0;
+   /* 低于删除弹窗(900)与重连遮罩(1000) */
+   z-index: 800;
+   display: flex;
+   justify-content: flex-end;
+   background: rgba(8, 14, 20, 0.5);
+   backdrop-filter: blur(2px);
+}
+
+.settings-drawer {
+   display: grid;
+   grid-template-rows: auto minmax(0, 1fr) auto;
+   width: min(420px, 100%);
+   height: 100%;
+   box-sizing: border-box;
+   background: var(--surface);
+   border-left: 1px solid var(--hairline-strong);
+   box-shadow: var(--shadow-pop);
+}
+
+.drawer-head {
+   display: flex;
+   align-items: center;
+   justify-content: space-between;
+   gap: 12px;
+   padding: 14px 16px;
+   border-bottom: 1px solid var(--hairline);
+}
+
+.drawer-head h2 {
+   display: inline-flex;
+   align-items: center;
+   gap: 9px;
+   margin: 0;
+   font-size: 15.5px;
+   font-weight: 650;
+}
+
+.drawer-body {
+   display: grid;
+   align-content: start;
+   gap: 14px;
+   padding: 16px;
+   overflow-y: auto;
+}
+
+.drawer-foot {
+   display: flex;
+   align-items: center;
+   justify-content: space-between;
+   gap: 12px;
+   padding: 13px 16px;
+   border-top: 1px solid var(--hairline);
+   background: var(--surface-sub);
+}
+
+.drawer-message {
+   color: var(--ink-2);
+   font-size: 12.5px;
+}
+
+.section-icon {
+   display: grid;
+   place-items: center;
+   width: 26px;
+   height: 26px;
+   border-radius: 7px;
+   background: var(--accent-tint);
+   color: var(--accent);
+}
+
+.section-icon svg {
+   width: 15px;
+   height: 15px;
 }
 
 /* ---------- 滚动条 ---------- */
 
-.log-table-wrap::-webkit-scrollbar {
+.log-rail-body::-webkit-scrollbar,
+.dashboard-main::-webkit-scrollbar,
+.drawer-body::-webkit-scrollbar {
    width: 10px;
    height: 10px;
 }
 
-.log-table-wrap::-webkit-scrollbar-track {
+.log-rail-body::-webkit-scrollbar-track,
+.dashboard-main::-webkit-scrollbar-track,
+.drawer-body::-webkit-scrollbar-track {
    background: transparent;
 }
 
-.log-table-wrap::-webkit-scrollbar-thumb {
-   border: 3px solid var(--surface);
+.log-rail-body::-webkit-scrollbar-thumb,
+.dashboard-main::-webkit-scrollbar-thumb,
+.drawer-body::-webkit-scrollbar-thumb {
+   border: 3px solid transparent;
+   background-clip: content-box;
    border-radius: 999px;
-   background: var(--hairline-strong);
+   background-color: var(--hairline-strong);
 }
 
-.log-table-wrap::-webkit-scrollbar-thumb:hover {
-   background: var(--ink-3);
+.log-rail-body::-webkit-scrollbar-thumb:hover,
+.dashboard-main::-webkit-scrollbar-thumb:hover,
+.drawer-body::-webkit-scrollbar-thumb:hover {
+   background-color: var(--ink-3);
 }
 
 /* ---------- 删除确认弹窗 ---------- */
@@ -1371,31 +1675,108 @@ body {
    }
 }
 
-@media (max-width: 760px) {
+/* 目标分辨率：1920/1600/1366 三档，均为整屏不滚动 */
+
+@media (max-width: 1700px) {
+   :root {
+      --rail-w: 380px;
+   }
+}
+
+/* 1366×768 是车间工控机的下限，纵向最紧：压缩留白与卡片内距 */
+@media (max-width: 1400px) {
+   :root {
+      --rail-w: 340px;
+   }
+
    .dashboard-shell {
-      padding: 14px 14px 32px;
-   }
-
-   .dashboard-hero {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 16px;
-      padding: 20px;
-   }
-
-   .hero-clock {
-      text-align: left;
-   }
-
-   .hero-clock-meta {
-      justify-content: flex-start;
+      gap: 10px;
+      padding: 10px 12px 12px;
    }
 
    .device-grid {
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 12px;
    }
 
-   .log-message {
-      max-width: 240px;
+   .device-card {
+      padding: 11px 12px 9px;
+   }
+}
+
+/* ≤1200px 侧栏改为覆盖式抽屉，由顶栏按钮开合 */
+@media (max-width: 1200px) {
+   .dashboard-shell {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas:
+         "head"
+         "main";
+   }
+
+   .rail-toggle {
+      display: grid;
+   }
+
+   .log-rail {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: auto;
+      z-index: 40;
+      width: min(420px, 92vw);
+      border-radius: 0;
+      border-left: 1px solid var(--hairline-strong);
+      box-shadow: var(--shadow-pop);
+      /* 仅过渡 transform：合成友好，不触发重排 */
+      transform: translateX(100%);
+      transition: transform 0.22s ease;
+   }
+
+   .log-rail.is-open {
+      transform: translateX(0);
+   }
+
+   /* 抽屉模式下宽度足够，消息不再截断 */
+   .log-item-msg {
+      -webkit-line-clamp: 3;
+   }
+}
+
+/* 窄屏兜底：非目标场景，仅保证可读可用 */
+@media (max-width: 760px) {
+   .dashboard-shell {
+      gap: 8px;
+      padding: 8px;
+      grid-template-rows: auto minmax(0, 1fr);
+   }
+
+   .dashboard-hero {
+      grid-template-columns: auto 1fr auto;
+      gap: 10px;
+      padding: 8px 10px;
+   }
+
+   .hero-kpis {
+      padding-left: 0;
+      border-left: 0;
+      justify-content: flex-end;
+   }
+
+   .hero-clock,
+   .hero-spacer {
+      display: none;
+   }
+
+   .device-grid {
+      grid-template-columns: minmax(0, 1fr);
+   }
+
+   .station-strip {
+      grid-template-columns: minmax(0, 1fr);
+   }
+
+   .settings-drawer {
+      width: 100%;
    }
 }

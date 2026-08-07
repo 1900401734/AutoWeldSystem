@@ -3256,7 +3256,10 @@ static void CenterInteractionTypesStaySharedAcrossClientAndServer()
         Encoding.UTF8);
     var dashboardCode = File.ReadAllText(
         GetRepoFilePath("AutoWeldSystem.CenterServer", "Pages", "Dashboard.razor"),
-        Encoding.UTF8);
+        Encoding.UTF8)
+        + File.ReadAllText(
+            GetRepoFilePath("AutoWeldSystem.CenterServer", "Components", "LogRail.razor"),
+            Encoding.UTF8);
 
     foreach (var typeName in new[] { "Heartbeat", "Telemetry", "ProductReport" })
     {

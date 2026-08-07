@@ -4,83 +4,98 @@
 @inject AutoWeldSystem.CenterServer.Services.CenterPushJsonlLogService PushLogService
 @implements IAsyncDisposable
 
-<section class="log-panel">
-    <div class="section-title">
+<aside class="log-rail @(Open ? "is-open" : null)" aria-label="设备推送日志">
+    <div class="log-rail-head">
         <h2>
             <span class="section-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M16 13H8" /><path d="M16 17H8" /><path d="M10 9H8" /></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M16 13H8" /><path d="M16 17H8" /></svg>
             </span>
-            设备推送日志
+            推送日志
         </h2>
-        <span class="section-note">读取 JSONL 文件，不依赖数据库</span>
+        <div class="log-rail-tools">
+            @if (HasActiveFilter)
+            {
+                <span class="filter-dot" title="已应用筛选" aria-label="已应用筛选"></span>
+            }
+            <button type="button" class="rail-icon-button @(_filterOpen ? "is-active" : null)" title="筛选" aria-label="筛选日志" aria-expanded="@_filterOpen" @onclick="ToggleFilter">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" /></svg>
+            </button>
+            <button type="button" class="rail-icon-button" title="立即刷新" aria-label="立即刷新日志" @onclick="Reload">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3.36-7" /><path d="M21 3v6h-6" /></svg>
+            </button>
+        </div>
     </div>
-    <div class="log-filter">
-        <label>
-            <span>设备</span>
-            <input class="text-input" placeholder="设备名称/编号" @bind="_logDeviceKeyword" />
-        </label>
-        <label>
-            <span>工位</span>
-            <input class="text-input" placeholder="工位号" type="number" @bind="_logStationText" />
-        </label>
-        <label>
-            <span>类型</span>
-            <select class="text-input" @bind="_logRequestType">
-                <option value="">全部类型</option>
-                <option value="@AppConstants.CenterInteractionTypes.Heartbeat">心跳</option>
-                <option value="@AppConstants.CenterInteractionTypes.ProductReport">产品数据</option>
-                <option value="@AppConstants.CenterInteractionTypes.Telemetry">设备状态</option>
-            </select>
-        </label>
-        <label>
-            <span>关键字</span>
-            <input class="text-input" placeholder="消息关键字" @bind="_logKeyword" />
-        </label>
-        <button class="primary-button" @onclick="Reload">查询</button>
-    </div>
-    @if (_logs.Count == 0)
+
+    @* 筛选表单收进弹出层：340px 侧栏放不下常驻的 5 个字段 *@
+    @if (_filterOpen)
     {
-        <div class="log-empty">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg>
-            <span>暂无匹配的日志记录</span>
+        <div class="log-filter-pop">
+            <label>
+                <span>设备</span>
+                <input class="text-input" placeholder="设备名称/编号" @bind="_logDeviceKeyword" />
+            </label>
+            <label>
+                <span>工位</span>
+                <input class="text-input" placeholder="工位号" type="number" @bind="_logStationText" />
+            </label>
+            <label>
+                <span>类型</span>
+                <select class="text-input" @bind="_logRequestType">
+                    <option value="">全部类型</option>
+                    <option value="@AppConstants.CenterInteractionTypes.Heartbeat">心跳</option>
+                    <option value="@AppConstants.CenterInteractionTypes.ProductReport">产品数据</option>
+                    <option value="@AppConstants.CenterInteractionTypes.Telemetry">设备状态</option>
+                </select>
+            </label>
+            <label>
+                <span>关键字</span>
+                <input class="text-input" placeholder="消息关键字" @bind="_logKeyword" />
+            </label>
+            <div class="log-filter-actions">
+                <button type="button" class="ghost-button" @onclick="ResetFilter">重置</button>
+                <button type="button" class="primary-button" @onclick="ApplyFilter">查询</button>
+            </div>
         </div>
     }
-    else
-    {
-        <div class="log-table-wrap">
-            <table class="log-table">
-                <thead>
-                    <tr>
-                        <th>时间</th>
-                        <th>类型</th>
-                        <th>设备</th>
-                        <th>工位</th>
-                        <th>结果</th>
-                        <th>消息</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var log in _logs)
-                    {
-                        var message = FirstNonEmpty(log.Error, log.Message, "--");
-                        <tr class="@(log.Success ? "log-success" : "log-failed")">
-                            <td class="log-time">@log.ReceivedAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
-                            <td><span class="@ResolveLogTypeClass(log.RequestType)">@ResolveLogTypeName(log.RequestType)</span></td>
-                            <td>@FirstNonEmpty(log.DeviceName, log.DeviceId, "--")</td>
-                            <td class="log-station">@(log.StationNo <= 0 ? "--" : log.StationNo)</td>
-                            <td>
-                                <span class="result-chip @(log.Success ? "ok" : "fail")">
-                                    <i class="dot" aria-hidden="true"></i>@(log.Success ? "成功" : "失败")
-                                </span>
-                            </td>
-                            <td class="log-message" title="@message">@message</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-    }
-</section>
+
+    @* 指针在列表内时跳过定时刷新：刷新用户正在阅读的列表是很糟的体验。
+       悬停是无需 JS interop 的可靠代理信号。 *@
+    <div class="log-rail-body" @onmouseenter="() => _pointerInside = true" @onmouseleave="() => _pointerInside = false">
+        @if (_logs.Count == 0)
+        {
+            <div class="log-empty">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg>
+                <span>暂无匹配的日志记录</span>
+            </div>
+        }
+        else
+        {
+            @* 侧栏宽度放不下 6 列表格，改为堆叠行：时间+类型 / 设备+工位 / 消息 *@
+            @foreach (var log in _logs)
+            {
+                var message = FirstNonEmpty(log.Error, log.Message, "--");
+                <div class="log-item @(log.Success ? "log-success" : "log-failed")">
+                    <div class="log-item-top">
+                        <span class="log-time">@log.ReceivedAt.ToString("HH:mm:ss")</span>
+                        <span class="@ResolveLogTypeClass(log.RequestType)">@ResolveLogTypeName(log.RequestType)</span>
+                        @if (!log.Success)
+                        {
+                            <span class="result-chip fail"><i class="dot" aria-hidden="true"></i>失败</span>
+                        }
+                    </div>
+                    <div class="log-item-mid">
+                        <span class="log-device">@FirstNonEmpty(log.DeviceName, log.DeviceId, "--")</span>
+                        @if (log.StationNo > 0)
+                        {
+                            <span class="log-station">工位 @log.StationNo</span>
+                        }
+                    </div>
+                    <div class="log-item-msg" title="@message">@message</div>
+                </div>
+            }
+        }
+    </div>
+</aside>
 
 @code {
     /// <summary>日志刷新间隔。与设备推送节奏解耦，避免频繁扫描 JSONL 目录。</summary>
@@ -94,6 +109,18 @@
     private string _logStationText = string.Empty;
     private string _logRequestType = string.Empty;
     private string _logKeyword = string.Empty;
+    private bool _filterOpen;
+    private bool _pointerInside;
+
+    /// <summary>窄屏覆盖抽屉模式下的开合，由 Dashboard 控制。</summary>
+    [Parameter]
+    public bool Open { get; set; }
+
+    private bool HasActiveFilter
+        => !string.IsNullOrWhiteSpace(_logDeviceKeyword)
+        || !string.IsNullOrWhiteSpace(_logStationText)
+        || !string.IsNullOrWhiteSpace(_logRequestType)
+        || !string.IsNullOrWhiteSpace(_logKeyword);
 
     protected override void OnInitialized() => LoadLogs();
 
@@ -116,6 +143,23 @@
         StateHasChanged();
     }
 
+    private void ToggleFilter() => _filterOpen = !_filterOpen;
+
+    private void ApplyFilter()
+    {
+        _filterOpen = false;
+        LoadLogs();
+    }
+
+    private void ResetFilter()
+    {
+        _logDeviceKeyword = string.Empty;
+        _logStationText = string.Empty;
+        _logRequestType = string.Empty;
+        _logKeyword = string.Empty;
+        LoadLogs();
+    }
+
     private async Task RefreshLoopAsync(CancellationToken cancellationToken)
     {
         using var timer = new PeriodicTimer(RefreshInterval);
@@ -124,6 +168,12 @@
         {
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
+                // 筛选层打开或指针停在列表内时跳过，避免打断正在进行的阅读/输入。
+                if (_filterOpen || _pointerInside)
+                {
+                    continue;
+                }
+
                 LoadLogs();
                 await InvokeAsync(StateHasChanged);
             }

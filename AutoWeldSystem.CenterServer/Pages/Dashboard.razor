@@ -1,4 +1,3 @@
-@page "/Dashboard"
 @using AutoWeldSystem.CenterServer.Models
 @using AutoWeldSystem.CenterServer.Services
 @using AutoWeldSystem.Core.Constants
@@ -8,39 +7,45 @@
 @inject AutoWeldSystem.CenterServer.Services.CenterDeviceRemovalService DeviceRemovalService
 @implements IAsyncDisposable
 
-<main class="dashboard-shell">
+@* 视口锁定 grid：顶栏 60px、主区与侧栏双列、侧栏常驻（≤1200px 改为覆盖抽屉）。
+   删除死 @page 指令：_Host.cshtml 的 MapFallbackToPage 是唯一路由。 *@
+<div class="dashboard-shell">
     <HeaderBar Snapshot="_snapshot"
                LastRealtimeRefreshAt="_lastRealtimeRefreshAt"
-               LastPollingRefreshAt="_lastPollingRefreshAt" />
+               LastPollingRefreshAt="_lastPollingRefreshAt"
+               OnSettingsRequested="() => _settingsOpen = true"
+               OnRailToggleRequested="() => _railOpen = !_railOpen" />
 
-    <SettingsDrawer OnSaved="HandleSettingsSaved" />
+    <main class="dashboard-main">
+        @if (_snapshot.Devices.Count == 0)
+        {
+            <section class="empty-hero">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg>
+                <strong>暂无设备接入</strong>
+                <p>设备上报心跳或遥测数据后，将自动出现在此看板。</p>
+            </section>
+        }
 
-    @if (_snapshot.Devices.Count == 0)
-    {
-        <section class="empty-hero">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg>
-            <strong>暂无设备接入</strong>
-            <p>设备上报心跳或遥测数据后，将自动出现在此看板。</p>
-        </section>
-    }
+        @foreach (var group in _snapshot.Devices.GroupBy(it => string.IsNullOrWhiteSpace(it.SystemType) ? CenterServerConstants.SystemTypes.Other : it.SystemType))
+        {
+            <section class="device-group" @key="group.Key">
+                <div class="group-header">
+                    <h2>@ResolveSystemTypeName(group.Key)</h2>
+                    <span class="group-count">@group.Count() 台设备</span>
+                </div>
+                <div class="device-grid">
+                    @foreach (var device in group)
+                    {
+                        <DeviceCard @key="device.DeviceId" Device="device" OnDeleteRequested="OpenDeleteDialog" />
+                    }
+                </div>
+            </section>
+        }
+    </main>
 
-    @foreach (var group in _snapshot.Devices.GroupBy(it => string.IsNullOrWhiteSpace(it.SystemType) ? CenterServerConstants.SystemTypes.Other : it.SystemType))
-    {
-        <section class="device-group" @key="group.Key">
-            <div class="group-header">
-                <h2>@ResolveSystemTypeName(group.Key)</h2>
-                <span class="group-count">@group.Count() 台设备</span>
-            </div>
-            <div class="device-grid">
-                @foreach (var device in group)
-                {
-                    <DeviceCard @key="device.DeviceId" Device="device" OnDeleteRequested="OpenDeleteDialog" />
-                }
-            </div>
-        </section>
-    }
+    <LogRail @ref="_logRail" Open="_railOpen" />
 
-    <LogRail @ref="_logRail" />
+    <SettingsDrawer Open="_settingsOpen" OnClose="() => _settingsOpen = false" OnSaved="HandleSettingsSaved" />
 
     @if (_pendingDeleteDevice is not null)
     {
@@ -60,7 +65,7 @@
             </div>
         </div>
     }
-</main>
+</div>
 
 @code {
     /// <summary>合并渲染的检查周期，最坏情况每秒渲染一次。</summary>
@@ -78,6 +83,8 @@
     private bool _deleting;
     private string? _deleteError;
     private bool _disposed;
+    private bool _settingsOpen;
+    private bool _railOpen;
 
     /// <summary>设备推送置脏，由合并计时器统一渲染。多线程写入，故用 volatile。</summary>
     private volatile bool _dirty;
