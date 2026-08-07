@@ -197,7 +197,7 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
             SystemType = CenterTelemetryRules.NormalizeSystemType(settings.CenterServerSystemType),
             HeartbeatAt = DateTime.Now,
             Stations = ResolveStationNumbers(settings)
-                .Select(BuildStationSnapshot)
+                .Select(stationNo => BuildStationSnapshot(stationNo, settings))
                 .ToList()
         };
     }
@@ -219,12 +219,12 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
     /// <summary>
     /// Builds one station snapshot from the latest PLC monitor value and device-status JSONL fallback.
     /// </summary>
-    private CenterTelemetryStationSnapshot BuildStationSnapshot(int stationNo)
+    private CenterTelemetryStationSnapshot BuildStationSnapshot(int stationNo, AppSettings settings)
     {
         var connection = _plcCommunicationService.Current;
         var production = _productionMonitorService.GetCurrent(stationNo);
         var stationStatus = _deviceStatusService.GetLatestStatus(stationNo);
-        var summary = GetTodayProductionSummary(stationNo);
+        var summary = GetTodayProductionSummary(stationNo, settings);
         var plcStatusCode = ResolvePlcStatusCode(production);
         var latestStatus = plcStatusCode is null
             ? CenterTelemetryRules.ResolveLatestDeviceStatus(
@@ -245,7 +245,7 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
                 plcStatusCode is null
                     ? FirstNonEmpty(latestStatus?.StatusName, DeviceStatusReportRules.GetStatusName(statusCode))
                     : null),
-            AlarmMessage = FirstNonEmpty(production.AlarmMessage, stationStatus?.Remark),
+            AlarmMessage = CenterTelemetryRules.ResolveAlarmMessage(production.AlarmMessage, stationStatus),
             CurrentWorkOrder = summary.CurrentWorkOrder,
             ProductJobNo = summary.ProductJobNo,
             ProductModel = summary.ProductModel,
@@ -256,8 +256,19 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
         };
     }
 
-    private TodayProductionSummary GetTodayProductionSummary(int stationNo)
+    /// <summary>
+    /// 产量按本工位统计，工单标识按共享任务范围查询。
+    /// 双工位同工单只落库一条任务(标记为发起工位)，工位2必须放宽范围才能查到同一条，
+    /// 否则上报空工单号会让看板把在产工位显示成未开工；
+    /// 而产量必须保持逐工位，设备级 DTO 会对各工位求和，放宽会导致总数翻倍。
+    /// </summary>
+    private TodayProductionSummary GetTodayProductionSummary(int stationNo, AppSettings settings)
     {
+        var taskScopeStations = RecipeStationScopeRules.ResolveSharedTaskStations(
+            settings.EnableDualStation,
+            settings.EnableDualWorkOrder,
+            stationNo);
+
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -265,7 +276,13 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
             var tasks = _dbContext.Db.Queryable<BizWeldTask>()
                 .Where(it => it.StartTime >= today && it.StationNo == stationNo)
                 .ToList();
-            var active = tasks
+
+            var activeTasks = taskScopeStations.Length == 1
+                ? tasks
+                : _dbContext.Db.Queryable<BizWeldTask>()
+                    .Where(it => it.StartTime >= today && taskScopeStations.Contains(it.StationNo))
+                    .ToList();
+            var active = activeTasks
                 .Where(it => it.EndTime == null)
                 .OrderByDescending(it => it.StartTime)
                 .FirstOrDefault();

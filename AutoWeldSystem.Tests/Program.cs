@@ -106,6 +106,7 @@ var tests = new (string Name, Action Run)[]
     ("Running task with changed PLC recipe requests reconciliation", RunningTaskWithChangedPlcRecipeRequestsReconciliation),
     ("Finished PLC work-order status skips recipe reconciliation", FinishedWorkOrderStatusSkipsRecipeReconciliation),
     ("Recipe station scope shares only same-work-order dual station recipes", RecipeStationScopeSharesOnlySameWorkOrderDualStationRecipes),
+    ("Shared task station scope widens only for same-work-order dual station", SharedTaskStationScopeWidensOnlyForSameWorkOrderDualStation),
     ("Idle station recipe readback does not reconcile", IdleStationRecipeReadbackDoesNotReconcile),
     ("PLC test result codes map to explicit result names", PlcTestResultCodesMapToExplicitResultNames),
     ("PLC string numeric formatter follows global disabled setting", PlcStringNumericFormatterFollowsGlobalDisabledSetting),
@@ -132,6 +133,8 @@ var tests = new (string Name, Action Run)[]
     ("Center telemetry sync gates snapshots behind heartbeat", CenterTelemetrySyncGatesSnapshotsBehindHeartbeat),
     ("Center interaction types stay shared across client and server", CenterInteractionTypesStaySharedAcrossClientAndServer),
     ("Center telemetry jsonl fallback preserves MES status names", CenterTelemetryJsonlFallbackPreservesMesStatusNames),
+    ("Center alarm message clears once the exception recovers", CenterAlarmMessageClearsOnceTheExceptionRecovers),
+    ("Center alarm text strips duplicated station markers", CenterAlarmTextStripsDuplicatedStationMarkers),
     ("Center telemetry snapshot carries station runtime data", CenterTelemetrySnapshotCarriesStationRuntimeData),
     ("Center dashboard device totals are calculated from station data", CenterDashboardDeviceTotalsAreCalculatedFromStationData),
     ("Center product report request carries one completed product", CenterProductReportRequestCarriesOneCompletedProduct),
@@ -1600,8 +1603,8 @@ static void PlcSoftwareAlarmsStayLocalToMonitorView()
         "private CenterTelemetryStationSnapshot BuildStationSnapshot",
         "private TodayProductionSummary GetTodayProductionSummary");
     AssertTrue(
-        buildStationSnapshot.Contains("AlarmMessage = FirstNonEmpty(production.AlarmMessage, stationStatus?.Remark)", StringComparison.Ordinal),
-        "中心遥测应继续使用原始 PLC 报警内容。");
+        buildStationSnapshot.Contains("CenterTelemetryRules.ResolveAlarmMessage(production.AlarmMessage, stationStatus)", StringComparison.Ordinal),
+        "中心遥测应继续以原始 PLC 报警内容为准，并经报警规则过滤非报警备注。");
     AssertFalse(
         buildStationSnapshot.Contains("SoftwareAlarmMessage", StringComparison.Ordinal),
         "Bool-only 软件报警内容不得发送到中心服务器。");
@@ -2773,6 +2776,30 @@ static void RecipeStationScopeSharesOnlySameWorkOrderDualStationRecipes()
         "双工位模式需要读取两个工位的 PLC 配方快照。");
 }
 
+static void SharedTaskStationScopeWidensOnlyForSameWorkOrderDualStation()
+{
+    AssertSequenceEqual(
+        [1, 2],
+        RecipeStationScopeRules.ResolveSharedTaskStations(enableDualStation: true, enableDualWorkOrder: false, stationNo: 2),
+        "双工位同工单只落库一条任务，工位 2 必须放宽到两个工位才能查到共享任务。");
+    AssertSequenceEqual(
+        [1, 2],
+        RecipeStationScopeRules.ResolveSharedTaskStations(enableDualStation: true, enableDualWorkOrder: false, stationNo: 1),
+        "双工位同工单时，工位 1 的任务范围同样覆盖两个工位。");
+    AssertSequenceEqual(
+        [2],
+        RecipeStationScopeRules.ResolveSharedTaskStations(enableDualStation: true, enableDualWorkOrder: true, stationNo: 2),
+        "双工单时各工位任务独立，工位 2 不得查到工位 1 的任务。");
+    AssertSequenceEqual(
+        [1],
+        RecipeStationScopeRules.ResolveSharedTaskStations(enableDualStation: false, enableDualWorkOrder: false, stationNo: 1),
+        "单工位模式只看默认工位。");
+    AssertSequenceEqual(
+        [1],
+        RecipeStationScopeRules.ResolveSharedTaskStations(enableDualStation: false, enableDualWorkOrder: false, stationNo: 0),
+        "共享工位号应归一化为默认工位。");
+}
+
 static void IdleStationRecipeReadbackDoesNotReconcile()
 {
     var decision = RecipeCodeReconcileRules.Decide(
@@ -3409,12 +3436,105 @@ static void CenterTelemetryJsonlFallbackPreservesMesStatusNames()
             && buildStationSnapshot.Contains("CenterTelemetryRules.ResolveLatestDeviceStatus", StringComparison.Ordinal),
         "PLC 无有效值时工位遥测必须在工位与共享 JSONL 中选择最新状态。");
     AssertTrue(
-        buildStationSnapshot.Contains("AlarmMessage = FirstNonEmpty(production.AlarmMessage, stationStatus?.Remark)", StringComparison.Ordinal),
-        "共享生命周期状态不能覆盖工位报警备注。");
+        buildStationSnapshot.Contains("CenterTelemetryRules.ResolveAlarmMessage(production.AlarmMessage, stationStatus)", StringComparison.Ordinal),
+        "共享生命周期状态不能覆盖工位报警备注，报警内容必须取自工位自身状态。");
 }
 
-static void CenterForwardingBusinessIdsHashFullIdentity()
+static void CenterAlarmMessageClearsOnceTheExceptionRecovers()
 {
+    // 只有 MES 状态 4（异常）的备注才是报警内容。
+    var exception = new BizDeviceStatusLog
+    {
+        StationNo = ProductionConstants.Stations.DefaultStationNo,
+        DeviceStatus = ProductionConstants.MesDeviceStatuses.Exception,
+        Remark = "伺服过载；工位：工位1",
+        OccurredTime = new DateTime(2026, 8, 7, 10, 0, 0)
+    };
+    AssertEqual(
+        "伺服过载",
+        CenterTelemetryRules.ResolveAlarmMessage(null, exception),
+        "状态 4 的备注是报警内容，且必须剥离「；工位：工位N」后缀。");
+
+    // 程序执行结束 / 异常恢复 / 开机 都不是报警，其备注不得上送为报警。
+    foreach (var (statusCode, remark, label) in new[]
+    {
+        (ProductionConstants.MesDeviceStatuses.ProgramEnded, "程序执行结束；工位：工位1", "程序执行结束"),
+        (ProductionConstants.MesDeviceStatuses.Recovered, "异常恢复-工位1：伺服过载；", "异常恢复"),
+        (ProductionConstants.MesDeviceStatuses.PoweredOn, "开机；工位：工位1", "开机"),
+        (ProductionConstants.MesDeviceStatuses.Stopped, "停机；工位：工位1", "停机"),
+        (ProductionConstants.MesDeviceStatuses.ProgramStarted, "程序执行开始；工位：工位1", "程序执行开始")
+    })
+    {
+        var log = new BizDeviceStatusLog
+        {
+            StationNo = ProductionConstants.Stations.DefaultStationNo,
+            DeviceStatus = statusCode,
+            Remark = remark,
+            OccurredTime = new DateTime(2026, 8, 7, 10, 1, 0)
+        };
+        AssertEqual(
+            string.Empty,
+            CenterTelemetryRules.ResolveAlarmMessage(null, log),
+            $"「{label}」不是报警，其备注不得作为报警内容上送。");
+    }
+
+    // PLC 实时报警优先于 JSONL 备注。
+    AssertEqual(
+        "急停被按下",
+        CenterTelemetryRules.ResolveAlarmMessage("急停被按下", exception),
+        "PLC 实时报警内容必须优先于 JSONL 备注。");
+
+    // PLC 恢复（报警为空）后即便历史异常记录仍在，也不能再显示报警。
+    var recovered = new BizDeviceStatusLog
+    {
+        StationNo = ProductionConstants.Stations.DefaultStationNo,
+        DeviceStatus = ProductionConstants.MesDeviceStatuses.Recovered,
+        Remark = "异常恢复-工位1：伺服过载；",
+        OccurredTime = new DateTime(2026, 8, 7, 10, 2, 0)
+    };
+    AssertEqual(
+        string.Empty,
+        CenterTelemetryRules.ResolveAlarmMessage(string.Empty, recovered),
+        "异常恢复后报警内容必须清空，否则看板会一直挂着陈旧报警。");
+}
+
+static void CenterAlarmTextStripsDuplicatedStationMarkers()
+{
+    // 双工位按「左/右工位：」标注；单工位只显示报警内容本身。
+    AssertEqual(
+        "左工位：伺服过载",
+        CenterTelemetryRules.FormatStationAlarmText(true, "伺服过载", 1, isDualStation: true),
+        "双工位设备的报警必须标注「左工位：」。");
+
+    AssertEqual(
+        "右工位：气压不足",
+        CenterTelemetryRules.FormatStationAlarmText(true, "气压不足", 2, isDualStation: true),
+        "双工位设备的 2 号工位必须标注「右工位：」。");
+
+    AssertEqual(
+        "伺服过载",
+        CenterTelemetryRules.FormatStationAlarmText(true, "伺服过载", 1, isDualStation: false),
+        "单工位设备只显示报警内容，不标注工位。");
+
+    // 设备端备注里已带的工位标识必须去重，不能出现「工位1：xxx；工位：工位1」。
+    AssertEqual(
+        "左工位：伺服过载",
+        CenterTelemetryRules.FormatStationAlarmText(true, "工位1：伺服过载；工位：工位1", 1, isDualStation: true),
+        "报警文本中的工位前后缀必须剥离，避免工位标识重复三次。");
+
+    // 未报警时不得显示任何报警文本，即便报警内容残留历史值。
+    AssertTrue(
+        CenterTelemetryRules.FormatStationAlarmText(false, "伺服过载", 1, isDualStation: true) is null,
+        "非报警状态必须返回 null，异常恢复后横幅要消失。");
+
+    // 报警但设备端未给出内容时仍需可见提示。
+    AssertEqual(
+        "左工位：报警（无详细信息）",
+        CenterTelemetryRules.FormatStationAlarmText(true, string.Empty, 1, isDualStation: true),
+        "报警状态缺少详情时必须给出回退文案。");
+}
+
+static void CenterForwardingBusinessIdsHashFullIdentity(){
     var buildBusinessId = typeof(CenterProductForwardingService).GetMethod(
         "BuildBusinessId",
         System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);

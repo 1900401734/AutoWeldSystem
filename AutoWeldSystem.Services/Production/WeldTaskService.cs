@@ -1495,12 +1495,15 @@ public class WeldTaskService : IWeldTaskService
 
     /// <summary>
     /// 单工位和双工位双工单只看当前工位；双工位同工单需要把工位1/2视为同一个任务范围。
+    /// 判定规则与遥测上报共用，实现下沉在 <see cref="RecipeStationScopeRules.ResolveSharedTaskStations"/>。
     /// </summary>
     private int[] ResolveTaskScopeStationNumbers(int stationNo)
     {
-        return IsDualStationSameWorkOrder()
-            ? GetDualStationNumbers()
-            : [NormalizeStationNo(stationNo)];
+        var settings = CurrentSettings;
+        return RecipeStationScopeRules.ResolveSharedTaskStations(
+            settings.EnableDualStation,
+            settings.EnableDualWorkOrder,
+            stationNo);
     }
 
     private bool IsDualStationSameWorkOrder()

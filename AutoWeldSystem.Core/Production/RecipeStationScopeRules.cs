@@ -23,6 +23,22 @@ public static class RecipeStationScopeRules
     }
 
     /// <summary>
+    /// Gets the station list that shares one weld task instance.
+    /// Dual-station same-work-order mode creates a single task stamped with the starting
+    /// station, so any per-station task lookup must widen to both stations.
+    /// </summary>
+    /// <param name="enableDualStation">Whether dual-station mode is enabled.</param>
+    /// <param name="enableDualWorkOrder">Whether each station runs an independent work order.</param>
+    /// <param name="stationNo">Source station number.</param>
+    /// <returns>Stations that share the same weld task lookup scope.</returns>
+    public static int[] ResolveSharedTaskStations(bool enableDualStation, bool enableDualWorkOrder, int stationNo)
+    {
+        return enableDualStation && !enableDualWorkOrder
+            ? [1, 2]
+            : [NormalizeStationNo(stationNo)];
+    }
+
+    /// <summary>
     /// Gets the station list that should be monitored for PLC recipe snapshots.
     /// </summary>
     /// <param name="enableDualStation">Whether dual-station mode is enabled.</param>
