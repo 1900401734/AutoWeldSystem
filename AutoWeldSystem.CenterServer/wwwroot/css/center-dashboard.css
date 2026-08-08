@@ -153,7 +153,7 @@ body {
       日志内容会把设备区顶宽。 */
    height: 100vh;
    display: grid;
-   grid-template-rows: 60px minmax(0, 1fr);
+   grid-template-rows: 64px minmax(0, 1fr);
    grid-template-columns: minmax(0, 1fr) var(--rail-w);
    grid-template-areas:
       "head head"
@@ -161,6 +161,19 @@ body {
    gap: 12px;
    padding: 12px 16px 16px;
    box-sizing: border-box;
+}
+
+/* 日志折叠：整列让位给设备区。只改栅格模板，不动侧栏内部结构，
+   因此展开后日志状态（筛选、滚动位置）保持不变。 */
+.dashboard-shell.rail-collapsed {
+   grid-template-columns: minmax(0, 1fr);
+   grid-template-areas:
+      "head"
+      "main";
+}
+
+.dashboard-shell.rail-collapsed .log-rail {
+   display: none;
 }
 
 .dashboard-main {
@@ -180,9 +193,9 @@ body {
    display: grid;
    grid-template-columns: auto auto 1fr auto auto;
    align-items: center;
-   gap: 18px;
+   gap: 20px;
    overflow: hidden;
-   padding: 0 16px;
+   padding: 0 18px;
    border-radius: var(--radius);
    background:
       radial-gradient(720px 220px at 82% -60px, rgba(42, 120, 214, 0.34), transparent 72%),
@@ -211,8 +224,8 @@ body {
    flex: 0 0 auto;
    display: grid;
    place-items: center;
-   width: 32px;
-   height: 32px;
+   width: 34px;
+   height: 34px;
    border-radius: 9px;
    background: linear-gradient(150deg, rgba(42, 120, 214, 0.85), rgba(28, 92, 171, 0.9));
    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 8px 18px -8px rgba(0, 0, 0, 0.55);
@@ -220,8 +233,8 @@ body {
 }
 
 .hero-mark svg {
-   width: 19px;
-   height: 19px;
+   width: 20px;
+   height: 20px;
 }
 
 .hero-brand h1 {
@@ -242,45 +255,89 @@ body {
    display: flex;
    align-items: center;
    gap: 8px;
-   padding-left: 18px;
+   padding-left: 16px;
    border-left: 1px solid rgba(255, 255, 255, 0.16);
 }
 
+/* KPI 与标题、时钟同属一套字号体系（数字 17px），不做视觉主角：
+   顶栏三个区块重量相当，任一被放大都会压掉另外两个。 */
 .kpi {
    display: inline-flex;
-   align-items: baseline;
-   gap: 7px;
+   align-items: center;
+   gap: 8px;
    padding: 4px 11px;
    border-radius: 8px;
    background: rgba(255, 255, 255, 0.08);
 }
 
-.kpi-label {
-   font-size: 12px;
-   color: rgba(255, 255, 255, 0.72);
-}
-
-.kpi-value {
-   font-size: 17px;
-   font-weight: 700;
-   font-variant-numeric: tabular-nums;
-   line-height: 1;
+/* 每个 KPI 有自己的状态色，从图标到数字统一色调 */
+.kpi-total {
+   color: #bcd5f1;
 }
 
 .kpi-online {
    color: #7ee2b0;
 }
 
-/* 报警数 >0 时套底色并脉冲，是顶栏唯一会动的元素 */
+.kpi-alarm {
+   color: #ff8a8e;
+}
+
+/* 图标不套底片：胶囊本身已有半透明底，再加一层会让 KPI 的视觉密度
+   远高于同栏的纯文字时钟与线性图标按钮。图标继承 KPI 状态色。 */
+.kpi-icon {
+   flex: 0 0 auto;
+   display: grid;
+   place-items: center;
+   opacity: 0.9;
+}
+
+.kpi-icon svg {
+   width: 15px;
+   height: 15px;
+}
+
+.kpi-body {
+   display: flex;
+   align-items: baseline;
+   gap: 6px;
+}
+
+/* 数字与标签左右并排，整块高度控制在 25px 内，与时钟、图标按钮齐平。 */
+.kpi-value {
+   font-size: 17px;
+   font-weight: 700;
+   font-variant-numeric: tabular-nums;
+   line-height: 1;
+   color: #ffffff;
+}
+
+/* 标签用半透明白而非状态色：状态色只落在图标与数字上，
+   否则整个胶囊彩度过高，三个 KPI 并排会显得花。 */
+.kpi-label {
+   font-size: 12px;
+   line-height: 1;
+   color: rgba(255, 255, 255, 0.72);
+}
+
+/* 报警数 >0 时底色变红并脉冲，是顶栏唯一会动的元素 */
 .kpi-alarm-active {
    background: var(--crit);
+   color: #ffffff;
    animation: alarm-pulse 1.9s ease-in-out infinite;
 }
 
+.kpi-alarm-active .kpi-icon {
+   color: #ffffff;
+   opacity: 1;
+}
+
+/* 红底上标签不能留半透明白，否则读起来偏灰 */
 .kpi-alarm-active .kpi-label {
    color: rgba(255, 255, 255, 0.9);
 }
 
+.kpi-alarm-active .kpi-label,
 .kpi-alarm-active .kpi-value {
    color: #ffffff;
 }
@@ -290,7 +347,6 @@ body {
 .hero-clock {
    display: flex;
    align-items: center;
-   gap: 12px;
    white-space: nowrap;
 }
 
@@ -299,24 +355,6 @@ body {
    font-weight: 700;
    font-variant-numeric: tabular-nums;
    letter-spacing: 0.5px;
-}
-
-.hero-clock-meta {
-   display: inline-flex;
-   align-items: center;
-   gap: 5px;
-   font-size: 11.5px;
-   color: rgba(255, 255, 255, 0.66);
-   font-variant-numeric: tabular-nums;
-}
-
-.live-dot {
-   width: 6px;
-   height: 6px;
-   border-radius: 50%;
-   background: var(--good);
-   box-shadow: 0 0 0 0 rgba(53, 208, 127, 0.45);
-   animation: live-pulse 2.4s ease-out infinite;
 }
 
 .hero-actions {
@@ -328,8 +366,8 @@ body {
 .hero-icon-button {
    display: grid;
    place-items: center;
-   width: 32px;
-   height: 32px;
+   width: 34px;
+   height: 34px;
    padding: 0;
    border: 1px solid rgba(255, 255, 255, 0.2);
    border-radius: 8px;
@@ -349,14 +387,22 @@ body {
    outline-offset: 2px;
 }
 
+/* 按下态（日志面板已展开）：给出明确的开关反馈，
+   否则用户无法从按钮本身判断当前是展开还是折叠。 */
+.hero-icon-button.is-active {
+   background: var(--accent);
+   border-color: var(--accent);
+   color: #ffffff;
+}
+
+.hero-icon-button.is-active:hover {
+   background: var(--accent-deep);
+   border-color: var(--accent-deep);
+}
+
 .hero-icon-button svg {
    width: 17px;
    height: 17px;
-}
-
-/* 宽屏侧栏常驻，切换按钮无意义 */
-.rail-toggle {
-   display: none;
 }
 
 /* 图标随主题互斥显示，纯 CSS，无需 C# 侧持有主题状态 */
@@ -583,12 +629,12 @@ body {
 }
 
 .group-count {
-   padding: 1px 8px;
+   padding: 2px 9px;
    border-radius: 999px;
    background: var(--surface);
    border: 1px solid var(--hairline);
    color: var(--ink-3);
-   font-size: 11.5px;
+   font-size: 12.5px;
 }
 
 /* 分组标题右侧的细线，视觉上把分组区隔开而不占垂直空间 */
@@ -601,7 +647,7 @@ body {
 
 .device-grid {
    display: grid;
-   grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+   grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
    gap: 16px;
    align-items: start;
 }
@@ -610,7 +656,7 @@ body {
 
 .device-card {
    position: relative;
-   padding: 14px 15px 11px;
+   padding: 18px 18px 15px;
    border-left: 4px solid var(--neutral);
    /* 日志侧栏重排不应波及设备网格 */
    contain: layout paint;
@@ -622,28 +668,42 @@ body {
    gap: 12px;
    align-items: flex-start;
    justify-content: space-between;
-   margin-bottom: 11px;
+   margin-bottom: 14px;
+}
+
+/* 机台名与设备编号同行：基线对齐让两种字号看齐下缘，
+   min-width:0 让长机台名自己收缩而不是把编号挤出容器。 */
+.device-ident {
+   display: flex;
+   align-items: baseline;
+   gap: 10px;
+   min-width: 0;
 }
 
 .device-card h3 {
-   margin: 0 0 3px;
-   font-size: 15px;
+   margin: 0;
+   font-size: 17px;
    font-weight: 650;
+   white-space: nowrap;
+   overflow: hidden;
+   text-overflow: ellipsis;
 }
 
-.device-card-header p {
-   margin: 0;
+/* 编号是次要标识：等宽 + 弱化色，不与机台名争夺注意力 */
+.device-code {
+   flex: 0 0 auto;
    color: var(--ink-3);
-   font-size: 11.5px;
+   font-size: 12.5px;
    font-variant-numeric: tabular-nums;
+   letter-spacing: 0.2px;
 }
 
 /* 单/双工位徽标：三重冗余线索之一，另两个是工位分栏与宽屏跨列 */
 .badge {
    flex: 0 0 auto;
-   padding: 3px 9px;
+   padding: 4px 10px;
    border-radius: 6px;
-   font-size: 11.5px;
+   font-size: 12.5px;
    font-weight: 600;
    border: 1px solid var(--hairline-strong);
    color: var(--ink-2);
@@ -778,7 +838,7 @@ body {
 /* ---------- 工位面板 ---------- */
 
 .station-panel {
-   padding: 10px 11px;
+   padding: 13px 14px;
    border: 1px solid var(--hairline);
    border-left: 3px solid var(--neutral);
    border-radius: var(--radius-sm);
@@ -791,11 +851,11 @@ body {
    align-items: center;
    justify-content: space-between;
    gap: 10px;
-   padding-bottom: 9px;
+   padding-bottom: 11px;
 }
 
 .station-title strong {
-   font-size: 14px;
+   font-size: 15px;
    font-weight: 650;
 }
 
@@ -803,11 +863,11 @@ body {
    display: inline-flex;
    align-items: center;
    gap: 6px;
-   padding: 2px 10px;
+   padding: 3px 11px;
    border-radius: 999px;
    background: var(--neutral-tint);
    color: var(--neutral-text);
-   font-size: 12px;
+   font-size: 12.5px;
    font-weight: 600;
 }
 
@@ -874,9 +934,9 @@ body {
    align-items: center;
    justify-content: space-between;
    gap: 10px;
-   padding: 5px 0;
+   padding: 7px 0;
    border-top: 1px solid var(--hairline);
-   font-size: 12.5px;
+   font-size: 13.5px;
 }
 
 .status-row span {
@@ -918,30 +978,31 @@ body {
 .count-row {
    display: grid;
    grid-template-columns: repeat(3, 1fr);
-   gap: 6px;
-   margin-top: 9px;
+   gap: 8px;
+   margin-top: 12px;
 }
 
 .count-row div {
-   padding: 6px 8px;
+   padding: 9px 8px;
    background: var(--surface);
    border: 1px solid var(--hairline);
    border-radius: 8px;
    text-align: center;
 }
 
+/* 12.5px 是工控看板标签下限：11px 在 TN 屏上远距离已不可读 */
 .count-row span {
    display: block;
    color: var(--ink-2);
-   font-size: 11px;
+   font-size: 12.5px;
 }
 
 .count-row strong {
    display: block;
-   margin-bottom: 1px;
-   font-size: 16px;
+   margin-bottom: 3px;
+   font-size: 21px;
    font-weight: 650;
-   line-height: 1.2;
+   line-height: 1.15;
    font-variant-numeric: tabular-nums;
 }
 
@@ -996,22 +1057,22 @@ body {
    display: flex;
    align-items: flex-start;
    gap: 8px;
-   margin: 0 0 10px;
-   padding: 8px 10px;
+   margin: 0 0 12px;
+   padding: 11px 13px;
    background: var(--crit-tint);
    border: 1px solid var(--alarm-border);
    border-left: 3px solid var(--crit);
    border-radius: 8px;
    color: var(--crit-text);
-   font-size: 12.5px;
-   line-height: 1.45;
+   font-size: 13.5px;
+   line-height: 1.5;
    font-weight: 600;
 }
 
 .alarm-banner svg {
    flex: 0 0 auto;
-   width: 15px;
-   height: 15px;
+   width: 16px;
+   height: 16px;
    margin-top: 1px;
 }
 
@@ -1036,7 +1097,7 @@ body {
 
 .ghost-label {
    color: var(--ink-2);
-   font-size: 12.5px;
+   font-size: 13.5px;
    font-weight: 600;
 }
 
@@ -1638,20 +1699,6 @@ body {
 
 /* ---------- 动效与响应式 ---------- */
 
-@keyframes live-pulse {
-   0% {
-      box-shadow: 0 0 0 0 rgba(53, 208, 127, 0.45);
-   }
-
-   70% {
-      box-shadow: 0 0 0 6px rgba(53, 208, 127, 0);
-   }
-
-   100% {
-      box-shadow: 0 0 0 0 rgba(53, 208, 127, 0);
-   }
-}
-
 @keyframes alarm-pulse {
    0% {
       box-shadow: 0 0 0 0 rgba(208, 59, 59, 0.4);
@@ -1705,16 +1752,19 @@ body {
    }
 }
 
-/* ≤1200px 侧栏改为覆盖式抽屉，由顶栏按钮开合 */
+/* ≤1200px 侧栏改为覆盖式抽屉，由顶栏同一个按钮开合 */
 @media (max-width: 1200px) {
-   .dashboard-shell {
+   .dashboard-shell,
+   .dashboard-shell.rail-collapsed {
       grid-template-columns: minmax(0, 1fr);
       grid-template-areas:
          "head"
          "main";
    }
 
-   .rail-toggle {
+   /* 覆盖模式靠 translateX 收起，不能用 display:none，
+      否则没有滑出动画且 is-open 无从生效。 */
+   .dashboard-shell.rail-collapsed .log-rail {
       display: grid;
    }
 
@@ -1775,6 +1825,16 @@ body {
 
    .station-strip {
       grid-template-columns: minmax(0, 1fr);
+   }
+
+   /* 窄屏放不下同一行：编号回落到机台名下方，避免横向滚动 */
+   .device-ident {
+      flex-wrap: wrap;
+      gap: 2px 10px;
+   }
+
+   .device-card h3 {
+      white-space: normal;
    }
 
    .settings-drawer {

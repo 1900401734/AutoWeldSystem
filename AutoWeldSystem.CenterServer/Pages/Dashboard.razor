@@ -9,10 +9,9 @@
 
 @* 视口锁定 grid：顶栏 60px、主区与侧栏双列、侧栏常驻（≤1200px 改为覆盖抽屉）。
    删除死 @page 指令：_Host.cshtml 的 MapFallbackToPage 是唯一路由。 *@
-<div class="dashboard-shell">
+<div class="dashboard-shell @(_railOpen ? null : "rail-collapsed")">
     <HeaderBar Snapshot="_snapshot"
-               LastRealtimeRefreshAt="_lastRealtimeRefreshAt"
-               LastPollingRefreshAt="_lastPollingRefreshAt"
+               RailOpen="_railOpen"
                OnSettingsRequested="() => _settingsOpen = true"
                OnRailToggleRequested="() => _railOpen = !_railOpen" />
 
@@ -77,14 +76,14 @@
     private CenterDashboardSnapshotDto _snapshot = new();
     private CancellationTokenSource? _cts;
     private LogRail? _logRail;
-    private DateTime? _lastRealtimeRefreshAt;
-    private DateTime? _lastPollingRefreshAt;
     private CenterDashboardDeviceDto? _pendingDeleteDevice;
     private bool _deleting;
     private string? _deleteError;
     private bool _disposed;
     private bool _settingsOpen;
-    private bool _railOpen;
+
+    /// <summary>日志侧栏默认展开：实时通信监视是本看板的主要用途之一。</summary>
+    private bool _railOpen = true;
 
     /// <summary>设备推送置脏，由合并计时器统一渲染。多线程写入，故用 volatile。</summary>
     private volatile bool _dirty;
@@ -110,12 +109,11 @@
         _ = RefreshLoopAsync(_cts.Token);
     }
 
-    private void ChangeNotifier_DashboardChanged(object? sender, CenterDashboardChangedEventArgs e)
+    private void ChangeNotifier_DashboardChanged(object? sender, CenterDashboardChangedEventArgs _)
     {
         // 只置脏标记，不在此渲染：4 台设备 5 秒心跳会让推送几乎每秒到达，
         // 逐次渲染会把整页重绘压在渲染器同步上下文上。
         _dirty = true;
-        _lastRealtimeRefreshAt = e.ChangedAt;
     }
 
     private async Task RefreshLoopAsync(CancellationToken cancellationToken)
@@ -130,11 +128,6 @@
                 if (!_dirty && !stale)
                 {
                     continue;
-                }
-
-                if (stale)
-                {
-                    _lastPollingRefreshAt = DateTime.Now;
                 }
 
                 _dirty = false;

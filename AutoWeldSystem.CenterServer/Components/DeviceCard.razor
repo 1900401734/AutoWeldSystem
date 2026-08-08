@@ -14,9 +14,11 @@
 <article class="device-card @CenterDashboardStatusPresenter.DeviceCardClass(Device) @(isDual ? "is-dual" : null)"
          style="--st-cols: @cols">
     <div class="device-card-header">
-        <div>
+        @* 机台名与设备编号同行：编号用等宽体弱化，基线对齐，
+           长机台名靠 min-width:0 收缩而不挤走编号。 *@
+        <div class="device-ident">
             <h3>@FirstNonEmpty(Device.DeviceName, Device.DeviceId)</h3>
-            <p>@Device.DeviceId</p>
+            <span class="device-code">@Device.DeviceId</span>
         </div>
         <div class="device-card-side">
             @if (isDual)

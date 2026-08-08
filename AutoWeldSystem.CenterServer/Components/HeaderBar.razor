@@ -11,34 +11,50 @@
         <h1>中心服务器看板</h1>
     </div>
 
-    @* 只有 3 个 KPI，不含任何产量汇总：离线设备的陈旧产量数字累加后会误导。 *@
+    @* 只有 3 个 KPI，不含任何产量汇总：离线设备的陈旧产量数字累加后会误导。
+       数值放大并各自着色，使其在 60px 顶栏内仍是第一眼能读到的信息。 *@
     <div class="hero-kpis">
-        <span class="kpi">
-            <span class="kpi-label">设备</span>
-            <strong class="kpi-value">@Snapshot.Devices.Count</strong>
+        <span class="kpi kpi-total">
+            <span class="kpi-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="2" /><path d="M8 21h8" /><path d="M12 17v4" /></svg>
+            </span>
+            <span class="kpi-body">
+                <strong class="kpi-value">@Snapshot.Devices.Count</strong>
+                <span class="kpi-label">设备</span>
+            </span>
         </span>
-        <span class="kpi">
-            <span class="kpi-label">在线</span>
-            <strong class="kpi-value kpi-online">@OnlineDeviceCount</strong>
+        <span class="kpi kpi-online">
+            <span class="kpi-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0" /><path d="M8.53 16.11a6 6 0 0 1 6.95 0" /><path d="M12 20h.01" /></svg>
+            </span>
+            <span class="kpi-body">
+                <strong class="kpi-value">@OnlineDeviceCount</strong>
+                <span class="kpi-label">在线</span>
+            </span>
         </span>
-        <span class="kpi @(AlarmDeviceCount > 0 ? "kpi-alarm-active" : null)">
-            <span class="kpi-label">报警</span>
-            <strong class="kpi-value">@AlarmDeviceCount</strong>
+        <span class="kpi kpi-alarm @(AlarmDeviceCount > 0 ? "kpi-alarm-active" : null)">
+            <span class="kpi-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>
+            </span>
+            <span class="kpi-body">
+                <strong class="kpi-value">@AlarmDeviceCount</strong>
+                <span class="kpi-label">报警</span>
+            </span>
         </span>
     </div>
 
     <div class="hero-spacer"></div>
 
+    @* 时钟走字由 center-clock.js 每秒接管（不经 circuit，断线期间照走）。
+       服务端渲染的初值必须是"当前时间"而不是快照时间：否则每次快照刷新
+       Blazor 都会把这里重写回一个较旧的值，与秒表来回跳。 *@
     <div class="hero-clock">
-        <span class="hero-clock-time">@Snapshot.GeneratedAt.ToString("HH:mm:ss")</span>
-        <span class="hero-clock-meta">
-            <i class="live-dot" aria-hidden="true"></i>实时 @FormatClock(LastRealtimeRefreshAt)
-        </span>
+        <span class="hero-clock-time">@DateTime.Now.ToString("HH:mm:ss")</span>
     </div>
 
     <div class="hero-actions">
-        @* ≤1200px 时日志栏改为覆盖式抽屉，由本按钮开合；宽屏下常驻，按钮隐藏。 *@
-        <button type="button" class="hero-icon-button rail-toggle" title="显示/隐藏日志" aria-label="显示/隐藏日志" @onclick="ToggleRail">
+        @* 日志面板折叠/展开：宽屏下仍常驻该按钮，≤1200px 已另有覆盖抽屉按钮。 *@
+        <button type="button" class="hero-icon-button @(RailOpen ? "is-active" : null)" title="@(RailOpen ? "折叠日志" : "展开日志")" aria-label="@(RailOpen ? "折叠日志" : "展开日志")" @onclick="ToggleRail">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M16 13H8" /><path d="M16 17H8" /></svg>
         </button>
 
@@ -59,17 +75,15 @@
     [Parameter, EditorRequired]
     public CenterDashboardSnapshotDto Snapshot { get; set; } = new();
 
-    [Parameter]
-    public DateTime? LastRealtimeRefreshAt { get; set; }
-
-    [Parameter]
-    public DateTime? LastPollingRefreshAt { get; set; }
-
     /// <summary>齿轮入口：设置抽屉由 Dashboard 持有开合状态。</summary>
     [Parameter]
     public EventCallback OnSettingsRequested { get; set; }
 
-    /// <summary>窄屏下的日志抽屉开合。</summary>
+    /// <summary>日志侧栏当前是否展开，用于按钮状态与提示文案。</summary>
+    [Parameter]
+    public bool RailOpen { get; set; }
+
+    /// <summary>日志侧栏折叠/展开。</summary>
     [Parameter]
     public EventCallback OnRailToggleRequested { get; set; }
 
@@ -80,7 +94,4 @@
     private Task OpenSettings() => OnSettingsRequested.InvokeAsync();
 
     private Task ToggleRail() => OnRailToggleRequested.InvokeAsync();
-
-    private static string FormatClock(DateTime? value)
-        => value is null ? "--" : value.Value.ToString("HH:mm:ss");
 }
