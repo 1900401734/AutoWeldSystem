@@ -126,7 +126,7 @@ namespace AutoWeldSystem.UI.Views
             lblProdModel = new AntdUI.Label();
             inputProdModel = new AntdUI.Input();
             tlpProductNum = new TableLayoutPanel();
-            inputProdNum = new AntdUI.Input();
+            selectProdNum = new AntdUI.Select();
             lblProductNo = new AntdUI.Label();
             tlpProgramName = new TableLayoutPanel();
             selectProgramName = new AntdUI.Select();
@@ -1471,7 +1471,7 @@ namespace AutoWeldSystem.UI.Views
             tlpProductNum.ColumnStyles.Add(new ColumnStyle());
             tlpProductNum.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             tlpProductNum.ColumnStyles.Add(new ColumnStyle());
-            tlpProductNum.Controls.Add(inputProdNum, 1, 0);
+            tlpProductNum.Controls.Add(selectProdNum, 1, 0);
             tlpProductNum.Controls.Add(lblProductNo, 0, 0);
             tlpProductNum.Dock = DockStyle.Fill;
             tlpProductNum.Location = new Point(0, 108);
@@ -1481,18 +1481,18 @@ namespace AutoWeldSystem.UI.Views
             tlpProductNum.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tlpProductNum.Size = new Size(401, 36);
             tlpProductNum.TabIndex = 10;
-            // 
-            // inputProdNum
-            // 
-            inputProdNum.Dock = DockStyle.Fill;
-            inputProdNum.ImeMode = ImeMode.Inherit;
-            inputProdNum.Location = new Point(70, 0);
-            inputProdNum.Margin = new Padding(0);
-            inputProdNum.Name = "inputProdNum";
-            inputProdNum.ReadOnly = true;
-            inputProdNum.Size = new Size(163, 36);
-            inputProdNum.TabIndex = 4;
-            // 
+            //
+            // selectProdNum
+            //
+            selectProdNum.Dock = DockStyle.Fill;
+            selectProdNum.Location = new Point(70, 0);
+            selectProdNum.Margin = new Padding(0);
+            selectProdNum.MaxCount = 10;
+            selectProdNum.Name = "selectProdNum";
+            selectProdNum.ReadOnly = true;
+            selectProdNum.Size = new Size(163, 36);
+            selectProdNum.TabIndex = 4;
+            //
             // lblProductNo
             // 
             lblProductNo.AutoEllipsis = true;
@@ -1943,7 +1943,7 @@ namespace AutoWeldSystem.UI.Views
         private SlimHorizontalScrollBar HorizontalScrollBar2;
         private Panel panelHistory2;
         private AntdUI.Table tableHistory1;
-        private AntdUI.Input inputProdNum;
+        private AntdUI.Select selectProdNum;
         private AntdUI.TabPage tabsMetrics2;
         private AntdUI.Table tableMetric2;
         private AntdUI.Table tableHistory2;
