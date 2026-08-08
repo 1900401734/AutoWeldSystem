@@ -1,3 +1,4 @@
+using AutoWeldSystem.Core.Center;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs.CenterServer;
 
@@ -107,19 +108,20 @@ internal static class CenterDashboardStatusPresenter
     }
 
     /// <summary>
-    /// 工位报警文案。状态码为报警但设备端未给出消息时给出回退文案，
-    /// 避免报警工位在页面上完全没有可见提示。
+    /// 工位报警文案，格式为「&lt;左/右工位：&gt;具体报警信息」。
+    /// 格式规则属于设备端与看板共用的契约，实现下沉在
+    /// <see cref="CenterTelemetryRules.FormatStationAlarmText"/>，此处只负责判定报警状态。
     /// </summary>
-    public static string? ResolveAlarmText(CenterDashboardStationDto station)
-    {
-        var message = station.State.AlarmMessage?.Trim();
-        if (!string.IsNullOrEmpty(message))
-        {
-            return message;
-        }
+    public static string? ResolveAlarmText(CenterDashboardStationDto station, bool isDualStation)
+        => CenterTelemetryRules.FormatStationAlarmText(
+            IsAlarm(station),
+            station.State.AlarmMessage,
+            station.StationNo,
+            isDualStation);
 
-        return IsAlarm(station) ? "报警（无详细信息）" : null;
-    }
+    /// <summary>双工位设备的工位标签，单工位返回 null。</summary>
+    public static string? ResolveStationLabel(int stationNo, bool isDualStation)
+        => CenterTelemetryRules.ResolveStationAlarmLabel(stationNo, isDualStation);
 
     private static bool HasStationWithCode(CenterDashboardDeviceDto device, string statusCode)
         => device.Stations.Any(station => station.State.PlcDeviceStatusCode?.Trim() == statusCode);

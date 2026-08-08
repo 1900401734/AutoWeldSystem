@@ -3,6 +3,7 @@
 
 @{
     bool online = Device.State.ClientOnline;
+    bool isDual = Device.Stations.Count > 1;
 
     @* 工位列数：用 --st-cols 内联变量控制 grid，单/双工位自动适配。
        Clamp 1~2 是防御性的 —— 协议上限就是 2 工位。 *@
@@ -10,7 +11,7 @@
 }
 
 @* 状态用 4px 左边框 + 轻微底色，工业 andon 惯例；离线整卡降饱和度 *@
-<article class="device-card @CenterDashboardStatusPresenter.DeviceCardClass(Device) @(Device.Stations.Count > 1 ? "is-dual" : null)"
+<article class="device-card @CenterDashboardStatusPresenter.DeviceCardClass(Device) @(isDual ? "is-dual" : null)"
          style="--st-cols: @cols">
     <div class="device-card-header">
         <div>
@@ -18,7 +19,7 @@
             <p>@Device.DeviceId</p>
         </div>
         <div class="device-card-side">
-            @if (Device.Stations.Count > 1)
+            @if (isDual)
             {
                 <span class="badge badge-dual" title="双工位">双工位</span>
             }
@@ -38,15 +39,15 @@
     @if (online)
     {
         @* 报警横幅：置于工位面板之上，全卡可见。
-           两个工位都报警则两条都渲染，互不影响。 *@
+           工位标签已由 ResolveAlarmText 按「左/右工位：」拼好，此处不再重复标注。 *@
         @foreach (var station in Device.Stations)
         {
-            var alarmText = CenterDashboardStatusPresenter.ResolveAlarmText(station);
+            var alarmText = CenterDashboardStatusPresenter.ResolveAlarmText(station, isDual);
             if (alarmText is not null)
             {
-                <p class="alarm-banner">
+                <p class="alarm-banner" @key="station.StationNo">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>
-                    <span>工位 @station.StationNo：@alarmText</span>
+                    <span>@alarmText</span>
                 </p>
             }
         }
@@ -67,7 +68,7 @@
             @foreach (var station in Device.Stations)
             {
                 <div class="station-ghost" @key="station.StationNo">
-                    <span class="ghost-label">工位 @station.StationNo</span>
+                    <span class="ghost-label">@StationTitle(station.StationNo, isDual)</span>
                     <span class="ghost-placeholder">--</span>
                 </div>
             }
@@ -93,7 +94,7 @@
 
                 <section class="station-panel @CenterDashboardStatusPresenter.StationStateClass(station)" @key="station.StationNo">
                     <div class="station-title">
-                        <strong>工位 @station.StationNo</strong>
+                        <strong>@StationTitle(station.StationNo, isDual)</strong>
                         <span class="station-chip"><i class="dot" aria-hidden="true"></i>@FirstNonEmpty(station.State.PlcDeviceStatusName, "未知")</span>
                     </div>
                     <div class="status-row">
@@ -182,6 +183,10 @@
             return $"{(int)elapsed.TotalHours} 小时 {(int)elapsed.TotalMinutes % 60} 分钟";
         }
     }
+
+    /// <summary>工位面板标题：双工位显示「左/右工位」，单工位只显示「工位」。</summary>
+    private static string StationTitle(int stationNo, bool isDual)
+        => CenterDashboardStatusPresenter.ResolveStationLabel(stationNo, isDual) ?? "工位";
 
     private static string FormatTime(DateTime? value)
         => value is null ? "--" : value.Value.ToString("yyyy-MM-dd HH:mm:ss");
