@@ -20,17 +20,27 @@ public static class OfflineStartInputRules
         IEnumerable<BizProgram> programs,
         int stationNo,
         bool requireBothStations)
+        => BuildProgramNameOptions(programs, stationNo, requireBothStations, productNumFilter: null);
+
+    /// <summary>
+    /// Creates selectable local-program-name options limited to one product number.
+    /// </summary>
+    /// <param name="programs">Local program records maintained in the program library.</param>
+    /// <param name="productNumFilter">Product number to keep; null or blank keeps every product.</param>
+    /// <returns>Options sorted by program name, product number, recipe code and local program id.</returns>
+    public static IReadOnlyList<OfflineProgramNameOption> BuildProgramNameOptions(
+        IEnumerable<BizProgram> programs,
+        int stationNo,
+        bool requireBothStations,
+        string? productNumFilter)
     {
         ArgumentNullException.ThrowIfNull(programs);
 
-        var validPrograms = programs
-            .Where(program => !program.IsDeleted)
-            .Where(program => !string.IsNullOrWhiteSpace(program.ProgramName))
-            .Where(program => !string.IsNullOrWhiteSpace(program.ProductNum))
-            .Where(program => !string.IsNullOrWhiteSpace(ProgramRecipeMappingRules.Resolve(program, stationNo)))
-            .Where(program => !requireBothStations
-                || (!string.IsNullOrWhiteSpace(ProgramRecipeMappingRules.Resolve(program, 1))
-                    && !string.IsNullOrWhiteSpace(ProgramRecipeMappingRules.Resolve(program, 2))))
+        var normalizedFilter = Normalize(productNumFilter);
+        var hasFilter = !string.IsNullOrWhiteSpace(normalizedFilter);
+        var validPrograms = FilterValidPrograms(programs, stationNo, requireBothStations)
+            .Where(program => !hasFilter
+                || string.Equals(Normalize(program.ProductNum), normalizedFilter, StringComparison.OrdinalIgnoreCase))
             .OrderBy(program => program.ProgramName.Trim(), StringComparer.OrdinalIgnoreCase)
             .ThenBy(program => program.ProductNum, StringComparer.OrdinalIgnoreCase)
             .ThenBy(program => program.Id)
@@ -45,8 +55,57 @@ public static class OfflineStartInputRules
         return validPrograms
             .Select(program => new OfflineProgramNameOption(
                 program,
-                ResolveDisplayText(program, duplicateProgramNames.Contains(Normalize(program.ProgramName)))))
+                ResolveDisplayText(
+                    program,
+                    duplicateProgramNames.Contains(Normalize(program.ProgramName)),
+                    hasFilter)))
             .ToList();
+    }
+
+    /// <summary>
+    /// Creates selectable product-number options for offline start.
+    /// Only product numbers backed by a startable local program are listed, so every option can start a job.
+    /// </summary>
+    /// <param name="programs">Local program records maintained in the program library.</param>
+    /// <returns>Distinct product numbers sorted case-insensitively.</returns>
+    public static IReadOnlyList<OfflineProductNumOption> BuildProductNumOptions(
+        IEnumerable<BizProgram> programs,
+        int stationNo,
+        bool requireBothStations)
+    {
+        ArgumentNullException.ThrowIfNull(programs);
+
+        return FilterValidPrograms(programs, stationNo, requireBothStations)
+            .GroupBy(program => Normalize(program.ProductNum), StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                // 同一工号大小写不一致时取序数最小的写法，保证显示文本稳定可按 Ordinal 回查。
+                var canonical = group
+                    .Select(program => Normalize(program.ProductNum))
+                    .OrderBy(productNum => productNum, StringComparer.Ordinal)
+                    .First();
+                return new OfflineProductNumOption(canonical, canonical, group.Count());
+            })
+            .ToList();
+    }
+
+    /// <summary>
+    /// Keeps only programs that can actually start a job on the given station.
+    /// </summary>
+    private static IEnumerable<BizProgram> FilterValidPrograms(
+        IEnumerable<BizProgram> programs,
+        int stationNo,
+        bool requireBothStations)
+    {
+        return programs
+            .Where(program => !program.IsDeleted)
+            .Where(program => !string.IsNullOrWhiteSpace(program.ProgramName))
+            .Where(program => !string.IsNullOrWhiteSpace(program.ProductNum))
+            .Where(program => !string.IsNullOrWhiteSpace(ProgramRecipeMappingRules.Resolve(program, stationNo)))
+            .Where(program => !requireBothStations
+                || (!string.IsNullOrWhiteSpace(ProgramRecipeMappingRules.Resolve(program, 1))
+                    && !string.IsNullOrWhiteSpace(ProgramRecipeMappingRules.Resolve(program, 2))));
     }
 
     /// <summary>
@@ -85,15 +144,18 @@ public static class OfflineStartInputRules
         };
     }
 
-private static string ResolveDisplayText(BizProgram program, bool includeIdentity)
+private static string ResolveDisplayText(BizProgram program, bool includeIdentity, bool filteredByProductNum)
     {
         var programName = Normalize(program.ProgramName);
         if (!includeIdentity)
         {
             return programName;
         }
-        // 程序名称重名时只追加产品身份，数字配方号保持隐藏。
-        return $"{programName} | 产品工号={Normalize(program.ProductNum)}";
+
+        // 已按工号筛选时再追加工号是冗余的，改用流水号区分同工号下的重名程序。
+        return filteredByProductNum
+            ? $"{programName} | 流水号={Math.Max(1, program.SequenceNumber):000}"
+            : $"{programName} | 产品工号={Normalize(program.ProductNum)}";
     }
 
     private static int ResolvePlannedQty(string? value)
@@ -133,6 +195,14 @@ private static string ResolveDisplayText(BizProgram program, bool includeIdentit
 /// <param name="Program">The full local program record bound to the selected row.</param>
 /// <param name="DisplayText">The visible dropdown text. Program name is primary; duplicated names include identity hints.</param>
 public sealed record OfflineProgramNameOption(BizProgram Program, string DisplayText);
+
+/// <summary>
+/// Product-number option shown by the offline product-number selector.
+/// </summary>
+/// <param name="ProductNum">The trimmed product number used to filter program options.</param>
+/// <param name="DisplayText">The visible dropdown text; identical to the product number so text lookups round-trip.</param>
+/// <param name="ProgramCount">How many startable local programs share this product number.</param>
+public sealed record OfflineProductNumOption(string ProductNum, string DisplayText, int ProgramCount);
 
 /// <summary>
 /// Inline offline-start values entered on MonitorView.
