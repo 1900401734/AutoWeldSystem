@@ -290,6 +290,10 @@ var tests = new (string Name, Action Run)[]
     ("Program manage download backfills name fields", ProgramManageDownloadBackfillsNameFields),
     ("Offline program dropdown displays program name", OfflineProgramDropdownDisplaysProgramName),
     ("Offline program dropdown includes empty-content program", OfflineProgramDropdownIncludesEmptyContentProgram),
+    ("Offline product-num dropdown lists distinct startable product numbers", OfflineProductNumDropdownListsDistinctStartableProductNums),
+    ("Offline program dropdown filters by product number", OfflineProgramDropdownFiltersByProductNum),
+    ("Monitor view links product-num selection to program options", MonitorViewLinksProductNumSelectionToProgramOptions),
+    ("Monitor view keeps user product number across runtime rebind", MonitorViewKeepsUserProductNumAcrossRuntimeRebind),
     ("Product history preview sorts latest product first", ProductHistoryPreviewSortsLatestProductFirst),
     ("Offline start request follows inline monitor input", OfflineStartRequestFollowsInlineMonitorInput),
     ("Offline start allows empty part name and drawing number", OfflineStartAllowsEmptyPartNameAndDrawingNumber),
@@ -8616,6 +8620,136 @@ static void OfflineProgramDropdownIncludesEmptyContentProgram()
 
     AssertEqual(4, options.Count, "本地程序列表中的空内容程序也应显示在 MonitorView 下拉框中。");
     AssertTrue(options.Any(option => option.Program.Id == 4), "空内容程序不能因为 ProgramContent 为空而被下拉过滤。");
+}
+
+static void OfflineProductNumDropdownListsDistinctStartableProductNums()
+{
+    var programs = new[]
+    {
+        new BizProgram { Id = 7, ProgramName = "程序A", ProductNum = "P-002", RecipeCode = "3" },
+        new BizProgram { Id = 8, ProgramName = "程序B", ProductNum = "p-002", RecipeCode = "4", Station2RecipeCode = "8" },
+        new BizProgram { Id = 9, ProgramName = "程序C", ProductNum = "P-001", RecipeCode = "5" },
+        new BizProgram { Id = 10, ProgramName = "仅工位2", ProductNum = "P-009", Station2RecipeCode = "6" },
+        new BizProgram { Id = 11, ProgramName = "已删除", ProductNum = "P-777", RecipeCode = "7", IsDeleted = true }
+    };
+
+    var station1 = OfflineStartInputRules.BuildProductNumOptions(programs, stationNo: 1, requireBothStations: false);
+
+    AssertEqual(2, station1.Count, "同一产品工号只能出现一项，且工位 1 不显示仅配了工位 2 配方的工号。");
+    AssertEqual("P-001", station1[0].ProductNum, "产品工号选项必须按工号排序。");
+    AssertEqual("P-002", station1[1].ProductNum, "大小写不同的同一工号必须合并为一项，并固定采用序数最小的写法。");
+    AssertEqual(2, station1[1].ProgramCount, "合并后的工号必须统计其名下的可开工程序数量。");
+    AssertEqual("P-002", station1[1].DisplayText, "显示文本必须与工号一致，保证按文本回查可无损往返。");
+    AssertFalse(station1.Any(option => option.ProductNum == "P-777"), "已删除的程序不得贡献产品工号选项。");
+
+    var shared = OfflineStartInputRules.BuildProductNumOptions(programs, stationNo: 1, requireBothStations: true);
+    AssertEqual(1, shared.Count, "双工位同工单下只保留两个工位都配好配方的工号。");
+    AssertEqual("p-002", shared[0].ProductNum, "双工位同工单下只有 Id=8 满足条件，工号写法取自该程序本身。");
+    AssertEqual(1, shared[0].ProgramCount, "双工位同工单下只有满足条件的程序参与计数。");
+}
+
+static void OfflineProgramDropdownFiltersByProductNum()
+{
+    var programs = new[]
+    {
+        new BizProgram { Id = 7, ProgramName = "重复程序", ProductNum = "P-001", RecipeCode = "3", SequenceNumber = 1 },
+        new BizProgram { Id = 8, ProgramName = "重复程序", ProductNum = "P-001", RecipeCode = "4", SequenceNumber = 2 },
+        new BizProgram { Id = 9, ProgramName = "另一个", ProductNum = "P-002", RecipeCode = "5" }
+    };
+
+    var filtered = OfflineStartInputRules.BuildProgramNameOptions(
+        programs, stationNo: 1, requireBothStations: false, productNumFilter: "p-001");
+
+    AssertEqual(2, filtered.Count, "同一产品工号下的多个程序都必须保留，按流水号区分。");
+    AssertTrue(filtered.All(option => option.Program.ProductNum == "P-001"), "筛选结果不得混入其他工号的程序。");
+    AssertEqual("重复程序 | 流水号=001", filtered.Single(option => option.Program.Id == 7).DisplayText, "按工号筛选后重名程序必须改用流水号区分。");
+    AssertEqual("重复程序 | 流水号=002", filtered.Single(option => option.Program.Id == 8).DisplayText, "流水号必须补零到三位，与程序名称格式一致。");
+    AssertFalse(filtered.Any(option => option.DisplayText.Contains("产品工号=", StringComparison.Ordinal)), "已按工号筛选时再追加工号是冗余信息。");
+
+    var unfiltered = OfflineStartInputRules.BuildProgramNameOptions(
+        programs, stationNo: 1, requireBothStations: false, productNumFilter: "  ");
+    AssertEqual(3, unfiltered.Count, "筛选值为空白时必须视为不筛选。");
+    AssertEqual("重复程序 | 产品工号=P-001", unfiltered.Single(option => option.Program.Id == 7).DisplayText, "未按工号筛选时保持原有的工号提示。");
+}
+
+static void MonitorViewLinksProductNumSelectionToProgramOptions()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.Designer.cs"), Encoding.UTF8);
+
+    AssertFalse(designerCode.Contains("inputProdNum", StringComparison.Ordinal), "产品工号必须改为下拉选择控件。");
+    AssertFalse(viewCode.Contains("inputProdNum", StringComparison.Ordinal), "监控页不得再引用旧的产品工号输入框。");
+    AssertTrue(designerCode.Contains("selectProdNum = new AntdUI.Select();", StringComparison.Ordinal), "Designer 必须声明产品工号下拉。");
+    AssertTrue(designerCode.Contains("selectProdNum.MaxCount = 10;", StringComparison.Ordinal), "产品工号下拉必须限制展开条数。");
+
+    AssertTrue(viewCode.Contains("selectProdNum.SelectedIndexChanged += ProductNumSelection_SelectedIndexChanged;", StringComparison.Ordinal), "监控页必须监听产品工号选择。");
+    AssertTrue(viewCode.Contains("selectProdNum.SelectedIndexChanged -= ProductNumSelection_SelectedIndexChanged;", StringComparison.Ordinal), "监控页销毁时必须解绑产品工号选择。");
+    AssertTrue(viewCode.Contains("selectProdNum.WheelModifyEnabled = false;", StringComparison.Ordinal), "产品工号下拉必须禁用滚轮换选，避免误改开工工号。");
+
+    var handler = ExtractMethodText(
+        viewCode,
+        "private void ProductNumSelection_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)",
+        "private void ProgramNameSelection_SelectedIndexChanged");
+    AssertTrue(handler.Contains("if (_syncingOfflineProductNumSelection)", StringComparison.Ordinal), "程序化回填工号必须被同步守卫短路，避免与程序联动互相递归。");
+    AssertTrue(handler.Contains("if (!IsOfflineInputEditable(GetCurrentStationState()))", StringComparison.Ordinal), "仅离线可编辑态允许操作员改工号。");
+    AssertTrue(handler.Contains("MarkOfflineProgramSelectionByUser(CurrentStationNo);", StringComparison.Ordinal), "操作员选工号必须标记为用户显式选择。");
+    AssertTrue(handler.Contains("BindOfflineProgramNameOptions();", StringComparison.Ordinal), "选中工号后必须按工号刷新程序名称下拉。");
+
+    var bindPrograms = ExtractMethodText(
+        viewCode,
+        "private void BindOfflineProgramNameOptions()",
+        "private void BindOfflineProductNumOptions()");
+    // 未启用「按产品工号筛选程序」时必须列出全部程序，支持一款产品借用另一款工号的程序生产。
+    AssertTrue(bindPrograms.Contains("_currentSettings.UseProductNumberFilter", StringComparison.Ordinal), "离线程序列表是否按工号收窄必须由系统设置决定，与在线保持同一语义。");
+    AssertTrue(bindPrograms.Contains("? ResolveOfflineProductNumFilter()", StringComparison.Ordinal), "启用筛选时才按当前选中的产品工号收窄。");
+    AssertTrue(bindPrograms.Contains(": null", StringComparison.Ordinal), "未启用筛选时必须传空筛选值，列出全部程序。");
+
+    var productNumHandler = ExtractMethodText(
+        viewCode,
+        "private void ProductNumSelection_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)",
+        "private void SelectFirstOfflineProgramForProductNum(string productNum)");
+    // 未启用筛选时列表是全量的，重绑定会保留原程序并把工号回写成原值，必须显式跳转。
+    AssertTrue(productNumHandler.Contains("SelectFirstOfflineProgramForProductNum(productNum);", StringComparison.Ordinal), "选中工号后必须跳到该工号的首个程序，否则未启用筛选时工号选择会被回写覆盖。");
+
+    var resolveProductNum = ExtractMethodText(
+        viewCode,
+        "private string GetSelectedOfflineProductNum()",
+        "/// 用本地程序列表填充离线程序号下拉框。");
+    // AntdUI 筛选态下事件索引指向筛选后的子列表，按索引直取会选错工号。
+    AssertTrue(resolveProductNum.Contains("SelectListRules.ResolveSelectedIndex(", StringComparison.Ordinal), "产品工号必须按显示文本回查完整选项，不得直接使用 SelectedIndex。");
+    AssertTrue(resolveProductNum.Contains("selectProdNum.SelectedValue as string ?? selectProdNum.Text", StringComparison.Ordinal), "解析选中工号必须优先采信 SelectedValue 再回退文本。");
+}
+
+static void MonitorViewKeepsUserProductNumAcrossRuntimeRebind()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+
+    var bindProductNum = ExtractMethodText(
+        viewCode,
+        "private void BindOfflineProductNumOptions()",
+        "private string? ResolveOfflineProductNumFilter()");
+    // 监控页每秒重绑定运行态，操作员选中的工号必须靠记忆表存活，否则会被弹回第一项。
+    AssertTrue(bindProductNum.Contains("_userSelectedOfflineProductNums.TryGetValue(stationKey, out var remembered)", StringComparison.Ordinal), "周期性重绑定必须优先复用操作员已选的工号。");
+    AssertTrue(bindProductNum.Contains("_userSelectedOfflineProductNums.Remove(stationKey);", StringComparison.Ordinal), "记忆的工号在程序库中消失后必须清除，避免筛选恒空。");
+    AssertTrue(bindProductNum.Contains("ForceProductNumSelection(", StringComparison.Ordinal), "重建选项后必须走 -1 归位赋值，规避 AntdUI 索引短路。");
+
+    var clearSelection = ExtractMethodText(
+        viewCode,
+        "private void ClearOfflineProgramSelectionByUser(int stationNo)",
+        "private ProductIdentity? ResolveOfflineSelectedRecipeProductIdentity(int stationNo)");
+    AssertTrue(clearSelection.Contains("_userSelectedOfflineProductNums.Remove(NormalizeStationNo(stationNo));", StringComparison.Ordinal), "切换工位、完工或转在线时必须一并清除记忆的工号。");
+
+    var offlineReadOnly = ExtractMethodText(
+        viewCode,
+        "private void ApplyOfflineInputReadOnly(bool readOnly)",
+        "private void SetWorkOrderInputText(string workId)");
+    AssertTrue(offlineReadOnly.Contains("selectProdNum.ReadOnly = readOnly;", StringComparison.Ordinal), "离线可编辑态下操作员必须能展开产品工号下拉。");
+
+    var onlineReadOnly = ExtractMethodText(
+        viewCode,
+        "private void ApplyOnlineStartInputReadOnly(bool editable)",
+        "private void BindOfflineEditableRuntimeState(string liveWorkId)");
+    AssertTrue(onlineReadOnly.Contains("selectProdNum.ReadOnly = true;", StringComparison.Ordinal), "在线态产品工号跟随工单，必须保持只读展示。");
 }
 
 static void ProductHistoryPreviewSortsLatestProductFirst()

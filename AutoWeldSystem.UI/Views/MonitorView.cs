@@ -126,10 +126,14 @@ public partial class MonitorView : BaseView
     // One request per station is current. A PLC scan replaces a pending manual query immediately.
     private readonly Dictionary<int, CancellationTokenSource> _workOrderLoadCancellationTokens = new();
     private readonly List<OfflineProgramNameOption> _offlineProgramNameOptions = new();
+    private readonly List<OfflineProductNumOption> _offlineProductNumOptions = new();
+    // 操作员显式选择的产品工号；跨 1Hz 重绑定保留选择，按工位隔离。
+    private readonly Dictionary<int, string> _userSelectedOfflineProductNums = new();
 
     private bool _syncingStationSelection;
     private bool _syncingProcessSelection;
     private bool _syncingOfflineProgramSelection;
+    private bool _syncingOfflineProductNumSelection;
     private bool _syncingOnlineProgramSelection;
     private bool _syncingOfflineInputs;
     private bool _syncingWorkOrderInput;
@@ -734,8 +738,10 @@ public partial class MonitorView : BaseView
         inputSN.TextChanged += WorkOrderInput_TextChanged;
         inputSN.KeyDown += WorkOrderInput_KeyDown;
         selectProgramName.SelectedIndexChanged += ProgramNameSelection_SelectedIndexChanged;
+        selectProdNum.SelectedIndexChanged += ProductNumSelection_SelectedIndexChanged;
         // 滚轮换选会静默改变程序/配方/工序并触发下载或工序重载，禁用避免误操作。
         selectProgramName.WheelModifyEnabled = false;
+        selectProdNum.WheelModifyEnabled = false;
         selectItemName.WheelModifyEnabled = false;
         MesUserNumber.KeyDown += OperatorInput_KeyDown;
         MesUserNumber.TextChanged += OperatorInput_TextChanged;
@@ -1013,6 +1019,48 @@ public partial class MonitorView : BaseView
         if (!string.Equals(selectProgramName.Text, text, StringComparison.Ordinal))
         {
             selectProgramName.Text = text;
+        }
+    }
+
+    /// <summary>
+    /// 强制产品工号下拉选中态与目标一致，复用程序名称下拉的 -1 归位规避 AntdUI 索引短路。
+    /// 工号不在选项中时仅保留文本显示（如在线工单工号未建本地程序）。
+    /// </summary>
+    private void ForceProductNumSelection(int index, string text)
+    {
+        if (selectProdNum.SelectedIndex != -1)
+        {
+            selectProdNum.SelectedIndex = -1;
+        }
+
+        if (index >= 0)
+        {
+            selectProdNum.SelectedIndex = index;
+            return;
+        }
+
+        if (!string.Equals(selectProdNum.Text, text, StringComparison.Ordinal))
+        {
+            selectProdNum.Text = text;
+        }
+    }
+
+    /// <summary>
+    /// 由程序同步产品工号下拉显示文本，避免触发工号联动。
+    /// </summary>
+    /// <param name="productNum">需要显示的产品工号。</param>
+    private void SetProductNumSelectionText(string productNum)
+    {
+        _syncingOfflineProductNumSelection = true;
+        try
+        {
+            var index = _offlineProductNumOptions.FindIndex(
+                option => string.Equals(option.DisplayText, productNum, StringComparison.Ordinal));
+            ForceProductNumSelection(index, productNum);
+        }
+        finally
+        {
+            _syncingOfflineProductNumSelection = false;
         }
     }
 
@@ -1414,6 +1462,7 @@ public partial class MonitorView : BaseView
         inputSN.KeyDown -= WorkOrderInput_KeyDown;
         chkEnableDualWorkOrder.CheckedChanged -= DualWorkOrder_CheckedChanged;
         selectProgramName.SelectedIndexChanged -= ProgramNameSelection_SelectedIndexChanged;
+        selectProdNum.SelectedIndexChanged -= ProductNumSelection_SelectedIndexChanged;
         MesUserNumber.KeyDown -= OperatorInput_KeyDown;
         MesUserNumber.TextChanged -= OperatorInput_TextChanged;
         tableHistory1.CellClick -= ProductHistoryTable_CellClick;
@@ -1747,6 +1796,67 @@ public partial class MonitorView : BaseView
     /// </summary>
     /// <param name="sender">事件发送者。</param>
     /// <param name="e">事件参数。</param>
+    /// <summary>
+    /// 选中产品工号后定位到该工号的程序。
+    /// 启用“按产品工号筛选程序”时程序列表随之收窄；未启用时列表保持全量，仅跳转选中。
+    /// 仅离线可编辑态生效；在线态工号跟随工单只读展示。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
+    private void ProductNumSelection_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
+    {
+        if (_syncingOfflineProductNumSelection)
+        {
+            return;
+        }
+
+        if (!IsOfflineInputEditable(GetCurrentStationState()))
+        {
+            return;
+        }
+
+        var productNum = GetSelectedOfflineProductNum();
+        if (string.IsNullOrWhiteSpace(productNum))
+        {
+            return;
+        }
+
+        MarkOfflineProgramSelectionByUser(CurrentStationNo);
+        _userSelectedOfflineProductNums[NormalizeStationNo(CurrentStationNo)] = productNum;
+        BindOfflineProgramNameOptions();
+        // 未启用筛选时程序列表是全量的，重绑定会保留原程序并把工号回写成原值，
+        // 因此必须显式跳到该工号的首个程序。
+        SelectFirstOfflineProgramForProductNum(productNum);
+        ApplyOfflineProgramNameOption(GetSelectedOfflineProgramNameOption());
+        QueueRefreshSchemePreview(force: true);
+    }
+
+    /// <summary>
+    /// 在当前程序名称选项中定位指定产品工号的首个程序并选中。
+    /// </summary>
+    /// <param name="productNum">操作员选中的产品工号。</param>
+    private void SelectFirstOfflineProgramForProductNum(string productNum)
+    {
+        var index = _offlineProgramNameOptions.FindIndex(option => string.Equals(
+            option.Program.ProductNum?.Trim(),
+            productNum,
+            StringComparison.OrdinalIgnoreCase));
+        if (index < 0)
+        {
+            return;
+        }
+
+        _syncingOfflineProgramSelection = true;
+        try
+        {
+            ForceProgramNameSelection(index, _offlineProgramNameOptions[index].DisplayText);
+        }
+        finally
+        {
+            _syncingOfflineProgramSelection = false;
+        }
+    }
+
     /// <summary>
     /// 同步离线程序名称下拉选中项关联的产品工号、产品型号和配方号。
     /// </summary>
@@ -3399,7 +3509,7 @@ public partial class MonitorView : BaseView
             _lastBoundOnlineWorkOrderKey = string.IsNullOrEmpty(workOrderKey) ? null : workOrderKey;
         }
 
-        inputProdNum.Text = workOrder?.ProdNum ?? currentIdentity?.ProductNum ?? string.Empty;
+        SetProductNumSelectionText(workOrder?.ProdNum ?? currentIdentity?.ProductNum ?? string.Empty);
         // 不可编辑或有运行任务时用工单值覆盖；可编辑且工单未变化时保留操作员输入。
         if (!onlineEditable || activeTask is not null || workOrderChanged)
         {
@@ -3514,7 +3624,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         inputStartAmount.ReadOnly = fieldReadOnly;
         selectProgramName.ReadOnly = fieldReadOnly;
 
-        inputProdNum.ReadOnly = true;
+        selectProdNum.ReadOnly = true;
         inputProdModel.ReadOnly = true;
 
         var useOperatorDialog = _currentSettings.UseOperatorInputDialog ?? true;
@@ -3531,6 +3641,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         try
         {
             ApplyOfflineInputReadOnly(readOnly: false);
+            BindOfflineProductNumOptions();
             BindOfflineProgramNameOptions();
 
             if (!_offlineWorkOrderEditedByUser)
@@ -3568,7 +3679,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         inputProcessNo.ReadOnly = readOnly;
         inputStartAmount.ReadOnly = readOnly;
         selectProgramName.ReadOnly = readOnly;
-        inputProdNum.ReadOnly = true;
+        selectProdNum.ReadOnly = readOnly;
         inputProdModel.ReadOnly = true;
     }
 
@@ -3602,10 +3713,16 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         var previousProgramId = GetSelectedOfflineProgramNameOption()?.Program.Id;
         var previousText = selectProgramName.Text?.Trim() ?? string.Empty;
         var requireBothStations = _currentSettings.EnableDualStation && !_currentSettings.EnableDualWorkOrder;
+        // 与在线 ProgramListFilterRules 同语义：未启用“按产品工号筛选程序”时列出全部程序，
+        // 以支持一款产品借用另一款工号的程序生产。
+        var productNumFilter = _currentSettings.UseProductNumberFilter
+            ? ResolveOfflineProductNumFilter()
+            : null;
         var options = OfflineStartInputRules.BuildProgramNameOptions(
             _programManageService.GetPrograms(),
             CurrentStationNo,
-            requireBothStations).ToList();
+            requireBothStations,
+            productNumFilter).ToList();
 
         _syncingOfflineProgramSelection = true;
         try
@@ -3637,6 +3754,79 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     }
 
     /// <summary>
+    /// 从本地程序库刷新“产品工号”下拉选项，同一工号只保留一项。
+    /// </summary>
+    private void BindOfflineProductNumOptions()
+    {
+        var previousText = selectProdNum.Text?.Trim() ?? string.Empty;
+        var requireBothStations = _currentSettings.EnableDualStation && !_currentSettings.EnableDualWorkOrder;
+        var options = OfflineStartInputRules.BuildProductNumOptions(
+            _programManageService.GetPrograms(),
+            CurrentStationNo,
+            requireBothStations).ToList();
+
+        _syncingOfflineProductNumSelection = true;
+        try
+        {
+            _offlineProductNumOptions.Clear();
+            _offlineProductNumOptions.AddRange(options);
+            selectProdNum.Items.Clear();
+            selectProdNum.Items.AddRange(options.Select(option => option.DisplayText).Cast<object>().ToArray());
+
+            var stationKey = NormalizeStationNo(CurrentStationNo);
+            var desired = _userSelectedOfflineProductNums.TryGetValue(stationKey, out var remembered)
+                ? remembered
+                : previousText;
+            var selectedIndex = string.IsNullOrWhiteSpace(desired)
+                ? -1
+                : options.FindIndex(option => string.Equals(option.DisplayText, desired, StringComparison.Ordinal));
+            if (selectedIndex < 0 && options.Count > 0)
+            {
+                selectedIndex = 0;
+            }
+
+            // 记忆的工号已从程序库消失时清除，避免后续筛选恒空。
+            if (selectedIndex < 0)
+            {
+                _userSelectedOfflineProductNums.Remove(stationKey);
+            }
+
+            ForceProductNumSelection(
+                selectedIndex,
+                selectedIndex >= 0 ? options[selectedIndex].DisplayText : string.Empty);
+        }
+        finally
+        {
+            _syncingOfflineProductNumSelection = false;
+        }
+    }
+
+    /// <summary>
+    /// 取当前应用于程序名称筛选的产品工号；无选项或无选中时返回空表示不筛选。
+    /// 返回值仅在启用“按产品工号筛选程序”时被采用，是否筛选由调用方门控。
+    /// </summary>
+    private string? ResolveOfflineProductNumFilter()
+    {
+        var productNum = GetSelectedOfflineProductNum();
+        return string.IsNullOrWhiteSpace(productNum) ? null : productNum;
+    }
+
+    /// <summary>
+    /// 取产品工号下拉当前选中的工号。
+    /// AntdUI 筛选态下拉的 SelectedIndex 指向筛选后的子列表，因此按显示文本回查完整选项。
+    /// </summary>
+    private string GetSelectedOfflineProductNum()
+    {
+        var selectedIndex = SelectListRules.ResolveSelectedIndex(
+            _offlineProductNumOptions.Select(option => option.DisplayText).ToList(),
+            selectProdNum.SelectedValue as string ?? selectProdNum.Text,
+            selectProdNum.SelectedIndex);
+        return selectedIndex >= 0 && selectedIndex < _offlineProductNumOptions.Count
+            ? _offlineProductNumOptions[selectedIndex].ProductNum
+            : string.Empty;
+    }
+
+    /// <summary>
     /// 用本地程序列表填充离线程序号下拉框。
     /// </summary>
     /// <param name="options">离线程序名称选项。</param>
@@ -3647,7 +3837,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// <param name="option">选中的本地程序；为空时清空联动字段。</param>
     private void ApplyOfflineProgramNameOption(OfflineProgramNameOption? option)
     {
-        inputProdNum.Text = option?.Program.ProductNum ?? string.Empty;
+        SetProductNumSelectionText(option?.Program.ProductNum ?? string.Empty);
         inputProdModel.Text = option?.Program.ProductModel ?? string.Empty;
         if (option is not null && IsOfflineInputEditable(GetCurrentStationState()))
         {
@@ -6870,6 +7060,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     private void ClearOfflineProgramSelectionByUser(int stationNo)
     {
         _offlineProgramSelectedByUserStations.Remove(NormalizeStationNo(stationNo));
+        _userSelectedOfflineProductNums.Remove(NormalizeStationNo(stationNo));
     }
 
     /// <summary>
@@ -6977,7 +7168,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         _currentProductIdentity = identity;
         if (ShouldApplyProductIdentityToInputs(identity))
         {
-            inputProdNum.Text = identity.ProductNum;
+            SetProductNumSelectionText(identity.ProductNum);
             inputProdModel.Text = identity.ProductModel;
         }
 
