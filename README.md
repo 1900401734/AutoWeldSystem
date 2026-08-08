@@ -1,6 +1,6 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v1.2.0`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v1.3.0`。
 
 ## 功能概览
 
@@ -150,10 +150,10 @@ dotnet publish AutoWeldSystem.UI/AutoWeldSystem.UI.csproj -c Release -r win-x64 
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>1.2.0</Version>
-<AssemblyVersion>1.2.0.0</AssemblyVersion>
-<FileVersion>1.2.0.0</FileVersion>
-<InformationalVersion>1.2.0</InformationalVersion>
+<Version>1.3.0</Version>
+<AssemblyVersion>1.3.0.0</AssemblyVersion>
+<FileVersion>1.3.0.0</FileVersion>
+<InformationalVersion>1.3.0</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -165,9 +165,9 @@ dotnet publish AutoWeldSystem.UI/AutoWeldSystem.UI.csproj -c Release -r win-x64 
 发布新版本时：
 
 ```powershell
-git tag -a v1.2.0 -m "Release v1.2.0"
+git tag -a v1.3.0 -m "Release v1.3.0"
 git push origin main
-git push origin v1.2.0
+git push origin v1.3.0
 ```
 
 ## Git 使用
