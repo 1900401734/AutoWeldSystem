@@ -30,4 +30,6 @@ Desktop.ini
 /AGENTS.md
 /CLAUDE.md
 /.idea/.idea.AutoWeldSystem/.idea
-/artifacts/CenterServer-win-x64
+
+# 发布产物（仅本地保留）
+/artifacts/

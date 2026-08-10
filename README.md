@@ -71,11 +71,47 @@ dotnet restore AutoWeldSystem.sln
 dotnet build AutoWeldSystem.sln
 ```
 
-发布 Release：
+## 发布
+
+在仓库根目录执行以下命令，`-o` 指定产物目录，发布完成后进入对应目录取文件。
+
+### 非自包含（默认，目标机需预装 .NET 8 运行时）
 
 ```powershell
-dotnet publish AutoWeldSystem.UI/AutoWeldSystem.UI.csproj -c Release -r win-x64 --self-contained false
+dotnet publish AutoWeldSystem.UI\AutoWeldSystem.UI.csproj -c Release -r win-x64 --self-contained false -o artifacts\UI-win-x64
+dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c Release -r win-x64 --self-contained false -o artifacts\CenterServer-win-x64
 ```
+
+### 自包含（目标机无法安装运行时时使用）
+
+```powershell
+dotnet publish AutoWeldSystem.UI\AutoWeldSystem.UI.csproj -c Release -r win-x64 --self-contained true -o artifacts\UI-win-x64-selfcontained
+dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c Release -r win-x64 --self-contained true -o artifacts\CenterServer-win-x64-selfcontained
+```
+
+### 产物位置
+
+产物固定输出到仓库根目录下的 `artifacts\`：
+
+| 内容 | 产物目录 | 启动文件 |
+| --- | --- | --- |
+| 上位机主程序（非自包含） | `artifacts\UI-win-x64\` | `AutoWeldSystem.UI.exe` |
+| 上位机主程序（自包含） | `artifacts\UI-win-x64-selfcontained\` | `AutoWeldSystem.UI.exe` |
+| 中心服务器（非自包含） | `artifacts\CenterServer-win-x64\` | `AutoWeldSystem.CenterServer.exe` |
+| 中心服务器（自包含） | `artifacts\CenterServer-win-x64-selfcontained\` | `AutoWeldSystem.CenterServer.exe` |
+
+现场部署时把整个产物目录复制到工控机，运行其中的 `.exe` 即可。
+
+### 目标机运行时要求
+
+非自包含产物体积小、运行时可独立打补丁，但**目标工控机必须预装 .NET 8 运行时**：
+
+- 上位机主程序 UI 需要 **.NET Desktop Runtime 8**（WinForms 依赖）。
+- 中心服务器 CenterServer 需要 **ASP.NET Core Runtime 8**。
+- 同机部署两者时装 Desktop Runtime + ASP.NET Core Runtime 即可，均为 x64。
+- 现场无法安装运行时或无外网时改用自包含发布，产物体积明显增大，但不依赖预装运行时。
+
+发布产物目录 `artifacts\` 已在 `.gitignore` 中忽略，不进入版本库。UI 的 `appsettings.json` 会随发布输出，现场需按实际 PLC、MES、MySQL 参数单独维护，不要把现场配置提交回仓库。
 
 ## 运行
 
