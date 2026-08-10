@@ -917,6 +917,7 @@ public static class TextKeys
     public static class ProgramManage
     {
         public const string ButtonSyncMes = "program.button.sync_mes";
+        public const string ButtonSaveAsNew = "program.button.save_as_new";
         public const string ButtonPullMes = "program.button.pull_mes";
         public const string ButtonBuildName = "program.button.build_name";
         public const string ButtonBrowseFile = "program.button.browse_file";
@@ -952,6 +953,8 @@ public static class TextKeys
         public const string SelectSync = "program.message.select_sync";
         public const string PullSuccess = "program.message.pull_success";
         public const string SequenceInvalid = "program.message.sequence_invalid";
+        public const string ProductNumRequired = "program.message.product_num_required";
+        public const string ComponentCodeRequired = "program.message.component_code_required";
         public const string CycleTimeInvalid = "program.message.cycle_time_invalid";
         public const string DialogSelectFile = "program.dialog.select_file";
         public const string DialogFileFilterAll = "program.dialog.file_filter_all";
@@ -1490,7 +1493,9 @@ public static class TextKeys
         public const string ProgramName = "grid.program.name";
         public const string ProgramId = "grid.program.id";
         public const string ProgramProductNum = "grid.program.product_num";
+        public const string ProgramSequenceNumber = "grid.program.sequence_number";
         public const string ProgramLocalRemark = "grid.program.local_remark";
+        public const string ProgramCount = "grid.program.program_count";
         public const string ProgramVersionNumber = "grid.program.version_number";
         public const string ProgramSyncStatus = "grid.program.sync_status";
         public const string ProgramSyncAction = "grid.program.sync_action";

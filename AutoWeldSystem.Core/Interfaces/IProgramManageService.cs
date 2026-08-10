@@ -18,6 +18,11 @@ public interface IProgramManageService
 
     string BuildProgramName(string productNum, string componentCode, int sequenceNumber, string? description = null);
 
+    /// <summary>
+    /// 取指定产品工号下的下一个可用流水号，用于同工号新增程序。
+    /// </summary>
+    int GetNextSequenceNumber(string productNum);
+
     Task<BizProgram> SaveAsync(SaveProgramReq request, bool syncNow, CancellationToken cancellationToken = default);
 
     Task<SaveProgramResult> SaveWithSyncDecisionAsync(SaveProgramReq request, CancellationToken cancellationToken = default);

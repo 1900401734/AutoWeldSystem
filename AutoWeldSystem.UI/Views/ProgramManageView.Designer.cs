@@ -20,6 +20,7 @@
             toolbar = new FlowLayoutPanel();
             btnNew = new AntdUI.Button();
             btnSave = new AntdUI.Button();
+            btnSaveAsNew = new AntdUI.Button();
             btnDelete = new AntdUI.Button();
             btnSync = new AntdUI.Button();
             btnPullMes = new AntdUI.Button();
@@ -28,6 +29,8 @@
             txtKeyword = new TextBox();
             splitMain = new AntdUI.Splitter();
             leftLayout = new TableLayoutPanel();
+            splitProgramList = new AntdUI.Splitter();
+            treePrograms = new AntdUI.Tree();
             grpRevisions = new GroupBox();
             dgvRevisions = new DataGridView();
             dgvPrograms = new DataGridView();
@@ -79,6 +82,10 @@
             splitMain.Panel2.SuspendLayout();
             splitMain.SuspendLayout();
             leftLayout.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)splitProgramList).BeginInit();
+            splitProgramList.Panel1.SuspendLayout();
+            splitProgramList.Panel2.SuspendLayout();
+            splitProgramList.SuspendLayout();
             grpRevisions.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)dgvRevisions).BeginInit();
             ((System.ComponentModel.ISupportInitialize)dgvPrograms).BeginInit();
@@ -119,6 +126,7 @@
             toolbar.AutoSize = true;
             toolbar.Controls.Add(btnNew);
             toolbar.Controls.Add(btnSave);
+            toolbar.Controls.Add(btnSaveAsNew);
             toolbar.Controls.Add(btnDelete);
             toolbar.Controls.Add(btnSync);
             toolbar.Controls.Add(btnPullMes);
@@ -157,6 +165,18 @@
             btnSave.TabIndex = 1;
             btnSave.Tag = "perm:button.program.edit:enabled";
             btnSave.Text = "保存";
+            //
+            // btnSaveAsNew
+            //
+            btnSaveAsNew.BorderWidth = 1F;
+            btnSaveAsNew.IconSvg = "CopyOutlined";
+            btnSaveAsNew.Location = new Point(224, 12);
+            btnSaveAsNew.Margin = new Padding(0, 0, 10, 0);
+            btnSaveAsNew.Name = "btnSaveAsNew";
+            btnSaveAsNew.Size = new Size(142, 40);
+            btnSaveAsNew.TabIndex = 2;
+            btnSaveAsNew.Tag = "perm:button.program.add:enabled";
+            btnSaveAsNew.Text = "另存为新程序";
             // 
             // btnDelete
             // 
@@ -251,7 +271,7 @@
             leftLayout.ColumnCount = 1;
             leftLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             leftLayout.Controls.Add(grpRevisions, 0, 1);
-            leftLayout.Controls.Add(dgvPrograms, 0, 0);
+            leftLayout.Controls.Add(splitProgramList, 0, 0);
             leftLayout.Dock = DockStyle.Fill;
             leftLayout.Location = new Point(0, 0);
             leftLayout.Name = "leftLayout";
@@ -260,6 +280,33 @@
             leftLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 32F));
             leftLayout.Size = new Size(911, 685);
             leftLayout.TabIndex = 0;
+            //
+            // splitProgramList
+            //
+            splitProgramList.Dock = DockStyle.Fill;
+            splitProgramList.Location = new Point(3, 3);
+            splitProgramList.Name = "splitProgramList";
+            //
+            // splitProgramList.Panel1
+            //
+            splitProgramList.Panel1.Controls.Add(dgvPrograms);
+            //
+            // splitProgramList.Panel2
+            //
+            splitProgramList.Panel2.Controls.Add(treePrograms);
+            splitProgramList.Size = new Size(905, 459);
+            splitProgramList.SplitterDistance = 498;
+            splitProgramList.SplitterWidth = 8;
+            splitProgramList.TabIndex = 0;
+            //
+            // treePrograms
+            //
+            treePrograms.BlockNode = true;
+            treePrograms.Dock = DockStyle.Fill;
+            treePrograms.Location = new Point(0, 0);
+            treePrograms.Name = "treePrograms";
+            treePrograms.Size = new Size(399, 459);
+            treePrograms.TabIndex = 0;
             // 
             // grpRevisions
             // 
@@ -297,7 +344,7 @@
             dgvPrograms.BackgroundColor = SystemColors.Window;
             dgvPrograms.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             dgvPrograms.Dock = DockStyle.Fill;
-            dgvPrograms.Location = new Point(3, 3);
+            dgvPrograms.Location = new Point(0, 0);
             dgvPrograms.MultiSelect = false;
             dgvPrograms.Name = "dgvPrograms";
             dgvPrograms.ReadOnly = true;
@@ -305,7 +352,7 @@
             dgvPrograms.RowHeadersWidth = 51;
             dgvPrograms.RowTemplate.Height = 28;
             dgvPrograms.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgvPrograms.Size = new Size(905, 459);
+            dgvPrograms.Size = new Size(498, 459);
             dgvPrograms.TabIndex = 0;
             // 
             // rightLayout
@@ -460,6 +507,8 @@
             lblRecipeCode.Margin = new Padding(0);
             lblRecipeCode.Name = "lblRecipeCode";
             lblRecipeCode.Padding = new Padding(4, 0, 0, 0);
+            lblRecipeCode.Prefix = "*";
+            lblRecipeCode.PrefixColor = Color.FromArgb(255, 77, 79);
             lblRecipeCode.Size = new Size(74, 44);
             lblRecipeCode.TabIndex = 11;
             lblRecipeCode.Text = "工位1配方名称";
@@ -579,6 +628,8 @@
             lblComponentCode.Margin = new Padding(0);
             lblComponentCode.Name = "lblComponentCode";
             lblComponentCode.Padding = new Padding(4, 0, 0, 0);
+            lblComponentCode.Prefix = "*";
+            lblComponentCode.PrefixColor = Color.FromArgb(255, 77, 79);
             lblComponentCode.Size = new Size(92, 44);
             lblComponentCode.TabIndex = 11;
             lblComponentCode.Text = "零组件代码";
@@ -653,6 +704,8 @@
             lblProductNum.Margin = new Padding(0);
             lblProductNum.Name = "lblProductNum";
             lblProductNum.Padding = new Padding(4, 0, 0, 0);
+            lblProductNum.Prefix = "*";
+            lblProductNum.PrefixColor = Color.FromArgb(255, 77, 79);
             lblProductNum.Size = new Size(74, 44);
             lblProductNum.TabIndex = 11;
             lblProductNum.Text = "产品工号";
@@ -873,6 +926,10 @@
             splitMain.Panel2.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)splitMain).EndInit();
             splitMain.ResumeLayout(false);
+            splitProgramList.Panel1.ResumeLayout(false);
+            splitProgramList.Panel2.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)splitProgramList).EndInit();
+            splitProgramList.ResumeLayout(false);
             leftLayout.ResumeLayout(false);
             grpRevisions.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)dgvRevisions).EndInit();
@@ -910,6 +967,7 @@
         private FlowLayoutPanel toolbar;
         private AntdUI.Button btnNew;
         private AntdUI.Button btnSave;
+        private AntdUI.Button btnSaveAsNew;
         private AntdUI.Button btnDelete;
         private AntdUI.Button btnSync;
         private AntdUI.Button btnPullMes;
@@ -917,6 +975,8 @@
         private CheckBox chkSyncNow;
         private TextBox txtKeyword;
         private TableLayoutPanel leftLayout;
+        private AntdUI.Splitter splitProgramList;
+        private AntdUI.Tree treePrograms;
         private DataGridView dgvPrograms;
         private GroupBox grpRevisions;
         private DataGridView dgvRevisions;

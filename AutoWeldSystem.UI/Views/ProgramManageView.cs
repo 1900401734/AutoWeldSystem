@@ -36,6 +36,7 @@ public partial class ProgramManageView : BaseView
     private readonly BindingSource _programBindingSource = new();
     private readonly BindingSource _revisionBindingSource = new();
     private readonly List<BizProgram> _programs = new();
+    private readonly List<BizProgram> _filteredPrograms = new();
     private readonly List<ProgramContentItemRow> _programContentRows = new();
     private readonly Dictionary<int, List<RecipeSelectionItem>> _recipeSelectionItems = new();
     private readonly Dictionary<int, bool> _recipeNameReadSucceeded = new();
@@ -91,6 +92,8 @@ public partial class ProgramManageView : BaseView
         BindRemarkText(inputRemark.Text);
         RefreshRecipeSelectorTexts();
         UpdateCurrentInfoText();
+        // 树节点副标题含同步状态译文，切语言后必须重建才会刷新。
+        RebuildProgramTree(_editingId);
         dgvPrograms.Refresh();
     }
 
@@ -99,11 +102,11 @@ public partial class ProgramManageView : BaseView
         TableStyleHelper.ApplyDataGridView(dgvPrograms);
         dgvPrograms.AutoGenerateColumns = false;
         dgvPrograms.Columns.Clear();
-        dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.ProductNum), 18));
-        dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.Description), 18));
-        dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.VersionNumber), 8));
-        dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.SyncStatus), 13));
-        dgvPrograms.Columns.Add(CreateTextColumn(nameof(BizProgram.UpdatedTime), 18));
+        // 序号列没有对应属性，值由 CellFormatting 按行号填充，只能按列名回查。
+        dgvPrograms.Columns.Add(CreateRowNumberColumn());
+        dgvPrograms.Columns.Add(CreateTextColumn(nameof(ProgramProductGroupRow.ProductNum), 40));
+        dgvPrograms.Columns.Add(CreateTextColumn(nameof(ProgramProductGroupRow.ProgramCount), 20));
+        dgvPrograms.Columns.Add(CreateTextColumn(nameof(ProgramProductGroupRow.UpdatedTime), 34));
         dgvPrograms.DataSource = _programBindingSource;
 
         TableStyleHelper.ApplyDataGridView(dgvRevisions);
@@ -124,6 +127,17 @@ public partial class ProgramManageView : BaseView
         ConfigureProgramContentColumns(dictionaryAvailable: false);
     }
 
+    private const string RowNumberColumnName = "colRowNumber";
+
+    private static DataGridViewTextBoxColumn CreateRowNumberColumn()
+    {
+        return new DataGridViewTextBoxColumn
+        {
+            Name = RowNumberColumnName,
+            FillWeight = 6
+        };
+    }
+
     private static DataGridViewTextBoxColumn CreateTextColumn(string propertyName, float fillWeight)
     {
         return new DataGridViewTextBoxColumn
@@ -137,6 +151,7 @@ public partial class ProgramManageView : BaseView
     {
         btnNew.Click += (_, _) => StartNewProgram();
         btnSave.Click += Save_ClickAsync;
+        btnSaveAsNew.Click += SaveAsNew_ClickAsync;
         btnDelete.Click += Delete_ClickAsync;
         btnSync.Click += SyncSelected_ClickAsync;
         btnPullMes.Click += PullMes_ClickAsync;
@@ -148,8 +163,15 @@ public partial class ProgramManageView : BaseView
             await RefreshRecipeNameOptionsAsync();
         };
         txtKeyword.TextChanged += (_, _) => ApplyProgramFilter();
-        dgvPrograms.SelectionChanged += (_, _) => BindSelectedProgram();
+        dgvPrograms.SelectionChanged += (_, _) => RebuildProgramTree(_editingId);
         dgvPrograms.CellFormatting += DgvPrograms_CellFormatting;
+        treePrograms.SelectChanged += (_, e) =>
+        {
+            if (e.Item?.Tag is int programId)
+            {
+                BindProgramById(programId);
+            }
+        };
         tableProgramContent.CellEndEdit += ProgramContentTable_CellEndEdit;
     }
 
@@ -159,6 +181,7 @@ public partial class ProgramManageView : BaseView
         btnSave.Text = _localizer.GetString(TextKeys.Common.ActionSave);
         btnDelete.Text = _localizer.GetString(TextKeys.Common.ActionDelete);
         btnSync.Text = _localizer.GetString(TextKeys.ProgramManage.ButtonSyncMes);
+        btnSaveAsNew.Text = _localizer.GetString(TextKeys.ProgramManage.ButtonSaveAsNew);
         btnPullMes.Text = _localizer.GetString(TextKeys.ProgramManage.ButtonPullMes);
         btnRefresh.Text = _localizer.GetString(TextKeys.Common.ActionRefresh);
         btnBuildName.Text = _localizer.GetString(TextKeys.ProgramManage.ButtonBuildName);
@@ -183,11 +206,11 @@ public partial class ProgramManageView : BaseView
 
     private void ApplyGridHeaders()
     {
-        SetColumnHeader(dgvPrograms, nameof(BizProgram.ProductNum), TextKeys.Grid.ProgramProductNum);
-        SetColumnHeader(dgvPrograms, nameof(BizProgram.Description), TextKeys.Grid.ProgramLocalRemark);
-        SetColumnHeader(dgvPrograms, nameof(BizProgram.VersionNumber), TextKeys.Grid.ProgramVersionNumber);
-        SetColumnHeader(dgvPrograms, nameof(BizProgram.SyncStatus), TextKeys.Grid.ProgramSyncStatus);
-        SetColumnHeader(dgvPrograms, nameof(BizProgram.UpdatedTime), TextKeys.Grid.ProgramUpdatedTime);
+        dgvPrograms.Columns[RowNumberColumnName].HeaderText =
+            _localizer.GetString(TextKeys.DataManage.ColumnSequence);
+        SetColumnHeader(dgvPrograms, nameof(ProgramProductGroupRow.ProductNum), TextKeys.Grid.ProgramProductNum);
+        SetColumnHeader(dgvPrograms, nameof(ProgramProductGroupRow.ProgramCount), TextKeys.Grid.ProgramCount);
+        SetColumnHeader(dgvPrograms, nameof(ProgramProductGroupRow.UpdatedTime), TextKeys.Grid.ProgramUpdatedTime);
 
         SetColumnHeader(dgvRevisions, nameof(BizProgramRevision.VersionNumber), TextKeys.Grid.ProgramVersionNumber);
         SetColumnHeader(dgvRevisions, nameof(BizProgramRevision.CommitId), TextKeys.Grid.ProgramCommitId);
@@ -285,29 +308,26 @@ public partial class ProgramManageView : BaseView
     private void ApplyProgramFilter(int? selectedId = null)
     {
         var keyword = txtKeyword.Text.Trim();
-        var filtered = _programs
+        _filteredPrograms.Clear();
+        _filteredPrograms.AddRange(_programs
             .Where(program => string.IsNullOrWhiteSpace(keyword)
                 || Contains(program.ProgramName, keyword)
                 || Contains(program.ProductNum, keyword)
                 || Contains(program.ComponentCode, keyword)
                 || Contains(program.Description, keyword)
                 || Contains(program.SyncStatus, keyword)
-                || Contains(GetSyncStatusText(program.SyncStatus), keyword))
-            .OrderBy(program => NormalizeSortText(program.ProductNum), StringComparer.OrdinalIgnoreCase)
-            .ThenBy(program => NormalizeSortText(program.ProgramName), StringComparer.OrdinalIgnoreCase)
-            .ThenByDescending(program => program.UpdatedTime)
-            .ToList();
+                || Contains(GetSyncStatusText(program.SyncStatus), keyword)));
 
-        _programBindingSource.DataSource = filtered;
+        _programBindingSource.DataSource = ProgramProductGroupRules.BuildGroups(_filteredPrograms);
         dgvPrograms.Invalidate();
-        if (filtered.Count == 0)
+        if (dgvPrograms.Rows.Count == 0)
         {
+            treePrograms.Items.Clear();
             _revisionBindingSource.DataSource = Array.Empty<BizProgramRevision>();
             return;
         }
 
         SelectProgramRow(selectedId ?? _editingId);
-        BindSelectedProgram();
     }
 
     private static bool Contains(string? source, string keyword)
@@ -316,17 +336,12 @@ public partial class ProgramManageView : BaseView
             && source.Contains(keyword, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    /// 配方编号通常是数字。这里把数字编号排在前面，文本编号排在后面，空值放到最后。
-    /// </summary>
-    private static string NormalizeSortText(string? value)
-        => value?.Trim() ?? string.Empty;
-
     private void StartNewProgram()
     {
         // 新增状态不应继续保留左侧旧行选择，否则再次点击同一行不会触发 SelectionChanged。
         dgvPrograms.ClearSelection();
         dgvPrograms.CurrentCell = null;
+        treePrograms.USelect();
         _editingId = 0;
         txtProgramId.Clear();
         inputProgramName.Clear();
@@ -344,9 +359,84 @@ public partial class ProgramManageView : BaseView
         _revisionBindingSource.DataSource = Array.Empty<BizProgramRevision>();
     }
 
-    private void BindSelectedProgram()
+    /// <summary>
+    /// 重建当前选中工号下的程序树，并选中指定程序。
+    /// 树根为产品工号，子节点为该工号下按流水号排序的程序；
+    /// 原表格移除的流水号、版本、同步状态改由子节点副标题承载。
+    /// </summary>
+    /// <param name="selectedId">要选中的程序本地 ID；小于等于 0 或不在该工号下时选中第一个程序。</param>
+    private void RebuildProgramTree(int selectedId)
     {
-        if (dgvPrograms.CurrentRow?.DataBoundItem is not BizProgram program)
+        treePrograms.Items.Clear();
+        var productNum = GetSelectedProductNum();
+        if (string.IsNullOrWhiteSpace(productNum))
+        {
+            return;
+        }
+
+        var programs = ProgramProductGroupRules.FilterByProductNum(_filteredPrograms, productNum);
+        if (programs.Count == 0)
+        {
+            return;
+        }
+
+        var root = new AntdUI.TreeItem(productNum) { Expand = true };
+        foreach (var program in programs)
+        {
+            root.Sub.Add(new AntdUI.TreeItem(program.ProgramName)
+            {
+                SubTitle = BuildProgramNodeSubTitle(program),
+                Tag = program.Id
+            });
+        }
+
+        treePrograms.Items.Add(root);
+
+        // 工号行切换后必须重新落到一个具体程序上，否则右侧编辑区仍是上一个工号的内容。
+        var target = programs.FirstOrDefault(program => program.Id == selectedId) ?? programs[0];
+        SelectProgramNode(root, target.Id);
+        BindProgramById(target.Id);
+    }
+
+    private string BuildProgramNodeSubTitle(BizProgram program)
+    {
+        var parts = new List<string>
+        {
+            $"#{Math.Max(1, program.SequenceNumber):000}",
+            $"v{program.VersionNumber}",
+            GetSyncStatusText(program.SyncStatus)
+        };
+
+        if (!string.IsNullOrWhiteSpace(program.Description))
+        {
+            parts.Add(program.Description.Trim());
+        }
+
+        return string.Join("  |  ", parts.Where(part => !string.IsNullOrWhiteSpace(part)));
+    }
+
+    /// <summary>
+    /// 选中树上指定程序节点。AntdUI 的 Select 是节点属性，需要手工互斥。
+    /// </summary>
+    private static void SelectProgramNode(AntdUI.TreeItem root, int programId)
+    {
+        foreach (var node in root.Sub)
+        {
+            node.Select = node.Tag is int id && id == programId;
+        }
+    }
+
+    private string GetSelectedProductNum()
+    {
+        return dgvPrograms.CurrentRow?.DataBoundItem is ProgramProductGroupRow row
+            ? row.ProductNum
+            : string.Empty;
+    }
+
+    private void BindProgramById(int programId)
+    {
+        var program = _programs.FirstOrDefault(item => item.Id == programId);
+        if (program is null)
         {
             return;
         }
@@ -376,7 +466,7 @@ public partial class ProgramManageView : BaseView
             return;
         }
 
-        if (dgvPrograms.CurrentRow?.DataBoundItem is BizProgram program)
+        if (_programs.FirstOrDefault(program => program.Id == _editingId) is { } program)
         {
             SetCurrentProgramInfo(program);
         }
@@ -401,10 +491,10 @@ public partial class ProgramManageView : BaseView
             return;
         }
 
-        var column = dgvPrograms.Columns[e.ColumnIndex];
-        if (string.Equals(column.DataPropertyName, nameof(BizProgram.SyncStatus), StringComparison.Ordinal))
+        // 序号是显示用行号，随排序和筛选重新编号，不来自数据源。
+        if (string.Equals(dgvPrograms.Columns[e.ColumnIndex].Name, RowNumberColumnName, StringComparison.Ordinal))
         {
-            e.Value = GetSyncStatusText(Convert.ToString(e.Value));
+            e.Value = e.RowIndex + 1;
             e.FormattingApplied = true;
         }
     }
@@ -423,21 +513,40 @@ public partial class ProgramManageView : BaseView
         };
     }
 
+    /// <summary>
+    /// 按程序本地 ID 定位到它所属的工号行，再在树上选中该程序。
+    /// 传入 0 或找不到时回落到第一行工号。
+    /// </summary>
     private void SelectProgramRow(int id)
     {
-        if (id <= 0 || dgvPrograms.Rows.Count == 0)
+        if (dgvPrograms.Rows.Count == 0)
         {
             return;
         }
 
-        foreach (DataGridViewRow row in dgvPrograms.Rows)
+        var program = _filteredPrograms.FirstOrDefault(item => item.Id == id);
+        var targetRowIndex = 0;
+        if (program is not null)
         {
-            if (row.DataBoundItem is BizProgram program && program.Id == id)
+            for (var index = 0; index < dgvPrograms.Rows.Count; index++)
             {
-                row.Selected = true;
-                dgvPrograms.CurrentCell = row.Cells[0];
-                return;
+                if (dgvPrograms.Rows[index].DataBoundItem is ProgramProductGroupRow row
+                    && string.Equals(row.ProductNum.Trim(), program.ProductNum?.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    targetRowIndex = index;
+                    break;
+                }
             }
+        }
+
+        // 选中行会触发 SelectionChanged 从而重建树；若目标行已是当前行则事件不会再触发，需手工重建。
+        var alreadyCurrent = dgvPrograms.CurrentRow?.Index == targetRowIndex;
+        dgvPrograms.ClearSelection();
+        dgvPrograms.Rows[targetRowIndex].Selected = true;
+        dgvPrograms.CurrentCell = dgvPrograms.Rows[targetRowIndex].Cells[0];
+        if (alreadyCurrent)
+        {
+            RebuildProgramTree(id);
         }
     }
 
@@ -468,6 +577,59 @@ public partial class ProgramManageView : BaseView
         finally
         {
             btnSave.Enabled = true;
+        }
+    }
+
+    /// <summary>
+    /// 以当前编辑内容为基础，在同一产品工号下另存为一个新程序。
+    /// 必须清空 _editingId 和 MES 程序ID，保存才会走新增；否则只会给原程序改名，
+    /// 因为已有 ProgramId 的程序在同步时会把 Create 降级为 Update。
+    /// </summary>
+    private async void SaveAsNew_ClickAsync(object? sender, EventArgs e)
+    {
+        if (_editingId <= 0)
+        {
+            ShowWarning(TextKeys.ProgramManage.SelectDelete);
+            return;
+        }
+
+        var productNum = inputProductNum.Text.Trim();
+        if (string.IsNullOrWhiteSpace(productNum))
+        {
+            ShowWarning(TextKeys.ProgramManage.ProductNumRequired);
+            return;
+        }
+
+        _editingId = 0;
+        txtProgramId.Clear();
+        inputSequenceNumber.Text = _programService.GetNextSequenceNumber(productNum).ToString();
+        inputProgramName.Text = BuildProgramNameFromInputs();
+
+        if (!TryBuildRequest(out var request))
+        {
+            return;
+        }
+
+        btnSaveAsNew.Enabled = false;
+        try
+        {
+            var saveResult = await _programService.SaveWithSyncDecisionAsync(request);
+            var saved = saveResult.Program;
+            var syncInBackground = chkSyncNow.Checked && saveResult.ShouldSyncNow;
+            ReloadPrograms(saved.Id);
+            ShowInfo(syncInBackground ? "程序已保存到本地，MES同步将在后台执行。" : _localizer.GetString(TextKeys.ProgramManage.SaveSuccess));
+            if (syncInBackground)
+            {
+                _ = SyncProgramInBackgroundAsync(saved.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowErrorMessage(ex.Message);
+        }
+        finally
+        {
+            btnSaveAsNew.Enabled = true;
         }
     }
 
@@ -563,6 +725,18 @@ public partial class ProgramManageView : BaseView
         }
 
         request.ProductNum = inputProductNum.Text.Trim();
+        if (string.IsNullOrWhiteSpace(request.ProductNum))
+        {
+            ShowWarning(TextKeys.ProgramManage.ProductNumRequired);
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(inputComponentCode.Text))
+        {
+            ShowWarning(TextKeys.ProgramManage.ComponentCodeRequired);
+            return false;
+        }
+
         var editingProgram = GetEditingProgram();
         if (_editingId <= 0
             && (!_recipeNameReadSucceeded.TryGetValue(1, out var station1ReadSucceeded) || !station1ReadSucceeded
