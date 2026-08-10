@@ -1,6 +1,6 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v1.2.0`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v1.3.0`。
 
 ## 功能概览
 
@@ -88,6 +88,14 @@ dotnet publish AutoWeldSystem.UI/AutoWeldSystem.UI.csproj -c Release -r win-x64 
 - MES 地址、设备编号、日志路径、数据路径可在系统设置界面维护。
 - PLC 地址在地址维护界面中填写完整。
 
+## 程序管理界面操作
+
+- 左侧列表按产品工号去重，一行代表一个产品工号，显示序号、工号、该工号下的程序数量和最近更新时间。序号是显示用行号，随筛选和排序重新编号，与流水号无关。
+- 选中工号后，中间的程序树展开该工号下的全部程序，按流水号升序排列；节点副标题依次显示流水号、版本、同步状态和程序备注。点击节点切换右侧编辑内容。
+- 同一工号下可以有多个程序，用“另存为新程序”按当前内容新建一条，流水号自动取该工号下的下一个可用值。
+- 产品工号、零组件代码和工位配方名称为必填项，标签前带红色星号，留空时保存会立即提示。其余字段可以留空。
+- 程序名称由工号、零组件代码、流水号和程序备注拼成。同工号下若流水号和程序备注都相同会产生重名，保存时会被拒绝，需调整流水号或程序备注。
+
 ## PLC 配方名称关联与生产可用性
 
 - 普通业务界面只选择和显示 PLC 配方名称，不显示或手工编辑数字配方号；实际槽位号由“地址维护 -> 配方名称地址”映射，并随程序隐藏保存。
@@ -150,10 +158,10 @@ dotnet publish AutoWeldSystem.UI/AutoWeldSystem.UI.csproj -c Release -r win-x64 
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>1.1.0</Version>
-<AssemblyVersion>1.1.0.0</AssemblyVersion>
-<FileVersion>1.1.0.0</FileVersion>
-<InformationalVersion>1.1.0</InformationalVersion>
+<Version>1.3.0</Version>
+<AssemblyVersion>1.3.0.0</AssemblyVersion>
+<FileVersion>1.3.0.0</FileVersion>
+<InformationalVersion>1.3.0</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -165,9 +173,9 @@ dotnet publish AutoWeldSystem.UI/AutoWeldSystem.UI.csproj -c Release -r win-x64 
 发布新版本时：
 
 ```powershell
-git tag -a v1.1.0 -m "Release v1.1.0"
+git tag -a v1.3.0 -m "Release v1.3.0"
 git push origin main
-git push origin v1.1.0
+git push origin v1.3.0
 ```
 
 ## Git 使用

@@ -308,6 +308,12 @@ var tests = new (string Name, Action Run)[]
     ("Program MES create payload clears file fields for empty content", ProgramMesCreatePayloadClearsFileFieldsForEmptyContent),
     ("Program content rules detect configured values", ProgramContentRulesDetectConfiguredValues),
     ("Program manage service clears automatic file for empty content", ProgramManageServiceClearsAutomaticFileForEmptyContent),
+    ("Program save regenerates name when sequence changes", ProgramSaveRegeneratesNameWhenSequenceChanges),
+    ("Program save rejects duplicate program name", ProgramSaveRejectsDuplicateProgramName),
+    ("Program manage view provides save-as-new entry", ProgramManageViewProvidesSaveAsNewEntry),
+    ("Program manage grid shows sequence and program name", ProgramManageGridShowsSequenceAndProgramName),
+    ("Program product groups merge programs sharing product num", ProgramProductGroupsMergeProgramsSharingProductNum),
+    ("Program product group filter orders programs by sequence", ProgramProductGroupFilterOrdersProgramsBySequence),
     ("Program manage service removes renamed automatic file after write", ProgramManageServiceRemovesRenamedAutomaticFileAfterWrite),
     ("Program manage view hides product model", ProgramManageViewHidesProductModel),
     ("Program manage save ignores product model input", ProgramManageSaveIgnoresProductModelInput),
@@ -9358,6 +9364,103 @@ static void ProgramContentRulesDetectConfiguredValues()
     AssertTrue(ProgramContentJsonRules.HasConfiguredValues("not-json"), "非法历史内容不应被误判为空设定值。");
 }
 
+static void ProgramSaveRegeneratesNameWhenSequenceChanges()
+{
+    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "ProgramManageService.cs"), Encoding.UTF8);
+    var applyRequestMethod = ExtractMethodText(
+        serviceCode,
+        "    private void ApplyRequest(BizProgram entity, SaveProgramReq request)",
+        "    private AppSettings CurrentSettings");
+
+    // 流水号已改但名称仍是旧值会造成名实不符，且 TryParse 之后会把流水号解析回旧值。
+    AssertTrue(applyRequestMethod.Contains("var nameInputsChanged", StringComparison.Ordinal), "保存服务必须判断参与命名的字段是否变化。");
+    AssertTrue(applyRequestMethod.Contains("entity.SequenceNumber != Math.Max(1, request.SequenceNumber)", StringComparison.Ordinal), "流水号变化必须触发程序名称重算。");
+    AssertTrue(applyRequestMethod.Contains("entity.Id == 0 || descriptionChanged || nameInputsChanged", StringComparison.Ordinal), "命名门控必须同时覆盖新增、备注变化和命名字段变化。");
+    AssertTrue(applyRequestMethod.Contains("? entity.ProgramName", StringComparison.Ordinal), "命名字段未变化时仍应保留原程序名称。");
+}
+
+static void ProgramSaveRejectsDuplicateProgramName()
+{
+    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "ProgramManageService.cs"), Encoding.UTF8);
+
+    // 程序 JSON 文件仅按程序名命名，重名会互相覆盖并在删除时误删幸存者文件。
+    AssertTrue(serviceCode.Contains("EnsureProgramNameNotDuplicated(entity);", StringComparison.Ordinal), "保存时必须校验程序名称是否重复。");
+    var guardMethod = ExtractMethodText(
+        serviceCode,
+        "    private void EnsureProgramNameNotDuplicated(BizProgram entity)",
+        "    private void SettingsService_SettingsChanged");
+    AssertTrue(guardMethod.Contains("it.ProgramName == entity.ProgramName && it.Id != entity.Id && !it.IsDeleted", StringComparison.Ordinal), "重名校验必须排除自身和已删除程序。");
+    AssertTrue(guardMethod.Contains("throw new InvalidOperationException", StringComparison.Ordinal), "命中重名时必须抛错阻止保存。");
+}
+
+static void ProgramManageViewProvidesSaveAsNewEntry()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.cs"), Encoding.UTF8);
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.Designer.cs"), Encoding.UTF8);
+
+    AssertTrue(designerCode.Contains("btnSaveAsNew = new AntdUI.Button();", StringComparison.Ordinal), "程序管理页必须提供另存为新程序按钮。");
+    AssertTrue(viewCode.Contains("btnSaveAsNew.Click += SaveAsNew_ClickAsync;", StringComparison.Ordinal), "另存为新程序按钮必须绑定事件。");
+    AssertTrue(viewCode.Contains("btnSaveAsNew.Text = _localizer.GetString(TextKeys.ProgramManage.ButtonSaveAsNew);", StringComparison.Ordinal), "另存为新程序按钮必须本地化。");
+
+    var handler = ExtractMethodText(
+        viewCode,
+        "    private async void SaveAsNew_ClickAsync(object? sender, EventArgs e)",
+        "    private async Task SyncProgramInBackgroundAsync(int programId)");
+    // 已有 ProgramId 的程序同步时会把 Create 降级为 Update，必须另起新行才能真正新增。
+    AssertTrue(handler.Contains("_editingId = 0;", StringComparison.Ordinal), "另存为新程序必须清空编辑标识，保存才会走新增。");
+    AssertTrue(handler.Contains("txtProgramId.Clear();", StringComparison.Ordinal), "另存为新程序必须清空 MES 程序ID，避免改名原程序。");
+    AssertTrue(handler.Contains("_programService.GetNextSequenceNumber(productNum)", StringComparison.Ordinal), "另存为新程序必须自动取该工号下的下一个流水号。");
+}
+
+static void ProgramManageGridShowsSequenceAndProgramName()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.cs"), Encoding.UTF8);
+
+    // 列表已按工号去重，同工号的多个程序改由右侧树区分，流水号和程序名称必须落在树节点上。
+    AssertTrue(viewCode.Contains("CreateTextColumn(nameof(ProgramProductGroupRow.ProductNum)", StringComparison.Ordinal), "程序列表必须按产品工号显示。");
+    AssertTrue(viewCode.Contains("CreateTextColumn(nameof(ProgramProductGroupRow.ProgramCount)", StringComparison.Ordinal), "程序列表必须显示该工号下的程序数量。");
+    AssertTrue(viewCode.Contains("new AntdUI.TreeItem(program.ProgramName)", StringComparison.Ordinal), "程序树节点必须显示程序名称。");
+    AssertTrue(viewCode.Contains("SubTitle = BuildProgramNodeSubTitle(program)", StringComparison.Ordinal), "程序树节点必须显示流水号等区分信息。");
+    AssertTrue(viewCode.Contains("$\"#{Math.Max(1, program.SequenceNumber):000}\"", StringComparison.Ordinal), "程序树节点副标题必须包含流水号。");
+}
+
+static void ProgramProductGroupsMergeProgramsSharingProductNum()
+{
+    var programs = new List<BizProgram>
+    {
+        new() { Id = 1, ProgramName = "A-1", ProductNum = "P-001", SequenceNumber = 2, UpdatedTime = new DateTime(2026, 8, 1) },
+        new() { Id = 2, ProgramName = "A-2", ProductNum = " p-001 ", SequenceNumber = 1, UpdatedTime = new DateTime(2026, 8, 5) },
+        new() { Id = 3, ProgramName = "B-1", ProductNum = "P-002", SequenceNumber = 1, UpdatedTime = new DateTime(2026, 8, 3) },
+        new() { Id = 4, ProgramName = "空工号", ProductNum = "   ", SequenceNumber = 1, UpdatedTime = new DateTime(2026, 8, 9) }
+    };
+
+    var groups = ProgramProductGroupRules.BuildGroups(programs);
+
+    AssertEqual(2, groups.Count, "工号为空的程序不得产生分组，同工号必须合并为一行。");
+    AssertEqual("P-001", groups[0].ProductNum, "同工号大小写和空白不同必须归为同一组。");
+    AssertEqual(2, groups[0].ProgramCount, "分组必须统计该工号下的程序数量。");
+    AssertEqual(new DateTime(2026, 8, 5), groups[0].UpdatedTime, "分组更新时间必须取组内最新。");
+    AssertEqual("P-002", groups[1].ProductNum, "分组必须按工号升序排列。");
+    AssertEqual(0, ProgramProductGroupRules.BuildGroups(Array.Empty<BizProgram>()).Count, "空集合必须返回空分组。");
+}
+
+static void ProgramProductGroupFilterOrdersProgramsBySequence()
+{
+    var programs = new List<BizProgram>
+    {
+        new() { Id = 1, ProgramName = "A-2", ProductNum = "P-001", SequenceNumber = 2 },
+        new() { Id = 2, ProgramName = "A-1", ProductNum = "p-001", SequenceNumber = 1 },
+        new() { Id = 3, ProgramName = "B-1", ProductNum = "P-002", SequenceNumber = 1 }
+    };
+
+    var filtered = ProgramProductGroupRules.FilterByProductNum(programs, " P-001 ");
+
+    AssertEqual(2, filtered.Count, "必须返回该工号下的全部程序，且大小写空白不敏感。");
+    AssertEqual(2, filtered[0].Id, "同工号程序必须按流水号升序排列。");
+    AssertEqual(1, filtered[1].Id, "同工号程序必须按流水号升序排列。");
+    AssertEqual(0, ProgramProductGroupRules.FilterByProductNum(programs, "  ").Count, "工号为空时必须返回空集合。");
+}
+
 static void ProgramManageServiceClearsAutomaticFileForEmptyContent()
 {
     var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "ProgramManageService.cs"), Encoding.UTF8);
@@ -9835,7 +9938,7 @@ static void ProgramManageInitialLoadKeepsSelectedProgramDetails()
     var startNewMethod = ExtractMethodText(
         viewCode,
         "private void StartNewProgram()",
-        "private void BindSelectedProgram()");
+        "private void RebuildProgramTree(int selectedId)");
     AssertTrue(
         startNewMethod.Contains("dgvPrograms.ClearSelection();", StringComparison.Ordinal)
         && startNewMethod.Contains("dgvPrograms.CurrentCell = null;", StringComparison.Ordinal),

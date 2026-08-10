@@ -100,6 +100,22 @@ public sealed class ProgramManageService : IProgramManageService
             description);
     }
 
+    public int GetNextSequenceNumber(string productNum)
+    {
+        _dbContext.InitDatabase();
+
+        var normalized = productNum?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return 1;
+        }
+
+        var maxSequence = _dbContext.Db.Queryable<BizProgram>()
+            .Where(it => !it.IsDeleted && it.ProductNum == normalized)
+            .Max(it => (int?)it.SequenceNumber) ?? 0;
+        return Math.Max(1, maxSequence + 1);
+    }
+
     public async Task<BizProgram> SaveAsync(SaveProgramReq request, bool syncNow, CancellationToken cancellationToken = default)
     {
         var result = await SaveWithSyncDecisionAsync(request, cancellationToken);
@@ -316,11 +332,20 @@ public sealed class ProgramManageService : IProgramManageService
             ? ProgramFileRules.BuildFilePath(settings.ProgramFileDirectory, entity.RecipeCode, entity.ProgramName)
             : null;
 
-        entity.ProgramName = entity.Id == 0 || descriptionChanged
+        // 程序名称由工号、零组件代码、流水号和程序备注拼成，任一变化都必须重算，
+        // 否则会出现流水号已改、名称仍是旧值的名实不符。
+        // 注意：名称是 MES 上传字段，因此改流水号会经名称间接触发一次 MES 更新。
+        var nameInputsChanged = entity.Id > 0
+            && (!string.Equals(entity.ProductNum?.Trim(), request.ProductNum, StringComparison.Ordinal)
+                || !string.Equals(entity.ComponentCode?.Trim(), request.ComponentCode, StringComparison.Ordinal)
+                || entity.SequenceNumber != Math.Max(1, request.SequenceNumber));
+
+        entity.ProgramName = entity.Id == 0 || descriptionChanged || nameInputsChanged
             ? BuildProgramName(request.ProductNum, request.ComponentCode, request.SequenceNumber, request.LocalRemark)
             : string.IsNullOrWhiteSpace(request.ProgramName)
                 ? entity.ProgramName
                 : request.ProgramName;
+        EnsureProgramNameNotDuplicated(entity);
         entity.ProductNum = request.ProductNum;
         entity.RecipeCode = request.RecipeCode;
         entity.Station2RecipeCode = request.Station2RecipeCode;
@@ -352,6 +377,20 @@ public sealed class ProgramManageService : IProgramManageService
     }
 
     private AppSettings CurrentSettings => Volatile.Read(ref _currentSettings);
+
+    /// <summary>
+    /// 阻止保存出同名程序。
+    /// 程序 JSON 文件仅按程序名命名，重名会互相覆盖，且删除其中一个会连带删掉幸存者的文件。
+    /// </summary>
+    private void EnsureProgramNameNotDuplicated(BizProgram entity)
+    {
+        var duplicated = _dbContext.Db.Queryable<BizProgram>()
+            .Any(it => it.ProgramName == entity.ProgramName && it.Id != entity.Id && !it.IsDeleted);
+        if (duplicated)
+        {
+            throw new InvalidOperationException($"已存在同名程序：{entity.ProgramName}，请调整流水号或程序备注。");
+        }
+    }
 
     private void SettingsService_SettingsChanged(object? sender, AppSettingsChangedEventArgs e)
     {

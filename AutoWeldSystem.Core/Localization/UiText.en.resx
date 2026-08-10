@@ -1578,6 +1578,9 @@
   <data name="program.button.sync_mes" xml:space="preserve">
     <value>Sync MES</value>
   </data>
+  <data name="program.button.save_as_new" xml:space="preserve">
+    <value>Save As New</value>
+  </data>
   <data name="program.button.pull_mes" xml:space="preserve">
     <value>Pull from MES</value>
   </data>
@@ -1633,7 +1636,7 @@
     <value>MES Remark</value>
   </data>
   <data name="program.label.local_remark" xml:space="preserve">
-    <value>Local Remark</value>
+    <value>Program Remark</value>
   </data>
   <data name="program.label.program_content" xml:space="preserve">
     <value>Program Content</value>
@@ -1673,6 +1676,12 @@
   </data>
   <data name="program.message.sequence_invalid" xml:space="preserve">
     <value>Sequence No. must be a number greater than 0.</value>
+  </data>
+  <data name="program.message.product_num_required" xml:space="preserve">
+    <value>Product No. is required.</value>
+  </data>
+  <data name="program.message.component_code_required" xml:space="preserve">
+    <value>Component Code is required.</value>
   </data>
   <data name="program.message.cycle_time_invalid" xml:space="preserve">
     <value>Cycle seconds must be a number greater than or equal to 0.</value>
@@ -1734,6 +1743,9 @@
   <data name="grid.program.name" xml:space="preserve">
     <value>Program Name</value>
   </data>
+  <data name="grid.program.sequence_number" xml:space="preserve">
+    <value>Seq. No.</value>
+  </data>
   <data name="grid.program.id" xml:space="preserve">
     <value>MES Program ID</value>
   </data>
@@ -1741,7 +1753,10 @@
     <value>Product No.</value>
   </data>
   <data name="grid.program.local_remark" xml:space="preserve">
-    <value>Local Remark</value>
+    <value>Program Remark</value>
+  </data>
+  <data name="grid.program.program_count" xml:space="preserve">
+    <value>Programs</value>
   </data>
   <data name="grid.program.version_number" xml:space="preserve">
     <value>Version</value>
