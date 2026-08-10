@@ -29,11 +29,9 @@
             txtKeyword = new TextBox();
             splitMain = new AntdUI.Splitter();
             leftLayout = new TableLayoutPanel();
-            splitProgramList = new AntdUI.Splitter();
-            treePrograms = new AntdUI.Tree();
+            tablePrograms = new AntdUI.Table();
             grpRevisions = new GroupBox();
             dgvRevisions = new DataGridView();
-            dgvPrograms = new DataGridView();
             rightLayout = new TableLayoutPanel();
             editorLayout = new TableLayoutPanel();
             tlpProgramId = new TableLayoutPanel();
@@ -82,13 +80,8 @@
             splitMain.Panel2.SuspendLayout();
             splitMain.SuspendLayout();
             leftLayout.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)splitProgramList).BeginInit();
-            splitProgramList.Panel1.SuspendLayout();
-            splitProgramList.Panel2.SuspendLayout();
-            splitProgramList.SuspendLayout();
             grpRevisions.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)dgvRevisions).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)dgvPrograms).BeginInit();
             rightLayout.SuspendLayout();
             editorLayout.SuspendLayout();
             tlpProgramId.SuspendLayout();
@@ -271,7 +264,7 @@
             leftLayout.ColumnCount = 1;
             leftLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             leftLayout.Controls.Add(grpRevisions, 0, 1);
-            leftLayout.Controls.Add(splitProgramList, 0, 0);
+            leftLayout.Controls.Add(tablePrograms, 0, 0);
             leftLayout.Dock = DockStyle.Fill;
             leftLayout.Location = new Point(0, 0);
             leftLayout.Name = "leftLayout";
@@ -281,32 +274,13 @@
             leftLayout.Size = new Size(911, 685);
             leftLayout.TabIndex = 0;
             //
-            // splitProgramList
+            // tablePrograms
             //
-            splitProgramList.Dock = DockStyle.Fill;
-            splitProgramList.Location = new Point(3, 3);
-            splitProgramList.Name = "splitProgramList";
-            //
-            // splitProgramList.Panel1
-            //
-            splitProgramList.Panel1.Controls.Add(dgvPrograms);
-            //
-            // splitProgramList.Panel2
-            //
-            splitProgramList.Panel2.Controls.Add(treePrograms);
-            splitProgramList.Size = new Size(905, 459);
-            splitProgramList.SplitterDistance = 498;
-            splitProgramList.SplitterWidth = 8;
-            splitProgramList.TabIndex = 0;
-            //
-            // treePrograms
-            //
-            treePrograms.BlockNode = true;
-            treePrograms.Dock = DockStyle.Fill;
-            treePrograms.Location = new Point(0, 0);
-            treePrograms.Name = "treePrograms";
-            treePrograms.Size = new Size(399, 459);
-            treePrograms.TabIndex = 0;
+            tablePrograms.Dock = DockStyle.Fill;
+            tablePrograms.Location = new Point(3, 3);
+            tablePrograms.Name = "tablePrograms";
+            tablePrograms.Size = new Size(905, 459);
+            tablePrograms.TabIndex = 0;
             // 
             // grpRevisions
             // 
@@ -336,24 +310,6 @@
             dgvRevisions.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             dgvRevisions.Size = new Size(899, 185);
             dgvRevisions.TabIndex = 0;
-            // 
-            // dgvPrograms
-            // 
-            dgvPrograms.AllowUserToAddRows = false;
-            dgvPrograms.AllowUserToDeleteRows = false;
-            dgvPrograms.BackgroundColor = SystemColors.Window;
-            dgvPrograms.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-            dgvPrograms.Dock = DockStyle.Fill;
-            dgvPrograms.Location = new Point(0, 0);
-            dgvPrograms.MultiSelect = false;
-            dgvPrograms.Name = "dgvPrograms";
-            dgvPrograms.ReadOnly = true;
-            dgvPrograms.RowHeadersVisible = false;
-            dgvPrograms.RowHeadersWidth = 51;
-            dgvPrograms.RowTemplate.Height = 28;
-            dgvPrograms.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgvPrograms.Size = new Size(498, 459);
-            dgvPrograms.TabIndex = 0;
             // 
             // rightLayout
             // 
@@ -926,14 +882,9 @@
             splitMain.Panel2.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)splitMain).EndInit();
             splitMain.ResumeLayout(false);
-            splitProgramList.Panel1.ResumeLayout(false);
-            splitProgramList.Panel2.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)splitProgramList).EndInit();
-            splitProgramList.ResumeLayout(false);
             leftLayout.ResumeLayout(false);
             grpRevisions.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)dgvRevisions).EndInit();
-            ((System.ComponentModel.ISupportInitialize)dgvPrograms).EndInit();
             rightLayout.ResumeLayout(false);
             rightLayout.PerformLayout();
             editorLayout.ResumeLayout(false);
@@ -975,9 +926,7 @@
         private CheckBox chkSyncNow;
         private TextBox txtKeyword;
         private TableLayoutPanel leftLayout;
-        private AntdUI.Splitter splitProgramList;
-        private AntdUI.Tree treePrograms;
-        private DataGridView dgvPrograms;
+        private AntdUI.Table tablePrograms;
         private GroupBox grpRevisions;
         private DataGridView dgvRevisions;
         private AntdUI.Label lblProgramName;

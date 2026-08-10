@@ -1496,6 +1496,7 @@ public static class TextKeys
         public const string ProgramSequenceNumber = "grid.program.sequence_number";
         public const string ProgramLocalRemark = "grid.program.local_remark";
         public const string ProgramCount = "grid.program.program_count";
+        public const string ProgramSummary = "grid.program.summary";
         public const string ProgramVersionNumber = "grid.program.version_number";
         public const string ProgramSyncStatus = "grid.program.sync_status";
         public const string ProgramSyncAction = "grid.program.sync_action";

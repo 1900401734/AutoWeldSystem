@@ -1,6 +1,6 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v1.4.1`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v1.5.0`。
 
 ## 功能概览
 
@@ -90,8 +90,9 @@ dotnet publish AutoWeldSystem.UI/AutoWeldSystem.UI.csproj -c Release -r win-x64 
 
 ## 程序管理界面操作
 
-- 左侧列表按产品工号去重，一行代表一个产品工号，显示序号、工号、该工号下的程序数量和最近更新时间。序号是显示用行号，随筛选和排序重新编号，与流水号无关。
-- 选中工号后，中间的程序树展开该工号下的全部程序，按流水号升序排列；节点副标题依次显示流水号、版本、同步状态和程序备注。点击节点切换右侧编辑内容。
+- 左侧列表按产品工号去重，一行代表一个产品工号，显示工号、程序摘要和最近更新时间。
+- 工号下有多个程序时，该行左侧出现展开箭头，展开后每个程序占一个子行，按流水号升序排列，子行显示流水号标签和“程序名称 + 版本 + 同步状态”摘要。点击子行切换右侧编辑内容。
+- 工号下只有一个程序时不出现展开箭头，该程序的摘要直接显示在工号行上，点击工号行即可编辑，避免为单个程序多套一层。
 - 同一工号下可以有多个程序，用“另存为新程序”按当前内容新建一条，流水号自动取该工号下的下一个可用值。
 - 产品工号、零组件代码和工位配方名称为必填项，标签前带红色星号，留空时保存会立即提示。其余字段可以留空。
 - 程序名称由工号、零组件代码、流水号和程序备注拼成。同工号下若流水号和程序备注都相同会产生重名，保存时会被拒绝，需调整流水号或程序备注。
@@ -158,10 +159,10 @@ dotnet publish AutoWeldSystem.UI/AutoWeldSystem.UI.csproj -c Release -r win-x64 
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>1.4.1</Version>
-<AssemblyVersion>1.4.1.0</AssemblyVersion>
-<FileVersion>1.4.1.0</FileVersion>
-<InformationalVersion>1.4.1</InformationalVersion>
+<Version>1.5.0</Version>
+<AssemblyVersion>1.5.0.0</AssemblyVersion>
+<FileVersion>1.5.0.0</FileVersion>
+<InformationalVersion>1.5.0</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -173,9 +174,9 @@ dotnet publish AutoWeldSystem.UI/AutoWeldSystem.UI.csproj -c Release -r win-x64 
 发布新版本时：
 
 ```powershell
-git tag -a v1.4.1 -m "Release v1.4.1"
+git tag -a v1.5.0 -m "Release v1.5.0"
 git push origin main
-git push origin v1.4.1
+git push origin v1.5.0
 ```
 
 ## Git 使用

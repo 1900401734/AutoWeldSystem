@@ -1758,6 +1758,9 @@
   <data name="grid.program.program_count" xml:space="preserve">
     <value>Programs</value>
   </data>
+  <data name="grid.program.summary" xml:space="preserve">
+    <value>Program</value>
+  </data>
   <data name="grid.program.version_number" xml:space="preserve">
     <value>Version</value>
   </data>
