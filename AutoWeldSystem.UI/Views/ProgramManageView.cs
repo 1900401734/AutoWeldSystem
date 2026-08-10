@@ -494,7 +494,7 @@ public partial class ProgramManageView : BaseView
         // 序号是显示用行号，随排序和筛选重新编号，不来自数据源。
         if (string.Equals(dgvPrograms.Columns[e.ColumnIndex].Name, RowNumberColumnName, StringComparison.Ordinal))
         {
-            e.Value = e.RowIndex + 1;
+            e.Value = (e.RowIndex + 1).ToString();
             e.FormattingApplied = true;
         }
     }
