@@ -1,6 +1,7 @@
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs.CenterServer;
 using AutoWeldSystem.Core.Entities;
+using AutoWeldSystem.Core.Production;
 
 namespace AutoWeldSystem.Core.Center;
 
@@ -85,10 +86,10 @@ public static class CenterTelemetryRules
     {
         return statusCode?.Trim() switch
         {
-            "1" => "运行",
-            "2" => "暂停/空闲",
-            "3" => "停止",
-            "4" => "报警",
+            ProductionConstants.PlcDeviceStatuses.Text.Running => "运行",
+            ProductionConstants.PlcDeviceStatuses.Text.Paused => "暂停/空闲",
+            ProductionConstants.PlcDeviceStatuses.Text.Stopped => "停止",
+            ProductionConstants.PlcDeviceStatuses.Text.Alarm => "报警",
             _ => string.IsNullOrWhiteSpace(fallbackName) ? "未知" : fallbackName.Trim()
         };
     }
@@ -116,6 +117,116 @@ public static class CenterTelemetryRules
         return sharedStatus is not null && sharedStatus.OccurredTime > stationStatus.OccurredTime
             ? sharedStatus
             : stationStatus;
+    }
+
+    /// <summary>
+    /// 解析上报给中心的工位报警内容。
+    /// PLC 实时报警优先；PLC 无值时只有设备状态为「异常」的 JSONL 备注才算报警——
+    /// 开机/停机/异常恢复/程序执行开始/结束 都不是报警，其备注不得当作报警上送
+    /// （这正是看板上出现「程序执行结束」的原因）。
+    /// 同时剥离 MES 备注契约追加的「；工位：工位N」后缀：工位归属由 StationNo 表达，
+    /// 文本里再带一次会与看板的工位标签重复。
+    /// </summary>
+    public static string ResolveAlarmMessage(string? plcAlarmMessage, BizDeviceStatusLog? stationStatus)
+    {
+        var plcAlarm = plcAlarmMessage?.Trim();
+        if (!string.IsNullOrEmpty(plcAlarm))
+        {
+            return StripStationSuffix(plcAlarm);
+        }
+
+        // PLC 已恢复（AlarmMessage 为空）时不得再用历史备注顶替，否则报警永远不消失。
+        if (stationStatus?.DeviceStatus?.Trim() != ProductionConstants.MesDeviceStatuses.Exception)
+        {
+            return string.Empty;
+        }
+
+        return StripStationSuffix(stationStatus.Remark);
+    }
+
+    /// <summary>
+    /// 剥离 MES 备注中的「；工位：工位N」/「工位：双工位」后缀与「异常-工位N：」前缀。
+    /// MES 上报契约本身保持不变，这里只做展示侧的反向清洗。
+    /// </summary>
+    public static string StripStationSuffix(string? value)
+    {
+        var text = value?.Trim();
+        if (string.IsNullOrEmpty(text))
+        {
+            return string.Empty;
+        }
+
+        // 后缀：全角/半角分号 + 「工位：xxx」，位于文本末尾。
+        var separatorIndex = text.LastIndexOfAny([';', '；']);
+        if (separatorIndex > 0
+            && text[(separatorIndex + 1)..].TrimStart().StartsWith("工位：", StringComparison.Ordinal))
+        {
+            text = text[..separatorIndex].Trim();
+        }
+
+        // 前缀：「异常-工位N：」或「工位N：」，设备端与看板都会再标一次工位，此处去重。
+        var prefixEnd = text.IndexOf('：', StringComparison.Ordinal);
+        if (prefixEnd > 0)
+        {
+            var prefix = text[..prefixEnd];
+            if (prefix.Contains("工位", StringComparison.Ordinal))
+            {
+                text = text[(prefixEnd + 1)..].Trim();
+            }
+        }
+
+        return text.TrimEnd('；', ';').Trim();
+    }
+
+    /// <summary>
+    /// 报警内容缺失时的回退文案：状态码是报警但设备端没给出原因，
+    /// 页面上也必须有可见提示，不能只留一条空横幅。
+    /// </summary>
+    public const string UnknownAlarmText = "报警（无详细信息）";
+
+    /// <summary>
+    /// 双工位设备的工位标签，沿用设备端「左/右」命名约定；单工位返回 null（不标注工位）。
+    /// </summary>
+    public static string? ResolveStationAlarmLabel(int stationNo, bool isDualStation)
+    {
+        if (!isDualStation)
+        {
+            return null;
+        }
+
+        return stationNo switch
+        {
+            1 => $"{StationDisplayNameRules.DefaultStation1DisplayName}工位",
+            2 => $"{StationDisplayNameRules.DefaultStation2DisplayName}工位",
+            _ => $"工位 {stationNo}"
+        };
+    }
+
+    /// <summary>
+    /// 组装报警展示文案，格式为「&lt;左/右工位：&gt;具体报警信息」。
+    /// 尖括号部分仅双工位设备标注，单工位只显示报警内容本身。
+    /// <paramref name="isAlarm"/> 为 false 时返回 null —— 异常恢复后横幅必须消失，
+    /// 只凭报警文本非空来判断会让陈旧内容一直挂在卡片上。
+    /// </summary>
+    public static string? FormatStationAlarmText(
+        bool isAlarm,
+        string? alarmMessage,
+        int stationNo,
+        bool isDualStation)
+    {
+        if (!isAlarm)
+        {
+            return null;
+        }
+
+        var message = StripStationSuffix(alarmMessage);
+        if (string.IsNullOrEmpty(message))
+        {
+            message = UnknownAlarmText;
+        }
+
+        var label = ResolveStationAlarmLabel(stationNo, isDualStation);
+        return label is null ? message : $"{label}：{message}";
     }
 
     /// <summary>

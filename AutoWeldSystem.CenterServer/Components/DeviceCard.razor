@@ -1,0 +1,198 @@
+@using AutoWeldSystem.CenterServer.Services
+@using AutoWeldSystem.Core.DTOs.CenterServer
+
+@{
+    bool online = Device.State.ClientOnline;
+    bool isDual = Device.Stations.Count > 1;
+
+    @* 工位列数：用 --st-cols 内联变量控制 grid，单/双工位自动适配。
+       Clamp 1~2 是防御性的 —— 协议上限就是 2 工位。 *@
+    int cols = online ? int.Clamp(Device.Stations.Count, 1, 2) : 1;
+}
+
+@* 状态用 4px 左边框 + 轻微底色，工业 andon 惯例；离线整卡降饱和度 *@
+<article class="device-card @CenterDashboardStatusPresenter.DeviceCardClass(Device) @(isDual ? "is-dual" : null)"
+         style="--st-cols: @cols">
+    <div class="device-card-header">
+        @* 机台名与设备编号同行：编号用等宽体弱化，基线对齐，
+           长机台名靠 min-width:0 收缩而不挤走编号。 *@
+        <div class="device-ident">
+            <h3>@FirstNonEmpty(Device.DeviceName, Device.DeviceId)</h3>
+            <span class="device-code">@Device.DeviceId</span>
+        </div>
+        <div class="device-card-side">
+            @if (isDual)
+            {
+                <span class="badge badge-dual" title="双工位">双工位</span>
+            }
+            else if (Device.Stations.Count == 1)
+            {
+                <span class="badge badge-single" title="单工位">单工位</span>
+            }
+            <span class="online-badge @(online ? "online" : "offline")" aria-label="@(online ? "设备在线" : "设备离线")">
+                <i class="dot" aria-hidden="true"></i>@(online ? "在线" : "离线")
+            </span>
+            <button type="button" class="icon-button" title="删除设备" aria-label="删除设备" @onclick="RequestDelete">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" /></svg>
+            </button>
+        </div>
+    </div>
+
+    @if (online)
+    {
+        @* 报警横幅：置于工位面板之上，全卡可见。
+           工位标签已由 ResolveAlarmText 按「左/右工位：」拼好，此处不再重复标注。 *@
+        @foreach (var station in Device.Stations)
+        {
+            var alarmText = CenterDashboardStatusPresenter.ResolveAlarmText(station, isDual);
+            if (alarmText is not null)
+            {
+                <p class="alarm-banner" @key="station.StationNo">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>
+                    <span>@alarmText</span>
+                </p>
+            }
+        }
+
+        @if (Device.Stations.Count == 0)
+        {
+            <p class="empty-station-text">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg>
+                尚未收到工位数据
+            </p>
+        }
+    }
+    else
+    {
+        @* 离线骨架：只保留机台名称/设备编号/工位号骨架 + 离线时长。
+           报警横幅整条抑制（陈旧报警是误导），产量显示 "--" 而非 "0"。 *@
+        <div class="offline-skeleton">
+            @foreach (var station in Device.Stations)
+            {
+                <div class="station-ghost" @key="station.StationNo">
+                    <span class="ghost-label">@StationTitle(station.StationNo, isDual)</span>
+                    <span class="ghost-placeholder">--</span>
+                </div>
+            }
+            @if (Device.Stations.Count == 0)
+            {
+                <div class="station-ghost">
+                    <span class="ghost-label">工位</span>
+                    <span class="ghost-placeholder">--</span>
+                </div>
+            }
+        </div>
+    }
+
+    @* 在线工位面板：双工位自动左右分栏 *@
+    @if (online && Device.Stations.Count > 0)
+    {
+        <div class="station-strip">
+            @foreach (var station in Device.Stations)
+            {
+                var rate = CenterDashboardStatusPresenter.QualifiedRate(station.TodayTotalCount, station.TodayQualifiedCount);
+                var rateClass = CenterDashboardStatusPresenter.QualifiedRateClass(rate);
+                var isWorking = CenterDashboardStatusPresenter.IsWorking(station);
+
+                <section class="station-panel @CenterDashboardStatusPresenter.StationStateClass(station)" @key="station.StationNo">
+                    <div class="station-title">
+                        <strong>@StationTitle(station.StationNo, isDual)</strong>
+                        <span class="station-chip"><i class="dot" aria-hidden="true"></i>@FirstNonEmpty(station.State.PlcDeviceStatusName, "未知")</span>
+                    </div>
+                    <div class="status-row">
+                        <span>PLC</span>
+                        <strong class="@(station.State.PlcConnected ? "value-good" : "value-crit")">
+                            <i class="dot" aria-hidden="true"></i>@(station.State.PlcConnected ? "已连接" : "未连接")
+                        </strong>
+                    </div>
+                    <div class="status-row">
+                        <span>开工</span>
+                        <strong class="@(isWorking ? "value-good" : "value-neutral")">
+                            <i class="dot" aria-hidden="true"></i>@(isWorking ? "开工中" : "未开工")
+                        </strong>
+                    </div>
+                    <div class="status-row">
+                        <span>工单</span>
+                        <strong>@FirstNonEmpty(station.CurrentWorkOrder, "--")</strong>
+                    </div>
+                    <div class="status-row">
+                        <span>工号</span>
+                        <strong>@FirstNonEmpty(station.ProductJobNo, "--")</strong>
+                    </div>
+                    <div class="count-row">
+                        <div><span>总数</span><strong>@station.TodayTotalCount</strong></div>
+                        <div class="count-good"><span>合格</span><strong>@station.TodayQualifiedCount</strong></div>
+                        <div class="count-bad"><span>不良</span><strong>@station.TodayFailedCount</strong></div>
+                    </div>
+                    <div class="qual-row">
+                        <span>合格率</span>
+                        <strong class="@rateClass">@(rate is null ? "--" : $"{rate:F1}%")</strong>
+                    </div>
+                </section>
+            }
+        </div>
+    }
+
+    @* 离线时长是离线设备最重要的信息，突出显示 *@
+    @if (online)
+    {
+        <p class="update-text">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
+            最后更新：@FormatTime(Device.State.LastSeenAt)
+        </p>
+    }
+    else
+    {
+        <p class="update-text offline-elapsed">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
+            离线 @OfflineDuration
+        </p>
+    }
+</article>
+
+@code {
+    [Parameter, EditorRequired]
+    public CenterDashboardDeviceDto Device { get; set; } = new();
+
+    /// <summary>删除只上抛请求，弹窗与删除执行仍由 Dashboard 持有。</summary>
+    [Parameter]
+    public EventCallback<CenterDashboardDeviceDto> OnDeleteRequested { get; set; }
+
+    private Task RequestDelete() => OnDeleteRequested.InvokeAsync(Device);
+
+    /// <summary>离线时长文本，由 LastSeenAt 实时推算。</summary>
+    private string OfflineDuration
+    {
+        get
+        {
+            var lastSeen = Device.State.LastSeenAt;
+            if (lastSeen is null)
+            {
+                return "--";
+            }
+
+            var elapsed = DateTime.Now - lastSeen.Value;
+            if (elapsed.TotalMinutes < 1)
+            {
+                return $"{(int)elapsed.TotalSeconds} 秒";
+            }
+
+            if (elapsed.TotalHours < 1)
+            {
+                return $"{(int)elapsed.TotalMinutes} 分钟";
+            }
+
+            return $"{(int)elapsed.TotalHours} 小时 {(int)elapsed.TotalMinutes % 60} 分钟";
+        }
+    }
+
+    /// <summary>工位面板标题：双工位显示「左/右工位」，单工位只显示「工位」。</summary>
+    private static string StationTitle(int stationNo, bool isDual)
+        => CenterDashboardStatusPresenter.ResolveStationLabel(stationNo, isDual) ?? "工位";
+
+    private static string FormatTime(DateTime? value)
+        => value is null ? "--" : value.Value.ToString("yyyy-MM-dd HH:mm:ss");
+
+    private static string FirstNonEmpty(params string?[] values)
+        => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
+}

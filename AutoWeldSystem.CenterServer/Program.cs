@@ -112,7 +112,13 @@ static async Task<IResult> HandleTelemetryAsync(
     CenterTelemetryAck result;
     try
     {
-        result = await service.IngestAsync(request, cancellationToken);
+        // 只有完整遥测端点会枚举设备当前的全部工位；心跳从不携带工位数据，
+        // 不能让它参与工位行的写入与清理。
+        var carriesStations = string.Equals(
+            requestType,
+            AppConstants.CenterInteractionTypes.Telemetry,
+            StringComparison.Ordinal);
+        result = await service.IngestAsync(request, carriesStations, cancellationToken);
         pushLogService.WriteTelemetry(requestType, request, result);
         return result.Success ? Results.Ok(result) : Results.BadRequest(result);
     }

@@ -1,0 +1,149 @@
+@using AutoWeldSystem.CenterServer.Configuration
+@using AutoWeldSystem.CenterServer.Services
+@inject AutoWeldSystem.CenterServer.Services.CenterServerSettingsService SettingsService
+
+@* 配置从主看板中间移到抽屉：属于运维配置，不该占据主视线位置。 *@
+@if (Open)
+{
+    <div class="drawer-mask" @onclick="RequestClose">
+        <section class="settings-drawer" role="dialog" aria-modal="true" aria-label="中心服务器设置" @onclick:stopPropagation>
+            <div class="drawer-head">
+                <h2>
+                    <span class="section-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+                    </span>
+                    中心服务器设置
+                </h2>
+                <button type="button" class="rail-icon-button" title="关闭" aria-label="关闭设置" @onclick="RequestClose">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+                </button>
+            </div>
+
+            <div class="drawer-body">
+                <label class="switch-field">
+                    <span class="switch-label">开机自启</span>
+                    <span class="switch">
+                        <input type="checkbox" @bind="_edit.EnableAutoStart" />
+                        <span class="switch-track" aria-hidden="true"></span>
+                    </span>
+                </label>
+                <label>
+                    <span>日志路径</span>
+                    <input class="text-input" @bind="_edit.LogDirectory" />
+                </label>
+                <label>
+                    <span>数据路径</span>
+                    <input class="text-input" @bind="_edit.DataDirectory" />
+                </label>
+                <label>
+                    <span>离线超时（秒）</span>
+                    <input class="text-input @(_timeoutInvalid ? "is-invalid" : null)" type="number" min="3" max="3600" @bind="_offlineTimeoutText" />
+                </label>
+                @if (_timeoutInvalid)
+                {
+                    <p class="field-error">离线超时必须是 3~3600 之间的整数。</p>
+                }
+            </div>
+
+            <div class="drawer-foot">
+                <span class="drawer-message">@_message</span>
+                <button type="button" class="primary-button" @onclick="Save">保存设置</button>
+            </div>
+        </section>
+    </div>
+}
+
+@code {
+    /// <summary>离线超时允许区间，与输入框 min/max 保持一致。</summary>
+    private const int MinOfflineTimeout = 3;
+    private const int MaxOfflineTimeout = 3600;
+
+    /// <summary>
+    /// 抽屉自持编辑副本，不通过 [Parameter] 接收。
+    /// 父组件最高每秒渲染一次，参数传递会带来输入被覆盖的风险。
+    /// </summary>
+    private CenterServerLocalSettings _edit = new();
+
+    private string _offlineTimeoutText = string.Empty;
+    private string _message = string.Empty;
+    private bool _timeoutInvalid;
+
+    /// <summary>父组件的高频渲染不应波及本抽屉，只在自身状态变化时重绘。</summary>
+    private bool _selfDirty = true;
+
+    private bool _wasOpen;
+
+    [Parameter]
+    public bool Open { get; set; }
+
+    /// <summary>设置保存成功后通知父组件（日志目录可能已变更，需要重读日志）。</summary>
+    [Parameter]
+    public EventCallback OnSaved { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    protected override void OnInitialized() => LoadSettings();
+
+    protected override void OnParametersSet()
+    {
+        // 每次打开时重新读取，避免展示上一次遗留的编辑副本。
+        if (Open && !_wasOpen)
+        {
+            LoadSettings();
+        }
+
+        if (Open != _wasOpen)
+        {
+            _wasOpen = Open;
+            _selfDirty = true;
+        }
+    }
+
+    protected override bool ShouldRender()
+    {
+        if (!_selfDirty)
+        {
+            return false;
+        }
+
+        _selfDirty = false;
+        return true;
+    }
+
+    private Task RequestClose() => OnClose.InvokeAsync();
+
+    private void LoadSettings()
+    {
+        // Get() 返回克隆，编辑的是脱离服务的副本。
+        _edit = SettingsService.Get();
+        _offlineTimeoutText = _edit.OfflineTimeoutSeconds.ToString();
+        _timeoutInvalid = false;
+        _message = string.Empty;
+        _selfDirty = true;
+    }
+
+    private async Task Save()
+    {
+        _selfDirty = true;
+
+        // 数字框清空后原先会静默回滚，这里给出明确校验提示。
+        if (!int.TryParse(_offlineTimeoutText, out var offlineTimeout)
+            || offlineTimeout < MinOfflineTimeout
+            || offlineTimeout > MaxOfflineTimeout)
+        {
+            _timeoutInvalid = true;
+            _message = "请修正离线超时后再保存。";
+            return;
+        }
+
+        _timeoutInvalid = false;
+        _edit.OfflineTimeoutSeconds = offlineTimeout;
+        SettingsService.Save(_edit);
+
+        var savedAt = DateTime.Now;
+        LoadSettings();
+        _message = $"已保存：{savedAt:HH:mm:ss}";
+        await OnSaved.InvokeAsync();
+    }
+}

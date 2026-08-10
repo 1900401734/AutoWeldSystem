@@ -93,6 +93,19 @@ public static class ProductionConstants
         public const short Alarm = 4;
 
         /// <summary>
+        /// PLC 状态码的字符串形式。遥测协议以字符串传输状态码，
+        /// 中心服务器看板与上报服务共用这一组字面量，避免各处硬编码 "1"~"4"。
+        /// </summary>
+        public static class Text
+        {
+            public const string Unknown = "0";
+            public const string Running = "1";
+            public const string Paused = "2";
+            public const string Stopped = "3";
+            public const string Alarm = "4";
+        }
+
+        /// <summary>
         /// Determines whether the PLC status can be recorded and uploaded to MES.
         /// </summary>
         public static bool IsReportable(short statusCode)
@@ -105,7 +118,7 @@ public static class ProductionConstants
         /// </summary>
         public static bool IsReportable(string? statusCode)
         {
-            return statusCode?.Trim() is "1" or "2" or "3" or "4";
+            return statusCode?.Trim() is Text.Running or Text.Paused or Text.Stopped or Text.Alarm;
         }
     }
 
