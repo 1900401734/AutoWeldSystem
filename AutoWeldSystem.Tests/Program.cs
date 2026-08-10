@@ -1315,7 +1315,8 @@ static void PlcProductionMonitorReadsBoolAlarmsIndependently()
         CountOccurrences(pollMethod, "settings.EnablePlcAlarmReading != false"),
         "每轮生产采集只能读取一次 PLC 报警开关，避免不同工位使用不同设置快照。");
     AssertTrue(
-        pollMethod.Contains("IReadOnlyList<BizPlcAlarmAddress> alarmAddresses = alarmReadingEnabled\n            ? _plcAlarmAddressService.GetAll()\n            : [];", StringComparison.Ordinal),
+        // 源码行尾随 core.autocrlf 在不同平台检出为 CRLF 或 LF，断言前必须归一化，否则 Ordinal 比较必然失败。
+        pollMethod.ReplaceLineEndings("\n").Contains("IReadOnlyList<BizPlcAlarmAddress> alarmAddresses = alarmReadingEnabled\n            ? _plcAlarmAddressService.GetAll()\n            : [];", StringComparison.Ordinal),
         "关闭 PLC 报警读取时不得访问报警配置服务，且工位发现应接收空报警快照。");
     AssertSourceOrder(
         pollMethod,
