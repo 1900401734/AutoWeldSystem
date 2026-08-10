@@ -33,7 +33,6 @@ public partial class ProgramManageView : BaseView
     private readonly IPlcRecipeNameReaderService _recipeNameReaderService;
     private readonly IAppSettingsService _appSettingsService;
     private readonly ILocalizationService _localizer;
-    private readonly BindingSource _programBindingSource = new();
     private readonly BindingSource _revisionBindingSource = new();
     private readonly List<BizProgram> _programs = new();
     private readonly List<BizProgram> _filteredPrograms = new();
@@ -92,22 +91,16 @@ public partial class ProgramManageView : BaseView
         BindRemarkText(inputRemark.Text);
         RefreshRecipeSelectorTexts();
         UpdateCurrentInfoText();
-        // 树节点副标题含同步状态译文，切语言后必须重建才会刷新。
-        RebuildProgramTree(_editingId);
-        dgvPrograms.Refresh();
+        // 摘要列含同步状态译文，切语言后必须按新语言重新分组生成。
+        ApplyProgramFilter(_editingId);
     }
 
     private void ConfigureGrids()
     {
-        TableStyleHelper.ApplyDataGridView(dgvPrograms);
-        dgvPrograms.AutoGenerateColumns = false;
-        dgvPrograms.Columns.Clear();
-        // 序号列没有对应属性，值由 CellFormatting 按行号填充，只能按列名回查。
-        dgvPrograms.Columns.Add(CreateRowNumberColumn());
-        dgvPrograms.Columns.Add(CreateTextColumn(nameof(ProgramProductGroupRow.ProductNum), 40));
-        dgvPrograms.Columns.Add(CreateTextColumn(nameof(ProgramProductGroupRow.ProgramCount), 20));
-        dgvPrograms.Columns.Add(CreateTextColumn(nameof(ProgramProductGroupRow.UpdatedTime), 34));
-        dgvPrograms.DataSource = _programBindingSource;
+        TableStyleHelper.ApplyAntdTable(tablePrograms);
+        // 折叠展示，避免一次铺开所有程序占满列表。
+        tablePrograms.DefaultExpand = false;
+        ConfigureProgramColumns();
 
         TableStyleHelper.ApplyDataGridView(dgvRevisions);
         dgvRevisions.AutoGenerateColumns = false;
@@ -127,14 +120,26 @@ public partial class ProgramManageView : BaseView
         ConfigureProgramContentColumns(dictionaryAvailable: false);
     }
 
-    private const string RowNumberColumnName = "colRowNumber";
-
-    private static DataGridViewTextBoxColumn CreateRowNumberColumn()
+    /// <summary>
+    /// 配置程序列表列。
+    /// 工号列为树形列：同工号有多个程序时展开成子行，只有一个程序时不显示展开箭头。
+    /// </summary>
+    private void ConfigureProgramColumns()
     {
-        return new DataGridViewTextBoxColumn
+        var productNumColumn = new AntdUI.Column(
+            nameof(ProgramProductGroupRow.ProductNum),
+            _localizer.GetString(TextKeys.Grid.ProgramProductNum));
+        productNumColumn.SetTree(nameof(ProgramProductGroupRow.Programs));
+
+        tablePrograms.Columns = new AntdUI.ColumnCollection
         {
-            Name = RowNumberColumnName,
-            FillWeight = 6
+            productNumColumn,
+            new AntdUI.Column(
+                nameof(ProgramProductGroupRow.Summary),
+                _localizer.GetString(TextKeys.Grid.ProgramSummary)),
+            new AntdUI.Column(
+                nameof(ProgramProductGroupRow.UpdatedTime),
+                _localizer.GetString(TextKeys.Grid.ProgramUpdatedTime))
         };
     }
 
@@ -163,13 +168,12 @@ public partial class ProgramManageView : BaseView
             await RefreshRecipeNameOptionsAsync();
         };
         txtKeyword.TextChanged += (_, _) => ApplyProgramFilter();
-        dgvPrograms.SelectionChanged += (_, _) => RebuildProgramTree(_editingId);
-        dgvPrograms.CellFormatting += DgvPrograms_CellFormatting;
-        treePrograms.SelectChanged += (_, e) =>
+        // 父行（多程序工号）不指向具体程序，点击只展开子行，不切换编辑对象。
+        tablePrograms.CellClick += (_, e) =>
         {
-            if (e.Item?.Tag is int programId)
+            if (e.Record is ProgramProductGroupRow row && row.ProgramId > 0)
             {
-                BindProgramById(programId);
+                BindProgramById(row.ProgramId);
             }
         };
         tableProgramContent.CellEndEdit += ProgramContentTable_CellEndEdit;
@@ -206,11 +210,8 @@ public partial class ProgramManageView : BaseView
 
     private void ApplyGridHeaders()
     {
-        dgvPrograms.Columns[RowNumberColumnName].HeaderText =
-            _localizer.GetString(TextKeys.DataManage.ColumnSequence);
-        SetColumnHeader(dgvPrograms, nameof(ProgramProductGroupRow.ProductNum), TextKeys.Grid.ProgramProductNum);
-        SetColumnHeader(dgvPrograms, nameof(ProgramProductGroupRow.ProgramCount), TextKeys.Grid.ProgramCount);
-        SetColumnHeader(dgvPrograms, nameof(ProgramProductGroupRow.UpdatedTime), TextKeys.Grid.ProgramUpdatedTime);
+        // AntdUI 表格的列标题在构造时写入，切语言需重建列集合。
+        ConfigureProgramColumns();
 
         SetColumnHeader(dgvRevisions, nameof(BizProgramRevision.VersionNumber), TextKeys.Grid.ProgramVersionNumber);
         SetColumnHeader(dgvRevisions, nameof(BizProgramRevision.CommitId), TextKeys.Grid.ProgramCommitId);
@@ -318,16 +319,27 @@ public partial class ProgramManageView : BaseView
                 || Contains(program.SyncStatus, keyword)
                 || Contains(GetSyncStatusText(program.SyncStatus), keyword)));
 
-        _programBindingSource.DataSource = ProgramProductGroupRules.BuildGroups(_filteredPrograms);
-        dgvPrograms.Invalidate();
-        if (dgvPrograms.Rows.Count == 0)
+        var groups = ProgramProductGroupRules.BuildGroups(_filteredPrograms, BuildProgramSummary);
+        tablePrograms.DataSource = groups;
+        if (groups.Count == 0)
         {
-            treePrograms.Items.Clear();
             _revisionBindingSource.DataSource = Array.Empty<BizProgramRevision>();
             return;
         }
 
         SelectProgramRow(selectedId ?? _editingId);
+    }
+
+    /// <summary>
+    /// 生成程序行摘要：程序名称 + 版本 + 同步状态。
+    /// </summary>
+    private string BuildProgramSummary(BizProgram program)
+    {
+        var syncText = GetSyncStatusText(program.SyncStatus);
+        var name = string.IsNullOrWhiteSpace(program.ProgramName)
+            ? program.ComponentCode ?? string.Empty
+            : program.ProgramName;
+        return $"{name}  v{program.VersionNumber} [{syncText}]";
     }
 
     private static bool Contains(string? source, string keyword)
@@ -338,10 +350,8 @@ public partial class ProgramManageView : BaseView
 
     private void StartNewProgram()
     {
-        // 新增状态不应继续保留左侧旧行选择，否则再次点击同一行不会触发 SelectionChanged。
-        dgvPrograms.ClearSelection();
-        dgvPrograms.CurrentCell = null;
-        treePrograms.USelect();
+        // 新增状态不应继续保留列表旧行选择，否则再次点击同一行不会触发绑定。
+        tablePrograms.SelectedIndex = -1;
         _editingId = 0;
         txtProgramId.Clear();
         inputProgramName.Clear();
@@ -357,80 +367,6 @@ public partial class ProgramManageView : BaseView
         BindProgramContentRows(null);
         lblCurrentInfo.Text = _localizer.GetString(TextKeys.ProgramManage.CurrentNew);
         _revisionBindingSource.DataSource = Array.Empty<BizProgramRevision>();
-    }
-
-    /// <summary>
-    /// 重建当前选中工号下的程序树，并选中指定程序。
-    /// 树根为产品工号，子节点为该工号下按流水号排序的程序；
-    /// 原表格移除的流水号、版本、同步状态改由子节点副标题承载。
-    /// </summary>
-    /// <param name="selectedId">要选中的程序本地 ID；小于等于 0 或不在该工号下时选中第一个程序。</param>
-    private void RebuildProgramTree(int selectedId)
-    {
-        treePrograms.Items.Clear();
-        var productNum = GetSelectedProductNum();
-        if (string.IsNullOrWhiteSpace(productNum))
-        {
-            return;
-        }
-
-        var programs = ProgramProductGroupRules.FilterByProductNum(_filteredPrograms, productNum);
-        if (programs.Count == 0)
-        {
-            return;
-        }
-
-        var root = new AntdUI.TreeItem(productNum) { Expand = true };
-        foreach (var program in programs)
-        {
-            root.Sub.Add(new AntdUI.TreeItem(program.ProgramName)
-            {
-                SubTitle = BuildProgramNodeSubTitle(program),
-                Tag = program.Id
-            });
-        }
-
-        treePrograms.Items.Add(root);
-
-        // 工号行切换后必须重新落到一个具体程序上，否则右侧编辑区仍是上一个工号的内容。
-        var target = programs.FirstOrDefault(program => program.Id == selectedId) ?? programs[0];
-        SelectProgramNode(root, target.Id);
-        BindProgramById(target.Id);
-    }
-
-    private string BuildProgramNodeSubTitle(BizProgram program)
-    {
-        var parts = new List<string>
-        {
-            $"#{Math.Max(1, program.SequenceNumber):000}",
-            $"v{program.VersionNumber}",
-            GetSyncStatusText(program.SyncStatus)
-        };
-
-        if (!string.IsNullOrWhiteSpace(program.Description))
-        {
-            parts.Add(program.Description.Trim());
-        }
-
-        return string.Join("  |  ", parts.Where(part => !string.IsNullOrWhiteSpace(part)));
-    }
-
-    /// <summary>
-    /// 选中树上指定程序节点。AntdUI 的 Select 是节点属性，需要手工互斥。
-    /// </summary>
-    private static void SelectProgramNode(AntdUI.TreeItem root, int programId)
-    {
-        foreach (var node in root.Sub)
-        {
-            node.Select = node.Tag is int id && id == programId;
-        }
-    }
-
-    private string GetSelectedProductNum()
-    {
-        return dgvPrograms.CurrentRow?.DataBoundItem is ProgramProductGroupRow row
-            ? row.ProductNum
-            : string.Empty;
     }
 
     private void BindProgramById(int programId)
@@ -484,21 +420,6 @@ public partial class ProgramManageView : BaseView
         lblCurrentInfo.Text = $"{currentText}";
     }
 
-    private void DgvPrograms_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
-    {
-        if (e.RowIndex < 0 || e.ColumnIndex < 0)
-        {
-            return;
-        }
-
-        // 序号是显示用行号，随排序和筛选重新编号，不来自数据源。
-        if (string.Equals(dgvPrograms.Columns[e.ColumnIndex].Name, RowNumberColumnName, StringComparison.Ordinal))
-        {
-            e.Value = (e.RowIndex + 1).ToString();
-            e.FormattingApplied = true;
-        }
-    }
-
     private string GetSyncStatusText(string? status)
     {
         return status switch
@@ -514,39 +435,18 @@ public partial class ProgramManageView : BaseView
     }
 
     /// <summary>
-    /// 按程序本地 ID 定位到它所属的工号行，再在树上选中该程序。
-    /// 传入 0 或找不到时回落到第一行工号。
+    /// 重新绑定编辑区到指定程序；传入 0 或该程序已被过滤掉时回落到列表中的第一个程序。
     /// </summary>
     private void SelectProgramRow(int id)
     {
-        if (dgvPrograms.Rows.Count == 0)
-        {
-            return;
-        }
-
-        var program = _filteredPrograms.FirstOrDefault(item => item.Id == id);
-        var targetRowIndex = 0;
+        var program = _filteredPrograms.FirstOrDefault(item => item.Id == id)
+            ?? _filteredPrograms
+                .OrderBy(item => item.ProductNum?.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ThenBy(item => item.SequenceNumber)
+                .FirstOrDefault();
         if (program is not null)
         {
-            for (var index = 0; index < dgvPrograms.Rows.Count; index++)
-            {
-                if (dgvPrograms.Rows[index].DataBoundItem is ProgramProductGroupRow row
-                    && string.Equals(row.ProductNum.Trim(), program.ProductNum?.Trim(), StringComparison.OrdinalIgnoreCase))
-                {
-                    targetRowIndex = index;
-                    break;
-                }
-            }
-        }
-
-        // 选中行会触发 SelectionChanged 从而重建树；若目标行已是当前行则事件不会再触发，需手工重建。
-        var alreadyCurrent = dgvPrograms.CurrentRow?.Index == targetRowIndex;
-        dgvPrograms.ClearSelection();
-        dgvPrograms.Rows[targetRowIndex].Selected = true;
-        dgvPrograms.CurrentCell = dgvPrograms.Rows[targetRowIndex].Cells[0];
-        if (alreadyCurrent)
-        {
-            RebuildProgramTree(id);
+            BindProgramById(program.Id);
         }
     }
 

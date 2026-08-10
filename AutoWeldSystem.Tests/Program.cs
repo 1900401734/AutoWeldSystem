@@ -316,7 +316,7 @@ var tests = new (string Name, Action Run)[]
     ("Program manage view provides save-as-new entry", ProgramManageViewProvidesSaveAsNewEntry),
     ("Program manage grid shows sequence and program name", ProgramManageGridShowsSequenceAndProgramName),
     ("Program product groups merge programs sharing product num", ProgramProductGroupsMergeProgramsSharingProductNum),
-    ("Program product group filter orders programs by sequence", ProgramProductGroupFilterOrdersProgramsBySequence),
+    ("Program product groups flatten single program product num", ProgramProductGroupsFlattenSingleProgramProductNum),
     ("Program manage service removes renamed automatic file after write", ProgramManageServiceRemovesRenamedAutomaticFileAfterWrite),
     ("Program manage view hides product model", ProgramManageViewHidesProductModel),
     ("Program manage save ignores product model input", ProgramManageSaveIgnoresProductModelInput),
@@ -9540,12 +9540,11 @@ static void ProgramManageGridShowsSequenceAndProgramName()
 {
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.cs"), Encoding.UTF8);
 
-    // 列表已按工号去重，同工号的多个程序改由右侧树区分，流水号和程序名称必须落在树节点上。
-    AssertTrue(viewCode.Contains("CreateTextColumn(nameof(ProgramProductGroupRow.ProductNum)", StringComparison.Ordinal), "程序列表必须按产品工号显示。");
-    AssertTrue(viewCode.Contains("CreateTextColumn(nameof(ProgramProductGroupRow.ProgramCount)", StringComparison.Ordinal), "程序列表必须显示该工号下的程序数量。");
-    AssertTrue(viewCode.Contains("new AntdUI.TreeItem(program.ProgramName)", StringComparison.Ordinal), "程序树节点必须显示程序名称。");
-    AssertTrue(viewCode.Contains("SubTitle = BuildProgramNodeSubTitle(program)", StringComparison.Ordinal), "程序树节点必须显示流水号等区分信息。");
-    AssertTrue(viewCode.Contains("$\"#{Math.Max(1, program.SequenceNumber):000}\"", StringComparison.Ordinal), "程序树节点副标题必须包含流水号。");
+    // 列表按工号去重，同工号的多个程序展开为子行；单程序工号直接摊平，不留空壳父节点。
+    AssertTrue(viewCode.Contains("productNumColumn.SetTree(nameof(ProgramProductGroupRow.Programs));", StringComparison.Ordinal), "工号列必须配置为树形列。");
+    AssertTrue(viewCode.Contains("tablePrograms.DefaultExpand = false;", StringComparison.Ordinal), "程序列表必须默认折叠，避免一次铺开占满界面。");
+    AssertTrue(viewCode.Contains("private string BuildProgramSummary(BizProgram program)", StringComparison.Ordinal), "程序行必须提供包含版本和同步状态的摘要。");
+    AssertTrue(viewCode.Contains("row.ProgramId > 0", StringComparison.Ordinal), "父行不指向具体程序，点击不得切换编辑对象。");
 }
 
 static void ProgramProductGroupsMergeProgramsSharingProductNum()
@@ -9558,31 +9557,36 @@ static void ProgramProductGroupsMergeProgramsSharingProductNum()
         new() { Id = 4, ProgramName = "空工号", ProductNum = "   ", SequenceNumber = 1, UpdatedTime = new DateTime(2026, 8, 9) }
     };
 
-    var groups = ProgramProductGroupRules.BuildGroups(programs);
+    var groups = ProgramProductGroupRules.BuildGroups(programs, program => program.ProgramName);
 
     AssertEqual(2, groups.Count, "工号为空的程序不得产生分组，同工号必须合并为一行。");
     AssertEqual("P-001", groups[0].ProductNum, "同工号大小写和空白不同必须归为同一组。");
-    AssertEqual(2, groups[0].ProgramCount, "分组必须统计该工号下的程序数量。");
     AssertEqual(new DateTime(2026, 8, 5), groups[0].UpdatedTime, "分组更新时间必须取组内最新。");
     AssertEqual("P-002", groups[1].ProductNum, "分组必须按工号升序排列。");
-    AssertEqual(0, ProgramProductGroupRules.BuildGroups(Array.Empty<BizProgram>()).Count, "空集合必须返回空分组。");
+    AssertEqual(0, ProgramProductGroupRules.BuildGroups(Array.Empty<BizProgram>(), program => program.ProgramName).Count, "空集合必须返回空分组。");
+
+    // 多程序工号：父行不指向具体程序，子行按流水号升序。
+    AssertEqual(0, groups[0].ProgramId, "多程序工号的父行不得指向具体程序。");
+    AssertEqual(2, groups[0].Programs?.Count ?? 0, "多程序工号必须展开为子行。");
+    AssertEqual(2, groups[0].Programs![0].ProgramId, "子行必须按流水号升序排列。");
+    AssertEqual(1, groups[0].Programs![1].ProgramId, "子行必须按流水号升序排列。");
+    AssertEqual("#001", groups[0].Programs![0].ProductNum, "子行必须显示流水号标签。");
 }
 
-static void ProgramProductGroupFilterOrdersProgramsBySequence()
+static void ProgramProductGroupsFlattenSingleProgramProductNum()
 {
     var programs = new List<BizProgram>
     {
-        new() { Id = 1, ProgramName = "A-2", ProductNum = "P-001", SequenceNumber = 2 },
-        new() { Id = 2, ProgramName = "A-1", ProductNum = "p-001", SequenceNumber = 1 },
-        new() { Id = 3, ProgramName = "B-1", ProductNum = "P-002", SequenceNumber = 1 }
+        new() { Id = 7, ProgramName = "只有一个程序", ProductNum = "P-009", SequenceNumber = 1, UpdatedTime = new DateTime(2026, 8, 2) }
     };
 
-    var filtered = ProgramProductGroupRules.FilterByProductNum(programs, " P-001 ");
+    var groups = ProgramProductGroupRules.BuildGroups(programs, program => program.ProgramName);
 
-    AssertEqual(2, filtered.Count, "必须返回该工号下的全部程序，且大小写空白不敏感。");
-    AssertEqual(2, filtered[0].Id, "同工号程序必须按流水号升序排列。");
-    AssertEqual(1, filtered[1].Id, "同工号程序必须按流水号升序排列。");
-    AssertEqual(0, ProgramProductGroupRules.FilterByProductNum(programs, "  ").Count, "工号为空时必须返回空集合。");
+    // 单程序工号不再多套一层父节点，否则界面上会出现只能展开出一行的冗余箭头。
+    AssertEqual(1, groups.Count, "单程序工号必须只占一行。");
+    AssertTrue(groups[0].Programs is null, "单程序工号不得产生子行，避免出现多余的展开箭头。");
+    AssertEqual(7, groups[0].ProgramId, "单程序工号的行必须直接指向该程序。");
+    AssertEqual("只有一个程序", groups[0].Summary, "单程序工号必须把程序摘要显示在工号行上。");
 }
 
 static void ProgramManageServiceClearsAutomaticFileForEmptyContent()
@@ -10062,11 +10066,10 @@ static void ProgramManageInitialLoadKeepsSelectedProgramDetails()
     var startNewMethod = ExtractMethodText(
         viewCode,
         "private void StartNewProgram()",
-        "private void RebuildProgramTree(int selectedId)");
+        "/// <summary>");
     AssertTrue(
-        startNewMethod.Contains("dgvPrograms.ClearSelection();", StringComparison.Ordinal)
-        && startNewMethod.Contains("dgvPrograms.CurrentCell = null;", StringComparison.Ordinal),
-        "进入新增状态时必须清除程序表格当前选择，确保再次点击原行会重新触发详情绑定。");
+        startNewMethod.Contains("tablePrograms.SelectedIndex = -1;", StringComparison.Ordinal),
+        "进入新增状态时必须取消列表当前选择，确保再次点击原行会重新触发详情绑定。");
 }
 
 static void ProgramManageRecipeNameSelectorsBindStationRecipeCodes()

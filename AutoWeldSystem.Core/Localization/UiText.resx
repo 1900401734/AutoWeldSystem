@@ -1758,6 +1758,9 @@
   <data name="grid.program.program_count" xml:space="preserve">
     <value>程序数量</value>
   </data>
+  <data name="grid.program.summary" xml:space="preserve">
+    <value>程序</value>
+  </data>
   <data name="grid.program.version_number" xml:space="preserve">
     <value>版本</value>
   </data>
