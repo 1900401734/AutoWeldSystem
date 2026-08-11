@@ -87,6 +87,12 @@ public sealed class CenterTelemetryStationSnapshot
     public int TodayTotalCount { get; set; }
 
     /// <summary>
+    /// Work order planned quantity (MES 工单的生产数量) for this station.
+    /// 双工位同工单时两个工位上报同一个值，看板按工单号去重后才能算对达成率分母。
+    /// </summary>
+    public int WorkOrderQuantity { get; set; }
+
+    /// <summary>
     /// Today's qualified production count for this station.
     /// </summary>
     public int TodayQualifiedCount { get; set; }

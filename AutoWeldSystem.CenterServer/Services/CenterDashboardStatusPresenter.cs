@@ -108,6 +108,39 @@ internal static class CenterDashboardStatusPresenter
     }
 
     /// <summary>
+    /// 计算生产达成率百分比，口径为合格数 / 工单数量，与设备端保持一致。
+    /// 工单数量为 0（未开工或旧版设备未上报）时返回 null，由调用方显示 "--"。
+    /// 超产时可大于 100。
+    /// </summary>
+    public static decimal? AchievementRate(int workOrderQuantity, int qualifiedCount)
+    {
+        if (workOrderQuantity <= 0)
+        {
+            return null;
+        }
+
+        return (decimal)qualifiedCount * 100m / workOrderQuantity;
+    }
+
+    /// <summary>
+    /// 达成率着色类名。与合格率不同，达成率达标即视为良好，超产同样按良好显示。
+    /// </summary>
+    public static string AchievementRateClass(decimal? rate)
+    {
+        if (rate is null)
+        {
+            return "rate-none";
+        }
+
+        if (rate >= 100m)
+        {
+            return "rate-good";
+        }
+
+        return rate >= WarnRateThreshold ? "rate-warn" : "rate-crit";
+    }
+
+    /// <summary>
     /// 工位报警文案，格式为「&lt;左/右工位：&gt;具体报警信息」。
     /// 格式规则属于设备端与看板共用的契约，实现下沉在
     /// <see cref="CenterTelemetryRules.FormatStationAlarmText"/>，此处只负责判定报警状态。

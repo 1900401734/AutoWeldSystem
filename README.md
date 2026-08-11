@@ -1,6 +1,6 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v1.5.0`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v1.6.0`。
 
 ## 功能概览
 
@@ -164,7 +164,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 ## 中心服务器同步与日志
 
 - 设备端按系统设置中的心跳间隔先向中心服务器发送 `heartbeat`。中心服务器不可达时，只记录首次“心跳失败”；持续失败不重复刷日志，恢复连接时再记录一条“心跳成功”。
-- 中心服务器连接成功后，设备启动首次同步会发送一次完整 `telemetry`；此后只有 PLC 连接、设备状态、报警、工单、产品信息或当日产量等看板字段发生变化时才发送，不再按固定时间重复推送未变化快照。
+- 中心服务器连接成功后，设备启动首次同步会发送一次完整 `telemetry`；此后只有 PLC 连接、设备状态、报警、工单、工单数量、产品信息或当日产量等看板字段发生变化时才发送，不再按固定时间重复推送未变化快照。
+- 工位快照同时推送工单数量（MES 生产数量）与当日产量，中心看板据此显示「工单数量」和「达成率」。达成率口径为合格数 ÷ 工单数量，与设备端监控页一致，不含不良品，超产时会大于 100%；未选工单或工单数量为 0 时显示 `--`。
+- 同一设备两个工位使用同一工单时，工单数量只计一次，避免达成率分母翻倍；两个工位分属不同工单时，工单数量按工单分别累加。
 - 断线期间仅保留最新快照。恢复连接后，如果快照相对最后一次成功同步确有变化，会在心跳成功后补发一次；未变化时只恢复心跳，不重复发送设备状态。
 - 设备端和中心服务器统一使用三类消息：`heartbeat=心跳`、`telemetry=设备状态`、`product-report=产品数据`。心跳只维护在线时间，设备状态负责更新完整工位快照。
 
@@ -195,10 +197,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>1.5.0</Version>
-<AssemblyVersion>1.5.0.0</AssemblyVersion>
-<FileVersion>1.5.0.0</FileVersion>
-<InformationalVersion>1.5.0</InformationalVersion>
+<Version>1.6.0</Version>
+<AssemblyVersion>1.6.0.0</AssemblyVersion>
+<FileVersion>1.6.0.0</FileVersion>
+<InformationalVersion>1.6.0</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -210,9 +212,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v1.5.0 -m "Release v1.5.0"
+git tag -a v1.6.0 -m "Release v1.6.0"
 git push origin main
-git push origin v1.5.0
+git push origin v1.6.0
 ```
 
 ## Git 使用

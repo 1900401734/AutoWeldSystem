@@ -252,6 +252,7 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
             TodayTotalCount = counts.Total,
             TodayQualifiedCount = counts.Qualified,
             TodayFailedCount = counts.Failed,
+            WorkOrderQuantity = summary.WorkOrderQuantity,
             CollectedAt = DateTime.Now
         };
     }
@@ -287,13 +288,16 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
                 .OrderByDescending(it => it.StartTime)
                 .FirstOrDefault();
 
+            // 工单数量与工单号同源取 active，双工位同工单时两个工位上报同一个值；
+            // 不能像产量那样逐工位求和，否则分母翻倍。
             return new TodayProductionSummary(
                 tasks.Sum(it => Math.Max(0, it.ActualQty)),
                 tasks.Sum(it => Math.Max(0, it.QualifiedQty)),
                 tasks.Sum(it => Math.Max(0, it.FailedQty)),
                 active?.SN ?? string.Empty,
                 active?.ProductNum ?? string.Empty,
-                active?.ProductModel ?? string.Empty);
+                active?.ProductModel ?? string.Empty,
+                Math.Max(0, active?.StartAmount ?? 0));
         }
     }
 
@@ -367,7 +371,8 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
         int Failed,
         string CurrentWorkOrder,
         string ProductJobNo,
-        string ProductModel);
+        string ProductModel,
+        int WorkOrderQuantity);
 
     private sealed record ProductionCounts(int Total, int Qualified, int Failed);
 }

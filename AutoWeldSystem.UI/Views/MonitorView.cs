@@ -4888,8 +4888,9 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         var mesProductionQuantity = GetCurrentStationState().SelectedProcess?.StartAmount;
         var acceptedRate = CalculateRate(snapshot.AcceptedQuantity, snapshot.TotalProduction);
         var rejectedRate = CalculateRate(snapshot.RejectedQuantity, snapshot.TotalProduction);
+        // 达成率口径为合格数/工单数量，与中心看板保持一致，便于两端数值对账。
         var achievementRate = mesProductionQuantity.GetValueOrDefault() > 0
-            ? CalculateRate(snapshot.TotalProduction, mesProductionQuantity!.Value)
+            ? CalculateRate(snapshot.AcceptedQuantity, mesProductionQuantity!.Value)
             : null;
 
         var rows = new List<ProductionMetricRow>
@@ -4899,7 +4900,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             new(_localizer.GetString(TextKeys.Production.RejectedQuantity), snapshot.RejectedQuantity.ToString()),
             new(_localizer.GetString(TextKeys.Production.AcceptedRate), FormatRate(acceptedRate)),
             new(_localizer.GetString(TextKeys.Production.RejectedRate), FormatRate(rejectedRate)),
-            //new(_localizer.GetString(TextKeys.Production.MesProductionQuantity), FormatNullable(mesProductionQuantity)),
+            new(_localizer.GetString(TextKeys.Production.MesProductionQuantity), FormatNullableText(mesProductionQuantity?.ToString(CultureInfo.CurrentCulture))),
             new(_localizer.GetString(TextKeys.Production.AchievementRate), FormatRate(achievementRate))
         };
 

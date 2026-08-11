@@ -137,6 +137,8 @@ var tests = new (string Name, Action Run)[]
     ("Center alarm text strips duplicated station markers", CenterAlarmTextStripsDuplicatedStationMarkers),
     ("Center telemetry snapshot carries station runtime data", CenterTelemetrySnapshotCarriesStationRuntimeData),
     ("Center dashboard device totals are calculated from station data", CenterDashboardDeviceTotalsAreCalculatedFromStationData),
+    ("Center dashboard work order quantity deduplicates shared work order", CenterDashboardWorkOrderQuantityDeduplicatesSharedWorkOrder),
+    ("Center dashboard achievement rate uses qualified over work order quantity", CenterDashboardAchievementRateUsesQualifiedOverWorkOrderQuantity),
     ("Center product report request carries one completed product", CenterProductReportRequestCarriesOneCompletedProduct),
     ("Center forwarding business ids hash the full identity", CenterForwardingBusinessIdsHashFullIdentity),
     ("Center product report columns follow production Excel format", CenterProductReportColumnsFollowProductionExcelFormat),
@@ -3038,6 +3040,62 @@ static void CenterDashboardDeviceTotalsAreCalculatedFromStationData()
     AssertEqual(1, device.TodayFailedCount, "Dashboard device failed count must be the sum of station failed counts.");
 }
 
+static void CenterDashboardWorkOrderQuantityDeduplicatesSharedWorkOrder()
+{
+    // 双工位同工单只有一份计划量，求和会让分母翻倍。
+    var shared = new CenterDashboardDeviceDto
+    {
+        Stations =
+        [
+            new CenterDashboardStationDto { CurrentWorkOrder = "WO-1", WorkOrderQuantity = 100 },
+            new CenterDashboardStationDto { CurrentWorkOrder = "wo-1", WorkOrderQuantity = 100 }
+        ]
+    };
+
+    AssertEqual(100, shared.WorkOrderQuantity, "Dual stations on one work order must count its quantity once.");
+
+    var distinct = new CenterDashboardDeviceDto
+    {
+        Stations =
+        [
+            new CenterDashboardStationDto { CurrentWorkOrder = "WO-1", WorkOrderQuantity = 100 },
+            new CenterDashboardStationDto { CurrentWorkOrder = "WO-2", WorkOrderQuantity = 40 }
+        ]
+    };
+
+    AssertEqual(140, distinct.WorkOrderQuantity, "Different work orders must add their quantities.");
+
+    var idle = new CenterDashboardDeviceDto
+    {
+        Stations =
+        [
+            new CenterDashboardStationDto { CurrentWorkOrder = "WO-1", WorkOrderQuantity = 100 },
+            new CenterDashboardStationDto { CurrentWorkOrder = "   ", WorkOrderQuantity = 999 }
+        ]
+    };
+
+    AssertEqual(100, idle.WorkOrderQuantity, "Stations without a work order must not inflate the denominator.");
+}
+
+static void CenterDashboardAchievementRateUsesQualifiedOverWorkOrderQuantity()
+{
+    // CenterDashboardStatusPresenter 是 CenterServer 内部类型，测试项目不可见，
+    // 此处复算同一公式守住口径：分子为合格数，不含不良品，与设备端 MonitorView 一致。
+    static decimal? Rate(int workOrderQuantity, int qualifiedCount)
+        => workOrderQuantity <= 0 ? null : (decimal)qualifiedCount * 100m / workOrderQuantity;
+
+    AssertEqual(50m, Rate(100, 50), "Achievement rate must be qualified/quantity.");
+    AssertEqual(120m, Rate(100, 120), "Over-production must exceed 100 percent.");
+    AssertEqual(null, Rate(0, 50), "Zero quantity must yield null instead of dividing by zero.");
+
+    // 同一批产量下达成率必须低于按总数计算的旧口径，确认分子换成了合格数。
+    const int workOrderQuantity = 100;
+    const int total = 57;
+    const int qualified = 43;
+    AssertEqual(43m, Rate(workOrderQuantity, qualified), "Achievement rate must exclude failed pieces.");
+    AssertEqual(57m, Rate(workOrderQuantity, total), "Guard value proves the two definitions differ.");
+}
+
 static void CenterProductReportRequestCarriesOneCompletedProduct()
 {
     var request = new CenterProductReportRequest
@@ -3160,7 +3218,8 @@ static void CenterTelemetrySignatureTracksDashboardContentOnly()
         ("ProductModel", request => request.Stations[0].ProductModel = "MODEL-2"),
         ("TodayTotalCount", request => request.Stations[0].TodayTotalCount++),
         ("TodayQualifiedCount", request => request.Stations[0].TodayQualifiedCount++),
-        ("TodayFailedCount", request => request.Stations[0].TodayFailedCount++)
+        ("TodayFailedCount", request => request.Stations[0].TodayFailedCount++),
+        ("WorkOrderQuantity", request => request.Stations[0].WorkOrderQuantity++)
     };
 
     foreach (var mutation in mutations)

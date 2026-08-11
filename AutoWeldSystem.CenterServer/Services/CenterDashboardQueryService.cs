@@ -111,7 +111,8 @@ public sealed class CenterDashboardQueryService
             ProductModel = station.ProductModel,
             TodayTotalCount = station.TodayTotalCount,
             TodayQualifiedCount = station.TodayQualifiedCount,
-            TodayFailedCount = station.TodayFailedCount
+            TodayFailedCount = station.TodayFailedCount,
+            WorkOrderQuantity = station.WorkOrderQuantity
         };
     }
 
