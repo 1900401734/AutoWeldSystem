@@ -92,6 +92,8 @@
             {
                 var rate = CenterDashboardStatusPresenter.QualifiedRate(station.TodayTotalCount, station.TodayQualifiedCount);
                 var rateClass = CenterDashboardStatusPresenter.QualifiedRateClass(rate);
+                var achievement = CenterDashboardStatusPresenter.AchievementRate(station.WorkOrderQuantity, station.TodayQualifiedCount);
+                var achievementClass = CenterDashboardStatusPresenter.AchievementRateClass(achievement);
                 var isWorking = CenterDashboardStatusPresenter.IsWorking(station);
 
                 <section class="station-panel @CenterDashboardStatusPresenter.StationStateClass(station)" @key="station.StationNo">
@@ -119,6 +121,10 @@
                         <span>工号</span>
                         <strong>@FirstNonEmpty(station.ProductJobNo, "--")</strong>
                     </div>
+                    <div class="status-row">
+                        <span>工单数量</span>
+                        <strong>@(station.WorkOrderQuantity > 0 ? station.WorkOrderQuantity.ToString() : "--")</strong>
+                    </div>
                     <div class="count-row">
                         <div><span>总数</span><strong>@station.TodayTotalCount</strong></div>
                         <div class="count-good"><span>合格</span><strong>@station.TodayQualifiedCount</strong></div>
@@ -127,6 +133,10 @@
                     <div class="qual-row">
                         <span>合格率</span>
                         <strong class="@rateClass">@(rate is null ? "--" : $"{rate:F1}%")</strong>
+                    </div>
+                    <div class="qual-row">
+                        <span>达成率</span>
+                        <strong class="@achievementClass">@(achievement is null ? "--" : $"{achievement:F1}%")</strong>
                     </div>
                 </section>
             }

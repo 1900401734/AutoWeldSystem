@@ -53,6 +53,16 @@ public sealed class CenterDashboardDeviceDto
     /// Sum of today's failed production count across all stations.
     /// </summary>
     public int TodayFailedCount => Stations.Sum(station => Math.Max(0, station.TodayFailedCount));
+
+    /// <summary>
+    /// 设备级工单数量。双工位同工单时只有一份计划量，按工单号去重后求和；
+    /// 工单号为空的工位不计入，避免未开工工位把分母拉大。
+    /// </summary>
+    public int WorkOrderQuantity => Stations
+        .Where(station => !string.IsNullOrWhiteSpace(station.CurrentWorkOrder)
+            && station.WorkOrderQuantity > 0)
+        .GroupBy(station => station.CurrentWorkOrder.Trim(), StringComparer.OrdinalIgnoreCase)
+        .Sum(group => group.Max(station => station.WorkOrderQuantity));
 }
 
 /// <summary>
@@ -84,6 +94,11 @@ public sealed class CenterDashboardStationDto
     /// Optional product model.
     /// </summary>
     public string ProductModel { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Work order planned quantity, used as the achievement-rate denominator.
+    /// </summary>
+    public int WorkOrderQuantity { get; set; }
 
     /// <summary>
     /// Today's total production count.

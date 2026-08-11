@@ -261,7 +261,8 @@ public static class CenterTelemetryRules
             builder.Append(station.ProductModel).Append('|');
             builder.Append(station.TodayTotalCount).Append('|');
             builder.Append(station.TodayQualifiedCount).Append('|');
-            builder.Append(station.TodayFailedCount).Append('\n');
+            builder.Append(station.TodayFailedCount).Append('|');
+            builder.Append(station.WorkOrderQuantity).Append('\n');
         }
 
         return builder.ToString();

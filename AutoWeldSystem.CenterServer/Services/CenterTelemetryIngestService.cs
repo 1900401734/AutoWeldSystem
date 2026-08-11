@@ -166,6 +166,7 @@ public sealed class CenterTelemetryIngestService
             snapshot.TodayTotalCount = Math.Max(0, station.TodayTotalCount);
             snapshot.TodayQualifiedCount = Math.Max(0, station.TodayQualifiedCount);
             snapshot.TodayFailedCount = Math.Max(0, station.TodayFailedCount);
+            snapshot.WorkOrderQuantity = Math.Max(0, station.WorkOrderQuantity);
             snapshot.CollectedAt = station.CollectedAt == default ? DateTime.Now : station.CollectedAt;
             snapshot.UpdatedAt = DateTime.Now;
 

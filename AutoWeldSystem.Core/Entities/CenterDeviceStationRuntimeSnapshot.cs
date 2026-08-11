@@ -75,6 +75,13 @@ public sealed class CenterDeviceStationRuntimeSnapshot
     public int TodayTotalCount { get; set; }
     public int TodayQualifiedCount { get; set; }
     public int TodayFailedCount { get; set; }
+
+    /// <summary>
+    /// 工单计划数量，达成率分母。CodeFirst 追加的 int 列，旧库升级后默认 0 表示未知。
+    /// </summary>
+    [SugarColumn(ColumnDescription = "工单数量")]
+    public int WorkOrderQuantity { get; set; }
+
     public DateTime CollectedAt { get; set; } = DateTime.Now;
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
 }
