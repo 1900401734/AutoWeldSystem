@@ -919,7 +919,9 @@ namespace AutoWeldSystem.UI.Views
             tlpProductConfig.RowCount = 5;
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
-            tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            // 工位名称行改为固定高度：单工位隐藏该行时，AutoSize 行会塌成 0，
+            // 空出的高度被唯一可伸缩的心跳行吸收，导致心跳输入框被拉高。
+            tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F));
             tlpProductConfig.Size = new Size(449, 229);
@@ -1111,7 +1113,7 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanelHeartbeat.Name = "tableLayoutPanelHeartbeat";
             tableLayoutPanelHeartbeat.RowCount = 1;
             tableLayoutPanelHeartbeat.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tableLayoutPanelHeartbeat.Size = new Size(449, 49);
+            tableLayoutPanelHeartbeat.Size = new Size(449, 45);
             tableLayoutPanelHeartbeat.TabIndex = 7;
             // 
             // lblPlcHeartbeatInterval
@@ -1122,7 +1124,7 @@ namespace AutoWeldSystem.UI.Views
             lblPlcHeartbeatInterval.Margin = new Padding(0);
             lblPlcHeartbeatInterval.Name = "lblPlcHeartbeatInterval";
             lblPlcHeartbeatInterval.Padding = new Padding(8, 0, 0, 0);
-            lblPlcHeartbeatInterval.Size = new Size(155, 49);
+            lblPlcHeartbeatInterval.Size = new Size(155, 45);
             lblPlcHeartbeatInterval.TabIndex = 0;
             lblPlcHeartbeatInterval.Text = "PLC心跳监测频率(ms)";
             // 
@@ -1132,7 +1134,7 @@ namespace AutoWeldSystem.UI.Views
             inputPlcHeartbeatInterval.Location = new Point(155, 0);
             inputPlcHeartbeatInterval.Margin = new Padding(0);
             inputPlcHeartbeatInterval.Name = "inputPlcHeartbeatInterval";
-            inputPlcHeartbeatInterval.Size = new Size(294, 49);
+            inputPlcHeartbeatInterval.Size = new Size(294, 45);
             inputPlcHeartbeatInterval.TabIndex = 1;
             inputPlcHeartbeatInterval.Text = "300";
             // 
@@ -2329,7 +2331,7 @@ namespace AutoWeldSystem.UI.Views
             // 
             // SystemSettingView
             // 
-            AutoScaleDimensions = new SizeF(8F, 20F);
+            AutoScaleDimensions = new SizeF(10F, 23F);
             AutoScaleMode = AutoScaleMode.Font;
             Controls.Add(rootLayout);
             Name = "SystemSettingView";

@@ -1138,7 +1138,7 @@ namespace AutoWeldSystem.UI.Views
             // 
             // AddressManageView
             // 
-            AutoScaleDimensions = new SizeF(8F, 20F);
+            AutoScaleDimensions = new SizeF(10F, 23F);
             AutoScaleMode = AutoScaleMode.Font;
             Controls.Add(rootLayout);
             Name = "AddressManageView";
