@@ -173,6 +173,7 @@ var tests = new (string Name, Action Run)[]
     ("Unfinished upload summary task stays visible until hidden", UnfinishedUploadSummaryTaskStaysVisibleUntilHidden),
     ("Upload summary status falls back to business facts", UploadSummaryStatusFallsBackToBusinessFacts),
     ("Deleted upload task is excluded from retry lists", DeletedUploadTaskIsExcludedFromRetryLists),
+    ("Process parameter upload views only include MES targets", ProcessParameterUploadViewsOnlyIncludeMesTargets),
     ("Process parameter pending product rows are read only", ProcessParameterPendingProductRowsAreReadOnly),
     ("Process parameter IsTest follows global setting and device type", ProcessParameterIsTestFollowsGlobalSettingAndDeviceType),
     ("Quantity upload batches product scopes and unique task ids", QuantityUploadBatchesProductScopesAndUniqueTaskIds),
@@ -4756,6 +4757,58 @@ static void DeletedUploadTaskIsExcludedFromRetryLists()
 
     AssertTrue(UploadTaskVisibilityRules.ShouldInclude(activeTask, includeCompleted: false), "未删除待上传任务应出现在明细列表。");
     AssertFalse(UploadTaskVisibilityRules.ShouldInclude(deletedTask, includeCompleted: true), "软删除上传任务不应出现在明细列表或重试范围。");
+}
+
+static void ProcessParameterUploadViewsOnlyIncludeMesTargets()
+{
+    var mesTask = new BizUploadTask
+    {
+        TaskType = ProductionConstants.UploadTaskTypes.ProcessParameter,
+        Target = ProductionConstants.UploadTargets.Mes,
+        Status = ProductionConstants.UploadStatuses.Uploaded
+    };
+    var centralServerTask = new BizUploadTask
+    {
+        TaskType = ProductionConstants.UploadTaskTypes.ProcessParameter,
+        Target = ProductionConstants.UploadTargets.CentralServer,
+        Status = ProductionConstants.UploadStatuses.Failed
+    };
+    var centerProductTask = new BizUploadTask
+    {
+        TaskType = ProductionConstants.UploadTaskTypes.CenterProductReport,
+        Target = ProductionConstants.UploadTargets.CentralServer,
+        Status = ProductionConstants.UploadStatuses.Pending
+    };
+
+    AssertTrue(UploadTaskVisibilityRules.IsMesProcessParameterTask(mesTask), "MES 过程参数任务必须保留在过程参数页签和总览中。");
+    AssertFalse(UploadTaskVisibilityRules.IsMesProcessParameterTask(centralServerTask), "CentralServer 目标的过程参数任务必须从页签和总览中排除。");
+    AssertFalse(UploadTaskVisibilityRules.IsMesProcessParameterTask(centerProductTask), "CentralServer 独立产品转发任务不属于 MES 过程参数任务。");
+
+    var mesProcessStatuses = new[] { mesTask, centralServerTask, centerProductTask }
+        .Where(UploadTaskVisibilityRules.IsMesProcessParameterTask)
+        .Select(task => task.Status);
+    AssertEqual(
+        ProductionConstants.UploadStatuses.Uploaded,
+        UploadSummaryStatusResolver.ResolveProcessParameterStatus(mesProcessStatuses, Array.Empty<BizWeldPointRecord>()),
+        "过程参数总览状态只能由 MES 目标任务决定，不能被 CentralServer 失败任务覆盖。");
+
+    var uploadTaskServiceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "UploadTaskService.cs"),
+        Encoding.UTF8);
+    var getProcessParameterRowsMethod = ExtractMethodText(
+        uploadTaskServiceCode,
+        "public IReadOnlyList<UploadTaskSummary> GetProcessParameterRows",
+        "public UploadTaskSummary? GetById");
+    AssertTrue(
+        getProcessParameterRowsMethod.Contains("ProductionConstants.UploadTargets.Mes", StringComparison.Ordinal),
+        "过程参数明细查询必须在数据库层限定 Target=MES，避免 CentralServer 任务遮挡产品历史虚拟行。");
+
+    var summaryServiceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "UploadStatusSummaryService.cs"),
+        Encoding.UTF8);
+    AssertTrue(
+        summaryServiceCode.Contains("Where(UploadTaskVisibilityRules.IsMesProcessParameterTask)", StringComparison.Ordinal),
+        "待上传总览的过程参数状态必须复用 MES 目标过滤规则。");
 }
 
 static void ProcessParameterPendingProductRowsAreReadOnly()

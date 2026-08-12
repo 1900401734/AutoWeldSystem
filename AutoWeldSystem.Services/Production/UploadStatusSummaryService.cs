@@ -86,6 +86,9 @@ public sealed class UploadStatusSummaryService : IUploadStatusSummaryService
         var scopedUploads = uploadTasks.Where(item => item.WeldTaskId == task.Id).ToList();
         var scopedPoints = weldPoints.Where(item => item.TaskId == task.Id).ToList();
         var scopedReports = reportFiles.Where(item => item.TaskId == task.Id).ToList();
+        var mesProcessParameterTasks = scopedUploads
+            .Where(UploadTaskVisibilityRules.IsMesProcessParameterTask)
+            .ToList();
 
         var row = new UploadPendingSummaryRow
         {
@@ -97,7 +100,7 @@ public sealed class UploadStatusSummaryService : IUploadStatusSummaryService
                 task,
                 GetUploadStatuses(scopedUploads, ProductionConstants.UploadTaskTypes.StartReport)),
             ProcessParameterStatus = UploadSummaryStatusResolver.ResolveProcessParameterStatus(
-                GetUploadStatuses(scopedUploads, ProductionConstants.UploadTaskTypes.ProcessParameter),
+                mesProcessParameterTasks.Select(item => item.Status),
                 scopedPoints),
             ReportFileStatus = UploadSummaryStatusResolver.ResolveReportFileStatus(
                 GetUploadStatuses(scopedUploads, ProductionConstants.UploadTaskTypes.ReportFile),

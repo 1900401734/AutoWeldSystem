@@ -96,7 +96,10 @@ public class UploadTaskService : IUploadTaskService
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
-            var uploadTasks = QueryUploadTasks(ProductionConstants.UploadTaskTypes.ProcessParameter, includeCompleted);
+            var uploadTasks = QueryUploadTasks(
+                ProductionConstants.UploadTaskTypes.ProcessParameter,
+                includeCompleted,
+                ProductionConstants.UploadTargets.Mes);
             var rows = uploadTasks
                 .Select(ToSummary)
                 .ToList();
@@ -149,7 +152,7 @@ public class UploadTaskService : IUploadTaskService
         }
     }
 
-    private List<BizUploadTask> QueryUploadTasks(string taskType, bool includeCompleted)
+    private List<BizUploadTask> QueryUploadTasks(string taskType, bool includeCompleted, string? target = null)
     {
         var normalizedTaskType = NormalizeTaskType(taskType);
         var query = _dbContext.Db.Queryable<BizUploadTask>()
@@ -158,6 +161,11 @@ public class UploadTaskService : IUploadTaskService
         if (!includeCompleted)
         {
             query = query.Where(task => task.Status != ProductionConstants.UploadStatuses.Uploaded);
+        }
+
+        if (!string.IsNullOrWhiteSpace(target))
+        {
+            query = query.Where(task => task.Target == target);
         }
 
         return query.ToList();
