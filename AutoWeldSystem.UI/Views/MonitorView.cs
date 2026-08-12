@@ -7696,7 +7696,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// <param name="grid">目标表格控件。</param>
     private static void ApplyWeldParameterTableStyle(DataGridView grid)
     {
-        EnableDoubleBuffering(grid);
+        ControlRenderingHelper.EnableDoubleBuffering(grid);
         grid.ScrollBars = ScrollBars.Vertical;
         grid.DefaultCellStyle.Font = new Font("Microsoft YaHei UI", 10F);
         grid.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
@@ -7710,17 +7710,6 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         grid.ColumnHeadersHeight = 36;
         grid.RowTemplate.Height = 30;
         grid.GridColor = Color.FromArgb(224, 224, 224);
-    }
-
-    /// <summary>
-    /// 启用双缓冲。
-    /// </summary>
-    /// <param name="control">目标控件。</param>
-    private static void EnableDoubleBuffering(Control control)
-    {
-        typeof(Control)
-            .GetProperty("DoubleBuffered", BindingFlags.Instance | BindingFlags.NonPublic)
-            ?.SetValue(control, true);
     }
 
     #endregion

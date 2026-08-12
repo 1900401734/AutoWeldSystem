@@ -286,6 +286,8 @@ public partial class MainForm : BaseWindow
         var view = page.Factory();
         view.Dock = DockStyle.Fill;
         _permissionUiBinder.Apply(view);
+        // 页面控件层级较深，首次载入时统一开启双缓冲，切换时才不会逐块刷出。
+        ControlRenderingHelper.EnableDoubleBufferingRecursive(view);
         _viewCache[page.PermissionCode] = view;
     }
 

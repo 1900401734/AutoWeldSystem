@@ -12,6 +12,7 @@ namespace AutoWeldSystem.UI.Base;
 public class BaseWindow : Window
 {
     private const int WmSetRedraw = 0x000B;
+    private const int WsExComposited = 0x02000000;
     private bool _tabOrderInitialized;
     private bool _interactiveResizeActive;
 
@@ -19,6 +20,20 @@ public class BaseWindow : Window
     {
         Thread.CurrentThread.CurrentUICulture = new System.Globalization.CultureInfo(GlobalContext.CurrentLanguage);
         AppAssets.ApplyWindowIcon(this);
+    }
+
+    /// <summary>
+    /// 启用 WS_EX_COMPOSITED，让整个窗口的子控件由系统离屏合成后一次性呈现。
+    /// 页面切换和语言刷新时控件较多，缺少离屏合成会逐块刷出，视觉上是一帧一帧出现。
+    /// </summary>
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            var createParams = base.CreateParams;
+            createParams.ExStyle |= WsExComposited;
+            return createParams;
+        }
     }
 
     [DllImport("user32.dll")]
