@@ -233,10 +233,10 @@ namespace AutoWeldSystem.UI.Views
             // pageRole
             // 
             pageRole.Controls.Add(roleLayout);
-            pageRole.Location = new Point(4, 32);
+            pageRole.Location = new Point(4, 29);
             pageRole.Name = "pageRole";
             pageRole.Padding = new Padding(3);
-            pageRole.Size = new Size(1358, 709);
+            pageRole.Size = new Size(1358, 712);
             pageRole.TabIndex = 1;
             pageRole.Text = "角色权限";
             pageRole.UseVisualStyleBackColor = true;
@@ -254,7 +254,7 @@ namespace AutoWeldSystem.UI.Views
             roleLayout.RowCount = 2;
             roleLayout.RowStyles.Add(new RowStyle());
             roleLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            roleLayout.Size = new Size(1352, 703);
+            roleLayout.Size = new Size(1352, 706);
             roleLayout.TabIndex = 0;
             // 
             // roleToolbarLayout
@@ -383,7 +383,7 @@ namespace AutoWeldSystem.UI.Views
             // 
             splitRoleContent.Panel2.Controls.Add(permissionLayout);
             splitRoleContent.Panel2.Padding = new Padding(15, 0, 0, 0);
-            splitRoleContent.Size = new Size(1312, 600);
+            splitRoleContent.Size = new Size(1312, 603);
             splitRoleContent.SplitterDistance = 656;
             splitRoleContent.SplitterWidth = 5;
             splitRoleContent.TabIndex = 1;
@@ -404,7 +404,7 @@ namespace AutoWeldSystem.UI.Views
             dgvRoles.RowHeadersWidth = 51;
             dgvRoles.RowTemplate.Height = 25;
             dgvRoles.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgvRoles.Size = new Size(641, 600);
+            dgvRoles.Size = new Size(641, 603);
             dgvRoles.TabIndex = 0;
             // 
             // permissionLayout
@@ -422,7 +422,7 @@ namespace AutoWeldSystem.UI.Views
             permissionLayout.RowStyles.Add(new RowStyle());
             permissionLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             permissionLayout.RowStyles.Add(new RowStyle());
-            permissionLayout.Size = new Size(636, 600);
+            permissionLayout.Size = new Size(636, 603);
             permissionLayout.TabIndex = 0;
             // 
             // lblSelectedRole
@@ -444,7 +444,7 @@ namespace AutoWeldSystem.UI.Views
             tvPermissions.Location = new Point(0, 39);
             tvPermissions.Margin = new Padding(0);
             tvPermissions.Name = "tvPermissions";
-            tvPermissions.Size = new Size(636, 528);
+            tvPermissions.Size = new Size(636, 531);
             tvPermissions.TabIndex = 1;
             // 
             // lblPermissionHint
@@ -452,7 +452,7 @@ namespace AutoWeldSystem.UI.Views
             lblPermissionHint.AutoSize = true;
             lblPermissionHint.Dock = DockStyle.Fill;
             lblPermissionHint.ForeColor = SystemColors.GrayText;
-            lblPermissionHint.Location = new Point(0, 576);
+            lblPermissionHint.Location = new Point(0, 579);
             lblPermissionHint.Margin = new Padding(0, 9, 0, 0);
             lblPermissionHint.Name = "lblPermissionHint";
             lblPermissionHint.Size = new Size(636, 24);
@@ -461,8 +461,8 @@ namespace AutoWeldSystem.UI.Views
             // 
             // UserManageView
             // 
-            AutoScaleDimensions = new SizeF(10F, 23F);
-            AutoScaleMode = AutoScaleMode.Font;
+            AutoScaleDimensions = new SizeF(120F, 120F);
+            AutoScaleMode = AutoScaleMode.Dpi;
             Controls.Add(tabControl);
             Font = new Font("Microsoft YaHei UI", 10.5F);
             Margin = new Padding(4, 3, 4, 3);

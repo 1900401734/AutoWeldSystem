@@ -371,6 +371,7 @@ namespace AutoWeldSystem.UI.Views
             // lblDeviceId
             // 
             lblDeviceId.Dock = DockStyle.Fill;
+            lblDeviceId.Font = new Font("Microsoft YaHei UI", 16F);
             lblDeviceId.Location = new Point(0, 90);
             lblDeviceId.Margin = new Padding(0);
             lblDeviceId.Name = "lblDeviceId";
@@ -880,32 +881,33 @@ namespace AutoWeldSystem.UI.Views
             tlpWorkOrderInfo.Controls.Add(tlpButton, 0, 11);
             tlpWorkOrderInfo.Controls.Add(tlpStation, 0, 1);
             tlpWorkOrderInfo.Controls.Add(tlpProductNameAndDrawingNo, 0, 6);
-            tlpWorkOrderInfo.Controls.Add(tlpUserInfo2, 0, 10);
-            tlpWorkOrderInfo.Controls.Add(tlpUserInfo1, 0, 9);
+            tlpWorkOrderInfo.Controls.Add(tlpUserInfo2, 0, 9);
+            tlpWorkOrderInfo.Controls.Add(tlpUserInfo1, 0, 8);
             tlpWorkOrderInfo.Controls.Add(panelTimeAndVersion, 0, 0);
             tlpWorkOrderInfo.Controls.Add(tlpProcessInfo, 0, 7);
             tlpWorkOrderInfo.Controls.Add(tlpSpecAndBatch, 0, 5);
             tlpWorkOrderInfo.Controls.Add(tlpStationInfo, 0, 2);
             tlpWorkOrderInfo.Controls.Add(tlpProductModel, 0, 4);
             tlpWorkOrderInfo.Controls.Add(tlpProductNum, 0, 3);
-            tlpWorkOrderInfo.Controls.Add(tlpProgramName, 0, 8);
+            tlpWorkOrderInfo.Controls.Add(tlpProgramName, 0, 10);
             tlpWorkOrderInfo.Dock = DockStyle.Fill;
             tlpWorkOrderInfo.Location = new Point(4, 3);
             tlpWorkOrderInfo.Margin = new Padding(4, 3, 4, 3);
             tlpWorkOrderInfo.Name = "tlpWorkOrderInfo";
             tlpWorkOrderInfo.RowCount = 12;
-            tlpWorkOrderInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 9.090908F));
+            tlpWorkOrderInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 9.09099F));
             tlpWorkOrderInfo.RowStyles.Add(new RowStyle());
-            tlpWorkOrderInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 9.090908F));
-            tlpWorkOrderInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 9.090908F));
-            tlpWorkOrderInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 9.090908F));
-            tlpWorkOrderInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 9.090908F));
-            tlpWorkOrderInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 9.090908F));
-            tlpWorkOrderInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 9.090908F));
-            tlpWorkOrderInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 9.090908F));
-            tlpWorkOrderInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 9.090908F));
-            tlpWorkOrderInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 9.090908F));
-            tlpWorkOrderInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 9.090908F));
+            tlpWorkOrderInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 9.09099F));
+            tlpWorkOrderInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 9.09099F));
+            tlpWorkOrderInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 9.09099F));
+            tlpWorkOrderInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 9.09099F));
+            tlpWorkOrderInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 9.09099F));
+            tlpWorkOrderInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 9.09099F));
+            tlpWorkOrderInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 9.09099F));
+            tlpWorkOrderInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 9.09099F));
+            tlpWorkOrderInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 9.090082F));
+            tlpWorkOrderInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 9.09099F));
+            tlpWorkOrderInfo.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
             tlpWorkOrderInfo.Size = new Size(401, 443);
             tlpWorkOrderInfo.TabIndex = 0;
             // 
@@ -917,12 +919,12 @@ namespace AutoWeldSystem.UI.Views
             tlpButton.Controls.Add(btnLocalWorkOrder, 0, 0);
             tlpButton.Controls.Add(btnOnlineReport, 1, 0);
             tlpButton.Dock = DockStyle.Fill;
-            tlpButton.Location = new Point(0, 396);
+            tlpButton.Location = new Point(0, 405);
             tlpButton.Margin = new Padding(0);
             tlpButton.Name = "tlpButton";
             tlpButton.RowCount = 1;
             tlpButton.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tlpButton.Size = new Size(401, 47);
+            tlpButton.Size = new Size(401, 38);
             tlpButton.TabIndex = 18;
             // 
             // btnLocalWorkOrder
@@ -934,7 +936,7 @@ namespace AutoWeldSystem.UI.Views
             btnLocalWorkOrder.Location = new Point(0, 0);
             btnLocalWorkOrder.Margin = new Padding(0);
             btnLocalWorkOrder.Name = "btnLocalWorkOrder";
-            btnLocalWorkOrder.Size = new Size(200, 47);
+            btnLocalWorkOrder.Size = new Size(200, 38);
             btnLocalWorkOrder.TabIndex = 5;
             btnLocalWorkOrder.Tag = "perm:button.monitor.local-work-order:enabled";
             btnLocalWorkOrder.Text = "离线开工";
@@ -948,7 +950,7 @@ namespace AutoWeldSystem.UI.Views
             btnOnlineReport.Location = new Point(200, 0);
             btnOnlineReport.Margin = new Padding(0);
             btnOnlineReport.Name = "btnOnlineReport";
-            btnOnlineReport.Size = new Size(201, 47);
+            btnOnlineReport.Size = new Size(201, 38);
             btnOnlineReport.TabIndex = 3;
             btnOnlineReport.Text = "开工上报";
             // 
@@ -958,7 +960,7 @@ namespace AutoWeldSystem.UI.Views
             tlpStation.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             tlpStation.Controls.Add(segmentedStationSwitch, 0, 0);
             tlpStation.Dock = DockStyle.Fill;
-            tlpStation.Location = new Point(0, 36);
+            tlpStation.Location = new Point(0, 37);
             tlpStation.Margin = new Padding(0);
             tlpStation.Name = "tlpStation";
             tlpStation.RowCount = 1;
@@ -997,12 +999,12 @@ namespace AutoWeldSystem.UI.Views
             tlpProductNameAndDrawingNo.Controls.Add(lblDrawingNo, 2, 0);
             tlpProductNameAndDrawingNo.Controls.Add(inputDrawingNo, 3, 0);
             tlpProductNameAndDrawingNo.Dock = DockStyle.Fill;
-            tlpProductNameAndDrawingNo.Location = new Point(0, 216);
+            tlpProductNameAndDrawingNo.Location = new Point(0, 221);
             tlpProductNameAndDrawingNo.Margin = new Padding(0);
             tlpProductNameAndDrawingNo.Name = "tlpProductNameAndDrawingNo";
             tlpProductNameAndDrawingNo.RowCount = 1;
             tlpProductNameAndDrawingNo.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tlpProductNameAndDrawingNo.Size = new Size(401, 36);
+            tlpProductNameAndDrawingNo.Size = new Size(401, 37);
             tlpProductNameAndDrawingNo.TabIndex = 0;
             // 
             // lblPartName
@@ -1014,7 +1016,7 @@ namespace AutoWeldSystem.UI.Views
             lblPartName.Location = new Point(0, 0);
             lblPartName.Margin = new Padding(0);
             lblPartName.Name = "lblPartName";
-            lblPartName.Size = new Size(70, 36);
+            lblPartName.Size = new Size(70, 37);
             lblPartName.TabIndex = 29;
             lblPartName.Text = "部件名称";
             // 
@@ -1026,7 +1028,7 @@ namespace AutoWeldSystem.UI.Views
             inputProductName.Margin = new Padding(0);
             inputProductName.Name = "inputProductName";
             inputProductName.ReadOnly = true;
-            inputProductName.Size = new Size(130, 36);
+            inputProductName.Size = new Size(130, 37);
             inputProductName.TabIndex = 4;
             // 
             // lblDrawingNo
@@ -1038,7 +1040,7 @@ namespace AutoWeldSystem.UI.Views
             lblDrawingNo.Location = new Point(200, 0);
             lblDrawingNo.Margin = new Padding(0);
             lblDrawingNo.Name = "lblDrawingNo";
-            lblDrawingNo.Size = new Size(70, 36);
+            lblDrawingNo.Size = new Size(70, 37);
             lblDrawingNo.TabIndex = 29;
             lblDrawingNo.Text = "零件图号";
             // 
@@ -1050,7 +1052,7 @@ namespace AutoWeldSystem.UI.Views
             inputDrawingNo.Margin = new Padding(0);
             inputDrawingNo.Name = "inputDrawingNo";
             inputDrawingNo.ReadOnly = true;
-            inputDrawingNo.Size = new Size(131, 36);
+            inputDrawingNo.Size = new Size(131, 37);
             inputDrawingNo.TabIndex = 4;
             // 
             // tlpUserInfo2
@@ -1065,12 +1067,12 @@ namespace AutoWeldSystem.UI.Views
             tlpUserInfo2.Controls.Add(lblDeptName, 0, 0);
             tlpUserInfo2.Controls.Add(inputDeptName, 1, 0);
             tlpUserInfo2.Dock = DockStyle.Fill;
-            tlpUserInfo2.Location = new Point(0, 360);
+            tlpUserInfo2.Location = new Point(0, 332);
             tlpUserInfo2.Margin = new Padding(0);
             tlpUserInfo2.Name = "tlpUserInfo2";
             tlpUserInfo2.RowCount = 1;
             tlpUserInfo2.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tlpUserInfo2.Size = new Size(401, 36);
+            tlpUserInfo2.Size = new Size(401, 37);
             tlpUserInfo2.TabIndex = 19;
             // 
             // TeamName
@@ -1080,7 +1082,7 @@ namespace AutoWeldSystem.UI.Views
             TeamName.Margin = new Padding(0);
             TeamName.Name = "TeamName";
             TeamName.ReadOnly = true;
-            TeamName.Size = new Size(131, 36);
+            TeamName.Size = new Size(131, 37);
             TeamName.TabIndex = 3;
             // 
             // lblTeamName
@@ -1090,7 +1092,7 @@ namespace AutoWeldSystem.UI.Views
             lblTeamName.Location = new Point(200, 0);
             lblTeamName.Margin = new Padding(0);
             lblTeamName.Name = "lblTeamName";
-            lblTeamName.Size = new Size(70, 36);
+            lblTeamName.Size = new Size(70, 37);
             lblTeamName.TabIndex = 2;
             lblTeamName.Text = "班组名称";
             // 
@@ -1101,7 +1103,7 @@ namespace AutoWeldSystem.UI.Views
             lblDeptName.Location = new Point(0, 0);
             lblDeptName.Margin = new Padding(0);
             lblDeptName.Name = "lblDeptName";
-            lblDeptName.Size = new Size(70, 36);
+            lblDeptName.Size = new Size(70, 37);
             lblDeptName.TabIndex = 0;
             lblDeptName.Text = "部门名称";
             // 
@@ -1112,7 +1114,7 @@ namespace AutoWeldSystem.UI.Views
             inputDeptName.Margin = new Padding(0);
             inputDeptName.Name = "inputDeptName";
             inputDeptName.ReadOnly = true;
-            inputDeptName.Size = new Size(130, 36);
+            inputDeptName.Size = new Size(130, 37);
             inputDeptName.TabIndex = 1;
             // 
             // tlpUserInfo1
@@ -1127,21 +1129,22 @@ namespace AutoWeldSystem.UI.Views
             tlpUserInfo1.Controls.Add(MesUserName, 3, 0);
             tlpUserInfo1.Controls.Add(lblUserName, 2, 0);
             tlpUserInfo1.Dock = DockStyle.Fill;
-            tlpUserInfo1.Location = new Point(0, 324);
+            tlpUserInfo1.Location = new Point(0, 295);
             tlpUserInfo1.Margin = new Padding(0);
             tlpUserInfo1.Name = "tlpUserInfo1";
             tlpUserInfo1.RowCount = 1;
             tlpUserInfo1.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tlpUserInfo1.Size = new Size(401, 36);
+            tlpUserInfo1.Size = new Size(401, 37);
             tlpUserInfo1.TabIndex = 18;
             // 
             // lblUserNumber
             // 
             lblUserNumber.AutoSizeMode = AntdUI.TAutoSize.Width;
+            lblUserNumber.Dock = DockStyle.Fill;
             lblUserNumber.Location = new Point(0, 0);
             lblUserNumber.Margin = new Padding(0);
             lblUserNumber.Name = "lblUserNumber";
-            lblUserNumber.Size = new Size(53, 36);
+            lblUserNumber.Size = new Size(53, 37);
             lblUserNumber.TabIndex = 2;
             lblUserNumber.Text = "员工号";
             // 
@@ -1152,7 +1155,7 @@ namespace AutoWeldSystem.UI.Views
             MesUserNumber.Margin = new Padding(0);
             MesUserNumber.Name = "MesUserNumber";
             MesUserNumber.ReadOnly = true;
-            MesUserNumber.Size = new Size(156, 36);
+            MesUserNumber.Size = new Size(156, 37);
             MesUserNumber.TabIndex = 3;
             // 
             // MesUserName
@@ -1162,16 +1165,17 @@ namespace AutoWeldSystem.UI.Views
             MesUserName.Margin = new Padding(0);
             MesUserName.Name = "MesUserName";
             MesUserName.ReadOnly = true;
-            MesUserName.Size = new Size(157, 36);
+            MesUserName.Size = new Size(157, 37);
             MesUserName.TabIndex = 1;
             // 
             // lblUserName
             // 
             lblUserName.AutoSizeMode = AntdUI.TAutoSize.Width;
+            lblUserName.Dock = DockStyle.Fill;
             lblUserName.Location = new Point(209, 0);
             lblUserName.Margin = new Padding(0);
             lblUserName.Name = "lblUserName";
-            lblUserName.Size = new Size(35, 36);
+            lblUserName.Size = new Size(35, 37);
             lblUserName.TabIndex = 0;
             lblUserName.Text = "姓名";
             // 
@@ -1183,7 +1187,7 @@ namespace AutoWeldSystem.UI.Views
             panelTimeAndVersion.Location = new Point(0, 0);
             panelTimeAndVersion.Margin = new Padding(0);
             panelTimeAndVersion.Name = "panelTimeAndVersion";
-            panelTimeAndVersion.Size = new Size(401, 36);
+            panelTimeAndVersion.Size = new Size(401, 37);
             panelTimeAndVersion.TabIndex = 0;
             // 
             // lblVersion
@@ -1194,7 +1198,7 @@ namespace AutoWeldSystem.UI.Views
             lblVersion.Location = new Point(358, 0);
             lblVersion.Name = "lblVersion";
             lblVersion.Prefix = "v";
-            lblVersion.Size = new Size(43, 36);
+            lblVersion.Size = new Size(43, 37);
             lblVersion.TabIndex = 2;
             lblVersion.Text = "x.x.x";
             lblVersion.TextAlign = ContentAlignment.BottomRight;
@@ -1207,7 +1211,7 @@ namespace AutoWeldSystem.UI.Views
             lblCurTime.Location = new Point(0, 0);
             lblCurTime.Margin = new Padding(0);
             lblCurTime.Name = "lblCurTime";
-            lblCurTime.Size = new Size(401, 36);
+            lblCurTime.Size = new Size(401, 37);
             lblCurTime.TabIndex = 6;
             lblCurTime.Text = "当前时间";
             lblCurTime.TextAlign = ContentAlignment.MiddleCenter;
@@ -1228,12 +1232,12 @@ namespace AutoWeldSystem.UI.Views
             tlpProcessInfo.Controls.Add(lblStartAmount, 4, 0);
             tlpProcessInfo.Controls.Add(inputStartAmount, 5, 0);
             tlpProcessInfo.Dock = DockStyle.Fill;
-            tlpProcessInfo.Location = new Point(0, 252);
+            tlpProcessInfo.Location = new Point(0, 258);
             tlpProcessInfo.Margin = new Padding(0);
             tlpProcessInfo.Name = "tlpProcessInfo";
             tlpProcessInfo.RowCount = 1;
             tlpProcessInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tlpProcessInfo.Size = new Size(401, 36);
+            tlpProcessInfo.Size = new Size(401, 37);
             tlpProcessInfo.TabIndex = 2;
             // 
             // lblProcessName
@@ -1245,7 +1249,7 @@ namespace AutoWeldSystem.UI.Views
             lblProcessName.Location = new Point(0, 0);
             lblProcessName.Margin = new Padding(0);
             lblProcessName.Name = "lblProcessName";
-            lblProcessName.Size = new Size(70, 36);
+            lblProcessName.Size = new Size(70, 37);
             lblProcessName.TabIndex = 30;
             lblProcessName.Text = "工序名称";
             // 
@@ -1257,7 +1261,7 @@ namespace AutoWeldSystem.UI.Views
             inputProcessNo.Margin = new Padding(0);
             inputProcessNo.Name = "inputProcessNo";
             inputProcessNo.ReadOnly = true;
-            inputProcessNo.Size = new Size(52, 36);
+            inputProcessNo.Size = new Size(52, 37);
             inputProcessNo.TabIndex = 4;
             // 
             // selectItemName
@@ -1267,7 +1271,7 @@ namespace AutoWeldSystem.UI.Views
             selectItemName.Margin = new Padding(0);
             selectItemName.MaxCount = 10;
             selectItemName.Name = "selectItemName";
-            selectItemName.Size = new Size(104, 36);
+            selectItemName.Size = new Size(104, 37);
             selectItemName.TabIndex = 4;
             // 
             // lblProcessNo
@@ -1279,7 +1283,7 @@ namespace AutoWeldSystem.UI.Views
             lblProcessNo.Location = new Point(174, 0);
             lblProcessNo.Margin = new Padding(0);
             lblProcessNo.Name = "lblProcessNo";
-            lblProcessNo.Size = new Size(53, 36);
+            lblProcessNo.Size = new Size(53, 37);
             lblProcessNo.TabIndex = 27;
             lblProcessNo.Text = "工序号";
             // 
@@ -1290,7 +1294,7 @@ namespace AutoWeldSystem.UI.Views
             lblStartAmount.Location = new Point(279, 0);
             lblStartAmount.Margin = new Padding(0);
             lblStartAmount.Name = "lblStartAmount";
-            lblStartAmount.Size = new Size(70, 36);
+            lblStartAmount.Size = new Size(70, 37);
             lblStartAmount.TabIndex = 31;
             lblStartAmount.Text = "生产数量";
             // 
@@ -1301,7 +1305,7 @@ namespace AutoWeldSystem.UI.Views
             inputStartAmount.Margin = new Padding(0);
             inputStartAmount.Name = "inputStartAmount";
             inputStartAmount.ReadOnly = true;
-            inputStartAmount.Size = new Size(52, 36);
+            inputStartAmount.Size = new Size(52, 37);
             inputStartAmount.TabIndex = 32;
             // 
             // tlpSpecAndBatch
@@ -1316,12 +1320,12 @@ namespace AutoWeldSystem.UI.Views
             tlpSpecAndBatch.Controls.Add(lblBatchNo, 2, 0);
             tlpSpecAndBatch.Controls.Add(inputSpec, 1, 0);
             tlpSpecAndBatch.Dock = DockStyle.Fill;
-            tlpSpecAndBatch.Location = new Point(0, 180);
+            tlpSpecAndBatch.Location = new Point(0, 184);
             tlpSpecAndBatch.Margin = new Padding(0);
             tlpSpecAndBatch.Name = "tlpSpecAndBatch";
             tlpSpecAndBatch.RowCount = 1;
             tlpSpecAndBatch.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tlpSpecAndBatch.Size = new Size(401, 36);
+            tlpSpecAndBatch.Size = new Size(401, 37);
             tlpSpecAndBatch.TabIndex = 0;
             // 
             // inputBatch
@@ -1332,7 +1336,7 @@ namespace AutoWeldSystem.UI.Views
             inputBatch.Margin = new Padding(0);
             inputBatch.Name = "inputBatch";
             inputBatch.ReadOnly = true;
-            inputBatch.Size = new Size(166, 36);
+            inputBatch.Size = new Size(166, 37);
             inputBatch.TabIndex = 4;
             // 
             // lblSpec
@@ -1344,7 +1348,7 @@ namespace AutoWeldSystem.UI.Views
             lblSpec.Location = new Point(0, 0);
             lblSpec.Margin = new Padding(0);
             lblSpec.Name = "lblSpec";
-            lblSpec.Size = new Size(35, 36);
+            lblSpec.Size = new Size(35, 37);
             lblSpec.TabIndex = 29;
             lblSpec.Text = "规格";
             // 
@@ -1357,7 +1361,7 @@ namespace AutoWeldSystem.UI.Views
             lblBatchNo.Location = new Point(200, 0);
             lblBatchNo.Margin = new Padding(0);
             lblBatchNo.Name = "lblBatchNo";
-            lblBatchNo.Size = new Size(35, 36);
+            lblBatchNo.Size = new Size(35, 37);
             lblBatchNo.TabIndex = 29;
             lblBatchNo.Text = "批次";
             // 
@@ -1369,7 +1373,7 @@ namespace AutoWeldSystem.UI.Views
             inputSpec.Margin = new Padding(0);
             inputSpec.Name = "inputSpec";
             inputSpec.ReadOnly = true;
-            inputSpec.Size = new Size(165, 36);
+            inputSpec.Size = new Size(165, 37);
             inputSpec.TabIndex = 4;
             // 
             // tlpStationInfo
@@ -1382,12 +1386,12 @@ namespace AutoWeldSystem.UI.Views
             tlpStationInfo.Controls.Add(inputSN, 1, 0);
             tlpStationInfo.Controls.Add(chkEnableDualWorkOrder, 2, 0);
             tlpStationInfo.Dock = DockStyle.Fill;
-            tlpStationInfo.Location = new Point(0, 72);
+            tlpStationInfo.Location = new Point(0, 73);
             tlpStationInfo.Margin = new Padding(0);
             tlpStationInfo.Name = "tlpStationInfo";
             tlpStationInfo.RowCount = 1;
             tlpStationInfo.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tlpStationInfo.Size = new Size(401, 36);
+            tlpStationInfo.Size = new Size(401, 37);
             tlpStationInfo.TabIndex = 7;
             // 
             // lblWorkOrder
@@ -1399,7 +1403,7 @@ namespace AutoWeldSystem.UI.Views
             lblWorkOrder.Location = new Point(0, 0);
             lblWorkOrder.Margin = new Padding(0);
             lblWorkOrder.Name = "lblWorkOrder";
-            lblWorkOrder.Size = new Size(53, 36);
+            lblWorkOrder.Size = new Size(53, 37);
             lblWorkOrder.TabIndex = 22;
             lblWorkOrder.Text = "工单号";
             // 
@@ -1411,7 +1415,7 @@ namespace AutoWeldSystem.UI.Views
             inputSN.Margin = new Padding(0);
             inputSN.Name = "inputSN";
             inputSN.ReadOnly = true;
-            inputSN.Size = new Size(214, 36);
+            inputSN.Size = new Size(214, 37);
             inputSN.TabIndex = 4;
             // 
             // chkEnableDualWorkOrder
@@ -1421,7 +1425,7 @@ namespace AutoWeldSystem.UI.Views
             chkEnableDualWorkOrder.Location = new Point(267, 0);
             chkEnableDualWorkOrder.Margin = new Padding(0);
             chkEnableDualWorkOrder.Name = "chkEnableDualWorkOrder";
-            chkEnableDualWorkOrder.Size = new Size(134, 36);
+            chkEnableDualWorkOrder.Size = new Size(134, 37);
             chkEnableDualWorkOrder.TabIndex = 23;
             chkEnableDualWorkOrder.Text = "启用双工单";
             // 
@@ -1433,12 +1437,12 @@ namespace AutoWeldSystem.UI.Views
             tlpProductModel.Controls.Add(lblProdModel, 0, 0);
             tlpProductModel.Controls.Add(inputProdModel, 1, 0);
             tlpProductModel.Dock = DockStyle.Fill;
-            tlpProductModel.Location = new Point(0, 144);
+            tlpProductModel.Location = new Point(0, 147);
             tlpProductModel.Margin = new Padding(0);
             tlpProductModel.Name = "tlpProductModel";
             tlpProductModel.RowCount = 1;
             tlpProductModel.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tlpProductModel.Size = new Size(401, 36);
+            tlpProductModel.Size = new Size(401, 37);
             tlpProductModel.TabIndex = 1;
             // 
             // lblProdModel
@@ -1450,7 +1454,7 @@ namespace AutoWeldSystem.UI.Views
             lblProdModel.Location = new Point(0, 0);
             lblProdModel.Margin = new Padding(0);
             lblProdModel.Name = "lblProdModel";
-            lblProdModel.Size = new Size(70, 36);
+            lblProdModel.Size = new Size(70, 37);
             lblProdModel.TabIndex = 23;
             lblProdModel.Text = "产品型号";
             // 
@@ -1462,7 +1466,7 @@ namespace AutoWeldSystem.UI.Views
             inputProdModel.Margin = new Padding(0);
             inputProdModel.Name = "inputProdModel";
             inputProdModel.ReadOnly = true;
-            inputProdModel.Size = new Size(331, 36);
+            inputProdModel.Size = new Size(331, 37);
             inputProdModel.TabIndex = 4;
             // 
             // tlpProductNum
@@ -1474,25 +1478,25 @@ namespace AutoWeldSystem.UI.Views
             tlpProductNum.Controls.Add(selectProdNum, 1, 0);
             tlpProductNum.Controls.Add(lblProductNo, 0, 0);
             tlpProductNum.Dock = DockStyle.Fill;
-            tlpProductNum.Location = new Point(0, 108);
+            tlpProductNum.Location = new Point(0, 110);
             tlpProductNum.Margin = new Padding(0);
             tlpProductNum.Name = "tlpProductNum";
             tlpProductNum.RowCount = 1;
             tlpProductNum.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tlpProductNum.Size = new Size(401, 36);
+            tlpProductNum.Size = new Size(401, 37);
             tlpProductNum.TabIndex = 10;
-            //
+            // 
             // selectProdNum
-            //
+            // 
             selectProdNum.Dock = DockStyle.Fill;
             selectProdNum.Location = new Point(70, 0);
             selectProdNum.Margin = new Padding(0);
             selectProdNum.MaxCount = 10;
             selectProdNum.Name = "selectProdNum";
             selectProdNum.ReadOnly = true;
-            selectProdNum.Size = new Size(163, 36);
+            selectProdNum.Size = new Size(331, 37);
             selectProdNum.TabIndex = 4;
-            //
+            // 
             // lblProductNo
             // 
             lblProductNo.AutoEllipsis = true;
@@ -1502,10 +1506,9 @@ namespace AutoWeldSystem.UI.Views
             lblProductNo.Location = new Point(0, 0);
             lblProductNo.Margin = new Padding(0);
             lblProductNo.Name = "lblProductNo";
-            lblProductNo.Size = new Size(70, 36);
+            lblProductNo.Size = new Size(70, 37);
             lblProductNo.TabIndex = 24;
             lblProductNo.Text = "产品工号";
-            // 
             // 
             // tlpProgramName
             // 
@@ -1517,7 +1520,7 @@ namespace AutoWeldSystem.UI.Views
             tlpProgramName.Controls.Add(selectProgramName, 1, 0);
             tlpProgramName.Controls.Add(lblProgramName, 0, 0);
             tlpProgramName.Dock = DockStyle.Fill;
-            tlpProgramName.Location = new Point(0, 288);
+            tlpProgramName.Location = new Point(0, 369);
             tlpProgramName.Margin = new Padding(0);
             tlpProgramName.Name = "tlpProgramName";
             tlpProgramName.RowCount = 1;
@@ -1762,8 +1765,8 @@ namespace AutoWeldSystem.UI.Views
             // 
             // MonitorView
             // 
-            AutoScaleDimensions = new SizeF(10F, 23F);
-            AutoScaleMode = AutoScaleMode.Font;
+            AutoScaleDimensions = new SizeF(120F, 120F);
+            AutoScaleMode = AutoScaleMode.Dpi;
             AutoSize = true;
             Controls.Add(VerticalSplitter);
             Font = new Font("Microsoft YaHei UI", 10.5F);

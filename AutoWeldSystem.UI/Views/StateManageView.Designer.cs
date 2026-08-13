@@ -28,12 +28,12 @@
             btnRefresh = new AntdUI.Button();
             tabUploadCategories = new TabControl();
             tabSummary = new TabPage();
-            tabProcessParameters = new TabPage();
             tabStartReports = new TabPage();
             tabFinishReports = new TabPage();
+            tabProcessParameters = new TabPage();
+            tabReportFiles = new TabPage();
             tabWorkOrderStatuses = new TabPage();
             tabDeviceStatuses = new TabPage();
-            tabReportFiles = new TabPage();
             tabProgramFiles = new TabPage();
             lblSummary = new Label();
             dgvPending = new DataGridView();
@@ -92,7 +92,7 @@
             titleLayout.RowCount = 2;
             titleLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
             titleLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            titleLayout.Size = new Size(952, 64);
+            titleLayout.Size = new Size(820, 64);
             titleLayout.TabIndex = 0;
             // 
             // lblTitle
@@ -102,7 +102,7 @@
             lblTitle.Font = new Font("Microsoft YaHei UI", 14F, FontStyle.Bold);
             lblTitle.Location = new Point(3, 0);
             lblTitle.Name = "lblTitle";
-            lblTitle.Size = new Size(946, 34);
+            lblTitle.Size = new Size(814, 34);
             lblTitle.TabIndex = 0;
             lblTitle.Text = "上传状态";
             lblTitle.TextAlign = ContentAlignment.MiddleLeft;
@@ -114,7 +114,7 @@
             lblDescription.ForeColor = SystemColors.GrayText;
             lblDescription.Location = new Point(3, 34);
             lblDescription.Name = "lblDescription";
-            lblDescription.Size = new Size(946, 30);
+            lblDescription.Size = new Size(814, 30);
             lblDescription.TabIndex = 1;
             lblDescription.Text = "查看尚未同步至 MES 的本地程序，支持断网恢复后手动重试。";
             lblDescription.TextAlign = ContentAlignment.MiddleLeft;
@@ -127,10 +127,10 @@
             buttonFlow.Controls.Add(btnDeleteSelected);
             buttonFlow.Controls.Add(btnRefresh);
             buttonFlow.Dock = DockStyle.Right;
-            buttonFlow.Location = new Point(961, 3);
+            buttonFlow.Location = new Point(829, 3);
             buttonFlow.Name = "buttonFlow";
             buttonFlow.Padding = new Padding(0, 7, 0, 0);
-            buttonFlow.Size = new Size(362, 64);
+            buttonFlow.Size = new Size(494, 64);
             buttonFlow.TabIndex = 1;
             buttonFlow.WrapContents = false;
             // 
@@ -157,9 +157,9 @@
             btnRetryAll.TabIndex = 1;
             btnRetryAll.Tag = "perm:button.state.retry-all:enabled";
             btnRetryAll.Text = "全部重试";
-            //
+            // 
             // btnDeleteSelected
-            //
+            // 
             btnDeleteSelected.BorderWidth = 1F;
             btnDeleteSelected.IconSvg = "DeleteOutlined";
             btnDeleteSelected.Location = new Point(264, 7);
@@ -209,72 +209,72 @@
             tabSummary.Text = "工单信息";
             tabSummary.UseVisualStyleBackColor = true;
             // 
-            // tabProcessParameters
-            // 
-            tabProcessParameters.Location = new Point(4, 32);
-            tabProcessParameters.Name = "tabProcessParameters";
-            tabProcessParameters.Padding = new Padding(3);
-            tabProcessParameters.Size = new Size(1318, 0);
-            tabProcessParameters.TabIndex = 1;
-            tabProcessParameters.Text = "过程参数";
-            tabProcessParameters.UseVisualStyleBackColor = true;
-            // 
             // tabStartReports
             // 
-            tabStartReports.Location = new Point(4, 32);
+            tabStartReports.Location = new Point(4, 29);
             tabStartReports.Name = "tabStartReports";
             tabStartReports.Padding = new Padding(3);
-            tabStartReports.Size = new Size(1318, 0);
+            tabStartReports.Size = new Size(1318, 3);
             tabStartReports.TabIndex = 2;
             tabStartReports.Text = "开工信息";
             tabStartReports.UseVisualStyleBackColor = true;
             // 
             // tabFinishReports
             // 
-            tabFinishReports.Location = new Point(4, 32);
+            tabFinishReports.Location = new Point(4, 29);
             tabFinishReports.Name = "tabFinishReports";
             tabFinishReports.Padding = new Padding(3);
-            tabFinishReports.Size = new Size(1318, 0);
+            tabFinishReports.Size = new Size(1318, 3);
             tabFinishReports.TabIndex = 3;
             tabFinishReports.Text = "完工信息";
             tabFinishReports.UseVisualStyleBackColor = true;
             // 
+            // tabProcessParameters
+            // 
+            tabProcessParameters.Location = new Point(4, 29);
+            tabProcessParameters.Name = "tabProcessParameters";
+            tabProcessParameters.Padding = new Padding(3);
+            tabProcessParameters.Size = new Size(1318, 3);
+            tabProcessParameters.TabIndex = 1;
+            tabProcessParameters.Text = "过程参数";
+            tabProcessParameters.UseVisualStyleBackColor = true;
+            // 
+            // tabReportFiles
+            // 
+            tabReportFiles.Location = new Point(4, 29);
+            tabReportFiles.Name = "tabReportFiles";
+            tabReportFiles.Padding = new Padding(3);
+            tabReportFiles.Size = new Size(1318, 3);
+            tabReportFiles.TabIndex = 6;
+            tabReportFiles.Text = "报告文件";
+            tabReportFiles.UseVisualStyleBackColor = true;
+            // 
             // tabWorkOrderStatuses
             // 
-            tabWorkOrderStatuses.Location = new Point(4, 32);
+            tabWorkOrderStatuses.Location = new Point(4, 29);
             tabWorkOrderStatuses.Name = "tabWorkOrderStatuses";
             tabWorkOrderStatuses.Padding = new Padding(3);
-            tabWorkOrderStatuses.Size = new Size(1318, 0);
+            tabWorkOrderStatuses.Size = new Size(1318, 3);
             tabWorkOrderStatuses.TabIndex = 4;
             tabWorkOrderStatuses.Text = "工单状态";
             tabWorkOrderStatuses.UseVisualStyleBackColor = true;
             // 
             // tabDeviceStatuses
             // 
-            tabDeviceStatuses.Location = new Point(4, 32);
+            tabDeviceStatuses.Location = new Point(4, 29);
             tabDeviceStatuses.Name = "tabDeviceStatuses";
             tabDeviceStatuses.Padding = new Padding(3);
-            tabDeviceStatuses.Size = new Size(1318, 0);
+            tabDeviceStatuses.Size = new Size(1318, 3);
             tabDeviceStatuses.TabIndex = 5;
             tabDeviceStatuses.Text = "设备状态";
             tabDeviceStatuses.UseVisualStyleBackColor = true;
             // 
-            // tabReportFiles
-            // 
-            tabReportFiles.Location = new Point(4, 32);
-            tabReportFiles.Name = "tabReportFiles";
-            tabReportFiles.Padding = new Padding(3);
-            tabReportFiles.Size = new Size(1318, 0);
-            tabReportFiles.TabIndex = 6;
-            tabReportFiles.Text = "报告文件";
-            tabReportFiles.UseVisualStyleBackColor = true;
-            // 
             // tabProgramFiles
             // 
-            tabProgramFiles.Location = new Point(4, 32);
+            tabProgramFiles.Location = new Point(4, 29);
             tabProgramFiles.Name = "tabProgramFiles";
             tabProgramFiles.Padding = new Padding(3);
-            tabProgramFiles.Size = new Size(1318, 0);
+            tabProgramFiles.Size = new Size(1318, 3);
             tabProgramFiles.TabIndex = 7;
             tabProgramFiles.Text = "程序文件";
             tabProgramFiles.UseVisualStyleBackColor = true;
@@ -312,8 +312,8 @@
             // 
             // StateManageView
             // 
-            AutoScaleDimensions = new SizeF(10F, 23F);
-            AutoScaleMode = AutoScaleMode.Font;
+            AutoScaleDimensions = new SizeF(120F, 120F);
+            AutoScaleMode = AutoScaleMode.Dpi;
             Controls.Add(rootLayout);
             Font = new Font("Microsoft YaHei UI", 10.5F);
             Name = "StateManageView";

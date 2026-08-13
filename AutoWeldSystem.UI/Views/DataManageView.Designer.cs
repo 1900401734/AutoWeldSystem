@@ -587,10 +587,10 @@
             // tabReportFiles
             // 
             tabReportFiles.Controls.Add(reportLayout);
-            tabReportFiles.Location = new Point(4, 32);
+            tabReportFiles.Location = new Point(4, 29);
             tabReportFiles.Name = "tabReportFiles";
             tabReportFiles.Padding = new Padding(3);
-            tabReportFiles.Size = new Size(1416, 320);
+            tabReportFiles.Size = new Size(1416, 323);
             tabReportFiles.TabIndex = 2;
             tabReportFiles.Text = "报告文件";
             tabReportFiles.UseVisualStyleBackColor = true;
@@ -609,7 +609,7 @@
             reportLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48F));
             reportLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
             reportLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            reportLayout.Size = new Size(1410, 314);
+            reportLayout.Size = new Size(1410, 317);
             reportLayout.TabIndex = 0;
             // 
             // reportToolbar
@@ -676,7 +676,7 @@
             dgvReportFiles.RowHeadersWidth = 51;
             dgvReportFiles.RowTemplate.Height = 28;
             dgvReportFiles.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgvReportFiles.Size = new Size(1410, 236);
+            dgvReportFiles.Size = new Size(1410, 239);
             dgvReportFiles.TabIndex = 2;
             // 
             // colTaskStation
@@ -903,8 +903,8 @@
             // 
             // DataManageView
             // 
-            AutoScaleDimensions = new SizeF(10F, 23F);
-            AutoScaleMode = AutoScaleMode.Font;
+            AutoScaleDimensions = new SizeF(120F, 120F);
+            AutoScaleMode = AutoScaleMode.Dpi;
             Controls.Add(rootLayout);
             Font = new Font("Microsoft YaHei UI", 10.5F);
             Name = "DataManageView";

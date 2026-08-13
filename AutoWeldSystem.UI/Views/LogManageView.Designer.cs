@@ -546,7 +546,7 @@ namespace AutoWeldSystem.UI.Views
             colMesHttpStatus.Name = "colMesHttpStatus";
             colMesHttpStatus.ReadOnly = true;
             colMesHttpStatus.Width = 125;
-            //
+            // 
             // colResult
             // 
             colResult.DataPropertyName = "Result";
@@ -587,7 +587,7 @@ namespace AutoWeldSystem.UI.Views
             tabBasicInfo.Location = new Point(4, 32);
             tabBasicInfo.Name = "tabBasicInfo";
             tabBasicInfo.Padding = new Padding(3);
-            tabBasicInfo.Size = new Size(400, 528);
+            tabBasicInfo.Size = new Size(467, 522);
             tabBasicInfo.TabIndex = 0;
             tabBasicInfo.Text = "Basic";
             tabBasicInfo.UseVisualStyleBackColor = true;
@@ -603,7 +603,7 @@ namespace AutoWeldSystem.UI.Views
             txtBasicInfo.Name = "txtBasicInfo";
             txtBasicInfo.ReadOnly = true;
             txtBasicInfo.ScrollBars = ScrollBars.Both;
-            txtBasicInfo.Size = new Size(394, 522);
+            txtBasicInfo.Size = new Size(461, 516);
             txtBasicInfo.TabIndex = 0;
             txtBasicInfo.WordWrap = false;
             // 
@@ -613,7 +613,7 @@ namespace AutoWeldSystem.UI.Views
             tabRequestBody.Location = new Point(4, 29);
             tabRequestBody.Name = "tabRequestBody";
             tabRequestBody.Padding = new Padding(3);
-            tabRequestBody.Size = new Size(400, 531);
+            tabRequestBody.Size = new Size(467, 525);
             tabRequestBody.TabIndex = 1;
             tabRequestBody.Text = "Request";
             tabRequestBody.UseVisualStyleBackColor = true;
@@ -629,7 +629,7 @@ namespace AutoWeldSystem.UI.Views
             txtRequestBody.Name = "txtRequestBody";
             txtRequestBody.ReadOnly = true;
             txtRequestBody.ScrollBars = ScrollBars.Both;
-            txtRequestBody.Size = new Size(394, 525);
+            txtRequestBody.Size = new Size(461, 519);
             txtRequestBody.TabIndex = 0;
             txtRequestBody.WordWrap = false;
             // 
@@ -639,7 +639,7 @@ namespace AutoWeldSystem.UI.Views
             tabResponseBody.Location = new Point(4, 29);
             tabResponseBody.Name = "tabResponseBody";
             tabResponseBody.Padding = new Padding(3);
-            tabResponseBody.Size = new Size(400, 531);
+            tabResponseBody.Size = new Size(467, 525);
             tabResponseBody.TabIndex = 2;
             tabResponseBody.Text = "Response";
             tabResponseBody.UseVisualStyleBackColor = true;
@@ -655,7 +655,7 @@ namespace AutoWeldSystem.UI.Views
             txtResponseBody.Name = "txtResponseBody";
             txtResponseBody.ReadOnly = true;
             txtResponseBody.ScrollBars = ScrollBars.Both;
-            txtResponseBody.Size = new Size(394, 525);
+            txtResponseBody.Size = new Size(461, 519);
             txtResponseBody.TabIndex = 0;
             txtResponseBody.WordWrap = false;
             // 
@@ -793,7 +793,7 @@ namespace AutoWeldSystem.UI.Views
             tabProductionBasicInfo.Location = new Point(4, 32);
             tabProductionBasicInfo.Name = "tabProductionBasicInfo";
             tabProductionBasicInfo.Padding = new Padding(3);
-            tabProductionBasicInfo.Size = new Size(441, 525);
+            tabProductionBasicInfo.Size = new Size(467, 525);
             tabProductionBasicInfo.TabIndex = 0;
             tabProductionBasicInfo.Text = "Basic";
             tabProductionBasicInfo.UseVisualStyleBackColor = true;
@@ -809,7 +809,7 @@ namespace AutoWeldSystem.UI.Views
             txtProductionBasicInfo.Name = "txtProductionBasicInfo";
             txtProductionBasicInfo.ReadOnly = true;
             txtProductionBasicInfo.ScrollBars = ScrollBars.Both;
-            txtProductionBasicInfo.Size = new Size(435, 519);
+            txtProductionBasicInfo.Size = new Size(461, 519);
             txtProductionBasicInfo.TabIndex = 0;
             txtProductionBasicInfo.WordWrap = false;
             // 
@@ -819,7 +819,7 @@ namespace AutoWeldSystem.UI.Views
             tabProductionDetail.Location = new Point(4, 29);
             tabProductionDetail.Name = "tabProductionDetail";
             tabProductionDetail.Padding = new Padding(3);
-            tabProductionDetail.Size = new Size(441, 525);
+            tabProductionDetail.Size = new Size(467, 528);
             tabProductionDetail.TabIndex = 1;
             tabProductionDetail.Text = "Detail";
             tabProductionDetail.UseVisualStyleBackColor = true;
@@ -835,7 +835,7 @@ namespace AutoWeldSystem.UI.Views
             txtProductionDetail.Name = "txtProductionDetail";
             txtProductionDetail.ReadOnly = true;
             txtProductionDetail.ScrollBars = ScrollBars.Both;
-            txtProductionDetail.Size = new Size(435, 519);
+            txtProductionDetail.Size = new Size(461, 522);
             txtProductionDetail.TabIndex = 0;
             txtProductionDetail.WordWrap = false;
             // 
@@ -1329,7 +1329,7 @@ namespace AutoWeldSystem.UI.Views
             tabExceptionBasicInfo.Location = new Point(4, 32);
             tabExceptionBasicInfo.Name = "tabExceptionBasicInfo";
             tabExceptionBasicInfo.Padding = new Padding(3);
-            tabExceptionBasicInfo.Size = new Size(521, 466);
+            tabExceptionBasicInfo.Size = new Size(467, 472);
             tabExceptionBasicInfo.TabIndex = 0;
             tabExceptionBasicInfo.Text = "Basic";
             tabExceptionBasicInfo.UseVisualStyleBackColor = true;
@@ -1345,7 +1345,7 @@ namespace AutoWeldSystem.UI.Views
             txtExceptionBasicInfo.Name = "txtExceptionBasicInfo";
             txtExceptionBasicInfo.ReadOnly = true;
             txtExceptionBasicInfo.ScrollBars = ScrollBars.Both;
-            txtExceptionBasicInfo.Size = new Size(515, 460);
+            txtExceptionBasicInfo.Size = new Size(461, 466);
             txtExceptionBasicInfo.TabIndex = 0;
             txtExceptionBasicInfo.WordWrap = false;
             // 
@@ -1355,7 +1355,7 @@ namespace AutoWeldSystem.UI.Views
             tabExceptionStackTrace.Location = new Point(4, 29);
             tabExceptionStackTrace.Name = "tabExceptionStackTrace";
             tabExceptionStackTrace.Padding = new Padding(3);
-            tabExceptionStackTrace.Size = new Size(521, 466);
+            tabExceptionStackTrace.Size = new Size(467, 475);
             tabExceptionStackTrace.TabIndex = 1;
             tabExceptionStackTrace.Text = "Stack Trace";
             tabExceptionStackTrace.UseVisualStyleBackColor = true;
@@ -1371,7 +1371,7 @@ namespace AutoWeldSystem.UI.Views
             txtExceptionStackTrace.Name = "txtExceptionStackTrace";
             txtExceptionStackTrace.ReadOnly = true;
             txtExceptionStackTrace.ScrollBars = ScrollBars.Both;
-            txtExceptionStackTrace.Size = new Size(515, 460);
+            txtExceptionStackTrace.Size = new Size(461, 469);
             txtExceptionStackTrace.TabIndex = 0;
             txtExceptionStackTrace.WordWrap = false;
             // 
@@ -1381,7 +1381,7 @@ namespace AutoWeldSystem.UI.Views
             tabExceptionContext.Location = new Point(4, 29);
             tabExceptionContext.Name = "tabExceptionContext";
             tabExceptionContext.Padding = new Padding(3);
-            tabExceptionContext.Size = new Size(521, 466);
+            tabExceptionContext.Size = new Size(467, 475);
             tabExceptionContext.TabIndex = 2;
             tabExceptionContext.Text = "Context";
             tabExceptionContext.UseVisualStyleBackColor = true;
@@ -1397,7 +1397,7 @@ namespace AutoWeldSystem.UI.Views
             txtExceptionContext.Name = "txtExceptionContext";
             txtExceptionContext.ReadOnly = true;
             txtExceptionContext.ScrollBars = ScrollBars.Both;
-            txtExceptionContext.Size = new Size(515, 460);
+            txtExceptionContext.Size = new Size(461, 469);
             txtExceptionContext.TabIndex = 0;
             txtExceptionContext.WordWrap = false;
             // 
@@ -1935,7 +1935,7 @@ namespace AutoWeldSystem.UI.Views
             colDeviceStatusName.Name = "colDeviceStatusName";
             colDeviceStatusName.ReadOnly = true;
             colDeviceStatusName.Width = 125;
-            //
+            // 
             // colDeviceReportStatus
             // 
             colDeviceReportStatus.DataPropertyName = "ReportStatus";
@@ -1970,9 +1970,9 @@ namespace AutoWeldSystem.UI.Views
             txtDeviceStatusDetail.Size = new Size(475, 562);
             txtDeviceStatusDetail.TabIndex = 0;
             txtDeviceStatusDetail.WordWrap = false;
-            //
+            // 
             // tabCenterLogs
-            //
+            // 
             tabCenterLogs.Controls.Add(centerRootLayout);
             tabCenterLogs.Location = new Point(4, 29);
             tabCenterLogs.Name = "tabCenterLogs";
@@ -1981,9 +1981,9 @@ namespace AutoWeldSystem.UI.Views
             tabCenterLogs.TabIndex = 5;
             tabCenterLogs.Text = "Center Server";
             tabCenterLogs.UseVisualStyleBackColor = true;
-            //
+            // 
             // centerRootLayout
-            //
+            // 
             centerRootLayout.ColumnCount = 1;
             centerRootLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             centerRootLayout.Controls.Add(centerHeaderLayout, 0, 0);
@@ -1996,9 +1996,9 @@ namespace AutoWeldSystem.UI.Views
             centerRootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             centerRootLayout.Size = new Size(1352, 706);
             centerRootLayout.TabIndex = 0;
-            //
+            // 
             // centerHeaderLayout
-            //
+            // 
             centerHeaderLayout.ColumnCount = 2;
             centerHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             centerHeaderLayout.ColumnStyles.Add(new ColumnStyle());
@@ -2012,9 +2012,9 @@ namespace AutoWeldSystem.UI.Views
             centerHeaderLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             centerHeaderLayout.Size = new Size(1312, 104);
             centerHeaderLayout.TabIndex = 0;
-            //
+            // 
             // centerToolbarHost
-            //
+            // 
             centerToolbarHost.AutoSize = true;
             centerToolbarHost.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             centerToolbarHost.ColumnCount = 1;
@@ -2030,9 +2030,9 @@ namespace AutoWeldSystem.UI.Views
             centerToolbarHost.RowStyles.Add(new RowStyle(SizeType.Percent, 22.2222214F));
             centerToolbarHost.Size = new Size(788, 104);
             centerToolbarHost.TabIndex = 1;
-            //
+            // 
             // centerToolbar
-            //
+            // 
             centerToolbar.AutoSize = true;
             centerToolbar.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             centerToolbar.ColumnCount = 5;
@@ -2053,9 +2053,9 @@ namespace AutoWeldSystem.UI.Views
             centerToolbar.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             centerToolbar.Size = new Size(782, 51);
             centerToolbar.TabIndex = 1;
-            //
+            // 
             // btnOpenCenterFolder
-            //
+            // 
             btnOpenCenterFolder.BorderWidth = 1F;
             btnOpenCenterFolder.Dock = DockStyle.Fill;
             btnOpenCenterFolder.IconSvg = "FolderOpenOutlined";
@@ -2066,18 +2066,18 @@ namespace AutoWeldSystem.UI.Views
             btnOpenCenterFolder.TabIndex = 4;
             btnOpenCenterFolder.Tag = "perm:button.log.open-folder:enabled";
             btnOpenCenterFolder.Text = "Open";
-            //
+            // 
             // dtpCenterDate
-            //
+            // 
             dtpCenterDate.Dock = DockStyle.Fill;
             dtpCenterDate.Location = new Point(175, 0);
             dtpCenterDate.Margin = new Padding(0);
             dtpCenterDate.Name = "dtpCenterDate";
             dtpCenterDate.Size = new Size(183, 51);
             dtpCenterDate.TabIndex = 1;
-            //
+            // 
             // lblCenterDate
-            //
+            // 
             lblCenterDate.AutoSizeMode = TAutoSize.Width;
             lblCenterDate.Dock = DockStyle.Fill;
             lblCenterDate.Location = new Point(135, 0);
@@ -2086,9 +2086,9 @@ namespace AutoWeldSystem.UI.Views
             lblCenterDate.Size = new Size(40, 51);
             lblCenterDate.TabIndex = 0;
             lblCenterDate.Text = "Date";
-            //
+            // 
             // queryCenterLogs
-            //
+            // 
             queryCenterLogs.AutoSize = true;
             queryCenterLogs.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             queryCenterLogs.Dock = DockStyle.Fill;
@@ -2099,9 +2099,9 @@ namespace AutoWeldSystem.UI.Views
             queryCenterLogs.QueryChanged = null;
             queryCenterLogs.Size = new Size(323, 51);
             queryCenterLogs.TabIndex = 2;
-            //
+            // 
             // chkCenterShowDate
-            //
+            // 
             chkCenterShowDate.AutoSizeMode = TAutoSize.Width;
             chkCenterShowDate.Dock = DockStyle.Fill;
             chkCenterShowDate.Location = new Point(0, 0);
@@ -2110,9 +2110,9 @@ namespace AutoWeldSystem.UI.Views
             chkCenterShowDate.Size = new Size(135, 51);
             chkCenterShowDate.TabIndex = 3;
             chkCenterShowDate.Text = "Show date";
-            //
+            // 
             // centerTitleLayout
-            //
+            // 
             centerTitleLayout.ColumnCount = 1;
             centerTitleLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             centerTitleLayout.Controls.Add(lblCenterTitle, 0, 0);
@@ -2126,9 +2126,9 @@ namespace AutoWeldSystem.UI.Views
             centerTitleLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             centerTitleLayout.Size = new Size(524, 104);
             centerTitleLayout.TabIndex = 0;
-            //
+            // 
             // lblCenterTitle
-            //
+            // 
             lblCenterTitle.AutoSize = true;
             lblCenterTitle.Dock = DockStyle.Fill;
             lblCenterTitle.Font = new Font("Microsoft YaHei UI", 14F, FontStyle.Bold);
@@ -2139,9 +2139,9 @@ namespace AutoWeldSystem.UI.Views
             lblCenterTitle.TabIndex = 0;
             lblCenterTitle.Text = "Center Server";
             lblCenterTitle.TextAlign = ContentAlignment.MiddleLeft;
-            //
+            // 
             // lblCenterDescription
-            //
+            // 
             lblCenterDescription.AutoEllipsis = true;
             lblCenterDescription.Dock = DockStyle.Fill;
             lblCenterDescription.ForeColor = SystemColors.GrayText;
@@ -2152,30 +2152,30 @@ namespace AutoWeldSystem.UI.Views
             lblCenterDescription.TabIndex = 1;
             lblCenterDescription.Text = "Center server interactions";
             lblCenterDescription.TextAlign = ContentAlignment.MiddleLeft;
-            //
+            // 
             // splitCenterContent
-            //
+            // 
             splitCenterContent.Dock = DockStyle.Fill;
             splitCenterContent.Location = new Point(20, 126);
             splitCenterContent.Margin = new Padding(20, 0, 20, 18);
             splitCenterContent.Name = "splitCenterContent";
-            //
+            // 
             // splitCenterContent.Panel1
-            //
+            // 
             splitCenterContent.Panel1.Controls.Add(dgvCenterLogs);
             splitCenterContent.Panel1.Padding = new Padding(0, 0, 12, 0);
-            //
+            // 
             // splitCenterContent.Panel2
-            //
+            // 
             splitCenterContent.Panel2.Controls.Add(tabCenterDetails);
             splitCenterContent.Panel2.Padding = new Padding(12, 0, 0, 0);
             splitCenterContent.Size = new Size(1312, 562);
             splitCenterContent.SplitterDistance = 820;
             splitCenterContent.SplitterWidth = 5;
             splitCenterContent.TabIndex = 1;
-            //
+            // 
             // dgvCenterLogs
-            //
+            // 
             dgvCenterLogs.AllowUserToAddRows = false;
             dgvCenterLogs.AllowUserToDeleteRows = false;
             dgvCenterLogs.BackgroundColor = SystemColors.Window;
@@ -2192,9 +2192,9 @@ namespace AutoWeldSystem.UI.Views
             dgvCenterLogs.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             dgvCenterLogs.Size = new Size(808, 562);
             dgvCenterLogs.TabIndex = 0;
-            //
+            // 
             // colCenterSendTime
-            //
+            // 
             colCenterSendTime.DataPropertyName = "SendTime";
             colCenterSendTime.FillWeight = 16F;
             colCenterSendTime.HeaderText = "Send Time";
@@ -2202,9 +2202,9 @@ namespace AutoWeldSystem.UI.Views
             colCenterSendTime.Name = "colCenterSendTime";
             colCenterSendTime.ReadOnly = true;
             colCenterSendTime.Width = 125;
-            //
+            // 
             // colCenterType
-            //
+            // 
             colCenterType.DataPropertyName = "Type";
             colCenterType.FillWeight = 12F;
             colCenterType.HeaderText = "Type";
@@ -2212,9 +2212,9 @@ namespace AutoWeldSystem.UI.Views
             colCenterType.Name = "colCenterType";
             colCenterType.ReadOnly = true;
             colCenterType.Width = 110;
-            //
+            // 
             // colCenterResult
-            //
+            // 
             colCenterResult.DataPropertyName = "Result";
             colCenterResult.FillWeight = 10F;
             colCenterResult.HeaderText = "Result";
@@ -2222,9 +2222,9 @@ namespace AutoWeldSystem.UI.Views
             colCenterResult.Name = "colCenterResult";
             colCenterResult.ReadOnly = true;
             colCenterResult.Width = 90;
-            //
+            // 
             // colCenterHttpStatus
-            //
+            // 
             colCenterHttpStatus.DataPropertyName = "HttpStatus";
             colCenterHttpStatus.FillWeight = 8F;
             colCenterHttpStatus.HeaderText = "HTTP";
@@ -2232,9 +2232,9 @@ namespace AutoWeldSystem.UI.Views
             colCenterHttpStatus.Name = "colCenterHttpStatus";
             colCenterHttpStatus.ReadOnly = true;
             colCenterHttpStatus.Width = 80;
-            //
+            // 
             // colCenterDuration
-            //
+            // 
             colCenterDuration.DataPropertyName = "Duration";
             colCenterDuration.FillWeight = 8F;
             colCenterDuration.HeaderText = "Duration";
@@ -2242,18 +2242,18 @@ namespace AutoWeldSystem.UI.Views
             colCenterDuration.Name = "colCenterDuration";
             colCenterDuration.ReadOnly = true;
             colCenterDuration.Width = 90;
-            //
+            // 
             // colCenterMessage
-            //
+            // 
             colCenterMessage.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
             colCenterMessage.DataPropertyName = "Message";
             colCenterMessage.HeaderText = "Message";
             colCenterMessage.MinimumWidth = 160;
             colCenterMessage.Name = "colCenterMessage";
             colCenterMessage.ReadOnly = true;
-            //
+            // 
             // tabCenterDetails
-            //
+            // 
             tabCenterDetails.Controls.Add(tabCenterBasicInfo);
             tabCenterDetails.Controls.Add(tabCenterRequestBody);
             tabCenterDetails.Controls.Add(tabCenterResponseBody);
@@ -2265,20 +2265,20 @@ namespace AutoWeldSystem.UI.Views
             tabCenterDetails.SelectedIndex = 0;
             tabCenterDetails.Size = new Size(475, 562);
             tabCenterDetails.TabIndex = 0;
-            //
+            // 
             // tabCenterBasicInfo
-            //
+            // 
             tabCenterBasicInfo.Controls.Add(txtCenterBasicInfo);
             tabCenterBasicInfo.Location = new Point(4, 32);
             tabCenterBasicInfo.Name = "tabCenterBasicInfo";
             tabCenterBasicInfo.Padding = new Padding(3);
-            tabCenterBasicInfo.Size = new Size(437, 526);
+            tabCenterBasicInfo.Size = new Size(467, 526);
             tabCenterBasicInfo.TabIndex = 0;
             tabCenterBasicInfo.Text = "Basic";
             tabCenterBasicInfo.UseVisualStyleBackColor = true;
-            //
+            // 
             // txtCenterBasicInfo
-            //
+            // 
             txtCenterBasicInfo.BackColor = SystemColors.Window;
             txtCenterBasicInfo.BorderStyle = BorderStyle.FixedSingle;
             txtCenterBasicInfo.Dock = DockStyle.Fill;
@@ -2288,23 +2288,23 @@ namespace AutoWeldSystem.UI.Views
             txtCenterBasicInfo.Name = "txtCenterBasicInfo";
             txtCenterBasicInfo.ReadOnly = true;
             txtCenterBasicInfo.ScrollBars = ScrollBars.Both;
-            txtCenterBasicInfo.Size = new Size(431, 520);
+            txtCenterBasicInfo.Size = new Size(461, 520);
             txtCenterBasicInfo.TabIndex = 0;
             txtCenterBasicInfo.WordWrap = false;
-            //
+            // 
             // tabCenterRequestBody
-            //
+            // 
             tabCenterRequestBody.Controls.Add(txtCenterRequestBody);
             tabCenterRequestBody.Location = new Point(4, 29);
             tabCenterRequestBody.Name = "tabCenterRequestBody";
             tabCenterRequestBody.Padding = new Padding(3);
-            tabCenterRequestBody.Size = new Size(437, 526);
+            tabCenterRequestBody.Size = new Size(467, 529);
             tabCenterRequestBody.TabIndex = 1;
             tabCenterRequestBody.Text = "Request";
             tabCenterRequestBody.UseVisualStyleBackColor = true;
-            //
+            // 
             // txtCenterRequestBody
-            //
+            // 
             txtCenterRequestBody.BackColor = SystemColors.Window;
             txtCenterRequestBody.BorderStyle = BorderStyle.FixedSingle;
             txtCenterRequestBody.Dock = DockStyle.Fill;
@@ -2314,23 +2314,23 @@ namespace AutoWeldSystem.UI.Views
             txtCenterRequestBody.Name = "txtCenterRequestBody";
             txtCenterRequestBody.ReadOnly = true;
             txtCenterRequestBody.ScrollBars = ScrollBars.Both;
-            txtCenterRequestBody.Size = new Size(431, 520);
+            txtCenterRequestBody.Size = new Size(461, 523);
             txtCenterRequestBody.TabIndex = 0;
             txtCenterRequestBody.WordWrap = false;
-            //
+            // 
             // tabCenterResponseBody
-            //
+            // 
             tabCenterResponseBody.Controls.Add(txtCenterResponseBody);
             tabCenterResponseBody.Location = new Point(4, 29);
             tabCenterResponseBody.Name = "tabCenterResponseBody";
             tabCenterResponseBody.Padding = new Padding(3);
-            tabCenterResponseBody.Size = new Size(437, 526);
+            tabCenterResponseBody.Size = new Size(467, 529);
             tabCenterResponseBody.TabIndex = 2;
             tabCenterResponseBody.Text = "Response";
             tabCenterResponseBody.UseVisualStyleBackColor = true;
-            //
+            // 
             // txtCenterResponseBody
-            //
+            // 
             txtCenterResponseBody.BackColor = SystemColors.Window;
             txtCenterResponseBody.BorderStyle = BorderStyle.FixedSingle;
             txtCenterResponseBody.Dock = DockStyle.Fill;
@@ -2340,14 +2340,14 @@ namespace AutoWeldSystem.UI.Views
             txtCenterResponseBody.Name = "txtCenterResponseBody";
             txtCenterResponseBody.ReadOnly = true;
             txtCenterResponseBody.ScrollBars = ScrollBars.Both;
-            txtCenterResponseBody.Size = new Size(431, 520);
+            txtCenterResponseBody.Size = new Size(461, 523);
             txtCenterResponseBody.TabIndex = 0;
             txtCenterResponseBody.WordWrap = false;
-            //
+            // 
             // LogManageView
-            //
-            AutoScaleDimensions = new SizeF(10F, 23F);
-            AutoScaleMode = AutoScaleMode.Font;
+            // 
+            AutoScaleDimensions = new SizeF(120F, 120F);
+            AutoScaleMode = AutoScaleMode.Dpi;
             Controls.Add(tabLogCategories);
             Font = new Font("Microsoft YaHei UI", 10.5F);
             Margin = new Padding(4, 3, 4, 3);
