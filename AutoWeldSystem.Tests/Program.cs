@@ -355,6 +355,7 @@ var tests = new (string Name, Action Run)[]
     ("Program file rules build safe json file and base64", ProgramFileRulesBuildSafeJsonFileAndBase64),
     ("All select controls limit dropdown items", AllSelectControlsLimitDropdownItems),
     ("Work-order auto query skips duplicates and running tasks", WorkOrderAutoQuerySkipsDuplicatesAndRunningTasks),
+    ("Work-order baseline suppresses startup residual barcode", WorkOrderBaselineSuppressesStartupResidualBarcode),
     ("Work-order input confirmation rules distinguish drafts and PLC values", WorkOrderInputConfirmationRulesDistinguishDraftsAndPlcValues),
     ("Monitor view confirms manual work orders and prioritizes PLC snapshots", MonitorViewConfirmsManualWorkOrdersAndPrioritizesPlcSnapshots),
     ("Program list filter returns all when disabled", ProgramListFilterReturnsAllWhenDisabled),
@@ -10615,6 +10616,50 @@ static void AllSelectControlsLimitDropdownItems()
     AssertTrue(addressViewCode.Contains("tableProcess.CellBeginEdit += TableSelect_CellBeginEdit;", StringComparison.Ordinal), "工艺表格下拉编辑前必须配置显示数量。 ");
     AssertTrue(addressViewCode.Contains("cell.DropDownMaxCount = 10;", StringComparison.Ordinal), "表格下拉单元格必须将 DropDownMaxCount 设为 10。");
 }
+static void WorkOrderBaselineSuppressesStartupResidualBarcode()
+{
+    // 启动后首个读数：寄存器里的残留条码只能当基准，不得填界面或查 MES。
+    AssertTrue(
+        WorkOrderAutoQueryRules.ShouldCaptureBaselineOnly(
+            hasBaseline: false,
+            readSuccess: true,
+            workId: "WO-RESIDUAL"),
+        "启动后首个工单号读数必须只记录为基准值。");
+
+    // 已有基准后，同值或新值都不再走基准分支，交由既有查询规则判断。
+    AssertFalse(
+        WorkOrderAutoQueryRules.ShouldCaptureBaselineOnly(
+            hasBaseline: true,
+            readSuccess: true,
+            workId: "WO-NEW"),
+        "已记录基准的工位不得再次进入基准分支。");
+
+    AssertFalse(
+        WorkOrderAutoQueryRules.ShouldCaptureBaselineOnly(
+            hasBaseline: false,
+            readSuccess: false,
+            workId: "WO-RESIDUAL"),
+        "读取失败时不得把无效值记为基准。");
+
+    AssertFalse(
+        WorkOrderAutoQueryRules.ShouldCaptureBaselineOnly(
+            hasBaseline: false,
+            readSuccess: true,
+            workId: "   "),
+        "空白工单号不构成基准值，避免占用首读机会。");
+
+    // 基准记录后，真实新扫码仍必须能触发自动查询。
+    AssertTrue(
+        WorkOrderAutoQueryRules.ShouldAutoQuery(
+            mesConnected: true,
+            hasRunningTask: false,
+            workIdReadSuccess: true,
+            workId: "WO-NEW",
+            lastRequestedWorkId: "WO-RESIDUAL",
+            queryInProgress: false),
+        "残留值记为基准后，扫入不同工单号必须能正常自动查询。");
+}
+
 static void WorkOrderAutoQuerySkipsDuplicatesAndRunningTasks()
 {
     AssertTrue(

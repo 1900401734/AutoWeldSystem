@@ -1679,6 +1679,16 @@ public partial class MonitorView : BaseView
             return false;
         }
 
+        // 启动后首个读数只记基准：PLC 侧持续驱动该寄存器，残留条码不能当作新扫码使用。
+        if (WorkOrderAutoQueryRules.ShouldCaptureBaselineOnly(
+                _lastAutoQueriedWorkIds.ContainsKey(stationNo),
+                snapshot.IsSuccess,
+                snapshot.WorkId))
+        {
+            _lastAutoQueriedWorkIds[stationNo] = WorkOrderInputConfirmationRules.Normalize(snapshot.WorkId);
+            return false;
+        }
+
         var workId = WorkOrderInputConfirmationRules.Normalize(snapshot.WorkId);
         var hasManualDraft = _offlineWorkOrderEditedByUser || _manualWorkOrderEditedByUser;
         var isAlreadyApplied = !hasManualDraft
