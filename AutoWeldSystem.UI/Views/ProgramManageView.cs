@@ -33,7 +33,6 @@ public partial class ProgramManageView : BaseView
     private readonly IPlcRecipeNameReaderService _recipeNameReaderService;
     private readonly IAppSettingsService _appSettingsService;
     private readonly ILocalizationService _localizer;
-    private readonly BindingSource _revisionBindingSource = new();
     private readonly List<BizProgram> _programs = new();
     private readonly List<BizProgram> _filteredPrograms = new();
     private readonly List<ProgramContentItemRow> _programContentRows = new();
@@ -102,16 +101,6 @@ public partial class ProgramManageView : BaseView
         tablePrograms.DefaultExpand = false;
         ConfigureProgramColumns();
 
-        TableStyleHelper.ApplyDataGridView(dgvRevisions);
-        dgvRevisions.AutoGenerateColumns = false;
-        dgvRevisions.Columns.Clear();
-        dgvRevisions.Columns.Add(CreateTextColumn(nameof(BizProgramRevision.VersionNumber), 8));
-        dgvRevisions.Columns.Add(CreateTextColumn(nameof(BizProgramRevision.CommitId), 14));
-        dgvRevisions.Columns.Add(CreateTextColumn(nameof(BizProgramRevision.CommitMessage), 22));
-        dgvRevisions.Columns.Add(CreateTextColumn(nameof(BizProgramRevision.UserName), 12));
-        dgvRevisions.Columns.Add(CreateTextColumn(nameof(BizProgramRevision.CreatedTime), 20));
-        dgvRevisions.DataSource = _revisionBindingSource;
-
         TableStyleHelper.ApplyAntdTable(tableProgramContent);
         // AntdUI 表格需要显式设置编辑触发方式，否则列 Editable=true 也不会进入编辑器。
         tableProgramContent.EditMode = AntdUI.TEditMode.DoubleClick;
@@ -140,15 +129,6 @@ public partial class ProgramManageView : BaseView
             new AntdUI.Column(
                 nameof(ProgramProductGroupRow.UpdatedTime),
                 _localizer.GetString(TextKeys.Grid.ProgramUpdatedTime))
-        };
-    }
-
-    private static DataGridViewTextBoxColumn CreateTextColumn(string propertyName, float fillWeight)
-    {
-        return new DataGridViewTextBoxColumn
-        {
-            DataPropertyName = propertyName,
-            FillWeight = fillWeight
         };
     }
 
@@ -192,7 +172,6 @@ public partial class ProgramManageView : BaseView
         btnBrowseFile.Text = _localizer.GetString(TextKeys.ProgramManage.ButtonBrowseFile);
         chkSyncNow.Text = _localizer.GetString(TextKeys.ProgramManage.CheckSyncNow);
         txtKeyword.PlaceholderText = _localizer.GetString(TextKeys.ProgramManage.PlaceholderKeyword);
-        grpRevisions.Text = _localizer.GetString(TextKeys.ProgramManage.GroupRevisions);
 
         lblProgramName.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramName);
         lblProgramId.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramId);
@@ -213,11 +192,6 @@ public partial class ProgramManageView : BaseView
         // AntdUI 表格的列标题在构造时写入，切语言需重建列集合。
         ConfigureProgramColumns();
 
-        SetColumnHeader(dgvRevisions, nameof(BizProgramRevision.VersionNumber), TextKeys.Grid.ProgramVersionNumber);
-        SetColumnHeader(dgvRevisions, nameof(BizProgramRevision.CommitId), TextKeys.Grid.ProgramCommitId);
-        SetColumnHeader(dgvRevisions, nameof(BizProgramRevision.CommitMessage), TextKeys.Grid.ProgramCommitMessage);
-        SetColumnHeader(dgvRevisions, nameof(BizProgramRevision.UserName), TextKeys.Grid.ProgramCommitUser);
-        SetColumnHeader(dgvRevisions, nameof(BizProgramRevision.CreatedTime), TextKeys.Grid.ProgramCommitTime);
     }
 
     private void BindProgramTypeOptions()
@@ -287,17 +261,6 @@ public partial class ProgramManageView : BaseView
     private static bool IsBlankProgramContentRow(ProgramContentItemRow row)
         => string.IsNullOrWhiteSpace(row.ItemName) && string.IsNullOrWhiteSpace(row.StandardValue);
 
-    private void SetColumnHeader(DataGridView grid, string propertyName, string headerKey)
-    {
-        foreach (DataGridViewColumn column in grid.Columns)
-        {
-            if (string.Equals(column.DataPropertyName, propertyName, StringComparison.Ordinal))
-            {
-                column.HeaderText = _localizer.GetString(headerKey);
-                return;
-            }
-        }
-    }
 
     private void ReloadPrograms(int? selectedId = null)
     {
@@ -323,7 +286,6 @@ public partial class ProgramManageView : BaseView
         tablePrograms.DataSource = groups;
         if (groups.Count == 0)
         {
-            _revisionBindingSource.DataSource = Array.Empty<BizProgramRevision>();
             return;
         }
 
@@ -366,7 +328,6 @@ public partial class ProgramManageView : BaseView
         inputDescription.Clear();
         BindProgramContentRows(null);
         lblCurrentInfo.Text = _localizer.GetString(TextKeys.ProgramManage.CurrentNew);
-        _revisionBindingSource.DataSource = Array.Empty<BizProgramRevision>();
     }
 
     private void BindProgramById(int programId)
@@ -391,7 +352,6 @@ public partial class ProgramManageView : BaseView
         inputDescription.Text = program.Description ?? string.Empty;
         BindProgramContentRows(program.ProgramContent);
         SetCurrentProgramInfo(program);
-        _revisionBindingSource.DataSource = _programService.GetRevisions(program.Id).ToList();
     }
 
     private void UpdateCurrentInfoText()

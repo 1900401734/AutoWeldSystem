@@ -30,8 +30,6 @@
             splitMain = new AntdUI.Splitter();
             leftLayout = new TableLayoutPanel();
             tablePrograms = new AntdUI.Table();
-            grpRevisions = new GroupBox();
-            dgvRevisions = new DataGridView();
             rightLayout = new TableLayoutPanel();
             editorLayout = new TableLayoutPanel();
             tlpProgramId = new TableLayoutPanel();
@@ -80,8 +78,6 @@
             splitMain.Panel2.SuspendLayout();
             splitMain.SuspendLayout();
             leftLayout.SuspendLayout();
-            grpRevisions.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)dgvRevisions).BeginInit();
             rightLayout.SuspendLayout();
             editorLayout.SuspendLayout();
             tlpProgramId.SuspendLayout();
@@ -263,14 +259,12 @@
             // 
             leftLayout.ColumnCount = 1;
             leftLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            leftLayout.Controls.Add(grpRevisions, 0, 1);
             leftLayout.Controls.Add(tablePrograms, 0, 0);
             leftLayout.Dock = DockStyle.Fill;
             leftLayout.Location = new Point(0, 0);
             leftLayout.Name = "leftLayout";
-            leftLayout.RowCount = 2;
-            leftLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 68F));
-            leftLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 32F));
+            leftLayout.RowCount = 1;
+            leftLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             leftLayout.Size = new Size(911, 685);
             leftLayout.TabIndex = 0;
             //
@@ -279,38 +273,9 @@
             tablePrograms.Dock = DockStyle.Fill;
             tablePrograms.Location = new Point(3, 3);
             tablePrograms.Name = "tablePrograms";
-            tablePrograms.Size = new Size(905, 459);
+            tablePrograms.Size = new Size(905, 679);
             tablePrograms.TabIndex = 0;
-            // 
-            // grpRevisions
-            // 
-            grpRevisions.Controls.Add(dgvRevisions);
-            grpRevisions.Dock = DockStyle.Fill;
-            grpRevisions.Location = new Point(3, 468);
-            grpRevisions.Name = "grpRevisions";
-            grpRevisions.Size = new Size(905, 214);
-            grpRevisions.TabIndex = 1;
-            grpRevisions.TabStop = false;
-            grpRevisions.Text = "版本提交历史";
-            // 
-            // dgvRevisions
-            // 
-            dgvRevisions.AllowUserToAddRows = false;
-            dgvRevisions.AllowUserToDeleteRows = false;
-            dgvRevisions.BackgroundColor = SystemColors.Window;
-            dgvRevisions.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-            dgvRevisions.Dock = DockStyle.Fill;
-            dgvRevisions.Location = new Point(3, 26);
-            dgvRevisions.MultiSelect = false;
-            dgvRevisions.Name = "dgvRevisions";
-            dgvRevisions.ReadOnly = true;
-            dgvRevisions.RowHeadersVisible = false;
-            dgvRevisions.RowHeadersWidth = 51;
-            dgvRevisions.RowTemplate.Height = 26;
-            dgvRevisions.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgvRevisions.Size = new Size(899, 185);
-            dgvRevisions.TabIndex = 0;
-            // 
+            //
             // rightLayout
             // 
             rightLayout.ColumnCount = 1;
@@ -883,8 +848,6 @@
             ((System.ComponentModel.ISupportInitialize)splitMain).EndInit();
             splitMain.ResumeLayout(false);
             leftLayout.ResumeLayout(false);
-            grpRevisions.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)dgvRevisions).EndInit();
             rightLayout.ResumeLayout(false);
             rightLayout.PerformLayout();
             editorLayout.ResumeLayout(false);
@@ -927,8 +890,6 @@
         private TextBox txtKeyword;
         private TableLayoutPanel leftLayout;
         private AntdUI.Table tablePrograms;
-        private GroupBox grpRevisions;
-        private DataGridView dgvRevisions;
         private AntdUI.Label lblProgramName;
         private AntdUI.Button btnBuildName;
         private AntdUI.Label lblProductNum;

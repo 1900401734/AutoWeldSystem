@@ -60,16 +60,6 @@ public sealed class ProgramManageService : IProgramManageService
             .ToList();
     }
 
-    public IReadOnlyList<BizProgramRevision> GetRevisions(int programLocalId)
-    {
-        _dbContext.InitDatabase();
-
-        return _dbContext.Db.Queryable<BizProgramRevision>()
-            .Where(it => it.ProgramLocalId == programLocalId)
-            .OrderBy(it => it.VersionNumber, OrderByType.Desc)
-            .ToList();
-    }
-
     public IReadOnlyList<ProgramSyncSummary> GetPendingSyncPrograms()
     {
         _dbContext.InitDatabase();

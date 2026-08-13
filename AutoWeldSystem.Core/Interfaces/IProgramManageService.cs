@@ -12,8 +12,6 @@ public interface IProgramManageService
 {
     IReadOnlyList<BizProgram> GetPrograms(bool includeDeleted = false);
 
-    IReadOnlyList<BizProgramRevision> GetRevisions(int programLocalId);
-
     IReadOnlyList<ProgramSyncSummary> GetPendingSyncPrograms();
 
     string BuildProgramName(string productNum, string componentCode, int sequenceNumber, string? description = null);
