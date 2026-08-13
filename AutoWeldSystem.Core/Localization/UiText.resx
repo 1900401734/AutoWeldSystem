@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -1050,9 +1050,6 @@
   <data name="permission.button.program.refresh" xml:space="preserve">
     <value>刷新程序</value>
   </data>
-  <data name="permission.button.program.browse_file" xml:space="preserve">
-    <value>浏览程序文件</value>
-  </data>
   <data name="permission.button.program.build_name" xml:space="preserve">
     <value>生成程序名</value>
   </data>
@@ -1587,9 +1584,6 @@
   <data name="program.button.build_name" xml:space="preserve">
     <value>生成名称</value>
   </data>
-  <data name="program.button.browse_file" xml:space="preserve">
-    <value>选择</value>
-  </data>
   <data name="program.checkbox.sync_now" xml:space="preserve">
     <value>保存后立即同步</value>
   </data>
@@ -1625,9 +1619,6 @@
   </data>
   <data name="program.label.cycle_time" xml:space="preserve">
     <value>节拍秒</value>
-  </data>
-  <data name="program.label.program_file" xml:space="preserve">
-    <value>程序文件</value>
   </data>
   <data name="program.label.commit_message" xml:space="preserve">
     <value>提交说明</value>
@@ -1685,12 +1676,6 @@
   </data>
   <data name="program.message.cycle_time_invalid" xml:space="preserve">
     <value>焊接节拍必须是大于等于 0 的数字。</value>
-  </data>
-  <data name="program.dialog.select_file" xml:space="preserve">
-    <value>选择程序文件</value>
-  </data>
-  <data name="program.dialog.file_filter_all" xml:space="preserve">
-    <value>所有文件 (*.*)|*.*</value>
   </data>
   <data name="program.status.pending_create" xml:space="preserve">
     <value>新增待同步</value>
@@ -2053,7 +2038,6 @@
   <data name="system.label.plc_alarm_trigger_mode" xml:space="preserve"><value>报警模式</value></data>
   <data name="system.label.mes_timeout" xml:space="preserve"><value>MES 超时（秒）</value></data>
   <data name="system.label.mes_heartbeat_interval" xml:space="preserve"><value>心跳间隔（秒）</value></data>
-  <data name="system.label.program_path" xml:space="preserve"><value>程序目录</value></data>
   <data name="system.label.center_server_url" xml:space="preserve"><value>中心服务器地址</value></data>
   <data name="system.label.center_server_system_type" xml:space="preserve"><value>系统类型</value></data>
   <data name="system.label.center_server_heartbeat" xml:space="preserve"><value>心跳间隔（秒）</value></data>

@@ -1,4 +1,4 @@
-using AutoWeldSystem.Core.Constants;
+﻿using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs.Plc;
 using AutoWeldSystem.Core.DTOs.Mes.Request;
 using AutoWeldSystem.Core.Entities;
@@ -141,7 +141,6 @@ public partial class ProgramManageView : BaseView
         btnSync.Click += SyncSelected_ClickAsync;
         btnPullMes.Click += PullMes_ClickAsync;
         btnBuildName.Click += (_, _) => inputProgramName.Text = BuildProgramNameFromInputs();
-        btnBrowseFile.Click += (_, _) => BrowseProgramFile();
         btnRefresh.Click += async (_, _) =>
         {
             ReloadPrograms();
@@ -169,7 +168,6 @@ public partial class ProgramManageView : BaseView
         btnPullMes.Text = _localizer.GetString(TextKeys.ProgramManage.ButtonPullMes);
         btnRefresh.Text = _localizer.GetString(TextKeys.Common.ActionRefresh);
         btnBuildName.Text = _localizer.GetString(TextKeys.ProgramManage.ButtonBuildName);
-        btnBrowseFile.Text = _localizer.GetString(TextKeys.ProgramManage.ButtonBrowseFile);
         chkSyncNow.Text = _localizer.GetString(TextKeys.ProgramManage.CheckSyncNow);
         txtKeyword.PlaceholderText = _localizer.GetString(TextKeys.ProgramManage.PlaceholderKeyword);
 
@@ -181,7 +179,6 @@ public partial class ProgramManageView : BaseView
         lblComponentCode.Text = _localizer.GetString(TextKeys.ProgramManage.LabelComponentCode);
         lblSequenceNumber.Text = _localizer.GetString(TextKeys.ProgramManage.LabelSequenceNumber);
         lblProgramType.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramType);
-        lblProgramFile.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramFile);
         lblRemark.Text = _localizer.GetString(TextKeys.ProgramManage.LabelRemark);
         lblDescription.Text = _localizer.GetString(TextKeys.ProgramManage.LabelLocalRemark);
         lblProgramContent.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramContent);
@@ -323,7 +320,6 @@ public partial class ProgramManageView : BaseView
         inputComponentCode.Clear();
         inputSequenceNumber.Text = "1";
         cmbProgramType.SelectedIndex = 0;
-        txtProgramFile.Clear();
         BindRemarkText(null);
         inputDescription.Clear();
         BindProgramContentRows(null);
@@ -347,7 +343,6 @@ public partial class ProgramManageView : BaseView
         inputComponentCode.Text = program.ComponentCode ?? string.Empty;
         inputSequenceNumber.Text = program.SequenceNumber.ToString();
         cmbProgramType.SelectedIndex = program.ProgramType == "1" ? 1 : 0;
-        txtProgramFile.Text = program.ProgramFileName ?? string.Empty;
         BindRemarkText(program.Remark);
         inputDescription.Text = program.Description ?? string.Empty;
         BindProgramContentRows(program.ProgramContent);
@@ -640,7 +635,6 @@ public partial class ProgramManageView : BaseView
         }
 
         request.ProgramContentJson = programContentJson;
-        request.ProgramFilePath = File.Exists(txtProgramFile.Text.Trim()) ? txtProgramFile.Text.Trim() : string.Empty;
         request.WeldJobName = string.Empty;
         request.RobotJobName = string.Empty;
         request.CycleTimeSeconds = 0m;
@@ -957,21 +951,6 @@ public partial class ProgramManageView : BaseView
             inputComponentCode.Text.Trim(),
             sequenceNumber,
             inputDescription.Text.Trim());
-    }
-
-    private void BrowseProgramFile()
-    {
-        using var dialog = new OpenFileDialog
-        {
-            Title = _localizer.GetString(TextKeys.ProgramManage.DialogSelectFile),
-            Filter = _localizer.GetString(TextKeys.ProgramManage.DialogFileFilterAll)
-        };
-
-        if (dialog.ShowDialog(this) == DialogResult.OK)
-        {
-            txtProgramFile.Text = dialog.FileName;
-            cmbProgramType.SelectedIndex = 1;
-        }
     }
 
     private void ShowInfo(string messageKey, params object[] args)

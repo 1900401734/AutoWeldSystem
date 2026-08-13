@@ -313,16 +313,15 @@ var tests = new (string Name, Action Run)[]
     ("Program MES current save action separates pending actions", ProgramMesCurrentSaveActionSeparatesPendingActions),
     ("Program MES executable action never creates when MES id exists", ProgramMesExecutableActionNeverCreatesWhenMesIdExists),
     ("Program remark rules default by action", ProgramRemarkRulesDefaultByAction),
-    ("Program MES create payload clears file fields for empty content", ProgramMesCreatePayloadClearsFileFieldsForEmptyContent),
+    ("Program MES create payload clears content for empty values", ProgramMesCreatePayloadClearsContentForEmptyValues),
     ("Program content rules detect configured values", ProgramContentRulesDetectConfiguredValues),
-    ("Program manage service clears automatic file for empty content", ProgramManageServiceClearsAutomaticFileForEmptyContent),
+    ("Program manage service no longer generates program files", ProgramManageServiceNoLongerGeneratesProgramFiles),
     ("Program save regenerates name when sequence changes", ProgramSaveRegeneratesNameWhenSequenceChanges),
     ("Program save rejects duplicate program name", ProgramSaveRejectsDuplicateProgramName),
     ("Program manage view provides save-as-new entry", ProgramManageViewProvidesSaveAsNewEntry),
     ("Program manage grid shows sequence and program name", ProgramManageGridShowsSequenceAndProgramName),
     ("Program product groups merge programs sharing product num", ProgramProductGroupsMergeProgramsSharingProductNum),
     ("Program product groups flatten single program product num", ProgramProductGroupsFlattenSingleProgramProductNum),
-    ("Program manage service removes renamed automatic file after write", ProgramManageServiceRemovesRenamedAutomaticFileAfterWrite),
     ("Program manage view hides product model", ProgramManageViewHidesProductModel),
     ("Program manage save ignores product model input", ProgramManageSaveIgnoresProductModelInput),
     ("Monitor report button rules follow MES and task state", MonitorReportButtonRulesFollowMesAndTaskState),
@@ -352,7 +351,6 @@ var tests = new (string Name, Action Run)[]
     ("Program content JSON keeps only rows with standard values", ProgramContentJsonKeepsOnlyRowsWithStandardValues),
     ("Program content JSON merges existing values and preserves unknown keys", ProgramContentJsonMergesExistingValuesAndPreservesUnknownKeys),
     ("Program content JSON rejects duplicate valued item names", ProgramContentJsonRejectsDuplicateValuedItemNames),
-    ("Program file rules build safe json file and base64", ProgramFileRulesBuildSafeJsonFileAndBase64),
     ("All select controls limit dropdown items", AllSelectControlsLimitDropdownItems),
     ("Work-order auto query skips duplicates and running tasks", WorkOrderAutoQuerySkipsDuplicatesAndRunningTasks),
     ("Work-order baseline suppresses startup residual barcode", WorkOrderBaselineSuppressesStartupResidualBarcode),
@@ -9189,9 +9187,9 @@ static void ProgramMesSyncIgnoresLocalOnlyFields()
     var original = BuildSyncedProgram();
     var edited = BuildSyncedProgram();
     original.ProgramContent = "{ \"高度\": \"12.5\", \"压力\": { \"min\": \"1\", \"max\": \"9\" } }";
-    original.ProgramFile = ProgramFileRules.EncodeJsonToBase64(original.ProgramContent);
+    original.ProgramFile = Convert.ToBase64String(Encoding.UTF8.GetBytes(original.ProgramContent));
     edited.ProgramContent = "{\"压力\":{\"max\":\"9\",\"min\":\"1\"},\"高度\":\"12.5\"}";
-    edited.ProgramFile = ProgramFileRules.EncodeJsonToBase64(edited.ProgramContent);
+    edited.ProgramFile = Convert.ToBase64String(Encoding.UTF8.GetBytes(edited.ProgramContent));
     edited.RecipeCode = "8";
     edited.ProductModel = "M-2";
     edited.ComponentCode = "CX-2";
@@ -9211,7 +9209,7 @@ static void ProgramMesSyncIgnoresLocalOnlyFields()
     legacyFileOriginal.ProgramContent = "{\"高度\":\"12.5\"}";
     legacyFileOriginal.ProgramFile = "历史旧格式文件内容";
     regeneratedFileEdited.ProgramContent = legacyFileOriginal.ProgramContent;
-    regeneratedFileEdited.ProgramFile = ProgramFileRules.EncodeJsonToBase64(regeneratedFileEdited.ProgramContent);
+    regeneratedFileEdited.ProgramFile = Convert.ToBase64String(Encoding.UTF8.GetBytes(regeneratedFileEdited.ProgramContent));
     regeneratedFileEdited.RecipeCode = "9";
     regeneratedFileEdited.ProgramFileName = "9_P1.json";
 
@@ -9464,7 +9462,7 @@ static void ProgramMesSaveActionUsesUpdateForRemoteProgramContent()
     var original = BuildSyncedProgram();
     var edited = BuildSyncedProgram();
     edited.ProgramContent = "{\"高度\":\"13.0\"}";
-    edited.ProgramFile = ProgramFileRules.EncodeJsonToBase64(edited.ProgramContent);
+    edited.ProgramFile = Convert.ToBase64String(Encoding.UTF8.GetBytes(edited.ProgramContent));
 
     var action = ProgramMesSyncRules.ResolveSaveAction(original, edited, hadPendingAction: false);
 
@@ -9510,7 +9508,7 @@ static void ProgramMesCurrentSaveActionSeparatesPendingActions()
 
     var contentEdited = BuildSyncedProgram();
     contentEdited.ProgramContent = "{\"高度\":\"13.0\"}";
-    contentEdited.ProgramFile = ProgramFileRules.EncodeJsonToBase64(contentEdited.ProgramContent);
+    contentEdited.ProgramFile = Convert.ToBase64String(Encoding.UTF8.GetBytes(contentEdited.ProgramContent));
 
     AssertEqual(
         AppConstants.ProgramSyncActions.Update,
@@ -9606,32 +9604,30 @@ static void ProgramMesWritePayloadOmitsRecipeCode()
 
     var payload = ProgramMesPayloadRules.ToWriteRequest(program, AppConstants.ProgramRemarkActions.Update);
     var json = JsonSerializer.Serialize(payload);
-    using var document = JsonDocument.Parse(json);
-    var fileType = document.RootElement.GetProperty(nameof(ProgramDataWriteReq.FileType));
 
     AssertFalse(
         json.Contains(nameof(ProgramDataRes.RecipeCode), StringComparison.OrdinalIgnoreCase),
         "MES 新增/更新程序请求不应包含 RecipeCode。");
     AssertEqual("D-1_CX_3_DH_001_3_左侧组件", payload.ProgramName, "MES 写入请求应携带重建后的标准程序名称。");
     AssertEqual(AppConstants.ProgramRemarkActions.Update, payload.Remark, "MES 写入请求应携带解析后的备注。");
-    AssertEqual(".json", payload.FileType, "MES 写入请求应携带程序文件扩展名字符串。");
-    AssertEqual(JsonValueKind.String, fileType.ValueKind, "MES 写入请求中的 FileType 必须是字符串。");
-    AssertEqual(".json", fileType.GetString(), "MES 写入请求中的 FileType 应使用带点小写扩展名。");
+    // 程序文件已不再生成和上传，载荷必须彻底不含文件相关字段。
+    AssertFalse(
+        json.Contains("ProgramFile", StringComparison.OrdinalIgnoreCase),
+        "MES 新增/更新程序请求不应再包含 ProgramFile。");
+    AssertFalse(
+        json.Contains("FileType", StringComparison.OrdinalIgnoreCase),
+        "MES 新增/更新程序请求不应再包含 FileType。");
 }
 
-static void ProgramMesCreatePayloadClearsFileFieldsForEmptyContent()
+static void ProgramMesCreatePayloadClearsContentForEmptyValues()
 {
     var program = BuildSyncedProgram();
     program.ProgramId = null;
     program.ProgramContent = "  { \r\n }  ";
-    program.ProgramFile = ProgramFileRules.EncodeJsonToBase64(program.ProgramContent);
-    program.ProgramFileName = "P1.json";
 
     var payload = ProgramMesPayloadRules.ToCreateRequest(program, AppConstants.ProgramRemarkActions.Create);
 
     AssertEqual(string.Empty, payload.ProgramContent, "新增程序未填写设定值时，ProgramContent 应留空。");
-    AssertEqual(string.Empty, payload.ProgramFile, "新增程序未填写设定值时，ProgramFile 应留空。");
-    AssertEqual(string.Empty, payload.FileType, "新增程序未填写设定值时，FileType 应留空。");
 }
 
 static void ProgramContentRulesDetectConfiguredValues()
@@ -9744,46 +9740,15 @@ static void ProgramProductGroupsFlattenSingleProgramProductNum()
     AssertEqual("只有一个程序", groups[0].Summary, "单程序工号必须把程序摘要显示在工号行上。");
 }
 
-static void ProgramManageServiceClearsAutomaticFileForEmptyContent()
+static void ProgramManageServiceNoLongerGeneratesProgramFiles()
 {
     var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "ProgramManageService.cs"), Encoding.UTF8);
-    var applyRequestMethod = ExtractMethodText(
-        serviceCode,
-        "    private void ApplyRequest(BizProgram entity, SaveProgramReq request)",
-        "    private AppSettings CurrentSettings");
 
-    AssertTrue(applyRequestMethod.Contains("ProgramContentJsonRules.HasConfiguredValues(entity.ProgramContent)", StringComparison.Ordinal), "程序保存必须使用统一规则判断是否存在有效设定值。");
-    AssertTrue(applyRequestMethod.Contains("var previousProgramFilePath", StringComparison.Ordinal), "程序保存覆盖名称前必须保留旧自动文件路径。");
-    AssertTrue(applyRequestMethod.Contains("ClearProgramContentFile(entity, settings, previousProgramFilePath)", StringComparison.Ordinal), "清空设定值时必须同时清理旧名称对应的自动文件。");
-    var contentCheckIndex = applyRequestMethod.IndexOf("ProgramContentJsonRules.HasConfiguredValues(entity.ProgramContent)", StringComparison.Ordinal);
-    var writeFileIndex = applyRequestMethod.IndexOf("WriteProgramContentFile(entity, settings, previousProgramFilePath);", StringComparison.Ordinal);
-    AssertTrue(writeFileIndex > contentCheckIndex, "写入本地程序文件必须位于有效设定值判断的条件分支内。");
-    AssertTrue(serviceCode.Contains("entity.ProgramFile = string.Empty;", StringComparison.Ordinal), "清理自动文件后必须清空程序文件内容。");
-    AssertTrue(serviceCode.Contains("entity.ProgramFileName = string.Empty;", StringComparison.Ordinal), "清理自动文件后必须清空程序文件名。");
-}
-
-static void ProgramManageServiceRemovesRenamedAutomaticFileAfterWrite()
-{
-    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "ProgramManageService.cs"), Encoding.UTF8);
-    var applyRequestMethod = ExtractMethodText(
-        serviceCode,
-        "    private void ApplyRequest(BizProgram entity, SaveProgramReq request)",
-        "    private AppSettings CurrentSettings");
-    var writeMethod = ExtractMethodText(
-        serviceCode,
-        "    private static void WriteProgramContentFile(",
-        "    private static void ClearProgramContentFile(");
-
-    AssertTrue(
-        applyRequestMethod.Contains("WriteProgramContentFile(entity, settings, previousProgramFilePath);", StringComparison.Ordinal),
-        "写入改名后的自动程序文件时必须传入旧自动文件路径。");
-    AssertTrue(
-        writeMethod.Contains("!string.Equals(previousProgramFilePath, filePath, StringComparison.OrdinalIgnoreCase)", StringComparison.Ordinal),
-        "只有新旧自动文件路径不同时才允许删除旧文件。");
-
-    var writeIndex = writeMethod.IndexOf("File.WriteAllText(filePath", StringComparison.Ordinal);
-    var deleteIndex = writeMethod.IndexOf("DeleteProgramContentFile(previousProgramFilePath);", StringComparison.Ordinal);
-    AssertTrue(writeIndex >= 0 && deleteIndex > writeIndex, "必须先成功写入新文件，再删除旧名称对应的自动文件。");
+    // 程序文件已不再生成和上传，服务层不得再出现落盘和文件命名逻辑。
+    AssertFalse(serviceCode.Contains("WriteProgramContentFile", StringComparison.Ordinal), "程序保存不得再写入本地程序文件。");
+    AssertFalse(serviceCode.Contains("ClearProgramContentFile", StringComparison.Ordinal), "程序保存不得再清理本地程序文件。");
+    AssertFalse(serviceCode.Contains("ProgramFileRules", StringComparison.Ordinal), "程序保存不得再依赖程序文件命名规则。");
+    AssertFalse(serviceCode.Contains("File.WriteAllText", StringComparison.Ordinal), "程序管理服务不得再向磁盘写入程序文件。");
 }
 
 static void ProgramManageViewHidesProductModel()
@@ -10561,22 +10526,6 @@ static void ProgramContentJsonRejectsDuplicateValuedItemNames()
     AssertThrows<InvalidOperationException>(
         () => ProgramContentJsonRules.ToJson(rows),
         "重复测试项名称且都有设定值时必须阻止保存，避免 JSON key 覆盖。");
-}
-
-static void ProgramFileRulesBuildSafeJsonFileAndBase64()
-{
-    var fileName = ProgramFileRules.BuildFileName("  1001  ", "A:B/程序");
-    var fileNameWithoutRecipe = ProgramFileRules.BuildFileName(null, "P1");
-    var json = "{\"高度\":\"12.5\"}";
-    var base64 = ProgramFileRules.EncodeJsonToBase64(json);
-    var restored = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(base64));
-
-    AssertEqual("A_B_程序.json", fileName, "程序文件名应只使用程序名称，并替换非法文件名字符。");
-    AssertEqual("P1.json", fileNameWithoutRecipe, "程序文件名不应依赖配方号。");
-    AssertEqual(json, restored, "程序文件 Base64 必须可还原为原始 UTF-8 JSON。");
-    AssertEqual(".json", ProgramFileRules.ResolveFileType("1001_P1.json"), "json 程序文件应返回 .json 文件类型。");
-    AssertEqual(".txt", ProgramFileRules.ResolveFileType(@"C:\temp\a.TXT"), "文件类型应统一返回带点小写扩展名。");
-    AssertEqual(".json", ProgramFileRules.ResolveFileType(""), "文件名为空时应默认按自动生成的 JSON 程序文件处理。");
 }
 
 static void AllSelectControlsLimitDropdownItems()

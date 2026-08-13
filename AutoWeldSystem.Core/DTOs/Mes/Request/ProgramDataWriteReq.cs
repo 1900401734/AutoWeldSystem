@@ -37,16 +37,6 @@ public sealed class ProgramDataWriteReq
     public string ProductNum { get; set; } = string.Empty;
 
     /// <summary>
-    /// 程序文件 Base64 内容。
-    /// </summary>
-    public string ProgramFile { get; set; } = string.Empty;
-
-    /// <summary>
-    /// 程序文件类型说明，使用带点的文件扩展名，例如 .json、.txt。
-    /// </summary>
-    public string FileType { get; set; } = ".json";
-
-    /// <summary>
     /// MES 备注；客户接口用该字段区分新增、修改和删除。
     /// </summary>
     public string Remark { get; set; } = string.Empty;

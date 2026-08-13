@@ -61,10 +61,6 @@
             btnBuildName = new AntdUI.Button();
             inputProgramName = new AntdUI.Input();
             lblProgramName = new AntdUI.Label();
-            tlpProgramFile = new TableLayoutPanel();
-            btnBrowseFile = new AntdUI.Button();
-            txtProgramFile = new AntdUI.Input();
-            lblProgramFile = new AntdUI.Label();
             tlpDescription = new TableLayoutPanel();
             lblDescription = new AntdUI.Label();
             inputDescription = new AntdUI.Input();
@@ -89,7 +85,6 @@
             tlpSequenceNumber.SuspendLayout();
             tlpProductNum.SuspendLayout();
             tlpProgramName.SuspendLayout();
-            tlpProgramFile.SuspendLayout();
             tlpDescription.SuspendLayout();
             programContentLayout.SuspendLayout();
             SuspendLayout();
@@ -297,23 +292,22 @@
             editorLayout.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             editorLayout.ColumnCount = 1;
             editorLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            editorLayout.Controls.Add(tlpProgramId, 0, 11);
-            editorLayout.Controls.Add(tlpRemark, 0, 10);
-            editorLayout.Controls.Add(tlpRecipeCode, 0, 7);
-            editorLayout.Controls.Add(tlpStation2RecipeCode, 0, 8);
-            editorLayout.Controls.Add(tlpProgramType, 0, 9);
+            editorLayout.Controls.Add(tlpProgramId, 0, 10);
+            editorLayout.Controls.Add(tlpRemark, 0, 9);
+            editorLayout.Controls.Add(tlpRecipeCode, 0, 6);
+            editorLayout.Controls.Add(tlpStation2RecipeCode, 0, 7);
+            editorLayout.Controls.Add(tlpProgramType, 0, 8);
             editorLayout.Controls.Add(tlpComponentCode, 0, 3);
             editorLayout.Controls.Add(tlpSequenceNumber, 0, 4);
             editorLayout.Controls.Add(tlpProductNum, 0, 2);
             editorLayout.Controls.Add(lblCurrentInfo, 0, 0);
             editorLayout.Controls.Add(tlpProgramName, 0, 1);
-            editorLayout.Controls.Add(tlpProgramFile, 0, 5);
-            editorLayout.Controls.Add(tlpDescription, 0, 6);
+            editorLayout.Controls.Add(tlpDescription, 0, 5);
             editorLayout.Dock = DockStyle.Fill;
             editorLayout.Location = new Point(0, 0);
             editorLayout.Margin = new Padding(0);
             editorLayout.Name = "editorLayout";
-            editorLayout.RowCount = 12;
+            editorLayout.RowCount = 11;
             editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 12.5F));
             editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 12.5F));
             editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 12.5F));
@@ -322,7 +316,6 @@
             editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 12.5F));
             editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 12.5F));
             editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 12.5F));
-            editorLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 0F));
             editorLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 0F));
             editorLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 0F));
             editorLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 0F));
@@ -704,59 +697,6 @@
             lblProgramName.TabIndex = 11;
             lblProgramName.Text = "程序名称";
             // 
-            // tlpProgramFile
-            // 
-            tlpProgramFile.ColumnCount = 3;
-            tlpProgramFile.ColumnStyles.Add(new ColumnStyle());
-            tlpProgramFile.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            tlpProgramFile.ColumnStyles.Add(new ColumnStyle());
-            tlpProgramFile.Controls.Add(btnBrowseFile, 2, 0);
-            tlpProgramFile.Controls.Add(txtProgramFile, 1, 0);
-            tlpProgramFile.Controls.Add(lblProgramFile, 0, 0);
-            tlpProgramFile.Dock = DockStyle.Fill;
-            tlpProgramFile.Location = new Point(0, 220);
-            tlpProgramFile.Margin = new Padding(0);
-            tlpProgramFile.Name = "tlpProgramFile";
-            tlpProgramFile.RowCount = 1;
-            tlpProgramFile.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tlpProgramFile.Size = new Size(445, 44);
-            tlpProgramFile.TabIndex = 1;
-            // 
-            // btnBrowseFile
-            // 
-            btnBrowseFile.AutoSizeMode = AntdUI.TAutoSize.Width;
-            btnBrowseFile.BorderWidth = 1F;
-            btnBrowseFile.Dock = DockStyle.Fill;
-            btnBrowseFile.IconSvg = "FolderOpenOutlined";
-            btnBrowseFile.Location = new Point(356, 0);
-            btnBrowseFile.Margin = new Padding(0);
-            btnBrowseFile.Name = "btnBrowseFile";
-            btnBrowseFile.Size = new Size(89, 44);
-            btnBrowseFile.TabIndex = 1;
-            btnBrowseFile.Tag = "perm:button.program.browse-file:enabled";
-            btnBrowseFile.Text = "选择";
-            // 
-            // txtProgramFile
-            // 
-            txtProgramFile.Dock = DockStyle.Fill;
-            txtProgramFile.Location = new Point(74, 0);
-            txtProgramFile.Margin = new Padding(0);
-            txtProgramFile.Name = "txtProgramFile";
-            txtProgramFile.Size = new Size(282, 44);
-            txtProgramFile.TabIndex = 1;
-            // 
-            // lblProgramFile
-            // 
-            lblProgramFile.AutoSizeMode = AntdUI.TAutoSize.Width;
-            lblProgramFile.Dock = DockStyle.Fill;
-            lblProgramFile.Location = new Point(0, 0);
-            lblProgramFile.Margin = new Padding(0);
-            lblProgramFile.Name = "lblProgramFile";
-            lblProgramFile.Padding = new Padding(4, 0, 0, 0);
-            lblProgramFile.Size = new Size(74, 44);
-            lblProgramFile.TabIndex = 1;
-            lblProgramFile.Text = "程序文件";
-            // 
             // tlpDescription
             // 
             tlpDescription.ColumnCount = 2;
@@ -869,8 +809,6 @@
             tlpProductNum.PerformLayout();
             tlpProgramName.ResumeLayout(false);
             tlpProgramName.PerformLayout();
-            tlpProgramFile.ResumeLayout(false);
-            tlpProgramFile.PerformLayout();
             tlpDescription.ResumeLayout(false);
             tlpDescription.PerformLayout();
             programContentLayout.ResumeLayout(false);
@@ -895,7 +833,6 @@
         private AntdUI.Label lblProductNum;
         private AntdUI.Label lblRecipeCode;
         private AntdUI.Select cmbProgramType;
-        private AntdUI.Button btnBrowseFile;
         private AntdUI.Input inputRemark;
         private AntdUI.Table tableProgramContent;
         private AntdUI.Splitter splitMain;
@@ -905,7 +842,6 @@
         private AntdUI.Label lblSequenceNumber;
         private AntdUI.Input inputProgramName;
         private AntdUI.Label lblProgramType;
-        private AntdUI.Label lblProgramFile;
         private AntdUI.Label lblRemark;
         private AntdUI.Label lblDescription;
         private AntdUI.Label lblProgramContent;
@@ -914,11 +850,9 @@
         private AntdUI.Select selectStation1Recipe;
         private AntdUI.Select selectStation2Recipe;
         private AntdUI.Label lblStation2RecipeCode;
-        private AntdUI.Input txtProgramFile;
         private AntdUI.Input inputSequenceNumber;
         private AntdUI.Input inputComponentCode;
         private AntdUI.Input inputDescription;
-        private TableLayoutPanel tlpProgramFile;
         private AntdUI.Input txtProgramId;
         private TableLayoutPanel tlpComponentCode;
         private TableLayoutPanel tlpProgramId;

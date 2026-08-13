@@ -149,9 +149,6 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
         settings.Station1DisplayName = stationNames.Station1;
         settings.Station2DisplayName = stationNames.Station2;
         settings.PlcStringNumericFormatMode = PlcStringNumericFormatter.NormalizeMode(settings.PlcStringNumericFormatMode);
-        settings.ProgramFileDirectory = string.IsNullOrWhiteSpace(settings.ProgramFileDirectory)
-            ? ProgramFileRules.DefaultProgramFileDirectory
-            : settings.ProgramFileDirectory.Trim();
         settings.ProcessParameterDeviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
         settings.DeviceBaseUrl = DeviceApiEndpointRules.NormalizeBaseUrl(settings.DeviceBaseUrl);
         settings.MesBaseUrl = DeviceApiEndpointRules.NormalizeBaseUrl(settings.MesBaseUrl);

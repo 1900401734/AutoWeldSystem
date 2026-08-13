@@ -1,4 +1,4 @@
-namespace AutoWeldSystem.Core.Constants;
+﻿namespace AutoWeldSystem.Core.Constants;
 
 public static class PermissionCodes
 {
@@ -42,7 +42,6 @@ public static class PermissionCodes
             public const string Sync = "button.program.sync";
             public const string PullMes = "button.program.pull-mes";
             public const string Refresh = "button.program.refresh";
-            public const string BrowseFile = "button.program.browse-file";
             public const string BuildName = "button.program.build-name";
         }
 

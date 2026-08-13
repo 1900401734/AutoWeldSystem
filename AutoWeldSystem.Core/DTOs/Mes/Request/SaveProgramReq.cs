@@ -29,8 +29,6 @@ public sealed class SaveProgramReq
 
     public string ProgramContentJson { get; set; } = string.Empty;
 
-    public string ProgramFilePath { get; set; } = string.Empty;
-
     public string WeldJobName { get; set; } = string.Empty;
 
     public string RobotJobName { get; set; } = string.Empty;

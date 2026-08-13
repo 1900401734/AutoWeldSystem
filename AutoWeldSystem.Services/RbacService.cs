@@ -449,7 +449,6 @@ public class RbacService : IRbacService
                 PermissionCodes.Buttons.Program.Sync,
                 PermissionCodes.Buttons.Program.PullMes,
                 PermissionCodes.Buttons.Program.Refresh,
-                PermissionCodes.Buttons.Program.BrowseFile,
                 PermissionCodes.Buttons.Program.BuildName
             },
             [AppConstants.Roles.Readonly] = new[]

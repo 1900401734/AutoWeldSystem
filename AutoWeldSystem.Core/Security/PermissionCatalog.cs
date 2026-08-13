@@ -1,4 +1,4 @@
-using AutoWeldSystem.Core.Constants;
+﻿using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Enums;
 
 namespace AutoWeldSystem.Core.Security;
@@ -47,7 +47,6 @@ public static class PermissionCatalog
         new(PermissionCodes.Buttons.Program.Sync, "Sync Program", PermissionType.Button, PermissionCodes.Pages.ProgramManage, 440),
         new(PermissionCodes.Buttons.Program.PullMes, "Pull MES Program", PermissionType.Button, PermissionCodes.Pages.ProgramManage, 450),
         new(PermissionCodes.Buttons.Program.Refresh, "Refresh Program", PermissionType.Button, PermissionCodes.Pages.ProgramManage, 460),
-        new(PermissionCodes.Buttons.Program.BrowseFile, "Browse Program File", PermissionType.Button, PermissionCodes.Pages.ProgramManage, 470),
         new(PermissionCodes.Buttons.Program.BuildName, "Build Program Name", PermissionType.Button, PermissionCodes.Pages.ProgramManage, 480),
 
         new(PermissionCodes.Buttons.Log.Refresh, "Refresh Logs", PermissionType.Button, PermissionCodes.Pages.LogManage, 510),

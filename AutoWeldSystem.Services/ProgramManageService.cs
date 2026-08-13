@@ -318,10 +318,6 @@ public sealed class ProgramManageService : IProgramManageService
             previousDescription,
             currentDescription,
             StringComparison.Ordinal);
-        var previousProgramFilePath = entity.Id > 0
-            ? ProgramFileRules.BuildFilePath(settings.ProgramFileDirectory, entity.RecipeCode, entity.ProgramName)
-            : null;
-
         // 程序名称由工号、零组件代码、流水号和程序备注拼成，任一变化都必须重算，
         // 否则会出现流水号已改、名称仍是旧值的名实不符。
         // 注意：名称是 MES 上传字段，因此改流水号会经名称间接触发一次 MES 更新。
@@ -350,15 +346,6 @@ public sealed class ProgramManageService : IProgramManageService
         entity.ProgramContent = string.IsNullOrWhiteSpace(request.ProgramContentJson) ? "{}" : request.ProgramContentJson.Trim();
         entity.Description = currentDescription;
         entity.IsDeleted = false;
-
-        if (ProgramContentJsonRules.HasConfiguredValues(entity.ProgramContent))
-        {
-            WriteProgramContentFile(entity, settings, previousProgramFilePath);
-        }
-        else
-        {
-            ClearProgramContentFile(entity, settings, previousProgramFilePath);
-        }
 
         if (entity.Id == 0)
         {
@@ -472,85 +459,6 @@ public sealed class ProgramManageService : IProgramManageService
         };
     }
 
-    private static byte[]? GetProgramFileBytes(string filePath)
-    {
-        if (string.IsNullOrWhiteSpace(filePath))
-        {
-            return null;
-        }
-
-        return File.Exists(filePath)
-            ? File.ReadAllBytes(filePath)
-            : throw new FileNotFoundException("程序文件不存在。", filePath);
-    }
-
-    /// <summary>
-    /// 写入当前名称对应的自动程序文件；新文件写入成功后，再清理改名前的旧自动文件。
-    /// </summary>
-    private static void WriteProgramContentFile(
-        BizProgram entity,
-        AppSettings settings,
-        string? previousProgramFilePath)
-    {
-        var json = string.IsNullOrWhiteSpace(entity.ProgramContent) ? "{}" : entity.ProgramContent.Trim();
-        var filePath = ProgramFileRules.BuildFilePath(
-            settings.ProgramFileDirectory,
-            entity.RecipeCode,
-            entity.ProgramName);
-        var directory = Path.GetDirectoryName(filePath);
-        if (!string.IsNullOrWhiteSpace(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        File.WriteAllText(filePath, json, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-
-        // previousProgramFilePath 由统一路径规则生成，只会清理系统自动目录中的旧名称文件。
-        if (!string.IsNullOrWhiteSpace(previousProgramFilePath)
-            && !string.Equals(previousProgramFilePath, filePath, StringComparison.OrdinalIgnoreCase))
-        {
-            DeleteProgramContentFile(previousProgramFilePath);
-        }
-
-        entity.ProgramContent = json;
-        entity.ProgramFile = ProgramFileRules.EncodeJsonToBase64(json);
-        entity.ProgramFileName = Path.GetFileName(filePath);
-    }
-
-    /// <summary>
-    /// 删除当前程序及其改名前自动生成的 JSON 文件，并清空实体中的文件关联信息。
-    /// </summary>
-    private static void ClearProgramContentFile(
-        BizProgram entity,
-        AppSettings settings,
-        string? previousProgramFilePath)
-    {
-        var currentProgramFilePath = ProgramFileRules.BuildFilePath(
-            settings.ProgramFileDirectory,
-            entity.RecipeCode,
-            entity.ProgramName);
-        DeleteProgramContentFile(currentProgramFilePath);
-
-        if (!string.IsNullOrWhiteSpace(previousProgramFilePath)
-            && !string.Equals(previousProgramFilePath, currentProgramFilePath, StringComparison.OrdinalIgnoreCase))
-        {
-            DeleteProgramContentFile(previousProgramFilePath);
-        }
-
-        entity.ProgramFile = string.Empty;
-        entity.ProgramFileName = string.Empty;
-    }
-
-    /// <summary>
-    /// 删除单个系统自动生成的程序内容文件；文件不存在时视为已清理。
-    /// </summary>
-    private static void DeleteProgramContentFile(string filePath)
-    {
-        if (File.Exists(filePath))
-        {
-            File.Delete(filePath);
-        }
-    }
     private void AddRevision(BizProgram entity, string? commitMessage)
     {
         var user = GlobalContext.CurrentUser;
@@ -681,21 +589,6 @@ public sealed class ProgramManageService : IProgramManageService
         AddRevision(entity, entity.CommitMessage);
     }
 
-    private static ProgramDataRes ToMesProgramData(BizProgram entity)
-    {
-        return new ProgramDataRes
-        {
-            Id = entity.ProgramId ?? string.Empty,
-            ProgramName = entity.ProgramName,
-            DeviceId = entity.DeviceId,
-            ProgramContent = entity.ProgramContent ?? string.Empty,
-            ProgramType = entity.ProgramType,
-            ProductNum = entity.ProductNum,
-            ProgramFile = entity.ProgramFile ?? string.Empty,
-            Remark = entity.Remark ?? string.Empty
-        };
-    }
-
     private static ProgramSyncSummary ToSyncSummary(BizProgram entity)
     {
         return new ProgramSyncSummary
@@ -721,7 +614,6 @@ public sealed class ProgramManageService : IProgramManageService
         request.ComponentCode = request.ComponentCode.Trim();
         request.ProgramType = request.ProgramType.Trim();
         request.ProgramContentJson = request.ProgramContentJson.Trim();
-        request.ProgramFilePath = request.ProgramFilePath.Trim();
         request.WeldJobName = request.WeldJobName.Trim();
         request.RobotJobName = request.RobotJobName.Trim();
         request.MesRemark = request.MesRemark.Trim();

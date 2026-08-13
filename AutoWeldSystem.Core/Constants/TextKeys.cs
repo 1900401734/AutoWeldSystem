@@ -1,4 +1,4 @@
-namespace AutoWeldSystem.Core.Constants;
+﻿namespace AutoWeldSystem.Core.Constants;
 
 /// <summary>
 /// 所有可本地化文本的键名常量。
@@ -871,7 +871,6 @@ public static class TextKeys
         public const string ButtonProgramSync = "permission.button.program.sync";
         public const string ButtonProgramPullMes = "permission.button.program.pull_mes";
         public const string ButtonProgramRefresh = "permission.button.program.refresh";
-        public const string ButtonProgramBrowseFile = "permission.button.program.browse_file";
         public const string ButtonProgramBuildName = "permission.button.program.build_name";
         public const string ButtonLogRefresh = "permission.button.log.refresh";
         public const string ButtonLogOpenFolder = "permission.button.log.open_folder";
@@ -920,7 +919,6 @@ public static class TextKeys
         public const string ButtonSaveAsNew = "program.button.save_as_new";
         public const string ButtonPullMes = "program.button.pull_mes";
         public const string ButtonBuildName = "program.button.build_name";
-        public const string ButtonBrowseFile = "program.button.browse_file";
         public const string CheckSyncNow = "program.checkbox.sync_now";
         public const string PlaceholderKeyword = "program.placeholder.keyword";
         public const string GroupRevisions = "program.group.revisions";
@@ -936,7 +934,6 @@ public static class TextKeys
         public const string LabelComponentCode = "program.label.component_code";
         public const string LabelSequenceNumber = "program.label.sequence_number";
         public const string LabelProgramType = "program.label.program_type";
-        public const string LabelProgramFile = "program.label.program_file";
         public const string LabelCommitMessage = "program.label.commit_message";
         public const string LabelRemark = "program.label.remark";
         public const string LabelLocalRemark = "program.label.local_remark";
@@ -956,8 +953,6 @@ public static class TextKeys
         public const string ProductNumRequired = "program.message.product_num_required";
         public const string ComponentCodeRequired = "program.message.component_code_required";
         public const string CycleTimeInvalid = "program.message.cycle_time_invalid";
-        public const string DialogSelectFile = "program.dialog.select_file";
-        public const string DialogFileFilterAll = "program.dialog.file_filter_all";
         public const string StatusPendingCreate = "program.status.pending_create";
         public const string StatusPendingUpdate = "program.status.pending_update";
         public const string StatusPendingDelete = "program.status.pending_delete";
@@ -1077,7 +1072,6 @@ public static class TextKeys
         public const string LabelPlcAlarmTriggerMode = "system.label.plc_alarm_trigger_mode";
         public const string LabelMesTimeout = "system.label.mes_timeout";
         public const string LabelMesHeartbeatInterval = "system.label.mes_heartbeat_interval";
-        public const string LabelProgramPath = "system.label.program_path";
         public const string LabelCenterServerUrl = "system.label.center_server_url";
         public const string LabelCenterServerSystemType = "system.label.center_server_system_type";
         public const string LabelCenterServerHeartbeat = "system.label.center_server_heartbeat";

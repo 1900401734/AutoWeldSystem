@@ -1,4 +1,4 @@
-using AutoWeldSystem.Core.Constants;
+﻿using AutoWeldSystem.Core.Constants;
 
 namespace AutoWeldSystem.Core.Security;
 
@@ -44,7 +44,6 @@ public static class PermissionTextKeyMapper
             PermissionCodes.Buttons.Program.Sync => TextKeys.Permission.ButtonProgramSync,
             PermissionCodes.Buttons.Program.PullMes => TextKeys.Permission.ButtonProgramPullMes,
             PermissionCodes.Buttons.Program.Refresh => TextKeys.Permission.ButtonProgramRefresh,
-            PermissionCodes.Buttons.Program.BrowseFile => TextKeys.Permission.ButtonProgramBrowseFile,
             PermissionCodes.Buttons.Program.BuildName => TextKeys.Permission.ButtonProgramBuildName,
             PermissionCodes.Buttons.Log.Refresh => TextKeys.Permission.ButtonLogRefresh,
             PermissionCodes.Buttons.Log.OpenFolder => TextKeys.Permission.ButtonLogOpenFolder,
