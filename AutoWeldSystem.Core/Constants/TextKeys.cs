@@ -1076,6 +1076,7 @@ public static class TextKeys
         public const string LabelPlcFormatMode = "system.label.plc_format_mode";
         public const string LabelPlcAlarmTriggerMode = "system.label.plc_alarm_trigger_mode";
         public const string LabelMesTimeout = "system.label.mes_timeout";
+        public const string LabelMesHeartbeatInterval = "system.label.mes_heartbeat_interval";
         public const string LabelProgramPath = "system.label.program_path";
         public const string LabelCenterServerUrl = "system.label.center_server_url";
         public const string LabelCenterServerSystemType = "system.label.center_server_system_type";
@@ -1140,6 +1141,7 @@ public static class TextKeys
         public const string RoutePostData = "system.route.post_data";
         public const string RouteDevice = "system.route.device";
         public const string RouteDeviceStatus = "system.route.device_status";
+        public const string RouteSys = "system.route.sys";
 
         public const string MessageValueRequired = "system.message.value_required";
         public const string MessageInvalidIp = "system.message.invalid_ip";

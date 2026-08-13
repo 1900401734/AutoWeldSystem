@@ -28,10 +28,17 @@ public interface IMesProvider
     Task<BasicRes<ServerTimeRes>> GetServerTimeAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// 使用指定的 MES 地址测试接口连通性。
+    /// 使用指定的 MES 地址测试在线检测接口连通性。
     /// 这个接口不会改写数据库中的正式配置，只用于设置页临时检测。
     /// </summary>
-    Task<BasicRes<ServerTimeRes>> TestConnectionAsync(string baseUrl, int timeoutSeconds, bool isWriteLog, CancellationToken cancellationToken = default);
+    Task<BasicRes<object>> TestConnectionAsync(string baseUrl, int timeoutSeconds, bool isWriteLog, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 探测 MES 是否在线，供心跳轮询使用。
+    /// 仅当本次结果与 previousOnline 不同（或 previousOnline 为 null）时写交互日志，
+    /// 避免心跳按秒刷爆 MES 日志。
+    /// </summary>
+    Task<BasicRes<object>> CheckSystemOnlineAsync(bool? previousOnline, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// 新增程序。

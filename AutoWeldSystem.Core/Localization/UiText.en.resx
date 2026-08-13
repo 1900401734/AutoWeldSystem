@@ -2051,6 +2051,7 @@
   <data name="system.label.plc_format_mode" xml:space="preserve"><value>Processing mode</value></data>
   <data name="system.label.plc_alarm_trigger_mode" xml:space="preserve"><value>Alarm mode</value></data>
   <data name="system.label.mes_timeout" xml:space="preserve"><value>MES timeout (s)</value></data>
+  <data name="system.label.mes_heartbeat_interval" xml:space="preserve"><value>Heartbeat interval (s)</value></data>
   <data name="system.label.program_path" xml:space="preserve"><value>Program directory</value></data>
   <data name="system.label.center_server_url" xml:space="preserve"><value>Center server URL</value></data>
   <data name="system.label.center_server_system_type" xml:space="preserve"><value>System type</value></data>
@@ -2088,6 +2089,7 @@
   <data name="system.route.post_data" xml:space="preserve"><value>PostData route</value></data>
   <data name="system.route.device" xml:space="preserve"><value>Device route</value></data>
   <data name="system.route.device_status" xml:space="preserve"><value>Device status route</value></data>
+  <data name="system.route.sys" xml:space="preserve"><value>Online check route</value></data>
   <data name="system.message.runtime_mode_locked" xml:space="preserve"><value>An unfinished task exists. Complete it before changing dual-station or dual-work-order mode.</value></data>
   <data name="system.message.device_management_locked" xml:space="preserve"><value>Production is currently started. Complete the active task before changing device management settings.</value></data>
   <data name="system.message.positive_integer_required" xml:space="preserve"><value>{0} must be an integer greater than 0.</value></data>

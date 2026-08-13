@@ -2,18 +2,17 @@ using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.MES;
+using AutoWeldSystem.Core.Mes;
 using AutoWeldSystem.Core.ViewModels;
 
 namespace AutoWeldSystem.Services.Mes;
 
 /// <summary>
 /// MES 连接监控。
-/// 判断依据：定时调用 MES ServerTime 轻量接口，成功返回 S 即在线，否则视为离线。
+/// 判断依据：按系统设置中的心跳间隔调用 MES 在线检测接口，成功返回 S 即在线，否则视为离线。
 /// </summary>
 public sealed class MesConnectionMonitor : IMesConnectionMonitor, IDisposable
 {
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
-
     private readonly IMesProvider _mesProvider;
     private readonly ILocalizationService _localizer;
     private readonly IAppSettingsService _settingsService;
@@ -108,7 +107,7 @@ public sealed class MesConnectionMonitor : IMesConnectionMonitor, IDisposable
             try
             {
                 await CheckOnceAsync(cancellationToken);
-                await Task.Delay(PollInterval, cancellationToken);
+                await Task.Delay(ResolveHeartbeatInterval(), cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -117,14 +116,27 @@ public sealed class MesConnectionMonitor : IMesConnectionMonitor, IDisposable
             catch (Exception ex)
             {
                 Publish(new MesConnectionSnapshot(false, Current.LastSuccessTime, DateTime.Now, ex.Message));
-                await Task.Delay(PollInterval, cancellationToken);
+                await Task.Delay(ResolveHeartbeatInterval(), cancellationToken);
             }
         }
     }
 
+    /// <summary>
+    /// 每轮重新读取心跳间隔，设置页改动在下一轮生效（已在途的等待不会被打断）。
+    /// </summary>
+    private TimeSpan ResolveHeartbeatInterval()
+    {
+        var seconds = MesConnectionRules.NormalizeHeartbeatIntervalSeconds(appSettings.MesHeartbeatIntervalSeconds);
+        return TimeSpan.FromSeconds(seconds);
+    }
+
     private async Task CheckOnceAsync(CancellationToken cancellationToken)
     {
-        var response = await _mesProvider.TestConnectionAsync(appSettings.MesBaseUrl, appSettings.MesTimeoutSeconds, isWriteLog: false, cancellationToken);
+        // 首轮尚未探测过，传 null 让 provider 写一条基线日志；之后只在在线状态跳变时写。
+        var previousOnline = Current.UpdatedTime == default
+            ? (bool?)null
+            : Current.IsConnected;
+        var response = await _mesProvider.CheckSystemOnlineAsync(previousOnline, cancellationToken);
         var isConnected = string.Equals(response.Status, AppConstants.MesStatus.Success, StringComparison.OrdinalIgnoreCase);
         var message = isConnected
             ? _localizer.GetString(TextKeys.Mes.StateConnected)

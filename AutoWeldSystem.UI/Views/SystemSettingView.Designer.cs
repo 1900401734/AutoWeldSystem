@@ -1,4 +1,4 @@
-namespace AutoWeldSystem.UI.Views
+﻿namespace AutoWeldSystem.UI.Views
 {
     partial class SystemSettingView
     {
@@ -123,8 +123,6 @@ namespace AutoWeldSystem.UI.Views
             chkEnableWorkOrderStatusReport = new AntdUI.Checkbox();
             chkEnableDeviceStatusReport = new AntdUI.Checkbox();
             tlpProcessParameterType = new TableLayoutPanel();
-            input_MesTimeout = new AntdUI.InputNumber();
-            lblMesTimeout = new AntdUI.Label();
             lblProcessParameterDeviceType = new AntdUI.Label();
             selectProcessParameterDeviceType = new AntdUI.Select();
             tlpMesUserRoute = new TableLayoutPanel();
@@ -168,6 +166,14 @@ namespace AutoWeldSystem.UI.Views
             tlpMesDeviceStatusRoute = new TableLayoutPanel();
             lblMesDeviceStatusRoute = new AntdUI.Label();
             inputMesDeviceStatusRoute = new AntdUI.Input();
+            tlpMesSysRoute = new TableLayoutPanel();
+            lblMesSysRoute = new AntdUI.Label();
+            inputMesSysRoute = new AntdUI.Input();
+            tlpMesHeartbeat = new TableLayoutPanel();
+            input_MesTimeout = new AntdUI.InputNumber();
+            lblMesHeartbeatInterval = new AntdUI.Label();
+            lblMesTimeout = new AntdUI.Label();
+            inputMesHeartbeatInterval = new AntdUI.Input();
             rootLayout.SuspendLayout();
             titleLayout.SuspendLayout();
             tabSettingCategories.SuspendLayout();
@@ -224,6 +230,8 @@ namespace AutoWeldSystem.UI.Views
             tlpMesPostDataRoute.SuspendLayout();
             tlpMesDeviceRoute.SuspendLayout();
             tlpMesDeviceStatusRoute.SuspendLayout();
+            tlpMesSysRoute.SuspendLayout();
+            tlpMesHeartbeat.SuspendLayout();
             SuspendLayout();
             // 
             // rootLayout
@@ -1620,7 +1628,7 @@ namespace AutoWeldSystem.UI.Views
             rightSettingsColumn.Name = "rightSettingsColumn";
             rightSettingsColumn.RowCount = 1;
             rightSettingsColumn.RowStyles.Add(new RowStyle());
-            rightSettingsColumn.Size = new Size(448, 660);
+            rightSettingsColumn.Size = new Size(448, 738);
             rightSettingsColumn.TabIndex = 2;
             // 
             // grpMesConfig
@@ -1634,7 +1642,7 @@ namespace AutoWeldSystem.UI.Views
             grpMesConfig.MinimumSize = new Size(0, 209);
             grpMesConfig.Name = "grpMesConfig";
             grpMesConfig.Padding = new Padding(2, 3, 2, 3);
-            grpMesConfig.Size = new Size(438, 650);
+            grpMesConfig.Size = new Size(438, 728);
             grpMesConfig.TabIndex = 3;
             grpMesConfig.TabStop = false;
             grpMesConfig.Text = "MES Config";
@@ -1646,27 +1654,30 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanelMesConfig.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             tableLayoutPanelMesConfig.ColumnCount = 1;
             tableLayoutPanelMesConfig.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            tableLayoutPanelMesConfig.Controls.Add(tlpCheckbox3, 0, 3);
-            tableLayoutPanelMesConfig.Controls.Add(tlpCheckbox2, 0, 2);
+            tableLayoutPanelMesConfig.Controls.Add(tlpCheckbox3, 0, 4);
+            tableLayoutPanelMesConfig.Controls.Add(tlpCheckbox2, 0, 3);
             tableLayoutPanelMesConfig.Controls.Add(tlpProcessParameterType, 0, 0);
-            tableLayoutPanelMesConfig.Controls.Add(tlpMesUserRoute, 0, 5);
-            tableLayoutPanelMesConfig.Controls.Add(tlpCheckbox1, 0, 1);
-            tableLayoutPanelMesConfig.Controls.Add(tlpMesWorkOrderRoute, 0, 6);
-            tableLayoutPanelMesConfig.Controls.Add(tlpMesServerTimeRoute, 0, 7);
-            tableLayoutPanelMesConfig.Controls.Add(tlpPostDataHeader, 0, 4);
-            tableLayoutPanelMesConfig.Controls.Add(tlpMesProgramManageRoute, 0, 8);
-            tableLayoutPanelMesConfig.Controls.Add(tlpMesStartWorkRoute, 0, 9);
-            tableLayoutPanelMesConfig.Controls.Add(tlpMesWorkStatusRoute, 0, 10);
-            tableLayoutPanelMesConfig.Controls.Add(tlpMesEndWorkRoute, 0, 11);
-            tableLayoutPanelMesConfig.Controls.Add(tlpMesReportFileRoute, 0, 12);
-            tableLayoutPanelMesConfig.Controls.Add(tlpMesPostDataRoute, 0, 13);
-            tableLayoutPanelMesConfig.Controls.Add(tlpMesDeviceRoute, 0, 14);
-            tableLayoutPanelMesConfig.Controls.Add(tlpMesDeviceStatusRoute, 0, 15);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesUserRoute, 0, 6);
+            tableLayoutPanelMesConfig.Controls.Add(tlpCheckbox1, 0, 2);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesWorkOrderRoute, 0, 7);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesServerTimeRoute, 0, 8);
+            tableLayoutPanelMesConfig.Controls.Add(tlpPostDataHeader, 0, 5);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesProgramManageRoute, 0, 9);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesStartWorkRoute, 0, 10);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesWorkStatusRoute, 0, 11);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesEndWorkRoute, 0, 12);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesReportFileRoute, 0, 13);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesPostDataRoute, 0, 14);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesDeviceRoute, 0, 15);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesDeviceStatusRoute, 0, 16);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesSysRoute, 0, 17);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesHeartbeat, 0, 1);
             tableLayoutPanelMesConfig.Dock = DockStyle.Top;
             tableLayoutPanelMesConfig.Location = new Point(2, 23);
             tableLayoutPanelMesConfig.Margin = new Padding(2, 3, 2, 3);
             tableLayoutPanelMesConfig.Name = "tableLayoutPanelMesConfig";
-            tableLayoutPanelMesConfig.RowCount = 16;
+            tableLayoutPanelMesConfig.RowCount = 18;
+            tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle());
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle());
@@ -1683,7 +1694,8 @@ namespace AutoWeldSystem.UI.Views
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
-            tableLayoutPanelMesConfig.Size = new Size(434, 624);
+            tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
+            tableLayoutPanelMesConfig.Size = new Size(434, 702);
             tableLayoutPanelMesConfig.TabIndex = 0;
             // 
             // tlpCheckbox3
@@ -1693,7 +1705,7 @@ namespace AutoWeldSystem.UI.Views
             tlpCheckbox3.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             tlpCheckbox3.Controls.Add(chkEnablePostDataCustomHeader, 0, 0);
             tlpCheckbox3.Dock = DockStyle.Fill;
-            tlpCheckbox3.Location = new Point(0, 117);
+            tlpCheckbox3.Location = new Point(0, 156);
             tlpCheckbox3.Margin = new Padding(0);
             tlpCheckbox3.Name = "tlpCheckbox3";
             tlpCheckbox3.RowCount = 1;
@@ -1724,7 +1736,7 @@ namespace AutoWeldSystem.UI.Views
             tlpCheckbox2.Controls.Add(chkEnableWorkOrderStatusReport, 1, 0);
             tlpCheckbox2.Controls.Add(chkEnableDeviceStatusReport, 0, 0);
             tlpCheckbox2.Dock = DockStyle.Fill;
-            tlpCheckbox2.Location = new Point(0, 78);
+            tlpCheckbox2.Location = new Point(0, 117);
             tlpCheckbox2.Margin = new Padding(0);
             tlpCheckbox2.MinimumSize = new Size(0, 39);
             tlpCheckbox2.Name = "tlpCheckbox2";
@@ -1759,13 +1771,11 @@ namespace AutoWeldSystem.UI.Views
             // 
             // tlpProcessParameterType
             // 
-            tlpProcessParameterType.ColumnCount = 4;
+            tlpProcessParameterType.ColumnCount = 2;
             tlpProcessParameterType.ColumnStyles.Add(new ColumnStyle());
-            tlpProcessParameterType.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 80F));
-            tlpProcessParameterType.ColumnStyles.Add(new ColumnStyle());
-            tlpProcessParameterType.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20F));
-            tlpProcessParameterType.Controls.Add(input_MesTimeout, 3, 0);
-            tlpProcessParameterType.Controls.Add(lblMesTimeout, 2, 0);
+            tlpProcessParameterType.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            tlpProcessParameterType.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 20F));
+            tlpProcessParameterType.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 20F));
             tlpProcessParameterType.Controls.Add(lblProcessParameterDeviceType, 0, 0);
             tlpProcessParameterType.Controls.Add(selectProcessParameterDeviceType, 1, 0);
             tlpProcessParameterType.Dock = DockStyle.Fill;
@@ -1776,28 +1786,6 @@ namespace AutoWeldSystem.UI.Views
             tlpProcessParameterType.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tlpProcessParameterType.Size = new Size(434, 39);
             tlpProcessParameterType.TabIndex = 7;
-            // 
-            // input_MesTimeout
-            // 
-            input_MesTimeout.Dock = DockStyle.Fill;
-            input_MesTimeout.Location = new Point(402, 0);
-            input_MesTimeout.Margin = new Padding(0);
-            input_MesTimeout.Name = "input_MesTimeout";
-            input_MesTimeout.Size = new Size(32, 39);
-            input_MesTimeout.TabIndex = 1;
-            input_MesTimeout.Text = "0";
-            // 
-            // lblMesTimeout
-            // 
-            lblMesTimeout.AutoSizeMode = AntdUI.TAutoSize.Width;
-            lblMesTimeout.Dock = DockStyle.Fill;
-            lblMesTimeout.Location = new Point(290, 0);
-            lblMesTimeout.Margin = new Padding(0);
-            lblMesTimeout.Name = "lblMesTimeout";
-            lblMesTimeout.Padding = new Padding(8, 0, 0, 0);
-            lblMesTimeout.Size = new Size(112, 39);
-            lblMesTimeout.TabIndex = 0;
-            lblMesTimeout.Text = "MES Timeout(s)";
             // 
             // lblProcessParameterDeviceType
             // 
@@ -1818,7 +1806,7 @@ namespace AutoWeldSystem.UI.Views
             selectProcessParameterDeviceType.Margin = new Padding(0);
             selectProcessParameterDeviceType.MaxCount = 10;
             selectProcessParameterDeviceType.Name = "selectProcessParameterDeviceType";
-            selectProcessParameterDeviceType.Size = new Size(126, 39);
+            selectProcessParameterDeviceType.Size = new Size(270, 39);
             selectProcessParameterDeviceType.TabIndex = 3;
             // 
             // tlpMesUserRoute
@@ -1829,7 +1817,7 @@ namespace AutoWeldSystem.UI.Views
             tlpMesUserRoute.Controls.Add(lblMesUserRoute, 0, 0);
             tlpMesUserRoute.Controls.Add(inputMesUserRoute, 1, 0);
             tlpMesUserRoute.Dock = DockStyle.Fill;
-            tlpMesUserRoute.Location = new Point(0, 195);
+            tlpMesUserRoute.Location = new Point(0, 234);
             tlpMesUserRoute.Margin = new Padding(0);
             tlpMesUserRoute.Name = "tlpMesUserRoute";
             tlpMesUserRoute.RowCount = 1;
@@ -1871,7 +1859,7 @@ namespace AutoWeldSystem.UI.Views
             tlpCheckbox1.Controls.Add(chkUseProductNumberFilter, 1, 0);
             tlpCheckbox1.Controls.Add(chkShowTestFlagInHistory, 0, 0);
             tlpCheckbox1.Dock = DockStyle.Fill;
-            tlpCheckbox1.Location = new Point(0, 39);
+            tlpCheckbox1.Location = new Point(0, 78);
             tlpCheckbox1.Margin = new Padding(0);
             tlpCheckbox1.MinimumSize = new Size(0, 39);
             tlpCheckbox1.Name = "tlpCheckbox1";
@@ -1912,7 +1900,7 @@ namespace AutoWeldSystem.UI.Views
             tlpMesWorkOrderRoute.Controls.Add(lblMesWorkOrderRoute, 0, 0);
             tlpMesWorkOrderRoute.Controls.Add(inputMesWorkOrderRoute, 1, 0);
             tlpMesWorkOrderRoute.Dock = DockStyle.Fill;
-            tlpMesWorkOrderRoute.Location = new Point(0, 234);
+            tlpMesWorkOrderRoute.Location = new Point(0, 273);
             tlpMesWorkOrderRoute.Margin = new Padding(0);
             tlpMesWorkOrderRoute.Name = "tlpMesWorkOrderRoute";
             tlpMesWorkOrderRoute.RowCount = 1;
@@ -1951,7 +1939,7 @@ namespace AutoWeldSystem.UI.Views
             tlpMesServerTimeRoute.Controls.Add(lblMesServerTimeRoute, 0, 0);
             tlpMesServerTimeRoute.Controls.Add(inputMesServerTimeRoute, 1, 0);
             tlpMesServerTimeRoute.Dock = DockStyle.Fill;
-            tlpMesServerTimeRoute.Location = new Point(0, 273);
+            tlpMesServerTimeRoute.Location = new Point(0, 312);
             tlpMesServerTimeRoute.Margin = new Padding(0);
             tlpMesServerTimeRoute.Name = "tlpMesServerTimeRoute";
             tlpMesServerTimeRoute.RowCount = 1;
@@ -1994,7 +1982,7 @@ namespace AutoWeldSystem.UI.Views
             tlpPostDataHeader.Controls.Add(inputPostDataHeaderKey, 1, 0);
             tlpPostDataHeader.Controls.Add(lblPostDataHeaderKey, 0, 0);
             tlpPostDataHeader.Dock = DockStyle.Fill;
-            tlpPostDataHeader.Location = new Point(0, 156);
+            tlpPostDataHeader.Location = new Point(0, 195);
             tlpPostDataHeader.Margin = new Padding(0);
             tlpPostDataHeader.Name = "tlpPostDataHeader";
             tlpPostDataHeader.RowCount = 1;
@@ -2054,7 +2042,7 @@ namespace AutoWeldSystem.UI.Views
             tlpMesProgramManageRoute.Controls.Add(lblMesProgramManageRoute, 0, 0);
             tlpMesProgramManageRoute.Controls.Add(inputMesProgramManageRoute, 1, 0);
             tlpMesProgramManageRoute.Dock = DockStyle.Fill;
-            tlpMesProgramManageRoute.Location = new Point(0, 312);
+            tlpMesProgramManageRoute.Location = new Point(0, 351);
             tlpMesProgramManageRoute.Margin = new Padding(0);
             tlpMesProgramManageRoute.Name = "tlpMesProgramManageRoute";
             tlpMesProgramManageRoute.RowCount = 1;
@@ -2093,7 +2081,7 @@ namespace AutoWeldSystem.UI.Views
             tlpMesStartWorkRoute.Controls.Add(lblMesStartWorkRoute, 0, 0);
             tlpMesStartWorkRoute.Controls.Add(inputMesStartWorkRoute, 1, 0);
             tlpMesStartWorkRoute.Dock = DockStyle.Fill;
-            tlpMesStartWorkRoute.Location = new Point(0, 351);
+            tlpMesStartWorkRoute.Location = new Point(0, 390);
             tlpMesStartWorkRoute.Margin = new Padding(0);
             tlpMesStartWorkRoute.Name = "tlpMesStartWorkRoute";
             tlpMesStartWorkRoute.RowCount = 1;
@@ -2132,7 +2120,7 @@ namespace AutoWeldSystem.UI.Views
             tlpMesWorkStatusRoute.Controls.Add(lblMesWorkStatusRoute, 0, 0);
             tlpMesWorkStatusRoute.Controls.Add(inputMesWorkStatusRoute, 1, 0);
             tlpMesWorkStatusRoute.Dock = DockStyle.Fill;
-            tlpMesWorkStatusRoute.Location = new Point(0, 390);
+            tlpMesWorkStatusRoute.Location = new Point(0, 429);
             tlpMesWorkStatusRoute.Margin = new Padding(0);
             tlpMesWorkStatusRoute.Name = "tlpMesWorkStatusRoute";
             tlpMesWorkStatusRoute.RowCount = 1;
@@ -2171,7 +2159,7 @@ namespace AutoWeldSystem.UI.Views
             tlpMesEndWorkRoute.Controls.Add(lblMesEndWorkRoute, 0, 0);
             tlpMesEndWorkRoute.Controls.Add(inputMesEndWorkRoute, 1, 0);
             tlpMesEndWorkRoute.Dock = DockStyle.Fill;
-            tlpMesEndWorkRoute.Location = new Point(0, 429);
+            tlpMesEndWorkRoute.Location = new Point(0, 468);
             tlpMesEndWorkRoute.Margin = new Padding(0);
             tlpMesEndWorkRoute.Name = "tlpMesEndWorkRoute";
             tlpMesEndWorkRoute.RowCount = 1;
@@ -2210,7 +2198,7 @@ namespace AutoWeldSystem.UI.Views
             tlpMesReportFileRoute.Controls.Add(lblMesReportFileRoute, 0, 0);
             tlpMesReportFileRoute.Controls.Add(inputMesReportFileRoute, 1, 0);
             tlpMesReportFileRoute.Dock = DockStyle.Fill;
-            tlpMesReportFileRoute.Location = new Point(0, 468);
+            tlpMesReportFileRoute.Location = new Point(0, 507);
             tlpMesReportFileRoute.Margin = new Padding(0);
             tlpMesReportFileRoute.Name = "tlpMesReportFileRoute";
             tlpMesReportFileRoute.RowCount = 1;
@@ -2249,7 +2237,7 @@ namespace AutoWeldSystem.UI.Views
             tlpMesPostDataRoute.Controls.Add(lblMesPostDataRoute, 0, 0);
             tlpMesPostDataRoute.Controls.Add(inputMesPostDataRoute, 1, 0);
             tlpMesPostDataRoute.Dock = DockStyle.Fill;
-            tlpMesPostDataRoute.Location = new Point(0, 507);
+            tlpMesPostDataRoute.Location = new Point(0, 546);
             tlpMesPostDataRoute.Margin = new Padding(0);
             tlpMesPostDataRoute.Name = "tlpMesPostDataRoute";
             tlpMesPostDataRoute.RowCount = 1;
@@ -2288,7 +2276,7 @@ namespace AutoWeldSystem.UI.Views
             tlpMesDeviceRoute.Controls.Add(lblMesDeviceRoute, 0, 0);
             tlpMesDeviceRoute.Controls.Add(inputMesDeviceRoute, 1, 0);
             tlpMesDeviceRoute.Dock = DockStyle.Fill;
-            tlpMesDeviceRoute.Location = new Point(0, 546);
+            tlpMesDeviceRoute.Location = new Point(0, 585);
             tlpMesDeviceRoute.Margin = new Padding(0);
             tlpMesDeviceRoute.Name = "tlpMesDeviceRoute";
             tlpMesDeviceRoute.RowCount = 1;
@@ -2327,7 +2315,7 @@ namespace AutoWeldSystem.UI.Views
             tlpMesDeviceStatusRoute.Controls.Add(lblMesDeviceStatusRoute, 0, 0);
             tlpMesDeviceStatusRoute.Controls.Add(inputMesDeviceStatusRoute, 1, 0);
             tlpMesDeviceStatusRoute.Dock = DockStyle.Top;
-            tlpMesDeviceStatusRoute.Location = new Point(0, 585);
+            tlpMesDeviceStatusRoute.Location = new Point(0, 624);
             tlpMesDeviceStatusRoute.Margin = new Padding(0);
             tlpMesDeviceStatusRoute.Name = "tlpMesDeviceStatusRoute";
             tlpMesDeviceStatusRoute.RowCount = 1;
@@ -2358,6 +2346,110 @@ namespace AutoWeldSystem.UI.Views
             inputMesDeviceStatusRoute.TabIndex = 1;
             inputMesDeviceStatusRoute.Text = "api/DeviceStatusV2";
             // 
+            // tlpMesSysRoute
+            //
+            tlpMesSysRoute.ColumnCount = 2;
+            tlpMesSysRoute.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120F));
+            tlpMesSysRoute.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            tlpMesSysRoute.Controls.Add(lblMesSysRoute, 0, 0);
+            tlpMesSysRoute.Controls.Add(inputMesSysRoute, 1, 0);
+            tlpMesSysRoute.Dock = DockStyle.Fill;
+            tlpMesSysRoute.Location = new Point(0, 663);
+            tlpMesSysRoute.Margin = new Padding(0);
+            tlpMesSysRoute.Name = "tlpMesSysRoute";
+            tlpMesSysRoute.RowCount = 1;
+            tlpMesSysRoute.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            tlpMesSysRoute.Size = new Size(434, 39);
+            tlpMesSysRoute.TabIndex = 20;
+            //
+            // lblMesSysRoute
+            //
+            lblMesSysRoute.AutoSizeMode = AntdUI.TAutoSize.Width;
+            lblMesSysRoute.Dock = DockStyle.Fill;
+            lblMesSysRoute.Location = new Point(0, 0);
+            lblMesSysRoute.Margin = new Padding(0);
+            lblMesSysRoute.Name = "lblMesSysRoute";
+            lblMesSysRoute.Padding = new Padding(8, 0, 0, 0);
+            lblMesSysRoute.Size = new Size(103, 39);
+            lblMesSysRoute.TabIndex = 0;
+            lblMesSysRoute.Text = "在线检测路由";
+            //
+            // inputMesSysRoute
+            //
+            inputMesSysRoute.Dock = DockStyle.Fill;
+            inputMesSysRoute.Location = new Point(120, 0);
+            inputMesSysRoute.Margin = new Padding(0);
+            inputMesSysRoute.Name = "inputMesSysRoute";
+            inputMesSysRoute.Padding = new Padding(2, 0, 0, 0);
+            inputMesSysRoute.Size = new Size(314, 39);
+            inputMesSysRoute.TabIndex = 1;
+            inputMesSysRoute.Text = "api/sys";
+            //
+            // tlpMesHeartbeat
+            //
+            tlpMesHeartbeat.ColumnCount = 4;
+            tlpMesHeartbeat.ColumnStyles.Add(new ColumnStyle());
+            tlpMesHeartbeat.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            tlpMesHeartbeat.ColumnStyles.Add(new ColumnStyle());
+            tlpMesHeartbeat.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            tlpMesHeartbeat.Controls.Add(input_MesTimeout, 3, 0);
+            tlpMesHeartbeat.Controls.Add(lblMesHeartbeatInterval, 0, 0);
+            tlpMesHeartbeat.Controls.Add(lblMesTimeout, 2, 0);
+            tlpMesHeartbeat.Controls.Add(inputMesHeartbeatInterval, 1, 0);
+            tlpMesHeartbeat.Dock = DockStyle.Fill;
+            tlpMesHeartbeat.Location = new Point(0, 39);
+            tlpMesHeartbeat.Margin = new Padding(0);
+            tlpMesHeartbeat.Name = "tlpMesHeartbeat";
+            tlpMesHeartbeat.RowCount = 1;
+            tlpMesHeartbeat.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            tlpMesHeartbeat.Size = new Size(434, 39);
+            tlpMesHeartbeat.TabIndex = 21;
+            //
+            // input_MesTimeout
+            //
+            input_MesTimeout.Dock = DockStyle.Fill;
+            input_MesTimeout.Location = new Point(316, 0);
+            input_MesTimeout.Margin = new Padding(0);
+            input_MesTimeout.Name = "input_MesTimeout";
+            input_MesTimeout.Size = new Size(118, 39);
+            input_MesTimeout.TabIndex = 1;
+            input_MesTimeout.Text = "0";
+            //
+            // lblMesHeartbeatInterval
+            //
+            lblMesHeartbeatInterval.AutoSizeMode = AntdUI.TAutoSize.Width;
+            lblMesHeartbeatInterval.Dock = DockStyle.Fill;
+            lblMesHeartbeatInterval.Location = new Point(0, 0);
+            lblMesHeartbeatInterval.Margin = new Padding(0);
+            lblMesHeartbeatInterval.Name = "lblMesHeartbeatInterval";
+            lblMesHeartbeatInterval.Padding = new Padding(8, 0, 0, 0);
+            lblMesHeartbeatInterval.Size = new Size(87, 39);
+            lblMesHeartbeatInterval.TabIndex = 0;
+            lblMesHeartbeatInterval.Text = "心跳间隔(s)";
+            //
+            // lblMesTimeout
+            //
+            lblMesTimeout.AutoSizeMode = AntdUI.TAutoSize.Width;
+            lblMesTimeout.Dock = DockStyle.Fill;
+            lblMesTimeout.Location = new Point(204, 0);
+            lblMesTimeout.Margin = new Padding(0);
+            lblMesTimeout.Name = "lblMesTimeout";
+            lblMesTimeout.Padding = new Padding(8, 0, 0, 0);
+            lblMesTimeout.Size = new Size(112, 39);
+            lblMesTimeout.TabIndex = 0;
+            lblMesTimeout.Text = "MES Timeout(s)";
+            //
+            // inputMesHeartbeatInterval
+            //
+            inputMesHeartbeatInterval.Dock = DockStyle.Fill;
+            inputMesHeartbeatInterval.Location = new Point(87, 0);
+            inputMesHeartbeatInterval.Margin = new Padding(0);
+            inputMesHeartbeatInterval.Name = "inputMesHeartbeatInterval";
+            inputMesHeartbeatInterval.Padding = new Padding(2, 0, 0, 0);
+            inputMesHeartbeatInterval.Size = new Size(117, 39);
+            inputMesHeartbeatInterval.TabIndex = 1;
+            inputMesHeartbeatInterval.Text = "5";
+            //
             // SystemSettingView
             // 
             AutoScaleDimensions = new SizeF(120F, 120F);
@@ -2471,6 +2563,10 @@ namespace AutoWeldSystem.UI.Views
             tlpMesDeviceRoute.PerformLayout();
             tlpMesDeviceStatusRoute.ResumeLayout(false);
             tlpMesDeviceStatusRoute.PerformLayout();
+            tlpMesSysRoute.ResumeLayout(false);
+            tlpMesSysRoute.PerformLayout();
+            tlpMesHeartbeat.ResumeLayout(false);
+            tlpMesHeartbeat.PerformLayout();
             ResumeLayout(false);
         }
 
@@ -2595,6 +2691,12 @@ namespace AutoWeldSystem.UI.Views
         private TableLayoutPanel tlpMesDeviceStatusRoute;
         private AntdUI.Label lblMesDeviceStatusRoute;
         private AntdUI.Input inputMesDeviceStatusRoute;
+        private TableLayoutPanel tlpMesSysRoute;
+        private AntdUI.Label lblMesSysRoute;
+        private AntdUI.Input inputMesSysRoute;
+        private TableLayoutPanel tlpMesHeartbeat;
+        private AntdUI.Label lblMesHeartbeatInterval;
+        private AntdUI.Input inputMesHeartbeatInterval;
         private AntdUI.Label lblProcessParameterDeviceType;
         private AntdUI.Select selectProcessParameterDeviceType;
         private AntdUI.Checkbox chkShowTestFlagInHistory;

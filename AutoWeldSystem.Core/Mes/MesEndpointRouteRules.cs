@@ -30,6 +30,7 @@ public static class MesEndpointRouteRules
     public const string PostDataDefaultRoute = "api/PostData";
     public const string DeviceDefaultRoute = "api/Device";
     public const string DeviceStatusDefaultRoute = "api/DeviceStatusV2";
+    public const string SysDefaultRoute = "api/sys";
 
     /// <summary>
     /// 归一化相对路由；历史空值使用默认路由，前导斜杠会被移除。

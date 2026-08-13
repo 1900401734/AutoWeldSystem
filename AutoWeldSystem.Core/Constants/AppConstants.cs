@@ -176,6 +176,7 @@ public static class AppConstants
         public const string GetWorkOrderInfo = "获取MES工单信息";
         public const string GetServerTime = "服务器校时";
         public const string TestConnection = "MES连通性测试";
+        public const string CheckOnline = "MES在线检测";
         public const string SetDeviceId = "设置设备编号";
         public const string AddProgram = "新增程序";
         public const string UpdateProgram = "更新程序";

@@ -81,15 +81,27 @@ public class MesProvider : IMesProvider, IDisposable
     /// 使用设置页里临时输入的地址测试 MES 连通性。
     /// 不直接写库，这样用户可以先测通再保存。
     /// </summary>
-    public Task<BasicRes<ServerTimeRes>> TestConnectionAsync(string baseUrl, int timeoutSeconds, bool isWriteLog, CancellationToken cancellationToken = default)
-        => GetAsync<ServerTimeRes>(
+    public Task<BasicRes<object>> TestConnectionAsync(string baseUrl, int timeoutSeconds, bool isWriteLog, CancellationToken cancellationToken = default)
+        => GetAsync<object>(
             AppConstants.MesLogPurposes.TestConnection,
-            ConfiguredRoute(settings => settings.MesServerTimeRoute, MesEndpointRouteRules.ServerTimeDefaultRoute),
+            ConfiguredRoute(settings => settings.MesSysRoute, MesEndpointRouteRules.SysDefaultRoute),
             null,
             cancellationToken,
             baseUrl,
             timeoutSeconds,
             isWriteLog);
+
+    /// <summary>
+    /// 心跳探测 MES 是否在线。
+    /// 只有在线状态发生跳变时才写交互日志，避免按心跳间隔刷爆日志。
+    /// </summary>
+    public Task<BasicRes<object>> CheckSystemOnlineAsync(bool? previousOnline, CancellationToken cancellationToken = default)
+        => GetAsync<object>(
+            AppConstants.MesLogPurposes.CheckOnline,
+            ConfiguredRoute(settings => settings.MesSysRoute, MesEndpointRouteRules.SysDefaultRoute),
+            null,
+            cancellationToken,
+            writeLogPredicate: result => previousOnline is null || previousOnline != (result?.IsSuccess == true));
 
     /// <summary>
     /// 获取程序列表。
@@ -306,17 +318,27 @@ public class MesProvider : IMesProvider, IDisposable
         };
     }
 
+    /// <summary>
+    /// writeLogPredicate 用于按响应结果决定是否写日志（心跳只在状态跳变时写），传入时优先于 writeLog。
+    /// </summary>
     private async Task<BasicRes<T>> GetAsync<T>(string purpose, string apiCode, IDictionary<string, string?>? query,
-        CancellationToken cancellationToken, string? baseUrlOverride = null, int? timeoutSecondsOverride = null, bool writeLog = true)
+        CancellationToken cancellationToken, string? baseUrlOverride = null, int? timeoutSecondsOverride = null, bool writeLog = true,
+        Func<BasicRes<T>?, bool>? writeLogPredicate = null)
     {
         var requestBody = FormatGetRequestBody(query);
         if (!TryBuildUri(apiCode, query, baseUrlOverride, out var uri, out var errorMessage))
         {
-            return CreateRequestBuildFailure<T>(purpose, HttpMethod.Get.Method, apiCode, requestBody, errorMessage, writeLog);
+            var buildFailure = CreateRequestBuildFailure<T>(purpose, HttpMethod.Get.Method, apiCode, requestBody, errorMessage, false);
+            if (writeLogPredicate?.Invoke(buildFailure) ?? writeLog)
+            {
+                WriteRequestBuildFailureLog(purpose, HttpMethod.Get.Method, apiCode, requestBody, buildFailure);
+            }
+
+            return buildFailure;
         }
 
         using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-        return await SendAsync<T>(purpose, request, requestBody, cancellationToken, timeoutSecondsOverride, writeLog);
+        return await SendAsync<T>(purpose, request, requestBody, cancellationToken, timeoutSecondsOverride, writeLog, writeLogPredicate);
     }
 
     private async Task<BasicRes<TResponse>> PostAsync<TRequest, TResponse>(
@@ -383,7 +405,8 @@ public class MesProvider : IMesProvider, IDisposable
         string requestBody,
         CancellationToken cancellationToken,
         int? timeoutSecondsOverride,
-        bool writeLog)
+        bool writeLog,
+        Func<BasicRes<T>?, bool>? writeLogPredicate = null)
     {
         var sendTime = DateTime.Now;
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -443,7 +466,7 @@ public class MesProvider : IMesProvider, IDisposable
         {
             stopwatch.Stop();
 
-            if (writeLog)
+            if (writeLogPredicate?.Invoke(result) ?? writeLog)
             {
                 _mesLogService.Write(new MesInteractionLogEntry
                 {
@@ -630,6 +653,35 @@ public class MesProvider : IMesProvider, IDisposable
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// 补写请求构建失败日志，供需要先拿到结果再决定是否记录的调用方使用。
+    /// </summary>
+    private void WriteRequestBuildFailureLog<T>(
+        string purpose,
+        string method,
+        string path,
+        string requestBody,
+        BasicRes<T> result)
+    {
+        var now = DateTime.Now;
+        _mesLogService.Write(new MesInteractionLogEntry
+        {
+            Purpose = purpose,
+            Method = method,
+            Url = path,
+            RequestBody = requestBody,
+            ResponseBody = string.Empty,
+            HttpStatusCode = null,
+            MesStatus = result.Status,
+            MesMessage = result.Msg,
+            IsSuccess = false,
+            ErrorMessage = result.Msg,
+            SendTime = now,
+            ReceiveTime = now,
+            DurationMilliseconds = 0
+        });
     }
 
     /// <summary>

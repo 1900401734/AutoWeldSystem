@@ -160,6 +160,8 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
         settings.CenterServerSystemType = CenterTelemetryRules.NormalizeSystemType(settings.CenterServerSystemType);
         settings.CenterServerHeartbeatIntervalSeconds = CenterTelemetryRules.NormalizeHeartbeatIntervalSeconds(
             settings.CenterServerHeartbeatIntervalSeconds);
+        settings.MesHeartbeatIntervalSeconds = MesConnectionRules.NormalizeHeartbeatIntervalSeconds(
+            settings.MesHeartbeatIntervalSeconds);
     }
 
     /// <summary>
@@ -170,6 +172,7 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
         settings.MesUserRoute = MesEndpointRouteRules.NormalizeRoute(settings.MesUserRoute, MesEndpointRouteRules.UserDefaultRoute);
         settings.MesWorkOrderRoute = MesEndpointRouteRules.NormalizeRoute(settings.MesWorkOrderRoute, MesEndpointRouteRules.WorkOrderDefaultRoute);
         settings.MesServerTimeRoute = MesEndpointRouteRules.NormalizeRoute(settings.MesServerTimeRoute, MesEndpointRouteRules.ServerTimeDefaultRoute);
+        settings.MesSysRoute = MesEndpointRouteRules.NormalizeRoute(settings.MesSysRoute, MesEndpointRouteRules.SysDefaultRoute);
         settings.MesProgramManageRoute = MesEndpointRouteRules.NormalizeRoute(settings.MesProgramManageRoute, MesEndpointRouteRules.ProgramManageDefaultRoute);
         settings.MesStartWorkRoute = MesEndpointRouteRules.NormalizeRoute(settings.MesStartWorkRoute, MesEndpointRouteRules.StartWorkDefaultRoute);
         settings.MesWorkStatusRoute = MesEndpointRouteRules.NormalizeRoute(settings.MesWorkStatusRoute, MesEndpointRouteRules.WorkStatusDefaultRoute);

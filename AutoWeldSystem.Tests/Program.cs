@@ -257,6 +257,8 @@ var tests = new (string Name, Action Run)[]
     ("Weld task pending retry includes device status", WeldTaskPendingRetryIncludesDeviceStatus),
     ("Status report settings default to enabled", StatusReportSettingsDefaultToEnabled),
     ("MES route settings default to current routes", MesRouteSettingsDefaultToCurrentRoutes),
+    ("MES heartbeat interval normalization clamps to supported range", MesHeartbeatIntervalNormalizationClampsToSupportedRange),
+    ("MES online check writes log only when state changes", MesOnlineCheckWritesLogOnlyWhenStateChanges),
     ("MES provider uses configured routes", MesProviderUsesConfiguredRoutes),
     ("MES provider applies PostData header from latest settings", MesProviderAppliesPostDataHeaderFromLatestSettings),
     ("Elevated auto start defaults to enabled", ElevatedAutoStartDefaultsToEnabled),
@@ -7189,7 +7191,7 @@ static void LogManageViewKeepsHiddenLogFieldsInDetailsOnly()
     var deviceStatusFilter = ExtractMethodText(
         viewCode,
         "private static bool IsDeviceStatusLogMatched",
-        "private static bool ShouldShowMesLog");
+        "private static bool Contains(string? source, string keyword)");
     AssertTrue(deviceStatusFilter.Contains("entry.StationNo.ToString()", StringComparison.Ordinal), "设备状态工位必须继续参与搜索。");
 }
 
@@ -7842,6 +7844,7 @@ static void MesRouteSettingsDefaultToCurrentRoutes()
     AssertEqual("api/PostData", settings.MesPostDataRoute, "过程参数接口默认路由必须保持原值。");
     AssertEqual("api/Device", settings.MesDeviceRoute, "设备编号同步接口默认路由必须保持原值。");
     AssertEqual("api/DeviceStatusV2", settings.MesDeviceStatusRoute, "设备状态上报接口默认路由必须保持原值。");
+    AssertEqual("api/sys", settings.MesSysRoute, "在线检测接口默认路由必须为 api/sys。");
     AssertFalse(settings.EnablePostDataCustomHeader == true, "PostData 自定义 Header 默认关闭，避免升级后影响现场接口。");
 }
 
@@ -7916,6 +7919,42 @@ static void LocalizationServiceReportsMissingResourceKeys()
     }
 }
 
+static void MesHeartbeatIntervalNormalizationClampsToSupportedRange()
+{
+    AssertEqual(5, new AppSettings().MesHeartbeatIntervalSeconds, "MES 心跳间隔默认必须为 5 秒。");
+    AssertEqual(5, MesConnectionRules.NormalizeHeartbeatIntervalSeconds(0), "旧数据库补列后的 0 必须回退到默认间隔。");
+    AssertEqual(5, MesConnectionRules.NormalizeHeartbeatIntervalSeconds(-10), "负值必须回退到默认间隔。");
+    AssertEqual(1, MesConnectionRules.NormalizeHeartbeatIntervalSeconds(1), "下限 1 秒必须原样保留。");
+    AssertEqual(300, MesConnectionRules.NormalizeHeartbeatIntervalSeconds(300), "上限 300 秒必须原样保留。");
+    AssertEqual(300, MesConnectionRules.NormalizeHeartbeatIntervalSeconds(3600), "超过上限必须收敛到 300 秒。");
+}
+
+static void MesOnlineCheckWritesLogOnlyWhenStateChanges()
+{
+    var handler = new RecordingHttpMessageHandler();
+    var logService = new FakeMesInteractionLogService();
+    var settings = new FakeAppSettingsService
+    {
+        Current = BuildCustomMesRouteSettings()
+    };
+    using var provider = CreateMesProvider(settings, handler, logService);
+
+    // 首轮无历史状态，必须写一条基线日志。
+    provider.CheckSystemOnlineAsync(previousOnline: null).GetAwaiter().GetResult();
+    AssertEqual(1, logService.Entries.Count, "首次在线检测必须写入基线日志。");
+    AssertEqual(AppConstants.MesLogPurposes.CheckOnline, logService.Entries[0].Purpose, "在线检测日志用途必须为 MES在线检测。");
+
+    // 假处理器固定返回 S，上一轮已在线属于状态未变，不应重复写日志。
+    provider.CheckSystemOnlineAsync(previousOnline: true).GetAwaiter().GetResult();
+    AssertEqual(1, logService.Entries.Count, "在线状态未变化时不得写入心跳日志。");
+
+    // 上一轮离线，本轮在线属于状态跳变，必须留痕。
+    provider.CheckSystemOnlineAsync(previousOnline: false).GetAwaiter().GetResult();
+    AssertEqual(2, logService.Entries.Count, "离线恢复为在线时必须写入一条日志。");
+    AssertEqual(3, handler.Requests.Count, "三次探测都必须真实发出请求。");
+    AssertEqual("mes/sys-custom", handler.Requests[2].Path, "在线检测必须使用配置的在线检测路由。");
+}
+
 static void MesProviderUsesConfiguredRoutes()
 {
     var handler = new RecordingHttpMessageHandler();
@@ -7934,6 +7973,7 @@ static void MesProviderUsesConfiguredRoutes()
         provider.GetWorkOrderInfoAsync("WO-1").GetAwaiter().GetResult();
         provider.GetServerTimeAsync().GetAwaiter().GetResult();
         provider.TestConnectionAsync("http://127.0.0.1:8080/", 3, isWriteLog: false).GetAwaiter().GetResult();
+        provider.CheckSystemOnlineAsync(previousOnline: null).GetAwaiter().GetResult();
         provider.GetProgramListAsync("D-1", "P-1").GetAwaiter().GetResult();
         provider.DownloadProgramAsync("D-1", "MES-P1").GetAwaiter().GetResult();
         provider.AddExpProgramAsync(new ProgramDataWriteReq()).GetAwaiter().GetResult();
@@ -7952,7 +7992,8 @@ static void MesProviderUsesConfiguredRoutes()
                 "mes/user-custom",
                 "mes/work-order-custom",
                 "mes/server-time-custom",
-                "mes/server-time-custom",
+                "mes/sys-custom",
+                "mes/sys-custom",
                 "mes/program-custom",
                 "mes/program-custom",
                 "mes/program-custom",
@@ -10906,13 +10947,14 @@ static DeviceApiEndpointService CreateDeviceApiEndpointService(
 
 static MesProvider CreateMesProvider(
     FakeAppSettingsService appSettingsService,
-    RecordingHttpMessageHandler handler)
+    RecordingHttpMessageHandler handler,
+    FakeMesInteractionLogService? logService = null)
 {
     return new MesProvider(
         new HttpClient(handler),
         appSettingsService,
         new FakeLocalizationService(),
-        new FakeMesInteractionLogService());
+        logService ?? new FakeMesInteractionLogService());
 }
 
 static AppSettings BuildCustomMesRouteSettings()
@@ -10923,6 +10965,7 @@ static AppSettings BuildCustomMesRouteSettings()
         MesUserRoute = "mes/user-custom",
         MesWorkOrderRoute = "mes/work-order-custom",
         MesServerTimeRoute = "mes/server-time-custom",
+        MesSysRoute = "mes/sys-custom",
         MesProgramManageRoute = "mes/program-custom",
         MesStartWorkRoute = "mes/start-custom",
         MesWorkStatusRoute = "mes/status-custom",
@@ -11787,7 +11830,10 @@ sealed class FakeMesProvider : IMesProvider
     public Task<BasicRes<object>> SetDeviceIdAsync(AddDeviceReq addDeviceRequest, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    public Task<BasicRes<ServerTimeRes>> TestConnectionAsync(string baseUrl, int timeoutSeconds, bool isWriteLog, CancellationToken cancellationToken = default)
+    public Task<BasicRes<object>> TestConnectionAsync(string baseUrl, int timeoutSeconds, bool isWriteLog, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    public Task<BasicRes<object>> CheckSystemOnlineAsync(bool? previousOnline, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     public Task<BasicRes<ProgramDataRes>> AddExpProgramAsync(ProgramDataWriteReq requestData, CancellationToken cancellationToken = default)

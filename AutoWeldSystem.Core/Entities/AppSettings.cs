@@ -120,6 +120,9 @@ public class AppSettings
     [SugarColumn(ColumnDescription = "MES超时时间（秒）")]
     public int MesTimeoutSeconds { get; set; } = 10;
 
+    [SugarColumn(ColumnDescription = "MES心跳检测间隔（秒）")]
+    public int MesHeartbeatIntervalSeconds { get; set; } = MesConnectionRules.DefaultHeartbeatIntervalSeconds;
+
     [SugarColumn(Length = 200, ColumnDescription = "MES员工信息接口路由")]
     public string MesUserRoute { get; set; } = MesEndpointRouteRules.UserDefaultRoute;
 
@@ -128,6 +131,9 @@ public class AppSettings
 
     [SugarColumn(Length = 200, ColumnDescription = "MES服务器时间接口路由")]
     public string MesServerTimeRoute { get; set; } = MesEndpointRouteRules.ServerTimeDefaultRoute;
+
+    [SugarColumn(Length = 200, ColumnDescription = "MES在线检测接口路由")]
+    public string MesSysRoute { get; set; } = MesEndpointRouteRules.SysDefaultRoute;
 
     [SugarColumn(Length = 200, ColumnDescription = "MES程序管理接口路由")]
     public string MesProgramManageRoute { get; set; } = MesEndpointRouteRules.ProgramManageDefaultRoute;

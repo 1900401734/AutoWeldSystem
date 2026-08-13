@@ -71,7 +71,8 @@ public partial class SystemSettingView : BaseView
         new("ReportFile", TextKeys.SystemSetting.RouteReportFile, MesEndpointRouteRules.ReportFileDefaultRoute, settings => settings.MesReportFileRoute, (settings, route) => settings.MesReportFileRoute = route),
         new("PostData", TextKeys.SystemSetting.RoutePostData, MesEndpointRouteRules.PostDataDefaultRoute, settings => settings.MesPostDataRoute, (settings, route) => settings.MesPostDataRoute = route),
         new("Device", TextKeys.SystemSetting.RouteDevice, MesEndpointRouteRules.DeviceDefaultRoute, settings => settings.MesDeviceRoute, (settings, route) => settings.MesDeviceRoute = route),
-        new("DeviceStatus", TextKeys.SystemSetting.RouteDeviceStatus, MesEndpointRouteRules.DeviceStatusDefaultRoute, settings => settings.MesDeviceStatusRoute, (settings, route) => settings.MesDeviceStatusRoute = route)
+        new("DeviceStatus", TextKeys.SystemSetting.RouteDeviceStatus, MesEndpointRouteRules.DeviceStatusDefaultRoute, settings => settings.MesDeviceStatusRoute, (settings, route) => settings.MesDeviceStatusRoute = route),
+        new("Sys", TextKeys.SystemSetting.RouteSys, MesEndpointRouteRules.SysDefaultRoute, settings => settings.MesSysRoute, (settings, route) => settings.MesSysRoute = route)
     };
 
     private readonly IAppSettingsService _settingsService;
@@ -417,7 +418,7 @@ public partial class SystemSettingView : BaseView
             var response = await _mesProvider.TestConnectionAsync(baseUrl, timeoutSeconds, true);
             if (response.IsSuccess)
             {
-                ShowInfo(TextKeys.SystemSetting.MessageMesConnectionSuccess, response.Data?.CurrentTime ?? string.Empty);
+                ShowInfo(TextKeys.SystemSetting.MessageConnectionSuccess, mesFieldName);
                 return;
             }
 
@@ -633,6 +634,8 @@ public partial class SystemSettingView : BaseView
         chkEnablePlcStringNumericFormatting.Checked = settings.EnablePlcStringNumericFormatting ?? true;
         chkEnablePlcAlarmReading.Checked = settings.EnablePlcAlarmReading ?? true;
         input_MesTimeout.Text = settings.MesTimeoutSeconds.ToString();
+        inputMesHeartbeatInterval.Text = MesConnectionRules.NormalizeHeartbeatIntervalSeconds(
+            settings.MesHeartbeatIntervalSeconds).ToString(CultureInfo.InvariantCulture);
         input_LogsPath.Text = settings.LogDirectory;
         input_DataPath.Text = settings.DataDirectory;
         input_ProgramFilePath.Text = settings.ProgramFileDirectory;
@@ -708,6 +711,7 @@ public partial class SystemSettingView : BaseView
             "PostData" => inputMesPostDataRoute,
             "Device" => inputMesDeviceRoute,
             "DeviceStatus" => inputMesDeviceStatusRoute,
+            "Sys" => inputMesSysRoute,
             _ => null
         };
     }
@@ -727,6 +731,7 @@ public partial class SystemSettingView : BaseView
             "PostData" => lblMesPostDataRoute,
             "Device" => lblMesDeviceRoute,
             "DeviceStatus" => lblMesDeviceStatusRoute,
+            "Sys" => lblMesSysRoute,
             _ => null
         };
     }
@@ -770,6 +775,7 @@ public partial class SystemSettingView : BaseView
         lblDeviceUrl.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDeviceStatusUrl);
         lblMesUrl.Text = _localizer.GetString(TextKeys.SystemSetting.LabelMesUrl);
         lblMesTimeout.Text = _localizer.GetString(TextKeys.SystemSetting.LabelMesTimeout);
+        lblMesHeartbeatInterval.Text = _localizer.GetString(TextKeys.SystemSetting.LabelMesHeartbeatInterval);
 
         lblLogPath.Text = _localizer.GetString(TextKeys.SystemSetting.LabelLogPath);
         lblDataPath.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDataPath);
@@ -1171,6 +1177,11 @@ public partial class SystemSettingView : BaseView
             return false;
         }
 
+        if (!TryParsePositiveInt(inputMesHeartbeatInterval.Text, NormalizeCaption(lblMesHeartbeatInterval.Text), out var mesHeartbeatInterval))
+        {
+            return false;
+        }
+
         var mesTimeout = input_MesTimeout.Text;
         var enableDualStation = chkEnableDualStation.Checked;
         StationDisplayNames stationNames;
@@ -1208,6 +1219,7 @@ public partial class SystemSettingView : BaseView
         settings.CenterServerHeartbeatIntervalSeconds = CenterTelemetryRules.NormalizeHeartbeatIntervalSeconds(centerHeartbeatInterval);
         settings.MesBaseUrl = mesBaseUrl;
         settings.MesTimeoutSeconds = int.TryParse(mesTimeout, NumberStyles.Integer, CultureInfo.InvariantCulture, out var timeout) && timeout > 0 ? timeout : 10;
+        settings.MesHeartbeatIntervalSeconds = MesConnectionRules.NormalizeHeartbeatIntervalSeconds(mesHeartbeatInterval);
         settings.UseProductNumberFilter = chkUseProductNumberFilter.Checked;
         settings.UseOperatorInputDialog = chkUseOperatorInputDialog.Checked;
         settings.ShowTestFlagInHistory = chkShowTestFlagInHistory.Checked;
