@@ -356,6 +356,7 @@ var tests = new (string Name, Action Run)[]
     ("All select controls limit dropdown items", AllSelectControlsLimitDropdownItems),
     ("Work-order auto query skips duplicates and running tasks", WorkOrderAutoQuerySkipsDuplicatesAndRunningTasks),
     ("Work-order baseline suppresses startup residual barcode", WorkOrderBaselineSuppressesStartupResidualBarcode),
+    ("Runtime tip restore requires unfinished task", RuntimeTipRestoreRequiresUnfinishedTask),
     ("Work-order input confirmation rules distinguish drafts and PLC values", WorkOrderInputConfirmationRulesDistinguishDraftsAndPlcValues),
     ("Monitor view confirms manual work orders and prioritizes PLC snapshots", MonitorViewConfirmsManualWorkOrdersAndPrioritizesPlcSnapshots),
     ("Program list filter returns all when disabled", ProgramListFilterReturnsAllWhenDisabled),
@@ -10616,6 +10617,25 @@ static void AllSelectControlsLimitDropdownItems()
     AssertTrue(addressViewCode.Contains("tableProcess.CellBeginEdit += TableSelect_CellBeginEdit;", StringComparison.Ordinal), "工艺表格下拉编辑前必须配置显示数量。 ");
     AssertTrue(addressViewCode.Contains("cell.DropDownMaxCount = 10;", StringComparison.Ordinal), "表格下拉单元格必须将 DropDownMaxCount 设为 10。");
 }
+static void RuntimeTipRestoreRequiresUnfinishedTask()
+{
+    AssertTrue(
+        RuntimeTipRestoreRules.ShouldRestoreRuntimeTip(hasUnfinishedTask: true),
+        "开工状态下必须恢复上一次的运行提示，保证断点续作时进展可见。");
+
+    AssertFalse(
+        RuntimeTipRestoreRules.ShouldRestoreRuntimeTip(hasUnfinishedTask: false),
+        "未开工时不得恢复历史提示，避免显示与实际状态不符的旧进展。");
+
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    AssertTrue(
+        viewCode.Contains("RuntimeTipRestoreRules.ShouldRestoreRuntimeTip", StringComparison.Ordinal),
+        "恢复运行提示前必须走集中判定规则，避免界面层重复实现业务决策。");
+    AssertTrue(
+        viewCode.Contains("ResetRuntimeTipStateToDefault();", StringComparison.Ordinal),
+        "不恢复历史提示时必须显式重置为默认等待业务操作状态。");
+}
+
 static void WorkOrderBaselineSuppressesStartupResidualBarcode()
 {
     // 启动后首个读数：寄存器里的残留条码只能当基准，不得填界面或查 MES。

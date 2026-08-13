@@ -9335,6 +9335,14 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     {
         try
         {
+            // 未开工工位不恢复历史提示，避免显示与实际状态不符的旧进展。
+            if (!RuntimeTipRestoreRules.ShouldRestoreRuntimeTip(
+                    _weldTaskService.GetUnfinishedTask(CurrentStationNo) is not null))
+            {
+                ResetRuntimeTipStateToDefault();
+                return;
+            }
+
             var state = _runtimeTipStateService.Get(CurrentStationNo);
             _runtimeStatusKey = string.IsNullOrWhiteSpace(state.RuntimeStatusKey)
                 ? TextKeys.Monitor.RuntimeStatus.Idle
@@ -9356,6 +9364,22 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         {
             _exceptionLogService.Write(ex, "MonitorView.RestoreCurrentRuntimeTipState");
         }
+    }
+
+    /// <summary>
+    /// 将运行提示重置为默认的等待业务操作状态。
+    /// </summary>
+    private void ResetRuntimeTipStateToDefault()
+    {
+        _runtimeStatusKey = TextKeys.Monitor.RuntimeStatus.Idle;
+        _runtimeStatusArgs = Array.Empty<object>();
+        _runtimeStatusText = null;
+        _runtimeStatusTextIsSuccess = false;
+        _runtimeErrorKey = null;
+        _runtimeErrorArgs = Array.Empty<object>();
+        _runtimeErrorText = null;
+        _runtimeErrorSource = null;
+        _deviceAlarmRuntimeErrorText = null;
     }
 
     /// <summary>
