@@ -2347,7 +2347,7 @@
             inputMesDeviceStatusRoute.Text = "api/DeviceStatusV2";
             // 
             // tlpMesSysRoute
-            //
+            // 
             tlpMesSysRoute.ColumnCount = 2;
             tlpMesSysRoute.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120F));
             tlpMesSysRoute.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
@@ -2361,9 +2361,9 @@
             tlpMesSysRoute.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tlpMesSysRoute.Size = new Size(434, 39);
             tlpMesSysRoute.TabIndex = 20;
-            //
+            // 
             // lblMesSysRoute
-            //
+            // 
             lblMesSysRoute.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblMesSysRoute.Dock = DockStyle.Fill;
             lblMesSysRoute.Location = new Point(0, 0);
@@ -2373,9 +2373,9 @@
             lblMesSysRoute.Size = new Size(103, 39);
             lblMesSysRoute.TabIndex = 0;
             lblMesSysRoute.Text = "在线检测路由";
-            //
+            // 
             // inputMesSysRoute
-            //
+            // 
             inputMesSysRoute.Dock = DockStyle.Fill;
             inputMesSysRoute.Location = new Point(120, 0);
             inputMesSysRoute.Margin = new Padding(0);
@@ -2384,9 +2384,9 @@
             inputMesSysRoute.Size = new Size(314, 39);
             inputMesSysRoute.TabIndex = 1;
             inputMesSysRoute.Text = "api/sys";
-            //
+            // 
             // tlpMesHeartbeat
-            //
+            // 
             tlpMesHeartbeat.ColumnCount = 4;
             tlpMesHeartbeat.ColumnStyles.Add(new ColumnStyle());
             tlpMesHeartbeat.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
@@ -2404,9 +2404,9 @@
             tlpMesHeartbeat.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tlpMesHeartbeat.Size = new Size(434, 39);
             tlpMesHeartbeat.TabIndex = 21;
-            //
+            // 
             // input_MesTimeout
-            //
+            // 
             input_MesTimeout.Dock = DockStyle.Fill;
             input_MesTimeout.Location = new Point(316, 0);
             input_MesTimeout.Margin = new Padding(0);
@@ -2414,9 +2414,9 @@
             input_MesTimeout.Size = new Size(118, 39);
             input_MesTimeout.TabIndex = 1;
             input_MesTimeout.Text = "0";
-            //
+            // 
             // lblMesHeartbeatInterval
-            //
+            // 
             lblMesHeartbeatInterval.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblMesHeartbeatInterval.Dock = DockStyle.Fill;
             lblMesHeartbeatInterval.Location = new Point(0, 0);
@@ -2426,9 +2426,9 @@
             lblMesHeartbeatInterval.Size = new Size(87, 39);
             lblMesHeartbeatInterval.TabIndex = 0;
             lblMesHeartbeatInterval.Text = "心跳间隔(s)";
-            //
+            // 
             // lblMesTimeout
-            //
+            // 
             lblMesTimeout.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblMesTimeout.Dock = DockStyle.Fill;
             lblMesTimeout.Location = new Point(204, 0);
@@ -2438,9 +2438,9 @@
             lblMesTimeout.Size = new Size(112, 39);
             lblMesTimeout.TabIndex = 0;
             lblMesTimeout.Text = "MES Timeout(s)";
-            //
+            // 
             // inputMesHeartbeatInterval
-            //
+            // 
             inputMesHeartbeatInterval.Dock = DockStyle.Fill;
             inputMesHeartbeatInterval.Location = new Point(87, 0);
             inputMesHeartbeatInterval.Margin = new Padding(0);
@@ -2449,7 +2449,7 @@
             inputMesHeartbeatInterval.Size = new Size(117, 39);
             inputMesHeartbeatInterval.TabIndex = 1;
             inputMesHeartbeatInterval.Text = "5";
-            //
+            // 
             // SystemSettingView
             // 
             AutoScaleDimensions = new SizeF(120F, 120F);
