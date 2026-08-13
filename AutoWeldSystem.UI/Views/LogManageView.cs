@@ -544,9 +544,7 @@ public partial class LogManageView : BaseView
         {
             var date = GetSelectedDate(dtpMesDate);
             _mesLogs.Clear();
-            _mesLogs.AddRange(_mesLogService
-                .GetByDate(date, MaxDisplayCount)
-                .Where(ShouldShowMesLog));
+            _mesLogs.AddRange(_mesLogService.GetByDate(date, MaxDisplayCount));
             ApplyMesFilter();
         }
         catch (Exception ex)
@@ -940,14 +938,6 @@ public partial class LogManageView : BaseView
             || Contains(entry.HttpStatusCode?.ToString(), keyword);
     }
 
-    private static bool ShouldShowMesLog(MesInteractionLogEntry entry)
-    {
-        return !string.Equals(
-            entry.Purpose,
-            AppConstants.MesLogPurposes.GetServerTime,
-            StringComparison.OrdinalIgnoreCase);
-    }
-
     private static bool Contains(string? source, string keyword)
     {
         return !string.IsNullOrWhiteSpace(source)
@@ -1126,11 +1116,6 @@ public partial class LogManageView : BaseView
     private void AddLiveMesLog(MesInteractionLogEntry entry)
     {
         if (entry.SendTime.Date != GetSelectedDate(dtpMesDate))
-        {
-            return;
-        }
-
-        if (!ShouldShowMesLog(entry))
         {
             return;
         }
