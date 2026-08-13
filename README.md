@@ -1,6 +1,6 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v1.6.1`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v1.7.0`。
 
 ## 功能概览
 
@@ -121,7 +121,7 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 
 - MySQL 服务可访问。
 - PLC IP、端口、协议类型符合现场配置。
-- MES 地址、设备编号、日志路径、数据路径可在系统设置界面维护。
+- MES 地址、设备编号、日志路径、数据路径可在系统设置界面维护；MES 各接口路由、超时时间和在线检测心跳间隔也在同一页面配置。
 - PLC 地址在地址维护界面中填写完整。
 
 ## 程序管理界面操作
@@ -161,6 +161,13 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 - 设备状态日志表格不显示“来源”和“工位”，生产流程日志表格不显示“步骤”，设备日志表格不显示“工位”；这些字段仍保留在右侧详情中并继续参与关键字搜索。
 - 生产流程摘要统一使用集中维护的中文文本；旧 JSONL 中已存在的配方号调和、设备模式调和和工单状态英文摘要会在界面显示时转换为中文，不重写历史文件。
 
+## MES 在线状态检测
+
+- MES 在线状态由专用的在线检测接口（默认路由 `api/sys`，GET）判定，按系统设置中的「心跳间隔（秒）」轮询，默认 5 秒，可填 1-300 秒；返回状态为 `S` 视为在线，其余情况（含超时、非 2xx、响应无法解析）视为离线。
+- 心跳只在在线状态发生跳变时写一条 MES 交互日志，稳定在线或持续离线期间不重复刷日志。
+- 设备校时接口（默认路由 `api/ServerTime`）只在程序启动时调用一次，不再承担在线探测职责。
+- 系统设置页的「测试连接」按钮同样访问在线检测接口，因此提示仅显示是否连通，不再返回服务器时间。
+
 ## 中心服务器同步与日志
 
 - 设备端按系统设置中的心跳间隔先向中心服务器发送 `heartbeat`。中心服务器不可达时，只记录首次“心跳失败”；持续失败不重复刷日志，恢复连接时再记录一条“心跳成功”。
@@ -198,10 +205,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>1.6.1</Version>
-<AssemblyVersion>1.6.1.0</AssemblyVersion>
-<FileVersion>1.6.1.0</FileVersion>
-<InformationalVersion>1.6.1</InformationalVersion>
+<Version>1.7.0</Version>
+<AssemblyVersion>1.7.0.0</AssemblyVersion>
+<FileVersion>1.7.0.0</FileVersion>
+<InformationalVersion>1.7.0</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -213,9 +220,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v1.6.1 -m "Release v1.6.1"
+git tag -a v1.7.0 -m "Release v1.7.0"
 git push origin main
-git push origin v1.6.1
+git push origin v1.7.0
 ```
 
 ## Git 使用
