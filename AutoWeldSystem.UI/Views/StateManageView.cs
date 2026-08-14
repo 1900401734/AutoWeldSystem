@@ -380,7 +380,8 @@ public partial class StateManageView : BaseView
 
         if (IsProgramFileTab())
         {
-            btnDeleteSelected.Enabled = false;
+            btnDeleteSelected.Enabled = GetSelectedProgramSummaries().Count > 0
+                && GlobalContext.HasPermission(PermissionCodes.Buttons.State.Delete);
             return;
         }
 
@@ -568,7 +569,7 @@ public partial class StateManageView : BaseView
 
         if (IsProgramFileTab())
         {
-            ShowWarning("程序文件页签不支持在上传状态页删除，请到程序管理页处理。");
+            DeleteSelectedProgramSyncRecords();
             return;
         }
 
@@ -608,6 +609,61 @@ public partial class StateManageView : BaseView
             .Select(row => row.DataBoundItem)
             .OfType<UploadTaskSummary>()
             .ToList();
+    }
+
+    /// <summary>
+    /// 返回程序文件页签当前选中的同步记录。
+    /// </summary>
+    private IReadOnlyList<ProgramSyncSummary> GetSelectedProgramSummaries()
+    {
+        return dgvPending.SelectedRows
+            .Cast<DataGridViewRow>()
+            .Select(row => row.DataBoundItem)
+            .OfType<ProgramSyncSummary>()
+            .ToList();
+    }
+
+    /// <summary>
+    /// 清理选中的程序同步记录。
+    /// 只做本地软删除，不回调 MES：这些记录多半是设备编号变更或 MES 侧已删除导致的死单，
+    /// 再次调用远程删除仍会失败，只能在本地终结。
+    /// </summary>
+    private async void DeleteSelectedProgramSyncRecords()
+    {
+        var selected = GetSelectedProgramSummaries();
+        if (selected.Count == 0)
+        {
+            ShowWarning(_localizer.GetString(TextKeys.StateManage.MessageSelectPending));
+            return;
+        }
+
+        var message = $"确定清理选中的 {selected.Count} 条程序同步记录吗？\n\n仅删除本地待同步状态，不会通知 MES，适用于 MES 侧已不存在的程序。";
+        var result = MessageBox.Show(
+            this,
+            message,
+            _localizer.GetString(TextKeys.Common.TitleConfirmDelete),
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning);
+        if (result != DialogResult.Yes)
+        {
+            return;
+        }
+
+        btnDeleteSelected.Enabled = false;
+        try
+        {
+            var deletedCount = await _programService.BatchDeleteLocalProgramsAsync(selected.Select(item => item.Id));
+            ReloadActiveTasks();
+            ShowInfo($"已清理 {deletedCount} 条程序同步记录。");
+        }
+        catch (Exception ex)
+        {
+            ShowWarning($"清理程序同步记录失败：{ex.Message}");
+        }
+        finally
+        {
+            ApplyDeletePermissionForActiveTab();
+        }
     }
 
     /// <summary>
