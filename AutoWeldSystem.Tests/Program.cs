@@ -1,4 +1,4 @@
-﻿using AutoWeldSystem.Core.Entities;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Center;
@@ -7843,6 +7843,8 @@ static void MesRouteSettingsDefaultToCurrentRoutes()
     AssertEqual("api/PostData", settings.MesPostDataRoute, "过程参数接口默认路由必须保持原值。");
     AssertEqual("api/Device", settings.MesDeviceRoute, "设备编号同步接口默认路由必须保持原值。");
     AssertEqual("api/DeviceStatusV2", settings.MesDeviceStatusRoute, "设备状态上报接口默认路由必须保持原值。");
+    AssertEqual("api/DeviceStatus", settings.DeviceStatusQueryRoute, "本地设备状态查询接口默认路由必须为 api/DeviceStatus。");
+    AssertEqual("api/DeviceID", settings.DeviceIdSetRoute, "本地设备编号设置接口默认路由必须为 api/DeviceID。");
     AssertEqual("api/sys", settings.MesSysRoute, "在线检测接口默认路由必须为 api/sys。");
     AssertFalse(settings.EnablePostDataCustomHeader == true, "PostData 自定义 Header 默认关闭，避免升级后影响现场接口。");
 }

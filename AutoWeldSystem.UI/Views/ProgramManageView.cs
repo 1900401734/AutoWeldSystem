@@ -138,6 +138,7 @@ public partial class ProgramManageView : BaseView
         btnSave.Click += Save_ClickAsync;
         btnSaveAsNew.Click += SaveAsNew_ClickAsync;
         btnDelete.Click += Delete_ClickAsync;
+        btnBatchClean.Click += BatchClean_ClickAsync;
         btnSync.Click += SyncSelected_ClickAsync;
         btnPullMes.Click += PullMes_ClickAsync;
         btnBuildName.Click += (_, _) => inputProgramName.Text = BuildProgramNameFromInputs();
@@ -163,6 +164,7 @@ public partial class ProgramManageView : BaseView
         btnNew.Text = _localizer.GetString(TextKeys.Common.ActionAdd);
         btnSave.Text = _localizer.GetString(TextKeys.Common.ActionSave);
         btnDelete.Text = _localizer.GetString(TextKeys.Common.ActionDelete);
+        btnBatchClean.Text = _localizer.GetString(TextKeys.ProgramManage.ButtonBatchClean);
         btnSync.Text = _localizer.GetString(TextKeys.ProgramManage.ButtonSyncMes);
         btnSaveAsNew.Text = _localizer.GetString(TextKeys.ProgramManage.ButtonSaveAsNew);
         btnPullMes.Text = _localizer.GetString(TextKeys.ProgramManage.ButtonPullMes);
@@ -976,6 +978,48 @@ public partial class ProgramManageView : BaseView
     private void ShowErrorMessage(string message)
     {
         MessageBox.Show(this, message, _localizer.GetString(TextKeys.Common.TitleError), MessageBoxButtons.OK, MessageBoxIcon.Error);
+    }
+
+    private async void BatchClean_ClickAsync(object? sender, EventArgs e)
+    {
+        var confirmMessage = _localizer.GetString(TextKeys.ProgramManage.MessageConfirmBatchClean);
+        var result = MessageBox.Show(
+            this,
+            confirmMessage,
+            _localizer.GetString(TextKeys.Common.TitleWarning),
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning);
+
+        if (result != DialogResult.Yes)
+        {
+            return;
+        }
+
+        btnBatchClean.Enabled = false;
+        try
+        {
+            var targetIds = _programs
+                .Where(p => p.SyncStatus != AppConstants.ProgramSyncStatus.Synced)
+                .Select(p => p.Id)
+                .ToList();
+
+            var deleteCount = await _programService.BatchDeleteLocalProgramsAsync(targetIds);
+            ReloadPrograms();
+            if (_programs.Count == 0)
+            {
+                StartNewProgram();
+            }
+
+            ShowInfo(TextKeys.ProgramManage.MessageBatchCleanSuccess, deleteCount);
+        }
+        catch (Exception ex)
+        {
+            ShowErrorMessage(_localizer.GetString(TextKeys.ProgramManage.MessageBatchCleanFailed, ex.Message));
+        }
+        finally
+        {
+            btnBatchClean.Enabled = true;
+        }
     }
 
     private bool Confirm(string messageKey, params object[] args)

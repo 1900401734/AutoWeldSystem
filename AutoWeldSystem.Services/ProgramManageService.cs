@@ -664,4 +664,70 @@ public sealed class ProgramManageService : IProgramManageService
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(text));
         return Convert.ToHexString(bytes)[..12].ToLowerInvariant();
     }
+
+    /// <summary>
+    /// 更新所有本地程序的设备编号，用于设备编号变更后统一修正历史程序。
+    /// 同时将处于同步失败或等待状态的程序标记为待更新，保证下次同步使用新设备编号。
+    /// </summary>
+    public Task UpdateAllProgramsDeviceIdAsync(string newDeviceId)
+    {
+        _dbContext.InitDatabase();
+        var normalized = newDeviceId.Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return Task.CompletedTask;
+        }
+
+        var programs = _dbContext.Db.Queryable<BizProgram>()
+            .Where(it => !it.IsDeleted)
+            .ToList();
+
+        foreach (var p in programs)
+        {
+            if (string.Equals(p.DeviceId, normalized, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            p.DeviceId = normalized;
+            p.UpdatedTime = DateTime.Now;
+            _dbContext.Db.Updateable(p).UpdateColumns(it => new { it.DeviceId, it.UpdatedTime }).ExecuteCommand();
+        }
+
+        _operationLogService.Write("ProgramDeviceIdUpdate", $"设备编号变更，已将所有程序的设备编号更新为 {normalized}。");
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 批量删除指定程序（仅本地软删除，不同步 MES）。
+    /// 用于清理因设备编号变更等原因导致无法同步的历史程序。
+    /// </summary>
+    public Task<int> BatchDeleteLocalProgramsAsync(IEnumerable<int> programIds)
+    {
+        _dbContext.InitDatabase();
+        var ids = programIds.ToList();
+        if (ids.Count == 0)
+        {
+            return Task.FromResult(0);
+        }
+
+        var programs = _dbContext.Db.Queryable<BizProgram>()
+            .Where(it => ids.Contains(it.Id) && !it.IsDeleted)
+            .ToList();
+
+        foreach (var p in programs)
+        {
+            p.IsDeleted = true;
+            p.SyncAction = null;
+            p.SyncStatus = AppConstants.ProgramSyncStatus.Deleted;
+            p.SyncMessage = "用户批量清理，跳过 MES 同步。";
+            p.UpdatedTime = DateTime.Now;
+            _dbContext.Db.Updateable(p)
+                .UpdateColumns(it => new { it.IsDeleted, it.SyncAction, it.SyncStatus, it.SyncMessage, it.UpdatedTime })
+                .ExecuteCommand();
+        }
+
+        _operationLogService.Write("ProgramBatchDelete", $"批量清理程序 {programs.Count} 个（本地删除，未同步 MES）。");
+        return Task.FromResult(programs.Count);
+    }
 }

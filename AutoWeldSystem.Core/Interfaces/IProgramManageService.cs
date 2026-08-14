@@ -32,4 +32,17 @@ public interface IProgramManageService
     Task SyncAllPendingAsync(CancellationToken cancellationToken = default);
 
     Task<int> PullFromMesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 更新所有本地程序的设备编号。
+    /// 用于设备编号变更后统一更新历史程序，避免 MES 同步失败。
+    /// </summary>
+    Task UpdateAllProgramsDeviceIdAsync(string newDeviceId);
+
+    /// <summary>
+    /// 批量删除指定程序（仅本地删除，不同步 MES）。
+    /// 用于清理因设备编号变更导致无法同步的历史程序。
+    /// </summary>
+    /// <returns>实际删除的程序数量。</returns>
+    Task<int> BatchDeleteLocalProgramsAsync(IEnumerable<int> programIds);
 }

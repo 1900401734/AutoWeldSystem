@@ -22,6 +22,7 @@
             btnSave = new AntdUI.Button();
             btnSaveAsNew = new AntdUI.Button();
             btnDelete = new AntdUI.Button();
+            btnBatchClean = new AntdUI.Button();
             btnSync = new AntdUI.Button();
             btnPullMes = new AntdUI.Button();
             btnRefresh = new AntdUI.Button();
@@ -112,6 +113,7 @@
             toolbar.Controls.Add(btnSave);
             toolbar.Controls.Add(btnSaveAsNew);
             toolbar.Controls.Add(btnDelete);
+            toolbar.Controls.Add(btnBatchClean);
             toolbar.Controls.Add(btnSync);
             toolbar.Controls.Add(btnPullMes);
             toolbar.Controls.Add(btnRefresh);
@@ -163,7 +165,7 @@
             btnSaveAsNew.Text = "另存为新程序";
             // 
             // btnDelete
-            // 
+            //
             btnDelete.BorderWidth = 1F;
             btnDelete.IconSvg = "DeleteOutlined";
             btnDelete.Location = new Point(224, 12);
@@ -173,7 +175,20 @@
             btnDelete.TabIndex = 2;
             btnDelete.Tag = "perm:button.program.delete:enabled";
             btnDelete.Text = "删除";
-            // 
+            //
+            // btnBatchClean
+            //
+            btnBatchClean.BorderWidth = 1F;
+            btnBatchClean.IconSvg = "ClearOutlined";
+            btnBatchClean.Location = new Point(326, 12);
+            btnBatchClean.Margin = new Padding(0, 0, 10, 0);
+            btnBatchClean.Name = "btnBatchClean";
+            btnBatchClean.Size = new Size(132, 40);
+            btnBatchClean.TabIndex = 3;
+            btnBatchClean.Tag = "perm:button.program.delete:enabled";
+            btnBatchClean.Text = "批量清理";
+            btnBatchClean.Type = AntdUI.TTypeMini.Warn;
+            //
             // btnSync
             // 
             btnSync.BorderWidth = 1F;
@@ -821,6 +836,7 @@
         private AntdUI.Button btnSave;
         private AntdUI.Button btnSaveAsNew;
         private AntdUI.Button btnDelete;
+        private AntdUI.Button btnBatchClean;
         private AntdUI.Button btnSync;
         private AntdUI.Button btnPullMes;
         private AntdUI.Button btnRefresh;
