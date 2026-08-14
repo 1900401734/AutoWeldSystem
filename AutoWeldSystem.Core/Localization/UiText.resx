@@ -1584,6 +1584,9 @@
   <data name="program.button.build_name" xml:space="preserve">
     <value>生成名称</value>
   </data>
+  <data name="program.button.batch_clean" xml:space="preserve">
+    <value>批量清理</value>
+  </data>
   <data name="program.checkbox.sync_now" xml:space="preserve">
     <value>保存后立即同步</value>
   </data>
@@ -1703,6 +1706,15 @@
   </data>
   <data name="program.action.delete" xml:space="preserve">
     <value>删除</value>
+  </data>
+  <data name="program.message.confirm_batch_clean" xml:space="preserve">
+    <value>此操作将删除本地所有同步失败或待同步的程序，不会通知 MES。通常用于修改设备编号后清理无法同步的历史程序。是否继续？</value>
+  </data>
+  <data name="program.message.batch_clean_success" xml:space="preserve">
+    <value>已清理 {0} 个程序。</value>
+  </data>
+  <data name="program.message.batch_clean_failed" xml:space="preserve">
+    <value>批量清理失败：{0}</value>
   </data>
   <data name="state.title" xml:space="preserve">
     <value>上传状态</value>
@@ -2074,6 +2086,8 @@
   <data name="system.route.post_data" xml:space="preserve"><value>PostData 路由</value></data>
   <data name="system.route.device" xml:space="preserve"><value>设备编号路由</value></data>
   <data name="system.route.device_status" xml:space="preserve"><value>设备状态路由</value></data>
+  <data name="system.route.device_status_query" xml:space="preserve"><value>查询设备状态路由</value></data>
+  <data name="system.route.device_id_set" xml:space="preserve"><value>设置设备编号路由</value></data>
   <data name="system.route.sys" xml:space="preserve"><value>在线检测路由</value></data>
   <data name="system.message.runtime_mode_locked" xml:space="preserve"><value>存在未完工任务，不能切换双工位/双工单模式，请先完工后再调整。</value></data>
   <data name="system.message.device_management_locked" xml:space="preserve"><value>软件已开工，请先完工后再修改设备管理信息。</value></data>

@@ -30,6 +30,8 @@ public static class MesEndpointRouteRules
     public const string PostDataDefaultRoute = "api/PostData";
     public const string DeviceDefaultRoute = "api/Device";
     public const string DeviceStatusDefaultRoute = "api/DeviceStatusV2";
+    public const string DeviceStatusQueryDefaultRoute = "api/DeviceStatus";
+    public const string DeviceIdSetDefaultRoute = "api/DeviceID";
     public const string SysDefaultRoute = "api/sys";
 
     /// <summary>

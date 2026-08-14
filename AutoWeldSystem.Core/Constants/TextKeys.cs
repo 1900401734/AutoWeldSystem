@@ -919,6 +919,7 @@ public static class TextKeys
         public const string ButtonSaveAsNew = "program.button.save_as_new";
         public const string ButtonPullMes = "program.button.pull_mes";
         public const string ButtonBuildName = "program.button.build_name";
+        public const string ButtonBatchClean = "program.button.batch_clean";
         public const string CheckSyncNow = "program.checkbox.sync_now";
         public const string PlaceholderKeyword = "program.placeholder.keyword";
         public const string GroupRevisions = "program.group.revisions";
@@ -962,6 +963,9 @@ public static class TextKeys
         public const string ActionCreate = "program.action.create";
         public const string ActionUpdate = "program.action.update";
         public const string ActionDelete = "program.action.delete";
+        public const string MessageConfirmBatchClean = "program.message.confirm_batch_clean";
+        public const string MessageBatchCleanSuccess = "program.message.batch_clean_success";
+        public const string MessageBatchCleanFailed = "program.message.batch_clean_failed";
     }
 
     /// <summary>
@@ -1135,6 +1139,8 @@ public static class TextKeys
         public const string RoutePostData = "system.route.post_data";
         public const string RouteDevice = "system.route.device";
         public const string RouteDeviceStatus = "system.route.device_status";
+        public const string RouteDeviceStatusQuery = "system.route.device_status_query";
+        public const string RouteDeviceIdSet = "system.route.device_id_set";
         public const string RouteSys = "system.route.sys";
 
         public const string MessageValueRequired = "system.message.value_required";

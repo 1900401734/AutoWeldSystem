@@ -1584,6 +1584,9 @@
   <data name="program.button.build_name" xml:space="preserve">
     <value>Build Name</value>
   </data>
+  <data name="program.button.batch_clean" xml:space="preserve">
+    <value>Batch Clean</value>
+  </data>
   <data name="program.checkbox.sync_now" xml:space="preserve">
     <value>Sync after save</value>
   </data>
@@ -1703,6 +1706,15 @@
   </data>
   <data name="program.action.delete" xml:space="preserve">
     <value>Delete</value>
+  </data>
+  <data name="program.message.confirm_batch_clean" xml:space="preserve">
+    <value>This will delete all local programs with sync failures or pending status without notifying MES. Typically used to clean up programs after changing device ID. Continue?</value>
+  </data>
+  <data name="program.message.batch_clean_success" xml:space="preserve">
+    <value>{0} program(s) cleaned.</value>
+  </data>
+  <data name="program.message.batch_clean_failed" xml:space="preserve">
+    <value>Batch clean failed: {0}</value>
   </data>
   <data name="state.title" xml:space="preserve">
     <value>Upload Status</value>
@@ -2073,6 +2085,8 @@
   <data name="system.route.post_data" xml:space="preserve"><value>PostData route</value></data>
   <data name="system.route.device" xml:space="preserve"><value>Device route</value></data>
   <data name="system.route.device_status" xml:space="preserve"><value>Device status route</value></data>
+  <data name="system.route.device_status_query" xml:space="preserve"><value>Device status query route</value></data>
+  <data name="system.route.device_id_set" xml:space="preserve"><value>Device ID set route</value></data>
   <data name="system.route.sys" xml:space="preserve"><value>Online check route</value></data>
   <data name="system.message.runtime_mode_locked" xml:space="preserve"><value>An unfinished task exists. Complete it before changing dual-station or dual-work-order mode.</value></data>
   <data name="system.message.device_management_locked" xml:space="preserve"><value>Production is currently started. Complete the active task before changing device management settings.</value></data>

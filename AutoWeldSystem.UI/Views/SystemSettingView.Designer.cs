@@ -62,6 +62,12 @@
             lblMesUrl = new AntdUI.Label();
             input_BaseUrl = new AntdUI.Input();
             btnTestConnection = new AntdUI.Button();
+            tlpMesDeviceStatusQueryRoute = new TableLayoutPanel();
+            lblMesDeviceStatusQueryRoute = new AntdUI.Label();
+            inputMesDeviceStatusQueryRoute = new AntdUI.Input();
+            tlpMesDeviceIdSetRoute = new TableLayoutPanel();
+            lblMesDeviceIdSetRoute = new AntdUI.Label();
+            inputMesDeviceIdSetRoute = new AntdUI.Input();
             middleSettingsColumn = new TableLayoutPanel();
             grpProductionConfig = new GroupBox();
             tlpProductConfig = new TableLayoutPanel();
@@ -189,6 +195,8 @@
             tlpDeviceName.SuspendLayout();
             tlpDeviveUrl.SuspendLayout();
             tlpMesUrl.SuspendLayout();
+            tlpMesDeviceStatusQueryRoute.SuspendLayout();
+            tlpMesDeviceIdSetRoute.SuspendLayout();
             middleSettingsColumn.SuspendLayout();
             grpProductionConfig.SuspendLayout();
             tlpProductConfig.SuspendLayout();
@@ -241,7 +249,7 @@
             rootLayout.RowCount = 2;
             rootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 9.632446F));
             rootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 90.36755F));
-            rootLayout.Size = new Size(1416, 851);
+            rootLayout.Size = new Size(1416, 921);
             rootLayout.TabIndex = 0;
             // 
             // titleLayout
@@ -259,7 +267,7 @@
             titleLayout.RowCount = 2;
             titleLayout.RowStyles.Add(new RowStyle());
             titleLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            titleLayout.Size = new Size(1378, 71);
+            titleLayout.Size = new Size(1378, 78);
             titleLayout.TabIndex = 0;
             // 
             // lblTitle
@@ -284,7 +292,7 @@
             lblDescription.Location = new Point(0, 31);
             lblDescription.Margin = new Padding(0);
             lblDescription.Name = "lblDescription";
-            lblDescription.Size = new Size(1266, 40);
+            lblDescription.Size = new Size(1266, 47);
             lblDescription.TabIndex = 1;
             lblDescription.Text = "维护基础系统参数、MES 参数、PLC 参数和本地路径。";
             lblDescription.TextAlign = ContentAlignment.MiddleLeft;
@@ -299,7 +307,7 @@
             btnSaveAll.Margin = new Padding(0);
             btnSaveAll.Name = "btnSaveAll";
             titleLayout.SetRowSpan(btnSaveAll, 2);
-            btnSaveAll.Size = new Size(112, 71);
+            btnSaveAll.Size = new Size(112, 78);
             btnSaveAll.TabIndex = 0;
             btnSaveAll.Tag = "perm:button.system.save:enabled";
             btnSaveAll.Text = "应用全部";
@@ -309,11 +317,11 @@
             tabSettingCategories.Controls.Add(tabBasicSettings);
             tabSettingCategories.Dock = DockStyle.Fill;
             tabSettingCategories.HotTrack = true;
-            tabSettingCategories.Location = new Point(19, 84);
+            tabSettingCategories.Location = new Point(19, 91);
             tabSettingCategories.Margin = new Padding(19, 3, 19, 7);
             tabSettingCategories.Name = "tabSettingCategories";
             tabSettingCategories.SelectedIndex = 0;
-            tabSettingCategories.Size = new Size(1378, 760);
+            tabSettingCategories.Size = new Size(1378, 823);
             tabSettingCategories.TabIndex = 1;
             // 
             // tabBasicSettings
@@ -323,7 +331,7 @@
             tabBasicSettings.Margin = new Padding(2, 3, 2, 3);
             tabBasicSettings.Name = "tabBasicSettings";
             tabBasicSettings.Padding = new Padding(2, 3, 2, 3);
-            tabBasicSettings.Size = new Size(1370, 727);
+            tabBasicSettings.Size = new Size(1370, 790);
             tabBasicSettings.TabIndex = 0;
             tabBasicSettings.Text = "基础设置";
             tabBasicSettings.UseVisualStyleBackColor = true;
@@ -337,7 +345,7 @@
             basicSettingsViewport.Margin = new Padding(2, 3, 2, 3);
             basicSettingsViewport.Name = "basicSettingsViewport";
             basicSettingsViewport.Padding = new Padding(6, 7, 6, 7);
-            basicSettingsViewport.Size = new Size(1366, 721);
+            basicSettingsViewport.Size = new Size(1366, 784);
             basicSettingsViewport.TabIndex = 0;
             // 
             // basicSettingsLayout
@@ -357,7 +365,7 @@
             basicSettingsLayout.Name = "basicSettingsLayout";
             basicSettingsLayout.RowCount = 1;
             basicSettingsLayout.RowStyles.Add(new RowStyle());
-            basicSettingsLayout.Size = new Size(1354, 707);
+            basicSettingsLayout.Size = new Size(1354, 770);
             basicSettingsLayout.TabIndex = 0;
             // 
             // leftSettingsColumn
@@ -375,7 +383,7 @@
             leftSettingsColumn.RowCount = 2;
             leftSettingsColumn.RowStyles.Add(new RowStyle());
             leftSettingsColumn.RowStyles.Add(new RowStyle());
-            leftSettingsColumn.Size = new Size(447, 501);
+            leftSettingsColumn.Size = new Size(447, 579);
             leftSettingsColumn.TabIndex = 0;
             // 
             // grpPlcConfig
@@ -669,7 +677,7 @@
             grpDeviceConfig.Margin = new Padding(5);
             grpDeviceConfig.Name = "grpDeviceConfig";
             grpDeviceConfig.Padding = new Padding(2, 3, 2, 3);
-            grpDeviceConfig.Size = new Size(437, 182);
+            grpDeviceConfig.Size = new Size(437, 260);
             grpDeviceConfig.TabIndex = 0;
             grpDeviceConfig.TabStop = false;
             grpDeviceConfig.Text = "设备编号管理";
@@ -683,16 +691,20 @@
             layoutDeviceNoConfig.Controls.Add(tlpDeviceName, 0, 1);
             layoutDeviceNoConfig.Controls.Add(tlpDeviveUrl, 0, 3);
             layoutDeviceNoConfig.Controls.Add(tlpMesUrl, 0, 2);
+            layoutDeviceNoConfig.Controls.Add(tlpMesDeviceStatusQueryRoute, 0, 4);
+            layoutDeviceNoConfig.Controls.Add(tlpMesDeviceIdSetRoute, 0, 5);
             layoutDeviceNoConfig.Dock = DockStyle.Fill;
             layoutDeviceNoConfig.Location = new Point(2, 23);
             layoutDeviceNoConfig.Margin = new Padding(2, 3, 2, 3);
             layoutDeviceNoConfig.Name = "layoutDeviceNoConfig";
-            layoutDeviceNoConfig.RowCount = 4;
+            layoutDeviceNoConfig.RowCount = 6;
             layoutDeviceNoConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             layoutDeviceNoConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             layoutDeviceNoConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             layoutDeviceNoConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
-            layoutDeviceNoConfig.Size = new Size(433, 156);
+            layoutDeviceNoConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
+            layoutDeviceNoConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
+            layoutDeviceNoConfig.Size = new Size(433, 234);
             layoutDeviceNoConfig.TabIndex = 0;
             // 
             // tlpDeviceId
@@ -884,6 +896,83 @@
             btnTestConnection.Tag = "perm:button.system.test-mes:enabled";
             btnTestConnection.Text = "测试";
             // 
+            // tlpMesDeviceStatusQueryRoute
+            //
+            tlpMesDeviceStatusQueryRoute.ColumnCount = 2;
+            tlpMesDeviceStatusQueryRoute.ColumnStyles.Add(new ColumnStyle());
+            tlpMesDeviceStatusQueryRoute.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            tlpMesDeviceStatusQueryRoute.Controls.Add(lblMesDeviceStatusQueryRoute, 0, 0);
+            tlpMesDeviceStatusQueryRoute.Controls.Add(inputMesDeviceStatusQueryRoute, 1, 0);
+            tlpMesDeviceStatusQueryRoute.Location = new Point(0, 156);
+            tlpMesDeviceStatusQueryRoute.Margin = new Padding(0);
+            tlpMesDeviceStatusQueryRoute.Name = "tlpMesDeviceStatusQueryRoute";
+            tlpMesDeviceStatusQueryRoute.RowCount = 1;
+            tlpMesDeviceStatusQueryRoute.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            tlpMesDeviceStatusQueryRoute.Size = new Size(433, 39);
+            tlpMesDeviceStatusQueryRoute.TabIndex = 20;
+            //
+            // lblMesDeviceStatusQueryRoute
+            //
+            lblMesDeviceStatusQueryRoute.AutoSizeMode = AntdUI.TAutoSize.Width;
+            lblMesDeviceStatusQueryRoute.Dock = DockStyle.Fill;
+            lblMesDeviceStatusQueryRoute.Location = new Point(0, 0);
+            lblMesDeviceStatusQueryRoute.Margin = new Padding(0);
+            lblMesDeviceStatusQueryRoute.Name = "lblMesDeviceStatusQueryRoute";
+            lblMesDeviceStatusQueryRoute.Padding = new Padding(8, 0, 0, 0);
+            lblMesDeviceStatusQueryRoute.Size = new Size(103, 39);
+            lblMesDeviceStatusQueryRoute.TabIndex = 0;
+            lblMesDeviceStatusQueryRoute.Text = "查询设备状态";
+            //
+            // inputMesDeviceStatusQueryRoute
+            //
+            inputMesDeviceStatusQueryRoute.Dock = DockStyle.Fill;
+            inputMesDeviceStatusQueryRoute.Location = new Point(103, 0);
+            inputMesDeviceStatusQueryRoute.Margin = new Padding(0);
+            inputMesDeviceStatusQueryRoute.Name = "inputMesDeviceStatusQueryRoute";
+            inputMesDeviceStatusQueryRoute.Padding = new Padding(2, 0, 0, 0);
+            inputMesDeviceStatusQueryRoute.Size = new Size(330, 39);
+            inputMesDeviceStatusQueryRoute.TabIndex = 1;
+            inputMesDeviceStatusQueryRoute.Text = "api/DeviceStatus";
+            //
+            // tlpMesDeviceIdSetRoute
+            //
+            tlpMesDeviceIdSetRoute.ColumnCount = 2;
+            tlpMesDeviceIdSetRoute.ColumnStyles.Add(new ColumnStyle());
+            tlpMesDeviceIdSetRoute.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            tlpMesDeviceIdSetRoute.Controls.Add(lblMesDeviceIdSetRoute, 0, 0);
+            tlpMesDeviceIdSetRoute.Controls.Add(inputMesDeviceIdSetRoute, 1, 0);
+            tlpMesDeviceIdSetRoute.Dock = DockStyle.Fill;
+            tlpMesDeviceIdSetRoute.Location = new Point(0, 195);
+            tlpMesDeviceIdSetRoute.Margin = new Padding(0);
+            tlpMesDeviceIdSetRoute.Name = "tlpMesDeviceIdSetRoute";
+            tlpMesDeviceIdSetRoute.RowCount = 1;
+            tlpMesDeviceIdSetRoute.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            tlpMesDeviceIdSetRoute.Size = new Size(433, 39);
+            tlpMesDeviceIdSetRoute.TabIndex = 21;
+            //
+            // lblMesDeviceIdSetRoute
+            //
+            lblMesDeviceIdSetRoute.AutoSizeMode = AntdUI.TAutoSize.Width;
+            lblMesDeviceIdSetRoute.Dock = DockStyle.Fill;
+            lblMesDeviceIdSetRoute.Location = new Point(0, 0);
+            lblMesDeviceIdSetRoute.Margin = new Padding(0);
+            lblMesDeviceIdSetRoute.Name = "lblMesDeviceIdSetRoute";
+            lblMesDeviceIdSetRoute.Padding = new Padding(8, 0, 0, 0);
+            lblMesDeviceIdSetRoute.Size = new Size(103, 39);
+            lblMesDeviceIdSetRoute.TabIndex = 0;
+            lblMesDeviceIdSetRoute.Text = "设置设备编号";
+            //
+            // inputMesDeviceIdSetRoute
+            //
+            inputMesDeviceIdSetRoute.Dock = DockStyle.Fill;
+            inputMesDeviceIdSetRoute.Location = new Point(103, 0);
+            inputMesDeviceIdSetRoute.Margin = new Padding(0);
+            inputMesDeviceIdSetRoute.Name = "inputMesDeviceIdSetRoute";
+            inputMesDeviceIdSetRoute.Padding = new Padding(2, 0, 0, 0);
+            inputMesDeviceIdSetRoute.Size = new Size(330, 39);
+            inputMesDeviceIdSetRoute.TabIndex = 1;
+            inputMesDeviceIdSetRoute.Text = "api/DeviceID";
+            //
             // middleSettingsColumn
             // 
             middleSettingsColumn.AutoSize = true;
@@ -901,7 +990,7 @@
             middleSettingsColumn.RowStyles.Add(new RowStyle());
             middleSettingsColumn.RowStyles.Add(new RowStyle());
             middleSettingsColumn.RowStyles.Add(new RowStyle());
-            middleSettingsColumn.Size = new Size(447, 616);
+            middleSettingsColumn.Size = new Size(447, 577);
             middleSettingsColumn.TabIndex = 1;
             // 
             // grpProductionConfig
@@ -1165,7 +1254,7 @@
             grpAppConfig.Margin = new Padding(5);
             grpAppConfig.Name = "grpAppConfig";
             grpAppConfig.Padding = new Padding(2, 3, 2, 3);
-            grpAppConfig.Size = new Size(437, 183);
+            grpAppConfig.Size = new Size(437, 144);
             grpAppConfig.TabIndex = 5;
             grpAppConfig.TabStop = false;
             grpAppConfig.Text = "应用配置";
@@ -1188,7 +1277,7 @@
             tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             tableLayoutPanel1.RowStyles.Add(new RowStyle());
             tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Absolute, 17F));
-            tableLayoutPanel1.Size = new Size(433, 157);
+            tableLayoutPanel1.Size = new Size(433, 118);
             tableLayoutPanel1.TabIndex = 6;
             // 
             // tableLayoutPanel4
@@ -1201,7 +1290,7 @@
             tableLayoutPanel4.Controls.Add(chkEnableAutoStart, 0, 0);
             tableLayoutPanel4.Controls.Add(chkEnableElevatedAutoStart, 1, 0);
             tableLayoutPanel4.Dock = DockStyle.Fill;
-            tableLayoutPanel4.Location = new Point(0, 117);
+            tableLayoutPanel4.Location = new Point(0, 78);
             tableLayoutPanel4.Margin = new Padding(0);
             tableLayoutPanel4.MinimumSize = new Size(0, 39);
             tableLayoutPanel4.Name = "tableLayoutPanel4";
@@ -1384,7 +1473,7 @@
             grpCenterServerConfig.AutoSize = true;
             grpCenterServerConfig.Controls.Add(tableLayoutPanelCenterServer);
             grpCenterServerConfig.Dock = DockStyle.Top;
-            grpCenterServerConfig.Location = new Point(5, 429);
+            grpCenterServerConfig.Location = new Point(5, 390);
             grpCenterServerConfig.Margin = new Padding(5);
             grpCenterServerConfig.Name = "grpCenterServerConfig";
             grpCenterServerConfig.Padding = new Padding(2, 3, 2, 3);
@@ -1616,6 +1705,8 @@
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
+            tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
+            tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
             tableLayoutPanelMesConfig.Size = new Size(434, 702);
             tableLayoutPanelMesConfig.TabIndex = 0;
             // 
@@ -2281,7 +2372,7 @@
             tlpMesSysRoute.RowCount = 1;
             tlpMesSysRoute.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tlpMesSysRoute.Size = new Size(434, 39);
-            tlpMesSysRoute.TabIndex = 20;
+            tlpMesSysRoute.TabIndex = 22;
             // 
             // lblMesSysRoute
             // 
@@ -2378,7 +2469,7 @@
             Controls.Add(rootLayout);
             Margin = new Padding(2, 3, 2, 3);
             Name = "SystemSettingView";
-            Size = new Size(1416, 851);
+            Size = new Size(1416, 921);
             rootLayout.ResumeLayout(false);
             titleLayout.ResumeLayout(false);
             titleLayout.PerformLayout();
@@ -2416,6 +2507,10 @@
             tlpDeviveUrl.PerformLayout();
             tlpMesUrl.ResumeLayout(false);
             tlpMesUrl.PerformLayout();
+            tlpMesDeviceStatusQueryRoute.ResumeLayout(false);
+            tlpMesDeviceStatusQueryRoute.PerformLayout();
+            tlpMesDeviceIdSetRoute.ResumeLayout(false);
+            tlpMesDeviceIdSetRoute.PerformLayout();
             middleSettingsColumn.ResumeLayout(false);
             middleSettingsColumn.PerformLayout();
             grpProductionConfig.ResumeLayout(false);
@@ -2605,6 +2700,12 @@
         private TableLayoutPanel tlpMesDeviceStatusRoute;
         private AntdUI.Label lblMesDeviceStatusRoute;
         private AntdUI.Input inputMesDeviceStatusRoute;
+        private TableLayoutPanel tlpMesDeviceStatusQueryRoute;
+        private AntdUI.Label lblMesDeviceStatusQueryRoute;
+        private AntdUI.Input inputMesDeviceStatusQueryRoute;
+        private TableLayoutPanel tlpMesDeviceIdSetRoute;
+        private AntdUI.Label lblMesDeviceIdSetRoute;
+        private AntdUI.Input inputMesDeviceIdSetRoute;
         private TableLayoutPanel tlpMesSysRoute;
         private AntdUI.Label lblMesSysRoute;
         private AntdUI.Input inputMesSysRoute;

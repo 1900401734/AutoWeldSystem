@@ -72,6 +72,8 @@ public partial class SystemSettingView : BaseView
         new("PostData", TextKeys.SystemSetting.RoutePostData, MesEndpointRouteRules.PostDataDefaultRoute, settings => settings.MesPostDataRoute, (settings, route) => settings.MesPostDataRoute = route),
         new("Device", TextKeys.SystemSetting.RouteDevice, MesEndpointRouteRules.DeviceDefaultRoute, settings => settings.MesDeviceRoute, (settings, route) => settings.MesDeviceRoute = route),
         new("DeviceStatus", TextKeys.SystemSetting.RouteDeviceStatus, MesEndpointRouteRules.DeviceStatusDefaultRoute, settings => settings.MesDeviceStatusRoute, (settings, route) => settings.MesDeviceStatusRoute = route),
+        new("DeviceStatusQuery", TextKeys.SystemSetting.RouteDeviceStatusQuery, MesEndpointRouteRules.DeviceStatusQueryDefaultRoute, settings => settings.DeviceStatusQueryRoute, (settings, route) => settings.DeviceStatusQueryRoute = route),
+        new("DeviceIdSet", TextKeys.SystemSetting.RouteDeviceIdSet, MesEndpointRouteRules.DeviceIdSetDefaultRoute, settings => settings.DeviceIdSetRoute, (settings, route) => settings.DeviceIdSetRoute = route),
         new("Sys", TextKeys.SystemSetting.RouteSys, MesEndpointRouteRules.SysDefaultRoute, settings => settings.MesSysRoute, (settings, route) => settings.MesSysRoute = route)
     };
 
@@ -81,6 +83,7 @@ public partial class SystemSettingView : BaseView
     private readonly IPlcCommunicationService _plcCommunicationService;
     private readonly IWeldTaskService _weldTaskService;
     private readonly IWindowsShellIntegrationService _windowsShellIntegrationService;
+    private readonly IProgramManageService _programManageService;
 
     private bool _initialized;
     private bool _syncingPlcTypeSelection;
@@ -105,7 +108,8 @@ public partial class SystemSettingView : BaseView
         ILocalizationService localizer,
         IPlcCommunicationService plcCommunicationService,
         IWeldTaskService weldTaskService,
-        IWindowsShellIntegrationService windowsShellIntegrationService)
+        IWindowsShellIntegrationService windowsShellIntegrationService,
+        IProgramManageService programManageService)
     {
         InitializeComponent();
 
@@ -117,6 +121,7 @@ public partial class SystemSettingView : BaseView
         _plcCommunicationService = plcCommunicationService;
         _weldTaskService = weldTaskService;
         _windowsShellIntegrationService = windowsShellIntegrationService;
+        _programManageService = programManageService;
         _weldTaskService.StateChanged += WeldTaskService_StateChanged;
 
         WireEvents();
@@ -340,6 +345,12 @@ public partial class SystemSettingView : BaseView
             if (shouldSyncDevice && await SyncDeviceToMesAsync(syncRequest, btnSaveAll, false))
             {
                 MarkDeviceSynced();
+            }
+
+            // Update DeviceId in all local programs when device ID changes to prevent MES sync failures
+            if (HasDeviceIdChanged(previousSettings, settings))
+            {
+                await _programManageService.UpdateAllProgramsDeviceIdAsync(settings.DeviceId);
             }
 
             ShowInfoMessage(_localizer.GetString(TextKeys.Common.SaveSuccess));
@@ -708,6 +719,8 @@ public partial class SystemSettingView : BaseView
             "PostData" => inputMesPostDataRoute,
             "Device" => inputMesDeviceRoute,
             "DeviceStatus" => inputMesDeviceStatusRoute,
+            "DeviceStatusQuery" => inputMesDeviceStatusQueryRoute,
+            "DeviceIdSet" => inputMesDeviceIdSetRoute,
             "Sys" => inputMesSysRoute,
             _ => null
         };
@@ -728,6 +741,8 @@ public partial class SystemSettingView : BaseView
             "PostData" => lblMesPostDataRoute,
             "Device" => lblMesDeviceRoute,
             "DeviceStatus" => lblMesDeviceStatusRoute,
+            "DeviceStatusQuery" => lblMesDeviceStatusQueryRoute,
+            "DeviceIdSet" => lblMesDeviceIdSetRoute,
             "Sys" => lblMesSysRoute,
             _ => null
         };
@@ -1318,7 +1333,7 @@ public partial class SystemSettingView : BaseView
     }
 
     /// <summary>
-    /// 任一工位在当前软件运行态中已经开工且尚未完工时，统一禁用整个设备管理模块。
+    /// 任一工位在当前软件运行态中已经开工且尚未完工时，统一禁用整个设备管理模块和 MES 配置模块。
     /// </summary>
     private void RefreshDeviceManagementEnabled(bool force = false)
     {
@@ -1327,7 +1342,9 @@ public partial class SystemSettingView : BaseView
             return;
         }
 
-        grpDeviceConfig.Enabled = !HasAnyActiveRuntimeTask();
+        var enabled = !HasAnyActiveRuntimeTask();
+        grpDeviceConfig.Enabled = enabled;
+        grpMesConfig.Enabled = enabled;
         Volatile.Write(ref _deviceManagementStateKnown, true);
     }
 
@@ -1399,6 +1416,11 @@ public partial class SystemSettingView : BaseView
             || !SameText(oldSettings.DeviceName, newSettings.DeviceName)
             || !SameText(oldSettings.DeviceBaseUrl, newSettings.DeviceBaseUrl)
             || !SameText(oldSettings.MesBaseUrl, newSettings.MesBaseUrl);
+    }
+
+    private static bool HasDeviceIdChanged(AppSettings oldSettings, AppSettings newSettings)
+    {
+        return !SameText(oldSettings.DeviceId, newSettings.DeviceId);
     }
 
     private static bool SameText(string? left, string? right)
