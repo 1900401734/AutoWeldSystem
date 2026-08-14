@@ -156,6 +156,12 @@ public class AppSettings
     [SugarColumn(Length = 200, ColumnDescription = "MES设备状态接口路由")]
     public string MesDeviceStatusRoute { get; set; } = MesEndpointRouteRules.DeviceStatusDefaultRoute;
 
+    [SugarColumn(Length = 200, ColumnDescription = "本地设备状态查询接口路由")]
+    public string DeviceStatusQueryRoute { get; set; } = MesEndpointRouteRules.DeviceStatusQueryDefaultRoute;
+
+    [SugarColumn(Length = 200, ColumnDescription = "本地设备编号设置接口路由")]
+    public string DeviceIdSetRoute { get; set; } = MesEndpointRouteRules.DeviceIdSetDefaultRoute;
+
     [SugarColumn(ColumnDescription = "是否启用PostData自定义Header", IsNullable = true)]
     public bool? EnablePostDataCustomHeader { get; set; } = false;
 

@@ -6,6 +6,7 @@ using AutoWeldSystem.Core.DTOs.Mes.Response;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
+using AutoWeldSystem.Core.Mes;
 using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Core.Runtime;
 using Microsoft.AspNetCore.Builder;
@@ -128,7 +129,11 @@ internal sealed class DeviceApiServerService : IDeviceApiServerService
 
     private void MapEndpoints(WebApplication app)
     {
-        app.MapGet("/api/DeviceStatus", (HttpRequest request) =>
+        var settings = _settingsService.Get();
+        var deviceStatusQueryRoute = MesEndpointRouteRules.NormalizeRoute(settings.DeviceStatusQueryRoute, MesEndpointRouteRules.DeviceStatusQueryDefaultRoute);
+        var deviceIdSetRoute = MesEndpointRouteRules.NormalizeRoute(settings.DeviceIdSetRoute, MesEndpointRouteRules.DeviceIdSetDefaultRoute);
+
+        app.MapGet($"/{deviceStatusQueryRoute}", (HttpRequest request) =>
         {
             try
             {
@@ -142,7 +147,7 @@ internal sealed class DeviceApiServerService : IDeviceApiServerService
             }
         });
 
-        app.MapPost("/api/DeviceID", async (HttpContext context) =>
+        app.MapPost($"/{deviceIdSetRoute}", async (HttpContext context) =>
         {
             try
             {

@@ -178,6 +178,8 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
         settings.MesPostDataRoute = MesEndpointRouteRules.NormalizeRoute(settings.MesPostDataRoute, MesEndpointRouteRules.PostDataDefaultRoute);
         settings.MesDeviceRoute = MesEndpointRouteRules.NormalizeRoute(settings.MesDeviceRoute, MesEndpointRouteRules.DeviceDefaultRoute);
         settings.MesDeviceStatusRoute = MesEndpointRouteRules.NormalizeRoute(settings.MesDeviceStatusRoute, MesEndpointRouteRules.DeviceStatusDefaultRoute);
+        settings.DeviceStatusQueryRoute = MesEndpointRouteRules.NormalizeRoute(settings.DeviceStatusQueryRoute, MesEndpointRouteRules.DeviceStatusQueryDefaultRoute);
+        settings.DeviceIdSetRoute = MesEndpointRouteRules.NormalizeRoute(settings.DeviceIdSetRoute, MesEndpointRouteRules.DeviceIdSetDefaultRoute);
         settings.EnablePostDataCustomHeader ??= false;
         settings.PostDataHeaderKey = MesEndpointRouteRules.NormalizeHeaderKey(settings.PostDataHeaderKey);
         settings.PostDataHeaderValue = MesEndpointRouteRules.NormalizeHeaderValue(settings.PostDataHeaderValue);
