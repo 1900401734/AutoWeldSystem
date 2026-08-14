@@ -1621,10 +1621,14 @@ public class WeldTaskService : IWeldTaskService
     private IReadOnlyList<BizUploadTask> EnqueueFinishUploadTasks(BizWeldTask task, UploadMode uploadMode)
     {
         var (reportFile, generationError) = GenerateLocalReportFile(task);
-        var uploadTasks = new List<BizUploadTask>
+        var uploadTasks = new List<BizUploadTask>();
+
+        // 完工只补传剩余未上传的产品；已上传或已被在途任务认领的产品不再重复进入 Data 数组。
+        var processParameterTask = EnqueueProcessParameterTask(task, uploadMode);
+        if (processParameterTask is not null)
         {
-            EnqueueProcessParameterTask(task, uploadMode)
-        };
+            uploadTasks.Add(processParameterTask);
+        }
 
         // 本地 XLSX 已生成时必须进入上传任务体系；生成失败时再按 ReportEnable 暴露失败任务。
         if (reportFile is not null || _reportFileService.ShouldUploadReportFile(task))
@@ -1635,19 +1639,56 @@ public class WeldTaskService : IWeldTaskService
         return uploadTasks;
     }
 
-    private BizUploadTask EnqueueProcessParameterTask(BizWeldTask task, UploadMode uploadMode)
+    /// <summary>
+    /// 完工时为剩余未上传的产品排队过程参数补传任务。
+    /// 已上传成功的产品、以及仍被在途/待重试上传任务覆盖的产品都会排除，
+    /// 避免按数量上传已提交过的批次在完工时被重复塞进 Data 数组。
+    /// </summary>
+    private BizUploadTask? EnqueueProcessParameterTask(BizWeldTask task, UploadMode uploadMode)
     {
+        var pendingProductNos = GetFinishMakeupProductNos(task.Id);
+        if (pendingProductNos.Count == 0)
+        {
+            return null;
+        }
+
         return _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
         {
             TaskType = ProductionConstants.UploadTaskTypes.ProcessParameter,
             Target = ProductionConstants.UploadTargets.Mes,
             BusinessId = BuildUploadBusinessId(task, "process-parameter"),
             WeldTaskId = task.Id,
-            PayloadJson = BuildUploadPayload(task, uploadMode, ProductionConstants.UploadTaskTypes.ProcessParameter),
+            PayloadJson = BuildProcessParameterMakeupPayload(task, uploadMode, pendingProductNos),
             Status = ProductionConstants.UploadStatuses.Pending,
             NextRetryTime = DateTime.Now,
-            Message = $"{GetUploadModeName(uploadMode)}模式完工后排队，等待过程参数上传执行器处理。"
+            Message = $"{GetUploadModeName(uploadMode)}模式完工后排队，待补传产品 {pendingProductNos.Count} 件。"
         });
+    }
+
+    /// <summary>
+    /// 查询完工补传范围所需数据，范围判定委托 <see cref="ProcessParameterMakeupRules"/>。
+    /// </summary>
+    private IReadOnlyList<string> GetFinishMakeupProductNos(int weldTaskId)
+    {
+        var records = _dbContext.Db.Queryable<BizWeldPointRecord>()
+            .Where(record => record.TaskId == weldTaskId && record.ProductCompleted)
+            .ToList();
+        if (records.Count == 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        // 在途或待重试的过程参数任务已认领的产品交由原任务重试，完工任务不再接管。
+        var claimedProductNos = _dbContext.Db.Queryable<BizUploadTask>()
+            .Where(uploadTask => uploadTask.WeldTaskId == weldTaskId
+                && uploadTask.TaskType == ProductionConstants.UploadTaskTypes.ProcessParameter
+                && !uploadTask.IsDeleted
+                && uploadTask.Status != ProductionConstants.UploadStatuses.Uploaded)
+            .ToList()
+            .SelectMany(uploadTask => ProcessParameterUploadPayloadRules.ReadProductNos(uploadTask.PayloadJson))
+            .ToList();
+
+        return ProcessParameterMakeupRules.TakeMakeupProductNos(records, weldTaskId, claimedProductNos);
     }
 
     private (BizProductionReportFile? ReportFile, string? GenerationError) GenerateLocalReportFile(BizWeldTask task)
@@ -1776,6 +1817,32 @@ public class WeldTaskService : IWeldTaskService
             StartTime = task.StartTime.ToString("yyyy-MM-dd HH:mm:ss"),
             EndTime = task.EndTime?.ToString("yyyy-MM-dd HH:mm:ss"),
             OperatorNumber = task.EndOperatorNumber ?? task.UserNumber
+        });
+    }
+
+    /// <summary>
+    /// 构建完工补传的过程参数任务载荷。
+    /// 必须写入 ProductNos 限定范围，否则上传执行器会按整工单捞取记录。
+    /// StationNo 固定为 0，表示补传覆盖该工单的所有工位。
+    /// </summary>
+    private static string BuildProcessParameterMakeupPayload(
+        BizWeldTask task,
+        UploadMode uploadMode,
+        IReadOnlyList<string> productNos)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            TaskType = ProductionConstants.UploadTaskTypes.ProcessParameter,
+            UploadMode = uploadMode.ToString(),
+            WeldTaskId = task.Id,
+            TaskId = task.Id,
+            StationNo = 0,
+            task.ExpStartId,
+            task.IsOfflineCreated,
+            task.DeviceId,
+            SN = task.SN,
+            task.ProcessNo,
+            ProductNos = productNos
         });
     }
 
