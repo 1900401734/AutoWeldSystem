@@ -360,8 +360,7 @@ var tests = new (string Name, Action Run)[]
     ("Program list filter returns all when disabled", ProgramListFilterReturnsAllWhenDisabled),
     ("Program list filter narrows by product number when enabled", ProgramListFilterNarrowsByProductNumberWhenEnabled),
     ("Program list filter returns all when work order product number is blank", ProgramListFilterReturnsAllWhenWorkOrderProductNumberIsBlank),
-    ("Program content review rows apply modified values", ProgramContentReviewRowsApplyModifiedValues),
-    ("Program content review keeps standard value when modified value empty", ProgramContentReviewKeepsStandardValueWhenModifiedValueEmpty),
+    ("Program content review rows use edited standard values", ProgramContentReviewRowsUseEditedStandardValues),
     ("Program content review rejects duplicate item names", ProgramContentReviewRejectsDuplicateItemNames),
     ("LoadPrograms filters available programs by work order product number", LoadProgramsFiltersAvailableProgramsByWorkOrderProductNumber),
     ("Select list rules resolve selection by display text", SelectListRulesResolveSelectionByDisplayText),
@@ -10824,40 +10823,31 @@ static void ProgramListFilterReturnsAllWhenWorkOrderProductNumberIsBlank()
     AssertEqual(2, filtered.Count, "工单产品工号空白时不应收窄程序列表。");
 }
 
-static void ProgramContentReviewRowsApplyModifiedValues()
+static void ProgramContentReviewRowsUseEditedStandardValues()
 {
+    // 开工弹窗已取消“修改值”列，用户就地改设定值，合并时直接取该值。
     var rows = new List<ProgramContentReviewRow>
     {
-        new() { ItemName = "高度", StandardValue = "12.5", ModifiedValue = "13.0" },
-        new() { ItemName = "压力", StandardValue = "20", ModifiedValue = "" },
-        new() { ItemName = "", StandardValue = "skip", ModifiedValue = "" }
+        new() { ItemName = "高度", StandardValue = "13.0" },
+        new() { ItemName = "压力", StandardValue = "20" },
+        new() { ItemName = "", StandardValue = "skip" },
+        new() { ItemName = "电阻", StandardValue = "   " }
     };
 
     var json = ProgramContentJsonRules.MergeReviewRowsToJson(rows);
     using var document = JsonDocument.Parse(json);
-    AssertTrue(document.RootElement.GetProperty("高度").GetString() == "13.0", "修改值非空时应覆盖设定值进入 JSON。");
-    AssertTrue(document.RootElement.GetProperty("压力").GetString() == "20", "修改值为空时应回退到设定值/标准值。");
+    AssertTrue(document.RootElement.GetProperty("高度").GetString() == "13.0", "就地修改后的设定值应直接进入 JSON。");
+    AssertTrue(document.RootElement.GetProperty("压力").GetString() == "20", "未修改的设定值应原样进入 JSON。");
     AssertFalse(document.RootElement.TryGetProperty("", out _), "测试项名称为空的行不应进入 JSON。");
-}
-
-static void ProgramContentReviewKeepsStandardValueWhenModifiedValueEmpty()
-{
-    var rows = new List<ProgramContentReviewRow>
-    {
-        new() { ItemName = "电流", StandardValue = "180", ModifiedValue = "  " }
-    };
-
-    var json = ProgramContentJsonRules.MergeReviewRowsToJson(rows);
-    using var document = JsonDocument.Parse(json);
-    AssertTrue(document.RootElement.GetProperty("电流").GetString() == "180", "空白修改值回退标准值后仍需进入 JSON。");
+    AssertFalse(document.RootElement.TryGetProperty("电阻", out _), "设定值被清空的行不应进入 JSON。");
 }
 
 static void ProgramContentReviewRejectsDuplicateItemNames()
 {
     var rows = new List<ProgramContentReviewRow>
     {
-        new() { ItemName = "高度", StandardValue = "12.5", ModifiedValue = "13.0" },
-        new() { ItemName = "高度", StandardValue = "12.5", ModifiedValue = "14.0" }
+        new() { ItemName = "高度", StandardValue = "13.0" },
+        new() { ItemName = "高度", StandardValue = "14.0" }
     };
 
     var ok = ProgramContentJsonRules.TryMergeReviewRowsToJson(rows, out _, out var errorMessage);

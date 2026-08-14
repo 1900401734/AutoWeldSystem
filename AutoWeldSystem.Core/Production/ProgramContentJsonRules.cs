@@ -103,7 +103,6 @@ public static class ProgramContentJsonRules
             {
                 ItemName = row.ItemName,
                 StandardValue = row.StandardValue,
-                ModifiedValue = string.Empty,
                 IsDictionaryItem = row.IsDictionaryItem
             })
             .ToList();
@@ -111,7 +110,7 @@ public static class ProgramContentJsonRules
 
     /// <summary>
     /// 合并预览/微调行为 MES 需要的 ProgramContent JSON 字符串。
-    /// 有效值取 <see cref="ProgramContentReviewRow.ModifiedValue"/>，为空时回退到 <see cref="ProgramContentReviewRow.StandardValue"/>。
+    /// 有效值直接取 <see cref="ProgramContentReviewRow.StandardValue"/>，用户在弹窗中就地修改。
     /// </summary>
     public static string MergeReviewRowsToJson(IEnumerable<ProgramContentReviewRow> rows)
     {
@@ -121,7 +120,7 @@ public static class ProgramContentJsonRules
             .Select(row => new ProgramContentItemRow
             {
                 ItemName = row.ItemName,
-                StandardValue = string.IsNullOrWhiteSpace(row.ModifiedValue) ? row.StandardValue : row.ModifiedValue,
+                StandardValue = row.StandardValue,
                 IsDictionaryItem = row.IsDictionaryItem
             })
             .ToList();

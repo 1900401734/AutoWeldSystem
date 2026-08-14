@@ -49,15 +49,8 @@ public partial class ProgramContentReviewForm : BaseWindow
         {
             DataPropertyName = nameof(ProgramContentReviewRow.StandardValue),
             HeaderText = "设定值/标准值",
-            ReadOnly = true,
-            FillWeight = 33F
-        });
-        dgvFields.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            DataPropertyName = nameof(ProgramContentReviewRow.ModifiedValue),
-            HeaderText = "修改值",
             ReadOnly = false,
-            FillWeight = 33F
+            FillWeight = 66F
         });
         dgvFields.DataSource = _rows;
     }
@@ -86,8 +79,8 @@ public partial class ProgramContentReviewForm : BaseWindow
             return;
         }
 
-        // 仅“修改值”列允许编辑。
-        e.Cancel = e.ColumnIndex != 2;
+        // 仅“设定值/标准值”列允许编辑，测试项名称固定。
+        e.Cancel = e.ColumnIndex != 1;
     }
 
     private void dgvFields_CellValueChanged(object? sender, DataGridViewCellEventArgs e)
@@ -97,14 +90,14 @@ public partial class ProgramContentReviewForm : BaseWindow
             return;
         }
 
-        if (e.ColumnIndex != 2)
+        if (e.ColumnIndex != 1)
         {
             return;
         }
 
         if (dgvFields.Rows[e.RowIndex].DataBoundItem is ProgramContentReviewRow row)
         {
-            row.ModifiedValue = dgvFields.Rows[e.RowIndex].Cells[e.ColumnIndex].Value?.ToString() ?? string.Empty;
+            row.StandardValue = dgvFields.Rows[e.RowIndex].Cells[e.ColumnIndex].Value?.ToString() ?? string.Empty;
         }
     }
 
