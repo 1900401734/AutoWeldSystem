@@ -43,6 +43,8 @@ public partial class ProgramManageView : BaseView
     private bool _programContentDictionaryAvailable;
     private int _recipeNameRefreshVersion;
     private bool _enableDualStation;
+    // 批量绑定控件值期间暂停自动填充，避免中间态触发多次重算。
+    private bool _suppressNameAutoFill;
 
     public ProgramManageView(
         IProgramManageService programService,
@@ -157,6 +159,12 @@ public partial class ProgramManageView : BaseView
             }
         };
         tableProgramContent.CellEndEdit += ProgramContentTable_CellEndEdit;
+
+        // 名称组成字段变化时同步刷新程序名称，省去每次手点"生成名称"。
+        inputProductNum.TextChanged += (_, _) => AutoFillProgramName();
+        inputComponentCode.TextChanged += (_, _) => AutoFillProgramName();
+        inputSequenceNumber.TextChanged += (_, _) => AutoFillProgramName();
+        inputDescription.TextChanged += (_, _) => AutoFillProgramName();
     }
 
     private void ApplyLocalizedTexts()
@@ -311,6 +319,7 @@ public partial class ProgramManageView : BaseView
 
     private void StartNewProgram()
     {
+        _suppressNameAutoFill = true;
         // 新增状态不应继续保留列表旧行选择，否则再次点击同一行不会触发绑定。
         tablePrograms.SelectedIndex = -1;
         _editingId = 0;
@@ -326,6 +335,7 @@ public partial class ProgramManageView : BaseView
         inputDescription.Clear();
         BindProgramContentRows(null);
         lblCurrentInfo.Text = _localizer.GetString(TextKeys.ProgramManage.CurrentNew);
+        _suppressNameAutoFill = false;
     }
 
     private void BindProgramById(int programId)
@@ -336,6 +346,7 @@ public partial class ProgramManageView : BaseView
             return;
         }
 
+        _suppressNameAutoFill = true;
         _editingId = program.Id;
         txtProgramId.Text = program.ProgramId ?? string.Empty;
         inputProgramName.Text = program.ProgramName;
@@ -349,6 +360,7 @@ public partial class ProgramManageView : BaseView
         inputDescription.Text = program.Description ?? string.Empty;
         BindProgramContentRows(program.ProgramContent);
         SetCurrentProgramInfo(program);
+        _suppressNameAutoFill = false;
     }
 
     private void UpdateCurrentInfoText()
@@ -939,6 +951,20 @@ public partial class ProgramManageView : BaseView
             Editable = !readOnly,
             Ellipsis = true
         };
+    }
+
+    /// <summary>
+    /// 名称组成字段变化时刷新程序名称。
+    /// 仅新增状态生效：已有程序的名称已同步给 MES，改名要走"生成名称"按钮显式确认。
+    /// </summary>
+    private void AutoFillProgramName()
+    {
+        if (_suppressNameAutoFill || _editingId > 0)
+        {
+            return;
+        }
+
+        inputProgramName.Text = BuildProgramNameFromInputs();
     }
 
     private string BuildProgramNameFromInputs()
