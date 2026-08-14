@@ -20,6 +20,7 @@ public partial class StateManageView : BaseView
 {
     private readonly IProgramManageService _programService;
     private readonly IUploadTaskService _uploadTaskService;
+    private readonly IWeldTaskService _weldTaskService;
     private readonly IDeviceStatusService _deviceStatusService;
     private readonly IUploadStatusSummaryService _summaryService;
     private readonly ILocalizationService _localizer;
@@ -34,6 +35,7 @@ public partial class StateManageView : BaseView
     public StateManageView(
         IProgramManageService programService,
         IUploadTaskService uploadTaskService,
+        IWeldTaskService weldTaskService,
         IDeviceStatusService deviceStatusService,
         IUploadStatusSummaryService summaryService,
         ILocalizationService localizer,
@@ -41,6 +43,7 @@ public partial class StateManageView : BaseView
     {
         _programService = programService;
         _uploadTaskService = uploadTaskService;
+        _weldTaskService = weldTaskService;
         _deviceStatusService = deviceStatusService;
         _summaryService = summaryService;
         _localizer = localizer;
@@ -219,6 +222,7 @@ public partial class StateManageView : BaseView
     private static DataGridViewTextBoxColumn CreateDateTimeColumn(string propertyName, string headerText, float fillWeight)
     {
         var column = CreateTextColumn(propertyName, headerText, fillWeight);
+        column.DefaultCellStyle ??= new DataGridViewCellStyle();
         column.DefaultCellStyle.Format = "yyyy-MM-dd HH:mm:ss";
         return column;
     }
@@ -574,19 +578,58 @@ public partial class StateManageView : BaseView
         }
 
         var selectedItem = dgvPending.CurrentRow?.DataBoundItem;
+
+        // 工单信息页签：硬删除工单及所有关联数据
         if (selectedItem is UploadPendingSummaryRow summary)
         {
-            _uploadTaskService.HideWeldTaskUploadState(summary.WeldTaskId);
+            var result = MessageBox.Show(
+                this,
+                "确定删除选中的工单信息吗？\n\n警告：将同时删除该工单的所有关联数据（焊点记录、上传任务、报表文件），删除后无法恢复！",
+                _localizer.GetString(TextKeys.Common.TitleConfirmDelete),
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+            if (result != DialogResult.Yes)
+            {
+                return;
+            }
+
+            _weldTaskService.DeleteWeldTask(summary.WeldTaskId);
             ReloadActiveTasks();
-            ShowInfo("已从工单信息隐藏选中的任务。");
+            ShowInfo("已删除选中的工单信息及所有关联数据。");
             return;
         }
 
         if (selectedItem is UploadTaskSummary task)
         {
+            // 过程参数虚拟行：删除对应的焊点记录
+            if (task.IsVirtual)
+            {
+                var result = MessageBox.Show(
+                    this,
+                    $"确定删除该产品的所有焊点记录吗？\n\n产品编号：{task.ProductNo}\n工位：{task.StationNo}\n\n警告：将删除该产品的质量追溯数据，删除后无法恢复！",
+                    _localizer.GetString(TextKeys.Common.TitleConfirmDelete),
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+                if (result != DialogResult.Yes)
+                {
+                    return;
+                }
+
+                // BusinessId 格式："history:{taskId}:{stationNo}:{productNo}"
+                var parts = task.BusinessId.Split(':');
+                if (parts.Length >= 4 && int.TryParse(parts[1], out var weldTaskId))
+                {
+                    _uploadTaskService.DeleteProcessParameterVirtualRow(weldTaskId, task.StationNo, task.ProductNo);
+                    ReloadActiveTasks();
+                    ShowInfo("已删除选中产品的焊点记录。");
+                }
+
+                return;
+            }
+
             if (!task.CanDelete)
             {
-                ShowWarning("该过程参数行来自产品历史，只用于查看待上传状态，不能删除。");
+                ShowWarning("该记录不可删除。");
                 return;
             }
 

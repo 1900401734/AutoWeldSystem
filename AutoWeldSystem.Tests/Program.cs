@@ -12211,6 +12211,8 @@ sealed class FakeUploadTaskService : IUploadTaskService
     public void DeleteTask(int id) { }
 
     public void HideWeldTaskUploadState(int weldTaskId) { }
+
+    public void DeleteProcessParameterVirtualRow(int weldTaskId, int stationNo, string productNo) { }
 }
 
 sealed class FakeProductionReportFileService : IProductionReportFileService

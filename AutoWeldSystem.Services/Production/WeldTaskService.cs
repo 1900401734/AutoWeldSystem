@@ -1798,4 +1798,28 @@ public class WeldTaskService : IWeldTaskService
     {
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    public void DeleteWeldTask(int id)
+    {
+        _dbContext.InitDatabase();
+        var task = _dbContext.Db.Queryable<BizWeldTask>().InSingle(id);
+        if (task is null)
+        {
+            return;
+        }
+
+        _dbContext.Db.Deleteable<BizUploadTask>()
+            .Where(ut => ut.WeldTaskId == id)
+            .ExecuteCommand();
+
+        _dbContext.Db.Deleteable<BizWeldPointRecord>()
+            .Where(r => r.TaskId == id)
+            .ExecuteCommand();
+
+        _dbContext.Db.Deleteable<BizProductionReportFile>()
+            .Where(f => f.TaskId == id)
+            .ExecuteCommand();
+
+        _dbContext.Db.Deleteable(task).ExecuteCommand();
+    }
 }

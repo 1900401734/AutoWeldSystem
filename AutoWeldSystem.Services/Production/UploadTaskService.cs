@@ -584,17 +584,13 @@ public class UploadTaskService : IUploadTaskService
         {
             _dbContext.InitDatabase();
             var task = _dbContext.Db.Queryable<BizUploadTask>().InSingle(id);
-            if (task is null || task.IsDeleted)
+            if (task is null)
             {
                 return;
             }
 
-            task.IsDeleted = true;
-            task.DeletedTime = DateTime.Now;
-            task.UpdatedTime = DateTime.Now;
-            task.Message = "Deleted from upload state page.";
-            _dbContext.Db.Updateable(task).ExecuteCommand();
             changed = ToStatusChangedEvent(task, "Deleted");
+            _dbContext.Db.Deleteable(task).ExecuteCommand();
         }
 
         PublishTaskStatusChanged(changed);
@@ -602,31 +598,50 @@ public class UploadTaskService : IUploadTaskService
 
     public void HideWeldTaskUploadState(int weldTaskId)
     {
+        // 已升级为真删除：删除工单及所有关联记录（上传任务、焊点记录、报表文件），不再只做隐藏标记。
         UploadTaskStatusChangedEventArgs? changed = null;
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
             var task = _dbContext.Db.Queryable<BizWeldTask>().InSingle(weldTaskId);
-            if (task is null || task.UploadStateHidden)
+            if (task is null)
             {
                 return;
             }
 
-            task.UploadStateHidden = true;
-            _dbContext.Db.Updateable(task)
-                .UpdateColumns(it => new { it.UploadStateHidden })
-                .Where(it => it.Id == task.Id)
+            _dbContext.Db.Deleteable<BizUploadTask>()
+                .Where(ut => ut.WeldTaskId == weldTaskId)
                 .ExecuteCommand();
+            _dbContext.Db.Deleteable<BizWeldPointRecord>()
+                .Where(r => r.TaskId == weldTaskId)
+                .ExecuteCommand();
+            _dbContext.Db.Deleteable<BizProductionReportFile>()
+                .Where(f => f.TaskId == weldTaskId)
+                .ExecuteCommand();
+            _dbContext.Db.Deleteable(task).ExecuteCommand();
 
             changed = new UploadTaskStatusChangedEventArgs
             {
-                WeldTaskId = task.Id,
+                WeldTaskId = weldTaskId,
                 TaskType = "Summary",
-                Status = "Hidden"
+                Status = "Deleted"
             };
         }
 
         PublishTaskStatusChanged(changed);
+    }
+
+    public void DeleteProcessParameterVirtualRow(int weldTaskId, int stationNo, string productNo)
+    {
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            _dbContext.Db.Deleteable<BizWeldPointRecord>()
+                .Where(r => r.TaskId == weldTaskId
+                    && r.StationNo == stationNo
+                    && r.ProductNo == productNo)
+                .ExecuteCommand();
+        }
     }
 
     private BizUploadTask? GetRetryableTask(int id)

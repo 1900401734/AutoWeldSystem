@@ -705,29 +705,27 @@ public sealed class ProgramManageService : IProgramManageService
     public Task<int> BatchDeleteLocalProgramsAsync(IEnumerable<int> programIds)
     {
         _dbContext.InitDatabase();
-        var ids = programIds.ToList();
+        var ids = programIds.Distinct().ToList();
         if (ids.Count == 0)
         {
             return Task.FromResult(0);
         }
 
         var programs = _dbContext.Db.Queryable<BizProgram>()
-            .Where(it => ids.Contains(it.Id) && !it.IsDeleted)
+            .Where(it => ids.Contains(it.Id))
             .ToList();
 
-        foreach (var p in programs)
+        if (programs.Count == 0)
         {
-            p.IsDeleted = true;
-            p.SyncAction = null;
-            p.SyncStatus = AppConstants.ProgramSyncStatus.Deleted;
-            p.SyncMessage = "用户批量清理，跳过 MES 同步。";
-            p.UpdatedTime = DateTime.Now;
-            _dbContext.Db.Updateable(p)
-                .UpdateColumns(it => new { it.IsDeleted, it.SyncAction, it.SyncStatus, it.SyncMessage, it.UpdatedTime })
-                .ExecuteCommand();
+            return Task.FromResult(0);
         }
 
-        _operationLogService.Write("ProgramBatchDelete", $"批量清理程序 {programs.Count} 个（本地删除，未同步 MES）。");
-        return Task.FromResult(programs.Count);
+        var deletedCount = _dbContext.Db.Deleteable(programs).ExecuteCommand();
+
+        _operationLogService.Write(
+            "ProgramBatchDelete",
+            $"批量删除程序：{deletedCount} 条");
+
+        return Task.FromResult(deletedCount);
     }
 }

@@ -58,7 +58,7 @@ public static class ProcessParameterUploadRowRules
             Status = status,
             IsVirtual = true,
             CanRetry = false,
-            CanDelete = false,
+            CanDelete = true,
             RetryCount = records.Sum(record => Math.Max(0, record.RetryCount)),
             MaxRetryCount = 0,
             FilePath = string.Empty,

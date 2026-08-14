@@ -111,4 +111,10 @@ public interface IWeldTaskService
     void UpdateProgramContent(string content, int stationNo = ProductionConstants.Stations.DefaultStationNo);
 
     void Reset();
+
+    /// <summary>
+    /// Deletes a weld task and all associated records (upload tasks, weld point records, report files).
+    /// </summary>
+    /// <param name="id">Weld task id.</param>
+    void DeleteWeldTask(int id);
 }
