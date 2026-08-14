@@ -178,6 +178,7 @@ var tests = new (string Name, Action Run)[]
     ("Process parameter IsTest follows global setting and device type", ProcessParameterIsTestFollowsGlobalSettingAndDeviceType),
     ("Quantity upload batches product scopes and unique task ids", QuantityUploadBatchesProductScopesAndUniqueTaskIds),
     ("Process parameter upload payload reads product scope fields", ProcessParameterUploadPayloadReadsProductScopeFields),
+    ("Finish makeup only covers products not yet uploaded", FinishMakeupOnlyCoversProductsNotYetUploaded),
     ("MES device status rules use configured MES codes", MesDeviceStatusRulesUseConfiguredMesCodes),
     ("MES device status rules convert PLC alarm transitions", MesDeviceStatusRulesConvertPlcAlarmTransitions),
     ("MES device status rules use latest device id for report", MesDeviceStatusRulesUseLatestDeviceIdForReport),
@@ -4922,6 +4923,49 @@ static void ProcessParameterUploadPayloadReadsProductScopeFields()
         ProcessParameterUploadPayloadRules.ReadProductNos(batchPayload),
         "批量 payload 的 ProductNos 必须作为批次过滤范围。");
     AssertEqual(2, ProcessParameterUploadPayloadRules.ReadStationNo(batchPayload), "批量 payload 必须保留工位过滤条件。");
+}
+
+static void FinishMakeupOnlyCoversProductsNotYetUploaded()
+{
+    // 按数量上传批次为 5：P001-P005 已成功上传，P006 仍被在途任务认领，P007-P009 是完工时的剩余未传件。
+    var records = new[]
+    {
+        BuildCompletedPoint(taskId: 9, stationNo: 1, productNo: "P001", sequenceNo: 1, uploadStatus: ProductionConstants.UploadStatuses.Uploaded),
+        BuildCompletedPoint(taskId: 9, stationNo: 1, productNo: "P002", sequenceNo: 2, uploadStatus: ProductionConstants.UploadStatuses.Uploaded),
+        BuildCompletedPoint(taskId: 9, stationNo: 1, productNo: "P003", sequenceNo: 3, uploadStatus: ProductionConstants.UploadStatuses.Uploaded),
+        BuildCompletedPoint(taskId: 9, stationNo: 1, productNo: "P004", sequenceNo: 4, uploadStatus: ProductionConstants.UploadStatuses.Uploaded),
+        BuildCompletedPoint(taskId: 9, stationNo: 1, productNo: "P005", sequenceNo: 5, uploadStatus: ProductionConstants.UploadStatuses.Uploaded),
+        BuildCompletedPoint(taskId: 9, stationNo: 1, productNo: "P006", sequenceNo: 6),
+        BuildCompletedPoint(taskId: 9, stationNo: 1, productNo: "P007", sequenceNo: 7),
+        BuildCompletedPoint(taskId: 9, stationNo: 2, productNo: "P008", sequenceNo: 8),
+        BuildCompletedPoint(taskId: 9, stationNo: 1, productNo: "P009", sequenceNo: 9, uploadStatus: ProductionConstants.UploadStatuses.Failed),
+        BuildCompletedPoint(taskId: 10, stationNo: 1, productNo: "OTHER-TASK", sequenceNo: 10)
+    };
+
+    var makeupProductNos = ProcessParameterMakeupRules.TakeMakeupProductNos(
+        records,
+        weldTaskId: 9,
+        claimedProductNos: new[] { "P006" });
+
+    AssertSequenceEqual(
+        new[] { "P007", "P008", "P009" },
+        makeupProductNos,
+        "完工补传只应包含未上传且未被在途任务认领的产品，已上传批次不得重复提交。");
+
+    var withoutClaims = ProcessParameterMakeupRules.TakeMakeupProductNos(records, weldTaskId: 9);
+    AssertSequenceEqual(
+        new[] { "P006", "P007", "P008", "P009" },
+        withoutClaims,
+        "没有在途任务时，所有未上传产品都应进入完工补传范围。");
+
+    var allUploaded = new[]
+    {
+        BuildCompletedPoint(taskId: 11, stationNo: 1, productNo: "Q001", sequenceNo: 1, uploadStatus: ProductionConstants.UploadStatuses.Uploaded)
+    };
+    AssertEqual(
+        0,
+        ProcessParameterMakeupRules.TakeMakeupProductNos(allUploaded, weldTaskId: 11).Count,
+        "全部已上传时补传范围必须为空，完工不应再创建过程参数任务。");
 }
 
 static void MesDeviceStatusRulesUseConfiguredMesCodes()
