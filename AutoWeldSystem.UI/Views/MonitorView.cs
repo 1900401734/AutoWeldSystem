@@ -1071,16 +1071,17 @@ public partial class MonitorView : BaseView
     /// <param name="text">需要显示的配方号。</param>
     /// <summary>
     /// 从主界面控件构造本次开工的工单快照（可空项允许空串）。
-    /// 产品工号/型号/配方号跟随程序，不由工单输入框覆盖。
+    /// 产品工号取自 selectProdNum 控件的实际选中值，型号/配方号跟随程序。
     /// </summary>
     private WorkOrderRes BuildAdjustedWorkOrderFromInputs(WorkOrderRes source)
     {
         var program = GetCurrentStationState().SelectedProgram;
         var localProgram = program is null ? null : ResolveLocalProgramByProgramId(program.Id);
+        var selectedProductNum = GetSelectedOfflineProductNum();
         return new WorkOrderRes
         {
             SN = inputSN.Text.Trim(),
-            ProdNum = FirstNonEmpty(program?.ProductNum, source.ProdNum),
+            ProdNum = FirstNonEmpty(selectedProductNum, source.ProdNum),
             ProdModel = FirstNonEmpty(localProgram?.ProductModel, source.ProdModel),
             Spec = inputSpec.Text.Trim(),
             Batch = inputBatch.Text.Trim(),
