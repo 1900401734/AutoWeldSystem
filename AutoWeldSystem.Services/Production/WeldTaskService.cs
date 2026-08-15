@@ -1670,6 +1670,12 @@ public class WeldTaskService : IWeldTaskService
     /// </summary>
     private IReadOnlyList<string> GetFinishMakeupProductNos(int weldTaskId)
     {
+        // 未持久化任务没有采集记录；跳过查询以支持完工排队的纯规则验证。
+        if (weldTaskId <= 0 || _dbContext is null)
+        {
+            return Array.Empty<string>();
+        }
+
         var records = _dbContext.Db.Queryable<BizWeldPointRecord>()
             .Where(record => record.TaskId == weldTaskId && record.ProductCompleted)
             .ToList();

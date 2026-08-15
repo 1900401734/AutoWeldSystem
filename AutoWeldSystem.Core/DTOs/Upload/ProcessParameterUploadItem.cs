@@ -34,15 +34,29 @@ public sealed class ProcessParameterUploadItem
     public string ProductNo { get; set; } = string.Empty;
 
     /// <summary>
-    /// Weld point number. Whole-piece inspection devices omit this field.
+    /// Weld point number. Whole-piece inspection devices use SideNo instead.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? TouchNo { get; set; } = string.Empty;
+    public string? TouchNo { get; set; }
 
     /// <summary>
-    /// Device family marker. Electromagnetic systems use EM; whole-piece systems use WP.
+    /// Inspection side number for whole-piece inspection devices.
     /// </summary>
-    public string Type { get; set; } = "EM";
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SideNo { get; set; }
+
+    /// <summary>
+    /// Device family marker. Electromagnetic systems use EM; whole-piece welding systems use WP.
+    /// Whole-piece inspection requests omit this field.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Type { get; set; }
+
+    /// <summary>
+    /// Photograph result for the current side of a whole-piece inspection.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Result { get; set; }
 
     /// <summary>
     /// Actual collection time.

@@ -1238,6 +1238,10 @@ public class UploadTaskService : IUploadTaskService
         bool showTestFlagInHistory,
         IReadOnlyList<ProcessParameterSchemeItem> schemeItems)
     {
+        var isWholePieceCheck = string.Equals(
+            deviceType,
+            ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck,
+            StringComparison.OrdinalIgnoreCase);
         var item = new ProcessParameterUploadItem
         {
             ExpStartId = record.ExpStartId,
@@ -1245,8 +1249,10 @@ public class UploadTaskService : IUploadTaskService
             SN = record.SN,
             ProcessNo = record.ProcessNo,
             ProductNo = record.ProductNo,
-            TouchNo = ShouldWriteTouchNo(deviceType) ? record.TouchNo : null,
-            Type = ResolveProcessParameterType(deviceType),
+            TouchNo = isWholePieceCheck ? null : record.TouchNo,
+            SideNo = isWholePieceCheck ? record.TouchNo : null,
+            Type = isWholePieceCheck ? null : ResolveProcessParameterType(deviceType),
+            Result = isWholePieceCheck ? record.TestResult : null,
             IsTest = ProcessParameterIsTestRules.Resolve(record.IsTest, showTestFlagInHistory, deviceType),
             Ts = record.Ts.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
         };
@@ -1337,13 +1343,12 @@ public class UploadTaskService : IUploadTaskService
             || fieldName.Equals(nameof(ProcessParameterUploadItem.ProcessNo), StringComparison.OrdinalIgnoreCase)
             || fieldName.Equals(nameof(ProcessParameterUploadItem.ProductNo), StringComparison.OrdinalIgnoreCase)
             || fieldName.Equals(nameof(ProcessParameterUploadItem.TouchNo), StringComparison.OrdinalIgnoreCase)
+            || fieldName.Equals(nameof(ProcessParameterUploadItem.SideNo), StringComparison.OrdinalIgnoreCase)
+            || fieldName.Equals(nameof(ProcessParameterUploadItem.Result), StringComparison.OrdinalIgnoreCase)
             || fieldName.Equals(nameof(ProcessParameterUploadItem.IsTest), StringComparison.OrdinalIgnoreCase)
             || fieldName.Equals(nameof(ProcessParameterUploadItem.Type), StringComparison.OrdinalIgnoreCase)
             || fieldName.Equals(nameof(ProcessParameterUploadItem.Ts), StringComparison.OrdinalIgnoreCase);
     }
-
-    private static bool ShouldWriteTouchNo(string deviceType)
-        => !string.Equals(deviceType, ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck, StringComparison.OrdinalIgnoreCase);
 
     private static string ResolveProcessParameterType(string deviceType)
         => string.Equals(deviceType, ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic, StringComparison.OrdinalIgnoreCase)
