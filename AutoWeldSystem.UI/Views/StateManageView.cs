@@ -235,6 +235,7 @@ public partial class StateManageView : BaseView
         btnDeleteSelected.Click += DeleteSelected_Click;
         tabUploadCategories.SelectedIndexChanged += (_, _) => SwitchUploadCategory();
         dgvPending.CellFormatting += DgvPending_CellFormatting;
+        dgvPending.DataError += DgvPending_DataError;
         dgvPending.KeyDown += DgvPending_KeyDown;
         GlobalContext.SessionChanged += GlobalContext_SessionChanged;
         _mesConnectionMonitor.StatusChanged += MesConnectionMonitor_StatusChanged;
@@ -821,6 +822,18 @@ public partial class StateManageView : BaseView
         return count;
     }
 
+    /// <summary>
+    /// 数据源重置过渡期内，DataGridView 内部仍按旧行数取值校验会抛越界异常；
+    /// 吞掉该异常避免弹出默认错误对话框，其余异常保留默认处理以免掩盖真实问题。
+    /// </summary>
+    private void DgvPending_DataError(object? sender, DataGridViewDataErrorEventArgs e)
+    {
+        if (e.Exception is IndexOutOfRangeException)
+        {
+            e.ThrowException = false;
+        }
+    }
+
     private void DgvPending_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
     {
         if (e.RowIndex < 0 || e.CellStyle is null)
@@ -828,7 +841,16 @@ public partial class StateManageView : BaseView
             return;
         }
 
-        var item = dgvPending.Rows[e.RowIndex].DataBoundItem;
+        // 数据源重置过渡期内 Rows[index] 可能抛越界，直接捕获跳过
+        object? item;
+        try
+        {
+            item = dgvPending.Rows[e.RowIndex].DataBoundItem;
+        }
+        catch (IndexOutOfRangeException)
+        {
+            return;
+        }
         if (item is UploadPendingSummaryRow summary)
         {
             FormatSummaryCell(summary, e);
