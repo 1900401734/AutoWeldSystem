@@ -1,4 +1,5 @@
 using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Enums;
 using AutoWeldSystem.Core.ViewModels;
 
@@ -252,39 +253,79 @@ public static class DeviceLifecycleLogRules
     }
 
     /// <summary>
-    /// Creates the lifecycle entry written once when the software starts.
+    /// 把设备状态 JSONL 记录投影为设备日志行，使设备日志页签能显示 0/1/4/5/6/7 全部状态。
+    /// 只做显示层投影，不改写设备状态原始记录和 MES 状态码。
     /// </summary>
-    public static DeviceLifecycleLogEntry CreateSoftwareStartedEntry(string deviceId, DateTime occurredTime)
+    public static DeviceLifecycleLogEntry CreateDeviceStatusEntry(BizDeviceStatusLog log)
     {
+        ArgumentNullException.ThrowIfNull(log);
+
+        var statusCode = NormalizeText(log.DeviceStatus, string.Empty);
+        var isAlarm = statusCode == ProductionConstants.MesDeviceStatuses.Exception;
+        var isRecovered = statusCode == ProductionConstants.MesDeviceStatuses.Recovered;
+        var reason = isAlarm || isRecovered
+            ? NormalizeText(log.AlarmContent, NormalizeText(log.Remark, string.Empty))
+            : string.Empty;
+        var summary = ResolveDeviceStatusSummary(statusCode, log.StatusName);
         return new DeviceLifecycleLogEntry
         {
-            OccurredTime = occurredTime,
-            Level = "Info",
-            EventType = AppConstants.DeviceLifecycleEventTypes.SoftwareStarted,
-            DeviceId = NormalizeText(deviceId, string.Empty),
-            Source = "Application",
-            Status = StatusSuccess,
-            Summary = "软件开启",
-            Detail = "AutoWeldSystem 软件已启动。"
+            TraceId = NormalizeText(log.RecordId, log.Id.ToString()),
+            OccurredTime = log.OccurredTime,
+            Level = isAlarm ? "Warning" : "Info",
+            EventType = isAlarm
+                ? AppConstants.DeviceLifecycleEventTypes.FaultAlarm
+                : isRecovered
+                    ? AppConstants.DeviceLifecycleEventTypes.FaultRecovered
+                    : AppConstants.DeviceLifecycleEventTypes.DeviceStatusReport,
+            DeviceId = NormalizeText(log.DeviceId, string.Empty),
+            StationNo = Math.Max(0, log.StationNo),
+            Source = NormalizeText(log.Source, "Software"),
+            Status = isAlarm ? StatusAlarm : isRecovered ? StatusRecovered : StatusSuccess,
+            Summary = string.IsNullOrEmpty(reason) ? summary : $"{summary}：{reason}",
+            Detail = BuildDeviceStatusDetail(log, statusCode, reason)
         };
     }
 
-    /// <summary>
-    /// Creates the lifecycle entry written once when the software is closing normally.
-    /// </summary>
-    public static DeviceLifecycleLogEntry CreateSoftwareStoppedEntry(string deviceId, DateTime occurredTime)
+    private static string ResolveDeviceStatusSummary(string statusCode, string? statusName)
     {
-        return new DeviceLifecycleLogEntry
+        return statusCode switch
         {
-            OccurredTime = occurredTime,
-            Level = "Info",
-            EventType = AppConstants.DeviceLifecycleEventTypes.SoftwareStopped,
-            DeviceId = NormalizeText(deviceId, string.Empty),
-            Source = "Application",
-            Status = StatusSuccess,
-            Summary = "软件关闭",
-            Detail = "AutoWeldSystem 软件正在关闭。"
+            ProductionConstants.MesDeviceStatuses.Stopped => "停机",
+            ProductionConstants.MesDeviceStatuses.PoweredOn => "开机",
+            ProductionConstants.MesDeviceStatuses.Exception => "故障报警",
+            ProductionConstants.MesDeviceStatuses.Recovered => "故障恢复",
+            ProductionConstants.MesDeviceStatuses.ProgramStarted => "程序执行开始",
+            ProductionConstants.MesDeviceStatuses.ProgramEnded => "程序执行结束",
+            _ => NormalizeText(statusName, $"设备状态 {NormalizeText(statusCode, "--")}")
         };
+    }
+
+    private static string BuildDeviceStatusDetail(BizDeviceStatusLog log, string statusCode, string reason)
+    {
+        var parts = new List<string>
+        {
+            $"DeviceStatus={NormalizeText(statusCode, "--")}",
+            $"StatusName={NormalizeText(log.StatusName, "--")}",
+            $"WorkOrder={NormalizeText(log.WorkOrderId, "--")}",
+            $"ReportStatus={NormalizeText(log.ReportStatus, "--")}"
+        };
+
+        if (!string.IsNullOrEmpty(reason))
+        {
+            parts.Add($"AlarmContent={reason}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(log.AlarmAddress))
+        {
+            parts.Add($"AlarmAddress={log.AlarmAddress!.Trim()}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(log.ReportMessage))
+        {
+            parts.Add($"ReportMessage={log.ReportMessage!.Trim()}");
+        }
+
+        return string.Join(", ", parts);
     }
 
     private static string NormalizeText(string? value, string fallback)

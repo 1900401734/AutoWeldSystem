@@ -70,7 +70,6 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
         }
 
         var occurredTime = DateTime.Now;
-        _logService.Write(DeviceLifecycleLogRules.CreateSoftwareStartedEntry(CurrentDeviceId, occurredTime));
         RecordSoftwareStartedStatus(occurredTime);
         RecordInitialConnectionSnapshots();
     }
@@ -96,15 +95,6 @@ public sealed class DeviceLifecycleLogCoordinator : IDeviceLifecycleLogCoordinat
         }
 
         var occurredTime = DateTime.Now;
-        try
-        {
-            _logService.Write(DeviceLifecycleLogRules.CreateSoftwareStoppedEntry(CurrentDeviceId, occurredTime));
-        }
-        catch
-        {
-            // 软件关闭状态上报比生命周期日志写入更关键，日志失败不能阻断停机状态上传。
-        }
-
         RecordSoftwareStoppedStatus(occurredTime, startupReplayCancellation, startupReplayTask);
     }
 

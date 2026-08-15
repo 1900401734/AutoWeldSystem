@@ -147,14 +147,13 @@ public static class AppConstants
     /// </summary>
     public static class DeviceLifecycleEventTypes
     {
-        public const string SoftwareStarted = "SoftwareStarted";
-        public const string SoftwareStopped = "SoftwareStopped";
         public const string SelfCheck = "SelfCheck";
         public const string RemoteAccess = "RemoteAccess";
         public const string RemoteConfigChanged = "RemoteConfigChanged";
         public const string TestProgramRunning = "TestProgramRunning";
         public const string FaultAlarm = "FaultAlarm";
         public const string FaultRecovered = "FaultRecovered";
+        public const string DeviceStatusReport = "DeviceStatusReport";
     }
 
     /// <summary>

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
@@ -56,6 +57,7 @@ public partial class LogManageView : BaseView
     private readonly List<DeviceLifecycleLogEntry> _deviceLifecycleLogs = new();
     private readonly List<BizDeviceStatusLog> _deviceStatusLogs = new();
     private readonly List<CenterInteractionLogEntry> _centerLogs = new();
+    private readonly IReadOnlyList<LogTabDefinition> _tabDefinitions = Array.Empty<LogTabDefinition>();
     private bool _initialized;
     private string _keyword = string.Empty;
     private string _productionKeyword = string.Empty;
@@ -95,6 +97,7 @@ public partial class LogManageView : BaseView
         _localizer = localizer;
 
         InitializeComponent();
+        _tabDefinitions = BuildTabDefinitions();
         ConfigureMesGrid();
         ConfigureProductionGrid();
         ConfigureExceptionGrid();
@@ -114,18 +117,14 @@ public partial class LogManageView : BaseView
         }
 
         _initialized = true;
+        ApplyTabPermissions();
         dtpMesDate.Value = DateTime.Today;
         dtpProductionDate.Value = DateTime.Today;
         dtpExceptionDate.Value = DateTime.Today;
         dtpDeviceLifecycleDate.Value = DateTime.Today;
         dtpDeviceStatusDate.Value = DateTime.Today;
         dtpCenterDate.Value = DateTime.Today;
-        LoadMesLogs();
-        LoadProductionLogs();
-        LoadExceptionLogs();
-        LoadDeviceLifecycleLogs();
-        LoadDeviceStatusLogs();
-        LoadCenterLogs();
+        LoadVisibleTabData();
     }
 
     protected override void OnVisibleChanged(EventArgs e)
@@ -147,6 +146,7 @@ public partial class LogManageView : BaseView
         }
 
         ApplyLocalizedTexts();
+        ApplyTabPermissions();
         ApplyMesGridHeaders();
         ApplyProductionGridHeaders();
         ApplyExceptionGridHeaders();
@@ -159,6 +159,58 @@ public partial class LogManageView : BaseView
         ApplyDeviceLifecycleFilter();
         ApplyDeviceStatusFilter();
         ApplyCenterFilter();
+    }
+
+    private IReadOnlyList<LogTabDefinition> BuildTabDefinitions()
+    {
+        return
+        [
+            new(tabMesLogs, PermissionCodes.Tabs.Log.MesInteraction),
+            new(tabProductionLogs, PermissionCodes.Tabs.Log.ProductionFlow),
+            new(tabExceptionLogs, PermissionCodes.Tabs.Log.ProgramException),
+            new(tabDeviceLifecycleLogs, PermissionCodes.Tabs.Log.Device),
+            new(tabDeviceStatusLogs, PermissionCodes.Tabs.Log.DeviceStatus),
+            new(tabCenterLogs, PermissionCodes.Tabs.Log.Server)
+        ];
+    }
+
+    private void ApplyTabPermissions()
+    {
+        var previousSelectedTab = tabLogCategories.SelectedTab;
+        tabLogCategories.SuspendLayout();
+        try
+        {
+            tabLogCategories.TabPages.Clear();
+            foreach (var definition in _tabDefinitions)
+            {
+                if (GlobalContext.HasPermission(definition.PermissionCode))
+                {
+                    tabLogCategories.TabPages.Add(definition.Page);
+                }
+            }
+
+            if (tabLogCategories.TabPages.Count > 0)
+            {
+                tabLogCategories.SelectedTab = previousSelectedTab is not null
+                    && tabLogCategories.TabPages.Contains(previousSelectedTab)
+                        ? previousSelectedTab
+                        : tabLogCategories.TabPages[0];
+            }
+        }
+        finally
+        {
+            tabLogCategories.ResumeLayout();
+        }
+    }
+
+    private void LoadVisibleTabData()
+    {
+        if (tabLogCategories.TabPages.Contains(tabMesLogs)) LoadMesLogs();
+        if (tabLogCategories.TabPages.Contains(tabProductionLogs)) LoadProductionLogs();
+        if (tabLogCategories.TabPages.Contains(tabExceptionLogs)) LoadExceptionLogs();
+        if (tabLogCategories.TabPages.Contains(tabDeviceLifecycleLogs)) LoadDeviceLifecycleLogs();
+        if (tabLogCategories.TabPages.Contains(tabDeviceStatusLogs)) LoadDeviceStatusLogs();
+        if (tabLogCategories.TabPages.Contains(tabCenterLogs)) LoadCenterLogs();
     }
 
     private bool IsDesignEnvironment
@@ -291,7 +343,33 @@ public partial class LogManageView : BaseView
         dgvCenterLogs.CellFormatting += DgvCenterLogs_CellFormatting;
         _centerLogService.LogWritten += CenterLogService_LogWritten;
         Disposed += (_, _) => _centerLogService.LogWritten -= CenterLogService_LogWritten;
+        GlobalContext.SessionChanged += GlobalContext_SessionChanged;
     }
+
+    protected override void OnHandleDestroyed(EventArgs e)
+    {
+        GlobalContext.SessionChanged -= GlobalContext_SessionChanged;
+        base.OnHandleDestroyed(e);
+    }
+
+    private void GlobalContext_SessionChanged(object? sender, EventArgs e)
+    {
+        if (IsDisposed || !IsHandleCreated)
+        {
+            return;
+        }
+
+        RunOnUiThread(
+            () =>
+            {
+                ApplyLocalizedTexts();
+                ApplyTabPermissions();
+                if (_initialized) LoadVisibleTabData();
+            },
+            "LogManageView.SessionChanged");
+    }
+
+    private sealed record LogTabDefinition(TabPage Page, string PermissionCode);
 
     private void ShowLogDate_CheckedChanged(object? sender, AntdUI.BoolEventArgs e)
     {
@@ -544,7 +622,8 @@ public partial class LogManageView : BaseView
         {
             var date = GetSelectedDate(dtpMesDate);
             _mesLogs.Clear();
-            _mesLogs.AddRange(_mesLogService.GetByDate(date, MaxDisplayCount));
+            _mesLogs.AddRange(_mesLogService.GetByDate(date, MaxDisplayCount)
+                .OrderByDescending(entry => entry.SendTime));
             ApplyMesFilter();
         }
         catch (Exception ex)
@@ -559,7 +638,8 @@ public partial class LogManageView : BaseView
         {
             var date = GetSelectedDate(dtpProductionDate);
             _productionLogs.Clear();
-            _productionLogs.AddRange(_productionLogService.GetByDate(date, MaxDisplayCount));
+            _productionLogs.AddRange(_productionLogService.GetByDate(date, MaxDisplayCount)
+                .OrderByDescending(entry => entry.OccurredTime));
             ApplyProductionFilter();
         }
         catch (Exception ex)
@@ -576,7 +656,8 @@ public partial class LogManageView : BaseView
             _exceptionLogs.Clear();
             _exceptionLogs.AddRange(_exceptionLogService
                 .GetByDate(date, MaxExceptionDisplayCount)
-                .Select(NormalizeLegacyPlcAlarmEntry));
+                .Select(NormalizeLegacyPlcAlarmEntry)
+                .OrderByDescending(entry => entry.OccurredTime));
             ApplyExceptionFilter();
         }
         catch (Exception ex)
@@ -590,8 +671,15 @@ public partial class LogManageView : BaseView
         try
         {
             var date = GetSelectedDate(dtpDeviceLifecycleDate);
+            // 设备日志统一展示程序自检和设备状态两类来源，按发生时间倒序排列。
+            var merged = _deviceLifecycleLogService.GetByDate(date, MaxDisplayCount)
+                .Concat(_deviceStatusService
+                    .GetLogs(date, date.AddDays(1).AddTicks(-1), MaxDisplayCount)
+                    .Select(DeviceLifecycleLogRules.CreateDeviceStatusEntry))
+                .OrderByDescending(entry => entry.OccurredTime)
+                .Take(MaxDisplayCount);
             _deviceLifecycleLogs.Clear();
-            _deviceLifecycleLogs.AddRange(_deviceLifecycleLogService.GetByDate(date, MaxDisplayCount));
+            _deviceLifecycleLogs.AddRange(merged);
             ApplyDeviceLifecycleFilter();
         }
         catch (Exception ex)
@@ -606,7 +694,9 @@ public partial class LogManageView : BaseView
         {
             var date = GetSelectedDate(dtpDeviceStatusDate);
             _deviceStatusLogs.Clear();
-            _deviceStatusLogs.AddRange(_deviceStatusService.GetLogs(date, date.AddDays(1).AddTicks(-1), MaxDisplayCount));
+            _deviceStatusLogs.AddRange(_deviceStatusService
+                .GetLogs(date, date.AddDays(1).AddTicks(-1), MaxDisplayCount)
+                .OrderByDescending(entry => entry.OccurredTime));
             ApplyDeviceStatusFilter();
         }
         catch (Exception ex)
@@ -621,7 +711,8 @@ public partial class LogManageView : BaseView
         {
             var date = GetSelectedDate(dtpCenterDate);
             _centerLogs.Clear();
-            _centerLogs.AddRange(_centerLogService.GetByDate(date, MaxDisplayCount));
+            _centerLogs.AddRange(_centerLogService.GetByDate(date, MaxDisplayCount)
+                .OrderByDescending(entry => entry.SendTime));
             ApplyCenterFilter();
         }
         catch (Exception ex)
@@ -1099,6 +1190,8 @@ public partial class LogManageView : BaseView
             {
                 LoadDeviceStatusLogs();
                 ShowDeviceStatusDetails(null);
+                // 设备状态变化同样影响设备日志页签的合并视图。
+                LoadDeviceLifecycleLogs();
             },
             "LogManageView.DeviceStatusLogsChanged");
     }
