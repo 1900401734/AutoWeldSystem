@@ -48,7 +48,28 @@ public static class RolePermissionInitializationRules
     }
 
     /// <summary>
-    /// 旧数据库首次出现页签权限目录时，为已有待上传页面权限的客户角色开放三个默认页签。
+    /// 旧数据库首次出现页签权限目录时，为已有页面权限的角色补齐对应的默认页签。
+    /// 后续启动返回空集合，因此不会重新补回管理员取消的页签。
+    /// </summary>
+    public static IReadOnlyList<string> ResolveTabUpgradeDefaults(
+        string? roleCode,
+        bool tabCatalogWasMissing,
+        bool hasParentPagePermission,
+        IEnumerable<string> upgradeDefaultTabCodes)
+    {
+        if (!tabCatalogWasMissing || !hasParentPagePermission || IsDeveloper(roleCode))
+        {
+            return Array.Empty<string>();
+        }
+
+        return (upgradeDefaultTabCodes ?? Array.Empty<string>())
+            .Where(static code => !string.IsNullOrWhiteSpace(code))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    /// <summary>
+    /// 旧数据库首次出现待上传数据页签权限目录时，为已有待上传页面权限的客户角色开放三个默认页签。
     /// 后续启动返回空集合，因此不会重新补回管理员取消的页签。
     /// </summary>
     public static IReadOnlyList<string> ResolveStateTabUpgradeDefaults(
@@ -56,12 +77,11 @@ public static class RolePermissionInitializationRules
         bool stateTabCatalogWasMissing,
         bool hasStateManagePagePermission)
     {
-        if (!stateTabCatalogWasMissing || !hasStateManagePagePermission || IsDeveloper(roleCode))
-        {
-            return Array.Empty<string>();
-        }
-
-        return PermissionCodes.Tabs.State.CustomerDefaults;
+        return ResolveTabUpgradeDefaults(
+            roleCode,
+            stateTabCatalogWasMissing,
+            hasStateManagePagePermission,
+            PermissionCodes.Tabs.State.CustomerDefaults);
     }
 
     private static bool IsDeveloper(string? roleCode)

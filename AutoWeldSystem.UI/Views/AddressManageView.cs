@@ -1,4 +1,5 @@
 using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.DTOs.Upload;
 using AutoWeldSystem.Core.DTOs.Plc;
 using AutoWeldSystem.Core.Entities;
@@ -42,6 +43,8 @@ public partial class AddressManageView : BaseView
     private readonly ILocalizationService _localizer;
     private readonly IProgramExceptionLogService _exceptionLogService;
     private readonly PlcWriteDebugLauncher _plcWriteDebugLauncher;
+    private readonly IReadOnlyList<AddressTabDefinition> _tabDefinitions;
+    private bool _applyingTabPermissions;
 
     private readonly List<BizPlcAddress> _allAddresses = new();
     private readonly List<BizPlcAlarmAddress> _alarmAddresses = new();
@@ -123,6 +126,7 @@ public partial class AddressManageView : BaseView
         _plcWriteDebugLauncher = plcWriteDebugLauncher;
 
         InitializeComponent();
+        _tabDefinitions = BuildTabDefinitions();
         ConfigureTables();
         ConfigureContextMenus();
         ConfigureSchemeDetailRoleGrid();
@@ -140,12 +144,14 @@ public partial class AddressManageView : BaseView
 
         _initialized = true;
         ApplyLocalizedTexts();
+        ApplyTabPermissions();
         LoadData();
     }
 
     protected override void OnLanguageChanged()
     {
         ApplyLocalizedTexts();
+        ApplyTabPermissions();
         ConfigureBusinessAddressColumns();
         ConfigureAlarmAddressColumns();
         ConfigureRecipeNameColumns();
@@ -156,6 +162,95 @@ public partial class AddressManageView : BaseView
         BindSchemeDetailRoleRows();
         ApplyActiveFilter(GetActiveKeyword());
     }
+
+    protected override void OnHandleDestroyed(EventArgs e)
+    {
+        GlobalContext.SessionChanged -= GlobalContext_SessionChanged;
+        base.OnHandleDestroyed(e);
+    }
+
+    private IReadOnlyList<AddressTabDefinition> BuildTabDefinitions()
+    {
+        return
+        [
+            new(tabBusinessAddresses, PermissionCodes.Tabs.Address.BusinessSignal),
+            new(tabRecipeNames, PermissionCodes.Tabs.Address.RecipeName),
+            new(tabAlarmAddresses, PermissionCodes.Tabs.Address.Alarm),
+            new(tabTestItemAddresses, PermissionCodes.Tabs.Address.ProductProcess),
+            new(tabTestSchemes, PermissionCodes.Tabs.Address.TestPlan),
+            new(tabSchemeDetails, PermissionCodes.Tabs.Address.PlanDetail),
+            new(tabTestItems, PermissionCodes.Tabs.Address.TestItemDictionary)
+        ];
+    }
+
+    private void ApplyTabPermissions()
+    {
+        var previousSelectedTab = tabAddressCategories.SelectedTab;
+        _applyingTabPermissions = true;
+        tabAddressCategories.SuspendLayout();
+        try
+        {
+            tabAddressCategories.TabPages.Clear();
+            foreach (var definition in _tabDefinitions)
+            {
+                if (GlobalContext.HasPermission(definition.PermissionCode))
+                {
+                    tabAddressCategories.TabPages.Add(definition.Page);
+                }
+            }
+
+            if (tabAddressCategories.TabPages.Count == 0)
+            {
+                SetNoVisibleTabState();
+                return;
+            }
+
+            tabAddressCategories.SelectedTab = previousSelectedTab is not null
+                && tabAddressCategories.TabPages.Contains(previousSelectedTab)
+                    ? previousSelectedTab
+                    : tabAddressCategories.TabPages[0];
+        }
+        finally
+        {
+            tabAddressCategories.ResumeLayout();
+            _applyingTabPermissions = false;
+        }
+
+        SyncActiveCommandState();
+    }
+
+    private void SetNoVisibleTabState()
+    {
+        queryAddresses.Text = string.Empty;
+        btnSave.Enabled = false;
+        btnRefresh.Enabled = false;
+        btnTest.Enabled = false;
+    }
+
+    private void GlobalContext_SessionChanged(object? sender, EventArgs e)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        if (InvokeRequired)
+        {
+            BeginInvoke(new Action(() =>
+            {
+                ApplyLocalizedTexts();
+                ApplyTabPermissions();
+                LoadData();
+            }));
+            return;
+        }
+
+        ApplyLocalizedTexts();
+        ApplyTabPermissions();
+        LoadData();
+    }
+
+    private sealed record AddressTabDefinition(TabPage Page, string PermissionCode);
 
     /// <summary>
     /// 初始化所有表格的统一外观和编辑行为。
@@ -289,13 +384,17 @@ public partial class AddressManageView : BaseView
     }
 
 
+    private ProcessParameterDeviceUiProfile DeviceUiProfile
+        => ProcessParameterDeviceUiProfile.Resolve(_appSettingsService.Get().ProcessParameterDeviceType);
+
     private void ConfigureProductProcessColumns()
     {
+        var profile = DeviceUiProfile;
         tableProcess.Columns.Clear();
         tableProcess.Columns.Add(CreateProgramProductNumColumn());
         tableProcess.Columns.Add(CreateSchemeSelectColumn(nameof(ProductProcessTableRow.SchemeId), "测试方案ID"));
         tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.StationNo), "工位(0共享)"));
-        tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.TouchCount), "焊点数量"));
+        tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.TouchCount), profile.PointCountHeader));
         tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.PointName), "采集点名称"));
         tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.PointNoHeader), "编号表头"));
         tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.PointResultHeader), "结果表头"));
@@ -459,6 +558,7 @@ public partial class AddressManageView : BaseView
         btnPreviewRecipeNames.Click += async (_, _) => await ReadRecipeNamePreviewAsync();
         queryAddresses.QueryClick += (_, keyword) => ApplyActiveFilter(keyword);
         tabAddressCategories.SelectedIndexChanged += (_, _) => SwitchActiveFilterText();
+        GlobalContext.SessionChanged += GlobalContext_SessionChanged;
 
         tableAddresses.CellClick += Table_CellClick;
         tableAddresses.CellBeginEdit += TableSelect_CellBeginEdit;
@@ -597,8 +697,8 @@ public partial class AddressManageView : BaseView
         lblBindingDetail.Text = "方案明细 ItemId";
         lblBindingItem.Text = "测试项字典 表达式";
         lblBindingPreview.Text = "PLC 地址预览";
-        lblTestItemAddressHint.Text = "维护产品工号、工位、焊点数量和 PLC 数据区布局；测试方案决定采集哪些测试项。";
-        lblProductProcessGroupHint.Text = $"分组填写：产品头保存产品级字段，焊点头按焊点头长度递增，测试项区按测试区长度递增；最终地址可通过 PLC 地址预览核对。{PlcExpressionRuleHint}";
+        lblTestItemAddressHint.Text = $"维护产品工号、工位、{DeviceUiProfile.PointCountHeader}和 PLC 数据区布局；测试方案决定采集哪些测试项。";
+        lblProductProcessGroupHint.Text = $"分组填写：产品头保存产品级字段，{DeviceUiProfile.PointName}头按{DeviceUiProfile.PointName}头长度递增，测试项区按测试区长度递增；最终地址可通过 PLC 地址预览核对。{PlcExpressionRuleHint}";
         lblSchemeDetailHint.Text = "先选择测试方案，再勾选该方案包含的测试项字段；新增测试项字典后会自动出现在树中。";
         lblSchemeDetailScheme.Text = "测试方案";
         lblTestItemHint.Text = $"维护测试项名称、单位和相对偏移表达式。{PlcExpressionRuleHint}";
@@ -736,6 +836,11 @@ public partial class AddressManageView : BaseView
 
     private void SwitchActiveFilterText()
     {
+        if (_applyingTabPermissions)
+        {
+            return;
+        }
+
         queryAddresses.Text = GetActiveKeyword();
         SyncActiveCommandState();
     }
@@ -1931,17 +2036,21 @@ public partial class AddressManageView : BaseView
         return new PlcExpressionBinding(expressionText, AppConstants.PlcDataTypes.Int16, 0, expressionText);
     }
 
-    private static string ResolvePointName(BizProductProcessConfig config)
-        => NormalizeNullableText(config.PointName) ?? "焊点";
+    private string ResolvePointName(BizProductProcessConfig config)
+        => NormalizeNullableText(config.PointName) ?? DeviceUiProfileFor(config).PointName;
 
-    private static string ResolvePointNoHeader(BizProductProcessConfig config)
-        => NormalizeNullableText(config.PointNoHeader) ?? $"{ResolvePointName(config)}序号";
+    private ProcessParameterDeviceUiProfile DeviceUiProfileFor(BizProductProcessConfig config)
+        => DeviceUiProfile;
 
-    private static string ResolvePointResultHeader(BizProductProcessConfig config)
-        => NormalizeNullableText(config.PointResultHeader) ?? $"{ResolvePointName(config)}结果";
 
-    private static string ResolvePointCountHeader(BizProductProcessConfig config)
-        => NormalizeNullableText(config.PointCountHeader) ?? $"{ResolvePointName(config)}数";
+    private string ResolvePointNoHeader(BizProductProcessConfig config)
+        => NormalizeNullableText(config.PointNoHeader) ?? $"{ResolvePointName(config)}号";
+
+    private string ResolvePointResultHeader(BizProductProcessConfig config)
+        => NormalizeNullableText(config.PointResultHeader) ?? DeviceUiProfileFor(config).PointResultHeader;
+
+    private string ResolvePointCountHeader(BizProductProcessConfig config)
+        => NormalizeNullableText(config.PointCountHeader) ?? DeviceUiProfileFor(config).PointCountHeader;
 
     private static string ResolveSchemeDetailHeader(BizSchemeDetail detail, DimTestItem item, SchemeDetailValueRole role)
         => SchemeDetailRoleRules.ResolveHeader(detail, item, role);

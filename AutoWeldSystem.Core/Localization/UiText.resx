@@ -978,17 +978,11 @@
   <data name="permission.page.address_manage" xml:space="preserve">
     <value>地址维护</value>
   </data>
-  <data name="permission.button.monitor.start_report" xml:space="preserve">
-    <value>开工上报</value>
-  </data>
-  <data name="permission.button.monitor.finish_report" xml:space="preserve">
-    <value>完工上报</value>
-  </data>
-  <data name="permission.button.monitor.edit_work_order" xml:space="preserve">
-    <value>编辑工单</value>
+  <data name="permission.button.monitor.online_report" xml:space="preserve">
+    <value>在线上报</value>
   </data>
   <data name="permission.button.monitor.local_work_order" xml:space="preserve">
-    <value>本地工单</value>
+    <value>离线开工</value>
   </data>
   <data name="permission.button.auth.switch_user" xml:space="preserve">
     <value>切换用户</value>
@@ -998,9 +992,6 @@
   </data>
   <data name="permission.button.auth.address_preview" xml:space="preserve">
     <value>PLC 地址预览</value>
-  </data>
-  <data name="permission.button.data.export" xml:space="preserve">
-    <value>导出数据</value>
   </data>
   <data name="permission.button.user.add" xml:space="preserve">
     <value>新增用户</value>
@@ -1104,6 +1095,19 @@
   <data name="permission.tab.state.program_file" xml:space="preserve">
     <value>程序文件页签</value>
   </data>
+  <data name="permission.tab.log.mes_interaction" xml:space="preserve"><value>MES交互日志</value></data>
+  <data name="permission.tab.log.production_flow" xml:space="preserve"><value>生产流程日志</value></data>
+  <data name="permission.tab.log.program_exception" xml:space="preserve"><value>程序异常日志</value></data>
+  <data name="permission.tab.log.device" xml:space="preserve"><value>设备日志</value></data>
+  <data name="permission.tab.log.device_status" xml:space="preserve"><value>设备状态日志</value></data>
+  <data name="permission.tab.log.server" xml:space="preserve"><value>服务器日志</value></data>
+  <data name="permission.tab.address.business_signal" xml:space="preserve"><value>业务信号地址</value></data>
+  <data name="permission.tab.address.recipe_name" xml:space="preserve"><value>配方名称地址</value></data>
+  <data name="permission.tab.address.alarm" xml:space="preserve"><value>报警地址</value></data>
+  <data name="permission.tab.address.product_process" xml:space="preserve"><value>产品工艺</value></data>
+  <data name="permission.tab.address.test_plan" xml:space="preserve"><value>测试方案</value></data>
+  <data name="permission.tab.address.plan_detail" xml:space="preserve"><value>方案明细</value></data>
+  <data name="permission.tab.address.test_item_dictionary" xml:space="preserve"><value>测试项字典</value></data>
   <data name="permission.button.system.save" xml:space="preserve">
     <value>保存系统设置</value>
   </data>

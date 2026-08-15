@@ -952,6 +952,7 @@ namespace AutoWeldSystem.UI.Views
             btnOnlineReport.Name = "btnOnlineReport";
             btnOnlineReport.Size = new Size(201, 38);
             btnOnlineReport.TabIndex = 3;
+            btnOnlineReport.Tag = "perm:button.monitor.online-report:enabled";
             btnOnlineReport.Text = "开工上报";
             // 
             // tlpStation

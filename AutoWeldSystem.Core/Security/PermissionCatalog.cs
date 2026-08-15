@@ -16,15 +16,12 @@ public static class PermissionCatalog
         new(PermissionCodes.Pages.SystemSetting, "System Setting", PermissionType.Page, Sort: 70),
         new(PermissionCodes.Pages.AddressManage, "Address Management", PermissionType.Page, Sort: 80),
 
-        new(PermissionCodes.Buttons.Monitor.StartReport, "Start Report", PermissionType.Button, PermissionCodes.Pages.Monitor, 120),
-        new(PermissionCodes.Buttons.Monitor.FinishReport, "Finish Report", PermissionType.Button, PermissionCodes.Pages.Monitor, 130),
-        new(PermissionCodes.Buttons.Monitor.EditWorkOrder, "Edit Work Order", PermissionType.Button, PermissionCodes.Pages.Monitor, 150),
+        new(PermissionCodes.Buttons.Monitor.OnlineReport, "Online Report", PermissionType.Button, PermissionCodes.Pages.Monitor, 120),
         new(PermissionCodes.Buttons.Monitor.LocalWorkOrder, "Local Work Order", PermissionType.Button, PermissionCodes.Pages.Monitor, 160),
         new(PermissionCodes.Buttons.Auth.SwitchUser, "Switch User", PermissionType.Button, PermissionCodes.Pages.Monitor, 170),
         new(PermissionCodes.Buttons.Auth.Logout, "Logout", PermissionType.Button, PermissionCodes.Pages.Monitor, 180),
         new(PermissionCodes.Buttons.Auth.AddressPreview, "PLC Address Preview", PermissionType.Button, PermissionCodes.Pages.Monitor, 190),
 
-        new(PermissionCodes.Buttons.Data.Export, "Export Data", PermissionType.Button, PermissionCodes.Pages.DataManage, 210),
         new(PermissionCodes.Buttons.Data.Query, "Query History", PermissionType.Button, PermissionCodes.Pages.DataManage, 220),
         new(PermissionCodes.Buttons.Data.Reset, "Reset History Filter", PermissionType.Button, PermissionCodes.Pages.DataManage, 230),
         new(PermissionCodes.Buttons.Data.OpenReport, "Open Report File", PermissionType.Button, PermissionCodes.Pages.DataManage, 240),
@@ -68,6 +65,13 @@ public static class PermissionCatalog
         new(PermissionCodes.Tabs.State.DeviceStatus, "Device Status Tab", PermissionType.Tab, PermissionCodes.Pages.StateManage, 666),
         new(PermissionCodes.Tabs.State.ProgramFile, "Program File Tab", PermissionType.Tab, PermissionCodes.Pages.StateManage, 667),
 
+        new(PermissionCodes.Tabs.Log.MesInteraction, "MES Interaction", PermissionType.Tab, PermissionCodes.Pages.LogManage, 550),
+        new(PermissionCodes.Tabs.Log.ProductionFlow, "Production Flow", PermissionType.Tab, PermissionCodes.Pages.LogManage, 551),
+        new(PermissionCodes.Tabs.Log.ProgramException, "Program Exception", PermissionType.Tab, PermissionCodes.Pages.LogManage, 552),
+        new(PermissionCodes.Tabs.Log.Device, "Device Log", PermissionType.Tab, PermissionCodes.Pages.LogManage, 553),
+        new(PermissionCodes.Tabs.Log.DeviceStatus, "Device Status Log", PermissionType.Tab, PermissionCodes.Pages.LogManage, 554),
+        new(PermissionCodes.Tabs.Log.Server, "Server Log", PermissionType.Tab, PermissionCodes.Pages.LogManage, 555),
+
         new(PermissionCodes.Buttons.SystemSetting.Save, "Save Settings", PermissionType.Button, PermissionCodes.Pages.SystemSetting, 710),
         new(PermissionCodes.Buttons.SystemSetting.ConnectPlc, "Test PLC Connection", PermissionType.Button, PermissionCodes.Pages.SystemSetting, 720),
         new(PermissionCodes.Buttons.SystemSetting.SyncDevice, "Sync Device", PermissionType.Button, PermissionCodes.Pages.SystemSetting, 740),
@@ -88,5 +92,12 @@ public static class PermissionCatalog
         new(PermissionCodes.Buttons.Address.DeleteScheme, "Delete Scheme", PermissionType.Button, PermissionCodes.Pages.AddressManage, 910),
         new(PermissionCodes.Buttons.Address.AddTestItem, "Add Test Item", PermissionType.Button, PermissionCodes.Pages.AddressManage, 920),
         new(PermissionCodes.Buttons.Address.DeleteTestItem, "Delete Test Item", PermissionType.Button, PermissionCodes.Pages.AddressManage, 930),
+        new(PermissionCodes.Tabs.Address.BusinessSignal, "Business Signal Address", PermissionType.Tab, PermissionCodes.Pages.AddressManage, 940),
+        new(PermissionCodes.Tabs.Address.RecipeName, "Recipe Name Address", PermissionType.Tab, PermissionCodes.Pages.AddressManage, 941),
+        new(PermissionCodes.Tabs.Address.Alarm, "Alarm Address", PermissionType.Tab, PermissionCodes.Pages.AddressManage, 942),
+        new(PermissionCodes.Tabs.Address.ProductProcess, "Product Process", PermissionType.Tab, PermissionCodes.Pages.AddressManage, 943),
+        new(PermissionCodes.Tabs.Address.TestPlan, "Test Plan", PermissionType.Tab, PermissionCodes.Pages.AddressManage, 944),
+        new(PermissionCodes.Tabs.Address.PlanDetail, "Plan Detail", PermissionType.Tab, PermissionCodes.Pages.AddressManage, 945),
+        new(PermissionCodes.Tabs.Address.TestItemDictionary, "Test Item Dictionary", PermissionType.Tab, PermissionCodes.Pages.AddressManage, 946),
     };
 }

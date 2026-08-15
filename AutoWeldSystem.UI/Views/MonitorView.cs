@@ -512,9 +512,7 @@ public partial class MonitorView : BaseView
             hasOfflineRunningTask);
 
         var isFinishAction = decision.OnlineReportAction == MonitorOnlineReportAction.Finish;
-        var permissionCode = isFinishAction
-            ? PermissionCodes.Buttons.Monitor.FinishReport
-            : PermissionCodes.Buttons.Monitor.StartReport;
+        var permissionCode = PermissionCodes.Buttons.Monitor.OnlineReport;
 
         btnOnlineReport.Text = _localizer.GetString(isFinishAction
             ? TextKeys.Monitor.Button.FinishReport

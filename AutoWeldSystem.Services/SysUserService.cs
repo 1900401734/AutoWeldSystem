@@ -79,8 +79,17 @@ public class SysUserService : ISysUserService
     {
         var stateTabCatalogWasMissing = !_rbacService.GetAllPermissions().Any(permission =>
             PermissionCodes.Tabs.State.All.Contains(permission.Code, StringComparer.OrdinalIgnoreCase));
+        var logTabCatalogWasMissing = !_rbacService.GetAllPermissions().Any(permission =>
+            PermissionCodes.Tabs.Log.All.Contains(permission.Code, StringComparer.OrdinalIgnoreCase));
+        var addressTabCatalogWasMissing = !_rbacService.GetAllPermissions().Any(permission =>
+            PermissionCodes.Tabs.Address.All.Contains(permission.Code, StringComparer.OrdinalIgnoreCase));
         var rolesBeforeInitialization = _rbacService.GetAllRoles()
             .ToDictionary(role => role.RoleCode, StringComparer.OrdinalIgnoreCase);
+        var rolePermissionsBeforeInitialization = rolesBeforeInitialization.Values
+            .ToDictionary(
+                role => role.RoleCode,
+                role => (IReadOnlyCollection<string>)_rbacService.GetPermissionCodesByRole(role.Id),
+                StringComparer.OrdinalIgnoreCase);
         var adminPermissionsBeforeInitialization = CaptureRolePermissionCodes(
             rolesBeforeInitialization,
             AppConstants.Roles.Admin);
@@ -90,8 +99,27 @@ public class SysUserService : ISysUserService
         RestoreConfigurableAdminPermissions(
             rolesBeforeInitialization,
             adminPermissionsBeforeInitialization,
-            stateTabCatalogWasMissing);
-        ApplyStateTabUpgradeDefaults(stateTabCatalogWasMissing, rolesBeforeInitialization);
+            stateTabCatalogWasMissing,
+            logTabCatalogWasMissing,
+            addressTabCatalogWasMissing);
+        ApplyTabUpgradeDefaults(
+            stateTabCatalogWasMissing,
+            PermissionCodes.Pages.StateManage,
+            PermissionCodes.Tabs.State.CustomerDefaults,
+            rolesBeforeInitialization,
+            rolePermissionsBeforeInitialization);
+        ApplyTabUpgradeDefaults(
+            logTabCatalogWasMissing,
+            PermissionCodes.Pages.LogManage,
+            PermissionCodes.Tabs.Log.All,
+            rolesBeforeInitialization,
+            rolePermissionsBeforeInitialization);
+        ApplyTabUpgradeDefaults(
+            addressTabCatalogWasMissing,
+            PermissionCodes.Pages.AddressManage,
+            PermissionCodes.Tabs.Address.All,
+            rolesBeforeInitialization,
+            rolePermissionsBeforeInitialization);
     }
 
     /// <summary>
@@ -113,7 +141,9 @@ public class SysUserService : ISysUserService
     private void RestoreConfigurableAdminPermissions(
         IReadOnlyDictionary<string, SysRole> rolesBeforeInitialization,
         IReadOnlyCollection<string>? permissionsBeforeInitialization,
-        bool stateTabCatalogWasMissing)
+        bool stateTabCatalogWasMissing,
+        bool logTabCatalogWasMissing,
+        bool addressTabCatalogWasMissing)
     {
         var adminRole = _rbacService.GetRoleByCode(AppConstants.Roles.Admin);
         if (adminRole is null)
@@ -134,7 +164,17 @@ public class SysUserService : ISysUserService
             var upgradeDefaults = RolePermissionInitializationRules.ResolveStateTabUpgradeDefaults(
                 AppConstants.Roles.Admin,
                 stateTabCatalogWasMissing,
-                originalCodes.Contains(PermissionCodes.Pages.StateManage, StringComparer.OrdinalIgnoreCase));
+                originalCodes.Contains(PermissionCodes.Pages.StateManage, StringComparer.OrdinalIgnoreCase))
+                .Concat(RolePermissionInitializationRules.ResolveTabUpgradeDefaults(
+                    AppConstants.Roles.Admin,
+                    logTabCatalogWasMissing,
+                    originalCodes.Contains(PermissionCodes.Pages.LogManage, StringComparer.OrdinalIgnoreCase),
+                    PermissionCodes.Tabs.Log.All))
+                .Concat(RolePermissionInitializationRules.ResolveTabUpgradeDefaults(
+                    AppConstants.Roles.Admin,
+                    addressTabCatalogWasMissing,
+                    originalCodes.Contains(PermissionCodes.Pages.AddressManage, StringComparer.OrdinalIgnoreCase),
+                    PermissionCodes.Tabs.Address.All));
             targetCodes = originalCodes
                 .Concat(upgradeDefaults)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -148,27 +188,31 @@ public class SysUserService : ISysUserService
     /// 首次增加页签权限时，为已有待上传数据页面权限的非开发、非管理员角色补充客户默认页签。
     /// 管理员已在 RestoreConfigurableAdminPermissions 中按快照单独处理。
     /// </summary>
-    private void ApplyStateTabUpgradeDefaults(
-        bool stateTabCatalogWasMissing,
-        IReadOnlyDictionary<string, SysRole> rolesBeforeInitialization)
+    private void ApplyTabUpgradeDefaults(
+        bool tabCatalogWasMissing,
+        string parentPageCode,
+        IReadOnlyCollection<string> upgradeDefaultTabCodes,
+        IReadOnlyDictionary<string, SysRole> rolesBeforeInitialization,
+        IReadOnlyDictionary<string, IReadOnlyCollection<string>> rolePermissionsBeforeInitialization)
     {
-        if (!stateTabCatalogWasMissing)
+        if (!tabCatalogWasMissing)
         {
             return;
         }
 
         foreach (var role in rolesBeforeInitialization.Values)
         {
-            if (string.Equals(role.RoleCode, AppConstants.Roles.Admin, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(role.RoleCode, AppConstants.Roles.Admin, StringComparison.OrdinalIgnoreCase)
+                || !rolePermissionsBeforeInitialization.TryGetValue(role.RoleCode, out var originalCodes))
             {
                 continue;
             }
 
-            var originalCodes = _rbacService.GetPermissionCodesByRole(role.Id);
-            var upgradeDefaults = RolePermissionInitializationRules.ResolveStateTabUpgradeDefaults(
+            var upgradeDefaults = RolePermissionInitializationRules.ResolveTabUpgradeDefaults(
                 role.RoleCode,
-                stateTabCatalogWasMissing,
-                originalCodes.Contains(PermissionCodes.Pages.StateManage, StringComparer.OrdinalIgnoreCase));
+                tabCatalogWasMissing,
+                originalCodes.Contains(parentPageCode, StringComparer.OrdinalIgnoreCase),
+                upgradeDefaultTabCodes);
             if (upgradeDefaults.Count == 0)
             {
                 continue;

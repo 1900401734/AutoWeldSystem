@@ -47,7 +47,6 @@ public static class PermissionCodes
 
         public static class Data
         {
-            public const string Export = "button.data.export";
             public const string Query = "button.data.query";
             public const string Reset = "button.data.reset";
             public const string OpenReport = "button.data.open-report";
@@ -56,9 +55,7 @@ public static class PermissionCodes
 
         public static class Monitor
         {
-            public const string StartReport = "button.monitor.start-report";
-            public const string FinishReport = "button.monitor.finish-report";
-            public const string EditWorkOrder = "button.monitor.edit-work-order";
+            public const string OnlineReport = "button.monitor.online-report";
             public const string LocalWorkOrder = "button.monitor.local-work-order";
         }
 
@@ -154,6 +151,48 @@ public static class PermissionCodes
                 WorkOrderInfo,
                 DeviceStatus,
                 ProgramFile
+            ];
+        }
+
+        public static class Log
+        {
+            public const string MesInteraction = "tab.log.mes-interaction";
+            public const string ProductionFlow = "tab.log.production-flow";
+            public const string ProgramException = "tab.log.program-exception";
+            public const string Device = "tab.log.device";
+            public const string DeviceStatus = "tab.log.device-status";
+            public const string Server = "tab.log.server";
+
+            public static IReadOnlyList<string> All { get; } =
+            [
+                MesInteraction,
+                ProductionFlow,
+                ProgramException,
+                Device,
+                DeviceStatus,
+                Server
+            ];
+        }
+
+        public static class Address
+        {
+            public const string BusinessSignal = "tab.address.business-signal";
+            public const string RecipeName = "tab.address.recipe-name";
+            public const string Alarm = "tab.address.alarm";
+            public const string ProductProcess = "tab.address.product-process";
+            public const string TestPlan = "tab.address.test-plan";
+            public const string PlanDetail = "tab.address.plan-detail";
+            public const string TestItemDictionary = "tab.address.test-item-dictionary";
+
+            public static IReadOnlyList<string> All { get; } =
+            [
+                BusinessSignal,
+                RecipeName,
+                Alarm,
+                ProductProcess,
+                TestPlan,
+                PlanDetail,
+                TestItemDictionary
             ];
         }
     }

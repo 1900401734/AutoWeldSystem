@@ -978,17 +978,11 @@
   <data name="permission.page.address_manage" xml:space="preserve">
     <value>Address Management</value>
   </data>
-  <data name="permission.button.monitor.start_report" xml:space="preserve">
-    <value>Start Report</value>
-  </data>
-  <data name="permission.button.monitor.finish_report" xml:space="preserve">
-    <value>Finish Report</value>
-  </data>
-  <data name="permission.button.monitor.edit_work_order" xml:space="preserve">
-    <value>Edit Work Order</value>
+  <data name="permission.button.monitor.online_report" xml:space="preserve">
+    <value>Online Report</value>
   </data>
   <data name="permission.button.monitor.local_work_order" xml:space="preserve">
-    <value>Local Work Order</value>
+    <value>Offline Start</value>
   </data>
   <data name="permission.button.auth.switch_user" xml:space="preserve">
     <value>Switch User</value>
@@ -998,9 +992,6 @@
   </data>
   <data name="permission.button.auth.address_preview" xml:space="preserve">
     <value>PLC Address Preview</value>
-  </data>
-  <data name="permission.button.data.export" xml:space="preserve">
-    <value>Export Data</value>
   </data>
   <data name="permission.button.user.add" xml:space="preserve">
     <value>Add User</value>
@@ -1104,6 +1095,19 @@
   <data name="permission.tab.state.program_file" xml:space="preserve">
     <value>Program File Tab</value>
   </data>
+  <data name="permission.tab.log.mes_interaction" xml:space="preserve"><value>MES Interaction Log</value></data>
+  <data name="permission.tab.log.production_flow" xml:space="preserve"><value>Production Flow Log</value></data>
+  <data name="permission.tab.log.program_exception" xml:space="preserve"><value>Program Exception Log</value></data>
+  <data name="permission.tab.log.device" xml:space="preserve"><value>Device Log</value></data>
+  <data name="permission.tab.log.device_status" xml:space="preserve"><value>Device Status Log</value></data>
+  <data name="permission.tab.log.server" xml:space="preserve"><value>Server Log</value></data>
+  <data name="permission.tab.address.business_signal" xml:space="preserve"><value>Business Signal Address</value></data>
+  <data name="permission.tab.address.recipe_name" xml:space="preserve"><value>Recipe Name Address</value></data>
+  <data name="permission.tab.address.alarm" xml:space="preserve"><value>Alarm Address</value></data>
+  <data name="permission.tab.address.product_process" xml:space="preserve"><value>Product Process</value></data>
+  <data name="permission.tab.address.test_plan" xml:space="preserve"><value>Test Plan</value></data>
+  <data name="permission.tab.address.plan_detail" xml:space="preserve"><value>Plan Detail</value></data>
+  <data name="permission.tab.address.test_item_dictionary" xml:space="preserve"><value>Test Item Dictionary</value></data>
   <data name="permission.button.system.save" xml:space="preserve">
     <value>Save Settings</value>
   </data>

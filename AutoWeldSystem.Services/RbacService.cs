@@ -24,6 +24,7 @@ public class RbacService : IRbacService
     {
         EnsureDefaultRoles();
         EnsureDefaultPermissions();
+        CleanupRetiredPermissions();
         EnsureDefaultRolePermissions();
     }
 
@@ -282,32 +283,32 @@ public class RbacService : IRbacService
             new SysRole
             {
                 RoleCode = AppConstants.Roles.Developer,
-                RoleName = "¿ª·¢Õß",
-                Description = "ÄÚÖÃÏµÍ³¿ª·¢Õß½ÇÉ«",
+                RoleName = "ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½",
+                Description = "ï¿½ï¿½ï¿½ï¿½ÏµÍ³ï¿½ï¿½ï¿½ï¿½ï¿½ß½ï¿½É«",
                 Enabled = true,
                 IsSystem = true
             },
             new SysRole
             {
                 RoleCode = AppConstants.Roles.Admin,
-                RoleName = "¹ÜÀíÔ±",
-                Description = "ÄÚÖÃÏµÍ³¹ÜÀíÔ±½ÇÉ«",
+                RoleName = "ï¿½ï¿½ï¿½ï¿½Ô±",
+                Description = "ï¿½ï¿½ï¿½ï¿½ÏµÍ³ï¿½ï¿½ï¿½ï¿½Ô±ï¿½ï¿½É«",
                 Enabled = true,
                 IsSystem = true
             },
             new SysRole
             {
                 RoleCode = AppConstants.Roles.Operator,
-                RoleName = "²Ù×÷Ô±",
-                Description = "ÄÚÖÃÏµÍ³²Ù×÷Ô±½ÇÉ«",
+                RoleName = "ï¿½ï¿½ï¿½ï¿½Ô±",
+                Description = "ï¿½ï¿½ï¿½ï¿½ÏµÍ³ï¿½ï¿½ï¿½ï¿½Ô±ï¿½ï¿½É«",
                 Enabled = true,
                 IsSystem = true
             },
             new SysRole
             {
                 RoleCode = AppConstants.Roles.Readonly,
-                RoleName = "Ö»¶ÁÓÃ»§",
-                Description = "ÄÚÖÃÏµÍ³Ö»¶Á½ÇÉ«",
+                RoleName = "Ö»ï¿½ï¿½ï¿½Ã»ï¿½",
+                Description = "ï¿½ï¿½ï¿½ï¿½ÏµÍ³Ö»ï¿½ï¿½ï¿½ï¿½É«",
                 Enabled = true,
                 IsSystem = true
             }
@@ -360,6 +361,44 @@ public class RbacService : IRbacService
         }
     }
 
+    private void CleanupRetiredPermissions()
+    {
+        var retiredCodes = new[]
+        {
+            "button.data.export",
+            "button.monitor.start-report",
+            "button.monitor.finish-report",
+            "button.monitor.edit-work-order",
+            "button.monitor.change-work-order",
+            "button.monitor.get-work-order"
+        };
+
+        var permissions = _dbContext.Db.Queryable<SysPermission>()
+            .Where(item => retiredCodes.Contains(item.Code))
+            .ToList();
+
+        if (permissions.Count == 0)
+        {
+            return;
+        }
+
+        var permissionIds = permissions.Select(item => item.Id).ToList();
+        var tran = _dbContext.Db.Ado.UseTran(() =>
+        {
+            _dbContext.Db.Deleteable<SysRolePermission>()
+                .Where(item => permissionIds.Contains(item.PermissionId))
+                .ExecuteCommand();
+            _dbContext.Db.Deleteable<SysPermission>()
+                .Where(item => permissionIds.Contains(item.Id))
+                .ExecuteCommand();
+        });
+
+        if (!tran.IsSuccess)
+        {
+            throw tran.ErrorException ?? new InvalidOperationException("CleanupRetiredPermissions failed.");
+        }
+    }
+
     private void EnsureDefaultRolePermissions()
     {
         var roles = GetAllRoles().ToDictionary(item => item.RoleCode, StringComparer.OrdinalIgnoreCase);
@@ -379,8 +418,7 @@ public class RbacService : IRbacService
                 .ToArray();
 
             if (existingCount > 0
-                && (string.Equals(role.RoleCode, AppConstants.Roles.Developer, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(role.RoleCode, AppConstants.Roles.Admin, StringComparison.OrdinalIgnoreCase)))
+                && RolePermissionInitializationRules.ShouldAppendMissingDefaults(role.RoleCode))
             {
                 AppendMissingRolePermissions(role.Id, permissionIds);
                 continue;
@@ -431,14 +469,11 @@ public class RbacService : IRbacService
                 PermissionCodes.Pages.Monitor,
                 PermissionCodes.Pages.DataManage,
                 PermissionCodes.Pages.ProgramManage,
-                PermissionCodes.Buttons.Monitor.StartReport,
-                PermissionCodes.Buttons.Monitor.FinishReport,
-                PermissionCodes.Buttons.Monitor.EditWorkOrder,
+                PermissionCodes.Buttons.Monitor.OnlineReport,
                 PermissionCodes.Buttons.Monitor.LocalWorkOrder,
                 PermissionCodes.Buttons.Auth.SwitchUser,
                 PermissionCodes.Buttons.Auth.Logout,
                 PermissionCodes.Buttons.Auth.AddressPreview,
-                PermissionCodes.Buttons.Data.Export,
                 PermissionCodes.Buttons.Data.Query,
                 PermissionCodes.Buttons.Data.Reset,
                 PermissionCodes.Buttons.Data.OpenReport,
