@@ -127,6 +127,16 @@ internal sealed class DeviceApiServerService : IDeviceApiServerService
         }
     }
 
+    private static DeviceApiResponse<T> ToResponse<T>(BasicRes<T> response)
+    {
+        return new DeviceApiResponse<T>
+        {
+            Status = response.Status,
+            Msg = response.Msg,
+            Data = response.Data
+        };
+    }
+
     private void MapEndpoints(WebApplication app)
     {
         var settings = _settingsService.Get();
@@ -138,12 +148,12 @@ internal sealed class DeviceApiServerService : IDeviceApiServerService
             try
             {
                 var deviceId = request.Query["DeviceId"].FirstOrDefault();
-                return Results.Json(_endpointService.GetDeviceStatus(deviceId));
+                return Results.Json(ToResponse(_endpointService.GetDeviceStatus(deviceId)));
             }
             catch (Exception ex)
             {
                 LogFailure(ex, "DeviceApiServer.DeviceStatus");
-                return Results.Json(Failure<DeviceStatusQueryRes>($"设备状态查询失败：{ex.Message}"));
+                return Results.Json(ToResponse(Failure<DeviceStatusQueryRes>($"设备状态查询失败：{ex.Message}")));
             }
         });
 
@@ -155,19 +165,19 @@ internal sealed class DeviceApiServerService : IDeviceApiServerService
                     cancellationToken: context.RequestAborted);
                 if (request is null)
                 {
-                    return Results.Json(Failure<DeviceIdSetRes>("请求报文不能为空"));
+                    return Results.Json(ToResponse(Failure<DeviceIdSetRes>("请求报文不能为空")));
                 }
 
-                return Results.Json(await _endpointService.SetDeviceIdAsync(request, context.RequestAborted));
+                return Results.Json(ToResponse(await _endpointService.SetDeviceIdAsync(request, context.RequestAborted)));
             }
             catch (JsonException ex)
             {
-                return Results.Json(Failure<DeviceIdSetRes>($"请求报文格式错误：{ex.Message}"));
+                return Results.Json(ToResponse(Failure<DeviceIdSetRes>($"请求报文格式错误：{ex.Message}")));
             }
             catch (Exception ex)
             {
                 LogFailure(ex, "DeviceApiServer.DeviceID");
-                return Results.Json(Failure<DeviceIdSetRes>($"设备编号设置失败：{ex.Message}"));
+                return Results.Json(ToResponse(Failure<DeviceIdSetRes>($"设备编号设置失败：{ex.Message}")));
             }
         });
     }
