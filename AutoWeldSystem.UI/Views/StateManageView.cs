@@ -398,12 +398,12 @@ public partial class StateManageView : BaseView
             return;
         }
 
-        var canDelete = dgvPending.CurrentRow?.DataBoundItem switch
-        {
-            UploadPendingSummaryRow => true,
-            UploadTaskSummary { CanDelete: true } => true,
-            _ => false
-        };
+        var selectedItems = dgvPending.SelectedRows
+            .Cast<DataGridViewRow>()
+            .Select(row => row.DataBoundItem)
+            .ToList();
+        var canDelete = selectedItems.Count > 0
+            && selectedItems.All(item => item is UploadPendingSummaryRow or UploadTaskSummary { CanDelete: true });
 
         btnDeleteSelected.Enabled = canDelete
             && GlobalContext.HasPermission(PermissionCodes.Buttons.State.Delete);
@@ -577,69 +577,64 @@ public partial class StateManageView : BaseView
             return;
         }
 
-        var selectedItem = dgvPending.CurrentRow?.DataBoundItem;
+        DeleteSelectedUploadRecords();
+    }
 
-        // 工单信息页签：硬删除工单及所有关联数据
-        if (selectedItem is UploadPendingSummaryRow summary)
+    private void DeleteSelectedUploadRecords()
+    {
+        var selectedSummaries = dgvPending.SelectedRows
+            .Cast<DataGridViewRow>()
+            .Select(row => row.DataBoundItem)
+            .OfType<UploadPendingSummaryRow>()
+            .ToList();
+        var selectedTasks = GetSelectedUploadTasks();
+        if (selectedSummaries.Count + selectedTasks.Count == 0)
         {
-            var result = MessageBox.Show(
+            ShowWarning(_localizer.GetString(TextKeys.StateManage.MessageSelectPending));
+            return;
+        }
+
+        if (selectedTasks.Any(task => !task.CanDelete))
+        {
+            ShowWarning("所选记录中包含不可删除的任务。");
+            return;
+        }
+
+        var message = selectedSummaries.Count > 0
+            ? $"确定删除选中的 {selectedSummaries.Count} 条工单信息和 {selectedTasks.Count} 条上传记录吗？\n\n警告：删除工单将同时删除其关联采集记录、上传任务和报表文件，删除后无法恢复！"
+            : $"确定删除选中的 {selectedTasks.Count} 条上传记录吗？\n\n虚拟过程参数行会同时删除对应产品的采集记录，删除后无法恢复！";
+        if (MessageBox.Show(
                 this,
-                "确定删除选中的工单信息吗？\n\n警告：将同时删除该工单的所有关联数据（焊点记录、上传任务、报表文件），删除后无法恢复！",
+                message,
                 _localizer.GetString(TextKeys.Common.TitleConfirmDelete),
                 MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning);
-            if (result != DialogResult.Yes)
-            {
-                return;
-            }
-
-            _weldTaskService.DeleteWeldTask(summary.WeldTaskId);
-            ReloadActiveTasks();
-            ShowInfo("已删除选中的工单信息及所有关联数据。");
-            return;
-        }
-
-        if (selectedItem is UploadTaskSummary task)
+                MessageBoxIcon.Warning) != DialogResult.Yes)
         {
-            // 过程参数虚拟行：删除对应的焊点记录
-            if (task.IsVirtual)
-            {
-                var result = MessageBox.Show(
-                    this,
-                    $"确定删除该产品的所有焊点记录吗？\n\n产品编号：{task.ProductNo}\n工位：{task.StationNo}\n\n警告：将删除该产品的质量追溯数据，删除后无法恢复！",
-                    _localizer.GetString(TextKeys.Common.TitleConfirmDelete),
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Warning);
-                if (result != DialogResult.Yes)
-                {
-                    return;
-                }
-
-                // BusinessId 格式："history:{taskId}:{stationNo}:{productNo}"
-                var parts = task.BusinessId.Split(':');
-                if (parts.Length >= 4 && int.TryParse(parts[1], out var weldTaskId))
-                {
-                    _uploadTaskService.DeleteProcessParameterVirtualRow(weldTaskId, task.StationNo, task.ProductNo);
-                    ReloadActiveTasks();
-                    ShowInfo("已删除选中产品的焊点记录。");
-                }
-
-                return;
-            }
-
-            if (!task.CanDelete)
-            {
-                ShowWarning("该记录不可删除。");
-                return;
-            }
-
-            _uploadTaskService.DeleteTask(task.Id);
-            ReloadActiveTasks();
-            ShowInfo("已删除选中的上传任务。");
             return;
         }
 
-        ShowWarning(_localizer.GetString(TextKeys.StateManage.MessageSelectPending));
+        foreach (var summary in selectedSummaries)
+        {
+            _weldTaskService.DeleteWeldTask(summary.WeldTaskId);
+        }
+
+        foreach (var task in selectedTasks.Where(task => task.IsVirtual))
+        {
+            var parts = task.BusinessId.Split(':');
+            if (parts.Length >= 4 && int.TryParse(parts[1], out var weldTaskId))
+            {
+                _uploadTaskService.DeleteProcessParameterVirtualRow(weldTaskId, task.StationNo, task.ProductNo);
+            }
+        }
+
+        foreach (var task in selectedTasks.Where(task => !task.IsVirtual))
+        {
+            _uploadTaskService.DeleteTask(task.Id);
+        }
+
+        ReloadActiveTasks();
+        dgvPending.ClearSelection();
+        ShowInfo($"已删除选中的 {selectedSummaries.Count + selectedTasks.Count} 条记录。");
     }
 
     /// <summary>
