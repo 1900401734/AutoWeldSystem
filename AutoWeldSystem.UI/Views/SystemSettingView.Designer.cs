@@ -1027,7 +1027,8 @@
             tlpProductConfig.RowCount = 5;
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
-            tlpProductConfig.RowStyles.Add(new RowStyle());
+            // 工位名称行必须显式 AutoSize：单工位时隐藏容器后该行需自动折叠，不能占固定高度。
+            tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             tlpProductConfig.Size = new Size(433, 195);
