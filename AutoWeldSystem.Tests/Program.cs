@@ -176,6 +176,9 @@ var tests = new (string Name, Action Run)[]
     ("Process parameter upload views only include MES targets", ProcessParameterUploadViewsOnlyIncludeMesTargets),
     ("Process parameter pending product rows are read only", ProcessParameterPendingProductRowsAreReadOnly),
     ("Process parameter IsTest follows global setting and device type", ProcessParameterIsTestFollowsGlobalSettingAndDeviceType),
+    ("Whole-piece inspection upload uses side and result fields", WholePieceInspectionUploadUsesSideAndResultFields),
+    ("Device log projects every device status code", DeviceLogProjectsEveryDeviceStatusCode),
+    ("Pending upload view deletes selected rows in batches", PendingUploadViewDeletesSelectedRowsInBatches),
     ("Quantity upload batches product scopes and unique task ids", QuantityUploadBatchesProductScopesAndUniqueTaskIds),
     ("Process parameter upload payload reads product scope fields", ProcessParameterUploadPayloadReadsProductScopeFields),
     ("Finish makeup only covers products not yet uploaded", FinishMakeupOnlyCoversProductsNotYetUploaded),
@@ -235,6 +238,8 @@ var tests = new (string Name, Action Run)[]
     ("DataManageView ignores work order selection while disposing", DataManageViewIgnoresWorkOrderSelectionWhileDisposing),
     ("DataManageView releases query cancellation sources once", DataManageViewReleasesQueryCancellationSourcesOnce),
     ("DataManageView treats cancelled history queries as stale work", DataManageViewTreatsCancelledHistoryQueriesAsStaleWork),
+    ("LogManageView loads every log tab in descending time order", LogManageViewLoadsEveryLogTabInDescendingTimeOrder),
+    ("Device API responses omit internal IsSuccess", DeviceApiResponsesOmitInternalIsSuccess),
     ("Device API status query returns current MES status", DeviceApiStatusQueryReturnsCurrentMesStatus),
     ("Device API status query rejects mismatched device id", DeviceApiStatusQueryRejectsMismatchedDeviceId),
     ("Device API set device id saves local settings as synced", DeviceApiSetDeviceIdSavesLocalSettingsAsSynced),
@@ -4835,7 +4840,7 @@ static void ProcessParameterPendingProductRowsAreReadOnly()
 
     AssertEqual(2, rows.Count, "未上传产品历史应按工位和产品编号生成过程参数只读行。");
     AssertTrue(rows.All(row => row.IsVirtual), "产品历史补充行必须标记为虚拟行。");
-    AssertTrue(rows.All(row => !row.CanRetry && !row.CanDelete), "虚拟行不能手动重试或删除。");
+    AssertTrue(rows.All(row => !row.CanRetry && row.CanDelete), "虚拟行不能重试，但必须允许删除对应的产品采集记录。");
     AssertTrue(rows.Any(row => row.ProductNo == "P001" && row.StationNo == 1), "工位 1 未上传产品应显示。");
     AssertTrue(rows.Any(row => row.ProductNo == "S2-P001" && row.StationNo == 2), "双工位未上传产品应显示。");
     AssertFalse(rows.Any(row => row.ProductNo == "P002"), "已上传产品不应再显示为待上传过程参数。");
@@ -4875,6 +4880,107 @@ static void ProcessParameterIsTestFollowsGlobalSettingAndDeviceType()
     };
     var disabledJson = JsonSerializer.Serialize(disabledItem);
     AssertFalse(disabledJson.Contains("\"IsTest\"", StringComparison.Ordinal), "全局关闭试焊件显示时不应输出 IsTest 字段。");
+}
+
+static void WholePieceInspectionUploadUsesSideAndResultFields()
+{
+    var checkItem = new ProcessParameterUploadItem
+    {
+        ExpStartId = "TASK-CHECK",
+        SideNo = "面1",
+        Result = "合格",
+        Type = null,
+        TouchNo = null
+    };
+    checkItem.DynamicFields["Symmetry"] = "对称度";
+
+    // 默认序列化会转义非 ASCII，断言改用不转义选项以稳定比对中文值。
+    var jsonOptions = new JsonSerializerOptions
+    {
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+    var checkJson = JsonSerializer.Serialize(checkItem, jsonOptions);
+    AssertTrue(checkJson.Contains("\"SideNo\":\"面1\"", StringComparison.Ordinal), "整件检测必须输出当前面号。");
+    AssertTrue(checkJson.Contains("\"Result\":\"合格\"", StringComparison.Ordinal), "整件检测必须输出当前面的拍照结果。");
+    AssertTrue(checkJson.Contains("\"Symmetry\":\"对称度\"", StringComparison.Ordinal), "整件检测动态字段必须按实际方案字段输出。");
+    AssertFalse(checkJson.Contains("\"Type\"", StringComparison.Ordinal), "整件检测不得输出 Type 字段。");
+    AssertFalse(checkJson.Contains("\"TouchNo\"", StringComparison.Ordinal), "整件检测不得输出 TouchNo 字段。");
+
+    var weldItem = new ProcessParameterUploadItem
+    {
+        TouchNo = "焊点7",
+        Type = "EM",
+        SideNo = null,
+        Result = null
+    };
+    var weldJson = JsonSerializer.Serialize(weldItem, jsonOptions);
+    AssertTrue(weldJson.Contains("\"TouchNo\":\"焊点7\"", StringComparison.Ordinal), "点焊设备必须继续输出 TouchNo。");
+    AssertTrue(weldJson.Contains("\"Type\":\"EM\"", StringComparison.Ordinal), "点焊设备必须继续输出 Type。");
+    AssertFalse(weldJson.Contains("\"SideNo\"", StringComparison.Ordinal), "点焊设备不应输出 SideNo。");
+    AssertFalse(weldJson.Contains("\"Result\"", StringComparison.Ordinal), "点焊设备不应输出整件检测 Result。");
+}
+
+static void DeviceLogProjectsEveryDeviceStatusCode()
+{
+    var expected = new (string Status, string Summary)[]
+    {
+        (ProductionConstants.MesDeviceStatuses.Stopped, "停机"),
+        (ProductionConstants.MesDeviceStatuses.PoweredOn, "开机"),
+        (ProductionConstants.MesDeviceStatuses.Exception, "故障报警"),
+        (ProductionConstants.MesDeviceStatuses.Recovered, "故障恢复"),
+        (ProductionConstants.MesDeviceStatuses.ProgramStarted, "程序执行开始"),
+        (ProductionConstants.MesDeviceStatuses.ProgramEnded, "程序执行结束")
+    };
+
+    foreach (var (status, summary) in expected)
+    {
+        var entry = DeviceLifecycleLogRules.CreateDeviceStatusEntry(new BizDeviceStatusLog
+        {
+            DeviceStatus = status,
+            StationNo = 1,
+            OccurredTime = new DateTime(2026, 8, 15, 9, 0, 0)
+        });
+        AssertEqual(summary, entry.Summary, $"设备状态 {status} 必须在设备日志显示中文摘要。");
+    }
+
+    var alarm = DeviceLifecycleLogRules.CreateDeviceStatusEntry(new BizDeviceStatusLog
+    {
+        DeviceStatus = ProductionConstants.MesDeviceStatuses.Exception,
+        AlarmAddress = "DB1.0",
+        AlarmContent = "气压不足",
+        OccurredTime = new DateTime(2026, 8, 15, 9, 1, 0)
+    });
+    AssertEqual("故障报警：气压不足", alarm.Summary, "报警摘要必须显示具体报警内容。");
+    AssertTrue(alarm.Detail.Contains("DB1.0", StringComparison.Ordinal), "报警详情必须保留报警地址。");
+    AssertEqual(AppConstants.DeviceLifecycleEventTypes.FaultAlarm, alarm.EventType, "报警状态必须映射为故障报警事件。");
+
+    var legacy = DeviceLifecycleLogRules.CreateDeviceStatusEntry(new BizDeviceStatusLog
+    {
+        DeviceStatus = ProductionConstants.MesDeviceStatuses.Exception,
+        Remark = "工位1：急停触发；",
+        OccurredTime = new DateTime(2026, 8, 15, 9, 2, 0)
+    });
+    AssertEqual("故障报警：工位1：急停触发；", legacy.Summary, "无报警内容的历史记录必须回退显示备注。");
+}
+
+static void PendingUploadViewDeletesSelectedRowsInBatches()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "StateManageView.cs"), Encoding.UTF8);
+    var deleteStart = viewCode.IndexOf("private void DeleteSelectedUploadRecords()", StringComparison.Ordinal);
+    var deleteEnd = viewCode.IndexOf("private IReadOnlyList<UploadTaskSummary> GetSelectedUploadTasks()", deleteStart, StringComparison.Ordinal);
+    AssertTrue(deleteStart >= 0 && deleteEnd > deleteStart, "待上传页必须保留批量删除实现。");
+    var deleteMethod = viewCode[deleteStart..deleteEnd];
+    var permissionMethod = ExtractMethodText(
+        viewCode,
+        "private void ApplyDeletePermissionForActiveTab()",
+        "private int GetPendingCount");
+
+    AssertTrue(deleteMethod.Contains("selectedSummaries", StringComparison.Ordinal), "批量删除必须读取所有选中的工单信息行。");
+    AssertTrue(deleteMethod.Contains("GetSelectedUploadTasks()", StringComparison.Ordinal), "批量删除必须读取所有选中的上传任务行。");
+    AssertTrue(deleteMethod.Contains("foreach (var task in selectedTasks.Where(task => task.IsVirtual))", StringComparison.Ordinal), "批量删除必须处理所有选中的虚拟过程参数行。");
+    AssertTrue(deleteMethod.Contains("foreach (var task in selectedTasks.Where(task => !task.IsVirtual))", StringComparison.Ordinal), "批量删除必须处理所有选中的普通上传任务。");
+    AssertFalse(deleteMethod.Contains("dgvPending.CurrentRow", StringComparison.Ordinal), "批量删除不能只读取当前行。");
+    AssertTrue(permissionMethod.Contains("dgvPending.SelectedRows", StringComparison.Ordinal), "删除按钮启用条件必须按选中行集合判断。");
 }
 
 static void QuantityUploadBatchesProductScopesAndUniqueTaskIds()
@@ -7316,6 +7422,38 @@ static void DataManageViewTreatsCancelledHistoryQueriesAsStaleWork()
     AssertTrue(loadCollectionMethod.Contains("if (cancellationToken.IsCancellationRequested)", StringComparison.Ordinal), "采集分页查询完成后必须检查取消状态，避免旧结果覆盖新界面。");
 }
 
+static void LogManageViewLoadsEveryLogTabInDescendingTimeOrder()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "LogManageView.cs"), Encoding.UTF8);
+    var sortCount = System.Text.RegularExpressions.Regex.Matches(
+        viewCode,
+        "OrderByDescending\\(entry => entry\\.(SendTime|OccurredTime)\\)").Count;
+    AssertTrue(sortCount >= 6, "所有日志页签必须按时间倒序加载。");
+}
+
+static void DeviceApiResponsesOmitInternalIsSuccess()
+{
+    var response = new DeviceApiResponse<DeviceStatusQueryRes>
+    {
+        Status = "S",
+        Msg = "成功",
+        Data = new DeviceStatusQueryRes { DeviceId = "D-001", DeviceStatus = "1" }
+    };
+    var json = JsonSerializer.Serialize(response, new JsonSerializerOptions
+    {
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    });
+    AssertTrue(json.Contains("\"Status\":\"S\"", StringComparison.Ordinal), "设备 API 响应必须保留 Status。");
+    AssertTrue(json.Contains("\"Msg\":\"成功\"", StringComparison.Ordinal), "设备 API 响应必须保留 Msg。");
+    AssertTrue(json.Contains("\"Data\"", StringComparison.Ordinal), "设备 API 响应必须保留 Data。");
+    AssertFalse(json.Contains("\"IsSuccess\"", StringComparison.Ordinal), "设备 API 响应不得输出内部 IsSuccess 字段。");
+
+    var serverCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Infrastructure", "DeviceApiServerService.cs"),
+        Encoding.UTF8);
+    AssertTrue(CountOccurrences(serverCode, "ToResponse(") >= 6, "DeviceStatus 和 DeviceID 的成功与失败响应都必须经过专用外层 DTO。");
+}
+
 static void DeviceApiStatusQueryReturnsCurrentMesStatus()
 {
     var settings = new FakeAppSettingsService
@@ -7621,7 +7759,7 @@ static void StateManageSummaryTabUsesWorkOrderInfoText()
     AssertTrue(viewCode.Contains("tabSummary.Text = \"工单信息\";", StringComparison.Ordinal), "语言刷新后总览页签必须保持工单信息。");
     AssertTrue(viewCode.Contains("return \"工单信息\";", StringComparison.Ordinal), "工单信息页签的统计前缀必须同步更新。");
     AssertTrue(viewCode.Contains("ShowWarning(\"工单信息请使用一键上传。\")", StringComparison.Ordinal), "工单信息页签禁用单项重试提示必须同步更新。");
-    AssertTrue(viewCode.Contains("ShowInfo(\"已从工单信息隐藏选中的任务。\")", StringComparison.Ordinal), "隐藏任务提示必须同步更新为工单信息。");
+    AssertFalse(viewCode.Contains("ShowInfo(\"已从工单信息隐藏选中的任务。\")", StringComparison.Ordinal), "删除待上传记录功能已替代隐藏任务，不应保留隐藏提示。");
     AssertFalse(viewCode.Contains("tabSummary.Text = \"上传总览\";", StringComparison.Ordinal), "运行时页签文本不应再恢复上传总览。");
     AssertFalse(viewCode.Contains("return \"上传总览\";", StringComparison.Ordinal), "统计前缀不应再使用上传总览。");
     AssertFalse(viewCode.Contains("ShowWarning(\"上传总览请使用一键上传。\")", StringComparison.Ordinal), "提示文本不应再使用上传总览。");
@@ -7752,7 +7890,7 @@ static void StateTabDefaultsKeepCustomerTabsConfigurable()
 
     var userServiceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "SysUserService.cs"), Encoding.UTF8);
     AssertTrue(userServiceCode.Contains("stateTabCatalogWasMissing", StringComparison.Ordinal), "RBAC 初始化协调必须记录页签权限目录是否为首次创建。");
-    AssertTrue(userServiceCode.Contains("ApplyStateTabUpgradeDefaults", StringComparison.Ordinal), "RBAC 初始化协调必须应用一次性客户页签升级授权。");
+    AssertTrue(userServiceCode.Contains("ApplyTabUpgradeDefaults", StringComparison.Ordinal), "RBAC 初始化协调必须应用一次性客户页签升级授权。");
     AssertTrue(userServiceCode.Contains("RestoreConfigurableAdminPermissions", StringComparison.Ordinal), "RBAC 初始化后必须恢复管理员的真实配置，避免旧补权逻辑覆盖人工设置。");
     AssertTrue(userServiceCode.Contains("RolePermissionInitializationRules.ResolveElevatedRoleDefaults", StringComparison.Ordinal), "新安装管理员必须通过统一规则生成客户默认页签权限。");
 }
@@ -8359,15 +8497,19 @@ static void DeviceLifecycleSelfCheckSummariesDescribeConnectionResult()
 
 static void DeviceLifecycleSoftwareCloseEntryRecordsSoftwareClose()
 {
-    var occurredTime = new DateTime(2026, 7, 7, 18, 30, 0);
-    var entry = DeviceLifecycleLogRules.CreateSoftwareStoppedEntry("D-001", occurredTime);
+    var rulesCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Core", "Production", "DeviceLifecycleLogRules.cs"),
+        Encoding.UTF8);
+    var coordinatorCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Log", "DeviceLifecycleLogCoordinator.cs"),
+        Encoding.UTF8);
 
-    AssertEqual(occurredTime, entry.OccurredTime, "软件关闭日志应保留实际关闭时间。");
-    AssertEqual(AppConstants.DeviceLifecycleEventTypes.SoftwareStopped, entry.EventType, "软件关闭应使用独立生命周期事件类型。");
-    AssertEqual("Application", entry.Source, "软件关闭来源应标记为应用程序。");
-    AssertEqual("Success", entry.Status, "正常关闭应写入成功状态。");
-    AssertEqual("软件关闭", entry.Summary, "设备日志摘要必须显示软件关闭。");
-    AssertTrue(entry.Detail.Contains("关闭", StringComparison.Ordinal), "详情应说明软件正在关闭或已关闭。");
+    AssertFalse(rulesCode.Contains("CreateSoftwareStartedEntry", StringComparison.Ordinal)
+        || rulesCode.Contains("CreateSoftwareStoppedEntry", StringComparison.Ordinal),
+        "设备日志不应再创建独立的软件开启或关闭事件。");
+    AssertFalse(coordinatorCode.Contains("CreateSoftwareStartedEntry", StringComparison.Ordinal)
+        || coordinatorCode.Contains("CreateSoftwareStoppedEntry", StringComparison.Ordinal),
+        "生命周期协调器必须只写入设备状态开机和停机记录。");
 }
 
 static void DeviceLifecycleCoordinatorRecordsSoftwareLifecycleStatuses()
@@ -8376,9 +8518,10 @@ static void DeviceLifecycleCoordinatorRecordsSoftwareLifecycleStatuses()
         GetRepoFilePath("AutoWeldSystem.Services", "Log", "DeviceLifecycleLogCoordinator.cs"),
         Encoding.UTF8);
 
-    AssertTrue(
-        coordinatorCode.Contains("CreateSoftwareStoppedEntry", StringComparison.Ordinal),
-        "程序关闭时必须写入“软件关闭”设备生命周期日志。");
+    AssertFalse(
+        coordinatorCode.Contains("CreateSoftwareStartedEntry", StringComparison.Ordinal)
+        || coordinatorCode.Contains("CreateSoftwareStoppedEntry", StringComparison.Ordinal),
+        "程序启动和关闭只应写入设备状态开机和停机记录，不再创建独立生命周期日志。");
     AssertTrue(
         CountOccurrences(coordinatorCode, "forceWrite: true") >= 2,
         "软件启动和关闭的设备状态日志都必须强制写入，不能被相同状态去重。");
@@ -8421,13 +8564,14 @@ static void DeviceLifecycleCoordinatorSyncsSoftwareStatusTimestamps()
         () => statusService.Logs.Any(log => log.DeviceStatus == ProductionConstants.MesDeviceStatuses.Stopped),
         "停机设备状态日志应在停止后写入。");
 
-    var softwareStarted = lifecycleLogs.Entries.Single(entry => entry.EventType == AppConstants.DeviceLifecycleEventTypes.SoftwareStarted);
     var poweredOn = statusService.Logs.Single(log => log.DeviceStatus == ProductionConstants.MesDeviceStatuses.PoweredOn);
-    var softwareStopped = lifecycleLogs.Entries.Single(entry => entry.EventType == AppConstants.DeviceLifecycleEventTypes.SoftwareStopped);
     var stopped = statusService.Logs.Single(log => log.DeviceStatus == ProductionConstants.MesDeviceStatuses.Stopped);
-
-    AssertEqual(softwareStarted.OccurredTime, poweredOn.OccurredTime, "设备日志的软件开启时间必须和设备状态开机时间一致。");
-    AssertEqual(softwareStopped.OccurredTime, stopped.OccurredTime, "设备日志的软件关闭时间必须和设备状态停机时间一致。");
+    AssertTrue(lifecycleLogs.Entries.All(entry => entry.EventType != "SoftwareStarted" && entry.EventType != "SoftwareStopped"),
+        "启动和关闭不应再产生独立的软件生命周期日志。");
+    AssertEqual("开机", DeviceLifecycleLogRules.CreateDeviceStatusEntry(poweredOn).Summary,
+        "设备状态开机摘要必须简洁显示开机。");
+    AssertEqual("停机", DeviceLifecycleLogRules.CreateDeviceStatusEntry(stopped).Summary,
+        "设备状态停机摘要必须简洁显示停机。");
 }
 
 static void DeviceLifecycleOrdersStatusProducersAroundFinalStates()
@@ -9899,8 +10043,8 @@ static void MonitorViewUsesOneOnlineReportButton()
 
     AssertFalse(designerCode.Contains("btnExpEnd", StringComparison.Ordinal), "监控页 Designer 不应再保留独立完工上报按钮。");
     AssertTrue(designerCode.Contains("btnOnlineReport", StringComparison.Ordinal), "监控页 Designer 应保留单一在线上报按钮。");
-    AssertTrue(viewCode.Contains("PermissionCodes.Buttons.Monitor.StartReport", StringComparison.Ordinal), "在线按钮开工状态必须检查开工权限。");
-    AssertTrue(viewCode.Contains("PermissionCodes.Buttons.Monitor.FinishReport", StringComparison.Ordinal), "在线按钮完工状态必须检查完工权限。");
+    AssertTrue(designerCode.Contains("perm:button.monitor.online-report:enabled", StringComparison.Ordinal), "在线上报按钮必须标记统一的在线上报权限。");
+    AssertTrue(viewCode.Contains("PermissionCodes.Buttons.Monitor.OnlineReport", StringComparison.Ordinal), "在线按钮运行时必须检查统一的在线上报权限。");
     AssertTrue(viewCode.Contains("OnlineReport_Click", StringComparison.Ordinal), "在线按钮点击入口必须统一分派开工或完工流程。");
 }
 
@@ -10338,8 +10482,10 @@ static void SystemSettingViewLocksDeviceManagementDuringActiveRuntimeTasks()
         "private static bool HasDualModeChanged");
 
     AssertTrue(
-        refreshMethod.Contains("grpDeviceConfig.Enabled = !HasAnyActiveRuntimeTask();", StringComparison.Ordinal),
-        "设备管理模块必须仅由当前软件运行态中的活动任务控制。");
+        refreshMethod.Contains("var enabled = !HasAnyActiveRuntimeTask();", StringComparison.Ordinal)
+        && refreshMethod.Contains("grpDeviceConfig.Enabled = enabled;", StringComparison.Ordinal)
+        && refreshMethod.Contains("grpMesConfig.Enabled = enabled;", StringComparison.Ordinal),
+        "设备管理和 MES 配置模块必须仅由当前软件运行态中的活动任务控制。");
     AssertTrue(
         deviceSaveGuard.Contains("!HasDeviceIdentityChanged(previousSettings, newSettings) || !HasAnyActiveRuntimeTask()", StringComparison.Ordinal),
         "设备管理保存防线必须与界面使用相同的当前运行态判断。");
