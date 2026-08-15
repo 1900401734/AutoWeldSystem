@@ -3,6 +3,7 @@ using System.Text.Json;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs.DataManagement;
 using AutoWeldSystem.Core.Interfaces;
+using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.UI.Base;
 using AutoWeldSystem.UI.Infrastructure;
 
@@ -19,6 +20,7 @@ public partial class DataManageView : BaseView
 
     private readonly IDataHistoryQueryService _historyQueryService = null!;
     private readonly ILocalizationService _localizer = null!;
+    private readonly IAppSettingsService _appSettingsService = null!;
     private CancellationTokenSource? _workOrderQueryCancellation;
     private CancellationTokenSource? _detailQueryCancellation;
     private bool _initialized;
@@ -38,10 +40,12 @@ public partial class DataManageView : BaseView
 
     public DataManageView(
         IDataHistoryQueryService historyQueryService,
-        ILocalizationService localizer)
+        ILocalizationService localizer,
+        IAppSettingsService appSettingsService)
     {
         _historyQueryService = historyQueryService;
         _localizer = localizer;
+        _appSettingsService = appSettingsService;
 
         InitializeComponent();
         ConfigureGrids();
@@ -249,6 +253,9 @@ public partial class DataManageView : BaseView
         collectionPagination.ValueChanged += CollectionPagination_ValueChanged;
         dgvWorkOrders.SelectionChanged += WorkOrders_SelectionChanged;
         dgvWeldParameters.CellFormatting += WeldParameters_CellFormatting;
+        dgvWorkOrders.CellFormatting += Status_CellFormatting;
+        dgvCollectionRecords.CellFormatting += Status_CellFormatting;
+        dgvReportFiles.CellFormatting += Status_CellFormatting;
         dgvCollectionRecords.SelectionChanged += CollectionRecords_SelectionChanged;
         dgvReportFiles.SelectionChanged += ReportFiles_SelectionChanged;
         dgvReportFiles.CellDoubleClick += (_, e) =>
@@ -579,6 +586,20 @@ public partial class DataManageView : BaseView
         e.FormattingApplied = true;
     }
 
+    private void Status_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
+    {
+        if (e.RowIndex < 0 || e.Value is not string status)
+        {
+            return;
+        }
+
+        var columnName = ((DataGridView)sender!).Columns[e.ColumnIndex].DataPropertyName;
+        e.Value = string.Equals(columnName, nameof(DataHistoryWorkOrderRow.TaskStatus), StringComparison.Ordinal)
+            ? TaskStatusDisplayRules.GetDisplayText(status)
+            : UploadStatusDisplayRules.GetDisplayText(status);
+        e.FormattingApplied = true;
+    }
+
     private void CollectionRecords_SelectionChanged(object? sender, EventArgs e)
     {
         if (_disposing || IsDisposed || Disposing)
@@ -838,17 +859,18 @@ public partial class DataManageView : BaseView
         colTaskStatus.HeaderText = T(TextKeys.DataManage.ColumnTaskStatus);
         colTaskUploadStatus.HeaderText = T(TextKeys.DataManage.ColumnUploadStatus);
 
+        var profile = ProcessParameterDeviceUiProfile.Resolve(GetProcessParameterDeviceType());
         colParameterStation.HeaderText = T(TextKeys.DataManage.ColumnStation);
         colParameterProductNo.HeaderText = T(TextKeys.DataManage.ColumnProductNo);
-        colParameterTouchNo.HeaderText = T(TextKeys.DataManage.ColumnTouchNo);
-        colParameterResult.HeaderText = T(TextKeys.DataManage.ColumnTouchResult);
+        colParameterTouchNo.HeaderText = profile.PointNoHeader;
+        colParameterResult.HeaderText = profile.PointResultHeader;
         colParameterRecordTime.HeaderText = T(TextKeys.DataManage.ColumnRecordTime);
 
         colCollectionSequence.HeaderText = T(TextKeys.DataManage.ColumnSequence);
         colCollectionStation.HeaderText = T(TextKeys.DataManage.ColumnStation);
         colCollectionProductNo.HeaderText = T(TextKeys.DataManage.ColumnProductNo);
-        colCollectionTouchNo.HeaderText = T(TextKeys.DataManage.ColumnTouchNo);
-        colCollectionResult.HeaderText = T(TextKeys.DataManage.ColumnTouchResult);
+        colCollectionTouchNo.HeaderText = profile.PointNoHeader;
+        colCollectionResult.HeaderText = profile.PointResultHeader;
         colCollectionIsTest.HeaderText = T(TextKeys.DataManage.ColumnIsTest);
         colCollectionCompleted.HeaderText = T(TextKeys.DataManage.ColumnProductCompleted);
         colCollectionUploadStatus.HeaderText = T(TextKeys.DataManage.ColumnUploadStatus);
@@ -863,10 +885,11 @@ public partial class DataManageView : BaseView
         colReportUpdatedTime.HeaderText = T(TextKeys.DataManage.ColumnUpdatedTime);
     }
 
+    private string GetProcessParameterDeviceType()
+        => _appSettingsService.Get().ProcessParameterDeviceType;
+
     private string T(string key)
-    {
-        return _localizer.GetString(key);
-    }
+        => _localizer.GetString(key);
 
     private static string FormatJsonOrOriginal(string? json)
     {
