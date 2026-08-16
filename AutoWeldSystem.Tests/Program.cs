@@ -370,7 +370,8 @@ var tests = new (string Name, Action Run)[]
     ("Program content review rejects duplicate item names", ProgramContentReviewRejectsDuplicateItemNames),
     ("LoadPrograms filters available programs by work order product number", LoadProgramsFiltersAvailableProgramsByWorkOrderProductNumber),
     ("Select list rules resolve selection by display text", SelectListRulesResolveSelectionByDisplayText),
-    ("Select list rules disambiguate duplicate display texts by event index", SelectListRulesDisambiguateDuplicateDisplayTextsByEventIndex)
+    ("Select list rules disambiguate duplicate display texts by event index", SelectListRulesDisambiguateDuplicateDisplayTextsByEventIndex),
+    ("Natural sort comparer orders product numbers numerically", NaturalSortComparerOrdersProductNumbersNumerically)
 };
 
 foreach (var test in tests)
@@ -11245,6 +11246,33 @@ static void SelectListRulesDisambiguateDuplicateDisplayTextsByEventIndex()
         0,
         SelectListRules.ResolveSelectedIndex(displayTexts, "OP10 焊接", 1),
         "事件索引与选中文本不符时应回退到首个文本匹配项。");
+}
+
+static void NaturalSortComparerOrdersProductNumbersNumerically()
+{
+    var unsorted = new[] { "P10", "P2", "P1", "P20", "P3", "P100", "P11" };
+    var sorted = unsorted.OrderBy(x => x, NaturalSortComparer.Instance).ToArray();
+
+    AssertSequenceEqual(
+        new[] { "P1", "P2", "P3", "P10", "P11", "P20", "P100" },
+        sorted,
+        "产品编号应按数字大小排序，而不是字符串字典顺序。");
+
+    var mixedPrefix = new[] { "S2-P10", "S1-P2", "S1-P10", "S2-P2" };
+    var sortedMixed = mixedPrefix.OrderBy(x => x, NaturalSortComparer.Instance).ToArray();
+
+    AssertSequenceEqual(
+        new[] { "S1-P2", "S1-P10", "S2-P2", "S2-P10" },
+        sortedMixed,
+        "带工位前缀的产品编号应先按工位排序，再按产品数字排序。");
+
+    var pureAlpha = new[] { "ABC", "ABD", "AAA" };
+    var sortedAlpha = pureAlpha.OrderBy(x => x, NaturalSortComparer.Instance).ToArray();
+
+    AssertSequenceEqual(
+        new[] { "AAA", "ABC", "ABD" },
+        sortedAlpha,
+        "纯字母字符串应保持字典顺序。");
 }
 
 static string ExtractMethodText(string source, string startMarker, string endMarker)

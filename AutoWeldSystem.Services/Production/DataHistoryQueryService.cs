@@ -209,10 +209,11 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
     {
         return _dbContext.Db.Queryable<BizWeldPointRecord>()
             .Where(record => record.TaskId == taskId)
+            .ToList()
             .OrderBy(record => record.StationNo)
-            .OrderBy(record => record.ProductNo)
-            .OrderBy(record => record.SequenceNo)
-            .OrderBy(record => record.Id)
+            .ThenBy(record => record.ProductNo, NaturalSortComparer.Instance)
+            .ThenBy(record => record.SequenceNo)
+            .ThenBy(record => record.Id)
             .ToList();
     }
 

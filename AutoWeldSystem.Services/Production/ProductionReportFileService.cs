@@ -67,7 +67,7 @@ public class ProductionReportFileService : IProductionReportFileService
             var records = _dbContext.Db.Queryable<BizWeldPointRecord>()
                 .Where(record => record.TaskId == latestTask.Id)
                 .ToList()
-                .OrderBy(record => record.ProductNo)
+                .OrderBy(record => record.ProductNo, NaturalSortComparer.Instance)
                 .ThenBy(record => record.StationNo)
                 .ThenBy(record => record.SequenceNo)
                 .ToList();

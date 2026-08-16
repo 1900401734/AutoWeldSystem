@@ -91,7 +91,7 @@ public sealed class ProductHistoryService : IProductHistoryService
         return _dbContext.Db.Queryable<BizWeldPointRecord>()
             .Where(record => record.TaskId == taskId && record.StationNo == stationNo)
             .ToList()
-            .OrderBy(record => record.ProductNo)
+            .OrderBy(record => record.ProductNo, NaturalSortComparer.Instance)
             .ThenBy(record => record.SequenceNo)
             .ThenBy(record => record.Id)
             .ToList();
