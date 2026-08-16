@@ -12,6 +12,9 @@ public class AddressService : IPlcAddressService
     private readonly object _dbLock = new();
 
     private AppSettings _appSettings;
+    // 补种完成后置 true，避免每次 GetAll/GetAddress/SaveAll 都执行数据库写操作；
+    // 双工位从关闭切换为开启时在 OnSettingsChanged 中重置，触发工位2地址的补种。
+    private volatile bool _seeded;
     private readonly SqlSugarDbContext _dbContext;
 
     private readonly IAppSettingsService _settingsService;
@@ -26,7 +29,15 @@ public class AddressService : IPlcAddressService
 
     private void OnSettingsChanged(object? sender, AppSettingsChangedEventArgs e)
     {
+        var wasDualStationEnabled = Volatile.Read(ref _appSettings).EnableDualStation;
         Interlocked.Exchange(ref _appSettings, e.CurrentSettings);
+
+        // 双工位从关闭切换为开启时才需要补种工位2地址；其余设置变更（包括过程参数设备类型）
+        // 不应触发补种检查，避免每次保存系统设置后打开地址维护页都重新执行一次数据库写操作。
+        if (!wasDualStationEnabled && e.CurrentSettings.EnableDualStation)
+        {
+            _seeded = false;
+        }
     }
 
     public IReadOnlyList<BizPlcAddress> GetAll()
@@ -175,6 +186,11 @@ public class AddressService : IPlcAddressService
 
     private void EnsureSeedData()
     {
+        if (_seeded)
+        {
+            return;
+        }
+
         _dbContext.InitDatabase();
 
         foreach (var address in BuildDefaultAddresses(_appSettings.EnableDualStation))
@@ -196,6 +212,8 @@ public class AddressService : IPlcAddressService
 
             _dbContext.Db.Insertable(address).ExecuteCommand();
         }
+
+        _seeded = true;
     }
 
     /// <summary>
