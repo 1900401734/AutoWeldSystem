@@ -133,7 +133,7 @@ public partial class AddressManageView : BaseView
         WireEvents();
     }
 
-    protected override void OnLoad(EventArgs e)
+    protected override async void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
 
@@ -145,6 +145,7 @@ public partial class AddressManageView : BaseView
         _initialized = true;
         ApplyLocalizedTexts();
         ApplyTabPermissions();
+        await RefreshProgramOptionsAsync();
         LoadData();
     }
 
@@ -166,6 +167,7 @@ public partial class AddressManageView : BaseView
     protected override void OnHandleDestroyed(EventArgs e)
     {
         GlobalContext.SessionChanged -= GlobalContext_SessionChanged;
+        _programManageService.ProgramLookupsChanged -= ProgramManageService_ProgramLookupsChanged;
         base.OnHandleDestroyed(e);
     }
 
@@ -559,6 +561,7 @@ public partial class AddressManageView : BaseView
         queryAddresses.QueryClick += (_, keyword) => ApplyActiveFilter(keyword);
         tabAddressCategories.SelectedIndexChanged += (_, _) => SwitchActiveFilterText();
         GlobalContext.SessionChanged += GlobalContext_SessionChanged;
+        _programManageService.ProgramLookupsChanged += ProgramManageService_ProgramLookupsChanged;
 
         tableAddresses.CellClick += Table_CellClick;
         tableAddresses.CellBeginEdit += TableSelect_CellBeginEdit;
@@ -712,6 +715,33 @@ public partial class AddressManageView : BaseView
         SyncActiveCommandState();
     }
 
+    private void ProgramManageService_ProgramLookupsChanged(object? sender, EventArgs e)
+    {
+        _ = RefreshProgramOptionsAsync();
+    }
+
+    private async Task RefreshProgramOptionsAsync()
+    {
+        try
+        {
+            var lookups = await _programManageService.GetProgramLookupsAsync();
+            if (IsDisposed || !IsHandleCreated)
+            {
+                return;
+            }
+
+            RunOnUiThread(() =>
+            {
+                _programOptions.Clear();
+                _programOptions.AddRange(lookups.Select(lookup => lookup.ToEntityStub()));
+            }, "AddressManageView.ProgramLookups");
+        }
+        catch (Exception ex)
+        {
+            _exceptionLogService.Write(ex, "AddressManageView.ProgramLookups");
+        }
+    }
+
     private void LoadData(bool showError = true)
     {
         try
@@ -723,8 +753,6 @@ public partial class AddressManageView : BaseView
             _alarmAddresses.Clear();
             _alarmAddresses.AddRange(_plcAlarmAddressService.GetAll());
             LoadRecipeNameConfigs();
-            _programOptions.Clear();
-            _programOptions.AddRange(_programManageService.GetPrograms());
             _testSchemes.Clear();
             _testSchemes.AddRange(_testSchemeConfigService.GetSchemes());
             _temporaryTestItemIds.Clear();

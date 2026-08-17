@@ -32,6 +32,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
     private readonly Dictionary<int, StationRecipeReconcileState> _stationStates = new();
     private readonly Dictionary<int, PlcRecipeCodeSnapshot> _recipeSnapshots = new();
     private readonly HashSet<int> _restoredTaskIds = new();
+    private IReadOnlyList<BizProgram> _localProgramSnapshot = Array.Empty<BizProgram>();
     private AppSettings _currentSettings;
     private CancellationTokenSource? _cts;
     private Task? _loopTask;
@@ -177,6 +178,9 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
     private async Task PollOnceAsync(CancellationToken cancellationToken)
     {
         var settings = CurrentSettings;
+        _localProgramSnapshot = (await _programManageService.GetProgramLookupsAsync(cancellationToken))
+            .Select(lookup => lookup.ToEntityStub())
+            .ToArray();
         var monitorStations = RecipeStationScopeRules.ResolveMonitorStations(settings.EnableDualStation);
         var activeTasks = GetRunningStationTasks(settings)
             .GroupBy(task => NormalizeStationNo(task.StationNo))
@@ -531,7 +535,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
 
     private BizProgram? ResolveLocalProgram(BizWeldTask task)
     {
-        var programs = _programManageService.GetPrograms();
+        var programs = _localProgramSnapshot;
         var programId = task.ProgramId?.Trim() ?? string.Empty;
         if (programId.StartsWith("local-", StringComparison.OrdinalIgnoreCase)
             && int.TryParse(programId["local-".Length..], out var localProgramId))

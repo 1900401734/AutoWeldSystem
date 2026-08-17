@@ -375,7 +375,8 @@ var tests = new (string Name, Action Run)[]
     ("Select list rules disambiguate duplicate display texts by event index", SelectListRulesDisambiguateDuplicateDisplayTextsByEventIndex),
     ("Natural sort comparer orders product numbers numerically", NaturalSortComparerOrdersProductNumbersNumerically),
     ("Program delete keeps MES sync off UI path", ProgramDeleteKeepsMesSyncOffUiPath),
-    ("Program manage save and dual selector paths stay asynchronous", ProgramManageSaveAndDualSelectorPathsStayAsynchronous)
+    ("Program manage save and dual selector paths stay asynchronous", ProgramManageSaveAndDualSelectorPathsStayAsynchronous),
+    ("Program lookup snapshot removes UI database queries", ProgramLookupSnapshotRemovesUiDatabaseQueries)
 };
 
 foreach (var test in tests)
@@ -11367,13 +11368,13 @@ static void ProgramDeleteKeepsMesSyncOffUiPath()
         "批量清理必须传递页面取消令牌。");
     AssertTrue(
         viewCode.Contains("await ReloadProgramsAsync()", StringComparison.Ordinal)
-            && viewCode.Contains("GetProgramsAsync", StringComparison.Ordinal),
+            && viewCode.Contains("GetProgramLookupsAsync", StringComparison.Ordinal),
         "删除完成后的程序列表刷新必须使用后台查询，不能在 UI 线程同步读取数据库。");
 
     var getProgramsAsyncBody = ExtractMethodText(
         serviceCode,
-        "public Task<IReadOnlyList<BizProgram>> GetProgramsAsync(",
-        "public IReadOnlyList<ProgramSyncSummary> GetPendingSyncPrograms()");
+        "public async Task<IReadOnlyList<ProgramLookup>> GetProgramLookupsAsync(",
+        "public Task<BizProgram?> GetProgramAsync(");
     AssertFalse(
         getProgramsAsyncBody.Contains("_mutationGate", StringComparison.Ordinal),
         "列表查询不能参与程序变更门锁，否则删除后立即刷新会形成互相等待。");
@@ -11434,6 +11435,54 @@ static void ProgramManageSaveAndDualSelectorPathsStayAsynchronous()
     AssertTrue(
         refreshGuardIndex >= 0 && refreshIndex > refreshGuardIndex,
         "设置选中配方时只能在历史选项新增后重建完整下拉列表。 ");
+}
+
+static void ProgramLookupSnapshotRemovesUiDatabaseQueries()
+{
+    var lookupCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "DTOs", "ProgramLookup.cs"), Encoding.UTF8);
+    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "ProgramManageService.cs"), Encoding.UTF8);
+    var monitorCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var programViewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.cs"), Encoding.UTF8);
+    var addressCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "AddressManageView.cs"), Encoding.UTF8);
+    var mainCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Forms", "MainForm.cs"), Encoding.UTF8);
+    var previewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductRealtimePreviewService.cs"), Encoding.UTF8);
+    var reconcileCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Plc", "RecipeCodeReconcileMonitorService.cs"), Encoding.UTF8);
+
+    AssertFalse(lookupCode.Contains("public string? ProgramContent", StringComparison.Ordinal), "轻量程序快照不得包含 ProgramContent。");
+    AssertFalse(lookupCode.Contains("public string? ProgramFile", StringComparison.Ordinal), "轻量程序快照不得包含 ProgramFile。");
+    AssertFalse(lookupCode.Contains("public string? SyncMessage", StringComparison.Ordinal), "轻量程序快照不得包含 SyncMessage。");
+
+    var queryMethod = ExtractMethodText(serviceCode, "private ProgramLookup[] QueryProgramLookups(", "private void InvalidateProgramLookups()");
+    AssertFalse(queryMethod.Contains("ProgramFile", StringComparison.Ordinal)
+        || queryMethod.Contains("ProgramContent", StringComparison.Ordinal)
+        || queryMethod.Contains("SyncMessage", StringComparison.Ordinal),
+        "轻量投影不得读取程序大字段。");
+    AssertTrue(serviceCode.Contains("_programLookupVersion", StringComparison.Ordinal)
+        && serviceCode.Contains("ProgramLookupsChanged?.Invoke", StringComparison.Ordinal),
+        "程序快照必须通过版本号防止旧查询覆盖，并在变更后通知消费者。");
+
+    foreach (var (name, source) in new[]
+    {
+        ("MonitorView", monitorCode),
+        ("ProgramManageView", programViewCode),
+        ("AddressManageView", addressCode),
+        ("MainForm", mainCode),
+        ("ProductRealtimePreviewService", previewCode),
+        ("RecipeCodeReconcileMonitorService", reconcileCode)
+    })
+    {
+        AssertFalse(source.Contains("_programManageService.GetPrograms()", StringComparison.Ordinal)
+            || source.Contains("_programService.GetPrograms()", StringComparison.Ordinal),
+            $"{name} 不得在选择或刷新路径同步查询完整程序表。");
+    }
+
+    var onlineBind = ExtractMethodText(monitorCode, "private void BindOnlineProgramNameOptions()", "private void BindProductionRuntimeState()");
+    AssertTrue(onlineBind.Contains("_localProgramSnapshot", StringComparison.Ordinal), "在线程序绑定必须复用一次加载的内存快照。");
+    AssertFalse(onlineBind.Contains("GetProgramLookupsAsync", StringComparison.Ordinal), "在线程序循环内部不得重新访问服务或数据库。");
+    AssertTrue(programViewCode.Contains("GetProgramLookupsAsync", StringComparison.Ordinal)
+        && programViewCode.Contains("GetProgramAsync", StringComparison.Ordinal)
+        && programViewCode.Contains("_detailLoadVersion", StringComparison.Ordinal),
+        "程序管理页必须使用轻量列表并按选中 ID 异步加载完整详情。");
 }
 
 static string ExtractMethodText(string source, string startMarker, string endMarker)

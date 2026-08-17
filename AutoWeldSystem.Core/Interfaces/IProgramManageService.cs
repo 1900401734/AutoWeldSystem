@@ -10,10 +10,18 @@ namespace AutoWeldSystem.Core.Interfaces;
 /// </summary>
 public interface IProgramManageService
 {
+    event EventHandler? ProgramLookupsChanged;
     IReadOnlyList<BizProgram> GetPrograms(bool includeDeleted = false);
 
     Task<IReadOnlyList<BizProgram>> GetProgramsAsync(
         bool includeDeleted = false,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<ProgramLookup>> GetProgramLookupsAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<BizProgram?> GetProgramAsync(
+        int id,
         CancellationToken cancellationToken = default);
 
     IReadOnlyList<ProgramSyncSummary> GetPendingSyncPrograms();

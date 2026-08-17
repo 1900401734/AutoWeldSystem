@@ -39,6 +39,8 @@ public partial class ProgramManageView : BaseView
     private readonly Dictionary<int, List<RecipeSelectionItem>> _recipeSelectionItems = new();
     private readonly Dictionary<int, bool> _recipeNameReadSucceeded = new();
     private int _editingId;
+    private BizProgram? _editingProgram;
+    private int _detailLoadVersion;
     private bool _initialized;
     private bool _programContentDictionaryAvailable;
     private int _recipeNameRefreshVersion;
@@ -297,9 +299,9 @@ public partial class ProgramManageView : BaseView
 
     private async Task ReloadProgramsAsync(int? selectedId = null)
     {
-        var programs = await _programService.GetProgramsAsync(cancellationToken: _operationCts.Token);
+        var programs = await _programService.GetProgramLookupsAsync(_operationCts.Token);
         _programs.Clear();
-        _programs.AddRange(programs);
+        _programs.AddRange(programs.Select(program => program.ToEntityStub()));
         ApplyProgramFilter(selectedId);
     }
 
@@ -350,6 +352,8 @@ public partial class ProgramManageView : BaseView
         // 新增状态不应继续保留列表旧行选择，否则再次点击同一行不会触发绑定。
         tablePrograms.SelectedIndex = -1;
         _editingId = 0;
+        _editingProgram = null;
+        Interlocked.Increment(ref _detailLoadVersion);
         txtProgramId.Clear();
         inputProgramName.Clear();
         inputProductNum.Clear();
@@ -365,29 +369,43 @@ public partial class ProgramManageView : BaseView
         _suppressNameAutoFill = false;
     }
 
-    private void BindProgramById(int programId)
+    private async void BindProgramById(int programId)
     {
-        var program = _programs.FirstOrDefault(item => item.Id == programId);
-        if (program is null)
+        var loadVersion = Interlocked.Increment(ref _detailLoadVersion);
+        try
         {
-            return;
-        }
+            var program = await _programService.GetProgramAsync(programId, _operationCts.Token);
+            if (program is null
+                || loadVersion != Volatile.Read(ref _detailLoadVersion)
+                || IsDisposed)
+            {
+                return;
+            }
 
-        _suppressNameAutoFill = true;
-        _editingId = program.Id;
-        txtProgramId.Text = program.ProgramId ?? string.Empty;
-        inputProgramName.Text = program.ProgramName;
-        inputProductNum.Text = program.ProductNum;
-        SetRecipeSelection(selectStation1Recipe, 1, program.RecipeCode, selectNotApplicable: true);
-        SetRecipeSelection(selectStation2Recipe, 2, program.Station2RecipeCode, selectNotApplicable: true);
-        inputComponentCode.Text = program.ComponentCode ?? string.Empty;
-        inputSequenceNumber.Text = program.SequenceNumber.ToString();
-        cmbProgramType.SelectedIndex = program.ProgramType == "1" ? 1 : 0;
-        BindRemarkText(program.Remark);
-        inputDescription.Text = program.Description ?? string.Empty;
-        BindProgramContentRows(program.ProgramContent);
-        SetCurrentProgramInfo(program);
-        _suppressNameAutoFill = false;
+            _editingProgram = program;
+            _suppressNameAutoFill = true;
+            _editingId = program.Id;
+            txtProgramId.Text = program.ProgramId ?? string.Empty;
+            inputProgramName.Text = program.ProgramName;
+            inputProductNum.Text = program.ProductNum;
+            SetRecipeSelection(selectStation1Recipe, 1, program.RecipeCode, selectNotApplicable: true);
+            SetRecipeSelection(selectStation2Recipe, 2, program.Station2RecipeCode, selectNotApplicable: true);
+            inputComponentCode.Text = program.ComponentCode ?? string.Empty;
+            inputSequenceNumber.Text = program.SequenceNumber.ToString();
+            cmbProgramType.SelectedIndex = program.ProgramType == "1" ? 1 : 0;
+            BindRemarkText(program.Remark);
+            inputDescription.Text = program.Description ?? string.Empty;
+            BindProgramContentRows(program.ProgramContent);
+            SetCurrentProgramInfo(program);
+            _suppressNameAutoFill = false;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            ShowErrorMessage(ex.Message);
+        }
     }
 
     private void UpdateCurrentInfoText()
@@ -398,7 +416,8 @@ public partial class ProgramManageView : BaseView
             return;
         }
 
-        if (_programs.FirstOrDefault(program => program.Id == _editingId) is { } program)
+        var program = GetEditingProgram() ?? _programs.FirstOrDefault(item => item.Id == _editingId);
+        if (program is not null)
         {
             SetCurrentProgramInfo(program);
         }
@@ -746,7 +765,7 @@ public partial class ProgramManageView : BaseView
 
     private BizProgram? GetEditingProgram()
     {
-        return _programs.FirstOrDefault(program => program.Id == _editingId);
+        return _editingProgram?.Id == _editingId ? _editingProgram : null;
     }
 
     private string ResolveEditedMesRemark(BizProgram? editingProgram)

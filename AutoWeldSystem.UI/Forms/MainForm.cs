@@ -719,9 +719,12 @@ public partial class MainForm : BaseWindow
             : null;
     }
 
-    private void AddressPreview_Click(object? sender, EventArgs e)
+    private async void AddressPreview_Click(object? sender, EventArgs e)
     {
-        var rows = BuildCurrentAddressPreviewRows();
+        var localPrograms = (await _programManageService.GetProgramLookupsAsync())
+            .Select(lookup => lookup.ToEntityStub())
+            .ToArray();
+        var rows = BuildCurrentAddressPreviewRows(localPrograms);
         using var form = new AddressPreviewForm(rows, _plcExpressionReadService, _localizer, _plcWriteDebugLauncher);
         form.ShowDialog(this);
     }
@@ -751,10 +754,10 @@ public partial class MainForm : BaseWindow
     /// <summary>
     /// 主窗体统一负责生成 PLC 地址预览行，避免再依赖 MonitorView 的私有界面状态。
     /// </summary>
-    private IReadOnlyList<PlcAddressPreviewRow> BuildCurrentAddressPreviewRows()
+    private IReadOnlyList<PlcAddressPreviewRow> BuildCurrentAddressPreviewRows(IReadOnlyList<BizProgram> localPrograms)
     {
         var stationNo = CurrentStationNo;
-        var identity = ResolveCurrentPreviewIdentity(stationNo);
+        var identity = ResolveCurrentPreviewIdentity(stationNo, localPrograms);
         if (identity is null || string.IsNullOrWhiteSpace(identity.ProductNum))
         {
             return new[]
@@ -872,7 +875,7 @@ public partial class MainForm : BaseWindow
     /// <summary>
     /// 优先使用实时预览服务已缓存的产品身份，缓存不存在时再回退到当前生产运行态。
     /// </summary>
-    private ProductIdentity? ResolveCurrentPreviewIdentity(int stationNo)
+    private ProductIdentity? ResolveCurrentPreviewIdentity(int stationNo, IReadOnlyList<BizProgram> localPrograms)
     {
         var snapshot = _productRealtimePreviewService.GetCurrent(stationNo);
         if (snapshot is not null && !string.IsNullOrWhiteSpace(snapshot.ProductNum))
@@ -884,10 +887,10 @@ public partial class MainForm : BaseWindow
                 "RealtimePreview");
         }
 
-        return ResolveOnlineProductIdentity(stationNo);
+        return ResolveOnlineProductIdentity(stationNo, localPrograms);
     }
 
-    private ProductIdentity? ResolveOnlineProductIdentity(int stationNo)
+    private ProductIdentity? ResolveOnlineProductIdentity(int stationNo, IReadOnlyList<BizProgram> localPrograms)
     {
         var state = _weldTaskService.CurrentState;
         var selectedProgram = state.CurrentStationNo == stationNo ? state.SelectedProgram : null;
@@ -902,8 +905,8 @@ public partial class MainForm : BaseWindow
         }
 
         var localProgram = selectedProgram is not null
-            ? ResolveLocalProgram(selectedProgram)
-            : ResolveLocalProgramById(activeTask?.ProgramId, activeTask?.DeviceId);
+            ? ResolveLocalProgram(selectedProgram, localPrograms)
+            : ResolveLocalProgramById(activeTask?.ProgramId, activeTask?.DeviceId, localPrograms);
         if (!string.IsNullOrWhiteSpace(localProgram?.ProductNum))
         {
             return new ProductIdentity(
@@ -963,13 +966,12 @@ public partial class MainForm : BaseWindow
             .ToList();
     }
 
-    private BizProgram? ResolveLocalProgram(ProgramDataRes program)
+    private BizProgram? ResolveLocalProgram(ProgramDataRes program, IReadOnlyList<BizProgram> localPrograms)
     {
-        var localPrograms = _programManageService.GetPrograms();
         var programId = program.Id?.Trim() ?? string.Empty;
         if (!string.IsNullOrWhiteSpace(programId))
         {
-            var byMesProgramId = ResolveLocalProgramById(programId);
+            var byMesProgramId = ResolveLocalProgramById(programId, null, localPrograms);
             if (byMesProgramId is not null)
             {
                 return byMesProgramId;
@@ -981,7 +983,7 @@ public partial class MainForm : BaseWindow
             && string.Equals(item.ProductNum?.Trim(), program.ProductNum?.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 
-    private BizProgram? ResolveLocalProgramById(string? programId, string? deviceId = null)
+    private BizProgram? ResolveLocalProgramById(string? programId, string? deviceId, IReadOnlyList<BizProgram> localPrograms)
     {
         var normalizedProgramId = programId?.Trim();
         if (string.IsNullOrWhiteSpace(normalizedProgramId))
@@ -989,7 +991,7 @@ public partial class MainForm : BaseWindow
             return null;
         }
 
-        return _programManageService.GetPrograms()
+        return localPrograms
             .Where(program => string.Equals(program.ProgramId?.Trim(), normalizedProgramId, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(program => SameText(program.DeviceId, deviceId))
             .ThenByDescending(program => program.UpdatedTime)
