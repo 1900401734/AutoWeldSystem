@@ -11338,6 +11338,9 @@ static void ProgramManageSaveAndDualSelectorPathsStayAsynchronous()
     var viewCode = File.ReadAllText(
         GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.cs"),
         Encoding.UTF8);
+    var designerCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.Designer.cs"),
+        Encoding.UTF8);
     var serviceCode = File.ReadAllText(
         GetRepoFilePath("AutoWeldSystem.Services", "ProgramManageService.cs"),
         Encoding.UTF8);
@@ -11352,6 +11355,13 @@ static void ProgramManageSaveAndDualSelectorPathsStayAsynchronous()
             && viewCode.Contains("CreateLinkedTokenSource(_operationCts.Token)", StringComparison.Ordinal)
             && viewCode.Contains("SetRecipeSelectorItems", StringComparison.Ordinal),
         "双工位配方刷新必须有页面取消、总时限和选择器去重绑定。 ");
+    AssertTrue(
+        designerCode.Contains("_operationCts?.Cancel();", StringComparison.Ordinal)
+            && designerCode.Contains("_operationCts?.Dispose();", StringComparison.Ordinal),
+        "页面销毁时必须由 Designer Dispose 统一取消并释放操作令牌。 ");
+    AssertFalse(
+        viewCode.Contains("protected override void OnHandleDestroyed(EventArgs e)", StringComparison.Ordinal),
+        "运行时代码不得再次释放操作令牌，避免与 Designer Dispose 重复释放。 ");
     AssertTrue(
         serviceCode.Contains("SaveWithSyncDecisionCore", StringComparison.Ordinal)
             && serviceCode.Contains("GetNextSequenceNumberAsync", StringComparison.Ordinal),

@@ -96,12 +96,6 @@ public partial class ProgramManageView : BaseView
         }
     }
 
-    protected override void OnHandleDestroyed(EventArgs e)
-    {
-        _operationCts.Cancel();
-        _operationCts.Dispose();
-        base.OnHandleDestroyed(e);
-    }
 
     protected override void OnLanguageChanged()
     {
