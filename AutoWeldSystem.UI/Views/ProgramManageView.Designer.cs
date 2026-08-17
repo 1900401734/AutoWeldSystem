@@ -516,6 +516,7 @@
             tlpProgramType.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tlpProgramType.Size = new Size(445, 1);
             tlpProgramType.TabIndex = 3;
+            tlpProgramType.Visible = false;
             // 
             // lblProgramType
             // 

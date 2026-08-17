@@ -860,8 +860,8 @@ public partial class ProgramManageView : BaseView
     {
         _enableDualStation = enableDualStation;
         tlpStation2RecipeCode.Visible = enableDualStation;
-        editorLayout.RowStyles[8].SizeType = SizeType.Absolute;
-        editorLayout.RowStyles[8].Height = enableDualStation ? 44F : 0F;
+        editorLayout.RowStyles[7].SizeType = SizeType.Absolute;
+        editorLayout.RowStyles[7].Height = enableDualStation ? 44F : 0F;
     }
 
     private void BindRecipeNameOptions(
