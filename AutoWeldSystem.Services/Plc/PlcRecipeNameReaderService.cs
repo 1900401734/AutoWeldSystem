@@ -17,7 +17,9 @@ public sealed class PlcRecipeNameReaderService(
         int stationNo,
         CancellationToken cancellationToken = default)
     {
-        var config = configService.GetForStation(stationNo);
+        var config = await Task.Run(
+            () => configService.GetForStation(stationNo),
+            cancellationToken);
         if (config is null)
         {
             return FailedResult(stationNo, "当前工位未配置 PLC 配方名称地址。");

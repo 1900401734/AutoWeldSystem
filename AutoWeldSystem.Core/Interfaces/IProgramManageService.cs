@@ -25,6 +25,10 @@ public interface IProgramManageService
     /// </summary>
     int GetNextSequenceNumber(string productNum);
 
+    Task<int> GetNextSequenceNumberAsync(
+        string productNum,
+        CancellationToken cancellationToken = default);
+
     Task<BizProgram> SaveAsync(SaveProgramReq request, bool syncNow, CancellationToken cancellationToken = default);
 
     Task<SaveProgramResult> SaveWithSyncDecisionAsync(SaveProgramReq request, CancellationToken cancellationToken = default);

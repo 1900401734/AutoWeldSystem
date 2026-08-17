@@ -8,6 +8,8 @@ namespace AutoWeldSystem.Core.Plc;
 /// </summary>
 public static class PlcRecipeNameConfigRules
 {
+    public const int MaxRecipeCount = 64;
+
     /// <summary>
     /// 复制、清理并校验配置，避免界面对象在保存过程中被直接修改。
     /// </summary>
@@ -67,6 +69,11 @@ public static class PlcRecipeNameConfigRules
         if (config.RecipeCount <= 0)
         {
             throw new InvalidOperationException("配方数量必须大于 0。");
+        }
+
+        if (config.RecipeCount > MaxRecipeCount)
+        {
+            throw new InvalidOperationException($"配方数量不能超过 {MaxRecipeCount}。");
         }
 
         if (config.AddressOffset <= 0)

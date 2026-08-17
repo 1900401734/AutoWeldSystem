@@ -1,6 +1,6 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v1.8.2`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v1.8.6`。
 
 ## 功能概览
 
@@ -142,6 +142,7 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 - MES 下载的程序不会携带本机 PLC 配方映射；下载后需在程序管理中选择对应工位的 PLC 配方名称并保存，完成前该程序不会出现在相应工位的可生产列表中。
 - PLC 调整配方槽位顺序、名称或地址后，系统不会按名称自动迁移历史关联。请先在地址维护确认新映射，再到程序管理重新选择名称并保存。
 - 数字配方号仅在地址维护映射和日志诊断中保留，供配置确认和现场排障使用。
+- 每个工位最多配置 64 个 PLC 配方名称槽位；配方名称刷新有单工位 10 秒时限，读取失败或超时不会阻塞程序管理页面的新增、删除和批量清理操作。
 
 ## 离线开工产品工号选择
 
@@ -206,10 +207,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>1.8.2</Version>
-<AssemblyVersion>1.8.2.0</AssemblyVersion>
-<FileVersion>1.8.2.0</FileVersion>
-<InformationalVersion>1.8.2</InformationalVersion>
+<Version>1.8.6</Version>
+<AssemblyVersion>1.8.6.0</AssemblyVersion>
+<FileVersion>1.8.6.0</FileVersion>
+<InformationalVersion>1.8.6</InformationalVersion>
 ```
 
 建议使用语义化版本：

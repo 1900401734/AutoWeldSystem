@@ -66,7 +66,15 @@ public sealed class ProgramManageService : IProgramManageService
         bool includeDeleted = false,
         CancellationToken cancellationToken = default)
     {
-        return Task.Run(() => GetPrograms(includeDeleted), CancellationToken.None);
+        return Task.Run(
+            () =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var programs = GetPrograms(includeDeleted);
+                cancellationToken.ThrowIfCancellationRequested();
+                return programs;
+            },
+            cancellationToken);
     }
 
     public IReadOnlyList<ProgramSyncSummary> GetPendingSyncPrograms()
@@ -115,6 +123,19 @@ public sealed class ProgramManageService : IProgramManageService
         return Math.Max(1, maxSequence + 1);
     }
 
+    public Task<int> GetNextSequenceNumberAsync(
+        string productNum,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.Run(
+            () =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return GetNextSequenceNumber(productNum);
+            },
+            cancellationToken);
+    }
+
     public async Task<BizProgram> SaveAsync(SaveProgramReq request, bool syncNow, CancellationToken cancellationToken = default)
     {
         var result = await SaveWithSyncDecisionAsync(request, cancellationToken);
@@ -129,8 +150,28 @@ public sealed class ProgramManageService : IProgramManageService
         return entity;
     }
 
-    public Task<SaveProgramResult> SaveWithSyncDecisionAsync(SaveProgramReq request, CancellationToken cancellationToken = default)
+    public async Task<SaveProgramResult> SaveWithSyncDecisionAsync(
+        SaveProgramReq request,
+        CancellationToken cancellationToken = default)
     {
+        await _mutationGate.WaitAsync(cancellationToken);
+        try
+        {
+            return await Task.Run(
+                () => SaveWithSyncDecisionCore(request, cancellationToken),
+                CancellationToken.None);
+        }
+        finally
+        {
+            _mutationGate.Release();
+        }
+    }
+
+    private SaveProgramResult SaveWithSyncDecisionCore(
+        SaveProgramReq request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
         _dbContext.InitDatabase();
         NormalizeRequest(request);
 
@@ -173,11 +214,11 @@ public sealed class ProgramManageService : IProgramManageService
         AddRevision(entity, commitMessage);
         _operationLogService.Write("ProgramSave", $"保存程序：{entity.ProgramName}，版本：v{entity.VersionNumber}");
 
-        return Task.FromResult(new SaveProgramResult
+        return new SaveProgramResult
         {
             Program = entity,
             CurrentSaveSyncAction = currentSaveSyncAction
-        });
+        };
     }
 
     public async Task<ProgramDeleteResult> DeleteLocalAsync(
