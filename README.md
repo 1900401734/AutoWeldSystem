@@ -1,6 +1,6 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v1.8.6`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v1.8.7`。
 
 ## 功能概览
 
@@ -123,6 +123,7 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 - MySQL 服务可访问。
 - PLC IP、端口、协议类型符合现场配置。
 - MES 地址、设备编号、日志路径、数据路径可在系统设置界面维护；MES 各接口路由、超时时间和在线检测心跳间隔也在同一页面配置。
+- 修改设备编号时会先使用最后一次成功同步的旧编号更新 MES；如果 MES 明确返回旧设备不存在，系统会询问是否将新编号作为新设备注册，只有确认且注册成功后才更新本地已同步编号。
 - PLC 地址在地址维护界面中填写完整。
 
 ## 程序管理界面操作
@@ -207,10 +208,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>1.8.6</Version>
-<AssemblyVersion>1.8.6.0</AssemblyVersion>
-<FileVersion>1.8.6.0</FileVersion>
-<InformationalVersion>1.8.6</InformationalVersion>
+<Version>1.8.7</Version>
+<AssemblyVersion>1.8.7.0</AssemblyVersion>
+<FileVersion>1.8.7.0</FileVersion>
+<InformationalVersion>1.8.7</InformationalVersion>
 ```
 
 建议使用语义化版本：

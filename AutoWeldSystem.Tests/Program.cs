@@ -57,6 +57,8 @@ var tests = new (string Name, Action Run)[]
     ("System setting localization resources are complete", SystemSettingLocalizationResourcesAreComplete),
     ("System setting configures PLC alarm trigger mode", SystemSettingConfiguresPlcAlarmTriggerMode),
     ("MES endpoint validation returns stable error codes", MesEndpointValidationReturnsStableErrorCodes),
+    ("Device id sync rules detect missing old devices", DeviceIdSyncRulesDetectMissingOldDevices),
+    ("System setting retries missing old device as new registration", SystemSettingRetriesMissingOldDeviceAsNewRegistration),
     ("Localization service reports missing resource keys", LocalizationServiceReportsMissingResourceKeys),
     ("PLC recipe name rules map slots without shifting codes", PlcRecipeNameRulesMapSlotsWithoutShiftingCodes),
     ("PLC recipe name config rules reject invalid station settings", PlcRecipeNameConfigRulesRejectInvalidStationSettings),
@@ -8097,6 +8099,48 @@ static void MesEndpointValidationReturnsStableErrorCodes()
 
     AssertTrue(MesEndpointRouteRules.TryValidatePostDataHeader(false, "", "", out _, out _, out var disabledError), "未启用自定义 Header 时空值应通过。");
     AssertEqual(MesEndpointValidationError.None, disabledError, "未启用时应返回 None。");
+}
+
+static void DeviceIdSyncRulesDetectMissingOldDevices()
+{
+    AssertTrue(DeviceIdSyncRules.ShouldOfferRegisterAsNew("OLD-1", "设备不存在"), "中文设备不存在消息必须允许确认后新建设备。");
+    AssertTrue(DeviceIdSyncRules.ShouldOfferRegisterAsNew("OLD-1", " DEVICE NOT FOUND "), "英文 device not found 必须忽略大小写和首尾空格。");
+    AssertTrue(DeviceIdSyncRules.ShouldOfferRegisterAsNew("OLD-1", "Device does not exist."), "英文 device does not exist 必须允许降级注册。");
+    AssertFalse(DeviceIdSyncRules.ShouldOfferRegisterAsNew(string.Empty, "设备不存在"), "首次注册没有旧编号时不得再次触发降级。");
+    AssertFalse(DeviceIdSyncRules.ShouldOfferRegisterAsNew("OLD-1", "MES 连接超时"), "网络超时不得误判为旧设备不存在。");
+    AssertFalse(DeviceIdSyncRules.ShouldOfferRegisterAsNew("OLD-1", "新设备编号已存在"), "新设备编号冲突不得误走新设备注册。");
+    AssertFalse(DeviceIdSyncRules.ShouldOfferRegisterAsNew("OLD-1", null), "空消息不得触发降级。");
+}
+
+static void SystemSettingRetriesMissingOldDeviceAsNewRegistration()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.cs"), Encoding.UTF8);
+    var syncMethod = ExtractMethodText(
+        viewCode,
+        "private async Task<bool> SyncDeviceToMesAsync(",
+        "private bool ConfirmRegisterNewDevice(");
+    var registerRequestMethod = ExtractMethodText(
+        viewCode,
+        "private static AddDeviceReq BuildNewDeviceRegistrationRequest(",
+        "/// <summary>");
+    var saveMethod = ExtractMethodText(viewCode, "private async void SaveAll_Click", "/// <summary>");
+    var manualSyncMethod = ExtractMethodText(viewCode, "private async void SyncDevice_ClickAsync", "private async void TestConnection_ClickAsync");
+
+    AssertTrue(
+        syncMethod.Contains("DeviceIdSyncRules.ShouldOfferRegisterAsNew(request.OldDeviceId, response.Msg)", StringComparison.Ordinal)
+            && syncMethod.Contains("ConfirmRegisterNewDevice(request)", StringComparison.Ordinal),
+        "只有旧设备明确不存在且用户确认后才能按新设备注册。");
+    AssertEqual(
+        2,
+        System.Text.RegularExpressions.Regex.Matches(syncMethod, @"_mesProvider\.SetDeviceIdAsync").Count,
+        "设备同步最多只能调用一次更新和一次新设备注册。");
+    AssertTrue(
+        registerRequestMethod.Contains("OldDeviceId = string.Empty", StringComparison.Ordinal)
+            && registerRequestMethod.Contains("DeviceId = request.DeviceId", StringComparison.Ordinal),
+        "降级注册必须只清空 OldDeviceId 并保留新设备资料。");
+    AssertFalse(syncMethod.Contains("MesSyncedDeviceId", StringComparison.Ordinal), "MES 失败或用户取消时不得提前修改已同步设备编号。");
+    AssertTrue(saveMethod.Contains("SyncDeviceToMesAsync(syncRequest, btnSaveAll, false)", StringComparison.Ordinal), "保存全部必须复用统一设备同步流程。");
+    AssertTrue(manualSyncMethod.Contains("SyncDeviceToMesAsync(request, btnSyncDevice, true)", StringComparison.Ordinal), "手动同步必须复用统一设备同步流程。");
 }
 
 static void LocalizationServiceReportsMissingResourceKeys()
