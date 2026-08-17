@@ -372,7 +372,8 @@ var tests = new (string Name, Action Run)[]
     ("Select list rules resolve selection by display text", SelectListRulesResolveSelectionByDisplayText),
     ("Select list rules disambiguate duplicate display texts by event index", SelectListRulesDisambiguateDuplicateDisplayTextsByEventIndex),
     ("Natural sort comparer orders product numbers numerically", NaturalSortComparerOrdersProductNumbersNumerically),
-    ("Program delete keeps MES sync off UI path", ProgramDeleteKeepsMesSyncOffUiPath)
+    ("Program delete keeps MES sync off UI path", ProgramDeleteKeepsMesSyncOffUiPath),
+    ("Program manage save and dual selector paths stay asynchronous", ProgramManageSaveAndDualSelectorPathsStayAsynchronous)
 };
 
 foreach (var test in tests)
@@ -766,6 +767,20 @@ static void PlcRecipeNameConfigRulesRejectInvalidStationSettings()
             DateTime.Now),
         "工位 1 的配方名称配置重复。",
         "每个工位只能保存一条配方名称配置。 ");
+    AssertInvalidOperationMessage(
+        () => PlcRecipeNameConfigRules.NormalizeAndValidate(
+            [new BizPlcRecipeNameConfig
+            {
+                StationNo = valid.StationNo,
+                BaseAddress = valid.BaseAddress,
+                RecipeCount = PlcRecipeNameConfigRules.MaxRecipeCount + 1,
+                AddressOffset = valid.AddressOffset,
+                StringLength = valid.StringLength,
+                Enabled = valid.Enabled
+            }],
+            DateTime.Now),
+        "配方数量不能超过 64。",
+        "每个工位最多只能配置 64 个配方槽位。 ");
 }
 
 static void PlcRecipeNameReaderKeepsSuccessfulSlotsAfterReadFailures()
@@ -9875,7 +9890,7 @@ static void ProgramManageViewProvidesSaveAsNewEntry()
     // 已有 ProgramId 的程序同步时会把 Create 降级为 Update，必须另起新行才能真正新增。
     AssertTrue(handler.Contains("_editingId = 0;", StringComparison.Ordinal), "另存为新程序必须清空编辑标识，保存才会走新增。");
     AssertTrue(handler.Contains("txtProgramId.Clear();", StringComparison.Ordinal), "另存为新程序必须清空 MES 程序ID，避免改名原程序。");
-    AssertTrue(handler.Contains("_programService.GetNextSequenceNumber(productNum)", StringComparison.Ordinal), "另存为新程序必须自动取该工号下的下一个流水号。");
+    AssertTrue(handler.Contains("GetNextSequenceNumberAsync", StringComparison.Ordinal), "另存为新程序必须异步取该工号下的下一个流水号。");
 }
 
 static void ProgramManageGridShowsSequenceAndProgramName()
@@ -10357,11 +10372,11 @@ static void ProgramManageInitialLoadKeepsSelectedProgramDetails()
         Encoding.UTF8);
     var onLoadMethod = ExtractMethodText(
         viewCode,
-        "protected override void OnLoad(EventArgs e)",
+        "protected override async void OnLoad(EventArgs e)",
         "protected override void OnLanguageChanged()");
 
     AssertTrue(
-        onLoadMethod.Contains("ReloadPrograms();", StringComparison.Ordinal),
+        onLoadMethod.Contains("await ReloadProgramsAsync();", StringComparison.Ordinal),
         "程序管理页首次加载必须读取程序列表。");
     AssertTrue(
         System.Text.RegularExpressions.Regex.IsMatch(
@@ -11316,6 +11331,41 @@ static void ProgramDeleteKeepsMesSyncOffUiPath()
     AssertTrue(
         viewCode.Contains("当前没有可删除的加工程序。", StringComparison.Ordinal),
         "程序表为空时删除必须直接提示，不能进入删除流程。");
+}
+
+static void ProgramManageSaveAndDualSelectorPathsStayAsynchronous()
+{
+    var viewCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.cs"),
+        Encoding.UTF8);
+    var serviceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "ProgramManageService.cs"),
+        Encoding.UTF8);
+
+    AssertTrue(
+        viewCode.Contains("GetNextSequenceNumberAsync", StringComparison.Ordinal)
+            && viewCode.Contains("await ReloadProgramsAsync(saved.Id)", StringComparison.Ordinal)
+            && viewCode.Contains("ReadRecipeNameOptionsAsync", StringComparison.Ordinal),
+        "新增和另存为流程不能在 UI 线程同步查询序号、保存或刷新列表。 ");
+    AssertTrue(
+        viewCode.Contains("RecipeNameReadTimeout = TimeSpan.FromSeconds(10)", StringComparison.Ordinal)
+            && viewCode.Contains("CreateLinkedTokenSource(_operationCts.Token)", StringComparison.Ordinal)
+            && viewCode.Contains("SetRecipeSelectorItems", StringComparison.Ordinal),
+        "双工位配方刷新必须有页面取消、总时限和选择器去重绑定。 ");
+    AssertTrue(
+        serviceCode.Contains("SaveWithSyncDecisionCore", StringComparison.Ordinal)
+            && serviceCode.Contains("GetNextSequenceNumberAsync", StringComparison.Ordinal),
+        "程序保存和序号查询必须有后台执行入口。 ");
+
+    var selectionBody = ExtractMethodText(
+        viewCode,
+        "private void SetRecipeSelection(",
+        "private string? ResolveSelectedRecipeCode(");
+    var refreshIndex = selectionBody.IndexOf("RefreshRecipeSelectorItems(select, stationNo)", StringComparison.Ordinal);
+    var refreshGuardIndex = selectionBody.IndexOf("if (itemCount != items.Count)", StringComparison.Ordinal);
+    AssertTrue(
+        refreshGuardIndex >= 0 && refreshIndex > refreshGuardIndex,
+        "设置选中配方时只能在历史选项新增后重建完整下拉列表。 ");
 }
 
 static string ExtractMethodText(string source, string startMarker, string endMarker)
