@@ -29,6 +29,7 @@ public sealed class ProgramManageService : IProgramManageService
     private readonly IAppSettingsService _settingsService;
     private readonly IMesProvider _mesProvider;
     private readonly IOperationLogService _operationLogService;
+    private readonly SemaphoreSlim _mutationGate = new(1, 1);
     private AppSettings _currentSettings;
 
     public ProgramManageService(
@@ -58,6 +59,14 @@ public sealed class ProgramManageService : IProgramManageService
         return query
             .OrderBy(it => it.UpdatedTime, OrderByType.Desc)
             .ToList();
+    }
+
+    // 列表查询不参与程序变更门锁：查询与删除互斥会在“删除后立即刷新”的链路上形成互相等待。
+    public Task<IReadOnlyList<BizProgram>> GetProgramsAsync(
+        bool includeDeleted = false,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.Run(() => GetPrograms(includeDeleted), CancellationToken.None);
     }
 
     public IReadOnlyList<ProgramSyncSummary> GetPendingSyncPrograms()
@@ -171,8 +180,36 @@ public sealed class ProgramManageService : IProgramManageService
         });
     }
 
+    public async Task<ProgramDeleteResult> DeleteLocalAsync(
+        int id,
+        string? remarkOverride = null,
+        CancellationToken cancellationToken = default)
+    {
+        await _mutationGate.WaitAsync(cancellationToken);
+        try
+        {
+            return await Task.Run(
+                () => DeleteLocalCore(id, remarkOverride, cancellationToken),
+                CancellationToken.None);
+        }
+        finally
+        {
+            _mutationGate.Release();
+        }
+    }
+
     public async Task DeleteAsync(int id, bool syncNow, string? remarkOverride = null, CancellationToken cancellationToken = default)
     {
+        var result = await DeleteLocalAsync(id, remarkOverride, cancellationToken);
+        if (syncNow && result.RequiresMesSync)
+        {
+            await SyncProgramAsync(id, cancellationToken);
+        }
+    }
+
+    private ProgramDeleteResult DeleteLocalCore(int id, string? remarkOverride, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
         _dbContext.InitDatabase();
 
         var entity = _dbContext.Db.Queryable<BizProgram>().InSingle(id);
@@ -206,13 +243,30 @@ public sealed class ProgramManageService : IProgramManageService
         AddRevision(entity, entity.CommitMessage);
         _operationLogService.Write("ProgramDelete", $"删除程序：{entity.ProgramName}");
 
-        if (syncNow && entity.SyncStatus == AppConstants.ProgramSyncStatus.PendingDelete)
+        return new ProgramDeleteResult
         {
-            await SyncProgramAsync(entity.Id, cancellationToken);
-        }
+            Id = entity.Id,
+            ProgramName = entity.ProgramName,
+            RequiresMesSync = entity.SyncStatus == AppConstants.ProgramSyncStatus.PendingDelete
+        };
     }
 
     public async Task SyncProgramAsync(int id, CancellationToken cancellationToken = default)
+    {
+        await _mutationGate.WaitAsync(cancellationToken);
+        try
+        {
+            await Task.Run(
+                () => SyncProgramCoreAsync(id, cancellationToken),
+                CancellationToken.None);
+        }
+        finally
+        {
+            _mutationGate.Release();
+        }
+    }
+
+    private async Task SyncProgramCoreAsync(int id, CancellationToken cancellationToken)
     {
         _dbContext.InitDatabase();
 
@@ -702,14 +756,33 @@ public sealed class ProgramManageService : IProgramManageService
     /// 批量删除指定程序（仅本地软删除，不同步 MES）。
     /// 用于清理因设备编号变更等原因导致无法同步的历史程序。
     /// </summary>
-    public Task<int> BatchDeleteLocalProgramsAsync(IEnumerable<int> programIds)
+    public async Task<int> BatchDeleteLocalProgramsAsync(
+        IEnumerable<int> programIds,
+        CancellationToken cancellationToken = default)
     {
-        _dbContext.InitDatabase();
         var ids = programIds.Distinct().ToList();
         if (ids.Count == 0)
         {
-            return Task.FromResult(0);
+            return 0;
         }
+
+        await _mutationGate.WaitAsync(cancellationToken);
+        try
+        {
+            return await Task.Run(
+                () => BatchDeleteLocalProgramsCore(ids, cancellationToken),
+                CancellationToken.None);
+        }
+        finally
+        {
+            _mutationGate.Release();
+        }
+    }
+
+    private int BatchDeleteLocalProgramsCore(IReadOnlyCollection<int> ids, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _dbContext.InitDatabase();
 
         var programs = _dbContext.Db.Queryable<BizProgram>()
             .Where(it => ids.Contains(it.Id))
@@ -717,15 +790,14 @@ public sealed class ProgramManageService : IProgramManageService
 
         if (programs.Count == 0)
         {
-            return Task.FromResult(0);
+            return 0;
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         var deletedCount = _dbContext.Db.Deleteable(programs).ExecuteCommand();
-
         _operationLogService.Write(
             "ProgramBatchDelete",
             $"批量删除程序：{deletedCount} 条");
-
-        return Task.FromResult(deletedCount);
+        return deletedCount;
     }
 }

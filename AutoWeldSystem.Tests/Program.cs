@@ -371,7 +371,8 @@ var tests = new (string Name, Action Run)[]
     ("LoadPrograms filters available programs by work order product number", LoadProgramsFiltersAvailableProgramsByWorkOrderProductNumber),
     ("Select list rules resolve selection by display text", SelectListRulesResolveSelectionByDisplayText),
     ("Select list rules disambiguate duplicate display texts by event index", SelectListRulesDisambiguateDuplicateDisplayTextsByEventIndex),
-    ("Natural sort comparer orders product numbers numerically", NaturalSortComparerOrdersProductNumbersNumerically)
+    ("Natural sort comparer orders product numbers numerically", NaturalSortComparerOrdersProductNumbersNumerically),
+    ("Program delete keeps MES sync off UI path", ProgramDeleteKeepsMesSyncOffUiPath)
 };
 
 foreach (var test in tests)
@@ -11273,6 +11274,48 @@ static void NaturalSortComparerOrdersProductNumbersNumerically()
         new[] { "AAA", "ABC", "ABD" },
         sortedAlpha,
         "纯字母字符串应保持字典顺序。");
+}
+
+static void ProgramDeleteKeepsMesSyncOffUiPath()
+{
+    var viewCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.cs"),
+        Encoding.UTF8);
+    var serviceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "ProgramManageService.cs"),
+        Encoding.UTF8);
+
+    AssertTrue(
+        viewCode.Contains("DeleteLocalAsync", StringComparison.Ordinal)
+            && viewCode.Contains("SyncDeletedProgramInBackgroundAsync", StringComparison.Ordinal),
+        "程序删除必须先本地提交，再后台执行 MES 同步。");
+    AssertTrue(
+        serviceCode.Contains("Task.Run", StringComparison.Ordinal)
+            && serviceCode.Contains("DeleteLocalCore", StringComparison.Ordinal)
+            && serviceCode.Contains("SemaphoreSlim", StringComparison.Ordinal),
+        "删除服务必须将同步数据库操作移出 UI 线程并串行保护程序变更。");
+    AssertTrue(
+        viewCode.Contains("BatchDeleteLocalProgramsAsync(pendingIds, _operationCts.Token)", StringComparison.Ordinal),
+        "批量清理必须传递页面取消令牌。");
+    AssertTrue(
+        viewCode.Contains("await ReloadProgramsAsync()", StringComparison.Ordinal)
+            && viewCode.Contains("GetProgramsAsync", StringComparison.Ordinal),
+        "删除完成后的程序列表刷新必须使用后台查询，不能在 UI 线程同步读取数据库。");
+
+    var getProgramsAsyncBody = ExtractMethodText(
+        serviceCode,
+        "public Task<IReadOnlyList<BizProgram>> GetProgramsAsync(",
+        "public IReadOnlyList<ProgramSyncSummary> GetPendingSyncPrograms()");
+    AssertFalse(
+        getProgramsAsyncBody.Contains("_mutationGate", StringComparison.Ordinal),
+        "列表查询不能参与程序变更门锁，否则删除后立即刷新会形成互相等待。");
+
+    AssertTrue(
+        viewCode.Contains("没有需要清理的程序。", StringComparison.Ordinal),
+        "批量清理在没有目标时必须直接提示，不能继续走清理和刷新流程。");
+    AssertTrue(
+        viewCode.Contains("当前没有可删除的加工程序。", StringComparison.Ordinal),
+        "程序表为空时删除必须直接提示，不能进入删除流程。");
 }
 
 static string ExtractMethodText(string source, string startMarker, string endMarker)

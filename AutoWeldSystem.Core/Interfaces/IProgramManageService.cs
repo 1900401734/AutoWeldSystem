@@ -12,6 +12,10 @@ public interface IProgramManageService
 {
     IReadOnlyList<BizProgram> GetPrograms(bool includeDeleted = false);
 
+    Task<IReadOnlyList<BizProgram>> GetProgramsAsync(
+        bool includeDeleted = false,
+        CancellationToken cancellationToken = default);
+
     IReadOnlyList<ProgramSyncSummary> GetPendingSyncPrograms();
 
     string BuildProgramName(string productNum, string componentCode, int sequenceNumber, string? description = null);
@@ -24,6 +28,11 @@ public interface IProgramManageService
     Task<BizProgram> SaveAsync(SaveProgramReq request, bool syncNow, CancellationToken cancellationToken = default);
 
     Task<SaveProgramResult> SaveWithSyncDecisionAsync(SaveProgramReq request, CancellationToken cancellationToken = default);
+
+    Task<ProgramDeleteResult> DeleteLocalAsync(
+        int id,
+        string? remarkOverride = null,
+        CancellationToken cancellationToken = default);
 
     Task DeleteAsync(int id, bool syncNow, string? remarkOverride = null, CancellationToken cancellationToken = default);
 
@@ -44,5 +53,7 @@ public interface IProgramManageService
     /// 用于清理因设备编号变更导致无法同步的历史程序。
     /// </summary>
     /// <returns>实际删除的程序数量。</returns>
-    Task<int> BatchDeleteLocalProgramsAsync(IEnumerable<int> programIds);
+    Task<int> BatchDeleteLocalProgramsAsync(
+        IEnumerable<int> programIds,
+        CancellationToken cancellationToken = default);
 }

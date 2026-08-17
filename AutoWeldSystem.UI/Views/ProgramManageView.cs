@@ -43,6 +43,8 @@ public partial class ProgramManageView : BaseView
     private bool _programContentDictionaryAvailable;
     private int _recipeNameRefreshVersion;
     private bool _enableDualStation;
+    private readonly CancellationTokenSource _operationCts = new();
+    private bool _deleteInProgress;
     // 批量绑定控件值期间暂停自动填充，避免中间态触发多次重算。
     private bool _suppressNameAutoFill;
 
@@ -268,6 +270,14 @@ public partial class ProgramManageView : BaseView
     private static bool IsBlankProgramContentRow(ProgramContentItemRow row)
         => string.IsNullOrWhiteSpace(row.ItemName) && string.IsNullOrWhiteSpace(row.StandardValue);
 
+
+    private async Task ReloadProgramsAsync(int? selectedId = null)
+    {
+        var programs = await _programService.GetProgramsAsync(cancellationToken: _operationCts.Token);
+        _programs.Clear();
+        _programs.AddRange(programs);
+        ApplyProgramFilter(selectedId);
+    }
 
     private void ReloadPrograms(int? selectedId = null)
     {
@@ -517,26 +527,73 @@ public partial class ProgramManageView : BaseView
 
     private async void Delete_ClickAsync(object? sender, EventArgs e)
     {
+        if (_programs.Count == 0)
+        {
+            ShowWarningMessage("当前没有可删除的加工程序。");
+            return;
+        }
+
         if (_editingId <= 0)
         {
             ShowWarning(TextKeys.ProgramManage.SelectDelete);
             return;
         }
 
-        if (!Confirm(TextKeys.ProgramManage.DeleteConfirm))
+        if (_deleteInProgress || !Confirm(TextKeys.ProgramManage.DeleteConfirm))
         {
             return;
         }
 
+        _deleteInProgress = true;
+        btnDelete.Enabled = false;
         try
         {
-            await _programService.DeleteAsync(_editingId, chkSyncNow.Checked, ResolveEditedMesRemark(GetEditingProgram()));
-            ReloadPrograms();
+            var result = await _programService.DeleteLocalAsync(
+                _editingId,
+                ResolveEditedMesRemark(GetEditingProgram()),
+                _operationCts.Token);
+            var syncNow = chkSyncNow.Checked;
+            await ReloadProgramsAsync();
             StartNewProgram();
+
+            if (!syncNow || !result.RequiresMesSync)
+            {
+                return;
+            }
+
+            ShowInfo("程序已在本地删除，MES 删除将在后台执行。");
+            _ = SyncDeletedProgramInBackgroundAsync(result.Id);
+        }
+        catch (OperationCanceledException)
+        {
+            ShowWarning("程序删除操作已取消。");
         }
         catch (Exception ex)
         {
             ShowErrorMessage(ex.Message);
+        }
+        finally
+        {
+            _deleteInProgress = false;
+            btnDelete.Enabled = true;
+        }
+    }
+
+    private async Task SyncDeletedProgramInBackgroundAsync(int programId)
+    {
+        try
+        {
+            await _programService.SyncProgramAsync(programId, _operationCts.Token);
+            await RunOnUiThreadAsync(
+                async () => await ReloadProgramsAsync(),
+                "ProgramManageView.DeleteSync.Reload");
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            RunOnUiThread(() => ShowErrorMessage($"MES 删除同步失败：{ex.Message}"), "ProgramManageView.DeleteSync.Error");
         }
     }
 
@@ -1008,6 +1065,17 @@ public partial class ProgramManageView : BaseView
 
     private async void BatchClean_ClickAsync(object? sender, EventArgs e)
     {
+        var pendingIds = _programs
+            .Where(p => p.SyncStatus != AppConstants.ProgramSyncStatus.Synced)
+            .Select(p => p.Id)
+            .ToList();
+
+        if (pendingIds.Count == 0)
+        {
+            ShowWarningMessage("没有需要清理的程序。");
+            return;
+        }
+
         var confirmMessage = _localizer.GetString(TextKeys.ProgramManage.MessageConfirmBatchClean);
         var result = MessageBox.Show(
             this,
@@ -1024,19 +1092,18 @@ public partial class ProgramManageView : BaseView
         btnBatchClean.Enabled = false;
         try
         {
-            var targetIds = _programs
-                .Where(p => p.SyncStatus != AppConstants.ProgramSyncStatus.Synced)
-                .Select(p => p.Id)
-                .ToList();
-
-            var deleteCount = await _programService.BatchDeleteLocalProgramsAsync(targetIds);
-            ReloadPrograms();
+            var deleteCount = await _programService.BatchDeleteLocalProgramsAsync(pendingIds, _operationCts.Token);
+            await ReloadProgramsAsync();
             if (_programs.Count == 0)
             {
                 StartNewProgram();
             }
 
             ShowInfo(TextKeys.ProgramManage.MessageBatchCleanSuccess, deleteCount);
+        }
+        catch (OperationCanceledException)
+        {
+            ShowWarningMessage("批量清理已取消。");
         }
         catch (Exception ex)
         {

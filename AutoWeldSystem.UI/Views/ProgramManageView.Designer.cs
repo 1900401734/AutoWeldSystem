@@ -6,6 +6,12 @@
 
         protected override void Dispose(bool disposing)
         {
+            if (disposing)
+            {
+                _operationCts?.Cancel();
+                _operationCts?.Dispose();
+            }
+
             if (disposing && (components != null))
             {
                 components.Dispose();
