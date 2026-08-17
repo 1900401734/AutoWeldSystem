@@ -1666,6 +1666,12 @@
   <data name="program.message.current_selected" xml:space="preserve">
     <value>Current: v{0} / {1} / {2}</value>
   </data>
+  <data name="program.message.current_synced" xml:space="preserve">
+    <value>Synced/{0}</value>
+  </data>
+  <data name="program.message.current_not_synced" xml:space="preserve">
+    <value>Not synced</value>
+  </data>
   <data name="program.message.save_success" xml:space="preserve">
     <value>Program saved.</value>
   </data>
@@ -1767,6 +1773,9 @@
   </data>
   <data name="grid.program.program_count" xml:space="preserve">
     <value>Programs</value>
+  </data>
+  <data name="grid.program.serial_number" xml:space="preserve">
+    <value>No.</value>
   </data>
   <data name="grid.program.summary" xml:space="preserve">
     <value>Program</value>

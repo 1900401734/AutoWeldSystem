@@ -1,6 +1,6 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v1.8.8`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v1.8.9`。
 
 ## 功能概览
 
@@ -128,7 +128,7 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 
 ## 程序管理界面操作
 
-- 左侧列表按产品工号去重，一行代表一个产品工号，显示工号、程序摘要和最近更新时间。
+- 左侧列表按产品工号去重，首列按当前筛选结果显示分组序号，程序名称和同步状态分列显示，不再展示本地版本号。
 - 工号下有多个程序时，该行左侧出现展开箭头，展开后每个程序占一个子行，按流水号升序排列，子行显示流水号标签和“程序名称 + 版本 + 同步状态”摘要。点击子行切换右侧编辑内容。
 - 工号下只有一个程序时不出现展开箭头，该程序的摘要直接显示在工号行上，点击工号行即可编辑，避免为单个程序多套一层。
 - 同一工号下可以有多个程序，用“另存为新程序”按当前内容新建一条，流水号自动取该工号下的下一个可用值。
@@ -209,10 +209,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>1.8.8</Version>
-<AssemblyVersion>1.8.8.0</AssemblyVersion>
-<FileVersion>1.8.8.0</FileVersion>
-<InformationalVersion>1.8.8</InformationalVersion>
+<Version>1.8.9</Version>
+<AssemblyVersion>1.8.9.0</AssemblyVersion>
+<FileVersion>1.8.9.0</FileVersion>
+<InformationalVersion>1.8.9</InformationalVersion>
 ```
 
 建议使用语义化版本：

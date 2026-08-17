@@ -120,7 +120,7 @@ public partial class ProgramManageView : BaseView
         BindRemarkText(inputRemark.Text);
         RefreshRecipeSelectorTexts();
         UpdateCurrentInfoText();
-        // 摘要列含同步状态译文，切语言后必须按新语言重新分组生成。
+        // 同步状态列使用本地化文本，切换语言后按当前筛选结果重新生成。
         ApplyProgramFilter(_editingId);
     }
 
@@ -152,10 +152,16 @@ public partial class ProgramManageView : BaseView
 
         tablePrograms.Columns = new AntdUI.ColumnCollection
         {
+            new AntdUI.Column(
+                nameof(ProgramProductGroupRow.SerialNumber),
+                _localizer.GetString(TextKeys.Grid.ProgramSerialNumber)),
             productNumColumn,
             new AntdUI.Column(
-                nameof(ProgramProductGroupRow.Summary),
-                _localizer.GetString(TextKeys.Grid.ProgramSummary)),
+                nameof(ProgramProductGroupRow.ProgramName),
+                _localizer.GetString(TextKeys.Grid.ProgramName)),
+            new AntdUI.Column(
+                nameof(ProgramProductGroupRow.SyncStatus),
+                _localizer.GetString(TextKeys.Grid.ProgramSyncStatus)),
             new AntdUI.Column(
                 nameof(ProgramProductGroupRow.UpdatedTime),
                 _localizer.GetString(TextKeys.Grid.ProgramUpdatedTime))
@@ -318,7 +324,7 @@ public partial class ProgramManageView : BaseView
                 || Contains(program.SyncStatus, keyword)
                 || Contains(GetSyncStatusText(program.SyncStatus), keyword)));
 
-        var groups = ProgramProductGroupRules.BuildGroups(_filteredPrograms, BuildProgramSummary);
+        var groups = ProgramProductGroupRules.BuildGroups(_filteredPrograms, program => GetSyncStatusText(program.SyncStatus));
         tablePrograms.DataSource = groups;
         if (groups.Count == 0)
         {
@@ -326,18 +332,6 @@ public partial class ProgramManageView : BaseView
         }
 
         SelectProgramRow(selectedId ?? _editingId);
-    }
-
-    /// <summary>
-    /// 生成程序行摘要：程序名称 + 版本 + 同步状态。
-    /// </summary>
-    private string BuildProgramSummary(BizProgram program)
-    {
-        var syncText = GetSyncStatusText(program.SyncStatus);
-        var name = string.IsNullOrWhiteSpace(program.ProgramName)
-            ? program.ComponentCode ?? string.Empty
-            : program.ProgramName;
-        return $"{name}  v{program.VersionNumber} [{syncText}]";
     }
 
     private static bool Contains(string? source, string keyword)
@@ -425,14 +419,11 @@ public partial class ProgramManageView : BaseView
 
     private void SetCurrentProgramInfo(BizProgram program)
     {
-        var currentText = _localizer.GetString(
-            TextKeys.ProgramManage.CurrentSelected,
-            program.VersionNumber,
-            GetSyncStatusText(program.SyncStatus),
-            program.CommitId ?? string.Empty);
-        var programId = string.IsNullOrWhiteSpace(program.ProgramId) ? "--" : program.ProgramId;
-        //lblCurrentInfo.Text = $"{currentText}，MES程序ID：{programId}";
-        lblCurrentInfo.Text = $"{currentText}";
+        lblCurrentInfo.Text = string.IsNullOrWhiteSpace(program.ProgramId)
+            ? _localizer.GetString(TextKeys.ProgramManage.CurrentNotSynced)
+            : _localizer.GetString(
+                TextKeys.ProgramManage.CurrentSynced,
+                program.ProgramId.Trim());
     }
 
     private string GetSyncStatusText(string? status)

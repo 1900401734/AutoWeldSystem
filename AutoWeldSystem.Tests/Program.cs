@@ -9942,10 +9942,15 @@ static void ProgramManageGridShowsSequenceAndProgramName()
 {
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.cs"), Encoding.UTF8);
 
-    // 列表按工号去重，同工号的多个程序展开为子行；单程序工号直接摊平，不留空壳父节点。
-    AssertTrue(viewCode.Contains("productNumColumn.SetTree(nameof(ProgramProductGroupRow.Programs));", StringComparison.Ordinal), "工号列必须配置为树形列。");
-    AssertTrue(viewCode.Contains("tablePrograms.DefaultExpand = false;", StringComparison.Ordinal), "程序列表必须默认折叠，避免一次铺开占满界面。");
-    AssertTrue(viewCode.Contains("private string BuildProgramSummary(BizProgram program)", StringComparison.Ordinal), "程序行必须提供包含版本和同步状态的摘要。");
+    AssertTrue(viewCode.Contains("nameof(ProgramProductGroupRow.SerialNumber)", StringComparison.Ordinal), "程序表格首列必须显示筛选后的分组序号。");
+    AssertTrue(viewCode.Contains("productNumColumn.SetTree(nameof(ProgramProductGroupRow.Programs));", StringComparison.Ordinal), "工号列必须继续配置为树形列。");
+    AssertTrue(viewCode.Contains("nameof(ProgramProductGroupRow.ProgramName)", StringComparison.Ordinal), "程序名称必须使用独立列。");
+    AssertTrue(viewCode.Contains("nameof(ProgramProductGroupRow.SyncStatus)", StringComparison.Ordinal), "同步状态必须使用独立列。");
+    AssertFalse(viewCode.Contains("nameof(ProgramProductGroupRow.Summary)", StringComparison.Ordinal), "程序表格不得继续显示摘要列。");
+    AssertFalse(viewCode.Contains("BuildProgramSummary", StringComparison.Ordinal), "程序列表不得继续拼接版本号和同步状态摘要。");
+    AssertTrue(viewCode.Contains("TextKeys.ProgramManage.CurrentSynced", StringComparison.Ordinal)
+        && viewCode.Contains("TextKeys.ProgramManage.CurrentNotSynced", StringComparison.Ordinal),
+        "右侧当前状态必须只显示已同步/MES程序ID或未同步。");
     AssertTrue(viewCode.Contains("row.ProgramId > 0", StringComparison.Ordinal), "父行不指向具体程序，点击不得切换编辑对象。");
 }
 
@@ -9953,42 +9958,47 @@ static void ProgramProductGroupsMergeProgramsSharingProductNum()
 {
     var programs = new List<BizProgram>
     {
-        new() { Id = 1, ProgramName = "A-1", ProductNum = "P-001", SequenceNumber = 2, UpdatedTime = new DateTime(2026, 8, 1) },
-        new() { Id = 2, ProgramName = "A-2", ProductNum = " p-001 ", SequenceNumber = 1, UpdatedTime = new DateTime(2026, 8, 5) },
-        new() { Id = 3, ProgramName = "B-1", ProductNum = "P-002", SequenceNumber = 1, UpdatedTime = new DateTime(2026, 8, 3) },
+        new() { Id = 1, ProgramName = "A-1", ProductNum = "P-001", SequenceNumber = 2, SyncStatus = AppConstants.ProgramSyncStatus.PendingUpdate, UpdatedTime = new DateTime(2026, 8, 1) },
+        new() { Id = 2, ProgramName = "A-2", ProductNum = " p-001 ", SequenceNumber = 1, SyncStatus = AppConstants.ProgramSyncStatus.Synced, UpdatedTime = new DateTime(2026, 8, 5) },
+        new() { Id = 3, ProgramName = "B-1", ProductNum = "P-002", SequenceNumber = 1, SyncStatus = AppConstants.ProgramSyncStatus.PendingCreate, UpdatedTime = new DateTime(2026, 8, 3) },
         new() { Id = 4, ProgramName = "空工号", ProductNum = "   ", SequenceNumber = 1, UpdatedTime = new DateTime(2026, 8, 9) }
     };
 
-    var groups = ProgramProductGroupRules.BuildGroups(programs, program => program.ProgramName);
+    var groups = ProgramProductGroupRules.BuildGroups(programs, program => $"状态:{program.SyncStatus}");
 
     AssertEqual(2, groups.Count, "工号为空的程序不得产生分组，同工号必须合并为一行。");
+    AssertEqual(1, groups[0].SerialNumber, "首个产品工号父行序号必须从 1 开始。");
+    AssertEqual(2, groups[1].SerialNumber, "产品工号父行序号必须连续递增。");
     AssertEqual("P-001", groups[0].ProductNum, "同工号大小写和空白不同必须归为同一组。");
     AssertEqual(new DateTime(2026, 8, 5), groups[0].UpdatedTime, "分组更新时间必须取组内最新。");
-    AssertEqual("P-002", groups[1].ProductNum, "分组必须按工号升序排列。");
-    AssertEqual(0, ProgramProductGroupRules.BuildGroups(Array.Empty<BizProgram>(), program => program.ProgramName).Count, "空集合必须返回空分组。");
+    AssertEqual(0, ProgramProductGroupRules.BuildGroups(Array.Empty<BizProgram>(), program => program.SyncStatus).Count, "空集合必须返回空分组。");
 
-    // 多程序工号：父行不指向具体程序，子行按流水号升序。
     AssertEqual(0, groups[0].ProgramId, "多程序工号的父行不得指向具体程序。");
+    AssertEqual(string.Empty, groups[0].ProgramName, "多程序父行不得显示具体程序名称。");
+    AssertEqual(string.Empty, groups[0].SyncStatus, "多程序父行不得显示具体同步状态。");
     AssertEqual(2, groups[0].Programs?.Count ?? 0, "多程序工号必须展开为子行。");
+    AssertEqual(null, groups[0].Programs![0].SerialNumber, "子程序行序号必须留空。");
     AssertEqual(2, groups[0].Programs![0].ProgramId, "子行必须按流水号升序排列。");
-    AssertEqual(1, groups[0].Programs![1].ProgramId, "子行必须按流水号升序排列。");
-    AssertEqual("#001", groups[0].Programs![0].ProductNum, "子行必须显示流水号标签。");
+    AssertEqual("#001", groups[0].Programs![0].ProductNum, "子行必须保留程序流水号标签。");
+    AssertEqual("A-2", groups[0].Programs![0].ProgramName, "程序名称必须进入独立字段。");
+    AssertEqual("状态:Synced", groups[0].Programs![0].SyncStatus, "同步状态必须进入独立字段。");
 }
 
 static void ProgramProductGroupsFlattenSingleProgramProductNum()
 {
     var programs = new List<BizProgram>
     {
-        new() { Id = 7, ProgramName = "只有一个程序", ProductNum = "P-009", SequenceNumber = 1, UpdatedTime = new DateTime(2026, 8, 2) }
+        new() { Id = 7, ProgramName = "只有一个程序", ProductNum = "P-009", SequenceNumber = 1, SyncStatus = AppConstants.ProgramSyncStatus.Synced, UpdatedTime = new DateTime(2026, 8, 2) }
     };
 
-    var groups = ProgramProductGroupRules.BuildGroups(programs, program => program.ProgramName);
+    var groups = ProgramProductGroupRules.BuildGroups(programs, program => "已同步");
 
-    // 单程序工号不再多套一层父节点，否则界面上会出现只能展开出一行的冗余箭头。
     AssertEqual(1, groups.Count, "单程序工号必须只占一行。");
+    AssertEqual(1, groups[0].SerialNumber, "单程序工号父行必须显示序号 1。");
     AssertTrue(groups[0].Programs is null, "单程序工号不得产生子行，避免出现多余的展开箭头。");
     AssertEqual(7, groups[0].ProgramId, "单程序工号的行必须直接指向该程序。");
-    AssertEqual("只有一个程序", groups[0].Summary, "单程序工号必须把程序摘要显示在工号行上。");
+    AssertEqual("只有一个程序", groups[0].ProgramName, "单程序工号必须在独立列显示程序名称。");
+    AssertEqual("已同步", groups[0].SyncStatus, "单程序工号必须在独立列显示同步状态。");
 }
 
 static void ProgramManageServiceNoLongerGeneratesProgramFiles()
