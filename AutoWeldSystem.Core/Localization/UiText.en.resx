@@ -501,6 +501,15 @@
   <data name="system.message.device_sync_failed" xml:space="preserve">
     <value>Failed to sync device information to MES: {0}</value>
   </data>
+  <data name="system.message.device_register_confirm" xml:space="preserve">
+    <value>MES could not find the old device “{0}”. Register “{1}” as a new device?</value>
+  </data>
+  <data name="system.message.device_register_success" xml:space="preserve">
+    <value>The old device does not exist. Device “{0}” was registered as a new MES device.</value>
+  </data>
+  <data name="system.message.device_register_failed" xml:space="preserve">
+    <value>Failed to register the device as a new MES device: {0}</value>
+  </data>
   <data name="plc.state.stopped" xml:space="preserve">
     <value>Stopped</value>
   </data>

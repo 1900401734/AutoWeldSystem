@@ -998,13 +998,60 @@ public partial class SystemSettingView : BaseView
                 return true;
             }
 
-            ShowError(TextKeys.SystemSetting.MessageDeviceSyncFailed, response.Msg);
+            if (!DeviceIdSyncRules.ShouldOfferRegisterAsNew(request.OldDeviceId, response.Msg))
+            {
+                ShowError(TextKeys.SystemSetting.MessageDeviceSyncFailed, response.Msg);
+                return false;
+            }
+
+            if (!ConfirmRegisterNewDevice(request))
+            {
+                return false;
+            }
+
+            var registerRequest = BuildNewDeviceRegistrationRequest(request);
+            var registerResponse = await _mesProvider.SetDeviceIdAsync(registerRequest);
+            if (registerResponse.IsSuccess)
+            {
+                ShowInfo(TextKeys.SystemSetting.MessageDeviceRegisterSuccess, registerRequest.DeviceId);
+                return true;
+            }
+
+            ShowError(TextKeys.SystemSetting.MessageDeviceRegisterFailed, registerResponse.Msg);
             return false;
         }
         finally
         {
             triggerButton.Enabled = true;
         }
+    }
+
+    private bool ConfirmRegisterNewDevice(AddDeviceReq request)
+    {
+        var message = _localizer.GetString(
+            TextKeys.SystemSetting.MessageDeviceRegisterConfirm,
+            request.OldDeviceId?.Trim() ?? string.Empty,
+            request.DeviceId.Trim());
+        return MessageBox.Show(
+                this,
+                message,
+                _localizer.GetString(TextKeys.Common.TitleWarning),
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning)
+            == DialogResult.Yes;
+    }
+
+    private static AddDeviceReq BuildNewDeviceRegistrationRequest(AddDeviceReq request)
+    {
+        return new AddDeviceReq
+        {
+            OldDeviceId = string.Empty,
+            DeviceId = request.DeviceId,
+            DeviceName = request.DeviceName,
+            IP = request.IP,
+            DevStatusUrl = request.DevStatusUrl,
+            PostDataDomain = request.PostDataDomain
+        };
     }
 
     /// <summary>

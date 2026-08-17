@@ -501,6 +501,15 @@
   <data name="system.message.device_sync_failed" xml:space="preserve">
     <value>设备信息同步到 MES 失败：{0}</value>
   </data>
+  <data name="system.message.device_register_confirm" xml:space="preserve">
+    <value>MES 中未找到旧设备“{0}”。是否将“{1}”作为新设备注册？</value>
+  </data>
+  <data name="system.message.device_register_success" xml:space="preserve">
+    <value>旧设备不存在，已将设备“{0}”作为新设备注册到 MES。</value>
+  </data>
+  <data name="system.message.device_register_failed" xml:space="preserve">
+    <value>按新设备注册到 MES 失败：{0}</value>
+  </data>
   <data name="plc.state.stopped" xml:space="preserve">
     <value>已停止</value>
   </data>
