@@ -9951,6 +9951,9 @@ static void ProgramManageGridShowsSequenceAndProgramName()
     AssertTrue(viewCode.Contains("TextKeys.ProgramManage.CurrentSynced", StringComparison.Ordinal)
         && viewCode.Contains("TextKeys.ProgramManage.CurrentNotSynced", StringComparison.Ordinal),
         "右侧当前状态必须只显示已同步/MES程序ID或未同步。");
+    var zhResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.resx"), Encoding.UTF8);
+    AssertTrue(zhResources.Contains("<value>当前：已同步 / {0}</value>", StringComparison.Ordinal), "已同步状态必须显示当前前缀、分隔空格和程序ID。");
+    AssertTrue(zhResources.Contains("<value>当前：未同步</value>", StringComparison.Ordinal), "未同步状态必须显示当前前缀。");
     AssertTrue(viewCode.Contains("row.ProgramId > 0", StringComparison.Ordinal), "父行不指向具体程序，点击不得切换编辑对象。");
 }
 
