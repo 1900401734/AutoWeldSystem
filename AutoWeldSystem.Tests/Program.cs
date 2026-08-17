@@ -11365,9 +11365,14 @@ static void ProgramManageSaveAndDualSelectorPathsStayAsynchronous()
             && viewCode.Contains("SetRecipeSelectorItems", StringComparison.Ordinal),
         "双工位配方刷新必须有页面取消、总时限和选择器去重绑定。 ");
     AssertTrue(
+        designerCode.Contains("DisposeOperationCts();", StringComparison.Ordinal)
+            && viewCode.Contains("private void DisposeOperationCts()", StringComparison.Ordinal)
+            && viewCode.Contains("Interlocked.Exchange(ref _operationCtsDisposed, 1)", StringComparison.Ordinal),
+        "页面销毁时必须通过幂等释放方法取消并释放操作令牌。 ");
+    AssertFalse(
         designerCode.Contains("_operationCts?.Cancel();", StringComparison.Ordinal)
-            && designerCode.Contains("_operationCts?.Dispose();", StringComparison.Ordinal),
-        "页面销毁时必须由 Designer Dispose 统一取消并释放操作令牌。 ");
+            || designerCode.Contains("_operationCts?.Dispose();", StringComparison.Ordinal),
+        "Designer 不得直接重复释放操作令牌。 ");
     AssertFalse(
         viewCode.Contains("protected override void OnHandleDestroyed(EventArgs e)", StringComparison.Ordinal),
         "运行时代码不得再次释放操作令牌，避免与 Designer Dispose 重复释放。 ");

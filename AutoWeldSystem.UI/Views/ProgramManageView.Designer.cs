@@ -8,8 +8,7 @@
         {
             if (disposing)
             {
-                _operationCts?.Cancel();
-                _operationCts?.Dispose();
+                DisposeOperationCts();
             }
 
             if (disposing && (components != null))

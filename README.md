@@ -1,6 +1,6 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v1.8.5`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v1.8.6`。
 
 ## 功能概览
 
@@ -207,10 +207,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>1.8.5</Version>
-<AssemblyVersion>1.8.5.0</AssemblyVersion>
-<FileVersion>1.8.5.0</FileVersion>
-<InformationalVersion>1.8.5</InformationalVersion>
+<Version>1.8.6</Version>
+<AssemblyVersion>1.8.6.0</AssemblyVersion>
+<FileVersion>1.8.6.0</FileVersion>
+<InformationalVersion>1.8.6</InformationalVersion>
 ```
 
 建议使用语义化版本：

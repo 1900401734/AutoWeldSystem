@@ -45,6 +45,7 @@ public partial class ProgramManageView : BaseView
     private bool _enableDualStation;
     private static readonly TimeSpan RecipeNameReadTimeout = TimeSpan.FromSeconds(10);
     private readonly CancellationTokenSource _operationCts = new();
+    private int _operationCtsDisposed;
     private bool _deleteInProgress;
     // 批量绑定控件值期间暂停自动填充，避免中间态触发多次重算。
     private bool _suppressNameAutoFill;
@@ -96,6 +97,17 @@ public partial class ProgramManageView : BaseView
         }
     }
 
+
+    private void DisposeOperationCts()
+    {
+        if (System.Threading.Interlocked.Exchange(ref _operationCtsDisposed, 1) != 0)
+        {
+            return;
+        }
+
+        _operationCts.Cancel();
+        _operationCts.Dispose();
+    }
 
     protected override void OnLanguageChanged()
     {
