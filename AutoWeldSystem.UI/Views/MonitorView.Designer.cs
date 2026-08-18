@@ -1,4 +1,4 @@
-using AutoWeldSystem.UI.Controls;
+﻿using AutoWeldSystem.UI.Controls;
 
 namespace AutoWeldSystem.UI.Views
 {
@@ -1466,7 +1466,7 @@ namespace AutoWeldSystem.UI.Views
             inputProdModel.Location = new Point(70, 0);
             inputProdModel.Margin = new Padding(0);
             inputProdModel.Name = "inputProdModel";
-            inputProdModel.ReadOnly = true;
+            inputProdModel.ReadOnly = false;
             inputProdModel.Size = new Size(331, 37);
             inputProdModel.TabIndex = 4;
             // 

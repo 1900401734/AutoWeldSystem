@@ -1,4 +1,4 @@
-using AutoWeldSystem.Core;
+﻿using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
 using AutoWeldSystem.Core.DTOs.Mes.Request;
@@ -146,6 +146,7 @@ public partial class MonitorView : BaseView
     private string? _pendingOnlineProgramWorkOrderKey;
     private string _pendingOnlineProgramRecipeCode = string.Empty;
     private bool _offlineWorkOrderEditedByUser;
+    private bool _offlineInputModeActive;
     // 记录操作员已显式选择离线程序或配方的工位。
     private readonly HashSet<int> _offlineProgramSelectedByUserStations = new();
     private bool _manualWorkOrderEditedByUser;
@@ -1072,18 +1073,16 @@ public partial class MonitorView : BaseView
     /// <param name="text">需要显示的配方号。</param>
     /// <summary>
     /// 从主界面控件构造本次开工的工单快照（可空项允许空串）。
-    /// 产品工号取自 selectProdNum 控件的实际选中值，型号/配方号跟随程序。
+    /// 产品工号取自 selectProdNum 控件的实际选中值；产品型号优先使用手工输入，否则使用 MES 工单值。
     /// </summary>
     private WorkOrderRes BuildAdjustedWorkOrderFromInputs(WorkOrderRes source)
     {
-        var program = GetCurrentStationState().SelectedProgram;
-        var localProgram = program is null ? null : ResolveLocalProgramByProgramId(program.Id);
         var selectedProductNum = GetSelectedOfflineProductNum();
         return new WorkOrderRes
         {
             SN = inputSN.Text.Trim(),
             ProdNum = FirstNonEmpty(selectedProductNum, source.ProdNum),
-            ProdModel = FirstNonEmpty(localProgram?.ProductModel, source.ProdModel),
+            ProdModel = FirstNonEmpty(inputProdModel.Text, source.ProdModel),
             Spec = inputSpec.Text.Trim(),
             Batch = inputBatch.Text.Trim(),
             ProductName = inputProductName.Text.Trim(),
@@ -1168,7 +1167,7 @@ public partial class MonitorView : BaseView
         request.ProgramType = string.IsNullOrWhiteSpace(fullProgram.ProgramType) ? "0" : fullProgram.ProgramType;
         request.ProgramContent = string.IsNullOrWhiteSpace(fullProgram.ProgramContent) ? "{}" : fullProgram.ProgramContent;
         request.ProductNum = fullProgram.ProductNum;
-        request.ProductModel = fullProgram.ProductModel ?? string.Empty;
+        request.ProductModel = inputProdModel.Text.Trim();
         request.RecipeCode = ProgramRecipeMappingRules.Resolve(fullProgram, stationNo);
 
         var localProgram = new ProgramDataRes
@@ -3507,6 +3506,7 @@ public partial class MonitorView : BaseView
         if (normalizedStationNo != CurrentStationNo)
         {
             ClearOfflineProgramSelectionByUser(CurrentStationNo);
+        _offlineInputModeActive = false;
             ClearOfflineProgramSelectionByUser(normalizedStationNo);
             _viewStationNo = normalizedStationNo;
             ClearPendingOnlineProgramSelection();
@@ -3561,6 +3561,7 @@ public partial class MonitorView : BaseView
         }
 
         ClearOfflineProgramSelectionByUser(CurrentStationNo);
+        _offlineInputModeActive = false;
         var canEditOnlineWorkOrder = IsManualOnlineWorkOrderInputEditable(state);
         var onlineEditable = IsOnlineStartInputEditable(state);
         ApplyOfflineInputReadOnly(readOnly: true);
@@ -3598,9 +3599,8 @@ public partial class MonitorView : BaseView
             inputSpec.Text = workOrder?.Spec ?? string.Empty;
             inputProcessNo.Text = process?.ProcessNo ?? string.Empty;
             inputStartAmount.Text = process is null ? string.Empty : process.StartAmount.ToString(CultureInfo.InvariantCulture);
+            inputProdModel.Text = workOrder?.ProdModel ?? string.Empty;
         }
-
-        inputProdModel.Text = workOrder?.ProdModel ?? currentIdentity?.ProductModel ?? string.Empty;
         BindProcessSelection(workOrder, process, activeTask is not null);
         var usePendingProgram = program is null && activeTask is null && HasPendingOnlineProgramSelection(state);
         selectProgramName.Text = usePendingProgram
@@ -3690,7 +3690,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
 
     /// <summary>
     /// 设置在线开工输入控件的只读状态。
-    /// 产品工号/产品型号/配方号跟随程序，始终只读；员工号依“操作员弹窗输入”设置。
+    /// 产品工号/配方号跟随工单或程序；产品型号可由 MES 回填后由操作员调整；员工号依“操作员弹窗输入”设置。
     /// </summary>
     private void ApplyOnlineStartInputReadOnly(bool editable)
     {
@@ -3704,7 +3704,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         selectProgramName.ReadOnly = fieldReadOnly;
 
         selectProdNum.ReadOnly = true;
-        inputProdModel.ReadOnly = true;
+        inputProdModel.ReadOnly = fieldReadOnly;
 
         var useOperatorDialog = _currentSettings.UseOperatorInputDialog ?? true;
         MesUserNumber.ReadOnly = fieldReadOnly || useOperatorDialog;
@@ -3719,6 +3719,8 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         _syncingOfflineInputs = true;
         try
         {
+            var enteringOfflineInputMode = !_offlineInputModeActive;
+            _offlineInputModeActive = true;
             ApplyOfflineInputReadOnly(readOnly: false);
             BindOfflineProductNumOptions();
             BindOfflineProgramNameOptions();
@@ -3735,7 +3737,11 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             inputProcessNo.Text = string.IsNullOrWhiteSpace(inputProcessNo.Text) ? "OP10" : inputProcessNo.Text;
             selectItemName.Text = string.IsNullOrWhiteSpace(selectItemName.Text) ? "离线焊接" : selectItemName.Text;
             inputStartAmount.Text = string.IsNullOrWhiteSpace(inputStartAmount.Text) ? "1" : inputStartAmount.Text;
-            inputProdModel.Text = string.Empty;
+            if (enteringOfflineInputMode)
+            {
+                inputProdModel.Text = string.Empty;
+            }
+
             ApplyOfflineProgramNameOption(GetSelectedOfflineProgramNameOption());
         }
         finally
@@ -3759,7 +3765,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         inputStartAmount.ReadOnly = readOnly;
         selectProgramName.ReadOnly = readOnly;
         selectProdNum.ReadOnly = readOnly;
-        inputProdModel.ReadOnly = true;
+        inputProdModel.ReadOnly = readOnly;
     }
 
     /// <summary>
@@ -3911,13 +3917,12 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// <param name="options">离线程序名称选项。</param>
     /// <param name="currentRecipeCode">需要保持显示的当前配方号。</param>
     /// <summary>
-    /// 将选中的程序名称关联信息同步到产品工号、产品型号和配方号控件。
+    /// 将选中的程序名称关联信息同步到产品工号和配方号控件，产品型号由 MES 或操作员输入。
     /// </summary>
     /// <param name="option">选中的本地程序；为空时清空联动字段。</param>
     private void ApplyOfflineProgramNameOption(OfflineProgramNameOption? option)
     {
         SetProductNumSelectionText(option?.Program.ProductNum ?? string.Empty);
-        inputProdModel.Text = option?.Program.ProductModel ?? string.Empty;
         if (option is not null && IsOfflineInputEditable(GetCurrentStationState()))
         {
             selectProgramName.Text = option.DisplayText;
@@ -3974,7 +3979,8 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
                     selectItemName.Text,
                     inputStartAmount.Text,
                     inputProductName.Text,
-                    inputDrawingNo.Text),
+                    inputDrawingNo.Text,
+                    inputProdModel.Text),
                 selectedProgram);
             return true;
         }
@@ -7249,7 +7255,6 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         if (ShouldApplyProductIdentityToInputs(identity))
         {
             SetProductNumSelectionText(identity.ProductNum);
-            inputProdModel.Text = identity.ProductModel;
         }
 
         var processConfig = ResolveRealtimePreviewProcessConfig(identity);

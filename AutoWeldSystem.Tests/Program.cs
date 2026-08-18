@@ -9382,12 +9382,16 @@ static void MonitorViewKeepsUserProductNumAcrossRuntimeRebind()
         "private void ApplyOfflineInputReadOnly(bool readOnly)",
         "private void SetWorkOrderInputText(string workId)");
     AssertTrue(offlineReadOnly.Contains("selectProdNum.ReadOnly = readOnly;", StringComparison.Ordinal), "离线可编辑态下操作员必须能展开产品工号下拉。");
+    AssertTrue(offlineReadOnly.Contains("inputProdModel.ReadOnly = readOnly;", StringComparison.Ordinal), "离线可编辑态下操作员必须能手工输入产品型号。");
 
     var onlineReadOnly = ExtractMethodText(
         viewCode,
         "private void ApplyOnlineStartInputReadOnly(bool editable)",
         "private void BindOfflineEditableRuntimeState(string liveWorkId)");
     AssertTrue(onlineReadOnly.Contains("selectProdNum.ReadOnly = true;", StringComparison.Ordinal), "在线态产品工号跟随工单，必须保持只读展示。");
+    AssertTrue(onlineReadOnly.Contains("inputProdModel.ReadOnly = fieldReadOnly;", StringComparison.Ordinal), "在线可编辑开工态下操作员必须能调整产品型号。");
+    AssertTrue(viewCode.Contains("ProdModel = FirstNonEmpty(inputProdModel.Text, source.ProdModel)", StringComparison.Ordinal), "在线开工快照必须优先使用手工输入的产品型号。");
+    AssertFalse(viewCode.Contains("option?.Program.ProductModel", StringComparison.Ordinal), "监控页不得再从加工程序回填产品型号。");
 }
 
 static void ProductHistoryPreviewSortsLatestProductFirst()
@@ -9444,6 +9448,7 @@ static void OfflineStartRequestFollowsInlineMonitorInput()
         ProcessNo: "OP20",
         ProcessName: "离线焊接",
         PlannedQtyText: "12",
+        ProductModel: "MANUAL-MODEL",
         ProductName: "引出线",
         DrawingNo: "DR-9");
 
@@ -9456,7 +9461,7 @@ static void OfflineStartRequestFollowsInlineMonitorInput()
     AssertEqual("OP20", request.ProcessNo, "离线开工应使用界面输入的工序号。");
     AssertEqual(12, request.PlannedQty, "离线开工应使用界面输入的计划数量。");
     AssertEqual("164#J", request.ProductNum, "离线开工应使用选中程序关联的产品工号。");
-    AssertEqual("M-164", request.ProductModel, "离线开工应使用选中程序关联的产品型号。");
+    AssertEqual("MANUAL-MODEL", request.ProductModel, "离线开工应优先使用界面手工输入的产品型号。");
     AssertEqual("5", request.RecipeCode, "离线开工应使用选中程序关联的配方号。");
     AssertEqual("{\"steps\":3}", request.ProgramContent, "离线开工应使用选中程序的程序内容。");
 }
@@ -9482,6 +9487,7 @@ static void OfflineStartAllowsEmptyPartNameAndDrawingNumber()
         ProcessNo: "OP10",
         ProcessName: string.Empty,
         PlannedQtyText: "1",
+        ProductModel: string.Empty,
         ProductName: "   ",
         DrawingNo: "   ");
 
@@ -9524,6 +9530,7 @@ static void OfflineStartRequiresWorkOrderAndProcessNumber()
         ProcessNo: "OP10",
         ProcessName: string.Empty,
         PlannedQtyText: "1",
+        ProductModel: string.Empty,
         ProductName: string.Empty,
         DrawingNo: string.Empty);
 

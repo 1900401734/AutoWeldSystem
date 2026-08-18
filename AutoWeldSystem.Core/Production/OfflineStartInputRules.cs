@@ -109,7 +109,7 @@ public static class OfflineStartInputRules
     }
 
     /// <summary>
-    /// Builds the existing offline MES start request from inline editor values and the selected program.
+    /// Builds the offline MES start request from inline editor values and the selected program; product model comes from the editor.
     /// </summary>
     /// <param name="input">Values entered on MonitorView.</param>
     /// <param name="option">Selected program-name option.</param>
@@ -135,7 +135,7 @@ public static class OfflineStartInputRules
             ProgramType = FirstNonEmpty(program.ProgramType, "0"),
             ProgramContent = FirstNonEmpty(program.ProgramContent, "{}"),
             ProductNum = NormalizeRequired(program.ProductNum, "产品工号不能为空。"),
-            ProductModel = Normalize(program.ProductModel),
+            ProductModel = Normalize(input.ProductModel),
             ProductName = Normalize(input.ProductName),
             DrawingNo = Normalize(input.DrawingNo),
             RecipeCode = NormalizeRequired(
@@ -215,5 +215,6 @@ public sealed record OfflineStartInput(
     string ProcessNo,
     string ProcessName,
     string PlannedQtyText,
+    string ProductModel,
     string ProductName,
     string DrawingNo);
