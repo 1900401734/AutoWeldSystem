@@ -1333,6 +1333,9 @@
   <data name="monitor.error.production_collect_failed" xml:space="preserve">
     <value>Production data collection failed.</value>
   </data>
+  <data name="monitor.error.plc_business_signal_read_failed" xml:space="preserve">
+    <value>PLC business signal read failed.</value>
+  </data>
   <data name="monitor.error.plc_alarm_read_failed" xml:space="preserve">
     <value>PLC alarm address read failed.</value>
   </data>

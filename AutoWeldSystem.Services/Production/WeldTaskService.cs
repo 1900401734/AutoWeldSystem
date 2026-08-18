@@ -474,6 +474,8 @@ public class WeldTaskService : IWeldTaskService
         ApplySharedStartedRuntimeStateIfNeeded(normalizedStationNo, workOrder, process, program, task, startOperatorNumber);
         _operationLogService.Write("ExpStart", $"Start report submitted, Station={task.StationNo}, MES Id={task.ExpStartId}, WorkOrder={task.SN}");
         WriteTestProgramRunningLog(task);
+        // 任务已经本地落库并进入运行态，先通知 UI；设备状态上传不能阻塞当前任务可见性。
+        NotifyStateChanged();
         await RecordProgramStartedStatusAsync(task, cancellationToken);
         NotifyStateChanged();
         return task;
@@ -540,6 +542,8 @@ public class WeldTaskService : IWeldTaskService
         EnqueueWorkOrderStatusTask(task, ProductionConstants.MesWorkOrderStatuses.StartedOrRestarted);
 
         _operationLogService.Write("LocalExpStart", $"Local task started, Station={task.StationNo}, WorkOrder={task.SN}, Recipe={task.RecipeCode}");
+        // 本地任务已经落库并进入运行态，先通知 UI；离线状态补传不能延迟当前任务显示。
+        NotifyStateChanged();
         await RecordProgramStartedStatusAsync(task, cancellationToken);
         NotifyStateChanged();
         return task;
@@ -684,10 +688,11 @@ public class WeldTaskService : IWeldTaskService
 
         _dbContext.Db.Updateable(task).ExecuteCommand();
         _centerProductForwardingService.EnqueueTaskFinishUpdate(task);
-        if (finishUploaded)
-        {
-            await RecordProgramEndedStatusAsync(task, cancellationToken);
-        }
+        ApplyFinishedRuntimeState(normalizedStationNo, task);
+        // 本地完工已持久化后立即刷新 UI；MES 完工、设备状态和文件上传均独立处理。
+        NotifyStateChanged();
+        // 首次 MES 完工失败时也必须落设备状态 7，确保后续仍可补传。
+        await RecordProgramEndedStatusAsync(task, cancellationToken);
 
         var finishReportTask = EnqueueFinishReportTask(
             task,
@@ -697,11 +702,12 @@ public class WeldTaskService : IWeldTaskService
         var uploadTasks = EnqueueFinishUploadTasks(task, settings.UploadMode).ToList();
         if (!finishUploaded)
         {
-            uploadTasks.Add(finishReportTask);
+            var reportFileIndex = uploadTasks.FindIndex(uploadTask =>
+                string.Equals(uploadTask.TaskType, ProductionConstants.UploadTaskTypes.ReportFile, StringComparison.OrdinalIgnoreCase));
+            uploadTasks.Insert(reportFileIndex >= 0 ? reportFileIndex : uploadTasks.Count, finishReportTask);
         }
 
         await ExecuteFinishUploadTasksAsync(task, uploadTasks, cancellationToken);
-        ApplyFinishedRuntimeState(normalizedStationNo, task);
         _operationLogService.Write("ExpEnd", $"Finish report handled, Station={task.StationNo}, WorkOrder={task.SN}, UploadStatus={task.UploadStatus}, FinishUploaded={finishUploaded}");
         NotifyStateChanged();
         return task;
@@ -749,6 +755,8 @@ public class WeldTaskService : IWeldTaskService
         EnqueueFinishUploadTasks(task, CurrentSettings.UploadMode);
 
         ApplyFinishedRuntimeState(normalizedStationNo, task);
+        // 本地完工状态先可见，设备状态 7 再独立写入并补传。
+        NotifyStateChanged();
         _operationLogService.Write("LocalExpEnd", $"Local task finished, Station={task.StationNo}, WorkOrder={task.SN}, UploadStatus={task.UploadStatus}");
         await RecordProgramEndedStatusAsync(task, cancellationToken);
         NotifyStateChanged();
@@ -834,8 +842,8 @@ public class WeldTaskService : IWeldTaskService
         var executedCount = 0;
         executedCount += await _uploadTaskService.ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.StartReport, cancellationToken);
         executedCount += await _uploadTaskService.ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.ProcessParameter, cancellationToken);
-        executedCount += await _uploadTaskService.ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.ReportFile, cancellationToken);
         executedCount += await _uploadTaskService.ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.FinishReport, cancellationToken);
+        executedCount += await _uploadTaskService.ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.ReportFile, cancellationToken);
 
         if (CurrentState.ActiveTask is not null)
         {

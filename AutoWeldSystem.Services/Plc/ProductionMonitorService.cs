@@ -16,7 +16,6 @@ namespace AutoWeldSystem.Services.Plc;
 public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDisposable
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan BusinessLogInterval = TimeSpan.FromSeconds(30);
 
     private readonly IPlcCommunicationService _plcCommunicationService;
     private readonly IPlcAddressService _plcAddressService;
@@ -32,6 +31,7 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
     private readonly object _snapshotSync = new();
     private List<BizPlcAddress> _addresses = [];
     private readonly Dictionary<int, PlcProductionSnapshot> _stationSnapshots = new();
+    private readonly Dictionary<int, string> _activeBusinessSignalFailureKeys = new();
     private readonly Dictionary<int, string> _activeAlarmFailureKeys = new();
     private readonly HashSet<string> _sourceRemovedAlarmKeysAwaitingClear = new(StringComparer.OrdinalIgnoreCase);
     private PlcDeviceAlarmCycleState? _alarmCycleState;
@@ -39,8 +39,6 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
     private PlcActiveAlarm? _pendingExceptionReassertion;
     private CancellationTokenSource? _cts;
     private Task? _loopTask;
-    private string _lastBusinessLogKey = string.Empty;
-    private DateTime _lastBusinessLogTime;
     private bool _disposed;
 
     public ProductionMonitorService(
@@ -129,6 +127,7 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
         try
         {
             _addresses = addresses;
+            ClearBusinessSignalFailureStates();
         }
         finally
         {
@@ -183,7 +182,7 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
                     continue;
                 }
 
-                WriteBusinessFailureLog(Current.StationNo, ex.Message);
+                WriteBusinessSignalReadFailureLog(Current.StationNo, ex.Message);
                 Publish(Current with
                 {
                     IsSuccess = false,
@@ -219,6 +218,10 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
         IReadOnlyList<BizPlcAlarmAddress> alarmAddresses = alarmReadingEnabled
             ? _plcAlarmAddressService.GetAll()
             : [];
+        var productionStationNumbers = addresses
+            .Where(address => IsStationProductionKey(address.LogicalKey))
+            .Select(address => NormalizeStationNo(address.StationNo))
+            .ToHashSet();
         var stationNumbers = ResolveStationNumbers(addresses, alarmAddresses)
             .Concat(settings.EnableDualStation
                 ? [ProductionConstants.Stations.DefaultStationNo, 2]
@@ -278,6 +281,12 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
                 continue;
             }
 
+            // 报警专用工位仍参与报警轮询，但没有生产业务信号时不应读取设备状态和产量。
+            if (!productionStationNumbers.Contains(stationNo))
+            {
+                continue;
+            }
+
             var activeAlarm = alarmReadingEnabled
                 ? PlcSoftwareAlarmRules.AggregateAlarmSignals(
                     stationNo,
@@ -289,7 +298,9 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
             if (deviceStatusAddress is null)
             {
                 deviceStatuses[stationNo] = null;
-                PublishFailureForStations([stationNo], "设备状态地址未配置。");
+                PublishFailureForStations(
+                    [stationNo],
+                    BuildBusinessSignalAddressMissing(AppConstants.PlcLogicalKeys.DeviceStatus));
                 continue;
             }
 
@@ -297,7 +308,12 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
             if (!statusResult.IsSuccess)
             {
                 deviceStatuses[stationNo] = null;
-                PublishFailureForStations([stationNo], statusResult.Message);
+                PublishFailureForStations(
+                    [stationNo],
+                    BuildBusinessSignalReadFailure(
+                        AppConstants.PlcLogicalKeys.DeviceStatus,
+                        deviceStatusAddress.Address,
+                        statusResult.Message));
                 continue;
             }
 
@@ -306,12 +322,6 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
             var statusMessage = BuildDeviceStatusValidationMessage(plcStatusCode);
             var externalAlarm = BuildExternalAlarmSnapshot(plcStatusCode, activeAlarm, stationNo);
 
-            if (!ProductionConstants.PlcDeviceStatuses.IsReportable(plcStatusCode)
-                && !string.IsNullOrWhiteSpace(statusMessage))
-            {
-                WriteBusinessFailureLog(stationNo, statusMessage);
-            }
-
             var total = await ReadRequiredIntegerAsync(addresses, AppConstants.PlcLogicalKeys.TotalProduction, stationNo, cancellationToken);
             var accepted = await ReadRequiredIntegerAsync(addresses, AppConstants.PlcLogicalKeys.AcceptedQuantity, stationNo, cancellationToken);
             var rejected = await ReadRequiredIntegerAsync(addresses, AppConstants.PlcLogicalKeys.RejectedQuantity, stationNo, cancellationToken);
@@ -319,9 +329,13 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
             var snapshotMessage = BuildSnapshotMessage(statusMessage, quantityMessage);
             var isSnapshotSuccess = string.IsNullOrWhiteSpace(snapshotMessage);
 
-            if (!string.IsNullOrWhiteSpace(quantityMessage))
+            if (!string.IsNullOrWhiteSpace(snapshotMessage))
             {
-                WriteBusinessFailureLog(stationNo, quantityMessage);
+                WriteBusinessSignalReadFailureLog(stationNo, snapshotMessage);
+            }
+            else
+            {
+                ClearBusinessSignalFailureState(stationNo);
             }
 
             if (!IsPlcConnected(stationNo))
@@ -435,13 +449,13 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
         var address = GetAddress(addresses, key, stationNo);
         if (address is null)
         {
-            return PlcQuantityReadResult.Fail($"{GetQuantityName(key)}地址未配置。");
+            return PlcQuantityReadResult.Fail(BuildBusinessSignalAddressMissing(key));
         }
 
         var plcAddress = address.Address?.Trim();
         if (string.IsNullOrWhiteSpace(plcAddress))
         {
-            return PlcQuantityReadResult.Fail($"{GetQuantityName(key)}PLC地址为空。");
+            return PlcQuantityReadResult.Fail(BuildBusinessSignalAddressMissing(key));
         }
 
         var dataType = NormalizeDataType(address.DataType);
@@ -894,13 +908,13 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
             return PlcQuantityReadResult.Success(Convert.ToInt32(Math.Round(doubleValue, MidpointRounding.AwayFromZero)));
         }
 
-        return PlcQuantityReadResult.Fail($"{GetQuantityName(key)}地址“{plcAddress}”读取值无法转换为整数。");
+        return PlcQuantityReadResult.Fail($"{GetBusinessSignalName(key)}地址“{plcAddress}”读取值无法转换为整数。");
     }
 
     private static string BuildQuantityReadFailure(string key, string plcAddress, string message)
     {
         var detail = string.IsNullOrWhiteSpace(message) ? "PLC未返回失败原因" : message.Trim();
-        return $"{GetQuantityName(key)}地址“{plcAddress}”读取失败：{detail}";
+        return BuildBusinessSignalReadFailure(key, plcAddress, detail);
     }
 
     private static string BuildQuantityReadMessage(params PlcQuantityReadResult[] results)
@@ -922,7 +936,7 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
             return string.Empty;
         }
 
-        return $"PLC设备状态值无效：{plcStatusCode}。仅支持 0=未知（本地显示）、1=运行、2=暂停/空闲、3=停止、4=报警；已跳过设备状态上报。";
+        return $"业务信号“设备状态”值无效：{plcStatusCode}。仅支持 0=未知（本地显示）、1=运行、2=暂停/空闲、3=停止、4=报警；已跳过设备状态上报。";
     }
 
     /// <summary>
@@ -936,15 +950,26 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
             .Distinct(StringComparer.OrdinalIgnoreCase));
     }
 
-    private static string GetQuantityName(string key)
+    private static string GetBusinessSignalName(string key)
     {
         return key switch
         {
+            AppConstants.PlcLogicalKeys.DeviceStatus => "设备状态",
             AppConstants.PlcLogicalKeys.TotalProduction => "实际数量",
             AppConstants.PlcLogicalKeys.AcceptedQuantity => "合格数量",
             AppConstants.PlcLogicalKeys.RejectedQuantity => "失效数量",
             _ => key
         };
+    }
+
+    private static string BuildBusinessSignalAddressMissing(string key)
+        => $"业务信号“{GetBusinessSignalName(key)}”地址未配置。";
+
+    private static string BuildBusinessSignalReadFailure(string key, string? plcAddress, string? message)
+    {
+        var detail = string.IsNullOrWhiteSpace(message) ? "PLC未返回失败原因" : message.Trim();
+        var address = string.IsNullOrWhiteSpace(plcAddress) ? string.Empty : $"地址“{plcAddress.Trim()}”";
+        return $"业务信号“{GetBusinessSignalName(key)}”{address}读取失败：{detail}";
     }
 
     private static BizPlcAddress? GetAddress(IReadOnlyList<BizPlcAddress> addresses, string logicalKey, int stationNo)
@@ -980,21 +1005,46 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
     }
 
     /// <summary>
-    /// PLC 生产数据采集失败属于可预见业务异常，详细原因写入异常日志供日志管理页面查看。
+    /// 周期读取 PLC 生产状态和产量业务信号失败，详细原因写入异常日志。
     /// </summary>
-    private void WriteBusinessFailureLog(int stationNo, string detail)
+    private void WriteBusinessSignalReadFailureLog(int stationNo, string detail)
     {
-        var summary = _localizer.GetString(TextKeys.Monitor.RuntimeError.ProductionCollectFailed);
-        if (!ShouldWriteBusinessLog(stationNo, summary, detail))
+        var summary = _localizer.GetString(TextKeys.Monitor.RuntimeError.PlcBusinessSignalReadFailed);
+        var fingerprint = $"{stationNo}|{detail}";
+        lock (_businessLogSync)
         {
-            return;
+            if (string.Equals(
+                _activeBusinessSignalFailureKeys.GetValueOrDefault(stationNo),
+                fingerprint,
+                StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _activeBusinessSignalFailureKeys[stationNo] = fingerprint;
         }
 
         _exceptionLogService.WriteBusiness(
             "PLC.ProductionMonitor",
             summary,
             detail,
-            $"读取设备状态、加工总数、合格数量或不良数量失败。Station={stationNo}");
+            $"读取 PLC 业务信号失败。Station={stationNo}");
+    }
+
+    private void ClearBusinessSignalFailureState(int stationNo)
+    {
+        lock (_businessLogSync)
+        {
+            _activeBusinessSignalFailureKeys.Remove(stationNo);
+        }
+    }
+
+    private void ClearBusinessSignalFailureStates()
+    {
+        lock (_businessLogSync)
+        {
+            _activeBusinessSignalFailureKeys.Clear();
+        }
     }
 
     private static AlarmReadSnapshot BuildExternalAlarmSnapshot(
@@ -1065,24 +1115,6 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
         }
     }
 
-    private bool ShouldWriteBusinessLog(int stationNo, string summary, string detail)
-    {
-        var key = $"{stationNo}|{summary}|{detail}";
-        lock (_businessLogSync)
-        {
-            var now = DateTime.Now;
-            if (string.Equals(_lastBusinessLogKey, key, StringComparison.Ordinal)
-                && now - _lastBusinessLogTime < BusinessLogInterval)
-            {
-                return false;
-            }
-
-            _lastBusinessLogKey = key;
-            _lastBusinessLogTime = now;
-            return true;
-        }
-    }
-
     private void PublishFailureForStations(
         IReadOnlyList<int> stationNumbers,
         string message,
@@ -1091,7 +1123,7 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
         var resolvedSoftwareAlarm = softwareAlarm ?? PlcSoftwareAlarmState.Inactive;
         foreach (var stationNo in stationNumbers)
         {
-            WriteBusinessFailureLog(stationNo, message);
+            WriteBusinessSignalReadFailureLog(stationNo, message);
             var current = GetCurrent(stationNo);
             Publish(current with
             {

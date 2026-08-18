@@ -42,6 +42,7 @@ var tests = new (string Name, Action Run)[]
     ("System setting initial load avoids duplicate localization and binding", SystemSettingInitialLoadAvoidsDuplicateWork),
     ("System setting caches device lock state between displays", SystemSettingCachesDeviceLockStateBetweenDisplays),
     ("PLC alarm read failures are merged and labeled precisely", PlcAlarmReadFailuresAreMergedAndLabeledPrecisely),
+    ("PLC production monitor separates business signal failures", PlcProductionMonitorSeparatesBusinessSignalFailures),
     ("Program exception log view batches live updates", ProgramExceptionLogViewBatchesLiveUpdates),
     ("Program exception log view normalizes legacy alarm entries", ProgramExceptionLogViewNormalizesLegacyAlarmEntries),
     ("Exception grid omits source columns but keeps detail source", ExceptionGridOmitsSourceColumns),
@@ -1460,6 +1461,25 @@ static void PlcAlarmReadFailuresAreMergedAndLabeledPrecisely()
     AssertTrue(serviceCode.Contains("TextKeys.Monitor.RuntimeError.PlcAlarmReadFailed", StringComparison.Ordinal), "报警读取失败必须使用专属异常消息键。");
     AssertTrue(serviceCode.Contains("_activeAlarmFailureKeys", StringComparison.Ordinal), "持续相同的报警读取失败必须抑制重复写入。");
     AssertTrue(serviceCode.Contains("ClearAlarmReadFailureState(stationNo);", StringComparison.Ordinal), "报警读取恢复后必须清除抑制状态，下一次失败仍可记录。");
+}
+
+static void PlcProductionMonitorSeparatesBusinessSignalFailures()
+{
+    var serviceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Plc", "ProductionMonitorService.cs"),
+        Encoding.UTF8);
+    var collectionCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductCycleCollectionService.cs"),
+        Encoding.UTF8);
+
+    AssertTrue(serviceCode.Contains("TextKeys.Monitor.RuntimeError.PlcBusinessSignalReadFailed", StringComparison.Ordinal), "生产状态轮询失败必须使用 PLC 业务信号读取失败专属消息。");
+    AssertFalse(serviceCode.Contains("TextKeys.Monitor.RuntimeError.ProductionCollectFailed", StringComparison.Ordinal), "生产状态轮询不得再误用生产数据采集失败消息。");
+    AssertTrue(serviceCode.Contains("if (!productionStationNumbers.Contains(stationNo))", StringComparison.Ordinal), "仅配置报警地址的工位不得继续读取生产业务信号。");
+    AssertTrue(serviceCode.Contains("_activeBusinessSignalFailureKeys", StringComparison.Ordinal), "同一工位持续相同的业务信号失败必须抑制重复写入。");
+    AssertTrue(serviceCode.Contains("ClearBusinessSignalFailureState(stationNo);", StringComparison.Ordinal), "业务信号恢复后必须清除失败状态，允许下一次失败重新记录。");
+    AssertTrue(serviceCode.Contains("业务信号“设备状态”", StringComparison.Ordinal), "业务信号失败详情必须明确设备状态信号。");
+    AssertTrue(serviceCode.Contains("业务信号“{GetBusinessSignalName(key)}”", StringComparison.Ordinal), "产量信号失败详情必须明确具体业务信号。");
+    AssertTrue(collectionCode.Contains("产品数据采集失败", StringComparison.Ordinal), "生产数据采集失败应继续保留在 PLC 产品数据就绪触发的实际采集路径。");
 }
 
 static void ProgramExceptionLogViewBatchesLiveUpdates()
@@ -8016,6 +8036,14 @@ static void StateManageViewKeepsStableColumnsAndLoadsOffUiThread()
     AssertTrue(reloadMethod.Contains("await Task.Run", StringComparison.Ordinal), "数据库和 JSONL 查询必须移出 UI 线程。");
     AssertTrue(reloadMethod.Contains("_reloadGate.WaitAsync", StringComparison.Ordinal), "连续刷新必须串行化，避免重复查询并发执行。");
     AssertTrue(reloadMethod.Contains("version != Volatile.Read(ref _reloadVersion)", StringComparison.Ordinal), "过期页签结果不能覆盖当前页签。");
+    AssertTrue(
+        viewCode.Contains("_weldTaskService.StateChanged += WeldTaskService_StateChanged;", StringComparison.Ordinal)
+            && viewCode.Contains("_weldTaskService.StateChanged -= WeldTaskService_StateChanged;", StringComparison.Ordinal),
+        "工单信息页必须订阅并解绑任务状态变化事件。");
+    AssertTrue(
+        viewCode.Contains("protected override void OnVisibleChanged(EventArgs e)", StringComparison.Ordinal)
+            && viewCode.Contains("if (_initialized && Visible && IsSummaryTab())", StringComparison.Ordinal),
+        "缓存页面重新显示且位于工单信息页签时必须刷新当前任务汇总。");
 }
 
 static void StateManageDeviceStatusTabSupportsMultiDelete()
@@ -10804,6 +10832,10 @@ static void MonitorViewProductHistoryUsesLatestFirstOrdering()
 static void WeldTaskFinishUsesMesStartIdForRetryPayloads()
 {
     var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "WeldTaskService.cs"), Encoding.UTF8);
+    var startMethod = ExtractMethodText(
+        serviceCode,
+        "public async Task<BizWeldTask> StartAsync(",
+        "/// <summary>\r\n    /// Creates a local running task");
     var finishMethod = ExtractMethodText(
         serviceCode,
         "public async Task<BizWeldTask> FinishAsync(string employeeNumber, int actualQty, int qualifiedQty, int failedQty,",
@@ -10816,6 +10848,16 @@ static void WeldTaskFinishUsesMesStartIdForRetryPayloads()
     AssertTrue(finishMethod.Contains("ExpStartId = task.ExpStartId,", StringComparison.Ordinal), "在线完工即时请求必须使用开工 MES 返回的 ExpStartId。");
     AssertTrue(finishMethod.Contains("EnqueueFinishReportTask(\r\n            task,\r\n            finishRequest", StringComparison.Ordinal), "MES 断线时排队补传的完工任务必须复用同一个 finishRequest。");
     AssertFalse(finishMethod.Contains("LocalExpStartId", StringComparison.Ordinal), "在线完工路径不应把 LocalExpStartId 当成 MES 完工任务 ID。");
+    var startStatusIndex = startMethod.IndexOf("await RecordProgramStartedStatusAsync(task, cancellationToken);", StringComparison.Ordinal);
+    var startNotifyIndex = startMethod.IndexOf("NotifyStateChanged();", StringComparison.Ordinal);
+    AssertTrue(startNotifyIndex >= 0 && startNotifyIndex < startStatusIndex, "在线开工必须在设备状态上传前先通知任务已落库，保证工单信息页及时显示。");
+    var endStatusIndex = finishMethod.IndexOf("await RecordProgramEndedStatusAsync(task, cancellationToken);", StringComparison.Ordinal);
+    var finishQueueIndex = finishMethod.IndexOf("EnqueueFinishReportTask(", StringComparison.Ordinal);
+    AssertTrue(endStatusIndex >= 0 && finishQueueIndex > endStatusIndex, "完工必须先记录程序结束状态，再编排完工与报告文件上传任务。");
+    AssertTrue(finishMethod.Contains("uploadTasks.Insert(reportFileIndex >= 0 ? reportFileIndex : uploadTasks.Count, finishReportTask);", StringComparison.Ordinal), "完工失败重试任务必须排在报告文件任务之前。");
+    var retryFinishIndex = serviceCode.IndexOf("ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.FinishReport", StringComparison.Ordinal);
+    var retryReportFileIndex = serviceCode.IndexOf("ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.ReportFile", StringComparison.Ordinal);
+    AssertTrue(retryFinishIndex >= 0 && retryFinishIndex < retryReportFileIndex, "全局补传必须先处理完工上报，再处理报告文件。");
     AssertTrue(buildEndRequest.Contains("ExpStartId = task.ExpStartId ?? string.Empty", StringComparison.Ordinal), "离线补传完工请求也必须使用任务中的 MES ExpStartId。");
     AssertFalse(buildEndRequest.Contains("LocalExpStartId", StringComparison.Ordinal), "BuildEndRequest 不应把 LocalExpStartId 写入 MES ExpStartId 字段。");
 }

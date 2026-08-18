@@ -75,6 +75,16 @@ public partial class StateManageView : BaseView
         RequestReloadActiveTasks();
     }
 
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+
+        if (_initialized && Visible && IsSummaryTab())
+        {
+            RequestReloadActiveTasks();
+        }
+    }
+
     protected override void OnLanguageChanged()
     {
         ApplyLocalizedTexts();
@@ -88,6 +98,7 @@ public partial class StateManageView : BaseView
         GlobalContext.SessionChanged -= GlobalContext_SessionChanged;
         _mesConnectionMonitor.StatusChanged -= MesConnectionMonitor_StatusChanged;
         _deviceStatusService.LogsChanged -= DeviceStatusService_LogsChanged;
+        _weldTaskService.StateChanged -= WeldTaskService_StateChanged;
         _reloadCancellation?.Cancel();
         base.OnHandleDestroyed(e);
     }
@@ -287,6 +298,7 @@ public partial class StateManageView : BaseView
         GlobalContext.SessionChanged += GlobalContext_SessionChanged;
         _mesConnectionMonitor.StatusChanged += MesConnectionMonitor_StatusChanged;
         _deviceStatusService.LogsChanged += DeviceStatusService_LogsChanged;
+        _weldTaskService.StateChanged += WeldTaskService_StateChanged;
         dgvPending.SelectionChanged += (_, _) =>
         {
             ApplyRetrySelectedPermissionForActiveTab();
@@ -342,6 +354,24 @@ public partial class StateManageView : BaseView
                 dgvPending.Invalidate();
             },
             "StateManageView.MesConnectionChanged");
+    }
+
+    private void WeldTaskService_StateChanged(object? sender, EventArgs e)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        RunOnUiThread(
+            () =>
+            {
+                if (_initialized && Visible && IsSummaryTab())
+                {
+                    RequestReloadActiveTasks();
+                }
+            },
+            "StateManageView.WeldTaskStateChanged");
     }
 
     private void GlobalContext_SessionChanged(object? sender, EventArgs e)
