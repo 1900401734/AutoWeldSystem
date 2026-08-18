@@ -4877,7 +4877,7 @@ static void ProcessParameterIsTestFollowsGlobalSettingAndDeviceType()
         IsTest = ProcessParameterIsTestRules.Resolve(recordIsTest: false, showTestFlagInHistory: true, ProductionConstants.ProcessParameterDeviceTypes.WholePieceWeld)
     };
     var weldJson = JsonSerializer.Serialize(weldItem);
-    AssertTrue(weldJson.Contains("\"IsTest\":0", StringComparison.Ordinal), "点焊设备开启全局试焊件后，即使 false 也必须输出 IsTest=0。");
+    AssertTrue(weldJson.Contains("\"IsTest\":false", StringComparison.Ordinal), "点焊设备开启全局试焊件后，即使 false 也必须输出 IsTest=false。");
 
     var testItem = new ProcessParameterUploadItem
     {
@@ -4885,7 +4885,7 @@ static void ProcessParameterIsTestFollowsGlobalSettingAndDeviceType()
         IsTest = ProcessParameterIsTestRules.Resolve(recordIsTest: true, showTestFlagInHistory: true, ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic)
     };
     var testJson = JsonSerializer.Serialize(testItem);
-    AssertTrue(testJson.Contains("\"IsTest\":1", StringComparison.Ordinal), "电磁设备标记试焊件后必须输出 IsTest=1。");
+    AssertTrue(testJson.Contains("\"IsTest\":true", StringComparison.Ordinal), "电磁设备标记试焊件后必须输出 IsTest=true。");
 
     var checkItem = new ProcessParameterUploadItem
     {

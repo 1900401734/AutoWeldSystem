@@ -8,13 +8,13 @@ namespace AutoWeldSystem.Core.Production;
 public static class ProcessParameterIsTestRules
 {
     /// <summary>
-    /// Resolves the nullable numeric IsTest value for JSON serialization.
+    /// Resolves the nullable boolean IsTest value for JSON serialization.
     /// </summary>
     /// <param name="recordIsTest">Product-level test-weld flag saved on the weld point record.</param>
     /// <param name="showTestFlagInHistory">Global setting that enables test-weld display and upload.</param>
     /// <param name="processParameterDeviceType">Configured process-parameter device type.</param>
-    /// <returns>Null when the field should be omitted; otherwise 0=false and 1=true.</returns>
-    public static int? Resolve(bool recordIsTest, bool showTestFlagInHistory, string? processParameterDeviceType)
+    /// <returns>Null when the field should be omitted; otherwise the product-level test-weld flag.</returns>
+    public static bool? Resolve(bool recordIsTest, bool showTestFlagInHistory, string? processParameterDeviceType)
     {
         if (!showTestFlagInHistory)
         {
@@ -29,6 +29,6 @@ public static class ProcessParameterIsTestRules
             return null;
         }
 
-        return recordIsTest ? 1 : 0;
+        return recordIsTest;
     }
 }
