@@ -13,6 +13,10 @@ public interface IDataHistoryQueryService
         int pageSize,
         CancellationToken cancellationToken = default);
 
+    Task<DataHistoryTestDataResult> QueryTestDataAsync(
+        int taskId,
+        CancellationToken cancellationToken = default);
+
     Task<DataHistoryWeldParameterResult> QueryWeldParametersAsync(
         int taskId,
         CancellationToken cancellationToken = default);

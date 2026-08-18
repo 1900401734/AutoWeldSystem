@@ -26,9 +26,9 @@ public partial class DataManageView : BaseView
     private bool _initialized;
     private bool _suppressWorkOrderSelection;
     private bool _updatingWorkOrderPagination;
-    private bool _updatingCollectionPagination;
     private bool _disposing;
     private int _selectedTaskId;
+    private IReadOnlyList<DataHistoryDynamicColumn> _testDataDynamicColumns = [];
 
     /// <summary>
     /// Constructor used only by the WinForms designer.
@@ -64,6 +64,7 @@ public partial class DataManageView : BaseView
         _initialized = true;
         SetDefaultDateRange();
         ApplyLocalizedTexts();
+        ApplyDefaultSplitterLayout();
         _ = QueryWorkOrdersAsync(resetPage: true);
     }
 
@@ -94,9 +95,101 @@ public partial class DataManageView : BaseView
     {
         ConfigureStaticGridColumns();
         ConfigureGrid(dgvWorkOrders, DataGridViewAutoSizeColumnsMode.DisplayedCells);
-        ConfigureGrid(dgvWeldParameters, DataGridViewAutoSizeColumnsMode.DisplayedCells);
-        ConfigureGrid(dgvCollectionRecords, DataGridViewAutoSizeColumnsMode.DisplayedCells);
         ConfigureGrid(dgvReportFiles, DataGridViewAutoSizeColumnsMode.Fill);
+        TableStyleHelper.ApplyAntdTable(tableTestData);
+        tableTestData.DefaultExpand = true;
+        ConfigureTestDataColumns([]);
+    }
+
+    private void ConfigureTestDataColumns(IReadOnlyList<DataHistoryDynamicColumn> dynamicColumns)
+    {
+        tableTestData.Columns.Clear();
+
+        var nodeColumn = CreateTestDataColumn(
+            nameof(DataHistoryTestDataRow.NodeText),
+            T(TextKeys.DataManage.ColumnTestNode));
+        nodeColumn.Align = AntdUI.ColumnAlign.Left;
+        nodeColumn.SetTree(nameof(DataHistoryTestDataRow.Children));
+        tableTestData.Columns.Add(nodeColumn);
+        tableTestData.Columns.Add(CreateTestDataColumn(
+            nameof(DataHistoryTestDataRow.StationNo),
+            T(TextKeys.DataManage.ColumnStation)));
+        tableTestData.Columns.Add(new AntdUI.Column(
+            nameof(DataHistoryTestDataRow.TestResult),
+            T(TextKeys.DataManage.ColumnTouchResult))
+        {
+            Align = AntdUI.ColumnAlign.Center,
+            ColAlign = AntdUI.ColumnAlign.Center,
+            Ellipsis = true,
+            ReadOnly = true,
+            Render = (_, record, _) => record is DataHistoryTestDataRow row
+                ? TestResultRules.ToDisplayText(row.IsProductRow ? row.ProductResult : row.TestResult)
+                : string.Empty
+        });
+        tableTestData.Columns.Add(new AntdUI.Column(
+            nameof(DataHistoryTestDataRow.UploadStatus),
+            T(TextKeys.DataManage.ColumnUploadStatus))
+        {
+            Align = AntdUI.ColumnAlign.Center,
+            ColAlign = AntdUI.ColumnAlign.Center,
+            Ellipsis = true,
+            ReadOnly = true,
+            Render = (_, record, _) => record is DataHistoryTestDataRow row
+                ? UploadStatusDisplayRules.GetDisplayText(row.UploadStatus)
+                : string.Empty
+        });
+        tableTestData.Columns.Add(new AntdUI.Column(
+            nameof(DataHistoryTestDataRow.TestCount),
+            T(TextKeys.DataManage.ColumnTestCount))
+        {
+            Align = AntdUI.ColumnAlign.Center,
+            ColAlign = AntdUI.ColumnAlign.Center,
+            ReadOnly = true,
+            Render = (_, record, _) => record is DataHistoryTestDataRow { IsProductRow: true } row
+                ? row.TestCount
+                : string.Empty
+        });
+        tableTestData.Columns.Add(new AntdUI.Column(
+            nameof(DataHistoryTestDataRow.RecordTime),
+            T(TextKeys.DataManage.ColumnLastRecordTime))
+        {
+            Align = AntdUI.ColumnAlign.Center,
+            ColAlign = AntdUI.ColumnAlign.Center,
+            Ellipsis = true,
+            ReadOnly = true,
+            Render = (_, record, _) => record is DataHistoryTestDataRow row && row.RecordTime.HasValue
+                ? row.RecordTime.Value.ToString(DateTimeDisplayFormat)
+                : string.Empty
+        });
+
+        foreach (var dynamicColumn in dynamicColumns)
+        {
+            tableTestData.Columns.Add(new AntdUI.Column(dynamicColumn.Key, dynamicColumn.HeaderText)
+            {
+                Align = AntdUI.ColumnAlign.Center,
+                ColAlign = AntdUI.ColumnAlign.Center,
+                Ellipsis = true,
+                ReadOnly = true,
+                Render = (_, record, _) => record is DataHistoryTestDataRow row
+                    && row.DynamicValues.TryGetValue(dynamicColumn.Key, out var value)
+                        ? value
+                        : string.Empty
+            });
+        }
+
+        TableStyleHelper.ApplyAntdColumnDefaults(tableTestData);
+        nodeColumn.Align = AntdUI.ColumnAlign.Left;
+    }
+
+    private static AntdUI.Column CreateTestDataColumn(string key, string title)
+    {
+        return new AntdUI.Column(key, title)
+        {
+            Align = AntdUI.ColumnAlign.Center,
+            ColAlign = AntdUI.ColumnAlign.Center,
+            Ellipsis = true,
+            ReadOnly = true
+        };
     }
 
     /// <summary>
@@ -250,13 +343,10 @@ public partial class DataManageView : BaseView
         txtBatch.KeyDown += FilterInput_KeyDown;
         txtWorkOrder.KeyDown += FilterInput_KeyDown;
         workOrderPagination.ValueChanged += WorkOrderPagination_ValueChanged;
-        collectionPagination.ValueChanged += CollectionPagination_ValueChanged;
         dgvWorkOrders.SelectionChanged += WorkOrders_SelectionChanged;
-        dgvWeldParameters.CellFormatting += WeldParameters_CellFormatting;
+        tableTestData.CellClick += TestDataTable_CellClick;
         dgvWorkOrders.CellFormatting += Status_CellFormatting;
-        dgvCollectionRecords.CellFormatting += Status_CellFormatting;
         dgvReportFiles.CellFormatting += Status_CellFormatting;
-        dgvCollectionRecords.SelectionChanged += CollectionRecords_SelectionChanged;
         dgvReportFiles.SelectionChanged += ReportFiles_SelectionChanged;
         dgvReportFiles.CellDoubleClick += (_, e) =>
         {
@@ -288,14 +378,6 @@ public partial class DataManageView : BaseView
         }
 
         await QueryWorkOrdersAsync(resetPage: false, e.Current, e.PageSize);
-    }
-
-    private async void CollectionPagination_ValueChanged(object sender, AntdUI.PagePageEventArgs e)
-    {
-        if (!_updatingCollectionPagination && _selectedTaskId > 0)
-        {
-            await LoadCollectionRecordsAsync(_selectedTaskId, e.Current, e.PageSize, GetDetailToken());
-        }
     }
 
     private async void WorkOrders_SelectionChanged(object? sender, EventArgs e)
@@ -444,34 +526,20 @@ public partial class DataManageView : BaseView
         _detailQueryCancellation = new CancellationTokenSource();
         var cancellationToken = _detailQueryCancellation.Token;
         _selectedTaskId = taskId;
-        _updatingCollectionPagination = true;
-        try
-        {
-            collectionPagination.Current = 1;
-        }
-        finally
-        {
-            _updatingCollectionPagination = false;
-        }
+        txtRawData.Clear();
 
         SetDetailBusy(true);
         try
         {
-            var parameterTask = _historyQueryService.QueryWeldParametersAsync(taskId, cancellationToken);
-            var collectionTask = _historyQueryService.QueryCollectionRecordsAsync(
-                taskId,
-                1,
-                collectionPagination.PageSize,
-                cancellationToken);
+            var testDataTask = _historyQueryService.QueryTestDataAsync(taskId, cancellationToken);
             var reportTask = _historyQueryService.QueryReportFilesAsync(taskId, cancellationToken);
-            await Task.WhenAll(parameterTask, collectionTask, reportTask);
+            await Task.WhenAll(testDataTask, reportTask);
             if (cancellationToken.IsCancellationRequested)
             {
                 return;
             }
 
-            BindWeldParameters(await parameterTask);
-            BindCollectionRecords(await collectionTask);
+            BindTestData(await testDataTask);
             BindReportFiles(await reportTask);
         }
         catch (OperationCanceledException)
@@ -491,77 +559,17 @@ public partial class DataManageView : BaseView
         }
     }
 
-    private async Task LoadCollectionRecordsAsync(
-        int taskId,
-        int pageIndex,
-        int pageSize,
-        CancellationToken cancellationToken)
+    private void BindTestData(DataHistoryTestDataResult result)
     {
-        try
-        {
-            var result = await _historyQueryService.QueryCollectionRecordsAsync(
-                taskId,
-                pageIndex,
-                pageSize,
-                cancellationToken);
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-
-            BindCollectionRecords(result);
-        }
-        catch (OperationCanceledException)
-        {
-            // The selected work order changed.
-        }
-        catch (Exception ex)
-        {
-            ShowError(_localizer.GetString(TextKeys.DataManage.DetailQueryFailed, ex.Message));
-        }
-    }
-
-    private void BindWeldParameters(DataHistoryWeldParameterResult result)
-    {
-        RemoveDynamicParameterColumns();
-        foreach (var definition in result.DynamicColumns)
-        {
-            dgvWeldParameters.Columns.Add(new DataGridViewTextBoxColumn
-            {
-                HeaderText = definition.HeaderText,
-                MinimumWidth = 110,
-                Name = $"dynamic_{definition.Key}",
-                ReadOnly = true,
-                Tag = $"{DynamicColumnTagPrefix}{definition.Key}",
-                AutoSizeMode = DataGridViewAutoSizeColumnMode.DisplayedCells
-            });
-        }
-
-        parameterBindingSource.DataSource = result.Rows.ToList();
+        _testDataDynamicColumns = result.DynamicColumns;
+        ConfigureTestDataColumns(_testDataDynamicColumns);
+        tableTestData.DataSource = null;
+        tableTestData.DataSource = result.Rows.ToList();
         lblParameterSummary.Text = _localizer.GetString(
             TextKeys.DataManage.ParameterSummary,
             result.Rows.Count,
+            result.RecordCount,
             result.DynamicColumns.Count);
-    }
-
-    private void BindCollectionRecords(PagedResult<DataHistoryCollectionRow> result)
-    {
-        collectionBindingSource.DataSource = result.Items.ToList();
-        _updatingCollectionPagination = true;
-        try
-        {
-            collectionPagination.Total = result.TotalCount;
-            collectionPagination.PageSize = result.PageSize;
-            collectionPagination.Current = result.PageIndex;
-        }
-        finally
-        {
-            _updatingCollectionPagination = false;
-        }
-        lblCollectionSummary.Text = _localizer.GetString(
-            TextKeys.DataManage.CollectionSummary,
-            result.TotalCount);
-        ShowSelectedRawData();
     }
 
     private void BindReportFiles(IReadOnlyList<DataHistoryReportFileRow> rows)
@@ -571,19 +579,16 @@ public partial class DataManageView : BaseView
         UpdateReportButtons();
     }
 
-    private void WeldParameters_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
+    private void TestDataTable_CellClick(object sender, AntdUI.TableClickEventArgs e)
     {
-        if (e.RowIndex < 0
-            || dgvWeldParameters.Columns[e.ColumnIndex].Tag is not string tag
-            || !tag.StartsWith(DynamicColumnTagPrefix, StringComparison.Ordinal)
-            || dgvWeldParameters.Rows[e.RowIndex].DataBoundItem is not DataHistoryWeldParameterRow row)
+        if (_disposing || IsDisposed || Disposing)
         {
             return;
         }
 
-        var key = tag[DynamicColumnTagPrefix.Length..];
-        e.Value = row.DynamicValues.TryGetValue(key, out var value) ? value : string.Empty;
-        e.FormattingApplied = true;
+        txtRawData.Text = e.Record is DataHistoryTestDataRow { IsProductRow: false } row
+            ? FormatJsonOrOriginal(row.RawDataJson)
+            : string.Empty;
     }
 
     private void Status_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
@@ -600,16 +605,6 @@ public partial class DataManageView : BaseView
         e.FormattingApplied = true;
     }
 
-    private void CollectionRecords_SelectionChanged(object? sender, EventArgs e)
-    {
-        if (_disposing || IsDisposed || Disposing)
-        {
-            return;
-        }
-
-        ShowSelectedRawData();
-    }
-
     /// <summary>
     /// Handles report-file selection changes. WinForms also raises this event while
     /// disposing the grid, so shutdown paths must not query CurrentRow here.
@@ -622,31 +617,6 @@ public partial class DataManageView : BaseView
         }
 
         UpdateReportButtons();
-    }
-
-    private void ShowSelectedRawData()
-    {
-        var json = GetSelectedCollectionRecord()?.RawDataJson;
-        txtRawData.Text = FormatJsonOrOriginal(json);
-    }
-
-    /// <summary>
-    /// Safely reads the selected collection row from the BindingSource.
-    /// </summary>
-    private DataHistoryCollectionRow? GetSelectedCollectionRecord()
-    {
-        if (_disposing || collectionBindingSource.Count <= 0)
-        {
-            return null;
-        }
-
-        var position = collectionBindingSource.Position;
-        if (position < 0 || position >= collectionBindingSource.Count)
-        {
-            return null;
-        }
-
-        return collectionBindingSource.Current as DataHistoryCollectionRow;
     }
 
     private void RemoveDynamicParameterColumns()
@@ -746,7 +716,7 @@ public partial class DataManageView : BaseView
         CancelAndDispose(ref _workOrderQueryCancellation);
         CancelAndDispose(ref _detailQueryCancellation);
         dgvWorkOrders.SelectionChanged -= WorkOrders_SelectionChanged;
-        dgvCollectionRecords.SelectionChanged -= CollectionRecords_SelectionChanged;
+        tableTestData.CellClick -= TestDataTable_CellClick;
         dgvReportFiles.SelectionChanged -= ReportFiles_SelectionChanged;
     }
 
@@ -756,21 +726,13 @@ public partial class DataManageView : BaseView
         _selectedTaskId = 0;
         RemoveDynamicParameterColumns();
         parameterBindingSource.DataSource = Array.Empty<DataHistoryWeldParameterRow>();
+        _testDataDynamicColumns = [];
+        ConfigureTestDataColumns(_testDataDynamicColumns);
+        tableTestData.DataSource = Array.Empty<DataHistoryTestDataRow>();
         collectionBindingSource.DataSource = Array.Empty<DataHistoryCollectionRow>();
         reportBindingSource.DataSource = Array.Empty<DataHistoryReportFileRow>();
-        _updatingCollectionPagination = true;
-        try
-        {
-            collectionPagination.Total = 0;
-            collectionPagination.Current = 1;
-        }
-        finally
-        {
-            _updatingCollectionPagination = false;
-        }
         txtRawData.Clear();
         lblParameterSummary.Text = _localizer.GetString(TextKeys.DataManage.SelectWorkOrder);
-        lblCollectionSummary.Text = _localizer.GetString(TextKeys.DataManage.SelectWorkOrder);
         lblReportSummary.Text = _localizer.GetString(TextKeys.DataManage.SelectWorkOrder);
         UpdateReportButtons();
     }
@@ -796,6 +758,24 @@ public partial class DataManageView : BaseView
         dateRange.Value = new[] { new DateTime(today.Year, today.Month, 1), today };
     }
 
+    private void ApplyDefaultSplitterLayout()
+    {
+        var mainHeight = mainSplitter.ClientSize.Height - mainSplitter.SplitterWidth;
+        if (mainHeight > mainSplitter.Panel1MinSize + mainSplitter.Panel2MinSize)
+        {
+            mainSplitter.SplitterDistance = Math.Clamp(
+                (int)Math.Round(mainHeight * 0.25),
+                mainSplitter.Panel1MinSize,
+                mainHeight - mainSplitter.Panel2MinSize);
+        }
+
+        var testDataHeight = testDataSplitter.ClientSize.Height - testDataSplitter.SplitterWidth;
+        if (testDataHeight > testDataSplitter.Panel1MinSize + testDataSplitter.Panel2MinSize)
+        {
+            testDataSplitter.SplitterDistance = testDataHeight - testDataSplitter.Panel2MinSize;
+        }
+    }
+
     private CancellationToken GetDetailToken()
     {
         return _detailQueryCancellation?.Token ?? CancellationToken.None;
@@ -815,7 +795,6 @@ public partial class DataManageView : BaseView
         if (busy)
         {
             lblParameterSummary.Text = _localizer.GetString(TextKeys.DataManage.Loading);
-            lblCollectionSummary.Text = _localizer.GetString(TextKeys.DataManage.Loading);
             lblReportSummary.Text = _localizer.GetString(TextKeys.DataManage.Loading);
         }
     }
@@ -832,7 +811,7 @@ public partial class DataManageView : BaseView
         btnQuery.Text = _localizer.GetString(TextKeys.DataManage.Query);
         btnReset.Text = _localizer.GetString(TextKeys.DataManage.Reset);
         tabWeldParameters.Text = _localizer.GetString(TextKeys.DataManage.TabWeldParameters);
-        tabCollectionData.Text = _localizer.GetString(TextKeys.DataManage.TabCollectionData);
+        ConfigureTestDataColumns(_testDataDynamicColumns);
         tabReportFiles.Text = _localizer.GetString(TextKeys.DataManage.TabReportFiles);
         lblRawData.Text = _localizer.GetString(TextKeys.DataManage.RawData);
         btnOpenReport.Text = _localizer.GetString(TextKeys.DataManage.OpenReport);

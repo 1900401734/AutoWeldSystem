@@ -735,6 +735,18 @@ public static class TextKeys
         /// </summary>
         public const string ColumnProductNo = "data.column.product_no";
         /// <summary>
+        /// 测试数据树节点
+        /// </summary>
+        public const string ColumnTestNode = "data.column.test_node";
+        /// <summary>
+        /// 测试次数
+        /// </summary>
+        public const string ColumnTestCount = "data.column.test_count";
+        /// <summary>
+        /// 最后采集时间
+        /// </summary>
+        public const string ColumnLastRecordTime = "data.column.last_record_time";
+        /// <summary>
         /// 焊点编号
         /// </summary>
         public const string ColumnTouchNo = "data.column.touch_no";

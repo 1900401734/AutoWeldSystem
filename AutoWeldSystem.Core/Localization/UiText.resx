@@ -1875,7 +1875,7 @@
     <value>打开所在目录</value>
   </data>
   <data name="data.tab.weld_parameters" xml:space="preserve">
-    <value>焊接参数</value>
+    <value>测试数据</value>
   </data>
   <data name="data.tab.collection_data" xml:space="preserve">
     <value>采集数据</value>
@@ -1884,7 +1884,7 @@
     <value>报告文件</value>
   </data>
   <data name="data.label.raw_data" xml:space="preserve">
-    <value>原始采集数据</value>
+    <value>原始数据（拖动分隔线展开）</value>
   </data>
   <data name="data.message.loading" xml:space="preserve">
     <value>正在加载...</value>
@@ -1899,7 +1899,7 @@
     <value>历史工单：{0} 条</value>
   </data>
   <data name="data.summary.parameters" xml:space="preserve">
-    <value>焊接参数：{0} 条，动态测试项列：{1} 列</value>
+    <value>测试数据：{0} 个产品，{1} 条记录，动态列：{2} 列</value>
   </data>
   <data name="data.summary.collection" xml:space="preserve">
     <value>采集数据：{0} 条</value>
@@ -1974,10 +1974,19 @@
     <value>产品编号</value>
   </data>
   <data name="data.column.touch_no" xml:space="preserve">
-    <value>焊点编号</value>
+    <value>测试记录</value>
   </data>
   <data name="data.column.touch_result" xml:space="preserve">
-    <value>焊点结果</value>
+    <value>测试结果</value>
+  </data>
+  <data name="data.column.test_node" xml:space="preserve">
+    <value>产品 / 测试记录</value>
+  </data>
+  <data name="data.column.test_count" xml:space="preserve">
+    <value>测试次数</value>
+  </data>
+  <data name="data.column.last_record_time" xml:space="preserve">
+    <value>最后采集时间</value>
   </data>
   <data name="data.column.record_time" xml:space="preserve">
     <value>采集时间</value>

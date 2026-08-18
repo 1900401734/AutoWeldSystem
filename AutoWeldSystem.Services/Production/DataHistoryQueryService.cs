@@ -32,6 +32,13 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
         return RunQueryAsync(() => QueryWorkOrders(criteria, pageIndex, pageSize), cancellationToken);
     }
 
+    public Task<DataHistoryTestDataResult> QueryTestDataAsync(
+        int taskId,
+        CancellationToken cancellationToken = default)
+    {
+        return RunQueryAsync(() => QueryTestData(taskId), cancellationToken);
+    }
+
     public Task<DataHistoryWeldParameterResult> QueryWeldParametersAsync(
         int taskId,
         CancellationToken cancellationToken = default)
@@ -124,6 +131,87 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
             TotalCount = totalCount,
             PageIndex = normalizedPageIndex,
             PageSize = normalizedPageSize
+        };
+    }
+
+    private DataHistoryTestDataResult QueryTestData(int taskId)
+    {
+        var task = GetTask(taskId);
+        if (task is null)
+        {
+            return new DataHistoryTestDataResult();
+        }
+
+        var records = GetTaskRecords(taskId);
+        var schemeItems = ResolveSchemeItems(task, records);
+        var dynamicColumns = BuildDynamicColumns(schemeItems);
+        var childRows = records.Select(record => new DataHistoryTestDataRow
+        {
+            IsProductRow = false,
+            TaskId = taskId,
+            RecordId = record.Id,
+            SequenceNo = record.SequenceNo,
+            StationNo = record.StationNo,
+            ProductNo = record.ProductNo,
+            TouchNo = record.TouchNo,
+            NodeText = string.IsNullOrWhiteSpace(record.TouchNo)
+                ? $"记录 {record.SequenceNo}"
+                : record.TouchNo,
+            TestResult = TestResultRules.Normalize(record.TestResult),
+            ProductResult = ResolveProductResult(record),
+            UploadStatus = record.UploadStatus,
+            RecordTime = record.Ts,
+            RawDataJson = record.RawDataJson ?? string.Empty,
+            DynamicValues = BuildDynamicValues(record, schemeItems)
+        }).ToList();
+
+        var productRows = childRows
+            .GroupBy(row => new { row.StationNo, row.ProductNo })
+            .Select(group => BuildProductRow(taskId, group.Key.StationNo, group.Key.ProductNo, group.ToList()))
+            .OrderBy(row => row.StationNo)
+            .ThenBy(row => row.ProductNo, NaturalSortComparer.Instance)
+            .ToList();
+
+        return new DataHistoryTestDataResult
+        {
+            DynamicColumns = dynamicColumns,
+            Rows = productRows,
+            RecordCount = childRows.Count
+        };
+    }
+
+    private static DataHistoryTestDataRow BuildProductRow(
+        int taskId,
+        int stationNo,
+        string productNo,
+        List<DataHistoryTestDataRow> children)
+    {
+        children = children
+            .OrderBy(row => row.SequenceNo)
+            .ThenBy(row => row.RecordId)
+            .ToList();
+        var latest = children[^1];
+        var productResult = children
+            .Select(row => row.ProductResult)
+            .FirstOrDefault(result => !string.Equals(
+                TestResultRules.Normalize(result),
+                ProductionConstants.TestResults.Unknown,
+                StringComparison.OrdinalIgnoreCase))
+            ?? ProductionConstants.TestResults.Unknown;
+
+        return new DataHistoryTestDataRow
+        {
+            IsProductRow = true,
+            TaskId = taskId,
+            StationNo = stationNo,
+            ProductNo = productNo,
+            NodeText = string.IsNullOrWhiteSpace(productNo) ? "--" : productNo,
+            TestResult = productResult,
+            ProductResult = productResult,
+            UploadStatus = latest.UploadStatus,
+            TestCount = children.Count,
+            RecordTime = children.Max(row => row.RecordTime),
+            Children = children
         };
     }
 

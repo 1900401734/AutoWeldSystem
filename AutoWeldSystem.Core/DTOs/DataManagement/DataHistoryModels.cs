@@ -100,6 +100,62 @@ public sealed class DataHistoryDynamicColumn
 }
 
 /// <summary>
+/// One product or test-record row displayed in the data-management tree.
+/// </summary>
+public sealed class DataHistoryTestDataRow
+{
+    public bool IsProductRow { get; init; }
+
+    public int TaskId { get; init; }
+
+    public int RecordId { get; init; }
+
+    public int SequenceNo { get; init; }
+
+    public int StationNo { get; init; }
+
+    public string ProductNo { get; init; } = string.Empty;
+
+    public string TouchNo { get; init; } = string.Empty;
+
+    public string NodeText { get; init; } = string.Empty;
+
+    public string TestResult { get; init; } = ProductionConstants.TestResults.Unknown;
+
+    /// <summary>
+    /// PLC product-level result. It must not be inferred from child record results.
+    /// </summary>
+    public string ProductResult { get; init; } = ProductionConstants.TestResults.Unknown;
+
+    public string UploadStatus { get; init; } = string.Empty;
+
+    public int TestCount { get; init; }
+
+    public DateTime? RecordTime { get; init; }
+
+    public IReadOnlyDictionary<string, string> DynamicValues { get; init; }
+        = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    public string RawDataJson { get; init; } = string.Empty;
+
+    public List<DataHistoryTestDataRow> Children { get; init; } = [];
+}
+
+/// <summary>
+/// Product/test-record tree and the dynamic columns required to display it.
+/// </summary>
+public sealed class DataHistoryTestDataResult
+{
+    public IReadOnlyList<DataHistoryDynamicColumn> DynamicColumns { get; init; }
+        = Array.Empty<DataHistoryDynamicColumn>();
+
+    public IReadOnlyList<DataHistoryTestDataRow> Rows { get; init; }
+        = Array.Empty<DataHistoryTestDataRow>();
+
+    public int RecordCount { get; init; }
+}
+
+/// <summary>
 /// One weld-point row with dynamic test values.
 /// </summary>
 public sealed class DataHistoryWeldParameterRow

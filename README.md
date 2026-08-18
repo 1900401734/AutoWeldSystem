@@ -1,6 +1,6 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v1.9.2`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v1.10.0`。
 
 ## 功能概览
 
@@ -11,7 +11,8 @@
 - 程序管理：本地程序版本管理、提交记录、MES 同步状态，以及按工位选择 PLC 配方名称并隐藏保存槽位配方号；保存、校验和同步结果使用非阻塞全局提示，不影响继续操作主界面；删除确认框绑定主窗体显示，始终位于主程序之上。
 - 系统设置：应用全部优先保存本地配置；仅在设备编号、名称或相关服务地址发生变化时后台同步设备信息到 MES，保存和同步结果使用非阻塞全局提示。
 - 待上传数据：工单信息页签持续显示未完工任务及开工、过程参数、xlsx 报表和完工上报四阶段状态，直到任务完成且相关上传阶段处理完毕。
-- 地址维护：维护固定业务信号对应的 PLC 实际地址，并按工位配置/预览 PLC 配方名称与数字槽位的映射；业务信号、配方名称、报警、产品工艺、测试方案、方案明细和测试项页签可按角色独立授权。
+- 数据管理：使用通用“测试数据”页签兼容点焊与检测设备，按产品展开测试记录树；历史工单与测试数据通过可拖动分隔区分配空间，选中测试记录可在树下方查看原始 JSON；动态历史列只显示方案明细中勾选“保存历史”的角色，报告文件入口独立保留。
+- 地址维护：维护固定业务信号对应的 PLC 实际地址，并按工位配置/预览 PLC 配方名称与数字槽位的映射；方案明细“保存历史”同时决定本地历史展示和中心服务器转发字段，报表与 MES 输出仍独立配置；各维护页签可按角色独立授权。
 - 日志管理：MES 交互日志、业务异常日志、程序异常日志，用于现场排查；MES 交互、生产流程、程序异常、设备、设备状态和服务器日志页签可按角色独立授权。
 - 权限管理：本地用户、角色、页面、页签和按钮权限控制。启动权限初始化会清理已废弃的“导出数据”权限及其角色关联；旧库首次引入日志/地址页签权限时，会为已有对应页面权限的非开发者角色一次性补齐全部页签，后续保留管理员手工调整结果。
 - 国际化：支持简体中文和英文界面切换。
@@ -214,10 +215,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>1.9.2</Version>
-<AssemblyVersion>1.9.2.0</AssemblyVersion>
-<FileVersion>1.9.2.0</FileVersion>
-<InformationalVersion>1.9.2</InformationalVersion>
+<Version>1.10.0</Version>
+<AssemblyVersion>1.10.0.0</AssemblyVersion>
+<FileVersion>1.10.0.0</FileVersion>
+<InformationalVersion>1.10.0</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -229,9 +230,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v1.9.2 -m "Release v1.9.2"
+git tag -a v1.10.0 -m "Release v1.10.0"
 git push origin main
-git push origin v1.9.2
+git push origin v1.10.0
 ```
 
 ## Git 使用

@@ -5,6 +5,7 @@ using AutoWeldSystem.Core.Center;
 using AutoWeldSystem.Core.DTOs;
 using AutoWeldSystem.Core.DTOs.CenterServer;
 using AutoWeldSystem.Core.DTOs.DeviceApi;
+using AutoWeldSystem.Core.DTOs.DataManagement;
 using AutoWeldSystem.Core.DTOs.Mes.Request;
 using AutoWeldSystem.Core.DTOs.Mes.Response;
 using AutoWeldSystem.Core.DTOs.Plc;
@@ -88,7 +89,9 @@ var tests = new (string Name, Action Run)[]
     ("Station display names load legacy defaults and collapse hidden row", StationDisplayNamesLoadLegacyDefaultsAndCollapseHiddenRow),
     ("Only configured test item expressions create available roles", OnlyConfiguredExpressionsCreateRoles),
     ("Collection does not imply local save or upload", CollectionDoesNotImplyOutput),
-    ("MES-only collected roles stay visible in product history", MesOnlyCollectedRoleStaysVisibleInProductHistory),
+    ("Save history controls product history visibility", SaveHistoryControlsProductHistoryVisibility),
+    ("DataManageView uses generic product test tree", DataManageViewUsesGenericProductTestTree),
+    ("Data history tree preserves stored product result", DataHistoryTreeParentKeepsStoredProductResult),
     ("Disabled roles block save report and MES outputs", DisabledRoleBlocksEveryOutputChannel),
     ("Report file upload rule requires an enabled report role", ReportFileUploadRuleRequiresEnabledReportRole),
     ("Product cycle snapshots persist PLC product results", ProductCycleSnapshotsPersistPlcProductResults),
@@ -1793,19 +1796,87 @@ static void ReportFileUploadRuleRequiresEnabledReportRole()
     AssertTrue(Invoke(new BizSchemeDetail { EnableActual = true, ReportActual = true }), "任一有效 Enable && ReportEnable 角色必须允许 MES 报表文件上传。");
 }
 
-static void MesOnlyCollectedRoleStaysVisibleInProductHistory()
+static void SaveHistoryControlsProductHistoryVisibility()
 {
-    var detail = new BizSchemeDetail
+    var mesOnly = new BizSchemeDetail
     {
         EnableActual = true,
         SaveActual = false,
-        ReportActual = false,
         MesActual = true
     };
+    AssertFalse(
+        SchemeDetailRoleRules.ShouldShowHistoryRole(mesOnly, SchemeDetailValueRole.Actual),
+        "仅启用 MES 的角色不得进入产品历史。");
 
+    var savedOnly = new BizSchemeDetail
+    {
+        EnableActual = true,
+        SaveActual = true,
+        MesActual = false
+    };
     AssertTrue(
-        SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Actual),
-        "已采集且启用 MES 的角色即使未启用中心保存，也必须在产品历史中显示。");
+        SchemeDetailRoleRules.ShouldShowHistoryRole(savedOnly, SchemeDetailValueRole.Actual),
+        "已采集且启用保存历史的角色必须进入产品历史。");
+}
+
+static void DataManageViewUsesGenericProductTestTree()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "DataManageView.cs"), Encoding.UTF8);
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "DataManageView.Designer.cs"), Encoding.UTF8);
+
+    AssertTrue(viewCode.Contains("QueryTestDataAsync", StringComparison.Ordinal), "DataManageView 必须查询通用测试数据，而不是固定焊接参数接口。");
+    AssertTrue(viewCode.Contains("SetTree(nameof(DataHistoryTestDataRow.Children))", StringComparison.Ordinal), "测试数据表必须按产品→测试记录配置树形列。");
+    AssertTrue(viewCode.Contains("tableTestData.DefaultExpand = true", StringComparison.Ordinal), "产品节点必须默认展开。");
+    AssertTrue(viewCode.Contains("TestDataTable_CellClick", StringComparison.Ordinal), "测试记录选择必须绑定原始 JSON 查看逻辑。");
+    AssertTrue(viewCode.Contains("RawDataJson", StringComparison.Ordinal), "测试树子行必须携带原始 JSON。");
+    AssertTrue(viewCode.Contains("ApplyDefaultSplitterLayout", StringComparison.Ordinal), "DataManageView 必须初始化上下主从和原始数据 splitter 比例。");
+    AssertFalse(viewCode.Contains("QueryCollectionRecordsAsync", StringComparison.Ordinal), "DataManageView 不应再次查询重复的采集数据页。");
+    AssertFalse(viewCode.Contains("LoadCollectionRecordsAsync", StringComparison.Ordinal), "DataManageView 不应保留重复采集分页加载路径。");
+    AssertTrue(designerCode.Contains("tableTestData = new AntdUI.Table()", StringComparison.Ordinal), "Designer 必须声明通用测试数据树表格。");
+    AssertEqual(2, CountOccurrences(designerCode, "new AntdUI.Splitter()"), "DataManageView 的工单/页签和测试树/原始数据必须全部使用 AntdUI.Splitter。");
+    AssertTrue(designerCode.Contains("mainSplitter = new AntdUI.Splitter()", StringComparison.Ordinal), "工单信息与详情页签之间必须使用 AntdUI.Splitter。");
+    AssertTrue(designerCode.Contains("testDataSplitter = new AntdUI.Splitter()", StringComparison.Ordinal), "测试树与原始 JSON 之间必须使用 AntdUI.Splitter。");
+    AssertFalse(designerCode.Contains("new SplitContainer()", StringComparison.Ordinal), "DataManageView 不得继续实例化 WinForms SplitContainer。");
+    AssertTrue(designerCode.Contains("mainSplitter.Orientation = Orientation.Horizontal;", StringComparison.Ordinal), "工单与详情页签 splitter 必须保持上下分隔。");
+    AssertTrue(designerCode.Contains("testDataSplitter.Orientation = Orientation.Horizontal;", StringComparison.Ordinal), "测试树与原始数据 splitter 必须保持上下分隔。");
+    AssertTrue(designerCode.Contains("detailTabs.Controls.Add(tabWeldParameters);", StringComparison.Ordinal), "详情页必须保留测试数据页签。");
+    AssertTrue(designerCode.Contains("detailTabs.Controls.Add(tabReportFiles);", StringComparison.Ordinal), "详情页必须保留报告文件页签。");
+    AssertFalse(designerCode.Contains("detailTabs.Controls.Add(tabCollectionData);", StringComparison.Ordinal), "详情页不得继续显示重复的采集数据页签。");
+}
+
+static void DataHistoryTreeParentKeepsStoredProductResult()
+{
+    var method = typeof(DataHistoryQueryService).GetMethod(
+        "BuildProductRow",
+        System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+    AssertTrue(method is not null, "数据历史服务必须提供产品树父行构造逻辑。");
+
+    var children = new List<DataHistoryTestDataRow>
+    {
+        new()
+        {
+            RecordId = 1,
+            SequenceNo = 1,
+            ProductNo = "P-001",
+            TestResult = ProductionConstants.TestResults.Ok,
+            ProductResult = ProductionConstants.TestResults.Ng,
+            RecordTime = DateTime.Today
+        },
+        new()
+        {
+            RecordId = 2,
+            SequenceNo = 2,
+            ProductNo = "P-001",
+            TestResult = ProductionConstants.TestResults.Ok,
+            ProductResult = ProductionConstants.TestResults.Unknown,
+            RecordTime = DateTime.Today.AddMinutes(1)
+        }
+    };
+
+    var parent = (DataHistoryTestDataRow?)method!.Invoke(null, [10, 1, "P-001", children]);
+    AssertTrue(parent is not null, "必须构造产品父行。");
+    AssertEqual(2, parent!.TestCount, "产品父行必须保留同一产品的全部测试记录。");
+    AssertEqual(ProductionConstants.TestResults.Ng, parent.ProductResult, "产品父行必须沿用记录中的 PLC 产品结果，不得从子记录结果推断。");
 }
 
 static void DisabledRoleBlocksEveryOutputChannel()
@@ -1934,20 +2005,22 @@ static void StoredPlcProductResultsDriveHistoryWithoutPointAggregation()
         (string?)dataHistoryResolver.Invoke(null, [missingRecord]),
         "数据历史缺少产品结果时必须返回 Unknown，不得使用 TestResult 推算。");
 
-    var weldParameterProductResult = typeof(AutoWeldSystem.Core.DTOs.DataManagement.DataHistoryWeldParameterRow)
-        .GetProperty("ProductResult");
-    var collectionProductResult = typeof(AutoWeldSystem.Core.DTOs.DataManagement.DataHistoryCollectionRow)
-        .GetProperty("ProductResult");
-    AssertTrue(weldParameterProductResult is not null, "焊接参数历史行必须公开独立的 ProductResult。");
+    var testDataProductResult = typeof(DataHistoryTestDataRow).GetProperty("ProductResult");
+    var testDataRawJson = typeof(DataHistoryTestDataRow).GetProperty("RawDataJson");
+    var weldParameterProductResult = typeof(DataHistoryWeldParameterRow).GetProperty("ProductResult");
+    var collectionProductResult = typeof(DataHistoryCollectionRow).GetProperty("ProductResult");
+    AssertTrue(testDataProductResult is not null, "通用测试数据树行必须公开独立的 ProductResult。");
+    AssertTrue(testDataRawJson is not null, "通用测试数据树行必须公开 RawDataJson 以支持下方原始数据面板。");
+    AssertTrue(weldParameterProductResult is not null, "兼容焊接参数历史行必须公开独立的 ProductResult。");
     AssertTrue(collectionProductResult is not null, "采集记录历史行必须公开独立的 ProductResult。");
 
     var dataHistoryCode = File.ReadAllText(
         GetRepoFilePath("AutoWeldSystem.Services", "Production", "DataHistoryQueryService.cs"),
         Encoding.UTF8);
     AssertEqual(
-        2,
+        3,
         CountOccurrences(dataHistoryCode, "ProductResult = ResolveProductResult(record),"),
-        "焊接参数行和采集记录行都必须填充独立的 ProductResult。");
+        "通用测试树、兼容焊接参数行和采集记录行都必须填充独立的 ProductResult。");
 }
 
 static void ProductionReportWritesCustomerTemplateForSingleStation()
@@ -7370,14 +7443,10 @@ static void DataManageViewIgnoresWorkOrderSelectionWhileDisposing()
         viewCode,
         "private DataHistoryWorkOrderRow? GetSelectedWorkOrder()",
         "private async Task QueryWorkOrdersAsync");
-    var collectionSelectionHandler = ExtractMethodText(
+    var testDataSelectionHandler = ExtractMethodText(
         viewCode,
-        "private void CollectionRecords_SelectionChanged",
-        "private void ReportFiles_SelectionChanged");
-    var selectedCollectionMethod = ExtractMethodText(
-        viewCode,
-        "private DataHistoryCollectionRow? GetSelectedCollectionRecord()",
-        "private void RemoveDynamicParameterColumns()");
+        "private void TestDataTable_CellClick",
+        "private void Status_CellFormatting");
     var beginDisposeMethod = ExtractMethodText(
         viewCode,
         "private void BeginDispose()",
@@ -7389,11 +7458,10 @@ static void DataManageViewIgnoresWorkOrderSelectionWhileDisposing()
     AssertTrue(selectedWorkOrderMethod.Contains("workOrderBindingSource.Position", StringComparison.Ordinal), "读取工单选择前必须校验 BindingSource 当前索引。");
     AssertTrue(selectedWorkOrderMethod.Contains("workOrderBindingSource.Current as DataHistoryWorkOrderRow", StringComparison.Ordinal), "工单选择应从 BindingSource.Current 获取。");
     AssertFalse(selectedWorkOrderMethod.Contains("dgvWorkOrders.CurrentRow", StringComparison.Ordinal), "GetSelectedWorkOrder 不能访问 DataGridView.CurrentRow。");
-    AssertTrue(collectionSelectionHandler.Contains("_disposing", StringComparison.Ordinal), "采集记录选择事件在释放中必须直接返回。");
-    AssertTrue(selectedCollectionMethod.Contains("collectionBindingSource.Current as DataHistoryCollectionRow", StringComparison.Ordinal), "采集记录明细也应从 BindingSource.Current 获取，避免释放时访问 DataGridView 行。");
-    AssertFalse(selectedCollectionMethod.Contains("dgvCollectionRecords.CurrentRow", StringComparison.Ordinal), "GetSelectedCollectionRecord 不能访问 DataGridView.CurrentRow。");
+    AssertTrue(testDataSelectionHandler.Contains("_disposing", StringComparison.Ordinal), "测试树选择事件在释放中必须直接返回。");
+    AssertTrue(testDataSelectionHandler.Contains("DataHistoryTestDataRow { IsProductRow: false }", StringComparison.Ordinal), "只有测试记录子行才能显示原始 JSON。");
     AssertTrue(beginDisposeMethod.Contains("dgvWorkOrders.SelectionChanged -= WorkOrders_SelectionChanged;", StringComparison.Ordinal), "释放时必须解绑工单选择事件。");
-    AssertTrue(beginDisposeMethod.Contains("dgvCollectionRecords.SelectionChanged -= CollectionRecords_SelectionChanged;", StringComparison.Ordinal), "释放时必须解绑采集记录选择事件。");
+    AssertTrue(beginDisposeMethod.Contains("tableTestData.CellClick -= TestDataTable_CellClick;", StringComparison.Ordinal), "释放时必须解绑测试树选择事件。");
 }
 
 static void LogManageViewDeviceStatusTabShowsAlarmDetails()
@@ -7497,21 +7565,15 @@ static void DataManageViewTreatsCancelledHistoryQueriesAsStaleWork()
     var loadDetailsMethod = ExtractMethodText(
         viewCode,
         "private async Task LoadTaskDetailsAsync",
-        "private async Task LoadCollectionRecordsAsync");
-    var loadCollectionMethod = ExtractMethodText(
-        viewCode,
-        "private async Task LoadCollectionRecordsAsync",
-        "private void BindWeldParameters");
+        "private void BindTestData");
 
     AssertFalse(runQueryMethod.Contains("ThrowIfCancellationRequested", StringComparison.Ordinal), "历史查询服务不应在线程池委托中主动抛 OperationCanceledException，避免调试器停在 RunQueryAsync。");
     AssertFalse(runQueryMethod.Contains("}, cancellationToken);", StringComparison.Ordinal), "Task.Run 不应绑定 UI 查询取消令牌，否则取消可能在服务层表现为异常。");
     AssertTrue(runQueryMethod.Contains("if (cancellationToken.IsCancellationRequested)", StringComparison.Ordinal), "历史查询服务仍应识别已取消查询并跳过过期工作。");
     AssertFalse(queryWorkOrdersMethod.Contains("cancellationToken.ThrowIfCancellationRequested();", StringComparison.Ordinal), "工单查询取消后应直接返回，不应再抛取消异常。");
     AssertFalse(loadDetailsMethod.Contains("cancellationToken.ThrowIfCancellationRequested();", StringComparison.Ordinal), "明细查询取消后应直接返回，不应再抛取消异常。");
-    AssertFalse(loadCollectionMethod.Contains("cancellationToken.ThrowIfCancellationRequested();", StringComparison.Ordinal), "采集分页查询取消后应直接返回，不应再抛取消异常。");
     AssertTrue(queryWorkOrdersMethod.Contains("if (cancellationToken.IsCancellationRequested)", StringComparison.Ordinal), "工单查询完成后必须检查取消状态，避免旧结果覆盖新界面。");
     AssertTrue(loadDetailsMethod.Contains("if (cancellationToken.IsCancellationRequested)", StringComparison.Ordinal), "明细查询完成后必须检查取消状态，避免旧结果覆盖新界面。");
-    AssertTrue(loadCollectionMethod.Contains("if (cancellationToken.IsCancellationRequested)", StringComparison.Ordinal), "采集分页查询完成后必须检查取消状态，避免旧结果覆盖新界面。");
 }
 
 static void LogManageViewLoadsEveryLogTabInDescendingTimeOrder()

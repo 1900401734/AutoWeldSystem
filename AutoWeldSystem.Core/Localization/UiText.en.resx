@@ -1874,7 +1874,7 @@
     <value>Open Folder</value>
   </data>
   <data name="data.tab.weld_parameters" xml:space="preserve">
-    <value>Weld Parameters</value>
+    <value>Test Data</value>
   </data>
   <data name="data.tab.collection_data" xml:space="preserve">
     <value>Collection Data</value>
@@ -1883,7 +1883,7 @@
     <value>Report Files</value>
   </data>
   <data name="data.label.raw_data" xml:space="preserve">
-    <value>Raw Collection Data</value>
+    <value>Raw Data (drag splitter to expand)</value>
   </data>
   <data name="data.message.loading" xml:space="preserve">
     <value>Loading...</value>
@@ -1898,7 +1898,7 @@
     <value>Historical work orders: {0}</value>
   </data>
   <data name="data.summary.parameters" xml:space="preserve">
-    <value>Weld parameters: {0}; dynamic columns: {1}</value>
+    <value>Test data: {0} products; {1} records; dynamic columns: {2}</value>
   </data>
   <data name="data.summary.collection" xml:space="preserve">
     <value>Collection records: {0}</value>
@@ -1973,10 +1973,19 @@
     <value>Product Serial</value>
   </data>
   <data name="data.column.touch_no" xml:space="preserve">
-    <value>Weld Point</value>
+    <value>Test Record</value>
   </data>
   <data name="data.column.touch_result" xml:space="preserve">
-    <value>Weld Result</value>
+    <value>Test Result</value>
+  </data>
+  <data name="data.column.test_node" xml:space="preserve">
+    <value>Product / Test Record</value>
+  </data>
+  <data name="data.column.test_count" xml:space="preserve">
+    <value>Test Count</value>
+  </data>
+  <data name="data.column.last_record_time" xml:space="preserve">
+    <value>Last Collection Time</value>
   </data>
   <data name="data.column.record_time" xml:space="preserve">
     <value>Collection Time</value>

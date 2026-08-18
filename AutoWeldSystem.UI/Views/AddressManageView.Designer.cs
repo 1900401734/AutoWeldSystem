@@ -963,7 +963,7 @@ namespace AutoWeldSystem.UI.Views
             lblSchemeDetailHint.Name = "lblSchemeDetailHint";
             lblSchemeDetailHint.Size = new Size(1292, 26);
             lblSchemeDetailHint.TabIndex = 0;
-            lblSchemeDetailHint.Text = "维护测试方案包含哪些测试项。同一方案中同一测试项只能出现一次";
+            lblSchemeDetailHint.Text = "维护测试方案包含的测试项和输出角色。保存历史同时决定本地历史展示和中心服务器转发；报表与 MES 仍独立配置。";
             lblSchemeDetailHint.TextAlign = ContentAlignment.MiddleLeft;
             // 
             // schemeDetailToolbar
