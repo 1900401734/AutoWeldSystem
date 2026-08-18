@@ -46,6 +46,8 @@ public partial class ProgramManageView : BaseView
     private int _recipeNameRefreshVersion;
     private bool _enableDualStation;
     private static readonly TimeSpan RecipeNameReadTimeout = TimeSpan.FromSeconds(10);
+    private const int SuccessMessageAutoCloseSeconds = 4;
+    private const int AlertMessageAutoCloseSeconds = 6;
     private readonly CancellationTokenSource _operationCts = new();
     private int _operationCtsDisposed;
     private bool _deleteInProgress;
@@ -1136,7 +1138,12 @@ public partial class ProgramManageView : BaseView
 
     private void ShowInfoMessage(string message)
     {
-        MessageBox.Show(this, message, _localizer.GetString(TextKeys.Common.TitleInfo), MessageBoxButtons.OK, MessageBoxIcon.Information);
+        if (FindForm() is not { IsDisposed: false, Disposing: false } owner)
+        {
+            return;
+        }
+
+        AntdUI.Message.success(owner, message, autoClose: SuccessMessageAutoCloseSeconds);
     }
 
     private void ShowWarning(string messageKey, params object[] args)
@@ -1146,12 +1153,28 @@ public partial class ProgramManageView : BaseView
 
     private void ShowWarningMessage(string message)
     {
-        MessageBox.Show(this, message, _localizer.GetString(TextKeys.Common.TitleWarning), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        if (FindForm() is not { IsDisposed: false, Disposing: false } owner)
+        {
+            return;
+        }
+
+        AntdUI.Message.warn(owner, message, autoClose: AlertMessageAutoCloseSeconds);
     }
 
     private void ShowErrorMessage(string message)
     {
-        MessageBox.Show(this, message, _localizer.GetString(TextKeys.Common.TitleError), MessageBoxButtons.OK, MessageBoxIcon.Error);
+        if (FindForm() is not { IsDisposed: false, Disposing: false } owner)
+        {
+            return;
+        }
+
+        AntdUI.Message.error(owner, message, autoClose: AlertMessageAutoCloseSeconds);
+    }
+
+    private IWin32Window GetDialogOwner()
+    {
+        var owner = FindForm();
+        return owner is null || owner.IsDisposed || owner.Disposing ? this : owner;
     }
 
     private async void BatchClean_ClickAsync(object? sender, EventArgs e)
@@ -1169,7 +1192,7 @@ public partial class ProgramManageView : BaseView
 
         var confirmMessage = _localizer.GetString(TextKeys.ProgramManage.MessageConfirmBatchClean);
         var result = MessageBox.Show(
-            this,
+            GetDialogOwner(),
             confirmMessage,
             _localizer.GetString(TextKeys.Common.TitleWarning),
             MessageBoxButtons.YesNo,
@@ -1209,7 +1232,7 @@ public partial class ProgramManageView : BaseView
     private bool Confirm(string messageKey, params object[] args)
     {
         var message = _localizer.GetString(messageKey, args);
-        return MessageBox.Show(this, message, _localizer.GetString(TextKeys.Common.TitleConfirmDelete), MessageBoxButtons.YesNo, MessageBoxIcon.Question)
+        return MessageBox.Show(GetDialogOwner(), message, _localizer.GetString(TextKeys.Common.TitleConfirmDelete), MessageBoxButtons.YesNo, MessageBoxIcon.Question)
             == DialogResult.Yes;
     }
 }

@@ -1166,6 +1166,8 @@ public static class TextKeys
         public const string MessageMesConnectionSuccess = "system.message.mes_connection_success";
         public const string MessageDeviceSyncSuccess = "system.message.device_sync_success";
         public const string MessageDeviceSyncFailed = "system.message.device_sync_failed";
+        public const string MessageSettingsSavedDeviceSyncBackground = "system.message.settings_saved_device_sync_background";
+        public const string MessageDeviceSyncManualConfirmationRequired = "system.message.device_sync_manual_confirmation_required";
         public const string MessageDeviceRegisterConfirm = "system.message.device_register_confirm";
         public const string MessageDeviceRegisterSuccess = "system.message.device_register_success";
         public const string MessageDeviceRegisterFailed = "system.message.device_register_failed";

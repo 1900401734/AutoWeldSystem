@@ -501,6 +501,12 @@
   <data name="system.message.device_sync_failed" xml:space="preserve">
     <value>Failed to sync device information to MES: {0}</value>
   </data>
+  <data name="system.message.settings_saved_device_sync_background" xml:space="preserve">
+    <value>Settings were saved. Device information will be synced to MES in the background.</value>
+  </data>
+  <data name="system.message.device_sync_manual_confirmation_required" xml:space="preserve">
+    <value>Local settings were saved, but MES could not find the old device. Click Sync to confirm whether to register it as a new device.</value>
+  </data>
   <data name="system.message.device_register_confirm" xml:space="preserve">
     <value>MES could not find the old device “{0}”. Register “{1}” as a new device?</value>
   </data>

@@ -19,6 +19,16 @@ namespace AutoWeldSystem.UI.Views;
 
 public partial class SystemSettingView : BaseView
 {
+    private const int SuccessMessageAutoCloseSeconds = 4;
+    private const int AlertMessageAutoCloseSeconds = 6;
+
+    private enum DeviceSyncOutcome
+    {
+        Failed,
+        Synced,
+        Registered
+    }
+
     private static readonly LocalizedOption<string>[] PlcTypeOptions =
     {
         new(AppConstants.PlcTypes.ModbusTcp, TextKeys.SystemSetting.PlcTypeModbusTcp),
@@ -101,6 +111,8 @@ public partial class SystemSettingView : BaseView
     private string _selectedCenterServerSystemType = CenterServerConstants.SystemTypes.Other;
     private AppSettings _currentSettings;
     private SystemSettingLayoutMode? _lastLayoutMode;
+    private int _deviceSyncVersion;
+    private int _suppressSettingsChangedBinding;
 
     public SystemSettingView(
         IAppSettingsService settingsService,
@@ -313,6 +325,7 @@ public partial class SystemSettingView : BaseView
             return;
         }
 
+        btnSaveAll.Enabled = false;
         try
         {
             var previousSettings = _currentSettings;
@@ -331,20 +344,15 @@ public partial class SystemSettingView : BaseView
 
             var shouldSyncDevice = HasDeviceIdentityChanged(previousSettings, settings);
             var shouldRestartPlc = HasPlcCommunicationChanged(previousSettings, settings);
-            var syncRequest = BuildDeviceRequest(previousSettings, settings);
 
-            _currentSettings = _settingsService.Save(settings);
-            BindSettings(_currentSettings);
-            ApplyStartupIntegrationWithWarning(_currentSettings);
+            var savedSettings = _settingsService.Save(settings);
+            _currentSettings = savedSettings;
+            BindSettings(savedSettings);
+            ApplyStartupIntegrationWithWarning(savedSettings);
 
             if (shouldRestartPlc)
             {
                 await _plcCommunicationService.RestartAsync();
-            }
-
-            if (shouldSyncDevice && await SyncDeviceToMesAsync(syncRequest, btnSaveAll, false))
-            {
-                MarkDeviceSynced();
             }
 
             // Update DeviceId in all local programs when device ID changes to prevent MES sync failures
@@ -353,11 +361,23 @@ public partial class SystemSettingView : BaseView
                 await _programManageService.UpdateAllProgramsDeviceIdAsync(settings.DeviceId);
             }
 
-            ShowInfoMessage(_localizer.GetString(TextKeys.Common.SaveSuccess));
+            if (shouldSyncDevice)
+            {
+                ShowInfo(TextKeys.SystemSetting.MessageSettingsSavedDeviceSyncBackground);
+                StartDeviceSyncAfterSave(previousSettings, savedSettings);
+            }
+            else
+            {
+                ShowInfoMessage(_localizer.GetString(TextKeys.Common.SaveSuccess));
+            }
         }
         catch (Exception ex)
         {
             ShowErrorMessage(_localizer.GetString(TextKeys.Common.SaveFailed, ex.Message));
+        }
+        finally
+        {
+            btnSaveAll.Enabled = true;
         }
     }
 
@@ -371,6 +391,7 @@ public partial class SystemSettingView : BaseView
             return;
         }
 
+        btnSyncDevice.Enabled = false;
         try
         {
             var previousSettings = _currentSettings;
@@ -387,20 +408,35 @@ public partial class SystemSettingView : BaseView
                 return;
             }
 
-            var request = BuildDeviceRequest(previousSettings, settings);
+            var syncVersion = Interlocked.Increment(ref _deviceSyncVersion);
+            var request = await Task.Run(() => BuildDeviceRequest(previousSettings, settings));
 
             _currentSettings = _settingsService.Save(settings);
             BindSettings(_currentSettings);
             ApplyStartupIntegrationWithWarning(_currentSettings);
 
-            if (await SyncDeviceToMesAsync(request, btnSyncDevice, true))
+            var outcome = await SyncDeviceToMesAsync(request);
+            if (outcome != DeviceSyncOutcome.Failed
+                && IsCurrentDeviceSync(syncVersion, request.DeviceId)
+                && TryMarkDeviceSynced(request.DeviceId))
             {
-                MarkDeviceSynced();
+                if (outcome == DeviceSyncOutcome.Registered)
+                {
+                    ShowInfo(TextKeys.SystemSetting.MessageDeviceRegisterSuccess, request.DeviceId);
+                }
+                else
+                {
+                    ShowInfo(TextKeys.SystemSetting.MessageDeviceSyncSuccess);
+                }
             }
         }
         catch (Exception ex)
         {
             ShowError(TextKeys.SystemSetting.MessageDeviceSyncFailed, ex.Message);
+        }
+        finally
+        {
+            btnSyncDevice.Enabled = true;
         }
     }
 
@@ -592,6 +628,7 @@ public partial class SystemSettingView : BaseView
 
     protected override void OnHandleDestroyed(EventArgs e)
     {
+        Interlocked.Increment(ref _deviceSyncVersion);
         _settingsService.SettingsChanged -= SettingsService_SettingsChanged;
         _weldTaskService.StateChanged -= WeldTaskService_StateChanged;
         base.OnHandleDestroyed(e);
@@ -622,6 +659,11 @@ public partial class SystemSettingView : BaseView
     {
         var settings = e.CurrentSettings;
         Interlocked.Exchange(ref _currentSettings, settings);
+        if (Volatile.Read(ref _suppressSettingsChangedBinding) != 0)
+        {
+            return;
+        }
+
         if (IsDisposed || !IsHandleCreated)
         {
             return;
@@ -982,48 +1024,89 @@ public partial class SystemSettingView : BaseView
         stationDisplayNameLayout.Visible = chkEnableDualStation.Checked;
     }
 
-    private async Task<bool> SyncDeviceToMesAsync(AddDeviceReq request, Control triggerButton, bool showSuccessMessage)
+    private void StartDeviceSyncAfterSave(AppSettings previousSettings, AppSettings savedSettings)
     {
-        triggerButton.Enabled = false;
+        var syncVersion = Interlocked.Increment(ref _deviceSyncVersion);
+        _ = SyncDeviceAfterSaveAsync(previousSettings.Clone(), savedSettings.Clone(), syncVersion);
+    }
+
+    private async Task SyncDeviceAfterSaveAsync(
+        AppSettings previousSettings,
+        AppSettings savedSettings,
+        int syncVersion)
+    {
+        AddDeviceReq? request = null;
         try
         {
+            request = await Task.Run(() => BuildDeviceRequest(previousSettings, savedSettings));
             var response = await _mesProvider.SetDeviceIdAsync(request);
+            if (!IsCurrentDeviceSync(syncVersion, request.DeviceId))
+            {
+                return;
+            }
+
             if (response.IsSuccess)
             {
-                if (showSuccessMessage)
+                if (TryMarkDeviceSynced(request.DeviceId))
                 {
                     ShowInfo(TextKeys.SystemSetting.MessageDeviceSyncSuccess);
                 }
 
-                return true;
+                return;
             }
 
-            if (!DeviceIdSyncRules.ShouldOfferRegisterAsNew(request.OldDeviceId, response.Msg))
+            if (DeviceIdSyncRules.ShouldOfferRegisterAsNew(request.OldDeviceId, response.Msg))
             {
-                ShowError(TextKeys.SystemSetting.MessageDeviceSyncFailed, response.Msg);
-                return false;
+                ShowWarning(TextKeys.SystemSetting.MessageDeviceSyncManualConfirmationRequired);
+                return;
             }
 
-            if (!ConfirmRegisterNewDevice(request))
-            {
-                return false;
-            }
-
-            var registerRequest = BuildNewDeviceRegistrationRequest(request);
-            var registerResponse = await _mesProvider.SetDeviceIdAsync(registerRequest);
-            if (registerResponse.IsSuccess)
-            {
-                ShowInfo(TextKeys.SystemSetting.MessageDeviceRegisterSuccess, registerRequest.DeviceId);
-                return true;
-            }
-
-            ShowError(TextKeys.SystemSetting.MessageDeviceRegisterFailed, registerResponse.Msg);
-            return false;
+            ShowError(TextKeys.SystemSetting.MessageDeviceSyncFailed, response.Msg);
         }
-        finally
+        catch (Exception ex)
         {
-            triggerButton.Enabled = true;
+            var expectedDeviceId = request?.DeviceId ?? savedSettings.DeviceId;
+            if (IsCurrentDeviceSync(syncVersion, expectedDeviceId))
+            {
+                ShowError(TextKeys.SystemSetting.MessageDeviceSyncFailed, ex.Message);
+            }
         }
+    }
+
+    private bool IsCurrentDeviceSync(int syncVersion, string? deviceId)
+    {
+        return syncVersion == Volatile.Read(ref _deviceSyncVersion)
+            && SameText(CurrentSettings.DeviceId, deviceId);
+    }
+
+    private async Task<DeviceSyncOutcome> SyncDeviceToMesAsync(AddDeviceReq request)
+    {
+        var response = await _mesProvider.SetDeviceIdAsync(request);
+        if (response.IsSuccess)
+        {
+            return DeviceSyncOutcome.Synced;
+        }
+
+        if (!DeviceIdSyncRules.ShouldOfferRegisterAsNew(request.OldDeviceId, response.Msg))
+        {
+            ShowError(TextKeys.SystemSetting.MessageDeviceSyncFailed, response.Msg);
+            return DeviceSyncOutcome.Failed;
+        }
+
+        if (!ConfirmRegisterNewDevice(request))
+        {
+            return DeviceSyncOutcome.Failed;
+        }
+
+        var registerRequest = BuildNewDeviceRegistrationRequest(request);
+        var registerResponse = await _mesProvider.SetDeviceIdAsync(registerRequest);
+        if (registerResponse.IsSuccess)
+        {
+            return DeviceSyncOutcome.Registered;
+        }
+
+        ShowError(TextKeys.SystemSetting.MessageDeviceRegisterFailed, registerResponse.Msg);
+        return DeviceSyncOutcome.Failed;
     }
 
     private bool ConfirmRegisterNewDevice(AddDeviceReq request)
@@ -1056,13 +1139,29 @@ public partial class SystemSettingView : BaseView
 
     /// <summary>
     /// MES 确认成功后再更新“已同步编号”，保证失败重试时 OldDeviceId 仍然正确。
+    /// 后台同步完成时不重新绑定整页，避免覆盖用户尚未应用的新输入。
     /// </summary>
-    private void MarkDeviceSynced()
+    private bool TryMarkDeviceSynced(string deviceId)
     {
-        var settings = CurrentSettings.Clone();
-        settings.MesSyncedDeviceId = settings.DeviceId;
-        _currentSettings = _settingsService.Save(settings);
-        BindSettings(_currentSettings);
+        var settings = CurrentSettings;
+        if (!SameText(settings.DeviceId, deviceId))
+        {
+            return false;
+        }
+
+        var updatedSettings = settings.Clone();
+        updatedSettings.MesSyncedDeviceId = deviceId.Trim();
+        Interlocked.Increment(ref _suppressSettingsChangedBinding);
+        try
+        {
+            _currentSettings = _settingsService.Save(updatedSettings);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _suppressSettingsChangedBinding);
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -1583,27 +1682,42 @@ public partial class SystemSettingView : BaseView
 
     private void ShowInfoMessage(string message)
     {
-        MessageBox.Show(this, message, _localizer.GetString(TextKeys.Common.TitleInfo), MessageBoxButtons.OK, MessageBoxIcon.Information);
+        if (FindForm() is not { IsDisposed: false, Disposing: false } owner)
+        {
+            return;
+        }
+
+        AntdUI.Message.success(owner, message, autoClose: SuccessMessageAutoCloseSeconds);
     }
 
     private void ShowWarning(string messageKey, params object[] args)
     {
-        MessageBox.Show(this, _localizer.GetString(messageKey, args), _localizer.GetString(TextKeys.Common.TitleWarning), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        ShowWarningMessage(_localizer.GetString(messageKey, args));
     }
 
     private void ShowWarningMessage(string message)
     {
-        MessageBox.Show(this, message, _localizer.GetString(TextKeys.Common.TitleWarning), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        if (FindForm() is not { IsDisposed: false, Disposing: false } owner)
+        {
+            return;
+        }
+
+        AntdUI.Message.warn(owner, message, autoClose: AlertMessageAutoCloseSeconds);
     }
 
     private void ShowError(string messageKey, params object[] args)
     {
-        MessageBox.Show(this, _localizer.GetString(messageKey, args), _localizer.GetString(TextKeys.Common.TitleError), MessageBoxButtons.OK, MessageBoxIcon.Error);
+        ShowErrorMessage(_localizer.GetString(messageKey, args));
     }
 
     private void ShowErrorMessage(string message)
     {
-        MessageBox.Show(this, message, _localizer.GetString(TextKeys.Common.TitleError), MessageBoxButtons.OK, MessageBoxIcon.Error);
+        if (FindForm() is not { IsDisposed: false, Disposing: false } owner)
+        {
+            return;
+        }
+
+        AntdUI.Message.error(owner, message, autoClose: AlertMessageAutoCloseSeconds);
     }
 
     private sealed record LocalizedOption<T>(T Value, string TextKey);

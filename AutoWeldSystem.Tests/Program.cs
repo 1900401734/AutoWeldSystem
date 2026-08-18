@@ -58,7 +58,7 @@ var tests = new (string Name, Action Run)[]
     ("System setting configures PLC alarm trigger mode", SystemSettingConfiguresPlcAlarmTriggerMode),
     ("MES endpoint validation returns stable error codes", MesEndpointValidationReturnsStableErrorCodes),
     ("Device id sync rules detect missing old devices", DeviceIdSyncRulesDetectMissingOldDevices),
-    ("System setting retries missing old device as new registration", SystemSettingRetriesMissingOldDeviceAsNewRegistration),
+    ("System setting saves before background device sync", SystemSettingRetriesMissingOldDeviceAsNewRegistration),
     ("Localization service reports missing resource keys", LocalizationServiceReportsMissingResourceKeys),
     ("PLC recipe name rules map slots without shifting codes", PlcRecipeNameRulesMapSlotsWithoutShiftingCodes),
     ("PLC recipe name config rules reject invalid station settings", PlcRecipeNameConfigRulesRejectInvalidStationSettings),
@@ -8189,32 +8189,63 @@ static void DeviceIdSyncRulesDetectMissingOldDevices()
 static void SystemSettingRetriesMissingOldDeviceAsNewRegistration()
 {
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.cs"), Encoding.UTF8);
-    var syncMethod = ExtractMethodText(
+    var backgroundSyncMethod = ExtractMethodText(
         viewCode,
-        "private async Task<bool> SyncDeviceToMesAsync(",
+        "private async Task SyncDeviceAfterSaveAsync(",
+        "private bool IsCurrentDeviceSync(");
+    var manualSyncMethod = ExtractMethodText(
+        viewCode,
+        "private async Task<DeviceSyncOutcome> SyncDeviceToMesAsync(",
         "private bool ConfirmRegisterNewDevice(");
     var registerRequestMethod = ExtractMethodText(
         viewCode,
         "private static AddDeviceReq BuildNewDeviceRegistrationRequest(",
         "/// <summary>");
+    var markSyncedMethod = ExtractMethodText(
+        viewCode,
+        "private bool TryMarkDeviceSynced(",
+        "/// <summary>");
     var saveMethod = ExtractMethodText(viewCode, "private async void SaveAll_Click", "/// <summary>");
-    var manualSyncMethod = ExtractMethodText(viewCode, "private async void SyncDevice_ClickAsync", "private async void TestConnection_ClickAsync");
+    var manualClickMethod = ExtractMethodText(viewCode, "private async void SyncDevice_ClickAsync", "private async void TestConnection_ClickAsync");
 
     AssertTrue(
-        syncMethod.Contains("DeviceIdSyncRules.ShouldOfferRegisterAsNew(request.OldDeviceId, response.Msg)", StringComparison.Ordinal)
-            && syncMethod.Contains("ConfirmRegisterNewDevice(request)", StringComparison.Ordinal),
-        "只有旧设备明确不存在且用户确认后才能按新设备注册。");
+        manualSyncMethod.Contains("DeviceIdSyncRules.ShouldOfferRegisterAsNew(request.OldDeviceId, response.Msg)", StringComparison.Ordinal)
+            && manualSyncMethod.Contains("ConfirmRegisterNewDevice(request)", StringComparison.Ordinal),
+        "只有手动同步在旧设备明确不存在且用户确认后才能按新设备注册。");
     AssertEqual(
         2,
-        System.Text.RegularExpressions.Regex.Matches(syncMethod, @"_mesProvider\.SetDeviceIdAsync").Count,
-        "设备同步最多只能调用一次更新和一次新设备注册。");
+        System.Text.RegularExpressions.Regex.Matches(manualSyncMethod, @"_mesProvider\.SetDeviceIdAsync").Count,
+        "手动设备同步最多只能调用一次更新和一次新设备注册。");
+    AssertEqual(
+        1,
+        System.Text.RegularExpressions.Regex.Matches(backgroundSyncMethod, @"_mesProvider\.SetDeviceIdAsync").Count,
+        "保存后的后台同步只能尝试一次设备更新。");
+    AssertFalse(backgroundSyncMethod.Contains("ConfirmRegisterNewDevice", StringComparison.Ordinal), "后台同步不得弹出注册新设备确认框。");
+    AssertFalse(backgroundSyncMethod.Contains("BuildNewDeviceRegistrationRequest", StringComparison.Ordinal), "后台同步不得自动注册新设备。");
+    AssertTrue(
+        backgroundSyncMethod.Contains("MessageDeviceSyncManualConfirmationRequired", StringComparison.Ordinal),
+        "后台发现旧设备不存在时必须提示用户转到手动同步确认。");
     AssertTrue(
         registerRequestMethod.Contains("OldDeviceId = string.Empty", StringComparison.Ordinal)
             && registerRequestMethod.Contains("DeviceId = request.DeviceId", StringComparison.Ordinal),
-        "降级注册必须只清空 OldDeviceId 并保留新设备资料。");
-    AssertFalse(syncMethod.Contains("MesSyncedDeviceId", StringComparison.Ordinal), "MES 失败或用户取消时不得提前修改已同步设备编号。");
-    AssertTrue(saveMethod.Contains("SyncDeviceToMesAsync(syncRequest, btnSaveAll, false)", StringComparison.Ordinal), "保存全部必须复用统一设备同步流程。");
-    AssertTrue(manualSyncMethod.Contains("SyncDeviceToMesAsync(request, btnSyncDevice, true)", StringComparison.Ordinal), "手动同步必须复用统一设备同步流程。");
+        "手动降级注册必须只清空 OldDeviceId 并保留新设备资料。");
+    AssertTrue(
+        saveMethod.Contains("var shouldSyncDevice = HasDeviceIdentityChanged(previousSettings, settings);", StringComparison.Ordinal)
+            && saveMethod.Contains("if (shouldSyncDevice)", StringComparison.Ordinal)
+            && saveMethod.Contains("StartDeviceSyncAfterSave(previousSettings, savedSettings);", StringComparison.Ordinal),
+        "应用全部只能在设备身份实际变化后启动后台同步。");
+    AssertFalse(saveMethod.Contains("BuildDeviceRequest", StringComparison.Ordinal), "应用全部的本地保存路径不得同步构建设备请求或查询本机 IP。");
+    AssertFalse(saveMethod.Contains("await SyncDeviceToMesAsync", StringComparison.Ordinal), "应用全部不得等待 MES 设备同步。");
+    AssertTrue(
+        manualClickMethod.Contains("await Task.Run(() => BuildDeviceRequest(previousSettings, settings))", StringComparison.Ordinal)
+            && manualClickMethod.Contains("await SyncDeviceToMesAsync(request)", StringComparison.Ordinal),
+        "手动同步必须继续显式构建请求并等待统一同步流程。");
+    AssertTrue(
+        backgroundSyncMethod.Contains("IsCurrentDeviceSync(syncVersion, request.DeviceId)", StringComparison.Ordinal)
+            && markSyncedMethod.Contains("SameText(settings.DeviceId, deviceId)", StringComparison.Ordinal),
+        "后台迟到结果必须同时校验同步版本和当前设备编号后才能标记成功。");
+    AssertTrue(markSyncedMethod.Contains("_suppressSettingsChangedBinding", StringComparison.Ordinal), "后台同步成功不得重新绑定整页并覆盖未应用输入。");
+    AssertFalse(manualSyncMethod.Contains("MesSyncedDeviceId", StringComparison.Ordinal), "MES 失败或用户取消时不得提前修改已同步设备编号。");
 }
 
 static void LocalizationServiceReportsMissingResourceKeys()
@@ -11471,6 +11502,11 @@ static void ProgramDeleteKeepsMesSyncOffUiPath()
     AssertTrue(
         viewCode.Contains("当前没有可删除的加工程序。", StringComparison.Ordinal),
         "程序表为空时删除必须直接提示，不能进入删除流程。");
+    AssertTrue(
+        viewCode.Contains("private IWin32Window GetDialogOwner()", StringComparison.Ordinal)
+            && System.Text.RegularExpressions.Regex.Matches(viewCode, @"GetDialogOwner\(\)").Count == 3,
+        "单条删除和批量清理确认框都必须绑定主窗体所有者。");
+    AssertFalse(viewCode.Contains("MessageBox.Show(this,", StringComparison.Ordinal), "程序管理页确认框不得继续以 UserControl 作为窗口所有者。");
 }
 
 static void ProgramManageSaveAndDualSelectorPathsStayAsynchronous()
