@@ -18,22 +18,23 @@ public static class ProgramProductGroupRules
     /// <returns>按工号升序排列的分组行；工号为空的程序不参与分组。</returns>
     public static IReadOnlyList<ProgramProductGroupRow> BuildGroups(
         IEnumerable<BizProgram> programs,
-        Func<BizProgram, string> describeProgram)
+        Func<BizProgram, string> resolveSyncStatus)
     {
         ArgumentNullException.ThrowIfNull(programs);
-        ArgumentNullException.ThrowIfNull(describeProgram);
+        ArgumentNullException.ThrowIfNull(resolveSyncStatus);
 
         return programs
             .Where(program => !string.IsNullOrWhiteSpace(program.ProductNum))
             .GroupBy(program => Normalize(program.ProductNum), StringComparer.OrdinalIgnoreCase)
             .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
-            .Select(group => BuildGroup(group, describeProgram))
+            .Select((group, index) => BuildGroup(group, resolveSyncStatus, index + 1))
             .ToList();
     }
 
     private static ProgramProductGroupRow BuildGroup(
         IGrouping<string, BizProgram> group,
-        Func<BizProgram, string> describeProgram)
+        Func<BizProgram, string> resolveSyncStatus,
+        int serialNumber)
     {
         // 同一工号大小写不一致时取序数最小的写法，保证显示文本稳定可按 Ordinal 回查。
         var productNum = group
@@ -50,25 +51,31 @@ public static class ProgramProductGroupRules
         {
             return new ProgramProductGroupRow
             {
+                SerialNumber = serialNumber,
                 ProductNum = productNum,
                 ProgramId = ordered[0].Id,
-                Summary = describeProgram(ordered[0]),
+                ProgramName = ordered[0].ProgramName,
+                SyncStatus = resolveSyncStatus(ordered[0]),
                 UpdatedTime = ordered[0].UpdatedTime
             };
         }
 
         return new ProgramProductGroupRow
         {
+            SerialNumber = serialNumber,
             ProductNum = productNum,
             ProgramId = 0,
-            Summary = string.Empty,
+            ProgramName = string.Empty,
+            SyncStatus = string.Empty,
             UpdatedTime = ordered.Max(program => program.UpdatedTime),
             Programs = ordered
                 .Select(program => new ProgramProductGroupRow
                 {
+                    SerialNumber = null,
                     ProductNum = BuildSequenceLabel(program),
                     ProgramId = program.Id,
-                    Summary = describeProgram(program),
+                    ProgramName = program.ProgramName,
+                    SyncStatus = resolveSyncStatus(program),
                     UpdatedTime = program.UpdatedTime
                 })
                 .ToList()
@@ -89,6 +96,11 @@ public static class ProgramProductGroupRules
 public sealed class ProgramProductGroupRow
 {
     /// <summary>
+    /// 当前筛选结果中的产品工号分组序号；子程序行为空。
+    /// </summary>
+    public int? SerialNumber { get; init; }
+
+    /// <summary>
     /// 顶层行显示产品工号，子行显示流水号标签。
     /// </summary>
     public string ProductNum { get; init; } = string.Empty;
@@ -99,9 +111,14 @@ public sealed class ProgramProductGroupRow
     public int ProgramId { get; init; }
 
     /// <summary>
-    /// 程序摘要（程序名称、版本、同步状态等）；多程序工号的父行为空。
+    /// 程序名称；多程序工号的父行为空。
     /// </summary>
-    public string Summary { get; init; } = string.Empty;
+    public string ProgramName { get; init; } = string.Empty;
+
+    /// <summary>
+    /// 本地化后的同步状态；多程序工号的父行为空。
+    /// </summary>
+    public string SyncStatus { get; init; } = string.Empty;
 
     /// <summary>
     /// 该行最近一次更新时间；父行取组内最新。

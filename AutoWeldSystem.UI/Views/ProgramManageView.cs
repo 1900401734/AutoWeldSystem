@@ -39,6 +39,8 @@ public partial class ProgramManageView : BaseView
     private readonly Dictionary<int, List<RecipeSelectionItem>> _recipeSelectionItems = new();
     private readonly Dictionary<int, bool> _recipeNameReadSucceeded = new();
     private int _editingId;
+    private BizProgram? _editingProgram;
+    private int _detailLoadVersion;
     private bool _initialized;
     private bool _programContentDictionaryAvailable;
     private int _recipeNameRefreshVersion;
@@ -118,7 +120,7 @@ public partial class ProgramManageView : BaseView
         BindRemarkText(inputRemark.Text);
         RefreshRecipeSelectorTexts();
         UpdateCurrentInfoText();
-        // 摘要列含同步状态译文，切语言后必须按新语言重新分组生成。
+        // 同步状态列使用本地化文本，切换语言后按当前筛选结果重新生成。
         ApplyProgramFilter(_editingId);
     }
 
@@ -150,10 +152,16 @@ public partial class ProgramManageView : BaseView
 
         tablePrograms.Columns = new AntdUI.ColumnCollection
         {
+            new AntdUI.Column(
+                nameof(ProgramProductGroupRow.SerialNumber),
+                _localizer.GetString(TextKeys.Grid.ProgramSerialNumber)),
             productNumColumn,
             new AntdUI.Column(
-                nameof(ProgramProductGroupRow.Summary),
-                _localizer.GetString(TextKeys.Grid.ProgramSummary)),
+                nameof(ProgramProductGroupRow.ProgramName),
+                _localizer.GetString(TextKeys.Grid.ProgramName)),
+            new AntdUI.Column(
+                nameof(ProgramProductGroupRow.SyncStatus),
+                _localizer.GetString(TextKeys.Grid.ProgramSyncStatus)),
             new AntdUI.Column(
                 nameof(ProgramProductGroupRow.UpdatedTime),
                 _localizer.GetString(TextKeys.Grid.ProgramUpdatedTime))
@@ -297,9 +305,9 @@ public partial class ProgramManageView : BaseView
 
     private async Task ReloadProgramsAsync(int? selectedId = null)
     {
-        var programs = await _programService.GetProgramsAsync(cancellationToken: _operationCts.Token);
+        var programs = await _programService.GetProgramLookupsAsync(_operationCts.Token);
         _programs.Clear();
-        _programs.AddRange(programs);
+        _programs.AddRange(programs.Select(program => program.ToEntityStub()));
         ApplyProgramFilter(selectedId);
     }
 
@@ -316,7 +324,7 @@ public partial class ProgramManageView : BaseView
                 || Contains(program.SyncStatus, keyword)
                 || Contains(GetSyncStatusText(program.SyncStatus), keyword)));
 
-        var groups = ProgramProductGroupRules.BuildGroups(_filteredPrograms, BuildProgramSummary);
+        var groups = ProgramProductGroupRules.BuildGroups(_filteredPrograms, program => GetSyncStatusText(program.SyncStatus));
         tablePrograms.DataSource = groups;
         if (groups.Count == 0)
         {
@@ -324,18 +332,6 @@ public partial class ProgramManageView : BaseView
         }
 
         SelectProgramRow(selectedId ?? _editingId);
-    }
-
-    /// <summary>
-    /// 生成程序行摘要：程序名称 + 版本 + 同步状态。
-    /// </summary>
-    private string BuildProgramSummary(BizProgram program)
-    {
-        var syncText = GetSyncStatusText(program.SyncStatus);
-        var name = string.IsNullOrWhiteSpace(program.ProgramName)
-            ? program.ComponentCode ?? string.Empty
-            : program.ProgramName;
-        return $"{name}  v{program.VersionNumber} [{syncText}]";
     }
 
     private static bool Contains(string? source, string keyword)
@@ -350,6 +346,8 @@ public partial class ProgramManageView : BaseView
         // 新增状态不应继续保留列表旧行选择，否则再次点击同一行不会触发绑定。
         tablePrograms.SelectedIndex = -1;
         _editingId = 0;
+        _editingProgram = null;
+        Interlocked.Increment(ref _detailLoadVersion);
         txtProgramId.Clear();
         inputProgramName.Clear();
         inputProductNum.Clear();
@@ -365,29 +363,43 @@ public partial class ProgramManageView : BaseView
         _suppressNameAutoFill = false;
     }
 
-    private void BindProgramById(int programId)
+    private async void BindProgramById(int programId)
     {
-        var program = _programs.FirstOrDefault(item => item.Id == programId);
-        if (program is null)
+        var loadVersion = Interlocked.Increment(ref _detailLoadVersion);
+        try
         {
-            return;
-        }
+            var program = await _programService.GetProgramAsync(programId, _operationCts.Token);
+            if (program is null
+                || loadVersion != Volatile.Read(ref _detailLoadVersion)
+                || IsDisposed)
+            {
+                return;
+            }
 
-        _suppressNameAutoFill = true;
-        _editingId = program.Id;
-        txtProgramId.Text = program.ProgramId ?? string.Empty;
-        inputProgramName.Text = program.ProgramName;
-        inputProductNum.Text = program.ProductNum;
-        SetRecipeSelection(selectStation1Recipe, 1, program.RecipeCode, selectNotApplicable: true);
-        SetRecipeSelection(selectStation2Recipe, 2, program.Station2RecipeCode, selectNotApplicable: true);
-        inputComponentCode.Text = program.ComponentCode ?? string.Empty;
-        inputSequenceNumber.Text = program.SequenceNumber.ToString();
-        cmbProgramType.SelectedIndex = program.ProgramType == "1" ? 1 : 0;
-        BindRemarkText(program.Remark);
-        inputDescription.Text = program.Description ?? string.Empty;
-        BindProgramContentRows(program.ProgramContent);
-        SetCurrentProgramInfo(program);
-        _suppressNameAutoFill = false;
+            _editingProgram = program;
+            _suppressNameAutoFill = true;
+            _editingId = program.Id;
+            txtProgramId.Text = program.ProgramId ?? string.Empty;
+            inputProgramName.Text = program.ProgramName;
+            inputProductNum.Text = program.ProductNum;
+            SetRecipeSelection(selectStation1Recipe, 1, program.RecipeCode, selectNotApplicable: true);
+            SetRecipeSelection(selectStation2Recipe, 2, program.Station2RecipeCode, selectNotApplicable: true);
+            inputComponentCode.Text = program.ComponentCode ?? string.Empty;
+            inputSequenceNumber.Text = program.SequenceNumber.ToString();
+            cmbProgramType.SelectedIndex = program.ProgramType == "1" ? 1 : 0;
+            BindRemarkText(program.Remark);
+            inputDescription.Text = program.Description ?? string.Empty;
+            BindProgramContentRows(program.ProgramContent);
+            SetCurrentProgramInfo(program);
+            _suppressNameAutoFill = false;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            ShowErrorMessage(ex.Message);
+        }
     }
 
     private void UpdateCurrentInfoText()
@@ -398,7 +410,8 @@ public partial class ProgramManageView : BaseView
             return;
         }
 
-        if (_programs.FirstOrDefault(program => program.Id == _editingId) is { } program)
+        var program = GetEditingProgram() ?? _programs.FirstOrDefault(item => item.Id == _editingId);
+        if (program is not null)
         {
             SetCurrentProgramInfo(program);
         }
@@ -406,14 +419,11 @@ public partial class ProgramManageView : BaseView
 
     private void SetCurrentProgramInfo(BizProgram program)
     {
-        var currentText = _localizer.GetString(
-            TextKeys.ProgramManage.CurrentSelected,
-            program.VersionNumber,
-            GetSyncStatusText(program.SyncStatus),
-            program.CommitId ?? string.Empty);
-        var programId = string.IsNullOrWhiteSpace(program.ProgramId) ? "--" : program.ProgramId;
-        //lblCurrentInfo.Text = $"{currentText}，MES程序ID：{programId}";
-        lblCurrentInfo.Text = $"{currentText}";
+        lblCurrentInfo.Text = string.IsNullOrWhiteSpace(program.ProgramId)
+            ? _localizer.GetString(TextKeys.ProgramManage.CurrentNotSynced)
+            : _localizer.GetString(
+                TextKeys.ProgramManage.CurrentSynced,
+                program.ProgramId.Trim());
     }
 
     private string GetSyncStatusText(string? status)
@@ -746,7 +756,7 @@ public partial class ProgramManageView : BaseView
 
     private BizProgram? GetEditingProgram()
     {
-        return _programs.FirstOrDefault(program => program.Id == _editingId);
+        return _editingProgram?.Id == _editingId ? _editingProgram : null;
     }
 
     private string ResolveEditedMesRemark(BizProgram? editingProgram)

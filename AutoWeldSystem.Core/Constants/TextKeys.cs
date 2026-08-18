@@ -955,6 +955,8 @@ public static class TextKeys
         public const string CommitUpdate = "program.commit.update";
         public const string CurrentNew = "program.message.current_new";
         public const string CurrentSelected = "program.message.current_selected";
+        public const string CurrentSynced = "program.message.current_synced";
+        public const string CurrentNotSynced = "program.message.current_not_synced";
         public const string SaveSuccess = "program.message.save_success";
         public const string SelectDelete = "program.message.select_delete";
         public const string DeleteConfirm = "program.message.delete_confirm";
@@ -1511,6 +1513,7 @@ public static class TextKeys
         public const string ProgramSequenceNumber = "grid.program.sequence_number";
         public const string ProgramLocalRemark = "grid.program.local_remark";
         public const string ProgramCount = "grid.program.program_count";
+        public const string ProgramSerialNumber = "grid.program.serial_number";
         public const string ProgramSummary = "grid.program.summary";
         public const string ProgramVersionNumber = "grid.program.version_number";
         public const string ProgramSyncStatus = "grid.program.sync_status";

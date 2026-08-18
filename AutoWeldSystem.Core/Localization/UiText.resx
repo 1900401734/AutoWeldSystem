@@ -1666,6 +1666,12 @@
   <data name="program.message.current_selected" xml:space="preserve">
     <value>当前：v{0} / {1} / {2}</value>
   </data>
+  <data name="program.message.current_synced" xml:space="preserve">
+    <value>当前：已同步 / {0}</value>
+  </data>
+  <data name="program.message.current_not_synced" xml:space="preserve">
+    <value>当前：未同步</value>
+  </data>
   <data name="program.message.save_success" xml:space="preserve">
     <value>程序已保存。</value>
   </data>
@@ -1767,6 +1773,9 @@
   </data>
   <data name="grid.program.program_count" xml:space="preserve">
     <value>程序数量</value>
+  </data>
+  <data name="grid.program.serial_number" xml:space="preserve">
+    <value>序号</value>
   </data>
   <data name="grid.program.summary" xml:space="preserve">
     <value>程序</value>

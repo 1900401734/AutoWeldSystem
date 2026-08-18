@@ -126,6 +126,8 @@ public partial class MonitorView : BaseView
     // One request per station is current. A PLC scan replaces a pending manual query immediately.
     private readonly Dictionary<int, CancellationTokenSource> _workOrderLoadCancellationTokens = new();
     private readonly List<OfflineProgramNameOption> _offlineProgramNameOptions = new();
+    private IReadOnlyList<BizProgram> _localProgramSnapshot = Array.Empty<BizProgram>();
+    private int _programSnapshotRefreshVersion;
     private readonly List<OfflineProductNumOption> _offlineProductNumOptions = new();
     // 操作员显式选择的产品工号；跨 1Hz 重绑定保留选择，按工位隔离。
     private readonly Dictionary<int, string> _userSelectedOfflineProductNums = new();
@@ -779,6 +781,7 @@ public partial class MonitorView : BaseView
         _productRealtimePreviewService.SnapshotChanged += ProductRealtimePreviewService_SnapshotChanged;
         _productionLogService.LogWritten += ProductionLogService_LogWritten;
         _uploadTaskService.TaskStatusChanged += UploadTaskService_TaskStatusChanged;
+        _programManageService.ProgramLookupsChanged += ProgramManageService_ProgramLookupsChanged;
         _settingsService.SettingsChanged += OnSettingsChanged;
     }
 
@@ -1153,6 +1156,21 @@ public partial class MonitorView : BaseView
             return;
         }
 
+        var fullProgram = await _programManageService.GetProgramAsync(selectedProgram!.Program.Id);
+        if (fullProgram is null)
+        {
+            SetRuntimeError(TextKeys.Monitor.RuntimeError.ProgramNameRequired);
+            return;
+        }
+
+        request.ProgramId = string.IsNullOrWhiteSpace(fullProgram.ProgramId) ? $"local-{fullProgram.Id}" : fullProgram.ProgramId;
+        request.ProgramName = fullProgram.ProgramName;
+        request.ProgramType = string.IsNullOrWhiteSpace(fullProgram.ProgramType) ? "0" : fullProgram.ProgramType;
+        request.ProgramContent = string.IsNullOrWhiteSpace(fullProgram.ProgramContent) ? "{}" : fullProgram.ProgramContent;
+        request.ProductNum = fullProgram.ProductNum;
+        request.ProductModel = fullProgram.ProductModel ?? string.Empty;
+        request.RecipeCode = ProgramRecipeMappingRules.Resolve(fullProgram, stationNo);
+
         var localProgram = new ProgramDataRes
         {
             Id = request.ProgramId,
@@ -1372,6 +1390,7 @@ public partial class MonitorView : BaseView
     {
         _timer.Start();
         _realtimePreviewPaintTimer.Start();
+        _ = RefreshLocalProgramSnapshotAsync(rebindOptions: true);
         ApplyLocalizedTexts();
         SyncDualWorkOrderToggle(_currentSettings.EnableDualWorkOrder);
         UpdateCurrentTime();
@@ -1457,6 +1476,7 @@ public partial class MonitorView : BaseView
         _productRealtimePreviewService.SnapshotChanged -= ProductRealtimePreviewService_SnapshotChanged;
         _productionLogService.LogWritten -= ProductionLogService_LogWritten;
         _uploadTaskService.TaskStatusChanged -= UploadTaskService_TaskStatusChanged;
+        _programManageService.ProgramLookupsChanged -= ProgramManageService_ProgramLookupsChanged;
         inputSN.TextChanged -= WorkOrderInput_TextChanged;
         inputSN.KeyDown -= WorkOrderInput_KeyDown;
         chkEnableDualWorkOrder.CheckedChanged -= DualWorkOrder_CheckedChanged;
@@ -3338,6 +3358,7 @@ public partial class MonitorView : BaseView
 
             SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.LoadingPrograms);
             var programs = await _weldTaskService.LoadProgramsAsync(stationNo, cancellationToken);
+            await RefreshLocalProgramSnapshotAsync(rebindOptions: false, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             if (programs.Count == 0)
             {
@@ -3357,13 +3378,62 @@ public partial class MonitorView : BaseView
         });
     }
 
+    private void ProgramManageService_ProgramLookupsChanged(object? sender, EventArgs e)
+    {
+        _ = RefreshLocalProgramSnapshotAsync(rebindOptions: true);
+    }
+
+    private async Task RefreshLocalProgramSnapshotAsync(
+        bool rebindOptions,
+        CancellationToken cancellationToken = default)
+    {
+        var refreshVersion = Interlocked.Increment(ref _programSnapshotRefreshVersion);
+        try
+        {
+            var lookups = await _programManageService.GetProgramLookupsAsync(cancellationToken);
+            if (refreshVersion != Volatile.Read(ref _programSnapshotRefreshVersion)
+                || IsDisposed
+                || !IsHandleCreated)
+            {
+                return;
+            }
+
+            var programs = lookups.Select(lookup => lookup.ToEntityStub()).ToArray();
+            await RunOnUiThreadAsync(() =>
+            {
+                _localProgramSnapshot = programs;
+                if (rebindOptions)
+                {
+                    if (IsOfflineInputEditable(GetCurrentStationState()))
+                    {
+                        BindOfflineProductNumOptions();
+                        BindOfflineProgramNameOptions();
+                    }
+                    else if (GetCurrentStationState().AvailablePrograms.Count > 0)
+                    {
+                        BindOnlineProgramNameOptions();
+                    }
+                }
+
+                return Task.CompletedTask;
+            }, "MonitorView.ProgramLookupSnapshot");
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _exceptionLogService.Write(ex, "MonitorView.ProgramLookupSnapshot");
+        }
+    }
+
     /// <summary>
     /// 用当前工位已加载的程序列表填充在线程序名称下拉框（镜像离线版绑定，但不自动选中）。
     /// </summary>
     private void BindOnlineProgramNameOptions()
     {
         var state = GetCurrentStationState();
-        var localPrograms = _programManageService.GetPrograms();
+        var localPrograms = _localProgramSnapshot;
         var requireBothStations = _currentSettings.EnableDualStation && !_currentSettings.EnableDualWorkOrder;
         var programs = state.AvailablePrograms
             .Where(program =>
@@ -3728,7 +3798,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             ? ResolveOfflineProductNumFilter()
             : null;
         var options = OfflineStartInputRules.BuildProgramNameOptions(
-            _programManageService.GetPrograms(),
+            _localProgramSnapshot,
             CurrentStationNo,
             requireBothStations,
             productNumFilter).ToList();
@@ -3770,7 +3840,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         var previousText = selectProdNum.Text?.Trim() ?? string.Empty;
         var requireBothStations = _currentSettings.EnableDualStation && !_currentSettings.EnableDualWorkOrder;
         var options = OfflineStartInputRules.BuildProductNumOptions(
-            _programManageService.GetPrograms(),
+            _localProgramSnapshot,
             CurrentStationNo,
             requireBothStations).ToList();
 
@@ -7872,7 +7942,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             return null;
         }
 
-        var programs = _programManageService.GetPrograms();
+        var programs = _localProgramSnapshot;
         if (normalizedProgramId.StartsWith("local-", StringComparison.OrdinalIgnoreCase)
             && int.TryParse(normalizedProgramId["local-".Length..], out var localProgramId))
         {
@@ -7904,7 +7974,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         }
 
         var settings = _currentSettings;
-        return _programManageService.GetPrograms()
+        return _localProgramSnapshot
             .Where(program => SameText(program.ProgramName, normalizedProgramName))
             .Where(program => string.IsNullOrWhiteSpace(normalizedProductNum) || SameText(program.ProductNum, normalizedProductNum))
             .OrderByDescending(program => SameText(program.DeviceId, settings.DeviceId))
@@ -8550,7 +8620,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             return ProgramRecipeMappingRules.Resolve(localProgram, CurrentStationNo);
         }
 
-        var matchedProgram = _programManageService.GetPrograms()
+        var matchedProgram = _localProgramSnapshot
             .FirstOrDefault(program =>
                 SameText(program.ProgramName, programListItem.ProgramName)
                 && SameText(program.ProductNum, programListItem.ProductNum));
@@ -8582,7 +8652,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
 
     private BizProgram? ResolveLocalProgram(ProgramDataRes program)
     {
-        var localPrograms = _programManageService.GetPrograms();
+        var localPrograms = _localProgramSnapshot;
         var programId = program.Id?.Trim() ?? string.Empty;
         if (!string.IsNullOrWhiteSpace(programId))
         {
@@ -8612,7 +8682,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             return null;
         }
 
-        return _programManageService.GetPrograms()
+        return _localProgramSnapshot
             .Where(program => string.Equals(program.ProgramId?.Trim(), normalizedProgramId, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(program => SameText(program.DeviceId, deviceId))
             .ThenByDescending(program => program.UpdatedTime)
@@ -8634,7 +8704,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         }
 
         var settings = _currentSettings;
-        return _programManageService.GetPrograms()
+        return _localProgramSnapshot
             .Where(program => ProgramRecipeMappingRules.Matches(program, stationNo, normalizedRecipeCode))
             .OrderByDescending(program => SameText(program.DeviceId, settings.DeviceId))
             .ThenByDescending(program => program.UpdatedTime)

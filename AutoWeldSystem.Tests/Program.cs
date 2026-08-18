@@ -375,7 +375,8 @@ var tests = new (string Name, Action Run)[]
     ("Select list rules disambiguate duplicate display texts by event index", SelectListRulesDisambiguateDuplicateDisplayTextsByEventIndex),
     ("Natural sort comparer orders product numbers numerically", NaturalSortComparerOrdersProductNumbersNumerically),
     ("Program delete keeps MES sync off UI path", ProgramDeleteKeepsMesSyncOffUiPath),
-    ("Program manage save and dual selector paths stay asynchronous", ProgramManageSaveAndDualSelectorPathsStayAsynchronous)
+    ("Program manage save and dual selector paths stay asynchronous", ProgramManageSaveAndDualSelectorPathsStayAsynchronous),
+    ("Program lookup snapshot removes UI database queries", ProgramLookupSnapshotRemovesUiDatabaseQueries)
 };
 
 foreach (var test in tests)
@@ -9941,10 +9942,18 @@ static void ProgramManageGridShowsSequenceAndProgramName()
 {
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.cs"), Encoding.UTF8);
 
-    // 列表按工号去重，同工号的多个程序展开为子行；单程序工号直接摊平，不留空壳父节点。
-    AssertTrue(viewCode.Contains("productNumColumn.SetTree(nameof(ProgramProductGroupRow.Programs));", StringComparison.Ordinal), "工号列必须配置为树形列。");
-    AssertTrue(viewCode.Contains("tablePrograms.DefaultExpand = false;", StringComparison.Ordinal), "程序列表必须默认折叠，避免一次铺开占满界面。");
-    AssertTrue(viewCode.Contains("private string BuildProgramSummary(BizProgram program)", StringComparison.Ordinal), "程序行必须提供包含版本和同步状态的摘要。");
+    AssertTrue(viewCode.Contains("nameof(ProgramProductGroupRow.SerialNumber)", StringComparison.Ordinal), "程序表格首列必须显示筛选后的分组序号。");
+    AssertTrue(viewCode.Contains("productNumColumn.SetTree(nameof(ProgramProductGroupRow.Programs));", StringComparison.Ordinal), "工号列必须继续配置为树形列。");
+    AssertTrue(viewCode.Contains("nameof(ProgramProductGroupRow.ProgramName)", StringComparison.Ordinal), "程序名称必须使用独立列。");
+    AssertTrue(viewCode.Contains("nameof(ProgramProductGroupRow.SyncStatus)", StringComparison.Ordinal), "同步状态必须使用独立列。");
+    AssertFalse(viewCode.Contains("nameof(ProgramProductGroupRow.Summary)", StringComparison.Ordinal), "程序表格不得继续显示摘要列。");
+    AssertFalse(viewCode.Contains("BuildProgramSummary", StringComparison.Ordinal), "程序列表不得继续拼接版本号和同步状态摘要。");
+    AssertTrue(viewCode.Contains("TextKeys.ProgramManage.CurrentSynced", StringComparison.Ordinal)
+        && viewCode.Contains("TextKeys.ProgramManage.CurrentNotSynced", StringComparison.Ordinal),
+        "右侧当前状态必须只显示已同步/MES程序ID或未同步。");
+    var zhResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.resx"), Encoding.UTF8);
+    AssertTrue(zhResources.Contains("<value>当前：已同步 / {0}</value>", StringComparison.Ordinal), "已同步状态必须显示当前前缀、分隔空格和程序ID。");
+    AssertTrue(zhResources.Contains("<value>当前：未同步</value>", StringComparison.Ordinal), "未同步状态必须显示当前前缀。");
     AssertTrue(viewCode.Contains("row.ProgramId > 0", StringComparison.Ordinal), "父行不指向具体程序，点击不得切换编辑对象。");
 }
 
@@ -9952,42 +9961,47 @@ static void ProgramProductGroupsMergeProgramsSharingProductNum()
 {
     var programs = new List<BizProgram>
     {
-        new() { Id = 1, ProgramName = "A-1", ProductNum = "P-001", SequenceNumber = 2, UpdatedTime = new DateTime(2026, 8, 1) },
-        new() { Id = 2, ProgramName = "A-2", ProductNum = " p-001 ", SequenceNumber = 1, UpdatedTime = new DateTime(2026, 8, 5) },
-        new() { Id = 3, ProgramName = "B-1", ProductNum = "P-002", SequenceNumber = 1, UpdatedTime = new DateTime(2026, 8, 3) },
+        new() { Id = 1, ProgramName = "A-1", ProductNum = "P-001", SequenceNumber = 2, SyncStatus = AppConstants.ProgramSyncStatus.PendingUpdate, UpdatedTime = new DateTime(2026, 8, 1) },
+        new() { Id = 2, ProgramName = "A-2", ProductNum = " p-001 ", SequenceNumber = 1, SyncStatus = AppConstants.ProgramSyncStatus.Synced, UpdatedTime = new DateTime(2026, 8, 5) },
+        new() { Id = 3, ProgramName = "B-1", ProductNum = "P-002", SequenceNumber = 1, SyncStatus = AppConstants.ProgramSyncStatus.PendingCreate, UpdatedTime = new DateTime(2026, 8, 3) },
         new() { Id = 4, ProgramName = "空工号", ProductNum = "   ", SequenceNumber = 1, UpdatedTime = new DateTime(2026, 8, 9) }
     };
 
-    var groups = ProgramProductGroupRules.BuildGroups(programs, program => program.ProgramName);
+    var groups = ProgramProductGroupRules.BuildGroups(programs, program => $"状态:{program.SyncStatus}");
 
     AssertEqual(2, groups.Count, "工号为空的程序不得产生分组，同工号必须合并为一行。");
+    AssertEqual(1, groups[0].SerialNumber, "首个产品工号父行序号必须从 1 开始。");
+    AssertEqual(2, groups[1].SerialNumber, "产品工号父行序号必须连续递增。");
     AssertEqual("P-001", groups[0].ProductNum, "同工号大小写和空白不同必须归为同一组。");
     AssertEqual(new DateTime(2026, 8, 5), groups[0].UpdatedTime, "分组更新时间必须取组内最新。");
-    AssertEqual("P-002", groups[1].ProductNum, "分组必须按工号升序排列。");
-    AssertEqual(0, ProgramProductGroupRules.BuildGroups(Array.Empty<BizProgram>(), program => program.ProgramName).Count, "空集合必须返回空分组。");
+    AssertEqual(0, ProgramProductGroupRules.BuildGroups(Array.Empty<BizProgram>(), program => program.SyncStatus).Count, "空集合必须返回空分组。");
 
-    // 多程序工号：父行不指向具体程序，子行按流水号升序。
     AssertEqual(0, groups[0].ProgramId, "多程序工号的父行不得指向具体程序。");
+    AssertEqual(string.Empty, groups[0].ProgramName, "多程序父行不得显示具体程序名称。");
+    AssertEqual(string.Empty, groups[0].SyncStatus, "多程序父行不得显示具体同步状态。");
     AssertEqual(2, groups[0].Programs?.Count ?? 0, "多程序工号必须展开为子行。");
+    AssertEqual(null, groups[0].Programs![0].SerialNumber, "子程序行序号必须留空。");
     AssertEqual(2, groups[0].Programs![0].ProgramId, "子行必须按流水号升序排列。");
-    AssertEqual(1, groups[0].Programs![1].ProgramId, "子行必须按流水号升序排列。");
-    AssertEqual("#001", groups[0].Programs![0].ProductNum, "子行必须显示流水号标签。");
+    AssertEqual("#001", groups[0].Programs![0].ProductNum, "子行必须保留程序流水号标签。");
+    AssertEqual("A-2", groups[0].Programs![0].ProgramName, "程序名称必须进入独立字段。");
+    AssertEqual("状态:Synced", groups[0].Programs![0].SyncStatus, "同步状态必须进入独立字段。");
 }
 
 static void ProgramProductGroupsFlattenSingleProgramProductNum()
 {
     var programs = new List<BizProgram>
     {
-        new() { Id = 7, ProgramName = "只有一个程序", ProductNum = "P-009", SequenceNumber = 1, UpdatedTime = new DateTime(2026, 8, 2) }
+        new() { Id = 7, ProgramName = "只有一个程序", ProductNum = "P-009", SequenceNumber = 1, SyncStatus = AppConstants.ProgramSyncStatus.Synced, UpdatedTime = new DateTime(2026, 8, 2) }
     };
 
-    var groups = ProgramProductGroupRules.BuildGroups(programs, program => program.ProgramName);
+    var groups = ProgramProductGroupRules.BuildGroups(programs, program => "已同步");
 
-    // 单程序工号不再多套一层父节点，否则界面上会出现只能展开出一行的冗余箭头。
     AssertEqual(1, groups.Count, "单程序工号必须只占一行。");
+    AssertEqual(1, groups[0].SerialNumber, "单程序工号父行必须显示序号 1。");
     AssertTrue(groups[0].Programs is null, "单程序工号不得产生子行，避免出现多余的展开箭头。");
     AssertEqual(7, groups[0].ProgramId, "单程序工号的行必须直接指向该程序。");
-    AssertEqual("只有一个程序", groups[0].Summary, "单程序工号必须把程序摘要显示在工号行上。");
+    AssertEqual("只有一个程序", groups[0].ProgramName, "单程序工号必须在独立列显示程序名称。");
+    AssertEqual("已同步", groups[0].SyncStatus, "单程序工号必须在独立列显示同步状态。");
 }
 
 static void ProgramManageServiceNoLongerGeneratesProgramFiles()
@@ -11367,13 +11381,13 @@ static void ProgramDeleteKeepsMesSyncOffUiPath()
         "批量清理必须传递页面取消令牌。");
     AssertTrue(
         viewCode.Contains("await ReloadProgramsAsync()", StringComparison.Ordinal)
-            && viewCode.Contains("GetProgramsAsync", StringComparison.Ordinal),
+            && viewCode.Contains("GetProgramLookupsAsync", StringComparison.Ordinal),
         "删除完成后的程序列表刷新必须使用后台查询，不能在 UI 线程同步读取数据库。");
 
     var getProgramsAsyncBody = ExtractMethodText(
         serviceCode,
-        "public Task<IReadOnlyList<BizProgram>> GetProgramsAsync(",
-        "public IReadOnlyList<ProgramSyncSummary> GetPendingSyncPrograms()");
+        "public async Task<IReadOnlyList<ProgramLookup>> GetProgramLookupsAsync(",
+        "public Task<BizProgram?> GetProgramAsync(");
     AssertFalse(
         getProgramsAsyncBody.Contains("_mutationGate", StringComparison.Ordinal),
         "列表查询不能参与程序变更门锁，否则删除后立即刷新会形成互相等待。");
@@ -11434,6 +11448,54 @@ static void ProgramManageSaveAndDualSelectorPathsStayAsynchronous()
     AssertTrue(
         refreshGuardIndex >= 0 && refreshIndex > refreshGuardIndex,
         "设置选中配方时只能在历史选项新增后重建完整下拉列表。 ");
+}
+
+static void ProgramLookupSnapshotRemovesUiDatabaseQueries()
+{
+    var lookupCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "DTOs", "ProgramLookup.cs"), Encoding.UTF8);
+    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "ProgramManageService.cs"), Encoding.UTF8);
+    var monitorCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var programViewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.cs"), Encoding.UTF8);
+    var addressCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "AddressManageView.cs"), Encoding.UTF8);
+    var mainCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Forms", "MainForm.cs"), Encoding.UTF8);
+    var previewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductRealtimePreviewService.cs"), Encoding.UTF8);
+    var reconcileCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Plc", "RecipeCodeReconcileMonitorService.cs"), Encoding.UTF8);
+
+    AssertFalse(lookupCode.Contains("public string? ProgramContent", StringComparison.Ordinal), "轻量程序快照不得包含 ProgramContent。");
+    AssertFalse(lookupCode.Contains("public string? ProgramFile", StringComparison.Ordinal), "轻量程序快照不得包含 ProgramFile。");
+    AssertFalse(lookupCode.Contains("public string? SyncMessage", StringComparison.Ordinal), "轻量程序快照不得包含 SyncMessage。");
+
+    var queryMethod = ExtractMethodText(serviceCode, "private ProgramLookup[] QueryProgramLookups(", "private void InvalidateProgramLookups()");
+    AssertFalse(queryMethod.Contains("ProgramFile", StringComparison.Ordinal)
+        || queryMethod.Contains("ProgramContent", StringComparison.Ordinal)
+        || queryMethod.Contains("SyncMessage", StringComparison.Ordinal),
+        "轻量投影不得读取程序大字段。");
+    AssertTrue(serviceCode.Contains("_programLookupVersion", StringComparison.Ordinal)
+        && serviceCode.Contains("ProgramLookupsChanged?.Invoke", StringComparison.Ordinal),
+        "程序快照必须通过版本号防止旧查询覆盖，并在变更后通知消费者。");
+
+    foreach (var (name, source) in new[]
+    {
+        ("MonitorView", monitorCode),
+        ("ProgramManageView", programViewCode),
+        ("AddressManageView", addressCode),
+        ("MainForm", mainCode),
+        ("ProductRealtimePreviewService", previewCode),
+        ("RecipeCodeReconcileMonitorService", reconcileCode)
+    })
+    {
+        AssertFalse(source.Contains("_programManageService.GetPrograms()", StringComparison.Ordinal)
+            || source.Contains("_programService.GetPrograms()", StringComparison.Ordinal),
+            $"{name} 不得在选择或刷新路径同步查询完整程序表。");
+    }
+
+    var onlineBind = ExtractMethodText(monitorCode, "private void BindOnlineProgramNameOptions()", "private void BindProductionRuntimeState()");
+    AssertTrue(onlineBind.Contains("_localProgramSnapshot", StringComparison.Ordinal), "在线程序绑定必须复用一次加载的内存快照。");
+    AssertFalse(onlineBind.Contains("GetProgramLookupsAsync", StringComparison.Ordinal), "在线程序循环内部不得重新访问服务或数据库。");
+    AssertTrue(programViewCode.Contains("GetProgramLookupsAsync", StringComparison.Ordinal)
+        && programViewCode.Contains("GetProgramAsync", StringComparison.Ordinal)
+        && programViewCode.Contains("_detailLoadVersion", StringComparison.Ordinal),
+        "程序管理页必须使用轻量列表并按选中 ID 异步加载完整详情。");
 }
 
 static string ExtractMethodText(string source, string startMarker, string endMarker)

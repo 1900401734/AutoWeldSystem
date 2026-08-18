@@ -23,6 +23,7 @@ namespace AutoWeldSystem.Services;
 /// </summary>
 public sealed class ProgramManageService : IProgramManageService
 {
+    public event EventHandler? ProgramLookupsChanged;
     private const int MaxLocalProgramCount = 256;
 
     private readonly SqlSugarDbContext _dbContext;
@@ -30,6 +31,9 @@ public sealed class ProgramManageService : IProgramManageService
     private readonly IMesProvider _mesProvider;
     private readonly IOperationLogService _operationLogService;
     private readonly SemaphoreSlim _mutationGate = new(1, 1);
+    private readonly SemaphoreSlim _lookupGate = new(1, 1);
+    private ProgramLookup[]? _programLookupSnapshot;
+    private long _programLookupVersion;
     private AppSettings _currentSettings;
 
     public ProgramManageService(
@@ -58,7 +62,7 @@ public sealed class ProgramManageService : IProgramManageService
 
         return query
             .OrderBy(it => it.UpdatedTime, OrderByType.Desc)
-            .ToList();
+            .ToArray();
     }
 
     // 列表查询不参与程序变更门锁：查询与删除互斥会在“删除后立即刷新”的链路上形成互相等待。
@@ -75,6 +79,94 @@ public sealed class ProgramManageService : IProgramManageService
                 return programs;
             },
             cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ProgramLookup>> GetProgramLookupsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var cached = Volatile.Read(ref _programLookupSnapshot);
+        if (cached is not null)
+        {
+            return cached;
+        }
+
+        await _lookupGate.WaitAsync(cancellationToken);
+        try
+        {
+            while (true)
+            {
+                cached = Volatile.Read(ref _programLookupSnapshot);
+                if (cached is not null)
+                {
+                    return cached;
+                }
+
+                var version = Volatile.Read(ref _programLookupVersion);
+                var loaded = await Task.Run(
+                    () => QueryProgramLookups(cancellationToken),
+                    CancellationToken.None);
+                if (version != Volatile.Read(ref _programLookupVersion))
+                {
+                    continue;
+                }
+
+                Volatile.Write(ref _programLookupSnapshot, loaded);
+                return loaded;
+            }
+        }
+        finally
+        {
+            _lookupGate.Release();
+        }
+    }
+
+    public Task<BizProgram?> GetProgramAsync(
+        int id,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.Run(
+            () =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                _dbContext.InitDatabase();
+                return (BizProgram?)_dbContext.Db.Queryable<BizProgram>().InSingle(id);
+            },
+            cancellationToken);
+    }
+
+    private ProgramLookup[] QueryProgramLookups(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _dbContext.InitDatabase();
+        return _dbContext.Db.Queryable<BizProgram>()
+            .Where(it => !it.IsDeleted)
+            .OrderBy(it => it.UpdatedTime, OrderByType.Desc)
+            .Select(it => new ProgramLookup
+            {
+                Id = it.Id,
+                ProgramId = it.ProgramId,
+                ProgramName = it.ProgramName,
+                DeviceId = it.DeviceId,
+                ProductNum = it.ProductNum,
+                ProductModel = it.ProductModel,
+                RecipeCode = it.RecipeCode,
+                Station2RecipeCode = it.Station2RecipeCode,
+                ComponentCode = it.ComponentCode,
+                ProgramType = it.ProgramType,
+                SequenceNumber = it.SequenceNumber,
+                Description = it.Description,
+                VersionNumber = it.VersionNumber,
+                SyncStatus = it.SyncStatus,
+                UpdatedTime = it.UpdatedTime
+            })
+            .ToArray();
+    }
+
+    private void InvalidateProgramLookups()
+    {
+        Interlocked.Increment(ref _programLookupVersion);
+        Volatile.Write(ref _programLookupSnapshot, null);
+        ProgramLookupsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public IReadOnlyList<ProgramSyncSummary> GetPendingSyncPrograms()
@@ -94,7 +186,7 @@ public sealed class ProgramManageService : IProgramManageService
             .OrderBy(it => it.UpdatedTime, OrderByType.Desc)
             .ToList()
             .Select(ToSyncSummary)
-            .ToList();
+            .ToArray();
     }
 
     public string BuildProgramName(string productNum, string componentCode, int sequenceNumber, string? description = null)
@@ -157,9 +249,11 @@ public sealed class ProgramManageService : IProgramManageService
         await _mutationGate.WaitAsync(cancellationToken);
         try
         {
-            return await Task.Run(
+            var result = await Task.Run(
                 () => SaveWithSyncDecisionCore(request, cancellationToken),
                 CancellationToken.None);
+            InvalidateProgramLookups();
+            return result;
         }
         finally
         {
@@ -229,9 +323,11 @@ public sealed class ProgramManageService : IProgramManageService
         await _mutationGate.WaitAsync(cancellationToken);
         try
         {
-            return await Task.Run(
+            var result = await Task.Run(
                 () => DeleteLocalCore(id, remarkOverride, cancellationToken),
                 CancellationToken.None);
+            InvalidateProgramLookups();
+            return result;
         }
         finally
         {
@@ -300,6 +396,7 @@ public sealed class ProgramManageService : IProgramManageService
             await Task.Run(
                 () => SyncProgramCoreAsync(id, cancellationToken),
                 CancellationToken.None);
+            InvalidateProgramLookups();
         }
         finally
         {
@@ -390,6 +487,7 @@ public sealed class ProgramManageService : IProgramManageService
         }
 
         _operationLogService.Write("ProgramPull", $"从 MES 下载程序 {count} 个。");
+        InvalidateProgramLookups();
         return count;
     }
 
@@ -775,7 +873,7 @@ public sealed class ProgramManageService : IProgramManageService
 
         var programs = _dbContext.Db.Queryable<BizProgram>()
             .Where(it => !it.IsDeleted)
-            .ToList();
+            .ToArray();
 
         foreach (var p in programs)
         {
@@ -790,6 +888,7 @@ public sealed class ProgramManageService : IProgramManageService
         }
 
         _operationLogService.Write("ProgramDeviceIdUpdate", $"设备编号变更，已将所有程序的设备编号更新为 {normalized}。");
+        InvalidateProgramLookups();
         return Task.CompletedTask;
     }
 
@@ -810,9 +909,11 @@ public sealed class ProgramManageService : IProgramManageService
         await _mutationGate.WaitAsync(cancellationToken);
         try
         {
-            return await Task.Run(
+            var result = await Task.Run(
                 () => BatchDeleteLocalProgramsCore(ids, cancellationToken),
                 CancellationToken.None);
+            InvalidateProgramLookups();
+            return result;
         }
         finally
         {

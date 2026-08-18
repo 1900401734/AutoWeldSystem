@@ -159,12 +159,15 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             return;
         }
 
+        var localPrograms = (await _programManageService.GetProgramLookupsAsync(cancellationToken))
+            .Select(lookup => lookup.ToEntityStub())
+            .ToArray();
         foreach (var station in ResolvePreviewStations())
         {
             cancellationToken.ThrowIfCancellationRequested();
             var stationNo = NormalizeStationNo(station.StationNo);
-            var identity = ResolveProductIdentity(station)
-                ?? await ReadPlcProductIdentityAsync(stationNo, cancellationToken);
+            var identity = ResolveProductIdentity(station, localPrograms)
+                ?? await ReadPlcProductIdentityAsync(stationNo, localPrograms, cancellationToken);
             if (identity is null || string.IsNullOrWhiteSpace(identity.ProductNum))
             {
                 PublishStatusSnapshot(stationNo, "未识别到产品工号，请检查当前任务或 PLC 配方业务地址。");
@@ -209,11 +212,11 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         };
     }
 
-    private ProductPreviewIdentity? ResolveProductIdentity(ProductionStationRuntimeState station)
+    private ProductPreviewIdentity? ResolveProductIdentity(ProductionStationRuntimeState station, IReadOnlyList<BizProgram> localPrograms)
     {
         var localProgram = station.SelectedProgram is not null
-            ? ResolveLocalProgram(station.SelectedProgram)
-            : ResolveLocalProgramById(station.ActiveTask?.ProgramId, station.ActiveTask?.DeviceId);
+            ? ResolveLocalProgram(station.SelectedProgram, localPrograms)
+            : ResolveLocalProgramById(station.ActiveTask?.ProgramId, station.ActiveTask?.DeviceId, localPrograms);
         if (!string.IsNullOrWhiteSpace(localProgram?.ProductNum))
         {
             return new ProductPreviewIdentity(
@@ -254,14 +257,14 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
     /// <summary>
     /// No active MES task is required for preview: offline alignment identifies the product by PLC recipe code.
     /// </summary>
-    private async Task<ProductPreviewIdentity?> ReadPlcProductIdentityAsync(int stationNo, CancellationToken cancellationToken)
+    private async Task<ProductPreviewIdentity?> ReadPlcProductIdentityAsync(int stationNo, IReadOnlyList<BizProgram> localPrograms, CancellationToken cancellationToken)
     {
         var normalizedStationNo = NormalizeStationNo(stationNo);
         var recipeCode = await ReadBusinessAddressTextAsync(
             AppConstants.PlcLogicalKeys.PlcRecipeCode,
             normalizedStationNo,
             cancellationToken);
-        var localProgram = ResolveLocalProgramByRecipeCode(recipeCode, normalizedStationNo);
+        var localProgram = ResolveLocalProgramByRecipeCode(recipeCode, normalizedStationNo, localPrograms);
         if (localProgram is null)
         {
             return null;
@@ -595,13 +598,13 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             message));
     }
 
-    private BizProgram? ResolveLocalProgram(ProgramDataRes program)
+    private BizProgram? ResolveLocalProgram(ProgramDataRes program, IReadOnlyList<BizProgram> localPrograms)
     {
-        var localPrograms = _programManageService.GetPrograms();
+        // 本轮采集只使用调用方提供的同一份不可变程序快照。
         var programId = program.Id?.Trim();
         if (!string.IsNullOrWhiteSpace(programId))
         {
-            var byMesProgramId = ResolveLocalProgramById(programId);
+            var byMesProgramId = ResolveLocalProgramById(programId, null, localPrograms);
             if (byMesProgramId is not null)
             {
                 return byMesProgramId;
@@ -613,7 +616,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             && SameText(item.ProductNum, program.ProductNum));
     }
 
-    private BizProgram? ResolveLocalProgramById(string? programId, string? deviceId = null)
+    private BizProgram? ResolveLocalProgramById(string? programId, string? deviceId, IReadOnlyList<BizProgram> localPrograms)
     {
         var normalizedProgramId = programId?.Trim();
         if (string.IsNullOrWhiteSpace(normalizedProgramId))
@@ -621,14 +624,14 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             return null;
         }
 
-        return _programManageService.GetPrograms()
+        return localPrograms
             .Where(program => SameText(program.ProgramId, normalizedProgramId))
             .OrderByDescending(program => SameText(program.DeviceId, deviceId))
             .ThenByDescending(program => program.UpdatedTime)
             .FirstOrDefault();
     }
 
-    private BizProgram? ResolveLocalProgramByRecipeCode(string? recipeCode, int stationNo)
+    private BizProgram? ResolveLocalProgramByRecipeCode(string? recipeCode, int stationNo, IReadOnlyList<BizProgram> localPrograms)
     {
         var normalizedRecipeCode = NormalizePlcText(recipeCode);
         if (string.IsNullOrWhiteSpace(normalizedRecipeCode))
@@ -636,7 +639,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             return null;
         }
 
-        return _programManageService.GetPrograms()
+        return localPrograms
             .Where(program => ProgramRecipeMappingRules.Matches(program, stationNo, normalizedRecipeCode))
             .OrderByDescending(program => program.UpdatedTime)
             .FirstOrDefault();
