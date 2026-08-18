@@ -52,10 +52,10 @@ public class UploadTaskService : IUploadTaskService
     public IReadOnlyList<UploadTaskSummary> GetTasks(string taskType, bool includeCompleted = false)
     {
         var normalizedTaskType = NormalizeTaskType(taskType);
-        HashSet<string>? deviceStatusRecordKeys = null;
+        IReadOnlyDictionary<string, BizDeviceStatusLog>? deviceStatusLogsByRecordKey = null;
         if (normalizedTaskType == ProductionConstants.UploadTaskTypes.DeviceStatus)
         {
-            deviceStatusRecordKeys = SyncDeviceStatusTasksFromLogs();
+            deviceStatusLogsByRecordKey = SyncDeviceStatusTasksFromLogs();
         }
         else if (normalizedTaskType == ProductionConstants.UploadTaskTypes.ReportFile)
         {
@@ -76,14 +76,14 @@ public class UploadTaskService : IUploadTaskService
             var rows = query.ToList()
                 .OrderByDescending(task => IsActionRequired(task.Status))
                 .ThenByDescending(task => task.UpdatedTime)
-                .Select(ToSummary)
+                .Select(task => ToSummary(task, deviceStatusLogsByRecordKey))
                 .ToList();
 
-            if (deviceStatusRecordKeys is not null)
+            if (deviceStatusLogsByRecordKey is not null)
             {
                 rows = rows
                     .Where(row => !string.IsNullOrWhiteSpace(row.DeviceStatusRecordKey)
-                        && deviceStatusRecordKeys.Contains(row.DeviceStatusRecordKey))
+                        && deviceStatusLogsByRecordKey.ContainsKey(row.DeviceStatusRecordKey))
                     .ToList();
             }
 
@@ -101,7 +101,7 @@ public class UploadTaskService : IUploadTaskService
                 includeCompleted,
                 ProductionConstants.UploadTargets.Mes);
             var rows = uploadTasks
-                .Select(ToSummary)
+                .Select(task => ToSummary(task))
                 .ToList();
 
             var pendingRecords = _dbContext.Db.Queryable<BizWeldPointRecord>()
@@ -174,14 +174,18 @@ public class UploadTaskService : IUploadTaskService
     /// <summary>
     /// Reconciles pending and failed device-status logs into the upload-task index.
     /// </summary>
-    private HashSet<string> SyncDeviceStatusTasksFromLogs()
+    private IReadOnlyDictionary<string, BizDeviceStatusLog> SyncDeviceStatusTasksFromLogs()
     {
-        var logs = _deviceStatusService.GetPendingLogs().ToList();
-        var activeRecordKeys = logs
-            .Select(DeviceStatusRecordIdentityRules.GetRecordKey)
-            .Where(recordKey => recordKey is not null)
-            .Cast<string>()
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var logsByRecordKey = _deviceStatusService.GetPendingLogs()
+            .Select(log => new
+            {
+                Log = log,
+                RecordKey = DeviceStatusRecordIdentityRules.GetRecordKey(log)
+            })
+            .Where(item => item.RecordKey is not null)
+            .GroupBy(item => item.RecordKey!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Last().Log, StringComparer.OrdinalIgnoreCase);
+        var logs = logsByRecordKey.Values.ToList();
 
         foreach (var log in logs)
         {
@@ -200,7 +204,7 @@ public class UploadTaskService : IUploadTaskService
             foreach (var task in projectedTasks)
             {
                 var recordKey = DeviceStatusRecordIdentityRules.ReadTaskRecordKey(task.BusinessId, task.PayloadJson);
-                if ((recordKey is not null && activeRecordKeys.Contains(recordKey))
+                if ((recordKey is not null && logsByRecordKey.ContainsKey(recordKey))
                     || _deviceStatusService.ShouldPreserveUploadingTask(task))
                 {
                     continue;
@@ -208,7 +212,10 @@ public class UploadTaskService : IUploadTaskService
 
                 var existingStatus = task.Status;
                 var existingLastAttemptTime = task.LastAttemptTime;
-                var source = recordKey is null ? null : _deviceStatusService.GetLog(recordKey);
+                var source = recordKey is not null
+                    && logsByRecordKey.TryGetValue(recordKey, out var activeLog)
+                        ? activeLog
+                        : null;
                 if (source is not null
                     && (string.Equals(
                             source.ReportStatus,
@@ -259,7 +266,7 @@ public class UploadTaskService : IUploadTaskService
             }
         }
 
-        return activeRecordKeys;
+        return logsByRecordKey;
     }
 
     public BizUploadTask EnqueueOrUpdate(BizUploadTask task)
@@ -1878,7 +1885,9 @@ public class UploadTaskService : IUploadTaskService
         return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
     }
 
-    private UploadTaskSummary ToSummary(BizUploadTask task)
+    private UploadTaskSummary ToSummary(
+        BizUploadTask task,
+        IReadOnlyDictionary<string, BizDeviceStatusLog>? deviceStatusLogsByRecordKey = null)
     {
         var payload = ReadUploadPayload(task.PayloadJson);
         var productNos = ProcessParameterUploadPayloadRules.ReadProductNos(task.PayloadJson);
@@ -1892,7 +1901,14 @@ public class UploadTaskService : IUploadTaskService
             StringComparison.OrdinalIgnoreCase)
                 ? DeviceStatusRecordIdentityRules.ReadTaskRecordKey(task.BusinessId, task.PayloadJson)
                 : null;
-        var deviceStatusLog = recordKey is null ? null : _deviceStatusService.GetLog(recordKey);
+        BizDeviceStatusLog? deviceStatusLog = null;
+        if (recordKey is not null)
+        {
+            deviceStatusLog = deviceStatusLogsByRecordKey is not null
+                && deviceStatusLogsByRecordKey.TryGetValue(recordKey, out var snapshotLog)
+                    ? snapshotLog
+                    : _deviceStatusService.GetLog(recordKey);
+        }
 
         return new UploadTaskSummary
         {

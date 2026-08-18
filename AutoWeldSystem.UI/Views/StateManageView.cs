@@ -29,8 +29,13 @@ public partial class StateManageView : BaseView
     private readonly BindingSource _bindingSource = new();
     private readonly Dictionary<string, BizDeviceStatusLog> _deviceStatusLogsByRecordKey =
         new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<DataGridViewTextBoxColumn> _gridColumns = new();
+    private readonly SemaphoreSlim _reloadGate = new(1, 1);
+    private CancellationTokenSource? _reloadCancellation;
+    private int _reloadVersion;
     private bool _initialized;
     private bool _applyingTabPermissions;
+    private bool _isReloading;
 
     public StateManageView(
         IProgramManageService programService,
@@ -67,7 +72,7 @@ public partial class StateManageView : BaseView
         _initialized = true;
         ApplyLocalizedTexts();
         ApplyTabPermissions();
-        ReloadActiveTasks();
+        RequestReloadActiveTasks();
     }
 
     protected override void OnLanguageChanged()
@@ -83,6 +88,7 @@ public partial class StateManageView : BaseView
         GlobalContext.SessionChanged -= GlobalContext_SessionChanged;
         _mesConnectionMonitor.StatusChanged -= MesConnectionMonitor_StatusChanged;
         _deviceStatusService.LogsChanged -= DeviceStatusService_LogsChanged;
+        _reloadCancellation?.Cancel();
         base.OnHandleDestroyed(e);
     }
 
@@ -140,8 +146,12 @@ public partial class StateManageView : BaseView
 
     private void SetNoVisibleTabState()
     {
-        _bindingSource.DataSource = Array.Empty<object>();
-        dgvPending.Columns.Clear();
+        BindRows(Array.Empty<object>());
+        foreach (var column in _gridColumns)
+        {
+            column.Visible = false;
+        }
+
         lblSummary.Text = _localizer.GetString(TextKeys.StateManage.MessageNoVisibleTabs);
         btnRetrySelected.Enabled = false;
         btnRetryAll.Enabled = false;
@@ -152,84 +162,121 @@ public partial class StateManageView : BaseView
     {
         TableStyleHelper.ApplyDataGridView(dgvPending);
         dgvPending.AutoGenerateColumns = false;
+        InitializeGridColumns();
         dgvPending.DataSource = _bindingSource;
         ConfigureActiveGridColumns();
     }
 
+    private void InitializeGridColumns()
+    {
+        if (_gridColumns.Count > 0)
+        {
+            return;
+        }
+
+        for (var index = 0; index < 10; index++)
+        {
+            var column = new DataGridViewTextBoxColumn
+            {
+                Name = $"stateColumn{index}",
+                Visible = false
+            };
+            _gridColumns.Add(column);
+            dgvPending.Columns.Add(column);
+        }
+    }
+
     private void ConfigureActiveGridColumns()
     {
-        dgvPending.Columns.Clear();
+        var definitions = GetActiveColumnDefinitions();
+        dgvPending.SuspendLayout();
+        try
+        {
+            foreach (var column in _gridColumns)
+            {
+                column.Visible = false;
+            }
 
+            for (var index = 0; index < definitions.Count; index++)
+            {
+                var column = _gridColumns[index];
+                var definition = definitions[index];
+                column.DataPropertyName = definition.PropertyName;
+                column.HeaderText = definition.HeaderText;
+                column.FillWeight = definition.FillWeight;
+                column.DefaultCellStyle.Format = definition.Format ?? string.Empty;
+            }
+
+            for (var index = 0; index < definitions.Count; index++)
+            {
+                _gridColumns[index].Visible = true;
+            }
+        }
+        finally
+        {
+            dgvPending.ResumeLayout(false);
+        }
+    }
+
+    private List<(string PropertyName, string HeaderText, float FillWeight, string? Format)> GetActiveColumnDefinitions()
+    {
         if (IsSummaryTab())
         {
-            dgvPending.Columns.Add(CreateTextColumn(nameof(UploadPendingSummaryRow.SequenceNo), "序号", 6));
-            dgvPending.Columns.Add(CreateTextColumn(nameof(UploadPendingSummaryRow.TaskIdentity), "任务ID", 22));
-            dgvPending.Columns.Add(CreateTextColumn(nameof(UploadPendingSummaryRow.WorkOrderId), "工单号", 14));
-            dgvPending.Columns.Add(CreateTextColumn(nameof(UploadPendingSummaryRow.StationNo), "工位", 6));
-            dgvPending.Columns.Add(CreateTextColumn(nameof(UploadPendingSummaryRow.StartReportStatus), "开工上报", 10));
-            dgvPending.Columns.Add(CreateTextColumn(nameof(UploadPendingSummaryRow.ProcessParameterStatus), "过程参数", 10));
-            dgvPending.Columns.Add(CreateTextColumn(nameof(UploadPendingSummaryRow.ReportFileStatus), "xlsx报表", 10));
-            dgvPending.Columns.Add(CreateTextColumn(nameof(UploadPendingSummaryRow.FinishReportStatus), "完工上报", 10));
-            dgvPending.Columns.Add(CreateTextColumn(nameof(UploadPendingSummaryRow.PendingCount), "待处理数", 8));
-            dgvPending.Columns.Add(CreateDateTimeColumn(nameof(UploadPendingSummaryRow.UpdatedTime), "更新时间", 14));
-            return;
+            return
+            [
+                (nameof(UploadPendingSummaryRow.SequenceNo), "序号", 6, null),
+                (nameof(UploadPendingSummaryRow.TaskIdentity), "任务ID", 22, null),
+                (nameof(UploadPendingSummaryRow.WorkOrderId), "工单号", 14, null),
+                (nameof(UploadPendingSummaryRow.StationNo), "工位", 6, null),
+                (nameof(UploadPendingSummaryRow.StartReportStatus), "开工上报", 10, null),
+                (nameof(UploadPendingSummaryRow.ProcessParameterStatus), "过程参数", 10, null),
+                (nameof(UploadPendingSummaryRow.ReportFileStatus), "xlsx报表", 10, null),
+                (nameof(UploadPendingSummaryRow.FinishReportStatus), "完工上报", 10, null),
+                (nameof(UploadPendingSummaryRow.PendingCount), "待处理数", 8, null),
+                (nameof(UploadPendingSummaryRow.UpdatedTime), "更新时间", 14, "yyyy-MM-dd HH:mm:ss")
+            ];
         }
 
         if (IsProgramFileTab())
         {
-            dgvPending.Columns.Add(CreateTextColumn(nameof(ProgramSyncSummary.ProgramName), "程序名称", 24));
-            dgvPending.Columns.Add(CreateTextColumn(nameof(ProgramSyncSummary.ProductNum), "产品工号", 12));
-            dgvPending.Columns.Add(CreateTextColumn(nameof(ProgramSyncSummary.SyncStatus), "同步状态", 12));
-            dgvPending.Columns.Add(CreateTextColumn(nameof(ProgramSyncSummary.SyncAction), "动作", 10));
-            dgvPending.Columns.Add(CreateTextColumn(nameof(ProgramSyncSummary.SyncMessage), "同步消息", 30));
-            dgvPending.Columns.Add(CreateDateTimeColumn(nameof(ProgramSyncSummary.LastSyncTime), "最后同步时间", 16));
-            return;
+            return
+            [
+                (nameof(ProgramSyncSummary.ProgramName), "程序名称", 24, null),
+                (nameof(ProgramSyncSummary.ProductNum), "产品工号", 12, null),
+                (nameof(ProgramSyncSummary.SyncStatus), "同步状态", 12, null),
+                (nameof(ProgramSyncSummary.SyncAction), "动作", 10, null),
+                (nameof(ProgramSyncSummary.SyncMessage), "同步消息", 30, null),
+                (nameof(ProgramSyncSummary.LastSyncTime), "最后同步时间", 16, "yyyy-MM-dd HH:mm:ss")
+            ];
         }
 
-        dgvPending.Columns.Add(CreateTextColumn(
-            nameof(UploadTaskSummary.TaskIdentity),
-            IsDeviceStatusTab() ? "状态标识" : "任务ID",
-            16));
+        var definitions = new List<(string, string, float, string?)>
+        {
+            (nameof(UploadTaskSummary.TaskIdentity), IsDeviceStatusTab() ? "状态标识" : "任务ID", 16, null)
+        };
         if (IsProcessParameterTab())
         {
-            dgvPending.Columns.Add(CreateTextColumn(nameof(UploadTaskSummary.StationNo), "工位", 6));
-            dgvPending.Columns.Add(CreateTextColumn(nameof(UploadTaskSummary.ProductNo), "产品编号", 12));
+            definitions.Add((nameof(UploadTaskSummary.StationNo), "工位", 6, null));
+            definitions.Add((nameof(UploadTaskSummary.ProductNo), "产品编号", 12, null));
         }
 
-        dgvPending.Columns.Add(CreateTextColumn(nameof(UploadTaskSummary.Target), "目标平台", 10));
-        dgvPending.Columns.Add(CreateTextColumn(nameof(UploadTaskSummary.Status), "上传状态", 12));
-        dgvPending.Columns.Add(CreateTextColumn(nameof(UploadTaskSummary.RetryCount), "重试次数", 9));
-        dgvPending.Columns.Add(CreateTextColumn(nameof(UploadTaskSummary.MaxRetryCount), "最大重试", 9));
+        definitions.Add((nameof(UploadTaskSummary.Target), "目标平台", 10, null));
+        definitions.Add((nameof(UploadTaskSummary.Status), "上传状态", 12, null));
+        definitions.Add((nameof(UploadTaskSummary.RetryCount), "重试次数", 9, null));
+        definitions.Add((nameof(UploadTaskSummary.MaxRetryCount), "最大重试", 9, null));
         if (IsReportFileTab())
         {
-            dgvPending.Columns.Add(CreateTextColumn(nameof(UploadTaskSummary.FilePath), "文件路径", 24));
+            definitions.Add((nameof(UploadTaskSummary.FilePath), "文件路径", 24, null));
         }
 
-        dgvPending.Columns.Add(CreateTextColumn(nameof(UploadTaskSummary.DisplayMessage), "处理消息", 30));
-        dgvPending.Columns.Add(CreateDateTimeColumn(nameof(UploadTaskSummary.UpdatedTime), "更新时间", 14));
-    }
-
-    private static DataGridViewTextBoxColumn CreateTextColumn(string propertyName, string headerText, float fillWeight)
-    {
-        return new DataGridViewTextBoxColumn
-        {
-            DataPropertyName = propertyName,
-            FillWeight = fillWeight,
-            HeaderText = headerText
-        };
-    }
-
-    private static DataGridViewTextBoxColumn CreateDateTimeColumn(string propertyName, string headerText, float fillWeight)
-    {
-        var column = CreateTextColumn(propertyName, headerText, fillWeight);
-        column.DefaultCellStyle ??= new DataGridViewCellStyle();
-        column.DefaultCellStyle.Format = "yyyy-MM-dd HH:mm:ss";
-        return column;
+        definitions.Add((nameof(UploadTaskSummary.DisplayMessage), "处理消息", 30, null));
+        definitions.Add((nameof(UploadTaskSummary.UpdatedTime), "更新时间", 14, "yyyy-MM-dd HH:mm:ss"));
+        return definitions;
     }
 
     private void WireEvents()
     {
-        btnRefresh.Click += (_, _) => ReloadActiveTasks();
+        btnRefresh.Click += (_, _) => RequestReloadActiveTasks();
         btnRetrySelected.Click += RetrySelected_ClickAsync;
         btnRetryAll.Click += RetryAll_ClickAsync;
         btnDeleteSelected.Click += DeleteSelected_Click;
@@ -279,7 +326,7 @@ public partial class StateManageView : BaseView
         ApplyRetryAllPermissionForActiveTab();
         ApplyDeletePermissionForActiveTab();
         ConfigureActiveGridColumns();
-        ReloadActiveTasks();
+        RequestReloadActiveTasks(clearCurrentRows: true);
     }
 
     private void MesConnectionMonitor_StatusChanged(object? sender, MesConnectionSnapshot e)
@@ -309,7 +356,7 @@ public partial class StateManageView : BaseView
             {
                 ApplyLocalizedTexts();
                 ApplyTabPermissions();
-                ReloadActiveTasks();
+                RequestReloadActiveTasks();
             },
             "StateManageView.SessionChanged");
     }
@@ -329,7 +376,7 @@ public partial class StateManageView : BaseView
             {
                 if (IsDeviceStatusTab())
                 {
-                    ReloadActiveTasks();
+                    RequestReloadActiveTasks();
                 }
             },
             "StateManageView.DeviceStatusLogsChanged");
@@ -426,47 +473,170 @@ public partial class StateManageView : BaseView
         lblSummary.Text = $"{GetActiveCategoryText()}待处理：{count} 条";
     }
 
-    private void ReloadActiveTasks()
+    private void RequestReloadActiveTasks(bool clearCurrentRows = false)
     {
+        if (IsDisposed)
+        {
+            return;
+        }
+
         if (!HasVisibleTabs())
         {
             SetNoVisibleTabState();
             return;
         }
 
-        ApplyRetrySelectedPermissionForActiveTab();
+        var activeTab = GetActiveTabKind();
+        var version = Interlocked.Increment(ref _reloadVersion);
+        _reloadCancellation?.Cancel();
+        var cancellation = new CancellationTokenSource();
+        _reloadCancellation = cancellation;
 
-        if (IsSummaryTab())
+        if (clearCurrentRows)
         {
-            var rows = _summaryService.GetSummary().ToList();
-            _bindingSource.DataSource = rows;
-            SetSummary(rows.Count(row => row.PendingCount > 0));
+            BindRows(Array.Empty<object>());
+        }
+
+        lblSummary.Text = $"{GetActiveCategoryText()}正在加载...";
+        SetReloadingState(true);
+        _ = ReloadActiveTasksAsync(activeTab, version, cancellation);
+    }
+
+    private async Task ReloadActiveTasksAsync(
+        StateUploadTabKind activeTab,
+        int version,
+        CancellationTokenSource cancellation)
+    {
+        var gateEntered = false;
+        try
+        {
+            await _reloadGate.WaitAsync(cancellation.Token);
+            gateEntered = true;
+            var result = await Task.Run(
+                () => LoadActiveTasks(activeTab),
+                cancellation.Token);
+
+            cancellation.Token.ThrowIfCancellationRequested();
+            if (IsDisposed
+                || version != Volatile.Read(ref _reloadVersion)
+                || GetActiveTabKind() != activeTab)
+            {
+                return;
+            }
+
+            if (result.DeviceStatusLogs is not null)
+            {
+                RefreshDeviceStatusLogIndex(result.DeviceStatusLogs);
+            }
+
+            BindRows(result.Rows);
+            SetSummary(result.PendingCount);
             ApplyRetrySelectedPermissionForActiveTab();
             ApplyDeletePermissionForActiveTab();
+        }
+        catch (OperationCanceledException)
+        {
+            // 页签快速切换或窗体销毁时，忽略已经过期的加载结果。
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed
+                && version == Volatile.Read(ref _reloadVersion))
+            {
+                SetSummary(GetPendingCount());
+                ShowErrorMessage($"加载{GetActiveCategoryText()}失败：{ex.Message}");
+            }
+        }
+        finally
+        {
+            if (gateEntered)
+            {
+                _reloadGate.Release();
+            }
+
+            if (!IsDisposed && version == Volatile.Read(ref _reloadVersion))
+            {
+                SetReloadingState(false);
+            }
+
+            if (ReferenceEquals(_reloadCancellation, cancellation))
+            {
+                _reloadCancellation = null;
+            }
+
+            cancellation.Dispose();
+        }
+    }
+
+    private StateUploadLoadResult LoadActiveTasks(StateUploadTabKind activeTab)
+    {
+        return activeTab switch
+        {
+            StateUploadTabKind.Summary => CreateSummaryLoadResult(_summaryService.GetSummary().ToList()),
+            StateUploadTabKind.ProgramFile => CreateProgramLoadResult(_programService.GetPendingSyncPrograms().ToList()),
+            StateUploadTabKind.ProcessParameter => CreateTaskLoadResult(_uploadTaskService.GetProcessParameterRows().ToList()),
+            StateUploadTabKind.StartReport => CreateTaskLoadResult(_uploadTaskService.GetTasks(ProductionConstants.UploadTaskTypes.StartReport).ToList()),
+            StateUploadTabKind.FinishReport => CreateTaskLoadResult(_uploadTaskService.GetTasks(ProductionConstants.UploadTaskTypes.FinishReport).ToList()),
+            StateUploadTabKind.ReportFile => CreateTaskLoadResult(_uploadTaskService.GetTasks(ProductionConstants.UploadTaskTypes.ReportFile).ToList()),
+            StateUploadTabKind.WorkOrderStatus => CreateTaskLoadResult(_uploadTaskService.GetTasks(ProductionConstants.UploadTaskTypes.WorkOrderStatus).ToList()),
+            StateUploadTabKind.DeviceStatus => CreateDeviceStatusLoadResult(),
+            _ => throw new ArgumentOutOfRangeException(nameof(activeTab), activeTab, null)
+        };
+    }
+
+    private StateUploadLoadResult CreateDeviceStatusLoadResult()
+    {
+        var logs = _deviceStatusService.GetPendingLogs().ToList();
+        var tasks = _uploadTaskService.GetTasks(ProductionConstants.UploadTaskTypes.DeviceStatus).ToList();
+        return new StateUploadLoadResult(tasks, tasks.Count, logs);
+    }
+
+    private static StateUploadLoadResult CreateSummaryLoadResult(IReadOnlyList<UploadPendingSummaryRow> rows)
+        => new(rows, rows.Count(row => row.PendingCount > 0), null);
+
+    private static StateUploadLoadResult CreateProgramLoadResult(IReadOnlyList<ProgramSyncSummary> rows)
+        => new(rows, rows.Count, null);
+
+    private static StateUploadLoadResult CreateTaskLoadResult(IReadOnlyList<UploadTaskSummary> rows)
+        => new(rows, rows.Count, null);
+
+    private void BindRows(object rows)
+    {
+        dgvPending.SuspendLayout();
+        try
+        {
+            _bindingSource.RaiseListChangedEvents = false;
+            try
+            {
+                _bindingSource.DataSource = rows;
+            }
+            finally
+            {
+                _bindingSource.RaiseListChangedEvents = true;
+            }
+
+            _bindingSource.ResetBindings(false);
+        }
+        finally
+        {
+            dgvPending.ResumeLayout(false);
+        }
+    }
+
+    private void SetReloadingState(bool isReloading)
+    {
+        _isReloading = isReloading;
+        btnRefresh.Enabled = !isReloading;
+        if (isReloading)
+        {
+            btnRetrySelected.Enabled = false;
+            btnRetryAll.Enabled = false;
+            btnDeleteSelected.Enabled = false;
             return;
         }
 
-        if (IsProgramFileTab())
-        {
-            var programs = _programService.GetPendingSyncPrograms().ToList();
-            _bindingSource.DataSource = programs;
-            SetSummary(programs.Count);
-            ApplyRetrySelectedPermissionForActiveTab();
-            ApplyDeletePermissionForActiveTab();
-            return;
-        }
-
-        if (IsDeviceStatusTab())
-        {
-            RefreshDeviceStatusLogIndex();
-        }
-
-        var tasks = IsProcessParameterTab()
-            ? _uploadTaskService.GetProcessParameterRows().ToList()
-            : _uploadTaskService.GetTasks(GetActiveUploadTaskType()).ToList();
-        _bindingSource.DataSource = tasks;
-        SetSummary(tasks.Count);
         ApplyRetrySelectedPermissionForActiveTab();
+        ApplyRetryAllPermissionForActiveTab();
         ApplyDeletePermissionForActiveTab();
     }
 
@@ -499,7 +669,7 @@ public partial class StateManageView : BaseView
         try
         {
             await _uploadTaskService.ExecuteAsync(task.Id);
-            ReloadActiveTasks();
+            RequestReloadActiveTasks();
             ShowInfo("已执行选中的上传任务。");
         }
         catch (Exception ex)
@@ -520,7 +690,7 @@ public partial class StateManageView : BaseView
         try
         {
             await _programService.SyncProgramAsync(item.Id);
-            ReloadActiveTasks();
+            RequestReloadActiveTasks();
         }
         catch (Exception ex)
         {
@@ -552,7 +722,7 @@ public partial class StateManageView : BaseView
                 ShowInfo($"已执行 {count} 条上传任务。");
             }
 
-            ReloadActiveTasks();
+            RequestReloadActiveTasks();
         }
         catch (Exception ex)
         {
@@ -633,7 +803,7 @@ public partial class StateManageView : BaseView
             _uploadTaskService.DeleteTask(task.Id);
         }
 
-        ReloadActiveTasks();
+        RequestReloadActiveTasks();
         dgvPending.ClearSelection();
         ShowInfo($"已删除选中的 {selectedSummaries.Count + selectedTasks.Count} 条记录。");
     }
@@ -692,7 +862,7 @@ public partial class StateManageView : BaseView
         try
         {
             var deletedCount = await _programService.BatchDeleteLocalProgramsAsync(selected.Select(item => item.Id));
-            ReloadActiveTasks();
+            RequestReloadActiveTasks();
             ShowInfo($"已清理 {deletedCount} 条程序同步记录。");
         }
         catch (Exception ex)
@@ -766,7 +936,7 @@ public partial class StateManageView : BaseView
             _uploadTaskService.DeleteTask(task.Id);
         }
 
-        ReloadActiveTasks();
+        RequestReloadActiveTasks();
         dgvPending.ClearSelection();
         ShowInfo($"已删除选中的 {deletedCount + orphanTasks.Count} 条设备状态上传记录。");
     }
@@ -774,10 +944,10 @@ public partial class StateManageView : BaseView
     /// <summary>
     /// Caches the same pending/failed log objects used to reconcile device-status tasks.
     /// </summary>
-    private void RefreshDeviceStatusLogIndex()
+    private void RefreshDeviceStatusLogIndex(IEnumerable<BizDeviceStatusLog> logs)
     {
         _deviceStatusLogsByRecordKey.Clear();
-        foreach (var log in _deviceStatusService.GetPendingLogs())
+        foreach (var log in logs)
         {
             var recordKey = DeviceStatusRecordIdentityRules.GetRecordKey(log);
             if (recordKey is not null)
@@ -836,18 +1006,25 @@ public partial class StateManageView : BaseView
 
     private void DgvPending_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
     {
-        if (e.RowIndex < 0 || e.CellStyle is null)
+        if (e.RowIndex < 0
+            || e.RowIndex >= dgvPending.Rows.Count
+            || e.ColumnIndex < 0
+            || e.ColumnIndex >= dgvPending.Columns.Count
+            || e.CellStyle is null)
         {
             return;
         }
 
-        // 数据源重置过渡期内 Rows[index] 可能抛越界，直接捕获跳过
         object? item;
         try
         {
             item = dgvPending.Rows[e.RowIndex].DataBoundItem;
         }
-        catch (IndexOutOfRangeException)
+        catch (ArgumentOutOfRangeException)
+        {
+            return;
+        }
+        catch (InvalidOperationException)
         {
             return;
         }
@@ -1027,6 +1204,11 @@ public partial class StateManageView : BaseView
         return tabUploadCategories.SelectedTab == tabReportFiles;
     }
 
+    private bool IsFinishReportTab()
+    {
+        return tabUploadCategories.SelectedTab == tabFinishReports;
+    }
+
     private bool IsProcessParameterTab()
     {
         return tabUploadCategories.SelectedTab == tabProcessParameters;
@@ -1091,6 +1273,39 @@ public partial class StateManageView : BaseView
     {
         MessageBox.Show(this, message, _localizer.GetString(TextKeys.Common.TitleError), MessageBoxButtons.OK, MessageBoxIcon.Error);
     }
+
+    private StateUploadTabKind GetActiveTabKind()
+    {
+        if (IsSummaryTab()) return StateUploadTabKind.Summary;
+        if (IsProgramFileTab()) return StateUploadTabKind.ProgramFile;
+        if (IsProcessParameterTab()) return StateUploadTabKind.ProcessParameter;
+        if (IsStartReportTab()) return StateUploadTabKind.StartReport;
+        if (IsFinishReportTab()) return StateUploadTabKind.FinishReport;
+        if (IsReportFileTab()) return StateUploadTabKind.ReportFile;
+        if (IsWorkOrderStatusTab()) return StateUploadTabKind.WorkOrderStatus;
+        if (IsDeviceStatusTab()) return StateUploadTabKind.DeviceStatus;
+        throw new InvalidOperationException("当前没有可用的上传页签。");
+    }
+
+    private bool IsWorkOrderStatusTab()
+        => tabUploadCategories.SelectedTab == tabWorkOrderStatuses;
+
+    private enum StateUploadTabKind
+    {
+        Summary,
+        StartReport,
+        FinishReport,
+        ProcessParameter,
+        ReportFile,
+        WorkOrderStatus,
+        DeviceStatus,
+        ProgramFile
+    }
+
+    private sealed record StateUploadLoadResult(
+        object Rows,
+        int PendingCount,
+        IReadOnlyList<BizDeviceStatusLog>? DeviceStatusLogs);
 
     private sealed record StateUploadTabDefinition(TabPage Page, string PermissionCode);
 }

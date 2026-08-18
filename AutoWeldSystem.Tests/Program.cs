@@ -197,6 +197,7 @@ var tests = new (string Name, Action Run)[]
     ("Device status local log store resolves directories", DeviceStatusLocalLogStoreResolvesDirectories),
     ("Device status local log store writes and reads jsonl", DeviceStatusLocalLogStoreWritesAndReadsJsonl),
     ("Device status local log store permits full source scans", DeviceStatusLocalLogStorePermitsFullSourceScans),
+    ("Device status local log store caches unchanged snapshots", DeviceStatusLocalLogStoreCachesUnchangedSnapshots),
     ("Device status local log store removes selected log ids", DeviceStatusLocalLogStoreRemovesSelectedLogIds),
     ("Device status record identity supports guid and legacy keys", DeviceStatusRecordIdentitySupportsGuidAndLegacyKeys),
     ("Device status local log store uses record keys", DeviceStatusLocalLogStoreUsesRecordKeys),
@@ -260,6 +261,7 @@ var tests = new (string Name, Action Run)[]
     ("Global permission checks separate developer and admin", GlobalPermissionChecksSeparateDeveloperAndAdmin),
     ("State tab defaults keep customer tabs configurable", StateTabDefaultsKeepCustomerTabsConfigurable),
     ("State manage view filters tabs by current permissions", StateManageViewFiltersTabsByCurrentPermissions),
+    ("State manage view keeps stable columns and loads off UI thread", StateManageViewKeepsStableColumnsAndLoadsOffUiThread),
     ("State manage device status tab supports multi delete", StateManageDeviceStatusTabSupportsMultiDelete),
     ("Skipped upload tasks are not retried", SkippedUploadTasksAreNotRetried),
     ("Weld task pending retry includes device status", WeldTaskPendingRetryIncludesDeviceStatus),
@@ -6680,7 +6682,7 @@ static void DeviceStatusPendingProjectionPreservesUploadedHistory()
         Encoding.UTF8);
     var reconcileMethod = ExtractMethodText(
         uploadCode,
-        "private HashSet<string> SyncDeviceStatusTasksFromLogs",
+        "private IReadOnlyDictionary<string, BizDeviceStatusLog> SyncDeviceStatusTasksFromLogs",
         "public BizUploadTask EnqueueOrUpdate");
     var finishMethod = ExtractMethodText(
         uploadCode,
@@ -6748,7 +6750,7 @@ static void DeviceStatusPendingProjectionKeepsInFlightTaskHistory()
         "private BizDeviceStatusLog CreateLog");
     var reconcileMethod = ExtractMethodText(
         uploadCode,
-        "private HashSet<string> SyncDeviceStatusTasksFromLogs",
+        "private IReadOnlyDictionary<string, BizDeviceStatusLog> SyncDeviceStatusTasksFromLogs",
         "public BizUploadTask EnqueueOrUpdate");
     var softDeleteMethod = ExtractMethodText(
         uploadCode,
@@ -7037,6 +7039,56 @@ static void DeviceStatusLocalLogStorePermitsFullSourceScans()
             ["DB10.DBX2.0"],
             PlcDeviceAlarmCycleRules.Restore(allLogs).ActiveAlarms.Select(alarm => alarm.Address).ToArray(),
             "超过 5000 条后，最早的未闭合异常仍必须参与重启报警周期恢复。 ");
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}
+
+static void DeviceStatusLocalLogStoreCachesUnchangedSnapshots()
+{
+    var root = Path.Combine(Path.GetTempPath(), "AutoWeldSystemDeviceStatusSnapshotTests", Guid.NewGuid().ToString("N"));
+    var settings = new AppSettings { LogDirectory = root };
+    var occurredTime = new DateTime(2026, 8, 18, 9, 10, 0);
+    var pending = new BizDeviceStatusLog
+    {
+        RecordId = Guid.NewGuid().ToString("N"),
+        DeviceId = "CACHE-DEVICE",
+        StationNo = 1,
+        DeviceStatus = ProductionConstants.MesDeviceStatuses.Stopped,
+        StatusName = DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.Stopped),
+        OccurredTime = occurredTime,
+        ReportStatus = ProductionConstants.UploadStatuses.Pending
+    };
+
+    try
+    {
+        AssertTrue(DeviceStatusLocalLogStore.TryAppend(pending, settings), "缓存测试记录必须先写入 JSONL。");
+        var filePath = Path.Combine(
+            DeviceStatusLocalLogStore.GetLogDirectory(settings),
+            $"{occurredTime:yyyy-MM-dd}.jsonl");
+        File.AppendAllText(filePath, "\0" + Environment.NewLine + Environment.NewLine, Encoding.UTF8);
+
+        var errors = 0;
+        var first = DeviceStatusLocalLogStore.ReadPending(settings, (_, _) => errors++);
+        AssertEqual(1, first.Count, "损坏记录应跳过，合法待上传记录仍应保留。");
+        AssertEqual(1, errors, "首次快照构建应报告一次损坏记录。");
+
+        first[0].DeviceStatus = "mutated-by-caller";
+        var second = DeviceStatusLocalLogStore.ReadPending(settings, (_, _) => errors++);
+        AssertEqual(1, errors, "文件未变化时必须复用快照，不能重复解析和记录同一损坏内容。");
+        AssertEqual(
+            ProductionConstants.MesDeviceStatuses.Stopped,
+            second[0].DeviceStatus,
+            "快照返回值必须隔离调用方修改。");
+
+        File.AppendAllText(filePath, Environment.NewLine, Encoding.UTF8);
+        _ = DeviceStatusLocalLogStore.ReadPending(settings, (_, _) => errors++);
+        AssertEqual(2, errors, "文件内容变化后必须重建快照并重新诊断损坏记录。");
     }
     finally
     {
@@ -7940,9 +7992,30 @@ static void StateManageViewFiltersTabsByCurrentPermissions()
     AssertTrue(applyMethod.Contains("tabUploadCategories.TabPages.Add(definition.Page)", StringComparison.Ordinal), "有权限的页签必须按固定定义顺序重新加入。");
     AssertTrue(viewCode.Contains("GlobalContext.SessionChanged += GlobalContext_SessionChanged;", StringComparison.Ordinal), "当前角色权限变化后页面必须立即刷新页签。");
     AssertTrue(viewCode.Contains("GlobalContext.SessionChanged -= GlobalContext_SessionChanged;", StringComparison.Ordinal), "页面销毁时必须解绑角色变化事件。");
-    AssertTrue(noVisibleMethod.Contains("_bindingSource.DataSource = Array.Empty<object>();", StringComparison.Ordinal), "没有可见页签时必须清空旧数据。");
-    AssertTrue(noVisibleMethod.Contains("dgvPending.Columns.Clear();", StringComparison.Ordinal), "没有可见页签时必须清空旧列。");
+    AssertTrue(noVisibleMethod.Contains("BindRows(Array.Empty<object>());", StringComparison.Ordinal), "没有可见页签时必须通过统一绑定入口清空旧数据。");
+    AssertTrue(noVisibleMethod.Contains("column.Visible = false;", StringComparison.Ordinal), "没有可见页签时必须隐藏固定列，不能销毁列对象。");
+    AssertFalse(noVisibleMethod.Contains("dgvPending.Columns.Clear();", StringComparison.Ordinal), "没有可见页签时不能在绘制期间清空列集合。");
     AssertTrue(noVisibleMethod.Contains("TextKeys.StateManage.MessageNoVisibleTabs", StringComparison.Ordinal), "没有可见页签时必须显示明确提示。");
+}
+
+static void StateManageViewKeepsStableColumnsAndLoadsOffUiThread()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "StateManageView.cs"), Encoding.UTF8);
+    var configureMethod = ExtractMethodText(
+        viewCode,
+        "private void ConfigureActiveGridColumns()",
+        "private List<(string PropertyName, string HeaderText, float FillWeight, string? Format)> GetActiveColumnDefinitions");
+    var reloadMethod = ExtractMethodText(
+        viewCode,
+        "private async Task ReloadActiveTasksAsync",
+        "private StateUploadLoadResult LoadActiveTasks");
+
+    AssertTrue(viewCode.Contains("InitializeGridColumns();", StringComparison.Ordinal), "待上传表格必须只初始化一次固定列对象。");
+    AssertTrue(configureMethod.Contains("column.Visible = false;", StringComparison.Ordinal), "页签切换应通过显隐固定列调整布局。");
+    AssertFalse(configureMethod.Contains("Columns.Clear", StringComparison.Ordinal), "页签切换不能清空正在绘制的列集合。");
+    AssertTrue(reloadMethod.Contains("await Task.Run", StringComparison.Ordinal), "数据库和 JSONL 查询必须移出 UI 线程。");
+    AssertTrue(reloadMethod.Contains("_reloadGate.WaitAsync", StringComparison.Ordinal), "连续刷新必须串行化，避免重复查询并发执行。");
+    AssertTrue(reloadMethod.Contains("version != Volatile.Read(ref _reloadVersion)", StringComparison.Ordinal), "过期页签结果不能覆盖当前页签。");
 }
 
 static void StateManageDeviceStatusTabSupportsMultiDelete()

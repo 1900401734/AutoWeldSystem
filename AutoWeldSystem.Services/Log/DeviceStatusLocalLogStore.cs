@@ -13,6 +13,9 @@ public static class DeviceStatusLocalLogStore
 {
     // ponytail: 设备状态写入量很低，先使用进程内全局锁；出现实测争用后再按日期文件拆锁。
     private static readonly object SyncRoot = new();
+    // 同一批页面查询复用未变化文件的解析结果，文件长度或时间变化后自动重建。
+    private static readonly Dictionary<string, DirectoryLogSnapshot> SnapshotCache =
+        new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// 获取设备状态日志目录。
@@ -119,6 +122,7 @@ public static class DeviceStatusLocalLogStore
                 .Where(entry => IsInRange(entry, from, to))
                 .OrderByDescending(entry => entry.OccurredTime)
                 .Take(take)
+                .Select(CloneLog)
                 .ToList();
         }
     }
@@ -129,9 +133,10 @@ public static class DeviceStatusLocalLogStore
     {
         lock (SyncRoot)
         {
-            return ReadLatestCore(settings, from: null, to: null, onError: onError)
+            return GetOrCreateSnapshot(settings, onError).LatestLogs
                 .Where(entry => DeviceStatusUploadVisibilityRules.ShouldInclude(entry.ReportStatus))
                 .OrderByDescending(entry => entry.OccurredTime)
+                .Select(CloneLog)
                 .ToList();
         }
     }
@@ -149,11 +154,10 @@ public static class DeviceStatusLocalLogStore
 
         lock (SyncRoot)
         {
-            return ReadLatestCore(settings, from: null, to: null, onError: onError)
-                .FirstOrDefault(entry => string.Equals(
-                    DeviceStatusRecordIdentityRules.GetRecordKey(entry),
-                    normalized,
-                    StringComparison.OrdinalIgnoreCase));
+            return GetOrCreateSnapshot(settings, onError).LatestByRecordKey
+                .TryGetValue(normalized, out var entry)
+                    ? CloneLog(entry)
+                    : null;
         }
     }
 
@@ -164,10 +168,11 @@ public static class DeviceStatusLocalLogStore
     {
         lock (SyncRoot)
         {
-            return ReadLatestCore(settings, from: null, to: null, onError: onError)
-                .Where(entry => entry.StationNo == stationNo)
-                .OrderByDescending(entry => entry.OccurredTime)
+            var entry = GetOrCreateSnapshot(settings, onError).LatestLogs
+                .Where(item => item.StationNo == stationNo)
+                .OrderByDescending(item => item.OccurredTime)
                 .FirstOrDefault();
+            return entry is null ? null : CloneLog(entry);
         }
     }
 
@@ -180,6 +185,7 @@ public static class DeviceStatusLocalLogStore
             Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
             var json = LocalJsonLogFormatter.Serialize(entry);
             File.AppendAllText(filePath, json + Environment.NewLine + Environment.NewLine, Encoding.UTF8);
+            InvalidateSnapshot(settings);
             return true;
         }
         catch
@@ -194,6 +200,11 @@ public static class DeviceStatusLocalLogStore
         DateTime? to,
         Action<Exception, string>? onError)
     {
+        if (from is null && to is null)
+        {
+            return GetOrCreateSnapshot(settings, onError).LatestLogs;
+        }
+
         var latestByKey = new Dictionary<string, BizDeviceStatusLog>(StringComparer.OrdinalIgnoreCase);
         var recordKeyOrder = new List<string>();
         IEnumerable<string> filePaths;
@@ -350,10 +361,12 @@ public static class DeviceStatusLocalLogStore
                 rewrite.Applied = true;
             }
 
+            InvalidateSnapshot(settings);
             return true;
         }
         catch
         {
+            InvalidateSnapshot(settings);
             foreach (var rewrite in rewrites.Where(rewrite => rewrite.Applied).Reverse())
             {
                 if (!string.IsNullOrWhiteSpace(rewrite.BackupPath) && File.Exists(rewrite.BackupPath))
@@ -406,6 +419,92 @@ public static class DeviceStatusLocalLogStore
         }
     }
 
+    private static DirectoryLogSnapshot GetOrCreateSnapshot(
+        AppSettings settings,
+        Action<Exception, string>? onError)
+    {
+        var directory = GetLogDirectory(settings);
+        IReadOnlyList<LogFileStamp> fileStamps;
+        try
+        {
+            fileStamps = EnumerateCandidateFiles(settings, from: null, to: null)
+                .Select(CreateFileStamp)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            onError?.Invoke(ex, $"Directory={directory}");
+            return DirectoryLogSnapshot.Empty();
+        }
+
+        if (SnapshotCache.TryGetValue(directory, out var cached)
+            && cached.HasSameFiles(fileStamps))
+        {
+            return cached;
+        }
+
+        var latestByKey = new Dictionary<string, BizDeviceStatusLog>(StringComparer.OrdinalIgnoreCase);
+        var recordKeyOrder = new List<string>();
+        foreach (var fileStamp in fileStamps)
+        {
+            foreach (var entry in ReadFile(fileStamp.FilePath, onError))
+            {
+                var recordKey = DeviceStatusRecordIdentityRules.GetRecordKey(entry);
+                if (recordKey is null)
+                {
+                    onError?.Invoke(
+                        new InvalidDataException("设备状态记录缺少有效 RecordId 或旧 Id。"),
+                        $"File={fileStamp.FilePath}");
+                    continue;
+                }
+
+                if (!latestByKey.ContainsKey(recordKey))
+                {
+                    recordKeyOrder.Add(recordKey);
+                }
+
+                latestByKey[recordKey] = entry;
+            }
+        }
+
+        var latestLogs = recordKeyOrder.Select(recordKey => latestByKey[recordKey]).ToList();
+        var snapshot = new DirectoryLogSnapshot(fileStamps, latestLogs, latestByKey);
+        SnapshotCache[directory] = snapshot;
+        return snapshot;
+    }
+
+    private static LogFileStamp CreateFileStamp(string filePath)
+    {
+        var file = new FileInfo(filePath);
+        return new LogFileStamp(filePath, file.Length, file.LastWriteTimeUtc);
+    }
+
+    private static void InvalidateSnapshot(AppSettings settings)
+        => SnapshotCache.Remove(GetLogDirectory(settings));
+
+    private static BizDeviceStatusLog CloneLog(BizDeviceStatusLog entry)
+    {
+        return new BizDeviceStatusLog
+        {
+            RecordId = entry.RecordId,
+            Id = entry.Id,
+            DeviceId = entry.DeviceId,
+            StationNo = entry.StationNo,
+            WeldTaskId = entry.WeldTaskId,
+            WorkOrderId = entry.WorkOrderId,
+            DeviceStatus = entry.DeviceStatus,
+            StatusName = entry.StatusName,
+            Source = entry.Source,
+            Remark = entry.Remark,
+            AlarmAddress = entry.AlarmAddress,
+            AlarmContent = entry.AlarmContent,
+            OccurredTime = entry.OccurredTime,
+            ReportStatus = entry.ReportStatus,
+            ReportTime = entry.ReportTime,
+            ReportMessage = entry.ReportMessage
+        };
+    }
+
     private static bool IsInRange(BizDeviceStatusLog entry, DateTime? from, DateTime? to)
         => (from is null || entry.OccurredTime >= from.Value)
             && (to is null || entry.OccurredTime <= to.Value);
@@ -424,6 +523,36 @@ public static class DeviceStatusLocalLogStore
         {
             File.Delete(filePath);
         }
+    }
+
+    private sealed record LogFileStamp(string FilePath, long Length, DateTime LastWriteTimeUtc);
+
+    private sealed class DirectoryLogSnapshot
+    {
+        public DirectoryLogSnapshot(
+            IReadOnlyList<LogFileStamp> files,
+            IReadOnlyList<BizDeviceStatusLog> latestLogs,
+            IReadOnlyDictionary<string, BizDeviceStatusLog> latestByRecordKey)
+        {
+            Files = files;
+            LatestLogs = latestLogs;
+            LatestByRecordKey = latestByRecordKey;
+        }
+
+        public IReadOnlyList<LogFileStamp> Files { get; }
+
+        public IReadOnlyList<BizDeviceStatusLog> LatestLogs { get; }
+
+        public IReadOnlyDictionary<string, BizDeviceStatusLog> LatestByRecordKey { get; }
+
+        public bool HasSameFiles(IReadOnlyList<LogFileStamp> files)
+            => Files.Count == files.Count && Files.SequenceEqual(files);
+
+        public static DirectoryLogSnapshot Empty()
+            => new(
+                Array.Empty<LogFileStamp>(),
+                Array.Empty<BizDeviceStatusLog>(),
+                new Dictionary<string, BizDeviceStatusLog>(StringComparer.OrdinalIgnoreCase));
     }
 
     private sealed class LocalFileRewrite

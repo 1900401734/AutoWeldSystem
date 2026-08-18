@@ -1,6 +1,6 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v1.8.10`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v1.8.11`。
 
 ## 功能概览
 
@@ -194,6 +194,7 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 设备状态固定使用 `0=停机`、`1=开机`、`4=异常`、`5=异常恢复`、`6=程序执行开始`、`7=程序执行结束`。设备状态 JSONL 是唯一事实来源，文件位于配置日志根目录下的 `DeviceStatus/*.jsonl`；日志管理、当前状态查询和待上传数据中的设备状态都从这里读取。
 
 - 状态变化会先写入 JSONL，落盘成功后才会刷新界面、上传 MES 或建立补传任务。
+- 待上传数据页签的数据库和 JSONL 查询在后台执行；页签切换复用固定表格列，设备状态读取会复用未变化文件的最新快照，避免重复扫描历史 JSONL。单个损坏记录会被跳过并写入异常日志，不会阻塞页面重绘。
 - PLC 报警判定可在“系统设置 -> PLC 配置”选择“仅报警地址”或“设备状态异常且报警地址触发”；旧配置默认使用后者，保存后下一轮采集立即生效。报警读取关闭时冻结当前报警周期，重新启用后再按真实读取结果处理。
 - 每个报警地址独立形成“异常触发 -> 异常恢复”链路；多个地址可同轮触发或恢复。部分恢复后会按 `5...5 -> 4` 的顺序重申一个仍有效报警，保证 MES 最终状态仍为异常。共享报警设备级只记录一次（`StationNo=0`），但两个工位监控页都会显示。
 - MES 异常 Remark 使用 `工位1：报警内容；`（共享报警为 `报警内容；`）；恢复 Remark 使用 `异常恢复-工位1：报警内容；`（共享报警为 `异常恢复：报警内容；`），均不包含报警地址。设备状态日志表格不显示报警地址和内容，但仍可按这两项搜索并在详情中查看；设备日志不再新增报警或恢复记录，旧设备日志文件保持不变。
@@ -210,10 +211,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>1.8.10</Version>
-<AssemblyVersion>1.8.10.0</AssemblyVersion>
-<FileVersion>1.8.10.0</FileVersion>
-<InformationalVersion>1.8.10</InformationalVersion>
+<Version>1.8.11</Version>
+<AssemblyVersion>1.8.11.0</AssemblyVersion>
+<FileVersion>1.8.11.0</FileVersion>
+<InformationalVersion>1.8.11</InformationalVersion>
 ```
 
 建议使用语义化版本：
