@@ -125,14 +125,14 @@ public static class Program
             AppHost.Services.GetRequiredService<ISysUserService>().InitDb();
             AppHost.Services.GetRequiredService<ILocalizationService>();
             AppHost.Services.GetRequiredService<IWindowsShellIntegrationService>().ApplyStartupIntegration();
+            AppHost.Services.GetRequiredService<IDeviceLifecycleLogCoordinator>().Start();
+            deviceLifecycleLogStarted = true;
             AppHost.Services.GetRequiredService<IDeviceApiServerService>().StartAsync().GetAwaiter().GetResult();
             deviceApiServerStarted = true;
             AppHost.Services.GetRequiredService<IPlcCommunicationService>().StartAsync().GetAwaiter().GetResult();
             plcServiceStarted = true;
             AppHost.Services.GetRequiredService<IMesConnectionMonitor>().StartAsync().GetAwaiter().GetResult();
             mesMonitorStarted = true;
-            AppHost.Services.GetRequiredService<IDeviceLifecycleLogCoordinator>().Start();
-            deviceLifecycleLogStarted = true;
             AppHost.Services.GetRequiredService<IPlcProductionMonitorService>().StartAsync().GetAwaiter().GetResult();
             productionMonitorStarted = true;
             AppHost.Services.GetRequiredService<IPlcWorkIdMonitorService>().StartAsync().GetAwaiter().GetResult();

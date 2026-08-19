@@ -9075,6 +9075,11 @@ static void DeviceLifecycleOrdersStatusProducersAroundFinalStates()
     AssertSourceOrder(
         programCode,
         "IDeviceLifecycleLogCoordinator>().Start();",
+        "IDeviceApiServerService>().StartAsync().GetAwaiter().GetResult();",
+        "启动时必须先同步落盘开机状态，再启动并记录 HTTP 服务自检结果。");
+    AssertSourceOrder(
+        programCode,
+        "IDeviceLifecycleLogCoordinator>().Start();",
         "IPlcProductionMonitorService>().StartAsync().GetAwaiter().GetResult();",
         "启动时必须先落盘开机并取得补传顺序所有权，再启动 PLC 设备状态生产者。");
     AssertSourceOrder(
