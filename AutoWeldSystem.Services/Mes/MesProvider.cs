@@ -93,7 +93,7 @@ public class MesProvider : IMesProvider, IDisposable
 
     /// <summary>
     /// 心跳探测 MES 是否在线。
-    /// 只有在线状态发生跳变时才写交互日志，避免按心跳间隔刷爆日志。
+    /// 只有原始探测结果发生跳变时才写交互日志，避免按心跳间隔刷爆日志。
     /// </summary>
     public Task<BasicRes<object>> CheckSystemOnlineAsync(bool? previousOnline, CancellationToken cancellationToken = default)
         => GetAsync<object>(

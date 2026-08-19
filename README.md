@@ -1,6 +1,6 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v1.11.0`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v1.11.1`。
 
 ## 功能概览
 
@@ -174,8 +174,8 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 
 ## MES 在线状态检测
 
-- MES 在线状态由专用的在线检测接口（默认路由 `api/sys`，GET）判定，按系统设置中的「心跳间隔（秒）」轮询，默认 5 秒，可填 1-300 秒；返回状态为 `S` 视为在线，其余情况（含超时、非 2xx、响应无法解析）视为离线。
-- 心跳只在在线状态发生跳变时写一条 MES 交互日志，稳定在线或持续离线期间不重复刷日志。
+- MES 在线状态由专用的在线检测接口（默认路由 `api/sys`，GET）判定，按系统设置中的「心跳间隔（秒）」轮询，默认 5 秒，可填 1-300 秒；返回状态为 `S` 视为探测成功，连续 3 次探测失败（含超时、非 2xx、响应无法解析）才确认离线，任意一次成功会立即清零失败次数并保持或恢复在线。
+- MES 交互日志按原始探测结果发生跳变时记录失败或恢复，便于排查接口抖动；生产模式、上传状态和设备日志只使用连续失败确认后的连接状态，单次或两次偶发失败不会切换离线。
 - 设备校时接口（默认路由 `api/ServerTime`）只在程序启动时调用一次，不再承担在线探测职责。
 - 系统设置页的「测试连接」按钮同样访问在线检测接口，因此提示仅显示是否连通，不再返回服务器时间。
 
@@ -217,10 +217,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>1.11.0</Version>
-<AssemblyVersion>1.11.0.0</AssemblyVersion>
-<FileVersion>1.11.0.0</FileVersion>
-<InformationalVersion>1.11.0</InformationalVersion>
+<Version>1.11.1</Version>
+<AssemblyVersion>1.11.1.0</AssemblyVersion>
+<FileVersion>1.11.1.0</FileVersion>
+<InformationalVersion>1.11.1</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -232,9 +232,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v1.11.0 -m "Release v1.11.0"
+git tag -a v1.11.1 -m "Release v1.11.1"
 git push origin main
-git push origin v1.11.0
+git push origin v1.11.1
 ```
 
 ## Git 使用

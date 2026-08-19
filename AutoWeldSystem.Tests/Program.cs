@@ -281,7 +281,9 @@ var tests = new (string Name, Action Run)[]
     ("Status report settings default to enabled", StatusReportSettingsDefaultToEnabled),
     ("MES route settings default to current routes", MesRouteSettingsDefaultToCurrentRoutes),
     ("MES heartbeat interval normalization clamps to supported range", MesHeartbeatIntervalNormalizationClampsToSupportedRange),
-    ("MES online check writes log only when state changes", MesOnlineCheckWritesLogOnlyWhenStateChanges),
+    ("MES connection monitor confirms offline after three failures", MesConnectionMonitorConfirmsOfflineAfterThreeFailures),
+    ("MES connection monitor resets failures and handles exceptions", MesConnectionMonitorResetsFailuresAndHandlesExceptions),
+    ("MES online check writes log only when raw probe changes", MesOnlineCheckWritesLogOnlyWhenStateChanges),
     ("MES provider uses configured routes", MesProviderUsesConfiguredRoutes),
     ("MES provider applies PostData header from latest settings", MesProviderAppliesPostDataHeaderFromLatestSettings),
     ("Elevated auto start defaults to enabled", ElevatedAutoStartDefaultsToEnabled),
@@ -8646,6 +8648,90 @@ static void MesHeartbeatIntervalNormalizationClampsToSupportedRange()
     AssertEqual(300, MesConnectionRules.NormalizeHeartbeatIntervalSeconds(3600), "超过上限必须收敛到 300 秒。");
 }
 
+static void MesConnectionMonitorConfirmsOfflineAfterThreeFailures()
+{
+    var provider = new FakeMesProvider();
+    provider.OnlineCheckHandler = (_, _) => Task.FromResult(new BasicRes<object>
+    {
+        Status = AppConstants.MesStatus.Error,
+        Msg = "timeout"
+    });
+    using var monitor = new MesConnectionMonitor(
+        provider,
+        new FakeLocalizationService(),
+        new FakeAppSettingsService());
+    var published = new List<MesConnectionSnapshot>();
+    monitor.StatusChanged += (_, snapshot) => published.Add(snapshot);
+
+    monitor.CheckOnceSafelyAsync().GetAwaiter().GetResult();
+    monitor.CheckOnceSafelyAsync().GetAwaiter().GetResult();
+
+    AssertEqual(default, monitor.Current.UpdatedTime, "启动阶段前两次失败必须保持检测中。");
+    AssertEqual(0, published.Count, "未达到阈值时不得发布离线状态。");
+
+    monitor.CheckOnceSafelyAsync().GetAwaiter().GetResult();
+
+    AssertFalse(monitor.Current.IsConnected, "连续第三次失败必须确认 MES 离线。");
+    AssertTrue(monitor.Current.UpdatedTime != default, "确认离线后必须更新时间。");
+    AssertEqual("timeout", monitor.Current.Message, "确认离线后必须保留最后一次失败原因。");
+    AssertEqual(1, published.Count, "连续失败只应在达到阈值时发布一次离线状态。");
+    AssertSequenceEqual(
+        new bool?[] { null, false, false },
+        provider.OnlineCheckPreviousStates,
+        "MES 交互日志判断必须使用原始探测结果，而不是尚未切换的业务在线状态。");
+}
+
+static void MesConnectionMonitorResetsFailuresAndHandlesExceptions()
+{
+    var provider = new FakeMesProvider();
+    var responses = new Queue<Func<Task<BasicRes<object>>>>(new Func<Task<BasicRes<object>>>[]
+    {
+        () => Task.FromResult(new BasicRes<object> { Status = AppConstants.MesStatus.Success, Msg = "OK" }),
+        () => Task.FromResult(new BasicRes<object> { Status = AppConstants.MesStatus.Error, Msg = "timeout-1" }),
+        () => Task.FromResult(new BasicRes<object> { Status = AppConstants.MesStatus.Error, Msg = "timeout-2" }),
+        () => Task.FromResult(new BasicRes<object> { Status = AppConstants.MesStatus.Success, Msg = "OK" }),
+        () => Task.FromException<BasicRes<object>>(new InvalidOperationException("probe exception")),
+        () => Task.FromResult(new BasicRes<object> { Status = AppConstants.MesStatus.Error, Msg = "timeout-after-exception" }),
+        () => Task.FromResult(new BasicRes<object> { Status = AppConstants.MesStatus.Error, Msg = "confirmed-offline" }),
+        () => Task.FromResult(new BasicRes<object> { Status = AppConstants.MesStatus.Success, Msg = "OK" })
+    });
+    provider.OnlineCheckHandler = (_, _) => responses.Dequeue().Invoke();
+    using var monitor = new MesConnectionMonitor(
+        provider,
+        new FakeLocalizationService(),
+        new FakeAppSettingsService());
+    var published = new List<MesConnectionSnapshot>();
+    monitor.StatusChanged += (_, snapshot) => published.Add(snapshot);
+
+    monitor.CheckOnceSafelyAsync().GetAwaiter().GetResult();
+    var firstSuccessTime = monitor.Current.LastSuccessTime;
+    monitor.CheckOnceSafelyAsync().GetAwaiter().GetResult();
+    monitor.CheckOnceSafelyAsync().GetAwaiter().GetResult();
+
+    AssertTrue(monitor.Current.IsConnected, "在线状态下前两次失败必须继续保持在线。");
+    AssertEqual(firstSuccessTime, monitor.Current.LastSuccessTime, "短暂失败不得覆盖最后成功时间。");
+    AssertFalse(published.Any(snapshot => !snapshot.IsConnected), "未达到阈值时不得发布设备断线状态。");
+
+    monitor.CheckOnceSafelyAsync().GetAwaiter().GetResult();
+    AssertTrue(monitor.Current.IsConnected, "探测成功必须保持在线并清零连续失败次数。");
+
+    monitor.CheckOnceSafelyAsync().GetAwaiter().GetResult();
+    monitor.CheckOnceSafelyAsync().GetAwaiter().GetResult();
+    AssertTrue(monitor.Current.IsConnected, "未预期异常与后续一次失败累计两次时仍应保持在线。");
+
+    monitor.CheckOnceSafelyAsync().GetAwaiter().GetResult();
+    AssertFalse(monitor.Current.IsConnected, "未预期异常必须与普通失败共用三次离线阈值。");
+    AssertEqual("confirmed-offline", monitor.Current.Message, "确认离线时必须保留最后一次失败原因。");
+
+    monitor.CheckOnceSafelyAsync().GetAwaiter().GetResult();
+    AssertTrue(monitor.Current.IsConnected, "已离线时任意一次成功必须立即恢复在线。");
+    AssertEqual(1, published.Count(snapshot => !snapshot.IsConnected), "整段探测序列只能发布一次确认离线状态。");
+    AssertSequenceEqual(
+        new bool?[] { null, true, false, false, true, false, false, false },
+        provider.OnlineCheckPreviousStates,
+        "成功、失败和异常后都必须把原始探测结果传给下一轮日志判断。");
+}
+
 static void MesOnlineCheckWritesLogOnlyWhenStateChanges()
 {
     var handler = new RecordingHttpMessageHandler();
@@ -12768,6 +12854,10 @@ sealed class FakeMesProvider : IMesProvider
         Data = new List<MesProgramListItemData>()
     };
 
+    public Func<bool?, CancellationToken, Task<BasicRes<object>>>? OnlineCheckHandler { get; set; }
+
+    public List<bool?> OnlineCheckPreviousStates { get; } = new();
+
     public Task<BasicRes<ServerTimeRes>> GetServerTimeAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(ServerTimeResponse);
 
@@ -12784,7 +12874,11 @@ sealed class FakeMesProvider : IMesProvider
         => throw new NotSupportedException();
 
     public Task<BasicRes<object>> CheckSystemOnlineAsync(bool? previousOnline, CancellationToken cancellationToken = default)
-        => throw new NotSupportedException();
+    {
+        OnlineCheckPreviousStates.Add(previousOnline);
+        return OnlineCheckHandler?.Invoke(previousOnline, cancellationToken)
+            ?? throw new NotSupportedException();
+    }
 
     public Task<BasicRes<ProgramDataRes>> AddExpProgramAsync(ProgramDataWriteReq requestData, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();

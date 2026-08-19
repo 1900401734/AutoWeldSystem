@@ -9,7 +9,7 @@ namespace AutoWeldSystem.Services.Mes;
 
 /// <summary>
 /// MES 连接监控。
-/// 判断依据：按系统设置中的心跳间隔调用 MES 在线检测接口，成功返回 S 即在线，否则视为离线。
+/// 判断依据：按系统设置中的心跳间隔调用 MES 在线检测接口，成功返回 S 即在线，连续三次失败才确认离线。
 /// </summary>
 public sealed class MesConnectionMonitor : IMesConnectionMonitor, IDisposable
 {
@@ -20,6 +20,8 @@ public sealed class MesConnectionMonitor : IMesConnectionMonitor, IDisposable
     private AppSettings appSettings;
     private CancellationTokenSource? _cts;
     private Task? _loopTask;
+    private int _consecutiveProbeFailures;
+    private bool? _lastProbeSucceeded;
     private bool _disposed;
 
     public MesConnectionMonitor(IMesProvider mesProvider, ILocalizationService localizer, IAppSettingsService appSettingsService)
@@ -106,17 +108,12 @@ public sealed class MesConnectionMonitor : IMesConnectionMonitor, IDisposable
         {
             try
             {
-                await CheckOnceAsync(cancellationToken);
+                await CheckOnceSafelyAsync(cancellationToken);
                 await Task.Delay(ResolveHeartbeatInterval(), cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 return;
-            }
-            catch (Exception ex)
-            {
-                Publish(new MesConnectionSnapshot(false, Current.LastSuccessTime, DateTime.Now, ex.Message));
-                await Task.Delay(ResolveHeartbeatInterval(), cancellationToken);
             }
         }
     }
@@ -130,21 +127,66 @@ public sealed class MesConnectionMonitor : IMesConnectionMonitor, IDisposable
         return TimeSpan.FromSeconds(seconds);
     }
 
+    /// <summary>
+    /// 执行一次在线探测；未预期异常与普通失败共用连续失败阈值。
+    /// </summary>
+    internal async Task CheckOnceSafelyAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await CheckOnceAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            ApplyProbeFailure(ex.Message);
+        }
+    }
+
     private async Task CheckOnceAsync(CancellationToken cancellationToken)
     {
-        // 首轮尚未探测过，传 null 让 provider 写一条基线日志；之后只在在线状态跳变时写。
-        var previousOnline = Current.UpdatedTime == default
-            ? (bool?)null
-            : Current.IsConnected;
-        var response = await _mesProvider.CheckSystemOnlineAsync(previousOnline, cancellationToken);
-        var isConnected = string.Equals(response.Status, AppConstants.MesStatus.Success, StringComparison.OrdinalIgnoreCase);
-        var message = isConnected
-            ? _localizer.GetString(TextKeys.Mes.StateConnected)
-            : response.Msg;
+        // 日志按原始探测结果跳变记录，业务在线状态则需连续三次失败才切换。
+        var response = await _mesProvider.CheckSystemOnlineAsync(_lastProbeSucceeded, cancellationToken);
+        var probeSucceeded = string.Equals(response.Status, AppConstants.MesStatus.Success, StringComparison.OrdinalIgnoreCase);
+        if (probeSucceeded)
+        {
+            ApplyProbeSuccess();
+            return;
+        }
+
+        ApplyProbeFailure(response.Msg);
+    }
+
+    private void ApplyProbeSuccess()
+    {
+        _lastProbeSucceeded = true;
+        _consecutiveProbeFailures = 0;
+        Publish(new MesConnectionSnapshot(
+            true,
+            DateTime.Now,
+            DateTime.Now,
+            _localizer.GetString(TextKeys.Mes.StateConnected)));
+    }
+
+    private void ApplyProbeFailure(string message)
+    {
+        _lastProbeSucceeded = false;
+        _consecutiveProbeFailures = Math.Min(
+            _consecutiveProbeFailures + 1,
+            MesConnectionRules.OfflineFailureThreshold);
+
+        if (!MesConnectionRules.IsOfflineConfirmed(_consecutiveProbeFailures)
+            || (Current.UpdatedTime != default && !Current.IsConnected))
+        {
+            return;
+        }
 
         Publish(new MesConnectionSnapshot(
-            isConnected,
-            isConnected ? DateTime.Now : Current.LastSuccessTime,
+            false,
+            Current.LastSuccessTime,
             DateTime.Now,
             message));
     }

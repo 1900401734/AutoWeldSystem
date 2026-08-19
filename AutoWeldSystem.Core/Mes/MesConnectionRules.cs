@@ -13,6 +13,17 @@ public static class MesConnectionRules
     public const int MaxHeartbeatIntervalSeconds = 300;
 
     /// <summary>
+    /// 连续探测失败达到该次数后，才确认 MES 离线。
+    /// </summary>
+    public const int OfflineFailureThreshold = 3;
+
+    /// <summary>
+    /// 判断连续失败次数是否已达到离线确认阈值。
+    /// </summary>
+    public static bool IsOfflineConfirmed(int consecutiveFailures)
+        => consecutiveFailures >= OfflineFailureThreshold;
+
+    /// <summary>
     /// 归一化心跳间隔。
     /// CodeFirst 为旧数据行新增该列时会填 0，这里回退到默认间隔，避免升级后出现零延迟空转。
     /// </summary>
