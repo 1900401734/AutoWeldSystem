@@ -28,23 +28,24 @@ public sealed class ExpressionReadService : IPlcExpressionReadService
     /// </summary>
     public PlcExpressionBinding Resolve(string? baseAddress, int contextOffset, string? expressionText)
     {
-        if (string.IsNullOrWhiteSpace(baseAddress))
-        {
-            throw new FormatException("基地址不能为空。");
-        }
-
         if (string.IsNullOrWhiteSpace(expressionText))
         {
             throw new FormatException("偏移表达式不能为空。");
         }
 
         var expression = PlcOffsetExpression.Parse(expressionText);
+        if (!expression.IsAbsoluteAddress && string.IsNullOrWhiteSpace(baseAddress))
+        {
+            throw new FormatException("基地址不能为空。");
+        }
+
         return new PlcExpressionBinding(
-            expression.ResolveAddress(baseAddress, contextOffset),
+            expression.ResolveAddress(baseAddress ?? string.Empty, contextOffset),
             expression.DataType,
             expression.Rule,
             expressionText.Trim(),
-            expression.DecimalPlaces);
+            expression.DecimalPlaces,
+            expression.IsAbsoluteAddress);
     }
 
     /// <summary>

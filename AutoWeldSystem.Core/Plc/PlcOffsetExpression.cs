@@ -1,19 +1,25 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using AutoWeldSystem.Core.Constants;
 
 namespace AutoWeldSystem.Core.Plc;
 
 /// <summary>
-/// PLC 偏移表达式。
-/// 表达式格式示例：0:F-0、14:F-0_2、0:S-8_3、12:H-4，其中 0/14/12 是字节偏移，F/H/S 是数据类型，- 后是显示或结果规则，_ 后是固定小数位。
+/// PLC 地址表达式。
+/// 表达式格式示例：14:F-0_2、0:S-8_3、DB97.26:F-0_2，其中相对地址以字节偏移开头，绝对地址直接以 PLC 地址开头。
 /// </summary>
-public sealed record PlcOffsetExpression(int Offset, string DataType, int Rule, int? DecimalPlaces = null)
+public sealed record PlcOffsetExpression(
+    int Offset,
+    string DataType,
+    int Rule,
+    int? DecimalPlaces = null,
+    string? AbsoluteAddress = null)
 {
     private const int MaxDecimalPlaces = 10;
-    public const string RuleHint = "表达式：偏移:类型-规则_小数位；类型 B/H/I/F/S；规则 0原值、1除以10、2除以100、3除以1000、4结果(2=NG、3=OK、4=焊前NG)；数值如 14:F-0_2；字符串如 0:S-8_3，是否按数值字符串处理及裁切/四舍五入由系统设置全局控制。";
+    public const string RuleHint = "表达式：相对偏移或绝对地址:类型-规则_小数位；类型 B/H/I/F/S；规则 0原值、1除以10、2除以100、3除以1000、4结果(2=NG、3=OK、4=焊前NG)；相对地址如 14:F-0_2，绝对地址如 DB97.26:F-0_2，字符串如 0:S-8_3，是否按数值字符串处理及裁切/四舍五入由系统设置全局控制。";
 
     /// <summary>
-    /// 解析偏移表达式；表达式必须以数字偏移开头，不能直接填写绝对地址。
+    /// 解析 PLC 地址表达式；数字开头表示相对偏移，PLC 地址开头表示绝对地址。
     /// </summary>
     public static PlcOffsetExpression Parse(string text)
     {
@@ -25,9 +31,12 @@ public sealed record PlcOffsetExpression(int Offset, string DataType, int Rule, 
 
         var colonIndex = normalized.IndexOf(':');
         var addressPart = colonIndex >= 0 ? normalized[..colonIndex].Trim() : normalized;
-        if (!int.TryParse(addressPart, NumberStyles.Integer, CultureInfo.InvariantCulture, out var offset))
+        var isAbsoluteAddress = TryNormalizeAbsoluteAddress(addressPart, out var absoluteAddress);
+        var offset = 0;
+        if (!isAbsoluteAddress
+            && !int.TryParse(addressPart, NumberStyles.Integer, CultureInfo.InvariantCulture, out offset))
         {
-            throw new FormatException($"表达式“{text}”必须使用相对偏移，不能填写绝对地址。");
+            throw new FormatException($"表达式“{text}”必须使用数字相对偏移或有效 PLC 绝对地址。");
         }
 
         var dataType = AppConstants.PlcDataTypes.Int16;
@@ -36,8 +45,18 @@ public sealed record PlcOffsetExpression(int Offset, string DataType, int Rule, 
         if (colonIndex >= 0)
         {
             var metadata = normalized[(colonIndex + 1)..].Trim();
+            if (string.IsNullOrWhiteSpace(metadata))
+            {
+                throw new FormatException($"表达式“{text}”的数据类型和规则不能为空。");
+            }
+
             var ruleIndex = metadata.IndexOf('-');
-            var dataTypeToken = ruleIndex >= 0 ? metadata[..ruleIndex] : metadata;
+            var dataTypeToken = ruleIndex >= 0 ? metadata[..ruleIndex].Trim() : metadata;
+            if (string.IsNullOrWhiteSpace(dataTypeToken))
+            {
+                throw new FormatException($"表达式“{text}”的数据类型不能为空。");
+            }
+
             dataType = NormalizeDataType(dataTypeToken);
             if (ruleIndex >= 0)
             {
@@ -61,14 +80,21 @@ public sealed record PlcOffsetExpression(int Offset, string DataType, int Rule, 
             }
         }
 
-        return new PlcOffsetExpression(offset, dataType, rule, decimalPlaces);
+        return new PlcOffsetExpression(offset, dataType, rule, decimalPlaces, absoluteAddress);
     }
 
     /// <summary>
     /// 按基地址和上下文偏移计算最终 PLC 地址。
     /// </summary>
+    public bool IsAbsoluteAddress => !string.IsNullOrWhiteSpace(AbsoluteAddress);
+
     public string ResolveAddress(string baseAddress, int contextOffset)
     {
+        if (IsAbsoluteAddress)
+        {
+            return AbsoluteAddress!;
+        }
+
         return AddByteOffset(baseAddress, contextOffset + Offset);
     }
 
@@ -79,13 +105,20 @@ public sealed record PlcOffsetExpression(int Offset, string DataType, int Rule, 
     {
         try
         {
-            if (string.IsNullOrWhiteSpace(baseAddress) || string.IsNullOrWhiteSpace(expressionText))
+            if (string.IsNullOrWhiteSpace(expressionText))
             {
                 address = string.Empty;
                 return false;
             }
 
-            address = Parse(expressionText).ResolveAddress(baseAddress, contextOffset);
+            var expression = Parse(expressionText);
+            if (!expression.IsAbsoluteAddress && string.IsNullOrWhiteSpace(baseAddress))
+            {
+                address = string.Empty;
+                return false;
+            }
+
+            address = expression.ResolveAddress(baseAddress ?? string.Empty, contextOffset);
             return true;
         }
         catch
@@ -93,6 +126,22 @@ public sealed record PlcOffsetExpression(int Offset, string DataType, int Rule, 
             address = string.Empty;
             return false;
         }
+    }
+
+    private static bool TryNormalizeAbsoluteAddress(string value, out string address)
+    {
+        address = string.Empty;
+        var normalized = value.Trim();
+        if (!Regex.IsMatch(
+                normalized,
+                @"^(?:DB\d+\.(?:\d+(?:\.\d+)?|DB[XBWD]\d+(?:\.\d+)?)|(?:M|I|Q|AI|AQ)\d+(?:\.\d+)?)$",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        {
+            return false;
+        }
+
+        address = normalized;
+        return true;
     }
 
     private static string NormalizeDataType(string? token)

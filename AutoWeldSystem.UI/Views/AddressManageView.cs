@@ -704,7 +704,7 @@ public partial class AddressManageView : BaseView
         lblProductProcessGroupHint.Text = $"分组填写：产品头保存产品级字段，{DeviceUiProfile.PointName}头按{DeviceUiProfile.PointName}头长度递增，测试项区按测试区长度递增；最终地址可通过 PLC 地址预览核对。{PlcExpressionRuleHint}";
         lblSchemeDetailHint.Text = "先选择测试方案，再勾选该方案包含的测试项字段；新增测试项字典后会自动出现在树中。";
         lblSchemeDetailScheme.Text = "测试方案";
-        lblTestItemHint.Text = $"维护测试项名称、单位和相对偏移表达式。{PlcExpressionRuleHint}";
+        lblTestItemHint.Text = $"维护测试项名称、单位和 PLC 地址表达式。{PlcExpressionRuleHint}";
         btnAddProductProcess.Text = "新增";
         btnDeleteProductProcess.Text = "删除";
         btnPreviewProductProcessAddress.Text = "PLC 地址预览";

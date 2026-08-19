@@ -90,6 +90,7 @@ var tests = new (string Name, Action Run)[]
     ("Scheme detail role names and monitor fallbacks are centralized", SchemeDetailRoleNamesAndMonitorFallbacksAreCentralized),
     ("Station display names have localized dual-station rules", StationDisplayNamesHaveLocalizedDualStationRules),
     ("Station display names load legacy defaults and collapse hidden row", StationDisplayNamesLoadLegacyDefaultsAndCollapseHiddenRow),
+    ("PLC expression rules support absolute test item addresses", PlcExpressionRulesSupportAbsoluteTestItemAddresses),
     ("Only configured test item expressions create available roles", OnlyConfiguredExpressionsCreateRoles),
     ("Collection does not imply local save or upload", CollectionDoesNotImplyOutput),
     ("Save history controls product history visibility", SaveHistoryControlsProductHistoryVisibility),
@@ -1779,6 +1780,45 @@ static void PlcSoftwareAlarmsStayLocalToMonitorView()
         lifecycleCode.Contains("RecordAlarmChange", StringComparison.Ordinal)
         || lifecycleCode.Contains("_plcProductionMonitorService.StatusChanged", StringComparison.Ordinal),
         "设备日志不得再接收原始状态或 Bool 报警，报警只写入设备状态日志。");
+}
+
+static void PlcExpressionRulesSupportAbsoluteTestItemAddresses()
+{
+    var relative = PlcOffsetExpression.Parse("14:F-0_2");
+    AssertFalse(relative.IsAbsoluteAddress, "数字开头的测试项表达式必须继续按相对偏移处理。");
+    AssertEqual("DB23.130", relative.ResolveAddress("DB23.100", 16), "相对表达式必须叠加基地址、上下文偏移和自身偏移。");
+
+    var absolute = PlcOffsetExpression.Parse("DB97.26:F-0_2");
+    AssertTrue(absolute.IsAbsoluteAddress, "DB 开头的测试项表达式必须识别为绝对地址。");
+    AssertEqual("DB97.26", absolute.AbsoluteAddress, "绝对表达式必须保留指定 PLC 地址。");
+    AssertEqual("DB97.26", absolute.ResolveAddress("DB23.100", 160), "绝对表达式不得叠加测试项基地址或焊点上下文偏移。");
+
+    var readService = new ExpressionReadService(new FakePlcCommunicationService(), new FakeAppSettingsService());
+    var absoluteBinding = readService.Resolve(null, 999, "DB97.26:F-0_2");
+    AssertTrue(absoluteBinding.IsAbsoluteAddress, "表达式读取服务返回的绑定必须保留绝对地址标记。");
+    AssertEqual("DB97.26", absoluteBinding.Address, "表达式读取服务必须直接返回绝对 PLC 地址。");
+    AssertEqual(2, absoluteBinding.DecimalPlaces, "绝对地址表达式必须保留小数位配置。");
+
+    var supportedTypes = new[]
+    {
+        (Expression: "M10:B-0", Type: AppConstants.PlcDataTypes.Bool),
+        (Expression: "DB10.2:H-0", Type: AppConstants.PlcDataTypes.Int16),
+        (Expression: "DB10.4:I-1", Type: AppConstants.PlcDataTypes.Int32),
+        (Expression: "DB10.8:F-0_2", Type: AppConstants.PlcDataTypes.Float),
+        (Expression: "DB10.12:S-8_3", Type: AppConstants.PlcDataTypes.String)
+    };
+    foreach (var item in supportedTypes)
+    {
+        var parsed = PlcOffsetExpression.Parse(item.Expression);
+        AssertTrue(parsed.IsAbsoluteAddress, $"{item.Expression} 必须识别为绝对地址。");
+        AssertEqual(item.Type, parsed.DataType, $"{item.Expression} 的数据类型解析错误。");
+    }
+
+    AssertTrue(PlcOffsetExpression.Parse("DB10.DBX2.9:B-0").IsAbsoluteAddress, "DBX 位地址也应支持作为绝对地址。");
+    AssertThrows<FormatException>(() => PlcOffsetExpression.Parse("DBx.26:F-0"), "非法 DB 绝对地址必须拒绝。");
+    AssertThrows<FormatException>(() => PlcOffsetExpression.Parse("DB97.26:-0"), "缺少数据类型的表达式必须拒绝。");
+    AssertThrows<FormatException>(() => PlcOffsetExpression.Parse("DB97.26:F-"), "缺少规则的表达式必须拒绝。");
+    AssertThrows<FormatException>(() => PlcOffsetExpression.Parse("DB97.26:F-0_11"), "超出范围的小数位必须拒绝。");
 }
 
 static void OnlyConfiguredExpressionsCreateRoles()
