@@ -13,7 +13,7 @@ namespace AutoWeldSystem.Services.Center;
 
 /// <summary>
 /// HTTP client used by equipment software to upload snapshots to the center server.
-/// 每次交互（含失败与取消）都通过 <see cref="ICenterInteractionLogService"/> 记录一条本地日志。
+/// 交互结果按中心服务器日志规则记录；连接类失败由共享门控聚合。
 /// </summary>
 public sealed class CenterTelemetryClient
 {
@@ -25,14 +25,16 @@ public sealed class CenterTelemetryClient
 
     private readonly HttpClient _httpClient;
     private readonly ICenterInteractionLogService _interactionLogService;
+    private readonly CenterServerAvailabilityLogGate _availabilityLogGate;
 
-    // 心跳日志只记状态转换：初始视为健康，启动后的连续成功心跳不产生日志。
-    private bool _lastHeartbeatSucceeded = true;
-
-    public CenterTelemetryClient(HttpClient httpClient, ICenterInteractionLogService interactionLogService)
+    public CenterTelemetryClient(
+        HttpClient httpClient,
+        ICenterInteractionLogService interactionLogService,
+        CenterServerAvailabilityLogGate availabilityLogGate)
     {
         _httpClient = httpClient;
         _interactionLogService = interactionLogService;
+        _availabilityLogGate = availabilityLogGate;
     }
 
     /// <summary>
@@ -69,8 +71,8 @@ public sealed class CenterTelemetryClient
     }
 
     /// <summary>
-    /// 统一上传路径：序列化、发送、解析应答，并在 finally 中记录交互日志。
-    /// 异常（含取消）只记录不吞，保持由调用方处理重试与状态发布的既有契约。
+    /// 统一上传路径：中心交互失败由进程级门控聚合到服务器日志。
+    /// 异常只记录不吞，保持由调用方处理重试与状态发布的既有契约。
     /// </summary>
     private async Task<CenterTelemetryAck> UploadCoreAsync<TRequest>(
         AppSettings settings,
@@ -87,7 +89,9 @@ public sealed class CenterTelemetryClient
         int? httpStatusCode = null;
         CenterTelemetryAck? ack = null;
         var errorMessage = string.Empty;
-        var canceled = false;
+        var intentionalCancellation = false;
+        var recovered = false;
+        CenterServerAvailabilityLogGate.FailureLogDecision? failureDecision = null;
 
         try
         {
@@ -100,6 +104,8 @@ public sealed class CenterTelemetryClient
             using var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
             using var response = await _httpClient.PostAsync(uri, content, cancellationToken);
 
+            // 收到任意 HTTP 响应即证明连接已恢复；业务成功与否仍由应答内容判断。
+            recovered = _availabilityLogGate.RegisterReachable();
             httpStatusCode = (int)response.StatusCode;
             responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
 
@@ -118,60 +124,78 @@ public sealed class CenterTelemetryClient
             };
             return ack;
         }
-        catch (OperationCanceledException ex)
+        catch (OperationCanceledException ex) when (cancellationToken.IsCancellationRequested)
         {
             errorMessage = ex.Message;
-            canceled = true;
+            intentionalCancellation = true;
             throw;
         }
         catch (Exception ex)
         {
             errorMessage = ex.Message;
+            if (CenterServerAvailabilityLogGate.IsConnectivityFailure(ex, cancellationToken))
+            {
+                failureDecision = _availabilityLogGate.RegisterFailure(DateTime.Now);
+            }
+
             throw;
         }
         finally
         {
             stopwatch.Stop();
-            if (ShouldWriteLog(interactionType, ack?.Success == true, canceled))
+            if (!intentionalCancellation)
             {
-                _interactionLogService.Write(new CenterInteractionLogEntry
+                if (failureDecision is { ShouldWrite: true } decision)
                 {
-                    InteractionType = interactionType,
-                    Method = "POST",
-                    Url = url,
-                    RequestBody = requestBody,
-                    ResponseBody = responseBody,
-                    HttpStatusCode = httpStatusCode,
-                    AckMessage = ack?.Message ?? string.Empty,
-                    ServerTime = ack?.ServerTime,
-                    IsSuccess = ack?.Success == true,
-                    ErrorMessage = errorMessage,
-                    SendTime = sendTime,
-                    ReceiveTime = DateTime.Now,
-                    DurationMilliseconds = stopwatch.ElapsedMilliseconds
-                });
+                    errorMessage = BuildConnectivityErrorMessage(errorMessage, decision);
+                    WriteInteractionLog();
+                }
+                else if (failureDecision is null && ShouldWriteResponseLog(interactionType, ack?.Success == true, recovered))
+                {
+                    WriteInteractionLog();
+                }
             }
+        }
+
+        void WriteInteractionLog()
+        {
+            _interactionLogService.Write(new CenterInteractionLogEntry
+            {
+                InteractionType = interactionType,
+                Method = "POST",
+                Url = url,
+                RequestBody = requestBody,
+                ResponseBody = responseBody,
+                HttpStatusCode = httpStatusCode,
+                AckMessage = ack?.Message ?? string.Empty,
+                ServerTime = ack?.ServerTime,
+                IsSuccess = ack?.Success == true,
+                ErrorMessage = errorMessage,
+                SendTime = sendTime,
+                ReceiveTime = DateTime.Now,
+                DurationMilliseconds = stopwatch.ElapsedMilliseconds
+            });
         }
     }
 
     /// <summary>
-    /// 心跳每几秒一次，全量记录会刷屏：仅在成败发生转换（故障发生/恢复）时记录一条；
-    /// 软件关闭引起的取消不记也不更新状态。设备状态与产品数据照旧全量记录。
+    /// 连续成功心跳不写日志；业务拒绝、非心跳交互以及断线后的首个恢复响应都保留。
     /// </summary>
-    private bool ShouldWriteLog(string interactionType, bool isSuccess, bool canceled)
+    private static bool ShouldWriteResponseLog(string interactionType, bool isSuccess, bool recovered)
+        => interactionType != AppConstants.CenterInteractionTypes.Heartbeat
+            || !isSuccess
+            || recovered;
+
+    private static string BuildConnectivityErrorMessage(
+        string errorMessage,
+        CenterServerAvailabilityLogGate.FailureLogDecision decision)
     {
-        if (interactionType != AppConstants.CenterInteractionTypes.Heartbeat)
+        if (decision.IsFirstFailure)
         {
-            return true;
+            return errorMessage;
         }
 
-        if (canceled)
-        {
-            return false;
-        }
-
-        var changed = isSuccess != _lastHeartbeatSucceeded;
-        _lastHeartbeatSucceeded = isSuccess;
-        return changed;
+        return $"中心服务器持续不可达 {decision.OutageDuration.TotalMinutes:0} 分钟，累计失败 {decision.FailureCount} 次。最近错误：{errorMessage}";
     }
+
 }

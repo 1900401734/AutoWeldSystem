@@ -171,7 +171,11 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             }
             catch (Exception ex)
             {
-                WriteFailureLog(ex);
+                // 连接类异常已由共享客户端按首次/十分钟摘要记录，避免两个后台服务重复刷程序异常。
+                if (!CenterServerAvailabilityLogGate.IsConnectivityFailure(ex, cancellationToken))
+                {
+                    WriteFailureLog(ex);
+                }
             }
 
             await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);

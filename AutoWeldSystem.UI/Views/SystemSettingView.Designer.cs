@@ -88,6 +88,10 @@
             tableLayoutPanelHeartbeat = new TableLayoutPanel();
             lblPlcHeartbeatInterval = new AntdUI.Label();
             inputPlcHeartbeatInterval = new AntdUI.Input();
+            lblPlcHeartbeatTimeout = new AntdUI.Label();
+            inputPlcHeartbeatTimeout = new AntdUI.Input();
+            lblPlcCommunicationTimeout = new AntdUI.Label();
+            inputPlcCommunicationTimeout = new AntdUI.Input();
             grpAppConfig = new GroupBox();
             tableLayoutPanel1 = new TableLayoutPanel();
             tableLayoutPanel4 = new TableLayoutPanel();
@@ -1002,7 +1006,7 @@
             grpProductionConfig.Margin = new Padding(5);
             grpProductionConfig.Name = "grpProductionConfig";
             grpProductionConfig.Padding = new Padding(2, 3, 2, 3);
-            grpProductionConfig.Size = new Size(437, 221);
+            grpProductionConfig.Size = new Size(437, 299);
             grpProductionConfig.TabIndex = 4;
             grpProductionConfig.TabStop = false;
             grpProductionConfig.Text = "生产配置";
@@ -1030,8 +1034,8 @@
             // 工位名称行必须显式 AutoSize：单工位时隐藏容器后该行需自动折叠，不能占固定高度。
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
-            tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
-            tlpProductConfig.Size = new Size(433, 195);
+            tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tlpProductConfig.Size = new Size(433, 273);
             tlpProductConfig.TabIndex = 0;
             // 
             // stationDisplayNameLayout
@@ -1209,19 +1213,26 @@
             // 
             // tableLayoutPanelHeartbeat
             // 
+            tableLayoutPanelHeartbeat.AutoSize = true;
             tableLayoutPanelHeartbeat.ColumnCount = 2;
             tlpProductConfig.SetColumnSpan(tableLayoutPanelHeartbeat, 2);
             tableLayoutPanelHeartbeat.ColumnStyles.Add(new ColumnStyle());
             tableLayoutPanelHeartbeat.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             tableLayoutPanelHeartbeat.Controls.Add(lblPlcHeartbeatInterval, 0, 0);
             tableLayoutPanelHeartbeat.Controls.Add(inputPlcHeartbeatInterval, 1, 0);
+            tableLayoutPanelHeartbeat.Controls.Add(lblPlcHeartbeatTimeout, 0, 1);
+            tableLayoutPanelHeartbeat.Controls.Add(inputPlcHeartbeatTimeout, 1, 1);
+            tableLayoutPanelHeartbeat.Controls.Add(lblPlcCommunicationTimeout, 0, 2);
+            tableLayoutPanelHeartbeat.Controls.Add(inputPlcCommunicationTimeout, 1, 2);
             tableLayoutPanelHeartbeat.Dock = DockStyle.Top;
             tableLayoutPanelHeartbeat.Location = new Point(0, 156);
             tableLayoutPanelHeartbeat.Margin = new Padding(0);
             tableLayoutPanelHeartbeat.Name = "tableLayoutPanelHeartbeat";
-            tableLayoutPanelHeartbeat.RowCount = 1;
-            tableLayoutPanelHeartbeat.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tableLayoutPanelHeartbeat.Size = new Size(433, 39);
+            tableLayoutPanelHeartbeat.RowCount = 3;
+            tableLayoutPanelHeartbeat.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
+            tableLayoutPanelHeartbeat.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
+            tableLayoutPanelHeartbeat.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
+            tableLayoutPanelHeartbeat.Size = new Size(433, 117);
             tableLayoutPanelHeartbeat.TabIndex = 7;
             // 
             // lblPlcHeartbeatInterval
@@ -1232,26 +1243,70 @@
             lblPlcHeartbeatInterval.Margin = new Padding(0);
             lblPlcHeartbeatInterval.Name = "lblPlcHeartbeatInterval";
             lblPlcHeartbeatInterval.Padding = new Padding(6, 0, 0, 0);
-            lblPlcHeartbeatInterval.Size = new Size(153, 39);
+            lblPlcHeartbeatInterval.Size = new Size(195, 39);
             lblPlcHeartbeatInterval.TabIndex = 0;
             lblPlcHeartbeatInterval.Text = "PLC心跳监测频率(ms)";
             // 
             // inputPlcHeartbeatInterval
             // 
             inputPlcHeartbeatInterval.Dock = DockStyle.Fill;
-            inputPlcHeartbeatInterval.Location = new Point(153, 0);
+            inputPlcHeartbeatInterval.Location = new Point(195, 0);
             inputPlcHeartbeatInterval.Margin = new Padding(0);
             inputPlcHeartbeatInterval.Name = "inputPlcHeartbeatInterval";
-            inputPlcHeartbeatInterval.Size = new Size(280, 39);
+            inputPlcHeartbeatInterval.Size = new Size(238, 39);
             inputPlcHeartbeatInterval.TabIndex = 1;
             inputPlcHeartbeatInterval.Text = "300";
             // 
+            // lblPlcHeartbeatTimeout
+            //
+            lblPlcHeartbeatTimeout.AutoSizeMode = AntdUI.TAutoSize.Width;
+            lblPlcHeartbeatTimeout.Dock = DockStyle.Fill;
+            lblPlcHeartbeatTimeout.Location = new Point(0, 39);
+            lblPlcHeartbeatTimeout.Margin = new Padding(0);
+            lblPlcHeartbeatTimeout.Name = "lblPlcHeartbeatTimeout";
+            lblPlcHeartbeatTimeout.Padding = new Padding(6, 0, 0, 0);
+            lblPlcHeartbeatTimeout.Size = new Size(195, 39);
+            lblPlcHeartbeatTimeout.TabIndex = 2;
+            lblPlcHeartbeatTimeout.Text = "PLC心跳超时时间(s)";
+            //
+            // inputPlcHeartbeatTimeout
+            //
+            inputPlcHeartbeatTimeout.Dock = DockStyle.Fill;
+            inputPlcHeartbeatTimeout.Location = new Point(195, 39);
+            inputPlcHeartbeatTimeout.Margin = new Padding(0);
+            inputPlcHeartbeatTimeout.Name = "inputPlcHeartbeatTimeout";
+            inputPlcHeartbeatTimeout.Size = new Size(238, 39);
+            inputPlcHeartbeatTimeout.TabIndex = 3;
+            inputPlcHeartbeatTimeout.Text = "3";
+            //
+            // lblPlcCommunicationTimeout
+            //
+            lblPlcCommunicationTimeout.AutoSizeMode = AntdUI.TAutoSize.Width;
+            lblPlcCommunicationTimeout.Dock = DockStyle.Fill;
+            lblPlcCommunicationTimeout.Location = new Point(0, 78);
+            lblPlcCommunicationTimeout.Margin = new Padding(0);
+            lblPlcCommunicationTimeout.Name = "lblPlcCommunicationTimeout";
+            lblPlcCommunicationTimeout.Padding = new Padding(6, 0, 0, 0);
+            lblPlcCommunicationTimeout.Size = new Size(195, 39);
+            lblPlcCommunicationTimeout.TabIndex = 4;
+            lblPlcCommunicationTimeout.Text = "PLC通讯超时(ms)";
+            //
+            // inputPlcCommunicationTimeout
+            //
+            inputPlcCommunicationTimeout.Dock = DockStyle.Fill;
+            inputPlcCommunicationTimeout.Location = new Point(195, 78);
+            inputPlcCommunicationTimeout.Margin = new Padding(0);
+            inputPlcCommunicationTimeout.Name = "inputPlcCommunicationTimeout";
+            inputPlcCommunicationTimeout.Size = new Size(238, 39);
+            inputPlcCommunicationTimeout.TabIndex = 5;
+            inputPlcCommunicationTimeout.Text = "3000";
+            //
             // grpAppConfig
             // 
             grpAppConfig.AutoSize = true;
             grpAppConfig.Controls.Add(tableLayoutPanel1);
             grpAppConfig.Dock = DockStyle.Top;
-            grpAppConfig.Location = new Point(5, 236);
+            grpAppConfig.Location = new Point(5, 314);
             grpAppConfig.Margin = new Padding(5);
             grpAppConfig.Name = "grpAppConfig";
             grpAppConfig.Padding = new Padding(2, 3, 2, 3);
@@ -2640,6 +2695,10 @@
         private TableLayoutPanel tableLayoutPanelHeartbeat;
         private AntdUI.Label lblPlcHeartbeatInterval;
         private AntdUI.Input inputPlcHeartbeatInterval;
+        private AntdUI.Label lblPlcHeartbeatTimeout;
+        private AntdUI.Input inputPlcHeartbeatTimeout;
+        private AntdUI.Label lblPlcCommunicationTimeout;
+        private AntdUI.Input inputPlcCommunicationTimeout;
         private AntdUI.Button btnSaveAll;
         private TableLayoutPanel titleLayout;
         private Label lblTitle;

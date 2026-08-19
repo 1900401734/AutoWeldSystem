@@ -615,6 +615,12 @@
   <data name="plc.message.heartbeat_no_change" xml:space="preserve">
     <value>PLC心跳无变化，已持续 {0:0.0} 秒；TCP连接仍可建立，等待 PLC 业务心跳恢复。</value>
   </data>
+  <data name="plc.message.heartbeat_sampling_delayed" xml:space="preserve">
+    <value>PLC 心跳采样延迟，已重置采样基线。{0}</value>
+  </data>
+  <data name="plc.message.heartbeat_diagnostics" xml:space="preserve">
+    <value>采样间隔 {0:0}ms，通讯锁等待 {1:0}ms，PLC读取 {2:0}ms，监测频率 {3}ms，心跳超时 {4}s。</value>
+  </data>
   <data name="plc.message.tcp_probe_failed" xml:space="preserve">
     <value>PLC TCP 探测失败：{0}</value>
   </data>
@@ -1580,7 +1586,7 @@
     <value>服务器日志</value>
   </data>
   <data name="log.description.center_server" xml:space="preserve">
-    <value>记录本机与中心服务器的心跳、设备状态推送和产品数据上报；心跳仅记录失败与恢复。</value>
+    <value>记录本机与中心服务器的心跳、设备状态推送和产品数据上报；中心交互失败仅保留服务器日志，连接类故障按首次、持续摘要和恢复记录。</value>
   </data>
   <data name="log.column.type" xml:space="preserve">
     <value>类型</value>
@@ -1842,7 +1848,13 @@
     <value>上传批次大小</value>
   </data>
   <data name="system.label.plc_heartbeat_rate" xml:space="preserve">
-    <value>PLC心跳频率</value>
+    <value>PLC心跳监测频率(ms)</value>
+  </data>
+  <data name="system.label.plc_heartbeat_timeout" xml:space="preserve">
+    <value>PLC心跳超时时间(s)</value>
+  </data>
+  <data name="system.label.plc_communication_timeout" xml:space="preserve">
+    <value>PLC通讯超时(ms)</value>
   </data>
   <data name="data.label.product_num" xml:space="preserve">
     <value>产品工号</value>

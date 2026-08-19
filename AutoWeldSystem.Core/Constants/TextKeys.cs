@@ -1113,6 +1113,8 @@ public static class TextKeys
         public const string UploadMode = "system.label.upload_mode";
         public const string UploadBatchSize = "system.label.upload_batch_size";
         public const string PlcHeartbeatRate = "system.label.plc_heartbeat_rate";
+        public const string PlcHeartbeatTimeout = "system.label.plc_heartbeat_timeout";
+        public const string PlcCommunicationTimeout = "system.label.plc_communication_timeout";
         public const string LabelStation1DisplayName = "system.label.station1_display_name";
         public const string LabelStation2DisplayName = "system.label.station2_display_name";
         public const string PlaceholderStationDisplayName = "system.placeholder.station_display_name";
@@ -1459,6 +1461,14 @@ public static class TextKeys
         /// PLC心跳无变化，已持续 {0:0.0} 秒；TCP连接仍可建立，等待 PLC 业务心跳恢复。
         /// </summary>
         public const string MessageHeartbeatNoChange = "plc.message.heartbeat_no_change";
+        /// <summary>
+        /// PLC 心跳采样间隔超过超时阈值，已重置采样基线。
+        /// </summary>
+        public const string MessageHeartbeatSamplingDelayed = "plc.message.heartbeat_sampling_delayed";
+        /// <summary>
+        /// PLC 心跳采样诊断数据。
+        /// </summary>
+        public const string MessageHeartbeatDiagnostics = "plc.message.heartbeat_diagnostics";
         /// <summary>
         /// PLC 心跳地址为空，TCP 端口探测成功。
         /// </summary>

@@ -615,6 +615,12 @@
   <data name="plc.message.heartbeat_no_change" xml:space="preserve">
     <value>PLC heartbeat has not changed for {0:0.0}s; TCP connection is still established, waiting for PLC business heartbeat recovery.</value>
   </data>
+  <data name="plc.message.heartbeat_sampling_delayed" xml:space="preserve">
+    <value>PLC heartbeat sampling was delayed; the sampling baseline was reset. {0}</value>
+  </data>
+  <data name="plc.message.heartbeat_diagnostics" xml:space="preserve">
+    <value>Sample interval {0:0}ms, communication lock wait {1:0}ms, PLC read {2:0}ms, monitoring interval {3}ms, heartbeat timeout {4}s.</value>
+  </data>
   <data name="plc.message.tcp_probe_failed" xml:space="preserve">
     <value>PLC TCP probe failed: {0}</value>
   </data>
@@ -1580,7 +1586,7 @@
     <value>Center Server Logs</value>
   </data>
   <data name="log.description.center_server" xml:space="preserve">
-    <value>Records heartbeats, device-status pushes, and product-data reports to the center server; heartbeats are logged only on failure and recovery.</value>
+    <value>Records heartbeats, device-status pushes, and product-data reports to the center server; center interaction failures stay in the server log, with connectivity faults recorded on first failure, periodic summaries, and recovery.</value>
   </data>
   <data name="log.column.type" xml:space="preserve">
     <value>Type</value>
@@ -1841,7 +1847,13 @@
     <value>Upload Batch Size</value>
   </data>
   <data name="system.label.plc_heartbeat_rate" xml:space="preserve">
-    <value>PLC Heartbeat Rate</value>
+    <value>PLC heartbeat monitoring interval (ms)</value>
+  </data>
+  <data name="system.label.plc_heartbeat_timeout" xml:space="preserve">
+    <value>PLC heartbeat timeout (s)</value>
+  </data>
+  <data name="system.label.plc_communication_timeout" xml:space="preserve">
+    <value>PLC communication timeout (ms)</value>
   </data>
   <data name="data.label.product_num" xml:space="preserve">
     <value>Product Num.</value>

@@ -8,6 +8,7 @@ using AutoWeldSystem.Core.Interfaces.PLC;
 using AutoWeldSystem.Core.Plc;
 using AutoWeldSystem.Core.Runtime;
 using HslCommunication;
+using System.Diagnostics;
 using HslCommunication.Core.Net;
 using HslCommunication.ModBus;
 using HslCommunication.Profinet.Siemens;
@@ -17,12 +18,10 @@ namespace AutoWeldSystem.Services.Plc;
 public sealed class CommunicationService : IPlcCommunicationService, IDisposable
 {
     private static readonly TimeSpan PcHeartbeatWriteInterval = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan PlcHeartbeatStaleThreshold = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan ConnectionObjectModeInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan MaxReconnectDelay = TimeSpan.FromSeconds(10);
 
     private const int HeartbeatFailureThreshold = 3;
-    private const int PlcCommunicationTimeoutMilliseconds = 3000;
 
     private static readonly string[] VerificationLogicalKeyPriority =
     [
@@ -389,7 +388,12 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
                         continue;
                     }
 
-                    var heartbeatResult = await MaintainSoftHeartbeatAsync(runtime, heartbeatAddress, cancellationToken);
+                    var heartbeatResult = await MaintainSoftHeartbeatAsync(
+                        stationNo,
+                        runtime,
+                        heartbeatAddress,
+                        runtimeSettings,
+                        cancellationToken);
                     if (heartbeatResult.ShouldDisconnect)
                     {
                         disconnectedHeartbeatStations.Add(stationNo);
@@ -404,7 +408,8 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
                         continue;
                     }
 
-                    if (heartbeatResult.IsHealthy)
+                    if (heartbeatResult.IsHealthy
+                        || (heartbeatResult.HasSuccessfulSample && GetCurrent(stationNo).IsConnected))
                     {
                         PublishConnectedIfDue(stationNo, heartbeatResult.Message, endpoint);
                     }
@@ -447,14 +452,14 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
     /// to avoid creating a busy polling loop when the operator enters an unsafe value.
     /// </summary>
     private static TimeSpan ResolvePlcHeartbeatReadInterval(AppSettings settings)
-    {
-        var milliseconds = Math.Clamp(
-            settings.PlcHeartbeatReadIntervalMilliseconds <= 0 ? 300 : settings.PlcHeartbeatReadIntervalMilliseconds,
-            100,
-            5000);
+        => TimeSpan.FromMilliseconds(
+            PlcHeartbeatSettingsRules.NormalizeReadIntervalMilliseconds(
+                settings.PlcHeartbeatReadIntervalMilliseconds));
 
-        return TimeSpan.FromMilliseconds(milliseconds);
-    }
+    private static TimeSpan ResolvePlcHeartbeatTimeout(AppSettings settings)
+        => TimeSpan.FromSeconds(
+            PlcHeartbeatSettingsRules.NormalizeTimeoutSeconds(
+                settings.PlcHeartbeatTimeoutSeconds));
 
     /// <summary>
     /// 创建 HSL 客户端并建立持久连接，后续读写复用该连接。
@@ -573,8 +578,8 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
             var modbus = new ModbusTcpNet(settings.PlcIp, settings.PlcPort)
             {
                 AddressStartWithZero = true,
-                ConnectTimeOut = BuildPlcTimeout(),
-                ReceiveTimeOut = BuildPlcTimeout()
+                ConnectTimeOut = BuildPlcTimeout(settings),
+                ReceiveTimeOut = BuildPlcTimeout(settings)
             };
 
             modbus.SetPersistentConnection();
@@ -586,8 +591,8 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
             var siemens = new SiemensS7Net(SiemensPLCS.S1200, settings.PlcIp)
             {
                 Port = settings.PlcPort,
-                ConnectTimeOut = BuildPlcTimeout(),
-                ReceiveTimeOut = BuildPlcTimeout()
+                ConnectTimeOut = BuildPlcTimeout(settings),
+                ReceiveTimeOut = BuildPlcTimeout(settings)
             };
 
             siemens.SetPersistentConnection();
@@ -666,60 +671,144 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
     }
 
     private async Task<HeartbeatCheckResult> MaintainSoftHeartbeatAsync(
+        int stationNo,
         StationHeartbeatRuntime runtime,
         HeartbeatAddressPair heartbeatAddresses,
+        AppSettings settings,
         CancellationToken cancellationToken)
     {
-        var livenessFailureMessages = new List<string>();
-        var livenessMessage = string.Empty;
-        var plcReadResult = await ReadHeartbeatValueAsync(heartbeatAddresses.PlcHeartbeat, cancellationToken);
-        if (!plcReadResult.IsSuccess)
+        var timedRead = await ReadHeartbeatValueAsync(heartbeatAddresses.PlcHeartbeat, cancellationToken);
+        var now = DateTime.Now;
+        var sampleInterval = runtime.LastPlcHeartbeatSampleTime.HasValue
+            ? now - runtime.LastPlcHeartbeatSampleTime.Value
+            : TimeSpan.Zero;
+        var diagnostics = BuildHeartbeatDiagnostics(timedRead, sampleInterval, settings);
+        if (!timedRead.Result.IsSuccess)
         {
-            livenessFailureMessages.Add(plcReadResult.Message);
-        }
-        else
-        {
-            runtime.HeartbeatFailureCount = 0;
-
-            var now = DateTime.Now;
-            var changeState = UpdatePlcHeartbeatChange(runtime, plcReadResult.Value ?? string.Empty, now);
-            var unchangedDuration = now - runtime.LastPlcHeartbeatChangeTime;
-
-            if (changeState == PlcHeartbeatChangeState.Baseline)
+            if (!runtime.IsReadFailureActive)
             {
-                return HeartbeatCheckResult.Transient(
-                    $"PLC heartbeat baseline value received at {runtime.LastPlcHeartbeatChangeTime:HH:mm:ss}.");
+                WriteOperationLog(
+                    "HeartbeatReadFailed",
+                    $"Station={stationNo}; FailureCount={runtime.HeartbeatFailureCount + 1}; {timedRead.Result.Message}; {diagnostics}");
             }
 
-            if (changeState == PlcHeartbeatChangeState.Unchanged)
-            {
-                if (unchangedDuration > PlcHeartbeatStaleThreshold)
-                {
-                    return HeartbeatCheckResult.Faulted(
-                        Text(TextKeys.Plc.MessageHeartbeatNoChange, unchangedDuration.TotalSeconds));
-                }
-
-                return HeartbeatCheckResult.Transient(
-                    $"PLC heartbeat waiting for change, unchanged for {unchangedDuration.TotalSeconds:0.0}s.");
-            }
-
-            livenessMessage = $"PLC heartbeat changed at {runtime.LastPlcHeartbeatChangeTime:HH:mm:ss}.";
-        }
-
-        if (livenessFailureMessages.Count > 0)
-        {
+            runtime.IsReadFailureActive = true;
             runtime.HeartbeatFailureCount++;
             if (runtime.HeartbeatFailureCount >= HeartbeatFailureThreshold)
             {
                 return HeartbeatCheckResult.Disconnect(
-                    $"PLC heartbeat failed {runtime.HeartbeatFailureCount} times: {string.Join("; ", livenessFailureMessages)}");
+                    $"PLC heartbeat failed {runtime.HeartbeatFailureCount} times: {timedRead.Result.Message}");
             }
 
             return HeartbeatCheckResult.Transient(
-                $"PLC heartbeat transient failure {runtime.HeartbeatFailureCount}/{HeartbeatFailureThreshold}: {string.Join("; ", livenessFailureMessages)}");
+                $"PLC heartbeat transient failure {runtime.HeartbeatFailureCount}/{HeartbeatFailureThreshold}: {timedRead.Result.Message}",
+                hasSuccessfulSample: false);
         }
 
-        return HeartbeatCheckResult.Healthy(livenessMessage);
+        if (runtime.IsReadFailureActive)
+        {
+            WriteOperationLog(
+                "HeartbeatReadRecovered",
+                $"Station={stationNo}; {diagnostics}");
+            runtime.IsReadFailureActive = false;
+        }
+
+        runtime.HeartbeatFailureCount = 0;
+        runtime.PreviousPlcHeartbeatSampleTime = runtime.LastPlcHeartbeatSampleTime;
+        runtime.LastPlcHeartbeatSampleTime = now;
+        var currentValue = timedRead.Result.Value ?? string.Empty;
+        var heartbeatTimeout = ResolvePlcHeartbeatTimeout(settings);
+        if (PlcHeartbeatSettingsRules.IsSamplingDelayed(
+                runtime.PreviousPlcHeartbeatSampleTime,
+                now,
+                settings.PlcHeartbeatTimeoutSeconds))
+        {
+            runtime.LastPlcHeartbeatValue = currentValue;
+            runtime.LastPlcHeartbeatChangeTime = now;
+            if (!runtime.IsSamplingDelayed)
+            {
+                WriteOperationLog(
+                    "HeartbeatSamplingDelayed",
+                    $"Station={stationNo}; {diagnostics}; BaselineReset=true");
+            }
+
+            runtime.IsSamplingDelayed = true;
+            if (runtime.IsHeartbeatStale)
+            {
+                WriteOperationLog(
+                    "HeartbeatStaleRecovered",
+                    $"Station={stationNo}; SamplingDelayed=true; {diagnostics}");
+                runtime.IsHeartbeatStale = false;
+            }
+
+            return HeartbeatCheckResult.Healthy(
+                Text(TextKeys.Plc.MessageHeartbeatSamplingDelayed, diagnostics));
+        }
+
+        if (runtime.IsSamplingDelayed)
+        {
+            WriteOperationLog(
+                "HeartbeatSamplingRecovered",
+                $"Station={stationNo}; {diagnostics}");
+            runtime.IsSamplingDelayed = false;
+        }
+
+        var changeState = UpdatePlcHeartbeatChange(runtime, currentValue, now);
+        var unchangedDuration = now - runtime.LastPlcHeartbeatChangeTime;
+        if (changeState == PlcHeartbeatChangeState.Baseline)
+        {
+            return HeartbeatCheckResult.Transient(
+                $"PLC heartbeat baseline value received at {runtime.LastPlcHeartbeatChangeTime:HH:mm:ss}. {diagnostics}",
+                hasSuccessfulSample: true);
+        }
+
+        if (changeState == PlcHeartbeatChangeState.Unchanged)
+        {
+            if (unchangedDuration > heartbeatTimeout)
+            {
+                if (!runtime.IsHeartbeatStale)
+                {
+                    WriteOperationLog(
+                        "HeartbeatStale",
+                        $"Station={stationNo}; UnchangedSeconds={unchangedDuration.TotalSeconds:0.0}; {diagnostics}");
+                }
+
+                runtime.IsHeartbeatStale = true;
+                return HeartbeatCheckResult.Faulted(
+                    $"{Text(TextKeys.Plc.MessageHeartbeatNoChange, unchangedDuration.TotalSeconds)} {diagnostics}");
+            }
+
+            return HeartbeatCheckResult.Transient(
+                $"PLC heartbeat waiting for change, unchanged for {unchangedDuration.TotalSeconds:0.0}s. {diagnostics}",
+                hasSuccessfulSample: true);
+        }
+
+        if (runtime.IsHeartbeatStale)
+        {
+            WriteOperationLog(
+                "HeartbeatStaleRecovered",
+                $"Station={stationNo}; {diagnostics}");
+            runtime.IsHeartbeatStale = false;
+        }
+
+        return HeartbeatCheckResult.Healthy(
+            $"PLC heartbeat changed at {runtime.LastPlcHeartbeatChangeTime:HH:mm:ss}. {diagnostics}");
+    }
+
+    private string BuildHeartbeatDiagnostics(
+        TimedPlcReadResult<string> timedRead,
+        TimeSpan sampleInterval,
+        AppSettings settings)
+    {
+        return Text(
+            TextKeys.Plc.MessageHeartbeatDiagnostics,
+            sampleInterval.TotalMilliseconds,
+            timedRead.LockWait.TotalMilliseconds,
+            timedRead.OperationDuration.TotalMilliseconds,
+            PlcHeartbeatSettingsRules.NormalizeReadIntervalMilliseconds(
+                settings.PlcHeartbeatReadIntervalMilliseconds),
+            PlcHeartbeatSettingsRules.NormalizeTimeoutSeconds(
+                settings.PlcHeartbeatTimeoutSeconds));
     }
 
     private async Task<PlcServiceResult> WriteHeartbeatValueAsync(
@@ -758,13 +847,14 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
         };
     }
 
-    private async Task<PlcServiceResult<string>> ReadHeartbeatValueAsync(
+    private async Task<TimedPlcReadResult<string>> ReadHeartbeatValueAsync(
         BizPlcAddress? heartbeatAddress,
         CancellationToken cancellationToken)
     {
         if (!IsUsableHeartbeatAddress(heartbeatAddress, out var address))
         {
-            return PlcServiceResult<string>.Fail("PLC heartbeat business address is not configured or disabled.");
+            return TimedPlcReadResult<string>.Failure(
+                "PLC heartbeat business address is not configured or disabled.");
         }
 
         return await ReadConfiguredAddressValueAsync(heartbeatAddress!, address, cancellationToken);
@@ -783,7 +873,8 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
         }
 
         var verifiedAddress = verificationAddress!;
-        var readResult = await ReadConfiguredAddressValueAsync(verifiedAddress, address, cancellationToken);
+        var timedRead = await ReadConfiguredAddressValueAsync(verifiedAddress, address, cancellationToken);
+        var readResult = timedRead.Result;
         var addressLabel = $"{verifiedAddress.LogicalKey}:{address}";
         return readResult.IsSuccess
             ? PlcServiceResult.Success(Text(TextKeys.Plc.MessageBusinessVerificationSucceeded, addressLabel))
@@ -793,41 +884,45 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
     /// <summary>
     /// Converts any supported PLC address value to text for heartbeat and verification checks.
     /// </summary>
-    private async Task<PlcServiceResult<string>> ReadConfiguredAddressValueAsync(
+    private async Task<TimedPlcReadResult<string>> ReadConfiguredAddressValueAsync(
         BizPlcAddress plcAddress,
         string address,
         CancellationToken cancellationToken)
     {
         return NormalizeDataType(plcAddress.DataType) switch
         {
-            AppConstants.PlcDataTypes.Bool => NormalizeHeartbeatRead(await ExecuteRawReadAsync(
+            AppConstants.PlcDataTypes.Bool => NormalizeHeartbeatRead(await ExecuteTimedRawReadAsync(
                 address,
                 client => client.ReadBoolAsync(address),
                 cancellationToken)),
-            AppConstants.PlcDataTypes.Int32 => NormalizeHeartbeatRead(await ExecuteRawReadAsync(
+            AppConstants.PlcDataTypes.Int32 => NormalizeHeartbeatRead(await ExecuteTimedRawReadAsync(
                 address,
                 client => client.ReadInt32Async(address),
                 cancellationToken)),
-            AppConstants.PlcDataTypes.Float => NormalizeHeartbeatRead(await ExecuteRawReadAsync(
+            AppConstants.PlcDataTypes.Float => NormalizeHeartbeatRead(await ExecuteTimedRawReadAsync(
                 address,
                 client => client.ReadFloatAsync(address),
                 cancellationToken)),
-            AppConstants.PlcDataTypes.String => NormalizeHeartbeatRead(await ExecuteRawReadAsync(
+            AppConstants.PlcDataTypes.String => NormalizeHeartbeatRead(await ExecuteTimedRawReadAsync(
                 ResolveStringReadAddress(address),
                 client => client.ReadStringAsync(ResolveStringReadAddress(address), (ushort)Math.Max(1, plcAddress.DataLength)),
                 cancellationToken)),
-            _ => NormalizeHeartbeatRead(await ExecuteRawReadAsync(
+            _ => NormalizeHeartbeatRead(await ExecuteTimedRawReadAsync(
                 address,
                 client => client.ReadInt16Async(address),
                 cancellationToken))
         };
     }
 
-    private static PlcServiceResult<string> NormalizeHeartbeatRead<T>(PlcServiceResult<T> result)
+    private static TimedPlcReadResult<string> NormalizeHeartbeatRead<T>(TimedPlcReadResult<T> timedRead)
     {
+        var result = timedRead.Result;
         if (!result.IsSuccess)
         {
-            return PlcServiceResult<string>.Fail(result.Message);
+            return new TimedPlcReadResult<string>(
+                PlcServiceResult<string>.Fail(result.Message),
+                timedRead.LockWait,
+                timedRead.OperationDuration);
         }
 
         var value = result.Value switch
@@ -838,7 +933,10 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
             _ => result.Value.ToString() ?? string.Empty
         };
 
-        return PlcServiceResult<string>.Success(value.Trim().Trim('\0'));
+        return new TimedPlcReadResult<string>(
+            PlcServiceResult<string>.Success(value.Trim().Trim('\0')),
+            timedRead.LockWait,
+            timedRead.OperationDuration);
     }
 
     private PlcHeartbeatChangeState UpdatePlcHeartbeatChange(StationHeartbeatRuntime runtime, string value, DateTime now)
@@ -959,24 +1057,42 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
         Func<NetworkDeviceBase, Task<OperateResult<T>>> action,
         CancellationToken cancellationToken)
     {
+        return (await ExecuteTimedRawReadAsync(address, action, cancellationToken)).Result;
+    }
+
+    /// <summary>
+    /// 通过当前 TCP 客户端读取，并记录等待通讯锁和 PLC 实际读取耗时。
+    /// </summary>
+    private async Task<TimedPlcReadResult<T>> ExecuteTimedRawReadAsync<T>(
+        string address,
+        Func<NetworkDeviceBase, Task<OperateResult<T>>> action,
+        CancellationToken cancellationToken)
+    {
         cancellationToken.ThrowIfCancellationRequested();
+        var lockWaitStart = Stopwatch.GetTimestamp();
         await _sync.WaitAsync(cancellationToken);
+        var lockWait = Stopwatch.GetElapsedTime(lockWaitStart);
+        var operationStart = Stopwatch.GetTimestamp();
         try
         {
             var client = Volatile.Read(ref _client);
             if (client is null)
             {
-                return PlcServiceResult<T>.Fail(Text(TextKeys.Plc.MessageNotConnected));
+                return new TimedPlcReadResult<T>(
+                    PlcServiceResult<T>.Fail(Text(TextKeys.Plc.MessageNotConnected)),
+                    lockWait,
+                    Stopwatch.GetElapsedTime(operationStart));
             }
 
             var result = await action(client);
             cancellationToken.ThrowIfCancellationRequested();
-            if (result.IsSuccess)
-            {
-                return PlcServiceResult<T>.Success(result.Content);
-            }
-
-            return PlcServiceResult<T>.Fail(result.Message);
+            var serviceResult = result.IsSuccess
+                ? PlcServiceResult<T>.Success(result.Content)
+                : PlcServiceResult<T>.Fail(result.Message);
+            return new TimedPlcReadResult<T>(
+                serviceResult,
+                lockWait,
+                Stopwatch.GetElapsedTime(operationStart));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -988,7 +1104,10 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
         }
         catch (Exception ex)
         {
-            return PlcServiceResult<T>.Fail(ex.Message);
+            return new TimedPlcReadResult<T>(
+                PlcServiceResult<T>.Fail(ex.Message),
+                lockWait,
+                Stopwatch.GetElapsedTime(operationStart));
         }
         finally
         {
@@ -1157,14 +1276,14 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
     /// </summary>
     /// <param name="client">待关闭的 PLC 客户端。</param>
     /// <param name="cancellationToken">停止流程取消令牌。</param>
-    private static async Task CloseVendorClientAsync(NetworkDeviceBase client, CancellationToken cancellationToken)
+    private async Task CloseVendorClientAsync(NetworkDeviceBase client, CancellationToken cancellationToken)
     {
         Task? closeTask = null;
         try
         {
             closeTask = client.ConnectCloseAsync();
             await closeTask.WaitAsync(
-                TimeSpan.FromMilliseconds(PlcCommunicationTimeoutMilliseconds),
+                TimeSpan.FromMilliseconds(BuildPlcTimeout(CurrentSettings)),
                 cancellationToken);
         }
         catch
@@ -1200,7 +1319,7 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
         try
         {
             lockTaken = await _sync.WaitAsync(
-                TimeSpan.FromMilliseconds(PlcCommunicationTimeoutMilliseconds),
+                TimeSpan.FromMilliseconds(BuildPlcTimeout(CurrentSettings)),
                 cancellationToken);
         }
         catch
@@ -1389,10 +1508,9 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
         return $"{settings.PlcType}@{settings.PlcIp}:{settings.PlcPort}";
     }
 
-    private static int BuildPlcTimeout()
-    {
-        return PlcCommunicationTimeoutMilliseconds;
-    }
+    private static int BuildPlcTimeout(AppSettings settings)
+        => PlcHeartbeatSettingsRules.NormalizeCommunicationTimeoutMilliseconds(
+            settings.PlcCommunicationTimeoutMilliseconds);
 
     /// <summary>
     /// 软心跳使用的一组业务信号地址。
@@ -1401,6 +1519,15 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
         BizPlcAddress? PcHeartbeat,
         BizPlcAddress? PlcHeartbeat,
         BizPlcAddress? VerificationAddress);
+
+    private sealed record TimedPlcReadResult<T>(
+        PlcServiceResult<T> Result,
+        TimeSpan LockWait,
+        TimeSpan OperationDuration)
+    {
+        public static TimedPlcReadResult<T> Failure(string message)
+            => new(PlcServiceResult<T>.Fail(message), TimeSpan.Zero, TimeSpan.Zero);
+    }
 
     /// <summary>
     /// 每个工位独立维护心跳采样状态，避免双工位共用一个运行态导致误判。
@@ -1417,6 +1544,16 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
 
         public DateTime LastPlcHeartbeatChangeTime { get; set; } = DateTime.MinValue;
 
+        public DateTime? LastPlcHeartbeatSampleTime { get; set; }
+
+        public DateTime? PreviousPlcHeartbeatSampleTime { get; set; }
+
+        public bool IsReadFailureActive { get; set; }
+
+        public bool IsSamplingDelayed { get; set; }
+
+        public bool IsHeartbeatStale { get; set; }
+
         public void Reset()
         {
             NextPcHeartbeatValue = 0;
@@ -1424,33 +1561,35 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
             LastPlcHeartbeatValue = null;
             LastPcHeartbeatWriteTime = DateTime.MinValue;
             LastPlcHeartbeatChangeTime = DateTime.MinValue;
+            LastPlcHeartbeatSampleTime = null;
+            PreviousPlcHeartbeatSampleTime = null;
+            IsReadFailureActive = false;
+            IsSamplingDelayed = false;
+            IsHeartbeatStale = false;
         }
     }
 
     /// <summary>
     /// 区分“心跳健康”“暂时失败但继续容错”和“需要断线重连”三种内部结果。
     /// </summary>
-    private sealed record HeartbeatCheckResult(bool IsHealthy, bool ShouldDisconnect, bool IsFaulted, string Message)
+    private sealed record HeartbeatCheckResult(
+        bool IsHealthy,
+        bool ShouldDisconnect,
+        bool IsFaulted,
+        bool HasSuccessfulSample,
+        string Message)
     {
         public static HeartbeatCheckResult Healthy(string message)
-        {
-            return new HeartbeatCheckResult(true, false, false, message);
-        }
+            => new(true, false, false, true, message);
 
-        public static HeartbeatCheckResult Transient(string message)
-        {
-            return new HeartbeatCheckResult(false, false, false, message);
-        }
+        public static HeartbeatCheckResult Transient(string message, bool hasSuccessfulSample)
+            => new(false, false, false, hasSuccessfulSample, message);
 
         public static HeartbeatCheckResult Faulted(string message)
-        {
-            return new HeartbeatCheckResult(false, false, true, message);
-        }
+            => new(false, false, true, true, message);
 
         public static HeartbeatCheckResult Disconnect(string message)
-        {
-            return new HeartbeatCheckResult(false, true, false, message);
-        }
+            => new(false, true, false, false, message);
     }
 
     private enum PlcHeartbeatChangeState

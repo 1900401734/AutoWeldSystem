@@ -100,6 +100,7 @@ public static class Program
                     services.AddTransient<PermissionUiBinder>();
 
                     services.AddHttpClient<IMesProvider, MesProvider>();
+                    services.AddSingleton<CenterServerAvailabilityLogGate>();
                     services.AddHttpClient<CenterTelemetryClient>();
 
                     services.AddTransient<LoginForm>();

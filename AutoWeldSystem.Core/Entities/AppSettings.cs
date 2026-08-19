@@ -217,6 +217,12 @@ public class AppSettings
     [SugarColumn(ColumnDescription = "PLC心跳监测频率（毫秒）")]
     public int PlcHeartbeatReadIntervalMilliseconds { get; set; } = 300;
 
+    [SugarColumn(ColumnDescription = "PLC心跳超时时间（秒）")]
+    public int PlcHeartbeatTimeoutSeconds { get; set; } = 3;
+
+    [SugarColumn(ColumnDescription = "PLC通讯超时（毫秒）")]
+    public int PlcCommunicationTimeoutMilliseconds { get; set; } = 3000;
+
     #endregion
 
     [SugarColumn(Length = 50, ColumnDescription = "已同步到MES的设备编号", IsNullable = true)]

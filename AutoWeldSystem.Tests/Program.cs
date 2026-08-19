@@ -51,6 +51,9 @@ var tests = new (string Name, Action Run)[]
     ("Device lifecycle ignores transient PLC connection states", DeviceLifecycleIgnoresTransientPlcConnectionStates),
     ("PLC shutdown returns while communication lock is held", PlcShutdownReturnsWhileCommunicationLockIsHeld),
     ("PLC shutdown detaches the client before bounded close", PlcShutdownDetachesClientBeforeBoundedClose),
+    ("PLC heartbeat settings normalize and preserve safe defaults", PlcHeartbeatSettingsNormalizeAndPreserveSafeDefaults),
+    ("PLC heartbeat sampling avoids toggle aliasing and delayed false faults", PlcHeartbeatSamplingAvoidsToggleAliasingAndDelayedFalseFaults),
+    ("PLC heartbeat settings are wired through the system settings view", PlcHeartbeatSettingsAreWiredThroughSystemSettingsView),
     ("Monitor view cancels business signal reconciliation on destroy", MonitorViewCancelsBusinessSignalReconciliationOnDestroy),
     ("Monitor view cancels pending upload retry on destroy", MonitorViewCancelsPendingUploadRetryOnDestroy),
     ("PLC status tooltip uses compact localized acrylic panel", PlcStatusTooltipUsesCompactLocalizedAcrylicPanel),
@@ -137,6 +140,11 @@ var tests = new (string Name, Action Run)[]
     ("Center offline state keeps PLC status unchanged", CenterOfflineStateKeepsPlcStatusUnchanged),
     ("Center telemetry signature tracks dashboard content only", CenterTelemetrySignatureTracksDashboardContentOnly),
     ("Center telemetry sync gates snapshots behind heartbeat", CenterTelemetrySyncGatesSnapshotsBehindHeartbeat),
+    ("Center availability log gate aggregates failures and recovery", CenterAvailabilityLogGateAggregatesFailuresAndRecovery),
+    ("Center availability classifies timeout and cancellation", CenterAvailabilityClassifiesTimeoutAndCancellation),
+    ("Center client aggregates connectivity failures across instances", CenterClientAggregatesConnectivityFailuresAcrossInstances),
+    ("Center heartbeat rejection stays out of program exception log", CenterHeartbeatRejectionStaysOutOfProgramExceptionLog),
+    ("Center malformed response stays in program exception log", CenterMalformedResponseStaysInProgramExceptionLog),
     ("Center interaction types stay shared across client and server", CenterInteractionTypesStaySharedAcrossClientAndServer),
     ("Center telemetry jsonl fallback preserves MES status names", CenterTelemetryJsonlFallbackPreservesMesStatusNames),
     ("Center alarm message clears once the exception recovers", CenterAlarmMessageClearsOnceTheExceptionRecovers),
@@ -480,11 +488,101 @@ static void PlcShutdownDetachesClientBeforeBoundedClose()
     AssertTrue(closeMethod.Contains("ConnectCloseAsync()", StringComparison.Ordinal), "停止 PLC 时必须异步请求关闭第三方客户端。");
     AssertTrue(closeMethod.Contains("WaitAsync", StringComparison.Ordinal), "第三方客户端关闭必须有等待边界。");
     AssertTrue(drainMethod.Contains("_sync.WaitAsync", StringComparison.Ordinal), "关闭客户端后必须有界排空通讯锁。");
-    AssertTrue(drainMethod.Contains("PlcCommunicationTimeoutMilliseconds", StringComparison.Ordinal), "通讯锁排空必须沿用 PLC 通讯超时。");
+    AssertTrue(drainMethod.Contains("BuildPlcTimeout(CurrentSettings)", StringComparison.Ordinal), "通讯锁排空必须沿用当前配置的 PLC 通讯超时。");
     AssertTrue(connectMethod.Contains("Volatile.Read(ref _stopping) != 0", StringComparison.Ordinal), "连接完成后必须再次检查停止状态。");
     AssertTrue(connectMethod.Contains("Interlocked.CompareExchange(ref _client, null, client)", StringComparison.Ordinal), "退出期间完成的连接必须从服务中原子移除。");
     AssertTrue(connectionLoopMethod.Contains("catch (Exception) when (cancellationToken.IsCancellationRequested)", StringComparison.Ordinal), "停止期间旧连接循环的退出异常不得发布为 PLC 故障。");
     AssertTrue(disposeMethod.Contains("_sync.Wait(0)", StringComparison.Ordinal), "仍有通讯任务占锁时不得提前释放 SemaphoreSlim。");
+}
+
+static void PlcHeartbeatSettingsNormalizeAndPreserveSafeDefaults()
+{
+    var defaults = new AppSettings();
+    AssertEqual(300, defaults.PlcHeartbeatReadIntervalMilliseconds, "PLC心跳监测频率默认必须为300ms。");
+    AssertEqual(3, defaults.PlcHeartbeatTimeoutSeconds, "PLC心跳超时时间默认必须为3秒。");
+    AssertEqual(3000, defaults.PlcCommunicationTimeoutMilliseconds, "PLC通讯超时默认必须为3000ms。");
+
+    AssertEqual(300, PlcHeartbeatSettingsRules.NormalizeReadIntervalMilliseconds(0), "旧数据库频率0必须回退到300ms。");
+    AssertEqual(100, PlcHeartbeatSettingsRules.NormalizeReadIntervalMilliseconds(50), "心跳监测频率下限必须为100ms。");
+    AssertEqual(5000, PlcHeartbeatSettingsRules.NormalizeReadIntervalMilliseconds(6000), "心跳监测频率上限必须为5000ms。");
+    AssertEqual(3, PlcHeartbeatSettingsRules.NormalizeTimeoutSeconds(0), "旧数据库心跳超时0必须回退到3秒。");
+    AssertEqual(1, PlcHeartbeatSettingsRules.NormalizeTimeoutSeconds(1), "心跳超时下限必须为1秒。");
+    AssertEqual(60, PlcHeartbeatSettingsRules.NormalizeTimeoutSeconds(90), "心跳超时上限必须为60秒。");
+    AssertEqual(3000, PlcHeartbeatSettingsRules.NormalizeCommunicationTimeoutMilliseconds(0), "旧数据库通讯超时0必须回退到3000ms。");
+    AssertEqual(100, PlcHeartbeatSettingsRules.NormalizeCommunicationTimeoutMilliseconds(50), "通讯超时下限必须为100ms。");
+    AssertEqual(30000, PlcHeartbeatSettingsRules.NormalizeCommunicationTimeoutMilliseconds(40000), "通讯超时上限必须为30000ms。");
+}
+
+static void PlcHeartbeatSamplingAvoidsToggleAliasingAndDelayedFalseFaults()
+{
+    var sampleStart = new DateTime(2026, 8, 18, 10, 0, 0);
+    var observedValues = Enumerable
+        .Range(0, 20)
+        .Select(index => (index, sampleTime: sampleStart.AddMilliseconds(index * 300)))
+        .Select(item => item.sampleTime - sampleStart)
+        .Select(elapsed => ((int)(elapsed.TotalMilliseconds / 500) % 2).ToString())
+        .ToArray();
+
+    AssertTrue(observedValues.Distinct(StringComparer.Ordinal).Count() > 1, "500ms翻转信号按300ms采样时必须能够观察到0/1变化。");
+    AssertFalse(
+        PlcHeartbeatSettingsRules.IsSamplingDelayed(
+            sampleStart.AddMilliseconds(300),
+            sampleStart.AddMilliseconds(600),
+            timeoutSeconds: 3),
+        "300ms正常采样间隔不应被判定为采样延迟。");
+    AssertTrue(
+        PlcHeartbeatSettingsRules.IsSamplingDelayed(
+            sampleStart,
+            sampleStart.AddSeconds(3.1),
+            timeoutSeconds: 3),
+        "采样间隔超过心跳超时后必须允许重置基线，避免把错过的翻转误判为停滞。");
+
+    var serviceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Plc", "CommunicationService.cs"),
+        Encoding.UTF8);
+    AssertTrue(serviceCode.Contains("_sync.WaitAsync(cancellationToken)", StringComparison.Ordinal), "心跳采样必须继续经过共享通讯锁，诊断才能暴露锁竞争。");
+    AssertTrue(serviceCode.Contains("Stopwatch.GetElapsedTime(lockWaitStart)", StringComparison.Ordinal), "心跳必须记录通讯锁等待耗时。");
+    AssertTrue(serviceCode.Contains("Stopwatch.GetElapsedTime(operationStart)", StringComparison.Ordinal), "心跳必须记录PLC实际读取耗时。");
+    AssertTrue(serviceCode.Contains("BaselineReset=true", StringComparison.Ordinal), "采样延迟时必须记录基线重置诊断。");
+    AssertTrue(serviceCode.Contains("runtime.LastPlcHeartbeatValue = currentValue", StringComparison.Ordinal), "采样延迟时必须以当前值重置心跳基线。");
+    AssertTrue(serviceCode.Contains("unchangedDuration > heartbeatTimeout", StringComparison.Ordinal), "正常连续采样下仍超过超时时间未变化才判定心跳停滞。");
+    AssertTrue(serviceCode.Contains("HeartbeatFailureThreshold = 3", StringComparison.Ordinal), "连续三次读取失败的断联阈值必须保留。");
+    AssertTrue(serviceCode.Contains("Dictionary<int, StationHeartbeatRuntime>", StringComparison.Ordinal), "双工位必须分别维护心跳采样运行态。");
+}
+
+static void PlcHeartbeatSettingsAreWiredThroughSystemSettingsView()
+{
+    var viewCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.cs"),
+        Encoding.UTF8);
+    var designerCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.Designer.cs"),
+        Encoding.UTF8);
+    var textKeysCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Core", "Constants", "TextKeys.cs"),
+        Encoding.UTF8);
+    var chineseResources = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.resx"),
+        Encoding.UTF8);
+    var englishResources = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.en.resx"),
+        Encoding.UTF8);
+
+    AssertTrue(viewCode.Contains("inputPlcHeartbeatTimeout", StringComparison.Ordinal), "系统设置必须加载、校验并保存PLC心跳超时。");
+    AssertTrue(viewCode.Contains("inputPlcCommunicationTimeout", StringComparison.Ordinal), "系统设置必须加载、校验并保存PLC通讯超时。");
+    AssertTrue(viewCode.Contains("PlcHeartbeatTimeoutSeconds", StringComparison.Ordinal), "PLC心跳超时必须写入AppSettings。");
+    AssertTrue(viewCode.Contains("PlcCommunicationTimeoutMilliseconds", StringComparison.Ordinal), "PLC通讯超时必须写入AppSettings。");
+    AssertTrue(viewCode.Contains("HasPlcCommunicationChanged", StringComparison.Ordinal), "心跳参数变更必须复用PLC重启流程。");
+    AssertTrue(designerCode.Contains("lblPlcHeartbeatTimeout", StringComparison.Ordinal), "Designer必须声明PLC心跳超时控件。");
+    AssertTrue(designerCode.Contains("lblPlcCommunicationTimeout", StringComparison.Ordinal), "Designer必须声明PLC通讯超时控件。");
+    AssertTrue(textKeysCode.Contains("PlcHeartbeatTimeout", StringComparison.Ordinal), "必须有PLC心跳超时本地化键。");
+    AssertTrue(textKeysCode.Contains("PlcCommunicationTimeout", StringComparison.Ordinal), "必须有PLC通讯超时本地化键。");
+    AssertTrue(chineseResources.Contains("PLC心跳监测频率(ms)", StringComparison.Ordinal), "中文资源必须使用PLC心跳监测频率文案。");
+    AssertTrue(chineseResources.Contains("PLC心跳超时时间(s)", StringComparison.Ordinal), "中文资源必须包含PLC心跳超时文案。");
+    AssertTrue(chineseResources.Contains("PLC通讯超时(ms)", StringComparison.Ordinal), "中文资源必须包含PLC通讯超时文案。");
+    AssertTrue(englishResources.Contains("PLC heartbeat monitoring interval (ms)", StringComparison.Ordinal), "英文资源必须使用PLC heartbeat monitoring interval文案。");
+    AssertTrue(englishResources.Contains("PLC heartbeat timeout (s)", StringComparison.Ordinal), "英文资源必须包含PLC heartbeat timeout文案。");
+    AssertTrue(englishResources.Contains("PLC communication timeout (ms)", StringComparison.Ordinal), "英文资源必须包含PLC communication timeout文案。");
 }
 
 static void MonitorViewCancelsBusinessSignalReconciliationOnDestroy()
@@ -3370,8 +3468,10 @@ static void CenterTelemetrySyncGatesSnapshotsBehindHeartbeat()
     };
     var handler = new CenterTelemetryHttpMessageHandler { IsAvailable = false };
     var interactionLogs = new FakeCenterInteractionLogService();
+    var exceptionLogs = new FakeProgramExceptionLogService();
+    var availabilityLogGate = new CenterServerAvailabilityLogGate();
     using var httpClient = new HttpClient(handler);
-    var client = new CenterTelemetryClient(httpClient, interactionLogs);
+    var client = new CenterTelemetryClient(httpClient, interactionLogs, availabilityLogGate);
     using var dbContext = new AutoWeldSystem.Data.SqlSugarDbContext("server=127.0.0.1;database=unused;uid=unused;pwd=unused;");
     var service = new CenterTelemetrySyncService(
         dbContext,
@@ -3379,7 +3479,7 @@ static void CenterTelemetrySyncGatesSnapshotsBehindHeartbeat()
         new FakeDeviceStatusService(),
         new FakePlcCommunicationService(),
         new FakePlcProductionMonitorService(),
-        new FakeProgramExceptionLogService(),
+        exceptionLogs,
         client);
     var baseline = CreateCenterTelemetryTestRequest();
 
@@ -3457,6 +3557,144 @@ static void CenterTelemetrySyncGatesSnapshotsBehindHeartbeat()
         ["api/center/heartbeat", "api/center/telemetry"],
         handler.RequestPaths.TakeLast(2).ToArray(),
         "遥测拒绝后必须保留待同步签名并在下一周期重试。");
+}
+
+static void CenterAvailabilityLogGateAggregatesFailuresAndRecovery()
+{
+    var gate = new CenterServerAvailabilityLogGate();
+    var startedAt = new DateTime(2026, 8, 18, 8, 0, 0);
+
+    var first = gate.RegisterFailure(startedAt);
+    AssertTrue(first.ShouldWrite, "首次中心连接失败必须立即记录。");
+    AssertTrue(first.IsFirstFailure, "首次中心连接失败必须标记为新故障。");
+    AssertEqual(1L, first.FailureCount, "首次故障计数必须为1。");
+
+    var repeated = gate.RegisterFailure(startedAt.AddMinutes(9));
+    AssertFalse(repeated.ShouldWrite, "十分钟内的重复连接失败必须被抑制。");
+    AssertEqual(2L, repeated.FailureCount, "被抑制的失败仍必须累计计数。");
+
+    var summary = gate.RegisterFailure(startedAt.AddMinutes(10));
+    AssertTrue(summary.ShouldWrite, "持续不可达满十分钟必须记录摘要。");
+    AssertFalse(summary.IsFirstFailure, "十分钟摘要不能标记为首次故障。");
+    AssertEqual(3L, summary.FailureCount, "摘要必须携带完整累计失败次数。");
+
+    AssertTrue(gate.RegisterReachable(), "不可达后的首个有效响应必须标记恢复。");
+    AssertFalse(gate.RegisterReachable(), "连续有效响应不能重复标记恢复。");
+
+    var failedAgain = gate.RegisterFailure(startedAt.AddMinutes(11));
+    AssertTrue(failedAgain.ShouldWrite, "恢复后再次不可达必须作为新故障立即记录。");
+    AssertTrue(failedAgain.IsFirstFailure, "恢复后的新故障必须重置首次标记。");
+    AssertEqual(1L, failedAgain.FailureCount, "恢复后的新故障必须重置累计次数。");
+}
+
+static void CenterAvailabilityClassifiesTimeoutAndCancellation()
+{
+    AssertTrue(
+        CenterServerAvailabilityLogGate.IsConnectivityFailure(new HttpRequestException("refused"), CancellationToken.None),
+        "HTTP连接异常必须识别为中心不可达。");
+    AssertTrue(
+        CenterServerAvailabilityLogGate.IsConnectivityFailure(new TaskCanceledException("timeout"), CancellationToken.None),
+        "调用方未取消时的HTTP超时必须识别为中心不可达。");
+
+    using var cancellation = new CancellationTokenSource();
+    cancellation.Cancel();
+    AssertFalse(
+        CenterServerAvailabilityLogGate.IsConnectivityFailure(new TaskCanceledException("shutdown"), cancellation.Token),
+        "应用主动取消不能记录为中心不可达。");
+    AssertFalse(
+        CenterServerAvailabilityLogGate.IsConnectivityFailure(new InvalidOperationException("invalid payload"), CancellationToken.None),
+        "非连接类程序异常不能被不可达门控吞掉。");
+}
+
+static void CenterClientAggregatesConnectivityFailuresAcrossInstances()
+{
+    var settings = new AppSettings
+    {
+        CenterServerBaseUrl = "http://127.0.0.1:7099/",
+        DeviceId = "D-001",
+        DeviceName = "Device-A"
+    };
+    var gate = new CenterServerAvailabilityLogGate();
+    var interactionLogs = new FakeCenterInteractionLogService();
+    var exceptionLogs = new FakeProgramExceptionLogService();
+    var firstHandler = new CenterTelemetryHttpMessageHandler { IsAvailable = false };
+    var secondHandler = new CenterTelemetryHttpMessageHandler { IsAvailable = false };
+    using var firstHttpClient = new HttpClient(firstHandler);
+    using var secondHttpClient = new HttpClient(secondHandler);
+    var firstClient = new CenterTelemetryClient(firstHttpClient, interactionLogs, gate);
+    var secondClient = new CenterTelemetryClient(secondHttpClient, interactionLogs, gate);
+
+    AssertThrows<HttpRequestException>(
+        () => firstClient.UploadHeartbeatAsync(settings, new CenterTelemetrySnapshotRequest()).GetAwaiter().GetResult(),
+        "首次心跳连接失败必须继续抛给调用方处理状态。");
+    AssertThrows<HttpRequestException>(
+        () => secondClient.UploadProductReportAsync(settings, new CenterProductReportRequest()).GetAwaiter().GetResult(),
+        "产品报表连接失败必须继续抛给队列处理重试。");
+    AssertEqual(1, interactionLogs.Entries.Count, "不同客户端实例的连续不可达只应记录首次交互失败。");
+    AssertEqual(0, exceptionLogs.Entries.Count, "不同后台链路的连续不可达不得写入程序异常日志。");
+
+    secondHandler.IsAvailable = true;
+    secondClient.UploadProductReportAsync(settings, new CenterProductReportRequest()).GetAwaiter().GetResult();
+    AssertEqual(2, interactionLogs.Entries.Count, "首个恢复响应必须追加一条成功交互日志。");
+    AssertTrue(interactionLogs.Entries[^1].IsSuccess, "恢复交互日志必须标记成功。");
+
+    firstHandler.IsAvailable = true;
+    firstClient.UploadHeartbeatAsync(settings, new CenterTelemetrySnapshotRequest()).GetAwaiter().GetResult();
+    AssertEqual(2, interactionLogs.Entries.Count, "恢复后的连续成功心跳不能重复追加恢复日志。");
+}
+
+static void CenterHeartbeatRejectionStaysOutOfProgramExceptionLog()
+{
+    var settings = new AppSettings
+    {
+        EnableCenterServerSync = true,
+        CenterServerBaseUrl = "http://127.0.0.1:7099/",
+        DeviceId = "D-001",
+        DeviceName = "Device-A"
+    };
+    var handler = new CenterTelemetryHttpMessageHandler { HeartbeatAccepted = false };
+    var interactionLogs = new FakeCenterInteractionLogService();
+    var exceptionLogs = new FakeProgramExceptionLogService();
+    var gate = new CenterServerAvailabilityLogGate();
+    using var httpClient = new HttpClient(handler);
+    var client = new CenterTelemetryClient(httpClient, interactionLogs, gate);
+    using var dbContext = new AutoWeldSystem.Data.SqlSugarDbContext("server=127.0.0.1;database=unused;uid=unused;pwd=unused;");
+    var service = new CenterTelemetrySyncService(
+        dbContext,
+        new FakeAppSettingsService { Current = settings },
+        new FakeDeviceStatusService(),
+        new FakePlcCommunicationService(),
+        new FakePlcProductionMonitorService(),
+        exceptionLogs,
+        client);
+
+    service.PushRequestAsync(settings, new CenterTelemetrySnapshotRequest()).GetAwaiter().GetResult();
+
+    AssertTrue(service.Current.IsConnected, "中心已返回心跳拒绝时仍应保持连接可达状态。");
+    AssertEqual(1, interactionLogs.Entries.Count, "心跳业务拒绝必须保留服务器交互日志。");
+    AssertFalse(interactionLogs.Entries[0].IsSuccess, "心跳业务拒绝的服务器日志必须标记失败。");
+    AssertEqual(0, exceptionLogs.Entries.Count, "中心心跳业务拒绝不得写入程序异常日志。");
+}
+
+static void CenterMalformedResponseStaysInProgramExceptionLog()
+{
+    var settings = new AppSettings
+    {
+        CenterServerBaseUrl = "http://127.0.0.1:7099/",
+        DeviceId = "D-001",
+        DeviceName = "Device-A"
+    };
+    var handler = new CenterTelemetryHttpMessageHandler { MalformedResponse = true };
+    var interactionLogs = new FakeCenterInteractionLogService();
+    var gate = new CenterServerAvailabilityLogGate();
+    using var httpClient = new HttpClient(handler);
+    var client = new CenterTelemetryClient(httpClient, interactionLogs, gate);
+
+    AssertThrows<JsonException>(
+        () => client.UploadHeartbeatAsync(settings, new CenterTelemetrySnapshotRequest()).GetAwaiter().GetResult(),
+        "畸形中心响应必须继续抛给后台服务，由后台服务写入程序异常日志。");
+    AssertTrue(interactionLogs.Entries.Count > 0, "畸形响应仍必须保留服务器交互日志。");
+    AssertFalse(interactionLogs.Entries[0].IsSuccess, "畸形响应的服务器日志必须标记失败。");
 }
 
 static void CenterInteractionTypesStaySharedAcrossClientAndServer()
@@ -13164,6 +13402,10 @@ sealed class CenterTelemetryHttpMessageHandler : HttpMessageHandler
 
     public bool TelemetryAccepted { get; set; } = true;
 
+    public bool HeartbeatAccepted { get; set; } = true;
+
+    public bool MalformedResponse { get; set; }
+
     public List<string> RequestPaths { get; } = new();
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -13176,8 +13418,19 @@ sealed class CenterTelemetryHttpMessageHandler : HttpMessageHandler
             throw new HttpRequestException("由于目标计算机积极拒绝，无法连接。");
         }
 
+        if (MalformedResponse)
+        {
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("not-json", Encoding.UTF8, "application/json")
+            });
+        }
+
         var isTelemetry = string.Equals(path, "api/center/telemetry", StringComparison.OrdinalIgnoreCase);
-        var success = !isTelemetry || TelemetryAccepted;
+        var isHeartbeat = string.Equals(path, "api/center/heartbeat", StringComparison.OrdinalIgnoreCase);
+        var success = isTelemetry
+            ? TelemetryAccepted
+            : !isHeartbeat || HeartbeatAccepted;
         var ack = new CenterTelemetryAck
         {
             Success = success,

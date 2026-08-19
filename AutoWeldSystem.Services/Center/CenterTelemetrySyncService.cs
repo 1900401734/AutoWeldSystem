@@ -122,7 +122,12 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
                 cancellationToken);
             if (!heartbeatResponse.Success)
             {
-                throw new InvalidOperationException(heartbeatResponse.Message);
+                var message = string.IsNullOrWhiteSpace(heartbeatResponse.Message)
+                    ? "Center heartbeat rejected."
+                    : heartbeatResponse.Message;
+                // 已收到中心应答，属于中心交互业务失败；只保留服务器日志，不升级为程序异常。
+                Publish(true, $"Connected; heartbeat failed: {message}");
+                return;
             }
 
             Publish(true, string.IsNullOrWhiteSpace(heartbeatResponse.Message) ? "Connected" : heartbeatResponse.Message);
@@ -179,7 +184,11 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
             }
             catch (Exception ex)
             {
-                WriteFailureLog(ex);
+                // 连接类异常已由共享客户端按首次/十分钟摘要记录，避免两个后台服务重复刷程序异常。
+                if (!CenterServerAvailabilityLogGate.IsConnectivityFailure(ex, cancellationToken))
+                {
+                    WriteFailureLog(ex);
+                }
             }
 
             var delay = CenterTelemetryRules.NormalizeHeartbeatIntervalSeconds(

@@ -13,6 +13,7 @@ using AutoWeldSystem.Core.Interfaces.MES;
 using AutoWeldSystem.Core.Interfaces.PLC;
 using AutoWeldSystem.Core.Mes;
 using AutoWeldSystem.Core.Production;
+using AutoWeldSystem.Core.Plc;
 using AutoWeldSystem.Core.Runtime;
 
 namespace AutoWeldSystem.UI.Views;
@@ -707,7 +708,12 @@ public partial class SystemSettingView : BaseView
         inputStation2DisplayName.Text = settings.Station2DisplayName;
         chkValidateRecipeBeforeStart.Checked = settings.ValidateRecipeAfterStart;
         chkEnableFinishExpQtyPrompt.Checked = settings.EnableFinishExpQtyPrompt;
-        inputPlcHeartbeatInterval.Text = Math.Clamp(settings.PlcHeartbeatReadIntervalMilliseconds <= 0 ? 300 : settings.PlcHeartbeatReadIntervalMilliseconds, 100, 5000).ToString(CultureInfo.InvariantCulture);
+        inputPlcHeartbeatInterval.Text = PlcHeartbeatSettingsRules.NormalizeReadIntervalMilliseconds(
+            settings.PlcHeartbeatReadIntervalMilliseconds).ToString(CultureInfo.InvariantCulture);
+        inputPlcHeartbeatTimeout.Text = PlcHeartbeatSettingsRules.NormalizeTimeoutSeconds(
+            settings.PlcHeartbeatTimeoutSeconds).ToString(CultureInfo.InvariantCulture);
+        inputPlcCommunicationTimeout.Text = PlcHeartbeatSettingsRules.NormalizeCommunicationTimeoutMilliseconds(
+            settings.PlcCommunicationTimeoutMilliseconds).ToString(CultureInfo.InvariantCulture);
 
         _selectedPlcType = NormalizePlcType(settings.PlcType);
         _selectedPlcStringNumericFormatMode = NormalizePlcStringNumericFormatMode(settings.PlcStringNumericFormatMode);
@@ -838,6 +844,8 @@ public partial class SystemSettingView : BaseView
         lblUploadMode.Text = _localizer.GetString(TextKeys.SystemSetting.UploadMode);
         lblUploadBatchSize.Text = _localizer.GetString(TextKeys.SystemSetting.UploadBatchSize);
         lblPlcHeartbeatInterval.Text = _localizer.GetString(TextKeys.SystemSetting.PlcHeartbeatRate);
+        lblPlcHeartbeatTimeout.Text = _localizer.GetString(TextKeys.SystemSetting.PlcHeartbeatTimeout);
+        lblPlcCommunicationTimeout.Text = _localizer.GetString(TextKeys.SystemSetting.PlcCommunicationTimeout);
         lblStation1DisplayName.Text = _localizer.GetString(TextKeys.SystemSetting.LabelStation1DisplayName);
         lblStation2DisplayName.Text = _localizer.GetString(TextKeys.SystemSetting.LabelStation2DisplayName);
         inputStation1DisplayName.PlaceholderText = _localizer.GetString(TextKeys.SystemSetting.PlaceholderStationDisplayName);
@@ -1320,6 +1328,16 @@ public partial class SystemSettingView : BaseView
             return false;
         }
 
+        if (!TryParsePositiveInt(inputPlcHeartbeatTimeout.Text, NormalizeCaption(lblPlcHeartbeatTimeout.Text), out var heartbeatTimeout))
+        {
+            return false;
+        }
+
+        if (!TryParsePositiveInt(inputPlcCommunicationTimeout.Text, NormalizeCaption(lblPlcCommunicationTimeout.Text), out var communicationTimeout))
+        {
+            return false;
+        }
+
         if (!TryParsePositiveInt(inputCenterServerHeartbeatInterval.Text, NormalizeCaption(lblCenterServerHeartbeatInterval.Text), out var centerHeartbeatInterval))
         {
             return false;
@@ -1378,7 +1396,9 @@ public partial class SystemSettingView : BaseView
         settings.EnableDualWorkOrder = enableDualStation && CurrentSettings.EnableDualWorkOrder;
         settings.ValidateRecipeAfterStart = chkValidateRecipeBeforeStart.Checked;
         settings.EnableFinishExpQtyPrompt = chkEnableFinishExpQtyPrompt.Checked;
-        settings.PlcHeartbeatReadIntervalMilliseconds = Math.Clamp(heartbeatInterval, 100, 5000);
+        settings.PlcHeartbeatReadIntervalMilliseconds = PlcHeartbeatSettingsRules.NormalizeReadIntervalMilliseconds(heartbeatInterval);
+        settings.PlcHeartbeatTimeoutSeconds = PlcHeartbeatSettingsRules.NormalizeTimeoutSeconds(heartbeatTimeout);
+        settings.PlcCommunicationTimeoutMilliseconds = PlcHeartbeatSettingsRules.NormalizeCommunicationTimeoutMilliseconds(communicationTimeout);
         settings.UploadMode = NormalizeUploadMode(_selectedUploadMode);
         settings.UploadBatchSize = Math.Max(1, uploadBatchSize);
         settings.ProcessParameterDeviceType = NormalizeProcessParameterDeviceType(_selectedProcessParameterDeviceType);
@@ -1528,7 +1548,9 @@ public partial class SystemSettingView : BaseView
         return !SameText(oldSettings.PlcIp, newSettings.PlcIp)
             || oldSettings.PlcPort != newSettings.PlcPort
             || !SameText(oldSettings.PlcType, newSettings.PlcType)
-            || oldSettings.PlcHeartbeatReadIntervalMilliseconds != newSettings.PlcHeartbeatReadIntervalMilliseconds;
+            || oldSettings.PlcHeartbeatReadIntervalMilliseconds != newSettings.PlcHeartbeatReadIntervalMilliseconds
+            || oldSettings.PlcHeartbeatTimeoutSeconds != newSettings.PlcHeartbeatTimeoutSeconds
+            || oldSettings.PlcCommunicationTimeoutMilliseconds != newSettings.PlcCommunicationTimeoutMilliseconds;
     }
 
     private AddDeviceReq BuildDeviceRequest(AppSettings previousSettings, AppSettings newSettings)
