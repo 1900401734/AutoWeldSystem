@@ -188,6 +188,9 @@ public partial class MonitorView : BaseView
     private Task? _pendingUploadRetryTask;
     private int _pendingUploadRetryRunning;
     private bool _plcStatusToolTipVisible;
+    private MonitorRightLayoutMode? _lastRightLayoutMode;
+    private int _lastRightLayoutViewportHeight = -1;
+    private int _lastRightLayoutDpi = -1;
 
     #endregion
 
@@ -1380,6 +1383,27 @@ public partial class MonitorView : BaseView
 
     #region WinForms 生命周期事件
 
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        if (Visible)
+        {
+            ApplyResponsiveRightLayout();
+        }
+    }
+
+    protected override void OnSizeChanged(EventArgs e)
+    {
+        base.OnSizeChanged(e);
+        ApplyResponsiveRightLayout();
+    }
+
+    protected override void OnDpiChangedAfterParent(EventArgs e)
+    {
+        base.OnDpiChangedAfterParent(e);
+        ApplyResponsiveRightLayout(force: true);
+    }
+
     /// <summary>
     /// 处理MonitorView加载。
     /// </summary>
@@ -1408,6 +1432,85 @@ public partial class MonitorView : BaseView
         }
         AdjustTitleFontSize();
         SetVerticalSplitterPanel2ToMinWidth();
+        ApplyResponsiveRightLayout(force: true);
+    }
+
+    /// <summary>
+    /// 根据右侧视口高度和 DPI 分配工单、状态、结果及生产指标区域。
+    /// </summary>
+    private void ApplyResponsiveRightLayout(bool force = false)
+    {
+        if (IsDisposed
+            || VerticalSplitter is null
+            || tlpRight is null
+            || tlpRight.RowStyles.Count < 5)
+        {
+            return;
+        }
+
+        var viewportHeight = VerticalSplitter.Panel2.ClientSize.Height;
+        if (viewportHeight <= 0)
+        {
+            return;
+        }
+
+        var dpi = DeviceDpi > 0 ? DeviceDpi : MonitorRightLayoutRules.BaseDpi;
+        var layout = MonitorRightLayoutRules.Resolve(viewportHeight, dpi);
+        if (!force
+            && _lastRightLayoutMode == layout.Mode
+            && _lastRightLayoutViewportHeight == viewportHeight
+            && _lastRightLayoutDpi == dpi)
+        {
+            return;
+        }
+
+        VerticalSplitter.Panel2.SuspendLayout();
+        tlpRight.SuspendLayout();
+        try
+        {
+            _lastRightLayoutMode = layout.Mode;
+            _lastRightLayoutViewportHeight = viewportHeight;
+            _lastRightLayoutDpi = dpi;
+
+            tlpRight.RowStyles[0].SizeType = SizeType.Percent;
+            tlpRight.RowStyles[0].Height = 100F;
+            SetAbsoluteRowHeight(tlpRight.RowStyles[1], layout.StatusPanelHeight);
+            SetAbsoluteRowHeight(tlpRight.RowStyles[2], layout.StatusPanelHeight);
+            SetAbsoluteRowHeight(tlpRight.RowStyles[3], layout.ProductResultHeight);
+            SetAbsoluteRowHeight(tlpRight.RowStyles[4], layout.MetricPanelHeight);
+
+            SetFixedHeight(grpErrorTips, layout.StatusPanelHeight);
+            SetFixedHeight(grpRunningStatus, layout.StatusPanelHeight);
+            SetFixedHeight(grpProductResult, layout.ProductResultHeight);
+            ApplyProductionMetricTableStyle(layout.MetricRowHeight, layout.MetricHeaderHeight);
+
+            tlpRight.Height = layout.ContentHeight;
+            VerticalSplitter.Panel2.AutoScrollMinSize = layout.RequiresScroll
+                ? new Size(0, layout.ContentHeight)
+                : Size.Empty;
+            if (!layout.RequiresScroll)
+            {
+                VerticalSplitter.Panel2.AutoScrollPosition = Point.Empty;
+            }
+        }
+        finally
+        {
+            tlpRight.ResumeLayout(true);
+            VerticalSplitter.Panel2.ResumeLayout(true);
+        }
+    }
+
+    private static void SetAbsoluteRowHeight(RowStyle rowStyle, int height)
+    {
+        rowStyle.SizeType = SizeType.Absolute;
+        rowStyle.Height = Math.Max(0, height);
+    }
+
+    private static void SetFixedHeight(Control control, int height)
+    {
+        var normalizedHeight = Math.Max(0, height);
+        control.MinimumSize = new Size(0, normalizedHeight);
+        control.MaximumSize = new Size(0, normalizedHeight);
     }
 
     /// <summary>
@@ -7740,27 +7843,26 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         TableStyleHelper.ApplyAntdTable(tableHistory1, AntdUI.ColumnsMode.Fill);
         TableStyleHelper.ApplyAntdTable(tableHistory2, AntdUI.ColumnsMode.Fill);
 
-        ApplyCompactProductionMetricTableStyle();
+        ApplyProductionMetricTableStyle(34, 36);
         ApplyWeldParameterTableStyle();
     }
 
     /// <summary>
-    /// 应用紧凑生产指标表格Style。
+    /// 应用生产指标表格行高和间距。
     /// </summary>
-    private void ApplyCompactProductionMetricTableStyle()
+    private void ApplyProductionMetricTableStyle(int rowHeight, int headerHeight)
     {
-        ApplyCompactProductionMetricTableStyle(tableMetric1);
-        ApplyCompactProductionMetricTableStyle(tableMetric2);
+        ApplyProductionMetricTableStyle(tableMetric1, rowHeight, headerHeight);
+        ApplyProductionMetricTableStyle(tableMetric2, rowHeight, headerHeight);
     }
 
     /// <summary>
-    /// 应用紧凑生产指标表格Style。
+    /// 应用生产指标表格行高和间距。
     /// </summary>
-    /// <param name="table">目标表格控件。</param>
-    private static void ApplyCompactProductionMetricTableStyle(AntdUI.Table table)
+    private static void ApplyProductionMetricTableStyle(AntdUI.Table table, int rowHeight, int headerHeight)
     {
-        table.RowHeight = 34;
-        table.RowHeightHeader = 36;
+        table.RowHeight = Math.Max(1, rowHeight);
+        table.RowHeightHeader = Math.Max(1, headerHeight);
         table.Gap = 4;
         table.GapCell = 2;
         table.Gaps = new Size(4, 4);

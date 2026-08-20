@@ -37,6 +37,8 @@ using System.Text.Json;
 var tests = new (string Name, Action Run)[]
 {
     ("System setting layout rules honor DPI breakpoints", SystemSettingLayoutRulesHonorDpiBreakpoints),
+    ("Monitor right layout rules honor DPI and scrolling", MonitorRightLayoutRulesHonorDpiAndScrolling),
+    ("Monitor view applies responsive right layout", MonitorViewAppliesResponsiveRightLayout),
     ("System setting view avoids repeated layout rebuilds during resize", SystemSettingViewAvoidsRepeatedLayoutRebuilds),
     ("Base window batches layout and redraw during interactive resize", BaseWindowBatchesInteractiveResize),
     ("Main form keeps cached pages mounted during navigation", MainFormKeepsCachedPagesMountedDuringNavigation),
@@ -418,6 +420,82 @@ static void SystemSettingLayoutRulesHonorDpiBreakpoints()
     AssertEqual(SystemSettingLayoutMode.TwoColumns, SystemSettingLayoutRules.ResolveMode(1140, 144), "150% DPI 下 1140 设备像素应为两列。");
     AssertEqual(SystemSettingLayoutMode.ThreeColumns, SystemSettingLayoutRules.ResolveMode(1800, 144), "150% DPI 下 1800 设备像素应为三列。");
     AssertEqual(SystemSettingLayoutMode.SingleColumn, SystemSettingLayoutRules.ResolveMode(-1, 0), "无效宽度和 DPI 必须安全回退。");
+}
+
+static void MonitorRightLayoutRulesHonorDpiAndScrolling()
+{
+    var compact96 = MonitorRightLayoutRules.Resolve(849, 96);
+    AssertEqual(MonitorRightLayoutMode.Compact, compact96.Mode, "96 DPI 下逻辑高度 849 应进入紧凑模式。");
+    AssertFalse(compact96.RequiresScroll, "紧凑模式达到最低内容高度后不应滚动。");
+    AssertEqual(56, compact96.StatusPanelHeight, "紧凑状态区高度必须保持稳定。");
+    AssertEqual(254, compact96.MetricPanelHeight, "紧凑指标区高度必须使用约定值。");
+    AssertEqual(27, compact96.MetricRowHeight, "紧凑指标数据行高必须使用约定值。");
+    AssertEqual(29, compact96.MetricHeaderHeight, "紧凑指标表头高度必须使用约定值。");
+
+    var regular96 = MonitorRightLayoutRules.Resolve(850, 96);
+    AssertEqual(MonitorRightLayoutMode.Regular, regular96.Mode, "96 DPI 下逻辑高度 850 应进入常规模式。");
+    AssertFalse(regular96.RequiresScroll, "常规模式不应滚动。");
+    AssertEqual(70, regular96.StatusPanelHeight, "常规状态区高度必须保持稳定。");
+    AssertEqual(290, regular96.MetricPanelHeight, "常规指标区高度必须使用约定值。");
+    AssertEqual(32, regular96.MetricRowHeight, "常规指标数据行高必须使用约定值。");
+    AssertEqual(34, regular96.MetricHeaderHeight, "常规指标表头高度必须使用约定值。");
+
+    AssertEqual(MonitorRightLayoutMode.Compact, MonitorRightLayoutRules.Resolve(1062, 120).Mode, "125% DPI 下应按逻辑高度选择紧凑模式。");
+    AssertEqual(MonitorRightLayoutMode.Regular, MonitorRightLayoutRules.Resolve(1063, 120).Mode, "125% DPI 下应按逻辑高度进入常规模式。");
+
+    var developmentLayout = MonitorRightLayoutRules.Resolve(1000, 120);
+    var developmentWorkOrderHeight = developmentLayout.ContentHeight
+        - developmentLayout.StatusPanelHeight * 2
+        - developmentLayout.ProductResultHeight
+        - developmentLayout.MetricPanelHeight;
+    AssertEqual(MonitorRightLayoutMode.Compact, developmentLayout.Mode, "开发机截图高度应使用紧凑模式。");
+    AssertEqual(472, developmentWorkOrderHeight, "开发机紧凑布局应为工单信息保留稳定空间。");
+
+    var industrialLayout = MonitorRightLayoutRules.Resolve(1097, 120);
+    var industrialWorkOrderHeight = industrialLayout.ContentHeight
+        - industrialLayout.StatusPanelHeight * 2
+        - industrialLayout.ProductResultHeight
+        - industrialLayout.MetricPanelHeight;
+    AssertEqual(MonitorRightLayoutMode.Regular, industrialLayout.Mode, "工控机截图高度应使用常规模式。");
+    AssertEqual(470, industrialWorkOrderHeight, "工控机多余高度应进入工单信息区而不是指标区底部。");
+
+    AssertEqual(MonitorRightLayoutMode.Compact, MonitorRightLayoutRules.Resolve(1274, 144).Mode, "150% DPI 下应按逻辑高度选择紧凑模式。");
+    AssertEqual(MonitorRightLayoutMode.Regular, MonitorRightLayoutRules.Resolve(1275, 144).Mode, "150% DPI 下应按逻辑高度进入常规模式。");
+
+    var shortView = MonitorRightLayoutRules.Resolve(700, 96);
+    AssertTrue(shortView.RequiresScroll, "低于最低逻辑高度时必须启用滚动。");
+    AssertEqual(772, shortView.ContentHeight, "低高度视口必须保留最低内容高度。");
+
+    var invalid = MonitorRightLayoutRules.Resolve(-1, 0);
+    AssertEqual(MonitorRightLayoutMode.Compact, invalid.Mode, "无效高度和 DPI 必须安全回退到紧凑模式。");
+    AssertTrue(invalid.RequiresScroll, "无效高度必须使用最低内容高度并启用滚动。");
+    AssertEqual(772, invalid.ContentHeight, "无效高度必须回退到 96 DPI 最低内容高度。");
+}
+
+static void MonitorViewAppliesResponsiveRightLayout()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.Designer.cs"), Encoding.UTF8);
+    var layoutMethod = ExtractMethodText(
+        viewCode,
+        "private void ApplyResponsiveRightLayout(bool force = false)",
+        "private static void SetAbsoluteRowHeight");
+
+    AssertTrue(designerCode.Contains("VerticalSplitter.Panel2.AutoScroll = true;", StringComparison.Ordinal), "右侧视口必须支持极低高度纵向滚动。");
+    AssertTrue(designerCode.Contains("tlpRight.Dock = DockStyle.Top;", StringComparison.Ordinal), "右侧内容必须顶部停靠以允许内容高度超过视口。");
+    AssertTrue(viewCode.Contains("protected override void OnSizeChanged(EventArgs e)", StringComparison.Ordinal), "尺寸变化后必须重新应用右侧布局。");
+    AssertTrue(viewCode.Contains("protected override void OnDpiChangedAfterParent(EventArgs e)", StringComparison.Ordinal), "父级 DPI 变化后必须强制刷新右侧布局。");
+    AssertTrue(layoutMethod.Contains("MonitorRightLayoutRules.Resolve(viewportHeight, dpi)", StringComparison.Ordinal), "右侧布局必须复用 DPI 规则。");
+    AssertTrue(layoutMethod.Contains("tlpRight.RowStyles[0].SizeType = SizeType.Percent", StringComparison.Ordinal), "工单区域必须吸收剩余高度。");
+    AssertTrue(layoutMethod.Contains("VerticalSplitter.Panel2.AutoScrollMinSize", StringComparison.Ordinal), "极低高度必须设置滚动内容尺寸。");
+    AssertTrue(layoutMethod.Contains("SetFixedHeight(grpErrorTips", StringComparison.Ordinal), "异常提示高度必须保持稳定。");
+    AssertTrue(layoutMethod.Contains("SetFixedHeight(grpRunningStatus", StringComparison.Ordinal), "运行状态高度必须保持稳定。");
+    AssertTrue(
+        layoutMethod.Contains("ApplyProductionMetricTableStyle(layout.MetricRowHeight, layout.MetricHeaderHeight)", StringComparison.Ordinal)
+            && viewCode.Contains("ApplyProductionMetricTableStyle(tableMetric1, rowHeight, headerHeight)", StringComparison.Ordinal)
+            && viewCode.Contains("ApplyProductionMetricTableStyle(tableMetric2, rowHeight, headerHeight)", StringComparison.Ordinal),
+        "两个工位的生产指标表必须应用同一响应式行高。");
+    AssertFalse(layoutMethod.Contains("Controls.Add", StringComparison.Ordinal), "响应式布局不得重建右侧控件。");
 }
 
 static void SystemSettingViewAvoidsRepeatedLayoutRebuilds()

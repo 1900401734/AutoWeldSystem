@@ -214,6 +214,7 @@ namespace AutoWeldSystem.UI.Views
             // 
             // VerticalSplitter.Panel2
             // 
+            VerticalSplitter.Panel2.AutoScroll = true;
             VerticalSplitter.Panel2.Controls.Add(tlpRight);
             VerticalSplitter.Panel2MinSize = 400;
             VerticalSplitter.Size = new Size(1564, 932);
@@ -806,16 +807,16 @@ namespace AutoWeldSystem.UI.Views
             tlpRight.Controls.Add(grpErrorTips, 0, 1);
             tlpRight.Controls.Add(grpRunningStatus, 0, 2);
             tlpRight.Controls.Add(tabsMetrics, 0, 4);
-            tlpRight.Dock = DockStyle.Fill;
+            tlpRight.Dock = DockStyle.Top;
             tlpRight.Location = new Point(0, 0);
             tlpRight.Margin = new Padding(0);
             tlpRight.Name = "tlpRight";
             tlpRight.RowCount = 5;
-            tlpRight.RowStyles.Add(new RowStyle());
-            tlpRight.RowStyles.Add(new RowStyle());
-            tlpRight.RowStyles.Add(new RowStyle());
-            tlpRight.RowStyles.Add(new RowStyle());
             tlpRight.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            tlpRight.RowStyles.Add(new RowStyle(SizeType.Absolute, 88F));
+            tlpRight.RowStyles.Add(new RowStyle(SizeType.Absolute, 88F));
+            tlpRight.RowStyles.Add(new RowStyle(SizeType.Absolute, 88F));
+            tlpRight.RowStyles.Add(new RowStyle(SizeType.Absolute, 218F));
             tlpRight.Size = new Size(409, 932);
             tlpRight.TabIndex = 0;
             // 
