@@ -826,9 +826,12 @@ public class UploadTaskService : IUploadTaskService
     {
         return _deviceStatusService.ChangeStatusAsync(
             ProductionConstants.MesDeviceStatuses.ProgramStarted,
-            DeviceStatusReportRules.AppendStationRemark(
-                DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.ProgramStarted),
-                task.StationNo),
+            DeviceStatusReportRules.FormatRemark(
+                ProductionConstants.MesDeviceStatuses.ProgramStarted,
+                task.StationNo,
+                _settingsService.Get().EnableDualStation,
+                _settingsService.Get().Station1DisplayName,
+                _settingsService.Get().Station2DisplayName),
             "MES",
             stationNo: task.StationNo,
             weldTaskId: task.Id,
@@ -840,9 +843,12 @@ public class UploadTaskService : IUploadTaskService
     {
         return _deviceStatusService.ChangeStatusAsync(
             ProductionConstants.MesDeviceStatuses.ProgramEnded,
-            DeviceStatusReportRules.AppendStationRemark(
-                DeviceStatusReportRules.GetStatusName(ProductionConstants.MesDeviceStatuses.ProgramEnded),
-                task.StationNo),
+            DeviceStatusReportRules.FormatRemark(
+                ProductionConstants.MesDeviceStatuses.ProgramEnded,
+                task.StationNo,
+                _settingsService.Get().EnableDualStation,
+                _settingsService.Get().Station1DisplayName,
+                _settingsService.Get().Station2DisplayName),
             "MES",
             stationNo: task.StationNo,
             weldTaskId: task.Id,

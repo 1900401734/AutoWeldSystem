@@ -164,12 +164,14 @@ public static class CenterTelemetryRules
             text = text[..separatorIndex].Trim();
         }
 
-        // 前缀：「异常-工位N：」或「工位N：」，设备端与看板都会再标一次工位，此处去重。
+        // 前缀：兼容历史「异常-工位N：」/「工位N：」以及当前「异常：」格式。
         var prefixEnd = text.IndexOf('：', StringComparison.Ordinal);
         if (prefixEnd > 0)
         {
             var prefix = text[..prefixEnd];
-            if (prefix.Contains("工位", StringComparison.Ordinal))
+            if (prefix.Contains("工位", StringComparison.Ordinal)
+                || string.Equals(prefix, "异常", StringComparison.Ordinal)
+                || string.Equals(prefix, "异常恢复", StringComparison.Ordinal))
             {
                 text = text[(prefixEnd + 1)..].Trim();
             }

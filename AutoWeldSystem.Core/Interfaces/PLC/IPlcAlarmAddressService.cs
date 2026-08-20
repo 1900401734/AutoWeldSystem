@@ -13,7 +13,7 @@ public interface IPlcAlarmAddressService
     IReadOnlyList<BizPlcAlarmAddress> GetAll();
 
     /// <summary>
-    /// 获取指定工位可用的报警地址，包含共享工位 0 的报警点。
+    /// 获取全部已启用报警地址。stationNo 仅为历史接口兼容参数，不再过滤报警地址。
     /// </summary>
     IReadOnlyList<BizPlcAlarmAddress> GetEnabledForStation(int stationNo);
 

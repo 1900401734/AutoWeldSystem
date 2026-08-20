@@ -357,7 +357,6 @@ public partial class AddressManageView : BaseView
     {
         tableAlarmAddresses.Columns.Clear();
         tableAlarmAddresses.Columns.Add(CreateRawColumn(nameof(AlarmAddressTableRow.Sort), "排序"));
-        tableAlarmAddresses.Columns.Add(CreateRawColumn(nameof(AlarmAddressTableRow.StationNo), "工位(0共享)"));
         tableAlarmAddresses.Columns.Add(CreateRawColumn(nameof(AlarmAddressTableRow.Address), "PLC Bool地址"));
         tableAlarmAddresses.Columns.Add(CreateRawColumn(nameof(AlarmAddressTableRow.AlarmContent), "报警内容"));
         tableAlarmAddresses.Columns.Add(CreateAlarmAddressEnabledColumn());
@@ -978,11 +977,9 @@ public partial class AddressManageView : BaseView
 
         _currentAlarmRows = _alarmAddresses
             .Where(alarm => string.IsNullOrWhiteSpace(_alarmKeyword)
-                || Contains(alarm.StationNo.ToString(CultureInfo.InvariantCulture), _alarmKeyword)
                 || Contains(alarm.Address, _alarmKeyword)
                 || Contains(alarm.AlarmContent, _alarmKeyword))
             .OrderBy(alarm => alarm.Sort)
-            .ThenBy(alarm => alarm.StationNo)
             .ThenBy(alarm => alarm.Id)
             .Select(alarm => new AlarmAddressTableRow(alarm))
             .ToList();
@@ -2218,8 +2215,7 @@ public partial class AddressManageView : BaseView
         foreach (var item in imported)
         {
             var existing = _alarmAddresses.FirstOrDefault(alarm =>
-                alarm.StationNo == item.StationNo
-                && string.Equals(alarm.Address, item.Address, StringComparison.OrdinalIgnoreCase));
+                string.Equals(alarm.Address, item.Address, StringComparison.OrdinalIgnoreCase));
             if (existing is not null)
             {
                 existing.AlarmContent = item.Content;
@@ -2230,7 +2226,7 @@ public partial class AddressManageView : BaseView
 
             _alarmAddresses.Add(new BizPlcAlarmAddress
             {
-                StationNo = item.StationNo,
+                StationNo = ProductionConstants.Stations.SharedStationNo,
                 Address = item.Address,
                 AlarmContent = item.Content,
                 Enabled = true,
@@ -2422,7 +2418,6 @@ public partial class AddressManageView : BaseView
             AlarmAddressTableRow => e.Column.Key switch
             {
                 nameof(AlarmAddressTableRow.Sort) => IsNonNegativeInt(value),
-                nameof(AlarmAddressTableRow.StationNo) => IsNonNegativeInt(value),
                 nameof(AlarmAddressTableRow.Address) => !string.IsNullOrWhiteSpace(value),
                 nameof(AlarmAddressTableRow.AlarmContent) => !string.IsNullOrWhiteSpace(value),
                 _ => true
@@ -2649,7 +2644,7 @@ public partial class AddressManageView : BaseView
     {
         foreach (var alarm in alarms)
         {
-            alarm.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, alarm.StationNo);
+            alarm.StationNo = ProductionConstants.Stations.SharedStationNo;
             alarm.Sort = Math.Max(0, alarm.Sort);
             alarm.Address = NormalizeAlarmAddress(alarm.Address);
             alarm.AlarmContent = alarm.AlarmContent.Trim();
@@ -3338,12 +3333,6 @@ public partial class AddressManageView : BaseView
             set => Source.Sort = Math.Max(0, value);
         }
 
-        public int StationNo
-        {
-            get => Source.StationNo;
-            set => Source.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, value);
-        }
-
         public string Address
         {
             get => Source.Address;
@@ -3366,7 +3355,7 @@ public partial class AddressManageView : BaseView
 
         public void Normalize()
         {
-            Source.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, Source.StationNo);
+            Source.StationNo = ProductionConstants.Stations.SharedStationNo;
             Source.Sort = Math.Max(0, Source.Sort);
             Source.Address = NormalizeAlarmAddress(Source.Address);
             Source.AlarmContent = Source.AlarmContent.Trim();

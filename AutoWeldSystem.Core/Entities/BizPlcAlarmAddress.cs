@@ -16,9 +16,9 @@ public class BizPlcAlarmAddress
     public int Id { get; set; }
 
     /// <summary>
-    /// 工位号，0 表示共享报警点，1/2 表示工位专用报警点。
+    /// 历史兼容字段。报警地址属于整台设备，不映射程序工位，新数据统一保存为 0。
     /// </summary>
-    [SugarColumn(ColumnDescription = "工位号，0表示共享")]
+    [SugarColumn(ColumnDescription = "历史兼容工位号，新数据统一为0")]
     public int StationNo { get; set; }
 
     /// <summary>

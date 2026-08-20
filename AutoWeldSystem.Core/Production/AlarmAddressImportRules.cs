@@ -21,9 +21,6 @@ public static class AlarmAddressImportRules
         @"\bDB\s*(\d+)\s*\.\s*(\d+)\s*\.\s*([0-7])\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    private static readonly Regex StationTokenRegex = new(
-        @"\bST\s*([1-9]\d*)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>
     /// Parses clipboard text into alarm address rows without dropping duplicated source rows.
@@ -88,7 +85,7 @@ public static class AlarmAddressImportRules
             return false;
         }
 
-        row = new AlarmAddressImportRow(InferStationNo(address, content), address, content);
+        row = new AlarmAddressImportRow(address, content);
         return true;
     }
 
@@ -128,37 +125,6 @@ public static class AlarmAddressImportRules
         }
 
         return string.Empty;
-    }
-
-    private static int InferStationNo(string address, string content)
-    {
-        var text = content.Trim();
-        var stationMatch = StationTokenRegex.Match(text);
-        if (stationMatch.Success
-            && int.TryParse(stationMatch.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var stationFromText))
-        {
-            return stationFromText;
-        }
-
-        if (StartsWithOrContains(text, "\u5de6", "\u5de6\u5de5\u4f4d"))
-        {
-            return 1;
-        }
-
-        if (StartsWithOrContains(text, "\u53f3", "\u53f3\u5de5\u4f4d"))
-        {
-            return 2;
-        }
-
-        return TryGetDbNumber(address, out var dbNumber) && dbNumber is >= 11 and <= 19
-            ? dbNumber - 10
-            : 0;
-    }
-
-    private static bool StartsWithOrContains(string text, string prefix, string explicitToken)
-    {
-        return text.StartsWith(prefix, StringComparison.Ordinal)
-            || text.Contains(explicitToken, StringComparison.Ordinal);
     }
 
     private static bool TryUpdateHeader(IReadOnlyList<string> cells, out AlarmAddressImportHeader header)
@@ -275,14 +241,6 @@ public static class AlarmAddressImportRules
 
         converted = $"DB{dbNumber}.{byteOffset}.{bitOffset}";
         return true;
-    }
-
-    private static bool TryGetDbNumber(string address, out int dbNumber)
-    {
-        dbNumber = 0;
-        var match = Regex.Match(address, @"^DB(\d+)\.", RegexOptions.IgnoreCase);
-        return match.Success
-            && int.TryParse(match.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out dbNumber);
     }
 
     private static bool IsContentValue(string text)
@@ -411,4 +369,4 @@ public static class AlarmAddressImportRules
 /// <summary>
 /// One imported PLC alarm address row.
 /// </summary>
-public sealed record AlarmAddressImportRow(int StationNo, string Address, string Content);
+public sealed record AlarmAddressImportRow(string Address, string Content);

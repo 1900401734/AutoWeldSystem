@@ -507,12 +507,15 @@ public class DeviceStatusService : IDeviceStatusService
     {
         try
         {
+            var remark = ResolveMesRemark(log);
+            // 补传旧记录时同步规范最新 JSONL 版本，保证本地历史与本次 MES 请求使用同一 Remark。
+            log.Remark = NormalizeNullable(remark);
             return await _mesProvider.ReportDeviceStatusAsync(new ReportDeviceStatusReq
             {
                 DeviceId = DeviceStatusReportRules.ResolveReportDeviceId(CurrentSettings.DeviceId, log.DeviceId),
                 DevStatus = log.DeviceStatus,
                 Ts = log.OccurredTime.ToString("yyyy-MM-dd HH:mm:ss"),
-                Remark = ResolveMesRemark(log)
+                Remark = remark
             }, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -525,37 +528,17 @@ public class DeviceStatusService : IDeviceStatusService
         }
     }
 
-    private static string ResolveMesRemark(BizDeviceStatusLog log)
+    private string ResolveMesRemark(BizDeviceStatusLog log)
     {
-        if (log.DeviceStatus == ProductionConstants.MesDeviceStatuses.Recovered)
-        {
-            // 旧恢复记录没有逐地址明细，补传时必须保留原 Remark 兼容历史数据。
-            if (string.IsNullOrWhiteSpace(log.AlarmAddress))
-            {
-                return log.Remark ?? string.Empty;
-            }
-
-            return DeviceStatusReportRules.FormatRecoveryRemark(
-                log.AlarmContent,
-                log.StationNo,
-                IsSharedAlarm(log));
-        }
-
-        if (log.DeviceStatus != ProductionConstants.MesDeviceStatuses.Exception)
-        {
-            return log.Remark ?? string.Empty;
-        }
-
-        // 新记录用 StationNo=0 表示共享；旧 JSONL 没有该约定时只兼容原有“双工位”标记。
-        return DeviceStatusReportRules.FormatExceptionRemark(
-            log.AlarmContent,
+        return DeviceStatusReportRules.FormatRemark(
+            log.DeviceStatus,
             log.StationNo,
-            IsSharedAlarm(log));
+            CurrentSettings.EnableDualStation,
+            CurrentSettings.Station1DisplayName,
+            CurrentSettings.Station2DisplayName,
+            log.AlarmContent,
+            log.Remark);
     }
-
-    private static bool IsSharedAlarm(BizDeviceStatusLog log)
-        => log.StationNo <= ProductionConstants.Stations.SharedStationNo
-            || log.Remark?.Contains("工位：双工位", StringComparison.Ordinal) == true;
 
     private BasicRes<object>? PersistReportResult(
         BizDeviceStatusLog log,
@@ -716,7 +699,14 @@ public class DeviceStatusService : IDeviceStatusService
             DeviceStatus = deviceStatus,
             StatusName = DeviceStatusReportRules.GetStatusName(deviceStatus),
             Source = string.IsNullOrWhiteSpace(source) ? "Software" : source.Trim(),
-            Remark = NormalizeNullable(remark),
+            Remark = DeviceStatusReportRules.FormatRemark(
+                deviceStatus,
+                stationNo,
+                settings.EnableDualStation,
+                settings.Station1DisplayName,
+                settings.Station2DisplayName,
+                alarmContent,
+                remark),
             AlarmAddress = NormalizeNullable(alarmAddress),
             AlarmContent = NormalizeNullable(alarmContent),
             OccurredTime = occurredTime ?? DateTime.Now,

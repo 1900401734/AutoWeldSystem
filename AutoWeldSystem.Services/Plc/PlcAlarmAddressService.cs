@@ -20,24 +20,17 @@ public sealed class PlcAlarmAddressService(SqlSugarDbContext dbContext) : IPlcAl
             dbContext.InitDatabase();
             return dbContext.Db.Queryable<BizPlcAlarmAddress>()
                 .OrderBy(it => it.Sort)
-                .OrderBy(it => it.StationNo)
+                .OrderBy(it => it.Id)
+                .ToList()
+                .Select(NormalizeLoadedAlarm)
                 .ToList();
         }
     }
 
     public IReadOnlyList<BizPlcAlarmAddress> GetEnabledForStation(int stationNo)
     {
-        var normalizedStationNo = NormalizeStationNo(stationNo);
-        lock (_dbLock)
-        {
-            dbContext.InitDatabase();
-            return dbContext.Db.Queryable<BizPlcAlarmAddress>()
-                .Where(it => it.Enabled)
-                .Where(it => it.StationNo == ProductionConstants.Stations.SharedStationNo || it.StationNo == normalizedStationNo)
-                .OrderBy(it => it.Sort)
-                .OrderBy(it => it.Id)
-                .ToList();
-        }
+        _ = stationNo;
+        return GetAll().Where(alarm => alarm.Enabled).ToList();
     }
 
     public void SaveAll(IEnumerable<BizPlcAlarmAddress> alarms)
@@ -64,7 +57,7 @@ public sealed class PlcAlarmAddressService(SqlSugarDbContext dbContext) : IPlcAl
     {
         return new BizPlcAlarmAddress
         {
-            StationNo = NormalizeStationNoForSave(alarm.StationNo),
+            StationNo = ProductionConstants.Stations.SharedStationNo,
             Address = alarm.Address.Trim(),
             AlarmContent = alarm.AlarmContent.Trim(),
             Enabled = alarm.Enabled,
@@ -89,20 +82,17 @@ public sealed class PlcAlarmAddressService(SqlSugarDbContext dbContext) : IPlcAl
         }
 
         var duplicate = alarms
-            .GroupBy(alarm => $"{alarm.StationNo}\u001F{alarm.Address}", StringComparer.OrdinalIgnoreCase)
+            .GroupBy(alarm => alarm.Address, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(group => group.Count() > 1);
         if (duplicate is not null)
         {
-            var first = duplicate.First();
-            throw new InvalidOperationException($"工位 {first.StationNo} 的报警地址“{first.Address}”重复。");
+            throw new InvalidOperationException($"报警地址“{duplicate.Key}”重复。");
         }
     }
 
-    private static int NormalizeStationNo(int stationNo)
-        => stationNo <= ProductionConstants.Stations.SharedStationNo
-            ? ProductionConstants.Stations.DefaultStationNo
-            : stationNo;
-
-    private static int NormalizeStationNoForSave(int stationNo)
-        => Math.Max(ProductionConstants.Stations.SharedStationNo, stationNo);
+    private static BizPlcAlarmAddress NormalizeLoadedAlarm(BizPlcAlarmAddress alarm)
+    {
+        alarm.StationNo = ProductionConstants.Stations.SharedStationNo;
+        return alarm;
+    }
 }

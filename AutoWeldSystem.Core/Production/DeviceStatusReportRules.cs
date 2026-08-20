@@ -75,48 +75,60 @@ public static class DeviceStatusReportRules
     }
 
     /// <summary>
-    /// Formats a station scope for device-status remarks.
-    /// Station 0 means the status belongs to both stations.
+    /// 生成统一的设备状态 Remark。
+    /// 报警地址的 PLC 工位号不参与 Remark；程序边界才使用应用配置中的程序工位映射。
     /// </summary>
-    public static string FormatStationScope(int stationNo)
-        => stationNo <= ProductionConstants.Stations.SharedStationNo
-            ? "双工位"
-            : $"工位{stationNo}";
-
-    /// <summary>
-    /// Appends station information to a remark while keeping blank remarks readable.
-    /// </summary>
-    public static string AppendStationRemark(string? remark, int stationNo)
+    public static string FormatRemark(
+        string? deviceStatus,
+        int stationNo,
+        bool dualStationEnabled,
+        string? station1Name,
+        string? station2Name,
+        string? alarmContent = null,
+        string? fallbackRemark = null)
     {
-        var normalizedRemark = NormalizeText(remark);
-        var stationText = FormatStationScope(stationNo);
-        return string.IsNullOrWhiteSpace(normalizedRemark)
-            ? $"工位：{stationText}"
-            : $"{normalizedRemark}；工位：{stationText}";
+        var status = NormalizeText(deviceStatus);
+        if (status is ProductionConstants.MesDeviceStatuses.Exception
+            or ProductionConstants.MesDeviceStatuses.Recovered)
+        {
+            if (string.IsNullOrWhiteSpace(alarmContent)
+                && !string.IsNullOrWhiteSpace(fallbackRemark))
+            {
+                // 旧 JSONL 可能只有“工位/报警地址”拼接后的 Remark，补传时统一提取报警内容。
+                alarmContent = ExtractLegacyAlarmContent(fallbackRemark);
+            }
+
+            var content = NormalizeAlarmContent(alarmContent);
+            return status == ProductionConstants.MesDeviceStatuses.Recovered
+                ? $"异常恢复：{content}"
+                : $"异常：{content}";
+        }
+
+        var statusName = GetStatusName(status);
+        if (status is ProductionConstants.MesDeviceStatuses.PoweredOn
+            or ProductionConstants.MesDeviceStatuses.Stopped)
+        {
+            return statusName;
+        }
+
+        if (status is ProductionConstants.MesDeviceStatuses.ProgramStarted
+            or ProductionConstants.MesDeviceStatuses.ProgramEnded)
+        {
+            if (!dualStationEnabled || stationNo <= ProductionConstants.Stations.SharedStationNo)
+            {
+                return statusName;
+            }
+
+            var names = StationDisplayNameRules.NormalizeForLoad(true, station1Name, station2Name);
+            var name = stationNo == 2 ? names.Station2 : names.Station1;
+            return $"{NormalizeStationLabel(name)}：{statusName}";
+        }
+
+        return string.IsNullOrWhiteSpace(fallbackRemark) ? statusName : fallbackRemark.Trim();
     }
 
-    /// <summary>
-    /// 格式化 MES 异常备注；共享报警只保留原因，不附加工位前缀。
-    /// </summary>
-    public static string FormatExceptionRemark(string? alarmContent, int stationNo, bool isSharedAlarm)
-    {
-        var content = NormalizeAlarmContent(alarmContent);
-
-        return isSharedAlarm
-            ? $"{content}；"
-            : $"工位{stationNo}：{content}；";
-    }
-
-    /// <summary>
-    /// 生成逐地址异常恢复备注，报警地址仅保留在 JSONL 明细中，不进入 MES Remark。
-    /// </summary>
-    public static string FormatRecoveryRemark(string? alarmContent, int stationNo, bool isSharedAlarm)
-    {
-        var content = NormalizeAlarmContent(alarmContent);
-        return isSharedAlarm
-            ? $"异常恢复：{content}；"
-            : $"异常恢复-工位{stationNo}：{content}；";
-    }
+    private static string NormalizeStationLabel(string name)
+        => name.EndsWith("工位", StringComparison.Ordinal) ? name : $"{name}工位";
 
     /// <summary>
     /// Returns true when a new device-status request should reuse the latest row instead of writing a duplicate.
@@ -172,6 +184,45 @@ public static class DeviceStatusReportRules
 
     private static string NormalizeText(string? value)
         => value?.Trim() ?? string.Empty;
+
+    private static string ExtractLegacyAlarmContent(string value)
+    {
+        var text = NormalizeText(value);
+        var suffixIndex = text.IndexOf("；报警地址：", StringComparison.Ordinal);
+        if (suffixIndex < 0)
+        {
+            suffixIndex = text.IndexOf(";报警地址:", StringComparison.Ordinal);
+        }
+
+        if (suffixIndex >= 0)
+        {
+            text = text[..suffixIndex];
+        }
+
+        var stationSuffixIndex = text.IndexOf("；工位：", StringComparison.Ordinal);
+        if (stationSuffixIndex < 0)
+        {
+            stationSuffixIndex = text.IndexOf(";工位:", StringComparison.Ordinal);
+        }
+
+        if (stationSuffixIndex >= 0)
+        {
+            text = text[..stationSuffixIndex];
+        }
+
+        var separatorIndex = text.IndexOf('：', StringComparison.Ordinal);
+        if (separatorIndex > 0)
+        {
+            var prefix = text[..separatorIndex];
+            if (prefix.Contains("工位", StringComparison.Ordinal)
+                || string.Equals(prefix, "异常", StringComparison.Ordinal))
+            {
+                text = text[(separatorIndex + 1)..];
+            }
+        }
+
+        return text.Trim().TrimEnd('；', ';').Trim();
+    }
 
     private static string NormalizeAlarmContent(string? value)
     {

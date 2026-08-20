@@ -129,7 +129,7 @@ var tests = new (string Name, Action Run)[]
     ("PLC debug write rules normalize unsupported data type", PlcDebugWriteRulesNormalizeUnsupportedDataType),
     ("Alarm address import rules parse engineering document rows", AlarmAddressImportRulesParseEngineeringDocumentRows),
     ("PLC software alarm rules merge raw status and bool signals", PlcSoftwareAlarmRulesMergeRawStatusAndBoolSignals),
-    ("PLC alarm station discovery includes alarm-only stations", PlcAlarmStationDiscoveryIncludesAlarmOnlyStations),
+    ("PLC alarm addresses stay device-wide", PlcAlarmStationDiscoveryIncludesAlarmOnlyStations),
     ("PLC alarm rules aggregate bool read results", PlcAlarmRulesAggregateBoolReadResults),
     ("PLC alarm projection keeps bool-only alarms local", PlcAlarmProjectionKeepsBoolOnlyAlarmsLocal),
     ("PLC alarm trigger modes select effective alarms", PlcAlarmTriggerModesSelectEffectiveAlarms),
@@ -1134,22 +1134,28 @@ static void PlcAlarmStationDiscoveryIncludesAlarmOnlyStations()
     };
 
     var stations = PlcSoftwareAlarmRules.ResolveStationNumbers([1], alarms);
-    AssertSequenceEqual([1, 2], stations, "生产地址工位与有效报警专用工位应合并、排序并去重。");
+    AssertSequenceEqual([1], stations, "报警地址不得再创建或扩展程序工位轮询范围。");
 
     var alarmOnlyStations = PlcSoftwareAlarmRules.ResolveStationNumbers([], alarms);
-    AssertSequenceEqual([2], alarmOnlyStations, "仅存在工位专用报警配置时，该工位仍应参与生产轮询。");
+    AssertSequenceEqual([ProductionConstants.Stations.DefaultStationNo], alarmOnlyStations, "只有报警地址时应使用默认生产轮询，不解释报警配置中的历史工位号。");
 
     var productionOnlyStations = PlcSoftwareAlarmRules.ResolveStationNumbers([2], []);
     AssertSequenceEqual([2], productionOnlyStations, "关闭报警读取并传入空报警快照时，只应保留生产地址工位。");
 
-    var sharedOnly = PlcSoftwareAlarmRules.ResolveStationNumbers([], [alarms[0]]);
-    AssertSequenceEqual([ProductionConstants.Stations.DefaultStationNo], sharedOnly, "共享报警不应生成工位 0 轮询，且应保留默认工位兜底。");
-
+    var stationOneAlarms = PlcSoftwareAlarmRules.ResolveAlarmAddressesForStation(alarms, 1);
     var stationTwoAlarms = PlcSoftwareAlarmRules.ResolveAlarmAddressesForStation(alarms, 2);
     AssertSequenceEqual(
         ["DB1.0", "DB2.0"],
+        stationOneAlarms.Select(alarm => alarm.Address).ToArray(),
+        "所有程序工位都应读取同一份设备级报警地址，并排除空地址和禁用项。");
+    AssertSequenceEqual(
+        stationOneAlarms.Select(alarm => alarm.Address).ToArray(),
         stationTwoAlarms.Select(alarm => alarm.Address).ToArray(),
-        "工位报警读取应包含共享地址与当前工位地址，并排除空地址、禁用项和其他工位。");
+        "报警地址不得按程序工位过滤。");
+    AssertTrue(
+        PlcDeviceAlarmCycleRules.ToConfiguredAlarms(alarms)
+            .All(alarm => alarm.StationNo == ProductionConstants.Stations.SharedStationNo),
+        "历史报警配置中的非零工位号必须在运行时统一归为设备级范围。");
 }
 
 static void PlcAlarmRulesAggregateBoolReadResults()
@@ -1231,9 +1237,12 @@ static void PlcAlarmTriggerModesSelectEffectiveAlarms()
         readResults,
         configuredAlarms: [firstAlarm, sharedAlarm]);
     AssertSequenceEqual(
-        ["0:DB10.DBX2.9", "1:DB10.2.0"],
+        ["DB10.2.0", "DB10.DBX2.9"],
         addressOnly.NewAlarms.Select(PlcDeviceAlarmCycleRules.GetAlarmKey).Order().ToArray(),
-        "仅地址模式必须忽略原始设备状态，并保留共享报警的独立身份。");
+        "仅地址模式必须忽略原始设备状态，报警身份只由地址决定。");
+    AssertTrue(
+        addressOnly.NewAlarms.All(alarm => alarm.StationNo == ProductionConstants.Stations.SharedStationNo),
+        "报警周期中的新报警必须统一为设备级范围，不保留历史程序工位号。");
 
     var gatedWithoutStatus = PlcDeviceAlarmCycleRules.Decide(
         state,
@@ -1249,7 +1258,7 @@ static void PlcAlarmTriggerModesSelectEffectiveAlarms()
         new Dictionary<int, short?> { [1] = ProductionConstants.PlcDeviceStatuses.Alarm, [2] = ProductionConstants.PlcDeviceStatuses.Running },
         readResults,
         configuredAlarms: [firstAlarm, sharedAlarm]);
-    AssertEqual(2, gated.NewAlarms.Count, "双条件模式中工位状态 4 应激活本工位地址，并让共享地址设备级生效一次。");
+    AssertEqual(2, gated.NewAlarms.Count, "双条件模式中任一设备状态为4时，应激活当前置位的设备级报警地址。");
 
     var switchedToAddressOnly = PlcDeviceAlarmCycleRules.Decide(
         gated.NextState,
@@ -1392,7 +1401,7 @@ static void PlcDeviceAlarmCycleRestoresFromJsonl()
 
     var restored = PlcDeviceAlarmCycleRules.Restore(logs);
     AssertSequenceEqual(
-        new[] { "1:DB10.2.0", "1:DB10.2.1" },
+        new[] { "DB10.2.0", "DB10.2.1" },
         restored.ActiveAlarms.Select(PlcDeviceAlarmCycleRules.GetAlarmKey).OrderBy(key => key, StringComparer.OrdinalIgnoreCase).ToArray(),
         "重启后必须从 JSONL 恢复最近未闭合报警周期的地址。");
 
@@ -1518,9 +1527,8 @@ static void PlcProductionMonitorReadsBoolAlarmsIndependently()
         serviceCode,
         "private static string BuildDeviceStatusRemark",
         "private static int? ToInteger");
-    AssertTrue(remarkMethod.Contains("FormatExceptionRemark", StringComparison.Ordinal), "PLC 新异常必须使用统一的精简 Remark 规则。");
-    AssertTrue(remarkMethod.Contains("FormatRecoveryRemark", StringComparison.Ordinal), "PLC 逐地址恢复必须使用统一的恢复 Remark 规则。");
-    AssertFalse(remarkMethod.Contains("alarm.Address", StringComparison.Ordinal), "PLC 新异常 Remark 不得拼接报警地址。");
+    AssertTrue(remarkMethod.Contains("FormatRemark", StringComparison.Ordinal), "PLC 状态必须使用统一的 Remark 规则。");
+    AssertFalse(remarkMethod.Contains("alarm.Address", StringComparison.Ordinal), "PLC 新异常 Remark 不得拼接报警地址或 PLC 工位号。");
     AssertTrue(
         serviceCode.Contains("var nextOccurredTime = DateTime.Now;", StringComparison.Ordinal)
         && CountOccurrences(serviceCode, "nextOccurredTime = nextOccurredTime.AddMilliseconds(1);") >= 2,
@@ -3268,8 +3276,16 @@ static void AlarmAddressImportRulesParseEngineeringDocumentRows()
     AssertEqual("安全门打开", rows[2].Content, "存在内容表头时应只读取报警内容列，不能混入备注列。");
     AssertEqual("真空异常,请检查气路", rows[3].Content, "CSV 引号内的逗号应保留在同一个内容单元格。");
     AssertEqual("安全光栅触发", rows[4].Content, "地址在最后一列时应使用地址前最近的有效文本作为内容。");
-    AssertEqual(1, rows[5].StationNo, "左工位报警应导入为工位 1，避免与右工位同地址时互相覆盖。");
-    AssertEqual(2, rows[6].StationNo, "右工位报警应导入为工位 2，避免与左工位同地址时互相覆盖。");
+    AssertEqual("左安全光栅被挡住", rows[5].Content, "报警内容中的左/右机构名称必须原样保留，不得解释为程序工位。");
+    AssertEqual("右安全光栅被挡住", rows[6].Content, "报警内容中的左/右机构名称必须原样保留，不得解释为程序工位。");
+    AssertTrue(typeof(AlarmAddressImportRow).GetProperty("StationNo") is null, "报警地址导入模型不得再暴露程序工位字段。");
+
+    var addressViewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "AddressManageView.cs"), Encoding.UTF8);
+    var alarmColumnMethod = ExtractMethodText(
+        addressViewCode,
+        "private void ConfigureAlarmAddressColumns()",
+        "private void ConfigureRecipeNameColumns()");
+    AssertFalse(alarmColumnMethod.Contains("StationNo", StringComparison.Ordinal), "报警地址维护表不得显示或编辑程序工位列。");
 
     var noHeaderRows = AlarmAddressImportRules.ParseClipboard("3,安全门报警,DB9.10.2,安全门打开,禁止启动");
     AssertEqual("安全门打开，禁止启动", noHeaderRows[0].Content, "无表头逗号文本中，地址后的多段内容应合并为完整报警内容。");
@@ -3994,7 +4010,7 @@ static void CenterAlarmMessageClearsOnceTheExceptionRecovers()
     {
         StationNo = ProductionConstants.Stations.DefaultStationNo,
         DeviceStatus = ProductionConstants.MesDeviceStatuses.Exception,
-        Remark = "伺服过载；工位：工位1",
+        Remark = "异常：伺服过载",
         OccurredTime = new DateTime(2026, 8, 7, 10, 0, 0)
     };
     AssertEqual(
@@ -4005,11 +4021,11 @@ static void CenterAlarmMessageClearsOnceTheExceptionRecovers()
     // 程序执行结束 / 异常恢复 / 开机 都不是报警，其备注不得上送为报警。
     foreach (var (statusCode, remark, label) in new[]
     {
-        (ProductionConstants.MesDeviceStatuses.ProgramEnded, "程序执行结束；工位：工位1", "程序执行结束"),
-        (ProductionConstants.MesDeviceStatuses.Recovered, "异常恢复-工位1：伺服过载；", "异常恢复"),
-        (ProductionConstants.MesDeviceStatuses.PoweredOn, "开机；工位：工位1", "开机"),
-        (ProductionConstants.MesDeviceStatuses.Stopped, "停机；工位：工位1", "停机"),
-        (ProductionConstants.MesDeviceStatuses.ProgramStarted, "程序执行开始；工位：工位1", "程序执行开始")
+        (ProductionConstants.MesDeviceStatuses.ProgramEnded, "右工位：程序执行结束", "程序执行结束"),
+        (ProductionConstants.MesDeviceStatuses.Recovered, "异常恢复：伺服过载", "异常恢复"),
+        (ProductionConstants.MesDeviceStatuses.PoweredOn, "开机", "开机"),
+        (ProductionConstants.MesDeviceStatuses.Stopped, "停机", "停机"),
+        (ProductionConstants.MesDeviceStatuses.ProgramStarted, "左工位：程序执行开始", "程序执行开始")
     })
     {
         var log = new BizDeviceStatusLog
@@ -5598,13 +5614,42 @@ static void MesDeviceStatusRulesFormatStatusIdentity()
 
 static void MesDeviceStatusRulesFormatStationRemarks()
 {
-    AssertEqual("工位1", DeviceStatusReportRules.FormatStationScope(1), "工位 1 应显示为工位1。");
-    AssertEqual("工位2", DeviceStatusReportRules.FormatStationScope(2), "工位 2 应显示为工位2。");
-    AssertEqual("双工位", DeviceStatusReportRules.FormatStationScope(0), "共享报警点应显示为双工位。");
     AssertEqual(
-        "程序执行开始；工位：工位2",
-        DeviceStatusReportRules.AppendStationRemark("程序执行开始", 2),
-        "程序开始/结束备注应追加工位说明。");
+        "程序执行开始",
+        DeviceStatusReportRules.FormatRemark(
+            ProductionConstants.MesDeviceStatuses.ProgramStarted,
+            1,
+            dualStationEnabled: false,
+            "左",
+            "右"),
+        "单工位程序开始 Remark 不应携带工位前缀。");
+    AssertEqual(
+        "左工位：程序执行开始",
+        DeviceStatusReportRules.FormatRemark(
+            ProductionConstants.MesDeviceStatuses.ProgramStarted,
+            1,
+            dualStationEnabled: true,
+            "左",
+            "右"),
+        "双工位程序开始必须使用系统设置中的左工位名称。");
+    AssertEqual(
+        "右工位：程序执行结束",
+        DeviceStatusReportRules.FormatRemark(
+            ProductionConstants.MesDeviceStatuses.ProgramEnded,
+            2,
+            dualStationEnabled: true,
+            "左",
+            "右"),
+        "双工位程序结束必须使用系统设置中的右工位名称。");
+    AssertEqual(
+        "左工位：程序执行开始",
+        DeviceStatusReportRules.FormatRemark(
+            ProductionConstants.MesDeviceStatuses.ProgramStarted,
+            1,
+            dualStationEnabled: true,
+            "左工位",
+            "右工位"),
+        "系统设置已包含工位后缀时不得重复追加工位。");
 }
 
 static void MesDeviceStatusDuplicateSuppressionHonorsLifecycleForceWrite()
@@ -5688,36 +5733,66 @@ static void DeviceStatusLocalLogStoreResolvesDirectories()
 static void MesDeviceStatusRulesFormatConciseExceptionRemarks()
 {
     AssertEqual(
-        "工位1：左电极使用寿命到达，请更换；",
-        DeviceStatusReportRules.FormatExceptionRemark(" 左电极使用寿命到达，请更换；; ", 1, isSharedAlarm: false),
-        "工位报警必须使用工位前缀，并把末尾分号规范为一个中文分号。");
+        "异常：左电极使用寿命到达，请更换",
+        DeviceStatusReportRules.FormatRemark(
+            ProductionConstants.MesDeviceStatuses.Exception,
+            1,
+            dualStationEnabled: false,
+            "左",
+            "右",
+            " 左电极使用寿命到达，请更换；; "),
+        "单工位异常 Remark 必须只包含异常前缀和原始报警内容。");
     AssertEqual(
-        "左电极使用寿命到达，请更换；",
-        DeviceStatusReportRules.FormatExceptionRemark("左电极使用寿命到达，请更换", 1, isSharedAlarm: true),
-        "共享报警不得携带工位前缀。");
+        "异常：左电极使用寿命到达，请更换",
+        DeviceStatusReportRules.FormatRemark(
+            ProductionConstants.MesDeviceStatuses.Exception,
+            2,
+            dualStationEnabled: true,
+            "左",
+            "右",
+            "左电极使用寿命到达，请更换"),
+        "双工位异常不得使用 PLC 报警地址中的工位号或程序工位前缀。");
     AssertEqual(
-        "工位2：设备异常；",
-        DeviceStatusReportRules.FormatExceptionRemark(null, 2, isSharedAlarm: false),
-        "旧记录缺少报警内容时必须使用通用异常原因。");
-    AssertEqual(
-        "设备异常；",
-        DeviceStatusReportRules.FormatExceptionRemark(" ", 0, isSharedAlarm: true),
-        "旧共享记录缺少报警内容时不得添加共享工位前缀。");
+        "异常：设备异常",
+        DeviceStatusReportRules.FormatRemark(
+            ProductionConstants.MesDeviceStatuses.Exception,
+            0,
+            dualStationEnabled: true,
+            "左",
+            "右"),
+        "缺少报警内容时必须使用设备异常兜底。");
 }
 
 static void MesDeviceStatusRulesFormatConciseRecoveryRemarks()
 {
     AssertEqual(
-        "异常恢复-工位1：左电极使用寿命到达，请更换；",
-        DeviceStatusReportRules.FormatRecoveryRemark(" 左电极使用寿命到达，请更换；; ", 1, isSharedAlarm: false),
-        "工位恢复必须包含恢复前缀、工位和报警内容，并规范末尾分号。");
+        "异常恢复：左电极使用寿命到达，请更换",
+        DeviceStatusReportRules.FormatRemark(
+            ProductionConstants.MesDeviceStatuses.Recovered,
+            1,
+            dualStationEnabled: false,
+            "左",
+            "右",
+            " 左电极使用寿命到达，请更换；; "),
+        "单工位恢复 Remark 必须只包含恢复前缀和原始报警内容。");
     AssertEqual(
-        "异常恢复：左电极使用寿命到达，请更换；",
-        DeviceStatusReportRules.FormatRecoveryRemark("左电极使用寿命到达，请更换", 0, isSharedAlarm: true),
-        "共享恢复不得绑定任一工位。");
+        "异常恢复：左电极使用寿命到达，请更换",
+        DeviceStatusReportRules.FormatRemark(
+            ProductionConstants.MesDeviceStatuses.Recovered,
+            2,
+            dualStationEnabled: true,
+            "左",
+            "右",
+            "左电极使用寿命到达，请更换"),
+        "双工位恢复不得使用 PLC 报警地址中的工位号或程序工位前缀。");
     AssertEqual(
-        "异常恢复-工位2：设备异常；",
-        DeviceStatusReportRules.FormatRecoveryRemark(null, 2, isSharedAlarm: false),
+        "异常恢复：设备异常",
+        DeviceStatusReportRules.FormatRemark(
+            ProductionConstants.MesDeviceStatuses.Recovered,
+            0,
+            dualStationEnabled: true,
+            "左",
+            "右"),
         "恢复记录缺少报警内容时必须使用设备异常兜底。");
 }
 
@@ -5920,7 +5995,8 @@ static void DeviceStatusAlarmDetailsPersistAndReachMesRemark()
     {
         var result = service.ChangeStatusAsync(
                 ProductionConstants.MesDeviceStatuses.Exception,
-                "工位1：安全门打开；",
+
+                "异常：安全门打开",
                 "PLC-S1",
                 stationNo: 1,
                 alarmAddress: "DB10.DBX2.0",
@@ -5932,13 +6008,15 @@ static void DeviceStatusAlarmDetailsPersistAndReachMesRemark()
         AssertTrue(persisted is not null, "报警设备状态必须写入 JSONL。");
         AssertEqual("DB10.DBX2.0", persisted!.AlarmAddress, "JSONL 最新版本必须保留报警地址。");
         AssertEqual("安全门打开", persisted.AlarmContent, "JSONL 最新版本必须保留报警内容。");
+        AssertEqual("异常：安全门打开", persisted.Remark, "JSONL Remark 必须与 MES 使用相同的统一异常格式。");
         AssertEqual(1, mes.DeviceStatusRequests.Count, "报警设备状态应上传一次 MES。");
-        AssertEqual("工位1：安全门打开；", mes.DeviceStatusRequests[0].Remark, "MES 异常 Remark 必须精简为工位和报警内容。");
+        AssertEqual("异常：安全门打开", mes.DeviceStatusRequests[0].Remark, "MES 异常 Remark 必须统一为异常前缀和原始报警内容。");
         AssertFalse(mes.DeviceStatusRequests[0].Remark.Contains("DB10.DBX2.0", StringComparison.Ordinal), "MES 异常 Remark 不得包含报警地址。");
 
         var duplicate = service.ChangeStatusAsync(
                 ProductionConstants.MesDeviceStatuses.Exception,
-                "工位1：安全门打开；",
+
+                "异常：安全门打开",
                 "PLC-S1",
                 stationNo: 1,
                 alarmAddress: "DB10.DBX2.0",
@@ -5950,7 +6028,8 @@ static void DeviceStatusAlarmDetailsPersistAndReachMesRemark()
 
         _ = service.ChangeStatusAsync(
                 ProductionConstants.MesDeviceStatuses.Exception,
-                "工位1：气压低；",
+
+                "异常：气压低",
                 "PLC-S1",
                 stationNo: 1,
                 alarmAddress: "DB10.DBX2.1",
@@ -5961,14 +6040,16 @@ static void DeviceStatusAlarmDetailsPersistAndReachMesRemark()
 
         _ = service.ChangeStatusAsync(
                 ProductionConstants.MesDeviceStatuses.Recovered,
-                "异常恢复；工位：工位1",
+
+                "异常恢复：安全门打开",
                 "PLC-S1",
                 stationNo: 1)
             .GetAwaiter()
             .GetResult();
         var nextCycle = service.ChangeStatusAsync(
                 ProductionConstants.MesDeviceStatuses.Exception,
-                "工位1：安全门打开；",
+
+                "异常：安全门打开",
                 "PLC-S1",
                 stationNo: 1,
                 alarmAddress: "DB10.DBX2.0",
@@ -5980,7 +6061,8 @@ static void DeviceStatusAlarmDetailsPersistAndReachMesRemark()
 
         var addressRecovery = service.ChangeStatusAsync(
                 ProductionConstants.MesDeviceStatuses.Recovered,
-                "异常恢复-工位1：安全门打开；",
+
+                "异常恢复：安全门打开",
                 "PLC-S1",
                 stationNo: 1,
                 alarmAddress: "DB10.DBX2.0",
@@ -5989,7 +6071,8 @@ static void DeviceStatusAlarmDetailsPersistAndReachMesRemark()
             .GetResult();
         var duplicateAddressRecovery = service.ChangeStatusAsync(
                 ProductionConstants.MesDeviceStatuses.Recovered,
-                "异常恢复-工位1：安全门打开；",
+
+                "异常恢复：安全门打开",
                 "PLC-S1",
                 stationNo: 1,
                 alarmAddress: "DB10.DBX2.0",
@@ -6086,20 +6169,21 @@ static void DeviceStatusPendingExceptionsUseConciseMesRemarks()
         AssertSequenceEqual(
             new[]
             {
-                "工位1：左电极使用寿命到达，请更换；",
-                "安全门打开；",
-                "工位2：设备异常；",
-                "原异常恢复备注"
+
+                "异常：左电极使用寿命到达，请更换",
+                "异常：安全门打开",
+                "异常：旧异常",
+                "异常恢复：原异常恢复备注"
             },
             mes.DeviceStatusRequests.Select(request => request.Remark).ToArray(),
-            "历史异常补传必须使用精简格式，共享报警无前缀，非异常状态保持原 Remark。");
+            "历史异常和恢复补传必须统一使用状态前缀加原始报警内容。");
         AssertTrue(
             mes.DeviceStatusRequests.Take(3).All(request => !request.Remark.Contains("报警地址", StringComparison.Ordinal)),
             "历史异常补传不得继续发送报警地址。");
         AssertSequenceEqual(
-            logs.Take(3).Select(log => log.Remark).ToArray(),
-            logs.Take(3).Select(log => service.GetLog(log.RecordId!)?.Remark).ToArray(),
-            "补传时只应规范 MES 请求，不得改写 JSONL 中保存的历史异常 Remark。");
+            mes.DeviceStatusRequests.Select(request => request.Remark).ToArray(),
+            logs.Select(log => service.GetLog(log.RecordId!)?.Remark).ToArray(),
+            "历史补传完成后 JSONL 最新版本必须与 MES 请求使用同一 Remark。");
     }
     finally
     {
@@ -6173,13 +6257,14 @@ static void DeviceStatusPendingRecoveriesUseConciseMesRemarks()
 
         service.RetryPendingUploadsAsync().GetAwaiter().GetResult();
         AssertSequenceEqual(
-            ["异常恢复-工位1：左电极使用寿命到达，请更换；", "异常恢复：急停；", "旧整周期恢复"],
+
+            ["异常恢复：左电极使用寿命到达，请更换", "异常恢复：急停", "异常恢复：旧整周期恢复"],
             mes.DeviceStatusRequests.Select(request => request.Remark).ToArray(),
-            "有地址恢复必须按工位或共享格式重建 Remark，无地址旧恢复必须原样兼容。");
+            "恢复补传必须统一为异常恢复前缀加报警内容，不能携带 PLC 工位。");
         AssertSequenceEqual(
-            logs.Select(log => log.Remark).ToArray(),
+            mes.DeviceStatusRequests.Select(request => request.Remark).ToArray(),
             logs.Select(log => service.GetLog(log.RecordId!)?.Remark).ToArray(),
-            "恢复补传不得改写历史 JSONL Remark。");
+            "恢复补传完成后 JSONL 最新版本必须同步为统一 Remark。");
     }
     finally
     {

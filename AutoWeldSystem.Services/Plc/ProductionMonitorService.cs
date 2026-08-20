@@ -716,7 +716,7 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
 
         var log = await _deviceStatusService.ChangeStatusAsync(
             mesStatusCode,
-            BuildDeviceStatusRemark(normalizedStationNo, mesStatusCode, alarm),
+            BuildDeviceStatusRemark(normalizedStationNo, mesStatusCode, alarm, _settingsService.Get()),
             $"PLC-S{normalizedStationNo}",
             reportToMes: _mesConnectionMonitorService.Current.IsConnected,
             stationNo: normalizedStationNo,
@@ -784,29 +784,16 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
     private static string BuildDeviceStatusRemark(
         int stationNo,
         string mesStatusCode,
-        PlcActiveAlarm? alarm)
+        PlcActiveAlarm? alarm,
+        AppSettings settings)
     {
-        if (string.Equals(mesStatusCode, ProductionConstants.MesDeviceStatuses.Exception, StringComparison.Ordinal)
-            && alarm is not null)
-        {
-            return DeviceStatusReportRules.FormatExceptionRemark(
-                alarm.AlarmContent,
-                stationNo,
-                alarm.StationNo <= ProductionConstants.Stations.SharedStationNo);
-        }
-
-        if (string.Equals(mesStatusCode, ProductionConstants.MesDeviceStatuses.Recovered, StringComparison.Ordinal)
-            && alarm is not null)
-        {
-            return DeviceStatusReportRules.FormatRecoveryRemark(
-                alarm.AlarmContent,
-                stationNo,
-                alarm.StationNo <= ProductionConstants.Stations.SharedStationNo);
-        }
-
-        return DeviceStatusReportRules.AppendStationRemark(
-            DeviceStatusReportRules.GetStatusName(mesStatusCode),
-            stationNo);
+        return DeviceStatusReportRules.FormatRemark(
+            mesStatusCode,
+            stationNo,
+            settings.EnableDualStation,
+            settings.Station1DisplayName,
+            settings.Station2DisplayName,
+            alarm?.AlarmContent);
     }
 
     private static int? ToInteger(PlcServiceResult<bool> result)

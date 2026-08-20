@@ -40,18 +40,15 @@ public static class PlcSoftwareAlarmRules
     }
 
     /// <summary>
-    /// 合并生产地址与报警地址中出现的工位，确保仅配置报警地址的工位也参与轮询。
+    /// 返回生产业务地址中的程序工位。报警地址属于整台设备，不再产生额外程序工位。
     /// </summary>
     public static IReadOnlyList<int> ResolveStationNumbers(
         IEnumerable<int> productionStationNumbers,
         IEnumerable<BizPlcAlarmAddress> alarmAddresses)
     {
+        _ = alarmAddresses;
         var stationNumbers = productionStationNumbers
             .Where(stationNo => stationNo > ProductionConstants.Stations.SharedStationNo)
-            .Concat(alarmAddresses
-                .Where(alarm => alarm.Enabled && !string.IsNullOrWhiteSpace(alarm.Address))
-                .Select(alarm => alarm.StationNo)
-                .Where(stationNo => stationNo > ProductionConstants.Stations.SharedStationNo))
             .Distinct()
             .OrderBy(stationNo => stationNo)
             .ToList();
@@ -62,17 +59,15 @@ public static class PlcSoftwareAlarmRules
     }
 
     /// <summary>
-    /// 获取当前工位应读取的有效报警地址，包含共享报警地址。
+    /// 获取设备全部有效报警地址。stationNo 仅为历史调用兼容参数。
     /// </summary>
     public static IReadOnlyList<BizPlcAlarmAddress> ResolveAlarmAddressesForStation(
         IEnumerable<BizPlcAlarmAddress> alarmAddresses,
         int stationNo)
     {
-        var normalizedStationNo = NormalizeStationNo(stationNo);
+        _ = stationNo;
         return alarmAddresses
             .Where(alarm => alarm.Enabled && !string.IsNullOrWhiteSpace(alarm.Address))
-            .Where(alarm => alarm.StationNo == ProductionConstants.Stations.SharedStationNo
-                || alarm.StationNo == normalizedStationNo)
             .OrderBy(alarm => alarm.Sort)
             .ThenBy(alarm => alarm.Id)
             .ToList();
@@ -91,7 +86,7 @@ public static class PlcSoftwareAlarmRules
             .ToList();
         var activeAlarms = activeResults
             .Select(result => new PlcActiveAlarm(
-                result.StationNo,
+                ProductionConstants.Stations.SharedStationNo,
                 result.Address.Trim(),
                 result.AlarmContent.Trim()))
             .ToList();
@@ -106,9 +101,7 @@ public static class PlcSoftwareAlarmRules
                 result.Address.Trim(),
                 result.FailureMessage.Trim()))
             .ToList();
-        var scopeStationNo = activeResults.Any(result => result.StationNo <= ProductionConstants.Stations.SharedStationNo)
-            ? ProductionConstants.Stations.SharedStationNo
-            : NormalizeStationNo(stationNo);
+        var scopeStationNo = ProductionConstants.Stations.SharedStationNo;
 
         return new PlcAlarmSignalAggregation(
             activeResults.Count > 0,
@@ -281,11 +274,13 @@ public static class PlcDeviceAlarmCycleRules
         IReadOnlyList<PlcActiveAlarm> configuredAlarms)
     {
         var mode = AppConstants.PlcAlarmTriggerModes.Normalize(triggerMode);
-        var previousByKey = state.ActiveAlarms.ToDictionary(
-            GetAlarmKey,
-            StringComparer.OrdinalIgnoreCase);
+        var previousByKey = state.ActiveAlarms
+            .Select(NormalizeDeviceAlarm)
+            .DistinctBy(GetAlarmKey, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(GetAlarmKey, StringComparer.OrdinalIgnoreCase);
         var configuredByKey = configuredAlarms
             .Where(alarm => !string.IsNullOrWhiteSpace(alarm.Address))
+            .Select(NormalizeDeviceAlarm)
             .DistinctBy(GetAlarmKey, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(GetAlarmKey, StringComparer.OrdinalIgnoreCase);
         var preserveMissingConfigurations = deviceStatuses.Count == 0
@@ -347,12 +342,15 @@ public static class PlcDeviceAlarmCycleRules
     }
 
     /// <summary>
-    /// 报警身份包含配置工位，避免共享地址和工位地址相互覆盖。
+    /// 报警身份只使用地址；报警地址属于整台设备，不再按程序工位拆分。
     /// </summary>
     public static string GetAlarmKey(PlcActiveAlarm alarm) => GetAlarmKey(alarm.StationNo, alarm.Address);
 
     public static string GetAlarmKey(int stationNo, string address)
-        => $"{Math.Max(ProductionConstants.Stations.SharedStationNo, stationNo)}:{AlarmAddressImportRules.NormalizeAddress(address)}";
+    {
+        _ = stationNo;
+        return AlarmAddressImportRules.NormalizeAddress(address);
+    }
 
     /// <summary>
     /// 将配置快照转换为规则输入，保持报警内容和共享范围。
@@ -362,12 +360,18 @@ public static class PlcDeviceAlarmCycleRules
         => alarmAddresses
             .Where(alarm => alarm.Enabled && !string.IsNullOrWhiteSpace(alarm.Address))
             .Select(alarm => new PlcActiveAlarm(
-                Math.Max(ProductionConstants.Stations.SharedStationNo, alarm.StationNo),
+                ProductionConstants.Stations.SharedStationNo,
                 AlarmAddressImportRules.NormalizeAddress(alarm.Address),
                 string.IsNullOrWhiteSpace(alarm.AlarmContent) ? "设备异常" : alarm.AlarmContent.Trim()))
             .DistinctBy(GetAlarmKey, StringComparer.OrdinalIgnoreCase)
             .OrderBy(GetAlarmKey, StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+    private static PlcActiveAlarm NormalizeDeviceAlarm(PlcActiveAlarm alarm)
+        => new(
+            ProductionConstants.Stations.SharedStationNo,
+            alarm.Address.Trim(),
+            string.IsNullOrWhiteSpace(alarm.AlarmContent) ? "设备异常" : alarm.AlarmContent.Trim());
 
     private static bool? ResolveStatusGate(
         string mode,
