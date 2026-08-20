@@ -160,15 +160,19 @@ public class ProductionReportFileService : IProductionReportFileService
         var orderedConfigs = stationConfigs
             .OrderBy(config => config.StationNo)
             .ToList();
-        var displayOptions = ResolveCompatibleDisplayOptions(orderedConfigs);
+        var displayOptions = ResolveCompatibleDisplayOptions(
+            orderedConfigs,
+            WholePieceAbAggregationRules.IsApplicable(deviceType, orderedConfigs.FirstOrDefault()?.Config.TouchCount ?? 0));
         var leadingColumns = BuildLeadingColumns(displayOptions);
         var dynamicColumns = orderedConfigs
             .SelectMany(config => config.SchemeItems.SelectMany(item => BuildItemColumnsForMode(
                 item,
                 WholePieceAbAggregationRules.IsApplicable(deviceType, config.Config.TouchCount))));
+        var pointResultColumn = BuildPointResultColumn(displayOptions);
         var trailingColumns = BuildTrailingColumns();
         var columns = leadingColumns
             .Concat(dynamicColumns)
+            .Concat(pointResultColumn)
             .Concat(trailingColumns)
             .DistinctBy(column => column.Key, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -219,6 +223,8 @@ public class ProductionReportFileService : IProductionReportFileService
             task.SN,
             task.Spec,
             task.ProductModel,
+            task.ProductName,
+            task.ProcessName,
             task.ProcessNo,
             task.StartAmount,
             task.QualifiedQty,
@@ -273,7 +279,7 @@ public class ProductionReportFileService : IProductionReportFileService
     }
 
     /// <summary>
-    /// 写入第九行明细表头。
+    /// 写入第十一行明细表头。
     /// </summary>
     private static void WriteDetailHeader(IXLWorksheet worksheet, IReadOnlyList<ReportColumn> columns)
     {
@@ -425,7 +431,7 @@ public class ProductionReportFileService : IProductionReportFileService
         int dataRowCount,
         int templateColumnCount)
     {
-        var templateRange = worksheet.Range(1, 1, 7, templateColumnCount);
+        var templateRange = worksheet.Range(1, 1, 9, templateColumnCount);
         templateRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
         templateRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
         templateRange.Style.Alignment.WrapText = false;
@@ -446,6 +452,7 @@ public class ProductionReportFileService : IProductionReportFileService
         usedRange.Style.Alignment.WrapText = true;
 
         var headerRange = worksheet.Range(DetailHeaderRow, 1, DetailHeaderRow, detailColumnCount);
+        worksheet.Row(DetailHeaderRow).Height = 27d;
         headerRange.Style.Font.Bold = true;
         headerRange.Style.Fill.BackgroundColor = XLColor.FromHtml("#D9E2F3");
         worksheet.SheetView.FreezeRows(DetailHeaderRow);
@@ -743,15 +750,16 @@ public class ProductionReportFileService : IProductionReportFileService
     /// 同一设备同一任务只能使用一组采集点标题，冲突时拒绝生成，避免静默错标。
     /// </summary>
     private static ReportDisplayOptions ResolveCompatibleDisplayOptions(
-        IReadOnlyList<ResolvedStationReportConfig> stationConfigs)
+        IReadOnlyList<ResolvedStationReportConfig> stationConfigs,
+        bool wholePieceInspection)
     {
         if (stationConfigs.Count == 0)
         {
-            return ReportDisplayOptions.FromConfig(null);
+            return ReportDisplayOptions.FromConfig(null, wholePieceInspection);
         }
 
         var options = stationConfigs
-            .Select(config => ReportDisplayOptions.FromConfig(config.Config))
+            .Select(config => ReportDisplayOptions.FromConfig(config.Config, wholePieceInspection))
             .Distinct()
             .ToList();
         if (options.Count > 1)
@@ -795,6 +803,10 @@ public class ProductionReportFileService : IProductionReportFileService
         yield return new ReportColumn(ColumnStationNo, HeaderStationNo, MergeByProduct: true);
         yield return new ReportColumn(ColumnProductNo, HeaderProductNo, MergeByProduct: true);
         yield return new ReportColumn(ColumnTouchNo, displayOptions.PointNoHeader, MergeByProduct: false);
+    }
+
+    private static IEnumerable<ReportColumn> BuildPointResultColumn(ReportDisplayOptions displayOptions)
+    {
         yield return new ReportColumn(ColumnTouchResult, displayOptions.PointResultHeader, MergeByProduct: false);
     }
 
@@ -1027,17 +1039,18 @@ public class ProductionReportFileService : IProductionReportFileService
 
     private sealed record ReportDisplayOptions(string PointNoHeader, string PointResultHeader)
     {
-        public static ReportDisplayOptions FromConfig(BizProductProcessConfig? config)
+        public static ReportDisplayOptions FromConfig(BizProductProcessConfig? config, bool wholePieceInspection)
         {
             if (config is null)
             {
-                return new ReportDisplayOptions(HeaderTouchNo, HeaderTouchResult);
+                return wholePieceInspection
+                    ? new ReportDisplayOptions("检测面", "检测结果")
+                    : new ReportDisplayOptions(HeaderTouchNo, HeaderTouchResult);
             }
 
-            var pointName = NormalizeDisplayText(config.PointName, "焊点");
             return new ReportDisplayOptions(
-                NormalizeDisplayText(config.PointNoHeader, $"{pointName}序号"),
-                NormalizeDisplayText(config.PointResultHeader, $"{pointName}结果"));
+                CenterProductReportFormat.ResolvePointNoTitle(config.PointNoHeader, wholePieceInspection),
+                CenterProductReportFormat.ResolvePointResultTitle(config.PointResultHeader, wholePieceInspection));
         }
     }
 

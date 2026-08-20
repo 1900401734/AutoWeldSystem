@@ -56,6 +56,11 @@ public sealed class CenterProductReportRequest
     public string ProcessNo { get; set; } = string.Empty;
 
     /// <summary>
+    /// Process name shown by the standard Excel report.
+    /// </summary>
+    public string ProcessName { get; set; } = string.Empty;
+
+    /// <summary>
     /// Task-level operator number used when a point row has no operator.
     /// </summary>
     public string OperatorNo { get; set; } = string.Empty;

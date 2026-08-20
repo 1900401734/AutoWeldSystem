@@ -348,6 +348,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             Batch = task.Batch ?? string.Empty,
             Quantity = task.StartAmount,
             PartName = task.ProductName ?? string.Empty,
+            ProcessName = task.ProcessName ?? string.Empty,
             ProcessNo = task.ProcessNo ?? string.Empty,
             OperatorNo = task.UserNumber ?? string.Empty,
             ProductJobNo = task.ProductNum ?? string.Empty,
@@ -389,6 +390,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             Batch = task.Batch ?? string.Empty,
             Quantity = task.StartAmount,
             PartName = task.ProductName ?? string.Empty,
+            ProcessName = task.ProcessName ?? string.Empty,
             ProcessNo = task.ProcessNo ?? string.Empty,
             OperatorNo = task.UserNumber ?? string.Empty,
             ProductJobNo = task.ProductNum ?? string.Empty,
@@ -567,22 +569,35 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
         }
 
         columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnProductNo, Title = "产品编号", MergeByProduct = true });
+        var wholePieceInspection = WholePieceAbAggregationRules.IsApplicable(
+            settings.ProcessParameterDeviceType,
+            config?.TouchCount ?? 0);
         columns.Add(new CenterProductReportColumnDto
         {
             Key = CenterProductReportFormat.ColumnTouchNo,
-            Title = NormalizeDisplayText(config?.PointNoHeader, "焊点编号"),
-            MergeByProduct = false
-        });
-        columns.Add(new CenterProductReportColumnDto
-        {
-            Key = CenterProductReportFormat.ColumnTouchResult,
-            Title = NormalizeDisplayText(config?.PointResultHeader, "焊点结果"),
+            Title = ResolvePointNoHeader(config, wholePieceInspection),
             MergeByProduct = false
         });
 
         columns.AddRange(BuildDynamicReportColumns(config));
+        columns.Add(new CenterProductReportColumnDto
+        {
+            Key = CenterProductReportFormat.ColumnTouchResult,
+            Title = ResolvePointResultHeader(config, wholePieceInspection),
+            MergeByProduct = false
+        });
         columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnProductResult, Title = "产品结果", MergeByProduct = true });
         return columns;
+    }
+
+    private static string ResolvePointNoHeader(BizProductProcessConfig? config, bool wholePieceInspection)
+    {
+        return CenterProductReportFormat.ResolvePointNoTitle(config?.PointNoHeader, wholePieceInspection);
+    }
+
+    private static string ResolvePointResultHeader(BizProductProcessConfig? config, bool wholePieceInspection)
+    {
+        return CenterProductReportFormat.ResolvePointResultTitle(config?.PointResultHeader, wholePieceInspection);
     }
 
     private List<CenterProductReportColumnDto> BuildDynamicReportColumns(BizProductProcessConfig? config)

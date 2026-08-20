@@ -10,7 +10,7 @@ public static class CenterProductReportFormat
 {
     public const string WorksheetName = "生产报表";
     public const int TemplateMinimumColumnCount = 10;
-    public const int DetailHeaderRow = 9;
+    public const int DetailHeaderRow = 11;
     public const int DetailFirstDataRow = DetailHeaderRow + 1;
     public const string DateTimeFormat = "yyyy-MM-dd HH:mm:ss";
     public const string DataWorksheetName = "_Data";
@@ -31,16 +31,16 @@ public static class CenterProductReportFormat
 
     private static readonly IReadOnlyDictionary<int, double> TemplateColumnWidths = new Dictionary<int, double>
     {
-        [1] = 5.8867d,
-        [2] = 10.2188d,
-        [3] = 10.4414d,
-        [4] = 10.7773d,
-        [5] = 9.8867d,
-        [6] = 9d,
-        [7] = 11d,
+        [1] = 6.6d,
+        [2] = 10.9333333333333d,
+        [3] = 11.152380952381d,
+        [4] = 11.4857142857143d,
+        [5] = 10.6d,
+        [6] = 9.71428571428571d,
+        [7] = 11.7142857142857d,
         [8] = 11d,
-        [9] = 9.4414d,
-        [10] = 4d
+        [9] = 10.152380952381d,
+        [10] = 4.71428571428571d
     };
 
     /// <summary>
@@ -65,7 +65,7 @@ public static class CenterProductReportFormat
     }
 
     /// <summary>
-    /// 生成客户模板第九行使用的明细列。
+    /// 生成客户模板第十一行使用的明细列。
     /// 单工位由设备端省略工位列；固定列缺失时自动补齐，动态列保持设备端 SaveEnable 顺序。
     /// </summary>
     public static IReadOnlyList<CenterProductReportColumn> BuildDetailColumns(
@@ -85,8 +85,7 @@ public static class CenterProductReportFormat
         }
 
         columns.Add(ResolveDetailColumn(ColumnProductNo, "产品编号", mergeByProduct: true, equipmentColumnList));
-        columns.Add(ResolveDetailColumn(ColumnTouchNo, "焊点编号", mergeByProduct: false, equipmentColumnList));
-        columns.Add(ResolveDetailColumn(ColumnTouchResult, "焊点结果", mergeByProduct: false, equipmentColumnList));
+        columns.Add(ResolveDetailColumn(ColumnTouchNo, ResolveDefaultPointNoTitle(equipmentColumnList), mergeByProduct: false, equipmentColumnList));
 
         var fixedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -97,6 +96,7 @@ public static class CenterProductReportFormat
             ColumnProductResult
         };
         columns.AddRange(equipmentColumnList.Where(column => !fixedKeys.Contains(column.Key)));
+        columns.Add(ResolveDetailColumn(ColumnTouchResult, ResolveDefaultPointResultTitle(equipmentColumnList), mergeByProduct: false, equipmentColumnList));
         columns.Add(ResolveDetailColumn(ColumnProductResult, "产品结果", mergeByProduct: true, equipmentColumnList));
         return columns;
     }
@@ -111,19 +111,20 @@ public static class CenterProductReportFormat
         var normalizedLastColumn = Math.Max(TemplateMinimumColumnCount, lastColumn);
         return
         [
-            new(1, 1, 3, "产品工号：", values.ProductJobNo),
-            new(1, 4, 6, "图号：", values.DrawingNo),
-            new(1, 7, 8, "批次：", values.Batch),
-            new(1, 9, normalizedLastColumn, "流转卡号：", values.WorkOrder),
-            new(3, 1, 3, "部件规格：", values.Spec),
-            new(3, 4, 6, "型号：", values.ProductModel),
-            new(3, 7, normalizedLastColumn, "工序：", values.ProcessNo),
-            new(5, 1, 3, "生产数量：", values.Quantity),
-            new(5, 4, 6, "合格数量：", values.QualifiedQty),
-            new(5, 7, normalizedLastColumn, "备注：", null),
-            new(7, 1, 3, "开始时间：", values.StartTime),
-            new(7, 4, 6, "结束时间：", values.EndTime),
-            new(7, 7, normalizedLastColumn, "操作人员：", values.OperatorNo)
+            new(1, 1, 3, "流转卡号：", values.WorkOrder),
+            new(1, 4, 6, "规格：", values.Spec),
+            new(1, 7, normalizedLastColumn, "产品型号：", values.ProductModel),
+            new(3, 1, 3, "产品工号：", values.ProductJobNo),
+            new(3, 4, 6, "批次：", values.Batch),
+            new(3, 7, normalizedLastColumn, "部件名称：", values.PartName),
+            new(5, 1, 3, "部件图号：", values.DrawingNo),
+            new(5, 4, 6, "工序名称：", values.ProcessName),
+            new(5, 7, normalizedLastColumn, "工序号：", values.ProcessNo),
+            new(7, 1, 3, "工单数量：", values.Quantity),
+            new(7, 4, 6, "合格数量：", values.QualifiedQty),
+            new(7, 7, normalizedLastColumn, "操作人员：", values.OperatorNo),
+            new(9, 1, 3, "开始时间：", values.StartTime),
+            new(9, 4, 6, "结束时间：", values.EndTime)
         ];
     }
 
@@ -195,6 +196,42 @@ public static class CenterProductReportFormat
         return $"{stationNo}\u001F{workOrder?.Trim()}\u001F{productNo?.Trim()}";
     }
 
+    public static string ResolvePointNoTitle(string? configuredTitle, bool wholePieceInspection)
+    {
+        var title = configuredTitle?.Trim();
+        if (!string.IsNullOrWhiteSpace(title)
+            && (!wholePieceInspection || !IsLegacyWeldPointTitle(title)))
+        {
+            return title;
+        }
+
+        return wholePieceInspection ? "检测面" : "焊点编号";
+    }
+
+    public static string ResolvePointResultTitle(string? configuredTitle, bool wholePieceInspection)
+    {
+        var title = configuredTitle?.Trim();
+        if (!string.IsNullOrWhiteSpace(title)
+            && (!wholePieceInspection || !IsLegacyWeldResultTitle(title)))
+        {
+            return title;
+        }
+
+        return wholePieceInspection ? "检测结果" : "焊点结果";
+    }
+
+    private static string ResolveDefaultPointNoTitle(IReadOnlyList<CenterProductReportColumn> equipmentColumns)
+        => ResolvePointNoTitle(FindColumnTitle(equipmentColumns, ColumnTouchNo), wholePieceInspection: false);
+
+    private static string ResolveDefaultPointResultTitle(IReadOnlyList<CenterProductReportColumn> equipmentColumns)
+        => ResolvePointResultTitle(FindColumnTitle(equipmentColumns, ColumnTouchResult), wholePieceInspection: false);
+
+    private static bool IsLegacyWeldPointTitle(string title)
+        => title is "焊点序号" or "焊点编号" or "焊点号";
+
+    private static bool IsLegacyWeldResultTitle(string title)
+        => title is "焊点结果";
+
     private static CenterProductReportColumn ResolveDetailColumn(
         string key,
         string title,
@@ -234,6 +271,8 @@ public sealed record CenterProductReportHeaderValues(
     string WorkOrder,
     string Spec,
     string ProductModel,
+    string PartName,
+    string ProcessName,
     string ProcessNo,
     int Quantity,
     int QualifiedQty,

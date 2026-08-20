@@ -169,7 +169,7 @@ internal sealed class CenterProductReportWorkbookWriter
         int dataRowCount,
         int templateColumnCount)
     {
-        var templateRange = worksheet.Range(1, 1, 7, templateColumnCount);
+        var templateRange = worksheet.Range(1, 1, 9, templateColumnCount);
         templateRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
         templateRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
         templateRange.Style.Alignment.WrapText = false;
@@ -189,6 +189,7 @@ internal sealed class CenterProductReportWorkbookWriter
                 1,
                 CenterProductReportFormat.DetailHeaderRow,
                 columnCount);
+            worksheet.Row(CenterProductReportFormat.DetailHeaderRow).Height = 27d;
             headerRange.Style.Font.Bold = true;
             headerRange.Style.Fill.BackgroundColor = XLColor.FromHtml("#D9E2F3");
             worksheet.SheetView.FreezeRows(CenterProductReportFormat.DetailHeaderRow);

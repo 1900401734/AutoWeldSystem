@@ -1,6 +1,6 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.0.1`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.0.2`。
 
 ## 功能概览
 
@@ -195,6 +195,7 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 - 工单完工后本地 XLSX 报表会先生成；只要 XLSX 生成成功，就会进入“待上传数据 -> 报告文件”任务队列并参与 MES 上传/补传，不再依赖产品明细行或 `ReportEnable` 输出项作为入队前置条件。
 - 若历史工单已生成 `Biz_ProductionReportFile` 记录但缺少对应 `ReportFile` 上传任务，进入报表待上传页、全部重试或自动补传前会自动补齐任务；用户已经手动删除或已经上传成功的任务不会被恢复。
 - 没有任何产品生产数据时，报表仍会按公共字段生成并上传；如果 MES 或文件路径失败，失败信息保留在待上传数据中供手动重试。
+- 设备端与中心服务器生产报表统一使用客户参考模板：任务表头依次展示流转卡号/规格/产品型号、产品工号/批次/部件名称、部件图号/工序名称/工序号、工单数量/合格数量/操作人员、开始时间/结束时间；明细列按“产品编号 -> 检测面或焊点号 -> 动态测试值 -> 检测结果或焊点结果 -> 产品结果”排列。整件检测默认显示“检测面/检测结果”，产品工艺自定义表头仍可覆盖。
 
 ## 设备状态日志与补传
 
@@ -232,10 +233,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>2.0.1</Version>
-<AssemblyVersion>2.0.1.0</AssemblyVersion>
-<FileVersion>2.0.1.0</FileVersion>
-<InformationalVersion>2.0.1</InformationalVersion>
+<Version>2.0.2</Version>
+<AssemblyVersion>2.0.2.0</AssemblyVersion>
+<FileVersion>2.0.2.0</FileVersion>
+<InformationalVersion>2.0.2</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -247,9 +248,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v2.0.1 -m "Release v2.0.1"
+git tag -a v2.0.2 -m "Release v2.0.2"
 git push origin main
-git push origin v2.0.1
+git push origin v2.0.2
 ```
 
 ## Git 使用
