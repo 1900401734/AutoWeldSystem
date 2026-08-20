@@ -18,6 +18,11 @@ public static class MesConnectionRules
     public const int OfflineFailureThreshold = 3;
 
     /// <summary>
+    /// 自动在线探测的独立超时时间，不跟随业务 MES 请求超时设置。
+    /// </summary>
+    public const int OnlineProbeTimeoutSeconds = 3;
+
+    /// <summary>
     /// 判断连续失败次数是否已达到离线确认阈值。
     /// </summary>
     public static bool IsOfflineConfirmed(int consecutiveFailures)

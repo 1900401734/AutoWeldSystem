@@ -285,7 +285,7 @@ var tests = new (string Name, Action Run)[]
     ("MES heartbeat interval normalization clamps to supported range", MesHeartbeatIntervalNormalizationClampsToSupportedRange),
     ("MES connection monitor confirms offline after three failures", MesConnectionMonitorConfirmsOfflineAfterThreeFailures),
     ("MES connection monitor resets failures and handles exceptions", MesConnectionMonitorResetsFailuresAndHandlesExceptions),
-    ("MES online check writes log only when raw probe changes", MesOnlineCheckWritesLogOnlyWhenStateChanges),
+    ("MES online check skips interaction log and uses dedicated timeout", MesOnlineCheckSkipsInteractionLogAndUsesDedicatedTimeout),
     ("MES provider uses configured routes", MesProviderUsesConfiguredRoutes),
     ("MES provider applies PostData header from latest settings", MesProviderAppliesPostDataHeaderFromLatestSettings),
     ("Elevated auto start defaults to enabled", ElevatedAutoStartDefaultsToEnabled),
@@ -8838,10 +8838,6 @@ static void MesConnectionMonitorConfirmsOfflineAfterThreeFailures()
     AssertTrue(monitor.Current.UpdatedTime != default, "确认离线后必须更新时间。");
     AssertEqual("timeout", monitor.Current.Message, "确认离线后必须保留最后一次失败原因。");
     AssertEqual(1, published.Count, "连续失败只应在达到阈值时发布一次离线状态。");
-    AssertSequenceEqual(
-        new bool?[] { null, false, false },
-        provider.OnlineCheckPreviousStates,
-        "MES 交互日志判断必须使用原始探测结果，而不是尚未切换的业务在线状态。");
 }
 
 static void MesConnectionMonitorResetsFailuresAndHandlesExceptions()
@@ -8889,38 +8885,29 @@ static void MesConnectionMonitorResetsFailuresAndHandlesExceptions()
     monitor.CheckOnceSafelyAsync().GetAwaiter().GetResult();
     AssertTrue(monitor.Current.IsConnected, "已离线时任意一次成功必须立即恢复在线。");
     AssertEqual(1, published.Count(snapshot => !snapshot.IsConnected), "整段探测序列只能发布一次确认离线状态。");
-    AssertSequenceEqual(
-        new bool?[] { null, true, false, false, true, false, false, false },
-        provider.OnlineCheckPreviousStates,
-        "成功、失败和异常后都必须把原始探测结果传给下一轮日志判断。");
 }
 
-static void MesOnlineCheckWritesLogOnlyWhenStateChanges()
+static void MesOnlineCheckSkipsInteractionLogAndUsesDedicatedTimeout()
 {
-    var handler = new RecordingHttpMessageHandler();
+    var handler = new BlockingHttpMessageHandler();
     var logService = new FakeMesInteractionLogService();
     var settings = new FakeAppSettingsService
     {
         Current = BuildCustomMesRouteSettings()
     };
+    settings.Current.MesTimeoutSeconds = 10;
     using var provider = CreateMesProvider(settings, handler, logService);
 
-    // 首轮无历史状态，必须写一条基线日志。
-    provider.CheckSystemOnlineAsync(previousOnline: null).GetAwaiter().GetResult();
-    AssertEqual(1, logService.Entries.Count, "首次在线检测必须写入基线日志。");
-    AssertEqual(AppConstants.MesLogPurposes.CheckOnline, logService.Entries[0].Purpose, "在线检测日志用途必须为 MES在线检测。");
+    var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+    var response = provider.CheckSystemOnlineAsync(previousOnline: null).GetAwaiter().GetResult();
+    stopwatch.Stop();
 
-    // 假处理器固定返回 S，上一轮已在线属于状态未变，不应重复写日志。
-    provider.CheckSystemOnlineAsync(previousOnline: true).GetAwaiter().GetResult();
-    AssertEqual(1, logService.Entries.Count, "在线状态未变化时不得写入心跳日志。");
-
-    // 上一轮离线，本轮在线属于状态跳变，必须留痕。
-    provider.CheckSystemOnlineAsync(previousOnline: false).GetAwaiter().GetResult();
-    AssertEqual(2, logService.Entries.Count, "离线恢复为在线时必须写入一条日志。");
-    AssertEqual(3, handler.Requests.Count, "三次探测都必须真实发出请求。");
-    AssertEqual("mes/sys-custom", handler.Requests[2].Path, "在线检测必须使用配置的在线检测路由。");
+    AssertFalse(response.IsSuccess, "在线检测超时必须返回失败结果。");
+    AssertTrue(handler.CancellationObserved.Task.Wait(TimeSpan.FromSeconds(1)), "在线检测必须触发独立超时取消。");
+    AssertTrue(stopwatch.Elapsed >= TimeSpan.FromSeconds(2), "在线检测不能早于 3 秒超时太多。");
+    AssertTrue(stopwatch.Elapsed < TimeSpan.FromSeconds(5), "在线检测必须使用 3 秒独立超时，不能沿用 10 秒业务超时。");
+    AssertEqual(0, logService.Entries.Count, "自动在线检测不得写入 MES 交互日志。");
 }
-
 static void MesProviderUsesConfiguredRoutes()
 {
     var handler = new RecordingHttpMessageHandler();
@@ -11974,7 +11961,7 @@ static DeviceApiEndpointService CreateDeviceApiEndpointService(
 
 static MesProvider CreateMesProvider(
     FakeAppSettingsService appSettingsService,
-    RecordingHttpMessageHandler handler,
+    HttpMessageHandler handler,
     FakeMesInteractionLogService? logService = null)
 {
     return new MesProvider(
@@ -13019,8 +13006,6 @@ sealed class FakeMesProvider : IMesProvider
 
     public Func<bool?, CancellationToken, Task<BasicRes<object>>>? OnlineCheckHandler { get; set; }
 
-    public List<bool?> OnlineCheckPreviousStates { get; } = new();
-
     public Task<BasicRes<ServerTimeRes>> GetServerTimeAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(ServerTimeResponse);
 
@@ -13037,11 +13022,8 @@ sealed class FakeMesProvider : IMesProvider
         => throw new NotSupportedException();
 
     public Task<BasicRes<object>> CheckSystemOnlineAsync(bool? previousOnline, CancellationToken cancellationToken = default)
-    {
-        OnlineCheckPreviousStates.Add(previousOnline);
-        return OnlineCheckHandler?.Invoke(previousOnline, cancellationToken)
+        => OnlineCheckHandler?.Invoke(previousOnline, cancellationToken)
             ?? throw new NotSupportedException();
-    }
 
     public Task<BasicRes<ProgramDataRes>> AddExpProgramAsync(ProgramDataWriteReq requestData, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
@@ -13771,6 +13753,26 @@ sealed class RecordingHttpMessageHandler : HttpMessageHandler
         {
             Content = new StringContent("{\"Status\":\"S\",\"Msg\":\"成功\",\"Data\":null}", Encoding.UTF8, "application/json")
         };
+    }
+}
+
+sealed class BlockingHttpMessageHandler : HttpMessageHandler
+{
+    public TaskCompletionSource<bool> CancellationObserved { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            CancellationObserved.TrySetResult(true);
+            throw;
+        }
+
+        throw new InvalidOperationException("Blocking handler must be cancelled before returning.");
     }
 }
 

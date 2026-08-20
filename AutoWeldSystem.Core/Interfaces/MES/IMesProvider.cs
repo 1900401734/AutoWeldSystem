@@ -35,8 +35,7 @@ public interface IMesProvider
 
     /// <summary>
     /// 探测 MES 是否在线，供心跳轮询使用。
-    /// previousOnline 表示上一轮原始探测结果；仅当本次结果与其不同（或其为 null）时写交互日志，
-    /// 避免心跳按秒刷爆 MES 日志。
+    /// 自动心跳使用独立短超时且不写 MES 交互日志；previousOnline 仅为兼容现有接口保留。
     /// </summary>
     Task<BasicRes<object>> CheckSystemOnlineAsync(bool? previousOnline, CancellationToken cancellationToken = default);
 

@@ -21,7 +21,6 @@ public sealed class MesConnectionMonitor : IMesConnectionMonitor, IDisposable
     private CancellationTokenSource? _cts;
     private Task? _loopTask;
     private int _consecutiveProbeFailures;
-    private bool? _lastProbeSucceeded;
     private bool _disposed;
 
     public MesConnectionMonitor(IMesProvider mesProvider, ILocalizationService localizer, IAppSettingsService appSettingsService)
@@ -148,8 +147,8 @@ public sealed class MesConnectionMonitor : IMesConnectionMonitor, IDisposable
 
     private async Task CheckOnceAsync(CancellationToken cancellationToken)
     {
-        // 日志按原始探测结果跳变记录，业务在线状态则需连续三次失败才切换。
-        var response = await _mesProvider.CheckSystemOnlineAsync(_lastProbeSucceeded, cancellationToken);
+        // 自动心跳不写 MES 交互日志，业务在线状态仍需连续三次失败才切换。
+        var response = await _mesProvider.CheckSystemOnlineAsync(previousOnline: null, cancellationToken);
         var probeSucceeded = string.Equals(response.Status, AppConstants.MesStatus.Success, StringComparison.OrdinalIgnoreCase);
         if (probeSucceeded)
         {
@@ -162,7 +161,6 @@ public sealed class MesConnectionMonitor : IMesConnectionMonitor, IDisposable
 
     private void ApplyProbeSuccess()
     {
-        _lastProbeSucceeded = true;
         _consecutiveProbeFailures = 0;
         Publish(new MesConnectionSnapshot(
             true,
@@ -173,7 +171,6 @@ public sealed class MesConnectionMonitor : IMesConnectionMonitor, IDisposable
 
     private void ApplyProbeFailure(string message)
     {
-        _lastProbeSucceeded = false;
         _consecutiveProbeFailures = Math.Min(
             _consecutiveProbeFailures + 1,
             MesConnectionRules.OfflineFailureThreshold);

@@ -93,15 +93,20 @@ public class MesProvider : IMesProvider, IDisposable
 
     /// <summary>
     /// 心跳探测 MES 是否在线。
-    /// 只有原始探测结果发生跳变时才写交互日志，避免按心跳间隔刷爆日志。
+    /// 自动心跳只更新连接监控状态，不写入 MES 交互日志；确认后的断线/恢复由设备日志记录。
+    /// previousOnline 保留在接口中以兼容现有调用方，但不再参与日志判断。
     /// </summary>
     public Task<BasicRes<object>> CheckSystemOnlineAsync(bool? previousOnline, CancellationToken cancellationToken = default)
-        => GetAsync<object>(
+    {
+        _ = previousOnline;
+        return GetAsync<object>(
             AppConstants.MesLogPurposes.CheckOnline,
             ConfiguredRoute(settings => settings.MesSysRoute, MesEndpointRouteRules.SysDefaultRoute),
             null,
             cancellationToken,
-            writeLogPredicate: result => previousOnline is null || previousOnline != (result?.IsSuccess == true));
+            timeoutSecondsOverride: MesConnectionRules.OnlineProbeTimeoutSeconds,
+            writeLog: false);
+    }
 
     /// <summary>
     /// 获取程序列表。
