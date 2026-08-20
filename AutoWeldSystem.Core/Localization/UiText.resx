@@ -892,7 +892,7 @@
     <value>当前工位</value>
   </data>
   <data name="monitor.label.work_order_no" xml:space="preserve">
-    <value>工单号</value>
+    <value>流转卡号</value>
   </data>
   <data name="monitor.label.program_name" xml:space="preserve">
     <value>程序名称</value>
@@ -913,7 +913,7 @@
     <value>部件名称</value>
   </data>
   <data name="monitor.label.drawing_no" xml:space="preserve">
-    <value>零件图号</value>
+    <value>部件图号</value>
   </data>
   <data name="monitor.label.sequence_no" xml:space="preserve">
     <value>序号</value>

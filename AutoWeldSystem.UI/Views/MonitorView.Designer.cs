@@ -1043,7 +1043,7 @@ namespace AutoWeldSystem.UI.Views
             lblDrawingNo.Name = "lblDrawingNo";
             lblDrawingNo.Size = new Size(70, 37);
             lblDrawingNo.TabIndex = 29;
-            lblDrawingNo.Text = "零件图号";
+            lblDrawingNo.Text = "部件图号";
             // 
             // inputDrawingNo
             // 
@@ -1297,7 +1297,7 @@ namespace AutoWeldSystem.UI.Views
             lblStartAmount.Name = "lblStartAmount";
             lblStartAmount.Size = new Size(70, 37);
             lblStartAmount.TabIndex = 31;
-            lblStartAmount.Text = "生产数量";
+            lblStartAmount.Text = "工单数量";
             // 
             // inputStartAmount
             // 
@@ -1404,19 +1404,19 @@ namespace AutoWeldSystem.UI.Views
             lblWorkOrder.Location = new Point(0, 0);
             lblWorkOrder.Margin = new Padding(0);
             lblWorkOrder.Name = "lblWorkOrder";
-            lblWorkOrder.Size = new Size(53, 37);
+            lblWorkOrder.Size = new Size(70, 37);
             lblWorkOrder.TabIndex = 22;
-            lblWorkOrder.Text = "工单号";
+            lblWorkOrder.Text = "流转卡号";
             // 
             // inputSN
             // 
             inputSN.Dock = DockStyle.Fill;
             inputSN.ImeMode = ImeMode.Inherit;
-            inputSN.Location = new Point(53, 0);
+            inputSN.Location = new Point(70, 0);
             inputSN.Margin = new Padding(0);
             inputSN.Name = "inputSN";
             inputSN.ReadOnly = true;
-            inputSN.Size = new Size(214, 37);
+            inputSN.Size = new Size(197, 37);
             inputSN.TabIndex = 4;
             // 
             // chkEnableDualWorkOrder
@@ -1466,7 +1466,6 @@ namespace AutoWeldSystem.UI.Views
             inputProdModel.Location = new Point(70, 0);
             inputProdModel.Margin = new Padding(0);
             inputProdModel.Name = "inputProdModel";
-            inputProdModel.ReadOnly = false;
             inputProdModel.Size = new Size(331, 37);
             inputProdModel.TabIndex = 4;
             // 
