@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Text.Json;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs.DataManagement;
 using AutoWeldSystem.Core.Interfaces;
@@ -344,7 +343,6 @@ public partial class DataManageView : BaseView
         txtWorkOrder.KeyDown += FilterInput_KeyDown;
         workOrderPagination.ValueChanged += WorkOrderPagination_ValueChanged;
         dgvWorkOrders.SelectionChanged += WorkOrders_SelectionChanged;
-        tableTestData.CellClick += TestDataTable_CellClick;
         dgvWorkOrders.CellFormatting += Status_CellFormatting;
         dgvReportFiles.CellFormatting += Status_CellFormatting;
         dgvReportFiles.SelectionChanged += ReportFiles_SelectionChanged;
@@ -526,8 +524,6 @@ public partial class DataManageView : BaseView
         _detailQueryCancellation = new CancellationTokenSource();
         var cancellationToken = _detailQueryCancellation.Token;
         _selectedTaskId = taskId;
-        txtRawData.Clear();
-
         SetDetailBusy(true);
         try
         {
@@ -577,18 +573,6 @@ public partial class DataManageView : BaseView
         reportBindingSource.DataSource = rows.ToList();
         lblReportSummary.Text = _localizer.GetString(TextKeys.DataManage.ReportSummary, rows.Count);
         UpdateReportButtons();
-    }
-
-    private void TestDataTable_CellClick(object sender, AntdUI.TableClickEventArgs e)
-    {
-        if (_disposing || IsDisposed || Disposing)
-        {
-            return;
-        }
-
-        txtRawData.Text = e.Record is DataHistoryTestDataRow { IsProductRow: false } row
-            ? FormatJsonOrOriginal(row.RawDataJson)
-            : string.Empty;
     }
 
     private void Status_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
@@ -716,7 +700,6 @@ public partial class DataManageView : BaseView
         CancelAndDispose(ref _workOrderQueryCancellation);
         CancelAndDispose(ref _detailQueryCancellation);
         dgvWorkOrders.SelectionChanged -= WorkOrders_SelectionChanged;
-        tableTestData.CellClick -= TestDataTable_CellClick;
         dgvReportFiles.SelectionChanged -= ReportFiles_SelectionChanged;
     }
 
@@ -731,7 +714,6 @@ public partial class DataManageView : BaseView
         tableTestData.DataSource = Array.Empty<DataHistoryTestDataRow>();
         collectionBindingSource.DataSource = Array.Empty<DataHistoryCollectionRow>();
         reportBindingSource.DataSource = Array.Empty<DataHistoryReportFileRow>();
-        txtRawData.Clear();
         lblParameterSummary.Text = _localizer.GetString(TextKeys.DataManage.SelectWorkOrder);
         lblReportSummary.Text = _localizer.GetString(TextKeys.DataManage.SelectWorkOrder);
         UpdateReportButtons();
@@ -767,12 +749,6 @@ public partial class DataManageView : BaseView
                 (int)Math.Round(mainHeight * 0.25),
                 mainSplitter.Panel1MinSize,
                 mainHeight - mainSplitter.Panel2MinSize);
-        }
-
-        var testDataHeight = testDataSplitter.ClientSize.Height - testDataSplitter.SplitterWidth;
-        if (testDataHeight > testDataSplitter.Panel1MinSize + testDataSplitter.Panel2MinSize)
-        {
-            testDataSplitter.SplitterDistance = testDataHeight - testDataSplitter.Panel2MinSize;
         }
     }
 
@@ -813,7 +789,6 @@ public partial class DataManageView : BaseView
         tabWeldParameters.Text = _localizer.GetString(TextKeys.DataManage.TabWeldParameters);
         ConfigureTestDataColumns(_testDataDynamicColumns);
         tabReportFiles.Text = _localizer.GetString(TextKeys.DataManage.TabReportFiles);
-        lblRawData.Text = _localizer.GetString(TextKeys.DataManage.RawData);
         btnOpenReport.Text = _localizer.GetString(TextKeys.DataManage.OpenReport);
         btnOpenReportFolder.Text = _localizer.GetString(TextKeys.DataManage.OpenReportFolder);
         ApplyColumnHeaders();
@@ -869,24 +844,6 @@ public partial class DataManageView : BaseView
 
     private string T(string key)
         => _localizer.GetString(key);
-
-    private static string FormatJsonOrOriginal(string? json)
-    {
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return string.Empty;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            return JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions { WriteIndented = true });
-        }
-        catch (JsonException)
-        {
-            return json;
-        }
-    }
 
     private void OpenShellPath(string path)
     {

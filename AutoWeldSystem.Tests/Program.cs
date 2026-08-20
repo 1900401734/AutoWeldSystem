@@ -1977,18 +1977,20 @@ static void DataManageViewUsesGenericProductTestTree()
     AssertTrue(viewCode.Contains("QueryTestDataAsync", StringComparison.Ordinal), "DataManageView 必须查询通用测试数据，而不是固定焊接参数接口。");
     AssertTrue(viewCode.Contains("SetTree(nameof(DataHistoryTestDataRow.Children))", StringComparison.Ordinal), "测试数据表必须按产品→测试记录配置树形列。");
     AssertTrue(viewCode.Contains("tableTestData.DefaultExpand = true", StringComparison.Ordinal), "产品节点必须默认展开。");
-    AssertTrue(viewCode.Contains("TestDataTable_CellClick", StringComparison.Ordinal), "测试记录选择必须绑定原始 JSON 查看逻辑。");
-    AssertTrue(viewCode.Contains("RawDataJson", StringComparison.Ordinal), "测试树子行必须携带原始 JSON。");
-    AssertTrue(viewCode.Contains("ApplyDefaultSplitterLayout", StringComparison.Ordinal), "DataManageView 必须初始化上下主从和原始数据 splitter 比例。");
+    AssertFalse(viewCode.Contains("TestDataTable_CellClick", StringComparison.Ordinal), "测试数据树不得再绑定原始 JSON 查看逻辑。");
+    AssertFalse(viewCode.Contains("FormatJsonOrOriginal", StringComparison.Ordinal), "DataManageView 不应保留仅用于原始 JSON 展示的格式化逻辑。");
+    AssertTrue(viewCode.Contains("ApplyDefaultSplitterLayout", StringComparison.Ordinal), "DataManageView 必须初始化工单与详情区域比例。");
     AssertFalse(viewCode.Contains("QueryCollectionRecordsAsync", StringComparison.Ordinal), "DataManageView 不应再次查询重复的采集数据页。");
     AssertFalse(viewCode.Contains("LoadCollectionRecordsAsync", StringComparison.Ordinal), "DataManageView 不应保留重复采集分页加载路径。");
     AssertTrue(designerCode.Contains("tableTestData = new AntdUI.Table()", StringComparison.Ordinal), "Designer 必须声明通用测试数据树表格。");
-    AssertEqual(2, CountOccurrences(designerCode, "new AntdUI.Splitter()"), "DataManageView 的工单/页签和测试树/原始数据必须全部使用 AntdUI.Splitter。");
+    AssertEqual(1, CountOccurrences(designerCode, "new AntdUI.Splitter()"), "DataManageView 只应保留工单与详情区域之间的 AntdUI.Splitter。");
     AssertTrue(designerCode.Contains("mainSplitter = new AntdUI.Splitter()", StringComparison.Ordinal), "工单信息与详情页签之间必须使用 AntdUI.Splitter。");
-    AssertTrue(designerCode.Contains("testDataSplitter = new AntdUI.Splitter()", StringComparison.Ordinal), "测试树与原始 JSON 之间必须使用 AntdUI.Splitter。");
+    AssertFalse(designerCode.Contains("testDataSplitter", StringComparison.Ordinal), "测试数据页不得再声明内部 splitter。");
+    AssertFalse(designerCode.Contains("rawDataLayout", StringComparison.Ordinal), "测试数据页不得再声明原始数据布局。");
+    AssertFalse(designerCode.Contains("txtRawData", StringComparison.Ordinal), "测试数据页不得再声明原始数据文本框。");
+    AssertTrue(designerCode.Contains("tabWeldParameters.Controls.Add(parameterLayout);", StringComparison.Ordinal), "测试数据布局必须直接填充测试数据页签。");
     AssertFalse(designerCode.Contains("new SplitContainer()", StringComparison.Ordinal), "DataManageView 不得继续实例化 WinForms SplitContainer。");
     AssertTrue(designerCode.Contains("mainSplitter.Orientation = Orientation.Horizontal;", StringComparison.Ordinal), "工单与详情页签 splitter 必须保持上下分隔。");
-    AssertTrue(designerCode.Contains("testDataSplitter.Orientation = Orientation.Horizontal;", StringComparison.Ordinal), "测试树与原始数据 splitter 必须保持上下分隔。");
     AssertTrue(designerCode.Contains("detailTabs.Controls.Add(tabWeldParameters);", StringComparison.Ordinal), "详情页必须保留测试数据页签。");
     AssertTrue(designerCode.Contains("detailTabs.Controls.Add(tabReportFiles);", StringComparison.Ordinal), "详情页必须保留报告文件页签。");
     AssertFalse(designerCode.Contains("detailTabs.Controls.Add(tabCollectionData);", StringComparison.Ordinal), "详情页不得继续显示重复的采集数据页签。");
@@ -2236,7 +2238,7 @@ static void StoredPlcProductResultsDriveHistoryWithoutPointAggregation()
     var weldParameterProductResult = typeof(DataHistoryWeldParameterRow).GetProperty("ProductResult");
     var collectionProductResult = typeof(DataHistoryCollectionRow).GetProperty("ProductResult");
     AssertTrue(testDataProductResult is not null, "通用测试数据树行必须公开独立的 ProductResult。");
-    AssertTrue(testDataRawJson is not null, "通用测试数据树行必须公开 RawDataJson 以支持下方原始数据面板。");
+    AssertTrue(testDataRawJson is not null, "通用测试数据树行必须保留 RawDataJson 以兼容历史数据和内部业务流程。");
     AssertTrue(weldParameterProductResult is not null, "兼容焊接参数历史行必须公开独立的 ProductResult。");
     AssertTrue(collectionProductResult is not null, "采集记录历史行必须公开独立的 ProductResult。");
 
@@ -7896,10 +7898,6 @@ static void DataManageViewIgnoresWorkOrderSelectionWhileDisposing()
         viewCode,
         "private DataHistoryWorkOrderRow? GetSelectedWorkOrder()",
         "private async Task QueryWorkOrdersAsync");
-    var testDataSelectionHandler = ExtractMethodText(
-        viewCode,
-        "private void TestDataTable_CellClick",
-        "private void Status_CellFormatting");
     var beginDisposeMethod = ExtractMethodText(
         viewCode,
         "private void BeginDispose()",
@@ -7911,10 +7909,8 @@ static void DataManageViewIgnoresWorkOrderSelectionWhileDisposing()
     AssertTrue(selectedWorkOrderMethod.Contains("workOrderBindingSource.Position", StringComparison.Ordinal), "读取工单选择前必须校验 BindingSource 当前索引。");
     AssertTrue(selectedWorkOrderMethod.Contains("workOrderBindingSource.Current as DataHistoryWorkOrderRow", StringComparison.Ordinal), "工单选择应从 BindingSource.Current 获取。");
     AssertFalse(selectedWorkOrderMethod.Contains("dgvWorkOrders.CurrentRow", StringComparison.Ordinal), "GetSelectedWorkOrder 不能访问 DataGridView.CurrentRow。");
-    AssertTrue(testDataSelectionHandler.Contains("_disposing", StringComparison.Ordinal), "测试树选择事件在释放中必须直接返回。");
-    AssertTrue(testDataSelectionHandler.Contains("DataHistoryTestDataRow { IsProductRow: false }", StringComparison.Ordinal), "只有测试记录子行才能显示原始 JSON。");
     AssertTrue(beginDisposeMethod.Contains("dgvWorkOrders.SelectionChanged -= WorkOrders_SelectionChanged;", StringComparison.Ordinal), "释放时必须解绑工单选择事件。");
-    AssertTrue(beginDisposeMethod.Contains("tableTestData.CellClick -= TestDataTable_CellClick;", StringComparison.Ordinal), "释放时必须解绑测试树选择事件。");
+    AssertFalse(beginDisposeMethod.Contains("tableTestData.CellClick", StringComparison.Ordinal), "测试数据树不再展示原始 JSON，因此释放逻辑不应保留点击事件解绑。");
 }
 
 static void LogManageViewDeviceStatusTabShowsAlarmDetails()

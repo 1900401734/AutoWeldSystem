@@ -49,14 +49,10 @@
             dgvWeldParameters = new DataGridView();
             tableTestData = new AntdUI.Table();
             tabCollectionData = new TabPage();
-            testDataSplitter = new AntdUI.Splitter();
             collectionLayout = new TableLayoutPanel();
             lblCollectionSummary = new Label();
             dgvCollectionRecords = new DataGridView();
             collectionPagination = new AntdUI.Pagination();
-            rawDataLayout = new TableLayoutPanel();
-            lblRawData = new Label();
-            txtRawData = new TextBox();
             tabReportFiles = new TabPage();
             reportLayout = new TableLayoutPanel();
             reportToolbar = new FlowLayoutPanel();
@@ -119,13 +115,8 @@
             parameterLayout.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)dgvWeldParameters).BeginInit();
             tabCollectionData.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)testDataSplitter).BeginInit();
-            testDataSplitter.Panel1.SuspendLayout();
-            testDataSplitter.Panel2.SuspendLayout();
-            testDataSplitter.SuspendLayout();
             collectionLayout.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)dgvCollectionRecords).BeginInit();
-            rawDataLayout.SuspendLayout();
             tabReportFiles.SuspendLayout();
             reportLayout.SuspendLayout();
             reportToolbar.SuspendLayout();
@@ -394,7 +385,7 @@
             //
             // tabWeldParameters
             //
-            tabWeldParameters.Controls.Add(testDataSplitter);
+            tabWeldParameters.Controls.Add(parameterLayout);
             tabWeldParameters.Location = new Point(4, 32);
             tabWeldParameters.Name = "tabWeldParameters";
             tabWeldParameters.Padding = new Padding(3);
@@ -410,12 +401,12 @@
             parameterLayout.Controls.Add(lblParameterSummary, 0, 0);
             parameterLayout.Controls.Add(tableTestData, 0, 1);
             parameterLayout.Dock = DockStyle.Fill;
-            parameterLayout.Location = new Point(0, 0);
+            parameterLayout.Location = new Point(3, 3);
             parameterLayout.Name = "parameterLayout";
             parameterLayout.RowCount = 2;
             parameterLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
             parameterLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            parameterLayout.Size = new Size(1410, 232);
+            parameterLayout.Size = new Size(1410, 314);
             parameterLayout.TabIndex = 0;
             //
             // lblParameterSummary
@@ -473,27 +464,6 @@
             tabCollectionData.TabIndex = 1;
             tabCollectionData.Text = "采集数据";
             tabCollectionData.UseVisualStyleBackColor = true;
-            //
-            // testDataSplitter
-            //
-            testDataSplitter.Dock = DockStyle.Fill;
-            testDataSplitter.Location = new Point(3, 3);
-            testDataSplitter.Name = "testDataSplitter";
-            testDataSplitter.Orientation = Orientation.Horizontal;
-            //
-            // testDataSplitter.Panel1
-            //
-            testDataSplitter.Panel1.Controls.Add(parameterLayout);
-            testDataSplitter.Panel1MinSize = 180;
-            //
-            // testDataSplitter.Panel2
-            //
-            testDataSplitter.Panel2.Controls.Add(rawDataLayout);
-            testDataSplitter.Panel2MinSize = 80;
-            testDataSplitter.Size = new Size(1410, 317);
-            testDataSplitter.SplitterDistance = 232;
-            testDataSplitter.SplitterWidth = 5;
-            testDataSplitter.TabIndex = 0;
             //
             // collectionLayout
             //
@@ -559,45 +529,6 @@
             collectionPagination.ShowSizeChanger = true;
             collectionPagination.Size = new Size(1404, 38);
             collectionPagination.TabIndex = 2;
-            //
-            // rawDataLayout
-            //
-            rawDataLayout.ColumnCount = 1;
-            rawDataLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            rawDataLayout.Controls.Add(lblRawData, 0, 0);
-            rawDataLayout.Controls.Add(txtRawData, 0, 1);
-            rawDataLayout.Dock = DockStyle.Fill;
-            rawDataLayout.Location = new Point(0, 0);
-            rawDataLayout.Name = "rawDataLayout";
-            rawDataLayout.RowCount = 2;
-            rawDataLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
-            rawDataLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            rawDataLayout.Size = new Size(1410, 107);
-            rawDataLayout.TabIndex = 0;
-            //
-            // lblRawData
-            //
-            lblRawData.Dock = DockStyle.Fill;
-            lblRawData.Location = new Point(3, 0);
-            lblRawData.Name = "lblRawData";
-            lblRawData.Size = new Size(1404, 28);
-            lblRawData.TabIndex = 0;
-            lblRawData.Text = "原始数据（拖动分隔线展开）";
-            lblRawData.TextAlign = ContentAlignment.MiddleLeft;
-            //
-            // txtRawData
-            //
-            txtRawData.Dock = DockStyle.Fill;
-            txtRawData.Font = new Font("Consolas", 9F);
-            txtRawData.Location = new Point(0, 28);
-            txtRawData.Margin = new Padding(0);
-            txtRawData.Multiline = true;
-            txtRawData.Name = "txtRawData";
-            txtRawData.ReadOnly = true;
-            txtRawData.ScrollBars = ScrollBars.Both;
-            txtRawData.Size = new Size(1410, 79);
-            txtRawData.TabIndex = 1;
-            txtRawData.WordWrap = false;
             //
             // tabReportFiles
             //
@@ -942,14 +873,8 @@
             parameterLayout.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)dgvWeldParameters).EndInit();
             tabCollectionData.ResumeLayout(false);
-            testDataSplitter.Panel1.ResumeLayout(false);
-            testDataSplitter.Panel2.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)testDataSplitter).EndInit();
-            testDataSplitter.ResumeLayout(false);
             collectionLayout.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)dgvCollectionRecords).EndInit();
-            rawDataLayout.ResumeLayout(false);
-            rawDataLayout.PerformLayout();
             tabReportFiles.ResumeLayout(false);
             reportLayout.ResumeLayout(false);
             reportToolbar.ResumeLayout(false);
@@ -988,14 +913,10 @@
         private DataGridView dgvWeldParameters;
         private AntdUI.Table tableTestData;
         private TabPage tabCollectionData;
-        private AntdUI.Splitter testDataSplitter;
         private TableLayoutPanel collectionLayout;
         private Label lblCollectionSummary;
         private DataGridView dgvCollectionRecords;
         private AntdUI.Pagination collectionPagination;
-        private TableLayoutPanel rawDataLayout;
-        private Label lblRawData;
-        private TextBox txtRawData;
         private TabPage tabReportFiles;
         private TableLayoutPanel reportLayout;
         private FlowLayoutPanel reportToolbar;
