@@ -143,7 +143,7 @@ public class ProductionReportFileService : IProductionReportFileService
         IReadOnlyList<BizWeldPointRecord> records)
     {
         var stationConfigs = ResolveStationReportConfigs(task, records);
-        return BuildReportSchemaForStations(stationConfigs);
+        return BuildReportSchemaForStationsWithDeviceType(stationConfigs, CurrentSettings.ProcessParameterDeviceType);
     }
 
     /// <summary>
@@ -151,6 +151,11 @@ public class ProductionReportFileService : IProductionReportFileService
     /// </summary>
     private static ReportSchema BuildReportSchemaForStations(
         IReadOnlyList<ResolvedStationReportConfig> stationConfigs)
+        => BuildReportSchemaForStationsWithDeviceType(stationConfigs, string.Empty);
+
+    private static ReportSchema BuildReportSchemaForStationsWithDeviceType(
+        IReadOnlyList<ResolvedStationReportConfig> stationConfigs,
+        string deviceType)
     {
         var orderedConfigs = stationConfigs
             .OrderBy(config => config.StationNo)
@@ -158,7 +163,9 @@ public class ProductionReportFileService : IProductionReportFileService
         var displayOptions = ResolveCompatibleDisplayOptions(orderedConfigs);
         var leadingColumns = BuildLeadingColumns(displayOptions);
         var dynamicColumns = orderedConfigs
-            .SelectMany(config => config.SchemeItems.SelectMany(BuildItemColumns));
+            .SelectMany(config => config.SchemeItems.SelectMany(item => BuildItemColumnsForMode(
+                item,
+                WholePieceAbAggregationRules.IsApplicable(deviceType, config.Config.TouchCount))));
         var trailingColumns = BuildTrailingColumns();
         var columns = leadingColumns
             .Concat(dynamicColumns)
@@ -169,7 +176,10 @@ public class ProductionReportFileService : IProductionReportFileService
             config => config.StationNo,
             config => config.SchemeItems);
 
-        return new ReportSchema(columns, stationSchemeItems, displayOptions);
+        var stationConfigsByNumber = orderedConfigs.ToDictionary(
+            config => config.StationNo,
+            config => config.Config);
+        return new ReportSchema(columns, stationSchemeItems, stationConfigsByNumber, displayOptions);
     }
 
     private void WriteXlsx(
@@ -189,10 +199,11 @@ public class ProductionReportFileService : IProductionReportFileService
             settings.Station2DisplayName);
 
         WriteTemplateHeader(worksheet, task, templateColumnCount);
+        var outputRows = BuildOutputRows(schema, records, settings);
         WriteDetailHeader(worksheet, detailColumns);
-        WriteDataRows(worksheet, schema, detailColumns, records, stationNames);
-        MergeRepeatedProductFields(worksheet, detailColumns, records);
-        ApplyWorksheetStyle(worksheet, detailColumns.Count, records.Count, templateColumnCount);
+        WriteDataRows(worksheet, schema, detailColumns, outputRows, stationNames);
+        MergeRepeatedProductFields(worksheet, detailColumns, outputRows);
+        ApplyWorksheetStyle(worksheet, detailColumns.Count, outputRows.Count, templateColumnCount);
         workbook.SaveAs(filePath);
     }
 
@@ -272,18 +283,101 @@ public class ProductionReportFileService : IProductionReportFileService
         }
     }
 
+    private IReadOnlyList<ReportOutputRow> BuildOutputRows(
+        ReportSchema schema,
+        IReadOnlyList<BizWeldPointRecord> records,
+        AppSettings settings)
+    {
+        var rows = new List<ReportOutputRow>();
+        foreach (var group in records.GroupBy(BuildProductMergeKey, StringComparer.OrdinalIgnoreCase))
+        {
+            var representative = group.OrderBy(record => record.SequenceNo).ThenBy(record => record.Id).First();
+            var config = schema.ResolveConfig(representative.StationNo);
+            var schemeItems = schema.ResolveSchemeItems(representative.StationNo);
+            if (!WholePieceAbAggregationRules.IsApplicable(settings.ProcessParameterDeviceType, config?.TouchCount ?? 0))
+            {
+                var standardProductResult = ResolveProductResult(group);
+                rows.AddRange(group.OrderBy(record => record.SequenceNo).ThenBy(record => record.Id)
+                    .Select(record => BuildStandardOutputRow(record, schemeItems, standardProductResult)));
+                continue;
+            }
+
+            var definitions = schemeItems
+                .Where(item => SchemeDetailRoleRules.IsReportEnabled(item.Detail, SchemeDetailValueRole.Actual))
+                .Select(item => new WholePieceAbValueDefinition(
+                    item.Item.ItemId,
+                    item.Item.ItemName,
+                    BuildDynamicColumnKey(item.Item, ReportRoleActual),
+                    item.Item.ActualExpression))
+                .ToList();
+            var aggregation = WholePieceAbAggregationRules.Aggregate(
+                group,
+                definitions,
+                settings.EnablePlcStringNumericFormatting ?? true,
+                settings.PlcStringNumericFormatMode);
+            if (!aggregation.IsSuccess)
+            {
+                throw new InvalidOperationException(aggregation.ErrorMessage);
+            }
+
+            var productResult = ResolveProductResult(group);
+            foreach (var output in aggregation.Rows)
+            {
+                rows.Add(new ReportOutputRow(
+                    representative,
+                    output.SideNo,
+                    output.Result,
+                    productResult,
+                    output.Values));
+            }
+        }
+
+        return rows
+            .OrderBy(row => row.Source.ProductNo, NaturalSortComparer.Instance)
+            .ThenBy(row => row.Source.StationNo)
+            .ThenBy(row => row.Source.SequenceNo)
+            .ThenBy(row => row.PointNo, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static ReportOutputRow BuildStandardOutputRow(
+        BizWeldPointRecord record,
+        IReadOnlyList<SchemeReportItem> schemeItems,
+        string productResult)
+    {
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        AddSchemeDynamicValues(values, ParseRawData(record.RawDataJson), schemeItems);
+        return new ReportOutputRow(
+            record,
+            string.IsNullOrWhiteSpace(record.TouchNo) ? record.SequenceNo.ToString() : record.TouchNo,
+            record.TestResult,
+            productResult,
+            values);
+    }
+
     private void WriteDataRows(
         IXLWorksheet worksheet,
         ReportSchema schema,
         IReadOnlyList<ReportColumn> detailColumns,
-        IReadOnlyList<BizWeldPointRecord> records,
+        IReadOnlyList<ReportOutputRow> rows,
         StationDisplayNames stationNames)
     {
-        var productContexts = BuildProductContexts(records);
-        for (var rowIndex = 0; rowIndex < records.Count; rowIndex++)
+        for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
         {
-            var record = records[rowIndex];
-            var row = BuildRow(record, ResolveProductContext(record, productContexts), schema, stationNames);
+            var output = rows[rowIndex];
+            var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                [ColumnStationNo] = ResolveStationDisplayName(output.Source.StationNo, stationNames),
+                [ColumnProductNo] = output.Source.ProductNo,
+                [ColumnProductResult] = output.ProductResult,
+                [ColumnTouchNo] = output.PointNo,
+                [ColumnTouchResult] = output.PointResult
+            };
+            foreach (var pair in output.DynamicValues)
+            {
+                row[pair.Key] = pair.Value;
+            }
+
             for (var columnIndex = 0; columnIndex < detailColumns.Count; columnIndex++)
             {
                 var column = detailColumns[columnIndex];
@@ -292,6 +386,37 @@ public class ProductionReportFileService : IProductionReportFileService
                     : string.Empty;
             }
         }
+    }
+
+    private static void MergeRepeatedProductFields(
+        IXLWorksheet worksheet,
+        IReadOnlyList<ReportColumn> columns,
+        IReadOnlyList<ReportOutputRow> rows)
+    {
+        if (rows.Count <= 1)
+        {
+            return;
+        }
+
+        var mergeColumns = columns
+            .Select((column, index) => new { Column = column, Index = index + 1 })
+            .Where(item => item.Column.MergeByProduct)
+            .Select(item => item.Index)
+            .ToArray();
+        var groupStartRow = DetailFirstDataRow;
+        var currentKey = BuildProductMergeKey(rows[0].Source);
+        for (var rowIndex = 1; rowIndex < rows.Count; rowIndex++)
+        {
+            var key = BuildProductMergeKey(rows[rowIndex].Source);
+            if (!string.Equals(currentKey, key, StringComparison.OrdinalIgnoreCase))
+            {
+                MergeProductColumns(worksheet, groupStartRow, rowIndex + DetailHeaderRow, mergeColumns);
+                groupStartRow = rowIndex + DetailFirstDataRow;
+                currentKey = key;
+            }
+        }
+
+        MergeProductColumns(worksheet, groupStartRow, rows.Count + DetailHeaderRow, mergeColumns);
     }
 
     private static void ApplyWorksheetStyle(
@@ -692,6 +817,9 @@ public class ProductionReportFileService : IProductionReportFileService
     }
 
     private static IEnumerable<ReportColumn> BuildItemColumns(SchemeReportItem schemeItem)
+        => BuildItemColumnsForMode(schemeItem, wholePieceAb: false);
+
+    private static IEnumerable<ReportColumn> BuildItemColumnsForMode(SchemeReportItem schemeItem, bool wholePieceAb)
     {
         var item = schemeItem.Item;
         var detail = schemeItem.Detail;
@@ -699,6 +827,11 @@ public class ProductionReportFileService : IProductionReportFileService
         if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Actual))
         {
             yield return new ReportColumn(BuildDynamicColumnKey(item, ReportRoleActual), SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Actual), MergeByProduct: false);
+        }
+
+        if (wholePieceAb)
+        {
+            yield break;
         }
 
         if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Upper))
@@ -838,6 +971,7 @@ public class ProductionReportFileService : IProductionReportFileService
                 {
                     [ProductionConstants.Stations.SharedStationNo] = schemeItems
                 },
+                new Dictionary<int, BizProductProcessConfig>(),
                 displayOptions)
         {
         }
@@ -845,10 +979,12 @@ public class ProductionReportFileService : IProductionReportFileService
         public ReportSchema(
             IReadOnlyList<ReportColumn> columns,
             IReadOnlyDictionary<int, IReadOnlyList<SchemeReportItem>> stationSchemeItems,
+            IReadOnlyDictionary<int, BizProductProcessConfig> stationConfigs,
             ReportDisplayOptions displayOptions)
         {
             Columns = columns;
             StationSchemeItems = stationSchemeItems;
+            StationConfigs = stationConfigs;
             DisplayOptions = displayOptions;
         }
 
@@ -856,7 +992,22 @@ public class ProductionReportFileService : IProductionReportFileService
 
         public IReadOnlyDictionary<int, IReadOnlyList<SchemeReportItem>> StationSchemeItems { get; }
 
+        public IReadOnlyDictionary<int, BizProductProcessConfig> StationConfigs { get; }
+
         public ReportDisplayOptions DisplayOptions { get; }
+
+        public BizProductProcessConfig? ResolveConfig(int stationNo)
+        {
+            var normalizedStationNo = NormalizeStationNo(stationNo);
+            if (StationConfigs.TryGetValue(normalizedStationNo, out var config))
+            {
+                return config;
+            }
+
+            return StationConfigs.TryGetValue(ProductionConstants.Stations.SharedStationNo, out var sharedConfig)
+                ? sharedConfig
+                : null;
+        }
 
         public IReadOnlyList<SchemeReportItem> ResolveSchemeItems(int stationNo)
         {
@@ -891,6 +1042,13 @@ public class ProductionReportFileService : IProductionReportFileService
     }
 
     private sealed record SchemeReportItem(DimTestItem Item, BizSchemeDetail Detail);
+
+    private sealed record ReportOutputRow(
+        BizWeldPointRecord Source,
+        string PointNo,
+        string PointResult,
+        string ProductResult,
+        IReadOnlyDictionary<string, string> DynamicValues);
 
     private sealed record ResolvedStationReportConfig(
         int StationNo,

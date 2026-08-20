@@ -161,7 +161,7 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
             ProductResult = ResolveProductResult(record),
             UploadStatus = record.UploadStatus,
             RecordTime = record.Ts,
-            RawDataJson = record.RawDataJson ?? string.Empty,
+            RawDataJson = BuildSavedRawDataJson(record, schemeItems),
             DynamicValues = BuildDynamicValues(record, schemeItems)
         }).ToList();
 
@@ -378,6 +378,45 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
         return columns;
     }
 
+    private static string BuildSavedRawDataJson(
+        BizWeldPointRecord record,
+        IReadOnlyList<SchemeItemDefinition> schemeItems)
+    {
+        var rawValues = ParseRawData(record.RawDataJson);
+        var savedValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var definition in schemeItems)
+        {
+            var item = definition.Item!;
+            var detail = definition.Detail;
+            var itemKey = ResolveItemKey(item);
+            AddSavedValue(savedValues, rawValues, SchemeDetailRoleRules.IsSaveEnabled(detail, SchemeDetailValueRole.Actual), itemKey, item.ItemName);
+            AddSavedValue(savedValues, rawValues, SchemeDetailRoleRules.IsSaveEnabled(detail, SchemeDetailValueRole.Upper), $"{itemKey}_upper", $"{item.ItemName}上限");
+            AddSavedValue(savedValues, rawValues, SchemeDetailRoleRules.IsSaveEnabled(detail, SchemeDetailValueRole.Lower), $"{itemKey}_lower", $"{item.ItemName}下限");
+            AddSavedValue(savedValues, rawValues, SchemeDetailRoleRules.IsSaveEnabled(detail, SchemeDetailValueRole.Result), $"{itemKey}_result", $"{item.ItemName}结果");
+        }
+
+        return JsonSerializer.Serialize(savedValues);
+    }
+
+    private static void AddSavedValue(
+        IDictionary<string, string> target,
+        IReadOnlyDictionary<string, string> source,
+        bool enabled,
+        string key,
+        params string[] fallbackKeys)
+    {
+        if (!enabled)
+        {
+            return;
+        }
+
+        var value = FirstRawValue(source, new[] { key }.Concat(fallbackKeys).ToArray());
+        if (value is not null)
+        {
+            target[key] = value;
+        }
+    }
+
     private static IReadOnlyDictionary<string, string> BuildDynamicValues(
         BizWeldPointRecord record,
         IReadOnlyList<SchemeItemDefinition> schemeItems)
@@ -551,7 +590,7 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
             UploadStatus = record.UploadStatus,
             OperatorNo = record.OperatorNo ?? string.Empty,
             RecordTime = record.Ts,
-            RawDataJson = record.RawDataJson ?? string.Empty
+            RawDataJson = string.Empty
         };
     }
 

@@ -207,27 +207,35 @@ public static class SchemeDetailRoleRules
     /// </summary>
     public static bool ShouldPersistRole(BizSchemeDetail detail, SchemeDetailValueRole role)
     {
-        return IsCollectEnabled(detail, role)
-            && (IsSaveEnabled(detail, role) || IsReportEnabled(detail, role) || IsMesEnabled(detail, role));
+        return IsSaveEnabled(detail, role)
+            || IsReportEnabled(detail, role)
+            || IsMesEnabled(detail, role);
     }
 
     /// <summary>
     /// 判断角色是否在产品历史和历史数据页显示。
     /// </summary>
     public static bool ShouldShowHistoryRole(BizSchemeDetail detail, SchemeDetailValueRole role)
-        => IsCollectEnabled(detail, role) && IsSaveEnabled(detail, role);
+        => IsSaveEnabled(detail, role);
 
     /// <summary>
     /// 判断角色是否输出到报表。
     /// </summary>
     public static bool ShouldWriteReportRole(BizSchemeDetail detail, SchemeDetailValueRole role)
-        => IsCollectEnabled(detail, role) && IsReportEnabled(detail, role);
+        => IsReportEnabled(detail, role);
 
     /// <summary>
     /// 判断角色是否上传到 MES。
     /// </summary>
     public static bool ShouldUploadMesRole(BizSchemeDetail detail, SchemeDetailValueRole role)
-        => IsCollectEnabled(detail, role) && IsMesEnabled(detail, role);
+        => IsMesEnabled(detail, role);
+
+    /// <summary>
+    /// 判断产品完成采集时是否需要读取该角色。
+    /// 实时预览开关只控制界面显示，不能作为历史、报表或 MES 数据源的前置条件。
+    /// </summary>
+    public static bool ShouldReadProductRole(BizSchemeDetail detail, SchemeDetailValueRole role)
+        => ShouldPersistRole(detail, role);
 
     /// <summary>
     /// 判断方案明细是否至少启用一个采集角色。

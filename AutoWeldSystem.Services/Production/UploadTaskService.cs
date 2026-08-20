@@ -1101,13 +1101,74 @@ public class UploadTaskService : IUploadTaskService
         var deviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
         var showTestFlagInHistory = settings.ShowTestFlagInHistory != false;
         var schemeItemCache = new Dictionary<string, IReadOnlyList<ProcessParameterSchemeItem>>(StringComparer.OrdinalIgnoreCase);
-        var items = records
-            .Select(record => ToProcessParameterUploadItem(
-                record,
-                deviceType,
-                showTestFlagInHistory,
-                ResolveProcessParameterSchemeItems(record, schemeItemCache)))
-            .ToList();
+        var items = new List<ProcessParameterUploadItem>();
+
+        foreach (var productGroup in records
+            .GroupBy(record => $"{record.TaskId}{record.StationNo}{record.ProductNo}", StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            var productRecords = productGroup.OrderBy(record => record.SequenceNo).ThenBy(record => record.Id).ToList();
+            var firstRecord = productRecords[0];
+            var schemeItems = ResolveProcessParameterSchemeItems(firstRecord, schemeItemCache);
+            var config = ResolveProductProcessConfig(firstRecord);
+            if (!WholePieceAbAggregationRules.IsApplicable(deviceType, config?.TouchCount ?? 0))
+            {
+                items.AddRange(productRecords.Select(record => ToProcessParameterUploadItem(
+                    record,
+                    deviceType,
+                    showTestFlagInHistory,
+                    schemeItems)));
+                continue;
+            }
+
+            if (schemeItems.Any(item => SchemeDetailRoleRules.AllRoles
+                .Where(role => role != SchemeDetailValueRole.Actual)
+                .Any(role => SchemeDetailRoleRules.IsMesEnabled(item.Detail, role))))
+            {
+                return Unsupported($"产品“{firstRecord.ProductNo}”的整件检测A/B模式只允许上传实际值，不能配置上限、下限或结果角色。");
+            }
+
+            var definitions = schemeItems
+                .Where(item => SchemeDetailRoleRules.IsMesEnabled(item.Detail, SchemeDetailValueRole.Actual))
+                .Select(item => new WholePieceAbValueDefinition(
+                    item.Item.ItemId,
+                    item.Item.ItemName,
+                    SchemeDetailRoleRules.GetMesFieldName(item.Detail, SchemeDetailValueRole.Actual)?.Trim() ?? string.Empty,
+                    item.Item.ActualExpression))
+                .Where(definition => !string.IsNullOrWhiteSpace(definition.OutputKey))
+                .ToList();
+            var aggregation = WholePieceAbAggregationRules.Aggregate(
+                productRecords,
+                definitions,
+                settings.EnablePlcStringNumericFormatting ?? true,
+                settings.PlcStringNumericFormatMode);
+            if (!aggregation.IsSuccess)
+            {
+                return Unsupported(aggregation.ErrorMessage);
+            }
+
+            foreach (var output in aggregation.Rows)
+            {
+                var item = new ProcessParameterUploadItem
+                {
+                    ExpStartId = firstRecord.ExpStartId,
+                    DeviceId = firstRecord.DeviceId,
+                    SN = firstRecord.SN,
+                    ProcessNo = firstRecord.ProcessNo,
+                    ProductNo = firstRecord.ProductNo,
+                    SideNo = output.SideNo,
+                    Result = output.Result,
+                    IsTest = null,
+                    Ts = firstRecord.Ts.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
+                };
+                foreach (var value in output.Values)
+                {
+                    item.DynamicFields[value.Key] = value.Value;
+                }
+                items.Add(item);
+            }
+        }
+
         return await _mesProvider.UploadProcessParametersAsync(items, cancellationToken);
     }
 

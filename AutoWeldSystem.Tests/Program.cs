@@ -96,7 +96,9 @@ var tests = new (string Name, Action Run)[]
     ("Save history controls product history visibility", SaveHistoryControlsProductHistoryVisibility),
     ("DataManageView uses generic product test tree", DataManageViewUsesGenericProductTestTree),
     ("Data history tree preserves stored product result", DataHistoryTreeParentKeepsStoredProductResult),
-    ("Disabled roles block save report and MES outputs", DisabledRoleBlocksEveryOutputChannel),
+    ("Scheme output roles are independent from realtime preview", SchemeOutputRolesAreIndependentFromRealtimePreview),
+    ("Whole-piece four-side aggregation produces A and B rows", WholePieceFourSideAggregationProducesAbRows),
+    ("Whole-piece aggregation rejects invalid source data", WholePieceAggregationRejectsInvalidSourceData),
     ("Report file upload rule requires an enabled report role", ReportFileUploadRuleRequiresEnabledReportRole),
     ("Product cycle snapshots persist PLC product results", ProductCycleSnapshotsPersistPlcProductResults),
     ("Missing point results do not fall back to product results", MissingPointResultDoesNotFallBackToProductResult),
@@ -1932,8 +1934,8 @@ static void ReportFileUploadRuleRequiresEnabledReportRole()
     AssertFalse(Invoke(), "没有方案明细时不得创建 MES ReportFile 任务。");
     AssertFalse(Invoke(new BizSchemeDetail { EnableActual = true, SaveActual = true }), "SaveEnable 独占角色不得触发 MES 报表文件上传。");
     AssertFalse(Invoke(new BizSchemeDetail { EnableActual = true, MesActual = true }), "MesEnable 独占角色不得触发 MES 报表文件上传。");
-    AssertFalse(Invoke(new BizSchemeDetail { EnableActual = false, ReportActual = true }), "未启用采集的 ReportEnable 配置不得触发上传。");
-    AssertTrue(Invoke(new BizSchemeDetail { EnableActual = true, ReportActual = true }), "任一有效 Enable && ReportEnable 角色必须允许 MES 报表文件上传。");
+    AssertTrue(Invoke(new BizSchemeDetail { EnableActual = false, ReportActual = true }), "写入报表开关必须独立于实时预览采集开关。");
+    AssertTrue(Invoke(new BizSchemeDetail { EnableActual = true, ReportActual = true }), "任一 ReportEnable 角色必须允许 MES 报表文件上传。");
 }
 
 static void SaveHistoryControlsProductHistoryVisibility()
@@ -2019,7 +2021,7 @@ static void DataHistoryTreeParentKeepsStoredProductResult()
     AssertEqual(ProductionConstants.TestResults.Ng, parent.ProductResult, "产品父行必须沿用记录中的 PLC 产品结果，不得从子记录结果推断。");
 }
 
-static void DisabledRoleBlocksEveryOutputChannel()
+static void SchemeOutputRolesAreIndependentFromRealtimePreview()
 {
     var detail = new BizSchemeDetail
     {
@@ -2029,10 +2031,86 @@ static void DisabledRoleBlocksEveryOutputChannel()
         MesActual = true
     };
 
-    AssertFalse(SchemeDetailRoleRules.ShouldPersistRole(detail, SchemeDetailValueRole.Actual), "未启用采集的角色不得写入历史数据。");
-    AssertFalse(SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Actual), "未启用采集的角色不得在产品历史中显示。");
-    AssertFalse(SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Actual), "未启用采集的角色不得写入设备端报表。");
-    AssertFalse(SchemeDetailRoleRules.ShouldUploadMesRole(detail, SchemeDetailValueRole.Actual), "未启用采集的角色不得上传 MES。");
+    AssertTrue(SchemeDetailRoleRules.ShouldReadProductRole(detail, SchemeDetailValueRole.Actual), "输出开启时产品完成采集必须读取实际值。");
+    AssertTrue(SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Actual), "保存历史必须独立于实时预览开关。");
+    AssertTrue(SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Actual), "报表输出必须独立于实时预览开关。");
+    AssertTrue(SchemeDetailRoleRules.ShouldUploadMesRole(detail, SchemeDetailValueRole.Actual), "MES输出必须独立于实时预览开关。");
+}
+
+static void WholePieceFourSideAggregationProducesAbRows()
+{
+    var records = new[]
+    {
+        CreateAggregationRecord("3", "0.15", ProductionConstants.TestResults.Ok),
+        CreateAggregationRecord("1", "0.12", ProductionConstants.TestResults.Ng),
+        CreateAggregationRecord("4", "0.16", ProductionConstants.TestResults.Ok),
+        CreateAggregationRecord("2", "0.14", ProductionConstants.TestResults.Ok)
+    };
+    var definition = new WholePieceAbValueDefinition(2, "对称度", "Symmetry", "18:F-0_2");
+    var result = WholePieceAbAggregationRules.Aggregate(
+        records,
+        [definition],
+        enableStringNumericFormatting: true,
+        AppConstants.PlcStringNumericFormatModes.Round);
+
+    AssertTrue(result.IsSuccess, result.ErrorMessage);
+    AssertEqual(2, result.Rows.Count, "四面检测必须输出A/B两行。");
+    AssertEqual("A", result.Rows[0].SideNo, "A面必须先输出。");
+    AssertEqual("0.15", result.Rows[0].Values["Symmetry"], "A面必须取2、4面平均并按两位小数四舍五入。");
+    AssertEqual(ProductionConstants.TestResults.Ok, result.Rows[0].Result, "A面两个原始面都OK时结果应为OK。");
+    AssertEqual("B", result.Rows[1].SideNo, "B面必须后输出。");
+    AssertEqual("0.14", result.Rows[1].Values["Symmetry"], "B面必须取1、3面平均并按两位小数四舍五入。");
+    AssertEqual(ProductionConstants.TestResults.Ng, result.Rows[1].Result, "B面任一原始面NG时结果应为NG。");
+}
+
+static void WholePieceAggregationRejectsInvalidSourceData()
+{
+    var duplicateSide = new[]
+    {
+        CreateAggregationRecord("1", "1", ProductionConstants.TestResults.Ok),
+        CreateAggregationRecord("1", "2", ProductionConstants.TestResults.Ok),
+        CreateAggregationRecord("3", "3", ProductionConstants.TestResults.Ok),
+        CreateAggregationRecord("4", "4", ProductionConstants.TestResults.Ok)
+    };
+    var definition = new WholePieceAbValueDefinition(1, "高度", "Height", "14:F-0_2");
+    var duplicateResult = WholePieceAbAggregationRules.Aggregate(duplicateSide, [definition], true, AppConstants.PlcStringNumericFormatModes.Truncate);
+    AssertFalse(duplicateResult.IsSuccess, "重复面号必须拒绝。");
+
+    var invalidNumber = new[]
+    {
+        CreateAggregationRecord("1", "1", ProductionConstants.TestResults.Ok),
+        CreateAggregationRecord("2", "bad", ProductionConstants.TestResults.Ok),
+        CreateAggregationRecord("3", "3", ProductionConstants.TestResults.Ok),
+        CreateAggregationRecord("4", "4", ProductionConstants.TestResults.Ok)
+    };
+    var invalidNumberResult = WholePieceAbAggregationRules.Aggregate(invalidNumber, [definition], true, AppConstants.PlcStringNumericFormatModes.Truncate);
+    AssertFalse(invalidNumberResult.IsSuccess, "非数字聚合值必须拒绝。");
+
+    var absoluteDefinition = definition with { ActualExpression = "DB97.26:F-0_2" };
+    var validRecords = new[]
+    {
+        CreateAggregationRecord("1", "1", ProductionConstants.TestResults.Ok),
+        CreateAggregationRecord("2", "2", ProductionConstants.TestResults.Ok),
+        CreateAggregationRecord("3", "3", ProductionConstants.TestResults.Ok),
+        CreateAggregationRecord("4", "4", ProductionConstants.TestResults.Ok)
+    };
+    var absoluteResult = WholePieceAbAggregationRules.Aggregate(validRecords, [absoluteDefinition], true, AppConstants.PlcStringNumericFormatModes.Truncate);
+    AssertFalse(absoluteResult.IsSuccess, "A/B聚合源使用绝对地址时必须拒绝。");
+}
+
+static BizWeldPointRecord CreateAggregationRecord(string sideNo, string value, string result)
+{
+    return new BizWeldPointRecord
+    {
+        ProductNo = "P001",
+        TouchNo = sideNo,
+        TestResult = result,
+        RawDataJson = JsonSerializer.Serialize(new Dictionary<string, string>
+        {
+            ["item_1"] = value,
+            ["item_2"] = value
+        })
+    };
 }
 
 static void ProductCycleSnapshotsPersistPlcProductResults()

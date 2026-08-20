@@ -21,6 +21,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
 
     private readonly SqlSugarDbContext _dbContext;
     private readonly IProductProcessConfigService _productProcessConfigService;
+    private readonly IAppSettingsService _settingsService;
     private readonly IPlcExpressionReadService _plcExpressionReadService;
     private readonly IOperationLogService _operationLogService;
     private readonly IProductionFlowLogService _productionLogService;
@@ -30,6 +31,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
     public ProductCycleCollectionService(
         SqlSugarDbContext dbContext,
         IProductProcessConfigService productProcessConfigService,
+        IAppSettingsService settingsService,
         IPlcExpressionReadService plcExpressionReadService,
         IOperationLogService operationLogService,
         IProductionFlowLogService productionLogService,
@@ -37,6 +39,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
     {
         _dbContext = dbContext;
         _productProcessConfigService = productProcessConfigService;
+        _settingsService = settingsService;
         _plcExpressionReadService = plcExpressionReadService;
         _operationLogService = operationLogService;
         _productionLogService = productionLogService;
@@ -79,6 +82,8 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
                 touchIndex,
                 cancellationToken));
         }
+
+        ValidateCollectedRecords(processConfig, schemeItems, records);
 
         try
         {
@@ -321,7 +326,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
     {
         var item = schemeItem.Item;
         var itemKey = ResolveItemKey(item);
-        if (SchemeDetailRoleRules.ShouldPersistRole(schemeItem.Detail, SchemeDetailValueRole.Actual))
+        if (SchemeDetailRoleRules.ShouldReadProductRole(schemeItem.Detail, SchemeDetailValueRole.Actual))
         {
             var actualValue = await ReadExpressionValueAsync(
                 config.TestBase,
@@ -333,7 +338,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             AddValue(values, item.ItemName, actualValue);
         }
 
-        if (SchemeDetailRoleRules.ShouldPersistRole(schemeItem.Detail, SchemeDetailValueRole.Upper))
+        if (SchemeDetailRoleRules.ShouldReadProductRole(schemeItem.Detail, SchemeDetailValueRole.Upper))
         {
             var upperValue = await ReadOptionalExpressionValueAsync(
                 config.TestBase,
@@ -345,7 +350,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             AddValue(values, $"{item.ItemName}上限", upperValue);
         }
 
-        if (SchemeDetailRoleRules.ShouldPersistRole(schemeItem.Detail, SchemeDetailValueRole.Lower))
+        if (SchemeDetailRoleRules.ShouldReadProductRole(schemeItem.Detail, SchemeDetailValueRole.Lower))
         {
             var lowerValue = await ReadOptionalExpressionValueAsync(
                 config.TestBase,
@@ -357,7 +362,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             AddValue(values, $"{item.ItemName}下限", lowerValue);
         }
 
-        if (SchemeDetailRoleRules.ShouldPersistRole(schemeItem.Detail, SchemeDetailValueRole.Result))
+        if (SchemeDetailRoleRules.ShouldReadProductRole(schemeItem.Detail, SchemeDetailValueRole.Result))
         {
             var resultValue = await ReadOptionalExpressionValueAsync(
                 config.TestBase,
@@ -406,6 +411,66 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         catch (FormatException ex)
         {
             throw new BusinessOperationException(Category, "偏移表达式无效", $"{valueRole}：{ex.Message}");
+        }
+    }
+
+    private void ValidateCollectedRecords(
+        BizProductProcessConfig config,
+        IReadOnlyList<SchemeItemSnapshot> schemeItems,
+        IReadOnlyList<BizWeldPointRecord> records)
+    {
+        var settings = _settingsService.Get();
+        if (!WholePieceAbAggregationRules.IsApplicable(settings.ProcessParameterDeviceType, config.TouchCount))
+        {
+            return;
+        }
+
+        var invalidOutput = schemeItems.FirstOrDefault(item => SchemeDetailRoleRules.AllRoles
+            .Where(role => role != SchemeDetailValueRole.Actual)
+            .Any(role => SchemeDetailRoleRules.IsReportEnabled(item.Detail, role)
+                || SchemeDetailRoleRules.IsMesEnabled(item.Detail, role)));
+        if (invalidOutput is not null)
+        {
+            throw new BusinessOperationException(
+                Category,
+                "产品数据采集失败",
+                $"整件检测A/B模式只允许测试项“{invalidOutput.Item.ItemName}”的实际值写入报表或上传MES。");
+        }
+
+        var duplicateMesFields = schemeItems
+            .Where(item => SchemeDetailRoleRules.IsMesEnabled(item.Detail, SchemeDetailValueRole.Actual))
+            .Select(item => SchemeDetailRoleRules.GetMesFieldName(item.Detail, SchemeDetailValueRole.Actual)?.Trim())
+            .Where(field => !string.IsNullOrWhiteSpace(field))
+            .GroupBy(field => field!, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToList();
+        if (duplicateMesFields.Count > 0)
+        {
+            throw new BusinessOperationException(
+                Category,
+                "产品数据采集失败",
+                $"整件检测A/B模式存在重复MES字段名：{string.Join("、", duplicateMesFields)}。");
+        }
+
+        var definitions = schemeItems
+            .Where(item => SchemeDetailRoleRules.IsReportEnabled(item.Detail, SchemeDetailValueRole.Actual)
+                || SchemeDetailRoleRules.IsMesEnabled(item.Detail, SchemeDetailValueRole.Actual))
+            .Select(item => new WholePieceAbValueDefinition(
+                item.Item.ItemId,
+                item.Item.ItemName,
+                ResolveItemKey(item.Item),
+                item.Item.ActualExpression))
+            .ToList();
+        if (definitions.Count == 0)
+        {
+            return;
+        }
+
+        var validation = WholePieceAbAggregationRules.ValidateSourceRecords(records, definitions);
+        if (!validation.IsSuccess)
+        {
+            throw new BusinessOperationException(Category, "产品数据采集失败", validation.ErrorMessage);
         }
     }
 
@@ -490,7 +555,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
 
     private static bool HasAnyEnabledRole(BizSchemeDetail detail)
     {
-        return SchemeDetailRoleRules.HasAnyCollectEnabled(detail);
+        return SchemeDetailRoleRules.HasAnyConfiguredRole(detail);
     }
 
     private static string? FirstValue(IReadOnlyDictionary<string, string> values, params string[] keys)

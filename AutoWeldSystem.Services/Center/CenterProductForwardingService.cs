@@ -335,6 +335,8 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
     {
         var orderedRecords = records.OrderBy(record => record.SequenceNo).ThenBy(record => record.Id).ToList();
         var first = orderedRecords[0];
+        var config = ResolveProductProcessConfig(task, stationNo);
+        var savedFields = BuildSavedFieldDefinitions(config);
         return new CenterProductReportRequest
         {
             DeviceId = settings.DeviceId.Trim(),
@@ -367,7 +369,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
                 TestResult = record.TestResult,
                 CollectedAt = record.Ts,
                 OperatorNo = record.OperatorNo ?? string.Empty,
-                RawDataJson = record.RawDataJson ?? string.Empty
+                RawDataJson = FilterRawDataJson(record.RawDataJson, savedFields)
             }).ToList()
         };
     }
@@ -461,6 +463,96 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
     /// 生成设备端生产报表列定义。
     /// 中心服务器使用这份列定义，确保 Excel 表头跟设备端配置保持一致。
     /// </summary>
+    private IReadOnlyList<SavedFieldDefinition> BuildSavedFieldDefinitions(BizProductProcessConfig? config)
+    {
+        if (config is null)
+        {
+            return [];
+        }
+
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var details = _dbContext.Db.Queryable<BizSchemeDetail>()
+                .Where(detail => detail.SchemeId == config.SchemeId)
+                .ToList();
+            var itemIds = details.Select(detail => detail.ItemId).Distinct().ToList();
+            var items = _dbContext.Db.Queryable<DimTestItem>()
+                .Where(item => itemIds.Contains(item.ItemId))
+                .ToList();
+            var fields = new List<SavedFieldDefinition>();
+            foreach (var detail in details)
+            {
+                var item = items.FirstOrDefault(candidate => candidate.ItemId == detail.ItemId);
+                if (item is null)
+                {
+                    continue;
+                }
+
+                var itemKey = ResolveItemKey(item);
+                AddSavedField(fields, detail.SaveActual, itemKey, item.ItemName);
+                AddSavedField(fields, detail.SaveUpper, $"{itemKey}_upper", $"{item.ItemName}上限");
+                AddSavedField(fields, detail.SaveLower, $"{itemKey}_lower", $"{item.ItemName}下限");
+                AddSavedField(fields, detail.SaveResult, $"{itemKey}_result", $"{item.ItemName}结果");
+            }
+
+            return fields;
+        }
+    }
+
+    private static void AddSavedField(
+        ICollection<SavedFieldDefinition> fields,
+        bool enabled,
+        string key,
+        string fallbackKey)
+    {
+        if (enabled)
+        {
+            fields.Add(new SavedFieldDefinition(key, fallbackKey));
+        }
+    }
+
+    private static string FilterRawDataJson(
+        string? rawDataJson,
+        IReadOnlyList<SavedFieldDefinition> fields)
+    {
+        if (fields.Count == 0 || string.IsNullOrWhiteSpace(rawDataJson))
+        {
+            return "{}";
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(rawDataJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return "{}";
+            }
+
+            var rawValues = document.RootElement.EnumerateObject().ToDictionary(
+                property => property.Name,
+                property => property.Value.ValueKind == JsonValueKind.String
+                    ? property.Value.GetString() ?? string.Empty
+                    : property.Value.ToString(),
+                StringComparer.OrdinalIgnoreCase);
+            var filtered = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var field in fields)
+            {
+                if (rawValues.TryGetValue(field.Key, out var value)
+                    || rawValues.TryGetValue(field.FallbackKey, out value))
+                {
+                    filtered[field.Key] = value;
+                }
+            }
+
+            return JsonSerializer.Serialize(filtered);
+        }
+        catch (JsonException)
+        {
+            return "{}";
+        }
+    }
+
     private List<CenterProductReportColumnDto> BuildReportColumns(
         AppSettings settings,
         BizWeldTask task,
@@ -618,6 +710,8 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             _ => $"item_{item.ItemId}"
         };
     }
+
+    private sealed record SavedFieldDefinition(string Key, string FallbackKey);
 
     private static string BuildBusinessId(CenterProductReportRequest request)
     {

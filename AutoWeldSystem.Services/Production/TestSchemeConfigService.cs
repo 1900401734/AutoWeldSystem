@@ -251,20 +251,12 @@ public sealed class TestSchemeConfigService : ITestSchemeConfigService
     }
 
     /// <summary>
-    /// 校验输出开关必须建立在采集开关之上，避免保存、报表或 MES 使用未采集的数据。
+    /// 校验 MES 输出字段；保存和报表可以独立于实时预览采集开关启用。
     /// </summary>
     private static void ValidateRoleOutputs(BizSchemeDetail detail)
     {
         foreach (var role in SchemeDetailRoleRules.AllRoles)
         {
-            var outputEnabled = SchemeDetailRoleRules.IsSaveEnabled(detail, role)
-                || SchemeDetailRoleRules.IsReportEnabled(detail, role)
-                || SchemeDetailRoleRules.IsMesEnabled(detail, role);
-            if (!SchemeDetailRoleRules.IsCollectEnabled(detail, role) && outputEnabled)
-            {
-                throw new InvalidOperationException("方案明细中启用保存、报表或 MES 的字段，必须同时启用采集。");
-            }
-
             if (SchemeDetailRoleRules.IsMesEnabled(detail, role)
                 && string.IsNullOrWhiteSpace(SchemeDetailRoleRules.GetMesFieldName(detail, role)))
             {
@@ -275,7 +267,7 @@ public sealed class TestSchemeConfigService : ITestSchemeConfigService
 
     private static bool HasAnyEnabledRole(BizSchemeDetail detail)
     {
-        return SchemeDetailRoleRules.HasAnyCollectEnabled(detail);
+        return SchemeDetailRoleRules.HasAnyConfiguredRole(detail);
     }
 
     private static void Normalize(DimTestItem item)
