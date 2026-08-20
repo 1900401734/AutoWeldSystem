@@ -645,7 +645,8 @@ public partial class StateManageView : BaseView
                 _bindingSource.RaiseListChangedEvents = true;
             }
 
-            _bindingSource.ResetBindings(false);
+            // 页签会在不同 DTO 类型之间切换，必须刷新属性元数据，否则表格只有行数而单元格为空。
+            _bindingSource.ResetBindings(true);
         }
         finally
         {

@@ -8544,6 +8544,10 @@ static void StateManageViewKeepsStableColumnsAndLoadsOffUiThread()
         viewCode,
         "private async Task ReloadActiveTasksAsync",
         "private StateUploadLoadResult LoadActiveTasks");
+    var bindMethod = ExtractMethodText(
+        viewCode,
+        "private void BindRows(object rows)",
+        "private void SetReloadingState");
 
     AssertTrue(viewCode.Contains("InitializeGridColumns();", StringComparison.Ordinal), "待上传表格必须只初始化一次固定列对象。");
     AssertTrue(configureMethod.Contains("column.Visible = false;", StringComparison.Ordinal), "页签切换应通过显隐固定列调整布局。");
@@ -8551,6 +8555,8 @@ static void StateManageViewKeepsStableColumnsAndLoadsOffUiThread()
     AssertTrue(reloadMethod.Contains("await Task.Run", StringComparison.Ordinal), "数据库和 JSONL 查询必须移出 UI 线程。");
     AssertTrue(reloadMethod.Contains("_reloadGate.WaitAsync", StringComparison.Ordinal), "连续刷新必须串行化，避免重复查询并发执行。");
     AssertTrue(reloadMethod.Contains("version != Volatile.Read(ref _reloadVersion)", StringComparison.Ordinal), "过期页签结果不能覆盖当前页签。");
+    AssertTrue(bindMethod.Contains("_bindingSource.ResetBindings(true);", StringComparison.Ordinal), "切换不同 DTO 数据源后必须刷新绑定元数据，避免只显示空白行。");
+    AssertFalse(bindMethod.Contains("_bindingSource.ResetBindings(false);", StringComparison.Ordinal), "待上传表格不能只刷新数据值而保留旧 DTO 属性元数据。");
     AssertTrue(
         viewCode.Contains("_weldTaskService.StateChanged += WeldTaskService_StateChanged;", StringComparison.Ordinal)
             && viewCode.Contains("_weldTaskService.StateChanged -= WeldTaskService_StateChanged;", StringComparison.Ordinal),

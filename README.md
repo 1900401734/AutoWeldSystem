@@ -1,6 +1,6 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.0.2`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.0.3`。
 
 ## 功能概览
 
@@ -12,7 +12,7 @@
 - 程序管理：本地程序版本管理、提交记录、MES 同步状态，以及按工位选择 PLC 配方名称并隐藏保存槽位配方号；保存、校验和同步结果使用非阻塞全局提示，不影响继续操作主界面；删除确认框绑定主窗体显示，始终位于主程序之上。
 - 系统设置：应用全部优先保存本地配置；仅在设备编号、名称或相关服务地址发生变化时后台同步设备信息到 MES，保存和同步结果使用非阻塞全局提示。
 - 中心服务器同步：中心服务器未启动或网络不可达时仍按配置周期探测，连接类失败只在服务器日志记录首次、每 10 分钟持续故障摘要及恢复状态，不写入程序异常日志；服务端已应答的业务失败也只保留在服务器日志。
-- 待上传数据：工单信息页签持续显示未完工任务及开工、过程参数、xlsx 报表和完工上报四阶段状态，直到任务完成且相关上传阶段处理完毕。
+- 待上传数据：工单信息页签持续显示未完工任务及开工、过程参数、xlsx 报表和完工上报四阶段状态，直到任务完成且相关上传阶段处理完毕；切换各上传页签时会刷新绑定字段元数据，避免有记录但单元格空白。
 - 数据管理：使用通用“测试数据”页签兼容点焊与检测设备，按产品展开测试记录树；检测设备保留 1～4 面明细，动态列和原始 JSON 预览只显示方案明细中勾选“保存历史”的角色，报告/MES 专用内部值不会展示；报告文件入口独立保留。
 - 地址维护：维护固定业务信号对应的 PLC 实际地址，并按工位配置/预览 PLC 配方名称与数字槽位的映射；“启用采集”只控制实时预览，“保存历史”同时决定本地历史展示和中心服务器转发字段，“写入报表”和“上传 MES”可独立配置；各维护页签可按角色独立授权。
 - 测试项字典的实际值、上限、下限和结果表达式同时支持相对地址与绝对地址：相对地址如 `14:F-0_2` 按测试项基地址和焊点偏移计算，绝对地址如 `DB97.26:F-0_2` 直接读取指定 PLC 地址，不叠加测试项基地址和焊点偏移。
@@ -233,10 +233,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>2.0.2</Version>
-<AssemblyVersion>2.0.2.0</AssemblyVersion>
-<FileVersion>2.0.2.0</FileVersion>
-<InformationalVersion>2.0.2</InformationalVersion>
+<Version>2.0.3</Version>
+<AssemblyVersion>2.0.3.0</AssemblyVersion>
+<FileVersion>2.0.3.0</FileVersion>
+<InformationalVersion>2.0.3</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -248,9 +248,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v2.0.2 -m "Release v2.0.2"
+git tag -a v2.0.3 -m "Release v2.0.3"
 git push origin main
-git push origin v2.0.2
+git push origin v2.0.3
 ```
 
 ## Git 使用
