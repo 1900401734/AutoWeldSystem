@@ -7,6 +7,7 @@ using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Data;
+using AutoWeldSystem.Services.Production;
 
 namespace AutoWeldSystem.Services.Center;
 
@@ -22,6 +23,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
     private readonly IUploadTaskService _uploadTaskService;
     private readonly IProductionFlowLogService _productionLogService;
     private readonly IProgramExceptionLogService _exceptionLogService;
+    private readonly IProductProcessConfigService _productProcessConfigService;
     private readonly CenterTelemetryClient _client;
     private readonly object _dbLock = new();
 
@@ -35,6 +37,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
         IUploadTaskService uploadTaskService,
         IProductionFlowLogService productionLogService,
         IProgramExceptionLogService exceptionLogService,
+        IProductProcessConfigService productProcessConfigService,
         CenterTelemetryClient client)
     {
         _dbContext = dbContext;
@@ -42,6 +45,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
         _uploadTaskService = uploadTaskService;
         _productionLogService = productionLogService;
         _exceptionLogService = exceptionLogService;
+        _productProcessConfigService = productProcessConfigService;
         _client = client;
     }
 
@@ -97,7 +101,13 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             return;
         }
 
-        var request = BuildRequest(settings, task, stationNo, records);
+        var normalizedStationNo = TaskProductProcessConfigResolver.NormalizeStationNo(stationNo, task);
+        var configs = TaskProductProcessConfigResolver.Resolve(
+            _productProcessConfigService,
+            task,
+            [normalizedStationNo]);
+        configs.TryGetValue(normalizedStationNo, out var config);
+        var request = BuildRequest(settings, task, stationNo, records, config);
         var uploadTask = _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
         {
             TaskType = ProductionConstants.UploadTaskTypes.CenterProductReport,
@@ -331,11 +341,11 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
         AppSettings settings,
         BizWeldTask task,
         int stationNo,
-        IReadOnlyList<BizWeldPointRecord> records)
+        IReadOnlyList<BizWeldPointRecord> records,
+        BizProductProcessConfig? config)
     {
         var orderedRecords = records.OrderBy(record => record.SequenceNo).ThenBy(record => record.Id).ToList();
         var first = orderedRecords[0];
-        var config = ResolveProductProcessConfig(task, stationNo);
         var savedFields = BuildSavedFieldDefinitions(config);
         return new CenterProductReportRequest
         {
@@ -362,7 +372,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             QualifiedQty = task.QualifiedQty,
             IsTaskFinishUpdate = false,
             CompletedAt = orderedRecords.Max(record => record.Ts),
-            ReportColumns = BuildReportColumns(settings, task, stationNo),
+            ReportColumns = BuildReportColumns(settings, config),
             Points = orderedRecords.Select(record => new CenterProductReportPointDto
             {
                 SequenceNo = record.SequenceNo,
@@ -557,11 +567,9 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
 
     private List<CenterProductReportColumnDto> BuildReportColumns(
         AppSettings settings,
-        BizWeldTask task,
-        int stationNo)
+        BizProductProcessConfig? config)
     {
         var columns = new List<CenterProductReportColumnDto>();
-        var config = ResolveProductProcessConfig(task, stationNo);
 
         if (settings.EnableDualStation)
         {
@@ -679,32 +687,6 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             Title = NormalizeDisplayText(title, fallbackTitle),
             MergeByProduct = false
         };
-    }
-
-    private BizProductProcessConfig? ResolveProductProcessConfig(BizWeldTask task, int stationNo)
-    {
-        var productNum = task.ProductNum?.Trim();
-        if (string.IsNullOrWhiteSpace(productNum))
-        {
-            return null;
-        }
-
-        var normalizedStationNo = stationNo <= ProductionConstants.Stations.SharedStationNo
-            ? ProductionConstants.Stations.DefaultStationNo
-            : stationNo;
-
-        lock (_dbLock)
-        {
-            _dbContext.InitDatabase();
-            return _dbContext.Db.Queryable<BizProductProcessConfig>()
-                .Where(config => config.Enabled && config.ProductNum == productNum)
-                .ToList()
-                .Where(config => config.StationNo == ProductionConstants.Stations.SharedStationNo
-                    || config.StationNo == normalizedStationNo)
-                .OrderByDescending(config => config.StationNo == normalizedStationNo)
-                .ThenBy(config => config.Id)
-                .FirstOrDefault();
-        }
     }
 
     private static string NormalizeDisplayText(string? value, string fallback)

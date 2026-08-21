@@ -96,6 +96,7 @@ var tests = new (string Name, Action Run)[]
     ("Only configured test item expressions create available roles", OnlyConfiguredExpressionsCreateRoles),
     ("Collection does not imply local save or upload", CollectionDoesNotImplyOutput),
     ("Save history controls product history visibility", SaveHistoryControlsProductHistoryVisibility),
+    ("Dynamic history and center use task-bound process config", DynamicHistoryAndCenterUseTaskBoundProcessConfig),
     ("DataManageView uses generic product test tree", DataManageViewUsesGenericProductTestTree),
     ("Data history tree preserves stored product result", DataHistoryTreeParentKeepsStoredProductResult),
     ("Scheme output roles are independent from realtime preview", SchemeOutputRolesAreIndependentFromRealtimePreview),
@@ -2045,6 +2046,45 @@ static void SaveHistoryControlsProductHistoryVisibility()
     AssertTrue(
         SchemeDetailRoleRules.ShouldShowHistoryRole(savedOnly, SchemeDetailValueRole.Actual),
         "已采集且启用保存历史的角色必须进入产品历史。");
+}
+
+static void DynamicHistoryAndCenterUseTaskBoundProcessConfig()
+{
+    var task = new BizWeldTask
+    {
+        ProductNum = "WORK-ORDER-PRODUCT",
+        ProgramId = "PROGRAM-001",
+        StationNo = ProductionConstants.Stations.SharedStationNo
+    };
+    var station1Config = new BizProductProcessConfig { Id = 11, StationNo = 1, ProductNum = "PROGRAM-PRODUCT", SchemeId = "S-A" };
+    var station2Config = new BizProductProcessConfig { Id = 12, StationNo = 2, ProductNum = "PROGRAM-PRODUCT", SchemeId = "S-B" };
+    var service = new FakeProductProcessConfigService(new Dictionary<int, BizProductProcessConfig>
+    {
+        [1] = station1Config,
+        [2] = station2Config
+    });
+
+    var resolved = TaskProductProcessConfigResolver.Resolve(service, task, [0, 2, 2]);
+
+    AssertSequenceEqual(new[] { 1, 2 }, resolved.Keys.OrderBy(value => value).ToArray(), "任务工艺解析必须按规范化工位去重。");
+    AssertEqual(station1Config.Id, resolved[1].Id, "共享工位必须规范化为工位1并使用任务绑定程序的工艺。");
+    AssertEqual(station2Config.Id, resolved[2].Id, "工位2必须使用任务绑定程序的独立工艺。");
+    AssertEqual(0, service.FindActiveCallCount, "历史和中心转发不得退回按 task.ProductNum 直接查询工艺。");
+    AssertEqual(2, service.FindActiveForTaskCalls.Count, "每个实际工位只应调用一次任务绑定工艺解析。");
+    AssertTrue(service.FindActiveForTaskCalls.All(call => ReferenceEquals(call.Task, task)), "工艺解析必须传递原始任务以使用 ProgramId 反查产品工号。");
+
+    var historyCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "DataHistoryQueryService.cs"),
+        Encoding.UTF8);
+    var centerCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Center", "CenterProductForwardingService.cs"),
+        Encoding.UTF8);
+    AssertTrue(historyCode.Contains("TaskProductProcessConfigResolver.Resolve", StringComparison.Ordinal), "数据历史必须复用任务绑定工艺解析。");
+    AssertTrue(historyCode.Contains("GetSchemeItemsForStation", StringComparison.Ordinal), "数据历史必须按记录工位隔离方案明细和动态值。");
+    AssertTrue(centerCode.Contains("TaskProductProcessConfigResolver.Resolve", StringComparison.Ordinal), "中心转发必须复用任务绑定工艺解析。");
+    AssertTrue(centerCode.Contains("BuildRequest(settings, task, stationNo, records, config)", StringComparison.Ordinal), "中心请求必须使用已解析的同一工艺配置。");
+    AssertFalse(historyCode.Contains("config.ProductNum == task.ProductNum", StringComparison.Ordinal), "数据历史不得再按工单产品号直接匹配工艺。");
+    AssertFalse(centerCode.Contains("config.ProductNum == productNum", StringComparison.Ordinal), "中心转发不得保留独立的产品号工艺查询路径。");
 }
 
 static void DataManageViewUsesGenericProductTestTree()
@@ -12556,7 +12596,7 @@ static CenterProductReportRequest BuildCenterProductRequest(
         "BuildRequest",
         System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
     AssertTrue(method is not null, "中心产品请求必须保留可验证的请求构造入口。");
-    var request = method!.Invoke(service, [settings, task, stationNo, records]) as CenterProductReportRequest;
+    var request = method!.Invoke(service, [settings, task, stationNo, records, null]) as CenterProductReportRequest;
     AssertTrue(request is not null, "中心产品请求构造入口必须返回请求对象。");
     return request!;
 }
@@ -13180,6 +13220,43 @@ sealed class FakeSystemClockService : ISystemClockService
         LastRequestedTime = serverTime;
         return SetLocalTimeResult
             ?? SystemClockSyncResult.ChangedResult(serverTime, localTimeBefore, (serverTime - localTimeBefore).TotalSeconds, "已校时");
+    }
+}
+
+sealed class FakeProductProcessConfigService(
+    IReadOnlyDictionary<int, BizProductProcessConfig> configsByStation) : IProductProcessConfigService
+{
+    public int FindActiveCallCount { get; private set; }
+
+    public List<(BizWeldTask Task, int StationNo)> FindActiveForTaskCalls { get; } = [];
+
+    public IReadOnlyList<BizProductProcessConfig> GetAll(bool includeDisabled = false)
+        => configsByStation.Values.ToList();
+
+    public BizProductProcessConfig? FindActive(
+        string productNum,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo)
+    {
+        FindActiveCallCount++;
+        return null;
+    }
+
+    public BizProductProcessConfig? FindActiveForTask(
+        BizWeldTask task,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo)
+    {
+        FindActiveForTaskCalls.Add((task, stationNo));
+        return configsByStation.TryGetValue(stationNo, out var config) ? config : null;
+    }
+
+    public BizProductProcessConfig Save(BizProductProcessConfig config) => config;
+
+    public void Disable(int id)
+    {
+    }
+
+    public void Delete(int id)
+    {
     }
 }
 

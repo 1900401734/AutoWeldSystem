@@ -15,11 +15,15 @@ namespace AutoWeldSystem.Services.Production;
 public sealed class DataHistoryQueryService : IDataHistoryQueryService
 {
     private readonly SqlSugarDbContext _dbContext;
+    private readonly IProductProcessConfigService _productProcessConfigService;
     private readonly object _queryLock = new();
 
-    public DataHistoryQueryService(SqlSugarDbContext dbContext)
+    public DataHistoryQueryService(
+        SqlSugarDbContext dbContext,
+        IProductProcessConfigService productProcessConfigService)
     {
         _dbContext = dbContext;
+        _productProcessConfigService = productProcessConfigService;
     }
 
     public Task<PagedResult<DataHistoryWorkOrderRow>> QueryWorkOrdersAsync(
@@ -143,26 +147,31 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
         }
 
         var records = GetTaskRecords(taskId);
-        var schemeItems = ResolveSchemeItems(task, records);
-        var dynamicColumns = BuildDynamicColumns(schemeItems);
-        var childRows = records.Select(record => new DataHistoryTestDataRow
+        var schemeItemsByStation = ResolveSchemeItems(task, records);
+        var dynamicColumns = BuildDynamicColumns(
+            schemeItemsByStation.OrderBy(pair => pair.Key).SelectMany(pair => pair.Value));
+        var childRows = records.Select(record =>
         {
-            IsProductRow = false,
-            TaskId = taskId,
-            RecordId = record.Id,
-            SequenceNo = record.SequenceNo,
-            StationNo = record.StationNo,
-            ProductNo = record.ProductNo,
-            TouchNo = record.TouchNo,
-            NodeText = string.IsNullOrWhiteSpace(record.TouchNo)
-                ? $"记录 {record.SequenceNo}"
-                : record.TouchNo,
-            TestResult = TestResultRules.Normalize(record.TestResult),
-            ProductResult = ResolveProductResult(record),
-            UploadStatus = record.UploadStatus,
-            RecordTime = record.Ts,
-            RawDataJson = BuildSavedRawDataJson(record, schemeItems),
-            DynamicValues = BuildDynamicValues(record, schemeItems)
+            var schemeItems = GetSchemeItemsForStation(schemeItemsByStation, task, record.StationNo);
+            return new DataHistoryTestDataRow
+            {
+                IsProductRow = false,
+                TaskId = taskId,
+                RecordId = record.Id,
+                SequenceNo = record.SequenceNo,
+                StationNo = record.StationNo,
+                ProductNo = record.ProductNo,
+                TouchNo = record.TouchNo,
+                NodeText = string.IsNullOrWhiteSpace(record.TouchNo)
+                    ? $"记录 {record.SequenceNo}"
+                    : record.TouchNo,
+                TestResult = TestResultRules.Normalize(record.TestResult),
+                ProductResult = ResolveProductResult(record),
+                UploadStatus = record.UploadStatus,
+                RecordTime = record.Ts,
+                RawDataJson = BuildSavedRawDataJson(record, schemeItems),
+                DynamicValues = BuildDynamicValues(record, schemeItems)
+            };
         }).ToList();
 
         var productRows = childRows
@@ -224,17 +233,22 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
         }
 
         var records = GetTaskRecords(taskId);
-        var schemeItems = ResolveSchemeItems(task, records);
-        var dynamicColumns = BuildDynamicColumns(schemeItems);
-        var rows = records.Select(record => new DataHistoryWeldParameterRow
+        var schemeItemsByStation = ResolveSchemeItems(task, records);
+        var dynamicColumns = BuildDynamicColumns(
+            schemeItemsByStation.OrderBy(pair => pair.Key).SelectMany(pair => pair.Value));
+        var rows = records.Select(record =>
         {
-            StationNo = record.StationNo,
-            ProductNo = record.ProductNo,
-            TouchNo = record.TouchNo,
-            TestResult = record.TestResult,
-            ProductResult = ResolveProductResult(record),
-            RecordTime = record.Ts,
-            DynamicValues = BuildDynamicValues(record, schemeItems)
+            var schemeItems = GetSchemeItemsForStation(schemeItemsByStation, task, record.StationNo);
+            return new DataHistoryWeldParameterRow
+            {
+                StationNo = record.StationNo,
+                ProductNo = record.ProductNo,
+                TouchNo = record.TouchNo,
+                TestResult = record.TestResult,
+                ProductResult = ResolveProductResult(record),
+                RecordTime = record.Ts,
+                DynamicValues = BuildDynamicValues(record, schemeItems)
+            };
         }).ToList();
 
         return new DataHistoryWeldParameterResult
@@ -305,34 +319,26 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
             .ToList();
     }
 
-    private IReadOnlyList<SchemeItemDefinition> ResolveSchemeItems(
+    private IReadOnlyDictionary<int, IReadOnlyList<SchemeItemDefinition>> ResolveSchemeItems(
         BizWeldTask task,
         IReadOnlyList<BizWeldPointRecord> records)
     {
-        if (string.IsNullOrWhiteSpace(task.ProductNum))
-        {
-            return Array.Empty<SchemeItemDefinition>();
-        }
-
-        var stationNumbers = records.Select(record => record.StationNo)
-            .Where(stationNo => stationNo > 0)
-            .Append(Math.Max(1, task.StationNo))
-            .Distinct()
+        var stationNumbers = records
+            .Select(record => record.StationNo)
+            .Append(task.StationNo)
             .ToList();
-        var configs = _dbContext.Db.Queryable<BizProductProcessConfig>()
-            .Where(config => config.Enabled && config.ProductNum == task.ProductNum)
-            .ToList()
-            .Where(config => config.StationNo == 0 || stationNumbers.Contains(config.StationNo))
-            .OrderBy(config => config.StationNo)
-            .ThenBy(config => config.Id)
-            .ToList();
-        var schemeIds = configs.Select(config => config.SchemeId)
+        var configsByStation = TaskProductProcessConfigResolver.Resolve(
+            _productProcessConfigService,
+            task,
+            stationNumbers);
+        var schemeIds = configsByStation.Values
+            .Select(config => config.SchemeId?.Trim())
             .Where(schemeId => !string.IsNullOrWhiteSpace(schemeId))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         if (schemeIds.Count == 0)
         {
-            return Array.Empty<SchemeItemDefinition>();
+            return new Dictionary<int, IReadOnlyList<SchemeItemDefinition>>();
         }
 
         var details = _dbContext.Db.Queryable<BizSchemeDetail>()
@@ -343,25 +349,46 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
         var items = _dbContext.Db.Queryable<DimTestItem>()
             .Where(item => itemIds.Contains(item.ItemId))
             .ToList();
+        var definitionsByScheme = details
+            .GroupBy(detail => detail.SchemeId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<SchemeItemDefinition>)group
+                    .Select(detail => new SchemeItemDefinition(
+                        items.FirstOrDefault(item => item.ItemId == detail.ItemId),
+                        detail))
+                    .Where(definition => definition.Item is not null)
+                    .Select(definition =>
+                    {
+                        SchemeDetailRoleRules.ClearUnavailableRoles(definition.Detail, definition.Item!);
+                        return definition;
+                    })
+                    .Where(definition => HasAnyEnabledRole(definition.Detail))
+                    .GroupBy(definition => definition.Item!.ItemId)
+                    .Select(group => group.First())
+                    .ToList(),
+                StringComparer.OrdinalIgnoreCase);
 
-        return details
-            .Select(detail => new SchemeItemDefinition(
-                items.FirstOrDefault(item => item.ItemId == detail.ItemId),
-                detail))
-            .Where(definition => definition.Item is not null)
-            .Select(definition =>
-            {
-                SchemeDetailRoleRules.ClearUnavailableRoles(definition.Detail, definition.Item!);
-                return definition;
-            })
-            .Where(definition => HasAnyEnabledRole(definition.Detail))
-            .GroupBy(definition => definition.Item!.ItemId)
-            .Select(group => group.First())
-            .ToList();
+        return configsByStation.ToDictionary(
+            pair => pair.Key,
+            pair => definitionsByScheme.TryGetValue(pair.Value.SchemeId, out var definitions)
+                ? definitions
+                : (IReadOnlyList<SchemeItemDefinition>)Array.Empty<SchemeItemDefinition>());
+    }
+
+    private static IReadOnlyList<SchemeItemDefinition> GetSchemeItemsForStation(
+        IReadOnlyDictionary<int, IReadOnlyList<SchemeItemDefinition>> schemeItemsByStation,
+        BizWeldTask task,
+        int stationNo)
+    {
+        var normalizedStationNo = TaskProductProcessConfigResolver.NormalizeStationNo(stationNo, task);
+        return schemeItemsByStation.TryGetValue(normalizedStationNo, out var definitions)
+            ? definitions
+            : Array.Empty<SchemeItemDefinition>();
     }
 
     private static IReadOnlyList<DataHistoryDynamicColumn> BuildDynamicColumns(
-        IReadOnlyList<SchemeItemDefinition> schemeItems)
+        IEnumerable<SchemeItemDefinition> schemeItems)
     {
         var columns = new List<DataHistoryDynamicColumn>();
         foreach (var definition in schemeItems)
