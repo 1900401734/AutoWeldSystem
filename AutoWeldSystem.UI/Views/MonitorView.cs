@@ -3650,7 +3650,14 @@ public partial class MonitorView : BaseView
         var program = state.SelectedProgram;
         var activeTask = state.ActiveTask;
         var liveWorkId = GetCurrentLiveWorkId();
-        var currentIdentity = ResolveDisplayProductIdentity(state);
+        var hasRunningTask = IsRunningWeldTask(activeTask);
+        var hasPreparedWorkOrder = HasPreparedWorkOrderInfo(state, liveWorkId);
+        var currentIdentity = hasPreparedWorkOrder ? ResolveDisplayProductIdentity(state) : null;
+
+        if (!hasRunningTask)
+        {
+            ClearIdleProductionDataDisplay(clearWorkOrderInfo: !hasPreparedWorkOrder);
+        }
 
         SyncStationSelection();
         if (IsOfflineInputEditable(state))
@@ -3715,6 +3722,71 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             ? "本地完工"
             : _localizer.GetString(TextKeys.Monitor.Button.LocalWorkOrder);
         ApplyReportButtonState();
+    }
+
+    /// <summary>
+    /// 判断未开工工位是否已有需要保留的待开工信息。
+    /// </summary>
+    private bool HasPreparedWorkOrderInfo(ProductionStationRuntimeState state, string liveWorkId)
+    {
+        return state.CurrentWorkOrder is not null
+            || IsNewLiveWorkOrder(liveWorkId)
+            || !string.IsNullOrWhiteSpace(GetConfirmedWorkOrderInput(CurrentStationNo))
+            || _manualWorkOrderEditedByUser
+            || _offlineWorkOrderEditedByUser
+            // 离线模式的主界面字段本身就是待开工草稿，不能在刷新周期中清除。
+            || IsOfflineInputEditable(state);
+    }
+
+    private bool IsNewLiveWorkOrder(string liveWorkId)
+    {
+        if (string.IsNullOrWhiteSpace(liveWorkId))
+        {
+            return false;
+        }
+
+        var stationNo = NormalizeStationNo(CurrentStationNo);
+        return !_lastAutoQueriedWorkIds.TryGetValue(stationNo, out var previousWorkId)
+            || !string.Equals(previousWorkId, liveWorkId.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// 清空未开工工位的生产数据；待开工草稿存在时只清运行数据。
+    /// </summary>
+    private void ClearIdleProductionDataDisplay(bool clearWorkOrderInfo)
+    {
+        ClearCurrentRealtimePreviewDisplay();
+        ClearCurrentProductHistoryDisplay();
+        if (clearWorkOrderInfo)
+        {
+            ClearUnpreparedWorkOrderInfoDisplay();
+        }
+    }
+
+    private void ClearUnpreparedWorkOrderInfoDisplay()
+    {
+        _syncingOfflineInputs = true;
+        try
+        {
+            SetWorkOrderInputText(string.Empty);
+            SetProductNumSelectionText(string.Empty);
+            inputBatch.Text = string.Empty;
+            inputProductName.Text = string.Empty;
+            inputDrawingNo.Text = string.Empty;
+            inputSpec.Text = string.Empty;
+            inputProcessNo.Text = string.Empty;
+            inputStartAmount.Text = string.Empty;
+            inputProdModel.Text = string.Empty;
+            selectItemName.Text = string.Empty;
+            ForceProgramNameSelection(-1, string.Empty);
+            BindProcessSelection(null, null, bindSelectedOnly: false);
+            ClearMesOperatorInfo();
+            _lastBoundOnlineWorkOrderKey = null;
+        }
+        finally
+        {
+            _syncingOfflineInputs = false;
+        }
     }
 
     /// <summary>
@@ -3786,6 +3858,14 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         if (_currentProductIdentity?.StationNo == stationNo)
         {
             _currentProductIdentity = null;
+        }
+
+        ClearConfirmedWorkOrderInput(stationNo);
+        if (NormalizeStationNo(stationNo) == CurrentStationNo)
+        {
+            _manualWorkOrderEditedByUser = false;
+            _offlineWorkOrderEditedByUser = false;
+            _offlineInputModeActive = false;
         }
 
         _lastSchemePreviewKey = string.Empty;
@@ -5326,7 +5406,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         try
         {
             var activeTask = GetCurrentStationState().ActiveTask;
-            if (activeTask is null)
+            if (activeTask is null || !IsRunningWeldTask(activeTask))
             {
                 // 无当前任务时仍重置列和数据，避免界面保留上一个任务的历史记录。
                 ConfigureProductHistoryTableColumns(
@@ -6837,10 +6917,13 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     private void ApplyCurrentRealtimePreviewSnapshot()
     {
         var snapshot = _productRealtimePreviewService.GetCurrent(CurrentStationNo);
-        if (snapshot is not null)
+        if (snapshot is null || !CanDisplayRealtimePreviewSnapshot(snapshot))
         {
-            ApplyProductRealtimePreviewSnapshot(snapshot);
+            ClearCurrentRealtimePreviewDisplay();
+            return;
         }
+
+        ApplyProductRealtimePreviewSnapshot(snapshot);
     }
 
     /// <summary>
@@ -6849,6 +6932,12 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// <param name="snapshot">状态快照。</param>
     private void ApplyProductRealtimePreviewSnapshot(ProductRealtimePreviewSnapshot snapshot)
     {
+        if (!CanDisplayRealtimePreviewSnapshot(snapshot))
+        {
+            ClearCurrentRealtimePreviewDisplay();
+            return;
+        }
+
         ApplyLivePreviewSummary(snapshot);
         _currentProductIdentity = new ProductIdentity(snapshot.StationNo, snapshot.ProductNum, snapshot.ProductModel, "RealtimePreview");
 
@@ -6859,6 +6948,55 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         }
 
         ApplyRealtimeWeldParameterRows(snapshot.Rows);
+    }
+
+    private bool CanDisplayRealtimePreviewSnapshot(ProductRealtimePreviewSnapshot snapshot)
+    {
+        var activeTask = GetCurrentStationState().ActiveTask;
+        return snapshot.StationNo == CurrentStationNo
+            && IsRunningWeldTask(activeTask)
+            && snapshot.RefreshTime >= activeTask!.StartTime;
+    }
+
+    private void ClearCurrentRealtimePreviewDisplay()
+    {
+        lock (_realtimePreviewSync)
+        {
+            _pendingRealtimePreviewSnapshot = null;
+            _realtimePreviewApplyPosted = false;
+        }
+
+        _currentProductIdentity = null;
+        _lastSchemePreviewKey = string.Empty;
+        _weldParameterRows.RemoveAll(row => row.StationNo == CurrentStationNo);
+        _weldParameterLayoutKey = string.Empty;
+        _weldParameterPreviewSchemaKey = string.Empty;
+        _weldParameterVisibleValueKey = string.Empty;
+
+        var grid = CurrentWeldPreviewGrid;
+        if (grid.Rows.Count > 0)
+        {
+            grid.Rows.Clear();
+        }
+
+        SetControlText(CurrentLivePreviewStatusLabel, string.Empty);
+        SetControlText(CurrentLiveProductNoLabel, string.Empty);
+        SetControlText(CurrentLiveTouchCountLabel, string.Empty);
+        SetControlText(CurrentLiveResultTag, string.Empty);
+        SetLiveResultTagColor(CurrentLiveResultTag, UiColors.Status.Muted, Color.White);
+    }
+
+    private void ClearCurrentProductHistoryDisplay()
+    {
+        ConfigureProductHistoryTableColumns(
+            CurrentProductHistoryTable,
+            [],
+            CurrentStationNo,
+            ProductHistoryDisplayOptions.Default with
+            {
+                ShowTestFlagInHistory = _currentSettings.ShowTestFlagInHistory != false
+            });
+        BindProductHistoryRows(CurrentProductHistoryTable, []);
     }
 
     /// <summary>
@@ -7121,6 +7259,12 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             return;
         }
 
+        if (!IsRunningWeldTask(GetCurrentStationState().ActiveTask))
+        {
+            ClearCurrentRealtimePreviewDisplay();
+            return;
+        }
+
         if (!force && DateTime.Now - _lastSchemePreviewRefreshTime < TimeSpan.FromSeconds(2))
         {
             // 非强制刷新做短时间节流，避免 PLC/MES 状态频繁变化时反复重建预览表。
@@ -7351,6 +7495,12 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     {
         if (identity.StationNo != CurrentStationNo)
         {
+            return;
+        }
+
+        if (!IsRunningWeldTask(GetCurrentStationState().ActiveTask))
+        {
+            ClearCurrentRealtimePreviewDisplay();
             return;
         }
 

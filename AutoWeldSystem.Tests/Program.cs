@@ -374,6 +374,7 @@ var tests = new (string Name, Action Run)[]
     ("Monitor view finish report uses start operator without prompt", MonitorViewFinishReportUsesStartOperatorWithoutPrompt),
     ("Monitor view clears product identity after finish report", MonitorViewClearsProductIdentityAfterFinishReport),
     ("Monitor view product history uses latest first ordering", MonitorViewProductHistoryUsesLatestFirstOrdering),
+    ("Monitor view clears idle production data", MonitorViewClearsIdleProductionData),
     ("Weld task finish uses MES start id for retry payloads", WeldTaskFinishUsesMesStartIdForRetryPayloads),
     ("Weld task restore unfinished task is idempotent", WeldTaskRestoreUnfinishedTaskIsIdempotent),
     ("Permission catalog omits get work order button", PermissionCatalogOmitsGetWorkOrderButton),
@@ -11520,12 +11521,13 @@ static void MonitorViewClearsProductIdentityAfterFinishReport()
 
     AssertTrue(onlineClearIndex > onlineFinishIndex && onlineClearIndex < onlineRefreshIndex, "在线完工成功后、刷新运行态前必须清除产品身份缓存。");
     AssertTrue(localClearIndex > localFinishIndex && localClearIndex < localRefreshIndex, "本地完工成功后、刷新运行态前必须清除产品身份缓存。");
-    AssertTrue(bindMethod.Contains("var currentIdentity = ResolveDisplayProductIdentity(state);", StringComparison.Ordinal), "运行态绑定必须通过统一规则决定是否可用缓存产品身份。");
+    AssertTrue(bindMethod.Contains("hasPreparedWorkOrder ? ResolveDisplayProductIdentity(state) : null", StringComparison.Ordinal), "运行态绑定必须只为运行任务或待开工上下文使用缓存产品身份。");
     AssertTrue(identityResolver.Contains("IsOfflineInputEditable(state)", StringComparison.Ordinal), "离线未开工时仍允许使用 PLC/配方解析出的产品身份。");
     AssertTrue(identityResolver.Contains("state.ActiveTask is not null", StringComparison.Ordinal), "运行中任务仍允许使用产品身份缓存。");
     AssertTrue(identityResolver.Contains("return null;", StringComparison.Ordinal), "在线空闲且无工单时必须禁用旧产品身份缓存。");
     AssertTrue(clearHelper.Contains("_currentProductIdentity = null;", StringComparison.Ordinal), "完工清理必须清空当前产品身份缓存。");
     AssertTrue(clearHelper.Contains("_lastSchemePreviewKey = string.Empty;", StringComparison.Ordinal), "完工清理必须清空方案预览键，避免旧产品预览复用。");
+    AssertTrue(clearHelper.Contains("ClearConfirmedWorkOrderInput(stationNo);", StringComparison.Ordinal), "完工清理必须移除上一工单确认状态，避免旧工单继续显示为待开工草稿。");
     AssertTrue(schemePreviewMethod.Contains("if (ShouldApplyProductIdentityToInputs(identity))", StringComparison.Ordinal), "方案预览写入产品工号/型号前必须检查当前状态是否允许回填。");
 }
 
@@ -11540,6 +11542,29 @@ static void MonitorViewProductHistoryUsesLatestFirstOrdering()
     AssertTrue(bindSnapshotMethod.Contains("ProductHistoryPreviewSortRules.OrderProductsLatestFirst(snapshot.Products)", StringComparison.Ordinal), "MonitorView 绑定产品历史预览时必须按最近产品优先排序。");
     AssertFalse(bindSnapshotMethod.Contains("var rows = snapshot.Products\r\n            .Select(product => ToProductHistoryRow", StringComparison.Ordinal), "MonitorView 不应再直接按服务层原始顺序绑定历史预览。");
 }
+static void MonitorViewClearsIdleProductionData()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var bindMethod = ExtractMethodText(viewCode, "private void BindProductionRuntimeState()", "private bool HasPreparedWorkOrderInfo");
+    var clearMethod = ExtractMethodText(viewCode, "private void ClearIdleProductionDataDisplay", "private void ClearUnpreparedWorkOrderInfoDisplay");
+    var realtimeMethod = ExtractMethodText(viewCode, "private void ApplyProductRealtimePreviewSnapshot", "private bool CanDisplayRealtimePreviewSnapshot");
+    var historyMethod = ExtractMethodText(viewCode, "private void RefreshProductHistoryPreviewCore()", "private void BindProductHistorySnapshot");
+    var schemeQueueMethod = ExtractMethodText(viewCode, "private void QueueRefreshSchemePreview", "private async Task RefreshSchemePreviewAsync");
+
+    AssertTrue(bindMethod.Contains("HasPreparedWorkOrderInfo", StringComparison.Ordinal), "未开工工单模块必须区分无上下文空闲态和待开工草稿。");
+    AssertTrue(bindMethod.Contains("ClearIdleProductionDataDisplay", StringComparison.Ordinal), "未开工刷新必须统一清理生产数据。");
+    AssertTrue(clearMethod.Contains("ClearCurrentRealtimePreviewDisplay", StringComparison.Ordinal), "未开工必须清空采集预览。");
+    AssertTrue(clearMethod.Contains("ClearCurrentProductHistoryDisplay", StringComparison.Ordinal), "未开工必须清空产品历史。");
+    AssertTrue(realtimeMethod.Contains("CanDisplayRealtimePreviewSnapshot", StringComparison.Ordinal), "实时快照必须经过运行任务校验。");
+    AssertTrue(viewCode.Contains("snapshot.RefreshTime >= activeTask!.StartTime", StringComparison.Ordinal), "开工后不得展示开工前缓存的实时快照。");
+    AssertTrue(historyMethod.Contains("activeTask is null || !IsRunningWeldTask(activeTask)", StringComparison.Ordinal), "产品历史只允许在任务运行期间加载。");
+    AssertTrue(schemeQueueMethod.Contains("!IsRunningWeldTask", StringComparison.Ordinal), "未开工时不得生成方案采集预览行。");
+    AssertTrue(viewCode.Contains("state.CurrentWorkOrder is not null", StringComparison.Ordinal), "已查询的待开工工单必须保留显示。");
+    AssertTrue(viewCode.Contains("IsNewLiveWorkOrder(liveWorkId)", StringComparison.Ordinal), "新扫描且尚未查询的工单号必须作为待开工信息保留。");
+    AssertTrue(viewCode.Contains("_manualWorkOrderEditedByUser", StringComparison.Ordinal), "人工待开工草稿必须保留显示。");
+    AssertTrue(viewCode.Contains("IsOfflineInputEditable(state)", StringComparison.Ordinal), "离线待开工草稿必须保留显示。");
+}
+
 static void WeldTaskFinishUsesMesStartIdForRetryPayloads()
 {
     var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "WeldTaskService.cs"), Encoding.UTF8);
