@@ -1496,7 +1496,7 @@
     <value>耗时(ms)</value>
   </data>
   <data name="log.column.url" xml:space="preserve">
-    <value>接口地址</value>
+    <value>接口路径</value>
   </data>
   <data name="log.column.occurred_time" xml:space="preserve">
     <value>发生时间</value>

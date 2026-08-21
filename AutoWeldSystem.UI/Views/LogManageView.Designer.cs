@@ -43,6 +43,7 @@ namespace AutoWeldSystem.UI.Views
             splitterMesContent = new AntdUI.Splitter();
             dgvMesLogs = new DataGridView();
             colMesSendTime = new DataGridViewTextBoxColumn();
+            colMesPath = new DataGridViewTextBoxColumn();
             colMesPurpose = new DataGridViewTextBoxColumn();
             colMesMethod = new DataGridViewTextBoxColumn();
             colMesHttpStatus = new DataGridViewTextBoxColumn();
@@ -493,7 +494,7 @@ namespace AutoWeldSystem.UI.Views
             dgvMesLogs.AllowUserToDeleteRows = false;
             dgvMesLogs.BackgroundColor = SystemColors.Window;
             dgvMesLogs.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-            dgvMesLogs.Columns.AddRange(new DataGridViewColumn[] { colMesSendTime, colMesPurpose, colMesMethod, colMesHttpStatus, colResult, colMesDuration });
+            dgvMesLogs.Columns.AddRange(new DataGridViewColumn[] { colMesSendTime, colMesPath, colMesPurpose, colMesMethod, colMesHttpStatus, colResult, colMesDuration });
             dgvMesLogs.Dock = DockStyle.Fill;
             dgvMesLogs.Location = new Point(0, 0);
             dgvMesLogs.Margin = new Padding(0);
@@ -516,7 +517,17 @@ namespace AutoWeldSystem.UI.Views
             colMesSendTime.Name = "colMesSendTime";
             colMesSendTime.ReadOnly = true;
             colMesSendTime.Width = 125;
-            // 
+            //
+            // colMesPath
+            //
+            colMesPath.DataPropertyName = "InterfacePath";
+            colMesPath.FillWeight = 25F;
+            colMesPath.HeaderText = "Route Path";
+            colMesPath.MinimumWidth = 140;
+            colMesPath.Name = "colMesPath";
+            colMesPath.ReadOnly = true;
+            colMesPath.Width = 180;
+            //
             // colMesPurpose
             // 
             colMesPurpose.DataPropertyName = "Purpose";
@@ -2594,6 +2605,7 @@ namespace AutoWeldSystem.UI.Views
         private FlowLayoutPanel exceptionDetailToolbar;
 
         private DataGridViewTextBoxColumn colMesSendTime;
+        private DataGridViewTextBoxColumn colMesPath;
         private DataGridViewTextBoxColumn colMesPurpose;
         private DataGridViewTextBoxColumn colMesMethod;
         private DataGridViewTextBoxColumn colMesHttpStatus;

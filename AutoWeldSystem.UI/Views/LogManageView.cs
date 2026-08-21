@@ -564,6 +564,7 @@ public partial class LogManageView : BaseView
     private void ApplyMesGridHeaders()
     {
         colMesSendTime.HeaderText = _localizer.GetString(TextKeys.Log.ColumnSendTime);
+        colMesPath.HeaderText = _localizer.GetString(TextKeys.Log.ColumnUrl);
         colMesPurpose.HeaderText = _localizer.GetString(TextKeys.Log.ColumnPurpose);
         colMesMethod.HeaderText = _localizer.GetString(TextKeys.Log.ColumnMethod);
         colMesHttpStatus.HeaderText = _localizer.GetString(TextKeys.Log.ColumnHttpStatus);
@@ -1457,6 +1458,24 @@ public partial class LogManageView : BaseView
         return (dgvExceptionLogs.CurrentRow?.DataBoundItem as ExceptionLogRow)?.Entry;
     }
 
+    private static string FormatMesRoutePath(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return "-";
+        }
+
+        var normalized = url.Trim();
+        if (Uri.TryCreate(normalized, UriKind.Absolute, out var uri))
+        {
+            return string.IsNullOrWhiteSpace(uri.AbsolutePath) ? "/" : uri.AbsolutePath;
+        }
+
+        var separatorIndex = normalized.IndexOfAny(['?', '#']);
+        var path = separatorIndex >= 0 ? normalized[..separatorIndex] : normalized;
+        return string.IsNullOrWhiteSpace(path) ? "-" : path;
+    }
+
     private static string BuildBasicInfo(MesInteractionLogEntry entry)
     {
         var builder = new StringBuilder();
@@ -1926,6 +1945,8 @@ public partial class LogManageView : BaseView
         public MesInteractionLogEntry Entry { get; }
 
         public string SendTime { get; }
+
+        public string InterfacePath => FormatMesRoutePath(Entry.Url);
 
         public string Purpose => Entry.Purpose;
 

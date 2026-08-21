@@ -1496,7 +1496,7 @@
     <value>Duration(ms)</value>
   </data>
   <data name="log.column.url" xml:space="preserve">
-    <value>URL</value>
+    <value>Route Path</value>
   </data>
   <data name="log.column.occurred_time" xml:space="preserve">
     <value>Occurred Time</value>

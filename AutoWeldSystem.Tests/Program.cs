@@ -253,6 +253,7 @@ var tests = new (string Name, Action Run)[]
     ("LogManageView device status tab exposes open folder button", LogManageViewDeviceStatusTabExposesOpenFolderButton),
     ("LogManageView device status tab shows alarm details", LogManageViewDeviceStatusTabShowsAlarmDetails),
     ("LogManageView keeps hidden log fields in details only", LogManageViewKeepsHiddenLogFieldsInDetailsOnly),
+    ("MES interaction log grid shows route path", MesInteractionLogGridShowsRoutePath),
     ("Production flow summaries use centralized Chinese text", ProductionFlowSummariesUseCentralizedChineseText),
     ("DataManageView static grids define bound columns", DataManageViewStaticGridsDefineBoundColumns),
     ("DataManageView ignores report selection while disposing", DataManageViewIgnoresReportSelectionWhileDisposing),
@@ -8043,6 +8044,29 @@ static void LogManageViewDeviceStatusTabShowsAlarmDetails()
     AssertTrue(viewCode.Contains("Contains(entry.AlarmContent, keyword)", StringComparison.Ordinal), "报警内容必须参与日志搜索。");
     AssertTrue(viewCode.Contains("AlarmAddress: {entry.AlarmAddress", StringComparison.Ordinal), "设备状态详情必须显示报警地址。");
     AssertTrue(viewCode.Contains("AlarmContent: {entry.AlarmContent", StringComparison.Ordinal), "设备状态详情必须显示报警内容。");
+}
+
+static void MesInteractionLogGridShowsRoutePath()
+{
+    var designer = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "LogManageView.Designer.cs"), Encoding.UTF8);
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "LogManageView.cs"), Encoding.UTF8);
+    var formatter = ExtractMethodText(
+        viewCode,
+        "private static string FormatMesRoutePath",
+        "private static string BuildBasicInfo");
+
+    AssertTrue(formatter.Contains("string.IsNullOrWhiteSpace(url)", StringComparison.Ordinal), "空地址必须安全显示占位符。");
+    AssertTrue(formatter.Contains("Uri.TryCreate(normalized, UriKind.Absolute", StringComparison.Ordinal), "完整地址必须按绝对 URI 解析。");
+    AssertTrue(formatter.Contains("uri.AbsolutePath", StringComparison.Ordinal), "完整地址必须只显示路由路径。");
+    AssertTrue(formatter.Contains("IndexOfAny(['?', '#'])", StringComparison.Ordinal), "相对地址必须移除查询参数和片段。");
+    AssertTrue(formatter.Contains("return \"-\";", StringComparison.Ordinal), "空地址必须显示短横线占位符。");
+    AssertTrue(
+        designer.Contains("new DataGridViewColumn[] { colMesSendTime, colMesPath, colMesPurpose, colMesMethod, colMesHttpStatus, colResult, colMesDuration }", StringComparison.Ordinal),
+        "MES 日志列顺序必须为发送时间、接口路径、请求原因、方法、HTTP、结果、耗时。");
+    AssertTrue(designer.Contains("colMesPath.DataPropertyName = \"InterfacePath\";", StringComparison.Ordinal), "接口路径列必须绑定投影属性。");
+    AssertTrue(viewCode.Contains("colMesPath.HeaderText = _localizer.GetString(TextKeys.Log.ColumnUrl);", StringComparison.Ordinal), "接口路径列标题必须使用本地化资源。");
+    AssertTrue(viewCode.Contains("builder.AppendLine($\"Url: {entry.Url}\");", StringComparison.Ordinal), "右侧详情必须继续显示完整 URL。");
+    AssertTrue(viewCode.Contains("Contains(entry.Url, keyword)", StringComparison.Ordinal), "MES 日志搜索必须继续匹配完整 URL。");
 }
 
 static void LogManageViewKeepsHiddenLogFieldsInDetailsOnly()
