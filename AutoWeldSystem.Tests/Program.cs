@@ -125,6 +125,7 @@ var tests = new (string Name, Action Run)[]
     ("Shared task station scope widens only for same-work-order dual station", SharedTaskStationScopeWidensOnlyForSameWorkOrderDualStation),
     ("Idle station recipe readback does not reconcile", IdleStationRecipeReadbackDoesNotReconcile),
     ("PLC test result codes map to explicit result names", PlcTestResultCodesMapToExplicitResultNames),
+    ("Realtime preview values require completed point results", RealtimePreviewValuesRequireCompletedPointResults),
     ("PLC string numeric formatter follows global disabled setting", PlcStringNumericFormatterFollowsGlobalDisabledSetting),
     ("PLC string numeric formatter truncates when enabled", PlcStringNumericFormatterTruncatesWhenEnabled),
     ("PLC string numeric formatter rounds when enabled", PlcStringNumericFormatterRoundsWhenEnabled),
@@ -3364,6 +3365,53 @@ static void PlcTestResultCodesMapToExplicitResultNames()
     AssertEqual(ProductionConstants.TestResults.Unknown, TestResultRules.Normalize("0"), "PLC raw value 0 must not be treated as OK or NG.");
     AssertEqual(ProductionConstants.TestResults.NotAvailable, TestResultRules.ToDisplayText("0"), "PLC raw value 0 must display as --.");
     AssertEqual(ProductionConstants.TestResults.Unknown, TestResultRules.Normalize("1"), "Undefined PLC result values must stay Unknown.");
+}
+
+static void RealtimePreviewValuesRequireCompletedPointResults()
+{
+    AssertTrue(ProductRealtimePreviewRules.ShouldReadTestValues(ProductionConstants.TestResults.Ok), "OK 面必须允许显示测试值，包括真实 0 值。");
+    AssertTrue(ProductRealtimePreviewRules.ShouldReadTestValues(ProductionConstants.TestResults.Ng), "普通 NG 面必须允许显示测试值，包括真实 0 值。");
+    AssertFalse(ProductRealtimePreviewRules.ShouldReadTestValues(ProductionConstants.TestResults.PreWeldNg), "焊前 NG 没有测试参数，不得显示测试值。");
+    AssertFalse(ProductRealtimePreviewRules.ShouldReadTestValues(ProductionConstants.TestResults.NoResultRawValue), "PLC 原始结果 0 表示未测试，不得显示清零残留。");
+    AssertFalse(ProductRealtimePreviewRules.ShouldReadTestValues(null), "空结果不得显示测试值。");
+    AssertFalse(ProductRealtimePreviewRules.ShouldReadTestValues("--"), "未知结果不得显示测试值。");
+
+    var previewCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductRealtimePreviewService.cs"),
+        Encoding.UTF8);
+    var buildRowsMethod = ExtractMethodText(
+        previewCode,
+        "private async Task<IReadOnlyList<ProductRealtimePreviewRow>> BuildRowsAsync(",
+        "private async Task<ProductRealtimePreviewRow> BuildRowAsync(");
+    var previewValueMethod = ExtractMethodText(
+        previewCode,
+        "private async Task<string> ResolvePreviewValue(",
+        "private async Task<string> ResolvePreviewResult(");
+    AssertTrue(
+        buildRowsMethod.Contains("ProductRealtimePreviewRules.ShouldReadTestValues(touchResult)", StringComparison.Ordinal),
+        "实时预览必须先按每个面/焊点结果判定测试值有效性。");
+    AssertTrue(
+        previewValueMethod.Contains("if (!shouldReadTestValues)", StringComparison.Ordinal)
+            && previewValueMethod.Contains("return \"--\";", StringComparison.Ordinal),
+        "未测试、清零或无效结果必须直接显示空值，不能读取 PLC 测试值地址。");
+
+    var monitorCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"),
+        Encoding.UTF8);
+    var realtimeRowsMethod = ExtractMethodText(
+        monitorCode,
+        "private void ApplyRealtimeWeldParameterRows(",
+        "private void ApplyWeldParameterRows(");
+    var schemePreviewMethod = ExtractMethodText(
+        monitorCode,
+        "private void ApplySchemePreview(ProductIdentity identity, bool force)",
+        "private IEnumerable<WeldParameterRow> BuildSchemePreviewRows(");
+    AssertTrue(
+        realtimeRowsMethod.Contains("preserveStableValues: false", StringComparison.Ordinal),
+        "实时 PLC 快照必须允许空值清除上一帧，不能恢复旧 OK/NG 或旧参数。");
+    AssertTrue(
+        schemePreviewMethod.Contains("ApplyWeldParameterRows(nextRows);", StringComparison.Ordinal),
+        "静态方案预览仍应保留现有稳定值复制行为。");
 }
 
 static void PlcStringNumericFormatterFollowsGlobalDisabledSetting()

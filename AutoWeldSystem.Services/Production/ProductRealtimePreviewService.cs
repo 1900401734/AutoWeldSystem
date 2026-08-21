@@ -357,6 +357,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
                 touchContextOffset,
                 config.TouchResultExpr,
                 cancellationToken));
+            var shouldReadTestValues = ProductRealtimePreviewRules.ShouldReadTestValues(touchResult);
             foreach (var schemeItem in schemeItems)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -367,6 +368,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
                     touchNo,
                     testContextOffset,
                     touchResult,
+                    shouldReadTestValues,
                     schemeItem,
                     refreshTime,
                     cancellationToken));
@@ -383,6 +385,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         int touchNo,
         int testContextOffset,
         string touchResult,
+        bool shouldReadTestValues,
         SchemePreviewItem schemeItem,
         DateTime refreshTime,
         CancellationToken cancellationToken)
@@ -426,10 +429,10 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             UpperHeader = ResolveDetailHeader(schemeItem.Detail, item, ProductRealtimePreviewRole.Upper),
             LowerHeader = ResolveDetailHeader(schemeItem.Detail, item, ProductRealtimePreviewRole.Lower),
             ResultHeader = ResolveDetailHeader(schemeItem.Detail, item, ProductRealtimePreviewRole.Result),
-            ActualValue = schemeItem.EnableActual ? await ReadValueTextAsync(actual, cancellationToken) : string.Empty,
-            UpperValue = schemeItem.EnableUpper ? await ReadValueTextAsync(upper, cancellationToken) : string.Empty,
-            LowerValue = schemeItem.EnableLower ? await ReadValueTextAsync(lower, cancellationToken) : string.Empty,
-            Result = schemeItem.EnableResult ? FormatResult(await ReadValueTextAsync(result, cancellationToken)) : string.Empty,
+            ActualValue = await ResolvePreviewValue(schemeItem.EnableActual, shouldReadTestValues, actual, cancellationToken),
+            UpperValue = await ResolvePreviewValue(schemeItem.EnableUpper, shouldReadTestValues, upper, cancellationToken),
+            LowerValue = await ResolvePreviewValue(schemeItem.EnableLower, shouldReadTestValues, lower, cancellationToken),
+            Result = await ResolvePreviewResult(schemeItem.EnableResult, shouldReadTestValues, result, cancellationToken),
             RefreshTimeText = refreshTime.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture),
             ActualAddress = actual.Address,
             UpperAddress = upper.Address,
@@ -480,6 +483,44 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             expression,
             cancellationToken: cancellationToken);
         return result.IsSuccess ? FormatValue(result.Value) : "--";
+    }
+
+    private async Task<string> ResolvePreviewValue(
+        bool enabled,
+        bool shouldReadTestValues,
+        PlcExpressionBinding binding,
+        CancellationToken cancellationToken)
+    {
+        if (!enabled)
+        {
+            return string.Empty;
+        }
+
+        if (!shouldReadTestValues)
+        {
+            return "--";
+        }
+
+        return await ReadValueTextAsync(binding, cancellationToken);
+    }
+
+    private async Task<string> ResolvePreviewResult(
+        bool enabled,
+        bool shouldReadTestValues,
+        PlcExpressionBinding binding,
+        CancellationToken cancellationToken)
+    {
+        if (!enabled)
+        {
+            return string.Empty;
+        }
+
+        if (!shouldReadTestValues)
+        {
+            return "--";
+        }
+
+        return FormatResult(await ReadValueTextAsync(binding, cancellationToken));
     }
 
     private async Task<string> ReadValueTextAsync(PlcExpressionBinding binding, CancellationToken cancellationToken)

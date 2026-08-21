@@ -1,6 +1,6 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.1.1`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.1.2`。
 
 ## 功能概览
 
@@ -9,6 +9,7 @@
 - 过程参数上传：试焊件字段 `IsTest` 使用 JSON 布尔值 `true/false`；整件检测四面工艺在本地保留 1～4 面原始数据，上传 MES 时输出 `SideNo=A/B` 两条数据，其中 A 为面 2、4 的实际值平均，B 为面 1、3 的实际值平均，`Result` 按配对面从严合并，不发送 `Type`、`TouchNo` 和 `IsTest`。
 - PLC 监控日志：周期读取设备状态、实际数量、合格数量和失效数量失败时记录为“PLC 业务信号读取失败”；“生产数据采集失败”仅表示开工后的产品数据就绪信号触发实际产品数据采集失败；报警地址读取失败单独记录。PLC 心跳支持独立配置监测频率、心跳超时时间和通讯超时，并在状态提示中显示采样间隔、通讯锁等待和 PLC 读取耗时。
 - 设备状态上报：JSONL 本地记录与 MES `Remark` 使用同一格式；单工位使用“开机/停机/程序执行开始/程序执行结束”，双工位的程序边界使用系统设置映射生成“左工位：程序执行开始”等文本；报警地址的 PLC 工位不进入备注，异常统一为“异常：报警内容”或“异常恢复：报警内容”。
+- 实时预览：每个面/焊点先读取拍照结果或焊点结果，只有 `OK/NG` 才显示该面的测试值；未测试、清零残留、读取失败和焊前 NG 显示 `--`，真实的 `0/0.00` 在有效结果下正常显示，下一次 PLC 清零后不会保留上一帧数据。
 - 程序管理：本地程序版本管理、提交记录、MES 同步状态，以及按工位选择 PLC 配方名称并隐藏保存槽位配方号；保存、校验和同步结果使用非阻塞全局提示，不影响继续操作主界面；删除确认框绑定主窗体显示，始终位于主程序之上。
 - 系统设置：应用全部优先保存本地配置；仅在设备编号、名称或相关服务地址发生变化时后台同步设备信息到 MES，保存和同步结果使用非阻塞全局提示。
 - 中心服务器同步：中心服务器未启动或网络不可达时仍按配置周期探测，连接类失败只在服务器日志记录首次、每 10 分钟持续故障摘要及恢复状态，不写入程序异常日志；服务端已应答的业务失败也只保留在服务器日志。
@@ -233,10 +234,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>2.1.1</Version>
-<AssemblyVersion>2.1.1.0</AssemblyVersion>
-<FileVersion>2.1.1.0</FileVersion>
-<InformationalVersion>2.1.1</InformationalVersion>
+<Version>2.1.2</Version>
+<AssemblyVersion>2.1.2.0</AssemblyVersion>
+<FileVersion>2.1.2.0</FileVersion>
+<InformationalVersion>2.1.2</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -248,9 +249,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v2.1.1 -m "Release v2.1.1"
+git tag -a v2.1.2 -m "Release v2.1.2"
 git push origin main
-git push origin v2.1.1
+git push origin v2.1.2
 ```
 
 ## Git 使用

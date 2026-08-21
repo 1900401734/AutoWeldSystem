@@ -7072,16 +7072,21 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             .OrderBy(row => row.Sort)
             .Select(ToWeldParameterRow)
             .ToList();
-        ApplyWeldParameterRows(nextRows);
+        ApplyWeldParameterRows(nextRows, preserveStableValues: false);
     }
 
     /// <summary>
     /// 应用新的焊接参数行，按布局变化决定重绑或局部刷新。
     /// </summary>
     /// <param name="nextRows">下一批行数据。</param>
-    private void ApplyWeldParameterRows(IReadOnlyList<WeldParameterRow> nextRows)
+    private void ApplyWeldParameterRows(
+        IReadOnlyList<WeldParameterRow> nextRows,
+        bool preserveStableValues = true)
     {
-        PreserveStablePreviewValues(nextRows);
+        if (preserveStableValues)
+        {
+            PreserveStablePreviewValues(nextRows);
+        }
         var nextLayoutKey = BuildWeldPreviewLayoutKey(nextRows);
         var nextVisibleValueKey = BuildWeldPreviewVisibleValueKey(nextRows);
         var layoutChanged = !_weldParameterTableBound
