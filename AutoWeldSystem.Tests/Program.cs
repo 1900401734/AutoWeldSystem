@@ -117,6 +117,7 @@ var tests = new (string Name, Action Run)[]
     ("Production report completion flow persists before final generation", ProductionReportCompletionFlowPersistsBeforeFinalGeneration),
     ("Finish report queues generated XLSX even without ReportEnable", FinishReportQueuesGeneratedXlsxEvenWithoutReportEnable),
     ("Report file upload tasks reconcile generated XLSX records", ReportFileUploadTasksReconcileGeneratedXlsxRecords),
+    ("Report file waits for successful finish report", ReportFileWaitsForSuccessfulFinishReport),
     ("Unavailable roles are cleared before save", UnavailableRolesAreCleared),
     ("Running task with changed PLC recipe requests reconciliation", RunningTaskWithChangedPlcRecipeRequestsReconciliation),
     ("Finished PLC work-order status skips recipe reconciliation", FinishedWorkOrderStatusSkipsRecipeReconciliation),
@@ -3179,6 +3180,64 @@ static void ReportFileUploadTasksReconcileGeneratedXlsxRecords()
     AssertTrue(upsertMethod.Contains("Insertable(uploadTask)", StringComparison.Ordinal), "缺失的报表上传任务必须被创建。");
     AssertTrue(shouldSyncMethod.Contains("NormalizeStatus(report.UploadStatus)", StringComparison.Ordinal), "历史报表上传状态必须先归一化后判断是否需要补齐。");
 }
+static void ReportFileWaitsForSuccessfulFinishReport()
+{
+    var runningTask = new BizWeldTask
+    {
+        Id = 41,
+        TaskStatus = ProductionConstants.ProductInstanceStatuses.Running,
+        StartTime = new DateTime(2026, 8, 21, 8, 0, 0)
+    };
+    var finishTime = new DateTime(2026, 8, 21, 8, 45, 51);
+    var completedTask = new BizWeldTask
+    {
+        Id = 41,
+        TaskStatus = ProductionConstants.ProductInstanceStatuses.Completed,
+        StartTime = runningTask.StartTime,
+        EndTime = finishTime
+    };
+    AssertFalse(ReportFileUploadDependencyRules.IsWeldTaskCompleted(runningTask), "运行中工单不得获得报告文件上传资格。");
+    AssertTrue(ReportFileUploadDependencyRules.IsWeldTaskCompleted(completedTask), "已持久化结束时间的完成工单必须通过本地完工门禁。");
+
+    var pendingFinish = new BizUploadTask
+    {
+        TaskType = ProductionConstants.UploadTaskTypes.FinishReport,
+        Status = ProductionConstants.UploadStatuses.Pending
+    };
+    var uploadedFinish = new BizUploadTask
+    {
+        TaskType = ProductionConstants.UploadTaskTypes.FinishReport,
+        Status = ProductionConstants.UploadStatuses.Uploaded
+    };
+    AssertFalse(ReportFileUploadDependencyRules.IsFinishReportSatisfied([pendingFinish]), "MES 完工待上传时必须阻止报告文件。");
+    AssertTrue(ReportFileUploadDependencyRules.IsFinishReportSatisfied([uploadedFinish]), "MES 完工成功后才能上传报告文件。");
+    AssertTrue(ReportFileUploadDependencyRules.IsFinishReportSatisfied([]), "缺少 FinishReport 任务的旧完工记录按兼容规则允许上传。");
+
+    var prematureReport = new BizUploadTask
+    {
+        TaskType = ProductionConstants.UploadTaskTypes.ReportFile,
+        Status = ProductionConstants.UploadStatuses.Uploaded,
+        CompletedTime = finishTime.AddMinutes(-29)
+    };
+    var finalReport = new BizUploadTask
+    {
+        TaskType = ProductionConstants.UploadTaskTypes.ReportFile,
+        Status = ProductionConstants.UploadStatuses.Uploaded,
+        CompletedTime = finishTime.AddSeconds(10)
+    };
+    AssertTrue(ReportFileUploadDependencyRules.ShouldReopenUploadedReport(prematureReport, completedTask), "早于工单完工的 Uploaded 报告任务必须重新入队。");
+    AssertFalse(ReportFileUploadDependencyRules.ShouldReopenUploadedReport(finalReport, completedTask), "完工后已上传的最终报告不得重复入队。");
+
+    var uploadCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "UploadTaskService.cs"), Encoding.UTF8);
+    var executeMethod = ExtractMethodText(uploadCode, "public async Task<UploadTaskSummary?> ExecuteAsync", "public async Task<int> ExecuteAllPendingAsync");
+    var syncMethod = ExtractMethodText(uploadCode, "private void SyncReportFileTasksFromReports", "private void UpsertReportFileUploadTask");
+    var requestMethod = ExtractMethodText(uploadCode, "private UploadReportFileReq? BuildReportFileRequest", "private UploadTaskSummary? FinishExecution");
+    AssertSourceOrder(executeMethod, "CanExecuteReportFileTask(candidate)", "MarkUploading(id)", "报告文件必须在改为 Uploading 前检查完工依赖。");
+    AssertTrue(syncMethod.Contains("ReportFileUploadDependencyRules.IsWeldTaskCompleted", StringComparison.Ordinal), "启动对账不得为未完工工单恢复报告任务。");
+    AssertTrue(requestMethod.Contains("CanExecuteReportFileTaskUnsafe(weldTask)", StringComparison.Ordinal), "构造 MES 报告请求时必须再次验证完工依赖。");
+    AssertTrue(uploadCode.Contains("ShouldReopenUploadedReportFileTask", StringComparison.Ordinal), "完工生成最终报告时必须能够重新打开提前 Uploaded 的旧任务。");
+}
+
 static void UnavailableRolesAreCleared()
 {
     var item = new DimTestItem
@@ -9117,6 +9176,12 @@ static void MesProviderUsesConfiguredRoutes()
             ],
             handler.Requests.Select(request => request.Path).ToArray(),
             "MES 所有业务调用都应使用系统设置中的路由。");
+
+        var reportRequest = handler.Requests.Single(request => string.Equals(request.Path, "mes/report-file-custom", StringComparison.OrdinalIgnoreCase));
+        AssertTrue(reportRequest.ContentType.StartsWith("multipart/form-data", StringComparison.OrdinalIgnoreCase), "报告文件必须使用 multipart/form-data。");
+        AssertTrue(reportRequest.Body.Contains("name=file", StringComparison.OrdinalIgnoreCase), "multipart 请求必须包含 file 文件字段。");
+        AssertTrue(reportRequest.Body.Contains(Path.GetFileName(tempReportFile), StringComparison.Ordinal), "multipart 请求必须携带真实文件名。");
+        AssertTrue(reportRequest.Body.Contains("report", StringComparison.Ordinal), "multipart 请求必须携带非空文件内容。");
     }
     finally
     {
@@ -13966,6 +14031,7 @@ sealed class RecordingHttpMessageHandler : HttpMessageHandler
             request.Method.Method,
             request.RequestUri?.AbsolutePath.TrimStart('/') ?? string.Empty,
             request.RequestUri?.Query ?? string.Empty,
+            request.Content?.Headers.ContentType?.ToString() ?? string.Empty,
             body,
             headers));
 
@@ -14000,5 +14066,6 @@ sealed record RecordedHttpRequest(
     string Method,
     string Path,
     string Query,
+    string ContentType,
     string Body,
     IReadOnlyDictionary<string, string> Headers);

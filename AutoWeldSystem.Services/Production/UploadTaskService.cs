@@ -289,7 +289,8 @@ public class UploadTaskService : IUploadTaskService
                 return existing;
             }
 
-            if (existing.Status == ProductionConstants.UploadStatuses.Uploaded)
+            var reopenUploadedReport = ShouldReopenUploadedReportFileTask(existing, task);
+            if (existing.Status == ProductionConstants.UploadStatuses.Uploaded && !reopenUploadedReport)
             {
                 return existing;
             }
@@ -303,6 +304,11 @@ public class UploadTaskService : IUploadTaskService
             existing.NextRetryTime = task.NextRetryTime;
             existing.CompletedTime = task.CompletedTime;
             existing.Message = task.Message;
+            if (reopenUploadedReport)
+            {
+                existing.RetryCount = 0;
+                existing.LastAttemptTime = null;
+            }
             existing.UpdatedTime = DateTime.Now;
 
             _dbContext.Db.Updateable(existing).ExecuteCommand();
@@ -339,7 +345,8 @@ public class UploadTaskService : IUploadTaskService
 
             foreach (var report in reports)
             {
-                if (!weldTasks.TryGetValue(report.TaskId, out var weldTask))
+                if (!weldTasks.TryGetValue(report.TaskId, out var weldTask)
+                    || !ReportFileUploadDependencyRules.IsWeldTaskCompleted(weldTask))
                 {
                     continue;
                 }
@@ -369,9 +376,13 @@ public class UploadTaskService : IUploadTaskService
             return;
         }
 
-        if (existing.IsDeleted
-            || existing.Status == ProductionConstants.UploadStatuses.Uploaded
-            || existing.Status == ProductionConstants.UploadStatuses.Uploading)
+        if (existing.IsDeleted || existing.Status == ProductionConstants.UploadStatuses.Uploading)
+        {
+            return;
+        }
+
+        var reopenUploadedReport = ReportFileUploadDependencyRules.ShouldReopenUploadedReport(existing, weldTask);
+        if (existing.Status == ProductionConstants.UploadStatuses.Uploaded && !reopenUploadedReport)
         {
             return;
         }
@@ -382,7 +393,15 @@ public class UploadTaskService : IUploadTaskService
         existing.Status = NormalizeStatus(report.UploadStatus);
         existing.Target = ProductionConstants.UploadTargets.Mes;
         existing.NextRetryTime = now;
-        existing.Message = "Report file restored from generated XLSX record.";
+        existing.Message = reopenUploadedReport
+            ? "Final report file reopened after premature upload."
+            : "Report file restored from generated XLSX record.";
+        if (reopenUploadedReport)
+        {
+            existing.RetryCount = 0;
+            existing.LastAttemptTime = null;
+            existing.CompletedTime = null;
+        }
         existing.UpdatedTime = now;
         Normalize(existing);
         _dbContext.Db.Updateable(existing).ExecuteCommand();
@@ -449,6 +468,12 @@ public class UploadTaskService : IUploadTaskService
     {
         var candidate = GetRetryableTask(id);
         if (candidate is null)
+        {
+            return null;
+        }
+
+        if (string.Equals(candidate.TaskType, ProductionConstants.UploadTaskTypes.ReportFile, StringComparison.OrdinalIgnoreCase)
+            && !CanExecuteReportFileTask(candidate))
         {
             return null;
         }
@@ -1519,6 +1544,45 @@ public class UploadTaskService : IUploadTaskService
         return await _mesProvider.UploadReportFileAsync(request, cancellationToken);
     }
 
+    private bool CanExecuteReportFileTask(BizUploadTask task)
+    {
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var weldTask = task.WeldTaskId is null
+                ? null
+                : _dbContext.Db.Queryable<BizWeldTask>().InSingle(task.WeldTaskId.Value);
+            return weldTask is not null && CanExecuteReportFileTaskUnsafe(weldTask);
+        }
+    }
+
+    private bool CanExecuteReportFileTaskUnsafe(BizWeldTask weldTask)
+    {
+        if (!ReportFileUploadDependencyRules.IsWeldTaskCompleted(weldTask))
+        {
+            return false;
+        }
+
+        var finishReportTasks = _dbContext.Db.Queryable<BizUploadTask>()
+            .Where(candidate => candidate.WeldTaskId == weldTask.Id
+                && candidate.TaskType == ProductionConstants.UploadTaskTypes.FinishReport
+                && candidate.Target == ProductionConstants.UploadTargets.Mes)
+            .ToList();
+        return ReportFileUploadDependencyRules.IsFinishReportSatisfied(finishReportTasks);
+    }
+
+    private bool ShouldReopenUploadedReportFileTask(BizUploadTask existing, BizUploadTask incoming)
+    {
+        if (incoming.WeldTaskId is null
+            || !string.Equals(incoming.TaskType, ProductionConstants.UploadTaskTypes.ReportFile, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var weldTask = _dbContext.Db.Queryable<BizWeldTask>().InSingle(incoming.WeldTaskId.Value);
+        return ReportFileUploadDependencyRules.ShouldReopenUploadedReport(existing, weldTask);
+    }
+
     private UploadReportFileReq? BuildReportFileRequest(BizUploadTask task)
     {
         lock (_dbLock)
@@ -1527,7 +1591,7 @@ public class UploadTaskService : IUploadTaskService
             var weldTask = task.WeldTaskId is null
                 ? null
                 : _dbContext.Db.Queryable<BizWeldTask>().InSingle(task.WeldTaskId.Value);
-            if (weldTask is null)
+            if (weldTask is null || !CanExecuteReportFileTaskUnsafe(weldTask))
             {
                 return null;
             }
