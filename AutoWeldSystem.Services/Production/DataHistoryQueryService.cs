@@ -147,7 +147,11 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
         }
 
         var records = GetTaskRecords(taskId);
-        var schemeItemsByStation = ResolveSchemeItems(task, records);
+        var processConfigsByStation = TaskProductProcessConfigResolver.Resolve(
+            _productProcessConfigService,
+            task,
+            records.Select(record => record.StationNo).Append(task.StationNo));
+        var schemeItemsByStation = ResolveSchemeItems(task, records, processConfigsByStation);
         var dynamicColumns = BuildDynamicColumns(
             schemeItemsByStation.OrderBy(pair => pair.Key).SelectMany(pair => pair.Value));
         var childRows = records.Select(record =>
@@ -176,7 +180,18 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
 
         var productRows = childRows
             .GroupBy(row => new { row.StationNo, row.ProductNo })
-            .Select(group => BuildProductRow(taskId, group.Key.StationNo, group.Key.ProductNo, group.ToList()))
+            .Select(group =>
+            {
+                var children = group.ToList();
+                var productRow = BuildProductRow(taskId, group.Key.StationNo, group.Key.ProductNo, children);
+                var normalizedStationNo = TaskProductProcessConfigResolver.NormalizeStationNo(group.Key.StationNo, task);
+                var configuredPointCount = processConfigsByStation.TryGetValue(normalizedStationNo, out var config)
+                    ? config.TouchCount
+                    : (int?)null;
+                return ProductHistoryDisplayRules.ShouldFlattenSinglePoint(configuredPointCount, children.Count)
+                    ? FlattenSinglePointProductRow(productRow, children[0])
+                    : productRow;
+            })
             .OrderBy(row => row.StationNo)
             .ThenBy(row => row.ProductNo, NaturalSortComparer.Instance)
             .ToList();
@@ -186,6 +201,30 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
             DynamicColumns = dynamicColumns,
             Rows = productRows,
             RecordCount = childRows.Count
+        };
+    }
+
+    private static DataHistoryTestDataRow FlattenSinglePointProductRow(
+        DataHistoryTestDataRow productRow,
+        DataHistoryTestDataRow pointRow)
+    {
+        return new DataHistoryTestDataRow
+        {
+            IsProductRow = true,
+            TaskId = productRow.TaskId,
+            RecordId = pointRow.RecordId,
+            SequenceNo = pointRow.SequenceNo,
+            StationNo = productRow.StationNo,
+            ProductNo = productRow.ProductNo,
+            TouchNo = pointRow.TouchNo,
+            NodeText = productRow.NodeText,
+            TestResult = productRow.TestResult,
+            ProductResult = productRow.ProductResult,
+            UploadStatus = productRow.UploadStatus,
+            TestCount = productRow.TestCount,
+            RecordTime = pointRow.RecordTime,
+            DynamicValues = pointRow.DynamicValues,
+            RawDataJson = pointRow.RawDataJson
         };
     }
 
@@ -321,13 +360,14 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
 
     private IReadOnlyDictionary<int, IReadOnlyList<SchemeItemDefinition>> ResolveSchemeItems(
         BizWeldTask task,
-        IReadOnlyList<BizWeldPointRecord> records)
+        IReadOnlyList<BizWeldPointRecord> records,
+        IReadOnlyDictionary<int, BizProductProcessConfig>? processConfigsByStation = null)
     {
         var stationNumbers = records
             .Select(record => record.StationNo)
             .Append(task.StationNo)
             .ToList();
-        var configsByStation = TaskProductProcessConfigResolver.Resolve(
+        var configsByStation = processConfigsByStation ?? TaskProductProcessConfigResolver.Resolve(
             _productProcessConfigService,
             task,
             stationNumbers);

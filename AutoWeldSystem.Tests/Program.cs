@@ -101,6 +101,8 @@ var tests = new (string Name, Action Run)[]
     ("Dynamic history and center use task-bound process config", DynamicHistoryAndCenterUseTaskBoundProcessConfig),
     ("DataManageView uses generic product test tree", DataManageViewUsesGenericProductTestTree),
     ("Data history tree preserves stored product result", DataHistoryTreeParentKeepsStoredProductResult),
+    ("Single-point history display rule uses configured and actual counts", SinglePointHistoryDisplayRuleUsesConfiguredAndActualCounts),
+    ("Data history single-point row keeps point values", DataHistorySinglePointRowKeepsPointValues),
     ("Scheme output roles are independent from realtime preview", SchemeOutputRolesAreIndependentFromRealtimePreview),
     ("Whole-piece four-side aggregation produces A and B rows", WholePieceFourSideAggregationProducesAbRows),
     ("Whole-piece height and width use product maximum", WholePieceHeightAndWidthUseProductMaximum),
@@ -382,6 +384,7 @@ var tests = new (string Name, Action Run)[]
     ("Monitor view finish report uses start operator without prompt", MonitorViewFinishReportUsesStartOperatorWithoutPrompt),
     ("Monitor view clears product identity after finish report", MonitorViewClearsProductIdentityAfterFinishReport),
     ("Monitor view product history uses latest first ordering", MonitorViewProductHistoryUsesLatestFirstOrdering),
+    ("Monitor view single-point history mapping keeps point values", MonitorViewSinglePointHistoryMappingKeepsPointValues),
     ("Monitor view clears idle production data", MonitorViewClearsIdleProductionData),
     ("Weld task finish uses MES start id for retry payloads", WeldTaskFinishUsesMesStartIdForRetryPayloads),
     ("Weld task restore unfinished task is idempotent", WeldTaskRestoreUnfinishedTaskIsIdempotent),
@@ -2169,6 +2172,67 @@ static void DataHistoryTreeParentKeepsStoredProductResult()
     AssertTrue(parent is not null, "必须构造产品父行。");
     AssertEqual(2, parent!.TestCount, "产品父行必须保留同一产品的全部测试记录。");
     AssertEqual(ProductionConstants.TestResults.Ng, parent.ProductResult, "产品父行必须沿用记录中的 PLC 产品结果，不得从子记录结果推断。");
+}
+
+static void SinglePointHistoryDisplayRuleUsesConfiguredAndActualCounts()
+{
+    AssertTrue(ProductHistoryDisplayRules.ShouldFlattenSinglePoint(1, 1), "配置一个采集点且只有一条记录时必须扁平显示。");
+    AssertFalse(ProductHistoryDisplayRules.ShouldFlattenSinglePoint(1, 2), "同一产品多次测试时必须保留树形结构。");
+    AssertFalse(ProductHistoryDisplayRules.ShouldFlattenSinglePoint(2, 1), "多采集点配置必须保留树形结构。");
+    AssertFalse(ProductHistoryDisplayRules.ShouldFlattenSinglePoint(null, 1), "缺少配置时不得扁平显示。");
+    AssertFalse(ProductHistoryDisplayRules.ShouldFlattenSinglePoint(0, 1), "无效采集点数量不得扁平显示。");
+}
+
+static void DataHistorySinglePointRowKeepsPointValues()
+{
+    var method = typeof(DataHistoryQueryService).GetMethod(
+        "FlattenSinglePointProductRow",
+        System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+    AssertTrue(method is not null, "数据历史服务必须提供单焊点显示行合并逻辑。");
+
+    var pointValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["current"] = "0.166"
+    };
+    var product = new DataHistoryTestDataRow
+    {
+        IsProductRow = true,
+        TaskId = 10,
+        StationNo = 1,
+        ProductNo = "P-001",
+        NodeText = "P-001",
+        TestResult = ProductionConstants.TestResults.Ng,
+        ProductResult = ProductionConstants.TestResults.Ng,
+        UploadStatus = ProductionConstants.UploadStatuses.Uploaded,
+        TestCount = 1,
+        RecordTime = DateTime.Today
+    };
+    var point = new DataHistoryTestDataRow
+    {
+        IsProductRow = false,
+        TaskId = 10,
+        RecordId = 99,
+        SequenceNo = 1,
+        StationNo = 1,
+        ProductNo = "P-001",
+        TouchNo = "1",
+        NodeText = "1",
+        TestResult = ProductionConstants.TestResults.Ok,
+        ProductResult = ProductionConstants.TestResults.Unknown,
+        UploadStatus = ProductionConstants.UploadStatuses.Uploaded,
+        RecordTime = DateTime.Today.AddMinutes(1),
+        DynamicValues = pointValues,
+        RawDataJson = "{\"current\":\"0.166\"}"
+    };
+
+    var flattened = (DataHistoryTestDataRow?)method!.Invoke(null, [product, point]);
+    AssertTrue(flattened is not null, "必须生成单焊点产品显示行。");
+    AssertEqual(0, flattened!.Children.Count, "扁平行不得保留子节点。");
+    AssertEqual("1", flattened.TouchNo, "扁平行必须保留焊点序号。");
+    AssertEqual(99, flattened.RecordId, "扁平行必须保留唯一记录编号。");
+    AssertEqual(ProductionConstants.TestResults.Ng, flattened.ProductResult, "扁平行必须保留产品级结果。");
+    AssertEqual("0.166", flattened.DynamicValues["current"], "扁平行必须保留焊点动态值。");
+    AssertEqual(point.RawDataJson, flattened.RawDataJson, "扁平行必须保留原始数据引用。");
 }
 
 static void SchemeOutputRolesAreIndependentFromRealtimePreview()
@@ -11808,6 +11872,21 @@ static void MonitorViewProductHistoryUsesLatestFirstOrdering()
     AssertTrue(bindSnapshotMethod.Contains("ProductHistoryPreviewSortRules.OrderProductsLatestFirst(snapshot.Products)", StringComparison.Ordinal), "MonitorView 绑定产品历史预览时必须按最近产品优先排序。");
     AssertFalse(bindSnapshotMethod.Contains("var rows = snapshot.Products\r\n            .Select(product => ToProductHistoryRow", StringComparison.Ordinal), "MonitorView 不应再直接按服务层原始顺序绑定历史预览。");
 }
+static void MonitorViewSinglePointHistoryMappingKeepsPointValues()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var method = ExtractMethodText(
+        viewCode,
+        "private ProductHistoryTableRow ToProductHistoryRow(",
+        "    /// <summary>\r\n    /// 处理到产品历史Point行。");
+
+    AssertTrue(method.Contains("ProductHistoryDisplayRules.ShouldFlattenSinglePoint(displayOptions.TouchCount, children.Count)", StringComparison.Ordinal), "实时历史必须按配置采集点数和实际记录数判断是否扁平化。");
+    AssertTrue(method.Contains("DynamicValues = pointRow.DynamicValues", StringComparison.Ordinal), "实时单焊点扁平行必须保留焊点动态值。");
+    AssertTrue(method.Contains("RecordTimeText = pointRow.RecordTimeText", StringComparison.Ordinal), "实时单焊点扁平行必须保留焊点采集时间。");
+    AssertTrue(method.Contains("TouchNo = pointRow.TouchNo", StringComparison.Ordinal), "实时单焊点扁平行必须保留焊点序号。");
+    AssertTrue(method.Contains("Children = children", StringComparison.Ordinal), "实时历史多焊点仍必须保留树形子行。");
+}
+
 static void MonitorViewClearsIdleProductionData()
 {
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);

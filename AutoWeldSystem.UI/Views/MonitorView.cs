@@ -5548,7 +5548,10 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         IReadOnlyList<ProductHistoryDynamicColumn> dynamicColumns,
         ProductHistoryDisplayOptions displayOptions)
     {
-        return new ProductHistoryTableRow
+        var children = product.Points
+            .Select(point => ToProductHistoryPointRow(product, point, dynamicColumns, displayOptions))
+            .ToList();
+        var productRow = new ProductHistoryTableRow
         {
             IsProductRow = true,
             TaskId = product.TaskId,
@@ -5564,7 +5567,36 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             RecordTimeText = FormatHistoryTime(product.LastRecordTime),
             CanMarkTest = product.CanMarkTest,
             MarkDisabledReason = product.MarkDisabledReason,
-            Children = product.Points.Select(point => ToProductHistoryPointRow(product, point, dynamicColumns, displayOptions)).ToList()
+            Children = children
+        };
+
+        return ProductHistoryDisplayRules.ShouldFlattenSinglePoint(displayOptions.TouchCount, children.Count)
+            ? FlattenSinglePointProductRow(productRow, children[0])
+            : productRow;
+    }
+
+    private static ProductHistoryTableRow FlattenSinglePointProductRow(
+        ProductHistoryTableRow productRow,
+        ProductHistoryTableRow pointRow)
+    {
+        return new ProductHistoryTableRow
+        {
+            IsProductRow = true,
+            TaskId = productRow.TaskId,
+            StationNo = productRow.StationNo,
+            ProductNo = productRow.ProductNo,
+            TouchNo = pointRow.TouchNo,
+            NodeText = productRow.NodeText,
+            ResultText = productRow.ResultText,
+            UploadStatusText = productRow.UploadStatusText,
+            ShowTestFlag = productRow.ShowTestFlag,
+            IsTest = productRow.IsTest,
+            IsTestText = productRow.IsTestText,
+            TouchCountText = productRow.TouchCountText,
+            RecordTimeText = pointRow.RecordTimeText,
+            DynamicValues = pointRow.DynamicValues,
+            CanMarkTest = productRow.CanMarkTest,
+            MarkDisabledReason = productRow.MarkDisabledReason
         };
     }
 
@@ -6789,6 +6821,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             NormalizeDisplayText(row.PointNoHeader, $"{pointName}序号"),
             NormalizeDisplayText(row.PointResultHeader, $"{pointName}结果"),
             NormalizeDisplayText(row.PointCountHeader, $"{pointName}数"),
+            0,
             true);
     }
 
@@ -9933,9 +9966,10 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         string PointNoHeader,
         string PointResultHeader,
         string PointCountHeader,
+        int TouchCount,
         bool ShowTestFlagInHistory)
     {
-        public static ProductHistoryDisplayOptions Default { get; } = new("焊点", "焊点序号", "焊点结果", "焊点数", true);
+        public static ProductHistoryDisplayOptions Default { get; } = new("焊点", "焊点序号", "焊点结果", "焊点数", 0, true);
 
         public static ProductHistoryDisplayOptions FromConfig(BizProductProcessConfig config, bool showTestFlagInHistory)
         {
@@ -9945,6 +9979,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
                 NormalizeDisplayText(config.PointNoHeader, $"{pointName}序号"),
                 NormalizeDisplayText(config.PointResultHeader, $"{pointName}结果"),
                 NormalizeDisplayText(config.PointCountHeader, $"{pointName}数"),
+                config.TouchCount,
                 showTestFlagInHistory);
         }
     }
