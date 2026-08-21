@@ -434,8 +434,8 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
     }
 
     /// <summary>
-    /// 产品结果只读取 PLC 产品级字段；旧记录为空时回退 RawDataJson.product_result。
-    /// 禁止根据焊点 TestResult 聚合推算产品结果。
+    /// 产品结果优先读取采集时已固化的产品级字段；旧记录为空时回退 RawDataJson.product_result。
+    /// PLC读取模式不根据焊点 TestResult 重新推算产品结果；程序计算模式已在采集时写入该字段。
     /// </summary>
     private static string ResolveProductResult(IReadOnlyList<BizWeldPointRecord> records)
     {
@@ -587,7 +587,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             MergeByProduct = false
         });
 
-        columns.AddRange(BuildDynamicReportColumns(config));
+        columns.AddRange(BuildDynamicReportColumns(config, wholePieceInspection));
         columns.Add(new CenterProductReportColumnDto
         {
             Key = CenterProductReportFormat.ColumnTouchResult,
@@ -608,7 +608,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
         return CenterProductReportFormat.ResolvePointResultTitle(config?.PointResultHeader, wholePieceInspection);
     }
 
-    private List<CenterProductReportColumnDto> BuildDynamicReportColumns(BizProductProcessConfig? config)
+    private List<CenterProductReportColumnDto> BuildDynamicReportColumns(BizProductProcessConfig? config, bool wholePieceInspection)
     {
         if (config is null)
         {
@@ -633,7 +633,10 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
 
             return details
                 .OrderBy(detail => detail.DetailId)
-                .SelectMany(detail => BuildDynamicReportColumns(detail, items.FirstOrDefault(item => item.ItemId == detail.ItemId)))
+                .SelectMany(detail => BuildDynamicReportColumns(
+                    detail,
+                    items.FirstOrDefault(item => item.ItemId == detail.ItemId),
+                    wholePieceInspection))
                 .ToList();
         }
     }
@@ -641,6 +644,12 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
     private static IEnumerable<CenterProductReportColumnDto> BuildDynamicReportColumns(
         BizSchemeDetail detail,
         DimTestItem? item)
+        => BuildDynamicReportColumns(detail, item, wholePieceInspection: false);
+
+    private static IEnumerable<CenterProductReportColumnDto> BuildDynamicReportColumns(
+        BizSchemeDetail detail,
+        DimTestItem? item,
+        bool wholePieceInspection)
     {
         if (item is null)
         {
@@ -651,7 +660,13 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
         var itemKey = ResolveItemKey(item);
         if (ShouldForwardSavedRole(detail, SchemeDetailValueRole.Actual))
         {
-            yield return BuildDynamicColumn(itemKey, detail.ActualHeader, SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Actual), item.Unit, SchemeDetailValueRole.Actual);
+            yield return BuildDynamicColumn(
+                itemKey,
+                detail.ActualHeader,
+                SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Actual),
+                item.Unit,
+                SchemeDetailValueRole.Actual,
+                wholePieceInspection && WholePieceAbAggregationRules.IsProductMaximumItem(item.ItemName));
         }
 
         if (ShouldForwardSavedRole(detail, SchemeDetailValueRole.Upper))
@@ -684,13 +699,14 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
         string? title,
         string fallbackTitle,
         string? unit,
-        SchemeDetailValueRole role)
+        SchemeDetailValueRole role,
+        bool mergeByProduct = false)
     {
         return new CenterProductReportColumnDto
         {
             Key = key,
             Title = TestItemUnitFormatRules.FormatHeader(NormalizeDisplayText(title, fallbackTitle), unit, role),
-            MergeByProduct = false
+            MergeByProduct = mergeByProduct
         };
     }
 

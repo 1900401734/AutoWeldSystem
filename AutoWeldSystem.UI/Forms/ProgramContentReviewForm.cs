@@ -8,7 +8,7 @@ namespace AutoWeldSystem.UI.Forms;
 
 /// <summary>
 /// 开工前程序内容预览/微调弹窗。
-/// 表格展示测试项名称、设定值/标准值和本次临时修改值；修改只对本次开工生效、不落库。
+/// 表格展示测试项名称、最大允许值和本次临时修改值；修改只对本次开工生效、不落库。
 /// </summary>
 public partial class ProgramContentReviewForm : BaseWindow
 {
@@ -48,7 +48,7 @@ public partial class ProgramContentReviewForm : BaseWindow
         dgvFields.Columns.Add(new DataGridViewTextBoxColumn
         {
             DataPropertyName = nameof(ProgramContentReviewRow.StandardValue),
-            HeaderText = "设定值/标准值",
+            HeaderText = "最大允许值",
             ReadOnly = false,
             FillWeight = 66F
         });
@@ -79,7 +79,7 @@ public partial class ProgramContentReviewForm : BaseWindow
             return;
         }
 
-        // 仅“设定值/标准值”列允许编辑，测试项名称固定。
+        // 仅“最大允许值”列允许编辑，测试项名称固定。
         e.Cancel = e.ColumnIndex != 1;
     }
 

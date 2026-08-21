@@ -68,7 +68,11 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             workOrderId: task.SN,
             programId: task.ProgramId ?? string.Empty);
 
-        var header = await ReadProductHeaderAsync(processConfig, cancellationToken);
+        var settings = _settingsService.Get();
+        var useProgramResult = WholePieceProgramResultRules.IsApplicable(
+            settings.ProcessParameterDeviceType,
+            settings.InspectionResultSource);
+        var header = await ReadProductHeaderAsync(processConfig, useProgramResult, cancellationToken);
         var records = new List<BizWeldPointRecord>();
         for (var touchIndex = 1; touchIndex <= header.ActualTouchCount; touchIndex++)
         {
@@ -79,8 +83,14 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
                 processConfig,
                 schemeItems,
                 header,
+                useProgramResult,
                 touchIndex,
                 cancellationToken));
+        }
+
+        if (useProgramResult)
+        {
+            ApplyProgramCalculatedResults(task, schemeItems, records);
         }
 
         ValidateCollectedRecords(processConfig, schemeItems, records);
@@ -108,7 +118,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         _productionLogService.Write(
             "ProductDataSaved",
             ProductionFlowLogTexts.Summaries.ProductDataSaved,
-            $"ProductNumber={header.ProductNo}, TouchCount={records.Count}, Result={header.ProductResult}",
+            $"ProductNumber={header.ProductNo}, TouchCount={records.Count}, Result={records.FirstOrDefault()?.ProductResult ?? header.ProductResult}",
             stationNo: normalizedStationNo,
             workOrderId: task.SN,
             productNo: header.ProductNo,
@@ -116,7 +126,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
 
         _operationLogService.Write(
             "ProductCycleCollection",
-            $"Product collected, Station={normalizedStationNo}, WorkOrder={task.SN}, ProductNumber={header.ProductNo}, TouchCount={records.Count}, Result={header.ProductResult}");
+            $"Product collected, Station={normalizedStationNo}, WorkOrder={task.SN}, ProductNumber={header.ProductNo}, TouchCount={records.Count}, Result={records.FirstOrDefault()?.ProductResult ?? header.ProductResult}");
 
         return records;
     }
@@ -192,6 +202,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
 
     private async Task<ProductHeaderSnapshot> ReadProductHeaderAsync(
         BizProductProcessConfig config,
+        bool useProgramResult,
         CancellationToken cancellationToken)
     {
         var productNo = await ReadExpressionValueAsync(
@@ -205,12 +216,18 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             throw new BusinessOperationException(Category, "产品数据采集失败", "产品头中未读取到产品编号。");
         }
 
-        var productResultRaw = await ReadExpressionValueAsync(
-            config.ProductBase,
-            0,
-            config.ProductResultExpr,
-            "产品结果",
-            cancellationToken);
+        var productResultRaw = useProgramResult
+            ? await ReadBestEffortExpressionValueAsync(
+                config.ProductBase,
+                0,
+                config.ProductResultExpr,
+                cancellationToken)
+            : await ReadExpressionValueAsync(
+                config.ProductBase,
+                0,
+                config.ProductResultExpr,
+                "产品结果",
+                cancellationToken);
         var presetTouchText = await ReadOptionalExpressionValueAsync(
             config.ProductBase,
             0,
@@ -243,6 +260,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             actualTouchCount,
             config.TouchCount,
             NormalizeTestResult(productResultRaw),
+            productResultRaw,
             presetTouchText);
     }
 
@@ -252,6 +270,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         BizProductProcessConfig config,
         IReadOnlyList<SchemeItemSnapshot> schemeItems,
         ProductHeaderSnapshot header,
+        bool useProgramResult,
         int touchIndex,
         CancellationToken cancellationToken)
     {
@@ -279,11 +298,13 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         };
         AddValue(values, "plc_preset_touch_count", header.PlcPresetTouchCount);
         AddValue(values, "product_result", header.ProductResult);
+        AddValue(values, "product_result_raw", header.ProductResultRaw);
         AddValue(values, "touch_no_raw", touchNo);
         AddValue(values, "touch_result_raw", touchResultRaw);
 
         var testResult = NormalizeTestResult(touchResultRaw);
-        if (!TestResultRules.IsPreWeldNg(testResult))
+        if (!TestResultRules.IsPreWeldNg(testResult)
+            && (!useProgramResult || ProductRealtimePreviewRules.ShouldReadTestValues(testResult)))
         {
             foreach (var schemeItem in schemeItems)
             {
@@ -293,6 +314,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
                     schemeItem,
                     testContextOffset,
                     values,
+                    useProgramResult,
                     cancellationToken);
             }
         }
@@ -322,11 +344,13 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         SchemeItemSnapshot schemeItem,
         int testContextOffset,
         IDictionary<string, string> values,
+        bool useProgramResult,
         CancellationToken cancellationToken)
     {
         var item = schemeItem.Item;
         var itemKey = ResolveItemKey(item);
-        if (SchemeDetailRoleRules.ShouldReadProductRole(schemeItem.Detail, SchemeDetailValueRole.Actual))
+        if (SchemeDetailRoleRules.ShouldReadProductRole(schemeItem.Detail, SchemeDetailValueRole.Actual)
+            || (useProgramResult && schemeItem.Detail.EnableActual))
         {
             var actualValue = await ReadExpressionValueAsync(
                 config.TestBase,
@@ -375,6 +399,37 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         }
     }
 
+    private async Task<string?> ReadBestEffortExpressionValueAsync(
+        string baseAddress,
+        int contextOffset,
+        string? expressionText,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(expressionText))
+        {
+            return null;
+        }
+
+        try
+        {
+            return await ReadExpressionValueAsync(
+                baseAddress,
+                contextOffset,
+                expressionText,
+                "PLC原始产品结果",
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // 程序计算模式不依赖 PLC 产品结果；读取失败只影响原始追溯字段，不能阻塞产品采集。
+            return null;
+        }
+    }
+
     private async Task<string?> ReadOptionalExpressionValueAsync(
         string baseAddress,
         int contextOffset,
@@ -412,6 +467,99 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         {
             throw new BusinessOperationException(Category, "偏移表达式无效", $"{valueRole}：{ex.Message}");
         }
+    }
+
+    private void ApplyProgramCalculatedResults(
+        BizWeldTask task,
+        IReadOnlyList<SchemeItemSnapshot> schemeItems,
+        IReadOnlyList<BizWeldPointRecord> records)
+    {
+        var participatingItems = schemeItems
+            .Where(item => item.Detail.EnableActual)
+            .ToList();
+
+        foreach (var record in records)
+        {
+            if (TestResultRules.IsPreWeldNg(record.TestResult))
+            {
+                continue;
+            }
+
+            if (!ProductRealtimePreviewRules.ShouldReadTestValues(record.TestResult))
+            {
+                throw new BusinessOperationException(
+                    Category,
+                    "产品数据采集失败",
+                    $"产品“{record.ProductNo}”面“{record.TouchNo}”的 PLC 结果未表示测试完成，无法进行程序判定。");
+            }
+
+            var rawValues = ParseRawData(record.RawDataJson);
+            var measurements = participatingItems
+                .Select(item => new WholePieceProgramMeasurement(
+                    item.Item.ItemName,
+                    FirstValue(rawValues, ResolveItemKey(item.Item), item.Item.ItemName)))
+                .ToList();
+            var result = WholePieceProgramResultRules.EvaluateFace(task.ProgramContentSnapshot, measurements);
+            if (!result.IsSuccess)
+            {
+                throw new BusinessOperationException(
+                    Category,
+                    "产品数据采集失败",
+                    $"产品“{record.ProductNo}”面“{record.TouchNo}”程序判定失败：{result.ErrorMessage}");
+            }
+
+            record.TestResult = result.Result;
+            record.RawDataJson = AddRawValues(record.RawDataJson, new Dictionary<string, string>
+            {
+                ["program_touch_result"] = result.Result
+            });
+        }
+
+        var productResult = TestResultRules.ResolveProductResult(records.Select(record => record.TestResult));
+        if (string.Equals(productResult, ProductionConstants.TestResults.Unknown, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new BusinessOperationException(Category, "产品数据采集失败", "四面程序判定结果不完整，无法生成产品结果。");
+        }
+
+        foreach (var record in records)
+        {
+            record.ProductResult = productResult;
+            record.RawDataJson = AddRawValues(record.RawDataJson, new Dictionary<string, string>
+            {
+                ["program_product_result"] = productResult
+            });
+        }
+    }
+
+    private static IReadOnlyDictionary<string, string> ParseRawData(string? rawDataJson)
+    {
+        if (string.IsNullOrWhiteSpace(rawDataJson))
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        try
+        {
+            var values = JsonSerializer.Deserialize<Dictionary<string, string>>(rawDataJson);
+            return values is null
+                ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, string>(values, StringComparer.OrdinalIgnoreCase);
+        }
+        catch (JsonException)
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private static string AddRawValues(string? rawDataJson, IReadOnlyDictionary<string, string> additions)
+    {
+        var values = new Dictionary<string, string>(ParseRawData(rawDataJson), StringComparer.OrdinalIgnoreCase);
+        foreach (var addition in additions)
+        {
+            values[addition.Key] = addition.Value;
+        }
+
+        return JsonSerializer.Serialize(values);
     }
 
     private void ValidateCollectedRecords(
@@ -611,6 +759,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         int ActualTouchCount,
         int PresetTouchCount,
         string ProductResult,
+        string? ProductResultRaw,
         string? PlcPresetTouchCount);
 
     private sealed record SchemeItemSnapshot(int DetailId, DimTestItem Item, BizSchemeDetail Detail);

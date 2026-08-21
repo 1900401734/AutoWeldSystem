@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using AutoWeldSystem.Core.Center;
 using ClosedXML.Excel;
@@ -38,13 +39,16 @@ internal sealed class CenterProductReportWorkbookWriter
             worksheet.Cell(CenterProductReportFormat.DetailHeaderRow, column + 1).Value = columns[column].Title;
         }
 
+        var mergeOverrides = BuildDynamicMergeOverrides(columns, rows);
         for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
         {
+            mergeOverrides.TryGetValue(BuildProductMergeKey(rows[rowIndex]), out var rowOverrides);
             WriteDetailRow(
                 worksheet,
                 rowIndex + CenterProductReportFormat.DetailFirstDataRow,
                 rows[rowIndex],
-                columns);
+                columns,
+                rowOverrides);
         }
 
         MergeRepeatedProductFields(worksheet, columns, rows);
@@ -68,7 +72,8 @@ internal sealed class CenterProductReportWorkbookWriter
         IXLWorksheet worksheet,
         int rowNumber,
         CenterProductReportStoredRow row,
-        IReadOnlyList<CenterProductReportColumn> columns)
+        IReadOnlyList<CenterProductReportColumn> columns,
+        IReadOnlyDictionary<string, string>? overrides)
     {
         var values = BuildFixedValues(row);
         var applicableColumnKeys = ParseReportColumnKeys(row.ReportColumnKeysJson);
@@ -78,6 +83,11 @@ internal sealed class CenterProductReportWorkbookWriter
             {
                 values.TryAdd(pair.Key, pair.Value);
             }
+        }
+
+        foreach (var pair in overrides ?? new Dictionary<string, string>())
+        {
+            values[pair.Key] = pair.Value;
         }
 
         for (var index = 0; index < columns.Count; index++)
@@ -108,6 +118,62 @@ internal sealed class CenterProductReportWorkbookWriter
             [CenterProductReportFormat.ColumnOperator] = row.OperatorNo,
             [CenterProductReportFormat.ColumnRecordTime] = row.CompletedAt.ToString(CenterProductReportFormat.DateTimeFormat)
         };
+    }
+
+    /// <summary>
+    /// 中心端保留四面原始行，只在可见报表中为产品级数值列计算四面最大值。
+    /// </summary>
+    private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> BuildDynamicMergeOverrides(
+        IReadOnlyList<CenterProductReportColumn> columns,
+        IReadOnlyList<CenterProductReportStoredRow> rows)
+    {
+        var fixedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            CenterProductReportFormat.ColumnStationNo,
+            CenterProductReportFormat.ColumnProductNo,
+            CenterProductReportFormat.ColumnProductResult
+        };
+        var dynamicMergeKeys = columns
+            .Where(column => column.MergeByProduct && !fixedKeys.Contains(column.Key))
+            .Select(column => column.Key)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (dynamicMergeKeys.Count == 0)
+        {
+            return new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var result = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var group in rows.GroupBy(BuildProductMergeKey, StringComparer.OrdinalIgnoreCase))
+        {
+            var values = group.Select(row => ParseRawData(row.RawDataJson)).ToList();
+            var overrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var key in dynamicMergeKeys)
+            {
+                var candidates = values
+                    .Select(value => value.TryGetValue(key, out var text) ? text : null)
+                    .Where(text => !string.IsNullOrWhiteSpace(text))
+                    .Select(text => new
+                    {
+                        Text = text!,
+                        Parsed = decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var number)
+                            ? number
+                            : (decimal?)null
+                    })
+                    .ToList();
+                if (candidates.Count == group.Count() && candidates.All(candidate => candidate.Parsed.HasValue))
+                {
+                    overrides[key] = candidates.MaxBy(candidate => candidate.Parsed)!.Text;
+                }
+            }
+
+            if (overrides.Count > 0)
+            {
+                result[group.Key] = overrides;
+            }
+        }
+
+        return result;
     }
 
     private static void WriteDataWorksheet(

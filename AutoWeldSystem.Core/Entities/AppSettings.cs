@@ -174,6 +174,9 @@ public class AppSettings
     [SugarColumn(Length = 50, ColumnDescription = "过程参数设备类型")]
     public string ProcessParameterDeviceType { get; set; } = ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic;
 
+    [SugarColumn(Length = 20, ColumnDescription = "检测结果来源", IsNullable = true)]
+    public string? InspectionResultSource { get; set; } = ProductionConstants.InspectionResultSources.Plc;
+
     [SugarColumn(ColumnDescription = "过程参数接口编码")]
     public ApiCode ProcessParameterApiCode { get; set; } = ApiCode.EMWeldDetail_001;
 

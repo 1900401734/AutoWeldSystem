@@ -12,7 +12,7 @@ public sealed class ProgramContentReviewRow
     public string ItemName { get; set; } = string.Empty;
 
     /// <summary>
-    /// 测试项设定值/标准值，来自已下载程序的内容，可直接在开工弹窗中修改。
+    /// 测试项最大允许值，来自已下载程序的内容，可直接在开工弹窗中修改。
     /// </summary>
     public string StandardValue { get; set; } = string.Empty;
 

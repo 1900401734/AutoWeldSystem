@@ -16,8 +16,8 @@ public static class ProgramContentJsonRules
     };
 
     /// <summary>
-    /// 判断程序内容是否包含至少一个有效设定项。
-    /// 空白和空 JSON 对象表示用户尚未填写设定值；非对象或非法历史内容保守地视为有效。
+    /// 判断程序内容是否包含至少一个有效最大允许值。
+    /// 空白和空 JSON 对象表示用户尚未填写最大允许值；非对象或非法历史内容保守地视为有效。
     /// </summary>
     public static bool HasConfiguredValues(string? programContent)
     {

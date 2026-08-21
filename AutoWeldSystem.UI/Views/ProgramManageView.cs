@@ -136,7 +136,7 @@ public partial class ProgramManageView : BaseView
         TableStyleHelper.ApplyAntdTable(tableProgramContent);
         // AntdUI 表格需要显式设置编辑触发方式，否则列 Editable=true 也不会进入编辑器。
         tableProgramContent.EditMode = AntdUI.TEditMode.DoubleClick;
-        // 允许单元格失去焦点时提交编辑，保证设定值能进入保存流程。
+        // 允许单元格失去焦点时提交编辑，保证最大允许值能进入保存流程。
         tableProgramContent.EditLostFocus = true;
         ConfigureProgramContentColumns(dictionaryAvailable: false);
     }
@@ -1086,7 +1086,7 @@ public partial class ProgramManageView : BaseView
             readOnly: dictionaryAvailable));
         tableProgramContent.Columns.Add(CreateProgramContentColumn(
             nameof(ProgramContentItemRow.StandardValue),
-            "设定值/标准值",
+            "最大允许值",
             readOnly: false));
         TableStyleHelper.ApplyAntdColumnDefaults(tableProgramContent);
     }

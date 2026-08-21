@@ -124,7 +124,7 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
     }
 
     /// <summary>
-    /// 归一化过程参数设备类型，避免历史配置或空值导致上传接口映射落不到默认设备类型。
+    /// 归一化过程参数设备类型和检测结果来源，避免历史配置或空值落不到兼容默认值。
     /// </summary>
     private static void Normalize(AppSettings settings, bool useLegacyStationNameFallback)
     {
@@ -150,6 +150,7 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
         settings.Station2DisplayName = stationNames.Station2;
         settings.PlcStringNumericFormatMode = PlcStringNumericFormatter.NormalizeMode(settings.PlcStringNumericFormatMode);
         settings.ProcessParameterDeviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
+        settings.InspectionResultSource = ProductionConstants.InspectionResultSources.Normalize(settings.InspectionResultSource);
         settings.DeviceBaseUrl = DeviceApiEndpointRules.NormalizeBaseUrl(settings.DeviceBaseUrl);
         settings.MesBaseUrl = DeviceApiEndpointRules.NormalizeBaseUrl(settings.MesBaseUrl);
         NormalizeMesEndpointSettings(settings);

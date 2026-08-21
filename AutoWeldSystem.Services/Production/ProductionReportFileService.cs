@@ -554,8 +554,8 @@ public class ProductionReportFileService : IProductionReportFileService
     }
 
     /// <summary>
-    /// 产品结果只读取 PLC 产品级字段；旧记录为空时回退 RawDataJson.product_result。
-    /// 禁止根据焊点 TestResult 聚合推算产品结果。
+    /// 产品结果优先读取采集时已固化的产品级字段；旧记录为空时回退 RawDataJson.product_result。
+    /// PLC读取模式不根据焊点 TestResult 重新推算产品结果；程序计算模式已在采集时写入该字段。
     /// </summary>
     private static string ResolveProductResult(IEnumerable<BizWeldPointRecord> records)
     {
@@ -841,7 +841,7 @@ public class ProductionReportFileService : IProductionReportFileService
             yield return new ReportColumn(
                 BuildDynamicColumnKey(item, ReportRoleActual),
                 TestItemUnitFormatRules.FormatHeader(SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Actual), item.Unit, SchemeDetailValueRole.Actual),
-                MergeByProduct: false);
+                MergeByProduct: wholePieceAb && WholePieceAbAggregationRules.IsProductMaximumItem(item.ItemName));
         }
 
         if (wholePieceAb)

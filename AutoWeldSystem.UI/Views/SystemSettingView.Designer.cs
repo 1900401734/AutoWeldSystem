@@ -130,6 +130,9 @@
             tlpProcessParameterType = new TableLayoutPanel();
             lblProcessParameterDeviceType = new AntdUI.Label();
             selectProcessParameterDeviceType = new AntdUI.Select();
+            tlpInspectionResultSource = new TableLayoutPanel();
+            lblInspectionResultSource = new AntdUI.Label();
+            selectInspectionResultSource = new AntdUI.Select();
             tlpMesUserRoute = new TableLayoutPanel();
             lblMesUserRoute = new AntdUI.Label();
             inputMesUserRoute = new AntdUI.Input();
@@ -223,6 +226,7 @@
             tlpCheckbox3.SuspendLayout();
             tlpCheckbox2.SuspendLayout();
             tlpProcessParameterType.SuspendLayout();
+            tlpInspectionResultSource.SuspendLayout();
             tlpMesUserRoute.SuspendLayout();
             tlpCheckbox1.SuspendLayout();
             tlpMesWorkOrderRoute.SuspendLayout();
@@ -1743,7 +1747,7 @@
             tableLayoutPanelMesConfig.Margin = new Padding(2, 3, 2, 3);
             tableLayoutPanelMesConfig.Name = "tableLayoutPanelMesConfig";
             tableLayoutPanelMesConfig.RowCount = 18;
-            tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
+            tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 78F));
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle());
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle());
@@ -1846,13 +1850,16 @@
             tlpProcessParameterType.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 20F));
             tlpProcessParameterType.Controls.Add(lblProcessParameterDeviceType, 0, 0);
             tlpProcessParameterType.Controls.Add(selectProcessParameterDeviceType, 1, 0);
+            tlpProcessParameterType.Controls.Add(tlpInspectionResultSource, 0, 1);
+            tlpProcessParameterType.SetColumnSpan(tlpInspectionResultSource, 2);
             tlpProcessParameterType.Dock = DockStyle.Fill;
             tlpProcessParameterType.Location = new Point(0, 0);
             tlpProcessParameterType.Margin = new Padding(0);
             tlpProcessParameterType.Name = "tlpProcessParameterType";
-            tlpProcessParameterType.RowCount = 1;
-            tlpProcessParameterType.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tlpProcessParameterType.Size = new Size(434, 39);
+            tlpProcessParameterType.RowCount = 2;
+            tlpProcessParameterType.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
+            tlpProcessParameterType.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
+            tlpProcessParameterType.Size = new Size(434, 78);
             tlpProcessParameterType.TabIndex = 7;
             // 
             // lblProcessParameterDeviceType
@@ -1876,9 +1883,46 @@
             selectProcessParameterDeviceType.Name = "selectProcessParameterDeviceType";
             selectProcessParameterDeviceType.Size = new Size(270, 39);
             selectProcessParameterDeviceType.TabIndex = 3;
-            // 
+            //
+            // tlpInspectionResultSource
+            //
+            tlpInspectionResultSource.ColumnCount = 2;
+            tlpInspectionResultSource.ColumnStyles.Add(new ColumnStyle());
+            tlpInspectionResultSource.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            tlpInspectionResultSource.Controls.Add(lblInspectionResultSource, 0, 0);
+            tlpInspectionResultSource.Controls.Add(selectInspectionResultSource, 1, 0);
+            tlpInspectionResultSource.Dock = DockStyle.Fill;
+            tlpInspectionResultSource.Margin = new Padding(0);
+            tlpInspectionResultSource.Name = "tlpInspectionResultSource";
+            tlpInspectionResultSource.RowCount = 1;
+            tlpInspectionResultSource.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            tlpInspectionResultSource.Size = new Size(434, 39);
+            tlpInspectionResultSource.TabIndex = 8;
+            //
+            // lblInspectionResultSource
+            //
+            lblInspectionResultSource.AutoSizeMode = AntdUI.TAutoSize.Width;
+            lblInspectionResultSource.Dock = DockStyle.Fill;
+            lblInspectionResultSource.Location = new Point(0, 0);
+            lblInspectionResultSource.Margin = new Padding(0);
+            lblInspectionResultSource.Name = "lblInspectionResultSource";
+            lblInspectionResultSource.Padding = new Padding(8, 0, 0, 0);
+            lblInspectionResultSource.Size = new Size(164, 39);
+            lblInspectionResultSource.TabIndex = 0;
+            lblInspectionResultSource.Text = "Inspection result source";
+            //
+            // selectInspectionResultSource
+            //
+            selectInspectionResultSource.Dock = DockStyle.Fill;
+            selectInspectionResultSource.Location = new Point(164, 0);
+            selectInspectionResultSource.Margin = new Padding(0);
+            selectInspectionResultSource.MaxCount = 10;
+            selectInspectionResultSource.Name = "selectInspectionResultSource";
+            selectInspectionResultSource.Size = new Size(270, 39);
+            selectInspectionResultSource.TabIndex = 1;
+            //
             // tlpMesUserRoute
-            // 
+            //
             tlpMesUserRoute.ColumnCount = 2;
             tlpMesUserRoute.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120F));
             tlpMesUserRoute.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
@@ -2607,6 +2651,7 @@
             tlpCheckbox3.ResumeLayout(false);
             tlpCheckbox2.ResumeLayout(false);
             tlpProcessParameterType.ResumeLayout(false);
+            tlpInspectionResultSource.ResumeLayout(false);
             tlpProcessParameterType.PerformLayout();
             tlpMesUserRoute.ResumeLayout(false);
             tlpMesUserRoute.PerformLayout();
@@ -2774,6 +2819,9 @@
         private AntdUI.Input inputMesHeartbeatInterval;
         private AntdUI.Label lblProcessParameterDeviceType;
         private AntdUI.Select selectProcessParameterDeviceType;
+        private TableLayoutPanel tlpInspectionResultSource;
+        private AntdUI.Label lblInspectionResultSource;
+        private AntdUI.Select selectInspectionResultSource;
         private AntdUI.Checkbox chkShowTestFlagInHistory;
         private AntdUI.Checkbox chkEnableDeviceStatusReport;
         private AntdUI.Checkbox chkEnableWorkOrderStatusReport;

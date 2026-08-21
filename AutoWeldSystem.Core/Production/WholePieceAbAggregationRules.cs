@@ -93,6 +93,31 @@ public static class WholePieceAbAggregationRules
                 return WholePieceAbAggregationResult.Failure($"测试项“{definition.ItemName}”用于A/B聚合时必须使用按面偏移的相对地址，不能使用绝对地址。");
             }
 
+            if (IsProductMaximumItem(definition.ItemName))
+            {
+                var values = RequiredSides
+                    .Select(side => TryReadRawValue(sideRecords[side], definition))
+                    .ToList();
+                if (values.Any(value => !value.IsSuccess))
+                {
+                    var failure = values.First(value => !value.IsSuccess);
+                    return WholePieceAbAggregationResult.Failure(
+                        $"产品“{recordList[0].ProductNo}”测试项“{definition.ItemName}”数据无效：{failure.ErrorMessage}");
+                }
+
+                var formattedMaximum = FormatAggregatedValue(
+                    values.Max(value => value.Value),
+                    expression.DecimalPlaces,
+                    enableStringNumericFormatting,
+                    stringNumericFormatMode);
+                foreach (var row in rows)
+                {
+                    row.Values[definition.OutputKey] = formattedMaximum;
+                }
+
+                continue;
+            }
+
             foreach (var row in rows)
             {
                 var sideNumbers = row.SideNo == "A" ? new[] { "2", "4" } : new[] { "1", "3" };
@@ -107,7 +132,7 @@ public static class WholePieceAbAggregationRules
                 }
 
                 var average = (values[0].Value + values[1].Value) / 2m;
-                row.Values[definition.OutputKey] = FormatAverage(
+                row.Values[definition.OutputKey] = FormatAggregatedValue(
                     average,
                     expression.DecimalPlaces,
                     enableStringNumericFormatting,
@@ -252,7 +277,7 @@ public static class WholePieceAbAggregationRules
         return RawNumericValue.Success(numericValue);
     }
 
-    private static string FormatAverage(
+    private static string FormatAggregatedValue(
         decimal average,
         int? decimalPlaces,
         bool enableStringNumericFormatting,
@@ -264,6 +289,13 @@ public static class WholePieceAbAggregationRules
             decimalPlaces,
             enableStringNumericFormatting,
             stringNumericFormatMode);
+    }
+
+    public static bool IsProductMaximumItem(string? itemName)
+    {
+        var normalizedName = itemName?.Trim();
+        return string.Equals(normalizedName, "高度", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalizedName, "宽度", StringComparison.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyDictionary<string, string> ParseRawData(string? rawDataJson)

@@ -25,6 +25,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
     private readonly IProductProcessConfigService _productProcessConfigService;
     private readonly ITestSchemeConfigService _testSchemeConfigService;
     private readonly IProgramManageService _programManageService;
+    private readonly IAppSettingsService _settingsService;
     private readonly IPlcAddressService _plcAddressService;
     private readonly IPlcCommunicationService _plcCommunicationService;
     private readonly IPlcExpressionReadService _plcExpressionReadService;
@@ -41,6 +42,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         IProductProcessConfigService productProcessConfigService,
         ITestSchemeConfigService testSchemeConfigService,
         IProgramManageService programManageService,
+        IAppSettingsService settingsService,
         IPlcAddressService plcAddressService,
         IPlcCommunicationService plcCommunicationService,
         IPlcExpressionReadService plcExpressionReadService,
@@ -50,6 +52,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         _productProcessConfigService = productProcessConfigService;
         _testSchemeConfigService = testSchemeConfigService;
         _programManageService = programManageService;
+        _settingsService = settingsService;
         _plcAddressService = plcAddressService;
         _plcCommunicationService = plcCommunicationService;
         _plcExpressionReadService = plcExpressionReadService;
@@ -181,7 +184,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
                 continue;
             }
 
-            var snapshot = await BuildSnapshotAsync(identity, config, cancellationToken);
+            var snapshot = await BuildSnapshotAsync(identity, config, station.ActiveTask, cancellationToken);
             Publish(snapshot);
         }
     }
@@ -312,17 +315,34 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
     private async Task<ProductRealtimePreviewSnapshot> BuildSnapshotAsync(
         ProductPreviewIdentity identity,
         BizProductProcessConfig config,
+        BizWeldTask? activeTask,
         CancellationToken cancellationToken)
     {
         var refreshTime = DateTime.Now;
+        var settings = _settingsService.Get();
+        var useProgramResult = WholePieceProgramResultRules.IsApplicable(
+            settings.ProcessParameterDeviceType,
+            settings.InspectionResultSource);
         var productNo = await ReadExpressionTextAsync(config.ProductBase, 0, config.ProductNoExpr, cancellationToken);
-        var productResult = FormatResult(await ReadExpressionTextAsync(config.ProductBase, 0, config.ProductResultExpr, cancellationToken));
+        var plcProductResult = FormatResult(await ReadExpressionTextAsync(config.ProductBase, 0, config.ProductResultExpr, cancellationToken));
         var actualTouchCount = await ReadExpressionTextAsync(config.ProductBase, 0, config.ActualTouchCountExpr, cancellationToken);
         var presetTouchCount = await ReadExpressionTextAsync(config.ProductBase, 0, config.PresetTouchCountExpr, cancellationToken);
-        var rows = await BuildRowsAsync(identity, config, FormatValue(productNo), refreshTime, cancellationToken);
-        var message = rows.Count == 0
-            ? "测试方案没有可显示的测试项，请检查方案明细和测试项字典。"
-            : string.Empty;
+        var rowResult = await BuildRowsAsync(
+            identity,
+            config,
+            FormatValue(productNo),
+            activeTask?.ProgramContentSnapshot,
+            useProgramResult,
+            refreshTime,
+            cancellationToken);
+        var productResult = useProgramResult
+            ? TestResultRules.ToDisplayText(WholePieceProgramResultRules.ResolveRealtimeProductResult(rowResult.FaceResults, config.TouchCount))
+            : plcProductResult;
+        var message = rowResult.Errors.Count > 0
+            ? string.Join("；", rowResult.Errors)
+            : rowResult.Rows.Count == 0
+                ? "测试方案没有可显示的测试项，请检查方案明细和测试项字典。"
+                : string.Empty;
 
         return new ProductRealtimePreviewSnapshot(
             identity.StationNo,
@@ -334,48 +354,80 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             ResolvePointName(config),
             productResult,
             refreshTime,
-            rows,
+            rowResult.Rows,
             message);
     }
 
-    private async Task<IReadOnlyList<ProductRealtimePreviewRow>> BuildRowsAsync(
+    private async Task<PreviewRowsResult> BuildRowsAsync(
         ProductPreviewIdentity identity,
         BizProductProcessConfig config,
         string productNo,
+        string? programContentSnapshot,
+        bool useProgramResult,
         DateTime refreshTime,
         CancellationToken cancellationToken)
     {
         var schemeItems = ResolveSchemeItems(config.SchemeId);
         var rows = new List<ProductRealtimePreviewRow>();
+        var faceResults = new List<string?>();
+        var errors = new List<string>();
 
         for (var touchNo = 1; touchNo <= Math.Max(1, config.TouchCount); touchNo++)
         {
             var touchContextOffset = (touchNo - 1) * config.TouchHeaderLen;
             var testContextOffset = (touchNo - 1) * config.TestAreaLen;
-            var touchResult = FormatResult(await ReadExpressionTextAsync(
+            var plcTouchResult = FormatResult(await ReadExpressionTextAsync(
                 ResolveTouchResultBase(config),
                 touchContextOffset,
                 config.TouchResultExpr,
                 cancellationToken));
-            var shouldReadTestValues = ProductRealtimePreviewRules.ShouldReadTestValues(touchResult);
+            var shouldReadTestValues = ProductRealtimePreviewRules.ShouldReadTestValues(plcTouchResult);
+            var faceRows = new List<ProductRealtimePreviewRow>();
             foreach (var schemeItem in schemeItems)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                rows.Add(await BuildRowAsync(
+                faceRows.Add(await BuildRowAsync(
                     identity,
                     config,
                     productNo,
                     touchNo,
                     testContextOffset,
-                    touchResult,
+                    plcTouchResult,
                     shouldReadTestValues,
                     schemeItem,
                     refreshTime,
                     cancellationToken));
             }
+
+            var displayedTouchResult = plcTouchResult;
+            if (useProgramResult && shouldReadTestValues)
+            {
+                var measurements = faceRows
+                    .Where(row => row.EnableActual)
+                    .Select(row => new WholePieceProgramMeasurement(row.ItemName, row.ActualValue))
+                    .ToList();
+                var calculated = WholePieceProgramResultRules.EvaluateFace(programContentSnapshot, measurements);
+                if (calculated.IsSuccess)
+                {
+                    displayedTouchResult = calculated.Result;
+                }
+                else
+                {
+                    displayedTouchResult = ProductionConstants.TestResults.NotAvailable;
+                    errors.Add($"面{touchNo}程序判定失败：{calculated.ErrorMessage}");
+                }
+            }
+
+            foreach (var row in faceRows)
+            {
+                row.TouchResult = displayedTouchResult;
+            }
+
+            rows.AddRange(faceRows);
+            faceResults.Add(displayedTouchResult);
         }
 
-        return rows;
+        return new PreviewRowsResult(rows, faceResults, errors);
     }
 
     private async Task<ProductRealtimePreviewRow> BuildRowAsync(
@@ -705,6 +757,11 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             ? ProductionConstants.Stations.DefaultStationNo
             : stationNo;
     }
+
+    private sealed record PreviewRowsResult(
+        IReadOnlyList<ProductRealtimePreviewRow> Rows,
+        IReadOnlyList<string?> FaceResults,
+        IReadOnlyList<string> Errors);
 
     private sealed record ProductPreviewIdentity(int StationNo, string ProductNum, string ProductModel);
 

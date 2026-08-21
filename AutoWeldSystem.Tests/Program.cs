@@ -63,6 +63,7 @@ var tests = new (string Name, Action Run)[]
     ("System setting view uses responsive semantic columns", SystemSettingViewUsesResponsiveSemanticColumns),
     ("System setting localization resources are complete", SystemSettingLocalizationResourcesAreComplete),
     ("System setting configures PLC alarm trigger mode", SystemSettingConfiguresPlcAlarmTriggerMode),
+    ("System setting configures inspection result source", SystemSettingConfiguresInspectionResultSource),
     ("MES endpoint validation returns stable error codes", MesEndpointValidationReturnsStableErrorCodes),
     ("Device id sync rules detect missing old devices", DeviceIdSyncRulesDetectMissingOldDevices),
     ("System setting saves before background device sync", SystemSettingRetriesMissingOldDeviceAsNewRegistration),
@@ -102,6 +103,8 @@ var tests = new (string Name, Action Run)[]
     ("Data history tree preserves stored product result", DataHistoryTreeParentKeepsStoredProductResult),
     ("Scheme output roles are independent from realtime preview", SchemeOutputRolesAreIndependentFromRealtimePreview),
     ("Whole-piece four-side aggregation produces A and B rows", WholePieceFourSideAggregationProducesAbRows),
+    ("Whole-piece height and width use product maximum", WholePieceHeightAndWidthUseProductMaximum),
+    ("Whole-piece program results use maximum allowed values", WholePieceProgramResultsUseMaximumAllowedValues),
     ("Whole-piece aggregation rejects invalid source data", WholePieceAggregationRejectsInvalidSourceData),
     ("Report file upload rule requires an enabled report role", ReportFileUploadRuleRequiresEnabledReportRole),
     ("Product cycle snapshots persist PLC product results", ProductCycleSnapshotsPersistPlcProductResults),
@@ -2210,6 +2213,88 @@ static void WholePieceFourSideAggregationProducesAbRows()
     AssertEqual(ProductionConstants.TestResults.Ng, result.Rows[1].Result, "B面任一原始面NG时结果应为NG。");
 }
 
+static void WholePieceHeightAndWidthUseProductMaximum()
+{
+    var records = new[]
+    {
+        CreateAggregationRecord("3", "15.86", ProductionConstants.TestResults.Ok),
+        CreateAggregationRecord("1", "20.18", ProductionConstants.TestResults.Ng),
+        CreateAggregationRecord("4", "12.50", ProductionConstants.TestResults.Ok),
+        CreateAggregationRecord("2", "18.20", ProductionConstants.TestResults.Ok)
+    };
+    var height = new WholePieceAbValueDefinition(1, "高度", "Height", "14:F-0_2");
+    var result = WholePieceAbAggregationRules.Aggregate(
+        records,
+        [height],
+        enableStringNumericFormatting: true,
+        AppConstants.PlcStringNumericFormatModes.Round);
+
+    AssertTrue(result.IsSuccess, result.ErrorMessage);
+    AssertEqual("20.18", result.Rows[0].Values["Height"], "A行必须使用四面高度最大值。");
+    AssertEqual("20.18", result.Rows[1].Values["Height"], "B行必须发送同一四面高度最大值。");
+    AssertTrue(WholePieceAbAggregationRules.IsProductMaximumItem("宽度"), "宽度必须使用四面最大值策略。");
+    AssertFalse(WholePieceAbAggregationRules.IsProductMaximumItem("对称度"), "对称度必须继续使用A/B配对平均。");
+
+    var reportCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductionReportFileService.cs"), Encoding.UTF8);
+    var centerForwardCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Center", "CenterProductForwardingService.cs"), Encoding.UTF8);
+    var centerWriterCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.CenterServer", "Services", "CenterProductReportWorkbookWriter.cs"), Encoding.UTF8);
+    AssertTrue(reportCode.Contains("wholePieceAb && WholePieceAbAggregationRules.IsProductMaximumItem", StringComparison.Ordinal), "设备端报表必须把高度和宽度标记为产品级合并列。");
+    AssertTrue(centerForwardCode.Contains("wholePieceInspection && WholePieceAbAggregationRules.IsProductMaximumItem", StringComparison.Ordinal), "中心报表列定义必须同步高度和宽度的产品级合并语义。");
+    AssertTrue(centerWriterCode.Contains("BuildDynamicMergeOverrides", StringComparison.Ordinal)
+        && centerWriterCode.Contains("candidates.MaxBy", StringComparison.Ordinal), "中心可见报表必须从四面原始值计算产品级最大值，同时保留原始数据页。");
+}
+
+static void WholePieceProgramResultsUseMaximumAllowedValues()
+{
+    AssertEqual(
+        ProductionConstants.InspectionResultSources.Plc,
+        ProductionConstants.InspectionResultSources.Normalize("unknown"),
+        "未知结果来源必须回退PLC读取。");
+    AssertTrue(
+        WholePieceProgramResultRules.IsApplicable(
+            ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck,
+            ProductionConstants.InspectionResultSources.Program),
+        "程序计算只应在整件检测设备启用。");
+
+    var ok = WholePieceProgramResultRules.EvaluateFace(
+        "{\"高度\":\"20.18\",\"对称度\":\"0.15\"}",
+        [new WholePieceProgramMeasurement("高度", "20.18"), new WholePieceProgramMeasurement("对称度", "0")]);
+    AssertTrue(ok.IsSuccess, ok.ErrorMessage);
+    AssertEqual(ProductionConstants.TestResults.Ok, ok.Result, "等于最大允许值和真实零值必须判定为OK。");
+
+    var ng = WholePieceProgramResultRules.EvaluateFace(
+        "{\"高度\":\"20.18\"}",
+        [new WholePieceProgramMeasurement("高度", "20.19")]);
+    AssertTrue(ng.IsSuccess, ng.ErrorMessage);
+    AssertEqual(ProductionConstants.TestResults.Ng, ng.Result, "超过最大允许值必须判定为NG。");
+
+    var missing = WholePieceProgramResultRules.EvaluateFace(
+        "{\"高度\":\"20.18\"}",
+        [new WholePieceProgramMeasurement("宽度", "10")]);
+    AssertFalse(missing.IsSuccess, "缺少最大允许值必须拒绝采集。");
+
+    AssertEqual(
+        ProductionConstants.TestResults.Ng,
+        WholePieceProgramResultRules.ResolveRealtimeProductResult(
+            [ProductionConstants.TestResults.Ok, ProductionConstants.TestResults.Ng, null, null],
+            4),
+        "任一已完成面NG时产品结果必须立即显示NG。");
+    AssertEqual(
+        ProductionConstants.TestResults.Unknown,
+        WholePieceProgramResultRules.ResolveRealtimeProductResult(
+            [ProductionConstants.TestResults.Ok, ProductionConstants.TestResults.Ok, null, null],
+            4),
+        "四面未完成且没有NG时产品结果必须保持未测试。");
+
+    var collectionCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductCycleCollectionService.cs"), Encoding.UTF8);
+    var previewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductRealtimePreviewService.cs"), Encoding.UTF8);
+    AssertTrue(collectionCode.Contains("ApplyProgramCalculatedResults(task, schemeItems, records)", StringComparison.Ordinal)
+        && collectionCode.Contains("record.ProductResult = productResult;", StringComparison.Ordinal), "正式采集必须把程序计算的单面和产品结果固化到四面记录。");
+    AssertTrue(collectionCode.Contains("!useProgramResult || ProductRealtimePreviewRules.ShouldReadTestValues(testResult)", StringComparison.Ordinal), "程序计算模式下PLC未完成的面不得读取测试值地址。");
+    AssertTrue(previewCode.Contains("activeTask?.ProgramContentSnapshot", StringComparison.Ordinal)
+        && previewCode.Contains("WholePieceProgramResultRules.ResolveRealtimeProductResult", StringComparison.Ordinal), "实时预览必须使用任务固化最大允许值并逐面汇总产品结果。");
+}
+
 static void WholePieceAggregationRejectsInvalidSourceData()
 {
     var duplicateSide = new[]
@@ -3397,14 +3482,14 @@ static void RealtimePreviewValuesRequireCompletedPointResults()
         Encoding.UTF8);
     var buildRowsMethod = ExtractMethodText(
         previewCode,
-        "private async Task<IReadOnlyList<ProductRealtimePreviewRow>> BuildRowsAsync(",
+        "private async Task<PreviewRowsResult> BuildRowsAsync(",
         "private async Task<ProductRealtimePreviewRow> BuildRowAsync(");
     var previewValueMethod = ExtractMethodText(
         previewCode,
         "private async Task<string> ResolvePreviewValue(",
         "private async Task<string> ResolvePreviewResult(");
     AssertTrue(
-        buildRowsMethod.Contains("ProductRealtimePreviewRules.ShouldReadTestValues(touchResult)", StringComparison.Ordinal),
+        buildRowsMethod.Contains("ProductRealtimePreviewRules.ShouldReadTestValues(plcTouchResult)", StringComparison.Ordinal),
         "实时预览必须先按每个面/焊点结果判定测试值有效性。");
     AssertTrue(
         previewValueMethod.Contains("if (!shouldReadTestValues)", StringComparison.Ordinal)
@@ -12698,6 +12783,26 @@ static void SystemSettingConfiguresPlcAlarmTriggerMode()
         AssertTrue(resources.Contains("system.option.plc_alarm.address_only", StringComparison.Ordinal), $"{resourceFile} 必须包含仅地址模式。");
         AssertTrue(resources.Contains("system.option.plc_alarm.device_status_and_address", StringComparison.Ordinal), $"{resourceFile} 必须包含双条件模式。");
     }
+}
+
+static void SystemSettingConfiguresInspectionResultSource()
+{
+    var defaults = new AppSettings();
+    AssertEqual(
+        ProductionConstants.InspectionResultSources.Plc,
+        defaults.InspectionResultSource,
+        "旧数据库和新安装都必须默认使用PLC读取结果。");
+
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.cs"), Encoding.UTF8);
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.Designer.cs"), Encoding.UTF8);
+    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "AppSettingsService.cs"), Encoding.UTF8);
+    AssertTrue(designerCode.Contains("selectInspectionResultSource", StringComparison.Ordinal), "Designer 必须声明检测结果来源下拉。");
+    AssertTrue(viewCode.Contains("InspectionResultSourceOptions", StringComparison.Ordinal)
+        && viewCode.Contains("ProductionConstants.InspectionResultSources.Program", StringComparison.Ordinal), "系统设置必须提供PLC读取和程序计算两个稳定选项。");
+    AssertTrue(viewCode.Contains("CanSaveInspectionResultSourceChange", StringComparison.Ordinal)
+        && viewCode.Contains("HasAnyUnfinishedTask()", StringComparison.Ordinal), "存在未完工任务时必须阻止切换检测结果来源。");
+    AssertTrue(viewCode.Contains("tlpInspectionResultSource.Visible = wholePieceInspection;", StringComparison.Ordinal), "结果来源配置只应在整件检测设备显示。");
+    AssertTrue(serviceCode.Contains("InspectionResultSources.Normalize(settings.InspectionResultSource)", StringComparison.Ordinal), "设置服务必须把未知结果来源回退为PLC读取。");
 }
 
 static BizWeldTask BuildReportTask(DateTime startTime, DateTime? endTime)

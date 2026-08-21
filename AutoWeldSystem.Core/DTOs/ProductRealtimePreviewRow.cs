@@ -35,7 +35,7 @@ public sealed class ProductRealtimePreviewRow
 
     public string TouchNo { get; init; } = string.Empty;
 
-    public string TouchResult { get; init; } = "--";
+    public string TouchResult { get; set; } = "--";
 
     public string PointName { get; init; } = "焊点";
 

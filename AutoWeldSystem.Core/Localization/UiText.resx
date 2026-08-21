@@ -2150,4 +2150,8 @@
   <data name="system.message.header_key_invalid" xml:space="preserve"><value>PostData Header Key 不能为空，且不能包含空格、冒号或中文字符。</value></data>
   <data name="system.message.header_value_required" xml:space="preserve"><value>PostData Header Value 不能为空。</value></data>
   <data name="system.message.startup_integration_failed" xml:space="preserve"><value>开机自启设置失败：{0}</value></data>
+  <data name="system.label.inspection_result_source" xml:space="preserve"><value>检测结果来源</value></data>
+  <data name="system.option.inspection_result_source.plc" xml:space="preserve"><value>PLC读取</value></data>
+  <data name="system.option.inspection_result_source.program" xml:space="preserve"><value>程序计算</value></data>
+  <data name="system.message.inspection_result_source_locked" xml:space="preserve"><value>存在未完工任务，不能切换检测结果来源，请先完工后再调整。</value></data>
 </root>

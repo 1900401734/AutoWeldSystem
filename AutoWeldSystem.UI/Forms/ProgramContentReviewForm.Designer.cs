@@ -56,7 +56,7 @@ partial class ProgramContentReviewForm
         lblDescription.Name = "lblDescription";
         lblDescription.Size = new Size(746, 36);
         lblDescription.TabIndex = 1;
-        lblDescription.Text = "如需调整本次开工取值，请直接修改“设定值/标准值”列。修改只对本次开工生效、不落库。";
+        lblDescription.Text = "如需调整本次开工取值，请直接修改“最大允许值”列。修改只对本次开工生效、不落库。";
         lblDescription.TextAlign = ContentAlignment.MiddleLeft;
         //
         // dgvFields

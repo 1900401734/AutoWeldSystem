@@ -31,7 +31,7 @@ public static class ProgramMesPayloadRules
 
     /// <summary>
     /// 从本地程序实体构造 MES 新增请求。
-    /// 新增时若用户没有填写任何设定值，MES 要求程序内容留空。
+    /// 新增时若用户没有填写任何最大允许值，MES 要求程序内容留空。
     /// </summary>
     /// <param name="entity">本地程序实体。</param>
     /// <param name="remark">本次同步要写入 MES 的备注。</param>

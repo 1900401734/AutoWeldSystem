@@ -2149,4 +2149,8 @@
   <data name="system.message.header_key_invalid" xml:space="preserve"><value>PostData Header Key is required and cannot contain spaces, colons, or non-ASCII characters.</value></data>
   <data name="system.message.header_value_required" xml:space="preserve"><value>PostData Header Value is required.</value></data>
   <data name="system.message.startup_integration_failed" xml:space="preserve"><value>Failed to update startup integration: {0}</value></data>
+  <data name="system.label.inspection_result_source" xml:space="preserve"><value>Inspection result source</value></data>
+  <data name="system.option.inspection_result_source.plc" xml:space="preserve"><value>Read from PLC</value></data>
+  <data name="system.option.inspection_result_source.program" xml:space="preserve"><value>Calculated by program</value></data>
+  <data name="system.message.inspection_result_source_locked" xml:space="preserve"><value>An unfinished task exists. Complete it before changing the inspection result source.</value></data>
 </root>

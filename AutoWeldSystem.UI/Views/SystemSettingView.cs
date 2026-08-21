@@ -63,6 +63,12 @@ public partial class SystemSettingView : BaseView
         new(ProductionConstants.ProcessParameterDeviceTypes.WholePieceWeld, TextKeys.SystemSetting.OptionDeviceWholePieceWeld)
     };
 
+    private static readonly LocalizedOption<string>[] InspectionResultSourceOptions =
+    {
+        new(ProductionConstants.InspectionResultSources.Plc, TextKeys.SystemSetting.OptionInspectionResultSourcePlc),
+        new(ProductionConstants.InspectionResultSources.Program, TextKeys.SystemSetting.OptionInspectionResultSourceProgram)
+    };
+
     private static readonly LocalizedOption<string>[] CenterServerSystemTypeOptions =
     {
         new(CenterServerConstants.SystemTypes.Electromagnetic, TextKeys.SystemSetting.OptionDeviceElectromagnetic),
@@ -102,6 +108,7 @@ public partial class SystemSettingView : BaseView
     private bool _syncingPlcAlarmTriggerModeSelection;
     private bool _syncingUploadModeSelection;
     private bool _syncingProcessParameterDeviceTypeSelection;
+    private bool _syncingInspectionResultSourceSelection;
     private bool _syncingCenterServerSystemTypeSelection;
     private bool _deviceManagementStateKnown;
     private string _selectedPlcType = AppConstants.PlcTypes.ModbusTcp;
@@ -109,6 +116,7 @@ public partial class SystemSettingView : BaseView
     private string _selectedPlcAlarmTriggerMode = AppConstants.PlcAlarmTriggerModes.DeviceStatusAndAddress;
     private UploadMode _selectedUploadMode = UploadMode.Quantity;
     private string _selectedProcessParameterDeviceType = ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic;
+    private string _selectedInspectionResultSource = ProductionConstants.InspectionResultSources.Plc;
     private string _selectedCenterServerSystemType = CenterServerConstants.SystemTypes.Other;
     private AppSettings _currentSettings;
     private SystemSettingLayoutMode? _lastLayoutMode;
@@ -157,6 +165,7 @@ public partial class SystemSettingView : BaseView
         BindPlcAlarmTriggerModeOptions();
         BindUploadModeOptions();
         BindProcessParameterDeviceTypeOptions();
+        BindInspectionResultSourceOptions();
         BindCenterServerSystemTypeOptions();
         ApplyBasicSettingsLayout(force: true);
         basicSettingsViewport.AutoScrollPosition = scrollOffset;
@@ -313,6 +322,7 @@ public partial class SystemSettingView : BaseView
         chkEnableAutoStart.CheckedChanged += ChkEnableAutoStart_CheckedChanged;
         chkEnablePostDataCustomHeader.CheckedChanged += ChkEnablePostDataCustomHeader_CheckedChanged;
         selectProcessParameterDeviceType.SelectedIndexChanged += SelectProcessParameterDeviceType_SelectedIndexChanged;
+        selectInspectionResultSource.SelectedIndexChanged += SelectInspectionResultSource_SelectedIndexChanged;
         selectCenterServerSystemType.SelectedIndexChanged += SelectCenterServerSystemType_SelectedIndexChanged;
         chkEnableDualStation.CheckedChanged += (_, _) => UpdateStationDisplayNameVisibility();
     }
@@ -337,7 +347,8 @@ public partial class SystemSettingView : BaseView
                 return;
             }
 
-            if (!CanSaveRuntimeModeChange(previousSettings, settings))
+            if (!CanSaveRuntimeModeChange(previousSettings, settings)
+                || !CanSaveInspectionResultSourceChange(previousSettings, settings))
             {
                 BindSettings(previousSettings);
                 return;
@@ -403,7 +414,8 @@ public partial class SystemSettingView : BaseView
                 return;
             }
 
-            if (!CanSaveRuntimeModeChange(previousSettings, settings))
+            if (!CanSaveRuntimeModeChange(previousSettings, settings)
+                || !CanSaveInspectionResultSourceChange(previousSettings, settings))
             {
                 BindSettings(previousSettings);
                 return;
@@ -567,6 +579,22 @@ public partial class SystemSettingView : BaseView
 
         var option = ProcessParameterDeviceTypeOptions[e.Value];
         _selectedProcessParameterDeviceType = option.Value;
+        UpdateInspectionResultSourceEnabled();
+    }
+
+    private void SelectInspectionResultSource_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
+    {
+        if (_syncingInspectionResultSourceSelection)
+        {
+            return;
+        }
+
+        if (e.Value < 0 || e.Value >= InspectionResultSourceOptions.Length)
+        {
+            return;
+        }
+
+        _selectedInspectionResultSource = InspectionResultSourceOptions[e.Value].Value;
     }
 
     private void SelectCenterServerSystemType_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
@@ -720,6 +748,7 @@ public partial class SystemSettingView : BaseView
         _selectedPlcAlarmTriggerMode = AppConstants.PlcAlarmTriggerModes.Normalize(settings.PlcAlarmTriggerMode);
         _selectedUploadMode = NormalizeUploadMode(settings.UploadMode);
         _selectedProcessParameterDeviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
+        _selectedInspectionResultSource = ProductionConstants.InspectionResultSources.Normalize(settings.InspectionResultSource);
         _selectedCenterServerSystemType = NormalizeCenterServerSystemType(settings.CenterServerSystemType);
         inputUploadBatchSize.Text = Math.Max(1, settings.UploadBatchSize).ToString(CultureInfo.InvariantCulture);
         BindPlcTypeOptions();
@@ -727,7 +756,9 @@ public partial class SystemSettingView : BaseView
         BindPlcAlarmTriggerModeOptions();
         BindUploadModeOptions();
         BindProcessParameterDeviceTypeOptions();
+        BindInspectionResultSourceOptions();
         BindCenterServerSystemTypeOptions();
+        UpdateInspectionResultSourceEnabled();
         UpdatePlcStringNumericFormatModeEnabled();
         UpdatePlcAlarmTriggerModeEnabled();
         UpdateUploadBatchSizeEnabled();
@@ -855,6 +886,7 @@ public partial class SystemSettingView : BaseView
         lblCenterServerSystemType.Text = _localizer.GetString(TextKeys.SystemSetting.LabelCenterServerSystemType);
         lblCenterServerHeartbeatInterval.Text = _localizer.GetString(TextKeys.SystemSetting.LabelCenterServerHeartbeat);
         lblProcessParameterDeviceType.Text = _localizer.GetString(TextKeys.SystemSetting.LabelProcessParameterDeviceType);
+        lblInspectionResultSource.Text = _localizer.GetString(TextKeys.SystemSetting.LabelInspectionResultSource);
         chkEnablePostDataCustomHeader.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnablePostDataHeader);
         lblPostDataHeaderKey.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPostDataHeaderKey);
         lblPostDataHeaderValue.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPostDataHeaderValue);
@@ -971,6 +1003,36 @@ public partial class SystemSettingView : BaseView
         {
             _syncingProcessParameterDeviceTypeSelection = false;
         }
+    }
+
+    private void BindInspectionResultSourceOptions()
+    {
+        _syncingInspectionResultSourceSelection = true;
+        try
+        {
+            selectInspectionResultSource.Items.Clear();
+            selectInspectionResultSource.Items.AddRange(InspectionResultSourceOptions
+                .Select(option => (object)_localizer.GetString(option.TextKey))
+                .ToArray());
+
+            var selectedIndex = Array.FindIndex(InspectionResultSourceOptions, option =>
+                string.Equals(option.Value, _selectedInspectionResultSource, StringComparison.OrdinalIgnoreCase));
+            selectInspectionResultSource.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+        }
+        finally
+        {
+            _syncingInspectionResultSourceSelection = false;
+        }
+    }
+
+    private void UpdateInspectionResultSourceEnabled()
+    {
+        var wholePieceInspection = string.Equals(
+            _selectedProcessParameterDeviceType,
+            ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck,
+            StringComparison.OrdinalIgnoreCase);
+        tlpInspectionResultSource.Visible = wholePieceInspection;
+        selectInspectionResultSource.Enabled = wholePieceInspection && !HasAnyUnfinishedTask();
     }
 
     private void BindCenterServerSystemTypeOptions()
@@ -1402,6 +1464,7 @@ public partial class SystemSettingView : BaseView
         settings.UploadMode = NormalizeUploadMode(_selectedUploadMode);
         settings.UploadBatchSize = Math.Max(1, uploadBatchSize);
         settings.ProcessParameterDeviceType = NormalizeProcessParameterDeviceType(_selectedProcessParameterDeviceType);
+        settings.InspectionResultSource = ProductionConstants.InspectionResultSources.Normalize(_selectedInspectionResultSource);
         if (!TryApplyMesEndpointSettings(settings))
         {
             return false;
@@ -1484,6 +1547,21 @@ public partial class SystemSettingView : BaseView
         return false;
     }
 
+    private bool CanSaveInspectionResultSourceChange(AppSettings previousSettings, AppSettings newSettings)
+    {
+        if (string.Equals(
+                ProductionConstants.InspectionResultSources.Normalize(previousSettings.InspectionResultSource),
+                ProductionConstants.InspectionResultSources.Normalize(newSettings.InspectionResultSource),
+                StringComparison.OrdinalIgnoreCase)
+            || !HasAnyUnfinishedTask())
+        {
+            return true;
+        }
+
+        ShowWarning(TextKeys.SystemSetting.MessageInspectionResultSourceLocked);
+        return false;
+    }
+
     /// <summary>
     /// 软件当前已开工时禁止保存设备身份和设备通信地址，避免活动任务关联到变化后的设备。
     /// </summary>
@@ -1511,6 +1589,7 @@ public partial class SystemSettingView : BaseView
         var enabled = !HasAnyActiveRuntimeTask();
         grpDeviceConfig.Enabled = enabled;
         grpMesConfig.Enabled = enabled;
+        UpdateInspectionResultSourceEnabled();
         Volatile.Write(ref _deviceManagementStateKnown, true);
     }
 

@@ -212,6 +212,20 @@ public static class ProductionConstants
     }
 
     /// <summary>
+    /// 整件检测结果来源。
+    /// </summary>
+    public static class InspectionResultSources
+    {
+        public const string Plc = "Plc";
+        public const string Program = "Program";
+
+        public static string Normalize(string? value)
+            => string.Equals(value?.Trim(), Program, StringComparison.OrdinalIgnoreCase)
+                ? Program
+                : Plc;
+    }
+
+    /// <summary>
     /// Station test result values read from PLC and shown in local production data.
     /// </summary>
     public static class TestResults
