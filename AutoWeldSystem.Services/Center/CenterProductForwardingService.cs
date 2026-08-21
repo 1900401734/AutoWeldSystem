@@ -651,22 +651,22 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
         var itemKey = ResolveItemKey(item);
         if (ShouldForwardSavedRole(detail, SchemeDetailValueRole.Actual))
         {
-            yield return BuildDynamicColumn(itemKey, detail.ActualHeader, SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Actual));
+            yield return BuildDynamicColumn(itemKey, detail.ActualHeader, SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Actual), item.Unit, SchemeDetailValueRole.Actual);
         }
 
         if (ShouldForwardSavedRole(detail, SchemeDetailValueRole.Upper))
         {
-            yield return BuildDynamicColumn($"{itemKey}_upper", detail.UpperHeader, SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Upper));
+            yield return BuildDynamicColumn($"{itemKey}_upper", detail.UpperHeader, SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Upper), item.Unit, SchemeDetailValueRole.Upper);
         }
 
         if (ShouldForwardSavedRole(detail, SchemeDetailValueRole.Lower))
         {
-            yield return BuildDynamicColumn($"{itemKey}_lower", detail.LowerHeader, SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Lower));
+            yield return BuildDynamicColumn($"{itemKey}_lower", detail.LowerHeader, SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Lower), item.Unit, SchemeDetailValueRole.Lower);
         }
 
         if (ShouldForwardSavedRole(detail, SchemeDetailValueRole.Result))
         {
-            yield return BuildDynamicColumn($"{itemKey}_result", detail.ResultHeader, SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Result));
+            yield return BuildDynamicColumn($"{itemKey}_result", detail.ResultHeader, SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Result), item.Unit, SchemeDetailValueRole.Result);
         }
     }
 
@@ -679,12 +679,17 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             && SchemeDetailRoleRules.IsSaveEnabled(detail, role);
     }
 
-    private static CenterProductReportColumnDto BuildDynamicColumn(string key, string? title, string fallbackTitle)
+    private static CenterProductReportColumnDto BuildDynamicColumn(
+        string key,
+        string? title,
+        string fallbackTitle,
+        string? unit,
+        SchemeDetailValueRole role)
     {
         return new CenterProductReportColumnDto
         {
             Key = key,
-            Title = NormalizeDisplayText(title, fallbackTitle),
+            Title = TestItemUnitFormatRules.FormatHeader(NormalizeDisplayText(title, fallbackTitle), unit, role),
             MergeByProduct = false
         };
     }

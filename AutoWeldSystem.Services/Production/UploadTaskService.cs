@@ -1194,7 +1194,11 @@ public class UploadTaskService : IUploadTaskService
                 };
                 foreach (var value in output.Values)
                 {
-                    item.DynamicFields[value.Key] = value.Value;
+                    var schemeItem = schemeItems.FirstOrDefault(candidate => string.Equals(
+                        SchemeDetailRoleRules.GetMesFieldName(candidate.Detail, SchemeDetailValueRole.Actual)?.Trim(),
+                        value.Key,
+                        StringComparison.OrdinalIgnoreCase));
+                    item.DynamicFields[value.Key] = FormatMesRoleValue(value.Value, schemeItem?.Item, SchemeDetailValueRole.Actual);
                 }
                 items.Add(item);
             }
@@ -1391,8 +1395,13 @@ public class UploadTaskService : IUploadTaskService
             return;
         }
 
-        var value = ResolveRawRoleValue(rawValues, schemeItem.Item, role) ?? string.Empty;
-        TryAddDynamicField(uploadItem, mesFieldName, value);
+        var value = ResolveRawRoleValue(rawValues, schemeItem.Item, role);
+        TryAddDynamicField(uploadItem, mesFieldName, FormatMesRoleValue(value, schemeItem.Item, role));
+    }
+
+    private static string FormatMesRoleValue(string? value, DimTestItem? item, SchemeDetailValueRole role)
+    {
+        return TestItemUnitFormatRules.FormatValue(value, item?.Unit, role);
     }
 
     private static bool ShouldUploadMesRole(

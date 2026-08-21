@@ -838,7 +838,10 @@ public class ProductionReportFileService : IProductionReportFileService
 
         if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Actual))
         {
-            yield return new ReportColumn(BuildDynamicColumnKey(item, ReportRoleActual), SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Actual), MergeByProduct: false);
+            yield return new ReportColumn(
+                BuildDynamicColumnKey(item, ReportRoleActual),
+                TestItemUnitFormatRules.FormatHeader(SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Actual), item.Unit, SchemeDetailValueRole.Actual),
+                MergeByProduct: false);
         }
 
         if (wholePieceAb)
@@ -848,17 +851,26 @@ public class ProductionReportFileService : IProductionReportFileService
 
         if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Upper))
         {
-            yield return new ReportColumn(BuildDynamicColumnKey(item, ReportRoleUpper), SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Upper), MergeByProduct: false);
+            yield return new ReportColumn(
+                BuildDynamicColumnKey(item, ReportRoleUpper),
+                TestItemUnitFormatRules.FormatHeader(SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Upper), item.Unit, SchemeDetailValueRole.Upper),
+                MergeByProduct: false);
         }
 
         if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Lower))
         {
-            yield return new ReportColumn(BuildDynamicColumnKey(item, ReportRoleLower), SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Lower), MergeByProduct: false);
+            yield return new ReportColumn(
+                BuildDynamicColumnKey(item, ReportRoleLower),
+                TestItemUnitFormatRules.FormatHeader(SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Lower), item.Unit, SchemeDetailValueRole.Lower),
+                MergeByProduct: false);
         }
 
         if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Result))
         {
-            yield return new ReportColumn(BuildDynamicColumnKey(item, ReportRoleResult), SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Result), MergeByProduct: false);
+            yield return new ReportColumn(
+                BuildDynamicColumnKey(item, ReportRoleResult),
+                TestItemUnitFormatRules.FormatHeader(SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Result), item.Unit, SchemeDetailValueRole.Result),
+                MergeByProduct: false);
         }
     }
 

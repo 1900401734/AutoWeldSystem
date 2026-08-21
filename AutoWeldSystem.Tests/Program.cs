@@ -88,6 +88,7 @@ var tests = new (string Name, Action Run)[]
     ("Product process draft keeps existing defaults without source", ProductProcessDraftKeepsExistingDefaultsWithoutSource),
     ("Address manage copies selected product process on add", AddressManageCopiesSelectedProductProcessOnAdd),
     ("Scheme detail role headers use centralized defaults", SchemeDetailRoleHeadersUseCentralizedDefaults),
+    ("Test item units format report headers and MES values", TestItemUnitsFormatReportHeadersAndMesValues),
     ("Scheme detail role grid defines localized bound columns", SchemeDetailRoleGridDefinesLocalizedBoundColumns),
     ("Scheme detail role names and monitor fallbacks are centralized", SchemeDetailRoleNamesAndMonitorFallbacksAreCentralized),
     ("Station display names have localized dual-station rules", StationDisplayNamesHaveLocalizedDualStationRules),
@@ -198,6 +199,7 @@ var tests = new (string Name, Action Run)[]
     ("Process parameter upload views only include MES targets", ProcessParameterUploadViewsOnlyIncludeMesTargets),
     ("Process parameter pending product rows are read only", ProcessParameterPendingProductRowsAreReadOnly),
     ("Process parameter IsTest follows global setting and device type", ProcessParameterIsTestFollowsGlobalSettingAndDeviceType),
+    ("Process parameter numeric roles append test item units", ProcessParameterNumericRolesAppendTestItemUnits),
     ("Whole-piece inspection upload uses side and result fields", WholePieceInspectionUploadUsesSideAndResultFields),
     ("Device log projects every device status code", DeviceLogProjectsEveryDeviceStatusCode),
     ("Pending upload view deletes selected rows in batches", PendingUploadViewDeletesSelectedRowsInBatches),
@@ -1959,6 +1961,19 @@ static void SchemeDetailRoleHeadersUseCentralizedDefaults()
     AssertEqual("客户电流", SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Actual), "非空已存表头必须优先保留并去除首尾空白。");
 }
 
+static void TestItemUnitsFormatReportHeadersAndMesValues()
+{
+    AssertEqual("峰值电流 (A)", TestItemUnitFormatRules.FormatHeader(" 峰值电流 ", " A ", SchemeDetailValueRole.Actual), "实际值报表标题必须追加测试项单位。");
+    AssertEqual("峰值电流上限 (A)", TestItemUnitFormatRules.FormatHeader("峰值电流上限", "A", SchemeDetailValueRole.Upper), "上限报表标题必须追加测试项单位。");
+    AssertEqual("峰值电流下限 (A)", TestItemUnitFormatRules.FormatHeader("峰值电流下限", "A", SchemeDetailValueRole.Lower), "下限报表标题必须追加测试项单位。");
+    AssertEqual("峰值电流结果", TestItemUnitFormatRules.FormatHeader("峰值电流结果", "A", SchemeDetailValueRole.Result), "结果报表标题不得追加单位。");
+    AssertEqual("峰值电流", TestItemUnitFormatRules.FormatHeader("峰值电流", " ", SchemeDetailValueRole.Actual), "空单位必须保持原标题。");
+    AssertEqual("12.3 A", TestItemUnitFormatRules.FormatValue(" 12.3 ", " A ", SchemeDetailValueRole.Actual), "实际值上传必须追加测试项单位。");
+    AssertEqual(string.Empty, TestItemUnitFormatRules.FormatValue(" ", "A", SchemeDetailValueRole.Actual), "空值不得生成独立单位字符串。");
+    AssertEqual("12.3", TestItemUnitFormatRules.FormatValue("12.3", null, SchemeDetailValueRole.Actual), "空单位必须保持原值。");
+    AssertEqual("OK", TestItemUnitFormatRules.FormatValue("OK", "A", SchemeDetailValueRole.Result), "结果字段不得追加单位。");
+}
+
 static void SchemeDetailRoleGridDefinesLocalizedBoundColumns()
 {
     var viewCode = File.ReadAllText(
@@ -2388,7 +2403,8 @@ static void ProductionReportWritesCustomerTemplateForSingleStation()
     var filePath = GenerateReportWorkbook(
         new AppSettings { EnableDualStation = false },
         task,
-        records);
+        records,
+        testItemUnit: "A");
 
     try
     {
@@ -2413,7 +2429,7 @@ static void ProductionReportWritesCustomerTemplateForSingleStation()
 
         var detailHeaders = ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow);
         AssertSequenceEqual(
-            new[] { "产品编号", "拍照编号", "峰值电流", "拍照结果", "产品结果" },
+            new[] { "产品编号", "拍照编号", "峰值电流 (A)", "拍照结果", "产品结果" },
             detailHeaders,
             "单工位报表必须把动态测试值放在拍照结果之前，并保持产品结果在最后。");
         AssertFalse(detailHeaders.Contains("峰值电流上限"), "仅 SaveEnable 的动态角色不得进入设备报表。");
@@ -4396,7 +4412,8 @@ static void CenterDynamicReportColumnsUseSaveEnableOnly()
         ActualExpression = "0:F-0",
         UpperExpression = "0:F-4",
         LowerExpression = "0:F-8",
-        ResultExpression = "0:W-12"
+        ResultExpression = "0:W-12",
+        Unit = "A"
     };
     var detail = new BizSchemeDetail
     {
@@ -4417,7 +4434,7 @@ static void CenterDynamicReportColumnsUseSaveEnableOnly()
     var columns = BuildCenterDynamicReportColumns(detail, item);
 
     AssertSequenceEqual(
-        new[] { "峰值电流保存值", "峰值电流保存结果" },
+        new[] { "峰值电流保存值 (A)", "峰值电流保存结果" },
         columns.Select(column => column.Title).ToArray(),
         "中心动态列只能包含已采集且 SaveEnable=true 的角色，ReportEnable/MesEnable 独占角色不得进入。");
 }
@@ -5608,6 +5625,33 @@ static void ProcessParameterIsTestFollowsGlobalSettingAndDeviceType()
     };
     var disabledJson = JsonSerializer.Serialize(disabledItem);
     AssertFalse(disabledJson.Contains("\"IsTest\"", StringComparison.Ordinal), "全局关闭试焊件显示时不应输出 IsTest 字段。");
+}
+
+static void ProcessParameterNumericRolesAppendTestItemUnits()
+{
+    var method = typeof(UploadTaskService).GetMethod(
+        "FormatMesRoleValue",
+        System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+    AssertTrue(method is not null, "过程参数上传服务必须保留统一的单位格式入口。");
+    var item = new DimTestItem { ItemId = 1, ItemName = "峰值电流", Unit = "A" };
+
+    var actual = (string?)method!.Invoke(null, ["12.3", item, SchemeDetailValueRole.Actual]);
+    var upper = (string?)method.Invoke(null, ["15", item, SchemeDetailValueRole.Upper]);
+    var lower = (string?)method.Invoke(null, ["10", item, SchemeDetailValueRole.Lower]);
+    var result = (string?)method.Invoke(null, ["OK", item, SchemeDetailValueRole.Result]);
+    var empty = (string?)method.Invoke(null, [string.Empty, item, SchemeDetailValueRole.Actual]);
+
+    AssertEqual("12.3 A", actual, "普通过程参数和整件检测 A/B 实际值必须共用单位格式。");
+    AssertEqual("15 A", upper, "过程参数上限必须追加单位。");
+    AssertEqual("10 A", lower, "过程参数下限必须追加单位。");
+    AssertEqual("OK", result, "过程参数结果字段不得追加单位。");
+    AssertEqual(string.Empty, empty, "空过程参数值不得生成独立单位字符串。");
+
+    var upload = new ProcessParameterUploadItem();
+    upload.DynamicFields["Current"] = actual;
+    var json = JsonSerializer.Serialize(upload);
+    AssertTrue(json.Contains("\"Current\":\"12.3 A\"", StringComparison.Ordinal), "MES JSON 必须保持原字段名并在值中追加单位。");
+    AssertFalse(json.Contains("CurrentUnit", StringComparison.Ordinal), "MES JSON 不得新增单位字段。");
 }
 
 static void WholePieceInspectionUploadUsesSideAndResultFields()
@@ -13018,7 +13062,8 @@ static string GenerateReportWorkbook(
     int extraDynamicColumnCount = 0,
     string pointNoHeader = "拍照编号",
     string pointResultHeader = "拍照结果",
-    string? outputFilePath = null)
+    string? outputFilePath = null,
+    string? testItemUnit = null)
 {
     var serviceType = typeof(ProductionReportFileService);
     var service = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(serviceType);
@@ -13055,7 +13100,8 @@ static string GenerateReportWorkbook(
         ItemName = "峰值电流",
         ActualExpression = "0:F-0",
         UpperExpression = "0:F-4",
-        LowerExpression = "0:F-8"
+        LowerExpression = "0:F-8",
+        Unit = testItemUnit
     };
     var schemeItem = Activator.CreateInstance(schemeReportItemType, item, detail)
         ?? throw new InvalidOperationException("无法构造生产报表动态项。");
