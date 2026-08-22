@@ -107,6 +107,7 @@ var tests = new (string Name, Action Run)[]
     ("DataManageView uses generic product test tree", DataManageViewUsesGenericProductTestTree),
     ("Data history tree preserves stored product result", DataHistoryTreeParentKeepsStoredProductResult),
     ("Data history product result filter keeps complete product rows", DataHistoryProductResultFilterKeepsCompleteProductRows),
+    ("Data history dynamic sort orders products and keeps blanks last", DataHistoryDynamicSortOrdersProductsAndKeepsBlanksLast),
     ("Single-point history display rule uses configured and actual counts", SinglePointHistoryDisplayRuleUsesConfiguredAndActualCounts),
     ("Data history single-point row keeps point values", DataHistorySinglePointRowKeepsPointValues),
     ("Scheme output roles are independent from realtime preview", SchemeOutputRolesAreIndependentFromRealtimePreview),
@@ -2202,6 +2203,21 @@ static void DataManageViewUsesGenericProductTestTree()
     AssertTrue(designerCode.Contains("detailTabs.Controls.Add(tabWeldParameters);", StringComparison.Ordinal), "详情页必须保留测试数据页签。");
     AssertTrue(designerCode.Contains("detailTabs.Controls.Add(tabReportFiles);", StringComparison.Ordinal), "详情页必须保留报告文件页签。");
     AssertFalse(designerCode.Contains("detailTabs.Controls.Add(tabCollectionData);", StringComparison.Ordinal), "详情页不得继续显示重复的采集数据页签。");
+}
+
+static void DataHistoryDynamicSortOrdersProductsAndKeepsBlanksLast()
+{
+    DataHistoryTestDataRow Row(string no, string value) => new()
+    {
+        IsProductRow = true,
+        ProductNo = no,
+        Children = [new DataHistoryTestDataRow { DynamicValues = new Dictionary<string, string> { ["height"] = value } }]
+    };
+    var rows = new[] { Row("P10", "10"), Row("P2", "2"), Row("EMPTY", "--") };
+    var ascending = DataHistoryTestDataRules.Apply(rows, null, "height", false);
+    var descending = DataHistoryTestDataRules.Apply(rows, null, "height", true);
+    AssertSequenceEqual(new[] { "P2", "P10", "EMPTY" }, ascending.Select(row => row.ProductNo).ToArray(), "动态数值升序必须按数值比较且空值置底。");
+    AssertSequenceEqual(new[] { "P10", "P2", "EMPTY" }, descending.Select(row => row.ProductNo).ToArray(), "动态数值降序必须保持空值置底。");
 }
 
 static void DataHistoryProductResultFilterKeepsCompleteProductRows()

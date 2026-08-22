@@ -60,9 +60,14 @@ public static class DataHistoryTestDataRules
 
     private static string GetSortValue(DataHistoryTestDataRow row, string columnKey)
     {
-        return row.DynamicValues.TryGetValue(columnKey, out var value)
-            ? value?.Trim() ?? string.Empty
-            : string.Empty;
+        if (row.DynamicValues.TryGetValue(columnKey, out var value) && !IsBlank(value ?? string.Empty))
+        {
+            return value?.Trim() ?? string.Empty;
+        }
+
+        return row.Children
+            .Select(child => child.DynamicValues.TryGetValue(columnKey, out var childValue) ? childValue?.Trim() ?? string.Empty : string.Empty)
+            .FirstOrDefault(value => !IsBlank(value)) ?? string.Empty;
     }
 
     private static bool IsBlank(string value)

@@ -32,6 +32,8 @@ public partial class DataManageView : BaseView
     private IReadOnlyList<DataHistoryTestDataRow> _visibleTestDataRows = [];
     private string _productResultFilter = DataHistoryTestDataRules.AllResults;
     private bool _suppressProductResultFilter;
+    private string? _testDataSortColumnKey;
+    private bool _testDataSortDescending;
 
     /// <summary>
     /// Constructor used only by the WinForms designer.
@@ -169,6 +171,10 @@ public partial class DataManageView : BaseView
         {
             tableTestData.Columns.Add(new AntdUI.Column(dynamicColumn.Key, dynamicColumn.HeaderText)
             {
+                SortOrder = true,
+                SortMode = string.Equals(_testDataSortColumnKey, dynamicColumn.Key, StringComparison.OrdinalIgnoreCase)
+                    ? (_testDataSortDescending ? AntdUI.SortMode.DESC : AntdUI.SortMode.ASC)
+                    : AntdUI.SortMode.NONE,
                 Align = AntdUI.ColumnAlign.Center,
                 ColAlign = AntdUI.ColumnAlign.Center,
                 Ellipsis = true,
@@ -360,6 +366,7 @@ public partial class DataManageView : BaseView
         btnOpenReport.Click += (_, _) => OpenSelectedReport();
         btnOpenReportFolder.Click += (_, _) => OpenSelectedReportFolder();
         selectProductResult.SelectedIndexChanged += ProductResultFilter_SelectedIndexChanged;
+        tableTestData.SortModeChanged += TestData_SortModeChanged;
     }
 
     private async void FilterInput_KeyDown(object? sender, KeyEventArgs e)
@@ -564,6 +571,8 @@ public partial class DataManageView : BaseView
     {
         _testDataDynamicColumns = result.DynamicColumns;
         _testDataRows = result.Rows;
+        _testDataSortColumnKey = null;
+        _testDataSortDescending = false;
         ResetProductResultFilter();
         ConfigureTestDataColumns(_testDataDynamicColumns);
         ApplyTestDataView();
@@ -590,8 +599,8 @@ public partial class DataManageView : BaseView
         _visibleTestDataRows = DataHistoryTestDataRules.Apply(
             _testDataRows,
             _productResultFilter,
-            sortColumnKey: null,
-            descending: false);
+            _testDataSortColumnKey,
+            _testDataSortDescending);
         tableTestData.DataSource = null;
         tableTestData.DataSource = _visibleTestDataRows.ToList();
         lblParameterSummary.Text = _localizer.GetString(
@@ -599,6 +608,19 @@ public partial class DataManageView : BaseView
             _visibleTestDataRows.Count,
             CountVisibleTestRecords(),
             _testDataDynamicColumns.Count);
+    }
+
+    private bool TestData_SortModeChanged(object sender, AntdUI.TableSortModeEventArgs e)
+    {
+        if (!_testDataDynamicColumns.Any(column => string.Equals(column.Key, e.Column.Key, StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        _testDataSortColumnKey = e.SortMode == AntdUI.SortMode.NONE ? null : e.Column.Key;
+        _testDataSortDescending = e.SortMode == AntdUI.SortMode.DESC;
+        ApplyTestDataView();
+        return true;
     }
 
     private int CountVisibleTestRecords()
