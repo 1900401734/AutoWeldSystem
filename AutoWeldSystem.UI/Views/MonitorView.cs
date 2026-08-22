@@ -119,6 +119,10 @@ public partial class MonitorView : BaseView
     private string? _runtimeErrorText;
     private string? _runtimeErrorSource;
     private string? _deviceAlarmRuntimeErrorText;
+    private bool _deviceAlarmPendingConfirmation;
+    private readonly Dictionary<int, string> _plcAlarmNotificationSignatures = new();
+    private readonly Dictionary<int, string> _plcAlarmNotificationDismissedSignatures = new();
+    private readonly Dictionary<int, string> _plcAlarmSummaryDismissedSignatures = new();
     private readonly Dictionary<int, DateTime> _finishRecipeReadFailureLogTimes = new();
     private readonly Dictionary<int, string> _lastAutoQueriedWorkIds = new();
     // Stores the value that may be used for start; typing changes are drafts until Enter.
@@ -736,7 +740,7 @@ public partial class MonitorView : BaseView
 
         btnLocalWorkOrder.Click += LocalWorkOrder_Click;
         btnOnlineReport.Click += OnlineReport_Click;
-        btnClearErrorTips.Click += (_, _) => ClearRuntimeError();
+        btnClearErrorTips.Click += RuntimeErrorClearButton_Click;
         chkEnableDualWorkOrder.CheckedChanged += DualWorkOrder_CheckedChanged;
         inputSN.TextChanged += WorkOrderInput_TextChanged;
         inputSN.KeyDown += WorkOrderInput_KeyDown;
@@ -1606,6 +1610,7 @@ public partial class MonitorView : BaseView
         _timer.Dispose();
         _realtimePreviewPaintTimer.Dispose();
         _plcStatusToolTipTimer.Dispose();
+        CloseAllPlcAlarmNotifications();
         DisposePlcStatusToolTipPopup();
         _titleFont?.Dispose();
         _runtimeMessageFont?.Dispose();
@@ -2536,6 +2541,12 @@ public partial class MonitorView : BaseView
     /// <param name="e">事件参数。</param>
     private void Table2_MouseEnter(object? sender, EventArgs e)
     {
+        // 工单输入区仍在编辑时不抢占键盘焦点，鼠标离开输入框后可继续录入。
+        if (tlpWorkOrderInfo.ContainsFocus)
+        {
+            return;
+        }
+
         var grid = CurrentWeldPreviewGrid;
         if (grid.CanFocus)
         {
@@ -2627,6 +2638,11 @@ public partial class MonitorView : BaseView
         if (IsDisposed)
         {
             return;
+        }
+
+        foreach (var stationNo in new[] { 1, 2 })
+        {
+            SyncPlcAlarmNotification(_plcProductionMonitorService.GetCurrent(stationNo));
         }
 
         ApplyPlcStatus(_plcCommunicationService.GetCurrent(CurrentStationNo));
@@ -5080,6 +5096,8 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// <param name="snapshot">状态快照。</param>
     private void ApplyProductionStatus(PlcProductionSnapshot snapshot)
     {
+        SyncPlcAlarmNotification(snapshot);
+
         if (NormalizeStatusStationNo(snapshot.StationNo) != CurrentStationNo)
         {
             return;
@@ -5115,13 +5133,44 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
                     ? UiColors.Status.Muted
                     : GetDeviceStatusColor(snapshot.DeviceStatusCode, snapshot.IsSuccess);
 
-        if (snapshot.IsSoftwareAlarmActive || snapshot.IsAlarmPendingConfirmation)
+        if (PlcAlarmNotificationRules.IsActive(
+                snapshot.IsSoftwareAlarmActive,
+                snapshot.IsAlarmPendingConfirmation,
+                snapshot.IsRawAlarmUnconfirmed))
         {
-            var alarmMessage = string.IsNullOrWhiteSpace(snapshot.SoftwareAlarmMessage)
-                ? PlcSoftwareAlarmRules.GenericAlarmMessage
-                : snapshot.SoftwareAlarmMessage;
-            _deviceAlarmRuntimeErrorText = alarmMessage.Trim();
-            SetRuntimeErrorText(_deviceAlarmRuntimeErrorText, RuntimeErrorSourceDeviceAlarm);
+            var alarmMessages = PlcAlarmNotificationRules.SplitMessages(snapshot.SoftwareAlarmMessage);
+            if (alarmMessages.Count == 0)
+            {
+                alarmMessages = [PlcSoftwareAlarmRules.GenericAlarmMessage];
+            }
+
+            _deviceAlarmRuntimeErrorText = string.Join("；", alarmMessages);
+            var pendingConfirmation = !snapshot.IsSoftwareAlarmActive;
+            _deviceAlarmPendingConfirmation = pendingConfirmation;
+            var signature = PlcAlarmNotificationRules.CreateSignature(alarmMessages, pendingConfirmation);
+            var stationNo = NormalizeStatusStationNo(snapshot.StationNo);
+            var isDismissed = _plcAlarmSummaryDismissedSignatures.TryGetValue(stationNo, out var dismissedSignature)
+                && string.Equals(dismissedSignature, signature, StringComparison.Ordinal);
+            if (!isDismissed)
+            {
+                SetRuntimeErrorDetailText(
+                    _deviceAlarmRuntimeErrorText,
+                    snapshot.IsSoftwareAlarmActive
+                        ? TextKeys.Monitor.RuntimeError.DeviceAlarmSummary
+                        : TextKeys.Monitor.RuntimeError.DeviceAlarmPending,
+                    RuntimeErrorSourceDeviceAlarm,
+                    alarmMessages.Count);
+            }
+            else if (string.Equals(_runtimeErrorSource, RuntimeErrorSourceDeviceAlarm, StringComparison.Ordinal))
+            {
+                inputErrorTips.Text = BuildLocalizedMessage(
+                    pendingConfirmation
+                        ? TextKeys.Monitor.RuntimeError.DeviceAlarmPending
+                        : TextKeys.Monitor.RuntimeError.DeviceAlarmSummary,
+                    alarmMessages.Count);
+                ApplyRuntimeErrorTone(hasError: true);
+            }
+
             return;
         }
 
@@ -5134,6 +5183,160 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     }
 
     /// <summary>
+    /// 处理 PLC 报警通知的打开、更新和恢复关闭。
+    /// </summary>
+    private void SyncPlcAlarmNotification(PlcProductionSnapshot snapshot)
+    {
+        if (!tabsPreview.IsHandleCreated)
+        {
+            return;
+        }
+
+        var stationNo = NormalizeStatusStationNo(snapshot.StationNo);
+        var notificationId = GetPlcAlarmNotificationId(stationNo);
+        if (stationNo == 2 && !_currentSettings.EnableDualStation)
+        {
+            _plcAlarmNotificationSignatures.Remove(stationNo);
+            _plcAlarmNotificationDismissedSignatures.Remove(stationNo);
+            _plcAlarmSummaryDismissedSignatures.Remove(stationNo);
+            ClosePlcAlarmNotificationIfPresent(notificationId);
+            return;
+        }
+        var isActive = PlcAlarmNotificationRules.IsActive(
+            snapshot.IsSoftwareAlarmActive,
+            snapshot.IsAlarmPendingConfirmation,
+            snapshot.IsRawAlarmUnconfirmed);
+        if (!isActive)
+        {
+            _plcAlarmNotificationSignatures.Remove(stationNo);
+            _plcAlarmNotificationDismissedSignatures.Remove(stationNo);
+            _plcAlarmSummaryDismissedSignatures.Remove(stationNo);
+            ClosePlcAlarmNotificationIfPresent(notificationId);
+            return;
+        }
+
+        var messages = PlcAlarmNotificationRules.SplitMessages(snapshot.SoftwareAlarmMessage);
+        if (messages.Count == 0)
+        {
+            messages = [PlcSoftwareAlarmRules.GenericAlarmMessage];
+        }
+
+        var pendingConfirmation = !snapshot.IsSoftwareAlarmActive;
+        var signature = PlcAlarmNotificationRules.CreateSignature(messages, pendingConfirmation);
+        if (_plcAlarmNotificationSignatures.TryGetValue(stationNo, out var previousSignature)
+            && string.Equals(previousSignature, signature, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _plcAlarmNotificationSignatures[stationNo] = signature;
+        ClosePlcAlarmNotificationIfPresent(notificationId);
+        if (_plcAlarmNotificationDismissedSignatures.TryGetValue(stationNo, out var dismissedSignature)
+            && string.Equals(dismissedSignature, signature, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var title = _localizer.GetString(TextKeys.Monitor.Notification.PlcAlarmTitle, stationNo);
+        var notification = new AntdUI.Notification.Config(
+            new AntdUI.Target(this),
+            title,
+            PlcAlarmNotificationRules.BuildDisplayText(messages),
+            snapshot.IsSoftwareAlarmActive ? AntdUI.TType.Error : AntdUI.TType.Warn,
+            AntdUI.TAlignFrom.BL,
+            _runtimeMessageFont,
+            0)
+        {
+            ID = notificationId,
+            AutoClose = 0,
+            ClickClose = false,
+            CloseIcon = true,
+            TopMost = false,
+            ShowInWindow = true,
+            EnableSound = false,
+            OnClose = () =>
+            {
+                if (_plcAlarmNotificationSignatures.TryGetValue(stationNo, out var currentSignature)
+                    && string.Equals(currentSignature, signature, StringComparison.Ordinal))
+                {
+                    _plcAlarmNotificationDismissedSignatures[stationNo] = signature;
+                }
+            }
+        };
+        AntdUI.Notification.open(notification);
+    }
+
+    /// <summary>
+    /// 关闭指定工位的 PLC 报警通知，并保留当前报警签名用于“已读”静默。
+    /// </summary>
+    private void DismissPlcAlarmNotification(int stationNo)
+    {
+        var normalizedStationNo = NormalizeStatusStationNo(stationNo);
+        if (_plcAlarmNotificationSignatures.TryGetValue(normalizedStationNo, out var signature))
+        {
+            _plcAlarmNotificationDismissedSignatures[normalizedStationNo] = signature;
+        }
+
+        ClosePlcAlarmNotificationIfPresent(GetPlcAlarmNotificationId(normalizedStationNo));
+    }
+
+    /// <summary>
+    /// 仅在通知已进入 AntdUI 队列或已经显示时关闭，避免 close_id 的 volley 机制抵消随后打开的同 ID 通知。
+    /// </summary>
+    private static void ClosePlcAlarmNotificationIfPresent(string notificationId)
+    {
+        if (AntdUI.Notification.contains(notificationId))
+        {
+            AntdUI.Notification.close_id(notificationId);
+        }
+    }
+
+    private void CloseAllPlcAlarmNotifications()
+    {
+        foreach (var stationNo in new[] { 1, 2 })
+        {
+            ClosePlcAlarmNotificationIfPresent(GetPlcAlarmNotificationId(stationNo));
+        }
+
+        _plcAlarmNotificationSignatures.Clear();
+        _plcAlarmNotificationDismissedSignatures.Clear();
+        _plcAlarmSummaryDismissedSignatures.Clear();
+    }
+
+    private static string GetPlcAlarmNotificationId(int stationNo)
+        => $"monitor-plc-alarm-{NormalizeStatusStationNo(stationNo)}";
+
+    /// <summary>
+    /// 由用户清除右侧异常摘要；设备报警仅在本机标记为已读，不写入 PLC。
+    /// </summary>
+    private void RuntimeErrorClearButton_Click(object? sender, EventArgs e)
+    {
+        if (string.Equals(_runtimeErrorSource, RuntimeErrorSourceDeviceAlarm, StringComparison.Ordinal))
+        {
+            var result = MessageBox.Show(
+                this,
+                _localizer.GetString(TextKeys.Monitor.Message.ClearDeviceAlarmConfirm),
+                _localizer.GetString(TextKeys.Common.TitleConfirmReset),
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+            if (result != DialogResult.Yes)
+            {
+                return;
+            }
+
+            var stationNo = NormalizeStatusStationNo(CurrentStationNo);
+            if (_plcAlarmNotificationSignatures.TryGetValue(stationNo, out var signature))
+            {
+                _plcAlarmSummaryDismissedSignatures[stationNo] = signature;
+            }
+
+            DismissPlcAlarmNotification(stationNo);
+        }
+
+        ClearRuntimeError();
+    }
+
+    /// <summary>
     /// 清除由 PLC 报警写入的异常提示，避免报警恢复后覆盖其它业务异常。
     /// </summary>
     private void ClearDeviceAlarmRuntimeErrorIfCurrent()
@@ -5143,6 +5346,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
                 && _runtimeErrorKey is null
                 && string.Equals(_runtimeErrorText, _deviceAlarmRuntimeErrorText, StringComparison.Ordinal));
         _deviceAlarmRuntimeErrorText = null;
+        _deviceAlarmPendingConfirmation = false;
         if (shouldClear)
         {
             ClearRuntimeError();
@@ -9643,6 +9847,18 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     }
 
     /// <summary>
+    /// 保存不截断的运行异常详情；界面摘要由刷新逻辑单独生成。
+    /// </summary>
+    private void SetRuntimeErrorDetailText(
+        string message,
+        string messageKey,
+        string? source,
+        params object[] args)
+    {
+        SetRuntimeErrorCore(messageKey, args, message.Trim(), source);
+    }
+
+    /// <summary>
     /// 统一写入运行异常字段，避免 key 与动态文本同时残留。
     /// </summary>
     /// <param name="messageKey">本地化文本键；为空时使用动态文本。</param>
@@ -9668,6 +9884,8 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         _runtimeErrorArgs = Array.Empty<object>();
         _runtimeErrorText = null;
         _runtimeErrorSource = null;
+        _deviceAlarmRuntimeErrorText = null;
+        _deviceAlarmPendingConfirmation = false;
         inputErrorTips.Clear();
         ApplyRuntimeErrorTone(hasError: false);
         PersistCurrentRuntimeTipState();
@@ -9705,6 +9923,10 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             _runtimeErrorArgs = DeserializeRuntimeArgs(state.RuntimeErrorArgsJson);
             _runtimeErrorText = state.RuntimeErrorText;
             _runtimeErrorSource = state.RuntimeErrorSource;
+            _deviceAlarmPendingConfirmation = string.Equals(
+                _runtimeErrorKey,
+                TextKeys.Monitor.RuntimeError.DeviceAlarmPending,
+                StringComparison.Ordinal);
             _deviceAlarmRuntimeErrorText = string.Equals(_runtimeErrorSource, RuntimeErrorSourceDeviceAlarm, StringComparison.Ordinal)
                 ? _runtimeErrorText
                 : null;
@@ -9728,6 +9950,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         _runtimeErrorArgs = Array.Empty<object>();
         _runtimeErrorText = null;
         _runtimeErrorSource = null;
+        _deviceAlarmPendingConfirmation = false;
         _deviceAlarmRuntimeErrorText = null;
     }
 
@@ -9824,9 +10047,22 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// </summary>
     private void RefreshRuntimeError()
     {
-        inputErrorTips.Text = _runtimeErrorKey is null
-            ? _runtimeErrorText ?? string.Empty
-            : BuildLocalizedMessage(_runtimeErrorKey, _runtimeErrorArgs);
+        if (string.Equals(_runtimeErrorSource, RuntimeErrorSourceDeviceAlarm, StringComparison.Ordinal))
+        {
+            var alarmCount = Math.Max(1, PlcAlarmNotificationRules.SplitMessages(_runtimeErrorText).Count);
+            inputErrorTips.Text = BuildLocalizedMessage(
+                _deviceAlarmPendingConfirmation
+                    ? TextKeys.Monitor.RuntimeError.DeviceAlarmPending
+                    : TextKeys.Monitor.RuntimeError.DeviceAlarmSummary,
+                alarmCount);
+        }
+        else
+        {
+            inputErrorTips.Text = _runtimeErrorKey is null
+                ? _runtimeErrorText ?? string.Empty
+                : BuildLocalizedMessage(_runtimeErrorKey, _runtimeErrorArgs);
+        }
+
         ApplyRuntimeErrorTone(!string.IsNullOrWhiteSpace(inputErrorTips.Text));
     }
 

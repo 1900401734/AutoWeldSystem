@@ -353,6 +353,10 @@ public static class TextKeys
             /// </summary>
             public const string SwitchUserConfirm = "monitor.message.switch_user_confirm";
             /// <summary>
+            /// 清除本机设备报警提示确认
+            /// </summary>
+            public const string ClearDeviceAlarmConfirm = "monitor.message.clear_device_alarm_confirm";
+            /// <summary>
             /// 工单二维码不能为空
             /// </summary>
             public const string WorkIdRequired = "monitor.message.work_id_required";
@@ -446,6 +450,14 @@ public static class TextKeys
             public const string OperatorValidated = "monitor.runtime.operator_validated";
         }
 
+        public static class Notification
+        {
+            /// <summary>
+            /// PLC 报警通知标题
+            /// </summary>
+            public const string PlcAlarmTitle = "monitor.notification.plc_alarm_title";
+        }
+
         public static class RuntimeError
         {
             /// <summary>
@@ -512,6 +524,14 @@ public static class TextKeys
             /// 设备报警
             /// </summary>
             public const string DeviceAlarm = "monitor.error.device_alarm";
+            /// <summary>
+            /// PLC 报警摘要
+            /// </summary>
+            public const string DeviceAlarmSummary = "monitor.error.device_alarm_summary";
+            /// <summary>
+            /// PLC 报警等待确认
+            /// </summary>
+            public const string DeviceAlarmPending = "monitor.error.device_alarm_pending";
             /// <summary>
             /// 操作失败
             /// </summary>

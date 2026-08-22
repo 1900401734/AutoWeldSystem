@@ -194,11 +194,7 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
                     AcceptedQuantityReadSuccess = false,
                     AcceptedQuantityReadMessage = ex.Message,
                     RejectedQuantityReadSuccess = false,
-                    RejectedQuantityReadMessage = ex.Message,
-                    AlarmMessage = string.Empty,
-                    AlarmStationNo = null,
-                    IsSoftwareAlarmActive = false,
-                    SoftwareAlarmMessage = string.Empty
+                    RejectedQuantityReadMessage = ex.Message
                 });
                 await Task.Delay(PollInterval, cancellationToken);
             }
@@ -344,7 +340,8 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
                 continue;
             }
 
-            Publish(CreateSnapshot(
+            var currentSnapshot = GetCurrent(stationNo);
+            var productionSnapshot = CreateSnapshot(
                 stationNo,
                 isSnapshotSuccess,
                 plcStatusCode,
@@ -365,7 +362,14 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
                     ? externalAlarm.ScopeStationNo
                     : null,
                 false,
-                string.Empty));
+                string.Empty) with
+            {
+                IsSoftwareAlarmActive = currentSnapshot.IsSoftwareAlarmActive,
+                SoftwareAlarmMessage = currentSnapshot.SoftwareAlarmMessage,
+                IsAlarmPendingConfirmation = currentSnapshot.IsAlarmPendingConfirmation,
+                IsRawAlarmUnconfirmed = currentSnapshot.IsRawAlarmUnconfirmed
+            };
+            Publish(productionSnapshot);
         }
 
         if (alarmReadingEnabled)
@@ -1107,7 +1111,6 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
         string message,
         PlcSoftwareAlarmState? softwareAlarm = null)
     {
-        var resolvedSoftwareAlarm = softwareAlarm ?? PlcSoftwareAlarmState.Inactive;
         foreach (var stationNo in stationNumbers)
         {
             WriteBusinessSignalReadFailureLog(stationNo, message);
@@ -1124,10 +1127,8 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
                 AcceptedQuantityReadMessage = message,
                 RejectedQuantityReadSuccess = false,
                 RejectedQuantityReadMessage = message,
-                AlarmMessage = string.Empty,
-                AlarmStationNo = null,
-                IsSoftwareAlarmActive = resolvedSoftwareAlarm.IsActive,
-                SoftwareAlarmMessage = resolvedSoftwareAlarm.Message
+                IsSoftwareAlarmActive = softwareAlarm?.IsActive ?? current.IsSoftwareAlarmActive,
+                SoftwareAlarmMessage = softwareAlarm?.Message ?? current.SoftwareAlarmMessage
             });
         }
     }
@@ -1148,10 +1149,6 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
                 DeviceStatusCode = null,
                 UpdatedTime = DateTime.Now,
                 Message = string.Empty,
-                AlarmMessage = string.Empty,
-                AlarmStationNo = null,
-                IsSoftwareAlarmActive = false,
-                SoftwareAlarmMessage = string.Empty,
                 TotalProductionReadSuccess = false,
                 TotalProductionReadMessage = "PLC未连接或生产监控未就绪。",
                 AcceptedQuantityReadSuccess = false,

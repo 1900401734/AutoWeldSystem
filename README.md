@@ -1,6 +1,6 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.3.0`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.4.2`。
 
 ## 功能概览
 
@@ -8,6 +8,7 @@
 - MES 交互：员工校验、工单获取、开工上报、完工上报、设备编号同步、程序上传/下载。
 - 过程参数上传：测试项字典配置单位后，实际值、上限和下限按“值 单位”上传，结果字段保持原值；试焊件字段 `IsTest` 使用 JSON 布尔值 `true/false`；整件检测四面工艺在本地保留 1～4 面原始数据，上传 MES 时输出 `SideNo=A/B` 两条数据，对称度按 A=面2/4、B=面1/3 平均，高度和宽度取四面最大值并在 A/B 两条数据中重复发送，`Result` 按配对面从严合并，不发送 `Type`、`TouchNo` 和 `IsTest`。
 - PLC 监控日志：周期读取设备状态、实际数量、合格数量和失效数量失败时记录为“PLC 业务信号读取失败”；“生产数据采集失败”仅表示开工后的产品数据就绪信号触发实际产品数据采集失败；报警地址读取失败单独记录。PLC 心跳支持独立配置监测频率、心跳超时时间和通讯超时，并在状态提示中显示采样间隔、通讯锁等待和 PLC 读取耗时。
+- PLC 报警通知：多条 PLC 报警在屏幕左下角以 Notification 完整展示；通知支持手动关闭，报警恢复后自动关闭，右侧异常摘要继续保留并可单独清除。
 - 设备状态上报：JSONL 本地记录与 MES `Remark` 使用同一格式；单工位使用“开机/停机/程序执行开始/程序执行结束”，双工位的程序边界使用系统设置映射生成“左工位：程序执行开始”等文本；报警地址的 PLC 工位不进入备注，异常统一为“异常：报警内容”或“异常恢复：报警内容”。
 - 实时预览：每个面/焊点先读取 PLC 拍照结果或焊点结果作为完成门禁，只有 `OK/NG` 才显示该面的测试值；未测试、清零残留、读取失败和焊前 NG 显示 `--`，真实的 `0/0.00` 在有效结果下正常显示，下一次 PLC 清零后不会保留上一帧数据。整件检测选择“程序计算”时，界面显示程序按最大允许值计算的单面结果，任一已完成面 NG 时产品立即显示 NG，四面全 OK 后才显示 OK。
 - 程序管理：本地程序版本管理、提交记录、MES 同步状态，以及按工位选择 PLC 配方名称并隐藏保存槽位配方号；保存、校验和同步结果使用非阻塞全局提示，不影响继续操作主界面；删除确认框绑定主窗体显示，始终位于主程序之上。
@@ -219,6 +220,12 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 
 ## 检测设备四面转 A/B、程序判定与升级检查
 
+`v2.4.2` 调整 PLC 报警通知回到屏幕左下角，并将每条报警记录按行显示。
+
+`v2.4.1` 修复 PLC 报警通知重复弹出问题，并将通知定位到当前工位页签内容区右上角。
+
+`v2.4.0` 新增 PLC 报警详情通知：多条报警按编号逐行显示在实时预览页签右上角；通知可手动关闭并标记为已读，PLC 报警恢复后自动关闭，右侧异常摘要和设备状态保持独立。
+
 `v2.3.0` 统一了监控页产品结果显示：移除实时预览顶部重复的产品结果 Tag，仅由右侧“产品结果”区域实时显示各工位结果。检测期间和下一产品周期开始时显示 `工位1/2--`，所有配置采集点完成后才显示 OK、NG 或焊前NG。
 
 系统设置新增“实时焊点编号来源”：`PLC读取` 使用产品工艺的 `TouchNoBase/TouchNoExpr`，读取失败显示 `--`；`程序判断` 使用实时预览循环序号 `1、2、3...`。该配置只影响实时预览，不改变正式采集记录、数据管理、中心看板、XLSX 报表或 MES 中的编号，存在未完工任务时禁止切换。
@@ -277,10 +284,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>2.3.0</Version>
-<AssemblyVersion>2.3.0.0</AssemblyVersion>
-<FileVersion>2.3.0.0</FileVersion>
-<InformationalVersion>2.3.0</InformationalVersion>
+<Version>2.4.2</Version>
+<AssemblyVersion>2.4.2.0</AssemblyVersion>
+<FileVersion>2.4.2.0</FileVersion>
+<InformationalVersion>2.4.2</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -292,9 +299,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v2.3.0 -m "Release v2.3.0"
+git tag -a v2.4.2 -m "Release v2.4.2"
 git push origin main
-git push origin v2.3.0
+git push origin v2.4.2
 ```
 
 ## Git 使用

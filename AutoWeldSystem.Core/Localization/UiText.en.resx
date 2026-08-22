@@ -1333,6 +1333,18 @@
   <data name="monitor.error.device_alarm" xml:space="preserve">
     <value>Device alarm.</value>
   </data>
+  <data name="monitor.error.device_alarm_summary" xml:space="preserve">
+    <value>PLC alarm: {0} item(s) (see notification)</value>
+  </data>
+  <data name="monitor.error.device_alarm_pending" xml:space="preserve">
+    <value>PLC alarm pending confirmation (see notification)</value>
+  </data>
+  <data name="monitor.notification.plc_alarm_title" xml:space="preserve">
+    <value>PLC Alarm - Station {0}</value>
+  </data>
+  <data name="monitor.message.clear_device_alarm_confirm" xml:space="preserve">
+    <value>This only clears the local alarm display and does not reset the PLC alarm. Continue?</value>
+  </data>
   <data name="monitor.error.work_id_read_failed" xml:space="preserve">
     <value>Work ID read failed.</value>
   </data>

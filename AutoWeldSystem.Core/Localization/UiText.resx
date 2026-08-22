@@ -1333,6 +1333,18 @@
   <data name="monitor.error.device_alarm" xml:space="preserve">
     <value>设备报警</value>
   </data>
+  <data name="monitor.error.device_alarm_summary" xml:space="preserve">
+    <value>PLC报警：{0}条（详情见通知）</value>
+  </data>
+  <data name="monitor.error.device_alarm_pending" xml:space="preserve">
+    <value>PLC报警等待确认（详情见通知）</value>
+  </data>
+  <data name="monitor.notification.plc_alarm_title" xml:space="preserve">
+    <value>PLC报警 - 工位{0}</value>
+  </data>
+  <data name="monitor.message.clear_device_alarm_confirm" xml:space="preserve">
+    <value>仅清除本机报警提示，不会复位 PLC 报警。确定继续吗？</value>
+  </data>
   <data name="monitor.error.work_id_read_failed" xml:space="preserve">
     <value>工单号读取失败</value>
   </data>

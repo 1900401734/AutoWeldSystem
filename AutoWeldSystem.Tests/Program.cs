@@ -39,6 +39,8 @@ var tests = new (string Name, Action Run)[]
     ("System setting layout rules honor DPI breakpoints", SystemSettingLayoutRulesHonorDpiBreakpoints),
     ("Monitor right layout rules honor DPI and scrolling", MonitorRightLayoutRulesHonorDpiAndScrolling),
     ("Monitor view applies responsive right layout", MonitorViewAppliesResponsiveRightLayout),
+    ("PLC alarm notification rules normalize messages and signatures", PlcAlarmNotificationRulesNormalizeMessagesAndSignatures),
+    ("Monitor view preserves work order input focus on preview hover", MonitorViewPreservesWorkOrderInputFocusOnPreviewHover),
     ("System setting view avoids repeated layout rebuilds during resize", SystemSettingViewAvoidsRepeatedLayoutRebuilds),
     ("Base window batches layout and redraw during interactive resize", BaseWindowBatchesInteractiveResize),
     ("Main form keeps cached pages mounted during navigation", MainFormKeepsCachedPagesMountedDuringNavigation),
@@ -46,6 +48,7 @@ var tests = new (string Name, Action Run)[]
     ("System setting caches device lock state between displays", SystemSettingCachesDeviceLockStateBetweenDisplays),
     ("PLC alarm read failures are merged and labeled precisely", PlcAlarmReadFailuresAreMergedAndLabeledPrecisely),
     ("PLC production monitor separates business signal failures", PlcProductionMonitorSeparatesBusinessSignalFailures),
+    ("PLC production monitor preserves alarm state until projection", PlcProductionMonitorPreservesAlarmStateUntilProjection),
     ("Program exception log view batches live updates", ProgramExceptionLogViewBatchesLiveUpdates),
     ("Program exception log view normalizes legacy alarm entries", ProgramExceptionLogViewNormalizesLegacyAlarmEntries),
     ("Exception grid omits source columns but keeps detail source", ExceptionGridOmitsSourceColumns),
@@ -512,6 +515,63 @@ static void MonitorViewAppliesResponsiveRightLayout()
             && viewCode.Contains("ApplyProductionMetricTableStyle(tableMetric2, rowHeight, headerHeight)", StringComparison.Ordinal),
         "两个工位的生产指标表必须应用同一响应式行高。");
     AssertFalse(layoutMethod.Contains("Controls.Add", StringComparison.Ordinal), "响应式布局不得重建右侧控件。");
+}
+
+static void MonitorViewPreservesWorkOrderInputFocusOnPreviewHover()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var wireMethod = ExtractMethodText(
+        viewCode,
+        "private void WireWeldPreviewGridEvents(DataGridView grid)",
+        "private void UnwireWeldPreviewGridEvents");
+    var mouseEnterMethod = ExtractMethodText(
+        viewCode,
+        "private void Table2_MouseEnter(object? sender, EventArgs e)",
+        "private void Table2_MouseWheel");
+
+    AssertTrue(wireMethod.Contains("grid.MouseEnter += Table2_MouseEnter;", StringComparison.Ordinal), "焊接预览表格必须保留鼠标进入事件，以维持原有滚轮交互。");
+    var focusGuardIndex = mouseEnterMethod.IndexOf("if (tlpWorkOrderInfo.ContainsFocus)", StringComparison.Ordinal);
+    var gridFocusIndex = mouseEnterMethod.IndexOf("grid.Focus();", StringComparison.Ordinal);
+    AssertTrue(focusGuardIndex >= 0, "鼠标进入焊接预览时必须先保护工单输入区域焦点。");
+    AssertTrue(gridFocusIndex > focusGuardIndex, "工单输入区域焦点保护必须先于表格主动聚焦执行。");
+}
+
+static void PlcAlarmNotificationRulesNormalizeMessagesAndSignatures()
+{
+    var messages = PlcAlarmNotificationRules.SplitMessages("温度过高；安全门未关闭\r\n温度过高;伺服报警");
+    AssertSequenceEqual(
+        new[] { "温度过高", "安全门未关闭", "伺服报警" },
+        messages.ToArray(),
+        "PLC 报警通知必须按分隔符拆分并去重，同时保留首次出现顺序。");
+
+    var activeSignature = PlcAlarmNotificationRules.CreateSignature(messages, pendingConfirmation: false);
+    var reorderedSignature = PlcAlarmNotificationRules.CreateSignature(messages.Reverse(), pendingConfirmation: false);
+    var pendingSignature = PlcAlarmNotificationRules.CreateSignature(messages, pendingConfirmation: true);
+    AssertEqual(activeSignature, reorderedSignature, "报警签名不得受 PLC 报警返回顺序变化影响。");
+    AssertFalse(string.Equals(activeSignature, pendingSignature, StringComparison.Ordinal), "确认报警和等待确认报警必须使用不同签名。");
+    AssertEqual("1.温度过高\r\n2.安全门未关闭\r\n3.伺服报警", PlcAlarmNotificationRules.BuildDisplayText(messages), "通知正文必须按序号逐行展示全部报警。");
+}
+
+static void PlcProductionMonitorPreservesAlarmStateUntilProjection()
+{
+    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Plc", "ProductionMonitorService.cs"), Encoding.UTF8);
+    var pollMethod = ExtractMethodText(serviceCode, "private async Task PollOnceAsync", "private void ApplyEffectiveAlarmSnapshots");
+    var applyMethod = ExtractMethodText(serviceCode, "private void ApplyEffectiveAlarmSnapshots", "private async Task<IReadOnlyList<BizPlcAddress>>");
+    var failureMethod = ExtractMethodText(serviceCode, "private void PublishFailureForStations", "private void PublishIdleForStations");
+    var idleMethod = ExtractMethodText(serviceCode, "private void PublishIdleForStations", "private static IReadOnlyList<int> ResolveStationNumbers");
+
+    AssertTrue(
+        pollMethod.Contains("var currentSnapshot = GetCurrent(stationNo);", StringComparison.Ordinal)
+            && pollMethod.Contains("IsSoftwareAlarmActive = currentSnapshot.IsSoftwareAlarmActive", StringComparison.Ordinal),
+        "普通生产快照必须保留上一轮报警状态，不能先发布临时无报警快照。");
+    AssertTrue(
+        applyMethod.Contains("Publish(current with", StringComparison.Ordinal)
+            && applyMethod.Contains("IsSoftwareAlarmActive = stationAlarms.Count > 0", StringComparison.Ordinal),
+        "统一报警投影必须负责发布最终报警状态。");
+    AssertFalse(
+        failureMethod.Contains("IsSoftwareAlarmActive = false", StringComparison.Ordinal)
+            || idleMethod.Contains("IsSoftwareAlarmActive = false", StringComparison.Ordinal),
+        "生产读取失败或 PLC 暂未就绪时不得清空上一轮报警状态。");
 }
 
 static void SystemSettingViewAvoidsRepeatedLayoutRebuilds()
@@ -1855,10 +1915,11 @@ static void PlcSoftwareAlarmsStayLocalToMonitorView()
         && applyDeviceStatus.Contains("snapshot.IsRawAlarmUnconfirmed", StringComparison.Ordinal),
         "MonitorView 必须区分双条件模式黄色待确认与仅地址模式灰色未知。");
     AssertTrue(
-        applyDeviceStatus.Contains("_deviceAlarmRuntimeErrorText = alarmMessage.Trim();", StringComparison.Ordinal),
-        "异常详情必须展示完整的当前有效报警集合，不得按运行摘要长度截断。");
+        applyDeviceStatus.Contains("PlcAlarmNotificationRules.SplitMessages(snapshot.SoftwareAlarmMessage)", StringComparison.Ordinal)
+            && applyDeviceStatus.Contains("_deviceAlarmRuntimeErrorText = string.Join(\"；\", alarmMessages);", StringComparison.Ordinal),
+        "异常详情必须保留完整的当前有效报警集合，右侧摘要不得替代原始报警内容。");
     AssertTrue(
-        applyDeviceStatus.Contains("snapshot.IsSoftwareAlarmActive || snapshot.IsAlarmPendingConfirmation", StringComparison.Ordinal)
+        applyDeviceStatus.Contains("PlcAlarmNotificationRules.IsActive(", StringComparison.Ordinal)
         && applyDeviceStatus.Contains("PlcSoftwareAlarmRules.GenericAlarmMessage", StringComparison.Ordinal),
         "双条件模式状态 4 未匹配报警地址时，异常详情必须展示待确认原因。");
 
@@ -11348,7 +11409,7 @@ static void MonitorRuntimeTipsUseLocalizedSummaries()
     var enResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.en.resx"), Encoding.UTF8);
 
     AssertTrue(designerCode.Contains("btnClearErrorTips", StringComparison.Ordinal), "异常提示区域必须声明清除按钮。");
-    AssertTrue(viewCode.Contains("btnClearErrorTips.Click += (_, _) => ClearRuntimeError();", StringComparison.Ordinal), "清除按钮必须复用当前运行异常清空逻辑。");
+    AssertTrue(viewCode.Contains("btnClearErrorTips.Click += RuntimeErrorClearButton_Click;", StringComparison.Ordinal), "清除按钮必须通过专用入口处理本机设备报警的已读清除逻辑。");
     AssertTrue(viewCode.Contains("btnClearErrorTips.Visible = hasError;", StringComparison.Ordinal), "清除按钮显隐必须跟随当前异常摘要。");
 
     var requiredKeys = new[]
@@ -11376,7 +11437,11 @@ static void MonitorRuntimeTipsUseLocalizedSummaries()
         "monitor.error.station_operation_busy",
         "monitor.error.station_report_failed",
         "monitor.error.finish_quantity_read_failed",
-        "monitor.error.device_alarm"
+        "monitor.error.device_alarm",
+        "monitor.error.device_alarm_summary",
+        "monitor.error.device_alarm_pending",
+        "monitor.notification.plc_alarm_title",
+        "monitor.message.clear_device_alarm_confirm"
     };
 
     foreach (var key in requiredKeys)
@@ -11389,7 +11454,18 @@ static void MonitorRuntimeTipsUseLocalizedSummaries()
     AssertTrue(viewCode.Contains("SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.ProgramConfirmed)", StringComparison.Ordinal), "加工程序确认提示必须保存本地化资源键。");
     AssertTrue(viewCode.Contains("SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.WorkOrderLoaded)", StringComparison.Ordinal), "工单获取完成提示必须保存本地化资源键。");
     AssertTrue(viewCode.Contains("SetRuntimeError(TextKeys.Monitor.RuntimeError.BusinessSignalWriteFailed)", StringComparison.Ordinal), "业务信号写入失败摘要必须保存本地化资源键。");
-    AssertTrue(viewCode.Contains("SetRuntimeErrorText(_deviceAlarmRuntimeErrorText, RuntimeErrorSourceDeviceAlarm)", StringComparison.Ordinal), "设备报警详情必须保存当前所有有效报警内容及专属来源。");
+    AssertTrue(viewCode.Contains("SetRuntimeErrorDetailText(", StringComparison.Ordinal) && viewCode.Contains("RuntimeErrorSourceDeviceAlarm", StringComparison.Ordinal), "设备报警必须保存不截断的完整详情及专属来源，以便通知展示和恢复时精确清除。");
+    AssertTrue(viewCode.Contains("new AntdUI.Target(this)", StringComparison.Ordinal), "PLC 报警通知必须使用主窗体作为屏幕级定位目标。");
+    AssertTrue(viewCode.Contains("AntdUI.TAlignFrom.BL", StringComparison.Ordinal) && viewCode.Contains("AutoClose = 0", StringComparison.Ordinal), "PLC 报警通知必须固定在屏幕左下角并保持到手动关闭或报警恢复。");
+    AssertTrue(viewCode.Contains("AntdUI.Notification.contains(notificationId)", StringComparison.Ordinal), "关闭 PLC 报警通知前必须先确认其已进入队列，避免 close_id 的 volley 机制抵消后续通知。");
+    AssertTrue(viewCode.Contains("DismissPlcAlarmNotification(CurrentStationNo)", StringComparison.Ordinal), "右侧清除设备报警时必须仅标记当前工位通知为已读。");
+    AssertTrue(viewCode.Contains("CloseAllPlcAlarmNotifications();", StringComparison.Ordinal), "监控页销毁时必须关闭 PLC 报警通知。");
+    var productionMethod = ExtractMethodText(viewCode, "private void ApplyProductionStatus(PlcProductionSnapshot snapshot)", "private void ApplyDeviceStatus");
+    AssertTrue(productionMethod.IndexOf("SyncPlcAlarmNotification(snapshot)", StringComparison.Ordinal) < productionMethod.IndexOf("CurrentStationNo", StringComparison.Ordinal), "所有工位的报警快照必须先同步通知，再按当前工位刷新右侧状态。");
+    AssertTrue(viewCode.Contains("_plcAlarmNotificationDismissedSignatures", StringComparison.Ordinal) && viewCode.Contains("OnClose =", StringComparison.Ordinal), "通知手动关闭必须保留已读签名，避免相同报警轮询刷屏。");
+    AssertTrue(viewCode.Contains("_plcAlarmSummaryDismissedSignatures", StringComparison.Ordinal), "通知关闭与右侧摘要清除必须使用独立签名，手动关闭通知不得隐藏持续报警状态。");
+    AssertTrue(viewCode.Contains("private void SetRuntimeErrorDetailText", StringComparison.Ordinal) && viewCode.Contains("message.Trim()", StringComparison.Ordinal), "完整 PLC 报警详情不得经过运行摘要长度截断。");
+    AssertTrue(viewCode.Contains("_plcAlarmNotificationSignatures.Remove(stationNo)", StringComparison.Ordinal) && viewCode.Contains("AntdUI.Notification.close_id(notificationId)", StringComparison.Ordinal), "报警恢复时必须清除通知签名并关闭对应工位通知。");
 }
 
 static void MonitorViewShowsOperatorValidationSuccessAfterEmployeeValidation()
