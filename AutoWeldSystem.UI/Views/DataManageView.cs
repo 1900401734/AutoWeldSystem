@@ -5,6 +5,7 @@ using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.UI.Base;
 using AutoWeldSystem.UI.Infrastructure;
+using AutoWeldSystem.Services.Production;
 
 namespace AutoWeldSystem.UI.Views;
 
@@ -367,6 +368,7 @@ public partial class DataManageView : BaseView
         btnOpenReportFolder.Click += (_, _) => OpenSelectedReportFolder();
         selectProductResult.SelectedIndexChanged += ProductResultFilter_SelectedIndexChanged;
         tableTestData.SortModeChanged += TestData_SortModeChanged;
+        btnExportTestData.Click += (_, _) => ExportTestData();
     }
 
     private async void FilterInput_KeyDown(object? sender, KeyEventArgs e)
@@ -623,6 +625,36 @@ public partial class DataManageView : BaseView
         return true;
     }
 
+    private void ExportTestData()
+    {
+        var workOrder = GetSelectedWorkOrder();
+        if (workOrder is null || _visibleTestDataRows.Count == 0)
+        {
+            ShowWarning(_localizer.GetString(TextKeys.DataManage.ExportNoData));
+            return;
+        }
+
+        var safeWorkOrder = string.Concat(workOrder.WorkOrderId.Select(ch => Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch));
+        using var dialog = new SaveFileDialog
+        {
+            Filter = "Excel Workbook (*.xlsx)|*.xlsx",
+            DefaultExt = "xlsx",
+            AddExtension = true,
+            FileName = $"{safeWorkOrder}_测试数据_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx"
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        try
+        {
+            DataHistoryTestDataExportService.Export(dialog.FileName, workOrder.WorkOrderId, _visibleTestDataRows, _testDataDynamicColumns);
+            MessageBox.Show(this, _localizer.GetString(TextKeys.DataManage.ExportSuccess, dialog.FileName), T(TextKeys.Common.TitleInfo), MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            ShowError(_localizer.GetString(TextKeys.DataManage.ExportFailed, ex.Message));
+        }
+    }
+
     private int CountVisibleTestRecords()
         => _visibleTestDataRows.Sum(row => row.Children.Count > 0 ? row.Children.Count : row.RecordId > 0 ? 1 : 0);
 
@@ -863,6 +895,7 @@ public partial class DataManageView : BaseView
         btnReset.Text = _localizer.GetString(TextKeys.DataManage.Reset);
         tabWeldParameters.Text = _localizer.GetString(TextKeys.DataManage.TabWeldParameters);
         lblProductResultFilter.Text = _localizer.GetString(TextKeys.DataManage.ProductResultFilter);
+        btnExportTestData.Text = _localizer.GetString(TextKeys.DataManage.ExportTestData);
         BindProductResultFilterOptions();
         ConfigureTestDataColumns(_testDataDynamicColumns);
         tabReportFiles.Text = _localizer.GetString(TextKeys.DataManage.TabReportFiles);

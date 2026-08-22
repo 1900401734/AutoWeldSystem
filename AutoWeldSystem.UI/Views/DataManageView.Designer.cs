@@ -50,6 +50,7 @@
             parameterToolbar = new FlowLayoutPanel();
             lblProductResultFilter = new Label();
             selectProductResult = new AntdUI.Select();
+            btnExportTestData = new AntdUI.Button();
             dgvWeldParameters = new DataGridView();
             tableTestData = new AntdUI.Table();
             tabCollectionData = new TabPage();
@@ -447,6 +448,7 @@
             parameterToolbar.AutoSize = true;
             parameterToolbar.Controls.Add(lblProductResultFilter);
             parameterToolbar.Controls.Add(selectProductResult);
+            parameterToolbar.Controls.Add(btnExportTestData);
             parameterToolbar.Dock = DockStyle.Fill;
             parameterToolbar.FlowDirection = FlowDirection.LeftToRight;
             parameterToolbar.Location = new Point(1196, 0);
@@ -474,6 +476,17 @@
             selectProductResult.Name = "selectProductResult";
             selectProductResult.Size = new Size(136, 30);
             selectProductResult.TabIndex = 1;
+            //
+            // btnExportTestData
+            //
+            btnExportTestData.BorderWidth = 1F;
+            btnExportTestData.IconSvg = "FileExcelOutlined";
+            btnExportTestData.Location = new Point(224, 0);
+            btnExportTestData.Margin = new Padding(10, 0, 0, 0);
+            btnExportTestData.Name = "btnExportTestData";
+            btnExportTestData.Size = new Size(136, 30);
+            btnExportTestData.TabIndex = 2;
+            btnExportTestData.Text = "导出测试数据";
             //
             // dgvWeldParameters
             //
@@ -973,6 +986,7 @@
         private FlowLayoutPanel parameterToolbar;
         private Label lblProductResultFilter;
         private AntdUI.Select selectProductResult;
+        private AntdUI.Button btnExportTestData;
         private DataGridView dgvWeldParameters;
         private AntdUI.Table tableTestData;
         private TabPage tabCollectionData;

@@ -1925,6 +1925,15 @@
   <data name="data.label.raw_data" xml:space="preserve">
     <value>原始数据（拖动分隔线展开）</value>
   </data>
+  <data name="data.message.export_no_data" xml:space="preserve">
+    <value>当前没有可导出的测试数据。</value>
+  </data>
+  <data name="data.message.export_success" xml:space="preserve">
+    <value>测试数据已导出：{0}</value>
+  </data>
+  <data name="data.message.export_failed" xml:space="preserve">
+    <value>测试数据导出失败：{0}</value>
+  </data>
   <data name="data.message.loading" xml:space="preserve">
     <value>正在加载...</value>
   </data>

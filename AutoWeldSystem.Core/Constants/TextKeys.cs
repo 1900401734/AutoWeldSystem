@@ -627,6 +627,9 @@ public static class TextKeys
         public const string ProductResultAll = "data.filter.product_result_all";
         public const string ProductResultOk = "data.filter.product_result_ok";
         public const string ProductResultNg = "data.filter.product_result_ng";
+        public const string ExportNoData = "data.message.export_no_data";
+        public const string ExportSuccess = "data.message.export_success";
+        public const string ExportFailed = "data.message.export_failed";
 
         /// <summary>
         /// 焊接参数

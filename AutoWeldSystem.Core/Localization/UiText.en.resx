@@ -1924,6 +1924,15 @@
   <data name="data.label.raw_data" xml:space="preserve">
     <value>Raw Data (drag splitter to expand)</value>
   </data>
+  <data name="data.message.export_no_data" xml:space="preserve">
+    <value>No test data is available to export.</value>
+  </data>
+  <data name="data.message.export_success" xml:space="preserve">
+    <value>Test data exported: {0}</value>
+  </data>
+  <data name="data.message.export_failed" xml:space="preserve">
+    <value>Failed to export test data: {0}</value>
+  </data>
   <data name="data.message.loading" xml:space="preserve">
     <value>Loading...</value>
   </data>

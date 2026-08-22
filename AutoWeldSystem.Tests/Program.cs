@@ -108,6 +108,7 @@ var tests = new (string Name, Action Run)[]
     ("Data history tree preserves stored product result", DataHistoryTreeParentKeepsStoredProductResult),
     ("Data history product result filter keeps complete product rows", DataHistoryProductResultFilterKeepsCompleteProductRows),
     ("Data history dynamic sort orders products and keeps blanks last", DataHistoryDynamicSortOrdersProductsAndKeepsBlanksLast),
+    ("Data history export writes current rows and dynamic columns", DataHistoryExportWritesCurrentRowsAndDynamicColumns),
     ("Single-point history display rule uses configured and actual counts", SinglePointHistoryDisplayRuleUsesConfiguredAndActualCounts),
     ("Data history single-point row keeps point values", DataHistorySinglePointRowKeepsPointValues),
     ("Scheme output roles are independent from realtime preview", SchemeOutputRolesAreIndependentFromRealtimePreview),
@@ -2203,6 +2204,29 @@ static void DataManageViewUsesGenericProductTestTree()
     AssertTrue(designerCode.Contains("detailTabs.Controls.Add(tabWeldParameters);", StringComparison.Ordinal), "详情页必须保留测试数据页签。");
     AssertTrue(designerCode.Contains("detailTabs.Controls.Add(tabReportFiles);", StringComparison.Ordinal), "详情页必须保留报告文件页签。");
     AssertFalse(designerCode.Contains("detailTabs.Controls.Add(tabCollectionData);", StringComparison.Ordinal), "详情页不得继续显示重复的采集数据页签。");
+}
+
+static void DataHistoryExportWritesCurrentRowsAndDynamicColumns()
+{
+    var path = Path.Combine(Path.GetTempPath(), $"data-history-{Guid.NewGuid():N}.xlsx");
+    try
+    {
+        var rows = new[]
+        {
+            new DataHistoryTestDataRow
+            {
+                IsProductRow = true, StationNo = 1, ProductNo = "P001", ProductResult = ProductionConstants.TestResults.Ok,
+                Children = [new DataHistoryTestDataRow { TouchNo = "T1", TestResult = ProductionConstants.TestResults.Ok, RecordTime = new DateTime(2026, 8, 22, 10, 0, 0), DynamicValues = new Dictionary<string, string> { ["height"] = "2.5" } }]
+            }
+        };
+        DataHistoryTestDataExportService.Export(path, "WO001", rows, [new DataHistoryDynamicColumn { Key = "height", HeaderText = "高度" }]);
+        using var workbook = new XLWorkbook(path);
+        var sheet = workbook.Worksheet("测试数据");
+        AssertEqual("高度", sheet.Cell(1, 9).GetString(), "导出表头必须包含动态测试列。");
+        AssertEqual("WO001", sheet.Cell(2, 1).GetString(), "导出行必须包含当前工单号。");
+        AssertEqual("2.5", sheet.Cell(2, 9).GetString(), "导出行必须包含动态测试值。");
+    }
+    finally { if (File.Exists(path)) File.Delete(path); }
 }
 
 static void DataHistoryDynamicSortOrdersProductsAndKeepsBlanksLast()
