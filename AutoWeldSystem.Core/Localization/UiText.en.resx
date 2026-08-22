@@ -1897,6 +1897,21 @@
   <data name="data.button.open_report_folder" xml:space="preserve">
     <value>Open Folder</value>
   </data>
+  <data name="data.button.export_test_data" xml:space="preserve">
+    <value>Export Test Data</value>
+  </data>
+  <data name="data.label.product_result_filter" xml:space="preserve">
+    <value>Product Result</value>
+  </data>
+  <data name="data.filter.product_result_all" xml:space="preserve">
+    <value>All</value>
+  </data>
+  <data name="data.filter.product_result_ok" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="data.filter.product_result_ng" xml:space="preserve">
+    <value>NG</value>
+  </data>
   <data name="data.tab.weld_parameters" xml:space="preserve">
     <value>Test Data</value>
   </data>

@@ -45,7 +45,11 @@
             detailTabs = new TabControl();
             tabWeldParameters = new TabPage();
             parameterLayout = new TableLayoutPanel();
+            parameterHeaderLayout = new TableLayoutPanel();
             lblParameterSummary = new Label();
+            parameterToolbar = new FlowLayoutPanel();
+            lblProductResultFilter = new Label();
+            selectProductResult = new AntdUI.Select();
             dgvWeldParameters = new DataGridView();
             tableTestData = new AntdUI.Table();
             tabCollectionData = new TabPage();
@@ -113,6 +117,8 @@
             detailTabs.SuspendLayout();
             tabWeldParameters.SuspendLayout();
             parameterLayout.SuspendLayout();
+            parameterHeaderLayout.SuspendLayout();
+            parameterToolbar.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)dgvWeldParameters).BeginInit();
             tabCollectionData.SuspendLayout();
             collectionLayout.SuspendLayout();
@@ -398,7 +404,7 @@
             //
             parameterLayout.ColumnCount = 1;
             parameterLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            parameterLayout.Controls.Add(lblParameterSummary, 0, 0);
+            parameterLayout.Controls.Add(parameterHeaderLayout, 0, 0);
             parameterLayout.Controls.Add(tableTestData, 0, 1);
             parameterLayout.Dock = DockStyle.Fill;
             parameterLayout.Location = new Point(3, 3);
@@ -409,16 +415,65 @@
             parameterLayout.Size = new Size(1410, 314);
             parameterLayout.TabIndex = 0;
             //
+            // parameterHeaderLayout
+            //
+            parameterHeaderLayout.ColumnCount = 2;
+            parameterHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            parameterHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            parameterHeaderLayout.Controls.Add(lblParameterSummary, 0, 0);
+            parameterHeaderLayout.Controls.Add(parameterToolbar, 1, 0);
+            parameterHeaderLayout.Dock = DockStyle.Fill;
+            parameterHeaderLayout.Location = new Point(0, 0);
+            parameterHeaderLayout.Margin = new Padding(0);
+            parameterHeaderLayout.Name = "parameterHeaderLayout";
+            parameterHeaderLayout.RowCount = 1;
+            parameterHeaderLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            parameterHeaderLayout.Size = new Size(1410, 30);
+            parameterHeaderLayout.TabIndex = 0;
+            //
             // lblParameterSummary
             //
             lblParameterSummary.Dock = DockStyle.Fill;
             lblParameterSummary.ForeColor = SystemColors.GrayText;
             lblParameterSummary.Location = new Point(3, 0);
             lblParameterSummary.Name = "lblParameterSummary";
-            lblParameterSummary.Size = new Size(1404, 30);
+            lblParameterSummary.Size = new Size(1190, 30);
             lblParameterSummary.TabIndex = 0;
             lblParameterSummary.Text = "请选择历史工单";
             lblParameterSummary.TextAlign = ContentAlignment.MiddleLeft;
+            //
+            // parameterToolbar
+            //
+            parameterToolbar.AutoSize = true;
+            parameterToolbar.Controls.Add(lblProductResultFilter);
+            parameterToolbar.Controls.Add(selectProductResult);
+            parameterToolbar.Dock = DockStyle.Fill;
+            parameterToolbar.FlowDirection = FlowDirection.LeftToRight;
+            parameterToolbar.Location = new Point(1196, 0);
+            parameterToolbar.Margin = new Padding(0);
+            parameterToolbar.Name = "parameterToolbar";
+            parameterToolbar.Size = new Size(214, 30);
+            parameterToolbar.TabIndex = 1;
+            parameterToolbar.WrapContents = false;
+            //
+            // lblProductResultFilter
+            //
+            lblProductResultFilter.AutoSize = true;
+            lblProductResultFilter.Location = new Point(0, 5);
+            lblProductResultFilter.Margin = new Padding(0, 5, 6, 0);
+            lblProductResultFilter.Name = "lblProductResultFilter";
+            lblProductResultFilter.Size = new Size(72, 20);
+            lblProductResultFilter.TabIndex = 0;
+            lblProductResultFilter.Text = "产品结果";
+            //
+            // selectProductResult
+            //
+            selectProductResult.ListAutoWidth = false;
+            selectProductResult.Location = new Point(78, 0);
+            selectProductResult.Margin = new Padding(0);
+            selectProductResult.Name = "selectProductResult";
+            selectProductResult.Size = new Size(136, 30);
+            selectProductResult.TabIndex = 1;
             //
             // dgvWeldParameters
             //
@@ -871,6 +926,10 @@
             detailTabs.ResumeLayout(false);
             tabWeldParameters.ResumeLayout(false);
             parameterLayout.ResumeLayout(false);
+            parameterHeaderLayout.ResumeLayout(false);
+            parameterHeaderLayout.PerformLayout();
+            parameterToolbar.ResumeLayout(false);
+            parameterToolbar.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)dgvWeldParameters).EndInit();
             tabCollectionData.ResumeLayout(false);
             collectionLayout.ResumeLayout(false);
@@ -909,7 +968,11 @@
         private TabControl detailTabs;
         private TabPage tabWeldParameters;
         private TableLayoutPanel parameterLayout;
+        private TableLayoutPanel parameterHeaderLayout;
         private Label lblParameterSummary;
+        private FlowLayoutPanel parameterToolbar;
+        private Label lblProductResultFilter;
+        private AntdUI.Select selectProductResult;
         private DataGridView dgvWeldParameters;
         private AntdUI.Table tableTestData;
         private TabPage tabCollectionData;

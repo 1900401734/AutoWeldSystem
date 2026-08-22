@@ -28,6 +28,10 @@ public partial class DataManageView : BaseView
     private bool _disposing;
     private int _selectedTaskId;
     private IReadOnlyList<DataHistoryDynamicColumn> _testDataDynamicColumns = [];
+    private IReadOnlyList<DataHistoryTestDataRow> _testDataRows = [];
+    private IReadOnlyList<DataHistoryTestDataRow> _visibleTestDataRows = [];
+    private string _productResultFilter = DataHistoryTestDataRules.AllResults;
+    private bool _suppressProductResultFilter;
 
     /// <summary>
     /// Constructor used only by the WinForms designer.
@@ -355,6 +359,7 @@ public partial class DataManageView : BaseView
         };
         btnOpenReport.Click += (_, _) => OpenSelectedReport();
         btnOpenReportFolder.Click += (_, _) => OpenSelectedReportFolder();
+        selectProductResult.SelectedIndexChanged += ProductResultFilter_SelectedIndexChanged;
     }
 
     private async void FilterInput_KeyDown(object? sender, KeyEventArgs e)
@@ -558,14 +563,59 @@ public partial class DataManageView : BaseView
     private void BindTestData(DataHistoryTestDataResult result)
     {
         _testDataDynamicColumns = result.DynamicColumns;
+        _testDataRows = result.Rows;
+        ResetProductResultFilter();
         ConfigureTestDataColumns(_testDataDynamicColumns);
+        ApplyTestDataView();
+    }
+
+    private void ProductResultFilter_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
+    {
+        if (_suppressProductResultFilter)
+        {
+            return;
+        }
+
+        _productResultFilter = e.Value switch
+        {
+            1 => ProductionConstants.TestResults.Ok,
+            2 => ProductionConstants.TestResults.Ng,
+            _ => DataHistoryTestDataRules.AllResults
+        };
+        ApplyTestDataView();
+    }
+
+    private void ApplyTestDataView()
+    {
+        _visibleTestDataRows = DataHistoryTestDataRules.Apply(
+            _testDataRows,
+            _productResultFilter,
+            sortColumnKey: null,
+            descending: false);
         tableTestData.DataSource = null;
-        tableTestData.DataSource = result.Rows.ToList();
+        tableTestData.DataSource = _visibleTestDataRows.ToList();
         lblParameterSummary.Text = _localizer.GetString(
             TextKeys.DataManage.ParameterSummary,
-            result.Rows.Count,
-            result.RecordCount,
-            result.DynamicColumns.Count);
+            _visibleTestDataRows.Count,
+            CountVisibleTestRecords(),
+            _testDataDynamicColumns.Count);
+    }
+
+    private int CountVisibleTestRecords()
+        => _visibleTestDataRows.Sum(row => row.Children.Count > 0 ? row.Children.Count : row.RecordId > 0 ? 1 : 0);
+
+    private void ResetProductResultFilter()
+    {
+        _productResultFilter = DataHistoryTestDataRules.AllResults;
+        _suppressProductResultFilter = true;
+        try
+        {
+            selectProductResult.SelectedIndex = 0;
+        }
+        finally
+        {
+            _suppressProductResultFilter = false;
+        }
     }
 
     private void BindReportFiles(IReadOnlyList<DataHistoryReportFileRow> rows)
@@ -710,6 +760,9 @@ public partial class DataManageView : BaseView
         RemoveDynamicParameterColumns();
         parameterBindingSource.DataSource = Array.Empty<DataHistoryWeldParameterRow>();
         _testDataDynamicColumns = [];
+        _testDataRows = [];
+        _visibleTestDataRows = [];
+        ResetProductResultFilter();
         ConfigureTestDataColumns(_testDataDynamicColumns);
         tableTestData.DataSource = Array.Empty<DataHistoryTestDataRow>();
         collectionBindingSource.DataSource = Array.Empty<DataHistoryCollectionRow>();
@@ -787,11 +840,35 @@ public partial class DataManageView : BaseView
         btnQuery.Text = _localizer.GetString(TextKeys.DataManage.Query);
         btnReset.Text = _localizer.GetString(TextKeys.DataManage.Reset);
         tabWeldParameters.Text = _localizer.GetString(TextKeys.DataManage.TabWeldParameters);
+        lblProductResultFilter.Text = _localizer.GetString(TextKeys.DataManage.ProductResultFilter);
+        BindProductResultFilterOptions();
         ConfigureTestDataColumns(_testDataDynamicColumns);
         tabReportFiles.Text = _localizer.GetString(TextKeys.DataManage.TabReportFiles);
         btnOpenReport.Text = _localizer.GetString(TextKeys.DataManage.OpenReport);
         btnOpenReportFolder.Text = _localizer.GetString(TextKeys.DataManage.OpenReportFolder);
         ApplyColumnHeaders();
+    }
+
+
+    private void BindProductResultFilterOptions()
+    {
+        var selectedIndex = selectProductResult.SelectedIndex < 0 ? 0 : selectProductResult.SelectedIndex;
+        _suppressProductResultFilter = true;
+        try
+        {
+            selectProductResult.Items.Clear();
+            selectProductResult.Items.AddRange(
+            [
+                _localizer.GetString(TextKeys.DataManage.ProductResultAll),
+                _localizer.GetString(TextKeys.DataManage.ProductResultOk),
+                _localizer.GetString(TextKeys.DataManage.ProductResultNg)
+            ]);
+            selectProductResult.SelectedIndex = Math.Min(selectedIndex, 2);
+        }
+        finally
+        {
+            _suppressProductResultFilter = false;
+        }
     }
 
     private void ApplyColumnHeaders()

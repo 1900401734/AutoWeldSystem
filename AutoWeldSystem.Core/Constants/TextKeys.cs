@@ -622,6 +622,11 @@ public static class TextKeys
         /// 打开所在目录
         /// </summary>
         public const string OpenReportFolder = "data.button.open_report_folder";
+        public const string ExportTestData = "data.button.export_test_data";
+        public const string ProductResultFilter = "data.label.product_result_filter";
+        public const string ProductResultAll = "data.filter.product_result_all";
+        public const string ProductResultOk = "data.filter.product_result_ok";
+        public const string ProductResultNg = "data.filter.product_result_ng";
 
         /// <summary>
         /// 焊接参数

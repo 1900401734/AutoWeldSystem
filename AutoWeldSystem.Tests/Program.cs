@@ -1,4 +1,4 @@
-using AutoWeldSystem.Core.Entities;
+﻿using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Center;
@@ -106,6 +106,7 @@ var tests = new (string Name, Action Run)[]
     ("Dynamic history and center use task-bound process config", DynamicHistoryAndCenterUseTaskBoundProcessConfig),
     ("DataManageView uses generic product test tree", DataManageViewUsesGenericProductTestTree),
     ("Data history tree preserves stored product result", DataHistoryTreeParentKeepsStoredProductResult),
+    ("Data history product result filter keeps complete product rows", DataHistoryProductResultFilterKeepsCompleteProductRows),
     ("Single-point history display rule uses configured and actual counts", SinglePointHistoryDisplayRuleUsesConfiguredAndActualCounts),
     ("Data history single-point row keeps point values", DataHistorySinglePointRowKeepsPointValues),
     ("Scheme output roles are independent from realtime preview", SchemeOutputRolesAreIndependentFromRealtimePreview),
@@ -2201,6 +2202,37 @@ static void DataManageViewUsesGenericProductTestTree()
     AssertTrue(designerCode.Contains("detailTabs.Controls.Add(tabWeldParameters);", StringComparison.Ordinal), "详情页必须保留测试数据页签。");
     AssertTrue(designerCode.Contains("detailTabs.Controls.Add(tabReportFiles);", StringComparison.Ordinal), "详情页必须保留报告文件页签。");
     AssertFalse(designerCode.Contains("detailTabs.Controls.Add(tabCollectionData);", StringComparison.Ordinal), "详情页不得继续显示重复的采集数据页签。");
+}
+
+static void DataHistoryProductResultFilterKeepsCompleteProductRows()
+{
+    var okChild = new DataHistoryTestDataRow { RecordId = 11, SequenceNo = 1 };
+    var ngChild1 = new DataHistoryTestDataRow { RecordId = 21, SequenceNo = 1 };
+    var ngChild2 = new DataHistoryTestDataRow { RecordId = 22, SequenceNo = 2 };
+    var rows = new[]
+    {
+        new DataHistoryTestDataRow
+        {
+            IsProductRow = true,
+            ProductNo = "OK-1",
+            ProductResult = ProductionConstants.TestResults.Ok,
+            Children = [okChild]
+        },
+        new DataHistoryTestDataRow
+        {
+            IsProductRow = true,
+            ProductNo = "NG-1",
+            ProductResult = ProductionConstants.TestResults.PreWeldNg,
+            Children = [ngChild1, ngChild2]
+        }
+    };
+
+    var okRows = DataHistoryTestDataRules.Apply(rows, ProductionConstants.TestResults.Ok, null, false);
+    var ngRows = DataHistoryTestDataRules.Apply(rows, ProductionConstants.TestResults.Ng, null, false);
+
+    AssertSequenceEqual(new[] { "OK-1" }, okRows.Select(row => row.ProductNo).ToArray(), "OK 筛选必须只保留产品结果为 OK 的产品。");
+    AssertSequenceEqual(new[] { "NG-1" }, ngRows.Select(row => row.ProductNo).ToArray(), "NG 筛选必须包含焊前 NG 等失败产品结果。");
+    AssertSequenceEqual(new[] { 21, 22 }, ngRows[0].Children.Select(row => row.RecordId).ToArray(), "产品结果筛选不得裁剪产品下的测试记录。");
 }
 
 static void DataHistoryTreeParentKeepsStoredProductResult()
