@@ -59,19 +59,19 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         var normalizedStationNo = NormalizeStationNo(stationNo, task);
         var processConfig = ResolveProcessConfig(task, normalizedStationNo);
         var schemeItems = ResolveSchemeItems(processConfig.SchemeId);
+        var settings = _settingsService.Get();
+        var resultSource = ProductionConstants.InspectionResultSources.Normalize(settings.InspectionResultSource);
+        var useProgramResult = WholePieceProgramResultRules.IsApplicable(
+            settings.ProcessParameterDeviceType,
+            resultSource);
 
         _productionLogService.Write(
             "ProductDataReadStart",
             ProductionFlowLogTexts.Summaries.ProductDataReadStart,
-            $"SchemeId={processConfig.SchemeId}, ProductBase={processConfig.ProductBase}, TouchBase={processConfig.TouchBase}, TestBase={processConfig.TestBase}, TouchCount={processConfig.TouchCount}",
+            $"SchemeId={processConfig.SchemeId}, ProductBase={processConfig.ProductBase}, TouchBase={processConfig.TouchBase}, TestBase={processConfig.TestBase}, TouchCount={processConfig.TouchCount}, ResultSource={resultSource}, ProgramResult={useProgramResult}",
             stationNo: normalizedStationNo,
             workOrderId: task.SN,
             programId: task.ProgramId ?? string.Empty);
-
-        var settings = _settingsService.Get();
-        var useProgramResult = WholePieceProgramResultRules.IsApplicable(
-            settings.ProcessParameterDeviceType,
-            settings.InspectionResultSource);
         var header = await ReadProductHeaderAsync(processConfig, useProgramResult, cancellationToken);
         var records = new List<BizWeldPointRecord>();
         for (var touchIndex = 1; touchIndex <= header.ActualTouchCount; touchIndex++)

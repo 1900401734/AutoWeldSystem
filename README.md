@@ -1,6 +1,6 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.2.1`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.2.2`。
 
 ## 功能概览
 
@@ -219,9 +219,13 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 
 ## 检测设备四面转 A/B、程序判定与升级检查
 
+`v2.2.2` 同时修复了产品数据就绪信号的高电平残留处理：PLC在完工后仍保持“产品数据就绪=1”时，上位机不会把旧高电平当作新产品，也不会再次读取已清零的产品号和面号；必须先观察到信号回到0，后续新的0->1上升沿才会触发采集。采集反馈1/2只表示采集流程成功或失败，程序计算得到NG仍反馈1；反馈写入失败会在同一就绪周期重试，不会重复采集。
+
+`v2.2.2` 另外修复了系统设置页面的显示问题：当“过程参数设备类型”不是“整件系统-检测设备”时，“检测结果来源”整行会自动隐藏并折叠所占空间，不再在 MES 配置区域留下空白行；整件检测设备仍正常显示该配置。
+
 ### 本次变动的意图与影响
 
-本次 `v2.2.0` 不是单纯的报表字段调整，而是对整件检测设备“采集完成 -> 结果判定 -> 本地历史 -> 报表 -> MES”的数据口径进行统一：
+`v2.2.0` 不是单纯的报表字段调整，而是对整件检测设备“采集完成 -> 结果判定 -> 本地历史 -> 报表 -> MES”的数据口径进行统一：
 
 - **为什么要改**：PLC 会保存四个面的原始检测值，但客户只需要 A/B 两面结果；同时，部分现场需要由程序按产品程序中配置的最大允许值判定，而不能继续直接采用 PLC 最终结果。
 - **哪些设备受影响**：只有系统设置中“过程参数设备类型 = 整件系统-检测设备”，且产品工艺面数量为 4 的产品进入本次 A/B 和程序判定逻辑。电磁设备、整件点焊设备、非四面工艺以及 `PLC读取` 模式保持原有结果和输出行为。
@@ -267,10 +271,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>2.2.1</Version>
-<AssemblyVersion>2.2.1.0</AssemblyVersion>
-<FileVersion>2.2.1.0</FileVersion>
-<InformationalVersion>2.2.1</InformationalVersion>
+<Version>2.2.2</Version>
+<AssemblyVersion>2.2.2.0</AssemblyVersion>
+<FileVersion>2.2.2.0</FileVersion>
+<InformationalVersion>2.2.2</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -282,9 +286,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v2.2.1 -m "Release v2.2.1"
+git tag -a v2.2.2 -m "Release v2.2.2"
 git push origin main
-git push origin v2.2.1
+git push origin v2.2.2
 ```
 
 ## Git 使用

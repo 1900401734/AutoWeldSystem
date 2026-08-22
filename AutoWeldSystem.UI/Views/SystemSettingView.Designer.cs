@@ -1747,7 +1747,7 @@
             tableLayoutPanelMesConfig.Margin = new Padding(2, 3, 2, 3);
             tableLayoutPanelMesConfig.Name = "tableLayoutPanelMesConfig";
             tableLayoutPanelMesConfig.RowCount = 18;
-            tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 78F));
+            tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle());
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle());
@@ -1843,6 +1843,8 @@
             // 
             // tlpProcessParameterType
             // 
+            tlpProcessParameterType.AutoSize = true;
+            tlpProcessParameterType.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             tlpProcessParameterType.ColumnCount = 2;
             tlpProcessParameterType.ColumnStyles.Add(new ColumnStyle());
             tlpProcessParameterType.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
@@ -1858,7 +1860,7 @@
             tlpProcessParameterType.Name = "tlpProcessParameterType";
             tlpProcessParameterType.RowCount = 2;
             tlpProcessParameterType.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
-            tlpProcessParameterType.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
+            tlpProcessParameterType.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tlpProcessParameterType.Size = new Size(434, 78);
             tlpProcessParameterType.TabIndex = 7;
             // 

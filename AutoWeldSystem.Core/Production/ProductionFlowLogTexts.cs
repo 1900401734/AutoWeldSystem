@@ -10,9 +10,11 @@ public static class ProductionFlowLogTexts
     {
         public const string ProductDataReadyReset = "PLC已清空产品数据就绪信号";
         public const string ProductDataReady = "检测到产品数据就绪信号";
+        public const string ProductDataReadyStaleHigh = "产品数据就绪仍为高电平，等待PLC复位";
         public const string ProductCollectionStart = "开始读取整件产品数据";
         public const string ProductCollectionFeedbackSucceeded = "已反馈PLC采集成功";
         public const string ProductCollectionFeedbackFailed = "已反馈PLC采集失败";
+        public const string ProductCollectionFeedbackPending = "PLC采集反馈写入失败，等待重试";
         public const string ProductDataReadStart = "开始采集产品周期数据";
         public const string ProductDataSaveFailed = "产品采集数据保存失败";
         public const string ProductDataSaved = "产品采集数据已保存";

@@ -64,6 +64,7 @@ var tests = new (string Name, Action Run)[]
     ("System setting localization resources are complete", SystemSettingLocalizationResourcesAreComplete),
     ("System setting configures PLC alarm trigger mode", SystemSettingConfiguresPlcAlarmTriggerMode),
     ("System setting configures inspection result source", SystemSettingConfiguresInspectionResultSource),
+    ("PLC product ready handshake retains high-level state", PlcProductReadyHandshakeRetainsHighLevelState),
     ("MES endpoint validation returns stable error codes", MesEndpointValidationReturnsStableErrorCodes),
     ("Device id sync rules detect missing old devices", DeviceIdSyncRulesDetectMissingOldDevices),
     ("System setting saves before background device sync", SystemSettingRetriesMissingOldDeviceAsNewRegistration),
@@ -2357,6 +2358,7 @@ static void WholePieceProgramResultsUseMaximumAllowedValues()
     AssertTrue(collectionCode.Contains("!useProgramResult || ProductRealtimePreviewRules.ShouldReadTestValues(testResult)", StringComparison.Ordinal), "程序计算模式下PLC未完成的面不得读取测试值地址。");
     AssertTrue(previewCode.Contains("activeTask?.ProgramContentSnapshot", StringComparison.Ordinal)
         && previewCode.Contains("WholePieceProgramResultRules.ResolveRealtimeProductResult", StringComparison.Ordinal), "实时预览必须使用任务固化最大允许值并逐面汇总产品结果。");
+    AssertTrue(collectionCode.Contains("ResultSource={resultSource}, ProgramResult={useProgramResult}", StringComparison.Ordinal), "正式采集日志必须记录本轮实际使用的结果来源，便于区分PLC读取和程序计算。");
 }
 
 static void WholePieceAggregationRejectsInvalidSourceData()
@@ -12836,6 +12838,9 @@ static void SystemSettingViewUsesResponsiveSemanticColumns()
     AssertTrue(designerCode.Contains("middleSettingsColumn.Controls.Add(grpCenterServerConfig, 0, 2);", StringComparison.Ordinal), "中列第三组必须是中心服务器。");
     AssertTrue(designerCode.Contains("rightSettingsColumn.Controls.Add(grpMesConfig, 0, 0);", StringComparison.Ordinal), "右列必须是 MES。");
     AssertTrue(designerCode.Contains("tableLayoutPanelMesConfig.AutoScroll = true;", StringComparison.Ordinal), "MES 内容必须独立滚动。");
+    AssertTrue(designerCode.Contains("tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.AutoSize));", StringComparison.Ordinal)
+        && designerCode.Contains("tlpProcessParameterType.AutoSizeMode = AutoSizeMode.GrowAndShrink;", StringComparison.Ordinal)
+        && designerCode.Contains("tlpProcessParameterType.RowStyles.Add(new RowStyle(SizeType.AutoSize));", StringComparison.Ordinal), "非整件检测设备隐藏结果来源行后，MES配置布局必须自动折叠空行。");
     AssertFalse(designerCode.Contains("tabBasicSettings.Controls.Add(grpPlcConfig);", StringComparison.Ordinal), "分组不应继续直接使用页签绝对坐标。");
     AssertTrue(viewCode.Contains("SystemSettingLayoutRules.ResolveMode(basicSettingsViewport.ClientSize.Width, DeviceDpi)", StringComparison.Ordinal), "运行时必须按 DPI 逻辑宽度选择布局。");
     AssertTrue(viewCode.Contains("private void ApplyBasicSettingsLayout(bool force = false)", StringComparison.Ordinal), "代码后置文件必须提供统一重排入口。");
@@ -12862,6 +12867,26 @@ static void SystemSettingConfiguresPlcAlarmTriggerMode()
         AssertTrue(resources.Contains("system.option.plc_alarm.address_only", StringComparison.Ordinal), $"{resourceFile} 必须包含仅地址模式。");
         AssertTrue(resources.Contains("system.option.plc_alarm.device_status_and_address", StringComparison.Ordinal), $"{resourceFile} 必须包含双条件模式。");
     }
+}
+
+static void PlcProductReadyHandshakeRetainsHighLevelState()
+{
+    var serviceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Plc", "WeldCycleMonitorService.cs"),
+        Encoding.UTF8);
+
+    AssertTrue(serviceCode.Contains("PollIdleProductReadySignalsAsync", StringComparison.Ordinal), "无活动任务时必须继续轮询产品数据就绪信号，不能直接清空状态。");
+    AssertTrue(serviceCode.Contains("AwaitingReadyReset", StringComparison.Ordinal)
+        && serviceCode.Contains("PendingFeedbackValue", StringComparison.Ordinal)
+        && serviceCode.Contains("ReadySignalInitialized", StringComparison.Ordinal), "产品数据就绪握手必须保留高电平等待复位和待反馈状态。");
+    AssertTrue(serviceCode.Contains("Edge=0->1", StringComparison.Ordinal), "产品采集必须只在产品数据就绪的0到1边沿触发。");
+    AssertTrue(serviceCode.Contains("RetryPendingFeedbackAsync", StringComparison.Ordinal), "反馈写入失败后必须重试反馈而不是重复采集。");
+    AssertTrue(serviceCode.Contains("ProductDataReadyStaleHigh", StringComparison.Ordinal), "遗留高电平必须记录明确日志。");
+    AssertTrue(serviceCode.Contains("PendingFeedbackValue = 1", StringComparison.Ordinal)
+        && serviceCode.Contains("PendingFeedbackValue = 2", StringComparison.Ordinal), "采集成功和采集失败必须分别保留反馈1/2。");
+    AssertTrue(serviceCode.Contains("Task=none", StringComparison.Ordinal)
+        && serviceCode.Contains("ObservedTaskId", StringComparison.Ordinal)
+        && serviceCode.Contains("PreviousTaskId", StringComparison.Ordinal), "无活动任务和跨任务高电平都必须保留任务边界上下文。");
 }
 
 static void SystemSettingConfiguresInspectionResultSource()
