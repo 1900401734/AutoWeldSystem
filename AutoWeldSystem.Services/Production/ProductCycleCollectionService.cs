@@ -502,9 +502,9 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             var result = WholePieceProgramResultRules.EvaluateFace(task.ProgramContentSnapshot, measurements);
             if (!result.IsSuccess)
             {
-                throw new BusinessOperationException(
+                throw new ProductCollectionHandledException(
                     Category,
-                    "产品数据采集失败",
+                    "产品数据采集配置错误",
                     $"产品“{record.ProductNo}”面“{record.TouchNo}”程序判定失败：{result.ErrorMessage}");
             }
 

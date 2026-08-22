@@ -2154,4 +2154,8 @@
   <data name="system.option.inspection_result_source.plc" xml:space="preserve"><value>PLC读取</value></data>
   <data name="system.option.inspection_result_source.program" xml:space="preserve"><value>程序计算</value></data>
   <data name="system.message.inspection_result_source_locked" xml:space="preserve"><value>存在未完工任务，不能切换检测结果来源，请先完工后再调整。</value></data>
+  <data name="system.label.realtime_point_number_source" xml:space="preserve"><value>实时焊点编号来源</value></data>
+  <data name="system.option.realtime_point_number_source.plc" xml:space="preserve"><value>PLC读取</value></data>
+  <data name="system.option.realtime_point_number_source.program" xml:space="preserve"><value>程序判断</value></data>
+  <data name="system.message.realtime_point_number_source_locked" xml:space="preserve"><value>存在未完工任务，不能切换实时焊点编号来源，请先完工后再调整。</value></data>
 </root>

@@ -15,6 +15,7 @@ public static class ProductionFlowLogTexts
         public const string ProductCollectionFeedbackSucceeded = "已反馈PLC采集成功";
         public const string ProductCollectionFeedbackFailed = "已反馈PLC采集失败";
         public const string ProductCollectionFeedbackPending = "PLC采集反馈写入失败，等待重试";
+        public const string ProductCollectionConfigurationFailed = "产品采集配置错误，已反馈PLC接收";
         public const string ProductDataReadStart = "开始采集产品周期数据";
         public const string ProductDataSaveFailed = "产品采集数据保存失败";
         public const string ProductDataSaved = "产品采集数据已保存";

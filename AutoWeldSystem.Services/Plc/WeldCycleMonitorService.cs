@@ -505,6 +505,11 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
                 plcAddress: stationState.ProductDataReadyAddress?.Address);
             records = await _productCycleCollectionService.CollectAsync(task, stationState.StationNo, cancellationToken);
         }
+        catch (ProductCollectionHandledException ex)
+        {
+            await CompleteCollectionWithHandledErrorAsync(task, stationState, ex.Detail, ex.Message, cancellationToken);
+            return;
+        }
         catch (BusinessOperationException ex)
         {
             await CompleteCollectionWithFailureAsync(task, stationState, ex.Detail, ex.Message, cancellationToken);
@@ -569,6 +574,32 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
             // 下游转发或上传失败不能把已经完成的PLC采集反馈从1改成2。
             _exceptionLogService.Write(ex, "PLC.ProductCyclePostProcessing", $"Station={stationState.StationNo}, WorkOrder={task.SN}");
         }
+    }
+
+    private async Task CompleteCollectionWithHandledErrorAsync(
+        BizWeldTask task,
+        StationCycleState stationState,
+        string detail,
+        string logMessage,
+        CancellationToken cancellationToken)
+    {
+        stationState.ProductDataReadyHandled = true;
+        stationState.ObservedTaskId = task.Id;
+        stationState.PendingFeedbackValue = 1;
+        var feedbackWritten = IsPlcConnected(stationState.StationNo)
+            && await WriteProductCollectionFeedbackAsync(stationState, 1, cancellationToken);
+        stationState.ProductFeedbackWritten = feedbackWritten;
+
+        WriteProductionLog(
+            "ProductCollectionConfigurationFailed",
+            ProductionFlowLogTexts.Summaries.ProductCollectionConfigurationFailed,
+            $"Feedback=1, FeedbackWritten={feedbackWritten}, ReadyValue=1, {detail}",
+            task,
+            stationNo: stationState.StationNo,
+            level: "Error",
+            plcSignal: AppConstants.PlcLogicalKeys.ProductCollectionFeedback,
+            plcAddress: stationState.ProductCollectionFeedbackAddress?.Address);
+        WriteBusinessFailureLog(logMessage, detail);
     }
 
     private async Task CompleteCollectionWithFailureAsync(

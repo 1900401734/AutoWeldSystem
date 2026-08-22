@@ -1109,6 +1109,7 @@ public static class TextKeys
         public const string LabelCenterServerHeartbeat = "system.label.center_server_heartbeat";
         public const string LabelProcessParameterDeviceType = "system.label.process_parameter_device_type";
         public const string LabelInspectionResultSource = "system.label.inspection_result_source";
+        public const string LabelRealtimePointNumberSource = "system.label.realtime_point_number_source";
         public const string LabelPostDataHeaderKey = "system.label.postdata_header_key";
         public const string LabelPostDataHeaderValue = "system.label.postdata_header_value";
         public const string UploadMode = "system.label.upload_mode";
@@ -1158,6 +1159,8 @@ public static class TextKeys
         public const string OptionDeviceWholePieceWeld = "system.option.device.whole_piece_weld";
         public const string OptionInspectionResultSourcePlc = "system.option.inspection_result_source.plc";
         public const string OptionInspectionResultSourceProgram = "system.option.inspection_result_source.program";
+        public const string OptionRealtimePointNumberSourcePlc = "system.option.realtime_point_number_source.plc";
+        public const string OptionRealtimePointNumberSourceProgram = "system.option.realtime_point_number_source.program";
         public const string OptionCenterWholePiece = "system.option.center.whole_piece";
         public const string OptionCenterOther = "system.option.center.other";
 
@@ -1196,6 +1199,7 @@ public static class TextKeys
         public const string MessageStationDisplayNameDuplicate = "system.message.station_display_name_duplicate";
         public const string MessageRuntimeModeLocked = "system.message.runtime_mode_locked";
         public const string MessageInspectionResultSourceLocked = "system.message.inspection_result_source_locked";
+        public const string MessageRealtimePointNumberSourceLocked = "system.message.realtime_point_number_source_locked";
         public const string MessageDeviceManagementLocked = "system.message.device_management_locked";
         public const string MessagePositiveIntegerRequired = "system.message.positive_integer_required";
         public const string MessageRouteRequired = "system.message.route_required";

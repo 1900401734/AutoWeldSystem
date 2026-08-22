@@ -69,6 +69,12 @@ public partial class SystemSettingView : BaseView
         new(ProductionConstants.InspectionResultSources.Program, TextKeys.SystemSetting.OptionInspectionResultSourceProgram)
     };
 
+    private static readonly LocalizedOption<string>[] RealtimePointNumberSourceOptions =
+    {
+        new(ProductionConstants.RealtimePointNumberSources.Plc, TextKeys.SystemSetting.OptionRealtimePointNumberSourcePlc),
+        new(ProductionConstants.RealtimePointNumberSources.Program, TextKeys.SystemSetting.OptionRealtimePointNumberSourceProgram)
+    };
+
     private static readonly LocalizedOption<string>[] CenterServerSystemTypeOptions =
     {
         new(CenterServerConstants.SystemTypes.Electromagnetic, TextKeys.SystemSetting.OptionDeviceElectromagnetic),
@@ -109,6 +115,7 @@ public partial class SystemSettingView : BaseView
     private bool _syncingUploadModeSelection;
     private bool _syncingProcessParameterDeviceTypeSelection;
     private bool _syncingInspectionResultSourceSelection;
+    private bool _syncingRealtimePointNumberSourceSelection;
     private bool _syncingCenterServerSystemTypeSelection;
     private bool _deviceManagementStateKnown;
     private string _selectedPlcType = AppConstants.PlcTypes.ModbusTcp;
@@ -117,6 +124,7 @@ public partial class SystemSettingView : BaseView
     private UploadMode _selectedUploadMode = UploadMode.Quantity;
     private string _selectedProcessParameterDeviceType = ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic;
     private string _selectedInspectionResultSource = ProductionConstants.InspectionResultSources.Plc;
+    private string _selectedRealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Plc;
     private string _selectedCenterServerSystemType = CenterServerConstants.SystemTypes.Other;
     private AppSettings _currentSettings;
     private SystemSettingLayoutMode? _lastLayoutMode;
@@ -166,6 +174,7 @@ public partial class SystemSettingView : BaseView
         BindUploadModeOptions();
         BindProcessParameterDeviceTypeOptions();
         BindInspectionResultSourceOptions();
+        BindRealtimePointNumberSourceOptions();
         BindCenterServerSystemTypeOptions();
         ApplyBasicSettingsLayout(force: true);
         basicSettingsViewport.AutoScrollPosition = scrollOffset;
@@ -323,6 +332,7 @@ public partial class SystemSettingView : BaseView
         chkEnablePostDataCustomHeader.CheckedChanged += ChkEnablePostDataCustomHeader_CheckedChanged;
         selectProcessParameterDeviceType.SelectedIndexChanged += SelectProcessParameterDeviceType_SelectedIndexChanged;
         selectInspectionResultSource.SelectedIndexChanged += SelectInspectionResultSource_SelectedIndexChanged;
+        selectRealtimePointNumberSource.SelectedIndexChanged += SelectRealtimePointNumberSource_SelectedIndexChanged;
         selectCenterServerSystemType.SelectedIndexChanged += SelectCenterServerSystemType_SelectedIndexChanged;
         chkEnableDualStation.CheckedChanged += (_, _) => UpdateStationDisplayNameVisibility();
     }
@@ -348,7 +358,8 @@ public partial class SystemSettingView : BaseView
             }
 
             if (!CanSaveRuntimeModeChange(previousSettings, settings)
-                || !CanSaveInspectionResultSourceChange(previousSettings, settings))
+                || !CanSaveInspectionResultSourceChange(previousSettings, settings)
+                || !CanSaveRealtimePointNumberSourceChange(previousSettings, settings))
             {
                 BindSettings(previousSettings);
                 return;
@@ -415,7 +426,8 @@ public partial class SystemSettingView : BaseView
             }
 
             if (!CanSaveRuntimeModeChange(previousSettings, settings)
-                || !CanSaveInspectionResultSourceChange(previousSettings, settings))
+                || !CanSaveInspectionResultSourceChange(previousSettings, settings)
+                || !CanSaveRealtimePointNumberSourceChange(previousSettings, settings))
             {
                 BindSettings(previousSettings);
                 return;
@@ -597,6 +609,21 @@ public partial class SystemSettingView : BaseView
         _selectedInspectionResultSource = InspectionResultSourceOptions[e.Value].Value;
     }
 
+    private void SelectRealtimePointNumberSource_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
+    {
+        if (_syncingRealtimePointNumberSourceSelection)
+        {
+            return;
+        }
+
+        if (e.Value < 0 || e.Value >= RealtimePointNumberSourceOptions.Length)
+        {
+            return;
+        }
+
+        _selectedRealtimePointNumberSource = RealtimePointNumberSourceOptions[e.Value].Value;
+    }
+
     private void SelectCenterServerSystemType_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
     {
         if (_syncingCenterServerSystemTypeSelection)
@@ -749,6 +776,7 @@ public partial class SystemSettingView : BaseView
         _selectedUploadMode = NormalizeUploadMode(settings.UploadMode);
         _selectedProcessParameterDeviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
         _selectedInspectionResultSource = ProductionConstants.InspectionResultSources.Normalize(settings.InspectionResultSource);
+        _selectedRealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Normalize(settings.RealtimePointNumberSource);
         _selectedCenterServerSystemType = NormalizeCenterServerSystemType(settings.CenterServerSystemType);
         inputUploadBatchSize.Text = Math.Max(1, settings.UploadBatchSize).ToString(CultureInfo.InvariantCulture);
         BindPlcTypeOptions();
@@ -757,8 +785,10 @@ public partial class SystemSettingView : BaseView
         BindUploadModeOptions();
         BindProcessParameterDeviceTypeOptions();
         BindInspectionResultSourceOptions();
+        BindRealtimePointNumberSourceOptions();
         BindCenterServerSystemTypeOptions();
         UpdateInspectionResultSourceEnabled();
+        UpdateRealtimePointNumberSourceEnabled();
         UpdatePlcStringNumericFormatModeEnabled();
         UpdatePlcAlarmTriggerModeEnabled();
         UpdateUploadBatchSizeEnabled();
@@ -887,6 +917,7 @@ public partial class SystemSettingView : BaseView
         lblCenterServerHeartbeatInterval.Text = _localizer.GetString(TextKeys.SystemSetting.LabelCenterServerHeartbeat);
         lblProcessParameterDeviceType.Text = _localizer.GetString(TextKeys.SystemSetting.LabelProcessParameterDeviceType);
         lblInspectionResultSource.Text = _localizer.GetString(TextKeys.SystemSetting.LabelInspectionResultSource);
+        lblRealtimePointNumberSource.Text = _localizer.GetString(TextKeys.SystemSetting.LabelRealtimePointNumberSource);
         chkEnablePostDataCustomHeader.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnablePostDataHeader);
         lblPostDataHeaderKey.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPostDataHeaderKey);
         lblPostDataHeaderValue.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPostDataHeaderValue);
@@ -1033,6 +1064,31 @@ public partial class SystemSettingView : BaseView
             StringComparison.OrdinalIgnoreCase);
         tlpInspectionResultSource.Visible = wholePieceInspection;
         selectInspectionResultSource.Enabled = wholePieceInspection && !HasAnyUnfinishedTask();
+    }
+
+    private void BindRealtimePointNumberSourceOptions()
+    {
+        _syncingRealtimePointNumberSourceSelection = true;
+        try
+        {
+            selectRealtimePointNumberSource.Items.Clear();
+            selectRealtimePointNumberSource.Items.AddRange(RealtimePointNumberSourceOptions
+                .Select(option => (object)_localizer.GetString(option.TextKey))
+                .ToArray());
+
+            var selectedIndex = Array.FindIndex(RealtimePointNumberSourceOptions, option =>
+                string.Equals(option.Value, _selectedRealtimePointNumberSource, StringComparison.OrdinalIgnoreCase));
+            selectRealtimePointNumberSource.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+        }
+        finally
+        {
+            _syncingRealtimePointNumberSourceSelection = false;
+        }
+    }
+
+    private void UpdateRealtimePointNumberSourceEnabled()
+    {
+        selectRealtimePointNumberSource.Enabled = !HasAnyUnfinishedTask();
     }
 
     private void BindCenterServerSystemTypeOptions()
@@ -1465,6 +1521,7 @@ public partial class SystemSettingView : BaseView
         settings.UploadBatchSize = Math.Max(1, uploadBatchSize);
         settings.ProcessParameterDeviceType = NormalizeProcessParameterDeviceType(_selectedProcessParameterDeviceType);
         settings.InspectionResultSource = ProductionConstants.InspectionResultSources.Normalize(_selectedInspectionResultSource);
+        settings.RealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Normalize(_selectedRealtimePointNumberSource);
         if (!TryApplyMesEndpointSettings(settings))
         {
             return false;
@@ -1562,6 +1619,21 @@ public partial class SystemSettingView : BaseView
         return false;
     }
 
+    private bool CanSaveRealtimePointNumberSourceChange(AppSettings previousSettings, AppSettings newSettings)
+    {
+        if (string.Equals(
+                ProductionConstants.RealtimePointNumberSources.Normalize(previousSettings.RealtimePointNumberSource),
+                ProductionConstants.RealtimePointNumberSources.Normalize(newSettings.RealtimePointNumberSource),
+                StringComparison.OrdinalIgnoreCase)
+            || !HasAnyUnfinishedTask())
+        {
+            return true;
+        }
+
+        ShowWarning(TextKeys.SystemSetting.MessageRealtimePointNumberSourceLocked);
+        return false;
+    }
+
     /// <summary>
     /// 软件当前已开工时禁止保存设备身份和设备通信地址，避免活动任务关联到变化后的设备。
     /// </summary>
@@ -1590,6 +1662,7 @@ public partial class SystemSettingView : BaseView
         grpDeviceConfig.Enabled = enabled;
         grpMesConfig.Enabled = enabled;
         UpdateInspectionResultSourceEnabled();
+        UpdateRealtimePointNumberSourceEnabled();
         Volatile.Write(ref _deviceManagementStateKnown, true);
     }
 

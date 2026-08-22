@@ -177,6 +177,9 @@ public class AppSettings
     [SugarColumn(Length = 20, ColumnDescription = "检测结果来源", IsNullable = true)]
     public string? InspectionResultSource { get; set; } = ProductionConstants.InspectionResultSources.Plc;
 
+    [SugarColumn(Length = 20, ColumnDescription = "实时焊点编号来源", IsNullable = true)]
+    public string? RealtimePointNumberSource { get; set; } = ProductionConstants.RealtimePointNumberSources.Plc;
+
     [SugarColumn(ColumnDescription = "过程参数接口编码")]
     public ApiCode ProcessParameterApiCode { get; set; } = ApiCode.EMWeldDetail_001;
 

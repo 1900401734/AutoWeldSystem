@@ -57,7 +57,6 @@ namespace AutoWeldSystem.UI.Views
             tlpStationOverview1 = new TableLayoutPanel();
             lblLiveHint1 = new AntdUI.Label();
             lblLiveProductNo1 = new AntdUI.Label();
-            tagLiveResult1 = new AntdUI.Tag();
             lblLiveTouchNo1 = new AntdUI.Label();
             HorizontalSplitter1 = new AntdUI.Splitter();
             HorizontalScrollBar1 = new SlimHorizontalScrollBar();
@@ -75,7 +74,6 @@ namespace AutoWeldSystem.UI.Views
             tlpStationOverview2 = new TableLayoutPanel();
             lblLiveHint2 = new AntdUI.Label();
             lblLiveProductNo2 = new AntdUI.Label();
-            tagLiveResult2 = new AntdUI.Tag();
             lblLiveTouchNo2 = new AntdUI.Label();
             tlpRight = new TableLayoutPanel();
             grpProductResult = new GroupBox();
@@ -422,15 +420,13 @@ namespace AutoWeldSystem.UI.Views
             // 
             // tlpStationOverview1
             // 
-            tlpStationOverview1.ColumnCount = 4;
+            tlpStationOverview1.ColumnCount = 3;
             tlpStationOverview1.ColumnStyles.Add(new ColumnStyle());
             tlpStationOverview1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             tlpStationOverview1.ColumnStyles.Add(new ColumnStyle());
-            tlpStationOverview1.ColumnStyles.Add(new ColumnStyle());
             tlpStationOverview1.Controls.Add(lblLiveHint1, 0, 0);
             tlpStationOverview1.Controls.Add(lblLiveProductNo1, 1, 0);
-            tlpStationOverview1.Controls.Add(tagLiveResult1, 2, 0);
-            tlpStationOverview1.Controls.Add(lblLiveTouchNo1, 3, 0);
+            tlpStationOverview1.Controls.Add(lblLiveTouchNo1, 2, 0);
             tlpStationOverview1.Dock = DockStyle.Fill;
             tlpStationOverview1.Location = new Point(0, 0);
             tlpStationOverview1.Margin = new Padding(0);
@@ -464,17 +460,6 @@ namespace AutoWeldSystem.UI.Views
             lblLiveProductNo1.Size = new Size(790, 36);
             lblLiveProductNo1.TabIndex = 3;
             lblLiveProductNo1.Text = "产品编号：--";
-            // 
-            // tagLiveResult1
-            // 
-            tagLiveResult1.Dock = DockStyle.Fill;
-            tagLiveResult1.Location = new Point(920, 0);
-            tagLiveResult1.Margin = new Padding(0);
-            tagLiveResult1.Name = "tagLiveResult1";
-            tagLiveResult1.Padding = new Padding(0, 0, 20, 0);
-            tagLiveResult1.Size = new Size(150, 36);
-            tagLiveResult1.TabIndex = 13;
-            tagLiveResult1.Text = "产品结果：--";
             // 
             // lblLiveTouchNo1
             // 
@@ -731,15 +716,13 @@ namespace AutoWeldSystem.UI.Views
             // 
             // tlpStationOverview2
             // 
-            tlpStationOverview2.ColumnCount = 4;
+            tlpStationOverview2.ColumnCount = 3;
             tlpStationOverview2.ColumnStyles.Add(new ColumnStyle());
             tlpStationOverview2.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             tlpStationOverview2.ColumnStyles.Add(new ColumnStyle());
-            tlpStationOverview2.ColumnStyles.Add(new ColumnStyle());
             tlpStationOverview2.Controls.Add(lblLiveHint2, 0, 0);
             tlpStationOverview2.Controls.Add(lblLiveProductNo2, 1, 0);
-            tlpStationOverview2.Controls.Add(tagLiveResult2, 2, 0);
-            tlpStationOverview2.Controls.Add(lblLiveTouchNo2, 3, 0);
+            tlpStationOverview2.Controls.Add(lblLiveTouchNo2, 2, 0);
             tlpStationOverview2.Dock = DockStyle.Fill;
             tlpStationOverview2.Location = new Point(0, 0);
             tlpStationOverview2.Margin = new Padding(0);
@@ -773,17 +756,6 @@ namespace AutoWeldSystem.UI.Views
             lblLiveProductNo2.Size = new Size(790, 36);
             lblLiveProductNo2.TabIndex = 3;
             lblLiveProductNo2.Text = "产品编号：--";
-            // 
-            // tagLiveResult2
-            // 
-            tagLiveResult2.Dock = DockStyle.Fill;
-            tagLiveResult2.Location = new Point(920, 0);
-            tagLiveResult2.Margin = new Padding(0);
-            tagLiveResult2.Name = "tagLiveResult2";
-            tagLiveResult2.Padding = new Padding(0, 0, 20, 0);
-            tagLiveResult2.Size = new Size(150, 36);
-            tagLiveResult2.TabIndex = 13;
-            tagLiveResult2.Text = "产品结果：--";
             // 
             // lblLiveTouchNo2
             // 
@@ -1920,7 +1892,6 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Label lblLiveHint1;
         private AntdUI.Label lblLiveProductNo1;
         private AntdUI.Label lblLiveResult;
-        private AntdUI.Tag tagLiveResult1;
         private AntdUI.Label lblLiveTouchCount;
         private AntdUI.Label lblLiveTouchNo1;
         private TableLayoutPanel tlpUserInfo1;
@@ -1938,7 +1909,6 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Label lblLiveHint2;
         private AntdUI.Label lblLiveProductNo2;
         private AntdUI.Label label7;
-        private AntdUI.Tag tagLiveResult2;
         private AntdUI.Label label8;
         private AntdUI.Label lblLiveTouchNo2;
         private AntdUI.Splitter HorizontalSplitter2;

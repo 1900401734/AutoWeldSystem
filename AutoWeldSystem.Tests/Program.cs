@@ -64,6 +64,7 @@ var tests = new (string Name, Action Run)[]
     ("System setting localization resources are complete", SystemSettingLocalizationResourcesAreComplete),
     ("System setting configures PLC alarm trigger mode", SystemSettingConfiguresPlcAlarmTriggerMode),
     ("System setting configures inspection result source", SystemSettingConfiguresInspectionResultSource),
+    ("System setting configures realtime point number source", SystemSettingConfiguresRealtimePointNumberSource),
     ("PLC product ready handshake retains high-level state", PlcProductReadyHandshakeRetainsHighLevelState),
     ("MES endpoint validation returns stable error codes", MesEndpointValidationReturnsStableErrorCodes),
     ("Device id sync rules detect missing old devices", DeviceIdSyncRulesDetectMissingOldDevices),
@@ -108,6 +109,7 @@ var tests = new (string Name, Action Run)[]
     ("Whole-piece four-side aggregation produces A and B rows", WholePieceFourSideAggregationProducesAbRows),
     ("Whole-piece height and width use product maximum", WholePieceHeightAndWidthUseProductMaximum),
     ("Whole-piece program results use maximum allowed values", WholePieceProgramResultsUseMaximumAllowedValues),
+    ("Program result display prefers persisted entity result", ProgramResultDisplayPrefersPersistedEntityResult),
     ("Whole-piece aggregation rejects invalid source data", WholePieceAggregationRejectsInvalidSourceData),
     ("Report file upload rule requires an enabled report role", ReportFileUploadRuleRequiresEnabledReportRole),
     ("Product cycle snapshots persist PLC product results", ProductCycleSnapshotsPersistPlcProductResults),
@@ -2309,6 +2311,20 @@ static void WholePieceHeightAndWidthUseProductMaximum()
         && centerWriterCode.Contains("candidates.MaxBy", StringComparison.Ordinal), "中心可见报表必须从四面原始值计算产品级最大值，同时保留原始数据页。");
 }
 
+static void ProgramResultDisplayPrefersPersistedEntityResult()
+{
+    var monitorCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"),
+        Encoding.UTF8);
+    var method = ExtractMethodText(
+        monitorCode,
+        "private static string ResolveStationProductResultText(BizWeldPointRecord record)",
+        "/// <summary>" + Environment.NewLine + "    /// 解析工位结果颜色。");
+
+    AssertTrue(method.Contains("var productResult = record.ProductResult;", StringComparison.Ordinal), "工位产品结果必须优先使用记录实体中的正式结果。");
+    AssertTrue(method.Contains("FindRawValue(rawValues, \"product_result\")", StringComparison.Ordinal), "旧历史记录必须继续回退 RawDataJson.product_result。");
+}
+
 static void WholePieceProgramResultsUseMaximumAllowedValues()
 {
     AssertEqual(
@@ -3558,6 +3574,16 @@ static void RealtimePreviewValuesRequireCompletedPointResults()
         buildRowsMethod.Contains("ProductRealtimePreviewRules.ShouldReadTestValues(plcTouchResult)", StringComparison.Ordinal),
         "实时预览必须先按每个面/焊点结果判定测试值有效性。");
     AssertTrue(
+        buildRowsMethod.Contains("ResolveTouchNoBase(config)", StringComparison.Ordinal)
+            && buildRowsMethod.Contains("useProgramPointNumber", StringComparison.Ordinal),
+        "实时编号必须可在PLC读取和程序序号之间切换。");
+    AssertTrue(
+        buildRowsMethod.Contains("NormalizeRealtimePointNumber", StringComparison.Ordinal),
+        "PLC实时编号为空、0或非法值时必须显示--，不能回退程序序号。");
+    AssertTrue(
+        buildRowsMethod.Contains("plcFaceResults.All(IsTerminalPointResult)", StringComparison.Ordinal),
+        "产品结果必须等待所有采集点进入终态后才显示。");
+    AssertTrue(
         previewValueMethod.Contains("if (!shouldReadTestValues)", StringComparison.Ordinal)
             && previewValueMethod.Contains("return \"--\";", StringComparison.Ordinal),
         "未测试、清零或无效结果必须直接显示空值，不能读取 PLC 测试值地址。");
@@ -3579,6 +3605,13 @@ static void RealtimePreviewValuesRequireCompletedPointResults()
     AssertTrue(
         schemePreviewMethod.Contains("ApplyWeldParameterRows(nextRows);", StringComparison.Ordinal),
         "静态方案预览仍应保留现有稳定值复制行为。");
+    var monitorDesignerCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.Designer.cs"),
+        Encoding.UTF8);
+    AssertFalse(monitorDesignerCode.Contains("tagLiveResult1", StringComparison.Ordinal)
+        || monitorDesignerCode.Contains("tagLiveResult2", StringComparison.Ordinal), "实时预览顶部不得继续保留重复产品结果Tag。");
+    AssertTrue(monitorCode.Contains("ApplyProductResultToGroup(", StringComparison.Ordinal)
+        && monitorCode.Contains("productChanged ? ProductionConstants.TestResults.NotAvailable : snapshot.ProductResult", StringComparison.Ordinal), "实时产品结果必须统一写入grpProductResult，下一产品首帧恢复为--。");
 }
 
 static void PlcStringNumericFormatterFollowsGlobalDisabledSetting()
@@ -12884,6 +12917,8 @@ static void PlcProductReadyHandshakeRetainsHighLevelState()
     AssertTrue(serviceCode.Contains("ProductDataReadyStaleHigh", StringComparison.Ordinal), "遗留高电平必须记录明确日志。");
     AssertTrue(serviceCode.Contains("PendingFeedbackValue = 1", StringComparison.Ordinal)
         && serviceCode.Contains("PendingFeedbackValue = 2", StringComparison.Ordinal), "采集成功和采集失败必须分别保留反馈1/2。");
+    AssertTrue(serviceCode.Contains("ProductCollectionHandledException", StringComparison.Ordinal)
+        && serviceCode.Contains("CompleteCollectionWithHandledErrorAsync", StringComparison.Ordinal), "程序配置错误必须反馈1释放PLC握手，而不是反馈2造成PLC超时。");
     AssertTrue(serviceCode.Contains("Task=none", StringComparison.Ordinal)
         && serviceCode.Contains("ObservedTaskId", StringComparison.Ordinal)
         && serviceCode.Contains("PreviousTaskId", StringComparison.Ordinal), "无活动任务和跨任务高电平都必须保留任务边界上下文。");
@@ -12907,6 +12942,25 @@ static void SystemSettingConfiguresInspectionResultSource()
         && viewCode.Contains("HasAnyUnfinishedTask()", StringComparison.Ordinal), "存在未完工任务时必须阻止切换检测结果来源。");
     AssertTrue(viewCode.Contains("tlpInspectionResultSource.Visible = wholePieceInspection;", StringComparison.Ordinal), "结果来源配置只应在整件检测设备显示。");
     AssertTrue(serviceCode.Contains("InspectionResultSources.Normalize(settings.InspectionResultSource)", StringComparison.Ordinal), "设置服务必须把未知结果来源回退为PLC读取。");
+}
+
+static void SystemSettingConfiguresRealtimePointNumberSource()
+{
+    var defaults = new AppSettings();
+    AssertEqual(
+        ProductionConstants.RealtimePointNumberSources.Plc,
+        defaults.RealtimePointNumberSource,
+        "实时焊点编号来源必须默认使用PLC读取。");
+    AssertEqual(
+        ProductionConstants.RealtimePointNumberSources.Plc,
+        ProductionConstants.RealtimePointNumberSources.Normalize("unknown"),
+        "未知实时编号来源必须回退PLC读取。");
+
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.cs"), Encoding.UTF8);
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.Designer.cs"), Encoding.UTF8);
+    AssertTrue(designerCode.Contains("selectRealtimePointNumberSource", StringComparison.Ordinal), "Designer必须声明实时焊点编号来源下拉。");
+    AssertTrue(viewCode.Contains("RealtimePointNumberSourceOptions", StringComparison.Ordinal)
+        && viewCode.Contains("CanSaveRealtimePointNumberSourceChange", StringComparison.Ordinal), "系统设置必须绑定稳定编号来源并在未完工任务期间禁止切换。");
 }
 
 static BizWeldTask BuildReportTask(DateTime startTime, DateTime? endTime)

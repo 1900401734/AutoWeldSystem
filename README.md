@@ -1,6 +1,6 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.2.2`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.3.0`。
 
 ## 功能概览
 
@@ -219,9 +219,15 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 
 ## 检测设备四面转 A/B、程序判定与升级检查
 
+`v2.3.0` 统一了监控页产品结果显示：移除实时预览顶部重复的产品结果 Tag，仅由右侧“产品结果”区域实时显示各工位结果。检测期间和下一产品周期开始时显示 `工位1/2--`，所有配置采集点完成后才显示 OK、NG 或焊前NG。
+
+系统设置新增“实时焊点编号来源”：`PLC读取` 使用产品工艺的 `TouchNoBase/TouchNoExpr`，读取失败显示 `--`；`程序判断` 使用实时预览循环序号 `1、2、3...`。该配置只影响实时预览，不改变正式采集记录、数据管理、中心看板、XLSX 报表或 MES 中的编号，存在未完工任务时禁止切换。
+
 `v2.2.2` 同时修复了产品数据就绪信号的高电平残留处理：PLC在完工后仍保持“产品数据就绪=1”时，上位机不会把旧高电平当作新产品，也不会再次读取已清零的产品号和面号；必须先观察到信号回到0，后续新的0->1上升沿才会触发采集。采集反馈1/2只表示采集流程成功或失败，程序计算得到NG仍反馈1；反馈写入失败会在同一就绪周期重试，不会重复采集。
 
 `v2.2.2` 另外修复了系统设置页面的显示问题：当“过程参数设备类型”不是“整件系统-检测设备”时，“检测结果来源”整行会自动隐藏并折叠所占空间，不再在 MES 配置区域留下空白行；整件检测设备仍正常显示该配置。
+
+`v2.3.0` 修复了程序计算模式下工位结果显示与实时结果不一致的问题：工位结果优先使用采集记录中的正式 `ProductResult`，只有旧历史记录没有该字段时才回退到 `RawDataJson.product_result`。程序计算模式缺少最大允许值时，记录配置错误并放弃本件落库、报表和 MES，但仍反馈 PLC“已接收”信号 `1`，避免 PLC 因等待反馈而超时；PLC读取模式不受程序限值配置影响。
 
 ### 本次变动的意图与影响
 
@@ -271,10 +277,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>2.2.2</Version>
-<AssemblyVersion>2.2.2.0</AssemblyVersion>
-<FileVersion>2.2.2.0</FileVersion>
-<InformationalVersion>2.2.2</InformationalVersion>
+<Version>2.3.0</Version>
+<AssemblyVersion>2.3.0.0</AssemblyVersion>
+<FileVersion>2.3.0.0</FileVersion>
+<InformationalVersion>2.3.0</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -286,9 +292,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v2.2.2 -m "Release v2.2.2"
+git tag -a v2.3.0 -m "Release v2.3.0"
 git push origin main
-git push origin v2.2.2
+git push origin v2.3.0
 ```
 
 ## Git 使用

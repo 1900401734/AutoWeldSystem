@@ -131,6 +131,9 @@
             lblProcessParameterDeviceType = new AntdUI.Label();
             selectProcessParameterDeviceType = new AntdUI.Select();
             tlpInspectionResultSource = new TableLayoutPanel();
+            tlpRealtimePointNumberSource = new TableLayoutPanel();
+            lblRealtimePointNumberSource = new AntdUI.Label();
+            selectRealtimePointNumberSource = new AntdUI.Select();
             lblInspectionResultSource = new AntdUI.Label();
             selectInspectionResultSource = new AntdUI.Select();
             tlpMesUserRoute = new TableLayoutPanel();
@@ -227,6 +230,7 @@
             tlpCheckbox2.SuspendLayout();
             tlpProcessParameterType.SuspendLayout();
             tlpInspectionResultSource.SuspendLayout();
+            tlpRealtimePointNumberSource.SuspendLayout();
             tlpMesUserRoute.SuspendLayout();
             tlpCheckbox1.SuspendLayout();
             tlpMesWorkOrderRoute.SuspendLayout();
@@ -1854,14 +1858,17 @@
             tlpProcessParameterType.Controls.Add(selectProcessParameterDeviceType, 1, 0);
             tlpProcessParameterType.Controls.Add(tlpInspectionResultSource, 0, 1);
             tlpProcessParameterType.SetColumnSpan(tlpInspectionResultSource, 2);
+            tlpProcessParameterType.Controls.Add(tlpRealtimePointNumberSource, 0, 2);
+            tlpProcessParameterType.SetColumnSpan(tlpRealtimePointNumberSource, 2);
             tlpProcessParameterType.Dock = DockStyle.Fill;
             tlpProcessParameterType.Location = new Point(0, 0);
             tlpProcessParameterType.Margin = new Padding(0);
             tlpProcessParameterType.Name = "tlpProcessParameterType";
-            tlpProcessParameterType.RowCount = 2;
+            tlpProcessParameterType.RowCount = 3;
             tlpProcessParameterType.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             tlpProcessParameterType.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            tlpProcessParameterType.Size = new Size(434, 78);
+            tlpProcessParameterType.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tlpProcessParameterType.Size = new Size(434, 117);
             tlpProcessParameterType.TabIndex = 7;
             // 
             // lblProcessParameterDeviceType
@@ -1922,6 +1929,38 @@
             selectInspectionResultSource.Name = "selectInspectionResultSource";
             selectInspectionResultSource.Size = new Size(270, 39);
             selectInspectionResultSource.TabIndex = 1;
+            //
+            // tlpRealtimePointNumberSource
+            //
+            tlpRealtimePointNumberSource.ColumnCount = 2;
+            tlpRealtimePointNumberSource.ColumnStyles.Add(new ColumnStyle());
+            tlpRealtimePointNumberSource.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            tlpRealtimePointNumberSource.Controls.Add(lblRealtimePointNumberSource, 0, 0);
+            tlpRealtimePointNumberSource.Controls.Add(selectRealtimePointNumberSource, 1, 0);
+            tlpRealtimePointNumberSource.Dock = DockStyle.Fill;
+            tlpRealtimePointNumberSource.Margin = new Padding(0);
+            tlpRealtimePointNumberSource.Name = "tlpRealtimePointNumberSource";
+            tlpRealtimePointNumberSource.RowCount = 1;
+            tlpRealtimePointNumberSource.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            tlpRealtimePointNumberSource.Size = new Size(434, 39);
+            tlpRealtimePointNumberSource.TabIndex = 9;
+            //
+            // lblRealtimePointNumberSource
+            //
+            lblRealtimePointNumberSource.AutoSizeMode = AntdUI.TAutoSize.Width;
+            lblRealtimePointNumberSource.Dock = DockStyle.Fill;
+            lblRealtimePointNumberSource.Margin = new Padding(0);
+            lblRealtimePointNumberSource.Name = "lblRealtimePointNumberSource";
+            lblRealtimePointNumberSource.Padding = new Padding(8, 0, 0, 0);
+            lblRealtimePointNumberSource.Text = "Realtime point number source";
+            //
+            // selectRealtimePointNumberSource
+            //
+            selectRealtimePointNumberSource.Dock = DockStyle.Fill;
+            selectRealtimePointNumberSource.Margin = new Padding(0);
+            selectRealtimePointNumberSource.MaxCount = 10;
+            selectRealtimePointNumberSource.Name = "selectRealtimePointNumberSource";
+            selectRealtimePointNumberSource.TabIndex = 1;
             //
             // tlpMesUserRoute
             //
@@ -2654,6 +2693,8 @@
             tlpCheckbox2.ResumeLayout(false);
             tlpProcessParameterType.ResumeLayout(false);
             tlpInspectionResultSource.ResumeLayout(false);
+            tlpRealtimePointNumberSource.ResumeLayout(false);
+            tlpRealtimePointNumberSource.PerformLayout();
             tlpProcessParameterType.PerformLayout();
             tlpMesUserRoute.ResumeLayout(false);
             tlpMesUserRoute.PerformLayout();
@@ -2824,6 +2865,9 @@
         private TableLayoutPanel tlpInspectionResultSource;
         private AntdUI.Label lblInspectionResultSource;
         private AntdUI.Select selectInspectionResultSource;
+        private TableLayoutPanel tlpRealtimePointNumberSource;
+        private AntdUI.Label lblRealtimePointNumberSource;
+        private AntdUI.Select selectRealtimePointNumberSource;
         private AntdUI.Checkbox chkShowTestFlagInHistory;
         private AntdUI.Checkbox chkEnableDeviceStatusReport;
         private AntdUI.Checkbox chkEnableWorkOrderStatusReport;

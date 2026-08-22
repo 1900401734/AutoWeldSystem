@@ -323,6 +323,10 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         var useProgramResult = WholePieceProgramResultRules.IsApplicable(
             settings.ProcessParameterDeviceType,
             settings.InspectionResultSource);
+        var useProgramPointNumber = string.Equals(
+            ProductionConstants.RealtimePointNumberSources.Normalize(settings.RealtimePointNumberSource),
+            ProductionConstants.RealtimePointNumberSources.Program,
+            StringComparison.OrdinalIgnoreCase);
         var productNo = await ReadExpressionTextAsync(config.ProductBase, 0, config.ProductNoExpr, cancellationToken);
         var plcProductResult = FormatResult(await ReadExpressionTextAsync(config.ProductBase, 0, config.ProductResultExpr, cancellationToken));
         var actualTouchCount = await ReadExpressionTextAsync(config.ProductBase, 0, config.ActualTouchCountExpr, cancellationToken);
@@ -333,11 +337,14 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             FormatValue(productNo),
             activeTask?.ProgramContentSnapshot,
             useProgramResult,
+            useProgramPointNumber,
             refreshTime,
             cancellationToken);
-        var productResult = useProgramResult
-            ? TestResultRules.ToDisplayText(WholePieceProgramResultRules.ResolveRealtimeProductResult(rowResult.FaceResults, config.TouchCount))
-            : plcProductResult;
+        var productResult = rowResult.IsComplete
+            ? useProgramResult
+                ? TestResultRules.ToDisplayText(WholePieceProgramResultRules.ResolveRealtimeProductResult(rowResult.FaceResults, config.TouchCount))
+                : plcProductResult
+            : ProductionConstants.TestResults.NotAvailable;
         var message = rowResult.Errors.Count > 0
             ? string.Join("；", rowResult.Errors)
             : rowResult.Rows.Count == 0
@@ -364,12 +371,14 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         string productNo,
         string? programContentSnapshot,
         bool useProgramResult,
+        bool useProgramPointNumber,
         DateTime refreshTime,
         CancellationToken cancellationToken)
     {
         var schemeItems = ResolveSchemeItems(config.SchemeId);
         var rows = new List<ProductRealtimePreviewRow>();
         var faceResults = new List<string?>();
+        var plcFaceResults = new List<string?>();
         var errors = new List<string>();
 
         for (var touchNo = 1; touchNo <= Math.Max(1, config.TouchCount); touchNo++)
@@ -381,6 +390,13 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
                 touchContextOffset,
                 config.TouchResultExpr,
                 cancellationToken));
+            var realtimeTouchNo = useProgramPointNumber
+                ? touchNo.ToString(CultureInfo.InvariantCulture)
+                : NormalizeRealtimePointNumber(await ReadExpressionTextAsync(
+                    ResolveTouchNoBase(config),
+                    touchContextOffset,
+                    config.TouchNoExpr,
+                    cancellationToken));
             var shouldReadTestValues = ProductRealtimePreviewRules.ShouldReadTestValues(plcTouchResult);
             var faceRows = new List<ProductRealtimePreviewRow>();
             foreach (var schemeItem in schemeItems)
@@ -391,6 +407,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
                     config,
                     productNo,
                     touchNo,
+                    realtimeTouchNo,
                     testContextOffset,
                     plcTouchResult,
                     shouldReadTestValues,
@@ -425,9 +442,16 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
 
             rows.AddRange(faceRows);
             faceResults.Add(displayedTouchResult);
+            plcFaceResults.Add(plcTouchResult);
         }
 
-        return new PreviewRowsResult(rows, faceResults, errors);
+        return new PreviewRowsResult(
+            rows,
+            faceResults,
+            plcFaceResults,
+            plcFaceResults.Count == Math.Max(1, config.TouchCount)
+                && plcFaceResults.All(IsTerminalPointResult),
+            errors);
     }
 
     private async Task<ProductRealtimePreviewRow> BuildRowAsync(
@@ -435,6 +459,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         BizProductProcessConfig config,
         string productNo,
         int touchNo,
+        string realtimeTouchNo,
         int testContextOffset,
         string touchResult,
         bool shouldReadTestValues,
@@ -464,7 +489,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             ProductNum = identity.ProductNum,
             ProductModel = identity.ProductModel,
             TouchIndex = touchNo,
-            TouchNo = touchNo.ToString(CultureInfo.InvariantCulture),
+            TouchNo = realtimeTouchNo,
             TouchResult = touchResult,
             PointName = ResolvePointName(config),
             PointNoHeader = ResolvePointNoHeader(config),
@@ -751,6 +776,23 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
     private static string ResolveTouchResultBase(BizProductProcessConfig config)
         => string.IsNullOrWhiteSpace(config.TouchResultBase) ? config.TouchBase : config.TouchResultBase!.Trim();
 
+    private static string NormalizeRealtimePointNumber(string? value)
+    {
+        var normalized = FormatValue(value);
+        return int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out var pointNo)
+            && pointNo > 0
+                ? pointNo.ToString(CultureInfo.InvariantCulture)
+                : ProductionConstants.TestResults.NotAvailable;
+    }
+
+    private static bool IsTerminalPointResult(string? result)
+        => TestResultRules.IsOk(result)
+            || TestResultRules.IsNg(result)
+            || TestResultRules.IsPreWeldNg(result);
+
+    private static string ResolveTouchNoBase(BizProductProcessConfig config)
+        => string.IsNullOrWhiteSpace(config.TouchNoBase) ? config.TouchBase : config.TouchNoBase!.Trim();
+
     private static int NormalizeStationNo(int stationNo)
     {
         return stationNo <= ProductionConstants.Stations.SharedStationNo
@@ -761,6 +803,8 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
     private sealed record PreviewRowsResult(
         IReadOnlyList<ProductRealtimePreviewRow> Rows,
         IReadOnlyList<string?> FaceResults,
+        IReadOnlyList<string?> PlcFaceResults,
+        bool IsComplete,
         IReadOnlyList<string> Errors);
 
     private sealed record ProductPreviewIdentity(int StationNo, string ProductNum, string ProductModel);

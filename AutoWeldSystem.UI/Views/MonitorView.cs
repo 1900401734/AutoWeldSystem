@@ -171,6 +171,7 @@ public partial class MonitorView : BaseView
     private string _weldParameterPreviewSchemaKey = string.Empty;
     private string _weldParameterVisibleValueKey = string.Empty;
     private readonly Dictionary<int, string> _productHistorySchemaKeys = new();
+    private readonly Dictionary<int, string> _lastRealtimeProductNumbers = new();
     private readonly int _uiThreadId = Environment.CurrentManagedThreadId;
 
     private bool _refreshingSchemePreview;
@@ -674,8 +675,6 @@ public partial class MonitorView : BaseView
     private AntdUI.Label CurrentLivePreviewStatusLabel => CurrentStationNo == 2 ? lblLiveHint2 : lblLiveHint1;
 
     private AntdUI.Label CurrentLiveProductNoLabel => CurrentStationNo == 2 ? lblLiveProductNo2 : lblLiveProductNo1;
-
-    private AntdUI.Tag CurrentLiveResultTag => CurrentStationNo == 2 ? tagLiveResult2 : tagLiveResult1;
 
     private AntdUI.Label CurrentLiveTouchCountLabel => CurrentStationNo == 2 ? lblLiveTouchNo2 : lblLiveTouchNo1;
 
@@ -4565,23 +4564,30 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
 
     private void ApplyStationResult(BizWeldPointRecord record)
     {
+        if (!record.ProductCompleted)
+        {
+            return;
+        }
+
         if (record.StationNo == 2 && !_dualStationEnabled)
         {
             return;
         }
 
         var resultText = ResolveStationProductResultText(record);
-        var tag = record.StationNo == 2 ? tagResult2 : tagResult1;
-
-        tag.Text = $"工位{record.StationNo}{resultText}";
-        tag.ForeColor = Color.White;
-        tag.BackColor = ResolveStationResultColor(resultText);
+        ApplyProductResultToGroup(record.StationNo, resultText);
     }
 
     private static string ResolveStationProductResultText(BizWeldPointRecord record)
     {
-        var rawValues = ParseRawWeldValues(record.RawDataJson);
-        var productResult = FindRawValue(rawValues, "product_result");
+        // 程序计算模式会把正式结果写入实体字段，RawDataJson.product_result 保留 PLC 原始值用于追溯。
+        var productResult = record.ProductResult;
+        if (string.IsNullOrWhiteSpace(productResult))
+        {
+            var rawValues = ParseRawWeldValues(record.RawDataJson);
+            productResult = FindRawValue(rawValues, "product_result");
+        }
+
         if (string.IsNullOrWhiteSpace(productResult)
             || string.Equals(productResult.Trim(), ProductionConstants.TestResults.Unknown, StringComparison.OrdinalIgnoreCase)
             || string.Equals(productResult.Trim(), "--", StringComparison.Ordinal))
@@ -4649,8 +4655,8 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         lblLiveHint2.Text = "实时采集正常";
         lblLiveProductNo1.Text = "产品编号：--";
         lblLiveProductNo2.Text = "产品编号：--";
-        tagLiveResult1.Text = "产品结果：--";
-        tagLiveResult2.Text = "产品结果：--";
+        tagResult1.Text = "工位1--";
+        tagResult2.Text = "工位2--";
         lblLiveTouchNo1.Text = "焊点：--";
         lblLiveTouchNo2.Text = "焊点：--";
         lblLiveHint1.ForeColor = UiColors.Status.Success;
@@ -4667,8 +4673,8 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         dgvPreview1.Text = "实时测试结果";
         dgvPreview2.Text = "实时测试结果";
 
-        SetLiveResultTagColor(tagLiveResult1, UiColors.Status.Muted, Color.White);
-        SetLiveResultTagColor(tagLiveResult2, UiColors.Status.Muted, Color.White);
+        ApplyProductResultToGroup(ProductionConstants.Stations.DefaultStationNo, ProductionConstants.TestResults.NotAvailable);
+        ApplyProductResultToGroup(2, ProductionConstants.TestResults.NotAvailable);
         RefreshRuntimePanels();
     }
 
@@ -6971,7 +6977,8 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             return;
         }
 
-        ApplyLivePreviewSummary(snapshot);
+        var productChanged = HasRealtimeProductChanged(snapshot);
+        ApplyLivePreviewSummary(snapshot, productChanged);
         _currentProductIdentity = new ProductIdentity(snapshot.StationNo, snapshot.ProductNum, snapshot.ProductModel, "RealtimePreview");
 
         if (snapshot.Rows.Count == 0 && CurrentWeldPreviewGrid.Rows.Count > 0)
@@ -7000,6 +7007,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         }
 
         _currentProductIdentity = null;
+        _lastRealtimeProductNumbers.Remove(CurrentStationNo);
         _lastSchemePreviewKey = string.Empty;
         _weldParameterRows.RemoveAll(row => row.StationNo == CurrentStationNo);
         _weldParameterLayoutKey = string.Empty;
@@ -7015,8 +7023,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         SetControlText(CurrentLivePreviewStatusLabel, string.Empty);
         SetControlText(CurrentLiveProductNoLabel, string.Empty);
         SetControlText(CurrentLiveTouchCountLabel, string.Empty);
-        SetControlText(CurrentLiveResultTag, string.Empty);
-        SetLiveResultTagColor(CurrentLiveResultTag, UiColors.Status.Muted, Color.White);
+        ApplyProductResultToGroup(CurrentStationNo, ProductionConstants.TestResults.NotAvailable);
     }
 
     private void ClearCurrentProductHistoryDisplay()
@@ -7036,7 +7043,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// 应用实时预览摘要。
     /// </summary>
     /// <param name="snapshot">状态快照。</param>
-    private void ApplyLivePreviewSummary(ProductRealtimePreviewSnapshot snapshot)
+    private void ApplyLivePreviewSummary(ProductRealtimePreviewSnapshot snapshot, bool productChanged)
     {
         var hasErrorMessage = !string.IsNullOrWhiteSpace(snapshot.Message);
         var statusLabel = CurrentLivePreviewStatusLabel;
@@ -7045,51 +7052,29 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
 
         SetControlText(CurrentLiveProductNoLabel, $"产品编号：{FormatLiveSummaryValue(snapshot.ProductNo)}");
         SetControlText(CurrentLiveTouchCountLabel, $"{NormalizeDisplayText(snapshot.PointName, "焊点")}：{FormatLiveSummaryValue(snapshot.TouchCountText)}");
-        ApplyLiveResultTag(snapshot.ProductResult);
+        ApplyProductResultToGroup(
+            snapshot.StationNo,
+            productChanged ? ProductionConstants.TestResults.NotAvailable : snapshot.ProductResult);
     }
 
-    /// <summary>
-    /// 应用实时结果Tag。
-    /// </summary>
-    /// <param name="productResult">产品结果。</param>
-    private void ApplyLiveResultTag(string? productResult)
+    private bool HasRealtimeProductChanged(ProductRealtimePreviewSnapshot snapshot)
     {
+        var productNo = FormatLiveSummaryValue(snapshot.ProductNo);
+        var changed = !_lastRealtimeProductNumbers.TryGetValue(snapshot.StationNo, out var previousProductNo)
+            || !string.Equals(previousProductNo, productNo, StringComparison.OrdinalIgnoreCase);
+        _lastRealtimeProductNumbers[snapshot.StationNo] = productNo;
+        return changed;
+    }
+
+    private void ApplyProductResultToGroup(int stationNo, string? productResult)
+    {
+        var tag = stationNo == 2 ? tagResult2 : tagResult1;
         var resultText = FormatLiveSummaryValue(productResult);
-        var tag = CurrentLiveResultTag;
-        SetControlText(tag, $"产品结果：{resultText}");
-
-        if (TestResultRules.IsOk(resultText))
-        {
-            SetLiveResultTagColor(tag, UiColors.Status.Success, Color.White);
-            return;
-        }
-
-        if (TestResultRules.IsFailed(resultText))
-        {
-            SetLiveResultTagColor(tag, UiColors.Status.Danger, Color.White);
-            return;
-        }
-
-        SetLiveResultTagColor(tag, UiColors.Status.Muted, Color.White);
+        tag.Text = $"工位{stationNo}{resultText}";
+        tag.ForeColor = Color.White;
+        tag.BackColor = ResolveStationResultColor(resultText);
     }
 
-    /// <summary>
-    /// 设置实时结果Tag颜色。
-    /// </summary>
-    /// <param name="tag">tag。</param>
-    /// <param name="backColor">背景颜色。</param>
-    /// <param name="foreColor">前景颜色。</param>
-    private static void SetLiveResultTagColor(AntdUI.Tag tag, Color backColor, Color foreColor)
-    {
-        tag.BackColor = backColor;
-        tag.ForeColor = foreColor;
-    }
-
-    /// <summary>
-    /// 格式化实时摘要值。
-    /// </summary>
-    /// <param name="value">待处理值。</param>
-    /// <returns>处理后的文本。</returns>
     private static string FormatLiveSummaryValue(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? "--" : value.Trim();
