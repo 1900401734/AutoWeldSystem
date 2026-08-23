@@ -95,6 +95,7 @@ public static class Program
                     services.AddSingleton<IUploadStatusSummaryService, UploadStatusSummaryService>();
                     services.AddSingleton<IProductionReportFileService, ProductionReportFileService>();
                     services.AddSingleton<IDataHistoryQueryService, DataHistoryQueryService>();
+                    services.AddSingleton<IDataHistoryMaintenanceService, DataHistoryMaintenanceService>();
                     services.AddSingleton<ICenterTelemetrySyncService, CenterTelemetrySyncService>();
                     services.AddSingleton<ICenterProductForwardingService, CenterProductForwardingService>();
                     services.AddTransient<PermissionUiBinder>();

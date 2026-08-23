@@ -111,6 +111,10 @@ var tests = new (string Name, Action Run)[]
     ("Data history export writes current rows and dynamic columns", DataHistoryExportWritesCurrentRowsAndDynamicColumns),
     ("Single-point history display rule uses configured and actual counts", SinglePointHistoryDisplayRuleUsesConfiguredAndActualCounts),
     ("Data history single-point row keeps point values", DataHistorySinglePointRowKeepsPointValues),
+    ("Work order deletion rules block running tasks", WorkOrderDeletionRulesBlockRunningTasks),
+    ("Work order deletion restricts report paths to report root", WorkOrderDeletionRulesRestrictReportPathsToReportRoot),
+    ("Data delete permission is cataloged for admins only", DataDeletePermissionIsCatalogedForAdminsOnly),
+    ("Data delete upgrade grants admin only on first introduction", DataDeleteUpgradeGrantsAdminOnlyOnFirstIntroduction),
     ("Scheme output roles are independent from realtime preview", SchemeOutputRolesAreIndependentFromRealtimePreview),
     ("Whole-piece four-side aggregation produces A and B rows", WholePieceFourSideAggregationProducesAbRows),
     ("Whole-piece height and width use product maximum", WholePieceHeightAndWidthUseProductMaximum),
@@ -8994,6 +8998,110 @@ static void StateManageUploadStatusDisplayFollowsMesConnection()
     AssertTrue(viewCode.Contains("UploadStatusDisplayRules.GetDisplayText(status, _mesConnectionMonitor.Current.IsConnected)", StringComparison.Ordinal), "上传状态显示必须按当前 MES 在线状态解析。");
 }
 
+static void WorkOrderDeletionRulesBlockRunningTasks()
+{
+    AssertTrue(WorkOrderDeletionRules.IsRunning("Running"), "生产中工单必须判定为运行中。");
+    AssertTrue(WorkOrderDeletionRules.IsRunning("Paused"), "已暂停工单仍占用工位，必须判定为运行中。");
+    AssertTrue(WorkOrderDeletionRules.IsRunning(" running "), "状态判定必须忽略大小写和空白。");
+
+    AssertFalse(WorkOrderDeletionRules.CanDelete("Running"), "生产中工单不允许删除。");
+    AssertFalse(WorkOrderDeletionRules.CanDelete("Paused"), "已暂停工单不允许删除。");
+    AssertTrue(WorkOrderDeletionRules.CanDelete("Ready"), "待开工工单允许删除。");
+    AssertTrue(WorkOrderDeletionRules.CanDelete("Completed"), "已完成工单允许删除。");
+    AssertTrue(WorkOrderDeletionRules.CanDelete("Abandoned"), "已作废工单允许删除。");
+    AssertTrue(WorkOrderDeletionRules.CanDelete(null), "状态缺失时按可删除处理，避免历史脏数据无法清理。");
+}
+
+static void WorkOrderDeletionRulesRestrictReportPathsToReportRoot()
+{
+    var root = Path.Combine("D:", "AutoWeldData", "Reports");
+
+    AssertTrue(
+        WorkOrderDeletionRules.IsDeletableReportPath(Path.Combine(root, "SN001", "20260101", "a.xlsx"), root),
+        "报表根目录下的文件必须允许删除。");
+    AssertFalse(
+        WorkOrderDeletionRules.IsDeletableReportPath(Path.Combine("D:", "AutoWeldData", "other.xlsx"), root),
+        "报表根目录之外的文件不得删除。");
+    AssertFalse(
+        WorkOrderDeletionRules.IsDeletableReportPath(Path.Combine(root, "..", "escape.xlsx"), root),
+        "路径穿越到根目录之外时不得删除。");
+    AssertFalse(
+        WorkOrderDeletionRules.IsDeletableReportPath(Path.Combine("D:", "AutoWeldData", "Reports2", "a.xlsx"), root),
+        "同前缀的相邻目录不得被误判为报表根目录的子目录。");
+    AssertFalse(WorkOrderDeletionRules.IsDeletableReportPath(null, root), "空路径不得参与删除。");
+    AssertFalse(WorkOrderDeletionRules.IsDeletableReportPath("  ", root), "空白路径不得参与删除。");
+    AssertFalse(WorkOrderDeletionRules.IsDeletableReportPath(root, root), "报表根目录本身不得被删除。");
+
+    AssertEqual(
+        Path.Combine("D:", "AutoWeldData", "Reports"),
+        WorkOrderDeletionRules.ResolveReportRootDirectory(@"D:\AutoWeldData"),
+        "报表根目录必须与报表生成规则一致。");
+}
+
+static void DataDeletePermissionIsCatalogedForAdminsOnly()
+{
+    var zhResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.resx"), Encoding.UTF8);
+    var enResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.en.resx"), Encoding.UTF8);
+
+    var definition = PermissionCatalog.All
+        .SingleOrDefault(permission => string.Equals(
+            permission.Code,
+            PermissionCodes.Buttons.Data.Delete,
+            StringComparison.OrdinalIgnoreCase));
+    AssertTrue(definition is not null, "历史数据删除权限必须注册到权限目录。");
+    AssertEqual(PermissionType.Button, definition!.Type, "历史数据删除权限必须使用 Button 类型。");
+    AssertEqual(PermissionCodes.Pages.DataManage, definition.ParentCode, "删除权限必须挂在历史数据页面权限下。");
+
+    var textKey = PermissionTextKeyMapper.GetTextKey(PermissionCodes.Buttons.Data.Delete);
+    AssertTrue(zhResources.Contains($"name=\"{textKey}\"", StringComparison.Ordinal), "中文资源必须包含删除权限名称。");
+    AssertTrue(enResources.Contains($"name=\"{textKey}\"", StringComparison.Ordinal), "英文资源必须包含删除权限名称。");
+
+    // 操作员和只读角色的默认权限白名单不含删除权限，因此升级后不会自动获得删除能力
+    var rbacCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "RbacService.cs"), Encoding.UTF8);
+    var defaultMap = ExtractMethodText(
+        rbacCode,
+        "private static Dictionary<string, IReadOnlyCollection<string>> BuildDefaultRolePermissionMap()",
+        "private void RefreshCurrentSessionIfAffected");
+    var operatorSection = defaultMap[defaultMap.IndexOf("[AppConstants.Roles.Operator]", StringComparison.Ordinal)..];
+    AssertFalse(
+        operatorSection.Contains("PermissionCodes.Buttons.Data.Delete", StringComparison.Ordinal),
+        "操作员和只读角色的默认权限不得包含历史数据删除。");
+}
+
+static void DataDeleteUpgradeGrantsAdminOnlyOnFirstIntroduction()
+{
+    var upgraded = RolePermissionInitializationRules.ResolveDataDeleteUpgradeDefaults(
+        AppConstants.Roles.Admin,
+        dataDeleteCatalogWasMissing: true,
+        hasDataManagePagePermission: true);
+    AssertSequenceEqual(
+        new[] { PermissionCodes.Buttons.Data.Delete },
+        upgraded,
+        "旧数据库首次引入删除权限时必须为管理员补权。");
+
+    AssertEqual(
+        0,
+        RolePermissionInitializationRules.ResolveDataDeleteUpgradeDefaults(
+            AppConstants.Roles.Admin,
+            dataDeleteCatalogWasMissing: false,
+            hasDataManagePagePermission: true).Count,
+        "权限已存在时不得重复补权，避免覆盖管理员手工取消的配置。");
+    AssertEqual(
+        0,
+        RolePermissionInitializationRules.ResolveDataDeleteUpgradeDefaults(
+            AppConstants.Roles.Admin,
+            dataDeleteCatalogWasMissing: true,
+            hasDataManagePagePermission: false).Count,
+        "没有历史数据页权限的角色不得获得删除权限。");
+    AssertEqual(
+        0,
+        RolePermissionInitializationRules.ResolveDataDeleteUpgradeDefaults(
+            AppConstants.Roles.Operator,
+            dataDeleteCatalogWasMissing: true,
+            hasDataManagePagePermission: true).Count,
+        "补权只针对管理员角色。");
+}
+
 static void StateManageTabsAreCatalogedAsRolePermissions()
 {
     var expectedCodes = new[]
@@ -12612,7 +12720,8 @@ static WeldTaskService CreateWeldTaskService(
         reportFileService ?? new FakeProductionReportFileService(),
         lifecycleLogService ?? new FakeDeviceLifecycleLogService(),
         deviceStatusService ?? new FakeDeviceStatusService(),
-        clockService);
+        clockService,
+        new FakeDataHistoryMaintenanceService());
 }
 
 static DeviceLifecycleLogCoordinator CreateDeviceLifecycleLogCoordinator(
@@ -14183,9 +14292,49 @@ sealed class FakeUploadTaskService : IUploadTaskService
 
     public void DeleteTask(int id) { }
 
-    public void HideWeldTaskUploadState(int weldTaskId) { }
-
     public void DeleteProcessParameterVirtualRow(int weldTaskId, int stationNo, string productNo) { }
+}
+
+sealed class FakeDataHistoryMaintenanceService : IDataHistoryMaintenanceService
+{
+    public List<int> DeletedWorkOrderIds { get; } = [];
+
+    public Task<WorkOrderDeletionPreview> PreviewDeleteByIdsAsync(
+        IReadOnlyCollection<int> taskIds,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(new WorkOrderDeletionPreview());
+
+    public Task<WorkOrderDeletionPreview> PreviewDeleteFailedAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(new WorkOrderDeletionPreview());
+
+    public Task<WorkOrderDeletionPreview> PreviewDeleteByDateAsync(
+        DateTime startTime,
+        DateTime endTime,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(new WorkOrderDeletionPreview());
+
+    public Task<WorkOrderDeletionResult> DeleteByIdsAsync(
+        IReadOnlyCollection<int> taskIds,
+        CancellationToken cancellationToken = default)
+    {
+        DeletedWorkOrderIds.AddRange(taskIds);
+        return Task.FromResult(new WorkOrderDeletionResult { DeletedWorkOrderCount = taskIds.Count });
+    }
+
+    public Task<WorkOrderDeletionResult> DeleteFailedAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(new WorkOrderDeletionResult());
+
+    public Task<WorkOrderDeletionResult> DeleteByDateAsync(
+        DateTime startTime,
+        DateTime endTime,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(new WorkOrderDeletionResult());
+
+    public WorkOrderDeletionResult DeleteWorkOrder(int taskId)
+    {
+        DeletedWorkOrderIds.Add(taskId);
+        return new WorkOrderDeletionResult { DeletedWorkOrderCount = 1 };
+    }
 }
 
 sealed class FakeProductionReportFileService : IProductionReportFileService

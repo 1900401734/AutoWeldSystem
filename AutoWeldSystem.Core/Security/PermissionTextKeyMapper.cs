@@ -25,6 +25,7 @@ public static class PermissionTextKeyMapper
             PermissionCodes.Buttons.Data.Reset => TextKeys.Permission.ButtonDataReset,
             PermissionCodes.Buttons.Data.OpenReport => TextKeys.Permission.ButtonDataOpenReport,
             PermissionCodes.Buttons.Data.OpenReportFolder => TextKeys.Permission.ButtonDataOpenReportFolder,
+            PermissionCodes.Buttons.Data.Delete => TextKeys.Permission.ButtonDataDelete,
             PermissionCodes.Buttons.User.Add => TextKeys.Permission.ButtonUserAdd,
             PermissionCodes.Buttons.User.Edit => TextKeys.Permission.ButtonUserEdit,
             PermissionCodes.Buttons.User.Delete => TextKeys.Permission.ButtonUserDelete,

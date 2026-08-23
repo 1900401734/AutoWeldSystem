@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs.DataManagement;
 using AutoWeldSystem.Core.Interfaces;
@@ -21,6 +22,7 @@ public partial class DataManageView : BaseView
     private readonly IDataHistoryQueryService _historyQueryService = null!;
     private readonly ILocalizationService _localizer = null!;
     private readonly IAppSettingsService _appSettingsService = null!;
+    private readonly IDataHistoryMaintenanceService _maintenanceService = null!;
     private CancellationTokenSource? _workOrderQueryCancellation;
     private CancellationTokenSource? _detailQueryCancellation;
     private bool _initialized;
@@ -47,11 +49,13 @@ public partial class DataManageView : BaseView
     public DataManageView(
         IDataHistoryQueryService historyQueryService,
         ILocalizationService localizer,
-        IAppSettingsService appSettingsService)
+        IAppSettingsService appSettingsService,
+        IDataHistoryMaintenanceService maintenanceService)
     {
         _historyQueryService = historyQueryService;
         _localizer = localizer;
         _appSettingsService = appSettingsService;
+        _maintenanceService = maintenanceService;
 
         InitializeComponent();
         ConfigureGrids();
@@ -71,6 +75,10 @@ public partial class DataManageView : BaseView
         SetDefaultDateRange();
         ApplyLocalizedTexts();
         ApplyDefaultSplitterLayout();
+        ApplyDeletePermission();
+
+        // 视图被 MainForm 缓存，切换用户后不会重新绑定权限，必须自行复算删除按钮
+        GlobalContext.SessionChanged += GlobalContext_SessionChanged;
         _ = QueryWorkOrdersAsync(resetPage: true);
     }
 
@@ -100,7 +108,7 @@ public partial class DataManageView : BaseView
     private void ConfigureGrids()
     {
         ConfigureStaticGridColumns();
-        ConfigureGrid(dgvWorkOrders, DataGridViewAutoSizeColumnsMode.DisplayedCells);
+        ConfigureGrid(dgvWorkOrders, DataGridViewAutoSizeColumnsMode.DisplayedCells, multiSelect: true);
         ConfigureGrid(dgvReportFiles, DataGridViewAutoSizeColumnsMode.Fill);
         TableStyleHelper.ApplyAntdTable(tableTestData);
         tableTestData.DefaultExpand = true;
@@ -326,12 +334,15 @@ public partial class DataManageView : BaseView
         }
     }
 
-    private static void ConfigureGrid(DataGridView grid, DataGridViewAutoSizeColumnsMode autoSizeMode)
+    private static void ConfigureGrid(
+        DataGridView grid,
+        DataGridViewAutoSizeColumnsMode autoSizeMode,
+        bool multiSelect = false)
     {
         TableStyleHelper.ApplyDataGridView(grid);
         grid.AutoGenerateColumns = false;
         grid.AutoSizeColumnsMode = autoSizeMode;
-        grid.MultiSelect = false;
+        grid.MultiSelect = multiSelect;
         grid.ReadOnly = true;
         grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
 
@@ -369,6 +380,9 @@ public partial class DataManageView : BaseView
         selectProductResult.SelectedIndexChanged += ProductResultFilter_SelectedIndexChanged;
         tableTestData.SortModeChanged += TestData_SortModeChanged;
         btnExportTestData.Click += (_, _) => ExportTestData();
+        btnDeleteWorkOrders.Click += async (_, _) => await DeleteSelectedWorkOrdersAsync();
+        btnCleanFailedData.Click += async (_, _) => await CleanFailedDataAsync();
+        btnCleanByDate.Click += async (_, _) => await CleanByDateAsync();
     }
 
     private async void FilterInput_KeyDown(object? sender, KeyEventArgs e)
@@ -399,6 +413,15 @@ public partial class DataManageView : BaseView
             return;
         }
 
+        ApplyDeletePermission();
+
+        // 多选时详情面板无法对应唯一工单，清空以免误读
+        if (GetSelectedWorkOrders().Count > 1)
+        {
+            ClearTaskDetails();
+            return;
+        }
+
         var row = GetSelectedWorkOrder();
         if (row is null)
         {
@@ -406,6 +429,58 @@ public partial class DataManageView : BaseView
         }
 
         await LoadTaskDetailsAsync(row.TaskId);
+    }
+
+    private void GlobalContext_SessionChanged(object? sender, EventArgs e)
+    {
+        if (_disposing || IsDisposed)
+        {
+            return;
+        }
+
+        if (InvokeRequired)
+        {
+            BeginInvoke(new Action(ApplyDeletePermission));
+            return;
+        }
+
+        ApplyDeletePermission();
+    }
+
+    /// <summary>
+    /// 读取多选的工单行。与 GetSelectedWorkOrder 同样避开 CurrentRow，防止 Dispose 期间访问已清空的行集合。
+    /// </summary>
+    private List<DataHistoryWorkOrderRow> GetSelectedWorkOrders()
+    {
+        if (_disposing || IsDisposed || Disposing)
+        {
+            return [];
+        }
+
+        return dgvWorkOrders.SelectedRows
+            .Cast<DataGridViewRow>()
+            .Select(row => row.DataBoundItem)
+            .OfType<DataHistoryWorkOrderRow>()
+            .ToList();
+    }
+
+    /// <summary>
+    /// 删除按钮同时受权限和选中状态约束；运行中工单不可删除。
+    /// </summary>
+    private void ApplyDeletePermission()
+    {
+        if (_disposing || IsDisposed || Disposing)
+        {
+            return;
+        }
+
+        var hasPermission = GlobalContext.HasPermission(PermissionCodes.Buttons.Data.Delete);
+        var selected = GetSelectedWorkOrders();
+        btnDeleteWorkOrders.Enabled = hasPermission
+            && selected.Count > 0
+            && selected.All(row => WorkOrderDeletionRules.CanDelete(row.TaskStatus));
+        btnCleanFailedData.Enabled = hasPermission;
+        btnCleanByDate.Enabled = hasPermission;
     }
 
     /// <summary>
@@ -655,6 +730,155 @@ public partial class DataManageView : BaseView
         }
     }
 
+    private async Task DeleteSelectedWorkOrdersAsync()
+    {
+        var selected = GetSelectedWorkOrders();
+        if (selected.Count == 0)
+        {
+            ShowWarning(T(TextKeys.DataManage.DeleteSelectNone));
+            return;
+        }
+
+        var taskIds = selected.Select(row => row.TaskId).ToList();
+        var preview = await _maintenanceService.PreviewDeleteByIdsAsync(taskIds);
+        var confirmMessage = _localizer.GetString(
+            TextKeys.DataManage.DeleteConfirm,
+            preview.WorkOrderCount,
+            preview.RecordCount,
+            preview.ReportFileCount);
+
+        await ExecuteDeletionAsync(
+            preview,
+            confirmMessage,
+            () => _maintenanceService.DeleteByIdsAsync(taskIds));
+    }
+
+    private async Task CleanFailedDataAsync()
+    {
+        var preview = await _maintenanceService.PreviewDeleteFailedAsync();
+        var confirmMessage = _localizer.GetString(
+            TextKeys.DataManage.CleanFailedConfirm,
+            preview.WorkOrderCount,
+            preview.RecordCount,
+            preview.ReportFileCount);
+
+        await ExecuteDeletionAsync(
+            preview,
+            confirmMessage,
+            () => _maintenanceService.DeleteFailedAsync());
+    }
+
+    private async Task CleanByDateAsync()
+    {
+        var criteria = BuildCriteria();
+        var preview = await _maintenanceService.PreviewDeleteByDateAsync(criteria.StartTime, criteria.EndTime);
+        var confirmMessage = _localizer.GetString(
+            TextKeys.DataManage.CleanByDateConfirm,
+            criteria.StartTime.ToString("yyyy-MM-dd"),
+            criteria.EndTime.ToString("yyyy-MM-dd"),
+            preview.WorkOrderCount,
+            preview.RecordCount,
+            preview.ReportFileCount);
+
+        await ExecuteDeletionAsync(
+            preview,
+            confirmMessage,
+            () => _maintenanceService.DeleteByDateAsync(criteria.StartTime, criteria.EndTime));
+    }
+
+    /// <summary>
+    /// 三个删除入口共用的确认、执行、提示和刷新流程。
+    /// </summary>
+    private async Task ExecuteDeletionAsync(
+        WorkOrderDeletionPreview preview,
+        string confirmMessage,
+        Func<Task<WorkOrderDeletionResult>> deletion)
+    {
+        if (preview.WorkOrderCount == 0)
+        {
+            var noMatchMessage = preview.SkippedRunningCount > 0
+                ? T(TextKeys.DataManage.DeleteNoMatch)
+                    + Environment.NewLine
+                    + _localizer.GetString(TextKeys.DataManage.DeleteSkippedRunning, preview.SkippedRunningCount)
+                : T(TextKeys.DataManage.DeleteNoMatch);
+            ShowWarning(noMatchMessage);
+            return;
+        }
+
+        if (MessageBox.Show(
+                this,
+                confirmMessage,
+                T(TextKeys.Common.TitleConfirmDelete),
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning) != DialogResult.Yes)
+        {
+            return;
+        }
+
+        SetQueryBusy(true);
+        WorkOrderDeletionResult result;
+        try
+        {
+            result = await deletion();
+        }
+        catch (Exception ex)
+        {
+            ShowError(_localizer.GetString(TextKeys.DataManage.DeleteFailed, ex.Message));
+            return;
+        }
+        finally
+        {
+            SetQueryBusy(false);
+        }
+
+        ClearTaskDetails();
+        await RequeryAfterDeletionAsync();
+        ShowDeletionResult(result);
+    }
+
+    private void ShowDeletionResult(WorkOrderDeletionResult result)
+    {
+        var message = _localizer.GetString(
+            TextKeys.DataManage.DeleteSuccess,
+            result.DeletedWorkOrderCount,
+            result.DeletedRecordCount,
+            result.DeletedReportFileCount);
+
+        if (result.SkippedRunningCount > 0)
+        {
+            message += Environment.NewLine
+                + _localizer.GetString(TextKeys.DataManage.DeleteSkippedRunning, result.SkippedRunningCount);
+        }
+
+        if (result.FailedFileDeletionCount > 0)
+        {
+            message += Environment.NewLine
+                + _localizer.GetString(TextKeys.DataManage.DeleteFileFailed, result.FailedFileDeletionCount);
+        }
+
+        MessageBox.Show(this, message, T(TextKeys.Common.TitleInfo), MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+
+    /// <summary>
+    /// 删除后当前页可能已越界，回退到最后一个有效页再查询。
+    /// </summary>
+    private async Task RequeryAfterDeletionAsync()
+    {
+        await QueryWorkOrdersAsync(resetPage: false);
+
+        if (workOrderBindingSource.Count > 0 || workOrderPagination.Total <= 0)
+        {
+            return;
+        }
+
+        var pageSize = Math.Max(1, workOrderPagination.PageSize);
+        var lastPage = Math.Max(1, (workOrderPagination.Total + pageSize - 1) / pageSize);
+        if (workOrderPagination.Current > lastPage)
+        {
+            await QueryWorkOrdersAsync(resetPage: false, lastPage);
+        }
+    }
+
     private int CountVisibleTestRecords()
         => _visibleTestDataRows.Sum(row => row.Children.Count > 0 ? row.Children.Count : row.RecordId > 0 ? 1 : 0);
 
@@ -801,6 +1025,7 @@ public partial class DataManageView : BaseView
         }
 
         _disposing = true;
+        GlobalContext.SessionChanged -= GlobalContext_SessionChanged;
         CancelAndDispose(ref _workOrderQueryCancellation);
         CancelAndDispose(ref _detailQueryCancellation);
         dgvWorkOrders.SelectionChanged -= WorkOrders_SelectionChanged;
@@ -870,6 +1095,15 @@ public partial class DataManageView : BaseView
         btnQuery.Enabled = !busy;
         btnReset.Enabled = !busy;
         workOrderPagination.Enabled = !busy;
+        if (busy)
+        {
+            btnDeleteWorkOrders.Enabled = false;
+            btnCleanFailedData.Enabled = false;
+            btnCleanByDate.Enabled = false;
+            return;
+        }
+
+        ApplyDeletePermission();
     }
 
     private void SetDetailBusy(bool busy)
@@ -893,6 +1127,9 @@ public partial class DataManageView : BaseView
         txtWorkOrder.PlaceholderText = _localizer.GetString(TextKeys.DataManage.WorkOrderPlaceholder);
         btnQuery.Text = _localizer.GetString(TextKeys.DataManage.Query);
         btnReset.Text = _localizer.GetString(TextKeys.DataManage.Reset);
+        btnDeleteWorkOrders.Text = _localizer.GetString(TextKeys.DataManage.DeleteWorkOrders);
+        btnCleanFailedData.Text = _localizer.GetString(TextKeys.DataManage.CleanFailedData);
+        btnCleanByDate.Text = _localizer.GetString(TextKeys.DataManage.CleanByDate);
         tabWeldParameters.Text = _localizer.GetString(TextKeys.DataManage.TabWeldParameters);
         lblProductResultFilter.Text = _localizer.GetString(TextKeys.DataManage.ProductResultFilter);
         btnExportTestData.Text = _localizer.GetString(TextKeys.DataManage.ExportTestData);

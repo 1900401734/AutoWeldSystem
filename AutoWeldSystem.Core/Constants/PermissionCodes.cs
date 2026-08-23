@@ -51,6 +51,7 @@ public static class PermissionCodes
             public const string Reset = "button.data.reset";
             public const string OpenReport = "button.data.open-report";
             public const string OpenReportFolder = "button.data.open-report-folder";
+            public const string Delete = "button.data.delete";
         }
 
         public static class Monitor

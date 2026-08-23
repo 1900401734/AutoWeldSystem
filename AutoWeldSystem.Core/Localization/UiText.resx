@@ -1934,6 +1934,48 @@
   <data name="data.message.export_failed" xml:space="preserve">
     <value>测试数据导出失败：{0}</value>
   </data>
+  <data name="data.button.delete_work_orders" xml:space="preserve">
+    <value>删除选中</value>
+  </data>
+  <data name="data.button.clean_failed_data" xml:space="preserve">
+    <value>清理失败数据</value>
+  </data>
+  <data name="data.button.clean_by_date" xml:space="preserve">
+    <value>按日期清理</value>
+  </data>
+  <data name="data.message.delete_select_none" xml:space="preserve">
+    <value>请先选择要删除的工单。</value>
+  </data>
+  <data name="data.message.delete_confirm" xml:space="preserve">
+    <value>确定删除选中的 {0} 条工单吗？
+
+将同时删除 {1} 条采集记录和 {2} 个报表文件（含磁盘上的报表），删除后无法恢复！</value>
+  </data>
+  <data name="data.message.clean_failed_confirm" xml:space="preserve">
+    <value>确定清理上传失败的 {0} 条工单吗？
+
+将同时删除 {1} 条采集记录和 {2} 个报表文件（含磁盘上的报表），已上传成功的数据也会一并删除，删除后无法恢复！</value>
+  </data>
+  <data name="data.message.clean_by_date_confirm" xml:space="preserve">
+    <value>确定清理 {0} 至 {1} 的 {2} 条工单吗？
+
+将同时删除 {3} 条采集记录和 {4} 个报表文件（含磁盘上的报表），删除后无法恢复！</value>
+  </data>
+  <data name="data.message.delete_no_match" xml:space="preserve">
+    <value>没有符合条件的可删除工单。</value>
+  </data>
+  <data name="data.message.delete_success" xml:space="preserve">
+    <value>已删除 {0} 条工单、{1} 条采集记录和 {2} 个报表文件。</value>
+  </data>
+  <data name="data.message.delete_skipped_running" xml:space="preserve">
+    <value>已跳过 {0} 条生产中或已暂停的工单。</value>
+  </data>
+  <data name="data.message.delete_file_failed" xml:space="preserve">
+    <value>{0} 个报表文件删除失败，可能正被其他程序占用，需手动清理。</value>
+  </data>
+  <data name="data.message.delete_failed" xml:space="preserve">
+    <value>删除失败：{0}</value>
+  </data>
   <data name="data.message.loading" xml:space="preserve">
     <value>正在加载...</value>
   </data>
@@ -2074,6 +2116,9 @@
   </data>
   <data name="permission.button.data.open_report_folder" xml:space="preserve">
     <value>打开报告目录</value>
+  </data>
+  <data name="permission.button.data.delete" xml:space="preserve">
+    <value>删除历史数据</value>
   </data>
   <data name="grid.plc_address.station" xml:space="preserve">
     <value>工位</value>

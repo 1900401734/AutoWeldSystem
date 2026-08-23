@@ -84,6 +84,23 @@ public static class RolePermissionInitializationRules
             PermissionCodes.Tabs.State.CustomerDefaults);
     }
 
+    /// <summary>
+    /// 旧数据库首次出现历史数据删除权限时，为已有历史数据页权限的管理员补齐该权限。
+    /// 后续启动返回空集合，因此不会重新补回管理员手工取消的权限。
+    /// </summary>
+    public static IReadOnlyList<string> ResolveDataDeleteUpgradeDefaults(
+        string? roleCode,
+        bool dataDeleteCatalogWasMissing,
+        bool hasDataManagePagePermission)
+    {
+        if (!dataDeleteCatalogWasMissing || !hasDataManagePagePermission || !IsAdmin(roleCode))
+        {
+            return Array.Empty<string>();
+        }
+
+        return new[] { PermissionCodes.Buttons.Data.Delete };
+    }
+
     private static bool IsDeveloper(string? roleCode)
     {
         return string.Equals(roleCode, AppConstants.Roles.Developer, StringComparison.OrdinalIgnoreCase);

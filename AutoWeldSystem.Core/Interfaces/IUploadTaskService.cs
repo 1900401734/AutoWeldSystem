@@ -32,8 +32,6 @@ public interface IUploadTaskService
 
     void DeleteTask(int id);
 
-    void HideWeldTaskUploadState(int weldTaskId);
-
     /// <summary>
     /// Deletes all weld point records for a specific product in a virtual process-parameter row.
     /// </summary>

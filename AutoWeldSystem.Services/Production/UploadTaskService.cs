@@ -628,41 +628,6 @@ public class UploadTaskService : IUploadTaskService
         PublishTaskStatusChanged(changed);
     }
 
-    public void HideWeldTaskUploadState(int weldTaskId)
-    {
-        // 已升级为真删除：删除工单及所有关联记录（上传任务、焊点记录、报表文件），不再只做隐藏标记。
-        UploadTaskStatusChangedEventArgs? changed = null;
-        lock (_dbLock)
-        {
-            _dbContext.InitDatabase();
-            var task = _dbContext.Db.Queryable<BizWeldTask>().InSingle(weldTaskId);
-            if (task is null)
-            {
-                return;
-            }
-
-            _dbContext.Db.Deleteable<BizUploadTask>()
-                .Where(ut => ut.WeldTaskId == weldTaskId)
-                .ExecuteCommand();
-            _dbContext.Db.Deleteable<BizWeldPointRecord>()
-                .Where(r => r.TaskId == weldTaskId)
-                .ExecuteCommand();
-            _dbContext.Db.Deleteable<BizProductionReportFile>()
-                .Where(f => f.TaskId == weldTaskId)
-                .ExecuteCommand();
-            _dbContext.Db.Deleteable(task).ExecuteCommand();
-
-            changed = new UploadTaskStatusChangedEventArgs
-            {
-                WeldTaskId = weldTaskId,
-                TaskType = "Summary",
-                Status = "Deleted"
-            };
-        }
-
-        PublishTaskStatusChanged(changed);
-    }
-
     public void DeleteProcessParameterVirtualRow(int weldTaskId, int stationNo, string productNo)
     {
         lock (_dbLock)

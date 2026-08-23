@@ -23,9 +23,10 @@ public class RbacService : IRbacService
     public void InitializeRbac()
     {
         EnsureDefaultRoles();
-        EnsureDefaultPermissions();
+        var createdPermissionCodes = EnsureDefaultPermissions();
         CleanupRetiredPermissions();
         EnsureDefaultRolePermissions();
+        UpgradeDataDeletePermission(createdPermissionCodes);
     }
 
     public IReadOnlyList<SysRole> GetAllRoles(bool enabledOnly = false)
@@ -327,9 +328,13 @@ public class RbacService : IRbacService
         }
     }
 
-    private void EnsureDefaultPermissions()
+    /// <summary>
+    /// 补齐权限目录，返回本次新建的权限码，供旧数据库的一次性补权使用。
+    /// </summary>
+    private HashSet<string> EnsureDefaultPermissions()
     {
         var existing = GetAllPermissions().ToDictionary(item => item.Code, StringComparer.OrdinalIgnoreCase);
+        var createdCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var definition in PermissionCatalog.All)
         {
@@ -353,11 +358,48 @@ public class RbacService : IRbacService
             if (permission.Id <= 0)
             {
                 _dbContext.Db.Insertable(permission).ExecuteCommand();
+                createdCodes.Add(definition.Code);
             }
             else
             {
                 _dbContext.Db.Updateable(permission).ExecuteCommand();
             }
+        }
+
+        return createdCodes;
+    }
+
+    /// <summary>
+    /// 旧数据库首次引入历史数据删除权限时，为管理员补权，避免升级后按钮一直置灰。
+    /// </summary>
+    private void UpgradeDataDeletePermission(HashSet<string> createdPermissionCodes)
+    {
+        if (!createdPermissionCodes.Contains(PermissionCodes.Buttons.Data.Delete))
+        {
+            return;
+        }
+
+        var permissions = GetAllPermissions().ToDictionary(item => item.Code, StringComparer.OrdinalIgnoreCase);
+        if (!permissions.TryGetValue(PermissionCodes.Buttons.Data.Delete, out var deletePermission)
+            || !permissions.TryGetValue(PermissionCodes.Pages.DataManage, out var dataManagePermission))
+        {
+            return;
+        }
+
+        foreach (var role in GetAllRoles())
+        {
+            var hasDataManagePage = _dbContext.Db.Queryable<SysRolePermission>()
+                .Any(item => item.RoleId == role.Id && item.PermissionId == dataManagePermission.Id);
+            var upgradeCodes = RolePermissionInitializationRules.ResolveDataDeleteUpgradeDefaults(
+                role.RoleCode,
+                dataDeleteCatalogWasMissing: true,
+                hasDataManagePagePermission: hasDataManagePage);
+            if (upgradeCodes.Count == 0)
+            {
+                continue;
+            }
+
+            AppendMissingRolePermissions(role.Id, [deletePermission.Id]);
         }
     }
 
