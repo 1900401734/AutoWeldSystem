@@ -632,6 +632,28 @@ public static class TextKeys
         public const string ExportFailed = "data.message.export_failed";
 
         /// <summary>
+        /// 删除选中
+        /// </summary>
+        public const string DeleteWorkOrders = "data.button.delete_work_orders";
+        /// <summary>
+        /// 清理失败数据
+        /// </summary>
+        public const string CleanFailedData = "data.button.clean_failed_data";
+        /// <summary>
+        /// 按日期清理
+        /// </summary>
+        public const string CleanByDate = "data.button.clean_by_date";
+        public const string DeleteSelectNone = "data.message.delete_select_none";
+        public const string DeleteConfirm = "data.message.delete_confirm";
+        public const string CleanFailedConfirm = "data.message.clean_failed_confirm";
+        public const string CleanByDateConfirm = "data.message.clean_by_date_confirm";
+        public const string DeleteNoMatch = "data.message.delete_no_match";
+        public const string DeleteSuccess = "data.message.delete_success";
+        public const string DeleteSkippedRunning = "data.message.delete_skipped_running";
+        public const string DeleteFileFailed = "data.message.delete_file_failed";
+        public const string DeleteFailed = "data.message.delete_failed";
+
+        /// <summary>
         /// 焊接参数
         /// </summary>
         public const string TabWeldParameters = "data.tab.weld_parameters";
@@ -896,6 +918,7 @@ public static class TextKeys
         public const string ButtonDataReset = "permission.button.data.reset";
         public const string ButtonDataOpenReport = "permission.button.data.open_report";
         public const string ButtonDataOpenReportFolder = "permission.button.data.open_report_folder";
+        public const string ButtonDataDelete = "permission.button.data.delete";
         public const string ButtonUserAdd = "permission.button.user.add";
         public const string ButtonUserEdit = "permission.button.user.edit";
         public const string ButtonUserDelete = "permission.button.user.delete";

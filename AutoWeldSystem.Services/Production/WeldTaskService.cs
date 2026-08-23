@@ -33,6 +33,7 @@ public class WeldTaskService : IWeldTaskService
     private readonly IDeviceLifecycleLogService _deviceLifecycleLogService;
     private readonly IDeviceStatusService _deviceStatusService;
     private readonly ISystemClockService _systemClockService;
+    private readonly IDataHistoryMaintenanceService _maintenanceService;
     private AppSettings _currentSettings;
 
     public WeldTaskService(
@@ -46,8 +47,10 @@ public class WeldTaskService : IWeldTaskService
         IProductionReportFileService reportFileService,
         IDeviceLifecycleLogService deviceLifecycleLogService,
         IDeviceStatusService deviceStatusService,
-        ISystemClockService systemClockService)
+        ISystemClockService systemClockService,
+        IDataHistoryMaintenanceService maintenanceService)
     {
+        _maintenanceService = maintenanceService;
         _mesProvider = mesProvider;
         _dbContext = dbContext;
         _settingsService = settingsService;
@@ -1886,27 +1889,11 @@ public class WeldTaskService : IWeldTaskService
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>
+    /// 委托给维护服务统一执行，从而复用事务、磁盘报表清理和审计日志。
+    /// </summary>
     public void DeleteWeldTask(int id)
     {
-        _dbContext.InitDatabase();
-        var task = _dbContext.Db.Queryable<BizWeldTask>().InSingle(id);
-        if (task is null)
-        {
-            return;
-        }
-
-        _dbContext.Db.Deleteable<BizUploadTask>()
-            .Where(ut => ut.WeldTaskId == id)
-            .ExecuteCommand();
-
-        _dbContext.Db.Deleteable<BizWeldPointRecord>()
-            .Where(r => r.TaskId == id)
-            .ExecuteCommand();
-
-        _dbContext.Db.Deleteable<BizProductionReportFile>()
-            .Where(f => f.TaskId == id)
-            .ExecuteCommand();
-
-        _dbContext.Db.Deleteable(task).ExecuteCommand();
+        _maintenanceService.DeleteWorkOrder(id);
     }
 }

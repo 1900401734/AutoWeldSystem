@@ -1933,6 +1933,48 @@
   <data name="data.message.export_failed" xml:space="preserve">
     <value>Failed to export test data: {0}</value>
   </data>
+  <data name="data.button.delete_work_orders" xml:space="preserve">
+    <value>Delete Selected</value>
+  </data>
+  <data name="data.button.clean_failed_data" xml:space="preserve">
+    <value>Clean Failed Data</value>
+  </data>
+  <data name="data.button.clean_by_date" xml:space="preserve">
+    <value>Clean By Date</value>
+  </data>
+  <data name="data.message.delete_select_none" xml:space="preserve">
+    <value>Please select the work orders to delete.</value>
+  </data>
+  <data name="data.message.delete_confirm" xml:space="preserve">
+    <value>Delete the {0} selected work order(s)?
+
+This also removes {1} collection record(s) and {2} report file(s) including the files on disk. This cannot be undone!</value>
+  </data>
+  <data name="data.message.clean_failed_confirm" xml:space="preserve">
+    <value>Clean the {0} work order(s) that failed to upload?
+
+This also removes {1} collection record(s) and {2} report file(s) including the files on disk. Data already uploaded will be removed as well. This cannot be undone!</value>
+  </data>
+  <data name="data.message.clean_by_date_confirm" xml:space="preserve">
+    <value>Clean the {2} work order(s) between {0} and {1}?
+
+This also removes {3} collection record(s) and {4} report file(s) including the files on disk. This cannot be undone!</value>
+  </data>
+  <data name="data.message.delete_no_match" xml:space="preserve">
+    <value>No deletable work order matches the condition.</value>
+  </data>
+  <data name="data.message.delete_success" xml:space="preserve">
+    <value>Deleted {0} work order(s), {1} collection record(s) and {2} report file(s).</value>
+  </data>
+  <data name="data.message.delete_skipped_running" xml:space="preserve">
+    <value>Skipped {0} running or paused work order(s).</value>
+  </data>
+  <data name="data.message.delete_file_failed" xml:space="preserve">
+    <value>Failed to delete {0} report file(s); they may be in use and need manual cleanup.</value>
+  </data>
+  <data name="data.message.delete_failed" xml:space="preserve">
+    <value>Delete failed: {0}</value>
+  </data>
   <data name="data.message.loading" xml:space="preserve">
     <value>Loading...</value>
   </data>
@@ -2073,6 +2115,9 @@
   </data>
   <data name="permission.button.data.open_report_folder" xml:space="preserve">
     <value>Open Report Folder</value>
+  </data>
+  <data name="permission.button.data.delete" xml:space="preserve">
+    <value>Delete History Data</value>
   </data>
   <data name="grid.plc_address.station" xml:space="preserve">
     <value>Station</value>

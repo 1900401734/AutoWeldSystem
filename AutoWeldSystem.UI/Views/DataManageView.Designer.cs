@@ -40,6 +40,10 @@
             mainSplitter = new AntdUI.Splitter();
             workOrderLayout = new TableLayoutPanel();
             lblWorkOrderSummary = new Label();
+            workOrderToolbar = new FlowLayoutPanel();
+            btnDeleteWorkOrders = new AntdUI.Button();
+            btnCleanFailedData = new AntdUI.Button();
+            btnCleanByDate = new AntdUI.Button();
             dgvWorkOrders = new DataGridView();
             workOrderPagination = new AntdUI.Pagination();
             detailTabs = new TabControl();
@@ -114,6 +118,7 @@
             mainSplitter.Panel2.SuspendLayout();
             mainSplitter.SuspendLayout();
             workOrderLayout.SuspendLayout();
+            workOrderToolbar.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)dgvWorkOrders).BeginInit();
             detailTabs.SuspendLayout();
             tabWeldParameters.SuspendLayout();
@@ -303,7 +308,7 @@
             // mainSplitter.Panel1
             //
             mainSplitter.Panel1.Controls.Add(workOrderLayout);
-            mainSplitter.Panel1MinSize = 160;
+            mainSplitter.Panel1MinSize = 180;
             //
             // mainSplitter.Panel2
             //
@@ -316,16 +321,20 @@
             //
             // workOrderLayout
             //
-            workOrderLayout.ColumnCount = 1;
+            workOrderLayout.ColumnCount = 2;
             workOrderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            workOrderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 372F));
             workOrderLayout.Controls.Add(lblWorkOrderSummary, 0, 0);
+            workOrderLayout.Controls.Add(workOrderToolbar, 1, 0);
             workOrderLayout.Controls.Add(dgvWorkOrders, 0, 1);
             workOrderLayout.Controls.Add(workOrderPagination, 0, 2);
+            workOrderLayout.SetColumnSpan(dgvWorkOrders, 2);
+            workOrderLayout.SetColumnSpan(workOrderPagination, 2);
             workOrderLayout.Dock = DockStyle.Fill;
             workOrderLayout.Location = new Point(0, 0);
             workOrderLayout.Name = "workOrderLayout";
             workOrderLayout.RowCount = 3;
-            workOrderLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+            workOrderLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
             workOrderLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             workOrderLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48F));
             workOrderLayout.Size = new Size(1424, 300);
@@ -337,10 +346,60 @@
             lblWorkOrderSummary.ForeColor = SystemColors.GrayText;
             lblWorkOrderSummary.Location = new Point(3, 0);
             lblWorkOrderSummary.Name = "lblWorkOrderSummary";
-            lblWorkOrderSummary.Size = new Size(1418, 30);
+            lblWorkOrderSummary.Size = new Size(1046, 40);
             lblWorkOrderSummary.TabIndex = 0;
             lblWorkOrderSummary.Text = "历史工单：0 条";
             lblWorkOrderSummary.TextAlign = ContentAlignment.MiddleLeft;
+            //
+            // workOrderToolbar
+            //
+            workOrderToolbar.Dock = DockStyle.Fill;
+            workOrderToolbar.FlowDirection = FlowDirection.RightToLeft;
+            workOrderToolbar.Location = new Point(1052, 0);
+            workOrderToolbar.Margin = new Padding(0);
+            workOrderToolbar.Name = "workOrderToolbar";
+            workOrderToolbar.Size = new Size(372, 40);
+            workOrderToolbar.TabIndex = 1;
+            workOrderToolbar.WrapContents = false;
+            workOrderToolbar.Controls.Add(btnCleanByDate);
+            workOrderToolbar.Controls.Add(btnCleanFailedData);
+            workOrderToolbar.Controls.Add(btnDeleteWorkOrders);
+            //
+            // btnDeleteWorkOrders
+            //
+            btnDeleteWorkOrders.BorderWidth = 1F;
+            btnDeleteWorkOrders.IconSvg = "DeleteOutlined";
+            btnDeleteWorkOrders.Location = new Point(272, 4);
+            btnDeleteWorkOrders.Margin = new Padding(0, 4, 0, 4);
+            btnDeleteWorkOrders.Name = "btnDeleteWorkOrders";
+            btnDeleteWorkOrders.Size = new Size(100, 32);
+            btnDeleteWorkOrders.TabIndex = 0;
+            btnDeleteWorkOrders.Tag = "perm:button.data.delete:enabled";
+            btnDeleteWorkOrders.Text = "删除选中";
+            //
+            // btnCleanFailedData
+            //
+            btnCleanFailedData.BorderWidth = 1F;
+            btnCleanFailedData.IconSvg = "ClearOutlined";
+            btnCleanFailedData.Location = new Point(140, 4);
+            btnCleanFailedData.Margin = new Padding(8, 4, 0, 4);
+            btnCleanFailedData.Name = "btnCleanFailedData";
+            btnCleanFailedData.Size = new Size(124, 32);
+            btnCleanFailedData.TabIndex = 1;
+            btnCleanFailedData.Tag = "perm:button.data.delete:enabled";
+            btnCleanFailedData.Text = "清理失败数据";
+            //
+            // btnCleanByDate
+            //
+            btnCleanByDate.BorderWidth = 1F;
+            btnCleanByDate.IconSvg = "CalendarOutlined";
+            btnCleanByDate.Location = new Point(8, 4);
+            btnCleanByDate.Margin = new Padding(8, 4, 0, 4);
+            btnCleanByDate.Name = "btnCleanByDate";
+            btnCleanByDate.Size = new Size(112, 32);
+            btnCleanByDate.TabIndex = 2;
+            btnCleanByDate.Tag = "perm:button.data.delete:enabled";
+            btnCleanByDate.Text = "按日期清理";
             //
             // dgvWorkOrders
             //
@@ -350,9 +409,9 @@
             dgvWorkOrders.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             dgvWorkOrders.DataSource = workOrderBindingSource;
             dgvWorkOrders.Dock = DockStyle.Fill;
-            dgvWorkOrders.Location = new Point(0, 30);
+            dgvWorkOrders.Location = new Point(0, 40);
             dgvWorkOrders.Margin = new Padding(0);
-            dgvWorkOrders.MultiSelect = false;
+            dgvWorkOrders.MultiSelect = true;
             dgvWorkOrders.Name = "dgvWorkOrders";
             dgvWorkOrders.ReadOnly = true;
             dgvWorkOrders.RowHeadersVisible = false;
@@ -935,6 +994,7 @@
             ((System.ComponentModel.ISupportInitialize)mainSplitter).EndInit();
             mainSplitter.ResumeLayout(false);
             workOrderLayout.ResumeLayout(false);
+            workOrderToolbar.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)dgvWorkOrders).EndInit();
             detailTabs.ResumeLayout(false);
             tabWeldParameters.ResumeLayout(false);
@@ -976,6 +1036,10 @@
         private AntdUI.Splitter mainSplitter;
         private TableLayoutPanel workOrderLayout;
         private Label lblWorkOrderSummary;
+        private FlowLayoutPanel workOrderToolbar;
+        private AntdUI.Button btnDeleteWorkOrders;
+        private AntdUI.Button btnCleanFailedData;
+        private AntdUI.Button btnCleanByDate;
         private DataGridView dgvWorkOrders;
         private AntdUI.Pagination workOrderPagination;
         private TabControl detailTabs;
