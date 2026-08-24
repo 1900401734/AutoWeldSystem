@@ -1,6 +1,6 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.6.1`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.6.2`。
 
 ## 功能概览
 
@@ -220,6 +220,8 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 
 ## 检测设备四面转 A/B、程序判定与升级检查
 
+`v2.6.2` 修复地址管理“测试项字典”测试项ID不连续的问题：测试项ID改由应用层分配，取当前最大ID加一，不再依赖 MySQL 自增列。此前删除记录后自增计数器不回收，把 1、2、20 三条全部删除再重新添加会得到 21、22、23；现在会重新从 1 开始。新增行同时按测试项ID排到列表末尾并自动选中，新增时预览的序号与保存后的测试项ID一致。已有测试项的ID保持不变，不会重排，避免影响历史数据中按 `item_{ID}` 记录的测试项列。
+
 `v2.6.1` 调整监控页实时产品编号按内容自适应宽度，焊点标签占满剩余空间，并将版本号标签右侧留白对齐。
 
 `v2.6.0` 为数据管理历史工单增加删除维护：支持多选删除、清理上传失败工单和按日期区间批量清理，同步删除采集记录、上传任务、报表记录和磁盘上的 xlsx 报表，需要“删除历史数据”权限并写入操作日志。删除前会显示预计删除条数，生产中和已暂停的工单一律跳过。删除只清理本地数据，不会撤回已上传到 MES 或中心服务器的记录。旧数据库升级到该版本时会自动为管理员补齐删除权限，之后可在“用户管理 → 角色 → 分配权限”中调整。
@@ -290,10 +292,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>2.6.1</Version>
-<AssemblyVersion>2.6.1.0</AssemblyVersion>
-<FileVersion>2.6.1.0</FileVersion>
-<InformationalVersion>2.6.1</InformationalVersion>
+<Version>2.6.2</Version>
+<AssemblyVersion>2.6.2.0</AssemblyVersion>
+<FileVersion>2.6.2.0</FileVersion>
+<InformationalVersion>2.6.2</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -305,9 +307,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v2.6.1 -m "Release v2.6.1"
+git tag -a v2.6.2 -m "Release v2.6.2"
 git push origin main
-git push origin v2.6.1
+git push origin v2.6.2
 ```
 
 ## Git 使用
