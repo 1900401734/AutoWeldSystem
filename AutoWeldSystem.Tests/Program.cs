@@ -11822,7 +11822,15 @@ static void MonitorRuntimeTipsUseLocalizedSummaries()
     AssertTrue(viewCode.Contains("new AntdUI.Target(this)", StringComparison.Ordinal), "PLC 报警通知必须使用主窗体作为屏幕级定位目标。");
     AssertTrue(viewCode.Contains("AntdUI.TAlignFrom.BL", StringComparison.Ordinal) && viewCode.Contains("AutoClose = 0", StringComparison.Ordinal), "PLC 报警通知必须固定在屏幕左下角并保持到手动关闭或报警恢复。");
     AssertTrue(viewCode.Contains("AntdUI.Notification.contains(notificationId)", StringComparison.Ordinal), "关闭 PLC 报警通知前必须先确认其已进入队列，避免 close_id 的 volley 机制抵消后续通知。");
-    AssertTrue(viewCode.Contains("DismissPlcAlarmNotification(CurrentStationNo)", StringComparison.Ordinal), "右侧清除设备报警时必须仅标记当前工位通知为已读。");
+    // 断言按方法内行为判定，不绑定实参字面量：清除入口把 CurrentStationNo 规范化为局部变量后再传入，仍只作用于当前工位。
+    var runtimeErrorClearMethod = ExtractMethodText(
+        viewCode,
+        "private void RuntimeErrorClearButton_Click(object? sender, EventArgs e)",
+        "private void ClearDeviceAlarmRuntimeErrorIfCurrent");
+    AssertTrue(
+        runtimeErrorClearMethod.Contains("NormalizeStatusStationNo(CurrentStationNo)", StringComparison.Ordinal)
+            && runtimeErrorClearMethod.Contains("DismissPlcAlarmNotification(stationNo)", StringComparison.Ordinal),
+        "右侧清除设备报警时必须仅标记当前工位通知为已读，不得清除其它工位。");
     AssertTrue(viewCode.Contains("CloseAllPlcAlarmNotifications();", StringComparison.Ordinal), "监控页销毁时必须关闭 PLC 报警通知。");
     var productionMethod = ExtractMethodText(viewCode, "private void ApplyProductionStatus(PlcProductionSnapshot snapshot)", "private void ApplyDeviceStatus");
     AssertTrue(productionMethod.IndexOf("SyncPlcAlarmNotification(snapshot)", StringComparison.Ordinal) < productionMethod.IndexOf("CurrentStationNo", StringComparison.Ordinal), "所有工位的报警快照必须先同步通知，再按当前工位刷新右侧状态。");
