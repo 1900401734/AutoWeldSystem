@@ -1779,10 +1779,19 @@ public partial class AddressManageView : BaseView
     private void SaveTestItems()
     {
         NormalizeTestItems(_testItems);
-        foreach (var item in _testItems.OrderBy(item => item.ItemId <= 0).ThenBy(item => item.ItemId))
+
+        // 先更新已保存行，再按界面临时测试项ID递增插入新行，
+        // 使数据库写入顺序与新增时看到的序号保持一致。
+        // 循环内会回写 ItemId，必须先物化排序结果，避免延迟排序被改动的键打乱。
+        var itemsToSave = _testItems
+            .OrderBy(item => item.ItemId <= 0)
+            .ThenBy(item => item.ItemId > 0 ? item.ItemId : GetTestItemDisplayId(item))
+            .ToList();
+        foreach (var item in itemsToSave)
         {
             var saved = _testSchemeConfigService.SaveItem(item);
             item.ItemId = saved.ItemId;
+            _temporaryTestItemIds.Remove(item);
         }
 
         ShowPostSaveResult("测试项字典已保存。", TryReloadDataAfterSave("AddressManageView.ReloadAfterTestItemSave"));
@@ -2908,15 +2917,10 @@ public partial class AddressManageView : BaseView
 
     private int BuildNextTemporaryTestItemId()
     {
-        var persistedMax = _testItems
-            .Where(item => item.ItemId > 0)
-            .Select(item => item.ItemId)
-            .DefaultIfEmpty(0)
-            .Max();
-        var temporaryMax = _temporaryTestItemIds.Values
-            .DefaultIfEmpty(0)
-            .Max();
-        return Math.Max(persistedMax, temporaryMax) + 1;
+        // 与服务层分配规则保持一致，避免新增时预览的序号和保存后的测试项ID不同。
+        // 已分配的临时ID也要参与取最大值，否则连续新增多行会得到重复序号。
+        return TestItemIdAllocationRules.AllocateNextId(
+            _testItems.Select(item => item.ItemId).Concat(_temporaryTestItemIds.Values));
     }
 
     private string GetAddressDisplayName(BizPlcAddress address)

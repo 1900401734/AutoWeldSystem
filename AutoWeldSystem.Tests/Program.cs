@@ -94,6 +94,7 @@ var tests = new (string Name, Action Run)[]
     ("Product process draft keeps existing defaults without source", ProductProcessDraftKeepsExistingDefaultsWithoutSource),
     ("Address manage copies selected product process on add", AddressManageCopiesSelectedProductProcessOnAdd),
     ("Address manage appends new test items in display id order", AddressManageAppendsNewTestItemsInDisplayIdOrder),
+    ("Test item ids reuse gaps left by deleted rows", TestItemIdsReuseGapsLeftByDeletedRows),
     ("Scheme detail role headers use centralized defaults", SchemeDetailRoleHeadersUseCentralizedDefaults),
     ("Test item units format report headers and MES values", TestItemUnitsFormatReportHeadersAndMesValues),
     ("Scheme detail role grid defines localized bound columns", SchemeDetailRoleGridDefinesLocalizedBoundColumns),
@@ -1260,6 +1261,71 @@ static void AddressManageAppendsNewTestItemsInDisplayIdOrder()
         addMethod.Contains("ReferenceEquals(row.Source, item)", StringComparison.Ordinal)
             && addMethod.Contains("tableTestItems.SetSelected(_selectedItemRow, true);", StringComparison.Ordinal),
         "新增测试项必须选中新行，避免选中回落到第一行。");
+
+    var saveMethod = ExtractMethodText(
+        viewCode,
+        "private void SaveTestItems()",
+        "private async void TestSelected_Click(object? sender, EventArgs e)");
+
+    AssertTrue(
+        saveMethod.Contains("GetTestItemDisplayId(item)", StringComparison.Ordinal),
+        "保存时必须按临时测试项ID递增插入，使自增 ID 与界面序号一致。");
+    AssertTrue(
+        saveMethod.Contains("var itemsToSave = _testItems", StringComparison.Ordinal)
+            && saveMethod.Contains(".ToList();", StringComparison.Ordinal),
+        "保存前必须物化排序结果，否则循环内回写 ItemId 会打乱延迟排序。");
+}
+
+static void TestItemIdsReuseGapsLeftByDeletedRows()
+{
+    // 空表从 1 开始，不从 0 也不留空。
+    AssertEqual(1, TestItemIdAllocationRules.AllocateNextId(Array.Empty<int>()), "测试项字典为空时必须从 1 开始分配。");
+    AssertEqual(1, TestItemIdAllocationRules.AllocateNextId(new[] { 0, 0 }), "只有未落库新行时必须从 1 开始分配。");
+
+    // 连续序号继续递增。
+    AssertEqual(4, TestItemIdAllocationRules.AllocateNextId(new[] { 1, 2, 3 }), "已有 1、2、3 时下一个测试项ID必须是 4。");
+
+    // 现场场景：删掉 1、2、20 后重新添加，不得因 AUTO_INCREMENT 残留而跟到 21。
+    var afterFullDelete = TestItemIdAllocationRules.AllocateNextId(Array.Empty<int>());
+    AssertEqual(1, afterFullDelete, "全部删除后重新添加必须回到 1，不得继续使用数据库自增残留值。");
+
+    // 保留高位记录时不得占用已存在的ID。
+    AssertEqual(21, TestItemIdAllocationRules.AllocateNextId(new[] { 1, 2, 20 }), "保留 20 时新增必须取 21，不得复用已占用ID。");
+
+    // 服务层必须显式写入ID，不能回到依赖数据库自增的写法。
+    var serviceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "TestSchemeConfigService.cs"),
+        Encoding.UTF8);
+    var saveItemMethod = ExtractMethodText(
+        serviceCode,
+        "public DimTestItem SaveItem(DimTestItem item)",
+        "public void DeleteItem(int itemId)");
+
+    AssertTrue(
+        saveItemMethod.Contains("TestItemIdAllocationRules.AllocateNextId", StringComparison.Ordinal),
+        "新增测试项必须走集中的ID分配规则。");
+    AssertTrue(
+        saveItemMethod.Contains(".OffIdentity()", StringComparison.Ordinal),
+        "显式分配测试项ID后必须关闭自增列，否则 MySQL 仍会重新赋值。");
+    AssertFalse(
+        saveItemMethod.Contains("Insertable(item).ExecuteReturnEntity()", StringComparison.Ordinal),
+        "不得再依赖数据库自增返回测试项ID，否则删除后会跟号。");
+
+    // 界面预览序号必须和服务层用同一套规则。
+    var viewCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "AddressManageView.cs"),
+        Encoding.UTF8);
+    var buildIdMethod = ExtractMethodText(
+        viewCode,
+        "private int BuildNextTemporaryTestItemId()",
+        "private string GetAddressDisplayName(BizPlcAddress address)");
+
+    AssertTrue(
+        buildIdMethod.Contains("TestItemIdAllocationRules.AllocateNextId", StringComparison.Ordinal),
+        "新增时预览的测试项ID必须复用服务层分配规则，避免保存后序号变化。");
+    AssertTrue(
+        buildIdMethod.Contains("_temporaryTestItemIds.Values", StringComparison.Ordinal),
+        "连续新增多行时已分配的临时ID必须参与取最大值，否则会重复。");
 }
 
 static void ProgramSaveRecipeRulesRequirePositiveStationCodes()

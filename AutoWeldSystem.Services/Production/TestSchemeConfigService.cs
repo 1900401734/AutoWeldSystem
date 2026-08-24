@@ -141,7 +141,13 @@ public sealed class TestSchemeConfigService : ITestSchemeConfigService
 
             if (item.ItemId <= 0)
             {
-                return _dbContext.Db.Insertable(item).ExecuteReturnEntity();
+                // 不依赖 MySQL 的 AUTO_INCREMENT：它在删除记录后不回退计数器，
+                // 会把测试项ID变成 21、22、23 这种跟界面序号不一致的跳号。
+                // 由应用层在同一把锁内读最大ID并显式写入，保证序号连续。
+                item.ItemId = TestItemIdAllocationRules.AllocateNextId(
+                    _dbContext.Db.Queryable<DimTestItem>().Select(it => it.ItemId).ToList());
+                _dbContext.Db.Insertable(item).OffIdentity().ExecuteCommand();
+                return _dbContext.Db.Queryable<DimTestItem>().InSingle(item.ItemId) ?? item;
             }
 
             _dbContext.Db.Updateable(item).ExecuteCommand();
