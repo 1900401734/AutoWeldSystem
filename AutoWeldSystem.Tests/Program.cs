@@ -10791,6 +10791,19 @@ static void MonitorViewLinksProductNumSelectionToProgramOptions()
         "private void SelectFirstOfflineProgramForProductNum(string productNum)");
     // 未启用筛选时列表是全量的，重绑定会保留原程序并把工号回写成原值，必须显式跳转。
     AssertTrue(productNumHandler.Contains("SelectFirstOfflineProgramForProductNum(productNum);", StringComparison.Ordinal), "选中工号后必须跳到该工号的首个程序，否则未启用筛选时工号选择会被回写覆盖。");
+    AssertTrue(productNumHandler.Contains("ApplyOfflineProgramNameOption(GetSelectedOfflineProgramNameOption(), syncDrawingNo: true);", StringComparison.Ordinal), "用户选择工号后必须按定位到的程序同步部件图号。");
+
+    var programHandler = ExtractMethodText(
+        viewCode,
+        "private void ProgramNameSelection_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)",
+        "#endregion");
+    AssertTrue(programHandler.Contains("ApplyOfflineProgramNameOption(option, syncDrawingNo: true);", StringComparison.Ordinal), "用户切换离线程序后必须同步该程序的部件图号。");
+
+    var applyProgram = ExtractMethodText(
+        viewCode,
+        "private void ApplyOfflineProgramNameOption(OfflineProgramNameOption? option, bool syncDrawingNo)",
+        "/// 按配方号反向联动离线程序名称、产品工号和产品型号。");
+    AssertTrue(applyProgram.Contains("inputDrawingNo.Text = option?.Program.ComponentCode?.Trim() ?? string.Empty;", StringComparison.Ordinal), "离线部件图号必须取当前程序的零组件代码，空值时清空。");
 
     var resolveProductNum = ExtractMethodText(
         viewCode,
@@ -10813,6 +10826,12 @@ static void MonitorViewKeepsUserProductNumAcrossRuntimeRebind()
     AssertTrue(bindProductNum.Contains("_userSelectedOfflineProductNums.TryGetValue(stationKey, out var remembered)", StringComparison.Ordinal), "周期性重绑定必须优先复用操作员已选的工号。");
     AssertTrue(bindProductNum.Contains("_userSelectedOfflineProductNums.Remove(stationKey);", StringComparison.Ordinal), "记忆的工号在程序库中消失后必须清除，避免筛选恒空。");
     AssertTrue(bindProductNum.Contains("ForceProductNumSelection(", StringComparison.Ordinal), "重建选项后必须走 -1 归位赋值，规避 AntdUI 索引短路。");
+
+    var runtimeBinding = ExtractMethodText(
+        viewCode,
+        "private void BindOfflineEditableRuntimeState(string liveWorkId)",
+        "private void ApplyOfflineInputReadOnly(bool readOnly)");
+    AssertTrue(runtimeBinding.Contains("ApplyOfflineProgramNameOption(GetSelectedOfflineProgramNameOption(), syncDrawingNo: false);", StringComparison.Ordinal), "周期性运行态重绑定不得覆盖操作员当前部件图号。");
 
     var clearSelection = ExtractMethodText(
         viewCode,

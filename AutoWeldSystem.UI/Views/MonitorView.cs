@@ -1193,7 +1193,7 @@ public partial class MonitorView : BaseView
             SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.SubmittingStart);
             await _weldTaskService.StartLocalAsync(request, ResolveLocalOperatorNumber(), 0);
             _offlineWorkOrderEditedByUser = false;
-            ApplyOfflineProgramNameOption(selectedProgram);
+            ApplyOfflineProgramNameOption(selectedProgram, syncDrawingNo: false);
             RefreshProductionRuntimeState();
             QueueRefreshSchemePreview(force: true);
             SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.LocalStartSucceeded);
@@ -1962,7 +1962,7 @@ public partial class MonitorView : BaseView
         // 未启用筛选时程序列表是全量的，重绑定会保留原程序并把工号回写成原值，
         // 因此必须显式跳到该工号的首个程序。
         SelectFirstOfflineProgramForProductNum(productNum);
-        ApplyOfflineProgramNameOption(GetSelectedOfflineProgramNameOption());
+        ApplyOfflineProgramNameOption(GetSelectedOfflineProgramNameOption(), syncDrawingNo: true);
         QueueRefreshSchemePreview(force: true);
     }
 
@@ -2013,7 +2013,7 @@ public partial class MonitorView : BaseView
             {
                 MarkOfflineProgramSelectionByUser(CurrentStationNo);
             }
-            ApplyOfflineProgramNameOption(option);
+            ApplyOfflineProgramNameOption(option, syncDrawingNo: true);
             if (option is not null)
             {
                 QueueRefreshSchemePreview(force: true);
@@ -3940,7 +3940,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
                 inputProdModel.Text = string.Empty;
             }
 
-            ApplyOfflineProgramNameOption(GetSelectedOfflineProgramNameOption());
+            ApplyOfflineProgramNameOption(GetSelectedOfflineProgramNameOption(), syncDrawingNo: false);
         }
         finally
         {
@@ -4115,12 +4115,18 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// <param name="options">离线程序名称选项。</param>
     /// <param name="currentRecipeCode">需要保持显示的当前配方号。</param>
     /// <summary>
-    /// 将选中的程序名称关联信息同步到产品工号和配方号控件，产品型号由 MES 或操作员输入。
+    /// 将选中的程序名称关联信息同步到产品工号；用户显式选择时同时用零组件代码回填部件图号。
     /// </summary>
     /// <param name="option">选中的本地程序；为空时清空联动字段。</param>
-    private void ApplyOfflineProgramNameOption(OfflineProgramNameOption? option)
+    /// <param name="syncDrawingNo">是否同步部件图号；后台刷新传 false，避免覆盖操作员输入。</param>
+    private void ApplyOfflineProgramNameOption(OfflineProgramNameOption? option, bool syncDrawingNo)
     {
         SetProductNumSelectionText(option?.Program.ProductNum ?? string.Empty);
+        if (syncDrawingNo)
+        {
+            inputDrawingNo.Text = option?.Program.ComponentCode?.Trim() ?? string.Empty;
+        }
+
         if (option is not null && IsOfflineInputEditable(GetCurrentStationState()))
         {
             selectProgramName.Text = option.DisplayText;
