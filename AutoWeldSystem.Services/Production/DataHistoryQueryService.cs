@@ -436,14 +436,23 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
             var item = definition.Item!;
             var detail = definition.Detail;
             var itemKey = ResolveItemKey(item);
-            AddColumn(columns, SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Actual), itemKey, SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Actual));
-            AddColumn(columns, SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Upper), $"{itemKey}_upper", SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Upper));
-            AddColumn(columns, SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Lower), $"{itemKey}_lower", SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Lower));
-            AddColumn(columns, SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Result), $"{itemKey}_result", SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Result));
+            AddColumn(columns, SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Actual), itemKey, ResolveColumnHeader(detail, item, SchemeDetailValueRole.Actual));
+            AddColumn(columns, SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Upper), $"{itemKey}_upper", ResolveColumnHeader(detail, item, SchemeDetailValueRole.Upper));
+            AddColumn(columns, SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Lower), $"{itemKey}_lower", ResolveColumnHeader(detail, item, SchemeDetailValueRole.Lower));
+            AddColumn(columns, SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Result), $"{itemKey}_result", ResolveColumnHeader(detail, item, SchemeDetailValueRole.Result));
         }
 
         return columns;
     }
+
+    /// <summary>
+    /// 解析动态列标题，并按统一规则追加测试项单位。
+    /// </summary>
+    private static string ResolveColumnHeader(BizSchemeDetail detail, DimTestItem item, SchemeDetailValueRole role)
+        => TestItemUnitFormatRules.FormatHeader(
+            SchemeDetailRoleRules.ResolveHeader(detail, item, role),
+            item.Unit,
+            role);
 
     private static string BuildSavedRawDataJson(
         BizWeldPointRecord record,

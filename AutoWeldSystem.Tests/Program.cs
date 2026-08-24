@@ -97,6 +97,7 @@ var tests = new (string Name, Action Run)[]
     ("Test item ids reuse gaps left by deleted rows", TestItemIdsReuseGapsLeftByDeletedRows),
     ("Scheme detail role headers use centralized defaults", SchemeDetailRoleHeadersUseCentralizedDefaults),
     ("Test item units format report headers and MES values", TestItemUnitsFormatReportHeadersAndMesValues),
+    ("Data history dynamic columns append test item units", DataHistoryDynamicColumnsAppendTestItemUnits),
     ("Realtime preview columns append test item units", RealtimePreviewColumnsAppendTestItemUnits),
     ("Scheme detail role grid defines localized bound columns", SchemeDetailRoleGridDefinesLocalizedBoundColumns),
     ("Scheme detail role names and monitor fallbacks are centralized", SchemeDetailRoleNamesAndMonitorFallbacksAreCentralized),
@@ -2147,6 +2148,37 @@ static void TestItemUnitsFormatReportHeadersAndMesValues()
     AssertEqual(string.Empty, TestItemUnitFormatRules.FormatValue(" ", "A", SchemeDetailValueRole.Actual), "空值不得生成独立单位字符串。");
     AssertEqual("12.3", TestItemUnitFormatRules.FormatValue("12.3", null, SchemeDetailValueRole.Actual), "空单位必须保持原值。");
     AssertEqual("OK", TestItemUnitFormatRules.FormatValue("OK", "A", SchemeDetailValueRole.Result), "结果字段不得追加单位。");
+}
+
+static void DataHistoryDynamicColumnsAppendTestItemUnits()
+{
+    var method = typeof(DataHistoryQueryService).GetMethod(
+        "ResolveColumnHeader",
+        System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+    AssertTrue(method is not null, "数据历史服务必须提供动态列标题解析入口。");
+
+    var item = new DimTestItem { ItemId = 1, ItemName = "峰值电流", Unit = "A" };
+    var detail = new BizSchemeDetail();
+
+    string Invoke(SchemeDetailValueRole role)
+        => (string)(method!.Invoke(null, [detail, item, role]) ?? string.Empty);
+
+    AssertEqual("峰值电流 (A)", Invoke(SchemeDetailValueRole.Actual), "测试数据页实际值列标题必须追加测试项单位。");
+    AssertEqual("峰值电流上限 (A)", Invoke(SchemeDetailValueRole.Upper), "测试数据页上限列标题必须追加测试项单位。");
+    AssertEqual("峰值电流下限 (A)", Invoke(SchemeDetailValueRole.Lower), "测试数据页下限列标题必须追加测试项单位。");
+    AssertEqual("峰值电流结果", Invoke(SchemeDetailValueRole.Result), "测试数据页结果列标题不得追加单位。");
+
+    var customDetail = new BizSchemeDetail { ActualHeader = " 客户电流 " };
+    AssertEqual(
+        "客户电流 (A)",
+        (string)(method!.Invoke(null, [customDetail, item, SchemeDetailValueRole.Actual]) ?? string.Empty),
+        "自定义表头必须保留并追加测试项单位。");
+
+    var unitlessItem = new DimTestItem { ItemId = 2, ItemName = "焊接次数" };
+    AssertEqual(
+        "焊接次数",
+        (string)(method!.Invoke(null, [detail, unitlessItem, SchemeDetailValueRole.Actual]) ?? string.Empty),
+        "未配置单位的测试项列标题必须保持原样。");
 }
 
 static void RealtimePreviewColumnsAppendTestItemUnits()
