@@ -41,6 +41,14 @@ public static class WorkOrderAutoQueryRules
     }
 
     /// <summary>
+    /// 判断 PLC 是否已成功把工单号寄存器清空；空格写入会在此统一视为空字符串。
+    /// </summary>
+    public static bool ShouldResetAfterPlcClear(bool readSuccess, string? workId)
+    {
+        return readSuccess && string.IsNullOrWhiteSpace(Normalize(workId));
+    }
+
+    /// <summary>
     /// 判断本次工位快照是否属于启动后的首个读数，只能作为基准值记录而不能触发业务动作。
     /// 现场 PLC 会在梯形图里持续驱动工单号寄存器，上位机无法清空，
     /// 因此程序启动时寄存器里往往残留上一轮的条码；若直接使用会误判为新扫码。

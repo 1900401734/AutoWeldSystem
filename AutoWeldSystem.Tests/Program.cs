@@ -41,6 +41,7 @@ var tests = new (string Name, Action Run)[]
     ("Monitor view applies responsive right layout", MonitorViewAppliesResponsiveRightLayout),
     ("PLC alarm notification rules normalize messages and signatures", PlcAlarmNotificationRulesNormalizeMessagesAndSignatures),
     ("Monitor view preserves work order input focus on preview hover", MonitorViewPreservesWorkOrderInputFocusOnPreviewHover),
+    ("Work-order clear resets PLC query state", WorkOrderClearResetsPlcQueryState),
     ("System setting view avoids repeated layout rebuilds during resize", SystemSettingViewAvoidsRepeatedLayoutRebuilds),
     ("Base window batches layout and redraw during interactive resize", BaseWindowBatchesInteractiveResize),
     ("Main form keeps cached pages mounted during navigation", MainFormKeepsCachedPagesMountedDuringNavigation),
@@ -12612,6 +12613,36 @@ static void WorkOrderBaselineSuppressesStartupResidualBarcode()
         "残留值记为基准后，扫入不同工单号必须能正常自动查询。");
 }
 
+static void WorkOrderClearResetsPlcQueryState()
+{
+    AssertTrue(
+        WorkOrderAutoQueryRules.ShouldResetAfterPlcClear(
+            readSuccess: true,
+            workId: "   \r\n\t  "),
+        "PLC 成功读取到空格、换行或制表符时，应视为工单号已清空。");
+
+    AssertFalse(
+        WorkOrderAutoQueryRules.ShouldResetAfterPlcClear(
+            readSuccess: false,
+            workId: "   "),
+        "PLC 读取失败时不能把旧工单号误判为已清空。");
+
+    AssertFalse(
+        WorkOrderAutoQueryRules.ShouldResetAfterPlcClear(
+            readSuccess: true,
+            workId: "WO-NEW"),
+        "非空 PLC 工单号不能进入清空复位分支。");
+
+    AssertTrue(
+        WorkOrderAutoQueryRules.ShouldAutoQuery(
+            mesConnected: true,
+            hasRunningTask: false,
+            workIdReadSuccess: true,
+            workId: "WO-SAME",
+            lastRequestedWorkId: null,
+            queryInProgress: false),
+        "清空复位查询基线后，再次扫描原工单号也必须允许自动查询。");
+}
 static void WorkOrderAutoQuerySkipsDuplicatesAndRunningTasks()
 {
     AssertTrue(
@@ -12712,6 +12743,12 @@ static void MonitorViewConfirmsManualWorkOrdersAndPrioritizesPlcSnapshots()
     AssertTrue(inputKeyDownMethod.Contains("ConfirmManualWorkOrderInput", StringComparison.Ordinal), "工单号回车必须进入人工确认入口。");
     AssertTrue(plcSnapshotMethod.Contains("ApplyPlcWorkOrderInput", StringComparison.Ordinal), "PLC 有效快照必须有独立入口，强制覆盖人工草稿。");
     AssertTrue(plcSnapshotMethod.Contains("StartWorkOrderLoadAsync", StringComparison.Ordinal), "在线 PLC 快照必须立即启动最新工单查询。");
+    AssertTrue(viewCode.Contains("ApplyClearedPlcWorkOrderInput", StringComparison.Ordinal), "PLC 清空工单号必须有独立的状态复位入口。");
+    AssertTrue(viewCode.Contains("_lastAutoQueriedWorkIds.Remove(stationNo);", StringComparison.Ordinal), "PLC 清空工单号时必须释放自动查询去重基线。");
+    AssertTrue(viewCode.Contains("_workOrderBaselines.Add(stationNo);", StringComparison.Ordinal), "PLC 空值必须建立基线，确保随后首次真实扫码不会被当成启动残留。");
+    AssertTrue(viewCode.Contains("_workOrderBaselines.Contains(stationNo)", StringComparison.Ordinal), "启动基线状态必须与工单查询去重状态分离，清空后同号扫描才能重新查询。");
+    AssertTrue(viewCode.Contains("SetWorkOrderInputText(string.Empty);", StringComparison.Ordinal), "PLC 清空工单号时必须清空流转卡号控件。");
+    AssertTrue(viewCode.Contains("CancelWorkOrderLoad(stationNo);", StringComparison.Ordinal), "PLC 清空工单号时必须取消旧的工单查询请求。");
     AssertTrue(offlineRequestMethod.Contains("GetConfirmedWorkOrderInput", StringComparison.Ordinal), "离线开工必须使用已确认工单号，而非未确认输入文本。");
     AssertTrue(viewCode.Contains("CancellationTokenSource", StringComparison.Ordinal), "工单查询必须维护取消令牌，避免旧人工查询覆盖 PLC 查询。");
     AssertTrue(serviceMethod.Contains("cancellationToken.ThrowIfCancellationRequested();", StringComparison.Ordinal), "服务层在 MES 返回后写入运行态前必须检查请求是否已经取消。");

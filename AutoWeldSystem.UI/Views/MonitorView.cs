@@ -125,6 +125,7 @@ public partial class MonitorView : BaseView
     private readonly Dictionary<int, string> _plcAlarmSummaryDismissedSignatures = new();
     private readonly Dictionary<int, DateTime> _finishRecipeReadFailureLogTimes = new();
     private readonly Dictionary<int, string> _lastAutoQueriedWorkIds = new();
+    private readonly HashSet<int> _workOrderBaselines = new();
     // Stores the value that may be used for start; typing changes are drafts until Enter.
     private readonly Dictionary<int, string> _confirmedWorkOrderInputs = new();
     // One request per station is current. A PLC scan replaces a pending manual query immediately.
@@ -1791,6 +1792,41 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
+    /// 处理 PLC 成功清空工单号：立即释放扫码去重状态，空闲时只清空流转卡号及其确认状态。
+    /// 运行任务期间保留任务工单显示，但去重状态仍需释放，确保完工后同一工单可直接重新扫码。
+    /// </summary>
+    private bool ApplyClearedPlcWorkOrderInput(PlcWorkIdSnapshot snapshot)
+    {
+        var stationNo = NormalizeStationNo(snapshot.StationNo);
+        if (!WorkOrderAutoQueryRules.ShouldResetAfterPlcClear(snapshot.IsSuccess, snapshot.WorkId))
+        {
+            return false;
+        }
+
+        _lastAutoQueriedWorkIds.Remove(stationNo);
+        // 空值证明 PLC 已完成一次清空，后续首个非空值应按新扫码处理，而不是启动残留。
+        _workOrderBaselines.Add(stationNo);
+        var state = _weldTaskService.CurrentState.GetOrCreateStation(stationNo);
+        var stationIsIdle = !IsRunningWeldTask(state.ActiveTask)
+            && _weldTaskService.GetUnfinishedTask(stationNo) is null;
+        CancelWorkOrderLoad(stationNo);
+        ClearConfirmedWorkOrderInput(stationNo);
+        if (!stationIsIdle)
+        {
+            return true;
+        }
+        if (stationNo == CurrentStationNo)
+        {
+            _manualWorkOrderEditedByUser = false;
+            // 离线输入绑定会为空工单自动生成 LOCAL 编号；标记为草稿以保留 PLC 清空后的空显示。
+            _offlineWorkOrderEditedByUser = IsOfflineInputEditable(state);
+            SetWorkOrderInputText(string.Empty);
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// Applies an idle-station PLC work order with higher priority than an unconfirmed manual draft.
     /// </summary>
     private bool ApplyPlcWorkOrderInput(PlcWorkIdSnapshot snapshot)
@@ -1806,10 +1842,11 @@ public partial class MonitorView : BaseView
 
         // 启动后首个读数只记基准：PLC 侧持续驱动该寄存器，残留条码不能当作新扫码使用。
         if (WorkOrderAutoQueryRules.ShouldCaptureBaselineOnly(
-                _lastAutoQueriedWorkIds.ContainsKey(stationNo),
+                _workOrderBaselines.Contains(stationNo),
                 snapshot.IsSuccess,
                 snapshot.WorkId))
         {
+            _workOrderBaselines.Add(stationNo);
             _lastAutoQueriedWorkIds[stationNo] = WorkOrderInputConfirmationRules.Normalize(snapshot.WorkId);
             return false;
         }
@@ -1840,6 +1877,17 @@ public partial class MonitorView : BaseView
         _confirmedWorkOrderInputs.Remove(NormalizeStationNo(stationNo));
     }
 
+    private void CancelWorkOrderLoad(int stationNo)
+    {
+        if (!_workOrderLoadCancellationTokens.Remove(NormalizeStationNo(stationNo), out var tokenSource))
+        {
+            return;
+        }
+
+        tokenSource.Cancel();
+        tokenSource.Dispose();
+    }
+
     /// <summary>
     /// Gets the work order currently confirmed for the specified station.
     /// </summary>
@@ -1862,11 +1910,7 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        if (_workOrderLoadCancellationTokens.Remove(normalizedStationNo, out var previousTokenSource))
-        {
-            previousTokenSource.Cancel();
-            previousTokenSource.Dispose();
-        }
+        CancelWorkOrderLoad(normalizedStationNo);
 
         using var tokenSource = new CancellationTokenSource();
         _workOrderLoadCancellationTokens[normalizedStationNo] = tokenSource;
@@ -4366,6 +4410,11 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// <param name="snapshot">状态快照。</param>
     private void ApplyWorkIdSnapshot(PlcWorkIdSnapshot snapshot)
     {
+        if (ApplyClearedPlcWorkOrderInput(snapshot))
+        {
+            return;
+        }
+
         if (snapshot.StationNo != CurrentStationNo)
         {
             return;
