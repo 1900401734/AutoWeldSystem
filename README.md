@@ -1,10 +1,11 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.6.4`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.7.0`。
 
 ## 功能概览
 
 - 生产监控：工单信息、程序信息、PLC/MES 连接状态、设备状态、生产指标实时显示；采集预览和产品历史仅在开工后显示，无运行任务且无待开工工单或离线草稿时清空工单信息；右侧区域按可用高度与 DPI 自动切换紧凑布局，仅在极低高度下纵向滚动。 产品工艺仅配置一个采集点且产品只有一条记录时，产品历史直接显示为单行；多采集点或重复测试仍保留树形明细。
+- 产品重测：仅整件检测设备支持。PLC 触摸屏点击“重测”后不更新产品编号，上位机识别为重测并就地覆盖该产品的测试值、结果和采集时间，产品历史、报表、MES 过程参数和中心看板均更新为最新一轮结果，重测记录写入操作日志。
 - MES 交互：员工校验、工单获取、开工上报、完工上报、设备编号同步、程序上传/下载。
 - 过程参数上传：测试项字典配置单位后，实际值、上限和下限按“值 单位”上传，结果字段保持原值；试焊件字段 `IsTest` 使用 JSON 布尔值 `true/false`；整件检测四面工艺在本地保留 1～4 面原始数据，上传 MES 时输出 `SideNo=A/B` 两条数据，对称度按 A=面2/4、B=面1/3 平均，高度和宽度取四面最大值并在 A/B 两条数据中重复发送，`Result` 按配对面从严合并，不发送 `Type`、`TouchNo` 和 `IsTest`。
 - PLC 监控日志：周期读取设备状态、实际数量、合格数量和失效数量失败时记录为“PLC 业务信号读取失败”；“生产数据采集失败”仅表示开工后的产品数据就绪信号触发实际产品数据采集失败；报警地址读取失败单独记录。PLC 心跳支持独立配置监测频率、心跳超时时间和通讯超时，并在状态提示中显示采样间隔、通讯锁等待和 PLC 读取耗时。
@@ -298,10 +299,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>2.6.4</Version>
-<AssemblyVersion>2.6.4.0</AssemblyVersion>
-<FileVersion>2.6.4.0</FileVersion>
-<InformationalVersion>2.6.4</InformationalVersion>
+<Version>2.7.0</Version>
+<AssemblyVersion>2.7.0.0</AssemblyVersion>
+<FileVersion>2.7.0.0</FileVersion>
+<InformationalVersion>2.7.0</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -313,9 +314,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v2.6.4 -m "Release v2.6.4"
+git tag -a v2.7.0 -m "Release v2.7.0"
 git push origin main
-git push origin v2.6.4
+git push origin v2.7.0
 ```
 
 ## Git 使用
