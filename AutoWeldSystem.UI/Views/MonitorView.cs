@@ -6523,22 +6523,22 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
                 {
                     if (item.EnableUpper)
                     {
-                        AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewUpperRole), SchemeDetailRoleRules.ResolveHeader(item.UpperHeader, item.Name, SchemeDetailValueRole.Upper), 118);
+                        AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewUpperRole), ResolvePreviewColumnHeader(item, SchemeDetailValueRole.Upper), 118);
                     }
 
                     if (item.EnableLower)
                     {
-                        AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewLowerRole), SchemeDetailRoleRules.ResolveHeader(item.LowerHeader, item.Name, SchemeDetailValueRole.Lower), 118);
+                        AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewLowerRole), ResolvePreviewColumnHeader(item, SchemeDetailValueRole.Lower), 118);
                     }
 
                     if (item.EnableActual)
                     {
-                        AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewActualRole), SchemeDetailRoleRules.ResolveHeader(item.ActualHeader, item.Name, SchemeDetailValueRole.Actual), 136);
+                        AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewActualRole), ResolvePreviewColumnHeader(item, SchemeDetailValueRole.Actual), 136);
                     }
 
                     if (item.EnableResult)
                     {
-                        AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewResultRole), SchemeDetailRoleRules.ResolveHeader(item.ResultHeader, item.Name, SchemeDetailValueRole.Result), 118);
+                        AddWeldPreviewColumn(BuildPreviewColumnName(item.Index, PreviewResultRole), ResolvePreviewColumnHeader(item, SchemeDetailValueRole.Result), 118);
                     }
                 }
 
@@ -6731,6 +6731,27 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// <param name="columnName">列名。</param>
     /// <param name="headerText">列标题。</param>
     /// <param name="width">列宽度。</param>
+    /// <summary>
+    /// 解析实时预览列标题，并按统一规则追加测试项单位。
+    /// </summary>
+    /// <param name="item">预览项。</param>
+    /// <param name="role">字段角色。</param>
+    /// <returns>处理后的文本。</returns>
+    private static string ResolvePreviewColumnHeader(WeldPreviewItem item, SchemeDetailValueRole role)
+    {
+        var header = role switch
+        {
+            SchemeDetailValueRole.Upper => item.UpperHeader,
+            SchemeDetailValueRole.Lower => item.LowerHeader,
+            SchemeDetailValueRole.Result => item.ResultHeader,
+            _ => item.ActualHeader
+        };
+        return TestItemUnitFormatRules.FormatHeader(
+            SchemeDetailRoleRules.ResolveHeader(header, item.Name, role),
+            item.Unit,
+            role);
+    }
+
     private void AddWeldPreviewColumn(string columnName, string headerText, int width)
     {
         CurrentWeldPreviewGrid.Columns.Add(new DataGridViewTextBoxColumn
@@ -6940,7 +6961,8 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
                 ActualHeader = group.Select(row => row.ActualHeader).FirstOrDefault(header => !string.IsNullOrWhiteSpace(header)) ?? string.Empty,
                 UpperHeader = group.Select(row => row.UpperHeader).FirstOrDefault(header => !string.IsNullOrWhiteSpace(header)) ?? string.Empty,
                 LowerHeader = group.Select(row => row.LowerHeader).FirstOrDefault(header => !string.IsNullOrWhiteSpace(header)) ?? string.Empty,
-                ResultHeader = group.Select(row => row.ResultHeader).FirstOrDefault(header => !string.IsNullOrWhiteSpace(header)) ?? string.Empty
+                ResultHeader = group.Select(row => row.ResultHeader).FirstOrDefault(header => !string.IsNullOrWhiteSpace(header)) ?? string.Empty,
+                Unit = group.Select(row => row.Unit).FirstOrDefault(unit => !string.IsNullOrWhiteSpace(unit)) ?? string.Empty
             })
             .Where(item => item.EnableActual || item.EnableUpper || item.EnableLower || item.EnableResult)
             .OrderBy(item => item.Sort)
@@ -6957,7 +6979,8 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
                 item.ActualHeader,
                 item.UpperHeader,
                 item.LowerHeader,
-                item.ResultHeader))
+                item.ResultHeader,
+                item.Unit))
             .ToList();
 
         return items.Count == 0
@@ -7000,7 +7023,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         return items.Count == 0
             ? "info"
             : string.Join("|", items.Select(item =>
-                $"{item.Index}:{item.Key}:{item.Name}:{item.EnableActual}:{item.EnableUpper}:{item.EnableLower}:{item.EnableResult}:{item.ActualHeader}:{item.UpperHeader}:{item.LowerHeader}:{item.ResultHeader}"));
+                $"{item.Index}:{item.Key}:{item.Name}:{item.EnableActual}:{item.EnableUpper}:{item.EnableLower}:{item.EnableResult}:{item.ActualHeader}:{item.UpperHeader}:{item.LowerHeader}:{item.ResultHeader}:{item.Unit}"));
     }
 
     /// <summary>

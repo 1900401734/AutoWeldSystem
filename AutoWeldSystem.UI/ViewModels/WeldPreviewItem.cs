@@ -13,4 +13,5 @@ public sealed record WeldPreviewItem(
     string ActualHeader,
     string UpperHeader,
     string LowerHeader,
-    string ResultHeader);
+    string ResultHeader,
+    string Unit);

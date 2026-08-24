@@ -97,6 +97,7 @@ var tests = new (string Name, Action Run)[]
     ("Test item ids reuse gaps left by deleted rows", TestItemIdsReuseGapsLeftByDeletedRows),
     ("Scheme detail role headers use centralized defaults", SchemeDetailRoleHeadersUseCentralizedDefaults),
     ("Test item units format report headers and MES values", TestItemUnitsFormatReportHeadersAndMesValues),
+    ("Realtime preview columns append test item units", RealtimePreviewColumnsAppendTestItemUnits),
     ("Scheme detail role grid defines localized bound columns", SchemeDetailRoleGridDefinesLocalizedBoundColumns),
     ("Scheme detail role names and monitor fallbacks are centralized", SchemeDetailRoleNamesAndMonitorFallbacksAreCentralized),
     ("Station display names have localized dual-station rules", StationDisplayNamesHaveLocalizedDualStationRules),
@@ -2146,6 +2147,40 @@ static void TestItemUnitsFormatReportHeadersAndMesValues()
     AssertEqual(string.Empty, TestItemUnitFormatRules.FormatValue(" ", "A", SchemeDetailValueRole.Actual), "空值不得生成独立单位字符串。");
     AssertEqual("12.3", TestItemUnitFormatRules.FormatValue("12.3", null, SchemeDetailValueRole.Actual), "空单位必须保持原值。");
     AssertEqual("OK", TestItemUnitFormatRules.FormatValue("OK", "A", SchemeDetailValueRole.Result), "结果字段不得追加单位。");
+}
+
+static void RealtimePreviewColumnsAppendTestItemUnits()
+{
+    // MonitorView 依赖 WinForms 控件，无法在控制台 harness 中实例化，只能断言列标题走带单位的统一解析入口。
+    var monitorCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var headerMethod = ExtractMethodText(
+        monitorCode,
+        "private static string ResolvePreviewColumnHeader(WeldPreviewItem item, SchemeDetailValueRole role)",
+        "private void AddWeldPreviewColumn(");
+    AssertTrue(
+        headerMethod.Contains("TestItemUnitFormatRules.FormatHeader(", StringComparison.Ordinal)
+            && headerMethod.Contains("item.Unit", StringComparison.Ordinal),
+        "实时预览列标题必须复用测试项单位格式规则。");
+
+    var rebuildMethod = ExtractMethodText(
+        monitorCode,
+        "private void RebuildWeldParameterPreviewTable()",
+        "private static void SetControlRedraw(");
+    foreach (var role in new[] { "Upper", "Lower", "Actual", "Result" })
+    {
+        AssertTrue(
+            rebuildMethod.Contains($"ResolvePreviewColumnHeader(item, SchemeDetailValueRole.{role})", StringComparison.Ordinal),
+            $"实时预览 {role} 列必须使用带单位的标题解析入口。");
+    }
+
+    var previewItemCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "ViewModels", "WeldPreviewItem.cs"), Encoding.UTF8);
+    AssertTrue(previewItemCode.Contains("string Unit", StringComparison.Ordinal), "实时预览项模型必须携带测试项单位。");
+
+    var schemaKeyMethod = ExtractMethodText(
+        monitorCode,
+        "private static string BuildWeldPreviewSchemaKey(IReadOnlyList<WeldPreviewItem> items)",
+        "private static string BuildWeldPreviewLayoutKey(");
+    AssertTrue(schemaKeyMethod.Contains("item.Unit", StringComparison.Ordinal), "单位变化必须触发预览表重建。");
 }
 
 static void SchemeDetailRoleGridDefinesLocalizedBoundColumns()
