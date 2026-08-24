@@ -1429,17 +1429,19 @@ public partial class AddressManageView : BaseView
         _itemKeyword = keyword?.Trim() ?? string.Empty;
         var selectedId = _selectedItemRow?.ItemId;
 
+        // 未保存的新测试项数据库 ItemId 仍为 0，必须按界面显示的测试项ID排序，
+        // 否则新增行会排到已保存记录前面，看起来像测试项ID乱序。
         _currentItemRows = _testItems
-            .Where(item => string.IsNullOrWhiteSpace(_itemKeyword)
-                || Contains(item.ItemId.ToString(), _itemKeyword)
-                || Contains(item.ItemName, _itemKeyword)
-                || Contains(item.Unit, _itemKeyword)
-                || Contains(item.ActualExpression, _itemKeyword)
-                || Contains(item.UpperExpression, _itemKeyword)
-                || Contains(item.LowerExpression, _itemKeyword)
-                || Contains(item.ResultExpression, _itemKeyword))
-            .OrderBy(item => item.ItemId)
             .Select(item => new TestItemTableRow(item, GetTestItemDisplayId(item)))
+            .Where(row => string.IsNullOrWhiteSpace(_itemKeyword)
+                || Contains(row.ItemId.ToString(), _itemKeyword)
+                || Contains(row.ItemName, _itemKeyword)
+                || Contains(row.Unit, _itemKeyword)
+                || Contains(row.ActualExpression, _itemKeyword)
+                || Contains(row.UpperExpression, _itemKeyword)
+                || Contains(row.LowerExpression, _itemKeyword)
+                || Contains(row.ResultExpression, _itemKeyword))
+            .OrderBy(row => row.ItemId)
             .ToList();
 
         tableTestItems.DataSource = _currentItemRows;
@@ -2327,6 +2329,14 @@ public partial class AddressManageView : BaseView
         _temporaryTestItemIds[item] = BuildNextTemporaryTestItemId();
         _testItems.Add(item);
         ApplyItemFilter(_itemKeyword);
+
+        // 新增行现在排在列表末尾，必须显式选中，否则选中焦点会回落到第一行。
+        _selectedItemRow = _currentItemRows.FirstOrDefault(row => ReferenceEquals(row.Source, item));
+        if (_selectedItemRow is not null)
+        {
+            tableTestItems.SetSelected(_selectedItemRow, true);
+        }
+
         ConfigureSchemeDetailColumns();
     }
 

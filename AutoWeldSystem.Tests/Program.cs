@@ -93,6 +93,7 @@ var tests = new (string Name, Action Run)[]
     ("Product process draft copies business fields and resets identity", ProductProcessDraftCopiesBusinessFieldsAndResetsIdentity),
     ("Product process draft keeps existing defaults without source", ProductProcessDraftKeepsExistingDefaultsWithoutSource),
     ("Address manage copies selected product process on add", AddressManageCopiesSelectedProductProcessOnAdd),
+    ("Address manage appends new test items in display id order", AddressManageAppendsNewTestItemsInDisplayIdOrder),
     ("Scheme detail role headers use centralized defaults", SchemeDetailRoleHeadersUseCentralizedDefaults),
     ("Test item units format report headers and MES values", TestItemUnitsFormatReportHeadersAndMesValues),
     ("Scheme detail role grid defines localized bound columns", SchemeDetailRoleGridDefinesLocalizedBoundColumns),
@@ -1229,6 +1230,36 @@ static void AddressManageCopiesSelectedProductProcessOnAdd()
     AssertTrue(
         viewCode.Contains("_selectedProductProcessRow?.Source", StringComparison.Ordinal),
         "产品工艺新增入口必须把当前选中行作为可选复制源。 ");
+}
+
+static void AddressManageAppendsNewTestItemsInDisplayIdOrder()
+{
+    var viewCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "AddressManageView.cs"),
+        Encoding.UTF8);
+
+    var filterMethod = ExtractMethodText(
+        viewCode,
+        "private void ApplyItemFilter(string? keyword)",
+        "private async void Save_Click(object? sender, EventArgs e)");
+
+    // 未保存行的数据库 ItemId 仍为 0，排序必须基于行模型的显示测试项ID。
+    AssertTrue(
+        filterMethod.Contains(".OrderBy(row => row.ItemId)", StringComparison.Ordinal),
+        "测试项字典必须按界面显示的测试项ID排序。");
+    AssertFalse(
+        filterMethod.Contains(".OrderBy(item => item.ItemId)", StringComparison.Ordinal),
+        "测试项字典不得按未分配的数据库 ItemId 排序，否则新增行会排到首位。");
+
+    var addMethod = ExtractMethodText(
+        viewCode,
+        "private void AddTestItem_Click(object? sender, EventArgs e)",
+        "private void DeleteTestItem_Click(object? sender, EventArgs e)");
+
+    AssertTrue(
+        addMethod.Contains("ReferenceEquals(row.Source, item)", StringComparison.Ordinal)
+            && addMethod.Contains("tableTestItems.SetSelected(_selectedItemRow, true);", StringComparison.Ordinal),
+        "新增测试项必须选中新行，避免选中回落到第一行。");
 }
 
 static void ProgramSaveRecipeRulesRequirePositiveStationCodes()
