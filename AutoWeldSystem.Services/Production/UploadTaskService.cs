@@ -290,7 +290,10 @@ public class UploadTaskService : IUploadTaskService
             }
 
             var reopenUploadedReport = ShouldReopenUploadedReportFileTask(existing, task);
-            if (existing.Status == ProductionConstants.UploadStatuses.Uploaded && !reopenUploadedReport)
+            var reopenRetest = ShouldReopenUploadedTaskForRetest(existing, task);
+            if (existing.Status == ProductionConstants.UploadStatuses.Uploaded
+                && !reopenUploadedReport
+                && !reopenRetest)
             {
                 return existing;
             }
@@ -304,10 +307,11 @@ public class UploadTaskService : IUploadTaskService
             existing.NextRetryTime = task.NextRetryTime;
             existing.CompletedTime = task.CompletedTime;
             existing.Message = task.Message;
-            if (reopenUploadedReport)
+            if (reopenUploadedReport || reopenRetest)
             {
                 existing.RetryCount = 0;
                 existing.LastAttemptTime = null;
+                existing.CompletedTime = null;
             }
             existing.UpdatedTime = DateTime.Now;
 
@@ -1543,6 +1547,24 @@ public class UploadTaskService : IUploadTaskService
                 && candidate.Target == ProductionConstants.UploadTargets.Mes)
             .ToList();
         return ReportFileUploadDependencyRules.IsFinishReportSatisfied(finishReportTasks);
+    }
+
+    /// <summary>
+    /// 判断是否因产品重测而重开已上传任务。
+    /// 检测设备重测会就地覆盖同一产品的记录，过程参数和中心看板都必须携带新一轮数据重新上报，
+    /// 否则已上传状态会让重测结果停留在本地。MES 接受同一产品编号重复提交，以最后一次为准。
+    /// </summary>
+    private bool ShouldReopenUploadedTaskForRetest(BizUploadTask existing, BizUploadTask incoming)
+    {
+        if (!UploadTaskRetestReopenRules.IsReopenableTaskType(incoming.TaskType))
+        {
+            return false;
+        }
+
+        return UploadTaskRetestReopenRules.ShouldReopen(
+            existing.Status,
+            incoming.Status,
+            _settingsService.Get().ProcessParameterDeviceType);
     }
 
     private bool ShouldReopenUploadedReportFileTask(BizUploadTask existing, BizUploadTask incoming)

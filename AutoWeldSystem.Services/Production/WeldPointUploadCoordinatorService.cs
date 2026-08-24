@@ -70,6 +70,17 @@ public sealed class WeldPointUploadCoordinatorService : IWeldPointUploadCoordina
             return;
         }
 
+        // 重测属修正性操作，数据正确性优先于减少 MES 调用次数，不等凑满批次即单独重传。
+        if (IsRetestReupload(record, settings.ProcessParameterDeviceType))
+        {
+            var retestTask = EnqueueProductUploadTask(record, settings.UploadMode);
+            _operationLogService.Write(
+                "WeldPointUpload",
+                $"Retest reupload bypassed quantity batch, TaskId={record.TaskId}, Station={record.StationNo}, ProductNo={record.ProductNo}, UploadTaskId={retestTask.Id}");
+            await _uploadTaskService.ExecuteAsync(retestTask.Id, cancellationToken);
+            return;
+        }
+
         var productNos = TakeReadyQuantityBatchProductNos(record.TaskId, record.StationNo, settings.UploadBatchSize);
         if (!ProcessParameterBatchUploadRules.IsReady(productNos, settings.UploadBatchSize))
         {
@@ -157,6 +168,29 @@ public sealed class WeldPointUploadCoordinatorService : IWeldPointUploadCoordina
     private static string BuildProductBusinessId(BizWeldPointRecord record)
     {
         return $"task-{record.TaskId}:s{record.StationNo}:pp:{record.ProductNo}";
+    }
+
+    /// <summary>
+    /// 判断本次上传是否为重测重传。
+    /// 数量模式下该产品若已存在上传成功的过程参数任务，说明本轮是覆盖后的重测数据。
+    /// </summary>
+    private bool IsRetestReupload(BizWeldPointRecord record, string? processParameterDeviceType)
+    {
+        if (!ProductRetestRules.IsSupportedDeviceType(processParameterDeviceType))
+        {
+            return false;
+        }
+
+        var businessId = BuildProductBusinessId(record);
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            return _dbContext.Db.Queryable<BizUploadTask>()
+                .Any(task => task.BusinessId == businessId
+                    && task.TaskType == ProductionConstants.UploadTaskTypes.ProcessParameter
+                    && !task.IsDeleted
+                    && task.Status == ProductionConstants.UploadStatuses.Uploaded);
+        }
     }
 
     private static string BuildProductUploadPayload(BizWeldPointRecord record, UploadMode uploadMode)

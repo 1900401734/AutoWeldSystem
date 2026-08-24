@@ -98,6 +98,10 @@ var tests = new (string Name, Action Run)[]
     ("Test item ids reuse gaps left by deleted rows", TestItemIdsReuseGapsLeftByDeletedRows),
     ("Scheme detail role headers use centralized defaults", SchemeDetailRoleHeadersUseCentralizedDefaults),
     ("Test item units format report headers and MES values", TestItemUnitsFormatReportHeadersAndMesValues),
+    ("Product retest only applies to inspection device", ProductRetestOnlyAppliesToInspectionDevice),
+    ("Product retest overwrites values and reopens upload", ProductRetestOverwritesValuesAndReopensUpload),
+    ("Product retest removes only uncovered stale records", ProductRetestRemovesOnlyUncoveredStaleRecords),
+    ("Upload task retest reopen allows product scoped tasks only", UploadTaskRetestReopenAllowsProductScopedTasksOnly),
     ("Data history dynamic columns append test item units", DataHistoryDynamicColumnsAppendTestItemUnits),
     ("Realtime preview columns append test item units", RealtimePreviewColumnsAppendTestItemUnits),
     ("Scheme detail role grid defines localized bound columns", SchemeDetailRoleGridDefinesLocalizedBoundColumns),
@@ -2149,6 +2153,139 @@ static void TestItemUnitsFormatReportHeadersAndMesValues()
     AssertEqual(string.Empty, TestItemUnitFormatRules.FormatValue(" ", "A", SchemeDetailValueRole.Actual), "空值不得生成独立单位字符串。");
     AssertEqual("12.3", TestItemUnitFormatRules.FormatValue("12.3", null, SchemeDetailValueRole.Actual), "空单位必须保持原值。");
     AssertEqual("OK", TestItemUnitFormatRules.FormatValue("OK", "A", SchemeDetailValueRole.Result), "结果字段不得追加单位。");
+}
+
+static void ProductRetestOnlyAppliesToInspectionDevice()
+{
+    AssertTrue(
+        ProductRetestRules.IsSupportedDeviceType(ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck),
+        "整件检测设备必须支持产品重测。");
+    AssertFalse(
+        ProductRetestRules.IsSupportedDeviceType(ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic),
+        "电磁点焊设备不需要重测，必须保持既有跳过行为。");
+    AssertFalse(
+        ProductRetestRules.IsSupportedDeviceType(ProductionConstants.ProcessParameterDeviceTypes.WholePieceWeld),
+        "整件焊接设备不需要重测，必须保持既有跳过行为。");
+    AssertFalse(ProductRetestRules.IsSupportedDeviceType(null), "设备类型缺失时不得启用重测。");
+
+    var check = ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck;
+    AssertTrue(ProductRetestRules.IsRetest(check, " P-001 ", "P-001"), "紧邻上一轮产品编号相同必须判定为重测。");
+    AssertFalse(ProductRetestRules.IsRetest(check, "P-001", "P-002"), "产品编号不同不得判定为重测。");
+    AssertFalse(ProductRetestRules.IsRetest(check, null, "P-001"), "任务内首件不得判定为重测。");
+    AssertFalse(ProductRetestRules.IsRetest(check, "P-001", " "), "本轮产品编号为空时不得判定为重测。");
+    AssertFalse(
+        ProductRetestRules.IsRetest(ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic, "P-001", "P-001"),
+        "点焊设备即使产品编号相同也不得判定为重测。");
+}
+
+static void ProductRetestOverwritesValuesAndReopensUpload()
+{
+    var existing = new BizWeldPointRecord
+    {
+        Id = 7,
+        SequenceNo = 3,
+        ProductNo = "P-001",
+        TouchNo = "1",
+        TestResult = ProductionConstants.TestResults.Ng,
+        ProductResult = ProductionConstants.TestResults.Ng,
+        RawDataJson = "{\"old\":\"1\"}",
+        UploadStatus = ProductionConstants.UploadStatuses.Uploaded,
+        UploadTime = DateTime.Today,
+        UploadMessage = "uploaded",
+        RetryCount = 2,
+        Ts = DateTime.Today
+    };
+    var incoming = new BizWeldPointRecord
+    {
+        ProductNo = "P-001",
+        TouchNo = "1",
+        TestResult = ProductionConstants.TestResults.Ok,
+        ProductResult = ProductionConstants.TestResults.Ok,
+        RawDataJson = "{\"new\":\"2\"}",
+        ProductCompleted = true,
+        Ts = DateTime.Today.AddHours(1)
+    };
+
+    ProductRetestRules.ApplyRetestValues(existing, incoming);
+
+    AssertEqual(7, existing.Id, "重测必须复用原记录主键，避免报表和上传任务的产品级自然键错位。");
+    AssertEqual(3, existing.SequenceNo, "重测不得改变记录顺序号。");
+    AssertEqual(ProductionConstants.TestResults.Ok, existing.TestResult, "重测必须覆盖焊点结果。");
+    AssertEqual(ProductionConstants.TestResults.Ok, existing.ProductResult, "重测必须覆盖产品结果。");
+    AssertEqual("{\"new\":\"2\"}", existing.RawDataJson, "重测必须覆盖原始采集值。");
+    AssertEqual(
+        ProductionConstants.UploadStatuses.Pending,
+        existing.UploadStatus,
+        "重测必须把上传状态打回待上传，否则待上传集合会排除该记录导致不会重新上报。");
+    AssertTrue(existing.UploadTime is null && existing.UploadMessage is null, "重测必须清空上一轮上传结果。");
+    AssertEqual(0, existing.RetryCount, "重测必须重置重试次数。");
+}
+
+static void ProductRetestRemovesOnlyUncoveredStaleRecords()
+{
+    var existing = new List<BizWeldPointRecord>
+    {
+        new() { Id = 1, TouchNo = "1" },
+        new() { Id = 2, TouchNo = "2" },
+        new() { Id = 3, TouchNo = "3" },
+        new() { Id = 4, TouchNo = "4" }
+    };
+
+    var fullRound = new List<BizWeldPointRecord>
+    {
+        new() { TouchNo = "1" },
+        new() { TouchNo = "2" },
+        new() { TouchNo = "3" },
+        new() { TouchNo = "4" }
+    };
+    AssertEqual(
+        0,
+        ProductRetestRules.SelectStaleRecords(existing, fullRound).Count,
+        "面数一致时不得删除任何记录；现场 PLC 等全部视觉测试完成才触发采集，这是常态路径。");
+
+    var partialRound = new List<BizWeldPointRecord>
+    {
+        new() { TouchNo = "1" },
+        new() { TouchNo = "2" }
+    };
+    var stale = ProductRetestRules.SelectStaleRecords(existing, partialRound);
+    AssertSequenceEqual(
+        new[] { 3, 4 },
+        stale.Select(record => record.Id).ToArray(),
+        "本轮未覆盖的残留面必须删除，避免同一产品混合两轮数据被四面转A/B聚合成错误产品结果。");
+}
+
+static void UploadTaskRetestReopenAllowsProductScopedTasksOnly()
+{
+    AssertTrue(
+        UploadTaskRetestReopenRules.IsReopenableTaskType(ProductionConstants.UploadTaskTypes.ProcessParameter),
+        "过程参数任务必须允许因重测重开。");
+    AssertTrue(
+        UploadTaskRetestReopenRules.IsReopenableTaskType(ProductionConstants.UploadTaskTypes.CenterProductReport),
+        "中心看板转发必须允许因重测重开，避免看板保留重测前结果。");
+    AssertFalse(
+        UploadTaskRetestReopenRules.IsReopenableTaskType(ProductionConstants.UploadTaskTypes.FinishReport),
+        "完工上报与单个产品无关，不得因重测重开。");
+
+    var check = ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck;
+    AssertTrue(
+        UploadTaskRetestReopenRules.ShouldReopen(
+            ProductionConstants.UploadStatuses.Uploaded,
+            ProductionConstants.UploadStatuses.Pending,
+            check),
+        "已上传任务收到重测的待上传数据时必须重开。");
+    AssertFalse(
+        UploadTaskRetestReopenRules.ShouldReopen(
+            ProductionConstants.UploadStatuses.Uploaded,
+            ProductionConstants.UploadStatuses.Uploaded,
+            check),
+        "非待上传的新数据不得重开已上传任务，避免状态同步反复打回。");
+    AssertFalse(
+        UploadTaskRetestReopenRules.ShouldReopen(
+            ProductionConstants.UploadStatuses.Uploaded,
+            ProductionConstants.UploadStatuses.Pending,
+            ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic),
+        "点焊设备不支持重测，不得重开已上传任务。");
 }
 
 static void DataHistoryDynamicColumnsAppendTestItemUnits()

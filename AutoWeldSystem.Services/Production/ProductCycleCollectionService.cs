@@ -95,9 +95,10 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
 
         ValidateCollectedRecords(processConfig, schemeItems, records);
 
+        bool isRetest;
         try
         {
-            SaveRecords(task.Id, normalizedStationNo, records);
+            isRetest = SaveRecords(task.Id, normalizedStationNo, records);
         }
         catch (Exception ex)
         {
@@ -126,7 +127,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
 
         _operationLogService.Write(
             "ProductCycleCollection",
-            $"Product collected, Station={normalizedStationNo}, WorkOrder={task.SN}, ProductNumber={header.ProductNo}, TouchCount={records.Count}, Result={records.FirstOrDefault()?.ProductResult ?? header.ProductResult}");
+            $"Product collected, Station={normalizedStationNo}, WorkOrder={task.SN}, ProductNumber={header.ProductNo}, TouchCount={records.Count}, Retest={isRetest}, Result={records.FirstOrDefault()?.ProductResult ?? header.ProductResult}");
 
         return records;
     }
@@ -622,11 +623,12 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         }
     }
 
-    private void SaveRecords(int taskId, int stationNo, IReadOnlyList<BizWeldPointRecord> records)
+    private bool SaveRecords(int taskId, int stationNo, IReadOnlyList<BizWeldPointRecord> records)
     {
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
+            var isRetest = IsRetestCollection(taskId, stationNo, records);
             var nextSequenceNo = GetNextSequenceNo(taskId, stationNo);
             foreach (var record in records)
             {
@@ -635,6 +637,15 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
                 {
                     record.Id = existingRecord.Id;
                     record.SequenceNo = existingRecord.SequenceNo;
+                    if (!isRetest)
+                    {
+                        continue;
+                    }
+
+                    // 重测就地覆盖已有记录，使报表、产品历史和上传任务沿用同一产品级自然键。
+                    ProductRetestRules.ApplyRetestValues(existingRecord, record);
+                    _dbContext.Db.Updateable(existingRecord).ExecuteCommand();
+                    record.UploadStatus = existingRecord.UploadStatus;
                     continue;
                 }
 
@@ -642,7 +653,81 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
                 var saved = _dbContext.Db.Insertable(record).ExecuteReturnEntity();
                 record.Id = saved.Id;
             }
+
+            if (isRetest)
+            {
+                RemoveStaleRetestRecords(taskId, stationNo, records);
+            }
+
+            return isRetest;
         }
+    }
+
+    /// <summary>
+    /// 判断本轮采集是否为同一产品的重测。
+    /// 只有整件检测设备参与判定，且必须与本任务本工位最近一次采集的产品编号相同。
+    /// </summary>
+    private bool IsRetestCollection(int taskId, int stationNo, IReadOnlyList<BizWeldPointRecord> records)
+    {
+        var incomingProductNo = records.FirstOrDefault()?.ProductNo;
+        if (string.IsNullOrWhiteSpace(incomingProductNo))
+        {
+            return false;
+        }
+
+        var deviceType = _settingsService.Get().ProcessParameterDeviceType;
+        if (!ProductRetestRules.IsSupportedDeviceType(deviceType))
+        {
+            return false;
+        }
+
+        return ProductRetestRules.IsRetest(
+            deviceType,
+            FindLatestProductNo(taskId, stationNo),
+            incomingProductNo);
+    }
+
+    /// <summary>
+    /// 读取本任务本工位最近一次采集的产品编号，用于识别“紧邻上一轮”的重测。
+    /// </summary>
+    private string? FindLatestProductNo(int taskId, int stationNo)
+    {
+        return _dbContext.Db.Queryable<BizWeldPointRecord>()
+            .Where(record => record.TaskId == taskId && record.StationNo == stationNo)
+            .ToList()
+            .OrderByDescending(record => record.SequenceNo)
+            .ThenByDescending(record => record.Id)
+            .FirstOrDefault()
+            ?.ProductNo;
+    }
+
+    /// <summary>
+    /// 删除上一轮多余、本轮未覆盖的残留面记录，避免同一产品混合两轮数据。
+    /// 现场 PLC 等全部视觉数据测试完成才触发采集，实际面数恒定，该分支正常不会命中。
+    /// </summary>
+    private void RemoveStaleRetestRecords(int taskId, int stationNo, IReadOnlyList<BizWeldPointRecord> records)
+    {
+        var productNo = records.FirstOrDefault()?.ProductNo?.Trim();
+        if (string.IsNullOrWhiteSpace(productNo))
+        {
+            return;
+        }
+
+        var existingRecords = _dbContext.Db.Queryable<BizWeldPointRecord>()
+            .Where(record => record.TaskId == taskId
+                && record.StationNo == stationNo
+                && record.ProductNo == productNo)
+            .ToList();
+        var staleRecords = ProductRetestRules.SelectStaleRecords(existingRecords, records);
+        if (staleRecords.Count == 0)
+        {
+            return;
+        }
+
+        _dbContext.Db.Deleteable(staleRecords.ToList()).ExecuteCommand();
+        _operationLogService.Write(
+            "ProductCycleCollection",
+            $"Retest removed stale records, Station={stationNo}, ProductNumber={productNo}, StaleCount={staleRecords.Count}");
     }
 
     /// <summary>
