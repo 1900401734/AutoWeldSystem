@@ -1,6 +1,6 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.6.3`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.6.4`。
 
 ## 功能概览
 
@@ -220,6 +220,8 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 
 ## 检测设备四面转 A/B、程序判定与升级检查
 
+`v2.6.4` 为生产监控“实时预览”表格和数据管理“测试数据”页签的动态测试项列标题补上测试项单位，与 Excel 报表、MES 过程参数和中心服务器保持同一格式（例如 `峰值电流 (A)`）。上限、下限和实际值列追加单位，结果列不追加；测试项字典未填写单位时标题保持原样。自定义表头仍然优先保留，只在末尾追加单位。
+
 `v2.6.3` 修复离线开工联动：操作员选择产品工号后，界面会按定位到的加工程序将零组件代码关联到部件图号；继续切换程序时同步更新，程序没有零组件代码时清空图号。运行态后台刷新不会覆盖操作员当前输入。
 
 `v2.6.2` 修复地址管理“测试项字典”测试项ID不连续的问题：测试项ID改由应用层分配，取当前最大ID加一，不再依赖 MySQL 自增列。此前删除记录后自增计数器不回收，把 1、2、20 三条全部删除再重新添加会得到 21、22、23；现在会重新从 1 开始。新增行同时按测试项ID排到列表末尾并自动选中，新增时预览的序号与保存后的测试项ID一致。已有测试项的ID保持不变，不会重排，避免影响历史数据中按 `item_{ID}` 记录的测试项列。
@@ -294,10 +296,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>2.6.3</Version>
-<AssemblyVersion>2.6.3.0</AssemblyVersion>
-<FileVersion>2.6.3.0</FileVersion>
-<InformationalVersion>2.6.3</InformationalVersion>
+<Version>2.6.4</Version>
+<AssemblyVersion>2.6.4.0</AssemblyVersion>
+<FileVersion>2.6.4.0</FileVersion>
+<InformationalVersion>2.6.4</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -309,9 +311,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v2.6.3 -m "Release v2.6.3"
+git tag -a v2.6.4 -m "Release v2.6.4"
 git push origin main
-git push origin v2.6.3
+git push origin v2.6.4
 ```
 
 ## Git 使用
