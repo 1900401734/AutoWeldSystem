@@ -320,6 +320,8 @@ var tests = new (string Name, Action Run)[]
     ("MES heartbeat interval normalization clamps to supported range", MesHeartbeatIntervalNormalizationClampsToSupportedRange),
     ("MES connection monitor confirms offline after three failures", MesConnectionMonitorConfirmsOfflineAfterThreeFailures),
     ("MES connection monitor resets failures and handles exceptions", MesConnectionMonitorResetsFailuresAndHandlesExceptions),
+    ("MES offline republishes when failure reason changes", MesOfflineRepublishesWhenFailureReasonChanges),
+    ("MES probe delay shortens before offline is confirmed", MesProbeDelayShortensBeforeOfflineIsConfirmed),
     ("MES online check skips interaction log and uses dedicated timeout", MesOnlineCheckSkipsInteractionLogAndUsesDedicatedTimeout),
     ("MES provider uses configured routes", MesProviderUsesConfiguredRoutes),
     ("MES provider applies PostData header from latest settings", MesProviderAppliesPostDataHeaderFromLatestSettings),
@@ -9918,6 +9920,78 @@ static void MesConnectionMonitorResetsFailuresAndHandlesExceptions()
     monitor.CheckOnceSafelyAsync().GetAwaiter().GetResult();
     AssertTrue(monitor.Current.IsConnected, "已离线时任意一次成功必须立即恢复在线。");
     AssertEqual(1, published.Count(snapshot => !snapshot.IsConnected), "整段探测序列只能发布一次确认离线状态。");
+}
+
+static void MesOfflineRepublishesWhenFailureReasonChanges()
+{
+    AssertTrue(
+        MesConnectionRules.ShouldRepublishOfflineFailure(isCurrentlyOffline: false, "any", "any"),
+        "尚未确认离线时必须发布首次离线状态。");
+    AssertFalse(
+        MesConnectionRules.ShouldRepublishOfflineFailure(isCurrentlyOffline: true, " timeout ", "timeout"),
+        "离线原因未变化时不得重复发布，避免同一故障持续刷新界面。");
+    AssertTrue(
+        MesConnectionRules.ShouldRepublishOfflineFailure(isCurrentlyOffline: true, "HTTP 404", "连接超时"),
+        "离线原因变化必须重新发布，否则改错路由或断网后指示灯文本永久冻结。");
+
+    // 现场验证路径：先确认离线，再把失败原因从 404 换成连接超时，指示灯必须跟着变。
+    var provider = new FakeMesProvider();
+    var responses = new Queue<Func<Task<BasicRes<object>>>>(new Func<Task<BasicRes<object>>>[]
+    {
+        () => Task.FromResult(new BasicRes<object> { Status = AppConstants.MesStatus.Error, Msg = "HTTP 404" }),
+        () => Task.FromResult(new BasicRes<object> { Status = AppConstants.MesStatus.Error, Msg = "HTTP 404" }),
+        () => Task.FromResult(new BasicRes<object> { Status = AppConstants.MesStatus.Error, Msg = "HTTP 404" }),
+        () => Task.FromResult(new BasicRes<object> { Status = AppConstants.MesStatus.Error, Msg = "HTTP 404" }),
+        () => Task.FromResult(new BasicRes<object> { Status = AppConstants.MesStatus.Error, Msg = "连接超时" })
+    });
+    provider.OnlineCheckHandler = (_, _) => responses.Dequeue().Invoke();
+    using var monitor = new MesConnectionMonitor(
+        provider,
+        new FakeLocalizationService(),
+        new FakeAppSettingsService());
+    var published = new List<MesConnectionSnapshot>();
+    monitor.StatusChanged += (_, snapshot) => published.Add(snapshot);
+
+    monitor.CheckOnceSafelyAsync().GetAwaiter().GetResult();
+    monitor.CheckOnceSafelyAsync().GetAwaiter().GetResult();
+    monitor.CheckOnceSafelyAsync().GetAwaiter().GetResult();
+    AssertEqual(1, published.Count, "连续失败只应在达到阈值时发布一次离线状态。");
+    AssertEqual("HTTP 404", monitor.Current.Message, "确认离线必须保留首次失败原因。");
+
+    monitor.CheckOnceSafelyAsync().GetAwaiter().GetResult();
+    AssertEqual(1, published.Count, "离线原因相同的后续失败不得重复发布。");
+
+    monitor.CheckOnceSafelyAsync().GetAwaiter().GetResult();
+    AssertEqual(2, published.Count, "离线原因变化必须重新发布，供 MonitorView 刷新 MES 指示灯。");
+    AssertEqual("连接超时", monitor.Current.Message, "离线原因变化后必须更新为最新失败原因。");
+    AssertFalse(monitor.Current.IsConnected, "重新发布不得把状态误判为在线。");
+}
+
+static void MesProbeDelayShortensBeforeOfflineIsConfirmed()
+{
+    AssertEqual(
+        5,
+        MesConnectionRules.ResolveNextProbeDelaySeconds(5, consecutiveFailures: 0),
+        "在线态必须使用配置的心跳间隔。");
+    AssertEqual(
+        MesConnectionRules.FailureRetryIntervalSeconds,
+        MesConnectionRules.ResolveNextProbeDelaySeconds(5, consecutiveFailures: 1),
+        "首次失败后必须改用短重探间隔，避免确认离线要等满三倍心跳间隔。");
+    AssertEqual(
+        MesConnectionRules.FailureRetryIntervalSeconds,
+        MesConnectionRules.ResolveNextProbeDelaySeconds(5, consecutiveFailures: 2),
+        "未确认离线前的失败都必须使用短重探间隔。");
+    AssertEqual(
+        5,
+        MesConnectionRules.ResolveNextProbeDelaySeconds(5, MesConnectionRules.OfflineFailureThreshold),
+        "确认离线后必须回到正常心跳间隔，不得持续高频重试。");
+    AssertEqual(
+        MesConnectionRules.DefaultHeartbeatIntervalSeconds,
+        MesConnectionRules.ResolveNextProbeDelaySeconds(0, consecutiveFailures: 0),
+        "旧数据库补列后的 0 必须回退到默认心跳间隔。");
+    AssertTrue(
+        MesConnectionRules.ResolveNextProbeDelaySeconds(1, consecutiveFailures: 1) <= 1,
+        "心跳间隔比重探间隔更短时，失败重探不得反而拉长等待。");
 }
 
 static void MesOnlineCheckSkipsInteractionLogAndUsesDedicatedTimeout()

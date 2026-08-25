@@ -108,7 +108,7 @@ public sealed class MesConnectionMonitor : IMesConnectionMonitor, IDisposable
             try
             {
                 await CheckOnceSafelyAsync(cancellationToken);
-                await Task.Delay(ResolveHeartbeatInterval(), cancellationToken);
+                await Task.Delay(ResolveNextProbeDelay(), cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -119,10 +119,13 @@ public sealed class MesConnectionMonitor : IMesConnectionMonitor, IDisposable
 
     /// <summary>
     /// 每轮重新读取心跳间隔，设置页改动在下一轮生效（已在途的等待不会被打断）。
+    /// 尚未确认离线的失败会改用短重探间隔，避免在线转离线要等满三倍心跳间隔。
     /// </summary>
-    private TimeSpan ResolveHeartbeatInterval()
+    private TimeSpan ResolveNextProbeDelay()
     {
-        var seconds = MesConnectionRules.NormalizeHeartbeatIntervalSeconds(appSettings.MesHeartbeatIntervalSeconds);
+        var seconds = MesConnectionRules.ResolveNextProbeDelaySeconds(
+            appSettings.MesHeartbeatIntervalSeconds,
+            _consecutiveProbeFailures);
         return TimeSpan.FromSeconds(seconds);
     }
 
@@ -175,8 +178,15 @@ public sealed class MesConnectionMonitor : IMesConnectionMonitor, IDisposable
             _consecutiveProbeFailures + 1,
             MesConnectionRules.OfflineFailureThreshold);
 
-        if (!MesConnectionRules.IsOfflineConfirmed(_consecutiveProbeFailures)
-            || (Current.UpdatedTime != default && !Current.IsConnected))
+        if (!MesConnectionRules.IsOfflineConfirmed(_consecutiveProbeFailures))
+        {
+            return;
+        }
+
+        // 已确认离线后仍要跟随失败原因刷新：现场改错路由、改错地址或断网都停在离线态，
+        // 只有原因变化；原实现在此直接返回，指示灯会永久停在第一次失败的文案上。
+        var isCurrentlyOffline = Current.UpdatedTime != default && !Current.IsConnected;
+        if (!MesConnectionRules.ShouldRepublishOfflineFailure(isCurrentlyOffline, Current.Message, message))
         {
             return;
         }
