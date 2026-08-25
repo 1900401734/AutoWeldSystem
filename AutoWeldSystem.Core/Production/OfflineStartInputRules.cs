@@ -109,7 +109,7 @@ public static class OfflineStartInputRules
     }
 
     /// <summary>
-    /// Builds the offline MES start request from inline editor values and the selected program; product model comes from the editor.
+    /// Builds the offline MES start request from inline editor values and the selected program; product number and model come from the editor.
     /// </summary>
     /// <param name="input">Values entered on MonitorView.</param>
     /// <param name="option">Selected program-name option.</param>
@@ -136,7 +136,10 @@ public static class OfflineStartInputRules
             ProgramName = NormalizeRequired(program.ProgramName, "程序名称不能为空。"),
             ProgramType = FirstNonEmpty(program.ProgramType, "0"),
             ProgramContent = FirstNonEmpty(program.ProgramContent, "{}"),
-            ProductNum = NormalizeRequired(program.ProductNum, "产品工号不能为空。"),
+            // 操作员可在界面上改写产品工号（含程序库里不存在的现场工号），留空时才回退所选程序的工号。
+            ProductNum = NormalizeRequired(
+                FirstNonEmpty(input.ProductNum, program.ProductNum),
+                "产品工号不能为空。"),
             ProductModel = Normalize(input.ProductModel),
             ProductName = Normalize(input.ProductName),
             DrawingNo = Normalize(input.DrawingNo),

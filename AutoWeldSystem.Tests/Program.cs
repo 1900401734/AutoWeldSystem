@@ -365,15 +365,16 @@ var tests = new (string Name, Action Run)[]
     ("Offline program dropdown includes empty-content program", OfflineProgramDropdownIncludesEmptyContentProgram),
     ("Offline product-num dropdown lists distinct startable product numbers", OfflineProductNumDropdownListsDistinctStartableProductNums),
     ("Offline program dropdown filters by product number", OfflineProgramDropdownFiltersByProductNum),
+    ("Offline start uses operator edited product number", OfflineStartUsesOperatorEditedProductNum),
     ("Monitor view links product-num selection to program options", MonitorViewLinksProductNumSelectionToProgramOptions),
     ("Monitor view keeps user product number across runtime rebind", MonitorViewKeepsUserProductNumAcrossRuntimeRebind),
     ("Product history preview sorts latest product first", ProductHistoryPreviewSortsLatestProductFirst),
     ("Offline start request follows inline monitor input", OfflineStartRequestFollowsInlineMonitorInput),
     ("Offline start allows empty part name and drawing number", OfflineStartAllowsEmptyPartNameAndDrawingNumber),
     ("Offline start requires work order and process number", OfflineStartRequiresWorkOrderAndProcessNumber),
-    ("Program MES sync ignores local-only fields", ProgramMesSyncIgnoresLocalOnlyFields),
     ("Offline start keeps optional process fields empty", OfflineStartKeepsOptionalProcessFieldsEmpty),
     ("Offline work order input never generates local placeholder", OfflineWorkOrderInputNeverGeneratesLocalPlaceholder),
+    ("Program MES sync ignores local-only fields", ProgramMesSyncIgnoresLocalOnlyFields),
     ("Program MES description changes trigger update", ProgramMesDescriptionChangesTriggerUpdate),
     ("Program MES sync detects remote fields", ProgramMesSyncDetectsRemoteFields),
     ("Program MES save action uses update for remote program content", ProgramMesSaveActionUsesUpdateForRemoteProgramContent),
@@ -404,14 +405,15 @@ var tests = new (string Name, Action Run)[]
     ("Monitor view reloads online programs after process change", MonitorViewReloadsOnlineProgramsAfterProcessChange),
     ("Monitor view defaults first process inputs after work order load", MonitorViewDefaultsFirstProcessInputsAfterWorkOrderLoad),
     ("Monitor view process selection uses shared input binder", MonitorViewProcessSelectionUsesSharedInputBinder),
+    ("Monitor view process name follows start input editability", MonitorViewProcessNameFollowsStartInputEditability),
     ("Monitor view exposes dual work order toggle beside work order", MonitorViewExposesDualWorkOrderToggleBesideWorkOrder),
     ("Monitor view saves dual work order toggle with old rules", MonitorViewSavesDualWorkOrderToggleWithOldRules),
     ("System setting view no longer edits dual work order", SystemSettingViewNoLongerEditsDualWorkOrder),
     ("System setting view locks device management during active runtime tasks", SystemSettingViewLocksDeviceManagementDuringActiveRuntimeTasks),
     ("Monitor view finish report uses start operator without prompt", MonitorViewFinishReportUsesStartOperatorWithoutPrompt),
+    ("Offline operator number comes from operator input only", OfflineOperatorNumberComesFromOperatorInputOnly),
     ("Monitor view clears product identity after finish report", MonitorViewClearsProductIdentityAfterFinishReport),
     ("Monitor view product history uses latest first ordering", MonitorViewProductHistoryUsesLatestFirstOrdering),
-    ("Offline operator number comes from operator input only", OfflineOperatorNumberComesFromOperatorInputOnly),
     ("Monitor view single-point history mapping keeps point values", MonitorViewSinglePointHistoryMappingKeepsPointValues),
     ("Monitor view clears idle production data", MonitorViewClearsIdleProductionData),
     ("Weld task finish uses MES start id for retry payloads", WeldTaskFinishUsesMesStartIdForRetryPayloads),
@@ -11062,6 +11064,50 @@ static void OfflineProgramDropdownFiltersByProductNum()
     AssertEqual("重复程序 | 产品工号=P-001", unfiltered.Single(option => option.Program.Id == 7).DisplayText, "未按工号筛选时保持原有的工号提示。");
 }
 
+/// <summary>
+/// 离线开工的产品工号以操作员录入为准：未录入才回退所选程序工号，录入值可以是程序库中不存在的现场工号。
+/// </summary>
+static void OfflineStartUsesOperatorEditedProductNum()
+{
+    var option = OfflineStartInputRules.BuildProgramNameOptions(new[]
+    {
+        new BizProgram
+        {
+            Id = 21,
+            ProgramName = "离线程序",
+            ProgramContent = "{}",
+            ProductNum = "P-001",
+            RecipeCode = "3"
+        }
+    }, stationNo: 1, requireBothStations: false).Single();
+    var input = new OfflineStartInput(
+        StationNo: 1,
+        WorkOrderId: "WO-EDIT",
+        Batch: string.Empty,
+        Spec: string.Empty,
+        ProcessNo: "OP10",
+        ProcessName: string.Empty,
+        PlannedQtyText: "1",
+        ProductModel: string.Empty,
+        ProductName: string.Empty,
+        DrawingNo: string.Empty,
+        ProductNum: string.Empty);
+
+    AssertEqual("P-001", OfflineStartInputRules.BuildRequest(input, option).ProductNum, "未录入工号时必须回退所选程序的工号。");
+    AssertEqual(
+        "P-001",
+        OfflineStartInputRules.BuildRequest(input with { ProductNum = "   " }, option).ProductNum,
+        "仅空白的录入等同未录入，必须回退所选程序的工号。");
+    AssertEqual(
+        "P-999",
+        OfflineStartInputRules.BuildRequest(input with { ProductNum = "P-999" }, option).ProductNum,
+        "操作员改写的工号必须优先于所选程序的工号。");
+    AssertEqual(
+        "现场-A1",
+        OfflineStartInputRules.BuildRequest(input with { ProductNum = " 现场-A1 " }, option).ProductNum,
+        "程序库中不存在的现场工号也必须能用于开工，并去除首尾空格。");
+}
+
 static void MonitorViewLinksProductNumSelectionToProgramOptions()
 {
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
@@ -11093,6 +11139,8 @@ static void MonitorViewLinksProductNumSelectionToProgramOptions()
     AssertTrue(bindPrograms.Contains("_currentSettings.UseProductNumberFilter", StringComparison.Ordinal), "离线程序列表是否按工号收窄必须由系统设置决定，与在线保持同一语义。");
     AssertTrue(bindPrograms.Contains("? ResolveOfflineProductNumFilter()", StringComparison.Ordinal), "启用筛选时才按当前选中的产品工号收窄。");
     AssertTrue(bindPrograms.Contains(": null", StringComparison.Ordinal), "未启用筛选时必须传空筛选值，列出全部程序。");
+    // 程序名称与产品工号相互关联，工号未录入时程序名称同样必须为空，不能默认落到第一项。
+    AssertFalse(bindPrograms.Contains("selectedIndex = 0;", StringComparison.Ordinal), "离线程序名称不得默认选中第一个选项。");
 
     var productNumHandler = ExtractMethodText(
         viewCode,
@@ -11100,27 +11148,38 @@ static void MonitorViewLinksProductNumSelectionToProgramOptions()
         "private void SelectFirstOfflineProgramForProductNum(string productNum)");
     // 未启用筛选时列表是全量的，重绑定会保留原程序并把工号回写成原值，必须显式跳转。
     AssertTrue(productNumHandler.Contains("SelectFirstOfflineProgramForProductNum(productNum);", StringComparison.Ordinal), "选中工号后必须跳到该工号的首个程序，否则未启用筛选时工号选择会被回写覆盖。");
-    AssertTrue(productNumHandler.Contains("ApplyOfflineProgramNameOption(GetSelectedOfflineProgramNameOption(), syncDrawingNo: true);", StringComparison.Ordinal), "用户选择工号后必须按定位到的程序同步部件图号。");
+    AssertTrue(productNumHandler.Contains("ApplyOfflineProgramNameOption(GetSelectedOfflineProgramNameOption(), syncProgramFields: true);", StringComparison.Ordinal), "用户选择工号后必须按定位到的程序同步部件图号。");
+    AssertTrue(productNumHandler.Contains("RememberProductNumInput(productNum);", StringComparison.Ordinal), "操作员选中的工号必须写入记忆表，跨 1Hz 重绑定存活。");
 
     var programHandler = ExtractMethodText(
         viewCode,
         "private void ProgramNameSelection_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)",
         "#endregion");
-    AssertTrue(programHandler.Contains("ApplyOfflineProgramNameOption(option, syncDrawingNo: true);", StringComparison.Ordinal), "用户切换离线程序后必须同步该程序的部件图号。");
+    AssertTrue(programHandler.Contains("ApplyOfflineProgramNameOption(option, syncProgramFields: true);", StringComparison.Ordinal), "用户切换离线程序后必须同步该程序的部件图号。");
 
     var applyProgram = ExtractMethodText(
         viewCode,
-        "private void ApplyOfflineProgramNameOption(OfflineProgramNameOption? option, bool syncDrawingNo)",
+        "private void ApplyOfflineProgramNameOption(OfflineProgramNameOption? option, bool syncProgramFields)",
         "/// 按配方号反向联动离线程序名称、产品工号和产品型号。");
     AssertTrue(applyProgram.Contains("inputDrawingNo.Text = option?.Program.ComponentCode?.Trim() ?? string.Empty;", StringComparison.Ordinal), "离线部件图号必须取当前程序的部件图号字段，空值时清空。");
+    // 只有操作员显式选择程序时才回填工号；后台刷新回填会把操作员改写的工号刷回程序原值。
+    AssertTrue(applyProgram.Contains("if (syncProgramFields)", StringComparison.Ordinal), "产品工号和部件图号的回填必须同受显式选择开关门控。");
 
     var resolveProductNum = ExtractMethodText(
         viewCode,
         "private string GetSelectedOfflineProductNum()",
-        "/// 用本地程序列表填充离线程序号下拉框。");
+        "private string GetProductNumInputText()");
     // AntdUI 筛选态下事件索引指向筛选后的子列表，按索引直取会选错工号。
     AssertTrue(resolveProductNum.Contains("SelectListRules.ResolveSelectedIndex(", StringComparison.Ordinal), "产品工号必须按显示文本回查完整选项，不得直接使用 SelectedIndex。");
     AssertTrue(resolveProductNum.Contains("selectProdNum.SelectedValue as string ?? selectProdNum.Text", StringComparison.Ordinal), "解析选中工号必须优先采信 SelectedValue 再回退文本。");
+
+    var resolveInputText = ExtractMethodText(
+        viewCode,
+        "private string GetProductNumInputText()",
+        "/// 用本地程序列表填充离线程序号下拉框。");
+    // 手输不会更新 AntdUI 的 SelectedValue，采信它会拿到改写前的旧工号。
+    AssertFalse(resolveInputText.Contains("SelectedValue", StringComparison.Ordinal), "开工使用的工号必须只按控件文本解析，不得采信手输时不更新的 SelectedValue。");
+    AssertTrue(resolveInputText.Contains("selectProdNum.Text?.Trim()", StringComparison.Ordinal), "开工使用的工号必须取控件当前显示文本。");
 }
 
 static void MonitorViewKeepsUserProductNumAcrossRuntimeRebind()
@@ -11131,16 +11190,36 @@ static void MonitorViewKeepsUserProductNumAcrossRuntimeRebind()
         viewCode,
         "private void BindOfflineProductNumOptions()",
         "private string? ResolveOfflineProductNumFilter()");
-    // 监控页每秒重绑定运行态，操作员选中的工号必须靠记忆表存活，否则会被弹回第一项。
-    AssertTrue(bindProductNum.Contains("_userSelectedOfflineProductNums.TryGetValue(stationKey, out var remembered)", StringComparison.Ordinal), "周期性重绑定必须优先复用操作员已选的工号。");
-    AssertTrue(bindProductNum.Contains("_userSelectedOfflineProductNums.Remove(stationKey);", StringComparison.Ordinal), "记忆的工号在程序库中消失后必须清除，避免筛选恒空。");
-    AssertTrue(bindProductNum.Contains("ForceProductNumSelection(", StringComparison.Ordinal), "重建选项后必须走 -1 归位赋值，规避 AntdUI 索引短路。");
+    // 监控页每秒重绑定运行态，操作员录入或选中的工号必须靠记忆表存活，否则会被抹掉。
+    AssertTrue(bindProductNum.Contains("_userSelectedOfflineProductNums.TryGetValue(stationKey, out var remembered)", StringComparison.Ordinal), "周期性重绑定必须优先复用操作员已录入的工号。");
+    AssertTrue(bindProductNum.Contains("ForceProductNumSelection(selectedIndex, desired);", StringComparison.Ordinal), "重建选项后必须走 -1 归位赋值，且未命中选项时保留手输文本。");
+    // 离线工号是操作员待录入项，未录入必须保持为空，不能默认落到第一项。
+    AssertFalse(bindProductNum.Contains("selectedIndex = 0;", StringComparison.Ordinal), "离线产品工号不得默认选中第一个选项。");
 
     var runtimeBinding = ExtractMethodText(
         viewCode,
         "private void BindOfflineEditableRuntimeState(string liveWorkId)",
         "private void ApplyOfflineInputReadOnly(bool readOnly)");
-    AssertTrue(runtimeBinding.Contains("ApplyOfflineProgramNameOption(GetSelectedOfflineProgramNameOption(), syncDrawingNo: false);", StringComparison.Ordinal), "周期性运行态重绑定不得覆盖操作员当前部件图号。");
+    AssertTrue(runtimeBinding.Contains("ApplyOfflineProgramNameOption(GetSelectedOfflineProgramNameOption(), syncProgramFields: false);", StringComparison.Ordinal), "周期性运行态重绑定不得覆盖操作员当前工号和部件图号。");
+    // 刚从在线转离线时，工号要清成空值，不能留着上一张 MES 工单的工号。
+    AssertTrue(runtimeBinding.Contains("RememberProductNumInput(null);", StringComparison.Ordinal), "转入离线时必须清除工号记忆，让工号回到空值。");
+    // 程序名称与产品工号相互关联，转入离线时必须一起回到空值。
+    AssertTrue(runtimeBinding.Contains("ClearOfflineProgramNameSelection();", StringComparison.Ordinal), "转入离线时必须同步清空程序名称，与产品工号保持同一空值状态。");
+
+    var productNumTextChanged = ExtractMethodText(
+        viewCode,
+        "private void ProductNumInput_TextChanged(object? sender, EventArgs e)",
+        "private void RememberProductNumInput(string? productNum)");
+    // 操作员清空工号后，关联的程序名称不能继续显示上一个工号的程序。
+    AssertTrue(productNumTextChanged.Contains("ClearOfflineProgramNameSelection();", StringComparison.Ordinal), "清空产品工号时必须同步清空关联的程序名称。");
+    AssertTrue(productNumTextChanged.Contains("ClearOfflineProgramSelectionByUser(CurrentStationNo);", StringComparison.Ordinal), "清空产品工号时必须撤销操作员显式选择程序的标记。");
+
+    var clearProgramName = ExtractMethodText(
+        viewCode,
+        "private void ClearOfflineProgramNameSelection()",
+        "private void ProgramNameSelection_SelectedIndexChanged");
+    AssertTrue(clearProgramName.Contains("_syncingOfflineProgramSelection = true;", StringComparison.Ordinal), "程序化清空程序名称必须走同步守卫，避免被当成操作员选择触发联动回填。");
+    AssertTrue(clearProgramName.Contains("ForceProgramNameSelection(-1, string.Empty);", StringComparison.Ordinal), "清空程序名称必须走 -1 归位赋值，规避 AntdUI 索引短路。");
 
     var clearSelection = ExtractMethodText(
         viewCode,
@@ -11159,10 +11238,30 @@ static void MonitorViewKeepsUserProductNumAcrossRuntimeRebind()
         viewCode,
         "private void ApplyOnlineStartInputReadOnly(bool editable)",
         "private void BindOfflineEditableRuntimeState(string liveWorkId)");
-    AssertTrue(onlineReadOnly.Contains("selectProdNum.ReadOnly = true;", StringComparison.Ordinal), "在线态产品工号跟随工单，必须保持只读展示。");
+    // 在线态工号由 MES 工单回填，但操作员仍可改写，开工按改写值上报。
+    AssertTrue(onlineReadOnly.Contains("selectProdNum.ReadOnly = fieldReadOnly;", StringComparison.Ordinal), "在线可编辑开工态下操作员必须能改写产品工号。");
     AssertTrue(onlineReadOnly.Contains("inputProdModel.ReadOnly = fieldReadOnly;", StringComparison.Ordinal), "在线可编辑开工态下操作员必须能调整产品型号。");
+    AssertTrue(viewCode.Contains("ProdNum = FirstNonEmpty(GetProductNumInputText(), source.ProdNum)", StringComparison.Ordinal), "在线开工快照必须优先使用界面当前显示的产品工号。");
     AssertTrue(viewCode.Contains("ProdModel = FirstNonEmpty(inputProdModel.Text, source.ProdModel)", StringComparison.Ordinal), "在线开工快照必须优先使用手工输入的产品型号。");
     AssertFalse(viewCode.Contains("option?.Program.ProductModel", StringComparison.Ordinal), "监控页不得再从加工程序回填产品型号。");
+
+    // 在线运行态每秒重绑定；工号回填必须和其他在线可编辑字段一样受工单变化门控，否则操作员改写会被刷回工单值。
+    var onlineRuntimeBinding = ExtractMethodText(
+        viewCode,
+        "private void BindProductionRuntimeState()",
+        "private bool HasPreparedWorkOrderInfo");
+    var guardIndex = onlineRuntimeBinding.IndexOf(
+        "if (!onlineEditable || activeTask is not null || workOrderChanged)",
+        StringComparison.Ordinal);
+    var productNumIndex = onlineRuntimeBinding.IndexOf(
+        "SetProductNumSelectionText(workOrder?.ProdNum ?? currentIdentity?.ProductNum ?? string.Empty);",
+        StringComparison.Ordinal);
+    AssertTrue(guardIndex >= 0, "在线运行态必须保留可编辑字段的工单变化门控。");
+    AssertTrue(productNumIndex > guardIndex, "在线产品工号回填必须放在工单变化门控内，避免每秒刷掉操作员改写的工号。");
+
+    // 手输不触发 SelectedIndexChanged，必须另外监听文本变化才能记住改写值。
+    AssertTrue(viewCode.Contains("selectProdNum.TextChanged += ProductNumInput_TextChanged;", StringComparison.Ordinal), "产品工号必须监听文本变化，记住手工录入的现场工号。");
+    AssertTrue(viewCode.Contains("selectProdNum.TextChanged -= ProductNumInput_TextChanged;", StringComparison.Ordinal), "监控页销毁时必须解绑产品工号文本变化。");
 }
 
 static void ProductHistoryPreviewSortsLatestProductFirst()
@@ -11232,7 +11331,11 @@ static void OfflineStartRequestFollowsInlineMonitorInput()
     AssertEqual("DR-9", request.DrawingNo, "离线开工应使用界面输入的图号。");
     AssertEqual("OP20", request.ProcessNo, "离线开工应使用界面输入的工序号。");
     AssertEqual(12, request.PlannedQty, "离线开工应使用界面输入的计划数量。");
-    AssertEqual("164#J", request.ProductNum, "离线开工应使用选中程序关联的产品工号。");
+    AssertEqual("164#J", request.ProductNum, "界面未录入工号时，离线开工应回退选中程序关联的产品工号。");
+    AssertEqual(
+        "FIELD-999",
+        OfflineStartInputRules.BuildRequest(input with { ProductNum = "  FIELD-999  " }, option).ProductNum,
+        "操作员改写的产品工号必须用于离线开工上报，允许是程序库中没有的现场工号。");
     AssertEqual("MANUAL-MODEL", request.ProductModel, "离线开工应优先使用界面手工输入的产品型号。");
     AssertEqual("5", request.RecipeCode, "离线开工应使用选中程序关联的配方号。");
     AssertEqual("{\"steps\":3}", request.ProgramContent, "离线开工应使用选中程序的程序内容。");
@@ -11316,6 +11419,97 @@ static void OfflineStartRequiresWorkOrderAndProcessNumber()
         () => OfflineStartInputRules.BuildRequest(validInput with { ProcessNo = "   " }, option),
         "工序号不能为空。",
         "离线开工必须校验工序号且不得自动回填 OP10。");
+}
+
+/// <summary>
+/// 离线开工的工序名称和工单数量为可选项，留空必须按空值提交。
+/// 补默认值会把“离线焊接”和计划数量 1 当成真实数据写进任务、报表和 MES 开工上报。
+/// </summary>
+static void OfflineStartKeepsOptionalProcessFieldsEmpty()
+{
+    var option = OfflineStartInputRules.BuildProgramNameOptions(new[]
+    {
+        new BizProgram
+        {
+            Id = 12,
+            ProgramName = "离线程序",
+            ProgramContent = "{}",
+            ProductNum = "164#J",
+            RecipeCode = "5"
+        }
+    }, stationNo: 1, requireBothStations: false).Single();
+    var blankInput = new OfflineStartInput(
+        StationNo: 1,
+        WorkOrderId: "WO-BLANK",
+        Batch: string.Empty,
+        Spec: string.Empty,
+        ProcessNo: "OP30",
+        ProcessName: string.Empty,
+        PlannedQtyText: string.Empty,
+        ProductModel: string.Empty,
+        ProductName: string.Empty,
+        DrawingNo: string.Empty,
+        ProductNum: string.Empty);
+
+    var request = OfflineStartInputRules.BuildRequest(blankInput, option);
+    AssertEqual(string.Empty, request.ProcessName, "工序名称留空时不得回填“离线焊接”。");
+    AssertEqual(0, request.PlannedQty, "工单数量留空时不得回填 1，应按未录入提交 0。");
+
+    AssertEqual(
+        0,
+        OfflineStartInputRules.BuildRequest(blankInput with { PlannedQtyText = "abc" }, option).PlannedQty,
+        "工单数量非法时同样按未录入处理，不得回填 1。");
+    AssertEqual(
+        0,
+        OfflineStartInputRules.BuildRequest(blankInput with { PlannedQtyText = "-5" }, option).PlannedQty,
+        "工单数量为负时按未录入处理，不得回填 1。");
+    AssertEqual(
+        7,
+        OfflineStartInputRules.BuildRequest(blankInput with { PlannedQtyText = " 7 " }, option).PlannedQty,
+        "已录入的工单数量必须原样提交。");
+
+    // 转入离线输入态时必须清空这三项，不能预填让操作员误以为已录入。
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var offlineBinder = ExtractMethodText(
+        viewCode,
+        "private void BindOfflineEditableRuntimeState(string liveWorkId)",
+        "private void ApplyOfflineInputReadOnly(bool readOnly)");
+    AssertTrue(offlineBinder.Contains("inputProcessNo.Text = string.Empty;", StringComparison.Ordinal), "转入离线输入态必须清空工序号，不得预填 OP10。");
+    AssertTrue(offlineBinder.Contains("selectItemName.Text = string.Empty;", StringComparison.Ordinal), "转入离线输入态必须清空工序名称，不得预填“离线焊接”。");
+    AssertTrue(offlineBinder.Contains("inputStartAmount.Text = string.Empty;", StringComparison.Ordinal), "转入离线输入态必须清空工单数量，不得预填 1。");
+    AssertFalse(offlineBinder.Contains("\"OP10\"", StringComparison.Ordinal), "离线输入态不得保留 OP10 默认值。");
+    AssertFalse(offlineBinder.Contains("\"离线焊接\"", StringComparison.Ordinal), "离线输入态不得保留“离线焊接”默认值。");
+}
+
+static void OfflineWorkOrderInputNeverGeneratesLocalPlaceholder()
+{
+    // 离线启动不得自动生成 LOCAL-工位-时间戳 占位流转卡号：占位值会被当成真实工单
+    // 写入任务与上报数据，并掩盖“尚未扫码”这一状态，必须留空由 PLC 扫码或操作员录入。
+    var monitorCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var localFormCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Forms", "LocalWorkOrderForm.cs"), Encoding.UTF8);
+
+    AssertFalse(
+        monitorCode.Contains("$\"LOCAL-", StringComparison.Ordinal),
+        "MonitorView 不得为空流转卡号生成 LOCAL 占位编号。");
+    AssertFalse(
+        localFormCode.Contains("$\"LOCAL-", StringComparison.Ordinal),
+        "本地工单窗口不得为空流转卡号生成 LOCAL 占位编号。");
+
+    var offlineBindMethod = ExtractMethodText(
+        monitorCode,
+        "private void BindOfflineEditableRuntimeState(string liveWorkId)",
+        "private void ApplyOfflineInputReadOnly(bool readOnly)");
+    AssertTrue(
+        offlineBindMethod.Contains("!string.IsNullOrWhiteSpace(liveWorkId)", StringComparison.Ordinal),
+        "离线绑定只有在 PLC 存在扫码值时才写入流转卡号，否则必须保持为空。");
+
+    var initialResolver = ExtractMethodText(
+        localFormCode,
+        "private string ResolveInitialWorkOrderId()",
+        "private void TxtWorkOrderId_TextChanged");
+    AssertTrue(
+        initialResolver.Contains("string.Empty", StringComparison.Ordinal),
+        "本地工单窗口无 PLC 扫码值时初始流转卡号必须为空。");
 }
 
 static void ProgramMesSyncIgnoresLocalOnlyFields()
@@ -11424,97 +11618,6 @@ static void ProgramSharedRecipeTargetsResolveIndependently()
         {
             StationNo = (int)target.GetType().GetProperty("StationNo")!.GetValue(target)!,
             RecipeCode = (string)target.GetType().GetProperty("RecipeCode")!.GetValue(target)!
-/// <summary>
-/// 离线开工的工序名称和工单数量为可选项，留空必须按空值提交。
-/// 补默认值会把“离线焊接”和计划数量 1 当成真实数据写进任务、报表和 MES 开工上报。
-/// </summary>
-static void OfflineStartKeepsOptionalProcessFieldsEmpty()
-{
-    var option = OfflineStartInputRules.BuildProgramNameOptions(new[]
-    {
-        new BizProgram
-        {
-            Id = 12,
-            ProgramName = "离线程序",
-            ProgramContent = "{}",
-            ProductNum = "164#J",
-            RecipeCode = "5"
-        }
-    }, stationNo: 1, requireBothStations: false).Single();
-    var blankInput = new OfflineStartInput(
-        StationNo: 1,
-        WorkOrderId: "WO-BLANK",
-        Batch: string.Empty,
-        Spec: string.Empty,
-        ProcessNo: "OP30",
-        ProcessName: string.Empty,
-        PlannedQtyText: string.Empty,
-        ProductModel: string.Empty,
-        ProductName: string.Empty,
-        DrawingNo: string.Empty,
-        ProductNum: string.Empty);
-
-    var request = OfflineStartInputRules.BuildRequest(blankInput, option);
-    AssertEqual(string.Empty, request.ProcessName, "工序名称留空时不得回填“离线焊接”。");
-    AssertEqual(0, request.PlannedQty, "工单数量留空时不得回填 1，应按未录入提交 0。");
-
-    AssertEqual(
-        0,
-        OfflineStartInputRules.BuildRequest(blankInput with { PlannedQtyText = "abc" }, option).PlannedQty,
-        "工单数量非法时同样按未录入处理，不得回填 1。");
-    AssertEqual(
-        0,
-        OfflineStartInputRules.BuildRequest(blankInput with { PlannedQtyText = "-5" }, option).PlannedQty,
-        "工单数量为负时按未录入处理，不得回填 1。");
-    AssertEqual(
-        7,
-        OfflineStartInputRules.BuildRequest(blankInput with { PlannedQtyText = " 7 " }, option).PlannedQty,
-        "已录入的工单数量必须原样提交。");
-
-    // 转入离线输入态时必须清空这三项，不能预填让操作员误以为已录入。
-    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
-    var offlineBinder = ExtractMethodText(
-        viewCode,
-        "private void BindOfflineEditableRuntimeState(string liveWorkId)",
-        "private void ApplyOfflineInputReadOnly(bool readOnly)");
-    AssertTrue(offlineBinder.Contains("inputProcessNo.Text = string.Empty;", StringComparison.Ordinal), "转入离线输入态必须清空工序号，不得预填 OP10。");
-    AssertTrue(offlineBinder.Contains("selectItemName.Text = string.Empty;", StringComparison.Ordinal), "转入离线输入态必须清空工序名称，不得预填“离线焊接”。");
-    AssertTrue(offlineBinder.Contains("inputStartAmount.Text = string.Empty;", StringComparison.Ordinal), "转入离线输入态必须清空工单数量，不得预填 1。");
-    AssertFalse(offlineBinder.Contains("\"OP10\"", StringComparison.Ordinal), "离线输入态不得保留 OP10 默认值。");
-    AssertFalse(offlineBinder.Contains("\"离线焊接\"", StringComparison.Ordinal), "离线输入态不得保留“离线焊接”默认值。");
-}
-
-static void OfflineWorkOrderInputNeverGeneratesLocalPlaceholder()
-{
-    // 离线启动不得自动生成 LOCAL-工位-时间戳 占位流转卡号：占位值会被当成真实工单
-    // 写入任务与上报数据，并掩盖“尚未扫码”这一状态，必须留空由 PLC 扫码或操作员录入。
-    var monitorCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
-    var localFormCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Forms", "LocalWorkOrderForm.cs"), Encoding.UTF8);
-
-    AssertFalse(
-        monitorCode.Contains("$\"LOCAL-", StringComparison.Ordinal),
-        "MonitorView 不得为空流转卡号生成 LOCAL 占位编号。");
-    AssertFalse(
-        localFormCode.Contains("$\"LOCAL-", StringComparison.Ordinal),
-        "本地工单窗口不得为空流转卡号生成 LOCAL 占位编号。");
-
-    var offlineBindMethod = ExtractMethodText(
-        monitorCode,
-        "private void BindOfflineEditableRuntimeState(string liveWorkId)",
-        "private void ApplyOfflineInputReadOnly(bool readOnly)");
-    AssertTrue(
-        offlineBindMethod.Contains("!string.IsNullOrWhiteSpace(liveWorkId)", StringComparison.Ordinal),
-        "离线绑定只有在 PLC 存在扫码值时才写入流转卡号，否则必须保持为空。");
-
-    var initialResolver = ExtractMethodText(
-        localFormCode,
-        "private string ResolveInitialWorkOrderId()",
-        "private void TxtWorkOrderId_TextChanged");
-    AssertTrue(
-        initialResolver.Contains("string.Empty", StringComparison.Ordinal),
-        "本地工单窗口无 PLC 扫码值时初始流转卡号必须为空。");
-}
-
         })
         .ToList();
 
@@ -12380,6 +12483,29 @@ static void MonitorViewProcessSelectionUsesSharedInputBinder()
     AssertTrue(binder.Contains("inputStartAmount.Text = process.StartAmount.ToString(CultureInfo.InvariantCulture);", StringComparison.Ordinal), "工序详情回填必须设置生产数量。");
 }
 
+static void MonitorViewProcessNameFollowsStartInputEditability()
+{
+    // 工序名称的可编辑性必须由两个运行态只读方法统一控制：未开工可改，开工后锁定。
+    // Designer 里 selectItemName.ReadOnly 默认为 true，若运行态不覆盖就会在所有状态下都锁死。
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+
+    var onlineReadOnly = ExtractMethodText(
+        viewCode,
+        "private void ApplyOnlineStartInputReadOnly(bool editable)",
+        "private void BindOfflineEditableRuntimeState(string liveWorkId)");
+    AssertTrue(
+        onlineReadOnly.Contains("selectItemName.ReadOnly = fieldReadOnly;", StringComparison.Ordinal),
+        "在线未开工且工单已加载时操作员必须能切换工序名称，开工后随其他字段一起锁定。");
+
+    var offlineReadOnly = ExtractMethodText(
+        viewCode,
+        "private void ApplyOfflineInputReadOnly(bool readOnly)",
+        "private void SetWorkOrderInputText(string workId)");
+    AssertTrue(
+        offlineReadOnly.Contains("selectItemName.ReadOnly = readOnly;", StringComparison.Ordinal),
+        "离线未开工时操作员必须能录入工序名称，转在线或开工后必须置为只读。");
+}
+
 static void MonitorViewExposesDualWorkOrderToggleBesideWorkOrder()
 {
     var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.Designer.cs"), Encoding.UTF8);
@@ -12632,6 +12758,116 @@ static void MonitorViewFinishReportUsesStartOperatorWithoutPrompt()
     AssertTrue(finishMethod.Contains("await _weldTaskService.FinishAsync(employeeNumber, actualQty, qualifiedQty, failedQty, stationNo);", StringComparison.Ordinal), "在线完工必须把开工员工号传给 FinishAsync。");
 }
 
+/// <summary>
+/// 离线员工号必须完全来自操作员在界面上的录入：不得回填登录账号、Windows 用户名或 "local"。
+/// 这些兜底值会被当成真实操作员写入任务记录、XLSX 报表表头和 MES 补传的开工/完工上报。
+/// </summary>
+static void OfflineOperatorNumberComesFromOperatorInputOnly()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "WeldTaskService.cs"), Encoding.UTF8);
+
+    // UI 侧：不得再存在把登录账号回填到员工号控件的入口。
+    AssertFalse(viewCode.Contains("ResolveLocalOperatorNumber", StringComparison.Ordinal), "监控页不得再用登录账号解析离线员工号。");
+    AssertFalse(viewCode.Contains("BindLocalOperatorInfo", StringComparison.Ordinal), "监控页不得再用登录账号回填离线员工信息。");
+
+    var localStartHandler = ExtractMethodText(
+        viewCode,
+        "private async void LocalWorkOrder_Click",
+        "private async void OnlineReport_Click");
+    AssertTrue(
+        localStartHandler.Contains("var employeeNumber = MesUserNumber.Text.Trim();", StringComparison.Ordinal),
+        "离线开工员工号必须取界面录入值。");
+    AssertTrue(
+        localStartHandler.Contains("SetRuntimeError(TextKeys.Monitor.RuntimeError.OperatorNumberRequired);", StringComparison.Ordinal),
+        "离线开工员工号留空必须提示必填，不得静默兜底。");
+    AssertTrue(
+        localStartHandler.Contains("await _weldTaskService.StartLocalAsync(request, employeeNumber, 0);", StringComparison.Ordinal),
+        "离线开工必须把界面录入的员工号传给 StartLocalAsync。");
+
+    var localFinishMethod = ExtractMethodText(
+        viewCode,
+        "private async Task FinishLocalWorkOrderAsync",
+        "private async Task RefreshRecipeCodeFromPlcBeforeFinishAsync");
+    AssertTrue(
+        localFinishMethod.Contains("activeTask?.UserNumber?.Trim() ?? string.Empty", StringComparison.Ordinal),
+        "离线完工必须沿用开工任务保存的员工号，不得重新回填登录账号。");
+
+    // 离线可编辑态必须开放员工号输入，且不受“操作员弹窗输入”设置影响。
+    var offlineReadOnly = ExtractMethodText(
+        viewCode,
+        "private void ApplyOfflineInputReadOnly(bool readOnly)",
+        "private void SetWorkOrderInputText(string workId)");
+    AssertTrue(
+        offlineReadOnly.Contains("MesUserNumber.ReadOnly = readOnly;", StringComparison.Ordinal),
+        "离线可编辑态下员工号必须可编辑，转在线或开工后置为只读。");
+
+    // 转入离线必须清掉上一在线工单校验得到的员工信息，避免把他人工号当成本次操作员。
+    var offlineBinder = ExtractMethodText(
+        viewCode,
+        "private void BindOfflineEditableRuntimeState(string liveWorkId)",
+        "private void ApplyOfflineInputReadOnly(bool readOnly)");
+    AssertTrue(
+        offlineBinder.Contains("ClearMesOperatorInfo();", StringComparison.Ordinal),
+        "转入离线输入态必须清空在线阶段校验的员工信息和校验标记。");
+
+    // 1Hz 重绑定不得抹掉正在输入的员工号，也不得复用运行态里残留的在线校验结果。
+    var offlineOperatorBinder = ExtractMethodText(
+        viewCode,
+        "private void BindOfflineOperatorInfo(BizWeldTask? activeTask)",
+        "private bool ShouldPreserveDraftOperatorNumber");
+    AssertTrue(
+        offlineOperatorBinder.Contains("ClearMesOperatorDisplayInfo();", StringComparison.Ordinal),
+        "离线重绑定只应清空姓名、部门和班组，保留操作员正在输入的员工号。");
+    AssertFalse(
+        offlineOperatorBinder.Contains("state.MesOperatorNumber", StringComparison.Ordinal),
+        "离线员工号不得从运行态残留的在线校验结果回填。");
+
+    // 服务层：离线开工/完工都必须拒绝空员工号，不再用登录账号、Windows 用户名或 "local" 兜底。
+    AssertFalse(serviceCode.Contains("ResolveLocalOperatorNumber", StringComparison.Ordinal), "服务层不得再保留登录账号兜底的离线员工号解析。");
+
+    var requireOperator = ExtractMethodText(
+        serviceCode,
+        "private static string RequireOfflineOperatorNumber(string? operatorNumber)",
+        "/// <summary>\r\n    /// Resolves the recipe code from the local program record");
+    AssertTrue(
+        requireOperator.Contains("throw new BusinessOperationException", StringComparison.Ordinal),
+        "离线员工号为空时服务层必须抛业务异常，不得静默兜底。");
+    AssertFalse(
+        requireOperator.Contains("Environment.UserName", StringComparison.Ordinal),
+        "离线员工号不得回退 Windows 用户名。");
+    AssertFalse(
+        requireOperator.Contains("GlobalContext", StringComparison.Ordinal),
+        "离线员工号不得回退登录账号。");
+
+    var localOperatorInfo = ExtractMethodText(
+        serviceCode,
+        "private static UserInfoRes CreateLocalOperatorInfo(string operatorNumber)",
+        "/// <summary>\r\n    /// 从已入库的任务快照恢复员工信息");
+    AssertTrue(
+        localOperatorInfo.Contains("UserName = string.Empty,", StringComparison.Ordinal),
+        "离线员工姓名必须留空，避免登录账号姓名与现场录入工号不对应。");
+    AssertFalse(
+        localOperatorInfo.Contains("GlobalContext", StringComparison.Ordinal),
+        "离线员工快照不得读取登录账号。");
+
+    var startLocalMethod = ExtractMethodText(
+        serviceCode,
+        "public async Task<BizWeldTask> StartLocalAsync(",
+        "public async Task<BasicRes<object>> ChangeStatusAsync(");
+    AssertTrue(
+        startLocalMethod.Contains("RequireOfflineOperatorNumber(operatorNumber)", StringComparison.Ordinal),
+        "离线开工必须校验员工号非空。");
+
+    var finishLocalMethod = ExtractMethodText(
+        serviceCode,
+        "public async Task<BizWeldTask> FinishLocalAsync(",
+        "public Task RetryPendingUploadsAsync(");
+    AssertTrue(
+        finishLocalMethod.Contains("RequireOfflineOperatorNumber(FirstNonEmpty(employeeNumber, task.UserNumber))", StringComparison.Ordinal),
+        "离线完工必须校验员工号非空，并允许沿用开工时录入的员工号。");
+}
+
 static void MonitorViewClearsProductIdentityAfterFinishReport()
 {
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
@@ -12760,116 +12996,6 @@ static void WeldTaskFinishUsesMesStartIdForRetryPayloads()
     AssertTrue(buildEndRequest.Contains("ExpStartId = task.ExpStartId ?? string.Empty", StringComparison.Ordinal), "离线补传完工请求也必须使用任务中的 MES ExpStartId。");
     AssertFalse(buildEndRequest.Contains("LocalExpStartId", StringComparison.Ordinal), "BuildEndRequest 不应把 LocalExpStartId 写入 MES ExpStartId 字段。");
 }
-/// <summary>
-/// 离线员工号必须完全来自操作员在界面上的录入：不得回填登录账号、Windows 用户名或 "local"。
-/// 这些兜底值会被当成真实操作员写入任务记录、XLSX 报表表头和 MES 补传的开工/完工上报。
-/// </summary>
-static void OfflineOperatorNumberComesFromOperatorInputOnly()
-{
-    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
-    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "WeldTaskService.cs"), Encoding.UTF8);
-
-    // UI 侧：不得再存在把登录账号回填到员工号控件的入口。
-    AssertFalse(viewCode.Contains("ResolveLocalOperatorNumber", StringComparison.Ordinal), "监控页不得再用登录账号解析离线员工号。");
-    AssertFalse(viewCode.Contains("BindLocalOperatorInfo", StringComparison.Ordinal), "监控页不得再用登录账号回填离线员工信息。");
-
-    var localStartHandler = ExtractMethodText(
-        viewCode,
-        "private async void LocalWorkOrder_Click",
-        "private async void OnlineReport_Click");
-    AssertTrue(
-        localStartHandler.Contains("var employeeNumber = MesUserNumber.Text.Trim();", StringComparison.Ordinal),
-        "离线开工员工号必须取界面录入值。");
-    AssertTrue(
-        localStartHandler.Contains("SetRuntimeError(TextKeys.Monitor.RuntimeError.OperatorNumberRequired);", StringComparison.Ordinal),
-        "离线开工员工号留空必须提示必填，不得静默兜底。");
-    AssertTrue(
-        localStartHandler.Contains("await _weldTaskService.StartLocalAsync(request, employeeNumber, 0);", StringComparison.Ordinal),
-        "离线开工必须把界面录入的员工号传给 StartLocalAsync。");
-
-    var localFinishMethod = ExtractMethodText(
-        viewCode,
-        "private async Task FinishLocalWorkOrderAsync",
-        "private async Task RefreshRecipeCodeFromPlcBeforeFinishAsync");
-    AssertTrue(
-        localFinishMethod.Contains("activeTask?.UserNumber?.Trim() ?? string.Empty", StringComparison.Ordinal),
-        "离线完工必须沿用开工任务保存的员工号，不得重新回填登录账号。");
-
-    // 离线可编辑态必须开放员工号输入，且不受“操作员弹窗输入”设置影响。
-    var offlineReadOnly = ExtractMethodText(
-        viewCode,
-        "private void ApplyOfflineInputReadOnly(bool readOnly)",
-        "private void SetWorkOrderInputText(string workId)");
-    AssertTrue(
-        offlineReadOnly.Contains("MesUserNumber.ReadOnly = readOnly;", StringComparison.Ordinal),
-        "离线可编辑态下员工号必须可编辑，转在线或开工后置为只读。");
-
-    // 转入离线必须清掉上一在线工单校验得到的员工信息，避免把他人工号当成本次操作员。
-    var offlineBinder = ExtractMethodText(
-        viewCode,
-        "private void BindOfflineEditableRuntimeState(string liveWorkId)",
-        "private void ApplyOfflineInputReadOnly(bool readOnly)");
-    AssertTrue(
-        offlineBinder.Contains("ClearMesOperatorInfo();", StringComparison.Ordinal),
-        "转入离线输入态必须清空在线阶段校验的员工信息和校验标记。");
-
-    // 1Hz 重绑定不得抹掉正在输入的员工号，也不得复用运行态里残留的在线校验结果。
-    var offlineOperatorBinder = ExtractMethodText(
-        viewCode,
-        "private void BindOfflineOperatorInfo(BizWeldTask? activeTask)",
-        "private bool ShouldPreserveDraftOperatorNumber");
-    AssertTrue(
-        offlineOperatorBinder.Contains("ClearMesOperatorDisplayInfo();", StringComparison.Ordinal),
-        "离线重绑定只应清空姓名、部门和班组，保留操作员正在输入的员工号。");
-    AssertFalse(
-        offlineOperatorBinder.Contains("state.MesOperatorNumber", StringComparison.Ordinal),
-        "离线员工号不得从运行态残留的在线校验结果回填。");
-
-    // 服务层：离线开工/完工都必须拒绝空员工号，不再用登录账号、Windows 用户名或 "local" 兜底。
-    AssertFalse(serviceCode.Contains("ResolveLocalOperatorNumber", StringComparison.Ordinal), "服务层不得再保留登录账号兜底的离线员工号解析。");
-
-    var requireOperator = ExtractMethodText(
-        serviceCode,
-        "private static string RequireOfflineOperatorNumber(string? operatorNumber)",
-        "/// <summary>\r\n    /// Resolves the recipe code from the local program record");
-    AssertTrue(
-        requireOperator.Contains("throw new BusinessOperationException", StringComparison.Ordinal),
-        "离线员工号为空时服务层必须抛业务异常，不得静默兜底。");
-    AssertFalse(
-        requireOperator.Contains("Environment.UserName", StringComparison.Ordinal),
-        "离线员工号不得回退 Windows 用户名。");
-    AssertFalse(
-        requireOperator.Contains("GlobalContext", StringComparison.Ordinal),
-        "离线员工号不得回退登录账号。");
-
-    var localOperatorInfo = ExtractMethodText(
-        serviceCode,
-        "private static UserInfoRes CreateLocalOperatorInfo(string operatorNumber)",
-        "/// <summary>\r\n    /// 从已入库的任务快照恢复员工信息");
-    AssertTrue(
-        localOperatorInfo.Contains("UserName = string.Empty,", StringComparison.Ordinal),
-        "离线员工姓名必须留空，避免登录账号姓名与现场录入工号不对应。");
-    AssertFalse(
-        localOperatorInfo.Contains("GlobalContext", StringComparison.Ordinal),
-        "离线员工快照不得读取登录账号。");
-
-    var startLocalMethod = ExtractMethodText(
-        serviceCode,
-        "public async Task<BizWeldTask> StartLocalAsync(",
-        "public async Task<BasicRes<object>> ChangeStatusAsync(");
-    AssertTrue(
-        startLocalMethod.Contains("RequireOfflineOperatorNumber(operatorNumber)", StringComparison.Ordinal),
-        "离线开工必须校验员工号非空。");
-
-    var finishLocalMethod = ExtractMethodText(
-        serviceCode,
-        "public async Task<BizWeldTask> FinishLocalAsync(",
-        "public Task RetryPendingUploadsAsync(");
-    AssertTrue(
-        finishLocalMethod.Contains("RequireOfflineOperatorNumber(FirstNonEmpty(employeeNumber, task.UserNumber))", StringComparison.Ordinal),
-        "离线完工必须校验员工号非空，并允许沿用开工时录入的员工号。");
-}
-
 
 static void WeldTaskRestoreUnfinishedTaskIsIdempotent()
 {

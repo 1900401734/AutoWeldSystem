@@ -134,7 +134,7 @@ public partial class MonitorView : BaseView
     private IReadOnlyList<BizProgram> _localProgramSnapshot = Array.Empty<BizProgram>();
     private int _programSnapshotRefreshVersion;
     private readonly List<OfflineProductNumOption> _offlineProductNumOptions = new();
-    // 操作员显式选择的产品工号；跨 1Hz 重绑定保留选择，按工位隔离。
+    // 操作员离线态录入或选择的产品工号；跨 1Hz 重绑定保留，按工位隔离。无条目表示操作员尚未录入，工号保持为空。
     private readonly Dictionary<int, string> _userSelectedOfflineProductNums = new();
 
     private bool _syncingStationSelection;
@@ -747,6 +747,8 @@ public partial class MonitorView : BaseView
         inputSN.KeyDown += WorkOrderInput_KeyDown;
         selectProgramName.SelectedIndexChanged += ProgramNameSelection_SelectedIndexChanged;
         selectProdNum.SelectedIndexChanged += ProductNumSelection_SelectedIndexChanged;
+        // 产品工号允许手工录入现场工号，选择事件覆盖不到键盘输入，需要额外监听文本变化。
+        selectProdNum.TextChanged += ProductNumInput_TextChanged;
         // 滚轮换选会静默改变程序/配方/工序并触发下载或工序重载，禁用避免误操作。
         selectProgramName.WheelModifyEnabled = false;
         selectProdNum.WheelModifyEnabled = false;
@@ -1084,11 +1086,10 @@ public partial class MonitorView : BaseView
     /// </summary>
     private WorkOrderRes BuildAdjustedWorkOrderFromInputs(WorkOrderRes source)
     {
-        var selectedProductNum = GetSelectedOfflineProductNum();
         return new WorkOrderRes
         {
             SN = inputSN.Text.Trim(),
-            ProdNum = FirstNonEmpty(selectedProductNum, source.ProdNum),
+            ProdNum = FirstNonEmpty(GetProductNumInputText(), source.ProdNum),
             ProdModel = FirstNonEmpty(inputProdModel.Text, source.ProdModel),
             Spec = inputSpec.Text.Trim(),
             Batch = inputBatch.Text.Trim(),
@@ -1162,7 +1163,6 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        var fullProgram = await _programManageService.GetProgramAsync(selectedProgram!.Program.Id);
         // 离线员工号由操作员在界面录入，不再用登录账号兜底，因此开工前必须校验非空；
         // MES 离线无法校验身份，只按录入值原样上报和落库。
         var employeeNumber = MesUserNumber.Text.Trim();
@@ -1172,6 +1172,7 @@ public partial class MonitorView : BaseView
             return;
         }
 
+        var fullProgram = await _programManageService.GetProgramAsync(selectedProgram!.Program.Id);
         if (fullProgram is null)
         {
             SetRuntimeError(TextKeys.Monitor.RuntimeError.ProgramNameRequired);
@@ -1182,7 +1183,8 @@ public partial class MonitorView : BaseView
         request.ProgramName = fullProgram.ProgramName;
         request.ProgramType = string.IsNullOrWhiteSpace(fullProgram.ProgramType) ? "0" : fullProgram.ProgramType;
         request.ProgramContent = string.IsNullOrWhiteSpace(fullProgram.ProgramContent) ? "{}" : fullProgram.ProgramContent;
-        request.ProductNum = fullProgram.ProductNum;
+        // 工号以界面录入值为准（BuildRequest 已在留空时回退程序工号），不能用完整程序把操作员改写刷回去。
+        request.ProductNum = FirstNonEmpty(GetProductNumInputText(), fullProgram.ProductNum);
         request.ProductModel = inputProdModel.Text.Trim();
         request.RecipeCode = ProgramRecipeMappingRules.Resolve(fullProgram, stationNo);
 
@@ -1202,7 +1204,7 @@ public partial class MonitorView : BaseView
             SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.SubmittingStart);
             await _weldTaskService.StartLocalAsync(request, employeeNumber, 0);
             _offlineWorkOrderEditedByUser = false;
-            ApplyOfflineProgramNameOption(selectedProgram, syncDrawingNo: false);
+            ApplyOfflineProgramNameOption(selectedProgram, syncProgramFields: false);
             RefreshProductionRuntimeState();
             QueueRefreshSchemePreview(force: true);
             SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.LocalStartSucceeded);
@@ -1596,6 +1598,7 @@ public partial class MonitorView : BaseView
         chkEnableDualWorkOrder.CheckedChanged -= DualWorkOrder_CheckedChanged;
         selectProgramName.SelectedIndexChanged -= ProgramNameSelection_SelectedIndexChanged;
         selectProdNum.SelectedIndexChanged -= ProductNumSelection_SelectedIndexChanged;
+        selectProdNum.TextChanged -= ProductNumInput_TextChanged;
         MesUserNumber.KeyDown -= OperatorInput_KeyDown;
         MesUserNumber.TextChanged -= OperatorInput_TextChanged;
         tableHistory1.CellClick -= ProductHistoryTable_CellClick;
@@ -2009,13 +2012,58 @@ public partial class MonitorView : BaseView
         }
 
         MarkOfflineProgramSelectionByUser(CurrentStationNo);
-        _userSelectedOfflineProductNums[NormalizeStationNo(CurrentStationNo)] = productNum;
+        RememberProductNumInput(productNum);
         BindOfflineProgramNameOptions();
         // 未启用筛选时程序列表是全量的，重绑定会保留原程序并把工号回写成原值，
         // 因此必须显式跳到该工号的首个程序。
         SelectFirstOfflineProgramForProductNum(productNum);
-        ApplyOfflineProgramNameOption(GetSelectedOfflineProgramNameOption(), syncDrawingNo: true);
+        ApplyOfflineProgramNameOption(GetSelectedOfflineProgramNameOption(), syncProgramFields: true);
         QueueRefreshSchemePreview(force: true);
+    }
+
+    /// <summary>
+    /// 操作员手工录入产品工号时记住输入值。
+    /// 手输不会触发 SelectedIndexChanged，若不在此记住，1Hz 运行态重绑定会把输入抹掉。
+    /// </summary>
+    /// <param name="sender">事件发送者。</param>
+    /// <param name="e">事件参数。</param>
+    private void ProductNumInput_TextChanged(object? sender, EventArgs e)
+    {
+        if (_syncingOfflineProductNumSelection || _syncingOfflineInputs)
+        {
+            return;
+        }
+
+        if (!IsOfflineInputEditable(GetCurrentStationState()))
+        {
+            return;
+        }
+
+        var productNum = selectProdNum.Text?.Trim() ?? string.Empty;
+        RememberProductNumInput(productNum);
+        if (productNum.Length == 0)
+        {
+            // 工号被清空时同步清掉与之关联的程序名称，两者保持同一空值状态，避免只剩程序名称显示着上一个工号的程序。
+            ClearOfflineProgramSelectionByUser(CurrentStationNo);
+            ClearOfflineProgramNameSelection();
+        }
+    }
+
+    /// <summary>
+    /// 记住当前工位操作员录入或选中的产品工号；清空输入时同时清除记忆，让工号回到空值。
+    /// </summary>
+    /// <param name="productNum">操作员录入或选中的产品工号。</param>
+    private void RememberProductNumInput(string? productNum)
+    {
+        var stationKey = NormalizeStationNo(CurrentStationNo);
+        var normalized = productNum?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(normalized))
+        {
+            _userSelectedOfflineProductNums.Remove(stationKey);
+            return;
+        }
+
+        _userSelectedOfflineProductNums[stationKey] = normalized;
     }
 
     /// <summary>
@@ -2045,6 +2093,23 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
+    /// 清空离线程序名称下拉的选中态，供工号清空和转入离线时与工号保持同一空值状态。
+    /// 走同步守卫，避免程序化清空被当成操作员选择而触发联动回填。
+    /// </summary>
+    private void ClearOfflineProgramNameSelection()
+    {
+        _syncingOfflineProgramSelection = true;
+        try
+        {
+            ForceProgramNameSelection(-1, string.Empty);
+        }
+        finally
+        {
+            _syncingOfflineProgramSelection = false;
+        }
+    }
+
+    /// <summary>
     /// 同步离线程序名称下拉选中项关联的产品工号、产品型号和配方号。
     /// </summary>
     /// <param name="sender">事件发送者。</param>
@@ -2065,7 +2130,7 @@ public partial class MonitorView : BaseView
             {
                 MarkOfflineProgramSelectionByUser(CurrentStationNo);
             }
-            ApplyOfflineProgramNameOption(option, syncDrawingNo: true);
+            ApplyOfflineProgramNameOption(option, syncProgramFields: true);
             if (option is not null)
             {
                 QueueRefreshSchemePreview(force: true);
@@ -3182,6 +3247,7 @@ public partial class MonitorView : BaseView
             SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.SubmittingFinish);
             var activeTask = _weldTaskService.RestoreUnfinishedTask(stationNo);
             await RefreshRecipeCodeFromPlcBeforeFinishAsync(activeTask, stationNo);
+            // 完工不再回填登录账号，直接沿用离线开工时操作员录入并写入任务的员工号。
             await _weldTaskService.FinishLocalAsync(
                 activeTask?.UserNumber?.Trim() ?? string.Empty,
                 actualQty,
@@ -3247,7 +3313,6 @@ public partial class MonitorView : BaseView
 }
 
     /// <summary>
-            // 完工不再回填登录账号，直接沿用离线开工时操作员录入并写入任务的员工号。
     /// Writes a throttled log entry when the finish recipe read cannot produce a usable value.
     /// </summary>
     /// <param name="stationNo">Station number.</param>
@@ -3739,10 +3804,11 @@ public partial class MonitorView : BaseView
             _lastBoundOnlineWorkOrderKey = string.IsNullOrEmpty(workOrderKey) ? null : workOrderKey;
         }
 
-        SetProductNumSelectionText(workOrder?.ProdNum ?? currentIdentity?.ProductNum ?? string.Empty);
-        // 不可编辑或有运行任务时用工单值覆盖；可编辑且工单未变化时保留操作员输入。
+        // 产品工号与其他在线可编辑字段同规则：仅在工单变化、有运行任务或不可编辑时用工单值覆盖，
+        // 否则保留操作员的改写值，开工按改写后的工号上报。
         if (!onlineEditable || activeTask is not null || workOrderChanged)
         {
+            SetProductNumSelectionText(workOrder?.ProdNum ?? currentIdentity?.ProductNum ?? string.Empty);
             inputBatch.Text = workOrder?.Batch ?? string.Empty;
             inputProductName.Text = workOrder?.ProductName ?? string.Empty;
             inputDrawingNo.Text = workOrder?.DrawingNo ?? string.Empty;
@@ -3913,7 +3979,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
 
     /// <summary>
     /// 设置在线开工输入控件的只读状态。
-    /// 产品工号/配方号跟随工单或程序；产品型号可由 MES 回填后由操作员调整；员工号依“操作员弹窗输入”设置。
+    /// 产品工号和产品型号由 MES 工单回填后仍允许操作员改写，开工按改写值上报；员工号依“操作员弹窗输入”设置。
     /// </summary>
     private void ApplyOnlineStartInputReadOnly(bool editable)
     {
@@ -3925,8 +3991,9 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         inputProcessNo.ReadOnly = fieldReadOnly;
         inputStartAmount.ReadOnly = fieldReadOnly;
         selectProgramName.ReadOnly = fieldReadOnly;
+        selectItemName.ReadOnly = fieldReadOnly;
 
-        selectProdNum.ReadOnly = true;
+        selectProdNum.ReadOnly = fieldReadOnly;
         inputProdModel.ReadOnly = fieldReadOnly;
 
         var useOperatorDialog = _currentSettings.UseOperatorInputDialog ?? true;
@@ -3945,6 +4012,15 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             var enteringOfflineInputMode = !_offlineInputModeActive;
             _offlineInputModeActive = true;
             ApplyOfflineInputReadOnly(readOnly: false);
+            if (enteringOfflineInputMode)
+            {
+                // 刚转入离线：工号和与之关联的程序名称都是操作员待录入项，
+                // 先清掉上一在线工单残留值，两者一起保持为空。
+                RememberProductNumInput(null);
+                SetProductNumSelectionText(string.Empty);
+                ClearOfflineProgramNameSelection();
+            }
+
             BindOfflineProductNumOptions();
             BindOfflineProgramNameOptions();
 
@@ -3958,9 +4034,18 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             if (enteringOfflineInputMode)
             {
                 inputProdModel.Text = string.Empty;
+                // 工序号、工序名称和工单数量同样只接受操作员录入，不预填 OP10/离线焊接/1：
+                // 预填值会被当成真实工序和计划数量写入任务、报表和 MES 开工上报，且掩盖“未录入”这一状态。
+                // 工序号在开工时校验非空并提示；工序名称和工单数量允许留空。
+                inputProcessNo.Text = string.Empty;
+                selectItemName.Text = string.Empty;
+                inputStartAmount.Text = string.Empty;
+                // 员工号同样是操作员待录入项：清掉上一在线工单校验得到的员工信息和校验标记，
+                // 避免离线开工把在线阶段校验过的他人工号当成本次操作员上报。
+                ClearMesOperatorInfo();
             }
 
-            ApplyOfflineProgramNameOption(GetSelectedOfflineProgramNameOption(), syncDrawingNo: false);
+            ApplyOfflineProgramNameOption(GetSelectedOfflineProgramNameOption(), syncProgramFields: false);
         }
         finally
         {
@@ -3982,8 +4067,11 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         inputProcessNo.ReadOnly = readOnly;
         inputStartAmount.ReadOnly = readOnly;
         selectProgramName.ReadOnly = readOnly;
+        selectItemName.ReadOnly = readOnly;
         selectProdNum.ReadOnly = readOnly;
         inputProdModel.ReadOnly = readOnly;
+        // 离线无法向 MES 校验身份，员工号只能由现场操作员录入，因此不受“操作员弹窗输入”设置影响，始终随离线可编辑态开放。
+        MesUserNumber.ReadOnly = readOnly;
     }
 
     /// <summary>
@@ -4034,15 +4122,6 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             _offlineProgramNameOptions.AddRange(options);
             selectProgramName.Items.Clear();
             selectProgramName.Items.AddRange(options.Select(option => option.DisplayText).Cast<object>().ToArray());
-                // 工序号、工序名称和工单数量同样只接受操作员录入，不预填 OP10/离线焊接/1：
-                // 预填值会被当成真实工序和计划数量写入任务、报表和 MES 开工上报，且掩盖“未录入”这一状态。
-                // 工序号在开工时校验非空并提示；工序名称和工单数量允许留空。
-                inputProcessNo.Text = string.Empty;
-                selectItemName.Text = string.Empty;
-                inputStartAmount.Text = string.Empty;
-                // 员工号同样是操作员待录入项：清掉上一在线工单校验得到的员工信息和校验标记，
-                // 避免离线开工把在线阶段校验过的他人工号当成本次操作员上报。
-                ClearMesOperatorInfo();
             var selectedIndex = previousProgramId.HasValue
                 ? options.FindIndex(option => option.Program.Id == previousProgramId.Value)
                 : -1;
@@ -4050,11 +4129,9 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             {
                 selectedIndex = options.FindIndex(option => string.Equals(option.DisplayText, previousText, StringComparison.Ordinal));
             }
-            if (selectedIndex < 0 && options.Count > 0)
-            {
-                selectedIndex = 0;
-            }
 
+            // 程序名称与产品工号是一组相互关联的操作员录入项：未选择就保持为空，不默认选中第一项，
+            // 避免工号还空着界面却显示一个未确认的程序，被误当成已选好而直接开工。
             ForceProgramNameSelection(
                 selectedIndex,
                 selectedIndex >= 0 ? options[selectedIndex].DisplayText : string.Empty);
@@ -4070,9 +4147,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// </summary>
     private void BindOfflineProductNumOptions()
     {
-        // 离线无法向 MES 校验身份，员工号只能由现场操作员录入，因此不受“操作员弹窗输入”设置影响，始终随离线可编辑态开放。
-        MesUserNumber.ReadOnly = readOnly;
-        var previousText = selectProdNum.Text?.Trim() ?? string.Empty;
+        var previousText = GetProductNumInputText();
         var requireBothStations = _currentSettings.EnableDualStation && !_currentSettings.EnableDualWorkOrder;
         var options = OfflineStartInputRules.BuildProductNumOptions(
             _localProgramSnapshot,
@@ -4088,26 +4163,16 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             selectProdNum.Items.AddRange(options.Select(option => option.DisplayText).Cast<object>().ToArray());
 
             var stationKey = NormalizeStationNo(CurrentStationNo);
+            // 离线态工号是操作员自己的录入项：未录入就保持为空，不默认选中第一项，避免误按未确认的工号开工。
             var desired = _userSelectedOfflineProductNums.TryGetValue(stationKey, out var remembered)
                 ? remembered
                 : previousText;
             var selectedIndex = string.IsNullOrWhiteSpace(desired)
                 ? -1
                 : options.FindIndex(option => string.Equals(option.DisplayText, desired, StringComparison.Ordinal));
-            if (selectedIndex < 0 && options.Count > 0)
-            {
-                selectedIndex = 0;
-            }
 
-            // 记忆的工号已从程序库消失时清除，避免后续筛选恒空。
-            if (selectedIndex < 0)
-            {
-                _userSelectedOfflineProductNums.Remove(stationKey);
-            }
-
-            ForceProductNumSelection(
-                selectedIndex,
-                selectedIndex >= 0 ? options[selectedIndex].DisplayText : string.Empty);
+            // 手工录入的现场工号不在程序库选项中，此时保留文本而不是清空记忆。
+            ForceProductNumSelection(selectedIndex, desired);
         }
         finally
         {
@@ -4141,20 +4206,42 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     }
 
     /// <summary>
+    /// 取产品工号控件当前显示的工号，用于开工上报和运行态记忆。
+    /// 只按控件文本解析：手工输入不会更新 AntdUI 的 SelectedValue，采信 SelectedValue 会拿到改写前的旧工号。
+    /// 文本命中下拉选项时返回该选项的规范工号，统一同一工号的大小写写法；未命中时按现场手输工号原样返回。
+    /// </summary>
+    private string GetProductNumInputText()
+    {
+        var text = selectProdNum.Text?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(text))
+        {
+            return string.Empty;
+        }
+
+        var index = _offlineProductNumOptions.FindIndex(
+            option => string.Equals(option.DisplayText, text, StringComparison.Ordinal));
+        return index >= 0 ? _offlineProductNumOptions[index].ProductNum : text;
+    }
+
+    /// <summary>
     /// 用本地程序列表填充离线程序号下拉框。
     /// </summary>
     /// <param name="options">离线程序名称选项。</param>
     /// <param name="currentRecipeCode">需要保持显示的当前配方号。</param>
     /// <summary>
-    /// 将选中的程序名称关联信息同步到产品工号；用户显式选择时同时用零组件代码回填部件图号。
+    /// 将选中的程序名称关联信息同步到产品工号和部件图号。
     /// </summary>
     /// <param name="option">选中的本地程序；为空时清空联动字段。</param>
-    /// <param name="syncDrawingNo">是否同步部件图号；后台刷新传 false，避免覆盖操作员输入。</param>
-    private void ApplyOfflineProgramNameOption(OfflineProgramNameOption? option, bool syncDrawingNo)
+    /// <param name="syncProgramFields">
+    /// 是否用程序值回填产品工号和部件图号；仅操作员显式选择时传 true。
+    /// 后台 1Hz 重绑定传 false，否则会把操作员改写的工号和图号刷回程序原值。
+    /// </param>
+    private void ApplyOfflineProgramNameOption(OfflineProgramNameOption? option, bool syncProgramFields)
     {
-        SetProductNumSelectionText(option?.Program.ProductNum ?? string.Empty);
-        if (syncDrawingNo)
+        if (syncProgramFields)
         {
+            SetProductNumSelectionText(option?.Program.ProductNum ?? string.Empty);
+            RememberProductNumInput(option?.Program.ProductNum);
             inputDrawingNo.Text = option?.Program.ComponentCode?.Trim() ?? string.Empty;
         }
 
@@ -4204,25 +4291,8 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
 
         try
         {
+            // 逐项具名，避免同类型文本字段顺序错位后仍能编译通过。
             request = OfflineStartInputRules.BuildRequest(
-    /// <summary>
-    /// 取产品工号控件当前显示的工号，用于开工上报和运行态记忆。
-    /// 只按控件文本解析：手工输入不会更新 AntdUI 的 SelectedValue，采信 SelectedValue 会拿到改写前的旧工号。
-    /// 文本命中下拉选项时返回该选项的规范工号，统一同一工号的大小写写法；未命中时按现场手输工号原样返回。
-    /// </summary>
-    private string GetProductNumInputText()
-    {
-        var text = selectProdNum.Text?.Trim() ?? string.Empty;
-        if (string.IsNullOrEmpty(text))
-        {
-            return string.Empty;
-        }
-
-        var index = _offlineProductNumOptions.FindIndex(
-            option => string.Equals(option.DisplayText, text, StringComparison.Ordinal));
-        return index >= 0 ? _offlineProductNumOptions[index].ProductNum : text;
-    }
-
                 new OfflineStartInput(
                     StationNo: stationNo,
                     WorkOrderId: GetConfirmedWorkOrderInput(stationNo),
@@ -4292,7 +4362,6 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     {
         selectItemName.Text = GetProcessDisplayName(process);
         inputProcessNo.Text = process.ProcessNo ?? string.Empty;
-            // 逐项具名，避免同类型文本字段顺序错位后仍能编译通过。
         inputStartAmount.Text = process.StartAmount.ToString(CultureInfo.InvariantCulture);
     }
 
@@ -9423,6 +9492,24 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     }
 
     /// <summary>
+    /// 绑定离线待开工态的员工信息。
+    /// 离线无法向 MES 校验身份，员工号完全是操作员的现场录入项：有任务时回填任务快照，
+    /// 否则只清空姓名、部门和班组显示并保留正在输入的员工号，且不复用上一次在线校验残留的 MES 员工信息。
+    /// </summary>
+    /// <param name="activeTask">当前工位任务；离线可编辑态下通常为 null。</param>
+    private void BindOfflineOperatorInfo(BizWeldTask? activeTask)
+    {
+        var taskOperator = CreateTaskOperatorInfo(activeTask);
+        if (taskOperator is not null)
+        {
+            BindMesOperatorInfo(taskOperator, taskOperator.UserNumber);
+            return;
+        }
+
+        ClearMesOperatorDisplayInfo();
+    }
+
+    /// <summary>
     /// 判断刷新运行态时是否保留正在输入但尚未校验的员工号。
     /// </summary>
     /// <param name="state">当前工位运行态。</param>
@@ -9500,24 +9587,6 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// </summary>
     private void ClearMesOperatorDisplayInfo()
     {
-    /// <summary>
-    /// 绑定离线待开工态的员工信息。
-    /// 离线无法向 MES 校验身份，员工号完全是操作员的现场录入项：有任务时回填任务快照，
-    /// 否则只清空姓名、部门和班组显示并保留正在输入的员工号，且不复用上一次在线校验残留的 MES 员工信息。
-    /// </summary>
-    /// <param name="activeTask">当前工位任务；离线可编辑态下通常为 null。</param>
-    private void BindOfflineOperatorInfo(BizWeldTask? activeTask)
-    {
-        var taskOperator = CreateTaskOperatorInfo(activeTask);
-        if (taskOperator is not null)
-        {
-            BindMesOperatorInfo(taskOperator, taskOperator.UserNumber);
-            return;
-        }
-
-        ClearMesOperatorDisplayInfo();
-    }
-
         _syncingOperatorInput = true;
         try
         {
