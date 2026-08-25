@@ -1646,7 +1646,7 @@
     <value>Product No.</value>
   </data>
   <data name="program.label.component_code" xml:space="preserve">
-    <value>Component Code</value>
+    <value>Drawing No.</value>
   </data>
   <data name="program.label.sequence_number" xml:space="preserve">
     <value>Sequence No.</value>
@@ -1721,7 +1721,7 @@
     <value>Product No. is required.</value>
   </data>
   <data name="program.message.component_code_required" xml:space="preserve">
-    <value>Component Code is required.</value>
+    <value>Drawing No. is required.</value>
   </data>
   <data name="program.message.cycle_time_invalid" xml:space="preserve">
     <value>Cycle seconds must be a number greater than or equal to 0.</value>

@@ -358,6 +358,7 @@ var tests = new (string Name, Action Run)[]
     ("Device lifecycle no longer subscribes to alarm snapshots", DeviceLifecycleNoLongerSubscribesToAlarmSnapshots),
     ("Program name rules extract component code", ProgramNameRulesExtractComponentCode),
     ("Program name rules reject invalid component code", ProgramNameRulesRejectInvalidComponentCode),
+    ("Program name rules keep component code as entered", ProgramNameRulesKeepComponentCodeAsEntered),
     ("Program name rules build and parse optional description", ProgramNameRulesBuildAndParseOptionalDescription),
     ("Program manage download backfills name fields", ProgramManageDownloadBackfillsNameFields),
     ("Offline program dropdown displays program name", OfflineProgramDropdownDisplaysProgramName),
@@ -10866,31 +10867,54 @@ static void ProgramNameRulesExtractComponentCode()
 {
     AssertTrue(
         ProgramNameRules.TryExtractComponentCode("D001_CX_ABC123_DH_001_P001", out var componentCode),
-        "标准程序名称应能解析出零组件代码。");
-    AssertEqual("ABC123", componentCode, "零组件代码必须取 _CX_ 与 _DH_ 之间的原始片段。");
+        "标准程序名称应能解析出部件图号。");
+    AssertEqual("ABC123", componentCode, "部件图号必须取 _CX_ 与 _DH_ 之间的原始片段。");
 
     AssertTrue(
         ProgramNameRules.TryExtractComponentCode("D001_cx_ZJ-987_dh_001_P001", out var lowerCaseComponentCode),
         "MES 返回大小写不同的标记时仍应兼容。");
-    AssertEqual("ZJ-987", lowerCaseComponentCode, "大小写兼容不能改变零组件代码本身。");
+    AssertEqual("ZJ-987", lowerCaseComponentCode, "大小写兼容不能改变部件图号本身。");
 }
 
 static void ProgramNameRulesRejectInvalidComponentCode()
 {
     AssertFalse(
         ProgramNameRules.TryExtractComponentCode("D001_ABC123_DH_001_P001", out var missingStartCode),
-        "缺少 _CX_ 标记时不能生成伪零组件代码。");
+        "缺少 _CX_ 标记时不能生成伪部件图号。");
     AssertEqual(string.Empty, missingStartCode, "解析失败时输出必须为空。");
 
     AssertFalse(
         ProgramNameRules.TryExtractComponentCode("D001_CX_ABC123_001_P001", out var missingEndCode),
-        "缺少 _DH_ 标记时不能生成伪零组件代码。");
+        "缺少 _DH_ 标记时不能生成伪部件图号。");
     AssertEqual(string.Empty, missingEndCode, "缺少结束标记时输出必须为空。");
 
     AssertFalse(
         ProgramNameRules.TryExtractComponentCode("D001_CX__DH_001_P001", out var emptyCode),
-        "零组件代码片段为空时不能生成伪零组件代码。");
+        "部件图号片段为空时不能生成伪部件图号。");
     AssertEqual(string.Empty, emptyCode, "空片段解析失败时输出必须为空。");
+}
+
+/// <summary>
+/// 部件图号在程序名称中必须原样保留。
+/// 现场图号本身带小数点（例如 RY.682.100），过滤掉小数点会导致名称无法反查部件。
+/// </summary>
+static void ProgramNameRulesKeepComponentCodeAsEntered()
+{
+    var dottedName = ProgramNameRules.BuildProgramName("KFJ123456", "RY.682.100", 1, "3#J", null);
+    AssertEqual("KFJ123456_CX_RY.682.100_DH_001_3J", dottedName, "部件图号中的小数点必须原样写入程序名称。");
+
+    AssertTrue(ProgramNameRules.TryParse(dottedName, out var parsed), "含小数点的程序名称必须仍可解析。");
+    AssertEqual("RY.682.100", parsed.ComponentCode, "解析必须原样返回带小数点的部件图号。");
+
+    AssertTrue(
+        ProgramNameRules.TryExtractComponentCode(dottedName, out var extracted),
+        "含小数点的程序名称必须能提取部件图号。");
+    AssertEqual("RY.682.100", extracted, "提取结果必须与用户输入完全一致。");
+
+    AssertEqual(
+        "KFJ123456_CX_NA_DH_001_3J",
+        ProgramNameRules.BuildProgramName("KFJ123456", "   ", 1, "3#J", null),
+        "部件图号为空白时仍回退为 NA，避免出现连续下划线。");
 }
 
 static void ProgramNameRulesBuildAndParseOptionalDescription()
@@ -11082,7 +11106,7 @@ static void MonitorViewLinksProductNumSelectionToProgramOptions()
         viewCode,
         "private void ApplyOfflineProgramNameOption(OfflineProgramNameOption? option, bool syncDrawingNo)",
         "/// 按配方号反向联动离线程序名称、产品工号和产品型号。");
-    AssertTrue(applyProgram.Contains("inputDrawingNo.Text = option?.Program.ComponentCode?.Trim() ?? string.Empty;", StringComparison.Ordinal), "离线部件图号必须取当前程序的零组件代码，空值时清空。");
+    AssertTrue(applyProgram.Contains("inputDrawingNo.Text = option?.Program.ComponentCode?.Trim() ?? string.Empty;", StringComparison.Ordinal), "离线部件图号必须取当前程序的部件图号字段，空值时清空。");
 
     var resolveProductNum = ExtractMethodText(
         viewCode,

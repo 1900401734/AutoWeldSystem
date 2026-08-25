@@ -1646,7 +1646,7 @@
     <value>产品工号</value>
   </data>
   <data name="program.label.component_code" xml:space="preserve">
-    <value>零组件代码</value>
+    <value>部件图号</value>
   </data>
   <data name="program.label.sequence_number" xml:space="preserve">
     <value>流水号</value>
@@ -1721,7 +1721,7 @@
     <value>产品工号不能为空。</value>
   </data>
   <data name="program.message.component_code_required" xml:space="preserve">
-    <value>零组件代码不能为空。</value>
+    <value>部件图号不能为空。</value>
   </data>
   <data name="program.message.cycle_time_invalid" xml:space="preserve">
     <value>焊接节拍必须是大于等于 0 的数字。</value>

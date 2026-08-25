@@ -58,6 +58,7 @@ public class BizProgram
     [SugarColumn(Length = 50, ColumnDescription = "产品型号", IsNullable = true)]
     public string? ProductModel { get; set; }
 
+    // 界面文案为“部件图号”；字段名、列名和列注释保持原样，避免 CodeFirst 对现场库产生无谓的列变更。
     [SugarColumn(Length = 80, ColumnDescription = "零组件代码(18位字符串)", IsNullable = true)]
     public string? ComponentCode { get; set; }
 

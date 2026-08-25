@@ -567,7 +567,7 @@
             lblComponentCode.PrefixColor = Color.FromArgb(255, 77, 79);
             lblComponentCode.Size = new Size(92, 44);
             lblComponentCode.TabIndex = 11;
-            lblComponentCode.Text = "零组件代码";
+            lblComponentCode.Text = "部件图号";
             // 
             // inputComponentCode
             // 

@@ -34,7 +34,7 @@ public static class ProgramNameRules
             "_",
             NormalizeNamePart(deviceId),
             "CX",
-            NormalizeNamePart(componentCode),
+            NormalizeComponentNamePart(componentCode),
             "DH",
             Math.Max(1, sequenceNumber).ToString("000"),
             NormalizeNamePart(productNum?.Replace("#", string.Empty, StringComparison.Ordinal) ?? string.Empty));
@@ -99,12 +99,12 @@ public static class ProgramNameRules
     }
 
     /// <summary>
-    /// 从程序名称中提取零组件代码。
-    /// 当前程序名称格式为：设备编号_CX_零组件代码_DH_流水号_产品工号。
+    /// 从程序名称中提取部件图号。
+    /// 当前程序名称格式为：设备编号_CX_部件图号_DH_流水号_产品工号。
     /// </summary>
     /// <param name="programName">MES 或本地维护的程序名称。</param>
-    /// <param name="componentCode">解析成功时返回零组件代码；失败时返回空字符串。</param>
-    /// <returns>解析到非空零组件代码时返回 true。</returns>
+    /// <param name="componentCode">解析成功时返回部件图号；失败时返回空字符串。</param>
+    /// <returns>解析到非空部件图号时返回 true。</returns>
     public static bool TryExtractComponentCode(string? programName, out string componentCode)
     {
         componentCode = string.Empty;
@@ -141,6 +141,16 @@ public static class ProgramNameRules
 
         componentCode = extracted;
         return true;
+    }
+
+    /// <summary>
+    /// 部件图号片段保持用户原样输入，只去掉首尾空白。
+    /// 现场图号本身带小数点（例如 RY.682.100），过滤后会与图纸不一致，无法反查部件。
+    /// </summary>
+    private static string NormalizeComponentNamePart(string? value)
+    {
+        var trimmed = (value ?? string.Empty).Trim();
+        return trimmed.Length == 0 ? "NA" : trimmed;
     }
 
     private static string NormalizeNamePart(string? value)

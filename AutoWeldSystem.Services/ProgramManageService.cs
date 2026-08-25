@@ -511,7 +511,7 @@ public sealed class ProgramManageService : IProgramManageService
             previousDescription,
             currentDescription,
             StringComparison.Ordinal);
-        // 程序名称由工号、零组件代码、流水号和程序备注拼成，任一变化都必须重算，
+        // 程序名称由工号、部件图号、流水号和程序备注拼成，任一变化都必须重算，
         // 否则会出现流水号已改、名称仍是旧值的名实不符。
         // 注意：名称是 MES 上传字段，因此改流水号会经名称间接触发一次 MES 更新。
         var nameInputsChanged = entity.Id > 0
@@ -824,7 +824,7 @@ public sealed class ProgramManageService : IProgramManageService
 
         if (string.IsNullOrWhiteSpace(request.ComponentCode))
         {
-            throw new InvalidOperationException("零组件代码不能为空。");
+            throw new InvalidOperationException("部件图号不能为空。");
         }
     }
 
