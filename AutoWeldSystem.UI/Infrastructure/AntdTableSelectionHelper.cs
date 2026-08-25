@@ -1,4 +1,5 @@
 using AntdUI;
+using AutoWeldSystem.Core.Production;
 using System.Collections;
 
 namespace AutoWeldSystem.UI.Infrastructure;
@@ -46,6 +47,7 @@ public static class AntdTableSelectionHelper
     /// <summary>
     /// Reads selected rows from SelectedIndexs when AntdUI only records selected row indexes.
     /// Ctrl+A selection can hit this path, so delete buttons must not rely only on SelectedsReal().
+    /// AntdUI 的选中序号包含表头（序号 0），必须按规则换算成数据源下标，否则会整体错位一行。
     /// </summary>
     private static IReadOnlyList<T> GetSelectedRowsFromIndexes<T>(Table table)
         where T : class
@@ -64,9 +66,8 @@ public static class AntdTableSelectionHelper
             return Array.Empty<T>();
         }
 
-        return selectedIndexes
-            .Where(index => index >= 0 && index < rows.Count)
-            .Distinct()
+        return AntdTableRowIndexRules
+            .ToDataSourceIndexes(selectedIndexes, rows.Count)
             .Select(index => rows[index])
             .ToList();
     }

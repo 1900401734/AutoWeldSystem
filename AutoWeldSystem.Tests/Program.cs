@@ -243,6 +243,8 @@ var tests = new (string Name, Action Run)[]
     ("MES device status duplicate suppression honors lifecycle force write", MesDeviceStatusDuplicateSuppressionHonorsLifecycleForceWrite),
     ("Log timestamp display rules switch date visibility", LogTimestampDisplayRulesSwitchDateVisibility),
     ("Antd table selection helper maps selected indexes", AntdTableSelectionHelperMapsSelectedIndexes),
+    ("Antd table row index rules skip the header row", AntdTableRowIndexRulesSkipHeaderRow),
+    ("Table select options keep values already in use", TableSelectOptionsKeepValuesInUse),
     ("Device status local log store resolves directories", DeviceStatusLocalLogStoreResolvesDirectories),
     ("Device status local log store writes and reads jsonl", DeviceStatusLocalLogStoreWritesAndReadsJsonl),
     ("Device status local log store permits full source scans", DeviceStatusLocalLogStorePermitsFullSourceScans),
@@ -6629,6 +6631,50 @@ static void AntdTableSelectionHelperMapsSelectedIndexes()
         addressViewCode.Contains("GetSelectedAlarmRows()", StringComparison.Ordinal)
             && addressViewCode.Contains("DeleteAlarmAddress_Click", StringComparison.Ordinal),
         "报警地址删除按钮必须通过统一选择读取方法支持多行删除。");
+}
+
+static void AntdTableRowIndexRulesSkipHeaderRow()
+{
+    AssertSequenceEqual(
+        new[] { 0, 2 },
+        AntdTableRowIndexRules.ToDataSourceIndexes(new[] { 1, 3 }, rowCount: 4),
+        "AntdUI 数据行序号从 1 开始，换算成数据源下标必须减一，否则删除会命中下一条记录。");
+    AssertSequenceEqual(
+        Array.Empty<int>(),
+        AntdTableRowIndexRules.ToDataSourceIndexes(new[] { 0 }, rowCount: 3),
+        "序号 0 是表头行，不能映射成第一条数据。");
+    AssertSequenceEqual(
+        new[] { 2 },
+        AntdTableRowIndexRules.ToDataSourceIndexes(new[] { 3, 4, 3 }, rowCount: 3),
+        "越界序号应丢弃，重复序号只保留一次。");
+    AssertSequenceEqual(
+        Array.Empty<int>(),
+        AntdTableRowIndexRules.ToDataSourceIndexes(null, rowCount: 3),
+        "没有选中序号时不应返回任何行。");
+}
+
+static void TableSelectOptionsKeepValuesInUse()
+{
+    // 程序管理把 163#J 改名为 163#J-1 后，工艺仍引用旧工号；
+    // AntdUI 下拉缺少该候选项时单元格既不显示也不响应点击，因此必须把在用值并进候选。
+    AssertSequenceEqual(
+        new[] { "163#J-1", "200#A" },
+        TableSelectOptionRules.MergeValuesInUse(
+            new[] { "200#A", " 163#J-1 " },
+            new[] { "163#J-1" }),
+        "主数据与在用值重复时只保留一条，并按工号排序。");
+    AssertSequenceEqual(
+        new[] { "163#J", "163#J-1" },
+        TableSelectOptionRules.MergeValuesInUse(
+            new[] { "163#J-1" },
+            new[] { "163#J", null, "  " }),
+        "主数据里已不存在的在用工号必须保留为候选，空值忽略。");
+    AssertSequenceEqual(
+        new[] { "A01", "a01" },
+        TableSelectOptionRules.MergeValuesInUse(
+            new[] { "a01" },
+            new[] { "A01" }),
+        "AntdUI 按字符串精确匹配候选项，大小写不同的写法不能被折叠掉。");
 }
 
 static void DeviceStatusLocalLogStoreResolvesDirectories()
@@ -13121,12 +13167,15 @@ static void AllSelectControlsLimitDropdownItems()
         }
     }
 
+    // 表格下拉列（产品工号、测试方案、数据类型）走 ColumnSelect，编辑时由 AntdUI 临时建 Select 承载下拉，
+    // 展开高度只认该 Select 的 MaxCount；单元格的 DropDownMaxCount 仅作用于按钮式下拉，设置了不生效。
+    AssertTrue(TableSelectOptionRules.DropDownMaxCount >= 16, "表格下拉一次可见条数必须够现场工号数量，避免频繁滚动。");
+
     var addressViewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "AddressManageView.cs"), Encoding.UTF8);
-    var columnFactoryRegion = addressViewCode.Substring(addressViewCode.IndexOf("private AntdUI.ColumnSelect CreateProgramProductNumColumn", StringComparison.Ordinal), addressViewCode.IndexOf("private static AntdUI.ColumnSwitch CreateAddressEnabledColumn", StringComparison.Ordinal) - addressViewCode.IndexOf("private AntdUI.ColumnSelect CreateProgramProductNumColumn", StringComparison.Ordinal));
-    AssertFalse(columnFactoryRegion.Contains("DropDownMaxCount = 10", StringComparison.Ordinal), "ColumnSelect 工厂不应直接设置不存在的 DropDownMaxCount 属性。");
-    AssertTrue(addressViewCode.Contains("tableAddresses.CellBeginEdit += TableSelect_CellBeginEdit;", StringComparison.Ordinal), "地址表格下拉编辑前必须配置显示数量。 ");
-    AssertTrue(addressViewCode.Contains("tableProcess.CellBeginEdit += TableSelect_CellBeginEdit;", StringComparison.Ordinal), "工艺表格下拉编辑前必须配置显示数量。 ");
-    AssertTrue(addressViewCode.Contains("cell.DropDownMaxCount = 10;", StringComparison.Ordinal), "表格下拉单元格必须将 DropDownMaxCount 设为 10。");
+    AssertFalse(addressViewCode.Contains("cell.DropDownMaxCount", StringComparison.Ordinal), "ColumnSelect 的展开条数不能写在单元格上，该路径对表格下拉列无效。");
+    AssertTrue(addressViewCode.Contains("tableAddresses.CellBeginEditInputStyle += TableSelect_CellBeginEditInputStyle;", StringComparison.Ordinal), "地址表格必须在下拉编辑控件创建后配置展开条数。");
+    AssertTrue(addressViewCode.Contains("tableProcess.CellBeginEditInputStyle += TableSelect_CellBeginEditInputStyle;", StringComparison.Ordinal), "工艺表格必须在下拉编辑控件创建后配置展开条数。");
+    AssertTrue(addressViewCode.Contains("select.MaxCount = TableSelectOptionRules.DropDownMaxCount;", StringComparison.Ordinal), "表格下拉必须按集中规则设置展开条数，避免各处写死不同数值。");
 }
 static void RuntimeTipRestoreRequiresUnfinishedTask()
 {

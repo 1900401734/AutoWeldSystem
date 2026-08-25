@@ -470,30 +470,52 @@ public partial class AddressManageView : BaseView
         };
     }
 
+    /// <summary>
+    /// 构建产品工号下拉列。
+    /// 候选项必须包含现有工艺已引用的工号：程序管理改名或删除工号后，
+    /// 缺失候选项的单元格在 AntdUI 里既不显示文本也不响应点击，旧配置会变成点不中的空白行。
+    /// </summary>
     private AntdUI.ColumnSelect CreateProgramProductNumColumn()
     {
+        var productNums = TableSelectOptionRules.MergeValuesInUse(
+            _programOptions.Select(program => program.ProductNum),
+            _productProcessConfigs.Select(config => config.ProductNum));
+
         return new AntdUI.ColumnSelect(nameof(ProductProcessTableRow.ProductNum), "产品工号*")
         {
             Align = AntdUI.ColumnAlign.Center,
             Editable = true,
-            Items = _programOptions
-                .Where(program => !string.IsNullOrWhiteSpace(program.ProductNum))
-                .GroupBy(program => program.ProductNum.Trim(), StringComparer.OrdinalIgnoreCase)
-                .OrderBy(group => group.Key)
-                .Select(group => new AntdUI.SelectItem(group.Key) { Tag = group.Key })
+            Items = productNums
+                .Select(productNum => new AntdUI.SelectItem(productNum) { Tag = productNum })
                 .ToList()
         };
     }
 
+    /// <summary>
+    /// 构建测试方案下拉列。
+    /// 同产品工号列一样补上工艺在用但方案表已删除的方案ID，避免该行整行点不中。
+    /// </summary>
     private AntdUI.ColumnSelect CreateSchemeSelectColumn(string key, string title)
     {
+        var schemeNameById = _testSchemes
+            .GroupBy(scheme => scheme.SchemeId?.Trim() ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().SchemeName, StringComparer.OrdinalIgnoreCase);
+        var schemeIds = TableSelectOptionRules.MergeValuesInUse(
+            _testSchemes.Select(scheme => scheme.SchemeId),
+            _productProcessConfigs.Select(config => config.SchemeId));
+
         return new AntdUI.ColumnSelect(key, title)
         {
             Align = AntdUI.ColumnAlign.Center,
             Editable = true,
-            Items = _testSchemes
-                .OrderBy(scheme => scheme.SchemeId)
-                .Select(scheme => new AntdUI.SelectItem($"{scheme.SchemeId} - {scheme.SchemeName}") { Tag = scheme.SchemeId })
+            Items = schemeIds
+                .Select(schemeId => new AntdUI.SelectItem(
+                    schemeNameById.TryGetValue(schemeId, out var schemeName)
+                        ? $"{schemeId} - {schemeName}"
+                        : schemeId)
+                {
+                    Tag = schemeId
+                })
                 .ToList()
         };
     }
@@ -563,7 +585,7 @@ public partial class AddressManageView : BaseView
         _programManageService.ProgramLookupsChanged += ProgramManageService_ProgramLookupsChanged;
 
         tableAddresses.CellClick += Table_CellClick;
-        tableAddresses.CellBeginEdit += TableSelect_CellBeginEdit;
+        tableAddresses.CellBeginEditInputStyle += TableSelect_CellBeginEditInputStyle;
         tableAddresses.CellEndEdit += Table_CellEndEdit;
         tableAddresses.CellEndValueEdit += Table_CellEndValueEdit;
         tableAddresses.CellEditComplete += Table_CellEditComplete;
@@ -579,7 +601,7 @@ public partial class AddressManageView : BaseView
         btnPasteAlarmAddresses.Click += PasteAlarmAddresses_Click;
 
         tableProcess.CellClick += Table_CellClick;
-        tableProcess.CellBeginEdit += TableSelect_CellBeginEdit;
+        tableProcess.CellBeginEditInputStyle += TableSelect_CellBeginEditInputStyle;
         tableProcess.CellEndEdit += Table_CellEndEdit;
         tableProcess.CellEndValueEdit += Table_CellEndValueEdit;
         tableProcess.CellEditComplete += Table_CellEditComplete;
@@ -607,29 +629,18 @@ public partial class AddressManageView : BaseView
     }
 
     /// <summary>
-    /// Limits visible options when an editable table select cell opens.
+    /// 设置表格下拉列展开时一次可见的候选条数。
+    /// AntdUI 的 ColumnSelect 在进入编辑时会临时创建一个 Select 承载下拉，展开高度只取该 Select 的 MaxCount（默认 4），
+    /// 单元格自身的下拉条数属性只作用于按钮式下拉，因此必须在这里改 Select，否则工号一多就得滚动才能找到。
     /// </summary>
-    private static bool TableSelect_CellBeginEdit(object sender, AntdUI.TableEventArgs e)
+    private static void TableSelect_CellBeginEditInputStyle(object sender, AntdUI.TableBeginEditInputStyleEventArgs e)
     {
-        if (sender is not AntdUI.Table table
-            || e.Column is not AntdUI.ColumnSelect
-            || e.RowIndex < 0)
+        if (e.Column is not AntdUI.ColumnSelect || e.Input is not AntdUI.Select select)
         {
-            return true;
+            return;
         }
 
-        var row = table.GetRow(e.RowIndex);
-        if (row is null)
-        {
-            return true;
-        }
-        if (row.cells.TryGetValue(e.Column.Key, out var cellObject)
-            && cellObject is AntdUI.ICell cell)
-        {
-            cell.DropDownMaxCount = 10;
-        }
-
-        return true;
+        select.MaxCount = TableSelectOptionRules.DropDownMaxCount;
     }
     /// <summary>
     /// Adds Ctrl+A row selection to AntdUI tables that support multi-row delete.
