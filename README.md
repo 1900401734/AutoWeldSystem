@@ -1,6 +1,6 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.7.0`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.7.1`。
 
 ## 功能概览
 
@@ -221,6 +221,8 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 
 ## 检测设备四面转 A/B、程序判定与升级检查
 
+`v2.7.1` 修复 MES 连接状态指示灯切换缓慢和无法切换的问题。此前确认离线后不再发布状态快照，现场把在线路由改成错误后缀、把 MES 地址改错或禁用网口时，指示灯的文本和失败原因会永久停在第一次失败上；现在离线期间失败原因发生变化会重新发布快照，指示灯随之更新，原因完全相同时仍抑制重复通知。同时把确认离线所需的连续三次失败改用 1 秒短间隔重探，不再每次都等满心跳间隔，在线转离线由原先最快 3 倍心跳间隔（默认 15 秒，地址错误时约 24 秒）缩短到数秒；确认离线后回到正常心跳间隔，在线态轮询开销不变。
+
 `v2.7.0` 为整件检测设备支持产品重测。现场在 PLC 触摸屏点击“重测”后不会更新产品编号，上位机据此识别重测：当本轮采集的产品编号与本任务本工位紧邻上一轮相同时，就地覆盖该产品已有记录的测试值、结果和采集时间，不再像此前那样丢弃重测数据。产品历史预览、XLSX 报表随之更新为最新一轮结果，过程参数会重新上报 MES（数量模式下不等凑满批次即单独重传），启用中心同步时看板同一产品记录同步覆盖。完工数量仍取 PLC 实际读数，PLC 每轮重新统计合格、不良和总数。重测仅对“过程参数设备类型”为整件检测的设备生效，电磁点焊和整件焊接保持原有行为不变。
 
 `v2.6.4` 修复 PLC 清空流转卡号后的监控状态同步：离线空闲时及时清空流转卡号控件，释放自动查询去重状态，开工或完工后再次扫描工单可直接触发获取工单；同时为生产监控“实时预览”表格和数据管理“测试数据”页签的动态测试项列标题补上测试项单位，与 Excel 报表、MES 过程参数和中心服务器保持同一格式（例如 `峰值电流 (A)`）。上限、下限和实际值列追加单位，结果列不追加；测试项字典未填写单位时标题保持原样。自定义表头仍然优先保留，只在末尾追加单位。
@@ -299,10 +301,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>2.7.0</Version>
-<AssemblyVersion>2.7.0.0</AssemblyVersion>
-<FileVersion>2.7.0.0</FileVersion>
-<InformationalVersion>2.7.0</InformationalVersion>
+<Version>2.7.1</Version>
+<AssemblyVersion>2.7.1.0</AssemblyVersion>
+<FileVersion>2.7.1.0</FileVersion>
+<InformationalVersion>2.7.1</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -314,9 +316,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v2.7.0 -m "Release v2.7.0"
+git tag -a v2.7.1 -m "Release v2.7.1"
 git push origin main
-git push origin v2.7.0
+git push origin v2.7.1
 ```
 
 ## Git 使用
