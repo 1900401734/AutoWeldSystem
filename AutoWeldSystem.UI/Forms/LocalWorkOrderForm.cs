@@ -73,11 +73,15 @@ public partial class LocalWorkOrderForm : BaseWindow
         txtProgramName.Text = program?.ProgramName ?? string.Empty;
     }
 
+    /// <summary>
+    /// 取 PLC 当前扫码工单号作为初始值；无扫码值时保持为空，由操作员录入。
+    /// 不再生成 LOCAL 占位编号，避免占位值被当成真实工单提交。
+    /// </summary>
     private string ResolveInitialWorkOrderId()
     {
         var plcWorkId = _workIdMonitorService?.GetCurrent(_stationNo).WorkId?.Trim();
         return string.IsNullOrWhiteSpace(plcWorkId)
-            ? $"LOCAL-{_stationNo}-{DateTime.Now:yyyyMMddHHmmss}"
+            ? string.Empty
             : plcWorkId;
     }
 

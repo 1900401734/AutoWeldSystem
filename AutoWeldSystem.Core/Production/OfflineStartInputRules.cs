@@ -127,7 +127,9 @@ public static class OfflineStartInputRules
             Batch = Normalize(input.Batch),
             Spec = Normalize(input.Spec),
             ProcessNo = NormalizeRequired(input.ProcessNo, "工序号不能为空。"),
-            ProcessName = FirstNonEmpty(input.ProcessName, "离线焊接"),
+            // 工序名称和工单数量都是可选录入项，留空时按空值上报，不再补“离线焊接”和 1：
+            // 假值会被当成真实工序和计划数量写入任务、报表和 MES 开工上报。
+            ProcessName = Normalize(input.ProcessName),
             PlannedQty = ResolvePlannedQty(input.PlannedQtyText),
             ProgramLocalId = program.Id,
             ProgramId = FirstNonEmpty(program.ProgramId, $"local-{program.Id}"),
@@ -158,14 +160,18 @@ private static string ResolveDisplayText(BizProgram program, bool includeIdentit
             : $"{programName} | 产品工号={Normalize(program.ProductNum)}";
     }
 
+    /// <summary>
+    /// 解析工单数量；留空或非法时返回 0，表示操作员未录入计划数量。
+    /// 不再回退为 1：假的计划数量会让达成率和报表“工单数量”出现无依据的数值。
+    /// </summary>
     private static int ResolvePlannedQty(string? value)
     {
         if (int.TryParse(Normalize(value), NumberStyles.Integer, CultureInfo.InvariantCulture, out var result))
         {
-            return Math.Max(1, result);
+            return Math.Max(0, result);
         }
 
-        return 1;
+        return 0;
     }
 
     private static int NormalizeStationNo(int stationNo)
@@ -217,4 +223,5 @@ public sealed record OfflineStartInput(
     string PlannedQtyText,
     string ProductModel,
     string ProductName,
-    string DrawingNo);
+    string DrawingNo,
+    string ProductNum);

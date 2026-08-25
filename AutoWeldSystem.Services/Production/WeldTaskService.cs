@@ -504,7 +504,7 @@ public class WeldTaskService : IWeldTaskService
         var workOrder = CreateLocalWorkOrder(request);
         var process = CreateLocalProcess(request);
         var program = CreateLocalProgram(request, settings.DeviceId);
-        var localOperatorNumber = ResolveLocalOperatorNumber(operatorNumber);
+        var localOperatorNumber = RequireOfflineOperatorNumber(operatorNumber);
         var localOperatorInfo = CreateLocalOperatorInfo(localOperatorNumber);
         var startRequest = BuildStartRequest(settings.DeviceId, workOrder, process, program, actualQty, localOperatorNumber);
 
@@ -740,7 +740,8 @@ public class WeldTaskService : IWeldTaskService
             throw new BusinessOperationException("Local.FinishReport", "本地完工失败", "No offline task to finish.");
         }
 
-        var endOperator = ResolveLocalOperatorNumber(employeeNumber);
+        // 完工员工号与在线完工同口径：调用方未传时沿用开工时录入的员工号，仍不接受登录账号兜底。
+        var endOperator = RequireOfflineOperatorNumber(FirstNonEmpty(employeeNumber, task.UserNumber));
         // 离线完工同样只捕获一次结束时间，持久化后再生成最终报表。
         var finishTime = DateTime.Now;
         task.ActualQty = actualQty;
@@ -946,7 +947,7 @@ public class WeldTaskService : IWeldTaskService
             ItemId = request.ProgramLocalId,
             ItemName = request.ProcessName,
             ProcessNo = request.ProcessNo,
-            StartAmount = Math.Max(1, request.PlannedQty)
+            StartAmount = Math.Max(0, request.PlannedQty)
         };
     }
 
@@ -1134,7 +1135,8 @@ public class WeldTaskService : IWeldTaskService
         request.ProductName = NormalizeText(request.ProductName);
         request.DrawingNo = NormalizeText(request.DrawingNo);
         request.RecipeCode = NormalizeText(request.RecipeCode);
-        request.PlannedQty = Math.Max(1, request.PlannedQty);
+        // 计划数量为可选项，0 表示操作员未录入；不再回退为 1，避免任务和报表出现无依据的工单数量。
+        request.PlannedQty = Math.Max(0, request.PlannedQty);
 
         if (string.IsNullOrWhiteSpace(request.WorkOrderId))
         {
@@ -1147,10 +1149,20 @@ public class WeldTaskService : IWeldTaskService
         }
     }
 
-    private static string ResolveLocalOperatorNumber(string? operatorNumber)
+    /// <summary>
+    /// 校验离线开工/完工的员工号。
+    /// 离线操作员由现场人员录入，不再用登录账号、Windows 用户名或 "local" 兜底：
+    /// 这些兜底值会被当成真实操作员写入任务、报表表头和 MES 补传的开工/完工上报。
+    /// </summary>
+    private static string RequireOfflineOperatorNumber(string? operatorNumber)
     {
-        var currentUserNumber = GlobalContext.CurrentUser?.UserNumber;
-        return FirstNonEmpty(operatorNumber, currentUserNumber, Environment.UserName, "local");
+        var normalized = NormalizeText(operatorNumber);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            throw new BusinessOperationException("Local.Operator", "本地操作失败", "Offline operator number is required.");
+        }
+
+        return normalized;
     }
 
     /// <summary>
@@ -1251,6 +1263,7 @@ public class WeldTaskService : IWeldTaskService
 
     /// <summary>
     /// 使用本地任务快照重建工序对象；完工上报只需要工序号和工序名称继续保持一致。
+    /// 工单数量按落库值原样恢复（离线未录入时为 0），不回退为 1。
     /// </summary>
     private static ExpItemData CreateProcessSnapshot(BizWeldTask task)
     {
@@ -1258,7 +1271,7 @@ public class WeldTaskService : IWeldTaskService
         {
             ProcessNo = task.ProcessNo,
             ItemName = task.ProcessName,
-            StartAmount = Math.Max(1, task.StartAmount)
+            StartAmount = Math.Max(0, task.StartAmount)
         };
     }
 
@@ -1330,15 +1343,16 @@ public class WeldTaskService : IWeldTaskService
     }
 
     /// <summary>
-    /// 离线工单无法校验 MES 员工，使用本地系统用户作为员工快照。
+    /// 离线工单无法向 MES 校验员工，只保留操作员录入的员工号。
+    /// 姓名、部门和班组留空：登录账号姓名与现场录入的员工号可能不是同一个人，
+    /// 回填会让任务记录和报表出现工号与姓名不对应的假数据。
     /// </summary>
     private static UserInfoRes CreateLocalOperatorInfo(string operatorNumber)
     {
-        var currentUser = GlobalContext.CurrentUser;
         return new UserInfoRes
         {
-            UserNumber = FirstNonEmpty(operatorNumber, currentUser?.UserNumber, Environment.UserName, "local"),
-            UserName = FirstNonEmpty(currentUser?.UserName, Environment.UserName),
+            UserNumber = NormalizeText(operatorNumber),
+            UserName = string.Empty,
             DeptName = string.Empty,
             TeamName = string.Empty
         };

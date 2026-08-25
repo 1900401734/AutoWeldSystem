@@ -1163,6 +1163,15 @@ public partial class MonitorView : BaseView
         }
 
         var fullProgram = await _programManageService.GetProgramAsync(selectedProgram!.Program.Id);
+        // 离线员工号由操作员在界面录入，不再用登录账号兜底，因此开工前必须校验非空；
+        // MES 离线无法校验身份，只按录入值原样上报和落库。
+        var employeeNumber = MesUserNumber.Text.Trim();
+        if (string.IsNullOrWhiteSpace(employeeNumber))
+        {
+            SetRuntimeError(TextKeys.Monitor.RuntimeError.OperatorNumberRequired);
+            return;
+        }
+
         if (fullProgram is null)
         {
             SetRuntimeError(TextKeys.Monitor.RuntimeError.ProgramNameRequired);
@@ -1187,12 +1196,11 @@ public partial class MonitorView : BaseView
             ProgramContent = request.ProgramContent
         };
 
-        BindLocalOperatorInfo();
         await RunReportOperationAsync(stationNo, "本地开工", async () =>
         {
             ClearRuntimeError();
             SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.SubmittingStart);
-            await _weldTaskService.StartLocalAsync(request, ResolveLocalOperatorNumber(), 0);
+            await _weldTaskService.StartLocalAsync(request, employeeNumber, 0);
             _offlineWorkOrderEditedByUser = false;
             ApplyOfflineProgramNameOption(selectedProgram, syncDrawingNo: false);
             RefreshProductionRuntimeState();
@@ -1818,7 +1826,7 @@ public partial class MonitorView : BaseView
         if (stationNo == CurrentStationNo)
         {
             _manualWorkOrderEditedByUser = false;
-            // 离线输入绑定会为空工单自动生成 LOCAL 编号；标记为草稿以保留 PLC 清空后的空显示。
+            // 标记为操作员草稿，使离线待开工信息在后续刷新周期中不被当成无准备状态清除。
             _offlineWorkOrderEditedByUser = IsOfflineInputEditable(state);
             SetWorkOrderInputText(string.Empty);
         }
@@ -3168,7 +3176,6 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        BindLocalOperatorInfo();
         await RunReportOperationAsync(stationNo, "本地完工", async () =>
         {
             ClearRuntimeError();
@@ -3176,7 +3183,7 @@ public partial class MonitorView : BaseView
             var activeTask = _weldTaskService.RestoreUnfinishedTask(stationNo);
             await RefreshRecipeCodeFromPlcBeforeFinishAsync(activeTask, stationNo);
             await _weldTaskService.FinishLocalAsync(
-                ResolveLocalOperatorNumber(),
+                activeTask?.UserNumber?.Trim() ?? string.Empty,
                 actualQty,
                 qualifiedQty,
                 failedQty,
@@ -3240,6 +3247,7 @@ public partial class MonitorView : BaseView
 }
 
     /// <summary>
+            // 完工不再回填登录账号，直接沿用离线开工时操作员录入并写入任务的员工号。
     /// Writes a throttled log entry when the finish recipe read cannot produce a usable value.
     /// </summary>
     /// <param name="stationNo">Station number.</param>
@@ -3261,34 +3269,6 @@ public partial class MonitorView : BaseView
             "Finish recipe code read failed.",
             $"Station={normalizedStationNo}; TaskId={task.Id}; WorkOrder={task.SN}; Detail={detail}",
             "Finish reads PLC recipe code before closing the task.");
-    }
-
-    /// <summary>
-    /// Binds local operator information to the finish/start panel.
-    /// </summary>
-    private void BindLocalOperatorInfo()
-    {
-        var user = GlobalContext.CurrentUser;
-        MesUserName.Text = user?.UserName ?? Environment.UserName;
-        MesUserNumber.Text = ResolveLocalOperatorNumber();
-        inputDeptName.Text = string.Empty;
-        TeamName.Text = string.Empty;
-    }
-
-    /// <summary>
-    /// 解析本地操作员编号。
-    /// </summary>
-    /// <returns>处理后的文本。</returns>
-    private static string ResolveLocalOperatorNumber()
-    {
-        if (!string.IsNullOrWhiteSpace(GlobalContext.CurrentUser?.UserNumber))
-        {
-            return GlobalContext.CurrentUser.UserNumber.Trim();
-        }
-
-        return string.IsNullOrWhiteSpace(Environment.UserName)
-            ? "local"
-            : Environment.UserName.Trim();
     }
 
     /// <summary>
@@ -3722,7 +3702,8 @@ public partial class MonitorView : BaseView
         if (IsOfflineInputEditable(state))
         {
             BindOfflineEditableRuntimeState(liveWorkId);
-            BindRuntimeOperatorInfo(state, activeTask);
+            // 离线员工号是操作员的待开工录入项，1Hz 重绑定必须保留正在输入的内容，否则边输入边被清空。
+            BindOfflineOperatorInfo(activeTask);
             ApplyTaskStatusTag(state);
             btnLocalWorkOrder.Text = _localizer.GetString(TextKeys.Monitor.Button.LocalWorkOrder);
             ApplyReportButtonState();
@@ -3967,18 +3948,13 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             BindOfflineProductNumOptions();
             BindOfflineProgramNameOptions();
 
-            if (!_offlineWorkOrderEditedByUser)
+            if (!_offlineWorkOrderEditedByUser && !string.IsNullOrWhiteSpace(liveWorkId))
             {
-                inputSN.Text = !string.IsNullOrWhiteSpace(liveWorkId)
-                    ? liveWorkId
-                    : string.IsNullOrWhiteSpace(inputSN.Text)
-                        ? $"LOCAL-{CurrentStationNo}-{DateTime.Now:yyyyMMddHHmmss}"
-                        : inputSN.Text;
+                // 流转卡号只接受 PLC 扫码值或操作员录入，不再为空值生成 LOCAL 占位编号：
+                // 占位编号会被当成真实工单写入任务和上报数据，且掩盖“未扫码”这一状态。
+                inputSN.Text = liveWorkId;
             }
 
-            inputProcessNo.Text = string.IsNullOrWhiteSpace(inputProcessNo.Text) ? "OP10" : inputProcessNo.Text;
-            selectItemName.Text = string.IsNullOrWhiteSpace(selectItemName.Text) ? "离线焊接" : selectItemName.Text;
-            inputStartAmount.Text = string.IsNullOrWhiteSpace(inputStartAmount.Text) ? "1" : inputStartAmount.Text;
             if (enteringOfflineInputMode)
             {
                 inputProdModel.Text = string.Empty;
@@ -4058,6 +4034,15 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             _offlineProgramNameOptions.AddRange(options);
             selectProgramName.Items.Clear();
             selectProgramName.Items.AddRange(options.Select(option => option.DisplayText).Cast<object>().ToArray());
+                // 工序号、工序名称和工单数量同样只接受操作员录入，不预填 OP10/离线焊接/1：
+                // 预填值会被当成真实工序和计划数量写入任务、报表和 MES 开工上报，且掩盖“未录入”这一状态。
+                // 工序号在开工时校验非空并提示；工序名称和工单数量允许留空。
+                inputProcessNo.Text = string.Empty;
+                selectItemName.Text = string.Empty;
+                inputStartAmount.Text = string.Empty;
+                // 员工号同样是操作员待录入项：清掉上一在线工单校验得到的员工信息和校验标记，
+                // 避免离线开工把在线阶段校验过的他人工号当成本次操作员上报。
+                ClearMesOperatorInfo();
             var selectedIndex = previousProgramId.HasValue
                 ? options.FindIndex(option => option.Program.Id == previousProgramId.Value)
                 : -1;
@@ -4085,6 +4070,8 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// </summary>
     private void BindOfflineProductNumOptions()
     {
+        // 离线无法向 MES 校验身份，员工号只能由现场操作员录入，因此不受“操作员弹窗输入”设置影响，始终随离线可编辑态开放。
+        MesUserNumber.ReadOnly = readOnly;
         var previousText = selectProdNum.Text?.Trim() ?? string.Empty;
         var requireBothStations = _currentSettings.EnableDualStation && !_currentSettings.EnableDualWorkOrder;
         var options = OfflineStartInputRules.BuildProductNumOptions(
@@ -4218,17 +4205,36 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         try
         {
             request = OfflineStartInputRules.BuildRequest(
+    /// <summary>
+    /// 取产品工号控件当前显示的工号，用于开工上报和运行态记忆。
+    /// 只按控件文本解析：手工输入不会更新 AntdUI 的 SelectedValue，采信 SelectedValue 会拿到改写前的旧工号。
+    /// 文本命中下拉选项时返回该选项的规范工号，统一同一工号的大小写写法；未命中时按现场手输工号原样返回。
+    /// </summary>
+    private string GetProductNumInputText()
+    {
+        var text = selectProdNum.Text?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(text))
+        {
+            return string.Empty;
+        }
+
+        var index = _offlineProductNumOptions.FindIndex(
+            option => string.Equals(option.DisplayText, text, StringComparison.Ordinal));
+        return index >= 0 ? _offlineProductNumOptions[index].ProductNum : text;
+    }
+
                 new OfflineStartInput(
-                    stationNo,
-                    GetConfirmedWorkOrderInput(stationNo),
-                    inputBatch.Text,
-                    inputSpec.Text,
-                    inputProcessNo.Text,
-                    selectItemName.Text,
-                    inputStartAmount.Text,
-                    inputProductName.Text,
-                    inputDrawingNo.Text,
-                    inputProdModel.Text),
+                    StationNo: stationNo,
+                    WorkOrderId: GetConfirmedWorkOrderInput(stationNo),
+                    Batch: inputBatch.Text,
+                    Spec: inputSpec.Text,
+                    ProcessNo: inputProcessNo.Text,
+                    ProcessName: selectItemName.Text,
+                    PlannedQtyText: inputStartAmount.Text,
+                    ProductModel: inputProdModel.Text,
+                    ProductName: inputProductName.Text,
+                    DrawingNo: inputDrawingNo.Text,
+                    ProductNum: GetProductNumInputText()),
                 selectedProgram);
             return true;
         }
@@ -4286,6 +4292,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     {
         selectItemName.Text = GetProcessDisplayName(process);
         inputProcessNo.Text = process.ProcessNo ?? string.Empty;
+            // 逐项具名，避免同类型文本字段顺序错位后仍能编译通过。
         inputStartAmount.Text = process.StartAmount.ToString(CultureInfo.InvariantCulture);
     }
 
@@ -9493,6 +9500,24 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// </summary>
     private void ClearMesOperatorDisplayInfo()
     {
+    /// <summary>
+    /// 绑定离线待开工态的员工信息。
+    /// 离线无法向 MES 校验身份，员工号完全是操作员的现场录入项：有任务时回填任务快照，
+    /// 否则只清空姓名、部门和班组显示并保留正在输入的员工号，且不复用上一次在线校验残留的 MES 员工信息。
+    /// </summary>
+    /// <param name="activeTask">当前工位任务；离线可编辑态下通常为 null。</param>
+    private void BindOfflineOperatorInfo(BizWeldTask? activeTask)
+    {
+        var taskOperator = CreateTaskOperatorInfo(activeTask);
+        if (taskOperator is not null)
+        {
+            BindMesOperatorInfo(taskOperator, taskOperator.UserNumber);
+            return;
+        }
+
+        ClearMesOperatorDisplayInfo();
+    }
+
         _syncingOperatorInput = true;
         try
         {
