@@ -427,9 +427,12 @@ var tests = new (string Name, Action Run)[]
     ("Program list filter returns all when disabled", ProgramListFilterReturnsAllWhenDisabled),
     ("Program list filter narrows by product number when enabled", ProgramListFilterNarrowsByProductNumberWhenEnabled),
     ("Program list filter returns all when work order product number is blank", ProgramListFilterReturnsAllWhenWorkOrderProductNumberIsBlank),
+    ("Program list query product number rules", ProgramListQueryProductNumRules),
     ("Program content review rows use edited standard values", ProgramContentReviewRowsUseEditedStandardValues),
     ("Program content review rejects duplicate item names", ProgramContentReviewRejectsDuplicateItemNames),
     ("LoadPrograms filters available programs by work order product number", LoadProgramsFiltersAvailableProgramsByWorkOrderProductNumber),
+    ("LoadPrograms omits product number query when filter disabled", LoadProgramsOmitsProductNumberQueryWhenFilterDisabled),
+    ("LoadPrograms keeps hash in product number query", LoadProgramsKeepsHashInProductNumberQuery),
     ("Select list rules resolve selection by display text", SelectListRulesResolveSelectionByDisplayText),
     ("Select list rules disambiguate duplicate display texts by event index", SelectListRulesDisambiguateDuplicateDisplayTextsByEventIndex),
     ("Natural sort comparer orders product numbers numerically", NaturalSortComparerOrdersProductNumbersNumerically),
@@ -13087,6 +13090,25 @@ static void ProgramListFilterReturnsAllWhenWorkOrderProductNumberIsBlank()
     AssertEqual(2, filtered.Count, "工单产品工号空白时不应收窄程序列表。");
 }
 
+static void ProgramListQueryProductNumRules()
+{
+    AssertTrue(
+        ProgramListFilterRules.ResolveQueryProductNum(useProductNumberFilter: false, workOrderProdNum: "X-1") is null,
+        "未开启按产品工号筛选时不得生成 productNum 查询参数。");
+    AssertTrue(
+        ProgramListFilterRules.ResolveQueryProductNum(useProductNumberFilter: true, workOrderProdNum: "   ") is null,
+        "工单产品工号空白时不得生成 productNum 查询参数。");
+    AssertEqual(
+        "X-1",
+        ProgramListFilterRules.ResolveQueryProductNum(useProductNumberFilter: true, workOrderProdNum: " X-1 "),
+        "生成查询参数时应去掉首尾空白。");
+    // 工号中的 # 必须原样传给 MES，不得改写成 ! 或其他字符。
+    AssertEqual(
+        "115#K-3",
+        ProgramListFilterRules.ResolveQueryProductNum(useProductNumberFilter: true, workOrderProdNum: " 115#K-3 "),
+        "查询参数必须原样保留工号中的 #。");
+}
+
 static void ProgramContentReviewRowsUseEditedStandardValues()
 {
     // 开工弹窗已取消“修改值”列，用户就地改设定值，合并时直接取该值。
@@ -13160,6 +13182,93 @@ static void LoadProgramsFiltersAvailableProgramsByWorkOrderProductNumber()
     var programs = service.LoadProgramsAsync(ProductionConstants.Stations.DefaultStationNo).GetAwaiter().GetResult();
     AssertEqual(1, programs.Count, "开启按产品工号筛选后，AvailablePrograms 只应含匹配工单产品工号的程序。");
     AssertEqual("P-A", programs[0].ProgramName, "筛选后保留的应是产品工号匹配的程序。");
+    AssertEqual("X-1", mes.ProgramListProductNums.Single(), "开启筛选后必须把工单产品工号作为 productNum 传给 MES。");
+}
+
+static void LoadProgramsOmitsProductNumberQueryWhenFilterDisabled()
+{
+    var mes = new FakeMesProvider
+    {
+        WorkOrderInfoResponse = new BasicRes<WorkOrderRes>
+        {
+            Status = AppConstants.MesStatus.Success,
+            Msg = "OK",
+            Data = new WorkOrderRes
+            {
+                SN = "WO-1",
+                ProdNum = "X-1",
+                ExpItems = [new ExpItemData { ItemId = 1, ProcessNo = "OP10", ItemName = "焊接", StartAmount = 10 }]
+            }
+        },
+        ProgramListResponse = new BasicRes<List<MesProgramListItemData>>
+        {
+            Status = AppConstants.MesStatus.Success,
+            Msg = "OK",
+            Data = new List<MesProgramListItemData>
+            {
+                new() { Id = "1", ProgramName = "P-A", ProductNum = "X-1" },
+                new() { Id = "3", ProgramName = "P-C", ProductNum = "X-2" }
+            }
+        }
+    };
+    var appSettings = new FakeAppSettingsService
+    {
+        Current = new AppSettings { DeviceId = "D-001", UseProductNumberFilter = false }
+    };
+    var service = CreateWeldTaskService(
+        mes,
+        new FakeSystemClockService(),
+        new FakeOperationLogService(),
+        appSettingsService: appSettings);
+
+    service.GetWorkOrderInfoAsync("WO-1").GetAwaiter().GetResult();
+    var programs = service.LoadProgramsAsync(ProductionConstants.Stations.DefaultStationNo).GetAwaiter().GetResult();
+    AssertEqual(2, programs.Count, "未开启筛选时应保留 MES 返回的全部程序。");
+    AssertTrue(mes.ProgramListProductNums.Single() is null, "未开启筛选时不得携带 productNum，避免 MES 端提前收窄。");
+}
+
+static void LoadProgramsKeepsHashInProductNumberQuery()
+{
+    var mes = new FakeMesProvider
+    {
+        WorkOrderInfoResponse = new BasicRes<WorkOrderRes>
+        {
+            Status = AppConstants.MesStatus.Success,
+            Msg = "OK",
+            Data = new WorkOrderRes
+            {
+                SN = "WO-1",
+                ProdNum = "115#K-3",
+                ExpItems = [new ExpItemData { ItemId = 1, ProcessNo = "OP10", ItemName = "焊接", StartAmount = 10 }]
+            }
+        },
+        ProgramListResponse = new BasicRes<List<MesProgramListItemData>>
+        {
+            Status = AppConstants.MesStatus.Success,
+            Msg = "OK",
+            Data = new List<MesProgramListItemData>
+            {
+                new() { Id = "1", ProgramName = "P-A", ProductNum = "115#K-3" },
+                new() { Id = "3", ProgramName = "P-C", ProductNum = "115#K-4" }
+            }
+        }
+    };
+    var appSettings = new FakeAppSettingsService
+    {
+        Current = new AppSettings { DeviceId = "D-001", UseProductNumberFilter = true }
+    };
+    var service = CreateWeldTaskService(
+        mes,
+        new FakeSystemClockService(),
+        new FakeOperationLogService(),
+        appSettingsService: appSettings);
+
+    service.GetWorkOrderInfoAsync("WO-1").GetAwaiter().GetResult();
+    var programs = service.LoadProgramsAsync(ProductionConstants.Stations.DefaultStationNo).GetAwaiter().GetResult();
+    // 现场工号形如 115#K-3，# 属于工号本身，必须原样查询，不得改写。
+    AssertEqual("115#K-3", mes.ProgramListProductNums.Single(), "带 # 的工单工号必须原样作为 productNum 查询 MES。");
+    AssertEqual(1, programs.Count, "兜底筛选应按原样工号收窄。");
+    AssertEqual("P-A", programs[0].ProgramName, "兜底筛选应保留工号完全一致的程序。");
 }
 
 static WeldTaskService CreateWeldTaskService(
@@ -14336,6 +14445,11 @@ sealed class FakeMesProvider : IMesProvider
         Data = new List<MesProgramListItemData>()
     };
 
+    /// <summary>
+    /// 记录每次程序列表查询实际传入的 productNum，用于断言是否按工号向 MES 收窄。
+    /// </summary>
+    public List<string?> ProgramListProductNums { get; } = new();
+
     public Func<bool?, CancellationToken, Task<BasicRes<object>>>? OnlineCheckHandler { get; set; }
 
     public Task<BasicRes<ServerTimeRes>> GetServerTimeAsync(CancellationToken cancellationToken = default)
@@ -14364,7 +14478,10 @@ sealed class FakeMesProvider : IMesProvider
         => throw new NotSupportedException();
 
     public Task<BasicRes<List<MesProgramListItemData>>> GetProgramListAsync(string deviceId, string? productNum = null, CancellationToken cancellationToken = default)
-        => Task.FromResult(ProgramListResponse);
+    {
+        ProgramListProductNums.Add(productNum);
+        return Task.FromResult(ProgramListResponse);
+    }
 
     public Task<BasicRes<ProgramDataRes>> DownloadProgramAsync(string deviceId, string programId, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();

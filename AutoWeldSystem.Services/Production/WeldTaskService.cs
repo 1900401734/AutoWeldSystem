@@ -304,10 +304,12 @@ public class WeldTaskService : IWeldTaskService
         }
 
         var settings = CurrentSettings;
-        // 未开启“按产品工号筛选程序”时返回本地同步的全量程序；开启后按工单产品工号在客户端筛选。
+        var workOrderProdNum = station.CurrentWorkOrder?.ProdNum;
+        // 未开启“按产品工号筛选程序”时不带 productNum，取回该设备全部程序；
+        // 开启后由 MES 按工单产品工号查询，返回结果再走客户端兜底筛选。
         var response = await _mesProvider.GetProgramListAsync(
             settings.DeviceId,
-            null,
+            ProgramListFilterRules.ResolveQueryProductNum(settings.UseProductNumberFilter, workOrderProdNum),
             cancellationToken);
 
         if (!response.IsSuccess || response.Data is null)
@@ -319,7 +321,6 @@ public class WeldTaskService : IWeldTaskService
             return Array.Empty<MesProgramListItemData>();
         }
 
-        var workOrderProdNum = station.CurrentWorkOrder?.ProdNum;
         station.AvailablePrograms = ProgramListFilterRules.Filter(
             response.Data,
             settings.UseProductNumberFilter,
