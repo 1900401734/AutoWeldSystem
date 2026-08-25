@@ -12242,8 +12242,7 @@ static void MonitorRuntimeTipsUseLocalizedSummaries()
         "monitor.error.device_alarm",
         "monitor.error.device_alarm_summary",
         "monitor.error.device_alarm_pending",
-        "monitor.notification.plc_alarm_title",
-        "monitor.message.clear_device_alarm_confirm"
+        "monitor.notification.plc_alarm_title"
     };
 
     foreach (var key in requiredKeys)

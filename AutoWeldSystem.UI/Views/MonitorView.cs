@@ -5444,17 +5444,6 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     {
         if (string.Equals(_runtimeErrorSource, RuntimeErrorSourceDeviceAlarm, StringComparison.Ordinal))
         {
-            var result = MessageBox.Show(
-                this,
-                _localizer.GetString(TextKeys.Monitor.Message.ClearDeviceAlarmConfirm),
-                _localizer.GetString(TextKeys.Common.TitleConfirmReset),
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning);
-            if (result != DialogResult.Yes)
-            {
-                return;
-            }
-
             var stationNo = NormalizeStatusStationNo(CurrentStationNo);
             if (_plcAlarmNotificationSignatures.TryGetValue(stationNo, out var signature))
             {

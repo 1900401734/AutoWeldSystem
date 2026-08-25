@@ -353,10 +353,6 @@ public static class TextKeys
             /// </summary>
             public const string SwitchUserConfirm = "monitor.message.switch_user_confirm";
             /// <summary>
-            /// 清除本机设备报警提示确认
-            /// </summary>
-            public const string ClearDeviceAlarmConfirm = "monitor.message.clear_device_alarm_confirm";
-            /// <summary>
             /// 工单二维码不能为空
             /// </summary>
             public const string WorkIdRequired = "monitor.message.work_id_required";
