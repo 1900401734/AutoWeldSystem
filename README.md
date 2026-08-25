@@ -1,6 +1,6 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.7.2`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.7.3`。
 
 ## 功能概览
 
@@ -229,6 +229,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 
 ## 检测设备四面转 A/B、程序判定与升级检查
 
+`v2.7.3` 修复地址维护页“产品工艺”行在产品工号改名后显示空白、点不中，且删除时误删下一行的问题。两处独立缺陷：一是产品工号和测试方案两列是下拉列，AntdUI 在候选项里找不到单元格当前值时既不绘制文本也不参与鼠标命中测试，因此程序管理把 `163#J` 改名为 `163#J-1` 后，仍引用旧工号的工艺行整行变成点不中的空白（测试方案被删除时同理）；现在两列候选项都会并入现有工艺已引用的值，历史值可见、可选中、可改可删，并保留大小写不同的写法。二是删除按钮的多选兜底路径把 AntdUI 选中序号直接当数据源下标用，而 AntdUI 把表头也算一行并占用序号 0、数据行从 1 开始，导致选中行整体错位一行；该路径在表格未排序时是唯一生效路径（`SelectedsReal()` 未排序时固定返回空），因此错位对报警地址、产品工艺、测试方案、测试项字典四张多选表的删除都成立，包括 Ctrl+A 全选删除会漏掉首行并越界。现在统一按规则减一换算并丢弃表头序号。
+
+`v2.7.3` 地址维护页表格内下拉（产品工号、测试方案ID、数据类型）一次可见候选从 4 条放宽到 16 条，工号多时不必反复滚动。此前限制条数的代码写在单元格的 `DropDownMaxCount` 上，而该属性只服务于按钮式下拉；表格下拉列进入编辑时由 AntdUI 临时创建 `Select` 承载下拉，展开高度只取这个 `Select` 的 `MaxCount`（默认 4），所以原设置从未生效。现在改到 `CellBeginEditInputStyle` 事件里设置实际编辑控件，条数由集中规则提供。窗体上独立的 `Select` 控件仍为 10 条，未受影响。
+
 `v2.7.2` 离线模式下“员工号”改为开放给现场操作员编辑，不再默认回填程序登录账号。此前离线开工和完工都会用登录账号（其次是 Windows 用户名，最后是 `local`）覆盖员工号，并把登录账号的姓名一起写进任务，导致离线任务、XLSX 报表表头和 MES 补传的开工/完工上报记录的是开机登录者而不是实际操作员，工号与姓名还可能不属于同一个人。现在员工号随离线可编辑态开放输入，不受“操作员弹窗输入”设置影响；转入离线时清空在线阶段校验过的员工信息，留空点“本地工单”提示员工号必填；服务层对离线开工和完工都拒绝空员工号，不再做任何账号兜底。离线无法向 MES 校验身份，因此按录入值原样落库和补传，姓名、部门和班组保持为空；离线完工沿用开工时录入的员工号。在线流程不变，仍按“操作员弹窗输入”设置弹窗或内联回车校验。
 
 `v2.7.2` 修复“工序名称”在任何状态下都无法编辑的问题。该下拉框的只读状态在设计器里被固定为只读，运行态的在线和离线只读切换都没有覆盖它，因此即使未开工也改不动。现在工序名称与其他开工字段同规则：未开工时可编辑（在线态需工单已加载，离线态直接可录入），开工或任务运行中变为只读。
@@ -325,10 +329,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>2.7.2</Version>
-<AssemblyVersion>2.7.2.0</AssemblyVersion>
-<FileVersion>2.7.2.0</FileVersion>
-<InformationalVersion>2.7.2</InformationalVersion>
+<Version>2.7.3</Version>
+<AssemblyVersion>2.7.3.0</AssemblyVersion>
+<FileVersion>2.7.3.0</FileVersion>
+<InformationalVersion>2.7.3</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -340,9 +344,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v2.7.2 -m "Release v2.7.2"
+git tag -a v2.7.3 -m "Release v2.7.3"
 git push origin main
-git push origin v2.7.2
+git push origin v2.7.3
 ```
 
 ## Git 使用
