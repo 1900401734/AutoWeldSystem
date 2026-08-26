@@ -119,6 +119,7 @@ public class DeviceStatusService : IDeviceStatusService
             existing.IsDeleted = false;
             existing.DeletedTime = null;
             existing.BusinessId = task.BusinessId;
+            existing.WeldTaskId = task.WeldTaskId;
             existing.PayloadJson = task.PayloadJson;
             existing.Status = task.Status;
             existing.NextRetryTime = task.NextRetryTime;
@@ -130,6 +131,7 @@ public class DeviceStatusService : IDeviceStatusService
                     taskRow.IsDeleted,
                     taskRow.DeletedTime,
                     taskRow.BusinessId,
+                    taskRow.WeldTaskId,
                     taskRow.PayloadJson,
                     taskRow.Status,
                     taskRow.NextRetryTime,
@@ -316,14 +318,20 @@ public class DeviceStatusService : IDeviceStatusService
     /// 按发生时间从旧到新补传全部 JSONL 待上传状态。
     /// 整批复用现有上传门禁，避免后续实时状态插入旧状态之间造成 MES 最终状态倒退。
     /// </summary>
-    public async Task RetryPendingUploadsAsync(CancellationToken cancellationToken = default)
+    public Task RetryPendingUploadsAsync(CancellationToken cancellationToken = default)
+        => RetryPendingUploadsAsync(weldTaskId: null, cancellationToken);
+
+    public Task RetryPendingUploadsAsync(int weldTaskId, CancellationToken cancellationToken = default)
+        => RetryPendingUploadsAsync((int?)weldTaskId, cancellationToken);
+
+    private async Task RetryPendingUploadsAsync(int? weldTaskId, CancellationToken cancellationToken)
     {
         await _uploadGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             // 先取得顺序门禁，再把 JSONL 扫描和 MES 请求切到默认调度器，避免捕获已停止泵消息的 UI 上下文。
             _ = await Task.Run(
-                    () => RetryPendingUploadsCoreAsync(cancellationToken),
+                    () => RetryPendingUploadsCoreAsync(cancellationToken, weldTaskId: weldTaskId),
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -371,7 +379,9 @@ public class DeviceStatusService : IDeviceStatusService
         await _uploadGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var response = await RetryPendingUploadsCoreAsync(cancellationToken, normalizedRecordKey)
+            var response = await RetryPendingUploadsCoreAsync(
+                    cancellationToken,
+                    requestedRecordKey: normalizedRecordKey)
                 .ConfigureAwait(false);
             return response ?? ResolveRetryResult(normalizedRecordKey);
         }
@@ -383,10 +393,12 @@ public class DeviceStatusService : IDeviceStatusService
 
     private async Task<BasicRes<object>?> RetryPendingUploadsCoreAsync(
         CancellationToken cancellationToken,
-        string? requestedRecordKey = null)
+        string? requestedRecordKey = null,
+        int? weldTaskId = null)
     {
         BasicRes<object>? requestedResponse = null;
         var pendingLogs = GetPendingLogs()
+            .Where(log => weldTaskId is null || log.WeldTaskId == weldTaskId)
             .OrderBy(log => log.OccurredTime)
             .ToList();
         foreach (var log in pendingLogs)
@@ -609,6 +621,7 @@ public class DeviceStatusService : IDeviceStatusService
             TaskType = ProductionConstants.UploadTaskTypes.DeviceStatus,
             Target = ProductionConstants.UploadTargets.Mes,
             BusinessId = DeviceStatusRecordIdentityRules.BuildBusinessId(recordKey),
+            WeldTaskId = log.WeldTaskId,
             PayloadJson = JsonSerializer.Serialize(new { RecordKey = recordKey }),
             Status = status,
             NextRetryTime = DateTime.Now,

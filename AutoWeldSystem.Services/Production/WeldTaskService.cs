@@ -34,6 +34,7 @@ public class WeldTaskService : IWeldTaskService
     private readonly IDeviceStatusService _deviceStatusService;
     private readonly ISystemClockService _systemClockService;
     private readonly IDataHistoryMaintenanceService _maintenanceService;
+    private readonly IMesConnectionMonitor? _mesConnectionMonitor;
     private AppSettings _currentSettings;
 
     public WeldTaskService(
@@ -48,9 +49,11 @@ public class WeldTaskService : IWeldTaskService
         IDeviceLifecycleLogService deviceLifecycleLogService,
         IDeviceStatusService deviceStatusService,
         ISystemClockService systemClockService,
-        IDataHistoryMaintenanceService maintenanceService)
+        IDataHistoryMaintenanceService maintenanceService,
+        IMesConnectionMonitor? mesConnectionMonitor = null)
     {
         _maintenanceService = maintenanceService;
+        _mesConnectionMonitor = mesConnectionMonitor;
         _mesProvider = mesProvider;
         _dbContext = dbContext;
         _settingsService = settingsService;
@@ -764,6 +767,11 @@ public class WeldTaskService : IWeldTaskService
         NotifyStateChanged();
         _operationLogService.Write("LocalExpEnd", $"Local task finished, Station={task.StationNo}, WorkOrder={task.SN}, UploadStatus={task.UploadStatus}");
         await RecordProgramEndedStatusAsync(task, cancellationToken);
+        if (_mesConnectionMonitor?.Current.IsConnected == true)
+        {
+            await RetryPendingUploadsAsync(task.Id, cancellationToken);
+        }
+
         NotifyStateChanged();
         return task;
     }
@@ -771,6 +779,11 @@ public class WeldTaskService : IWeldTaskService
     public Task RetryPendingUploadsAsync(CancellationToken cancellationToken = default)
     {
         return RetryPendingUploadsInternalAsync(cancellationToken);
+    }
+
+    public Task RetryPendingUploadsAsync(int weldTaskId, CancellationToken cancellationToken = default)
+    {
+        return RetryPendingUploadsInternalAsync(weldTaskId, cancellationToken);
     }
 
     public void UpdateProgramContent(string content, int stationNo = ProductionConstants.Stations.DefaultStationNo)
@@ -843,21 +856,48 @@ public class WeldTaskService : IWeldTaskService
 
     private async Task RetryPendingUploadsInternalAsync(CancellationToken cancellationToken)
     {
-        await _deviceStatusService.RetryPendingUploadsAsync(cancellationToken);
         var executedCount = 0;
         executedCount += await _uploadTaskService.ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.StartReport, cancellationToken);
         executedCount += await _uploadTaskService.ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.ProcessParameter, cancellationToken);
         executedCount += await _uploadTaskService.ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.FinishReport, cancellationToken);
+        executedCount += await _uploadTaskService.ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.WorkOrderStatus, cancellationToken);
         executedCount += await _uploadTaskService.ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.ReportFile, cancellationToken);
+        await _deviceStatusService.RetryPendingUploadsAsync(cancellationToken);
 
-        if (CurrentState.ActiveTask is not null)
-        {
-            CurrentState.ActiveTask = _dbContext.Db.Queryable<BizWeldTask>().InSingle(CurrentState.ActiveTask.Id);
-            CurrentState.SaveCurrentStation();
-        }
-
+        RefreshActiveTaskFromDatabase();
         _operationLogService.Write("RetryUpload", $"Pending upload retry executed for {executedCount} task(s).");
         NotifyStateChanged();
+    }
+
+    private async Task RetryPendingUploadsInternalAsync(int weldTaskId, CancellationToken cancellationToken)
+    {
+        if (weldTaskId <= 0)
+        {
+            return;
+        }
+
+        var executedCount = 0;
+        executedCount += await _uploadTaskService.ExecutePendingForWeldTaskAsync(weldTaskId, ProductionConstants.UploadTaskTypes.StartReport, cancellationToken);
+        executedCount += await _uploadTaskService.ExecutePendingForWeldTaskAsync(weldTaskId, ProductionConstants.UploadTaskTypes.ProcessParameter, cancellationToken);
+        executedCount += await _uploadTaskService.ExecutePendingForWeldTaskAsync(weldTaskId, ProductionConstants.UploadTaskTypes.FinishReport, cancellationToken);
+        executedCount += await _uploadTaskService.ExecutePendingForWeldTaskAsync(weldTaskId, ProductionConstants.UploadTaskTypes.WorkOrderStatus, cancellationToken);
+        executedCount += await _uploadTaskService.ExecutePendingForWeldTaskAsync(weldTaskId, ProductionConstants.UploadTaskTypes.ReportFile, cancellationToken);
+        await _deviceStatusService.RetryPendingUploadsAsync(weldTaskId, cancellationToken);
+
+        RefreshActiveTaskFromDatabase();
+        _operationLogService.Write("RetryUpload", $"Weld task {weldTaskId} retry executed for {executedCount} task(s).");
+        NotifyStateChanged();
+    }
+
+    private void RefreshActiveTaskFromDatabase()
+    {
+        if (CurrentState.ActiveTask is null)
+        {
+            return;
+        }
+
+        CurrentState.ActiveTask = _dbContext.Db.Queryable<BizWeldTask>().InSingle(CurrentState.ActiveTask.Id);
+        CurrentState.SaveCurrentStation();
     }
 
     private static ExperimentStartReq BuildStartRequest(
@@ -1794,26 +1834,14 @@ public class WeldTaskService : IWeldTaskService
             return;
         }
 
-        var failedTasks = uploadSummaries
-            .Where(summary => summary.Status == ProductionConstants.UploadStatuses.Failed)
-            .ToList();
-        var allUploaded = uploadSummaries.All(summary => summary.Status == ProductionConstants.UploadStatuses.Uploaded);
-
-        task.UploadStatus = allUploaded
-            ? ProductionConstants.UploadStatuses.Uploaded
-            : failedTasks.Count > 0
-                ? ProductionConstants.UploadStatuses.Failed
-                : ProductionConstants.UploadStatuses.Pending;
-        task.UploadMessage = allUploaded
-            ? "完工后上传任务已全部完成。"
-            : failedTasks.Count > 0
-                ? $"完工后仍有 {failedTasks.Count} 个上传任务失败，请在上传状态页重试。"
-                : "完工后上传任务已排队，请在上传状态页查看进度。";
-
-        _dbContext.Db.Updateable(task)
-            .UpdateColumns(it => new { it.UploadStatus, it.UploadMessage })
-            .Where(it => it.Id == task.Id)
-            .ExecuteCommand();
+        // Each upload execution reconciles the complete four-phase task state.
+        // Do not infer the work-order status from only the subset created at finish time.
+        var persistedTask = _dbContext.Db.Queryable<BizWeldTask>().InSingle(task.Id);
+        if (persistedTask is not null)
+        {
+            task.UploadStatus = persistedTask.UploadStatus;
+            task.UploadMessage = persistedTask.UploadMessage;
+        }
     }
 
     private static string BuildUploadBusinessId(BizWeldTask task, string uploadKind)

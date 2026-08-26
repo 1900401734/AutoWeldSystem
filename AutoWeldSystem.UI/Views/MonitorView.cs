@@ -5131,9 +5131,9 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
                 ? UiColors.Status.Success
                 : UiColors.Status.Danger;
         ApplyMesDependentButtonState(snapshot);
-        if (snapshot.IsConnected && !_lastMesConnected && _enableBusinessSignalReconcile)
+        if (snapshot.IsConnected && !_lastMesConnected)
         {
-            // MES 从离线变为在线后，立即重试断线期间积压的上传任务。
+            // MES 从离线变为在线后，立即重试断线期间积压的上传任务；该行为不依赖 PLC 业务信号调和开关。
             QueuePendingUploadRetry();
         }
 

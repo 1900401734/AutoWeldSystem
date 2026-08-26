@@ -26,6 +26,14 @@ public interface IUploadTaskService
 
     Task<int> ExecuteAllPendingAsync(string taskType, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Executes retryable upload tasks of one type for a single weld task.
+    /// </summary>
+    Task<int> ExecutePendingForWeldTaskAsync(
+        int weldTaskId,
+        string taskType,
+        CancellationToken cancellationToken = default);
+
     void RequestRetry(int id);
 
     int RequestRetryAll(string taskType);

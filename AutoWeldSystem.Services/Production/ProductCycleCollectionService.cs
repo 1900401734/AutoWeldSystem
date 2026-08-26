@@ -323,7 +323,9 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         return new BizWeldPointRecord
         {
             TaskId = task.Id,
-            ExpStartId = task.ExpStartId ?? string.Empty,
+            ExpStartId = task.IsOfflineCreated
+                ? task.LocalExpStartId
+                : task.ExpStartId ?? string.Empty,
             DeviceId = task.DeviceId ?? string.Empty,
             SN = task.SN ?? string.Empty,
             ProcessNo = task.ProcessNo ?? string.Empty,

@@ -437,7 +437,8 @@ public partial class StateManageView : BaseView
 
         if (IsSummaryTab())
         {
-            btnRetrySelected.Enabled = false;
+            btnRetrySelected.Enabled = dgvPending.CurrentRow?.DataBoundItem is UploadPendingSummaryRow
+                && GlobalContext.HasPermission(PermissionCodes.Buttons.State.RetrySelected);
             return;
         }
 
@@ -675,7 +676,7 @@ public partial class StateManageView : BaseView
     {
         if (IsSummaryTab())
         {
-            ShowWarning("工单信息请使用一键上传。");
+            await RetrySelectedSummaryAsync();
             return;
         }
 
@@ -706,6 +707,32 @@ public partial class StateManageView : BaseView
         catch (Exception ex)
         {
             ShowErrorMessage(ex.Message);
+        }
+    }
+
+
+    private async Task RetrySelectedSummaryAsync()
+    {
+        if (dgvPending.CurrentRow?.DataBoundItem is not UploadPendingSummaryRow summary)
+        {
+            ShowWarning("请先选择需要补传的工单。");
+            return;
+        }
+
+        btnRetrySelected.Enabled = false;
+        try
+        {
+            await _weldTaskService.RetryPendingUploadsAsync(summary.WeldTaskId);
+            RequestReloadActiveTasks();
+            ShowInfo("已执行当前工单的开工、过程参数、完工、工单状态、报表和设备状态补传。");
+        }
+        catch (Exception ex)
+        {
+            ShowErrorMessage(ex.Message);
+        }
+        finally
+        {
+            ApplyRetrySelectedPermissionForActiveTab();
         }
     }
 
@@ -741,7 +768,7 @@ public partial class StateManageView : BaseView
             if (IsSummaryTab())
             {
                 var count = await ExecuteAllPendingUploadsAsync();
-                ShowInfo($"已按开工、过程参数、xlsx报表、完工顺序执行 {count} 条待上传任务。");
+                ShowInfo($"已按开工、过程参数、完工、工单状态、报表和设备状态顺序执行 {count} 条待上传任务。");
             }
             else if (IsProgramFileTab())
             {
@@ -1011,8 +1038,9 @@ public partial class StateManageView : BaseView
         {
             ProductionConstants.UploadTaskTypes.StartReport,
             ProductionConstants.UploadTaskTypes.ProcessParameter,
-            ProductionConstants.UploadTaskTypes.ReportFile,
-            ProductionConstants.UploadTaskTypes.FinishReport
+            ProductionConstants.UploadTaskTypes.FinishReport,
+            ProductionConstants.UploadTaskTypes.WorkOrderStatus,
+            ProductionConstants.UploadTaskTypes.ReportFile
         };
 
         foreach (var taskType in taskTypes)
@@ -1020,6 +1048,7 @@ public partial class StateManageView : BaseView
             count += await _uploadTaskService.ExecuteAllPendingAsync(taskType);
         }
 
+        await _deviceStatusService.RetryPendingUploadsAsync();
         return count;
     }
 

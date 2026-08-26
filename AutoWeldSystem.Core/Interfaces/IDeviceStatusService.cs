@@ -34,6 +34,11 @@ public interface IDeviceStatusService
 
     Task RetryPendingUploadsAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Retries pending device-status records associated with one weld task.
+    /// </summary>
+    Task RetryPendingUploadsAsync(int weldTaskId, CancellationToken cancellationToken = default);
+
     Task<BasicRes<object>?> RetryUploadAsync(
         string recordKey,
         CancellationToken cancellationToken = default);

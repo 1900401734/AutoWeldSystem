@@ -108,6 +108,11 @@ public interface IWeldTaskService
 
     Task RetryPendingUploadsAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Retries the complete upload chain associated with one weld task.
+    /// </summary>
+    Task RetryPendingUploadsAsync(int weldTaskId, CancellationToken cancellationToken = default);
+
     void UpdateProgramContent(string content, int stationNo = ProductionConstants.Stations.DefaultStationNo);
 
     void Reset();

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs.DataManagement;
+using AutoWeldSystem.Core.DTOs.Upload;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.UI.Base;
@@ -23,6 +24,7 @@ public partial class DataManageView : BaseView
     private readonly ILocalizationService _localizer = null!;
     private readonly IAppSettingsService _appSettingsService = null!;
     private readonly IDataHistoryMaintenanceService _maintenanceService = null!;
+    private readonly IUploadTaskService? _uploadTaskService;
     private CancellationTokenSource? _workOrderQueryCancellation;
     private CancellationTokenSource? _detailQueryCancellation;
     private bool _initialized;
@@ -50,12 +52,14 @@ public partial class DataManageView : BaseView
         IDataHistoryQueryService historyQueryService,
         ILocalizationService localizer,
         IAppSettingsService appSettingsService,
-        IDataHistoryMaintenanceService maintenanceService)
+        IDataHistoryMaintenanceService maintenanceService,
+        IUploadTaskService? uploadTaskService = null)
     {
         _historyQueryService = historyQueryService;
         _localizer = localizer;
         _appSettingsService = appSettingsService;
         _maintenanceService = maintenanceService;
+        _uploadTaskService = uploadTaskService;
 
         InitializeComponent();
         ConfigureGrids();
@@ -79,7 +83,21 @@ public partial class DataManageView : BaseView
 
         // 视图被 MainForm 缓存，切换用户后不会重新绑定权限，必须自行复算删除按钮
         GlobalContext.SessionChanged += GlobalContext_SessionChanged;
+        if (_uploadTaskService is not null)
+        {
+            _uploadTaskService.TaskStatusChanged += UploadTaskService_TaskStatusChanged;
+        }
+
         _ = QueryWorkOrdersAsync(resetPage: true);
+    }
+
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        if (Visible && _initialized && !IsDesignEnvironment)
+        {
+            _ = QueryWorkOrdersAsync(resetPage: false);
+        }
     }
 
     protected override void OnLanguageChanged()
@@ -94,9 +112,27 @@ public partial class DataManageView : BaseView
 
     protected override void OnHandleDestroyed(EventArgs e)
     {
+        GlobalContext.SessionChanged -= GlobalContext_SessionChanged;
+        if (_uploadTaskService is not null)
+        {
+            _uploadTaskService.TaskStatusChanged -= UploadTaskService_TaskStatusChanged;
+        }
+
         _workOrderQueryCancellation?.Cancel();
         _detailQueryCancellation?.Cancel();
         base.OnHandleDestroyed(e);
+    }
+
+    private void UploadTaskService_TaskStatusChanged(object? sender, UploadTaskStatusChangedEventArgs e)
+    {
+        if (!Visible || e.WeldTaskId is null || IsDisposed || !IsHandleCreated)
+        {
+            return;
+        }
+
+        RunOnUiThread(
+            () => _ = QueryWorkOrdersAsync(resetPage: false),
+            "DataManageView.UploadTaskStatusChanged");
     }
 
     private bool IsDesignEnvironment

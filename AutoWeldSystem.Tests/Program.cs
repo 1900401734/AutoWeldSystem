@@ -320,6 +320,9 @@ var tests = new (string Name, Action Run)[]
     ("State manage device status tab supports multi delete", StateManageDeviceStatusTabSupportsMultiDelete),
     ("Skipped upload tasks are not retried", SkippedUploadTasksAreNotRetried),
     ("Weld task pending retry includes device status", WeldTaskPendingRetryIncludesDeviceStatus),
+    ("Offline process parameters use local task id", OfflineProcessParametersUseLocalTaskId),
+    ("Upload retry chain includes work-order status and scoped retry", UploadRetryChainIncludesWorkOrderStatusAndScopedRetry),
+    ("Data management refreshes after upload status changes", DataManagementRefreshesAfterUploadStatusChanges),
     ("Status report settings default to enabled", StatusReportSettingsDefaultToEnabled),
     ("MES route settings default to current routes", MesRouteSettingsDefaultToCurrentRoutes),
     ("MES heartbeat interval normalization clamps to supported range", MesHeartbeatIntervalNormalizationClampsToSupportedRange),
@@ -9447,7 +9450,10 @@ static void StateManageSummaryTabUsesWorkOrderInfoText()
     AssertTrue(designerCode.Contains("tabSummary.Text = \"工单信息\";", StringComparison.Ordinal), "上传状态页总览页签 Designer 初始文本必须改为工单信息。");
     AssertTrue(viewCode.Contains("tabSummary.Text = \"工单信息\";", StringComparison.Ordinal), "语言刷新后总览页签必须保持工单信息。");
     AssertTrue(viewCode.Contains("return \"工单信息\";", StringComparison.Ordinal), "工单信息页签的统计前缀必须同步更新。");
-    AssertTrue(viewCode.Contains("ShowWarning(\"工单信息请使用一键上传。\")", StringComparison.Ordinal), "工单信息页签禁用单项重试提示必须同步更新。");
+    AssertTrue(
+        viewCode.Contains("await RetrySelectedSummaryAsync();", StringComparison.Ordinal)
+            && viewCode.Contains("请先选择需要补传的工单", StringComparison.Ordinal),
+        "工单信息页签的单项重试必须改为当前工单全链路补传，未选中时提示先选工单。");
     AssertFalse(viewCode.Contains("ShowInfo(\"已从工单信息隐藏选中的任务。\")", StringComparison.Ordinal), "删除待上传记录功能已替代隐藏任务，不应保留隐藏提示。");
     AssertFalse(viewCode.Contains("tabSummary.Text = \"上传总览\";", StringComparison.Ordinal), "运行时页签文本不应再恢复上传总览。");
     AssertFalse(viewCode.Contains("return \"上传总览\";", StringComparison.Ordinal), "统计前缀不应再使用上传总览。");
@@ -9828,6 +9834,76 @@ static void WeldTaskPendingRetryIncludesDeviceStatus()
         "cancellationToken.ThrowIfCancellationRequested();",
         "DeviceStatusLocalLogStore.TryAppend(log, CurrentSettings)",
         "取消后的普通状态必须在 JSONL 落盘前停止，避免越过最终停机状态。");
+}
+
+static void OfflineProcessParametersUseLocalTaskId()
+{
+    var collectionCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductCycleCollectionService.cs"),
+        Encoding.UTF8);
+    AssertTrue(
+        collectionCode.Contains("task.IsOfflineCreated", StringComparison.Ordinal)
+            && collectionCode.Contains("task.LocalExpStartId", StringComparison.Ordinal),
+        "离线采集记录必须保存本地生成的 32 位任务 ID。");
+
+    var uploadCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "UploadTaskService.cs"),
+        Encoding.UTF8);
+    AssertTrue(
+        uploadCode.Contains("processExpStartId", StringComparison.Ordinal)
+            && uploadCode.Contains("ExpStartId = processExpStartId", StringComparison.Ordinal),
+        "过程参数上传项必须使用统一解析后的任务 ID。");
+    AssertTrue(
+        uploadCode.Contains("weldTask.IsOfflineCreated", StringComparison.Ordinal)
+            && uploadCode.Contains("weldTask.LocalExpStartId.Trim()", StringComparison.Ordinal),
+        "离线过程参数任务必须使用 LocalExpStartId。");
+}
+
+static void UploadRetryChainIncludesWorkOrderStatusAndScopedRetry()
+{
+    var serviceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "WeldTaskService.cs"),
+        Encoding.UTF8);
+    var retryMethod = ExtractMethodText(
+        serviceCode,
+        "private async Task RetryPendingUploadsInternalAsync(CancellationToken cancellationToken)",
+        "private async Task RetryPendingUploadsInternalAsync(int weldTaskId");
+    AssertSourceOrder(retryMethod, "UploadTaskTypes.StartReport", "UploadTaskTypes.ProcessParameter", "全局补传必须先处理开工再处理过程参数。");
+    AssertSourceOrder(retryMethod, "UploadTaskTypes.ProcessParameter", "UploadTaskTypes.FinishReport", "全局补传必须先处理过程参数再处理完工。");
+    AssertSourceOrder(retryMethod, "UploadTaskTypes.FinishReport", "UploadTaskTypes.WorkOrderStatus", "全局补传必须先处理完工再处理工单状态。");
+    AssertSourceOrder(retryMethod, "UploadTaskTypes.WorkOrderStatus", "UploadTaskTypes.ReportFile", "全局补传必须先处理工单状态再处理报表。");
+    AssertSourceOrder(retryMethod, "UploadTaskTypes.ReportFile", "_deviceStatusService.RetryPendingUploadsAsync(cancellationToken)", "全局补传必须按业务顺序最后补传设备状态。");
+    AssertTrue(
+        serviceCode.Contains("ExecutePendingForWeldTaskAsync(weldTaskId", StringComparison.Ordinal),
+        "当前工单一键重试必须按 WeldTaskId 限定范围。");
+
+    var stateCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "StateManageView.cs"),
+        Encoding.UTF8);
+    AssertTrue(
+        stateCode.Contains("await RetrySelectedSummaryAsync();", StringComparison.Ordinal)
+            && stateCode.Contains("请先选择需要补传的工单", StringComparison.Ordinal),
+        "工单信息页未选中工单时必须提示选择，选中后走当前工单补传。");
+}
+
+static void DataManagementRefreshesAfterUploadStatusChanges()
+{
+    var viewCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "DataManageView.cs"),
+        Encoding.UTF8);
+    AssertTrue(
+        viewCode.Contains("IUploadTaskService? _uploadTaskService", StringComparison.Ordinal)
+            && viewCode.Contains("TaskStatusChanged += UploadTaskService_TaskStatusChanged", StringComparison.Ordinal)
+            && viewCode.Contains("QueryWorkOrdersAsync(resetPage: false)", StringComparison.Ordinal),
+        "数据管理页必须订阅上传状态变化并重新查询工单状态。");
+
+    var uploadCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "UploadTaskService.cs"),
+        Encoding.UTF8);
+    AssertTrue(
+        uploadCode.Contains("ReconcileWeldTaskUploadStatus(task.WeldTaskId)", StringComparison.Ordinal)
+            && uploadCode.Contains("UploadSummaryStatusResolver.ResolveReportFileStatus", StringComparison.Ordinal),
+        "上传任务完成后必须重新计算工单四类上传状态并持久化。");
 }
 
 static void StatusReportSettingsDefaultToEnabled()
@@ -15365,6 +15441,11 @@ sealed class FakeUploadTaskService : IUploadTaskService
 
     public Task<int> ExecuteAllPendingAsync(string taskType, CancellationToken cancellationToken = default) => Task.FromResult(0);
 
+    public Task<int> ExecutePendingForWeldTaskAsync(
+        int weldTaskId,
+        string taskType,
+        CancellationToken cancellationToken = default) => Task.FromResult(0);
+
     public void RequestRetry(int id) { }
 
     public int RequestRetryAll(string taskType) => 0;
@@ -15601,6 +15682,13 @@ sealed class FakeDeviceStatusService : IDeviceStatusService
     {
         RetryPendingUploadsCallCount++;
         OperationSequence.Add("RetryPending");
+        return RetryPendingUploadsHandler?.Invoke(cancellationToken) ?? Task.CompletedTask;
+    }
+
+    public Task RetryPendingUploadsAsync(int weldTaskId, CancellationToken cancellationToken = default)
+    {
+        RetryPendingUploadsCallCount++;
+        OperationSequence.Add($"RetryPending:{weldTaskId}");
         return RetryPendingUploadsHandler?.Invoke(cancellationToken) ?? Task.CompletedTask;
     }
 

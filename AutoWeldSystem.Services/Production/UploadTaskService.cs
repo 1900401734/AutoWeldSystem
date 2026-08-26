@@ -556,6 +556,53 @@ public class UploadTaskService : IUploadTaskService
         return executedCount;
     }
 
+    public async Task<int> ExecutePendingForWeldTaskAsync(
+        int weldTaskId,
+        string taskType,
+        CancellationToken cancellationToken = default)
+    {
+        if (weldTaskId <= 0)
+        {
+            return 0;
+        }
+
+        var normalizedTaskType = NormalizeTaskType(taskType);
+        if (normalizedTaskType == ProductionConstants.UploadTaskTypes.DeviceStatus)
+        {
+            _ = SyncDeviceStatusTasksFromLogs();
+        }
+        else if (normalizedTaskType == ProductionConstants.UploadTaskTypes.ReportFile)
+        {
+            SyncReportFileTasksFromReports();
+        }
+
+        List<int> taskIds;
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            taskIds = _dbContext.Db.Queryable<BizUploadTask>()
+                .Where(task => task.WeldTaskId == weldTaskId
+                    && task.TaskType == normalizedTaskType
+                    && !task.IsDeleted)
+                .ToList()
+                .Where(UploadTaskVisibilityRules.ShouldRetry)
+                .Select(task => task.Id)
+                .ToList();
+        }
+
+        var executedCount = 0;
+        foreach (var taskId in taskIds)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (await ExecuteAsync(taskId, cancellationToken) is not null)
+            {
+                executedCount++;
+            }
+        }
+
+        return executedCount;
+    }
+
     public void RequestRetry(int id)
     {
         UploadTaskStatusChangedEventArgs? changed = null;
@@ -935,7 +982,7 @@ public class UploadTaskService : IUploadTaskService
 
     private async Task<BasicRes<object>> UploadProcessParametersAsync(BizUploadTask task, CancellationToken cancellationToken)
     {
-        if (!EnsureTaskExpStartReady(task, out var message))
+        if (!EnsureTaskExpStartReady(task, out var processExpStartId, out var message))
         {
             return Unsupported(message);
         }
@@ -946,7 +993,7 @@ public class UploadTaskService : IUploadTaskService
             return Success("没有待上传的过程参数。");
         }
 
-        var batchResponse = await UploadProcessParameterGroupAsync(records, cancellationToken);
+        var batchResponse = await UploadProcessParameterGroupAsync(records, processExpStartId, cancellationToken);
         if (batchResponse.IsSuccess)
         {
             UpdateWeldPointUploadStatus(records, batchResponse);
@@ -963,7 +1010,7 @@ public class UploadTaskService : IUploadTaskService
         foreach (var productGroup in records.GroupBy(record => record.ProductNo).OrderBy(group => group.Key))
         {
             var productRecords = productGroup.ToList();
-            var productResponse = await UploadProcessParameterGroupAsync(productRecords, cancellationToken);
+            var productResponse = await UploadProcessParameterGroupAsync(productRecords, processExpStartId, cancellationToken);
             if (productResponse.IsSuccess)
             {
                 UpdateWeldPointUploadStatus(productRecords, productResponse);
@@ -972,7 +1019,7 @@ public class UploadTaskService : IUploadTaskService
 
             foreach (var record in productRecords.OrderBy(record => record.SequenceNo))
             {
-                var singleResponse = await UploadProcessParameterGroupAsync(new[] { record }, cancellationToken);
+                var singleResponse = await UploadProcessParameterGroupAsync(new[] { record }, processExpStartId, cancellationToken);
                 UpdateWeldPointUploadStatus(new[] { record }, singleResponse);
                 if (!singleResponse.IsSuccess)
                 {
@@ -1008,8 +1055,12 @@ public class UploadTaskService : IUploadTaskService
         }
     }
 
-    private bool EnsureTaskExpStartReady(BizUploadTask task, out string message)
+    private bool EnsureTaskExpStartReady(
+        BizUploadTask task,
+        out string processExpStartId,
+        out string message)
     {
+        processExpStartId = string.Empty;
         message = string.Empty;
         var weldTask = GetWeldTask(task);
         if (weldTask is null)
@@ -1024,7 +1075,16 @@ public class UploadTaskService : IUploadTaskService
             return false;
         }
 
-        UpdateWeldPointExpStartId(weldTask.Id, weldTask.ExpStartId);
+        processExpStartId = weldTask.IsOfflineCreated
+            ? weldTask.LocalExpStartId.Trim()
+            : weldTask.ExpStartId.Trim();
+        if (string.IsNullOrWhiteSpace(processExpStartId))
+        {
+            message = "Upload task has no process-parameter task id.";
+            return false;
+        }
+
+        UpdateWeldPointExpStartId(weldTask.Id, processExpStartId, weldTask.IsOfflineCreated);
         return true;
     }
 
@@ -1065,16 +1125,27 @@ public class UploadTaskService : IUploadTaskService
                 .Where(it => it.Id == weldTask.Id)
                 .ExecuteCommand();
 
-            UpdateWeldPointExpStartId(weldTask.Id, weldTask.ExpStartId);
+            if (!weldTask.IsOfflineCreated)
+            {
+                UpdateWeldPointExpStartId(weldTask.Id, weldTask.ExpStartId);
+            }
         }
     }
 
-    private void UpdateWeldPointExpStartId(int weldTaskId, string expStartId)
+    private void UpdateWeldPointExpStartId(
+        int weldTaskId,
+        string expStartId,
+        bool overwriteExisting = false)
     {
-        _dbContext.Db.Updateable<BizWeldPointRecord>()
+        var updateable = _dbContext.Db.Updateable<BizWeldPointRecord>()
             .SetColumns(record => record.ExpStartId == expStartId)
-            .Where(record => record.TaskId == weldTaskId && record.ExpStartId == null)
-            .ExecuteCommand();
+            .Where(record => record.TaskId == weldTaskId);
+        if (!overwriteExisting)
+        {
+            updateable = updateable.Where(record => record.ExpStartId == null);
+        }
+
+        updateable.ExecuteCommand();
     }
 
     private bool IsFinishReportUploadedOrAbsent(int weldTaskId)
@@ -1095,6 +1166,7 @@ public class UploadTaskService : IUploadTaskService
 
     private async Task<BasicRes<object>> UploadProcessParameterGroupAsync(
         IReadOnlyList<BizWeldPointRecord> records,
+        string processExpStartId,
         CancellationToken cancellationToken)
     {
         var settings = _settingsService.Get();
@@ -1115,6 +1187,7 @@ public class UploadTaskService : IUploadTaskService
             {
                 items.AddRange(productRecords.Select(record => ToProcessParameterUploadItem(
                     record,
+                    processExpStartId,
                     deviceType,
                     showTestFlagInHistory,
                     schemeItems)));
@@ -1306,6 +1379,7 @@ public class UploadTaskService : IUploadTaskService
 
     private static ProcessParameterUploadItem ToProcessParameterUploadItem(
         BizWeldPointRecord record,
+        string processExpStartId,
         string deviceType,
         bool showTestFlagInHistory,
         IReadOnlyList<ProcessParameterSchemeItem> schemeItems)
@@ -1316,7 +1390,7 @@ public class UploadTaskService : IUploadTaskService
             StringComparison.OrdinalIgnoreCase);
         var item = new ProcessParameterUploadItem
         {
-            ExpStartId = record.ExpStartId,
+            ExpStartId = processExpStartId,
             DeviceId = record.DeviceId,
             SN = record.SN,
             ProcessNo = record.ProcessNo,
@@ -1655,6 +1729,7 @@ public class UploadTaskService : IUploadTaskService
             task.UpdatedTime = DateTime.Now;
             _dbContext.Db.Updateable(task).ExecuteCommand();
             UpdateReportFileStatus(task, response);
+            ReconcileWeldTaskUploadStatus(task.WeldTaskId);
             summary = ToSummary(task);
             changed = ToStatusChangedEvent(task);
         }
@@ -1662,6 +1737,84 @@ public class UploadTaskService : IUploadTaskService
         PublishTaskStatusChanged(changed);
         return summary;
     }
+
+    /// <summary>
+    /// Recalculates the persisted work-order upload state from the four phases shown on the summary tab.
+    /// </summary>
+    private void ReconcileWeldTaskUploadStatus(int? weldTaskId)
+    {
+        if (weldTaskId is null || weldTaskId <= 0)
+        {
+            return;
+        }
+
+        var weldTask = _dbContext.Db.Queryable<BizWeldTask>().InSingle(weldTaskId.Value);
+        if (weldTask is null)
+        {
+            return;
+        }
+
+        var uploads = _dbContext.Db.Queryable<BizUploadTask>()
+            .Where(item => item.WeldTaskId == weldTaskId.Value && !item.IsDeleted)
+            .ToList();
+        var points = _dbContext.Db.Queryable<BizWeldPointRecord>()
+            .Where(item => item.TaskId == weldTaskId.Value)
+            .ToList();
+        var reports = _dbContext.Db.Queryable<BizProductionReportFile>()
+            .Where(item => item.TaskId == weldTaskId.Value)
+            .ToList();
+        var statuses = new[]
+        {
+            UploadSummaryStatusResolver.ResolveStartReportStatus(
+                weldTask,
+                GetTaskStatuses(uploads, ProductionConstants.UploadTaskTypes.StartReport)),
+            UploadSummaryStatusResolver.ResolveProcessParameterStatus(
+                uploads.Where(UploadTaskVisibilityRules.IsMesProcessParameterTask).Select(item => item.Status),
+                points),
+            UploadSummaryStatusResolver.ResolveFinishReportStatus(
+                weldTask,
+                GetTaskStatuses(uploads, ProductionConstants.UploadTaskTypes.FinishReport)),
+            UploadSummaryStatusResolver.ResolveReportFileStatus(
+                GetTaskStatuses(uploads, ProductionConstants.UploadTaskTypes.ReportFile),
+                reports)
+        };
+
+        var status = statuses.Any(item => SameStatus(item, ProductionConstants.UploadStatuses.Uploading))
+            ? ProductionConstants.UploadStatuses.Uploading
+            : statuses.Any(item => SameStatus(item, ProductionConstants.UploadStatuses.Failed))
+                ? ProductionConstants.UploadStatuses.Failed
+                : statuses.Any(item => SameStatus(item, ProductionConstants.UploadStatuses.Retrying))
+                    ? ProductionConstants.UploadStatuses.Retrying
+                    : statuses.Any(UploadSummaryStatusResolver.IsPendingLike)
+                        ? ProductionConstants.UploadStatuses.Pending
+                        : ProductionConstants.UploadStatuses.Uploaded;
+        var message = status == ProductionConstants.UploadStatuses.Uploaded
+            ? "开工、过程参数、完工和报告文件均已上传。"
+            : $"当前上传状态：{string.Join(" / ", statuses)}";
+
+        if (SameStatus(weldTask.UploadStatus, status)
+            && string.Equals(weldTask.UploadMessage, message, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        weldTask.UploadStatus = status;
+        weldTask.UploadMessage = message;
+        _dbContext.Db.Updateable(weldTask)
+            .UpdateColumns(item => new { item.UploadStatus, item.UploadMessage })
+            .Where(item => item.Id == weldTask.Id)
+            .ExecuteCommand();
+    }
+
+    private static IEnumerable<string?> GetTaskStatuses(
+        IEnumerable<BizUploadTask> tasks,
+        string taskType)
+        => tasks
+            .Where(task => string.Equals(task.TaskType, taskType, StringComparison.OrdinalIgnoreCase))
+            .Select(task => task.Status);
+
+    private static bool SameStatus(string? left, string right)
+        => string.Equals(left?.Trim(), right, StringComparison.OrdinalIgnoreCase);
 
     private BizDeviceStatusLog? ResolveDeviceStatusLog(BizUploadTask task)
     {
