@@ -39,6 +39,9 @@ var tests = new (string Name, Action Run)[]
     ("System setting layout rules honor DPI breakpoints", SystemSettingLayoutRulesHonorDpiBreakpoints),
     ("Monitor right layout rules honor DPI and scrolling", MonitorRightLayoutRulesHonorDpiAndScrolling),
     ("Monitor view applies responsive right layout", MonitorViewAppliesResponsiveRightLayout),
+    ("PLC alarm notification rules aggregate across stations", PlcAlarmNotificationRulesAggregateAcrossStations),
+    ("Monitor view aggregates PLC alarm notification per device", MonitorViewAggregatesPlcAlarmNotificationPerDevice),
+    ("PLC alarm notification title omits station", PlcAlarmNotificationTitleOmitsStation),
     ("PLC alarm notification rules normalize messages and signatures", PlcAlarmNotificationRulesNormalizeMessagesAndSignatures),
     ("Monitor view preserves work order input focus on preview hover", MonitorViewPreservesWorkOrderInputFocusOnPreviewHover),
     ("Work-order clear resets PLC query state", WorkOrderClearResetsPlcQueryState),
@@ -580,6 +583,115 @@ static void PlcAlarmNotificationRulesNormalizeMessagesAndSignatures()
     AssertFalse(string.Equals(activeSignature, pendingSignature, StringComparison.Ordinal), "确认报警和等待确认报警必须使用不同签名。");
     AssertEqual("1.温度过高\r\n2.安全门未关闭\r\n3.伺服报警", PlcAlarmNotificationRules.BuildDisplayText(messages), "通知正文必须按序号逐行展示全部报警。");
 }
+static void PlcAlarmNotificationRulesAggregateAcrossStations()
+{
+    var inactive = PlcAlarmNotificationRules.Aggregate(
+    [
+        new PlcAlarmNotificationInput(false, false, false, string.Empty),
+        new PlcAlarmNotificationInput(false, false, false, null)
+    ]);
+    AssertFalse(inactive.IsActive, "全部工位无报警时聚合结果必须为无报警。");
+    AssertTrue(inactive.Signature is null, "无报警时聚合签名必须为空，便于清空已读状态。");
+
+    // 报警地址属于整台设备，双工位收到内容相同的报警快照，聚合后只能得到一份报警集合。
+    var duplicated = PlcAlarmNotificationRules.Aggregate(
+    [
+        new PlcAlarmNotificationInput(true, false, false, "温度过高；安全门未关闭"),
+        new PlcAlarmNotificationInput(true, false, false, "安全门未关闭；温度过高")
+    ]);
+    AssertTrue(duplicated.IsActive, "任一工位报警时聚合结果必须为报警。");
+    AssertFalse(duplicated.PendingConfirmation, "已确认报警的聚合结果不得标记为等待确认。");
+    AssertSequenceEqual(
+        new[] { "温度过高", "安全门未关闭" },
+        duplicated.Messages.ToArray(),
+        "双工位重复上报同一批报警时必须去重为唯一报警集合。");
+
+    var pending = PlcAlarmNotificationRules.Aggregate(
+    [
+        new PlcAlarmNotificationInput(false, true, false, string.Empty),
+        new PlcAlarmNotificationInput(false, false, false, string.Empty)
+    ]);
+    AssertTrue(pending.IsActive && pending.PendingConfirmation, "仅原始状态 4 时聚合结果必须为等待确认。");
+    AssertSequenceEqual(
+        new[] { PlcSoftwareAlarmRules.GenericAlarmMessage },
+        pending.Messages.ToArray(),
+        "未匹配报警地址时聚合结果必须给出通用待确认原因。");
+
+    var mixed = PlcAlarmNotificationRules.Aggregate(
+    [
+        new PlcAlarmNotificationInput(false, true, false, string.Empty),
+        new PlcAlarmNotificationInput(true, false, false, "温度过高")
+    ]);
+    AssertFalse(mixed.PendingConfirmation, "任一工位已确认报警时聚合结果不得降级为等待确认。");
+    AssertEqual(
+        PlcAlarmNotificationRules.CreateSignature(mixed.Messages, pendingConfirmation: false),
+        mixed.Signature,
+        "聚合签名必须由聚合后的报警集合与确认状态共同决定。");
+}
+
+static void MonitorViewAggregatesPlcAlarmNotificationPerDevice()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+
+    // 报警不区分工位：通知 ID、签名和已读状态都只保留一份，双工位不得各弹一张卡片。
+    AssertTrue(
+        viewCode.Contains("private const string PlcAlarmNotificationId = \"monitor-plc-alarm\";", StringComparison.Ordinal),
+        "PLC 报警通知必须使用整台设备唯一的通知 ID。");
+    AssertFalse(
+        viewCode.Contains("_plcAlarmNotificationSignatures", StringComparison.Ordinal)
+            || viewCode.Contains("_plcAlarmSummaryDismissedSignatures", StringComparison.Ordinal),
+        "报警通知状态不得再按工位字典维护。");
+    AssertTrue(
+        viewCode.Contains("private void SyncPlcAlarmNotification()", StringComparison.Ordinal),
+        "报警通知同步入口必须按整台设备聚合，不接收单工位快照。");
+
+    var buildStateMethod = ExtractMethodText(
+        viewCode,
+        "private PlcAlarmNotificationState BuildCurrentPlcAlarmNotificationState()",
+        "private void DismissPlcAlarmNotification");
+    AssertTrue(
+        buildStateMethod.Contains("PlcAlarmNotificationRules.Aggregate(", StringComparison.Ordinal)
+            && buildStateMethod.Contains("EnableDualStation", StringComparison.Ordinal),
+        "聚合报警状态必须复用 Core 规则，并按双工位开关决定参与工位。");
+
+    // 清除按钮此前只标记摘要已读，通知卡片仍留在屏幕上无法清除。
+    var clearMethod = ExtractMethodText(
+        viewCode,
+        "private void RuntimeErrorClearButton_Click(object? sender, EventArgs e)",
+        "private void ClearDeviceAlarmRuntimeErrorIfCurrent");
+    AssertTrue(
+        clearMethod.Contains("DismissPlcAlarmNotification();", StringComparison.Ordinal)
+            && clearMethod.Contains("_plcAlarmSummaryDismissedSignature = signature;", StringComparison.Ordinal),
+        "清除异常摘要时必须同时关闭报警通知卡片并标记为已读。");
+    AssertTrue(
+        clearMethod.Contains("BuildCurrentPlcAlarmNotificationState().Signature", StringComparison.Ordinal),
+        "清除时必须按当前聚合状态重算签名，避免摘要与通知签名不同步导致无法关闭。");
+
+    var dismissMethod = ExtractMethodText(
+        viewCode,
+        "private void DismissPlcAlarmNotification()",
+        "private void ResetPlcAlarmNotificationState");
+    AssertTrue(
+        dismissMethod.Contains("ClosePlcAlarmNotificationIfPresent(PlcAlarmNotificationId)", StringComparison.Ordinal),
+        "关闭报警通知必须作用于设备级通知 ID。");
+}
+
+static void PlcAlarmNotificationTitleOmitsStation()
+{
+    var zhResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.resx"), Encoding.UTF8);
+    var enResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.en.resx"), Encoding.UTF8);
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+
+    // 报警属于整台设备，标题不再带工位号，也不得再传入工位参数。
+    AssertTrue(zhResources.Contains("<value>PLC报警</value>", StringComparison.Ordinal), "中文报警通知标题不得包含工位。");
+    AssertTrue(enResources.Contains("<value>PLC Alarm</value>", StringComparison.Ordinal), "英文报警通知标题不得包含工位。");
+    AssertFalse(zhResources.Contains("<value>PLC报警 - 工位{0}</value>", StringComparison.Ordinal), "中文报警通知标题必须移除工位占位符。");
+    AssertFalse(enResources.Contains("<value>PLC Alarm - Station {0}</value>", StringComparison.Ordinal), "英文报警通知标题必须移除工位占位符。");
+    AssertTrue(
+        viewCode.Contains("_localizer.GetString(TextKeys.Monitor.Notification.PlcAlarmTitle)", StringComparison.Ordinal),
+        "报警通知标题不得再传入工位参数。");
+}
+
 
 static void PlcProductionMonitorPreservesAlarmStateUntilProjection()
 {
@@ -12305,22 +12417,21 @@ static void MonitorRuntimeTipsUseLocalizedSummaries()
     AssertTrue(viewCode.Contains("new AntdUI.Target(this)", StringComparison.Ordinal), "PLC 报警通知必须使用主窗体作为屏幕级定位目标。");
     AssertTrue(viewCode.Contains("AntdUI.TAlignFrom.BL", StringComparison.Ordinal) && viewCode.Contains("AutoClose = 0", StringComparison.Ordinal), "PLC 报警通知必须固定在屏幕左下角并保持到手动关闭或报警恢复。");
     AssertTrue(viewCode.Contains("AntdUI.Notification.contains(notificationId)", StringComparison.Ordinal), "关闭 PLC 报警通知前必须先确认其已进入队列，避免 close_id 的 volley 机制抵消后续通知。");
-    // 断言按方法内行为判定，不绑定实参字面量：清除入口把 CurrentStationNo 规范化为局部变量后再传入，仍只作用于当前工位。
-    var runtimeErrorClearMethod = ExtractMethodText(
-        viewCode,
-        "private void RuntimeErrorClearButton_Click(object? sender, EventArgs e)",
-        "private void ClearDeviceAlarmRuntimeErrorIfCurrent");
-    AssertTrue(
-        runtimeErrorClearMethod.Contains("NormalizeStatusStationNo(CurrentStationNo)", StringComparison.Ordinal)
-            && runtimeErrorClearMethod.Contains("DismissPlcAlarmNotification(stationNo)", StringComparison.Ordinal),
-        "右侧清除设备报警时必须仅标记当前工位通知为已读，不得清除其它工位。");
     AssertTrue(viewCode.Contains("CloseAllPlcAlarmNotifications();", StringComparison.Ordinal), "监控页销毁时必须关闭 PLC 报警通知。");
     var productionMethod = ExtractMethodText(viewCode, "private void ApplyProductionStatus(PlcProductionSnapshot snapshot)", "private void ApplyDeviceStatus");
-    AssertTrue(productionMethod.IndexOf("SyncPlcAlarmNotification(snapshot)", StringComparison.Ordinal) < productionMethod.IndexOf("CurrentStationNo", StringComparison.Ordinal), "所有工位的报警快照必须先同步通知，再按当前工位刷新右侧状态。");
-    AssertTrue(viewCode.Contains("_plcAlarmNotificationDismissedSignatures", StringComparison.Ordinal) && viewCode.Contains("OnClose =", StringComparison.Ordinal), "通知手动关闭必须保留已读签名，避免相同报警轮询刷屏。");
-    AssertTrue(viewCode.Contains("_plcAlarmSummaryDismissedSignatures", StringComparison.Ordinal), "通知关闭与右侧摘要清除必须使用独立签名，手动关闭通知不得隐藏持续报警状态。");
+    AssertTrue(productionMethod.IndexOf("SyncPlcAlarmNotification()", StringComparison.Ordinal) < productionMethod.IndexOf("CurrentStationNo", StringComparison.Ordinal), "任一工位的报警快照变化都必须先按设备聚合同步通知，再按当前工位刷新右侧状态。");
+    AssertTrue(viewCode.Contains("_plcAlarmNotificationDismissedSignature", StringComparison.Ordinal) && viewCode.Contains("OnClose =", StringComparison.Ordinal), "通知手动关闭必须保留已读签名，避免相同报警轮询刷屏。");
+    AssertTrue(viewCode.Contains("_plcAlarmSummaryDismissedSignature", StringComparison.Ordinal), "通知关闭与右侧摘要清除必须使用独立签名，手动关闭通知不得隐藏持续报警状态。");
     AssertTrue(viewCode.Contains("private void SetRuntimeErrorDetailText", StringComparison.Ordinal) && viewCode.Contains("message.Trim()", StringComparison.Ordinal), "完整 PLC 报警详情不得经过运行摘要长度截断。");
-    AssertTrue(viewCode.Contains("_plcAlarmNotificationSignatures.Remove(stationNo)", StringComparison.Ordinal) && viewCode.Contains("AntdUI.Notification.close_id(notificationId)", StringComparison.Ordinal), "报警恢复时必须清除通知签名并关闭对应工位通知。");
+    var resetMethod = ExtractMethodText(
+        viewCode,
+        "private void ResetPlcAlarmNotificationState()",
+        "private static void ClosePlcAlarmNotificationIfPresent");
+    AssertTrue(
+        resetMethod.Contains("_plcAlarmNotificationSignature = null;", StringComparison.Ordinal)
+            && resetMethod.Contains("ClosePlcAlarmNotificationIfPresent(PlcAlarmNotificationId)", StringComparison.Ordinal),
+        "报警恢复时必须清空通知签名并关闭设备级通知，使下一次报警可以重新弹出。");
+    AssertTrue(viewCode.Contains("AntdUI.Notification.close_id(notificationId)", StringComparison.Ordinal), "关闭通知必须调用 AntdUI 的按 ID 关闭接口。");
 }
 
 static void MonitorViewShowsOperatorValidationSuccessAfterEmployeeValidation()
