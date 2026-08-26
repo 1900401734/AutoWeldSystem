@@ -13181,7 +13181,13 @@ static void MonitorViewClearsIdleProductionData()
     var realtimeMethod = ExtractMethodText(viewCode, "private void ApplyProductRealtimePreviewSnapshot", "private bool CanDisplayRealtimePreviewSnapshot");
     var historyMethod = ExtractMethodText(viewCode, "private void RefreshProductHistoryPreviewCore()", "private void BindProductHistorySnapshot");
     var schemeQueueMethod = ExtractMethodText(viewCode, "private void QueueRefreshSchemePreview", "private async Task RefreshSchemePreviewAsync");
+    var clearPreviewMethod = ExtractMethodText(viewCode, "private void ClearCurrentRealtimePreviewDisplay", "private void ClearCurrentProductHistoryDisplay");
+    var rebuildPreviewMethod = ExtractMethodText(viewCode, "private void RebuildWeldParameterPreviewTable", "private void ClearWeldPreviewGrid");
+    var weldPointRecordMethod = ExtractMethodText(viewCode, "private void ApplyLatestWeldPointRecord", "private bool ShouldShowProductionHint");
 
+    AssertTrue(clearPreviewMethod.Contains("ClearWeldPreviewGrid(CurrentWeldPreviewGrid)", StringComparison.Ordinal), "清空实时预览必须连列一起清，否则会残留空表头。");
+    AssertTrue(rebuildPreviewMethod.Contains("_weldParameterRows.Count == 0", StringComparison.Ordinal), "没有预览行时不得重建实时预览列。");
+    AssertTrue(weldPointRecordMethod.Contains("IsRunningWeldTask(GetCurrentStationState().ActiveTask)", StringComparison.Ordinal), "未开工或已完工时不得把采集记录写回实时预览。");
     AssertTrue(bindMethod.Contains("HasPreparedWorkOrderInfo", StringComparison.Ordinal), "未开工工单模块必须区分无上下文空闲态和待开工草稿。");
     AssertTrue(bindMethod.Contains("ClearIdleProductionDataDisplay", StringComparison.Ordinal), "未开工刷新必须统一清理生产数据。");
     AssertTrue(clearMethod.Contains("ClearCurrentRealtimePreviewDisplay", StringComparison.Ordinal), "未开工必须清空采集预览。");

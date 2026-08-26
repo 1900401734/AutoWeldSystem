@@ -4563,7 +4563,12 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             return;
         }
 
-        BindWeldParameterRows(record);
+        // 未开工或已完工时不得把采集记录写回实时预览，否则完工上报后表格会重新建列。
+        if (IsRunningWeldTask(GetCurrentStationState().ActiveTask))
+        {
+            BindWeldParameterRows(record);
+        }
+
         if (record.ProductCompleted)
         {
             RefreshProductHistoryPreview();
@@ -6611,9 +6616,20 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// </summary>
     private void RebuildWeldParameterPreviewTable()
     {
+        var grid = CurrentWeldPreviewGrid;
+        if (_weldParameterRows.Count == 0)
+        {
+            // 没有任何预览行时不建列，否则未开工和完工上报后会残留空表头。
+            ClearWeldPreviewGrid(grid);
+            _weldParameterLayoutKey = string.Empty;
+            _weldParameterPreviewSchemaKey = string.Empty;
+            _weldParameterVisibleValueKey = string.Empty;
+            _weldParameterTableBound = false;
+            return;
+        }
+
         var items = ResolveWeldPreviewItems(_weldParameterRows);
         var displayOptions = ResolveWeldPreviewDisplayOptions(_weldParameterRows);
-        var grid = CurrentWeldPreviewGrid;
         SetControlRedraw(grid, enabled: false);
         grid.SuspendLayout();
         try
@@ -6668,6 +6684,25 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             RedrawControl(grid);
             SyncWeldPreviewHorizontalScrollBar();
         }
+    }
+
+    /// <summary>
+    /// 清空实时预览表格的行与列，并同步隐藏水平滚动条。
+    /// </summary>
+    /// <param name="grid">目标表格控件。</param>
+    private void ClearWeldPreviewGrid(DataGridView grid)
+    {
+        if (grid.Rows.Count > 0)
+        {
+            grid.Rows.Clear();
+        }
+
+        if (grid.Columns.Count > 0)
+        {
+            grid.Columns.Clear();
+        }
+
+        SyncWeldPreviewHorizontalScrollBar(grid);
     }
 
     /// <summary>
@@ -7357,12 +7392,10 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         _weldParameterLayoutKey = string.Empty;
         _weldParameterPreviewSchemaKey = string.Empty;
         _weldParameterVisibleValueKey = string.Empty;
+        _weldParameterTableBound = false;
 
-        var grid = CurrentWeldPreviewGrid;
-        if (grid.Rows.Count > 0)
-        {
-            grid.Rows.Clear();
-        }
+        // 未开工或完工后必须连列一起清空：只清行会残留“焊点序号/焊点结果/提示”空表头。
+        ClearWeldPreviewGrid(CurrentWeldPreviewGrid);
 
         SetControlText(CurrentLivePreviewStatusLabel, string.Empty);
         SetControlText(CurrentLiveProductNoLabel, string.Empty);
