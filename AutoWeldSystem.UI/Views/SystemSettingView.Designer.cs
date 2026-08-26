@@ -944,7 +944,6 @@
             inputMesDeviceStatusQueryRoute.Padding = new Padding(2, 0, 0, 0);
             inputMesDeviceStatusQueryRoute.Size = new Size(306, 39);
             inputMesDeviceStatusQueryRoute.TabIndex = 1;
-            inputMesDeviceStatusQueryRoute.Text = "api/DeviceStatus";
             // 
             // tlpMesDeviceIdSetRoute
             // 
@@ -983,7 +982,6 @@
             inputMesDeviceIdSetRoute.Padding = new Padding(2, 0, 0, 0);
             inputMesDeviceIdSetRoute.Size = new Size(306, 39);
             inputMesDeviceIdSetRoute.TabIndex = 1;
-            inputMesDeviceIdSetRoute.Text = "api/DeviceID";
             // 
             // middleSettingsColumn
             // 
@@ -1377,7 +1375,6 @@
             // 
             // chkEnableElevatedAutoStart
             // 
-            chkEnableElevatedAutoStart.AutoSizeMode = AntdUI.TAutoSize.Auto;
             chkEnableElevatedAutoStart.Checked = true;
             chkEnableElevatedAutoStart.CheckState = CheckState.Checked;
             chkEnableElevatedAutoStart.Dock = DockStyle.Fill;
@@ -1385,7 +1382,7 @@
             chkEnableElevatedAutoStart.Margin = new Padding(0);
             chkEnableElevatedAutoStart.Name = "chkEnableElevatedAutoStart";
             chkEnableElevatedAutoStart.Padding = new Padding(6, 0, 0, 0);
-            chkEnableElevatedAutoStart.Size = new Size(166, 40);
+            chkEnableElevatedAutoStart.Size = new Size(205, 40);
             chkEnableElevatedAutoStart.TabIndex = 7;
             chkEnableElevatedAutoStart.Text = "以管理员权限运行";
             // 
@@ -2084,7 +2081,6 @@
             inputMesWorkOrderRoute.Padding = new Padding(2, 0, 0, 0);
             inputMesWorkOrderRoute.Size = new Size(292, 39);
             inputMesWorkOrderRoute.TabIndex = 1;
-            inputMesWorkOrderRoute.Text = "api/ItemsOfBatchTech";
             // 
             // tlpMesServerTimeRoute
             // 
@@ -2123,7 +2119,6 @@
             inputMesServerTimeRoute.Padding = new Padding(2, 0, 0, 0);
             inputMesServerTimeRoute.Size = new Size(292, 39);
             inputMesServerTimeRoute.TabIndex = 1;
-            inputMesServerTimeRoute.Text = "api/ServerTime";
             // 
             // tlpPostDataHeader
             // 
@@ -2226,7 +2221,6 @@
             inputMesProgramManageRoute.Padding = new Padding(2, 0, 0, 0);
             inputMesProgramManageRoute.Size = new Size(292, 39);
             inputMesProgramManageRoute.TabIndex = 1;
-            inputMesProgramManageRoute.Text = "api/ExpProgram";
             // 
             // tlpMesStartWorkRoute
             // 
@@ -2265,7 +2259,6 @@
             inputMesStartWorkRoute.Padding = new Padding(2, 0, 0, 0);
             inputMesStartWorkRoute.Size = new Size(292, 39);
             inputMesStartWorkRoute.TabIndex = 1;
-            inputMesStartWorkRoute.Text = "api/ExpStartV2";
             // 
             // tlpMesWorkStatusRoute
             // 
@@ -2304,7 +2297,6 @@
             inputMesWorkStatusRoute.Padding = new Padding(2, 0, 0, 0);
             inputMesWorkStatusRoute.Size = new Size(292, 39);
             inputMesWorkStatusRoute.TabIndex = 1;
-            inputMesWorkStatusRoute.Text = "api/ExpStatus";
             // 
             // tlpMesEndWorkRoute
             // 
@@ -2343,7 +2335,6 @@
             inputMesEndWorkRoute.Padding = new Padding(2, 0, 0, 0);
             inputMesEndWorkRoute.Size = new Size(292, 39);
             inputMesEndWorkRoute.TabIndex = 1;
-            inputMesEndWorkRoute.Text = "api/ExpEnd";
             // 
             // tlpMesReportFileRoute
             // 
@@ -2382,7 +2373,6 @@
             inputMesReportFileRoute.Padding = new Padding(2, 0, 0, 0);
             inputMesReportFileRoute.Size = new Size(292, 39);
             inputMesReportFileRoute.TabIndex = 1;
-            inputMesReportFileRoute.Text = "api/ExpFile";
             // 
             // tlpMesPostDataRoute
             // 
@@ -2421,7 +2411,6 @@
             inputMesPostDataRoute.Padding = new Padding(2, 0, 0, 0);
             inputMesPostDataRoute.Size = new Size(292, 39);
             inputMesPostDataRoute.TabIndex = 1;
-            inputMesPostDataRoute.Text = "api/PostData";
             // 
             // tlpMesDeviceRoute
             // 
@@ -2460,7 +2449,6 @@
             inputMesDeviceRoute.Padding = new Padding(2, 0, 0, 0);
             inputMesDeviceRoute.Size = new Size(292, 39);
             inputMesDeviceRoute.TabIndex = 1;
-            inputMesDeviceRoute.Text = "api/Device";
             // 
             // tlpMesDeviceStatusRoute
             // 
@@ -2499,7 +2487,6 @@
             inputMesDeviceStatusRoute.Padding = new Padding(2, 0, 0, 0);
             inputMesDeviceStatusRoute.Size = new Size(292, 39);
             inputMesDeviceStatusRoute.TabIndex = 1;
-            inputMesDeviceStatusRoute.Text = "api/DeviceStatusV2";
             // 
             // tlpMesSysRoute
             // 
@@ -2538,7 +2525,6 @@
             inputMesSysRoute.Padding = new Padding(2, 0, 0, 0);
             inputMesSysRoute.Size = new Size(292, 39);
             inputMesSysRoute.TabIndex = 1;
-            inputMesSysRoute.Text = "api/sys";
             // 
             // tlpMesHeartbeat
             // 
@@ -2671,7 +2657,6 @@
             tableLayoutPanel1.ResumeLayout(false);
             tableLayoutPanel1.PerformLayout();
             tableLayoutPanel4.ResumeLayout(false);
-            tableLayoutPanel4.PerformLayout();
             tlpLogPath.ResumeLayout(false);
             tlpLogPath.PerformLayout();
             tlpDataPath.ResumeLayout(false);
