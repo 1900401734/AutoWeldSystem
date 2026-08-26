@@ -1390,7 +1390,6 @@ public static class TextKeys
     {
         public const string TotalProduction = "production.metric.total";
         public const string TargetProduction = "production.metric.target";
-        public const string MesProductionQuantity = "production.metric.mes_quantity";
         public const string AcceptedQuantity = "production.metric.accepted";
         public const string RejectedQuantity = "production.metric.rejected";
         public const string AcceptedRate = "production.metric.accepted_rate";

@@ -33,13 +33,14 @@ public static class MonitorRightLayoutRules
 
     public const int CompactStatusPanelLogicalHeight = 56;
     public const int CompactProductResultLogicalHeight = 56;
-    public const int CompactMetricPanelLogicalHeight = 254;
+    // 指标区高度按“页签头 + 表头 + 6 行指标”留出，移除工单数量行后同步收缩一行，避免表格底部留空白。
+    public const int CompactMetricPanelLogicalHeight = 227;
     public const int CompactMetricRowLogicalHeight = 27;
     public const int CompactMetricHeaderLogicalHeight = 29;
 
     public const int RegularStatusPanelLogicalHeight = 70;
     public const int RegularProductResultLogicalHeight = 70;
-    public const int RegularMetricPanelLogicalHeight = 290;
+    public const int RegularMetricPanelLogicalHeight = 258;
     public const int RegularMetricRowLogicalHeight = 32;
     public const int RegularMetricHeaderLogicalHeight = 34;
 

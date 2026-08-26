@@ -5480,6 +5480,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// <param name="snapshot">状态快照。</param>
     private void BindProductionMetrics(PlcProductionSnapshot snapshot)
     {
+        // 工单数量只作为达成率分母参与计算，不再单独占一行：工单信息区已经展示同一数值。
         var mesProductionQuantity = GetCurrentStationState().SelectedProcess?.StartAmount;
         var acceptedRate = CalculateRate(snapshot.AcceptedQuantity, snapshot.TotalProduction);
         var rejectedRate = CalculateRate(snapshot.RejectedQuantity, snapshot.TotalProduction);
@@ -5495,7 +5496,6 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             new(_localizer.GetString(TextKeys.Production.RejectedQuantity), snapshot.RejectedQuantity.ToString()),
             new(_localizer.GetString(TextKeys.Production.AcceptedRate), FormatRate(acceptedRate)),
             new(_localizer.GetString(TextKeys.Production.RejectedRate), FormatRate(rejectedRate)),
-            new(_localizer.GetString(TextKeys.Production.MesProductionQuantity), FormatNullableText(mesProductionQuantity?.ToString(CultureInfo.CurrentCulture))),
             new(_localizer.GetString(TextKeys.Production.AchievementRate), FormatRate(achievementRate))
         };
 

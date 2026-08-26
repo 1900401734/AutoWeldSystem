@@ -804,9 +804,6 @@
   <data name="production.metric.target" xml:space="preserve">
     <value>目标产量</value>
   </data>
-  <data name="production.metric.mes_quantity" xml:space="preserve">
-    <value>工单数量</value>
-  </data>
   <data name="production.metric.accepted" xml:space="preserve">
     <value>合格数量</value>
   </data>

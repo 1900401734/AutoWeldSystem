@@ -804,9 +804,6 @@
   <data name="production.metric.target" xml:space="preserve">
     <value>Target Production</value>
   </data>
-  <data name="production.metric.mes_quantity" xml:space="preserve">
-    <value>MES Production Qty</value>
-  </data>
   <data name="production.metric.accepted" xml:space="preserve">
     <value>Accepted Quantity</value>
   </data>

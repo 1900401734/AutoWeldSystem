@@ -482,7 +482,7 @@ static void MonitorRightLayoutRulesHonorDpiAndScrolling()
     AssertEqual(MonitorRightLayoutMode.Compact, compact96.Mode, "96 DPI 下逻辑高度 849 应进入紧凑模式。");
     AssertFalse(compact96.RequiresScroll, "紧凑模式达到最低内容高度后不应滚动。");
     AssertEqual(56, compact96.StatusPanelHeight, "紧凑状态区高度必须保持稳定。");
-    AssertEqual(254, compact96.MetricPanelHeight, "紧凑指标区高度必须使用约定值。");
+    AssertEqual(227, compact96.MetricPanelHeight, "紧凑指标区高度必须按表头加 6 行指标预留。");
     AssertEqual(27, compact96.MetricRowHeight, "紧凑指标数据行高必须使用约定值。");
     AssertEqual(29, compact96.MetricHeaderHeight, "紧凑指标表头高度必须使用约定值。");
 
@@ -490,7 +490,7 @@ static void MonitorRightLayoutRulesHonorDpiAndScrolling()
     AssertEqual(MonitorRightLayoutMode.Regular, regular96.Mode, "96 DPI 下逻辑高度 850 应进入常规模式。");
     AssertFalse(regular96.RequiresScroll, "常规模式不应滚动。");
     AssertEqual(70, regular96.StatusPanelHeight, "常规状态区高度必须保持稳定。");
-    AssertEqual(290, regular96.MetricPanelHeight, "常规指标区高度必须使用约定值。");
+    AssertEqual(258, regular96.MetricPanelHeight, "常规指标区高度必须按表头加 6 行指标预留。");
     AssertEqual(32, regular96.MetricRowHeight, "常规指标数据行高必须使用约定值。");
     AssertEqual(34, regular96.MetricHeaderHeight, "常规指标表头高度必须使用约定值。");
 
@@ -503,7 +503,7 @@ static void MonitorRightLayoutRulesHonorDpiAndScrolling()
         - developmentLayout.ProductResultHeight
         - developmentLayout.MetricPanelHeight;
     AssertEqual(MonitorRightLayoutMode.Compact, developmentLayout.Mode, "开发机截图高度应使用紧凑模式。");
-    AssertEqual(472, developmentWorkOrderHeight, "开发机紧凑布局应为工单信息保留稳定空间。");
+    AssertEqual(506, developmentWorkOrderHeight, "开发机紧凑布局应为工单信息保留稳定空间。");
 
     var industrialLayout = MonitorRightLayoutRules.Resolve(1097, 120);
     var industrialWorkOrderHeight = industrialLayout.ContentHeight
@@ -511,7 +511,7 @@ static void MonitorRightLayoutRulesHonorDpiAndScrolling()
         - industrialLayout.ProductResultHeight
         - industrialLayout.MetricPanelHeight;
     AssertEqual(MonitorRightLayoutMode.Regular, industrialLayout.Mode, "工控机截图高度应使用常规模式。");
-    AssertEqual(470, industrialWorkOrderHeight, "工控机多余高度应进入工单信息区而不是指标区底部。");
+    AssertEqual(510, industrialWorkOrderHeight, "工控机多余高度应进入工单信息区而不是指标区底部。");
 
     AssertEqual(MonitorRightLayoutMode.Compact, MonitorRightLayoutRules.Resolve(1274, 144).Mode, "150% DPI 下应按逻辑高度选择紧凑模式。");
     AssertEqual(MonitorRightLayoutMode.Regular, MonitorRightLayoutRules.Resolve(1275, 144).Mode, "150% DPI 下应按逻辑高度进入常规模式。");
