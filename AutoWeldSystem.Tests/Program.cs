@@ -428,6 +428,7 @@ var tests = new (string Name, Action Run)[]
     ("Monitor view single-point history mapping keeps point values", MonitorViewSinglePointHistoryMappingKeepsPointValues),
     ("Monitor view clears idle production data", MonitorViewClearsIdleProductionData),
     ("Weld task finish uses MES start id for retry payloads", WeldTaskFinishUsesMesStartIdForRetryPayloads),
+    ("Offline start and finish skip blocking device status report", OfflineStartAndFinishSkipBlockingDeviceStatusReport),
     ("Weld task restore unfinished task is idempotent", WeldTaskRestoreUnfinishedTaskIsIdempotent),
     ("Permission catalog omits get work order button", PermissionCatalogOmitsGetWorkOrderButton),
     ("Program content rows come from dictionary items", ProgramContentRowsComeFromDictionaryItems),
@@ -13345,6 +13346,62 @@ static void WeldTaskFinishUsesMesStartIdForRetryPayloads()
     AssertFalse(buildEndRequest.Contains("LocalExpStartId", StringComparison.Ordinal), "BuildEndRequest 不应把 LocalExpStartId 写入 MES ExpStartId 字段。");
 }
 
+static void OfflineStartAndFinishSkipBlockingDeviceStatusReport()
+{
+    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "WeldTaskService.cs"), Encoding.UTF8);
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+
+    // MES 离线时设备状态上报必然失败，等它会让开工/完工白等满一个 MES 超时。
+    // 两个状态记录助手都必须按连接状态门控，离线只落 JSONL 并进补传队列。
+    var startStatus = ExtractMethodText(
+        serviceCode,
+        "private Task RecordProgramStartedStatusAsync(BizWeldTask task, CancellationToken cancellationToken)",
+        "private Task RecordProgramEndedStatusAsync(BizWeldTask task, CancellationToken cancellationToken)");
+    var endStatus = ExtractMethodText(
+        serviceCode,
+        "private Task RecordProgramEndedStatusAsync(BizWeldTask task, CancellationToken cancellationToken)",
+        "private void SettingsService_SettingsChanged(");
+
+    AssertTrue(
+        startStatus.Contains("reportToMes: _mesConnectionMonitor?.Current.IsConnected == true,", StringComparison.Ordinal),
+        "程序开始设备状态必须按 MES 连接状态门控，离线不得同步等待上报。");
+    AssertTrue(
+        endStatus.Contains("reportToMes: _mesConnectionMonitor?.Current.IsConnected == true,", StringComparison.Ordinal),
+        "程序结束设备状态必须按 MES 连接状态门控，离线不得同步等待上报。");
+
+    // 离线开工/完工只写本地库，显示"正在开工上报"会让操作员误以为正在联系 MES。
+    var localStart = ExtractMethodText(
+        viewCode,
+        "await RunReportOperationAsync(stationNo, \"本地开工\", async () =>",
+        "// PLC 业务信号独立写入");
+    var localFinish = ExtractMethodText(
+        viewCode,
+        "await RunReportOperationAsync(stationNo, \"本地完工\", async () =>",
+        "/// <summary>");
+
+    AssertFalse(
+        localStart.Contains("TextKeys.Monitor.RuntimeStatus.SubmittingStart", StringComparison.Ordinal),
+        "本地开工不得显示开工上报中间态。");
+    AssertFalse(
+        localFinish.Contains("TextKeys.Monitor.RuntimeStatus.SubmittingFinish", StringComparison.Ordinal),
+        "本地完工不得显示完工上报中间态。");
+    AssertTrue(
+        localStart.Contains("TextKeys.Monitor.RuntimeStatus.LocalStartSucceeded", StringComparison.Ordinal),
+        "本地开工仍必须给出成功结果提示。");
+    AssertTrue(
+        localFinish.Contains("TextKeys.Monitor.RuntimeStatus.LocalFinishSucceeded", StringComparison.Ordinal),
+        "本地完工仍必须给出成功结果提示。");
+
+    // 在线路径仍在真等 MES，中间态必须保留。
+    AssertEqual(
+        1,
+        CountOccurrences(viewCode, "SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.SubmittingStart);"),
+        "开工上报中间态只应保留在在线开工路径。");
+    AssertEqual(
+        1,
+        CountOccurrences(viewCode, "SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.SubmittingFinish);"),
+        "完工上报中间态只应保留在在线完工路径。");
+}
 static void WeldTaskRestoreUnfinishedTaskIsIdempotent()
 {
     var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "WeldTaskService.cs"), Encoding.UTF8);

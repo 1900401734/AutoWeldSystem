@@ -1633,6 +1633,8 @@ public class WeldTaskService : IWeldTaskService
                 _currentSettings.Station1DisplayName,
                 _currentSettings.Station2DisplayName),
             task.IsOfflineCreated ? "Local" : "MES",
+            // MES 离线时必然上报失败，只落 JSONL 并进补传队列，不阻塞开工等满 MES 超时。
+            reportToMes: _mesConnectionMonitor?.Current.IsConnected == true,
             stationNo: task.StationNo,
             weldTaskId: task.Id,
             workOrderId: task.SN,
@@ -1650,6 +1652,8 @@ public class WeldTaskService : IWeldTaskService
                 _currentSettings.Station1DisplayName,
                 _currentSettings.Station2DisplayName),
             task.IsOfflineCreated ? "Local" : "MES",
+            // 同上：完工后的设备状态上报也不阻塞完工。
+            reportToMes: _mesConnectionMonitor?.Current.IsConnected == true,
             stationNo: task.StationNo,
             weldTaskId: task.Id,
             workOrderId: task.SN,

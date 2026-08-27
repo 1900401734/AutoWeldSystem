@@ -1204,7 +1204,6 @@ public partial class MonitorView : BaseView
         await RunReportOperationAsync(stationNo, "本地开工", async () =>
         {
             ClearRuntimeError();
-            SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.SubmittingStart);
             await _weldTaskService.StartLocalAsync(request, employeeNumber, 0);
             _offlineWorkOrderEditedByUser = false;
             ApplyOfflineProgramNameOption(selectedProgram, syncProgramFields: false);
@@ -3244,7 +3243,6 @@ public partial class MonitorView : BaseView
         await RunReportOperationAsync(stationNo, "本地完工", async () =>
         {
             ClearRuntimeError();
-            SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.SubmittingFinish);
             var activeTask = _weldTaskService.RestoreUnfinishedTask(stationNo);
             await RefreshRecipeCodeFromPlcBeforeFinishAsync(activeTask, stationNo);
             // 完工不再回填登录账号，直接沿用离线开工时操作员录入并写入任务的员工号。
