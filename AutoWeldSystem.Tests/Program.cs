@@ -429,6 +429,7 @@ var tests = new (string Name, Action Run)[]
     ("Monitor view clears idle production data", MonitorViewClearsIdleProductionData),
     ("Weld task finish uses MES start id for retry payloads", WeldTaskFinishUsesMesStartIdForRetryPayloads),
     ("Offline start and finish skip blocking device status report", OfflineStartAndFinishSkipBlockingDeviceStatusReport),
+    ("Upload message display rules localize persisted messages", UploadMessageDisplayRulesLocalizePersistedMessages),
     ("Weld task restore unfinished task is idempotent", WeldTaskRestoreUnfinishedTaskIsIdempotent),
     ("Permission catalog omits get work order button", PermissionCatalogOmitsGetWorkOrderButton),
     ("Program content rows come from dictionary items", ProgramContentRowsComeFromDictionaryItems),
@@ -13401,6 +13402,71 @@ static void OfflineStartAndFinishSkipBlockingDeviceStatusReport()
         1,
         CountOccurrences(viewCode, "SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.SubmittingFinish);"),
         "完工上报中间态只应保留在在线完工路径。");
+}
+static void UploadMessageDisplayRulesLocalizePersistedMessages()
+{
+    // 服务层把处理消息以英文入库，界面必须翻译后再显示，否则中文模式下同一列中英文混排。
+    AssertEqual(
+        "设备状态已排队，等待 MES 补传。",
+        UploadMessageDisplayRules.GetDisplayText("Device status is queued for MES retry."),
+        "设备状态待补传消息必须显示为中文。");
+    AssertEqual(
+        "开工上报已排队，等待 MES 补传。",
+        UploadMessageDisplayRules.GetDisplayText("Start report is queued for MES retry."),
+        "开工上报待补传消息必须显示为中文。");
+    AssertEqual(
+        "工单状态已排队，等待 MES 补传。",
+        UploadMessageDisplayRules.GetDisplayText("Work-order status is queued for MES retry."),
+        "工单状态待补传消息必须显示为中文。");
+
+    // 首尾空白和大小写差异不应导致漏翻译。
+    AssertEqual(
+        "已手动触发重试。",
+        UploadMessageDisplayRules.GetDisplayText("  Manual retry requested.  "),
+        "消息匹配必须忽略首尾空白。");
+
+    // MES 返回的 Msg 与异常文本必须原样透传，不能吞掉排障信息。
+    AssertEqual(
+        "MES 请求超时，已超过 10 秒。",
+        UploadMessageDisplayRules.GetDisplayText("MES 请求超时，已超过 10 秒。"),
+        "已本地化的 MES 消息必须原样保留。");
+    AssertEqual(
+        "Unexpected MES payload for order 123.",
+        UploadMessageDisplayRules.GetDisplayText("Unexpected MES payload for order 123."),
+        "未收录的英文消息必须原样透传，保留排障线索。");
+    AssertEqual(string.Empty, UploadMessageDisplayRules.GetDisplayText(null), "空消息必须返回空字符串。");
+    AssertEqual(string.Empty, UploadMessageDisplayRules.GetDisplayText("   "), "空白消息必须返回空字符串。");
+
+    // 带运行时数据的消息按前缀翻译，产品编号和数量等排障数据必须保留。
+    AssertEqual(
+        "产品 P-001 已完成，实时过程参数上传就绪。",
+        UploadMessageDisplayRules.GetDisplayText("Product P-001 completed. Realtime process-parameter upload is ready."),
+        "实时过程参数就绪消息必须翻译并保留产品编号。");
+    AssertEqual(
+        "产品 P-002 已完成，等待达到数量上传阈值。",
+        UploadMessageDisplayRules.GetDisplayText("Product P-002 completed. Waiting for quantity upload threshold."),
+        "等待数量阈值消息必须翻译并保留产品编号。");
+    AssertEqual(
+        "数量批次已满足上传条件，产品数 5。",
+        UploadMessageDisplayRules.GetDisplayText("Quantity upload batch is ready. ProductCount=5"),
+        "数量批次消息必须翻译并保留产品数。");
+
+    // 六个页签共用 FormatUploadTaskCell，翻译必须挂在该处才能一次覆盖全部。
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "StateManageView.cs"), Encoding.UTF8);
+    var formatMethod = ExtractMethodText(
+        viewCode,
+        "private void FormatUploadTaskCell(UploadTaskSummary item, DataGridViewCellFormattingEventArgs e)",
+        "private string GetActiveUploadTaskType()");
+    AssertTrue(
+        formatMethod.Contains("nameof(UploadTaskSummary.DisplayMessage)", StringComparison.Ordinal)
+            && formatMethod.Contains("UploadMessageDisplayRules.GetDisplayText(", StringComparison.Ordinal),
+        "处理消息列必须经统一规则翻译后显示。");
+
+    // 服务层仍以英文写入，保证排障线索与上传任务/JSONL 中的记录一致。
+    var deviceStatusCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "DeviceStatusService.cs"), Encoding.UTF8);
+    AssertTrue(
+        deviceStatusCode.Contains("\"Device status is queued for MES retry.\"", StringComparison.Ordinal),
+        "服务层写入的消息保持英文，翻译只发生在渲染层。");
 }
 static void WeldTaskRestoreUnfinishedTaskIsIdempotent()
 {

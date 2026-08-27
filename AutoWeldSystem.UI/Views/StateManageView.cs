@@ -1170,6 +1170,14 @@ public partial class StateManageView : BaseView
             e.FormattingApplied = true;
         }
 
+        // 处理消息在服务层以英文入库（同时充当排障线索），显示时统一翻译一次；
+        // 该分支被开工、完工、过程参数、报告文件、工单状态和设备状态六个页签共用。
+        if (string.Equals(column.DataPropertyName, nameof(UploadTaskSummary.DisplayMessage), StringComparison.Ordinal))
+        {
+            e.Value = UploadMessageDisplayRules.GetDisplayText(Convert.ToString(e.Value));
+            e.FormattingApplied = true;
+        }
+
         e.CellStyle.ForeColor = item.Status switch
         {
             ProductionConstants.UploadStatuses.Failed => Color.Firebrick,
