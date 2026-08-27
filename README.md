@@ -1,6 +1,14 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.9.2`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.9.4`。
+
+## v2.9.4 修复说明
+
+- PLC 未连接时不允许在线或离线开工；已有任务仍可进入完工数量读取流程，按系统设置决定是否弹出人工输入框。
+
+## v2.9.3 修复说明
+
+- 开工前必须确认相关 PLC 工位已连接；PLC 未连接时在线和离线开工均不可执行。已有任务的完工流程仍按完工数量读取和输入弹窗配置处理。
 
 ## v2.9.2 更新说明
 
@@ -391,10 +399,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>2.9.2</Version>
-<AssemblyVersion>2.9.2.0</AssemblyVersion>
-<FileVersion>2.9.2.0</FileVersion>
-<InformationalVersion>2.9.2</InformationalVersion>
+<Version>2.9.4</Version>
+<AssemblyVersion>2.9.4.0</AssemblyVersion>
+<FileVersion>2.9.4.0</FileVersion>
+<InformationalVersion>2.9.4</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -406,9 +414,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v2.9.2 -m "Release v2.9.2"
+git tag -a v2.9.4 -m "Release v2.9.4"
 git push origin main
-git push origin v2.9.2
+git push origin v2.9.4
 ```
 
 ## Git 使用

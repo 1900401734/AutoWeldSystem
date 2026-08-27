@@ -2,9 +2,9 @@
   <PropertyGroup>
     <Product>AutoWeldSystem</Product>
     <Company>AutoWeldSystem</Company>
-    <Version>2.9.2</Version>
-    <AssemblyVersion>2.9.2.0</AssemblyVersion>
-    <FileVersion>2.9.2.0</FileVersion>
-    <InformationalVersion>2.9.2</InformationalVersion>
+    <Version>2.9.4</Version>
+    <AssemblyVersion>2.9.4.0</AssemblyVersion>
+    <FileVersion>2.9.4.0</FileVersion>
+    <InformationalVersion>2.9.4</InformationalVersion>
   </PropertyGroup>
 </Project>

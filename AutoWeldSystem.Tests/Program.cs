@@ -405,6 +405,7 @@ var tests = new (string Name, Action Run)[]
     ("Program manage view hides product model", ProgramManageViewHidesProductModel),
     ("Program manage save ignores product model input", ProgramManageSaveIgnoresProductModelInput),
     ("Monitor report button rules follow MES and task state", MonitorReportButtonRulesFollowMesAndTaskState),
+    ("Monitor start requires PLC connection", MonitorStartRequiresPlcConnection),
     ("Monitor view uses one online report button", MonitorViewUsesOneOnlineReportButton),
     ("Monitor runtime tips use localized summaries", MonitorRuntimeTipsUseLocalizedSummaries),
     ("Monitor view shows operator validation success after employee validation", MonitorViewShowsOperatorValidationSuccessAfterEmployeeValidation),
@@ -12520,6 +12521,7 @@ static void MonitorReportButtonRulesFollowMesAndTaskState()
     var idleOnline = MonitorReportButtonRules.Decide(
         isReadOnly: false,
         mesConnected: true,
+        plcConnected: true,
         hasOnlineRunningTask: false,
         hasOfflineRunningTask: false);
     AssertTrue(idleOnline.ShowOnlineReportButton, "在线空闲时应显示在线上报按钮。");
@@ -12530,6 +12532,7 @@ static void MonitorReportButtonRulesFollowMesAndTaskState()
     var runningOnline = MonitorReportButtonRules.Decide(
         isReadOnly: false,
         mesConnected: true,
+        plcConnected: true,
         hasOnlineRunningTask: true,
         hasOfflineRunningTask: false);
     AssertTrue(runningOnline.ShowOnlineReportButton, "在线开工后仍应显示在线上报按钮。");
@@ -12538,6 +12541,7 @@ static void MonitorReportButtonRulesFollowMesAndTaskState()
     var offline = MonitorReportButtonRules.Decide(
         isReadOnly: false,
         mesConnected: false,
+        plcConnected: true,
         hasOnlineRunningTask: false,
         hasOfflineRunningTask: false);
     AssertFalse(offline.OnlineReportEnabled, "MES 离线且无在线未完工任务时在线上报按钮应禁用。");
@@ -12546,6 +12550,7 @@ static void MonitorReportButtonRulesFollowMesAndTaskState()
     var offlineWithOnlineTask = MonitorReportButtonRules.Decide(
         isReadOnly: false,
         mesConnected: false,
+        plcConnected: true,
         hasOnlineRunningTask: true,
         hasOfflineRunningTask: false);
     AssertEqual(MonitorOnlineReportAction.Finish, offlineWithOnlineTask.OnlineReportAction, "在线未完工任务耗时断网时在线按钮仍应执行完工上报。");
@@ -12555,6 +12560,7 @@ static void MonitorReportButtonRulesFollowMesAndTaskState()
     var readOnlyOfflineWithOnlineTask = MonitorReportButtonRules.Decide(
         isReadOnly: true,
         mesConnected: false,
+        plcConnected: true,
         hasOnlineRunningTask: true,
         hasOfflineRunningTask: false);
     AssertFalse(readOnlyOfflineWithOnlineTask.OnlineReportEnabled, "只读工位即使断网且有在线未完工任务也不应允许完工上报。");
@@ -12563,6 +12569,7 @@ static void MonitorReportButtonRulesFollowMesAndTaskState()
     var bothRunningWhenOffline = MonitorReportButtonRules.Decide(
         isReadOnly: false,
         mesConnected: false,
+        plcConnected: true,
         hasOnlineRunningTask: true,
         hasOfflineRunningTask: true);
     AssertTrue(bothRunningWhenOffline.OnlineReportEnabled, "同时存在在线与离线未完工任务时应以在线完工按钮为准。");
@@ -12571,9 +12578,56 @@ static void MonitorReportButtonRulesFollowMesAndTaskState()
     var offlineTaskWhenMesBack = MonitorReportButtonRules.Decide(
         isReadOnly: false,
         mesConnected: true,
+        plcConnected: true,
         hasOnlineRunningTask: false,
         hasOfflineRunningTask: true);
     AssertTrue(offlineTaskWhenMesBack.LocalWorkOrderEnabled, "已有离线未完工任务时即使 MES 恢复也应允许本地完工。");
+
+    var plcDisconnected = MonitorReportButtonRules.Decide(
+        isReadOnly: false,
+        mesConnected: true,
+        plcConnected: false,
+        hasOnlineRunningTask: false,
+        hasOfflineRunningTask: false);
+    AssertFalse(plcDisconnected.OnlineReportEnabled, "PLC 未连接时不得允许在线开工。");
+    AssertFalse(plcDisconnected.LocalWorkOrderEnabled, "PLC 未连接时不得允许离线开工。");
+
+    var disconnectedWithOnlineTask = MonitorReportButtonRules.Decide(
+        isReadOnly: false,
+        mesConnected: false,
+        plcConnected: false,
+        hasOnlineRunningTask: true,
+        hasOfflineRunningTask: false);
+    AssertTrue(disconnectedWithOnlineTask.OnlineReportEnabled, "PLC 未连接时已有在线任务仍应允许进入完工流程。");
+
+    var disconnectedWithOfflineTask = MonitorReportButtonRules.Decide(
+        isReadOnly: false,
+        mesConnected: true,
+        plcConnected: false,
+        hasOnlineRunningTask: false,
+        hasOfflineRunningTask: true);
+    AssertTrue(disconnectedWithOfflineTask.LocalWorkOrderEnabled, "PLC 未连接时已有离线任务仍应允许进入本地完工流程，由数量读取流程决定是否弹窗。");
+}
+
+static void MonitorStartRequiresPlcConnection()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var rulesCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Production", "MonitorReportButtonRules.cs"), Encoding.UTF8);
+    var rules = MonitorReportButtonRules.Decide(false, true, false, false, false);
+    AssertFalse(rules.OnlineReportEnabled, "PLC 未连接时不得允许在线开工。");
+    AssertFalse(rules.LocalWorkOrderEnabled, "PLC 未连接时不得允许离线开工。");
+
+    var onlineTask = MonitorReportButtonRules.Decide(false, false, false, true, false);
+    AssertTrue(onlineTask.OnlineReportEnabled, "PLC 未连接时已有在线任务仍应允许进入完工流程。");
+    var offlineTask = MonitorReportButtonRules.Decide(false, true, false, false, true);
+    AssertTrue(offlineTask.LocalWorkOrderEnabled, "PLC 未连接时已有离线任务仍应允许进入本地完工流程。");
+
+    AssertTrue(viewCode.Contains("EnsurePlcConnectedForStart()", StringComparison.Ordinal), "在线和离线开工入口必须进行 PLC 连接二次检查。");
+    AssertTrue(viewCode.Contains("ArePlcStationsConnected(CurrentStationNo)", StringComparison.Ordinal), "开工前必须按目标工位检查 PLC 连接状态。");
+    AssertTrue(rulesCode.Contains("bool plcConnected", StringComparison.Ordinal), "按钮规则必须接收 PLC 连接状态。");
+    AssertTrue(viewCode.Contains("settings.EnableFinishExpQtyPrompt", StringComparison.Ordinal), "完工数量读取失败时必须继续由系统设置控制输入弹窗。");
+    AssertTrue(viewCode.Contains("TryResolveFinishQuantitiesFromPlc", StringComparison.Ordinal), "完工流程必须优先读取 PLC 数量。");
+    AssertTrue(viewCode.Contains("TryResolveFinishQuantitiesWithPrompt", StringComparison.Ordinal), "完工数量读取失败后必须保留输入弹窗路径。");
 }
 
 static void MonitorViewUsesOneOnlineReportButton()

@@ -142,7 +142,9 @@ namespace AutoWeldSystem.UI.Views
             tableMetric1 = new AntdUI.Table();
             tabsMetrics2 = new AntdUI.TabPage();
             tableMetric2 = new AntdUI.Table();
+            components = new System.ComponentModel.Container();
             tooltipComponent = new AntdUI.TooltipComponent();
+            components.Add(tooltipComponent);
             lblLiveResult = new AntdUI.Label();
             lblLiveTouchCount = new AntdUI.Label();
             label7 = new AntdUI.Label();
