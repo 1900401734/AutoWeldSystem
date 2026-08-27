@@ -54,9 +54,11 @@
             parameterToolbar = new FlowLayoutPanel();
             lblProductResultFilter = new Label();
             selectProductResult = new AntdUI.Select();
+            btnToggleTestDataExpand = new AntdUI.Button();
             btnExportTestData = new AntdUI.Button();
             dgvWeldParameters = new DataGridView();
             tableTestData = new AntdUI.Table();
+            testDataPagination = new AntdUI.Pagination();
             tabCollectionData = new TabPage();
             collectionLayout = new TableLayoutPanel();
             lblCollectionSummary = new Label();
@@ -466,12 +468,14 @@
             parameterLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             parameterLayout.Controls.Add(parameterHeaderLayout, 0, 0);
             parameterLayout.Controls.Add(tableTestData, 0, 1);
+            parameterLayout.Controls.Add(testDataPagination, 0, 2);
             parameterLayout.Dock = DockStyle.Fill;
             parameterLayout.Location = new Point(3, 3);
             parameterLayout.Name = "parameterLayout";
-            parameterLayout.RowCount = 2;
+            parameterLayout.RowCount = 3;
             parameterLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
             parameterLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            parameterLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44F));
             parameterLayout.Size = new Size(1410, 314);
             parameterLayout.TabIndex = 0;
             //
@@ -507,13 +511,14 @@
             parameterToolbar.AutoSize = true;
             parameterToolbar.Controls.Add(lblProductResultFilter);
             parameterToolbar.Controls.Add(selectProductResult);
+            parameterToolbar.Controls.Add(btnToggleTestDataExpand);
             parameterToolbar.Controls.Add(btnExportTestData);
             parameterToolbar.Dock = DockStyle.Fill;
             parameterToolbar.FlowDirection = FlowDirection.LeftToRight;
             parameterToolbar.Location = new Point(1196, 0);
             parameterToolbar.Margin = new Padding(0);
             parameterToolbar.Name = "parameterToolbar";
-            parameterToolbar.Size = new Size(214, 30);
+            parameterToolbar.Size = new Size(482, 30);
             parameterToolbar.TabIndex = 1;
             parameterToolbar.WrapContents = false;
             //
@@ -536,15 +541,26 @@
             selectProductResult.Size = new Size(136, 30);
             selectProductResult.TabIndex = 1;
             //
+            // btnToggleTestDataExpand
+            //
+            btnToggleTestDataExpand.BorderWidth = 1F;
+            btnToggleTestDataExpand.IconSvg = "NodeExpandOutlined";
+            btnToggleTestDataExpand.Location = new Point(224, 0);
+            btnToggleTestDataExpand.Margin = new Padding(10, 0, 0, 0);
+            btnToggleTestDataExpand.Name = "btnToggleTestDataExpand";
+            btnToggleTestDataExpand.Size = new Size(112, 30);
+            btnToggleTestDataExpand.TabIndex = 2;
+            btnToggleTestDataExpand.Text = "展开全部";
+            //
             // btnExportTestData
             //
             btnExportTestData.BorderWidth = 1F;
             btnExportTestData.IconSvg = "FileExcelOutlined";
-            btnExportTestData.Location = new Point(224, 0);
+            btnExportTestData.Location = new Point(346, 0);
             btnExportTestData.Margin = new Padding(10, 0, 0, 0);
             btnExportTestData.Name = "btnExportTestData";
             btnExportTestData.Size = new Size(136, 30);
-            btnExportTestData.TabIndex = 2;
+            btnExportTestData.TabIndex = 3;
             btnExportTestData.Text = "导出测试数据";
             //
             // dgvWeldParameters
@@ -577,10 +593,27 @@
             tableTestData.Name = "tableTestData";
             tableTestData.RowHeight = 36;
             tableTestData.RowHeightHeader = 38;
-            tableTestData.Size = new Size(1410, 284);
+            tableTestData.Size = new Size(1410, 240);
             tableTestData.TabIndex = 2;
             tableTestData.Text = "tableTestData";
             tableTestData.TreeButtonSize = 18;
+            //
+            // testDataPagination
+            //
+            testDataPagination.Dock = DockStyle.Fill;
+            testDataPagination.Location = new Point(3, 273);
+            testDataPagination.Name = "testDataPagination";
+            testDataPagination.PageSize = 20;
+            testDataPagination.PageSizeOptions = new int[]
+    {
+    20,
+    50,
+    100
+    };
+            testDataPagination.RecordsPerPageText = "条/页";
+            testDataPagination.ShowSizeChanger = true;
+            testDataPagination.Size = new Size(1404, 38);
+            testDataPagination.TabIndex = 3;
             //
             // tabCollectionData
             //
@@ -1050,9 +1083,11 @@
         private FlowLayoutPanel parameterToolbar;
         private Label lblProductResultFilter;
         private AntdUI.Select selectProductResult;
+        private AntdUI.Button btnToggleTestDataExpand;
         private AntdUI.Button btnExportTestData;
         private DataGridView dgvWeldParameters;
         private AntdUI.Table tableTestData;
+        private AntdUI.Pagination testDataPagination;
         private TabPage tabCollectionData;
         private TableLayoutPanel collectionLayout;
         private Label lblCollectionSummary;

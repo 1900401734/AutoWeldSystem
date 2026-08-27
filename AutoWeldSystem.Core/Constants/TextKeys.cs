@@ -619,6 +619,8 @@ public static class TextKeys
         /// </summary>
         public const string OpenReportFolder = "data.button.open_report_folder";
         public const string ExportTestData = "data.button.export_test_data";
+        public const string ExpandAllTestData = "data.button.expand_all_test_data";
+        public const string CollapseAllTestData = "data.button.collapse_all_test_data";
         public const string ProductResultFilter = "data.label.product_result_filter";
         public const string ProductResultAll = "data.filter.product_result_all";
         public const string ProductResultOk = "data.filter.product_result_ok";

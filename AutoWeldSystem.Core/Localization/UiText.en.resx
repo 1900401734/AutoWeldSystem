@@ -1894,6 +1894,12 @@
   <data name="data.button.export_test_data" xml:space="preserve">
     <value>Export Test Data</value>
   </data>
+  <data name="data.button.expand_all_test_data" xml:space="preserve">
+    <value>Expand All</value>
+  </data>
+  <data name="data.button.collapse_all_test_data" xml:space="preserve">
+    <value>Collapse All</value>
+  </data>
   <data name="data.label.product_result_filter" xml:space="preserve">
     <value>Product Result</value>
   </data>

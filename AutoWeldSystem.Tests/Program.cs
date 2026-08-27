@@ -120,6 +120,7 @@ var tests = new (string Name, Action Run)[]
     ("Data history tree preserves stored product result", DataHistoryTreeParentKeepsStoredProductResult),
     ("Data history product result filter keeps complete product rows", DataHistoryProductResultFilterKeepsCompleteProductRows),
     ("Data history dynamic sort orders products and keeps blanks last", DataHistoryDynamicSortOrdersProductsAndKeepsBlanksLast),
+    ("Data history test data paging clamps page index", DataHistoryTestDataPagingClampsPageIndex),
     ("Data history export writes current rows and dynamic columns", DataHistoryExportWritesCurrentRowsAndDynamicColumns),
     ("Single-point history display rule uses configured and actual counts", SinglePointHistoryDisplayRuleUsesConfiguredAndActualCounts),
     ("Data history single-point row keeps point values", DataHistorySinglePointRowKeepsPointValues),
@@ -2623,9 +2624,20 @@ static void DataManageViewUsesGenericProductTestTree()
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "DataManageView.cs"), Encoding.UTF8);
     var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "DataManageView.Designer.cs"), Encoding.UTF8);
 
+    foreach (var resourceFile in new[] { "UiText.resx", "UiText.en.resx" })
+    {
+        var resources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", resourceFile), Encoding.UTF8);
+        AssertTrue(resources.Contains("data.button.expand_all_test_data", StringComparison.Ordinal), $"{resourceFile} 必须包含展开全部测试记录文案。");
+        AssertTrue(resources.Contains("data.button.collapse_all_test_data", StringComparison.Ordinal), $"{resourceFile} 必须包含折叠全部测试记录文案。");
+    }
+
     AssertTrue(viewCode.Contains("QueryTestDataAsync", StringComparison.Ordinal), "DataManageView 必须查询通用测试数据，而不是固定焊接参数接口。");
     AssertTrue(viewCode.Contains("SetTree(nameof(DataHistoryTestDataRow.Children))", StringComparison.Ordinal), "测试数据表必须按产品→测试记录配置树形列。");
-    AssertTrue(viewCode.Contains("tableTestData.DefaultExpand = true", StringComparison.Ordinal), "产品节点必须默认展开。");
+    AssertTrue(viewCode.Contains("tableTestData.DefaultExpand = false", StringComparison.Ordinal), "产品节点必须默认折叠，多条测试记录不得一次铺开。");
+    AssertTrue(viewCode.Contains("tableTestData.ExpandAll(_testDataExpandAll)", StringComparison.Ordinal), "重绑数据源和切换按钮都必须按当前展开态重放展开/折叠。");
+    AssertTrue(viewCode.Contains("DataHistoryTestDataRules.GetPage(_visibleTestDataRows", StringComparison.Ordinal), "测试数据表必须按产品行分页显示。");
+    AssertTrue(designerCode.Contains("testDataPagination = new AntdUI.Pagination()", StringComparison.Ordinal), "Designer 必须为测试数据页声明 AntdUI 分页控件。");
+    AssertTrue(designerCode.Contains("btnToggleTestDataExpand = new AntdUI.Button()", StringComparison.Ordinal), "Designer 必须声明测试记录一键展开/折叠按钮。");
     AssertFalse(viewCode.Contains("TestDataTable_CellClick", StringComparison.Ordinal), "测试数据树不得再绑定原始 JSON 查看逻辑。");
     AssertFalse(viewCode.Contains("FormatJsonOrOriginal", StringComparison.Ordinal), "DataManageView 不应保留仅用于原始 JSON 展示的格式化逻辑。");
     AssertTrue(viewCode.Contains("ApplyDefaultSplitterLayout", StringComparison.Ordinal), "DataManageView 必须初始化工单与详情区域比例。");
@@ -2683,6 +2695,32 @@ static void DataHistoryDynamicSortOrdersProductsAndKeepsBlanksLast()
     AssertSequenceEqual(new[] { "P10", "P2", "EMPTY" }, descending.Select(row => row.ProductNo).ToArray(), "动态数值降序必须保持空值置底。");
 }
 
+static void DataHistoryTestDataPagingClampsPageIndex()
+{
+    var rows = Enumerable.Range(1, 45)
+        .Select(index => new DataHistoryTestDataRow { IsProductRow = true, ProductNo = $"P{index:D3}" })
+        .ToList();
+
+    var firstPage = DataHistoryTestDataRules.GetPage(rows, 1, 20);
+    AssertEqual(20, firstPage.Items.Count, "首页必须只返回一页产品行。");
+    AssertEqual(45, firstPage.TotalCount, "总数必须是筛选后的全部产品数。");
+    AssertEqual("P001", firstPage.Items[0].ProductNo, "首页必须从第一个产品开始。");
+
+    var lastPage = DataHistoryTestDataRules.GetPage(rows, 3, 20);
+    AssertEqual(5, lastPage.Items.Count, "末页必须返回剩余产品行。");
+    AssertEqual("P041", lastPage.Items[0].ProductNo, "末页必须从第 41 个产品开始。");
+
+    AssertEqual(3, DataHistoryTestDataRules.GetPage(rows, 99, 20).PageIndex, "越界页码必须夹到末页。");
+    AssertEqual(1, DataHistoryTestDataRules.GetPage(rows, 0, 20).PageIndex, "小于 1 的页码必须回到第一页。");
+    AssertEqual(
+        DataHistoryTestDataRules.DefaultPageSize,
+        DataHistoryTestDataRules.GetPage(rows, 1, 0).PageSize,
+        "非正每页数量必须回退为默认值。");
+    AssertEqual(
+        1,
+        DataHistoryTestDataRules.GetPage(Array.Empty<DataHistoryTestDataRow>(), 5, 20).PageIndex,
+        "空结果必须停在第一页。");
+}
 static void DataHistoryProductResultFilterKeepsCompleteProductRows()
 {
     var okChild = new DataHistoryTestDataRow { RecordId = 11, SequenceNo = 1 };

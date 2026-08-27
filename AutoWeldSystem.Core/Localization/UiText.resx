@@ -1895,6 +1895,12 @@
   <data name="data.button.export_test_data" xml:space="preserve">
     <value>导出测试数据</value>
   </data>
+  <data name="data.button.expand_all_test_data" xml:space="preserve">
+    <value>展开全部</value>
+  </data>
+  <data name="data.button.collapse_all_test_data" xml:space="preserve">
+    <value>折叠全部</value>
+  </data>
   <data name="data.label.product_result_filter" xml:space="preserve">
     <value>产品结果</value>
   </data>
