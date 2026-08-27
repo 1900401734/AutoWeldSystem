@@ -399,6 +399,7 @@ var tests = new (string Name, Action Run)[]
     ("Program product groups merge programs sharing product num", ProgramProductGroupsMergeProgramsSharingProductNum),
     ("Program product groups flatten single program product num", ProgramProductGroupsFlattenSingleProgramProductNum),
     ("Program product groups order by latest update time", ProgramProductGroupsOrderByLatestUpdateTime),
+    ("Program list paging keeps edited program visible", ProgramListPagingKeepsEditedProgramVisible),
     ("Program manage view hides product model", ProgramManageViewHidesProductModel),
     ("Program manage save ignores product model input", ProgramManageSaveIgnoresProductModelInput),
     ("Monitor report button rules follow MES and task state", MonitorReportButtonRulesFollowMesAndTaskState),
@@ -12336,6 +12337,59 @@ static void ProgramProductGroupsOrderByLatestUpdateTime()
     AssertEqual(1, groups[0].SerialNumber, "分组序号必须按排序后的位置重新编号。");
     AssertEqual(4, groups[1].Programs![0].ProgramId, "同工号子行必须按更新时间倒序，最近更新的程序在前。");
     AssertEqual(3, groups[1].Programs![1].ProgramId, "同工号较早更新的程序必须排在后面。");
+}
+
+static void ProgramListPagingKeepsEditedProgramVisible()
+{
+    var programs = Enumerable.Range(1, 45)
+        .Select(index => new BizProgram
+        {
+            Id = index,
+            ProgramName = $"程序-{index:000}",
+            ProductNum = $"P-{index:000}",
+            SequenceNumber = 1,
+            // 序号越大更新时间越晚，倒序后 Id=45 排在首页第一行。
+            UpdatedTime = new DateTime(2026, 8, 1).AddMinutes(index)
+        })
+        .ToList();
+    var groups = ProgramProductGroupRules.BuildGroups(programs, program => "已同步");
+
+    var firstPage = ProgramListPagingRules.GetPage(groups, 1, 20);
+    AssertEqual(45, firstPage.TotalCount, "分页总数必须是筛选后的工号分组总数。");
+    AssertEqual(20, firstPage.Items.Count, "首页必须只返回一页数量的分组行。");
+    AssertEqual(45, firstPage.Items[0].ProgramId, "首页第一行必须是最近更新的程序。");
+    AssertEqual(1, firstPage.Items[0].SerialNumber, "分组序号必须在分页前生成，首页从 1 开始。");
+
+    var lastPage = ProgramListPagingRules.GetPage(groups, 3, 20);
+    AssertEqual(5, lastPage.Items.Count, "末页只返回剩余分组行。");
+    AssertEqual(41, lastPage.Items[0].SerialNumber, "翻页后分组序号必须保持全局连续。");
+
+    var clamped = ProgramListPagingRules.GetPage(groups, 99, 20);
+    AssertEqual(3, clamped.PageIndex, "越界页码必须夹到最后一页。");
+    AssertEqual(1, ProgramListPagingRules.GetPage(groups, 0, 20).PageIndex, "小于 1 的页码必须回到第一页。");
+    AssertEqual(20, ProgramListPagingRules.GetPage(groups, 1, 0).PageSize, "非正每页数量必须回退为默认值。");
+    AssertEqual(1, ProgramListPagingRules.GetPage(Array.Empty<ProgramProductGroupRow>(), 5, 20).PageIndex, "空列表必须停在第一页。");
+
+    // 保存或同步后要能继续看到刚编辑的程序，即使它已经不在当前页。
+    var keepPage = ProgramListPagingRules.GetPage(groups, 1, 20, keepProgramId: 5);
+    AssertEqual(3, keepPage.PageIndex, "需要保持可见的程序必须自动定位到它所在页。");
+    AssertTrue(ProgramListPagingRules.ContainsProgram(keepPage.Items, 5), "定位后的页必须包含该程序。");
+    AssertFalse(ProgramListPagingRules.ContainsProgram(firstPage.Items, 5), "不在当前页的程序不得被判定为可见。");
+    AssertEqual(45, ProgramListPagingRules.ResolveFirstProgramId(firstPage.Items), "回落选中必须取当前页第一个真实程序。");
+    AssertEqual(0, ProgramListPagingRules.ResolveFirstProgramId(Array.Empty<ProgramProductGroupRow>()), "空页没有可回落的程序。");
+
+    // 多程序工号的父行不指向具体程序，回落必须落到它的第一个子行。
+    var grouped = ProgramProductGroupRules.BuildGroups(
+        new List<BizProgram>
+        {
+            new() { Id = 51, ProgramName = "子程序旧", ProductNum = "P-900", SequenceNumber = 1, UpdatedTime = new DateTime(2026, 8, 1) },
+            new() { Id = 52, ProgramName = "子程序新", ProductNum = "P-900", SequenceNumber = 2, UpdatedTime = new DateTime(2026, 8, 2) }
+        },
+        program => "已同步");
+    var groupedPage = ProgramListPagingRules.GetPage(grouped, 1, 20, keepProgramId: 51);
+    AssertEqual(1, groupedPage.PageIndex, "子行程序必须能定位到父行所在页。");
+    AssertTrue(ProgramListPagingRules.ContainsProgram(groupedPage.Items, 51), "父行所在页必须视为包含其子行程序。");
+    AssertEqual(52, ProgramListPagingRules.ResolveFirstProgramId(groupedPage.Items), "父行不指向程序时必须回落到第一个子行。");
 }
 
 static void ProgramManageServiceNoLongerGeneratesProgramFiles()
