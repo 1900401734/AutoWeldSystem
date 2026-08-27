@@ -1,6 +1,10 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.9.0`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.9.1`。
+
+## v2.9.1 修复说明
+
+- MES 完工上报的“实际工作时长”统一保留两位小数：整小时也上报为 `1.00` 这样的两位形式，第三位按四舍五入进位；不足约 18 秒的任务上报 `0.00`。规则只作用于本次升级后新产生的完工上报，队列中已排队的历史补传数据原样保留。
 
 ## v2.9.0 更新说明
 
@@ -382,10 +386,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>2.9.0</Version>
-<AssemblyVersion>2.9.0.0</AssemblyVersion>
-<FileVersion>2.9.0.0</FileVersion>
-<InformationalVersion>2.9.0</InformationalVersion>
+<Version>2.9.1</Version>
+<AssemblyVersion>2.9.1.0</AssemblyVersion>
+<FileVersion>2.9.1.0</FileVersion>
+<InformationalVersion>2.9.1</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -397,9 +401,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v2.9.0 -m "Release v2.9.0"
+git tag -a v2.9.1 -m "Release v2.9.1"
 git push origin main
-git push origin v2.9.0
+git push origin v2.9.1
 ```
 
 ## Git 使用
