@@ -11,6 +11,11 @@ public static class DataHistoryTestDataRules
 {
     public const string AllResults = "";
 
+    /// <summary>
+    /// 默认每页显示的产品行数量。
+    /// </summary>
+    public const int DefaultPageSize = 20;
+
     public static IReadOnlyList<DataHistoryTestDataRow> Apply(
         IEnumerable<DataHistoryTestDataRow> rows,
         string? productResult,
@@ -34,6 +39,34 @@ public static class DataHistoryTestDataRules
             .ThenBy(item => item.index)
             .Select(item => item.row)
             .ToList();
+    }
+
+    /// <summary>
+    /// 取筛选、排序后产品行的一页。
+    /// 单个工单可能有上百个产品，界面按产品行分页显示，产品下的测试记录始终跟随所属产品行。
+    /// </summary>
+    /// <param name="rows">已筛选、排序的产品行。</param>
+    /// <param name="requestedPageIndex">请求的页码，小于 1 或越界时会被夹到有效范围。</param>
+    /// <param name="requestedPageSize">请求的每页数量，非正数时回退为默认值。</param>
+    /// <returns>当前页的产品行以及回写分页控件所需的页码、每页数量和总数。</returns>
+    public static PagedResult<DataHistoryTestDataRow> GetPage(
+        IReadOnlyList<DataHistoryTestDataRow> rows,
+        int requestedPageIndex,
+        int requestedPageSize)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+
+        var pageSize = requestedPageSize > 0 ? requestedPageSize : DefaultPageSize;
+        var pageTotal = Math.Max(1, (rows.Count + pageSize - 1) / pageSize);
+        var pageIndex = Math.Clamp(requestedPageIndex < 1 ? 1 : requestedPageIndex, 1, pageTotal);
+
+        return new PagedResult<DataHistoryTestDataRow>
+        {
+            Items = rows.Skip((pageIndex - 1) * pageSize).Take(pageSize).ToList(),
+            TotalCount = rows.Count,
+            PageIndex = pageIndex,
+            PageSize = pageSize
+        };
     }
 
     private static bool MatchesProductResult(string? productResult, string? filter)

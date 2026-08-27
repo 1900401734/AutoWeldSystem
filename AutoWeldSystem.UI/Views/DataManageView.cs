@@ -30,6 +30,10 @@ public partial class DataManageView : BaseView
     private bool _initialized;
     private bool _suppressWorkOrderSelection;
     private bool _updatingWorkOrderPagination;
+    // 回写分页控件属性会触发 ValueChanged，用标志位避免重复绑定当前页。
+    private bool _updatingTestDataPagination;
+    // 产品测试记录默认折叠，展开态由工具栏按钮切换并在重绑数据源后重放。
+    private bool _testDataExpandAll;
     private bool _disposing;
     private int _selectedTaskId;
     private IReadOnlyList<DataHistoryDynamicColumn> _testDataDynamicColumns = [];
@@ -147,7 +151,8 @@ public partial class DataManageView : BaseView
         ConfigureGrid(dgvWorkOrders, DataGridViewAutoSizeColumnsMode.DisplayedCells, multiSelect: true);
         ConfigureGrid(dgvReportFiles, DataGridViewAutoSizeColumnsMode.Fill);
         TableStyleHelper.ApplyAntdTable(tableTestData);
-        tableTestData.DefaultExpand = true;
+        // 折叠展示，避免多条测试记录的产品一次铺开占满表格。
+        tableTestData.DefaultExpand = false;
         ConfigureTestDataColumns([]);
     }
 
@@ -415,6 +420,8 @@ public partial class DataManageView : BaseView
         btnOpenReportFolder.Click += (_, _) => OpenSelectedReportFolder();
         selectProductResult.SelectedIndexChanged += ProductResultFilter_SelectedIndexChanged;
         tableTestData.SortModeChanged += TestData_SortModeChanged;
+        testDataPagination.ValueChanged += TestDataPagination_ValueChanged;
+        btnToggleTestDataExpand.Click += (_, _) => ToggleTestDataExpand();
         btnExportTestData.Click += (_, _) => ExportTestData();
         btnDeleteWorkOrders.Click += async (_, _) => await DeleteSelectedWorkOrdersAsync();
         btnCleanFailedData.Click += async (_, _) => await CleanFailedDataAsync();
@@ -687,8 +694,9 @@ public partial class DataManageView : BaseView
         _testDataSortColumnKey = null;
         _testDataSortDescending = false;
         ResetProductResultFilter();
+        ResetTestDataExpandState();
         ConfigureTestDataColumns(_testDataDynamicColumns);
-        ApplyTestDataView();
+        ApplyTestDataView(resetPage: true);
     }
 
     private void ProductResultFilter_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
@@ -704,23 +712,91 @@ public partial class DataManageView : BaseView
             2 => ProductionConstants.TestResults.Ng,
             _ => DataHistoryTestDataRules.AllResults
         };
-        ApplyTestDataView();
+        ApplyTestDataView(resetPage: true);
     }
 
-    private void ApplyTestDataView()
+    /// <summary>
+    /// 重算筛选、排序结果并绑定其中一页。汇总文案统计的是筛选后的全部产品，不随翻页变化。
+    /// </summary>
+    /// <param name="resetPage">切换工单、改筛选或改排序时回到第 1 页。</param>
+    private void ApplyTestDataView(bool resetPage)
     {
         _visibleTestDataRows = DataHistoryTestDataRules.Apply(
             _testDataRows,
             _productResultFilter,
             _testDataSortColumnKey,
             _testDataSortDescending);
-        tableTestData.DataSource = null;
-        tableTestData.DataSource = _visibleTestDataRows.ToList();
+        BindTestDataPage(resetPage ? 1 : testDataPagination.Current, testDataPagination.PageSize);
         lblParameterSummary.Text = _localizer.GetString(
             TextKeys.DataManage.ParameterSummary,
             _visibleTestDataRows.Count,
             CountVisibleTestRecords(),
             _testDataDynamicColumns.Count);
+    }
+
+    /// <summary>
+    /// 绑定筛选结果中的指定页。单个工单可能有上百个产品，表格按产品行分页，产品下的测试记录随所属产品行显示。
+    /// </summary>
+    private void BindTestDataPage(int requestedPageIndex, int requestedPageSize)
+    {
+        var page = DataHistoryTestDataRules.GetPage(_visibleTestDataRows, requestedPageIndex, requestedPageSize);
+
+        _updatingTestDataPagination = true;
+        try
+        {
+            testDataPagination.Total = page.TotalCount;
+            testDataPagination.PageSize = page.PageSize;
+            testDataPagination.Current = page.PageIndex;
+        }
+        finally
+        {
+            _updatingTestDataPagination = false;
+        }
+
+        tableTestData.DataSource = null;
+        tableTestData.DataSource = page.Items.ToList();
+        // DefaultExpand 只影响首次绑定，重绑数据源后必须按当前展开态重放一次。
+        tableTestData.ExpandAll(_testDataExpandAll);
+    }
+
+    /// <summary>
+    /// 手动翻页或改每页数量只切换可见页，不重新查询工单明细。
+    /// </summary>
+    private void TestDataPagination_ValueChanged(object sender, AntdUI.PagePageEventArgs e)
+    {
+        if (_updatingTestDataPagination)
+        {
+            return;
+        }
+
+        BindTestDataPage(e.Current, e.PageSize);
+    }
+
+    /// <summary>
+    /// 一键展开或折叠产品下的测试记录，展开态在翻页、筛选和排序后保持。
+    /// </summary>
+    private void ToggleTestDataExpand()
+    {
+        _testDataExpandAll = !_testDataExpandAll;
+        tableTestData.ExpandAll(_testDataExpandAll);
+        ApplyTestDataExpandButtonText();
+    }
+
+    /// <summary>
+    /// 切换工单时回到默认折叠状态。
+    /// </summary>
+    private void ResetTestDataExpandState()
+    {
+        _testDataExpandAll = false;
+        ApplyTestDataExpandButtonText();
+    }
+
+    private void ApplyTestDataExpandButtonText()
+    {
+        btnToggleTestDataExpand.Text = _localizer.GetString(_testDataExpandAll
+            ? TextKeys.DataManage.CollapseAllTestData
+            : TextKeys.DataManage.ExpandAllTestData);
+        btnToggleTestDataExpand.IconSvg = _testDataExpandAll ? "NodeCollapseOutlined" : "NodeExpandOutlined";
     }
 
     private bool TestData_SortModeChanged(object sender, AntdUI.TableSortModeEventArgs e)
@@ -732,7 +808,7 @@ public partial class DataManageView : BaseView
 
         _testDataSortColumnKey = e.SortMode == AntdUI.SortMode.NONE ? null : e.Column.Key;
         _testDataSortDescending = e.SortMode == AntdUI.SortMode.DESC;
-        ApplyTestDataView();
+        ApplyTestDataView(resetPage: true);
         return true;
     }
 
@@ -918,6 +994,23 @@ public partial class DataManageView : BaseView
     private int CountVisibleTestRecords()
         => _visibleTestDataRows.Sum(row => row.Children.Count > 0 ? row.Children.Count : row.RecordId > 0 ? 1 : 0);
 
+    /// <summary>
+    /// 清空明细时把分页控件复位，避免残留上一个工单的总数和页码。
+    /// </summary>
+    private void ResetTestDataPagination()
+    {
+        _updatingTestDataPagination = true;
+        try
+        {
+            testDataPagination.Total = 0;
+            testDataPagination.Current = 1;
+        }
+        finally
+        {
+            _updatingTestDataPagination = false;
+        }
+    }
+
     private void ResetProductResultFilter()
     {
         _productResultFilter = DataHistoryTestDataRules.AllResults;
@@ -1078,8 +1171,10 @@ public partial class DataManageView : BaseView
         _testDataRows = [];
         _visibleTestDataRows = [];
         ResetProductResultFilter();
+        ResetTestDataExpandState();
         ConfigureTestDataColumns(_testDataDynamicColumns);
         tableTestData.DataSource = Array.Empty<DataHistoryTestDataRow>();
+        ResetTestDataPagination();
         collectionBindingSource.DataSource = Array.Empty<DataHistoryCollectionRow>();
         reportBindingSource.DataSource = Array.Empty<DataHistoryReportFileRow>();
         lblParameterSummary.Text = _localizer.GetString(TextKeys.DataManage.SelectWorkOrder);
@@ -1169,6 +1264,7 @@ public partial class DataManageView : BaseView
         tabWeldParameters.Text = _localizer.GetString(TextKeys.DataManage.TabWeldParameters);
         lblProductResultFilter.Text = _localizer.GetString(TextKeys.DataManage.ProductResultFilter);
         btnExportTestData.Text = _localizer.GetString(TextKeys.DataManage.ExportTestData);
+        ApplyTestDataExpandButtonText();
         BindProductResultFilterOptions();
         ConfigureTestDataColumns(_testDataDynamicColumns);
         tabReportFiles.Text = _localizer.GetString(TextKeys.DataManage.TabReportFiles);
