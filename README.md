@@ -1,6 +1,11 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.8.0`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.8.1`。
+
+## v2.8.1 修复说明
+
+- 修复离线开工、离线完工点击后鼠标长时间变忙的问题：离线时不再同步等待必然失败的设备状态上报，该状态仍写入 JSONL 并进入补传队列。
+- 离线开工、离线完工不再显示“正在开工上报”“正在完工上报”，改为直接给出“本地开工成功”“本地完工成功”；在线上报的中间态提示保持不变。
 
 ## v2.8.0 更新说明
 
@@ -250,6 +255,8 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 
 ## 检测设备四面转 A/B、程序判定与升级检查
 
+`v2.8.1` 修复离线开工和离线完工同步等待设备状态上报的问题。调用链是 `StartLocalAsync` → `RecordProgramStartedStatusAsync` → `DeviceStatusService.ChangeStatusAsync`，而 `reportToMes` 默认为 `true`，于是同步 `await` 了一次 MES HTTP 请求；本地任务落库、进补传队列和界面刷新都已在该 `await` 之前完成，这个请求的返回值没人使用、失败也不回滚，MES 离线时必然走满 `MesTimeoutSeconds`（默认 10 秒），表现为点击离线开工后鼠标长时间变忙、像在联系 MES。完工侧 `FinishLocalAsync` 完全对称。现在两个设备状态助手按 MES 连接状态门控 `reportToMes`：离线只落 JSONL 并进补传队列后立即返回，在线仍走原有实时上报；JSONL 落盘位于该判断之前的锁内，仍是唯一事实来源。同时移除离线开工/完工的“正在开工上报”“正在完工上报”中间态，离线只写本地库，该提示会误导操作员；在线路径的中间态和等待光标保持不变。
+
 `v2.8.0` 程序管理左侧列表新增分页并改为按更新时间倒序。设备至少要能存放 128 个加工程序，此前列表把全部工号分组一次绑定到表格，程序多了以后只能靠滚动查找；而排序按产品工号升序、同工号内按流水号升序，刚保存或刚从 MES 拉取的程序位置完全取决于工号字面值，常年沉在列表中段。现在工号行按该工号下最新的程序更新时间倒序，子行也按更新时间倒序，时间相同再按工号排序以保证顺序可复现；列表底部使用 `AntdUI.Pagination`，默认每页 20 个工号分组，可切 20/50/100。分组序号在分页前生成，翻页后序号保持全局连续。保存、另存为、同步、删除和刷新会按正在编辑的程序自动定位到它所在页并保持选中；手动翻页或改每页数量只切换可见页，不重绑右侧编辑区，避免翻页丢失未保存的编辑内容。搜索关键字变化时回到第 1 页。分页只作用于界面显示，本地程序快照仍一次性载入内存，不改变数据库查询和 MES 交互口径。
 
 `v2.8.0` 程序管理右侧编辑区统一各行标签列宽度。编辑区每行是一个两列 `TableLayoutPanel`（标签列固定宽 + 输入列占满剩余），此前标签列宽度不一致：两个配方名称行是 140，产品工号、部件图号、流水号、程序备注和程序名称行是 90。于是标签列 140 的行输入列只剩 305，标签列 90 的行剩 355，配方下拉比上面几个输入框窄 50px、左边界也往右偏 50px。标签列之所以要 140，是因为“工位1配方名称”这个标签含红色星号后本身就需要 117px，90 装不下。现在标签列统一为 140，标签左内边距统一为 4、`AutoSizeMode` 统一为 `Width`，各行输入框左边界与宽度完全一致。单工位折叠工位 2 配方行改为隐藏整行容器并让行高自适应，不再写死 44px——行高已随字体变为 53px，写死像素会把该行压矮。
@@ -364,10 +371,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>2.8.0</Version>
-<AssemblyVersion>2.8.0.0</AssemblyVersion>
-<FileVersion>2.8.0.0</FileVersion>
-<InformationalVersion>2.8.0</InformationalVersion>
+<Version>2.8.1</Version>
+<AssemblyVersion>2.8.1.0</AssemblyVersion>
+<FileVersion>2.8.1.0</FileVersion>
+<InformationalVersion>2.8.1</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -379,9 +386,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v2.8.0 -m "Release v2.8.0"
+git tag -a v2.8.1 -m "Release v2.8.1"
 git push origin main
-git push origin v2.8.0
+git push origin v2.8.1
 ```
 
 ## Git 使用
