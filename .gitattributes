@@ -1,0 +1,18 @@
+# 统一换行符，避免同一文件在不同工具（VS / 编辑器 / 脚本）保存后产生整文件 EOL 噪音。
+# 仓库内以 LF 存储，检出到 Windows 工作区时由 core.autocrlf=true 转成 CRLF。
+* text=auto
+
+# WinForms 设计器文件与资源文件由 Visual Studio 生成：
+# 固定 CRLF 避免被反复重写；关闭空白检查，避免 VS 生成的 "// " 分隔注释
+# 触发 git diff --check 报错，进而诱使手工清理尾随空格而制造额外噪音。
+*.Designer.cs text eol=crlf -whitespace
+*.resx        text eol=crlf -whitespace
+
+# 明确的二进制类型，禁止任何行尾或编码转换。
+*.dll  binary
+*.exe  binary
+*.pdb  binary
+*.png  binary
+*.jpg  binary
+*.ico  binary
+*.xlsx binary
