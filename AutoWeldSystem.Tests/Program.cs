@@ -400,6 +400,7 @@ var tests = new (string Name, Action Run)[]
     ("Program product groups flatten single program product num", ProgramProductGroupsFlattenSingleProgramProductNum),
     ("Program product groups order by latest update time", ProgramProductGroupsOrderByLatestUpdateTime),
     ("Program list paging keeps edited program visible", ProgramListPagingKeepsEditedProgramVisible),
+    ("Program manage toolbar uses input query for search and refresh", ProgramManageToolbarUsesInputQueryForSearchAndRefresh),
     ("Program manage view hides product model", ProgramManageViewHidesProductModel),
     ("Program manage save ignores product model input", ProgramManageSaveIgnoresProductModelInput),
     ("Monitor report button rules follow MES and task state", MonitorReportButtonRulesFollowMesAndTaskState),
@@ -12403,6 +12404,40 @@ static void ProgramManageServiceNoLongerGeneratesProgramFiles()
     AssertFalse(serviceCode.Contains("File.WriteAllText", StringComparison.Ordinal), "程序管理服务不得再向磁盘写入程序文件。");
 }
 
+static void ProgramManageToolbarUsesInputQueryForSearchAndRefresh()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.cs"), Encoding.UTF8);
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.Designer.cs"), Encoding.UTF8);
+    var inputQueryCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Controls", "InputQuery.cs"), Encoding.UTF8);
+
+    // 搜索框和刷新按钮合并到 InputQuery，旧的独立控件不得残留。
+    AssertTrue(designerCode.Contains("queryPrograms = new AutoWeldSystem.UI.Controls.InputQuery(components);", StringComparison.Ordinal), "程序管理工具栏必须使用 InputQuery 承载搜索和刷新。");
+    AssertFalse(designerCode.Contains("txtKeyword", StringComparison.Ordinal), "程序管理页不得保留独立的关键字文本框。");
+    AssertFalse(designerCode.Contains("btnRefresh", StringComparison.Ordinal), "程序管理页不得保留独立的刷新按钮。");
+    AssertFalse(viewCode.Contains("txtKeyword", StringComparison.Ordinal) || viewCode.Contains("btnRefresh", StringComparison.Ordinal), "代码后置不得继续引用已替换的搜索框和刷新按钮。");
+    AssertTrue(viewCode.Contains("queryPrograms.QueryClick += ProgramQuery_QueryClickAsync;", StringComparison.Ordinal), "InputQuery 必须绑定搜索与刷新事件。");
+    AssertTrue(viewCode.Contains("queryPrograms.PlaceholderText = _localizer.GetString(TextKeys.ProgramManage.PlaceholderKeyword);", StringComparison.Ordinal), "搜索框占位文本必须本地化。");
+
+    // 刷新按钮封装在 InputQuery 内部，权限必须通过控件属性透传，否则刷新权限会失效。
+    AssertTrue(inputQueryCode.Contains("public string RefreshButtonTag", StringComparison.Ordinal), "InputQuery 必须开放刷新按钮权限标记。");
+    AssertTrue(designerCode.Contains("queryPrograms.RefreshButtonTag = \"perm:button.program.refresh:enabled\";", StringComparison.Ordinal), "程序刷新权限必须挂到 InputQuery 的刷新按钮上。");
+
+    var queryHandler = ExtractMethodText(
+        viewCode,
+        "    private async void ProgramQuery_QueryClickAsync(object? sender, string keyword)",
+        "    /// <summary>");
+    AssertTrue(queryHandler.Contains("await ReloadProgramsAsync(_editingId);", StringComparison.Ordinal), "空关键字必须按刷新处理并保持当前编辑的程序。");
+    AssertTrue(queryHandler.Contains("await RefreshRecipeNameOptionsAsync();", StringComparison.Ordinal), "刷新必须同时重新读取 PLC 配方名称。");
+    AssertTrue(queryHandler.Contains("ApplyProgramFilter(resetPage: true);", StringComparison.Ordinal), "带关键字搜索必须回到第一页。");
+
+    // 保存后是否立即同步仍是复选框，只是改用 AntdUI 版本统一观感，默认保持勾选。
+    AssertTrue(designerCode.Contains("chkSyncNow = new AntdUI.Checkbox();", StringComparison.Ordinal), "保存后立即同步必须使用 AntdUI.Checkbox。");
+    AssertTrue(designerCode.Contains("chkSyncNow.Checked = true;", StringComparison.Ordinal), "保存后立即同步默认必须勾选。");
+    AssertTrue(viewCode.Contains("private bool SyncAfterSaveEnabled => chkSyncNow.Checked;", StringComparison.Ordinal), "同步判断必须统一读取复选框状态。");
+    AssertEqual(4, CountOccurrences(viewCode, "SyncAfterSaveEnabled"), "保存、另存为和删除三处同步判断都必须复用同一属性（含属性声明共 4 处）。");
+    AssertTrue(viewCode.Contains("chkSyncNow.Text = _localizer.GetString(TextKeys.ProgramManage.CheckSyncNow);", StringComparison.Ordinal), "保存后立即同步文本必须本地化。");
+}
+
 static void ProgramManageViewHidesProductModel()
 {
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.cs"), Encoding.UTF8);
@@ -13429,9 +13464,16 @@ static void AllSelectControlsLimitDropdownItems()
         AssertTrue(selectControlNames.Count > 0, $"{string.Join(Path.DirectorySeparatorChar, pathParts)} 必须至少包含一个 AntdUI.Select 控件。");
         foreach (var controlName in selectControlNames)
         {
+            // AntdUI 默认只展开 4 条，必须显式放宽；候选项多的下拉（如每工位 64 个配方槽位）允许调得更大。
+            var maxCountMatch = System.Text.RegularExpressions.Regex.Match(
+                designerCode,
+                $@"{System.Text.RegularExpressions.Regex.Escape(controlName)}\.MaxCount = (\d+);");
             AssertTrue(
-                designerCode.Contains($"{controlName}.MaxCount = 10;", StringComparison.Ordinal),
-                $"下拉控件 {controlName} 必须将 MaxCount 设为 10。");
+                maxCountMatch.Success,
+                $"下拉控件 {controlName} 必须显式设置 MaxCount，避免沿用 AntdUI 默认的 4 条。");
+            AssertTrue(
+                int.Parse(maxCountMatch.Groups[1].Value) >= 10,
+                $"下拉控件 {controlName} 的 MaxCount 不得少于 10 条。");
         }
     }
 
