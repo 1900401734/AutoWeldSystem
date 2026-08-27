@@ -51,6 +51,10 @@ public partial class ProgramManageView : BaseView
     private readonly CancellationTokenSource _operationCts = new();
     private int _operationCtsDisposed;
     private bool _deleteInProgress;
+    // 回写分页控件属性会触发 ValueChanged，用标志位避免重复绑定当前页。
+    private bool _updatingProgramPagination;
+    // InputQuery 按点击/回车回传关键字，不再逐字符触发，因此关键字需自己保存。
+    private string _keyword = string.Empty;
     // 批量绑定控件值期间暂停自动填充，避免中间态触发多次重算。
     private bool _suppressNameAutoFill;
 
@@ -180,12 +184,9 @@ public partial class ProgramManageView : BaseView
         btnSync.Click += SyncSelected_ClickAsync;
         btnPullMes.Click += PullMes_ClickAsync;
         btnBuildName.Click += (_, _) => inputProgramName.Text = BuildProgramNameFromInputs();
-        btnRefresh.Click += async (_, _) =>
-        {
-            await ReloadProgramsAsync();
-            await RefreshRecipeNameOptionsAsync();
-        };
-        txtKeyword.TextChanged += (_, _) => ApplyProgramFilter();
+        // InputQuery 的搜索与刷新共用一个事件：带关键字为搜索，空关键字为刷新。
+        queryPrograms.QueryClick += ProgramQuery_QueryClickAsync;
+        programPagination.ValueChanged += ProgramPagination_ValueChanged;
         // 父行（多程序工号）不指向具体程序，点击只展开子行，不切换编辑对象。
         tablePrograms.CellClick += (_, e) =>
         {
@@ -212,16 +213,15 @@ public partial class ProgramManageView : BaseView
         btnSync.Text = _localizer.GetString(TextKeys.ProgramManage.ButtonSyncMes);
         btnSaveAsNew.Text = _localizer.GetString(TextKeys.ProgramManage.ButtonSaveAsNew);
         btnPullMes.Text = _localizer.GetString(TextKeys.ProgramManage.ButtonPullMes);
-        btnRefresh.Text = _localizer.GetString(TextKeys.Common.ActionRefresh);
         btnBuildName.Text = _localizer.GetString(TextKeys.ProgramManage.ButtonBuildName);
         chkSyncNow.Text = _localizer.GetString(TextKeys.ProgramManage.CheckSyncNow);
-        txtKeyword.PlaceholderText = _localizer.GetString(TextKeys.ProgramManage.PlaceholderKeyword);
+        queryPrograms.PlaceholderText = _localizer.GetString(TextKeys.ProgramManage.PlaceholderKeyword);
 
         lblProgramName.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramName);
         lblProgramId.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramId);
         lblProductNum.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProductNum);
-        lblRecipeCode.Text = _localizer.GetString(TextKeys.ProgramManage.LabelStation1Recipe);
-        lblStation2RecipeCode.Text = _localizer.GetString(TextKeys.ProgramManage.LabelStation2Recipe);
+        lblRecipeCode1.Text = _localizer.GetString(TextKeys.ProgramManage.LabelStation1Recipe);
+        lblRecipeCode2.Text = _localizer.GetString(TextKeys.ProgramManage.LabelStation2Recipe);
         lblComponentCode.Text = _localizer.GetString(TextKeys.ProgramManage.LabelComponentCode);
         lblSequenceNumber.Text = _localizer.GetString(TextKeys.ProgramManage.LabelSequenceNumber);
         lblProgramType.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramType);
@@ -252,6 +252,11 @@ public partial class ProgramManageView : BaseView
 
         cmbProgramType.SelectedIndex = Math.Min(selectedIndex, cmbProgramType.Items.Count - 1);
     }
+
+    /// <summary>
+    /// 保存或删除后是否立即向 MES 同步。
+    /// </summary>
+    private bool SyncAfterSaveEnabled => chkSyncNow.Checked;
 
     private void BindRemarkText(string? remark)
     {
@@ -313,9 +318,14 @@ public partial class ProgramManageView : BaseView
         ApplyProgramFilter(selectedId);
     }
 
-    private void ApplyProgramFilter(int? selectedId = null)
+    /// <summary>
+    /// 按关键字筛选程序并重新绑定列表当前页。
+    /// </summary>
+    /// <param name="selectedId">需要保持选中的程序本地 ID；不传时沿用正在编辑的程序。</param>
+    /// <param name="resetPage">筛选条件变化时回到第一页，避免停在筛选后已不存在的页码上。</param>
+    private void ApplyProgramFilter(int? selectedId = null, bool resetPage = false)
     {
-        var keyword = txtKeyword.Text.Trim();
+        var keyword = _keyword;
         _filteredPrograms.Clear();
         _filteredPrograms.AddRange(_programs
             .Where(program => string.IsNullOrWhiteSpace(keyword)
@@ -326,14 +336,90 @@ public partial class ProgramManageView : BaseView
                 || Contains(program.SyncStatus, keyword)
                 || Contains(GetSyncStatusText(program.SyncStatus), keyword)));
 
+        BindProgramPage(
+            resetPage ? 1 : programPagination.Current,
+            programPagination.PageSize,
+            selectedId ?? _editingId,
+            rebindSelection: true);
+    }
+
+    /// <summary>
+    /// 绑定筛选结果中的指定页。设备可存放上百个程序，列表按产品工号分组行分页显示。
+    /// </summary>
+    /// <param name="requestedPageIndex">目标页码；越界由分页规则夹到有效范围。</param>
+    /// <param name="requestedPageSize">每页显示的产品工号分组数量。</param>
+    /// <param name="keepProgramId">需要保持可见的程序本地 ID；命中时自动翻到它所在页。</param>
+    /// <param name="rebindSelection">是否按当前页重新绑定右侧编辑区。</param>
+    private void BindProgramPage(
+        int requestedPageIndex,
+        int requestedPageSize,
+        int keepProgramId,
+        bool rebindSelection)
+    {
         var groups = ProgramProductGroupRules.BuildGroups(_filteredPrograms, program => GetSyncStatusText(program.SyncStatus));
-        tablePrograms.DataSource = groups;
-        if (groups.Count == 0)
+        var page = ProgramListPagingRules.GetPage(groups, requestedPageIndex, requestedPageSize, keepProgramId);
+
+        _updatingProgramPagination = true;
+        try
+        {
+            programPagination.Total = page.TotalCount;
+            programPagination.PageSize = page.PageSize;
+            programPagination.Current = page.PageIndex;
+        }
+        finally
+        {
+            _updatingProgramPagination = false;
+        }
+
+        tablePrograms.DataSource = page.Items;
+        if (!rebindSelection || page.Items.Count == 0)
         {
             return;
         }
 
-        SelectProgramRow(selectedId ?? _editingId);
+        SelectProgramRow(keepProgramId, page.Items);
+    }
+
+    /// <summary>
+    /// 处理 InputQuery 的搜索与刷新。
+    /// 关键字为空表示点了刷新或清空了搜索框，此时重新载入程序列表和 PLC 配方名称；
+    /// 关键字非空只在已加载的快照上筛选，并回到第一页。
+    /// </summary>
+    private async void ProgramQuery_QueryClickAsync(object? sender, string keyword)
+    {
+        _keyword = keyword.Trim();
+        try
+        {
+            if (_keyword.Length == 0)
+            {
+                queryPrograms.Text = string.Empty;
+                await ReloadProgramsAsync(_editingId);
+                await RefreshRecipeNameOptionsAsync();
+                return;
+            }
+
+            ApplyProgramFilter(resetPage: true);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            ShowErrorMessage(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 手动翻页或改每页数量只切换可见页，不改变右侧正在编辑的程序，避免翻页丢失未保存内容。
+    /// </summary>
+    private void ProgramPagination_ValueChanged(object sender, AntdUI.PagePageEventArgs e)
+    {
+        if (_updatingProgramPagination)
+        {
+            return;
+        }
+
+        BindProgramPage(e.Current, e.PageSize, keepProgramId: 0, rebindSelection: false);
     }
 
     private static bool Contains(string? source, string keyword)
@@ -443,18 +529,16 @@ public partial class ProgramManageView : BaseView
     }
 
     /// <summary>
-    /// 重新绑定编辑区到指定程序；传入 0 或该程序已被过滤掉时回落到列表中的第一个程序。
+    /// 重新绑定编辑区到指定程序；传入 0 或该程序不在当前页时回落到当前页的第一个程序。
     /// </summary>
-    private void SelectProgramRow(int id)
+    private void SelectProgramRow(int id, IReadOnlyList<ProgramProductGroupRow> pageRows)
     {
-        var program = _filteredPrograms.FirstOrDefault(item => item.Id == id)
-            ?? _filteredPrograms
-                .OrderBy(item => item.ProductNum?.Trim(), StringComparer.OrdinalIgnoreCase)
-                .ThenBy(item => item.SequenceNumber)
-                .FirstOrDefault();
-        if (program is not null)
+        var programId = ProgramListPagingRules.ContainsProgram(pageRows, id)
+            ? id
+            : ProgramListPagingRules.ResolveFirstProgramId(pageRows);
+        if (programId > 0)
         {
-            BindProgramById(program.Id);
+            BindProgramById(programId);
         }
     }
 
@@ -470,7 +554,7 @@ public partial class ProgramManageView : BaseView
         {
             var saveResult = await _programService.SaveWithSyncDecisionAsync(request, _operationCts.Token);
             var saved = saveResult.Program;
-            var syncInBackground = chkSyncNow.Checked && saveResult.ShouldSyncNow;
+            var syncInBackground = SyncAfterSaveEnabled && saveResult.ShouldSyncNow;
             await ReloadProgramsAsync(saved.Id);
             ShowInfo(syncInBackground ? "程序已保存到本地，MES同步将在后台执行。" : _localizer.GetString(TextKeys.ProgramManage.SaveSuccess));
             if (syncInBackground)
@@ -528,7 +612,7 @@ public partial class ProgramManageView : BaseView
 
             var saveResult = await _programService.SaveWithSyncDecisionAsync(request, _operationCts.Token);
             var saved = saveResult.Program;
-            var syncInBackground = chkSyncNow.Checked && saveResult.ShouldSyncNow;
+            var syncInBackground = SyncAfterSaveEnabled && saveResult.ShouldSyncNow;
             await ReloadProgramsAsync(saved.Id);
             ShowInfo(syncInBackground ? "程序已保存到本地，MES同步将在后台执行。" : _localizer.GetString(TextKeys.ProgramManage.SaveSuccess));
             if (syncInBackground)
@@ -594,7 +678,7 @@ public partial class ProgramManageView : BaseView
                 _editingId,
                 ResolveEditedMesRemark(GetEditingProgram()),
                 _operationCts.Token);
-            var syncNow = chkSyncNow.Checked;
+            var syncNow = SyncAfterSaveEnabled;
             await ReloadProgramsAsync();
             StartNewProgram();
 
@@ -716,7 +800,7 @@ public partial class ProgramManageView : BaseView
         }
 
         request.RecipeCode = ResolveRecipeCodeForSave(selectStation1Recipe, 1, editingProgram) ?? string.Empty;
-        request.Station2RecipeCode = tlpStation2RecipeCode.Visible
+        request.Station2RecipeCode = selectStation2Recipe.Visible
             ? ResolveRecipeCodeForSave(selectStation2Recipe, 2, editingProgram)
             : _editingId > 0
                 ? editingProgram?.Station2RecipeCode
@@ -827,7 +911,7 @@ public partial class ProgramManageView : BaseView
             }
 
             BindRecipeNameReadFailure(selectStation1Recipe, 1, ex);
-            if (tlpStation2RecipeCode.Visible)
+            if (selectStation2Recipe.Visible)
             {
                 BindRecipeNameReadFailure(selectStation2Recipe, 2, ex);
             }
@@ -879,13 +963,15 @@ public partial class ProgramManageView : BaseView
 
     /// <summary>
     /// 单工位完全折叠工位 2 配方行，避免留下空白间距。
+    /// 行高改为自适应：隐藏整行容器后行高自然归零，不写死像素值，
+    /// 避免行高随字体或 DPI 变化后与其它字段行不一致。
     /// </summary>
     private void ApplyStationRecipeLayout(bool enableDualStation)
     {
         _enableDualStation = enableDualStation;
-        tlpStation2RecipeCode.Visible = enableDualStation;
-        editorLayout.RowStyles[7].SizeType = SizeType.Absolute;
-        editorLayout.RowStyles[7].Height = enableDualStation ? 44F : 0F;
+        tlpRecipe2.Visible = enableDualStation;
+        editorLayout.RowStyles[7].SizeType = enableDualStation ? SizeType.AutoSize : SizeType.Absolute;
+        editorLayout.RowStyles[7].Height = 0F;
     }
 
     private void BindRecipeNameOptions(

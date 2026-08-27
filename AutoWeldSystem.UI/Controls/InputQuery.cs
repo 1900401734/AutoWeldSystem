@@ -42,6 +42,16 @@ public partial class InputQuery : UserControl
         }
     }
 
+    [Description("刷新按钮的权限标记，交给 PermissionUiBinder 按 Tag 控制可用状态")]
+    [Category("行为")]
+    [DefaultValue("")]
+    public string RefreshButtonTag
+    {
+        // 刷新按钮被封装在本控件内部，外部页面无法直接给它挂权限 Tag，这里开放一个入口。
+        get => btnRefresh.Tag as string ?? string.Empty;
+        set => btnRefresh.Tag = string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
     [Description("输入框占位提示文本")]
     [Category("外观")]
     [DefaultValue("")]

@@ -398,6 +398,9 @@ var tests = new (string Name, Action Run)[]
     ("Program manage grid shows sequence and program name", ProgramManageGridShowsSequenceAndProgramName),
     ("Program product groups merge programs sharing product num", ProgramProductGroupsMergeProgramsSharingProductNum),
     ("Program product groups flatten single program product num", ProgramProductGroupsFlattenSingleProgramProductNum),
+    ("Program product groups order by latest update time", ProgramProductGroupsOrderByLatestUpdateTime),
+    ("Program list paging keeps edited program visible", ProgramListPagingKeepsEditedProgramVisible),
+    ("Program manage toolbar uses input query for search and refresh", ProgramManageToolbarUsesInputQueryForSearchAndRefresh),
     ("Program manage view hides product model", ProgramManageViewHidesProductModel),
     ("Program manage save ignores product model input", ProgramManageSaveIgnoresProductModelInput),
     ("Monitor report button rules follow MES and task state", MonitorReportButtonRulesFollowMesAndTaskState),
@@ -12294,7 +12297,7 @@ static void ProgramProductGroupsMergeProgramsSharingProductNum()
     AssertEqual(string.Empty, groups[0].SyncStatus, "多程序父行不得显示具体同步状态。");
     AssertEqual(2, groups[0].Programs?.Count ?? 0, "多程序工号必须展开为子行。");
     AssertEqual(null, groups[0].Programs![0].SerialNumber, "子程序行序号必须留空。");
-    AssertEqual(2, groups[0].Programs![0].ProgramId, "子行必须按流水号升序排列。");
+    AssertEqual(2, groups[0].Programs![0].ProgramId, "子行必须按更新时间倒序排列。");
     AssertEqual("#001", groups[0].Programs![0].ProductNum, "子行必须保留程序流水号标签。");
     AssertEqual("A-2", groups[0].Programs![0].ProgramName, "程序名称必须进入独立字段。");
     AssertEqual("状态:Synced", groups[0].Programs![0].SyncStatus, "同步状态必须进入独立字段。");
@@ -12317,6 +12320,79 @@ static void ProgramProductGroupsFlattenSingleProgramProductNum()
     AssertEqual("已同步", groups[0].SyncStatus, "单程序工号必须在独立列显示同步状态。");
 }
 
+static void ProgramProductGroupsOrderByLatestUpdateTime()
+{
+    var programs = new List<BizProgram>
+    {
+        new() { Id = 1, ProgramName = "旧工号", ProductNum = "P-001", SequenceNumber = 1, UpdatedTime = new DateTime(2026, 8, 1) },
+        new() { Id = 2, ProgramName = "新工号", ProductNum = "P-002", SequenceNumber = 1, UpdatedTime = new DateTime(2026, 8, 20) },
+        new() { Id = 3, ProgramName = "同工号旧程序", ProductNum = "P-003", SequenceNumber = 1, UpdatedTime = new DateTime(2026, 8, 5) },
+        new() { Id = 4, ProgramName = "同工号新程序", ProductNum = "P-003", SequenceNumber = 2, UpdatedTime = new DateTime(2026, 8, 10) }
+    };
+
+    var groups = ProgramProductGroupRules.BuildGroups(programs, program => "已同步");
+
+    AssertEqual("P-002", groups[0].ProductNum, "工号行必须按组内最新更新时间倒序排列。");
+    AssertEqual("P-003", groups[1].ProductNum, "更新较晚的工号必须排在更新较早的工号之前。");
+    AssertEqual("P-001", groups[2].ProductNum, "最久未更新的工号必须排在最后。");
+    AssertEqual(1, groups[0].SerialNumber, "分组序号必须按排序后的位置重新编号。");
+    AssertEqual(4, groups[1].Programs![0].ProgramId, "同工号子行必须按更新时间倒序，最近更新的程序在前。");
+    AssertEqual(3, groups[1].Programs![1].ProgramId, "同工号较早更新的程序必须排在后面。");
+}
+
+static void ProgramListPagingKeepsEditedProgramVisible()
+{
+    var programs = Enumerable.Range(1, 45)
+        .Select(index => new BizProgram
+        {
+            Id = index,
+            ProgramName = $"程序-{index:000}",
+            ProductNum = $"P-{index:000}",
+            SequenceNumber = 1,
+            // 序号越大更新时间越晚，倒序后 Id=45 排在首页第一行。
+            UpdatedTime = new DateTime(2026, 8, 1).AddMinutes(index)
+        })
+        .ToList();
+    var groups = ProgramProductGroupRules.BuildGroups(programs, program => "已同步");
+
+    var firstPage = ProgramListPagingRules.GetPage(groups, 1, 20);
+    AssertEqual(45, firstPage.TotalCount, "分页总数必须是筛选后的工号分组总数。");
+    AssertEqual(20, firstPage.Items.Count, "首页必须只返回一页数量的分组行。");
+    AssertEqual(45, firstPage.Items[0].ProgramId, "首页第一行必须是最近更新的程序。");
+    AssertEqual(1, firstPage.Items[0].SerialNumber, "分组序号必须在分页前生成，首页从 1 开始。");
+
+    var lastPage = ProgramListPagingRules.GetPage(groups, 3, 20);
+    AssertEqual(5, lastPage.Items.Count, "末页只返回剩余分组行。");
+    AssertEqual(41, lastPage.Items[0].SerialNumber, "翻页后分组序号必须保持全局连续。");
+
+    var clamped = ProgramListPagingRules.GetPage(groups, 99, 20);
+    AssertEqual(3, clamped.PageIndex, "越界页码必须夹到最后一页。");
+    AssertEqual(1, ProgramListPagingRules.GetPage(groups, 0, 20).PageIndex, "小于 1 的页码必须回到第一页。");
+    AssertEqual(20, ProgramListPagingRules.GetPage(groups, 1, 0).PageSize, "非正每页数量必须回退为默认值。");
+    AssertEqual(1, ProgramListPagingRules.GetPage(Array.Empty<ProgramProductGroupRow>(), 5, 20).PageIndex, "空列表必须停在第一页。");
+
+    // 保存或同步后要能继续看到刚编辑的程序，即使它已经不在当前页。
+    var keepPage = ProgramListPagingRules.GetPage(groups, 1, 20, keepProgramId: 5);
+    AssertEqual(3, keepPage.PageIndex, "需要保持可见的程序必须自动定位到它所在页。");
+    AssertTrue(ProgramListPagingRules.ContainsProgram(keepPage.Items, 5), "定位后的页必须包含该程序。");
+    AssertFalse(ProgramListPagingRules.ContainsProgram(firstPage.Items, 5), "不在当前页的程序不得被判定为可见。");
+    AssertEqual(45, ProgramListPagingRules.ResolveFirstProgramId(firstPage.Items), "回落选中必须取当前页第一个真实程序。");
+    AssertEqual(0, ProgramListPagingRules.ResolveFirstProgramId(Array.Empty<ProgramProductGroupRow>()), "空页没有可回落的程序。");
+
+    // 多程序工号的父行不指向具体程序，回落必须落到它的第一个子行。
+    var grouped = ProgramProductGroupRules.BuildGroups(
+        new List<BizProgram>
+        {
+            new() { Id = 51, ProgramName = "子程序旧", ProductNum = "P-900", SequenceNumber = 1, UpdatedTime = new DateTime(2026, 8, 1) },
+            new() { Id = 52, ProgramName = "子程序新", ProductNum = "P-900", SequenceNumber = 2, UpdatedTime = new DateTime(2026, 8, 2) }
+        },
+        program => "已同步");
+    var groupedPage = ProgramListPagingRules.GetPage(grouped, 1, 20, keepProgramId: 51);
+    AssertEqual(1, groupedPage.PageIndex, "子行程序必须能定位到父行所在页。");
+    AssertTrue(ProgramListPagingRules.ContainsProgram(groupedPage.Items, 51), "父行所在页必须视为包含其子行程序。");
+    AssertEqual(52, ProgramListPagingRules.ResolveFirstProgramId(groupedPage.Items), "父行不指向程序时必须回落到第一个子行。");
+}
+
 static void ProgramManageServiceNoLongerGeneratesProgramFiles()
 {
     var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "ProgramManageService.cs"), Encoding.UTF8);
@@ -12326,6 +12402,40 @@ static void ProgramManageServiceNoLongerGeneratesProgramFiles()
     AssertFalse(serviceCode.Contains("ClearProgramContentFile", StringComparison.Ordinal), "程序保存不得再清理本地程序文件。");
     AssertFalse(serviceCode.Contains("ProgramFileRules", StringComparison.Ordinal), "程序保存不得再依赖程序文件命名规则。");
     AssertFalse(serviceCode.Contains("File.WriteAllText", StringComparison.Ordinal), "程序管理服务不得再向磁盘写入程序文件。");
+}
+
+static void ProgramManageToolbarUsesInputQueryForSearchAndRefresh()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.cs"), Encoding.UTF8);
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.Designer.cs"), Encoding.UTF8);
+    var inputQueryCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Controls", "InputQuery.cs"), Encoding.UTF8);
+
+    // 搜索框和刷新按钮合并到 InputQuery，旧的独立控件不得残留。
+    AssertTrue(designerCode.Contains("queryPrograms = new AutoWeldSystem.UI.Controls.InputQuery(components);", StringComparison.Ordinal), "程序管理工具栏必须使用 InputQuery 承载搜索和刷新。");
+    AssertFalse(designerCode.Contains("txtKeyword", StringComparison.Ordinal), "程序管理页不得保留独立的关键字文本框。");
+    AssertFalse(designerCode.Contains("btnRefresh", StringComparison.Ordinal), "程序管理页不得保留独立的刷新按钮。");
+    AssertFalse(viewCode.Contains("txtKeyword", StringComparison.Ordinal) || viewCode.Contains("btnRefresh", StringComparison.Ordinal), "代码后置不得继续引用已替换的搜索框和刷新按钮。");
+    AssertTrue(viewCode.Contains("queryPrograms.QueryClick += ProgramQuery_QueryClickAsync;", StringComparison.Ordinal), "InputQuery 必须绑定搜索与刷新事件。");
+    AssertTrue(viewCode.Contains("queryPrograms.PlaceholderText = _localizer.GetString(TextKeys.ProgramManage.PlaceholderKeyword);", StringComparison.Ordinal), "搜索框占位文本必须本地化。");
+
+    // 刷新按钮封装在 InputQuery 内部，权限必须通过控件属性透传，否则刷新权限会失效。
+    AssertTrue(inputQueryCode.Contains("public string RefreshButtonTag", StringComparison.Ordinal), "InputQuery 必须开放刷新按钮权限标记。");
+    AssertTrue(designerCode.Contains("queryPrograms.RefreshButtonTag = \"perm:button.program.refresh:enabled\";", StringComparison.Ordinal), "程序刷新权限必须挂到 InputQuery 的刷新按钮上。");
+
+    var queryHandler = ExtractMethodText(
+        viewCode,
+        "    private async void ProgramQuery_QueryClickAsync(object? sender, string keyword)",
+        "    /// <summary>");
+    AssertTrue(queryHandler.Contains("await ReloadProgramsAsync(_editingId);", StringComparison.Ordinal), "空关键字必须按刷新处理并保持当前编辑的程序。");
+    AssertTrue(queryHandler.Contains("await RefreshRecipeNameOptionsAsync();", StringComparison.Ordinal), "刷新必须同时重新读取 PLC 配方名称。");
+    AssertTrue(queryHandler.Contains("ApplyProgramFilter(resetPage: true);", StringComparison.Ordinal), "带关键字搜索必须回到第一页。");
+
+    // 保存后是否立即同步仍是复选框，只是改用 AntdUI 版本统一观感，默认保持勾选。
+    AssertTrue(designerCode.Contains("chkSyncNow = new AntdUI.Checkbox();", StringComparison.Ordinal), "保存后立即同步必须使用 AntdUI.Checkbox。");
+    AssertTrue(designerCode.Contains("chkSyncNow.Checked = true;", StringComparison.Ordinal), "保存后立即同步默认必须勾选。");
+    AssertTrue(viewCode.Contains("private bool SyncAfterSaveEnabled => chkSyncNow.Checked;", StringComparison.Ordinal), "同步判断必须统一读取复选框状态。");
+    AssertEqual(4, CountOccurrences(viewCode, "SyncAfterSaveEnabled"), "保存、另存为和删除三处同步判断都必须复用同一属性（含属性声明共 4 处）。");
+    AssertTrue(viewCode.Contains("chkSyncNow.Text = _localizer.GetString(TextKeys.ProgramManage.CheckSyncNow);", StringComparison.Ordinal), "保存后立即同步文本必须本地化。");
 }
 
 static void ProgramManageViewHidesProductModel()
@@ -13354,9 +13464,16 @@ static void AllSelectControlsLimitDropdownItems()
         AssertTrue(selectControlNames.Count > 0, $"{string.Join(Path.DirectorySeparatorChar, pathParts)} 必须至少包含一个 AntdUI.Select 控件。");
         foreach (var controlName in selectControlNames)
         {
+            // AntdUI 默认只展开 4 条，必须显式放宽；候选项多的下拉（如每工位 64 个配方槽位）允许调得更大。
+            var maxCountMatch = System.Text.RegularExpressions.Regex.Match(
+                designerCode,
+                $@"{System.Text.RegularExpressions.Regex.Escape(controlName)}\.MaxCount = (\d+);");
             AssertTrue(
-                designerCode.Contains($"{controlName}.MaxCount = 10;", StringComparison.Ordinal),
-                $"下拉控件 {controlName} 必须将 MaxCount 设为 10。");
+                maxCountMatch.Success,
+                $"下拉控件 {controlName} 必须显式设置 MaxCount，避免沿用 AntdUI 默认的 4 条。");
+            AssertTrue(
+                int.Parse(maxCountMatch.Groups[1].Value) >= 10,
+                $"下拉控件 {controlName} 的 MaxCount 不得少于 10 条。");
         }
     }
 
