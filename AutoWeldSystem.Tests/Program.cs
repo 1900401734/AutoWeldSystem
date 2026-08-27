@@ -430,6 +430,7 @@ var tests = new (string Name, Action Run)[]
     ("Monitor view clears idle production data", MonitorViewClearsIdleProductionData),
     ("Weld task finish uses MES start id for retry payloads", WeldTaskFinishUsesMesStartIdForRetryPayloads),
     ("Offline start and finish skip blocking device status report", OfflineStartAndFinishSkipBlockingDeviceStatusReport),
+    ("MES finish report work hour keeps two decimals", MesFinishReportWorkHourKeepsTwoDecimals),
     ("Upload message display rules localize persisted messages", UploadMessageDisplayRulesLocalizePersistedMessages),
     ("Weld task restore unfinished task is idempotent", WeldTaskRestoreUnfinishedTaskIsIdempotent),
     ("Permission catalog omits get work order button", PermissionCatalogOmitsGetWorkOrderButton),
@@ -3853,7 +3854,7 @@ static void ProductionReportCompletionFlowPersistsBeforeFinalGeneration()
         "private static ReportExperimentStatusReq BuildStatusRequest(");
     AssertTrue(buildEndRequestMethod.Contains("var endTime = task.EndTime ?? DateTime.Now;", StringComparison.Ordinal), "离线 MES 完工请求必须优先复用持久化 EndTime。");
     AssertTrue(buildEndRequestMethod.Contains("EndTs = endTime.ToString(\"yyyy-MM-dd HH:mm:ss\")", StringComparison.Ordinal), "离线 MES 完工时间必须来自统一 endTime。");
-    AssertTrue(buildEndRequestMethod.Contains("(endTime - task.StartTime).TotalHours", StringComparison.Ordinal), "离线 MES 工时必须使用统一 endTime。");
+    AssertTrue(buildEndRequestMethod.Contains("MesWorkHourRules.FromRange(task.StartTime, endTime)", StringComparison.Ordinal), "离线 MES 工时必须使用统一 endTime 并走两位定标规则。");
 
     var uploadTaskServiceCode = File.ReadAllText(
         GetRepoFilePath("AutoWeldSystem.Services", "Production", "UploadTaskService.cs"),
@@ -13383,6 +13384,35 @@ static void WeldTaskFinishUsesMesStartIdForRetryPayloads()
     AssertTrue(retryFinishIndex >= 0 && retryFinishIndex < retryReportFileIndex, "全局补传必须先处理完工上报，再处理报告文件。");
     AssertTrue(buildEndRequest.Contains("ExpStartId = task.ExpStartId ?? string.Empty", StringComparison.Ordinal), "离线补传完工请求也必须使用任务中的 MES ExpStartId。");
     AssertFalse(buildEndRequest.Contains("LocalExpStartId", StringComparison.Ordinal), "BuildEndRequest 不应把 LocalExpStartId 写入 MES ExpStartId 字段。");
+}
+
+static void MesFinishReportWorkHourKeepsTwoDecimals()
+{
+    var start = new DateTime(2026, 8, 27, 8, 0, 0);
+
+    // 定标：整小时也必须是两位小数，JSON 序列化后应为 1.00 而不是 1。
+    var oneHour = MesWorkHourRules.FromRange(start, start.AddHours(1));
+    AssertEqual("1.00", oneHour.ToString(System.Globalization.CultureInfo.InvariantCulture), "整小时工时必须定标为两位小数。");
+    AssertEqual("1.00", JsonSerializer.Serialize(oneHour), "上报 JSON 中的工时字面量必须保留两位小数。");
+
+    // 四舍五入而非银行家舍入：1.005 小时必须进位到 1.01。
+    AssertEqual("1.01", MesWorkHourRules.Normalize(1.005m).ToString(System.Globalization.CultureInfo.InvariantCulture), "工时必须四舍五入，不得使用默认的银行家舍入。");
+    AssertEqual("2.35", MesWorkHourRules.Normalize(2.345m).ToString(System.Globalization.CultureInfo.InvariantCulture), "工时第三位为 5 时必须向上进位。");
+    AssertEqual("0.33", MesWorkHourRules.Normalize(1m / 3m).ToString(System.Globalization.CultureInfo.InvariantCulture), "无限小数必须按第三位四舍五入为两位。");
+    AssertEqual("0.67", MesWorkHourRules.Normalize(2m / 3m).ToString(System.Globalization.CultureInfo.InvariantCulture), "第三位大于 5 的无限小数必须进位。");
+
+    // 不足 0.01 小时（约 18 秒）的任务上报 0.00，不抬升为 0.01。
+    AssertEqual("0.00", MesWorkHourRules.FromRange(start, start.AddSeconds(10)).ToString(System.Globalization.CultureInfo.InvariantCulture), "不足 0.01 小时的任务必须上报 0.00。");
+    AssertEqual("0.00", MesWorkHourRules.FromRange(start, start).ToString(System.Globalization.CultureInfo.InvariantCulture), "开工与完工同一时刻必须上报 0.00。");
+    AssertEqual("0.00", MesWorkHourRules.FromRange(start, start.AddHours(-1)).ToString(System.Globalization.CultureInfo.InvariantCulture), "结束时间早于开工时间必须回退为 0.00，不得出现负工时。");
+
+    // 三处构造完工请求的路径都必须走同一规则，避免补传绕过定标。
+    var weldTaskServiceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "WeldTaskService.cs"), Encoding.UTF8);
+    var uploadTaskServiceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "UploadTaskService.cs"), Encoding.UTF8);
+    AssertEqual(2, CountOccurrences(weldTaskServiceCode, "WorkHour = MesWorkHourRules.FromRange("), "在线完工和离线完工都必须使用工时定标规则。");
+    AssertTrue(uploadTaskServiceCode.Contains("MesWorkHourRules.FromRange(weldTask.StartTime, weldTask.EndTime ?? DateTime.Now)", StringComparison.Ordinal), "补传重算工时同样必须走定标规则。");
+    AssertFalse(weldTaskServiceCode.Contains("Convert.ToDecimal((finishTime - task.StartTime).TotalHours)", StringComparison.Ordinal), "完工请求不得再直接使用未定标的小时数。");
+    AssertFalse(uploadTaskServiceCode.Contains("Convert.ToDecimal(((weldTask.EndTime ?? DateTime.Now) - weldTask.StartTime).TotalHours)", StringComparison.Ordinal), "补传路径不得再直接使用未定标的小时数。");
 }
 
 static void OfflineStartAndFinishSkipBlockingDeviceStatusReport()

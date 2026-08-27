@@ -10,6 +10,7 @@ using AutoWeldSystem.Core.Exceptions;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.MES;
+using AutoWeldSystem.Core.Mes;
 using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Core.Runtime;
 using AutoWeldSystem.Data;
@@ -648,7 +649,7 @@ public class WeldTaskService : IWeldTaskService
             EndTs = finishTime.ToString("yyyy-MM-dd HH:mm:ss"),
             EndExperID = endOperator,
             ExpStatus = "1",
-            WorkHour = Convert.ToDecimal((finishTime - task.StartTime).TotalHours),
+            WorkHour = MesWorkHourRules.FromRange(task.StartTime, finishTime),
             ExpQty = actualQty,
             QualifyNumber = qualifiedQty,
             FailureNumber = failedQty
@@ -945,7 +946,7 @@ public class WeldTaskService : IWeldTaskService
             EndTs = endTime.ToString("yyyy-MM-dd HH:mm:ss"),
             EndExperID = employeeNumber,
             ExpStatus = ProductionConstants.MesWorkOrderStatuses.Completed,
-            WorkHour = Convert.ToDecimal((endTime - task.StartTime).TotalHours),
+            WorkHour = MesWorkHourRules.FromRange(task.StartTime, endTime),
             ExpQty = actualQty,
             QualifyNumber = qualifiedQty,
             FailureNumber = failedQty

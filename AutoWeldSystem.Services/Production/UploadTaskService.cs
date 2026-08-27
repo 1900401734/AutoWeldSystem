@@ -7,6 +7,7 @@ using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.MES;
+using AutoWeldSystem.Core.Mes;
 using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Data;
 using System.Globalization;
@@ -918,8 +919,10 @@ public class UploadTaskService : IUploadTaskService
         request.EndExperID = FirstNonEmpty(request.EndExperID, weldTask.EndOperatorNumber, weldTask.UserNumber, Environment.UserName);
         request.EndTs = FirstNonEmpty(request.EndTs, weldTask.EndTime?.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
         request.ExpStatus = ProductionConstants.MesWorkOrderStatuses.Completed;
+        // 短任务定标后就是 0.00，会命中这个 <= 0 分支，因此重算值同样要按两位定标，
+        // 否则 18 秒以内的任务会绕过工时精度规则把长小数发给 MES。历史 payload 中大于 0 的工时原样透传。
         request.WorkHour = request.WorkHour <= 0
-            ? Convert.ToDecimal(((weldTask.EndTime ?? DateTime.Now) - weldTask.StartTime).TotalHours)
+            ? MesWorkHourRules.FromRange(weldTask.StartTime, weldTask.EndTime ?? DateTime.Now)
             : request.WorkHour;
         request.ExpQty = request.ExpQty <= 0 ? weldTask.ActualQty : request.ExpQty;
         request.QualifyNumber = request.QualifyNumber <= 0 ? weldTask.QualifiedQty : request.QualifyNumber;
