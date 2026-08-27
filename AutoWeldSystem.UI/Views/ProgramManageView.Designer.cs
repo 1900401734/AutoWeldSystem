@@ -149,18 +149,18 @@
             leftLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48F));
             leftLayout.Size = new Size(911, 676);
             leftLayout.TabIndex = 0;
-            //
+            // 
             // tablePrograms
-            //
+            // 
             tablePrograms.Dock = DockStyle.Fill;
             tablePrograms.Gap = 12;
             tablePrograms.Location = new Point(3, 3);
             tablePrograms.Name = "tablePrograms";
             tablePrograms.Size = new Size(905, 622);
             tablePrograms.TabIndex = 3;
-            //
+            // 
             // programPagination
-            //
+            // 
             programPagination.Dock = DockStyle.Fill;
             programPagination.Location = new Point(3, 631);
             programPagination.Name = "programPagination";
@@ -175,7 +175,7 @@
             programPagination.ShowSizeChanger = true;
             programPagination.Size = new Size(905, 42);
             programPagination.TabIndex = 1;
-            //
+            // 
             // rightLayout
             // 
             rightLayout.ColumnCount = 1;
@@ -257,7 +257,7 @@
             lblProgramId.Text = "程序ID";
             // 
             // txtProgramId
-            //
+            // 
             txtProgramId.Dock = DockStyle.Fill;
             txtProgramId.Location = new Point(58, 0);
             txtProgramId.Margin = new Padding(0);
@@ -265,9 +265,9 @@
             txtProgramId.ReadOnly = true;
             txtProgramId.Size = new Size(387, 1);
             txtProgramId.TabIndex = 1;
-            //
+            // 
             // lblCurrentInfo
-            //
+            // 
             lblCurrentInfo.Dock = DockStyle.Fill;
             lblCurrentInfo.Location = new Point(0, 0);
             lblCurrentInfo.Margin = new Padding(0);
@@ -276,7 +276,7 @@
             lblCurrentInfo.Size = new Size(445, 53);
             lblCurrentInfo.TabIndex = 1;
             lblCurrentInfo.Text = "xxx";
-            //
+            // 
             // tlpRemark
             // 
             tlpRemark.AutoSize = true;
@@ -351,21 +351,21 @@
             // inputProgramName
             // 
             inputProgramName.Dock = DockStyle.Fill;
-            inputProgramName.Location = new Point(90, 0);
+            inputProgramName.Location = new Point(140, 0);
             inputProgramName.Margin = new Padding(0);
             inputProgramName.Name = "inputProgramName";
-            inputProgramName.Size = new Size(231, 53);
+            inputProgramName.Size = new Size(181, 53);
             inputProgramName.TabIndex = 12;
-            //
+            // 
             // lblProgramName
-            //
+            // 
             lblProgramName.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblProgramName.Dock = DockStyle.Fill;
             lblProgramName.Location = new Point(0, 0);
             lblProgramName.Margin = new Padding(0);
             lblProgramName.Name = "lblProgramName";
             lblProgramName.Padding = new Padding(4, 0, 0, 0);
-            lblProgramName.Size = new Size(90, 53);
+            lblProgramName.Size = new Size(74, 53);
             lblProgramName.TabIndex = 11;
             lblProgramName.Text = "程序名称";
             // 
@@ -443,14 +443,14 @@
             // inputProductNum
             // 
             inputProductNum.Dock = DockStyle.Fill;
-            inputProductNum.Location = new Point(90, 0);
+            inputProductNum.Location = new Point(140, 0);
             inputProductNum.Margin = new Padding(0);
             inputProductNum.Name = "inputProductNum";
-            inputProductNum.Size = new Size(355, 53);
+            inputProductNum.Size = new Size(305, 53);
             inputProductNum.TabIndex = 1;
             // 
             // tlpRecipe2
-            //
+            // 
             tlpRecipe2.AutoSize = true;
             tlpRecipe2.ColumnCount = 2;
             tlpRecipe2.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140F));
@@ -465,9 +465,9 @@
             tlpRecipe2.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tlpRecipe2.Size = new Size(445, 53);
             tlpRecipe2.TabIndex = 4;
-            //
+            // 
             // lblRecipeCode2
-            //
+            // 
             lblRecipeCode2.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblRecipeCode2.Dock = DockStyle.Fill;
             lblRecipeCode2.Location = new Point(0, 0);
@@ -493,7 +493,7 @@
             selectStation2Recipe.WheelModifyEnabled = false;
             // 
             // tlpDrawingNo
-            //
+            // 
             tlpDrawingNo.AutoSize = true;
             tlpDrawingNo.ColumnCount = 2;
             tlpDrawingNo.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140F));
@@ -526,14 +526,14 @@
             // inputComponentCode
             // 
             inputComponentCode.Dock = DockStyle.Fill;
-            inputComponentCode.Location = new Point(90, 0);
+            inputComponentCode.Location = new Point(140, 0);
             inputComponentCode.Margin = new Padding(0);
             inputComponentCode.Name = "inputComponentCode";
-            inputComponentCode.Size = new Size(355, 53);
+            inputComponentCode.Size = new Size(305, 53);
             inputComponentCode.TabIndex = 1;
             // 
             // tlpRecipe1
-            //
+            // 
             tlpRecipe1.AutoSize = true;
             tlpRecipe1.ColumnCount = 2;
             tlpRecipe1.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140F));
@@ -548,9 +548,9 @@
             tlpRecipe1.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tlpRecipe1.Size = new Size(445, 53);
             tlpRecipe1.TabIndex = 4;
-            //
+            // 
             // lblRecipeCode1
-            //
+            // 
             lblRecipeCode1.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblRecipeCode1.Dock = DockStyle.Fill;
             lblRecipeCode1.Location = new Point(0, 0);
@@ -564,7 +564,7 @@
             lblRecipeCode1.Text = "工位1配方名称";
             // 
             // selectStation1Recipe
-            //
+            // 
             selectStation1Recipe.Dock = DockStyle.Fill;
             selectStation1Recipe.List = true;
             selectStation1Recipe.Location = new Point(140, 0);
@@ -574,9 +574,9 @@
             selectStation1Recipe.Size = new Size(305, 53);
             selectStation1Recipe.TabIndex = 1;
             selectStation1Recipe.WheelModifyEnabled = false;
-            //
+            // 
             // tlpSN
-            //
+            // 
             tlpSN.AutoSize = true;
             tlpSN.ColumnCount = 2;
             tlpSN.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140F));
@@ -591,26 +591,26 @@
             tlpSN.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tlpSN.Size = new Size(445, 53);
             tlpSN.TabIndex = 4;
-            //
+            // 
             // lblSequenceNumber
-            //
+            // 
             lblSequenceNumber.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblSequenceNumber.Dock = DockStyle.Fill;
             lblSequenceNumber.Location = new Point(0, 0);
             lblSequenceNumber.Margin = new Padding(0);
             lblSequenceNumber.Name = "lblSequenceNumber";
             lblSequenceNumber.Padding = new Padding(4, 0, 0, 0);
-            lblSequenceNumber.Size = new Size(90, 53);
+            lblSequenceNumber.Size = new Size(57, 53);
             lblSequenceNumber.TabIndex = 11;
             lblSequenceNumber.Text = "流水号";
-            //
+            // 
             // inputSequenceNumber
-            //
+            // 
             inputSequenceNumber.Dock = DockStyle.Fill;
-            inputSequenceNumber.Location = new Point(90, 0);
+            inputSequenceNumber.Location = new Point(140, 0);
             inputSequenceNumber.Margin = new Padding(0);
             inputSequenceNumber.Name = "inputSequenceNumber";
-            inputSequenceNumber.Size = new Size(355, 53);
+            inputSequenceNumber.Size = new Size(305, 53);
             inputSequenceNumber.TabIndex = 1;
             // 
             // tlpDescription
@@ -638,17 +638,17 @@
             lblDescription.Margin = new Padding(0);
             lblDescription.Name = "lblDescription";
             lblDescription.Padding = new Padding(4, 0, 0, 0);
-            lblDescription.Size = new Size(78, 53);
+            lblDescription.Size = new Size(74, 53);
             lblDescription.TabIndex = 1;
             lblDescription.Text = "程序备注";
             // 
             // inputDescription
             // 
             inputDescription.Dock = DockStyle.Fill;
-            inputDescription.Location = new Point(90, 0);
+            inputDescription.Location = new Point(140, 0);
             inputDescription.Margin = new Padding(0);
             inputDescription.Name = "inputDescription";
-            inputDescription.Size = new Size(355, 53);
+            inputDescription.Size = new Size(305, 53);
             inputDescription.TabIndex = 1;
             // 
             // programContentLayout
@@ -690,7 +690,7 @@
             tableProgramContent.TabIndex = 27;
             // 
             // toolbarLayout
-            //
+            // 
             toolbarLayout.ColumnCount = 2;
             toolbarLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             toolbarLayout.ColumnStyles.Add(new ColumnStyle());
@@ -705,9 +705,9 @@
             toolbarLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             toolbarLayout.Size = new Size(1366, 67);
             toolbarLayout.TabIndex = 0;
-            //
+            // 
             // tlpToolbar1
-            //
+            // 
             tlpToolbar1.ColumnCount = 6;
             tlpToolbar1.ColumnStyles.Add(new ColumnStyle());
             tlpToolbar1.ColumnStyles.Add(new ColumnStyle());
@@ -730,9 +730,9 @@
             tlpToolbar1.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tlpToolbar1.Size = new Size(979, 49);
             tlpToolbar1.TabIndex = 1;
-            //
+            // 
             // queryPrograms
-            //
+            // 
             queryPrograms.AutoSize = true;
             queryPrograms.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             queryPrograms.Dock = DockStyle.Fill;
@@ -745,9 +745,9 @@
             queryPrograms.RefreshButtonTag = "perm:button.program.refresh:enabled";
             queryPrograms.Size = new Size(337, 49);
             queryPrograms.TabIndex = 1;
-            //
+            // 
             // btnPullMes
-            //
+            // 
             btnPullMes.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnPullMes.BorderWidth = 1F;
             btnPullMes.Dock = DockStyle.Fill;
@@ -759,9 +759,9 @@
             btnPullMes.TabIndex = 6;
             btnPullMes.Tag = "perm:button.program.pull-mes:enabled";
             btnPullMes.Text = "从MES拉取";
-            //
+            // 
             // btnSync
-            //
+            // 
             btnSync.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnSync.BorderWidth = 1F;
             btnSync.Dock = DockStyle.Fill;
@@ -773,9 +773,9 @@
             btnSync.TabIndex = 5;
             btnSync.Tag = "perm:button.program.sync:enabled";
             btnSync.Text = "同步MES";
-            //
+            // 
             // btnBatchClean
-            //
+            // 
             btnBatchClean.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnBatchClean.BorderWidth = 1F;
             btnBatchClean.Dock = DockStyle.Fill;
@@ -788,9 +788,9 @@
             btnBatchClean.Tag = "perm:button.program.delete:enabled";
             btnBatchClean.Text = "批量清理";
             btnBatchClean.Type = AntdUI.TTypeMini.Warn;
-            //
+            // 
             // btnDelete
-            //
+            // 
             btnDelete.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnDelete.BorderWidth = 1F;
             btnDelete.Dock = DockStyle.Fill;
@@ -802,9 +802,9 @@
             btnDelete.TabIndex = 3;
             btnDelete.Tag = "perm:button.program.delete:enabled";
             btnDelete.Text = "删除";
-            //
+            // 
             // btnSaveAsNew
-            //
+            // 
             btnSaveAsNew.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnSaveAsNew.BorderWidth = 1F;
             btnSaveAsNew.Dock = DockStyle.Fill;
@@ -816,9 +816,9 @@
             btnSaveAsNew.TabIndex = 2;
             btnSaveAsNew.Tag = "perm:button.program.add:enabled";
             btnSaveAsNew.Text = "另存为新程序";
-            //
+            // 
             // tlpToolbar2
-            //
+            // 
             tlpToolbar2.AutoSize = true;
             tlpToolbar2.ColumnCount = 3;
             tlpToolbar2.ColumnStyles.Add(new ColumnStyle());
@@ -835,9 +835,9 @@
             tlpToolbar2.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tlpToolbar2.Size = new Size(347, 49);
             tlpToolbar2.TabIndex = 2;
-            //
+            // 
             // btnNew
-            //
+            // 
             btnNew.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnNew.BorderWidth = 1F;
             btnNew.Dock = DockStyle.Fill;
@@ -849,9 +849,9 @@
             btnNew.TabIndex = 0;
             btnNew.Tag = "perm:button.program.add:enabled";
             btnNew.Text = "新建";
-            //
+            // 
             // chkSyncNow
-            //
+            // 
             chkSyncNow.AutoSizeMode = AntdUI.TAutoSize.Width;
             chkSyncNow.Checked = true;
             chkSyncNow.CheckState = CheckState.Checked;
@@ -862,9 +862,9 @@
             chkSyncNow.Size = new Size(169, 49);
             chkSyncNow.TabIndex = 7;
             chkSyncNow.Text = "保存后立即同步";
-            //
+            // 
             // btnSave
-            //
+            // 
             btnSave.AutoSizeMode = AntdUI.TAutoSize.Width;
             btnSave.BorderWidth = 1F;
             btnSave.Dock = DockStyle.Fill;
@@ -876,11 +876,11 @@
             btnSave.TabIndex = 1;
             btnSave.Tag = "perm:button.program.edit:enabled";
             btnSave.Text = "保存";
-            //
+            // 
             // ProgramManageView
             // 
-            AutoScaleDimensions = new SizeF(120F, 120F);
-            AutoScaleMode = AutoScaleMode.Dpi;
+            AutoScaleDimensions = new SizeF(10F, 23F);
+            AutoScaleMode = AutoScaleMode.Font;
             Controls.Add(rootLayout);
             Font = new Font("Microsoft YaHei UI", 10.5F);
             Name = "ProgramManageView";
@@ -912,6 +912,7 @@
             tlpRecipe1.ResumeLayout(false);
             tlpRecipe1.PerformLayout();
             tlpSN.ResumeLayout(false);
+            tlpSN.PerformLayout();
             tlpDescription.ResumeLayout(false);
             tlpDescription.PerformLayout();
             programContentLayout.ResumeLayout(false);
