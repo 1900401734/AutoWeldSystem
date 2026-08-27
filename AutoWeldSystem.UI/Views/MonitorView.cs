@@ -527,6 +527,7 @@ public partial class MonitorView : BaseView
         var decision = MonitorReportButtonRules.Decide(
             _stationViewReadOnly,
             _mesConnectionMonitorService.Current.IsConnected,
+            ArePlcStationsConnected(CurrentStationNo),
             hasOnlineRunningTask,
             hasOfflineRunningTask);
 
@@ -1166,6 +1167,11 @@ public partial class MonitorView : BaseView
             return;
         }
 
+        if (!EnsurePlcConnectedForStart())
+        {
+            return;
+        }
+
         if (!TryBuildOfflineStartRequest(stationNo, out var request, out var selectedProgram))
         {
             return;
@@ -1242,10 +1248,36 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
+    /// 开工前确认本次操作涉及的全部 PLC 工位均已建立连接。
+    /// </summary>
+    private bool EnsurePlcConnectedForStart()
+    {
+        if (ArePlcStationsConnected(CurrentStationNo))
+        {
+            return true;
+        }
+
+        SetRuntimeError(TextKeys.Monitor.Message.PlcDisconnected);
+        return false;
+    }
+
+    /// <summary>
+    /// 双工位共用工单时同时检查两个工位；独立工单只检查当前工位。
+    /// </summary>
+    private bool ArePlcStationsConnected(int stationNo)
+        => ResolveWorkOrderSignalStations(stationNo)
+            .All(targetStationNo => _plcCommunicationService.GetCurrent(targetStationNo).IsConnected);
+
+    /// <summary>
     /// 执行在线开工上报流程。
     /// </summary>
     private async Task RunStartReportAsync()
     {
+        if (!EnsurePlcConnectedForStart())
+        {
+            return;
+        }
+
         if (IsReadOnlyOperationBlocked("开工上报"))
         {
             return;
@@ -3420,9 +3452,14 @@ public partial class MonitorView : BaseView
     {
         var settings = _currentSettings;
         var production = GetCurrentProductionSnapshot();
+        if (TryResolveFinishQuantitiesFromPlc(stationNo, production, out actualQty, out qualifiedQty, out failedQty))
+        {
+            return true;
+        }
+
+        // PLC 数量读取失败时，只有启用系统设置才允许人工补录；默认仍保持弹窗关闭。
         return settings.EnableFinishExpQtyPrompt
-            ? TryResolveFinishQuantitiesWithPrompt(production, out actualQty, out qualifiedQty, out failedQty)
-            : TryResolveFinishQuantitiesFromPlc(stationNo, production, out actualQty, out qualifiedQty, out failedQty);
+            && TryResolveFinishQuantitiesWithPrompt(production, out actualQty, out qualifiedQty, out failedQty);
     }
 
     /// <summary>
