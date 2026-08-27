@@ -423,9 +423,6 @@
   <data name="system.label.mes_url" xml:space="preserve">
     <value>MES地址</value>
   </data>
-  <data name="system.checkbox.use_product_number_filter" xml:space="preserve">
-    <value>按产品工号筛选程序</value>
-  </data>
   <data name="system.checkbox.use_operator_input_dialog" xml:space="preserve">
     <value>操作员弹窗输入</value>
   </data>
@@ -893,6 +890,18 @@
   </data>
   <data name="monitor.label.program_name" xml:space="preserve">
     <value>程序名称</value>
+  </data>
+  <data name="monitor.checkbox.filter_by_product_number" xml:space="preserve">
+    <value>按工号筛选</value>
+  </data>
+  <data name="monitor.checkbox.enable_dual_work_order" xml:space="preserve">
+    <value>启用双工单</value>
+  </data>
+  <data name="monitor.tooltip.filter_by_product_number" xml:space="preserve">
+    <value>启用后，开工时仅显示与当前产品工号匹配的程序；关闭后显示全部可用程序。</value>
+  </data>
+  <data name="monitor.tooltip.enable_dual_work_order" xml:space="preserve">
+    <value>启用后，双工位可分别使用独立工单；关闭后，双工位共用同一工单。</value>
   </data>
   <data name="monitor.label.product_number" xml:space="preserve">
     <value>产品工号</value>

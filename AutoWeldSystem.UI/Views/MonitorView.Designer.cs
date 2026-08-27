@@ -31,14 +31,14 @@ namespace AutoWeldSystem.UI.Views
         private void InitializeComponent()
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(MonitorView));
-            AntdUI.Tabs.StyleLine styleLine1 = new AntdUI.Tabs.StyleLine();
-            DataGridViewCellStyle dataGridViewCellStyle1 = new DataGridViewCellStyle();
-            DataGridViewCellStyle dataGridViewCellStyle2 = new DataGridViewCellStyle();
-            DataGridViewCellStyle dataGridViewCellStyle3 = new DataGridViewCellStyle();
-            DataGridViewCellStyle dataGridViewCellStyle4 = new DataGridViewCellStyle();
-            AntdUI.SegmentedItem segmentedItem1 = new AntdUI.SegmentedItem();
-            AntdUI.SegmentedItem segmentedItem2 = new AntdUI.SegmentedItem();
-            AntdUI.Tabs.StyleLine styleLine2 = new AntdUI.Tabs.StyleLine();
+            AntdUI.Tabs.StyleLine styleLine4 = new AntdUI.Tabs.StyleLine();
+            DataGridViewCellStyle dataGridViewCellStyle5 = new DataGridViewCellStyle();
+            DataGridViewCellStyle dataGridViewCellStyle6 = new DataGridViewCellStyle();
+            DataGridViewCellStyle dataGridViewCellStyle7 = new DataGridViewCellStyle();
+            DataGridViewCellStyle dataGridViewCellStyle8 = new DataGridViewCellStyle();
+            AntdUI.SegmentedItem segmentedItem3 = new AntdUI.SegmentedItem();
+            AntdUI.SegmentedItem segmentedItem4 = new AntdUI.SegmentedItem();
+            AntdUI.Tabs.StyleLine styleLine3 = new AntdUI.Tabs.StyleLine();
             VerticalSplitter = new AntdUI.Splitter();
             tlpLeft = new TableLayoutPanel();
             LeftTopLayout = new TableLayoutPanel();
@@ -124,6 +124,10 @@ namespace AutoWeldSystem.UI.Views
             tlpProductNum = new TableLayoutPanel();
             selectProdNum = new AntdUI.Select();
             lblProductNo = new AntdUI.Label();
+            chkFilterByProductNumber = new AntdUI.Checkbox();
+            components = new System.ComponentModel.Container();
+            tooltipComponent = new AntdUI.TooltipComponent();
+            components.Add(tooltipComponent);
             tlpProgramName = new TableLayoutPanel();
             selectProgramName = new AntdUI.Select();
             lblProgramName = new AntdUI.Label();
@@ -392,7 +396,7 @@ namespace AutoWeldSystem.UI.Views
             tabsPreview.Pages.Add(tabsPreview1);
             tabsPreview.Pages.Add(tabsPreview2);
             tabsPreview.Size = new Size(1057, 804);
-            tabsPreview.Style = styleLine1;
+            tabsPreview.Style = styleLine4;
             tabsPreview.TabIndex = 6;
             tabsPreview.Text = "tabs1";
             // 
@@ -522,23 +526,23 @@ namespace AutoWeldSystem.UI.Views
             dgvPreview1.BackgroundColor = SystemColors.Control;
             dgvPreview1.BorderStyle = BorderStyle.None;
             dgvPreview1.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
-            dataGridViewCellStyle1.Alignment = DataGridViewContentAlignment.MiddleCenter;
-            dataGridViewCellStyle1.BackColor = SystemColors.Control;
-            dataGridViewCellStyle1.Font = new Font("Microsoft YaHei UI", 10.5F);
-            dataGridViewCellStyle1.ForeColor = SystemColors.WindowText;
-            dataGridViewCellStyle1.SelectionBackColor = SystemColors.ActiveCaption;
-            dataGridViewCellStyle1.SelectionForeColor = SystemColors.HighlightText;
-            dgvPreview1.ColumnHeadersDefaultCellStyle = dataGridViewCellStyle1;
+            dataGridViewCellStyle5.Alignment = DataGridViewContentAlignment.MiddleCenter;
+            dataGridViewCellStyle5.BackColor = SystemColors.Control;
+            dataGridViewCellStyle5.Font = new Font("Microsoft YaHei UI", 10.5F);
+            dataGridViewCellStyle5.ForeColor = SystemColors.WindowText;
+            dataGridViewCellStyle5.SelectionBackColor = SystemColors.ActiveCaption;
+            dataGridViewCellStyle5.SelectionForeColor = SystemColors.HighlightText;
+            dgvPreview1.ColumnHeadersDefaultCellStyle = dataGridViewCellStyle5;
             dgvPreview1.ColumnHeadersHeight = 29;
             dgvPreview1.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
-            dataGridViewCellStyle2.Alignment = DataGridViewContentAlignment.MiddleCenter;
-            dataGridViewCellStyle2.BackColor = SystemColors.Control;
-            dataGridViewCellStyle2.Font = new Font("Microsoft YaHei UI", 10.5F);
-            dataGridViewCellStyle2.ForeColor = SystemColors.GrayText;
-            dataGridViewCellStyle2.SelectionBackColor = SystemColors.Highlight;
-            dataGridViewCellStyle2.SelectionForeColor = SystemColors.HighlightText;
-            dataGridViewCellStyle2.WrapMode = DataGridViewTriState.False;
-            dgvPreview1.DefaultCellStyle = dataGridViewCellStyle2;
+            dataGridViewCellStyle6.Alignment = DataGridViewContentAlignment.MiddleCenter;
+            dataGridViewCellStyle6.BackColor = SystemColors.Control;
+            dataGridViewCellStyle6.Font = new Font("Microsoft YaHei UI", 10.5F);
+            dataGridViewCellStyle6.ForeColor = SystemColors.GrayText;
+            dataGridViewCellStyle6.SelectionBackColor = SystemColors.Highlight;
+            dataGridViewCellStyle6.SelectionForeColor = SystemColors.HighlightText;
+            dataGridViewCellStyle6.WrapMode = DataGridViewTriState.False;
+            dgvPreview1.DefaultCellStyle = dataGridViewCellStyle6;
             dgvPreview1.Dock = DockStyle.Fill;
             dgvPreview1.EnableHeadersVisualStyles = false;
             dgvPreview1.ImeMode = ImeMode.Disable;
@@ -646,23 +650,23 @@ namespace AutoWeldSystem.UI.Views
             dgvPreview2.BackgroundColor = SystemColors.Control;
             dgvPreview2.BorderStyle = BorderStyle.None;
             dgvPreview2.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
-            dataGridViewCellStyle3.Alignment = DataGridViewContentAlignment.MiddleCenter;
-            dataGridViewCellStyle3.BackColor = SystemColors.Control;
-            dataGridViewCellStyle3.Font = new Font("Microsoft YaHei UI", 10.5F);
-            dataGridViewCellStyle3.ForeColor = SystemColors.WindowText;
-            dataGridViewCellStyle3.SelectionBackColor = SystemColors.ActiveCaption;
-            dataGridViewCellStyle3.SelectionForeColor = SystemColors.HighlightText;
-            dgvPreview2.ColumnHeadersDefaultCellStyle = dataGridViewCellStyle3;
+            dataGridViewCellStyle7.Alignment = DataGridViewContentAlignment.MiddleCenter;
+            dataGridViewCellStyle7.BackColor = SystemColors.Control;
+            dataGridViewCellStyle7.Font = new Font("Microsoft YaHei UI", 10.5F);
+            dataGridViewCellStyle7.ForeColor = SystemColors.WindowText;
+            dataGridViewCellStyle7.SelectionBackColor = SystemColors.ActiveCaption;
+            dataGridViewCellStyle7.SelectionForeColor = SystemColors.HighlightText;
+            dgvPreview2.ColumnHeadersDefaultCellStyle = dataGridViewCellStyle7;
             dgvPreview2.ColumnHeadersHeight = 29;
             dgvPreview2.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
-            dataGridViewCellStyle4.Alignment = DataGridViewContentAlignment.MiddleCenter;
-            dataGridViewCellStyle4.BackColor = SystemColors.Control;
-            dataGridViewCellStyle4.Font = new Font("Microsoft YaHei UI", 10.5F);
-            dataGridViewCellStyle4.ForeColor = SystemColors.GrayText;
-            dataGridViewCellStyle4.SelectionBackColor = SystemColors.Highlight;
-            dataGridViewCellStyle4.SelectionForeColor = SystemColors.HighlightText;
-            dataGridViewCellStyle4.WrapMode = DataGridViewTriState.False;
-            dgvPreview2.DefaultCellStyle = dataGridViewCellStyle4;
+            dataGridViewCellStyle8.Alignment = DataGridViewContentAlignment.MiddleCenter;
+            dataGridViewCellStyle8.BackColor = SystemColors.Control;
+            dataGridViewCellStyle8.Font = new Font("Microsoft YaHei UI", 10.5F);
+            dataGridViewCellStyle8.ForeColor = SystemColors.GrayText;
+            dataGridViewCellStyle8.SelectionBackColor = SystemColors.Highlight;
+            dataGridViewCellStyle8.SelectionForeColor = SystemColors.HighlightText;
+            dataGridViewCellStyle8.WrapMode = DataGridViewTriState.False;
+            dgvPreview2.DefaultCellStyle = dataGridViewCellStyle8;
             dgvPreview2.Dock = DockStyle.Fill;
             dgvPreview2.EnableHeadersVisualStyles = false;
             dgvPreview2.ImeMode = ImeMode.Disable;
@@ -952,11 +956,11 @@ namespace AutoWeldSystem.UI.Views
             segmentedStationSwitch.Dock = DockStyle.Fill;
             segmentedStationSwitch.ForeActive = Color.RoyalBlue;
             segmentedStationSwitch.Full = true;
-            segmentedItem1.LocalizationText = "";
-            segmentedItem1.Text = "工位1";
-            segmentedItem2.Text = "工位2";
-            segmentedStationSwitch.Items.Add(segmentedItem1);
-            segmentedStationSwitch.Items.Add(segmentedItem2);
+            segmentedItem3.LocalizationText = "";
+            segmentedItem3.Text = "工位1";
+            segmentedItem4.Text = "工位2";
+            segmentedStationSwitch.Items.Add(segmentedItem3);
+            segmentedStationSwitch.Items.Add(segmentedItem4);
             segmentedStationSwitch.Location = new Point(0, 0);
             segmentedStationSwitch.Margin = new Padding(0);
             segmentedStationSwitch.Name = "segmentedStationSwitch";
@@ -1389,6 +1393,9 @@ namespace AutoWeldSystem.UI.Views
             chkEnableDualWorkOrder.Size = new Size(134, 33);
             chkEnableDualWorkOrder.TabIndex = 23;
             chkEnableDualWorkOrder.Text = "启用双工单";
+            // tooltipComponent
+            //
+            tooltipComponent.Delay = 300;
             // 
             // tlpProductModel
             // 
@@ -1432,11 +1439,13 @@ namespace AutoWeldSystem.UI.Views
             // 
             // tlpProductNum
             // 
-            tlpProductNum.ColumnCount = 2;
+            tlpProductNum.ColumnCount = 3;
             tlpProductNum.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 82F));
             tlpProductNum.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            tlpProductNum.ColumnStyles.Add(new ColumnStyle());
             tlpProductNum.Controls.Add(selectProdNum, 1, 0);
             tlpProductNum.Controls.Add(lblProductNo, 0, 0);
+            tlpProductNum.Controls.Add(chkFilterByProductNumber, 2, 0);
             tlpProductNum.Dock = DockStyle.Fill;
             tlpProductNum.Location = new Point(0, 102);
             tlpProductNum.Margin = new Padding(0);
@@ -1454,7 +1463,7 @@ namespace AutoWeldSystem.UI.Views
             selectProdNum.MaxCount = 10;
             selectProdNum.Name = "selectProdNum";
             selectProdNum.ReadOnly = true;
-            selectProdNum.Size = new Size(410, 33);
+            selectProdNum.Size = new Size(276, 33);
             selectProdNum.TabIndex = 4;
             // 
             // lblProductNo
@@ -1471,6 +1480,17 @@ namespace AutoWeldSystem.UI.Views
             lblProductNo.Size = new Size(87, 33);
             lblProductNo.TabIndex = 24;
             lblProductNo.Text = "产品工号";
+            // 
+            // chkFilterByProductNumber
+            // 
+            chkFilterByProductNumber.AutoSizeMode = AntdUI.TAutoSize.Width;
+            chkFilterByProductNumber.Dock = DockStyle.Fill;
+            chkFilterByProductNumber.Location = new Point(358, 0);
+            chkFilterByProductNumber.Margin = new Padding(0);
+            chkFilterByProductNumber.Name = "chkFilterByProductNumber";
+            chkFilterByProductNumber.Size = new Size(134, 33);
+            chkFilterByProductNumber.TabIndex = 25;
+            chkFilterByProductNumber.Text = "按工号筛选";
             // 
             // tlpProgramName
             // 
@@ -1662,7 +1682,7 @@ namespace AutoWeldSystem.UI.Views
             tabsMetrics.Pages.Add(tabsMetrics1);
             tabsMetrics.Pages.Add(tabsMetrics2);
             tabsMetrics.Size = new Size(498, 217);
-            tabsMetrics.Style = styleLine2;
+            tabsMetrics.Style = styleLine3;
             tabsMetrics.TabIndex = 5;
             tabsMetrics.Text = "tabsMetrics";
             // 
@@ -1877,6 +1897,7 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Label lblProgramName;
         private AntdUI.Label lblWorkOrder;
         private AntdUI.Checkbox chkEnableDualWorkOrder;
+        private AntdUI.TooltipComponent tooltipComponent;
         private GroupBox grpErrorTips;
         private TableLayoutPanel tlpErrorTips;
         private AntdUI.Input inputErrorTips;
@@ -1957,5 +1978,6 @@ namespace AutoWeldSystem.UI.Views
         private TableLayoutPanel tableLayoutPanel1;
         private AntdUI.Label lblDeviceId;
         private TableLayoutPanel tlpProcessName;
+        private AntdUI.Checkbox chkFilterByProductNumber;
     }
 }

@@ -149,6 +149,7 @@ public partial class MonitorView : BaseView
     private bool _syncingWorkOrderInput;
     private bool _syncingOperatorInput;
     private bool _syncingDualWorkOrderToggle;
+    private bool _syncingProductNumberFilterToggle;
     private string? _validatedOperatorNumber;
     private string? _pendingOnlineProgramName;
     private string? _pendingOnlineProgramWorkOrderKey;
@@ -327,6 +328,7 @@ public partial class MonitorView : BaseView
         ConfigureReportButtonLayout();
         ApplyLocalizedTexts();
         ConfigureDeviceMode();
+        SyncProductNumberFilterToggle(_currentSettings.UseProductNumberFilter);
         ConfigureTables();
         ConfigureProductionTableColumns();
         ConfigureWeldParameterTableColumns();
@@ -387,7 +389,8 @@ public partial class MonitorView : BaseView
         _enableBusinessSignalReconcile = enableBusinessSignalReconcile;
 
         ConfigureDeviceMode();
-        ApplyMesStatus(_mesConnectionMonitorService.Current);
+          SyncProductNumberFilterToggle(_currentSettings.UseProductNumberFilter);
+      ApplyMesStatus(_mesConnectionMonitorService.Current);
         ApplyDeviceIdText();
         RefreshProductionRuntimeState();
         RestoreCurrentRuntimeTipState();
@@ -413,6 +416,7 @@ public partial class MonitorView : BaseView
     private void ConfigureDeviceMode()
     {
         _dualStationEnabled = _currentSettings.EnableDualStation;
+        SyncDualWorkOrderAvailability();
 
         tlpStation.Visible = _dualStationEnabled;
         tabsPreview2.Visible = _dualStationEnabled;
@@ -746,6 +750,7 @@ public partial class MonitorView : BaseView
         btnOnlineReport.Click += OnlineReport_Click;
         btnClearErrorTips.Click += RuntimeErrorClearButton_Click;
         chkEnableDualWorkOrder.CheckedChanged += DualWorkOrder_CheckedChanged;
+        chkFilterByProductNumber.CheckedChanged += FilterByProductNumber_CheckedChanged;
         inputSN.TextChanged += WorkOrderInput_TextChanged;
         inputSN.KeyDown += WorkOrderInput_KeyDown;
         selectProgramName.SelectedIndexChanged += ProgramNameSelection_SelectedIndexChanged;
@@ -1598,6 +1603,7 @@ public partial class MonitorView : BaseView
         inputSN.TextChanged -= WorkOrderInput_TextChanged;
         inputSN.KeyDown -= WorkOrderInput_KeyDown;
         chkEnableDualWorkOrder.CheckedChanged -= DualWorkOrder_CheckedChanged;
+        chkFilterByProductNumber.CheckedChanged -= FilterByProductNumber_CheckedChanged;
         selectProgramName.SelectedIndexChanged -= ProgramNameSelection_SelectedIndexChanged;
         selectProdNum.SelectedIndexChanged -= ProductNumSelection_SelectedIndexChanged;
         selectProdNum.TextChanged -= ProductNumInput_TextChanged;
@@ -2409,6 +2415,8 @@ public partial class MonitorView : BaseView
         {
             lblTitle.Text = _currentSettings.DeviceName;
             ApplyDeviceIdText();
+            SyncProductNumberFilterToggle(_currentSettings.UseProductNumberFilter);
+            SyncDualWorkOrderAvailability();
             SyncDualWorkOrderToggle(_currentSettings.EnableDualWorkOrder);
         }, "MonitorView.SettingsChanged.DeviceIdentity");
         var currentShowTestFlag = e.CurrentSettings.ShowTestFlagInHistory != false;
@@ -2416,6 +2424,72 @@ public partial class MonitorView : BaseView
         {
             RunOnUiThread(RefreshProductHistoryPreview, "MonitorView.SettingsChanged.ShowTestFlag");
         }
+    }
+
+    /// <summary>
+    /// 处理监控页按产品工号筛选程序开关。
+    /// </summary>
+    private void FilterByProductNumber_CheckedChanged(object? sender, AntdUI.BoolEventArgs e)
+    {
+        if (_syncingProductNumberFilterToggle)
+        {
+            return;
+        }
+
+        var settings = _currentSettings.Clone();
+        settings.UseProductNumberFilter = e.Value;
+        var savedSettings = _settingsService.Save(settings);
+        UpdateSettingsSnapshot(savedSettings);
+
+        if (IsOfflineInputEditable(GetCurrentStationState()))
+        {
+            BindOfflineProgramNameOptions();
+            return;
+        }
+
+        if (GetCurrentStationState().CurrentWorkOrder is not null)
+        {
+            _ = LoadProgramListForWorkOrderAsync(CurrentStationNo);
+        }
+        else
+        {
+            BindOnlineProgramNameOptions();
+        }
+    }
+
+    /// <summary>
+    /// 同步产品工号筛选复选框状态，避免程序性赋值再次保存。
+    /// </summary>
+    private void SyncProductNumberFilterToggle(bool useProductNumberFilter)
+    {
+        _syncingProductNumberFilterToggle = true;
+        try
+        {
+            chkFilterByProductNumber.Checked = useProductNumberFilter;
+        }
+        finally
+        {
+            _syncingProductNumberFilterToggle = false;
+        }
+    }
+
+    /// <summary>
+    /// 单工位没有双工单语义，禁用并清除历史残留的双工单配置。
+    /// </summary>
+    private void SyncDualWorkOrderAvailability()
+    {
+        var available = _currentSettings.EnableDualStation;
+        chkEnableDualWorkOrder.Enabled = available;
+        if (available || !_currentSettings.EnableDualWorkOrder)
+        {
+            return;
+        }
+
+        var settings = _currentSettings.Clone();
+        settings.EnableDualWorkOrder = false;
+        var savedSettings = _settingsService.Save(settings);
+        UpdateSettingsSnapshot(savedSettings);
+        SyncDualWorkOrderToggle(false);
     }
 
     /// <summary>
@@ -4789,7 +4863,15 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         lblTitle.Text = _currentSettings.DeviceName;
         ApplyDeviceIdText();
         lblWorkOrder.Text = _localizer.GetString(TextKeys.Monitor.Label.WorkOrderNo);
-        chkEnableDualWorkOrder.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableDualWorkOrder);
+        chkEnableDualWorkOrder.Text = _localizer.GetString(TextKeys.Monitor.Checkbox.EnableDualWorkOrder);
+        chkFilterByProductNumber.Text = _localizer.GetString(TextKeys.Monitor.Checkbox.FilterByProductNumber);
+        SyncProductNumberFilterToggle(_currentSettings.UseProductNumberFilter);
+        tooltipComponent.SetTip(
+            chkFilterByProductNumber,
+            _localizer.GetString(TextKeys.Monitor.Tooltip.FilterByProductNumber));
+        tooltipComponent.SetTip(
+            chkEnableDualWorkOrder,
+            _localizer.GetString(TextKeys.Monitor.Tooltip.EnableDualWorkOrder));
         lblProgramName.Text = _localizer.GetString(TextKeys.Monitor.Label.ProgramName);
         lblProductNo.Text = _localizer.GetString(TextKeys.Monitor.Label.ProductNumber);
         lblProdModel.Text = _localizer.GetString(TextKeys.Monitor.Label.ProductModel);

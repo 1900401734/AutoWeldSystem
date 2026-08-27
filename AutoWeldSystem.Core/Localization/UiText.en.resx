@@ -423,9 +423,6 @@
   <data name="system.label.mes_url" xml:space="preserve">
     <value>MES URL</value>
   </data>
-  <data name="system.checkbox.use_product_number_filter" xml:space="preserve">
-    <value>Filter programs by product No.</value>
-  </data>
   <data name="system.checkbox.use_operator_input_dialog" xml:space="preserve">
     <value>Operator modal input</value>
   </data>
@@ -893,6 +890,18 @@
   </data>
   <data name="monitor.label.program_name" xml:space="preserve">
     <value>Program Name</value>
+  </data>
+  <data name="monitor.checkbox.filter_by_product_number" xml:space="preserve">
+    <value>Filter by Product No.</value>
+  </data>
+  <data name="monitor.checkbox.enable_dual_work_order" xml:space="preserve">
+    <value>Enable dual work order</value>
+  </data>
+  <data name="monitor.tooltip.filter_by_product_number" xml:space="preserve">
+    <value>When enabled, start work shows only programs matching the current product number; when disabled, all available programs are shown.</value>
+  </data>
+  <data name="monitor.tooltip.enable_dual_work_order" xml:space="preserve">
+    <value>When enabled, the two stations can use separate work orders; when disabled, both stations share one work order.</value>
   </data>
   <data name="monitor.label.product_number" xml:space="preserve">
     <value>Product Num.</value>
