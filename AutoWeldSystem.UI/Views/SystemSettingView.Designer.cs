@@ -122,11 +122,9 @@
             rightSettingsColumn = new TableLayoutPanel();
             grpMesConfig = new GroupBox();
             tableLayoutPanelMesConfig = new TableLayoutPanel();
-            tlpCheckbox3 = new TableLayoutPanel();
-            chkEnablePostDataCustomHeader = new AntdUI.Checkbox();
             tlpCheckbox2 = new TableLayoutPanel();
+            chkEnablePostDataCustomHeader = new AntdUI.Checkbox();
             chkEnableWorkOrderStatusReport = new AntdUI.Checkbox();
-            chkEnableDeviceStatusReport = new AntdUI.Checkbox();
             tlpProcessParameterType = new TableLayoutPanel();
             lblProcessParameterDeviceType = new AntdUI.Label();
             selectProcessParameterDeviceType = new AntdUI.Select();
@@ -137,10 +135,11 @@
             lblRealtimePointNumberSource = new AntdUI.Label();
             selectRealtimePointNumberSource = new AntdUI.Select();
             tlpMesUserRoute = new TableLayoutPanel();
-            tlpCheckbox1 = new TableLayoutPanel();
             lblMesUserRoute = new AntdUI.Label();
             inputMesUserRoute = new AntdUI.Input();
+            tlpCheckbox1 = new TableLayoutPanel();
             chkShowTestFlagInHistory = new AntdUI.Checkbox();
+            chkEnableDeviceStatusReport = new AntdUI.Checkbox();
             tlpMesWorkOrderRoute = new TableLayoutPanel();
             lblMesWorkOrderRoute = new AntdUI.Label();
             inputMesWorkOrderRoute = new AntdUI.Input();
@@ -225,12 +224,12 @@
             rightSettingsColumn.SuspendLayout();
             grpMesConfig.SuspendLayout();
             tableLayoutPanelMesConfig.SuspendLayout();
-            tlpCheckbox3.SuspendLayout();
             tlpCheckbox2.SuspendLayout();
             tlpProcessParameterType.SuspendLayout();
             tlpInspectionResultSource.SuspendLayout();
             tlpRealtimePointNumberSource.SuspendLayout();
             tlpMesUserRoute.SuspendLayout();
+            tlpCheckbox1.SuspendLayout();
             tlpMesWorkOrderRoute.SuspendLayout();
             tlpMesServerTimeRoute.SuspendLayout();
             tlpPostDataHeader.SuspendLayout();
@@ -1696,7 +1695,7 @@
             rightSettingsColumn.Name = "rightSettingsColumn";
             rightSettingsColumn.RowCount = 1;
             rightSettingsColumn.RowStyles.Add(new RowStyle());
-            rightSettingsColumn.Size = new Size(426, 816);
+            rightSettingsColumn.Size = new Size(426, 777);
             rightSettingsColumn.TabIndex = 2;
             // 
             // grpMesConfig
@@ -1709,7 +1708,7 @@
             grpMesConfig.MinimumSize = new Size(0, 209);
             grpMesConfig.Name = "grpMesConfig";
             grpMesConfig.Padding = new Padding(2, 3, 2, 3);
-            grpMesConfig.Size = new Size(416, 806);
+            grpMesConfig.Size = new Size(416, 767);
             grpMesConfig.TabIndex = 3;
             grpMesConfig.TabStop = false;
             grpMesConfig.Text = "MES Config";
@@ -1721,34 +1720,32 @@
             tableLayoutPanelMesConfig.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             tableLayoutPanelMesConfig.ColumnCount = 1;
             tableLayoutPanelMesConfig.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            tableLayoutPanelMesConfig.Controls.Add(tlpCheckbox3, 0, 4);
             tableLayoutPanelMesConfig.Controls.Add(tlpCheckbox2, 0, 3);
             tableLayoutPanelMesConfig.Controls.Add(tlpProcessParameterType, 0, 0);
-            tableLayoutPanelMesConfig.Controls.Add(tlpMesUserRoute, 0, 6);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesUserRoute, 0, 5);
             tableLayoutPanelMesConfig.Controls.Add(tlpCheckbox1, 0, 2);
-            tableLayoutPanelMesConfig.Controls.Add(tlpMesWorkOrderRoute, 0, 7);
-            tableLayoutPanelMesConfig.Controls.Add(tlpMesServerTimeRoute, 0, 8);
-            tableLayoutPanelMesConfig.Controls.Add(tlpPostDataHeader, 0, 5);
-            tableLayoutPanelMesConfig.Controls.Add(tlpMesProgramManageRoute, 0, 9);
-            tableLayoutPanelMesConfig.Controls.Add(tlpMesStartWorkRoute, 0, 10);
-            tableLayoutPanelMesConfig.Controls.Add(tlpMesWorkStatusRoute, 0, 11);
-            tableLayoutPanelMesConfig.Controls.Add(tlpMesEndWorkRoute, 0, 12);
-            tableLayoutPanelMesConfig.Controls.Add(tlpMesReportFileRoute, 0, 13);
-            tableLayoutPanelMesConfig.Controls.Add(tlpMesPostDataRoute, 0, 14);
-            tableLayoutPanelMesConfig.Controls.Add(tlpMesDeviceRoute, 0, 15);
-            tableLayoutPanelMesConfig.Controls.Add(tlpMesDeviceStatusRoute, 0, 16);
-            tableLayoutPanelMesConfig.Controls.Add(tlpMesSysRoute, 0, 17);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesWorkOrderRoute, 0, 6);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesServerTimeRoute, 0, 7);
+            tableLayoutPanelMesConfig.Controls.Add(tlpPostDataHeader, 0, 4);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesProgramManageRoute, 0, 8);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesStartWorkRoute, 0, 9);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesWorkStatusRoute, 0, 10);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesEndWorkRoute, 0, 11);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesReportFileRoute, 0, 12);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesPostDataRoute, 0, 13);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesDeviceRoute, 0, 14);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesDeviceStatusRoute, 0, 15);
+            tableLayoutPanelMesConfig.Controls.Add(tlpMesSysRoute, 0, 16);
             tableLayoutPanelMesConfig.Controls.Add(tlpMesHeartbeat, 0, 1);
             tableLayoutPanelMesConfig.Dock = DockStyle.Top;
             tableLayoutPanelMesConfig.Location = new Point(2, 23);
             tableLayoutPanelMesConfig.Margin = new Padding(2, 3, 2, 3);
             tableLayoutPanelMesConfig.Name = "tableLayoutPanelMesConfig";
-            tableLayoutPanelMesConfig.RowCount = 18;
+            tableLayoutPanelMesConfig.RowCount = 17;
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle());
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle());
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle());
-            tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
@@ -1763,37 +1760,8 @@
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
-            tableLayoutPanelMesConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
-            tableLayoutPanelMesConfig.Size = new Size(412, 780);
+            tableLayoutPanelMesConfig.Size = new Size(412, 741);
             tableLayoutPanelMesConfig.TabIndex = 0;
-            // 
-            // tlpCheckbox3
-            // 
-            tlpCheckbox3.ColumnCount = 2;
-            tlpCheckbox3.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            tlpCheckbox3.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            tlpCheckbox3.Controls.Add(chkEnablePostDataCustomHeader, 0, 0);
-            tlpCheckbox3.Dock = DockStyle.Fill;
-            tlpCheckbox3.Location = new Point(0, 234);
-            tlpCheckbox3.Margin = new Padding(0);
-            tlpCheckbox3.Name = "tlpCheckbox3";
-            tlpCheckbox3.RowCount = 1;
-            tlpCheckbox3.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
-            tlpCheckbox3.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
-            tlpCheckbox3.Size = new Size(412, 39);
-            tlpCheckbox3.TabIndex = 20;
-            // 
-            // chkEnablePostDataCustomHeader
-            // 
-            tlpCheckbox3.SetColumnSpan(chkEnablePostDataCustomHeader, 2);
-            chkEnablePostDataCustomHeader.Dock = DockStyle.Fill;
-            chkEnablePostDataCustomHeader.Location = new Point(0, 0);
-            chkEnablePostDataCustomHeader.Margin = new Padding(0);
-            chkEnablePostDataCustomHeader.Name = "chkEnablePostDataCustomHeader";
-            chkEnablePostDataCustomHeader.Padding = new Padding(6, 0, 0, 0);
-            chkEnablePostDataCustomHeader.Size = new Size(412, 39);
-            chkEnablePostDataCustomHeader.TabIndex = 19;
-            chkEnablePostDataCustomHeader.Text = "PostData启用Header";
             // 
             // tlpCheckbox2
             // 
@@ -1802,8 +1770,8 @@
             tlpCheckbox2.ColumnCount = 2;
             tlpCheckbox2.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             tlpCheckbox2.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            tlpCheckbox2.Controls.Add(chkEnablePostDataCustomHeader, 0, 0);
             tlpCheckbox2.Controls.Add(chkEnableWorkOrderStatusReport, 1, 0);
-            tlpCheckbox2.Controls.Add(chkEnableDeviceStatusReport, 0, 0);
             tlpCheckbox2.Dock = DockStyle.Fill;
             tlpCheckbox2.Location = new Point(0, 195);
             tlpCheckbox2.Margin = new Padding(0);
@@ -1813,6 +1781,17 @@
             tlpCheckbox2.RowStyles.Add(new RowStyle());
             tlpCheckbox2.Size = new Size(412, 39);
             tlpCheckbox2.TabIndex = 7;
+            // 
+            // chkEnablePostDataCustomHeader
+            // 
+            chkEnablePostDataCustomHeader.Dock = DockStyle.Fill;
+            chkEnablePostDataCustomHeader.Location = new Point(0, 0);
+            chkEnablePostDataCustomHeader.Margin = new Padding(0);
+            chkEnablePostDataCustomHeader.Name = "chkEnablePostDataCustomHeader";
+            chkEnablePostDataCustomHeader.Padding = new Padding(6, 0, 0, 0);
+            chkEnablePostDataCustomHeader.Size = new Size(206, 39);
+            chkEnablePostDataCustomHeader.TabIndex = 19;
+            chkEnablePostDataCustomHeader.Text = "PostData启用Header";
             // 
             // chkEnableWorkOrderStatusReport
             // 
@@ -1824,19 +1803,6 @@
             chkEnableWorkOrderStatusReport.Size = new Size(206, 39);
             chkEnableWorkOrderStatusReport.TabIndex = 6;
             chkEnableWorkOrderStatusReport.Text = "启用工单状态上报";
-            // 
-            // chkEnableDeviceStatusReport
-            // 
-            chkEnableDeviceStatusReport.Checked = true;
-            chkEnableDeviceStatusReport.CheckState = CheckState.Checked;
-            chkEnableDeviceStatusReport.Dock = DockStyle.Fill;
-            chkEnableDeviceStatusReport.Location = new Point(0, 0);
-            chkEnableDeviceStatusReport.Margin = new Padding(0);
-            chkEnableDeviceStatusReport.Name = "chkEnableDeviceStatusReport";
-            chkEnableDeviceStatusReport.Padding = new Padding(6, 0, 0, 0);
-            chkEnableDeviceStatusReport.Size = new Size(206, 39);
-            chkEnableDeviceStatusReport.TabIndex = 5;
-            chkEnableDeviceStatusReport.Text = "启用设备状态上报";
             // 
             // tlpProcessParameterType
             // 
@@ -1968,7 +1934,7 @@
             tlpMesUserRoute.Controls.Add(lblMesUserRoute, 0, 0);
             tlpMesUserRoute.Controls.Add(inputMesUserRoute, 1, 0);
             tlpMesUserRoute.Dock = DockStyle.Fill;
-            tlpMesUserRoute.Location = new Point(0, 312);
+            tlpMesUserRoute.Location = new Point(0, 273);
             tlpMesUserRoute.Margin = new Padding(0);
             tlpMesUserRoute.Name = "tlpMesUserRoute";
             tlpMesUserRoute.RowCount = 1;
@@ -2002,10 +1968,12 @@
             // 
             tlpCheckbox1.AutoSize = true;
             tlpCheckbox1.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            tlpCheckbox1.ColumnCount = 1;
+            tlpCheckbox1.ColumnCount = 2;
             tableLayoutPanelMesConfig.SetColumnSpan(tlpCheckbox1, 2);
-            tlpCheckbox1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            tlpCheckbox1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            tlpCheckbox1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             tlpCheckbox1.Controls.Add(chkShowTestFlagInHistory, 0, 0);
+            tlpCheckbox1.Controls.Add(chkEnableDeviceStatusReport, 1, 0);
             tlpCheckbox1.Dock = DockStyle.Fill;
             tlpCheckbox1.Location = new Point(0, 156);
             tlpCheckbox1.Margin = new Padding(0);
@@ -2029,6 +1997,19 @@
             chkShowTestFlagInHistory.TabIndex = 4;
             chkShowTestFlagInHistory.Text = "产品历史显示试焊件";
             // 
+            // chkEnableDeviceStatusReport
+            // 
+            chkEnableDeviceStatusReport.Checked = true;
+            chkEnableDeviceStatusReport.CheckState = CheckState.Checked;
+            chkEnableDeviceStatusReport.Dock = DockStyle.Fill;
+            chkEnableDeviceStatusReport.Location = new Point(206, 0);
+            chkEnableDeviceStatusReport.Margin = new Padding(0);
+            chkEnableDeviceStatusReport.Name = "chkEnableDeviceStatusReport";
+            chkEnableDeviceStatusReport.Padding = new Padding(6, 0, 0, 0);
+            chkEnableDeviceStatusReport.Size = new Size(206, 39);
+            chkEnableDeviceStatusReport.TabIndex = 5;
+            chkEnableDeviceStatusReport.Text = "启用设备状态上报";
+            // 
             // tlpMesWorkOrderRoute
             // 
             tlpMesWorkOrderRoute.ColumnCount = 2;
@@ -2037,7 +2018,7 @@
             tlpMesWorkOrderRoute.Controls.Add(lblMesWorkOrderRoute, 0, 0);
             tlpMesWorkOrderRoute.Controls.Add(inputMesWorkOrderRoute, 1, 0);
             tlpMesWorkOrderRoute.Dock = DockStyle.Fill;
-            tlpMesWorkOrderRoute.Location = new Point(0, 351);
+            tlpMesWorkOrderRoute.Location = new Point(0, 312);
             tlpMesWorkOrderRoute.Margin = new Padding(0);
             tlpMesWorkOrderRoute.Name = "tlpMesWorkOrderRoute";
             tlpMesWorkOrderRoute.RowCount = 1;
@@ -2075,7 +2056,7 @@
             tlpMesServerTimeRoute.Controls.Add(lblMesServerTimeRoute, 0, 0);
             tlpMesServerTimeRoute.Controls.Add(inputMesServerTimeRoute, 1, 0);
             tlpMesServerTimeRoute.Dock = DockStyle.Fill;
-            tlpMesServerTimeRoute.Location = new Point(0, 390);
+            tlpMesServerTimeRoute.Location = new Point(0, 351);
             tlpMesServerTimeRoute.Margin = new Padding(0);
             tlpMesServerTimeRoute.Name = "tlpMesServerTimeRoute";
             tlpMesServerTimeRoute.RowCount = 1;
@@ -2109,15 +2090,15 @@
             // 
             tlpPostDataHeader.ColumnCount = 4;
             tlpPostDataHeader.ColumnStyles.Add(new ColumnStyle());
-            tlpPostDataHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40F));
+            tlpPostDataHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             tlpPostDataHeader.ColumnStyles.Add(new ColumnStyle());
-            tlpPostDataHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60F));
+            tlpPostDataHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             tlpPostDataHeader.Controls.Add(inputPostDataHeaderValue, 3, 0);
             tlpPostDataHeader.Controls.Add(lblPostDataHeaderValue, 2, 0);
             tlpPostDataHeader.Controls.Add(inputPostDataHeaderKey, 1, 0);
             tlpPostDataHeader.Controls.Add(lblPostDataHeaderKey, 0, 0);
             tlpPostDataHeader.Dock = DockStyle.Fill;
-            tlpPostDataHeader.Location = new Point(0, 273);
+            tlpPostDataHeader.Location = new Point(0, 234);
             tlpPostDataHeader.Margin = new Padding(0);
             tlpPostDataHeader.Name = "tlpPostDataHeader";
             tlpPostDataHeader.RowCount = 1;
@@ -2128,18 +2109,18 @@
             // inputPostDataHeaderValue
             // 
             inputPostDataHeaderValue.Dock = DockStyle.Fill;
-            inputPostDataHeaderValue.Location = new Point(274, 0);
+            inputPostDataHeaderValue.Location = new Point(297, 0);
             inputPostDataHeaderValue.Margin = new Padding(0);
             inputPostDataHeaderValue.Name = "inputPostDataHeaderValue";
             inputPostDataHeaderValue.Padding = new Padding(2, 0, 0, 0);
-            inputPostDataHeaderValue.Size = new Size(138, 39);
+            inputPostDataHeaderValue.Size = new Size(115, 39);
             inputPostDataHeaderValue.TabIndex = 1;
             // 
             // lblPostDataHeaderValue
             // 
             lblPostDataHeaderValue.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblPostDataHeaderValue.Dock = DockStyle.Fill;
-            lblPostDataHeaderValue.Location = new Point(176, 0);
+            lblPostDataHeaderValue.Location = new Point(199, 0);
             lblPostDataHeaderValue.Margin = new Padding(0);
             lblPostDataHeaderValue.Name = "lblPostDataHeaderValue";
             lblPostDataHeaderValue.Padding = new Padding(8, 0, 0, 0);
@@ -2154,7 +2135,7 @@
             inputPostDataHeaderKey.Margin = new Padding(0);
             inputPostDataHeaderKey.Name = "inputPostDataHeaderKey";
             inputPostDataHeaderKey.Padding = new Padding(2, 0, 0, 0);
-            inputPostDataHeaderKey.Size = new Size(92, 39);
+            inputPostDataHeaderKey.Size = new Size(115, 39);
             inputPostDataHeaderKey.TabIndex = 1;
             // 
             // lblPostDataHeaderKey
@@ -2177,7 +2158,7 @@
             tlpMesProgramManageRoute.Controls.Add(lblMesProgramManageRoute, 0, 0);
             tlpMesProgramManageRoute.Controls.Add(inputMesProgramManageRoute, 1, 0);
             tlpMesProgramManageRoute.Dock = DockStyle.Fill;
-            tlpMesProgramManageRoute.Location = new Point(0, 429);
+            tlpMesProgramManageRoute.Location = new Point(0, 390);
             tlpMesProgramManageRoute.Margin = new Padding(0);
             tlpMesProgramManageRoute.Name = "tlpMesProgramManageRoute";
             tlpMesProgramManageRoute.RowCount = 1;
@@ -2215,7 +2196,7 @@
             tlpMesStartWorkRoute.Controls.Add(lblMesStartWorkRoute, 0, 0);
             tlpMesStartWorkRoute.Controls.Add(inputMesStartWorkRoute, 1, 0);
             tlpMesStartWorkRoute.Dock = DockStyle.Fill;
-            tlpMesStartWorkRoute.Location = new Point(0, 468);
+            tlpMesStartWorkRoute.Location = new Point(0, 429);
             tlpMesStartWorkRoute.Margin = new Padding(0);
             tlpMesStartWorkRoute.Name = "tlpMesStartWorkRoute";
             tlpMesStartWorkRoute.RowCount = 1;
@@ -2253,7 +2234,7 @@
             tlpMesWorkStatusRoute.Controls.Add(lblMesWorkStatusRoute, 0, 0);
             tlpMesWorkStatusRoute.Controls.Add(inputMesWorkStatusRoute, 1, 0);
             tlpMesWorkStatusRoute.Dock = DockStyle.Fill;
-            tlpMesWorkStatusRoute.Location = new Point(0, 507);
+            tlpMesWorkStatusRoute.Location = new Point(0, 468);
             tlpMesWorkStatusRoute.Margin = new Padding(0);
             tlpMesWorkStatusRoute.Name = "tlpMesWorkStatusRoute";
             tlpMesWorkStatusRoute.RowCount = 1;
@@ -2291,7 +2272,7 @@
             tlpMesEndWorkRoute.Controls.Add(lblMesEndWorkRoute, 0, 0);
             tlpMesEndWorkRoute.Controls.Add(inputMesEndWorkRoute, 1, 0);
             tlpMesEndWorkRoute.Dock = DockStyle.Fill;
-            tlpMesEndWorkRoute.Location = new Point(0, 546);
+            tlpMesEndWorkRoute.Location = new Point(0, 507);
             tlpMesEndWorkRoute.Margin = new Padding(0);
             tlpMesEndWorkRoute.Name = "tlpMesEndWorkRoute";
             tlpMesEndWorkRoute.RowCount = 1;
@@ -2329,7 +2310,7 @@
             tlpMesReportFileRoute.Controls.Add(lblMesReportFileRoute, 0, 0);
             tlpMesReportFileRoute.Controls.Add(inputMesReportFileRoute, 1, 0);
             tlpMesReportFileRoute.Dock = DockStyle.Fill;
-            tlpMesReportFileRoute.Location = new Point(0, 585);
+            tlpMesReportFileRoute.Location = new Point(0, 546);
             tlpMesReportFileRoute.Margin = new Padding(0);
             tlpMesReportFileRoute.Name = "tlpMesReportFileRoute";
             tlpMesReportFileRoute.RowCount = 1;
@@ -2367,7 +2348,7 @@
             tlpMesPostDataRoute.Controls.Add(lblMesPostDataRoute, 0, 0);
             tlpMesPostDataRoute.Controls.Add(inputMesPostDataRoute, 1, 0);
             tlpMesPostDataRoute.Dock = DockStyle.Fill;
-            tlpMesPostDataRoute.Location = new Point(0, 624);
+            tlpMesPostDataRoute.Location = new Point(0, 585);
             tlpMesPostDataRoute.Margin = new Padding(0);
             tlpMesPostDataRoute.Name = "tlpMesPostDataRoute";
             tlpMesPostDataRoute.RowCount = 1;
@@ -2405,7 +2386,7 @@
             tlpMesDeviceRoute.Controls.Add(lblMesDeviceRoute, 0, 0);
             tlpMesDeviceRoute.Controls.Add(inputMesDeviceRoute, 1, 0);
             tlpMesDeviceRoute.Dock = DockStyle.Fill;
-            tlpMesDeviceRoute.Location = new Point(0, 663);
+            tlpMesDeviceRoute.Location = new Point(0, 624);
             tlpMesDeviceRoute.Margin = new Padding(0);
             tlpMesDeviceRoute.Name = "tlpMesDeviceRoute";
             tlpMesDeviceRoute.RowCount = 1;
@@ -2443,7 +2424,7 @@
             tlpMesDeviceStatusRoute.Controls.Add(lblMesDeviceStatusRoute, 0, 0);
             tlpMesDeviceStatusRoute.Controls.Add(inputMesDeviceStatusRoute, 1, 0);
             tlpMesDeviceStatusRoute.Dock = DockStyle.Top;
-            tlpMesDeviceStatusRoute.Location = new Point(0, 702);
+            tlpMesDeviceStatusRoute.Location = new Point(0, 663);
             tlpMesDeviceStatusRoute.Margin = new Padding(0);
             tlpMesDeviceStatusRoute.Name = "tlpMesDeviceStatusRoute";
             tlpMesDeviceStatusRoute.RowCount = 1;
@@ -2481,7 +2462,7 @@
             tlpMesSysRoute.Controls.Add(lblMesSysRoute, 0, 0);
             tlpMesSysRoute.Controls.Add(inputMesSysRoute, 1, 0);
             tlpMesSysRoute.Dock = DockStyle.Fill;
-            tlpMesSysRoute.Location = new Point(0, 741);
+            tlpMesSysRoute.Location = new Point(0, 702);
             tlpMesSysRoute.Margin = new Padding(0);
             tlpMesSysRoute.Name = "tlpMesSysRoute";
             tlpMesSysRoute.RowCount = 1;
@@ -2661,7 +2642,6 @@
             grpMesConfig.PerformLayout();
             tableLayoutPanelMesConfig.ResumeLayout(false);
             tableLayoutPanelMesConfig.PerformLayout();
-            tlpCheckbox3.ResumeLayout(false);
             tlpCheckbox2.ResumeLayout(false);
             tlpProcessParameterType.ResumeLayout(false);
             tlpProcessParameterType.PerformLayout();
@@ -2671,6 +2651,7 @@
             tlpRealtimePointNumberSource.PerformLayout();
             tlpMesUserRoute.ResumeLayout(false);
             tlpMesUserRoute.PerformLayout();
+            tlpCheckbox1.ResumeLayout(false);
             tlpMesWorkOrderRoute.ResumeLayout(false);
             tlpMesWorkOrderRoute.PerformLayout();
             tlpMesServerTimeRoute.ResumeLayout(false);
@@ -2779,10 +2760,7 @@
         private GroupBox grpAppConfig;
         private AntdUI.Label lblMesTimeout;
         private AntdUI.InputNumber input_MesTimeout;
-        private TableLayoutPanel tlpMesUserRoute;
         private TableLayoutPanel tlpCheckbox1;
-        private AntdUI.Label lblMesUserRoute;
-        private AntdUI.Input inputMesUserRoute;
         private TableLayoutPanel tlpMesWorkOrderRoute;
         private AntdUI.Label lblMesWorkOrderRoute;
         private AntdUI.Input inputMesWorkOrderRoute;
@@ -2860,7 +2838,6 @@
         private AntdUI.Select selectPlcAlarmTriggerMode;
         private TableLayoutPanel tlpProcessParameterType;
         private TableLayoutPanel tlpCheckbox2;
-        private TableLayoutPanel tlpCheckbox3;
         private TableLayoutPanel tableLayoutPanel4;
         private TableLayoutPanel tlpUploadConfig;
         private TableLayoutPanel stationDisplayNameLayout;
@@ -2868,5 +2845,8 @@
         private AntdUI.Input inputStation1DisplayName;
         private AntdUI.Label lblStation2DisplayName;
         private AntdUI.Input inputStation2DisplayName;
+        private TableLayoutPanel tlpMesUserRoute;
+        private AntdUI.Label lblMesUserRoute;
+        private AntdUI.Input inputMesUserRoute;
     }
 }
