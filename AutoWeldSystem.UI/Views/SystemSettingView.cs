@@ -753,7 +753,6 @@ public partial class SystemSettingView : BaseView
             settings.CenterServerHeartbeatIntervalSeconds).ToString(CultureInfo.InvariantCulture);
         input_BaseUrl.Text = settings.MesBaseUrl;
         BindMesEndpointSettings(settings);
-        chkUseProductNumberFilter.Checked = settings.UseProductNumberFilter;
         chkUseOperatorInputDialog.Checked = settings.UseOperatorInputDialog != false;
         chkShowTestFlagInHistory.Checked = settings.ShowTestFlagInHistory != false;
         chkEnableDeviceStatusReport.Checked = settings.EnableDeviceStatusReport != false;
@@ -923,7 +922,6 @@ public partial class SystemSettingView : BaseView
         lblPostDataHeaderValue.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPostDataHeaderValue);
         chkShowTestFlagInHistory.Text = _localizer.GetString(TextKeys.SystemSetting.ChkShowTestFlagInHistory);
 
-        chkUseProductNumberFilter.Text = _localizer.GetString(TextKeys.SystemSetting.ChkUseProductNumberFilter);
         chkUseOperatorInputDialog.Text = _localizer.GetString(TextKeys.SystemSetting.ChkUseOperatorInputDialog);
         chkEnableDeviceStatusReport.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableDeviceStatusReport);
         chkEnableWorkOrderStatusReport.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableWorkOrderStatusReport);
@@ -1503,7 +1501,6 @@ public partial class SystemSettingView : BaseView
         settings.MesBaseUrl = mesBaseUrl;
         settings.MesTimeoutSeconds = int.TryParse(mesTimeout, NumberStyles.Integer, CultureInfo.InvariantCulture, out var timeout) && timeout > 0 ? timeout : 10;
         settings.MesHeartbeatIntervalSeconds = MesConnectionRules.NormalizeHeartbeatIntervalSeconds(mesHeartbeatInterval);
-        settings.UseProductNumberFilter = chkUseProductNumberFilter.Checked;
         settings.UseOperatorInputDialog = chkUseOperatorInputDialog.Checked;
         settings.ShowTestFlagInHistory = chkShowTestFlagInHistory.Checked;
         settings.EnableDeviceStatusReport = chkEnableDeviceStatusReport.Checked;

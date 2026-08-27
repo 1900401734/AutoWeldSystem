@@ -419,6 +419,7 @@ var tests = new (string Name, Action Run)[]
     ("Monitor view process selection uses shared input binder", MonitorViewProcessSelectionUsesSharedInputBinder),
     ("Monitor view process name follows start input editability", MonitorViewProcessNameFollowsStartInputEditability),
     ("Monitor view exposes dual work order toggle beside work order", MonitorViewExposesDualWorkOrderToggleBesideWorkOrder),
+    ("Monitor view owns product number filter toggle", MonitorViewOwnsProductNumberFilterToggle),
     ("Monitor view saves dual work order toggle with old rules", MonitorViewSavesDualWorkOrderToggleWithOldRules),
     ("System setting view no longer edits dual work order", SystemSettingViewNoLongerEditsDualWorkOrder),
     ("System setting view locks device management during active runtime tasks", SystemSettingViewLocksDeviceManagementDuringActiveRuntimeTasks),
@@ -12899,7 +12900,34 @@ static void MonitorViewExposesDualWorkOrderToggleBesideWorkOrder()
     AssertTrue(designerCode.Contains("tlpStationInfo.Controls.Add(chkEnableDualWorkOrder, 2, 0);", StringComparison.Ordinal), "启用双工单复选框必须与工单号并排显示。");
     AssertTrue(viewCode.Contains("chkEnableDualWorkOrder.CheckedChanged += DualWorkOrder_CheckedChanged;", StringComparison.Ordinal), "监控页必须监听双工单快捷开关。");
     AssertTrue(viewCode.Contains("chkEnableDualWorkOrder.CheckedChanged -= DualWorkOrder_CheckedChanged;", StringComparison.Ordinal), "监控页销毁时必须解绑双工单快捷开关。");
-    AssertTrue(viewCode.Contains("chkEnableDualWorkOrder.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnableDualWorkOrder);", StringComparison.Ordinal), "监控页双工单复选框必须复用现有本地化文本。");
+    AssertTrue(viewCode.Contains("TextKeys.Monitor.Checkbox.EnableDualWorkOrder", StringComparison.Ordinal), "监控页双工单复选框必须使用监控页短文案。");
+    AssertTrue(viewCode.Contains("TextKeys.Monitor.Tooltip.EnableDualWorkOrder", StringComparison.Ordinal), "双工单复选框必须绑定本地化 ToolTip。");
+    AssertTrue(viewCode.Contains("chkEnableDualWorkOrder.Enabled = available;", StringComparison.Ordinal), "单工位时必须禁用双工单复选框。");
+    AssertTrue(viewCode.Contains("chkEnableDualWorkOrder.Text = _localizer.GetString(TextKeys.Monitor.Checkbox.EnableDualWorkOrder);", StringComparison.Ordinal), "监控页双工单复选框必须复用现有本地化文本。");
+}
+
+static void MonitorViewOwnsProductNumberFilterToggle()
+{
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.Designer.cs"), Encoding.UTF8);
+    var monitorCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var settingsCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.cs"), Encoding.UTF8);
+    var settingsDesignerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.Designer.cs"), Encoding.UTF8);
+    var zhResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.resx"), Encoding.UTF8);
+    var enResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.en.resx"), Encoding.UTF8);
+
+    AssertTrue(designerCode.Contains("chkFilterByProductNumber = new AntdUI.Checkbox();", StringComparison.Ordinal), "监控页必须声明产品工号筛选复选框。");
+    AssertTrue(designerCode.Contains("tooltipComponent = new AntdUI.TooltipComponent();", StringComparison.Ordinal), "监控页必须声明 AntdUI.TooltipComponent。");
+    AssertTrue(designerCode.Contains("components.Add(tooltipComponent);", StringComparison.Ordinal), "ToolTip 组件必须纳入 Designer 生命周期。");
+    AssertTrue(monitorCode.Contains("chkFilterByProductNumber.CheckedChanged += FilterByProductNumber_CheckedChanged;", StringComparison.Ordinal), "监控页必须监听产品工号筛选复选框。");
+    AssertTrue(monitorCode.Contains("settings.UseProductNumberFilter = e.Value;", StringComparison.Ordinal), "监控页必须保存产品工号筛选设置。");
+    AssertTrue(monitorCode.Contains("TextKeys.Monitor.Checkbox.FilterByProductNumber", StringComparison.Ordinal), "监控页必须使用产品工号筛选短文案。");
+    AssertTrue(monitorCode.Contains("TextKeys.Monitor.Tooltip.FilterByProductNumber", StringComparison.Ordinal), "产品工号筛选必须绑定本地化 ToolTip。");
+    AssertFalse(settingsCode.Contains("chkUseProductNumberFilter", StringComparison.Ordinal), "系统设置代码不得继续读写已移动的产品工号筛选控件。");
+    AssertFalse(settingsDesignerCode.Contains("chkUseProductNumberFilter", StringComparison.Ordinal), "系统设置 Designer 不得继续声明已移动的产品工号筛选控件。");
+    AssertTrue(zhResources.Contains("monitor.tooltip.filter_by_product_number", StringComparison.Ordinal), "中文资源必须包含产品工号筛选 ToolTip。");
+    AssertTrue(enResources.Contains("monitor.tooltip.filter_by_product_number", StringComparison.Ordinal), "英文资源必须包含产品工号筛选 ToolTip。");
+    AssertTrue(zhResources.Contains("开工时仅显示与当前产品工号匹配的程序", StringComparison.Ordinal), "中文 ToolTip 必须覆盖在线和离线开工。");
+    AssertTrue(enResources.Contains("start work shows only programs matching the current product number", StringComparison.Ordinal), "英文 ToolTip 必须覆盖在线和离线开工。");
 }
 
 static void MonitorViewSavesDualWorkOrderToggleWithOldRules()

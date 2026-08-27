@@ -137,10 +137,9 @@
             lblRealtimePointNumberSource = new AntdUI.Label();
             selectRealtimePointNumberSource = new AntdUI.Select();
             tlpMesUserRoute = new TableLayoutPanel();
+            tlpCheckbox1 = new TableLayoutPanel();
             lblMesUserRoute = new AntdUI.Label();
             inputMesUserRoute = new AntdUI.Input();
-            tlpCheckbox1 = new TableLayoutPanel();
-            chkUseProductNumberFilter = new AntdUI.Checkbox();
             chkShowTestFlagInHistory = new AntdUI.Checkbox();
             tlpMesWorkOrderRoute = new TableLayoutPanel();
             lblMesWorkOrderRoute = new AntdUI.Label();
@@ -232,7 +231,6 @@
             tlpInspectionResultSource.SuspendLayout();
             tlpRealtimePointNumberSource.SuspendLayout();
             tlpMesUserRoute.SuspendLayout();
-            tlpCheckbox1.SuspendLayout();
             tlpMesWorkOrderRoute.SuspendLayout();
             tlpMesServerTimeRoute.SuspendLayout();
             tlpPostDataHeader.SuspendLayout();
@@ -2004,11 +2002,9 @@
             // 
             tlpCheckbox1.AutoSize = true;
             tlpCheckbox1.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            tlpCheckbox1.ColumnCount = 2;
+            tlpCheckbox1.ColumnCount = 1;
             tableLayoutPanelMesConfig.SetColumnSpan(tlpCheckbox1, 2);
-            tlpCheckbox1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            tlpCheckbox1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            tlpCheckbox1.Controls.Add(chkUseProductNumberFilter, 1, 0);
+            tlpCheckbox1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             tlpCheckbox1.Controls.Add(chkShowTestFlagInHistory, 0, 0);
             tlpCheckbox1.Dock = DockStyle.Fill;
             tlpCheckbox1.Location = new Point(0, 156);
@@ -2019,17 +2015,6 @@
             tlpCheckbox1.RowStyles.Add(new RowStyle());
             tlpCheckbox1.Size = new Size(412, 39);
             tlpCheckbox1.TabIndex = 1;
-            // 
-            // chkUseProductNumberFilter
-            // 
-            chkUseProductNumberFilter.Dock = DockStyle.Fill;
-            chkUseProductNumberFilter.Location = new Point(206, 0);
-            chkUseProductNumberFilter.Margin = new Padding(0);
-            chkUseProductNumberFilter.Name = "chkUseProductNumberFilter";
-            chkUseProductNumberFilter.Padding = new Padding(6, 0, 0, 0);
-            chkUseProductNumberFilter.Size = new Size(206, 39);
-            chkUseProductNumberFilter.TabIndex = 0;
-            chkUseProductNumberFilter.Text = "按产品工号筛选程序";
             // 
             // chkShowTestFlagInHistory
             // 
@@ -2686,7 +2671,6 @@
             tlpRealtimePointNumberSource.PerformLayout();
             tlpMesUserRoute.ResumeLayout(false);
             tlpMesUserRoute.PerformLayout();
-            tlpCheckbox1.ResumeLayout(false);
             tlpMesWorkOrderRoute.ResumeLayout(false);
             tlpMesWorkOrderRoute.PerformLayout();
             tlpMesServerTimeRoute.ResumeLayout(false);
@@ -2790,14 +2774,13 @@
         private TableLayoutPanel tlpProductConfig;
         private GroupBox grpMesConfig;
         private TableLayoutPanel tableLayoutPanelMesConfig;
-        private AntdUI.Checkbox chkUseProductNumberFilter;
         private AntdUI.Checkbox chkUseOperatorInputDialog;
         private TableLayoutPanel tableLayoutPanel1;
         private GroupBox grpAppConfig;
-        private TableLayoutPanel tlpCheckbox1;
         private AntdUI.Label lblMesTimeout;
         private AntdUI.InputNumber input_MesTimeout;
         private TableLayoutPanel tlpMesUserRoute;
+        private TableLayoutPanel tlpCheckbox1;
         private AntdUI.Label lblMesUserRoute;
         private AntdUI.Input inputMesUserRoute;
         private TableLayoutPanel tlpMesWorkOrderRoute;

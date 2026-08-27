@@ -132,6 +132,24 @@ public static class TextKeys
             public const string Logout = "monitor.button.logout";
         }
 
+        /// <summary>
+        /// 监控页快捷开关文案。
+        /// </summary>
+        public static class Checkbox
+        {
+            public const string FilterByProductNumber = "monitor.checkbox.filter_by_product_number";
+            public const string EnableDualWorkOrder = "monitor.checkbox.enable_dual_work_order";
+        }
+
+        /// <summary>
+        /// 监控页快捷开关提示。
+        /// </summary>
+        public static class Tooltip
+        {
+            public const string FilterByProductNumber = "monitor.tooltip.filter_by_product_number";
+            public const string EnableDualWorkOrder = "monitor.tooltip.enable_dual_work_order";
+        }
+
         public static class Label
         {
             /// <summary>
@@ -1170,7 +1188,6 @@ public static class TextKeys
         public const string LabelStation2DisplayName = "system.label.station2_display_name";
         public const string PlaceholderStationDisplayName = "system.placeholder.station_display_name";
 
-        public const string ChkUseProductNumberFilter = "system.checkbox.use_product_number_filter";
         public const string ChkUseOperatorInputDialog = "system.checkbox.use_operator_input_dialog";
         public const string ChkEnableAutoStart = "system.checkbox.enable_auto_start";
         public const string ChkEnableElevatedAutoStart = "system.checkbox.enable_elevated_auto_start";
