@@ -398,6 +398,7 @@ var tests = new (string Name, Action Run)[]
     ("Program manage grid shows sequence and program name", ProgramManageGridShowsSequenceAndProgramName),
     ("Program product groups merge programs sharing product num", ProgramProductGroupsMergeProgramsSharingProductNum),
     ("Program product groups flatten single program product num", ProgramProductGroupsFlattenSingleProgramProductNum),
+    ("Program product groups order by latest update time", ProgramProductGroupsOrderByLatestUpdateTime),
     ("Program manage view hides product model", ProgramManageViewHidesProductModel),
     ("Program manage save ignores product model input", ProgramManageSaveIgnoresProductModelInput),
     ("Monitor report button rules follow MES and task state", MonitorReportButtonRulesFollowMesAndTaskState),
@@ -12294,7 +12295,7 @@ static void ProgramProductGroupsMergeProgramsSharingProductNum()
     AssertEqual(string.Empty, groups[0].SyncStatus, "多程序父行不得显示具体同步状态。");
     AssertEqual(2, groups[0].Programs?.Count ?? 0, "多程序工号必须展开为子行。");
     AssertEqual(null, groups[0].Programs![0].SerialNumber, "子程序行序号必须留空。");
-    AssertEqual(2, groups[0].Programs![0].ProgramId, "子行必须按流水号升序排列。");
+    AssertEqual(2, groups[0].Programs![0].ProgramId, "子行必须按更新时间倒序排列。");
     AssertEqual("#001", groups[0].Programs![0].ProductNum, "子行必须保留程序流水号标签。");
     AssertEqual("A-2", groups[0].Programs![0].ProgramName, "程序名称必须进入独立字段。");
     AssertEqual("状态:Synced", groups[0].Programs![0].SyncStatus, "同步状态必须进入独立字段。");
@@ -12315,6 +12316,26 @@ static void ProgramProductGroupsFlattenSingleProgramProductNum()
     AssertEqual(7, groups[0].ProgramId, "单程序工号的行必须直接指向该程序。");
     AssertEqual("只有一个程序", groups[0].ProgramName, "单程序工号必须在独立列显示程序名称。");
     AssertEqual("已同步", groups[0].SyncStatus, "单程序工号必须在独立列显示同步状态。");
+}
+
+static void ProgramProductGroupsOrderByLatestUpdateTime()
+{
+    var programs = new List<BizProgram>
+    {
+        new() { Id = 1, ProgramName = "旧工号", ProductNum = "P-001", SequenceNumber = 1, UpdatedTime = new DateTime(2026, 8, 1) },
+        new() { Id = 2, ProgramName = "新工号", ProductNum = "P-002", SequenceNumber = 1, UpdatedTime = new DateTime(2026, 8, 20) },
+        new() { Id = 3, ProgramName = "同工号旧程序", ProductNum = "P-003", SequenceNumber = 1, UpdatedTime = new DateTime(2026, 8, 5) },
+        new() { Id = 4, ProgramName = "同工号新程序", ProductNum = "P-003", SequenceNumber = 2, UpdatedTime = new DateTime(2026, 8, 10) }
+    };
+
+    var groups = ProgramProductGroupRules.BuildGroups(programs, program => "已同步");
+
+    AssertEqual("P-002", groups[0].ProductNum, "工号行必须按组内最新更新时间倒序排列。");
+    AssertEqual("P-003", groups[1].ProductNum, "更新较晚的工号必须排在更新较早的工号之前。");
+    AssertEqual("P-001", groups[2].ProductNum, "最久未更新的工号必须排在最后。");
+    AssertEqual(1, groups[0].SerialNumber, "分组序号必须按排序后的位置重新编号。");
+    AssertEqual(4, groups[1].Programs![0].ProgramId, "同工号子行必须按更新时间倒序，最近更新的程序在前。");
+    AssertEqual(3, groups[1].Programs![1].ProgramId, "同工号较早更新的程序必须排在后面。");
 }
 
 static void ProgramManageServiceNoLongerGeneratesProgramFiles()

@@ -7,6 +7,7 @@ namespace AutoWeldSystem.Core.Production;
 /// 同一产品工号下可存在多个程序（靠流水号区分），列表按工号去重后一行一工号；
 /// 工号下有多个程序时才展开成子行，只有一个程序时直接把该程序显示在工号行上，
 /// 避免为单程序工号也摆一层空壳父节点。
+/// 排序按更新时间倒序：现场改完程序马上要在列表顶部找到它。
 /// </summary>
 public static class ProgramProductGroupRules
 {
@@ -15,7 +16,7 @@ public static class ProgramProductGroupRules
     /// </summary>
     /// <param name="programs">本地程序记录。</param>
     /// <param name="describeProgram">生成程序行摘要文本的回调，用于承载同步状态等需要本地化的内容。</param>
-    /// <returns>按工号升序排列的分组行；工号为空的程序不参与分组。</returns>
+    /// <returns>按组内最新更新时间倒序排列的分组行；工号为空的程序不参与分组。</returns>
     public static IReadOnlyList<ProgramProductGroupRow> BuildGroups(
         IEnumerable<BizProgram> programs,
         Func<BizProgram, string> resolveSyncStatus)
@@ -26,7 +27,9 @@ public static class ProgramProductGroupRules
         return programs
             .Where(program => !string.IsNullOrWhiteSpace(program.ProductNum))
             .GroupBy(program => Normalize(program.ProductNum), StringComparer.OrdinalIgnoreCase)
-            .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            // 工号行按组内最新更新时间倒序；时间相同再按工号排，保证顺序稳定可复现。
+            .OrderByDescending(group => group.Max(program => program.UpdatedTime))
+            .ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
             .Select((group, index) => BuildGroup(group, resolveSyncStatus, index + 1))
             .ToList();
     }
@@ -41,9 +44,10 @@ public static class ProgramProductGroupRules
             .Select(program => Normalize(program.ProductNum))
             .OrderBy(value => value, StringComparer.Ordinal)
             .First();
+        // 子行同样按更新时间倒序，最近改过的程序排在工号下第一条。
         var ordered = group
-            .OrderBy(program => program.SequenceNumber)
-            .ThenBy(program => program.Id)
+            .OrderByDescending(program => program.UpdatedTime)
+            .ThenByDescending(program => program.Id)
             .ToList();
 
         // 单程序工号不再多套一层父节点，直接把该程序摊平到工号行上。
