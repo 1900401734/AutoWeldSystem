@@ -176,7 +176,7 @@ public sealed class ExpressionReadService : IPlcExpressionReadService
     /// <summary>
     /// 先应用旧规则缩放，再应用新小数位格式，保证历史配置行为不变。
     /// </summary>
-    private static string ApplyDisplayRule(decimal rawValue, int rule, int? decimalPlaces)
+    private string ApplyDisplayRule(decimal rawValue, int rule, int? decimalPlaces)
     {
         if (rule == 4)
         {
@@ -194,16 +194,30 @@ public sealed class ExpressionReadService : IPlcExpressionReadService
         return FormatNumericValue(value, decimalPlaces);
     }
 
-    private static string FormatNumericValue(decimal value, int? decimalPlaces)
+    /// <summary>
+    /// 数值类型与 String 类型使用同一套小数位处理：小数位来自偏移量表达式始终生效，
+    /// 全局设置只决定截断还是四舍五入，保证界面与 MES 上传、报表口径一致。
+    /// </summary>
+    private string FormatNumericValue(decimal value, int? decimalPlaces)
     {
-        if (decimalPlaces is >= 0)
+        if (decimalPlaces is not >= 0)
         {
-            return value.ToString($"F{decimalPlaces.Value}", CultureInfo.InvariantCulture);
+            return value % 1m == 0
+                ? value.ToString("0", CultureInfo.InvariantCulture)
+                : value.ToString(CultureInfo.InvariantCulture);
         }
 
-        return value % 1m == 0
-            ? value.ToString("0", CultureInfo.InvariantCulture)
-            : value.ToString(CultureInfo.InvariantCulture);
+        var settings = _settingsService.Get();
+        // 关闭全局数值处理时按四舍五入，与本次修复前的 F{n} 行为等价。
+        var mode = settings.EnablePlcStringNumericFormatting ?? true
+            ? settings.PlcStringNumericFormatMode
+            : AppConstants.PlcStringNumericFormatModes.Round;
+
+        return PlcStringNumericFormatter.Format(
+            value.ToString(CultureInfo.InvariantCulture),
+            decimalPlaces,
+            enabled: true,
+            mode);
     }
 
     /// <summary>
