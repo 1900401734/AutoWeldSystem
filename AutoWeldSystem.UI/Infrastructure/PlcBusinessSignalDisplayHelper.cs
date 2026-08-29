@@ -22,6 +22,7 @@ public static class PlcBusinessSignalDisplayHelper
             [AppConstants.PlcLogicalKeys.DeviceMode] = TextKeys.Address.NameDeviceMode,
             [AppConstants.PlcLogicalKeys.ProductDataReady] = TextKeys.Address.NameProductDataReady,
             [AppConstants.PlcLogicalKeys.ProductCollectionFeedback] = TextKeys.Address.NameProductCollectionFeedback,
+            [AppConstants.PlcLogicalKeys.ProductResultFeedback] = TextKeys.Address.NameProductResultFeedback,
             [AppConstants.PlcLogicalKeys.TotalProduction] = TextKeys.Address.NameTotalProduction,
             [AppConstants.PlcLogicalKeys.AcceptedQuantity] = TextKeys.Address.NameAcceptedQuantity,
             [AppConstants.PlcLogicalKeys.RejectedQuantity] = TextKeys.Address.NameRejectedQuantity,
@@ -35,6 +36,7 @@ public static class PlcBusinessSignalDisplayHelper
             ["DeviceMode"] = TextKeys.Address.NameDeviceMode,
             ["ProductDataReady"] = TextKeys.Address.NameProductDataReady,
             ["ProductCollectionFeedback"] = TextKeys.Address.NameProductCollectionFeedback,
+            ["ProductResultFeedback"] = TextKeys.Address.NameProductResultFeedback,
             ["TotalProduction"] = TextKeys.Address.NameTotalProduction,
             ["AcceptedQuantity"] = TextKeys.Address.NameAcceptedQuantity,
             ["RejectedQuantity"] = TextKeys.Address.NameRejectedQuantity

@@ -61,6 +61,11 @@ public static class AppConstants
         public const string ProductDataReady = "product_data_ready";
         public const string ProductCollectionFeedback = "product_collection_feedback";
 
+        /// <summary>
+        /// 整件检测产品判定结果回写地址，取值与面结果一致：3=OK，2=NG。
+        /// </summary>
+        public const string ProductResultFeedback = "product_result_feedback";
+
         public const string WorkOrderStatus = "work_order_status";
         public const string DeviceMode = "device_mode";
 

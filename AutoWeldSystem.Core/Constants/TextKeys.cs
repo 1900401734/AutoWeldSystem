@@ -139,6 +139,7 @@ public static class TextKeys
         {
             public const string FilterByProductNumber = "monitor.checkbox.filter_by_product_number";
             public const string EnableDualWorkOrder = "monitor.checkbox.enable_dual_work_order";
+            public const string MergedDisplay = "monitor.checkbox.merged_display";
         }
 
         /// <summary>
@@ -148,6 +149,7 @@ public static class TextKeys
         {
             public const string FilterByProductNumber = "monitor.tooltip.filter_by_product_number";
             public const string EnableDualWorkOrder = "monitor.tooltip.enable_dual_work_order";
+            public const string MergedDisplay = "monitor.tooltip.merged_display";
         }
 
         public static class Label
@@ -1177,6 +1179,8 @@ public static class TextKeys
         public const string LabelProcessParameterDeviceType = "system.label.process_parameter_device_type";
         public const string LabelInspectionResultSource = "system.label.inspection_result_source";
         public const string LabelRealtimePointNumberSource = "system.label.realtime_point_number_source";
+        public const string LabelPairedAggregationMode = "system.label.paired_aggregation_mode";
+        public const string LabelWholePieceMergedDisplay = "system.label.whole_piece_merged_display";
         public const string LabelPostDataHeaderKey = "system.label.postdata_header_key";
         public const string LabelPostDataHeaderValue = "system.label.postdata_header_value";
         public const string UploadMode = "system.label.upload_mode";
@@ -1227,6 +1231,8 @@ public static class TextKeys
         public const string OptionInspectionResultSourceProgram = "system.option.inspection_result_source.program";
         public const string OptionRealtimePointNumberSourcePlc = "system.option.realtime_point_number_source.plc";
         public const string OptionRealtimePointNumberSourceProgram = "system.option.realtime_point_number_source.program";
+        public const string OptionPairedAggregationAverage = "system.option.paired_aggregation.average";
+        public const string OptionPairedAggregationMaximum = "system.option.paired_aggregation.maximum";
         public const string OptionCenterWholePiece = "system.option.center.whole_piece";
         public const string OptionCenterOther = "system.option.center.other";
 
@@ -1266,6 +1272,7 @@ public static class TextKeys
         public const string MessageRuntimeModeLocked = "system.message.runtime_mode_locked";
         public const string MessageInspectionResultSourceLocked = "system.message.inspection_result_source_locked";
         public const string MessageRealtimePointNumberSourceLocked = "system.message.realtime_point_number_source_locked";
+        public const string MessagePairedAggregationModeLocked = "system.message.paired_aggregation_mode_locked";
         public const string MessageDeviceManagementLocked = "system.message.device_management_locked";
         public const string MessagePositiveIntegerRequired = "system.message.positive_integer_required";
         public const string MessageRouteRequired = "system.message.route_required";
@@ -1335,6 +1342,7 @@ public static class TextKeys
         public const string NameDeviceMode = "address.name.device_mode";
         public const string NameProductDataReady = "address.name.product_data_ready";
         public const string NameProductCollectionFeedback = "address.name.product_collection_feedback";
+        public const string NameProductResultFeedback = "address.name.product_result_feedback";
         public const string NameTotalProduction = "address.name.total_production";
         public const string NameTargetProduction = "address.name.target_production";
         public const string NameAcceptedQuantity = "address.name.accepted_quantity";

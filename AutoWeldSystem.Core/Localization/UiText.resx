@@ -741,6 +741,9 @@
   <data name="address.name.product_collection_feedback" xml:space="preserve">
     <value>采集完成反馈</value>
   </data>
+  <data name="address.name.product_result_feedback" xml:space="preserve">
+    <value>产品结果反馈</value>
+  </data>
   <data name="address.name.total_production" xml:space="preserve">
     <value>加工总数</value>
   </data>
@@ -902,6 +905,12 @@
   </data>
   <data name="monitor.tooltip.enable_dual_work_order" xml:space="preserve">
     <value>启用后，双工位可分别使用独立工单；关闭后，双工位共用同一工单。</value>
+  </data>
+  <data name="monitor.checkbox.merged_display" xml:space="preserve">
+    <value>合并显示</value>
+  </data>
+  <data name="monitor.tooltip.merged_display" xml:space="preserve">
+    <value>勾选后按 A/B 聚合把四个检测面合并成一行，与上传和报表口径一致；取消勾选恢复逐面明细。只影响界面显示，不改变上传和报表数据。</value>
   </data>
   <data name="monitor.label.product_number" xml:space="preserve">
     <value>产品工号</value>
@@ -2248,4 +2257,9 @@
   <data name="system.option.realtime_point_number_source.plc" xml:space="preserve"><value>PLC读取</value></data>
   <data name="system.option.realtime_point_number_source.program" xml:space="preserve"><value>程序判断</value></data>
   <data name="system.message.realtime_point_number_source_locked" xml:space="preserve"><value>存在未完工任务，不能切换实时焊点编号来源，请先完工后再调整。</value></data>
+  <data name="system.label.paired_aggregation_mode" xml:space="preserve"><value>A/B配对聚合方式</value></data>
+  <data name="system.label.whole_piece_merged_display" xml:space="preserve"><value>整件检测四面合并显示</value></data>
+  <data name="system.option.paired_aggregation.average" xml:space="preserve"><value>配对平均值</value></data>
+  <data name="system.option.paired_aggregation.maximum" xml:space="preserve"><value>配对最大值</value></data>
+  <data name="system.message.paired_aggregation_mode_locked" xml:space="preserve"><value>存在未完工任务，不能切换A/B配对聚合方式，请先完工后再调整。</value></data>
 </root>

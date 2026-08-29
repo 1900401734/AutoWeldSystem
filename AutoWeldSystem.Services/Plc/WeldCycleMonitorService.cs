@@ -119,7 +119,8 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
                 {
                     StationNo = stationNo,
                     ProductDataReadyAddress = FindAddress(addresses, AppConstants.PlcLogicalKeys.ProductDataReady, stationNo),
-                    ProductCollectionFeedbackAddress = FindAddress(addresses, AppConstants.PlcLogicalKeys.ProductCollectionFeedback, stationNo)
+                    ProductCollectionFeedbackAddress = FindAddress(addresses, AppConstants.PlcLogicalKeys.ProductCollectionFeedback, stationNo),
+                    ProductResultFeedbackAddress = FindAddress(addresses, AppConstants.PlcLogicalKeys.ProductResultFeedback, stationNo)
                 };
             }
         }
@@ -336,7 +337,8 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
             {
                 StationNo = normalizedStationNo,
                 ProductDataReadyAddress = _addressService.GetAddress(AppConstants.PlcLogicalKeys.ProductDataReady, normalizedStationNo),
-                ProductCollectionFeedbackAddress = _addressService.GetAddress(AppConstants.PlcLogicalKeys.ProductCollectionFeedback, normalizedStationNo)
+                ProductCollectionFeedbackAddress = _addressService.GetAddress(AppConstants.PlcLogicalKeys.ProductCollectionFeedback, normalizedStationNo),
+                ProductResultFeedbackAddress = _addressService.GetAddress(AppConstants.PlcLogicalKeys.ProductResultFeedback, normalizedStationNo)
             };
             _stationStates[normalizedStationNo] = stationState;
             return stationState;
@@ -526,6 +528,8 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
             return;
         }
 
+        await WriteProductResultFeedbackAsync(stationState, records, cancellationToken);
+
         stationState.ProductDataReadyHandled = true;
         stationState.ObservedTaskId = task.Id;
         stationState.PendingFeedbackValue = 1;
@@ -709,6 +713,67 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
         return false;
     }
 
+    /// <summary>
+    /// 回写整件检测的产品判定结果，取值与面结果一致：3=OK，2=NG。
+    /// 这不是握手信号，写失败只记录日志不重试，避免把过期结果补写给下一件产品。
+    /// </summary>
+    private async Task WriteProductResultFeedbackAsync(
+        StationCycleState stationState,
+        IReadOnlyList<BizWeldPointRecord> records,
+        CancellationToken cancellationToken)
+    {
+        if (!IsUsable(stationState.ProductResultFeedbackAddress)
+            || !IsPlcConnected(stationState.StationNo)
+            || records.Count == 0)
+        {
+            return;
+        }
+
+        var productResult = TestResultRules.Normalize(records[0].ProductResult);
+        short value;
+        if (TestResultRules.IsOk(productResult))
+        {
+            value = 3;
+        }
+        else if (TestResultRules.IsNg(productResult) || TestResultRules.IsPreWeldNg(productResult))
+        {
+            value = 2;
+        }
+        else
+        {
+            return;
+        }
+
+        var address = stationState.ProductResultFeedbackAddress!;
+        try
+        {
+            var result = NormalizeDataType(address.DataType) switch
+            {
+                AppConstants.PlcDataTypes.Bool => await _plcCommunicationService.WriteBoolAsync(address.Address!, value > 2, cancellationToken),
+                AppConstants.PlcDataTypes.Int32 => await _plcCommunicationService.WriteInt32Async(address.Address!, value, cancellationToken),
+                AppConstants.PlcDataTypes.Float => await _plcCommunicationService.WriteFloatAsync(address.Address!, value, cancellationToken),
+                _ => await _plcCommunicationService.WriteInt16Async(address.Address!, value, cancellationToken)
+            };
+
+            if (!result.IsSuccess && IsPlcConnected(stationState.StationNo))
+            {
+                WriteBusinessFailureLog(
+                    $"工位{stationState.StationNo}产品结果回写失败",
+                    $"ProductResult={productResult}, Value={value}, Address={address.Address}, Error={result.Message}");
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            WriteBusinessFailureLog(
+                $"工位{stationState.StationNo}产品结果回写失败",
+                $"ProductResult={productResult}, Value={value}, Address={address.Address}, Error={ex.Message}");
+        }
+    }
+
     private static BizPlcAddress? FindAddress(IReadOnlyList<BizPlcAddress> addresses, string logicalKey, int stationNo)
     {
         return addresses
@@ -722,7 +787,8 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
     {
         var logicalKey = address.LogicalKey;
         return string.Equals(logicalKey, AppConstants.PlcLogicalKeys.ProductDataReady, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(logicalKey, AppConstants.PlcLogicalKeys.ProductCollectionFeedback, StringComparison.OrdinalIgnoreCase);
+            || string.Equals(logicalKey, AppConstants.PlcLogicalKeys.ProductCollectionFeedback, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(logicalKey, AppConstants.PlcLogicalKeys.ProductResultFeedback, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizeDataType(string? dataType)
@@ -822,6 +888,11 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
         public BizPlcAddress? ProductDataReadyAddress { get; init; }
 
         public BizPlcAddress? ProductCollectionFeedbackAddress { get; init; }
+
+        /// <summary>
+        /// 整件检测产品判定结果回写地址，未配置时跳过回写，不影响采集握手。
+        /// </summary>
+        public BizPlcAddress? ProductResultFeedbackAddress { get; init; }
 
         public bool ReadySignalInitialized { get; set; }
 

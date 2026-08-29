@@ -2948,6 +2948,7 @@ public partial class AddressManageView : BaseView
             AppConstants.PlcLogicalKeys.DeviceMode => TextKeys.Address.NameDeviceMode,
             AppConstants.PlcLogicalKeys.ProductDataReady => TextKeys.Address.NameProductDataReady,
             AppConstants.PlcLogicalKeys.ProductCollectionFeedback => TextKeys.Address.NameProductCollectionFeedback,
+            AppConstants.PlcLogicalKeys.ProductResultFeedback => TextKeys.Address.NameProductResultFeedback,
             AppConstants.PlcLogicalKeys.TotalProduction => TextKeys.Address.NameTotalProduction,
             AppConstants.PlcLogicalKeys.AcceptedQuantity => TextKeys.Address.NameAcceptedQuantity,
             AppConstants.PlcLogicalKeys.RejectedQuantity => TextKeys.Address.NameRejectedQuantity,
@@ -2971,6 +2972,7 @@ public partial class AddressManageView : BaseView
             or AppConstants.PlcLogicalKeys.DeviceMode
             or AppConstants.PlcLogicalKeys.ProductDataReady
             or AppConstants.PlcLogicalKeys.ProductCollectionFeedback
+            or AppConstants.PlcLogicalKeys.ProductResultFeedback
             or AppConstants.PlcLogicalKeys.TotalProduction
             or AppConstants.PlcLogicalKeys.AcceptedQuantity
             or AppConstants.PlcLogicalKeys.RejectedQuantity;
