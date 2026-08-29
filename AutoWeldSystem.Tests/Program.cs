@@ -165,6 +165,7 @@ var tests = new (string Name, Action Run)[]
     ("PLC string numeric formatter follows global disabled setting", PlcStringNumericFormatterFollowsGlobalDisabledSetting),
     ("PLC string numeric formatter truncates when enabled", PlcStringNumericFormatterTruncatesWhenEnabled),
     ("PLC string numeric formatter rounds when enabled", PlcStringNumericFormatterRoundsWhenEnabled),
+    ("PLC numeric values follow global format mode", PlcNumericValuesFollowGlobalFormatMode),
     ("PLC string numeric formatter keeps non numeric text", PlcStringNumericFormatterKeepsNonNumericText),
     ("PLC debug write rules parse bool aliases", PlcDebugWriteRulesParseBoolAliases),
     ("PLC debug write rules normalize unsupported data type", PlcDebugWriteRulesNormalizeUnsupportedDataType),
@@ -4462,6 +4463,34 @@ static void PlcStringNumericFormatterRoundsWhenEnabled()
         "0.234",
         PlcStringNumericFormatter.Format("+00.2344", 3, enabled: true, mode: AppConstants.PlcStringNumericFormatModes.Round),
         "Round mode must keep values below half unchanged at the configured precision.");
+}
+
+static void PlcNumericValuesFollowGlobalFormatMode()
+{
+    // 数值类型读值经 decimal.ToString() 会带尾随零，与 PLC 原始字符串形态不同，单独覆盖。
+    AssertEqual(
+        "15.85",
+        PlcStringNumericFormatter.Format("15.8500", 2, enabled: true, mode: AppConstants.PlcStringNumericFormatModes.Truncate),
+        "尾随零不得影响截断结果。");
+    AssertEqual(
+        "15.85",
+        PlcStringNumericFormatter.Format("15.8500", 2, enabled: true, mode: AppConstants.PlcStringNumericFormatModes.Round),
+        "尾随零不得影响四舍五入结果。");
+
+    // 修复前数值类型写死 F{n}（等同四舍五入），这一对断言就是修复前后的行为差异。
+    AssertEqual(
+        "15.85",
+        PlcStringNumericFormatter.Format("15.8560", 2, enabled: true, mode: AppConstants.PlcStringNumericFormatModes.Truncate),
+        "截断模式必须舍去多余小数，不得进位。");
+    AssertEqual(
+        "15.86",
+        PlcStringNumericFormatter.Format("15.8560", 2, enabled: true, mode: AppConstants.PlcStringNumericFormatModes.Round),
+        "四舍五入模式必须按配置小数位进位。");
+
+    AssertEqual(
+        "-0.00",
+        PlcStringNumericFormatter.Format("-0.0050", 2, enabled: true, mode: AppConstants.PlcStringNumericFormatModes.Truncate),
+        "负数截断到全零小数时必须保留符号语义并补足小数位。");
 }
 
 static void PlcStringNumericFormatterKeepsNonNumericText()
