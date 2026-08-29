@@ -1,6 +1,11 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.10.0`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.10.1`。
+
+## v2.10.1 修复说明
+
+- 数值类型（Int16/Int32/Float）的 PLC 读值此前只按偏移量表达式的小数位格式化，固定四舍五入，忽略系统设置里的“PLC字符串数值处理方式”；只有 String 类型才遵守该设置。结果是把处理方式选为“截断”时，实时预览和新采集的产品历史仍按四舍五入显示，与 MES 上传、XLSX 报表的数值对不上。现改为两者共同作用：小数位仍由偏移量表达式决定且始终生效，截断还是四舍五入由系统设置决定，界面与上传、报表口径统一。
+- “启用PLC字符串数值处理”关闭时数值类型按四舍五入处理，与本次修复前的行为一致；已入库的历史数据保持原样，本次修复只影响此后新采集的数据。
 
 ## v2.10.0 更新说明
 
@@ -408,10 +413,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>2.10.0</Version>
-<AssemblyVersion>2.10.0.0</AssemblyVersion>
-<FileVersion>2.10.0.0</FileVersion>
-<InformationalVersion>2.10.0</InformationalVersion>
+<Version>2.10.1</Version>
+<AssemblyVersion>2.10.1.0</AssemblyVersion>
+<FileVersion>2.10.1.0</FileVersion>
+<InformationalVersion>2.10.1</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -423,9 +428,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v2.10.0 -m "Release v2.10.0"
+git tag -a v2.10.1 -m "Release v2.10.1"
 git push origin main
-git push origin v2.10.0
+git push origin v2.10.1
 ```
 
 ## Git 使用
