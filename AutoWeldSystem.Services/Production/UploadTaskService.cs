@@ -1216,6 +1216,7 @@ public class UploadTaskService : IUploadTaskService
             var aggregation = WholePieceAbAggregationRules.Aggregate(
                 productRecords,
                 definitions,
+                settings.PairedAggregationMode,
                 settings.EnablePlcStringNumericFormatting ?? true,
                 settings.PlcStringNumericFormatMode);
             if (!aggregation.IsSuccess)

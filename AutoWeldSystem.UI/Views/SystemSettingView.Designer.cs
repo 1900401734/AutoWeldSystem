@@ -134,6 +134,10 @@
             tlpRealtimePointNumberSource = new TableLayoutPanel();
             lblRealtimePointNumberSource = new AntdUI.Label();
             selectRealtimePointNumberSource = new AntdUI.Select();
+            tlpPairedAggregationMode = new TableLayoutPanel();
+            lblPairedAggregationMode = new AntdUI.Label();
+            selectPairedAggregationMode = new AntdUI.Select();
+            chkEnableWholePieceMergedDisplay = new AntdUI.Checkbox();
             tlpMesUserRoute = new TableLayoutPanel();
             lblMesUserRoute = new AntdUI.Label();
             inputMesUserRoute = new AntdUI.Input();
@@ -228,6 +232,7 @@
             tlpProcessParameterType.SuspendLayout();
             tlpInspectionResultSource.SuspendLayout();
             tlpRealtimePointNumberSource.SuspendLayout();
+            tlpPairedAggregationMode.SuspendLayout();
             tlpMesUserRoute.SuspendLayout();
             tlpCheckbox1.SuspendLayout();
             tlpMesWorkOrderRoute.SuspendLayout();
@@ -1815,15 +1820,19 @@
             tlpProcessParameterType.Controls.Add(selectProcessParameterDeviceType, 1, 0);
             tlpProcessParameterType.Controls.Add(tlpInspectionResultSource, 0, 1);
             tlpProcessParameterType.Controls.Add(tlpRealtimePointNumberSource, 0, 2);
+            tlpProcessParameterType.Controls.Add(tlpPairedAggregationMode, 0, 3);
+            tlpProcessParameterType.Controls.Add(chkEnableWholePieceMergedDisplay, 0, 4);
             tlpProcessParameterType.Dock = DockStyle.Fill;
             tlpProcessParameterType.Location = new Point(0, 0);
             tlpProcessParameterType.Margin = new Padding(0);
             tlpProcessParameterType.Name = "tlpProcessParameterType";
-            tlpProcessParameterType.RowCount = 3;
+            tlpProcessParameterType.RowCount = 5;
             tlpProcessParameterType.RowStyles.Add(new RowStyle());
             tlpProcessParameterType.RowStyles.Add(new RowStyle());
             tlpProcessParameterType.RowStyles.Add(new RowStyle());
-            tlpProcessParameterType.Size = new Size(412, 117);
+            tlpProcessParameterType.RowStyles.Add(new RowStyle());
+            tlpProcessParameterType.RowStyles.Add(new RowStyle());
+            tlpProcessParameterType.Size = new Size(412, 195);
             tlpProcessParameterType.TabIndex = 7;
             // 
             // lblProcessParameterDeviceType
@@ -1925,6 +1934,57 @@
             selectRealtimePointNumberSource.Name = "selectRealtimePointNumberSource";
             selectRealtimePointNumberSource.Size = new Size(278, 39);
             selectRealtimePointNumberSource.TabIndex = 1;
+            //
+            // tlpPairedAggregationMode
+            //
+            tlpPairedAggregationMode.ColumnCount = 2;
+            tlpProcessParameterType.SetColumnSpan(tlpPairedAggregationMode, 2);
+            tlpPairedAggregationMode.ColumnStyles.Add(new ColumnStyle());
+            tlpPairedAggregationMode.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            tlpPairedAggregationMode.Controls.Add(lblPairedAggregationMode, 0, 0);
+            tlpPairedAggregationMode.Controls.Add(selectPairedAggregationMode, 1, 0);
+            tlpPairedAggregationMode.Dock = DockStyle.Fill;
+            tlpPairedAggregationMode.Location = new Point(0, 117);
+            tlpPairedAggregationMode.Margin = new Padding(0);
+            tlpPairedAggregationMode.Name = "tlpPairedAggregationMode";
+            tlpPairedAggregationMode.RowCount = 1;
+            tlpPairedAggregationMode.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            tlpPairedAggregationMode.Size = new Size(412, 39);
+            tlpPairedAggregationMode.TabIndex = 10;
+            //
+            // lblPairedAggregationMode
+            //
+            lblPairedAggregationMode.AutoSizeMode = AntdUI.TAutoSize.Width;
+            lblPairedAggregationMode.Dock = DockStyle.Fill;
+            lblPairedAggregationMode.Location = new Point(0, 0);
+            lblPairedAggregationMode.Margin = new Padding(0);
+            lblPairedAggregationMode.Name = "lblPairedAggregationMode";
+            lblPairedAggregationMode.Padding = new Padding(8, 0, 0, 0);
+            lblPairedAggregationMode.Size = new Size(134, 39);
+            lblPairedAggregationMode.TabIndex = 0;
+            lblPairedAggregationMode.Text = "A/B配对聚合方式";
+            //
+            // selectPairedAggregationMode
+            //
+            selectPairedAggregationMode.Dock = DockStyle.Fill;
+            selectPairedAggregationMode.Location = new Point(134, 0);
+            selectPairedAggregationMode.Margin = new Padding(0);
+            selectPairedAggregationMode.MaxCount = 10;
+            selectPairedAggregationMode.Name = "selectPairedAggregationMode";
+            selectPairedAggregationMode.Size = new Size(278, 39);
+            selectPairedAggregationMode.TabIndex = 1;
+            //
+            // chkEnableWholePieceMergedDisplay
+            //
+            tlpProcessParameterType.SetColumnSpan(chkEnableWholePieceMergedDisplay, 2);
+            chkEnableWholePieceMergedDisplay.Dock = DockStyle.Fill;
+            chkEnableWholePieceMergedDisplay.Location = new Point(0, 156);
+            chkEnableWholePieceMergedDisplay.Margin = new Padding(0);
+            chkEnableWholePieceMergedDisplay.Name = "chkEnableWholePieceMergedDisplay";
+            chkEnableWholePieceMergedDisplay.Padding = new Padding(6, 0, 0, 0);
+            chkEnableWholePieceMergedDisplay.Size = new Size(412, 39);
+            chkEnableWholePieceMergedDisplay.TabIndex = 11;
+            chkEnableWholePieceMergedDisplay.Text = "整件检测四面合并显示";
             // 
             // tlpMesUserRoute
             // 
@@ -2647,6 +2707,8 @@
             tlpProcessParameterType.PerformLayout();
             tlpInspectionResultSource.ResumeLayout(false);
             tlpInspectionResultSource.PerformLayout();
+            tlpPairedAggregationMode.ResumeLayout(false);
+            tlpPairedAggregationMode.PerformLayout();
             tlpRealtimePointNumberSource.ResumeLayout(false);
             tlpRealtimePointNumberSource.PerformLayout();
             tlpMesUserRoute.ResumeLayout(false);
@@ -2817,6 +2879,10 @@
         private TableLayoutPanel tlpRealtimePointNumberSource;
         private AntdUI.Label lblRealtimePointNumberSource;
         private AntdUI.Select selectRealtimePointNumberSource;
+        private TableLayoutPanel tlpPairedAggregationMode;
+        private AntdUI.Label lblPairedAggregationMode;
+        private AntdUI.Select selectPairedAggregationMode;
+        private AntdUI.Checkbox chkEnableWholePieceMergedDisplay;
         private AntdUI.Checkbox chkShowTestFlagInHistory;
         private AntdUI.Checkbox chkEnableDeviceStatusReport;
         private AntdUI.Checkbox chkEnableWorkOrderStatusReport;

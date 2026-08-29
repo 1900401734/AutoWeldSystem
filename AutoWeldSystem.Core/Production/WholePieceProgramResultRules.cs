@@ -82,6 +82,53 @@ public static class WholePieceProgramResultRules
     }
 
     /// <summary>
+    /// 用 A/B 聚合后的合并值判定产品结果，与 MES 上传、报表口径一致。
+    /// A、B 两行分别判定：EvaluateFace 不允许重复测试项，合在一起会因“对称度”重名直接失败。
+    /// </summary>
+    public static WholePieceProgramFaceResult EvaluateAggregated(
+        string? programContentSnapshot,
+        IReadOnlyList<WholePieceAbOutputRow> abRows,
+        IEnumerable<WholePieceAbValueDefinition> definitions)
+    {
+        ArgumentNullException.ThrowIfNull(abRows);
+        ArgumentNullException.ThrowIfNull(definitions);
+
+        var definitionList = definitions.ToList();
+        var results = new List<string>();
+        var failedItems = new List<string>();
+        foreach (var row in abRows)
+        {
+            // 程序快照以原始测试项名为键，这里不能用“对称度A”这类显示列名。
+            var measurements = definitionList
+                .Select(definition => new WholePieceProgramMeasurement(
+                    definition.ItemName,
+                    row.Values.TryGetValue(definition.OutputKey, out var value) ? value : null))
+                .ToList();
+            var rowResult = EvaluateFace(programContentSnapshot, measurements);
+            if (!rowResult.IsSuccess)
+            {
+                return rowResult;
+            }
+
+            results.Add(rowResult.Result);
+            // 失败项直接产出界面列名，供合并视图定位到具体列；高度、宽度是四面最大值，A/B 两行会各报一次，去重。
+            foreach (var failedItem in rowResult.FailedItems)
+            {
+                var columnName = WholePieceMergedDisplayRules.BuildColumnName(failedItem, row.SideNo);
+                if (!failedItems.Contains(columnName, StringComparer.OrdinalIgnoreCase))
+                {
+                    failedItems.Add(columnName);
+                }
+            }
+        }
+
+        var productResult = TestResultRules.ResolveProductResult(results);
+        return string.Equals(productResult, ProductionConstants.TestResults.Unknown, StringComparison.OrdinalIgnoreCase)
+            ? WholePieceProgramFaceResult.Failure("A/B合并值判定结果不完整，无法生成产品结果。")
+            : WholePieceProgramFaceResult.Success(productResult, failedItems);
+    }
+
+    /// <summary>
     /// 实时预览允许已完成面的 NG 立即决定产品 NG；只有四面全部完成且全 OK 才显示 OK。
     /// </summary>
     public static string ResolveRealtimeProductResult(IEnumerable<string?> faceResults, int expectedFaceCount)

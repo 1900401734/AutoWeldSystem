@@ -172,6 +172,7 @@ public class AddressService : IPlcAddressService
             or AppConstants.PlcLogicalKeys.DeviceMode
             or AppConstants.PlcLogicalKeys.ProductDataReady
             or AppConstants.PlcLogicalKeys.ProductCollectionFeedback
+            or AppConstants.PlcLogicalKeys.ProductResultFeedback
             or AppConstants.PlcLogicalKeys.TotalProduction
             or AppConstants.PlcLogicalKeys.AcceptedQuantity
             or AppConstants.PlcLogicalKeys.RejectedQuantity;
@@ -271,6 +272,7 @@ public class AddressService : IPlcAddressService
             addresses.Add(CreateStation(AppConstants.PlcLogicalKeys.TotalProduction, stationNo, "Total Processed", AppConstants.PlcDataTypes.Int16, 1, 11, "PC以1s周期轮询"));
             addresses.Add(CreateStation(AppConstants.PlcLogicalKeys.AcceptedQuantity, stationNo, "Accepted Quantity", AppConstants.PlcDataTypes.Int16, 1, 12, "PC以1s周期轮询"));
             addresses.Add(CreateStation(AppConstants.PlcLogicalKeys.RejectedQuantity, stationNo, "Rejected Quantity", AppConstants.PlcDataTypes.Int16, 1, 13, "PC以1s周期轮询"));
+            addresses.Add(CreateStation(AppConstants.PlcLogicalKeys.ProductResultFeedback, stationNo, "Product Result Feedback", AppConstants.PlcDataTypes.Int16, 1, 14, "整件检测产品判定结果：3=OK，2=NG"));
         }
 
         return addresses;

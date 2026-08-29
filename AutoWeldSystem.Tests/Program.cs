@@ -134,6 +134,10 @@ var tests = new (string Name, Action Run)[]
     ("Whole-piece program results use maximum allowed values", WholePieceProgramResultsUseMaximumAllowedValues),
     ("Program result display prefers persisted entity result", ProgramResultDisplayPrefersPersistedEntityResult),
     ("Whole-piece aggregation rejects invalid source data", WholePieceAggregationRejectsInvalidSourceData),
+    ("Whole-piece paired aggregation supports maximum mode", WholePiecePairedAggregationSupportsMaximumMode),
+    ("Whole-piece merged display builds A and B columns", WholePieceMergedDisplayBuildsAbColumns),
+    ("Whole-piece product result uses merged values", WholePieceProductResultUsesMergedValues),
+    ("Whole-piece merged result differs from per-face result", WholePieceMergedResultDiffersFromPerFaceResult),
     ("Report file upload rule requires an enabled report role", ReportFileUploadRuleRequiresEnabledReportRole),
     ("Product cycle snapshots persist PLC product results", ProductCycleSnapshotsPersistPlcProductResults),
     ("Missing point results do not fall back to product results", MissingPointResultDoesNotFallBackToProductResult),
@@ -2880,6 +2884,7 @@ static void WholePieceFourSideAggregationProducesAbRows()
     var result = WholePieceAbAggregationRules.Aggregate(
         records,
         [definition],
+        ProductionConstants.PairedAggregationModes.Average,
         enableStringNumericFormatting: true,
         AppConstants.PlcStringNumericFormatModes.Round);
 
@@ -2906,6 +2911,7 @@ static void WholePieceHeightAndWidthUseProductMaximum()
     var result = WholePieceAbAggregationRules.Aggregate(
         records,
         [height],
+        ProductionConstants.PairedAggregationModes.Average,
         enableStringNumericFormatting: true,
         AppConstants.PlcStringNumericFormatModes.Round);
 
@@ -2982,7 +2988,7 @@ static void WholePieceProgramResultsUseMaximumAllowedValues()
 
     var collectionCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductCycleCollectionService.cs"), Encoding.UTF8);
     var previewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductRealtimePreviewService.cs"), Encoding.UTF8);
-    AssertTrue(collectionCode.Contains("ApplyProgramCalculatedResults(task, schemeItems, records)", StringComparison.Ordinal)
+    AssertTrue(collectionCode.Contains("ApplyProgramCalculatedResults(task,", StringComparison.Ordinal)
         && collectionCode.Contains("record.ProductResult = productResult;", StringComparison.Ordinal), "正式采集必须把程序计算的单面和产品结果固化到四面记录。");
     AssertTrue(collectionCode.Contains("!useProgramResult || ProductRealtimePreviewRules.ShouldReadTestValues(testResult)", StringComparison.Ordinal), "程序计算模式下PLC未完成的面不得读取测试值地址。");
     AssertTrue(previewCode.Contains("activeTask?.ProgramContentSnapshot", StringComparison.Ordinal)
@@ -3000,7 +3006,7 @@ static void WholePieceAggregationRejectsInvalidSourceData()
         CreateAggregationRecord("4", "4", ProductionConstants.TestResults.Ok)
     };
     var definition = new WholePieceAbValueDefinition(1, "高度", "Height", "14:F-0_2");
-    var duplicateResult = WholePieceAbAggregationRules.Aggregate(duplicateSide, [definition], true, AppConstants.PlcStringNumericFormatModes.Truncate);
+    var duplicateResult = WholePieceAbAggregationRules.Aggregate(duplicateSide, [definition], ProductionConstants.PairedAggregationModes.Average, true, AppConstants.PlcStringNumericFormatModes.Truncate);
     AssertFalse(duplicateResult.IsSuccess, "重复面号必须拒绝。");
 
     var invalidNumber = new[]
@@ -3010,7 +3016,7 @@ static void WholePieceAggregationRejectsInvalidSourceData()
         CreateAggregationRecord("3", "3", ProductionConstants.TestResults.Ok),
         CreateAggregationRecord("4", "4", ProductionConstants.TestResults.Ok)
     };
-    var invalidNumberResult = WholePieceAbAggregationRules.Aggregate(invalidNumber, [definition], true, AppConstants.PlcStringNumericFormatModes.Truncate);
+    var invalidNumberResult = WholePieceAbAggregationRules.Aggregate(invalidNumber, [definition], ProductionConstants.PairedAggregationModes.Average, true, AppConstants.PlcStringNumericFormatModes.Truncate);
     AssertFalse(invalidNumberResult.IsSuccess, "非数字聚合值必须拒绝。");
 
     var absoluteDefinition = definition with { ActualExpression = "DB97.26:F-0_2" };
@@ -3021,7 +3027,7 @@ static void WholePieceAggregationRejectsInvalidSourceData()
         CreateAggregationRecord("3", "3", ProductionConstants.TestResults.Ok),
         CreateAggregationRecord("4", "4", ProductionConstants.TestResults.Ok)
     };
-    var absoluteResult = WholePieceAbAggregationRules.Aggregate(validRecords, [absoluteDefinition], true, AppConstants.PlcStringNumericFormatModes.Truncate);
+    var absoluteResult = WholePieceAbAggregationRules.Aggregate(validRecords, [absoluteDefinition], ProductionConstants.PairedAggregationModes.Average, true, AppConstants.PlcStringNumericFormatModes.Truncate);
     AssertFalse(absoluteResult.IsSuccess, "A/B聚合源使用绝对地址时必须拒绝。");
 }
 
@@ -3038,6 +3044,196 @@ static BizWeldPointRecord CreateAggregationRecord(string sideNo, string value, s
             ["item_2"] = value
         })
     };
+}
+
+static BizWeldPointRecord CreateMergedRecord(string sideNo, string height, string symmetry, string result)
+{
+    return new BizWeldPointRecord
+    {
+        ProductNo = "P001",
+        TouchNo = sideNo,
+        TestResult = result,
+        RawDataJson = JsonSerializer.Serialize(new Dictionary<string, string>
+        {
+            ["item_1"] = height,
+            ["item_2"] = symmetry
+        })
+    };
+}
+
+static WholePieceAbValueDefinition MergedHeightDefinition() => new(1, "高度", "高度", "14:F-0_2");
+
+static WholePieceAbValueDefinition MergedSymmetryDefinition() => new(2, "对称度", "对称度", "18:F-0_2");
+
+static void WholePiecePairedAggregationSupportsMaximumMode()
+{
+    var records = new[]
+    {
+        CreateAggregationRecord("1", "0.12", ProductionConstants.TestResults.Ok),
+        CreateAggregationRecord("2", "0.14", ProductionConstants.TestResults.Ok),
+        CreateAggregationRecord("3", "0.15", ProductionConstants.TestResults.Ok),
+        CreateAggregationRecord("4", "0.16", ProductionConstants.TestResults.Ok)
+    };
+    var symmetry = new WholePieceAbValueDefinition(2, "对称度", "Symmetry", "18:F-0_2");
+    var height = new WholePieceAbValueDefinition(1, "高度", "Height", "14:F-0_2");
+
+    var maximumResult = WholePieceAbAggregationRules.Aggregate(
+        records,
+        [symmetry, height],
+        ProductionConstants.PairedAggregationModes.Maximum,
+        true,
+        AppConstants.PlcStringNumericFormatModes.Round);
+    AssertTrue(maximumResult.IsSuccess, maximumResult.ErrorMessage);
+    AssertEqual("0.16", maximumResult.Rows[0].Values["Symmetry"], "最大值模式下A面必须取2、4面较大值。");
+    AssertEqual("0.15", maximumResult.Rows[1].Values["Symmetry"], "最大值模式下B面必须取1、3面较大值。");
+    AssertEqual("0.16", maximumResult.Rows[0].Values["Height"], "高度必须始终取四面最大值，不随配对聚合方式变化。");
+
+    var averageResult = WholePieceAbAggregationRules.Aggregate(
+        records,
+        [symmetry],
+        ProductionConstants.PairedAggregationModes.Average,
+        true,
+        AppConstants.PlcStringNumericFormatModes.Round);
+    AssertTrue(averageResult.IsSuccess, averageResult.ErrorMessage);
+    AssertEqual("0.15", averageResult.Rows[0].Values["Symmetry"], "平均值模式必须与改动前保持一致。");
+    AssertEqual("0.14", averageResult.Rows[1].Values["Symmetry"], "平均值模式必须与改动前保持一致。");
+}
+
+static void WholePieceMergedDisplayBuildsAbColumns()
+{
+    var columns = WholePieceMergedDisplayRules.BuildColumns([MergedHeightDefinition(), MergedSymmetryDefinition()]);
+
+    AssertEqual(3, columns.Count, "高度占一列、对称度占A/B两列，共三列。");
+    AssertEqual("高度", columns[0].ColumnName, "四面最大值项必须只有一列。");
+    AssertEqual("对称度A", columns[1].ColumnName, "配对项必须先输出A列。");
+    AssertEqual("对称度B", columns[2].ColumnName, "配对项必须后输出B列。");
+
+    var rows = new List<WholePieceAbOutputRow>
+    {
+        new("A", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["高度"] = "15.88",
+            ["对称度"] = "0.020"
+        }),
+        new("B", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["高度"] = "15.88",
+            ["对称度"] = "0.095"
+        })
+    };
+    var values = WholePieceMergedDisplayRules.BuildValues(columns, rows);
+
+    AssertEqual("15.88", values["高度"], "高度列必须取四面最大值。");
+    AssertEqual("0.020", values["对称度A"], "对称度A列必须取A行数值。");
+    AssertEqual("0.095", values["对称度B"], "对称度B列必须取B行数值。");
+}
+
+static void WholePieceProductResultUsesMergedValues()
+{
+    var snapshot = JsonSerializer.Serialize(new Dictionary<string, string>
+    {
+        ["高度"] = "16.00",
+        ["对称度"] = "0.10"
+    });
+    var okRows = new List<WholePieceAbOutputRow>
+    {
+        new("A", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["高度"] = "15.88",
+            ["对称度"] = "0.02"
+        }),
+        new("B", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["高度"] = "15.88",
+            ["对称度"] = "0.09"
+        })
+    };
+    var okResult = WholePieceProgramResultRules.EvaluateAggregated(
+        snapshot,
+        okRows,
+        [MergedHeightDefinition(), MergedSymmetryDefinition()]);
+    AssertTrue(okResult.IsSuccess, okResult.ErrorMessage);
+    AssertEqual(ProductionConstants.TestResults.Ok, okResult.Result, "A/B合并值都不超限时产品必须判OK。");
+
+    var ngRows = new List<WholePieceAbOutputRow>
+    {
+        okRows[0],
+        new("B", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["高度"] = "15.88",
+            ["对称度"] = "0.19"
+        })
+    };
+    var ngResult = WholePieceProgramResultRules.EvaluateAggregated(
+        snapshot,
+        ngRows,
+        [MergedHeightDefinition(), MergedSymmetryDefinition()]);
+    AssertTrue(ngResult.IsSuccess, ngResult.ErrorMessage);
+    AssertEqual(ProductionConstants.TestResults.Ng, ngResult.Result, "任一合并值超限时产品必须判NG。");
+    AssertEqual(1, ngResult.FailedItems.Count, "只有B面对称度超限时失败项必须只有一个。");
+    AssertEqual("对称度B", ngResult.FailedItems[0], "失败项必须是界面列名，合并视图才能定位到具体列。");
+
+    // 高度取四面最大值，A/B 两行数值相同会各报一次，必须去重成一列。
+    var heightSnapshot = JsonSerializer.Serialize(new Dictionary<string, string>
+    {
+        ["高度"] = "15.00",
+        ["对称度"] = "0.10"
+    });
+    var heightNgResult = WholePieceProgramResultRules.EvaluateAggregated(
+        heightSnapshot,
+        okRows,
+        [MergedHeightDefinition(), MergedSymmetryDefinition()]);
+    AssertTrue(heightNgResult.IsSuccess, heightNgResult.ErrorMessage);
+    AssertEqual(ProductionConstants.TestResults.Ng, heightNgResult.Result, "四面最大高度超限时产品必须判NG。");
+    AssertEqual(1, heightNgResult.FailedItems.Count, "四面最大值项的失败列不得因A/B两行重复出现两次。");
+    AssertEqual("高度", heightNgResult.FailedItems[0], "四面最大值项的失败列名不带A/B后缀。");
+}
+
+static void WholePieceMergedResultDiffersFromPerFaceResult()
+{
+    // 面3对称度单独超限，但B面配对平均值正好等于上限，合并口径判OK，与逐面口径结论不同。
+    var records = new[]
+    {
+        CreateMergedRecord("1", "15.00", "0.05", ProductionConstants.TestResults.Ok),
+        CreateMergedRecord("2", "15.00", "0.02", ProductionConstants.TestResults.Ok),
+        CreateMergedRecord("3", "15.00", "0.15", ProductionConstants.TestResults.Ok),
+        CreateMergedRecord("4", "15.00", "0.02", ProductionConstants.TestResults.Ok)
+    };
+    var snapshot = JsonSerializer.Serialize(new Dictionary<string, string>
+    {
+        ["高度"] = "16.00",
+        ["对称度"] = "0.10"
+    });
+
+    var perFaceResults = records
+        .Select(record => WholePieceProgramResultRules.EvaluateFace(snapshot,
+        [
+            new WholePieceProgramMeasurement("高度", "15.00"),
+            new WholePieceProgramMeasurement("对称度", record.TouchNo == "3" ? "0.15" : "0.02")
+        ]))
+        .ToList();
+    AssertTrue(perFaceResults.All(result => result.IsSuccess), "逐面判定必须成功执行。");
+    AssertEqual(
+        ProductionConstants.TestResults.Ng,
+        TestResultRules.ResolveProductResult(perFaceResults.Select(result => result.Result)),
+        "逐面口径下面3超限会让产品判NG。");
+
+    var aggregation = WholePieceAbAggregationRules.Aggregate(
+        records,
+        [MergedHeightDefinition(), MergedSymmetryDefinition()],
+        ProductionConstants.PairedAggregationModes.Average,
+        true,
+        AppConstants.PlcStringNumericFormatModes.Round);
+    AssertTrue(aggregation.IsSuccess, aggregation.ErrorMessage);
+    var mergedResult = WholePieceProgramResultRules.EvaluateAggregated(
+        snapshot,
+        aggregation.Rows,
+        [MergedHeightDefinition(), MergedSymmetryDefinition()]);
+    AssertTrue(mergedResult.IsSuccess, mergedResult.ErrorMessage);
+    AssertEqual(
+        ProductionConstants.TestResults.Ok,
+        mergedResult.Result,
+        "合并口径按A/B聚合值判定，配对平均值未超限时产品判OK。");
 }
 
 static void ProductCycleSnapshotsPersistPlcProductResults()

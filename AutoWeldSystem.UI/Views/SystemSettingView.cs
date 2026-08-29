@@ -75,6 +75,12 @@ public partial class SystemSettingView : BaseView
         new(ProductionConstants.RealtimePointNumberSources.Program, TextKeys.SystemSetting.OptionRealtimePointNumberSourceProgram)
     };
 
+    private static readonly LocalizedOption<string>[] PairedAggregationModeOptions =
+    {
+        new(ProductionConstants.PairedAggregationModes.Average, TextKeys.SystemSetting.OptionPairedAggregationAverage),
+        new(ProductionConstants.PairedAggregationModes.Maximum, TextKeys.SystemSetting.OptionPairedAggregationMaximum)
+    };
+
     private static readonly LocalizedOption<string>[] CenterServerSystemTypeOptions =
     {
         new(CenterServerConstants.SystemTypes.Electromagnetic, TextKeys.SystemSetting.OptionDeviceElectromagnetic),
@@ -116,6 +122,7 @@ public partial class SystemSettingView : BaseView
     private bool _syncingProcessParameterDeviceTypeSelection;
     private bool _syncingInspectionResultSourceSelection;
     private bool _syncingRealtimePointNumberSourceSelection;
+    private bool _syncingPairedAggregationModeSelection;
     private bool _syncingCenterServerSystemTypeSelection;
     private bool _deviceManagementStateKnown;
     private string _selectedPlcType = AppConstants.PlcTypes.ModbusTcp;
@@ -125,6 +132,7 @@ public partial class SystemSettingView : BaseView
     private string _selectedProcessParameterDeviceType = ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic;
     private string _selectedInspectionResultSource = ProductionConstants.InspectionResultSources.Plc;
     private string _selectedRealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Plc;
+    private string _selectedPairedAggregationMode = ProductionConstants.PairedAggregationModes.Average;
     private string _selectedCenterServerSystemType = CenterServerConstants.SystemTypes.Other;
     private AppSettings _currentSettings;
     private SystemSettingLayoutMode? _lastLayoutMode;
@@ -175,6 +183,7 @@ public partial class SystemSettingView : BaseView
         BindProcessParameterDeviceTypeOptions();
         BindInspectionResultSourceOptions();
         BindRealtimePointNumberSourceOptions();
+        BindPairedAggregationModeOptions();
         BindCenterServerSystemTypeOptions();
         ApplyBasicSettingsLayout(force: true);
         basicSettingsViewport.AutoScrollPosition = scrollOffset;
@@ -333,6 +342,7 @@ public partial class SystemSettingView : BaseView
         selectProcessParameterDeviceType.SelectedIndexChanged += SelectProcessParameterDeviceType_SelectedIndexChanged;
         selectInspectionResultSource.SelectedIndexChanged += SelectInspectionResultSource_SelectedIndexChanged;
         selectRealtimePointNumberSource.SelectedIndexChanged += SelectRealtimePointNumberSource_SelectedIndexChanged;
+        selectPairedAggregationMode.SelectedIndexChanged += SelectPairedAggregationMode_SelectedIndexChanged;
         selectCenterServerSystemType.SelectedIndexChanged += SelectCenterServerSystemType_SelectedIndexChanged;
         chkEnableDualStation.CheckedChanged += (_, _) => UpdateStationDisplayNameVisibility();
     }
@@ -359,6 +369,7 @@ public partial class SystemSettingView : BaseView
 
             if (!CanSaveRuntimeModeChange(previousSettings, settings)
                 || !CanSaveInspectionResultSourceChange(previousSettings, settings)
+                || !CanSavePairedAggregationModeChange(previousSettings, settings)
                 || !CanSaveRealtimePointNumberSourceChange(previousSettings, settings))
             {
                 BindSettings(previousSettings);
@@ -427,6 +438,7 @@ public partial class SystemSettingView : BaseView
 
             if (!CanSaveRuntimeModeChange(previousSettings, settings)
                 || !CanSaveInspectionResultSourceChange(previousSettings, settings)
+                || !CanSavePairedAggregationModeChange(previousSettings, settings)
                 || !CanSaveRealtimePointNumberSourceChange(previousSettings, settings))
             {
                 BindSettings(previousSettings);
@@ -609,6 +621,21 @@ public partial class SystemSettingView : BaseView
         _selectedInspectionResultSource = InspectionResultSourceOptions[e.Value].Value;
     }
 
+    private void SelectPairedAggregationMode_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
+    {
+        if (_syncingPairedAggregationModeSelection)
+        {
+            return;
+        }
+
+        if (e.Value < 0 || e.Value >= PairedAggregationModeOptions.Length)
+        {
+            return;
+        }
+
+        _selectedPairedAggregationMode = PairedAggregationModeOptions[e.Value].Value;
+    }
+
     private void SelectRealtimePointNumberSource_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
     {
         if (_syncingRealtimePointNumberSourceSelection)
@@ -776,6 +803,8 @@ public partial class SystemSettingView : BaseView
         _selectedProcessParameterDeviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
         _selectedInspectionResultSource = ProductionConstants.InspectionResultSources.Normalize(settings.InspectionResultSource);
         _selectedRealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Normalize(settings.RealtimePointNumberSource);
+        _selectedPairedAggregationMode = ProductionConstants.PairedAggregationModes.Normalize(settings.PairedAggregationMode);
+        chkEnableWholePieceMergedDisplay.Checked = settings.EnableWholePieceMergedDisplay == true;
         _selectedCenterServerSystemType = NormalizeCenterServerSystemType(settings.CenterServerSystemType);
         inputUploadBatchSize.Text = Math.Max(1, settings.UploadBatchSize).ToString(CultureInfo.InvariantCulture);
         BindPlcTypeOptions();
@@ -785,6 +814,7 @@ public partial class SystemSettingView : BaseView
         BindProcessParameterDeviceTypeOptions();
         BindInspectionResultSourceOptions();
         BindRealtimePointNumberSourceOptions();
+        BindPairedAggregationModeOptions();
         BindCenterServerSystemTypeOptions();
         UpdateInspectionResultSourceEnabled();
         UpdateRealtimePointNumberSourceEnabled();
@@ -917,6 +947,8 @@ public partial class SystemSettingView : BaseView
         lblProcessParameterDeviceType.Text = _localizer.GetString(TextKeys.SystemSetting.LabelProcessParameterDeviceType);
         lblInspectionResultSource.Text = _localizer.GetString(TextKeys.SystemSetting.LabelInspectionResultSource);
         lblRealtimePointNumberSource.Text = _localizer.GetString(TextKeys.SystemSetting.LabelRealtimePointNumberSource);
+        lblPairedAggregationMode.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPairedAggregationMode);
+        chkEnableWholePieceMergedDisplay.Text = _localizer.GetString(TextKeys.SystemSetting.LabelWholePieceMergedDisplay);
         chkEnablePostDataCustomHeader.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnablePostDataHeader);
         lblPostDataHeaderKey.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPostDataHeaderKey);
         lblPostDataHeaderValue.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPostDataHeaderValue);
@@ -1062,6 +1094,31 @@ public partial class SystemSettingView : BaseView
             StringComparison.OrdinalIgnoreCase);
         tlpInspectionResultSource.Visible = wholePieceInspection;
         selectInspectionResultSource.Enabled = wholePieceInspection && !HasAnyUnfinishedTask();
+
+        // 合并显示与 A/B 配对聚合只对整件检测有意义；聚合方式影响上传和报表数据，未完工时禁止切换。
+        tlpPairedAggregationMode.Visible = wholePieceInspection;
+        selectPairedAggregationMode.Enabled = wholePieceInspection && !HasAnyUnfinishedTask();
+        chkEnableWholePieceMergedDisplay.Visible = wholePieceInspection;
+    }
+
+    private void BindPairedAggregationModeOptions()
+    {
+        _syncingPairedAggregationModeSelection = true;
+        try
+        {
+            selectPairedAggregationMode.Items.Clear();
+            selectPairedAggregationMode.Items.AddRange(PairedAggregationModeOptions
+                .Select(option => (object)_localizer.GetString(option.TextKey))
+                .ToArray());
+
+            var selectedIndex = Array.FindIndex(PairedAggregationModeOptions, option =>
+                string.Equals(option.Value, _selectedPairedAggregationMode, StringComparison.OrdinalIgnoreCase));
+            selectPairedAggregationMode.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+        }
+        finally
+        {
+            _syncingPairedAggregationModeSelection = false;
+        }
     }
 
     private void BindRealtimePointNumberSourceOptions()
@@ -1519,6 +1576,8 @@ public partial class SystemSettingView : BaseView
         settings.ProcessParameterDeviceType = NormalizeProcessParameterDeviceType(_selectedProcessParameterDeviceType);
         settings.InspectionResultSource = ProductionConstants.InspectionResultSources.Normalize(_selectedInspectionResultSource);
         settings.RealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Normalize(_selectedRealtimePointNumberSource);
+        settings.PairedAggregationMode = ProductionConstants.PairedAggregationModes.Normalize(_selectedPairedAggregationMode);
+        settings.EnableWholePieceMergedDisplay = chkEnableWholePieceMergedDisplay.Checked;
         if (!TryApplyMesEndpointSettings(settings))
         {
             return false;
@@ -1613,6 +1672,21 @@ public partial class SystemSettingView : BaseView
         }
 
         ShowWarning(TextKeys.SystemSetting.MessageInspectionResultSourceLocked);
+        return false;
+    }
+
+    private bool CanSavePairedAggregationModeChange(AppSettings previousSettings, AppSettings newSettings)
+    {
+        if (string.Equals(
+                ProductionConstants.PairedAggregationModes.Normalize(previousSettings.PairedAggregationMode),
+                ProductionConstants.PairedAggregationModes.Normalize(newSettings.PairedAggregationMode),
+                StringComparison.OrdinalIgnoreCase)
+            || !HasAnyUnfinishedTask())
+        {
+            return true;
+        }
+
+        ShowWarning(TextKeys.SystemSetting.MessagePairedAggregationModeLocked);
         return false;
     }
 
