@@ -90,7 +90,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
 
         if (useProgramResult)
         {
-            ApplyProgramCalculatedResults(task, schemeItems, records);
+            ApplyProgramCalculatedResults(task, processConfig, schemeItems, records);
         }
 
         ValidateCollectedRecords(processConfig, schemeItems, records);
@@ -474,6 +474,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
 
     private void ApplyProgramCalculatedResults(
         BizWeldTask task,
+        BizProductProcessConfig config,
         IReadOnlyList<SchemeItemSnapshot> schemeItems,
         IReadOnlyList<BizWeldPointRecord> records)
     {
@@ -518,7 +519,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             });
         }
 
-        var productResult = TestResultRules.ResolveProductResult(records.Select(record => record.TestResult));
+        var productResult = ResolveProgramProductResult(task, config, participatingItems, records);
         if (string.Equals(productResult, ProductionConstants.TestResults.Unknown, StringComparison.OrdinalIgnoreCase))
         {
             throw new BusinessOperationException(Category, "产品数据采集失败", "四面程序判定结果不完整，无法生成产品结果。");
@@ -532,6 +533,59 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
                 ["program_product_result"] = productResult
             });
         }
+    }
+
+    /// <summary>
+    /// 四面整件检测的产品结果按 A/B 合并值判定，与 MES 上传和报表使用同一组数据；
+    /// 其余配置沿用逐面结果取并。存在焊前 NG 面时不做聚合，直接沿用面结果。
+    /// </summary>
+    private string ResolveProgramProductResult(
+        BizWeldTask task,
+        BizProductProcessConfig config,
+        IReadOnlyList<SchemeItemSnapshot> participatingItems,
+        IReadOnlyList<BizWeldPointRecord> records)
+    {
+        var settings = _settingsService.Get();
+        if (!WholePieceAbAggregationRules.IsApplicable(settings.ProcessParameterDeviceType, config.TouchCount)
+            || records.Any(record => TestResultRules.IsPreWeldNg(record.TestResult)))
+        {
+            return TestResultRules.ResolveProductResult(records.Select(record => record.TestResult));
+        }
+
+        var definitions = participatingItems
+            .Select(item => new WholePieceAbValueDefinition(
+                item.Item.ItemId,
+                item.Item.ItemName,
+                item.Item.ItemName,
+                item.Item.ActualExpression))
+            .ToList();
+        var aggregation = WholePieceAbAggregationRules.Aggregate(
+            records,
+            definitions,
+            settings.PairedAggregationMode,
+            settings.EnablePlcStringNumericFormatting ?? true,
+            settings.PlcStringNumericFormatMode);
+        if (!aggregation.IsSuccess)
+        {
+            throw new ProductCollectionHandledException(
+                Category,
+                "产品数据采集配置错误",
+                $"产品“{records[0].ProductNo}”合并值判定失败：{aggregation.ErrorMessage}");
+        }
+
+        var result = WholePieceProgramResultRules.EvaluateAggregated(
+            task.ProgramContentSnapshot,
+            aggregation.Rows,
+            definitions);
+        if (!result.IsSuccess)
+        {
+            throw new ProductCollectionHandledException(
+                Category,
+                "产品数据采集配置错误",
+                $"产品“{records[0].ProductNo}”合并值判定失败：{result.ErrorMessage}");
+        }
+
+        return result.Result;
     }
 
     private static IReadOnlyDictionary<string, string> ParseRawData(string? rawDataJson)
