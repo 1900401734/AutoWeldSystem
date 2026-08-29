@@ -2207,7 +2207,7 @@
   <data name="system.label.process_parameter_device_type" xml:space="preserve"><value>过程参数设备类型</value></data>
   <data name="system.label.postdata_header_key" xml:space="preserve"><value>Header Key</value></data>
   <data name="system.label.postdata_header_value" xml:space="preserve"><value>Header Value</value></data>
-  <data name="system.checkbox.enable_plc_string_formatting" xml:space="preserve"><value>启用 PLC 字符串数值处理</value></data>
+  <data name="system.checkbox.enable_plc_string_formatting" xml:space="preserve"><value>启用 PLC 数值格式处理</value></data>
   <data name="system.checkbox.enable_plc_alarm_reading" xml:space="preserve"><value>启用 PLC 报警读取</value></data>
   <data name="system.checkbox.enable_center_server_sync" xml:space="preserve"><value>启用中心服务器同步</value></data>
   <data name="system.checkbox.enable_postdata_header" xml:space="preserve"><value>启用 PostData 自定义 Header</value></data>
@@ -2253,10 +2253,10 @@
   <data name="system.option.inspection_result_source.plc" xml:space="preserve"><value>PLC读取</value></data>
   <data name="system.option.inspection_result_source.program" xml:space="preserve"><value>程序计算</value></data>
   <data name="system.message.inspection_result_source_locked" xml:space="preserve"><value>存在未完工任务，不能切换检测结果来源，请先完工后再调整。</value></data>
-  <data name="system.label.realtime_point_number_source" xml:space="preserve"><value>实时焊点编号来源</value></data>
+  <data name="system.label.realtime_point_number_source" xml:space="preserve"><value>实时编号来源</value></data>
   <data name="system.option.realtime_point_number_source.plc" xml:space="preserve"><value>PLC读取</value></data>
   <data name="system.option.realtime_point_number_source.program" xml:space="preserve"><value>程序判断</value></data>
-  <data name="system.message.realtime_point_number_source_locked" xml:space="preserve"><value>存在未完工任务，不能切换实时焊点编号来源，请先完工后再调整。</value></data>
+  <data name="system.message.realtime_point_number_source_locked" xml:space="preserve"><value>存在未完工任务，不能切换实时编号来源，请先完工后再调整。</value></data>
   <data name="system.label.paired_aggregation_mode" xml:space="preserve"><value>A/B配对聚合方式</value></data>
   <data name="system.label.whole_piece_merged_display" xml:space="preserve"><value>整件检测四面合并显示</value></data>
   <data name="system.option.paired_aggregation.average" xml:space="preserve"><value>配对平均值</value></data>
