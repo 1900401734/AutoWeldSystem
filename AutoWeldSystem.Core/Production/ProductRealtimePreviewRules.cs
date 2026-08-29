@@ -14,4 +14,26 @@ public static class ProductRealtimePreviewRules
     /// </summary>
     public static bool ShouldReadTestValues(string? touchResult)
         => TestResultRules.IsOk(touchResult) || TestResultRules.IsNg(touchResult);
+
+    /// <summary>
+    /// 从第一面起连续满足门禁的数量，用于程序判断模式下推算已完成面数。
+    /// 遇到未完成面即停止计数，避免 PLC 残留结果让计数跳号。
+    /// </summary>
+    public static int CountCompletedFaces(IEnumerable<string?> faceResults)
+    {
+        ArgumentNullException.ThrowIfNull(faceResults);
+
+        var count = 0;
+        foreach (var faceResult in faceResults)
+        {
+            if (!ShouldReadTestValues(faceResult))
+            {
+                break;
+            }
+
+            count++;
+        }
+
+        return count;
+    }
 }
