@@ -319,6 +319,7 @@ public class ProductionReportFileService : IProductionReportFileService
             var aggregation = WholePieceAbAggregationRules.Aggregate(
                 group,
                 definitions,
+                settings.PairedAggregationMode,
                 settings.EnablePlcStringNumericFormatting ?? true,
                 settings.PlcStringNumericFormatMode);
             if (!aggregation.IsSuccess)

@@ -240,6 +240,20 @@ public static class ProductionConstants
     }
 
     /// <summary>
+    /// 整件检测 A/B 配对聚合方式。高度、宽度固定取四面最大值，本设置只作用于其余测试项的配对聚合。
+    /// </summary>
+    public static class PairedAggregationModes
+    {
+        public const string Average = "Average";
+        public const string Maximum = "Maximum";
+
+        public static string Normalize(string? value)
+            => string.Equals(value?.Trim(), Maximum, StringComparison.OrdinalIgnoreCase)
+                ? Maximum
+                : Average;
+    }
+
+    /// <summary>
     /// Station test result values read from PLC and shown in local production data.
     /// </summary>
     public static class TestResults

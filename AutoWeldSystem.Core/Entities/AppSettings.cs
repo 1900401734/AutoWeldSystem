@@ -180,6 +180,18 @@ public class AppSettings
     [SugarColumn(Length = 20, ColumnDescription = "实时焊点编号来源", IsNullable = true)]
     public string? RealtimePointNumberSource { get; set; } = ProductionConstants.RealtimePointNumberSources.Plc;
 
+    /// <summary>
+    /// 整件检测四面数据在监控界面合并成一行显示，使界面与上传、报表口径一致。仅影响界面。
+    /// </summary>
+    [SugarColumn(ColumnDescription = "整件检测合并显示", IsNullable = true)]
+    public bool? EnableWholePieceMergedDisplay { get; set; } = false;
+
+    /// <summary>
+    /// 整件检测 A/B 配对聚合方式。高度、宽度固定取四面最大值，本设置只作用于其余测试项。
+    /// </summary>
+    [SugarColumn(Length = 20, ColumnDescription = "A/B配对聚合方式", IsNullable = true)]
+    public string? PairedAggregationMode { get; set; } = ProductionConstants.PairedAggregationModes.Average;
+
     [SugarColumn(ColumnDescription = "过程参数接口编码")]
     public ApiCode ProcessParameterApiCode { get; set; } = ApiCode.EMWeldDetail_001;
 

@@ -24,6 +24,7 @@ public static class WholePieceAbAggregationRules
     public static WholePieceAbAggregationResult Aggregate(
         IEnumerable<BizWeldPointRecord> records,
         IEnumerable<WholePieceAbValueDefinition> definitions,
+        string? pairedAggregationMode,
         bool enableStringNumericFormatting,
         string? stringNumericFormatMode)
     {
@@ -57,17 +58,6 @@ public static class WholePieceAbAggregationRules
             return WholePieceAbAggregationResult.Failure($"产品“{recordList[0].ProductNo}”缺少面{string.Join("、", missingSides)}。");
         }
 
-        var definitionList = definitions.ToList();
-        var duplicateKeys = definitionList
-            .GroupBy(definition => definition.OutputKey, StringComparer.OrdinalIgnoreCase)
-            .Where(group => group.Count() > 1)
-            .Select(group => group.Key)
-            .ToList();
-        if (duplicateKeys.Count > 0)
-        {
-            return WholePieceAbAggregationResult.Failure($"A/B聚合字段重复：{string.Join("、", duplicateKeys)}。");
-        }
-
         var rows = new List<WholePieceAbOutputRow>
         {
             BuildRow("A", sideRecords["2"], sideRecords["4"]),
@@ -81,6 +71,81 @@ public static class WholePieceAbAggregationRules
             return WholePieceAbAggregationResult.Failure("A/B配对面结果缺失或未知，不能生成报表或上传MES。");
         }
 
+        return AggregateCore(
+            rows,
+            definitions.ToList(),
+            (side, definition) => TryReadRawValue(sideRecords[side], definition),
+            recordList[0].ProductNo ?? string.Empty,
+            pairedAggregationMode,
+            requireRelativeAddress: true,
+            enableStringNumericFormatting,
+            stringNumericFormatMode);
+    }
+
+    /// <summary>
+    /// 实时预览用的 A/B 聚合。输入按面号给出测试项实测值，避免预览路径伪造采集记录。
+    /// 预览按面偏移读取，不做绝对地址校验。
+    /// </summary>
+    public static WholePieceAbAggregationResult AggregatePreview(
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> sideItemValues,
+        IReadOnlyDictionary<string, string> sideResults,
+        IEnumerable<WholePieceAbValueDefinition> definitions,
+        string? pairedAggregationMode,
+        bool enableStringNumericFormatting,
+        string? stringNumericFormatMode)
+    {
+        ArgumentNullException.ThrowIfNull(sideItemValues);
+        ArgumentNullException.ThrowIfNull(sideResults);
+        ArgumentNullException.ThrowIfNull(definitions);
+
+        var missingSides = RequiredSides.Where(side => !sideItemValues.ContainsKey(side)).ToList();
+        if (missingSides.Count > 0)
+        {
+            return WholePieceAbAggregationResult.Failure($"缺少面{string.Join("、", missingSides)}的实测值。");
+        }
+
+        var rows = new List<WholePieceAbOutputRow>
+        {
+            BuildPreviewRow("A", sideResults, "2", "4"),
+            BuildPreviewRow("B", sideResults, "1", "3")
+        };
+
+        return AggregateCore(
+            rows,
+            definitions.ToList(),
+            (side, definition) => TryReadPreviewValue(sideItemValues[side], side, definition),
+            string.Empty,
+            pairedAggregationMode,
+            requireRelativeAddress: false,
+            enableStringNumericFormatting,
+            stringNumericFormatMode);
+    }
+
+    /// <summary>
+    /// A/B 聚合的公共数值计算。取值方式由调用方注入，采集记录与实时预览共用同一套规则。
+    /// </summary>
+    private static WholePieceAbAggregationResult AggregateCore(
+        IReadOnlyList<WholePieceAbOutputRow> rows,
+        IReadOnlyList<WholePieceAbValueDefinition> definitionList,
+        Func<string, WholePieceAbValueDefinition, RawNumericValue> readValue,
+        string productNo,
+        string? pairedAggregationMode,
+        bool requireRelativeAddress,
+        bool enableStringNumericFormatting,
+        string? stringNumericFormatMode)
+    {
+        var duplicateKeys = definitionList
+            .GroupBy(definition => definition.OutputKey, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToList();
+        if (duplicateKeys.Count > 0)
+        {
+            return WholePieceAbAggregationResult.Failure($"A/B聚合字段重复：{string.Join("、", duplicateKeys)}。");
+        }
+
+        var pairedMode = ProductionConstants.PairedAggregationModes.Normalize(pairedAggregationMode);
+        var productPrefix = string.IsNullOrWhiteSpace(productNo) ? string.Empty : $"产品“{productNo}”";
         foreach (var definition in definitionList)
         {
             if (!TryParseExpression(definition.ActualExpression, out var expression, out var expressionError))
@@ -88,7 +153,7 @@ public static class WholePieceAbAggregationRules
                 return WholePieceAbAggregationResult.Failure($"测试项“{definition.ItemName}”实际值表达式无效：{expressionError}");
             }
 
-            if (expression.IsAbsoluteAddress)
+            if (requireRelativeAddress && expression.IsAbsoluteAddress)
             {
                 return WholePieceAbAggregationResult.Failure($"测试项“{definition.ItemName}”用于A/B聚合时必须使用按面偏移的相对地址，不能使用绝对地址。");
             }
@@ -96,13 +161,13 @@ public static class WholePieceAbAggregationRules
             if (IsProductMaximumItem(definition.ItemName))
             {
                 var values = RequiredSides
-                    .Select(side => TryReadRawValue(sideRecords[side], definition))
+                    .Select(side => readValue(side, definition))
                     .ToList();
                 if (values.Any(value => !value.IsSuccess))
                 {
                     var failure = values.First(value => !value.IsSuccess);
                     return WholePieceAbAggregationResult.Failure(
-                        $"产品“{recordList[0].ProductNo}”测试项“{definition.ItemName}”数据无效：{failure.ErrorMessage}");
+                        $"{productPrefix}测试项“{definition.ItemName}”数据无效：{failure.ErrorMessage}");
                 }
 
                 var formattedMaximum = FormatAggregatedValue(
@@ -122,18 +187,21 @@ public static class WholePieceAbAggregationRules
             {
                 var sideNumbers = row.SideNo == "A" ? new[] { "2", "4" } : new[] { "1", "3" };
                 var values = sideNumbers
-                    .Select(side => TryReadRawValue(sideRecords[side], definition))
+                    .Select(side => readValue(side, definition))
                     .ToList();
                 if (values.Any(value => !value.IsSuccess))
                 {
                     var failure = values.First(value => !value.IsSuccess);
                     return WholePieceAbAggregationResult.Failure(
-                        $"产品“{recordList[0].ProductNo}”{row.SideNo}面测试项“{definition.ItemName}”数据无效：{failure.ErrorMessage}");
+                        $"{productPrefix}{row.SideNo}面测试项“{definition.ItemName}”数据无效：{failure.ErrorMessage}");
                 }
 
-                var average = (values[0].Value + values[1].Value) / 2m;
+                // 高度、宽度取四面最大值，其余测试项的配对聚合方式由系统设置决定。
+                var aggregated = pairedMode == ProductionConstants.PairedAggregationModes.Maximum
+                    ? Math.Max(values[0].Value, values[1].Value)
+                    : (values[0].Value + values[1].Value) / 2m;
                 row.Values[definition.OutputKey] = FormatAggregatedValue(
-                    average,
+                    aggregated,
                     expression.DecimalPlaces,
                     enableStringNumericFormatting,
                     stringNumericFormatMode);
@@ -232,6 +300,20 @@ public static class WholePieceAbAggregationRules
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
     }
 
+    private static WholePieceAbOutputRow BuildPreviewRow(
+        string sideNo,
+        IReadOnlyDictionary<string, string> sideResults,
+        string firstSide,
+        string secondSide)
+    {
+        sideResults.TryGetValue(firstSide, out var firstResult);
+        sideResults.TryGetValue(secondSide, out var secondResult);
+        return new WholePieceAbOutputRow(
+            sideNo,
+            TestResultRules.ResolveProductResult([firstResult ?? string.Empty, secondResult ?? string.Empty]),
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+    }
+
     private static string? NormalizeSide(string? side)
     {
         var normalized = side?.Trim();
@@ -277,13 +359,36 @@ public static class WholePieceAbAggregationRules
         return RawNumericValue.Success(numericValue);
     }
 
+    private static RawNumericValue TryReadPreviewValue(
+        IReadOnlyDictionary<string, string> itemValues,
+        string side,
+        WholePieceAbValueDefinition definition)
+    {
+        // 实时预览行以测试项名称为键，历史记录的 RawDataJson 以 item_{id} 等 raw key 为键，两者都要支持。
+        var value = FirstRawValue(
+            itemValues,
+            ResolveItemKey(definition.ItemId, definition.ItemName),
+            definition.ItemName.Trim());
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return RawNumericValue.Failure($"面{side}缺少实际值。");
+        }
+
+        if (!decimal.TryParse(value.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var numericValue))
+        {
+            return RawNumericValue.Failure($"面{side}的值“{value}”不是合法数字。");
+        }
+
+        return RawNumericValue.Success(numericValue);
+    }
+
     private static string FormatAggregatedValue(
-        decimal average,
+        decimal aggregatedValue,
         int? decimalPlaces,
         bool enableStringNumericFormatting,
         string? stringNumericFormatMode)
     {
-        var rawText = average.ToString(CultureInfo.InvariantCulture);
+        var rawText = aggregatedValue.ToString(CultureInfo.InvariantCulture);
         return PlcStringNumericFormatter.Format(
             rawText,
             decimalPlaces,
