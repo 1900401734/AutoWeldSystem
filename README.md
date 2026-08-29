@@ -1,6 +1,11 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.10.1`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.11.0`。
+
+## v2.11.0 更新说明
+
+- “实时编号来源”选为“程序判断”时，实时预览不再从 PLC 读取实际数量与预设数量：已完成数量按检测结果连续推算（面结果为 OK 或 NG 才算完成，中途未完成即停止计数，PLC 残留结果不会让计数跳号），预设数量取产品工艺配置的数量。实时预览表格同步改为逐面出现，只显示已完成的面，不再一次铺满全部行。选为“PLC读取”时行为与之前完全一致。
+- 系统设置两处文案改为通用表述，兼顾检测设备与点焊设备：“实时焊点编号来源”改为“实时编号来源”，“启用 PLC 字符串数值处理”改为“启用 PLC 数值格式处理”（后者自 v2.10.1 起已同时作用于数值类型，原文案已不准确）。
 
 ## v2.10.1 修复说明
 
@@ -357,7 +362,7 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 
 `v2.3.0` 统一了监控页产品结果显示：移除实时预览顶部重复的产品结果 Tag，仅由右侧“产品结果”区域实时显示各工位结果。检测期间和下一产品周期开始时显示 `工位1/2--`，所有配置采集点完成后才显示 OK、NG 或焊前NG。
 
-系统设置新增“实时焊点编号来源”：`PLC读取` 使用产品工艺的 `TouchNoBase/TouchNoExpr`，读取失败显示 `--`；`程序判断` 使用实时预览循环序号 `1、2、3...`。该配置只影响实时预览，不改变正式采集记录、数据管理、中心看板、XLSX 报表或 MES 中的编号，存在未完工任务时禁止切换。
+系统设置的“实时编号来源”（旧称“实时焊点编号来源”）：`PLC读取` 使用产品工艺的 `TouchNoBase/TouchNoExpr`，读取失败显示 `--`，实际数量与预设数量也从 PLC 读取；`程序判断` 完全不读 PLC，编号使用实时预览循环序号 `1、2、3...`，已完成数量按检测结果连续推算（面结果为 OK 或 NG 才算该面完成，中途未完成即停止计数，PLC 残留结果不会让计数跳号），预设数量取产品工艺配置的数量，实时预览表格也随之逐面出现，未完成的面不再提前铺满表格。该配置只影响实时预览，不改变正式采集记录、数据管理、中心看板、XLSX 报表或 MES 中的编号，存在未完工任务时禁止切换。
 
 `v2.2.2` 同时修复了产品数据就绪信号的高电平残留处理：PLC在完工后仍保持“产品数据就绪=1”时，上位机不会把旧高电平当作新产品，也不会再次读取已清零的产品号和面号；必须先观察到信号回到0，后续新的0->1上升沿才会触发采集。采集反馈1/2只表示采集流程成功或失败，程序计算得到NG仍反馈1；反馈写入失败会在同一就绪周期重试，不会重复采集。
 
@@ -413,10 +418,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>2.10.1</Version>
-<AssemblyVersion>2.10.1.0</AssemblyVersion>
-<FileVersion>2.10.1.0</FileVersion>
-<InformationalVersion>2.10.1</InformationalVersion>
+<Version>2.11.0</Version>
+<AssemblyVersion>2.11.0.0</AssemblyVersion>
+<FileVersion>2.11.0.0</FileVersion>
+<InformationalVersion>2.11.0</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -428,9 +433,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v2.10.1 -m "Release v2.10.1"
+git tag -a v2.11.0 -m "Release v2.11.0"
 git push origin main
-git push origin v2.10.1
+git push origin v2.11.0
 ```
 
 ## Git 使用

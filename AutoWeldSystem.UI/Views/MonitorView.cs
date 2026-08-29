@@ -6913,7 +6913,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     private void RebuildWeldParameterPreviewTable()
     {
         var grid = CurrentWeldPreviewGrid;
-        if (_weldParameterRows.Count == 0)
+        if (_weldParameterRows.Count == 0 && !IsWholePieceMergedPreview())
         {
             // 没有任何预览行时不建列，否则未开工和完工上报后会残留空表头。
             ClearWeldPreviewGrid(grid);

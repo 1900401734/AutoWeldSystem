@@ -166,6 +166,7 @@ var tests = new (string Name, Action Run)[]
     ("PLC string numeric formatter truncates when enabled", PlcStringNumericFormatterTruncatesWhenEnabled),
     ("PLC string numeric formatter rounds when enabled", PlcStringNumericFormatterRoundsWhenEnabled),
     ("PLC numeric values follow global format mode", PlcNumericValuesFollowGlobalFormatMode),
+    ("Realtime preview counts completed faces in order", RealtimePreviewCountsCompletedFacesInOrder),
     ("PLC string numeric formatter keeps non numeric text", PlcStringNumericFormatterKeepsNonNumericText),
     ("PLC debug write rules parse bool aliases", PlcDebugWriteRulesParseBoolAliases),
     ("PLC debug write rules normalize unsupported data type", PlcDebugWriteRulesNormalizeUnsupportedDataType),
@@ -4463,6 +4464,38 @@ static void PlcStringNumericFormatterRoundsWhenEnabled()
         "0.234",
         PlcStringNumericFormatter.Format("+00.2344", 3, enabled: true, mode: AppConstants.PlcStringNumericFormatModes.Round),
         "Round mode must keep values below half unchanged at the configured precision.");
+}
+
+static void RealtimePreviewCountsCompletedFacesInOrder()
+{
+    AssertEqual(0, ProductRealtimePreviewRules.CountCompletedFaces([null, null, null, null]), "一面都没测完时已完成数必须为0。");
+    AssertEqual(
+        1,
+        ProductRealtimePreviewRules.CountCompletedFaces([ProductionConstants.TestResults.Ok, null, null, null]),
+        "只测完第一面时已完成数必须为1。");
+
+    // PLC 残留结果不得让计数跳号：面2未测就停止计数，面3的残留OK不计入。
+    AssertEqual(
+        1,
+        ProductRealtimePreviewRules.CountCompletedFaces(
+            [ProductionConstants.TestResults.Ok, null, ProductionConstants.TestResults.Ok, null]),
+        "中间面未完成时必须停止计数，不得把后面的残留结果计入。");
+
+    AssertEqual(
+        4,
+        ProductRealtimePreviewRules.CountCompletedFaces(
+        [
+            ProductionConstants.TestResults.Ok,
+            ProductionConstants.TestResults.Ng,
+            ProductionConstants.TestResults.Ok,
+            ProductionConstants.TestResults.Ok
+        ]),
+        "四面均为OK或NG时已完成数必须为4，NG同样算测试完成。");
+
+    AssertEqual(
+        0,
+        ProductRealtimePreviewRules.CountCompletedFaces([ProductionConstants.TestResults.PreWeldNg, null, null, null]),
+        "焊前NG不表示测试完成，不得计入已完成数。");
 }
 
 static void PlcNumericValuesFollowGlobalFormatMode()

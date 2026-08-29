@@ -329,8 +329,13 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             StringComparison.OrdinalIgnoreCase);
         var productNo = await ReadExpressionTextAsync(config.ProductBase, 0, config.ProductNoExpr, cancellationToken);
         var plcProductResult = FormatResult(await ReadExpressionTextAsync(config.ProductBase, 0, config.ProductResultExpr, cancellationToken));
-        var actualTouchCount = await ReadExpressionTextAsync(config.ProductBase, 0, config.ActualTouchCountExpr, cancellationToken);
-        var presetTouchCount = await ReadExpressionTextAsync(config.ProductBase, 0, config.PresetTouchCountExpr, cancellationToken);
+        // 程序判断模式下面数完全由检测结果推算，不读 PLC 的实际数与预设数。
+        var actualTouchCount = useProgramPointNumber
+            ? string.Empty
+            : await ReadExpressionTextAsync(config.ProductBase, 0, config.ActualTouchCountExpr, cancellationToken);
+        var presetTouchCount = useProgramPointNumber
+            ? string.Empty
+            : await ReadExpressionTextAsync(config.ProductBase, 0, config.PresetTouchCountExpr, cancellationToken);
         var rowResult = await BuildRowsAsync(
             identity,
             config,
@@ -385,7 +390,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             identity.ProductNum,
             identity.ProductModel,
             config.SchemeId,
-            BuildTouchCountText(config.TouchCount, actualTouchCount, presetTouchCount),
+            BuildTouchCountText(config.TouchCount, actualTouchCount, presetTouchCount, useProgramPointNumber, rowResult.PlcFaceResults),
             ResolvePointName(config),
             productResult,
             refreshTime,
@@ -495,6 +500,9 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         var faceResults = new List<string?>();
         var plcFaceResults = new List<string?>();
         var errors = new List<string>();
+        // 程序判断模式按检测进度逐面显示：遇到第一个未完成面后就不再建行，但仍要读完每面结果，
+        // 否则 IsComplete 判定拿不到完整面结果，会连带打断合并显示、产品判定和 PLC 回写。
+        var completedPrefix = true;
 
         for (var touchNo = 1; touchNo <= Math.Max(1, config.TouchCount); touchNo++)
         {
@@ -505,6 +513,20 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
                 touchContextOffset,
                 config.TouchResultExpr,
                 cancellationToken));
+            var shouldReadTestValues = ProductRealtimePreviewRules.ShouldReadTestValues(plcTouchResult);
+            if (!shouldReadTestValues)
+            {
+                completedPrefix = false;
+            }
+
+            var shouldBuildRows = !useProgramPointNumber || completedPrefix;
+            if (!shouldBuildRows)
+            {
+                faceResults.Add(plcTouchResult);
+                plcFaceResults.Add(plcTouchResult);
+                continue;
+            }
+
             var realtimeTouchNo = useProgramPointNumber
                 ? touchNo.ToString(CultureInfo.InvariantCulture)
                 : NormalizeRealtimePointNumber(await ReadExpressionTextAsync(
@@ -512,7 +534,6 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
                     touchContextOffset,
                     config.TouchNoExpr,
                     cancellationToken));
-            var shouldReadTestValues = ProductRealtimePreviewRules.ShouldReadTestValues(plcTouchResult);
             var faceRows = new List<ProductRealtimePreviewRow>();
             foreach (var schemeItem in schemeItems)
             {
@@ -735,8 +756,21 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             : PlcExpressionBinding.Empty;
     }
 
-    private static string BuildTouchCountText(int configuredTouchCount, string actualTouchCount, string presetTouchCount)
+    private static string BuildTouchCountText(
+        int configuredTouchCount,
+        string actualTouchCount,
+        string presetTouchCount,
+        bool useProgramPointNumber,
+        IReadOnlyList<string?> plcFaceResults)
     {
+        var expectedCount = Math.Max(1, configuredTouchCount);
+        if (useProgramPointNumber)
+        {
+            // 程序判断模式：已完成数按检测结果连续推算，预设数取产品工艺配置，全程不依赖 PLC。
+            var completed = ProductRealtimePreviewRules.CountCompletedFaces(plcFaceResults);
+            return $"{completed.ToString(CultureInfo.InvariantCulture)}/{expectedCount.ToString(CultureInfo.InvariantCulture)}";
+        }
+
         // 实际焊点数来自 PLC；未配置或读取失败时显示 ?，提醒现场不要误以为读到了真实值。
         var actual = string.IsNullOrWhiteSpace(actualTouchCount) || actualTouchCount == "--"
             ? "?"
@@ -744,7 +778,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
 
         // 预设焊点数优先使用 PLC 读取值；读取不到时回退产品工艺配置中的焊点数量。
         var expected = string.IsNullOrWhiteSpace(presetTouchCount) || presetTouchCount == "--"
-            ? Math.Max(1, configuredTouchCount).ToString(CultureInfo.InvariantCulture)
+            ? expectedCount.ToString(CultureInfo.InvariantCulture)
             : presetTouchCount;
 
         return $"{actual}/{expected}";
