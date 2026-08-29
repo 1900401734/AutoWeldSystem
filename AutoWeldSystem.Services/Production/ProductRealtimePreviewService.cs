@@ -340,11 +340,39 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             useProgramPointNumber,
             refreshTime,
             cancellationToken);
-        var productResult = rowResult.IsComplete
-            ? useProgramResult
-                ? TestResultRules.ToDisplayText(WholePieceProgramResultRules.ResolveRealtimeProductResult(rowResult.FaceResults, config.TouchCount))
-                : plcProductResult
-            : ProductionConstants.TestResults.NotAvailable;
+        var mergedDefinitions = ResolveMergedDefinitions(config, settings);
+        // 合并列结构只取决于测试方案，四面未采集齐时仍要建列显示空行。
+        var mergedColumns = mergedDefinitions.Count > 0
+            ? WholePieceMergedDisplayRules.BuildColumns(mergedDefinitions)
+            : Array.Empty<WholePieceMergedColumn>();
+        var mergedAggregation = mergedDefinitions.Count > 0 && rowResult.IsComplete
+            ? BuildMergedAggregation(rowResult, settings, mergedDefinitions)
+            : null;
+        var mergedSucceeded = mergedAggregation is { IsSuccess: true };
+        var mergedValues = mergedSucceeded
+            ? WholePieceMergedDisplayRules.BuildValues(mergedColumns, mergedAggregation!.Rows)
+            : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // PLC 读取模式没有程序判定依据，失败列保持为空，界面不标红。
+        IReadOnlyList<string> mergedFailedColumns = Array.Empty<string>();
+        string productResult;
+        if (!rowResult.IsComplete)
+        {
+            productResult = ProductionConstants.TestResults.NotAvailable;
+        }
+        else if (useProgramResult)
+        {
+            productResult = TestResultRules.ToDisplayText(ResolveRealtimeProgramProductResult(
+                rowResult,
+                config,
+                activeTask?.ProgramContentSnapshot,
+                mergedSucceeded ? mergedAggregation : null,
+                mergedDefinitions,
+                out mergedFailedColumns));
+        }
+        else
+        {
+            productResult = plcProductResult;
+        }
         var message = rowResult.Errors.Count > 0
             ? string.Join("；", rowResult.Errors)
             : rowResult.Rows.Count == 0
@@ -362,7 +390,94 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             productResult,
             refreshTime,
             rowResult.Rows,
-            message);
+            message)
+        {
+            MergedColumns = mergedColumns,
+            MergedValues = mergedValues,
+            MergedDefinitions = mergedDefinitions,
+            MergedFailedColumns = mergedFailedColumns
+        };
+    }
+
+    /// <summary>
+    /// 解析四面整件检测的 A/B 聚合字段。非四面整件检测返回空集合。
+    /// </summary>
+    private IReadOnlyList<WholePieceAbValueDefinition> ResolveMergedDefinitions(
+        BizProductProcessConfig config,
+        AppSettings settings)
+    {
+        if (!WholePieceAbAggregationRules.IsApplicable(settings.ProcessParameterDeviceType, config.TouchCount))
+        {
+            return Array.Empty<WholePieceAbValueDefinition>();
+        }
+
+        return ResolveSchemeItems(config.SchemeId)
+            .Where(item => item.EnableActual)
+            .Select(item => new WholePieceAbValueDefinition(
+                item.Item.ItemId,
+                item.Item.ItemName,
+                item.Item.ItemName,
+                item.Item.ActualExpression))
+            .ToList();
+    }
+
+    /// <summary>
+    /// 四面整件检测的合并显示与产品判定共用同一次 A/B 聚合，保证界面、上传和报表口径一致。
+    /// </summary>
+    private static WholePieceAbAggregationResult BuildMergedAggregation(
+        PreviewRowsResult rowResult,
+        AppSettings settings,
+        IReadOnlyList<WholePieceAbValueDefinition> definitions)
+    {
+        var sideItemValues = rowResult.Rows
+            .Where(row => row.EnableActual)
+            .GroupBy(row => row.TouchIndex.ToString(CultureInfo.InvariantCulture))
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyDictionary<string, string>)group
+                    .GroupBy(row => row.ItemName.Trim(), StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(item => item.Key, item => item.First().ActualValue, StringComparer.OrdinalIgnoreCase),
+                StringComparer.OrdinalIgnoreCase);
+        var sideResults = rowResult.Rows
+            .GroupBy(row => row.TouchIndex.ToString(CultureInfo.InvariantCulture))
+            .ToDictionary(group => group.Key, group => group.First().TouchResult, StringComparer.OrdinalIgnoreCase);
+
+        return WholePieceAbAggregationRules.AggregatePreview(
+            sideItemValues,
+            sideResults,
+            definitions,
+            settings.PairedAggregationMode,
+            settings.EnablePlcStringNumericFormatting ?? true,
+            settings.PlcStringNumericFormatMode);
+    }
+
+    private static string ResolveRealtimeProgramProductResult(
+        PreviewRowsResult rowResult,
+        BizProductProcessConfig config,
+        string? programContentSnapshot,
+        WholePieceAbAggregationResult? mergedAggregation,
+        IReadOnlyList<WholePieceAbValueDefinition> definitions,
+        out IReadOnlyList<string> failedColumns)
+    {
+        failedColumns = Array.Empty<string>();
+        var faceResult = WholePieceProgramResultRules.ResolveRealtimeProductResult(rowResult.FaceResults, config.TouchCount);
+        if (mergedAggregation is null)
+        {
+            return faceResult;
+        }
+
+        var merged = WholePieceProgramResultRules.EvaluateAggregated(
+            programContentSnapshot,
+            mergedAggregation.Rows,
+            definitions);
+        if (!merged.IsSuccess)
+        {
+            return faceResult;
+        }
+
+        // 失败项已经是界面列名，直接给合并视图标红用。
+        failedColumns = merged.FailedItems;
+        return merged.Result;
     }
 
     private async Task<PreviewRowsResult> BuildRowsAsync(
