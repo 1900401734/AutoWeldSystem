@@ -56,6 +56,32 @@ public static class ProcessParameterBatchUploadRules
     }
 
     /// <summary>
+    /// 取出当前可以上传的一批产品编号。
+    /// 数量模式凑满批次后不立即上传，要等下一个产品采集完成才传上一批，避开刚采完那一刻。
+    /// 因此多看一个候选：只有候选数超过批量值（说明下一个产品已经采完），前 batchSize 个才算就绪；
+    /// 否则返回空，本轮不上传。凑满却等不到下一个产品就完工的情况，由完工补传兜底。
+    /// </summary>
+    public static IReadOnlyList<string> TakeUploadableBatch(
+        IEnumerable<BizWeldPointRecord> records,
+        int taskId,
+        int stationNo,
+        int batchSize,
+        IEnumerable<string>? excludedProductNos = null)
+    {
+        var normalizedBatchSize = Math.Max(1, batchSize);
+        var candidates = TakeReadyProductNos(
+            records,
+            taskId,
+            stationNo,
+            normalizedBatchSize + 1,
+            excludedProductNos);
+
+        return candidates.Count > normalizedBatchSize
+            ? candidates.Take(normalizedBatchSize).ToList()
+            : Array.Empty<string>();
+    }
+
+    /// <summary>
     /// Builds a stable upload-task business id for one batch without exceeding the database field length.
     /// </summary>
     public static string BuildQuantityBusinessId(int taskId, int stationNo, IEnumerable<string> productNos)
