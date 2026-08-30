@@ -8,6 +8,7 @@ using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.MES;
 using AutoWeldSystem.Core.Mes;
+using AutoWeldSystem.Core.Plc;
 using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Data;
 using System.Globalization;
@@ -1175,6 +1176,8 @@ public class UploadTaskService : IUploadTaskService
         var settings = _settingsService.Get();
         var deviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
         var showTestFlagInHistory = settings.ShowTestFlagInHistory != false;
+        // 过程参数的输出小数位，未配置时沿用采集位数。
+        var numericFormat = OutputNumericFormat.ForProcessParameter(settings);
         var schemeItemCache = new Dictionary<string, IReadOnlyList<ProcessParameterSchemeItem>>(StringComparer.OrdinalIgnoreCase);
         var items = new List<ProcessParameterUploadItem>();
 
@@ -1193,7 +1196,8 @@ public class UploadTaskService : IUploadTaskService
                     processExpStartId,
                     deviceType,
                     showTestFlagInHistory,
-                    schemeItems)));
+                    schemeItems,
+                    numericFormat)));
                 continue;
             }
 
@@ -1244,7 +1248,7 @@ public class UploadTaskService : IUploadTaskService
                         SchemeDetailRoleRules.GetMesFieldName(candidate.Detail, SchemeDetailValueRole.Actual)?.Trim(),
                         value.Key,
                         StringComparison.OrdinalIgnoreCase));
-                    item.DynamicFields[value.Key] = FormatMesRoleValue(value.Value, schemeItem?.Item, SchemeDetailValueRole.Actual);
+                    item.DynamicFields[value.Key] = FormatMesRoleValue(value.Value, schemeItem?.Item, SchemeDetailValueRole.Actual, numericFormat);
                 }
                 items.Add(item);
             }
@@ -1386,7 +1390,8 @@ public class UploadTaskService : IUploadTaskService
         string processExpStartId,
         string deviceType,
         bool showTestFlagInHistory,
-        IReadOnlyList<ProcessParameterSchemeItem> schemeItems)
+        IReadOnlyList<ProcessParameterSchemeItem> schemeItems,
+        OutputNumericFormat numericFormat)
     {
         var isWholePieceCheck = string.Equals(
             deviceType,
@@ -1407,14 +1412,15 @@ public class UploadTaskService : IUploadTaskService
             Ts = record.Ts.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
         };
 
-        AddMesDynamicFields(item, record.RawDataJson, schemeItems);
+        AddMesDynamicFields(item, record.RawDataJson, schemeItems, numericFormat);
         return item;
     }
 
     private static void AddMesDynamicFields(
         ProcessParameterUploadItem uploadItem,
         string? rawDataJson,
-        IReadOnlyList<ProcessParameterSchemeItem> schemeItems)
+        IReadOnlyList<ProcessParameterSchemeItem> schemeItems,
+        OutputNumericFormat numericFormat)
     {
         if (schemeItems.Count == 0)
         {
@@ -1424,10 +1430,10 @@ public class UploadTaskService : IUploadTaskService
         var rawValues = ParseRawData(rawDataJson);
         foreach (var schemeItem in schemeItems)
         {
-            AddMesDynamicField(uploadItem, rawValues, schemeItem, SchemeDetailValueRole.Actual);
-            AddMesDynamicField(uploadItem, rawValues, schemeItem, SchemeDetailValueRole.Upper);
-            AddMesDynamicField(uploadItem, rawValues, schemeItem, SchemeDetailValueRole.Lower);
-            AddMesDynamicField(uploadItem, rawValues, schemeItem, SchemeDetailValueRole.Result);
+            AddMesDynamicField(uploadItem, rawValues, schemeItem, SchemeDetailValueRole.Actual, numericFormat);
+            AddMesDynamicField(uploadItem, rawValues, schemeItem, SchemeDetailValueRole.Upper, numericFormat);
+            AddMesDynamicField(uploadItem, rawValues, schemeItem, SchemeDetailValueRole.Lower, numericFormat);
+            AddMesDynamicField(uploadItem, rawValues, schemeItem, SchemeDetailValueRole.Result, numericFormat);
         }
     }
 
@@ -1435,7 +1441,8 @@ public class UploadTaskService : IUploadTaskService
         ProcessParameterUploadItem uploadItem,
         IReadOnlyDictionary<string, string> rawValues,
         ProcessParameterSchemeItem schemeItem,
-        SchemeDetailValueRole role)
+        SchemeDetailValueRole role,
+        OutputNumericFormat numericFormat)
     {
         if (!ShouldUploadMesRole(schemeItem.Detail, role, out var mesFieldName))
         {
@@ -1443,12 +1450,20 @@ public class UploadTaskService : IUploadTaskService
         }
 
         var value = ResolveRawRoleValue(rawValues, schemeItem.Item, role);
-        TryAddDynamicField(uploadItem, mesFieldName, FormatMesRoleValue(value, schemeItem.Item, role));
+        TryAddDynamicField(uploadItem, mesFieldName, FormatMesRoleValue(value, schemeItem.Item, role, numericFormat));
     }
 
-    private static string FormatMesRoleValue(string? value, DimTestItem? item, SchemeDetailValueRole role)
+    /// <summary>
+    /// 先按输出小数位格式化，再拼单位。顺序不能反：拼了单位就不再是纯数值文本，格式化器会原样返回。
+    /// 结果角色是 OK/NG 文本，格式化器同样原样返回，不需要额外分支。
+    /// </summary>
+    private static string FormatMesRoleValue(
+        string? value,
+        DimTestItem? item,
+        SchemeDetailValueRole role,
+        OutputNumericFormat numericFormat)
     {
-        return TestItemUnitFormatRules.FormatValue(value, item?.Unit, role);
+        return TestItemUnitFormatRules.FormatValue(numericFormat.Apply(value), item?.Unit, role);
     }
 
     private static bool ShouldUploadMesRole(

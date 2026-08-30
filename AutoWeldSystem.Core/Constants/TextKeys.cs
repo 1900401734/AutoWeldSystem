@@ -1172,6 +1172,8 @@ public static class TextKeys
         public const string LabelDataPath = "system.label.data_path";
         public const string LabelMesUrl = "system.label.mes_url";
         public const string LabelPlcFormatMode = "system.label.plc_format_mode";
+        public const string LabelReportDecimalPlaces = "system.label.report_decimal_places";
+        public const string LabelProcessParameterDecimalPlaces = "system.label.process_parameter_decimal_places";
         public const string LabelPlcAlarmTriggerMode = "system.label.plc_alarm_trigger_mode";
         public const string LabelMesTimeout = "system.label.mes_timeout";
         public const string LabelMesHeartbeatInterval = "system.label.mes_heartbeat_interval";
@@ -1278,6 +1280,7 @@ public static class TextKeys
         public const string MessagePairedAggregationModeLocked = "system.message.paired_aggregation_mode_locked";
         public const string MessageDeviceManagementLocked = "system.message.device_management_locked";
         public const string MessagePositiveIntegerRequired = "system.message.positive_integer_required";
+        public const string MessageDecimalPlacesRequired = "system.message.decimal_places_required";
         public const string MessageRouteRequired = "system.message.route_required";
         public const string MessageRelativeRouteRequired = "system.message.relative_route_required";
         public const string MessageRouteQueryNotAllowed = "system.message.route_query_not_allowed";

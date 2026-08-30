@@ -45,6 +45,12 @@
             chkEnablePlcStringNumericFormatting = new AntdUI.Checkbox();
             tlpPlcStringNumericMode = new TableLayoutPanel();
             lblPlcStringNumericFormatMode = new AntdUI.Label();
+            tlpReportDecimalPlaces = new TableLayoutPanel();
+            lblReportDecimalPlaces = new AntdUI.Label();
+            inputReportDecimalPlaces = new AntdUI.Input();
+            tlpProcessParameterDecimalPlaces = new TableLayoutPanel();
+            lblProcessParameterDecimalPlaces = new AntdUI.Label();
+            inputProcessParameterDecimalPlaces = new AntdUI.Input();
             selectPlcStringNumericFormatMode = new AntdUI.Select();
             grpDeviceConfig = new GroupBox();
             layoutDeviceNoConfig = new TableLayoutPanel();
@@ -202,6 +208,8 @@
             tableLayoutPanel7.SuspendLayout();
             tlpPlcAlarmTriggerMode.SuspendLayout();
             tlpPlcStringNumericMode.SuspendLayout();
+            tlpReportDecimalPlaces.SuspendLayout();
+            tlpProcessParameterDecimalPlaces.SuspendLayout();
             grpDeviceConfig.SuspendLayout();
             layoutDeviceNoConfig.SuspendLayout();
             tlpDeviceId.SuspendLayout();
@@ -428,11 +436,15 @@
             tlpPlcConfig.Controls.Add(tlpPlcAlarmTriggerMode, 0, 4);
             tlpPlcConfig.Controls.Add(chkEnablePlcStringNumericFormatting, 0, 5);
             tlpPlcConfig.Controls.Add(tlpPlcStringNumericMode, 0, 6);
+            tlpPlcConfig.Controls.Add(tlpReportDecimalPlaces, 0, 7);
+            tlpPlcConfig.Controls.Add(tlpProcessParameterDecimalPlaces, 0, 8);
             tlpPlcConfig.Dock = DockStyle.Fill;
             tlpPlcConfig.Location = new Point(2, 23);
             tlpPlcConfig.Margin = new Padding(2, 3, 2, 3);
             tlpPlcConfig.Name = "tlpPlcConfig";
-            tlpPlcConfig.RowCount = 7;
+            tlpPlcConfig.RowCount = 9;
+            tlpPlcConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
+            tlpPlcConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             tlpPlcConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             tlpPlcConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
             tlpPlcConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 39F));
@@ -682,6 +694,84 @@
             selectPlcStringNumericFormatMode.Name = "selectPlcStringNumericFormatMode";
             selectPlcStringNumericFormatMode.Size = new Size(340, 39);
             selectPlcStringNumericFormatMode.TabIndex = 1;
+            //
+            // tlpReportDecimalPlaces
+            //
+            tlpReportDecimalPlaces.AutoSize = true;
+            tlpReportDecimalPlaces.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            tlpReportDecimalPlaces.ColumnCount = 2;
+            tlpReportDecimalPlaces.ColumnStyles.Add(new ColumnStyle());
+            tlpReportDecimalPlaces.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            tlpReportDecimalPlaces.Controls.Add(lblReportDecimalPlaces, 0, 0);
+            tlpReportDecimalPlaces.Controls.Add(inputReportDecimalPlaces, 1, 0);
+            tlpReportDecimalPlaces.Dock = DockStyle.Fill;
+            tlpReportDecimalPlaces.Location = new Point(0, 273);
+            tlpReportDecimalPlaces.Margin = new Padding(0);
+            tlpReportDecimalPlaces.Name = "tlpReportDecimalPlaces";
+            tlpReportDecimalPlaces.RowCount = 1;
+            tlpReportDecimalPlaces.RowStyles.Add(new RowStyle());
+            tlpReportDecimalPlaces.Size = new Size(409, 39);
+            tlpReportDecimalPlaces.TabIndex = 5;
+            //
+            // lblReportDecimalPlaces
+            //
+            lblReportDecimalPlaces.AutoSizeMode = AntdUI.TAutoSize.Width;
+            lblReportDecimalPlaces.Dock = DockStyle.Fill;
+            lblReportDecimalPlaces.Location = new Point(0, 0);
+            lblReportDecimalPlaces.Margin = new Padding(0);
+            lblReportDecimalPlaces.Name = "lblReportDecimalPlaces";
+            lblReportDecimalPlaces.Padding = new Padding(6, 0, 0, 0);
+            lblReportDecimalPlaces.Size = new Size(69, 39);
+            lblReportDecimalPlaces.TabIndex = 0;
+            lblReportDecimalPlaces.Text = "报表小数位";
+            //
+            // inputReportDecimalPlaces
+            //
+            inputReportDecimalPlaces.Dock = DockStyle.Fill;
+            inputReportDecimalPlaces.Location = new Point(69, 0);
+            inputReportDecimalPlaces.Margin = new Padding(0);
+            inputReportDecimalPlaces.Name = "inputReportDecimalPlaces";
+            inputReportDecimalPlaces.Size = new Size(340, 39);
+            inputReportDecimalPlaces.TabIndex = 1;
+            //
+            // tlpProcessParameterDecimalPlaces
+            //
+            tlpProcessParameterDecimalPlaces.AutoSize = true;
+            tlpProcessParameterDecimalPlaces.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            tlpProcessParameterDecimalPlaces.ColumnCount = 2;
+            tlpProcessParameterDecimalPlaces.ColumnStyles.Add(new ColumnStyle());
+            tlpProcessParameterDecimalPlaces.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            tlpProcessParameterDecimalPlaces.Controls.Add(lblProcessParameterDecimalPlaces, 0, 0);
+            tlpProcessParameterDecimalPlaces.Controls.Add(inputProcessParameterDecimalPlaces, 1, 0);
+            tlpProcessParameterDecimalPlaces.Dock = DockStyle.Fill;
+            tlpProcessParameterDecimalPlaces.Location = new Point(0, 312);
+            tlpProcessParameterDecimalPlaces.Margin = new Padding(0);
+            tlpProcessParameterDecimalPlaces.Name = "tlpProcessParameterDecimalPlaces";
+            tlpProcessParameterDecimalPlaces.RowCount = 1;
+            tlpProcessParameterDecimalPlaces.RowStyles.Add(new RowStyle());
+            tlpProcessParameterDecimalPlaces.Size = new Size(409, 39);
+            tlpProcessParameterDecimalPlaces.TabIndex = 6;
+            //
+            // lblProcessParameterDecimalPlaces
+            //
+            lblProcessParameterDecimalPlaces.AutoSizeMode = AntdUI.TAutoSize.Width;
+            lblProcessParameterDecimalPlaces.Dock = DockStyle.Fill;
+            lblProcessParameterDecimalPlaces.Location = new Point(0, 0);
+            lblProcessParameterDecimalPlaces.Margin = new Padding(0);
+            lblProcessParameterDecimalPlaces.Name = "lblProcessParameterDecimalPlaces";
+            lblProcessParameterDecimalPlaces.Padding = new Padding(6, 0, 0, 0);
+            lblProcessParameterDecimalPlaces.Size = new Size(69, 39);
+            lblProcessParameterDecimalPlaces.TabIndex = 0;
+            lblProcessParameterDecimalPlaces.Text = "过程参数小数位";
+            //
+            // inputProcessParameterDecimalPlaces
+            //
+            inputProcessParameterDecimalPlaces.Dock = DockStyle.Fill;
+            inputProcessParameterDecimalPlaces.Location = new Point(69, 0);
+            inputProcessParameterDecimalPlaces.Margin = new Padding(0);
+            inputProcessParameterDecimalPlaces.Name = "inputProcessParameterDecimalPlaces";
+            inputProcessParameterDecimalPlaces.Size = new Size(340, 39);
+            inputProcessParameterDecimalPlaces.TabIndex = 1;
             // 
             // grpDeviceConfig
             // 
@@ -2665,6 +2755,10 @@
             tlpPlcAlarmTriggerMode.PerformLayout();
             tlpPlcStringNumericMode.ResumeLayout(false);
             tlpPlcStringNumericMode.PerformLayout();
+            tlpReportDecimalPlaces.ResumeLayout(false);
+            tlpReportDecimalPlaces.PerformLayout();
+            tlpProcessParameterDecimalPlaces.ResumeLayout(false);
+            tlpProcessParameterDecimalPlaces.PerformLayout();
             grpDeviceConfig.ResumeLayout(false);
             grpDeviceConfig.PerformLayout();
             layoutDeviceNoConfig.ResumeLayout(false);
@@ -2771,6 +2865,12 @@
         private AntdUI.Checkbox chkEnablePlcStringNumericFormatting;
         private TableLayoutPanel tlpPlcStringNumericMode;
         private AntdUI.Label lblPlcStringNumericFormatMode;
+        private TableLayoutPanel tlpReportDecimalPlaces;
+        private AntdUI.Label lblReportDecimalPlaces;
+        private AntdUI.Input inputReportDecimalPlaces;
+        private TableLayoutPanel tlpProcessParameterDecimalPlaces;
+        private AntdUI.Label lblProcessParameterDecimalPlaces;
+        private AntdUI.Input inputProcessParameterDecimalPlaces;
         private AntdUI.Select selectPlcStringNumericFormatMode;
         private TableLayoutPanel tlpPlcPort;
         private AntdUI.Label lblPlcPort;

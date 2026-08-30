@@ -2204,6 +2204,8 @@
   <data name="program.message.recipe_read_failed" xml:space="preserve"><value>PLC 配方名称读取失败，请检查 PLC 连接或地址配置。</value></data>
   <data name="system.group.center_server" xml:space="preserve"><value>中心服务器</value></data>
   <data name="system.label.plc_format_mode" xml:space="preserve"><value>处理方式</value></data>
+  <data name="system.label.report_decimal_places" xml:space="preserve"><value>报表小数位</value></data>
+  <data name="system.label.process_parameter_decimal_places" xml:space="preserve"><value>过程参数小数位</value></data>
   <data name="system.label.plc_alarm_trigger_mode" xml:space="preserve"><value>报警模式</value></data>
   <data name="system.label.mes_timeout" xml:space="preserve"><value>MES 超时（秒）</value></data>
   <data name="system.label.mes_heartbeat_interval" xml:space="preserve"><value>心跳间隔（秒）</value></data>
@@ -2249,6 +2251,7 @@
   <data name="system.message.runtime_mode_locked" xml:space="preserve"><value>存在未完工任务，不能切换双工位/双工单模式，请先完工后再调整。</value></data>
   <data name="system.message.device_management_locked" xml:space="preserve"><value>软件已开工，请先完工后再修改设备管理信息。</value></data>
   <data name="system.message.positive_integer_required" xml:space="preserve"><value>{0} 必须是大于 0 的整数。</value></data>
+  <data name="system.message.decimal_places_required" xml:space="preserve"><value>{0} 必须是 0-{1} 之间的整数；留空表示沿用采集时的小数位。</value></data>
   <data name="system.message.route_required" xml:space="preserve"><value>{0}不能为空。</value></data>
   <data name="system.message.relative_route_required" xml:space="preserve"><value>{0}请填写相对路由，例如 api/ExpProgram，不要填写完整 URL。</value></data>
   <data name="system.message.route_query_not_allowed" xml:space="preserve"><value>{0}不能包含查询参数或锚点。</value></data>

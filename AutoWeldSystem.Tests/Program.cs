@@ -133,6 +133,7 @@ var tests = new (string Name, Action Run)[]
     ("Whole-piece height uses four-side maximum and width uses side A", WholePieceHeightUsesFourSideMaximumAndWidthUsesSideA),
     ("Whole-piece zero merged value fails product level items", WholePieceZeroMergedValueFailsProductLevelItems),
     ("Whole-piece side B width stays out of face evaluation", WholePieceSideBWidthStaysOutOfFaceEvaluation),
+    ("Output decimal places apply to report and process parameter", OutputDecimalPlacesApplyToReportAndProcessParameter),
     ("Whole-piece program results use maximum allowed values", WholePieceProgramResultsUseMaximumAllowedValues),
     ("Program result display prefers persisted entity result", ProgramResultDisplayPrefersPersistedEntityResult),
     ("Whole-piece aggregation rejects invalid source data", WholePieceAggregationRejectsInvalidSourceData),
@@ -3088,6 +3089,91 @@ static WholePieceAbValueDefinition MergedHeightDefinition() => new(1, "高度", 
 static WholePieceAbValueDefinition MergedSymmetryDefinition() => new(2, "对称度", "对称度", "18:F-0_2");
 
 static WholePieceAbValueDefinition MergedWidthDefinition() => new(3, "宽度", "宽度", "16:F-0_2");
+
+/// <summary>
+/// 报表和过程参数各自的输出小数位。采集时已按偏移量表达式格式化并存库，
+/// 这里是输出端的第二次格式化：只能减位或补零，恢复不了被截掉的精度。
+/// 截断还是四舍五入沿用系统设置里的全局模式，不单独配置。
+/// </summary>
+static void OutputDecimalPlacesApplyToReportAndProcessParameter()
+{
+    // 未配置时必须与改动前完全一致，这是升级不改变现场行为的保证。
+    var none = new AppSettings { ReportDecimalPlaces = null, ProcessParameterDecimalPlaces = null };
+    AssertEqual("15.88", OutputNumericFormat.ForReport(none).Apply("15.88"), "未配置报表小数位时必须原样输出。");
+    AssertEqual("15.88", OutputNumericFormat.ForProcessParameter(none).Apply("15.88"), "未配置过程参数小数位时必须原样输出。");
+    AssertEqual("15.88", OutputNumericFormat.None.Apply("15.88"), "None 必须不改动数值。");
+
+    // 减位：两种全局模式都要覆盖。
+    var truncate = new AppSettings
+    {
+        ReportDecimalPlaces = 1,
+        EnablePlcStringNumericFormatting = true,
+        PlcStringNumericFormatMode = AppConstants.PlcStringNumericFormatModes.Truncate
+    };
+    AssertEqual("15.8", OutputNumericFormat.ForReport(truncate).Apply("15.88"), "截断模式下减位必须裁切。");
+
+    var round = new AppSettings
+    {
+        ReportDecimalPlaces = 1,
+        EnablePlcStringNumericFormatting = true,
+        PlcStringNumericFormatMode = AppConstants.PlcStringNumericFormatModes.Round
+    };
+    AssertEqual("15.9", OutputNumericFormat.ForReport(round).Apply("15.88"), "四舍五入模式下减位必须进位。");
+
+    // 关闭全局数值处理时按四舍五入，与采集侧 ExpressionReadService 的既有约定一致。
+    var disabled = new AppSettings
+    {
+        ReportDecimalPlaces = 1,
+        EnablePlcStringNumericFormatting = false,
+        PlcStringNumericFormatMode = AppConstants.PlcStringNumericFormatModes.Truncate
+    };
+    AssertEqual("15.9", OutputNumericFormat.ForReport(disabled).Apply("15.88"), "关闭全局数值处理时必须按四舍五入，与采集口径一致。");
+
+    // 增位只能补零，恢复不了采集时被截掉的精度。
+    var padded = new AppSettings
+    {
+        ReportDecimalPlaces = 3,
+        EnablePlcStringNumericFormatting = true,
+        PlcStringNumericFormatMode = AppConstants.PlcStringNumericFormatModes.Truncate
+    };
+    AssertEqual("15.880", OutputNumericFormat.ForReport(padded).Apply("15.88"), "增位只能补零。");
+
+    // 非数值文本必须原样返回：结果列、报表里表示不适用的斜杠、空值。
+    var format = OutputNumericFormat.ForReport(truncate);
+    AssertEqual("OK", format.Apply("OK"), "结果文本不能被小数位改写。");
+    AssertEqual("\\", format.Apply("\\"), "报表不适用标记不能被小数位改写。");
+    AssertEqual(string.Empty, format.Apply(null), "空值必须保持为空。");
+
+    // 报表与过程参数互相独立。
+    var independent = new AppSettings
+    {
+        ReportDecimalPlaces = 1,
+        ProcessParameterDecimalPlaces = 3,
+        EnablePlcStringNumericFormatting = true,
+        PlcStringNumericFormatMode = AppConstants.PlcStringNumericFormatModes.Truncate
+    };
+    AssertEqual("15.8", OutputNumericFormat.ForReport(independent).Apply("15.88"), "报表必须只用报表小数位。");
+    AssertEqual("15.880", OutputNumericFormat.ForProcessParameter(independent).Apply("15.88"), "过程参数必须只用过程参数小数位。");
+
+    // 归一化：负数按未配置处理，超上限收敛到上限。
+    AssertTrue(OutputNumericFormat.NormalizeDecimalPlaces(-1) is null, "负小数位必须按未配置处理。");
+    AssertTrue(OutputNumericFormat.NormalizeDecimalPlaces(null) is null, "空小数位必须保持未配置。");
+    AssertEqual(0, OutputNumericFormat.NormalizeDecimalPlaces(0) ?? -1, "0 位是合法配置，表示输出整数。");
+    AssertEqual(
+        PlcOffsetExpression.MaxDecimalPlaces,
+        OutputNumericFormat.NormalizeDecimalPlaces(PlcOffsetExpression.MaxDecimalPlaces + 5) ?? -1,
+        "超过上限的小数位必须收敛到上限。");
+
+    var settingsCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "AppSettingsService.cs"), Encoding.UTF8);
+    AssertTrue(settingsCode.Contains("OutputNumericFormat.NormalizeDecimalPlaces", StringComparison.Ordinal), "设置保存必须归一化输出小数位，避免非法值落库。");
+
+    // 报表只格式化测试项动态列；工位、产品编号、面号和结果等固定列不能被改写。
+    var reportCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductionReportFileService.cs"), Encoding.UTF8);
+    AssertTrue(reportCode.Contains("numericFormat.Apply(pair.Value)", StringComparison.Ordinal), "报表输出小数位必须只作用于动态列取值。");
+
+    var uploadCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "UploadTaskService.cs"), Encoding.UTF8);
+    AssertTrue(uploadCode.Contains("TestItemUnitFormatRules.FormatValue(numericFormat.Apply(value)", StringComparison.Ordinal), "过程参数必须先按小数位格式化再拼单位，否则带单位的文本不再是纯数值。");
+}
 
 /// <summary>
 /// 程序内容里的宽度上限按 A 面设定，B 面（面1、面3）的宽度本来就不同。
@@ -6871,17 +6957,33 @@ static void ProcessParameterNumericRolesAppendTestItemUnits()
     AssertTrue(method is not null, "过程参数上传服务必须保留统一的单位格式入口。");
     var item = new DimTestItem { ItemId = 1, ItemName = "峰值电流", Unit = "A" };
 
-    var actual = (string?)method!.Invoke(null, ["12.3", item, SchemeDetailValueRole.Actual]);
-    var upper = (string?)method.Invoke(null, ["15", item, SchemeDetailValueRole.Upper]);
-    var lower = (string?)method.Invoke(null, ["10", item, SchemeDetailValueRole.Lower]);
-    var result = (string?)method.Invoke(null, ["OK", item, SchemeDetailValueRole.Result]);
-    var empty = (string?)method.Invoke(null, [string.Empty, item, SchemeDetailValueRole.Actual]);
+    var actual = (string?)method!.Invoke(null, ["12.3", item, SchemeDetailValueRole.Actual, OutputNumericFormat.None]);
+    var upper = (string?)method.Invoke(null, ["15", item, SchemeDetailValueRole.Upper, OutputNumericFormat.None]);
+    var lower = (string?)method.Invoke(null, ["10", item, SchemeDetailValueRole.Lower, OutputNumericFormat.None]);
+    var result = (string?)method.Invoke(null, ["OK", item, SchemeDetailValueRole.Result, OutputNumericFormat.None]);
+    var empty = (string?)method.Invoke(null, [string.Empty, item, SchemeDetailValueRole.Actual, OutputNumericFormat.None]);
 
     AssertEqual("12.3 A", actual, "普通过程参数和整件检测 A/B 实际值必须共用单位格式。");
     AssertEqual("15 A", upper, "过程参数上限必须追加单位。");
     AssertEqual("10 A", lower, "过程参数下限必须追加单位。");
     AssertEqual("OK", result, "过程参数结果字段不得追加单位。");
     AssertEqual(string.Empty, empty, "空过程参数值不得生成独立单位字符串。");
+
+    // 配置输出小数位后，必须先按小数位格式化再拼单位；结果字段仍不参与数值格式化。
+    var twoPlaces = OutputNumericFormat.ForProcessParameter(new AppSettings
+    {
+        ProcessParameterDecimalPlaces = 1,
+        EnablePlcStringNumericFormatting = true,
+        PlcStringNumericFormatMode = AppConstants.PlcStringNumericFormatModes.Truncate
+    });
+    AssertEqual(
+        "12.3 A",
+        (string?)method.Invoke(null, ["12.34", item, SchemeDetailValueRole.Actual, twoPlaces]),
+        "过程参数必须先按输出小数位裁切再追加单位。");
+    AssertEqual(
+        "OK",
+        (string?)method.Invoke(null, ["OK", item, SchemeDetailValueRole.Result, twoPlaces]),
+        "结果字段不能被输出小数位改写。");
 
     var upload = new ProcessParameterUploadItem();
     upload.DynamicFields["Current"] = actual;

@@ -15,7 +15,7 @@ public sealed record PlcOffsetExpression(
     int? DecimalPlaces = null,
     string? AbsoluteAddress = null)
 {
-    private const int MaxDecimalPlaces = 10;
+    public const int MaxDecimalPlaces = 10;
     public const string RuleHint = "表达式：相对偏移或绝对地址:类型-规则_小数位；类型 B/H/I/F/S；规则 0原值、1除以10、2除以100、3除以1000、4结果(2=NG、3=OK、4=焊前NG)；相对地址如 14:F-0_2，绝对地址如 DB97.26:F-0_2，字符串如 0:S-8_3，是否按数值字符串处理及裁切/四舍五入由系统设置全局控制。";
 
     /// <summary>

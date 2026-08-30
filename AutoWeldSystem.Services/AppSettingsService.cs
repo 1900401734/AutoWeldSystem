@@ -149,6 +149,8 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
         settings.Station1DisplayName = stationNames.Station1;
         settings.Station2DisplayName = stationNames.Station2;
         settings.PlcStringNumericFormatMode = PlcStringNumericFormatter.NormalizeMode(settings.PlcStringNumericFormatMode);
+        settings.ReportDecimalPlaces = OutputNumericFormat.NormalizeDecimalPlaces(settings.ReportDecimalPlaces);
+        settings.ProcessParameterDecimalPlaces = OutputNumericFormat.NormalizeDecimalPlaces(settings.ProcessParameterDecimalPlaces);
         settings.ProcessParameterDeviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
         settings.InspectionResultSource = ProductionConstants.InspectionResultSources.Normalize(settings.InspectionResultSource);
         settings.RealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Normalize(settings.RealtimePointNumberSource);

@@ -45,6 +45,20 @@ public class AppSettings
     [SugarColumn(Length = 20, ColumnDescription = "PLC字符串数值处理方式")]
     public string PlcStringNumericFormatMode { get; set; } = AppConstants.PlcStringNumericFormatModes.Truncate;
 
+    /// <summary>
+    /// XLSX 报表输出的小数位。为空表示沿用采集时按偏移量表达式格式化的位数。
+    /// 采集时已按表达式小数位存库，这里只能减位或补零，恢复不了被截掉的精度。
+    /// </summary>
+    [SugarColumn(ColumnDescription = "报表输出小数位", IsNullable = true)]
+    public int? ReportDecimalPlaces { get; set; }
+
+    /// <summary>
+    /// MES 过程参数上传的小数位。为空表示沿用采集时按偏移量表达式格式化的位数。
+    /// 截断还是四舍五入由 <see cref="PlcStringNumericFormatMode"/> 决定，不单独配置。
+    /// </summary>
+    [SugarColumn(ColumnDescription = "过程参数上传小数位", IsNullable = true)]
+    public int? ProcessParameterDecimalPlaces { get; set; }
+
     [SugarColumn(ColumnDescription = "是否启用PLC报警读取", IsNullable = true)]
     public bool? EnablePlcAlarmReading { get; set; } = true;
 
