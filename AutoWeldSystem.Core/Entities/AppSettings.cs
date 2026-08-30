@@ -187,10 +187,18 @@ public class AppSettings
     public bool? EnableWholePieceMergedDisplay { get; set; } = false;
 
     /// <summary>
-    /// 整件检测 A/B 配对聚合方式。高度、宽度固定取四面最大值，本设置只作用于其余测试项。
+    /// 整件检测逐面模式是否显示“面结果”列。关闭后只隐藏该列，面号和逐面实测值保留，
+    /// 避免单面结果与合并视图的产品结果口径不同造成歧义。仅影响界面。
+    /// </summary>
+    [SugarColumn(ColumnDescription = "整件检测逐面结果显示", IsNullable = true)]
+    public bool? EnableWholePieceFaceResultDisplay { get; set; } = true;
+
+    /// <summary>
+    /// 整件检测 A/B 配对聚合方式。高度取四面最大值、宽度只取 A 面，本设置只作用于其余测试项。
+    /// 默认取最大值：单面视觉检测失败会回传 0，取平均会把 0 拉进结果反而更容易判 OK。
     /// </summary>
     [SugarColumn(Length = 20, ColumnDescription = "A/B配对聚合方式", IsNullable = true)]
-    public string? PairedAggregationMode { get; set; } = ProductionConstants.PairedAggregationModes.Average;
+    public string? PairedAggregationMode { get; set; } = ProductionConstants.PairedAggregationModes.Maximum;
 
     [SugarColumn(ColumnDescription = "过程参数接口编码")]
     public ApiCode ProcessParameterApiCode { get; set; } = ApiCode.EMWeldDetail_001;

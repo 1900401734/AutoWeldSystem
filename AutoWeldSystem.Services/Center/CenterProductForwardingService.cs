@@ -666,7 +666,8 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
                 SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Actual),
                 item.Unit,
                 SchemeDetailValueRole.Actual,
-                wholePieceInspection && WholePieceAbAggregationRules.IsProductMaximumItem(item.ItemName));
+                // 只有高度是 A/B 两行同值，可以按产品跨行合并；宽度 B 行为空要单独显示，不能合并。
+                wholePieceInspection && WholePieceAbAggregationRules.IsFourSideMaximumItem(item.ItemName));
         }
 
         if (ShouldForwardSavedRole(detail, SchemeDetailValueRole.Upper))

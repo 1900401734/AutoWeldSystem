@@ -912,6 +912,12 @@
   <data name="monitor.tooltip.merged_display" xml:space="preserve">
     <value>勾选后按 A/B 聚合把四个检测面合并成一行，与上传和报表口径一致；取消勾选恢复逐面明细。只影响界面显示，不改变上传和报表数据。</value>
   </data>
+  <data name="monitor.checkbox.face_result_display" xml:space="preserve">
+    <value>面结果</value>
+  </data>
+  <data name="monitor.tooltip.face_result_display" xml:space="preserve">
+    <value>逐面模式下是否显示“面结果”列。取消勾选只隐藏该列，面号和逐面实测值保留，避免单面结果与合并后的产品结果口径不同造成歧义。只影响界面显示，不改变上传和报表数据。</value>
+  </data>
   <data name="monitor.label.product_number" xml:space="preserve">
     <value>产品工号</value>
   </data>
@@ -2259,6 +2265,7 @@
   <data name="system.message.realtime_point_number_source_locked" xml:space="preserve"><value>存在未完工任务，不能切换实时编号来源，请先完工后再调整。</value></data>
   <data name="system.label.paired_aggregation_mode" xml:space="preserve"><value>A/B配对聚合方式</value></data>
   <data name="system.label.whole_piece_merged_display" xml:space="preserve"><value>整件检测四面合并显示</value></data>
+  <data name="system.label.whole_piece_face_result_display" xml:space="preserve"><value>整件检测逐面结果显示</value></data>
   <data name="system.option.paired_aggregation.average" xml:space="preserve"><value>配对平均值</value></data>
   <data name="system.option.paired_aggregation.maximum" xml:space="preserve"><value>配对最大值</value></data>
   <data name="system.message.paired_aggregation_mode_locked" xml:space="preserve"><value>存在未完工任务，不能切换A/B配对聚合方式，请先完工后再调整。</value></data>

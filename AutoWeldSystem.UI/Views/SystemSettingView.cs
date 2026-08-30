@@ -805,6 +805,7 @@ public partial class SystemSettingView : BaseView
         _selectedRealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Normalize(settings.RealtimePointNumberSource);
         _selectedPairedAggregationMode = ProductionConstants.PairedAggregationModes.Normalize(settings.PairedAggregationMode);
         chkEnableWholePieceMergedDisplay.Checked = settings.EnableWholePieceMergedDisplay == true;
+        chkEnableWholePieceFaceResultDisplay.Checked = settings.EnableWholePieceFaceResultDisplay != false;
         _selectedCenterServerSystemType = NormalizeCenterServerSystemType(settings.CenterServerSystemType);
         inputUploadBatchSize.Text = Math.Max(1, settings.UploadBatchSize).ToString(CultureInfo.InvariantCulture);
         BindPlcTypeOptions();
@@ -949,6 +950,7 @@ public partial class SystemSettingView : BaseView
         lblRealtimePointNumberSource.Text = _localizer.GetString(TextKeys.SystemSetting.LabelRealtimePointNumberSource);
         lblPairedAggregationMode.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPairedAggregationMode);
         chkEnableWholePieceMergedDisplay.Text = _localizer.GetString(TextKeys.SystemSetting.LabelWholePieceMergedDisplay);
+        chkEnableWholePieceFaceResultDisplay.Text = _localizer.GetString(TextKeys.SystemSetting.LabelWholePieceFaceResultDisplay);
         chkEnablePostDataCustomHeader.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnablePostDataHeader);
         lblPostDataHeaderKey.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPostDataHeaderKey);
         lblPostDataHeaderValue.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPostDataHeaderValue);
@@ -1099,6 +1101,7 @@ public partial class SystemSettingView : BaseView
         tlpPairedAggregationMode.Visible = wholePieceInspection;
         selectPairedAggregationMode.Enabled = wholePieceInspection && !HasAnyUnfinishedTask();
         chkEnableWholePieceMergedDisplay.Visible = wholePieceInspection;
+        chkEnableWholePieceFaceResultDisplay.Visible = wholePieceInspection;
     }
 
     private void BindPairedAggregationModeOptions()
@@ -1578,6 +1581,7 @@ public partial class SystemSettingView : BaseView
         settings.RealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Normalize(_selectedRealtimePointNumberSource);
         settings.PairedAggregationMode = ProductionConstants.PairedAggregationModes.Normalize(_selectedPairedAggregationMode);
         settings.EnableWholePieceMergedDisplay = chkEnableWholePieceMergedDisplay.Checked;
+        settings.EnableWholePieceFaceResultDisplay = chkEnableWholePieceFaceResultDisplay.Checked;
         if (!TryApplyMesEndpointSettings(settings))
         {
             return false;

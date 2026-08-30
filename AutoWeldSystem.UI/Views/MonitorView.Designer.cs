@@ -59,6 +59,7 @@ namespace AutoWeldSystem.UI.Views
             lblLiveProductNo1 = new AntdUI.Label();
             lblLiveTouchNo1 = new AntdUI.Label();
             chkMergedDisplay1 = new AntdUI.Checkbox();
+            chkFaceResultDisplay1 = new AntdUI.Checkbox();
             HorizontalSplitter1 = new AntdUI.Splitter();
             HorizontalScrollBar1 = new SlimHorizontalScrollBar();
             dgvPreview1 = new DataGridView();
@@ -427,15 +428,17 @@ namespace AutoWeldSystem.UI.Views
             // 
             // tlpStationOverview1
             // 
-            tlpStationOverview1.ColumnCount = 4;
+            tlpStationOverview1.ColumnCount = 5;
             tlpStationOverview1.ColumnStyles.Add(new ColumnStyle());
             tlpStationOverview1.ColumnStyles.Add(new ColumnStyle());
             tlpStationOverview1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            tlpStationOverview1.ColumnStyles.Add(new ColumnStyle());
             tlpStationOverview1.ColumnStyles.Add(new ColumnStyle());
             tlpStationOverview1.Controls.Add(lblLiveHint1, 0, 0);
             tlpStationOverview1.Controls.Add(lblLiveProductNo1, 1, 0);
             tlpStationOverview1.Controls.Add(lblLiveTouchNo1, 2, 0);
             tlpStationOverview1.Controls.Add(chkMergedDisplay1, 3, 0);
+            tlpStationOverview1.Controls.Add(chkFaceResultDisplay1, 4, 0);
             tlpStationOverview1.Dock = DockStyle.Fill;
             tlpStationOverview1.Location = new Point(0, 0);
             tlpStationOverview1.Margin = new Padding(0);
@@ -495,6 +498,19 @@ namespace AutoWeldSystem.UI.Views
             chkMergedDisplay1.TabIndex = 4;
             chkMergedDisplay1.Text = "合并显示";
             chkMergedDisplay1.Visible = false;
+            //
+            // chkFaceResultDisplay1
+            //
+            chkFaceResultDisplay1.AutoSizeMode = AntdUI.TAutoSize.Width;
+            chkFaceResultDisplay1.Dock = DockStyle.Fill;
+            chkFaceResultDisplay1.Location = new Point(1057, 0);
+            chkFaceResultDisplay1.Margin = new Padding(0);
+            chkFaceResultDisplay1.Name = "chkFaceResultDisplay1";
+            chkFaceResultDisplay1.Padding = new Padding(0, 0, 10, 0);
+            chkFaceResultDisplay1.Size = new Size(116, 36);
+            chkFaceResultDisplay1.TabIndex = 5;
+            chkFaceResultDisplay1.Text = "面结果";
+            chkFaceResultDisplay1.Visible = false;
             // 
             // HorizontalSplitter1
             // 
@@ -1962,6 +1978,7 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Label lblLiveHint1;
         private AntdUI.Label lblLiveProductNo1;
         private AntdUI.Checkbox chkMergedDisplay1;
+        private AntdUI.Checkbox chkFaceResultDisplay1;
         private AntdUI.Label lblLiveResult;
         private AntdUI.Label lblLiveTouchCount;
         private AntdUI.Label lblLiveTouchNo1;

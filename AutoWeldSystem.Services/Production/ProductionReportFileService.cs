@@ -27,6 +27,9 @@ public class ProductionReportFileService : IProductionReportFileService
     private const string ReportRoleUpper = "upper";
     private const string ReportRoleLower = "lower";
     private const string ReportRoleResult = "result";
+
+    // 整件检测 B 行的宽度不适用，报表用斜杠区别于“采集失败留空”。
+    private const string SideNotApplicableText = "\\";
     private const string HeaderStationNo = "工位";
     private const string HeaderProductNo = "产品编号";
     private const string HeaderProductResult = "产品结果";
@@ -335,7 +338,7 @@ public class ProductionReportFileService : IProductionReportFileService
                     output.SideNo,
                     output.Result,
                     productResult,
-                    output.Values));
+                    BuildAbReportValues(output, definitions)));
             }
         }
 
@@ -345,6 +348,31 @@ public class ProductionReportFileService : IProductionReportFileService
             .ThenBy(row => row.Source.SequenceNo)
             .ThenBy(row => row.PointNo, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    /// <summary>
+    /// 宽度只有 A 行有值。报表 B 行显示斜杠，避免空单元格被误读成“没有采集到”。
+    /// 斜杠只是报表展示，聚合结果与 MES 上传仍保持空值。
+    /// </summary>
+    private static Dictionary<string, string> BuildAbReportValues(
+        WholePieceAbOutputRow output,
+        IReadOnlyList<WholePieceAbValueDefinition> definitions)
+    {
+        var values = new Dictionary<string, string>(output.Values, StringComparer.OrdinalIgnoreCase);
+        if (!string.Equals(
+                output.SideNo?.Trim(),
+                WholePieceMergedDisplayRules.SideBSuffix,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return values;
+        }
+
+        foreach (var definition in definitions.Where(item => WholePieceAbAggregationRules.IsSideAOnlyItem(item.ItemName)))
+        {
+            values[definition.OutputKey] = SideNotApplicableText;
+        }
+
+        return values;
     }
 
     private static ReportOutputRow BuildStandardOutputRow(
@@ -842,7 +870,8 @@ public class ProductionReportFileService : IProductionReportFileService
             yield return new ReportColumn(
                 BuildDynamicColumnKey(item, ReportRoleActual),
                 TestItemUnitFormatRules.FormatHeader(SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Actual), item.Unit, SchemeDetailValueRole.Actual),
-                MergeByProduct: wholePieceAb && WholePieceAbAggregationRules.IsProductMaximumItem(item.ItemName));
+                // 只有高度是 A/B 两行同值，可以按产品跨行合并；宽度 B 行为空要单独显示，不能合并。
+                MergeByProduct: wholePieceAb && WholePieceAbAggregationRules.IsFourSideMaximumItem(item.ItemName));
         }
 
         if (wholePieceAb)

@@ -138,6 +138,7 @@
             lblPairedAggregationMode = new AntdUI.Label();
             selectPairedAggregationMode = new AntdUI.Select();
             chkEnableWholePieceMergedDisplay = new AntdUI.Checkbox();
+            chkEnableWholePieceFaceResultDisplay = new AntdUI.Checkbox();
             tlpMesUserRoute = new TableLayoutPanel();
             lblMesUserRoute = new AntdUI.Label();
             inputMesUserRoute = new AntdUI.Input();
@@ -1822,11 +1823,13 @@
             tlpProcessParameterType.Controls.Add(tlpRealtimePointNumberSource, 0, 2);
             tlpProcessParameterType.Controls.Add(tlpPairedAggregationMode, 0, 3);
             tlpProcessParameterType.Controls.Add(chkEnableWholePieceMergedDisplay, 0, 4);
+            tlpProcessParameterType.Controls.Add(chkEnableWholePieceFaceResultDisplay, 0, 5);
             tlpProcessParameterType.Dock = DockStyle.Fill;
             tlpProcessParameterType.Location = new Point(0, 0);
             tlpProcessParameterType.Margin = new Padding(0);
             tlpProcessParameterType.Name = "tlpProcessParameterType";
-            tlpProcessParameterType.RowCount = 5;
+            tlpProcessParameterType.RowCount = 6;
+            tlpProcessParameterType.RowStyles.Add(new RowStyle());
             tlpProcessParameterType.RowStyles.Add(new RowStyle());
             tlpProcessParameterType.RowStyles.Add(new RowStyle());
             tlpProcessParameterType.RowStyles.Add(new RowStyle());
@@ -1985,6 +1988,18 @@
             chkEnableWholePieceMergedDisplay.Size = new Size(412, 39);
             chkEnableWholePieceMergedDisplay.TabIndex = 11;
             chkEnableWholePieceMergedDisplay.Text = "整件检测四面合并显示";
+            //
+            // chkEnableWholePieceFaceResultDisplay
+            //
+            tlpProcessParameterType.SetColumnSpan(chkEnableWholePieceFaceResultDisplay, 2);
+            chkEnableWholePieceFaceResultDisplay.Dock = DockStyle.Fill;
+            chkEnableWholePieceFaceResultDisplay.Location = new Point(0, 195);
+            chkEnableWholePieceFaceResultDisplay.Margin = new Padding(0);
+            chkEnableWholePieceFaceResultDisplay.Name = "chkEnableWholePieceFaceResultDisplay";
+            chkEnableWholePieceFaceResultDisplay.Padding = new Padding(6, 0, 0, 0);
+            chkEnableWholePieceFaceResultDisplay.Size = new Size(412, 39);
+            chkEnableWholePieceFaceResultDisplay.TabIndex = 12;
+            chkEnableWholePieceFaceResultDisplay.Text = "整件检测逐面结果显示";
             // 
             // tlpMesUserRoute
             // 
@@ -2883,6 +2898,7 @@
         private AntdUI.Label lblPairedAggregationMode;
         private AntdUI.Select selectPairedAggregationMode;
         private AntdUI.Checkbox chkEnableWholePieceMergedDisplay;
+        private AntdUI.Checkbox chkEnableWholePieceFaceResultDisplay;
         private AntdUI.Checkbox chkShowTestFlagInHistory;
         private AntdUI.Checkbox chkEnableDeviceStatusReport;
         private AntdUI.Checkbox chkEnableWorkOrderStatusReport;
