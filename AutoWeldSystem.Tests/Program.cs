@@ -132,6 +132,7 @@ var tests = new (string Name, Action Run)[]
     ("Whole-piece four-side aggregation produces A and B rows", WholePieceFourSideAggregationProducesAbRows),
     ("Whole-piece height uses four-side maximum and width uses side A", WholePieceHeightUsesFourSideMaximumAndWidthUsesSideA),
     ("Whole-piece zero merged value fails product level items", WholePieceZeroMergedValueFailsProductLevelItems),
+    ("Whole-piece side B width stays out of face evaluation", WholePieceSideBWidthStaysOutOfFaceEvaluation),
     ("Whole-piece program results use maximum allowed values", WholePieceProgramResultsUseMaximumAllowedValues),
     ("Program result display prefers persisted entity result", ProgramResultDisplayPrefersPersistedEntityResult),
     ("Whole-piece aggregation rejects invalid source data", WholePieceAggregationRejectsInvalidSourceData),
@@ -3087,6 +3088,57 @@ static WholePieceAbValueDefinition MergedHeightDefinition() => new(1, "高度", 
 static WholePieceAbValueDefinition MergedSymmetryDefinition() => new(2, "对称度", "对称度", "18:F-0_2");
 
 static WholePieceAbValueDefinition MergedWidthDefinition() => new(3, "宽度", "宽度", "16:F-0_2");
+
+/// <summary>
+/// 程序内容里的宽度上限按 A 面设定，B 面（面1、面3）的宽度本来就不同。
+/// 若 B 面的宽度参与面级判定，会把合格面判成 NG，并连带让 MES 上传和报表的
+/// B 行结果变成 NG——即使产品结果按合并值判定仍是 OK。
+/// </summary>
+static void WholePieceSideBWidthStaysOutOfFaceEvaluation()
+{
+    AssertTrue(WholePieceAbAggregationRules.IsSideAFace("2"), "面2必须属于A面。");
+    AssertTrue(WholePieceAbAggregationRules.IsSideAFace("4"), "面4必须属于A面。");
+    AssertFalse(WholePieceAbAggregationRules.IsSideAFace("1"), "面1必须属于B面。");
+    AssertFalse(WholePieceAbAggregationRules.IsSideAFace("3"), "面3必须属于B面。");
+
+    AssertTrue(WholePieceProgramResultRules.ParticipatesInFaceEvaluation("宽度", "2", 4), "A面宽度必须参与面级判定。");
+    AssertFalse(WholePieceProgramResultRules.ParticipatesInFaceEvaluation("宽度", "1", 4), "B面宽度不能参与面级判定。");
+    AssertFalse(WholePieceProgramResultRules.ParticipatesInFaceEvaluation("宽度", "3", 4), "B面宽度不能参与面级判定。");
+    AssertTrue(WholePieceProgramResultRules.ParticipatesInFaceEvaluation("高度", "1", 4), "高度四面都要参与面级判定。");
+    AssertTrue(WholePieceProgramResultRules.ParticipatesInFaceEvaluation("对称度", "3", 4), "对称度四面都要参与面级判定。");
+    AssertTrue(WholePieceProgramResultRules.ParticipatesInFaceEvaluation("宽度", "1", 2), "非四面工艺没有A/B面概念，不能过滤测试项。");
+
+    // B 面宽度 25.0 超过按 A 面设定的上限 20.0，过滤掉后该面必须判 OK。
+    var snapshot = JsonSerializer.Serialize(new Dictionary<string, string>
+    {
+        ["高度"] = "16.00",
+        ["宽度"] = "20.00",
+        ["对称度"] = "0.10"
+    });
+    var sideBItems = new[] { "高度", "宽度", "对称度" };
+    var sideBValues = new[] { "15.88", "25.00", "0.09" };
+    var filtered = sideBItems
+        .Zip(sideBValues, (name, value) => new WholePieceProgramMeasurement(name, value))
+        .Where(measurement => WholePieceProgramResultRules.ParticipatesInFaceEvaluation(measurement.ItemName, "1", 4))
+        .ToList();
+    AssertEqual(2, filtered.Count, "B面参与判定的测试项必须排除宽度。");
+
+    var sideBResult = WholePieceProgramResultRules.EvaluateFace(snapshot, filtered);
+    AssertTrue(sideBResult.IsSuccess, sideBResult.ErrorMessage);
+    AssertEqual(ProductionConstants.TestResults.Ok, sideBResult.Result, "B面其余项都在范围内时必须判OK，宽度不能拖累面结果。");
+
+    // 未过滤时会误判 NG，正是现场出现“产品OK但上传和报表的B面为NG”的原因。
+    var unfilteredResult = WholePieceProgramResultRules.EvaluateFace(
+        snapshot,
+        sideBItems.Zip(sideBValues, (name, value) => new WholePieceProgramMeasurement(name, value)).ToList());
+    AssertTrue(unfilteredResult.IsSuccess, unfilteredResult.ErrorMessage);
+    AssertEqual(ProductionConstants.TestResults.Ng, unfilteredResult.Result, "用例前提：B面宽度若参与判定会超过A面上限。");
+
+    var collectionCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductCycleCollectionService.cs"), Encoding.UTF8);
+    var previewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductRealtimePreviewService.cs"), Encoding.UTF8);
+    AssertTrue(collectionCode.Contains("ParticipatesInFaceEvaluation", StringComparison.Ordinal), "正式采集的面级判定必须过滤B面宽度。");
+    AssertTrue(previewCode.Contains("ParticipatesInFaceEvaluation", StringComparison.Ordinal), "实时预览的面级判定必须过滤B面宽度，否则界面与上传口径不一致。");
+}
 
 /// <summary>
 /// 视觉检测失败约定回传 0。高度、宽度的合并值仍为 0 表示参与聚合的面全部没测到，

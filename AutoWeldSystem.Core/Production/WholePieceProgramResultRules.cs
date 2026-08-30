@@ -162,6 +162,17 @@ public static class WholePieceProgramResultRules
     }
 
     /// <summary>
+    /// 判断某个测试项在指定面上是否参与面级程序判定。
+    /// 程序内容里的宽度上限按 A 面设定，而 B 面（面1、面3）的宽度本来就不同，
+    /// 用 A 面上限判 B 面会把合格品判成面 NG，并连带把上传和报表的 B 行结果判成 NG。
+    /// 只在四面整件检测工艺下生效，其余工艺没有 A/B 面概念。
+    /// </summary>
+    public static bool ParticipatesInFaceEvaluation(string? itemName, string? touchNo, int touchCount)
+        => touchCount != 4
+           || !WholePieceAbAggregationRules.IsSideAOnlyItem(itemName)
+           || WholePieceAbAggregationRules.IsSideAFace(touchNo);
+
+    /// <summary>
     /// 宽度只在 A 行有值，B 行留空，不参与合并值判定。
     /// </summary>
     private static bool IsSkippedOnSideB(string? itemName, string? sideNo)

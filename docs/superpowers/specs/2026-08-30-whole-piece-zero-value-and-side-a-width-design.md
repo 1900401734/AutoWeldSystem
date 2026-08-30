@@ -57,6 +57,7 @@
 
 连带处理：
 
+- **B 面的宽度不参与面级判定。** 程序内容里的宽度上限按 A 面设定，而面级 `EvaluateFace` 拿每一面自己的宽度去比这个上限；B 面宽度本就不同，超限就把该面判成 NG，进而让 A/B 行的 `Result`（由 `ResolveProductResult([面1, 面3])` 得出）变成 NG，最终污染 MES 上传和报表——即使产品结果按合并值判定仍是 OK。因此在 `ProductCycleCollectionService` 与 `ProductRealtimePreviewService` 构造 measurements 时用 `ParticipatesInFaceEvaluation` 过滤，只在四面工艺下生效。这是“B 面宽度完全不参与判定”这一决策必须覆盖的第二处，仅改合并值层不足以解决问题。
 - `EvaluateAggregated` 判定 B 行时跳过 `宽度`。B 行该项是空字符串，不排除会被当成非法数字，导致整次判定失败。
 - `WholePieceMergedDisplayRules.BuildValues` 中产品级单列改为显式查找 A 行，不再依赖 A/B 行的排列顺序。高度两行同值取谁都对，宽度只有 A 行有值。
 - MES 上传链路无需改动：过程参数本来就输出 `SideNo=A/B` 两条数据，B 条的宽度字段值为空字符串，`TestItemUnitFormatRules.FormatValue` 对空值原样返回，不会拼上单位。
@@ -143,7 +144,7 @@ XLSX 报表在导出时实时聚合，不是导出后固化。因此本次改动
 ## 实施结果
 
 - 构建：`dotnet build AutoWeldSystem.sln --no-restore -p:BaseOutputPath=../artifacts/verify-bin/` 成功，0 警告 0 错误。使用独立输出目录，避免默认输出被运行中的程序锁定。
-- 控制台回归 harness：432 项全部 PASS，无失败、无异常。
+- 控制台回归 harness：433 项全部 PASS，无失败、无异常。
 - `git diff --check` 无空白错误。
 - Designer 筛查：未打开设计视图，两个 Designer 文件的改动均为手写新增控件。`tools/designer-diff.py` 因本地工具故障未能执行，改用 `git diff` 人工筛查，确认无设计器重序列化噪音，因此也不需要 `--clean`。
 

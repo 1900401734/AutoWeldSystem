@@ -498,7 +498,12 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             }
 
             var rawValues = ParseRawData(record.RawDataJson);
+            // B 面（面1、面3）的宽度不参与面级判定：程序内容里的宽度上限按 A 面设定。
             var measurements = participatingItems
+                .Where(item => WholePieceProgramResultRules.ParticipatesInFaceEvaluation(
+                    item.Item.ItemName,
+                    record.TouchNo,
+                    config.TouchCount))
                 .Select(item => new WholePieceProgramMeasurement(
                     item.Item.ItemName,
                     FirstValue(rawValues, ResolveItemKey(item.Item), item.Item.ItemName)))

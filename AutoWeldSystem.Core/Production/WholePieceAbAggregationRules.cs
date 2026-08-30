@@ -445,6 +445,12 @@ public static class WholePieceAbAggregationRules
     public static bool IsSideAOnlyItem(string? itemName)
         => string.Equals(itemName?.Trim(), "宽度", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// 判断面号是否属于 A 面。A 面由面2、面4 组成，由机台机械结构固定。
+    /// </summary>
+    public static bool IsSideAFace(string? touchNo)
+        => SideAFaces.Contains(touchNo?.Trim(), StringComparer.OrdinalIgnoreCase);
+
     private static bool IsSideA(string? sideNo)
         => string.Equals(sideNo?.Trim(), "A", StringComparison.OrdinalIgnoreCase);
 
