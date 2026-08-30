@@ -1,6 +1,13 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.13.0`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.14.0`。
+
+## v2.14.0 更新说明
+
+- 「特定数量」上传模式改为**滞后一个产品**：凑满批量值后不再立即上传，要等下一个产品采集完成时才提交上一批，避开产品刚采完那一刻。例如批量值为 3 时，采完第 4 件才上传前 3 件；批量值为 1 时，采完第 2 件才上传第 1 件。
+- 凑满批量值却等不到下一个产品就完工的情况，由完工时的过程参数补传兜底，数据不会丢。
+- 重测重传不受影响，仍绕过批次立即上传——重测属修正性操作，数据正确性优先。
+- 双工位各自独立计数，一个工位的产品不会凑另一个工位的批次。「实时上传」和「批量上传」两种模式行为不变。
 
 ## v2.13.0 更新说明
 
@@ -435,10 +442,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>2.13.0</Version>
-<AssemblyVersion>2.13.0.0</AssemblyVersion>
-<FileVersion>2.13.0.0</FileVersion>
-<InformationalVersion>2.13.0</InformationalVersion>
+<Version>2.14.0</Version>
+<AssemblyVersion>2.14.0.0</AssemblyVersion>
+<FileVersion>2.14.0.0</FileVersion>
+<InformationalVersion>2.14.0</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -450,9 +457,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v2.13.0 -m "Release v2.13.0"
+git tag -a v2.14.0 -m "Release v2.14.0"
 git push origin main
-git push origin v2.13.0
+git push origin v2.14.0
 ```
 
 ## Git 使用
