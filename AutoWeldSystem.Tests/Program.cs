@@ -244,6 +244,7 @@ var tests = new (string Name, Action Run)[]
     ("Device log projects every device status code", DeviceLogProjectsEveryDeviceStatusCode),
     ("Pending upload view deletes selected rows in batches", PendingUploadViewDeletesSelectedRowsInBatches),
     ("Quantity upload batches product scopes and unique task ids", QuantityUploadBatchesProductScopesAndUniqueTaskIds),
+    ("Quantity upload defers until next product completes", QuantityUploadDefersUntilNextProductCompletes),
     ("Process parameter upload payload reads product scope fields", ProcessParameterUploadPayloadReadsProductScopeFields),
     ("Finish makeup only covers products not yet uploaded", FinishMakeupOnlyCoversProductsNotYetUploaded),
     ("MES device status rules use configured MES codes", MesDeviceStatusRulesUseConfiguredMesCodes),
@@ -7117,6 +7118,79 @@ static void QuantityUploadBatchesProductScopesAndUniqueTaskIds()
 
     var nextBatch = ProcessParameterBatchUploadRules.TakeReadyProductNos(records, taskId: 7, stationNo: 1, batchSize: 2, excludedProductNos: firstBatch);
     AssertSequenceEqual(new[] { "P003", "P004" }, nextBatch, "失败待重试批次中的产品不应阻塞后续新批次。");
+}
+
+/// <summary>
+/// 数量模式凑满批次后不立即上传，要等下一个产品采集完成才传上一批，避开刚采完那一刻。
+/// 判定依据是候选数必须超过批量值，而不是达到批量值。
+/// </summary>
+static void QuantityUploadDefersUntilNextProductCompletes()
+{
+    var threeProducts = new[]
+    {
+        BuildCompletedPoint(taskId: 9, stationNo: 1, productNo: "P001", sequenceNo: 1),
+        BuildCompletedPoint(taskId: 9, stationNo: 1, productNo: "P002", sequenceNo: 2),
+        BuildCompletedPoint(taskId: 9, stationNo: 1, productNo: "P003", sequenceNo: 3)
+    };
+    AssertEqual(
+        0,
+        ProcessParameterBatchUploadRules.TakeUploadableBatch(threeProducts, taskId: 9, stationNo: 1, batchSize: 3).Count,
+        "刚好凑满批量值时不能上传，必须等下一个产品采集完成。");
+
+    var fourProducts = threeProducts
+        .Append(BuildCompletedPoint(taskId: 9, stationNo: 1, productNo: "P004", sequenceNo: 4))
+        .ToArray();
+    AssertSequenceEqual(
+        new[] { "P001", "P002", "P003" },
+        ProcessParameterBatchUploadRules.TakeUploadableBatch(fourProducts, taskId: 9, stationNo: 1, batchSize: 3),
+        "下一个产品采完后必须上传最早的一批，第四件留到下一轮。");
+
+    // 批量值为 1 时同样滞后一件：采完第二件才传第一件。
+    var singleProduct = new[] { BuildCompletedPoint(taskId: 9, stationNo: 1, productNo: "P001", sequenceNo: 1) };
+    AssertEqual(
+        0,
+        ProcessParameterBatchUploadRules.TakeUploadableBatch(singleProduct, taskId: 9, stationNo: 1, batchSize: 1).Count,
+        "批量值为1时，只有一件产品不能立即上传。");
+    AssertSequenceEqual(
+        new[] { "P001" },
+        ProcessParameterBatchUploadRules.TakeUploadableBatch(
+            singleProduct.Append(BuildCompletedPoint(taskId: 9, stationNo: 1, productNo: "P002", sequenceNo: 2)).ToArray(),
+            taskId: 9,
+            stationNo: 1,
+            batchSize: 1),
+        "批量值为1时，采完第二件才上传第一件。");
+
+    // 在途任务已认领的产品先排除，再判断是否超过批量值。
+    AssertEqual(
+        0,
+        ProcessParameterBatchUploadRules.TakeUploadableBatch(
+            fourProducts,
+            taskId: 9,
+            stationNo: 1,
+            batchSize: 3,
+            excludedProductNos: new[] { "P001" }).Count,
+        "排除在途任务认领的产品后不足以超过批量值时，不能上传。");
+
+    // 双工位各自独立计数，一个工位的产品不能凑另一个工位的批次。
+    var dualStation = new[]
+    {
+        BuildCompletedPoint(taskId: 9, stationNo: 1, productNo: "S1-P001", sequenceNo: 1),
+        BuildCompletedPoint(taskId: 9, stationNo: 2, productNo: "S2-P001", sequenceNo: 2),
+        BuildCompletedPoint(taskId: 9, stationNo: 2, productNo: "S2-P002", sequenceNo: 3)
+    };
+    AssertEqual(
+        0,
+        ProcessParameterBatchUploadRules.TakeUploadableBatch(dualStation, taskId: 9, stationNo: 1, batchSize: 1).Count,
+        "工位2的产品不能让工位1达到上传条件。");
+    AssertSequenceEqual(
+        new[] { "S2-P001" },
+        ProcessParameterBatchUploadRules.TakeUploadableBatch(dualStation, taskId: 9, stationNo: 2, batchSize: 1),
+        "工位2自己有两件产品，应上传最早的一件。");
+
+    var coordinatorCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "WeldPointUploadCoordinatorService.cs"), Encoding.UTF8);
+    AssertTrue(coordinatorCode.Contains("TakeUploadableBatch", StringComparison.Ordinal), "上传协调服务必须改用延迟一个产品的批次判定。");
+    // 重测重传是修正性操作，必须继续绕过批次立即上传。
+    AssertTrue(coordinatorCode.Contains("IsRetestReupload", StringComparison.Ordinal), "重测重传必须继续绕过数量批次立即上传。");
 }
 
 static void ProcessParameterUploadPayloadReadsProductScopeFields()

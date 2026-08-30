@@ -81,8 +81,10 @@ public sealed class WeldPointUploadCoordinatorService : IWeldPointUploadCoordina
             return;
         }
 
-        var productNos = TakeReadyQuantityBatchProductNos(record.TaskId, record.StationNo, settings.UploadBatchSize);
-        if (!ProcessParameterBatchUploadRules.IsReady(productNos, settings.UploadBatchSize))
+        // 凑满批次后还要等下一个产品采集完成才上传，避开刚采完那一刻；
+        // 等不到下一个产品就完工时，由 WeldTaskService 的完工补传兜底。
+        var productNos = TakeUploadableQuantityBatchProductNos(record.TaskId, record.StationNo, settings.UploadBatchSize);
+        if (productNos.Count == 0)
         {
             return;
         }
@@ -125,7 +127,7 @@ public sealed class WeldPointUploadCoordinatorService : IWeldPointUploadCoordina
         });
     }
 
-    private IReadOnlyList<string> TakeReadyQuantityBatchProductNos(int weldTaskId, int stationNo, int configuredBatchSize)
+    private IReadOnlyList<string> TakeUploadableQuantityBatchProductNos(int weldTaskId, int stationNo, int configuredBatchSize)
     {
         lock (_dbLock)
         {
@@ -138,7 +140,7 @@ public sealed class WeldPointUploadCoordinatorService : IWeldPointUploadCoordina
                 .ToList();
             var excludedProductNos = GetOpenProcessParameterProductNos(weldTaskId, stationNo);
 
-            return ProcessParameterBatchUploadRules.TakeReadyProductNos(
+            return ProcessParameterBatchUploadRules.TakeUploadableBatch(
                 records,
                 weldTaskId,
                 stationNo,
