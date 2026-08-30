@@ -555,8 +555,13 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             var displayedTouchResult = plcTouchResult;
             if (useProgramResult && shouldReadTestValues)
             {
+                // B 面（面1、面3）的宽度不参与面级判定：程序内容里的宽度上限按 A 面设定。
                 var measurements = faceRows
-                    .Where(row => row.EnableActual)
+                    .Where(row => row.EnableActual
+                        && WholePieceProgramResultRules.ParticipatesInFaceEvaluation(
+                            row.ItemName,
+                            touchNo.ToString(CultureInfo.InvariantCulture),
+                            config.TouchCount))
                     .Select(row => new WholePieceProgramMeasurement(row.ItemName, row.ActualValue))
                     .ToList();
                 var calculated = WholePieceProgramResultRules.EvaluateFace(programContentSnapshot, measurements);

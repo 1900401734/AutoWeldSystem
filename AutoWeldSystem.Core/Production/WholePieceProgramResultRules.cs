@@ -99,7 +99,9 @@ public static class WholePieceProgramResultRules
         foreach (var row in abRows)
         {
             // 程序快照以原始测试项名为键，这里不能用“对称度A”这类显示列名。
+            // 宽度只有 A 行有值，B 行留空，必须排除，否则会被当成非法数字导致整次判定失败。
             var measurements = definitionList
+                .Where(definition => !IsSkippedOnSideB(definition.ItemName, row.SideNo))
                 .Select(definition => new WholePieceProgramMeasurement(
                     definition.ItemName,
                     row.Values.TryGetValue(definition.OutputKey, out var value) ? value : null))
@@ -110,9 +112,19 @@ public static class WholePieceProgramResultRules
                 return rowResult;
             }
 
-            results.Add(rowResult.Result);
-            // 失败项直接产出界面列名，供合并视图定位到具体列；高度、宽度是四面最大值，A/B 两行会各报一次，去重。
-            foreach (var failedItem in rowResult.FailedItems)
+            // 视觉检测失败时约定回传 0。高度、宽度的合并值仍为 0（或负值），
+            // 说明参与聚合的面全部没有检测成功，只判“小于上限”会误判成 OK，这里必须判 NG。
+            var invalidZeroItems = measurements
+                .Where(measurement => WholePieceAbAggregationRules.IsProductLevelItem(measurement.ItemName)
+                    && IsNonPositiveValue(measurement.ActualValue))
+                .Select(measurement => measurement.ItemName)
+                .ToList();
+            results.Add(invalidZeroItems.Count > 0
+                ? ProductionConstants.TestResults.Ng
+                : rowResult.Result);
+
+            // 失败项直接产出界面列名，供合并视图定位到具体列；高度是四面最大值，A/B 两行会各报一次，去重。
+            foreach (var failedItem in rowResult.FailedItems.Concat(invalidZeroItems))
             {
                 var columnName = WholePieceMergedDisplayRules.BuildColumnName(failedItem, row.SideNo);
                 if (!failedItems.Contains(columnName, StringComparer.OrdinalIgnoreCase))
@@ -148,6 +160,38 @@ public static class WholePieceProgramResultRules
             ? ProductionConstants.TestResults.Ok
             : ProductionConstants.TestResults.Unknown;
     }
+
+    /// <summary>
+    /// 判断某个测试项在指定面上是否参与面级程序判定。
+    /// 程序内容里的宽度上限按 A 面设定，而 B 面（面1、面3）的宽度本来就不同，
+    /// 用 A 面上限判 B 面会把合格品判成面 NG，并连带把上传和报表的 B 行结果判成 NG。
+    /// 只在四面整件检测工艺下生效，其余工艺没有 A/B 面概念。
+    /// </summary>
+    public static bool ParticipatesInFaceEvaluation(string? itemName, string? touchNo, int touchCount)
+        => touchCount != 4
+           || !WholePieceAbAggregationRules.IsSideAOnlyItem(itemName)
+           || WholePieceAbAggregationRules.IsSideAFace(touchNo);
+
+    /// <summary>
+    /// 宽度只在 A 行有值，B 行留空，不参与合并值判定。
+    /// </summary>
+    private static bool IsSkippedOnSideB(string? itemName, string? sideNo)
+        => WholePieceAbAggregationRules.IsSideAOnlyItem(itemName)
+           && !string.Equals(
+               sideNo?.Trim(),
+               WholePieceMergedDisplayRules.SideASuffix,
+               StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 判断实测值是否为 0 或负值。视觉检测失败约定回传 0，负值同样不是有效尺寸。
+    /// </summary>
+    private static bool IsNonPositiveValue(string? actualValue)
+        => decimal.TryParse(
+               actualValue?.Trim(),
+               NumberStyles.Float,
+               CultureInfo.InvariantCulture,
+               out var value)
+           && value <= 0m;
 
     private static bool TryParseMaximumValues(
         string? json,

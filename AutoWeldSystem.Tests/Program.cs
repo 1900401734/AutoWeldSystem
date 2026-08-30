@@ -130,7 +130,9 @@ var tests = new (string Name, Action Run)[]
     ("Data delete upgrade grants admin only on first introduction", DataDeleteUpgradeGrantsAdminOnlyOnFirstIntroduction),
     ("Scheme output roles are independent from realtime preview", SchemeOutputRolesAreIndependentFromRealtimePreview),
     ("Whole-piece four-side aggregation produces A and B rows", WholePieceFourSideAggregationProducesAbRows),
-    ("Whole-piece height and width use product maximum", WholePieceHeightAndWidthUseProductMaximum),
+    ("Whole-piece height uses four-side maximum and width uses side A", WholePieceHeightUsesFourSideMaximumAndWidthUsesSideA),
+    ("Whole-piece zero merged value fails product level items", WholePieceZeroMergedValueFailsProductLevelItems),
+    ("Whole-piece side B width stays out of face evaluation", WholePieceSideBWidthStaysOutOfFaceEvaluation),
     ("Whole-piece program results use maximum allowed values", WholePieceProgramResultsUseMaximumAllowedValues),
     ("Program result display prefers persisted entity result", ProgramResultDisplayPrefersPersistedEntityResult),
     ("Whole-piece aggregation rejects invalid source data", WholePieceAggregationRejectsInvalidSourceData),
@@ -2900,7 +2902,7 @@ static void WholePieceFourSideAggregationProducesAbRows()
     AssertEqual(ProductionConstants.TestResults.Ng, result.Rows[1].Result, "B面任一原始面NG时结果应为NG。");
 }
 
-static void WholePieceHeightAndWidthUseProductMaximum()
+static void WholePieceHeightUsesFourSideMaximumAndWidthUsesSideA()
 {
     var records = new[]
     {
@@ -2920,14 +2922,32 @@ static void WholePieceHeightAndWidthUseProductMaximum()
     AssertTrue(result.IsSuccess, result.ErrorMessage);
     AssertEqual("20.18", result.Rows[0].Values["Height"], "A行必须使用四面高度最大值。");
     AssertEqual("20.18", result.Rows[1].Values["Height"], "B行必须发送同一四面高度最大值。");
-    AssertTrue(WholePieceAbAggregationRules.IsProductMaximumItem("宽度"), "宽度必须使用四面最大值策略。");
-    AssertFalse(WholePieceAbAggregationRules.IsProductMaximumItem("对称度"), "对称度必须继续使用A/B配对平均。");
+
+    // 现场产品 A、B 两面宽度不同，且协议只要求上传 A 面宽度。
+    // 复用 item_1 原始值，本用例只关心按面取值策略，不关心测试项字典编号。
+    var width = new WholePieceAbValueDefinition(1, "宽度", "Width", "16:F-0_2");
+    var widthResult = WholePieceAbAggregationRules.Aggregate(
+        records,
+        [width],
+        ProductionConstants.PairedAggregationModes.Average,
+        enableStringNumericFormatting: true,
+        AppConstants.PlcStringNumericFormatModes.Round);
+
+    AssertTrue(widthResult.IsSuccess, widthResult.ErrorMessage);
+    AssertEqual("18.20", widthResult.Rows[0].Values["Width"], "A行宽度必须取面2、面4的最大值。");
+    AssertEqual(string.Empty, widthResult.Rows[1].Values["Width"], "B行宽度必须留空，不参与判定和上传。");
+
+    AssertTrue(WholePieceAbAggregationRules.IsFourSideMaximumItem("高度"), "高度必须使用四面最大值策略。");
+    AssertFalse(WholePieceAbAggregationRules.IsFourSideMaximumItem("宽度"), "宽度不再使用四面最大值策略。");
+    AssertTrue(WholePieceAbAggregationRules.IsSideAOnlyItem("宽度"), "宽度必须只取A面。");
+    AssertTrue(WholePieceAbAggregationRules.IsProductLevelItem("宽度"), "宽度仍是监控合并视图的产品级单列项。");
+    AssertFalse(WholePieceAbAggregationRules.IsProductLevelItem("对称度"), "对称度必须继续按A/B配对聚合分列。");
 
     var reportCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductionReportFileService.cs"), Encoding.UTF8);
     var centerForwardCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Center", "CenterProductForwardingService.cs"), Encoding.UTF8);
     var centerWriterCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.CenterServer", "Services", "CenterProductReportWorkbookWriter.cs"), Encoding.UTF8);
-    AssertTrue(reportCode.Contains("wholePieceAb && WholePieceAbAggregationRules.IsProductMaximumItem", StringComparison.Ordinal), "设备端报表必须把高度和宽度标记为产品级合并列。");
-    AssertTrue(centerForwardCode.Contains("wholePieceInspection && WholePieceAbAggregationRules.IsProductMaximumItem", StringComparison.Ordinal), "中心报表列定义必须同步高度和宽度的产品级合并语义。");
+    AssertTrue(reportCode.Contains("wholePieceAb && WholePieceAbAggregationRules.IsFourSideMaximumItem", StringComparison.Ordinal), "设备端报表只能把高度标记为产品级合并列，宽度B行留空不能跨行合并。");
+    AssertTrue(centerForwardCode.Contains("wholePieceInspection && WholePieceAbAggregationRules.IsFourSideMaximumItem", StringComparison.Ordinal), "中心报表列定义必须同步高度的产品级合并语义。");
     AssertTrue(centerWriterCode.Contains("BuildDynamicMergeOverrides", StringComparison.Ordinal)
         && centerWriterCode.Contains("candidates.MaxBy", StringComparison.Ordinal), "中心可见报表必须从四面原始值计算产品级最大值，同时保留原始数据页。");
 }
@@ -3066,6 +3086,167 @@ static BizWeldPointRecord CreateMergedRecord(string sideNo, string height, strin
 static WholePieceAbValueDefinition MergedHeightDefinition() => new(1, "高度", "高度", "14:F-0_2");
 
 static WholePieceAbValueDefinition MergedSymmetryDefinition() => new(2, "对称度", "对称度", "18:F-0_2");
+
+static WholePieceAbValueDefinition MergedWidthDefinition() => new(3, "宽度", "宽度", "16:F-0_2");
+
+/// <summary>
+/// 程序内容里的宽度上限按 A 面设定，B 面（面1、面3）的宽度本来就不同。
+/// 若 B 面的宽度参与面级判定，会把合格面判成 NG，并连带让 MES 上传和报表的
+/// B 行结果变成 NG——即使产品结果按合并值判定仍是 OK。
+/// </summary>
+static void WholePieceSideBWidthStaysOutOfFaceEvaluation()
+{
+    AssertTrue(WholePieceAbAggregationRules.IsSideAFace("2"), "面2必须属于A面。");
+    AssertTrue(WholePieceAbAggregationRules.IsSideAFace("4"), "面4必须属于A面。");
+    AssertFalse(WholePieceAbAggregationRules.IsSideAFace("1"), "面1必须属于B面。");
+    AssertFalse(WholePieceAbAggregationRules.IsSideAFace("3"), "面3必须属于B面。");
+
+    AssertTrue(WholePieceProgramResultRules.ParticipatesInFaceEvaluation("宽度", "2", 4), "A面宽度必须参与面级判定。");
+    AssertFalse(WholePieceProgramResultRules.ParticipatesInFaceEvaluation("宽度", "1", 4), "B面宽度不能参与面级判定。");
+    AssertFalse(WholePieceProgramResultRules.ParticipatesInFaceEvaluation("宽度", "3", 4), "B面宽度不能参与面级判定。");
+    AssertTrue(WholePieceProgramResultRules.ParticipatesInFaceEvaluation("高度", "1", 4), "高度四面都要参与面级判定。");
+    AssertTrue(WholePieceProgramResultRules.ParticipatesInFaceEvaluation("对称度", "3", 4), "对称度四面都要参与面级判定。");
+    AssertTrue(WholePieceProgramResultRules.ParticipatesInFaceEvaluation("宽度", "1", 2), "非四面工艺没有A/B面概念，不能过滤测试项。");
+
+    // B 面宽度 25.0 超过按 A 面设定的上限 20.0，过滤掉后该面必须判 OK。
+    var snapshot = JsonSerializer.Serialize(new Dictionary<string, string>
+    {
+        ["高度"] = "16.00",
+        ["宽度"] = "20.00",
+        ["对称度"] = "0.10"
+    });
+    var sideBItems = new[] { "高度", "宽度", "对称度" };
+    var sideBValues = new[] { "15.88", "25.00", "0.09" };
+    var filtered = sideBItems
+        .Zip(sideBValues, (name, value) => new WholePieceProgramMeasurement(name, value))
+        .Where(measurement => WholePieceProgramResultRules.ParticipatesInFaceEvaluation(measurement.ItemName, "1", 4))
+        .ToList();
+    AssertEqual(2, filtered.Count, "B面参与判定的测试项必须排除宽度。");
+
+    var sideBResult = WholePieceProgramResultRules.EvaluateFace(snapshot, filtered);
+    AssertTrue(sideBResult.IsSuccess, sideBResult.ErrorMessage);
+    AssertEqual(ProductionConstants.TestResults.Ok, sideBResult.Result, "B面其余项都在范围内时必须判OK，宽度不能拖累面结果。");
+
+    // 未过滤时会误判 NG，正是现场出现“产品OK但上传和报表的B面为NG”的原因。
+    var unfilteredResult = WholePieceProgramResultRules.EvaluateFace(
+        snapshot,
+        sideBItems.Zip(sideBValues, (name, value) => new WholePieceProgramMeasurement(name, value)).ToList());
+    AssertTrue(unfilteredResult.IsSuccess, unfilteredResult.ErrorMessage);
+    AssertEqual(ProductionConstants.TestResults.Ng, unfilteredResult.Result, "用例前提：B面宽度若参与判定会超过A面上限。");
+
+    var collectionCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductCycleCollectionService.cs"), Encoding.UTF8);
+    var previewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductRealtimePreviewService.cs"), Encoding.UTF8);
+    AssertTrue(collectionCode.Contains("ParticipatesInFaceEvaluation", StringComparison.Ordinal), "正式采集的面级判定必须过滤B面宽度。");
+    AssertTrue(previewCode.Contains("ParticipatesInFaceEvaluation", StringComparison.Ordinal), "实时预览的面级判定必须过滤B面宽度，否则界面与上传口径不一致。");
+}
+
+/// <summary>
+/// 视觉检测失败约定回传 0。高度、宽度的合并值仍为 0 表示参与聚合的面全部没测到，
+/// 只判“小于上限”会误判成 OK，必须判 NG；对称度真值可能为 0，不做零值检查。
+/// </summary>
+static void WholePieceZeroMergedValueFailsProductLevelItems()
+{
+    var snapshot = JsonSerializer.Serialize(new Dictionary<string, string>
+    {
+        ["高度"] = "16.00",
+        ["宽度"] = "20.00",
+        ["对称度"] = "0.10"
+    });
+    var definitions = new[] { MergedHeightDefinition(), MergedWidthDefinition(), MergedSymmetryDefinition() };
+
+    // B 行宽度留空是正常聚合结果，不能被当成非法数字导致整次判定失败。
+    var okRows = new List<WholePieceAbOutputRow>
+    {
+        new("A", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["高度"] = "15.88",
+            ["宽度"] = "19.20",
+            ["对称度"] = "0.02"
+        }),
+        new("B", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["高度"] = "15.88",
+            ["宽度"] = string.Empty,
+            ["对称度"] = "0.09"
+        })
+    };
+    var okResult = WholePieceProgramResultRules.EvaluateAggregated(snapshot, okRows, definitions);
+    AssertTrue(okResult.IsSuccess, okResult.ErrorMessage);
+    AssertEqual(ProductionConstants.TestResults.Ok, okResult.Result, "B行宽度留空必须跳过判定，不能影响产品结果。");
+
+    var zeroHeightRows = new List<WholePieceAbOutputRow>
+    {
+        new("A", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["高度"] = "0",
+            ["宽度"] = "19.20",
+            ["对称度"] = "0.02"
+        }),
+        new("B", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["高度"] = "0",
+            ["宽度"] = string.Empty,
+            ["对称度"] = "0.09"
+        })
+    };
+    var zeroHeightResult = WholePieceProgramResultRules.EvaluateAggregated(snapshot, zeroHeightRows, definitions);
+    AssertTrue(zeroHeightResult.IsSuccess, zeroHeightResult.ErrorMessage);
+    AssertEqual(ProductionConstants.TestResults.Ng, zeroHeightResult.Result, "高度合并值为0表示四面都没检测成功，必须判NG。");
+    AssertTrue(zeroHeightResult.FailedItems.Contains("高度"), "高度零值必须进入失败项，供合并视图标红。");
+
+    var zeroWidthRows = new List<WholePieceAbOutputRow>
+    {
+        new("A", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["高度"] = "15.88",
+            ["宽度"] = "0",
+            ["对称度"] = "0.02"
+        }),
+        new("B", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["高度"] = "15.88",
+            ["宽度"] = string.Empty,
+            ["对称度"] = "0.09"
+        })
+    };
+    var zeroWidthResult = WholePieceProgramResultRules.EvaluateAggregated(snapshot, zeroWidthRows, definitions);
+    AssertTrue(zeroWidthResult.IsSuccess, zeroWidthResult.ErrorMessage);
+    AssertEqual(ProductionConstants.TestResults.Ng, zeroWidthResult.Result, "宽度A行合并值为0表示面2、面4都没检测成功，必须判NG。");
+    AssertTrue(zeroWidthResult.FailedItems.Contains("宽度"), "宽度零值必须进入失败项。");
+
+    // 对称度真值可能为 0，客户尚未确认，不能按零值判 NG。
+    var zeroSymmetryRows = new List<WholePieceAbOutputRow>
+    {
+        new("A", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["高度"] = "15.88",
+            ["宽度"] = "19.20",
+            ["对称度"] = "0"
+        }),
+        new("B", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["高度"] = "15.88",
+            ["宽度"] = string.Empty,
+            ["对称度"] = "0"
+        })
+    };
+    var zeroSymmetryResult = WholePieceProgramResultRules.EvaluateAggregated(snapshot, zeroSymmetryRows, definitions);
+    AssertTrue(zeroSymmetryResult.IsSuccess, zeroSymmetryResult.ErrorMessage);
+    AssertEqual(ProductionConstants.TestResults.Ok, zeroSymmetryResult.Result, "对称度为0是可能的真实值，不做零值检查。");
+
+    // 单面检测失败不该污染面结果：面级判定只比上限，0 仍判 OK，由合并值兜住。
+    var faceResult = WholePieceProgramResultRules.EvaluateFace(
+        snapshot,
+        [new WholePieceProgramMeasurement("高度", "0"), new WholePieceProgramMeasurement("对称度", "0.02")]);
+    AssertTrue(faceResult.IsSuccess, faceResult.ErrorMessage);
+    AssertEqual(ProductionConstants.TestResults.Ok, faceResult.Result, "面级判定不做零值检查，单面视觉失败不能判成面NG。");
+
+    AssertEqual(
+        ProductionConstants.PairedAggregationModes.Maximum,
+        new AppSettings().PairedAggregationMode,
+        "配对聚合默认必须是最大值：取平均会把检测失败的0拉进结果，反而更容易判OK。");
+    AssertTrue(new AppSettings().EnableWholePieceFaceResultDisplay != false, "逐面结果列默认必须显示。");
+}
 
 static void WholePiecePairedAggregationSupportsMaximumMode()
 {

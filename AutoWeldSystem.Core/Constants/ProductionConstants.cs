@@ -240,7 +240,8 @@ public static class ProductionConstants
     }
 
     /// <summary>
-    /// 整件检测 A/B 配对聚合方式。高度、宽度固定取四面最大值，本设置只作用于其余测试项的配对聚合。
+    /// 整件检测 A/B 配对聚合方式。高度取四面最大值、宽度只取 A 面，本设置只作用于其余测试项的配对聚合。
+    /// 新装默认取最大值（见 AppSettings）；未显式配置过的旧库仍按平均值兜底，需要现场手动改一次。
     /// </summary>
     public static class PairedAggregationModes
     {

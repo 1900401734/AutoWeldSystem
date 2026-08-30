@@ -140,6 +140,7 @@ public static class TextKeys
             public const string FilterByProductNumber = "monitor.checkbox.filter_by_product_number";
             public const string EnableDualWorkOrder = "monitor.checkbox.enable_dual_work_order";
             public const string MergedDisplay = "monitor.checkbox.merged_display";
+            public const string FaceResultDisplay = "monitor.checkbox.face_result_display";
         }
 
         /// <summary>
@@ -150,6 +151,7 @@ public static class TextKeys
             public const string FilterByProductNumber = "monitor.tooltip.filter_by_product_number";
             public const string EnableDualWorkOrder = "monitor.tooltip.enable_dual_work_order";
             public const string MergedDisplay = "monitor.tooltip.merged_display";
+            public const string FaceResultDisplay = "monitor.tooltip.face_result_display";
         }
 
         public static class Label
@@ -1181,6 +1183,7 @@ public static class TextKeys
         public const string LabelRealtimePointNumberSource = "system.label.realtime_point_number_source";
         public const string LabelPairedAggregationMode = "system.label.paired_aggregation_mode";
         public const string LabelWholePieceMergedDisplay = "system.label.whole_piece_merged_display";
+        public const string LabelWholePieceFaceResultDisplay = "system.label.whole_piece_face_result_display";
         public const string LabelPostDataHeaderKey = "system.label.postdata_header_key";
         public const string LabelPostDataHeaderValue = "system.label.postdata_header_value";
         public const string UploadMode = "system.label.upload_mode";

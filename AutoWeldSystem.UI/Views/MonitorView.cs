@@ -151,6 +151,7 @@ public partial class MonitorView : BaseView
     private bool _syncingDualWorkOrderToggle;
     private bool _syncingProductNumberFilterToggle;
     private bool _syncingMergedDisplayToggle;
+    private bool _syncingFaceResultDisplayToggle;
     private string? _validatedOperatorNumber;
     private string? _pendingOnlineProgramName;
     private string? _pendingOnlineProgramWorkOrderKey;
@@ -768,6 +769,7 @@ public partial class MonitorView : BaseView
         chkEnableDualWorkOrder.CheckedChanged += DualWorkOrder_CheckedChanged;
         chkFilterByProductNumber.CheckedChanged += FilterByProductNumber_CheckedChanged;
         chkMergedDisplay1.CheckedChanged += MergedDisplay_CheckedChanged;
+        chkFaceResultDisplay1.CheckedChanged += FaceResultDisplay_CheckedChanged;
         inputSN.TextChanged += WorkOrderInput_TextChanged;
         inputSN.KeyDown += WorkOrderInput_KeyDown;
         selectProgramName.SelectedIndexChanged += ProgramNameSelection_SelectedIndexChanged;
@@ -1486,6 +1488,7 @@ public partial class MonitorView : BaseView
         ApplyLocalizedTexts();
         SyncDualWorkOrderToggle(_currentSettings.EnableDualWorkOrder);
         SyncMergedDisplayToggle(_currentSettings.EnableWholePieceMergedDisplay == true);
+        SyncFaceResultDisplayToggle(_currentSettings.EnableWholePieceFaceResultDisplay != false);
         UpdateCurrentTime();
         ConfigureDeviceMode();
         _weldTaskService.RestoreUnfinishedTask(CurrentStationNo);
@@ -1654,6 +1657,7 @@ public partial class MonitorView : BaseView
         chkEnableDualWorkOrder.CheckedChanged -= DualWorkOrder_CheckedChanged;
         chkFilterByProductNumber.CheckedChanged -= FilterByProductNumber_CheckedChanged;
         chkMergedDisplay1.CheckedChanged -= MergedDisplay_CheckedChanged;
+        chkFaceResultDisplay1.CheckedChanged -= FaceResultDisplay_CheckedChanged;
         selectProgramName.SelectedIndexChanged -= ProgramNameSelection_SelectedIndexChanged;
         selectProdNum.SelectedIndexChanged -= ProductNumSelection_SelectedIndexChanged;
         selectProdNum.TextChanged -= ProductNumInput_TextChanged;
@@ -2461,6 +2465,7 @@ public partial class MonitorView : BaseView
 
         var previousShowTestFlag = _currentSettings.ShowTestFlagInHistory != false;
         var previousMergedDisplay = _currentSettings.EnableWholePieceMergedDisplay == true;
+        var previousFaceResultDisplay = _currentSettings.EnableWholePieceFaceResultDisplay != false;
         UpdateSettingsSnapshot(e.CurrentSettings);
         RunOnUiThread(() =>
         {
@@ -2470,6 +2475,7 @@ public partial class MonitorView : BaseView
             SyncDualWorkOrderAvailability();
             SyncDualWorkOrderToggle(_currentSettings.EnableDualWorkOrder);
             SyncMergedDisplayToggle(_currentSettings.EnableWholePieceMergedDisplay == true);
+            SyncFaceResultDisplayToggle(_currentSettings.EnableWholePieceFaceResultDisplay != false);
         }, "MonitorView.SettingsChanged.DeviceIdentity");
         var currentShowTestFlag = e.CurrentSettings.ShowTestFlagInHistory != false;
         if (previousShowTestFlag != currentShowTestFlag)
@@ -2477,9 +2483,10 @@ public partial class MonitorView : BaseView
             RunOnUiThread(RefreshProductHistoryPreview, "MonitorView.SettingsChanged.ShowTestFlag");
         }
 
-        // 系统设置页也能改合并显示，这里同步重建界面，避免两个入口结果不一致。
+        // 系统设置页也能改合并显示和逐面结果显示，这里同步重建界面，避免两个入口结果不一致。
         var currentMergedDisplay = e.CurrentSettings.EnableWholePieceMergedDisplay == true;
-        if (previousMergedDisplay != currentMergedDisplay)
+        var currentFaceResultDisplay = e.CurrentSettings.EnableWholePieceFaceResultDisplay != false;
+        if (previousMergedDisplay != currentMergedDisplay || previousFaceResultDisplay != currentFaceResultDisplay)
         {
             RunOnUiThread(RefreshMergedDisplayViews, "MonitorView.SettingsChanged.MergedDisplay");
         }
@@ -2603,6 +2610,8 @@ public partial class MonitorView : BaseView
         settings.EnableWholePieceMergedDisplay = e.Value;
         var savedSettings = _settingsService.Save(settings);
         UpdateSettingsSnapshot(savedSettings);
+        // 合并视图没有面结果列，切换后要立即更新面结果开关的可见性。
+        SyncFaceResultDisplayVisibility();
         RefreshMergedDisplayViews();
     }
 
@@ -2626,6 +2635,55 @@ public partial class MonitorView : BaseView
             _currentSettings.ProcessParameterDeviceType?.Trim(),
             ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck,
             StringComparison.OrdinalIgnoreCase);
+        // 合并模式没有面结果列，此时隐藏面结果开关，避免出现一个不起作用的勾选框。
+        SyncFaceResultDisplayVisibility();
+    }
+
+    /// <summary>
+    /// 处理监控页面结果显示快捷开关。只隐藏“面结果”列，面号和逐面实测值保留。
+    /// </summary>
+    private void FaceResultDisplay_CheckedChanged(object? sender, AntdUI.BoolEventArgs e)
+    {
+        if (_syncingFaceResultDisplayToggle)
+        {
+            return;
+        }
+
+        var settings = _currentSettings.Clone();
+        settings.EnableWholePieceFaceResultDisplay = e.Value;
+        var savedSettings = _settingsService.Save(settings);
+        UpdateSettingsSnapshot(savedSettings);
+        RefreshMergedDisplayViews();
+    }
+
+    /// <summary>
+    /// 同步面结果显示复选框状态，避免程序性赋值再次触发保存。
+    /// </summary>
+    private void SyncFaceResultDisplayToggle(bool enableFaceResultDisplay)
+    {
+        _syncingFaceResultDisplayToggle = true;
+        try
+        {
+            chkFaceResultDisplay1.Checked = enableFaceResultDisplay;
+        }
+        finally
+        {
+            _syncingFaceResultDisplayToggle = false;
+        }
+
+        SyncFaceResultDisplayVisibility();
+    }
+
+    /// <summary>
+    /// 面结果开关只在整件检测的逐面模式下有意义，合并视图本身就没有面结果列。
+    /// </summary>
+    private void SyncFaceResultDisplayVisibility()
+    {
+        chkFaceResultDisplay1.Visible = string.Equals(
+                _currentSettings.ProcessParameterDeviceType?.Trim(),
+                ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck,
+                StringComparison.OrdinalIgnoreCase)
+            && _currentSettings.EnableWholePieceMergedDisplay != true;
     }
 
     /// <summary>
@@ -4986,6 +5044,11 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             _localizer.GetString(TextKeys.Monitor.Tooltip.EnableDualWorkOrder));
         chkMergedDisplay1.Text = _localizer.GetString(TextKeys.Monitor.Checkbox.MergedDisplay);
         SyncMergedDisplayToggle(_currentSettings.EnableWholePieceMergedDisplay == true);
+        chkFaceResultDisplay1.Text = _localizer.GetString(TextKeys.Monitor.Checkbox.FaceResultDisplay);
+        SyncFaceResultDisplayToggle(_currentSettings.EnableWholePieceFaceResultDisplay != false);
+        tooltipComponent.SetTip(
+            chkFaceResultDisplay1,
+            _localizer.GetString(TextKeys.Monitor.Tooltip.FaceResultDisplay));
         tooltipComponent.SetTip(
             chkMergedDisplay1,
             _localizer.GetString(TextKeys.Monitor.Tooltip.MergedDisplay));
@@ -6946,7 +7009,10 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             else
             {
                 AddWeldPreviewColumn(PreviewTouchNoColumn, displayOptions.PointNoHeader, 86);
-                AddWeldPreviewColumn(PreviewTouchResultColumn, displayOptions.PointResultHeader, 86);
+                if (ShouldShowFaceResultColumn())
+                {
+                    AddWeldPreviewColumn(PreviewTouchResultColumn, displayOptions.PointResultHeader, 86);
+                }
                 if (IsInfoPreview(items))
                 {
                     AddWeldPreviewColumn(PreviewMessageColumn, "提示", 360);
@@ -7285,6 +7351,16 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             }
         }
     }
+
+    /// <summary>
+    /// 面结果列只在整件检测的逐面模式下允许隐藏；其他设备类型始终显示该列。
+    /// </summary>
+    private bool ShouldShowFaceResultColumn()
+        => !string.Equals(
+               _currentSettings.ProcessParameterDeviceType?.Trim(),
+               ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck,
+               StringComparison.OrdinalIgnoreCase)
+           || _currentSettings.EnableWholePieceFaceResultDisplay != false;
 
     /// <summary>
     /// 设置预览值。

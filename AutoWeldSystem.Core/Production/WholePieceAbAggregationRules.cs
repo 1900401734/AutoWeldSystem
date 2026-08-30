@@ -14,6 +14,10 @@ public static class WholePieceAbAggregationRules
 {
     private static readonly string[] RequiredSides = ["1", "2", "3", "4"];
 
+    // A 面由面2、面4 组成，B 面由面1、面3 组成，由机台机械结构固定，不做配置。
+    private static readonly string[] SideAFaces = ["2", "4"];
+    private static readonly string[] SideBFaces = ["1", "3"];
+
     public static bool IsApplicable(string? deviceType, int touchCount)
         => string.Equals(
                deviceType?.Trim(),
@@ -158,7 +162,7 @@ public static class WholePieceAbAggregationRules
                 return WholePieceAbAggregationResult.Failure($"测试项“{definition.ItemName}”用于A/B聚合时必须使用按面偏移的相对地址，不能使用绝对地址。");
             }
 
-            if (IsProductMaximumItem(definition.ItemName))
+            if (IsFourSideMaximumItem(definition.ItemName))
             {
                 var values = RequiredSides
                     .Select(side => readValue(side, definition))
@@ -183,9 +187,36 @@ public static class WholePieceAbAggregationRules
                 continue;
             }
 
+            if (IsSideAOnlyItem(definition.ItemName))
+            {
+                // 现场产品 A/B 两面宽度不同，且过程参数与报表只要求 A 面宽度：
+                // A 行取面2、面4 的最大值，B 行留空，不参与判定、上传和报表。
+                var values = SideAFaces
+                    .Select(side => readValue(side, definition))
+                    .ToList();
+                if (values.Any(value => !value.IsSuccess))
+                {
+                    var failure = values.First(value => !value.IsSuccess);
+                    return WholePieceAbAggregationResult.Failure(
+                        $"{productPrefix}A面测试项“{definition.ItemName}”数据无效：{failure.ErrorMessage}");
+                }
+
+                var formattedMaximum = FormatAggregatedValue(
+                    values.Max(value => value.Value),
+                    expression.DecimalPlaces,
+                    enableStringNumericFormatting,
+                    stringNumericFormatMode);
+                foreach (var row in rows)
+                {
+                    row.Values[definition.OutputKey] = IsSideA(row.SideNo) ? formattedMaximum : string.Empty;
+                }
+
+                continue;
+            }
+
             foreach (var row in rows)
             {
-                var sideNumbers = row.SideNo == "A" ? new[] { "2", "4" } : new[] { "1", "3" };
+                var sideNumbers = IsSideA(row.SideNo) ? SideAFaces : SideBFaces;
                 var values = sideNumbers
                     .Select(side => readValue(side, definition))
                     .ToList();
@@ -196,7 +227,7 @@ public static class WholePieceAbAggregationRules
                         $"{productPrefix}{row.SideNo}面测试项“{definition.ItemName}”数据无效：{failure.ErrorMessage}");
                 }
 
-                // 高度、宽度取四面最大值，其余测试项的配对聚合方式由系统设置决定。
+                // 高度取四面最大值、宽度只取 A 面，其余测试项的配对聚合方式由系统设置决定。
                 var aggregated = pairedMode == ProductionConstants.PairedAggregationModes.Maximum
                     ? Math.Max(values[0].Value, values[1].Value)
                     : (values[0].Value + values[1].Value) / 2m;
@@ -396,12 +427,32 @@ public static class WholePieceAbAggregationRules
             stringNumericFormatMode);
     }
 
-    public static bool IsProductMaximumItem(string? itemName)
-    {
-        var normalizedName = itemName?.Trim();
-        return string.Equals(normalizedName, "高度", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(normalizedName, "宽度", StringComparison.OrdinalIgnoreCase);
-    }
+    /// <summary>
+    /// 产品级测试项：在监控合并视图中只占一列，且实测值 0 表示视觉检测失败，不能被当作合格值。
+    /// </summary>
+    public static bool IsProductLevelItem(string? itemName)
+        => IsFourSideMaximumItem(itemName) || IsSideAOnlyItem(itemName);
+
+    /// <summary>
+    /// 高度四面理论上一致，取四面最大值，A/B 两行同值，报表可按产品跨行合并单元格。
+    /// </summary>
+    public static bool IsFourSideMaximumItem(string? itemName)
+        => string.Equals(itemName?.Trim(), "高度", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 宽度在 A、B 两面不同，只取 A 面（面2、面4）最大值；B 行留空，因此报表不能跨行合并。
+    /// </summary>
+    public static bool IsSideAOnlyItem(string? itemName)
+        => string.Equals(itemName?.Trim(), "宽度", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 判断面号是否属于 A 面。A 面由面2、面4 组成，由机台机械结构固定。
+    /// </summary>
+    public static bool IsSideAFace(string? touchNo)
+        => SideAFaces.Contains(touchNo?.Trim(), StringComparer.OrdinalIgnoreCase);
+
+    private static bool IsSideA(string? sideNo)
+        => string.Equals(sideNo?.Trim(), "A", StringComparison.OrdinalIgnoreCase);
 
     private static IReadOnlyDictionary<string, string> ParseRawData(string? rawDataJson)
     {
