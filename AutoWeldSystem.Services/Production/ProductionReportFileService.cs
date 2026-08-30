@@ -3,6 +3,7 @@ using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
+using AutoWeldSystem.Core.Plc;
 using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Data;
 using ClosedXML.Excel;
@@ -397,6 +398,9 @@ public class ProductionReportFileService : IProductionReportFileService
         IReadOnlyList<ReportOutputRow> rows,
         StationDisplayNames stationNames)
     {
+        // 报表输出小数位，未配置时沿用采集位数。只作用于测试项动态列，
+        // 工位、产品编号、面号和结果等固定列不参与格式化。
+        var numericFormat = OutputNumericFormat.ForReport(CurrentSettings);
         for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
         {
             var output = rows[rowIndex];
@@ -410,7 +414,7 @@ public class ProductionReportFileService : IProductionReportFileService
             };
             foreach (var pair in output.DynamicValues)
             {
-                row[pair.Key] = pair.Value;
+                row[pair.Key] = numericFormat.Apply(pair.Value);
             }
 
             for (var columnIndex = 0; columnIndex < detailColumns.Count; columnIndex++)

@@ -808,6 +808,8 @@ public partial class SystemSettingView : BaseView
         chkEnableWholePieceFaceResultDisplay.Checked = settings.EnableWholePieceFaceResultDisplay != false;
         _selectedCenterServerSystemType = NormalizeCenterServerSystemType(settings.CenterServerSystemType);
         inputUploadBatchSize.Text = Math.Max(1, settings.UploadBatchSize).ToString(CultureInfo.InvariantCulture);
+        inputReportDecimalPlaces.Text = FormatOutputDecimalPlaces(settings.ReportDecimalPlaces);
+        inputProcessParameterDecimalPlaces.Text = FormatOutputDecimalPlaces(settings.ProcessParameterDecimalPlaces);
         BindPlcTypeOptions();
         BindPlcStringNumericFormatModeOptions();
         BindPlcAlarmTriggerModeOptions();
@@ -918,8 +920,8 @@ public partial class SystemSettingView : BaseView
         lblPlcType.Text = _localizer.GetString(TextKeys.SystemSetting.LabelType);
         chkEnablePlcStringNumericFormatting.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnablePlcStringFormatting);
         chkEnablePlcAlarmReading.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnablePlcAlarmReading);
-        lblPlcAlarmTriggerMode.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPlcAlarmTriggerMode);
-        lblPlcStringNumericFormatMode.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPlcFormatMode);
+        lblReportDecimalPlaces.Text = _localizer.GetString(TextKeys.SystemSetting.LabelReportDecimalPlaces);
+        lblProcessParameterDecimalPlaces.Text = _localizer.GetString(TextKeys.SystemSetting.LabelProcessParameterDecimalPlaces);
 
         lblDeviceId.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDeviceId);
         lblDeviceName.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDeviceName);
@@ -1499,6 +1501,22 @@ public partial class SystemSettingView : BaseView
             return false;
         }
 
+        if (!TryParseOutputDecimalPlaces(
+                inputReportDecimalPlaces.Text,
+                NormalizeCaption(lblReportDecimalPlaces.Text),
+                out var reportDecimalPlaces))
+        {
+            return false;
+        }
+
+        if (!TryParseOutputDecimalPlaces(
+                inputProcessParameterDecimalPlaces.Text,
+                NormalizeCaption(lblProcessParameterDecimalPlaces.Text),
+                out var processParameterDecimalPlaces))
+        {
+            return false;
+        }
+
         if (!TryParsePositiveInt(inputPlcHeartbeatInterval.Text, NormalizeCaption(lblPlcHeartbeatInterval.Text), out var heartbeatInterval))
         {
             return false;
@@ -1576,6 +1594,8 @@ public partial class SystemSettingView : BaseView
         settings.PlcCommunicationTimeoutMilliseconds = PlcHeartbeatSettingsRules.NormalizeCommunicationTimeoutMilliseconds(communicationTimeout);
         settings.UploadMode = NormalizeUploadMode(_selectedUploadMode);
         settings.UploadBatchSize = Math.Max(1, uploadBatchSize);
+        settings.ReportDecimalPlaces = reportDecimalPlaces;
+        settings.ProcessParameterDecimalPlaces = processParameterDecimalPlaces;
         settings.ProcessParameterDeviceType = NormalizeProcessParameterDeviceType(_selectedProcessParameterDeviceType);
         settings.InspectionResultSource = ProductionConstants.InspectionResultSources.Normalize(_selectedInspectionResultSource);
         settings.RealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Normalize(_selectedRealtimePointNumberSource);
@@ -1871,6 +1891,38 @@ public partial class SystemSettingView : BaseView
         ShowWarning(TextKeys.SystemSetting.MessagePositiveIntegerRequired, fieldName);
         return false;
     }
+
+    /// <summary>
+    /// 解析报表和过程参数的输出小数位。留空表示沿用采集时的小数位，因此空值是合法输入而不是错误。
+    /// </summary>
+    private bool TryParseOutputDecimalPlaces(string? text, string fieldName, out int? value)
+    {
+        value = null;
+        var normalized = text?.Trim() ?? string.Empty;
+        if (normalized.Length == 0)
+        {
+            return true;
+        }
+
+        if (int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            && parsed >= 0
+            && parsed <= PlcOffsetExpression.MaxDecimalPlaces)
+        {
+            value = parsed;
+            return true;
+        }
+
+        ShowWarning(
+            TextKeys.SystemSetting.MessageDecimalPlacesRequired,
+            fieldName,
+            PlcOffsetExpression.MaxDecimalPlaces);
+        return false;
+    }
+
+    private static string FormatOutputDecimalPlaces(int? decimalPlaces)
+        => decimalPlaces is >= 0
+            ? decimalPlaces.Value.ToString(CultureInfo.InvariantCulture)
+            : string.Empty;
 
     private static bool TryValidateBaseUrl(string baseUrl)
     {

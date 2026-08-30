@@ -1137,19 +1137,45 @@
   <data name="permission.tab.state.program_file" xml:space="preserve">
     <value>程序文件页签</value>
   </data>
-  <data name="permission.tab.log.mes_interaction" xml:space="preserve"><value>MES交互日志</value></data>
-  <data name="permission.tab.log.production_flow" xml:space="preserve"><value>生产流程日志</value></data>
-  <data name="permission.tab.log.program_exception" xml:space="preserve"><value>程序异常日志</value></data>
-  <data name="permission.tab.log.device" xml:space="preserve"><value>设备日志</value></data>
-  <data name="permission.tab.log.device_status" xml:space="preserve"><value>设备状态日志</value></data>
-  <data name="permission.tab.log.server" xml:space="preserve"><value>服务器日志</value></data>
-  <data name="permission.tab.address.business_signal" xml:space="preserve"><value>业务信号地址</value></data>
-  <data name="permission.tab.address.recipe_name" xml:space="preserve"><value>配方名称地址</value></data>
-  <data name="permission.tab.address.alarm" xml:space="preserve"><value>报警地址</value></data>
-  <data name="permission.tab.address.product_process" xml:space="preserve"><value>产品工艺</value></data>
-  <data name="permission.tab.address.test_plan" xml:space="preserve"><value>测试方案</value></data>
-  <data name="permission.tab.address.plan_detail" xml:space="preserve"><value>方案明细</value></data>
-  <data name="permission.tab.address.test_item_dictionary" xml:space="preserve"><value>测试项字典</value></data>
+  <data name="permission.tab.log.mes_interaction" xml:space="preserve">
+    <value>MES交互日志</value>
+  </data>
+  <data name="permission.tab.log.production_flow" xml:space="preserve">
+    <value>生产流程日志</value>
+  </data>
+  <data name="permission.tab.log.program_exception" xml:space="preserve">
+    <value>程序异常日志</value>
+  </data>
+  <data name="permission.tab.log.device" xml:space="preserve">
+    <value>设备日志</value>
+  </data>
+  <data name="permission.tab.log.device_status" xml:space="preserve">
+    <value>设备状态日志</value>
+  </data>
+  <data name="permission.tab.log.server" xml:space="preserve">
+    <value>服务器日志</value>
+  </data>
+  <data name="permission.tab.address.business_signal" xml:space="preserve">
+    <value>业务信号地址</value>
+  </data>
+  <data name="permission.tab.address.recipe_name" xml:space="preserve">
+    <value>配方名称地址</value>
+  </data>
+  <data name="permission.tab.address.alarm" xml:space="preserve">
+    <value>报警地址</value>
+  </data>
+  <data name="permission.tab.address.product_process" xml:space="preserve">
+    <value>产品工艺</value>
+  </data>
+  <data name="permission.tab.address.test_plan" xml:space="preserve">
+    <value>测试方案</value>
+  </data>
+  <data name="permission.tab.address.plan_detail" xml:space="preserve">
+    <value>方案明细</value>
+  </data>
+  <data name="permission.tab.address.test_item_dictionary" xml:space="preserve">
+    <value>测试项字典</value>
+  </data>
   <data name="permission.button.system.save" xml:space="preserve">
     <value>保存系统设置</value>
   </data>
@@ -2165,108 +2191,319 @@
   <data name="work_order.status.completed" xml:space="preserve">
     <value>已完工</value>
   </data>
-  <data name="system.label.station1_display_name" xml:space="preserve"><value>工位 1 显示名称</value></data>
-  <data name="system.label.station2_display_name" xml:space="preserve"><value>工位 2 显示名称</value></data>
-  <data name="system.placeholder.station_display_name" xml:space="preserve"><value>请输入工位显示名称</value></data>
-  <data name="system.message.station_display_name_required" xml:space="preserve"><value>启用双工位时，两个工位显示名称均为必填项。</value></data>
-  <data name="system.message.station_display_name_duplicate" xml:space="preserve"><value>两个工位显示名称不能重复。</value></data>
-  <data name="address.column.detail_item" xml:space="preserve"><value>测试项</value></data>
-  <data name="address.column.detail_role" xml:space="preserve"><value>数据角色</value></data>
-  <data name="address.column.detail_enabled" xml:space="preserve"><value>启用采集</value></data>
-  <data name="address.column.detail_header" xml:space="preserve"><value>显示表头</value></data>
-  <data name="address.column.detail_save" xml:space="preserve"><value>保存历史</value></data>
-  <data name="address.column.detail_report" xml:space="preserve"><value>写入报表</value></data>
-  <data name="address.column.detail_mes" xml:space="preserve"><value>上传 MES</value></data>
-  <data name="address.column.detail_mes_field" xml:space="preserve"><value>MES 字段名</value></data>
-  <data name="address.detail_role.actual" xml:space="preserve"><value>实际值</value></data>
-  <data name="address.detail_role.upper" xml:space="preserve"><value>上限</value></data>
-  <data name="address.detail_role.lower" xml:space="preserve"><value>下限</value></data>
-  <data name="address.detail_role.result" xml:space="preserve"><value>结果</value></data>
-  <data name="program.label.station1_recipe" xml:space="preserve"><value>工位1配方名称</value></data>
-  <data name="program.label.station2_recipe" xml:space="preserve"><value>工位2配方名称</value></data>
-  <data name="program.placeholder.recipe_select" xml:space="preserve"><value>请选择 PLC 配方名称</value></data>
-  <data name="address.tab.recipe_names" xml:space="preserve"><value>配方名称地址</value></data>
-  <data name="address.recipe_name.hint" xml:space="preserve"><value>第 N 个地址对应配方号 N，地址按基地址和固定字节偏移计算；双工位分别维护。</value></data>
-  <data name="address.recipe_name.preview_title" xml:space="preserve"><value>读取结果</value></data>
-  <data name="address.button.read_recipe_names" xml:space="preserve"><value>读取配方名称</value></data>
-  <data name="address.column.recipe_station" xml:space="preserve"><value>工位</value></data>
-  <data name="address.column.recipe_base_address" xml:space="preserve"><value>配方名称基地址</value></data>
-  <data name="address.column.recipe_count" xml:space="preserve"><value>配方数量</value></data>
-  <data name="address.column.recipe_offset" xml:space="preserve"><value>地址偏移量（字节）</value></data>
-  <data name="address.column.recipe_string_length" xml:space="preserve"><value>字符串长度</value></data>
-  <data name="address.column.recipe_code" xml:space="preserve"><value>配方号</value></data>
-  <data name="address.column.recipe_name" xml:space="preserve"><value>配方名称</value></data>
-  <data name="address.column.recipe_error" xml:space="preserve"><value>错误信息</value></data>
-  <data name="address.message.recipe_config_saved" xml:space="preserve"><value>PLC 配方名称地址配置已保存。</value></data>
-  <data name="address.message.recipe_read_failed" xml:space="preserve"><value>读取 PLC 配方名称失败：{0}</value></data>
-  <data name="program.option.missing_recipe" xml:space="preserve"><value>原关联配方已不可用</value></data>
-  <data name="program.option.recipe_not_applicable" xml:space="preserve"><value>不适用</value></data>
-  <data name="program.message.recipe_read_failed" xml:space="preserve"><value>PLC 配方名称读取失败，请检查 PLC 连接或地址配置。</value></data>
-  <data name="system.group.center_server" xml:space="preserve"><value>中心服务器</value></data>
-  <data name="system.label.plc_format_mode" xml:space="preserve"><value>处理方式</value></data>
-  <data name="system.label.plc_alarm_trigger_mode" xml:space="preserve"><value>报警模式</value></data>
-  <data name="system.label.mes_timeout" xml:space="preserve"><value>MES 超时（秒）</value></data>
-  <data name="system.label.mes_heartbeat_interval" xml:space="preserve"><value>心跳间隔（秒）</value></data>
-  <data name="system.label.center_server_url" xml:space="preserve"><value>中心服务器地址</value></data>
-  <data name="system.label.center_server_system_type" xml:space="preserve"><value>系统类型</value></data>
-  <data name="system.label.center_server_heartbeat" xml:space="preserve"><value>心跳间隔（秒）</value></data>
-  <data name="system.label.process_parameter_device_type" xml:space="preserve"><value>过程参数设备类型</value></data>
-  <data name="system.label.postdata_header_key" xml:space="preserve"><value>Header Key</value></data>
-  <data name="system.label.postdata_header_value" xml:space="preserve"><value>Header Value</value></data>
-  <data name="system.checkbox.enable_plc_string_formatting" xml:space="preserve"><value>启用 PLC 数值格式处理</value></data>
-  <data name="system.checkbox.enable_plc_alarm_reading" xml:space="preserve"><value>启用 PLC 报警读取</value></data>
-  <data name="system.checkbox.enable_center_server_sync" xml:space="preserve"><value>启用中心服务器同步</value></data>
-  <data name="system.checkbox.enable_postdata_header" xml:space="preserve"><value>启用 PostData 自定义 Header</value></data>
-  <data name="system.checkbox.show_test_flag_history" xml:space="preserve"><value>产品历史显示试焊件</value></data>
-  <data name="system.checkbox.enable_device_status_report" xml:space="preserve"><value>启用设备状态上报</value></data>
-  <data name="system.checkbox.enable_work_order_status_report" xml:space="preserve"><value>启用工单状态上报</value></data>
-  <data name="system.option.plc_format.truncate" xml:space="preserve"><value>固定长度裁切</value></data>
-  <data name="system.option.plc_format.round" xml:space="preserve"><value>四舍五入</value></data>
-  <data name="system.option.plc_alarm.address_only" xml:space="preserve"><value>仅报警地址</value></data>
-  <data name="system.option.plc_alarm.device_status_and_address" xml:space="preserve"><value>设备状态异常且报警地址触发</value></data>
-  <data name="system.option.upload.realtime" xml:space="preserve"><value>单件实时上传</value></data>
-  <data name="system.option.upload.quantity" xml:space="preserve"><value>按特定数量上传</value></data>
-  <data name="system.option.upload.batch" xml:space="preserve"><value>完工批量上传</value></data>
-  <data name="system.option.device.electromagnetic" xml:space="preserve"><value>电磁系统</value></data>
-  <data name="system.option.device.whole_piece_check" xml:space="preserve"><value>整件系统-检测设备</value></data>
-  <data name="system.option.device.whole_piece_weld" xml:space="preserve"><value>整件系统-点焊设备</value></data>
-  <data name="system.option.center.whole_piece" xml:space="preserve"><value>整件系统</value></data>
-  <data name="system.option.center.other" xml:space="preserve"><value>其它</value></data>
-  <data name="system.route.user" xml:space="preserve"><value>员工信息路由</value></data>
-  <data name="system.route.work_order" xml:space="preserve"><value>工单信息路由</value></data>
-  <data name="system.route.server_time" xml:space="preserve"><value>服务器时间路由</value></data>
-  <data name="system.route.program" xml:space="preserve"><value>程序管理路由</value></data>
-  <data name="system.route.start_work" xml:space="preserve"><value>开工上报路由</value></data>
-  <data name="system.route.work_status" xml:space="preserve"><value>工单状态路由</value></data>
-  <data name="system.route.end_work" xml:space="preserve"><value>完工上报路由</value></data>
-  <data name="system.route.report_file" xml:space="preserve"><value>报告文件路由</value></data>
-  <data name="system.route.post_data" xml:space="preserve"><value>PostData 路由</value></data>
-  <data name="system.route.device" xml:space="preserve"><value>设备编号路由</value></data>
-  <data name="system.route.device_status" xml:space="preserve"><value>设备状态路由</value></data>
-  <data name="system.route.device_status_query" xml:space="preserve"><value>查询设备状态路由</value></data>
-  <data name="system.route.device_id_set" xml:space="preserve"><value>设置设备编号路由</value></data>
-  <data name="system.route.sys" xml:space="preserve"><value>在线检测路由</value></data>
-  <data name="system.message.runtime_mode_locked" xml:space="preserve"><value>存在未完工任务，不能切换双工位/双工单模式，请先完工后再调整。</value></data>
-  <data name="system.message.device_management_locked" xml:space="preserve"><value>软件已开工，请先完工后再修改设备管理信息。</value></data>
-  <data name="system.message.positive_integer_required" xml:space="preserve"><value>{0} 必须是大于 0 的整数。</value></data>
-  <data name="system.message.route_required" xml:space="preserve"><value>{0}不能为空。</value></data>
-  <data name="system.message.relative_route_required" xml:space="preserve"><value>{0}请填写相对路由，例如 api/ExpProgram，不要填写完整 URL。</value></data>
-  <data name="system.message.route_query_not_allowed" xml:space="preserve"><value>{0}不能包含查询参数或锚点。</value></data>
-  <data name="system.message.header_key_invalid" xml:space="preserve"><value>PostData Header Key 不能为空，且不能包含空格、冒号或中文字符。</value></data>
-  <data name="system.message.header_value_required" xml:space="preserve"><value>PostData Header Value 不能为空。</value></data>
-  <data name="system.message.startup_integration_failed" xml:space="preserve"><value>开机自启设置失败：{0}</value></data>
-  <data name="system.label.inspection_result_source" xml:space="preserve"><value>检测结果来源</value></data>
-  <data name="system.option.inspection_result_source.plc" xml:space="preserve"><value>PLC读取</value></data>
-  <data name="system.option.inspection_result_source.program" xml:space="preserve"><value>程序计算</value></data>
-  <data name="system.message.inspection_result_source_locked" xml:space="preserve"><value>存在未完工任务，不能切换检测结果来源，请先完工后再调整。</value></data>
-  <data name="system.label.realtime_point_number_source" xml:space="preserve"><value>实时编号来源</value></data>
-  <data name="system.option.realtime_point_number_source.plc" xml:space="preserve"><value>PLC读取</value></data>
-  <data name="system.option.realtime_point_number_source.program" xml:space="preserve"><value>程序判断</value></data>
-  <data name="system.message.realtime_point_number_source_locked" xml:space="preserve"><value>存在未完工任务，不能切换实时编号来源，请先完工后再调整。</value></data>
-  <data name="system.label.paired_aggregation_mode" xml:space="preserve"><value>A/B配对聚合方式</value></data>
-  <data name="system.label.whole_piece_merged_display" xml:space="preserve"><value>整件检测四面合并显示</value></data>
-  <data name="system.label.whole_piece_face_result_display" xml:space="preserve"><value>整件检测逐面结果显示</value></data>
-  <data name="system.option.paired_aggregation.average" xml:space="preserve"><value>配对平均值</value></data>
-  <data name="system.option.paired_aggregation.maximum" xml:space="preserve"><value>配对最大值</value></data>
-  <data name="system.message.paired_aggregation_mode_locked" xml:space="preserve"><value>存在未完工任务，不能切换A/B配对聚合方式，请先完工后再调整。</value></data>
+  <data name="system.label.station1_display_name" xml:space="preserve">
+    <value>工位 1 显示名称</value>
+  </data>
+  <data name="system.label.station2_display_name" xml:space="preserve">
+    <value>工位 2 显示名称</value>
+  </data>
+  <data name="system.placeholder.station_display_name" xml:space="preserve">
+    <value>请输入工位显示名称</value>
+  </data>
+  <data name="system.message.station_display_name_required" xml:space="preserve">
+    <value>启用双工位时，两个工位显示名称均为必填项。</value>
+  </data>
+  <data name="system.message.station_display_name_duplicate" xml:space="preserve">
+    <value>两个工位显示名称不能重复。</value>
+  </data>
+  <data name="address.column.detail_item" xml:space="preserve">
+    <value>测试项</value>
+  </data>
+  <data name="address.column.detail_role" xml:space="preserve">
+    <value>数据角色</value>
+  </data>
+  <data name="address.column.detail_enabled" xml:space="preserve">
+    <value>启用采集</value>
+  </data>
+  <data name="address.column.detail_header" xml:space="preserve">
+    <value>显示表头</value>
+  </data>
+  <data name="address.column.detail_save" xml:space="preserve">
+    <value>保存历史</value>
+  </data>
+  <data name="address.column.detail_report" xml:space="preserve">
+    <value>写入报表</value>
+  </data>
+  <data name="address.column.detail_mes" xml:space="preserve">
+    <value>上传 MES</value>
+  </data>
+  <data name="address.column.detail_mes_field" xml:space="preserve">
+    <value>MES 字段名</value>
+  </data>
+  <data name="address.detail_role.actual" xml:space="preserve">
+    <value>实际值</value>
+  </data>
+  <data name="address.detail_role.upper" xml:space="preserve">
+    <value>上限</value>
+  </data>
+  <data name="address.detail_role.lower" xml:space="preserve">
+    <value>下限</value>
+  </data>
+  <data name="address.detail_role.result" xml:space="preserve">
+    <value>结果</value>
+  </data>
+  <data name="program.label.station1_recipe" xml:space="preserve">
+    <value>工位1配方名称</value>
+  </data>
+  <data name="program.label.station2_recipe" xml:space="preserve">
+    <value>工位2配方名称</value>
+  </data>
+  <data name="program.placeholder.recipe_select" xml:space="preserve">
+    <value>请选择 PLC 配方名称</value>
+  </data>
+  <data name="address.tab.recipe_names" xml:space="preserve">
+    <value>配方名称地址</value>
+  </data>
+  <data name="address.recipe_name.hint" xml:space="preserve">
+    <value>第 N 个地址对应配方号 N，地址按基地址和固定字节偏移计算；双工位分别维护。</value>
+  </data>
+  <data name="address.recipe_name.preview_title" xml:space="preserve">
+    <value>读取结果</value>
+  </data>
+  <data name="address.button.read_recipe_names" xml:space="preserve">
+    <value>读取配方名称</value>
+  </data>
+  <data name="address.column.recipe_station" xml:space="preserve">
+    <value>工位</value>
+  </data>
+  <data name="address.column.recipe_base_address" xml:space="preserve">
+    <value>配方名称基地址</value>
+  </data>
+  <data name="address.column.recipe_count" xml:space="preserve">
+    <value>配方数量</value>
+  </data>
+  <data name="address.column.recipe_offset" xml:space="preserve">
+    <value>地址偏移量（字节）</value>
+  </data>
+  <data name="address.column.recipe_string_length" xml:space="preserve">
+    <value>字符串长度</value>
+  </data>
+  <data name="address.column.recipe_code" xml:space="preserve">
+    <value>配方号</value>
+  </data>
+  <data name="address.column.recipe_name" xml:space="preserve">
+    <value>配方名称</value>
+  </data>
+  <data name="address.column.recipe_error" xml:space="preserve">
+    <value>错误信息</value>
+  </data>
+  <data name="address.message.recipe_config_saved" xml:space="preserve">
+    <value>PLC 配方名称地址配置已保存。</value>
+  </data>
+  <data name="address.message.recipe_read_failed" xml:space="preserve">
+    <value>读取 PLC 配方名称失败：{0}</value>
+  </data>
+  <data name="program.option.missing_recipe" xml:space="preserve">
+    <value>原关联配方已不可用</value>
+  </data>
+  <data name="program.option.recipe_not_applicable" xml:space="preserve">
+    <value>不适用</value>
+  </data>
+  <data name="program.message.recipe_read_failed" xml:space="preserve">
+    <value>PLC 配方名称读取失败，请检查 PLC 连接或地址配置。</value>
+  </data>
+  <data name="system.group.center_server" xml:space="preserve">
+    <value>中心服务器</value>
+  </data>
+  <data name="system.label.report_decimal_places" xml:space="preserve">
+    <value>报表小数位</value>
+  </data>
+  <data name="system.label.process_parameter_decimal_places" xml:space="preserve">
+    <value>过程参数小数位</value>
+  </data>
+  <data name="system.label.mes_timeout" xml:space="preserve">
+    <value>MES 超时（秒）</value>
+  </data>
+  <data name="system.label.mes_heartbeat_interval" xml:space="preserve">
+    <value>心跳间隔（秒）</value>
+  </data>
+  <data name="system.label.center_server_url" xml:space="preserve">
+    <value>中心服务器地址</value>
+  </data>
+  <data name="system.label.center_server_system_type" xml:space="preserve">
+    <value>系统类型</value>
+  </data>
+  <data name="system.label.center_server_heartbeat" xml:space="preserve">
+    <value>心跳间隔（秒）</value>
+  </data>
+  <data name="system.label.process_parameter_device_type" xml:space="preserve">
+    <value>过程参数设备类型</value>
+  </data>
+  <data name="system.label.postdata_header_key" xml:space="preserve">
+    <value>Header Key</value>
+  </data>
+  <data name="system.label.postdata_header_value" xml:space="preserve">
+    <value>Header Value</value>
+  </data>
+  <data name="system.checkbox.enable_plc_string_formatting" xml:space="preserve">
+    <value>启用 PLC 数值格式处理</value>
+  </data>
+  <data name="system.checkbox.enable_plc_alarm_reading" xml:space="preserve">
+    <value>启用 PLC 报警读取</value>
+  </data>
+  <data name="system.checkbox.enable_center_server_sync" xml:space="preserve">
+    <value>启用中心服务器同步</value>
+  </data>
+  <data name="system.checkbox.enable_postdata_header" xml:space="preserve">
+    <value>启用 PostData 自定义 Header</value>
+  </data>
+  <data name="system.checkbox.show_test_flag_history" xml:space="preserve">
+    <value>产品历史显示试焊件</value>
+  </data>
+  <data name="system.checkbox.enable_device_status_report" xml:space="preserve">
+    <value>启用设备状态上报</value>
+  </data>
+  <data name="system.checkbox.enable_work_order_status_report" xml:space="preserve">
+    <value>启用工单状态上报</value>
+  </data>
+  <data name="system.option.plc_format.truncate" xml:space="preserve">
+    <value>固定长度裁切</value>
+  </data>
+  <data name="system.option.plc_format.round" xml:space="preserve">
+    <value>四舍五入</value>
+  </data>
+  <data name="system.option.plc_alarm.address_only" xml:space="preserve">
+    <value>仅报警地址</value>
+  </data>
+  <data name="system.option.plc_alarm.device_status_and_address" xml:space="preserve">
+    <value>设备状态异常且报警地址触发</value>
+  </data>
+  <data name="system.option.upload.realtime" xml:space="preserve">
+    <value>单件实时上传</value>
+  </data>
+  <data name="system.option.upload.quantity" xml:space="preserve">
+    <value>按特定数量上传</value>
+  </data>
+  <data name="system.option.upload.batch" xml:space="preserve">
+    <value>完工批量上传</value>
+  </data>
+  <data name="system.option.device.electromagnetic" xml:space="preserve">
+    <value>电磁系统</value>
+  </data>
+  <data name="system.option.device.whole_piece_check" xml:space="preserve">
+    <value>整件系统-检测设备</value>
+  </data>
+  <data name="system.option.device.whole_piece_weld" xml:space="preserve">
+    <value>整件系统-点焊设备</value>
+  </data>
+  <data name="system.option.center.whole_piece" xml:space="preserve">
+    <value>整件系统</value>
+  </data>
+  <data name="system.option.center.other" xml:space="preserve">
+    <value>其它</value>
+  </data>
+  <data name="system.route.user" xml:space="preserve">
+    <value>员工信息路由</value>
+  </data>
+  <data name="system.route.work_order" xml:space="preserve">
+    <value>工单信息路由</value>
+  </data>
+  <data name="system.route.server_time" xml:space="preserve">
+    <value>服务器时间路由</value>
+  </data>
+  <data name="system.route.program" xml:space="preserve">
+    <value>程序管理路由</value>
+  </data>
+  <data name="system.route.start_work" xml:space="preserve">
+    <value>开工上报路由</value>
+  </data>
+  <data name="system.route.work_status" xml:space="preserve">
+    <value>工单状态路由</value>
+  </data>
+  <data name="system.route.end_work" xml:space="preserve">
+    <value>完工上报路由</value>
+  </data>
+  <data name="system.route.report_file" xml:space="preserve">
+    <value>报告文件路由</value>
+  </data>
+  <data name="system.route.post_data" xml:space="preserve">
+    <value>PostData 路由</value>
+  </data>
+  <data name="system.route.device" xml:space="preserve">
+    <value>设备编号路由</value>
+  </data>
+  <data name="system.route.device_status" xml:space="preserve">
+    <value>设备状态路由</value>
+  </data>
+  <data name="system.route.device_status_query" xml:space="preserve">
+    <value>查询设备状态路由</value>
+  </data>
+  <data name="system.route.device_id_set" xml:space="preserve">
+    <value>设置设备编号路由</value>
+  </data>
+  <data name="system.route.sys" xml:space="preserve">
+    <value>在线检测路由</value>
+  </data>
+  <data name="system.message.runtime_mode_locked" xml:space="preserve">
+    <value>存在未完工任务，不能切换双工位/双工单模式，请先完工后再调整。</value>
+  </data>
+  <data name="system.message.device_management_locked" xml:space="preserve">
+    <value>软件已开工，请先完工后再修改设备管理信息。</value>
+  </data>
+  <data name="system.message.positive_integer_required" xml:space="preserve">
+    <value>{0} 必须是大于 0 的整数。</value>
+  </data>
+  <data name="system.message.decimal_places_required" xml:space="preserve">
+    <value>{0} 必须是 0-{1} 之间的整数；留空表示沿用采集时的小数位。</value>
+  </data>
+  <data name="system.message.route_required" xml:space="preserve">
+    <value>{0}不能为空。</value>
+  </data>
+  <data name="system.message.relative_route_required" xml:space="preserve">
+    <value>{0}请填写相对路由，例如 api/ExpProgram，不要填写完整 URL。</value>
+  </data>
+  <data name="system.message.route_query_not_allowed" xml:space="preserve">
+    <value>{0}不能包含查询参数或锚点。</value>
+  </data>
+  <data name="system.message.header_key_invalid" xml:space="preserve">
+    <value>PostData Header Key 不能为空，且不能包含空格、冒号或中文字符。</value>
+  </data>
+  <data name="system.message.header_value_required" xml:space="preserve">
+    <value>PostData Header Value 不能为空。</value>
+  </data>
+  <data name="system.message.startup_integration_failed" xml:space="preserve">
+    <value>开机自启设置失败：{0}</value>
+  </data>
+  <data name="system.label.inspection_result_source" xml:space="preserve">
+    <value>检测结果来源</value>
+  </data>
+  <data name="system.option.inspection_result_source.plc" xml:space="preserve">
+    <value>PLC读取</value>
+  </data>
+  <data name="system.option.inspection_result_source.program" xml:space="preserve">
+    <value>程序计算</value>
+  </data>
+  <data name="system.message.inspection_result_source_locked" xml:space="preserve">
+    <value>存在未完工任务，不能切换检测结果来源，请先完工后再调整。</value>
+  </data>
+  <data name="system.label.realtime_point_number_source" xml:space="preserve">
+    <value>实时编号来源</value>
+  </data>
+  <data name="system.option.realtime_point_number_source.plc" xml:space="preserve">
+    <value>PLC读取</value>
+  </data>
+  <data name="system.option.realtime_point_number_source.program" xml:space="preserve">
+    <value>程序判断</value>
+  </data>
+  <data name="system.message.realtime_point_number_source_locked" xml:space="preserve">
+    <value>存在未完工任务，不能切换实时编号来源，请先完工后再调整。</value>
+  </data>
+  <data name="system.label.paired_aggregation_mode" xml:space="preserve">
+    <value>A/B配对聚合方式</value>
+  </data>
+  <data name="system.label.whole_piece_merged_display" xml:space="preserve">
+    <value>整件检测四面合并显示</value>
+  </data>
+  <data name="system.label.whole_piece_face_result_display" xml:space="preserve">
+    <value>整件检测逐面结果显示</value>
+  </data>
+  <data name="system.option.paired_aggregation.average" xml:space="preserve">
+    <value>配对平均值</value>
+  </data>
+  <data name="system.option.paired_aggregation.maximum" xml:space="preserve">
+    <value>配对最大值</value>
+  </data>
+  <data name="system.message.paired_aggregation_mode_locked" xml:space="preserve">
+    <value>存在未完工任务，不能切换A/B配对聚合方式，请先完工后再调整。</value>
+  </data>
 </root>
