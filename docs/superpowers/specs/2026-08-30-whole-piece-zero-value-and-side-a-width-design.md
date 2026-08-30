@@ -139,3 +139,18 @@ XLSX 报表在导出时实时聚合，不是导出后固化。因此本次改动
 - `Directory.Build.props`、`README.md`
 
 不改动：MES 上传服务、程序内容 JSON 结构、PLC 通讯与地址配置、中心服务端报表写入器。
+
+## 实施结果
+
+- 构建：`dotnet build AutoWeldSystem.sln --no-restore -p:BaseOutputPath=../artifacts/verify-bin/` 成功，0 警告 0 错误。使用独立输出目录，避免默认输出被运行中的程序锁定。
+- 控制台回归 harness：432 项全部 PASS，无失败、无异常。
+- `git diff --check` 无空白错误。
+- Designer 筛查：未打开设计视图，两个 Designer 文件的改动均为手写新增控件。`tools/designer-diff.py` 因本地工具故障未能执行，改用 `git diff` 人工筛查，确认无设计器重序列化噪音，因此也不需要 `--clean`。
+
+未执行的验证：PLC、MES、MySQL 实机验证与 WinForms 目视确认，均依赖现场设备，本地无法替代；新增设置列依赖 CodeFirst 自动加列，未在测试库验证。
+
+## 合并后需要现场处理
+
+1. **手动改一次设置**：已部署数据库中存量的 `PairedAggregationMode = Average` 不会被新默认值覆盖，需在系统设置页改为“配对最大值”，否则对称度口径不变。
+2. **历史报表口径会变**：重新导出以前的产品时，宽度从“四面最大值”变成“A 面最大值”、B 行变 `\`、对称度按新聚合方式计算，与已交付报表不一致。中心端报表改为显示四面各自的原始宽度值。
+3. **测试项名不能改**：取四面最大值的必须叫“高度”，只取 A 面的必须叫“宽度”，改名会让策略静默失效。
