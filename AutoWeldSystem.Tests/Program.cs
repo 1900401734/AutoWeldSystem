@@ -15198,6 +15198,29 @@ static bool DesignerRowIsAutoSize(string designerCode, string container)
         || designerCode.Contains($"{container}.RowStyles.Add(new RowStyle());", StringComparison.Ordinal);
 }
 
+/// <summary>
+/// 统计容器里 AutoSize 行的数量，两种等价写法都算。
+/// </summary>
+static int CountDesignerAutoSizeRows(string designerCode, string container)
+{
+    var count = 0;
+    foreach (var marker in new[]
+             {
+                 $"{container}.RowStyles.Add(new RowStyle());",
+                 $"{container}.RowStyles.Add(new RowStyle(SizeType.AutoSize));"
+             })
+    {
+        var index = 0;
+        while ((index = designerCode.IndexOf(marker, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += marker.Length;
+        }
+    }
+
+    return count;
+}
+
 static void SystemSettingViewUsesResponsiveSemanticColumns()
 {
     var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.Designer.cs"), Encoding.UTF8);
@@ -15212,9 +15235,13 @@ static void SystemSettingViewUsesResponsiveSemanticColumns()
     AssertTrue(designerCode.Contains("middleSettingsColumn.Controls.Add(grpCenterServerConfig, 0, 2);", StringComparison.Ordinal), "中列第三组必须是中心服务器。");
     AssertTrue(designerCode.Contains("rightSettingsColumn.Controls.Add(grpMesConfig, 0, 0);", StringComparison.Ordinal), "右列必须是 MES。");
     AssertTrue(designerCode.Contains("tableLayoutPanelMesConfig.AutoScroll = true;", StringComparison.Ordinal), "MES 内容必须独立滚动。");
-    AssertTrue(DesignerRowIsAutoSize(designerCode, "tableLayoutPanelMesConfig")
-        && designerCode.Contains("tlpProcessParameterType.AutoSizeMode = AutoSizeMode.GrowAndShrink;", StringComparison.Ordinal)
-        && DesignerRowIsAutoSize(designerCode, "tlpProcessParameterType"), "非整件检测设备隐藏结果来源行后，MES配置布局必须自动折叠空行。");
+    // 结果来源、A/B配对聚合方式、工位名称和整件检测开关都会按设备类型或工位模式隐藏。
+    // 承载它们的行必须是 AutoSize：设计器会把 AutoSize 容器的实测高度序列化成 Absolute，
+    // 一旦固化，隐藏后不再折叠，界面上留下等高空洞，而这不会导致编译失败。
+    AssertTrue(designerCode.Contains("tlpProcessParameterType.AutoSizeMode = AutoSizeMode.GrowAndShrink;", StringComparison.Ordinal)
+        && DesignerRowIsAutoSize(designerCode, "tlpProcessParameterType"), "整件检测开关所在容器必须能自动折叠。");
+    AssertTrue(CountDesignerAutoSizeRows(designerCode, "tlpProductConfig") >= 4,
+        "生产配置里承载可隐藏行（工位名称、检测结果来源、A/B配对聚合方式、整件检测开关）的行样式必须是 AutoSize，否则隐藏后留下空洞。");
     AssertFalse(designerCode.Contains("tabBasicSettings.Controls.Add(grpPlcConfig);", StringComparison.Ordinal), "分组不应继续直接使用页签绝对坐标。");
     AssertTrue(viewCode.Contains("SystemSettingLayoutRules.ResolveMode(basicSettingsViewport.ClientSize.Width, DeviceDpi)", StringComparison.Ordinal), "运行时必须按 DPI 逻辑宽度选择布局。");
     AssertTrue(viewCode.Contains("private void ApplyBasicSettingsLayout(bool force = false)", StringComparison.Ordinal), "代码后置文件必须提供统一重排入口。");

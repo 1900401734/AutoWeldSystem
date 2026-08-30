@@ -1137,19 +1137,45 @@
   <data name="permission.tab.state.program_file" xml:space="preserve">
     <value>Program File Tab</value>
   </data>
-  <data name="permission.tab.log.mes_interaction" xml:space="preserve"><value>MES Interaction Log</value></data>
-  <data name="permission.tab.log.production_flow" xml:space="preserve"><value>Production Flow Log</value></data>
-  <data name="permission.tab.log.program_exception" xml:space="preserve"><value>Program Exception Log</value></data>
-  <data name="permission.tab.log.device" xml:space="preserve"><value>Device Log</value></data>
-  <data name="permission.tab.log.device_status" xml:space="preserve"><value>Device Status Log</value></data>
-  <data name="permission.tab.log.server" xml:space="preserve"><value>Server Log</value></data>
-  <data name="permission.tab.address.business_signal" xml:space="preserve"><value>Business Signal Address</value></data>
-  <data name="permission.tab.address.recipe_name" xml:space="preserve"><value>Recipe Name Address</value></data>
-  <data name="permission.tab.address.alarm" xml:space="preserve"><value>Alarm Address</value></data>
-  <data name="permission.tab.address.product_process" xml:space="preserve"><value>Product Process</value></data>
-  <data name="permission.tab.address.test_plan" xml:space="preserve"><value>Test Plan</value></data>
-  <data name="permission.tab.address.plan_detail" xml:space="preserve"><value>Plan Detail</value></data>
-  <data name="permission.tab.address.test_item_dictionary" xml:space="preserve"><value>Test Item Dictionary</value></data>
+  <data name="permission.tab.log.mes_interaction" xml:space="preserve">
+    <value>MES Interaction Log</value>
+  </data>
+  <data name="permission.tab.log.production_flow" xml:space="preserve">
+    <value>Production Flow Log</value>
+  </data>
+  <data name="permission.tab.log.program_exception" xml:space="preserve">
+    <value>Program Exception Log</value>
+  </data>
+  <data name="permission.tab.log.device" xml:space="preserve">
+    <value>Device Log</value>
+  </data>
+  <data name="permission.tab.log.device_status" xml:space="preserve">
+    <value>Device Status Log</value>
+  </data>
+  <data name="permission.tab.log.server" xml:space="preserve">
+    <value>Server Log</value>
+  </data>
+  <data name="permission.tab.address.business_signal" xml:space="preserve">
+    <value>Business Signal Address</value>
+  </data>
+  <data name="permission.tab.address.recipe_name" xml:space="preserve">
+    <value>Recipe Name Address</value>
+  </data>
+  <data name="permission.tab.address.alarm" xml:space="preserve">
+    <value>Alarm Address</value>
+  </data>
+  <data name="permission.tab.address.product_process" xml:space="preserve">
+    <value>Product Process</value>
+  </data>
+  <data name="permission.tab.address.test_plan" xml:space="preserve">
+    <value>Test Plan</value>
+  </data>
+  <data name="permission.tab.address.plan_detail" xml:space="preserve">
+    <value>Plan Detail</value>
+  </data>
+  <data name="permission.tab.address.test_item_dictionary" xml:space="preserve">
+    <value>Test Item Dictionary</value>
+  </data>
   <data name="permission.button.system.save" xml:space="preserve">
     <value>Save Settings</value>
   </data>
@@ -2164,111 +2190,319 @@ This also removes {3} collection record(s) and {4} report file(s) including the 
   <data name="work_order.status.completed" xml:space="preserve">
     <value>Completed</value>
   </data>
-  <data name="system.label.station1_display_name" xml:space="preserve"><value>Station 1 display name</value></data>
-  <data name="system.label.station2_display_name" xml:space="preserve"><value>Station 2 display name</value></data>
-  <data name="system.placeholder.station_display_name" xml:space="preserve"><value>Enter the station display name</value></data>
-  <data name="system.message.station_display_name_required" xml:space="preserve"><value>Both station display names are required when dual station is enabled.</value></data>
-  <data name="system.message.station_display_name_duplicate" xml:space="preserve"><value>The two station display names must be different.</value></data>
-  <data name="address.column.detail_item" xml:space="preserve"><value>Test Item</value></data>
-  <data name="address.column.detail_role" xml:space="preserve"><value>Value Role</value></data>
-  <data name="address.column.detail_enabled" xml:space="preserve"><value>Collect</value></data>
-  <data name="address.column.detail_header" xml:space="preserve"><value>Display Header</value></data>
-  <data name="address.column.detail_save" xml:space="preserve"><value>Save History</value></data>
-  <data name="address.column.detail_report" xml:space="preserve"><value>Write Report</value></data>
-  <data name="address.column.detail_mes" xml:space="preserve"><value>Upload MES</value></data>
-  <data name="address.column.detail_mes_field" xml:space="preserve"><value>MES Field</value></data>
-  <data name="address.detail_role.actual" xml:space="preserve"><value>Actual</value></data>
-  <data name="address.detail_role.upper" xml:space="preserve"><value>Upper Limit</value></data>
-  <data name="address.detail_role.lower" xml:space="preserve"><value>Lower Limit</value></data>
-  <data name="address.detail_role.result" xml:space="preserve"><value>Result</value></data>
-  <data name="program.label.station1_recipe" xml:space="preserve"><value>Station 1 Recipe Name</value></data>
-  <data name="program.label.station2_recipe" xml:space="preserve"><value>Station 2 Recipe Name</value></data>
-  <data name="program.placeholder.recipe_select" xml:space="preserve"><value>Select a PLC recipe name</value></data>
-  <data name="address.tab.recipe_names" xml:space="preserve"><value>Recipe Name Addresses</value></data>
-  <data name="address.recipe_name.hint" xml:space="preserve"><value>Address N maps to recipe code N and is calculated from the base address and fixed byte offset. Configure stations separately.</value></data>
-  <data name="address.recipe_name.preview_title" xml:space="preserve"><value>Read Results</value></data>
-  <data name="address.button.read_recipe_names" xml:space="preserve"><value>Read Recipe Names</value></data>
-  <data name="address.column.recipe_station" xml:space="preserve"><value>Station</value></data>
-  <data name="address.column.recipe_base_address" xml:space="preserve"><value>Recipe Name Base Address</value></data>
-  <data name="address.column.recipe_count" xml:space="preserve"><value>Recipe Count</value></data>
-  <data name="address.column.recipe_offset" xml:space="preserve"><value>Address Offset (Bytes)</value></data>
-  <data name="address.column.recipe_string_length" xml:space="preserve"><value>String Length</value></data>
-  <data name="address.column.recipe_code" xml:space="preserve"><value>Recipe Code</value></data>
-  <data name="address.column.recipe_name" xml:space="preserve"><value>Recipe Name</value></data>
-  <data name="address.column.recipe_error" xml:space="preserve"><value>Error</value></data>
-  <data name="address.message.recipe_config_saved" xml:space="preserve"><value>PLC recipe name address settings saved.</value></data>
-  <data name="address.message.recipe_read_failed" xml:space="preserve"><value>Failed to read PLC recipe names: {0}</value></data>
-  <data name="program.option.missing_recipe" xml:space="preserve"><value>Previously linked recipe is unavailable</value></data>
-  <data name="program.option.recipe_not_applicable" xml:space="preserve"><value>Not applicable</value></data>
-  <data name="program.message.recipe_read_failed" xml:space="preserve"><value>Failed to read PLC recipe names. Check the PLC connection or address configuration.</value></data>
-  <data name="system.group.center_server" xml:space="preserve"><value>Center Server</value></data>
-  <data name="system.label.plc_format_mode" xml:space="preserve"><value>Processing mode</value></data>
-  <data name="system.label.report_decimal_places" xml:space="preserve"><value>Report decimals</value></data>
-  <data name="system.label.process_parameter_decimal_places" xml:space="preserve"><value>Process parameter decimals</value></data>
-  <data name="system.label.plc_alarm_trigger_mode" xml:space="preserve"><value>Alarm mode</value></data>
-  <data name="system.label.mes_timeout" xml:space="preserve"><value>MES timeout (s)</value></data>
-  <data name="system.label.mes_heartbeat_interval" xml:space="preserve"><value>Heartbeat interval (s)</value></data>
-  <data name="system.label.center_server_url" xml:space="preserve"><value>Center server URL</value></data>
-  <data name="system.label.center_server_system_type" xml:space="preserve"><value>System type</value></data>
-  <data name="system.label.center_server_heartbeat" xml:space="preserve"><value>Heartbeat interval (s)</value></data>
-  <data name="system.label.process_parameter_device_type" xml:space="preserve"><value>Process parameter device type</value></data>
-  <data name="system.label.postdata_header_key" xml:space="preserve"><value>Header Key</value></data>
-  <data name="system.label.postdata_header_value" xml:space="preserve"><value>Header Value</value></data>
-  <data name="system.checkbox.enable_plc_string_formatting" xml:space="preserve"><value>Enable PLC numeric formatting</value></data>
-  <data name="system.checkbox.enable_plc_alarm_reading" xml:space="preserve"><value>Enable PLC alarm reading</value></data>
-  <data name="system.checkbox.enable_center_server_sync" xml:space="preserve"><value>Enable center server sync</value></data>
-  <data name="system.checkbox.enable_postdata_header" xml:space="preserve"><value>Enable custom PostData header</value></data>
-  <data name="system.checkbox.show_test_flag_history" xml:space="preserve"><value>Show test pieces in product history</value></data>
-  <data name="system.checkbox.enable_device_status_report" xml:space="preserve"><value>Enable device status reporting</value></data>
-  <data name="system.checkbox.enable_work_order_status_report" xml:space="preserve"><value>Enable work order status reporting</value></data>
-  <data name="system.option.plc_format.truncate" xml:space="preserve"><value>Fixed-length truncation</value></data>
-  <data name="system.option.plc_format.round" xml:space="preserve"><value>Round</value></data>
-  <data name="system.option.plc_alarm.address_only" xml:space="preserve"><value>Alarm address only</value></data>
-  <data name="system.option.plc_alarm.device_status_and_address" xml:space="preserve"><value>Abnormal device status and active alarm address</value></data>
-  <data name="system.option.upload.realtime" xml:space="preserve"><value>Real-time per item</value></data>
-  <data name="system.option.upload.quantity" xml:space="preserve"><value>Upload by quantity</value></data>
-  <data name="system.option.upload.batch" xml:space="preserve"><value>Batch on completion</value></data>
-  <data name="system.option.device.electromagnetic" xml:space="preserve"><value>Electromagnetic system</value></data>
-  <data name="system.option.device.whole_piece_check" xml:space="preserve"><value>Whole-piece inspection equipment</value></data>
-  <data name="system.option.device.whole_piece_weld" xml:space="preserve"><value>Whole-piece spot-welding equipment</value></data>
-  <data name="system.option.center.whole_piece" xml:space="preserve"><value>Whole-piece system</value></data>
-  <data name="system.option.center.other" xml:space="preserve"><value>Other</value></data>
-  <data name="system.route.user" xml:space="preserve"><value>Employee route</value></data>
-  <data name="system.route.work_order" xml:space="preserve"><value>Work order route</value></data>
-  <data name="system.route.server_time" xml:space="preserve"><value>Server time route</value></data>
-  <data name="system.route.program" xml:space="preserve"><value>Program route</value></data>
-  <data name="system.route.start_work" xml:space="preserve"><value>Start report route</value></data>
-  <data name="system.route.work_status" xml:space="preserve"><value>Work status route</value></data>
-  <data name="system.route.end_work" xml:space="preserve"><value>Completion report route</value></data>
-  <data name="system.route.report_file" xml:space="preserve"><value>Report file route</value></data>
-  <data name="system.route.post_data" xml:space="preserve"><value>PostData route</value></data>
-  <data name="system.route.device" xml:space="preserve"><value>Device route</value></data>
-  <data name="system.route.device_status" xml:space="preserve"><value>Device status route</value></data>
-  <data name="system.route.device_status_query" xml:space="preserve"><value>Device status query route</value></data>
-  <data name="system.route.device_id_set" xml:space="preserve"><value>Device ID set route</value></data>
-  <data name="system.route.sys" xml:space="preserve"><value>Online check route</value></data>
-  <data name="system.message.runtime_mode_locked" xml:space="preserve"><value>An unfinished task exists. Complete it before changing dual-station or dual-work-order mode.</value></data>
-  <data name="system.message.device_management_locked" xml:space="preserve"><value>Production is currently started. Complete the active task before changing device management settings.</value></data>
-  <data name="system.message.positive_integer_required" xml:space="preserve"><value>{0} must be an integer greater than 0.</value></data>
-  <data name="system.message.decimal_places_required" xml:space="preserve"><value>{0} must be an integer between 0 and {1}. Leave it empty to keep the decimals used at collection time.</value></data>
-  <data name="system.message.route_required" xml:space="preserve"><value>{0} is required.</value></data>
-  <data name="system.message.relative_route_required" xml:space="preserve"><value>Enter a relative route for {0}, such as api/ExpProgram, not a full URL.</value></data>
-  <data name="system.message.route_query_not_allowed" xml:space="preserve"><value>{0} cannot contain query parameters or fragments.</value></data>
-  <data name="system.message.header_key_invalid" xml:space="preserve"><value>PostData Header Key is required and cannot contain spaces, colons, or non-ASCII characters.</value></data>
-  <data name="system.message.header_value_required" xml:space="preserve"><value>PostData Header Value is required.</value></data>
-  <data name="system.message.startup_integration_failed" xml:space="preserve"><value>Failed to update startup integration: {0}</value></data>
-  <data name="system.label.inspection_result_source" xml:space="preserve"><value>Inspection result source</value></data>
-  <data name="system.option.inspection_result_source.plc" xml:space="preserve"><value>Read from PLC</value></data>
-  <data name="system.option.inspection_result_source.program" xml:space="preserve"><value>Calculated by program</value></data>
-  <data name="system.message.inspection_result_source_locked" xml:space="preserve"><value>An unfinished task exists. Complete it before changing the inspection result source.</value></data>
-  <data name="system.label.realtime_point_number_source" xml:space="preserve"><value>Realtime number source</value></data>
-  <data name="system.option.realtime_point_number_source.plc" xml:space="preserve"><value>Read from PLC</value></data>
-  <data name="system.option.realtime_point_number_source.program" xml:space="preserve"><value>Generated by program</value></data>
-  <data name="system.message.realtime_point_number_source_locked" xml:space="preserve"><value>An unfinished task exists. Complete it before changing the realtime number source.</value></data>
-  <data name="system.label.paired_aggregation_mode" xml:space="preserve"><value>A/B pairing aggregation</value></data>
-  <data name="system.label.whole_piece_merged_display" xml:space="preserve"><value>Merge four faces in monitor view</value></data>
-  <data name="system.label.whole_piece_face_result_display" xml:space="preserve"><value>Show per-face result column</value></data>
-  <data name="system.option.paired_aggregation.average" xml:space="preserve"><value>Pair average</value></data>
-  <data name="system.option.paired_aggregation.maximum" xml:space="preserve"><value>Pair maximum</value></data>
-  <data name="system.message.paired_aggregation_mode_locked" xml:space="preserve"><value>An unfinished task exists. Complete it before changing the A/B pairing aggregation.</value></data>
+  <data name="system.label.station1_display_name" xml:space="preserve">
+    <value>Station 1 display name</value>
+  </data>
+  <data name="system.label.station2_display_name" xml:space="preserve">
+    <value>Station 2 display name</value>
+  </data>
+  <data name="system.placeholder.station_display_name" xml:space="preserve">
+    <value>Enter the station display name</value>
+  </data>
+  <data name="system.message.station_display_name_required" xml:space="preserve">
+    <value>Both station display names are required when dual station is enabled.</value>
+  </data>
+  <data name="system.message.station_display_name_duplicate" xml:space="preserve">
+    <value>The two station display names must be different.</value>
+  </data>
+  <data name="address.column.detail_item" xml:space="preserve">
+    <value>Test Item</value>
+  </data>
+  <data name="address.column.detail_role" xml:space="preserve">
+    <value>Value Role</value>
+  </data>
+  <data name="address.column.detail_enabled" xml:space="preserve">
+    <value>Collect</value>
+  </data>
+  <data name="address.column.detail_header" xml:space="preserve">
+    <value>Display Header</value>
+  </data>
+  <data name="address.column.detail_save" xml:space="preserve">
+    <value>Save History</value>
+  </data>
+  <data name="address.column.detail_report" xml:space="preserve">
+    <value>Write Report</value>
+  </data>
+  <data name="address.column.detail_mes" xml:space="preserve">
+    <value>Upload MES</value>
+  </data>
+  <data name="address.column.detail_mes_field" xml:space="preserve">
+    <value>MES Field</value>
+  </data>
+  <data name="address.detail_role.actual" xml:space="preserve">
+    <value>Actual</value>
+  </data>
+  <data name="address.detail_role.upper" xml:space="preserve">
+    <value>Upper Limit</value>
+  </data>
+  <data name="address.detail_role.lower" xml:space="preserve">
+    <value>Lower Limit</value>
+  </data>
+  <data name="address.detail_role.result" xml:space="preserve">
+    <value>Result</value>
+  </data>
+  <data name="program.label.station1_recipe" xml:space="preserve">
+    <value>Station 1 Recipe Name</value>
+  </data>
+  <data name="program.label.station2_recipe" xml:space="preserve">
+    <value>Station 2 Recipe Name</value>
+  </data>
+  <data name="program.placeholder.recipe_select" xml:space="preserve">
+    <value>Select a PLC recipe name</value>
+  </data>
+  <data name="address.tab.recipe_names" xml:space="preserve">
+    <value>Recipe Name Addresses</value>
+  </data>
+  <data name="address.recipe_name.hint" xml:space="preserve">
+    <value>Address N maps to recipe code N and is calculated from the base address and fixed byte offset. Configure stations separately.</value>
+  </data>
+  <data name="address.recipe_name.preview_title" xml:space="preserve">
+    <value>Read Results</value>
+  </data>
+  <data name="address.button.read_recipe_names" xml:space="preserve">
+    <value>Read Recipe Names</value>
+  </data>
+  <data name="address.column.recipe_station" xml:space="preserve">
+    <value>Station</value>
+  </data>
+  <data name="address.column.recipe_base_address" xml:space="preserve">
+    <value>Recipe Name Base Address</value>
+  </data>
+  <data name="address.column.recipe_count" xml:space="preserve">
+    <value>Recipe Count</value>
+  </data>
+  <data name="address.column.recipe_offset" xml:space="preserve">
+    <value>Address Offset (Bytes)</value>
+  </data>
+  <data name="address.column.recipe_string_length" xml:space="preserve">
+    <value>String Length</value>
+  </data>
+  <data name="address.column.recipe_code" xml:space="preserve">
+    <value>Recipe Code</value>
+  </data>
+  <data name="address.column.recipe_name" xml:space="preserve">
+    <value>Recipe Name</value>
+  </data>
+  <data name="address.column.recipe_error" xml:space="preserve">
+    <value>Error</value>
+  </data>
+  <data name="address.message.recipe_config_saved" xml:space="preserve">
+    <value>PLC recipe name address settings saved.</value>
+  </data>
+  <data name="address.message.recipe_read_failed" xml:space="preserve">
+    <value>Failed to read PLC recipe names: {0}</value>
+  </data>
+  <data name="program.option.missing_recipe" xml:space="preserve">
+    <value>Previously linked recipe is unavailable</value>
+  </data>
+  <data name="program.option.recipe_not_applicable" xml:space="preserve">
+    <value>Not applicable</value>
+  </data>
+  <data name="program.message.recipe_read_failed" xml:space="preserve">
+    <value>Failed to read PLC recipe names. Check the PLC connection or address configuration.</value>
+  </data>
+  <data name="system.group.center_server" xml:space="preserve">
+    <value>Center Server</value>
+  </data>
+  <data name="system.label.report_decimal_places" xml:space="preserve">
+    <value>Report decimals</value>
+  </data>
+  <data name="system.label.process_parameter_decimal_places" xml:space="preserve">
+    <value>Process parameter decimals</value>
+  </data>
+  <data name="system.label.mes_timeout" xml:space="preserve">
+    <value>MES timeout (s)</value>
+  </data>
+  <data name="system.label.mes_heartbeat_interval" xml:space="preserve">
+    <value>Heartbeat interval (s)</value>
+  </data>
+  <data name="system.label.center_server_url" xml:space="preserve">
+    <value>Center server URL</value>
+  </data>
+  <data name="system.label.center_server_system_type" xml:space="preserve">
+    <value>System type</value>
+  </data>
+  <data name="system.label.center_server_heartbeat" xml:space="preserve">
+    <value>Heartbeat interval (s)</value>
+  </data>
+  <data name="system.label.process_parameter_device_type" xml:space="preserve">
+    <value>Process parameter device type</value>
+  </data>
+  <data name="system.label.postdata_header_key" xml:space="preserve">
+    <value>Header Key</value>
+  </data>
+  <data name="system.label.postdata_header_value" xml:space="preserve">
+    <value>Header Value</value>
+  </data>
+  <data name="system.checkbox.enable_plc_string_formatting" xml:space="preserve">
+    <value>Enable PLC numeric formatting</value>
+  </data>
+  <data name="system.checkbox.enable_plc_alarm_reading" xml:space="preserve">
+    <value>Enable PLC alarm reading</value>
+  </data>
+  <data name="system.checkbox.enable_center_server_sync" xml:space="preserve">
+    <value>Enable center server sync</value>
+  </data>
+  <data name="system.checkbox.enable_postdata_header" xml:space="preserve">
+    <value>Enable custom PostData header</value>
+  </data>
+  <data name="system.checkbox.show_test_flag_history" xml:space="preserve">
+    <value>Show test pieces in product history</value>
+  </data>
+  <data name="system.checkbox.enable_device_status_report" xml:space="preserve">
+    <value>Enable device status reporting</value>
+  </data>
+  <data name="system.checkbox.enable_work_order_status_report" xml:space="preserve">
+    <value>Enable work order status reporting</value>
+  </data>
+  <data name="system.option.plc_format.truncate" xml:space="preserve">
+    <value>Fixed-length truncation</value>
+  </data>
+  <data name="system.option.plc_format.round" xml:space="preserve">
+    <value>Round</value>
+  </data>
+  <data name="system.option.plc_alarm.address_only" xml:space="preserve">
+    <value>Alarm address only</value>
+  </data>
+  <data name="system.option.plc_alarm.device_status_and_address" xml:space="preserve">
+    <value>Abnormal device status and active alarm address</value>
+  </data>
+  <data name="system.option.upload.realtime" xml:space="preserve">
+    <value>Real-time per item</value>
+  </data>
+  <data name="system.option.upload.quantity" xml:space="preserve">
+    <value>Upload by quantity</value>
+  </data>
+  <data name="system.option.upload.batch" xml:space="preserve">
+    <value>Batch on completion</value>
+  </data>
+  <data name="system.option.device.electromagnetic" xml:space="preserve">
+    <value>Electromagnetic system</value>
+  </data>
+  <data name="system.option.device.whole_piece_check" xml:space="preserve">
+    <value>Whole-piece inspection equipment</value>
+  </data>
+  <data name="system.option.device.whole_piece_weld" xml:space="preserve">
+    <value>Whole-piece spot-welding equipment</value>
+  </data>
+  <data name="system.option.center.whole_piece" xml:space="preserve">
+    <value>Whole-piece system</value>
+  </data>
+  <data name="system.option.center.other" xml:space="preserve">
+    <value>Other</value>
+  </data>
+  <data name="system.route.user" xml:space="preserve">
+    <value>Employee route</value>
+  </data>
+  <data name="system.route.work_order" xml:space="preserve">
+    <value>Work order route</value>
+  </data>
+  <data name="system.route.server_time" xml:space="preserve">
+    <value>Server time route</value>
+  </data>
+  <data name="system.route.program" xml:space="preserve">
+    <value>Program route</value>
+  </data>
+  <data name="system.route.start_work" xml:space="preserve">
+    <value>Start report route</value>
+  </data>
+  <data name="system.route.work_status" xml:space="preserve">
+    <value>Work status route</value>
+  </data>
+  <data name="system.route.end_work" xml:space="preserve">
+    <value>Completion report route</value>
+  </data>
+  <data name="system.route.report_file" xml:space="preserve">
+    <value>Report file route</value>
+  </data>
+  <data name="system.route.post_data" xml:space="preserve">
+    <value>PostData route</value>
+  </data>
+  <data name="system.route.device" xml:space="preserve">
+    <value>Device route</value>
+  </data>
+  <data name="system.route.device_status" xml:space="preserve">
+    <value>Device status route</value>
+  </data>
+  <data name="system.route.device_status_query" xml:space="preserve">
+    <value>Device status query route</value>
+  </data>
+  <data name="system.route.device_id_set" xml:space="preserve">
+    <value>Device ID set route</value>
+  </data>
+  <data name="system.route.sys" xml:space="preserve">
+    <value>Online check route</value>
+  </data>
+  <data name="system.message.runtime_mode_locked" xml:space="preserve">
+    <value>An unfinished task exists. Complete it before changing dual-station or dual-work-order mode.</value>
+  </data>
+  <data name="system.message.device_management_locked" xml:space="preserve">
+    <value>Production is currently started. Complete the active task before changing device management settings.</value>
+  </data>
+  <data name="system.message.positive_integer_required" xml:space="preserve">
+    <value>{0} must be an integer greater than 0.</value>
+  </data>
+  <data name="system.message.decimal_places_required" xml:space="preserve">
+    <value>{0} must be an integer between 0 and {1}. Leave it empty to keep the decimals used at collection time.</value>
+  </data>
+  <data name="system.message.route_required" xml:space="preserve">
+    <value>{0} is required.</value>
+  </data>
+  <data name="system.message.relative_route_required" xml:space="preserve">
+    <value>Enter a relative route for {0}, such as api/ExpProgram, not a full URL.</value>
+  </data>
+  <data name="system.message.route_query_not_allowed" xml:space="preserve">
+    <value>{0} cannot contain query parameters or fragments.</value>
+  </data>
+  <data name="system.message.header_key_invalid" xml:space="preserve">
+    <value>PostData Header Key is required and cannot contain spaces, colons, or non-ASCII characters.</value>
+  </data>
+  <data name="system.message.header_value_required" xml:space="preserve">
+    <value>PostData Header Value is required.</value>
+  </data>
+  <data name="system.message.startup_integration_failed" xml:space="preserve">
+    <value>Failed to update startup integration: {0}</value>
+  </data>
+  <data name="system.label.inspection_result_source" xml:space="preserve">
+    <value>Inspection result source</value>
+  </data>
+  <data name="system.option.inspection_result_source.plc" xml:space="preserve">
+    <value>Read from PLC</value>
+  </data>
+  <data name="system.option.inspection_result_source.program" xml:space="preserve">
+    <value>Calculated by program</value>
+  </data>
+  <data name="system.message.inspection_result_source_locked" xml:space="preserve">
+    <value>An unfinished task exists. Complete it before changing the inspection result source.</value>
+  </data>
+  <data name="system.label.realtime_point_number_source" xml:space="preserve">
+    <value>Realtime number source</value>
+  </data>
+  <data name="system.option.realtime_point_number_source.plc" xml:space="preserve">
+    <value>Read from PLC</value>
+  </data>
+  <data name="system.option.realtime_point_number_source.program" xml:space="preserve">
+    <value>Generated by program</value>
+  </data>
+  <data name="system.message.realtime_point_number_source_locked" xml:space="preserve">
+    <value>An unfinished task exists. Complete it before changing the realtime number source.</value>
+  </data>
+  <data name="system.label.paired_aggregation_mode" xml:space="preserve">
+    <value>A/B pairing aggregation</value>
+  </data>
+  <data name="system.label.whole_piece_merged_display" xml:space="preserve">
+    <value>Merge four faces in monitor view</value>
+  </data>
+  <data name="system.label.whole_piece_face_result_display" xml:space="preserve">
+    <value>Show per-face result column</value>
+  </data>
+  <data name="system.option.paired_aggregation.average" xml:space="preserve">
+    <value>Pair average</value>
+  </data>
+  <data name="system.option.paired_aggregation.maximum" xml:space="preserve">
+    <value>Pair maximum</value>
+  </data>
+  <data name="system.message.paired_aggregation_mode_locked" xml:space="preserve">
+    <value>An unfinished task exists. Complete it before changing the A/B pairing aggregation.</value>
+  </data>
 </root>

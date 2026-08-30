@@ -920,8 +920,6 @@ public partial class SystemSettingView : BaseView
         lblPlcType.Text = _localizer.GetString(TextKeys.SystemSetting.LabelType);
         chkEnablePlcStringNumericFormatting.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnablePlcStringFormatting);
         chkEnablePlcAlarmReading.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnablePlcAlarmReading);
-        lblPlcAlarmTriggerMode.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPlcAlarmTriggerMode);
-        lblPlcStringNumericFormatMode.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPlcFormatMode);
         lblReportDecimalPlaces.Text = _localizer.GetString(TextKeys.SystemSetting.LabelReportDecimalPlaces);
         lblProcessParameterDecimalPlaces.Text = _localizer.GetString(TextKeys.SystemSetting.LabelProcessParameterDecimalPlaces);
 

@@ -1171,10 +1171,8 @@ public static class TextKeys
         public const string LabelLogPath = "system.label.log_path";
         public const string LabelDataPath = "system.label.data_path";
         public const string LabelMesUrl = "system.label.mes_url";
-        public const string LabelPlcFormatMode = "system.label.plc_format_mode";
         public const string LabelReportDecimalPlaces = "system.label.report_decimal_places";
         public const string LabelProcessParameterDecimalPlaces = "system.label.process_parameter_decimal_places";
-        public const string LabelPlcAlarmTriggerMode = "system.label.plc_alarm_trigger_mode";
         public const string LabelMesTimeout = "system.label.mes_timeout";
         public const string LabelMesHeartbeatInterval = "system.label.mes_heartbeat_interval";
         public const string LabelCenterServerUrl = "system.label.center_server_url";
