@@ -207,7 +207,7 @@ public class ProductionReportFileService : IProductionReportFileService
             settings.Station2DisplayName);
 
         WriteTemplateHeader(worksheet, task, templateColumnCount);
-        var outputRows = BuildOutputRows(schema, records, settings);
+        var outputRows = BuildOutputRows(schema, records, settings, task);
         WriteDetailHeader(worksheet, detailColumns);
         WriteDataRows(worksheet, schema, detailColumns, outputRows, stationNames);
         MergeRepeatedProductFields(worksheet, detailColumns, outputRows);
@@ -296,7 +296,8 @@ public class ProductionReportFileService : IProductionReportFileService
     private IReadOnlyList<ReportOutputRow> BuildOutputRows(
         ReportSchema schema,
         IReadOnlyList<BizWeldPointRecord> records,
-        AppSettings settings)
+        AppSettings settings,
+        BizWeldTask task)
     {
         var rows = new List<ReportOutputRow>();
         foreach (var group in records.GroupBy(BuildProductMergeKey, StringComparer.OrdinalIgnoreCase))
@@ -332,7 +333,17 @@ public class ProductionReportFileService : IProductionReportFileService
             }
 
             var productResult = ResolveProductResult(group);
-            foreach (var output in aggregation.Rows)
+            // 行结果改用该行的合并值判定，与产品结果同源；
+            // 否则单面检测失败会让某行显示 NG，而按四面最大值算出的产品结果是 OK，两者对不上。
+            var outputRows = WholePieceProgramResultRules.IsApplicable(
+                    settings.ProcessParameterDeviceType,
+                    settings.InspectionResultSource)
+                ? WholePieceProgramResultRules.ApplyAggregatedRowResults(
+                    task.ProgramContentSnapshot,
+                    aggregation.Rows,
+                    definitions)
+                : aggregation.Rows;
+            foreach (var output in outputRows)
             {
                 rows.Add(new ReportOutputRow(
                     representative,

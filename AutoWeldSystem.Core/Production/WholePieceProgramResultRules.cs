@@ -83,9 +83,25 @@ public static class WholePieceProgramResultRules
 
     /// <summary>
     /// 用 A/B 聚合后的合并值判定产品结果，与 MES 上传、报表口径一致。
-    /// A、B 两行分别判定：EvaluateFace 不允许重复测试项，合在一起会因“对称度”重名直接失败。
     /// </summary>
     public static WholePieceProgramFaceResult EvaluateAggregated(
+        string? programContentSnapshot,
+        IReadOnlyList<WholePieceAbOutputRow> abRows,
+        IEnumerable<WholePieceAbValueDefinition> definitions)
+    {
+        var evaluated = EvaluateAggregatedRows(programContentSnapshot, abRows, definitions);
+        return evaluated.IsSuccess
+            ? WholePieceProgramFaceResult.Success(evaluated.ProductResult, evaluated.FailedItems)
+            : WholePieceProgramFaceResult.Failure(evaluated.ErrorMessage);
+    }
+
+    /// <summary>
+    /// 按 A/B 合并值逐行判定，同时给出每行结果和产品结果。
+    /// A、B 两行分别判定：EvaluateFace 不允许重复测试项，合在一起会因“对称度”重名直接失败。
+    /// 行结果必须由这里产出：报表和 MES 的行结果若沿用面记录从严合并，
+    /// 会出现“某行 NG 但产品 OK”的矛盾——高度取四面最大值，单面检测失败不影响产品结果。
+    /// </summary>
+    public static WholePieceProgramAggregatedResult EvaluateAggregatedRows(
         string? programContentSnapshot,
         IReadOnlyList<WholePieceAbOutputRow> abRows,
         IEnumerable<WholePieceAbValueDefinition> definitions)
@@ -109,7 +125,7 @@ public static class WholePieceProgramResultRules
             var rowResult = EvaluateFace(programContentSnapshot, measurements);
             if (!rowResult.IsSuccess)
             {
-                return rowResult;
+                return WholePieceProgramAggregatedResult.Failure(rowResult.ErrorMessage);
             }
 
             // 视觉检测失败时约定回传 0。高度、宽度的合并值仍为 0（或负值），
@@ -136,8 +152,38 @@ public static class WholePieceProgramResultRules
 
         var productResult = TestResultRules.ResolveProductResult(results);
         return string.Equals(productResult, ProductionConstants.TestResults.Unknown, StringComparison.OrdinalIgnoreCase)
-            ? WholePieceProgramFaceResult.Failure("A/B合并值判定结果不完整，无法生成产品结果。")
-            : WholePieceProgramFaceResult.Success(productResult, failedItems);
+            ? WholePieceProgramAggregatedResult.Failure("A/B合并值判定结果不完整，无法生成产品结果。")
+            : WholePieceProgramAggregatedResult.Success(productResult, results, failedItems);
+    }
+
+    /// <summary>
+    /// 把 A/B 行的结果替换成按该行合并值判定的结果，使报表和 MES 与产品结果同源。
+    /// 两种情况保持原结果：判定失败时不能给报表导出和 MES 上传引入新的失败点；
+    /// 含焊前 NG 的行对应的产品结果本身就不走合并值判定，替换后反而会对不上。
+    /// </summary>
+    public static IReadOnlyList<WholePieceAbOutputRow> ApplyAggregatedRowResults(
+        string? programContentSnapshot,
+        IReadOnlyList<WholePieceAbOutputRow> abRows,
+        IEnumerable<WholePieceAbValueDefinition> definitions)
+    {
+        ArgumentNullException.ThrowIfNull(abRows);
+
+        var evaluated = EvaluateAggregatedRows(programContentSnapshot, abRows, definitions);
+        if (!evaluated.IsSuccess || evaluated.RowResults.Count != abRows.Count)
+        {
+            return abRows;
+        }
+
+        var applied = new List<WholePieceAbOutputRow>(abRows.Count);
+        for (var index = 0; index < abRows.Count; index++)
+        {
+            var row = abRows[index];
+            applied.Add(TestResultRules.IsPreWeldNg(row.Result)
+                ? row
+                : row with { Result = evaluated.RowResults[index] });
+        }
+
+        return applied;
     }
 
     /// <summary>
@@ -245,6 +291,46 @@ public static class WholePieceProgramResultRules
 }
 
 public sealed record WholePieceProgramMeasurement(string ItemName, string? ActualValue);
+
+/// <summary>
+/// A/B 合并值判定结果。<see cref="RowResults"/> 与传入的行顺序一致，
+/// 供报表和 MES 把行结果对齐到产品结果的同一套口径。
+/// </summary>
+public sealed class WholePieceProgramAggregatedResult
+{
+    private WholePieceProgramAggregatedResult(
+        bool isSuccess,
+        string productResult,
+        string errorMessage,
+        IReadOnlyList<string> rowResults,
+        IReadOnlyList<string> failedItems)
+    {
+        IsSuccess = isSuccess;
+        ProductResult = productResult;
+        ErrorMessage = errorMessage;
+        RowResults = rowResults;
+        FailedItems = failedItems;
+    }
+
+    public bool IsSuccess { get; }
+
+    public string ProductResult { get; }
+
+    public string ErrorMessage { get; }
+
+    public IReadOnlyList<string> RowResults { get; }
+
+    public IReadOnlyList<string> FailedItems { get; }
+
+    public static WholePieceProgramAggregatedResult Success(
+        string productResult,
+        IReadOnlyList<string> rowResults,
+        IReadOnlyList<string> failedItems)
+        => new(true, productResult, string.Empty, rowResults, failedItems);
+
+    public static WholePieceProgramAggregatedResult Failure(string message)
+        => new(false, ProductionConstants.TestResults.Unknown, message, Array.Empty<string>(), Array.Empty<string>());
+}
 
 public sealed class WholePieceProgramFaceResult
 {
