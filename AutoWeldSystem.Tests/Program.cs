@@ -121,7 +121,9 @@ var tests = new (string Name, Action Run)[]
     ("Data history product result filter keeps complete product rows", DataHistoryProductResultFilterKeepsCompleteProductRows),
     ("Data history dynamic sort orders products and keeps blanks last", DataHistoryDynamicSortOrdersProductsAndKeepsBlanksLast),
     ("Data history test data paging clamps page index", DataHistoryTestDataPagingClampsPageIndex),
-    ("Data history export writes current rows and dynamic columns", DataHistoryExportWritesCurrentRowsAndDynamicColumns),
+    ("Data manage export appends chinese upload status as last column", DataManageExportAppendsChineseUploadStatusAsLastColumn),
+    ("Upload report never exposes upload status column", UploadReportNeverExposesUploadStatusColumn),
+    ("Data manage export keeps upload report template layout", DataManageExportKeepsUploadReportTemplateLayout),
     ("Single-point history display rule uses configured and actual counts", SinglePointHistoryDisplayRuleUsesConfiguredAndActualCounts),
     ("Data history single-point row keeps point values", DataHistorySinglePointRowKeepsPointValues),
     ("Work order deletion rules block running tasks", WorkOrderDeletionRulesBlockRunningTasks),
@@ -2672,27 +2674,143 @@ static void DataManageViewUsesGenericProductTestTree()
     AssertFalse(designerCode.Contains("detailTabs.Controls.Add(tabCollectionData);", StringComparison.Ordinal), "详情页不得继续显示重复的采集数据页签。");
 }
 
-static void DataHistoryExportWritesCurrentRowsAndDynamicColumns()
+/// <summary>
+/// 数据管理页导出复用上传报表管线，只在明细末列追加中文上传状态。
+/// </summary>
+static void DataManageExportAppendsChineseUploadStatusAsLastColumn()
 {
-    var path = Path.Combine(Path.GetTempPath(), $"data-history-{Guid.NewGuid():N}.xlsx");
+    var task = BuildReportTask(new DateTime(2026, 8, 31, 8, 0, 0), endTime: null);
+    task.SN = "FLOW-UPLOAD-STATUS";
+    var records = new[]
+    {
+        BuildReportPoint(task.Id, stationNo: 1, productNo: "P-001", sequenceNo: 1, pointResult: ProductionConstants.TestResults.Ok),
+        BuildReportPoint(task.Id, stationNo: 1, productNo: "P-002", sequenceNo: 2, pointResult: ProductionConstants.TestResults.Ng)
+    };
+    records[0].UploadStatus = ProductionConstants.UploadStatuses.Uploaded;
+    records[1].UploadStatus = ProductionConstants.UploadStatuses.Failed;
+
+    var filePath = GenerateUploadStatusReportWorkbook(
+        new AppSettings(),
+        task,
+        records,
+        includeUploadStatus: true,
+        fileName: "data-manage-export-upload-status.xlsx");
     try
     {
-        var rows = new[]
-        {
-            new DataHistoryTestDataRow
-            {
-                IsProductRow = true, StationNo = 1, ProductNo = "P001", ProductResult = ProductionConstants.TestResults.Ok,
-                Children = [new DataHistoryTestDataRow { TouchNo = "T1", TestResult = ProductionConstants.TestResults.Ok, RecordTime = new DateTime(2026, 8, 22, 10, 0, 0), DynamicValues = new Dictionary<string, string> { ["height"] = "2.5" } }]
-            }
-        };
-        DataHistoryTestDataExportService.Export(path, "WO001", rows, [new DataHistoryDynamicColumn { Key = "height", HeaderText = "高度" }]);
-        using var workbook = new XLWorkbook(path);
-        var sheet = workbook.Worksheet("测试数据");
-        AssertEqual("高度", sheet.Cell(1, 9).GetString(), "导出表头必须包含动态测试列。");
-        AssertEqual("WO001", sheet.Cell(2, 1).GetString(), "导出行必须包含当前工单号。");
-        AssertEqual("2.5", sheet.Cell(2, 9).GetString(), "导出行必须包含动态测试值。");
+        using var workbook = new XLWorkbook(filePath);
+        var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+        var headers = ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow);
+        AssertEqual("上传状态", headers[^1], "数据管理导出必须把上传状态放在明细表头最后一列。");
+        AssertEqual("产品结果", headers[^2], "上传状态必须追加在产品结果之后，不得打乱原有列序。");
+
+        var statusColumn = headers.Length;
+        AssertEqual(
+            "已上传",
+            worksheet.Cell(CenterProductReportFormat.DetailFirstDataRow, statusColumn).GetString(),
+            "上传状态必须按中文显示，不得直接输出英文状态码。");
+        AssertEqual(
+            "上传失败",
+            worksheet.Cell(CenterProductReportFormat.DetailFirstDataRow + 1, statusColumn).GetString(),
+            "上传失败状态必须按中文显示。");
     }
-    finally { if (File.Exists(path)) File.Delete(path); }
+    finally
+    {
+        DeleteReportFixture(filePath);
+    }
+}
+
+/// <summary>
+/// 上传状态列只属于数据管理页手动导出。真实上传给 MES 的报表混入该列会污染客户模板。
+/// </summary>
+static void UploadReportNeverExposesUploadStatusColumn()
+{
+    var task = BuildReportTask(new DateTime(2026, 8, 31, 8, 0, 0), endTime: null);
+    task.SN = "FLOW-NO-UPLOAD-STATUS";
+    var records = new[]
+    {
+        BuildReportPoint(task.Id, stationNo: 1, productNo: "P-001", sequenceNo: 1, pointResult: ProductionConstants.TestResults.Ok)
+    };
+    records[0].UploadStatus = ProductionConstants.UploadStatuses.Uploaded;
+
+    var filePath = GenerateUploadStatusReportWorkbook(
+        new AppSettings(),
+        task,
+        records,
+        includeUploadStatus: false,
+        fileName: "upload-report-without-status.xlsx");
+    try
+    {
+        using var workbook = new XLWorkbook(filePath);
+        var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+        var headers = ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow);
+        AssertFalse(headers.Contains("上传状态"), "上传给 MES 的报表不得包含上传状态列。");
+        AssertEqual("产品结果", headers[^1], "上传报表的末列必须仍是产品结果。");
+        AssertFalse(
+            headers.Contains("已上传") || headers.Contains("待上传"),
+            "上传报表不得混入任何上传状态文本。");
+    }
+    finally
+    {
+        DeleteReportFixture(filePath);
+    }
+
+    // 直接校验尾列构造入口，避免今后有人误把上传状态设成无条件输出。
+    var serviceType = typeof(ProductionReportFileService);
+    var buildTrailing = serviceType.GetMethod(
+        "BuildTrailingColumns",
+        System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+    AssertTrue(buildTrailing is not null, "生产报表服务必须保留尾列构造入口。");
+    var withoutStatus = ((System.Collections.IEnumerable)buildTrailing!.Invoke(null, [false])!).Cast<object>().ToList();
+    AssertEqual(1, withoutStatus.Count, "未开启上传状态时尾列只能有产品结果。");
+    var withStatus = ((System.Collections.IEnumerable)buildTrailing.Invoke(null, [true])!).Cast<object>().ToList();
+    AssertEqual(2, withStatus.Count, "开启上传状态时尾列必须是产品结果加上传状态。");
+    var mergeByProduct = withStatus[^1].GetType().GetProperty("MergeByProduct")?.GetValue(withStatus[^1]);
+    AssertTrue(
+        mergeByProduct is true,
+        "上传状态必须按产品合并，否则整件检测 A/B 两行会重复显示同一状态。");
+}
+
+/// <summary>
+/// 导出文件必须与上传报表同源：保留客户模板抬头，明细表头仍在第 11 行。
+/// </summary>
+static void DataManageExportKeepsUploadReportTemplateLayout()
+{
+    var task = BuildReportTask(new DateTime(2026, 8, 31, 8, 0, 0), new DateTime(2026, 8, 31, 17, 0, 0));
+    task.SN = "FLOW-TEMPLATE-LAYOUT";
+    var records = new[]
+    {
+        BuildReportPoint(task.Id, stationNo: 1, productNo: "P-001", sequenceNo: 1, pointResult: ProductionConstants.TestResults.Ok)
+    };
+
+    var filePath = GenerateUploadStatusReportWorkbook(
+        new AppSettings(),
+        task,
+        records,
+        includeUploadStatus: true,
+        fileName: "data-manage-export-template-layout.xlsx");
+    try
+    {
+        using var workbook = new XLWorkbook(filePath);
+        var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+        AssertTrue(
+            worksheet.Cell(1, 1).GetString().Contains("流转卡号", StringComparison.Ordinal),
+            "数据管理导出必须保留客户模板的任务抬头。");
+        AssertTrue(
+            worksheet.Cell(1, 1).GetString().Contains(task.SN, StringComparison.Ordinal),
+            "模板抬头必须携带工单号，导出表格因此无需单独的工单号列。");
+        AssertEqual(
+            "产品编号",
+            worksheet.Cell(CenterProductReportFormat.DetailHeaderRow, 1).GetString(),
+            "单工位导出的明细表头必须仍从第 11 行的产品编号开始。");
+        AssertEqual(
+            "P-001",
+            worksheet.Cell(CenterProductReportFormat.DetailFirstDataRow, 1).GetString(),
+            "明细数据必须紧跟表头写入第 12 行。");
+    }
+    finally
+    {
+        DeleteReportFixture(filePath);
+    }
 }
 
 static void DataHistoryDynamicSortOrdersProductsAndKeepsBlanksLast()
@@ -15868,6 +15986,73 @@ static void PublishReportArtifact(string sourcePath, string destinationPath)
 }
 
 /// <summary>
+/// 走生产代码真实的 schema 构造入口生成 XLSX，覆盖数据管理导出追加上传状态列的分支。
+/// 列定义必须由 BuildReportSchemaForStationsWithDeviceType 产出，测试里不重复拼装列，
+/// 否则断言只会验证测试自己的假设，无法发现生产代码的列序退化。
+/// </summary>
+static string GenerateUploadStatusReportWorkbook(
+    AppSettings settings,
+    BizWeldTask task,
+    IReadOnlyList<BizWeldPointRecord> records,
+    bool includeUploadStatus,
+    string deviceType = "",
+    string fileName = "data-manage-export.xlsx")
+{
+    var serviceType = typeof(ProductionReportFileService);
+    var service = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(serviceType);
+    var settingsField = serviceType.GetField("_currentSettings", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+    AssertTrue(settingsField is not null, "生产报表服务必须保留当前设置快照。");
+    settingsField!.SetValue(service, settings);
+
+    var schemeReportItemType = GetNestedReportType(serviceType, "SchemeReportItem");
+    var resolvedStationType = GetNestedReportType(serviceType, "ResolvedStationReportConfig");
+    var schemeItems = CreateGenericList(schemeReportItemType);
+    schemeItems.Add(Activator.CreateInstance(
+            schemeReportItemType,
+            new DimTestItem { ItemId = 1, ItemName = "峰值电流", ActualExpression = "0:F-0" },
+            new BizSchemeDetail
+            {
+                SchemeId = "EXPORT-SCHEME",
+                ItemId = 1,
+                DetailId = 1,
+                EnableActual = true,
+                ReportActual = true,
+                ActualHeader = "峰值电流"
+            })
+        ?? throw new InvalidOperationException("无法构造导出报表动态项。"));
+
+    var resolvedStations = CreateGenericList(resolvedStationType);
+    resolvedStations.Add(Activator.CreateInstance(
+            resolvedStationType,
+            1,
+            new BizProductProcessConfig
+            {
+                StationNo = 1,
+                SchemeId = "EXPORT-SCHEME",
+                PointNoHeader = "焊点编号",
+                PointResultHeader = "焊点结果"
+            },
+            schemeItems)
+        ?? throw new InvalidOperationException("无法构造已解析工位报表配置。"));
+
+    var buildSchema = serviceType.GetMethod(
+        "BuildReportSchemaForStationsWithDeviceType",
+        System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+    AssertTrue(buildSchema is not null, "生产报表服务必须保留含设备类型的 schema 构造入口。");
+    var schema = buildSchema!.Invoke(null, [resolvedStations, deviceType, includeUploadStatus])
+        ?? throw new InvalidOperationException("schema 构造入口不得返回空值。");
+
+    var outputDirectory = Path.Combine(Path.GetTempPath(), "AutoWeldSystem.Tests", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(outputDirectory);
+    var filePath = Path.Combine(outputDirectory, fileName);
+    var writeMethod = serviceType.GetMethod("WriteXlsx", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+    AssertTrue(writeMethod is not null, "生产报表服务必须保留 XLSX 写入入口。");
+    writeMethod!.Invoke(service, [filePath, schema, records, task]);
+    AssertTrue(File.Exists(filePath), "导出入口必须生成真实 XLSX 文件。");
+    return filePath;
+}
+
+/// <summary>
 /// 使用生产服务的“已解析工位配置”入口生成真实 XLSX，验证双工位列并集和逐行工位隔离。
 /// </summary>
 static string GenerateStationSpecificReportWorkbook(
@@ -16709,6 +16894,11 @@ sealed class FakeProductionReportFileService : IProductionReportFileService
     }
 
     public bool ShouldUploadReportFile(BizWeldTask task) => ShouldUploadReportFileResult;
+
+    // 手动导出与上传流程无关，这些用例只验证上传链路，不需要真实写盘。
+    public void ExportXlsxWithUploadStatus(int taskId, string filePath) => ExportCallCount++;
+
+    public int ExportCallCount { get; private set; }
 }
 
 sealed class FakeDeviceLifecycleLogService : IDeviceLifecycleLogService

@@ -7,7 +7,6 @@ using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.UI.Base;
 using AutoWeldSystem.UI.Infrastructure;
-using AutoWeldSystem.Services.Production;
 
 namespace AutoWeldSystem.UI.Views;
 
@@ -24,6 +23,7 @@ public partial class DataManageView : BaseView
     private readonly ILocalizationService _localizer = null!;
     private readonly IAppSettingsService _appSettingsService = null!;
     private readonly IDataHistoryMaintenanceService _maintenanceService = null!;
+    private readonly IProductionReportFileService _reportFileService = null!;
     private readonly IUploadTaskService? _uploadTaskService;
     private CancellationTokenSource? _workOrderQueryCancellation;
     private CancellationTokenSource? _detailQueryCancellation;
@@ -57,12 +57,14 @@ public partial class DataManageView : BaseView
         ILocalizationService localizer,
         IAppSettingsService appSettingsService,
         IDataHistoryMaintenanceService maintenanceService,
+        IProductionReportFileService reportFileService,
         IUploadTaskService? uploadTaskService = null)
     {
         _historyQueryService = historyQueryService;
         _localizer = localizer;
         _appSettingsService = appSettingsService;
         _maintenanceService = maintenanceService;
+        _reportFileService = reportFileService;
         _uploadTaskService = uploadTaskService;
 
         InitializeComponent();
@@ -812,10 +814,14 @@ public partial class DataManageView : BaseView
         return true;
     }
 
+    /// <summary>
+    /// 按上传报表格式导出当前工单，末列附加中文上传状态。
+    /// 导出始终覆盖整个工单，不受页面产品结果筛选影响，因此用全量行判断有无数据。
+    /// </summary>
     private void ExportTestData()
     {
         var workOrder = GetSelectedWorkOrder();
-        if (workOrder is null || _visibleTestDataRows.Count == 0)
+        if (workOrder is null || _testDataRows.Count == 0)
         {
             ShowWarning(_localizer.GetString(TextKeys.DataManage.ExportNoData));
             return;
@@ -827,13 +833,13 @@ public partial class DataManageView : BaseView
             Filter = "Excel Workbook (*.xlsx)|*.xlsx",
             DefaultExt = "xlsx",
             AddExtension = true,
-            FileName = $"{safeWorkOrder}_测试数据_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx"
+            FileName = $"{safeWorkOrder}_生产报表_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx"
         };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
 
         try
         {
-            DataHistoryTestDataExportService.Export(dialog.FileName, workOrder.WorkOrderId, _visibleTestDataRows, _testDataDynamicColumns);
+            _reportFileService.ExportXlsxWithUploadStatus(workOrder.TaskId, dialog.FileName);
             MessageBox.Show(this, _localizer.GetString(TextKeys.DataManage.ExportSuccess, dialog.FileName), T(TextKeys.Common.TitleInfo), MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
