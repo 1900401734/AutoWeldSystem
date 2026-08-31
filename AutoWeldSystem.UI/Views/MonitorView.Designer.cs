@@ -60,6 +60,7 @@ namespace AutoWeldSystem.UI.Views
             lblLiveTouchNo1 = new AntdUI.Label();
             chkMergedDisplay1 = new AntdUI.Checkbox();
             chkFaceResultDisplay1 = new AntdUI.Checkbox();
+            lblLiveProgramLimits1 = new AntdUI.Label();
             HorizontalSplitter1 = new AntdUI.Splitter();
             HorizontalScrollBar1 = new SlimHorizontalScrollBar();
             dgvPreview1 = new DataGridView();
@@ -428,7 +429,8 @@ namespace AutoWeldSystem.UI.Views
             // 
             // tlpStationOverview1
             // 
-            tlpStationOverview1.ColumnCount = 5;
+            tlpStationOverview1.ColumnCount = 6;
+            tlpStationOverview1.ColumnStyles.Add(new ColumnStyle());
             tlpStationOverview1.ColumnStyles.Add(new ColumnStyle());
             tlpStationOverview1.ColumnStyles.Add(new ColumnStyle());
             tlpStationOverview1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
@@ -437,8 +439,9 @@ namespace AutoWeldSystem.UI.Views
             tlpStationOverview1.Controls.Add(lblLiveHint1, 0, 0);
             tlpStationOverview1.Controls.Add(lblLiveProductNo1, 1, 0);
             tlpStationOverview1.Controls.Add(lblLiveTouchNo1, 2, 0);
-            tlpStationOverview1.Controls.Add(chkMergedDisplay1, 3, 0);
-            tlpStationOverview1.Controls.Add(chkFaceResultDisplay1, 4, 0);
+            tlpStationOverview1.Controls.Add(lblLiveProgramLimits1, 3, 0);
+            tlpStationOverview1.Controls.Add(chkMergedDisplay1, 4, 0);
+            tlpStationOverview1.Controls.Add(chkFaceResultDisplay1, 5, 0);
             tlpStationOverview1.Dock = DockStyle.Fill;
             tlpStationOverview1.Location = new Point(0, 0);
             tlpStationOverview1.Margin = new Padding(0);
@@ -478,13 +481,27 @@ namespace AutoWeldSystem.UI.Views
             // lblLiveTouchNo1
             // 
             lblLiveTouchNo1.AutoEllipsis = true;
+            lblLiveTouchNo1.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblLiveTouchNo1.Dock = DockStyle.Fill;
             lblLiveTouchNo1.Location = new Point(253, 0);
             lblLiveTouchNo1.Margin = new Padding(0);
             lblLiveTouchNo1.Name = "lblLiveTouchNo1";
-            lblLiveTouchNo1.Size = new Size(688, 36);
+            lblLiveTouchNo1.Padding = new Padding(0, 0, 20, 0);
+            lblLiveTouchNo1.Size = new Size(120, 36);
             lblLiveTouchNo1.TabIndex = 11;
             lblLiveTouchNo1.Text = "焊点：--";
+            //
+            // lblLiveProgramLimits1
+            //
+            lblLiveProgramLimits1.AutoEllipsis = true;
+            lblLiveProgramLimits1.Dock = DockStyle.Fill;
+            lblLiveProgramLimits1.Location = new Point(373, 0);
+            lblLiveProgramLimits1.Margin = new Padding(0);
+            lblLiveProgramLimits1.Name = "lblLiveProgramLimits1";
+            lblLiveProgramLimits1.Size = new Size(568, 36);
+            lblLiveProgramLimits1.TabIndex = 12;
+            lblLiveProgramLimits1.Text = "设定值：--";
+            lblLiveProgramLimits1.Visible = false;
             // 
             // chkMergedDisplay1
             // 
@@ -1979,6 +1996,7 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Label lblLiveProductNo1;
         private AntdUI.Checkbox chkMergedDisplay1;
         private AntdUI.Checkbox chkFaceResultDisplay1;
+        private AntdUI.Label lblLiveProgramLimits1;
         private AntdUI.Label lblLiveResult;
         private AntdUI.Label lblLiveTouchCount;
         private AntdUI.Label lblLiveTouchNo1;

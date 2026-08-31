@@ -915,6 +915,12 @@
   <data name="monitor.checkbox.face_result_display" xml:space="preserve">
     <value>Face result</value>
   </data>
+  <data name="monitor.label.program_limits" xml:space="preserve">
+    <value>Limits</value>
+  </data>
+  <data name="monitor.tooltip.program_limits" xml:space="preserve">
+    <value>Maximum allowed values frozen from the program when the work order started, the same data used for product evaluation. A measured value at or below the limit passes. Shown for whole-piece inspection devices only.</value>
+  </data>
   <data name="monitor.tooltip.face_result_display" xml:space="preserve">
     <value>Shows the per-face result column in per-face view. Clearing it hides only that column; face numbers and measured values stay. Avoids confusion between a single face result and the merged product result. Display only; upload and report data are unchanged.</value>
   </data>

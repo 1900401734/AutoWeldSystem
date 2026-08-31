@@ -915,6 +915,12 @@
   <data name="monitor.checkbox.face_result_display" xml:space="preserve">
     <value>面结果</value>
   </data>
+  <data name="monitor.label.program_limits" xml:space="preserve">
+    <value>设定值</value>
+  </data>
+  <data name="monitor.tooltip.program_limits" xml:space="preserve">
+    <value>当前工单开工时固化的程序最大允许值，与产品判定使用同一份数据。实际值小于或等于该值为合格。仅整件检测设备显示。</value>
+  </data>
   <data name="monitor.tooltip.face_result_display" xml:space="preserve">
     <value>逐面模式下是否显示“面结果”列。取消勾选只隐藏该列，面号和逐面实测值保留，避免单面结果与合并后的产品结果口径不同造成歧义。只影响界面显示，不改变上传和报表数据。</value>
   </data>

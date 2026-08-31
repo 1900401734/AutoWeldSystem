@@ -16,6 +16,27 @@ public static class ProgramContentJsonRules
     };
 
     /// <summary>
+    /// 把程序内容拼成一行「测试项≤最大允许值」摘要，供生产监控页随时查阅设定值。
+    /// 判定规则是实际值大于最大允许值才 NG，所以用 ≤ 如实表达合格区间。
+    /// 项的顺序沿用 JSON 顺序；没有有效值时返回空字符串。
+    /// 该方法在实时预览的每次刷新中调用，任何内容都不能抛异常打断采集显示。
+    /// </summary>
+    public static string BuildLimitsSummary(string? programContent)
+    {
+        var values = ParseObjectValues(programContent);
+        if (values.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        return string.Join(
+            ' ',
+            values
+                .Where(pair => !string.IsNullOrWhiteSpace(pair.Value))
+                .Select(pair => $"{pair.Key}≤{pair.Value.Trim()}"));
+    }
+
+    /// <summary>
     /// 判断程序内容是否包含至少一个有效最大允许值。
     /// 空白和空 JSON 对象表示用户尚未填写最大允许值；非对象或非法历史内容保守地视为有效。
     /// </summary>
