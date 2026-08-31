@@ -1228,7 +1228,15 @@ public class UploadTaskService : IUploadTaskService
                 return Unsupported(aggregation.ErrorMessage);
             }
 
-            foreach (var output in aggregation.Rows)
+            // 行结果改用该行的合并值判定，与产品结果同源；
+            // 否则单面检测失败会让某行上传 NG，而按四面最大值算出的产品结果是 OK，两者对不上。
+            var outputRows = WholePieceProgramResultRules.IsApplicable(deviceType, settings.InspectionResultSource)
+                ? WholePieceProgramResultRules.ApplyAggregatedRowResults(
+                    _dbContext.Db.Queryable<BizWeldTask>().InSingle(firstRecord.TaskId)?.ProgramContentSnapshot,
+                    aggregation.Rows,
+                    definitions)
+                : aggregation.Rows;
+            foreach (var output in outputRows)
             {
                 var item = new ProcessParameterUploadItem
                 {

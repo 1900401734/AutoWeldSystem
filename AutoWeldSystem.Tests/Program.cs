@@ -133,6 +133,7 @@ var tests = new (string Name, Action Run)[]
     ("Whole-piece height uses four-side maximum and width uses side A", WholePieceHeightUsesFourSideMaximumAndWidthUsesSideA),
     ("Whole-piece zero merged value fails product level items", WholePieceZeroMergedValueFailsProductLevelItems),
     ("Whole-piece side B width stays out of face evaluation", WholePieceSideBWidthStaysOutOfFaceEvaluation),
+    ("Whole-piece AB row result follows merged evaluation", WholePieceAbRowResultFollowsMergedEvaluation),
     ("Output decimal places apply to report and process parameter", OutputDecimalPlacesApplyToReportAndProcessParameter),
     ("Whole-piece program results use maximum allowed values", WholePieceProgramResultsUseMaximumAllowedValues),
     ("Program result display prefers persisted entity result", ProgramResultDisplayPrefersPersistedEntityResult),
@@ -3091,6 +3092,103 @@ static WholePieceAbValueDefinition MergedHeightDefinition() => new(1, "高度", 
 static WholePieceAbValueDefinition MergedSymmetryDefinition() => new(2, "对称度", "对称度", "18:F-0_2");
 
 static WholePieceAbValueDefinition MergedWidthDefinition() => new(3, "宽度", "宽度", "16:F-0_2");
+
+/// <summary>
+/// 报表和 MES 的 A/B 行结果必须按该行的合并值判定，与产品结果同源。
+/// 高度取四面最大值，单面检测失败回传 0 不影响产品结果；若行结果仍沿用面记录从严合并，
+/// 就会出现「B 行 NG 但产品 OK」的矛盾，现场无法解释。
+/// </summary>
+static void WholePieceAbRowResultFollowsMergedEvaluation()
+{
+    var snapshot = JsonSerializer.Serialize(new Dictionary<string, string>
+    {
+        ["高度"] = "24.8",
+        ["对称度"] = "0.10"
+    });
+    var definitions = new[] { MergedHeightDefinition(), MergedSymmetryDefinition() };
+
+    // 现场场景：面2 测得 24.56，面1、面3、面4 检测失败回传 0，高度四面最大值 24.56 ≤ 24.8。
+    // 面记录从严合并会让 B 行是 NG，但合并值判定下 A、B 两行都应为 OK。
+    var rows = new List<WholePieceAbOutputRow>
+    {
+        new("A", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["高度"] = "24.56",
+            ["对称度"] = "0.02"
+        }),
+        new("B", ProductionConstants.TestResults.Ng, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["高度"] = "24.56",
+            ["对称度"] = "0.03"
+        })
+    };
+
+    var applied = WholePieceProgramResultRules.ApplyAggregatedRowResults(snapshot, rows, definitions);
+    AssertEqual(ProductionConstants.TestResults.Ok, applied[0].Result, "A行合并值未超限，结果必须是OK。");
+    AssertEqual(ProductionConstants.TestResults.Ok, applied[1].Result, "B行合并值未超限时必须改判OK，不能因单面检测失败而保持NG。");
+
+    var evaluated = WholePieceProgramResultRules.EvaluateAggregatedRows(snapshot, rows, definitions);
+    AssertTrue(evaluated.IsSuccess, evaluated.ErrorMessage);
+    AssertEqual(ProductionConstants.TestResults.Ok, evaluated.ProductResult, "产品结果必须与两行结果一致。");
+    AssertEqual(2, evaluated.RowResults.Count, "逐行结果必须与传入行数一一对应。");
+
+    // 合并值确实超限时不能一律洗成 OK。
+    var overLimitRows = new List<WholePieceAbOutputRow>
+    {
+        rows[0],
+        new("B", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["高度"] = "24.56",
+            ["对称度"] = "0.19"
+        })
+    };
+    var overLimit = WholePieceProgramResultRules.ApplyAggregatedRowResults(snapshot, overLimitRows, definitions);
+    AssertEqual(ProductionConstants.TestResults.Ok, overLimit[0].Result, "A行未超限仍是OK。");
+    AssertEqual(ProductionConstants.TestResults.Ng, overLimit[1].Result, "B行对称度超限必须判NG。");
+
+    // 四面全部检测失败时合并值为 0，v2.12.0 的零值判定继续生效。
+    var allZeroRows = new List<WholePieceAbOutputRow>
+    {
+        new("A", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["高度"] = "0",
+            ["对称度"] = "0.02"
+        }),
+        new("B", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["高度"] = "0",
+            ["对称度"] = "0.03"
+        })
+    };
+    var allZero = WholePieceProgramResultRules.ApplyAggregatedRowResults(snapshot, allZeroRows, definitions);
+    AssertEqual(ProductionConstants.TestResults.Ng, allZero[0].Result, "高度合并值为0说明四面都没检测成功，必须判NG。");
+
+    // 含焊前 NG 的行保持原结果：产品结果本身就不走合并值判定，替换后反而对不上。
+    var preWeldRows = new List<WholePieceAbOutputRow>
+    {
+        rows[0],
+        new("B", ProductionConstants.TestResults.PreWeldNg, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["高度"] = "24.56",
+            ["对称度"] = "0.03"
+        })
+    };
+    var preWeld = WholePieceProgramResultRules.ApplyAggregatedRowResults(snapshot, preWeldRows, definitions);
+    AssertEqual(ProductionConstants.TestResults.PreWeldNg, preWeld[1].Result, "焊前NG的行必须保持原结果。");
+
+    // 判定失败时保持原结果：报表导出和 MES 上传不能因为程序快照有问题而中断。
+    var brokenSnapshot = JsonSerializer.Serialize(new Dictionary<string, string> { ["高度"] = "24.8" });
+    var fallback = WholePieceProgramResultRules.ApplyAggregatedRowResults(brokenSnapshot, rows, definitions);
+    AssertEqual(ProductionConstants.TestResults.Ng, fallback[1].Result, "程序快照缺少测试项时必须保持原行结果，不能中断报表和上传。");
+
+    var reportCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductionReportFileService.cs"), Encoding.UTF8);
+    var uploadCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "UploadTaskService.cs"), Encoding.UTF8);
+    AssertTrue(reportCode.Contains("ApplyAggregatedRowResults", StringComparison.Ordinal), "报表必须按合并值改写A/B行结果。");
+    AssertTrue(uploadCode.Contains("ApplyAggregatedRowResults", StringComparison.Ordinal), "MES上传必须与报表使用同一套行结果口径。");
+    // PLC 判定模式下软件没有判定依据，不能替 PLC 改写行结果。
+    AssertTrue(reportCode.Contains("WholePieceProgramResultRules.IsApplicable", StringComparison.Ordinal), "报表只能在程序判定模式下改写行结果。");
+    AssertTrue(uploadCode.Contains("WholePieceProgramResultRules.IsApplicable", StringComparison.Ordinal), "MES上传只能在程序判定模式下改写行结果。");
+}
 
 /// <summary>
 /// 报表和过程参数各自的输出小数位。采集时已按偏移量表达式格式化并存库，
