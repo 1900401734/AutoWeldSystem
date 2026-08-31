@@ -245,6 +245,7 @@ var tests = new (string Name, Action Run)[]
     ("Pending upload view deletes selected rows in batches", PendingUploadViewDeletesSelectedRowsInBatches),
     ("Quantity upload batches product scopes and unique task ids", QuantityUploadBatchesProductScopesAndUniqueTaskIds),
     ("Quantity upload defers until next product completes", QuantityUploadDefersUntilNextProductCompletes),
+    ("Monitor shows program limits for inspection devices", MonitorShowsProgramLimitsForInspectionDevices),
     ("Process parameter upload payload reads product scope fields", ProcessParameterUploadPayloadReadsProductScopeFields),
     ("Finish makeup only covers products not yet uploaded", FinishMakeupOnlyCoversProductsNotYetUploaded),
     ("MES device status rules use configured MES codes", MesDeviceStatusRulesUseConfiguredMesCodes),
@@ -7124,6 +7125,66 @@ static void QuantityUploadBatchesProductScopesAndUniqueTaskIds()
 /// 数量模式凑满批次后不立即上传，要等下一个产品采集完成才传上一批，避开刚采完那一刻。
 /// 判定依据是候选数必须超过批量值，而不是达到批量值。
 /// </summary>
+/// <summary>
+/// 生产监控页在实时预览上方显示本次开工固化的程序最大允许值，只对整件检测设备显示。
+/// 该摘要在实时预览的每次刷新中生成，任何输入都不能抛异常打断采集显示。
+/// </summary>
+static void MonitorShowsProgramLimitsForInspectionDevices()
+{
+    var snapshot = JsonSerializer.Serialize(new Dictionary<string, string>
+    {
+        ["高度"] = "16.00",
+        ["宽度"] = "20.00",
+        ["对称度"] = "0.10"
+    });
+    AssertEqual(
+        "高度≤16.00 宽度≤20.00 对称度≤0.10",
+        ProgramContentJsonRules.BuildLimitsSummary(snapshot),
+        "设定值摘要必须按 JSON 顺序拼接，并用 ≤ 表达合格区间。");
+
+    AssertEqual(
+        "高度≤16.00",
+        ProgramContentJsonRules.BuildLimitsSummary(JsonSerializer.Serialize(new Dictionary<string, string> { ["高度"] = "16.00" })),
+        "单个测试项也要能正常显示。");
+
+    // 值为空的项要跳过，不能产生“高度≤”这种半截文本。
+    AssertEqual(
+        "宽度≤20.00",
+        ProgramContentJsonRules.BuildLimitsSummary(JsonSerializer.Serialize(new Dictionary<string, string>
+        {
+            ["高度"] = "   ",
+            ["宽度"] = "20.00"
+        })),
+        "没有填写最大允许值的测试项必须跳过。");
+
+    foreach (var (input, description) in new[]
+             {
+                 ((string?)null, "空引用"),
+                 (string.Empty, "空字符串"),
+                 ("   ", "空白"),
+                 ("{}", "空 JSON 对象"),
+                 ("not-json", "非法 JSON"),
+                 ("[1,2,3]", "非对象 JSON")
+             })
+    {
+        AssertEqual(
+            string.Empty,
+            ProgramContentJsonRules.BuildLimitsSummary(input),
+            $"{description}必须返回空字符串且不抛异常，否则会打断实时预览刷新。");
+    }
+
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.Designer.cs"), Encoding.UTF8);
+    AssertTrue(designerCode.Contains("tlpStationOverview1.ColumnCount = 6;", StringComparison.Ordinal), "工位概览行必须为设定值预留一列。");
+    AssertTrue(designerCode.Contains("tlpStationOverview1.Controls.Add(lblLiveProgramLimits1, 3, 0);", StringComparison.Ordinal), "设定值必须排在焊点之后、快捷开关之前。");
+    // 弹性列要落在设定值上：设定值超长时省略自己，而不是把焊点信息挤没。
+    AssertTrue(designerCode.Contains("lblLiveProgramLimits1.AutoEllipsis = true;", StringComparison.Ordinal), "设定值标签必须开启省略号，配合悬停提示查看完整内容。");
+    AssertTrue(designerCode.Contains("lblLiveTouchNo1.AutoSizeMode = AntdUI.TAutoSize.Width;", StringComparison.Ordinal), "焊点列改为按内容宽度后，弹性宽度才会让给设定值列。");
+
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    AssertTrue(viewCode.Contains("ActiveTask?.ProgramContentSnapshot", StringComparison.Ordinal), "设定值必须取开工固化的任务快照，与产品判定同源。");
+    AssertTrue(viewCode.Contains("ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck", StringComparison.Ordinal), "设定值只对整件检测设备显示。");
+}
+
 static void QuantityUploadDefersUntilNextProductCompletes()
 {
     var threeProducts = new[]

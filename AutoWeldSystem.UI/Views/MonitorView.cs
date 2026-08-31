@@ -2476,6 +2476,7 @@ public partial class MonitorView : BaseView
             SyncDualWorkOrderToggle(_currentSettings.EnableDualWorkOrder);
             SyncMergedDisplayToggle(_currentSettings.EnableWholePieceMergedDisplay == true);
             SyncFaceResultDisplayToggle(_currentSettings.EnableWholePieceFaceResultDisplay != false);
+            ApplyProgramLimitsDisplay();
         }, "MonitorView.SettingsChanged.DeviceIdentity");
         var currentShowTestFlag = e.CurrentSettings.ShowTestFlagInHistory != false;
         if (previousShowTestFlag != currentShowTestFlag)
@@ -5049,6 +5050,10 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         tooltipComponent.SetTip(
             chkFaceResultDisplay1,
             _localizer.GetString(TextKeys.Monitor.Tooltip.FaceResultDisplay));
+        ApplyProgramLimitsDisplay();
+        tooltipComponent.SetTip(
+            lblLiveProgramLimits1,
+            _localizer.GetString(TextKeys.Monitor.Tooltip.ProgramLimits));
         tooltipComponent.SetTip(
             chkMergedDisplay1,
             _localizer.GetString(TextKeys.Monitor.Tooltip.MergedDisplay));
@@ -7875,6 +7880,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         SetControlText(CurrentLivePreviewStatusLabel, string.Empty);
         SetControlText(CurrentLiveProductNoLabel, string.Empty);
         SetControlText(CurrentLiveTouchCountLabel, string.Empty);
+        ApplyProgramLimitsDisplay();
         ApplyProductResultToGroup(CurrentStationNo, ProductionConstants.TestResults.NotAvailable);
     }
 
@@ -7904,9 +7910,35 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
 
         SetControlText(CurrentLiveProductNoLabel, $"产品编号：{FormatLiveSummaryValue(snapshot.ProductNo)}");
         SetControlText(CurrentLiveTouchCountLabel, $"{NormalizeDisplayText(snapshot.PointName, "焊点")}：{FormatLiveSummaryValue(snapshot.TouchCountText)}");
+        ApplyProgramLimitsDisplay();
         ApplyProductResultToGroup(
             snapshot.StationNo,
             productChanged ? ProductionConstants.TestResults.NotAvailable : snapshot.ProductResult);
+    }
+
+    /// <summary>
+    /// 在实时预览上方显示本次开工固化的程序最大允许值，方便现场核对参数。
+    /// 取任务快照而非当前选中程序，保证显示值与产品判定使用同一份数据。
+    /// 只对整件检测设备有意义，其余设备类型隐藏整个标签，不占布局宽度。
+    /// </summary>
+    private void ApplyProgramLimitsDisplay()
+    {
+        var visible = string.Equals(
+            _currentSettings.ProcessParameterDeviceType?.Trim(),
+            ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck,
+            StringComparison.OrdinalIgnoreCase);
+        lblLiveProgramLimits1.Visible = visible;
+        if (!visible)
+        {
+            return;
+        }
+
+        var caption = _localizer.GetString(TextKeys.Monitor.Label.ProgramLimits);
+        var summary = ProgramContentJsonRules.BuildLimitsSummary(
+            GetCurrentStationState().ActiveTask?.ProgramContentSnapshot);
+        SetControlText(
+            lblLiveProgramLimits1,
+            $"{caption}：{(string.IsNullOrWhiteSpace(summary) ? "--" : summary)}");
     }
 
     private bool HasRealtimeProductChanged(ProductRealtimePreviewSnapshot snapshot)

@@ -152,6 +152,7 @@ public static class TextKeys
             public const string EnableDualWorkOrder = "monitor.tooltip.enable_dual_work_order";
             public const string MergedDisplay = "monitor.tooltip.merged_display";
             public const string FaceResultDisplay = "monitor.tooltip.face_result_display";
+            public const string ProgramLimits = "monitor.tooltip.program_limits";
         }
 
         public static class Label
@@ -160,6 +161,11 @@ public static class TextKeys
             /// 序号
             /// </summary>
             public const string SequenceNo = "monitor.label.sequence_no";
+
+            /// <summary>
+            /// 设定值（实时预览上方显示的程序最大允许值）
+            /// </summary>
+            public const string ProgramLimits = "monitor.label.program_limits";
 
             // ----- 连接状态 -----
 
