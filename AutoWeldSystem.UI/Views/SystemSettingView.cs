@@ -804,8 +804,8 @@ public partial class SystemSettingView : BaseView
         _selectedInspectionResultSource = ProductionConstants.InspectionResultSources.Normalize(settings.InspectionResultSource);
         _selectedRealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Normalize(settings.RealtimePointNumberSource);
         _selectedPairedAggregationMode = ProductionConstants.PairedAggregationModes.Normalize(settings.PairedAggregationMode);
-        chkEnableWholePieceMergedDisplay.Checked = settings.EnableWholePieceMergedDisplay == true;
-        chkEnableWholePieceFaceResultDisplay.Checked = settings.EnableWholePieceFaceResultDisplay != false;
+        chkEnableWholePieceMergedDisplay.Checked = settings.IsWholePieceMergedDisplayEnabled;
+        chkEnableWholePieceFaceResultDisplay.Checked = settings.IsWholePieceFaceResultDisplayEnabled;
         _selectedCenterServerSystemType = NormalizeCenterServerSystemType(settings.CenterServerSystemType);
         inputUploadBatchSize.Text = Math.Max(1, settings.UploadBatchSize).ToString(CultureInfo.InvariantCulture);
         inputReportDecimalPlaces.Text = FormatOutputDecimalPlaces(settings.ReportDecimalPlaces);

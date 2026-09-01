@@ -196,16 +196,30 @@ public class AppSettings
 
     /// <summary>
     /// 整件检测四面数据在监控界面合并成一行显示，使界面与上传、报表口径一致。仅影响界面。
+    /// 默认开启：合并视图与 MES 过程参数、XLSX 报表同源，现场核对时不必再做换算。
     /// </summary>
     [SugarColumn(ColumnDescription = "整件检测合并显示", IsNullable = true)]
-    public bool? EnableWholePieceMergedDisplay { get; set; } = false;
+    public bool? EnableWholePieceMergedDisplay { get; set; } = true;
 
     /// <summary>
-    /// 整件检测逐面模式是否显示“面结果”列。关闭后只隐藏该列，面号和逐面实测值保留，
-    /// 避免单面结果与合并视图的产品结果口径不同造成歧义。仅影响界面。
+    /// 整件检测逐面模式是否显示“面结果”列。关闭后只隐藏该列，面号和逐面实测值保留。
+    /// 默认关闭：单面结果与合并后的产品结果口径不同，同屏显示容易被误读成互相矛盾。仅影响界面。
     /// </summary>
     [SugarColumn(ColumnDescription = "整件检测逐面结果显示", IsNullable = true)]
-    public bool? EnableWholePieceFaceResultDisplay { get; set; } = true;
+    public bool? EnableWholePieceFaceResultDisplay { get; set; } = false;
+
+    /// <summary>
+    /// 合并显示的生效口径。默认开启，未配置（null）按开启处理。
+    /// 默认值只有这一处，避免各调用点各自写死空值兜底后与实体默认值相反。
+    /// </summary>
+    [SugarColumn(IsIgnore = true)]
+    public bool IsWholePieceMergedDisplayEnabled => EnableWholePieceMergedDisplay != false;
+
+    /// <summary>
+    /// “面结果”列的生效口径。默认关闭，未配置（null）按关闭处理。
+    /// </summary>
+    [SugarColumn(IsIgnore = true)]
+    public bool IsWholePieceFaceResultDisplayEnabled => EnableWholePieceFaceResultDisplay == true;
 
     /// <summary>
     /// 整件检测 A/B 配对聚合方式。高度取四面最大值、宽度只取 A 面，本设置只作用于其余测试项。

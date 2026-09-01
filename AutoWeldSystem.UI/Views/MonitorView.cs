@@ -1487,8 +1487,8 @@ public partial class MonitorView : BaseView
         _ = RefreshLocalProgramSnapshotAsync(rebindOptions: true);
         ApplyLocalizedTexts();
         SyncDualWorkOrderToggle(_currentSettings.EnableDualWorkOrder);
-        SyncMergedDisplayToggle(_currentSettings.EnableWholePieceMergedDisplay == true);
-        SyncFaceResultDisplayToggle(_currentSettings.EnableWholePieceFaceResultDisplay != false);
+        SyncMergedDisplayToggle(_currentSettings.IsWholePieceMergedDisplayEnabled);
+        SyncFaceResultDisplayToggle(_currentSettings.IsWholePieceFaceResultDisplayEnabled);
         UpdateCurrentTime();
         ConfigureDeviceMode();
         _weldTaskService.RestoreUnfinishedTask(CurrentStationNo);
@@ -2464,8 +2464,8 @@ public partial class MonitorView : BaseView
         }
 
         var previousShowTestFlag = _currentSettings.ShowTestFlagInHistory != false;
-        var previousMergedDisplay = _currentSettings.EnableWholePieceMergedDisplay == true;
-        var previousFaceResultDisplay = _currentSettings.EnableWholePieceFaceResultDisplay != false;
+        var previousMergedDisplay = _currentSettings.IsWholePieceMergedDisplayEnabled;
+        var previousFaceResultDisplay = _currentSettings.IsWholePieceFaceResultDisplayEnabled;
         UpdateSettingsSnapshot(e.CurrentSettings);
         RunOnUiThread(() =>
         {
@@ -2474,8 +2474,8 @@ public partial class MonitorView : BaseView
             SyncProductNumberFilterToggle(_currentSettings.UseProductNumberFilter);
             SyncDualWorkOrderAvailability();
             SyncDualWorkOrderToggle(_currentSettings.EnableDualWorkOrder);
-            SyncMergedDisplayToggle(_currentSettings.EnableWholePieceMergedDisplay == true);
-            SyncFaceResultDisplayToggle(_currentSettings.EnableWholePieceFaceResultDisplay != false);
+            SyncMergedDisplayToggle(_currentSettings.IsWholePieceMergedDisplayEnabled);
+            SyncFaceResultDisplayToggle(_currentSettings.IsWholePieceFaceResultDisplayEnabled);
             ApplyProgramLimitsDisplay();
         }, "MonitorView.SettingsChanged.DeviceIdentity");
         var currentShowTestFlag = e.CurrentSettings.ShowTestFlagInHistory != false;
@@ -2485,8 +2485,8 @@ public partial class MonitorView : BaseView
         }
 
         // 系统设置页也能改合并显示和逐面结果显示，这里同步重建界面，避免两个入口结果不一致。
-        var currentMergedDisplay = e.CurrentSettings.EnableWholePieceMergedDisplay == true;
-        var currentFaceResultDisplay = e.CurrentSettings.EnableWholePieceFaceResultDisplay != false;
+        var currentMergedDisplay = e.CurrentSettings.IsWholePieceMergedDisplayEnabled;
+        var currentFaceResultDisplay = e.CurrentSettings.IsWholePieceFaceResultDisplayEnabled;
         if (previousMergedDisplay != currentMergedDisplay || previousFaceResultDisplay != currentFaceResultDisplay)
         {
             RunOnUiThread(RefreshMergedDisplayViews, "MonitorView.SettingsChanged.MergedDisplay");
@@ -2684,7 +2684,7 @@ public partial class MonitorView : BaseView
                 _currentSettings.ProcessParameterDeviceType?.Trim(),
                 ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck,
                 StringComparison.OrdinalIgnoreCase)
-            && _currentSettings.EnableWholePieceMergedDisplay != true;
+            && !_currentSettings.IsWholePieceMergedDisplayEnabled;
     }
 
     /// <summary>
@@ -5044,9 +5044,9 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             chkEnableDualWorkOrder,
             _localizer.GetString(TextKeys.Monitor.Tooltip.EnableDualWorkOrder));
         chkMergedDisplay1.Text = _localizer.GetString(TextKeys.Monitor.Checkbox.MergedDisplay);
-        SyncMergedDisplayToggle(_currentSettings.EnableWholePieceMergedDisplay == true);
+        SyncMergedDisplayToggle(_currentSettings.IsWholePieceMergedDisplayEnabled);
         chkFaceResultDisplay1.Text = _localizer.GetString(TextKeys.Monitor.Checkbox.FaceResultDisplay);
-        SyncFaceResultDisplayToggle(_currentSettings.EnableWholePieceFaceResultDisplay != false);
+        SyncFaceResultDisplayToggle(_currentSettings.IsWholePieceFaceResultDisplayEnabled);
         tooltipComponent.SetTip(
             chkFaceResultDisplay1,
             _localizer.GetString(TextKeys.Monitor.Tooltip.FaceResultDisplay));
@@ -7365,7 +7365,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
                _currentSettings.ProcessParameterDeviceType?.Trim(),
                ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck,
                StringComparison.OrdinalIgnoreCase)
-           || _currentSettings.EnableWholePieceFaceResultDisplay != false;
+           || _currentSettings.IsWholePieceFaceResultDisplayEnabled;
 
     /// <summary>
     /// 设置预览值。
@@ -7464,7 +7464,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// 列结构由实时预览快照提供，开关关闭或非四面整件检测时保持逐面显示。
     /// </summary>
     private bool IsWholePieceMergedPreview()
-        => _currentSettings.EnableWholePieceMergedDisplay == true && _mergedPreviewColumns.Count > 0;
+        => _currentSettings.IsWholePieceMergedDisplayEnabled && _mergedPreviewColumns.Count > 0;
 
     private static string BuildMergedPreviewColumnName(int index)
         => $"merged_{index.ToString(CultureInfo.InvariantCulture)}";

@@ -3549,7 +3549,15 @@ static void WholePieceZeroMergedValueFailsProductLevelItems()
         ProductionConstants.PairedAggregationModes.Maximum,
         new AppSettings().PairedAggregationMode,
         "配对聚合默认必须是最大值：取平均会把检测失败的0拉进结果，反而更容易判OK。");
-    AssertTrue(new AppSettings().EnableWholePieceFaceResultDisplay != false, "逐面结果列默认必须显示。");
+    AssertTrue(new AppSettings().IsWholePieceMergedDisplayEnabled, "合并显示默认必须开启：合并视图与 MES 上传、XLSX 报表同源。");
+    AssertFalse(new AppSettings().IsWholePieceFaceResultDisplayEnabled, "逐面结果列默认必须隐藏：单面结果与合并后的产品结果口径不同，同屏容易被误读成矛盾。");
+    // 未配置（null）时必须与实体默认值同向，避免各调用点自己写兜底后与默认相反
+    AssertTrue(
+        new AppSettings { EnableWholePieceMergedDisplay = null }.IsWholePieceMergedDisplayEnabled,
+        "合并显示未配置时必须按开启处理。");
+    AssertFalse(
+        new AppSettings { EnableWholePieceFaceResultDisplay = null }.IsWholePieceFaceResultDisplayEnabled,
+        "面结果未配置时必须按关闭处理。");
 }
 
 static void WholePiecePairedAggregationSupportsMaximumMode()
