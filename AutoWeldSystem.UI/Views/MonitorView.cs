@@ -7767,13 +7767,13 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     }
 
     /// <summary>
-    /// 判断是否存在AnyEnabled角色。
+    /// 判断方案明细是否至少启用一个实时预览角色。
     /// </summary>
     /// <param name="detail">详情。</param>
     /// <returns>条件满足返回 true，否则返回 false。</returns>
-    private static bool HasAnyEnabledRole(BizSchemeDetail detail)
+    private static bool HasAnyPreviewEnabled(BizSchemeDetail detail)
     {
-        return SchemeDetailRoleRules.HasAnyCollectEnabled(detail);
+        return SchemeDetailRoleRules.HasAnyPreviewEnabled(detail);
     }
 
     /// <summary>
@@ -8594,7 +8594,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
                 SchemeDetailRoleRules.ClearUnavailableRoles(item.Detail, item.Item!);
                 return item;
             })
-            .Where(item => HasAnyEnabledRole(item.Detail))
+            .Where(item => HasAnyPreviewEnabled(item.Detail))
             .Select(item => new SchemePreviewItem(item.Sort, item.Item!, item.Detail))
             .ToList();
     }

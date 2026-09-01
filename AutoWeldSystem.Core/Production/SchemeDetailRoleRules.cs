@@ -1,10 +1,10 @@
-using AutoWeldSystem.Core.Entities;
+﻿using AutoWeldSystem.Core.Entities;
 
 namespace AutoWeldSystem.Core.Production;
 
 /// <summary>
 /// 方案明细角色规则。
-/// 统一维护“采集、保存、报表、MES”之间的关系，避免规则散落在界面和服务中。
+/// 统一维护“实时预览、保存、报表、MES”之间的关系，避免规则散落在界面和服务中。
 /// </summary>
 public static class SchemeDetailRoleRules
 {
@@ -55,9 +55,9 @@ public static class SchemeDetailRoleRules
     }
 
     /// <summary>
-    /// 判断角色是否已启用采集。
+    /// 判断角色是否在实时预览表格中显示。
     /// </summary>
-    public static bool IsCollectEnabled(BizSchemeDetail detail, SchemeDetailValueRole role)
+    public static bool IsPreviewEnabled(BizSchemeDetail detail, SchemeDetailValueRole role)
     {
         return role switch
         {
@@ -70,9 +70,9 @@ public static class SchemeDetailRoleRules
     }
 
     /// <summary>
-    /// 设置角色采集开关。
+    /// 设置角色实时预览开关。
     /// </summary>
-    public static void SetCollectEnabled(BizSchemeDetail detail, SchemeDetailValueRole role, bool value)
+    public static void SetPreviewEnabled(BizSchemeDetail detail, SchemeDetailValueRole role, bool value)
     {
         switch (role)
         {
@@ -238,10 +238,10 @@ public static class SchemeDetailRoleRules
         => ShouldPersistRole(detail, role);
 
     /// <summary>
-    /// 判断方案明细是否至少启用一个采集角色。
+    /// 判断方案明细是否至少启用一个实时预览角色。
     /// </summary>
-    public static bool HasAnyCollectEnabled(BizSchemeDetail detail)
-        => AllRoles.Any(role => IsCollectEnabled(detail, role));
+    public static bool HasAnyPreviewEnabled(BizSchemeDetail detail)
+        => AllRoles.Any(role => IsPreviewEnabled(detail, role));
 
     /// <summary>
     /// 判断方案明细是否包含任意采集或输出配置。
@@ -249,7 +249,7 @@ public static class SchemeDetailRoleRules
     /// </summary>
     public static bool HasAnyConfiguredRole(BizSchemeDetail detail)
     {
-        return AllRoles.Any(role => IsCollectEnabled(detail, role)
+        return AllRoles.Any(role => IsPreviewEnabled(detail, role)
             || IsSaveEnabled(detail, role)
             || IsReportEnabled(detail, role)
             || IsMesEnabled(detail, role));
@@ -348,7 +348,7 @@ public static class SchemeDetailRoleRules
     /// </summary>
     public static void ClearRole(BizSchemeDetail detail, SchemeDetailValueRole role)
     {
-        SetCollectEnabled(detail, role, false);
+        SetPreviewEnabled(detail, role, false);
         SetSaveEnabled(detail, role, false);
         SetReportEnabled(detail, role, false);
         SetMesEnabled(detail, role, false);

@@ -1181,7 +1181,7 @@ public partial class AddressManageView : BaseView
                 item.ItemId,
                 role,
                 SchemeDetailRoleRules.GetRoleName(role),
-                detail is not null && SchemeDetailRoleRules.IsCollectEnabled(detail, role)));
+                detail is not null && SchemeDetailRoleRules.IsPreviewEnabled(detail, role)));
         }
         parent.Checked = parent.Nodes.Cast<TreeNode>().Any(node => node.Checked);
         return parent;
@@ -1421,7 +1421,7 @@ public partial class AddressManageView : BaseView
     {
         foreach (var role in SchemeDetailRoleRules.AllRoles)
         {
-            SchemeDetailRoleRules.SetCollectEnabled(detail, role, IsSchemeDetailRoleChecked(itemNode, role));
+            SchemeDetailRoleRules.SetPreviewEnabled(detail, role, IsSchemeDetailRoleChecked(itemNode, role));
         }
     }
 
@@ -1985,7 +1985,7 @@ public partial class AddressManageView : BaseView
                 var detail = schemeItem.Detail;
                 foreach (var role in SchemeDetailRoleRules.GetAvailableRoles(item))
                 {
-                    if (SchemeDetailRoleRules.IsCollectEnabled(detail, role))
+                    if (SchemeDetailRoleRules.IsPreviewEnabled(detail, role))
                     {
                         AddProductProcessAddressPreviewRow(
                             rows,
@@ -2809,7 +2809,7 @@ public partial class AddressManageView : BaseView
             var outputEnabled = SchemeDetailRoleRules.IsSaveEnabled(detail, role)
                 || SchemeDetailRoleRules.IsReportEnabled(detail, role)
                 || SchemeDetailRoleRules.IsMesEnabled(detail, role);
-            if (!SchemeDetailRoleRules.IsCollectEnabled(detail, role) && outputEnabled)
+            if (!SchemeDetailRoleRules.IsPreviewEnabled(detail, role) && outputEnabled)
             {
                 throw new InvalidOperationException($"{item.ItemName}{SchemeDetailRoleRules.GetRoleName(role)}已启用保存、报表或 MES，必须先启用采集。");
             }
@@ -3028,7 +3028,7 @@ public partial class AddressManageView : BaseView
 
     private static bool HasAnyEnabledRole(BizSchemeDetail detail)
     {
-        return SchemeDetailRoleRules.HasAnyCollectEnabled(detail);
+        return SchemeDetailRoleRules.HasAnyPreviewEnabled(detail);
     }
 
     private static bool HasAnyConfiguredRole(BizSchemeDetail detail)

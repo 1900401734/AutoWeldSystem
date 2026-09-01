@@ -1,4 +1,4 @@
-using AutoWeldSystem.Core.Constants;
+﻿using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Exceptions;
 using AutoWeldSystem.Core.Interfaces;
@@ -196,7 +196,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
                     SchemeDetailRoleRules.ClearUnavailableRoles(detail, item);
                     return new SchemeItemSnapshot(detail.DetailId, item, detail);
                 })
-                .Where(snapshot => HasAnyEnabledRole(snapshot.Detail))
+                .Where(snapshot => SchemeDetailRoleRules.HasAnyConfiguredRole(snapshot.Detail))
                 .ToList();
         }
     }
@@ -845,11 +845,6 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         }
 
         values[key.Trim()] = value;
-    }
-
-    private static bool HasAnyEnabledRole(BizSchemeDetail detail)
-    {
-        return SchemeDetailRoleRules.HasAnyConfiguredRole(detail);
     }
 
     private static string? FirstValue(IReadOnlyDictionary<string, string> values, params string[] keys)
