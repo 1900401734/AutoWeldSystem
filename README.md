@@ -1,6 +1,29 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.17.1`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.17.3`。
+
+## v2.17.3 修复说明
+
+本版修复中心服务器看板收不到设备端产品数据的两个独立缺陷。两者叠加时，第一个让数据发不出去，第二个让发出去的数据被拒收。
+
+**一、转发任务类型被静默改写（设备端）**
+
+- `UploadTaskService.NormalizeTaskType` 漏登记 `CenterProductReport`，落入兜底分支后被改写成 `ProcessParameter`，而中心转发服务按 `CenterProductReport` 查询待发任务，因此永远取不到——任务全部堆在本地库里无人消费。
+- 现象：设备端有「中心服务器产品数据转发已入队」日志，但没有后续的转发成功或失败记录；中心服务端收不到任何 `product-report` 请求。心跳和设备状态走另一条链路一直正常，所以看板上设备在线却没有数据。
+- 升级后启动时**自动修正历史上被错误归类的转发任务**，重新进入现有重试队列补传，无需手工处理。判定条件 `Target=CentralServer` 只由中心转发写入，不影响 MES 上传任务；补传按队列串行进行，不会一次性冲击中心服务器。
+
+**二、中心报表凭空补出采集点表头（服务端）**
+
+- 采集点表头由设备端**工位级工艺配置**决定（点焊为「焊点编号」，整件检测为「检测面」），中心服务端无从判断。但 `CenterProductReportFormat.BuildDetailColumns` 在设备端未提供表头时会补默认值，且默认值硬编码为非整件检测的「焊点编号」。
+- 工单完工更新请求按契约只推进任务状态、不携带列定义，服务端却拿这个空列表补出「焊点编号」写进中心报表文件。此后携带「检测面」的产品数据全部被表头一致性校验拒收，报错「同一中心报表的采集点表头不一致：焊点编号 / 检测面」。
+- 现改为：设备端未提供采集点表头时**留空**，不再猜测设备类型；设备端提供表头时原样保留，行为不变。
+- 该缺陷只影响采集点表头不是「焊点编号」的设备，因此整件检测设备接入后才暴露；点焊设备的表头恰好与被猜出的默认值一致，从未受影响。
+
+**升级后的现场处置**
+
+已生成的中心报表文件里可能残留错误表头，服务端读取时原样读回，不会自愈。需要停止中心服务端，删除受影响的 `<数据目录>\<设备编号>\<工单号>.xlsx` 后重启，文件会按正确表头重建。已耗尽重试次数（状态为失败）的转发任务不会自动重发，该部分产品数据在设备端本地库完整保留，可按需重新处理。
+
+产品数据的同步字段范围不变：仍由测试方案明细中的「保存历史」决定，与数据管理页历史列表看到的动态列一致；报表或 MES 独占字段不会同步。
 
 ## v2.17.1 修复说明
 
@@ -480,10 +503,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>2.17.1</Version>
-<AssemblyVersion>2.17.1.0</AssemblyVersion>
-<FileVersion>2.17.1.0</FileVersion>
-<InformationalVersion>2.17.1</InformationalVersion>
+<Version>2.17.3</Version>
+<AssemblyVersion>2.17.3.0</AssemblyVersion>
+<FileVersion>2.17.3.0</FileVersion>
+<InformationalVersion>2.17.3</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -495,9 +518,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v2.17.1 -m "Release v2.17.1"
+git tag -a v2.17.3 -m "Release v2.17.3"
 git push origin main
-git push origin v2.17.1
+git push origin v2.17.3
 ```
 
 ## Git 使用
