@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using AutoWeldSystem.Core.Center;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs.CenterServer;
@@ -223,6 +223,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
     /// <summary>
     /// 将已持久化的工单完工统计放入现有中心服务器重试队列。
     /// 完工请求只包含任务级字段，不重复携带产品点明细。
+    /// 入队前先扫描该工单有无未成功的产品转发任务并唤醒，作为完工前的最后一道补漏。
     /// </summary>
     public void EnqueueTaskFinishUpdate(BizWeldTask task)
     {
@@ -232,6 +233,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             return;
         }
 
+        ResumeUnfinishedProductTasks(task);
         var request = BuildTaskFinishRequest(settings, task);
         var uploadTask = _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
         {
@@ -252,6 +254,50 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             stationNo: request.StationNo,
             workOrderId: request.WorkOrder,
             programId: task.ProgramId ?? string.Empty);
+    }
+
+    /// <summary>
+    /// 工单完工前唤醒该工单尚未成功的产品转发任务，确保完工时整批数据都在队列里等待补齐。
+    /// 逐产品实时转发仍是主通道，这里只兜住此前被判死的漏网任务，不重发已成功的产品。
+    /// </summary>
+    private void ResumeUnfinishedProductTasks(BizWeldTask task)
+    {
+        try
+        {
+            lock (_dbLock)
+            {
+                _dbContext.InitDatabase();
+                var now = DateTime.Now;
+                var resumed = _dbContext.Db.Updateable<BizUploadTask>()
+                    .SetColumns(item => new BizUploadTask
+                    {
+                        Status = ProductionConstants.UploadStatuses.Pending,
+                        RetryCount = 0,
+                        NextRetryTime = now,
+                        Message = "工单完工补漏：重新排队未成功的中心服务器产品数据。",
+                        UpdatedTime = now
+                    })
+                    .Where(item => item.TaskType == ProductionConstants.UploadTaskTypes.CenterProductReport
+                        && item.Target == ProductionConstants.UploadTargets.CentralServer
+                        && item.WeldTaskId == task.Id
+                        && !item.IsDeleted
+                        && item.Status != ProductionConstants.UploadStatuses.Uploaded)
+                    .ExecuteCommand();
+                if (resumed > 0)
+                {
+                    _productionLogService.Write(
+                        "CenterProductForwardFinishSweep",
+                        ProductionFlowLogTexts.Summaries.CenterProductForwardFinishSweep,
+                        $"ResumedCount={resumed}",
+                        workOrderId: task.SN ?? string.Empty);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // 补漏失败不能阻塞完工上报，产品数据仍留在队列里由后台循环继续重试。
+            _exceptionLogService.Write(ex, "CenterProductForwardingService.ResumeUnfinishedProductTasks");
+        }
     }
 
     /// <summary>

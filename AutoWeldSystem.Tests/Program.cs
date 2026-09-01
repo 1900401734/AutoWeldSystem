@@ -5691,6 +5691,26 @@ static void CenterForwardingSurvivesCenterServerOutage()
         resume.Contains("RetryCount = 0", StringComparison.Ordinal),
         "启动恢复必须重置重试次数，否则任务仍被消费查询排除。");
 
+    // 完工前补漏：只唤醒该工单未成功的任务，不重发已成功的产品
+    var finishSweep = ExtractMethodText(
+        forwardCode,
+        "private void ResumeUnfinishedProductTasks(BizWeldTask task)",
+        "private async Task RunAsync(CancellationToken cancellationToken)");
+    AssertTrue(
+        finishSweep.Contains("item.WeldTaskId == task.Id", StringComparison.Ordinal),
+        "完工补漏必须限定在本工单，避免波及其他工单的队列。");
+    AssertTrue(
+        finishSweep.Contains("item.Status != ProductionConstants.UploadStatuses.Uploaded", StringComparison.Ordinal),
+        "完工补漏不得重发已成功的产品数据。");
+
+    var enqueueFinish = ExtractMethodText(
+        forwardCode,
+        "public void EnqueueTaskFinishUpdate(BizWeldTask task)",
+        "private void ResumeUnfinishedProductTasks(BizWeldTask task)");
+    AssertTrue(
+        enqueueFinish.Contains("ResumeUnfinishedProductTasks(task)", StringComparison.Ordinal),
+        "工单完工时必须执行一次补漏扫描，作为产品数据到位的最后一道保障。");
+
     // 分类依据本身：服务器关闭表现为 HttpRequestException，必须判定为连接类失败
     AssertTrue(
         CenterServerAvailabilityLogGate.IsConnectivityFailure(

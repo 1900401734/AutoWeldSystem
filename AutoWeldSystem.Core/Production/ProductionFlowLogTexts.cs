@@ -1,4 +1,4 @@
-﻿namespace AutoWeldSystem.Core.Production;
+namespace AutoWeldSystem.Core.Production;
 
 /// <summary>
 /// 生产流程日志摘要及其运行提示资源键。
@@ -26,6 +26,7 @@ public static class ProductionFlowLogTexts
         public const string CenterProductForwardFailed = "中心服务器产品数据转发失败，等待重试";
         public const string CenterProductForwardTaskTypeRepaired = "已修正历史中心服务器转发任务类型，将自动补传";
         public const string CenterProductForwardTasksResumed = "已恢复未完成的中心服务器转发任务，将重新补传";
+        public const string CenterProductForwardFinishSweep = "工单完工补漏：已重新排队未成功的中心服务器产品数据";
         public const string UploadSucceeded = "上传成功";
         public const string UploadFailed = "上传失败";
         public const string ProcessParameterUploadSucceeded = "过程参数上传成功";
