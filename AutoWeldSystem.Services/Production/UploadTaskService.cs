@@ -2338,6 +2338,7 @@ public class UploadTaskService : IUploadTaskService
             ProductionConstants.UploadTaskTypes.ReportFile => ProductionConstants.UploadTaskTypes.ReportFile,
             ProductionConstants.UploadTaskTypes.ProgramFile => ProductionConstants.UploadTaskTypes.ProgramFile,
             ProductionConstants.UploadTaskTypes.DeviceStatus => ProductionConstants.UploadTaskTypes.DeviceStatus,
+            ProductionConstants.UploadTaskTypes.CenterProductReport => ProductionConstants.UploadTaskTypes.CenterProductReport,
             _ => ProductionConstants.UploadTaskTypes.ProcessParameter
         };
     }

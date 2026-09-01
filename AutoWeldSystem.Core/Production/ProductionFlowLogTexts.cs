@@ -24,6 +24,7 @@ public static class ProductionFlowLogTexts
         public const string CenterTaskFinishUpdateQueued = "中心服务器工单完工更新已入队";
         public const string CenterProductForwardSucceeded = "中心服务器产品数据转发成功";
         public const string CenterProductForwardFailed = "中心服务器产品数据转发失败，等待重试";
+        public const string CenterProductForwardTaskTypeRepaired = "已修正历史中心服务器转发任务类型，将自动补传";
         public const string UploadSucceeded = "上传成功";
         public const string UploadFailed = "上传失败";
         public const string ProcessParameterUploadSucceeded = "过程参数上传成功";

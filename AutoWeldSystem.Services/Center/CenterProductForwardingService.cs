@@ -56,9 +56,46 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             return Task.CompletedTask;
         }
 
+        RepairMistypedCenterTasks();
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _loopTask = Task.Run(() => RunAsync(_cts.Token), CancellationToken.None);
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 修正历史上被错误归类的中心转发任务。
+    /// UploadTaskService.NormalizeTaskType 曾漏登记 CenterProductReport，把任务类型静默改写成
+    /// ProcessParameter，导致本服务的消费查询永远取不到这些任务，中心看板收不到任何产品数据。
+    /// Target=CentralServer 只由本服务写入，因此该条件不会误伤 MES 任务。
+    /// 修正后这些任务重新进入现有重试队列自动补传；类型已正确时该更新不匹配任何行。
+    /// </summary>
+    private void RepairMistypedCenterTasks()
+    {
+        try
+        {
+            lock (_dbLock)
+            {
+                _dbContext.InitDatabase();
+                var repaired = _dbContext.Db.Updateable<BizUploadTask>()
+                    .SetColumns(task => task.TaskType == ProductionConstants.UploadTaskTypes.CenterProductReport)
+                    .Where(task => task.Target == ProductionConstants.UploadTargets.CentralServer
+                        && task.TaskType != ProductionConstants.UploadTaskTypes.CenterProductReport
+                        && !task.IsDeleted)
+                    .ExecuteCommand();
+                if (repaired > 0)
+                {
+                    _productionLogService.Write(
+                        "CenterProductForwardTaskTypeRepaired",
+                        ProductionFlowLogTexts.Summaries.CenterProductForwardTaskTypeRepaired,
+                        $"RepairedCount={repaired}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // 修正失败不能阻塞转发循环启动，否则新产品也一起同步不了。
+            _exceptionLogService.Write(ex, "CenterProductForwardingService.RepairMistypedCenterTasks");
+        }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken = default)

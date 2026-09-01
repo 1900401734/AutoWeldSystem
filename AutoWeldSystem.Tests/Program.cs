@@ -104,6 +104,7 @@ var tests = new (string Name, Action Run)[]
     ("Product retest only applies to inspection device", ProductRetestOnlyAppliesToInspectionDevice),
     ("Product retest overwrites values and reopens upload", ProductRetestOverwritesValuesAndReopensUpload),
     ("Product retest removes only uncovered stale records", ProductRetestRemovesOnlyUncoveredStaleRecords),
+    ("Upload task type normalization covers every registered type", UploadTaskTypeNormalizationCoversEveryRegisteredType),
     ("Upload task retest reopen allows product scoped tasks only", UploadTaskRetestReopenAllowsProductScopedTasksOnly),
     ("Data history dynamic columns append test item units", DataHistoryDynamicColumnsAppendTestItemUnits),
     ("Realtime preview columns append test item units", RealtimePreviewColumnsAppendTestItemUnits),
@@ -2406,6 +2407,45 @@ static void ProductRetestRemovesOnlyUncoveredStaleRecords()
         new[] { 3, 4 },
         stale.Select(record => record.Id).ToArray(),
         "本轮未覆盖的残留面必须删除，避免同一产品混合两轮数据被四面转A/B聚合成错误产品结果。");
+}
+
+/// <summary>
+/// NormalizeTaskType 的兜底分支会把未登记的类型静默改写成 ProcessParameter，不抛异常也不记日志。
+/// CenterProductReport 曾因漏登记被改写，导致中心转发服务的消费查询永远取不到任务，
+/// 中心看板从未收到任何产品数据。用反射遍历全部常量，任何新增类型漏登记都会立刻失败。
+/// </summary>
+static void UploadTaskTypeNormalizationCoversEveryRegisteredType()
+{
+    var normalize = typeof(UploadTaskService).GetMethod(
+        "NormalizeTaskType",
+        System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+    AssertTrue(normalize is not null, "上传任务服务必须保留任务类型归一化入口。");
+
+    var constants = typeof(ProductionConstants.UploadTaskTypes)
+        .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+        .Where(field => field.IsLiteral && field.FieldType == typeof(string))
+        .ToList();
+    AssertTrue(constants.Count > 0, "任务类型常量集合不得为空，否则该断言会空转通过。");
+
+    foreach (var field in constants)
+    {
+        var taskType = (string)field.GetValue(null)!;
+        AssertEqual(
+            taskType,
+            (string)normalize!.Invoke(null, [taskType])!,
+            $"任务类型 {field.Name} 必须被原样返回；落入兜底分支会被静默改写成过程参数，使该类型的消费方永远查不到任务。");
+    }
+
+    // 中心转发任务的消费查询按类型和目标同时过滤，两者都必须与入队时写入的值一致。
+    var forwardCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Center", "CenterProductForwardingService.cs"),
+        Encoding.UTF8);
+    AssertTrue(
+        forwardCode.Contains("task.TaskType == ProductionConstants.UploadTaskTypes.CenterProductReport", StringComparison.Ordinal),
+        "中心转发消费查询必须按 CenterProductReport 类型过滤。");
+    AssertTrue(
+        forwardCode.Contains("RepairMistypedCenterTasks", StringComparison.Ordinal),
+        "启动时必须修正历史上被错误归类的中心转发任务，否则旧数据永远不会补传。");
 }
 
 static void UploadTaskRetestReopenAllowsProductScopedTasksOnly()
