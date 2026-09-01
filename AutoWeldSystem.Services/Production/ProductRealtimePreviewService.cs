@@ -1,4 +1,4 @@
-using AutoWeldSystem.Core.Constants;
+﻿using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
 using AutoWeldSystem.Core.DTOs.Mes.Response;
 using AutoWeldSystem.Core.Entities;
@@ -417,7 +417,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         }
 
         return ResolveSchemeItems(config.SchemeId)
-            .Where(item => item.EnableActual)
+            .Where(item => SchemeDetailRoleRules.ShouldEvaluateProgramRole(item.Detail, SchemeDetailValueRole.Actual))
             .Select(item => new WholePieceAbValueDefinition(
                 item.Item.ItemId,
                 item.Item.ItemName,
@@ -434,8 +434,10 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         AppSettings settings,
         IReadOnlyList<WholePieceAbValueDefinition> definitions)
     {
+        // 只收参与聚合的测试项：未读取实际值的行只有空串，按测试项名分组时会盖掉真实值。
+        var aggregatedItemIds = definitions.Select(definition => definition.ItemId).ToHashSet();
         var sideItemValues = rowResult.Rows
-            .Where(row => row.EnableActual)
+            .Where(row => aggregatedItemIds.Contains(row.ItemId))
             .GroupBy(row => row.TouchIndex.ToString(CultureInfo.InvariantCulture))
             .ToDictionary(
                 group => group.Key,
@@ -496,6 +498,11 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         CancellationToken cancellationToken)
     {
         var schemeItems = ResolveSchemeItems(config.SchemeId);
+        // 参与程序判定的测试项集合，与采集落库口径一致；预览显示范围不影响判定范围。
+        var programItemIds = schemeItems
+            .Where(item => SchemeDetailRoleRules.ShouldEvaluateProgramRole(item.Detail, SchemeDetailValueRole.Actual))
+            .Select(item => item.Item.ItemId)
+            .ToHashSet();
         var rows = new List<ProductRealtimePreviewRow>();
         var faceResults = new List<string?>();
         var plcFaceResults = new List<string?>();
@@ -557,7 +564,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             {
                 // B 面（面1、面3）的宽度不参与面级判定：程序内容里的宽度上限按 A 面设定。
                 var measurements = faceRows
-                    .Where(row => row.EnableActual
+                    .Where(row => programItemIds.Contains(row.ItemId)
                         && WholePieceProgramResultRules.ParticipatesInFaceEvaluation(
                             row.ItemName,
                             touchNo.ToString(CultureInfo.InvariantCulture),
@@ -609,7 +616,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         CancellationToken cancellationToken)
     {
         var item = schemeItem.Item;
-        var actual = schemeItem.EnableActual
+        var actual = schemeItem.ReadActual
             ? ResolveExpressionBinding(config.TestBase, testContextOffset, item.ActualExpression)
             : PlcExpressionBinding.Empty;
         var upper = schemeItem.EnableUpper
@@ -647,7 +654,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             UpperHeader = ResolveDetailHeader(schemeItem.Detail, item, ProductRealtimePreviewRole.Upper),
             LowerHeader = ResolveDetailHeader(schemeItem.Detail, item, ProductRealtimePreviewRole.Lower),
             ResultHeader = ResolveDetailHeader(schemeItem.Detail, item, ProductRealtimePreviewRole.Result),
-            ActualValue = await ResolvePreviewValue(schemeItem.EnableActual, shouldReadTestValues, actual, cancellationToken),
+            ActualValue = await ResolvePreviewValue(schemeItem.ReadActual, shouldReadTestValues, actual, cancellationToken),
             UpperValue = await ResolvePreviewValue(schemeItem.EnableUpper, shouldReadTestValues, upper, cancellationToken),
             LowerValue = await ResolvePreviewValue(schemeItem.EnableLower, shouldReadTestValues, lower, cancellationToken),
             Result = await ResolvePreviewResult(schemeItem.EnableResult, shouldReadTestValues, result, cancellationToken),
@@ -684,7 +691,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
                 SchemeDetailRoleRules.ClearUnavailableRoles(item.Detail, item.Item!);
                 return item;
             })
-            .Where(item => HasAnyEnabledRole(item.Detail))
+            .Where(item => ShouldIncludeInPreview(item.Detail))
             .Select(item => new SchemePreviewItem(item.Sort, item.Item!, item.Detail))
             .ToList();
     }
@@ -971,9 +978,15 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         Result
     }
 
-    private static bool HasAnyEnabledRole(BizSchemeDetail detail)
+    /// <summary>
+    /// 判断方案明细是否需要出现在实时预览的读取范围内。
+    /// 参与程序判定但未勾实时预览的测试项也必须读值，否则预览判定与采集落库判定不同源，
+    /// 现场会看到预览 OK、落库 NG。这类项四个显示开关全为 false，界面侧会自动排除。
+    /// </summary>
+    private static bool ShouldIncludeInPreview(BizSchemeDetail detail)
     {
-        return SchemeDetailRoleRules.HasAnyCollectEnabled(detail);
+        return SchemeDetailRoleRules.HasAnyPreviewEnabled(detail)
+            || SchemeDetailRoleRules.ShouldEvaluateProgramRole(detail, SchemeDetailValueRole.Actual);
     }
 
     private sealed record SchemePreviewItem(int Sort, DimTestItem Item, BizSchemeDetail Detail)
@@ -985,5 +998,11 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         public bool EnableLower => Detail.EnableLower;
 
         public bool EnableResult => Detail.EnableResult;
+
+        /// <summary>
+        /// 实际值是否需要读取。显示或参与程序判定都要读；上限、下限、结果只可能被显示，读取条件不放宽。
+        /// </summary>
+        public bool ReadActual => Detail.EnableActual
+            || SchemeDetailRoleRules.ShouldEvaluateProgramRole(Detail, SchemeDetailValueRole.Actual);
     }
 }

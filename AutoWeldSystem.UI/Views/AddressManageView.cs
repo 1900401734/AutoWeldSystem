@@ -313,9 +313,9 @@ public partial class AddressManageView : BaseView
         schemeDetailRoleGrid.Columns.Clear();
         schemeDetailRoleGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(SchemeDetailRoleTableRow.ItemName), HeaderText = _localizer.GetString(TextKeys.Address.ColumnDetailItem), ReadOnly = true });
         schemeDetailRoleGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(SchemeDetailRoleTableRow.RoleName), HeaderText = _localizer.GetString(TextKeys.Address.ColumnDetailRole), ReadOnly = true });
-        AddSchemeDetailRoleCheckColumn(nameof(SchemeDetailRoleTableRow.Enabled), TextKeys.Address.ColumnDetailEnabled);
         schemeDetailRoleGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(SchemeDetailRoleTableRow.HeaderText), HeaderText = _localizer.GetString(TextKeys.Address.ColumnDetailHeader) });
         AddSchemeDetailRoleCheckColumn(nameof(SchemeDetailRoleTableRow.SaveEnabled), TextKeys.Address.ColumnDetailSave);
+        AddSchemeDetailRoleCheckColumn(nameof(SchemeDetailRoleTableRow.ForwardEnabled), TextKeys.Address.ColumnDetailForward);
         AddSchemeDetailRoleCheckColumn(nameof(SchemeDetailRoleTableRow.ReportEnabled), TextKeys.Address.ColumnDetailReport);
         AddSchemeDetailRoleCheckColumn(nameof(SchemeDetailRoleTableRow.MesEnabled), TextKeys.Address.ColumnDetailMes);
         schemeDetailRoleGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(SchemeDetailRoleTableRow.MesFieldName), HeaderText = _localizer.GetString(TextKeys.Address.ColumnDetailMesField) });
@@ -1181,7 +1181,7 @@ public partial class AddressManageView : BaseView
                 item.ItemId,
                 role,
                 SchemeDetailRoleRules.GetRoleName(role),
-                detail is not null && SchemeDetailRoleRules.IsCollectEnabled(detail, role)));
+                detail is not null && SchemeDetailRoleRules.IsPreviewEnabled(detail, role)));
         }
         parent.Checked = parent.Nodes.Cast<TreeNode>().Any(node => node.Checked);
         return parent;
@@ -1421,7 +1421,7 @@ public partial class AddressManageView : BaseView
     {
         foreach (var role in SchemeDetailRoleRules.AllRoles)
         {
-            SchemeDetailRoleRules.SetCollectEnabled(detail, role, IsSchemeDetailRoleChecked(itemNode, role));
+            SchemeDetailRoleRules.SetPreviewEnabled(detail, role, IsSchemeDetailRoleChecked(itemNode, role));
         }
     }
 
@@ -1985,7 +1985,7 @@ public partial class AddressManageView : BaseView
                 var detail = schemeItem.Detail;
                 foreach (var role in SchemeDetailRoleRules.GetAvailableRoles(item))
                 {
-                    if (SchemeDetailRoleRules.IsCollectEnabled(detail, role))
+                    if (SchemeDetailRoleRules.IsPreviewEnabled(detail, role))
                     {
                         AddProductProcessAddressPreviewRow(
                             rows,
@@ -2788,49 +2788,37 @@ public partial class AddressManageView : BaseView
             detail.LowerMesFieldName = NormalizeNullableText(detail.LowerMesFieldName);
             detail.ResultMesFieldName = NormalizeNullableText(detail.ResultMesFieldName);
             SchemeDetailRoleRules.ClearUnavailableRoles(detail, item);
-            ValidateMesFieldName(detail.EnableActual, detail.MesActual, detail.ActualMesFieldName, item.ItemName, "实际值");
-            ValidateMesFieldName(detail.EnableUpper, detail.MesUpper, detail.UpperMesFieldName, item.ItemName, "上限");
-            ValidateMesFieldName(detail.EnableLower, detail.MesLower, detail.LowerMesFieldName, item.ItemName, "下限");
-            ValidateMesFieldName(detail.EnableResult, detail.MesResult, detail.ResultMesFieldName, item.ItemName, "结果");
+            ValidateMesFieldName(detail.MesActual, detail.ActualMesFieldName, item.ItemName, "实际值");
+            ValidateMesFieldName(detail.MesUpper, detail.UpperMesFieldName, item.ItemName, "上限");
+            ValidateMesFieldName(detail.MesLower, detail.LowerMesFieldName, item.ItemName, "下限");
+            ValidateMesFieldName(detail.MesResult, detail.ResultMesFieldName, item.ItemName, "结果");
             SchemeDetailRoleRules.ClearUnavailableRoles(detail, item);
-            ValidateSchemeDetailRoleOutputs(detail, item);
 
-            if (!HasAnyEnabledRole(detail))
+            if (!SchemeDetailRoleRules.HasAnyConfiguredRole(detail))
             {
-                throw new InvalidOperationException("方案明细至少需要启用实际值、上限、下限或结果中的一项。");
+                throw new InvalidOperationException("方案明细至少需要勾选实时预览、本地保存、转发看板、写入报表或过程参数中的一项。");
             }
         }
     }
 
-    private static void ValidateSchemeDetailRoleOutputs(BizSchemeDetail detail, DimTestItem item)
-    {
-        foreach (var role in SchemeDetailRoleRules.GetAvailableRoles(item))
-        {
-            var outputEnabled = SchemeDetailRoleRules.IsSaveEnabled(detail, role)
-                || SchemeDetailRoleRules.IsReportEnabled(detail, role)
-                || SchemeDetailRoleRules.IsMesEnabled(detail, role);
-            if (!SchemeDetailRoleRules.IsCollectEnabled(detail, role) && outputEnabled)
-            {
-                throw new InvalidOperationException($"{item.ItemName}{SchemeDetailRoleRules.GetRoleName(role)}已启用保存、报表或 MES，必须先启用采集。");
-            }
-        }
-    }
-
+    /// <summary>
+    /// 校验过程参数字段名。
+    /// 五个通道互相独立，勾选过程参数就必须填字段名，不得再以实时预览为前置条件，否则会漏检。
+    /// </summary>
     private static void ValidateMesFieldName(
-        bool collectEnabled,
         bool mesEnabled,
         string? mesFieldName,
         string itemName,
         string roleName)
     {
-        if (collectEnabled && mesEnabled && string.IsNullOrWhiteSpace(mesFieldName))
+        if (mesEnabled && string.IsNullOrWhiteSpace(mesFieldName))
         {
-            throw new InvalidOperationException($"{itemName}{roleName}已启用 MES 上传，必须填写 MES 字段名。");
+            throw new InvalidOperationException($"{itemName}{roleName}已启用过程参数上传，必须填写过程参数字段名。");
         }
 
-        if (collectEnabled && mesEnabled && IsReservedProcessParameterField(mesFieldName))
+        if (mesEnabled && IsReservedProcessParameterField(mesFieldName))
         {
-            throw new InvalidOperationException($"{itemName}{roleName}的 MES 字段名“{mesFieldName}”是系统保留字段，不能用于动态测试项。");
+            throw new InvalidOperationException($"{itemName}{roleName}的过程参数字段名“{mesFieldName}”是系统保留字段，不能用于动态测试项。");
         }
     }
 
@@ -3026,11 +3014,6 @@ public partial class AddressManageView : BaseView
         return string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool HasAnyEnabledRole(BizSchemeDetail detail)
-    {
-        return SchemeDetailRoleRules.HasAnyCollectEnabled(detail);
-    }
-
     private static bool HasAnyConfiguredRole(BizSchemeDetail detail)
     {
         return SchemeDetailRoleRules.HasAnyConfiguredRole(detail);
@@ -3110,6 +3093,7 @@ public partial class AddressManageView : BaseView
     /// <summary>
     /// 方案明细输出配置表格行。
     /// 同一个 BizSchemeDetail 会拆成四行，分别维护实际值、上限、下限和结果的输出配置。
+    /// 实时预览由左侧树维护，不在本表格中编辑。
     /// </summary>
     private sealed class SchemeDetailRoleTableRow(BizSchemeDetail source, DimTestItem item, SchemeDetailValueRole role, string roleName)
     {
@@ -3123,223 +3107,46 @@ public partial class AddressManageView : BaseView
 
         public string RoleName { get; } = roleName;
 
-        public bool Enabled
-        {
-            get => GetEnabled(Source, Role);
-            set => SetEnabled(Source, Role, value);
-        }
-
         public string HeaderText
         {
             get => ResolveSchemeDetailHeader(Source, item, Role);
-            set => SetHeader(Source, Role, NormalizeNullableText(value) ?? ResolveDefaultHeader(item, Role));
+            set => SchemeDetailRoleRules.SetHeader(Source, Role, NormalizeNullableText(value) ?? SchemeDetailRoleRules.GetDefaultHeader(item, Role));
         }
 
         public bool SaveEnabled
         {
-            get => GetSaveEnabled(Source, Role);
-            set => SetSaveEnabled(Source, Role, value);
+            get => SchemeDetailRoleRules.IsSaveEnabled(Source, Role);
+            set => SchemeDetailRoleRules.SetSaveEnabled(Source, Role, value);
+        }
+
+        public bool ForwardEnabled
+        {
+            get => SchemeDetailRoleRules.IsForwardEnabled(Source, Role);
+            set => SchemeDetailRoleRules.SetForwardEnabled(Source, Role, value);
         }
 
         public bool ReportEnabled
         {
-            get => GetReportEnabled(Source, Role);
-            set => SetReportEnabled(Source, Role, value);
+            get => SchemeDetailRoleRules.IsReportEnabled(Source, Role);
+            set => SchemeDetailRoleRules.SetReportEnabled(Source, Role, value);
         }
 
         public bool MesEnabled
         {
-            get => GetMesEnabled(Source, Role);
-            set => SetMesEnabled(Source, Role, value);
+            get => SchemeDetailRoleRules.IsMesEnabled(Source, Role);
+            set => SchemeDetailRoleRules.SetMesEnabled(Source, Role, value);
         }
 
         public string? MesFieldName
         {
-            get => GetMesFieldName(Source, Role);
-            set => SetMesFieldName(Source, Role, NormalizeNullableText(value));
+            get => SchemeDetailRoleRules.GetMesFieldName(Source, Role);
+            set => SchemeDetailRoleRules.SetMesFieldName(Source, Role, NormalizeNullableText(value));
         }
 
         public void NormalizeForSave()
         {
             HeaderText = HeaderText;
             MesFieldName = MesFieldName;
-        }
-
-        private static string ResolveDefaultHeader(DimTestItem item, SchemeDetailValueRole role)
-            => SchemeDetailRoleRules.GetDefaultHeader(item, role);
-
-        private static bool GetEnabled(BizSchemeDetail detail, SchemeDetailValueRole role)
-        {
-            return role switch
-            {
-                SchemeDetailValueRole.Actual => detail.EnableActual,
-                SchemeDetailValueRole.Upper => detail.EnableUpper,
-                SchemeDetailValueRole.Lower => detail.EnableLower,
-                SchemeDetailValueRole.Result => detail.EnableResult,
-                _ => false
-            };
-        }
-
-        private static void SetEnabled(BizSchemeDetail detail, SchemeDetailValueRole role, bool value)
-        {
-            switch (role)
-            {
-                case SchemeDetailValueRole.Actual:
-                    detail.EnableActual = value;
-                    break;
-                case SchemeDetailValueRole.Upper:
-                    detail.EnableUpper = value;
-                    break;
-                case SchemeDetailValueRole.Lower:
-                    detail.EnableLower = value;
-                    break;
-                case SchemeDetailValueRole.Result:
-                    detail.EnableResult = value;
-                    break;
-            }
-        }
-
-        private static void SetHeader(BizSchemeDetail detail, SchemeDetailValueRole role, string value)
-        {
-            switch (role)
-            {
-                case SchemeDetailValueRole.Actual:
-                    detail.ActualHeader = value;
-                    break;
-                case SchemeDetailValueRole.Upper:
-                    detail.UpperHeader = value;
-                    break;
-                case SchemeDetailValueRole.Lower:
-                    detail.LowerHeader = value;
-                    break;
-                case SchemeDetailValueRole.Result:
-                    detail.ResultHeader = value;
-                    break;
-            }
-        }
-
-        private static bool GetSaveEnabled(BizSchemeDetail detail, SchemeDetailValueRole role)
-        {
-            return role switch
-            {
-                SchemeDetailValueRole.Actual => detail.SaveActual,
-                SchemeDetailValueRole.Upper => detail.SaveUpper,
-                SchemeDetailValueRole.Lower => detail.SaveLower,
-                SchemeDetailValueRole.Result => detail.SaveResult,
-                _ => false
-            };
-        }
-
-        private static void SetSaveEnabled(BizSchemeDetail detail, SchemeDetailValueRole role, bool value)
-        {
-            switch (role)
-            {
-                case SchemeDetailValueRole.Actual:
-                    detail.SaveActual = value;
-                    break;
-                case SchemeDetailValueRole.Upper:
-                    detail.SaveUpper = value;
-                    break;
-                case SchemeDetailValueRole.Lower:
-                    detail.SaveLower = value;
-                    break;
-                case SchemeDetailValueRole.Result:
-                    detail.SaveResult = value;
-                    break;
-            }
-        }
-
-        private static bool GetReportEnabled(BizSchemeDetail detail, SchemeDetailValueRole role)
-        {
-            return role switch
-            {
-                SchemeDetailValueRole.Actual => detail.ReportActual,
-                SchemeDetailValueRole.Upper => detail.ReportUpper,
-                SchemeDetailValueRole.Lower => detail.ReportLower,
-                SchemeDetailValueRole.Result => detail.ReportResult,
-                _ => false
-            };
-        }
-
-        private static void SetReportEnabled(BizSchemeDetail detail, SchemeDetailValueRole role, bool value)
-        {
-            switch (role)
-            {
-                case SchemeDetailValueRole.Actual:
-                    detail.ReportActual = value;
-                    break;
-                case SchemeDetailValueRole.Upper:
-                    detail.ReportUpper = value;
-                    break;
-                case SchemeDetailValueRole.Lower:
-                    detail.ReportLower = value;
-                    break;
-                case SchemeDetailValueRole.Result:
-                    detail.ReportResult = value;
-                    break;
-            }
-        }
-
-        private static bool GetMesEnabled(BizSchemeDetail detail, SchemeDetailValueRole role)
-        {
-            return role switch
-            {
-                SchemeDetailValueRole.Actual => detail.MesActual,
-                SchemeDetailValueRole.Upper => detail.MesUpper,
-                SchemeDetailValueRole.Lower => detail.MesLower,
-                SchemeDetailValueRole.Result => detail.MesResult,
-                _ => false
-            };
-        }
-
-        private static void SetMesEnabled(BizSchemeDetail detail, SchemeDetailValueRole role, bool value)
-        {
-            switch (role)
-            {
-                case SchemeDetailValueRole.Actual:
-                    detail.MesActual = value;
-                    break;
-                case SchemeDetailValueRole.Upper:
-                    detail.MesUpper = value;
-                    break;
-                case SchemeDetailValueRole.Lower:
-                    detail.MesLower = value;
-                    break;
-                case SchemeDetailValueRole.Result:
-                    detail.MesResult = value;
-                    break;
-            }
-        }
-
-        private static string? GetMesFieldName(BizSchemeDetail detail, SchemeDetailValueRole role)
-        {
-            return role switch
-            {
-                SchemeDetailValueRole.Actual => detail.ActualMesFieldName,
-                SchemeDetailValueRole.Upper => detail.UpperMesFieldName,
-                SchemeDetailValueRole.Lower => detail.LowerMesFieldName,
-                SchemeDetailValueRole.Result => detail.ResultMesFieldName,
-                _ => null
-            };
-        }
-
-        private static void SetMesFieldName(BizSchemeDetail detail, SchemeDetailValueRole role, string? value)
-        {
-            switch (role)
-            {
-                case SchemeDetailValueRole.Actual:
-                    detail.ActualMesFieldName = value;
-                    break;
-                case SchemeDetailValueRole.Upper:
-                    detail.UpperMesFieldName = value;
-                    break;
-                case SchemeDetailValueRole.Lower:
-                    detail.LowerMesFieldName = value;
-                    break;
-                case SchemeDetailValueRole.Result:
-                    detail.ResultMesFieldName = value;
-                    break;
-            }
         }
     }
 

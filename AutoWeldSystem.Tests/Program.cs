@@ -117,6 +117,10 @@ var tests = new (string Name, Action Run)[]
     ("Calculated expression subtracts before formatting", CalculatedExpressionSubtractsBeforeFormatting),
     ("Only configured test item expressions create available roles", OnlyConfiguredExpressionsCreateRoles),
     ("Collection does not imply local save or upload", CollectionDoesNotImplyOutput),
+    ("Program evaluation follows output channels", ProgramEvaluationFollowsOutputChannels),
+    ("Any configured channel keeps scheme detail savable", AnyChannelKeepsSchemeDetailSavable),
+    ("Forward dashboard channel is independent from local save", ForwardChannelIsIndependentFromLocalSave),
+    ("Center forward columns and values share one channel", CenterForwardColumnsAndValuesShareOneChannel),
     ("Save history controls product history visibility", SaveHistoryControlsProductHistoryVisibility),
     ("Dynamic history and center use task-bound process config", DynamicHistoryAndCenterUseTaskBoundProcessConfig),
     ("DataManageView uses generic product test tree", DataManageViewUsesGenericProductTestTree),
@@ -214,7 +218,7 @@ var tests = new (string Name, Action Run)[]
     ("Center product report columns follow production Excel format", CenterProductReportColumnsFollowProductionExcelFormat),
     ("Center product report columns use forwarded equipment headers", CenterProductReportColumnsUseForwardedEquipmentHeaders),
     ("Center product report request carries production report fields", CenterProductReportRequestCarriesProductionReportFields),
-    ("Center dynamic report columns use SaveEnable only", CenterDynamicReportColumnsUseSaveEnableOnly),
+    ("Center dynamic report columns use ForwardEnable only", CenterDynamicReportColumnsUseForwardEnableOnly),
     ("Center product request uses PLC result and task timestamps", CenterProductRequestUsesPlcResultAndTaskTimestamps),
     ("Center product request resolves configured station name", CenterProductRequestResolvesConfiguredStationName),
     ("Center report product then finish update keeps detail rows", CenterReportProductThenFinishUpdateKeepsDetailRows),
@@ -2415,14 +2419,107 @@ static void CollectionDoesNotImplyOutput()
     {
         EnableActual = true,
         SaveActual = false,
+        ForwardActual = false,
         ReportActual = false,
         MesActual = false
     };
 
-    AssertFalse(SchemeDetailRoleRules.ShouldPersistRole(detail, SchemeDetailValueRole.Actual), "只启用采集不应写入历史 RawDataJson。");
+    AssertFalse(SchemeDetailRoleRules.ShouldPersistRole(detail, SchemeDetailValueRole.Actual), "只勾实时预览不应写入 RawDataJson。");
 
     detail.SaveActual = true;
-    AssertTrue(SchemeDetailRoleRules.ShouldPersistRole(detail, SchemeDetailValueRole.Actual), "启用保存后应写入历史 RawDataJson。");
+    AssertTrue(SchemeDetailRoleRules.ShouldPersistRole(detail, SchemeDetailValueRole.Actual), "勾选本地保存后应写入 RawDataJson。");
+}
+
+static void ProgramEvaluationFollowsOutputChannels()
+{
+    var previewOnly = new BizSchemeDetail { EnableActual = true };
+    AssertFalse(
+        SchemeDetailRoleRules.ShouldEvaluateProgramRole(previewOnly, SchemeDetailValueRole.Actual),
+        "只勾实时预览的临时观察项不得参与程序判定。");
+
+    foreach (var configured in new[]
+    {
+        new BizSchemeDetail { SaveActual = true },
+        new BizSchemeDetail { ForwardActual = true },
+        new BizSchemeDetail { ReportActual = true },
+        new BizSchemeDetail { MesActual = true }
+    })
+    {
+        AssertTrue(
+            SchemeDetailRoleRules.ShouldEvaluateProgramRole(configured, SchemeDetailValueRole.Actual),
+            "勾选任一输出通道的测试项必须参与程序判定。");
+        AssertTrue(
+            SchemeDetailRoleRules.ShouldReadProductRole(configured, SchemeDetailValueRole.Actual),
+            "参与程序判定的测试项必须被采集读取，否则判定拿不到实测值。");
+    }
+}
+
+static void ForwardChannelIsIndependentFromLocalSave()
+{
+    var forwardOnly = new BizSchemeDetail { ForwardActual = true };
+    AssertTrue(
+        SchemeDetailRoleRules.ShouldForwardCenterRole(forwardOnly, SchemeDetailValueRole.Actual),
+        "只勾转发看板的角色必须进入中心看板。");
+    AssertFalse(
+        SchemeDetailRoleRules.ShouldShowHistoryRole(forwardOnly, SchemeDetailValueRole.Actual),
+        "只勾转发看板的角色不得进入本地历史。");
+    AssertTrue(
+        SchemeDetailRoleRules.ShouldPersistRole(forwardOnly, SchemeDetailValueRole.Actual),
+        "只勾转发看板的角色仍必须写入 RawDataJson，否则中心转发无值可发。");
+
+    var saveOnly = new BizSchemeDetail { SaveActual = true };
+    AssertTrue(
+        SchemeDetailRoleRules.ShouldShowHistoryRole(saveOnly, SchemeDetailValueRole.Actual),
+        "只勾本地保存的角色必须进入本地历史。");
+    AssertFalse(
+        SchemeDetailRoleRules.ShouldForwardCenterRole(saveOnly, SchemeDetailValueRole.Actual),
+        "只勾本地保存的角色不得进入中心看板。");
+}
+
+static void CenterForwardColumnsAndValuesShareOneChannel()
+{
+    // 中心报表的列定义和 RawDataJson 值过滤必须同源，否则会出现列有值无或值有列无。
+    var detail = new BizSchemeDetail
+    {
+        SaveActual = true,
+        SaveUpper = true,
+        ForwardActual = true,
+        ReportUpper = true,
+        MesLower = true
+    };
+
+    AssertTrue(SchemeDetailRoleRules.ShouldForwardCenterRole(detail, SchemeDetailValueRole.Actual), "勾选转发看板的实际值必须下发。");
+    AssertFalse(SchemeDetailRoleRules.ShouldForwardCenterRole(detail, SchemeDetailValueRole.Upper), "只勾本地保存和报表的上限不得下发中心看板。");
+    AssertFalse(SchemeDetailRoleRules.ShouldForwardCenterRole(detail, SchemeDetailValueRole.Lower), "只勾过程参数的下限不得下发中心看板。");
+    AssertFalse(SchemeDetailRoleRules.ShouldForwardCenterRole(detail, SchemeDetailValueRole.Result), "未配置的结果不得下发中心看板。");
+
+    var forwardRoles = SchemeDetailRoleRules.AllRoles
+        .Where(role => SchemeDetailRoleRules.ShouldForwardCenterRole(detail, role))
+        .ToList();
+    AssertTrue(
+        forwardRoles.All(role => SchemeDetailRoleRules.ShouldPersistRole(detail, role)),
+        "所有下发中心看板的角色都必须已落 RawDataJson，否则列定义有列而值缺失。");
+}
+
+static void AnyChannelKeepsSchemeDetailSavable()
+{
+    AssertFalse(
+        SchemeDetailRoleRules.HasAnyConfiguredRole(new BizSchemeDetail()),
+        "五个通道全未勾选的方案明细必须被保存校验拦下。");
+
+    foreach (var configured in new[]
+    {
+        new BizSchemeDetail { EnableActual = true },
+        new BizSchemeDetail { SaveUpper = true },
+        new BizSchemeDetail { ForwardLower = true },
+        new BizSchemeDetail { ReportResult = true },
+        new BizSchemeDetail { MesActual = true }
+    })
+    {
+        AssertTrue(
+            SchemeDetailRoleRules.HasAnyConfiguredRole(configured),
+            "勾选实时预览、本地保存、转发看板、写入报表或过程参数中任一项都应允许保存。");
+    }
 }
 
 static void SchemeDetailRoleHeadersUseCentralizedDefaults()
@@ -2702,10 +2799,13 @@ static void SchemeDetailRoleGridDefinesLocalizedBoundColumns()
     {
         AssertTrue(configureMethod.Contains($"DataPropertyName = nameof(SchemeDetailRoleTableRow.{propertyName})", StringComparison.Ordinal), $"方案角色表格必须显式绑定 {propertyName} 列。" );
     }
-    foreach (var propertyName in new[] { "Enabled", "SaveEnabled", "ReportEnabled", "MesEnabled" })
+    foreach (var propertyName in new[] { "SaveEnabled", "ForwardEnabled", "ReportEnabled", "MesEnabled" })
     {
         AssertTrue(configureMethod.Contains($"AddSchemeDetailRoleCheckColumn(nameof(SchemeDetailRoleTableRow.{propertyName})", StringComparison.Ordinal), $"方案角色表格必须显式绑定 {propertyName} 复选列。" );
     }
+
+    // 实时预览由左侧树维护，表格中不得再出现重复的采集复选列。
+    AssertFalse(configureMethod.Contains("SchemeDetailRoleTableRow.Enabled)", StringComparison.Ordinal), "实时预览开关不得在方案角色表格中重复编辑。" );
 
     AssertFalse(configureMethod.Contains("DataPropertyName = nameof(SchemeDetailRoleTableRow.Source)", StringComparison.Ordinal), "Source 不得成为可见列。" );
     AssertFalse(configureMethod.Contains("DataPropertyName = nameof(SchemeDetailRoleTableRow.ItemId)", StringComparison.Ordinal), "ItemId 不得成为可见列。" );
@@ -2718,7 +2818,7 @@ static void SchemeDetailRoleNamesAndMonitorFallbacksAreCentralized()
     var addressViewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "AddressManageView.cs"), Encoding.UTF8);
     var languageChangedMethod = ExtractMethodText(addressViewCode, "protected override void OnLanguageChanged()", "private void ConfigureTables()");
     var createRowsMethod = ExtractMethodText(addressViewCode, "private IEnumerable<SchemeDetailRoleTableRow> CreateSchemeDetailRoleRows", "private static BizSchemeDetail CreateEmptySchemeDetail");
-    var rowModel = ExtractMethodText(addressViewCode, "private sealed class SchemeDetailRoleTableRow", "private static bool GetEnabled");
+    var rowModel = ExtractMethodText(addressViewCode, "private sealed class SchemeDetailRoleTableRow", "public void NormalizeForSave()");
 
     AssertTrue(languageChangedMethod.Contains("BindSchemeDetailRoleRows();", StringComparison.Ordinal), "切换语言后必须重建方案角色行，刷新已绑定的角色名称单元格。");
     AssertTrue(createRowsMethod.Contains("GetLocalizedSchemeDetailRoleName(role)", StringComparison.Ordinal), "创建方案角色行时必须传入本地化角色名称。");
@@ -2751,10 +2851,11 @@ static void ReportFileUploadRuleRequiresEnabledReportRole()
         => (bool)(shouldUpload!.Invoke(null, [details]) ?? false);
 
     AssertFalse(Invoke(), "没有方案明细时不得创建 MES ReportFile 任务。");
-    AssertFalse(Invoke(new BizSchemeDetail { EnableActual = true, SaveActual = true }), "SaveEnable 独占角色不得触发 MES 报表文件上传。");
-    AssertFalse(Invoke(new BizSchemeDetail { EnableActual = true, MesActual = true }), "MesEnable 独占角色不得触发 MES 报表文件上传。");
-    AssertTrue(Invoke(new BizSchemeDetail { EnableActual = false, ReportActual = true }), "写入报表开关必须独立于实时预览采集开关。");
-    AssertTrue(Invoke(new BizSchemeDetail { EnableActual = true, ReportActual = true }), "任一 ReportEnable 角色必须允许 MES 报表文件上传。");
+    AssertFalse(Invoke(new BizSchemeDetail { EnableActual = true, SaveActual = true }), "本地保存独占角色不得触发 MES 报表文件上传。");
+    AssertFalse(Invoke(new BizSchemeDetail { EnableActual = true, MesActual = true }), "过程参数独占角色不得触发 MES 报表文件上传。");
+    AssertFalse(Invoke(new BizSchemeDetail { EnableActual = true, ForwardActual = true }), "转发看板独占角色不得触发 MES 报表文件上传。");
+    AssertTrue(Invoke(new BizSchemeDetail { EnableActual = false, ReportActual = true }), "写入报表开关必须独立于实时预览开关。");
+    AssertTrue(Invoke(new BizSchemeDetail { EnableActual = true, ReportActual = true }), "任一写入报表角色必须允许 MES 报表文件上传。");
 }
 
 static void SaveHistoryControlsProductHistoryVisibility()
@@ -2767,17 +2868,26 @@ static void SaveHistoryControlsProductHistoryVisibility()
     };
     AssertFalse(
         SchemeDetailRoleRules.ShouldShowHistoryRole(mesOnly, SchemeDetailValueRole.Actual),
-        "仅启用 MES 的角色不得进入产品历史。");
+        "仅启用过程参数的角色不得进入产品历史。");
+
+    var forwardOnly = new BizSchemeDetail
+    {
+        SaveActual = false,
+        ForwardActual = true
+    };
+    AssertFalse(
+        SchemeDetailRoleRules.ShouldShowHistoryRole(forwardOnly, SchemeDetailValueRole.Actual),
+        "仅启用转发看板的角色不得进入产品历史。");
 
     var savedOnly = new BizSchemeDetail
     {
-        EnableActual = true,
+        EnableActual = false,
         SaveActual = true,
         MesActual = false
     };
     AssertTrue(
         SchemeDetailRoleRules.ShouldShowHistoryRole(savedOnly, SchemeDetailValueRole.Actual),
-        "已采集且启用保存历史的角色必须进入产品历史。");
+        "启用本地保存的角色必须进入产品历史，且不依赖实时预览开关。");
 }
 
 static void DynamicHistoryAndCenterUseTaskBoundProcessConfig()
@@ -3170,14 +3280,17 @@ static void SchemeOutputRolesAreIndependentFromRealtimePreview()
     {
         EnableActual = false,
         SaveActual = true,
+        ForwardActual = true,
         ReportActual = true,
         MesActual = true
     };
 
     AssertTrue(SchemeDetailRoleRules.ShouldReadProductRole(detail, SchemeDetailValueRole.Actual), "输出开启时产品完成采集必须读取实际值。");
-    AssertTrue(SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Actual), "保存历史必须独立于实时预览开关。");
-    AssertTrue(SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Actual), "报表输出必须独立于实时预览开关。");
-    AssertTrue(SchemeDetailRoleRules.ShouldUploadMesRole(detail, SchemeDetailValueRole.Actual), "MES输出必须独立于实时预览开关。");
+    AssertTrue(SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Actual), "本地保存必须独立于实时预览开关。");
+    AssertTrue(SchemeDetailRoleRules.ShouldForwardCenterRole(detail, SchemeDetailValueRole.Actual), "转发看板必须独立于实时预览开关。");
+    AssertTrue(SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Actual), "写入报表必须独立于实时预览开关。");
+    AssertTrue(SchemeDetailRoleRules.ShouldUploadMesRole(detail, SchemeDetailValueRole.Actual), "过程参数必须独立于实时预览开关。");
+    AssertFalse(SchemeDetailRoleRules.HasAnyPreviewEnabled(detail), "四个输出通道全开也不应隐式打开实时预览。");
 }
 
 static void WholePieceFourSideAggregationProducesAbRows()
@@ -4543,17 +4656,18 @@ static void VerifyProductionReportEndToEndMatrix(string workingDirectory)
             new BizSchemeDetail
             {
                 EnableActual = true,
-                SaveActual = true,
-                ActualHeader = "峰值电流保存值",
+                ForwardActual = true,
+                ActualHeader = "峰值电流转发值",
                 EnableUpper = true,
                 ReportUpper = true,
                 UpperHeader = "峰值电流报表上限",
                 EnableLower = true,
                 MesLower = true,
-                LowerHeader = "峰值电流 MES 下限",
+                LowerHeader = "峰值电流过程参数下限",
                 EnableResult = true,
                 SaveResult = true,
-                ResultHeader = "峰值电流保存结果"
+                ForwardResult = true,
+                ResultHeader = "峰值电流转发结果"
             },
             new DimTestItem
             {
@@ -4565,9 +4679,9 @@ static void VerifyProductionReportEndToEndMatrix(string workingDirectory)
                 ResultExpression = "0:W-12"
             });
         AssertSequenceEqual(
-            new[] { "峰值电流保存值", "峰值电流保存结果" },
+            new[] { "峰值电流转发值", "峰值电流转发结果" },
             dynamicColumns.Select(column => column.Title).ToArray(),
-            "中心样例的动态列必须只来自 SaveEnable，ReportEnable/MesEnable 独占列不得透传。");
+            "中心样例的动态列必须只来自转发看板通道，写入报表和过程参数独占列不得透传。");
 
         var productRequest = BuildCenterWorkbookRequest(
             "DEVICE-TASK5",
@@ -4632,14 +4746,14 @@ static void VerifyProductionReportEndToEndMatrix(string workingDirectory)
         var worksheet = workbook.Worksheet("生产报表");
         AssertTemplateHeaderMerges(worksheet);
         AssertSequenceEqual(
-            new[] { "产品编号", "拍照编号", "峰值电流保存值", "峰值电流保存结果", "拍照结果", "产品结果" },
+            new[] { "产品编号", "拍照编号", "峰值电流转发值", "峰值电流转发结果", "拍照结果", "产品结果" },
             ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow),
-            "中心完成态样例必须保留设备标题，并只显示 SaveEnable 动态列。");
-        AssertFalse(ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow).Contains("峰值电流报表上限"), "中心报表不得串入 ReportEnable 独占列。");
-        AssertFalse(ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow).Contains("峰值电流 MES 下限"), "中心报表不得串入 MesEnable 独占列。");
+            "中心完成态样例必须保留设备标题，并只显示转发看板动态列。");
+        AssertFalse(ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow).Contains("峰值电流报表上限"), "中心报表不得串入写入报表独占列。");
+        AssertFalse(ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow).Contains("峰值电流过程参数下限"), "中心报表不得串入过程参数独占列。");
         AssertEqual(ProductionConstants.TestResults.Ok, worksheet.Cell("E12").GetString(), "中心点结果必须读取 PLC TestResult。");
-        AssertEqual("1.21", worksheet.Cell("C12").GetString(), "中心 SaveEnable 实际值必须从 RawDataJson 写入真实 XLSX。");
-        AssertEqual(ProductionConstants.TestResults.Ok, worksheet.Cell("D12").GetString(), "中心 SaveEnable 结果值必须从 RawDataJson 写入真实 XLSX。");
+        AssertEqual("1.21", worksheet.Cell("C12").GetString(), "中心转发看板实际值必须从 RawDataJson 写入真实 XLSX。");
+        AssertEqual(ProductionConstants.TestResults.Ok, worksheet.Cell("D12").GetString(), "中心转发看板结果值必须从 RawDataJson 写入真实 XLSX。");
         AssertEqual(ProductionConstants.TestResults.Ng, worksheet.Cell("F12").GetString(), "中心产品结果必须读取 PLC ProductResult。");
         AssertEqual($"结束时间：{finishTime:yyyy-MM-dd HH:mm:ss}", worksheet.Cell("D9").GetString(), "中心完成态必须精确使用任务 EndTime。");
     }
@@ -6270,7 +6384,7 @@ static void CenterForwardingBusinessIdsHashFullIdentity(){
     AssertTrue(firstId.Contains(':', StringComparison.Ordinal), "BusinessId 必须保留可读前缀并附加完整身份哈希。");
 }
 
-static void CenterDynamicReportColumnsUseSaveEnableOnly()
+static void CenterDynamicReportColumnsUseForwardEnableOnly()
 {
     var item = new DimTestItem
     {
@@ -6285,25 +6399,25 @@ static void CenterDynamicReportColumnsUseSaveEnableOnly()
     var detail = new BizSchemeDetail
     {
         EnableActual = true,
-        SaveActual = true,
-        ActualHeader = "峰值电流保存值",
+        ForwardActual = true,
+        ActualHeader = "峰值电流转发值",
         EnableUpper = true,
         ReportUpper = true,
         UpperHeader = "峰值电流报表上限",
         EnableLower = true,
         MesLower = true,
-        LowerHeader = "峰值电流 MES 下限",
+        LowerHeader = "峰值电流过程参数下限",
         EnableResult = true,
         SaveResult = true,
-        ResultHeader = "峰值电流保存结果"
+        ResultHeader = "峰值电流本地保存结果"
     };
 
     var columns = BuildCenterDynamicReportColumns(detail, item);
 
     AssertSequenceEqual(
-        new[] { "峰值电流保存值 (A)", "峰值电流保存结果" },
+        new[] { "峰值电流转发值 (A)" },
         columns.Select(column => column.Title).ToArray(),
-        "中心动态列只能包含已采集且 SaveEnable=true 的角色，ReportEnable/MesEnable 独占角色不得进入。");
+        "中心动态列只能包含转发看板角色，本地保存、写入报表和过程参数独占角色不得进入。");
 }
 
 static void CenterProductRequestUsesPlcResultAndTaskTimestamps()

@@ -1,4 +1,4 @@
-using AutoWeldSystem.Core.Constants;
+﻿using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Exceptions;
 using AutoWeldSystem.Core.Interfaces;
@@ -196,7 +196,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
                     SchemeDetailRoleRules.ClearUnavailableRoles(detail, item);
                     return new SchemeItemSnapshot(detail.DetailId, item, detail);
                 })
-                .Where(snapshot => HasAnyEnabledRole(snapshot.Detail))
+                .Where(snapshot => SchemeDetailRoleRules.HasAnyConfiguredRole(snapshot.Detail))
                 .ToList();
         }
     }
@@ -315,7 +315,6 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
                     schemeItem,
                     testContextOffset,
                     values,
-                    useProgramResult,
                     cancellationToken);
             }
         }
@@ -347,13 +346,11 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         SchemeItemSnapshot schemeItem,
         int testContextOffset,
         IDictionary<string, string> values,
-        bool useProgramResult,
         CancellationToken cancellationToken)
     {
         var item = schemeItem.Item;
         var itemKey = ResolveItemKey(item);
-        if (SchemeDetailRoleRules.ShouldReadProductRole(schemeItem.Detail, SchemeDetailValueRole.Actual)
-            || (useProgramResult && schemeItem.Detail.EnableActual))
+        if (SchemeDetailRoleRules.ShouldReadProductRole(schemeItem.Detail, SchemeDetailValueRole.Actual))
         {
             var actualValue = await ReadExpressionValueAsync(
                 config.TestBase,
@@ -478,8 +475,9 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         IReadOnlyList<SchemeItemSnapshot> schemeItems,
         IReadOnlyList<BizWeldPointRecord> records)
     {
+        // 参与程序判定的是有业务去向的测试项；只勾实时预览的临时观察项不参与，避免预览配置改变判定结果。
         var participatingItems = schemeItems
-            .Where(item => item.Detail.EnableActual)
+            .Where(item => SchemeDetailRoleRules.ShouldEvaluateProgramRole(item.Detail, SchemeDetailValueRole.Actual))
             .ToList();
 
         foreach (var record in records)
@@ -635,6 +633,8 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             return;
         }
 
+        // A/B 聚合只对实际值有定义（取最大值或平均值），报表和过程参数是逐值输出，非实际值角色必须拦。
+        // 转发看板不在此限制内：中心看板动态列直接透传 RawDataJson，不做 A/B 聚合。
         var invalidOutput = schemeItems.FirstOrDefault(item => SchemeDetailRoleRules.AllRoles
             .Where(role => role != SchemeDetailValueRole.Actual)
             .Any(role => SchemeDetailRoleRules.IsReportEnabled(item.Detail, role)
@@ -644,7 +644,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             throw new BusinessOperationException(
                 Category,
                 "产品数据采集失败",
-                $"整件检测A/B模式只允许测试项“{invalidOutput.Item.ItemName}”的实际值写入报表或上传MES。");
+                $"整件检测A/B模式只允许测试项“{invalidOutput.Item.ItemName}”的实际值写入报表或上传过程参数。");
         }
 
         var duplicateMesFields = schemeItems
@@ -660,7 +660,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             throw new BusinessOperationException(
                 Category,
                 "产品数据采集失败",
-                $"整件检测A/B模式存在重复MES字段名：{string.Join("、", duplicateMesFields)}。");
+                $"整件检测A/B模式存在重复过程参数字段名：{string.Join("、", duplicateMesFields)}。");
         }
 
         var definitions = schemeItems
@@ -845,11 +845,6 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         }
 
         values[key.Trim()] = value;
-    }
-
-    private static bool HasAnyEnabledRole(BizSchemeDetail detail)
-    {
-        return SchemeDetailRoleRules.HasAnyConfiguredRole(detail);
     }
 
     private static string? FirstValue(IReadOnlyDictionary<string, string> values, params string[] keys)

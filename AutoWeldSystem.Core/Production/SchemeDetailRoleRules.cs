@@ -1,10 +1,12 @@
-using AutoWeldSystem.Core.Entities;
+﻿using AutoWeldSystem.Core.Entities;
 
 namespace AutoWeldSystem.Core.Production;
 
 /// <summary>
 /// 方案明细角色规则。
-/// 统一维护“采集、保存、报表、MES”之间的关系，避免规则散落在界面和服务中。
+/// 统一维护“实时预览、本地保存、转发看板、写入报表、过程参数”五个通道的关系，
+/// 避免规则散落在界面和服务中。五个通道互相独立，实时预览只决定界面显示范围，
+/// 不作为其他通道的前置条件。
 /// </summary>
 public static class SchemeDetailRoleRules
 {
@@ -55,9 +57,9 @@ public static class SchemeDetailRoleRules
     }
 
     /// <summary>
-    /// 判断角色是否已启用采集。
+    /// 判断角色是否在实时预览表格中显示。
     /// </summary>
-    public static bool IsCollectEnabled(BizSchemeDetail detail, SchemeDetailValueRole role)
+    public static bool IsPreviewEnabled(BizSchemeDetail detail, SchemeDetailValueRole role)
     {
         return role switch
         {
@@ -70,9 +72,9 @@ public static class SchemeDetailRoleRules
     }
 
     /// <summary>
-    /// 设置角色采集开关。
+    /// 设置角色实时预览开关。
     /// </summary>
-    public static void SetCollectEnabled(BizSchemeDetail detail, SchemeDetailValueRole role, bool value)
+    public static void SetPreviewEnabled(BizSchemeDetail detail, SchemeDetailValueRole role, bool value)
     {
         switch (role)
         {
@@ -92,7 +94,7 @@ public static class SchemeDetailRoleRules
     }
 
     /// <summary>
-    /// 判断角色是否写入历史数据。
+    /// 判断角色是否保存到本地历史数据。
     /// </summary>
     public static bool IsSaveEnabled(BizSchemeDetail detail, SchemeDetailValueRole role)
     {
@@ -107,7 +109,7 @@ public static class SchemeDetailRoleRules
     }
 
     /// <summary>
-    /// 设置角色历史保存开关。
+    /// 设置角色本地保存开关。
     /// </summary>
     public static void SetSaveEnabled(BizSchemeDetail detail, SchemeDetailValueRole role, bool value)
     {
@@ -124,6 +126,43 @@ public static class SchemeDetailRoleRules
                 break;
             case SchemeDetailValueRole.Result:
                 detail.SaveResult = value;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 判断角色是否转发到中心服务器看板。
+    /// </summary>
+    public static bool IsForwardEnabled(BizSchemeDetail detail, SchemeDetailValueRole role)
+    {
+        return role switch
+        {
+            SchemeDetailValueRole.Actual => detail.ForwardActual,
+            SchemeDetailValueRole.Upper => detail.ForwardUpper,
+            SchemeDetailValueRole.Lower => detail.ForwardLower,
+            SchemeDetailValueRole.Result => detail.ForwardResult,
+            _ => false
+        };
+    }
+
+    /// <summary>
+    /// 设置角色转发看板开关。
+    /// </summary>
+    public static void SetForwardEnabled(BizSchemeDetail detail, SchemeDetailValueRole role, bool value)
+    {
+        switch (role)
+        {
+            case SchemeDetailValueRole.Actual:
+                detail.ForwardActual = value;
+                break;
+            case SchemeDetailValueRole.Upper:
+                detail.ForwardUpper = value;
+                break;
+            case SchemeDetailValueRole.Lower:
+                detail.ForwardLower = value;
+                break;
+            case SchemeDetailValueRole.Result:
+                detail.ForwardResult = value;
                 break;
         }
     }
@@ -166,7 +205,7 @@ public static class SchemeDetailRoleRules
     }
 
     /// <summary>
-    /// 判断角色是否上传到 MES。
+    /// 判断角色是否上传过程参数接口。
     /// </summary>
     public static bool IsMesEnabled(BizSchemeDetail detail, SchemeDetailValueRole role)
     {
@@ -181,7 +220,7 @@ public static class SchemeDetailRoleRules
     }
 
     /// <summary>
-    /// 设置角色 MES 上传开关。
+    /// 设置角色过程参数上传开关。
     /// </summary>
     public static void SetMesEnabled(BizSchemeDetail detail, SchemeDetailValueRole role, bool value)
     {
@@ -203,11 +242,13 @@ public static class SchemeDetailRoleRules
     }
 
     /// <summary>
-    /// 判断角色是否需要写入 RawDataJson，供历史、报表或 MES 使用。
+    /// 判断角色是否需要写入 RawDataJson，供本地保存、转发看板、报表或过程参数使用。
+    /// 转发看板必须计入：中心转发从本地记录读值，不落 RawDataJson 就无值可发。
     /// </summary>
     public static bool ShouldPersistRole(BizSchemeDetail detail, SchemeDetailValueRole role)
     {
         return IsSaveEnabled(detail, role)
+            || IsForwardEnabled(detail, role)
             || IsReportEnabled(detail, role)
             || IsMesEnabled(detail, role);
     }
@@ -219,38 +260,54 @@ public static class SchemeDetailRoleRules
         => IsSaveEnabled(detail, role);
 
     /// <summary>
+    /// 判断角色是否转发到中心服务器看板。
+    /// 中心报表的列定义和值过滤必须共用本规则，否则会出现列与值对不上。
+    /// </summary>
+    public static bool ShouldForwardCenterRole(BizSchemeDetail detail, SchemeDetailValueRole role)
+        => IsForwardEnabled(detail, role);
+
+    /// <summary>
     /// 判断角色是否输出到报表。
     /// </summary>
     public static bool ShouldWriteReportRole(BizSchemeDetail detail, SchemeDetailValueRole role)
         => IsReportEnabled(detail, role);
 
     /// <summary>
-    /// 判断角色是否上传到 MES。
+    /// 判断角色是否上传过程参数接口。
     /// </summary>
     public static bool ShouldUploadMesRole(BizSchemeDetail detail, SchemeDetailValueRole role)
         => IsMesEnabled(detail, role);
 
     /// <summary>
     /// 判断产品完成采集时是否需要读取该角色。
-    /// 实时预览开关只控制界面显示，不能作为历史、报表或 MES 数据源的前置条件。
+    /// 实时预览开关只控制界面显示，不能作为任何输出通道的数据源前置条件。
     /// </summary>
     public static bool ShouldReadProductRole(BizSchemeDetail detail, SchemeDetailValueRole role)
         => ShouldPersistRole(detail, role);
 
     /// <summary>
-    /// 判断方案明细是否至少启用一个采集角色。
+    /// 判断角色是否参与整件检测程序判定。
+    /// 一个测试项只要在业务上有去向（本地保存、转发看板、报表或过程参数），就参与合格判定；
+    /// 只勾实时预览的临时观察项不参与，避免现场为了让预览表格干净而静默改变判定结果。
     /// </summary>
-    public static bool HasAnyCollectEnabled(BizSchemeDetail detail)
-        => AllRoles.Any(role => IsCollectEnabled(detail, role));
+    public static bool ShouldEvaluateProgramRole(BizSchemeDetail detail, SchemeDetailValueRole role)
+        => ShouldPersistRole(detail, role);
 
     /// <summary>
-    /// 判断方案明细是否包含任意采集或输出配置。
+    /// 判断方案明细是否至少启用一个实时预览角色。
+    /// </summary>
+    public static bool HasAnyPreviewEnabled(BizSchemeDetail detail)
+        => AllRoles.Any(role => IsPreviewEnabled(detail, role));
+
+    /// <summary>
+    /// 判断方案明细是否包含任意通道配置。
     /// 保存时用它保留错误配置，确保能给出明确校验提示。
     /// </summary>
     public static bool HasAnyConfiguredRole(BizSchemeDetail detail)
     {
-        return AllRoles.Any(role => IsCollectEnabled(detail, role)
+        return AllRoles.Any(role => IsPreviewEnabled(detail, role)
             || IsSaveEnabled(detail, role)
+            || IsForwardEnabled(detail, role)
             || IsReportEnabled(detail, role)
             || IsMesEnabled(detail, role));
     }
@@ -344,12 +401,13 @@ public static class SchemeDetailRoleRules
     }
 
     /// <summary>
-    /// 清理单个角色的全部采集和输出配置。
+    /// 清理单个角色的全部通道配置。
     /// </summary>
     public static void ClearRole(BizSchemeDetail detail, SchemeDetailValueRole role)
     {
-        SetCollectEnabled(detail, role, false);
+        SetPreviewEnabled(detail, role, false);
         SetSaveEnabled(detail, role, false);
+        SetForwardEnabled(detail, role, false);
         SetReportEnabled(detail, role, false);
         SetMesEnabled(detail, role, false);
         SetHeader(detail, role, null);

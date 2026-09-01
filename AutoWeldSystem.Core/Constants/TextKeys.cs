@@ -1321,9 +1321,9 @@ public static class TextKeys
         public const string MessageRecipeReadFailed = "address.message.recipe_read_failed";
         public const string ColumnDetailItem = "address.column.detail_item";
         public const string ColumnDetailRole = "address.column.detail_role";
-        public const string ColumnDetailEnabled = "address.column.detail_enabled";
         public const string ColumnDetailHeader = "address.column.detail_header";
         public const string ColumnDetailSave = "address.column.detail_save";
+        public const string ColumnDetailForward = "address.column.detail_forward";
         public const string ColumnDetailReport = "address.column.detail_report";
         public const string ColumnDetailMes = "address.column.detail_mes";
         public const string ColumnDetailMesField = "address.column.detail_mes_field";

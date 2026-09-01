@@ -2224,23 +2224,23 @@
   <data name="address.column.detail_role" xml:space="preserve">
     <value>数据角色</value>
   </data>
-  <data name="address.column.detail_enabled" xml:space="preserve">
-    <value>启用采集</value>
-  </data>
   <data name="address.column.detail_header" xml:space="preserve">
     <value>显示表头</value>
   </data>
   <data name="address.column.detail_save" xml:space="preserve">
-    <value>保存历史</value>
+    <value>本地保存</value>
+  </data>
+  <data name="address.column.detail_forward" xml:space="preserve">
+    <value>转发看板</value>
   </data>
   <data name="address.column.detail_report" xml:space="preserve">
     <value>写入报表</value>
   </data>
   <data name="address.column.detail_mes" xml:space="preserve">
-    <value>上传 MES</value>
+    <value>过程参数</value>
   </data>
   <data name="address.column.detail_mes_field" xml:space="preserve">
-    <value>MES 字段名</value>
+    <value>过程参数字段名</value>
   </data>
   <data name="address.detail_role.actual" xml:space="preserve">
     <value>实际值</value>

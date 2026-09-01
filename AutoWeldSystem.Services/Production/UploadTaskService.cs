@@ -1,4 +1,4 @@
-using AutoWeldSystem.Core.Constants;
+﻿using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
 using AutoWeldSystem.Core.DTOs.Mes.Request;
 using AutoWeldSystem.Core.DTOs.Mes.Response;
@@ -1541,11 +1541,6 @@ public class UploadTaskService : IUploadTaskService
             ProductionConstants.ProcessParameterDeviceTypes.WholePieceWeld => ProductionConstants.ProcessParameterDeviceTypes.WholePieceWeld,
             _ => ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic
         };
-    }
-
-    private static bool HasAnyEnabledRole(BizSchemeDetail detail)
-    {
-        return SchemeDetailRoleRules.HasAnyCollectEnabled(detail);
     }
 
     private static bool HasAnyMesEnabledRole(BizSchemeDetail detail)

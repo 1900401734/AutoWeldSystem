@@ -962,7 +962,7 @@ public partial class MainForm : BaseWindow
                 SchemeDetailRoleRules.ClearUnavailableRoles(item.Detail, item.Item!);
                 return item;
             })
-            .Where(item => HasAnyEnabledRole(item.Detail))
+            .Where(item => HasAnyPreviewEnabled(item.Detail))
             .Select(item => new SchemePreviewItem(item.Sort, item.Item!, item.Detail))
             .ToList();
     }
@@ -1026,9 +1026,9 @@ public partial class MainForm : BaseWindow
         string ProductModel,
         string Source);
 
-    private static bool HasAnyEnabledRole(BizSchemeDetail detail)
+    private static bool HasAnyPreviewEnabled(BizSchemeDetail detail)
     {
-        return SchemeDetailRoleRules.HasAnyCollectEnabled(detail);
+        return SchemeDetailRoleRules.HasAnyPreviewEnabled(detail);
     }
 
     private sealed record SchemePreviewItem(int Sort, DimTestItem Item, BizSchemeDetail Detail);

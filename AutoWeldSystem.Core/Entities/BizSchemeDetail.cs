@@ -5,6 +5,9 @@ namespace AutoWeldSystem.Core.Entities;
 /// <summary>
 /// 测试方案明细。
 /// 一行表示某套测试方案包含一个测试项。
+/// 五个通道互相独立：Enable* 对应界面“实时预览”，Save* 对应“本地保存”，
+/// Forward* 对应“转发看板”，Report* 对应“写入报表”，Mes* 对应“过程参数”。
+/// Mes* 与 MesFieldName 保留 MES 原名：这批字段直接对应上传协议，改名还会清空现场既有配置。
 /// </summary>
 [SugarTable("Biz_SchemeDetail", TableDescription = "方案明细表")]
 public class BizSchemeDetail
@@ -53,6 +56,18 @@ public class BizSchemeDetail
 
     [SugarColumn(ColumnDescription = "结果写入历史数据")]
     public bool SaveResult { get; set; }
+
+    [SugarColumn(ColumnDescription = "实际值转发中心看板")]
+    public bool ForwardActual { get; set; }
+
+    [SugarColumn(ColumnDescription = "上限转发中心看板")]
+    public bool ForwardUpper { get; set; }
+
+    [SugarColumn(ColumnDescription = "下限转发中心看板")]
+    public bool ForwardLower { get; set; }
+
+    [SugarColumn(ColumnDescription = "结果转发中心看板")]
+    public bool ForwardResult { get; set; }
 
     [SugarColumn(ColumnDescription = "实际值写入报表")]
     public bool ReportActual { get; set; }
