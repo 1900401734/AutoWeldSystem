@@ -839,7 +839,7 @@ public partial class DataManageView : BaseView
 
         try
         {
-            _reportFileService.ExportXlsxWithUploadStatus(workOrder.TaskId, dialog.FileName);
+            _reportFileService.ExportXlsx(workOrder.TaskId, dialog.FileName);
             MessageBox.Show(this, _localizer.GetString(TextKeys.DataManage.ExportSuccess, dialog.FileName), T(TextKeys.Common.TitleInfo), MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)

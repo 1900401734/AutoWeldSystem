@@ -128,8 +128,7 @@ var tests = new (string Name, Action Run)[]
     ("Data history product result filter keeps complete product rows", DataHistoryProductResultFilterKeepsCompleteProductRows),
     ("Data history dynamic sort orders products and keeps blanks last", DataHistoryDynamicSortOrdersProductsAndKeepsBlanksLast),
     ("Data history test data paging clamps page index", DataHistoryTestDataPagingClampsPageIndex),
-    ("Data manage export appends chinese upload status as last column", DataManageExportAppendsChineseUploadStatusAsLastColumn),
-    ("Upload report never exposes upload status column", UploadReportNeverExposesUploadStatusColumn),
+    ("Export reports never expose upload status column", ExportReportsNeverExposeUploadStatusColumn),
     ("Data manage export keeps upload report template layout", DataManageExportKeepsUploadReportTemplateLayout),
     ("Single-point history display rule uses configured and actual counts", SinglePointHistoryDisplayRuleUsesConfiguredAndActualCounts),
     ("Data history single-point row keeps point values", DataHistorySinglePointRowKeepsPointValues),
@@ -2968,12 +2967,13 @@ static void DataManageViewUsesGenericProductTestTree()
 }
 
 /// <summary>
-/// 数据管理页导出复用上传报表管线，只在明细末列追加中文上传状态。
+/// 上传状态属于界面查询信息，不再进入任何导出报表：
+/// 本地导出与上传给 MES 的报表共用同一套列定义，末列一律是产品结果。
 /// </summary>
-static void DataManageExportAppendsChineseUploadStatusAsLastColumn()
+static void ExportReportsNeverExposeUploadStatusColumn()
 {
     var task = BuildReportTask(new DateTime(2026, 8, 31, 8, 0, 0), endTime: null);
-    task.SN = "FLOW-UPLOAD-STATUS";
+    task.SN = "FLOW-NO-UPLOAD-STATUS";
     var records = new[]
     {
         BuildReportPoint(task.Id, stationNo: 1, productNo: "P-001", sequenceNo: 1, pointResult: ProductionConstants.TestResults.Ok),
@@ -2982,85 +2982,50 @@ static void DataManageExportAppendsChineseUploadStatusAsLastColumn()
     records[0].UploadStatus = ProductionConstants.UploadStatuses.Uploaded;
     records[1].UploadStatus = ProductionConstants.UploadStatuses.Failed;
 
-    var filePath = GenerateUploadStatusReportWorkbook(
-        new AppSettings(),
-        task,
-        records,
-        includeUploadStatus: true,
-        fileName: "data-manage-export-upload-status.xlsx");
-    try
+    // 本地手动导出与上传报表两个出口都要覆盖，避免只在一侧移除该列。
+    foreach (var localExport in new[] { true, false })
     {
-        using var workbook = new XLWorkbook(filePath);
-        var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
-        var headers = ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow);
-        AssertEqual("上传状态", headers[^1], "数据管理导出必须把上传状态放在明细表头最后一列。");
-        AssertEqual("产品结果", headers[^2], "上传状态必须追加在产品结果之后，不得打乱原有列序。");
+        var filePath = GenerateExportReportWorkbook(
+            new AppSettings(),
+            task,
+            records,
+            localExport,
+            fileName: localExport ? "data-manage-export-no-status.xlsx" : "upload-report-no-status.xlsx");
+        try
+        {
+            using var workbook = new XLWorkbook(filePath);
+            var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+            var headers = ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow);
+            AssertFalse(headers.Contains("上传状态"), "导出报表不得包含上传状态列。");
+            AssertEqual("产品结果", headers[^1], "导出报表的末列必须是产品结果。");
+            AssertFalse(
+                headers.Contains("已上传") || headers.Contains("待上传") || headers.Contains("上传失败"),
+                "导出报表不得混入任何上传状态文本。");
 
-        var statusColumn = headers.Length;
-        AssertEqual(
-            "已上传",
-            worksheet.Cell(CenterProductReportFormat.DetailFirstDataRow, statusColumn).GetString(),
-            "上传状态必须按中文显示，不得直接输出英文状态码。");
-        AssertEqual(
-            "上传失败",
-            worksheet.Cell(CenterProductReportFormat.DetailFirstDataRow + 1, statusColumn).GetString(),
-            "上传失败状态必须按中文显示。");
-    }
-    finally
-    {
-        DeleteReportFixture(filePath);
-    }
-}
-
-/// <summary>
-/// 上传状态列只属于数据管理页手动导出。真实上传给 MES 的报表混入该列会污染客户模板。
-/// </summary>
-static void UploadReportNeverExposesUploadStatusColumn()
-{
-    var task = BuildReportTask(new DateTime(2026, 8, 31, 8, 0, 0), endTime: null);
-    task.SN = "FLOW-NO-UPLOAD-STATUS";
-    var records = new[]
-    {
-        BuildReportPoint(task.Id, stationNo: 1, productNo: "P-001", sequenceNo: 1, pointResult: ProductionConstants.TestResults.Ok)
-    };
-    records[0].UploadStatus = ProductionConstants.UploadStatuses.Uploaded;
-
-    var filePath = GenerateUploadStatusReportWorkbook(
-        new AppSettings(),
-        task,
-        records,
-        includeUploadStatus: false,
-        fileName: "upload-report-without-status.xlsx");
-    try
-    {
-        using var workbook = new XLWorkbook(filePath);
-        var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
-        var headers = ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow);
-        AssertFalse(headers.Contains("上传状态"), "上传给 MES 的报表不得包含上传状态列。");
-        AssertEqual("产品结果", headers[^1], "上传报表的末列必须仍是产品结果。");
-        AssertFalse(
-            headers.Contains("已上传") || headers.Contains("待上传"),
-            "上传报表不得混入任何上传状态文本。");
-    }
-    finally
-    {
-        DeleteReportFixture(filePath);
+            // 状态文本也不得出现在数据区，防止列被去掉但取值仍写进单元格。
+            var usedColumns = worksheet.LastColumnUsed()?.ColumnNumber() ?? 0;
+            for (var column = 1; column <= usedColumns; column++)
+            {
+                var value = worksheet.Cell(CenterProductReportFormat.DetailFirstDataRow, column).GetString();
+                AssertFalse(
+                    value is "已上传" or "上传失败" or "待上传",
+                    "导出报表数据区不得写入上传状态文本。");
+            }
+        }
+        finally
+        {
+            DeleteReportFixture(filePath);
+        }
     }
 
-    // 直接校验尾列构造入口，避免今后有人误把上传状态设成无条件输出。
+    // 直接校验尾列构造入口，避免今后有人把上传状态重新加回来。
     var serviceType = typeof(ProductionReportFileService);
     var buildTrailing = serviceType.GetMethod(
         "BuildTrailingColumns",
         System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
     AssertTrue(buildTrailing is not null, "生产报表服务必须保留尾列构造入口。");
-    var withoutStatus = ((System.Collections.IEnumerable)buildTrailing!.Invoke(null, [false])!).Cast<object>().ToList();
-    AssertEqual(1, withoutStatus.Count, "未开启上传状态时尾列只能有产品结果。");
-    var withStatus = ((System.Collections.IEnumerable)buildTrailing.Invoke(null, [true])!).Cast<object>().ToList();
-    AssertEqual(2, withStatus.Count, "开启上传状态时尾列必须是产品结果加上传状态。");
-    var mergeByProduct = withStatus[^1].GetType().GetProperty("MergeByProduct")?.GetValue(withStatus[^1]);
-    AssertTrue(
-        mergeByProduct is true,
-        "上传状态必须按产品合并，否则整件检测 A/B 两行会重复显示同一状态。");
+    var trailing = ((System.Collections.IEnumerable)buildTrailing!.Invoke(null, [])!).Cast<object>().ToList();
+    AssertEqual(1, trailing.Count, "尾列只能有产品结果。");
 }
 
 /// <summary>
@@ -3075,11 +3040,11 @@ static void DataManageExportKeepsUploadReportTemplateLayout()
         BuildReportPoint(task.Id, stationNo: 1, productNo: "P-001", sequenceNo: 1, pointResult: ProductionConstants.TestResults.Ok)
     };
 
-    var filePath = GenerateUploadStatusReportWorkbook(
+    var filePath = GenerateExportReportWorkbook(
         new AppSettings(),
         task,
         records,
-        includeUploadStatus: true,
+        localExport: true,
         fileName: "data-manage-export-template-layout.xlsx");
     try
     {
@@ -3693,7 +3658,7 @@ static void OutputDecimalPlacesApplyToReportAndProcessParameter()
     var generateReport = ExtractMethodText(
         reportCode,
         "public BizProductionReportFile GenerateXlsxReport(BizWeldTask task)",
-        "public void ExportXlsxWithUploadStatus(int taskId, string filePath)");
+        "public void ExportXlsx(int taskId, string filePath)");
     AssertTrue(
         generateReport.Contains("OutputNumericFormat.ForReport(CurrentSettings)", StringComparison.Ordinal),
         "上传用报表必须应用系统设置的报表小数位。");
@@ -3703,7 +3668,7 @@ static void OutputDecimalPlacesApplyToReportAndProcessParameter()
 
     var exportReport = ExtractMethodText(
         reportCode,
-        "public void ExportXlsxWithUploadStatus(int taskId, string filePath)",
+        "public void ExportXlsx(int taskId, string filePath)",
         "private IReadOnlyList<BizWeldPointRecord> QueryTaskRecords(int taskId)");
     AssertTrue(
         exportReport.Contains("OutputNumericFormat.None", StringComparison.Ordinal),
@@ -16509,11 +16474,11 @@ static void PublishReportArtifact(string sourcePath, string destinationPath)
 /// 列定义必须由 BuildReportSchemaForStationsWithDeviceType 产出，测试里不重复拼装列，
 /// 否则断言只会验证测试自己的假设，无法发现生产代码的列序退化。
 /// </summary>
-static string GenerateUploadStatusReportWorkbook(
+static string GenerateExportReportWorkbook(
     AppSettings settings,
     BizWeldTask task,
     IReadOnlyList<BizWeldPointRecord> records,
-    bool includeUploadStatus,
+    bool localExport,
     string deviceType = "",
     string fileName = "data-manage-export.xlsx")
 {
@@ -16558,7 +16523,7 @@ static string GenerateUploadStatusReportWorkbook(
         "BuildReportSchemaForStationsWithDeviceType",
         System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
     AssertTrue(buildSchema is not null, "生产报表服务必须保留含设备类型的 schema 构造入口。");
-    var schema = buildSchema!.Invoke(null, [resolvedStations, deviceType, includeUploadStatus])
+    var schema = buildSchema!.Invoke(null, [resolvedStations, deviceType])
         ?? throw new InvalidOperationException("schema 构造入口不得返回空值。");
 
     var outputDirectory = Path.Combine(Path.GetTempPath(), "AutoWeldSystem.Tests", Guid.NewGuid().ToString("N"));
@@ -16566,9 +16531,9 @@ static string GenerateUploadStatusReportWorkbook(
     var filePath = Path.Combine(outputDirectory, fileName);
     var writeMethod = serviceType.GetMethod("WriteXlsx", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
     AssertTrue(writeMethod is not null, "生产报表服务必须保留 XLSX 写入入口。");
-    // 与生产代码取值一致：含上传状态列的是数据管理页手动导出，沿用采集小数位；
-    // 不含该列的是上传给 MES 的报表，应用系统设置的报表小数位。
-    var numericFormat = includeUploadStatus
+    // 与生产代码取值一致：数据管理页手动导出沿用采集小数位；
+    // 上传给 MES 的报表应用系统设置的报表小数位。
+    var numericFormat = localExport
         ? OutputNumericFormat.None
         : OutputNumericFormat.ForReport(settings);
     writeMethod!.Invoke(service, [filePath, schema, records, task, numericFormat]);
@@ -17420,7 +17385,7 @@ sealed class FakeProductionReportFileService : IProductionReportFileService
     public bool ShouldUploadReportFile(BizWeldTask task) => ShouldUploadReportFileResult;
 
     // 手动导出与上传流程无关，这些用例只验证上传链路，不需要真实写盘。
-    public void ExportXlsxWithUploadStatus(int taskId, string filePath) => ExportCallCount++;
+    public void ExportXlsx(int taskId, string filePath) => ExportCallCount++;
 
     public int ExportCallCount { get; private set; }
 }

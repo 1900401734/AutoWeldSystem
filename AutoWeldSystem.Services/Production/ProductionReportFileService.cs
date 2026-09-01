@@ -24,7 +24,6 @@ public class ProductionReportFileService : IProductionReportFileService
     private const string ColumnProductResult = "product_result";
     private const string ColumnTouchNo = "touch_no";
     private const string ColumnTouchResult = "touch_result";
-    private const string ColumnUploadStatus = "upload_status";
     private const string ReportRoleActual = "actual";
     private const string ReportRoleUpper = "upper";
     private const string ReportRoleLower = "lower";
@@ -37,7 +36,6 @@ public class ProductionReportFileService : IProductionReportFileService
     private const string HeaderProductResult = "产品结果";
     private const string HeaderTouchNo = "焊点编号";
     private const string HeaderTouchResult = "焊点结果";
-    private const string HeaderUploadStatus = "上传状态";
     private const string ReportFormat = "XLSX";
     private const int DetailHeaderRow = CenterProductReportFormat.DetailHeaderRow;
     private const int DetailFirstDataRow = DetailHeaderRow + 1;
@@ -96,7 +94,7 @@ public class ProductionReportFileService : IProductionReportFileService
     }
 
     /// <inheritdoc />
-    public void ExportXlsxWithUploadStatus(int taskId, string filePath)
+    public void ExportXlsx(int taskId, string filePath)
     {
         lock (_dbLock)
         {
@@ -116,7 +114,7 @@ public class ProductionReportFileService : IProductionReportFileService
             // 本地查看和追溯需要与实时预览、历史数据列表看到的位数一致。
             WriteXlsx(
                 filePath,
-                BuildReportSchema(task, records, includeUploadStatus: true),
+                BuildReportSchema(task, records),
                 records,
                 task,
                 OutputNumericFormat.None);
@@ -186,14 +184,12 @@ public class ProductionReportFileService : IProductionReportFileService
 
     private ReportSchema BuildReportSchema(
         BizWeldTask task,
-        IReadOnlyList<BizWeldPointRecord> records,
-        bool includeUploadStatus = false)
+        IReadOnlyList<BizWeldPointRecord> records)
     {
         var stationConfigs = ResolveStationReportConfigs(task, records);
         return BuildReportSchemaForStationsWithDeviceType(
             stationConfigs,
-            CurrentSettings.ProcessParameterDeviceType,
-            includeUploadStatus);
+            CurrentSettings.ProcessParameterDeviceType);
     }
 
     /// <summary>
@@ -201,12 +197,11 @@ public class ProductionReportFileService : IProductionReportFileService
     /// </summary>
     private static ReportSchema BuildReportSchemaForStations(
         IReadOnlyList<ResolvedStationReportConfig> stationConfigs)
-        => BuildReportSchemaForStationsWithDeviceType(stationConfigs, string.Empty, includeUploadStatus: false);
+        => BuildReportSchemaForStationsWithDeviceType(stationConfigs, string.Empty);
 
     private static ReportSchema BuildReportSchemaForStationsWithDeviceType(
         IReadOnlyList<ResolvedStationReportConfig> stationConfigs,
-        string deviceType,
-        bool includeUploadStatus)
+        string deviceType)
     {
         var orderedConfigs = stationConfigs
             .OrderBy(config => config.StationNo)
@@ -220,7 +215,7 @@ public class ProductionReportFileService : IProductionReportFileService
                 item,
                 WholePieceAbAggregationRules.IsApplicable(deviceType, config.Config.TouchCount))));
         var pointResultColumn = BuildPointResultColumn(displayOptions);
-        var trailingColumns = BuildTrailingColumns(includeUploadStatus);
+        var trailingColumns = BuildTrailingColumns();
         var columns = leadingColumns
             .Concat(dynamicColumns)
             .Concat(pointResultColumn)
@@ -475,11 +470,7 @@ public class ProductionReportFileService : IProductionReportFileService
                 [ColumnProductNo] = output.Source.ProductNo,
                 [ColumnProductResult] = output.ProductResult,
                 [ColumnTouchNo] = output.PointNo,
-                [ColumnTouchResult] = output.PointResult,
-                // 恒定取值，是否输出由 detailColumns 是否含上传状态列决定。
-                // Source 在标准设备是该行自己的记录，在整件检测 A/B 是产品代表记录，
-                // 上传本就按产品成批进行，两条路径取到的状态一致。
-                [ColumnUploadStatus] = UploadStatusDisplayRules.GetDisplayText(output.Source.UploadStatus)
+                [ColumnTouchResult] = output.PointResult
             };
             foreach (var pair in output.DynamicValues)
             {
@@ -912,15 +903,9 @@ public class ProductionReportFileService : IProductionReportFileService
         yield return new ReportColumn(ColumnTouchResult, displayOptions.PointResultHeader, MergeByProduct: false);
     }
 
-    private static IEnumerable<ReportColumn> BuildTrailingColumns(bool includeUploadStatus)
+    private static IEnumerable<ReportColumn> BuildTrailingColumns()
     {
         yield return new ReportColumn(ColumnProductResult, HeaderProductResult, MergeByProduct: true);
-
-        // 上传状态只属于数据管理页的手动导出。真实上传给 MES 的报表绝不能带这一列。
-        if (includeUploadStatus)
-        {
-            yield return new ReportColumn(ColumnUploadStatus, HeaderUploadStatus, MergeByProduct: true);
-        }
     }
 
     /// <summary>

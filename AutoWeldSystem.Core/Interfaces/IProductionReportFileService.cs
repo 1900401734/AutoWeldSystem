@@ -16,9 +16,9 @@ public interface IProductionReportFileService
     bool ShouldUploadReportFile(BizWeldTask task);
 
     /// <summary>
-    /// 按上传报表格式导出到指定路径，并在末列附加中文上传状态。
+    /// 按上传报表格式导出到指定路径。
     /// 供数据管理页手动导出使用：不创建也不更新 BizProductionReportFile 记录，
     /// 因此导出动作不会影响真实上传链路的文件与状态。
     /// </summary>
-    void ExportXlsxWithUploadStatus(int taskId, string filePath);
+    void ExportXlsx(int taskId, string filePath);
 }
