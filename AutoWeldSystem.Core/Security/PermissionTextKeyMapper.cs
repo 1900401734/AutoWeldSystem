@@ -18,6 +18,8 @@ public static class PermissionTextKeyMapper
             PermissionCodes.Pages.AddressManage => TextKeys.Permission.PageAddressManage,
             PermissionCodes.Buttons.Monitor.OnlineReport => TextKeys.Permission.ButtonMonitorOnlineReport,
             PermissionCodes.Buttons.Monitor.LocalWorkOrder => TextKeys.Permission.ButtonMonitorLocalWorkOrder,
+            PermissionCodes.Buttons.Monitor.MergedDisplay => TextKeys.Permission.ButtonMonitorMergedDisplay,
+            PermissionCodes.Buttons.Monitor.FaceResultDisplay => TextKeys.Permission.ButtonMonitorFaceResultDisplay,
             PermissionCodes.Buttons.Auth.SwitchUser => TextKeys.Permission.ButtonAuthSwitchUser,
             PermissionCodes.Buttons.Auth.Logout => TextKeys.Permission.ButtonAuthLogout,
             PermissionCodes.Buttons.Auth.AddressPreview => TextKeys.Permission.ButtonAuthAddressPreview,

@@ -1587,11 +1587,19 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// 当前登录用户变化后，重新计算在线按钮对应的开工/完工权限。
+    /// 当前登录用户变化后，重新计算在线按钮对应的开工/完工权限，
+    /// 以及两个写全局设置的显示开关是否对该角色可见。
     /// </summary>
     private void GlobalContext_SessionChanged(object? sender, EventArgs e)
     {
-        RunOnUiThread(ApplyReportButtonState, "MonitorView.SessionChanged", requireHandle: false);
+        RunOnUiThread(
+            () =>
+            {
+                ApplyReportButtonState();
+                SyncMergedDisplayToggle(_currentSettings.IsWholePieceMergedDisplayEnabled);
+            },
+            "MonitorView.SessionChanged",
+            requireHandle: false);
     }
 
     /// <summary>
@@ -2618,7 +2626,8 @@ public partial class MonitorView : BaseView
 
     /// <summary>
     /// 同步合并显示复选框状态，避免程序性赋值再次触发保存。
-    /// 合并显示只对整件检测有意义，其他设备类型隐藏开关。
+    /// 合并显示只对整件检测有意义，其他设备类型隐藏开关；
+    /// 该开关写的是全局设置，因此还要求当前角色具备对应权限。
     /// </summary>
     private void SyncMergedDisplayToggle(bool enableMergedDisplay)
     {
@@ -2632,10 +2641,8 @@ public partial class MonitorView : BaseView
             _syncingMergedDisplayToggle = false;
         }
 
-        chkMergedDisplay1.Visible = string.Equals(
-            _currentSettings.ProcessParameterDeviceType?.Trim(),
-            ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck,
-            StringComparison.OrdinalIgnoreCase);
+        chkMergedDisplay1.Visible = IsWholePieceInspectionDevice()
+            && GlobalContext.HasPermission(PermissionCodes.Buttons.Monitor.MergedDisplay);
         // 合并模式没有面结果列，此时隐藏面结果开关，避免出现一个不起作用的勾选框。
         SyncFaceResultDisplayVisibility();
     }
@@ -2677,15 +2684,23 @@ public partial class MonitorView : BaseView
 
     /// <summary>
     /// 面结果开关只在整件检测的逐面模式下有意义，合并视图本身就没有面结果列。
+    /// 该开关写的是全局设置，因此还要求当前角色具备对应权限。
     /// </summary>
     private void SyncFaceResultDisplayVisibility()
     {
-        chkFaceResultDisplay1.Visible = string.Equals(
-                _currentSettings.ProcessParameterDeviceType?.Trim(),
-                ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck,
-                StringComparison.OrdinalIgnoreCase)
-            && !_currentSettings.IsWholePieceMergedDisplayEnabled;
+        chkFaceResultDisplay1.Visible = IsWholePieceInspectionDevice()
+            && !_currentSettings.IsWholePieceMergedDisplayEnabled
+            && GlobalContext.HasPermission(PermissionCodes.Buttons.Monitor.FaceResultDisplay);
     }
+
+    /// <summary>
+    /// 当前过程参数设备类型是否为整件检测。合并显示和面结果开关都只对该设备类型有意义。
+    /// </summary>
+    private bool IsWholePieceInspectionDevice()
+        => string.Equals(
+            _currentSettings.ProcessParameterDeviceType?.Trim(),
+            ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck,
+            StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// 合并显示切换后立即重建两个表格，不等下一帧 PLC 快照。

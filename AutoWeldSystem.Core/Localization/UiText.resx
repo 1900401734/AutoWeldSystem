@@ -1032,6 +1032,12 @@
   <data name="permission.button.monitor.local_work_order" xml:space="preserve">
     <value>离线开工</value>
   </data>
+  <data name="permission.button.monitor.merged_display" xml:space="preserve">
+    <value>切换合并显示</value>
+  </data>
+  <data name="permission.button.monitor.face_result_display" xml:space="preserve">
+    <value>切换面结果显示</value>
+  </data>
   <data name="permission.button.auth.switch_user" xml:space="preserve">
     <value>切换用户</value>
   </data>

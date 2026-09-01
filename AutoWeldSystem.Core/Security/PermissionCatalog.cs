@@ -21,6 +21,8 @@ public static class PermissionCatalog
         new(PermissionCodes.Buttons.Auth.SwitchUser, "Switch User", PermissionType.Button, PermissionCodes.Pages.Monitor, 170),
         new(PermissionCodes.Buttons.Auth.Logout, "Logout", PermissionType.Button, PermissionCodes.Pages.Monitor, 180),
         new(PermissionCodes.Buttons.Auth.AddressPreview, "PLC Address Preview", PermissionType.Button, PermissionCodes.Pages.Monitor, 190),
+        new(PermissionCodes.Buttons.Monitor.MergedDisplay, "Merged Display Toggle", PermissionType.Button, PermissionCodes.Pages.Monitor, 192),
+        new(PermissionCodes.Buttons.Monitor.FaceResultDisplay, "Face Result Toggle", PermissionType.Button, PermissionCodes.Pages.Monitor, 194),
 
         new(PermissionCodes.Buttons.Data.Query, "Query History", PermissionType.Button, PermissionCodes.Pages.DataManage, 220),
         new(PermissionCodes.Buttons.Data.Reset, "Reset History Filter", PermissionType.Button, PermissionCodes.Pages.DataManage, 230),

@@ -450,6 +450,8 @@ var tests = new (string Name, Action Run)[]
     ("Upload message display rules localize persisted messages", UploadMessageDisplayRulesLocalizePersistedMessages),
     ("Weld task restore unfinished task is idempotent", WeldTaskRestoreUnfinishedTaskIsIdempotent),
     ("Permission catalog omits get work order button", PermissionCatalogOmitsGetWorkOrderButton),
+    ("Monitor display toggle permissions are cataloged for admins only", MonitorDisplayTogglePermissionsAreCatalogedForAdminsOnly),
+    ("Monitor display toggle upgrade grants admin only on first introduction", MonitorDisplayToggleUpgradeGrantsAdminOnlyOnFirstIntroduction),
     ("Program content rows come from dictionary items", ProgramContentRowsComeFromDictionaryItems),
     ("Program content JSON keeps only rows with standard values", ProgramContentJsonKeepsOnlyRowsWithStandardValues),
     ("Program content JSON merges existing values and preserves unknown keys", ProgramContentJsonMergesExistingValuesAndPreservesUnknownKeys),
@@ -10459,6 +10461,84 @@ static void WorkOrderDeletionRulesRestrictReportPathsToReportRoot()
         Path.Combine("D:", "AutoWeldData", "Reports"),
         WorkOrderDeletionRules.ResolveReportRootDirectory(@"D:\AutoWeldData"),
         "报表根目录必须与报表生成规则一致。");
+}
+
+static void MonitorDisplayTogglePermissionsAreCatalogedForAdminsOnly()
+{
+    var zhResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.resx"), Encoding.UTF8);
+    var enResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.en.resx"), Encoding.UTF8);
+    var expectedCodes = new[]
+    {
+        PermissionCodes.Buttons.Monitor.MergedDisplay,
+        PermissionCodes.Buttons.Monitor.FaceResultDisplay
+    };
+
+    foreach (var permissionCode in expectedCodes)
+    {
+        var definition = PermissionCatalog.All
+            .SingleOrDefault(permission => string.Equals(permission.Code, permissionCode, StringComparison.OrdinalIgnoreCase));
+        AssertTrue(definition is not null, $"监控页显示开关权限 {permissionCode} 必须注册到权限目录。");
+        AssertEqual(PermissionType.Button, definition!.Type, $"{permissionCode} 必须使用 Button 类型。");
+        AssertEqual(PermissionCodes.Pages.Monitor, definition.ParentCode, $"{permissionCode} 必须挂在生产监控页面权限下。");
+
+        var textKey = PermissionTextKeyMapper.GetTextKey(permissionCode);
+        AssertFalse(string.IsNullOrWhiteSpace(textKey), $"{permissionCode} 必须映射本地化键。");
+        AssertTrue(zhResources.Contains($"name=\"{textKey}\"", StringComparison.Ordinal), $"{permissionCode} 必须包含中文名称。");
+        AssertTrue(enResources.Contains($"name=\"{textKey}\"", StringComparison.Ordinal), $"{permissionCode} 必须包含英文名称。");
+    }
+
+    // 两个开关写的是全局设置，操作员和只读角色的默认白名单是显式枚举，升级后不得自动获得切换能力
+    var rbacCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "RbacService.cs"), Encoding.UTF8);
+    var defaultMap = ExtractMethodText(
+        rbacCode,
+        "private static Dictionary<string, IReadOnlyCollection<string>> BuildDefaultRolePermissionMap()",
+        "private void RefreshCurrentSessionIfAffected");
+    var operatorSection = defaultMap[defaultMap.IndexOf("[AppConstants.Roles.Operator]", StringComparison.Ordinal)..];
+    AssertFalse(
+        operatorSection.Contains("PermissionCodes.Buttons.Monitor.MergedDisplay", StringComparison.Ordinal),
+        "操作员和只读角色的默认权限不得包含合并显示开关。");
+    AssertFalse(
+        operatorSection.Contains("PermissionCodes.Buttons.Monitor.FaceResultDisplay", StringComparison.Ordinal),
+        "操作员和只读角色的默认权限不得包含面结果开关。");
+}
+
+static void MonitorDisplayToggleUpgradeGrantsAdminOnlyOnFirstIntroduction()
+{
+    var expectedCodes = new[]
+    {
+        PermissionCodes.Buttons.Monitor.MergedDisplay,
+        PermissionCodes.Buttons.Monitor.FaceResultDisplay
+    };
+
+    AssertSequenceEqual(
+        expectedCodes,
+        RolePermissionInitializationRules.ResolveMonitorDisplayToggleUpgradeDefaults(
+            AppConstants.Roles.Admin,
+            monitorDisplayToggleCatalogWasMissing: true,
+            hasMonitorPagePermission: true),
+        "旧数据库首次引入显示开关权限时必须为管理员补权。");
+
+    AssertEqual(
+        0,
+        RolePermissionInitializationRules.ResolveMonitorDisplayToggleUpgradeDefaults(
+            AppConstants.Roles.Admin,
+            monitorDisplayToggleCatalogWasMissing: false,
+            hasMonitorPagePermission: true).Count,
+        "权限已存在时不得重复补权，避免覆盖管理员手工取消的配置。");
+    AssertEqual(
+        0,
+        RolePermissionInitializationRules.ResolveMonitorDisplayToggleUpgradeDefaults(
+            AppConstants.Roles.Admin,
+            monitorDisplayToggleCatalogWasMissing: true,
+            hasMonitorPagePermission: false).Count,
+        "没有生产监控页权限的角色不得获得显示开关权限。");
+    AssertEqual(
+        0,
+        RolePermissionInitializationRules.ResolveMonitorDisplayToggleUpgradeDefaults(
+            AppConstants.Roles.Operator,
+            monitorDisplayToggleCatalogWasMissing: true,
+            hasMonitorPagePermission: true).Count,
+        "补权只针对管理员角色。");
 }
 
 static void DataDeletePermissionIsCatalogedForAdminsOnly()

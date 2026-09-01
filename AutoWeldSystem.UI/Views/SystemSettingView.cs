@@ -1,4 +1,5 @@
-﻿using AutoWeldSystem.Core.Constants;
+﻿using AutoWeldSystem.Core;
+using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Center;
 using AutoWeldSystem.Core.DTOs.Mes.Request;
 using AutoWeldSystem.Core.Enums;
@@ -1100,10 +1101,13 @@ public partial class SystemSettingView : BaseView
         selectInspectionResultSource.Enabled = wholePieceInspection && !HasAnyUnfinishedTask();
 
         // 合并显示与 A/B 配对聚合只对整件检测有意义；聚合方式影响上传和报表数据，未完工时禁止切换。
+        // 两个显示开关与监控页快捷开关写同一份全局设置，因此同样要求当前角色具备对应权限。
         tlpPairedAggregationMode.Visible = wholePieceInspection;
         selectPairedAggregationMode.Enabled = wholePieceInspection && !HasAnyUnfinishedTask();
-        chkEnableWholePieceMergedDisplay.Visible = wholePieceInspection;
-        chkEnableWholePieceFaceResultDisplay.Visible = wholePieceInspection;
+        chkEnableWholePieceMergedDisplay.Visible = wholePieceInspection
+            && GlobalContext.HasPermission(PermissionCodes.Buttons.Monitor.MergedDisplay);
+        chkEnableWholePieceFaceResultDisplay.Visible = wholePieceInspection
+            && GlobalContext.HasPermission(PermissionCodes.Buttons.Monitor.FaceResultDisplay);
     }
 
     private void BindPairedAggregationModeOptions()

@@ -27,6 +27,7 @@ public class RbacService : IRbacService
         CleanupRetiredPermissions();
         EnsureDefaultRolePermissions();
         UpgradeDataDeletePermission(createdPermissionCodes);
+        UpgradeMonitorDisplayTogglePermissions(createdPermissionCodes);
     }
 
     public IReadOnlyList<SysRole> GetAllRoles(bool enabledOnly = false)
@@ -400,6 +401,48 @@ public class RbacService : IRbacService
             }
 
             AppendMissingRolePermissions(role.Id, [deletePermission.Id]);
+        }
+    }
+
+    /// <summary>
+    /// 旧数据库首次引入监控页显示开关权限时，为管理员补权，避免升级后两个开关一直不显示。
+    /// </summary>
+    private void UpgradeMonitorDisplayTogglePermissions(HashSet<string> createdPermissionCodes)
+    {
+        var toggleCodes = new[]
+        {
+            PermissionCodes.Buttons.Monitor.MergedDisplay,
+            PermissionCodes.Buttons.Monitor.FaceResultDisplay
+        };
+        if (!toggleCodes.Any(createdPermissionCodes.Contains))
+        {
+            return;
+        }
+
+        var permissions = GetAllPermissions().ToDictionary(item => item.Code, StringComparer.OrdinalIgnoreCase);
+        if (!permissions.TryGetValue(PermissionCodes.Pages.Monitor, out var monitorPermission))
+        {
+            return;
+        }
+
+        foreach (var role in GetAllRoles())
+        {
+            var hasMonitorPage = _dbContext.Db.Queryable<SysRolePermission>()
+                .Any(item => item.RoleId == role.Id && item.PermissionId == monitorPermission.Id);
+            var upgradeCodes = RolePermissionInitializationRules.ResolveMonitorDisplayToggleUpgradeDefaults(
+                role.RoleCode,
+                monitorDisplayToggleCatalogWasMissing: true,
+                hasMonitorPagePermission: hasMonitorPage);
+            if (upgradeCodes.Count == 0)
+            {
+                continue;
+            }
+
+            var permissionIds = upgradeCodes
+                .Where(permissions.ContainsKey)
+                .Select(code => permissions[code].Id)
+                .ToArray();
+            AppendMissingRolePermissions(role.Id, permissionIds);
         }
     }
 

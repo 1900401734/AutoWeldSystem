@@ -101,6 +101,27 @@ public static class RolePermissionInitializationRules
         return new[] { PermissionCodes.Buttons.Data.Delete };
     }
 
+    /// <summary>
+    /// 旧数据库首次出现监控页显示开关权限时，为已有监控页权限的管理员补齐这两个权限。
+    /// 后续启动返回空集合，因此不会重新补回管理员手工取消的权限。
+    /// </summary>
+    public static IReadOnlyList<string> ResolveMonitorDisplayToggleUpgradeDefaults(
+        string? roleCode,
+        bool monitorDisplayToggleCatalogWasMissing,
+        bool hasMonitorPagePermission)
+    {
+        if (!monitorDisplayToggleCatalogWasMissing || !hasMonitorPagePermission || !IsAdmin(roleCode))
+        {
+            return Array.Empty<string>();
+        }
+
+        return new[]
+        {
+            PermissionCodes.Buttons.Monitor.MergedDisplay,
+            PermissionCodes.Buttons.Monitor.FaceResultDisplay
+        };
+    }
+
     private static bool IsDeveloper(string? roleCode)
     {
         return string.Equals(roleCode, AppConstants.Roles.Developer, StringComparison.OrdinalIgnoreCase);

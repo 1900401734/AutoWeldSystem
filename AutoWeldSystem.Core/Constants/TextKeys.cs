@@ -937,6 +937,8 @@ public static class TextKeys
         public const string PageAddressManage = "permission.page.address_manage";
         public const string ButtonMonitorOnlineReport = "permission.button.monitor.online_report";
         public const string ButtonMonitorLocalWorkOrder = "permission.button.monitor.local_work_order";
+        public const string ButtonMonitorMergedDisplay = "permission.button.monitor.merged_display";
+        public const string ButtonMonitorFaceResultDisplay = "permission.button.monitor.face_result_display";
         public const string ButtonAuthSwitchUser = "permission.button.auth.switch_user";
         public const string ButtonAuthLogout = "permission.button.auth.logout";
         public const string ButtonAuthAddressPreview = "permission.button.auth.address_preview";

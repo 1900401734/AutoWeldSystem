@@ -1032,6 +1032,12 @@
   <data name="permission.button.monitor.local_work_order" xml:space="preserve">
     <value>Offline Start</value>
   </data>
+  <data name="permission.button.monitor.merged_display" xml:space="preserve">
+    <value>Toggle Merged Display</value>
+  </data>
+  <data name="permission.button.monitor.face_result_display" xml:space="preserve">
+    <value>Toggle Face Result Display</value>
+  </data>
   <data name="permission.button.auth.switch_user" xml:space="preserve">
     <value>Switch User</value>
   </data>
