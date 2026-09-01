@@ -1,6 +1,17 @@
 # AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.17.3`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.17.4`。
+
+## v2.17.4 修复说明
+
+修复**中心服务器停机期间采集的产品数据永久丢失**的问题，确保设备端历史数据一件不漏地同步到看板。
+
+- 此前连接类异常（服务器关闭、网络不可达）会穿透转发消费循环，任务停留在「上传中」且重试次数已递增。默认重试上限 3 次、退避 10/20/30 秒，因此**中心服务器只要关闭超过约 30 秒**，该时段的产品数据就会被消费查询永久排除，服务器恢复后也不再补传。
+- 现按失败性质分类处理：**连接类失败不消耗重试配额**，只推迟 30 秒后继续尝试，服务器恢复后自动补齐，永不进入失败终态；**业务类失败**（如报表字段或表头校验被拒）仍保留 3 次上限，耗尽后转为失败状态提示人工介入——这类请求重试再多次也不会成功。
+- 启动时唤醒此前被判死的转发任务，覆盖「失败」和卡在「上传中」两种状态，历史积压数据自动补传。
+- 工单完工时增加一次补漏扫描：重新排队该工单尚未成功的产品数据，作为整批数据到位的最后一道保障。只针对本工单未成功的任务，不会重发已成功的产品。
+- 逐产品实时转发仍是主通道，看板在生产过程中照常实时更新；上述机制只负责兜住失败的部分。
+- 中心服务器长时间不可达期间，服务器日志按「首次失败 + 每 10 分钟摘要 + 恢复」记录，不会刷屏。
 
 ## v2.17.3 修复说明
 
@@ -503,10 +514,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>2.17.3</Version>
-<AssemblyVersion>2.17.3.0</AssemblyVersion>
-<FileVersion>2.17.3.0</FileVersion>
-<InformationalVersion>2.17.3</InformationalVersion>
+<Version>2.17.4</Version>
+<AssemblyVersion>2.17.4.0</AssemblyVersion>
+<FileVersion>2.17.4.0</FileVersion>
+<InformationalVersion>2.17.4</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -518,9 +529,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v2.17.3 -m "Release v2.17.3"
+git tag -a v2.17.4 -m "Release v2.17.4"
 git push origin main
-git push origin v2.17.3
+git push origin v2.17.4
 ```
 
 ## Git 使用
