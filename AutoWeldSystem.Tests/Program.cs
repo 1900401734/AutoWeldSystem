@@ -477,13 +477,60 @@ var tests = new (string Name, Action Run)[]
     ("Natural sort comparer orders product numbers numerically", NaturalSortComparerOrdersProductNumbersNumerically),
     ("Program delete keeps MES sync off UI path", ProgramDeleteKeepsMesSyncOffUiPath),
     ("Program manage save and dual selector paths stay asynchronous", ProgramManageSaveAndDualSelectorPathsStayAsynchronous),
-    ("Program lookup snapshot removes UI database queries", ProgramLookupSnapshotRemovesUiDatabaseQueries)
+    ("Program lookup snapshot removes UI database queries", ProgramLookupSnapshotRemovesUiDatabaseQueries),
+    ("Center finish update does not fabricate point headers", CenterFinishUpdateDoesNotFabricatePointHeaders)
 };
 
 foreach (var test in tests)
 {
     test.Run();
     Console.WriteLine($"PASS {test.Name}");
+}
+
+/// <summary>
+/// 工单完工更新请求只推进任务状态，按契约不携带列定义（ReportColumns 为空）。
+/// 服务端此前仍拿这个空列表补默认表头，而默认值硬编码为非整件检测的“焊点编号”，
+/// 于是完工更新会把错误表头写进中心报表文件，把后续携带“检测面”的产品数据全部挡在
+/// EnsureCompatiblePointHeaders 之外。空列定义必须不产生任何采集点表头。
+/// </summary>
+static void CenterFinishUpdateDoesNotFabricatePointHeaders()
+{
+    // 完工更新的列定义为空，不得凭空补出采集点表头
+    var fromEmpty = CenterProductReportFormat.BuildDetailColumns([]);
+    var touchNo = fromEmpty.FirstOrDefault(column => string.Equals(
+        column.Key,
+        CenterProductReportFormat.ColumnTouchNo,
+        StringComparison.OrdinalIgnoreCase));
+    var touchResult = fromEmpty.FirstOrDefault(column => string.Equals(
+        column.Key,
+        CenterProductReportFormat.ColumnTouchResult,
+        StringComparison.OrdinalIgnoreCase));
+    AssertTrue(
+        string.IsNullOrWhiteSpace(touchNo?.Title),
+        "空列定义不得补出采集点编号表头：整件检测设备的表头是“检测面”，凭空补出的“焊点编号”会让后续产品数据被表头校验拒收。");
+    AssertTrue(
+        string.IsNullOrWhiteSpace(touchResult?.Title),
+        "空列定义不得补出采集点结果表头，理由同上。");
+
+    // 整件检测设备的表头必须原样保留，与设备端工艺配置一致
+    var wholePieceColumns = CenterProductReportFormat.BuildDetailColumns(
+    [
+        new CenterProductReportColumn(CenterProductReportFormat.ColumnProductNo, "产品编号", MergeByProduct: true),
+        new CenterProductReportColumn(CenterProductReportFormat.ColumnTouchNo, "检测面", MergeByProduct: false),
+        new CenterProductReportColumn(CenterProductReportFormat.ColumnTouchResult, "检测结果", MergeByProduct: false)
+    ]);
+    AssertEqual(
+        "检测面",
+        wholePieceColumns.Single(column => column.Key == CenterProductReportFormat.ColumnTouchNo).Title,
+        "整件检测的采集点编号表头必须沿用设备端配置。");
+    AssertEqual(
+        "检测结果",
+        wholePieceColumns.Single(column => column.Key == CenterProductReportFormat.ColumnTouchResult).Title,
+        "整件检测的采集点结果表头必须沿用设备端配置。");
+
+    // 空表头与任何真实表头都必须兼容，否则完工更新先到时仍会挡住产品数据
+    CenterProductReportFormat.EnsureCompatiblePointHeaders(fromEmpty, wholePieceColumns);
+    CenterProductReportFormat.EnsureCompatiblePointHeaders(wholePieceColumns, fromEmpty);
 }
 
 static void SystemSettingLayoutRulesHonorDpiBreakpoints()
@@ -5359,10 +5406,13 @@ static void CenterProductReportColumnsFollowProductionExcelFormat()
 
     AssertEqual("生产报表", CenterProductReportFormat.WorksheetName, "Center report sheet name must match equipment Excel reports.");
     AssertEqual("产品编号", headers[0], "Single-station center details must start with product number.");
-    AssertEqual("焊点编号", headers[1], "Center report must use the same point number column as equipment reports.");
+    // 采集点表头由设备端工位工艺配置决定，服务端无从判断：点焊为“焊点编号”，整件检测为“检测面”。
+    // 此处只提供动态列、未提供采集点表头，因此必须留空——曾经补出“焊点编号”，
+    // 使整件检测设备的产品数据被表头一致性校验永久拒收。
+    AssertEqual(string.Empty, headers[1], "未提供采集点编号表头时必须留空，不得凭空补出“焊点编号”。");
     AssertEqual("height", headers[2], "Dynamic saved values must be placed before the point result column.");
     AssertEqual("height_result", headers[3], "Dynamic saved result values must preserve equipment order.");
-    AssertEqual("焊点结果", headers[4], "Center report point result must follow all dynamic test values.");
+    AssertEqual(string.Empty, headers[4], "未提供采集点结果表头时必须留空，理由同上。");
     AssertEqual("产品结果", headers[^1], "PLC product result must remain the final fixed detail column.");
     AssertFalse(headers.Contains("工位"), "Single-station center details must omit the station column.");
     AssertFalse(headers.Contains("工号"), "Task fields belong in the customer template header, not repeated detail columns.");
@@ -5373,6 +5423,21 @@ static void CenterProductReportColumnsFollowProductionExcelFormat()
     AssertEqual("检测结果", CenterProductReportFormat.ResolvePointResultTitle("焊点结果", wholePieceInspection: true), "整件检测的旧默认结果表头必须升级为检测结果。");
     AssertEqual("拍照次数", CenterProductReportFormat.ResolvePointNoTitle("拍照次数", wholePieceInspection: true), "整件检测自定义编号表头必须保留。");
     AssertEqual("拍照结果", CenterProductReportFormat.ResolvePointResultTitle("拍照结果", wholePieceInspection: true), "整件检测自定义结果表头必须保留。");
+
+    // 设备端提供了表头时必须原样保留，留空只发生在设备端没提供的情况下。
+    var configured = CenterProductReportFormat.BuildColumns(
+    [
+        new CenterProductReportColumn(CenterProductReportFormat.ColumnTouchNo, "检测面", MergeByProduct: false),
+        new CenterProductReportColumn(CenterProductReportFormat.ColumnTouchResult, "检测结果", MergeByProduct: false)
+    ]);
+    AssertEqual(
+        "检测面",
+        configured.Single(column => column.Key == CenterProductReportFormat.ColumnTouchNo).Title,
+        "设备端提供的采集点编号表头必须原样保留。");
+    AssertEqual(
+        "检测结果",
+        configured.Single(column => column.Key == CenterProductReportFormat.ColumnTouchResult).Title,
+        "设备端提供的采集点结果表头必须原样保留。");
 }
 
 static void CenterProductReportColumnsUseForwardedEquipmentHeaders()

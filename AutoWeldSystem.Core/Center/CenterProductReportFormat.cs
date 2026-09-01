@@ -85,7 +85,11 @@ public static class CenterProductReportFormat
         }
 
         columns.Add(ResolveDetailColumn(ColumnProductNo, "产品编号", mergeByProduct: true, equipmentColumnList));
-        columns.Add(ResolveDetailColumn(ColumnTouchNo, ResolveDefaultPointNoTitle(equipmentColumnList), mergeByProduct: false, equipmentColumnList));
+        // 采集点表头由设备端工位工艺配置决定（点焊为“焊点编号”，整件检测为“检测面”），
+        // 服务端无从判断，因此设备端未提供时留空而不是补默认值：
+        // 工单完工更新按契约不携带列定义，若在此补出“焊点编号”会写进报表文件，
+        // 使后续携带“检测面”的产品数据全部被 EnsureCompatiblePointHeaders 拒收。
+        columns.Add(ResolveDetailColumn(ColumnTouchNo, string.Empty, mergeByProduct: false, equipmentColumnList));
 
         var fixedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -96,7 +100,7 @@ public static class CenterProductReportFormat
             ColumnProductResult
         };
         columns.AddRange(equipmentColumnList.Where(column => !fixedKeys.Contains(column.Key)));
-        columns.Add(ResolveDetailColumn(ColumnTouchResult, ResolveDefaultPointResultTitle(equipmentColumnList), mergeByProduct: false, equipmentColumnList));
+        columns.Add(ResolveDetailColumn(ColumnTouchResult, string.Empty, mergeByProduct: false, equipmentColumnList));
         columns.Add(ResolveDetailColumn(ColumnProductResult, "产品结果", mergeByProduct: true, equipmentColumnList));
         return columns;
     }
@@ -219,12 +223,6 @@ public static class CenterProductReportFormat
 
         return wholePieceInspection ? "检测结果" : "焊点结果";
     }
-
-    private static string ResolveDefaultPointNoTitle(IReadOnlyList<CenterProductReportColumn> equipmentColumns)
-        => ResolvePointNoTitle(FindColumnTitle(equipmentColumns, ColumnTouchNo), wholePieceInspection: false);
-
-    private static string ResolveDefaultPointResultTitle(IReadOnlyList<CenterProductReportColumn> equipmentColumns)
-        => ResolvePointResultTitle(FindColumnTitle(equipmentColumns, ColumnTouchResult), wholePieceInspection: false);
 
     private static bool IsLegacyWeldPointTitle(string title)
         => title is "焊点序号" or "焊点编号" or "焊点号";
