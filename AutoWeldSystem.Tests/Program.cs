@@ -117,6 +117,8 @@ var tests = new (string Name, Action Run)[]
     ("Calculated expression subtracts before formatting", CalculatedExpressionSubtractsBeforeFormatting),
     ("Only configured test item expressions create available roles", OnlyConfiguredExpressionsCreateRoles),
     ("Collection does not imply local save or upload", CollectionDoesNotImplyOutput),
+    ("Program evaluation follows output channels", ProgramEvaluationFollowsOutputChannels),
+    ("Any configured channel keeps scheme detail savable", AnyChannelKeepsSchemeDetailSavable),
     ("Save history controls product history visibility", SaveHistoryControlsProductHistoryVisibility),
     ("Dynamic history and center use task-bound process config", DynamicHistoryAndCenterUseTaskBoundProcessConfig),
     ("DataManageView uses generic product test tree", DataManageViewUsesGenericProductTestTree),
@@ -2419,10 +2421,53 @@ static void CollectionDoesNotImplyOutput()
         MesActual = false
     };
 
-    AssertFalse(SchemeDetailRoleRules.ShouldPersistRole(detail, SchemeDetailValueRole.Actual), "只启用采集不应写入历史 RawDataJson。");
+    AssertFalse(SchemeDetailRoleRules.ShouldPersistRole(detail, SchemeDetailValueRole.Actual), "只勾实时预览不应写入历史 RawDataJson。");
 
     detail.SaveActual = true;
-    AssertTrue(SchemeDetailRoleRules.ShouldPersistRole(detail, SchemeDetailValueRole.Actual), "启用保存后应写入历史 RawDataJson。");
+    AssertTrue(SchemeDetailRoleRules.ShouldPersistRole(detail, SchemeDetailValueRole.Actual), "勾选保存历史后应写入 RawDataJson。");
+}
+
+static void ProgramEvaluationFollowsOutputChannels()
+{
+    var previewOnly = new BizSchemeDetail { EnableActual = true };
+    AssertFalse(
+        SchemeDetailRoleRules.ShouldEvaluateProgramRole(previewOnly, SchemeDetailValueRole.Actual),
+        "只勾实时预览的临时观察项不得参与程序判定。");
+
+    foreach (var configured in new[]
+    {
+        new BizSchemeDetail { SaveActual = true },
+        new BizSchemeDetail { ReportActual = true },
+        new BizSchemeDetail { MesActual = true }
+    })
+    {
+        AssertTrue(
+            SchemeDetailRoleRules.ShouldEvaluateProgramRole(configured, SchemeDetailValueRole.Actual),
+            "勾选任一输出通道的测试项必须参与程序判定。");
+        AssertTrue(
+            SchemeDetailRoleRules.ShouldReadProductRole(configured, SchemeDetailValueRole.Actual),
+            "参与程序判定的测试项必须被采集读取，否则判定拿不到实测值。");
+    }
+}
+
+static void AnyChannelKeepsSchemeDetailSavable()
+{
+    AssertFalse(
+        SchemeDetailRoleRules.HasAnyConfiguredRole(new BizSchemeDetail()),
+        "所有通道全未勾选的方案明细必须被保存校验拦下。");
+
+    foreach (var configured in new[]
+    {
+        new BizSchemeDetail { EnableActual = true },
+        new BizSchemeDetail { SaveUpper = true },
+        new BizSchemeDetail { ReportResult = true },
+        new BizSchemeDetail { MesActual = true }
+    })
+    {
+        AssertTrue(
+            SchemeDetailRoleRules.HasAnyConfiguredRole(configured),
+            "勾选实时预览、保存历史、写入报表或上传 MES 中任一项都应允许保存。");
+    }
 }
 
 static void SchemeDetailRoleHeadersUseCentralizedDefaults()
@@ -2702,10 +2747,13 @@ static void SchemeDetailRoleGridDefinesLocalizedBoundColumns()
     {
         AssertTrue(configureMethod.Contains($"DataPropertyName = nameof(SchemeDetailRoleTableRow.{propertyName})", StringComparison.Ordinal), $"方案角色表格必须显式绑定 {propertyName} 列。" );
     }
-    foreach (var propertyName in new[] { "Enabled", "SaveEnabled", "ReportEnabled", "MesEnabled" })
+    foreach (var propertyName in new[] { "SaveEnabled", "ReportEnabled", "MesEnabled" })
     {
         AssertTrue(configureMethod.Contains($"AddSchemeDetailRoleCheckColumn(nameof(SchemeDetailRoleTableRow.{propertyName})", StringComparison.Ordinal), $"方案角色表格必须显式绑定 {propertyName} 复选列。" );
     }
+
+    // 实时预览由左侧树维护，表格中不得再出现重复的采集复选列。
+    AssertFalse(configureMethod.Contains("SchemeDetailRoleTableRow.Enabled)", StringComparison.Ordinal), "实时预览开关不得在方案角色表格中重复编辑。" );
 
     AssertFalse(configureMethod.Contains("DataPropertyName = nameof(SchemeDetailRoleTableRow.Source)", StringComparison.Ordinal), "Source 不得成为可见列。" );
     AssertFalse(configureMethod.Contains("DataPropertyName = nameof(SchemeDetailRoleTableRow.ItemId)", StringComparison.Ordinal), "ItemId 不得成为可见列。" );
@@ -2718,7 +2766,7 @@ static void SchemeDetailRoleNamesAndMonitorFallbacksAreCentralized()
     var addressViewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "AddressManageView.cs"), Encoding.UTF8);
     var languageChangedMethod = ExtractMethodText(addressViewCode, "protected override void OnLanguageChanged()", "private void ConfigureTables()");
     var createRowsMethod = ExtractMethodText(addressViewCode, "private IEnumerable<SchemeDetailRoleTableRow> CreateSchemeDetailRoleRows", "private static BizSchemeDetail CreateEmptySchemeDetail");
-    var rowModel = ExtractMethodText(addressViewCode, "private sealed class SchemeDetailRoleTableRow", "private static bool GetEnabled");
+    var rowModel = ExtractMethodText(addressViewCode, "private sealed class SchemeDetailRoleTableRow", "public void NormalizeForSave()");
 
     AssertTrue(languageChangedMethod.Contains("BindSchemeDetailRoleRows();", StringComparison.Ordinal), "切换语言后必须重建方案角色行，刷新已绑定的角色名称单元格。");
     AssertTrue(createRowsMethod.Contains("GetLocalizedSchemeDetailRoleName(role)", StringComparison.Ordinal), "创建方案角色行时必须传入本地化角色名称。");

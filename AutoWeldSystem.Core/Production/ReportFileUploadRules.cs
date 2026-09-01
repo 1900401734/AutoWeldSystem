@@ -9,7 +9,7 @@ namespace AutoWeldSystem.Core.Production;
 public static class ReportFileUploadRules
 {
     /// <summary>
-    /// 至少一个角色同时启用采集与报表输出时，才允许上传报表文件。
+    /// 至少一个角色启用写入报表时，才允许上传报表文件。
     /// </summary>
     public static bool ShouldUploadReportFile(IEnumerable<BizSchemeDetail> details)
     {

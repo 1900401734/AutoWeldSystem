@@ -2223,9 +2223,6 @@ This also removes {3} collection record(s) and {4} report file(s) including the 
   <data name="address.column.detail_role" xml:space="preserve">
     <value>Value Role</value>
   </data>
-  <data name="address.column.detail_enabled" xml:space="preserve">
-    <value>Collect</value>
-  </data>
   <data name="address.column.detail_header" xml:space="preserve">
     <value>Display Header</value>
   </data>

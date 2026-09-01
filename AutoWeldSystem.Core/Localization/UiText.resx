@@ -2224,9 +2224,6 @@
   <data name="address.column.detail_role" xml:space="preserve">
     <value>数据角色</value>
   </data>
-  <data name="address.column.detail_enabled" xml:space="preserve">
-    <value>启用采集</value>
-  </data>
   <data name="address.column.detail_header" xml:space="preserve">
     <value>显示表头</value>
   </data>

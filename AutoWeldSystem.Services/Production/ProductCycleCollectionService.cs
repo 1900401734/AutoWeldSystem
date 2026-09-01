@@ -315,7 +315,6 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
                     schemeItem,
                     testContextOffset,
                     values,
-                    useProgramResult,
                     cancellationToken);
             }
         }
@@ -347,13 +346,11 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         SchemeItemSnapshot schemeItem,
         int testContextOffset,
         IDictionary<string, string> values,
-        bool useProgramResult,
         CancellationToken cancellationToken)
     {
         var item = schemeItem.Item;
         var itemKey = ResolveItemKey(item);
-        if (SchemeDetailRoleRules.ShouldReadProductRole(schemeItem.Detail, SchemeDetailValueRole.Actual)
-            || (useProgramResult && schemeItem.Detail.EnableActual))
+        if (SchemeDetailRoleRules.ShouldReadProductRole(schemeItem.Detail, SchemeDetailValueRole.Actual))
         {
             var actualValue = await ReadExpressionValueAsync(
                 config.TestBase,
@@ -478,8 +475,9 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         IReadOnlyList<SchemeItemSnapshot> schemeItems,
         IReadOnlyList<BizWeldPointRecord> records)
     {
+        // 参与程序判定的是有业务去向的测试项；只勾实时预览的临时观察项不参与，避免预览配置改变判定结果。
         var participatingItems = schemeItems
-            .Where(item => item.Detail.EnableActual)
+            .Where(item => SchemeDetailRoleRules.ShouldEvaluateProgramRole(item.Detail, SchemeDetailValueRole.Actual))
             .ToList();
 
         foreach (var record in records)

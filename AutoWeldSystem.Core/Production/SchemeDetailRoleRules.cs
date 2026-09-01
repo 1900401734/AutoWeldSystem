@@ -238,6 +238,14 @@ public static class SchemeDetailRoleRules
         => ShouldPersistRole(detail, role);
 
     /// <summary>
+    /// 判断角色是否参与整件检测程序判定。
+    /// 一个测试项只要在业务上有去向（历史、报表或 MES），就参与合格判定；
+    /// 只勾实时预览的临时观察项不参与，避免现场为了让预览表格干净而静默改变判定结果。
+    /// </summary>
+    public static bool ShouldEvaluateProgramRole(BizSchemeDetail detail, SchemeDetailValueRole role)
+        => ShouldPersistRole(detail, role);
+
+    /// <summary>
     /// 判断方案明细是否至少启用一个实时预览角色。
     /// </summary>
     public static bool HasAnyPreviewEnabled(BizSchemeDetail detail)
