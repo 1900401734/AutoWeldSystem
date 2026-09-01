@@ -113,6 +113,8 @@ var tests = new (string Name, Action Run)[]
     ("Station display names have localized dual-station rules", StationDisplayNamesHaveLocalizedDualStationRules),
     ("Station display names load legacy defaults and collapse hidden row", StationDisplayNamesLoadLegacyDefaultsAndCollapseHiddenRow),
     ("PLC expression rules support absolute test item addresses", PlcExpressionRulesSupportAbsoluteTestItemAddresses),
+    ("PLC expression supports subtraction calculation", PlcExpressionSupportsSubtractionCalculation),
+    ("Calculated expression subtracts before formatting", CalculatedExpressionSubtractsBeforeFormatting),
     ("Only configured test item expressions create available roles", OnlyConfiguredExpressionsCreateRoles),
     ("Collection does not imply local save or upload", CollectionDoesNotImplyOutput),
     ("Save history controls product history visibility", SaveHistoryControlsProductHistoryVisibility),
@@ -2260,6 +2262,97 @@ static void PlcSoftwareAlarmsStayLocalToMonitorView()
         lifecycleCode.Contains("RecordAlarmChange", StringComparison.Ordinal)
         || lifecycleCode.Contains("_plcProductionMonitorService.StatusChanged", StringComparison.Ordinal),
         "设备日志不得再接收原始状态或 Bool 报警，报警只写入设备状态日志。");
+}
+
+/// <summary>
+/// 点焊设备需上传焊接前后位移量，PLC 只有焊前和焊后两个原始值，差值没有对应寄存器。
+/// 测试项字典的偏移量表达式支持 (被减数-减数) 计算式，读两个地址相减后输出。
+/// </summary>
+static void PlcExpressionSupportsSubtractionCalculation()
+{
+    var calculated = PlcOffsetExpression.Parse("(134-84):S-7_3");
+    AssertTrue(calculated.IsCalculated, "括号形态的表达式必须识别为计算式。");
+    AssertEqual(134, calculated.Offset, "被减数偏移必须取括号内第一个操作数。");
+    AssertEqual(84, calculated.SubtrahendOffset ?? -1, "减数偏移必须取括号内第二个操作数。");
+    AssertEqual(AppConstants.PlcDataTypes.String, calculated.DataType, "计算式的类型解析必须与单地址一致。");
+    AssertEqual(7, calculated.Rule, "计算式的规则解析必须与单地址一致。");
+    AssertEqual(3, calculated.DecimalPlaces ?? -1, "计算式的小数位解析必须与单地址一致。");
+    AssertFalse(calculated.IsAbsoluteAddress, "计算式只支持相对偏移，不得标记为绝对地址。");
+
+    // 两个操作数共用基地址和上下文偏移，保证同一采集点内配对
+    AssertEqual("DB23.250", calculated.ResolveAddress("DB23.100", 16), "被减数地址必须叠加基地址、上下文偏移和自身偏移。");
+    AssertEqual("DB23.200", calculated.ResolveSubtrahendAddress("DB23.100", 16), "减数地址必须与被减数使用同一基地址和上下文偏移。");
+
+    // 现有表达式行为完全不变
+    foreach (var expression in new[] { "14:F-0_2", "DB97.26:F-0_2", "0:S-8_3" })
+    {
+        var parsed = PlcOffsetExpression.Parse(expression);
+        AssertFalse(parsed.IsCalculated, $"{expression} 不是计算式，必须保持原有解析结果。");
+        AssertEqual(string.Empty, parsed.ResolveSubtrahendAddress("DB23.100", 16), $"{expression} 不得产生减数地址。");
+    }
+
+    // 非法形态必须在解析阶段拒绝，不留到读取时才报错
+    AssertThrows<FormatException>(() => PlcOffsetExpression.Parse("(a-84):S-7_3"), "非整数操作数必须拒绝。");
+    AssertThrows<FormatException>(() => PlcOffsetExpression.Parse("(134):S-7_3"), "缺少减数的计算式必须拒绝。");
+    AssertThrows<FormatException>(() => PlcOffsetExpression.Parse("(134-84-20):S-7_3"), "只支持一次减法，多操作数必须拒绝。");
+    AssertThrows<FormatException>(() => PlcOffsetExpression.Parse("(DB97.134-DB97.84):S-7_3"), "绝对地址操作数必须拒绝。");
+    AssertThrows<FormatException>(() => PlcOffsetExpression.Parse("(134-84:S-7_3"), "括号不配对必须拒绝。");
+    AssertThrows<FormatException>(() => PlcOffsetExpression.Parse("(134-84):B-0"), "Bool 类型不能参与相减，必须拒绝。");
+    AssertThrows<FormatException>(() => PlcOffsetExpression.Parse("(134-84):H-4"), "结果规则是枚举值，相减无意义，必须拒绝。");
+}
+
+/// <summary>
+/// 计算式取值必须在相减后只格式化一次。若各操作数先格式化再相减会引入二次舍入，
+/// 与直接从原始值算差值可能差一个末位（项目在 v2.13.0 已记录过该类问题）。
+/// </summary>
+static void CalculatedExpressionSubtractsBeforeFormatting()
+{
+    var plc = new FakePlcCommunicationService();
+    var settings = new FakeAppSettingsService
+    {
+        Current = new AppSettings
+        {
+            EnablePlcStringNumericFormatting = true,
+            PlcStringNumericFormatMode = AppConstants.PlcStringNumericFormatModes.Round
+        }
+    };
+    var readService = new ExpressionReadService(plc, settings);
+    var binding = readService.Resolve("DB23.0", 0, "(134-84):S-0_3");
+    AssertTrue(binding.IsCalculated, "读取服务解析计算式后必须带上减数地址。");
+    AssertEqual("DB23.134", binding.Address, "被减数地址解析错误。");
+    AssertEqual("DB23.84", binding.SubtrahendAddress, "减数地址解析错误。");
+
+    // 这组数据能区分两条路径：
+    // 先相减再舍：0.0005-0.0004=0.0001 → 3 位得 0.000
+    // 先各自舍再减：0.001-0.000=0.001，多出一个末位
+    plc.StringReadResults["DB23.134"] = PlcServiceResult<string>.Success("0.0005");
+    plc.StringReadResults["DB23.84"] = PlcServiceResult<string>.Success("0.0004");
+    var result = readService.ReadBindingTextAsync(binding).GetAwaiter().GetResult();
+    AssertTrue(result.IsSuccess, result.Message);
+    AssertEqual("0.000", result.Value, "计算式必须先相减再按小数位格式化，否则二次舍入会多出一个末位。");
+
+    // 常规数据的差值同样只格式化一次
+    plc.StringReadResults["DB23.134"] = PlcServiceResult<string>.Success("15.8355");
+    plc.StringReadResults["DB23.84"] = PlcServiceResult<string>.Success("0.3314");
+    var regular = readService.ReadBindingTextAsync(binding).GetAwaiter().GetResult();
+    AssertTrue(regular.IsSuccess, regular.Message);
+    AssertEqual("15.504", regular.Value, "焊接位移量差值必须按配置小数位输出。");
+
+    // 负数照实输出：焊后小于焊前是真实测量结果，隐藏会掩盖偏移量配反等现场问题
+    plc.StringReadResults["DB23.134"] = PlcServiceResult<string>.Success("1.200");
+    plc.StringReadResults["DB23.84"] = PlcServiceResult<string>.Success("3.500");
+    var negative = readService.ReadBindingTextAsync(binding).GetAwaiter().GetResult();
+    AssertTrue(negative.IsSuccess, negative.Message);
+    AssertEqual("-2.300", negative.Value, "差值为负时必须照实输出，不得隐藏或改写。");
+
+    // 任一操作数无效即整体失败，不输出空值也不当 0 处理
+    plc.StringReadResults["DB23.84"] = PlcServiceResult<string>.Success("abc");
+    var invalid = readService.ReadBindingTextAsync(binding).GetAwaiter().GetResult();
+    AssertFalse(invalid.IsSuccess, "操作数不是有效数值时必须失败，不能当 0 参与计算。");
+
+    plc.StringReadResults.Remove("DB23.84");
+    var unreadable = readService.ReadBindingTextAsync(binding).GetAwaiter().GetResult();
+    AssertFalse(unreadable.IsSuccess, "减数读取失败时必须整体失败，由调用方按采集失败处理。");
 }
 
 static void PlcExpressionRulesSupportAbsoluteTestItemAddresses()

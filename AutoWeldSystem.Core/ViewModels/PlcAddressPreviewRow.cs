@@ -35,6 +35,23 @@ public sealed class PlcAddressPreviewRow
 
     public string ResolvedAddress { get; init; } = string.Empty;
 
+    /// <summary>
+    /// 计算式减数的最终地址；非计算式为空。
+    /// </summary>
+    public string SubtrahendAddress { get; init; } = string.Empty;
+
+    /// <summary>
+    /// 是否为需要两个地址相减的计算式。
+    /// </summary>
+    public bool IsCalculated => !string.IsNullOrWhiteSpace(SubtrahendAddress);
+
+    /// <summary>
+    /// 表格「最终地址」列的显示文本。计算式显示两个操作数地址，便于现场核对配对是否正确。
+    /// </summary>
+    public string AddressDisplay => IsCalculated
+        ? $"{ResolvedAddress} - {SubtrahendAddress}"
+        : ResolvedAddress;
+
     public static PlcAddressPreviewRow Info(int stationNo, string message)
     {
         return new PlcAddressPreviewRow

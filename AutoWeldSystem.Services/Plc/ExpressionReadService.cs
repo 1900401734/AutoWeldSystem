@@ -45,7 +45,10 @@ public sealed class ExpressionReadService : IPlcExpressionReadService
             expression.Rule,
             expressionText.Trim(),
             expression.DecimalPlaces,
-            expression.IsAbsoluteAddress);
+            expression.IsAbsoluteAddress,
+            expression.IsCalculated
+                ? expression.ResolveSubtrahendAddress(baseAddress ?? string.Empty, contextOffset)
+                : null);
     }
 
     /// <summary>
@@ -93,6 +96,7 @@ public sealed class ExpressionReadService : IPlcExpressionReadService
 
     /// <summary>
     /// 读取已解析的表达式绑定，避免调用方重复拆 Address/DataType/Rule/DecimalPlaces。
+    /// 计算式读两个地址并相减，普通表达式走单地址路径。
     /// </summary>
     public async Task<PlcServiceResult<string>> ReadBindingTextAsync(
         PlcExpressionBinding binding,
@@ -100,6 +104,11 @@ public sealed class ExpressionReadService : IPlcExpressionReadService
         int stringLength = 32,
         CancellationToken cancellationToken = default)
     {
+        if (binding.IsCalculated)
+        {
+            return await ReadCalculatedBindingTextAsync(binding, valueRole, stringLength, cancellationToken);
+        }
+
         return await ReadResolvedAddressTextAsync(
             binding.Address,
             binding.DataType,
@@ -108,6 +117,137 @@ public sealed class ExpressionReadService : IPlcExpressionReadService
             stringLength,
             cancellationToken,
             binding.DecimalPlaces);
+    }
+
+    /// <summary>
+    /// 计算式取值：两个操作数各自读原始值并按规则缩放，相减后只格式化一次。
+    /// 不复用 ReadResolvedAddressTextAsync，因为它内部已完成小数位格式化，
+    /// 先格式化再相减会引入二次舍入，与直接从原始值算差值可能差一个末位。
+    /// 任一操作数读取失败或无法解析为数值时整体失败，由调用方按现有采集失败处理，
+    /// 不输出空值也不把无效值当 0——后者会算出看似合理的差值，掩盖现场配置错误。
+    /// </summary>
+    private async Task<PlcServiceResult<string>> ReadCalculatedBindingTextAsync(
+        PlcExpressionBinding binding,
+        string valueRole,
+        int stringLength,
+        CancellationToken cancellationToken)
+    {
+        var minuend = await ReadScaledValueAsync(
+            binding.Address,
+            binding.DataType,
+            binding.Rule,
+            $"{valueRole}被减数",
+            stringLength,
+            cancellationToken);
+        if (!minuend.IsSuccess)
+        {
+            return PlcServiceResult<string>.Fail(minuend.Message);
+        }
+
+        var subtrahend = await ReadScaledValueAsync(
+            binding.SubtrahendAddress,
+            binding.DataType,
+            binding.Rule,
+            $"{valueRole}减数",
+            stringLength,
+            cancellationToken);
+        if (!subtrahend.IsSuccess)
+        {
+            return PlcServiceResult<string>.Fail(subtrahend.Message);
+        }
+
+        // 差值为负说明焊后小于焊前，是真实测量结果，照实输出以便现场发现偏移量配反等问题。
+        return PlcServiceResult<string>.Success(
+            FormatNumericValue(minuend.Value - subtrahend.Value, binding.DecimalPlaces));
+    }
+
+    /// <summary>
+    /// 读取单个地址并按规则缩放，返回未格式化的数值，供计算式相减使用。
+    /// </summary>
+    private async Task<PlcServiceResult<decimal>> ReadScaledValueAsync(
+        string? address,
+        string? dataType,
+        int rule,
+        string valueRole,
+        int stringLength,
+        CancellationToken cancellationToken)
+    {
+        var plcAddress = address?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(plcAddress))
+        {
+            return PlcServiceResult<decimal>.Fail($"{valueRole}地址不能为空。");
+        }
+
+        return NormalizeDataType(dataType) switch
+        {
+            AppConstants.PlcDataTypes.Int32 => ToScaledResult(
+                await _plcCommunicationService.ReadInt32Async(plcAddress, cancellationToken),
+                plcAddress,
+                valueRole,
+                value => ApplyScaleRule(value, rule)),
+
+            AppConstants.PlcDataTypes.Float => ToScaledResult(
+                await _plcCommunicationService.ReadFloatAsync(plcAddress, cancellationToken),
+                plcAddress,
+                valueRole,
+                value => ApplyScaleRule(Convert.ToDecimal(value, CultureInfo.InvariantCulture), rule)),
+
+            AppConstants.PlcDataTypes.String => ToParsedStringResult(
+                await _plcCommunicationService.ReadStringAsync(plcAddress, (ushort)Math.Max(1, rule > 0 ? rule : stringLength), cancellationToken),
+                plcAddress,
+                valueRole),
+
+            _ => ToScaledResult(
+                await _plcCommunicationService.ReadInt16Async(plcAddress, cancellationToken),
+                plcAddress,
+                valueRole,
+                value => ApplyScaleRule(value, rule))
+        };
+    }
+
+    private static PlcServiceResult<decimal> ToScaledResult<T>(
+        PlcServiceResult<T> result,
+        string address,
+        string valueRole,
+        Func<T, decimal> scaler)
+    {
+        return result.IsSuccess && result.Value is not null
+            ? PlcServiceResult<decimal>.Success(scaler(result.Value))
+            : PlcServiceResult<decimal>.Fail($"{valueRole}地址“{address}”读取失败：{result.Message}");
+    }
+
+    /// <summary>
+    /// String 操作数必须是完整数值文本；含单位或非数字字符时视为失败，不参与计算。
+    /// String 类型的 rule 表示读取长度而非缩放规则，因此不套用缩放。
+    /// </summary>
+    private static PlcServiceResult<decimal> ToParsedStringResult(
+        PlcServiceResult<string> result,
+        string address,
+        string valueRole)
+    {
+        if (!result.IsSuccess || result.Value is null)
+        {
+            return PlcServiceResult<decimal>.Fail($"{valueRole}地址“{address}”读取失败：{result.Message}");
+        }
+
+        var text = result.Value.Trim().Trim('\0');
+        return decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var value)
+            ? PlcServiceResult<decimal>.Success(value)
+            : PlcServiceResult<decimal>.Fail($"{valueRole}地址“{address}”的值“{text}”不是有效数值，无法参与计算。");
+    }
+
+    /// <summary>
+    /// 只做规则缩放，不做小数位格式化。与 ApplyDisplayRule 的缩放口径保持一致。
+    /// </summary>
+    private static decimal ApplyScaleRule(decimal rawValue, int rule)
+    {
+        return rule switch
+        {
+            1 => rawValue / 10m,
+            2 => rawValue / 100m,
+            3 => rawValue / 1000m,
+            _ => rawValue
+        };
     }
 
     /// <summary>
