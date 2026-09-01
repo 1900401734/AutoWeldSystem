@@ -3393,6 +3393,30 @@ static void OutputDecimalPlacesApplyToReportAndProcessParameter()
 
     var uploadCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "UploadTaskService.cs"), Encoding.UTF8);
     AssertTrue(uploadCode.Contains("TestItemUnitFormatRules.FormatValue(numericFormat.Apply(value)", StringComparison.Ordinal), "过程参数必须先按小数位格式化再拼单位，否则带单位的文本不再是纯数值。");
+
+    // 「报表小数位」只针对上传给 MES 的报表；本地手动导出必须沿用测试项配置的采集小数位，
+    // 与实时预览、历史数据列表看到的位数一致。两个出口共用 WriteXlsx，故格式必须由调用方传入。
+    var generateReport = ExtractMethodText(
+        reportCode,
+        "public BizProductionReportFile GenerateXlsxReport(BizWeldTask task)",
+        "public void ExportXlsxWithUploadStatus(int taskId, string filePath)");
+    AssertTrue(
+        generateReport.Contains("OutputNumericFormat.ForReport(CurrentSettings)", StringComparison.Ordinal),
+        "上传用报表必须应用系统设置的报表小数位。");
+    AssertFalse(
+        generateReport.Contains("OutputNumericFormat.None", StringComparison.Ordinal),
+        "上传用报表不得沿用采集小数位，否则报表小数位设置失效。");
+
+    var exportReport = ExtractMethodText(
+        reportCode,
+        "public void ExportXlsxWithUploadStatus(int taskId, string filePath)",
+        "private IReadOnlyList<BizWeldPointRecord> QueryTaskRecords(int taskId)");
+    AssertTrue(
+        exportReport.Contains("OutputNumericFormat.None", StringComparison.Ordinal),
+        "数据管理页手动导出必须沿用采集小数位。");
+    AssertFalse(
+        exportReport.Contains("OutputNumericFormat.ForReport", StringComparison.Ordinal),
+        "本地导出不得应用报表小数位，该设置只针对上传报表。");
 }
 
 /// <summary>
@@ -16135,7 +16159,12 @@ static string GenerateUploadStatusReportWorkbook(
     var filePath = Path.Combine(outputDirectory, fileName);
     var writeMethod = serviceType.GetMethod("WriteXlsx", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
     AssertTrue(writeMethod is not null, "生产报表服务必须保留 XLSX 写入入口。");
-    writeMethod!.Invoke(service, [filePath, schema, records, task]);
+    // 与生产代码取值一致：含上传状态列的是数据管理页手动导出，沿用采集小数位；
+    // 不含该列的是上传给 MES 的报表，应用系统设置的报表小数位。
+    var numericFormat = includeUploadStatus
+        ? OutputNumericFormat.None
+        : OutputNumericFormat.ForReport(settings);
+    writeMethod!.Invoke(service, [filePath, schema, records, task, numericFormat]);
     AssertTrue(File.Exists(filePath), "导出入口必须生成真实 XLSX 文件。");
     return filePath;
 }
@@ -16183,7 +16212,7 @@ static string GenerateStationSpecificReportWorkbook(
     var filePath = Path.Combine(outputDirectory, "production-report-station-union.xlsx");
     var writeMethod = serviceType.GetMethod("WriteXlsx", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
     AssertTrue(writeMethod is not null, "生产报表服务必须保留 XLSX 写入入口。");
-    writeMethod!.Invoke(service, [filePath, schema, records, task]);
+    writeMethod!.Invoke(service, [filePath, schema, records, task, OutputNumericFormat.ForReport(settings)]);
     AssertTrue(File.Exists(filePath), "工位配置并集入口必须生成真实 XLSX 文件。");
     return filePath;
 }
@@ -16283,7 +16312,7 @@ static string GenerateReportWorkbook(
     var filePath = resolvedOutputPath ?? Path.Combine(outputDirectory, fileName);
     var writeMethod = serviceType.GetMethod("WriteXlsx", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
     AssertTrue(writeMethod is not null, "生产报表服务必须保留 XLSX 写入入口。");
-    writeMethod!.Invoke(service, [filePath, schema, records, task]);
+    writeMethod!.Invoke(service, [filePath, schema, records, task, OutputNumericFormat.ForReport(settings)]);
     AssertTrue(File.Exists(filePath), "生产报表写入入口必须生成真实 XLSX 文件。");
     return filePath;
 }

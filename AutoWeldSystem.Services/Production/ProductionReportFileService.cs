@@ -73,7 +73,13 @@ public class ProductionReportFileService : IProductionReportFileService
             var records = QueryTaskRecords(latestTask.Id);
 
             Directory.CreateDirectory(Path.GetDirectoryName(report.FilePath)!);
-            WriteXlsx(report.FilePath, BuildReportSchema(latestTask, records), records, latestTask);
+            // 上传给 MES 的报表按系统设置的「报表小数位」输出。
+            WriteXlsx(
+                report.FilePath,
+                BuildReportSchema(latestTask, records),
+                records,
+                latestTask,
+                OutputNumericFormat.ForReport(CurrentSettings));
 
             report.FileFormat = ReportFormat;
             report.UploadStatus = ProductionConstants.UploadStatuses.Pending;
@@ -106,7 +112,14 @@ public class ProductionReportFileService : IProductionReportFileService
                 Directory.CreateDirectory(directory);
             }
 
-            WriteXlsx(filePath, BuildReportSchema(task, records, includeUploadStatus: true), records, task);
+            // 本地导出沿用测试项配置的采集小数位：「报表小数位」只针对上传报表，
+            // 本地查看和追溯需要与实时预览、历史数据列表看到的位数一致。
+            WriteXlsx(
+                filePath,
+                BuildReportSchema(task, records, includeUploadStatus: true),
+                records,
+                task,
+                OutputNumericFormat.None);
         }
     }
 
@@ -224,11 +237,16 @@ public class ProductionReportFileService : IProductionReportFileService
         return new ReportSchema(columns, stationSchemeItems, stationConfigsByNumber, displayOptions);
     }
 
+    /// <summary>
+    /// 写出报表文件。<paramref name="numericFormat"/> 决定测试项数值列的输出小数位：
+    /// 上传用报表按系统设置的「报表小数位」，本地手动导出沿用采集小数位。
+    /// </summary>
     private void WriteXlsx(
         string filePath,
         ReportSchema schema,
         IReadOnlyList<BizWeldPointRecord> records,
-        BizWeldTask task)
+        BizWeldTask task,
+        OutputNumericFormat numericFormat)
     {
         using var workbook = new XLWorkbook();
         var worksheet = workbook.Worksheets.Add(CenterProductReportFormat.WorksheetName);
@@ -243,7 +261,7 @@ public class ProductionReportFileService : IProductionReportFileService
         WriteTemplateHeader(worksheet, task, templateColumnCount);
         var outputRows = BuildOutputRows(schema, records, settings, task);
         WriteDetailHeader(worksheet, detailColumns);
-        WriteDataRows(worksheet, schema, detailColumns, outputRows, stationNames);
+        WriteDataRows(worksheet, schema, detailColumns, outputRows, stationNames, numericFormat);
         MergeRepeatedProductFields(worksheet, detailColumns, outputRows);
         ApplyWorksheetStyle(worksheet, detailColumns.Count, outputRows.Count, templateColumnCount);
         workbook.SaveAs(filePath);
@@ -436,16 +454,18 @@ public class ProductionReportFileService : IProductionReportFileService
             values);
     }
 
+    /// <summary>
+    /// 写入明细数据行。<paramref name="numericFormat"/> 只作用于测试项动态列，
+    /// 工位、产品编号、面号和结果等固定列不参与格式化。
+    /// </summary>
     private void WriteDataRows(
         IXLWorksheet worksheet,
         ReportSchema schema,
         IReadOnlyList<ReportColumn> detailColumns,
         IReadOnlyList<ReportOutputRow> rows,
-        StationDisplayNames stationNames)
+        StationDisplayNames stationNames,
+        OutputNumericFormat numericFormat)
     {
-        // 报表输出小数位，未配置时沿用采集位数。只作用于测试项动态列，
-        // 工位、产品编号、面号和结果等固定列不参与格式化。
-        var numericFormat = OutputNumericFormat.ForReport(CurrentSettings);
         for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
         {
             var output = rows[rowIndex];
