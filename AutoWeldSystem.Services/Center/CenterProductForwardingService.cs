@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using AutoWeldSystem.Core.Center;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs.CenterServer;
@@ -26,6 +26,12 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
     private readonly IProductProcessConfigService _productProcessConfigService;
     private readonly CenterTelemetryClient _client;
     private readonly object _dbLock = new();
+
+    /// <summary>
+    /// 连接类失败的重试间隔。中心服务器可能停机维护较久，用固定间隔而不是指数退避，
+    /// 保证恢复后最迟一个间隔内就开始补齐，同时不会高频空转。
+    /// </summary>
+    private const int ConnectivityRetryDelaySeconds = 30;
 
     private CancellationTokenSource? _cts;
     private Task? _loopTask;
@@ -57,6 +63,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
         }
 
         RepairMistypedCenterTasks();
+        ResumeAbandonedCenterTasks();
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _loopTask = Task.Run(() => RunAsync(_cts.Token), CancellationToken.None);
         return Task.CompletedTask;
@@ -95,6 +102,52 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
         {
             // 修正失败不能阻塞转发循环启动，否则新产品也一起同步不了。
             _exceptionLogService.Write(ex, "CenterProductForwardingService.RepairMistypedCenterTasks");
+        }
+    }
+
+    /// <summary>
+    /// 启动时唤醒此前被判死的中心转发任务，保证产品数据不因中心服务器停机而永久丢失。
+    /// 两种卡死状态都要救：
+    /// 一是 Failed 终态，NextRetryTime 为空且重试耗尽，消费查询永久排除；
+    /// 二是停留在 Uploading，连接类异常曾穿透消费循环而没有回写状态。
+    /// 重置后按待发处理，重新进入现有重试队列；连接类失败已不再消耗配额，因此该重置
+    /// 主要作用于历史存量，正常运行时不会反复触发。
+    /// </summary>
+    private void ResumeAbandonedCenterTasks()
+    {
+        try
+        {
+            lock (_dbLock)
+            {
+                _dbContext.InitDatabase();
+                var now = DateTime.Now;
+                var resumed = _dbContext.Db.Updateable<BizUploadTask>()
+                    .SetColumns(task => new BizUploadTask
+                    {
+                        Status = ProductionConstants.UploadStatuses.Pending,
+                        RetryCount = 0,
+                        NextRetryTime = now,
+                        Message = "启动时恢复未完成的中心服务器转发任务，将重新补传。",
+                        UpdatedTime = now
+                    })
+                    .Where(task => task.TaskType == ProductionConstants.UploadTaskTypes.CenterProductReport
+                        && task.Target == ProductionConstants.UploadTargets.CentralServer
+                        && !task.IsDeleted
+                        && (task.Status == ProductionConstants.UploadStatuses.Failed
+                            || task.Status == ProductionConstants.UploadStatuses.Uploading))
+                    .ExecuteCommand();
+                if (resumed > 0)
+                {
+                    _productionLogService.Write(
+                        "CenterProductForwardTasksResumed",
+                        ProductionFlowLogTexts.Summaries.CenterProductForwardTasksResumed,
+                        $"ResumedCount={resumed}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _exceptionLogService.Write(ex, "CenterProductForwardingService.ResumeAbandonedCenterTasks");
         }
     }
 
@@ -241,9 +294,55 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
                 continue;
             }
 
-            await ExecuteTaskAsync(task, cancellationToken);
+            try
+            {
+                await ExecuteTaskAsync(task, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // 停机取消不是失败，退回待发状态等下次启动继续，不消耗重试配额。
+                MarkConnectivityRetry(task, "中心服务器转发已随程序停止，等待下次启动重试。");
+                throw;
+            }
+            catch (Exception ex) when (CenterServerAvailabilityLogGate.IsConnectivityFailure(ex, cancellationToken))
+            {
+                // 中心服务器关闭或网络不可达属于对端暂时不可用：重试多少次结果都一样，
+                // 因此不消耗重试配额，只推迟下次尝试，服务器恢复后自动补齐。
+                // 连接类异常会穿透 ExecuteTaskAsync，若不在此接住，任务会永久停在
+                // Uploading 且 RetryCount 已递增，耗尽后被消费查询永久排除。
+                MarkConnectivityRetry(task, BuildConnectivityRetryMessage(ex));
+            }
         }
     }
+
+    /// <summary>
+    /// 按连接类失败退回待重试：不递增重试次数，只推迟下次尝试时间。
+    /// 与 MarkRetry 的区别是本方法永不进入 Failed 终态，保证服务器恢复后数据不丢。
+    /// </summary>
+    private void MarkConnectivityRetry(BizUploadTask task, string message)
+    {
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var latest = _dbContext.Db.Queryable<BizUploadTask>().InSingle(task.Id);
+            if (latest is null || latest.IsDeleted
+                || latest.Status == ProductionConstants.UploadStatuses.Uploaded)
+            {
+                return;
+            }
+
+            // MarkUploading 已递增过重试次数，这里回退，避免连接故障消耗业务重试配额。
+            latest.RetryCount = Math.Max(0, latest.RetryCount - 1);
+            latest.Status = ProductionConstants.UploadStatuses.Retrying;
+            latest.NextRetryTime = DateTime.Now.AddSeconds(ConnectivityRetryDelaySeconds);
+            latest.Message = message;
+            latest.UpdatedTime = DateTime.Now;
+            _dbContext.Db.Updateable(latest).ExecuteCommand();
+        }
+    }
+
+    private static string BuildConnectivityRetryMessage(Exception exception)
+        => $"中心服务器暂时不可达，将持续重试：{exception.Message}";
 
     private IReadOnlyList<int> GetPendingTaskIds()
     {

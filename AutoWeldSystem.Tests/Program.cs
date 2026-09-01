@@ -193,6 +193,7 @@ var tests = new (string Name, Action Run)[]
     ("Center offline state keeps PLC status unchanged", CenterOfflineStateKeepsPlcStatusUnchanged),
     ("Center telemetry signature tracks dashboard content only", CenterTelemetrySignatureTracksDashboardContentOnly),
     ("Center telemetry sync gates snapshots behind heartbeat", CenterTelemetrySyncGatesSnapshotsBehindHeartbeat),
+    ("Center forwarding survives center server outage", CenterForwardingSurvivesCenterServerOutage),
     ("Center availability log gate aggregates failures and recovery", CenterAvailabilityLogGateAggregatesFailuresAndRecovery),
     ("Center availability classifies timeout and cancellation", CenterAvailabilityClassifiesTimeoutAndCancellation),
     ("Center client aggregates connectivity failures across instances", CenterClientAggregatesConnectivityFailuresAcrossInstances),
@@ -5627,6 +5628,80 @@ static void CenterTelemetrySyncGatesSnapshotsBehindHeartbeat()
         ["api/center/heartbeat", "api/center/telemetry"],
         handler.RequestPaths.TakeLast(2).ToArray(),
         "遥测拒绝后必须保留待同步签名并在下一周期重试。");
+}
+
+/// <summary>
+/// 中心服务器停机时产品数据不得丢失。此前连接类异常会穿透消费循环，任务永久停在
+/// Uploading 且重试次数已递增，约 30 秒（3 次 × 10 秒退避）后被消费查询永久排除，
+/// 服务器恢复也不再补传。连接类失败属于对端暂时不可用，重试多少次结果都一样，
+/// 因此不消耗业务重试配额；而请求本身有问题（如表头冲突）仍应在耗尽后转 Failed 待人工介入。
+/// </summary>
+static void CenterForwardingSurvivesCenterServerOutage()
+{
+    var forwardCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Center", "CenterProductForwardingService.cs"),
+        Encoding.UTF8);
+
+    // 连接类异常必须在消费循环内被接住并回写状态，不能穿透后让任务停在 Uploading
+    var executePending = ExtractMethodText(
+        forwardCode,
+        "private async Task ExecutePendingAsync(CancellationToken cancellationToken)",
+        "private void MarkConnectivityRetry(BizUploadTask task, string message)");
+    AssertTrue(
+        executePending.Contains("CenterServerAvailabilityLogGate.IsConnectivityFailure(ex, cancellationToken)", StringComparison.Ordinal),
+        "消费循环必须区分连接类失败与业务类失败，否则中心服务器停机会耗尽重试配额。");
+    AssertTrue(
+        executePending.Contains("MarkConnectivityRetry", StringComparison.Ordinal),
+        "连接类失败必须回写为待重试，不能让任务永久停在 Uploading。");
+
+    // 连接类重试不得递增重试次数，且永不进入 Failed 终态
+    var connectivityRetry = ExtractMethodText(
+        forwardCode,
+        "private void MarkConnectivityRetry(BizUploadTask task, string message)",
+        "private static string BuildConnectivityRetryMessage(Exception exception)");
+    AssertTrue(
+        connectivityRetry.Contains("RetryCount = Math.Max(0, latest.RetryCount - 1)", StringComparison.Ordinal),
+        "连接类失败必须回退 MarkUploading 递增的重试次数，否则停机仍会耗尽配额。");
+    AssertFalse(
+        connectivityRetry.Contains(nameof(ProductionConstants.UploadStatuses.Failed), StringComparison.Ordinal),
+        "连接类失败不得进入 Failed 终态：服务器恢复后必须能继续补传。");
+
+    // 业务类失败保留有限重试，耗尽后转 Failed 提示人工介入
+    var markRetry = ExtractMethodText(
+        forwardCode,
+        "private void MarkRetry(BizUploadTask task, string message)",
+        "private void MarkFailed(BizUploadTask task, string message)");
+    AssertTrue(
+        markRetry.Contains("ProductionConstants.UploadStatuses.Failed", StringComparison.Ordinal),
+        "业务类失败必须保留 Failed 终态，重试无意义的请求不应无限刷日志。");
+
+    // 启动时唤醒此前被判死的任务，覆盖 Failed 与卡在 Uploading 两种状态
+    var resume = ExtractMethodText(
+        forwardCode,
+        "private void ResumeAbandonedCenterTasks()",
+        "public async Task StopAsync(CancellationToken cancellationToken = default)");
+    foreach (var status in new[] { "UploadStatuses.Failed", "UploadStatuses.Uploading" })
+    {
+        AssertTrue(
+            resume.Contains(status, StringComparison.Ordinal),
+            $"启动恢复必须覆盖 {status} 状态的存量任务，否则历史数据永远不会补传。");
+    }
+
+    AssertTrue(
+        resume.Contains("RetryCount = 0", StringComparison.Ordinal),
+        "启动恢复必须重置重试次数，否则任务仍被消费查询排除。");
+
+    // 分类依据本身：服务器关闭表现为 HttpRequestException，必须判定为连接类失败
+    AssertTrue(
+        CenterServerAvailabilityLogGate.IsConnectivityFailure(
+            new HttpRequestException("Connection refused"),
+            CancellationToken.None),
+        "中心服务器关闭时的连接拒绝必须判定为连接类失败。");
+    AssertFalse(
+        CenterServerAvailabilityLogGate.IsConnectivityFailure(
+            new InvalidOperationException("同一中心报表的采集点表头不一致"),
+            CancellationToken.None),
+        "请求内容错误不是连接类失败，必须保留有限重试并最终转 Failed。");
 }
 
 static void CenterAvailabilityLogGateAggregatesFailuresAndRecovery()
