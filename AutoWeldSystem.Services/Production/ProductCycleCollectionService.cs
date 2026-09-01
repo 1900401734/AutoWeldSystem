@@ -633,6 +633,8 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             return;
         }
 
+        // A/B 聚合只对实际值有定义（取最大值或平均值），报表和过程参数是逐值输出，非实际值角色必须拦。
+        // 转发看板不在此限制内：中心看板动态列直接透传 RawDataJson，不做 A/B 聚合。
         var invalidOutput = schemeItems.FirstOrDefault(item => SchemeDetailRoleRules.AllRoles
             .Where(role => role != SchemeDetailValueRole.Actual)
             .Any(role => SchemeDetailRoleRules.IsReportEnabled(item.Detail, role)
@@ -642,7 +644,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             throw new BusinessOperationException(
                 Category,
                 "产品数据采集失败",
-                $"整件检测A/B模式只允许测试项“{invalidOutput.Item.ItemName}”的实际值写入报表或上传MES。");
+                $"整件检测A/B模式只允许测试项“{invalidOutput.Item.ItemName}”的实际值写入报表或上传过程参数。");
         }
 
         var duplicateMesFields = schemeItems
@@ -658,7 +660,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             throw new BusinessOperationException(
                 Category,
                 "产品数据采集失败",
-                $"整件检测A/B模式存在重复MES字段名：{string.Join("、", duplicateMesFields)}。");
+                $"整件检测A/B模式存在重复过程参数字段名：{string.Join("、", duplicateMesFields)}。");
         }
 
         var definitions = schemeItems

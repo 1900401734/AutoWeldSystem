@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using AutoWeldSystem.Core.Center;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs.CenterServer;
@@ -654,8 +654,8 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
     }
 
     /// <summary>
-    /// 生成设备端生产报表列定义。
-    /// 中心服务器使用这份列定义，确保 Excel 表头跟设备端配置保持一致。
+    /// 生成中心看板需要下发的字段清单。
+    /// 必须与 BuildDynamicReportColumns 共用“转发看板”通道，否则列定义和值会对不上。
     /// </summary>
     private IReadOnlyList<SavedFieldDefinition> BuildSavedFieldDefinitions(BizProductProcessConfig? config)
     {
@@ -684,10 +684,10 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
                 }
 
                 var itemKey = ResolveItemKey(item);
-                AddSavedField(fields, detail.SaveActual, itemKey, item.ItemName);
-                AddSavedField(fields, detail.SaveUpper, $"{itemKey}_upper", $"{item.ItemName}上限");
-                AddSavedField(fields, detail.SaveLower, $"{itemKey}_lower", $"{item.ItemName}下限");
-                AddSavedField(fields, detail.SaveResult, $"{itemKey}_result", $"{item.ItemName}结果");
+                AddSavedField(fields, detail.ForwardActual, itemKey, item.ItemName);
+                AddSavedField(fields, detail.ForwardUpper, $"{itemKey}_upper", $"{item.ItemName}上限");
+                AddSavedField(fields, detail.ForwardLower, $"{itemKey}_lower", $"{item.ItemName}下限");
+                AddSavedField(fields, detail.ForwardResult, $"{itemKey}_result", $"{item.ItemName}结果");
             }
 
             return fields;
@@ -840,7 +840,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
 
         SchemeDetailRoleRules.ClearUnavailableRoles(detail, item);
         var itemKey = ResolveItemKey(item);
-        if (ShouldForwardSavedRole(detail, SchemeDetailValueRole.Actual))
+        if (SchemeDetailRoleRules.ShouldForwardCenterRole(detail, SchemeDetailValueRole.Actual))
         {
             yield return BuildDynamicColumn(
                 itemKey,
@@ -852,29 +852,20 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
                 wholePieceInspection && WholePieceAbAggregationRules.IsFourSideMaximumItem(item.ItemName));
         }
 
-        if (ShouldForwardSavedRole(detail, SchemeDetailValueRole.Upper))
+        if (SchemeDetailRoleRules.ShouldForwardCenterRole(detail, SchemeDetailValueRole.Upper))
         {
             yield return BuildDynamicColumn($"{itemKey}_upper", detail.UpperHeader, SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Upper), item.Unit, SchemeDetailValueRole.Upper);
         }
 
-        if (ShouldForwardSavedRole(detail, SchemeDetailValueRole.Lower))
+        if (SchemeDetailRoleRules.ShouldForwardCenterRole(detail, SchemeDetailValueRole.Lower))
         {
             yield return BuildDynamicColumn($"{itemKey}_lower", detail.LowerHeader, SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Lower), item.Unit, SchemeDetailValueRole.Lower);
         }
 
-        if (ShouldForwardSavedRole(detail, SchemeDetailValueRole.Result))
+        if (SchemeDetailRoleRules.ShouldForwardCenterRole(detail, SchemeDetailValueRole.Result))
         {
             yield return BuildDynamicColumn($"{itemKey}_result", detail.ResultHeader, SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Result), item.Unit, SchemeDetailValueRole.Result);
         }
-    }
-
-    /// <summary>
-    /// 中心服务器只同步本地保存通道的数据；报表或 MES 独占字段不得进入中心报表协议。
-    /// </summary>
-    private static bool ShouldForwardSavedRole(BizSchemeDetail detail, SchemeDetailValueRole role)
-    {
-        return SchemeDetailRoleRules.ShouldPersistRole(detail, role)
-            && SchemeDetailRoleRules.IsSaveEnabled(detail, role);
     }
 
     private static CenterProductReportColumnDto BuildDynamicColumn(

@@ -1323,6 +1323,7 @@ public static class TextKeys
         public const string ColumnDetailRole = "address.column.detail_role";
         public const string ColumnDetailHeader = "address.column.detail_header";
         public const string ColumnDetailSave = "address.column.detail_save";
+        public const string ColumnDetailForward = "address.column.detail_forward";
         public const string ColumnDetailReport = "address.column.detail_report";
         public const string ColumnDetailMes = "address.column.detail_mes";
         public const string ColumnDetailMesField = "address.column.detail_mes_field";

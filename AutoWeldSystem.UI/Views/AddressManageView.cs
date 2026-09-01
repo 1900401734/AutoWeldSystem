@@ -315,6 +315,7 @@ public partial class AddressManageView : BaseView
         schemeDetailRoleGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(SchemeDetailRoleTableRow.RoleName), HeaderText = _localizer.GetString(TextKeys.Address.ColumnDetailRole), ReadOnly = true });
         schemeDetailRoleGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(SchemeDetailRoleTableRow.HeaderText), HeaderText = _localizer.GetString(TextKeys.Address.ColumnDetailHeader) });
         AddSchemeDetailRoleCheckColumn(nameof(SchemeDetailRoleTableRow.SaveEnabled), TextKeys.Address.ColumnDetailSave);
+        AddSchemeDetailRoleCheckColumn(nameof(SchemeDetailRoleTableRow.ForwardEnabled), TextKeys.Address.ColumnDetailForward);
         AddSchemeDetailRoleCheckColumn(nameof(SchemeDetailRoleTableRow.ReportEnabled), TextKeys.Address.ColumnDetailReport);
         AddSchemeDetailRoleCheckColumn(nameof(SchemeDetailRoleTableRow.MesEnabled), TextKeys.Address.ColumnDetailMes);
         schemeDetailRoleGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(SchemeDetailRoleTableRow.MesFieldName), HeaderText = _localizer.GetString(TextKeys.Address.ColumnDetailMesField) });
@@ -2795,14 +2796,14 @@ public partial class AddressManageView : BaseView
 
             if (!SchemeDetailRoleRules.HasAnyConfiguredRole(detail))
             {
-                throw new InvalidOperationException("方案明细至少需要勾选实时预览、保存历史、写入报表或上传 MES 中的一项。");
+                throw new InvalidOperationException("方案明细至少需要勾选实时预览、本地保存、转发看板、写入报表或过程参数中的一项。");
             }
         }
     }
 
     /// <summary>
-    /// 校验 MES 字段名。
-    /// 各通道互相独立，勾选 MES 上传就必须填字段名，不得再以实时预览为前置条件，否则会漏检。
+    /// 校验过程参数字段名。
+    /// 五个通道互相独立，勾选过程参数就必须填字段名，不得再以实时预览为前置条件，否则会漏检。
     /// </summary>
     private static void ValidateMesFieldName(
         bool mesEnabled,
@@ -2812,12 +2813,12 @@ public partial class AddressManageView : BaseView
     {
         if (mesEnabled && string.IsNullOrWhiteSpace(mesFieldName))
         {
-            throw new InvalidOperationException($"{itemName}{roleName}已启用 MES 上传，必须填写 MES 字段名。");
+            throw new InvalidOperationException($"{itemName}{roleName}已启用过程参数上传，必须填写过程参数字段名。");
         }
 
         if (mesEnabled && IsReservedProcessParameterField(mesFieldName))
         {
-            throw new InvalidOperationException($"{itemName}{roleName}的 MES 字段名“{mesFieldName}”是系统保留字段，不能用于动态测试项。");
+            throw new InvalidOperationException($"{itemName}{roleName}的过程参数字段名“{mesFieldName}”是系统保留字段，不能用于动态测试项。");
         }
     }
 
@@ -3092,10 +3093,6 @@ public partial class AddressManageView : BaseView
     /// <summary>
     /// 方案明细输出配置表格行。
     /// 同一个 BizSchemeDetail 会拆成四行，分别维护实际值、上限、下限和结果的输出配置。
-    /// </summary>
-    /// <summary>
-    /// 方案明细输出配置表格行。
-    /// 同一个 BizSchemeDetail 会拆成四行，分别维护实际值、上限、下限和结果的输出配置。
     /// 实时预览由左侧树维护，不在本表格中编辑。
     /// </summary>
     private sealed class SchemeDetailRoleTableRow(BizSchemeDetail source, DimTestItem item, SchemeDetailValueRole role, string roleName)
@@ -3120,6 +3117,12 @@ public partial class AddressManageView : BaseView
         {
             get => SchemeDetailRoleRules.IsSaveEnabled(Source, Role);
             set => SchemeDetailRoleRules.SetSaveEnabled(Source, Role, value);
+        }
+
+        public bool ForwardEnabled
+        {
+            get => SchemeDetailRoleRules.IsForwardEnabled(Source, Role);
+            set => SchemeDetailRoleRules.SetForwardEnabled(Source, Role, value);
         }
 
         public bool ReportEnabled

@@ -2227,16 +2227,19 @@ This also removes {3} collection record(s) and {4} report file(s) including the 
     <value>Display Header</value>
   </data>
   <data name="address.column.detail_save" xml:space="preserve">
-    <value>Save History</value>
+    <value>Local Save</value>
+  </data>
+  <data name="address.column.detail_forward" xml:space="preserve">
+    <value>Forward Dashboard</value>
   </data>
   <data name="address.column.detail_report" xml:space="preserve">
     <value>Write Report</value>
   </data>
   <data name="address.column.detail_mes" xml:space="preserve">
-    <value>Upload MES</value>
+    <value>Process Parameter</value>
   </data>
   <data name="address.column.detail_mes_field" xml:space="preserve">
-    <value>MES Field</value>
+    <value>Process Parameter Field</value>
   </data>
   <data name="address.detail_role.actual" xml:space="preserve">
     <value>Actual</value>

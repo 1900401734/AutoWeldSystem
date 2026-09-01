@@ -963,7 +963,7 @@ namespace AutoWeldSystem.UI.Views
             lblSchemeDetailHint.Name = "lblSchemeDetailHint";
             lblSchemeDetailHint.Size = new Size(1292, 26);
             lblSchemeDetailHint.TabIndex = 0;
-            lblSchemeDetailHint.Text = "左侧树勾选实时预览显示范围；右侧表格分别配置保存历史、写入报表和上传 MES，各通道互相独立。";
+            lblSchemeDetailHint.Text = "左侧树勾选实时预览显示范围；右侧表格分别配置本地保存、转发看板、写入报表和过程参数，五个通道互相独立。";
             lblSchemeDetailHint.TextAlign = ContentAlignment.MiddleLeft;
             // 
             // schemeDetailToolbar
