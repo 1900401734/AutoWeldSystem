@@ -442,8 +442,8 @@
             //
             // detailTabs
             //
-            detailTabs.Controls.Add(tabWeldParameters);
             detailTabs.Controls.Add(tabReportFiles);
+            detailTabs.Controls.Add(tabWeldParameters);
             detailTabs.Dock = DockStyle.Fill;
             detailTabs.Location = new Point(0, 0);
             detailTabs.Name = "detailTabs";
