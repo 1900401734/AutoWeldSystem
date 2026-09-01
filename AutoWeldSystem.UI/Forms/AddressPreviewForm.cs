@@ -165,16 +165,17 @@ public partial class AddressPreviewForm : BaseWindow
                 row.DataType,
                 row.Rule,
                 row.Expression,
-                row.DecimalPlaces);
+                row.DecimalPlaces,
+                SubtrahendAddress: row.IsCalculated ? row.SubtrahendAddress : null);
             var result = await _plcExpressionReadService.ReadBindingTextAsync(binding, valueRole);
 
             if (result.IsSuccess)
             {
-                ShowInfo($"字段：{valueRole}\r\n地址：{row.ResolvedAddress}\r\n读取值：{result.Value ?? string.Empty}");
+                ShowInfo($"字段：{valueRole}\r\n地址：{row.AddressDisplay}\r\n读取值：{result.Value ?? string.Empty}");
                 return;
             }
 
-            ShowWarning($"字段：{valueRole}\r\n地址：{row.ResolvedAddress}\r\n失败原因：{result.Message}");
+            ShowWarning($"字段：{valueRole}\r\n地址：{row.AddressDisplay}\r\n失败原因：{result.Message}");
         }
         finally
         {
@@ -252,7 +253,8 @@ public partial class AddressPreviewForm : BaseWindow
             || Contains(row.DataType, keyword)
             || Contains(row.Rule.ToString(CultureInfo.InvariantCulture), keyword)
             || Contains(row.DecimalPlaces?.ToString(), keyword)
-            || Contains(row.ResolvedAddress, keyword);
+            || Contains(row.ResolvedAddress, keyword)
+            || Contains(row.SubtrahendAddress, keyword);
     }
 
     private static bool Contains(string? value, string keyword)

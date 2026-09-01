@@ -181,7 +181,7 @@ namespace AutoWeldSystem.UI.Forms
             tableAddressPreview.Columns.Add(new AntdUI.Column(nameof(PlcAddressPreviewRow.DataType), "类型") { Ellipsis = true });
             tableAddressPreview.Columns.Add(new AntdUI.Column(nameof(PlcAddressPreviewRow.Rule), "规则") { Ellipsis = true });
             tableAddressPreview.Columns.Add(new AntdUI.Column(nameof(PlcAddressPreviewRow.DecimalPlaces), "小数位") { Ellipsis = true });
-            tableAddressPreview.Columns.Add(new AntdUI.Column(nameof(PlcAddressPreviewRow.ResolvedAddress), "最终地址") { Ellipsis = true });
+            tableAddressPreview.Columns.Add(new AntdUI.Column(nameof(PlcAddressPreviewRow.AddressDisplay), "最终地址") { Ellipsis = true });
             AutoWeldSystem.UI.Infrastructure.TableStyleHelper.ApplyAntdTable(tableAddressPreview, AntdUI.ColumnsMode.Fill);
             AutoWeldSystem.UI.Infrastructure.TableStyleHelper.ApplyAntdColumnDefaults(tableAddressPreview);
         }

@@ -1,4 +1,4 @@
-using AutoWeldSystem.Core.Constants;
+﻿using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.DTOs.Upload;
 using AutoWeldSystem.Core.DTOs.Plc;
@@ -2068,7 +2068,8 @@ public partial class AddressManageView : BaseView
             DataType = binding.DataType,
             Rule = binding.Rule,
             DecimalPlaces = binding.DecimalPlaces,
-            ResolvedAddress = binding.Address
+            ResolvedAddress = binding.Address,
+            SubtrahendAddress = binding.SubtrahendAddress ?? string.Empty
         });
     }
 

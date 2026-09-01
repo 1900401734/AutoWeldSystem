@@ -1,4 +1,4 @@
-using AutoWeldSystem.Core;
+﻿using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs.Mes.Response;
 using AutoWeldSystem.Core.Interfaces;
@@ -851,7 +851,8 @@ public partial class MainForm : BaseWindow
             DataType = binding.DataType,
             Rule = binding.Rule,
             DecimalPlaces = binding.DecimalPlaces,
-            ResolvedAddress = binding.Address
+            ResolvedAddress = binding.Address,
+            SubtrahendAddress = binding.SubtrahendAddress ?? string.Empty
         });
     }
 
