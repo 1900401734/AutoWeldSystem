@@ -52,8 +52,8 @@ public partial class MonitorView : BaseView
     private static readonly TimeSpan RecipePreparationTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan FinishRecipeReadFailureLogInterval = TimeSpan.FromSeconds(30);
     private const string RuntimeSummaryOverflowSuffix = "...";
-    // 报警属于整台设备，只使用一个通知 ID，双工位不再各弹一张卡片。
-    private const string PlcAlarmNotificationId = "monitor-plc-alarm";
+    // 报警属于整台设备，同一个视图内不按工位拆分，双工位聚合成一张卡片。
+    private const string PlcAlarmNotificationIdPrefix = "monitor-plc-alarm";
     private const string RuntimeErrorSourceDeviceAlarm = "DeviceAlarm";
     private const string PreviewTouchNoColumn = "TouchNo";
     private const string PreviewTouchResultColumn = "TouchResult";
@@ -126,6 +126,10 @@ public partial class MonitorView : BaseView
     private string? _plcAlarmNotificationSignature;
     private string? _plcAlarmNotificationDismissedSignature;
     private string? _plcAlarmSummaryDismissedSignature;
+    // 主屏和扩展屏各有一个 MonitorView 实例。AntdUI 按 ID 全局去重，两个实例共用同一 ID 时，
+    // 后创建的实例会关掉先创建实例刚弹出的卡片，导致报警只出现在扩展屏。ID 带上实例标识后两屏各自独立显示。
+    private readonly string _plcAlarmNotificationId =
+        $"{PlcAlarmNotificationIdPrefix}-{Guid.NewGuid():N}";
     private readonly Dictionary<int, DateTime> _finishRecipeReadFailureLogTimes = new();
     private readonly Dictionary<int, string> _lastAutoQueriedWorkIds = new();
     private readonly HashSet<int> _workOrderBaselines = new();
@@ -5622,7 +5626,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         }
 
         _plcAlarmNotificationSignature = signature;
-        ClosePlcAlarmNotificationIfPresent(PlcAlarmNotificationId);
+        ClosePlcAlarmNotificationIfPresent(_plcAlarmNotificationId);
         if (string.Equals(_plcAlarmNotificationDismissedSignature, signature, StringComparison.Ordinal))
         {
             return;
@@ -5637,7 +5641,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             _runtimeMessageFont,
             0)
         {
-            ID = PlcAlarmNotificationId,
+            ID = _plcAlarmNotificationId,
             AutoClose = 0,
             ClickClose = false,
             CloseIcon = true,
@@ -5684,7 +5688,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             _plcAlarmNotificationDismissedSignature = signature;
         }
 
-        ClosePlcAlarmNotificationIfPresent(PlcAlarmNotificationId);
+        ClosePlcAlarmNotificationIfPresent(_plcAlarmNotificationId);
     }
 
     /// <summary>
@@ -5695,7 +5699,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         _plcAlarmNotificationSignature = null;
         _plcAlarmNotificationDismissedSignature = null;
         _plcAlarmSummaryDismissedSignature = null;
-        ClosePlcAlarmNotificationIfPresent(PlcAlarmNotificationId);
+        ClosePlcAlarmNotificationIfPresent(_plcAlarmNotificationId);
     }
 
     /// <summary>

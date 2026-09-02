@@ -715,10 +715,18 @@ static void MonitorViewAggregatesPlcAlarmNotificationPerDevice()
 {
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
 
-    // 报警不区分工位：通知 ID、签名和已读状态都只保留一份，双工位不得各弹一张卡片。
+    // 报警不区分工位：同一个视图内签名和已读状态都只保留一份，双工位不得各弹一张卡片。
+    // 但主屏和扩展屏是两个独立实例，通知 ID 必须按实例区分，否则后创建的实例会关掉先创建实例的卡片。
     AssertTrue(
-        viewCode.Contains("private const string PlcAlarmNotificationId = \"monitor-plc-alarm\";", StringComparison.Ordinal),
-        "PLC 报警通知必须使用整台设备唯一的通知 ID。");
+        viewCode.Contains("private const string PlcAlarmNotificationIdPrefix = \"monitor-plc-alarm\";", StringComparison.Ordinal),
+        "PLC 报警通知 ID 必须保留稳定前缀。");
+    AssertTrue(
+        viewCode.Contains("private readonly string _plcAlarmNotificationId =", StringComparison.Ordinal)
+            && viewCode.Contains($"{{PlcAlarmNotificationIdPrefix}}-{{Guid.NewGuid()", StringComparison.Ordinal),
+        "报警通知 ID 必须按实例生成，避免主屏与扩展屏共用同一 ID 时互相关闭卡片。");
+    AssertFalse(
+        viewCode.Contains("ID = PlcAlarmNotificationIdPrefix,", StringComparison.Ordinal),
+        "报警通知不得直接使用共享前缀作为 ID。");
     AssertFalse(
         viewCode.Contains("_plcAlarmNotificationSignatures", StringComparison.Ordinal)
             || viewCode.Contains("_plcAlarmSummaryDismissedSignatures", StringComparison.Ordinal),
@@ -754,8 +762,8 @@ static void MonitorViewAggregatesPlcAlarmNotificationPerDevice()
         "private void DismissPlcAlarmNotification()",
         "private void ResetPlcAlarmNotificationState");
     AssertTrue(
-        dismissMethod.Contains("ClosePlcAlarmNotificationIfPresent(PlcAlarmNotificationId)", StringComparison.Ordinal),
-        "关闭报警通知必须作用于设备级通知 ID。");
+        dismissMethod.Contains("ClosePlcAlarmNotificationIfPresent(_plcAlarmNotificationId)", StringComparison.Ordinal),
+        "关闭报警通知必须作用于本实例的通知 ID。");
 }
 
 static void PlcAlarmNotificationTitleOmitsStation()
@@ -14087,7 +14095,7 @@ static void MonitorRuntimeTipsUseLocalizedSummaries()
         "private static void ClosePlcAlarmNotificationIfPresent");
     AssertTrue(
         resetMethod.Contains("_plcAlarmNotificationSignature = null;", StringComparison.Ordinal)
-            && resetMethod.Contains("ClosePlcAlarmNotificationIfPresent(PlcAlarmNotificationId)", StringComparison.Ordinal),
+            && resetMethod.Contains("ClosePlcAlarmNotificationIfPresent(_plcAlarmNotificationId)", StringComparison.Ordinal),
         "报警恢复时必须清空通知签名并关闭设备级通知，使下一次报警可以重新弹出。");
     AssertTrue(viewCode.Contains("AntdUI.Notification.close_id(notificationId)", StringComparison.Ordinal), "关闭通知必须调用 AntdUI 的按 ID 关闭接口。");
 }
