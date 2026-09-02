@@ -708,6 +708,7 @@
             // 
             // tlpToolbar1
             // 
+            tlpToolbar1.AutoSize = true;
             tlpToolbar1.ColumnCount = 6;
             tlpToolbar1.ColumnStyles.Add(new ColumnStyle());
             tlpToolbar1.ColumnStyles.Add(new ColumnStyle());
@@ -728,13 +729,12 @@
             tlpToolbar1.Name = "tlpToolbar1";
             tlpToolbar1.RowCount = 1;
             tlpToolbar1.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tlpToolbar1.Size = new Size(979, 49);
+            tlpToolbar1.Size = new Size(965, 49);
             tlpToolbar1.TabIndex = 1;
             // 
             // queryPrograms
             // 
             queryPrograms.AutoSize = true;
-            queryPrograms.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             queryPrograms.Dock = DockStyle.Fill;
             queryPrograms.Location = new Point(642, 0);
             queryPrograms.Margin = new Padding(0);
@@ -743,7 +743,7 @@
             queryPrograms.PlaceholderText = "搜索程序 / 产品工号 / 状态";
             queryPrograms.QueryChanged = null;
             queryPrograms.RefreshButtonTag = "perm:button.program.refresh:enabled";
-            queryPrograms.Size = new Size(337, 49);
+            queryPrograms.Size = new Size(323, 49);
             queryPrograms.TabIndex = 1;
             // 
             // btnPullMes
