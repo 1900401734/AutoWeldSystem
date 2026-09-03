@@ -1,4 +1,4 @@
-using AutoWeldSystem.Core.Center;
+﻿using AutoWeldSystem.Core.Center;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
@@ -114,7 +114,7 @@ public class ProductionReportFileService : IProductionReportFileService
             // 本地查看和追溯需要与实时预览、历史数据列表看到的位数一致。
             WriteXlsx(
                 filePath,
-                BuildReportSchema(task, records),
+                BuildReportSchema(task, records, localExport: true),
                 records,
                 task,
                 OutputNumericFormat.None);
@@ -184,12 +184,14 @@ public class ProductionReportFileService : IProductionReportFileService
 
     private ReportSchema BuildReportSchema(
         BizWeldTask task,
-        IReadOnlyList<BizWeldPointRecord> records)
+        IReadOnlyList<BizWeldPointRecord> records,
+        bool localExport = false)
     {
-        var stationConfigs = ResolveStationReportConfigs(task, records);
+        var stationConfigs = ResolveStationReportConfigs(task, records, localExport);
         return BuildReportSchemaForStationsWithDeviceType(
             stationConfigs,
-            CurrentSettings.ProcessParameterDeviceType);
+            CurrentSettings.ProcessParameterDeviceType,
+            localExport);
     }
 
     /// <summary>
@@ -197,23 +199,28 @@ public class ProductionReportFileService : IProductionReportFileService
     /// </summary>
     private static ReportSchema BuildReportSchemaForStations(
         IReadOnlyList<ResolvedStationReportConfig> stationConfigs)
-        => BuildReportSchemaForStationsWithDeviceType(stationConfigs, string.Empty);
+        => BuildReportSchemaForStationsWithDeviceType(stationConfigs, string.Empty, localExport: false);
 
     private static ReportSchema BuildReportSchemaForStationsWithDeviceType(
         IReadOnlyList<ResolvedStationReportConfig> stationConfigs,
-        string deviceType)
+        string deviceType,
+        bool localExport)
     {
         var orderedConfigs = stationConfigs
             .OrderBy(config => config.StationNo)
             .ToList();
+        // 本地导出是后台查阅用的明细数据，保留 PLC 采集的原始面记录，不做 A/B 聚合，
+        // 因此表头和列合并都按普通焊点口径处理；A/B 只属于上传给 MES 的报表。
         var displayOptions = ResolveCompatibleDisplayOptions(
             orderedConfigs,
-            WholePieceAbAggregationRules.IsApplicable(deviceType, orderedConfigs.FirstOrDefault()?.Config.TouchCount ?? 0));
+            !localExport
+                && WholePieceAbAggregationRules.IsApplicable(deviceType, orderedConfigs.FirstOrDefault()?.Config.TouchCount ?? 0));
         var leadingColumns = BuildLeadingColumns(displayOptions);
         var dynamicColumns = orderedConfigs
             .SelectMany(config => config.SchemeItems.SelectMany(item => BuildItemColumnsForMode(
                 item,
-                WholePieceAbAggregationRules.IsApplicable(deviceType, config.Config.TouchCount))));
+                !localExport && WholePieceAbAggregationRules.IsApplicable(deviceType, config.Config.TouchCount),
+                localExport)));
         var pointResultColumn = BuildPointResultColumn(displayOptions);
         var trailingColumns = BuildTrailingColumns();
         var columns = leadingColumns
@@ -229,7 +236,7 @@ public class ProductionReportFileService : IProductionReportFileService
         var stationConfigsByNumber = orderedConfigs.ToDictionary(
             config => config.StationNo,
             config => config.Config);
-        return new ReportSchema(columns, stationSchemeItems, stationConfigsByNumber, displayOptions);
+        return new ReportSchema(columns, stationSchemeItems, stationConfigsByNumber, displayOptions, localExport);
     }
 
     /// <summary>
@@ -352,16 +359,20 @@ public class ProductionReportFileService : IProductionReportFileService
             var representative = group.OrderBy(record => record.SequenceNo).ThenBy(record => record.Id).First();
             var config = schema.ResolveConfig(representative.StationNo);
             var schemeItems = schema.ResolveSchemeItems(representative.StationNo);
-            if (!WholePieceAbAggregationRules.IsApplicable(settings.ProcessParameterDeviceType, config?.TouchCount ?? 0))
+            // 本地导出保留逐面原始记录：A/B 聚合会把四面并成两行并改写行结果，
+            // 后台查阅需要的是"数据是怎样就怎样"，聚合只用于上传给 MES 的报表。
+            if (schema.LocalExport
+                || !WholePieceAbAggregationRules.IsApplicable(settings.ProcessParameterDeviceType, config?.TouchCount ?? 0))
             {
                 var standardProductResult = ResolveProductResult(group);
                 rows.AddRange(group.OrderBy(record => record.SequenceNo).ThenBy(record => record.Id)
-                    .Select(record => BuildStandardOutputRow(record, schemeItems, standardProductResult)));
+                    .Select(record => BuildStandardOutputRow(record, schemeItems, standardProductResult, schema.LocalExport)));
                 continue;
             }
 
+            // 只有上传报表会走到这里，取列口径与 BuildItemColumnsForMode 的上传分支一致。
             var definitions = schemeItems
-                .Where(item => SchemeDetailRoleRules.IsReportEnabled(item.Detail, SchemeDetailValueRole.Actual))
+                .Where(item => SchemeDetailRoleRules.ShouldWriteReportRole(item.Detail, SchemeDetailValueRole.Actual))
                 .Select(item => new WholePieceAbValueDefinition(
                     item.Item.ItemId,
                     item.Item.ItemName,
@@ -437,10 +448,11 @@ public class ProductionReportFileService : IProductionReportFileService
     private static ReportOutputRow BuildStandardOutputRow(
         BizWeldPointRecord record,
         IReadOnlyList<SchemeReportItem> schemeItems,
-        string productResult)
+        string productResult,
+        bool localExport)
     {
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        AddSchemeDynamicValues(values, ParseRawData(record.RawDataJson), schemeItems);
+        AddSchemeDynamicValues(values, ParseRawData(record.RawDataJson), schemeItems, localExport);
         return new ReportOutputRow(
             record,
             string.IsNullOrWhiteSpace(record.TouchNo) ? record.SequenceNo.ToString() : record.TouchNo,
@@ -702,42 +714,43 @@ public class ProductionReportFileService : IProductionReportFileService
     private void AddDynamicValues(Dictionary<string, string> row, BizWeldPointRecord record, ReportSchema schema)
     {
         var rawValues = ParseRawData(record.RawDataJson);
-        AddSchemeDynamicValues(row, rawValues, schema.ResolveSchemeItems(record.StationNo));
+        AddSchemeDynamicValues(row, rawValues, schema.ResolveSchemeItems(record.StationNo), schema.LocalExport);
     }
 
     private static void AddSchemeDynamicValues(
         Dictionary<string, string> row,
         IReadOnlyDictionary<string, string> rawValues,
-        IReadOnlyList<SchemeReportItem> schemeItems)
+        IReadOnlyList<SchemeReportItem> schemeItems,
+        bool localExport)
     {
         foreach (var schemeItem in schemeItems)
         {
             var item = schemeItem.Item;
             var detail = schemeItem.Detail;
             var itemKey = ResolveItemKey(item);
-            if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Actual))
+            if (ShouldOutputRole(detail, SchemeDetailValueRole.Actual, localExport))
             {
                 TryAddDynamicValue(row, BuildDynamicColumnKey(item, ReportRoleActual), GetRawValue(rawValues, item.ItemName, itemKey) ?? string.Empty);
             }
 
-            if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Upper))
+            if (ShouldOutputRole(detail, SchemeDetailValueRole.Upper, localExport))
             {
                 TryAddDynamicValue(row, BuildDynamicColumnKey(item, ReportRoleUpper), GetRawValue(rawValues, $"{item.ItemName}上限", $"{itemKey}_upper"));
             }
 
-            if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Lower))
+            if (ShouldOutputRole(detail, SchemeDetailValueRole.Lower, localExport))
             {
                 TryAddDynamicValue(row, BuildDynamicColumnKey(item, ReportRoleLower), GetRawValue(rawValues, $"{item.ItemName}下限", $"{itemKey}_lower"));
             }
 
-            if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Result))
+            if (ShouldOutputRole(detail, SchemeDetailValueRole.Result, localExport))
             {
                 TryAddDynamicValue(row, BuildDynamicColumnKey(item, ReportRoleResult), GetRawValue(rawValues, $"{item.ItemName}结果", $"{itemKey}_result"));
             }
         }
     }
 
-    private IReadOnlyList<SchemeReportItem> GetSchemeItemsForConfig(BizProductProcessConfig? config)
+    private IReadOnlyList<SchemeReportItem> GetSchemeItemsForConfig(BizProductProcessConfig? config, bool localExport)
     {
         if (config is null)
         {
@@ -770,7 +783,7 @@ public class ProductionReportFileService : IProductionReportFileService
                 SchemeDetailRoleRules.ClearUnavailableRoles(item.Detail, item.Item!);
                 return item;
             })
-            .Where(item => HasAnyEnabledRole(item.Detail))
+            .Where(item => HasAnyEnabledRole(item.Detail, localExport))
             .Select(item => new SchemeReportItem(item.Item!, item.Detail))
             .ToList();
     }
@@ -780,7 +793,8 @@ public class ProductionReportFileService : IProductionReportFileService
     /// </summary>
     private IReadOnlyList<ResolvedStationReportConfig> ResolveStationReportConfigs(
         BizWeldTask task,
-        IReadOnlyList<BizWeldPointRecord> records)
+        IReadOnlyList<BizWeldPointRecord> records,
+        bool localExport = false)
     {
         var productNum = ResolveTaskProductNum(task);
         if (string.IsNullOrWhiteSpace(productNum))
@@ -810,7 +824,7 @@ public class ProductionReportFileService : IProductionReportFileService
 
             if (!schemeItemsBySchemeId.TryGetValue(config.SchemeId, out var schemeItems))
             {
-                schemeItems = GetSchemeItemsForConfig(config);
+                schemeItems = GetSchemeItemsForConfig(config, localExport);
                 schemeItemsBySchemeId[config.SchemeId] = schemeItems;
             }
 
@@ -922,14 +936,17 @@ public class ProductionReportFileService : IProductionReportFileService
     }
 
     private static IEnumerable<ReportColumn> BuildItemColumns(SchemeReportItem schemeItem)
-        => BuildItemColumnsForMode(schemeItem, wholePieceAb: false);
+        => BuildItemColumnsForMode(schemeItem, wholePieceAb: false, localExport: false);
 
-    private static IEnumerable<ReportColumn> BuildItemColumnsForMode(SchemeReportItem schemeItem, bool wholePieceAb)
+    private static IEnumerable<ReportColumn> BuildItemColumnsForMode(
+        SchemeReportItem schemeItem,
+        bool wholePieceAb,
+        bool localExport)
     {
         var item = schemeItem.Item;
         var detail = schemeItem.Detail;
 
-        if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Actual))
+        if (ShouldOutputRole(detail, SchemeDetailValueRole.Actual, localExport))
         {
             yield return new ReportColumn(
                 BuildDynamicColumnKey(item, ReportRoleActual),
@@ -943,7 +960,7 @@ public class ProductionReportFileService : IProductionReportFileService
             yield break;
         }
 
-        if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Upper))
+        if (ShouldOutputRole(detail, SchemeDetailValueRole.Upper, localExport))
         {
             yield return new ReportColumn(
                 BuildDynamicColumnKey(item, ReportRoleUpper),
@@ -951,7 +968,7 @@ public class ProductionReportFileService : IProductionReportFileService
                 MergeByProduct: false);
         }
 
-        if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Lower))
+        if (ShouldOutputRole(detail, SchemeDetailValueRole.Lower, localExport))
         {
             yield return new ReportColumn(
                 BuildDynamicColumnKey(item, ReportRoleLower),
@@ -959,7 +976,7 @@ public class ProductionReportFileService : IProductionReportFileService
                 MergeByProduct: false);
         }
 
-        if (SchemeDetailRoleRules.ShouldWriteReportRole(detail, SchemeDetailValueRole.Result))
+        if (ShouldOutputRole(detail, SchemeDetailValueRole.Result, localExport))
         {
             yield return new ReportColumn(
                 BuildDynamicColumnKey(item, ReportRoleResult),
@@ -1070,9 +1087,20 @@ public class ProductionReportFileService : IProductionReportFileService
         return Regex.Replace(normalized, @"[\\/:*?""<>|]+", "-");
     }
 
-    private static bool HasAnyEnabledRole(BizSchemeDetail detail)
+    /// <summary>
+    /// 判断角色是否输出到当前报表出口。
+    /// 上传给 MES 的报表只认「写入报表」；数据管理页的本地导出还要覆盖「本地保存」，
+    /// 保证导出文件包含历史记录中看到的全部动态列。
+    /// </summary>
+    private static bool ShouldOutputRole(BizSchemeDetail detail, SchemeDetailValueRole role, bool localExport)
     {
-        return SchemeDetailRoleRules.AllRoles.Any(role => SchemeDetailRoleRules.ShouldWriteReportRole(detail, role));
+        return SchemeDetailRoleRules.ShouldWriteReportRole(detail, role)
+            || (localExport && SchemeDetailRoleRules.ShouldShowHistoryRole(detail, role));
+    }
+
+    private static bool HasAnyEnabledRole(BizSchemeDetail detail, bool localExport)
+    {
+        return SchemeDetailRoleRules.AllRoles.Any(role => ShouldOutputRole(detail, role, localExport));
     }
 
     private sealed record ProductReportContext(string ProductResult);
@@ -1082,7 +1110,8 @@ public class ProductionReportFileService : IProductionReportFileService
         public ReportSchema(
             IReadOnlyList<ReportColumn> columns,
             IReadOnlyList<SchemeReportItem> schemeItems,
-            ReportDisplayOptions displayOptions)
+            ReportDisplayOptions displayOptions,
+            bool localExport = false)
             : this(
                 columns,
                 new Dictionary<int, IReadOnlyList<SchemeReportItem>>
@@ -1090,7 +1119,8 @@ public class ProductionReportFileService : IProductionReportFileService
                     [ProductionConstants.Stations.SharedStationNo] = schemeItems
                 },
                 new Dictionary<int, BizProductProcessConfig>(),
-                displayOptions)
+                displayOptions,
+                localExport)
         {
         }
 
@@ -1098,15 +1128,22 @@ public class ProductionReportFileService : IProductionReportFileService
             IReadOnlyList<ReportColumn> columns,
             IReadOnlyDictionary<int, IReadOnlyList<SchemeReportItem>> stationSchemeItems,
             IReadOnlyDictionary<int, BizProductProcessConfig> stationConfigs,
-            ReportDisplayOptions displayOptions)
+            ReportDisplayOptions displayOptions,
+            bool localExport = false)
         {
             Columns = columns;
             StationSchemeItems = stationSchemeItems;
             StationConfigs = stationConfigs;
             DisplayOptions = displayOptions;
+            LocalExport = localExport;
         }
 
         public IReadOnlyList<ReportColumn> Columns { get; }
+
+        /// <summary>
+        /// 是否为数据管理页本地导出。取值端据此与列定义保持同一取列口径。
+        /// </summary>
+        public bool LocalExport { get; }
 
         public IReadOnlyDictionary<int, IReadOnlyList<SchemeReportItem>> StationSchemeItems { get; }
 
