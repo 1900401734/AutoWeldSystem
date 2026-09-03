@@ -150,6 +150,7 @@ var tests = new (string Name, Action Run)[]
     ("Program result display prefers persisted entity result", ProgramResultDisplayPrefersPersistedEntityResult),
     ("Whole-piece aggregation rejects invalid source data", WholePieceAggregationRejectsInvalidSourceData),
     ("Whole-piece paired aggregation supports maximum mode", WholePiecePairedAggregationSupportsMaximumMode),
+    ("Whole-piece merged display respects realtime preview", WholePieceMergedDisplayRespectsRealtimePreview),
     ("Whole-piece merged display builds A and B columns", WholePieceMergedDisplayBuildsAbColumns),
     ("Whole-piece product result uses merged values", WholePieceProductResultUsesMergedValues),
     ("Whole-piece merged result differs from per-face result", WholePieceMergedResultDiffersFromPerFaceResult),
@@ -4229,6 +4230,63 @@ static void WholePiecePairedAggregationSupportsMaximumMode()
     AssertTrue(averageResult.IsSuccess, averageResult.ErrorMessage);
     AssertEqual("0.15", averageResult.Rows[0].Values["Symmetry"], "平均值模式必须与改动前保持一致。");
     AssertEqual("0.14", averageResult.Rows[1].Values["Symmetry"], "平均值模式必须与改动前保持一致。");
+}
+
+static void WholePieceMergedDisplayRespectsRealtimePreview()
+{
+    var hiddenHeight = new BizSchemeDetail
+    {
+        EnableActual = false,
+        SaveActual = true
+    };
+    var visibleSymmetry = new BizSchemeDetail
+    {
+        EnableActual = true,
+        SaveActual = true
+    };
+    var previewOnlyWidth = new BizSchemeDetail
+    {
+        EnableActual = true
+    };
+
+    AssertFalse(
+        SchemeDetailRoleRules.ShouldShowMergedPreviewActual(hiddenHeight),
+        "未勾选实时预览的高度不应进入合并显示。");
+    AssertTrue(
+        SchemeDetailRoleRules.ShouldEvaluateProgramRole(hiddenHeight, SchemeDetailValueRole.Actual),
+        "未勾选实时预览的高度只要有输出通道，仍必须参与程序判定。");
+    AssertTrue(
+        SchemeDetailRoleRules.ShouldShowMergedPreviewActual(visibleSymmetry),
+        "同时启用实时预览和业务输出的对称度应进入合并显示。");
+    AssertFalse(
+        SchemeDetailRoleRules.ShouldShowMergedPreviewActual(previewOnlyWidth),
+        "仅勾选实时预览的临时观察项不应参与合并显示。");
+
+    var definitions = new[]
+    {
+        (Detail: hiddenHeight, Definition: MergedHeightDefinition()),
+        (Detail: visibleSymmetry, Definition: MergedSymmetryDefinition()),
+        (Detail: previewOnlyWidth, Definition: MergedWidthDefinition())
+    }
+    .Where(item => SchemeDetailRoleRules.ShouldShowMergedPreviewActual(item.Detail))
+    .Select(item => item.Definition)
+    .ToList();
+    var columns = WholePieceMergedDisplayRules.BuildColumns(definitions);
+    AssertEqual(2, columns.Count, "合并显示只应为可见对称度生成A/B两列。");
+    AssertEqual("对称度A", columns[0].ColumnName, "第一列必须是对称度A。");
+    AssertEqual("对称度B", columns[1].ColumnName, "第二列必须是对称度B。");
+    AssertFalse(columns.Any(column => column.ItemName == "高度"), "未勾选的高度不得出现在合并列中。");
+    AssertFalse(columns.Any(column => column.ItemName == "宽度"), "仅实时预览的宽度不得参与合并列。");
+
+    var previewCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductRealtimePreviewService.cs"),
+        Encoding.UTF8);
+    AssertTrue(
+        previewCode.Contains("SchemeDetailRoleRules.ShouldShowMergedPreviewActual", StringComparison.Ordinal),
+        "合并显示列必须按实时预览实际值开关过滤。");
+    AssertTrue(
+        previewCode.Contains("ShouldEvaluateProgramRole(detail, SchemeDetailValueRole.Actual)", StringComparison.Ordinal),
+        "合并值判定必须继续使用全部业务输出项，不能随界面隐藏列而漏判。");
 }
 
 static void WholePieceMergedDisplayBuildsAbColumns()

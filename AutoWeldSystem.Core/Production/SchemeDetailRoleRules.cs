@@ -294,10 +294,18 @@ public static class SchemeDetailRoleRules
         => ShouldPersistRole(detail, role);
 
     /// <summary>
-    /// 判断方案明细是否至少启用一个实时预览角色。
+    /// 判断方案明细是否至少启用了一个实时预览角色。
     /// </summary>
     public static bool HasAnyPreviewEnabled(BizSchemeDetail detail)
         => AllRoles.Any(role => IsPreviewEnabled(detail, role));
+
+    /// <summary>
+    /// 判断实际值是否同时参与业务判定且显示在整件检测合并预览中。
+    /// 合并列的可见范围必须与逐面实时预览一致，但仅勾实时预览的临时观察项仍不参与合并判定。
+    /// </summary>
+    public static bool ShouldShowMergedPreviewActual(BizSchemeDetail detail)
+        => IsPreviewEnabled(detail, SchemeDetailValueRole.Actual)
+            && ShouldEvaluateProgramRole(detail, SchemeDetailValueRole.Actual);
 
     /// <summary>
     /// 判断方案明细是否包含任意通道配置。

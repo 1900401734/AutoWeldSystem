@@ -345,10 +345,17 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             useProgramPointNumber,
             refreshTime,
             cancellationToken);
-        var mergedDefinitions = ResolveMergedDefinitions(config, settings);
-        // 合并列结构只取决于测试方案，四面未采集齐时仍要建列显示空行。
-        var mergedColumns = mergedDefinitions.Count > 0
-            ? WholePieceMergedDisplayRules.BuildColumns(mergedDefinitions)
+        var mergedDefinitions = ResolveMergedDefinitions(
+            config,
+            settings,
+            detail => SchemeDetailRoleRules.ShouldEvaluateProgramRole(detail, SchemeDetailValueRole.Actual));
+        var mergedDisplayDefinitions = ResolveMergedDefinitions(
+            config,
+            settings,
+            SchemeDetailRoleRules.ShouldShowMergedPreviewActual);
+        // 合并列只显示启用实时预览的项，聚合与程序判定仍保留全部业务输出项。
+        var mergedColumns = mergedDisplayDefinitions.Count > 0
+            ? WholePieceMergedDisplayRules.BuildColumns(mergedDisplayDefinitions)
             : Array.Empty<WholePieceMergedColumn>();
         var mergedAggregation = mergedDefinitions.Count > 0 && rowResult.IsComplete
             ? BuildMergedAggregation(rowResult, settings, mergedDefinitions)
@@ -373,6 +380,10 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
                 mergedSucceeded ? mergedAggregation : null,
                 mergedDefinitions,
                 out mergedFailedColumns));
+            mergedFailedColumns = mergedFailedColumns
+                .Where(columnName => mergedColumns.Any(column =>
+                    string.Equals(column.ColumnName, columnName, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
         }
         else
         {
@@ -399,7 +410,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         {
             MergedColumns = mergedColumns,
             MergedValues = mergedValues,
-            MergedDefinitions = mergedDefinitions,
+            MergedDefinitions = mergedDisplayDefinitions,
             MergedFailedColumns = mergedFailedColumns
         };
     }
@@ -409,7 +420,8 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
     /// </summary>
     private IReadOnlyList<WholePieceAbValueDefinition> ResolveMergedDefinitions(
         BizProductProcessConfig config,
-        AppSettings settings)
+        AppSettings settings,
+        Func<BizSchemeDetail, bool> shouldInclude)
     {
         if (!WholePieceAbAggregationRules.IsApplicable(settings.ProcessParameterDeviceType, config.TouchCount))
         {
@@ -417,7 +429,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         }
 
         return ResolveSchemeItems(config.SchemeId)
-            .Where(item => SchemeDetailRoleRules.ShouldEvaluateProgramRole(item.Detail, SchemeDetailValueRole.Actual))
+            .Where(item => shouldInclude(item.Detail))
             .Select(item => new WholePieceAbValueDefinition(
                 item.Item.ItemId,
                 item.Item.ItemName,
