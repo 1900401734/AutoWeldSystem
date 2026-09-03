@@ -1,6 +1,20 @@
 ﻿# AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.19.7`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.20.0`。
+
+## v2.20.0 更新说明
+
+**配方名称现在随程序内容上传 MES**，另一台设备下载同款产品程序后可自动找回正确的 PLC 配方号。
+
+- **程序管理保存时把已选配方名称写入程序内容**，排在设定值前面，例如 `{"工位1配方名称":"左侧标准","高度":"12.5"}`。单工位只写工位 1；双工位按实际选择分别写入；选「不适用」或未选的工位不写。数字配方号仍不上传 MES。
+- **配方名称是保留字段，不当测试项**。监控页设定值摘要、程序内容表格和整件检测判定都会跳过它，不会出现「工位1配方名称≤左侧标准」，也不会因名称不是数字导致判定失败。手工 JSON 里写成「配方名称」按工位 1 识别。
+- **只填了配方名、没填任何最大允许值的程序也会正常上传**，此前这种程序的内容会被清空。
+- **开工前「程序内容确认」弹窗显示本次使用的配方名称**，位于测试项表格上方，只读；改配方仍在程序管理进行。旧程序缺少该字段时显示「未指定」，不影响确认开工。
+- **下载或从 MES 拉取程序时按配方名称匹配本机 PLC 配方槽位，自动回填工位配方号**。监控页下载时若名称匹配不上会明确报错并列出本机可用配方，不会带着错误配方继续开工；程序管理批量拉取时只记录日志、不中断整批。同名槽位取第一个。
+- **配方名称会去掉 PLC 定长字符串的空字符填充**。PLC 按固定长度返回配方名，尾部用空字符补齐，若不处理会写成 `123#\u0000\u0000…` 上传 MES，另一台设备按名称反查槽位时也永远对不上。现在读取 PLC 配方名、写入程序内容和名称匹配三处都会截断到第一个空字符；全部为空字符的空槽位不再混入配方下拉列表，且不影响后续槽位的配方号。
+- PLC 下发、回读校验和运行中调和逻辑不变，仍只使用数字配方号。
+
+**升级注意**：已在 MES 上的旧程序不含配方名称，行为与之前一致，仍按本机保存的配方号下发。需要跨设备共享配方关联的程序，请在程序管理重新选择配方名称并同步一次。现场若改了 PLC 配方名称或槽位顺序，仍需回程序管理重选，系统不会按名称自动迁移历史关联。
 
 ## v2.19.7 修复说明
 
@@ -588,10 +602,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>2.19.7</Version>
-<AssemblyVersion>2.19.7.0</AssemblyVersion>
-<FileVersion>2.19.7.0</FileVersion>
-<InformationalVersion>2.19.7</InformationalVersion>
+<Version>2.20.0</Version>
+<AssemblyVersion>2.20.0.0</AssemblyVersion>
+<FileVersion>2.20.0.0</FileVersion>
+<InformationalVersion>2.20.0</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -603,9 +617,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v2.19.7 -m "Release v2.19.7"
+git tag -a v2.20.0 -m "Release v2.20.0"
 git push origin main
-git push origin v2.19.7
+git push origin v2.20.0
 ```
 
 ## Git 使用
