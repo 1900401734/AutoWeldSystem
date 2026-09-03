@@ -1,6 +1,13 @@
 ﻿# AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.19.6`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.19.7`。
+
+## v2.19.7 修复说明
+
+修复**整件检测合并显示未跟随方案明细实时预览勾选**的问题。
+
+- **未勾选的测试项不再出现在合并表中**。方案明细树取消勾选“高度”等测试项后，逐面显示本来就不建该列，但合并显示仍按“是否保存/转发/报表/过程参数”建列，因此现场会看到未勾选的高度。现在合并列只保留同时启用实时预览实际值、且仍有业务输出去向的测试项。
+- **产品判定和输出通道不变**。取消实时预览只影响监控页合并表和产品历史合并列；本地保存、中心转发、报表、MES 以及程序判定仍按各自通道处理，不会因为界面隐藏某一列而漏判。
 
 ## v2.19.6 修复说明
 
@@ -581,10 +588,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>2.19.6</Version>
-<AssemblyVersion>2.19.6.0</AssemblyVersion>
-<FileVersion>2.19.6.0</FileVersion>
-<InformationalVersion>2.19.6</InformationalVersion>
+<Version>2.19.7</Version>
+<AssemblyVersion>2.19.7.0</AssemblyVersion>
+<FileVersion>2.19.7.0</FileVersion>
+<InformationalVersion>2.19.7</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -596,9 +603,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 发布新版本时：
 
 ```powershell
-git tag -a v2.19.6 -m "Release v2.19.6"
+git tag -a v2.19.7 -m "Release v2.19.7"
 git push origin main
-git push origin v2.19.6
+git push origin v2.19.7
 ```
 
 ## Git 使用
