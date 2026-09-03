@@ -831,7 +831,14 @@ public partial class ProgramManageView : BaseView
             return false;
         }
 
-        request.ProgramContentJson = programContentJson;
+        // 从配方下拉取出名称，注入到程序内容 JSON 最前面
+        var station1RecipeName = ResolveSelectedRecipeName(selectStation1Recipe, 1);
+        var station2RecipeName = ResolveSelectedRecipeName(selectStation2Recipe, 2);
+        request.ProgramContentJson = ProgramContentJsonRules.MergeRecipeNamesAndContent(
+            station1RecipeName,
+            station2RecipeName,
+            programContentJson);
+
         request.WeldJobName = string.Empty;
         request.RobotJobName = string.Empty;
         request.CycleTimeSeconds = 0m;
@@ -1070,6 +1077,24 @@ public partial class ProgramManageView : BaseView
         }
 
         return items[select.SelectedIndex].RecipeCode;
+    }
+
+    /// <summary>
+    /// 从配方下拉取出选中的配方名称（不是数字配方号）。
+    /// 用于注入 ProgramContent，随 MES 同步给其他设备。
+    /// </summary>
+    private string? ResolveSelectedRecipeName(AntdUI.Select select, int stationNo)
+    {
+        if (!_recipeSelectionItems.TryGetValue(stationNo, out var items)
+            || select.SelectedIndex < 0
+            || select.SelectedIndex >= items.Count)
+        {
+            return null;
+        }
+
+        var item = items[select.SelectedIndex];
+        // 「不适用」和历史失效选项不写配方名
+        return item.Kind == RecipeSelectionKind.PlcOption ? item.DisplayText : null;
     }
 
     private void RefreshRecipeSelectorTexts()

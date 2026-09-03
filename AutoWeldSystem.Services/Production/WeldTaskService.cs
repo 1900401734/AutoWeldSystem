@@ -3,6 +3,7 @@ using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
 using AutoWeldSystem.Core.DTOs.Mes.Request;
 using AutoWeldSystem.Core.DTOs.Mes.Response;
+using AutoWeldSystem.Core.DTOs.Plc;
 using AutoWeldSystem.Core.DTOs.Upload;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Enums;
@@ -10,6 +11,7 @@ using AutoWeldSystem.Core.Exceptions;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.MES;
+using AutoWeldSystem.Core.Interfaces.PLC;
 using AutoWeldSystem.Core.Mes;
 using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Core.Runtime;
@@ -22,6 +24,8 @@ public class WeldTaskService : IWeldTaskService
 {
     private const string TaskStatusCompleted = "Completed";
     private const string TaskStatusRunning = "Running";
+    // PLC 无响应时不能让下载程序的交互长时间挂起。
+    private static readonly TimeSpan RecipeNameReadTimeout = TimeSpan.FromSeconds(10);
 
     private readonly IMesProvider _mesProvider;
     private readonly SqlSugarDbContext _dbContext;
@@ -36,6 +40,7 @@ public class WeldTaskService : IWeldTaskService
     private readonly ISystemClockService _systemClockService;
     private readonly IDataHistoryMaintenanceService _maintenanceService;
     private readonly IMesConnectionMonitor? _mesConnectionMonitor;
+    private readonly IPlcRecipeNameReaderService? _recipeNameReaderService;
     private AppSettings _currentSettings;
 
     public WeldTaskService(
@@ -51,8 +56,10 @@ public class WeldTaskService : IWeldTaskService
         IDeviceStatusService deviceStatusService,
         ISystemClockService systemClockService,
         IDataHistoryMaintenanceService maintenanceService,
-        IMesConnectionMonitor? mesConnectionMonitor = null)
+        IMesConnectionMonitor? mesConnectionMonitor = null,
+        IPlcRecipeNameReaderService? recipeNameReaderService = null)
     {
+        _recipeNameReaderService = recipeNameReaderService;
         _maintenanceService = maintenanceService;
         _mesConnectionMonitor = mesConnectionMonitor;
         _mesProvider = mesProvider;
@@ -352,6 +359,8 @@ public class WeldTaskService : IWeldTaskService
 
         var detail = MergeProgramListSnapshot(response.Data, program);
         var localProgram = UpsertProgram(detail, settings.DeviceId);
+        // 程序内容带配方名称时，按本机 PLC 配方表解析出配方号并回填，供其他设备下载后正确下发。
+        localProgram = await ApplyRecipeNamesFromContentAsync(localProgram, cancellationToken);
         detail.RecipeCode = FirstNonEmpty(
             ProgramRecipeMappingRules.Resolve(localProgram, normalizedStationNo),
             ProgramRecipeMappingRules.Normalize(detail.RecipeCode));
@@ -1428,6 +1437,116 @@ public class WeldTaskService : IWeldTaskService
     private static bool SameText(string? left, string? right)
     {
         return string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// 按程序内容里的配方名称解析本机 PLC 配方号并回填。
+    /// 内容里有配方名却匹配不到槽位时必须报错，避免向 PLC 下发错误配方。
+    /// 内容没有配方名（旧程序）时沿用本机已保存的配方号。
+    /// </summary>
+    private async Task<BizProgram> ApplyRecipeNamesFromContentAsync(
+        BizProgram program,
+        CancellationToken cancellationToken)
+    {
+        var (station1Name, station2Name) = ProgramContentJsonRules.ExtractRecipeNames(program.ProgramContent);
+        if (string.IsNullOrWhiteSpace(station1Name) && string.IsNullOrWhiteSpace(station2Name))
+        {
+            return program;
+        }
+
+        if (_recipeNameReaderService is null)
+        {
+            return program;
+        }
+
+        var changed = false;
+        var dualStation = _currentSettings.EnableDualStation;
+
+        foreach (var (stationNo, recipeName) in new[] { (1, station1Name), (2, station2Name) })
+        {
+            if (string.IsNullOrWhiteSpace(recipeName))
+            {
+                continue;
+            }
+
+            // 单工位设备不解析工位 2，避免读取未配置的地址。
+            if (stationNo == 2 && !dualStation)
+            {
+                continue;
+            }
+
+            var readResult = await ReadRecipeNameOptionsAsync(stationNo, cancellationToken);
+            if (!readResult.IsSuccess)
+            {
+                throw new BusinessOperationException(
+                    "PLC.RecipeName",
+                    "PLC 配方名称读取失败",
+                    $"Station={stationNo}; RecipeName={recipeName}; Detail={readResult.Message}");
+            }
+
+            if (!ProgramRecipeNameMappingRules.TryResolveRecipeCode(
+                    recipeName,
+                    stationNo,
+                    readResult.Options,
+                    out var recipeCode,
+                    out var errorMessage))
+            {
+                throw new BusinessOperationException(
+                    "PLC.RecipeName",
+                    "程序配方名称无法匹配本机 PLC 配方",
+                    $"ProgramName={program.ProgramName}; {errorMessage}");
+            }
+
+            if (stationNo == 2)
+            {
+                if (!SameText(program.Station2RecipeCode, recipeCode))
+                {
+                    program.Station2RecipeCode = recipeCode;
+                    changed = true;
+                }
+            }
+            else if (!SameText(program.RecipeCode, recipeCode))
+            {
+                program.RecipeCode = recipeCode;
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
+            program.UpdatedTime = DateTime.Now;
+            _dbContext.Db.Updateable(program).ExecuteCommand();
+            _operationLogService.Write(
+                "ProgramRecipeName",
+                $"按程序内容配方名称回填配方号，ProgramName={program.ProgramName}, Station1={program.RecipeCode}, Station2={program.Station2RecipeCode}");
+        }
+
+        return program;
+    }
+
+    /// <summary>
+    /// 读取指定工位 PLC 配方名称，超时按读取失败处理。
+    /// 下载程序是开工前的交互路径，不能因 PLC 无响应长时间挂起。
+    /// </summary>
+    private async Task<PlcRecipeNameReadResult> ReadRecipeNameOptionsAsync(
+        int stationNo,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _recipeNameReaderService!
+                .ReadStationAsync(stationNo, cancellationToken)
+                .WaitAsync(RecipeNameReadTimeout, cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            return new PlcRecipeNameReadResult(
+                stationNo,
+                false,
+                $"工位 {stationNo} 配方名称读取超时。",
+                Array.Empty<PlcRecipeNameOption>(),
+                Array.Empty<PlcRecipeNameReadFailure>());
+        }
     }
 
     private BizProgram UpsertProgram(ProgramDataRes detail, string deviceId)

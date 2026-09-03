@@ -890,7 +890,10 @@ public partial class MonitorView : BaseView
             ClearPendingOnlineProgramSelection();
 
             // 程序内容预览/微调窗：OK 时把合并后的内容写回选中程序（只对本次开工生效）。
-            using var form = new ProgramContentReviewForm(detail, _testSchemeConfigService.GetItems());
+            using var form = new ProgramContentReviewForm(
+                detail,
+                _testSchemeConfigService.GetItems(),
+                _currentSettings.EnableDualStation);
             if (form.ShowDialog(this) != DialogResult.OK)
             {
                 // 取消则保留下载的默认内容，不做任何修改。

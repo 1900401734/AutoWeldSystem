@@ -6,10 +6,12 @@ using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
 using AutoWeldSystem.Core.DTOs.Mes.Request;
 using AutoWeldSystem.Core.DTOs.Mes.Response;
+using AutoWeldSystem.Core.DTOs.Plc;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.MES;
+using AutoWeldSystem.Core.Interfaces.PLC;
 using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Core.Runtime;
 using AutoWeldSystem.Data;
@@ -30,6 +32,7 @@ public sealed class ProgramManageService : IProgramManageService
     private readonly IAppSettingsService _settingsService;
     private readonly IMesProvider _mesProvider;
     private readonly IOperationLogService _operationLogService;
+    private readonly IPlcRecipeNameReaderService? _recipeNameReaderService;
     private readonly SemaphoreSlim _mutationGate = new(1, 1);
     private readonly SemaphoreSlim _lookupGate = new(1, 1);
     private ProgramLookup[]? _programLookupSnapshot;
@@ -40,7 +43,8 @@ public sealed class ProgramManageService : IProgramManageService
         SqlSugarDbContext dbContext,
         IAppSettingsService settingsService,
         IMesProvider mesProvider,
-        IOperationLogService operationLogService)
+        IOperationLogService operationLogService,
+        IPlcRecipeNameReaderService? recipeNameReaderService = null)
     {
         _dbContext = dbContext;
         _settingsService = settingsService;
@@ -48,6 +52,7 @@ public sealed class ProgramManageService : IProgramManageService
         _settingsService.SettingsChanged += SettingsService_SettingsChanged;
         _mesProvider = mesProvider;
         _operationLogService = operationLogService;
+        _recipeNameReaderService = recipeNameReaderService;
     }
 
     public IReadOnlyList<BizProgram> GetPrograms(bool includeDeleted = false)
@@ -473,6 +478,9 @@ public sealed class ProgramManageService : IProgramManageService
             throw new InvalidOperationException(listResponse.Msg);
         }
 
+        // 一次拉取内多个程序共用同一份 PLC 配方名称快照，避免逐个程序重复读 PLC。
+        var recipeOptions = await ReadRecipeNameOptionsAsync(cancellationToken);
+
         var count = 0;
         foreach (var item in listResponse.Data)
         {
@@ -482,7 +490,7 @@ public sealed class ProgramManageService : IProgramManageService
                 continue;
             }
 
-            UpsertRemoteProgram(detailResponse.Data);
+            UpsertRemoteProgram(detailResponse.Data, recipeOptions);
             count++;
         }
 
@@ -725,7 +733,94 @@ public sealed class ProgramManageService : IProgramManageService
         return "程序删除已同步至 MES。";
     }
 
-    private void UpsertRemoteProgram(ProgramDataRes data)
+    /// <summary>
+    /// 读取各工位 PLC 配方名称槽位，供拉取程序时按名称匹配配方号。
+    /// 读取失败不阻塞拉取：该工位返回空列表，对应程序保留本机已有配方号。
+    /// </summary>
+    private async Task<Dictionary<int, IReadOnlyList<PlcRecipeNameOption>>> ReadRecipeNameOptionsAsync(
+        CancellationToken cancellationToken)
+    {
+        var options = new Dictionary<int, IReadOnlyList<PlcRecipeNameOption>>();
+        if (_recipeNameReaderService is null)
+        {
+            return options;
+        }
+
+        var stationNumbers = CurrentSettings.EnableDualStation ? new[] { 1, 2 } : new[] { 1 };
+        foreach (var stationNo in stationNumbers)
+        {
+            try
+            {
+                var result = await _recipeNameReaderService.ReadStationAsync(stationNo, cancellationToken);
+                options[stationNo] = result.IsSuccess ? result.Options : Array.Empty<PlcRecipeNameOption>();
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _operationLogService.Write(
+                    "ProgramPull",
+                    $"读取工位 {stationNo} PLC 配方名称失败，跳过按名称匹配：{ex.Message}");
+                options[stationNo] = Array.Empty<PlcRecipeNameOption>();
+            }
+        }
+
+        return options;
+    }
+
+    /// <summary>
+    /// 按程序内容里的配方名称匹配本机 PLC 槽位，回填工位配方号。
+    /// 拉取是批量后台操作，匹配失败只记录日志并保留原配方号，不中断整批拉取；
+    /// 真正的开工下发仍会因配方号缺失而报错，不会静默下发错误配方。
+    /// </summary>
+    private void ApplyRecipeNamesFromContent(
+        BizProgram entity,
+        IReadOnlyDictionary<int, IReadOnlyList<PlcRecipeNameOption>> recipeOptions)
+    {
+        if (recipeOptions.Count == 0)
+        {
+            return;
+        }
+
+        var (station1Name, station2Name) = ProgramContentJsonRules.ExtractRecipeNames(entity.ProgramContent);
+        foreach (var (stationNo, recipeName) in new[] { (1, station1Name), (2, station2Name) })
+        {
+            if (string.IsNullOrWhiteSpace(recipeName)
+                || !recipeOptions.TryGetValue(stationNo, out var stationOptions)
+                || stationOptions.Count == 0)
+            {
+                continue;
+            }
+
+            if (!ProgramRecipeNameMappingRules.TryResolveRecipeCode(
+                    recipeName,
+                    stationNo,
+                    stationOptions,
+                    out var recipeCode,
+                    out var errorMessage))
+            {
+                _operationLogService.Write(
+                    "ProgramPull",
+                    $"程序 {entity.ProgramName} 配方名称未匹配本机 PLC 配方：{errorMessage}");
+                continue;
+            }
+
+            if (stationNo == 2)
+            {
+                entity.Station2RecipeCode = recipeCode;
+            }
+            else
+            {
+                entity.RecipeCode = recipeCode;
+            }
+        }
+    }
+
+    private void UpsertRemoteProgram(
+        ProgramDataRes data,
+        IReadOnlyDictionary<int, IReadOnlyList<PlcRecipeNameOption>>? recipeOptions = null)
     {
         var entity = _dbContext.Db.Queryable<BizProgram>().First(it => it.ProgramId == data.Id);
         if (entity is null)
@@ -768,6 +863,11 @@ public sealed class ProgramManageService : IProgramManageService
 
         entity.ProgramFile = data.ProgramFile;
         entity.Remark = data.Remark;
+        if (recipeOptions is not null)
+        {
+            ApplyRecipeNamesFromContent(entity, recipeOptions);
+        }
+
         entity.SyncAction = null;
         entity.SyncStatus = AppConstants.ProgramSyncStatus.Synced;
         entity.SyncMessage = "已从 MES 下载并保存到本地。";

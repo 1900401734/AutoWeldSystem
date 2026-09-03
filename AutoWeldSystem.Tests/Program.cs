@@ -417,6 +417,13 @@ var tests = new (string Name, Action Run)[]
     ("Program remark rules default by action", ProgramRemarkRulesDefaultByAction),
     ("Program MES create payload clears content for empty values", ProgramMesCreatePayloadClearsContentForEmptyValues),
     ("Program content rules detect configured values", ProgramContentRulesDetectConfiguredValues),
+    ("Program content strips PLC nul padding from recipe names", ProgramContentStripsPlcNulPaddingFromRecipeNames),
+    ("Program content puts recipe names before setting values", ProgramContentPutsRecipeNamesBeforeSettingValues),
+    ("Program content recipe names stay out of test items", ProgramContentRecipeNamesStayOutOfTestItems),
+    ("Program content extracts station recipe names", ProgramContentExtractsStationRecipeNames),
+    ("Program recipe name mapping resolves plc slot codes", ProgramRecipeNameMappingResolvesPlcSlotCodes),
+    ("Start confirm dialog shows read-only recipe names", StartConfirmDialogShowsReadOnlyRecipeNames),
+    ("Program download resolves recipe code from content names", ProgramDownloadResolvesRecipeCodeFromContentNames),
     ("Program manage service no longer generates program files", ProgramManageServiceNoLongerGeneratesProgramFiles),
     ("Program save regenerates name when sequence changes", ProgramSaveRegeneratesNameWhenSequenceChanges),
     ("Program save rejects duplicate program name", ProgramSaveRejectsDuplicateProgramName),
@@ -14024,6 +14031,261 @@ static void ProgramMesCreatePayloadClearsContentForEmptyValues()
     var payload = ProgramMesPayloadRules.ToCreateRequest(program, AppConstants.ProgramRemarkActions.Create);
 
     AssertEqual(string.Empty, payload.ProgramContent, "新增程序未填写设定值时，ProgramContent 应留空。");
+}
+
+/// <summary>
+/// 配方名称必须排在设定值前面：MES 只有 ProgramContent 一个自由字段，
+/// 现场要求打开 JSON 时先看到配方名再看设定值。
+/// </summary>
+static void ProgramContentPutsRecipeNamesBeforeSettingValues()
+{
+    var testItems = JsonSerializer.Serialize(new Dictionary<string, string>
+    {
+        ["高度"] = "12.5",
+        ["宽度"] = "20"
+    });
+
+    var merged = ProgramContentJsonRules.MergeRecipeNamesAndContent("左侧标准", "右侧标准", testItems);
+    var station1Index = merged.IndexOf("工位1配方名称", StringComparison.Ordinal);
+    var station2Index = merged.IndexOf("工位2配方名称", StringComparison.Ordinal);
+    var heightIndex = merged.IndexOf("高度", StringComparison.Ordinal);
+
+    AssertTrue(station1Index >= 0 && station2Index >= 0, "合并后的程序内容必须包含两个工位的配方名称。");
+    AssertTrue(station1Index < station2Index, "工位 1 配方名称必须排在工位 2 之前。");
+    AssertTrue(station2Index < heightIndex, "配方名称必须全部排在设定值之前。");
+
+    // 未选配方的工位不写键，避免下游把空名当成有效配方去匹配槽位。
+    var singleStation = ProgramContentJsonRules.MergeRecipeNamesAndContent("左侧标准", null, testItems);
+    AssertFalse(singleStation.Contains("工位2配方名称", StringComparison.Ordinal), "未选工位 2 配方时不得写入该键。");
+
+    // 只有配方名、没有设定值时仍须视为有内容，否则新增同步 MES 会被清空。
+    var recipeOnly = ProgramContentJsonRules.MergeRecipeNamesAndContent("左侧标准", null, "{}");
+    AssertTrue(
+        ProgramContentJsonRules.HasConfiguredValues(recipeOnly),
+        "只有配方名称的程序内容必须视为有内容，才能随 MES 同步上传。");
+}
+
+/// <summary>
+/// 配方名称是保留元数据，不能当测试项：否则监控摘要会出现「工位1配方名称≤左侧标准」，
+/// 整件判定还会因为名称不是数字而整次失败。
+/// </summary>
+static void ProgramContentRecipeNamesStayOutOfTestItems()
+{
+    var content = ProgramContentJsonRules.MergeRecipeNamesAndContent(
+        "左侧标准",
+        "右侧标准",
+        JsonSerializer.Serialize(new Dictionary<string, string> { ["高度"] = "16.00" }));
+
+    AssertEqual(
+        "高度≤16.00",
+        ProgramContentJsonRules.BuildLimitsSummary(content),
+        "设定值摘要必须跳过配方名称保留键。");
+
+    var rows = ProgramContentJsonRules.BuildRows(Array.Empty<DimTestItem>(), content);
+    AssertFalse(
+        rows.Any(row => ProgramContentJsonRules.IsReservedKey(row.ItemName)),
+        "程序内容表格不得把配方名称当成测试项行。");
+
+    // 整件判定必须只看真实测试项，配方名称跳过后仍能正常判 OK。
+    var faceResult = WholePieceProgramResultRules.EvaluateFace(
+        content,
+        [new WholePieceProgramMeasurement("高度", "15.00")]);
+    AssertTrue(faceResult.IsSuccess, $"配方名称不得导致整件判定失败：{faceResult.ErrorMessage}");
+    AssertEqual(ProductionConstants.TestResults.Ok, faceResult.Result, "实测值未超上限时应判 OK。");
+
+    AssertTrue(ProgramContentJsonRules.IsReservedKey("配方名称"), "工位 1 旧键名必须视为保留键。");
+    AssertTrue(ProgramContentJsonRules.IsReservedKey("工位2配方名称"), "工位 2 键名必须视为保留键。");
+    AssertFalse(ProgramContentJsonRules.IsReservedKey("高度"), "普通测试项不得被当成保留键。");
+}
+
+/// <summary>
+/// 设备要从上传的程序内容里解析出配方名称，才能反查本机 PLC 槽位。
+/// </summary>
+static void ProgramContentExtractsStationRecipeNames()
+{
+    var content = ProgramContentJsonRules.MergeRecipeNamesAndContent("左侧标准", "右侧标准", "{\"高度\":\"12\"}");
+    var (station1, station2) = ProgramContentJsonRules.ExtractRecipeNames(content);
+    AssertEqual("左侧标准", station1, "必须解析出工位 1 配方名称。");
+    AssertEqual("右侧标准", station2, "必须解析出工位 2 配方名称。");
+
+    // 兼容手工 JSON 里的「配方名称」写法，按工位 1 处理。
+    var (legacyStation1, _) = ProgramContentJsonRules.ExtractRecipeNames("{\"配方名称\":\"旧写法\",\"高度\":\"12\"}");
+    AssertEqual("旧写法", legacyStation1, "「配方名称」必须作为工位 1 的别名解析。");
+
+    // 旧程序没有配方名键时返回空，调用方应回退本机已保存的配方号。
+    var (noneStation1, noneStation2) = ProgramContentJsonRules.ExtractRecipeNames("{\"高度\":\"12\"}");
+    AssertTrue(noneStation1 is null && noneStation2 is null, "旧程序内容不得凭空产生配方名称。");
+
+    foreach (var (input, description) in new[]
+             {
+                 ((string?)null, "空引用"),
+                 ("", "空字符串"),
+                 ("not-json", "非法 JSON"),
+                 ("[\"数组\"]", "非对象 JSON")
+             })
+    {
+        var (parsed1, parsed2) = ProgramContentJsonRules.ExtractRecipeNames(input);
+        AssertTrue(parsed1 is null && parsed2 is null, $"{description}不得抛异常且不得解析出配方名称。");
+    }
+}
+
+/// <summary>
+/// PLC 只认数字配方号，因此下载后必须由配方名称反查槽位号。
+/// 匹配不到时必须报错，不能静默下发错误配方。
+/// </summary>
+static void ProgramRecipeNameMappingResolvesPlcSlotCodes()
+{
+    var options = new List<PlcRecipeNameOption>
+    {
+        new(1, 2, "左侧标准", "DB10.0", "左侧标准"),
+        new(1, 5, "右侧标准", "DB10.40", "右侧标准")
+    };
+
+    AssertEqual("2", ProgramRecipeNameMappingRules.ResolveRecipeCode("左侧标准", options), "必须按名称匹配到对应槽位号。");
+    AssertEqual("5", ProgramRecipeNameMappingRules.ResolveRecipeCode(" 右侧标准 ", options), "匹配前必须裁剪空白。");
+    AssertTrue(
+        ProgramRecipeNameMappingRules.ResolveRecipeCode("不存在的配方", options) is null,
+        "未匹配到的配方名称必须返回空。");
+
+    AssertTrue(
+        ProgramRecipeNameMappingRules.TryResolveRecipeCode("左侧标准", 1, options, out var resolved, out _),
+        "匹配成功必须返回 true。");
+    AssertEqual("2", resolved, "匹配成功必须给出槽位配方号。");
+
+    AssertFalse(
+        ProgramRecipeNameMappingRules.TryResolveRecipeCode("不存在的配方", 1, options, out _, out var errorMessage),
+        "匹配失败必须返回 false，避免下发错误配方。");
+    AssertTrue(errorMessage.Contains("不存在的配方", StringComparison.Ordinal), "失败信息必须包含未匹配的配方名称。");
+
+    // 同名槽位取第一个，与「名称只供辨认」的既有设计一致。
+    var duplicated = new List<PlcRecipeNameOption>
+    {
+        new(1, 3, "重名配方", "DB10.0", "重名配方"),
+        new(1, 7, "重名配方", "DB10.40", "重名配方")
+    };
+    AssertEqual("3", ProgramRecipeNameMappingRules.ResolveRecipeCode("重名配方", duplicated), "同名槽位必须取第一个。");
+}
+
+/// <summary>
+/// 开工确认弹窗要显示该工号程序关联的配方名称，且只读——改配方仍走程序管理。
+/// </summary>
+static void StartConfirmDialogShowsReadOnlyRecipeNames()
+{
+    var formCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Forms", "ProgramContentReviewForm.cs"), Encoding.UTF8);
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Forms", "ProgramContentReviewForm.Designer.cs"), Encoding.UTF8);
+    var monitorCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+
+    AssertTrue(designerCode.Contains("lblRecipeNamesSection", StringComparison.Ordinal), "确认弹窗必须声明配方名称展示控件。");
+    AssertTrue(
+        formCode.Contains("ProgramContentJsonRules.ExtractRecipeNames(program.ProgramContent)", StringComparison.Ordinal),
+        "确认弹窗必须从程序内容解析配方名称。");
+    AssertTrue(formCode.Contains("未指定", StringComparison.Ordinal), "旧程序缺少配方名称时必须显示未指定，不得挡住确认。");
+
+    // 配方名称不能进可编辑的测试项表格，第二列语义是「最大允许值」。
+    AssertFalse(
+        formCode.Contains("ItemName = ProgramContentJsonRules.RecipeNameStation1Key", StringComparison.Ordinal),
+        "配方名称不得作为测试项行进入表格。");
+    AssertTrue(
+        formCode.Contains("ProgramContentJsonRules.MergeRecipeNamesAndContent(", StringComparison.Ordinal)
+            && formCode.Contains("_station1RecipeName", StringComparison.Ordinal),
+        "确认应用时必须把配方名称原样写回程序内容。");
+    AssertTrue(
+        monitorCode.Contains("_currentSettings.EnableDualStation);", StringComparison.Ordinal),
+        "监控页必须把双工位设置传给确认弹窗，决定是否显示工位 2 配方行。");
+}
+
+/// <summary>
+/// 下载和拉取都要按配方名称回填本机配方号，否则另一台设备开工时下发不了正确配方。
+/// </summary>
+static void ProgramDownloadResolvesRecipeCodeFromContentNames()
+{
+    var weldTaskCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "WeldTaskService.cs"),
+        Encoding.UTF8);
+    var programManageCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "ProgramManageService.cs"),
+        Encoding.UTF8);
+
+    AssertTrue(
+        weldTaskCode.Contains("ApplyRecipeNamesFromContentAsync", StringComparison.Ordinal),
+        "监控页下载程序后必须按配方名称解析配方号。");
+    AssertTrue(
+        weldTaskCode.Contains("ProgramRecipeNameMappingRules.TryResolveRecipeCode(", StringComparison.Ordinal),
+        "下载路径必须使用严格匹配规则。");
+    // 下载是开工前的关键路径，匹配失败必须报错，不能带着错误配方继续。
+    AssertTrue(
+        weldTaskCode.Contains("\"程序配方名称无法匹配本机 PLC 配方\"", StringComparison.Ordinal),
+        "下载路径匹配失败必须抛业务异常，避免下发错误配方。");
+
+    AssertTrue(
+        programManageCode.Contains("ApplyRecipeNamesFromContent(entity", StringComparison.Ordinal),
+        "从 MES 拉取程序时必须同样按配方名称回填配方号。");
+    AssertTrue(
+        programManageCode.Contains("ReadRecipeNameOptionsAsync(cancellationToken)", StringComparison.Ordinal),
+        "批量拉取必须共用一次 PLC 配方名称读取结果。");
+}
+
+/// <summary>
+/// PLC 定长字符串用 NUL 补齐，而 string.Trim() 不去掉 NUL（不属于空白字符）。
+/// 不截断会把 "123#\u0000\u0000..." 写进 ProgramContent 上传 MES，
+/// 另一台设备按名称反查槽位时也永远对不上。
+/// </summary>
+static void ProgramContentStripsPlcNulPaddingFromRecipeNames()
+{
+    var paddedName = "123#" + new string('\0', 16);
+
+    // 写入侧：配方名不得带 NUL 进入程序内容。
+    var merged = ProgramContentJsonRules.MergeRecipeNamesAndContent(
+        paddedName,
+        null,
+        JsonSerializer.Serialize(new Dictionary<string, string> { ["高度"] = "25.6" }));
+    AssertFalse(merged.Contains('\0'), "程序内容不得包含 PLC 定长字符串的 NUL 填充。");
+    AssertFalse(merged.Contains("\\u0000", StringComparison.Ordinal), "序列化后的程序内容不得出现 \\u0000 转义。");
+    AssertTrue(merged.Contains("\"工位1配方名称\":\"123#\"", StringComparison.Ordinal), "配方名称必须截断到第一个 NUL。");
+
+    // 读取侧：历史内容里已存的 NUL 也要被清掉，弹窗展示与槽位匹配才正常。
+    // MES 返回的是 \u0000 转义（原始 NUL 字节在 JSON 字符串里非法），这里按真实报文构造。
+    var legacyContent = "{\"工位1配方名称\":\"123#"
+        + string.Concat(Enumerable.Repeat("\\u0000", 16))
+        + "\",\"高度\":\"25.6\"}";
+    var (station1, _) = ProgramContentJsonRules.ExtractRecipeNames(legacyContent);
+    AssertEqual("123#", station1, "解析历史程序内容时必须截断 NUL 填充。");
+
+    // 槽位匹配：带 NUL 的名称与干净的槽位名必须能对上。
+    var options = new List<PlcRecipeNameOption>
+    {
+        new(1, 2, "123#", "DB10.0", "123#")
+    };
+    AssertEqual("2", ProgramRecipeNameMappingRules.ResolveRecipeCode(paddedName, options), "带 NUL 的配方名必须能匹配到槽位。");
+
+    // 槽位名本身带 NUL（PLC 直读未清理）时同样要能匹配。
+    var paddedOptions = new List<PlcRecipeNameOption>
+    {
+        new(1, 3, paddedName, "DB10.0", paddedName)
+    };
+    AssertEqual("3", ProgramRecipeNameMappingRules.ResolveRecipeCode("123#", paddedOptions), "槽位名带 NUL 时也必须能匹配。");
+
+    // PLC 读取入口：BuildOptions 必须清理名称，全 NUL 的空槽位不得混进下拉。
+    var config = new BizPlcRecipeNameConfig
+    {
+        StationNo = 1,
+        Enabled = true,
+        BaseAddress = "DB10.0",
+        RecipeCount = 3,
+        AddressOffset = 20,
+        StringLength = 18
+    };
+    var built = PlcRecipeNameRules.BuildOptions(
+        config,
+        new Dictionary<int, string?>
+        {
+            [1] = paddedName,
+            [2] = new string('\0', 18),
+            [3] = "左侧标准"
+        });
+    AssertEqual(2, built.Count, "全部为 NUL 的空槽位不得产生下拉选项。");
+    AssertEqual("123#", built[0].Name, "PLC 读回的配方名称必须截断 NUL 填充。");
+    AssertEqual(3, built[1].RecipeCode, "跳过空槽位不得改变后续配方号。");
 }
 
 static void ProgramContentRulesDetectConfiguredValues()

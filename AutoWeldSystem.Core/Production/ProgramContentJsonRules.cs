@@ -16,10 +16,50 @@ public static class ProgramContentJsonRules
     };
 
     /// <summary>
+    /// ProgramContent JSON 保留键，不当测试项处理。
+    /// </summary>
+    public const string RecipeNameStation1Key = "工位1配方名称";
+    public const string RecipeNameStation2Key = "工位2配方名称";
+    public const string RecipeNameLegacyKey = "配方名称";
+
+    private static readonly HashSet<string> ReservedKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        RecipeNameStation1Key,
+        RecipeNameStation2Key,
+        RecipeNameLegacyKey
+    };
+
+    /// <summary>
+    /// 判断键是否为保留元数据，不应当测试项处理。
+    /// </summary>
+    public static bool IsReservedKey(string? key)
+    {
+        return !string.IsNullOrWhiteSpace(key) && ReservedKeys.Contains(key.Trim());
+    }
+
+    /// <summary>
+    /// 规范化配方名称：截断 PLC 定长字符串的 NUL 填充。
+    /// string.Trim() 不去掉 NUL，若不处理会把 \u0000 写进 ProgramContent 并上传 MES，
+    /// 也会让另一台设备按名称匹配槽位时对不上。
+    /// </summary>
+    private static string NormalizeRecipeName(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+
+        var terminatorIndex = value.IndexOf('\0');
+        var text = terminatorIndex >= 0 ? value[..terminatorIndex] : value;
+        return text.Trim();
+    }
+
+    /// <summary>
     /// 把程序内容拼成一行「测试项≤最大允许值」摘要，供生产监控页随时查阅设定值。
     /// 判定规则是实际值大于最大允许值才 NG，所以用 ≤ 如实表达合格区间。
     /// 项的顺序沿用 JSON 顺序；没有有效值时返回空字符串。
     /// 该方法在实时预览的每次刷新中调用，任何内容都不能抛异常打断采集显示。
+    /// 跳过保留键（配方名称），只展示测试项上限。
     /// </summary>
     public static string BuildLimitsSummary(string? programContent)
     {
@@ -32,13 +72,14 @@ public static class ProgramContentJsonRules
         return string.Join(
             ' ',
             values
-                .Where(pair => !string.IsNullOrWhiteSpace(pair.Value))
+                .Where(pair => !string.IsNullOrWhiteSpace(pair.Value) && !IsReservedKey(pair.Key))
                 .Select(pair => $"{pair.Key}≤{pair.Value.Trim()}"));
     }
 
     /// <summary>
-    /// 判断程序内容是否包含至少一个有效最大允许值。
+    /// 判断程序内容是否包含至少一个有效最大允许值或配方名称。
     /// 空白和空 JSON 对象表示用户尚未填写最大允许值；非对象或非法历史内容保守地视为有效。
+    /// 只有配方名称、没有测试项上限时，仍视为有内容，以便配方名随 MES 同步上传。
     /// </summary>
     public static bool HasConfiguredValues(string? programContent)
     {
@@ -62,6 +103,7 @@ public static class ProgramContentJsonRules
     }
     /// <summary>
     /// 根据测试项字典和已有 JSON 构建程序内容表格行。
+    /// 保留键（配方名称）不进表格，由专门的读取/注入 API 处理。
     /// </summary>
     public static IReadOnlyList<ProgramContentItemRow> BuildRows(
         IEnumerable<DimTestItem>? dictionaryItems,
@@ -74,7 +116,7 @@ public static class ProgramContentJsonRules
         foreach (var item in dictionaryItems ?? Enumerable.Empty<DimTestItem>())
         {
             var itemName = Normalize(item.ItemName);
-            if (string.IsNullOrWhiteSpace(itemName) || !knownNames.Add(itemName))
+            if (string.IsNullOrWhiteSpace(itemName) || !knownNames.Add(itemName) || IsReservedKey(itemName))
             {
                 continue;
             }
@@ -89,7 +131,7 @@ public static class ProgramContentJsonRules
 
         foreach (var pair in existingValues)
         {
-            if (knownNames.Contains(pair.Key))
+            if (knownNames.Contains(pair.Key) || IsReservedKey(pair.Key))
             {
                 continue;
             }
@@ -173,6 +215,7 @@ public static class ProgramContentJsonRules
 
     /// <summary>
     /// 将程序内容表格行转换成 MES 需要的 JSON 字符串。
+    /// 不处理配方名称保留键；保留键应由保存入口单独注入到最终 JSON 前面。
     /// </summary>
     public static string ToJson(IEnumerable<ProgramContentItemRow> rows)
     {
@@ -188,6 +231,11 @@ public static class ProgramContentJsonRules
             if (string.IsNullOrWhiteSpace(itemName) || string.IsNullOrWhiteSpace(standardValue))
             {
                 continue;
+            }
+
+            if (IsReservedKey(itemName))
+            {
+                throw new InvalidOperationException($"测试项名称不能使用保留键：{itemName}");
             }
 
             if (values.ContainsKey(itemName))
@@ -263,4 +311,113 @@ public static class ProgramContentJsonRules
 
     private static string Normalize(string? value)
         => value?.Trim() ?? string.Empty;
+
+    /// <summary>
+    /// 从 ProgramContent JSON 提取工位配方名称。
+    /// 工位 1 同时接受「工位1配方名称」和「配方名称」两个键。
+    /// </summary>
+    public static (string? Station1RecipeName, string? Station2RecipeName) ExtractRecipeNames(string? programContent)
+    {
+        if (string.IsNullOrWhiteSpace(programContent))
+        {
+            return (null, null);
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(programContent);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return (null, null);
+            }
+
+            string? station1 = null;
+            string? station2 = null;
+
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                var key = property.Name.Trim();
+                var value = property.Value.ValueKind == JsonValueKind.String
+                    ? NormalizeRecipeName(property.Value.GetString())
+                    : null;
+
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    continue;
+                }
+
+                if (string.Equals(key, RecipeNameStation1Key, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(key, RecipeNameLegacyKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    station1 ??= value;
+                }
+                else if (string.Equals(key, RecipeNameStation2Key, StringComparison.OrdinalIgnoreCase))
+                {
+                    station2 = value;
+                }
+            }
+
+            return (station1, station2);
+        }
+        catch (JsonException)
+        {
+            return (null, null);
+        }
+    }
+
+    /// <summary>
+    /// 将配方名称和测试项内容合并为最终 ProgramContent JSON，配方名在最前面。
+    /// </summary>
+    public static string MergeRecipeNamesAndContent(
+        string? station1RecipeName,
+        string? station2RecipeName,
+        string testItemContentJson)
+    {
+        var merged = new Dictionary<string, string>();
+
+        // 配方名在前；PLC 定长字符串的 NUL 填充必须先截断，否则会写进 MES 程序内容。
+        var normalizedStation1 = NormalizeRecipeName(station1RecipeName);
+        if (!string.IsNullOrWhiteSpace(normalizedStation1))
+        {
+            merged[RecipeNameStation1Key] = normalizedStation1;
+        }
+
+        var normalizedStation2 = NormalizeRecipeName(station2RecipeName);
+        if (!string.IsNullOrWhiteSpace(normalizedStation2))
+        {
+            merged[RecipeNameStation2Key] = normalizedStation2;
+        }
+
+        // 测试项内容在后
+        if (!string.IsNullOrWhiteSpace(testItemContentJson))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(testItemContentJson);
+                if (document.RootElement.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var property in document.RootElement.EnumerateObject())
+                    {
+                        var key = property.Name.Trim();
+                        if (string.IsNullOrWhiteSpace(key) || IsReservedKey(key))
+                        {
+                            continue;
+                        }
+
+                        var value = property.Value.ValueKind == JsonValueKind.String
+                            ? property.Value.GetString() ?? string.Empty
+                            : property.Value.ToString();
+
+                        merged[key] = value;
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                // 测试项内容非法时仍保留配方名
+            }
+        }
+
+        return JsonSerializer.Serialize(merged, JsonOptions);
+    }
 }

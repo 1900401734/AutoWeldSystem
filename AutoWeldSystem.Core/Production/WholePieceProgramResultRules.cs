@@ -297,6 +297,12 @@ public static class WholePieceProgramResultRules
                     continue;
                 }
 
+                // 跳过配方名称保留键，不当测试项上限
+                if (ProgramContentJsonRules.IsReservedKey(itemName))
+                {
+                    continue;
+                }
+
                 if (values.ContainsKey(itemName))
                 {
                     errorMessage = $"任务程序快照存在重复测试项：{itemName}。";

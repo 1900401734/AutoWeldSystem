@@ -5,6 +5,7 @@ partial class ProgramContentReviewForm
     private System.ComponentModel.IContainer components = null;
     private AntdUI.PageHeader pageHeader1;
     private Label lblDescription;
+    private Label lblRecipeNamesSection;
     private DataGridView dgvFields;
     private AntdUI.Button btnCancel;
     private AntdUI.Button btnApply;
@@ -25,6 +26,7 @@ partial class ProgramContentReviewForm
     {
         pageHeader1 = new AntdUI.PageHeader();
         lblDescription = new Label();
+        lblRecipeNamesSection = new Label();
         dgvFields = new DataGridView();
         btnCancel = new AntdUI.Button();
         btnApply = new AntdUI.Button();
@@ -59,6 +61,17 @@ partial class ProgramContentReviewForm
         lblDescription.Text = "如需调整本次开工取值，请直接修改“最大允许值”列。修改只对本次开工生效、不落库。";
         lblDescription.TextAlign = ContentAlignment.MiddleLeft;
         //
+        // lblRecipeNamesSection
+        //
+        lblRecipeNamesSection.Dock = DockStyle.Fill;
+        lblRecipeNamesSection.Location = new Point(0, 65);
+        lblRecipeNamesSection.Margin = new Padding(0, 0, 0, 8);
+        lblRecipeNamesSection.Name = "lblRecipeNamesSection";
+        lblRecipeNamesSection.Size = new Size(746, 0);
+        lblRecipeNamesSection.TabIndex = 3;
+        lblRecipeNamesSection.Text = "";
+        lblRecipeNamesSection.Visible = false;
+        //
         // dgvFields
         //
         dgvFields.AllowUserToAddRows = false;
@@ -67,7 +80,7 @@ partial class ProgramContentReviewForm
         dgvFields.BackgroundColor = Color.White;
         dgvFields.ColumnHeadersHeight = 36;
         dgvFields.Dock = DockStyle.Fill;
-        dgvFields.Location = new Point(0, 65);
+        dgvFields.Location = new Point(0, 73);
         dgvFields.Margin = new Padding(0, 0, 0, 8);
         dgvFields.MultiSelect = false;
         dgvFields.Name = "dgvFields";
@@ -75,7 +88,7 @@ partial class ProgramContentReviewForm
         dgvFields.RowHeadersWidth = 51;
         dgvFields.RowTemplate.Height = 32;
         dgvFields.SelectionMode = DataGridViewSelectionMode.CellSelect;
-        dgvFields.Size = new Size(746, 416);
+        dgvFields.Size = new Size(746, 408);
         dgvFields.TabIndex = 2;
         dgvFields.CellBeginEdit += dgvFields_CellBeginEdit;
         dgvFields.CellValueChanged += dgvFields_CellValueChanged;
@@ -111,17 +124,18 @@ partial class ProgramContentReviewForm
         tableLayoutPanel1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
         tableLayoutPanel1.Controls.Add(pageHeader1, 0, 0);
         tableLayoutPanel1.Controls.Add(lblDescription, 0, 1);
-        tableLayoutPanel1.Controls.Add(dgvFields, 0, 2);
-        tableLayoutPanel1.Controls.Add(tableLayoutPanel2, 0, 3);
+        tableLayoutPanel1.Controls.Add(lblRecipeNamesSection, 0, 2);
+        tableLayoutPanel1.Controls.Add(dgvFields, 0, 3);
+        tableLayoutPanel1.Controls.Add(tableLayoutPanel2, 0, 4);
         tableLayoutPanel1.Dock = DockStyle.Fill;
         tableLayoutPanel1.Location = new Point(16, 16);
         tableLayoutPanel1.Name = "tableLayoutPanel1";
-        tableLayoutPanel1.RowCount = 4;
+        tableLayoutPanel1.RowCount = 5;
+        tableLayoutPanel1.RowStyles.Add(new RowStyle());
         tableLayoutPanel1.RowStyles.Add(new RowStyle());
         tableLayoutPanel1.RowStyles.Add(new RowStyle());
         tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
         tableLayoutPanel1.RowStyles.Add(new RowStyle());
-        tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
         tableLayoutPanel1.Size = new Size(746, 540);
         tableLayoutPanel1.TabIndex = 4;
         //

@@ -16,16 +16,25 @@ public partial class ProgramContentReviewForm : BaseWindow
     private readonly BindingList<ProgramContentReviewRow> _rows = [];
     private bool _isBindingRows;
 
+    private readonly string? _station1RecipeName;
+    private readonly string? _station2RecipeName;
+
     public ProgramContentReviewForm(
         ProgramDataRes program,
-        IReadOnlyList<DimTestItem> dictionaryItems)
+        IReadOnlyList<DimTestItem> dictionaryItems,
+        bool enableDualStation = false)
     {
         ArgumentNullException.ThrowIfNull(program);
         ArgumentNullException.ThrowIfNull(dictionaryItems);
         _program = program;
 
+        // 配方名称来自程序内容保留键，只读展示，改配方仍走程序管理。
+        (_station1RecipeName, _station2RecipeName) =
+            ProgramContentJsonRules.ExtractRecipeNames(program.ProgramContent);
+
         InitializeComponent();
         ConfigureGrid();
+        BindRecipeNames(enableDualStation);
         BindRows(dictionaryItems);
     }
 
@@ -33,6 +42,28 @@ public partial class ProgramContentReviewForm : BaseWindow
     /// 用户确认后合并得到的 ProgramContent JSON 字符串；未确认或取消时为程序原始内容。
     /// </summary>
     public string MergedContentJson { get; private set; } = "{}";
+
+    /// <summary>
+    /// 在测试项表格上方只读显示本次开工使用的配方名称。
+    /// 旧程序内容没有该字段时显示「未指定」，不阻挡确认。
+    /// </summary>
+    private void BindRecipeNames(bool enableDualStation)
+    {
+        const string notSpecified = "未指定";
+        var lines = new List<string>
+        {
+            $"工位1配方名称：{(string.IsNullOrWhiteSpace(_station1RecipeName) ? notSpecified : _station1RecipeName)}"
+        };
+
+        if (enableDualStation || !string.IsNullOrWhiteSpace(_station2RecipeName))
+        {
+            lines.Add($"工位2配方名称：{(string.IsNullOrWhiteSpace(_station2RecipeName) ? notSpecified : _station2RecipeName)}");
+        }
+
+        lblRecipeNamesSection.Text = string.Join(Environment.NewLine, lines);
+        lblRecipeNamesSection.AutoSize = true;
+        lblRecipeNamesSection.Visible = true;
+    }
 
     private void ConfigureGrid()
     {
@@ -118,7 +149,11 @@ public partial class ProgramContentReviewForm : BaseWindow
             return;
         }
 
-        MergedContentJson = json;
+        // 用户只能改最大允许值，配方名称原样写回 JSON 最前面。
+        MergedContentJson = ProgramContentJsonRules.MergeRecipeNamesAndContent(
+            _station1RecipeName,
+            _station2RecipeName,
+            json);
         DialogResult = DialogResult.OK;
         Close();
     }
