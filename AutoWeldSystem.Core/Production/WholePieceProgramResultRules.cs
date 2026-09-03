@@ -22,6 +22,17 @@ public static class WholePieceProgramResultRules
     public static WholePieceProgramFaceResult EvaluateFace(
         string? programContentSnapshot,
         IEnumerable<WholePieceProgramMeasurement> measurements)
+        => EvaluateFace(programContentSnapshot, measurements, mergedValues: false);
+
+    /// <summary>
+    /// 判定一组实测值。<paramref name="mergedValues"/> 区分两种零值口径：
+    /// 逐面判定时只有高度不允许为 0（对称度单面可以真实为 0）；
+    /// A/B 合并值判定时任何参与判定的项为 0 都说明参与聚合的面全部没检测成功，必须判 NG。
+    /// </summary>
+    private static WholePieceProgramFaceResult EvaluateFace(
+        string? programContentSnapshot,
+        IEnumerable<WholePieceProgramMeasurement> measurements,
+        bool mergedValues)
     {
         ArgumentNullException.ThrowIfNull(measurements);
 
@@ -47,6 +58,7 @@ public static class WholePieceProgramResultRules
         }
 
         var failedItems = new List<string>();
+        var evaluatedCount = 0;
         foreach (var measurement in measurementList)
         {
             var itemName = measurement.ItemName?.Trim() ?? string.Empty;
@@ -55,9 +67,11 @@ public static class WholePieceProgramResultRules
                 return WholePieceProgramFaceResult.Failure("测试方案存在名称为空的测试项。");
             }
 
+            // 未填最大设定值表示该测试项只作本地留存和看板转发，不参与合格判定。
+            // 现场借此把数据分成两类：需上传 MES 的按规范判定，其余只供查阅。
             if (!maximumValues.TryGetValue(itemName, out var maximumText) || string.IsNullOrWhiteSpace(maximumText))
             {
-                return WholePieceProgramFaceResult.Failure($"程序内容缺少测试项“{itemName}”的最大允许值。");
+                continue;
             }
 
             if (!decimal.TryParse(maximumText.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var maximum))
@@ -70,16 +84,38 @@ public static class WholePieceProgramResultRules
                 return WholePieceProgramFaceResult.Failure($"测试项“{itemName}”的实测值“{measurement.ActualValue}”不是合法数字。");
             }
 
+            evaluatedCount++;
+
+            // 视觉检测失败约定回传 0。只判“小于上限”会把采集失败误判成 OK。
+            if (IsNonPositiveValue(measurement.ActualValue) && RequiresPositiveValue(itemName, mergedValues))
+            {
+                failedItems.Add(itemName);
+                continue;
+            }
+
             if (actual > maximum)
             {
                 failedItems.Add(itemName);
             }
         }
 
+        if (evaluatedCount == 0)
+        {
+            return WholePieceProgramFaceResult.Failure("参与判定的测试项都没有配置最大允许值，无法进行程序判定。");
+        }
+
         return WholePieceProgramFaceResult.Success(
             failedItems.Count == 0 ? ProductionConstants.TestResults.Ok : ProductionConstants.TestResults.Ng,
             failedItems);
     }
+
+    /// <summary>
+    /// 判断测试项的实测值必须为正数。
+    /// 逐面判定：只有高度（产品实体尺寸）不允许为 0，对称度单面可以真实为 0（完全对称）。
+    /// A/B 合并值判定：对称度合并值为 0 说明该侧两个面都没检测成功，同样不允许。
+    /// </summary>
+    private static bool RequiresPositiveValue(string? itemName, bool mergedValues)
+        => mergedValues || WholePieceAbAggregationRules.IsFourSideMaximumItem(itemName);
 
     /// <summary>
     /// 用 A/B 聚合后的合并值判定产品结果，与 MES 上传、报表口径一致。
@@ -122,25 +158,18 @@ public static class WholePieceProgramResultRules
                     definition.ItemName,
                     row.Values.TryGetValue(definition.OutputKey, out var value) ? value : null))
                 .ToList();
-            var rowResult = EvaluateFace(programContentSnapshot, measurements);
+            // 合并值口径：任何参与判定的项为 0（或负值）都说明参与聚合的面全部没检测成功，必须判 NG。
+            // 例如对称度 1/3 面同时为 0 时 B 行合并值为 0，B 行判 NG，产品结果随之为 NG。
+            var rowResult = EvaluateFace(programContentSnapshot, measurements, mergedValues: true);
             if (!rowResult.IsSuccess)
             {
                 return WholePieceProgramAggregatedResult.Failure(rowResult.ErrorMessage);
             }
 
-            // 视觉检测失败时约定回传 0。高度、宽度的合并值仍为 0（或负值），
-            // 说明参与聚合的面全部没有检测成功，只判“小于上限”会误判成 OK，这里必须判 NG。
-            var invalidZeroItems = measurements
-                .Where(measurement => WholePieceAbAggregationRules.IsProductLevelItem(measurement.ItemName)
-                    && IsNonPositiveValue(measurement.ActualValue))
-                .Select(measurement => measurement.ItemName)
-                .ToList();
-            results.Add(invalidZeroItems.Count > 0
-                ? ProductionConstants.TestResults.Ng
-                : rowResult.Result);
+            results.Add(rowResult.Result);
 
             // 失败项直接产出界面列名，供合并视图定位到具体列；高度是四面最大值，A/B 两行会各报一次，去重。
-            foreach (var failedItem in rowResult.FailedItems.Concat(invalidZeroItems))
+            foreach (var failedItem in rowResult.FailedItems)
             {
                 var columnName = WholePieceMergedDisplayRules.BuildColumnName(failedItem, row.SideNo);
                 if (!failedItems.Contains(columnName, StringComparer.OrdinalIgnoreCase))

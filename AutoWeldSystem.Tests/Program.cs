@@ -128,6 +128,8 @@ var tests = new (string Name, Action Run)[]
     ("Data history product result filter keeps complete product rows", DataHistoryProductResultFilterKeepsCompleteProductRows),
     ("Data history dynamic sort orders products and keeps blanks last", DataHistoryDynamicSortOrdersProductsAndKeepsBlanksLast),
     ("Data history test data paging clamps page index", DataHistoryTestDataPagingClampsPageIndex),
+    ("Local export covers all history dynamic columns", LocalExportCoversAllHistoryDynamicColumns),
+    ("Local export keeps raw face rows without AB aggregation", LocalExportKeepsRawFaceRowsWithoutAbAggregation),
     ("Export reports never expose upload status column", ExportReportsNeverExposeUploadStatusColumn),
     ("Data manage export keeps upload report template layout", DataManageExportKeepsUploadReportTemplateLayout),
     ("Single-point history display rule uses configured and actual counts", SinglePointHistoryDisplayRuleUsesConfiguredAndActualCounts),
@@ -139,6 +141,7 @@ var tests = new (string Name, Action Run)[]
     ("Scheme output roles are independent from realtime preview", SchemeOutputRolesAreIndependentFromRealtimePreview),
     ("Whole-piece four-side aggregation produces A and B rows", WholePieceFourSideAggregationProducesAbRows),
     ("Whole-piece height uses four-side maximum and width uses side A", WholePieceHeightUsesFourSideMaximumAndWidthUsesSideA),
+    ("Whole-piece face evaluation rejects failed collection zeros", WholePieceFaceEvaluationRejectsFailedCollectionZeros),
     ("Whole-piece zero merged value fails product level items", WholePieceZeroMergedValueFailsProductLevelItems),
     ("Whole-piece side B width stays out of face evaluation", WholePieceSideBWidthStaysOutOfFaceEvaluation),
     ("Whole-piece AB row result follows merged evaluation", WholePieceAbRowResultFollowsMergedEvaluation),
@@ -2975,6 +2978,228 @@ static void DataManageViewUsesGenericProductTestTree()
 }
 
 /// <summary>
+/// 本地导出必须覆盖历史记录里看到的全部动态列：勾「本地保存」但未勾「写入报表」的测试项
+/// 在界面历史表格可见，导出文件若按报表通道取列就会缺列。上传给 MES 的报表仍只按写入报表取列。
+/// </summary>
+static void LocalExportCoversAllHistoryDynamicColumns()
+{
+    var task = BuildReportTask(new DateTime(2026, 9, 2, 8, 0, 0), endTime: null);
+    task.SN = "FLOW-EXPORT-ALL-COLUMNS";
+    var record = BuildReportPoint(task.Id, stationNo: 1, productNo: "P-001", sequenceNo: 1, pointResult: ProductionConstants.TestResults.Ok);
+    record.RawDataJson = JsonSerializer.Serialize(new Dictionary<string, string>
+    {
+        ["max_electric"] = "1.21",
+        ["位移"] = "3.40"
+    });
+    var records = new[] { record };
+
+    // 峰值电流勾写入报表；位移只勾本地保存，属于界面历史可见但报表通道不含的列。
+    var definitions = new (DimTestItem Item, BizSchemeDetail Detail)[]
+    {
+        (new DimTestItem { ItemId = 1, ItemName = "峰值电流", ActualExpression = "0:F-0" },
+            new BizSchemeDetail
+            {
+                SchemeId = "EXPORT-SCHEME",
+                ItemId = 1,
+                DetailId = 1,
+                EnableActual = true,
+                ReportActual = true,
+                ActualHeader = "峰值电流"
+            }),
+        (new DimTestItem { ItemId = 2, ItemName = "位移", ActualExpression = "0:F-4" },
+            new BizSchemeDetail
+            {
+                SchemeId = "EXPORT-SCHEME",
+                ItemId = 2,
+                DetailId = 2,
+                EnableActual = true,
+                SaveActual = true,
+                ActualHeader = "位移"
+            })
+    };
+
+    var exportPath = GenerateExportReportWorkbook(
+        new AppSettings(),
+        task,
+        records,
+        localExport: true,
+        fileName: "data-manage-export-all-columns.xlsx",
+        schemeDefinitions: definitions);
+    try
+    {
+        using var workbook = new XLWorkbook(exportPath);
+        var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+        var headers = ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow);
+        AssertTrue(headers.Contains("峰值电流"), "写入报表的测试项必须出现在本地导出中。");
+        AssertTrue(
+            headers.Contains("位移"),
+            "只勾本地保存的测试项也必须出现在本地导出中，否则导出与历史表格看到的列不一致。");
+
+        // 列有值无同样是缺陷，必须确认取值也跟着导出。
+        var displacementColumn = Array.IndexOf(headers, "位移") + 1;
+        AssertEqual(
+            "3.40",
+            worksheet.Cell(CenterProductReportFormat.DetailFirstDataRow, displacementColumn).GetString(),
+            "只勾本地保存的测试项必须同时导出取值，不能只有表头。");
+    }
+    finally
+    {
+        DeleteReportFixture(exportPath);
+    }
+
+    // 上传给 MES 的报表口径不变：只勾本地保存的测试项不得混入客户模板。
+    var uploadPath = GenerateExportReportWorkbook(
+        new AppSettings(),
+        task,
+        records,
+        localExport: false,
+        fileName: "upload-report-report-enable-only.xlsx",
+        schemeDefinitions: definitions);
+    try
+    {
+        using var workbook = new XLWorkbook(uploadPath);
+        var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+        var headers = ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow);
+        AssertTrue(headers.Contains("峰值电流"), "上传报表必须包含写入报表的测试项。");
+        AssertFalse(
+            headers.Contains("位移"),
+            "上传给 MES 的报表不得包含只勾本地保存的测试项。");
+    }
+    finally
+    {
+        DeleteReportFixture(uploadPath);
+    }
+}
+
+/// <summary>
+/// 本地导出是后台查阅用的明细数据，必须保留 PLC 采集的逐面原始记录：
+/// 整件检测四面工艺下不做 A/B 聚合，四面就是四行，表头也不切换成检测面口径。
+/// A/B 聚合只属于上传给 MES 的报表。
+/// </summary>
+static void LocalExportKeepsRawFaceRowsWithoutAbAggregation()
+{
+    var settings = new AppSettings
+    {
+        ProcessParameterDeviceType = ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck
+    };
+    var task = BuildReportTask(new DateTime(2026, 9, 2, 8, 0, 0), endTime: null);
+    task.SN = "FLOW-EXPORT-RAW-FACES";
+
+    // 四面整件检测：面 1～4 各一条记录，实测值各不相同。
+    var records = Enumerable.Range(1, 4)
+        .Select(face =>
+        {
+            var record = BuildReportPoint(
+                task.Id,
+                stationNo: 1,
+                productNo: "P-001",
+                sequenceNo: face,
+                pointResult: ProductionConstants.TestResults.Ok);
+            record.RawDataJson = JsonSerializer.Serialize(new Dictionary<string, string>
+            {
+                ["对称度"] = $"0.1{face}"
+            });
+            return record;
+        })
+        .ToArray();
+
+    var definitions = new (DimTestItem Item, BizSchemeDetail Detail)[]
+    {
+        (new DimTestItem { ItemId = 1, ItemName = "对称度", ActualExpression = "0:F-0" },
+            new BizSchemeDetail
+            {
+                SchemeId = "EXPORT-SCHEME",
+                ItemId = 1,
+                DetailId = 1,
+                EnableActual = true,
+                SaveActual = true,
+                ReportActual = true,
+                ActualHeader = "对称度"
+            })
+    };
+
+    var exportPath = GenerateExportReportWorkbook(
+        settings,
+        task,
+        records,
+        localExport: true,
+        deviceType: ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck,
+        fileName: "data-manage-export-raw-faces.xlsx",
+        schemeDefinitions: definitions,
+        touchCount: 4);
+    try
+    {
+        using var workbook = new XLWorkbook(exportPath);
+        var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+        var headers = ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow);
+
+        // A/B 聚合会把表头换成“检测面/检测结果”，本地导出必须保留焊点口径。
+        AssertTrue(headers.Contains("焊点编号"), "本地导出必须保留采集点表头，不得切换成 A/B 的检测面口径。");
+        AssertFalse(headers.Contains("检测面"), "本地导出不得使用 A/B 聚合的检测面表头。");
+
+        var pointColumn = Array.IndexOf(headers, "焊点编号") + 1;
+        var valueColumn = Array.IndexOf(headers, "对称度") + 1;
+        var firstRow = CenterProductReportFormat.DetailFirstDataRow;
+
+        // 聚合后只有 A/B 两行；保留原始记录则是四行，且每行取值互不相同。
+        var faceValues = Enumerable.Range(0, 4)
+            .Select(offset => worksheet.Cell(firstRow + offset, valueColumn).GetString())
+            .ToArray();
+        AssertSequenceEqual(
+            new[] { "0.11", "0.12", "0.13", "0.14" },
+            faceValues,
+            "本地导出必须逐面输出原始实测值，不得聚合成 A/B 两行。");
+
+        var pointNumbers = Enumerable.Range(0, 4)
+            .Select(offset => worksheet.Cell(firstRow + offset, pointColumn).GetString())
+            .ToArray();
+        AssertFalse(
+            pointNumbers.Contains("A") || pointNumbers.Contains("B"),
+            "本地导出的采集点编号必须是原始面号，不得输出 A/B 侧标记。");
+        AssertTrue(
+            string.IsNullOrWhiteSpace(worksheet.Cell(firstRow + 4, valueColumn).GetString()),
+            "四面记录只应产生四行，不得多出聚合行。");
+    }
+    finally
+    {
+        DeleteReportFixture(exportPath);
+    }
+
+    // 上传给 MES 的报表仍按 A/B 聚合输出两行。
+    var uploadPath = GenerateExportReportWorkbook(
+        settings,
+        task,
+        records,
+        localExport: false,
+        deviceType: ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck,
+        fileName: "upload-report-ab-rows.xlsx",
+        schemeDefinitions: definitions,
+        touchCount: 4);
+    try
+    {
+        using var workbook = new XLWorkbook(uploadPath);
+        var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+        var headers = ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow);
+        AssertTrue(headers.Contains("检测面"), "上传报表在整件检测下必须使用 A/B 聚合的检测面表头。");
+
+        var pointColumn = Array.IndexOf(headers, "检测面") + 1;
+        var firstRow = CenterProductReportFormat.DetailFirstDataRow;
+        AssertSequenceEqual(
+            new[] { "A", "B" },
+            new[]
+            {
+                worksheet.Cell(firstRow, pointColumn).GetString(),
+                worksheet.Cell(firstRow + 1, pointColumn).GetString()
+            },
+            "上传报表必须保持四面聚合为 A/B 两行。");
+    }
+    finally
+    {
+        DeleteReportFixture(uploadPath);
+    }
+}
+
+/// <summary>
 /// 上传状态属于界面查询信息，不再进入任何导出报表：
 /// 本地导出与上传给 MES 的报表共用同一套列定义，末列一律是产品结果。
 /// </summary>
@@ -3373,7 +3598,7 @@ static void WholePieceProgramResultsUseMaximumAllowedValues()
         "{\"高度\":\"20.18\",\"对称度\":\"0.15\"}",
         [new WholePieceProgramMeasurement("高度", "20.18"), new WholePieceProgramMeasurement("对称度", "0")]);
     AssertTrue(ok.IsSuccess, ok.ErrorMessage);
-    AssertEqual(ProductionConstants.TestResults.Ok, ok.Result, "等于最大允许值和真实零值必须判定为OK。");
+    AssertEqual(ProductionConstants.TestResults.Ok, ok.Result, "等于最大允许值必须判定为OK；对称度单面真实为0是完全对称，允许。");
 
     var ng = WholePieceProgramResultRules.EvaluateFace(
         "{\"高度\":\"20.18\"}",
@@ -3381,10 +3606,17 @@ static void WholePieceProgramResultsUseMaximumAllowedValues()
     AssertTrue(ng.IsSuccess, ng.ErrorMessage);
     AssertEqual(ProductionConstants.TestResults.Ng, ng.Result, "超过最大允许值必须判定为NG。");
 
+    // 未填最大设定值的测试项只作本地留存和看板转发，不参与判定，也不得让整次判定失败。
     var missing = WholePieceProgramResultRules.EvaluateFace(
         "{\"高度\":\"20.18\"}",
+        [new WholePieceProgramMeasurement("高度", "20.18"), new WholePieceProgramMeasurement("宽度", "10")]);
+    AssertTrue(missing.IsSuccess, missing.ErrorMessage);
+    AssertEqual(ProductionConstants.TestResults.Ok, missing.Result, "未配置上限的宽度必须跳过判定，不影响该面结果。");
+
+    var noneEvaluated = WholePieceProgramResultRules.EvaluateFace(
+        "{\"高度\":\"20.18\"}",
         [new WholePieceProgramMeasurement("宽度", "10")]);
-    AssertFalse(missing.IsSuccess, "缺少最大允许值必须拒绝采集。");
+    AssertFalse(noneEvaluated.IsSuccess, "参与判定的测试项全都没有上限时，必须拒绝采集而不是默认判OK。");
 
     AssertEqual(
         ProductionConstants.TestResults.Ng,
@@ -3563,10 +3795,21 @@ static void WholePieceAbRowResultFollowsMergedEvaluation()
     var preWeld = WholePieceProgramResultRules.ApplyAggregatedRowResults(snapshot, preWeldRows, definitions);
     AssertEqual(ProductionConstants.TestResults.PreWeldNg, preWeld[1].Result, "焊前NG的行必须保持原结果。");
 
-    // 判定失败时保持原结果：报表导出和 MES 上传不能因为程序快照有问题而中断。
-    var brokenSnapshot = JsonSerializer.Serialize(new Dictionary<string, string> { ["高度"] = "24.8" });
-    var fallback = WholePieceProgramResultRules.ApplyAggregatedRowResults(brokenSnapshot, rows, definitions);
-    AssertEqual(ProductionConstants.TestResults.Ng, fallback[1].Result, "程序快照缺少测试项时必须保持原行结果，不能中断报表和上传。");
+    // 未填上限的测试项跳过判定：只按已配置上限的高度判，对称度不参与。
+    var partialSnapshot = JsonSerializer.Serialize(new Dictionary<string, string> { ["高度"] = "24.8" });
+    var partial = WholePieceProgramResultRules.ApplyAggregatedRowResults(partialSnapshot, rows, definitions);
+    AssertEqual(
+        ProductionConstants.TestResults.Ok,
+        partial[1].Result,
+        "只有高度配置了上限时，对称度跳过判定，高度未超限即为OK。");
+
+    // 参与判定的项全都没有上限时无判定依据，必须保持原行结果，不得中断报表和上传。
+    var emptySnapshot = JsonSerializer.Serialize(new Dictionary<string, string> { ["其他项"] = "1" });
+    var fallback = WholePieceProgramResultRules.ApplyAggregatedRowResults(emptySnapshot, rows, definitions);
+    AssertEqual(
+        ProductionConstants.TestResults.Ng,
+        fallback[1].Result,
+        "无任何判定依据时必须保持原行结果，不能中断报表和上传。");
 
     var reportCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductionReportFileService.cs"), Encoding.UTF8);
     var uploadCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "UploadTaskService.cs"), Encoding.UTF8);
@@ -3741,6 +3984,93 @@ static void WholePieceSideBWidthStaysOutOfFaceEvaluation()
 /// 视觉检测失败约定回传 0。高度、宽度的合并值仍为 0 表示参与聚合的面全部没测到，
 /// 只判“小于上限”会误判成 OK，必须判 NG；对称度真值可能为 0，不做零值检查。
 /// </summary>
+/// <summary>
+/// 逐面判定的零值口径：视觉检测失败约定回传 0，只比“小于上限”会把采集失败误判成 OK。
+/// 现场曾出现面1、面3 的高度和对称度全为 0 却显示 OK 的情况。
+/// </summary>
+static void WholePieceFaceEvaluationRejectsFailedCollectionZeros()
+{
+    var snapshot = JsonSerializer.Serialize(new Dictionary<string, string>
+    {
+        ["高度"] = "16.15",
+        ["对称度"] = "0.12"
+    });
+
+    // 1. 高度为 0：产品实体尺寸不可能为 0，必须把当前检测面判 NG。
+    var zeroHeight = WholePieceProgramResultRules.EvaluateFace(
+        snapshot,
+        [new WholePieceProgramMeasurement("高度", "0.0000"), new WholePieceProgramMeasurement("对称度", "0.0016")]);
+    AssertTrue(zeroHeight.IsSuccess, zeroHeight.ErrorMessage);
+    AssertEqual(ProductionConstants.TestResults.Ng, zeroHeight.Result, "高度为0的检测面必须判NG。");
+    AssertTrue(zeroHeight.FailedItems.Contains("高度"), "高度零值必须进入失败项。");
+
+    // 3. 整面全为 0 属采集失败，同样由高度规则兜住，不需要单独规则。
+    var allZeroFace = WholePieceProgramResultRules.EvaluateFace(
+        snapshot,
+        [new WholePieceProgramMeasurement("高度", "0.0000"), new WholePieceProgramMeasurement("对称度", "0.0000")]);
+    AssertTrue(allZeroFace.IsSuccess, allZeroFace.ErrorMessage);
+    AssertEqual(
+        ProductionConstants.TestResults.Ng,
+        allZeroFace.Result,
+        "整面测试项全为0是采集失败，必须判NG。");
+
+    // 对称度单面真实为 0 是完全对称，高度正常时该面仍应判 OK。
+    var symmetryOnlyZero = WholePieceProgramResultRules.EvaluateFace(
+        snapshot,
+        [new WholePieceProgramMeasurement("高度", "15.1234"), new WholePieceProgramMeasurement("对称度", "0")]);
+    AssertTrue(symmetryOnlyZero.IsSuccess, symmetryOnlyZero.ErrorMessage);
+    AssertEqual(
+        ProductionConstants.TestResults.Ok,
+        symmetryOnlyZero.Result,
+        "对称度单面为0是完全对称的真实值，高度正常时该面必须判OK。");
+
+    // 2. 对称度 1/3 面同时为 0 → B 行合并值为 0 → B 行 NG → 产品 NG。
+    var definitions = new List<WholePieceAbValueDefinition>
+    {
+        new(1, "高度", "高度", "0:F-0"),
+        new(2, "对称度", "对称度", "0:F-4")
+    };
+    var sideBZeroRows = new List<WholePieceAbOutputRow>
+    {
+        new("A", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["高度"] = "15.8403",
+            ["对称度"] = "0.0162"
+        }),
+        new("B", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["高度"] = "15.8403",
+            ["对称度"] = "0"
+        })
+    };
+    var sideBZero = WholePieceProgramResultRules.EvaluateAggregatedRows(snapshot, sideBZeroRows, definitions);
+    AssertTrue(sideBZero.IsSuccess, sideBZero.ErrorMessage);
+    AssertEqual(ProductionConstants.TestResults.Ok, sideBZero.RowResults[0], "A侧对称度正常，A行必须判OK。");
+    AssertEqual(
+        ProductionConstants.TestResults.Ng,
+        sideBZero.RowResults[1],
+        "对称度B行合并值为0说明面1、面3都没检测成功，B行必须判NG。");
+    AssertEqual(
+        ProductionConstants.TestResults.Ng,
+        sideBZero.ProductResult,
+        "A/B任意一行NG，产品结果必须为NG。");
+
+    // 4. 未填最大设定值的测试项只作本地留存和看板转发，跳过判定且不影响结果。
+    var withoutWidthLimit = WholePieceProgramResultRules.EvaluateFace(
+        snapshot,
+        [
+            new WholePieceProgramMeasurement("高度", "15.1234"),
+            new WholePieceProgramMeasurement("对称度", "0.0016"),
+            new WholePieceProgramMeasurement("宽度", "0")
+        ]);
+    AssertTrue(withoutWidthLimit.IsSuccess, withoutWidthLimit.ErrorMessage);
+    AssertEqual(
+        ProductionConstants.TestResults.Ok,
+        withoutWidthLimit.Result,
+        "未配置上限的宽度不参与判定，即使为0也不得影响该面结果。");
+    AssertFalse(withoutWidthLimit.FailedItems.Contains("宽度"), "未参与判定的测试项不得进入失败项。");
+}
+
 static void WholePieceZeroMergedValueFailsProductLevelItems()
 {
     var snapshot = JsonSerializer.Serialize(new Dictionary<string, string>
@@ -3811,7 +4141,7 @@ static void WholePieceZeroMergedValueFailsProductLevelItems()
     AssertEqual(ProductionConstants.TestResults.Ng, zeroWidthResult.Result, "宽度A行合并值为0表示面2、面4都没检测成功，必须判NG。");
     AssertTrue(zeroWidthResult.FailedItems.Contains("宽度"), "宽度零值必须进入失败项。");
 
-    // 对称度真值可能为 0，客户尚未确认，不能按零值判 NG。
+    // 对称度合并值为 0 说明该侧两个面都没检测成功（如面1、面3 同时为0），必须判 NG。
     var zeroSymmetryRows = new List<WholePieceAbOutputRow>
     {
         new("A", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -3829,14 +4159,28 @@ static void WholePieceZeroMergedValueFailsProductLevelItems()
     };
     var zeroSymmetryResult = WholePieceProgramResultRules.EvaluateAggregated(snapshot, zeroSymmetryRows, definitions);
     AssertTrue(zeroSymmetryResult.IsSuccess, zeroSymmetryResult.ErrorMessage);
-    AssertEqual(ProductionConstants.TestResults.Ok, zeroSymmetryResult.Result, "对称度为0是可能的真实值，不做零值检查。");
+    AssertEqual(
+        ProductionConstants.TestResults.Ng,
+        zeroSymmetryResult.Result,
+        "对称度合并值为0说明该侧两面都没检测成功，必须判NG。");
+    AssertTrue(zeroSymmetryResult.FailedItems.Contains("对称度A"), "对称度零值必须进入失败项，供合并视图标红。");
 
-    // 单面检测失败不该污染面结果：面级判定只比上限，0 仍判 OK，由合并值兜住。
+    // 逐面判定：高度是产品实体尺寸，0 只可能来自视觉检测失败，必须把该面判 NG。
     var faceResult = WholePieceProgramResultRules.EvaluateFace(
         snapshot,
         [new WholePieceProgramMeasurement("高度", "0"), new WholePieceProgramMeasurement("对称度", "0.02")]);
     AssertTrue(faceResult.IsSuccess, faceResult.ErrorMessage);
-    AssertEqual(ProductionConstants.TestResults.Ok, faceResult.Result, "面级判定不做零值检查，单面视觉失败不能判成面NG。");
+    AssertEqual(ProductionConstants.TestResults.Ng, faceResult.Result, "高度为0必须把当前检测面判NG，不能当成合格值。");
+    AssertTrue(faceResult.FailedItems.Contains("高度"), "高度零值必须进入该面的失败项。");
+
+    // 逐面判定只把该面判 NG，不连带改写产品结果：高度取四面最大值，单面未测到不代表产品不合格。
+    var singleFaceNgProduct = WholePieceProgramResultRules.ResolveRealtimeProductResult(
+        [ProductionConstants.TestResults.Ng, ProductionConstants.TestResults.Ok, ProductionConstants.TestResults.Ok, ProductionConstants.TestResults.Ok],
+        4);
+    AssertEqual(
+        ProductionConstants.TestResults.Ng,
+        singleFaceNgProduct,
+        "实时预览按逐面结果取并，任一面NG即显示产品NG。");
 
     AssertEqual(
         ProductionConstants.PairedAggregationModes.Maximum,
@@ -16478,7 +16822,7 @@ static void PublishReportArtifact(string sourcePath, string destinationPath)
 }
 
 /// <summary>
-/// 走生产代码真实的 schema 构造入口生成 XLSX，覆盖数据管理导出追加上传状态列的分支。
+/// 走生产代码真实的 schema 构造入口生成 XLSX，覆盖本地导出与上传报表两个出口。
 /// 列定义必须由 BuildReportSchemaForStationsWithDeviceType 产出，测试里不重复拼装列，
 /// 否则断言只会验证测试自己的假设，无法发现生产代码的列序退化。
 /// </summary>
@@ -16488,7 +16832,9 @@ static string GenerateExportReportWorkbook(
     IReadOnlyList<BizWeldPointRecord> records,
     bool localExport,
     string deviceType = "",
-    string fileName = "data-manage-export.xlsx")
+    string fileName = "data-manage-export.xlsx",
+    IReadOnlyList<(DimTestItem Item, BizSchemeDetail Detail)>? schemeDefinitions = null,
+    int touchCount = 0)
 {
     var serviceType = typeof(ProductionReportFileService);
     var service = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(serviceType);
@@ -16498,10 +16844,9 @@ static string GenerateExportReportWorkbook(
 
     var schemeReportItemType = GetNestedReportType(serviceType, "SchemeReportItem");
     var resolvedStationType = GetNestedReportType(serviceType, "ResolvedStationReportConfig");
-    var schemeItems = CreateGenericList(schemeReportItemType);
-    schemeItems.Add(Activator.CreateInstance(
-            schemeReportItemType,
-            new DimTestItem { ItemId = 1, ItemName = "峰值电流", ActualExpression = "0:F-0" },
+    var definitions = schemeDefinitions ??
+    [
+        (new DimTestItem { ItemId = 1, ItemName = "峰值电流", ActualExpression = "0:F-0" },
             new BizSchemeDetail
             {
                 SchemeId = "EXPORT-SCHEME",
@@ -16511,7 +16856,13 @@ static string GenerateExportReportWorkbook(
                 ReportActual = true,
                 ActualHeader = "峰值电流"
             })
-        ?? throw new InvalidOperationException("无法构造导出报表动态项。"));
+    ];
+    var schemeItems = CreateGenericList(schemeReportItemType);
+    foreach (var (item, detail) in definitions)
+    {
+        schemeItems.Add(Activator.CreateInstance(schemeReportItemType, item, detail)
+            ?? throw new InvalidOperationException("无法构造导出报表动态项。"));
+    }
 
     var resolvedStations = CreateGenericList(resolvedStationType);
     resolvedStations.Add(Activator.CreateInstance(
@@ -16522,7 +16873,8 @@ static string GenerateExportReportWorkbook(
                 StationNo = 1,
                 SchemeId = "EXPORT-SCHEME",
                 PointNoHeader = "焊点编号",
-                PointResultHeader = "焊点结果"
+                PointResultHeader = "焊点结果",
+                TouchCount = touchCount
             },
             schemeItems)
         ?? throw new InvalidOperationException("无法构造已解析工位报表配置。"));
@@ -16531,7 +16883,7 @@ static string GenerateExportReportWorkbook(
         "BuildReportSchemaForStationsWithDeviceType",
         System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
     AssertTrue(buildSchema is not null, "生产报表服务必须保留含设备类型的 schema 构造入口。");
-    var schema = buildSchema!.Invoke(null, [resolvedStations, deviceType])
+    var schema = buildSchema!.Invoke(null, [resolvedStations, deviceType, localExport])
         ?? throw new InvalidOperationException("schema 构造入口不得返回空值。");
 
     var outputDirectory = Path.Combine(Path.GetTempPath(), "AutoWeldSystem.Tests", Guid.NewGuid().ToString("N"));
@@ -16676,7 +17028,8 @@ static string GenerateReportWorkbook(
     schemeItems.Add(schemeItem);
     var displayOptions = Activator.CreateInstance(reportDisplayOptionsType, pointNoHeader, pointResultHeader)
         ?? throw new InvalidOperationException("无法构造生产报表显示配置。");
-    var schema = Activator.CreateInstance(reportSchemaType, columns, schemeItems, displayOptions)
+    // Activator 不套用可选参数默认值，必须显式传出口标记；这里模拟上传报表出口。
+    var schema = Activator.CreateInstance(reportSchemaType, columns, schemeItems, displayOptions, false)
         ?? throw new InvalidOperationException("无法构造生产报表 schema。");
 
     var resolvedOutputPath = string.IsNullOrWhiteSpace(outputFilePath)
