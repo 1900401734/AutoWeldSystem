@@ -1257,6 +1257,9 @@
   <data name="monitor.message.process_required" xml:space="preserve">
     <value>No process is available for this work order.</value>
   </data>
+  <data name="monitor.message.process_not_selected" xml:space="preserve">
+    <value>Please select a process first.</value>
+  </data>
   <data name="monitor.message.program_list_empty" xml:space="preserve">
     <value>No program is available for the selected work order and device.</value>
   </data>

@@ -447,8 +447,9 @@ var tests = new (string Name, Action Run)[]
     ("Monitor view links program and recipe selections for start input", MonitorViewLinksProgramAndRecipeSelectionsForStartInput),
     ("Monitor view recipe dropdown uses sorted recipe options", MonitorViewRecipeDropdownUsesSortedRecipeOptions),
     ("Monitor view uses PLC recipe only for offline idle inputs", MonitorViewUsesPlcRecipeOnlyForOfflineIdleInputs),
-    ("Monitor view reloads online programs after process change", MonitorViewReloadsOnlineProgramsAfterProcessChange),
-    ("Monitor view defaults first process inputs after work order load", MonitorViewDefaultsFirstProcessInputsAfterWorkOrderLoad),
+    ("Monitor view keeps selected program after process change", MonitorViewKeepsSelectedProgramAfterProcessChange),
+    ("Monitor view keeps process unselected after work order load", MonitorViewKeepsProcessUnselectedAfterWorkOrderLoad),
+    ("Monitor process not selected uses dedicated message", MonitorProcessNotSelectedUsesDedicatedMessage),
     ("Monitor view process selection uses shared input binder", MonitorViewProcessSelectionUsesSharedInputBinder),
     ("Monitor view process name follows start input editability", MonitorViewProcessNameFollowsStartInputEditability),
     ("Monitor view exposes dual work order toggle beside work order", MonitorViewExposesDualWorkOrderToggleBesideWorkOrder),
@@ -14924,19 +14925,55 @@ static void MonitorViewUsesPlcRecipeOnlyForOfflineIdleInputs()
     AssertTrue(runtimeBindingMethod.Contains("ClearOfflineProgramSelectionByUser(CurrentStationNo)", StringComparison.Ordinal), "离开离线可编辑态后必须清除人工离线程序标记。");
 }
 
-static void MonitorViewReloadsOnlineProgramsAfterProcessChange()
+/// <summary>
+/// 换工序必须保留已选程序：程序列表只按设备号和工单产品工号查询，与工序无关，
+/// 同一工单换工序后可选程序完全相同。清空会让操作员已选好并下载的程序名消失、被迫重选。
+/// </summary>
+static void MonitorViewKeepsSelectedProgramAfterProcessChange()
 {
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
     var processHandler = ExtractMethodText(
         viewCode,
-        "private async void ProcessSelection_SelectedIndexChanged",
+        "private void ProcessSelection_SelectedIndexChanged",
         "private void WorkOrderInput_TextChanged");
 
-    AssertTrue(processHandler.Contains("ClearPendingOnlineProgramSelection();", StringComparison.Ordinal), "在线切换工序时必须清空上一工序的待确认程序选择。");
-    AssertTrue(processHandler.Contains("ReloadProgramsAfterProcessSelectionAsync(CurrentStationNo)", StringComparison.Ordinal), "在线切换工序后必须重新拉取程序列表，否则 StateChanged 会把程序下拉刷为空。");
+    AssertFalse(
+        processHandler.Contains("ClearPendingOnlineProgramSelection();", StringComparison.Ordinal),
+        "切换工序不得清空待确认的程序选择，否则已选程序名会被刷空。");
+    AssertFalse(
+        processHandler.Contains("ReloadProgramsAfterProcessSelectionAsync", StringComparison.Ordinal),
+        "切换工序不得重新拉取程序列表：列表与工序无关，重拉会打断已选程序。");
+    AssertTrue(
+        processHandler.Contains("_weldTaskService.SelectProcess(process, CurrentStationNo);", StringComparison.Ordinal),
+        "切换工序仍必须把选中工序写入运行态。");
+
+    // 根因在服务层：SelectProcess 曾无条件清空程序列表和已下载详情。
+    var serviceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "WeldTaskService.cs"),
+        Encoding.UTF8);
+    var selectProcess = ExtractMethodText(
+        serviceCode,
+        "    public void SelectProcess(ExpItemData process, int stationNo = ProductionConstants.Stations.DefaultStationNo)",
+        "    public async Task<IReadOnlyList<MesProgramListItemData>> LoadProgramsAsync");
+
+    AssertFalse(
+        selectProcess.Contains("station.AvailablePrograms.Clear();", StringComparison.Ordinal),
+        "选择工序不得清空可选程序列表。");
+    AssertFalse(
+        selectProcess.Contains("station.SelectedProgram = null;", StringComparison.Ordinal),
+        "选择工序不得清空已下载的程序详情。");
+    AssertTrue(
+        selectProcess.Contains("station.SelectedProcess = process;", StringComparison.Ordinal),
+        "选择工序仍必须写入 SelectedProcess。");
 }
 
-static void MonitorViewDefaultsFirstProcessInputsAfterWorkOrderLoad()
+/// <summary>
+/// 获取工单成功后不得自动选择工序：现场需要人工确认本次开工的工序，
+/// 默认选中第一道会让操作员在未核对的情况下直接开工。
+/// 同时必须显式清空三个控件——同一工单重复扫码时 BindProductionRuntimeState 不会重绑，
+/// 残留的工序号会绕过开工前的非空校验，表现为"工序号填着却报错让我选工序"。
+/// </summary>
+static void MonitorViewKeepsProcessUnselectedAfterWorkOrderLoad()
 {
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
     var loadMethod = ExtractMethodText(
@@ -14944,11 +14981,56 @@ static void MonitorViewDefaultsFirstProcessInputsAfterWorkOrderLoad()
         "private async Task<bool> LoadWorkOrderInfoAsync",
         "private void HandleWorkOrderLoadFailure");
 
-    var selectIndex = loadMethod.IndexOf("_weldTaskService.SelectProcess(defaultProcess, stationNo);", StringComparison.Ordinal);
-    var bindIndex = loadMethod.IndexOf("ApplySelectedProcessInputs(defaultProcess);", StringComparison.Ordinal);
+    AssertFalse(
+        loadMethod.Contains("_weldTaskService.SelectProcess(", StringComparison.Ordinal),
+        "获取工单成功后不得自动选择工序，必须由用户手动选择。");
+    AssertFalse(
+        loadMethod.Contains("ApplySelectedProcessInputs(", StringComparison.Ordinal),
+        "获取工单成功后不得自动回填工序名称、工序号和生产数量。");
+    AssertFalse(
+        loadMethod.Contains("ExpItems.FirstOrDefault()", StringComparison.Ordinal),
+        "不得再取工序列表第一项作为默认工序。");
 
-    AssertTrue(selectIndex >= 0, "获取工单成功后必须默认选择工序列表第一项。");
-    AssertTrue(bindIndex > selectIndex, "默认选择第一道工序后必须立即回填工序名称、工序号和生产数量控件。");
+    AssertTrue(
+        loadMethod.Contains("ClearProcessSelectionDisplay();", StringComparison.Ordinal),
+        "加载工单后必须清空工序名称下拉。");
+    AssertTrue(
+        loadMethod.Contains("inputProcessNo.Text = string.Empty;", StringComparison.Ordinal)
+            && loadMethod.Contains("inputStartAmount.Text = string.Empty;", StringComparison.Ordinal),
+        "加载工单后必须显式清空工序号和生产数量，避免同一工单重复扫码时残留旧值。");
+
+    // 工单本身没有工序仍属 MES 数据异常，该告警必须保留，不能被"默认不选"掩盖。
+    AssertTrue(
+        loadMethod.Contains("workOrder.ExpItems.Count == 0", StringComparison.Ordinal)
+            && loadMethod.Contains("TextKeys.Monitor.Message.ProcessRequired", StringComparison.Ordinal),
+        "工单没有任何可选工序时必须仍然告警。");
+}
+
+/// <summary>
+/// 未选工序与"工单没有工序"是两种不同故障，必须用不同文案：
+/// 前者是用户还没操作，后者是 MES 数据异常。共用一个 key 会让现场误判。
+/// </summary>
+static void MonitorProcessNotSelectedUsesDedicatedMessage()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var startMethod = ExtractMethodText(
+        viewCode,
+        "private async Task RunStartReportAsync",
+        "private void ProcessSelection_SelectedIndexChanged");
+
+    AssertFalse(
+        startMethod.Contains("TextKeys.Monitor.Message.ProcessRequired", StringComparison.Ordinal),
+        "开工校验不得再使用「当前工单没有可选工序」的文案。");
+    AssertTrue(
+        startMethod.Contains("TextKeys.Monitor.Message.ProcessNotSelected", StringComparison.Ordinal),
+        "未选工序时必须提示「请先选择工序」。");
+
+    var zhResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.resx"), Encoding.UTF8);
+    var enResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.en.resx"), Encoding.UTF8);
+    AssertTrue(zhResources.Contains("monitor.message.process_not_selected", StringComparison.Ordinal), "中文资源必须包含未选工序文案。");
+    AssertTrue(enResources.Contains("monitor.message.process_not_selected", StringComparison.Ordinal), "英文资源必须包含未选工序文案。");
+    AssertTrue(zhResources.Contains("<value>请先选择工序</value>", StringComparison.Ordinal), "未选工序文案必须指向用户操作而非数据异常。");
+    AssertTrue(zhResources.Contains("<value>当前工单没有可选工序</value>", StringComparison.Ordinal), "工单无工序的原文案必须保留。");
 }
 
 static void MonitorViewProcessSelectionUsesSharedInputBinder()
@@ -14956,8 +15038,8 @@ static void MonitorViewProcessSelectionUsesSharedInputBinder()
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
     var processHandler = ExtractMethodText(
         viewCode,
-        "private async void ProcessSelection_SelectedIndexChanged",
-        "private async Task<bool> ReloadProgramsAfterProcessSelectionAsync");
+        "private void ProcessSelection_SelectedIndexChanged",
+        "private void WorkOrderInput_TextChanged");
     var binder = ExtractMethodText(
         viewCode,
         "private void ApplySelectedProcessInputs(ExpItemData process)",

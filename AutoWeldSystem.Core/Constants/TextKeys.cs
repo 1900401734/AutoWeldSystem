@@ -352,6 +352,11 @@ public static class TextKeys
             /// 当前工单没有可选工序
             /// </summary>
             public const string ProcessRequired = "monitor.message.process_required";
+
+            /// <summary>
+            /// 工单有工序但用户尚未选择；与 ProcessRequired（工单本身没有工序）区分，避免误判为 MES 数据异常。
+            /// </summary>
+            public const string ProcessNotSelected = "monitor.message.process_not_selected";
             /// <summary>
             /// 程序下载失败
             /// </summary>

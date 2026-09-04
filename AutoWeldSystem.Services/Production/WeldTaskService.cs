@@ -296,8 +296,9 @@ public class WeldTaskService : IWeldTaskService
         var normalizedStationNo = NormalizeStationNo(stationNo);
         var station = GetStation(normalizedStationNo);
         station.SelectedProcess = process;
-        station.AvailablePrograms.Clear();
-        station.SelectedProgram = null;
+        // 不清空 AvailablePrograms 和 SelectedProgram：程序列表只按设备号和工单产品工号查询，
+        // 与工序无关，同一工单换工序后可选程序完全相同。清掉会让已选好并下载的程序名消失，
+        // 操作员必须重选一次程序才能开工。
         station.UpdatedTime = DateTime.Now;
         RefreshCompatibilityState(normalizedStationNo);
         NotifyStateChanged();

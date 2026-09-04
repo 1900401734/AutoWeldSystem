@@ -1333,7 +1333,7 @@ public partial class MonitorView : BaseView
 
         if (state.SelectedProcess is null)
         {
-            SetRuntimeError(TextKeys.Monitor.Message.ProcessRequired);
+            SetRuntimeError(TextKeys.Monitor.Message.ProcessNotSelected);
             return;
         }
 
@@ -1359,7 +1359,7 @@ public partial class MonitorView : BaseView
         var processNo = inputProcessNo.Text.Trim();
         if (string.IsNullOrWhiteSpace(processNo))
         {
-            SetRuntimeError(TextKeys.Monitor.Message.ProcessRequired);
+            SetRuntimeError(TextKeys.Monitor.Message.ProcessNotSelected);
             return;
         }
 
@@ -1746,7 +1746,7 @@ public partial class MonitorView : BaseView
     /// </summary>
     /// <param name="sender">事件发送者。</param>
     /// <param name="e">事件参数。</param>
-    private async void ProcessSelection_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
+    private void ProcessSelection_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
     {
         if (_syncingProcessSelection)
         {
@@ -1776,25 +1776,13 @@ public partial class MonitorView : BaseView
 
         var process = processes[selectedIndex];
         SelectStationForOperation(CurrentStationNo);
-        ClearPendingOnlineProgramSelection();
+
+        // 换工序保留已选程序：程序列表与工序无关，不清 _pendingOnlineProgramName，
+        // 也不重新加载程序列表，避免把操作员已选好并下载的程序刷掉。
         _weldTaskService.SelectProcess(process, CurrentStationNo);
         ApplySelectedProcessInputs(process);
         ClearRuntimeError();
-        if (await ReloadProgramsAfterProcessSelectionAsync(CurrentStationNo))
-        {
-            SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.ProcessSelected);
-        }
-    }
-
-    /// <summary>
-    /// 在线切换工序后重新加载可选程序，避免服务层清空程序列表后下拉无法再次下载。
-    /// </summary>
-    /// <param name="stationNo">工位编号。</param>
-    /// <returns>程序列表加载成功且存在可选程序返回 true。</returns>
-    private async Task<bool> ReloadProgramsAfterProcessSelectionAsync(int stationNo)
-    {
-        await LoadProgramListForWorkOrderAsync(stationNo);
-        return GetCurrentStationState().AvailablePrograms.Count > 0;
+        SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.ProcessSelected);
     }
 
     /// <summary>
@@ -3759,8 +3747,7 @@ public partial class MonitorView : BaseView
                 return;
             }
 
-            var defaultProcess = workOrder.ExpItems.FirstOrDefault();
-            if (defaultProcess is null)
+            if (workOrder.ExpItems.Count == 0)
             {
                 RefreshProductionRuntimeState();
                 ClearMesOperatorInfo();
@@ -3768,11 +3755,16 @@ public partial class MonitorView : BaseView
                 return;
             }
 
-            _weldTaskService.SelectProcess(defaultProcess, stationNo);
+            // 工序不自动选择：现场需要人工确认本次开工的工序，避免默认第一道工序被误开工。
+            // 运行态的 SelectedProcess 已由 GetWorkOrderInfoAsync 内的 ResetStationRuntime 清空，此处只需清控件。
+            // 同一工单重复扫码时 BindProductionRuntimeState 的 workOrderChanged 为 false 不会重绑，
+            // 若不显式清理，控件会残留上一轮的工序号并绕过开工前的非空校验。
             if (stationNo == CurrentStationNo)
             {
                 ClearPendingOnlineProgramSelection();
-                ApplySelectedProcessInputs(defaultProcess);
+                ClearProcessSelectionDisplay();
+                inputProcessNo.Text = string.Empty;
+                inputStartAmount.Text = string.Empty;
                 _manualWorkOrderEditedByUser = false;
             }
 
