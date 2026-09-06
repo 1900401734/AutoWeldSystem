@@ -412,7 +412,6 @@ public class RbacService : IRbacService
         var toggleCodes = new[]
         {
             PermissionCodes.Buttons.Monitor.MergedDisplay,
-            PermissionCodes.Buttons.Monitor.FaceResultDisplay
         };
         if (!toggleCodes.Any(createdPermissionCodes.Contains))
         {

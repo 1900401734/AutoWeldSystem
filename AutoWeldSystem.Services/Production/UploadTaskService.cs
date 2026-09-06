@@ -1177,7 +1177,7 @@ public class UploadTaskService : IUploadTaskService
         var deviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
         var showTestFlagInHistory = settings.ShowTestFlagInHistory != false;
         // 过程参数的输出小数位，未配置时沿用采集位数。
-        var numericFormat = OutputNumericFormat.ForProcessParameter(settings);
+        var numericFormat = OutputNumericFormat.ForUpload(settings);
         var schemeItemCache = new Dictionary<string, IReadOnlyList<ProcessParameterSchemeItem>>(StringComparer.OrdinalIgnoreCase);
         var items = new List<ProcessParameterUploadItem>();
 
@@ -1220,7 +1220,6 @@ public class UploadTaskService : IUploadTaskService
             var aggregation = WholePieceAbAggregationRules.Aggregate(
                 productRecords,
                 definitions,
-                settings.PairedAggregationMode,
                 settings.EnablePlcStringNumericFormatting ?? true,
                 settings.PlcStringNumericFormatMode);
             if (!aggregation.IsSuccess)
@@ -1230,11 +1229,13 @@ public class UploadTaskService : IUploadTaskService
 
             // 行结果改用该行的合并值判定，与产品结果同源；
             // 否则单面检测失败会让某行上传 NG，而按四面最大值算出的产品结果是 OK，两者对不上。
-            var outputRows = WholePieceProgramResultRules.IsApplicable(deviceType, settings.InspectionResultSource)
+            var outputRows = WholePieceProgramResultRules.IsApplicable(deviceType)
                 ? WholePieceProgramResultRules.ApplyAggregatedRowResults(
                     _dbContext.Db.Queryable<BizWeldTask>().InSingle(firstRecord.TaskId)?.ProgramContentSnapshot,
                     aggregation.Rows,
-                    definitions)
+                    definitions,
+                    settings.EffectiveJudgementDecimalPlaces,
+                    settings.PlcStringNumericFormatMode)
                 : aggregation.Rows;
             foreach (var output in outputRows)
             {

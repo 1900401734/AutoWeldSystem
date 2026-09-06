@@ -60,15 +60,12 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         var processConfig = ResolveProcessConfig(task, normalizedStationNo);
         var schemeItems = ResolveSchemeItems(processConfig.SchemeId);
         var settings = _settingsService.Get();
-        var resultSource = ProductionConstants.InspectionResultSources.Normalize(settings.InspectionResultSource);
-        var useProgramResult = WholePieceProgramResultRules.IsApplicable(
-            settings.ProcessParameterDeviceType,
-            resultSource);
+        var useProgramResult = WholePieceProgramResultRules.IsApplicable(settings.ProcessParameterDeviceType);
 
         _productionLogService.Write(
             "ProductDataReadStart",
             ProductionFlowLogTexts.Summaries.ProductDataReadStart,
-            $"SchemeId={processConfig.SchemeId}, ProductBase={processConfig.ProductBase}, TouchBase={processConfig.TouchBase}, TestBase={processConfig.TestBase}, TouchCount={processConfig.TouchCount}, ResultSource={resultSource}, ProgramResult={useProgramResult}",
+            $"SchemeId={processConfig.SchemeId}, ProductBase={processConfig.ProductBase}, TouchBase={processConfig.TouchBase}, TestBase={processConfig.TestBase}, TouchCount={processConfig.TouchCount}, ProgramResult={useProgramResult}",
             stationNo: normalizedStationNo,
             workOrderId: task.SN,
             programId: task.ProgramId ?? string.Empty);
@@ -93,7 +90,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             ApplyProgramCalculatedResults(task, processConfig, schemeItems, records);
         }
 
-        ValidateCollectedRecords(processConfig, schemeItems, records);
+        ValidateCollectedRecords(task, processConfig, schemeItems, records);
 
         bool isRetest;
         try
@@ -475,51 +472,22 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         IReadOnlyList<SchemeItemSnapshot> schemeItems,
         IReadOnlyList<BizWeldPointRecord> records)
     {
-        // 参与程序判定的是有业务去向的测试项；只勾实时预览的临时观察项不参与，避免预览配置改变判定结果。
+        // 参与判定的是勾选「上报」通道的测试项：合并视图看到的项就是参与判定的项。
         var participatingItems = schemeItems
             .Where(item => SchemeDetailRoleRules.ShouldEvaluateProgramRole(item.Detail, SchemeDetailValueRole.Actual))
             .ToList();
 
+        // 逐面判定已取消：面结果寄存器恒为检测完成信号，不承载合格信息。
+        // 这里只校验四面是否都已完成采集，产品结果统一由 A/B 合并值判定。
         foreach (var record in records)
         {
-            if (TestResultRules.IsPreWeldNg(record.TestResult))
-            {
-                continue;
-            }
-
             if (!ProductRealtimePreviewRules.ShouldReadTestValues(record.TestResult))
             {
                 throw new BusinessOperationException(
                     Category,
                     "产品数据采集失败",
-                    $"产品“{record.ProductNo}”面“{record.TouchNo}”的 PLC 结果未表示测试完成，无法进行程序判定。");
+                    $"产品“{record.ProductNo}”面“{record.TouchNo}”的 PLC 结果未表示检测完成，无法进行程序判定。");
             }
-
-            var rawValues = ParseRawData(record.RawDataJson);
-            // B 面（面1、面3）的宽度不参与面级判定：程序内容里的宽度上限按 A 面设定。
-            var measurements = participatingItems
-                .Where(item => WholePieceProgramResultRules.ParticipatesInFaceEvaluation(
-                    item.Item.ItemName,
-                    record.TouchNo,
-                    config.TouchCount))
-                .Select(item => new WholePieceProgramMeasurement(
-                    item.Item.ItemName,
-                    FirstValue(rawValues, ResolveItemKey(item.Item), item.Item.ItemName)))
-                .ToList();
-            var result = WholePieceProgramResultRules.EvaluateFace(task.ProgramContentSnapshot, measurements);
-            if (!result.IsSuccess)
-            {
-                throw new ProductCollectionHandledException(
-                    Category,
-                    "产品数据采集配置错误",
-                    $"产品“{record.ProductNo}”面“{record.TouchNo}”程序判定失败：{result.ErrorMessage}");
-            }
-
-            record.TestResult = result.Result;
-            record.RawDataJson = AddRawValues(record.RawDataJson, new Dictionary<string, string>
-            {
-                ["program_touch_result"] = result.Result
-            });
         }
 
         var productResult = ResolveProgramProductResult(task, config, participatingItems, records);
@@ -539,8 +507,8 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
     }
 
     /// <summary>
-    /// 四面整件检测的产品结果按 A/B 合并值判定，与 MES 上传和报表使用同一组数据；
-    /// 其余配置沿用逐面结果取并。存在焊前 NG 面时不做聚合，直接沿用面结果。
+    /// 四面整件检测的产品结果按 A/B 合并值判定，与报告文件、过程参数使用同一组数据。
+    /// 非四面整件检测沿用面结果取并（点焊等工艺没有 A/B 面概念）。
     /// </summary>
     private string ResolveProgramProductResult(
         BizWeldTask task,
@@ -549,8 +517,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         IReadOnlyList<BizWeldPointRecord> records)
     {
         var settings = _settingsService.Get();
-        if (!WholePieceAbAggregationRules.IsApplicable(settings.ProcessParameterDeviceType, config.TouchCount)
-            || records.Any(record => TestResultRules.IsPreWeldNg(record.TestResult)))
+        if (!WholePieceAbAggregationRules.IsApplicable(settings.ProcessParameterDeviceType, config.TouchCount))
         {
             return TestResultRules.ResolveProductResult(records.Select(record => record.TestResult));
         }
@@ -565,7 +532,6 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         var aggregation = WholePieceAbAggregationRules.Aggregate(
             records,
             definitions,
-            settings.PairedAggregationMode,
             settings.EnablePlcStringNumericFormatting ?? true,
             settings.PlcStringNumericFormatMode);
         if (!aggregation.IsSuccess)
@@ -579,7 +545,9 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         var result = WholePieceProgramResultRules.EvaluateAggregated(
             task.ProgramContentSnapshot,
             aggregation.Rows,
-            definitions);
+            definitions,
+            settings.EffectiveJudgementDecimalPlaces,
+            settings.PlcStringNumericFormatMode);
         if (!result.IsSuccess)
         {
             throw new ProductCollectionHandledException(
@@ -623,6 +591,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
     }
 
     private void ValidateCollectedRecords(
+        BizWeldTask task,
         BizProductProcessConfig config,
         IReadOnlyList<SchemeItemSnapshot> schemeItems,
         IReadOnlyList<BizWeldPointRecord> records)
@@ -633,7 +602,26 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             return;
         }
 
-        // A/B 聚合只对实际值有定义（取最大值或平均值），报表和过程参数是逐值输出，非实际值角色必须拦。
+        // 勾选「上报」的测试项必须在程序内容里配置最大允许值：
+        // 上报数据要带明确的合格结论，没有上限就会出现「已上报但无判定依据」。
+        if (WholePieceProgramResultRules.TryReadMaximumValues(
+                task.ProgramContentSnapshot,
+                out var maximumValues,
+                out _))
+        {
+            var missingMaximum = SchemeDetailRoleRules.FindUploadItemsMissingMaximum(
+                schemeItems.Select(item => (item.Detail, item.Item.ItemName)),
+                maximumValues);
+            if (missingMaximum.Count > 0)
+            {
+                throw new BusinessOperationException(
+                    Category,
+                    "产品数据采集失败",
+                    $"测试项“{string.Join("、", missingMaximum)}”勾选了上报但未配置最大允许值，无法产出合格结论，请先在程序内容中填写上限。");
+            }
+        }
+
+        // A/B 聚合只对实际值有定义（取最大值），报表和过程参数是逐值输出，非实际值角色必须拦。
         // 转发看板不在此限制内：中心看板动态列直接透传 RawDataJson，不做 A/B 聚合。
         var invalidOutput = schemeItems.FirstOrDefault(item => SchemeDetailRoleRules.AllRoles
             .Where(role => role != SchemeDetailValueRole.Actual)
