@@ -912,17 +912,11 @@
   <data name="monitor.tooltip.merged_display" xml:space="preserve">
     <value>勾选后按 A/B 聚合把四个检测面合并成一行，与上传和报表口径一致；取消勾选恢复逐面明细。只影响界面显示，不改变上传和报表数据。</value>
   </data>
-  <data name="monitor.checkbox.face_result_display" xml:space="preserve">
-    <value>面结果</value>
-  </data>
   <data name="monitor.label.program_limits" xml:space="preserve">
     <value>设定值</value>
   </data>
   <data name="monitor.tooltip.program_limits" xml:space="preserve">
     <value>当前工单开工时固化的程序最大允许值，与产品判定使用同一份数据。实际值小于或等于该值为合格。仅整件检测设备显示。</value>
-  </data>
-  <data name="monitor.tooltip.face_result_display" xml:space="preserve">
-    <value>逐面模式下是否显示“面结果”列。取消勾选只隐藏该列，面号和逐面实测值保留，避免单面结果与合并后的产品结果口径不同造成歧义。只影响界面显示，不改变上传和报表数据。</value>
   </data>
   <data name="monitor.label.product_number" xml:space="preserve">
     <value>产品工号</value>
@@ -1034,9 +1028,6 @@
   </data>
   <data name="permission.button.monitor.merged_display" xml:space="preserve">
     <value>切换合并显示</value>
-  </data>
-  <data name="permission.button.monitor.face_result_display" xml:space="preserve">
-    <value>切换面结果显示</value>
   </data>
   <data name="permission.button.auth.switch_user" xml:space="preserve">
     <value>切换用户</value>
@@ -2236,11 +2227,8 @@
   <data name="address.column.detail_forward" xml:space="preserve">
     <value>转发看板</value>
   </data>
-  <data name="address.column.detail_report" xml:space="preserve">
-    <value>写入报表</value>
-  </data>
-  <data name="address.column.detail_mes" xml:space="preserve">
-    <value>过程参数</value>
+  <data name="address.column.detail_upload" xml:space="preserve">
+    <value>上报</value>
   </data>
   <data name="address.column.detail_mes_field" xml:space="preserve">
     <value>过程参数字段名</value>
@@ -2320,11 +2308,8 @@
   <data name="system.group.center_server" xml:space="preserve">
     <value>中心服务器</value>
   </data>
-  <data name="system.label.report_decimal_places" xml:space="preserve">
-    <value>报表小数位</value>
-  </data>
-  <data name="system.label.process_parameter_decimal_places" xml:space="preserve">
-    <value>过程参数小数位</value>
+  <data name="system.label.judgement_decimal_places" xml:space="preserve">
+    <value>判定与上报小数位</value>
   </data>
   <data name="system.label.mes_timeout" xml:space="preserve">
     <value>MES 超时（秒）</value>
@@ -2479,18 +2464,6 @@
   <data name="system.message.startup_integration_failed" xml:space="preserve">
     <value>开机自启设置失败：{0}</value>
   </data>
-  <data name="system.label.inspection_result_source" xml:space="preserve">
-    <value>检测结果来源</value>
-  </data>
-  <data name="system.option.inspection_result_source.plc" xml:space="preserve">
-    <value>PLC读取</value>
-  </data>
-  <data name="system.option.inspection_result_source.program" xml:space="preserve">
-    <value>程序计算</value>
-  </data>
-  <data name="system.message.inspection_result_source_locked" xml:space="preserve">
-    <value>存在未完工任务，不能切换检测结果来源，请先完工后再调整。</value>
-  </data>
   <data name="system.label.realtime_point_number_source" xml:space="preserve">
     <value>实时编号来源</value>
   </data>
@@ -2503,22 +2476,7 @@
   <data name="system.message.realtime_point_number_source_locked" xml:space="preserve">
     <value>存在未完工任务，不能切换实时编号来源，请先完工后再调整。</value>
   </data>
-  <data name="system.label.paired_aggregation_mode" xml:space="preserve">
-    <value>A/B配对聚合方式</value>
-  </data>
   <data name="system.label.whole_piece_merged_display" xml:space="preserve">
     <value>整件检测四面合并显示</value>
-  </data>
-  <data name="system.label.whole_piece_face_result_display" xml:space="preserve">
-    <value>整件检测逐面结果显示</value>
-  </data>
-  <data name="system.option.paired_aggregation.average" xml:space="preserve">
-    <value>配对平均值</value>
-  </data>
-  <data name="system.option.paired_aggregation.maximum" xml:space="preserve">
-    <value>配对最大值</value>
-  </data>
-  <data name="system.message.paired_aggregation_mode_locked" xml:space="preserve">
-    <value>存在未完工任务，不能切换A/B配对聚合方式，请先完工后再调整。</value>
   </data>
 </root>

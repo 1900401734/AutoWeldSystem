@@ -64,22 +64,10 @@ public partial class SystemSettingView : BaseView
         new(ProductionConstants.ProcessParameterDeviceTypes.WholePieceWeld, TextKeys.SystemSetting.OptionDeviceWholePieceWeld)
     };
 
-    private static readonly LocalizedOption<string>[] InspectionResultSourceOptions =
-    {
-        new(ProductionConstants.InspectionResultSources.Plc, TextKeys.SystemSetting.OptionInspectionResultSourcePlc),
-        new(ProductionConstants.InspectionResultSources.Program, TextKeys.SystemSetting.OptionInspectionResultSourceProgram)
-    };
-
     private static readonly LocalizedOption<string>[] RealtimePointNumberSourceOptions =
     {
         new(ProductionConstants.RealtimePointNumberSources.Plc, TextKeys.SystemSetting.OptionRealtimePointNumberSourcePlc),
         new(ProductionConstants.RealtimePointNumberSources.Program, TextKeys.SystemSetting.OptionRealtimePointNumberSourceProgram)
-    };
-
-    private static readonly LocalizedOption<string>[] PairedAggregationModeOptions =
-    {
-        new(ProductionConstants.PairedAggregationModes.Average, TextKeys.SystemSetting.OptionPairedAggregationAverage),
-        new(ProductionConstants.PairedAggregationModes.Maximum, TextKeys.SystemSetting.OptionPairedAggregationMaximum)
     };
 
     private static readonly LocalizedOption<string>[] CenterServerSystemTypeOptions =
@@ -121,9 +109,7 @@ public partial class SystemSettingView : BaseView
     private bool _syncingPlcAlarmTriggerModeSelection;
     private bool _syncingUploadModeSelection;
     private bool _syncingProcessParameterDeviceTypeSelection;
-    private bool _syncingInspectionResultSourceSelection;
     private bool _syncingRealtimePointNumberSourceSelection;
-    private bool _syncingPairedAggregationModeSelection;
     private bool _syncingCenterServerSystemTypeSelection;
     private bool _deviceManagementStateKnown;
     private string _selectedPlcType = AppConstants.PlcTypes.ModbusTcp;
@@ -131,9 +117,7 @@ public partial class SystemSettingView : BaseView
     private string _selectedPlcAlarmTriggerMode = AppConstants.PlcAlarmTriggerModes.DeviceStatusAndAddress;
     private UploadMode _selectedUploadMode = UploadMode.Quantity;
     private string _selectedProcessParameterDeviceType = ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic;
-    private string _selectedInspectionResultSource = ProductionConstants.InspectionResultSources.Plc;
     private string _selectedRealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Plc;
-    private string _selectedPairedAggregationMode = ProductionConstants.PairedAggregationModes.Average;
     private string _selectedCenterServerSystemType = CenterServerConstants.SystemTypes.Other;
     private AppSettings _currentSettings;
     private SystemSettingLayoutMode? _lastLayoutMode;
@@ -182,9 +166,7 @@ public partial class SystemSettingView : BaseView
         BindPlcAlarmTriggerModeOptions();
         BindUploadModeOptions();
         BindProcessParameterDeviceTypeOptions();
-        BindInspectionResultSourceOptions();
         BindRealtimePointNumberSourceOptions();
-        BindPairedAggregationModeOptions();
         BindCenterServerSystemTypeOptions();
         ApplyBasicSettingsLayout(force: true);
         basicSettingsViewport.AutoScrollPosition = scrollOffset;
@@ -341,9 +323,7 @@ public partial class SystemSettingView : BaseView
         chkEnableAutoStart.CheckedChanged += ChkEnableAutoStart_CheckedChanged;
         chkEnablePostDataCustomHeader.CheckedChanged += ChkEnablePostDataCustomHeader_CheckedChanged;
         selectProcessParameterDeviceType.SelectedIndexChanged += SelectProcessParameterDeviceType_SelectedIndexChanged;
-        selectInspectionResultSource.SelectedIndexChanged += SelectInspectionResultSource_SelectedIndexChanged;
         selectRealtimePointNumberSource.SelectedIndexChanged += SelectRealtimePointNumberSource_SelectedIndexChanged;
-        selectPairedAggregationMode.SelectedIndexChanged += SelectPairedAggregationMode_SelectedIndexChanged;
         selectCenterServerSystemType.SelectedIndexChanged += SelectCenterServerSystemType_SelectedIndexChanged;
         chkEnableDualStation.CheckedChanged += (_, _) => UpdateStationDisplayNameVisibility();
     }
@@ -369,8 +349,6 @@ public partial class SystemSettingView : BaseView
             }
 
             if (!CanSaveRuntimeModeChange(previousSettings, settings)
-                || !CanSaveInspectionResultSourceChange(previousSettings, settings)
-                || !CanSavePairedAggregationModeChange(previousSettings, settings)
                 || !CanSaveRealtimePointNumberSourceChange(previousSettings, settings))
             {
                 BindSettings(previousSettings);
@@ -438,8 +416,6 @@ public partial class SystemSettingView : BaseView
             }
 
             if (!CanSaveRuntimeModeChange(previousSettings, settings)
-                || !CanSaveInspectionResultSourceChange(previousSettings, settings)
-                || !CanSavePairedAggregationModeChange(previousSettings, settings)
                 || !CanSaveRealtimePointNumberSourceChange(previousSettings, settings))
             {
                 BindSettings(previousSettings);
@@ -607,35 +583,6 @@ public partial class SystemSettingView : BaseView
         UpdateInspectionResultSourceEnabled();
     }
 
-    private void SelectInspectionResultSource_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
-    {
-        if (_syncingInspectionResultSourceSelection)
-        {
-            return;
-        }
-
-        if (e.Value < 0 || e.Value >= InspectionResultSourceOptions.Length)
-        {
-            return;
-        }
-
-        _selectedInspectionResultSource = InspectionResultSourceOptions[e.Value].Value;
-    }
-
-    private void SelectPairedAggregationMode_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
-    {
-        if (_syncingPairedAggregationModeSelection)
-        {
-            return;
-        }
-
-        if (e.Value < 0 || e.Value >= PairedAggregationModeOptions.Length)
-        {
-            return;
-        }
-
-        _selectedPairedAggregationMode = PairedAggregationModeOptions[e.Value].Value;
-    }
 
     private void SelectRealtimePointNumberSource_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
     {
@@ -802,23 +749,19 @@ public partial class SystemSettingView : BaseView
         _selectedPlcAlarmTriggerMode = AppConstants.PlcAlarmTriggerModes.Normalize(settings.PlcAlarmTriggerMode);
         _selectedUploadMode = NormalizeUploadMode(settings.UploadMode);
         _selectedProcessParameterDeviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
-        _selectedInspectionResultSource = ProductionConstants.InspectionResultSources.Normalize(settings.InspectionResultSource);
         _selectedRealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Normalize(settings.RealtimePointNumberSource);
-        _selectedPairedAggregationMode = ProductionConstants.PairedAggregationModes.Normalize(settings.PairedAggregationMode);
         chkEnableWholePieceMergedDisplay.Checked = settings.IsWholePieceMergedDisplayEnabled;
-        chkEnableWholePieceFaceResultDisplay.Checked = settings.IsWholePieceFaceResultDisplayEnabled;
         _selectedCenterServerSystemType = NormalizeCenterServerSystemType(settings.CenterServerSystemType);
         inputUploadBatchSize.Text = Math.Max(1, settings.UploadBatchSize).ToString(CultureInfo.InvariantCulture);
-        inputReportDecimalPlaces.Text = FormatOutputDecimalPlaces(settings.ReportDecimalPlaces);
-        inputProcessParameterDecimalPlaces.Text = FormatOutputDecimalPlaces(settings.ProcessParameterDecimalPlaces);
+        // 两个小数位配置已合并为「判定与上报小数位」，两个输入框暂时共同绑定该值，
+        // 界面精简（移除其中一个输入框）在后续 UI 提交中处理。
+        inputReportDecimalPlaces.Text = FormatOutputDecimalPlaces(settings.JudgementDecimalPlaces);
         BindPlcTypeOptions();
         BindPlcStringNumericFormatModeOptions();
         BindPlcAlarmTriggerModeOptions();
         BindUploadModeOptions();
         BindProcessParameterDeviceTypeOptions();
-        BindInspectionResultSourceOptions();
         BindRealtimePointNumberSourceOptions();
-        BindPairedAggregationModeOptions();
         BindCenterServerSystemTypeOptions();
         UpdateInspectionResultSourceEnabled();
         UpdateRealtimePointNumberSourceEnabled();
@@ -921,8 +864,8 @@ public partial class SystemSettingView : BaseView
         lblPlcType.Text = _localizer.GetString(TextKeys.SystemSetting.LabelType);
         chkEnablePlcStringNumericFormatting.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnablePlcStringFormatting);
         chkEnablePlcAlarmReading.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnablePlcAlarmReading);
-        lblReportDecimalPlaces.Text = _localizer.GetString(TextKeys.SystemSetting.LabelReportDecimalPlaces);
-        lblProcessParameterDecimalPlaces.Text = _localizer.GetString(TextKeys.SystemSetting.LabelProcessParameterDecimalPlaces);
+        // 「报表小数位」与「过程参数小数位」已合并为「判定与上报小数位」，只保留一个输入行。
+        lblReportDecimalPlaces.Text = _localizer.GetString(TextKeys.SystemSetting.LabelJudgementDecimalPlaces);
 
         lblDeviceId.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDeviceId);
         lblDeviceName.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDeviceName);
@@ -949,11 +892,8 @@ public partial class SystemSettingView : BaseView
         lblCenterServerSystemType.Text = _localizer.GetString(TextKeys.SystemSetting.LabelCenterServerSystemType);
         lblCenterServerHeartbeatInterval.Text = _localizer.GetString(TextKeys.SystemSetting.LabelCenterServerHeartbeat);
         lblProcessParameterDeviceType.Text = _localizer.GetString(TextKeys.SystemSetting.LabelProcessParameterDeviceType);
-        lblInspectionResultSource.Text = _localizer.GetString(TextKeys.SystemSetting.LabelInspectionResultSource);
         lblRealtimePointNumberSource.Text = _localizer.GetString(TextKeys.SystemSetting.LabelRealtimePointNumberSource);
-        lblPairedAggregationMode.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPairedAggregationMode);
         chkEnableWholePieceMergedDisplay.Text = _localizer.GetString(TextKeys.SystemSetting.LabelWholePieceMergedDisplay);
-        chkEnableWholePieceFaceResultDisplay.Text = _localizer.GetString(TextKeys.SystemSetting.LabelWholePieceFaceResultDisplay);
         chkEnablePostDataCustomHeader.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnablePostDataHeader);
         lblPostDataHeaderKey.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPostDataHeaderKey);
         lblPostDataHeaderValue.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPostDataHeaderValue);
@@ -1071,63 +1011,25 @@ public partial class SystemSettingView : BaseView
         }
     }
 
-    private void BindInspectionResultSourceOptions()
-    {
-        _syncingInspectionResultSourceSelection = true;
-        try
-        {
-            selectInspectionResultSource.Items.Clear();
-            selectInspectionResultSource.Items.AddRange(InspectionResultSourceOptions
-                .Select(option => (object)_localizer.GetString(option.TextKey))
-                .ToArray());
-
-            var selectedIndex = Array.FindIndex(InspectionResultSourceOptions, option =>
-                string.Equals(option.Value, _selectedInspectionResultSource, StringComparison.OrdinalIgnoreCase));
-            selectInspectionResultSource.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
-        }
-        finally
-        {
-            _syncingInspectionResultSourceSelection = false;
-        }
-    }
-
+    /// <summary>
+    /// 整件检测专属设置项的可见性。
+    /// 「检测结果来源」「A/B 配对聚合方式」「逐面结果显示」三项已移除：
+    /// 视觉只回传检测完成信号，结果来源无从选择；配对聚合统一取最大值；逐面结果不再判定。
+    /// 此处只剩合并显示开关，它与监控页快捷开关写同一份全局设置，因此要求对应权限。
+    /// </summary>
     private void UpdateInspectionResultSourceEnabled()
     {
         var wholePieceInspection = string.Equals(
             _selectedProcessParameterDeviceType,
             ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck,
             StringComparison.OrdinalIgnoreCase);
-        tlpInspectionResultSource.Visible = wholePieceInspection;
-        selectInspectionResultSource.Enabled = wholePieceInspection && !HasAnyUnfinishedTask();
-
-        // 合并显示与 A/B 配对聚合只对整件检测有意义；聚合方式影响上传和报表数据，未完工时禁止切换。
-        // 两个显示开关与监控页快捷开关写同一份全局设置，因此同样要求当前角色具备对应权限。
-        tlpPairedAggregationMode.Visible = wholePieceInspection;
-        selectPairedAggregationMode.Enabled = wholePieceInspection && !HasAnyUnfinishedTask();
         chkEnableWholePieceMergedDisplay.Visible = wholePieceInspection
             && GlobalContext.HasPermission(PermissionCodes.Buttons.Monitor.MergedDisplay);
-        chkEnableWholePieceFaceResultDisplay.Visible = wholePieceInspection
-            && GlobalContext.HasPermission(PermissionCodes.Buttons.Monitor.FaceResultDisplay);
-    }
 
-    private void BindPairedAggregationModeOptions()
-    {
-        _syncingPairedAggregationModeSelection = true;
-        try
-        {
-            selectPairedAggregationMode.Items.Clear();
-            selectPairedAggregationMode.Items.AddRange(PairedAggregationModeOptions
-                .Select(option => (object)_localizer.GetString(option.TextKey))
-                .ToArray());
-
-            var selectedIndex = Array.FindIndex(PairedAggregationModeOptions, option =>
-                string.Equals(option.Value, _selectedPairedAggregationMode, StringComparison.OrdinalIgnoreCase));
-            selectPairedAggregationMode.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
-        }
-        finally
-        {
-            _syncingPairedAggregationModeSelection = false;
-        }
+        // 已移除的三行整行隐藏：控件仍在 Designer 中，但不再有对应配置。
+        tlpInspectionResultSource.Visible = false;
+        tlpPairedAggregationMode.Visible = false;
+        tlpProcessParameterDecimalPlaces.Visible = false;
     }
 
     private void BindRealtimePointNumberSourceOptions()
@@ -1513,13 +1415,6 @@ public partial class SystemSettingView : BaseView
             return false;
         }
 
-        if (!TryParseOutputDecimalPlaces(
-                inputProcessParameterDecimalPlaces.Text,
-                NormalizeCaption(lblProcessParameterDecimalPlaces.Text),
-                out var processParameterDecimalPlaces))
-        {
-            return false;
-        }
 
         if (!TryParsePositiveInt(inputPlcHeartbeatInterval.Text, NormalizeCaption(lblPlcHeartbeatInterval.Text), out var heartbeatInterval))
         {
@@ -1598,14 +1493,10 @@ public partial class SystemSettingView : BaseView
         settings.PlcCommunicationTimeoutMilliseconds = PlcHeartbeatSettingsRules.NormalizeCommunicationTimeoutMilliseconds(communicationTimeout);
         settings.UploadMode = NormalizeUploadMode(_selectedUploadMode);
         settings.UploadBatchSize = Math.Max(1, uploadBatchSize);
-        settings.ReportDecimalPlaces = reportDecimalPlaces;
-        settings.ProcessParameterDecimalPlaces = processParameterDecimalPlaces;
+        settings.JudgementDecimalPlaces = reportDecimalPlaces;
         settings.ProcessParameterDeviceType = NormalizeProcessParameterDeviceType(_selectedProcessParameterDeviceType);
-        settings.InspectionResultSource = ProductionConstants.InspectionResultSources.Normalize(_selectedInspectionResultSource);
         settings.RealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Normalize(_selectedRealtimePointNumberSource);
-        settings.PairedAggregationMode = ProductionConstants.PairedAggregationModes.Normalize(_selectedPairedAggregationMode);
         settings.EnableWholePieceMergedDisplay = chkEnableWholePieceMergedDisplay.Checked;
-        settings.EnableWholePieceFaceResultDisplay = chkEnableWholePieceFaceResultDisplay.Checked;
         if (!TryApplyMesEndpointSettings(settings))
         {
             return false;
@@ -1685,36 +1576,6 @@ public partial class SystemSettingView : BaseView
         }
 
         ShowWarning(TextKeys.SystemSetting.MessageRuntimeModeLocked);
-        return false;
-    }
-
-    private bool CanSaveInspectionResultSourceChange(AppSettings previousSettings, AppSettings newSettings)
-    {
-        if (string.Equals(
-                ProductionConstants.InspectionResultSources.Normalize(previousSettings.InspectionResultSource),
-                ProductionConstants.InspectionResultSources.Normalize(newSettings.InspectionResultSource),
-                StringComparison.OrdinalIgnoreCase)
-            || !HasAnyUnfinishedTask())
-        {
-            return true;
-        }
-
-        ShowWarning(TextKeys.SystemSetting.MessageInspectionResultSourceLocked);
-        return false;
-    }
-
-    private bool CanSavePairedAggregationModeChange(AppSettings previousSettings, AppSettings newSettings)
-    {
-        if (string.Equals(
-                ProductionConstants.PairedAggregationModes.Normalize(previousSettings.PairedAggregationMode),
-                ProductionConstants.PairedAggregationModes.Normalize(newSettings.PairedAggregationMode),
-                StringComparison.OrdinalIgnoreCase)
-            || !HasAnyUnfinishedTask())
-        {
-            return true;
-        }
-
-        ShowWarning(TextKeys.SystemSetting.MessagePairedAggregationModeLocked);
         return false;
     }
 

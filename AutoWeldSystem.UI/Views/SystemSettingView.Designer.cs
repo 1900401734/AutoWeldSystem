@@ -89,7 +89,6 @@
             selectPairedAggregationMode = new AntdUI.Select();
             tlpProcessParameterType = new TableLayoutPanel();
             chkEnableWholePieceMergedDisplay = new AntdUI.Checkbox();
-            chkEnableWholePieceFaceResultDisplay = new AntdUI.Checkbox();
             tlpRealtimePointNumberSource = new TableLayoutPanel();
             lblRealtimePointNumberSource = new AntdUI.Label();
             selectRealtimePointNumberSource = new AntdUI.Select();
@@ -1279,7 +1278,6 @@
             tlpProcessParameterType.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             tlpProcessParameterType.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             tlpProcessParameterType.Controls.Add(chkEnableWholePieceMergedDisplay, 0, 4);
-            tlpProcessParameterType.Controls.Add(chkEnableWholePieceFaceResultDisplay, 1, 4);
             tlpProcessParameterType.Dock = DockStyle.Fill;
             tlpProcessParameterType.Location = new Point(0, 319);
             tlpProcessParameterType.Margin = new Padding(0);
@@ -1304,17 +1302,6 @@
             chkEnableWholePieceMergedDisplay.Size = new Size(204, 40);
             chkEnableWholePieceMergedDisplay.TabIndex = 11;
             chkEnableWholePieceMergedDisplay.Text = "整件检测四面合并显示";
-            // 
-            // chkEnableWholePieceFaceResultDisplay
-            // 
-            chkEnableWholePieceFaceResultDisplay.Dock = DockStyle.Fill;
-            chkEnableWholePieceFaceResultDisplay.Location = new Point(204, 0);
-            chkEnableWholePieceFaceResultDisplay.Margin = new Padding(0);
-            chkEnableWholePieceFaceResultDisplay.Name = "chkEnableWholePieceFaceResultDisplay";
-            chkEnableWholePieceFaceResultDisplay.Padding = new Padding(6, 0, 0, 0);
-            chkEnableWholePieceFaceResultDisplay.Size = new Size(205, 40);
-            chkEnableWholePieceFaceResultDisplay.TabIndex = 12;
-            chkEnableWholePieceFaceResultDisplay.Text = "整件检测逐面结果显示";
             // 
             // tlpRealtimePointNumberSource
             // 
@@ -3004,7 +2991,6 @@
         private AntdUI.Label lblPairedAggregationMode;
         private AntdUI.Select selectPairedAggregationMode;
         private AntdUI.Checkbox chkEnableWholePieceMergedDisplay;
-        private AntdUI.Checkbox chkEnableWholePieceFaceResultDisplay;
         private AntdUI.Checkbox chkShowTestFlagInHistory;
         private AntdUI.Checkbox chkEnableDeviceStatusReport;
         private AntdUI.Checkbox chkEnableWorkOrderStatusReport;

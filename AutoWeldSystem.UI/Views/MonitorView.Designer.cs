@@ -58,9 +58,8 @@ namespace AutoWeldSystem.UI.Views
             lblLiveHint1 = new AntdUI.Label();
             lblLiveProductNo1 = new AntdUI.Label();
             lblLiveTouchNo1 = new AntdUI.Label();
-            chkMergedDisplay1 = new AntdUI.Checkbox();
-            chkFaceResultDisplay1 = new AntdUI.Checkbox();
             lblLiveProgramLimits1 = new AntdUI.Label();
+            chkMergedDisplay1 = new AntdUI.Checkbox();
             HorizontalSplitter1 = new AntdUI.Splitter();
             HorizontalScrollBar1 = new SlimHorizontalScrollBar();
             dgvPreview1 = new DataGridView();
@@ -441,7 +440,6 @@ namespace AutoWeldSystem.UI.Views
             tlpStationOverview1.Controls.Add(lblLiveTouchNo1, 2, 0);
             tlpStationOverview1.Controls.Add(lblLiveProgramLimits1, 3, 0);
             tlpStationOverview1.Controls.Add(chkMergedDisplay1, 4, 0);
-            tlpStationOverview1.Controls.Add(chkFaceResultDisplay1, 5, 0);
             tlpStationOverview1.Dock = DockStyle.Fill;
             tlpStationOverview1.Location = new Point(0, 0);
             tlpStationOverview1.Margin = new Padding(0);
@@ -487,18 +485,18 @@ namespace AutoWeldSystem.UI.Views
             lblLiveTouchNo1.Margin = new Padding(0);
             lblLiveTouchNo1.Name = "lblLiveTouchNo1";
             lblLiveTouchNo1.Padding = new Padding(0, 0, 20, 0);
-            lblLiveTouchNo1.Size = new Size(120, 36);
+            lblLiveTouchNo1.Size = new Size(88, 36);
             lblLiveTouchNo1.TabIndex = 11;
             lblLiveTouchNo1.Text = "焊点：--";
-            //
+            // 
             // lblLiveProgramLimits1
-            //
+            // 
             lblLiveProgramLimits1.AutoEllipsis = true;
             lblLiveProgramLimits1.Dock = DockStyle.Fill;
-            lblLiveProgramLimits1.Location = new Point(373, 0);
+            lblLiveProgramLimits1.Location = new Point(341, 0);
             lblLiveProgramLimits1.Margin = new Padding(0);
             lblLiveProgramLimits1.Name = "lblLiveProgramLimits1";
-            lblLiveProgramLimits1.Size = new Size(568, 36);
+            lblLiveProgramLimits1.Size = new Size(501, 36);
             lblLiveProgramLimits1.TabIndex = 12;
             lblLiveProgramLimits1.Text = "设定值：--";
             lblLiveProgramLimits1.Visible = false;
@@ -507,7 +505,7 @@ namespace AutoWeldSystem.UI.Views
             // 
             chkMergedDisplay1.AutoSizeMode = AntdUI.TAutoSize.Width;
             chkMergedDisplay1.Dock = DockStyle.Fill;
-            chkMergedDisplay1.Location = new Point(941, 0);
+            chkMergedDisplay1.Location = new Point(842, 0);
             chkMergedDisplay1.Margin = new Padding(0);
             chkMergedDisplay1.Name = "chkMergedDisplay1";
             chkMergedDisplay1.Padding = new Padding(0, 0, 10, 0);
@@ -515,19 +513,6 @@ namespace AutoWeldSystem.UI.Views
             chkMergedDisplay1.TabIndex = 4;
             chkMergedDisplay1.Text = "合并显示";
             chkMergedDisplay1.Visible = false;
-            //
-            // chkFaceResultDisplay1
-            //
-            chkFaceResultDisplay1.AutoSizeMode = AntdUI.TAutoSize.Width;
-            chkFaceResultDisplay1.Dock = DockStyle.Fill;
-            chkFaceResultDisplay1.Location = new Point(1057, 0);
-            chkFaceResultDisplay1.Margin = new Padding(0);
-            chkFaceResultDisplay1.Name = "chkFaceResultDisplay1";
-            chkFaceResultDisplay1.Padding = new Padding(0, 0, 10, 0);
-            chkFaceResultDisplay1.Size = new Size(116, 36);
-            chkFaceResultDisplay1.TabIndex = 5;
-            chkFaceResultDisplay1.Text = "面结果";
-            chkFaceResultDisplay1.Visible = false;
             // 
             // HorizontalSplitter1
             // 
@@ -1995,7 +1980,6 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Label lblLiveHint1;
         private AntdUI.Label lblLiveProductNo1;
         private AntdUI.Checkbox chkMergedDisplay1;
-        private AntdUI.Checkbox chkFaceResultDisplay1;
         private AntdUI.Label lblLiveProgramLimits1;
         private AntdUI.Label lblLiveResult;
         private AntdUI.Label lblLiveTouchCount;
