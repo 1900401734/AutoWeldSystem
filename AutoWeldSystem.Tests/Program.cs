@@ -323,6 +323,7 @@ var tests = new (string Name, Action Run)[]
     ("Device API set device id saves local settings as synced", DeviceApiSetDeviceIdSavesLocalSettingsAsSynced),
     ("Device API set device id rejects mismatched old device id", DeviceApiSetDeviceIdRejectsMismatchedOldDeviceId),
     ("Device API rules build and parse status url", DeviceApiRulesBuildAndParseStatusUrl),
+    ("Device API rules select reported ipv4 address by priority", DeviceApiRulesSelectReportedIPv4AddressByPriority),
     ("Device API HTTP self check rules write success and failure", DeviceApiHttpSelfCheckRulesWriteSuccessAndFailure),
     ("Device API status query writes lifecycle log every time", DeviceApiStatusQueryWritesLifecycleLogEveryTime),
     ("Device API status query mismatch writes failure lifecycle log", DeviceApiStatusQueryMismatchWritesFailureLifecycleLog),
@@ -10525,6 +10526,46 @@ static void DeviceApiRulesBuildAndParseStatusUrl()
             out var baseUrl),
         "平台下发的设备状态地址应能反解出设备端 API 基地址。");
     AssertEqual("http://192.168.80.208:3000/", baseUrl, "反解出的设备端 API 基地址必须保留协议、主机和端口。");
+}
+
+static void DeviceApiRulesSelectReportedIPv4AddressByPriority()
+{
+    AssertEqual(
+        "192.168.20.92",
+        DeviceApiEndpointRules.SelectReportedIPv4Address("192.168.20.92", "192.168.30.10", "172.20.5.1"),
+        "到 MES 的路由源地址可用时必须优先作为上报 IP。");
+    AssertEqual(
+        "192.168.30.10",
+        DeviceApiEndpointRules.SelectReportedIPv4Address(string.Empty, "192.168.30.10", "172.20.5.1"),
+        "路由探测失败时应回退到设备状态地址中现场已配置的本机 IP。");
+    AssertEqual(
+        "172.20.5.1",
+        DeviceApiEndpointRules.SelectReportedIPv4Address("127.0.0.1", "0.0.0.0", "172.20.5.1"),
+        "环回和通配地址不得上报，必须继续回退到主机名解析结果。");
+    AssertEqual(
+        string.Empty,
+        DeviceApiEndpointRules.SelectReportedIPv4Address(null, "localhost", string.Empty),
+        "全部候选不可用时必须返回空字符串而不是错误地址。");
+
+    AssertTrue(
+        DeviceApiEndpointRules.TryGetIPv4AddressFromBaseUrl("http://192.168.30.10:7098/", out var deviceAddress),
+        "设备状态地址配成具体网卡 IP 时应能取出该地址。");
+    AssertEqual("192.168.30.10", deviceAddress, "从设备状态地址取出的上报 IP 必须是主机部分。");
+    AssertFalse(
+        DeviceApiEndpointRules.TryGetIPv4AddressFromBaseUrl("http://127.0.0.1:7098/", out _),
+        "设备状态地址仍是默认环回地址时不得当作上报 IP。");
+    AssertFalse(
+        DeviceApiEndpointRules.TryGetIPv4AddressFromBaseUrl("http://mes-host:7098/", out _),
+        "主机名形式的设备状态地址无法直接作为上报 IP。");
+
+    AssertTrue(
+        DeviceApiEndpointRules.TryGetEndpoint("http://192.168.101.65:8098/", out var host, out var port),
+        "MES 基地址应能解析出主机和端口用于路由探测。");
+    AssertEqual("192.168.101.65", host, "路由探测必须使用 MES 基地址的主机。");
+    AssertEqual(8098, port, "路由探测必须使用 MES 基地址的端口。");
+    AssertFalse(
+        DeviceApiEndpointRules.TryGetEndpoint(string.Empty, out _, out _),
+        "MES 基地址为空时必须放弃路由探测，不能回退到本机默认地址。");
 }
 
 static void DeviceApiHttpSelfCheckRulesWriteSuccessAndFailure()

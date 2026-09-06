@@ -1645,7 +1645,7 @@ public partial class SystemSettingView : BaseView
             OldDeviceId = GetMesOldDeviceId(previousSettings, newSettings),
             DeviceId = newSettings.DeviceId.Trim(),
             DeviceName = newSettings.DeviceName.Trim(),
-            IP = GetLocalIPv4Address(),
+            IP = GetReportedIPv4Address(newSettings),
             DevStatusUrl = DeviceApiEndpointRules.BuildDeviceStatusUrl(newSettings.DeviceBaseUrl, newSettings.DeviceId),
             PostDataDomain = DeviceApiEndpointRules.NormalizeBaseUrl(newSettings.MesBaseUrl)
         };
@@ -1681,7 +1681,44 @@ public partial class SystemSettingView : BaseView
         return string.Equals(left?.Trim(), right?.Trim(), StringComparison.Ordinal);
     }
 
-    private static string GetLocalIPv4Address()
+    /// <summary>
+    /// 选择上报给 MES 的本机 IP。
+    /// 多网卡工控机（Hyper-V、VPN、无线并存）上 Dns.GetHostEntry 的地址顺序不可控，
+    /// 可能报出与 MES 不通的虚拟网卡地址，因此改为按到 MES 的路由优先。
+    /// </summary>
+    private static string GetReportedIPv4Address(AppSettings settings)
+    {
+        DeviceApiEndpointRules.TryGetIPv4AddressFromBaseUrl(settings.DeviceBaseUrl, out var deviceBaseUrlAddress);
+        return DeviceApiEndpointRules.SelectReportedIPv4Address(
+            GetRoutedIPv4Address(settings.MesBaseUrl),
+            deviceBaseUrlAddress,
+            GetHostEntryIPv4Address());
+    }
+
+    /// <summary>
+    /// 用 UDP Connect 让内核做一次到 MES 的路由查询，本地端点即实际用于连接 MES 的网卡地址。
+    /// 该调用不产生任何网络流量，MES 离线也能得到正确结果。
+    /// </summary>
+    private static string GetRoutedIPv4Address(string? mesBaseUrl)
+    {
+        try
+        {
+            if (!DeviceApiEndpointRules.TryGetEndpoint(mesBaseUrl, out var host, out var port))
+            {
+                return string.Empty;
+            }
+
+            using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            socket.Connect(host, port);
+            return socket.LocalEndPoint is IPEndPoint endPoint ? endPoint.Address.ToString() : string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private static string GetHostEntryIPv4Address()
     {
         try
         {
@@ -1689,7 +1726,7 @@ public partial class SystemSettingView : BaseView
                 .AddressList
                 .Where(address => address.AddressFamily == AddressFamily.InterNetwork)
                 .Select(address => address.ToString())
-                .FirstOrDefault(address => !IPAddress.IsLoopback(IPAddress.Parse(address))) ?? string.Empty;
+                .FirstOrDefault(DeviceApiEndpointRules.IsUsableReportedIPv4Address) ?? string.Empty;
         }
         catch
         {
