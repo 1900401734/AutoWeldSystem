@@ -320,9 +320,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
     {
         var refreshTime = DateTime.Now;
         var settings = _settingsService.Get();
-        var useProgramResult = WholePieceProgramResultRules.IsApplicable(
-            settings.ProcessParameterDeviceType,
-            settings.InspectionResultSource);
+        var useProgramResult = WholePieceProgramResultRules.IsApplicable(settings.ProcessParameterDeviceType);
         var useProgramPointNumber = string.Equals(
             ProductionConstants.RealtimePointNumberSources.Normalize(settings.RealtimePointNumberSource),
             ProductionConstants.RealtimePointNumberSources.Program,
@@ -379,6 +377,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
                 activeTask?.ProgramContentSnapshot,
                 mergedSucceeded ? mergedAggregation : null,
                 mergedDefinitions,
+                settings,
                 out mergedFailedColumns));
             mergedFailedColumns = mergedFailedColumns
                 .Where(columnName => mergedColumns.Any(column =>
@@ -465,7 +464,6 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             sideItemValues,
             sideResults,
             definitions,
-            settings.PairedAggregationMode,
             settings.EnablePlcStringNumericFormatting ?? true,
             settings.PlcStringNumericFormatMode);
     }
@@ -476,6 +474,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         string? programContentSnapshot,
         WholePieceAbAggregationResult? mergedAggregation,
         IReadOnlyList<WholePieceAbValueDefinition> definitions,
+        AppSettings settings,
         out IReadOnlyList<string> failedColumns)
     {
         failedColumns = Array.Empty<string>();
@@ -488,7 +487,9 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         var merged = WholePieceProgramResultRules.EvaluateAggregated(
             programContentSnapshot,
             mergedAggregation.Rows,
-            definitions);
+            definitions,
+            settings.EffectiveJudgementDecimalPlaces,
+            settings.PlcStringNumericFormatMode);
         if (!merged.IsSuccess)
         {
             return faceResult;
@@ -571,29 +572,8 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
                     cancellationToken));
             }
 
+            // 逐面判定已取消：面结果沿用 PLC 的检测完成信号，产品结果只由 A/B 合并值判定。
             var displayedTouchResult = plcTouchResult;
-            if (useProgramResult && shouldReadTestValues)
-            {
-                // B 面（面1、面3）的宽度不参与面级判定：程序内容里的宽度上限按 A 面设定。
-                var measurements = faceRows
-                    .Where(row => programItemIds.Contains(row.ItemId)
-                        && WholePieceProgramResultRules.ParticipatesInFaceEvaluation(
-                            row.ItemName,
-                            touchNo.ToString(CultureInfo.InvariantCulture),
-                            config.TouchCount))
-                    .Select(row => new WholePieceProgramMeasurement(row.ItemName, row.ActualValue))
-                    .ToList();
-                var calculated = WholePieceProgramResultRules.EvaluateFace(programContentSnapshot, measurements);
-                if (calculated.IsSuccess)
-                {
-                    displayedTouchResult = calculated.Result;
-                }
-                else
-                {
-                    displayedTouchResult = ProductionConstants.TestResults.NotAvailable;
-                    errors.Add($"面{touchNo}程序判定失败：{calculated.ErrorMessage}");
-                }
-            }
 
             foreach (var row in faceRows)
             {

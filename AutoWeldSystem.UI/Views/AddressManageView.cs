@@ -316,8 +316,8 @@ public partial class AddressManageView : BaseView
         schemeDetailRoleGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(SchemeDetailRoleTableRow.HeaderText), HeaderText = _localizer.GetString(TextKeys.Address.ColumnDetailHeader) });
         AddSchemeDetailRoleCheckColumn(nameof(SchemeDetailRoleTableRow.SaveEnabled), TextKeys.Address.ColumnDetailSave);
         AddSchemeDetailRoleCheckColumn(nameof(SchemeDetailRoleTableRow.ForwardEnabled), TextKeys.Address.ColumnDetailForward);
-        AddSchemeDetailRoleCheckColumn(nameof(SchemeDetailRoleTableRow.ReportEnabled), TextKeys.Address.ColumnDetailReport);
-        AddSchemeDetailRoleCheckColumn(nameof(SchemeDetailRoleTableRow.MesEnabled), TextKeys.Address.ColumnDetailMes);
+        // 「写入报表」与「过程参数」已合并为「上报」：两者对外必然成对生效，拆开只会产生只勾一个的无效配置。
+        AddSchemeDetailRoleCheckColumn(nameof(SchemeDetailRoleTableRow.UploadEnabled), TextKeys.Address.ColumnDetailUpload);
         schemeDetailRoleGrid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(SchemeDetailRoleTableRow.MesFieldName), HeaderText = _localizer.GetString(TextKeys.Address.ColumnDetailMesField) });
         TableStyleHelper.ApplyDataGridView(schemeDetailRoleGrid);
     }
@@ -3125,16 +3125,13 @@ public partial class AddressManageView : BaseView
             set => SchemeDetailRoleRules.SetForwardEnabled(Source, Role, value);
         }
 
-        public bool ReportEnabled
+        /// <summary>
+        /// 上报通道：同时写入报告文件并通过 MES 接口上传，勾选时隐含打开实时预览与本地保存。
+        /// </summary>
+        public bool UploadEnabled
         {
-            get => SchemeDetailRoleRules.IsReportEnabled(Source, Role);
-            set => SchemeDetailRoleRules.SetReportEnabled(Source, Role, value);
-        }
-
-        public bool MesEnabled
-        {
-            get => SchemeDetailRoleRules.IsMesEnabled(Source, Role);
-            set => SchemeDetailRoleRules.SetMesEnabled(Source, Role, value);
+            get => SchemeDetailRoleRules.IsUploadEnabled(Source, Role);
+            set => SchemeDetailRoleRules.SetUploadEnabled(Source, Role, value);
         }
 
         public string? MesFieldName

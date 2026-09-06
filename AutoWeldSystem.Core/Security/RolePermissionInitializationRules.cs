@@ -117,8 +117,7 @@ public static class RolePermissionInitializationRules
 
         return new[]
         {
-            PermissionCodes.Buttons.Monitor.MergedDisplay,
-            PermissionCodes.Buttons.Monitor.FaceResultDisplay
+            PermissionCodes.Buttons.Monitor.MergedDisplay
         };
     }
 

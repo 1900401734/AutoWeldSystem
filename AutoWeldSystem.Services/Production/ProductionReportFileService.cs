@@ -77,7 +77,7 @@ public class ProductionReportFileService : IProductionReportFileService
                 BuildReportSchema(latestTask, records),
                 records,
                 latestTask,
-                OutputNumericFormat.ForReport(CurrentSettings));
+                OutputNumericFormat.ForUpload(CurrentSettings));
 
             report.FileFormat = ReportFormat;
             report.UploadStatus = ProductionConstants.UploadStatuses.Pending;
@@ -221,7 +221,14 @@ public class ProductionReportFileService : IProductionReportFileService
                 item,
                 !localExport && WholePieceAbAggregationRules.IsApplicable(deviceType, config.Config.TouchCount),
                 localExport)));
-        var pointResultColumn = BuildPointResultColumn(displayOptions);
+        // 整件检测的上传报表取消采集点结果列：面结果寄存器恒为检测完成信号，
+        // 列名叫“检测结果”却不承载合格信息，对客户构成误导，产品结果列已足够。
+        // 本地导出保留该列：它输出 PLC 原始面记录，供工艺人员核对采集状态。
+        var wholePieceUploadReport = !localExport
+            && WholePieceAbAggregationRules.IsApplicable(deviceType, orderedConfigs.FirstOrDefault()?.Config.TouchCount ?? 0);
+        var pointResultColumn = wholePieceUploadReport
+            ? Array.Empty<ReportColumn>()
+            : BuildPointResultColumn(displayOptions);
         var trailingColumns = BuildTrailingColumns();
         var columns = leadingColumns
             .Concat(dynamicColumns)
@@ -382,7 +389,6 @@ public class ProductionReportFileService : IProductionReportFileService
             var aggregation = WholePieceAbAggregationRules.Aggregate(
                 group,
                 definitions,
-                settings.PairedAggregationMode,
                 settings.EnablePlcStringNumericFormatting ?? true,
                 settings.PlcStringNumericFormatMode);
             if (!aggregation.IsSuccess)
@@ -393,13 +399,13 @@ public class ProductionReportFileService : IProductionReportFileService
             var productResult = ResolveProductResult(group);
             // 行结果改用该行的合并值判定，与产品结果同源；
             // 否则单面检测失败会让某行显示 NG，而按四面最大值算出的产品结果是 OK，两者对不上。
-            var outputRows = WholePieceProgramResultRules.IsApplicable(
-                    settings.ProcessParameterDeviceType,
-                    settings.InspectionResultSource)
+            var outputRows = WholePieceProgramResultRules.IsApplicable(settings.ProcessParameterDeviceType)
                 ? WholePieceProgramResultRules.ApplyAggregatedRowResults(
                     task.ProgramContentSnapshot,
                     aggregation.Rows,
-                    definitions)
+                    definitions,
+                    settings.EffectiveJudgementDecimalPlaces,
+                    settings.PlcStringNumericFormatMode)
                 : aggregation.Rows;
             foreach (var output in outputRows)
             {

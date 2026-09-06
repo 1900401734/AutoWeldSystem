@@ -46,18 +46,20 @@ public class AppSettings
     public string PlcStringNumericFormatMode { get; set; } = AppConstants.PlcStringNumericFormatModes.Truncate;
 
     /// <summary>
-    /// XLSX 报表输出的小数位。为空表示沿用采集时按偏移量表达式格式化的位数。
-    /// 采集时已按表达式小数位存库，这里只能减位或补零，恢复不了被截掉的精度。
-    /// </summary>
-    [SugarColumn(ColumnDescription = "报表输出小数位", IsNullable = true)]
-    public int? ReportDecimalPlaces { get; set; }
-
-    /// <summary>
-    /// MES 过程参数上传的小数位。为空表示沿用采集时按偏移量表达式格式化的位数。
+    /// 判定与上报小数位。同时作用于产品判定、合并视图、报告文件和过程参数，四者必须同源：
+    /// 操作员在合并视图看到的数值就是判定所用的值，也是对外上报的值。
+    /// 名称保留“判定”二字，防止现场误当成纯显示设置随手调整而改变合格门槛。
     /// 截断还是四舍五入由 <see cref="PlcStringNumericFormatMode"/> 决定，不单独配置。
     /// </summary>
-    [SugarColumn(ColumnDescription = "过程参数上传小数位", IsNullable = true)]
-    public int? ProcessParameterDecimalPlaces { get; set; }
+    [SugarColumn(ColumnDescription = "判定与上报小数位", IsNullable = true)]
+    public int? JudgementDecimalPlaces { get; set; } = 2;
+
+    /// <summary>
+    /// 判定与上报小数位的生效口径。未配置（null）时按默认 2 位处理，
+    /// 默认值只有这一处，避免各调用点各自兜底后与实体默认值不一致。
+    /// </summary>
+    [SugarColumn(IsIgnore = true)]
+    public int EffectiveJudgementDecimalPlaces => JudgementDecimalPlaces ?? 2;
 
     [SugarColumn(ColumnDescription = "是否启用PLC报警读取", IsNullable = true)]
     public bool? EnablePlcAlarmReading { get; set; } = true;
@@ -188,8 +190,6 @@ public class AppSettings
     [SugarColumn(Length = 50, ColumnDescription = "过程参数设备类型")]
     public string ProcessParameterDeviceType { get; set; } = ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic;
 
-    [SugarColumn(Length = 20, ColumnDescription = "检测结果来源", IsNullable = true)]
-    public string? InspectionResultSource { get; set; } = ProductionConstants.InspectionResultSources.Plc;
 
     [SugarColumn(Length = 20, ColumnDescription = "实时焊点编号来源", IsNullable = true)]
     public string? RealtimePointNumberSource { get; set; } = ProductionConstants.RealtimePointNumberSources.Plc;
@@ -202,31 +202,11 @@ public class AppSettings
     public bool? EnableWholePieceMergedDisplay { get; set; } = true;
 
     /// <summary>
-    /// 整件检测逐面模式是否显示“面结果”列。关闭后只隐藏该列，面号和逐面实测值保留。
-    /// 默认关闭：单面结果与合并后的产品结果口径不同，同屏显示容易被误读成互相矛盾。仅影响界面。
-    /// </summary>
-    [SugarColumn(ColumnDescription = "整件检测逐面结果显示", IsNullable = true)]
-    public bool? EnableWholePieceFaceResultDisplay { get; set; } = false;
-
-    /// <summary>
     /// 合并显示的生效口径。默认开启，未配置（null）按开启处理。
     /// 默认值只有这一处，避免各调用点各自写死空值兜底后与实体默认值相反。
     /// </summary>
     [SugarColumn(IsIgnore = true)]
     public bool IsWholePieceMergedDisplayEnabled => EnableWholePieceMergedDisplay != false;
-
-    /// <summary>
-    /// “面结果”列的生效口径。默认关闭，未配置（null）按关闭处理。
-    /// </summary>
-    [SugarColumn(IsIgnore = true)]
-    public bool IsWholePieceFaceResultDisplayEnabled => EnableWholePieceFaceResultDisplay == true;
-
-    /// <summary>
-    /// 整件检测 A/B 配对聚合方式。高度取四面最大值、宽度只取 A 面，本设置只作用于其余测试项。
-    /// 默认取最大值：单面视觉检测失败会回传 0，取平均会把 0 拉进结果反而更容易判 OK。
-    /// </summary>
-    [SugarColumn(Length = 20, ColumnDescription = "A/B配对聚合方式", IsNullable = true)]
-    public string? PairedAggregationMode { get; set; } = ProductionConstants.PairedAggregationModes.Maximum;
 
     [SugarColumn(ColumnDescription = "过程参数接口编码")]
     public ApiCode ProcessParameterApiCode { get; set; } = ApiCode.EMWeldDetail_001;

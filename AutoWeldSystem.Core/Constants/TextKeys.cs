@@ -140,7 +140,6 @@ public static class TextKeys
             public const string FilterByProductNumber = "monitor.checkbox.filter_by_product_number";
             public const string EnableDualWorkOrder = "monitor.checkbox.enable_dual_work_order";
             public const string MergedDisplay = "monitor.checkbox.merged_display";
-            public const string FaceResultDisplay = "monitor.checkbox.face_result_display";
         }
 
         /// <summary>
@@ -151,7 +150,6 @@ public static class TextKeys
             public const string FilterByProductNumber = "monitor.tooltip.filter_by_product_number";
             public const string EnableDualWorkOrder = "monitor.tooltip.enable_dual_work_order";
             public const string MergedDisplay = "monitor.tooltip.merged_display";
-            public const string FaceResultDisplay = "monitor.tooltip.face_result_display";
             public const string ProgramLimits = "monitor.tooltip.program_limits";
         }
 
@@ -943,7 +941,6 @@ public static class TextKeys
         public const string ButtonMonitorOnlineReport = "permission.button.monitor.online_report";
         public const string ButtonMonitorLocalWorkOrder = "permission.button.monitor.local_work_order";
         public const string ButtonMonitorMergedDisplay = "permission.button.monitor.merged_display";
-        public const string ButtonMonitorFaceResultDisplay = "permission.button.monitor.face_result_display";
         public const string ButtonAuthSwitchUser = "permission.button.auth.switch_user";
         public const string ButtonAuthLogout = "permission.button.auth.logout";
         public const string ButtonAuthAddressPreview = "permission.button.auth.address_preview";
@@ -1184,19 +1181,14 @@ public static class TextKeys
         public const string LabelLogPath = "system.label.log_path";
         public const string LabelDataPath = "system.label.data_path";
         public const string LabelMesUrl = "system.label.mes_url";
-        public const string LabelReportDecimalPlaces = "system.label.report_decimal_places";
-        public const string LabelProcessParameterDecimalPlaces = "system.label.process_parameter_decimal_places";
+        public const string LabelJudgementDecimalPlaces = "system.label.judgement_decimal_places";
         public const string LabelMesTimeout = "system.label.mes_timeout";
         public const string LabelMesHeartbeatInterval = "system.label.mes_heartbeat_interval";
         public const string LabelCenterServerUrl = "system.label.center_server_url";
         public const string LabelCenterServerSystemType = "system.label.center_server_system_type";
         public const string LabelCenterServerHeartbeat = "system.label.center_server_heartbeat";
         public const string LabelProcessParameterDeviceType = "system.label.process_parameter_device_type";
-        public const string LabelInspectionResultSource = "system.label.inspection_result_source";
         public const string LabelRealtimePointNumberSource = "system.label.realtime_point_number_source";
-        public const string LabelPairedAggregationMode = "system.label.paired_aggregation_mode";
-        public const string LabelWholePieceMergedDisplay = "system.label.whole_piece_merged_display";
-        public const string LabelWholePieceFaceResultDisplay = "system.label.whole_piece_face_result_display";
         public const string LabelPostDataHeaderKey = "system.label.postdata_header_key";
         public const string LabelPostDataHeaderValue = "system.label.postdata_header_value";
         public const string UploadMode = "system.label.upload_mode";
@@ -1243,12 +1235,8 @@ public static class TextKeys
         public const string OptionDeviceElectromagnetic = "system.option.device.electromagnetic";
         public const string OptionDeviceWholePieceCheck = "system.option.device.whole_piece_check";
         public const string OptionDeviceWholePieceWeld = "system.option.device.whole_piece_weld";
-        public const string OptionInspectionResultSourcePlc = "system.option.inspection_result_source.plc";
-        public const string OptionInspectionResultSourceProgram = "system.option.inspection_result_source.program";
         public const string OptionRealtimePointNumberSourcePlc = "system.option.realtime_point_number_source.plc";
         public const string OptionRealtimePointNumberSourceProgram = "system.option.realtime_point_number_source.program";
-        public const string OptionPairedAggregationAverage = "system.option.paired_aggregation.average";
-        public const string OptionPairedAggregationMaximum = "system.option.paired_aggregation.maximum";
         public const string OptionCenterWholePiece = "system.option.center.whole_piece";
         public const string OptionCenterOther = "system.option.center.other";
 
@@ -1286,9 +1274,7 @@ public static class TextKeys
         public const string MessageStationDisplayNameRequired = "system.message.station_display_name_required";
         public const string MessageStationDisplayNameDuplicate = "system.message.station_display_name_duplicate";
         public const string MessageRuntimeModeLocked = "system.message.runtime_mode_locked";
-        public const string MessageInspectionResultSourceLocked = "system.message.inspection_result_source_locked";
         public const string MessageRealtimePointNumberSourceLocked = "system.message.realtime_point_number_source_locked";
-        public const string MessagePairedAggregationModeLocked = "system.message.paired_aggregation_mode_locked";
         public const string MessageDeviceManagementLocked = "system.message.device_management_locked";
         public const string MessagePositiveIntegerRequired = "system.message.positive_integer_required";
         public const string MessageDecimalPlacesRequired = "system.message.decimal_places_required";
@@ -1329,8 +1315,7 @@ public static class TextKeys
         public const string ColumnDetailHeader = "address.column.detail_header";
         public const string ColumnDetailSave = "address.column.detail_save";
         public const string ColumnDetailForward = "address.column.detail_forward";
-        public const string ColumnDetailReport = "address.column.detail_report";
-        public const string ColumnDetailMes = "address.column.detail_mes";
+        public const string ColumnDetailUpload = "address.column.detail_upload";
         public const string ColumnDetailMesField = "address.column.detail_mes_field";
         public const string DetailRoleActual = "address.detail_role.actual";
         public const string DetailRoleUpper = "address.detail_role.upper";

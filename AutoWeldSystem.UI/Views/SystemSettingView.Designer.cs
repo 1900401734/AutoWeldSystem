@@ -38,12 +38,9 @@
             tableLayoutPanel7 = new TableLayoutPanel();
             lblPlcType = new AntdUI.Label();
             select_PlcType = new AntdUI.Select();
-            tlpReportDecimalPlaces = new TableLayoutPanel();
-            lblReportDecimalPlaces = new AntdUI.Label();
-            inputReportDecimalPlaces = new AntdUI.Input();
-            tlpProcessParameterDecimalPlaces = new TableLayoutPanel();
-            lblProcessParameterDecimalPlaces = new AntdUI.Label();
-            inputProcessParameterDecimalPlaces = new AntdUI.Input();
+            tlpJudgementDecimalPlaces = new TableLayoutPanel();
+            lblJudgementDecimalPlaces = new AntdUI.Label();
+            inputJudgementDecimalPlaces = new AntdUI.Input();
             tlpReadAlarm = new TableLayoutPanel();
             chkEnablePlcAlarmReading = new AntdUI.Checkbox();
             selectPlcAlarmTriggerMode = new AntdUI.Select();
@@ -84,18 +81,9 @@
             middleSettingsColumn = new TableLayoutPanel();
             grpProductionConfig = new GroupBox();
             tlpProductConfig = new TableLayoutPanel();
-            tlpPairedAggregationMode = new TableLayoutPanel();
-            lblPairedAggregationMode = new AntdUI.Label();
-            selectPairedAggregationMode = new AntdUI.Select();
-            tlpProcessParameterType = new TableLayoutPanel();
-            chkEnableWholePieceMergedDisplay = new AntdUI.Checkbox();
-            chkEnableWholePieceFaceResultDisplay = new AntdUI.Checkbox();
             tlpRealtimePointNumberSource = new TableLayoutPanel();
             lblRealtimePointNumberSource = new AntdUI.Label();
             selectRealtimePointNumberSource = new AntdUI.Select();
-            tlpInspectionResultSource = new TableLayoutPanel();
-            lblInspectionResultSource = new AntdUI.Label();
-            selectInspectionResultSource = new AntdUI.Select();
             stationDisplayNameLayout = new TableLayoutPanel();
             lblStation1DisplayName = new AntdUI.Label();
             inputStation1DisplayName = new AntdUI.Input();
@@ -207,8 +195,7 @@
             tlpPlcIp.SuspendLayout();
             tlpPlcPort.SuspendLayout();
             tableLayoutPanel7.SuspendLayout();
-            tlpReportDecimalPlaces.SuspendLayout();
-            tlpProcessParameterDecimalPlaces.SuspendLayout();
+            tlpJudgementDecimalPlaces.SuspendLayout();
             tlpReadAlarm.SuspendLayout();
             tlpNumericProcess.SuspendLayout();
             tableLayoutPanel3.SuspendLayout();
@@ -225,10 +212,7 @@
             middleSettingsColumn.SuspendLayout();
             grpProductionConfig.SuspendLayout();
             tlpProductConfig.SuspendLayout();
-            tlpPairedAggregationMode.SuspendLayout();
-            tlpProcessParameterType.SuspendLayout();
             tlpRealtimePointNumberSource.SuspendLayout();
-            tlpInspectionResultSource.SuspendLayout();
             stationDisplayNameLayout.SuspendLayout();
             tlpUploadConfig.SuspendLayout();
             tableLayoutPanel2.SuspendLayout();
@@ -436,8 +420,7 @@
             tlpPlcConfig.Controls.Add(tlpPlcIp, 0, 0);
             tlpPlcConfig.Controls.Add(tlpPlcPort, 0, 1);
             tlpPlcConfig.Controls.Add(tableLayoutPanel7, 0, 2);
-            tlpPlcConfig.Controls.Add(tlpReportDecimalPlaces, 0, 8);
-            tlpPlcConfig.Controls.Add(tlpProcessParameterDecimalPlaces, 0, 9);
+            tlpPlcConfig.Controls.Add(tlpJudgementDecimalPlaces, 0, 8);
             tlpPlcConfig.Controls.Add(tlpReadAlarm, 0, 3);
             tlpPlcConfig.Controls.Add(tlpNumericProcess, 0, 4);
             tlpPlcConfig.Controls.Add(tableLayoutPanel3, 0, 5);
@@ -447,8 +430,7 @@
             tlpPlcConfig.Location = new Point(2, 23);
             tlpPlcConfig.Margin = new Padding(2, 3, 2, 3);
             tlpPlcConfig.Name = "tlpPlcConfig";
-            tlpPlcConfig.RowCount = 10;
-            tlpPlcConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
+            tlpPlcConfig.RowCount = 9;
             tlpPlcConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
             tlpPlcConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
             tlpPlcConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
@@ -595,83 +577,44 @@
             select_PlcType.Size = new Size(371, 40);
             select_PlcType.TabIndex = 1;
             // 
-            // tlpReportDecimalPlaces
+            // tlpJudgementDecimalPlaces
             // 
-            tlpReportDecimalPlaces.AutoSize = true;
-            tlpReportDecimalPlaces.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            tlpReportDecimalPlaces.ColumnCount = 2;
-            tlpReportDecimalPlaces.ColumnStyles.Add(new ColumnStyle());
-            tlpReportDecimalPlaces.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            tlpReportDecimalPlaces.Controls.Add(lblReportDecimalPlaces, 0, 0);
-            tlpReportDecimalPlaces.Controls.Add(inputReportDecimalPlaces, 1, 0);
-            tlpReportDecimalPlaces.Dock = DockStyle.Fill;
-            tlpReportDecimalPlaces.Location = new Point(0, 320);
-            tlpReportDecimalPlaces.Margin = new Padding(0);
-            tlpReportDecimalPlaces.Name = "tlpReportDecimalPlaces";
-            tlpReportDecimalPlaces.RowCount = 1;
-            tlpReportDecimalPlaces.RowStyles.Add(new RowStyle());
-            tlpReportDecimalPlaces.Size = new Size(409, 40);
-            tlpReportDecimalPlaces.TabIndex = 5;
+            tlpJudgementDecimalPlaces.AutoSize = true;
+            tlpJudgementDecimalPlaces.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            tlpJudgementDecimalPlaces.ColumnCount = 2;
+            tlpJudgementDecimalPlaces.ColumnStyles.Add(new ColumnStyle());
+            tlpJudgementDecimalPlaces.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            tlpJudgementDecimalPlaces.Controls.Add(lblJudgementDecimalPlaces, 0, 0);
+            tlpJudgementDecimalPlaces.Controls.Add(inputJudgementDecimalPlaces, 1, 0);
+            tlpJudgementDecimalPlaces.Dock = DockStyle.Fill;
+            tlpJudgementDecimalPlaces.Location = new Point(0, 320);
+            tlpJudgementDecimalPlaces.Margin = new Padding(0);
+            tlpJudgementDecimalPlaces.Name = "tlpJudgementDecimalPlaces";
+            tlpJudgementDecimalPlaces.RowCount = 1;
+            tlpJudgementDecimalPlaces.RowStyles.Add(new RowStyle());
+            tlpJudgementDecimalPlaces.Size = new Size(409, 40);
+            tlpJudgementDecimalPlaces.TabIndex = 5;
             // 
-            // lblReportDecimalPlaces
+            // lblJudgementDecimalPlaces
             // 
-            lblReportDecimalPlaces.AutoSizeMode = AntdUI.TAutoSize.Width;
-            lblReportDecimalPlaces.Dock = DockStyle.Fill;
-            lblReportDecimalPlaces.Location = new Point(0, 0);
-            lblReportDecimalPlaces.Margin = new Padding(0);
-            lblReportDecimalPlaces.Name = "lblReportDecimalPlaces";
-            lblReportDecimalPlaces.Padding = new Padding(6, 0, 0, 0);
-            lblReportDecimalPlaces.Size = new Size(85, 40);
-            lblReportDecimalPlaces.TabIndex = 0;
-            lblReportDecimalPlaces.Text = "报表小数位";
+            lblJudgementDecimalPlaces.AutoSizeMode = AntdUI.TAutoSize.Width;
+            lblJudgementDecimalPlaces.Dock = DockStyle.Fill;
+            lblJudgementDecimalPlaces.Location = new Point(0, 0);
+            lblJudgementDecimalPlaces.Margin = new Padding(0);
+            lblJudgementDecimalPlaces.Name = "lblJudgementDecimalPlaces";
+            lblJudgementDecimalPlaces.Padding = new Padding(6, 0, 0, 0);
+            lblJudgementDecimalPlaces.Size = new Size(85, 40);
+            lblJudgementDecimalPlaces.TabIndex = 0;
+            lblJudgementDecimalPlaces.Text = "判定与上报小数位";
             // 
-            // inputReportDecimalPlaces
+            // inputJudgementDecimalPlaces
             // 
-            inputReportDecimalPlaces.Dock = DockStyle.Fill;
-            inputReportDecimalPlaces.Location = new Point(85, 0);
-            inputReportDecimalPlaces.Margin = new Padding(0);
-            inputReportDecimalPlaces.Name = "inputReportDecimalPlaces";
-            inputReportDecimalPlaces.Size = new Size(324, 40);
-            inputReportDecimalPlaces.TabIndex = 1;
-            // 
-            // tlpProcessParameterDecimalPlaces
-            // 
-            tlpProcessParameterDecimalPlaces.AutoSize = true;
-            tlpProcessParameterDecimalPlaces.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            tlpProcessParameterDecimalPlaces.ColumnCount = 2;
-            tlpProcessParameterDecimalPlaces.ColumnStyles.Add(new ColumnStyle());
-            tlpProcessParameterDecimalPlaces.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            tlpProcessParameterDecimalPlaces.Controls.Add(lblProcessParameterDecimalPlaces, 0, 0);
-            tlpProcessParameterDecimalPlaces.Controls.Add(inputProcessParameterDecimalPlaces, 1, 0);
-            tlpProcessParameterDecimalPlaces.Dock = DockStyle.Fill;
-            tlpProcessParameterDecimalPlaces.Location = new Point(0, 360);
-            tlpProcessParameterDecimalPlaces.Margin = new Padding(0);
-            tlpProcessParameterDecimalPlaces.Name = "tlpProcessParameterDecimalPlaces";
-            tlpProcessParameterDecimalPlaces.RowCount = 1;
-            tlpProcessParameterDecimalPlaces.RowStyles.Add(new RowStyle());
-            tlpProcessParameterDecimalPlaces.Size = new Size(409, 40);
-            tlpProcessParameterDecimalPlaces.TabIndex = 6;
-            // 
-            // lblProcessParameterDecimalPlaces
-            // 
-            lblProcessParameterDecimalPlaces.AutoSizeMode = AntdUI.TAutoSize.Width;
-            lblProcessParameterDecimalPlaces.Dock = DockStyle.Fill;
-            lblProcessParameterDecimalPlaces.Location = new Point(0, 0);
-            lblProcessParameterDecimalPlaces.Margin = new Padding(0);
-            lblProcessParameterDecimalPlaces.Name = "lblProcessParameterDecimalPlaces";
-            lblProcessParameterDecimalPlaces.Padding = new Padding(6, 0, 0, 0);
-            lblProcessParameterDecimalPlaces.Size = new Size(116, 40);
-            lblProcessParameterDecimalPlaces.TabIndex = 0;
-            lblProcessParameterDecimalPlaces.Text = "过程参数小数位";
-            // 
-            // inputProcessParameterDecimalPlaces
-            // 
-            inputProcessParameterDecimalPlaces.Dock = DockStyle.Fill;
-            inputProcessParameterDecimalPlaces.Location = new Point(116, 0);
-            inputProcessParameterDecimalPlaces.Margin = new Padding(0);
-            inputProcessParameterDecimalPlaces.Name = "inputProcessParameterDecimalPlaces";
-            inputProcessParameterDecimalPlaces.Size = new Size(293, 40);
-            inputProcessParameterDecimalPlaces.TabIndex = 1;
+            inputJudgementDecimalPlaces.Dock = DockStyle.Fill;
+            inputJudgementDecimalPlaces.Location = new Point(85, 0);
+            inputJudgementDecimalPlaces.Margin = new Padding(0);
+            inputJudgementDecimalPlaces.Name = "inputJudgementDecimalPlaces";
+            inputJudgementDecimalPlaces.Size = new Size(324, 40);
+            inputJudgementDecimalPlaces.TabIndex = 1;
             // 
             // tlpReadAlarm
             // 
@@ -1203,10 +1146,7 @@
             tlpProductConfig.ColumnCount = 2;
             tlpProductConfig.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             tlpProductConfig.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            tlpProductConfig.Controls.Add(tlpPairedAggregationMode, 0, 7);
-            tlpProductConfig.Controls.Add(tlpProcessParameterType, 0, 8);
-            tlpProductConfig.Controls.Add(tlpRealtimePointNumberSource, 0, 6);
-            tlpProductConfig.Controls.Add(tlpInspectionResultSource, 0, 5);
+            tlpProductConfig.Controls.Add(tlpRealtimePointNumberSource, 0, 5);
             tlpProductConfig.Controls.Add(stationDisplayNameLayout, 0, 2);
             tlpProductConfig.Controls.Add(tlpUploadConfig, 0, 3);
             tlpProductConfig.Controls.Add(chkEnableDualStation, 0, 0);
@@ -1218,103 +1158,16 @@
             tlpProductConfig.Location = new Point(2, 23);
             tlpProductConfig.Margin = new Padding(2, 3, 2, 3);
             tlpProductConfig.Name = "tlpProductConfig";
-            tlpProductConfig.RowCount = 9;
+            tlpProductConfig.RowCount = 6;
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
             tlpProductConfig.RowStyles.Add(new RowStyle());
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
-            tlpProductConfig.RowStyles.Add(new RowStyle());
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
-            tlpProductConfig.RowStyles.Add(new RowStyle());
             tlpProductConfig.RowStyles.Add(new RowStyle());
             tlpProductConfig.Size = new Size(409, 359);
             tlpProductConfig.TabIndex = 0;
-            // 
-            // tlpPairedAggregationMode
-            // 
-            tlpPairedAggregationMode.ColumnCount = 2;
-            tlpProductConfig.SetColumnSpan(tlpPairedAggregationMode, 2);
-            tlpPairedAggregationMode.ColumnStyles.Add(new ColumnStyle());
-            tlpPairedAggregationMode.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            tlpPairedAggregationMode.Controls.Add(lblPairedAggregationMode, 0, 0);
-            tlpPairedAggregationMode.Controls.Add(selectPairedAggregationMode, 1, 0);
-            tlpPairedAggregationMode.Dock = DockStyle.Fill;
-            tlpPairedAggregationMode.Location = new Point(0, 279);
-            tlpPairedAggregationMode.Margin = new Padding(0);
-            tlpPairedAggregationMode.Name = "tlpPairedAggregationMode";
-            tlpPairedAggregationMode.RowCount = 1;
-            tlpPairedAggregationMode.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tlpPairedAggregationMode.Size = new Size(409, 40);
-            tlpPairedAggregationMode.TabIndex = 10;
-            // 
-            // lblPairedAggregationMode
-            // 
-            lblPairedAggregationMode.AutoSizeMode = AntdUI.TAutoSize.Width;
-            lblPairedAggregationMode.Dock = DockStyle.Fill;
-            lblPairedAggregationMode.Location = new Point(0, 0);
-            lblPairedAggregationMode.Margin = new Padding(0);
-            lblPairedAggregationMode.Name = "lblPairedAggregationMode";
-            lblPairedAggregationMode.Padding = new Padding(8, 0, 0, 0);
-            lblPairedAggregationMode.Size = new Size(127, 40);
-            lblPairedAggregationMode.TabIndex = 0;
-            lblPairedAggregationMode.Text = "A/B配对聚合方式";
-            // 
-            // selectPairedAggregationMode
-            // 
-            selectPairedAggregationMode.Dock = DockStyle.Fill;
-            selectPairedAggregationMode.Location = new Point(127, 0);
-            selectPairedAggregationMode.Margin = new Padding(0);
-            selectPairedAggregationMode.MaxCount = 10;
-            selectPairedAggregationMode.Name = "selectPairedAggregationMode";
-            selectPairedAggregationMode.Size = new Size(282, 40);
-            selectPairedAggregationMode.TabIndex = 1;
-            // 
-            // tlpProcessParameterType
-            // 
-            tlpProcessParameterType.AutoSize = true;
-            tlpProcessParameterType.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            tlpProcessParameterType.ColumnCount = 2;
-            tlpProductConfig.SetColumnSpan(tlpProcessParameterType, 2);
-            tlpProcessParameterType.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            tlpProcessParameterType.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            tlpProcessParameterType.Controls.Add(chkEnableWholePieceMergedDisplay, 0, 4);
-            tlpProcessParameterType.Controls.Add(chkEnableWholePieceFaceResultDisplay, 1, 4);
-            tlpProcessParameterType.Dock = DockStyle.Fill;
-            tlpProcessParameterType.Location = new Point(0, 319);
-            tlpProcessParameterType.Margin = new Padding(0);
-            tlpProcessParameterType.Name = "tlpProcessParameterType";
-            tlpProcessParameterType.RowCount = 5;
-            tlpProcessParameterType.RowStyles.Add(new RowStyle());
-            tlpProcessParameterType.RowStyles.Add(new RowStyle());
-            tlpProcessParameterType.RowStyles.Add(new RowStyle());
-            tlpProcessParameterType.RowStyles.Add(new RowStyle());
-            tlpProcessParameterType.RowStyles.Add(new RowStyle());
-            tlpProcessParameterType.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
-            tlpProcessParameterType.Size = new Size(409, 40);
-            tlpProcessParameterType.TabIndex = 7;
-            // 
-            // chkEnableWholePieceMergedDisplay
-            // 
-            chkEnableWholePieceMergedDisplay.Dock = DockStyle.Fill;
-            chkEnableWholePieceMergedDisplay.Location = new Point(0, 0);
-            chkEnableWholePieceMergedDisplay.Margin = new Padding(0);
-            chkEnableWholePieceMergedDisplay.Name = "chkEnableWholePieceMergedDisplay";
-            chkEnableWholePieceMergedDisplay.Padding = new Padding(6, 0, 0, 0);
-            chkEnableWholePieceMergedDisplay.Size = new Size(204, 40);
-            chkEnableWholePieceMergedDisplay.TabIndex = 11;
-            chkEnableWholePieceMergedDisplay.Text = "整件检测四面合并显示";
-            // 
-            // chkEnableWholePieceFaceResultDisplay
-            // 
-            chkEnableWholePieceFaceResultDisplay.Dock = DockStyle.Fill;
-            chkEnableWholePieceFaceResultDisplay.Location = new Point(204, 0);
-            chkEnableWholePieceFaceResultDisplay.Margin = new Padding(0);
-            chkEnableWholePieceFaceResultDisplay.Name = "chkEnableWholePieceFaceResultDisplay";
-            chkEnableWholePieceFaceResultDisplay.Padding = new Padding(6, 0, 0, 0);
-            chkEnableWholePieceFaceResultDisplay.Size = new Size(205, 40);
-            chkEnableWholePieceFaceResultDisplay.TabIndex = 12;
-            chkEnableWholePieceFaceResultDisplay.Text = "整件检测逐面结果显示";
             // 
             // tlpRealtimePointNumberSource
             // 
@@ -1354,45 +1207,6 @@
             selectRealtimePointNumberSource.Name = "selectRealtimePointNumberSource";
             selectRealtimePointNumberSource.Size = new Size(275, 40);
             selectRealtimePointNumberSource.TabIndex = 1;
-            // 
-            // tlpInspectionResultSource
-            // 
-            tlpInspectionResultSource.ColumnCount = 2;
-            tlpProductConfig.SetColumnSpan(tlpInspectionResultSource, 2);
-            tlpInspectionResultSource.ColumnStyles.Add(new ColumnStyle());
-            tlpInspectionResultSource.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            tlpInspectionResultSource.Controls.Add(lblInspectionResultSource, 0, 0);
-            tlpInspectionResultSource.Controls.Add(selectInspectionResultSource, 1, 0);
-            tlpInspectionResultSource.Dock = DockStyle.Fill;
-            tlpInspectionResultSource.Location = new Point(0, 199);
-            tlpInspectionResultSource.Margin = new Padding(0);
-            tlpInspectionResultSource.Name = "tlpInspectionResultSource";
-            tlpInspectionResultSource.RowCount = 1;
-            tlpInspectionResultSource.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tlpInspectionResultSource.Size = new Size(409, 40);
-            tlpInspectionResultSource.TabIndex = 8;
-            // 
-            // lblInspectionResultSource
-            // 
-            lblInspectionResultSource.AutoSizeMode = AntdUI.TAutoSize.Width;
-            lblInspectionResultSource.Dock = DockStyle.Fill;
-            lblInspectionResultSource.Location = new Point(0, 0);
-            lblInspectionResultSource.Margin = new Padding(0);
-            lblInspectionResultSource.Name = "lblInspectionResultSource";
-            lblInspectionResultSource.Padding = new Padding(8, 0, 0, 0);
-            lblInspectionResultSource.Size = new Size(103, 40);
-            lblInspectionResultSource.TabIndex = 0;
-            lblInspectionResultSource.Text = "检测结果来源";
-            // 
-            // selectInspectionResultSource
-            // 
-            selectInspectionResultSource.Dock = DockStyle.Fill;
-            selectInspectionResultSource.Location = new Point(103, 0);
-            selectInspectionResultSource.Margin = new Padding(0);
-            selectInspectionResultSource.MaxCount = 10;
-            selectInspectionResultSource.Name = "selectInspectionResultSource";
-            selectInspectionResultSource.Size = new Size(306, 40);
-            selectInspectionResultSource.TabIndex = 1;
             // 
             // stationDisplayNameLayout
             // 
@@ -2755,10 +2569,8 @@
             tlpPlcPort.PerformLayout();
             tableLayoutPanel7.ResumeLayout(false);
             tableLayoutPanel7.PerformLayout();
-            tlpReportDecimalPlaces.ResumeLayout(false);
-            tlpReportDecimalPlaces.PerformLayout();
-            tlpProcessParameterDecimalPlaces.ResumeLayout(false);
-            tlpProcessParameterDecimalPlaces.PerformLayout();
+            tlpJudgementDecimalPlaces.ResumeLayout(false);
+            tlpJudgementDecimalPlaces.PerformLayout();
             tlpReadAlarm.ResumeLayout(false);
             tlpReadAlarm.PerformLayout();
             tlpNumericProcess.ResumeLayout(false);
@@ -2791,13 +2603,8 @@
             grpProductionConfig.PerformLayout();
             tlpProductConfig.ResumeLayout(false);
             tlpProductConfig.PerformLayout();
-            tlpPairedAggregationMode.ResumeLayout(false);
-            tlpPairedAggregationMode.PerformLayout();
-            tlpProcessParameterType.ResumeLayout(false);
             tlpRealtimePointNumberSource.ResumeLayout(false);
             tlpRealtimePointNumberSource.PerformLayout();
-            tlpInspectionResultSource.ResumeLayout(false);
-            tlpInspectionResultSource.PerformLayout();
             stationDisplayNameLayout.ResumeLayout(false);
             stationDisplayNameLayout.PerformLayout();
             tlpUploadConfig.ResumeLayout(false);
@@ -2872,12 +2679,9 @@
         private AntdUI.Select select_PlcType;
         private AntdUI.Label lblPlcType;
         private AntdUI.Checkbox chkEnablePlcStringNumericFormatting;
-        private TableLayoutPanel tlpReportDecimalPlaces;
-        private AntdUI.Label lblReportDecimalPlaces;
-        private AntdUI.Input inputReportDecimalPlaces;
-        private TableLayoutPanel tlpProcessParameterDecimalPlaces;
-        private AntdUI.Label lblProcessParameterDecimalPlaces;
-        private AntdUI.Input inputProcessParameterDecimalPlaces;
+        private TableLayoutPanel tlpJudgementDecimalPlaces;
+        private AntdUI.Label lblJudgementDecimalPlaces;
+        private AntdUI.Input inputJudgementDecimalPlaces;
         private AntdUI.Select selectPlcStringNumericFormatMode;
         private TableLayoutPanel tlpPlcPort;
         private AntdUI.Label lblPlcPort;
@@ -2994,17 +2798,9 @@
         private AntdUI.Input inputMesHeartbeatInterval;
         private AntdUI.Label lblProcessParameterDeviceType;
         private AntdUI.Select selectProcessParameterDeviceType;
-        private TableLayoutPanel tlpInspectionResultSource;
-        private AntdUI.Label lblInspectionResultSource;
-        private AntdUI.Select selectInspectionResultSource;
         private TableLayoutPanel tlpRealtimePointNumberSource;
         private AntdUI.Label lblRealtimePointNumberSource;
         private AntdUI.Select selectRealtimePointNumberSource;
-        private TableLayoutPanel tlpPairedAggregationMode;
-        private AntdUI.Label lblPairedAggregationMode;
-        private AntdUI.Select selectPairedAggregationMode;
-        private AntdUI.Checkbox chkEnableWholePieceMergedDisplay;
-        private AntdUI.Checkbox chkEnableWholePieceFaceResultDisplay;
         private AntdUI.Checkbox chkShowTestFlagInHistory;
         private AntdUI.Checkbox chkEnableDeviceStatusReport;
         private AntdUI.Checkbox chkEnableWorkOrderStatusReport;
@@ -3022,7 +2818,6 @@
         private AntdUI.Input inputCenterServerHeartbeatInterval;
         private AntdUI.Checkbox chkEnablePlcAlarmReading;
         private AntdUI.Select selectPlcAlarmTriggerMode;
-        private TableLayoutPanel tlpProcessParameterType;
         private TableLayoutPanel tlpCheckbox2;
         private TableLayoutPanel tableLayoutPanel4;
         private TableLayoutPanel tlpUploadConfig;

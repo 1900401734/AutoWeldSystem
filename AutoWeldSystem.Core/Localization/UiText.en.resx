@@ -912,17 +912,11 @@
   <data name="monitor.tooltip.merged_display" xml:space="preserve">
     <value>Merges the four inspection faces into one A/B aggregated row, matching the upload and report data. Clear it to show per-face detail. Display only; upload and report data are unchanged.</value>
   </data>
-  <data name="monitor.checkbox.face_result_display" xml:space="preserve">
-    <value>Face result</value>
-  </data>
   <data name="monitor.label.program_limits" xml:space="preserve">
     <value>Limits</value>
   </data>
   <data name="monitor.tooltip.program_limits" xml:space="preserve">
     <value>Maximum allowed values frozen from the program when the work order started, the same data used for product evaluation. A measured value at or below the limit passes. Shown for whole-piece inspection devices only.</value>
-  </data>
-  <data name="monitor.tooltip.face_result_display" xml:space="preserve">
-    <value>Shows the per-face result column in per-face view. Clearing it hides only that column; face numbers and measured values stay. Avoids confusion between a single face result and the merged product result. Display only; upload and report data are unchanged.</value>
   </data>
   <data name="monitor.label.product_number" xml:space="preserve">
     <value>Product Num.</value>
@@ -1034,9 +1028,6 @@
   </data>
   <data name="permission.button.monitor.merged_display" xml:space="preserve">
     <value>Toggle Merged Display</value>
-  </data>
-  <data name="permission.button.monitor.face_result_display" xml:space="preserve">
-    <value>Toggle Face Result Display</value>
   </data>
   <data name="permission.button.auth.switch_user" xml:space="preserve">
     <value>Switch User</value>
@@ -2235,11 +2226,8 @@ This also removes {3} collection record(s) and {4} report file(s) including the 
   <data name="address.column.detail_forward" xml:space="preserve">
     <value>Forward Dashboard</value>
   </data>
-  <data name="address.column.detail_report" xml:space="preserve">
-    <value>Write Report</value>
-  </data>
-  <data name="address.column.detail_mes" xml:space="preserve">
-    <value>Process Parameter</value>
+  <data name="address.column.detail_upload" xml:space="preserve">
+    <value>Upload</value>
   </data>
   <data name="address.column.detail_mes_field" xml:space="preserve">
     <value>Process Parameter Field</value>
@@ -2319,11 +2307,8 @@ This also removes {3} collection record(s) and {4} report file(s) including the 
   <data name="system.group.center_server" xml:space="preserve">
     <value>Center Server</value>
   </data>
-  <data name="system.label.report_decimal_places" xml:space="preserve">
-    <value>Report decimals</value>
-  </data>
-  <data name="system.label.process_parameter_decimal_places" xml:space="preserve">
-    <value>Process parameter decimals</value>
+  <data name="system.label.judgement_decimal_places" xml:space="preserve">
+    <value>Judgement and upload decimals</value>
   </data>
   <data name="system.label.mes_timeout" xml:space="preserve">
     <value>MES timeout (s)</value>
@@ -2478,18 +2463,6 @@ This also removes {3} collection record(s) and {4} report file(s) including the 
   <data name="system.message.startup_integration_failed" xml:space="preserve">
     <value>Failed to update startup integration: {0}</value>
   </data>
-  <data name="system.label.inspection_result_source" xml:space="preserve">
-    <value>Inspection result source</value>
-  </data>
-  <data name="system.option.inspection_result_source.plc" xml:space="preserve">
-    <value>Read from PLC</value>
-  </data>
-  <data name="system.option.inspection_result_source.program" xml:space="preserve">
-    <value>Calculated by program</value>
-  </data>
-  <data name="system.message.inspection_result_source_locked" xml:space="preserve">
-    <value>An unfinished task exists. Complete it before changing the inspection result source.</value>
-  </data>
   <data name="system.label.realtime_point_number_source" xml:space="preserve">
     <value>Realtime number source</value>
   </data>
@@ -2501,23 +2474,5 @@ This also removes {3} collection record(s) and {4} report file(s) including the 
   </data>
   <data name="system.message.realtime_point_number_source_locked" xml:space="preserve">
     <value>An unfinished task exists. Complete it before changing the realtime number source.</value>
-  </data>
-  <data name="system.label.paired_aggregation_mode" xml:space="preserve">
-    <value>A/B pairing aggregation</value>
-  </data>
-  <data name="system.label.whole_piece_merged_display" xml:space="preserve">
-    <value>Merge four faces in monitor view</value>
-  </data>
-  <data name="system.label.whole_piece_face_result_display" xml:space="preserve">
-    <value>Show per-face result column</value>
-  </data>
-  <data name="system.option.paired_aggregation.average" xml:space="preserve">
-    <value>Pair average</value>
-  </data>
-  <data name="system.option.paired_aggregation.maximum" xml:space="preserve">
-    <value>Pair maximum</value>
-  </data>
-  <data name="system.message.paired_aggregation_mode_locked" xml:space="preserve">
-    <value>An unfinished task exists. Complete it before changing the A/B pairing aggregation.</value>
   </data>
 </root>
