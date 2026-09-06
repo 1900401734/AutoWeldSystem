@@ -1038,6 +1038,7 @@
             tlpMesDeviceStatusQueryRoute.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             tlpMesDeviceStatusQueryRoute.Controls.Add(lblMesDeviceStatusQueryRoute, 0, 0);
             tlpMesDeviceStatusQueryRoute.Controls.Add(inputMesDeviceStatusQueryRoute, 1, 0);
+            tlpMesDeviceStatusQueryRoute.Dock = DockStyle.Fill;
             tlpMesDeviceStatusQueryRoute.Location = new Point(0, 160);
             tlpMesDeviceStatusQueryRoute.Margin = new Padding(0);
             tlpMesDeviceStatusQueryRoute.Name = "tlpMesDeviceStatusQueryRoute";
