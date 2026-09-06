@@ -70,7 +70,6 @@ var tests = new (string Name, Action Run)[]
     ("System setting view uses responsive semantic columns", SystemSettingViewUsesResponsiveSemanticColumns),
     ("System setting localization resources are complete", SystemSettingLocalizationResourcesAreComplete),
     ("System setting configures PLC alarm trigger mode", SystemSettingConfiguresPlcAlarmTriggerMode),
-    ("System setting configures inspection result source", SystemSettingConfiguresInspectionResultSource),
     ("System setting configures realtime point number source", SystemSettingConfiguresRealtimePointNumberSource),
     ("PLC product ready handshake retains high-level state", PlcProductReadyHandshakeRetainsHighLevelState),
     ("MES endpoint validation returns stable error codes", MesEndpointValidationReturnsStableErrorCodes),
@@ -141,19 +140,14 @@ var tests = new (string Name, Action Run)[]
     ("Scheme output roles are independent from realtime preview", SchemeOutputRolesAreIndependentFromRealtimePreview),
     ("Whole-piece four-side aggregation produces A and B rows", WholePieceFourSideAggregationProducesAbRows),
     ("Whole-piece height uses four-side maximum and width uses side A", WholePieceHeightUsesFourSideMaximumAndWidthUsesSideA),
-    ("Whole-piece face evaluation rejects failed collection zeros", WholePieceFaceEvaluationRejectsFailedCollectionZeros),
-    ("Whole-piece zero merged value fails product level items", WholePieceZeroMergedValueFailsProductLevelItems),
-    ("Whole-piece side B width stays out of face evaluation", WholePieceSideBWidthStaysOutOfFaceEvaluation),
-    ("Whole-piece AB row result follows merged evaluation", WholePieceAbRowResultFollowsMergedEvaluation),
-    ("Output decimal places apply to report and process parameter", OutputDecimalPlacesApplyToReportAndProcessParameter),
-    ("Whole-piece program results use maximum allowed values", WholePieceProgramResultsUseMaximumAllowedValues),
+    ("Whole-piece failure flag splits lenient and strict items", WholePieceFailureFlagSplitsLenientAndStrictItems),
+    ("Whole-piece judgement truncates to configured decimals", WholePieceJudgementTruncatesToConfiguredDecimals),
+    ("Whole-piece upload channel implies preview and save", WholePieceUploadChannelImpliesPreviewAndSave),
+    ("Whole-piece upload requires configured maximum", WholePieceUploadRequiresConfiguredMaximum),
     ("Program result display prefers persisted entity result", ProgramResultDisplayPrefersPersistedEntityResult),
     ("Whole-piece aggregation rejects invalid source data", WholePieceAggregationRejectsInvalidSourceData),
-    ("Whole-piece paired aggregation supports maximum mode", WholePiecePairedAggregationSupportsMaximumMode),
-    ("Whole-piece merged display respects realtime preview", WholePieceMergedDisplayRespectsRealtimePreview),
     ("Whole-piece merged display builds A and B columns", WholePieceMergedDisplayBuildsAbColumns),
     ("Whole-piece product result uses merged values", WholePieceProductResultUsesMergedValues),
-    ("Whole-piece merged result differs from per-face result", WholePieceMergedResultDiffersFromPerFaceResult),
     ("Report file upload rule requires an enabled report role", ReportFileUploadRuleRequiresEnabledReportRole),
     ("Product cycle snapshots persist PLC product results", ProductCycleSnapshotsPersistPlcProductResults),
     ("Missing point results do not fall back to product results", MissingPointResultDoesNotFallBackToProductResult),
@@ -2449,28 +2443,40 @@ static void CollectionDoesNotImplyOutput()
     AssertTrue(SchemeDetailRoleRules.ShouldPersistRole(detail, SchemeDetailValueRole.Actual), "勾选本地保存后应写入 RawDataJson。");
 }
 
+/// <summary>
+/// 判定范围已收紧到「上报」通道：对外上报的数据必须带明确合格结论，
+/// 仅供本地留存和工艺分析的数据无需判定。
+/// 由此保证「操作员在合并视图看到的项，就是参与判定的项」。
+/// </summary>
 static void ProgramEvaluationFollowsOutputChannels()
 {
-    var previewOnly = new BizSchemeDetail { EnableActual = true };
-    AssertFalse(
-        SchemeDetailRoleRules.ShouldEvaluateProgramRole(previewOnly, SchemeDetailValueRole.Actual),
-        "只勾实时预览的临时观察项不得参与程序判定。");
-
-    foreach (var configured in new[]
+    foreach (var notUploaded in new[]
     {
-        new BizSchemeDetail { SaveActual = true },
-        new BizSchemeDetail { ForwardActual = true },
-        new BizSchemeDetail { ReportActual = true },
-        new BizSchemeDetail { MesActual = true }
+        new BizSchemeDetail { EnableActual = true },                     // 仅实时预览：临时观察
+        new BizSchemeDetail { SaveActual = true },                       // 仅本地保存
+        new BizSchemeDetail { ForwardActual = true }                     // 仅转发看板
     })
     {
-        AssertTrue(
-            SchemeDetailRoleRules.ShouldEvaluateProgramRole(configured, SchemeDetailValueRole.Actual),
-            "勾选任一输出通道的测试项必须参与程序判定。");
-        AssertTrue(
-            SchemeDetailRoleRules.ShouldReadProductRole(configured, SchemeDetailValueRole.Actual),
-            "参与程序判定的测试项必须被采集读取，否则判定拿不到实测值。");
+        AssertFalse(
+            SchemeDetailRoleRules.ShouldEvaluateProgramRole(notUploaded, SchemeDetailValueRole.Actual),
+            "未勾选上报通道的测试项不参与程序判定。");
     }
+
+    var uploaded = new BizSchemeDetail();
+    SchemeDetailRoleRules.SetUploadEnabled(uploaded, SchemeDetailValueRole.Actual, true);
+    AssertTrue(
+        SchemeDetailRoleRules.ShouldEvaluateProgramRole(uploaded, SchemeDetailValueRole.Actual),
+        "勾选上报通道的测试项必须参与程序判定。");
+    AssertTrue(
+        SchemeDetailRoleRules.ShouldReadProductRole(uploaded, SchemeDetailValueRole.Actual),
+        "参与程序判定的测试项必须被采集读取，否则判定拿不到实测值。");
+
+    // 本地通道仍需读取和落库，只是不参与判定。
+    AssertTrue(
+        SchemeDetailRoleRules.ShouldReadProductRole(
+            new BizSchemeDetail { SaveActual = true },
+            SchemeDetailValueRole.Actual),
+        "仅勾本地保存的测试项仍需读取，否则本地历史无值。");
 }
 
 static void ForwardChannelIsIndependentFromLocalSave()
@@ -2818,10 +2824,17 @@ static void SchemeDetailRoleGridDefinesLocalizedBoundColumns()
     {
         AssertTrue(configureMethod.Contains($"DataPropertyName = nameof(SchemeDetailRoleTableRow.{propertyName})", StringComparison.Ordinal), $"方案角色表格必须显式绑定 {propertyName} 列。" );
     }
-    foreach (var propertyName in new[] { "SaveEnabled", "ForwardEnabled", "ReportEnabled", "MesEnabled" })
+    // 「写入报表」与「过程参数」已合并为「上报」：两者对外必然成对生效，拆开只会产生只勾一个的无效配置。
+    foreach (var propertyName in new[] { "SaveEnabled", "ForwardEnabled", "UploadEnabled" })
     {
         AssertTrue(configureMethod.Contains($"AddSchemeDetailRoleCheckColumn(nameof(SchemeDetailRoleTableRow.{propertyName})", StringComparison.Ordinal), $"方案角色表格必须显式绑定 {propertyName} 复选列。" );
     }
+    AssertFalse(
+        configureMethod.Contains("SchemeDetailRoleTableRow.ReportEnabled)", StringComparison.Ordinal),
+        "写入报表列已合并进上报列，不得单独出现。");
+    AssertFalse(
+        configureMethod.Contains("SchemeDetailRoleTableRow.MesEnabled)", StringComparison.Ordinal),
+        "过程参数列已合并进上报列，不得单独出现。");
 
     // 实时预览由左侧树维护，表格中不得再出现重复的采集复选列。
     AssertFalse(configureMethod.Contains("SchemeDetailRoleTableRow.Enabled)", StringComparison.Ordinal), "实时预览开关不得在方案角色表格中重复编辑。" );
@@ -3513,17 +3526,17 @@ static void WholePieceFourSideAggregationProducesAbRows()
     var result = WholePieceAbAggregationRules.Aggregate(
         records,
         [definition],
-        ProductionConstants.PairedAggregationModes.Average,
         enableStringNumericFormatting: true,
         AppConstants.PlcStringNumericFormatModes.Round);
 
     AssertTrue(result.IsSuccess, result.ErrorMessage);
     AssertEqual(2, result.Rows.Count, "四面检测必须输出A/B两行。");
     AssertEqual("A", result.Rows[0].SideNo, "A面必须先输出。");
-    AssertEqual("0.15", result.Rows[0].Values["Symmetry"], "A面必须取2、4面平均并按两位小数四舍五入。");
+    // A/B 配对聚合已写死取最大值，不再提供平均值配置。
+    AssertEqual("0.16", result.Rows[0].Values["Symmetry"], "A面必须取2、4面最大值。");
     AssertEqual(ProductionConstants.TestResults.Ok, result.Rows[0].Result, "A面两个原始面都OK时结果应为OK。");
     AssertEqual("B", result.Rows[1].SideNo, "B面必须后输出。");
-    AssertEqual("0.14", result.Rows[1].Values["Symmetry"], "B面必须取1、3面平均并按两位小数四舍五入。");
+    AssertEqual("0.15", result.Rows[1].Values["Symmetry"], "B面必须取1、3面最大值。");
     AssertEqual(ProductionConstants.TestResults.Ng, result.Rows[1].Result, "B面任一原始面NG时结果应为NG。");
 }
 
@@ -3540,7 +3553,6 @@ static void WholePieceHeightUsesFourSideMaximumAndWidthUsesSideA()
     var result = WholePieceAbAggregationRules.Aggregate(
         records,
         [height],
-        ProductionConstants.PairedAggregationModes.Average,
         enableStringNumericFormatting: true,
         AppConstants.PlcStringNumericFormatModes.Round);
 
@@ -3554,7 +3566,6 @@ static void WholePieceHeightUsesFourSideMaximumAndWidthUsesSideA()
     var widthResult = WholePieceAbAggregationRules.Aggregate(
         records,
         [width],
-        ProductionConstants.PairedAggregationModes.Average,
         enableStringNumericFormatting: true,
         AppConstants.PlcStringNumericFormatModes.Round);
 
@@ -3591,65 +3602,6 @@ static void ProgramResultDisplayPrefersPersistedEntityResult()
     AssertTrue(method.Contains("FindRawValue(rawValues, \"product_result\")", StringComparison.Ordinal), "旧历史记录必须继续回退 RawDataJson.product_result。");
 }
 
-static void WholePieceProgramResultsUseMaximumAllowedValues()
-{
-    AssertEqual(
-        ProductionConstants.InspectionResultSources.Plc,
-        ProductionConstants.InspectionResultSources.Normalize("unknown"),
-        "未知结果来源必须回退PLC读取。");
-    AssertTrue(
-        WholePieceProgramResultRules.IsApplicable(
-            ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck,
-            ProductionConstants.InspectionResultSources.Program),
-        "程序计算只应在整件检测设备启用。");
-
-    var ok = WholePieceProgramResultRules.EvaluateFace(
-        "{\"高度\":\"20.18\",\"对称度\":\"0.15\"}",
-        [new WholePieceProgramMeasurement("高度", "20.18"), new WholePieceProgramMeasurement("对称度", "0")]);
-    AssertTrue(ok.IsSuccess, ok.ErrorMessage);
-    AssertEqual(ProductionConstants.TestResults.Ok, ok.Result, "等于最大允许值必须判定为OK；对称度单面真实为0是完全对称，允许。");
-
-    var ng = WholePieceProgramResultRules.EvaluateFace(
-        "{\"高度\":\"20.18\"}",
-        [new WholePieceProgramMeasurement("高度", "20.19")]);
-    AssertTrue(ng.IsSuccess, ng.ErrorMessage);
-    AssertEqual(ProductionConstants.TestResults.Ng, ng.Result, "超过最大允许值必须判定为NG。");
-
-    // 未填最大设定值的测试项只作本地留存和看板转发，不参与判定，也不得让整次判定失败。
-    var missing = WholePieceProgramResultRules.EvaluateFace(
-        "{\"高度\":\"20.18\"}",
-        [new WholePieceProgramMeasurement("高度", "20.18"), new WholePieceProgramMeasurement("宽度", "10")]);
-    AssertTrue(missing.IsSuccess, missing.ErrorMessage);
-    AssertEqual(ProductionConstants.TestResults.Ok, missing.Result, "未配置上限的宽度必须跳过判定，不影响该面结果。");
-
-    var noneEvaluated = WholePieceProgramResultRules.EvaluateFace(
-        "{\"高度\":\"20.18\"}",
-        [new WholePieceProgramMeasurement("宽度", "10")]);
-    AssertFalse(noneEvaluated.IsSuccess, "参与判定的测试项全都没有上限时，必须拒绝采集而不是默认判OK。");
-
-    AssertEqual(
-        ProductionConstants.TestResults.Ng,
-        WholePieceProgramResultRules.ResolveRealtimeProductResult(
-            [ProductionConstants.TestResults.Ok, ProductionConstants.TestResults.Ng, null, null],
-            4),
-        "任一已完成面NG时产品结果必须立即显示NG。");
-    AssertEqual(
-        ProductionConstants.TestResults.Unknown,
-        WholePieceProgramResultRules.ResolveRealtimeProductResult(
-            [ProductionConstants.TestResults.Ok, ProductionConstants.TestResults.Ok, null, null],
-            4),
-        "四面未完成且没有NG时产品结果必须保持未测试。");
-
-    var collectionCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductCycleCollectionService.cs"), Encoding.UTF8);
-    var previewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductRealtimePreviewService.cs"), Encoding.UTF8);
-    AssertTrue(collectionCode.Contains("ApplyProgramCalculatedResults(task,", StringComparison.Ordinal)
-        && collectionCode.Contains("record.ProductResult = productResult;", StringComparison.Ordinal), "正式采集必须把程序计算的单面和产品结果固化到四面记录。");
-    AssertTrue(collectionCode.Contains("!useProgramResult || ProductRealtimePreviewRules.ShouldReadTestValues(testResult)", StringComparison.Ordinal), "程序计算模式下PLC未完成的面不得读取测试值地址。");
-    AssertTrue(previewCode.Contains("activeTask?.ProgramContentSnapshot", StringComparison.Ordinal)
-        && previewCode.Contains("WholePieceProgramResultRules.ResolveRealtimeProductResult", StringComparison.Ordinal), "实时预览必须使用任务固化最大允许值并逐面汇总产品结果。");
-    AssertTrue(collectionCode.Contains("ResultSource={resultSource}, ProgramResult={useProgramResult}", StringComparison.Ordinal), "正式采集日志必须记录本轮实际使用的结果来源，便于区分PLC读取和程序计算。");
-}
-
 static void WholePieceAggregationRejectsInvalidSourceData()
 {
     var duplicateSide = new[]
@@ -3660,7 +3612,7 @@ static void WholePieceAggregationRejectsInvalidSourceData()
         CreateAggregationRecord("4", "4", ProductionConstants.TestResults.Ok)
     };
     var definition = new WholePieceAbValueDefinition(1, "高度", "Height", "14:F-0_2");
-    var duplicateResult = WholePieceAbAggregationRules.Aggregate(duplicateSide, [definition], ProductionConstants.PairedAggregationModes.Average, true, AppConstants.PlcStringNumericFormatModes.Truncate);
+    var duplicateResult = WholePieceAbAggregationRules.Aggregate(duplicateSide, [definition], true, AppConstants.PlcStringNumericFormatModes.Truncate);
     AssertFalse(duplicateResult.IsSuccess, "重复面号必须拒绝。");
 
     var invalidNumber = new[]
@@ -3670,7 +3622,7 @@ static void WholePieceAggregationRejectsInvalidSourceData()
         CreateAggregationRecord("3", "3", ProductionConstants.TestResults.Ok),
         CreateAggregationRecord("4", "4", ProductionConstants.TestResults.Ok)
     };
-    var invalidNumberResult = WholePieceAbAggregationRules.Aggregate(invalidNumber, [definition], ProductionConstants.PairedAggregationModes.Average, true, AppConstants.PlcStringNumericFormatModes.Truncate);
+    var invalidNumberResult = WholePieceAbAggregationRules.Aggregate(invalidNumber, [definition], true, AppConstants.PlcStringNumericFormatModes.Truncate);
     AssertFalse(invalidNumberResult.IsSuccess, "非数字聚合值必须拒绝。");
 
     var absoluteDefinition = definition with { ActualExpression = "DB97.26:F-0_2" };
@@ -3681,7 +3633,7 @@ static void WholePieceAggregationRejectsInvalidSourceData()
         CreateAggregationRecord("3", "3", ProductionConstants.TestResults.Ok),
         CreateAggregationRecord("4", "4", ProductionConstants.TestResults.Ok)
     };
-    var absoluteResult = WholePieceAbAggregationRules.Aggregate(validRecords, [absoluteDefinition], ProductionConstants.PairedAggregationModes.Average, true, AppConstants.PlcStringNumericFormatModes.Truncate);
+    var absoluteResult = WholePieceAbAggregationRules.Aggregate(validRecords, [absoluteDefinition], true, AppConstants.PlcStringNumericFormatModes.Truncate);
     AssertFalse(absoluteResult.IsSuccess, "A/B聚合源使用绝对地址时必须拒绝。");
 }
 
@@ -3700,601 +3652,187 @@ static BizWeldPointRecord CreateAggregationRecord(string sideNo, string value, s
     };
 }
 
-static BizWeldPointRecord CreateMergedRecord(string sideNo, string height, string symmetry, string result)
-{
-    return new BizWeldPointRecord
-    {
-        ProductNo = "P001",
-        TouchNo = sideNo,
-        TestResult = result,
-        RawDataJson = JsonSerializer.Serialize(new Dictionary<string, string>
-        {
-            ["item_1"] = height,
-            ["item_2"] = symmetry
-        })
-    };
-}
-
 static WholePieceAbValueDefinition MergedHeightDefinition() => new(1, "高度", "高度", "14:F-0_2");
 
 static WholePieceAbValueDefinition MergedSymmetryDefinition() => new(2, "对称度", "对称度", "18:F-0_2");
 
-static WholePieceAbValueDefinition MergedWidthDefinition() => new(3, "宽度", "宽度", "16:F-0_2");
+/// <summary>
+/// 视觉失败标志按测试项分两种策略：
+/// 宽松项（高度、宽度）剔除失败值后用剩余有效值判定，最少一面有效即可；
+/// 严格项（对称度）聚合面内任一面失败即该面无法判定，必须判 NG。
+/// 依据产品规格表注 2「高度不要求全部面都检测」与注 3「对称度每个面都需要检测」。
+/// </summary>
+static void WholePieceFailureFlagSplitsLenientAndStrictItems()
+{
+    AssertTrue(WholePieceFailureFlagRules.IsFailureFlag(1m), "视觉失败标志固定为 1。");
+    AssertFalse(WholePieceFailureFlagRules.IsFailureFlag(0m), "0 不再表示视觉失败：对称度真实值可以为 0。");
+
+    AssertFalse(WholePieceFailureFlagRules.IsStrictItem("高度"), "高度是宽松项，允许部分面未检测。");
+    AssertFalse(WholePieceFailureFlagRules.IsStrictItem("宽度"), "宽度是宽松项，只取 A 面且允许单面失败。");
+    AssertTrue(WholePieceFailureFlagRules.IsStrictItem("对称度"), "对称度是严格项，缺任一面即无法确认对称性。");
+    AssertTrue(WholePieceFailureFlagRules.IsStrictItem("新增测试项"), "新增测试项默认按严格处理，避免未经确认的项静默放行。");
+
+    // 宽松项：四面中仅一面有效仍可判定，取剩余有效值最大值。
+    var lenient = WholePieceFailureFlagRules.ResolveEffectiveValues("高度", [1m, 1m, 1m, 16.2m]);
+    AssertEqual(1, lenient.Count, "宽松项必须剔除全部失败标志，只保留有效值。");
+    AssertEqual(16.2m, lenient[0], "宽松项仅一面有效时必须沿用该值。");
+
+    // 严格项：含任一失败标志即返回空集合，交由判定侧判 NG。
+    AssertEqual(
+        0,
+        WholePieceFailureFlagRules.ResolveEffectiveValues("对称度", [0.12m, 1m]).Count,
+        "严格项含失败标志时必须返回空集合，该项判 NG。");
+    AssertEqual(
+        2,
+        WholePieceFailureFlagRules.ResolveEffectiveValues("对称度", [0.12m, 0.09m]).Count,
+        "严格项两面都有效时必须全部参与聚合。");
+
+    // 宽松项全部面失败时同样无有效值，该项判 NG。
+    AssertEqual(
+        0,
+        WholePieceFailureFlagRules.ResolveEffectiveValues("高度", [1m, 1m, 1m, 1m]).Count,
+        "宽松项全部面失败时该尺寸未测到，必须判 NG。");
+}
 
 /// <summary>
-/// 报表和 MES 的 A/B 行结果必须按该行的合并值判定，与产品结果同源。
-/// 高度取四面最大值，单面检测失败回传 0 不影响产品结果；若行结果仍沿用面记录从严合并，
-/// 就会出现「B 行 NG 但产品 OK」的矛盾，现场无法解释。
+/// 产品判定先按「判定与上报小数位」处理聚合值，再与最大允许值比较。
+/// 合并视图显示的就是判定所用的值，因此现场看到的数值能解释 OK/NG。
+/// 截断模式下上限 12.15 的实际允许范围到 12.1599，公差放宽接近一个末位，已与客户确认。
 /// </summary>
-static void WholePieceAbRowResultFollowsMergedEvaluation()
+static void WholePieceJudgementTruncatesToConfiguredDecimals()
 {
+    // 高度是产品级项、A/B 两行同值，用它保证 B 行也有参与判定的测试项；
+    // 宽度只有 A 行有值，B 行留空由 IsSkippedOnSideB 跳过。
     var snapshot = JsonSerializer.Serialize(new Dictionary<string, string>
     {
-        ["高度"] = "24.8",
-        ["对称度"] = "0.10"
+        ["宽度"] = "12.15",
+        ["高度"] = "20.00"
     });
-    var definitions = new[] { MergedHeightDefinition(), MergedSymmetryDefinition() };
-
-    // 现场场景：面2 测得 24.56，面1、面3、面4 检测失败回传 0，高度四面最大值 24.56 ≤ 24.8。
-    // 面记录从严合并会让 B 行是 NG，但合并值判定下 A、B 两行都应为 OK。
-    var rows = new List<WholePieceAbOutputRow>
-    {
-        new("A", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["高度"] = "24.56",
-            ["对称度"] = "0.02"
-        }),
-        new("B", ProductionConstants.TestResults.Ng, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["高度"] = "24.56",
-            ["对称度"] = "0.03"
-        })
-    };
-
-    var applied = WholePieceProgramResultRules.ApplyAggregatedRowResults(snapshot, rows, definitions);
-    AssertEqual(ProductionConstants.TestResults.Ok, applied[0].Result, "A行合并值未超限，结果必须是OK。");
-    AssertEqual(ProductionConstants.TestResults.Ok, applied[1].Result, "B行合并值未超限时必须改判OK，不能因单面检测失败而保持NG。");
-
-    var evaluated = WholePieceProgramResultRules.EvaluateAggregatedRows(snapshot, rows, definitions);
-    AssertTrue(evaluated.IsSuccess, evaluated.ErrorMessage);
-    AssertEqual(ProductionConstants.TestResults.Ok, evaluated.ProductResult, "产品结果必须与两行结果一致。");
-    AssertEqual(2, evaluated.RowResults.Count, "逐行结果必须与传入行数一一对应。");
-
-    // 合并值确实超限时不能一律洗成 OK。
-    var overLimitRows = new List<WholePieceAbOutputRow>
-    {
-        rows[0],
-        new("B", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["高度"] = "24.56",
-            ["对称度"] = "0.19"
-        })
-    };
-    var overLimit = WholePieceProgramResultRules.ApplyAggregatedRowResults(snapshot, overLimitRows, definitions);
-    AssertEqual(ProductionConstants.TestResults.Ok, overLimit[0].Result, "A行未超限仍是OK。");
-    AssertEqual(ProductionConstants.TestResults.Ng, overLimit[1].Result, "B行对称度超限必须判NG。");
-
-    // 四面全部检测失败时合并值为 0，v2.12.0 的零值判定继续生效。
-    var allZeroRows = new List<WholePieceAbOutputRow>
-    {
-        new("A", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["高度"] = "0",
-            ["对称度"] = "0.02"
-        }),
-        new("B", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["高度"] = "0",
-            ["对称度"] = "0.03"
-        })
-    };
-    var allZero = WholePieceProgramResultRules.ApplyAggregatedRowResults(snapshot, allZeroRows, definitions);
-    AssertEqual(ProductionConstants.TestResults.Ng, allZero[0].Result, "高度合并值为0说明四面都没检测成功，必须判NG。");
-
-    // 含焊前 NG 的行保持原结果：产品结果本身就不走合并值判定，替换后反而对不上。
-    var preWeldRows = new List<WholePieceAbOutputRow>
-    {
-        rows[0],
-        new("B", ProductionConstants.TestResults.PreWeldNg, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["高度"] = "24.56",
-            ["对称度"] = "0.03"
-        })
-    };
-    var preWeld = WholePieceProgramResultRules.ApplyAggregatedRowResults(snapshot, preWeldRows, definitions);
-    AssertEqual(ProductionConstants.TestResults.PreWeldNg, preWeld[1].Result, "焊前NG的行必须保持原结果。");
-
-    // 未填上限的测试项跳过判定：只按已配置上限的高度判，对称度不参与。
-    var partialSnapshot = JsonSerializer.Serialize(new Dictionary<string, string> { ["高度"] = "24.8" });
-    var partial = WholePieceProgramResultRules.ApplyAggregatedRowResults(partialSnapshot, rows, definitions);
-    AssertEqual(
-        ProductionConstants.TestResults.Ok,
-        partial[1].Result,
-        "只有高度配置了上限时，对称度跳过判定，高度未超限即为OK。");
-
-    // 参与判定的项全都没有上限时无判定依据，必须保持原行结果，不得中断报表和上传。
-    var emptySnapshot = JsonSerializer.Serialize(new Dictionary<string, string> { ["其他项"] = "1" });
-    var fallback = WholePieceProgramResultRules.ApplyAggregatedRowResults(emptySnapshot, rows, definitions);
-    AssertEqual(
-        ProductionConstants.TestResults.Ng,
-        fallback[1].Result,
-        "无任何判定依据时必须保持原行结果，不能中断报表和上传。");
-
-    var reportCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductionReportFileService.cs"), Encoding.UTF8);
-    var uploadCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "UploadTaskService.cs"), Encoding.UTF8);
-    AssertTrue(reportCode.Contains("ApplyAggregatedRowResults", StringComparison.Ordinal), "报表必须按合并值改写A/B行结果。");
-    AssertTrue(uploadCode.Contains("ApplyAggregatedRowResults", StringComparison.Ordinal), "MES上传必须与报表使用同一套行结果口径。");
-    // PLC 判定模式下软件没有判定依据，不能替 PLC 改写行结果。
-    AssertTrue(reportCode.Contains("WholePieceProgramResultRules.IsApplicable", StringComparison.Ordinal), "报表只能在程序判定模式下改写行结果。");
-    AssertTrue(uploadCode.Contains("WholePieceProgramResultRules.IsApplicable", StringComparison.Ordinal), "MES上传只能在程序判定模式下改写行结果。");
-}
-
-/// <summary>
-/// 报表和过程参数各自的输出小数位。采集时已按偏移量表达式格式化并存库，
-/// 这里是输出端的第二次格式化：只能减位或补零，恢复不了被截掉的精度。
-/// 截断还是四舍五入沿用系统设置里的全局模式，不单独配置。
-/// </summary>
-static void OutputDecimalPlacesApplyToReportAndProcessParameter()
-{
-    // 未配置时必须与改动前完全一致，这是升级不改变现场行为的保证。
-    var none = new AppSettings { ReportDecimalPlaces = null, ProcessParameterDecimalPlaces = null };
-    AssertEqual("15.88", OutputNumericFormat.ForReport(none).Apply("15.88"), "未配置报表小数位时必须原样输出。");
-    AssertEqual("15.88", OutputNumericFormat.ForProcessParameter(none).Apply("15.88"), "未配置过程参数小数位时必须原样输出。");
-    AssertEqual("15.88", OutputNumericFormat.None.Apply("15.88"), "None 必须不改动数值。");
-
-    // 减位：两种全局模式都要覆盖。
-    var truncate = new AppSettings
-    {
-        ReportDecimalPlaces = 1,
-        EnablePlcStringNumericFormatting = true,
-        PlcStringNumericFormatMode = AppConstants.PlcStringNumericFormatModes.Truncate
-    };
-    AssertEqual("15.8", OutputNumericFormat.ForReport(truncate).Apply("15.88"), "截断模式下减位必须裁切。");
-
-    var round = new AppSettings
-    {
-        ReportDecimalPlaces = 1,
-        EnablePlcStringNumericFormatting = true,
-        PlcStringNumericFormatMode = AppConstants.PlcStringNumericFormatModes.Round
-    };
-    AssertEqual("15.9", OutputNumericFormat.ForReport(round).Apply("15.88"), "四舍五入模式下减位必须进位。");
-
-    // 关闭全局数值处理时按四舍五入，与采集侧 ExpressionReadService 的既有约定一致。
-    var disabled = new AppSettings
-    {
-        ReportDecimalPlaces = 1,
-        EnablePlcStringNumericFormatting = false,
-        PlcStringNumericFormatMode = AppConstants.PlcStringNumericFormatModes.Truncate
-    };
-    AssertEqual("15.9", OutputNumericFormat.ForReport(disabled).Apply("15.88"), "关闭全局数值处理时必须按四舍五入，与采集口径一致。");
-
-    // 增位只能补零，恢复不了采集时被截掉的精度。
-    var padded = new AppSettings
-    {
-        ReportDecimalPlaces = 3,
-        EnablePlcStringNumericFormatting = true,
-        PlcStringNumericFormatMode = AppConstants.PlcStringNumericFormatModes.Truncate
-    };
-    AssertEqual("15.880", OutputNumericFormat.ForReport(padded).Apply("15.88"), "增位只能补零。");
-
-    // 非数值文本必须原样返回：结果列、报表里表示不适用的斜杠、空值。
-    var format = OutputNumericFormat.ForReport(truncate);
-    AssertEqual("OK", format.Apply("OK"), "结果文本不能被小数位改写。");
-    AssertEqual("\\", format.Apply("\\"), "报表不适用标记不能被小数位改写。");
-    AssertEqual(string.Empty, format.Apply(null), "空值必须保持为空。");
-
-    // 报表与过程参数互相独立。
-    var independent = new AppSettings
-    {
-        ReportDecimalPlaces = 1,
-        ProcessParameterDecimalPlaces = 3,
-        EnablePlcStringNumericFormatting = true,
-        PlcStringNumericFormatMode = AppConstants.PlcStringNumericFormatModes.Truncate
-    };
-    AssertEqual("15.8", OutputNumericFormat.ForReport(independent).Apply("15.88"), "报表必须只用报表小数位。");
-    AssertEqual("15.880", OutputNumericFormat.ForProcessParameter(independent).Apply("15.88"), "过程参数必须只用过程参数小数位。");
-
-    // 归一化：负数按未配置处理，超上限收敛到上限。
-    AssertTrue(OutputNumericFormat.NormalizeDecimalPlaces(-1) is null, "负小数位必须按未配置处理。");
-    AssertTrue(OutputNumericFormat.NormalizeDecimalPlaces(null) is null, "空小数位必须保持未配置。");
-    AssertEqual(0, OutputNumericFormat.NormalizeDecimalPlaces(0) ?? -1, "0 位是合法配置，表示输出整数。");
-    AssertEqual(
-        PlcOffsetExpression.MaxDecimalPlaces,
-        OutputNumericFormat.NormalizeDecimalPlaces(PlcOffsetExpression.MaxDecimalPlaces + 5) ?? -1,
-        "超过上限的小数位必须收敛到上限。");
-
-    var settingsCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "AppSettingsService.cs"), Encoding.UTF8);
-    AssertTrue(settingsCode.Contains("OutputNumericFormat.NormalizeDecimalPlaces", StringComparison.Ordinal), "设置保存必须归一化输出小数位，避免非法值落库。");
-
-    // 报表只格式化测试项动态列；工位、产品编号、面号和结果等固定列不能被改写。
-    var reportCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductionReportFileService.cs"), Encoding.UTF8);
-    AssertTrue(reportCode.Contains("numericFormat.Apply(pair.Value)", StringComparison.Ordinal), "报表输出小数位必须只作用于动态列取值。");
-
-    var uploadCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "UploadTaskService.cs"), Encoding.UTF8);
-    AssertTrue(uploadCode.Contains("TestItemUnitFormatRules.FormatValue(numericFormat.Apply(value)", StringComparison.Ordinal), "过程参数必须先按小数位格式化再拼单位，否则带单位的文本不再是纯数值。");
-
-    // 「报表小数位」只针对上传给 MES 的报表；本地手动导出必须沿用测试项配置的采集小数位，
-    // 与实时预览、历史数据列表看到的位数一致。两个出口共用 WriteXlsx，故格式必须由调用方传入。
-    var generateReport = ExtractMethodText(
-        reportCode,
-        "public BizProductionReportFile GenerateXlsxReport(BizWeldTask task)",
-        "public void ExportXlsx(int taskId, string filePath)");
-    AssertTrue(
-        generateReport.Contains("OutputNumericFormat.ForReport(CurrentSettings)", StringComparison.Ordinal),
-        "上传用报表必须应用系统设置的报表小数位。");
-    AssertFalse(
-        generateReport.Contains("OutputNumericFormat.None", StringComparison.Ordinal),
-        "上传用报表不得沿用采集小数位，否则报表小数位设置失效。");
-
-    var exportReport = ExtractMethodText(
-        reportCode,
-        "public void ExportXlsx(int taskId, string filePath)",
-        "private IReadOnlyList<BizWeldPointRecord> QueryTaskRecords(int taskId)");
-    AssertTrue(
-        exportReport.Contains("OutputNumericFormat.None", StringComparison.Ordinal),
-        "数据管理页手动导出必须沿用采集小数位。");
-    AssertFalse(
-        exportReport.Contains("OutputNumericFormat.ForReport", StringComparison.Ordinal),
-        "本地导出不得应用报表小数位，该设置只针对上传报表。");
-}
-
-/// <summary>
-/// 程序内容里的宽度上限按 A 面设定，B 面（面1、面3）的宽度本来就不同。
-/// 若 B 面的宽度参与面级判定，会把合格面判成 NG，并连带让 MES 上传和报表的
-/// B 行结果变成 NG——即使产品结果按合并值判定仍是 OK。
-/// </summary>
-static void WholePieceSideBWidthStaysOutOfFaceEvaluation()
-{
-    AssertTrue(WholePieceAbAggregationRules.IsSideAFace("2"), "面2必须属于A面。");
-    AssertTrue(WholePieceAbAggregationRules.IsSideAFace("4"), "面4必须属于A面。");
-    AssertFalse(WholePieceAbAggregationRules.IsSideAFace("1"), "面1必须属于B面。");
-    AssertFalse(WholePieceAbAggregationRules.IsSideAFace("3"), "面3必须属于B面。");
-
-    AssertTrue(WholePieceProgramResultRules.ParticipatesInFaceEvaluation("宽度", "2", 4), "A面宽度必须参与面级判定。");
-    AssertFalse(WholePieceProgramResultRules.ParticipatesInFaceEvaluation("宽度", "1", 4), "B面宽度不能参与面级判定。");
-    AssertFalse(WholePieceProgramResultRules.ParticipatesInFaceEvaluation("宽度", "3", 4), "B面宽度不能参与面级判定。");
-    AssertTrue(WholePieceProgramResultRules.ParticipatesInFaceEvaluation("高度", "1", 4), "高度四面都要参与面级判定。");
-    AssertTrue(WholePieceProgramResultRules.ParticipatesInFaceEvaluation("对称度", "3", 4), "对称度四面都要参与面级判定。");
-    AssertTrue(WholePieceProgramResultRules.ParticipatesInFaceEvaluation("宽度", "1", 2), "非四面工艺没有A/B面概念，不能过滤测试项。");
-
-    // B 面宽度 25.0 超过按 A 面设定的上限 20.0，过滤掉后该面必须判 OK。
-    var snapshot = JsonSerializer.Serialize(new Dictionary<string, string>
-    {
-        ["高度"] = "16.00",
-        ["宽度"] = "20.00",
-        ["对称度"] = "0.10"
-    });
-    var sideBItems = new[] { "高度", "宽度", "对称度" };
-    var sideBValues = new[] { "15.88", "25.00", "0.09" };
-    var filtered = sideBItems
-        .Zip(sideBValues, (name, value) => new WholePieceProgramMeasurement(name, value))
-        .Where(measurement => WholePieceProgramResultRules.ParticipatesInFaceEvaluation(measurement.ItemName, "1", 4))
-        .ToList();
-    AssertEqual(2, filtered.Count, "B面参与判定的测试项必须排除宽度。");
-
-    var sideBResult = WholePieceProgramResultRules.EvaluateFace(snapshot, filtered);
-    AssertTrue(sideBResult.IsSuccess, sideBResult.ErrorMessage);
-    AssertEqual(ProductionConstants.TestResults.Ok, sideBResult.Result, "B面其余项都在范围内时必须判OK，宽度不能拖累面结果。");
-
-    // 未过滤时会误判 NG，正是现场出现“产品OK但上传和报表的B面为NG”的原因。
-    var unfilteredResult = WholePieceProgramResultRules.EvaluateFace(
-        snapshot,
-        sideBItems.Zip(sideBValues, (name, value) => new WholePieceProgramMeasurement(name, value)).ToList());
-    AssertTrue(unfilteredResult.IsSuccess, unfilteredResult.ErrorMessage);
-    AssertEqual(ProductionConstants.TestResults.Ng, unfilteredResult.Result, "用例前提：B面宽度若参与判定会超过A面上限。");
-
-    var collectionCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductCycleCollectionService.cs"), Encoding.UTF8);
-    var previewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductRealtimePreviewService.cs"), Encoding.UTF8);
-    AssertTrue(collectionCode.Contains("ParticipatesInFaceEvaluation", StringComparison.Ordinal), "正式采集的面级判定必须过滤B面宽度。");
-    AssertTrue(previewCode.Contains("ParticipatesInFaceEvaluation", StringComparison.Ordinal), "实时预览的面级判定必须过滤B面宽度，否则界面与上传口径不一致。");
-}
-
-/// <summary>
-/// 视觉检测失败约定回传 0。高度、宽度的合并值仍为 0 表示参与聚合的面全部没测到，
-/// 只判“小于上限”会误判成 OK，必须判 NG；对称度真值可能为 0，不做零值检查。
-/// </summary>
-/// <summary>
-/// 逐面判定的零值口径：视觉检测失败约定回传 0，只比“小于上限”会把采集失败误判成 OK。
-/// 现场曾出现面1、面3 的高度和对称度全为 0 却显示 OK 的情况。
-/// </summary>
-static void WholePieceFaceEvaluationRejectsFailedCollectionZeros()
-{
-    var snapshot = JsonSerializer.Serialize(new Dictionary<string, string>
-    {
-        ["高度"] = "16.15",
-        ["对称度"] = "0.12"
-    });
-
-    // 1. 高度为 0：产品实体尺寸不可能为 0，必须把当前检测面判 NG。
-    var zeroHeight = WholePieceProgramResultRules.EvaluateFace(
-        snapshot,
-        [new WholePieceProgramMeasurement("高度", "0.0000"), new WholePieceProgramMeasurement("对称度", "0.0016")]);
-    AssertTrue(zeroHeight.IsSuccess, zeroHeight.ErrorMessage);
-    AssertEqual(ProductionConstants.TestResults.Ng, zeroHeight.Result, "高度为0的检测面必须判NG。");
-    AssertTrue(zeroHeight.FailedItems.Contains("高度"), "高度零值必须进入失败项。");
-
-    // 3. 整面全为 0 属采集失败，同样由高度规则兜住，不需要单独规则。
-    var allZeroFace = WholePieceProgramResultRules.EvaluateFace(
-        snapshot,
-        [new WholePieceProgramMeasurement("高度", "0.0000"), new WholePieceProgramMeasurement("对称度", "0.0000")]);
-    AssertTrue(allZeroFace.IsSuccess, allZeroFace.ErrorMessage);
-    AssertEqual(
-        ProductionConstants.TestResults.Ng,
-        allZeroFace.Result,
-        "整面测试项全为0是采集失败，必须判NG。");
-
-    // 对称度单面真实为 0 是完全对称，高度正常时该面仍应判 OK。
-    var symmetryOnlyZero = WholePieceProgramResultRules.EvaluateFace(
-        snapshot,
-        [new WholePieceProgramMeasurement("高度", "15.1234"), new WholePieceProgramMeasurement("对称度", "0")]);
-    AssertTrue(symmetryOnlyZero.IsSuccess, symmetryOnlyZero.ErrorMessage);
-    AssertEqual(
-        ProductionConstants.TestResults.Ok,
-        symmetryOnlyZero.Result,
-        "对称度单面为0是完全对称的真实值，高度正常时该面必须判OK。");
-
-    // 2. 对称度 1/3 面同时为 0 → B 行合并值为 0 → B 行 NG → 产品 NG。
-    var definitions = new List<WholePieceAbValueDefinition>
-    {
-        new(1, "高度", "高度", "0:F-0"),
-        new(2, "对称度", "对称度", "0:F-4")
-    };
-    var sideBZeroRows = new List<WholePieceAbOutputRow>
-    {
-        new("A", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["高度"] = "15.8403",
-            ["对称度"] = "0.0162"
-        }),
-        new("B", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["高度"] = "15.8403",
-            ["对称度"] = "0"
-        })
-    };
-    var sideBZero = WholePieceProgramResultRules.EvaluateAggregatedRows(snapshot, sideBZeroRows, definitions);
-    AssertTrue(sideBZero.IsSuccess, sideBZero.ErrorMessage);
-    AssertEqual(ProductionConstants.TestResults.Ok, sideBZero.RowResults[0], "A侧对称度正常，A行必须判OK。");
-    AssertEqual(
-        ProductionConstants.TestResults.Ng,
-        sideBZero.RowResults[1],
-        "对称度B行合并值为0说明面1、面3都没检测成功，B行必须判NG。");
-    AssertEqual(
-        ProductionConstants.TestResults.Ng,
-        sideBZero.ProductResult,
-        "A/B任意一行NG，产品结果必须为NG。");
-
-    // 4. 未填最大设定值的测试项只作本地留存和看板转发，跳过判定且不影响结果。
-    var withoutWidthLimit = WholePieceProgramResultRules.EvaluateFace(
-        snapshot,
-        [
-            new WholePieceProgramMeasurement("高度", "15.1234"),
-            new WholePieceProgramMeasurement("对称度", "0.0016"),
-            new WholePieceProgramMeasurement("宽度", "0")
-        ]);
-    AssertTrue(withoutWidthLimit.IsSuccess, withoutWidthLimit.ErrorMessage);
-    AssertEqual(
-        ProductionConstants.TestResults.Ok,
-        withoutWidthLimit.Result,
-        "未配置上限的宽度不参与判定，即使为0也不得影响该面结果。");
-    AssertFalse(withoutWidthLimit.FailedItems.Contains("宽度"), "未参与判定的测试项不得进入失败项。");
-}
-
-static void WholePieceZeroMergedValueFailsProductLevelItems()
-{
-    var snapshot = JsonSerializer.Serialize(new Dictionary<string, string>
-    {
-        ["高度"] = "16.00",
-        ["宽度"] = "20.00",
-        ["对称度"] = "0.10"
-    });
-    var definitions = new[] { MergedHeightDefinition(), MergedWidthDefinition(), MergedSymmetryDefinition() };
-
-    // B 行宽度留空是正常聚合结果，不能被当成非法数字导致整次判定失败。
-    var okRows = new List<WholePieceAbOutputRow>
-    {
-        new("A", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["高度"] = "15.88",
-            ["宽度"] = "19.20",
-            ["对称度"] = "0.02"
-        }),
-        new("B", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["高度"] = "15.88",
-            ["宽度"] = string.Empty,
-            ["对称度"] = "0.09"
-        })
-    };
-    var okResult = WholePieceProgramResultRules.EvaluateAggregated(snapshot, okRows, definitions);
-    AssertTrue(okResult.IsSuccess, okResult.ErrorMessage);
-    AssertEqual(ProductionConstants.TestResults.Ok, okResult.Result, "B行宽度留空必须跳过判定，不能影响产品结果。");
-
-    var zeroHeightRows = new List<WholePieceAbOutputRow>
-    {
-        new("A", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["高度"] = "0",
-            ["宽度"] = "19.20",
-            ["对称度"] = "0.02"
-        }),
-        new("B", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["高度"] = "0",
-            ["宽度"] = string.Empty,
-            ["对称度"] = "0.09"
-        })
-    };
-    var zeroHeightResult = WholePieceProgramResultRules.EvaluateAggregated(snapshot, zeroHeightRows, definitions);
-    AssertTrue(zeroHeightResult.IsSuccess, zeroHeightResult.ErrorMessage);
-    AssertEqual(ProductionConstants.TestResults.Ng, zeroHeightResult.Result, "高度合并值为0表示四面都没检测成功，必须判NG。");
-    AssertTrue(zeroHeightResult.FailedItems.Contains("高度"), "高度零值必须进入失败项，供合并视图标红。");
-
-    var zeroWidthRows = new List<WholePieceAbOutputRow>
-    {
-        new("A", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["高度"] = "15.88",
-            ["宽度"] = "0",
-            ["对称度"] = "0.02"
-        }),
-        new("B", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["高度"] = "15.88",
-            ["宽度"] = string.Empty,
-            ["对称度"] = "0.09"
-        })
-    };
-    var zeroWidthResult = WholePieceProgramResultRules.EvaluateAggregated(snapshot, zeroWidthRows, definitions);
-    AssertTrue(zeroWidthResult.IsSuccess, zeroWidthResult.ErrorMessage);
-    AssertEqual(ProductionConstants.TestResults.Ng, zeroWidthResult.Result, "宽度A行合并值为0表示面2、面4都没检测成功，必须判NG。");
-    AssertTrue(zeroWidthResult.FailedItems.Contains("宽度"), "宽度零值必须进入失败项。");
-
-    // 对称度合并值为 0 说明该侧两个面都没检测成功（如面1、面3 同时为0），必须判 NG。
-    var zeroSymmetryRows = new List<WholePieceAbOutputRow>
-    {
-        new("A", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["高度"] = "15.88",
-            ["宽度"] = "19.20",
-            ["对称度"] = "0"
-        }),
-        new("B", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["高度"] = "15.88",
-            ["宽度"] = string.Empty,
-            ["对称度"] = "0"
-        })
-    };
-    var zeroSymmetryResult = WholePieceProgramResultRules.EvaluateAggregated(snapshot, zeroSymmetryRows, definitions);
-    AssertTrue(zeroSymmetryResult.IsSuccess, zeroSymmetryResult.ErrorMessage);
-    AssertEqual(
-        ProductionConstants.TestResults.Ng,
-        zeroSymmetryResult.Result,
-        "对称度合并值为0说明该侧两面都没检测成功，必须判NG。");
-    AssertTrue(zeroSymmetryResult.FailedItems.Contains("对称度A"), "对称度零值必须进入失败项，供合并视图标红。");
-
-    // 逐面判定：高度是产品实体尺寸，0 只可能来自视觉检测失败，必须把该面判 NG。
-    var faceResult = WholePieceProgramResultRules.EvaluateFace(
-        snapshot,
-        [new WholePieceProgramMeasurement("高度", "0"), new WholePieceProgramMeasurement("对称度", "0.02")]);
-    AssertTrue(faceResult.IsSuccess, faceResult.ErrorMessage);
-    AssertEqual(ProductionConstants.TestResults.Ng, faceResult.Result, "高度为0必须把当前检测面判NG，不能当成合格值。");
-    AssertTrue(faceResult.FailedItems.Contains("高度"), "高度零值必须进入该面的失败项。");
-
-    // 逐面判定只把该面判 NG，不连带改写产品结果：高度取四面最大值，单面未测到不代表产品不合格。
-    var singleFaceNgProduct = WholePieceProgramResultRules.ResolveRealtimeProductResult(
-        [ProductionConstants.TestResults.Ng, ProductionConstants.TestResults.Ok, ProductionConstants.TestResults.Ok, ProductionConstants.TestResults.Ok],
-        4);
-    AssertEqual(
-        ProductionConstants.TestResults.Ng,
-        singleFaceNgProduct,
-        "实时预览按逐面结果取并，任一面NG即显示产品NG。");
-
-    AssertEqual(
-        ProductionConstants.PairedAggregationModes.Maximum,
-        new AppSettings().PairedAggregationMode,
-        "配对聚合默认必须是最大值：取平均会把检测失败的0拉进结果，反而更容易判OK。");
-    AssertTrue(new AppSettings().IsWholePieceMergedDisplayEnabled, "合并显示默认必须开启：合并视图与 MES 上传、XLSX 报表同源。");
-    AssertFalse(new AppSettings().IsWholePieceFaceResultDisplayEnabled, "逐面结果列默认必须隐藏：单面结果与合并后的产品结果口径不同，同屏容易被误读成矛盾。");
-    // 未配置（null）时必须与实体默认值同向，避免各调用点自己写兜底后与默认相反
-    AssertTrue(
-        new AppSettings { EnableWholePieceMergedDisplay = null }.IsWholePieceMergedDisplayEnabled,
-        "合并显示未配置时必须按开启处理。");
-    AssertFalse(
-        new AppSettings { EnableWholePieceFaceResultDisplay = null }.IsWholePieceFaceResultDisplayEnabled,
-        "面结果未配置时必须按关闭处理。");
-}
-
-static void WholePiecePairedAggregationSupportsMaximumMode()
-{
-    var records = new[]
-    {
-        CreateAggregationRecord("1", "0.12", ProductionConstants.TestResults.Ok),
-        CreateAggregationRecord("2", "0.14", ProductionConstants.TestResults.Ok),
-        CreateAggregationRecord("3", "0.15", ProductionConstants.TestResults.Ok),
-        CreateAggregationRecord("4", "0.16", ProductionConstants.TestResults.Ok)
-    };
-    var symmetry = new WholePieceAbValueDefinition(2, "对称度", "Symmetry", "18:F-0_2");
-    var height = new WholePieceAbValueDefinition(1, "高度", "Height", "14:F-0_2");
-
-    var maximumResult = WholePieceAbAggregationRules.Aggregate(
-        records,
-        [symmetry, height],
-        ProductionConstants.PairedAggregationModes.Maximum,
-        true,
-        AppConstants.PlcStringNumericFormatModes.Round);
-    AssertTrue(maximumResult.IsSuccess, maximumResult.ErrorMessage);
-    AssertEqual("0.16", maximumResult.Rows[0].Values["Symmetry"], "最大值模式下A面必须取2、4面较大值。");
-    AssertEqual("0.15", maximumResult.Rows[1].Values["Symmetry"], "最大值模式下B面必须取1、3面较大值。");
-    AssertEqual("0.16", maximumResult.Rows[0].Values["Height"], "高度必须始终取四面最大值，不随配对聚合方式变化。");
-
-    var averageResult = WholePieceAbAggregationRules.Aggregate(
-        records,
-        [symmetry],
-        ProductionConstants.PairedAggregationModes.Average,
-        true,
-        AppConstants.PlcStringNumericFormatModes.Round);
-    AssertTrue(averageResult.IsSuccess, averageResult.ErrorMessage);
-    AssertEqual("0.15", averageResult.Rows[0].Values["Symmetry"], "平均值模式必须与改动前保持一致。");
-    AssertEqual("0.14", averageResult.Rows[1].Values["Symmetry"], "平均值模式必须与改动前保持一致。");
-}
-
-static void WholePieceMergedDisplayRespectsRealtimePreview()
-{
-    var hiddenHeight = new BizSchemeDetail
-    {
-        EnableActual = false,
-        SaveActual = true
-    };
-    var visibleSymmetry = new BizSchemeDetail
-    {
-        EnableActual = true,
-        SaveActual = true
-    };
-    var previewOnlyWidth = new BizSchemeDetail
-    {
-        EnableActual = true
-    };
-
-    AssertFalse(
-        SchemeDetailRoleRules.ShouldShowMergedPreviewActual(hiddenHeight),
-        "未勾选实时预览的高度不应进入合并显示。");
-    AssertTrue(
-        SchemeDetailRoleRules.ShouldEvaluateProgramRole(hiddenHeight, SchemeDetailValueRole.Actual),
-        "未勾选实时预览的高度只要有输出通道，仍必须参与程序判定。");
-    AssertTrue(
-        SchemeDetailRoleRules.ShouldShowMergedPreviewActual(visibleSymmetry),
-        "同时启用实时预览和业务输出的对称度应进入合并显示。");
-    AssertFalse(
-        SchemeDetailRoleRules.ShouldShowMergedPreviewActual(previewOnlyWidth),
-        "仅勾选实时预览的临时观察项不应参与合并显示。");
-
     var definitions = new[]
     {
-        (Detail: hiddenHeight, Definition: MergedHeightDefinition()),
-        (Detail: visibleSymmetry, Definition: MergedSymmetryDefinition()),
-        (Detail: previewOnlyWidth, Definition: MergedWidthDefinition())
-    }
-    .Where(item => SchemeDetailRoleRules.ShouldShowMergedPreviewActual(item.Detail))
-    .Select(item => item.Definition)
-    .ToList();
-    var columns = WholePieceMergedDisplayRules.BuildColumns(definitions);
-    AssertEqual(2, columns.Count, "合并显示只应为可见对称度生成A/B两列。");
-    AssertEqual("对称度A", columns[0].ColumnName, "第一列必须是对称度A。");
-    AssertEqual("对称度B", columns[1].ColumnName, "第二列必须是对称度B。");
-    AssertFalse(columns.Any(column => column.ItemName == "高度"), "未勾选的高度不得出现在合并列中。");
-    AssertFalse(columns.Any(column => column.ItemName == "宽度"), "仅实时预览的宽度不得参与合并列。");
+        new WholePieceAbValueDefinition(3, "宽度", "宽度", "16:F-0_4"),
+        new WholePieceAbValueDefinition(1, "高度", "高度", "14:F-0_4")
+    };
 
-    var previewCode = File.ReadAllText(
-        GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductRealtimePreviewService.cs"),
+    static IReadOnlyList<WholePieceAbOutputRow> Rows(string width) =>
+    [
+        new("A", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["宽度"] = width,
+            ["高度"] = "15.0000"
+        }),
+        new("B", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["高度"] = "15.0000"
+        })
+    ];
+
+    var withinLimit = WholePieceProgramResultRules.EvaluateAggregated(
+        snapshot, Rows("12.1599"), definitions, 2, AppConstants.PlcStringNumericFormatModes.Truncate);
+    AssertTrue(withinLimit.IsSuccess, withinLimit.ErrorMessage);
+    AssertEqual(ProductionConstants.TestResults.Ok, withinLimit.Result, "截断到2位等于上限时必须判OK。");
+
+    var overLimit = WholePieceProgramResultRules.EvaluateAggregated(
+        snapshot, Rows("12.1600"), definitions, 2, AppConstants.PlcStringNumericFormatModes.Truncate);
+    AssertTrue(overLimit.IsSuccess, overLimit.ErrorMessage);
+    AssertEqual(ProductionConstants.TestResults.Ng, overLimit.Result, "截断到2位超过上限时必须判NG。");
+
+    // 聚合侧已剔除失败标志，留空表示参与聚合的面全部视觉失败。
+    var noEffectiveValue = WholePieceProgramResultRules.EvaluateAggregated(
+        snapshot, Rows(string.Empty), definitions, 2, AppConstants.PlcStringNumericFormatModes.Truncate);
+    AssertTrue(noEffectiveValue.IsSuccess, noEffectiveValue.ErrorMessage);
+    AssertEqual(
+        ProductionConstants.TestResults.Ng,
+        noEffectiveValue.Result,
+        "聚合值为空说明参与聚合的面全部视觉失败，必须判NG。");
+}
+
+/// <summary>
+/// 「写入报表」与「过程参数」已合并为「上报」：两者对外必然成对生效。
+/// 勾选「上报」隐含打开「实时预览」与「本地保存」，由此保证逐面视图的测试项数量始终不少于合并视图，
+/// 且不会出现「已上报但本地无记录」。
+/// </summary>
+static void WholePieceUploadChannelImpliesPreviewAndSave()
+{
+    var detail = new BizSchemeDetail();
+    SchemeDetailRoleRules.SetUploadEnabled(detail, SchemeDetailValueRole.Actual, true);
+
+    AssertTrue(detail.ReportActual, "勾选上报必须同时写入报告文件。");
+    AssertTrue(detail.MesActual, "勾选上报必须同时通过 MES 接口上传。");
+    AssertTrue(detail.EnableActual, "上报隐含实时预览：上报项必须出现在逐面视图。");
+    AssertTrue(detail.SaveActual, "上报隐含本地保存：已上报的数据必须本地可追溯。");
+
+    AssertTrue(
+        SchemeDetailRoleRules.ShouldEvaluateProgramRole(detail, SchemeDetailValueRole.Actual),
+        "只有上报项参与产品判定。");
+    AssertTrue(
+        SchemeDetailRoleRules.ShouldShowMergedPreviewActual(detail),
+        "合并视图显示范围必须与判定范围一致。");
+
+    // 取消上报只关上报，不回收隐含项：现场可能仍需保留本地留存。
+    SchemeDetailRoleRules.SetUploadEnabled(detail, SchemeDetailValueRole.Actual, false);
+    AssertFalse(
+        SchemeDetailRoleRules.IsUploadEnabled(detail, SchemeDetailValueRole.Actual),
+        "取消上报后不得再上传。");
+    AssertFalse(
+        SchemeDetailRoleRules.ShouldEvaluateProgramRole(detail, SchemeDetailValueRole.Actual),
+        "取消上报后不再参与判定。");
+    AssertTrue(detail.SaveActual, "取消上报不回收本地保存，数据仍可留存供工艺分析。");
+
+    // 仅勾本地通道：写入本地历史但不进合并视图、不判定，属正常配置。
+    var localOnly = new BizSchemeDetail { EnableActual = true, SaveActual = true };
+    AssertFalse(
+        SchemeDetailRoleRules.ShouldShowMergedPreviewActual(localOnly),
+        "仅勾本地通道的测试项不得出现在合并视图。");
+    AssertFalse(
+        SchemeDetailRoleRules.ShouldEvaluateProgramRole(localOnly, SchemeDetailValueRole.Actual),
+        "仅勾本地通道的测试项不参与判定。");
+    AssertTrue(
+        SchemeDetailRoleRules.ShouldPersistRole(localOnly, SchemeDetailValueRole.Actual),
+        "仅勾本地通道仍需落 RawDataJson，否则本地历史无值。");
+}
+
+/// <summary>
+/// 勾选「上报」但未在程序内容中配置最大允许值时必须拦截：
+/// 上报数据要带明确的合格结论，没有上限会产出「已上报但无判定依据」的数据。
+/// </summary>
+static void WholePieceUploadRequiresConfiguredMaximum()
+{
+    var maximums = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["高度"] = "16.00",
+        ["对称度"] = string.Empty
+    };
+
+    var details = new (BizSchemeDetail Detail, string ItemName)[]
+    {
+        (BuildUploadDetail(), "高度"),
+        (BuildUploadDetail(), "对称度"),
+        (BuildUploadDetail(), "宽度"),
+        (new BizSchemeDetail { EnableActual = true, SaveActual = true }, "位移")
+    };
+
+    var missing = SchemeDetailRoleRules.FindUploadItemsMissingMaximum(details, maximums);
+
+    AssertEqual(2, missing.Count, "只应报出勾了上报却没有上限的测试项。");
+    AssertTrue(missing.Contains("对称度"), "上限为空字符串等同未配置，必须拦截。");
+    AssertTrue(missing.Contains("宽度"), "程序内容里完全没有该项时必须拦截。");
+    AssertFalse(missing.Contains("高度"), "已配置上限的上报项不得报错。");
+    AssertFalse(missing.Contains("位移"), "仅勾本地通道的测试项不需要上限，不参与判定。");
+
+    var serviceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductCycleCollectionService.cs"),
         Encoding.UTF8);
     AssertTrue(
-        previewCode.Contains("SchemeDetailRoleRules.ShouldShowMergedPreviewActual", StringComparison.Ordinal),
-        "合并显示列必须按实时预览实际值开关过滤。");
-    AssertTrue(
-        previewCode.Contains("ShouldEvaluateProgramRole(detail, SchemeDetailValueRole.Actual)", StringComparison.Ordinal),
-        "合并值判定必须继续使用全部业务输出项，不能随界面隐藏列而漏判。");
+        serviceCode.Contains("FindUploadItemsMissingMaximum", StringComparison.Ordinal),
+        "采集校验必须调用该规则，否则无上限的上报项仍会产出数据。");
+}
+
+static BizSchemeDetail BuildUploadDetail()
+{
+    var detail = new BizSchemeDetail();
+    SchemeDetailRoleRules.SetUploadEnabled(detail, SchemeDetailValueRole.Actual, true);
+    return detail;
 }
 
 static void WholePieceMergedDisplayBuildsAbColumns()
@@ -4349,7 +3887,7 @@ static void WholePieceProductResultUsesMergedValues()
     var okResult = WholePieceProgramResultRules.EvaluateAggregated(
         snapshot,
         okRows,
-        [MergedHeightDefinition(), MergedSymmetryDefinition()]);
+        [MergedHeightDefinition(), MergedSymmetryDefinition()], 2, AppConstants.PlcStringNumericFormatModes.Truncate);
     AssertTrue(okResult.IsSuccess, okResult.ErrorMessage);
     AssertEqual(ProductionConstants.TestResults.Ok, okResult.Result, "A/B合并值都不超限时产品必须判OK。");
 
@@ -4365,7 +3903,7 @@ static void WholePieceProductResultUsesMergedValues()
     var ngResult = WholePieceProgramResultRules.EvaluateAggregated(
         snapshot,
         ngRows,
-        [MergedHeightDefinition(), MergedSymmetryDefinition()]);
+        [MergedHeightDefinition(), MergedSymmetryDefinition()], 2, AppConstants.PlcStringNumericFormatModes.Truncate);
     AssertTrue(ngResult.IsSuccess, ngResult.ErrorMessage);
     AssertEqual(ProductionConstants.TestResults.Ng, ngResult.Result, "任一合并值超限时产品必须判NG。");
     AssertEqual(1, ngResult.FailedItems.Count, "只有B面对称度超限时失败项必须只有一个。");
@@ -4380,58 +3918,11 @@ static void WholePieceProductResultUsesMergedValues()
     var heightNgResult = WholePieceProgramResultRules.EvaluateAggregated(
         heightSnapshot,
         okRows,
-        [MergedHeightDefinition(), MergedSymmetryDefinition()]);
+        [MergedHeightDefinition(), MergedSymmetryDefinition()], 2, AppConstants.PlcStringNumericFormatModes.Truncate);
     AssertTrue(heightNgResult.IsSuccess, heightNgResult.ErrorMessage);
     AssertEqual(ProductionConstants.TestResults.Ng, heightNgResult.Result, "四面最大高度超限时产品必须判NG。");
     AssertEqual(1, heightNgResult.FailedItems.Count, "四面最大值项的失败列不得因A/B两行重复出现两次。");
     AssertEqual("高度", heightNgResult.FailedItems[0], "四面最大值项的失败列名不带A/B后缀。");
-}
-
-static void WholePieceMergedResultDiffersFromPerFaceResult()
-{
-    // 面3对称度单独超限，但B面配对平均值正好等于上限，合并口径判OK，与逐面口径结论不同。
-    var records = new[]
-    {
-        CreateMergedRecord("1", "15.00", "0.05", ProductionConstants.TestResults.Ok),
-        CreateMergedRecord("2", "15.00", "0.02", ProductionConstants.TestResults.Ok),
-        CreateMergedRecord("3", "15.00", "0.15", ProductionConstants.TestResults.Ok),
-        CreateMergedRecord("4", "15.00", "0.02", ProductionConstants.TestResults.Ok)
-    };
-    var snapshot = JsonSerializer.Serialize(new Dictionary<string, string>
-    {
-        ["高度"] = "16.00",
-        ["对称度"] = "0.10"
-    });
-
-    var perFaceResults = records
-        .Select(record => WholePieceProgramResultRules.EvaluateFace(snapshot,
-        [
-            new WholePieceProgramMeasurement("高度", "15.00"),
-            new WholePieceProgramMeasurement("对称度", record.TouchNo == "3" ? "0.15" : "0.02")
-        ]))
-        .ToList();
-    AssertTrue(perFaceResults.All(result => result.IsSuccess), "逐面判定必须成功执行。");
-    AssertEqual(
-        ProductionConstants.TestResults.Ng,
-        TestResultRules.ResolveProductResult(perFaceResults.Select(result => result.Result)),
-        "逐面口径下面3超限会让产品判NG。");
-
-    var aggregation = WholePieceAbAggregationRules.Aggregate(
-        records,
-        [MergedHeightDefinition(), MergedSymmetryDefinition()],
-        ProductionConstants.PairedAggregationModes.Average,
-        true,
-        AppConstants.PlcStringNumericFormatModes.Round);
-    AssertTrue(aggregation.IsSuccess, aggregation.ErrorMessage);
-    var mergedResult = WholePieceProgramResultRules.EvaluateAggregated(
-        snapshot,
-        aggregation.Rows,
-        [MergedHeightDefinition(), MergedSymmetryDefinition()]);
-    AssertTrue(mergedResult.IsSuccess, mergedResult.ErrorMessage);
-    AssertEqual(
-        ProductionConstants.TestResults.Ok,
-        mergedResult.Result,
-        "合并口径按A/B聚合值判定，配对平均值未超限时产品判OK。");
 }
 
 static void ProductCycleSnapshotsPersistPlcProductResults()
@@ -8012,9 +7503,9 @@ static void ProcessParameterNumericRolesAppendTestItemUnits()
     AssertEqual(string.Empty, empty, "空过程参数值不得生成独立单位字符串。");
 
     // 配置输出小数位后，必须先按小数位格式化再拼单位；结果字段仍不参与数值格式化。
-    var twoPlaces = OutputNumericFormat.ForProcessParameter(new AppSettings
+    var twoPlaces = OutputNumericFormat.ForUpload(new AppSettings
     {
-        ProcessParameterDecimalPlaces = 1,
+        JudgementDecimalPlaces = 1,
         EnablePlcStringNumericFormatting = true,
         PlcStringNumericFormatMode = AppConstants.PlcStringNumericFormatModes.Truncate
     });
@@ -11283,8 +10774,8 @@ static void MonitorDisplayTogglePermissionsAreCatalogedForAdminsOnly()
     var enResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.en.resx"), Encoding.UTF8);
     var expectedCodes = new[]
     {
-        PermissionCodes.Buttons.Monitor.MergedDisplay,
-        PermissionCodes.Buttons.Monitor.FaceResultDisplay
+        // 面结果开关已随逐面判定一并移除，仅剩合并显示开关。
+        PermissionCodes.Buttons.Monitor.MergedDisplay
     };
 
     foreach (var permissionCode in expectedCodes)
@@ -11311,17 +10802,14 @@ static void MonitorDisplayTogglePermissionsAreCatalogedForAdminsOnly()
     AssertFalse(
         operatorSection.Contains("PermissionCodes.Buttons.Monitor.MergedDisplay", StringComparison.Ordinal),
         "操作员和只读角色的默认权限不得包含合并显示开关。");
-    AssertFalse(
-        operatorSection.Contains("PermissionCodes.Buttons.Monitor.FaceResultDisplay", StringComparison.Ordinal),
-        "操作员和只读角色的默认权限不得包含面结果开关。");
 }
 
 static void MonitorDisplayToggleUpgradeGrantsAdminOnlyOnFirstIntroduction()
 {
     var expectedCodes = new[]
     {
-        PermissionCodes.Buttons.Monitor.MergedDisplay,
-        PermissionCodes.Buttons.Monitor.FaceResultDisplay
+        // 面结果开关已随逐面判定一并移除，仅剩合并显示开关。
+        PermissionCodes.Buttons.Monitor.MergedDisplay
     };
 
     AssertSequenceEqual(
@@ -14088,11 +13576,23 @@ static void ProgramContentRecipeNamesStayOutOfTestItems()
         "程序内容表格不得把配方名称当成测试项行。");
 
     // 整件判定必须只看真实测试项，配方名称跳过后仍能正常判 OK。
-    var faceResult = WholePieceProgramResultRules.EvaluateFace(
+    var judged = WholePieceProgramResultRules.EvaluateAggregated(
         content,
-        [new WholePieceProgramMeasurement("高度", "15.00")]);
-    AssertTrue(faceResult.IsSuccess, $"配方名称不得导致整件判定失败：{faceResult.ErrorMessage}");
-    AssertEqual(ProductionConstants.TestResults.Ok, faceResult.Result, "实测值未超上限时应判 OK。");
+        [
+            new("A", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["高度"] = "15.00"
+            }),
+            new("B", ProductionConstants.TestResults.Ok, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["高度"] = "15.00"
+            })
+        ],
+        [MergedHeightDefinition()],
+        2,
+        AppConstants.PlcStringNumericFormatModes.Truncate);
+    AssertTrue(judged.IsSuccess, $"配方名称不得导致整件判定失败：{judged.ErrorMessage}");
+    AssertEqual(ProductionConstants.TestResults.Ok, judged.Result, "实测值未超上限时应判 OK。");
 
     AssertTrue(ProgramContentJsonRules.IsReservedKey("配方名称"), "工位 1 旧键名必须视为保留键。");
     AssertTrue(ProgramContentJsonRules.IsReservedKey("工位2配方名称"), "工位 2 键名必须视为保留键。");
@@ -16881,26 +16381,6 @@ static void PlcProductReadyHandshakeRetainsHighLevelState()
         && serviceCode.Contains("PreviousTaskId", StringComparison.Ordinal), "无活动任务和跨任务高电平都必须保留任务边界上下文。");
 }
 
-static void SystemSettingConfiguresInspectionResultSource()
-{
-    var defaults = new AppSettings();
-    AssertEqual(
-        ProductionConstants.InspectionResultSources.Plc,
-        defaults.InspectionResultSource,
-        "旧数据库和新安装都必须默认使用PLC读取结果。");
-
-    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.cs"), Encoding.UTF8);
-    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "SystemSettingView.Designer.cs"), Encoding.UTF8);
-    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "AppSettingsService.cs"), Encoding.UTF8);
-    AssertTrue(designerCode.Contains("selectInspectionResultSource", StringComparison.Ordinal), "Designer 必须声明检测结果来源下拉。");
-    AssertTrue(viewCode.Contains("InspectionResultSourceOptions", StringComparison.Ordinal)
-        && viewCode.Contains("ProductionConstants.InspectionResultSources.Program", StringComparison.Ordinal), "系统设置必须提供PLC读取和程序计算两个稳定选项。");
-    AssertTrue(viewCode.Contains("CanSaveInspectionResultSourceChange", StringComparison.Ordinal)
-        && viewCode.Contains("HasAnyUnfinishedTask()", StringComparison.Ordinal), "存在未完工任务时必须阻止切换检测结果来源。");
-    AssertTrue(viewCode.Contains("tlpInspectionResultSource.Visible = wholePieceInspection;", StringComparison.Ordinal), "结果来源配置只应在整件检测设备显示。");
-    AssertTrue(serviceCode.Contains("InspectionResultSources.Normalize(settings.InspectionResultSource)", StringComparison.Ordinal), "设置服务必须把未知结果来源回退为PLC读取。");
-}
-
 static void SystemSettingConfiguresRealtimePointNumberSource()
 {
     var defaults = new AppSettings();
@@ -17297,7 +16777,7 @@ static string GenerateExportReportWorkbook(
     // 上传给 MES 的报表应用系统设置的报表小数位。
     var numericFormat = localExport
         ? OutputNumericFormat.None
-        : OutputNumericFormat.ForReport(settings);
+        : OutputNumericFormat.ForUpload(settings);
     writeMethod!.Invoke(service, [filePath, schema, records, task, numericFormat]);
     AssertTrue(File.Exists(filePath), "导出入口必须生成真实 XLSX 文件。");
     return filePath;
@@ -17346,7 +16826,7 @@ static string GenerateStationSpecificReportWorkbook(
     var filePath = Path.Combine(outputDirectory, "production-report-station-union.xlsx");
     var writeMethod = serviceType.GetMethod("WriteXlsx", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
     AssertTrue(writeMethod is not null, "生产报表服务必须保留 XLSX 写入入口。");
-    writeMethod!.Invoke(service, [filePath, schema, records, task, OutputNumericFormat.ForReport(settings)]);
+    writeMethod!.Invoke(service, [filePath, schema, records, task, OutputNumericFormat.ForUpload(settings)]);
     AssertTrue(File.Exists(filePath), "工位配置并集入口必须生成真实 XLSX 文件。");
     return filePath;
 }
@@ -17447,7 +16927,7 @@ static string GenerateReportWorkbook(
     var filePath = resolvedOutputPath ?? Path.Combine(outputDirectory, fileName);
     var writeMethod = serviceType.GetMethod("WriteXlsx", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
     AssertTrue(writeMethod is not null, "生产报表服务必须保留 XLSX 写入入口。");
-    writeMethod!.Invoke(service, [filePath, schema, records, task, OutputNumericFormat.ForReport(settings)]);
+    writeMethod!.Invoke(service, [filePath, schema, records, task, OutputNumericFormat.ForUpload(settings)]);
     AssertTrue(File.Exists(filePath), "生产报表写入入口必须生成真实 XLSX 文件。");
     return filePath;
 }
