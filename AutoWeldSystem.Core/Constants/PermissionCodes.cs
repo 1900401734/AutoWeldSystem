@@ -63,11 +63,6 @@ public static class PermissionCodes
             /// 监控页「合并显示」快捷开关。该开关写的是全局设置，只对管理员开放。
             /// </summary>
             public const string MergedDisplay = "button.monitor.merged-display";
-
-            /// <summary>
-            /// 监控页「面结果」快捷开关。该开关写的是全局设置，只对管理员开放。
-            /// </summary>
-            public const string FaceResultDisplay = "button.monitor.face-result-display";
         }
 
         public static class Auth

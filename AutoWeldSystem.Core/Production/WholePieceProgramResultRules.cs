@@ -1,4 +1,5 @@
 ﻿using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.Plc;
 using System.Globalization;
 using System.Text.Json;
 
@@ -9,30 +10,29 @@ namespace AutoWeldSystem.Core.Production;
 /// </summary>
 public static class WholePieceProgramResultRules
 {
-    public static bool IsApplicable(string? deviceType, string? resultSource)
+    /// <summary>
+    /// 判断是否走整件检测程序判定。
+    /// 「检测结果来源」配置已移除：视觉只回传检测完成信号，面结果寄存器恒为完成值，
+    /// 无论如何都无法由 PLC 给出合格结论，因此整件检测设备固定走程序判定。
+    /// </summary>
+    public static bool IsApplicable(string? deviceType)
         => string.Equals(
                deviceType?.Trim(),
                ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck,
-               StringComparison.OrdinalIgnoreCase)
-           && string.Equals(
-               ProductionConstants.InspectionResultSources.Normalize(resultSource),
-               ProductionConstants.InspectionResultSources.Program,
                StringComparison.OrdinalIgnoreCase);
 
-    public static WholePieceProgramFaceResult EvaluateFace(
-        string? programContentSnapshot,
-        IEnumerable<WholePieceProgramMeasurement> measurements)
-        => EvaluateFace(programContentSnapshot, measurements, mergedValues: false);
-
     /// <summary>
-    /// 判定一组实测值。<paramref name="mergedValues"/> 区分两种零值口径：
-    /// 逐面判定时只有高度不允许为 0（对称度单面可以真实为 0）；
-    /// A/B 合并值判定时任何参与判定的项为 0 都说明参与聚合的面全部没检测成功，必须判 NG。
+    /// 按 A/B 合并值判定一组测试项。逐面判定已取消：面结果寄存器恒为检测完成信号，
+    /// 不承载合格信息，产品是否合格只由合并值决定。
+    /// 聚合值为空表示参与聚合的面全部视觉失败，该项判 NG。
+    /// <paramref name="judgementDecimalPlaces"/> 为「判定与上报小数位」：
+    /// 判定前先按该位数处理聚合值，保证操作员在合并视图看到的数值与判定口径一致。
     /// </summary>
     private static WholePieceProgramFaceResult EvaluateFace(
         string? programContentSnapshot,
         IEnumerable<WholePieceProgramMeasurement> measurements,
-        bool mergedValues)
+        int? judgementDecimalPlaces,
+        string? numericFormatMode)
     {
         ArgumentNullException.ThrowIfNull(measurements);
 
@@ -79,18 +79,29 @@ public static class WholePieceProgramResultRules
                 return WholePieceProgramFaceResult.Failure($"测试项“{itemName}”的最大允许值“{maximumText}”不是合法数字。");
             }
 
-            if (!decimal.TryParse(measurement.ActualValue?.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var actual))
+            evaluatedCount++;
+
+            // 聚合侧已剔除视觉失败标志：值为空说明参与聚合的面全部失败，该尺寸未测到，必须判 NG。
+            if (string.IsNullOrWhiteSpace(measurement.ActualValue))
+            {
+                failedItems.Add(itemName);
+                continue;
+            }
+
+            if (!decimal.TryParse(measurement.ActualValue.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out _))
             {
                 return WholePieceProgramFaceResult.Failure($"测试项“{itemName}”的实测值“{measurement.ActualValue}”不是合法数字。");
             }
 
-            evaluatedCount++;
-
-            // 视觉检测失败约定回传 0。只判“小于上限”会把采集失败误判成 OK。
-            if (IsNonPositiveValue(measurement.ActualValue) && RequiresPositiveValue(itemName, mergedValues))
+            // 先按判定与上报小数位处理，再与上限比较：合并视图显示的就是判定所用的值。
+            var judgedText = PlcStringNumericFormatter.Format(
+                measurement.ActualValue,
+                judgementDecimalPlaces,
+                judgementDecimalPlaces is >= 0,
+                numericFormatMode);
+            if (!decimal.TryParse(judgedText.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var actual))
             {
-                failedItems.Add(itemName);
-                continue;
+                return WholePieceProgramFaceResult.Failure($"测试项“{itemName}”的实测值“{measurement.ActualValue}”不是合法数字。");
             }
 
             if (actual > maximum)
@@ -110,22 +121,21 @@ public static class WholePieceProgramResultRules
     }
 
     /// <summary>
-    /// 判断测试项的实测值必须为正数。
-    /// 逐面判定：只有高度（产品实体尺寸）不允许为 0，对称度单面可以真实为 0（完全对称）。
-    /// A/B 合并值判定：对称度合并值为 0 说明该侧两个面都没检测成功，同样不允许。
-    /// </summary>
-    private static bool RequiresPositiveValue(string? itemName, bool mergedValues)
-        => mergedValues || WholePieceAbAggregationRules.IsFourSideMaximumItem(itemName);
-
-    /// <summary>
-    /// 用 A/B 聚合后的合并值判定产品结果，与 MES 上传、报表口径一致。
+    /// 用 A/B 聚合后的合并值判定产品结果，与报告文件、过程参数口径一致。
     /// </summary>
     public static WholePieceProgramFaceResult EvaluateAggregated(
         string? programContentSnapshot,
         IReadOnlyList<WholePieceAbOutputRow> abRows,
-        IEnumerable<WholePieceAbValueDefinition> definitions)
+        IEnumerable<WholePieceAbValueDefinition> definitions,
+        int? judgementDecimalPlaces,
+        string? numericFormatMode)
     {
-        var evaluated = EvaluateAggregatedRows(programContentSnapshot, abRows, definitions);
+        var evaluated = EvaluateAggregatedRows(
+            programContentSnapshot,
+            abRows,
+            definitions,
+            judgementDecimalPlaces,
+            numericFormatMode);
         return evaluated.IsSuccess
             ? WholePieceProgramFaceResult.Success(evaluated.ProductResult, evaluated.FailedItems)
             : WholePieceProgramFaceResult.Failure(evaluated.ErrorMessage);
@@ -140,7 +150,9 @@ public static class WholePieceProgramResultRules
     public static WholePieceProgramAggregatedResult EvaluateAggregatedRows(
         string? programContentSnapshot,
         IReadOnlyList<WholePieceAbOutputRow> abRows,
-        IEnumerable<WholePieceAbValueDefinition> definitions)
+        IEnumerable<WholePieceAbValueDefinition> definitions,
+        int? judgementDecimalPlaces,
+        string? numericFormatMode)
     {
         ArgumentNullException.ThrowIfNull(abRows);
         ArgumentNullException.ThrowIfNull(definitions);
@@ -158,9 +170,12 @@ public static class WholePieceProgramResultRules
                     definition.ItemName,
                     row.Values.TryGetValue(definition.OutputKey, out var value) ? value : null))
                 .ToList();
-            // 合并值口径：任何参与判定的项为 0（或负值）都说明参与聚合的面全部没检测成功，必须判 NG。
-            // 例如对称度 1/3 面同时为 0 时 B 行合并值为 0，B 行判 NG，产品结果随之为 NG。
-            var rowResult = EvaluateFace(programContentSnapshot, measurements, mergedValues: true);
+            // 聚合侧留空表示参与聚合的面全部视觉失败，该行对应测试项判 NG。
+            var rowResult = EvaluateFace(
+                programContentSnapshot,
+                measurements,
+                judgementDecimalPlaces,
+                numericFormatMode);
             if (!rowResult.IsSuccess)
             {
                 return WholePieceProgramAggregatedResult.Failure(rowResult.ErrorMessage);
@@ -193,26 +208,27 @@ public static class WholePieceProgramResultRules
     public static IReadOnlyList<WholePieceAbOutputRow> ApplyAggregatedRowResults(
         string? programContentSnapshot,
         IReadOnlyList<WholePieceAbOutputRow> abRows,
-        IEnumerable<WholePieceAbValueDefinition> definitions)
+        IEnumerable<WholePieceAbValueDefinition> definitions,
+        int? judgementDecimalPlaces,
+        string? numericFormatMode)
     {
         ArgumentNullException.ThrowIfNull(abRows);
 
-        var evaluated = EvaluateAggregatedRows(programContentSnapshot, abRows, definitions);
-        if (!evaluated.IsSuccess || evaluated.RowResults.Count != abRows.Count)
+        var evaluated = EvaluateAggregatedRows(
+            programContentSnapshot,
+            abRows,
+            definitions,
+            judgementDecimalPlaces,
+            numericFormatMode);
+        if (!evaluated.IsSuccess)
         {
             return abRows;
         }
 
-        var applied = new List<WholePieceAbOutputRow>(abRows.Count);
-        for (var index = 0; index < abRows.Count; index++)
-        {
-            var row = abRows[index];
-            applied.Add(TestResultRules.IsPreWeldNg(row.Result)
-                ? row
-                : row with { Result = evaluated.RowResults[index] });
-        }
-
-        return applied;
+        // 行级 OK/NG 已取消：A/B 两行统一填产品结果，与合并视图和产品判定同源。
+        return abRows
+            .Select(row => row with { Result = evaluated.ProductResult })
+            .ToList();
     }
 
     /// <summary>
@@ -237,17 +253,6 @@ public static class WholePieceProgramResultRules
     }
 
     /// <summary>
-    /// 判断某个测试项在指定面上是否参与面级程序判定。
-    /// 程序内容里的宽度上限按 A 面设定，而 B 面（面1、面3）的宽度本来就不同，
-    /// 用 A 面上限判 B 面会把合格品判成面 NG，并连带把上传和报表的 B 行结果判成 NG。
-    /// 只在四面整件检测工艺下生效，其余工艺没有 A/B 面概念。
-    /// </summary>
-    public static bool ParticipatesInFaceEvaluation(string? itemName, string? touchNo, int touchCount)
-        => touchCount != 4
-           || !WholePieceAbAggregationRules.IsSideAOnlyItem(itemName)
-           || WholePieceAbAggregationRules.IsSideAFace(touchNo);
-
-    /// <summary>
     /// 宽度只在 A 行有值，B 行留空，不参与合并值判定。
     /// </summary>
     private static bool IsSkippedOnSideB(string? itemName, string? sideNo)
@@ -258,15 +263,13 @@ public static class WholePieceProgramResultRules
                StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// 判断实测值是否为 0 或负值。视觉检测失败约定回传 0，负值同样不是有效尺寸。
+    /// 解析程序快照中的最大允许值，供开工校验复用同一套解析口径。
     /// </summary>
-    private static bool IsNonPositiveValue(string? actualValue)
-        => decimal.TryParse(
-               actualValue?.Trim(),
-               NumberStyles.Float,
-               CultureInfo.InvariantCulture,
-               out var value)
-           && value <= 0m;
+    public static bool TryReadMaximumValues(
+        string? programContentSnapshot,
+        out Dictionary<string, string> values,
+        out string errorMessage)
+        => TryParseMaximumValues(programContentSnapshot, out values, out errorMessage);
 
     private static bool TryParseMaximumValues(
         string? json,

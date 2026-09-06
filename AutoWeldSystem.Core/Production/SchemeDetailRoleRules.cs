@@ -4,9 +4,10 @@ namespace AutoWeldSystem.Core.Production;
 
 /// <summary>
 /// 方案明细角色规则。
-/// 统一维护“实时预览、本地保存、转发看板、写入报表、过程参数”五个通道的关系，
-/// 避免规则散落在界面和服务中。五个通道互相独立，实时预览只决定界面显示范围，
-/// 不作为其他通道的前置条件。
+/// 统一维护“实时预览、本地保存、转发看板、上报”四个通道的关系，避免规则散落在界面和服务中。
+/// “上报”合并了原“写入报表”与“过程参数”：测试项需要对外上报时，报告文件与过程参数必然成对生效，
+/// 二者是同一份对外数据的两种载体，拆开只会产生“只勾一个”这类无意义配置。
+/// “上报”隐含“实时预览”与“本地保存”：保证上报项必然出现在逐面视图，且本地可追溯。
 /// </summary>
 public static class SchemeDetailRoleRules
 {
@@ -242,15 +243,37 @@ public static class SchemeDetailRoleRules
     }
 
     /// <summary>
-    /// 判断角色是否需要写入 RawDataJson，供本地保存、转发看板、报表或过程参数使用。
+    /// 判断角色是否勾选“上报”通道：同时写入报告文件并通过 MES 接口上传。
+    /// 两个底层字段成对读写，任一为真即视为已上报，兼容旧库中只写了一个字段的历史数据。
+    /// </summary>
+    public static bool IsUploadEnabled(BizSchemeDetail detail, SchemeDetailValueRole role)
+        => IsReportEnabled(detail, role) || IsMesEnabled(detail, role);
+
+    /// <summary>
+    /// 设置“上报”通道。报告文件与过程参数成对生效，因此两个底层字段同时写入。
+    /// 勾选时隐含打开“实时预览”与“本地保存”：上报项必须出现在逐面视图，且本地必须可追溯。
+    /// 取消时只关上报，不回收隐含项——现场可能仍需保留本地留存。
+    /// </summary>
+    public static void SetUploadEnabled(BizSchemeDetail detail, SchemeDetailValueRole role, bool value)
+    {
+        SetReportEnabled(detail, role, value);
+        SetMesEnabled(detail, role, value);
+        if (value)
+        {
+            SetPreviewEnabled(detail, role, true);
+            SetSaveEnabled(detail, role, true);
+        }
+    }
+
+    /// <summary>
+    /// 判断角色是否需要写入 RawDataJson，供本地保存、转发看板或上报使用。
     /// 转发看板必须计入：中心转发从本地记录读值，不落 RawDataJson 就无值可发。
     /// </summary>
     public static bool ShouldPersistRole(BizSchemeDetail detail, SchemeDetailValueRole role)
     {
         return IsSaveEnabled(detail, role)
             || IsForwardEnabled(detail, role)
-            || IsReportEnabled(detail, role)
-            || IsMesEnabled(detail, role);
+            || IsUploadEnabled(detail, role);
     }
 
     /// <summary>
@@ -287,11 +310,12 @@ public static class SchemeDetailRoleRules
 
     /// <summary>
     /// 判断角色是否参与整件检测程序判定。
-    /// 一个测试项只要在业务上有去向（本地保存、转发看板、报表或过程参数），就参与合格判定；
-    /// 只勾实时预览的临时观察项不参与，避免现场为了让预览表格干净而静默改变判定结果。
+    /// 只有勾选“上报”通道的测试项参与：对外上报的数据必须带明确的合格结论，
+    /// 而仅供本地留存和工艺分析的数据无需判定。
+    /// 由此保证“操作员在合并视图看到的项，就是参与判定的项”。
     /// </summary>
     public static bool ShouldEvaluateProgramRole(BizSchemeDetail detail, SchemeDetailValueRole role)
-        => ShouldPersistRole(detail, role);
+        => IsUploadEnabled(detail, role);
 
     /// <summary>
     /// 判断方案明细是否至少启用了一个实时预览角色。
@@ -300,12 +324,50 @@ public static class SchemeDetailRoleRules
         => AllRoles.Any(role => IsPreviewEnabled(detail, role));
 
     /// <summary>
-    /// 判断实际值是否同时参与业务判定且显示在整件检测合并预览中。
-    /// 合并列的可见范围必须与逐面实时预览一致，但仅勾实时预览的临时观察项仍不参与合并判定。
+    /// 判断实际值是否显示在整件检测合并视图中。
+    /// 合并视图只显示勾选“上报”通道的项，与产品判定范围完全一致，便于与上报数据比对；
+    /// 逐面视图另按“实时预览”通道决定显示范围，因“上报”隐含“实时预览”，逐面项数始终不少于合并项数。
     /// </summary>
     public static bool ShouldShowMergedPreviewActual(BizSchemeDetail detail)
-        => IsPreviewEnabled(detail, SchemeDetailValueRole.Actual)
-            && ShouldEvaluateProgramRole(detail, SchemeDetailValueRole.Actual);
+        => IsUploadEnabled(detail, SchemeDetailValueRole.Actual);
+
+    /// <summary>
+    /// 找出勾选了“上报”通道但没有配置最大允许值的测试项名称。
+    /// 上报数据必须带明确的合格结论，没有最大允许值即无判定依据，
+    /// 否则会出现“已上报但无判定依据”的数据。
+    /// 最大允许值存在程序内容中、通道勾选存在方案明细中，两者只有开工时才同时可得，
+    /// 因此校验放在开工环节而不是方案明细保存环节。
+    /// </summary>
+    public static IReadOnlyList<string> FindUploadItemsMissingMaximum(
+        IEnumerable<(BizSchemeDetail Detail, string ItemName)> details,
+        IReadOnlyDictionary<string, string> maximumValues)
+    {
+        ArgumentNullException.ThrowIfNull(details);
+        ArgumentNullException.ThrowIfNull(maximumValues);
+
+        var missing = new List<string>();
+        foreach (var (detail, itemName) in details)
+        {
+            if (!IsUploadEnabled(detail, SchemeDetailValueRole.Actual))
+            {
+                continue;
+            }
+
+            var normalizedName = itemName?.Trim() ?? string.Empty;
+            if (normalizedName.Length == 0)
+            {
+                continue;
+            }
+
+            if (!maximumValues.TryGetValue(normalizedName, out var maximum)
+                || string.IsNullOrWhiteSpace(maximum))
+            {
+                missing.Add(normalizedName);
+            }
+        }
+
+        return missing;
+    }
 
     /// <summary>
     /// 判断方案明细是否包含任意通道配置。

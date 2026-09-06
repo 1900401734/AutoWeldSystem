@@ -28,7 +28,6 @@ public static class WholePieceAbAggregationRules
     public static WholePieceAbAggregationResult Aggregate(
         IEnumerable<BizWeldPointRecord> records,
         IEnumerable<WholePieceAbValueDefinition> definitions,
-        string? pairedAggregationMode,
         bool enableStringNumericFormatting,
         string? stringNumericFormatMode)
     {
@@ -80,7 +79,6 @@ public static class WholePieceAbAggregationRules
             definitions.ToList(),
             (side, definition) => TryReadRawValue(sideRecords[side], definition),
             recordList[0].ProductNo ?? string.Empty,
-            pairedAggregationMode,
             requireRelativeAddress: true,
             enableStringNumericFormatting,
             stringNumericFormatMode);
@@ -94,7 +92,6 @@ public static class WholePieceAbAggregationRules
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> sideItemValues,
         IReadOnlyDictionary<string, string> sideResults,
         IEnumerable<WholePieceAbValueDefinition> definitions,
-        string? pairedAggregationMode,
         bool enableStringNumericFormatting,
         string? stringNumericFormatMode)
     {
@@ -119,7 +116,6 @@ public static class WholePieceAbAggregationRules
             definitions.ToList(),
             (side, definition) => TryReadPreviewValue(sideItemValues[side], side, definition),
             string.Empty,
-            pairedAggregationMode,
             requireRelativeAddress: false,
             enableStringNumericFormatting,
             stringNumericFormatMode);
@@ -133,7 +129,6 @@ public static class WholePieceAbAggregationRules
         IReadOnlyList<WholePieceAbValueDefinition> definitionList,
         Func<string, WholePieceAbValueDefinition, RawNumericValue> readValue,
         string productNo,
-        string? pairedAggregationMode,
         bool requireRelativeAddress,
         bool enableStringNumericFormatting,
         string? stringNumericFormatMode)
@@ -148,7 +143,6 @@ public static class WholePieceAbAggregationRules
             return WholePieceAbAggregationResult.Failure($"A/B聚合字段重复：{string.Join("、", duplicateKeys)}。");
         }
 
-        var pairedMode = ProductionConstants.PairedAggregationModes.Normalize(pairedAggregationMode);
         var productPrefix = string.IsNullOrWhiteSpace(productNo) ? string.Empty : $"产品“{productNo}”";
         foreach (var definition in definitionList)
         {
@@ -174,11 +168,17 @@ public static class WholePieceAbAggregationRules
                         $"{productPrefix}测试项“{definition.ItemName}”数据无效：{failure.ErrorMessage}");
                 }
 
-                var formattedMaximum = FormatAggregatedValue(
-                    values.Max(value => value.Value),
-                    expression.DecimalPlaces,
-                    enableStringNumericFormatting,
-                    stringNumericFormatMode);
+                // 剔除视觉失败标志后再取最大值；全部面失败时留空，由判定侧按 NG 处理。
+                var effective = WholePieceFailureFlagRules.ResolveEffectiveValues(
+                    definition.ItemName,
+                    values.Select(value => value.Value).ToList());
+                var formattedMaximum = effective.Count == 0
+                    ? string.Empty
+                    : FormatAggregatedValue(
+                        effective.Max(),
+                        expression.DecimalPlaces,
+                        enableStringNumericFormatting,
+                        stringNumericFormatMode);
                 foreach (var row in rows)
                 {
                     row.Values[definition.OutputKey] = formattedMaximum;
@@ -201,11 +201,17 @@ public static class WholePieceAbAggregationRules
                         $"{productPrefix}A面测试项“{definition.ItemName}”数据无效：{failure.ErrorMessage}");
                 }
 
-                var formattedMaximum = FormatAggregatedValue(
-                    values.Max(value => value.Value),
-                    expression.DecimalPlaces,
-                    enableStringNumericFormatting,
-                    stringNumericFormatMode);
+                // 宽度同样先剔除失败标志；A 面两面全失败时留空，由判定侧按 NG 处理。
+                var effectiveSideA = WholePieceFailureFlagRules.ResolveEffectiveValues(
+                    definition.ItemName,
+                    values.Select(value => value.Value).ToList());
+                var formattedMaximum = effectiveSideA.Count == 0
+                    ? string.Empty
+                    : FormatAggregatedValue(
+                        effectiveSideA.Max(),
+                        expression.DecimalPlaces,
+                        enableStringNumericFormatting,
+                        stringNumericFormatMode);
                 foreach (var row in rows)
                 {
                     row.Values[definition.OutputKey] = IsSideA(row.SideNo) ? formattedMaximum : string.Empty;
@@ -227,12 +233,19 @@ public static class WholePieceAbAggregationRules
                         $"{productPrefix}{row.SideNo}面测试项“{definition.ItemName}”数据无效：{failure.ErrorMessage}");
                 }
 
-                // 高度取四面最大值、宽度只取 A 面，其余测试项的配对聚合方式由系统设置决定。
-                var aggregated = pairedMode == ProductionConstants.PairedAggregationModes.Maximum
-                    ? Math.Max(values[0].Value, values[1].Value)
-                    : (values[0].Value + values[1].Value) / 2m;
+                // 严格项（对称度等）任一配对面失败即整面无法判定，留空交给判定侧判 NG。
+                var effectivePair = WholePieceFailureFlagRules.ResolveEffectiveValues(
+                    definition.ItemName,
+                    values.Select(value => value.Value).ToList());
+                if (effectivePair.Count == 0)
+                {
+                    row.Values[definition.OutputKey] = string.Empty;
+                    continue;
+                }
+
+                // 高度取四面最大值、宽度只取 A 面，其余测试项统一取配对面最大值。
                 row.Values[definition.OutputKey] = FormatAggregatedValue(
-                    aggregated,
+                    effectivePair.Max(),
                     expression.DecimalPlaces,
                     enableStringNumericFormatting,
                     stringNumericFormatMode);
