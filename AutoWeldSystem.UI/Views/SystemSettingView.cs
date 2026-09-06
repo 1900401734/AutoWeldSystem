@@ -755,7 +755,7 @@ public partial class SystemSettingView : BaseView
         inputUploadBatchSize.Text = Math.Max(1, settings.UploadBatchSize).ToString(CultureInfo.InvariantCulture);
         // 两个小数位配置已合并为「判定与上报小数位」，两个输入框暂时共同绑定该值，
         // 界面精简（移除其中一个输入框）在后续 UI 提交中处理。
-        inputReportDecimalPlaces.Text = FormatOutputDecimalPlaces(settings.JudgementDecimalPlaces);
+        inputJudgementDecimalPlaces.Text = FormatOutputDecimalPlaces(settings.JudgementDecimalPlaces);
         BindPlcTypeOptions();
         BindPlcStringNumericFormatModeOptions();
         BindPlcAlarmTriggerModeOptions();
@@ -865,7 +865,7 @@ public partial class SystemSettingView : BaseView
         chkEnablePlcStringNumericFormatting.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnablePlcStringFormatting);
         chkEnablePlcAlarmReading.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnablePlcAlarmReading);
         // 「报表小数位」与「过程参数小数位」已合并为「判定与上报小数位」，只保留一个输入行。
-        lblReportDecimalPlaces.Text = _localizer.GetString(TextKeys.SystemSetting.LabelJudgementDecimalPlaces);
+        lblJudgementDecimalPlaces.Text = _localizer.GetString(TextKeys.SystemSetting.LabelJudgementDecimalPlaces);
 
         lblDeviceId.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDeviceId);
         lblDeviceName.Text = _localizer.GetString(TextKeys.SystemSetting.LabelDeviceName);
@@ -1026,10 +1026,6 @@ public partial class SystemSettingView : BaseView
         chkEnableWholePieceMergedDisplay.Visible = wholePieceInspection
             && GlobalContext.HasPermission(PermissionCodes.Buttons.Monitor.MergedDisplay);
 
-        // 已移除的三行整行隐藏：控件仍在 Designer 中，但不再有对应配置。
-        tlpInspectionResultSource.Visible = false;
-        tlpPairedAggregationMode.Visible = false;
-        tlpProcessParameterDecimalPlaces.Visible = false;
     }
 
     private void BindRealtimePointNumberSourceOptions()
@@ -1408,8 +1404,8 @@ public partial class SystemSettingView : BaseView
         }
 
         if (!TryParseOutputDecimalPlaces(
-                inputReportDecimalPlaces.Text,
-                NormalizeCaption(lblReportDecimalPlaces.Text),
+                inputJudgementDecimalPlaces.Text,
+                NormalizeCaption(lblJudgementDecimalPlaces.Text),
                 out var reportDecimalPlaces))
         {
             return false;
