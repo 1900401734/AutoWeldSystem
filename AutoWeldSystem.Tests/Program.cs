@@ -16324,13 +16324,15 @@ static void SystemSettingViewUsesResponsiveSemanticColumns()
     AssertTrue(designerCode.Contains("middleSettingsColumn.Controls.Add(grpCenterServerConfig, 0, 2);", StringComparison.Ordinal), "中列第三组必须是中心服务器。");
     AssertTrue(designerCode.Contains("rightSettingsColumn.Controls.Add(grpMesConfig, 0, 0);", StringComparison.Ordinal), "右列必须是 MES。");
     AssertTrue(designerCode.Contains("tableLayoutPanelMesConfig.AutoScroll = true;", StringComparison.Ordinal), "MES 内容必须独立滚动。");
-    // 工位名称和整件检测开关会按工位模式或设备类型隐藏（检测结果来源、A/B配对聚合方式两行已于
-    // v2.21.0 移除）。承载它们的行必须是 AutoSize：设计器会把 AutoSize 容器的实测高度序列化成
-    // Absolute，一旦固化，隐藏后不再折叠，界面上留下等高空洞，而这不会导致编译失败。
-    AssertTrue(designerCode.Contains("tlpProcessParameterType.AutoSizeMode = AutoSizeMode.GrowAndShrink;", StringComparison.Ordinal)
-        && DesignerRowIsAutoSize(designerCode, "tlpProcessParameterType"), "整件检测开关所在容器必须能自动折叠。");
-    AssertTrue(CountDesignerAutoSizeRows(designerCode, "tlpProductConfig") >= 2,
-        "生产配置里承载可隐藏行（工位名称、整件检测开关）的行样式必须是 AutoSize，否则隐藏后留下空洞。");
+    // 工位名称行会按工位模式隐藏。承载它的行必须是 AutoSize：设计器会把 AutoSize 容器的实测
+    // 高度序列化成 Absolute，一旦固化，隐藏后不再折叠，界面上留下等高空洞，而这不会导致编译失败。
+    // v2.21.0 移除了检测结果来源、A/B配对聚合方式、逐面结果显示和四面合并显示四项设置，
+    // 合并显示改由生产监控页复选框单独控制，因此生产配置里只剩工位名称一个可隐藏行。
+    AssertFalse(
+        designerCode.Contains("chkEnableWholePieceMergedDisplay", StringComparison.Ordinal),
+        "四面合并显示已改由生产监控页复选框控制，系统设置不得保留重复入口。");
+    AssertTrue(CountDesignerAutoSizeRows(designerCode, "tlpProductConfig") >= 1,
+        "生产配置里承载可隐藏行（工位名称）的行样式必须是 AutoSize，否则隐藏后留下空洞。");
     AssertFalse(designerCode.Contains("tabBasicSettings.Controls.Add(grpPlcConfig);", StringComparison.Ordinal), "分组不应继续直接使用页签绝对坐标。");
     AssertTrue(viewCode.Contains("SystemSettingLayoutRules.ResolveMode(basicSettingsViewport.ClientSize.Width, DeviceDpi)", StringComparison.Ordinal), "运行时必须按 DPI 逻辑宽度选择布局。");
     AssertTrue(viewCode.Contains("private void ApplyBasicSettingsLayout(bool force = false)", StringComparison.Ordinal), "代码后置文件必须提供统一重排入口。");

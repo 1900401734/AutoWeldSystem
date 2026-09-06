@@ -580,7 +580,6 @@ public partial class SystemSettingView : BaseView
 
         var option = ProcessParameterDeviceTypeOptions[e.Value];
         _selectedProcessParameterDeviceType = option.Value;
-        UpdateInspectionResultSourceEnabled();
     }
 
 
@@ -750,7 +749,6 @@ public partial class SystemSettingView : BaseView
         _selectedUploadMode = NormalizeUploadMode(settings.UploadMode);
         _selectedProcessParameterDeviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
         _selectedRealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Normalize(settings.RealtimePointNumberSource);
-        chkEnableWholePieceMergedDisplay.Checked = settings.IsWholePieceMergedDisplayEnabled;
         _selectedCenterServerSystemType = NormalizeCenterServerSystemType(settings.CenterServerSystemType);
         inputUploadBatchSize.Text = Math.Max(1, settings.UploadBatchSize).ToString(CultureInfo.InvariantCulture);
         // 两个小数位配置已合并为「判定与上报小数位」，两个输入框暂时共同绑定该值，
@@ -763,7 +761,6 @@ public partial class SystemSettingView : BaseView
         BindProcessParameterDeviceTypeOptions();
         BindRealtimePointNumberSourceOptions();
         BindCenterServerSystemTypeOptions();
-        UpdateInspectionResultSourceEnabled();
         UpdateRealtimePointNumberSourceEnabled();
         UpdatePlcStringNumericFormatModeEnabled();
         UpdatePlcAlarmTriggerModeEnabled();
@@ -893,7 +890,6 @@ public partial class SystemSettingView : BaseView
         lblCenterServerHeartbeatInterval.Text = _localizer.GetString(TextKeys.SystemSetting.LabelCenterServerHeartbeat);
         lblProcessParameterDeviceType.Text = _localizer.GetString(TextKeys.SystemSetting.LabelProcessParameterDeviceType);
         lblRealtimePointNumberSource.Text = _localizer.GetString(TextKeys.SystemSetting.LabelRealtimePointNumberSource);
-        chkEnableWholePieceMergedDisplay.Text = _localizer.GetString(TextKeys.SystemSetting.LabelWholePieceMergedDisplay);
         chkEnablePostDataCustomHeader.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnablePostDataHeader);
         lblPostDataHeaderKey.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPostDataHeaderKey);
         lblPostDataHeaderValue.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPostDataHeaderValue);
@@ -1009,23 +1005,6 @@ public partial class SystemSettingView : BaseView
         {
             _syncingProcessParameterDeviceTypeSelection = false;
         }
-    }
-
-    /// <summary>
-    /// 整件检测专属设置项的可见性。
-    /// 「检测结果来源」「A/B 配对聚合方式」「逐面结果显示」三项已移除：
-    /// 视觉只回传检测完成信号，结果来源无从选择；配对聚合统一取最大值；逐面结果不再判定。
-    /// 此处只剩合并显示开关，它与监控页快捷开关写同一份全局设置，因此要求对应权限。
-    /// </summary>
-    private void UpdateInspectionResultSourceEnabled()
-    {
-        var wholePieceInspection = string.Equals(
-            _selectedProcessParameterDeviceType,
-            ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck,
-            StringComparison.OrdinalIgnoreCase);
-        chkEnableWholePieceMergedDisplay.Visible = wholePieceInspection
-            && GlobalContext.HasPermission(PermissionCodes.Buttons.Monitor.MergedDisplay);
-
     }
 
     private void BindRealtimePointNumberSourceOptions()
@@ -1492,7 +1471,6 @@ public partial class SystemSettingView : BaseView
         settings.JudgementDecimalPlaces = reportDecimalPlaces;
         settings.ProcessParameterDeviceType = NormalizeProcessParameterDeviceType(_selectedProcessParameterDeviceType);
         settings.RealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Normalize(_selectedRealtimePointNumberSource);
-        settings.EnableWholePieceMergedDisplay = chkEnableWholePieceMergedDisplay.Checked;
         if (!TryApplyMesEndpointSettings(settings))
         {
             return false;
@@ -1617,7 +1595,6 @@ public partial class SystemSettingView : BaseView
         var enabled = !HasAnyActiveRuntimeTask();
         grpDeviceConfig.Enabled = enabled;
         grpMesConfig.Enabled = enabled;
-        UpdateInspectionResultSourceEnabled();
         UpdateRealtimePointNumberSourceEnabled();
         Volatile.Write(ref _deviceManagementStateKnown, true);
     }

@@ -2475,7 +2475,4 @@ This also removes {3} collection record(s) and {4} report file(s) including the 
   <data name="system.message.realtime_point_number_source_locked" xml:space="preserve">
     <value>An unfinished task exists. Complete it before changing the realtime number source.</value>
   </data>
-  <data name="system.label.whole_piece_merged_display" xml:space="preserve">
-    <value>Merge four faces in monitor view</value>
-  </data>
 </root>

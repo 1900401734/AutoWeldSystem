@@ -2476,7 +2476,4 @@
   <data name="system.message.realtime_point_number_source_locked" xml:space="preserve">
     <value>存在未完工任务，不能切换实时编号来源，请先完工后再调整。</value>
   </data>
-  <data name="system.label.whole_piece_merged_display" xml:space="preserve">
-    <value>整件检测四面合并显示</value>
-  </data>
 </root>

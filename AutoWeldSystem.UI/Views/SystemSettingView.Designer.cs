@@ -81,8 +81,6 @@
             middleSettingsColumn = new TableLayoutPanel();
             grpProductionConfig = new GroupBox();
             tlpProductConfig = new TableLayoutPanel();
-            tlpProcessParameterType = new TableLayoutPanel();
-            chkEnableWholePieceMergedDisplay = new AntdUI.Checkbox();
             tlpRealtimePointNumberSource = new TableLayoutPanel();
             lblRealtimePointNumberSource = new AntdUI.Label();
             selectRealtimePointNumberSource = new AntdUI.Select();
@@ -214,7 +212,6 @@
             middleSettingsColumn.SuspendLayout();
             grpProductionConfig.SuspendLayout();
             tlpProductConfig.SuspendLayout();
-            tlpProcessParameterType.SuspendLayout();
             tlpRealtimePointNumberSource.SuspendLayout();
             stationDisplayNameLayout.SuspendLayout();
             tlpUploadConfig.SuspendLayout();
@@ -1149,7 +1146,6 @@
             tlpProductConfig.ColumnCount = 2;
             tlpProductConfig.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             tlpProductConfig.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            tlpProductConfig.Controls.Add(tlpProcessParameterType, 0, 6);
             tlpProductConfig.Controls.Add(tlpRealtimePointNumberSource, 0, 5);
             tlpProductConfig.Controls.Add(stationDisplayNameLayout, 0, 2);
             tlpProductConfig.Controls.Add(tlpUploadConfig, 0, 3);
@@ -1162,7 +1158,7 @@
             tlpProductConfig.Location = new Point(2, 23);
             tlpProductConfig.Margin = new Padding(2, 3, 2, 3);
             tlpProductConfig.Name = "tlpProductConfig";
-            tlpProductConfig.RowCount = 7;
+            tlpProductConfig.RowCount = 6;
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
             tlpProductConfig.RowStyles.Add(new RowStyle());
@@ -1172,40 +1168,6 @@
             tlpProductConfig.RowStyles.Add(new RowStyle());
             tlpProductConfig.Size = new Size(409, 359);
             tlpProductConfig.TabIndex = 0;
-            // 
-            // tlpProcessParameterType
-            // 
-            tlpProcessParameterType.AutoSize = true;
-            tlpProcessParameterType.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            tlpProcessParameterType.ColumnCount = 2;
-            tlpProductConfig.SetColumnSpan(tlpProcessParameterType, 2);
-            tlpProcessParameterType.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            tlpProcessParameterType.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            tlpProcessParameterType.Controls.Add(chkEnableWholePieceMergedDisplay, 0, 4);
-            tlpProcessParameterType.Dock = DockStyle.Fill;
-            tlpProcessParameterType.Location = new Point(0, 319);
-            tlpProcessParameterType.Margin = new Padding(0);
-            tlpProcessParameterType.Name = "tlpProcessParameterType";
-            tlpProcessParameterType.RowCount = 5;
-            tlpProcessParameterType.RowStyles.Add(new RowStyle());
-            tlpProcessParameterType.RowStyles.Add(new RowStyle());
-            tlpProcessParameterType.RowStyles.Add(new RowStyle());
-            tlpProcessParameterType.RowStyles.Add(new RowStyle());
-            tlpProcessParameterType.RowStyles.Add(new RowStyle());
-            tlpProcessParameterType.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
-            tlpProcessParameterType.Size = new Size(409, 40);
-            tlpProcessParameterType.TabIndex = 7;
-            // 
-            // chkEnableWholePieceMergedDisplay
-            // 
-            chkEnableWholePieceMergedDisplay.Dock = DockStyle.Fill;
-            chkEnableWholePieceMergedDisplay.Location = new Point(0, 0);
-            chkEnableWholePieceMergedDisplay.Margin = new Padding(0);
-            chkEnableWholePieceMergedDisplay.Name = "chkEnableWholePieceMergedDisplay";
-            chkEnableWholePieceMergedDisplay.Padding = new Padding(6, 0, 0, 0);
-            chkEnableWholePieceMergedDisplay.Size = new Size(204, 40);
-            chkEnableWholePieceMergedDisplay.TabIndex = 11;
-            chkEnableWholePieceMergedDisplay.Text = "整件检测四面合并显示";
             // 
             // tlpRealtimePointNumberSource
             // 
@@ -2641,7 +2603,6 @@
             grpProductionConfig.PerformLayout();
             tlpProductConfig.ResumeLayout(false);
             tlpProductConfig.PerformLayout();
-            tlpProcessParameterType.ResumeLayout(false);
             tlpRealtimePointNumberSource.ResumeLayout(false);
             tlpRealtimePointNumberSource.PerformLayout();
             stationDisplayNameLayout.ResumeLayout(false);
@@ -2840,7 +2801,6 @@
         private TableLayoutPanel tlpRealtimePointNumberSource;
         private AntdUI.Label lblRealtimePointNumberSource;
         private AntdUI.Select selectRealtimePointNumberSource;
-        private AntdUI.Checkbox chkEnableWholePieceMergedDisplay;
         private AntdUI.Checkbox chkShowTestFlagInHistory;
         private AntdUI.Checkbox chkEnableDeviceStatusReport;
         private AntdUI.Checkbox chkEnableWorkOrderStatusReport;
@@ -2858,7 +2818,6 @@
         private AntdUI.Input inputCenterServerHeartbeatInterval;
         private AntdUI.Checkbox chkEnablePlcAlarmReading;
         private AntdUI.Select selectPlcAlarmTriggerMode;
-        private TableLayoutPanel tlpProcessParameterType;
         private TableLayoutPanel tlpCheckbox2;
         private TableLayoutPanel tableLayoutPanel4;
         private TableLayoutPanel tlpUploadConfig;

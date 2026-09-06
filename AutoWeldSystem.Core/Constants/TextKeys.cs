@@ -1189,7 +1189,6 @@ public static class TextKeys
         public const string LabelCenterServerHeartbeat = "system.label.center_server_heartbeat";
         public const string LabelProcessParameterDeviceType = "system.label.process_parameter_device_type";
         public const string LabelRealtimePointNumberSource = "system.label.realtime_point_number_source";
-        public const string LabelWholePieceMergedDisplay = "system.label.whole_piece_merged_display";
         public const string LabelPostDataHeaderKey = "system.label.postdata_header_key";
         public const string LabelPostDataHeaderValue = "system.label.postdata_header_value";
         public const string UploadMode = "system.label.upload_mode";
