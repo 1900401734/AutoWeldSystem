@@ -235,7 +235,7 @@ internal sealed class CenterProductReportWorkbookWriter
         int dataRowCount,
         int templateColumnCount)
     {
-        var templateRange = worksheet.Range(1, 1, 9, templateColumnCount);
+        var templateRange = worksheet.Range(1, 1, CenterProductReportFormat.TemplateLastRow, templateColumnCount);
         templateRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
         templateRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
         templateRange.Style.Alignment.WrapText = false;

@@ -1209,6 +1209,14 @@ public partial class MonitorView : BaseView
             return;
         }
 
+        // 报表表头的“员工姓名”离线无法从 MES 反查，只能由现场录入，因此与员工号一样在开工前校验非空。
+        var employeeName = MesUserName.Text.Trim();
+        if (string.IsNullOrWhiteSpace(employeeName))
+        {
+            SetRuntimeError(TextKeys.Monitor.RuntimeError.OperatorNameRequired);
+            return;
+        }
+
         var fullProgram = await _programManageService.GetProgramAsync(selectedProgram!.Program.Id);
         if (fullProgram is null)
         {
@@ -1238,7 +1246,7 @@ public partial class MonitorView : BaseView
         await RunReportOperationAsync(stationNo, "本地开工", async () =>
         {
             ClearRuntimeError();
-            await _weldTaskService.StartLocalAsync(request, employeeNumber, 0);
+            await _weldTaskService.StartLocalAsync(request, employeeNumber, employeeName, 0);
             _offlineWorkOrderEditedByUser = false;
             ApplyOfflineProgramNameOption(selectedProgram, syncProgramFields: false);
             RefreshProductionRuntimeState();
@@ -2039,7 +2047,8 @@ public partial class MonitorView : BaseView
         }
 
         _validatedOperatorNumber = null;
-        ClearMesOperatorDisplayInfo();
+        // 在线态姓名是 MES 校验结果，改工号即失效；离线态姓名是操作员独立录入项，必须保留。
+        ClearMesOperatorDisplayInfo(preserveUserName: _offlineInputModeActive);
     }
 
     /// <summary>
@@ -4272,6 +4281,8 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         inputProdModel.ReadOnly = readOnly;
         // 离线无法向 MES 校验身份，员工号只能由现场操作员录入，因此不受“操作员弹窗输入”设置影响，始终随离线可编辑态开放。
         MesUserNumber.ReadOnly = readOnly;
+        // 员工姓名同理：离线报表表头的姓名无法从 MES 反查，只能现场录入，因此离线可编辑态一并开放。
+        MesUserName.ReadOnly = readOnly;
     }
 
     /// <summary>
@@ -9978,8 +9989,8 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
 
     /// <summary>
     /// 绑定离线待开工态的员工信息。
-    /// 离线无法向 MES 校验身份，员工号完全是操作员的现场录入项：有任务时回填任务快照，
-    /// 否则只清空姓名、部门和班组显示并保留正在输入的员工号，且不复用上一次在线校验残留的 MES 员工信息。
+    /// 离线无法向 MES 校验身份，员工号和姓名都是操作员的现场录入项：有任务时回填任务快照，
+    /// 否则只清空部门和班组显示并保留正在输入的员工号与姓名，且不复用上一次在线校验残留的 MES 员工信息。
     /// </summary>
     /// <param name="activeTask">当前工位任务；离线可编辑态下通常为 null。</param>
     private void BindOfflineOperatorInfo(BizWeldTask? activeTask)
@@ -9991,7 +10002,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             return;
         }
 
-        ClearMesOperatorDisplayInfo();
+        ClearMesOperatorDisplayInfo(preserveUserName: true);
     }
 
     /// <summary>
@@ -10070,12 +10081,20 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// 仅清空员工关联显示字段（姓名、部门、班组），不清空员工号输入框本身。
     /// 用于用户修改员工号时即时撤销显示信息。
     /// </summary>
-    private void ClearMesOperatorDisplayInfo()
+    /// <param name="preserveUserName">
+    /// 是否保留姓名输入。离线态姓名是操作员的独立录入项而非 MES 回填结果，
+    /// 1Hz 重绑定和改工号都不能抹掉，否则边输入边被清空。
+    /// </param>
+    private void ClearMesOperatorDisplayInfo(bool preserveUserName = false)
     {
         _syncingOperatorInput = true;
         try
         {
-            MesUserName.Text = string.Empty;
+            if (!preserveUserName)
+            {
+                MesUserName.Text = string.Empty;
+            }
+
             inputDeptName.Text = string.Empty;
             TeamName.Text = string.Empty;
         }

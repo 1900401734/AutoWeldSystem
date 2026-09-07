@@ -4120,9 +4120,11 @@ static void ProductionReportWritesCustomerTemplateForSingleStation()
         AssertEqual($"工单数量：{task.StartAmount}", worksheet.Cell("A7").GetString(), "工单数量必须只取 StartAmount。");
         AssertEqual($"合格数量：{task.QualifiedQty}", worksheet.Cell("D7").GetString(), "合格数量必须取 QualifiedQty。");
         AssertEqual($"操作人员：{task.UserNumber}", worksheet.Cell("G7").GetString(), "操作人员必须只取开工任务 UserNumber。");
-        AssertEqual($"开始时间：{startTime:yyyy-MM-dd HH:mm:ss}", worksheet.Cell("A9").GetString(), "开始时间必须来自持久化 StartTime 并使用模板格式。");
-        AssertEqual("结束时间：", worksheet.Cell("D9").GetString(), "未完工任务的结束时间必须只保留标签。");
-        AssertEqual(string.Empty, worksheet.Cell("G9").GetString(), "参考模板第九行不得继续写操作人员或备注。");
+        AssertEqual($"程序名称：{task.ProgramName}", worksheet.Cell("A9").GetString(), "程序名称必须取开工固化的任务快照并占满 A9:F9。");
+        AssertEqual($"员工姓名：{task.UserName}", worksheet.Cell("G9").GetString(), "员工姓名必须取开工任务 UserName，与工号分列显示。");
+        AssertEqual($"开始时间：{startTime:yyyy-MM-dd HH:mm:ss}", worksheet.Cell("A11").GetString(), "开始时间必须来自持久化 StartTime 并使用模板格式。");
+        AssertEqual("结束时间：", worksheet.Cell("D11").GetString(), "未完工任务的结束时间必须只保留标签。");
+        AssertEqual(string.Empty, worksheet.Cell("G11").GetString(), "参考模板时间行不得继续写操作人员或备注。");
 
         var detailHeaders = ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow);
         AssertSequenceEqual(
@@ -4137,7 +4139,8 @@ static void ProductionReportWritesCustomerTemplateForSingleStation()
             "A3:C3", "D3:F3", "G3:J3",
             "A5:C5", "D5:F5", "G5:J5",
             "A7:C7", "D7:F7", "G7:J7",
-            "A9:C9", "D9:F9"
+            "A9:F9", "G9:J9",
+            "A11:C11", "D11:F11"
         })
         {
             AssertMerged(worksheet, mergedRange, "公共表头必须匹配客户模板合并范围。");
@@ -4153,12 +4156,12 @@ static void ProductionReportWritesCustomerTemplateForSingleStation()
             AssertNearlyEqual(expectedWidths[columnIndex - 1], worksheet.Column(columnIndex).Width, 0.02d, $"第 {columnIndex} 列宽必须匹配客户模板。");
         }
         AssertNearlyEqual(27d, worksheet.Row(CenterProductReportFormat.DetailHeaderRow).Height, 0.01d, "明细表头行高必须匹配参考模板。");
-        AssertTrue(worksheet.Cell("A11").Style.Font.Bold, "明细表头必须保持客户模板的粗体层级。");
-        AssertEqual(XLBorderStyleValues.Thin, worksheet.Cell("A11").Style.Border.TopBorder, "明细表头必须保留细边框。");
-        AssertEqual(ProductionConstants.TestResults.Ok, worksheet.Cell("E12").GetString(), "产品结果必须读取 PLC ProductResult，不得聚合焊点结果。");
-        AssertEqual(ProductionConstants.TestResults.Ng, worksheet.Cell("D12").GetString(), "点/拍照结果必须直接读取 TestResult。");
-        AssertMerged(worksheet, "A12:A13", "同一产品的产品编号必须合并。");
-        AssertMerged(worksheet, "E12:E13", "同一产品的产品结果必须合并。");
+        AssertTrue(worksheet.Cell("A13").Style.Font.Bold, "明细表头必须保持客户模板的粗体层级。");
+        AssertEqual(XLBorderStyleValues.Thin, worksheet.Cell("A13").Style.Border.TopBorder, "明细表头必须保留细边框。");
+        AssertEqual(ProductionConstants.TestResults.Ok, worksheet.Cell("E14").GetString(), "产品结果必须读取 PLC ProductResult，不得聚合焊点结果。");
+        AssertEqual(ProductionConstants.TestResults.Ng, worksheet.Cell("D14").GetString(), "点/拍照结果必须直接读取 TestResult。");
+        AssertMerged(worksheet, "A14:A15", "同一产品的产品编号必须合并。");
+        AssertMerged(worksheet, "E14:E15", "同一产品的产品结果必须合并。");
     }
     finally
     {
@@ -4200,16 +4203,16 @@ static void ProductionReportWritesConfiguredDualStationAndProductMerges()
         using var workbook = new XLWorkbook(filePath);
         var worksheet = workbook.Worksheet("生产报表");
 
-        AssertEqual("工位", worksheet.Cell("A11").GetString(), "双工位报表必须生成工位列。");
-        AssertEqual("左工位", worksheet.Cell("A12").GetString(), "工位 1 必须使用规范化后的配置名称。");
-        AssertEqual("右工位", worksheet.Cell("A14").GetString(), "工位 2 必须使用规范化后的配置名称。");
-        AssertEqual($"结束时间：{endTime:yyyy-MM-dd HH:mm:ss}", worksheet.Cell("D9").GetString(), "结束时间必须与持久化 EndTime 一致并使用模板格式。");
-        AssertMerged(worksheet, "A12:A13", "工位 1 公共字段必须按工位和产品编号合并。");
-        AssertMerged(worksheet, "B12:B13", "工位 1 产品编号必须合并。");
-        AssertMerged(worksheet, "F12:F13", "工位 1 产品结果必须合并。");
-        AssertMerged(worksheet, "A14:A15", "工位 2 公共字段必须形成独立合并范围。");
-        AssertMerged(worksheet, "B14:B15", "相同产品编号跨工位不得合并成一个范围。");
-        AssertMerged(worksheet, "F14:F15", "不同工位的产品结果必须独立合并。");
+        AssertEqual("工位", worksheet.Cell("A13").GetString(), "双工位报表必须生成工位列。");
+        AssertEqual("左工位", worksheet.Cell("A14").GetString(), "工位 1 必须使用规范化后的配置名称。");
+        AssertEqual("右工位", worksheet.Cell("A16").GetString(), "工位 2 必须使用规范化后的配置名称。");
+        AssertEqual($"结束时间：{endTime:yyyy-MM-dd HH:mm:ss}", worksheet.Cell("D11").GetString(), "结束时间必须与持久化 EndTime 一致并使用模板格式。");
+        AssertMerged(worksheet, "A14:A15", "工位 1 公共字段必须按工位和产品编号合并。");
+        AssertMerged(worksheet, "B14:B15", "工位 1 产品编号必须合并。");
+        AssertMerged(worksheet, "F14:F15", "工位 1 产品结果必须合并。");
+        AssertMerged(worksheet, "A16:A17", "工位 2 公共字段必须形成独立合并范围。");
+        AssertMerged(worksheet, "B16:B17", "相同产品编号跨工位不得合并成一个范围。");
+        AssertMerged(worksheet, "F16:F17", "不同工位的产品结果必须独立合并。");
     }
     finally
     {
@@ -4294,10 +4297,10 @@ static void ProductionReportUnionsStationSpecificColumnsWithoutCrossValues()
                 new[] { "工位", "产品编号", "拍照编号", "左工位电流", "右工位位移", "拍照结果", "产品结果" },
                 ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow),
                 "设备端双工位同任务必须按稳定顺序合并两套 ReportEnable 动态列。");
-            AssertEqual("1.11", worksheet.Cell("D12").GetString(), "工位 1 必须读取本工位适用配置的动态值。");
-            AssertEqual(string.Empty, worksheet.Cell("E12").GetString(), "工位 1 不得读取工位 2 专属动态值。");
-            AssertEqual(string.Empty, worksheet.Cell("D13").GetString(), "工位 2 不得读取工位 1 专属动态值。");
-            AssertEqual("2.22", worksheet.Cell("E13").GetString(), "工位 2 必须读取本工位适用配置的动态值。");
+            AssertEqual("1.11", worksheet.Cell("D14").GetString(), "工位 1 必须读取本工位适用配置的动态值。");
+            AssertEqual(string.Empty, worksheet.Cell("E14").GetString(), "工位 1 不得读取工位 2 专属动态值。");
+            AssertEqual(string.Empty, worksheet.Cell("D15").GetString(), "工位 2 不得读取工位 1 专属动态值。");
+            AssertEqual("2.22", worksheet.Cell("E15").GetString(), "工位 2 必须读取本工位适用配置的动态值。");
         }
 
         var leftRequest = BuildCenterWorkbookRequest(
@@ -4326,10 +4329,10 @@ static void ProductionReportUnionsStationSpecificColumnsWithoutCrossValues()
             new[] { "工位", "产品编号", "拍照编号", "左工位电流", "右工位位移", "拍照结果", "产品结果" },
             ReadHeaderRow(centerWorksheet, CenterProductReportFormat.DetailHeaderRow),
             "中心端必须保持与设备端一致的双工位动态列并集语义。");
-        AssertEqual("1.11", centerWorksheet.Cell("D12").GetString(), "中心工位 1 不得串入工位 2 值。");
-        AssertEqual(string.Empty, centerWorksheet.Cell("E12").GetString(), "中心工位 1 的工位 2 专属列必须为空。");
-        AssertEqual(string.Empty, centerWorksheet.Cell("D13").GetString(), "中心工位 2 的工位 1 专属列必须为空。");
-        AssertEqual("2.22", centerWorksheet.Cell("E13").GetString(), "中心工位 2 必须写入本工位专属值。");
+        AssertEqual("1.11", centerWorksheet.Cell("D14").GetString(), "中心工位 1 不得串入工位 2 值。");
+        AssertEqual(string.Empty, centerWorksheet.Cell("E14").GetString(), "中心工位 1 的工位 2 专属列必须为空。");
+        AssertEqual(string.Empty, centerWorksheet.Cell("D15").GetString(), "中心工位 2 的工位 1 专属列必须为空。");
+        AssertEqual("2.22", centerWorksheet.Cell("E15").GetString(), "中心工位 2 必须写入本工位专属值。");
     }
     finally
     {
@@ -4502,10 +4505,10 @@ static void VerifyProductionReportEndToEndMatrix(string workingDirectory)
             "单工位点焊样例必须省略工位列，并只包含 ReportEnable 动态列。");
         AssertFalse(ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow).Contains("峰值电流上限"), "设备端 SaveEnable 独占列不得进入报表。");
         AssertFalse(ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow).Contains("峰值电流下限"), "设备端 MesEnable 独占列不得进入报表。");
-        AssertEqual(ProductionConstants.TestResults.Ng, worksheet.Cell("D12").GetString(), "点焊结果必须直接读取 PLC TestResult。");
-        AssertEqual("1.21", worksheet.Cell("C12").GetString(), "设备端 ReportEnable 动态值必须从 RawDataJson 写入真实 XLSX。");
-        AssertEqual(ProductionConstants.TestResults.Ok, worksheet.Cell("E12").GetString(), "点焊产品结果必须直接读取 PLC ProductResult。");
-        AssertEqual("结束时间：", worksheet.Cell("D9").GetString(), "未完工设备任务的 EndTime 必须为空。");
+        AssertEqual(ProductionConstants.TestResults.Ng, worksheet.Cell("D14").GetString(), "点焊结果必须直接读取 PLC TestResult。");
+        AssertEqual("1.21", worksheet.Cell("C14").GetString(), "设备端 ReportEnable 动态值必须从 RawDataJson 写入真实 XLSX。");
+        AssertEqual(ProductionConstants.TestResults.Ok, worksheet.Cell("E14").GetString(), "点焊产品结果必须直接读取 PLC ProductResult。");
+        AssertEqual("结束时间：", worksheet.Cell("D11").GetString(), "未完工设备任务的 EndTime 必须为空。");
     }
 
     var finishTime = new DateTime(2026, 7, 17, 10, 11, 12, DateTimeKind.Local);
@@ -4546,13 +4549,13 @@ static void VerifyProductionReportEndToEndMatrix(string workingDirectory)
             new[] { "工位", "产品编号", "拍照编号", "峰值电流", "拍照结果", "产品结果" },
             ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow),
             "双工位检测样例必须包含工位、拍照标题和 ReportEnable 动态列。");
-        AssertEqual("左工位", worksheet.Cell("A12").GetString(), "同一任务的工位 1 必须进入双工位报表。");
-        AssertEqual("右工位", worksheet.Cell("A14").GetString(), "同一任务的工位 2 必须进入双工位报表。");
-        AssertEqual(ProductionConstants.TestResults.Ok, worksheet.Cell("E12").GetString(), "双工位点结果必须读取 PLC TestResult。");
-        AssertEqual("1.21", worksheet.Cell("D12").GetString(), "双工位 ReportEnable 动态值必须从 RawDataJson 写入真实 XLSX。");
-        AssertEqual(ProductionConstants.TestResults.Ng, worksheet.Cell("F12").GetString(), "工位 1 产品结果必须读取 PLC ProductResult。");
-        AssertEqual(ProductionConstants.TestResults.Ok, worksheet.Cell("F14").GetString(), "工位 2 产品结果必须读取 PLC ProductResult。");
-        AssertEqual($"结束时间：{finishTime:yyyy-MM-dd HH:mm:ss}", worksheet.Cell("D9").GetString(), "已完工设备任务必须精确使用持久化 EndTime。");
+        AssertEqual("左工位", worksheet.Cell("A14").GetString(), "同一任务的工位 1 必须进入双工位报表。");
+        AssertEqual("右工位", worksheet.Cell("A16").GetString(), "同一任务的工位 2 必须进入双工位报表。");
+        AssertEqual(ProductionConstants.TestResults.Ok, worksheet.Cell("E14").GetString(), "双工位点结果必须读取 PLC TestResult。");
+        AssertEqual("1.21", worksheet.Cell("D14").GetString(), "双工位 ReportEnable 动态值必须从 RawDataJson 写入真实 XLSX。");
+        AssertEqual(ProductionConstants.TestResults.Ng, worksheet.Cell("F14").GetString(), "工位 1 产品结果必须读取 PLC ProductResult。");
+        AssertEqual(ProductionConstants.TestResults.Ok, worksheet.Cell("F16").GetString(), "工位 2 产品结果必须读取 PLC ProductResult。");
+        AssertEqual($"结束时间：{finishTime:yyyy-MM-dd HH:mm:ss}", worksheet.Cell("D11").GetString(), "已完工设备任务必须精确使用持久化 EndTime。");
     }
 
     var centerOutputDirectory = CreateCenterReportFixtureDirectory();
@@ -4611,7 +4614,7 @@ static void VerifyProductionReportEndToEndMatrix(string workingDirectory)
 
         using (var unfinishedWorkbook = new XLWorkbook(reportPath))
         {
-            AssertEqual("结束时间：", unfinishedWorkbook.Worksheet("生产报表").Cell("D9").GetString(), "中心产品请求生成的未完工报表 EndTime 必须为空。");
+            AssertEqual("结束时间：", unfinishedWorkbook.Worksheet("生产报表").Cell("D11").GetString(), "中心产品请求生成的未完工报表 EndTime 必须为空。");
         }
 
         var finishRequest = BuildCenterWorkbookRequest(
@@ -4657,11 +4660,11 @@ static void VerifyProductionReportEndToEndMatrix(string workingDirectory)
             "中心完成态样例必须保留设备标题，并只显示转发看板动态列。");
         AssertFalse(ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow).Contains("峰值电流报表上限"), "中心报表不得串入写入报表独占列。");
         AssertFalse(ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow).Contains("峰值电流过程参数下限"), "中心报表不得串入过程参数独占列。");
-        AssertEqual(ProductionConstants.TestResults.Ok, worksheet.Cell("E12").GetString(), "中心点结果必须读取 PLC TestResult。");
-        AssertEqual("1.21", worksheet.Cell("C12").GetString(), "中心转发看板实际值必须从 RawDataJson 写入真实 XLSX。");
-        AssertEqual(ProductionConstants.TestResults.Ok, worksheet.Cell("D12").GetString(), "中心转发看板结果值必须从 RawDataJson 写入真实 XLSX。");
-        AssertEqual(ProductionConstants.TestResults.Ng, worksheet.Cell("F12").GetString(), "中心产品结果必须读取 PLC ProductResult。");
-        AssertEqual($"结束时间：{finishTime:yyyy-MM-dd HH:mm:ss}", worksheet.Cell("D9").GetString(), "中心完成态必须精确使用任务 EndTime。");
+        AssertEqual(ProductionConstants.TestResults.Ok, worksheet.Cell("E14").GetString(), "中心点结果必须读取 PLC TestResult。");
+        AssertEqual("1.21", worksheet.Cell("C14").GetString(), "中心转发看板实际值必须从 RawDataJson 写入真实 XLSX。");
+        AssertEqual(ProductionConstants.TestResults.Ok, worksheet.Cell("D14").GetString(), "中心转发看板结果值必须从 RawDataJson 写入真实 XLSX。");
+        AssertEqual(ProductionConstants.TestResults.Ng, worksheet.Cell("F14").GetString(), "中心产品结果必须读取 PLC ProductResult。");
+        AssertEqual($"结束时间：{finishTime:yyyy-MM-dd HH:mm:ss}", worksheet.Cell("D11").GetString(), "中心完成态必须精确使用任务 EndTime。");
     }
     finally
     {
@@ -6346,6 +6349,8 @@ static void CenterProductRequestUsesPlcResultAndTaskTimestamps()
     AssertEqual(task.QualifiedQty, ReadCenterRequestProperty<int>(request, "QualifiedQty"), "中心产品请求必须携带任务当前合格数量。");
     AssertFalse(ReadCenterRequestProperty<bool>(request, "IsTaskFinishUpdate"), "产品完成请求不得标记为工单完工更新。");
     AssertEqual(task.UserNumber, request.OperatorNo, "客户模板操作人员必须只取任务开工 UserNumber，不得被点操作员覆盖。");
+    AssertEqual(task.UserName, request.OperatorName, "客户模板员工姓名必须取任务开工 UserName。");
+    AssertEqual(task.ProgramName, request.ProgramName, "客户模板程序名称必须取开工固化的任务快照。");
 
     task.StartAmount = 0;
     task.ActualQty = 18;
@@ -6410,7 +6415,9 @@ static void CenterReportProductThenFinishUpdateKeepsDetailRows()
         {
             var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
             AssertEqual("流转卡号：FLOW-CENTER-001", worksheet.Cell("A1").GetString(), "中心可见报表必须复用客户模板流转卡表头。");
-            AssertEqual("结束时间：", worksheet.Cell("D9").GetString(), "产品请求生成报表时 EndTime 必须为空。");
+            AssertEqual($"程序名称：{productRequest.ProgramName}", worksheet.Cell("A9").GetString(), "中心报表必须写入设备端上报的程序名称。");
+            AssertEqual($"员工姓名：{productRequest.OperatorName}", worksheet.Cell("G9").GetString(), "中心报表必须写入设备端上报的员工姓名。");
+            AssertEqual("结束时间：", worksheet.Cell("D11").GetString(), "产品请求生成报表时 EndTime 必须为空。");
             AssertEqual(2, CountCenterDataRows(workbook), "产品请求必须写入全部点明细。");
         }
 
@@ -6433,10 +6440,16 @@ static void CenterReportProductThenFinishUpdateKeepsDetailRows()
         AssertEqual(reportPath, updatedPath, "完工更新必须定位到同一设备和流转卡报表。");
         using var updatedWorkbook = new XLWorkbook(updatedPath);
         var updatedWorksheet = updatedWorkbook.Worksheet(CenterProductReportFormat.WorksheetName);
-        AssertEqual($"结束时间：{finishTime:yyyy-MM-dd HH:mm:ss}", updatedWorksheet.Cell("D9").GetString(), "完工更新必须精确刷新任务 EndTime。");
+        AssertEqual($"结束时间：{finishTime:yyyy-MM-dd HH:mm:ss}", updatedWorksheet.Cell("D11").GetString(), "完工更新必须精确刷新任务 EndTime。");
         AssertEqual("合格数量：19", updatedWorksheet.Cell("D7").GetString(), "完工更新必须刷新最终 QualifiedQty。");
+        // 完工更新会按隐藏 _Task 页整体重建可见页，这两个字段必须经往返后仍在，不能退化成空标签。
+        AssertEqual($"程序名称：{finishRequest.ProgramName}", updatedWorksheet.Cell("A9").GetString(), "完工更新不得丢失程序名称。");
+        AssertEqual($"员工姓名：{finishRequest.OperatorName}", updatedWorksheet.Cell("G9").GetString(), "完工更新不得丢失员工姓名。");
         AssertEqual(2, CountCenterDataRows(updatedWorkbook), "完工更新不得重复携带或追加产品点明细。");
-        AssertEqual(13, updatedWorksheet.LastRowUsed()!.RowNumber(), "完工更新不得增加可见明细行数。");
+        AssertEqual(
+            CenterProductReportFormat.DetailHeaderRow + 2,
+            updatedWorksheet.LastRowUsed()!.RowNumber(),
+            "完工更新不得增加可见明细行数。");
 
         var artifactPath = Environment.GetEnvironmentVariable("AUTOWELD_CENTER_REPORT_ARTIFACT");
         if (!string.IsNullOrWhiteSpace(artifactPath))
@@ -6478,8 +6491,8 @@ static void CenterReportKeepsFixedDetailsWithoutDynamicSaveFields()
             new[] { "产品编号", "拍照编号", "拍照结果", "产品结果" },
             ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow),
             "没有 SaveEnable 动态项时，中心报表仍必须保留固定产品、点和结果列。");
-        AssertEqual("P001", worksheet.Cell("A12").GetString(), "没有动态列时仍必须输出产品明细。");
-        AssertEqual(ProductionConstants.TestResults.Ok, worksheet.Cell("D12").GetString(), "固定产品结果列必须保留 PLC 产品结果。");
+        AssertEqual("P001", worksheet.Cell("A14").GetString(), "没有动态列时仍必须输出产品明细。");
+        AssertEqual(ProductionConstants.TestResults.Ok, worksheet.Cell("D14").GetString(), "固定产品结果列必须保留 PLC 产品结果。");
     }
     finally
     {
@@ -6525,8 +6538,8 @@ static void CenterReportRendersSingleAndDualStationColumns()
         var dualSheet = dualWorkbook.Worksheet(CenterProductReportFormat.WorksheetName);
 
         AssertFalse(ReadHeaderRow(singleSheet, CenterProductReportFormat.DetailHeaderRow).Contains("工位"), "单工位中心报表必须完全省略工位列。");
-        AssertEqual("工位", dualSheet.Cell("A11").GetString(), "双工位中心报表必须保留工位列。");
-        AssertEqual("右工位", dualSheet.Cell("A12").GetString(), "双工位中心报表必须显示设备端解析后的配置名称。");
+        AssertEqual("工位", dualSheet.Cell("A13").GetString(), "双工位中心报表必须保留工位列。");
+        AssertEqual("右工位", dualSheet.Cell("A14").GetString(), "双工位中心报表必须显示设备端解析后的配置名称。");
     }
     finally
     {
@@ -6574,8 +6587,8 @@ static void CenterReportReplacesDuplicateProductRows()
         var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
 
         AssertEqual(1, CountCenterDataRows(workbook), "同一产品重试必须替换旧点行，不得重复累计。");
-        AssertEqual(ProductionConstants.TestResults.Ng, worksheet.Cell("D12").GetString(), "幂等替换后必须显示最新点结果。");
-        AssertEqual(ProductionConstants.TestResults.Ng, worksheet.Cell("C12").GetString(), "幂等替换后必须显示最新 PLC 产品结果。");
+        AssertEqual(ProductionConstants.TestResults.Ng, worksheet.Cell("D14").GetString(), "幂等替换后必须显示最新点结果。");
+        AssertEqual(ProductionConstants.TestResults.Ng, worksheet.Cell("C14").GetString(), "幂等替换后必须显示最新 PLC 产品结果。");
     }
     finally
     {
@@ -6784,7 +6797,7 @@ static void CenterReportKeepsFinalHeaderAfterLateProductRetry()
 
         using var workbook = new XLWorkbook(reportPath);
         var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
-        AssertEqual($"结束时间：{finishTime:yyyy-MM-dd HH:mm:ss}", worksheet.Cell("D9").GetString(), "迟到产品请求不得清空已完成 EndTime。");
+        AssertEqual($"结束时间：{finishTime:yyyy-MM-dd HH:mm:ss}", worksheet.Cell("D11").GetString(), "迟到产品请求不得清空已完成 EndTime。");
         AssertEqual("合格数量：19", worksheet.Cell("D7").GetString(), "迟到产品请求不得回退最终 QualifiedQty。");
         AssertEqual(3, CountCenterDataRows(workbook), "迟到的新产品明细仍应正常追加。");
     }
@@ -14949,8 +14962,14 @@ static void OfflineOperatorNumberComesFromOperatorInputOnly()
         localStartHandler.Contains("SetRuntimeError(TextKeys.Monitor.RuntimeError.OperatorNumberRequired);", StringComparison.Ordinal),
         "离线开工员工号留空必须提示必填，不得静默兜底。");
     AssertTrue(
-        localStartHandler.Contains("await _weldTaskService.StartLocalAsync(request, employeeNumber, 0);", StringComparison.Ordinal),
-        "离线开工必须把界面录入的员工号传给 StartLocalAsync。");
+        localStartHandler.Contains("var employeeName = MesUserName.Text.Trim();", StringComparison.Ordinal),
+        "离线开工员工姓名必须取界面录入值。");
+    AssertTrue(
+        localStartHandler.Contains("SetRuntimeError(TextKeys.Monitor.RuntimeError.OperatorNameRequired);", StringComparison.Ordinal),
+        "离线开工员工姓名留空必须提示必填，不得用工号或登录账号顶替。");
+    AssertTrue(
+        localStartHandler.Contains("await _weldTaskService.StartLocalAsync(request, employeeNumber, employeeName, 0);", StringComparison.Ordinal),
+        "离线开工必须把界面录入的员工号和姓名一起传给 StartLocalAsync。");
 
     var localFinishMethod = ExtractMethodText(
         viewCode,
@@ -14968,6 +14987,9 @@ static void OfflineOperatorNumberComesFromOperatorInputOnly()
     AssertTrue(
         offlineReadOnly.Contains("MesUserNumber.ReadOnly = readOnly;", StringComparison.Ordinal),
         "离线可编辑态下员工号必须可编辑，转在线或开工后置为只读。");
+    AssertTrue(
+        offlineReadOnly.Contains("MesUserName.ReadOnly = readOnly;", StringComparison.Ordinal),
+        "离线可编辑态下员工姓名必须可编辑：报表表头的姓名无法从 MES 反查，只能现场录入。");
 
     // 转入离线必须清掉上一在线工单校验得到的员工信息，避免把他人工号当成本次操作员。
     var offlineBinder = ExtractMethodText(
@@ -14984,8 +15006,8 @@ static void OfflineOperatorNumberComesFromOperatorInputOnly()
         "private void BindOfflineOperatorInfo(BizWeldTask? activeTask)",
         "private bool ShouldPreserveDraftOperatorNumber");
     AssertTrue(
-        offlineOperatorBinder.Contains("ClearMesOperatorDisplayInfo();", StringComparison.Ordinal),
-        "离线重绑定只应清空姓名、部门和班组，保留操作员正在输入的员工号。");
+        offlineOperatorBinder.Contains("ClearMesOperatorDisplayInfo(preserveUserName: true);", StringComparison.Ordinal),
+        "离线重绑定只应清空部门和班组，保留操作员正在输入的员工号与姓名。");
     AssertFalse(
         offlineOperatorBinder.Contains("state.MesOperatorNumber", StringComparison.Ordinal),
         "离线员工号不得从运行态残留的在线校验结果回填。");
@@ -14996,7 +15018,7 @@ static void OfflineOperatorNumberComesFromOperatorInputOnly()
     var requireOperator = ExtractMethodText(
         serviceCode,
         "private static string RequireOfflineOperatorNumber(string? operatorNumber)",
-        "/// <summary>\r\n    /// Resolves the recipe code from the local program record");
+        "/// <summary>\r\n    /// 校验离线开工的员工姓名");
     AssertTrue(
         requireOperator.Contains("throw new BusinessOperationException", StringComparison.Ordinal),
         "离线员工号为空时服务层必须抛业务异常，不得静默兜底。");
@@ -15007,13 +15029,32 @@ static void OfflineOperatorNumberComesFromOperatorInputOnly()
         requireOperator.Contains("GlobalContext", StringComparison.Ordinal),
         "离线员工号不得回退登录账号。");
 
+    // 离线姓名改为开工必填：报表表头的“员工姓名”无法从 MES 反查，只能取现场录入值，
+    // 但仍不得由登录账号或工号顶替，否则会产出工号与姓名不对应的假数据。
+    var requireOperatorName = ExtractMethodText(
+        serviceCode,
+        "private static string RequireOfflineOperatorName(string? operatorName)",
+        "/// <summary>\r\n    /// Resolves the recipe code from the local program record");
+    AssertTrue(
+        requireOperatorName.Contains("throw new BusinessOperationException", StringComparison.Ordinal),
+        "离线员工姓名为空时服务层必须抛业务异常，不得静默兜底。");
+    AssertFalse(
+        requireOperatorName.Contains("GlobalContext", StringComparison.Ordinal),
+        "离线员工姓名不得回退登录账号。");
+    AssertFalse(
+        requireOperatorName.Contains("operatorNumber", StringComparison.Ordinal),
+        "离线员工姓名不得用工号顶替。");
+
     var localOperatorInfo = ExtractMethodText(
         serviceCode,
-        "private static UserInfoRes CreateLocalOperatorInfo(string operatorNumber)",
+        "private static UserInfoRes CreateLocalOperatorInfo(string operatorNumber, string operatorName)",
         "/// <summary>\r\n    /// 从已入库的任务快照恢复员工信息");
     AssertTrue(
-        localOperatorInfo.Contains("UserName = string.Empty,", StringComparison.Ordinal),
-        "离线员工姓名必须留空，避免登录账号姓名与现场录入工号不对应。");
+        localOperatorInfo.Contains("UserName = NormalizeText(operatorName),", StringComparison.Ordinal),
+        "离线员工姓名必须取现场录入值，供报表表头显示。");
+    AssertTrue(
+        localOperatorInfo.Contains("DeptName = string.Empty,", StringComparison.Ordinal),
+        "离线部门仍须留空，避免登录账号部门与现场录入员工不对应。");
     AssertFalse(
         localOperatorInfo.Contains("GlobalContext", StringComparison.Ordinal),
         "离线员工快照不得读取登录账号。");
@@ -15025,6 +15066,9 @@ static void OfflineOperatorNumberComesFromOperatorInputOnly()
     AssertTrue(
         startLocalMethod.Contains("RequireOfflineOperatorNumber(operatorNumber)", StringComparison.Ordinal),
         "离线开工必须校验员工号非空。");
+    AssertTrue(
+        startLocalMethod.Contains("RequireOfflineOperatorName(operatorName)", StringComparison.Ordinal),
+        "离线开工必须校验员工姓名非空，否则报表表头的员工姓名无从取值。");
 
     var finishLocalMethod = ExtractMethodText(
         serviceCode,
@@ -16496,6 +16540,8 @@ static BizWeldTask BuildReportTask(DateTime startTime, DateTime? endTime)
         StartTime = startTime,
         EndTime = endTime,
         UserNumber = "U001",
+        UserName = "张三",
+        ProgramName = "62131399173-2_CX_RY5.660.144_DH_001_6A-1",
         EndOperatorNumber = "U999"
     };
 }
@@ -16676,6 +16722,8 @@ static CenterProductReportRequest BuildCenterWorkbookRequest(
         ProcessName = "点焊",
         ProcessNo = "OP10",
         OperatorNo = "U001",
+        OperatorName = "张三",
+        ProgramName = "62131399173-2_CX_RY5.660.144_DH_001_6A-1",
         ProductJobNo = "164#J",
         ProductNo = productNo,
         ProductModel = "MODEL-01",
@@ -17059,7 +17107,8 @@ static void AssertTemplateHeaderMerges(IXLWorksheet worksheet)
         "A3:C3", "D3:F3", "G3:J3",
         "A5:C5", "D5:F5", "G5:J5",
         "A7:C7", "D7:F7", "G7:J7",
-        "A9:C9", "D9:F9"
+        "A9:F9", "G9:J9",
+        "A11:C11", "D11:F11"
     })
     {
         AssertMerged(worksheet, mergedRange, "代表样例必须保持客户模板 A:J 合并结构。");

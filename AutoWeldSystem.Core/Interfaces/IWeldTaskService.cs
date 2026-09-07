@@ -54,10 +54,12 @@ public interface IWeldTaskService
     /// <summary>
     /// Creates and starts a local work order without MES calls.
     /// The generated start report is queued for makeup upload after MES recovers.
+    /// Offline start requires both the operator number and name because MES cannot resolve the name later.
     /// </summary>
     Task<BizWeldTask> StartLocalAsync(
         OfflineExperimentStartReq request,
         string operatorNumber,
+        string operatorName,
         int actualQty,
         CancellationToken cancellationToken = default);
 

@@ -295,7 +295,10 @@ public class ProductionReportFileService : IProductionReportFileService
             task.QualifiedQty,
             task.StartTime,
             task.EndTime,
-            task.UserNumber ?? string.Empty);
+            task.UserNumber ?? string.Empty,
+            // 离线开工的员工姓名由现场录入；历史任务没有该字段时留空标签，不用工号顶替。
+            task.UserName ?? string.Empty,
+            task.ProgramName ?? string.Empty);
         foreach (var block in CenterProductReportFormat.BuildTemplateHeaderBlocks(values, lastColumn))
         {
             WriteHeaderBlock(
@@ -542,7 +545,7 @@ public class ProductionReportFileService : IProductionReportFileService
         int dataRowCount,
         int templateColumnCount)
     {
-        var templateRange = worksheet.Range(1, 1, 9, templateColumnCount);
+        var templateRange = worksheet.Range(1, 1, CenterProductReportFormat.TemplateLastRow, templateColumnCount);
         templateRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
         templateRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
         templateRange.Style.Alignment.WrapText = false;

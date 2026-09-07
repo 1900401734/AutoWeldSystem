@@ -1057,7 +1057,8 @@ namespace AutoWeldSystem.UI.Views
             lblDrawingNo.Location = new Point(241, 0);
             lblDrawingNo.Margin = new Padding(0);
             lblDrawingNo.Name = "lblDrawingNo";
-            lblDrawingNo.Size = new Size(70, 33);
+            lblDrawingNo.Padding = new Padding(8, 0, 0, 0);
+            lblDrawingNo.Size = new Size(78, 33);
             lblDrawingNo.TabIndex = 29;
             lblDrawingNo.Text = "部件图号";
             // 
@@ -1109,7 +1110,8 @@ namespace AutoWeldSystem.UI.Views
             lblTeamName.Location = new Point(241, 0);
             lblTeamName.Margin = new Padding(0);
             lblTeamName.Name = "lblTeamName";
-            lblTeamName.Size = new Size(70, 33);
+            lblTeamName.Padding = new Padding(8, 0, 0, 0);
+            lblTeamName.Size = new Size(78, 33);
             lblTeamName.TabIndex = 2;
             lblTeamName.Text = "班组名称";
             // 
@@ -1140,7 +1142,7 @@ namespace AutoWeldSystem.UI.Views
             tlpUserInfo1.ColumnCount = 4;
             tlpUserInfo1.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 82F));
             tlpUserInfo1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            tlpUserInfo1.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70F));
+            tlpUserInfo1.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 78F));
             tlpUserInfo1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             tlpUserInfo1.Controls.Add(lblUserNumber, 0, 0);
             tlpUserInfo1.Controls.Add(MesUserNumber, 1, 0);
@@ -1195,7 +1197,9 @@ namespace AutoWeldSystem.UI.Views
             lblUserName.Location = new Point(241, 0);
             lblUserName.Margin = new Padding(0);
             lblUserName.Name = "lblUserName";
-            lblUserName.Size = new Size(35, 33);
+            lblUserName.Prefix = "*";
+            lblUserName.PrefixColor = Color.FromArgb(255, 77, 79);
+            lblUserName.Size = new Size(48, 33);
             lblUserName.TabIndex = 0;
             lblUserName.Text = "姓名";
             // 
@@ -1290,7 +1294,8 @@ namespace AutoWeldSystem.UI.Views
             lblStartAmount.Location = new Point(241, 0);
             lblStartAmount.Margin = new Padding(0);
             lblStartAmount.Name = "lblStartAmount";
-            lblStartAmount.Size = new Size(70, 33);
+            lblStartAmount.Padding = new Padding(8, 0, 0, 0);
+            lblStartAmount.Size = new Size(78, 33);
             lblStartAmount.TabIndex = 31;
             lblStartAmount.Text = "工单数量";
             // 
@@ -1309,7 +1314,7 @@ namespace AutoWeldSystem.UI.Views
             tlpSpecAndBatch.ColumnCount = 4;
             tlpSpecAndBatch.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 82F));
             tlpSpecAndBatch.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            tlpSpecAndBatch.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70F));
+            tlpSpecAndBatch.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 78F));
             tlpSpecAndBatch.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             tlpSpecAndBatch.Controls.Add(inputBatch, 3, 0);
             tlpSpecAndBatch.Controls.Add(lblSpec, 0, 0);
@@ -1358,7 +1363,8 @@ namespace AutoWeldSystem.UI.Views
             lblBatchNo.Location = new Point(241, 0);
             lblBatchNo.Margin = new Padding(0);
             lblBatchNo.Name = "lblBatchNo";
-            lblBatchNo.Size = new Size(35, 33);
+            lblBatchNo.Padding = new Padding(8, 0, 0, 0);
+            lblBatchNo.Size = new Size(43, 33);
             lblBatchNo.TabIndex = 29;
             lblBatchNo.Text = "批次";
             // 

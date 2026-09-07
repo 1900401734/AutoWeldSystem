@@ -512,6 +512,10 @@ public static class TextKeys
             /// </summary>
             public const string OperatorNumberRequired = "monitor.error.operator_number_required";
             /// <summary>
+            /// 员工姓名必填
+            /// </summary>
+            public const string OperatorNameRequired = "monitor.error.operator_name_required";
+            /// <summary>
             /// 员工号校验失败
             /// </summary>
             public const string OperatorValidationFailedInline = "monitor.error.operator_validation_failed_inline";
