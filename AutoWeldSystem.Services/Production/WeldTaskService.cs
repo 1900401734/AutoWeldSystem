@@ -505,6 +505,7 @@ public class WeldTaskService : IWeldTaskService
     public async Task<BizWeldTask> StartLocalAsync(
         OfflineExperimentStartReq request,
         string operatorNumber,
+        string operatorName,
         int actualQty,
         CancellationToken cancellationToken = default)
     {
@@ -519,7 +520,8 @@ public class WeldTaskService : IWeldTaskService
         var process = CreateLocalProcess(request);
         var program = CreateLocalProgram(request, settings.DeviceId);
         var localOperatorNumber = RequireOfflineOperatorNumber(operatorNumber);
-        var localOperatorInfo = CreateLocalOperatorInfo(localOperatorNumber);
+        var localOperatorName = RequireOfflineOperatorName(operatorName);
+        var localOperatorInfo = CreateLocalOperatorInfo(localOperatorNumber, localOperatorName);
         var startRequest = BuildStartRequest(settings.DeviceId, workOrder, process, program, actualQty, localOperatorNumber);
 
         var task = new BizWeldTask
@@ -1217,6 +1219,22 @@ public class WeldTaskService : IWeldTaskService
     }
 
     /// <summary>
+    /// 校验离线开工的员工姓名。
+    /// 离线无法向 MES 反查姓名，报表表头的“员工姓名”只能来自现场录入，因此开工时必须给出；
+    /// 不做任何兜底：用登录账号或工号顶替会产出工号与姓名不对应的假数据。
+    /// </summary>
+    private static string RequireOfflineOperatorName(string? operatorName)
+    {
+        var normalized = NormalizeText(operatorName);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            throw new BusinessOperationException("Local.Operator", "本地操作失败", "Offline operator name is required.");
+        }
+
+        return normalized;
+    }
+
+    /// <summary>
     /// Resolves the recipe code from the local program record selected by the MES program ID.
     /// </summary>
     private string ResolveProgramRecipeCode(ProgramDataRes program, string deviceId, int stationNo)
@@ -1394,16 +1412,16 @@ public class WeldTaskService : IWeldTaskService
     }
 
     /// <summary>
-    /// 离线工单无法向 MES 校验员工，只保留操作员录入的员工号。
-    /// 姓名、部门和班组留空：登录账号姓名与现场录入的员工号可能不是同一个人，
-    /// 回填会让任务记录和报表出现工号与姓名不对应的假数据。
+    /// 离线工单无法向 MES 校验员工，只保留操作员现场录入的员工号和姓名。
+    /// 部门和班组仍留空：登录账号的部门班组与现场录入的员工可能不是同一个人，
+    /// 回填会让任务记录和报表出现互不对应的假数据。
     /// </summary>
-    private static UserInfoRes CreateLocalOperatorInfo(string operatorNumber)
+    private static UserInfoRes CreateLocalOperatorInfo(string operatorNumber, string operatorName)
     {
         return new UserInfoRes
         {
             UserNumber = NormalizeText(operatorNumber),
-            UserName = string.Empty,
+            UserName = NormalizeText(operatorName),
             DeptName = string.Empty,
             TeamName = string.Empty
         };
