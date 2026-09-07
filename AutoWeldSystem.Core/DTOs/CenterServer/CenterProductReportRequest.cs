@@ -66,6 +66,17 @@ public sealed class CenterProductReportRequest
     public string OperatorNo { get; set; } = string.Empty;
 
     /// <summary>
+    /// Task-level operator name shown in the shared customer report header.
+    /// Offline tasks require it at start; legacy tasks may still send an empty value.
+    /// </summary>
+    public string OperatorName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Program name snapshot taken when the task started.
+    /// </summary>
+    public string ProgramName { get; set; } = string.Empty;
+
+    /// <summary>
     /// Product job number configured in the local task.
     /// </summary>
     public string ProductJobNo { get; set; } = string.Empty;

@@ -10,8 +10,14 @@ public static class CenterProductReportFormat
 {
     public const string WorksheetName = "生产报表";
     public const int TemplateMinimumColumnCount = 10;
-    public const int DetailHeaderRow = 11;
+    public const int DetailHeaderRow = 13;
     public const int DetailFirstDataRow = DetailHeaderRow + 1;
+
+    /// <summary>
+    /// 任务表头区最后一行；与明细表头之间保留一行空白隔行。
+    /// 表头行数变化时样式范围随之调整，避免两端各自硬编码行号。
+    /// </summary>
+    public const int TemplateLastRow = DetailHeaderRow - 2;
     public const string DateTimeFormat = "yyyy-MM-dd HH:mm:ss";
     public const string DataWorksheetName = "_Data";
     public const string ColumnsWorksheetName = "_Columns";
@@ -127,8 +133,12 @@ public static class CenterProductReportFormat
             new(7, 1, 3, "工单数量：", values.Quantity),
             new(7, 4, 6, "合格数量：", values.QualifiedQty),
             new(7, 7, normalizedLastColumn, "操作人员：", values.OperatorNo),
-            new(9, 1, 3, "开始时间：", values.StartTime),
-            new(9, 4, 6, "结束时间：", values.EndTime)
+            // 程序名称是招标协议约定的 18 位以上长串，占 A:F 六列才能不缩字显示；
+            // 第九行只有两个字段，无需与上面各行的三等分对齐。
+            new(9, 1, 6, "程序名称：", values.ProgramName),
+            new(9, 7, normalizedLastColumn, "员工姓名：", values.OperatorName),
+            new(11, 1, 3, "开始时间：", values.StartTime),
+            new(11, 4, 6, "结束时间：", values.EndTime)
         ];
     }
 
@@ -276,7 +286,9 @@ public sealed record CenterProductReportHeaderValues(
     int QualifiedQty,
     DateTime StartTime,
     DateTime? EndTime,
-    string OperatorNo);
+    string OperatorNo,
+    string OperatorName,
+    string ProgramName);
 
 /// <summary>
 /// 客户模板中的一个合并表头块。

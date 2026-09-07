@@ -33,7 +33,9 @@ internal sealed record CenterProductReportTaskState(
     int QualifiedQty,
     DateTime StartTime,
     DateTime? EndTime,
-    string OperatorNo)
+    string OperatorNo,
+    string OperatorName,
+    string ProgramName)
 {
     public static CenterProductReportTaskState FromRequest(
         CenterProductReportRequest request,
@@ -53,7 +55,9 @@ internal sealed record CenterProductReportTaskState(
             request.QualifiedQty,
             request.StartTime,
             effectiveEndTime,
-            request.OperatorNo.Trim());
+            request.OperatorNo.Trim(),
+            request.OperatorName.Trim(),
+            request.ProgramName.Trim());
     }
 
     public CenterProductReportHeaderValues ToHeaderValues()
@@ -72,7 +76,9 @@ internal sealed record CenterProductReportTaskState(
             QualifiedQty,
             StartTime,
             EndTime,
-            OperatorNo);
+            OperatorNo,
+            OperatorName,
+            ProgramName);
     }
 
     public IReadOnlyDictionary<string, string> ToDictionary()
@@ -92,7 +98,9 @@ internal sealed record CenterProductReportTaskState(
             [nameof(QualifiedQty)] = QualifiedQty.ToString(),
             [nameof(StartTime)] = StartTime.ToString("O"),
             [nameof(EndTime)] = EndTime?.ToString("O") ?? string.Empty,
-            [nameof(OperatorNo)] = OperatorNo
+            [nameof(OperatorNo)] = OperatorNo,
+            [nameof(OperatorName)] = OperatorName,
+            [nameof(ProgramName)] = ProgramName
         };
     }
 
@@ -112,7 +120,11 @@ internal sealed record CenterProductReportTaskState(
             GetInt(values, nameof(QualifiedQty)),
             GetDate(values, nameof(StartTime)) ?? default,
             GetDate(values, nameof(EndTime)),
-            Get(values, nameof(OperatorNo)));
+            Get(values, nameof(OperatorNo)),
+            // 旧报表的隐藏任务页没有这两个键，Get 返回空串即留空标签；
+            // 设备端下一次上报（含完工更新）会补齐真值，不做一次性迁移。
+            Get(values, nameof(OperatorName)),
+            Get(values, nameof(ProgramName)));
     }
 
     private static string Get(IReadOnlyDictionary<string, string> values, string key)
