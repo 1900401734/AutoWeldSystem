@@ -146,6 +146,7 @@ var tests = new (string Name, Action Run)[]
     ("Whole-piece upload requires configured maximum", WholePieceUploadRequiresConfiguredMaximum),
     ("Program result display prefers persisted entity result", ProgramResultDisplayPrefersPersistedEntityResult),
     ("Whole-piece aggregation rejects invalid source data", WholePieceAggregationRejectsInvalidSourceData),
+    ("Whole-piece merged view follows upload decimal places", WholePieceMergedViewFollowsUploadDecimalPlaces),
     ("Whole-piece merged display builds A and B columns", WholePieceMergedDisplayBuildsAbColumns),
     ("Whole-piece product result uses merged values", WholePieceProductResultUsesMergedValues),
     ("Report file upload rule requires an enabled report role", ReportFileUploadRuleRequiresEnabledReportRole),
@@ -3834,6 +3835,36 @@ static BizSchemeDetail BuildUploadDetail()
     var detail = new BizSchemeDetail();
     SchemeDetailRoleRules.SetUploadEnabled(detail, SchemeDetailValueRole.Actual, true);
     return detail;
+}
+
+/// <summary>
+/// 合并视图的数值必须按「判定与上报小数位」显示，与报告文件、过程参数和产品判定同源。
+/// 聚合值本身按测试项表达式的小数位（现场 _4）格式化，若合并视图直接取用就会显示 4 位，
+/// 与上报数据对不上，操作员也无法用界面数值解释 OK/NG。
+/// </summary>
+static void WholePieceMergedViewFollowsUploadDecimalPlaces()
+{
+    var settings = new AppSettings { JudgementDecimalPlaces = 2 };
+    var format = OutputNumericFormat.ForUpload(settings);
+
+    AssertEqual("12.15", format.Apply("12.1501"), "合并视图必须按判定与上报小数位收敛到 2 位。");
+    AssertEqual("0.02", format.Apply("0.0249"), "对称度同样按 2 位显示。");
+    AssertEqual(string.Empty, format.Apply(string.Empty), "宽度 B 行留空必须保持为空，不得补零。");
+
+    // 两条链路都要套用，否则实时预览与产品历史显示的位数不同。
+    var previewCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductRealtimePreviewService.cs"),
+        Encoding.UTF8);
+    AssertTrue(
+        previewCode.Contains("OutputNumericFormat.ForUpload(settings)", StringComparison.Ordinal),
+        "实时预览的合并视图必须按判定与上报小数位格式化。");
+
+    var monitorCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"),
+        Encoding.UTF8);
+    AssertTrue(
+        monitorCode.Contains("OutputNumericFormat.ForUpload(_currentSettings)", StringComparison.Ordinal),
+        "产品历史的合并视图必须与实时预览同口径。");
 }
 
 static void WholePieceMergedDisplayBuildsAbColumns()
