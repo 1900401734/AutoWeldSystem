@@ -6193,9 +6193,12 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             return values;
         }
 
+        // 与实时预览的合并视图同口径：再按「判定与上报小数位」处理一次，否则同一产品在
+        // 实时预览和产品历史里显示的位数不同。
+        var uploadFormat = OutputNumericFormat.ForUpload(_currentSettings);
         foreach (var pair in WholePieceMergedDisplayRules.BuildValues(_mergedPreviewColumns, aggregation.Rows))
         {
-            values[pair.Key] = pair.Value;
+            values[pair.Key] = uploadFormat.Apply(pair.Value);
         }
 
         return values;

@@ -359,8 +359,15 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             ? BuildMergedAggregation(rowResult, settings, mergedDefinitions)
             : null;
         var mergedSucceeded = mergedAggregation is { IsSuccess: true };
+        // 聚合值按测试项表达式的小数位格式化，合并视图还要再按「判定与上报小数位」处理一次，
+        // 与报告文件、过程参数和产品判定同源——操作员看到的数值就是判定所用、对外上报的值。
+        var uploadFormat = OutputNumericFormat.ForUpload(settings);
         var mergedValues = mergedSucceeded
             ? WholePieceMergedDisplayRules.BuildValues(mergedColumns, mergedAggregation!.Rows)
+                .ToDictionary(
+                    pair => pair.Key,
+                    pair => uploadFormat.Apply(pair.Value),
+                    StringComparer.OrdinalIgnoreCase)
             : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         // PLC 读取模式没有程序判定依据，失败列保持为空，界面不标红。
         IReadOnlyList<string> mergedFailedColumns = Array.Empty<string>();
