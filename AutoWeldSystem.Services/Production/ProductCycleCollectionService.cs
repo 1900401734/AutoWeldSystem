@@ -57,6 +57,16 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         }
 
         var normalizedStationNo = NormalizeStationNo(stationNo, task);
+        int touchCount;
+        try
+        {
+            touchCount = ProgramContentJsonRules.GetRequiredTouchCount(task.ProgramContentSnapshot);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new BusinessOperationException(Category, "产品数据采集失败", ex.Message);
+        }
+
         var processConfig = ResolveProcessConfig(task, normalizedStationNo);
         var schemeItems = ResolveSchemeItems(processConfig.SchemeId);
         var settings = _settingsService.Get();
@@ -65,11 +75,11 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         _productionLogService.Write(
             "ProductDataReadStart",
             ProductionFlowLogTexts.Summaries.ProductDataReadStart,
-            $"SchemeId={processConfig.SchemeId}, ProductBase={processConfig.ProductBase}, TouchBase={processConfig.TouchBase}, TestBase={processConfig.TestBase}, TouchCount={processConfig.TouchCount}, ProgramResult={useProgramResult}",
+            $"SchemeId={processConfig.SchemeId}, ProductBase={processConfig.ProductBase}, TouchBase={processConfig.TouchBase}, TestBase={processConfig.TestBase}, TouchCount={touchCount}, ProgramResult={useProgramResult}",
             stationNo: normalizedStationNo,
             workOrderId: task.SN,
             programId: task.ProgramId ?? string.Empty);
-        var header = await ReadProductHeaderAsync(processConfig, useProgramResult, cancellationToken);
+        var header = await ReadProductHeaderAsync(processConfig, touchCount, useProgramResult, cancellationToken);
         var records = new List<BizWeldPointRecord>();
         for (var touchIndex = 1; touchIndex <= header.ActualTouchCount; touchIndex++)
         {
@@ -87,10 +97,10 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
 
         if (useProgramResult)
         {
-            ApplyProgramCalculatedResults(task, processConfig, schemeItems, records);
+            ApplyProgramCalculatedResults(task, touchCount, schemeItems, records);
         }
 
-        ValidateCollectedRecords(task, processConfig, schemeItems, records);
+        ValidateCollectedRecords(task, touchCount, schemeItems, records);
 
         bool isRetest;
         try
@@ -200,6 +210,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
 
     private async Task<ProductHeaderSnapshot> ReadProductHeaderAsync(
         BizProductProcessConfig config,
+        int touchCount,
         bool useProgramResult,
         CancellationToken cancellationToken)
     {
@@ -239,24 +250,20 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             "实际焊点数",
             cancellationToken);
 
-        var actualTouchCount = ParsePositiveInt(actualTouchText) ?? config.TouchCount;
-        if (actualTouchCount <= 0)
+        int actualTouchCount;
+        try
         {
-            throw new BusinessOperationException(Category, "产品数据采集失败", "实际焊点数无效。");
+            actualTouchCount = ProductCycleTouchCountRules.ResolveActualTouchCount(touchCount, actualTouchText);
         }
-
-        if (actualTouchCount > config.TouchCount)
+        catch (InvalidOperationException ex)
         {
-            throw new BusinessOperationException(
-                Category,
-                "产品数据采集失败",
-                $"实际焊点数“{actualTouchCount}”不能大于本地预设焊点数“{config.TouchCount}”。");
+            throw new BusinessOperationException(Category, "产品数据采集失败", ex.Message);
         }
 
         return new ProductHeaderSnapshot(
             productNo.Trim(),
             actualTouchCount,
-            config.TouchCount,
+            touchCount,
             NormalizeTestResult(productResultRaw),
             productResultRaw,
             presetTouchText);
@@ -468,7 +475,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
 
     private void ApplyProgramCalculatedResults(
         BizWeldTask task,
-        BizProductProcessConfig config,
+        int touchCount,
         IReadOnlyList<SchemeItemSnapshot> schemeItems,
         IReadOnlyList<BizWeldPointRecord> records)
     {
@@ -490,7 +497,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             }
         }
 
-        var productResult = ResolveProgramProductResult(task, config, participatingItems, records);
+        var productResult = ResolveProgramProductResult(task, touchCount, participatingItems, records);
         if (string.Equals(productResult, ProductionConstants.TestResults.Unknown, StringComparison.OrdinalIgnoreCase))
         {
             throw new BusinessOperationException(Category, "产品数据采集失败", "四面程序判定结果不完整，无法生成产品结果。");
@@ -512,12 +519,12 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
     /// </summary>
     private string ResolveProgramProductResult(
         BizWeldTask task,
-        BizProductProcessConfig config,
+        int touchCount,
         IReadOnlyList<SchemeItemSnapshot> participatingItems,
         IReadOnlyList<BizWeldPointRecord> records)
     {
         var settings = _settingsService.Get();
-        if (!WholePieceAbAggregationRules.IsApplicable(settings.ProcessParameterDeviceType, config.TouchCount))
+        if (!WholePieceAbAggregationRules.IsApplicable(settings.ProcessParameterDeviceType, touchCount))
         {
             return TestResultRules.ResolveProductResult(records.Select(record => record.TestResult));
         }
@@ -592,12 +599,12 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
 
     private void ValidateCollectedRecords(
         BizWeldTask task,
-        BizProductProcessConfig config,
+        int touchCount,
         IReadOnlyList<SchemeItemSnapshot> schemeItems,
         IReadOnlyList<BizWeldPointRecord> records)
     {
         var settings = _settingsService.Get();
-        if (!WholePieceAbAggregationRules.IsApplicable(settings.ProcessParameterDeviceType, config.TouchCount))
+        if (!WholePieceAbAggregationRules.IsApplicable(settings.ProcessParameterDeviceType, touchCount))
         {
             return;
         }
@@ -813,16 +820,6 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             Category,
             "产品数据采集失败",
             $"{valueRole}地址“{address}”读取失败：{message}");
-    }
-
-    private static int? ParsePositiveInt(string? value)
-    {
-        if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var result))
-        {
-            return null;
-        }
-
-        return result > 0 ? result : null;
     }
 
     private static void AddValue(IDictionary<string, string> values, string? key, string? value)

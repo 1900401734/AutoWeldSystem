@@ -519,6 +519,7 @@ public class WeldTaskService : IWeldTaskService
         var workOrder = CreateLocalWorkOrder(request);
         var process = CreateLocalProcess(request);
         var program = CreateLocalProgram(request, settings.DeviceId);
+        EnsureProgramTouchCount(program, "Local.StartReport", "本地开工失败");
         var localOperatorNumber = RequireOfflineOperatorNumber(operatorNumber);
         var localOperatorName = RequireOfflineOperatorName(operatorName);
         var localOperatorInfo = CreateLocalOperatorInfo(localOperatorNumber, localOperatorName);
@@ -1278,6 +1279,19 @@ public class WeldTaskService : IWeldTaskService
             throw new BusinessOperationException("MES.StartReport", "开工上报失败", "No program downloaded");
         }
 
+        EnsureProgramTouchCount(station.SelectedProgram, "MES.StartReport", "开工上报失败");
+    }
+
+    private static void EnsureProgramTouchCount(ProgramDataRes program, string category, string title)
+    {
+        try
+        {
+            _ = ProgramContentJsonRules.GetRequiredTouchCount(program.ProgramContent);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new BusinessOperationException(category, title, ex.Message);
+        }
     }
 
     /// <summary>

@@ -143,10 +143,10 @@ public sealed class ProgramManageService : IProgramManageService
     {
         cancellationToken.ThrowIfCancellationRequested();
         _dbContext.InitDatabase();
-        return _dbContext.Db.Queryable<BizProgram>()
+        var programs = _dbContext.Db.Queryable<BizProgram>()
             .Where(it => !it.IsDeleted)
             .OrderBy(it => it.UpdatedTime, OrderByType.Desc)
-            .Select(it => new ProgramLookup
+            .Select(it => new BizProgram
             {
                 Id = it.Id,
                 ProgramId = it.ProgramId,
@@ -159,12 +159,36 @@ public sealed class ProgramManageService : IProgramManageService
                 ComponentCode = it.ComponentCode,
                 ProgramType = it.ProgramType,
                 SequenceNumber = it.SequenceNumber,
+                ProgramContent = it.ProgramContent,
                 Description = it.Description,
                 VersionNumber = it.VersionNumber,
                 SyncStatus = it.SyncStatus,
                 UpdatedTime = it.UpdatedTime
             })
             .ToArray();
+
+        cancellationToken.ThrowIfCancellationRequested();
+        return programs.Select(it => new ProgramLookup
+        {
+            Id = it.Id,
+            ProgramId = it.ProgramId,
+            ProgramName = it.ProgramName,
+            DeviceId = it.DeviceId,
+            ProductNum = it.ProductNum,
+            ProductModel = it.ProductModel,
+            RecipeCode = it.RecipeCode,
+            Station2RecipeCode = it.Station2RecipeCode,
+            ComponentCode = it.ComponentCode,
+            ProgramType = it.ProgramType,
+            SequenceNumber = it.SequenceNumber,
+            TouchCount = ProgramContentJsonRules.TryGetTouchCount(it.ProgramContent, out var touchCount)
+                ? touchCount
+                : null,
+            Description = it.Description,
+            VersionNumber = it.VersionNumber,
+            SyncStatus = it.SyncStatus,
+            UpdatedTime = it.UpdatedTime
+        }).ToArray();
     }
 
     private void InvalidateProgramLookups()
@@ -911,6 +935,7 @@ public sealed class ProgramManageService : IProgramManageService
         request.RobotJobName = request.RobotJobName.Trim();
         request.MesRemark = request.MesRemark.Trim();
         request.LocalRemark = request.LocalRemark.Trim();
+        request.ProgramContentJson = ProgramContentJsonRules.NormalizeTouchCount(request.ProgramContentJson);
 
         ProgramSaveRecipeRules.Validate(
             request.RecipeCode,

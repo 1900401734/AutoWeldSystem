@@ -46,6 +46,9 @@
             tlpProductNum = new TableLayoutPanel();
             lblProductNum = new AntdUI.Label();
             inputProductNum = new AntdUI.Input();
+            tlpTouchCount = new TableLayoutPanel();
+            lblTouchCount = new AntdUI.Label();
+            inputTouchCount = new AntdUI.Input();
             tlpRecipe2 = new TableLayoutPanel();
             lblRecipeCode2 = new AntdUI.Label();
             selectStation2Recipe = new AntdUI.Select();
@@ -89,6 +92,7 @@
             tlpProgramName.SuspendLayout();
             tlpProgramType.SuspendLayout();
             tlpProductNum.SuspendLayout();
+            tlpTouchCount.SuspendLayout();
             tlpRecipe2.SuspendLayout();
             tlpDrawingNo.SuspendLayout();
             tlpRecipe1.SuspendLayout();
@@ -197,22 +201,24 @@
             editorLayout.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             editorLayout.ColumnCount = 1;
             editorLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            editorLayout.Controls.Add(tlpProgramId, 0, 10);
+            editorLayout.Controls.Add(tlpProgramId, 0, 11);
             editorLayout.Controls.Add(lblCurrentInfo, 0, 0);
-            editorLayout.Controls.Add(tlpRemark, 0, 9);
+            editorLayout.Controls.Add(tlpRemark, 0, 10);
             editorLayout.Controls.Add(tlpProgramName, 0, 1);
-            editorLayout.Controls.Add(tlpProgramType, 0, 8);
+            editorLayout.Controls.Add(tlpProgramType, 0, 9);
             editorLayout.Controls.Add(tlpProductNum, 0, 2);
-            editorLayout.Controls.Add(tlpRecipe2, 0, 7);
+            editorLayout.Controls.Add(tlpRecipe2, 0, 8);
             editorLayout.Controls.Add(tlpDrawingNo, 0, 3);
-            editorLayout.Controls.Add(tlpRecipe1, 0, 6);
+            editorLayout.Controls.Add(tlpRecipe1, 0, 7);
             editorLayout.Controls.Add(tlpSN, 0, 4);
             editorLayout.Controls.Add(tlpDescription, 0, 5);
+            editorLayout.Controls.Add(tlpTouchCount, 0, 6);
             editorLayout.Dock = DockStyle.Fill;
             editorLayout.Location = new Point(0, 0);
             editorLayout.Margin = new Padding(0);
             editorLayout.Name = "editorLayout";
-            editorLayout.RowCount = 11;
+            editorLayout.RowCount = 12;
+            editorLayout.RowStyles.Add(new RowStyle());
             editorLayout.RowStyles.Add(new RowStyle());
             editorLayout.RowStyles.Add(new RowStyle());
             editorLayout.RowStyles.Add(new RowStyle());
@@ -448,6 +454,46 @@
             inputProductNum.Name = "inputProductNum";
             inputProductNum.Size = new Size(305, 53);
             inputProductNum.TabIndex = 1;
+            // 
+            // tlpTouchCount
+            // 
+            tlpTouchCount.AutoSize = true;
+            tlpTouchCount.ColumnCount = 2;
+            tlpTouchCount.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140F));
+            tlpTouchCount.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            tlpTouchCount.Controls.Add(lblTouchCount, 0, 0);
+            tlpTouchCount.Controls.Add(inputTouchCount, 1, 0);
+            tlpTouchCount.Dock = DockStyle.Fill;
+            tlpTouchCount.Location = new Point(0, 318);
+            tlpTouchCount.Margin = new Padding(0);
+            tlpTouchCount.Name = "tlpTouchCount";
+            tlpTouchCount.RowCount = 1;
+            tlpTouchCount.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            tlpTouchCount.Size = new Size(445, 53);
+            tlpTouchCount.TabIndex = 4;
+            // 
+            // lblTouchCount
+            // 
+            lblTouchCount.AutoSizeMode = AntdUI.TAutoSize.Width;
+            lblTouchCount.Dock = DockStyle.Fill;
+            lblTouchCount.Location = new Point(0, 0);
+            lblTouchCount.Margin = new Padding(0);
+            lblTouchCount.Name = "lblTouchCount";
+            lblTouchCount.Padding = new Padding(4, 0, 0, 0);
+            lblTouchCount.Prefix = "*";
+            lblTouchCount.PrefixColor = Color.FromArgb(255, 77, 79);
+            lblTouchCount.Size = new Size(91, 53);
+            lblTouchCount.TabIndex = 11;
+            lblTouchCount.Text = "焊点数量";
+            // 
+            // inputTouchCount
+            // 
+            inputTouchCount.Dock = DockStyle.Fill;
+            inputTouchCount.Location = new Point(140, 0);
+            inputTouchCount.Margin = new Padding(0);
+            inputTouchCount.Name = "inputTouchCount";
+            inputTouchCount.Size = new Size(305, 53);
+            inputTouchCount.TabIndex = 1;
             // 
             // tlpRecipe2
             // 
@@ -905,6 +951,8 @@
             tlpProgramType.PerformLayout();
             tlpProductNum.ResumeLayout(false);
             tlpProductNum.PerformLayout();
+            tlpTouchCount.ResumeLayout(false);
+            tlpTouchCount.PerformLayout();
             tlpRecipe2.ResumeLayout(false);
             tlpRecipe2.PerformLayout();
             tlpDrawingNo.ResumeLayout(false);
@@ -978,6 +1026,9 @@
         private TableLayoutPanel tlpSN;
         private TableLayoutPanel tlpDrawingNo;
         private TableLayoutPanel tlpProductNum;
+        private TableLayoutPanel tlpTouchCount;
+        private AntdUI.Label lblTouchCount;
+        private AntdUI.Input inputTouchCount;
         private AntdUI.Table tablePrograms;
     }
 }

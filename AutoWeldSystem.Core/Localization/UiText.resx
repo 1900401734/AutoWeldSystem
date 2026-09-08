@@ -1698,6 +1698,12 @@
   <data name="program.label.product_num" xml:space="preserve">
     <value>产品工号</value>
   </data>
+  <data name="program.label.touch_count" xml:space="preserve">
+    <value>焊点数量</value>
+  </data>
+  <data name="program.label.face_count" xml:space="preserve">
+    <value>面数量</value>
+  </data>
   <data name="program.label.component_code" xml:space="preserve">
     <value>部件图号</value>
   </data>
@@ -1727,6 +1733,9 @@
   </data>
   <data name="program.label.program_content" xml:space="preserve">
     <value>程序内容</value>
+  </data>
+  <data name="program.placeholder.touch_count" xml:space="preserve">
+    <value>请输入大于 0 的整数</value>
   </data>
   <data name="program.option.parameter_string" xml:space="preserve">
     <value>0 - 参数字符串</value>
@@ -1769,6 +1778,9 @@
   </data>
   <data name="program.message.sequence_invalid" xml:space="preserve">
     <value>流水号必须是大于 0 的数字。</value>
+  </data>
+  <data name="program.message.touch_count_invalid" xml:space="preserve">
+    <value>{0}必须是大于 0 的整数。</value>
   </data>
   <data name="program.message.product_num_required" xml:space="preserve">
     <value>产品工号不能为空。</value>

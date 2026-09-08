@@ -1037,6 +1037,8 @@ public static class TextKeys
         public const string LabelProgramName = "program.label.program_name";
         public const string LabelProgramId = "program.label.program_id";
         public const string LabelProductNum = "program.label.product_num";
+        public const string LabelTouchCount = "program.label.touch_count";
+        public const string LabelFaceCount = "program.label.face_count";
         public const string LabelStation1Recipe = "program.label.station1_recipe";
         public const string LabelStation2Recipe = "program.label.station2_recipe";
         public const string PlaceholderRecipeSelect = "program.placeholder.recipe_select";
@@ -1050,6 +1052,7 @@ public static class TextKeys
         public const string LabelRemark = "program.label.remark";
         public const string LabelLocalRemark = "program.label.local_remark";
         public const string LabelProgramContent = "program.label.program_content";
+        public const string PlaceholderTouchCount = "program.placeholder.touch_count";
         public const string OptionParameterString = "program.option.parameter_string";
         public const string OptionFile = "program.option.file";
         public const string CommitCreate = "program.commit.create";
@@ -1064,6 +1067,7 @@ public static class TextKeys
         public const string SelectSync = "program.message.select_sync";
         public const string PullSuccess = "program.message.pull_success";
         public const string SequenceInvalid = "program.message.sequence_invalid";
+        public const string TouchCountInvalid = "program.message.touch_count_invalid";
         public const string ProductNumRequired = "program.message.product_num_required";
         public const string ComponentCodeRequired = "program.message.component_code_required";
         public const string CycleTimeInvalid = "program.message.cycle_time_invalid";

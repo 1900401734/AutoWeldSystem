@@ -162,9 +162,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             return;
         }
 
-        var localPrograms = (await _programManageService.GetProgramLookupsAsync(cancellationToken))
-            .Select(lookup => lookup.ToEntityStub())
-            .ToArray();
+        var localPrograms = await _programManageService.GetProgramLookupsAsync(cancellationToken);
         foreach (var station in ResolvePreviewStations())
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -174,6 +172,15 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             if (identity is null || string.IsNullOrWhiteSpace(identity.ProductNum))
             {
                 PublishStatusSnapshot(stationNo, "未识别到产品工号，请检查当前任务或 PLC 配方业务地址。");
+                continue;
+            }
+
+            if (!identity.TouchCount.HasValue)
+            {
+                PublishStatusSnapshot(
+                    identity.StationNo,
+                    "当前程序缺少有效的焊点数量，请先在程序管理中填写大于 0 的整数。",
+                    identity);
                 continue;
             }
 
@@ -215,7 +222,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         };
     }
 
-    private ProductPreviewIdentity? ResolveProductIdentity(ProductionStationRuntimeState station, IReadOnlyList<BizProgram> localPrograms)
+    private ProductPreviewIdentity? ResolveProductIdentity(ProductionStationRuntimeState station, IReadOnlyList<ProgramLookup> localPrograms)
     {
         var localProgram = station.SelectedProgram is not null
             ? ResolveLocalProgram(station.SelectedProgram, localPrograms)
@@ -225,7 +232,8 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             return new ProductPreviewIdentity(
                 NormalizeStationNo(station.StationNo),
                 localProgram.ProductNum.Trim(),
-                localProgram.ProductModel?.Trim() ?? string.Empty);
+                localProgram.ProductModel?.Trim() ?? string.Empty,
+                ResolveRuntimeTouchCount(station, localProgram.TouchCount));
         }
 
         if (!string.IsNullOrWhiteSpace(station.CurrentWorkOrder?.ProdNum))
@@ -233,7 +241,8 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             return new ProductPreviewIdentity(
                 NormalizeStationNo(station.StationNo),
                 station.CurrentWorkOrder.ProdNum.Trim(),
-                station.CurrentWorkOrder.ProdModel?.Trim() ?? string.Empty);
+                station.CurrentWorkOrder.ProdModel?.Trim() ?? string.Empty,
+                ResolveRuntimeTouchCount(station, null));
         }
 
         if (!string.IsNullOrWhiteSpace(station.ActiveTask?.ProductNum))
@@ -241,7 +250,8 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             return new ProductPreviewIdentity(
                 NormalizeStationNo(station.StationNo),
                 station.ActiveTask.ProductNum.Trim(),
-                station.ActiveTask.ProductModel?.Trim() ?? string.Empty);
+                station.ActiveTask.ProductModel?.Trim() ?? string.Empty,
+                ResolveRuntimeTouchCount(station, null));
         }
 
         return null;
@@ -260,7 +270,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
     /// <summary>
     /// No active MES task is required for preview: offline alignment identifies the product by PLC recipe code.
     /// </summary>
-    private async Task<ProductPreviewIdentity?> ReadPlcProductIdentityAsync(int stationNo, IReadOnlyList<BizProgram> localPrograms, CancellationToken cancellationToken)
+    private async Task<ProductPreviewIdentity?> ReadPlcProductIdentityAsync(int stationNo, IReadOnlyList<ProgramLookup> localPrograms, CancellationToken cancellationToken)
     {
         var normalizedStationNo = NormalizeStationNo(stationNo);
         var recipeCode = await ReadBusinessAddressTextAsync(
@@ -276,7 +286,8 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         return new ProductPreviewIdentity(
             normalizedStationNo,
             localProgram.ProductNum.Trim(),
-            localProgram.ProductModel?.Trim() ?? string.Empty);
+            localProgram.ProductModel?.Trim() ?? string.Empty,
+            localProgram.TouchCount);
     }
 
     /// <summary>
@@ -318,6 +329,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         BizWeldTask? activeTask,
         CancellationToken cancellationToken)
     {
+        var touchCount = identity.TouchCount!.Value;
         var refreshTime = DateTime.Now;
         var settings = _settingsService.Get();
         var useProgramResult = WholePieceProgramResultRules.IsApplicable(settings.ProcessParameterDeviceType);
@@ -337,6 +349,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         var rowResult = await BuildRowsAsync(
             identity,
             config,
+            touchCount,
             FormatValue(productNo),
             activeTask?.ProgramContentSnapshot,
             useProgramResult,
@@ -345,10 +358,12 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             cancellationToken);
         var mergedDefinitions = ResolveMergedDefinitions(
             config,
+            touchCount,
             settings,
             detail => SchemeDetailRoleRules.ShouldEvaluateProgramRole(detail, SchemeDetailValueRole.Actual));
         var mergedDisplayDefinitions = ResolveMergedDefinitions(
             config,
+            touchCount,
             settings,
             SchemeDetailRoleRules.ShouldShowMergedPreviewActual);
         // 合并列只显示启用实时预览的项，聚合与程序判定仍保留全部业务输出项。
@@ -380,7 +395,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         {
             productResult = TestResultRules.ToDisplayText(ResolveRealtimeProgramProductResult(
                 rowResult,
-                config,
+                touchCount,
                 activeTask?.ProgramContentSnapshot,
                 mergedSucceeded ? mergedAggregation : null,
                 mergedDefinitions,
@@ -407,7 +422,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             identity.ProductNum,
             identity.ProductModel,
             config.SchemeId,
-            BuildTouchCountText(config.TouchCount, actualTouchCount, presetTouchCount, useProgramPointNumber, rowResult.PlcFaceResults),
+            BuildTouchCountText(touchCount, actualTouchCount, presetTouchCount, useProgramPointNumber, rowResult.PlcFaceResults),
             ResolvePointName(config),
             productResult,
             refreshTime,
@@ -426,10 +441,11 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
     /// </summary>
     private IReadOnlyList<WholePieceAbValueDefinition> ResolveMergedDefinitions(
         BizProductProcessConfig config,
+        int touchCount,
         AppSettings settings,
         Func<BizSchemeDetail, bool> shouldInclude)
     {
-        if (!WholePieceAbAggregationRules.IsApplicable(settings.ProcessParameterDeviceType, config.TouchCount))
+        if (!WholePieceAbAggregationRules.IsApplicable(settings.ProcessParameterDeviceType, touchCount))
         {
             return Array.Empty<WholePieceAbValueDefinition>();
         }
@@ -477,7 +493,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
 
     private static string ResolveRealtimeProgramProductResult(
         PreviewRowsResult rowResult,
-        BizProductProcessConfig config,
+        int touchCount,
         string? programContentSnapshot,
         WholePieceAbAggregationResult? mergedAggregation,
         IReadOnlyList<WholePieceAbValueDefinition> definitions,
@@ -485,7 +501,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         out IReadOnlyList<string> failedColumns)
     {
         failedColumns = Array.Empty<string>();
-        var faceResult = WholePieceProgramResultRules.ResolveRealtimeProductResult(rowResult.FaceResults, config.TouchCount);
+        var faceResult = WholePieceProgramResultRules.ResolveRealtimeProductResult(rowResult.FaceResults, touchCount);
         if (mergedAggregation is null)
         {
             return faceResult;
@@ -510,6 +526,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
     private async Task<PreviewRowsResult> BuildRowsAsync(
         ProductPreviewIdentity identity,
         BizProductProcessConfig config,
+        int touchCount,
         string productNo,
         string? programContentSnapshot,
         bool useProgramResult,
@@ -531,7 +548,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         // 否则 IsComplete 判定拿不到完整面结果，会连带打断合并显示、产品判定和 PLC 回写。
         var completedPrefix = true;
 
-        for (var touchNo = 1; touchNo <= Math.Max(1, config.TouchCount); touchNo++)
+        for (var touchNo = 1; touchNo <= touchCount; touchNo++)
         {
             var touchContextOffset = (touchNo - 1) * config.TouchHeaderLen;
             var testContextOffset = (touchNo - 1) * config.TestAreaLen;
@@ -596,7 +613,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             rows,
             faceResults,
             plcFaceResults,
-            plcFaceResults.Count == Math.Max(1, config.TouchCount)
+            plcFaceResults.Count == touchCount
                 && plcFaceResults.All(IsTerminalPointResult),
             errors);
     }
@@ -876,7 +893,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             message));
     }
 
-    private BizProgram? ResolveLocalProgram(ProgramDataRes program, IReadOnlyList<BizProgram> localPrograms)
+    private ProgramLookup? ResolveLocalProgram(ProgramDataRes program, IReadOnlyList<ProgramLookup> localPrograms)
     {
         // 本轮采集只使用调用方提供的同一份不可变程序快照。
         var programId = program.Id?.Trim();
@@ -894,7 +911,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             && SameText(item.ProductNum, program.ProductNum));
     }
 
-    private BizProgram? ResolveLocalProgramById(string? programId, string? deviceId, IReadOnlyList<BizProgram> localPrograms)
+    private ProgramLookup? ResolveLocalProgramById(string? programId, string? deviceId, IReadOnlyList<ProgramLookup> localPrograms)
     {
         var normalizedProgramId = programId?.Trim();
         if (string.IsNullOrWhiteSpace(normalizedProgramId))
@@ -909,7 +926,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             .FirstOrDefault();
     }
 
-    private BizProgram? ResolveLocalProgramByRecipeCode(string? recipeCode, int stationNo, IReadOnlyList<BizProgram> localPrograms)
+    private ProgramLookup? ResolveLocalProgramByRecipeCode(string? recipeCode, int stationNo, IReadOnlyList<ProgramLookup> localPrograms)
     {
         var normalizedRecipeCode = NormalizePlcText(recipeCode);
         if (string.IsNullOrWhiteSpace(normalizedRecipeCode))
@@ -918,7 +935,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         }
 
         return localPrograms
-            .Where(program => ProgramRecipeMappingRules.Matches(program, stationNo, normalizedRecipeCode))
+            .Where(program => ProgramRecipeMappingRules.Matches(program.ToEntityStub(), stationNo, normalizedRecipeCode))
             .OrderByDescending(program => program.UpdatedTime)
             .FirstOrDefault();
     }
@@ -967,7 +984,26 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         bool IsComplete,
         IReadOnlyList<string> Errors);
 
-    private sealed record ProductPreviewIdentity(int StationNo, string ProductNum, string ProductModel);
+    private static int? ResolveRuntimeTouchCount(ProductionStationRuntimeState station, int? localTouchCount)
+    {
+        if (station.ActiveTask is not null)
+        {
+            return ProgramContentJsonRules.TryGetTouchCount(station.ActiveTask.ProgramContentSnapshot, out var taskTouchCount)
+                ? taskTouchCount
+                : null;
+        }
+
+        if (station.SelectedProgram is not null)
+        {
+            return ProgramContentJsonRules.TryGetTouchCount(station.SelectedProgram.ProgramContent, out var programTouchCount)
+                ? programTouchCount
+                : null;
+        }
+
+        return localTouchCount;
+    }
+
+    private sealed record ProductPreviewIdentity(int StationNo, string ProductNum, string ProductModel, int? TouchCount);
 
     private enum ProductRealtimePreviewRole
     {

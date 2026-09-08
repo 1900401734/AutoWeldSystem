@@ -891,7 +891,8 @@ public partial class MonitorView : BaseView
             using var form = new ProgramContentReviewForm(
                 detail,
                 _testSchemeConfigService.GetItems(),
-                _currentSettings.EnableDualStation);
+                _currentSettings.EnableDualStation,
+                _currentSettings.ProcessParameterDeviceType);
             if (form.ShowDialog(this) != DialogResult.OK)
             {
                 // 取消则保留下载的默认内容，不做任何修改。
@@ -6415,11 +6416,12 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
 
     private ProductHistoryDisplayOptions ResolveProductHistoryDisplayOptions(BizWeldTask activeTask, int stationNo)
     {
+        var touchCount = ProgramContentJsonRules.GetRequiredTouchCount(activeTask.ProgramContentSnapshot);
         var config = ResolveProductHistoryProcessConfig(activeTask, stationNo);
         var showTestFlagInHistory = _currentSettings.ShowTestFlagInHistory != false;
         return config is null
-            ? ProductHistoryDisplayOptions.Default with { ShowTestFlagInHistory = showTestFlagInHistory }
-            : ProductHistoryDisplayOptions.FromConfig(config, showTestFlagInHistory);
+            ? ProductHistoryDisplayOptions.Default with { TouchCount = touchCount, ShowTestFlagInHistory = showTestFlagInHistory }
+            : ProductHistoryDisplayOptions.FromConfig(config, touchCount, showTestFlagInHistory);
     }
 
     /// <summary>
@@ -8451,6 +8453,12 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             return new[] { CreateInfoRow(identity, "未找到产品工艺配置", "请在地址维护中维护当前产品的产品工艺。") };
         }
 
+        var activeTask = GetCurrentStationState().ActiveTask;
+        if (!ProgramContentJsonRules.TryGetTouchCount(activeTask?.ProgramContentSnapshot, out var touchCount))
+        {
+            return new[] { CreateInfoRow(identity, "程序焊点数量无效", "请先在程序管理中填写大于 0 的整数。") };
+        }
+
         var schemeItems = ResolveSchemeItems(config.SchemeId);
         if (schemeItems.Count == 0)
         {
@@ -8459,7 +8467,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
 
         var rows = new List<WeldParameterRow>();
 
-        for (var touchNo = 1; touchNo <= Math.Max(1, config.TouchCount); touchNo++)
+        for (var touchNo = 1; touchNo <= touchCount; touchNo++)
         {
             foreach (var schemeItem in schemeItems)
             {
@@ -8760,9 +8768,10 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         }
 
         var showTestFlagInHistory = _currentSettings.ShowTestFlagInHistory != false;
+        var touchCount = ProgramContentJsonRules.GetRequiredTouchCount(activeTask?.ProgramContentSnapshot);
         return config is null
-            ? ProductHistoryDisplayOptions.Default with { ShowTestFlagInHistory = showTestFlagInHistory }
-            : ProductHistoryDisplayOptions.FromConfig(config, showTestFlagInHistory);
+            ? ProductHistoryDisplayOptions.Default with { TouchCount = touchCount, ShowTestFlagInHistory = showTestFlagInHistory }
+            : ProductHistoryDisplayOptions.FromConfig(config, touchCount, showTestFlagInHistory);
     }
 
     private static string? FindRecordResult(BizWeldPointRecord record, WeldParameterRow row, IReadOnlyDictionary<string, string> rawValues)
@@ -10868,7 +10877,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     {
         public static ProductHistoryDisplayOptions Default { get; } = new("焊点", "焊点序号", "焊点结果", "焊点数", 0, true);
 
-        public static ProductHistoryDisplayOptions FromConfig(BizProductProcessConfig config, bool showTestFlagInHistory)
+        public static ProductHistoryDisplayOptions FromConfig(BizProductProcessConfig config, int touchCount, bool showTestFlagInHistory)
         {
             var pointName = NormalizeDisplayText(config.PointName, "焊点");
             return new ProductHistoryDisplayOptions(
@@ -10876,7 +10885,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
                 NormalizeDisplayText(config.PointNoHeader, $"{pointName}序号"),
                 NormalizeDisplayText(config.PointResultHeader, $"{pointName}结果"),
                 NormalizeDisplayText(config.PointCountHeader, $"{pointName}数"),
-                config.TouchCount,
+                touchCount,
                 showTestFlagInHistory);
         }
     }

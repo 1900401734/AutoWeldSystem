@@ -1,5 +1,6 @@
 ﻿using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core;
+using AutoWeldSystem.Core.DTOs;
 using AutoWeldSystem.Core.DTOs.Upload;
 using AutoWeldSystem.Core.DTOs.Plc;
 using AutoWeldSystem.Core.Entities;
@@ -54,7 +55,7 @@ public partial class AddressManageView : BaseView
     private readonly List<BizTestScheme> _testSchemes = new();
     private readonly List<BizSchemeDetail> _schemeDetails = new();
     private readonly List<DimTestItem> _testItems = new();
-    private readonly List<BizProgram> _programOptions = new();
+    private readonly List<ProgramLookup> _programOptions = new();
     private readonly Dictionary<DimTestItem, int> _temporaryTestItemIds = new();
 
     private List<PlcAddressTableRow> _currentRows = new();
@@ -390,12 +391,10 @@ public partial class AddressManageView : BaseView
 
     private void ConfigureProductProcessColumns()
     {
-        var profile = DeviceUiProfile;
         tableProcess.Columns.Clear();
         tableProcess.Columns.Add(CreateProgramProductNumColumn());
         tableProcess.Columns.Add(CreateSchemeSelectColumn(nameof(ProductProcessTableRow.SchemeId), "测试方案ID"));
         tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.StationNo), "工位(0共享)"));
-        tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.TouchCount), profile.PointCountHeader));
         tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.PointName), "采集点名称"));
         tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.PointNoHeader), "编号表头"));
         tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.PointResultHeader), "结果表头"));
@@ -710,7 +709,7 @@ public partial class AddressManageView : BaseView
         lblBindingDetail.Text = "方案明细 ItemId";
         lblBindingItem.Text = "测试项字典 表达式";
         lblBindingPreview.Text = "PLC 地址预览";
-        lblTestItemAddressHint.Text = $"维护产品工号、工位、{DeviceUiProfile.PointCountHeader}和 PLC 数据区布局；测试方案决定采集哪些测试项。";
+        lblTestItemAddressHint.Text = "维护产品工号、工位和 PLC 数据区布局；采集点数量在程序管理中维护，测试方案决定采集哪些测试项。";
         lblProductProcessGroupHint.Text = $"分组填写：产品头保存产品级字段，{DeviceUiProfile.PointName}头按{DeviceUiProfile.PointName}头长度递增，测试项区按测试区长度递增；最终地址可通过 PLC 地址预览核对。{PlcExpressionRuleHint}";
         lblSchemeDetailHint.Text = "先选择测试方案，再勾选该方案包含的测试项字段；新增测试项字典后会自动出现在树中。";
         lblSchemeDetailScheme.Text = "测试方案";
@@ -743,7 +742,7 @@ public partial class AddressManageView : BaseView
             RunOnUiThread(() =>
             {
                 _programOptions.Clear();
-                _programOptions.AddRange(lookups.Select(lookup => lookup.ToEntityStub()));
+                _programOptions.AddRange(lookups);
             }, "AddressManageView.ProgramLookups");
         }
         catch (Exception ex)
@@ -938,14 +937,14 @@ public partial class AddressManageView : BaseView
         }
 
         var schemeItemCount = ResolveSchemeItems(config.SchemeId).Count;
-        var touchCount = Math.Max(1, config.TouchCount);
-        var totalItemRows = touchCount * schemeItemCount;
+        var touchCount = ResolveMaxProgramTouchCount(config.ProductNum);
         var stationText = config.StationNo == ProductionConstants.Stations.SharedStationNo
             ? "共享工位"
             : $"工位 {config.StationNo}";
 
-        lblProductProcessSummary.Text =
-            $"当前绑定：产品 {config.ProductNum} / {stationText} / 方案 {config.SchemeId} / 焊点 {touchCount} 个 / 每焊点 {schemeItemCount} 个测试项 / 共 {totalItemRows} 条测试项记录。";
+        lblProductProcessSummary.Text = touchCount.HasValue
+            ? $"当前绑定：产品 {config.ProductNum} / {stationText} / 方案 {config.SchemeId} / 有效程序最大焊点数 {touchCount} / 每焊点 {schemeItemCount} 个测试项。"
+            : $"当前绑定：产品 {config.ProductNum} / {stationText} / 方案 {config.SchemeId} / 尚无配置有效焊点数量的程序，地址预览仅展开第 1 点模板。";
     }
 
     private void ApplyAddressFilter(string? keyword)
@@ -1965,12 +1964,19 @@ public partial class AddressManageView : BaseView
         AddProductProcessAddressPreviewRow(rows, identity, "产品头", "-", $"实际{pointCountHeader}", config.ProductBase, 0, config.ActualTouchCountExpr);
         AddProductProcessAddressPreviewRow(rows, identity, "产品头", "-", $"预设{pointCountHeader}", config.ProductBase, 0, config.PresetTouchCountExpr);
 
+        var configuredTouchCount = ResolveMaxProgramTouchCount(config.ProductNum);
+        var previewTouchCount = configuredTouchCount ?? 1;
+        if (!configuredTouchCount.HasValue)
+        {
+            rows.Add(PlcAddressPreviewRow.Info(identity.StationNo, "同产品暂无配置有效焊点数量的程序，仅显示第 1 点地址模板。"));
+        }
+
         if (schemeItems.Count == 0)
         {
             rows.Add(PlcAddressPreviewRow.Info(identity.StationNo, $"测试方案 {config.SchemeId} 尚未配置方案明细。"));
         }
 
-        for (var touchNo = 1; touchNo <= Math.Max(1, config.TouchCount); touchNo++)
+        for (var touchNo = 1; touchNo <= previewTouchCount; touchNo++)
         {
             var touchContextOffset = (touchNo - 1) * config.TouchHeaderLen;
             var testContextOffset = (touchNo - 1) * config.TestAreaLen;
@@ -2014,6 +2020,16 @@ public partial class AddressManageView : BaseView
             ?.ProductModel?.Trim() ?? string.Empty;
 
         return new ProductProcessPreviewIdentity(config.StationNo, productNum, productModel);
+    }
+
+    private int? ResolveMaxProgramTouchCount(string? productNum)
+    {
+        var counts = _programOptions
+            .Where(program => string.Equals(program.ProductNum.Trim(), productNum?.Trim(), StringComparison.OrdinalIgnoreCase))
+            .Where(program => program.TouchCount.HasValue)
+            .Select(program => program.TouchCount!.Value)
+            .ToList();
+        return counts.Count == 0 ? null : counts.Max();
     }
 
     private IReadOnlyList<ProductSchemePreviewItem> ResolveSchemeItems(string? schemeId)
@@ -2458,7 +2474,6 @@ public partial class AddressManageView : BaseView
                 nameof(ProductProcessTableRow.ProductNum) => !string.IsNullOrWhiteSpace(value),
                 nameof(ProductProcessTableRow.SchemeId) => !string.IsNullOrWhiteSpace(value),
                 nameof(ProductProcessTableRow.StationNo) => IsNonNegativeInt(value),
-                nameof(ProductProcessTableRow.TouchCount) => IsPositiveInt(value),
                 nameof(ProductProcessTableRow.PointName) => !string.IsNullOrWhiteSpace(value),
                 nameof(ProductProcessTableRow.PointNoHeader) => !string.IsNullOrWhiteSpace(value),
                 nameof(ProductProcessTableRow.PointResultHeader) => !string.IsNullOrWhiteSpace(value),
@@ -2689,7 +2704,6 @@ public partial class AddressManageView : BaseView
             config.ProductNum = NormalizeRequiredText(config.ProductNum, "产品工号不能为空。");
             config.SchemeId = NormalizeRequiredText(config.SchemeId, "测试方案ID不能为空。");
             config.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, config.StationNo);
-            config.TouchCount = Math.Max(1, config.TouchCount);
             config.PointName = NormalizeRequiredText(config.PointName, "采集点名称不能为空。");
             config.PointNoHeader = NormalizeRequiredText(config.PointNoHeader, "采集点编号表头不能为空。");
             config.PointResultHeader = NormalizeRequiredText(config.PointResultHeader, "采集点结果表头不能为空。");
@@ -3287,12 +3301,6 @@ public partial class AddressManageView : BaseView
             set => Source.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, value);
         }
 
-        public int TouchCount
-        {
-            get => Source.TouchCount;
-            set => Source.TouchCount = Math.Max(1, value);
-        }
-
         public string PointName
         {
             get => Source.PointName;
@@ -3420,7 +3428,6 @@ public partial class AddressManageView : BaseView
             Source.ProductNum = Source.ProductNum?.Trim();
             Source.SchemeId = string.IsNullOrWhiteSpace(Source.SchemeId) ? "S01" : Source.SchemeId.Trim();
             Source.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, Source.StationNo);
-            Source.TouchCount = Math.Max(1, Source.TouchCount);
             Source.PointName = NormalizeNullableText(Source.PointName) ?? "焊点";
             Source.PointNoHeader = NormalizeNullableText(Source.PointNoHeader) ?? $"{Source.PointName}序号";
             Source.PointResultHeader = NormalizeNullableText(Source.PointResultHeader) ?? $"{Source.PointName}结果";

@@ -1,5 +1,6 @@
 ﻿using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.DTOs;
 using AutoWeldSystem.Core.DTOs.Mes.Response;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Plc;
@@ -721,9 +722,7 @@ public partial class MainForm : BaseWindow
 
     private async void AddressPreview_Click(object? sender, EventArgs e)
     {
-        var localPrograms = (await _programManageService.GetProgramLookupsAsync())
-            .Select(lookup => lookup.ToEntityStub())
-            .ToArray();
+        var localPrograms = await _programManageService.GetProgramLookupsAsync();
         var rows = BuildCurrentAddressPreviewRows(localPrograms);
         using var form = new AddressPreviewForm(rows, _plcExpressionReadService, _localizer, _plcWriteDebugLauncher);
         form.ShowDialog(this);
@@ -754,7 +753,7 @@ public partial class MainForm : BaseWindow
     /// <summary>
     /// 主窗体统一负责生成 PLC 地址预览行，避免再依赖 MonitorView 的私有界面状态。
     /// </summary>
-    private IReadOnlyList<PlcAddressPreviewRow> BuildCurrentAddressPreviewRows(IReadOnlyList<BizProgram> localPrograms)
+    private IReadOnlyList<PlcAddressPreviewRow> BuildCurrentAddressPreviewRows(IReadOnlyList<ProgramLookup> localPrograms)
     {
         var stationNo = CurrentStationNo;
         var identity = ResolveCurrentPreviewIdentity(stationNo, localPrograms);
@@ -783,7 +782,17 @@ public partial class MainForm : BaseWindow
         AddAddressPreviewRow(rows, identity, "产品头", "-", "实际焊点数", config.ProductBase, 0, config.ActualTouchCountExpr);
         AddAddressPreviewRow(rows, identity, "产品头", "-", "预设焊点数", config.ProductBase, 0, config.PresetTouchCountExpr);
 
-        for (var touchNo = 1; touchNo <= Math.Max(1, config.TouchCount); touchNo++)
+        var configuredTouchCounts = localPrograms
+            .Where(program => SameText(program.ProductNum, identity.ProductNum) && program.TouchCount.HasValue)
+            .Select(program => program.TouchCount!.Value)
+            .ToList();
+        var previewTouchCount = configuredTouchCounts.Count == 0 ? 1 : configuredTouchCounts.Max();
+        if (configuredTouchCounts.Count == 0)
+        {
+            rows.Add(PlcAddressPreviewRow.Info(stationNo, "同产品暂无配置有效焊点数量的程序，仅显示第 1 点地址模板。"));
+        }
+
+        for (var touchNo = 1; touchNo <= previewTouchCount; touchNo++)
         {
             var touchContextOffset = (touchNo - 1) * config.TouchHeaderLen;
             var testContextOffset = (touchNo - 1) * config.TestAreaLen;
@@ -876,7 +885,7 @@ public partial class MainForm : BaseWindow
     /// <summary>
     /// 优先使用实时预览服务已缓存的产品身份，缓存不存在时再回退到当前生产运行态。
     /// </summary>
-    private ProductIdentity? ResolveCurrentPreviewIdentity(int stationNo, IReadOnlyList<BizProgram> localPrograms)
+    private ProductIdentity? ResolveCurrentPreviewIdentity(int stationNo, IReadOnlyList<ProgramLookup> localPrograms)
     {
         var snapshot = _productRealtimePreviewService.GetCurrent(stationNo);
         if (snapshot is not null && !string.IsNullOrWhiteSpace(snapshot.ProductNum))
@@ -891,7 +900,7 @@ public partial class MainForm : BaseWindow
         return ResolveOnlineProductIdentity(stationNo, localPrograms);
     }
 
-    private ProductIdentity? ResolveOnlineProductIdentity(int stationNo, IReadOnlyList<BizProgram> localPrograms)
+    private ProductIdentity? ResolveOnlineProductIdentity(int stationNo, IReadOnlyList<ProgramLookup> localPrograms)
     {
         var state = _weldTaskService.CurrentState;
         var selectedProgram = state.CurrentStationNo == stationNo ? state.SelectedProgram : null;
@@ -967,7 +976,7 @@ public partial class MainForm : BaseWindow
             .ToList();
     }
 
-    private BizProgram? ResolveLocalProgram(ProgramDataRes program, IReadOnlyList<BizProgram> localPrograms)
+    private ProgramLookup? ResolveLocalProgram(ProgramDataRes program, IReadOnlyList<ProgramLookup> localPrograms)
     {
         var programId = program.Id?.Trim() ?? string.Empty;
         if (!string.IsNullOrWhiteSpace(programId))
@@ -984,7 +993,7 @@ public partial class MainForm : BaseWindow
             && string.Equals(item.ProductNum?.Trim(), program.ProductNum?.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 
-    private BizProgram? ResolveLocalProgramById(string? programId, string? deviceId, IReadOnlyList<BizProgram> localPrograms)
+    private ProgramLookup? ResolveLocalProgramById(string? programId, string? deviceId, IReadOnlyList<ProgramLookup> localPrograms)
     {
         var normalizedProgramId = programId?.Trim();
         if (string.IsNullOrWhiteSpace(normalizedProgramId))

@@ -1,5 +1,6 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Globalization;
 using AutoWeldSystem.Core.Entities;
 
 namespace AutoWeldSystem.Core.Production;
@@ -21,12 +22,14 @@ public static class ProgramContentJsonRules
     public const string RecipeNameStation1Key = "工位1配方名称";
     public const string RecipeNameStation2Key = "工位2配方名称";
     public const string RecipeNameLegacyKey = "配方名称";
+    public const string TouchCountKey = "焊点数量";
 
     private static readonly HashSet<string> ReservedKeys = new(StringComparer.OrdinalIgnoreCase)
     {
         RecipeNameStation1Key,
         RecipeNameStation2Key,
-        RecipeNameLegacyKey
+        RecipeNameLegacyKey,
+        TouchCountKey
     };
 
     /// <summary>
@@ -35,6 +38,93 @@ public static class ProgramContentJsonRules
     public static bool IsReservedKey(string? key)
     {
         return !string.IsNullOrWhiteSpace(key) && ReservedKeys.Contains(key.Trim());
+    }
+
+    /// <summary>
+    /// 从程序内容读取正整数焊点数量；兼容 MES 可能返回的 JSON 数字或字符串。
+    /// </summary>
+    public static bool TryGetTouchCount(string? programContent, out int touchCount)
+    {
+        touchCount = 0;
+        if (string.IsNullOrWhiteSpace(programContent))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(programContent);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (!string.Equals(property.Name.Trim(), TouchCountKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var parsed = property.Value.ValueKind switch
+                {
+                    JsonValueKind.Number when property.Value.TryGetInt32(out var number) => number,
+                    JsonValueKind.String when int.TryParse(
+                        property.Value.GetString()?.Trim(),
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out var number) => number,
+                    _ => 0
+                };
+                if (parsed > 0)
+                {
+                    touchCount = parsed;
+                    return true;
+                }
+
+                return false;
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// 获取生产流程必须使用的焊点数量；旧程序不再回退产品工艺配置。
+    /// </summary>
+    public static int GetRequiredTouchCount(string? programContent)
+    {
+        if (TryGetTouchCount(programContent, out var touchCount))
+        {
+            return touchCount;
+        }
+
+        throw new InvalidOperationException("程序内容缺少有效的焊点数量，请先在程序管理中填写大于 0 的整数。");
+    }
+
+    /// <summary>
+    /// 保留程序内容全部字段，只把焊点数量规范为固定键名和 JSON 字符串。
+    /// </summary>
+    public static string NormalizeTouchCount(string programContent)
+    {
+        var touchCount = GetRequiredTouchCount(programContent);
+        using var document = JsonDocument.Parse(programContent);
+        var values = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var property in document.RootElement.EnumerateObject())
+        {
+            if (string.Equals(property.Name.Trim(), TouchCountKey, StringComparison.OrdinalIgnoreCase))
+            {
+                values[TouchCountKey] = touchCount.ToString(CultureInfo.InvariantCulture);
+                continue;
+            }
+
+            values[property.Name] = property.Value.Clone();
+        }
+
+        return JsonSerializer.Serialize(values, JsonOptions);
     }
 
     /// <summary>
@@ -371,7 +461,8 @@ public static class ProgramContentJsonRules
     public static string MergeRecipeNamesAndContent(
         string? station1RecipeName,
         string? station2RecipeName,
-        string testItemContentJson)
+        string testItemContentJson,
+        int? touchCount = null)
     {
         var merged = new Dictionary<string, string>();
 
@@ -386,6 +477,16 @@ public static class ProgramContentJsonRules
         if (!string.IsNullOrWhiteSpace(normalizedStation2))
         {
             merged[RecipeNameStation2Key] = normalizedStation2;
+        }
+
+        if (touchCount.HasValue)
+        {
+            if (touchCount.Value <= 0)
+            {
+                throw new InvalidOperationException("焊点数量必须是大于 0 的整数。");
+            }
+
+            merged[TouchCountKey] = touchCount.Value.ToString(CultureInfo.InvariantCulture);
         }
 
         // 测试项内容在后

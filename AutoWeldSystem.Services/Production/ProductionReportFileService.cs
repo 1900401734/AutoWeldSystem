@@ -187,10 +187,12 @@ public class ProductionReportFileService : IProductionReportFileService
         IReadOnlyList<BizWeldPointRecord> records,
         bool localExport = false)
     {
+        var touchCount = ProgramContentJsonRules.GetRequiredTouchCount(task.ProgramContentSnapshot);
         var stationConfigs = ResolveStationReportConfigs(task, records, localExport);
         return BuildReportSchemaForStationsWithDeviceType(
             stationConfigs,
             CurrentSettings.ProcessParameterDeviceType,
+            touchCount,
             localExport);
     }
 
@@ -198,12 +200,14 @@ public class ProductionReportFileService : IProductionReportFileService
     /// 按工位顺序构造稳定、去重的动态列并集，同时保留每个工位自己的取值配置。
     /// </summary>
     private static ReportSchema BuildReportSchemaForStations(
-        IReadOnlyList<ResolvedStationReportConfig> stationConfigs)
-        => BuildReportSchemaForStationsWithDeviceType(stationConfigs, string.Empty, localExport: false);
+        IReadOnlyList<ResolvedStationReportConfig> stationConfigs,
+        int touchCount)
+        => BuildReportSchemaForStationsWithDeviceType(stationConfigs, string.Empty, touchCount, localExport: false);
 
     private static ReportSchema BuildReportSchemaForStationsWithDeviceType(
         IReadOnlyList<ResolvedStationReportConfig> stationConfigs,
         string deviceType,
+        int touchCount,
         bool localExport)
     {
         var orderedConfigs = stationConfigs
@@ -214,18 +218,18 @@ public class ProductionReportFileService : IProductionReportFileService
         var displayOptions = ResolveCompatibleDisplayOptions(
             orderedConfigs,
             !localExport
-                && WholePieceAbAggregationRules.IsApplicable(deviceType, orderedConfigs.FirstOrDefault()?.Config.TouchCount ?? 0));
+                && WholePieceAbAggregationRules.IsApplicable(deviceType, touchCount));
         var leadingColumns = BuildLeadingColumns(displayOptions);
         var dynamicColumns = orderedConfigs
             .SelectMany(config => config.SchemeItems.SelectMany(item => BuildItemColumnsForMode(
                 item,
-                !localExport && WholePieceAbAggregationRules.IsApplicable(deviceType, config.Config.TouchCount),
+                !localExport && WholePieceAbAggregationRules.IsApplicable(deviceType, touchCount),
                 localExport)));
         // 整件检测的上传报表取消采集点结果列：面结果寄存器恒为检测完成信号，
         // 列名叫“检测结果”却不承载合格信息，对客户构成误导，产品结果列已足够。
         // 本地导出保留该列：它输出 PLC 原始面记录，供工艺人员核对采集状态。
         var wholePieceUploadReport = !localExport
-            && WholePieceAbAggregationRules.IsApplicable(deviceType, orderedConfigs.FirstOrDefault()?.Config.TouchCount ?? 0);
+            && WholePieceAbAggregationRules.IsApplicable(deviceType, touchCount);
         var pointResultColumn = wholePieceUploadReport
             ? Array.Empty<ReportColumn>()
             : BuildPointResultColumn(displayOptions);
@@ -243,7 +247,7 @@ public class ProductionReportFileService : IProductionReportFileService
         var stationConfigsByNumber = orderedConfigs.ToDictionary(
             config => config.StationNo,
             config => config.Config);
-        return new ReportSchema(columns, stationSchemeItems, stationConfigsByNumber, displayOptions, localExport);
+        return new ReportSchema(columns, stationSchemeItems, stationConfigsByNumber, displayOptions, touchCount, localExport);
     }
 
     /// <summary>
@@ -372,7 +376,7 @@ public class ProductionReportFileService : IProductionReportFileService
             // 本地导出保留逐面原始记录：A/B 聚合会把四面并成两行并改写行结果，
             // 后台查阅需要的是"数据是怎样就怎样"，聚合只用于上传给 MES 的报表。
             if (schema.LocalExport
-                || !WholePieceAbAggregationRules.IsApplicable(settings.ProcessParameterDeviceType, config?.TouchCount ?? 0))
+                || !WholePieceAbAggregationRules.IsApplicable(settings.ProcessParameterDeviceType, schema.TouchCount))
             {
                 var standardProductResult = ResolveProductResult(group);
                 rows.AddRange(group.OrderBy(record => record.SequenceNo).ThenBy(record => record.Id)
@@ -1129,6 +1133,7 @@ public class ProductionReportFileService : IProductionReportFileService
                 },
                 new Dictionary<int, BizProductProcessConfig>(),
                 displayOptions,
+                0,
                 localExport)
         {
         }
@@ -1138,12 +1143,14 @@ public class ProductionReportFileService : IProductionReportFileService
             IReadOnlyDictionary<int, IReadOnlyList<SchemeReportItem>> stationSchemeItems,
             IReadOnlyDictionary<int, BizProductProcessConfig> stationConfigs,
             ReportDisplayOptions displayOptions,
+            int touchCount,
             bool localExport = false)
         {
             Columns = columns;
             StationSchemeItems = stationSchemeItems;
             StationConfigs = stationConfigs;
             DisplayOptions = displayOptions;
+            TouchCount = touchCount;
             LocalExport = localExport;
         }
 
@@ -1153,6 +1160,8 @@ public class ProductionReportFileService : IProductionReportFileService
         /// 是否为数据管理页本地导出。取值端据此与列定义保持同一取列口径。
         /// </summary>
         public bool LocalExport { get; }
+
+        public int TouchCount { get; }
 
         public IReadOnlyDictionary<int, IReadOnlyList<SchemeReportItem>> StationSchemeItems { get; }
 

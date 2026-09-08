@@ -1698,6 +1698,12 @@
   <data name="program.label.product_num" xml:space="preserve">
     <value>Product No.</value>
   </data>
+  <data name="program.label.touch_count" xml:space="preserve">
+    <value>Weld Point Count</value>
+  </data>
+  <data name="program.label.face_count" xml:space="preserve">
+    <value>Face Count</value>
+  </data>
   <data name="program.label.component_code" xml:space="preserve">
     <value>Drawing No.</value>
   </data>
@@ -1727,6 +1733,9 @@
   </data>
   <data name="program.label.program_content" xml:space="preserve">
     <value>Program Content</value>
+  </data>
+  <data name="program.placeholder.touch_count" xml:space="preserve">
+    <value>Enter an integer greater than 0</value>
   </data>
   <data name="program.option.parameter_string" xml:space="preserve">
     <value>0 - Parameter String</value>
@@ -1769,6 +1778,9 @@
   </data>
   <data name="program.message.sequence_invalid" xml:space="preserve">
     <value>Sequence No. must be a number greater than 0.</value>
+  </data>
+  <data name="program.message.touch_count_invalid" xml:space="preserve">
+    <value>{0} must be an integer greater than 0.</value>
   </data>
   <data name="program.message.product_num_required" xml:space="preserve">
     <value>Product No. is required.</value>

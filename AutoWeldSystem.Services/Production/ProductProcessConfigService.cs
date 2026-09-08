@@ -151,7 +151,6 @@ public class ProductProcessConfigService : IProductProcessConfigService
         config.SchemeId = string.IsNullOrWhiteSpace(config.SchemeId) ? "S01" : config.SchemeId.Trim();
         config.ProductNum = NormalizeRequired(config.ProductNum, "产品工号不能为空。");
         config.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, config.StationNo);
-        config.TouchCount = Math.Max(1, config.TouchCount);
         config.PointName = NormalizeNullable(config.PointName) ?? "焊点";
         config.PointNoHeader = NormalizeNullable(config.PointNoHeader) ?? $"{config.PointName}序号";
         config.PointResultHeader = NormalizeNullable(config.PointResultHeader) ?? $"{config.PointName}结果";

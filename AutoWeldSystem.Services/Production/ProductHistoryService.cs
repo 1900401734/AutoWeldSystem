@@ -27,6 +27,7 @@ public sealed class ProductHistoryService : IProductHistoryService
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
+            EnsureTaskTouchCount(taskId);
             var records = GetTaskStationRecords(taskId, stationNo);
 
             return new ProductHistorySnapshot
@@ -49,6 +50,7 @@ public sealed class ProductHistoryService : IProductHistoryService
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
+            EnsureTaskTouchCount(taskId);
             var records = GetTaskStationRecords(taskId, stationNo)
                 .Where(record => string.Equals(record.ProductNo, normalizedProductNo, StringComparison.OrdinalIgnoreCase))
                 .ToList();
@@ -95,6 +97,12 @@ public sealed class ProductHistoryService : IProductHistoryService
             .ThenBy(record => record.SequenceNo)
             .ThenBy(record => record.Id)
             .ToList();
+    }
+
+    private void EnsureTaskTouchCount(int taskId)
+    {
+        var task = _dbContext.Db.Queryable<BizWeldTask>().InSingle(taskId);
+        _ = ProgramContentJsonRules.GetRequiredTouchCount(task?.ProgramContentSnapshot);
     }
 
     private static IReadOnlyList<ProductHistoryProduct> BuildProducts(IReadOnlyList<BizWeldPointRecord> records)

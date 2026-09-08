@@ -4,7 +4,7 @@ namespace AutoWeldSystem.Core.DTOs;
 
 /// <summary>
 /// 程序选择、筛选和配方匹配所需的轻量程序快照。
-/// 不包含程序内容、执行文件和同步消息等大字段。
+/// 不包含程序内容、执行文件和同步消息等大字段；焊点数量由程序内容集中解析后投影。
 /// </summary>
 public sealed record ProgramLookup
 {
@@ -19,6 +19,7 @@ public sealed record ProgramLookup
     public string? ComponentCode { get; init; }
     public string ProgramType { get; init; } = "0";
     public int SequenceNumber { get; init; }
+    public int? TouchCount { get; init; }
     public string? Description { get; init; }
     public int VersionNumber { get; init; }
     public string SyncStatus { get; init; } = string.Empty;

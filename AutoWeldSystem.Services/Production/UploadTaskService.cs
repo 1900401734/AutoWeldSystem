@@ -769,6 +769,12 @@ public class UploadTaskService : IUploadTaskService
 
     private async Task<BasicRes<object>> ExecuteByTypeAsync(BizUploadTask task, CancellationToken cancellationToken)
     {
+        var touchCountError = ValidateTaskTouchCount(task);
+        if (touchCountError is not null)
+        {
+            return Unsupported($"补传已拒绝：{touchCountError}");
+        }
+
         return task.TaskType switch
         {
             ProductionConstants.UploadTaskTypes.StartReport => await UploadStartReportAsync(task, cancellationToken),
@@ -779,6 +785,29 @@ public class UploadTaskService : IUploadTaskService
             ProductionConstants.UploadTaskTypes.ProgramFile => Unsupported("程序文件上传由程序管理服务处理。"),
             _ => Unsupported($"暂不支持的上传任务类型：{task.TaskType}")
         };
+    }
+
+    private string? ValidateTaskTouchCount(BizUploadTask uploadTask)
+    {
+        if (!uploadTask.WeldTaskId.HasValue)
+        {
+            return null;
+        }
+
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var weldTask = _dbContext.Db.Queryable<BizWeldTask>().InSingle(uploadTask.WeldTaskId.Value);
+            try
+            {
+                _ = ProgramContentJsonRules.GetRequiredTouchCount(weldTask?.ProgramContentSnapshot);
+                return null;
+            }
+            catch (InvalidOperationException ex)
+            {
+                return ex.Message;
+            }
+        }
     }
 
     /// <summary>
@@ -1189,7 +1218,9 @@ public class UploadTaskService : IUploadTaskService
             var firstRecord = productRecords[0];
             var schemeItems = ResolveProcessParameterSchemeItems(firstRecord, schemeItemCache);
             var config = ResolveProductProcessConfig(firstRecord);
-            if (!WholePieceAbAggregationRules.IsApplicable(deviceType, config?.TouchCount ?? 0))
+            var task = _dbContext.Db.Queryable<BizWeldTask>().InSingle(firstRecord.TaskId);
+            var touchCount = ProgramContentJsonRules.GetRequiredTouchCount(task?.ProgramContentSnapshot);
+            if (!WholePieceAbAggregationRules.IsApplicable(deviceType, touchCount))
             {
                 items.AddRange(productRecords.Select(record => ToProcessParameterUploadItem(
                     record,
@@ -1231,7 +1262,7 @@ public class UploadTaskService : IUploadTaskService
             // 否则单面检测失败会让某行上传 NG，而按四面最大值算出的产品结果是 OK，两者对不上。
             var outputRows = WholePieceProgramResultRules.IsApplicable(deviceType)
                 ? WholePieceProgramResultRules.ApplyAggregatedRowResults(
-                    _dbContext.Db.Queryable<BizWeldTask>().InSingle(firstRecord.TaskId)?.ProgramContentSnapshot,
+                    task?.ProgramContentSnapshot,
                     aggregation.Rows,
                     definitions,
                     settings.EffectiveJudgementDecimalPlaces,

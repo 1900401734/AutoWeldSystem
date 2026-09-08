@@ -416,6 +416,8 @@ var tests = new (string Name, Action Run)[]
     ("Program content strips PLC nul padding from recipe names", ProgramContentStripsPlcNulPaddingFromRecipeNames),
     ("Program content puts recipe names before setting values", ProgramContentPutsRecipeNamesBeforeSettingValues),
     ("Program content recipe names stay out of test items", ProgramContentRecipeNamesStayOutOfTestItems),
+    ("Program content touch count is authoritative metadata", ProgramContentTouchCountIsAuthoritativeMetadata),
+    ("Product cycle count respects program upper bound", ProductCycleCountRespectsProgramUpperBound),
     ("Program content extracts station recipe names", ProgramContentExtractsStationRecipeNames),
     ("Program recipe name mapping resolves plc slot codes", ProgramRecipeNameMappingResolvesPlcSlotCodes),
     ("Start confirm dialog shows read-only recipe names", StartConfirmDialogShowsReadOnlyRecipeNames),
@@ -1402,7 +1404,7 @@ static void ProductProcessDraftCopiesBusinessFieldsAndResetsIdentity()
     AssertEqual(source.ProductNum, draft.ProductNum, "复制草稿应暂时保留源产品工号。 ");
     AssertEqual(source.SchemeId, draft.SchemeId, "测试方案应复制。 ");
     AssertEqual(source.StationNo, draft.StationNo, "工位应复制。 ");
-    AssertEqual(source.TouchCount, draft.TouchCount, "焊点数量应复制。 ");
+    AssertEqual(1, draft.TouchCount, "兼容列不再参与产品工艺草稿复制。 ");
     AssertEqual(source.PointName, draft.PointName, "采集点名称应复制。 ");
     AssertEqual(source.PointNoHeader, draft.PointNoHeader, "编号表头应复制。 ");
     AssertEqual(source.PointResultHeader, draft.PointResultHeader, "结果表头应复制。 ");
@@ -13364,7 +13366,7 @@ static void ProgramRuntimeResolvesRecipesByCurrentStation()
     var monitorResolver = ExtractMethodText(monitorCode, "private RecipeCodeResolution ResolveRecipeCodeForStartedTask", "private BizProgram? ResolveLocalProgramByProgramId");
     AssertFalse(monitorResolver.Contains("task.RecipeCode", StringComparison.Ordinal), "新任务运行时解析不得回退任务配方快照。");
     AssertFalse(monitorResolver.Contains("selectedProgram?.RecipeCode", StringComparison.Ordinal), "新任务运行时解析不得回退 MES 程序配方号。");
-    AssertTrue(previewCode.Contains("ProgramRecipeMappingRules.Matches(program, stationNo, normalizedRecipeCode)", StringComparison.Ordinal), "PLC 配方反查产品预览时应按工位匹配。 ");
+    AssertTrue(previewCode.Contains("ProgramRecipeMappingRules.Matches(program.ToEntityStub(), stationNo, normalizedRecipeCode)", StringComparison.Ordinal), "PLC 配方反查产品预览时应按工位匹配。 ");
     AssertTrue(monitorCode.Contains("ProgramRecipeMappingRules.Resolve(localProgram, stationNo)", StringComparison.Ordinal), "MonitorView 配方下发和反查应复用工位映射规则。 ");
     AssertTrue(localFormCode.Contains("ProgramRecipeMappingRules.Resolve(program, _stationNo)", StringComparison.Ordinal), "本地工单窗口应显示并提交当前工位配方号。 ");
 }
@@ -13684,6 +13686,82 @@ static void ProgramContentRecipeNamesStayOutOfTestItems()
     AssertFalse(ProgramContentJsonRules.IsReservedKey("高度"), "普通测试项不得被当成保留键。");
 }
 
+static void ProgramContentTouchCountIsAuthoritativeMetadata()
+{
+    foreach (var content in new[]
+             {
+                 "{\"焊点数量\":4}",
+                 "{\"焊点数量\":\"4\"}"
+             })
+    {
+        AssertTrue(
+            ProgramContentJsonRules.TryGetTouchCount(content, out var touchCount),
+            "焊点数量必须兼容 JSON 数字和字符串格式。");
+        AssertEqual(4, touchCount, "两种 JSON 格式必须解析为相同正整数。");
+    }
+
+    foreach (var content in new[]
+             {
+                 (string?)null,
+                 "{}",
+                 "{\"焊点数量\":0}",
+                 "{\"焊点数量\":-1}",
+                 "{\"焊点数量\":\"非法\"}",
+                 "{\"焊点数量\":1.5}"
+             })
+    {
+        AssertFalse(
+            ProgramContentJsonRules.TryGetTouchCount(content, out _),
+            "缺失、非整数或非正数焊点数量必须判为无效。");
+    }
+
+    AssertThrows<InvalidOperationException>(
+        () => ProgramContentJsonRules.GetRequiredTouchCount("{}"),
+        "生产消费者不得对缺失数量的旧程序做隐式回退。");
+
+    var normalized = ProgramContentJsonRules.NormalizeTouchCount(
+        "{\"工位1配方名称\":\"标准配方\",\"焊点数量\":4,\"高度\":\"12.5\",\"扩展元数据\":true}");
+    AssertTrue(normalized.Contains("\"焊点数量\":\"4\"", StringComparison.Ordinal), "保存时焊点数量必须统一写成 JSON 字符串。");
+    AssertTrue(normalized.Contains("\"扩展元数据\":true", StringComparison.Ordinal), "规范化数量时必须保留其他程序元数据。");
+
+    var merged = ProgramContentJsonRules.MergeRecipeNamesAndContent(
+        "标准配方",
+        null,
+        "{\"高度\":\"12.5\"}",
+        4);
+    AssertEqual("高度≤12.5", ProgramContentJsonRules.BuildLimitsSummary(merged), "设定值摘要不得包含焊点数量。");
+    AssertFalse(
+        ProgramContentJsonRules.BuildRows(Array.Empty<DimTestItem>(), merged)
+            .Any(row => string.Equals(row.ItemName, ProgramContentJsonRules.TouchCountKey, StringComparison.Ordinal)),
+        "程序内容测试项表格不得包含焊点数量。");
+    AssertFalse(
+        ProgramContentJsonRules.BuildReviewRows(Array.Empty<DimTestItem>(), merged)
+            .Any(row => string.Equals(row.ItemName, ProgramContentJsonRules.TouchCountKey, StringComparison.Ordinal)),
+        "开工确认的测试项表格不得包含焊点数量。");
+    AssertTrue(
+        WholePieceProgramResultRules.TryReadMaximumValues(merged, out var maximumValues, out var errorMessage),
+        $"判定字典应能解析程序内容：{errorMessage}");
+    AssertFalse(maximumValues.ContainsKey(ProgramContentJsonRules.TouchCountKey), "产品判定字典不得包含焊点数量。");
+
+    var mesProgram = BuildSyncedProgram();
+    mesProgram.ProgramContent = merged;
+    var payload = ProgramMesPayloadRules.ToWriteRequest(mesProgram, AppConstants.ProgramRemarkActions.Update);
+    AssertTrue(
+        ProgramContentJsonRules.TryGetTouchCount(payload.ProgramContent, out var mesTouchCount),
+        "MES 程序写入载荷必须保留焊点数量。");
+    AssertEqual(4, mesTouchCount, "MES 往返使用的程序内容必须保留原数量。");
+}
+
+static void ProductCycleCountRespectsProgramUpperBound()
+{
+    AssertEqual(4, ProductCycleTouchCountRules.ResolveActualTouchCount(4, null), "PLC 实际数量缺失时必须使用程序数量。");
+    AssertEqual(2, ProductCycleTouchCountRules.ResolveActualTouchCount(4, "2"), "PLC 实际数量可以小于程序数量。");
+    AssertEqual(4, ProductCycleTouchCountRules.ResolveActualTouchCount(4, "4"), "PLC 实际数量可以等于程序数量。");
+    AssertThrows<InvalidOperationException>(
+        () => ProductCycleTouchCountRules.ResolveActualTouchCount(4, "5"),
+        "PLC 实际数量大于程序数量时必须拒绝采集。");
+}
+
 /// <summary>
 /// 设备要从上传的程序内容里解析出配方名称，才能反查本机 PLC 槽位。
 /// </summary>
@@ -13776,8 +13854,8 @@ static void StartConfirmDialogShowsReadOnlyRecipeNames()
             && formCode.Contains("_station1RecipeName", StringComparison.Ordinal),
         "确认应用时必须把配方名称原样写回程序内容。");
     AssertTrue(
-        monitorCode.Contains("_currentSettings.EnableDualStation);", StringComparison.Ordinal),
-        "监控页必须把双工位设置传给确认弹窗，决定是否显示工位 2 配方行。");
+        monitorCode.Contains("_currentSettings.ProcessParameterDeviceType);", StringComparison.Ordinal),
+        "监控页必须把双工位和设备类型传给确认弹窗，决定配方行及数量名称。");
 }
 
 /// <summary>
@@ -16280,9 +16358,11 @@ static void ProgramLookupSnapshotRemovesUiDatabaseQueries()
 
     var queryMethod = ExtractMethodText(serviceCode, "private ProgramLookup[] QueryProgramLookups(", "private void InvalidateProgramLookups()");
     AssertFalse(queryMethod.Contains("ProgramFile", StringComparison.Ordinal)
-        || queryMethod.Contains("ProgramContent", StringComparison.Ordinal)
         || queryMethod.Contains("SyncMessage", StringComparison.Ordinal),
-        "轻量投影不得读取程序大字段。");
+        "轻量投影不得读取无关程序大字段。");
+    AssertTrue(
+        queryMethod.Contains("ProgramContentJsonRules.TryGetTouchCount(it.ProgramContent", StringComparison.Ordinal),
+        "轻量投影必须只读取程序内容以派生焊点数量，不把原始 JSON 暴露给消费者。");
     AssertTrue(serviceCode.Contains("_programLookupVersion", StringComparison.Ordinal)
         && serviceCode.Contains("ProgramLookupsChanged?.Invoke", StringComparison.Ordinal),
         "程序快照必须通过版本号防止旧查询覆盖，并在变更后通知消费者。");
@@ -16542,6 +16622,7 @@ static BizWeldTask BuildReportTask(DateTime startTime, DateTime? endTime)
         UserNumber = "U001",
         UserName = "张三",
         ProgramName = "62131399173-2_CX_RY5.660.144_DH_001_6A-1",
+        ProgramContentSnapshot = "{\"焊点数量\":\"1\"}",
         EndOperatorNumber = "U999"
     };
 }
@@ -16887,7 +16968,7 @@ static string GenerateExportReportWorkbook(
         "BuildReportSchemaForStationsWithDeviceType",
         System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
     AssertTrue(buildSchema is not null, "生产报表服务必须保留含设备类型的 schema 构造入口。");
-    var schema = buildSchema!.Invoke(null, [resolvedStations, deviceType, localExport])
+    var schema = buildSchema!.Invoke(null, [resolvedStations, deviceType, touchCount, localExport])
         ?? throw new InvalidOperationException("schema 构造入口不得返回空值。");
 
     var outputDirectory = Path.Combine(Path.GetTempPath(), "AutoWeldSystem.Tests", Guid.NewGuid().ToString("N"));
@@ -16940,7 +17021,7 @@ static string GenerateStationSpecificReportWorkbook(
         "BuildReportSchemaForStations",
         System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
     AssertTrue(buildSchema is not null, "生产报表服务必须提供已解析工位配置的 schema 构造入口。");
-    var schema = buildSchema!.Invoke(null, [resolvedStations])
+    var schema = buildSchema!.Invoke(null, [resolvedStations, 1])
         ?? throw new InvalidOperationException("工位配置 schema 构造入口不得返回空值。");
 
     var outputDirectory = Path.Combine(Path.GetTempPath(), "AutoWeldSystem.Tests", Guid.NewGuid().ToString("N"));

@@ -233,6 +233,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             return;
         }
 
+        _ = ProgramContentJsonRules.GetRequiredTouchCount(task.ProgramContentSnapshot);
         ResumeUnfinishedProductTasks(task);
         var request = BuildTaskFinishRequest(settings, task);
         var uploadTask = _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
@@ -437,6 +438,21 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             return;
         }
 
+        try
+        {
+            lock (_dbLock)
+            {
+                _dbContext.InitDatabase();
+                var weldTask = _dbContext.Db.Queryable<BizWeldTask>().InSingle(task.WeldTaskId);
+                _ = ProgramContentJsonRules.GetRequiredTouchCount(weldTask?.ProgramContentSnapshot);
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            MarkFailed(task, $"中心服务器补传已拒绝：{ex.Message}");
+            return;
+        }
+
         var request = JsonSerializer.Deserialize<CenterProductReportRequest>(task.PayloadJson ?? string.Empty, JsonOptions);
         if (request is null)
         {
@@ -526,6 +542,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
         IReadOnlyList<BizWeldPointRecord> records,
         BizProductProcessConfig? config)
     {
+        var touchCount = ProgramContentJsonRules.GetRequiredTouchCount(task.ProgramContentSnapshot);
         var orderedRecords = records.OrderBy(record => record.SequenceNo).ThenBy(record => record.Id).ToList();
         var first = orderedRecords[0];
         var savedFields = BuildSavedFieldDefinitions(config);
@@ -556,7 +573,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             QualifiedQty = task.QualifiedQty,
             IsTaskFinishUpdate = false,
             CompletedAt = orderedRecords.Max(record => record.Ts),
-            ReportColumns = BuildReportColumns(settings, config),
+            ReportColumns = BuildReportColumns(settings, config, touchCount),
             Points = orderedRecords.Select(record => new CenterProductReportPointDto
             {
                 SequenceNo = record.SequenceNo,
@@ -753,7 +770,8 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
 
     private List<CenterProductReportColumnDto> BuildReportColumns(
         AppSettings settings,
-        BizProductProcessConfig? config)
+        BizProductProcessConfig? config,
+        int touchCount)
     {
         var columns = new List<CenterProductReportColumnDto>();
 
@@ -765,7 +783,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
         columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnProductNo, Title = "产品编号", MergeByProduct = true });
         var wholePieceInspection = WholePieceAbAggregationRules.IsApplicable(
             settings.ProcessParameterDeviceType,
-            config?.TouchCount ?? 0);
+            touchCount);
         columns.Add(new CenterProductReportColumnDto
         {
             Key = CenterProductReportFormat.ColumnTouchNo,

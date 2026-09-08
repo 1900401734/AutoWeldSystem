@@ -18,11 +18,14 @@ public partial class ProgramContentReviewForm : BaseWindow
 
     private readonly string? _station1RecipeName;
     private readonly string? _station2RecipeName;
+    private readonly int? _touchCount;
+    private readonly string _touchCountLabel;
 
     public ProgramContentReviewForm(
         ProgramDataRes program,
         IReadOnlyList<DimTestItem> dictionaryItems,
-        bool enableDualStation = false)
+        bool enableDualStation = false,
+        string? processParameterDeviceType = null)
     {
         ArgumentNullException.ThrowIfNull(program);
         ArgumentNullException.ThrowIfNull(dictionaryItems);
@@ -31,11 +34,16 @@ public partial class ProgramContentReviewForm : BaseWindow
         // 配方名称来自程序内容保留键，只读展示，改配方仍走程序管理。
         (_station1RecipeName, _station2RecipeName) =
             ProgramContentJsonRules.ExtractRecipeNames(program.ProgramContent);
+        _touchCount = ProgramContentJsonRules.TryGetTouchCount(program.ProgramContent, out var touchCount)
+            ? touchCount
+            : null;
+        _touchCountLabel = ProcessParameterDeviceUiProfile.Resolve(processParameterDeviceType).PointCountHeader;
 
         InitializeComponent();
         ConfigureGrid();
         BindRecipeNames(enableDualStation);
         BindRows(dictionaryItems);
+        btnApply.Enabled = _touchCount.HasValue;
     }
 
     /// <summary>
@@ -59,6 +67,10 @@ public partial class ProgramContentReviewForm : BaseWindow
         {
             lines.Add($"工位2配方名称：{(string.IsNullOrWhiteSpace(_station2RecipeName) ? notSpecified : _station2RecipeName)}");
         }
+
+        lines.Add(_touchCount.HasValue
+            ? $"{_touchCountLabel}：{_touchCount.Value}"
+            : $"{_touchCountLabel}：未配置（请先在程序管理中补齐）");
 
         lblRecipeNamesSection.Text = string.Join(Environment.NewLine, lines);
         lblRecipeNamesSection.AutoSize = true;
@@ -153,7 +165,8 @@ public partial class ProgramContentReviewForm : BaseWindow
         MergedContentJson = ProgramContentJsonRules.MergeRecipeNamesAndContent(
             _station1RecipeName,
             _station2RecipeName,
-            json);
+            json,
+            _touchCount);
         DialogResult = DialogResult.OK;
         Close();
     }

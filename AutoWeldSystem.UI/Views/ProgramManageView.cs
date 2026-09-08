@@ -7,6 +7,7 @@ using AutoWeldSystem.Core.Interfaces.PLC;
 using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.UI.Base;
 using AutoWeldSystem.UI.Infrastructure;
+using System.Globalization;
 
 namespace AutoWeldSystem.UI.Views;
 
@@ -196,6 +197,7 @@ public partial class ProgramManageView : BaseView
             }
         };
         tableProgramContent.CellEndEdit += ProgramContentTable_CellEndEdit;
+        inputTouchCount.TextChanged += (_, _) => inputTouchCount.Status = AntdUI.TType.None;
 
         // 名称组成字段变化时同步刷新程序名称，省去每次手点"生成名称"。
         inputProductNum.TextChanged += (_, _) => AutoFillProgramName();
@@ -220,6 +222,11 @@ public partial class ProgramManageView : BaseView
         lblProgramName.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramName);
         lblProgramId.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramId);
         lblProductNum.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProductNum);
+        var profile = ProcessParameterDeviceUiProfile.Resolve(_appSettingsService.Get().ProcessParameterDeviceType);
+        lblTouchCount.Text = profile.PointName == "面"
+            ? _localizer.GetString(TextKeys.ProgramManage.LabelFaceCount)
+            : _localizer.GetString(TextKeys.ProgramManage.LabelTouchCount);
+        inputTouchCount.PlaceholderText = _localizer.GetString(TextKeys.ProgramManage.PlaceholderTouchCount);
         lblRecipeCode1.Text = _localizer.GetString(TextKeys.ProgramManage.LabelStation1Recipe);
         lblRecipeCode2.Text = _localizer.GetString(TextKeys.ProgramManage.LabelStation2Recipe);
         lblComponentCode.Text = _localizer.GetString(TextKeys.ProgramManage.LabelComponentCode);
@@ -443,6 +450,8 @@ public partial class ProgramManageView : BaseView
         SetRecipeSelection(selectStation2Recipe, 2, string.Empty);
         inputComponentCode.Clear();
         inputSequenceNumber.Text = "1";
+        inputTouchCount.Clear();
+        inputTouchCount.Status = AntdUI.TType.None;
         cmbProgramType.SelectedIndex = 0;
         BindRemarkText(null);
         inputDescription.Clear();
@@ -474,6 +483,10 @@ public partial class ProgramManageView : BaseView
             SetRecipeSelection(selectStation2Recipe, 2, program.Station2RecipeCode, selectNotApplicable: true);
             inputComponentCode.Text = program.ComponentCode ?? string.Empty;
             inputSequenceNumber.Text = program.SequenceNumber.ToString();
+            inputTouchCount.Text = ProgramContentJsonRules.TryGetTouchCount(program.ProgramContent, out var touchCount)
+                ? touchCount.ToString(CultureInfo.InvariantCulture)
+                : string.Empty;
+            inputTouchCount.Status = AntdUI.TType.None;
             cmbProgramType.SelectedIndex = program.ProgramType == "1" ? 1 : 0;
             BindRemarkText(program.Remark);
             inputDescription.Text = program.Description ?? string.Empty;
@@ -789,6 +802,19 @@ public partial class ProgramManageView : BaseView
             return false;
         }
 
+        if (!int.TryParse(
+                inputTouchCount.Text.Trim(),
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var touchCount)
+            || touchCount <= 0)
+        {
+            inputTouchCount.Status = AntdUI.TType.Error;
+            inputTouchCount.Focus();
+            ShowWarning(TextKeys.ProgramManage.TouchCountInvalid, lblTouchCount.Text ?? string.Empty);
+            return false;
+        }
+
         var editingProgram = GetEditingProgram();
         if (_editingId <= 0
             && (!_recipeNameReadSucceeded.TryGetValue(1, out var station1ReadSucceeded) || !station1ReadSucceeded
@@ -837,7 +863,8 @@ public partial class ProgramManageView : BaseView
         request.ProgramContentJson = ProgramContentJsonRules.MergeRecipeNamesAndContent(
             station1RecipeName,
             station2RecipeName,
-            programContentJson);
+            programContentJson,
+            touchCount);
 
         request.WeldJobName = string.Empty;
         request.RobotJobName = string.Empty;
