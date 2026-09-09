@@ -31,14 +31,14 @@ namespace AutoWeldSystem.UI.Views
         private void InitializeComponent()
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(MonitorView));
-            AntdUI.Tabs.StyleLine styleLine1 = new AntdUI.Tabs.StyleLine();
-            DataGridViewCellStyle dataGridViewCellStyle1 = new DataGridViewCellStyle();
-            DataGridViewCellStyle dataGridViewCellStyle2 = new DataGridViewCellStyle();
-            DataGridViewCellStyle dataGridViewCellStyle3 = new DataGridViewCellStyle();
-            DataGridViewCellStyle dataGridViewCellStyle4 = new DataGridViewCellStyle();
-            AntdUI.SegmentedItem segmentedItem1 = new AntdUI.SegmentedItem();
-            AntdUI.SegmentedItem segmentedItem2 = new AntdUI.SegmentedItem();
-            AntdUI.Tabs.StyleLine styleLine2 = new AntdUI.Tabs.StyleLine();
+            AntdUI.Tabs.StyleLine styleLine4 = new AntdUI.Tabs.StyleLine();
+            DataGridViewCellStyle dataGridViewCellStyle5 = new DataGridViewCellStyle();
+            DataGridViewCellStyle dataGridViewCellStyle6 = new DataGridViewCellStyle();
+            DataGridViewCellStyle dataGridViewCellStyle7 = new DataGridViewCellStyle();
+            DataGridViewCellStyle dataGridViewCellStyle8 = new DataGridViewCellStyle();
+            AntdUI.SegmentedItem segmentedItem3 = new AntdUI.SegmentedItem();
+            AntdUI.SegmentedItem segmentedItem4 = new AntdUI.SegmentedItem();
+            AntdUI.Tabs.StyleLine styleLine3 = new AntdUI.Tabs.StyleLine();
             VerticalSplitter = new AntdUI.Splitter();
             tlpLeft = new TableLayoutPanel();
             LeftTopLayout = new TableLayoutPanel();
@@ -144,9 +144,7 @@ namespace AutoWeldSystem.UI.Views
             tableMetric1 = new AntdUI.Table();
             tabsMetrics2 = new AntdUI.TabPage();
             tableMetric2 = new AntdUI.Table();
-            components = new System.ComponentModel.Container();
             tooltipComponent = new AntdUI.TooltipComponent();
-            components.Add(tooltipComponent);
             lblLiveResult = new AntdUI.Label();
             lblLiveTouchCount = new AntdUI.Label();
             label7 = new AntdUI.Label();
@@ -398,7 +396,7 @@ namespace AutoWeldSystem.UI.Views
             tabsPreview.Pages.Add(tabsPreview1);
             tabsPreview.Pages.Add(tabsPreview2);
             tabsPreview.Size = new Size(1057, 744);
-            tabsPreview.Style = styleLine1;
+            tabsPreview.Style = styleLine4;
             tabsPreview.TabIndex = 6;
             tabsPreview.Text = "tabs1";
             // 
@@ -496,7 +494,7 @@ namespace AutoWeldSystem.UI.Views
             lblLiveProgramLimits1.Location = new Point(341, 0);
             lblLiveProgramLimits1.Margin = new Padding(0);
             lblLiveProgramLimits1.Name = "lblLiveProgramLimits1";
-            lblLiveProgramLimits1.Size = new Size(501, 36);
+            lblLiveProgramLimits1.Size = new Size(600, 36);
             lblLiveProgramLimits1.TabIndex = 12;
             lblLiveProgramLimits1.Text = "设定值：--";
             lblLiveProgramLimits1.Visible = false;
@@ -505,7 +503,7 @@ namespace AutoWeldSystem.UI.Views
             // 
             chkMergedDisplay1.AutoSizeMode = AntdUI.TAutoSize.Width;
             chkMergedDisplay1.Dock = DockStyle.Fill;
-            chkMergedDisplay1.Location = new Point(842, 0);
+            chkMergedDisplay1.Location = new Point(941, 0);
             chkMergedDisplay1.Margin = new Padding(0);
             chkMergedDisplay1.Name = "chkMergedDisplay1";
             chkMergedDisplay1.Padding = new Padding(0, 0, 10, 0);
@@ -560,23 +558,23 @@ namespace AutoWeldSystem.UI.Views
             dgvPreview1.BackgroundColor = SystemColors.Control;
             dgvPreview1.BorderStyle = BorderStyle.None;
             dgvPreview1.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
-            dataGridViewCellStyle1.Alignment = DataGridViewContentAlignment.MiddleCenter;
-            dataGridViewCellStyle1.BackColor = SystemColors.Control;
-            dataGridViewCellStyle1.Font = new Font("Microsoft YaHei UI", 10.5F);
-            dataGridViewCellStyle1.ForeColor = SystemColors.WindowText;
-            dataGridViewCellStyle1.SelectionBackColor = SystemColors.ActiveCaption;
-            dataGridViewCellStyle1.SelectionForeColor = SystemColors.HighlightText;
-            dgvPreview1.ColumnHeadersDefaultCellStyle = dataGridViewCellStyle1;
+            dataGridViewCellStyle5.Alignment = DataGridViewContentAlignment.MiddleCenter;
+            dataGridViewCellStyle5.BackColor = SystemColors.Control;
+            dataGridViewCellStyle5.Font = new Font("Microsoft YaHei UI", 10.5F);
+            dataGridViewCellStyle5.ForeColor = SystemColors.WindowText;
+            dataGridViewCellStyle5.SelectionBackColor = SystemColors.ActiveCaption;
+            dataGridViewCellStyle5.SelectionForeColor = SystemColors.HighlightText;
+            dgvPreview1.ColumnHeadersDefaultCellStyle = dataGridViewCellStyle5;
             dgvPreview1.ColumnHeadersHeight = 29;
             dgvPreview1.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
-            dataGridViewCellStyle2.Alignment = DataGridViewContentAlignment.MiddleCenter;
-            dataGridViewCellStyle2.BackColor = SystemColors.Control;
-            dataGridViewCellStyle2.Font = new Font("Microsoft YaHei UI", 10.5F);
-            dataGridViewCellStyle2.ForeColor = SystemColors.GrayText;
-            dataGridViewCellStyle2.SelectionBackColor = SystemColors.Highlight;
-            dataGridViewCellStyle2.SelectionForeColor = SystemColors.HighlightText;
-            dataGridViewCellStyle2.WrapMode = DataGridViewTriState.False;
-            dgvPreview1.DefaultCellStyle = dataGridViewCellStyle2;
+            dataGridViewCellStyle6.Alignment = DataGridViewContentAlignment.MiddleCenter;
+            dataGridViewCellStyle6.BackColor = SystemColors.Control;
+            dataGridViewCellStyle6.Font = new Font("Microsoft YaHei UI", 10.5F);
+            dataGridViewCellStyle6.ForeColor = SystemColors.GrayText;
+            dataGridViewCellStyle6.SelectionBackColor = SystemColors.Highlight;
+            dataGridViewCellStyle6.SelectionForeColor = SystemColors.HighlightText;
+            dataGridViewCellStyle6.WrapMode = DataGridViewTriState.False;
+            dgvPreview1.DefaultCellStyle = dataGridViewCellStyle6;
             dgvPreview1.Dock = DockStyle.Fill;
             dgvPreview1.EnableHeadersVisualStyles = false;
             dgvPreview1.ImeMode = ImeMode.Disable;
@@ -684,23 +682,23 @@ namespace AutoWeldSystem.UI.Views
             dgvPreview2.BackgroundColor = SystemColors.Control;
             dgvPreview2.BorderStyle = BorderStyle.None;
             dgvPreview2.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
-            dataGridViewCellStyle3.Alignment = DataGridViewContentAlignment.MiddleCenter;
-            dataGridViewCellStyle3.BackColor = SystemColors.Control;
-            dataGridViewCellStyle3.Font = new Font("Microsoft YaHei UI", 10.5F);
-            dataGridViewCellStyle3.ForeColor = SystemColors.WindowText;
-            dataGridViewCellStyle3.SelectionBackColor = SystemColors.ActiveCaption;
-            dataGridViewCellStyle3.SelectionForeColor = SystemColors.HighlightText;
-            dgvPreview2.ColumnHeadersDefaultCellStyle = dataGridViewCellStyle3;
+            dataGridViewCellStyle7.Alignment = DataGridViewContentAlignment.MiddleCenter;
+            dataGridViewCellStyle7.BackColor = SystemColors.Control;
+            dataGridViewCellStyle7.Font = new Font("Microsoft YaHei UI", 10.5F);
+            dataGridViewCellStyle7.ForeColor = SystemColors.WindowText;
+            dataGridViewCellStyle7.SelectionBackColor = SystemColors.ActiveCaption;
+            dataGridViewCellStyle7.SelectionForeColor = SystemColors.HighlightText;
+            dgvPreview2.ColumnHeadersDefaultCellStyle = dataGridViewCellStyle7;
             dgvPreview2.ColumnHeadersHeight = 29;
             dgvPreview2.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
-            dataGridViewCellStyle4.Alignment = DataGridViewContentAlignment.MiddleCenter;
-            dataGridViewCellStyle4.BackColor = SystemColors.Control;
-            dataGridViewCellStyle4.Font = new Font("Microsoft YaHei UI", 10.5F);
-            dataGridViewCellStyle4.ForeColor = SystemColors.GrayText;
-            dataGridViewCellStyle4.SelectionBackColor = SystemColors.Highlight;
-            dataGridViewCellStyle4.SelectionForeColor = SystemColors.HighlightText;
-            dataGridViewCellStyle4.WrapMode = DataGridViewTriState.False;
-            dgvPreview2.DefaultCellStyle = dataGridViewCellStyle4;
+            dataGridViewCellStyle8.Alignment = DataGridViewContentAlignment.MiddleCenter;
+            dataGridViewCellStyle8.BackColor = SystemColors.Control;
+            dataGridViewCellStyle8.Font = new Font("Microsoft YaHei UI", 10.5F);
+            dataGridViewCellStyle8.ForeColor = SystemColors.GrayText;
+            dataGridViewCellStyle8.SelectionBackColor = SystemColors.Highlight;
+            dataGridViewCellStyle8.SelectionForeColor = SystemColors.HighlightText;
+            dataGridViewCellStyle8.WrapMode = DataGridViewTriState.False;
+            dgvPreview2.DefaultCellStyle = dataGridViewCellStyle8;
             dgvPreview2.Dock = DockStyle.Fill;
             dgvPreview2.EnableHeadersVisualStyles = false;
             dgvPreview2.ImeMode = ImeMode.Disable;
@@ -990,11 +988,11 @@ namespace AutoWeldSystem.UI.Views
             segmentedStationSwitch.Dock = DockStyle.Fill;
             segmentedStationSwitch.ForeActive = Color.RoyalBlue;
             segmentedStationSwitch.Full = true;
-            segmentedItem1.LocalizationText = "";
-            segmentedItem1.Text = "工位1";
-            segmentedItem2.Text = "工位2";
-            segmentedStationSwitch.Items.Add(segmentedItem1);
-            segmentedStationSwitch.Items.Add(segmentedItem2);
+            segmentedItem3.LocalizationText = "";
+            segmentedItem3.Text = "工位1";
+            segmentedItem4.Text = "工位2";
+            segmentedStationSwitch.Items.Add(segmentedItem3);
+            segmentedStationSwitch.Items.Add(segmentedItem4);
             segmentedStationSwitch.Location = new Point(0, 0);
             segmentedStationSwitch.Margin = new Padding(0);
             segmentedStationSwitch.Name = "segmentedStationSwitch";
@@ -1026,14 +1024,13 @@ namespace AutoWeldSystem.UI.Views
             // lblPartName
             // 
             lblPartName.AutoEllipsis = true;
-            lblPartName.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblPartName.AutoSizePadding = true;
             lblPartName.Dock = DockStyle.Fill;
             lblPartName.Location = new Point(0, 0);
             lblPartName.Margin = new Padding(0);
             lblPartName.Name = "lblPartName";
             lblPartName.Padding = new Padding(8, 0, 0, 0);
-            lblPartName.Size = new Size(78, 33);
+            lblPartName.Size = new Size(82, 33);
             lblPartName.TabIndex = 29;
             lblPartName.Text = "部件名称";
             // 
@@ -1045,16 +1042,15 @@ namespace AutoWeldSystem.UI.Views
             inputProductName.Margin = new Padding(0);
             inputProductName.Name = "inputProductName";
             inputProductName.ReadOnly = true;
-            inputProductName.Size = new Size(159, 33);
+            inputProductName.Size = new Size(155, 33);
             inputProductName.TabIndex = 4;
             // 
             // lblDrawingNo
             // 
             lblDrawingNo.AutoEllipsis = true;
-            lblDrawingNo.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblDrawingNo.AutoSizePadding = true;
             lblDrawingNo.Dock = DockStyle.Fill;
-            lblDrawingNo.Location = new Point(241, 0);
+            lblDrawingNo.Location = new Point(237, 0);
             lblDrawingNo.Margin = new Padding(0);
             lblDrawingNo.Name = "lblDrawingNo";
             lblDrawingNo.Padding = new Padding(8, 0, 0, 0);
@@ -1066,11 +1062,11 @@ namespace AutoWeldSystem.UI.Views
             // 
             inputDrawingNo.Dock = DockStyle.Fill;
             inputDrawingNo.ImeMode = ImeMode.Inherit;
-            inputDrawingNo.Location = new Point(311, 0);
+            inputDrawingNo.Location = new Point(315, 0);
             inputDrawingNo.Margin = new Padding(0);
             inputDrawingNo.Name = "inputDrawingNo";
             inputDrawingNo.ReadOnly = true;
-            inputDrawingNo.Size = new Size(160, 33);
+            inputDrawingNo.Size = new Size(156, 33);
             inputDrawingNo.TabIndex = 4;
             // 
             // tlpUserInfo2
@@ -1096,18 +1092,17 @@ namespace AutoWeldSystem.UI.Views
             // TeamName
             // 
             TeamName.Dock = DockStyle.Fill;
-            TeamName.Location = new Point(311, 0);
+            TeamName.Location = new Point(315, 0);
             TeamName.Margin = new Padding(0);
             TeamName.Name = "TeamName";
             TeamName.ReadOnly = true;
-            TeamName.Size = new Size(160, 33);
+            TeamName.Size = new Size(156, 33);
             TeamName.TabIndex = 3;
             // 
             // lblTeamName
             // 
-            lblTeamName.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblTeamName.Dock = DockStyle.Fill;
-            lblTeamName.Location = new Point(241, 0);
+            lblTeamName.Location = new Point(237, 0);
             lblTeamName.Margin = new Padding(0);
             lblTeamName.Name = "lblTeamName";
             lblTeamName.Padding = new Padding(8, 0, 0, 0);
@@ -1117,13 +1112,12 @@ namespace AutoWeldSystem.UI.Views
             // 
             // lblDeptName
             // 
-            lblDeptName.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblDeptName.Dock = DockStyle.Fill;
             lblDeptName.Location = new Point(0, 0);
             lblDeptName.Margin = new Padding(0);
             lblDeptName.Name = "lblDeptName";
             lblDeptName.Padding = new Padding(8, 0, 0, 0);
-            lblDeptName.Size = new Size(78, 33);
+            lblDeptName.Size = new Size(82, 33);
             lblDeptName.TabIndex = 0;
             lblDeptName.Text = "部门名称";
             // 
@@ -1134,7 +1128,7 @@ namespace AutoWeldSystem.UI.Views
             inputDeptName.Margin = new Padding(0);
             inputDeptName.Name = "inputDeptName";
             inputDeptName.ReadOnly = true;
-            inputDeptName.Size = new Size(159, 33);
+            inputDeptName.Size = new Size(155, 33);
             inputDeptName.TabIndex = 1;
             // 
             // tlpUserInfo1
@@ -1159,14 +1153,13 @@ namespace AutoWeldSystem.UI.Views
             // 
             // lblUserNumber
             // 
-            lblUserNumber.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblUserNumber.Dock = DockStyle.Fill;
             lblUserNumber.Location = new Point(0, 0);
             lblUserNumber.Margin = new Padding(0);
             lblUserNumber.Name = "lblUserNumber";
             lblUserNumber.Prefix = "*";
             lblUserNumber.PrefixColor = Color.FromArgb(255, 77, 79);
-            lblUserNumber.Size = new Size(68, 33);
+            lblUserNumber.Size = new Size(82, 33);
             lblUserNumber.TabIndex = 2;
             lblUserNumber.Text = "员工号";
             // 
@@ -1176,30 +1169,30 @@ namespace AutoWeldSystem.UI.Views
             MesUserNumber.Location = new Point(82, 0);
             MesUserNumber.Margin = new Padding(0);
             MesUserNumber.Name = "MesUserNumber";
+            MesUserNumber.PlaceholderText = "请输入员工号";
             MesUserNumber.ReadOnly = true;
-            MesUserNumber.Size = new Size(159, 33);
+            MesUserNumber.Size = new Size(155, 33);
             MesUserNumber.TabIndex = 3;
             // 
             // MesUserName
             // 
             MesUserName.Dock = DockStyle.Fill;
-            MesUserName.Location = new Point(311, 0);
+            MesUserName.Location = new Point(315, 0);
             MesUserName.Margin = new Padding(0);
             MesUserName.Name = "MesUserName";
             MesUserName.ReadOnly = true;
-            MesUserName.Size = new Size(160, 33);
+            MesUserName.Size = new Size(156, 33);
             MesUserName.TabIndex = 1;
             // 
             // lblUserName
             // 
-            lblUserName.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblUserName.Dock = DockStyle.Fill;
-            lblUserName.Location = new Point(241, 0);
+            lblUserName.Location = new Point(237, 0);
             lblUserName.Margin = new Padding(0);
             lblUserName.Name = "lblUserName";
             lblUserName.Prefix = "*";
             lblUserName.PrefixColor = Color.FromArgb(255, 77, 79);
-            lblUserName.Size = new Size(48, 33);
+            lblUserName.Size = new Size(78, 33);
             lblUserName.TabIndex = 0;
             lblUserName.Text = "姓名";
             // 
@@ -1269,13 +1262,12 @@ namespace AutoWeldSystem.UI.Views
             inputProcessNo.Margin = new Padding(0);
             inputProcessNo.Name = "inputProcessNo";
             inputProcessNo.ReadOnly = true;
-            inputProcessNo.Size = new Size(159, 33);
+            inputProcessNo.Size = new Size(155, 33);
             inputProcessNo.TabIndex = 4;
             // 
             // lblProcessNo
             // 
             lblProcessNo.AutoEllipsis = true;
-            lblProcessNo.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblProcessNo.AutoSizePadding = true;
             lblProcessNo.Dock = DockStyle.Fill;
             lblProcessNo.Location = new Point(0, 0);
@@ -1283,15 +1275,14 @@ namespace AutoWeldSystem.UI.Views
             lblProcessNo.Name = "lblProcessNo";
             lblProcessNo.Prefix = "*";
             lblProcessNo.PrefixColor = Color.FromArgb(255, 77, 79);
-            lblProcessNo.Size = new Size(68, 33);
+            lblProcessNo.Size = new Size(82, 33);
             lblProcessNo.TabIndex = 27;
             lblProcessNo.Text = "工序号";
             // 
             // lblStartAmount
             // 
-            lblStartAmount.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblStartAmount.Dock = DockStyle.Fill;
-            lblStartAmount.Location = new Point(241, 0);
+            lblStartAmount.Location = new Point(237, 0);
             lblStartAmount.Margin = new Padding(0);
             lblStartAmount.Name = "lblStartAmount";
             lblStartAmount.Padding = new Padding(8, 0, 0, 0);
@@ -1302,11 +1293,11 @@ namespace AutoWeldSystem.UI.Views
             // inputStartAmount
             // 
             inputStartAmount.Dock = DockStyle.Fill;
-            inputStartAmount.Location = new Point(311, 0);
+            inputStartAmount.Location = new Point(315, 0);
             inputStartAmount.Margin = new Padding(0);
             inputStartAmount.Name = "inputStartAmount";
             inputStartAmount.ReadOnly = true;
-            inputStartAmount.Size = new Size(160, 33);
+            inputStartAmount.Size = new Size(156, 33);
             inputStartAmount.TabIndex = 32;
             // 
             // tlpSpecAndBatch
@@ -1333,38 +1324,36 @@ namespace AutoWeldSystem.UI.Views
             // 
             inputBatch.Dock = DockStyle.Fill;
             inputBatch.ImeMode = ImeMode.Inherit;
-            inputBatch.Location = new Point(311, 0);
+            inputBatch.Location = new Point(315, 0);
             inputBatch.Margin = new Padding(0);
             inputBatch.Name = "inputBatch";
             inputBatch.ReadOnly = true;
-            inputBatch.Size = new Size(160, 33);
+            inputBatch.Size = new Size(156, 33);
             inputBatch.TabIndex = 4;
             // 
             // lblSpec
             // 
             lblSpec.AutoEllipsis = true;
-            lblSpec.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblSpec.AutoSizePadding = true;
             lblSpec.Dock = DockStyle.Fill;
             lblSpec.Location = new Point(0, 0);
             lblSpec.Margin = new Padding(0);
             lblSpec.Name = "lblSpec";
             lblSpec.Padding = new Padding(8, 0, 0, 0);
-            lblSpec.Size = new Size(43, 33);
+            lblSpec.Size = new Size(82, 33);
             lblSpec.TabIndex = 29;
             lblSpec.Text = "规格";
             // 
             // lblBatchNo
             // 
             lblBatchNo.AutoEllipsis = true;
-            lblBatchNo.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblBatchNo.AutoSizePadding = true;
             lblBatchNo.Dock = DockStyle.Fill;
-            lblBatchNo.Location = new Point(241, 0);
+            lblBatchNo.Location = new Point(237, 0);
             lblBatchNo.Margin = new Padding(0);
             lblBatchNo.Name = "lblBatchNo";
             lblBatchNo.Padding = new Padding(8, 0, 0, 0);
-            lblBatchNo.Size = new Size(43, 33);
+            lblBatchNo.Size = new Size(78, 33);
             lblBatchNo.TabIndex = 29;
             lblBatchNo.Text = "批次";
             // 
@@ -1376,7 +1365,7 @@ namespace AutoWeldSystem.UI.Views
             inputSpec.Margin = new Padding(0);
             inputSpec.Name = "inputSpec";
             inputSpec.ReadOnly = true;
-            inputSpec.Size = new Size(159, 33);
+            inputSpec.Size = new Size(155, 33);
             inputSpec.TabIndex = 4;
             // 
             // tlpStationInfo
@@ -1400,7 +1389,6 @@ namespace AutoWeldSystem.UI.Views
             // lblWorkOrder
             // 
             lblWorkOrder.AutoEllipsis = true;
-            lblWorkOrder.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblWorkOrder.AutoSizePadding = true;
             lblWorkOrder.Dock = DockStyle.Fill;
             lblWorkOrder.Location = new Point(0, 0);
@@ -1408,7 +1396,7 @@ namespace AutoWeldSystem.UI.Views
             lblWorkOrder.Name = "lblWorkOrder";
             lblWorkOrder.Prefix = "*";
             lblWorkOrder.PrefixColor = Color.FromArgb(255, 77, 79);
-            lblWorkOrder.Size = new Size(87, 33);
+            lblWorkOrder.Size = new Size(82, 33);
             lblWorkOrder.TabIndex = 22;
             lblWorkOrder.Text = "流转卡号";
             // 
@@ -1419,6 +1407,7 @@ namespace AutoWeldSystem.UI.Views
             inputSN.Location = new Point(82, 0);
             inputSN.Margin = new Padding(0);
             inputSN.Name = "inputSN";
+            inputSN.PlaceholderText = "请扫码获取流转卡号";
             inputSN.ReadOnly = true;
             inputSN.Size = new Size(255, 33);
             inputSN.TabIndex = 4;
@@ -1453,14 +1442,13 @@ namespace AutoWeldSystem.UI.Views
             // lblProdModel
             // 
             lblProdModel.AutoEllipsis = true;
-            lblProdModel.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblProdModel.AutoSizePadding = true;
             lblProdModel.Dock = DockStyle.Fill;
             lblProdModel.Location = new Point(0, 0);
             lblProdModel.Margin = new Padding(0);
             lblProdModel.Name = "lblProdModel";
             lblProdModel.Padding = new Padding(8, 0, 0, 0);
-            lblProdModel.Size = new Size(78, 33);
+            lblProdModel.Size = new Size(82, 33);
             lblProdModel.TabIndex = 23;
             lblProdModel.Text = "产品型号";
             // 
@@ -1506,7 +1494,6 @@ namespace AutoWeldSystem.UI.Views
             // lblProductNo
             // 
             lblProductNo.AutoEllipsis = true;
-            lblProductNo.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblProductNo.AutoSizePadding = true;
             lblProductNo.Dock = DockStyle.Fill;
             lblProductNo.Location = new Point(0, 0);
@@ -1514,7 +1501,7 @@ namespace AutoWeldSystem.UI.Views
             lblProductNo.Name = "lblProductNo";
             lblProductNo.Prefix = "*";
             lblProductNo.PrefixColor = Color.FromArgb(255, 77, 79);
-            lblProductNo.Size = new Size(87, 33);
+            lblProductNo.Size = new Size(82, 33);
             lblProductNo.TabIndex = 24;
             lblProductNo.Text = "产品工号";
             // 
@@ -1552,6 +1539,7 @@ namespace AutoWeldSystem.UI.Views
             selectProgramName.Margin = new Padding(0);
             selectProgramName.MaxCount = 10;
             selectProgramName.Name = "selectProgramName";
+            selectProgramName.PlaceholderText = "请选择程序名称";
             selectProgramName.ReadOnly = true;
             selectProgramName.Size = new Size(389, 33);
             selectProgramName.TabIndex = 4;
@@ -1559,7 +1547,6 @@ namespace AutoWeldSystem.UI.Views
             // lblProgramName
             // 
             lblProgramName.AutoEllipsis = true;
-            lblProgramName.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblProgramName.AutoSizePadding = true;
             lblProgramName.Dock = DockStyle.Fill;
             lblProgramName.Location = new Point(0, 0);
@@ -1567,7 +1554,7 @@ namespace AutoWeldSystem.UI.Views
             lblProgramName.Name = "lblProgramName";
             lblProgramName.Prefix = "*";
             lblProgramName.PrefixColor = Color.FromArgb(255, 77, 79);
-            lblProgramName.Size = new Size(87, 33);
+            lblProgramName.Size = new Size(82, 33);
             lblProgramName.TabIndex = 23;
             lblProgramName.Text = "程序名称";
             // 
@@ -1590,14 +1577,13 @@ namespace AutoWeldSystem.UI.Views
             // lblProcessName
             // 
             lblProcessName.AutoEllipsis = true;
-            lblProcessName.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblProcessName.AutoSizePadding = true;
             lblProcessName.Dock = DockStyle.Fill;
             lblProcessName.Location = new Point(0, 0);
             lblProcessName.Margin = new Padding(0);
             lblProcessName.Name = "lblProcessName";
             lblProcessName.Padding = new Padding(8, 0, 0, 0);
-            lblProcessName.Size = new Size(78, 33);
+            lblProcessName.Size = new Size(82, 33);
             lblProcessName.TabIndex = 30;
             lblProcessName.Text = "工序名称";
             // 
@@ -1608,6 +1594,7 @@ namespace AutoWeldSystem.UI.Views
             selectItemName.Margin = new Padding(0);
             selectItemName.MaxCount = 10;
             selectItemName.Name = "selectItemName";
+            selectItemName.PlaceholderText = "请选择工序名称";
             selectItemName.ReadOnly = true;
             selectItemName.Size = new Size(389, 33);
             selectItemName.TabIndex = 4;
@@ -1719,7 +1706,7 @@ namespace AutoWeldSystem.UI.Views
             tabsMetrics.Pages.Add(tabsMetrics1);
             tabsMetrics.Pages.Add(tabsMetrics2);
             tabsMetrics.Size = new Size(477, 217);
-            tabsMetrics.Style = styleLine2;
+            tabsMetrics.Style = styleLine3;
             tabsMetrics.TabIndex = 5;
             tabsMetrics.Text = "tabsMetrics";
             // 
@@ -1878,27 +1865,19 @@ namespace AutoWeldSystem.UI.Views
             tlpButton.ResumeLayout(false);
             tlpStation.ResumeLayout(false);
             tlpProductNameAndDrawingNo.ResumeLayout(false);
-            tlpProductNameAndDrawingNo.PerformLayout();
             tlpUserInfo2.ResumeLayout(false);
-            tlpUserInfo2.PerformLayout();
             tlpUserInfo1.ResumeLayout(false);
-            tlpUserInfo1.PerformLayout();
             panelTimeAndVersion.ResumeLayout(false);
             panelTimeAndVersion.PerformLayout();
             tlpProcessInfo.ResumeLayout(false);
-            tlpProcessInfo.PerformLayout();
             tlpSpecAndBatch.ResumeLayout(false);
-            tlpSpecAndBatch.PerformLayout();
             tlpStationInfo.ResumeLayout(false);
             tlpStationInfo.PerformLayout();
             tlpProductModel.ResumeLayout(false);
-            tlpProductModel.PerformLayout();
             tlpProductNum.ResumeLayout(false);
             tlpProductNum.PerformLayout();
             tlpProgramName.ResumeLayout(false);
-            tlpProgramName.PerformLayout();
             tlpProcessName.ResumeLayout(false);
-            tlpProcessName.PerformLayout();
             grpErrorTips.ResumeLayout(false);
             grpErrorTips.PerformLayout();
             tlpErrorTips.ResumeLayout(false);
