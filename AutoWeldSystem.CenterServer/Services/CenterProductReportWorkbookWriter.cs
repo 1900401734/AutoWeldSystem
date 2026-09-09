@@ -106,6 +106,7 @@ internal sealed class CenterProductReportWorkbookWriter
                 : row.StationName,
             [CenterProductReportFormat.ColumnProductNo] = row.ProductNo,
             [CenterProductReportFormat.ColumnProductResult] = row.ProductResult,
+            [CenterProductReportFormat.ColumnIsTest] = CenterProductReportFormat.FormatIsTest(row.IsTest),
             [CenterProductReportFormat.ColumnTouchNo] = string.IsNullOrWhiteSpace(row.TouchNo)
                 ? row.SequenceNo.ToString()
                 : row.TouchNo,
@@ -131,7 +132,8 @@ internal sealed class CenterProductReportWorkbookWriter
         {
             CenterProductReportFormat.ColumnStationNo,
             CenterProductReportFormat.ColumnProductNo,
-            CenterProductReportFormat.ColumnProductResult
+            CenterProductReportFormat.ColumnProductResult,
+            CenterProductReportFormat.ColumnIsTest
         };
         var dynamicMergeKeys = columns
             .Where(column => column.MergeByProduct && !fixedKeys.Contains(column.Key))

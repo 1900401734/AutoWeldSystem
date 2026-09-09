@@ -157,6 +157,11 @@ internal sealed class CenterProductReportStoredRow
     public string ProductNo { get; set; } = string.Empty;
     public string ProductModel { get; set; } = string.Empty;
     public string ProductResult { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 产品级试焊件标记。旧报表缺少该列时读到空串，按未标记处理，不做一次性迁移。
+    /// </summary>
+    public bool IsTest { get; set; }
     public int SequenceNo { get; set; }
     public string TouchNo { get; set; } = string.Empty;
     public string TestResult { get; set; } = string.Empty;
@@ -193,6 +198,7 @@ internal sealed class CenterProductReportStoredRow
             ProductNo = request.ProductNo.Trim(),
             ProductModel = request.ProductModel.Trim(),
             ProductResult = request.ProductResult.Trim(),
+            IsTest = request.IsTest,
             SequenceNo = point.SequenceNo,
             TouchNo = point.TouchNo.Trim(),
             TestResult = point.TestResult.Trim(),
@@ -236,6 +242,7 @@ internal sealed class CenterProductReportStoredRow
             [CenterProductReportDataColumns.ProductNo] = ProductNo,
             [CenterProductReportDataColumns.ProductModel] = ProductModel,
             [CenterProductReportDataColumns.ProductResult] = ProductResult,
+            [CenterProductReportDataColumns.IsTest] = IsTest.ToString(),
             [CenterProductReportDataColumns.SequenceNo] = SequenceNo.ToString(),
             [CenterProductReportDataColumns.TouchNo] = TouchNo,
             [CenterProductReportDataColumns.TestResult] = TestResult,
@@ -265,6 +272,7 @@ internal sealed class CenterProductReportStoredRow
             ProductNo = Get(worksheet, rowNumber, CenterProductReportDataColumns.ProductNo),
             ProductModel = Get(worksheet, rowNumber, CenterProductReportDataColumns.ProductModel),
             ProductResult = Get(worksheet, rowNumber, CenterProductReportDataColumns.ProductResult),
+            IsTest = GetBool(worksheet, rowNumber, CenterProductReportDataColumns.IsTest),
             SequenceNo = GetInt(worksheet, rowNumber, CenterProductReportDataColumns.SequenceNo, 0),
             TouchNo = Get(worksheet, rowNumber, CenterProductReportDataColumns.TouchNo),
             TestResult = Get(worksheet, rowNumber, CenterProductReportDataColumns.TestResult),
@@ -280,6 +288,12 @@ internal sealed class CenterProductReportStoredRow
 
     private static int GetInt(IXLWorksheet worksheet, int rowNumber, string columnName, int fallback)
         => int.TryParse(Get(worksheet, rowNumber, columnName), out var value) ? value : fallback;
+
+    /// <summary>
+    /// 旧报表没有该列，读到空串按 false 处理。
+    /// </summary>
+    private static bool GetBool(IXLWorksheet worksheet, int rowNumber, string columnName)
+        => bool.TryParse(Get(worksheet, rowNumber, columnName), out var value) && value;
 
     private static DateTime GetDate(IXLWorksheet worksheet, int rowNumber, string columnName)
         => DateTime.TryParse(Get(worksheet, rowNumber, columnName), out var value) ? value : DateTime.Now;
@@ -313,11 +327,18 @@ internal static class CenterProductReportDataColumns
     public const string RawDataJson = "RawDataJson";
     public const string ReportColumnKeysJson = "ReportColumnKeysJson";
 
+    /// <summary>
+    /// 追加在协议末尾，旧文件读该列得空串，按未标记处理。
+    /// 不得插入既有列之间：隐藏页按 All 下标读写，中间插入会错位。
+    /// </summary>
+    public const string IsTest = "IsTest";
+
     public static readonly IReadOnlyList<string> All =
     [
         DeviceId, DeviceName, SystemType, StationNo, StationName, WorkOrder, Batch, Quantity,
         PartName, ProcessNo, OperatorNo, ProductJobNo, ProductNo, ProductModel, ProductResult,
-        SequenceNo, TouchNo, TestResult, CollectedAt, CompletedAt, RawDataJson, ReportColumnKeysJson
+        SequenceNo, TouchNo, TestResult, CollectedAt, CompletedAt, RawDataJson, ReportColumnKeysJson,
+        IsTest
     ];
 
     public static int IndexOf(string columnName)

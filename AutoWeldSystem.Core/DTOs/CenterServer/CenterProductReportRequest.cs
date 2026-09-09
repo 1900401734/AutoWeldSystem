@@ -107,6 +107,12 @@ public sealed class CenterProductReportRequest
     public string ProductResult { get; set; } = string.Empty;
 
     /// <summary>
+    /// Product-level test-weld flag marked by the operator in product history.
+    /// The flag is marked after collection, so re-marking re-queues this request to refresh the center report.
+    /// </summary>
+    public bool IsTest { get; set; }
+
+    /// <summary>
     /// Persisted task start time. Product requests and finish updates must use the same task value.
     /// </summary>
     public DateTime StartTime { get; set; }

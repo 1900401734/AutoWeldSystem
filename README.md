@@ -1,6 +1,6 @@
 ﻿# AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.24.0`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.25.0`。
 
 各版本的行为变化记录在 [CHANGELOG.md](CHANGELOG.md)，也可用 `git tag -n99` 查看对应版本的发布说明。
 
@@ -216,7 +216,8 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 - 工单完工后本地 XLSX 报表会先生成；只要 XLSX 生成成功，就会进入“待上传数据 -> 报告文件”任务队列并参与 MES 上传/补传，不再依赖产品明细行或 `ReportEnable` 输出项作为入队前置条件。
 - 若历史工单已生成 `Biz_ProductionReportFile` 记录但缺少对应 `ReportFile` 上传任务，进入报表待上传页、全部重试或自动补传前会自动补齐任务；用户已经手动删除或已经上传成功的任务不会被恢复。
 - 没有任何产品生产数据时，报表仍会按公共字段生成并上传；如果 MES 或文件路径失败，失败信息保留在待上传数据中供手动重试。
-- 设备端与中心服务器生产报表统一使用客户参考模板：任务表头依次展示流转卡号/规格/产品型号、产品工号/批次/部件名称、部件图号/工序名称/工序号、工单数量/合格数量/操作人员、程序名称/员工姓名、开始时间/结束时间；明细列按“产品编号 -> 检测面或焊点号 -> 动态测试值 -> 检测结果或焊点结果 -> 产品结果”排列。整件检测默认显示“检测面/检测结果”，产品工艺自定义表头仍可覆盖。离线开工除员工号外还必须录入员工姓名，否则报表该栏无从取值。
+- 设备端与中心服务器生产报表统一使用客户参考模板：任务表头依次展示流转卡号/规格/产品型号、产品工号/批次/部件名称、部件图号/工序名称/工序号、工单数量/合格数量/操作人员、程序名称/员工姓名、开始时间/结束时间；明细列按“产品编号 -> 检测面或焊点号 -> 动态测试值 -> 检测结果或焊点结果 -> 产品结果 -> 试焊件”排列。整件检测默认显示“检测面/检测结果”，产品工艺自定义表头仍可覆盖。离线开工除员工号外还必须录入员工姓名，否则报表该栏无从取值。
+- 试焊件列自 `v2.25.0` 起写入报表末列，取生产监控页产品历史右键标记的产品级结果：标记过的产品写“是”，未标记留空。该列与 MES 过程参数字段 `IsTest` 共用门禁——关闭系统设置“产品历史显示试焊件”或过程参数设备类型为整件检测时，上传报表、本地导出和看板报表都不输出该列。标记发生在采集完成之后，因此标记或取消标记会自动重推该产品到中心看板刷新该列；已上传、上传中或已跳过的产品仍不允许改标记。
 
 ## 设备状态日志与补传
 
@@ -369,10 +370,10 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>2.24.0</Version>
-<AssemblyVersion>2.24.0.0</AssemblyVersion>
-<FileVersion>2.24.0.0</FileVersion>
-<InformationalVersion>2.24.0</InformationalVersion>
+<Version>2.25.0</Version>
+<AssemblyVersion>2.25.0.0</AssemblyVersion>
+<FileVersion>2.25.0.0</FileVersion>
+<InformationalVersion>2.25.0</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -390,20 +391,20 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 # 2. 在 CHANGELOG.md 顶部新增该版本条目，写清行为变化和升级注意
 # 3. 合并到 main 后打带说明的 tag（-F 从文件读取多行说明）
 git checkout main
-git merge --no-ff develop -m "release: v2.24.0"
-git tag -a v2.24.0 -F tag-notes.txt
+git merge --no-ff develop -m "release: v2.25.0"
+git tag -a v2.25.0 -F tag-notes.txt
 git push origin main
-git push origin v2.24.0
+git push origin v2.25.0
 ```
 
-`tag-notes.txt` 为临时文件，内容取自该版本的 CHANGELOG 条目，打完 tag 即可删除。也可用 `git tag -a v2.24.0 -m "标题" -m "正文"` 直接写多段说明。
+`tag-notes.txt` 为临时文件，内容取自该版本的 CHANGELOG 条目，打完 tag 即可删除。也可用 `git tag -a v2.25.0 -m "标题" -m "正文"` 直接写多段说明。
 
 查看历史版本说明：
 
 ```powershell
 git tag -n99                # 列出全部 tag 及完整说明
-git tag -n99 v2.24.0        # 只看某个版本
-git show v2.24.0            # 看 tag 说明 + 指向的提交
+git tag -n99 v2.25.0        # 只看某个版本
+git show v2.25.0            # 看 tag 说明 + 指向的提交
 ```
 
 ## Git 使用

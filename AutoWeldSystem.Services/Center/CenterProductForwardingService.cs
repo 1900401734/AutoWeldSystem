@@ -568,6 +568,8 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             ProductNo = first.ProductNo,
             ProductModel = task.ProductModel ?? string.Empty,
             ProductResult = ResolveProductResult(orderedRecords),
+            // 产品级标记：同一产品的焊点行由标记入口一起改写，任一行为真即视为试焊件。
+            IsTest = orderedRecords.Any(record => record.IsTest),
             StartTime = task.StartTime,
             EndTime = task.EndTime,
             QualifiedQty = task.QualifiedQty,
@@ -799,6 +801,19 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             MergeByProduct = false
         });
         columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnProductResult, Title = "产品结果", MergeByProduct = true });
+        // 试焊件列的门禁与报表、MES 过程参数同源；服务端无从判断设备类型，只能由设备端声明。
+        if (ProcessParameterIsTestRules.IsEnabled(
+                settings.ShowTestFlagInHistory != false,
+                settings.ProcessParameterDeviceType))
+        {
+            columns.Add(new CenterProductReportColumnDto
+            {
+                Key = CenterProductReportFormat.ColumnIsTest,
+                Title = CenterProductReportFormat.HeaderIsTest,
+                MergeByProduct = true
+            });
+        }
+
         return columns;
     }
 

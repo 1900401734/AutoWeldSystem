@@ -130,6 +130,9 @@ var tests = new (string Name, Action Run)[]
     ("Local export covers all history dynamic columns", LocalExportCoversAllHistoryDynamicColumns),
     ("Local export keeps raw face rows without AB aggregation", LocalExportKeepsRawFaceRowsWithoutAbAggregation),
     ("Export reports never expose upload status column", ExportReportsNeverExposeUploadStatusColumn),
+    ("Reports write product test flag after product result", ReportsWriteProductTestFlagAfterProductResult),
+    ("Product test flag marking requeues center report", ProductTestFlagMarkingRequeuesCenterReport),
+    ("Center report keeps declared test flag column", CenterReportKeepsDeclaredTestFlagColumn),
     ("Data manage export keeps upload report template layout", DataManageExportKeepsUploadReportTemplateLayout),
     ("Single-point history display rule uses configured and actual counts", SinglePointHistoryDisplayRuleUsesConfiguredAndActualCounts),
     ("Data history single-point row keeps point values", DataHistorySinglePointRowKeepsPointValues),
@@ -3255,7 +3258,10 @@ static void ExportReportsNeverExposeUploadStatusColumn()
             var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
             var headers = ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow);
             AssertFalse(headers.Contains("上传状态"), "导出报表不得包含上传状态列。");
-            AssertEqual("产品结果", headers[^1], "导出报表的末列必须是产品结果。");
+            // 试焊件列可以跟在产品结果之后（默认开启且非整件检测设备），但两者必须紧邻末尾。
+            AssertTrue(
+                headers.TakeLast(2).ToArray() is ["产品结果", "试焊件"] || headers[^1] == "产品结果",
+                "导出报表的末列必须是产品结果，或产品结果紧跟试焊件列。");
             AssertFalse(
                 headers.Contains("已上传") || headers.Contains("待上传") || headers.Contains("上传失败"),
                 "导出报表不得混入任何上传状态文本。");
@@ -3282,8 +3288,191 @@ static void ExportReportsNeverExposeUploadStatusColumn()
         "BuildTrailingColumns",
         System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
     AssertTrue(buildTrailing is not null, "生产报表服务必须保留尾列构造入口。");
-    var trailing = ((System.Collections.IEnumerable)buildTrailing!.Invoke(null, [])!).Cast<object>().ToList();
-    AssertEqual(1, trailing.Count, "尾列只能有产品结果。");
+    var trailingWithoutTestFlag = ((System.Collections.IEnumerable)buildTrailing!.Invoke(null, [false])!)
+        .Cast<object>()
+        .ToList();
+    AssertEqual(1, trailingWithoutTestFlag.Count, "关闭试焊件后尾列只能有产品结果。");
+    var trailingWithTestFlag = ((System.Collections.IEnumerable)buildTrailing.Invoke(null, [true])!)
+        .Cast<object>()
+        .ToList();
+    AssertEqual(2, trailingWithTestFlag.Count, "尾列只能是产品结果加试焊件，不得混入上传状态。");
+}
+
+/// <summary>
+/// 试焊件标志必须写进报告文件，位置固定在产品结果之后，本地导出与上传报表两个出口口径一致。
+/// 门禁与 MES 过程参数字段同源：关闭全局开关或整件检测设备时该列不出现，
+/// 否则现场会把一列恒为空白的列误读成漏采。
+/// </summary>
+static void ReportsWriteProductTestFlagAfterProductResult()
+{
+    var task = BuildReportTask(new DateTime(2026, 9, 8, 8, 0, 0), endTime: null);
+    task.SN = "FLOW-TEST-FLAG";
+    var records = new[]
+    {
+        BuildReportPoint(task.Id, stationNo: 1, productNo: "P-001", sequenceNo: 1, pointResult: ProductionConstants.TestResults.Ok),
+        BuildReportPoint(task.Id, stationNo: 1, productNo: "P-002", sequenceNo: 2, pointResult: ProductionConstants.TestResults.Ok)
+    };
+    // 产品级标记：P-001 是试焊件，P-002 不是，用于确认未标记产品留空而不是写占位符。
+    records[0].IsTest = true;
+
+    foreach (var localExport in new[] { true, false })
+    {
+        var filePath = GenerateExportReportWorkbook(
+            new AppSettings(),
+            task,
+            records,
+            localExport,
+            fileName: localExport ? "export-test-flag.xlsx" : "upload-test-flag.xlsx",
+            showTestFlagInHistory: true);
+        try
+        {
+            using var workbook = new XLWorkbook(filePath);
+            var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+            var headers = ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow);
+            AssertSequenceEqual(
+                new[] { "产品结果", "试焊件" },
+                headers.TakeLast(2).ToArray(),
+                "试焊件列必须紧跟在产品结果之后，且位于明细区末尾。");
+
+            var flagColumn = Array.IndexOf(headers, "试焊件") + 1;
+            AssertEqual(
+                "是",
+                worksheet.Cell(CenterProductReportFormat.DetailFirstDataRow, flagColumn).GetString(),
+                "标记为试焊件的产品必须写“是”。");
+            AssertEqual(
+                string.Empty,
+                worksheet.Cell(CenterProductReportFormat.DetailFirstDataRow + 1, flagColumn).GetString(),
+                "未标记的产品必须留空，不写占位符。");
+        }
+        finally
+        {
+            DeleteReportFixture(filePath);
+        }
+    }
+
+    // 关闭全局开关表示现场不使用试焊件概念，两个出口都不得输出该列。
+    var disabledPath = GenerateExportReportWorkbook(
+        new AppSettings(),
+        task,
+        records,
+        localExport: true,
+        fileName: "export-test-flag-disabled.xlsx",
+        showTestFlagInHistory: false);
+    try
+    {
+        using var workbook = new XLWorkbook(disabledPath);
+        var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+        var headers = ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow);
+        AssertFalse(headers.Contains("试焊件"), "关闭试焊件显示后报表不得输出该列。");
+        AssertEqual("产品结果", headers[^1], "关闭试焊件后末列必须仍是产品结果。");
+    }
+    finally
+    {
+        DeleteReportFixture(disabledPath);
+    }
+
+    // 整件检测设备的产品历史本就不显示该标记，报表同样不输出。
+    var wholePiecePath = GenerateExportReportWorkbook(
+        new AppSettings { ProcessParameterDeviceType = ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck },
+        task,
+        records,
+        localExport: true,
+        deviceType: ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck,
+        fileName: "export-test-flag-whole-piece.xlsx",
+        showTestFlagInHistory: true);
+    try
+    {
+        using var workbook = new XLWorkbook(wholePiecePath);
+        var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+        AssertFalse(
+            ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow).Contains("试焊件"),
+            "整件检测设备不得输出试焊件列。");
+    }
+    finally
+    {
+        DeleteReportFixture(wholePiecePath);
+    }
+}
+
+/// <summary>
+/// 试焊件由操作员在采集完成之后标记，中心看板此前收到的是不带标记的产品数据。
+/// 因此标记成功后必须重推一次该产品，否则看板报表那一列永远为空。
+/// </summary>
+static void ProductTestFlagMarkingRequeuesCenterReport()
+{
+    var forwarding = new FakeCenterProductForwardingService();
+    var serviceType = typeof(ProductHistoryService);
+    var service = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(serviceType);
+    var forwardingField = serviceType.GetField(
+        "_centerProductForwardingService",
+        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+    AssertTrue(forwardingField is not null, "产品历史服务必须持有中心转发服务，用于标记后重推看板。");
+    forwardingField!.SetValue(service, forwarding);
+
+    var refresh = serviceType.GetMethod(
+        "RefreshCenterReport",
+        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+    AssertTrue(refresh is not null, "产品历史服务必须保留可验证的看板重推入口。");
+
+    var task = BuildReportTask(new DateTime(2026, 9, 8, 8, 0, 0), endTime: null);
+    var records = new List<BizWeldPointRecord>
+    {
+        BuildReportPoint(task.Id, stationNo: 2, productNo: "P-001", sequenceNo: 1, pointResult: ProductionConstants.TestResults.Ok)
+    };
+    records[0].IsTest = true;
+
+    refresh!.Invoke(service, [task, 2, records]);
+    AssertEqual(1, forwarding.CompletedProductCalls.Count, "标记成功后必须重推一次该产品到中心看板。");
+    AssertEqual(2, forwarding.CompletedProductCalls[0].StationNo, "重推必须携带产品所属工位。");
+    AssertTrue(
+        forwarding.CompletedProductCalls[0].Records.All(record => record.IsTest),
+        "重推必须使用更新后的记录，否则看板仍收到旧标记。");
+
+    // 任务读取不到时不得重推：请求缺少任务级表头会污染看板报表。
+    refresh.Invoke(service, [null, 2, records]);
+    AssertEqual(1, forwarding.CompletedProductCalls.Count, "任务不存在时不得重推。");
+
+    // 没有记录同样不重推，避免构造空产品请求。
+    refresh.Invoke(service, [task, 2, new List<BizWeldPointRecord>()]);
+    AssertEqual(1, forwarding.CompletedProductCalls.Count, "没有记录时不得重推。");
+}
+
+/// <summary>
+/// 中心服务器无从判断设备端的开关和设备类型，因此试焊件列只在设备端声明时输出；
+/// 同一工单后到的产品不得把已有的试焊件列抹掉。
+/// </summary>
+static void CenterReportKeepsDeclaredTestFlagColumn()
+{
+    var declared = CenterProductReportFormat.BuildColumns(
+    [
+        new CenterProductReportColumn(CenterProductReportFormat.ColumnProductNo, "产品编号", MergeByProduct: true),
+        new CenterProductReportColumn(CenterProductReportFormat.ColumnIsTest, "试焊件", MergeByProduct: true)
+    ]);
+    AssertSequenceEqual(
+        new[] { "产品结果", "试焊件" },
+        declared.Select(column => column.Title).TakeLast(2).ToArray(),
+        "设备端声明试焊件后，中心报表必须把该列放在产品结果之后。");
+    AssertTrue(
+        declared.Single(column => string.Equals(column.Key, CenterProductReportFormat.ColumnIsTest, StringComparison.OrdinalIgnoreCase)).MergeByProduct,
+        "试焊件是产品级值，必须按产品跨行合并。");
+
+    var undeclared = CenterProductReportFormat.BuildColumns(
+    [
+        new CenterProductReportColumn(CenterProductReportFormat.ColumnProductNo, "产品编号", MergeByProduct: true)
+    ]);
+    AssertFalse(
+        undeclared.Any(column => string.Equals(column.Key, CenterProductReportFormat.ColumnIsTest, StringComparison.OrdinalIgnoreCase)),
+        "设备端未声明试焊件时，中心报表不得凭空补出该列。");
+
+    // 并集语义：已有该列的报表收到未声明该列的后到产品时，列必须保留。
+    var union = CenterProductReportFormat.BuildDetailColumns(declared.Concat(undeclared));
+    AssertSequenceEqual(
+        new[] { "产品结果", "试焊件" },
+        union.Select(column => column.Title).TakeLast(2).ToArray(),
+        "后到产品未声明试焊件时，已有的试焊件列必须保留在末尾。");
+
+    AssertEqual("是", CenterProductReportFormat.FormatIsTest(true), "标记过的产品必须写“是”。");
+    AssertEqual(string.Empty, CenterProductReportFormat.FormatIsTest(false), "未标记的产品必须留空。");
 }
 
 /// <summary>
@@ -16904,7 +17093,8 @@ static string GenerateExportReportWorkbook(
     string deviceType = "",
     string fileName = "data-manage-export.xlsx",
     IReadOnlyList<(DimTestItem Item, BizSchemeDetail Detail)>? schemeDefinitions = null,
-    int touchCount = 0)
+    int touchCount = 0,
+    bool showTestFlagInHistory = false)
 {
     var serviceType = typeof(ProductionReportFileService);
     var service = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(serviceType);
@@ -16953,7 +17143,9 @@ static string GenerateExportReportWorkbook(
         "BuildReportSchemaForStationsWithDeviceType",
         System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
     AssertTrue(buildSchema is not null, "生产报表服务必须保留含设备类型的 schema 构造入口。");
-    var schema = buildSchema!.Invoke(null, [resolvedStations, deviceType, touchCount, localExport])
+    var schema = buildSchema!.Invoke(
+            null,
+            [resolvedStations, deviceType, touchCount, localExport, showTestFlagInHistory])
         ?? throw new InvalidOperationException("schema 构造入口不得返回空值。");
 
     var outputDirectory = Path.Combine(Path.GetTempPath(), "AutoWeldSystem.Tests", Guid.NewGuid().ToString("N"));
@@ -17672,11 +17864,14 @@ sealed class FakeCenterProductForwardingService : ICenterProductForwardingServic
 
     public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
+    public List<(int StationNo, IReadOnlyList<BizWeldPointRecord> Records)> CompletedProductCalls { get; } = new();
+
     public void EnqueueCompletedProduct(
         BizWeldTask task,
         int stationNo,
         IReadOnlyList<BizWeldPointRecord> records)
     {
+        CompletedProductCalls.Add((stationNo, records));
     }
 
     public void EnqueueTaskFinishUpdate(BizWeldTask task)

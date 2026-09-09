@@ -15,11 +15,15 @@ namespace AutoWeldSystem.Services.Production;
 public sealed class ProductHistoryService : IProductHistoryService
 {
     private readonly SqlSugarDbContext _dbContext;
+    private readonly ICenterProductForwardingService _centerProductForwardingService;
     private readonly object _dbLock = new();
 
-    public ProductHistoryService(SqlSugarDbContext dbContext)
+    public ProductHistoryService(
+        SqlSugarDbContext dbContext,
+        ICenterProductForwardingService centerProductForwardingService)
     {
         _dbContext = dbContext;
+        _centerProductForwardingService = centerProductForwardingService;
     }
 
     public ProductHistorySnapshot GetSnapshot(int taskId, int stationNo)
@@ -82,9 +86,41 @@ public sealed class ProductHistoryService : IProductHistoryService
                 ? $"产品 {normalizedProductNo} 已标记为试焊件。"
                 : $"产品 {normalizedProductNo} 已取消试焊件标记。";
 
+            // 标记发生在采集完成之后，中心看板此前已收到不带标记的产品数据，
+            // 因此这里按更新后的记录重新入队一次：BusinessId 幂等，中心侧按同产品覆盖旧行。
+            RefreshCenterReport(
+                _dbContext.Db.Queryable<BizWeldTask>().InSingle(taskId),
+                stationNo,
+                updatedRecords);
+
             return product is null
                 ? ProductHistoryMarkResult.Failed("试焊件标记已保存，但刷新产品历史失败。")
                 : ProductHistoryMarkResult.Success(product, message);
+        }
+    }
+
+    /// <summary>
+    /// 标记变更后重推该产品到中心看板，使看板报表的试焊件列与本地一致。
+    /// 中心同步未启用时入队方法自行短路；重推失败不得回滚已保存的本地标记，
+    /// 因此只吞异常，产品数据仍由现有重试队列在下次完工补漏时补齐。
+    /// </summary>
+    private void RefreshCenterReport(
+        BizWeldTask? task,
+        int stationNo,
+        IReadOnlyList<BizWeldPointRecord> records)
+    {
+        if (task is null || records.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            _centerProductForwardingService.EnqueueCompletedProduct(task, stationNo, records);
+        }
+        catch (Exception)
+        {
+            // 本地标记已生效，看板重推属于尽力而为，不能让它推翻用户已完成的操作。
         }
     }
 

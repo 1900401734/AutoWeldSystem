@@ -22,6 +22,7 @@ public class ProductionReportFileService : IProductionReportFileService
     private const string ColumnStationNo = "station_no";
     private const string ColumnProductNo = "product_no";
     private const string ColumnProductResult = "product_result";
+    private const string ColumnIsTest = CenterProductReportFormat.ColumnIsTest;
     private const string ColumnTouchNo = "touch_no";
     private const string ColumnTouchResult = "touch_result";
     private const string ReportRoleActual = "actual";
@@ -34,6 +35,7 @@ public class ProductionReportFileService : IProductionReportFileService
     private const string HeaderStationNo = "工位";
     private const string HeaderProductNo = "产品编号";
     private const string HeaderProductResult = "产品结果";
+    private const string HeaderIsTest = CenterProductReportFormat.HeaderIsTest;
     private const string HeaderTouchNo = "焊点编号";
     private const string HeaderTouchResult = "焊点结果";
     private const string ReportFormat = "XLSX";
@@ -193,7 +195,8 @@ public class ProductionReportFileService : IProductionReportFileService
             stationConfigs,
             CurrentSettings.ProcessParameterDeviceType,
             touchCount,
-            localExport);
+            localExport,
+            CurrentSettings.ShowTestFlagInHistory != false);
     }
 
     /// <summary>
@@ -202,13 +205,19 @@ public class ProductionReportFileService : IProductionReportFileService
     private static ReportSchema BuildReportSchemaForStations(
         IReadOnlyList<ResolvedStationReportConfig> stationConfigs,
         int touchCount)
-        => BuildReportSchemaForStationsWithDeviceType(stationConfigs, string.Empty, touchCount, localExport: false);
+        => BuildReportSchemaForStationsWithDeviceType(
+            stationConfigs,
+            string.Empty,
+            touchCount,
+            localExport: false,
+            showTestFlagInHistory: false);
 
     private static ReportSchema BuildReportSchemaForStationsWithDeviceType(
         IReadOnlyList<ResolvedStationReportConfig> stationConfigs,
         string deviceType,
         int touchCount,
-        bool localExport)
+        bool localExport,
+        bool showTestFlagInHistory)
     {
         var orderedConfigs = stationConfigs
             .OrderBy(config => config.StationNo)
@@ -233,7 +242,10 @@ public class ProductionReportFileService : IProductionReportFileService
         var pointResultColumn = wholePieceUploadReport
             ? Array.Empty<ReportColumn>()
             : BuildPointResultColumn(displayOptions);
-        var trailingColumns = BuildTrailingColumns();
+        // 试焊件列与 MES 过程参数字段共用门禁：本地导出同样遵循，
+        // 关闭开关表示现场不使用该概念，导出一列永远空白没有查阅价值。
+        var trailingColumns = BuildTrailingColumns(
+            ProcessParameterIsTestRules.IsEnabled(showTestFlagInHistory, deviceType));
         var columns = leadingColumns
             .Concat(dynamicColumns)
             .Concat(pointResultColumn)
@@ -375,12 +387,20 @@ public class ProductionReportFileService : IProductionReportFileService
             var schemeItems = schema.ResolveSchemeItems(representative.StationNo);
             // 本地导出保留逐面原始记录：A/B 聚合会把四面并成两行并改写行结果，
             // 后台查阅需要的是"数据是怎样就怎样"，聚合只用于上传给 MES 的报表。
+            // 试焊件是产品级人工标记：同一产品的全部焊点行由标记入口一起改写，
+            // 这里按组取值，个别行漏改也不会让同一产品出现半格“是”。
+            var productIsTest = group.Any(record => record.IsTest);
             if (schema.LocalExport
                 || !WholePieceAbAggregationRules.IsApplicable(settings.ProcessParameterDeviceType, schema.TouchCount))
             {
                 var standardProductResult = ResolveProductResult(group);
                 rows.AddRange(group.OrderBy(record => record.SequenceNo).ThenBy(record => record.Id)
-                    .Select(record => BuildStandardOutputRow(record, schemeItems, standardProductResult, schema.LocalExport)));
+                    .Select(record => BuildStandardOutputRow(
+                        record,
+                        schemeItems,
+                        standardProductResult,
+                        productIsTest,
+                        schema.LocalExport)));
                 continue;
             }
 
@@ -421,6 +441,7 @@ public class ProductionReportFileService : IProductionReportFileService
                     output.SideNo,
                     output.Result,
                     productResult,
+                    productIsTest,
                     BuildAbReportValues(output, definitions)));
             }
         }
@@ -462,6 +483,7 @@ public class ProductionReportFileService : IProductionReportFileService
         BizWeldPointRecord record,
         IReadOnlyList<SchemeReportItem> schemeItems,
         string productResult,
+        bool productIsTest,
         bool localExport)
     {
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -471,6 +493,7 @@ public class ProductionReportFileService : IProductionReportFileService
             string.IsNullOrWhiteSpace(record.TouchNo) ? record.SequenceNo.ToString() : record.TouchNo,
             record.TestResult,
             productResult,
+            productIsTest,
             values);
     }
 
@@ -494,6 +517,7 @@ public class ProductionReportFileService : IProductionReportFileService
                 [ColumnStationNo] = ResolveStationDisplayName(output.Source.StationNo, stationNames),
                 [ColumnProductNo] = output.Source.ProductNo,
                 [ColumnProductResult] = output.ProductResult,
+                [ColumnIsTest] = CenterProductReportFormat.FormatIsTest(output.IsTest),
                 [ColumnTouchNo] = output.PointNo,
                 [ColumnTouchResult] = output.PointResult
             };
@@ -930,9 +954,16 @@ public class ProductionReportFileService : IProductionReportFileService
         yield return new ReportColumn(ColumnTouchResult, displayOptions.PointResultHeader, MergeByProduct: false);
     }
 
-    private static IEnumerable<ReportColumn> BuildTrailingColumns()
+    /// <summary>
+    /// 明细区尾列。试焊件排在产品结果之后，两者都是产品级值，按产品跨行合并。
+    /// </summary>
+    private static IEnumerable<ReportColumn> BuildTrailingColumns(bool includeIsTest)
     {
         yield return new ReportColumn(ColumnProductResult, HeaderProductResult, MergeByProduct: true);
+        if (includeIsTest)
+        {
+            yield return new ReportColumn(ColumnIsTest, HeaderIsTest, MergeByProduct: true);
+        }
     }
 
     /// <summary>
@@ -1222,6 +1253,7 @@ public class ProductionReportFileService : IProductionReportFileService
         string PointNo,
         string PointResult,
         string ProductResult,
+        bool IsTest,
         IReadOnlyDictionary<string, string> DynamicValues);
 
     private sealed record ResolvedStationReportConfig(

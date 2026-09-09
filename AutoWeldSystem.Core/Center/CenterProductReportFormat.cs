@@ -25,6 +25,17 @@ public static class CenterProductReportFormat
     public const string ColumnStationNo = "station_no";
     public const string ColumnProductNo = "product_no";
     public const string ColumnProductResult = "product_result";
+
+    /// <summary>
+    /// 试焊件标志列。产品级人工标记，键名与实体 <c>BizWeldPointRecord.IsTest</c>、MES 过程参数字段同名。
+    /// </summary>
+    public const string ColumnIsTest = "is_test";
+    public const string HeaderIsTest = "试焊件";
+
+    /// <summary>
+    /// 报表中试焊件的显示文本；未标记的产品留空，不写占位符。
+    /// </summary>
+    public const string IsTestMarkedText = "是";
     public const string ColumnTouchNo = "touch_no";
     public const string ColumnTouchResult = "touch_result";
     public const string ColumnWorkOrder = "work_order";
@@ -103,11 +114,20 @@ public static class CenterProductReportFormat
             ColumnProductNo,
             ColumnTouchNo,
             ColumnTouchResult,
-            ColumnProductResult
+            ColumnProductResult,
+            ColumnIsTest
         };
         columns.AddRange(equipmentColumnList.Where(column => !fixedKeys.Contains(column.Key)));
         columns.Add(ResolveDetailColumn(ColumnTouchResult, string.Empty, mergeByProduct: false, equipmentColumnList));
         columns.Add(ResolveDetailColumn(ColumnProductResult, "产品结果", mergeByProduct: true, equipmentColumnList));
+        // 试焊件列的显隐由设备端的全局开关和过程参数设备类型决定，服务端无从判断，
+        // 因此只在设备端声明时输出：整件检测设备不该在看板报表上凭空多一列空白。
+        if (equipmentColumnList.Any(
+                column => string.Equals(column.Key, ColumnIsTest, StringComparison.OrdinalIgnoreCase)))
+        {
+            columns.Add(ResolveDetailColumn(ColumnIsTest, HeaderIsTest, mergeByProduct: true, equipmentColumnList));
+        }
+
         return columns;
     }
 
@@ -151,6 +171,13 @@ public static class CenterProductReportFormat
             ? width
             : Math.Max(currentWidth, 12d);
     }
+
+    /// <summary>
+    /// 试焊件单元格文本：只有标记过的产品写“是”，其余留空。
+    /// 设备端三条出口与中心服务器共用，避免同一标志出现两种写法。
+    /// </summary>
+    public static string FormatIsTest(bool isTest)
+        => isTest ? IsTestMarkedText : string.Empty;
 
     /// <summary>
     /// 将客户模板标签和值拼成单行文本。
