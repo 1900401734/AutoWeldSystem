@@ -29,7 +29,7 @@ public static class ProgramNameRules
         string? productNum,
         string? description)
     {
-        var normalizedDescription = NormalizeOptionalNamePart(description);
+        var normalizedDescription = description ?? string.Empty;
         var baseName = string.Join(
             "_",
             NormalizeNamePart(deviceId),
@@ -39,7 +39,7 @@ public static class ProgramNameRules
             Math.Max(1, sequenceNumber).ToString("000"),
             NormalizeNamePart(productNum?.Replace("#", string.Empty, StringComparison.Ordinal) ?? string.Empty));
 
-        return string.IsNullOrWhiteSpace(normalizedDescription)
+        return normalizedDescription.Length == 0
             ? baseName
             : $"{baseName}_{normalizedDescription}";
     }
@@ -55,7 +55,7 @@ public static class ProgramNameRules
             return false;
         }
 
-        var normalizedName = programName.Trim();
+        var normalizedName = programName;
         var startIndex = normalizedName.IndexOf(ComponentStartMarker, StringComparison.OrdinalIgnoreCase);
         if (startIndex <= 0)
         {
@@ -82,9 +82,9 @@ public static class ProgramNameRules
         }
 
         var description = suffix.Length > 2
-            ? string.Join("_", suffix[2..]).Trim()
+            ? string.Join("_", suffix[2..])
             : string.Empty;
-        if (suffix.Length > 2 && string.IsNullOrWhiteSpace(description))
+        if (suffix.Length > 2 && description.Length == 0)
         {
             return false;
         }
@@ -162,12 +162,4 @@ public static class ProgramNameRules
         return chars.Length == 0 ? "NA" : new string(chars);
     }
 
-    private static string NormalizeOptionalNamePart(string? value)
-    {
-        var chars = (value ?? string.Empty)
-            .Where(ch => char.IsLetterOrDigit(ch) || ch == '-')
-            .ToArray();
-
-        return new string(chars);
-    }
 }

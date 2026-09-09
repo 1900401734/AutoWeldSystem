@@ -226,7 +226,7 @@
             editorLayout.RowStyles.Add(new RowStyle());
             editorLayout.RowStyles.Add(new RowStyle());
             editorLayout.RowStyles.Add(new RowStyle());
-            editorLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            editorLayout.RowStyles.Add(new RowStyle());
             editorLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 0F));
             editorLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 0F));
             editorLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 0F));

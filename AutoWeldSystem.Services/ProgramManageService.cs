@@ -537,8 +537,8 @@ public sealed class ProgramManageService : IProgramManageService
     private void ApplyRequest(BizProgram entity, SaveProgramReq request)
     {
         var settings = CurrentSettings;
-        var previousDescription = entity.Description?.Trim() ?? string.Empty;
-        var currentDescription = request.LocalRemark.Trim();
+        var previousDescription = entity.Description ?? string.Empty;
+        var currentDescription = request.LocalRemark;
         var descriptionChanged = !string.Equals(
             previousDescription,
             currentDescription,
@@ -924,7 +924,6 @@ public sealed class ProgramManageService : IProgramManageService
 
     private void NormalizeRequest(SaveProgramReq request)
     {
-        request.ProgramName = request.ProgramName.Trim();
         request.ProductNum = request.ProductNum.Trim();
         request.RecipeCode = ProgramRecipeMappingRules.Normalize(request.RecipeCode);
         request.Station2RecipeCode = ProgramRecipeMappingRules.Normalize(request.Station2RecipeCode);
@@ -934,7 +933,6 @@ public sealed class ProgramManageService : IProgramManageService
         request.WeldJobName = request.WeldJobName.Trim();
         request.RobotJobName = request.RobotJobName.Trim();
         request.MesRemark = request.MesRemark.Trim();
-        request.LocalRemark = request.LocalRemark.Trim();
         request.ProgramContentJson = ProgramContentJsonRules.NormalizeTouchCount(request.ProgramContentJson);
 
         ProgramSaveRecipeRules.Validate(

@@ -104,12 +104,12 @@ public static class ProgramMesSyncRules
 
         var sameProgramContent = SameProgramContent(original.ProgramContent, current.ProgramContent);
 
-        return !Same(original.ProgramName, current.ProgramName)
+        return !SameExact(original.ProgramName, current.ProgramName)
             || !Same(original.DeviceId, current.DeviceId)
             || !sameProgramContent
             || !Same(original.ProgramType, current.ProgramType)
             || !Same(original.ProductNum, current.ProductNum)
-            || !Same(original.Description, current.Description)
+            || !SameExact(original.Description, current.Description)
             || HasProgramFileChanged(original.ProgramFile, current.ProgramFile, current.ProgramContent, sameProgramContent)
             || !Same(original.Remark, current.Remark);
     }
@@ -126,6 +126,9 @@ public static class ProgramMesSyncRules
 
     private static bool Same(string? left, string? right)
         => string.Equals(left?.Trim() ?? string.Empty, right?.Trim() ?? string.Empty, StringComparison.Ordinal);
+
+    private static bool SameExact(string? left, string? right)
+        => string.Equals(left ?? string.Empty, right ?? string.Empty, StringComparison.Ordinal);
 
     private static bool SameProgramContent(string? left, string? right)
     {

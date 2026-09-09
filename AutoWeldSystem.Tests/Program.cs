@@ -427,9 +427,8 @@ var tests = new (string Name, Action Run)[]
     ("Program save rejects duplicate program name", ProgramSaveRejectsDuplicateProgramName),
     ("Program manage view provides save-as-new entry", ProgramManageViewProvidesSaveAsNewEntry),
     ("Program manage grid shows sequence and program name", ProgramManageGridShowsSequenceAndProgramName),
-    ("Program product groups merge programs sharing product num", ProgramProductGroupsMergeProgramsSharingProductNum),
-    ("Program product groups flatten single program product num", ProgramProductGroupsFlattenSingleProgramProductNum),
-    ("Program product groups order by latest update time", ProgramProductGroupsOrderByLatestUpdateTime),
+    ("Program rows keep duplicate product nums", ProgramProductRowsKeepDuplicateProductNums),
+    ("Program rows order globally by latest update time", ProgramProductRowsOrderGloballyByLatestUpdateTime),
     ("Program list paging keeps edited program visible", ProgramListPagingKeepsEditedProgramVisible),
     ("Program manage toolbar uses input query for search and refresh", ProgramManageToolbarUsesInputQueryForSearchAndRefresh),
     ("Program manage view hides product model", ProgramManageViewHidesProductModel),
@@ -12592,6 +12591,19 @@ static void ProgramNameRulesBuildAndParseOptionalDescription()
     AssertEqual("KFJ123456_CX_3_DH_001_3J_左侧组件", withDescription, "有备注时程序名称必须追加 inputDescription。");
     AssertFalse(withDescription.Contains('#'), "程序名称中的工号不能包含 #。");
 
+    var symbolDescription = ProgramNameRules.BuildProgramName("KFJ123456", "3", 1, "3#J", "1-3+");
+    AssertEqual("KFJ123456_CX_3_DH_001_3J_1-3+", symbolDescription, "程序备注中的加号不得被名称规则过滤。");
+
+    var whitespaceDescription = ProgramNameRules.BuildProgramName("KFJ123456", "3", 1, "3#J", "  1-3+  ");
+    AssertEqual("KFJ123456_CX_3_DH_001_3J_  1-3+  ", whitespaceDescription, "程序备注首尾空白也必须原样保留。");
+    AssertTrue(ProgramNameRules.TryParse(whitespaceDescription, out var parsedWhitespaceDescription), "带首尾空白备注的程序名称必须可解析。");
+    AssertEqual("  1-3+  ", parsedWhitespaceDescription.Description, "解析程序名称时必须保留备注首尾空白。");
+
+    var spacesOnlyDescription = ProgramNameRules.BuildProgramName("KFJ123456", "3", 1, "3#J", "  ");
+    AssertEqual("KFJ123456_CX_3_DH_001_3J_  ", spacesOnlyDescription, "纯空格程序备注也不得被隐式清空。");
+    AssertTrue(ProgramNameRules.TryParse(spacesOnlyDescription, out var parsedSpacesOnlyDescription), "纯空格程序备注生成的名称必须可解析。");
+    AssertEqual("  ", parsedSpacesOnlyDescription.Description, "解析时必须保留纯空格程序备注。");
+
     var parseMethod = typeof(ProgramNameRules).GetMethod("TryParse");
     AssertTrue(parseMethod is not null, "程序名称规则必须提供下载回填所需的解析方法。");
 
@@ -12618,7 +12630,10 @@ static void ProgramManageDownloadBackfillsNameFields()
     AssertTrue(serviceCode.Contains("entity.SequenceNumber = parsedName.SequenceNumber", StringComparison.Ordinal), "MES 下载必须回填名称中的流水号。");
     AssertTrue(serviceCode.Contains("entity.Description = parsedName.Description", StringComparison.Ordinal), "MES 下载必须从名称回填 inputDescription 对应的 Description。");
     AssertTrue(serviceCode.Contains("? entity.ProgramName", StringComparison.Ordinal), "编辑已有程序且名称控件为空时必须保留原程序名称。");
-    AssertTrue(viewCode.Contains("inputDescription.Text.Trim()", StringComparison.Ordinal), "程序管理页面必须把 inputDescription 传入名称生成。");
+    AssertTrue(viewCode.Contains("inputDescription.Text)", StringComparison.Ordinal), "程序管理页面必须把程序备注原样传入名称生成。");
+    AssertFalse(viewCode.Contains("inputDescription.Text.Trim()", StringComparison.Ordinal), "程序管理页面不得裁剪程序备注。");
+    AssertFalse(serviceCode.Contains("request.LocalRemark = request.LocalRemark.Trim()", StringComparison.Ordinal), "程序保存服务不得裁剪程序备注。");
+    AssertFalse(serviceCode.Contains("request.ProgramName = request.ProgramName.Trim()", StringComparison.Ordinal), "程序保存服务不得裁剪已拼入备注的程序名称。");
     AssertTrue(viewCode.Contains("_editingId <= 0", StringComparison.Ordinal), "新建与编辑程序必须区分名称生成策略。");
 }
 
@@ -13400,9 +13415,9 @@ static void ProgramMesDescriptionChangesTriggerUpdate()
     whitespaceOriginal.Description = "  相同描述  ";
     var whitespaceEdited = BuildSyncedProgram();
     whitespaceEdited.Description = "相同描述";
-    AssertFalse(
+    AssertTrue(
         ProgramMesSyncRules.HasMesUploadFieldChanges(whitespaceOriginal, whitespaceEdited),
-        "Description 只有首尾空格变化时不应产生 MES 更新。");
+        "Description 首尾空格也是用户输入，变化时必须产生 MES 更新。");
 
     var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "ProgramManageService.cs"), Encoding.UTF8);
     AssertTrue(serviceCode.Contains("descriptionChanged", StringComparison.Ordinal), "保存服务必须显式判断 inputDescription 是否发生变化。");
@@ -14013,8 +14028,9 @@ static void ProgramManageGridShowsSequenceAndProgramName()
 {
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "ProgramManageView.cs"), Encoding.UTF8);
 
-    AssertTrue(viewCode.Contains("nameof(ProgramProductGroupRow.SerialNumber)", StringComparison.Ordinal), "程序表格首列必须显示筛选后的分组序号。");
-    AssertTrue(viewCode.Contains("productNumColumn.SetTree(nameof(ProgramProductGroupRow.Programs));", StringComparison.Ordinal), "工号列必须继续配置为树形列。");
+    AssertTrue(viewCode.Contains("nameof(ProgramProductGroupRow.SerialNumber)", StringComparison.Ordinal), "程序表格首列必须显示筛选后的程序序号。");
+    AssertFalse(viewCode.Contains("SetTree(", StringComparison.Ordinal), "程序工号列不得继续配置为树形列。");
+    AssertFalse(viewCode.Contains("DefaultExpand", StringComparison.Ordinal), "程序列表不得继续配置折叠展开。");
     AssertTrue(viewCode.Contains("nameof(ProgramProductGroupRow.ProgramName)", StringComparison.Ordinal), "程序名称必须使用独立列。");
     AssertTrue(viewCode.Contains("nameof(ProgramProductGroupRow.SyncStatus)", StringComparison.Ordinal), "同步状态必须使用独立列。");
     AssertFalse(viewCode.Contains("nameof(ProgramProductGroupRow.Summary)", StringComparison.Ordinal), "程序表格不得继续显示摘要列。");
@@ -14025,10 +14041,10 @@ static void ProgramManageGridShowsSequenceAndProgramName()
     var zhResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.resx"), Encoding.UTF8);
     AssertTrue(zhResources.Contains("<value>当前：已同步 / {0}</value>", StringComparison.Ordinal), "已同步状态必须显示当前前缀、分隔空格和程序ID。");
     AssertTrue(zhResources.Contains("<value>当前：未同步</value>", StringComparison.Ordinal), "未同步状态必须显示当前前缀。");
-    AssertTrue(viewCode.Contains("row.ProgramId > 0", StringComparison.Ordinal), "父行不指向具体程序，点击不得切换编辑对象。");
+    AssertTrue(viewCode.Contains("BindProgramById(row.ProgramId);", StringComparison.Ordinal), "每个程序行点击后必须直接切换编辑对象。");
 }
 
-static void ProgramProductGroupsMergeProgramsSharingProductNum()
+static void ProgramProductRowsKeepDuplicateProductNums()
 {
     var programs = new List<BizProgram>
     {
@@ -14038,44 +14054,21 @@ static void ProgramProductGroupsMergeProgramsSharingProductNum()
         new() { Id = 4, ProgramName = "空工号", ProductNum = "   ", SequenceNumber = 1, UpdatedTime = new DateTime(2026, 8, 9) }
     };
 
-    var groups = ProgramProductGroupRules.BuildGroups(programs, program => $"状态:{program.SyncStatus}");
+    var rows = ProgramProductGroupRules.BuildRows(programs, program => $"状态:{program.SyncStatus}");
 
-    AssertEqual(2, groups.Count, "工号为空的程序不得产生分组，同工号必须合并为一行。");
-    AssertEqual(1, groups[0].SerialNumber, "首个产品工号父行序号必须从 1 开始。");
-    AssertEqual(2, groups[1].SerialNumber, "产品工号父行序号必须连续递增。");
-    AssertEqual("P-001", groups[0].ProductNum, "同工号大小写和空白不同必须归为同一组。");
-    AssertEqual(new DateTime(2026, 8, 5), groups[0].UpdatedTime, "分组更新时间必须取组内最新。");
-    AssertEqual(0, ProgramProductGroupRules.BuildGroups(Array.Empty<BizProgram>(), program => program.SyncStatus).Count, "空集合必须返回空分组。");
-
-    AssertEqual(0, groups[0].ProgramId, "多程序工号的父行不得指向具体程序。");
-    AssertEqual(string.Empty, groups[0].ProgramName, "多程序父行不得显示具体程序名称。");
-    AssertEqual(string.Empty, groups[0].SyncStatus, "多程序父行不得显示具体同步状态。");
-    AssertEqual(2, groups[0].Programs?.Count ?? 0, "多程序工号必须展开为子行。");
-    AssertEqual(null, groups[0].Programs![0].SerialNumber, "子程序行序号必须留空。");
-    AssertEqual(2, groups[0].Programs![0].ProgramId, "子行必须按更新时间倒序排列。");
-    AssertEqual("#001", groups[0].Programs![0].ProductNum, "子行必须保留程序流水号标签。");
-    AssertEqual("A-2", groups[0].Programs![0].ProgramName, "程序名称必须进入独立字段。");
-    AssertEqual("状态:Synced", groups[0].Programs![0].SyncStatus, "同步状态必须进入独立字段。");
+    AssertEqual(3, rows.Count, "工号为空的程序不得产生列表行，同工号程序必须各占一行。");
+    AssertEqual(1, rows[0].SerialNumber, "首个程序行序号必须从 1 开始。");
+    AssertEqual(2, rows[1].SerialNumber, "程序行序号必须连续递增。");
+    AssertEqual("p-001", rows[0].ProductNum, "程序行必须显示自身完整产品工号。");
+    AssertEqual("P-002", rows[1].ProductNum, "全局排序后第二条程序行必须显示自身产品工号。");
+    AssertEqual("P-001", rows[2].ProductNum, "同工号的第二个程序也必须重复显示产品工号。");
+    AssertEqual(2, rows[0].ProgramId, "较新程序必须排在前面。");
+    AssertEqual("A-2", rows[0].ProgramName, "程序名称必须进入独立行字段。");
+    AssertEqual("状态:Synced", rows[0].SyncStatus, "同步状态必须进入独立行字段。");
+    AssertEqual(0, ProgramProductGroupRules.BuildRows(Array.Empty<BizProgram>(), program => program.SyncStatus).Count, "空集合必须返回空列表。");
 }
 
-static void ProgramProductGroupsFlattenSingleProgramProductNum()
-{
-    var programs = new List<BizProgram>
-    {
-        new() { Id = 7, ProgramName = "只有一个程序", ProductNum = "P-009", SequenceNumber = 1, SyncStatus = AppConstants.ProgramSyncStatus.Synced, UpdatedTime = new DateTime(2026, 8, 2) }
-    };
-
-    var groups = ProgramProductGroupRules.BuildGroups(programs, program => "已同步");
-
-    AssertEqual(1, groups.Count, "单程序工号必须只占一行。");
-    AssertEqual(1, groups[0].SerialNumber, "单程序工号父行必须显示序号 1。");
-    AssertTrue(groups[0].Programs is null, "单程序工号不得产生子行，避免出现多余的展开箭头。");
-    AssertEqual(7, groups[0].ProgramId, "单程序工号的行必须直接指向该程序。");
-    AssertEqual("只有一个程序", groups[0].ProgramName, "单程序工号必须在独立列显示程序名称。");
-    AssertEqual("已同步", groups[0].SyncStatus, "单程序工号必须在独立列显示同步状态。");
-}
-
-static void ProgramProductGroupsOrderByLatestUpdateTime()
+static void ProgramProductRowsOrderGloballyByLatestUpdateTime()
 {
     var programs = new List<BizProgram>
     {
@@ -14085,14 +14078,14 @@ static void ProgramProductGroupsOrderByLatestUpdateTime()
         new() { Id = 4, ProgramName = "同工号新程序", ProductNum = "P-003", SequenceNumber = 2, UpdatedTime = new DateTime(2026, 8, 10) }
     };
 
-    var groups = ProgramProductGroupRules.BuildGroups(programs, program => "已同步");
+    var rows = ProgramProductGroupRules.BuildRows(programs, program => "已同步");
 
-    AssertEqual("P-002", groups[0].ProductNum, "工号行必须按组内最新更新时间倒序排列。");
-    AssertEqual("P-003", groups[1].ProductNum, "更新较晚的工号必须排在更新较早的工号之前。");
-    AssertEqual("P-001", groups[2].ProductNum, "最久未更新的工号必须排在最后。");
-    AssertEqual(1, groups[0].SerialNumber, "分组序号必须按排序后的位置重新编号。");
-    AssertEqual(4, groups[1].Programs![0].ProgramId, "同工号子行必须按更新时间倒序，最近更新的程序在前。");
-    AssertEqual(3, groups[1].Programs![1].ProgramId, "同工号较早更新的程序必须排在后面。");
+    AssertEqual(2, rows[0].ProgramId, "最新修改的程序必须排在首行。");
+    AssertEqual(4, rows[1].ProgramId, "同一时间戳时必须按本地 Id 倒序。");
+    AssertEqual(3, rows[2].ProgramId, "较早修改的程序必须排在后面。");
+    AssertEqual(1, rows[3].ProgramId, "最早修改的程序必须排在最后。");
+    AssertEqual(1, rows[0].SerialNumber, "程序序号必须按全局排序后重新编号。");
+    AssertEqual(4, rows[3].SerialNumber, "程序序号必须覆盖全部筛选结果。");
 }
 
 static void ProgramListPagingKeepsEditedProgramVisible()
@@ -14108,44 +14101,31 @@ static void ProgramListPagingKeepsEditedProgramVisible()
             UpdatedTime = new DateTime(2026, 8, 1).AddMinutes(index)
         })
         .ToList();
-    var groups = ProgramProductGroupRules.BuildGroups(programs, program => "已同步");
+    var rows = ProgramProductGroupRules.BuildRows(programs, program => "已同步");
 
-    var firstPage = ProgramListPagingRules.GetPage(groups, 1, 20);
-    AssertEqual(45, firstPage.TotalCount, "分页总数必须是筛选后的工号分组总数。");
-    AssertEqual(20, firstPage.Items.Count, "首页必须只返回一页数量的分组行。");
+    var firstPage = ProgramListPagingRules.GetPage(rows, 1, 20);
+    AssertEqual(45, firstPage.TotalCount, "分页总数必须是筛选后的程序总数。");
+    AssertEqual(20, firstPage.Items.Count, "首页必须只返回一页数量的程序行。");
     AssertEqual(45, firstPage.Items[0].ProgramId, "首页第一行必须是最近更新的程序。");
-    AssertEqual(1, firstPage.Items[0].SerialNumber, "分组序号必须在分页前生成，首页从 1 开始。");
+    AssertEqual(1, firstPage.Items[0].SerialNumber, "程序序号必须在分页前生成，首页从 1 开始。");
 
-    var lastPage = ProgramListPagingRules.GetPage(groups, 3, 20);
-    AssertEqual(5, lastPage.Items.Count, "末页只返回剩余分组行。");
-    AssertEqual(41, lastPage.Items[0].SerialNumber, "翻页后分组序号必须保持全局连续。");
+    var lastPage = ProgramListPagingRules.GetPage(rows, 3, 20);
+    AssertEqual(5, lastPage.Items.Count, "末页只返回剩余程序行。");
+    AssertEqual(41, lastPage.Items[0].SerialNumber, "翻页后程序序号必须保持全局连续。");
 
-    var clamped = ProgramListPagingRules.GetPage(groups, 99, 20);
+    var clamped = ProgramListPagingRules.GetPage(rows, 99, 20);
     AssertEqual(3, clamped.PageIndex, "越界页码必须夹到最后一页。");
-    AssertEqual(1, ProgramListPagingRules.GetPage(groups, 0, 20).PageIndex, "小于 1 的页码必须回到第一页。");
-    AssertEqual(20, ProgramListPagingRules.GetPage(groups, 1, 0).PageSize, "非正每页数量必须回退为默认值。");
+    AssertEqual(1, ProgramListPagingRules.GetPage(rows, 0, 20).PageIndex, "小于 1 的页码必须回到第一页。");
+    AssertEqual(20, ProgramListPagingRules.GetPage(rows, 1, 0).PageSize, "非正每页数量必须回退为默认值。");
     AssertEqual(1, ProgramListPagingRules.GetPage(Array.Empty<ProgramProductGroupRow>(), 5, 20).PageIndex, "空列表必须停在第一页。");
 
     // 保存或同步后要能继续看到刚编辑的程序，即使它已经不在当前页。
-    var keepPage = ProgramListPagingRules.GetPage(groups, 1, 20, keepProgramId: 5);
+    var keepPage = ProgramListPagingRules.GetPage(rows, 1, 20, keepProgramId: 5);
     AssertEqual(3, keepPage.PageIndex, "需要保持可见的程序必须自动定位到它所在页。");
     AssertTrue(ProgramListPagingRules.ContainsProgram(keepPage.Items, 5), "定位后的页必须包含该程序。");
     AssertFalse(ProgramListPagingRules.ContainsProgram(firstPage.Items, 5), "不在当前页的程序不得被判定为可见。");
-    AssertEqual(45, ProgramListPagingRules.ResolveFirstProgramId(firstPage.Items), "回落选中必须取当前页第一个真实程序。");
+    AssertEqual(45, ProgramListPagingRules.ResolveFirstProgramId(firstPage.Items), "回落选中必须取当前页第一条程序。");
     AssertEqual(0, ProgramListPagingRules.ResolveFirstProgramId(Array.Empty<ProgramProductGroupRow>()), "空页没有可回落的程序。");
-
-    // 多程序工号的父行不指向具体程序，回落必须落到它的第一个子行。
-    var grouped = ProgramProductGroupRules.BuildGroups(
-        new List<BizProgram>
-        {
-            new() { Id = 51, ProgramName = "子程序旧", ProductNum = "P-900", SequenceNumber = 1, UpdatedTime = new DateTime(2026, 8, 1) },
-            new() { Id = 52, ProgramName = "子程序新", ProductNum = "P-900", SequenceNumber = 2, UpdatedTime = new DateTime(2026, 8, 2) }
-        },
-        program => "已同步");
-    var groupedPage = ProgramListPagingRules.GetPage(grouped, 1, 20, keepProgramId: 51);
-    AssertEqual(1, groupedPage.PageIndex, "子行程序必须能定位到父行所在页。");
-    AssertTrue(ProgramListPagingRules.ContainsProgram(groupedPage.Items, 51), "父行所在页必须视为包含其子行程序。");
-    AssertEqual(52, ProgramListPagingRules.ResolveFirstProgramId(groupedPage.Items), "父行不指向程序时必须回落到第一个子行。");
 }
 
 static void ProgramManageServiceNoLongerGeneratesProgramFiles()
@@ -14858,11 +14838,16 @@ static void ProgramManageRecipeNameSelectorsBindStationRecipeCodes()
         designerCode.Contains("tlpProgramType.Visible = false;", StringComparison.Ordinal),
         "程序类型行必须在 Designer 中固定隐藏。 ");
     AssertTrue(
-        viewCode.Contains("editorLayout.RowStyles[7]", StringComparison.Ordinal),
-        "双工位切换只能调整工位 2 配方行。 ");
+        viewCode.Contains("editorLayout.GetRow(tlpRecipe2)", StringComparison.Ordinal),
+        "双工位切换必须按工位 2 控件的实际行号调整布局。 ");
     AssertFalse(
-        viewCode.Contains("editorLayout.RowStyles[8]", StringComparison.Ordinal),
-        "双工位切换不得修改已隐藏的程序类型行。 ");
+        viewCode.Contains("editorLayout.RowStyles[7].SizeType", StringComparison.Ordinal),
+        "双工位切换不得隐藏工位 1 配方行。 ");
+    AssertTrue(viewCode.Contains("tlpRecipe1.Visible = true;", StringComparison.Ordinal), "工位 1 配方行必须始终可见。 ");
+    AssertTrue(designerCode.Contains("editorLayout.Controls.Add(tlpRecipe1, 0, 7);", StringComparison.Ordinal)
+        && designerCode.Contains("editorLayout.Controls.Add(tlpRecipe2, 0, 8);", StringComparison.Ordinal),
+        "新增焊点数量后两个配方行必须绑定到独立的连续行。 ");
+    AssertEqual(9, CountDesignerAutoSizeRows(designerCode, "editorLayout"), "当前状态和八个可见编辑字段必须使用自适应行高。 ");
     AssertTrue(viewCode.Contains("RecipeSelectionKind.NotApplicable", StringComparison.Ordinal), "双工位下拉必须提供不适用状态。");
     AssertTrue(viewCode.Contains("RecipeSelectionKind.MissingExisting", StringComparison.Ordinal), "历史失效关联必须使用不暴露数字的状态项。");
     AssertTrue(viewCode.Contains("select.List = true;", StringComparison.Ordinal), "配方选择器必须始终保持列表模式。");

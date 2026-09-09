@@ -3,21 +3,18 @@ using AutoWeldSystem.Core.Entities;
 namespace AutoWeldSystem.Core.Production;
 
 /// <summary>
-/// 程序管理列表的产品工号分组规则。
-/// 同一产品工号下可存在多个程序（靠流水号区分），列表按工号去重后一行一工号；
-/// 工号下有多个程序时才展开成子行，只有一个程序时直接把该程序显示在工号行上，
-/// 避免为单程序工号也摆一层空壳父节点。
-/// 排序按更新时间倒序：现场改完程序马上要在列表顶部找到它。
+/// 程序管理列表的平铺行规则。
+/// 每个程序独占一行，产品工号重复显示；排序按更新时间和本地 ID 倒序。
 /// </summary>
 public static class ProgramProductGroupRules
 {
     /// <summary>
-    /// 按产品工号对本地程序分组，生成可直接绑定树形表格的行集合。
+    /// 将本地程序转换为可直接绑定普通表格的行集合。
     /// </summary>
     /// <param name="programs">本地程序记录。</param>
-    /// <param name="describeProgram">生成程序行摘要文本的回调，用于承载同步状态等需要本地化的内容。</param>
-    /// <returns>按组内最新更新时间倒序排列的分组行；工号为空的程序不参与分组。</returns>
-    public static IReadOnlyList<ProgramProductGroupRow> BuildGroups(
+    /// <param name="resolveSyncStatus">生成同步状态文本的回调。</param>
+    /// <returns>按更新时间全局倒序排列的程序行；工号为空的程序不参与列表。</returns>
+    public static IReadOnlyList<ProgramProductGroupRow> BuildRows(
         IEnumerable<BizProgram> programs,
         Func<BizProgram, string> resolveSyncStatus)
     {
@@ -26,111 +23,56 @@ public static class ProgramProductGroupRules
 
         return programs
             .Where(program => !string.IsNullOrWhiteSpace(program.ProductNum))
-            .GroupBy(program => Normalize(program.ProductNum), StringComparer.OrdinalIgnoreCase)
-            // 工号行按组内最新更新时间倒序；时间相同再按工号排，保证顺序稳定可复现。
-            .OrderByDescending(group => group.Max(program => program.UpdatedTime))
-            .ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
-            .Select((group, index) => BuildGroup(group, resolveSyncStatus, index + 1))
-            .ToList();
-    }
-
-    private static ProgramProductGroupRow BuildGroup(
-        IGrouping<string, BizProgram> group,
-        Func<BizProgram, string> resolveSyncStatus,
-        int serialNumber)
-    {
-        // 同一工号大小写不一致时取序数最小的写法，保证显示文本稳定可按 Ordinal 回查。
-        var productNum = group
-            .Select(program => Normalize(program.ProductNum))
-            .OrderBy(value => value, StringComparer.Ordinal)
-            .First();
-        // 子行同样按更新时间倒序，最近改过的程序排在工号下第一条。
-        var ordered = group
             .OrderByDescending(program => program.UpdatedTime)
             .ThenByDescending(program => program.Id)
-            .ToList();
-
-        // 单程序工号不再多套一层父节点，直接把该程序摊平到工号行上。
-        if (ordered.Count == 1)
-        {
-            return new ProgramProductGroupRow
+            .Select((program, index) => new ProgramProductGroupRow
             {
-                SerialNumber = serialNumber,
-                ProductNum = productNum,
-                ProgramId = ordered[0].Id,
-                ProgramName = ordered[0].ProgramName,
-                SyncStatus = resolveSyncStatus(ordered[0]),
-                UpdatedTime = ordered[0].UpdatedTime
-            };
-        }
-
-        return new ProgramProductGroupRow
-        {
-            SerialNumber = serialNumber,
-            ProductNum = productNum,
-            ProgramId = 0,
-            ProgramName = string.Empty,
-            SyncStatus = string.Empty,
-            UpdatedTime = ordered.Max(program => program.UpdatedTime),
-            Programs = ordered
-                .Select(program => new ProgramProductGroupRow
-                {
-                    SerialNumber = null,
-                    ProductNum = BuildSequenceLabel(program),
-                    ProgramId = program.Id,
-                    ProgramName = program.ProgramName,
-                    SyncStatus = resolveSyncStatus(program),
-                    UpdatedTime = program.UpdatedTime
-                })
-                .ToList()
-        };
+                SerialNumber = index + 1,
+                ProductNum = Normalize(program.ProductNum),
+                ProgramId = program.Id,
+                ProgramName = program.ProgramName,
+                SyncStatus = resolveSyncStatus(program),
+                UpdatedTime = program.UpdatedTime
+            })
+            .ToList();
     }
-
-    private static string BuildSequenceLabel(BizProgram program)
-        => $"#{Math.Max(1, program.SequenceNumber):000}";
 
     private static string Normalize(string? value)
         => string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
 }
 
 /// <summary>
-/// 程序管理列表行。
-/// 顶层行代表一个产品工号；工号下有多个程序时，子行代表其中一个程序。
+/// 程序管理列表行，每个程序独占一行。
 /// </summary>
 public sealed class ProgramProductGroupRow
 {
     /// <summary>
-    /// 当前筛选结果中的产品工号分组序号；子程序行为空。
+    /// 当前筛选结果中的程序连续序号。
     /// </summary>
     public int? SerialNumber { get; init; }
 
     /// <summary>
-    /// 顶层行显示产品工号，子行显示流水号标签。
+    /// 程序所属产品工号。
     /// </summary>
     public string ProductNum { get; init; } = string.Empty;
 
     /// <summary>
-    /// 该行对应的程序本地 ID；多程序工号的父行为 0，表示它本身不指向具体程序。
+    /// 该行对应的程序本地 ID。
     /// </summary>
     public int ProgramId { get; init; }
 
     /// <summary>
-    /// 程序名称；多程序工号的父行为空。
+    /// 程序名称。
     /// </summary>
     public string ProgramName { get; init; } = string.Empty;
 
     /// <summary>
-    /// 本地化后的同步状态；多程序工号的父行为空。
+    /// 本地化后的同步状态。
     /// </summary>
     public string SyncStatus { get; init; } = string.Empty;
 
     /// <summary>
-    /// 该行最近一次更新时间；父行取组内最新。
+    /// 该程序最近一次更新时间。
     /// </summary>
     public DateTime UpdatedTime { get; init; }
-
-    /// <summary>
-    /// 子行集合，供表格树形列绑定。单程序工号为 null，因此不会出现展开箭头。
-    /// </summary>
-    public List<ProgramProductGroupRow>? Programs { get; init; }
 }

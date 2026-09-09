@@ -134,8 +134,6 @@ public partial class ProgramManageView : BaseView
     private void ConfigureGrids()
     {
         TableStyleHelper.ApplyAntdTable(tablePrograms);
-        // 折叠展示，避免一次铺开所有程序占满列表。
-        tablePrograms.DefaultExpand = false;
         ConfigureProgramColumns();
 
         TableStyleHelper.ApplyAntdTable(tableProgramContent);
@@ -148,14 +146,13 @@ public partial class ProgramManageView : BaseView
 
     /// <summary>
     /// 配置程序列表列。
-    /// 工号列为树形列：同工号有多个程序时展开成子行，只有一个程序时不显示展开箭头。
+    /// 每个程序独占一行，产品工号重复显示。
     /// </summary>
     private void ConfigureProgramColumns()
     {
         var productNumColumn = new AntdUI.Column(
             nameof(ProgramProductGroupRow.ProductNum),
             _localizer.GetString(TextKeys.Grid.ProgramProductNum));
-        productNumColumn.SetTree(nameof(ProgramProductGroupRow.Programs));
 
         tablePrograms.Columns = new AntdUI.ColumnCollection
         {
@@ -188,10 +185,9 @@ public partial class ProgramManageView : BaseView
         // InputQuery 的搜索与刷新共用一个事件：带关键字为搜索，空关键字为刷新。
         queryPrograms.QueryClick += ProgramQuery_QueryClickAsync;
         programPagination.ValueChanged += ProgramPagination_ValueChanged;
-        // 父行（多程序工号）不指向具体程序，点击只展开子行，不切换编辑对象。
         tablePrograms.CellClick += (_, e) =>
         {
-            if (e.Record is ProgramProductGroupRow row && row.ProgramId > 0)
+            if (e.Record is ProgramProductGroupRow row)
             {
                 BindProgramById(row.ProgramId);
             }
@@ -351,10 +347,10 @@ public partial class ProgramManageView : BaseView
     }
 
     /// <summary>
-    /// 绑定筛选结果中的指定页。设备可存放上百个程序，列表按产品工号分组行分页显示。
+    /// 绑定筛选结果中的指定页。设备可存放上百个程序，列表按程序行分页显示。
     /// </summary>
     /// <param name="requestedPageIndex">目标页码；越界由分页规则夹到有效范围。</param>
-    /// <param name="requestedPageSize">每页显示的产品工号分组数量。</param>
+    /// <param name="requestedPageSize">每页显示的程序行数量。</param>
     /// <param name="keepProgramId">需要保持可见的程序本地 ID；命中时自动翻到它所在页。</param>
     /// <param name="rebindSelection">是否按当前页重新绑定右侧编辑区。</param>
     private void BindProgramPage(
@@ -363,8 +359,8 @@ public partial class ProgramManageView : BaseView
         int keepProgramId,
         bool rebindSelection)
     {
-        var groups = ProgramProductGroupRules.BuildGroups(_filteredPrograms, program => GetSyncStatusText(program.SyncStatus));
-        var page = ProgramListPagingRules.GetPage(groups, requestedPageIndex, requestedPageSize, keepProgramId);
+        var rows = ProgramProductGroupRules.BuildRows(_filteredPrograms, program => GetSyncStatusText(program.SyncStatus));
+        var page = ProgramListPagingRules.GetPage(rows, requestedPageIndex, requestedPageSize, keepProgramId);
 
         _updatingProgramPagination = true;
         try
@@ -847,8 +843,8 @@ public partial class ProgramManageView : BaseView
                 request.ProductNum,
                 request.ComponentCode,
                 request.SequenceNumber,
-                inputDescription.Text.Trim())
-            : inputProgramName.Text.Trim();
+                inputDescription.Text)
+            : inputProgramName.Text;
         request.ProgramType = cmbProgramType.SelectedIndex == 1 ? "1" : "0";
         tableProgramContent.EditModeClose();
         if (!ProgramContentJsonRules.TryToJson(_programContentRows, out var programContentJson, out var errorMessage))
@@ -870,7 +866,7 @@ public partial class ProgramManageView : BaseView
         request.RobotJobName = string.Empty;
         request.CycleTimeSeconds = 0m;
         request.MesRemark = ResolveEditedMesRemark(GetEditingProgram());
-        request.LocalRemark = inputDescription.Text.Trim();
+        request.LocalRemark = inputDescription.Text;
         return true;
     }
 
@@ -1003,9 +999,12 @@ public partial class ProgramManageView : BaseView
     private void ApplyStationRecipeLayout(bool enableDualStation)
     {
         _enableDualStation = enableDualStation;
+        tlpRecipe1.Visible = true;
         tlpRecipe2.Visible = enableDualStation;
-        editorLayout.RowStyles[7].SizeType = enableDualStation ? SizeType.AutoSize : SizeType.Absolute;
-        editorLayout.RowStyles[7].Height = 0F;
+        var station2RecipeRow = editorLayout.GetRow(tlpRecipe2);
+        editorLayout.RowStyles[station2RecipeRow].SizeType = enableDualStation ? SizeType.AutoSize : SizeType.Absolute;
+        editorLayout.RowStyles[station2RecipeRow].Height = 0F;
+        editorLayout.PerformLayout();
     }
 
     private void BindRecipeNameOptions(
@@ -1266,7 +1265,7 @@ public partial class ProgramManageView : BaseView
             inputProductNum.Text.Trim(),
             inputComponentCode.Text.Trim(),
             sequenceNumber,
-            inputDescription.Text.Trim());
+            inputDescription.Text);
     }
 
     private void ShowInfo(string messageKey, params object[] args)
