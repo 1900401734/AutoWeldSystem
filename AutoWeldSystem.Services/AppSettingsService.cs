@@ -152,6 +152,7 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
         settings.JudgementDecimalPlaces = OutputNumericFormat.NormalizeDecimalPlaces(settings.JudgementDecimalPlaces);
         settings.ProcessParameterDeviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
         settings.RealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Normalize(settings.RealtimePointNumberSource);
+        settings.ProductionCountSource = ProductionConstants.ProductionCountSources.Normalize(settings.ProductionCountSource);
         settings.DeviceBaseUrl = DeviceApiEndpointRules.NormalizeBaseUrl(settings.DeviceBaseUrl);
         settings.MesBaseUrl = DeviceApiEndpointRules.NormalizeBaseUrl(settings.MesBaseUrl);
         NormalizeMesEndpointSettings(settings);

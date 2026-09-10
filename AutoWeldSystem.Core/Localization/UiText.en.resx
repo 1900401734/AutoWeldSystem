@@ -2490,4 +2490,67 @@ This also removes {3} collection record(s) and {4} report file(s) including the 
   <data name="system.message.realtime_point_number_source_locked" xml:space="preserve">
     <value>An unfinished task exists. Complete it before changing the realtime number source.</value>
   </data>
+  <data name="system.label.production_count_source" xml:space="preserve">
+    <value>Production count source</value>
+  </data>
+  <data name="system.option.production_count_source.plc" xml:space="preserve">
+    <value>PLC counters</value>
+  </data>
+  <data name="system.option.production_count_source.program" xml:space="preserve">
+    <value>Counted by program</value>
+  </data>
+  <data name="system.message.production_count_source_locked" xml:space="preserve">
+    <value>An unfinished task exists. Complete it before changing the production count source.</value>
+  </data>
+  <data name="monitor.history_menu.mark_test" xml:space="preserve">
+    <value>Mark as test weld</value>
+  </data>
+  <data name="monitor.history_menu.unmark_test" xml:space="preserve">
+    <value>Unmark test weld</value>
+  </data>
+  <data name="monitor.history_menu.reweld" xml:space="preserve">
+    <value>Reweld</value>
+  </data>
+  <data name="monitor.history_menu.retest" xml:space="preserve">
+    <value>Retest</value>
+  </data>
+  <data name="monitor.history_menu.cancel_reweld" xml:space="preserve">
+    <value>Cancel reweld</value>
+  </data>
+  <data name="monitor.history_menu.cancel_retest" xml:space="preserve">
+    <value>Cancel retest</value>
+  </data>
+  <data name="monitor.history_menu.delete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="monitor.history_menu.restore" xml:space="preserve">
+    <value>Restore</value>
+  </data>
+  <data name="monitor.history_menu.status_deleted" xml:space="preserve">
+    <value>Deleted</value>
+  </data>
+  <data name="monitor.history_menu.status_reweld_pending" xml:space="preserve">
+    <value>Reweld pending</value>
+  </data>
+  <data name="monitor.history_menu.status_retest_pending" xml:space="preserve">
+    <value>Retest pending</value>
+  </data>
+  <data name="monitor.runtime.product_history_action_completed" xml:space="preserve">
+    <value>Product history updated.</value>
+  </data>
+  <data name="monitor.error.product_history_action_failed" xml:space="preserve">
+    <value>Product history action failed.</value>
+  </data>
+  <data name="monitor.dialog.delete_product_title" xml:space="preserve">
+    <value>Delete Product</value>
+  </data>
+  <data name="monitor.dialog.delete_product_prompt" xml:space="preserve">
+    <value>Delete product {0}? It will no longer be uploaded, reported, or counted; its number is not reused. Use "Restore" to undo.</value>
+  </data>
+  <data name="permission.tab.data.collection_data" xml:space="preserve">
+    <value>Collection Data Tab</value>
+  </data>
+  <data name="data.column.is_deleted" xml:space="preserve">
+    <value>Deleted</value>
+  </data>
 </root>

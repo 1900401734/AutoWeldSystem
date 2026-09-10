@@ -567,9 +567,11 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             Spec = task.Spec ?? string.Empty,
             ProductNo = first.ProductNo,
             ProductModel = task.ProductModel ?? string.Empty,
-            ProductResult = ResolveProductResult(orderedRecords),
+            ProductResult = ProductResultResolver.Resolve(orderedRecords),
             // 产品级标记：同一产品的焊点行由标记入口一起改写，任一行为真即视为试焊件。
             IsTest = orderedRecords.Any(record => record.IsTest),
+            // 软删同样是产品级标记；中心侧据此从当日计数与可见报表剔除该产品。
+            IsDeleted = orderedRecords.Any(record => record.IsDeleted),
             StartTime = task.StartTime,
             EndTime = task.EndTime,
             QualifiedQty = task.QualifiedQty,
@@ -636,44 +638,6 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
         return stationNo == 2
             ? names.Station2
             : names.Station1;
-    }
-
-    /// <summary>
-    /// 产品结果优先读取采集时已固化的产品级字段；旧记录为空时回退 RawDataJson.product_result。
-    /// PLC读取模式不根据焊点 TestResult 重新推算产品结果；程序计算模式已在采集时写入该字段。
-    /// </summary>
-    private static string ResolveProductResult(IReadOnlyList<BizWeldPointRecord> records)
-    {
-        var persistedResult = records
-            .Select(record => record.ProductResult)
-            .FirstOrDefault(result => !string.IsNullOrWhiteSpace(result));
-        if (!string.IsNullOrWhiteSpace(persistedResult))
-        {
-            return TestResultRules.Normalize(persistedResult);
-        }
-
-        foreach (var record in records)
-        {
-            if (string.IsNullOrWhiteSpace(record.RawDataJson))
-            {
-                continue;
-            }
-
-            try
-            {
-                using var document = JsonDocument.Parse(record.RawDataJson);
-                if (document.RootElement.TryGetProperty(CenterProductReportFormat.ColumnProductResult, out var value))
-                {
-                    return TestResultRules.Normalize(value.ToString());
-                }
-            }
-            catch (JsonException)
-            {
-                // 历史原始数据损坏时保持 Unknown，不能退回焊点结果聚合。
-            }
-        }
-
-        return ProductionConstants.TestResults.Unknown;
     }
 
     /// <summary>

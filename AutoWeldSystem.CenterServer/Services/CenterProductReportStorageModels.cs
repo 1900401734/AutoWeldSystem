@@ -162,6 +162,11 @@ internal sealed class CenterProductReportStoredRow
     /// 产品级试焊件标记。旧报表缺少该列时读到空串，按未标记处理，不做一次性迁移。
     /// </summary>
     public bool IsTest { get; set; }
+
+    /// <summary>
+    /// 产品级作废标记。设备端软删后重推一次；为真的行不进当日计数与可见页。旧报表缺该列按未作废处理。
+    /// </summary>
+    public bool IsDeleted { get; set; }
     public int SequenceNo { get; set; }
     public string TouchNo { get; set; } = string.Empty;
     public string TestResult { get; set; } = string.Empty;
@@ -199,6 +204,7 @@ internal sealed class CenterProductReportStoredRow
             ProductModel = request.ProductModel.Trim(),
             ProductResult = request.ProductResult.Trim(),
             IsTest = request.IsTest,
+            IsDeleted = request.IsDeleted,
             SequenceNo = point.SequenceNo,
             TouchNo = point.TouchNo.Trim(),
             TestResult = point.TestResult.Trim(),
@@ -249,7 +255,8 @@ internal sealed class CenterProductReportStoredRow
             [CenterProductReportDataColumns.CollectedAt] = CollectedAt.ToString("O"),
             [CenterProductReportDataColumns.CompletedAt] = CompletedAt.ToString("O"),
             [CenterProductReportDataColumns.RawDataJson] = RawDataJson,
-            [CenterProductReportDataColumns.ReportColumnKeysJson] = ReportColumnKeysJson
+            [CenterProductReportDataColumns.ReportColumnKeysJson] = ReportColumnKeysJson,
+            [CenterProductReportDataColumns.IsDeleted] = IsDeleted.ToString()
         };
     }
 
@@ -279,7 +286,8 @@ internal sealed class CenterProductReportStoredRow
             CollectedAt = GetDate(worksheet, rowNumber, CenterProductReportDataColumns.CollectedAt),
             CompletedAt = GetDate(worksheet, rowNumber, CenterProductReportDataColumns.CompletedAt),
             RawDataJson = Get(worksheet, rowNumber, CenterProductReportDataColumns.RawDataJson),
-            ReportColumnKeysJson = Get(worksheet, rowNumber, CenterProductReportDataColumns.ReportColumnKeysJson)
+            ReportColumnKeysJson = Get(worksheet, rowNumber, CenterProductReportDataColumns.ReportColumnKeysJson),
+            IsDeleted = GetBool(worksheet, rowNumber, CenterProductReportDataColumns.IsDeleted)
         };
     }
 
@@ -333,12 +341,17 @@ internal static class CenterProductReportDataColumns
     /// </summary>
     public const string IsTest = "IsTest";
 
+    /// <summary>
+    /// 同样追加在末尾：作废标记，旧文件读空串按未作废。
+    /// </summary>
+    public const string IsDeleted = "IsDeleted";
+
     public static readonly IReadOnlyList<string> All =
     [
         DeviceId, DeviceName, SystemType, StationNo, StationName, WorkOrder, Batch, Quantity,
         PartName, ProcessNo, OperatorNo, ProductJobNo, ProductNo, ProductModel, ProductResult,
         SequenceNo, TouchNo, TestResult, CollectedAt, CompletedAt, RawDataJson, ReportColumnKeysJson,
-        IsTest
+        IsTest, IsDeleted
     ];
 
     public static int IndexOf(string columnName)

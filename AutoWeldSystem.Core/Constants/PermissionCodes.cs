@@ -160,6 +160,14 @@ public static class PermissionCodes
             ];
         }
 
+        /// <summary>
+        /// 数据管理页页签。采集数据页签展示原始焊点行（含已删除产品），仅供开发者排障，客户角色默认不可见。
+        /// </summary>
+        public static class Data
+        {
+            public const string CollectionData = "tab.data.collection-data";
+        }
+
         public static class Log
         {
             public const string MesInteraction = "tab.log.mes-interaction";

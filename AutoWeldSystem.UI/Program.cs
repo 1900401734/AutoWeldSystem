@@ -88,6 +88,7 @@ public static class Program
                     services.AddSingleton<IProductCycleCollectionService, ProductCycleCollectionService>();
                     services.AddSingleton<IProductRealtimePreviewService, ProductRealtimePreviewService>();
                     services.AddSingleton<IProductHistoryService, ProductHistoryService>();
+                    services.AddSingleton<IProductionCountService, ProductionCountService>();
                     services.AddSingleton<IWeldPointUploadCoordinatorService, WeldPointUploadCoordinatorService>();
                     services.AddSingleton<IDeviceStatusService, DeviceStatusService>();
                     services.AddSingleton<IRuntimeTipStateService, RuntimeTipStateService>();

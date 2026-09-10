@@ -8,27 +8,27 @@ namespace AutoWeldSystem.Core.DTOs.DataManagement;
 public sealed class DataHistoryQueryCriteria
 {
     /// <summary>
-    /// ²éÑ¯Ìõ¼þ£º²úÆ·¹¤ºÅ
+    /// ï¿½ï¿½Ñ¯ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ·ï¿½ï¿½ï¿½ï¿½
     /// </summary>
     public string ProductNum { get; init; } = string.Empty;
 
     /// <summary>
-    /// ²éÑ¯Ìõ¼þ£ºÅú´ÎºÅ
+    /// ï¿½ï¿½Ñ¯ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îºï¿½
     /// </summary>
     public string Batch { get; init; } = string.Empty;
 
     /// <summary>
-    /// ²éÑ¯Ìõ¼þ£º¹¤µ¥ºÅ/Á÷×ª¿¨ºÅ
+    /// ï¿½ï¿½Ñ¯ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½/ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½
     /// </summary>
     public string SN { get; init; } = string.Empty;
 
     /// <summary>
-    /// ²éÑ¯Ìõ¼þ£ºÈÕÆÚ·¶Î§ - ¿ªÊ¼Ê±¼ä
+    /// ï¿½ï¿½Ñ¯ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ú·ï¿½Î§ - ï¿½ï¿½Ê¼Ê±ï¿½ï¿½
     /// </summary>
     public DateTime StartTime { get; init; }
 
     /// <summary>
-    /// ²éÑ¯Ìõ¼þ£ºÈÕÆÚ·¶Î§ - ½áÊøÊ±¼ä
+    /// ï¿½ï¿½Ñ¯ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ú·ï¿½Î§ - ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½
     /// </summary>
     public DateTime EndTime { get; init; }
 }
@@ -39,27 +39,27 @@ public sealed class DataHistoryQueryCriteria
 public sealed class DataHistoryWorkOrderRow
 {
     /// <summary>
-    /// ÈÎÎñID
+    /// ï¿½ï¿½ï¿½ï¿½ID
     /// </summary>
     public int TaskId { get; init; }
 
     /// <summary>
-    /// ¹¤Î»ºÅ
+    /// ï¿½ï¿½Î»ï¿½ï¿½
     /// </summary>
     public int StationNo { get; init; }
 
     /// <summary>
-    /// ¹¤µ¥ºÅ/Á÷×ª¿¨ºÅ
+    /// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½/ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½
     /// </summary>
     public string WorkOrderId { get; init; } = string.Empty;
 
     /// <summary>
-    /// ²úÆ·±àºÅ
+    /// ï¿½ï¿½Æ·ï¿½ï¿½ï¿½
     /// </summary>
     public string ProductNum { get; init; } = string.Empty;
 
     /// <summary>
-    /// Åú´ÎºÅ
+    /// ï¿½ï¿½ï¿½Îºï¿½
     /// </summary>
     /// </summary>
     public string Batch { get; init; } = string.Empty;
@@ -214,6 +214,8 @@ public sealed class DataHistoryCollectionRow
     public string ProductResult { get; init; } = ProductionConstants.TestResults.Unknown;
 
     public bool IsTest { get; init; }
+
+    public bool IsDeleted { get; init; }
 
     public bool ProductCompleted { get; init; }
 

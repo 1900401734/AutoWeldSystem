@@ -86,6 +86,7 @@ public partial class DataManageView : BaseView
         ApplyLocalizedTexts();
         ApplyDefaultSplitterLayout();
         ApplyDeletePermission();
+        ApplyTabPermissions();
 
         // 视图被 MainForm 缓存，切换用户后不会重新绑定权限，必须自行复算删除按钮
         GlobalContext.SessionChanged += GlobalContext_SessionChanged;
@@ -320,6 +321,7 @@ public partial class DataManageView : BaseView
         ConfigureColumn(colCollectionTouchNo, nameof(DataHistoryCollectionRow.TouchNo));
         ConfigureColumn(colCollectionResult, nameof(DataHistoryCollectionRow.TestResult));
         ConfigureColumn(colCollectionIsTest, nameof(DataHistoryCollectionRow.IsTest));
+        ConfigureColumn(colCollectionIsDeleted, nameof(DataHistoryCollectionRow.IsDeleted));
         ConfigureColumn(colCollectionCompleted, nameof(DataHistoryCollectionRow.ProductCompleted));
         ConfigureColumn(colCollectionUploadStatus, nameof(DataHistoryCollectionRow.UploadStatus));
         ConfigureColumn(colCollectionOperator, nameof(DataHistoryCollectionRow.OperatorNo));
@@ -334,6 +336,7 @@ public partial class DataManageView : BaseView
                 colCollectionTouchNo,
                 colCollectionResult,
                 colCollectionIsTest,
+                colCollectionIsDeleted,
                 colCollectionCompleted,
                 colCollectionUploadStatus,
                 colCollectionOperator,
@@ -485,11 +488,39 @@ public partial class DataManageView : BaseView
 
         if (InvokeRequired)
         {
-            BeginInvoke(new Action(ApplyDeletePermission));
+            BeginInvoke(new Action(() =>
+            {
+                ApplyDeletePermission();
+                ApplyTabPermissions();
+            }));
             return;
         }
 
         ApplyDeletePermission();
+        ApplyTabPermissions();
+    }
+
+    /// <summary>
+    /// 采集数据页签展示原始焊点行（含已删除产品），只对拥有该页签权限的角色挂载；
+    /// Designer 中不挂载，运行时按权限决定，模式与待上传数据页一致。
+    /// </summary>
+    private void ApplyTabPermissions()
+    {
+        if (_disposing || IsDisposed || Disposing)
+        {
+            return;
+        }
+
+        var canViewCollection = GlobalContext.HasPermission(PermissionCodes.Tabs.Data.CollectionData);
+        var mounted = detailTabs.TabPages.Contains(tabCollectionData);
+        if (canViewCollection && !mounted)
+        {
+            detailTabs.TabPages.Add(tabCollectionData);
+        }
+        else if (!canViewCollection && mounted)
+        {
+            detailTabs.TabPages.Remove(tabCollectionData);
+        }
     }
 
     /// <summary>
@@ -1333,6 +1364,7 @@ public partial class DataManageView : BaseView
         colCollectionTouchNo.HeaderText = profile.PointNoHeader;
         colCollectionResult.HeaderText = profile.PointResultHeader;
         colCollectionIsTest.HeaderText = T(TextKeys.DataManage.ColumnIsTest);
+        colCollectionIsDeleted.HeaderText = T(TextKeys.DataManage.ColumnIsDeleted);
         colCollectionCompleted.HeaderText = T(TextKeys.DataManage.ColumnProductCompleted);
         colCollectionUploadStatus.HeaderText = T(TextKeys.DataManage.ColumnUploadStatus);
         colCollectionOperator.HeaderText = T(TextKeys.DataManage.ColumnOperator);

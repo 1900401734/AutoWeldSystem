@@ -7,7 +7,17 @@ namespace AutoWeldSystem.Core.Entities;
 /// Weld point collection record.
 /// One row represents one weld start/end cycle for a specific ProductNumber and TouchNo.
 /// </summary>
+/// <remarks>
+/// 自然键唯一索引：程序自算产品编号依赖“取库中最大值+1”，没有索引兜底时撞号会被静默跳过丢件，
+/// 因此在数据库层强制唯一。升级前需确认旧库无重复行，否则 CodeFirst 建索引会失败。
+/// </remarks>
 [SugarTable("Biz_WeldPointRecord", TableDescription = "焊点采集记录表")]
+[SugarIndex("unique_weldpointrecord_naturalkey",
+    nameof(TaskId), OrderByType.Asc,
+    nameof(StationNo), OrderByType.Asc,
+    nameof(ProductNo), OrderByType.Asc,
+    nameof(TouchNo), OrderByType.Asc,
+    true)]
 public class BizWeldPointRecord
 {
     [SugarColumn(IsPrimaryKey = true, IsIdentity = true)]
@@ -64,6 +74,20 @@ public class BizWeldPointRecord
     /// </summary>
     [SugarColumn(ColumnDescription = "是否试焊件")]
     public bool IsTest { get; set; }
+
+    /// <summary>
+    /// 产品级软删标记：已删除产品不再进入上传、报表和产量统计，但保留行以便撤销且不回收产品编号。
+    /// 与 <see cref="IsTest"/> 同模式，冗余存到每条焊点行，读侧用 Any 聚合。
+    /// </summary>
+    [SugarColumn(ColumnDescription = "产品已删除")]
+    public bool IsDeleted { get; set; }
+
+    /// <summary>
+    /// 产品级重焊/重测预约标记：下一次采集覆盖该产品而非追加新品，覆盖后自动清除。
+    /// 同任务同工位最多只有一件待覆盖产品。
+    /// </summary>
+    [SugarColumn(ColumnDescription = "待重焊覆盖")]
+    public bool IsReweldPending { get; set; }
 
     #endregion
 

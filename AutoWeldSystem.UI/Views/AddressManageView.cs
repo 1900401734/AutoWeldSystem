@@ -2711,7 +2711,8 @@ public partial class AddressManageView : BaseView
             config.ShowTestFlagInHistory ??= true;
             config.ProductBase = NormalizeRequiredText(config.ProductBase, "产品头基地址不能为空。");
             config.ProductLen = Math.Max(1, config.ProductLen);
-            config.ProductNoExpr = NormalizeRequiredText(config.ProductNoExpr, "产品编号偏移不能为空。");
+            // 程序计数模式不从 PLC 读产品编号，该表达式改为可选。
+            config.ProductNoExpr = NormalizeNullableText(config.ProductNoExpr) ?? string.Empty;
             config.ProductResultExpr = NormalizeRequiredText(config.ProductResultExpr, "产品结果偏移不能为空。");
             config.ActualTouchCountExpr = NormalizeNullableText(config.ActualTouchCountExpr);
             config.PresetTouchCountExpr = NormalizeNullableText(config.PresetTouchCountExpr);

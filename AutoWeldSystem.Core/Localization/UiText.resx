@@ -2491,4 +2491,67 @@
   <data name="system.message.realtime_point_number_source_locked" xml:space="preserve">
     <value>存在未完工任务，不能切换实时编号来源，请先完工后再调整。</value>
   </data>
+  <data name="system.label.production_count_source" xml:space="preserve">
+    <value>产量统计来源</value>
+  </data>
+  <data name="system.option.production_count_source.plc" xml:space="preserve">
+    <value>PLC计数</value>
+  </data>
+  <data name="system.option.production_count_source.program" xml:space="preserve">
+    <value>程序统计</value>
+  </data>
+  <data name="system.message.production_count_source_locked" xml:space="preserve">
+    <value>存在未完工任务，不能切换产量统计来源，请先完工后再调整。</value>
+  </data>
+  <data name="monitor.history_menu.mark_test" xml:space="preserve">
+    <value>标记为试焊件</value>
+  </data>
+  <data name="monitor.history_menu.unmark_test" xml:space="preserve">
+    <value>取消试焊件</value>
+  </data>
+  <data name="monitor.history_menu.reweld" xml:space="preserve">
+    <value>重焊</value>
+  </data>
+  <data name="monitor.history_menu.retest" xml:space="preserve">
+    <value>重测</value>
+  </data>
+  <data name="monitor.history_menu.cancel_reweld" xml:space="preserve">
+    <value>取消重焊</value>
+  </data>
+  <data name="monitor.history_menu.cancel_retest" xml:space="preserve">
+    <value>取消重测</value>
+  </data>
+  <data name="monitor.history_menu.delete" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="monitor.history_menu.restore" xml:space="preserve">
+    <value>撤销删除</value>
+  </data>
+  <data name="monitor.history_menu.status_deleted" xml:space="preserve">
+    <value>已删除</value>
+  </data>
+  <data name="monitor.history_menu.status_reweld_pending" xml:space="preserve">
+    <value>待重焊</value>
+  </data>
+  <data name="monitor.history_menu.status_retest_pending" xml:space="preserve">
+    <value>待重测</value>
+  </data>
+  <data name="monitor.runtime.product_history_action_completed" xml:space="preserve">
+    <value>产品历史已更新</value>
+  </data>
+  <data name="monitor.error.product_history_action_failed" xml:space="preserve">
+    <value>产品历史操作失败</value>
+  </data>
+  <data name="monitor.dialog.delete_product_title" xml:space="preserve">
+    <value>删除产品</value>
+  </data>
+  <data name="monitor.dialog.delete_product_prompt" xml:space="preserve">
+    <value>确定删除产品 {0} 吗？删除后该产品不再上传、不进入报表与产量统计，产品编号不会被复用；可通过右键“撤销删除”恢复。</value>
+  </data>
+  <data name="permission.tab.data.collection_data" xml:space="preserve">
+    <value>采集数据页签</value>
+  </data>
+  <data name="data.column.is_deleted" xml:space="preserve">
+    <value>已删除</value>
+  </data>
 </root>

@@ -84,6 +84,9 @@
             tlpRealtimePointNumberSource = new TableLayoutPanel();
             lblRealtimePointNumberSource = new AntdUI.Label();
             selectRealtimePointNumberSource = new AntdUI.Select();
+            tlpProductionCountSource = new TableLayoutPanel();
+            lblProductionCountSource = new AntdUI.Label();
+            selectProductionCountSource = new AntdUI.Select();
             stationDisplayNameLayout = new TableLayoutPanel();
             lblStation1DisplayName = new AntdUI.Label();
             inputStation1DisplayName = new AntdUI.Input();
@@ -213,6 +216,7 @@
             grpProductionConfig.SuspendLayout();
             tlpProductConfig.SuspendLayout();
             tlpRealtimePointNumberSource.SuspendLayout();
+            tlpProductionCountSource.SuspendLayout();
             stationDisplayNameLayout.SuspendLayout();
             tlpUploadConfig.SuspendLayout();
             tableLayoutPanel2.SuspendLayout();
@@ -1148,6 +1152,7 @@
             tlpProductConfig.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             tlpProductConfig.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             tlpProductConfig.Controls.Add(tlpRealtimePointNumberSource, 0, 5);
+            tlpProductConfig.Controls.Add(tlpProductionCountSource, 0, 6);
             tlpProductConfig.Controls.Add(stationDisplayNameLayout, 0, 2);
             tlpProductConfig.Controls.Add(tlpUploadConfig, 0, 3);
             tlpProductConfig.Controls.Add(chkEnableDualStation, 0, 0);
@@ -1159,15 +1164,16 @@
             tlpProductConfig.Location = new Point(2, 23);
             tlpProductConfig.Margin = new Padding(2, 3, 2, 3);
             tlpProductConfig.Name = "tlpProductConfig";
-            tlpProductConfig.RowCount = 6;
+            tlpProductConfig.RowCount = 7;
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
             tlpProductConfig.RowStyles.Add(new RowStyle());
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
             tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
+            tlpProductConfig.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
             tlpProductConfig.RowStyles.Add(new RowStyle());
-            tlpProductConfig.Size = new Size(409, 359);
+            tlpProductConfig.Size = new Size(409, 399);
             tlpProductConfig.TabIndex = 0;
             // 
             // tlpRealtimePointNumberSource
@@ -1208,6 +1214,45 @@
             selectRealtimePointNumberSource.Name = "selectRealtimePointNumberSource";
             selectRealtimePointNumberSource.Size = new Size(275, 40);
             selectRealtimePointNumberSource.TabIndex = 1;
+            //
+            // tlpProductionCountSource
+            //
+            tlpProductionCountSource.ColumnCount = 2;
+            tlpProductConfig.SetColumnSpan(tlpProductionCountSource, 2);
+            tlpProductionCountSource.ColumnStyles.Add(new ColumnStyle());
+            tlpProductionCountSource.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            tlpProductionCountSource.Controls.Add(lblProductionCountSource, 0, 0);
+            tlpProductionCountSource.Controls.Add(selectProductionCountSource, 1, 0);
+            tlpProductionCountSource.Dock = DockStyle.Fill;
+            tlpProductionCountSource.Location = new Point(0, 279);
+            tlpProductionCountSource.Margin = new Padding(0);
+            tlpProductionCountSource.Name = "tlpProductionCountSource";
+            tlpProductionCountSource.RowCount = 1;
+            tlpProductionCountSource.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            tlpProductionCountSource.Size = new Size(409, 40);
+            tlpProductionCountSource.TabIndex = 10;
+            //
+            // lblProductionCountSource
+            //
+            lblProductionCountSource.AutoSizeMode = AntdUI.TAutoSize.Width;
+            lblProductionCountSource.Dock = DockStyle.Fill;
+            lblProductionCountSource.Location = new Point(0, 0);
+            lblProductionCountSource.Margin = new Padding(0);
+            lblProductionCountSource.Name = "lblProductionCountSource";
+            lblProductionCountSource.Padding = new Padding(8, 0, 0, 0);
+            lblProductionCountSource.Size = new Size(134, 40);
+            lblProductionCountSource.TabIndex = 0;
+            lblProductionCountSource.Text = "产量统计来源";
+            //
+            // selectProductionCountSource
+            //
+            selectProductionCountSource.Dock = DockStyle.Fill;
+            selectProductionCountSource.Location = new Point(134, 0);
+            selectProductionCountSource.Margin = new Padding(0);
+            selectProductionCountSource.MaxCount = 10;
+            selectProductionCountSource.Name = "selectProductionCountSource";
+            selectProductionCountSource.Size = new Size(275, 40);
+            selectProductionCountSource.TabIndex = 1;
             // 
             // stationDisplayNameLayout
             // 
@@ -2606,6 +2651,8 @@
             tlpProductConfig.PerformLayout();
             tlpRealtimePointNumberSource.ResumeLayout(false);
             tlpRealtimePointNumberSource.PerformLayout();
+            tlpProductionCountSource.ResumeLayout(false);
+            tlpProductionCountSource.PerformLayout();
             stationDisplayNameLayout.ResumeLayout(false);
             stationDisplayNameLayout.PerformLayout();
             tlpUploadConfig.ResumeLayout(false);
@@ -2801,6 +2848,9 @@
         private AntdUI.Select selectProcessParameterDeviceType;
         private TableLayoutPanel tlpRealtimePointNumberSource;
         private AntdUI.Label lblRealtimePointNumberSource;
+        private TableLayoutPanel tlpProductionCountSource;
+        private AntdUI.Label lblProductionCountSource;
+        private AntdUI.Select selectProductionCountSource;
         private AntdUI.Select selectRealtimePointNumberSource;
         private AntdUI.Checkbox chkShowTestFlagInHistory;
         private AntdUI.Checkbox chkEnableDeviceStatusReport;

@@ -49,6 +49,8 @@ public static class ProductRetestRules
     /// <summary>
     /// 将重测采集到的最新值覆盖到已存在的记录上。
     /// 只覆盖测试结果类字段，保留主键与顺序号，使报表、产品历史和上传任务沿用既有产品级自然键。
+    /// 试焊件 <see cref="BizWeldPointRecord.IsTest"/> 是人工标记而非测试结果，必须保留：
+    /// 采集从不写该字段，若随采集值覆盖会把用户已标的试焊件静默清掉。
     /// 同时把上传状态打回待上传：过程参数待上传集合会排除已上传记录，
     /// 不重置状态则重测数据不会重新进入上报流程。
     /// </summary>
@@ -61,13 +63,15 @@ public static class ProductRetestRules
         existing.ProductResult = incoming.ProductResult;
         existing.RawDataJson = incoming.RawDataJson;
         existing.Ts = incoming.Ts;
-        existing.IsTest = incoming.IsTest;
         existing.OperatorNo = incoming.OperatorNo;
         existing.ProductCompleted = incoming.ProductCompleted;
         existing.UploadStatus = ProductionConstants.UploadStatuses.Pending;
         existing.UploadTime = null;
         existing.UploadMessage = null;
         existing.RetryCount = 0;
+        // 覆盖即完成了重焊预约；被覆盖的产品也不可能仍处于已删除态。
+        existing.IsReweldPending = false;
+        existing.IsDeleted = false;
     }
 
     /// <summary>

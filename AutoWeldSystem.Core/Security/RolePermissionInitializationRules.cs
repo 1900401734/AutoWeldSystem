@@ -10,7 +10,8 @@ public static class RolePermissionInitializationRules
 {
     /// <summary>
     /// 生成开发者或管理员首次安装时的默认权限。
-    /// 开发者拥有全部权限，管理员保留原有页面和按钮，但只开放客户默认页签。
+    /// 开发者拥有全部权限，管理员保留原有页面和按钮，但只开放客户默认页签；
+    /// 采集数据页签属开发者排障入口，管理员默认也不开放。
     /// </summary>
     public static IReadOnlyList<string> ResolveElevatedRoleDefaults(
         string? roleCode,
@@ -34,10 +35,17 @@ public static class RolePermissionInitializationRules
         var stateTabCodes = PermissionCodes.Tabs.State.All.ToHashSet(StringComparer.OrdinalIgnoreCase);
         return allCodes
             .Where(code => !stateTabCodes.Contains(code))
+            .Where(code => !IsDeveloperOnly(code))
             .Concat(PermissionCodes.Tabs.State.CustomerDefaults)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
+
+    /// <summary>
+    /// 只对开发者开放的权限码，管理员首装与升级都不自动补给。
+    /// </summary>
+    public static bool IsDeveloperOnly(string? permissionCode)
+        => string.Equals(permissionCode, PermissionCodes.Tabs.Data.CollectionData, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// 只有开发者在每次启动时自动补齐权限，防止覆盖管理员的人工配置。

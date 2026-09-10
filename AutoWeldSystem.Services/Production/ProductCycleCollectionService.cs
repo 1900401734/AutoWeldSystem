@@ -18,6 +18,7 @@ namespace AutoWeldSystem.Services.Production;
 public sealed class ProductCycleCollectionService : IProductCycleCollectionService
 {
     private const string Category = "PLC.ProductCycleCollection";
+    private const string PlcProductNoKey = "plc_product_no";
 
     private readonly SqlSugarDbContext _dbContext;
     private readonly IProductProcessConfigService _productProcessConfigService;
@@ -71,15 +72,25 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         var schemeItems = ResolveSchemeItems(processConfig.SchemeId);
         var settings = _settingsService.Get();
         var useProgramResult = WholePieceProgramResultRules.IsApplicable(settings.ProcessParameterDeviceType);
+        // 程序计数模式：产品编号由程序自算，PLC 编号只作整件检测被动重测的比对信号。
+        var useLocalProductNo = ProductionConstants.ProductionCountSources.IsProgram(settings.ProductionCountSource);
 
         _productionLogService.Write(
             "ProductDataReadStart",
             ProductionFlowLogTexts.Summaries.ProductDataReadStart,
-            $"SchemeId={processConfig.SchemeId}, ProductBase={processConfig.ProductBase}, TouchBase={processConfig.TouchBase}, TestBase={processConfig.TestBase}, TouchCount={touchCount}, ProgramResult={useProgramResult}",
+            $"SchemeId={processConfig.SchemeId}, ProductBase={processConfig.ProductBase}, TouchBase={processConfig.TouchBase}, TestBase={processConfig.TestBase}, TouchCount={touchCount}, ProgramResult={useProgramResult}, LocalProductNo={useLocalProductNo}",
             stationNo: normalizedStationNo,
             workOrderId: task.SN,
             programId: task.ProgramId ?? string.Empty);
-        var header = await ReadProductHeaderAsync(processConfig, touchCount, useProgramResult, cancellationToken);
+        var header = await ReadProductHeaderAsync(
+            task,
+            normalizedStationNo,
+            processConfig,
+            touchCount,
+            useProgramResult,
+            useLocalProductNo,
+            settings.ProcessParameterDeviceType,
+            cancellationToken);
         var records = new List<BizWeldPointRecord>();
         for (var touchIndex = 1; touchIndex <= header.ActualTouchCount; touchIndex++)
         {
@@ -105,7 +116,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         bool isRetest;
         try
         {
-            isRetest = SaveRecords(task.Id, normalizedStationNo, records);
+            isRetest = SaveRecords(task.Id, normalizedStationNo, records, useLocalProductNo, header.IsOverwrite);
         }
         catch (Exception ex)
         {
@@ -209,20 +220,40 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
     }
 
     private async Task<ProductHeaderSnapshot> ReadProductHeaderAsync(
+        BizWeldTask task,
+        int stationNo,
         BizProductProcessConfig config,
         int touchCount,
         bool useProgramResult,
+        bool useLocalProductNo,
+        string? processParameterDeviceType,
         CancellationToken cancellationToken)
     {
-        var productNo = await ReadExpressionValueAsync(
-            config.ProductBase,
-            0,
-            config.ProductNoExpr,
-            "产品编号",
-            cancellationToken);
-        if (string.IsNullOrWhiteSpace(productNo))
+        string productNo;
+        string? plcProductNo = null;
+        var isOverwrite = false;
+        if (useLocalProductNo)
         {
-            throw new BusinessOperationException(Category, "产品数据采集失败", "产品头中未读取到产品编号。");
+            // 表达式可为空、读失败也不阻塞：程序模式下 PLC 编号只用来识别整件检测触摸屏“重测”的被动信号。
+            plcProductNo = await ReadBestEffortExpressionValueAsync(
+                config.ProductBase,
+                0,
+                config.ProductNoExpr,
+                cancellationToken);
+            (productNo, isOverwrite) = ResolveLocalProductNo(task.Id, stationNo, plcProductNo, processParameterDeviceType);
+        }
+        else
+        {
+            productNo = await ReadExpressionValueAsync(
+                config.ProductBase,
+                0,
+                config.ProductNoExpr,
+                "产品编号",
+                cancellationToken);
+            if (string.IsNullOrWhiteSpace(productNo))
+            {
+                throw new BusinessOperationException(Category, "产品数据采集失败", "产品头中未读取到产品编号。");
+            }
         }
 
         var productResultRaw = useProgramResult
@@ -266,7 +297,80 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             touchCount,
             NormalizeTestResult(productResultRaw),
             productResultRaw,
-            presetTouchText);
+            presetTouchText,
+            plcProductNo?.Trim(),
+            isOverwrite);
+    }
+
+    /// <summary>
+    /// 程序计数模式下决定本轮产品编号与是否覆盖既有产品，优先级：
+    /// 1. 软件里预约了重焊/重测的产品（单槽位）→ 覆盖它；
+    /// 2. 整件检测且 PLC 编号与最近一件相同（触摸屏“重测”不更新编号）→ 覆盖最近一件；
+    /// 3. 否则取该任务该工位最大编号 +1（含已删除行，不回收）。
+    /// 与保存共用同一把锁，保证同工位取号与落库之间不会插入另一轮采集。
+    /// </summary>
+    private (string ProductNo, bool IsOverwrite) ResolveLocalProductNo(
+        int taskId,
+        int stationNo,
+        string? plcProductNo,
+        string? processParameterDeviceType)
+    {
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var existingRecords = _dbContext.Db.Queryable<BizWeldPointRecord>()
+                .Where(record => record.TaskId == taskId && record.StationNo == stationNo)
+                .ToList();
+
+            var reweldTarget = existingRecords
+                .Where(record => record.IsReweldPending && !string.IsNullOrWhiteSpace(record.ProductNo))
+                .OrderByDescending(record => record.SequenceNo)
+                .FirstOrDefault();
+            if (reweldTarget is not null)
+            {
+                return (reweldTarget.ProductNo.Trim(), true);
+            }
+
+            if (!string.IsNullOrWhiteSpace(plcProductNo)
+                && ProductRetestRules.IsSupportedDeviceType(processParameterDeviceType))
+            {
+                var latest = existingRecords
+                    .OrderByDescending(record => record.SequenceNo)
+                    .ThenByDescending(record => record.Id)
+                    .FirstOrDefault();
+                var latestPlcProductNo = ReadRawValue(latest?.RawDataJson, PlcProductNoKey);
+                if (latest is not null
+                    && !latest.IsDeleted
+                    && string.Equals(latestPlcProductNo, plcProductNo.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    return (latest.ProductNo.Trim(), true);
+                }
+            }
+
+            return (LocalProductNoRules.NextProductNo(existingRecords.Select(record => record.ProductNo)), false);
+        }
+    }
+
+    private static string? ReadRawValue(string? rawDataJson, string key)
+    {
+        if (string.IsNullOrWhiteSpace(rawDataJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(rawDataJson);
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty(key, out var value)
+                && value.ValueKind == JsonValueKind.String
+                ? value.GetString()?.Trim()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private async Task<BizWeldPointRecord> ReadWeldPointRecordAsync(
@@ -302,6 +406,8 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             ["actual_touch_count"] = header.ActualTouchCount.ToString(CultureInfo.InvariantCulture)
         };
         AddValue(values, "plc_preset_touch_count", header.PlcPresetTouchCount);
+        // 程序模式下保留 PLC 原始编号，供整件检测被动重测比对与现场追溯。
+        AddValue(values, PlcProductNoKey, header.PlcProductNo);
         AddValue(values, "product_result", header.ProductResult);
         AddValue(values, "product_result_raw", header.ProductResultRaw);
         AddValue(values, "touch_no_raw", touchNo);
@@ -679,12 +785,20 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         }
     }
 
-    private bool SaveRecords(int taskId, int stationNo, IReadOnlyList<BizWeldPointRecord> records)
+    private bool SaveRecords(
+        int taskId,
+        int stationNo,
+        IReadOnlyList<BizWeldPointRecord> records,
+        bool useLocalProductNo,
+        bool localOverwrite)
     {
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
-            var isRetest = IsRetestCollection(taskId, stationNo, records);
+            // 程序模式的覆盖判定已在取号时完成；PLC 模式沿用整件检测“编号与上一轮相同”的被动识别。
+            var isRetest = useLocalProductNo
+                ? localOverwrite
+                : IsRetestCollection(taskId, stationNo, records);
             var nextSequenceNo = GetNextSequenceNo(taskId, stationNo);
             foreach (var record in records)
             {
@@ -695,6 +809,15 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
                     record.SequenceNo = existingRecord.SequenceNo;
                     if (!isRetest)
                     {
+                        if (useLocalProductNo)
+                        {
+                            // 程序自算编号不应撞号；一旦命中说明取号与落库之间被插入了其它写入，宁可报错也不能静默丢件。
+                            throw new BusinessOperationException(
+                                Category,
+                                "产品数据采集失败",
+                                $"程序编号“{record.ProductNo}”已存在于当前任务，本轮数据未保存。");
+                        }
+
                         continue;
                     }
 
@@ -886,7 +1009,9 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         int PresetTouchCount,
         string ProductResult,
         string? ProductResultRaw,
-        string? PlcPresetTouchCount);
+        string? PlcPresetTouchCount,
+        string? PlcProductNo = null,
+        bool IsOverwrite = false);
 
     private sealed record SchemeItemSnapshot(int DetailId, DimTestItem Item, BizSchemeDetail Detail);
 }

@@ -543,11 +543,15 @@ public class RbacService : IRbacService
     private static Dictionary<string, IReadOnlyCollection<string>> BuildDefaultRolePermissionMap()
     {
         var allCodes = PermissionCatalog.All.Select(static item => item.Code).ToArray();
+        // 管理员默认不含仅开发者的排障入口；SysUserService 首装路径同样经 ResolveElevatedRoleDefaults 排除。
+        var adminCodes = allCodes
+            .Where(code => !RolePermissionInitializationRules.IsDeveloperOnly(code))
+            .ToArray();
 
         return new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase)
         {
             [AppConstants.Roles.Developer] = allCodes,
-            [AppConstants.Roles.Admin] = allCodes,
+            [AppConstants.Roles.Admin] = adminCodes,
             [AppConstants.Roles.Operator] = new[]
             {
                 PermissionCodes.Pages.Monitor,

@@ -19,7 +19,9 @@ internal sealed class CenterProductReportWorkbookWriter
         IReadOnlyList<CenterProductReportColumn> columns,
         IReadOnlyList<CenterProductReportStoredRow> rows)
     {
-        WriteVisibleWorksheet(workbook, taskState, columns, rows);
+        // 已作废产品只留在隐藏数据页供追溯，可见页与本地报表同口径不显示。
+        var visibleRows = rows.Where(row => !row.IsDeleted).ToList();
+        WriteVisibleWorksheet(workbook, taskState, columns, visibleRows);
         WriteDataWorksheet(workbook, rows);
         WriteColumnsWorksheet(workbook, columns);
         WriteTaskWorksheet(workbook, taskState);

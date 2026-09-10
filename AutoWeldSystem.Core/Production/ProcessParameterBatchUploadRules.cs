@@ -24,7 +24,7 @@ public static class ProcessParameterBatchUploadRules
 
         var normalizedBatchSize = Math.Max(1, batchSize);
         var excluded = NormalizeProductNos(excludedProductNos).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        return records
+        return WeldPointRecordScopeRules.ExcludeDeleted(records)
             .Where(record => record.TaskId == taskId)
             .Where(record => record.StationNo == stationNo)
             .Where(record => record.ProductCompleted)

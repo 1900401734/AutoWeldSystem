@@ -28,6 +28,7 @@ public static class PermissionCatalog
         new(PermissionCodes.Buttons.Data.OpenReport, "Open Report File", PermissionType.Button, PermissionCodes.Pages.DataManage, 240),
         new(PermissionCodes.Buttons.Data.OpenReportFolder, "Open Report Folder", PermissionType.Button, PermissionCodes.Pages.DataManage, 250),
         new(PermissionCodes.Buttons.Data.Delete, "Delete History Data", PermissionType.Button, PermissionCodes.Pages.DataManage, 255),
+        new(PermissionCodes.Tabs.Data.CollectionData, "Collection Data Tab", PermissionType.Tab, PermissionCodes.Pages.DataManage, 256),
 
         new(PermissionCodes.Buttons.User.Add, "Add User", PermissionType.Button, PermissionCodes.Pages.UserManage, 310),
         new(PermissionCodes.Buttons.User.Edit, "Edit User", PermissionType.Button, PermissionCodes.Pages.UserManage, 320),

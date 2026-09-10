@@ -226,6 +226,24 @@ public static class ProductionConstants
     }
 
     /// <summary>
+    /// 产量统计来源。Program 模式下产品编号由程序自算、完工三项数量与监控页产量由程序统计，
+    /// 并开放产品历史的重焊/删除操作；三者绑定，避免配出编号自算但数量读 PLC 的自相矛盾状态。
+    /// </summary>
+    public static class ProductionCountSources
+    {
+        public const string Plc = "Plc";
+        public const string Program = "Program";
+
+        public static string Normalize(string? value)
+            => string.Equals(value?.Trim(), Program, StringComparison.OrdinalIgnoreCase)
+                ? Program
+                : Plc;
+
+        public static bool IsProgram(string? value)
+            => Normalize(value) == Program;
+    }
+
+    /// <summary>
     /// Station test result values read from PLC and shown in local production data.
     /// </summary>
     public static class TestResults
