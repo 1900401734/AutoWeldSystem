@@ -1911,7 +1911,11 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// Applies an idle-station PLC work order with higher priority than an unconfirmed manual draft.
+    /// Applies an idle-station PLC work order, but never overwrites an in-progress manual draft.
+    /// 现场约束：PLC 持续驱动工单号寄存器，若按轮询周期回填就会在操作员逐字符输入时反复整段替换，
+    /// 导致流转卡号永远输不完。因此手动草稿期间一律不回填；草稿在回车确认、PLC 清空工单号
+    /// 或输入框不再可编辑时释放，随后 PLC 值照常接管。扫码枪是「一串字符 + 回车」，
+    /// 输入速度远快于轮询周期，不受该让行影响。
     /// </summary>
     private bool ApplyPlcWorkOrderInput(PlcWorkIdSnapshot snapshot)
     {
@@ -1935,10 +1939,18 @@ public partial class MonitorView : BaseView
             return false;
         }
 
+        // 操作员正在手输时让行：这里若继续回填，PLC 轮询会把半截工单号整段覆盖掉。
+        if (WorkOrderInputConfirmationRules.HasManualDraft(
+                _offlineWorkOrderEditedByUser,
+                _manualWorkOrderEditedByUser,
+                inputSN.Text))
+        {
+            return false;
+        }
+
         var workId = WorkOrderInputConfirmationRules.Normalize(snapshot.WorkId);
-        var hasManualDraft = _offlineWorkOrderEditedByUser || _manualWorkOrderEditedByUser;
-        var isAlreadyApplied = !hasManualDraft
-            && WorkOrderInputConfirmationRules.IsConfirmed(inputSN.Text, GetConfirmedWorkOrderInput(stationNo))
+        var isAlreadyApplied =
+            WorkOrderInputConfirmationRules.IsConfirmed(inputSN.Text, GetConfirmedWorkOrderInput(stationNo))
             && string.Equals(GetConfirmedWorkOrderInput(stationNo), workId, StringComparison.OrdinalIgnoreCase);
         if (isAlreadyApplied)
         {

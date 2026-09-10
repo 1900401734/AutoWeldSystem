@@ -1,6 +1,6 @@
 ﻿# AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.26.1`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v2.26.2`。
 
 各版本的行为变化记录在 [CHANGELOG.md](CHANGELOG.md)，也可用 `git tag -n99` 查看对应版本的发布说明。
 
@@ -167,6 +167,15 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 - PLC 调整配方槽位顺序、名称或地址后，系统不会按名称自动迁移历史关联。请先在地址维护确认新映射，再到程序管理重新选择名称并保存。
 - 数字配方号仅在地址维护映射和日志诊断中保留，供配置确认和现场排障使用。
 - 每个工位最多配置 64 个 PLC 配方名称槽位；配方名称刷新有单工位 10 秒时限，读取失败或超时不会阻塞程序管理页面的新增、删除和批量清理操作。
+
+## 流转卡号输入（扫码与手动）
+
+流转卡号支持**扫码枪和键盘手动输入**，两者共用同一个输入框、走同一条确认路径（扫码枪本质就是一串字符加回车）。
+
+- **输完必须按回车确认**。回车后才向 MES 查询工单；未确认前只是草稿，不会触发查询，也不能开工。这样设计是避免半截工单号被打到 MES。
+- **手动输入期间 PLC 不会覆盖输入框**（`v2.26.2` 修复）。PLC 侧持续驱动工单号寄存器，此前会按轮询周期把逐字符输入的内容整段替换，导致工单号无法输完。现在操作员一开始输入即视为草稿，PLC 快照让行；草稿在回车确认、PLC 主动清空工单号、输入框转为只读时释放，之后 PLC 值照常回填。把输入框清空同样视为撤销草稿。
+- **输入框只读的四种情况**：工位为只读看板（扩展屏）、MES 未连接、当前有运行中的焊接任务、该工位存在未完工任务。此时手输与扫码都不可用；MES 断线需走「本地工单」离线开工流程。
+- 工位空闲且操作员未在输入时，PLC 提供的工单号会自动填入并触发查询，用于扫码枪直接接在 PLC 上的现场。
 
 ## 开工产品工号编辑
 
@@ -426,10 +435,10 @@ HAVING COUNT(*) > 1;
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>2.26.1</Version>
-<AssemblyVersion>2.26.1.0</AssemblyVersion>
-<FileVersion>2.26.1.0</FileVersion>
-<InformationalVersion>2.26.1</InformationalVersion>
+<Version>2.26.2</Version>
+<AssemblyVersion>2.26.2.0</AssemblyVersion>
+<FileVersion>2.26.2.0</FileVersion>
+<InformationalVersion>2.26.2</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -447,20 +456,20 @@ HAVING COUNT(*) > 1;
 # 2. 在 CHANGELOG.md 顶部新增该版本条目，写清行为变化和升级注意
 # 3. 合并到 main 后打带说明的 tag（-F 从文件读取多行说明）
 git checkout main
-git merge --no-ff develop -m "release: v2.26.1"
-git tag -a v2.26.1 -F tag-notes.txt
+git merge --no-ff develop -m "release: v2.26.2"
+git tag -a v2.26.2 -F tag-notes.txt
 git push origin main
-git push origin v2.26.1
+git push origin v2.26.2
 ```
 
-`tag-notes.txt` 为临时文件，内容取自该版本的 CHANGELOG 条目，打完 tag 即可删除。也可用 `git tag -a v2.26.1 -m "标题" -m "正文"` 直接写多段说明。
+`tag-notes.txt` 为临时文件，内容取自该版本的 CHANGELOG 条目，打完 tag 即可删除。也可用 `git tag -a v2.26.2 -m "标题" -m "正文"` 直接写多段说明。
 
 查看历史版本说明：
 
 ```powershell
 git tag -n99                # 列出全部 tag 及完整说明
-git tag -n99 v2.26.1        # 只看某个版本
-git show v2.26.1            # 看 tag 说明 + 指向的提交
+git tag -n99 v2.26.2        # 只看某个版本
+git show v2.26.2            # 看 tag 说明 + 指向的提交
 ```
 
 ## Git 使用

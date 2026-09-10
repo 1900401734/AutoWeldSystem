@@ -16171,6 +16171,32 @@ static void WorkOrderInputConfirmationRulesDistinguishDraftsAndPlcValues()
             readSucceeded: true,
             workId: "PLC-200"),
         "运行任务期间 PLC 快照不得覆盖任务关联工单。");
+
+    // 手动草稿让行：PLC 寄存器常驻有值，轮询回填会打断逐字符输入。
+    AssertTrue(
+        WorkOrderInputConfirmationRules.HasManualDraft(
+            offlineEditedByUser: false,
+            manualEditedByUser: true,
+            visibleWorkId: "WO-1"),
+        "在线手输了半截工单号时必须视为草稿，PLC 快照要让行。");
+    AssertTrue(
+        WorkOrderInputConfirmationRules.HasManualDraft(
+            offlineEditedByUser: true,
+            manualEditedByUser: false,
+            visibleWorkId: "WO-1"),
+        "离线待开工草稿同样要让行。");
+    AssertFalse(
+        WorkOrderInputConfirmationRules.HasManualDraft(
+            offlineEditedByUser: true,
+            manualEditedByUser: true,
+            visibleWorkId: "   "),
+        "输入框已被清空视为撤销草稿，PLC 可以重新接管回填。");
+    AssertFalse(
+        WorkOrderInputConfirmationRules.HasManualDraft(
+            offlineEditedByUser: false,
+            manualEditedByUser: false,
+            visibleWorkId: "WO-1"),
+        "没有草稿标志时不得阻止 PLC 回填，否则 PLC 换工单无法刷新界面。");
 }
 
 static void MonitorViewConfirmsManualWorkOrdersAndPrioritizesPlcSnapshots()
@@ -16186,7 +16212,15 @@ static void MonitorViewConfirmsManualWorkOrdersAndPrioritizesPlcSnapshots()
     AssertTrue(inputChangedMethod.Contains("ClearConfirmedWorkOrderInput", StringComparison.Ordinal), "人工修改工单号时必须清除已确认状态。");
     AssertFalse(inputChangedMethod.Contains("QueueManualWorkOrderQuery", StringComparison.Ordinal), "人工输入过程中不得自动查询，必须等待回车确认。");
     AssertTrue(inputKeyDownMethod.Contains("ConfirmManualWorkOrderInput", StringComparison.Ordinal), "工单号回车必须进入人工确认入口。");
-    AssertTrue(plcSnapshotMethod.Contains("ApplyPlcWorkOrderInput", StringComparison.Ordinal), "PLC 有效快照必须有独立入口，强制覆盖人工草稿。");
+    AssertTrue(plcSnapshotMethod.Contains("ApplyPlcWorkOrderInput", StringComparison.Ordinal), "PLC 有效快照必须有独立入口。");
+    // 现场故障：PLC 持续驱动工单号寄存器，回填会把逐字符输入的半截工单号整段覆盖，导致无法手动输完。
+    var plcWorkOrderInputMethod = ExtractMethodText(viewCode, "private bool ApplyPlcWorkOrderInput", "private void ClearConfirmedWorkOrderInput");
+    AssertTrue(
+        plcWorkOrderInputMethod.Contains("WorkOrderInputConfirmationRules.HasManualDraft", StringComparison.Ordinal),
+        "PLC 快照回填前必须先判断手动草稿，否则手输流转卡号会被轮询覆盖。");
+    AssertFalse(
+        plcWorkOrderInputMethod.Contains("var isAlreadyApplied = !hasManualDraft", StringComparison.Ordinal),
+        "手动草稿不得再作为“已应用”判定的与条件：那样会让有草稿时反而继续覆盖输入框。");
     AssertTrue(plcSnapshotMethod.Contains("StartWorkOrderLoadAsync", StringComparison.Ordinal), "在线 PLC 快照必须立即启动最新工单查询。");
     AssertTrue(viewCode.Contains("ApplyClearedPlcWorkOrderInput", StringComparison.Ordinal), "PLC 清空工单号必须有独立的状态复位入口。");
     AssertTrue(viewCode.Contains("_lastAutoQueriedWorkIds.Remove(stationNo);", StringComparison.Ordinal), "PLC 清空工单号时必须释放自动查询去重基线。");
