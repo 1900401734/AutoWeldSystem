@@ -16,6 +16,11 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(200);
     private static readonly TimeSpan BusinessLogInterval = TimeSpan.FromSeconds(30);
+    /// <summary>
+    /// 产品数据就绪信号持续高电平且无法推进采集时，等待该时长后由上位机强制把就绪写 0，
+    /// 避免 PLC 不复位导致软件永久停在等待 0->1 边沿。
+    /// </summary>
+    private static readonly TimeSpan ReadyStuckTimeout = TimeSpan.FromSeconds(5);
 
     private readonly IPlcAddressService _addressService;
     private readonly IPlcCommunicationService _plcCommunicationService;
@@ -241,6 +246,7 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
             stationState.ReadyHighObserved = true;
             stationState.AwaitingReadyReset = true;
             stationState.ObservedTaskId = task.Id;
+            MarkReadyStuckStarted(stationState);
             WriteProductionLog(
                 "ProductDataReadyStaleHigh",
                 ProductionFlowLogTexts.Summaries.ProductDataReadyStaleHigh,
@@ -249,6 +255,7 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
                 stationNo: stationState.StationNo,
                 plcSignal: AppConstants.PlcLogicalKeys.ProductDataReady,
                 plcAddress: stationState.ProductDataReadyAddress?.Address);
+            await TryForceResetStuckReadyAsync(stationState, task, cancellationToken);
             return;
         }
 
@@ -270,16 +277,20 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
                 }
 
                 stationState.AwaitingReadyReset = true;
+                MarkReadyStuckStarted(stationState);
+                await TryForceResetStuckReadyAsync(stationState, task, cancellationToken);
                 return;
             }
             if (stationState.AwaitingReadyReset)
             {
+                await TryForceResetStuckReadyAsync(stationState, task, cancellationToken);
                 return;
             }
 
             if (stationState.ProductDataReadyHandled)
             {
                 await RetryPendingFeedbackAsync(stationState, task, cancellationToken);
+                await TryForceResetStuckReadyAsync(stationState, task, cancellationToken);
                 return;
             }
         }
@@ -403,10 +414,13 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
             stationState.AwaitingReadyReset = true;
             if (firstHighObservation)
             {
+                MarkReadyStuckStarted(stationState);
                 _operationLogService.Write(
                     "ProductDataReadyStaleHigh",
                     $"工位{stationState.StationNo}产品数据就绪仍为1，等待PLC复位为0后再接受下一次产品数据。Task=none");
             }
+
+            await TryForceResetStuckReadyAsync(stationState, task: null, cancellationToken);
         }
     }
 
@@ -451,6 +465,8 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
         stationState.ProductFeedbackWritten = false;
         stationState.PendingFeedbackValue = null;
         stationState.ObservedTaskId = null;
+        stationState.ReadyStuckSinceUtc = null;
+        stationState.ReadyForceResetLogged = false;
     }
 
     private async Task RetryPendingFeedbackAsync(
@@ -606,6 +622,12 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
         WriteBusinessFailureLog(logMessage, detail);
     }
 
+    /// <summary>
+    /// 采集失败同样反馈 1。
+    /// 现场约束：PLC 只有收到 1 才复位产品数据就绪信号，反馈 2 会让 PLC 一直保持高电平，
+    /// 而上位机按 0->1 边沿触发，双方互等形成死锁，只能重启软件。
+    /// 反馈值只表达“本轮已处理完毕，请复位就绪”，成败信息由生产流程日志和监控页异常提示承载。
+    /// </summary>
     private async Task CompleteCollectionWithFailureAsync(
         BizWeldTask task,
         StationCycleState stationState,
@@ -615,9 +637,9 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
     {
         stationState.ProductDataReadyHandled = true;
         stationState.ObservedTaskId = task.Id;
-        stationState.PendingFeedbackValue = 2;
+        stationState.PendingFeedbackValue = 1;
         var feedbackWritten = IsPlcConnected(stationState.StationNo)
-            && await WriteProductCollectionFeedbackAsync(stationState, 2, cancellationToken);
+            && await WriteProductCollectionFeedbackAsync(stationState, 1, cancellationToken);
         stationState.ProductFeedbackWritten = feedbackWritten;
 
         WriteProductionLog(
@@ -625,7 +647,7 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
             feedbackWritten
                 ? ProductionFlowLogTexts.Summaries.ProductCollectionFeedbackFailed
                 : ProductionFlowLogTexts.Summaries.ProductCollectionFeedbackPending,
-            $"Feedback=2, FeedbackWritten={feedbackWritten}, ReadyValue=1, {detail}",
+            $"Feedback=1, FeedbackWritten={feedbackWritten}, ReadyValue=1, {detail}",
             task,
             stationNo: stationState.StationNo,
             level: "Error",
@@ -666,6 +688,123 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
         }
 
         throw new BusinessOperationException("PLC.ProductCycleMonitor", $"{signalName}读取失败", result.Message);
+    }
+
+    /// <summary>
+    /// 记录就绪信号开始卡在高电平的时刻；已在计时中则保持原始时刻，避免超时被反复推迟。
+    /// </summary>
+    private static void MarkReadyStuckStarted(StationCycleState stationState)
+    {
+        stationState.ReadyStuckSinceUtc ??= DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// 就绪信号持续高电平超过 <see cref="ReadyStuckTimeout"/> 仍无法推进采集时，由上位机把就绪写 0 解除死锁。
+    /// 现场约束：PLC 只在收到反馈 1 后才复位就绪，若因通讯异常或 PLC 逻辑未复位，
+    /// 上位机按 0->1 边沿触发就会永久停住，必须由上位机兜底清零，否则只能重启软件。
+    /// 同时把反馈复位为 0，保证下一件产品从干净的握手状态开始。
+    /// </summary>
+    private async Task TryForceResetStuckReadyAsync(
+        StationCycleState stationState,
+        BizWeldTask? task,
+        CancellationToken cancellationToken)
+    {
+        if (stationState.ReadyStuckSinceUtc is null
+            || DateTime.UtcNow - stationState.ReadyStuckSinceUtc.Value < ReadyStuckTimeout
+            || !IsPlcConnected(stationState.StationNo))
+        {
+            return;
+        }
+
+        var seconds = (int)ReadyStuckTimeout.TotalSeconds;
+        if (!await WriteProductDataReadyResetAsync(stationState, cancellationToken))
+        {
+            if (!stationState.ReadyForceResetLogged)
+            {
+                stationState.ReadyForceResetLogged = true;
+                WriteReadyForceResetLog(stationState, task, seconds, succeeded: false);
+            }
+
+            return;
+        }
+
+        // 就绪已由上位机清零，反馈同步复位；下一轮读到 0 会走 HandleReadyLowAsync 清空本轮全部状态。
+        await WriteProductCollectionFeedbackAsync(stationState, 0, cancellationToken);
+        WriteReadyForceResetLog(stationState, task, seconds, succeeded: true);
+        stationState.ReadyForceResetLogged = true;
+    }
+
+    private void WriteReadyForceResetLog(
+        StationCycleState stationState,
+        BizWeldTask? task,
+        int timeoutSeconds,
+        bool succeeded)
+    {
+        var detail = $"ReadyValue=1, TimeoutSeconds={timeoutSeconds}, ForceReset={(succeeded ? "1" : "0")}, "
+            + $"ReadyAddress={stationState.ProductDataReadyAddress?.Address}";
+        if (task is not null)
+        {
+            WriteProductionLog(
+                "ProductDataReadyForceReset",
+                succeeded
+                    ? ProductionFlowLogTexts.Summaries.ProductDataReadyForceReset
+                    : ProductionFlowLogTexts.Summaries.ProductDataReadyForceResetFailed,
+                detail,
+                task,
+                stationNo: stationState.StationNo,
+                level: "Error",
+                plcSignal: AppConstants.PlcLogicalKeys.ProductDataReady,
+                plcAddress: stationState.ProductDataReadyAddress?.Address);
+        }
+        else
+        {
+            _operationLogService.Write(
+                "ProductDataReadyForceReset",
+                $"Station={stationState.StationNo}, {detail}, Task=none");
+        }
+
+        WriteBusinessFailureLog(
+            $"工位{stationState.StationNo}产品数据就绪信号超过{timeoutSeconds}秒未复位",
+            succeeded
+                ? $"已由上位机强制清零并复位采集反馈。{detail}"
+                : $"上位机强制清零失败，采集仍被阻塞。{detail}");
+    }
+
+    /// <summary>
+    /// 把产品数据就绪信号写 0。该地址正常由 PLC 维护，只在卡死兜底时由上位机写入。
+    /// </summary>
+    private async Task<bool> WriteProductDataReadyResetAsync(StationCycleState stationState, CancellationToken cancellationToken)
+    {
+        if (!IsUsable(stationState.ProductDataReadyAddress)
+            || !IsPlcConnected(stationState.StationNo))
+        {
+            return false;
+        }
+
+        var address = stationState.ProductDataReadyAddress!;
+        try
+        {
+            var result = NormalizeDataType(address.DataType) switch
+            {
+                AppConstants.PlcDataTypes.Bool => await _plcCommunicationService.WriteBoolAsync(address.Address!, false, cancellationToken),
+                AppConstants.PlcDataTypes.Int32 => await _plcCommunicationService.WriteInt32Async(address.Address!, 0, cancellationToken),
+                AppConstants.PlcDataTypes.Float => await _plcCommunicationService.WriteFloatAsync(address.Address!, 0, cancellationToken),
+                _ => await _plcCommunicationService.WriteInt16Async(address.Address!, 0, cancellationToken)
+            };
+
+            return result.IsSuccess;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            WriteBusinessFailureLog(
+                $"工位{stationState.StationNo}产品数据就绪信号清零失败",
+                $"Address={address.Address}, Error={ex.Message}");
+            return false;
+        }
     }
 
     private async Task<bool> WriteProductCollectionFeedbackAsync(StationCycleState stationState, short value, CancellationToken cancellationToken)
@@ -909,5 +1048,15 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
         public bool ProductFeedbackWritten { get; set; }
 
         public short? PendingFeedbackValue { get; set; }
+
+        /// <summary>
+        /// 就绪信号进入“持续高电平且无法推进采集”状态的时刻，用于计算强制复位超时。
+        /// </summary>
+        public DateTime? ReadyStuckSinceUtc { get; set; }
+
+        /// <summary>
+        /// 本轮卡死是否已记录过强制复位日志，避免 200ms 轮询反复刷日志与界面提示。
+        /// </summary>
+        public bool ReadyForceResetLogged { get; set; }
     }
 }

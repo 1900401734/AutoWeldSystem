@@ -4848,6 +4848,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             "ProductDataSaved" or
             "ProductDataSaveFailed" or
             "ProductCollectionFeedback" or
+            "ProductDataReadyForceReset" or
             "RecipeCodeWriteSucceeded" or
             "RecipeCodeWriteFailed" or
             "RecipeCodeValidationSucceeded" or
@@ -4908,6 +4909,11 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             "ProductCollectionFeedback" => entry.Level.Equals("Error", StringComparison.OrdinalIgnoreCase)
                 ? RuntimeTip(ProductionFlowLogTexts.ResourceKeys.ProductCollectionFeedbackFailed)
                 : RuntimeTip(ProductionFlowLogTexts.ResourceKeys.ProductCollectionFeedbackSucceeded),
+            // 就绪信号卡死属于必须让操作员看见的异常：日志级别恒为 Error，会进右侧异常摘要。
+            "ProductDataReadyForceReset" => RuntimeTip(
+                GetProductionLogDetailValue(entry, "ForceReset") == "1"
+                    ? ProductionFlowLogTexts.ResourceKeys.ProductDataReadyForceReset
+                    : ProductionFlowLogTexts.ResourceKeys.ProductDataReadyForceResetFailed),
             "RecipeCodeWriteSucceeded" => RuntimeTip(ProductionFlowLogTexts.ResourceKeys.RecipeCodeWriteSucceeded),
             "RecipeCodeWriteFailed" => RuntimeTip(ProductionFlowLogTexts.ResourceKeys.RecipeCodeWriteFailed),
             "RecipeCodeValidationSucceeded" => RuntimeTip(ProductionFlowLogTexts.ResourceKeys.RecipeCodeValidationSucceeded),

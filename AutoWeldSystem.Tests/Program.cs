@@ -103,6 +103,7 @@ var tests = new (string Name, Action Run)[]
     ("Product retest only applies to inspection device", ProductRetestOnlyAppliesToInspectionDevice),
     ("Product retest overwrites values and reopens upload", ProductRetestOverwritesValuesAndReopensUpload),
     ("Product retest removes only uncovered stale records", ProductRetestRemovesOnlyUncoveredStaleRecords),
+    ("Product ready stuck high is force reset after timeout", ProductReadyStuckHighIsForceResetAfterTimeout),
     ("Local product number increments from max and never reuses deleted", LocalProductNumberIncrementsFromMaxAndNeverReusesDeleted),
     ("Finish quantities count distinct undeleted products per station", FinishQuantitiesCountDistinctUndeletedProductsPerStation),
     ("Product history actions follow upload gate and count mode", ProductHistoryActionsFollowUploadGateAndCountMode),
@@ -13129,6 +13130,51 @@ static void MonitorViewKeepsUserProductNumAcrossRuntimeRebind()
     AssertTrue(viewCode.Contains("selectProdNum.TextChanged -= ProductNumInput_TextChanged;", StringComparison.Ordinal), "监控页销毁时必须解绑产品工号文本变化。");
 }
 
+/// <summary>
+/// 现场故障：采集失败反馈 2 时 PLC 不复位就绪信号，上位机按上升沿触发于是永久卡死。
+/// 本用例锁住两条约束：任何结局都只反馈 1；就绪持续高电平超时后由上位机强制清零并提示。
+/// </summary>
+static void ProductReadyStuckHighIsForceResetAfterTimeout()
+{
+    var serviceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Plc", "WeldCycleMonitorService.cs"),
+        Encoding.UTF8);
+
+    AssertFalse(
+        serviceCode.Contains("PendingFeedbackValue = 2", StringComparison.Ordinal),
+        "采集失败不得反馈2：现场PLC只在收到1后才清产品就绪信号，反馈2会让采集永久卡死。");
+    AssertEqual(
+        3,
+        CountOccurrences(serviceCode, "PendingFeedbackValue = 1"),
+        "采集成功、配置错误和采集失败三条结局都必须反馈1释放PLC握手。");
+
+    AssertTrue(
+        serviceCode.Contains("ReadyStuckTimeout = TimeSpan.FromSeconds(5)", StringComparison.Ordinal),
+        "就绪卡死兜底必须使用现场确认的5秒超时。");
+    AssertTrue(
+        serviceCode.Contains("stationState.ReadyStuckSinceUtc ??= DateTime.UtcNow", StringComparison.Ordinal),
+        "卡死计时起点必须只记录一次，避免200ms轮询把超时无限推迟。");
+    AssertTrue(
+        serviceCode.Contains("WriteProductDataReadyResetAsync", StringComparison.Ordinal),
+        "超时后必须由上位机把产品就绪信号写0。");
+    AssertTrue(
+        serviceCode.Contains("await WriteProductCollectionFeedbackAsync(stationState, 0, cancellationToken);", StringComparison.Ordinal),
+        "强制清零就绪后必须同步复位采集反馈，使下一件从干净握手状态开始。");
+    AssertTrue(
+        serviceCode.Contains("stationState.ReadyStuckSinceUtc = null", StringComparison.Ordinal),
+        "就绪回到0后必须清空卡死计时，否则下一轮会立刻误判超时。");
+
+    // 空闲轮询同样要兜底：完工后 PLC 若残留高电平，重新开工前就该被清掉。
+    AssertTrue(
+        serviceCode.Contains("await TryForceResetStuckReadyAsync(stationState, task: null, cancellationToken);", StringComparison.Ordinal),
+        "无活动任务的空闲轮询也必须执行就绪卡死兜底。");
+
+    var monitorCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    AssertTrue(
+        monitorCode.Contains("\"ProductDataReadyForceReset\"", StringComparison.Ordinal),
+        "监控页必须显示就绪卡死提示，避免软件安静停住导致现场长时间排查。");
+}
+
 static void LocalProductNumberIncrementsFromMaxAndNeverReusesDeleted()
 {
     AssertEqual("1", LocalProductNoRules.NextProductNo([]), "无记录时程序编号必须从 1 开始。");
@@ -16935,10 +16981,27 @@ static void PlcProductReadyHandshakeRetainsHighLevelState()
     AssertTrue(serviceCode.Contains("Edge=0->1", StringComparison.Ordinal), "产品采集必须只在产品数据就绪的0到1边沿触发。");
     AssertTrue(serviceCode.Contains("RetryPendingFeedbackAsync", StringComparison.Ordinal), "反馈写入失败后必须重试反馈而不是重复采集。");
     AssertTrue(serviceCode.Contains("ProductDataReadyStaleHigh", StringComparison.Ordinal), "遗留高电平必须记录明确日志。");
-    AssertTrue(serviceCode.Contains("PendingFeedbackValue = 1", StringComparison.Ordinal)
-        && serviceCode.Contains("PendingFeedbackValue = 2", StringComparison.Ordinal), "采集成功和采集失败必须分别保留反馈1/2。");
+    // 现场 PLC 只在收到反馈 1 后才复位就绪信号，反馈 2 会让双方互等形成死锁，因此任何结局都必须反馈 1。
+    AssertTrue(serviceCode.Contains("PendingFeedbackValue = 1", StringComparison.Ordinal), "采集完成后必须反馈1释放PLC握手。");
+    AssertFalse(serviceCode.Contains("PendingFeedbackValue = 2", StringComparison.Ordinal), "采集失败不得反馈2：PLC只认1才复位就绪信号，反馈2会让采集永久卡死。");
+    AssertFalse(serviceCode.Contains("Feedback=2", StringComparison.Ordinal), "采集反馈日志不得再出现反馈2。");
     AssertTrue(serviceCode.Contains("ProductCollectionHandledException", StringComparison.Ordinal)
         && serviceCode.Contains("CompleteCollectionWithHandledErrorAsync", StringComparison.Ordinal), "程序配置错误必须反馈1释放PLC握手，而不是反馈2造成PLC超时。");
+    AssertTrue(serviceCode.Contains("ReadyStuckTimeout = TimeSpan.FromSeconds(5)", StringComparison.Ordinal), "就绪信号卡死必须有5秒超时兜底。");
+    AssertTrue(serviceCode.Contains("TryForceResetStuckReadyAsync", StringComparison.Ordinal)
+        && serviceCode.Contains("WriteProductDataReadyResetAsync", StringComparison.Ordinal), "超时后必须由上位机强制把产品就绪信号写0解除死锁。");
+    AssertTrue(serviceCode.Contains("ReadyStuckSinceUtc", StringComparison.Ordinal)
+        && serviceCode.Contains("ReadyForceResetLogged", StringComparison.Ordinal), "卡死计时与日志去重状态必须按工位保留。");
+    AssertTrue(serviceCode.Contains("ProductDataReadyForceReset", StringComparison.Ordinal), "强制复位必须写入可见日志，便于现场发现PLC未复位。");
+
+    var monitorCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    AssertTrue(monitorCode.Contains("\"ProductDataReadyForceReset\"", StringComparison.Ordinal), "监控页必须把就绪信号卡死提示到界面，避免软件安静停住。");
+    foreach (var resourceFile in new[] { "UiText.resx", "UiText.en.resx" })
+    {
+        var resources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", resourceFile), Encoding.UTF8);
+        AssertTrue(resources.Contains("monitor.production_hint.product_data_ready_force_reset", StringComparison.Ordinal), $"{resourceFile} 必须包含就绪信号强制复位提示。");
+        AssertTrue(resources.Contains("monitor.production_hint.product_data_ready_force_reset_failed", StringComparison.Ordinal), $"{resourceFile} 必须包含就绪信号清零失败提示。");
+    }
     AssertTrue(serviceCode.Contains("Task=none", StringComparison.Ordinal)
         && serviceCode.Contains("ObservedTaskId", StringComparison.Ordinal)
         && serviceCode.Contains("PreviousTaskId", StringComparison.Ordinal), "无活动任务和跨任务高电平都必须保留任务边界上下文。");
