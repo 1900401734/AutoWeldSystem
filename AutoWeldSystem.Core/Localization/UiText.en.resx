@@ -1416,6 +1416,12 @@
   <data name="monitor.production_hint.product_data_ready" xml:space="preserve">
     <value>PLC triggered data collection.</value>
   </data>
+  <data name="monitor.production_hint.product_data_ready_force_reset" xml:space="preserve">
+    <value>Product ready signal stayed high for over 5s and was reset by the PC. Check the PLC collection feedback logic.</value>
+  </data>
+  <data name="monitor.production_hint.product_data_ready_force_reset_failed" xml:space="preserve">
+    <value>Product ready signal stayed high for over 5s and could not be reset. Collection is blocked; check PLC connection and address settings.</value>
+  </data>
   <data name="monitor.production_hint.product_collection_start" xml:space="preserve">
     <value>Collecting product data.</value>
   </data>

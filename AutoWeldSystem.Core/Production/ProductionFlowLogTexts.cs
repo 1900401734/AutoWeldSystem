@@ -11,6 +11,8 @@ public static class ProductionFlowLogTexts
         public const string ProductDataReadyReset = "PLC已清空产品数据就绪信号";
         public const string ProductDataReady = "检测到产品数据就绪信号";
         public const string ProductDataReadyStaleHigh = "产品数据就绪仍为高电平，等待PLC复位";
+        public const string ProductDataReadyForceReset = "产品数据就绪超时未复位，已由上位机清零";
+        public const string ProductDataReadyForceResetFailed = "产品数据就绪超时未复位，上位机清零失败";
         public const string ProductCollectionStart = "开始读取整件产品数据";
         public const string ProductCollectionFeedbackSucceeded = "已反馈PLC采集成功";
         public const string ProductCollectionFeedbackFailed = "已反馈PLC采集失败";
@@ -65,6 +67,8 @@ public static class ProductionFlowLogTexts
         public const string ProductCollectionFeedbackSucceeded = "monitor.production_hint.product_collection_feedback_succeeded";
         public const string ProductCollectionStart = "monitor.production_hint.product_collection_start";
         public const string ProductDataReady = "monitor.production_hint.product_data_ready";
+        public const string ProductDataReadyForceReset = "monitor.production_hint.product_data_ready_force_reset";
+        public const string ProductDataReadyForceResetFailed = "monitor.production_hint.product_data_ready_force_reset_failed";
         public const string ProductDataReadStart = "monitor.production_hint.product_data_read_start";
         public const string ProductDataSaved = "monitor.production_hint.product_data_saved";
         public const string ProductDataSaveFailed = "monitor.production_hint.product_data_save_failed";

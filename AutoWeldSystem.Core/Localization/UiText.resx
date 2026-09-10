@@ -1416,6 +1416,12 @@
   <data name="monitor.production_hint.product_data_ready" xml:space="preserve">
     <value>PLC触发采集数据</value>
   </data>
+  <data name="monitor.production_hint.product_data_ready_force_reset" xml:space="preserve">
+    <value>产品就绪信号超过5秒未复位，已由上位机清零，请检查PLC采集反馈逻辑</value>
+  </data>
+  <data name="monitor.production_hint.product_data_ready_force_reset_failed" xml:space="preserve">
+    <value>产品就绪信号超过5秒未复位且清零失败，无法采集下一件，请检查PLC通讯与地址配置</value>
+  </data>
   <data name="monitor.production_hint.product_collection_start" xml:space="preserve">
     <value>正在采集产品数据</value>
   </data>
