@@ -59,6 +59,7 @@ public sealed class CenterProductReportFileStore
                 var state = _reader.Load(filePath);
                 products.AddRange(state.Rows
                     .Where(row => row.StationNo == stationNo
+                        && !row.IsDeleted
                         && row.CompletedAt.Date == reportDate.Date
                         && string.Equals(row.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase))
                     .Select(row => row.ToSummary()));

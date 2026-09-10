@@ -1,4 +1,4 @@
-﻿
+
 namespace AutoWeldSystem.UI.ViewModels;
 
 /// <summary>
@@ -28,6 +28,16 @@ public sealed class ProductHistoryTableRow
 
     public string IsTestText { get; init; } = string.Empty;
 
+    /// <summary>
+    /// 产品已软删：行仍显示以便右键撤销，但只提供“撤销删除”。
+    /// </summary>
+    public bool IsDeleted { get; init; }
+
+    /// <summary>
+    /// 产品已预约重焊/重测，下一件采集覆盖它。
+    /// </summary>
+    public bool IsReweldPending { get; init; }
+
     public string TouchCountText { get; init; } = string.Empty;
 
     public string RecordTimeText { get; init; } = string.Empty;
@@ -37,6 +47,13 @@ public sealed class ProductHistoryTableRow
     public bool CanMarkTest { get; init; }
 
     public string MarkDisabledReason { get; init; } = string.Empty;
+
+    /// <summary>
+    /// 重焊/删除是否可操作，与试焊件共用“未上传”门禁。
+    /// </summary>
+    public bool CanOperate { get; init; }
+
+    public string OperateDisabledReason { get; init; } = string.Empty;
 
     public List<ProductHistoryTableRow> Children { get; init; } = [];
 }

@@ -47,4 +47,11 @@ public interface IUploadTaskService
     /// <param name="stationNo">Station number.</param>
     /// <param name="productNo">Product number.</param>
     void DeleteProcessParameterVirtualRow(int weldTaskId, int stationNo, string productNo);
+
+    /// <summary>
+    /// 产品被软删后，把仍未上传成功的过程参数任务置为终态“已跳过”，避免已删产品被无限重试上报。
+    /// 数量批次任务含多件产品时整批跳过，其余产品由完工补传兜底。
+    /// </summary>
+    /// <returns>被置为跳过的任务数。</returns>
+    int SkipProcessParameterTasks(int weldTaskId, int stationNo, string productNo);
 }

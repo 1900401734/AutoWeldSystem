@@ -113,6 +113,12 @@ public sealed class CenterProductReportRequest
     public bool IsTest { get; set; }
 
     /// <summary>
+    /// 产品级作废标志：设备端软删产品后重推一次，中心侧从当日计数与可见报表中剔除；撤销删除再推一次 false。
+    /// 中心协议没有删除端点，只能靠整产品覆盖表达删除。
+    /// </summary>
+    public bool IsDeleted { get; set; }
+
+    /// <summary>
     /// Persisted task start time. Product requests and finish updates must use the same task value.
     /// </summary>
     public DateTime StartTime { get; set; }

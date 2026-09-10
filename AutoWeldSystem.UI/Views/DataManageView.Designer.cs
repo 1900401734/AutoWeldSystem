@@ -98,6 +98,7 @@
             colCollectionTouchNo = new DataGridViewTextBoxColumn();
             colCollectionResult = new DataGridViewTextBoxColumn();
             colCollectionIsTest = new DataGridViewCheckBoxColumn();
+            colCollectionIsDeleted = new DataGridViewCheckBoxColumn();
             colCollectionCompleted = new DataGridViewCheckBoxColumn();
             colCollectionUploadStatus = new DataGridViewTextBoxColumn();
             colCollectionOperator = new DataGridViewTextBoxColumn();
@@ -947,6 +948,12 @@
             colCollectionIsTest.Name = "colCollectionIsTest";
             colCollectionIsTest.Width = 125;
             //
+            // colCollectionIsDeleted
+            //
+            colCollectionIsDeleted.MinimumWidth = 6;
+            colCollectionIsDeleted.Name = "colCollectionIsDeleted";
+            colCollectionIsDeleted.Width = 125;
+            //
             // colCollectionCompleted
             //
             colCollectionCompleted.MinimumWidth = 6;
@@ -1127,6 +1134,7 @@
         private DataGridViewTextBoxColumn colCollectionTouchNo;
         private DataGridViewTextBoxColumn colCollectionResult;
         private DataGridViewCheckBoxColumn colCollectionIsTest;
+        private DataGridViewCheckBoxColumn colCollectionIsDeleted;
         private DataGridViewCheckBoxColumn colCollectionCompleted;
         private DataGridViewTextBoxColumn colCollectionUploadStatus;
         private DataGridViewTextBoxColumn colCollectionOperator;

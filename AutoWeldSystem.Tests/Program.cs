@@ -103,6 +103,13 @@ var tests = new (string Name, Action Run)[]
     ("Product retest only applies to inspection device", ProductRetestOnlyAppliesToInspectionDevice),
     ("Product retest overwrites values and reopens upload", ProductRetestOverwritesValuesAndReopensUpload),
     ("Product retest removes only uncovered stale records", ProductRetestRemovesOnlyUncoveredStaleRecords),
+    ("Local product number increments from max and never reuses deleted", LocalProductNumberIncrementsFromMaxAndNeverReusesDeleted),
+    ("Finish quantities count distinct undeleted products per station", FinishQuantitiesCountDistinctUndeletedProductsPerStation),
+    ("Product history actions follow upload gate and count mode", ProductHistoryActionsFollowUploadGateAndCountMode),
+    ("Upload scope rules exclude deleted products", UploadScopeRulesExcludeDeletedProducts),
+    ("Production count source normalizes and defaults to PLC", ProductionCountSourceNormalizesAndDefaultsToPlc),
+    ("Center report deleted flag stays last and filters counts", CenterReportDeletedFlagStaysLastAndFiltersCounts),
+    ("Collection data tab is developer only", CollectionDataTabIsDeveloperOnly),
     ("Upload task type normalization covers every registered type", UploadTaskTypeNormalizationCoversEveryRegisteredType),
     ("Upload task retest reopen allows product scoped tasks only", UploadTaskRetestReopenAllowsProductScopedTasksOnly),
     ("Data history dynamic columns append test item units", DataHistoryDynamicColumnsAppendTestItemUnits),
@@ -2616,7 +2623,9 @@ static void ProductRetestOverwritesValuesAndReopensUpload()
         UploadTime = DateTime.Today,
         UploadMessage = "uploaded",
         RetryCount = 2,
-        Ts = DateTime.Today
+        Ts = DateTime.Today,
+        IsTest = true,
+        IsReweldPending = true
     };
     var incoming = new BizWeldPointRecord
     {
@@ -2642,6 +2651,9 @@ static void ProductRetestOverwritesValuesAndReopensUpload()
         "重测必须把上传状态打回待上传，否则待上传集合会排除该记录导致不会重新上报。");
     AssertTrue(existing.UploadTime is null && existing.UploadMessage is null, "重测必须清空上一轮上传结果。");
     AssertEqual(0, existing.RetryCount, "重测必须重置重试次数。");
+    AssertTrue(existing.IsTest, "试焊件是人工标记而非测试结果，采集从不写该字段，重测覆盖不得把已标记的试焊件清掉。");
+    AssertFalse(existing.IsReweldPending, "覆盖完成后必须清除重焊预约标记，否则下一件会再次覆盖同一产品。");
+    AssertFalse(existing.IsDeleted, "被覆盖的产品不得残留已删除标记。");
 }
 
 static void ProductRetestRemovesOnlyUncoveredStaleRecords()
@@ -13117,6 +13129,185 @@ static void MonitorViewKeepsUserProductNumAcrossRuntimeRebind()
     AssertTrue(viewCode.Contains("selectProdNum.TextChanged -= ProductNumInput_TextChanged;", StringComparison.Ordinal), "监控页销毁时必须解绑产品工号文本变化。");
 }
 
+static void LocalProductNumberIncrementsFromMaxAndNeverReusesDeleted()
+{
+    AssertEqual("1", LocalProductNoRules.NextProductNo([]), "无记录时程序编号必须从 1 开始。");
+    AssertEqual("158", LocalProductNoRules.NextProductNo(["1", "157", "12"]), "程序编号必须取最大值 +1，不按插入顺序。");
+    AssertEqual("4", LocalProductNoRules.NextProductNo(["P-001", "3", "abc", " 2 "]), "非数字的 PLC 遗留编号必须忽略，数字前后空白必须容忍。");
+
+    // 软删行仍参与取最大值：已删除的 5 号不能被下一件复用，否则会撞上自然键去重。
+    var records = new[]
+    {
+        new BizWeldPointRecord { ProductNo = "4", IsDeleted = false },
+        new BizWeldPointRecord { ProductNo = "5", IsDeleted = true }
+    };
+    AssertEqual("6", LocalProductNoRules.NextProductNo(records.Select(record => record.ProductNo)), "已删除产品占用的编号不得回收。");
+}
+
+static void FinishQuantitiesCountDistinctUndeletedProductsPerStation()
+{
+    static BizWeldPointRecord Point(int station, string productNo, string touchNo, string? productResult, bool completed = true, bool deleted = false, bool isTest = false)
+        => new()
+        {
+            TaskId = 1,
+            StationNo = station,
+            ProductNo = productNo,
+            TouchNo = touchNo,
+            ProductResult = productResult,
+            ProductCompleted = completed,
+            IsDeleted = deleted,
+            IsTest = isTest
+        };
+
+    var records = new List<BizWeldPointRecord>
+    {
+        // 工位1：1 号 OK（两个焊点只算一件）、2 号 NG、3 号已删除、4 号未完成
+        Point(1, "1", "1", ProductionConstants.TestResults.Ok),
+        Point(1, "1", "2", ProductionConstants.TestResults.Ok),
+        Point(1, "2", "1", ProductionConstants.TestResults.Ng),
+        Point(1, "3", "1", ProductionConstants.TestResults.Ok, deleted: true),
+        Point(1, "4", "1", ProductionConstants.TestResults.Ok, completed: false),
+        // 工位2：同编号 1 号是另一件产品；5 号结果未知；6 号试焊件 OK 照常计入
+        Point(2, "1", "1", ProductionConstants.TestResults.Ok),
+        Point(2, "5", "1", null),
+        Point(2, "6", "1", ProductionConstants.TestResults.Ok, isTest: true)
+    };
+
+    var quantities = FinishQuantityRules.Calculate(records);
+
+    AssertEqual(5, quantities.ActualQty, "加工总数必须按工位+产品编号去重，排除已删除与未完成产品，双工位合计。");
+    AssertEqual(3, quantities.QualifiedQty, "合格数必须只计产品结果为 OK 的产品，试焊件照常计入。");
+    AssertEqual(2, quantities.FailedQty, "不良数 = 总数 − 合格，产品结果未知归入不良以保住恒等式。");
+    AssertEqual(quantities.ActualQty, quantities.QualifiedQty + quantities.FailedQty, "总数 = 合格 + 不良 恒等式必须成立。");
+    AssertEqual(0, FinishQuantityRules.Calculate([]).ActualQty, "无记录时三项为 0。");
+}
+
+static void ProductHistoryActionsFollowUploadGateAndCountMode()
+{
+    var pending = new[] { new BizWeldPointRecord { UploadStatus = ProductionConstants.UploadStatuses.Pending } };
+    var uploaded = new[]
+    {
+        new BizWeldPointRecord { UploadStatus = ProductionConstants.UploadStatuses.Pending },
+        new BizWeldPointRecord { UploadStatus = ProductionConstants.UploadStatuses.Uploaded }
+    };
+    AssertTrue(ProductHistoryActionRules.CanOperate(pending, out _), "待上传产品可操作。");
+    AssertFalse(ProductHistoryActionRules.CanOperate(uploaded, out var reason), "任一焊点已上传即整产品不可操作。");
+    AssertFalse(string.IsNullOrWhiteSpace(reason), "不可操作时必须给出置灰原因。");
+
+    var plcMode = ProductHistoryActionRules.ResolveActions(isDeleted: false, isReweldPending: false, isTest: false, showTestFlag: true, isProgramCountMode: false);
+    AssertSequenceEqual([ProductHistoryAction.MarkTest], plcMode, "PLC 计数模式只保留试焊件标记，不开放重焊/删除。");
+
+    var programMode = ProductHistoryActionRules.ResolveActions(false, false, true, true, true);
+    AssertSequenceEqual(
+        [ProductHistoryAction.UnmarkTest, ProductHistoryAction.Reweld, ProductHistoryAction.Delete],
+        programMode,
+        "程序计数模式提供取消试焊件、重焊、删除。");
+
+    var pendingReweld = ProductHistoryActionRules.ResolveActions(false, true, false, false, true);
+    AssertSequenceEqual(
+        [ProductHistoryAction.CancelReweld, ProductHistoryAction.Delete],
+        pendingReweld,
+        "待重焊产品用取消重焊替代重焊；试焊件开关关闭时不出现标记项。");
+
+    AssertSequenceEqual([ProductHistoryAction.Restore], ProductHistoryActionRules.ResolveActions(true, false, false, true, true), "已删除产品只有撤销删除。");
+    AssertEqual(0, ProductHistoryActionRules.ResolveActions(true, false, false, true, false).Count, "PLC 模式下已删除产品无任何动作。");
+
+    AssertTrue(ProductHistoryActionRules.UsesRetestWording(ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck), "整件检测用“重测”文案。");
+    AssertFalse(ProductHistoryActionRules.UsesRetestWording(ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic), "点焊设备用“重焊”文案。");
+    AssertFalse(ProductHistoryActionRules.RequiresOperableGate(ProductHistoryAction.Restore), "撤销删除不受上传门禁限制。");
+    AssertTrue(ProductHistoryActionRules.RequiresOperableGate(ProductHistoryAction.Delete), "删除受上传门禁限制。");
+}
+
+static void UploadScopeRulesExcludeDeletedProducts()
+{
+    static BizWeldPointRecord Point(string productNo, bool deleted, int sequence)
+        => new()
+        {
+            TaskId = 7,
+            StationNo = 1,
+            ProductNo = productNo,
+            TouchNo = "1",
+            ProductCompleted = true,
+            IsDeleted = deleted,
+            SequenceNo = sequence,
+            Ts = DateTime.Today.AddSeconds(sequence),
+            UploadStatus = ProductionConstants.UploadStatuses.Pending
+        };
+
+    var records = new[] { Point("1", false, 1), Point("2", true, 2), Point("3", false, 3) };
+
+    AssertSequenceEqual(["1", "3"], WeldPointRecordScopeRules.ExcludeDeleted(records).Select(record => record.ProductNo).ToList(), "统一过滤入口必须剔除已删除行。");
+    AssertSequenceEqual(["1", "3"], ProcessParameterBatchUploadRules.TakeReadyProductNos(records, 7, 1, 10), "数量批次候选必须排除已删除产品。");
+    AssertSequenceEqual(["1", "3"], ProcessParameterMakeupRules.TakeMakeupProductNos(records, 7), "完工补传范围必须排除已删除产品。");
+}
+
+static void ProductionCountSourceNormalizesAndDefaultsToPlc()
+{
+    AssertEqual(ProductionConstants.ProductionCountSources.Plc, ProductionConstants.ProductionCountSources.Normalize(null), "空值归一化为 PLC。");
+    AssertEqual(ProductionConstants.ProductionCountSources.Program, ProductionConstants.ProductionCountSources.Normalize(" program "), "忽略大小写与空白。");
+    AssertTrue(ProductionConstants.ProductionCountSources.IsProgram("Program"), "IsProgram 识别程序模式。");
+    AssertFalse(ProductionConstants.ProductionCountSources.IsProgram("anything-else"), "未知值按 PLC 处理。");
+    AssertEqual(ProductionConstants.ProductionCountSources.Plc, new AppSettings().ProductionCountSource, "升级后默认保持 PLC，现场行为不变。");
+}
+
+static void CenterReportDeletedFlagStaysLastAndFiltersCounts()
+{
+    var outputDirectory = CreateCenterReportFixtureDirectory();
+    try
+    {
+        var store = new CenterProductReportFileStore();
+        var startTime = new DateTime(2026, 9, 9, 8, 0, 0, DateTimeKind.Local);
+        var keep = BuildCenterWorkbookRequest("DEVICE-DEL", "FLOW-DEL", startTime, null, 0, false, 1, string.Empty, "1", false, false, 1);
+        var toDelete = BuildCenterWorkbookRequest("DEVICE-DEL", "FLOW-DEL", startTime, null, 0, false, 1, string.Empty, "2", false, false, 1);
+        store.Upsert(outputDirectory, keep);
+        store.Upsert(outputDirectory, toDelete);
+        AssertEqual(2, store.LoadProducts(outputDirectory, "DEVICE-DEL", 1, keep.CompletedAt.Date).Count, "删除前两件都计入当日计数。");
+
+        SetCenterRequestProperty(toDelete, "IsDeleted", true);
+        var reportPath = store.Upsert(outputDirectory, toDelete);
+
+        var products = store.LoadProducts(outputDirectory, "DEVICE-DEL", 1, keep.CompletedAt.Date);
+        AssertEqual(1, products.Count, "带作废标志重推后，当日计数必须剔除该产品。");
+        AssertEqual("1", products[0].ProductNo, "保留的产品必须是未作废的那件。");
+
+        using (var workbook = new XLWorkbook(reportPath))
+        {
+            var visibleSheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+            var visibleDataRows = Math.Max(0, (visibleSheet.LastRowUsed()?.RowNumber() ?? 0) - CenterProductReportFormat.DetailFirstDataRow + 1);
+            AssertEqual(1, visibleDataRows, "可见页不显示已作废产品行。");
+            AssertEqual(2, CountCenterDataRows(workbook), "隐藏数据页仍保留作废行供追溯。");
+
+            // 隐藏页按列下标读写，作废列必须追加在协议末尾、试焊件列之后，否则旧文件读取错位。
+            var dataSheet = workbook.Worksheet(CenterProductReportFormat.DataWorksheetName);
+            var lastColumn = dataSheet.LastColumnUsed()!.ColumnNumber();
+            AssertEqual("IsDeleted", dataSheet.Cell(1, lastColumn).GetString(), "作废列必须是隐藏数据页最后一列。");
+            AssertEqual("IsTest", dataSheet.Cell(1, lastColumn - 1).GetString(), "试焊件列仍在作废列之前，既有下标不变。");
+        }
+
+        SetCenterRequestProperty(toDelete, "IsDeleted", false);
+        store.Upsert(outputDirectory, toDelete);
+        AssertEqual(2, store.LoadProducts(outputDirectory, "DEVICE-DEL", 1, keep.CompletedAt.Date).Count, "撤销删除重推后计数恢复。");
+    }
+    finally
+    {
+        DeleteDirectoryIfExists(outputDirectory);
+    }
+}
+
+static void CollectionDataTabIsDeveloperOnly()
+{
+    var allPermissionCodes = PermissionCatalog.All.Select(permission => permission.Code).ToArray();
+    AssertTrue(allPermissionCodes.Contains(PermissionCodes.Tabs.Data.CollectionData), "采集数据页签权限必须进入权限目录。");
+
+    var developerDefaults = RolePermissionInitializationRules.ResolveElevatedRoleDefaults(AppConstants.Roles.Developer, allPermissionCodes);
+    var adminDefaults = RolePermissionInitializationRules.ResolveElevatedRoleDefaults(AppConstants.Roles.Admin, allPermissionCodes);
+    AssertTrue(developerDefaults.Contains(PermissionCodes.Tabs.Data.CollectionData), "开发者默认拥有采集数据页签。");
+    AssertFalse(adminDefaults.Contains(PermissionCodes.Tabs.Data.CollectionData), "管理员首装默认不拥有采集数据页签。");
+    AssertTrue(RolePermissionInitializationRules.IsDeveloperOnly(PermissionCodes.Tabs.Data.CollectionData), "该页签属于仅开发者权限。");
+    AssertFalse(RolePermissionInitializationRules.IsDeveloperOnly(PermissionCodes.Buttons.Data.Delete), "其它权限不受影响。");
+    AssertEqual(TextKeys.Permission.TabDataCollectionData, PermissionTextKeyMapper.GetTextKey(PermissionCodes.Tabs.Data.CollectionData), "权限管理界面必须有对应文案键。");
+}
+
 static void ProductHistoryPreviewSortsLatestProductFirst()
 {
     var older = new ProductHistoryProduct
@@ -17951,6 +18142,14 @@ sealed class FakeUploadTaskService : IUploadTaskService
     public void DeleteTask(int id) { }
 
     public void DeleteProcessParameterVirtualRow(int weldTaskId, int stationNo, string productNo) { }
+
+    public List<(int WeldTaskId, int StationNo, string ProductNo)> SkippedProducts { get; } = new();
+
+    public int SkipProcessParameterTasks(int weldTaskId, int stationNo, string productNo)
+    {
+        SkippedProducts.Add((weldTaskId, stationNo, productNo));
+        return 0;
+    }
 }
 
 sealed class FakeDataHistoryMaintenanceService : IDataHistoryMaintenanceService

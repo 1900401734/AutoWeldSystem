@@ -224,6 +224,12 @@ public class AppSettings
 
     #region 生产配置
 
+    /// <summary>
+    /// 产量统计来源，见 <see cref="ProductionConstants.ProductionCountSources"/>。默认 PLC 保持既有现场行为。
+    /// </summary>
+    [SugarColumn(Length = 20, ColumnDescription = "产量统计来源", IsNullable = true)]
+    public string? ProductionCountSource { get; set; } = ProductionConstants.ProductionCountSources.Plc;
+
     [SugarColumn(ColumnDescription = "是否启用双工位")]
     public bool EnableDualStation { get; set; }
 

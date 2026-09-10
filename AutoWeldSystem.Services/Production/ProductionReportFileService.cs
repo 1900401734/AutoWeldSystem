@@ -125,11 +125,12 @@ public class ProductionReportFileService : IProductionReportFileService
 
     /// <summary>
     /// 按产品编号自然序读取任务下的全部焊点记录，保证报表与手动导出的行顺序一致。
+    /// 已删除产品不进报表：客户接受编号断号，断号即来自软删占位。
     /// </summary>
     private IReadOnlyList<BizWeldPointRecord> QueryTaskRecords(int taskId)
-        => _dbContext.Db.Queryable<BizWeldPointRecord>()
-            .Where(record => record.TaskId == taskId)
-            .ToList()
+        => WeldPointRecordScopeRules.ExcludeDeleted(_dbContext.Db.Queryable<BizWeldPointRecord>()
+                .Where(record => record.TaskId == taskId)
+                .ToList())
             .OrderBy(record => record.ProductNo, NaturalSortComparer.Instance)
             .ThenBy(record => record.StationNo)
             .ThenBy(record => record.SequenceNo)

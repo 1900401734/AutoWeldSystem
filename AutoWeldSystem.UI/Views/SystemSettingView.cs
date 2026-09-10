@@ -70,6 +70,12 @@ public partial class SystemSettingView : BaseView
         new(ProductionConstants.RealtimePointNumberSources.Program, TextKeys.SystemSetting.OptionRealtimePointNumberSourceProgram)
     };
 
+    private static readonly LocalizedOption<string>[] ProductionCountSourceOptions =
+    {
+        new(ProductionConstants.ProductionCountSources.Plc, TextKeys.SystemSetting.OptionProductionCountSourcePlc),
+        new(ProductionConstants.ProductionCountSources.Program, TextKeys.SystemSetting.OptionProductionCountSourceProgram)
+    };
+
     private static readonly LocalizedOption<string>[] CenterServerSystemTypeOptions =
     {
         new(CenterServerConstants.SystemTypes.Electromagnetic, TextKeys.SystemSetting.OptionDeviceElectromagnetic),
@@ -110,6 +116,7 @@ public partial class SystemSettingView : BaseView
     private bool _syncingUploadModeSelection;
     private bool _syncingProcessParameterDeviceTypeSelection;
     private bool _syncingRealtimePointNumberSourceSelection;
+    private bool _syncingProductionCountSourceSelection;
     private bool _syncingCenterServerSystemTypeSelection;
     private bool _deviceManagementStateKnown;
     private string _selectedPlcType = AppConstants.PlcTypes.ModbusTcp;
@@ -118,6 +125,7 @@ public partial class SystemSettingView : BaseView
     private UploadMode _selectedUploadMode = UploadMode.Quantity;
     private string _selectedProcessParameterDeviceType = ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic;
     private string _selectedRealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Plc;
+    private string _selectedProductionCountSource = ProductionConstants.ProductionCountSources.Plc;
     private string _selectedCenterServerSystemType = CenterServerConstants.SystemTypes.Other;
     private AppSettings _currentSettings;
     private SystemSettingLayoutMode? _lastLayoutMode;
@@ -167,6 +175,7 @@ public partial class SystemSettingView : BaseView
         BindUploadModeOptions();
         BindProcessParameterDeviceTypeOptions();
         BindRealtimePointNumberSourceOptions();
+        BindProductionCountSourceOptions();
         BindCenterServerSystemTypeOptions();
         ApplyBasicSettingsLayout(force: true);
         basicSettingsViewport.AutoScrollPosition = scrollOffset;
@@ -324,6 +333,7 @@ public partial class SystemSettingView : BaseView
         chkEnablePostDataCustomHeader.CheckedChanged += ChkEnablePostDataCustomHeader_CheckedChanged;
         selectProcessParameterDeviceType.SelectedIndexChanged += SelectProcessParameterDeviceType_SelectedIndexChanged;
         selectRealtimePointNumberSource.SelectedIndexChanged += SelectRealtimePointNumberSource_SelectedIndexChanged;
+        selectProductionCountSource.SelectedIndexChanged += SelectProductionCountSource_SelectedIndexChanged;
         selectCenterServerSystemType.SelectedIndexChanged += SelectCenterServerSystemType_SelectedIndexChanged;
         chkEnableDualStation.CheckedChanged += (_, _) => UpdateStationDisplayNameVisibility();
     }
@@ -349,7 +359,8 @@ public partial class SystemSettingView : BaseView
             }
 
             if (!CanSaveRuntimeModeChange(previousSettings, settings)
-                || !CanSaveRealtimePointNumberSourceChange(previousSettings, settings))
+                || !CanSaveRealtimePointNumberSourceChange(previousSettings, settings)
+                || !CanSaveProductionCountSourceChange(previousSettings, settings))
             {
                 BindSettings(previousSettings);
                 return;
@@ -416,7 +427,8 @@ public partial class SystemSettingView : BaseView
             }
 
             if (!CanSaveRuntimeModeChange(previousSettings, settings)
-                || !CanSaveRealtimePointNumberSourceChange(previousSettings, settings))
+                || !CanSaveRealtimePointNumberSourceChange(previousSettings, settings)
+                || !CanSaveProductionCountSourceChange(previousSettings, settings))
             {
                 BindSettings(previousSettings);
                 return;
@@ -598,6 +610,21 @@ public partial class SystemSettingView : BaseView
         _selectedRealtimePointNumberSource = RealtimePointNumberSourceOptions[e.Value].Value;
     }
 
+    private void SelectProductionCountSource_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
+    {
+        if (_syncingProductionCountSourceSelection)
+        {
+            return;
+        }
+
+        if (e.Value < 0 || e.Value >= ProductionCountSourceOptions.Length)
+        {
+            return;
+        }
+
+        _selectedProductionCountSource = ProductionCountSourceOptions[e.Value].Value;
+    }
+
     private void SelectCenterServerSystemType_SelectedIndexChanged(object? sender, AntdUI.IntEventArgs e)
     {
         if (_syncingCenterServerSystemTypeSelection)
@@ -749,6 +776,7 @@ public partial class SystemSettingView : BaseView
         _selectedUploadMode = NormalizeUploadMode(settings.UploadMode);
         _selectedProcessParameterDeviceType = NormalizeProcessParameterDeviceType(settings.ProcessParameterDeviceType);
         _selectedRealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Normalize(settings.RealtimePointNumberSource);
+        _selectedProductionCountSource = ProductionConstants.ProductionCountSources.Normalize(settings.ProductionCountSource);
         _selectedCenterServerSystemType = NormalizeCenterServerSystemType(settings.CenterServerSystemType);
         inputUploadBatchSize.Text = Math.Max(1, settings.UploadBatchSize).ToString(CultureInfo.InvariantCulture);
         // 两个小数位配置已合并为「判定与上报小数位」，两个输入框暂时共同绑定该值，
@@ -760,6 +788,7 @@ public partial class SystemSettingView : BaseView
         BindUploadModeOptions();
         BindProcessParameterDeviceTypeOptions();
         BindRealtimePointNumberSourceOptions();
+        BindProductionCountSourceOptions();
         BindCenterServerSystemTypeOptions();
         UpdateRealtimePointNumberSourceEnabled();
         UpdatePlcStringNumericFormatModeEnabled();
@@ -890,6 +919,7 @@ public partial class SystemSettingView : BaseView
         lblCenterServerHeartbeatInterval.Text = _localizer.GetString(TextKeys.SystemSetting.LabelCenterServerHeartbeat);
         lblProcessParameterDeviceType.Text = _localizer.GetString(TextKeys.SystemSetting.LabelProcessParameterDeviceType);
         lblRealtimePointNumberSource.Text = _localizer.GetString(TextKeys.SystemSetting.LabelRealtimePointNumberSource);
+        lblProductionCountSource.Text = _localizer.GetString(TextKeys.SystemSetting.LabelProductionCountSource);
         chkEnablePostDataCustomHeader.Text = _localizer.GetString(TextKeys.SystemSetting.ChkEnablePostDataHeader);
         lblPostDataHeaderKey.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPostDataHeaderKey);
         lblPostDataHeaderValue.Text = _localizer.GetString(TextKeys.SystemSetting.LabelPostDataHeaderValue);
@@ -1030,6 +1060,28 @@ public partial class SystemSettingView : BaseView
     private void UpdateRealtimePointNumberSourceEnabled()
     {
         selectRealtimePointNumberSource.Enabled = !HasAnyUnfinishedTask();
+        // 产量统计来源与实时编号来源同样只允许在无进行中任务时切换。
+        selectProductionCountSource.Enabled = selectRealtimePointNumberSource.Enabled;
+    }
+
+    private void BindProductionCountSourceOptions()
+    {
+        _syncingProductionCountSourceSelection = true;
+        try
+        {
+            selectProductionCountSource.Items.Clear();
+            selectProductionCountSource.Items.AddRange(ProductionCountSourceOptions
+                .Select(option => (object)_localizer.GetString(option.TextKey))
+                .ToArray());
+
+            var selectedIndex = Array.FindIndex(ProductionCountSourceOptions, option =>
+                string.Equals(option.Value, _selectedProductionCountSource, StringComparison.OrdinalIgnoreCase));
+            selectProductionCountSource.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+        }
+        finally
+        {
+            _syncingProductionCountSourceSelection = false;
+        }
     }
 
     private void BindCenterServerSystemTypeOptions()
@@ -1471,6 +1523,7 @@ public partial class SystemSettingView : BaseView
         settings.JudgementDecimalPlaces = reportDecimalPlaces;
         settings.ProcessParameterDeviceType = NormalizeProcessParameterDeviceType(_selectedProcessParameterDeviceType);
         settings.RealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Normalize(_selectedRealtimePointNumberSource);
+        settings.ProductionCountSource = ProductionConstants.ProductionCountSources.Normalize(_selectedProductionCountSource);
         if (!TryApplyMesEndpointSettings(settings))
         {
             return false;
@@ -1565,6 +1618,24 @@ public partial class SystemSettingView : BaseView
         }
 
         ShowWarning(TextKeys.SystemSetting.MessageRealtimePointNumberSourceLocked);
+        return false;
+    }
+
+    /// <summary>
+    /// 有进行中任务时禁止切换产量统计来源：同一任务前半段按 PLC、后半段按程序统计会让完工数字无法解释。
+    /// </summary>
+    private bool CanSaveProductionCountSourceChange(AppSettings previousSettings, AppSettings newSettings)
+    {
+        if (string.Equals(
+                ProductionConstants.ProductionCountSources.Normalize(previousSettings.ProductionCountSource),
+                ProductionConstants.ProductionCountSources.Normalize(newSettings.ProductionCountSource),
+                StringComparison.OrdinalIgnoreCase)
+            || !HasAnyUnfinishedTask())
+        {
+            return true;
+        }
+
+        ShowWarning(TextKeys.SystemSetting.MessageProductionCountSourceLocked);
         return false;
     }
 

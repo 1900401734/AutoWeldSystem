@@ -29,7 +29,7 @@ public static class ProcessParameterMakeupRules
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         return ProcessParameterBatchUploadRules.NormalizeProductNos(
-            records
+            WeldPointRecordScopeRules.ExcludeDeleted(records)
                 .Where(record => record.TaskId == weldTaskId)
                 .Where(record => record.ProductCompleted)
                 .Where(record => !string.Equals(

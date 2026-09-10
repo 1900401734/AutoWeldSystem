@@ -32,6 +32,16 @@ public sealed class ProductHistoryProduct
 
     public bool IsTest { get; init; }
 
+    /// <summary>
+    /// 产品已软删：仍显示在历史表格供撤销，但不进入上传、报表和产量统计。
+    /// </summary>
+    public bool IsDeleted { get; init; }
+
+    /// <summary>
+    /// 产品已预约重焊/重测，下一次采集将覆盖它。
+    /// </summary>
+    public bool IsReweldPending { get; init; }
+
     public int TouchCount { get; init; }
 
     public DateTime? LastRecordTime { get; init; }
@@ -41,6 +51,13 @@ public sealed class ProductHistoryProduct
     public bool CanMarkTest { get; init; }
 
     public string MarkDisabledReason { get; init; } = string.Empty;
+
+    /// <summary>
+    /// 重焊/删除是否可操作，与 <see cref="CanMarkTest"/> 共用“未上传”门禁。
+    /// </summary>
+    public bool CanOperate { get; init; }
+
+    public string OperateDisabledReason { get; init; } = string.Empty;
 }
 
 /// <summary>

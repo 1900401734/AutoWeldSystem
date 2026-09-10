@@ -101,6 +101,7 @@ public partial class MonitorView : BaseView
     private readonly ITestSchemeConfigService _testSchemeConfigService;
     private readonly IProductRealtimePreviewService _productRealtimePreviewService;
     private readonly IProductHistoryService _productHistoryService;
+    private readonly IProductionCountService _productionCountService;
     private readonly IProgramManageService _programManageService;
     private readonly IWeldTaskService _weldTaskService;
     private readonly IUploadTaskService _uploadTaskService;
@@ -309,6 +310,7 @@ public partial class MonitorView : BaseView
         ITestSchemeConfigService testSchemeConfigService,
         IProductRealtimePreviewService productRealtimePreviewService,
         IProductHistoryService productHistoryService,
+        IProductionCountService productionCountService,
         IProgramManageService programManageService,
         IWeldTaskService weldTaskService,
         IUploadTaskService uploadTaskService,
@@ -335,6 +337,7 @@ public partial class MonitorView : BaseView
         _testSchemeConfigService = testSchemeConfigService;
         _productRealtimePreviewService = productRealtimePreviewService;
         _productHistoryService = productHistoryService;
+        _productionCountService = productionCountService;
         _programManageService = programManageService;
         _weldTaskService = weldTaskService;
         _uploadTaskService = uploadTaskService;
@@ -2474,6 +2477,7 @@ public partial class MonitorView : BaseView
 
         var previousShowTestFlag = _currentSettings.ShowTestFlagInHistory != false;
         var previousMergedDisplay = _currentSettings.IsWholePieceMergedDisplayEnabled;
+        var previousCountSource = ProductionConstants.ProductionCountSources.Normalize(_currentSettings.ProductionCountSource);
         UpdateSettingsSnapshot(e.CurrentSettings);
         RunOnUiThread(() =>
         {
@@ -2489,6 +2493,13 @@ public partial class MonitorView : BaseView
         if (previousShowTestFlag != currentShowTestFlag)
         {
             RunOnUiThread(RefreshProductHistoryPreview, "MonitorView.SettingsChanged.ShowTestFlag");
+        }
+
+        // 产量统计来源切换后右键菜单与指标口径都变，整体重算一次。
+        var currentCountSource = ProductionConstants.ProductionCountSources.Normalize(e.CurrentSettings.ProductionCountSource);
+        if (!string.Equals(previousCountSource, currentCountSource, StringComparison.Ordinal))
+        {
+            RunOnUiThread(RefreshProductionRuntimeState, "MonitorView.SettingsChanged.ProductionCountSource");
         }
 
         // 系统设置页也能改合并显示，这里同步重建界面，避免两个入口结果不一致。
@@ -3549,6 +3560,17 @@ public partial class MonitorView : BaseView
     {
         var settings = _currentSettings;
         var production = GetCurrentProductionSnapshot();
+        if (IsProgramCountMode())
+        {
+            // 程序计数模式：三项同源取本地记录统计，不受 PLC 读取成败影响；
+            // 同时记录 PLC 计数器读数供现场对账排障，不阻塞、不弹窗。
+            var quantities = ResolveProgramFinishQuantities(stationNo, production);
+            actualQty = quantities.ActualQty;
+            qualifiedQty = quantities.QualifiedQty;
+            failedQty = quantities.FailedQty;
+            return true;
+        }
+
         if (TryResolveFinishQuantitiesFromPlc(stationNo, production, out actualQty, out qualifiedQty, out failedQty))
         {
             return true;
@@ -3557,6 +3579,22 @@ public partial class MonitorView : BaseView
         // PLC 数量读取失败时，只有启用系统设置才允许人工补录；默认仍保持弹窗关闭。
         return settings.EnableFinishExpQtyPrompt
             && TryResolveFinishQuantitiesWithPrompt(production, out actualQty, out qualifiedQty, out failedQty);
+    }
+
+    private FinishQuantities ResolveProgramFinishQuantities(int stationNo, PlcProductionSnapshot production)
+    {
+        var activeTask = GetCurrentStationState().ActiveTask;
+        var quantities = activeTask is null
+            ? FinishQuantities.Empty
+            : _productionCountService.GetTaskQuantities(activeTask.Id);
+
+        _exceptionLogService.WriteBusiness(
+            "PLC.FinishQuantity.Compare",
+            "Finish quantities resolved by program.",
+            $"Program: Total={quantities.ActualQty}, Qualified={quantities.QualifiedQty}, Failed={quantities.FailedQty}; "
+            + $"PLC: Total={production.TotalProduction}, Qualified={production.AcceptedQuantity}, Failed={production.RejectedQuantity}, ReadSuccess={production.ProductionQuantitiesReadSuccess}",
+            $"Station={stationNo}; TaskId={activeTask?.Id}");
+        return quantities;
     }
 
     /// <summary>
@@ -4784,6 +4822,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         if (record.ProductCompleted)
         {
             RefreshProductHistoryPreview();
+            RefreshProgramCountMetrics();
         }
 
         ClearRuntimeError();
@@ -5716,18 +5755,20 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     {
         // 工单数量只作为达成率分母参与计算，不再单独占一行：工单信息区已经展示同一数值。
         var mesProductionQuantity = GetCurrentStationState().SelectedProcess?.StartAmount;
-        var acceptedRate = CalculateRate(snapshot.AcceptedQuantity, snapshot.TotalProduction);
-        var rejectedRate = CalculateRate(snapshot.RejectedQuantity, snapshot.TotalProduction);
+        // 程序计数模式下三项来自本地记录统计，与完工上报同源；PLC 模式沿用计数器读数。
+        var (total, accepted, rejected) = ResolveDisplayedProductionCounts(snapshot);
+        var acceptedRate = CalculateRate(accepted, total);
+        var rejectedRate = CalculateRate(rejected, total);
         // 达成率口径为合格数/工单数量，与中心看板保持一致，便于两端数值对账。
         var achievementRate = mesProductionQuantity.GetValueOrDefault() > 0
-            ? CalculateRate(snapshot.AcceptedQuantity, mesProductionQuantity!.Value)
+            ? CalculateRate(accepted, mesProductionQuantity!.Value)
             : null;
 
         var rows = new List<ProductionMetricRow>
         {
-            new(_localizer.GetString(TextKeys.Production.TotalProduction), snapshot.TotalProduction.ToString()),
-            new(_localizer.GetString(TextKeys.Production.AcceptedQuantity), snapshot.AcceptedQuantity.ToString()),
-            new(_localizer.GetString(TextKeys.Production.RejectedQuantity), snapshot.RejectedQuantity.ToString()),
+            new(_localizer.GetString(TextKeys.Production.TotalProduction), total.ToString()),
+            new(_localizer.GetString(TextKeys.Production.AcceptedQuantity), accepted.ToString()),
+            new(_localizer.GetString(TextKeys.Production.RejectedQuantity), rejected.ToString()),
             new(_localizer.GetString(TextKeys.Production.AcceptedRate), FormatRate(acceptedRate)),
             new(_localizer.GetString(TextKeys.Production.RejectedRate), FormatRate(rejectedRate)),
             new(_localizer.GetString(TextKeys.Production.AchievementRate), FormatRate(achievementRate))
@@ -5736,6 +5777,31 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         var metricTable = CurrentMetricTable;
         metricTable.DataSource = rows;
         metricTable.Refresh();
+    }
+
+    private (int Total, int Accepted, int Rejected) ResolveDisplayedProductionCounts(PlcProductionSnapshot snapshot)
+    {
+        if (!IsProgramCountMode())
+        {
+            return (snapshot.TotalProduction, snapshot.AcceptedQuantity, snapshot.RejectedQuantity);
+        }
+
+        var activeTask = GetCurrentStationState().ActiveTask;
+        if (activeTask is null || !IsRunningWeldTask(activeTask))
+        {
+            return (0, 0, 0);
+        }
+
+        try
+        {
+            var quantities = _productionCountService.GetTaskQuantities(activeTask.Id);
+            return (quantities.ActualQty, quantities.QualifiedQty, quantities.FailedQty);
+        }
+        catch (Exception ex)
+        {
+            _exceptionLogService.Write(ex, "MonitorView.ResolveDisplayedProductionCounts");
+            return (0, 0, 0);
+        }
     }
 
     #endregion
@@ -6031,70 +6097,144 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
 
     /// <summary>
     /// 显示产品历史上下文菜单。
+    /// 菜单项按规则动态生成：试焊件随全局开关；重焊/删除只在程序计数模式开放；已删除产品只有撤销。
+    /// 子行右键与产品行等效，服务层按产品编号整体改写。
     /// </summary>
     /// <param name="target">目标对象。</param>
     /// <param name="row">表格行数据。</param>
     private void ShowProductHistoryContextMenu(Control target, ProductHistoryTableRow row)
     {
-        if (_stationViewReadOnly || !row.ShowTestFlag)
+        if (_stationViewReadOnly || string.IsNullOrWhiteSpace(row.ProductNo))
         {
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(row.ProductNo))
+        var actions = ProductHistoryActionRules.ResolveActions(
+            row.IsDeleted,
+            row.IsReweldPending,
+            row.IsTest,
+            row.ShowTestFlag,
+            IsProgramCountMode());
+        if (actions.Count == 0)
         {
             return;
         }
 
-        var targetFlag = !row.IsTest;
-        var menuItem = new AntdUI.ContextMenuStripItem
-        {
-            ID = targetFlag ? "mark-test-product" : "unmark-test-product",
-            Text = targetFlag ? "标记为试焊件" : "取消试焊件",
-            SubText = row.CanMarkTest ? string.Empty : row.MarkDisabledReason,
-            Enabled = row.CanMarkTest,
-            Tag = row
-        };
+        var useRetestWording = UsesRetestWording();
+        var items = actions
+            .Select(action =>
+            {
+                var gated = ProductHistoryActionRules.RequiresOperableGate(action) && !row.CanOperate;
+                return (AntdUI.IContextMenuStripItem)new AntdUI.ContextMenuStripItem
+                {
+                    ID = action.ToString(),
+                    Text = _localizer.GetString(ResolveHistoryMenuTextKey(action, useRetestWording)),
+                    SubText = gated ? row.OperateDisabledReason : string.Empty,
+                    Enabled = !gated,
+                    Tag = row
+                };
+            })
+            .ToArray();
 
         AntdUI.ContextMenuStrip.open(
             target,
             item =>
             {
-                if (item.Tag is ProductHistoryTableRow selectedRow)
+                // 多项菜单按 ID 分发，Tag 继续承载行数据。
+                if (item.Tag is ProductHistoryTableRow selectedRow
+                    && Enum.TryParse<ProductHistoryAction>(item.ID, out var action))
                 {
-                    SetProductHistoryTestFlag(selectedRow, targetFlag);
+                    RunProductHistoryAction(selectedRow, action);
                 }
             },
-            new AntdUI.IContextMenuStripItem[] { menuItem },
+            items,
             0);
     }
 
-    /// <summary>
-    /// 设置产品历史中的试焊件标记，并刷新界面状态。
-    /// </summary>
-    /// <param name="row">表格行数据。</param>
-    /// <param name="isTest">是否标记为试焊件。</param>
-    private void SetProductHistoryTestFlag(ProductHistoryTableRow row, bool isTest)
+    private static string ResolveHistoryMenuTextKey(ProductHistoryAction action, bool useRetestWording)
     {
+        return action switch
+        {
+            ProductHistoryAction.MarkTest => TextKeys.Monitor.HistoryMenu.MarkTest,
+            ProductHistoryAction.UnmarkTest => TextKeys.Monitor.HistoryMenu.UnmarkTest,
+            ProductHistoryAction.Reweld => useRetestWording
+                ? TextKeys.Monitor.HistoryMenu.Retest
+                : TextKeys.Monitor.HistoryMenu.Reweld,
+            ProductHistoryAction.CancelReweld => useRetestWording
+                ? TextKeys.Monitor.HistoryMenu.CancelRetest
+                : TextKeys.Monitor.HistoryMenu.CancelReweld,
+            ProductHistoryAction.Delete => TextKeys.Monitor.HistoryMenu.Delete,
+            ProductHistoryAction.Restore => TextKeys.Monitor.HistoryMenu.Restore,
+            _ => throw new ArgumentOutOfRangeException(nameof(action), action, null)
+        };
+    }
+
+    /// <summary>
+    /// 执行产品历史右键动作并刷新界面。删除需二次确认；产量指标在程序计数模式下随之重算。
+    /// </summary>
+    private void RunProductHistoryAction(ProductHistoryTableRow row, ProductHistoryAction action)
+    {
+        if (action == ProductHistoryAction.Delete && !ConfirmDeleteProduct(row.ProductNo))
+        {
+            return;
+        }
+
         try
         {
-            var result = _productHistoryService.SetProductTestFlag(row.TaskId, row.StationNo, row.ProductNo, isTest);
+            var result = action switch
+            {
+                ProductHistoryAction.MarkTest => _productHistoryService.SetProductTestFlag(row.TaskId, row.StationNo, row.ProductNo, true),
+                ProductHistoryAction.UnmarkTest => _productHistoryService.SetProductTestFlag(row.TaskId, row.StationNo, row.ProductNo, false),
+                ProductHistoryAction.Reweld => _productHistoryService.MarkReweld(row.TaskId, row.StationNo, row.ProductNo),
+                ProductHistoryAction.CancelReweld => _productHistoryService.CancelReweld(row.TaskId, row.StationNo, row.ProductNo),
+                ProductHistoryAction.Delete => _productHistoryService.DeleteProduct(row.TaskId, row.StationNo, row.ProductNo),
+                ProductHistoryAction.Restore => _productHistoryService.RestoreProduct(row.TaskId, row.StationNo, row.ProductNo),
+                _ => throw new ArgumentOutOfRangeException(nameof(action), action, null)
+            };
+
             // 不论服务返回成功或失败，都先刷新一次，保证界面与服务层最终状态一致。
             RefreshProductHistoryPreview();
+            RefreshProgramCountMetrics();
 
             if (!result.IsSuccess)
             {
-                ShowWarning(TextKeys.Monitor.RuntimeError.TestFlagUpdateFailed);
+                ShowWarningText(result.Message);
                 return;
             }
 
             ClearRuntimeError();
-            SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.TestFlagUpdated);
+            SetRuntimeStatusSuccess(action is ProductHistoryAction.MarkTest or ProductHistoryAction.UnmarkTest
+                ? TextKeys.Monitor.RuntimeStatus.TestFlagUpdated
+                : TextKeys.Monitor.RuntimeStatus.ProductHistoryActionCompleted);
         }
         catch (Exception ex)
         {
-            _exceptionLogService.Write(ex, "MonitorView.SetProductHistoryTestFlag");
-            ShowWarning(TextKeys.Monitor.RuntimeError.TestFlagUpdateFailed);
+            _exceptionLogService.Write(ex, $"MonitorView.ProductHistory.{action}");
+            ShowWarning(action is ProductHistoryAction.MarkTest or ProductHistoryAction.UnmarkTest
+                ? TextKeys.Monitor.RuntimeError.TestFlagUpdateFailed
+                : TextKeys.Monitor.RuntimeError.ProductHistoryActionFailed);
+        }
+    }
+
+    private bool ConfirmDeleteProduct(string productNo)
+    {
+        return MessageBox.Show(
+            this,
+            _localizer.GetString(TextKeys.Monitor.Dialog.DeleteProductPrompt, productNo),
+            _localizer.GetString(TextKeys.Monitor.Dialog.DeleteProductTitle),
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning,
+            MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+    }
+
+    /// <summary>
+    /// 程序计数模式下产量来自本地记录，产品历史变化后要立刻重算指标，屏幕数字与上报数字才同源。
+    /// </summary>
+    private void RefreshProgramCountMetrics()
+    {
+        if (IsProgramCountMode())
+        {
+            BindProductionMetrics(GetCurrentProductionSnapshot());
         }
     }
 
@@ -6123,16 +6263,20 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             TaskId = product.TaskId,
             StationNo = product.StationNo,
             ProductNo = product.ProductNo,
-            NodeText = $"产品 {product.ProductNo}",
+            NodeText = FormatHistoryProductNodeText(product),
             ResultText = FormatHistoryResult(product.Result),
-            UploadStatusText = FormatHistoryUploadStatus(product.UploadStatus),
+            UploadStatusText = FormatHistoryProductStatus(product),
             ShowTestFlag = displayOptions.ShowTestFlagInHistory,
             IsTest = product.IsTest,
             IsTestText = FormatHistoryTestFlag(product.IsTest),
+            IsDeleted = product.IsDeleted,
+            IsReweldPending = product.IsReweldPending,
             TouchCountText = product.TouchCount.ToString(CultureInfo.InvariantCulture),
             RecordTimeText = FormatHistoryTime(product.LastRecordTime),
             CanMarkTest = product.CanMarkTest,
             MarkDisabledReason = product.MarkDisabledReason,
+            CanOperate = product.CanOperate,
+            OperateDisabledReason = product.OperateDisabledReason,
             Children = children
         };
 
@@ -6154,17 +6298,21 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             TaskId = product.TaskId,
             StationNo = product.StationNo,
             ProductNo = product.ProductNo,
-            NodeText = $"产品 {product.ProductNo}",
+            NodeText = FormatHistoryProductNodeText(product),
             ResultText = FormatHistoryResult(product.Result),
-            UploadStatusText = FormatHistoryUploadStatus(product.UploadStatus),
+            UploadStatusText = FormatHistoryProductStatus(product),
             ShowTestFlag = displayOptions.ShowTestFlagInHistory,
             IsTest = product.IsTest,
             IsTestText = FormatHistoryTestFlag(product.IsTest),
+            IsDeleted = product.IsDeleted,
+            IsReweldPending = product.IsReweldPending,
             TouchCountText = product.TouchCount.ToString(CultureInfo.InvariantCulture),
             RecordTimeText = FormatHistoryTime(product.LastRecordTime),
             DynamicValues = BuildMergedHistoryDynamicValues(product),
             CanMarkTest = product.CanMarkTest,
             MarkDisabledReason = product.MarkDisabledReason,
+            CanOperate = product.CanOperate,
+            OperateDisabledReason = product.OperateDisabledReason,
             Children = new List<ProductHistoryTableRow>()
         };
     }
@@ -6233,11 +6381,15 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             ShowTestFlag = productRow.ShowTestFlag,
             IsTest = productRow.IsTest,
             IsTestText = productRow.IsTestText,
+            IsDeleted = productRow.IsDeleted,
+            IsReweldPending = productRow.IsReweldPending,
             TouchCountText = productRow.TouchCountText,
             RecordTimeText = pointRow.RecordTimeText,
             DynamicValues = pointRow.DynamicValues,
             CanMarkTest = productRow.CanMarkTest,
-            MarkDisabledReason = productRow.MarkDisabledReason
+            MarkDisabledReason = productRow.MarkDisabledReason,
+            CanOperate = productRow.CanOperate,
+            OperateDisabledReason = productRow.OperateDisabledReason
         };
     }
 
@@ -6266,10 +6418,14 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             ShowTestFlag = displayOptions.ShowTestFlagInHistory,
             IsTest = point.IsTest,
             IsTestText = FormatHistoryTestFlag(point.IsTest),
+            IsDeleted = product.IsDeleted,
+            IsReweldPending = product.IsReweldPending,
             RecordTimeText = FormatHistoryTime(point.RecordTime),
             DynamicValues = BuildProductHistoryDynamicValues(point, dynamicColumns),
             CanMarkTest = product.CanMarkTest,
-            MarkDisabledReason = product.MarkDisabledReason
+            MarkDisabledReason = product.MarkDisabledReason,
+            CanOperate = product.CanOperate,
+            OperateDisabledReason = product.OperateDisabledReason
         };
     }
 
@@ -6801,6 +6957,42 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             _ => string.IsNullOrWhiteSpace(status) ? "--" : status
         };
     }
+
+    /// <summary>
+    /// 产品行状态列：已删除与待重焊优先于上传状态显示，让操作员一眼看出该产品的特殊状态。
+    /// </summary>
+    private string FormatHistoryProductStatus(ProductHistoryProduct product)
+    {
+        if (product.IsDeleted)
+        {
+            return _localizer.GetString(TextKeys.Monitor.HistoryMenu.StatusDeleted);
+        }
+
+        if (product.IsReweldPending)
+        {
+            return _localizer.GetString(UsesRetestWording()
+                ? TextKeys.Monitor.HistoryMenu.StatusRetestPending
+                : TextKeys.Monitor.HistoryMenu.StatusReweldPending);
+        }
+
+        return FormatHistoryUploadStatus(product.UploadStatus);
+    }
+
+    /// <summary>
+    /// 已删除产品在树节点文字上加前缀，弥补 AntdUI 表格无法按行置灰的限制。
+    /// </summary>
+    private string FormatHistoryProductNodeText(ProductHistoryProduct product)
+    {
+        return product.IsDeleted
+            ? $"[{_localizer.GetString(TextKeys.Monitor.HistoryMenu.StatusDeleted)}] 产品 {product.ProductNo}"
+            : $"产品 {product.ProductNo}";
+    }
+
+    private bool UsesRetestWording()
+        => ProductHistoryActionRules.UsesRetestWording(_currentSettings.ProcessParameterDeviceType);
+
+    private bool IsProgramCountMode()
+        => ProductionConstants.ProductionCountSources.IsProgram(_currentSettings.ProductionCountSource);
 
     /// <summary>
     /// 格式化历史结果。

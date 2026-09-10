@@ -44,7 +44,8 @@ public sealed class WeldPointUploadCoordinatorService : IWeldPointUploadCoordina
     /// </summary>
     public async Task HandleCollectedAsync(BizWeldPointRecord record, CancellationToken cancellationToken = default)
     {
-        if (!record.ProductCompleted)
+        // 已删除产品不进入任何上传路径；撤销删除时由历史服务重新调用本方法入队。
+        if (!record.ProductCompleted || record.IsDeleted)
         {
             return;
         }
@@ -70,8 +71,8 @@ public sealed class WeldPointUploadCoordinatorService : IWeldPointUploadCoordina
             return;
         }
 
-        // 重测属修正性操作，数据正确性优先于减少 MES 调用次数，不等凑满批次即单独重传。
-        if (IsRetestReupload(record, settings.ProcessParameterDeviceType))
+        // 重测/重焊属修正性操作，数据正确性优先于减少 MES 调用次数，不等凑满批次即单独重传。
+        if (IsRetestReupload(record, settings))
         {
             var retestTask = EnqueueProductUploadTask(record, settings.UploadMode);
             _operationLogService.Write(
@@ -136,6 +137,7 @@ public sealed class WeldPointUploadCoordinatorService : IWeldPointUploadCoordina
                 .Where(record => record.TaskId == weldTaskId
                     && record.StationNo == stationNo
                     && record.ProductCompleted
+                    && !record.IsDeleted
                     && record.UploadStatus != ProductionConstants.UploadStatuses.Uploaded)
                 .ToList();
             var excludedProductNos = GetOpenProcessParameterProductNos(weldTaskId, stationNo);
@@ -173,12 +175,14 @@ public sealed class WeldPointUploadCoordinatorService : IWeldPointUploadCoordina
     }
 
     /// <summary>
-    /// 判断本次上传是否为重测重传。
-    /// 数量模式下该产品若已存在上传成功的过程参数任务，说明本轮是覆盖后的重测数据。
+    /// 判断本次上传是否为重测/重焊重传。
+    /// 数量模式下该产品若已存在上传成功的过程参数任务，说明本轮是覆盖后的数据。
+    /// PLC 计数模式只有整件检测会覆盖；程序计数模式任何设备都可通过预约重焊覆盖。
     /// </summary>
-    private bool IsRetestReupload(BizWeldPointRecord record, string? processParameterDeviceType)
+    private bool IsRetestReupload(BizWeldPointRecord record, AppSettings settings)
     {
-        if (!ProductRetestRules.IsSupportedDeviceType(processParameterDeviceType))
+        if (!ProductionConstants.ProductionCountSources.IsProgram(settings.ProductionCountSource)
+            && !ProductRetestRules.IsSupportedDeviceType(settings.ProcessParameterDeviceType))
         {
             return false;
         }

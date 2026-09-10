@@ -158,7 +158,8 @@ public class ProductProcessConfigService : IProductProcessConfigService
         config.ShowTestFlagInHistory ??= true;
         config.ProductBase = NormalizeRequired(config.ProductBase, "产品头基地址不能为空。");
         config.ProductLen = Math.Max(1, config.ProductLen);
-        config.ProductNoExpr = NormalizeRequired(config.ProductNoExpr, "产品编号偏移表达式不能为空。");
+        // 程序计数模式不从 PLC 读产品编号，该表达式改为可选；PLC 模式下为空会在采集时报“未读取到产品编号”。
+        config.ProductNoExpr = NormalizeNullable(config.ProductNoExpr) ?? string.Empty;
         config.ProductResultExpr = NormalizeRequired(config.ProductResultExpr, "产品结果偏移表达式不能为空。");
         config.ActualTouchCountExpr = NormalizeNullable(config.ActualTouchCountExpr);
         config.PresetTouchCountExpr = NormalizeNullable(config.PresetTouchCountExpr);

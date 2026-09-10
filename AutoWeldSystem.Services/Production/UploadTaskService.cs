@@ -108,6 +108,7 @@ public class UploadTaskService : IUploadTaskService
 
             var pendingRecords = _dbContext.Db.Queryable<BizWeldPointRecord>()
                 .Where(record => record.ProductCompleted
+                    && !record.IsDeleted
                     && record.UploadStatus != ProductionConstants.UploadStatuses.Uploaded)
                 .ToList();
             if (pendingRecords.Count == 0)
@@ -694,6 +695,59 @@ public class UploadTaskService : IUploadTaskService
         }
     }
 
+    public int SkipProcessParameterTasks(int weldTaskId, int stationNo, string productNo)
+    {
+        var normalizedProductNo = productNo?.Trim() ?? string.Empty;
+        if (weldTaskId <= 0 || string.IsNullOrEmpty(normalizedProductNo))
+        {
+            return 0;
+        }
+
+        var changes = new List<UploadTaskStatusChangedEventArgs>();
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            // 载荷里的产品号列表是入队时固化的，按 BusinessId 前缀查不到数量批次任务，必须解析载荷。
+            var candidates = _dbContext.Db.Queryable<BizUploadTask>()
+                .Where(task => task.WeldTaskId == weldTaskId
+                    && task.TaskType == ProductionConstants.UploadTaskTypes.ProcessParameter
+                    && !task.IsDeleted
+                    && task.Status != ProductionConstants.UploadStatuses.Uploaded
+                    && task.Status != ProductionConstants.UploadStatuses.Skipped)
+                .ToList();
+
+            foreach (var task in candidates)
+            {
+                var scopedStationNo = ProcessParameterUploadPayloadRules.ReadStationNo(task.PayloadJson);
+                if (scopedStationNo > 0 && scopedStationNo != stationNo)
+                {
+                    continue;
+                }
+
+                var productNos = ProcessParameterUploadPayloadRules.ReadProductNos(task.PayloadJson);
+                if (!productNos.Contains(normalizedProductNo, StringComparer.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                task.Status = ProductionConstants.UploadStatuses.Skipped;
+                task.Message = $"Product {normalizedProductNo} was deleted locally; upload skipped.";
+                task.CompletedTime = DateTime.Now;
+                task.NextRetryTime = null;
+                task.UpdatedTime = DateTime.Now;
+                _dbContext.Db.Updateable(task).ExecuteCommand();
+                changes.Add(ToStatusChangedEvent(task));
+            }
+        }
+
+        foreach (var change in changes)
+        {
+            PublishTaskStatusChanged(change);
+        }
+
+        return changes.Count;
+    }
+
     private BizUploadTask? GetRetryableTask(int id)
     {
         lock (_dbLock)
@@ -1078,6 +1132,7 @@ public class UploadTaskService : IUploadTaskService
             _dbContext.InitDatabase();
             return _dbContext.Db.Queryable<BizWeldPointRecord>()
                 .Where(record => record.TaskId == task.WeldTaskId.Value
+                    && !record.IsDeleted
                     && record.UploadStatus != ProductionConstants.UploadStatuses.Uploaded)
                 .ToList()
                 .Where(record => IsRecordInTaskScope(record, task))

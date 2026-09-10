@@ -444,6 +444,10 @@ public static class TextKeys
             /// </summary>
             public const string TestFlagUpdated = "monitor.runtime.test_flag_updated";
             /// <summary>
+            /// 产品历史操作已完成
+            /// </summary>
+            public const string ProductHistoryActionCompleted = "monitor.runtime.product_history_action_completed";
+            /// <summary>
             /// 正在下载程序...
             /// </summary>
             public const string DownloadingProgram = "monitor.runtime.downloading_program";
@@ -532,6 +536,10 @@ public static class TextKeys
             /// </summary>
             public const string TestFlagUpdateFailed = "monitor.error.test_flag_update_failed";
             /// <summary>
+            /// 产品历史操作失败
+            /// </summary>
+            public const string ProductHistoryActionFailed = "monitor.error.product_history_action_failed";
+            /// <summary>
             /// 配方校验失败
             /// </summary>
             public const string RecipeValidationFailed = "monitor.error.recipe_validation_failed";
@@ -585,10 +593,45 @@ public static class TextKeys
             public const string WorkIdReadFailed = "monitor.error.work_id_read_failed";
         }
 
+        /// <summary>
+        /// 产品历史右键菜单文案。
+        /// </summary>
+        public static class HistoryMenu
+        {
+            public const string MarkTest = "monitor.history_menu.mark_test";
+            public const string UnmarkTest = "monitor.history_menu.unmark_test";
+            public const string Reweld = "monitor.history_menu.reweld";
+            public const string Retest = "monitor.history_menu.retest";
+            public const string CancelReweld = "monitor.history_menu.cancel_reweld";
+            public const string CancelRetest = "monitor.history_menu.cancel_retest";
+            public const string Delete = "monitor.history_menu.delete";
+            public const string Restore = "monitor.history_menu.restore";
+            /// <summary>
+            /// 历史表格状态列：已删除
+            /// </summary>
+            public const string StatusDeleted = "monitor.history_menu.status_deleted";
+            /// <summary>
+            /// 历史表格状态列：待重焊
+            /// </summary>
+            public const string StatusReweldPending = "monitor.history_menu.status_reweld_pending";
+            /// <summary>
+            /// 历史表格状态列：待重测
+            /// </summary>
+            public const string StatusRetestPending = "monitor.history_menu.status_retest_pending";
+        }
+
         public static class Dialog
         {
             public const string ScanWorkIdTitle = "monitor.dialog.scan_work_id_title";
             public const string ScanWorkIdPrompt = "monitor.dialog.scan_work_id_prompt";
+            /// <summary>
+            /// 删除产品确认
+            /// </summary>
+            public const string DeleteProductTitle = "monitor.dialog.delete_product_title";
+            /// <summary>
+            /// 删除产品确认正文，{0} 为产品编号
+            /// </summary>
+            public const string DeleteProductPrompt = "monitor.dialog.delete_product_prompt";
             public const string SelectProcessTitle = "monitor.dialog.select_process_title";
             public const string SelectProcessPrompt = "monitor.dialog.select_process_prompt";
             public const string SelectProgramTitle = "monitor.dialog.select_program_title";
@@ -854,6 +897,10 @@ public static class TextKeys
         /// </summary>
         public const string ColumnProductCompleted = "data.column.product_completed";
         /// <summary>
+        /// 已删除
+        /// </summary>
+        public const string ColumnIsDeleted = "data.column.is_deleted";
+        /// <summary>
         /// 文件名
         /// </summary>
         public const string ColumnFileName = "data.column.file_name";
@@ -987,6 +1034,7 @@ public static class TextKeys
         public const string TabStateWorkOrderStatus = "permission.tab.state.work_order_status";
         public const string TabStateDeviceStatus = "permission.tab.state.device_status";
         public const string TabStateProgramFile = "permission.tab.state.program_file";
+        public const string TabDataCollectionData = "permission.tab.data.collection_data";
         public const string TabLogMesInteraction = "permission.tab.log.mes_interaction";
         public const string TabLogProductionFlow = "permission.tab.log.production_flow";
         public const string TabLogProgramException = "permission.tab.log.program_exception";
@@ -1197,6 +1245,7 @@ public static class TextKeys
         public const string LabelCenterServerHeartbeat = "system.label.center_server_heartbeat";
         public const string LabelProcessParameterDeviceType = "system.label.process_parameter_device_type";
         public const string LabelRealtimePointNumberSource = "system.label.realtime_point_number_source";
+        public const string LabelProductionCountSource = "system.label.production_count_source";
         public const string LabelPostDataHeaderKey = "system.label.postdata_header_key";
         public const string LabelPostDataHeaderValue = "system.label.postdata_header_value";
         public const string UploadMode = "system.label.upload_mode";
@@ -1245,6 +1294,8 @@ public static class TextKeys
         public const string OptionDeviceWholePieceWeld = "system.option.device.whole_piece_weld";
         public const string OptionRealtimePointNumberSourcePlc = "system.option.realtime_point_number_source.plc";
         public const string OptionRealtimePointNumberSourceProgram = "system.option.realtime_point_number_source.program";
+        public const string OptionProductionCountSourcePlc = "system.option.production_count_source.plc";
+        public const string OptionProductionCountSourceProgram = "system.option.production_count_source.program";
         public const string OptionCenterWholePiece = "system.option.center.whole_piece";
         public const string OptionCenterOther = "system.option.center.other";
 
@@ -1283,6 +1334,7 @@ public static class TextKeys
         public const string MessageStationDisplayNameDuplicate = "system.message.station_display_name_duplicate";
         public const string MessageRuntimeModeLocked = "system.message.runtime_mode_locked";
         public const string MessageRealtimePointNumberSourceLocked = "system.message.realtime_point_number_source_locked";
+        public const string MessageProductionCountSourceLocked = "system.message.production_count_source_locked";
         public const string MessageDeviceManagementLocked = "system.message.device_management_locked";
         public const string MessagePositiveIntegerRequired = "system.message.positive_integer_required";
         public const string MessageDecimalPlacesRequired = "system.message.decimal_places_required";

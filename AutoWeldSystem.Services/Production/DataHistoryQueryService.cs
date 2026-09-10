@@ -345,9 +345,10 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
 
     private List<BizWeldPointRecord> GetTaskRecords(int taskId)
     {
-        return _dbContext.Db.Queryable<BizWeldPointRecord>()
-            .Where(record => record.TaskId == taskId)
-            .ToList()
+        // 测试数据页与报表同口径，不显示已删除产品；原始行去采集数据页看。
+        return WeldPointRecordScopeRules.ExcludeDeleted(_dbContext.Db.Queryable<BizWeldPointRecord>()
+                .Where(record => record.TaskId == taskId)
+                .ToList())
             .OrderBy(record => record.StationNo)
             .ThenBy(record => record.ProductNo, NaturalSortComparer.Instance)
             .ThenBy(record => record.SequenceNo)
@@ -659,6 +660,7 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
             TestResult = record.TestResult,
             ProductResult = ResolveProductResult(record),
             IsTest = record.IsTest,
+            IsDeleted = record.IsDeleted,
             ProductCompleted = record.ProductCompleted,
             UploadStatus = record.UploadStatus,
             OperatorNo = record.OperatorNo ?? string.Empty,
