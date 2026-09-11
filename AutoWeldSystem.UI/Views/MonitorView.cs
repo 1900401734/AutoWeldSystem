@@ -1867,7 +1867,7 @@ public partial class MonitorView : BaseView
 
         if (IsManualOnlineWorkOrderInputEditable(state))
         {
-            _ = StartWorkOrderLoadAsync(GetConfirmedWorkOrderInput(stationNo), stationNo, showDialogOnFailure: true);
+            _ = StartWorkOrderLoadAsync(GetConfirmedWorkOrderInput(stationNo), stationNo);
         }
     }
 
@@ -2102,7 +2102,7 @@ public partial class MonitorView : BaseView
     /// <summary>
     /// Starts the latest MES work-order request for a station and cancels a superseded request.
     /// </summary>
-    private async Task StartWorkOrderLoadAsync(string workId, int stationNo, bool showDialogOnFailure)
+    private async Task StartWorkOrderLoadAsync(string workId, int stationNo)
     {
         var normalizedStationNo = NormalizeStationNo(stationNo);
         var normalizedWorkId = WorkOrderInputConfirmationRules.Normalize(workId);
@@ -2117,7 +2117,7 @@ public partial class MonitorView : BaseView
         _workOrderLoadCancellationTokens[normalizedStationNo] = tokenSource;
         try
         {
-            await LoadWorkOrderInfoAsync(normalizedWorkId, normalizedStationNo, showDialogOnFailure, tokenSource.Token);
+            await LoadWorkOrderInfoAsync(normalizedWorkId, normalizedStationNo, tokenSource.Token);
         }
         catch (OperationCanceledException) when (tokenSource.IsCancellationRequested)
         {
@@ -3832,12 +3832,10 @@ public partial class MonitorView : BaseView
     /// </summary>
     /// <param name="workId">工单号。</param>
     /// <param name="stationNo">工位号。</param>
-    /// <param name="showDialogOnFailure">失败时是否弹窗提示；自动扫码查询使用 false。</param>
     /// <returns>加载成功返回 true；否则返回 false。</returns>
     private async Task<bool> LoadWorkOrderInfoAsync(
         string workId,
         int stationNo,
-        bool showDialogOnFailure,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -3851,7 +3849,7 @@ public partial class MonitorView : BaseView
             cancellationToken.ThrowIfCancellationRequested();
             if (workOrder is null)
             {
-                HandleWorkOrderLoadFailure(workId, showDialogOnFailure);
+                HandleWorkOrderLoadFailure(workId);
                 return;
             }
 
@@ -3859,6 +3857,7 @@ public partial class MonitorView : BaseView
             {
                 RefreshProductionRuntimeState();
                 ClearMesOperatorInfo();
+                // ShowWarning 内部会收尾运行状态，避免停在“正在获取工单信息...”。
                 ShowWarning(TextKeys.Monitor.Message.ProcessRequired);
                 return;
             }
@@ -3890,23 +3889,23 @@ public partial class MonitorView : BaseView
     /// 统一处理工单加载失败提示，避免自动扫码查询频繁弹窗。
     /// </summary>
     /// <param name="workId">工单号。</param>
-    /// <param name="showDialogOnFailure">是否弹窗提示。</param>
-    private void HandleWorkOrderLoadFailure(string workId, bool showDialogOnFailure)
+    private void HandleWorkOrderLoadFailure(string workId)
     {
         var detail = _weldTaskService.CurrentState.LastServerSyncMessage ?? string.Empty;
-        if (showDialogOnFailure)
+        var fallbackMessage = _localizer.GetString(TextKeys.Monitor.Message.WorkOrderLoadFailed);
+        _exceptionLogService.WriteBusiness("MES.GetWorkOrderInfo", fallbackMessage, detail, $"WorkId={workId}");
+
+        // 运行状态此前停在“正在获取工单信息...”，看起来像仍在查询，必须清掉；
+        // 失败原因优先显示 MES 返回的 Msg（如“工单不存在”），只有 Msg 为空时才回退到通用文案。
+        ClearRuntimeStatus();
+        if (string.IsNullOrWhiteSpace(detail))
         {
-            ShowBusinessWarning(
-                "MES.GetWorkOrderInfo",
-                TextKeys.Monitor.Message.WorkOrderLoadFailed,
-                detail,
-                $"WorkId={workId}");
+            SetRuntimeError(TextKeys.Monitor.Message.WorkOrderLoadFailed);
             return;
         }
 
-        var message = _localizer.GetString(TextKeys.Monitor.Message.WorkOrderLoadFailed);
-        _exceptionLogService.WriteBusiness("MES.GetWorkOrderInfo", message, detail, $"WorkId={workId}");
-        SetRuntimeError(TextKeys.Monitor.Message.WorkOrderLoadFailed);
+        // 直接写文本而非资源键：RefreshRuntimeError 优先渲染资源键，用 key 会把 Msg 挤掉。
+        SetRuntimeErrorText(detail);
     }
 
     /// <summary>
@@ -3940,6 +3939,8 @@ public partial class MonitorView : BaseView
                     _localizer.GetString(TextKeys.Monitor.Message.ProgramListEmpty),
                     detail,
                     $"WorkId={workOrder.SN}; ProductNumber={workOrder.ProdNum}");
+                // 运行状态此前停在“正在获取程序列表...”，看起来像仍在查询，必须收尾。
+                ClearRuntimeStatus();
                 SetRuntimeError(TextKeys.Monitor.Message.ProgramListEmpty);
                 BindOnlineProgramNameOptions();
                 return;
@@ -4085,6 +4086,7 @@ public partial class MonitorView : BaseView
             _offlineWorkOrderEditedByUser = false;
             _manualWorkOrderEditedByUser = false;
             _validatedOperatorNumber = null;
+            // 草稿按工位保存，切换工位不清除，返回该工位后未确认的输入仍受保护。
                 _weldTaskService.RestoreUnfinishedTask(normalizedStationNo);
         }
 
@@ -4881,7 +4883,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             if (isNewPlcWorkOrder && _mesConnectionMonitorService.Current.IsConnected)
             {
                 _lastAutoQueriedWorkIds[stationNo] = workId;
-                _ = StartWorkOrderLoadAsync(workId, stationNo, showDialogOnFailure: false);
+                _ = StartWorkOrderLoadAsync(workId, stationNo);
             }
         }
 
@@ -4926,7 +4928,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// <returns>Asynchronous operation.</returns>
     private Task AutoLoadWorkOrderInfoAsync(int stationNo, string workId)
     {
-        return StartWorkOrderLoadAsync(workId, stationNo, showDialogOnFailure: false);
+        return StartWorkOrderLoadAsync(workId, stationNo);
     }
 
     private void ApplyLatestWeldPointRecord(BizWeldPointRecord record)
@@ -10708,38 +10710,31 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     }
 
     /// <summary>
-    /// 显示警告。
+    /// 报告警告：只写异常摘要并收尾运行状态，不再弹窗。
+    /// 现场约束：生产监控页是常驻值守界面，弹窗会打断操作并要求额外点击确认；
+    /// 异常摘要有醒目配色和「清除」按钮，足以让操作员看到，且不阻塞后续操作。
     /// </summary>
     /// <param name="messageKey">本地化文本键。</param>
     /// <param name="args">本地化文本参数。</param>
     private void ShowWarning(string messageKey, params object[] args)
     {
+        ClearRuntimeStatus();
         SetRuntimeError(messageKey, args);
-        MessageBox.Show(
-            this,
-            _localizer.GetString(messageKey, args),
-            _localizer.GetString(TextKeys.Common.TitleWarning),
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Warning);
     }
 
     /// <summary>
-    /// 显示警告文本。
+    /// 报告警告文本：只写异常摘要并收尾运行状态，不再弹窗。
     /// </summary>
     /// <param name="message">提示消息。</param>
     private void ShowWarningText(string message)
     {
+        ClearRuntimeStatus();
         SetRuntimeErrorText(message);
-        MessageBox.Show(
-            this,
-            message,
-            _localizer.GetString(TextKeys.Common.TitleWarning),
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Warning);
     }
 
     /// <summary>
-    /// 显示Business警告。
+    /// 报告业务警告：写业务日志和异常摘要并收尾运行状态，不再弹窗。
+    /// 异常摘要优先显示服务端返回的 detail（如 MES 的 Msg），为空时回退到本地化文案。
     /// </summary>
     /// <param name="source">触发来源或日志来源。</param>
     /// <param name="messageKey">本地化文本键。</param>
@@ -10749,27 +10744,30 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     {
         var message = _localizer.GetString(messageKey);
         _exceptionLogService.WriteBusiness(source, message, detail, context);
-        SetRuntimeError(messageKey);
-        MessageBox.Show(
-            this,
-            message,
-            _localizer.GetString(TextKeys.Common.TitleWarning),
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Warning);
+        ClearRuntimeStatus();
+        if (string.IsNullOrWhiteSpace(detail))
+        {
+            SetRuntimeError(messageKey);
+            return;
+        }
+
+        // 直接写文本：RefreshRuntimeError 优先渲染资源键，用 key 会把服务端返回的原因挤掉。
+        SetRuntimeErrorText(detail);
     }
 
     /// <summary>
-    /// 显示异常。
+    /// 报告操作异常：只写异常摘要并收尾运行状态，不再弹窗。
+    /// 调用方（RunUiOperationAsync）已写入 SetRuntimeError 的资源键，这里补上服务端原始消息，
+    /// 使异常摘要显示具体原因而不是通用文案；运行状态一并收尾，避免停在“正在...”造成误解。
     /// </summary>
     /// <param name="message">提示消息。</param>
     private void ShowError(string message)
     {
-        MessageBox.Show(
-            this,
-            message,
-            _localizer.GetString(TextKeys.Common.TitleError),
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Error);
+        ClearRuntimeStatus();
+        if (!string.IsNullOrWhiteSpace(message))
+        {
+            SetRuntimeErrorText(message);
+        }
     }
 
     #endregion
@@ -10885,6 +10883,15 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// <summary>
     /// 清空运行异常。
     /// </summary>
+    /// <summary>
+    /// 清空运行状态摘要，回到等待业务操作。
+    /// 用于流程失败后收尾：运行状态若停在“正在获取工单信息...”，会让操作员以为查询仍在进行。
+    /// </summary>
+    private void ClearRuntimeStatus()
+    {
+        SetRuntimeStatusCore(TextKeys.Monitor.RuntimeStatus.Idle, Array.Empty<object>(), null, isSuccess: false);
+    }
+
     private void ClearRuntimeError()
     {
         _runtimeErrorKey = null;

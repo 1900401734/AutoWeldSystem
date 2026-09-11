@@ -16340,6 +16340,44 @@ static void MonitorViewConfirmsManualWorkOrdersAndPrioritizesPlcSnapshots()
             .Contains("GetConfirmedWorkOrderInput", StringComparison.Ordinal),
         "离线开工仍应优先使用已确认工单号，只有为空时才回退输入框文本。");
     AssertTrue(viewCode.Contains("CancellationTokenSource", StringComparison.Ordinal), "工单查询必须维护取消令牌，避免旧人工查询覆盖 PLC 查询。");
+
+    // 获取工单失败后运行状态必须收尾，并把 MES 返回的 Msg 显示给操作员。
+    var loadFailureMethod = ExtractMethodText(viewCode, "private void HandleWorkOrderLoadFailure", "private async Task LoadProgramListForWorkOrderAsync");
+    AssertTrue(
+        loadFailureMethod.Contains("ClearRuntimeStatus", StringComparison.Ordinal),
+        "获取工单失败必须清空运行状态，否则界面一直停在“正在获取工单信息...”造成误解。");
+    AssertTrue(
+        loadFailureMethod.Contains("SetRuntimeErrorText(detail)", StringComparison.Ordinal),
+        "异常摘要必须显示 MES 返回的 Msg，而不是固定文案。");
+    AssertFalse(
+        viewCode.Contains("showDialogOnFailure", StringComparison.Ordinal),
+        "弹窗开关已无调用方区分，必须移除以免留下误导性死参数。");
+
+    // 生产监控页是常驻值守界面，除破坏性操作的二次确认外一律不弹窗，反馈只走运行状态 + 异常摘要。
+    AssertEqual(
+        1,
+        CountOccurrences(viewCode, "MessageBox.Show"),
+        "监控页只保留删除产品的二次确认弹窗，其余提示必须走运行状态和异常摘要。");
+    AssertTrue(
+        ExtractMethodText(viewCode, "private bool ConfirmDeleteProduct", "private void RefreshProgramCountMetrics")
+            .Contains("MessageBox.Show", StringComparison.Ordinal),
+        "唯一保留的弹窗必须是删除产品的二次确认：删除会抹掉产出记录，需要操作员明确确认。");
+    foreach (var reporter in new[] { "private void ShowWarning(", "private void ShowWarningText(", "private void ShowBusinessWarning(", "private void ShowError(" })
+    {
+        var reporterMethod = ExtractMethodText(viewCode, reporter, "/// <summary>");
+        AssertFalse(
+            reporterMethod.Contains("MessageBox", StringComparison.Ordinal),
+            $"{reporter} 不得再弹窗，否则流程提示会打断值守操作。");
+        AssertTrue(
+            reporterMethod.Contains("ClearRuntimeStatus", StringComparison.Ordinal),
+            $"{reporter} 必须收尾运行状态，避免停在“正在...”造成仍在处理的误解。");
+    }
+
+    // 工单有效但无可选工序、程序列表为空这两条分支也会中断流程，同样要收尾运行状态。
+    var programListMethod = ExtractMethodText(viewCode, "private async Task LoadProgramListForWorkOrderAsync", "private void ProgramManageService_ProgramLookupsChanged");
+    AssertTrue(
+        programListMethod.Contains("ClearRuntimeStatus", StringComparison.Ordinal),
+        "程序列表为空时必须收尾运行状态，否则界面停在“正在获取程序列表...”。");
     AssertTrue(serviceMethod.Contains("cancellationToken.ThrowIfCancellationRequested();", StringComparison.Ordinal), "服务层在 MES 返回后写入运行态前必须检查请求是否已经取消。");
 }
 static BizProgram BuildSyncedProgram()
