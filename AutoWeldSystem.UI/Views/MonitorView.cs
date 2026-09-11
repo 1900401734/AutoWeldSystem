@@ -165,6 +165,18 @@ public partial class MonitorView : BaseView
     // 记录操作员已显式选择离线程序或配方的工位。
     private readonly HashSet<int> _offlineProgramSelectedByUserStations = new();
     private bool _manualWorkOrderEditedByUser;
+    /// <summary>
+    /// 按工位保存尚未回车确认的流转卡号草稿。
+    /// PLC 持续写入工单号数据块，界面刷新周期会用 PLC 值回填输入框；草稿标志在多处被清零，
+    /// 因此额外保留草稿文本作为保护依据，双工位切换后回来也不丢失。
+    /// </summary>
+    private readonly Dictionary<int, string> _workOrderInputDrafts = new();
+    /// <summary>
+    /// 按工位记录回车确认那一刻 PLC 寄存器里的工单号，作为“已见过的 PLC 值”基线。
+    /// 确认后 PLC 值与基线相同说明只是寄存器常驻值，不得覆盖手输工单；不同才视为新一次扫码。
+    /// 不复用 _lastAutoQueriedWorkIds：它只在 MES 在线自动查询时写入，MES 离线期间不记录，会误判为新扫码。
+    /// </summary>
+    private readonly Dictionary<int, string> _confirmedPlcWorkIdBaselines = new();
     private string? _lastBoundOnlineWorkOrderKey;
     private bool _dualStationEnabled;
     private bool _adjustingTitleFont;
@@ -1808,6 +1820,8 @@ public partial class MonitorView : BaseView
         var stationNo = CurrentStationNo;
         var state = GetCurrentStationState();
         ClearConfirmedWorkOrderInput(stationNo);
+        // 先记草稿再走后续分支：草稿标志会被刷新周期清零，草稿文本是保护回填的可靠依据。
+        RememberWorkOrderInputDraft(stationNo);
         if (IsOfflineInputEditable(state))
         {
             _offlineWorkOrderEditedByUser = true;
@@ -1853,7 +1867,7 @@ public partial class MonitorView : BaseView
 
         if (IsManualOnlineWorkOrderInputEditable(state))
         {
-            _ = StartWorkOrderLoadAsync(GetConfirmedWorkOrderInput(stationNo), stationNo, showDialogOnFailure: true);
+            _ = StartWorkOrderLoadAsync(GetConfirmedWorkOrderInput(stationNo), stationNo);
         }
     }
 
@@ -1866,18 +1880,27 @@ public partial class MonitorView : BaseView
         if (string.IsNullOrWhiteSpace(workId))
         {
             ClearConfirmedWorkOrderInput(stationNo);
+            ClearWorkOrderInputDraft(stationNo);
             SetRuntimeError(TextKeys.Monitor.RuntimeError.WorkOrderRequired);
             return false;
         }
 
         SetWorkOrderInputText(workId);
-        _confirmedWorkOrderInputs[NormalizeStationNo(stationNo)] = workId;
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        _confirmedWorkOrderInputs[normalizedStationNo] = workId;
+        // 记下确认那一刻 PLC 的值：之后 PLC 仍是这个值就不算新扫码，不得把手输工单顶掉。
+        _confirmedPlcWorkIdBaselines[normalizedStationNo] = GetCurrentLiveWorkId();
+        // 已确认即不再是草稿，后续 PLC 换工单可以正常回填。
+        ClearWorkOrderInputDraft(stationNo);
         return true;
     }
 
     /// <summary>
     /// 处理 PLC 成功清空工单号：立即释放扫码去重状态，空闲时只清空流转卡号及其确认状态。
     /// 运行任务期间保留任务工单显示，但去重状态仍需释放，确保完工后同一工单可直接重新扫码。
+    /// 现场约束：PLC 工单号数据块常态为空（未扫码时寄存器就是空值），该分支每个轮询周期都会命中，
+    /// 因此手动输入期间绝不能清空输入框，也不能把 PLC 空值当作换件信号去释放草稿保护，
+    /// 否则操作员每敲一个字符都会被 200ms 轮询清掉。去重基线与输入框无关，照旧释放。
     /// </summary>
     private bool ApplyClearedPlcWorkOrderInput(PlcWorkIdSnapshot snapshot)
     {
@@ -1893,12 +1916,24 @@ public partial class MonitorView : BaseView
         var state = _weldTaskService.CurrentState.GetOrCreateStation(stationNo);
         var stationIsIdle = !IsRunningWeldTask(state.ActiveTask)
             && _weldTaskService.GetUnfinishedTask(stationNo) is null;
+        // 操作员正在手输、或已回车确认的工单仍锁定时，PLC 转空不是操作员动作：
+        // 不取消其查询、不清确认值、不清输入框，只把 PLC 基线清掉，使 PLC 随后写入的任何值
+        // （包括与之前相同的码）都被识别为新一次扫码，从而允许覆盖。
+        var inputProtected = stationNo == CurrentStationNo
+            && ShouldProtectWorkOrderInput(stationNo, snapshot.WorkId);
+        if (inputProtected)
+        {
+            _confirmedPlcWorkIdBaselines.Remove(stationNo);
+            return true;
+        }
+
         CancelWorkOrderLoad(stationNo);
         ClearConfirmedWorkOrderInput(stationNo);
         if (!stationIsIdle)
         {
             return true;
         }
+
         if (stationNo == CurrentStationNo)
         {
             _manualWorkOrderEditedByUser = false;
@@ -1911,7 +1946,11 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// Applies an idle-station PLC work order with higher priority than an unconfirmed manual draft.
+    /// Applies an idle-station PLC work order, but never overwrites an in-progress manual draft.
+    /// 现场约束：PLC 持续驱动工单号寄存器，若按轮询周期回填就会在操作员逐字符输入时反复整段替换，
+    /// 导致流转卡号永远输不完。因此手动草稿期间一律不回填；草稿在回车确认、PLC 清空工单号
+    /// 或输入框不再可编辑时释放，随后 PLC 值照常接管。扫码枪是「一串字符 + 回车」，
+    /// 输入速度远快于轮询周期，不受该让行影响。
     /// </summary>
     private bool ApplyPlcWorkOrderInput(PlcWorkIdSnapshot snapshot)
     {
@@ -1935,10 +1974,15 @@ public partial class MonitorView : BaseView
             return false;
         }
 
+        // 操作员正在手输、或已回车确认且 PLC 未送来新扫码时让行，否则寄存器常驻值会顶掉手输工单。
+        if (stationNo == CurrentStationNo && ShouldProtectWorkOrderInput(stationNo, snapshot.WorkId))
+        {
+            return false;
+        }
+
         var workId = WorkOrderInputConfirmationRules.Normalize(snapshot.WorkId);
-        var hasManualDraft = _offlineWorkOrderEditedByUser || _manualWorkOrderEditedByUser;
-        var isAlreadyApplied = !hasManualDraft
-            && WorkOrderInputConfirmationRules.IsConfirmed(inputSN.Text, GetConfirmedWorkOrderInput(stationNo))
+        var isAlreadyApplied =
+            WorkOrderInputConfirmationRules.IsConfirmed(inputSN.Text, GetConfirmedWorkOrderInput(stationNo))
             && string.Equals(GetConfirmedWorkOrderInput(stationNo), workId, StringComparison.OrdinalIgnoreCase);
         if (isAlreadyApplied)
         {
@@ -1946,6 +1990,8 @@ public partial class MonitorView : BaseView
         }
 
         _confirmedWorkOrderInputs[stationNo] = workId;
+        // PLC 新扫码覆盖后以该值为基线，刷新周期不会把同一次扫码再判成新扫码。
+        _confirmedPlcWorkIdBaselines[stationNo] = workId;
         _offlineWorkOrderEditedByUser = false;
         _manualWorkOrderEditedByUser = false;
         ClearPendingOnlineProgramSelection();
@@ -1958,7 +2004,78 @@ public partial class MonitorView : BaseView
     /// </summary>
     private void ClearConfirmedWorkOrderInput(int stationNo)
     {
-        _confirmedWorkOrderInputs.Remove(NormalizeStationNo(stationNo));
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        _confirmedWorkOrderInputs.Remove(normalizedStationNo);
+        // 确认值失效即解除锁定，基线一并清掉。
+        _confirmedPlcWorkIdBaselines.Remove(normalizedStationNo);
+    }
+
+    /// <summary>
+    /// 判断是否应保护流转卡号输入框不被 PLC 值回填，四条回填路径共用同一判据。
+    /// 现场约束：PLC 一直写入工单号数据块且不含回车，界面刷新周期与 PLC 快照都会覆盖输入框。
+    /// 两层保护：① 输入中——以焦点为主判据、按工位草稿文本为辅；
+    /// ② 回车确认后——确认值锁定输入框，只有 PLC 送来与确认时基线不同的新扫码值才解锁。
+    /// </summary>
+    /// <param name="stationNo">工位号。</param>
+    /// <param name="incomingPlcWorkId">本次要回填的 PLC 工单号（刷新周期传 liveWorkId，快照传 snapshot.WorkId）。</param>
+    private bool ShouldProtectWorkOrderInput(int stationNo, string? incomingPlcWorkId)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        if (WorkOrderInputConfirmationRules.ShouldProtectManualInput(
+                inputSN.Focused,
+                GetWorkOrderInputDraft(normalizedStationNo),
+                inputSN.Text))
+        {
+            return true;
+        }
+
+        return WorkOrderInputConfirmationRules.ShouldKeepConfirmedWorkOrder(
+            GetConfirmedWorkOrderInput(normalizedStationNo),
+            inputSN.Text,
+            incomingPlcWorkId,
+            _confirmedPlcWorkIdBaselines.TryGetValue(normalizedStationNo, out var baseline) ? baseline : null);
+    }
+
+    /// <summary>
+    /// 解析离线开工使用的流转卡号：已回车确认时用确认值，否则用输入框当前文本。
+    /// 离线开工不查询 MES，回车确认不是必要步骤，不能因未确认就判定“未输入工单号”。
+    /// </summary>
+    private string ResolveOfflineWorkOrderInput(int stationNo)
+    {
+        var confirmed = GetConfirmedWorkOrderInput(stationNo);
+        return string.IsNullOrWhiteSpace(confirmed)
+            ? WorkOrderInputConfirmationRules.Normalize(inputSN.Text)
+            : confirmed;
+    }
+
+    private string GetWorkOrderInputDraft(int stationNo)
+    {
+        return _workOrderInputDrafts.TryGetValue(NormalizeStationNo(stationNo), out var draft)
+            ? draft
+            : string.Empty;
+    }
+
+    /// <summary>
+    /// 记录操作员正在输入的草稿；输入框被清空视为撤销草稿，允许 PLC 重新接管。
+    /// </summary>
+    private void RememberWorkOrderInputDraft(int stationNo)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        if (WorkOrderInputConfirmationRules.IsDraftCleared(inputSN.Text))
+        {
+            _workOrderInputDrafts.Remove(normalizedStationNo);
+            return;
+        }
+
+        _workOrderInputDrafts[normalizedStationNo] = WorkOrderInputConfirmationRules.Normalize(inputSN.Text);
+    }
+
+    /// <summary>
+    /// 释放草稿保护：回车确认、输入框被清空和该工位开工完成后调用。
+    /// </summary>
+    private void ClearWorkOrderInputDraft(int stationNo)
+    {
+        _workOrderInputDrafts.Remove(NormalizeStationNo(stationNo));
     }
 
     private void CancelWorkOrderLoad(int stationNo)
@@ -1985,7 +2102,7 @@ public partial class MonitorView : BaseView
     /// <summary>
     /// Starts the latest MES work-order request for a station and cancels a superseded request.
     /// </summary>
-    private async Task StartWorkOrderLoadAsync(string workId, int stationNo, bool showDialogOnFailure)
+    private async Task StartWorkOrderLoadAsync(string workId, int stationNo)
     {
         var normalizedStationNo = NormalizeStationNo(stationNo);
         var normalizedWorkId = WorkOrderInputConfirmationRules.Normalize(workId);
@@ -2000,7 +2117,7 @@ public partial class MonitorView : BaseView
         _workOrderLoadCancellationTokens[normalizedStationNo] = tokenSource;
         try
         {
-            await LoadWorkOrderInfoAsync(normalizedWorkId, normalizedStationNo, showDialogOnFailure, tokenSource.Token);
+            await LoadWorkOrderInfoAsync(normalizedWorkId, normalizedStationNo, tokenSource.Token);
         }
         catch (OperationCanceledException) when (tokenSource.IsCancellationRequested)
         {
@@ -3715,12 +3832,10 @@ public partial class MonitorView : BaseView
     /// </summary>
     /// <param name="workId">工单号。</param>
     /// <param name="stationNo">工位号。</param>
-    /// <param name="showDialogOnFailure">失败时是否弹窗提示；自动扫码查询使用 false。</param>
     /// <returns>加载成功返回 true；否则返回 false。</returns>
     private async Task<bool> LoadWorkOrderInfoAsync(
         string workId,
         int stationNo,
-        bool showDialogOnFailure,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -3734,7 +3849,7 @@ public partial class MonitorView : BaseView
             cancellationToken.ThrowIfCancellationRequested();
             if (workOrder is null)
             {
-                HandleWorkOrderLoadFailure(workId, showDialogOnFailure);
+                HandleWorkOrderLoadFailure(workId);
                 return;
             }
 
@@ -3742,6 +3857,7 @@ public partial class MonitorView : BaseView
             {
                 RefreshProductionRuntimeState();
                 ClearMesOperatorInfo();
+                // ShowWarning 内部会收尾运行状态，避免停在“正在获取工单信息...”。
                 ShowWarning(TextKeys.Monitor.Message.ProcessRequired);
                 return;
             }
@@ -3773,23 +3889,23 @@ public partial class MonitorView : BaseView
     /// 统一处理工单加载失败提示，避免自动扫码查询频繁弹窗。
     /// </summary>
     /// <param name="workId">工单号。</param>
-    /// <param name="showDialogOnFailure">是否弹窗提示。</param>
-    private void HandleWorkOrderLoadFailure(string workId, bool showDialogOnFailure)
+    private void HandleWorkOrderLoadFailure(string workId)
     {
         var detail = _weldTaskService.CurrentState.LastServerSyncMessage ?? string.Empty;
-        if (showDialogOnFailure)
+        var fallbackMessage = _localizer.GetString(TextKeys.Monitor.Message.WorkOrderLoadFailed);
+        _exceptionLogService.WriteBusiness("MES.GetWorkOrderInfo", fallbackMessage, detail, $"WorkId={workId}");
+
+        // 运行状态此前停在“正在获取工单信息...”，看起来像仍在查询，必须清掉；
+        // 失败原因优先显示 MES 返回的 Msg（如“工单不存在”），只有 Msg 为空时才回退到通用文案。
+        ClearRuntimeStatus();
+        if (string.IsNullOrWhiteSpace(detail))
         {
-            ShowBusinessWarning(
-                "MES.GetWorkOrderInfo",
-                TextKeys.Monitor.Message.WorkOrderLoadFailed,
-                detail,
-                $"WorkId={workId}");
+            SetRuntimeError(TextKeys.Monitor.Message.WorkOrderLoadFailed);
             return;
         }
 
-        var message = _localizer.GetString(TextKeys.Monitor.Message.WorkOrderLoadFailed);
-        _exceptionLogService.WriteBusiness("MES.GetWorkOrderInfo", message, detail, $"WorkId={workId}");
-        SetRuntimeError(TextKeys.Monitor.Message.WorkOrderLoadFailed);
+        // 直接写文本而非资源键：RefreshRuntimeError 优先渲染资源键，用 key 会把 Msg 挤掉。
+        SetRuntimeErrorText(detail);
     }
 
     /// <summary>
@@ -3823,6 +3939,8 @@ public partial class MonitorView : BaseView
                     _localizer.GetString(TextKeys.Monitor.Message.ProgramListEmpty),
                     detail,
                     $"WorkId={workOrder.SN}; ProductNumber={workOrder.ProdNum}");
+                // 运行状态此前停在“正在获取程序列表...”，看起来像仍在查询，必须收尾。
+                ClearRuntimeStatus();
                 SetRuntimeError(TextKeys.Monitor.Message.ProgramListEmpty);
                 BindOnlineProgramNameOptions();
                 return;
@@ -3968,6 +4086,7 @@ public partial class MonitorView : BaseView
             _offlineWorkOrderEditedByUser = false;
             _manualWorkOrderEditedByUser = false;
             _validatedOperatorNumber = null;
+            // 草稿按工位保存，切换工位不清除，返回该工位后未确认的输入仍受保护。
                 _weldTaskService.RestoreUnfinishedTask(normalizedStationNo);
         }
 
@@ -4039,7 +4158,9 @@ public partial class MonitorView : BaseView
         var workOrderText = activeTask is not null
             ? activeTask.SN
             : !string.IsNullOrWhiteSpace(liveWorkId) ? liveWorkId : workOrder?.SN ?? string.Empty;
-        if (!_manualWorkOrderEditedByUser || !canEditOnlineWorkOrder)
+        // 有运行任务时必须显示任务关联工单；否则 liveWorkId 来自 PLC，刷新周期回填会打断手动输入，
+        // 因此操作员正在输入、或已回车确认且 PLC 未送来新扫码时一律不回填。
+        if (activeTask is not null || !ShouldProtectWorkOrderInput(CurrentStationNo, liveWorkId))
         {
             SetWorkOrderInputText(workOrderText);
         }
@@ -4215,6 +4336,8 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         }
 
         ClearConfirmedWorkOrderInput(stationNo);
+        // 开工完成即释放草稿保护，下一件的 PLC 工单号可正常回填。
+        ClearWorkOrderInputDraft(stationNo);
         if (NormalizeStationNo(stationNo) == CurrentStationNo)
         {
             _manualWorkOrderEditedByUser = false;
@@ -4272,10 +4395,11 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             BindOfflineProductNumOptions();
             BindOfflineProgramNameOptions();
 
-            if (!_offlineWorkOrderEditedByUser && !string.IsNullOrWhiteSpace(liveWorkId))
+            if (!string.IsNullOrWhiteSpace(liveWorkId) && !ShouldProtectWorkOrderInput(CurrentStationNo, liveWorkId))
             {
                 // 流转卡号只接受 PLC 扫码值或操作员录入，不再为空值生成 LOCAL 占位编号：
                 // 占位编号会被当成真实工单写入任务和上报数据，且掩盖“未扫码”这一状态。
+                // 手动输入或已确认期间同样不得回填，否则 PLC 持续写入会覆盖操作员的内容。
                 inputSN.Text = liveWorkId;
             }
 
@@ -4545,7 +4669,9 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             request = OfflineStartInputRules.BuildRequest(
                 new OfflineStartInput(
                     StationNo: stationNo,
-                    WorkOrderId: GetConfirmedWorkOrderInput(stationNo),
+                    // 离线开工不经过 MES 查询，操作员常直接点「本地工单」而不按回车，
+                    // 因此优先取已确认值，未确认时回退到输入框可见文本，避免误报“未输入工单号”。
+                    WorkOrderId: ResolveOfflineWorkOrderInput(stationNo),
                     Batch: inputBatch.Text,
                     Spec: inputSpec.Text,
                     ProcessNo: inputProcessNo.Text,
@@ -4757,7 +4883,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             if (isNewPlcWorkOrder && _mesConnectionMonitorService.Current.IsConnected)
             {
                 _lastAutoQueriedWorkIds[stationNo] = workId;
-                _ = StartWorkOrderLoadAsync(workId, stationNo, showDialogOnFailure: false);
+                _ = StartWorkOrderLoadAsync(workId, stationNo);
             }
         }
 
@@ -4802,7 +4928,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// <returns>Asynchronous operation.</returns>
     private Task AutoLoadWorkOrderInfoAsync(int stationNo, string workId)
     {
-        return StartWorkOrderLoadAsync(workId, stationNo, showDialogOnFailure: false);
+        return StartWorkOrderLoadAsync(workId, stationNo);
     }
 
     private void ApplyLatestWeldPointRecord(BizWeldPointRecord record)
@@ -10584,38 +10710,31 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     }
 
     /// <summary>
-    /// 显示警告。
+    /// 报告警告：只写异常摘要并收尾运行状态，不再弹窗。
+    /// 现场约束：生产监控页是常驻值守界面，弹窗会打断操作并要求额外点击确认；
+    /// 异常摘要有醒目配色和「清除」按钮，足以让操作员看到，且不阻塞后续操作。
     /// </summary>
     /// <param name="messageKey">本地化文本键。</param>
     /// <param name="args">本地化文本参数。</param>
     private void ShowWarning(string messageKey, params object[] args)
     {
+        ClearRuntimeStatus();
         SetRuntimeError(messageKey, args);
-        MessageBox.Show(
-            this,
-            _localizer.GetString(messageKey, args),
-            _localizer.GetString(TextKeys.Common.TitleWarning),
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Warning);
     }
 
     /// <summary>
-    /// 显示警告文本。
+    /// 报告警告文本：只写异常摘要并收尾运行状态，不再弹窗。
     /// </summary>
     /// <param name="message">提示消息。</param>
     private void ShowWarningText(string message)
     {
+        ClearRuntimeStatus();
         SetRuntimeErrorText(message);
-        MessageBox.Show(
-            this,
-            message,
-            _localizer.GetString(TextKeys.Common.TitleWarning),
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Warning);
     }
 
     /// <summary>
-    /// 显示Business警告。
+    /// 报告业务警告：写业务日志和异常摘要并收尾运行状态，不再弹窗。
+    /// 异常摘要优先显示服务端返回的 detail（如 MES 的 Msg），为空时回退到本地化文案。
     /// </summary>
     /// <param name="source">触发来源或日志来源。</param>
     /// <param name="messageKey">本地化文本键。</param>
@@ -10625,27 +10744,30 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     {
         var message = _localizer.GetString(messageKey);
         _exceptionLogService.WriteBusiness(source, message, detail, context);
-        SetRuntimeError(messageKey);
-        MessageBox.Show(
-            this,
-            message,
-            _localizer.GetString(TextKeys.Common.TitleWarning),
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Warning);
+        ClearRuntimeStatus();
+        if (string.IsNullOrWhiteSpace(detail))
+        {
+            SetRuntimeError(messageKey);
+            return;
+        }
+
+        // 直接写文本：RefreshRuntimeError 优先渲染资源键，用 key 会把服务端返回的原因挤掉。
+        SetRuntimeErrorText(detail);
     }
 
     /// <summary>
-    /// 显示异常。
+    /// 报告操作异常：只写异常摘要并收尾运行状态，不再弹窗。
+    /// 调用方（RunUiOperationAsync）已写入 SetRuntimeError 的资源键，这里补上服务端原始消息，
+    /// 使异常摘要显示具体原因而不是通用文案；运行状态一并收尾，避免停在“正在...”造成误解。
     /// </summary>
     /// <param name="message">提示消息。</param>
     private void ShowError(string message)
     {
-        MessageBox.Show(
-            this,
-            message,
-            _localizer.GetString(TextKeys.Common.TitleError),
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Error);
+        ClearRuntimeStatus();
+        if (!string.IsNullOrWhiteSpace(message))
+        {
+            SetRuntimeErrorText(message);
+        }
     }
 
     #endregion
@@ -10761,6 +10883,15 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// <summary>
     /// 清空运行异常。
     /// </summary>
+    /// <summary>
+    /// 清空运行状态摘要，回到等待业务操作。
+    /// 用于流程失败后收尾：运行状态若停在“正在获取工单信息...”，会让操作员以为查询仍在进行。
+    /// </summary>
+    private void ClearRuntimeStatus()
+    {
+        SetRuntimeStatusCore(TextKeys.Monitor.RuntimeStatus.Idle, Array.Empty<object>(), null, isSuccess: false);
+    }
+
     private void ClearRuntimeError()
     {
         _runtimeErrorKey = null;

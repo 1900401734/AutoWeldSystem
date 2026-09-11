@@ -13576,14 +13576,10 @@ static void OfflineWorkOrderInputNeverGeneratesLocalPlaceholder()
     // 离线启动不得自动生成 LOCAL-工位-时间戳 占位流转卡号：占位值会被当成真实工单
     // 写入任务与上报数据，并掩盖“尚未扫码”这一状态，必须留空由 PLC 扫码或操作员录入。
     var monitorCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
-    var localFormCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Forms", "LocalWorkOrderForm.cs"), Encoding.UTF8);
 
     AssertFalse(
         monitorCode.Contains("$\"LOCAL-", StringComparison.Ordinal),
         "MonitorView 不得为空流转卡号生成 LOCAL 占位编号。");
-    AssertFalse(
-        localFormCode.Contains("$\"LOCAL-", StringComparison.Ordinal),
-        "本地工单窗口不得为空流转卡号生成 LOCAL 占位编号。");
 
     var offlineBindMethod = ExtractMethodText(
         monitorCode,
@@ -13593,13 +13589,6 @@ static void OfflineWorkOrderInputNeverGeneratesLocalPlaceholder()
         offlineBindMethod.Contains("!string.IsNullOrWhiteSpace(liveWorkId)", StringComparison.Ordinal),
         "离线绑定只有在 PLC 存在扫码值时才写入流转卡号，否则必须保持为空。");
 
-    var initialResolver = ExtractMethodText(
-        localFormCode,
-        "private string ResolveInitialWorkOrderId()",
-        "private void TxtWorkOrderId_TextChanged");
-    AssertTrue(
-        initialResolver.Contains("string.Empty", StringComparison.Ordinal),
-        "本地工单窗口无 PLC 扫码值时初始流转卡号必须为空。");
 }
 
 static void ProgramMesSyncIgnoresLocalOnlyFields()
@@ -13796,7 +13785,6 @@ static void ProgramRuntimeResolvesRecipesByCurrentStation()
     var weldTaskCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "WeldTaskService.cs"), Encoding.UTF8);
     var previewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductRealtimePreviewService.cs"), Encoding.UTF8);
     var monitorCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
-    var localFormCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Forms", "LocalWorkOrderForm.cs"), Encoding.UTF8);
 
     AssertTrue(offlineRulesCode.Contains("ProgramRecipeMappingRules.Resolve(program, input.StationNo)", StringComparison.Ordinal), "离线开工请求应使用当前工位配方号。 ");
     AssertTrue(weldTaskCode.Contains("ResolveProgramRecipeCode(program, settings.DeviceId, normalizedStationNo)", StringComparison.Ordinal), "在线开工任务应按当前工位解析本地配方号。 ");
@@ -13809,7 +13797,6 @@ static void ProgramRuntimeResolvesRecipesByCurrentStation()
     AssertFalse(monitorResolver.Contains("selectedProgram?.RecipeCode", StringComparison.Ordinal), "新任务运行时解析不得回退 MES 程序配方号。");
     AssertTrue(previewCode.Contains("ProgramRecipeMappingRules.Matches(program.ToEntityStub(), stationNo, normalizedRecipeCode)", StringComparison.Ordinal), "PLC 配方反查产品预览时应按工位匹配。 ");
     AssertTrue(monitorCode.Contains("ProgramRecipeMappingRules.Resolve(localProgram, stationNo)", StringComparison.Ordinal), "MonitorView 配方下发和反查应复用工位映射规则。 ");
-    AssertTrue(localFormCode.Contains("ProgramRecipeMappingRules.Resolve(program, _stationNo)", StringComparison.Ordinal), "本地工单窗口应显示并提交当前工位配方号。 ");
 }
 
 static void ProgramMesDescriptionChangesTriggerUpdate()
@@ -14945,10 +14932,7 @@ static void MonitorViewLinksProgramAndRecipeSelectionsForStartInput()
     AssertFalse(viewCode.Contains("配方编号解析失败", StringComparison.Ordinal)
         || viewCode.Contains("配方编号下发失败", StringComparison.Ordinal)
         || viewCode.Contains("配方编号校验失败", StringComparison.Ordinal), "MonitorView 普通业务提示不得暴露数字配方号术语。");
-    var localDesignerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Forms", "LocalWorkOrderForm.Designer.cs"), Encoding.UTF8);
     var readme = File.ReadAllText(GetRepoFilePath("README.md"), Encoding.UTF8);
-    AssertFalse(localDesignerCode.Contains("txtRecipeCode", StringComparison.Ordinal)
-        || localDesignerCode.Contains("配方编号", StringComparison.Ordinal), "本地工单窗口不得显示数字配方号。");
     AssertTrue(readme.Contains("按工位选择 PLC 配方名称", StringComparison.Ordinal)
         && readme.Contains("地址维护 -> 配方名称地址", StringComparison.Ordinal)
         && readme.Contains("不会出现在相应工位的可生产列表", StringComparison.Ordinal), "README 必须说明新的配方名称关联和生产可用性规则。");
@@ -16171,6 +16155,94 @@ static void WorkOrderInputConfirmationRulesDistinguishDraftsAndPlcValues()
             readSucceeded: true,
             workId: "PLC-200"),
         "运行任务期间 PLC 快照不得覆盖任务关联工单。");
+
+    // 手动草稿让行：PLC 寄存器常驻有值，轮询回填会打断逐字符输入。
+    AssertTrue(
+        WorkOrderInputConfirmationRules.HasManualDraft(
+            offlineEditedByUser: false,
+            manualEditedByUser: true,
+            visibleWorkId: "WO-1"),
+        "在线手输了半截工单号时必须视为草稿，PLC 快照要让行。");
+    AssertTrue(
+        WorkOrderInputConfirmationRules.HasManualDraft(
+            offlineEditedByUser: true,
+            manualEditedByUser: false,
+            visibleWorkId: "WO-1"),
+        "离线待开工草稿同样要让行。");
+    AssertFalse(
+        WorkOrderInputConfirmationRules.HasManualDraft(
+            offlineEditedByUser: true,
+            manualEditedByUser: true,
+            visibleWorkId: "   "),
+        "输入框已被清空视为撤销草稿，PLC 可以重新接管回填。");
+    AssertFalse(
+        WorkOrderInputConfirmationRules.HasManualDraft(
+            offlineEditedByUser: false,
+            manualEditedByUser: false,
+            visibleWorkId: "WO-1"),
+        "没有草稿标志时不得阻止 PLC 回填，否则 PLC 换工单无法刷新界面。");
+
+    // 现场故障：PLC 一直写入工单号数据块且内容不含回车，草稿标志又会被刷新周期清零，
+    // 因此保护判据以输入框焦点为主，草稿文本为辅。
+    AssertTrue(
+        WorkOrderInputConfirmationRules.ShouldProtectManualInput(
+            inputFocused: true,
+            draftWorkId: string.Empty,
+            visibleWorkId: "W"),
+        "输入框有焦点即证明操作员正在输入，必须保护，不依赖任何会被清零的标志。");
+    AssertTrue(
+        WorkOrderInputConfirmationRules.ShouldProtectManualInput(
+            inputFocused: false,
+            draftWorkId: "WO-10",
+            visibleWorkId: " WO-10 "),
+        "失去焦点但草稿文本与界面一致时仍要保护，避免输入途中去点别的控件就被覆盖。");
+    AssertFalse(
+        WorkOrderInputConfirmationRules.ShouldProtectManualInput(
+            inputFocused: false,
+            draftWorkId: "WO-10",
+            visibleWorkId: "PLC-200"),
+        "界面已不是草稿内容时说明草稿已被别处覆盖或确认，不再保护。");
+    AssertFalse(
+        WorkOrderInputConfirmationRules.ShouldProtectManualInput(
+            inputFocused: false,
+            draftWorkId: string.Empty,
+            visibleWorkId: "PLC-200"),
+        "无焦点且无草稿时必须允许 PLC 回填，否则 PLC 换工单界面不刷新。");
+    AssertTrue(WorkOrderInputConfirmationRules.IsDraftCleared("  "), "输入框被清空视为撤销草稿。");
+    AssertFalse(WorkOrderInputConfirmationRules.IsDraftCleared("W"), "有内容时不算撤销草稿。");
+
+    // 回车确认后必须固化：PLC 寄存器常驻有值，不能把手输工单顶掉，需新一次扫码才覆盖。
+    AssertTrue(
+        WorkOrderInputConfirmationRules.ShouldKeepConfirmedWorkOrder(
+            confirmedWorkId: "WO-MANUAL",
+            visibleWorkId: "WO-MANUAL",
+            incomingPlcWorkId: "PLC-OLD",
+            lastHandledPlcWorkId: "PLC-OLD"),
+        "PLC 值与上次相同说明只是寄存器常驻值，不得覆盖已确认的手输工单。");
+    AssertFalse(
+        WorkOrderInputConfirmationRules.ShouldKeepConfirmedWorkOrder(
+            confirmedWorkId: "WO-MANUAL",
+            visibleWorkId: "WO-MANUAL",
+            incomingPlcWorkId: "PLC-NEW",
+            lastHandledPlcWorkId: "PLC-OLD"),
+        "PLC 送来新扫码值时应解锁并覆盖，现场重新扫一次码即可切换工单。");
+    AssertFalse(
+        WorkOrderInputConfirmationRules.ShouldKeepConfirmedWorkOrder(
+            confirmedWorkId: string.Empty,
+            visibleWorkId: "WO-MANUAL",
+            incomingPlcWorkId: "PLC-OLD",
+            lastHandledPlcWorkId: "PLC-OLD"),
+        "没有确认值时不构成锁定，PLC 照常回填。");
+    AssertFalse(
+        WorkOrderInputConfirmationRules.ShouldKeepConfirmedWorkOrder(
+            confirmedWorkId: "WO-MANUAL",
+            visibleWorkId: "WO-CHANGED",
+            incomingPlcWorkId: "PLC-OLD",
+            lastHandledPlcWorkId: "PLC-OLD"),
+        "界面已被改成别的内容时锁定不再成立。");
+    AssertTrue(WorkOrderInputConfirmationRules.IsNewPlcScan("PLC-NEW", "PLC-OLD"), "值不同即新扫码。");
+    AssertFalse(WorkOrderInputConfirmationRules.IsNewPlcScan(" PLC-OLD ", "PLC-OLD"), "忽略首尾空白后同值不算新扫码。");
+    AssertFalse(WorkOrderInputConfirmationRules.IsNewPlcScan(string.Empty, "PLC-OLD"), "空值不算新扫码。");
 }
 
 static void MonitorViewConfirmsManualWorkOrdersAndPrioritizesPlcSnapshots()
@@ -16186,7 +16258,56 @@ static void MonitorViewConfirmsManualWorkOrdersAndPrioritizesPlcSnapshots()
     AssertTrue(inputChangedMethod.Contains("ClearConfirmedWorkOrderInput", StringComparison.Ordinal), "人工修改工单号时必须清除已确认状态。");
     AssertFalse(inputChangedMethod.Contains("QueueManualWorkOrderQuery", StringComparison.Ordinal), "人工输入过程中不得自动查询，必须等待回车确认。");
     AssertTrue(inputKeyDownMethod.Contains("ConfirmManualWorkOrderInput", StringComparison.Ordinal), "工单号回车必须进入人工确认入口。");
-    AssertTrue(plcSnapshotMethod.Contains("ApplyPlcWorkOrderInput", StringComparison.Ordinal), "PLC 有效快照必须有独立入口，强制覆盖人工草稿。");
+    AssertTrue(plcSnapshotMethod.Contains("ApplyPlcWorkOrderInput", StringComparison.Ordinal), "PLC 有效快照必须有独立入口。");
+    // 现场故障：PLC 持续驱动工单号寄存器，回填会把逐字符输入的半截工单号整段覆盖，导致无法手动输完。
+    var plcWorkOrderInputMethod = ExtractMethodText(viewCode, "private bool ApplyPlcWorkOrderInput", "private void ClearConfirmedWorkOrderInput");
+    AssertFalse(
+        plcWorkOrderInputMethod.Contains("var isAlreadyApplied = !hasManualDraft", StringComparison.Ordinal),
+        "手动草稿不得再作为“已应用”判定的与条件：那样会让有草稿时反而继续覆盖输入框。");
+
+    // 四条写输入框的路径必须共用同一保护判据：PLC 快照、PLC 转空、在线刷新绑定、离线刷新绑定。
+    // 只堵快照入口不够——查询成功后走的是刷新周期，仍会被寄存器常驻值覆盖。
+    var onlineBindMethod = ExtractMethodText(viewCode, "private void BindProductionRuntimeState", "private void ApplyOfflineInputReadOnly");
+    var offlineBindMethod = ExtractMethodText(viewCode, "private void BindOfflineEditableRuntimeState", "private void BindOfflineProgramNameOptions");
+    var clearedPlcMethod = ExtractMethodText(viewCode, "private bool ApplyClearedPlcWorkOrderInput", "private bool ApplyPlcWorkOrderInput");
+    AssertTrue(
+        plcWorkOrderInputMethod.Contains("ShouldProtectWorkOrderInput(stationNo, snapshot.WorkId)", StringComparison.Ordinal),
+        "PLC 快照回填必须把本次 PLC 值交给统一保护入口判定是否为新扫码。");
+    AssertTrue(
+        onlineBindMethod.Contains("ShouldProtectWorkOrderInput(CurrentStationNo, liveWorkId)", StringComparison.Ordinal)
+        && offlineBindMethod.Contains("ShouldProtectWorkOrderInput(CurrentStationNo, liveWorkId)", StringComparison.Ordinal),
+        "刷新周期两条绑定路径必须把 PLC 当前值交给统一保护入口，否则查询成功后仍会被寄存器值覆盖。");
+    AssertTrue(
+        clearedPlcMethod.Contains("ShouldProtectWorkOrderInput", StringComparison.Ordinal),
+        "PLC 空值清空输入框前必须判断保护：常态空寄存器会按轮询周期抹掉手输内容。");
+    AssertTrue(
+        clearedPlcMethod.Contains("_confirmedPlcWorkIdBaselines.Remove(stationNo)", StringComparison.Ordinal),
+        "PLC 转空时必须重置基线，使随后写入的同码也被识别为新扫码。");
+    AssertTrue(
+        clearedPlcMethod.IndexOf("ShouldProtectWorkOrderInput", StringComparison.Ordinal)
+            < clearedPlcMethod.IndexOf("ClearConfirmedWorkOrderInput", StringComparison.Ordinal),
+        "PLC 转空路径必须先判断保护再决定是否清确认值，锁定期间不得清掉确认值。");
+
+    var protectMethod = ExtractMethodText(viewCode, "private bool ShouldProtectWorkOrderInput", "private string GetWorkOrderInputDraft");
+    AssertTrue(
+        protectMethod.Contains("ShouldProtectManualInput", StringComparison.Ordinal)
+        && protectMethod.Contains("ShouldKeepConfirmedWorkOrder", StringComparison.Ordinal),
+        "统一保护入口必须同时包含“输入中”和“确认后锁定”两层判据。");
+    AssertTrue(
+        viewCode.Contains("inputSN.Focused", StringComparison.Ordinal),
+        "保护判据必须包含输入框焦点：草稿标志会被刷新周期在多处清零，焦点才是可靠证据。");
+    AssertTrue(
+        viewCode.Contains("_workOrderInputDrafts", StringComparison.Ordinal)
+        && viewCode.Contains("RememberWorkOrderInputDraft", StringComparison.Ordinal)
+        && viewCode.Contains("ClearWorkOrderInputDraft", StringComparison.Ordinal),
+        "未确认草稿必须按工位保存并在确认、输入框清空、开工完成时释放。");
+    var confirmMethod = ExtractMethodText(viewCode, "private bool ConfirmManualWorkOrderInput", "private bool ApplyClearedPlcWorkOrderInput");
+    AssertTrue(
+        confirmMethod.Contains("_confirmedPlcWorkIdBaselines[normalizedStationNo] = GetCurrentLiveWorkId()", StringComparison.Ordinal),
+        "回车确认时必须记录当时 PLC 的值作为基线，之后 PLC 仍是该值不算新扫码。");
+    AssertFalse(
+        protectMethod.Contains("_lastAutoQueriedWorkIds", StringComparison.Ordinal),
+        "锁定基线不得复用自动查询去重表：它在 MES 离线时不记录，会把常驻值误判为新扫码。");
     AssertTrue(plcSnapshotMethod.Contains("StartWorkOrderLoadAsync", StringComparison.Ordinal), "在线 PLC 快照必须立即启动最新工单查询。");
     AssertTrue(viewCode.Contains("ApplyClearedPlcWorkOrderInput", StringComparison.Ordinal), "PLC 清空工单号必须有独立的状态复位入口。");
     AssertTrue(viewCode.Contains("_lastAutoQueriedWorkIds.Remove(stationNo);", StringComparison.Ordinal), "PLC 清空工单号时必须释放自动查询去重基线。");
@@ -16194,8 +16315,53 @@ static void MonitorViewConfirmsManualWorkOrdersAndPrioritizesPlcSnapshots()
     AssertTrue(viewCode.Contains("_workOrderBaselines.Contains(stationNo)", StringComparison.Ordinal), "启动基线状态必须与工单查询去重状态分离，清空后同号扫描才能重新查询。");
     AssertTrue(viewCode.Contains("SetWorkOrderInputText(string.Empty);", StringComparison.Ordinal), "PLC 清空工单号时必须清空流转卡号控件。");
     AssertTrue(viewCode.Contains("CancelWorkOrderLoad(stationNo);", StringComparison.Ordinal), "PLC 清空工单号时必须取消旧的工单查询请求。");
-    AssertTrue(offlineRequestMethod.Contains("GetConfirmedWorkOrderInput", StringComparison.Ordinal), "离线开工必须使用已确认工单号，而非未确认输入文本。");
+    // 离线开工不查 MES，回车确认不是必要步骤：优先用已确认值，未确认时回退到输入框文本。
+    AssertTrue(
+        offlineRequestMethod.Contains("ResolveOfflineWorkOrderInput", StringComparison.Ordinal),
+        "离线开工必须能使用未回车确认的手输工单号，否则会误报“未输入工单号”。");
+    AssertTrue(
+        ExtractMethodText(viewCode, "private string ResolveOfflineWorkOrderInput", "private string GetWorkOrderInputDraft")
+            .Contains("GetConfirmedWorkOrderInput", StringComparison.Ordinal),
+        "离线开工仍应优先使用已确认工单号，只有为空时才回退输入框文本。");
     AssertTrue(viewCode.Contains("CancellationTokenSource", StringComparison.Ordinal), "工单查询必须维护取消令牌，避免旧人工查询覆盖 PLC 查询。");
+
+    // 获取工单失败后运行状态必须收尾，并把 MES 返回的 Msg 显示给操作员。
+    var loadFailureMethod = ExtractMethodText(viewCode, "private void HandleWorkOrderLoadFailure", "private async Task LoadProgramListForWorkOrderAsync");
+    AssertTrue(
+        loadFailureMethod.Contains("ClearRuntimeStatus", StringComparison.Ordinal),
+        "获取工单失败必须清空运行状态，否则界面一直停在“正在获取工单信息...”造成误解。");
+    AssertTrue(
+        loadFailureMethod.Contains("SetRuntimeErrorText(detail)", StringComparison.Ordinal),
+        "异常摘要必须显示 MES 返回的 Msg，而不是固定文案。");
+    AssertFalse(
+        viewCode.Contains("showDialogOnFailure", StringComparison.Ordinal),
+        "弹窗开关已无调用方区分，必须移除以免留下误导性死参数。");
+
+    // 生产监控页是常驻值守界面，除破坏性操作的二次确认外一律不弹窗，反馈只走运行状态 + 异常摘要。
+    AssertEqual(
+        1,
+        CountOccurrences(viewCode, "MessageBox.Show"),
+        "监控页只保留删除产品的二次确认弹窗，其余提示必须走运行状态和异常摘要。");
+    AssertTrue(
+        ExtractMethodText(viewCode, "private bool ConfirmDeleteProduct", "private void RefreshProgramCountMetrics")
+            .Contains("MessageBox.Show", StringComparison.Ordinal),
+        "唯一保留的弹窗必须是删除产品的二次确认：删除会抹掉产出记录，需要操作员明确确认。");
+    foreach (var reporter in new[] { "private void ShowWarning(", "private void ShowWarningText(", "private void ShowBusinessWarning(", "private void ShowError(" })
+    {
+        var reporterMethod = ExtractMethodText(viewCode, reporter, "/// <summary>");
+        AssertFalse(
+            reporterMethod.Contains("MessageBox", StringComparison.Ordinal),
+            $"{reporter} 不得再弹窗，否则流程提示会打断值守操作。");
+        AssertTrue(
+            reporterMethod.Contains("ClearRuntimeStatus", StringComparison.Ordinal),
+            $"{reporter} 必须收尾运行状态，避免停在“正在...”造成仍在处理的误解。");
+    }
+
+    // 工单有效但无可选工序、程序列表为空这两条分支也会中断流程，同样要收尾运行状态。
+    var programListMethod = ExtractMethodText(viewCode, "private async Task LoadProgramListForWorkOrderAsync", "private void ProgramManageService_ProgramLookupsChanged");
+    AssertTrue(
+        programListMethod.Contains("ClearRuntimeStatus", StringComparison.Ordinal),
+        "程序列表为空时必须收尾运行状态，否则界面停在“正在获取程序列表...”。");
     AssertTrue(serviceMethod.Contains("cancellationToken.ThrowIfCancellationRequested();", StringComparison.Ordinal), "服务层在 MES 返回后写入运行态前必须检查请求是否已经取消。");
 }
 static BizProgram BuildSyncedProgram()
