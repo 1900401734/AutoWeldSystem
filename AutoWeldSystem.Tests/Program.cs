@@ -16331,7 +16331,14 @@ static void MonitorViewConfirmsManualWorkOrdersAndPrioritizesPlcSnapshots()
     AssertTrue(viewCode.Contains("_workOrderBaselines.Contains(stationNo)", StringComparison.Ordinal), "启动基线状态必须与工单查询去重状态分离，清空后同号扫描才能重新查询。");
     AssertTrue(viewCode.Contains("SetWorkOrderInputText(string.Empty);", StringComparison.Ordinal), "PLC 清空工单号时必须清空流转卡号控件。");
     AssertTrue(viewCode.Contains("CancelWorkOrderLoad(stationNo);", StringComparison.Ordinal), "PLC 清空工单号时必须取消旧的工单查询请求。");
-    AssertTrue(offlineRequestMethod.Contains("GetConfirmedWorkOrderInput", StringComparison.Ordinal), "离线开工必须使用已确认工单号，而非未确认输入文本。");
+    // 离线开工不查 MES，回车确认不是必要步骤：优先用已确认值，未确认时回退到输入框文本。
+    AssertTrue(
+        offlineRequestMethod.Contains("ResolveOfflineWorkOrderInput", StringComparison.Ordinal),
+        "离线开工必须能使用未回车确认的手输工单号，否则会误报“未输入工单号”。");
+    AssertTrue(
+        ExtractMethodText(viewCode, "private string ResolveOfflineWorkOrderInput", "private string GetWorkOrderInputDraft")
+            .Contains("GetConfirmedWorkOrderInput", StringComparison.Ordinal),
+        "离线开工仍应优先使用已确认工单号，只有为空时才回退输入框文本。");
     AssertTrue(viewCode.Contains("CancellationTokenSource", StringComparison.Ordinal), "工单查询必须维护取消令牌，避免旧人工查询覆盖 PLC 查询。");
     AssertTrue(serviceMethod.Contains("cancellationToken.ThrowIfCancellationRequested();", StringComparison.Ordinal), "服务层在 MES 返回后写入运行态前必须检查请求是否已经取消。");
 }

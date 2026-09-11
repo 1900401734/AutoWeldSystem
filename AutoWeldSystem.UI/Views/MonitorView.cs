@@ -2036,6 +2036,18 @@ public partial class MonitorView : BaseView
             _confirmedPlcWorkIdBaselines.TryGetValue(normalizedStationNo, out var baseline) ? baseline : null);
     }
 
+    /// <summary>
+    /// 解析离线开工使用的流转卡号：已回车确认时用确认值，否则用输入框当前文本。
+    /// 离线开工不查询 MES，回车确认不是必要步骤，不能因未确认就判定“未输入工单号”。
+    /// </summary>
+    private string ResolveOfflineWorkOrderInput(int stationNo)
+    {
+        var confirmed = GetConfirmedWorkOrderInput(stationNo);
+        return string.IsNullOrWhiteSpace(confirmed)
+            ? WorkOrderInputConfirmationRules.Normalize(inputSN.Text)
+            : confirmed;
+    }
+
     private string GetWorkOrderInputDraft(int stationNo)
     {
         return _workOrderInputDrafts.TryGetValue(NormalizeStationNo(stationNo), out var draft)
@@ -4655,7 +4667,9 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             request = OfflineStartInputRules.BuildRequest(
                 new OfflineStartInput(
                     StationNo: stationNo,
-                    WorkOrderId: GetConfirmedWorkOrderInput(stationNo),
+                    // 离线开工不经过 MES 查询，操作员常直接点「本地工单」而不按回车，
+                    // 因此优先取已确认值，未确认时回退到输入框可见文本，避免误报“未输入工单号”。
+                    WorkOrderId: ResolveOfflineWorkOrderInput(stationNo),
                     Batch: inputBatch.Text,
                     Spec: inputSpec.Text,
                     ProcessNo: inputProcessNo.Text,
