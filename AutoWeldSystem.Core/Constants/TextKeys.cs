@@ -364,6 +364,10 @@ public static class TextKeys
             /// </summary>
             public const string ProgramListEmpty = "monitor.message.program_list_empty";
             /// <summary>
+            /// 该产品工号无匹配程序，已显示全部程序
+            /// </summary>
+            public const string ProductNumHasNoProgramFallback = "monitor.message.product_num_has_no_program_fallback";
+            /// <summary>
             /// 数量必须是大于 0 的整数
             /// </summary>
             public const string QuantityInvalid = "monitor.message.quantity_invalid";
@@ -519,6 +523,14 @@ public static class TextKeys
             /// 员工姓名必填
             /// </summary>
             public const string OperatorNameRequired = "monitor.error.operator_name_required";
+            /// <summary>
+            /// 工单未返回产品工号
+            /// </summary>
+            public const string ProductNumMissingFromWorkOrder = "monitor.error.product_num_missing_from_work_order";
+            /// <summary>
+            /// 请输入产品工号
+            /// </summary>
+            public const string ProductNumRequired = "monitor.error.product_num_required";
             /// <summary>
             /// 员工号校验失败
             /// </summary>

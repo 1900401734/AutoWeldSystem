@@ -1105,6 +1105,28 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
+    /// 清空产品工号下拉候选，使控件在线态表现为纯查看字段（空 Items 下所有展开路径都不弹面板）。
+    /// </summary>
+    private void ClearProductNumSelectionItems()
+    {
+        if (selectProdNum.Items.Count == 0)
+        {
+            return;
+        }
+
+        _syncingOfflineProductNumSelection = true;
+        try
+        {
+            _offlineProductNumOptions.Clear();
+            selectProdNum.Items.Clear();
+        }
+        finally
+        {
+            _syncingOfflineProductNumSelection = false;
+        }
+    }
+
+    /// <summary>
     /// 由程序同步产品工号下拉显示文本，避免触发工号联动。
     /// </summary>
     /// <param name="productNum">需要显示的产品工号。</param>
@@ -1130,14 +1152,14 @@ public partial class MonitorView : BaseView
     /// <param name="text">需要显示的配方号。</param>
     /// <summary>
     /// 从主界面控件构造本次开工的工单快照（可空项允许空串）。
-    /// 产品工号取自 selectProdNum 控件的实际选中值；产品型号优先使用手工输入，否则使用 MES 工单值。
+    /// 产品工号在线不可编辑，直接采用 MES 工单值；产品型号优先使用手工输入，否则使用 MES 工单值。
     /// </summary>
     private WorkOrderRes BuildAdjustedWorkOrderFromInputs(WorkOrderRes source)
     {
         return new WorkOrderRes
         {
             SN = inputSN.Text.Trim(),
-            ProdNum = FirstNonEmpty(GetProductNumInputText(), source.ProdNum),
+            ProdNum = source.ProdNum?.Trim() ?? string.Empty,
             ProdModel = FirstNonEmpty(inputProdModel.Text, source.ProdModel),
             Spec = inputSpec.Text.Trim(),
             Batch = inputBatch.Text.Trim(),
@@ -1211,6 +1233,13 @@ public partial class MonitorView : BaseView
             return;
         }
 
+        // 产品工号与程序已解耦，必须由操作员独立录入，留空不再回退程序工号。
+        if (string.IsNullOrWhiteSpace(GetProductNumInputText()))
+        {
+            SetRuntimeError(TextKeys.Monitor.RuntimeError.ProductNumRequired);
+            return;
+        }
+
         if (!TryBuildOfflineStartRequest(stationNo, out var request, out var selectedProgram))
         {
             return;
@@ -1244,8 +1273,8 @@ public partial class MonitorView : BaseView
         request.ProgramName = fullProgram.ProgramName;
         request.ProgramType = string.IsNullOrWhiteSpace(fullProgram.ProgramType) ? "0" : fullProgram.ProgramType;
         request.ProgramContent = string.IsNullOrWhiteSpace(fullProgram.ProgramContent) ? "{}" : fullProgram.ProgramContent;
-        // 工号以界面录入值为准（BuildRequest 已在留空时回退程序工号），不能用完整程序把操作员改写刷回去。
-        request.ProductNum = FirstNonEmpty(GetProductNumInputText(), fullProgram.ProductNum);
+        // 工号以界面录入值为准，不能用完整程序把操作员改写刷回去。
+        request.ProductNum = GetProductNumInputText();
         request.ProductModel = inputProdModel.Text.Trim();
         request.RecipeCode = ProgramRecipeMappingRules.Resolve(fullProgram, stationNo);
 
@@ -1344,6 +1373,12 @@ public partial class MonitorView : BaseView
         if (state.CurrentWorkOrder is null)
         {
             SetRuntimeError(TextKeys.Monitor.RuntimeError.WorkOrderRequired);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(state.CurrentWorkOrder.ProdNum))
+        {
+            SetRuntimeError(TextKeys.Monitor.RuntimeError.ProductNumMissingFromWorkOrder);
             return;
         }
 
@@ -2178,8 +2213,8 @@ public partial class MonitorView : BaseView
     /// <param name="sender">事件发送者。</param>
     /// <param name="e">事件参数。</param>
     /// <summary>
-    /// 选中产品工号后定位到该工号的程序。
-    /// 启用“按产品工号筛选程序”时程序列表随之收窄；未启用时列表保持全量，仅跳转选中。
+    /// 记住操作员选中的产品工号，并在启用“按产品工号筛选程序”时收窄程序列表。
+    /// 一款程序可供多个产品工号通用，因此工号不再自动跳选程序：程序由操作员独立选择。
     /// 仅离线可编辑态生效；在线态工号跟随工单只读展示。
     /// </summary>
     /// <param name="sender">事件发送者。</param>
@@ -2202,14 +2237,8 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        MarkOfflineProgramSelectionByUser(CurrentStationNo);
         RememberProductNumInput(productNum);
         BindOfflineProgramNameOptions();
-        // 未启用筛选时程序列表是全量的，重绑定会保留原程序并把工号回写成原值，
-        // 因此必须显式跳到该工号的首个程序。
-        SelectFirstOfflineProgramForProductNum(productNum);
-        ApplyOfflineProgramNameOption(GetSelectedOfflineProgramNameOption(), syncProgramFields: true);
-        QueueRefreshSchemePreview(force: true);
     }
 
     /// <summary>
@@ -2232,11 +2261,12 @@ public partial class MonitorView : BaseView
 
         var productNum = selectProdNum.Text?.Trim() ?? string.Empty;
         RememberProductNumInput(productNum);
-        if (productNum.Length == 0)
+        // 工号被清空时不再联动清空程序名称：一款程序可供多个产品工号通用，
+        // 两者是各自独立的录入项，开工上报的工号也不再来自程序。
+        if (_currentSettings.UseProductNumberFilter)
         {
-            // 工号被清空时同步清掉与之关联的程序名称，两者保持同一空值状态，避免只剩程序名称显示着上一个工号的程序。
-            ClearOfflineProgramSelectionByUser(CurrentStationNo);
-            ClearOfflineProgramNameSelection();
+            // 启用按工号筛选时列表随工号变化，工号清空即回到全量。
+            BindOfflineProgramNameOptions();
         }
     }
 
@@ -2255,32 +2285,6 @@ public partial class MonitorView : BaseView
         }
 
         _userSelectedOfflineProductNums[stationKey] = normalized;
-    }
-
-    /// <summary>
-    /// 在当前程序名称选项中定位指定产品工号的首个程序并选中。
-    /// </summary>
-    /// <param name="productNum">操作员选中的产品工号。</param>
-    private void SelectFirstOfflineProgramForProductNum(string productNum)
-    {
-        var index = _offlineProgramNameOptions.FindIndex(option => string.Equals(
-            option.Program.ProductNum?.Trim(),
-            productNum,
-            StringComparison.OrdinalIgnoreCase));
-        if (index < 0)
-        {
-            return;
-        }
-
-        _syncingOfflineProgramSelection = true;
-        try
-        {
-            ForceProgramNameSelection(index, _offlineProgramNameOptions[index].DisplayText);
-        }
-        finally
-        {
-            _syncingOfflineProgramSelection = false;
-        }
     }
 
     /// <summary>
@@ -2485,7 +2489,9 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// Applies the latest PLC recipe readback to the recipe selector only when the station is idle.
+    /// 应用 PLC 配方回读快照。
+    /// 配方回读只用于配方号显示与下发核对，不再触发方案预览刷新：
+    /// 产品身份已改为只由所选程序决定，按配方反查产品的链路已移除。
     /// </summary>
     private void ApplyIdleRecipeCodeSnapshot(PlcRecipeCodeSnapshot snapshot)
     {
@@ -2494,11 +2500,8 @@ public partial class MonitorView : BaseView
             return;
         }
 
-        var state = GetCurrentStationState();
-        if (!IsRunningWeldTask(state.ActiveTask) && IsOfflineInputEditable(state))
-        {
-            QueueRefreshSchemePreview(force: true);
-        }
+        // 配方号显示由运行态绑定统一取值（ResolveRecipeCodeForDisplay），刷新运行态即可更新。
+        RefreshProductionRuntimeState();
     }
 
     private void ProductRealtimePreviewService_SnapshotChanged(object? sender, ProductRealtimePreviewSnapshot e)
@@ -3880,6 +3883,13 @@ public partial class MonitorView : BaseView
             RefreshProductionRuntimeState();
             ClearMesOperatorInfo();
             SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.WorkOrderLoaded);
+            // 在线工号只能来自工单且不可现场补录，缺失时尽早提示，让操作员有时间回 MES 补充；
+            // 开工时还会再拦一次，避免上报空工号。
+            if (string.IsNullOrWhiteSpace(workOrder.ProdNum))
+            {
+                SetRuntimeError(TextKeys.Monitor.RuntimeError.ProductNumMissingFromWorkOrder);
+            }
+
             isReady = true;
         });
 
@@ -4123,7 +4133,6 @@ public partial class MonitorView : BaseView
         var liveWorkId = GetCurrentLiveWorkId();
         var hasRunningTask = IsRunningWeldTask(activeTask);
         var hasPreparedWorkOrder = HasPreparedWorkOrderInfo(state, liveWorkId);
-        var currentIdentity = hasPreparedWorkOrder ? ResolveDisplayProductIdentity(state) : null;
 
         if (!hasRunningTask)
         {
@@ -4173,11 +4182,13 @@ public partial class MonitorView : BaseView
             _lastBoundOnlineWorkOrderKey = string.IsNullOrEmpty(workOrderKey) ? null : workOrderKey;
         }
 
-        // 产品工号与其他在线可编辑字段同规则：仅在工单变化、有运行任务或不可编辑时用工单值覆盖，
-        // 否则保留操作员的改写值，开工按改写后的工号上报。
+        // 在线产品工号是工单信息的只读展示项：不可改写，因此无需“保留操作员改写值”的门控，
+        // 每次绑定都跟随工单。也不回退本地程序或产品身份缓存的工号——通用程序下那是程序里
+        // 填的工号（可能是“通用产品”），不是本批产品的工号。
+        SetProductNumSelectionText(activeTask?.ProductNum ?? workOrder?.ProdNum ?? string.Empty);
+
         if (!onlineEditable || activeTask is not null || workOrderChanged)
         {
-            SetProductNumSelectionText(workOrder?.ProdNum ?? currentIdentity?.ProductNum ?? string.Empty);
             inputBatch.Text = workOrder?.Batch ?? string.Empty;
             inputProductName.Text = workOrder?.ProductName ?? string.Empty;
             inputDrawingNo.Text = workOrder?.DrawingNo ?? string.Empty;
@@ -4299,32 +4310,6 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     }
 
     /// <summary>
-    /// 解析当前是否允许用缓存的产品身份回填产品工号/型号控件。
-    /// 在线完工后运行态已经清空，此时不能再用上一帧预览缓存把控件刷回旧产品。
-    /// </summary>
-    /// <param name="state">当前工位运行态。</param>
-    /// <returns>可用于显示的产品身份；不允许显示时返回 null。</returns>
-    private ProductIdentity? ResolveDisplayProductIdentity(ProductionStationRuntimeState state)
-    {
-        var currentIdentity = _currentProductIdentity;
-        if (currentIdentity is null
-            || currentIdentity.StationNo != CurrentStationNo
-            || string.IsNullOrWhiteSpace(currentIdentity.ProductNum))
-        {
-            return null;
-        }
-
-        if (state.ActiveTask is not null || state.CurrentWorkOrder is not null)
-        {
-            return currentIdentity;
-        }
-
-        return IsOfflineInputEditable(state)
-            ? currentIdentity
-            : null;
-    }
-
-    /// <summary>
     /// 完工后清除当前工位的产品身份缓存，避免运行态刷新继续显示已完工产品。
     /// </summary>
     /// <param name="stationNo">已完工工位。</param>
@@ -4364,7 +4349,11 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         selectProgramName.ReadOnly = fieldReadOnly;
         selectItemName.ReadOnly = fieldReadOnly;
 
-        selectProdNum.ReadOnly = fieldReadOnly;
+        // 产品工号属于工单信息，在线一律只读：只能查看工单反馈值，不允许改写也不提供本地候选。
+        // AntdUI 的 Select 在 Items 为空且 Empty 为默认 false 时，点击、方向键、回车和打字都不会弹出面板，
+        // 这是让控件表现为纯查看字段的唯一可靠手段（ReadOnly 单独使用不改变外观也不清空候选）。
+        selectProdNum.ReadOnly = true;
+        ClearProductNumSelectionItems();
         inputProdModel.ReadOnly = fieldReadOnly;
 
         var useOperatorDialog = _currentSettings.UseOperatorInputDialog ?? true;
@@ -4385,11 +4374,13 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             ApplyOfflineInputReadOnly(readOnly: false);
             if (enteringOfflineInputMode)
             {
-                // 刚转入离线：工号和与之关联的程序名称都是操作员待录入项，
-                // 先清掉上一在线工单残留值，两者一起保持为空。
+                // 刚转入离线：工号和程序名称都是本批活的待录入项，先清掉上一在线工单的残留值。
+                // 两者此后各自独立，这里一起清空是“换一批活”的口径，不是工号与程序的联动。
                 RememberProductNumInput(null);
                 SetProductNumSelectionText(string.Empty);
                 ClearOfflineProgramNameSelection();
+                // 部件图号同为待录入项：留着上一批的图号会静默进入本批报表表头。
+                inputDrawingNo.Text = string.Empty;
             }
 
             BindOfflineProductNumOptions();
@@ -4478,8 +4469,8 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         var previousProgramId = GetSelectedOfflineProgramNameOption()?.Program.Id;
         var previousText = selectProgramName.Text?.Trim() ?? string.Empty;
         var requireBothStations = _currentSettings.EnableDualStation && !_currentSettings.EnableDualWorkOrder;
-        // 与在线 ProgramListFilterRules 同语义：未启用“按产品工号筛选程序”时列出全部程序，
-        // 以支持一款产品借用另一款工号的程序生产。
+        // 未启用“按产品工号筛选程序”时列出全部程序：一款程序可供多个产品工号通用，
+        // 现场工号多数不在程序库中，收窄会筛空。
         var productNumFilter = _currentSettings.UseProductNumberFilter
             ? ResolveOfflineProductNumFilter()
             : null;
@@ -4488,6 +4479,21 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             CurrentStationNo,
             requireBothStations,
             productNumFilter).ToList();
+
+        // 通用程序场景下手输工号常无匹配程序，收窄筛空会让操作员选不到程序也开不了工，
+        // 因此回退全量并提示，避免界面出现无解释的空列表。
+        if (options.Count == 0 && !string.IsNullOrWhiteSpace(productNumFilter))
+        {
+            options = OfflineStartInputRules.BuildProgramNameOptions(
+                _localProgramSnapshot,
+                CurrentStationNo,
+                requireBothStations,
+                productNumFilter: null).ToList();
+            if (options.Count > 0)
+            {
+                SetRuntimeError(TextKeys.Monitor.Message.ProductNumHasNoProgramFallback);
+            }
+        }
 
         _syncingOfflineProgramSelection = true;
         try
@@ -4605,17 +4611,18 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// <summary>
     /// 将选中的程序名称关联信息同步到产品工号和部件图号。
     /// </summary>
-    /// <param name="option">选中的本地程序；为空时清空联动字段。</param>
+    /// <param name="option">选中的本地程序；为空时不改动联动字段。</param>
     /// <param name="syncProgramFields">
-    /// 是否用程序值回填产品工号和部件图号；仅操作员显式选择时传 true。
-    /// 后台 1Hz 重绑定传 false，否则会把操作员改写的工号和图号刷回程序原值。
+    /// 是否用程序值回填部件图号；仅操作员显式选择时传 true。
+    /// 后台 1Hz 重绑定传 false，否则会把操作员改写的图号刷回程序原值。
+    /// 产品工号不在此回填：一款程序可供多个产品工号通用，程序里填的工号
+    /// （可能是“通用产品”）不属于本批产品，回填会污染开工上报值。
     /// </param>
     private void ApplyOfflineProgramNameOption(OfflineProgramNameOption? option, bool syncProgramFields)
     {
-        if (syncProgramFields)
+        // 部件图号只在留空时按程序回填，已填内容视为操作员录入，不被覆盖。
+        if (syncProgramFields && string.IsNullOrWhiteSpace(inputDrawingNo.Text))
         {
-            SetProductNumSelectionText(option?.Program.ProductNum ?? string.Empty);
-            RememberProductNumInput(option?.Program.ProductNum);
             inputDrawingNo.Text = option?.Program.ComponentCode?.Trim() ?? string.Empty;
         }
 
@@ -8483,45 +8490,31 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// </summary>
     /// <param name="force">是否强制刷新。</param>
     /// <returns>表示异步操作的任务。</returns>
-    private async Task RefreshSchemePreviewAsync(bool force)
+    private Task RefreshSchemePreviewAsync(bool force)
     {
         if (_refreshingSchemePreview)
         {
-            return;
+            return Task.CompletedTask;
         }
 
         _refreshingSchemePreview = true;
         try
         {
             var stationNo = CurrentStationNo;
-            var identity = ResolveOnlineProductIdentity(stationNo);
-            if (identity is null && IsOfflineInputEditable(GetCurrentStationState()))
-            {
-                if (HasOfflineProgramSelectionByUser(stationNo))
-                {
-                    identity = ResolveOfflineSelectedRecipeProductIdentity(stationNo);
-                }
-                else
-                {
-                    identity = await ReadPlcRecipeProductIdentityAsync(stationNo);
-                    identity ??= ResolveOfflineSelectedRecipeProductIdentity(stationNo);
-                }
-            }
+            // 配方改为按程序名称下发，不再从 PLC 读回配方反查产品身份：
+            // 反查链末端是程序里填的工号，通用程序下不代表本批产品。
+            var identity = ResolveOnlineProductIdentity(stationNo)
+                ?? (IsOfflineInputEditable(GetCurrentStationState())
+                    ? ResolveOfflineSelectedRecipeProductIdentity(stationNo)
+                    : null);
 
-            if (identity is null)
+            // 没有产品身份时无法确定测试方案，保持当前提示行或上一帧预览。
+            if (identity is not null && !IsDisposed && IsHandleCreated)
             {
-                // 没有产品身份时无法确定测试方案，保持当前提示行或上一帧预览。
-                return;
+                RunOnUiThread(
+                    () => ApplySchemePreview(identity, force),
+                    "MonitorView.RefreshSchemePreview");
             }
-
-            if (IsDisposed || !IsHandleCreated)
-            {
-                return;
-            }
-
-            RunOnUiThread(
-                () => ApplySchemePreview(identity, force),
-                "MonitorView.RefreshSchemePreview");
         }
         catch (Exception ex)
         {
@@ -8531,47 +8524,34 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         {
             _refreshingSchemePreview = false;
         }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>
-    /// 从当前任务、工单或本地程序中解析在线产品身份。
+    /// 解析产品身份，只采信所选（或任务绑定）本地程序里填写的产品工号。
+    /// 该身份只用于查找产品工艺和测试方案，不用于界面显示，也不是开工上报值：
+    /// 现场存在一款本地程序供多个产品工号通用的设备，程序里填的工号（可能是“通用产品”）
+    /// 与工单工号不对应，而产品工艺配置在程序工号下，因此不再回退工单或任务的工号。
     /// </summary>
     /// <param name="stationNo">工位编号。</param>
-    /// <returns>解析到的对象；不存在时返回 null。</returns>
+    /// <returns>解析到的对象；未选定程序时返回 null。</returns>
     private ProductIdentity? ResolveOnlineProductIdentity(int stationNo)
     {
         var state = GetCurrentStationState();
         var localProgram = state.SelectedProgram is not null
             ? ResolveLocalProgram(state.SelectedProgram)
             : ResolveLocalProgramById(state.ActiveTask?.ProgramId, state.ActiveTask?.DeviceId);
-        if (!string.IsNullOrWhiteSpace(localProgram?.ProductNum))
+        if (string.IsNullOrWhiteSpace(localProgram?.ProductNum))
         {
-            return new ProductIdentity(
-                stationNo,
-                localProgram.ProductNum.Trim(),
-                localProgram.ProductModel?.Trim() ?? string.Empty,
-                "LocalProgram");
+            return null;
         }
 
-        if (!string.IsNullOrWhiteSpace(state.CurrentWorkOrder?.ProdNum))
-        {
-            return new ProductIdentity(
-                stationNo,
-                state.CurrentWorkOrder.ProdNum.Trim(),
-                state.CurrentWorkOrder.ProdModel?.Trim() ?? string.Empty,
-                "MES");
-        }
-
-        if (!string.IsNullOrWhiteSpace(state.ActiveTask?.ProductNum))
-        {
-            return new ProductIdentity(
-                stationNo,
-                state.ActiveTask.ProductNum.Trim(),
-                state.ActiveTask.ProductModel?.Trim() ?? string.Empty,
-                "Task");
-        }
-
-        return null;
+        return new ProductIdentity(
+            stationNo,
+            localProgram.ProductNum.Trim(),
+            localProgram.ProductModel?.Trim() ?? string.Empty,
+            "LocalProgram");
     }
 
     /// <summary>
@@ -8580,14 +8560,6 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     private void MarkOfflineProgramSelectionByUser(int stationNo)
     {
         _offlineProgramSelectedByUserStations.Add(NormalizeStationNo(stationNo));
-    }
-
-    /// <summary>
-    /// 判断操作员是否已显式选择指定工位的离线程序。
-    /// </summary>
-    private bool HasOfflineProgramSelectionByUser(int stationNo)
-    {
-        return _offlineProgramSelectedByUserStations.Contains(NormalizeStationNo(stationNo));
     }
 
     /// <summary>
@@ -8619,77 +8591,6 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     }
 
     /// <summary>
-    /// 异步读取 PLC 配方编号并反查产品身份。
-    /// </summary>
-    /// <param name="stationNo">工位编号。</param>
-    /// <returns>异步操作结果。</returns>
-    private async Task<ProductIdentity?> ReadPlcRecipeProductIdentityAsync(int stationNo)
-    {
-        var recipeResult = await ReadPlcAddressTextResultAsync(AppConstants.PlcLogicalKeys.PlcRecipeCode, stationNo);
-        if (!recipeResult.IsSuccess || string.IsNullOrWhiteSpace(recipeResult.Value))
-        {
-            return null;
-        }
-
-        var localProgram = ResolveLocalProgramByRecipeCode(recipeResult.Value, stationNo);
-        if (localProgram is null)
-        {
-            return null;
-        }
-
-        return new ProductIdentity(
-            stationNo,
-            localProgram.ProductNum.Trim(),
-            localProgram.ProductModel?.Trim() ?? string.Empty,
-            "PLCRecipe");
-    }
-
-    /// <summary>
-    /// 异步读取Plc地址文本结果。
-    /// </summary>
-    /// <param name="logicalKey">PLC 逻辑地址键。</param>
-    /// <param name="stationNo">工位编号。</param>
-    /// <returns>异步操作结果。</returns>
-    private async Task<PlcTextReadResult> ReadPlcAddressTextResultAsync(string logicalKey, int stationNo)
-    {
-        var address = _plcAddressService.GetAddress(logicalKey, stationNo);
-        if (address is null || !address.Enabled || string.IsNullOrWhiteSpace(address.Address))
-        {
-            return PlcTextReadResult.Failed($"PLC business address \"{logicalKey}\" is not configured or disabled.");
-        }
-
-        var plcAddress = address.Address.Trim();
-        switch (address.DataType)
-        {
-            case AppConstants.PlcDataTypes.Int32:
-                var int32Result = await _plcCommunicationService.ReadInt32Async(plcAddress);
-                return int32Result.IsSuccess
-                    ? PlcTextReadResult.Success(NormalizePlcText(int32Result.Value.ToString()))
-                    : PlcTextReadResult.Failed(int32Result.Message);
-            case AppConstants.PlcDataTypes.Float:
-                var floatResult = await _plcCommunicationService.ReadFloatAsync(plcAddress);
-                return floatResult.IsSuccess
-                    ? PlcTextReadResult.Success(NormalizePlcText(floatResult.Value.ToString()))
-                    : PlcTextReadResult.Failed(floatResult.Message);
-            case AppConstants.PlcDataTypes.Bool:
-                var boolResult = await _plcCommunicationService.ReadBoolAsync(plcAddress);
-                return boolResult.IsSuccess
-                    ? PlcTextReadResult.Success(NormalizePlcText(boolResult.Value == true ? "1" : "0"))
-                    : PlcTextReadResult.Failed(boolResult.Message);
-            case AppConstants.PlcDataTypes.String:
-                var stringResult = await _plcCommunicationService.ReadStringAsync(plcAddress, (ushort)Math.Max(1, address.DataLength));
-                return stringResult.IsSuccess
-                    ? PlcTextReadResult.Success(NormalizePlcText(stringResult.Value))
-                    : PlcTextReadResult.Failed(stringResult.Message);
-            default:
-                var int16Result = await _plcCommunicationService.ReadInt16Async(plcAddress);
-                return int16Result.IsSuccess
-                    ? PlcTextReadResult.Success(NormalizePlcText(int16Result.Value.ToString()))
-                    : PlcTextReadResult.Failed(int16Result.Message);
-        }
-    }
-
-    /// <summary>
     /// 应用方案预览，并在方案结构变化时刷新焊接参数表。
     /// </summary>
     /// <param name="identity">产品身份信息。</param>
@@ -8707,12 +8608,9 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             return;
         }
 
+        // 产品身份只用于查找产品工艺，不回填产品工号控件：
+        // 通用程序下程序工号与本批产品的工号不同，回填会污染开工上报值。
         _currentProductIdentity = identity;
-        if (ShouldApplyProductIdentityToInputs(identity))
-        {
-            SetProductNumSelectionText(identity.ProductNum);
-        }
-
         var processConfig = ResolveRealtimePreviewProcessConfig(identity);
         var activeTaskId = GetCurrentStationState().ActiveTask?.Id ?? 0;
         var previewKey = $"{identity.StationNo}|{identity.ProductNum}|{identity.ProductModel}|{identity.Source}|{activeTaskId}|{processConfig?.Id}|{processConfig?.SchemeId}";
@@ -8733,28 +8631,6 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
 
         _lastSchemePreviewKey = previewKey;
         ApplyWeldParameterRows(nextRows);
-    }
-
-    /// <summary>
-    /// 判断方案预览解析出的产品身份是否可以直接写入产品工号/型号控件。
-    /// 工单已加载时由工单绑定负责回填；在线空闲无工单时不应显示上一件产品。
-    /// </summary>
-    /// <param name="identity">方案预览解析出的产品身份。</param>
-    /// <returns>允许写入输入控件返回 true。</returns>
-    private bool ShouldApplyProductIdentityToInputs(ProductIdentity identity)
-    {
-        if (identity.StationNo != CurrentStationNo || string.IsNullOrWhiteSpace(identity.ProductNum))
-        {
-            return false;
-        }
-
-        var state = GetCurrentStationState();
-        if (state.CurrentWorkOrder is not null)
-        {
-            return false;
-        }
-
-        return state.ActiveTask is not null || IsOfflineInputEditable(state);
     }
 
     /// <summary>
@@ -10157,28 +10033,6 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     }
 
     /// <summary>
-    /// 解析本地程序按配方编号。
-    /// </summary>
-    /// <param name="recipeCode">配方编号。</param>
-    /// <param name="stationNo">工位编号。</param>
-    /// <returns>解析到的对象；不存在时返回 null。</returns>
-    private BizProgram? ResolveLocalProgramByRecipeCode(string? recipeCode, int stationNo)
-    {
-        var normalizedRecipeCode = NormalizeRecipeCode(recipeCode);
-        if (string.IsNullOrWhiteSpace(normalizedRecipeCode))
-        {
-            return null;
-        }
-
-        var settings = _currentSettings;
-        return _localProgramSnapshot
-            .Where(program => ProgramRecipeMappingRules.Matches(program, stationNo, normalizedRecipeCode))
-            .OrderByDescending(program => SameText(program.DeviceId, settings.DeviceId))
-            .ThenByDescending(program => program.UpdatedTime)
-            .FirstOrDefault();
-    }
-
-    /// <summary>
     /// 规范化配方编号。
     /// </summary>
     /// <param name="value">待处理值。</param>
@@ -11176,23 +11030,6 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     #endregion
 
     #region 嵌套模型
-
-    private sealed record PlcTextReadResult(bool IsSuccess, string Value, string Detail)
-    {
-        /// <summary>
-        /// 处理成功。
-        /// </summary>
-        /// <param name="value">待处理值。</param>
-        /// <returns>解析到的对象；不存在时返回 null。</returns>
-        public static PlcTextReadResult Success(string value) => new(true, value, string.Empty);
-
-        /// <summary>
-        /// 处理Failed。
-        /// </summary>
-        /// <param name="detail">详情。</param>
-        /// <returns>解析到的对象；不存在时返回 null。</returns>
-        public static PlcTextReadResult Failed(string detail) => new(false, string.Empty, detail);
-    }
 
     private sealed record ProductionMetricRow(string Name, string Value);
 
