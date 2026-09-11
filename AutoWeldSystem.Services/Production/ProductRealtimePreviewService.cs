@@ -26,7 +26,6 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
     private readonly ITestSchemeConfigService _testSchemeConfigService;
     private readonly IProgramManageService _programManageService;
     private readonly IAppSettingsService _settingsService;
-    private readonly IPlcAddressService _plcAddressService;
     private readonly IPlcCommunicationService _plcCommunicationService;
     private readonly IPlcExpressionReadService _plcExpressionReadService;
     private readonly IProgramExceptionLogService _exceptionLogService;
@@ -43,7 +42,6 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         ITestSchemeConfigService testSchemeConfigService,
         IProgramManageService programManageService,
         IAppSettingsService settingsService,
-        IPlcAddressService plcAddressService,
         IPlcCommunicationService plcCommunicationService,
         IPlcExpressionReadService plcExpressionReadService,
         IProgramExceptionLogService exceptionLogService)
@@ -53,7 +51,6 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         _testSchemeConfigService = testSchemeConfigService;
         _programManageService = programManageService;
         _settingsService = settingsService;
-        _plcAddressService = plcAddressService;
         _plcCommunicationService = plcCommunicationService;
         _plcExpressionReadService = plcExpressionReadService;
         _exceptionLogService = exceptionLogService;
@@ -167,11 +164,12 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         {
             cancellationToken.ThrowIfCancellationRequested();
             var stationNo = NormalizeStationNo(station.StationNo);
-            var identity = ResolveProductIdentity(station, localPrograms)
-                ?? await ReadPlcProductIdentityAsync(stationNo, localPrograms, cancellationToken);
+            // 配方改为按程序名称下发，不再从 PLC 读回配方反查产品身份：
+            // 反查链末端是程序里填的工号，通用程序下不代表本批产品。
+            var identity = ResolveProductIdentity(station, localPrograms);
             if (identity is null || string.IsNullOrWhiteSpace(identity.ProductNum))
             {
-                PublishStatusSnapshot(stationNo, "未识别到产品工号，请检查当前任务或 PLC 配方业务地址。");
+                PublishStatusSnapshot(stationNo, "未选择加工程序，无法确定产品工艺。");
                 continue;
             }
 
@@ -222,39 +220,27 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         };
     }
 
+    /// <summary>
+    /// 解析预览用产品身份，只采信所选（或任务绑定）本地程序里填写的产品工号。
+    /// 现场存在一款本地程序供多个产品工号通用的设备，程序里填的工号（可能是“通用产品”）
+    /// 与工单工号不对应，而产品工艺和测试项都配置在程序工号下，
+    /// 因此不再回退工单或任务的工号，避免用查不到工艺的工号解析出空预览。
+    /// </summary>
     private ProductPreviewIdentity? ResolveProductIdentity(ProductionStationRuntimeState station, IReadOnlyList<ProgramLookup> localPrograms)
     {
         var localProgram = station.SelectedProgram is not null
             ? ResolveLocalProgram(station.SelectedProgram, localPrograms)
             : ResolveLocalProgramById(station.ActiveTask?.ProgramId, station.ActiveTask?.DeviceId, localPrograms);
-        if (!string.IsNullOrWhiteSpace(localProgram?.ProductNum))
+        if (string.IsNullOrWhiteSpace(localProgram?.ProductNum))
         {
-            return new ProductPreviewIdentity(
-                NormalizeStationNo(station.StationNo),
-                localProgram.ProductNum.Trim(),
-                localProgram.ProductModel?.Trim() ?? string.Empty,
-                ResolveRuntimeTouchCount(station, localProgram.TouchCount));
+            return null;
         }
 
-        if (!string.IsNullOrWhiteSpace(station.CurrentWorkOrder?.ProdNum))
-        {
-            return new ProductPreviewIdentity(
-                NormalizeStationNo(station.StationNo),
-                station.CurrentWorkOrder.ProdNum.Trim(),
-                station.CurrentWorkOrder.ProdModel?.Trim() ?? string.Empty,
-                ResolveRuntimeTouchCount(station, null));
-        }
-
-        if (!string.IsNullOrWhiteSpace(station.ActiveTask?.ProductNum))
-        {
-            return new ProductPreviewIdentity(
-                NormalizeStationNo(station.StationNo),
-                station.ActiveTask.ProductNum.Trim(),
-                station.ActiveTask.ProductModel?.Trim() ?? string.Empty,
-                ResolveRuntimeTouchCount(station, null));
-        }
-
-        return null;
+        return new ProductPreviewIdentity(
+            NormalizeStationNo(station.StationNo),
+            localProgram.ProductNum.Trim(),
+            localProgram.ProductModel?.Trim() ?? string.Empty,
+            ResolveRuntimeTouchCount(station, localProgram.TouchCount));
     }
 
     private BizProductProcessConfig? ResolveProcessConfig(string productNum, ProductionStationRuntimeState station)
@@ -265,62 +251,6 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         }
 
         return _productProcessConfigService.FindActive(productNum, station.StationNo);
-    }
-
-    /// <summary>
-    /// No active MES task is required for preview: offline alignment identifies the product by PLC recipe code.
-    /// </summary>
-    private async Task<ProductPreviewIdentity?> ReadPlcProductIdentityAsync(int stationNo, IReadOnlyList<ProgramLookup> localPrograms, CancellationToken cancellationToken)
-    {
-        var normalizedStationNo = NormalizeStationNo(stationNo);
-        var recipeCode = await ReadBusinessAddressTextAsync(
-            AppConstants.PlcLogicalKeys.PlcRecipeCode,
-            normalizedStationNo,
-            cancellationToken);
-        var localProgram = ResolveLocalProgramByRecipeCode(recipeCode, normalizedStationNo, localPrograms);
-        if (localProgram is null)
-        {
-            return null;
-        }
-
-        return new ProductPreviewIdentity(
-            normalizedStationNo,
-            localProgram.ProductNum.Trim(),
-            localProgram.ProductModel?.Trim() ?? string.Empty,
-            localProgram.TouchCount);
-    }
-
-    /// <summary>
-    /// Reads one configured PLC business address as text and quietly returns empty text when the address is not usable.
-    /// </summary>
-    private async Task<string> ReadBusinessAddressTextAsync(
-        string logicalKey,
-        int stationNo,
-        CancellationToken cancellationToken)
-    {
-        var address = _plcAddressService.GetAddress(logicalKey, stationNo);
-        if (address is null || !address.Enabled || string.IsNullOrWhiteSpace(address.Address))
-        {
-            return string.Empty;
-        }
-
-        try
-        {
-            var result = await _plcExpressionReadService.ReadResolvedAddressTextAsync(
-                address.Address,
-                address.DataType,
-                stringLength: address.DataLength,
-                cancellationToken: cancellationToken);
-            return result.IsSuccess ? NormalizePlcText(result.Value) : string.Empty;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch
-        {
-            return string.Empty;
-        }
     }
 
     private async Task<ProductRealtimePreviewSnapshot> BuildSnapshotAsync(
@@ -923,20 +853,6 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             .Where(program => SameText(program.ProgramId, normalizedProgramId))
             .OrderByDescending(program => SameText(program.DeviceId, deviceId))
             .ThenByDescending(program => program.UpdatedTime)
-            .FirstOrDefault();
-    }
-
-    private ProgramLookup? ResolveLocalProgramByRecipeCode(string? recipeCode, int stationNo, IReadOnlyList<ProgramLookup> localPrograms)
-    {
-        var normalizedRecipeCode = NormalizePlcText(recipeCode);
-        if (string.IsNullOrWhiteSpace(normalizedRecipeCode))
-        {
-            return null;
-        }
-
-        return localPrograms
-            .Where(program => ProgramRecipeMappingRules.Matches(program.ToEntityStub(), stationNo, normalizedRecipeCode))
-            .OrderByDescending(program => program.UpdatedTime)
             .FirstOrDefault();
     }
 

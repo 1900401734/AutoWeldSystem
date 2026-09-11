@@ -136,10 +136,9 @@ public static class OfflineStartInputRules
             ProgramName = NormalizeRequired(program.ProgramName, "程序名称不能为空。"),
             ProgramType = FirstNonEmpty(program.ProgramType, "0"),
             ProgramContent = FirstNonEmpty(program.ProgramContent, "{}"),
-            // 操作员可在界面上改写产品工号（含程序库里不存在的现场工号），留空时才回退所选程序的工号。
-            ProductNum = NormalizeRequired(
-                FirstNonEmpty(input.ProductNum, program.ProductNum),
-                "产品工号不能为空。"),
+            // 产品工号只认界面录入值，不回退所选程序的工号：程序在多个产品工号间通用时，
+            // 程序里填的工号（可能是“通用产品”）不属于本批产品，回退会上报错误工号。
+            ProductNum = NormalizeRequired(input.ProductNum, "产品工号不能为空。"),
             ProductModel = Normalize(input.ProductModel),
             ProductName = Normalize(input.ProductName),
             DrawingNo = Normalize(input.DrawingNo),
