@@ -13576,14 +13576,10 @@ static void OfflineWorkOrderInputNeverGeneratesLocalPlaceholder()
     // 离线启动不得自动生成 LOCAL-工位-时间戳 占位流转卡号：占位值会被当成真实工单
     // 写入任务与上报数据，并掩盖“尚未扫码”这一状态，必须留空由 PLC 扫码或操作员录入。
     var monitorCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
-    var localFormCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Forms", "LocalWorkOrderForm.cs"), Encoding.UTF8);
 
     AssertFalse(
         monitorCode.Contains("$\"LOCAL-", StringComparison.Ordinal),
         "MonitorView 不得为空流转卡号生成 LOCAL 占位编号。");
-    AssertFalse(
-        localFormCode.Contains("$\"LOCAL-", StringComparison.Ordinal),
-        "本地工单窗口不得为空流转卡号生成 LOCAL 占位编号。");
 
     var offlineBindMethod = ExtractMethodText(
         monitorCode,
@@ -13593,13 +13589,6 @@ static void OfflineWorkOrderInputNeverGeneratesLocalPlaceholder()
         offlineBindMethod.Contains("!string.IsNullOrWhiteSpace(liveWorkId)", StringComparison.Ordinal),
         "离线绑定只有在 PLC 存在扫码值时才写入流转卡号，否则必须保持为空。");
 
-    var initialResolver = ExtractMethodText(
-        localFormCode,
-        "private string ResolveInitialWorkOrderId()",
-        "private void TxtWorkOrderId_TextChanged");
-    AssertTrue(
-        initialResolver.Contains("string.Empty", StringComparison.Ordinal),
-        "本地工单窗口无 PLC 扫码值时初始流转卡号必须为空。");
 }
 
 static void ProgramMesSyncIgnoresLocalOnlyFields()
@@ -13796,7 +13785,6 @@ static void ProgramRuntimeResolvesRecipesByCurrentStation()
     var weldTaskCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "WeldTaskService.cs"), Encoding.UTF8);
     var previewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductRealtimePreviewService.cs"), Encoding.UTF8);
     var monitorCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
-    var localFormCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Forms", "LocalWorkOrderForm.cs"), Encoding.UTF8);
 
     AssertTrue(offlineRulesCode.Contains("ProgramRecipeMappingRules.Resolve(program, input.StationNo)", StringComparison.Ordinal), "离线开工请求应使用当前工位配方号。 ");
     AssertTrue(weldTaskCode.Contains("ResolveProgramRecipeCode(program, settings.DeviceId, normalizedStationNo)", StringComparison.Ordinal), "在线开工任务应按当前工位解析本地配方号。 ");
@@ -13809,7 +13797,6 @@ static void ProgramRuntimeResolvesRecipesByCurrentStation()
     AssertFalse(monitorResolver.Contains("selectedProgram?.RecipeCode", StringComparison.Ordinal), "新任务运行时解析不得回退 MES 程序配方号。");
     AssertTrue(previewCode.Contains("ProgramRecipeMappingRules.Matches(program.ToEntityStub(), stationNo, normalizedRecipeCode)", StringComparison.Ordinal), "PLC 配方反查产品预览时应按工位匹配。 ");
     AssertTrue(monitorCode.Contains("ProgramRecipeMappingRules.Resolve(localProgram, stationNo)", StringComparison.Ordinal), "MonitorView 配方下发和反查应复用工位映射规则。 ");
-    AssertTrue(localFormCode.Contains("ProgramRecipeMappingRules.Resolve(program, _stationNo)", StringComparison.Ordinal), "本地工单窗口应显示并提交当前工位配方号。 ");
 }
 
 static void ProgramMesDescriptionChangesTriggerUpdate()
@@ -14945,10 +14932,7 @@ static void MonitorViewLinksProgramAndRecipeSelectionsForStartInput()
     AssertFalse(viewCode.Contains("配方编号解析失败", StringComparison.Ordinal)
         || viewCode.Contains("配方编号下发失败", StringComparison.Ordinal)
         || viewCode.Contains("配方编号校验失败", StringComparison.Ordinal), "MonitorView 普通业务提示不得暴露数字配方号术语。");
-    var localDesignerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Forms", "LocalWorkOrderForm.Designer.cs"), Encoding.UTF8);
     var readme = File.ReadAllText(GetRepoFilePath("README.md"), Encoding.UTF8);
-    AssertFalse(localDesignerCode.Contains("txtRecipeCode", StringComparison.Ordinal)
-        || localDesignerCode.Contains("配方编号", StringComparison.Ordinal), "本地工单窗口不得显示数字配方号。");
     AssertTrue(readme.Contains("按工位选择 PLC 配方名称", StringComparison.Ordinal)
         && readme.Contains("地址维护 -> 配方名称地址", StringComparison.Ordinal)
         && readme.Contains("不会出现在相应工位的可生产列表", StringComparison.Ordinal), "README 必须说明新的配方名称关联和生产可用性规则。");
