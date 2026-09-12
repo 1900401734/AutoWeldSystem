@@ -2,7 +2,7 @@ namespace AutoWeldSystem.Core.Production;
 
 /// <summary>
 /// 程序内容表格行。
-/// 一行代表一个测试项及其在该程序中的最大允许值。
+/// 一行代表一个测试项及其在该程序中的可选上下限。
 /// </summary>
 public sealed class ProgramContentItemRow
 {
@@ -12,9 +12,14 @@ public sealed class ProgramContentItemRow
     public string ItemName { get; set; } = string.Empty;
 
     /// <summary>
-    /// 测试项最大允许值，保存为 ProgramContent JSON 的 Value。
+    /// 测试项设定上限，保存为 ProgramContent JSON 的 Value。
     /// </summary>
-    public string StandardValue { get; set; } = string.Empty;
+    public string UpperLimit { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 可选的设定下限；编辑时保留原输入，保存时统一校验。
+    /// </summary>
+    public string LowerLimit { get; set; } = string.Empty;
 
     /// <summary>
     /// 是否来自测试项字典。

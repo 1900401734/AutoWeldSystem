@@ -233,7 +233,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             return;
         }
 
-        _ = ProgramContentJsonRules.GetRequiredTouchCount(task.ProgramContentSnapshot);
+        _ = ProgramContentJsonRules.NormalizeForProduction(task.ProgramContentSnapshot, _settingsService.Get().ProcessParameterDeviceType);
         ResumeUnfinishedProductTasks(task);
         var request = BuildTaskFinishRequest(settings, task);
         var uploadTask = _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
@@ -444,7 +444,12 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             {
                 _dbContext.InitDatabase();
                 var weldTask = _dbContext.Db.Queryable<BizWeldTask>().InSingle(task.WeldTaskId);
-                _ = ProgramContentJsonRules.GetRequiredTouchCount(weldTask?.ProgramContentSnapshot);
+                if (weldTask is null) throw new InvalidOperationException("中心补传对应的生产任务不存在。");
+                var stations = _dbContext.Db.Queryable<BizWeldPointRecord>().Where(record => record.TaskId == weldTask.Id)
+                    .Select(record => record.StationNo).ToList();
+                if (stations.Count == 0) stations.Add(weldTask.StationNo);
+                _ = TaskProductProcessConfigResolver.ValidateProgram(_productProcessConfigService, new TestSchemeConfigService(_dbContext),
+                    weldTask, stations, settings.ProcessParameterDeviceType);
             }
         }
         catch (InvalidOperationException ex)
@@ -542,7 +547,8 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
         IReadOnlyList<BizWeldPointRecord> records,
         BizProductProcessConfig? config)
     {
-        var touchCount = ProgramContentJsonRules.GetRequiredTouchCount(task.ProgramContentSnapshot);
+        var content = ProgramContentJsonRules.NormalizeForProduction(task.ProgramContentSnapshot, settings.ProcessParameterDeviceType);
+        var touchCount = ProgramContentJsonRules.GetRequiredTouchCount(content);
         var orderedRecords = records.OrderBy(record => record.SequenceNo).ThenBy(record => record.Id).ToList();
         var first = orderedRecords[0];
         var savedFields = BuildSavedFieldDefinitions(config);

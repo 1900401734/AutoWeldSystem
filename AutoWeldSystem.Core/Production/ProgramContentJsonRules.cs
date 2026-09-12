@@ -1,100 +1,60 @@
+using System.Globalization;
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using System.Globalization;
 using AutoWeldSystem.Core.Entities;
 
 namespace AutoWeldSystem.Core.Production;
 
 /// <summary>
-/// 程序内容表格与 ProgramContent JSON 的转换规则。
+/// 程序限值的唯一解析与校验入口。元数据读取不把旧测试项转换为有效限值。
 /// </summary>
 public static class ProgramContentJsonRules
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        WriteIndented = false
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
-    /// <summary>
-    /// ProgramContent JSON 保留键，不当测试项处理。
-    /// </summary>
     public const string RecipeNameStation1Key = "工位1配方名称";
     public const string RecipeNameStation2Key = "工位2配方名称";
     public const string RecipeNameLegacyKey = "配方名称";
     public const string TouchCountKey = "焊点数量";
+    public const string UpperLimitSuffix = "上限";
+    public const string LowerLimitSuffix = "下限";
 
     private static readonly HashSet<string> ReservedKeys = new(StringComparer.OrdinalIgnoreCase)
     {
-        RecipeNameStation1Key,
-        RecipeNameStation2Key,
-        RecipeNameLegacyKey,
-        TouchCountKey
+        RecipeNameStation1Key, RecipeNameStation2Key, RecipeNameLegacyKey, TouchCountKey
     };
 
-    /// <summary>
-    /// 判断键是否为保留元数据，不应当测试项处理。
-    /// </summary>
-    public static bool IsReservedKey(string? key)
-    {
-        return !string.IsNullOrWhiteSpace(key) && ReservedKeys.Contains(key.Trim());
-    }
+    public static bool IsReservedKey(string? key) => ReservedKeys.Contains(Normalize(key));
 
     /// <summary>
-    /// 从程序内容读取正整数焊点数量；兼容 MES 可能返回的 JSON 数字或字符串。
+    /// 查看历史记录时只读取计数元数据；生产入口必须另外调用 NormalizeContent 校验全部内容。
     /// </summary>
     public static bool TryGetTouchCount(string? programContent, out int touchCount)
     {
         touchCount = 0;
-        if (string.IsNullOrWhiteSpace(programContent))
+        try
+        {
+            var values = ReadObject(programContent);
+            if (!values.TryGetValue(TouchCountKey, out var value))
+            {
+                return false;
+            }
+
+            return (value.ValueKind == JsonValueKind.Number
+                    ? value.TryGetInt32(out touchCount)
+                    : value.ValueKind == JsonValueKind.String && int.TryParse(
+                        value.GetString()?.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out touchCount))
+                && touchCount > 0;
+        }
+        catch (InvalidOperationException)
         {
             return false;
         }
-
-        try
-        {
-            using var document = JsonDocument.Parse(programContent);
-            if (document.RootElement.ValueKind != JsonValueKind.Object)
-            {
-                return false;
-            }
-
-            foreach (var property in document.RootElement.EnumerateObject())
-            {
-                if (!string.Equals(property.Name.Trim(), TouchCountKey, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                var parsed = property.Value.ValueKind switch
-                {
-                    JsonValueKind.Number when property.Value.TryGetInt32(out var number) => number,
-                    JsonValueKind.String when int.TryParse(
-                        property.Value.GetString()?.Trim(),
-                        NumberStyles.Integer,
-                        CultureInfo.InvariantCulture,
-                        out var number) => number,
-                    _ => 0
-                };
-                if (parsed > 0)
-                {
-                    touchCount = parsed;
-                    return true;
-                }
-
-                return false;
-            }
-        }
-        catch (JsonException)
-        {
-        }
-
-        return false;
     }
 
-    /// <summary>
-    /// 获取生产流程必须使用的焊点数量；旧程序不再回退产品工艺配置。
-    /// </summary>
     public static int GetRequiredTouchCount(string? programContent)
     {
         if (TryGetTouchCount(programContent, out var touchCount))
@@ -105,420 +65,394 @@ public static class ProgramContentJsonRules
         throw new InvalidOperationException("程序内容缺少有效的焊点数量，请先在程序管理中填写大于 0 的整数。");
     }
 
-    /// <summary>
-    /// 保留程序内容全部字段，只把焊点数量规范为固定键名和 JSON 字符串。
-    /// </summary>
-    public static string NormalizeTouchCount(string programContent)
-    {
-        var touchCount = GetRequiredTouchCount(programContent);
-        using var document = JsonDocument.Parse(programContent);
-        var values = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-        foreach (var property in document.RootElement.EnumerateObject())
-        {
-            if (string.Equals(property.Name.Trim(), TouchCountKey, StringComparison.OrdinalIgnoreCase))
-            {
-                values[TouchCountKey] = touchCount.ToString(CultureInfo.InvariantCulture);
-                continue;
-            }
+    public static string NormalizeTouchCount(string programContent) => NormalizeContent(programContent);
 
-            values[property.Name] = property.Value.Clone();
+    /// <summary>
+    /// 执行边界比编辑保存更严格：整件检测只支持四面，不允许回退 PLC 面结果。
+    /// </summary>
+    public static string NormalizeForProduction(string? programContent, string? deviceType)
+    {
+        var content = NormalizeContent(programContent, deviceType);
+        if (WholePieceProgramResultRules.IsApplicable(deviceType) && GetRequiredTouchCount(content) != 4)
+        {
+            throw new InvalidOperationException("整件检测程序的面数量必须为 4，不能开工、恢复生产或输出检测结果。");
         }
 
+        return content;
+    }
+
+    /// <summary>
+    /// 保存、同步、下载和开工的公共边界；先拒绝重复/旧字段，再规范化，不能用字典覆盖掩盖错误。
+    /// </summary>
+    public static string NormalizeContent(string? programContent, string? deviceType = null, bool requireTouchCount = true)
+    {
+        var values = ParseContent(programContent, deviceType);
+        if (requireTouchCount)
+        {
+            values[TouchCountKey] = GetRequiredTouchCount(programContent).ToString(CultureInfo.InvariantCulture);
+        }
         return JsonSerializer.Serialize(values, JsonOptions);
     }
 
-    /// <summary>
-    /// 规范化配方名称：截断 PLC 定长字符串的 NUL 填充。
-    /// string.Trim() 不去掉 NUL，若不处理会把 \u0000 写进 ProgramContent 并上传 MES，
-    /// 也会让另一台设备按名称匹配槽位时对不上。
-    /// </summary>
-    private static string NormalizeRecipeName(string? value)
+    public static IReadOnlyDictionary<string, ProgramLimitRange> ReadLimits(string? programContent, string? deviceType = null)
+        => BuildLimits(ParseContent(programContent, deviceType), deviceType);
+
+    public static bool TryReadLimits(
+        string? programContent,
+        out IReadOnlyDictionary<string, ProgramLimitRange> limits,
+        out string errorMessage,
+        string? deviceType = null)
     {
-        if (string.IsNullOrEmpty(value))
-        {
-            return string.Empty;
-        }
-
-        var terminatorIndex = value.IndexOf('\0');
-        var text = terminatorIndex >= 0 ? value[..terminatorIndex] : value;
-        return text.Trim();
-    }
-
-    /// <summary>
-    /// 把程序内容拼成一行「测试项≤最大允许值」摘要，供生产监控页随时查阅设定值。
-    /// 判定规则是实际值大于最大允许值才 NG，所以用 ≤ 如实表达合格区间。
-    /// 项的顺序沿用 JSON 顺序；没有有效值时返回空字符串。
-    /// 该方法在实时预览的每次刷新中调用，任何内容都不能抛异常打断采集显示。
-    /// 跳过保留键（配方名称），只展示测试项上限。
-    /// </summary>
-    public static string BuildLimitsSummary(string? programContent)
-    {
-        var values = ParseObjectValues(programContent);
-        if (values.Count == 0)
-        {
-            return string.Empty;
-        }
-
-        return string.Join(
-            ' ',
-            values
-                .Where(pair => !string.IsNullOrWhiteSpace(pair.Value) && !IsReservedKey(pair.Key))
-                .Select(pair => $"{pair.Key}≤{pair.Value.Trim()}"));
-    }
-
-    /// <summary>
-    /// 判断程序内容是否包含至少一个有效最大允许值或配方名称。
-    /// 空白和空 JSON 对象表示用户尚未填写最大允许值；非对象或非法历史内容保守地视为有效。
-    /// 只有配方名称、没有测试项上限时，仍视为有内容，以便配方名随 MES 同步上传。
-    /// </summary>
-    public static bool HasConfiguredValues(string? programContent)
-    {
-        var content = programContent?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(content))
-        {
-            return false;
-        }
-
         try
         {
-            using var document = JsonDocument.Parse(content);
-            return document.RootElement.ValueKind != JsonValueKind.Object
-                || document.RootElement.EnumerateObject().Any();
-        }
-        catch (JsonException)
-        {
-            // 不能因无法解析历史内容而删除已有程序文件。
+            limits = ReadLimits(programContent, deviceType);
+            errorMessage = string.Empty;
             return true;
         }
+        catch (InvalidOperationException ex)
+        {
+            limits = new Dictionary<string, ProgramLimitRange>();
+            errorMessage = ex.Message;
+            return false;
+        }
     }
-    /// <summary>
-    /// 根据测试项字典和已有 JSON 构建程序内容表格行。
-    /// 保留键（配方名称）不进表格，由专门的读取/注入 API 处理。
-    /// </summary>
-    public static IReadOnlyList<ProgramContentItemRow> BuildRows(
-        IEnumerable<DimTestItem>? dictionaryItems,
-        string? existingJson)
+
+    public static string BuildLimitsSummary(string? programContent)
     {
-        var existingValues = ParseObjectValues(existingJson);
+        var values = ParseContent(programContent, null);
+        return string.Join(' ', BuildLimits(values, null).Select(pair =>
+        {
+            var upper = values.GetValueOrDefault(pair.Key + UpperLimitSuffix);
+            var lower = values.GetValueOrDefault(pair.Key + LowerLimitSuffix);
+            return upper is null ? $"{lower}≤{pair.Key}"
+                : lower is null ? $"{pair.Key}≤{upper}" : $"{lower}≤{pair.Key}≤{upper}";
+        }));
+    }
+
+    public static bool HasConfiguredValues(string? programContent)
+        => !string.IsNullOrWhiteSpace(programContent) && ParseContent(programContent, null).Count > 0;
+
+    public static IReadOnlyList<ProgramContentItemRow> BuildRows(
+        IEnumerable<DimTestItem>? dictionaryItems, string? existingJson)
+    {
+        // null 是 UI 明确新建的空白表格，已有但损坏的 JSON 不得走这个分支。
+        var values = existingJson is null
+            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            : ParseContent(existingJson, null);
         var rows = new List<ProgramContentItemRow>();
         var knownNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
         foreach (var item in dictionaryItems ?? Enumerable.Empty<DimTestItem>())
         {
-            var itemName = Normalize(item.ItemName);
-            if (string.IsNullOrWhiteSpace(itemName) || !knownNames.Add(itemName) || IsReservedKey(itemName))
+            var name = Normalize(item.ItemName);
+            if (name.Length == 0 || IsReservedKey(name) || !knownNames.Add(name))
             {
                 continue;
             }
-
-            rows.Add(new ProgramContentItemRow
-            {
-                ItemName = itemName,
-                StandardValue = existingValues.TryGetValue(itemName, out var value) ? value : string.Empty,
-                IsDictionaryItem = true
-            });
+            rows.Add(CreateRow(name, values, true));
         }
-
-        foreach (var pair in existingValues)
+        foreach (var name in BuildLimits(values, null).Keys)
         {
-            if (knownNames.Contains(pair.Key) || IsReservedKey(pair.Key))
+            if (knownNames.Add(name))
             {
-                continue;
+                rows.Add(CreateRow(name, values, false));
             }
-
-            rows.Add(new ProgramContentItemRow
-            {
-                ItemName = pair.Key,
-                StandardValue = pair.Value,
-                IsDictionaryItem = false
-            });
         }
-
-        // 字典和旧内容都为空时给 UI 一个空行，用户可以直接手动录入。
         if (rows.Count == 0)
         {
             rows.Add(new ProgramContentItemRow());
         }
-
         return rows;
     }
 
-    /// <summary>
-    /// 构建开工预览/微调表格行，将字典项与已下载程序内容映射为带“修改值”列的预览行。
-    /// </summary>
-    public static IReadOnlyList<ProgramContentReviewRow> BuildReviewRows(
-        IEnumerable<DimTestItem>? dictionaryItems,
-        string? existingJson)
-    {
-        var rows = BuildRows(dictionaryItems, existingJson);
-        return rows
-            .Select(row => new ProgramContentReviewRow
-            {
-                ItemName = row.ItemName,
-                StandardValue = row.StandardValue,
-                IsDictionaryItem = row.IsDictionaryItem
-            })
-            .ToList();
-    }
+    private static ProgramContentItemRow CreateRow(string name, Dictionary<string, string> values, bool dictionaryItem)
+        => new()
+        {
+            ItemName = name,
+            UpperLimit = values.GetValueOrDefault(name + UpperLimitSuffix) ?? string.Empty,
+            LowerLimit = values.GetValueOrDefault(name + LowerLimitSuffix) ?? string.Empty,
+            IsDictionaryItem = dictionaryItem
+        };
 
-    /// <summary>
-    /// 合并预览/微调行为 MES 需要的 ProgramContent JSON 字符串。
-    /// 有效值直接取 <see cref="ProgramContentReviewRow.StandardValue"/>，用户在弹窗中就地修改。
-    /// </summary>
-    public static string MergeReviewRowsToJson(IEnumerable<ProgramContentReviewRow> rows)
+    public static IReadOnlyList<ProgramContentReviewRow> BuildReviewRows(
+        IEnumerable<DimTestItem>? dictionaryItems, string? existingJson)
+        => BuildRows(dictionaryItems, existingJson).Select(row => new ProgramContentReviewRow
+        {
+            ItemName = row.ItemName,
+            UpperLimit = row.UpperLimit,
+            LowerLimit = row.LowerLimit,
+            IsDictionaryItem = row.IsDictionaryItem
+        }).ToList();
+
+    public static string MergeReviewRowsToJson(IEnumerable<ProgramContentReviewRow> rows, string? deviceType = null)
     {
         ArgumentNullException.ThrowIfNull(rows);
-
-        var mergedRows = rows
-            .Select(row => new ProgramContentItemRow
-            {
-                ItemName = row.ItemName,
-                StandardValue = row.StandardValue,
-                IsDictionaryItem = row.IsDictionaryItem
-            })
-            .ToList();
-
-        return ToJson(mergedRows);
+        return ToJson(rows.Select(row => new ProgramContentItemRow
+        {
+            ItemName = row.ItemName,
+            UpperLimit = row.UpperLimit,
+            LowerLimit = row.LowerLimit,
+            IsDictionaryItem = row.IsDictionaryItem
+        }), deviceType);
     }
 
-    /// <summary>
-    /// 尝试合并预览/微调行为 ProgramContent JSON，失败时返回可展示给用户的错误。
-    /// </summary>
     public static bool TryMergeReviewRowsToJson(
-        IEnumerable<ProgramContentReviewRow> rows,
-        out string json,
-        out string errorMessage)
+        IEnumerable<ProgramContentReviewRow> rows, out string json, out string errorMessage, string? deviceType = null)
     {
         try
         {
-            json = MergeReviewRowsToJson(rows);
+            json = MergeReviewRowsToJson(rows, deviceType);
             errorMessage = string.Empty;
             return true;
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
-            json = "{}";
+            json = string.Empty;
             errorMessage = ex.Message;
             return false;
         }
     }
 
-    /// <summary>
-    /// 将程序内容表格行转换成 MES 需要的 JSON 字符串。
-    /// 不处理配方名称保留键；保留键应由保存入口单独注入到最终 JSON 前面。
-    /// </summary>
-    public static string ToJson(IEnumerable<ProgramContentItemRow> rows)
+    public static string ToJson(IEnumerable<ProgramContentItemRow> rows, string? deviceType = null)
     {
         ArgumentNullException.ThrowIfNull(rows);
-
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var orderedValues = new Dictionary<string, string>();
-
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var row in rows)
         {
-            var itemName = Normalize(row.ItemName);
-            var standardValue = Normalize(row.StandardValue);
-            if (string.IsNullOrWhiteSpace(itemName) || string.IsNullOrWhiteSpace(standardValue))
+            var name = Normalize(row.ItemName);
+            var upper = Normalize(row.UpperLimit);
+            var lower = Normalize(row.LowerLimit);
+            if (upper.Length == 0 && lower.Length == 0)
             {
                 continue;
             }
-
-            if (IsReservedKey(itemName))
+            if (name.Length == 0)
             {
-                throw new InvalidOperationException($"测试项名称不能使用保留键：{itemName}");
+                throw new InvalidOperationException("已填写限值的测试项名称不能为空。");
             }
-
-            if (values.ContainsKey(itemName))
+            if (IsReservedKey(name) || !names.Add(name))
             {
-                throw new InvalidOperationException($"程序内容中存在重复测试项：{itemName}");
+                throw new InvalidOperationException($"程序内容中存在重复测试项或保留名称：{name}。");
             }
-
-            values[itemName] = standardValue;
-            orderedValues[itemName] = standardValue;
+            if (upper.Length > 0) values.Add(name + UpperLimitSuffix, upper);
+            if (lower.Length > 0) values.Add(name + LowerLimitSuffix, lower);
         }
-
-        return JsonSerializer.Serialize(orderedValues, JsonOptions);
+        _ = BuildLimits(values, deviceType);
+        return JsonSerializer.Serialize(values, JsonOptions);
     }
 
-    /// <summary>
-    /// 尝试转换程序内容 JSON，失败时返回可展示给用户的错误。
-    /// </summary>
     public static bool TryToJson(
-        IEnumerable<ProgramContentItemRow> rows,
-        out string json,
-        out string errorMessage)
+        IEnumerable<ProgramContentItemRow> rows, out string json, out string errorMessage, string? deviceType = null)
     {
         try
         {
-            json = ToJson(rows);
+            json = ToJson(rows, deviceType);
             errorMessage = string.Empty;
             return true;
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
-            json = "{}";
+            json = string.Empty;
             errorMessage = ex.Message;
             return false;
         }
     }
 
-    private static Dictionary<string, string> ParseObjectValues(string? json)
+    public static (string? Station1RecipeName, string? Station2RecipeName) ExtractRecipeNames(string? programContent)
     {
-        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (string.IsNullOrWhiteSpace(json))
+        if (string.IsNullOrWhiteSpace(programContent)) return (null, null);
+        string? station1 = null;
+        string? station2 = null;
+        foreach (var (key, value) in ReadObject(programContent))
         {
-            return values;
+            if (!IsReservedKey(key) || key.Equals(TouchCountKey, StringComparison.OrdinalIgnoreCase)) continue;
+            var name = ReadMetadata(key, value);
+            if (name.Length == 0) continue;
+            if (key.Equals(RecipeNameStation2Key, StringComparison.OrdinalIgnoreCase)) station2 = name;
+            else station1 ??= name;
         }
+        return (station1, station2);
+    }
 
+    public static string MergeRecipeNamesAndContent(
+        string? station1RecipeName, string? station2RecipeName, string testItemContentJson, int? touchCount = null)
+    {
+        var content = ParseContent(testItemContentJson, null);
+        var merged = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var station1 = NormalizeRecipeName(station1RecipeName);
+        var station2 = NormalizeRecipeName(station2RecipeName);
+        if (station1.Length > 0) merged.Add(RecipeNameStation1Key, station1);
+        if (station2.Length > 0) merged.Add(RecipeNameStation2Key, station2);
+        if (touchCount.HasValue)
+        {
+            if (touchCount.Value <= 0) throw new InvalidOperationException("焊点数量必须是大于 0 的整数。");
+            merged.Add(TouchCountKey, touchCount.Value.ToString(CultureInfo.InvariantCulture));
+        }
+        foreach (var pair in content.Where(pair => !IsReservedKey(pair.Key))) merged.Add(pair.Key, pair.Value);
+        return JsonSerializer.Serialize(merged, JsonOptions);
+    }
+
+    /// <summary>
+    /// 本次开工仅替换限值，保留原内容中的元数据键及值，不落程序库。
+    /// </summary>
+    public static string ReplaceLimits(string originalContent, string limitsJson, string? deviceType = null)
+    {
+        var original = ParseContent(originalContent, deviceType);
+        var limits = ParseContent(limitsJson, deviceType);
+        var merged = original.Where(pair => IsReservedKey(pair.Key))
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in limits.Where(pair => !IsReservedKey(pair.Key))) merged.Add(pair.Key, pair.Value);
+        return NormalizeContent(JsonSerializer.Serialize(merged, JsonOptions), deviceType);
+    }
+
+    /// <summary>
+    /// 只供用户明确选择“重新配置”使用：验证纯旧格式后仅取有效元数据，绝不转换旧限值。
+    /// 混用、重复、非法结构和非法数字均不能借重配入口绕过校验。
+    /// </summary>
+    public static bool TryCreateReconfigurationContent(string? legacyJson, out string metadataJson)
+    {
+        metadataJson = string.Empty;
+        try
+        {
+            var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var hasLegacyItem = false;
+            foreach (var (key, value) in ReadObject(legacyJson))
+            {
+                if (IsReservedKey(key))
+                {
+                    metadata.Add(key, ReadMetadata(key, value));
+                    if (key.Equals(TouchCountKey, StringComparison.OrdinalIgnoreCase)) _ = GetRequiredTouchCount(legacyJson);
+                    continue;
+                }
+                if (TrySplitLimitKey(key, out _, out _)) return false;
+                _ = ReadNumber(ReadScalar(key, value), key, "旧设定值");
+                hasLegacyItem = true;
+            }
+            if (!hasLegacyItem) return false;
+            metadataJson = JsonSerializer.Serialize(metadata, JsonOptions);
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    private static Dictionary<string, JsonElement> ReadObject(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) throw new InvalidOperationException("程序内容为空，请重新配置上下限或从 MES 下载新格式程序。");
         try
         {
             using var document = JsonDocument.Parse(json);
             if (document.RootElement.ValueKind != JsonValueKind.Object)
-            {
-                return values;
-            }
-
+                throw new InvalidOperationException("程序内容必须是 JSON 对象。");
+            var values = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
             foreach (var property in document.RootElement.EnumerateObject())
             {
                 var key = Normalize(property.Name);
-                if (string.IsNullOrWhiteSpace(key) || values.ContainsKey(key))
-                {
-                    continue;
-                }
+                if (key.Length == 0) throw new InvalidOperationException("程序内容存在空字段名。");
+                if (!values.TryAdd(key, property.Value.Clone()))
+                    throw new InvalidOperationException($"程序内容存在重复字段“{key}”。");
+            }
+            return values;
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidOperationException($"程序内容不是合法 JSON：{ex.Message}", ex);
+        }
+    }
 
-                values[key] = property.Value.ValueKind == JsonValueKind.String
-                    ? property.Value.GetString() ?? string.Empty
-                    : property.Value.ToString();
+    private static Dictionary<string, string> ParseContent(string? json, string? deviceType)
+    {
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, value) in ReadObject(json))
+        {
+            if (IsReservedKey(key)) values.Add(key, ReadMetadata(key, value));
+            else
+            {
+                if (!TrySplitLimitKey(key, out _, out _))
+                    throw new InvalidOperationException($"程序内容字段“{key}”不是新限值格式，请使用“测试项上限/测试项下限”；旧格式不再支持，请重新配置或从 MES 下载。");
+                values.Add(key, ReadScalar(key, value));
             }
         }
-        catch (JsonException)
-        {
-            // 历史内容若不是合法 JSON，不应阻塞页面打开；保存时会重新按表格生成 JSON。
-        }
-
+        _ = BuildLimits(values, deviceType);
         return values;
     }
 
-    private static string Normalize(string? value)
-        => value?.Trim() ?? string.Empty;
-
-    /// <summary>
-    /// 从 ProgramContent JSON 提取工位配方名称。
-    /// 工位 1 同时接受「工位1配方名称」和「配方名称」两个键。
-    /// </summary>
-    public static (string? Station1RecipeName, string? Station2RecipeName) ExtractRecipeNames(string? programContent)
+    private static Dictionary<string, ProgramLimitRange> BuildLimits(Dictionary<string, string> values, string? deviceType)
     {
-        if (string.IsNullOrWhiteSpace(programContent))
+        var limits = new Dictionary<string, ProgramLimitRange>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, text) in values)
         {
-            return (null, null);
+            if (IsReservedKey(key)) continue;
+            if (!TrySplitLimitKey(key, out var name, out var upper))
+                throw new InvalidOperationException($"程序内容字段“{key}”不是新限值格式。");
+            var number = ReadNumber(text, name, upper ? "设定上限" : "设定下限");
+            var range = limits.GetValueOrDefault(name) ?? new ProgramLimitRange(null, null);
+            limits[name] = upper ? range with { UpperLimit = number } : range with { LowerLimit = number };
         }
-
-        try
+        foreach (var (name, range) in limits)
         {
-            using var document = JsonDocument.Parse(programContent);
-            if (document.RootElement.ValueKind != JsonValueKind.Object)
-            {
-                return (null, null);
-            }
-
-            string? station1 = null;
-            string? station2 = null;
-
-            foreach (var property in document.RootElement.EnumerateObject())
-            {
-                var key = property.Name.Trim();
-                var value = property.Value.ValueKind == JsonValueKind.String
-                    ? NormalizeRecipeName(property.Value.GetString())
-                    : null;
-
-                if (string.IsNullOrWhiteSpace(value))
-                {
-                    continue;
-                }
-
-                if (string.Equals(key, RecipeNameStation1Key, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(key, RecipeNameLegacyKey, StringComparison.OrdinalIgnoreCase))
-                {
-                    station1 ??= value;
-                }
-                else if (string.Equals(key, RecipeNameStation2Key, StringComparison.OrdinalIgnoreCase))
-                {
-                    station2 = value;
-                }
-            }
-
-            return (station1, station2);
+            if (range.LowerLimit > range.UpperLimit)
+                throw new InvalidOperationException($"测试项“{name}”的设定下限不能大于设定上限。");
+            if (WholePieceProgramResultRules.IsApplicable(deviceType) && range.UpperLimit is null)
+                throw new InvalidOperationException($"整件检测测试项“{name}”只填写了设定下限，请补齐设定上限。");
         }
-        catch (JsonException)
-        {
-            return (null, null);
-        }
+        return limits;
     }
 
-    /// <summary>
-    /// 将配方名称和测试项内容合并为最终 ProgramContent JSON，配方名在最前面。
-    /// </summary>
-    public static string MergeRecipeNamesAndContent(
-        string? station1RecipeName,
-        string? station2RecipeName,
-        string testItemContentJson,
-        int? touchCount = null)
+    private static bool TrySplitLimitKey(string key, out string itemName, out bool upper)
     {
-        var merged = new Dictionary<string, string>();
+        upper = key.EndsWith(UpperLimitSuffix, StringComparison.Ordinal);
+        var isLimit = upper || key.EndsWith(LowerLimitSuffix, StringComparison.Ordinal);
+        itemName = isLimit ? key[..^2] : string.Empty;
+        if (isLimit && (itemName.Length == 0 || itemName != itemName.Trim() || IsReservedKey(itemName)))
+            throw new InvalidOperationException($"限值字段“{key}”的测试项名称无效。");
+        return isLimit;
+    }
 
-        // 配方名在前；PLC 定长字符串的 NUL 填充必须先截断，否则会写进 MES 程序内容。
-        var normalizedStation1 = NormalizeRecipeName(station1RecipeName);
-        if (!string.IsNullOrWhiteSpace(normalizedStation1))
-        {
-            merged[RecipeNameStation1Key] = normalizedStation1;
-        }
+    private static decimal ReadNumber(string text, string itemName, string limitName)
+    {
+        if (!decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var number))
+            throw new InvalidOperationException($"测试项“{itemName}”的{limitName}“{text}”不是合法数字。");
+        return number;
+    }
 
-        var normalizedStation2 = NormalizeRecipeName(station2RecipeName);
-        if (!string.IsNullOrWhiteSpace(normalizedStation2))
+    private static string ReadScalar(string key, JsonElement value)
+        => value.ValueKind switch
         {
-            merged[RecipeNameStation2Key] = normalizedStation2;
-        }
+            JsonValueKind.String => Normalize(value.GetString()),
+            JsonValueKind.Number => value.GetRawText(),
+            _ => throw new InvalidOperationException($"程序内容字段“{key}”必须为数字字符串或 JSON 数字。")
+        };
 
-        if (touchCount.HasValue)
+    private static string ReadMetadata(string key, JsonElement value)
+    {
+        if (key.Equals(TouchCountKey, StringComparison.OrdinalIgnoreCase))
         {
-            if (touchCount.Value <= 0)
-            {
+            var text = ReadScalar(key, value);
+            if (!int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var count) || count <= 0)
                 throw new InvalidOperationException("焊点数量必须是大于 0 的整数。");
-            }
-
-            merged[TouchCountKey] = touchCount.Value.ToString(CultureInfo.InvariantCulture);
+            return count.ToString(CultureInfo.InvariantCulture);
         }
-
-        // 测试项内容在后
-        if (!string.IsNullOrWhiteSpace(testItemContentJson))
-        {
-            try
-            {
-                using var document = JsonDocument.Parse(testItemContentJson);
-                if (document.RootElement.ValueKind == JsonValueKind.Object)
-                {
-                    foreach (var property in document.RootElement.EnumerateObject())
-                    {
-                        var key = property.Name.Trim();
-                        if (string.IsNullOrWhiteSpace(key) || IsReservedKey(key))
-                        {
-                            continue;
-                        }
-
-                        var value = property.Value.ValueKind == JsonValueKind.String
-                            ? property.Value.GetString() ?? string.Empty
-                            : property.Value.ToString();
-
-                        merged[key] = value;
-                    }
-                }
-            }
-            catch (JsonException)
-            {
-                // 测试项内容非法时仍保留配方名
-            }
-        }
-
-        return JsonSerializer.Serialize(merged, JsonOptions);
+        if (value.ValueKind != JsonValueKind.String)
+            throw new InvalidOperationException($"配方名称字段“{key}”必须为字符串。");
+        return NormalizeRecipeName(value.GetString());
     }
+
+    private static string NormalizeRecipeName(string? value)
+    {
+        var text = value ?? string.Empty;
+        var terminator = text.IndexOf('\0');
+        return (terminator >= 0 ? text[..terminator] : text).Trim();
+    }
+
+    private static string Normalize(string? value) => value?.Trim() ?? string.Empty;
+}
+
+public sealed record ProgramLimitRange(decimal? UpperLimit, decimal? LowerLimit)
+{
+    public bool Contains(decimal actual)
+        => (!UpperLimit.HasValue || actual <= UpperLimit.Value)
+            && (!LowerLimit.HasValue || actual >= LowerLimit.Value);
 }

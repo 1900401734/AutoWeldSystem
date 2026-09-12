@@ -28,6 +28,7 @@ public class UploadTaskService : IUploadTaskService
     private readonly IProductionFlowLogService _productionLogService;
     private readonly IDeviceLifecycleLogService _deviceLifecycleLogService;
     private readonly IDeviceStatusService _deviceStatusService;
+    private readonly IProductionReportFileService _reportFileService;
     private readonly object _dbLock = new();
 
     public UploadTaskService(
@@ -36,7 +37,8 @@ public class UploadTaskService : IUploadTaskService
         IAppSettingsService settingsService,
         IProductionFlowLogService productionLogService,
         IDeviceLifecycleLogService deviceLifecycleLogService,
-        IDeviceStatusService deviceStatusService)
+        IDeviceStatusService deviceStatusService,
+        IProductionReportFileService? reportFileService = null)
     {
         _dbContext = dbContext;
         _mesProvider = mesProvider;
@@ -44,6 +46,7 @@ public class UploadTaskService : IUploadTaskService
         _productionLogService = productionLogService;
         _deviceLifecycleLogService = deviceLifecycleLogService;
         _deviceStatusService = deviceStatusService;
+        _reportFileService = reportFileService ?? new ProductionReportFileService(dbContext, settingsService, productionLogService);
     }
 
     /// <summary>
@@ -508,9 +511,22 @@ public class UploadTaskService : IUploadTaskService
             return null;
         }
 
-        BasicRes<object>? response = recordKey is null
-            ? await ExecuteByTypeAsync(task, cancellationToken)
-            : await UploadDeviceStatusAsync(recordKey, cancellationToken);
+        BasicRes<object>? response;
+        try
+        {
+            response = recordKey is null
+                ? await ExecuteByTypeAsync(task, cancellationToken)
+                : await UploadDeviceStatusAsync(recordKey, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            FinishExecution(task.Id, Unsupported("上传已取消，等待重试。"));
+            throw;
+        }
+        catch (Exception ex)
+        {
+            response = Unsupported($"上传失败：{ex.Message}");
+        }
         if (response is null)
         {
             SoftDeleteDeviceStatusTask(task, "Device status JSONL source was removed before MES upload.");
@@ -748,7 +764,7 @@ public class UploadTaskService : IUploadTaskService
         return changes.Count;
     }
 
-    private BizUploadTask? GetRetryableTask(int id)
+    protected virtual BizUploadTask? GetRetryableTask(int id)
     {
         lock (_dbLock)
         {
@@ -801,7 +817,7 @@ public class UploadTaskService : IUploadTaskService
         PublishTaskStatusChanged(changed);
     }
 
-    private BizUploadTask? MarkUploading(int id)
+    protected virtual BizUploadTask? MarkUploading(int id)
     {
         lock (_dbLock)
         {
@@ -821,7 +837,7 @@ public class UploadTaskService : IUploadTaskService
         }
     }
 
-    private async Task<BasicRes<object>> ExecuteByTypeAsync(BizUploadTask task, CancellationToken cancellationToken)
+    protected virtual async Task<BasicRes<object>> ExecuteByTypeAsync(BizUploadTask task, CancellationToken cancellationToken)
     {
         var touchCountError = ValidateTaskTouchCount(task);
         if (touchCountError is not null)
@@ -841,11 +857,18 @@ public class UploadTaskService : IUploadTaskService
         };
     }
 
+    private IReadOnlyList<int> ResolveTaskStations(BizWeldTask task)
+    {
+        var stations = _dbContext.Db.Queryable<BizWeldPointRecord>().Where(record => record.TaskId == task.Id)
+            .Select(record => record.StationNo).ToList().Distinct().ToList();
+        return stations.Count > 0 ? stations : new[] { task.StationNo };
+    }
+
     private string? ValidateTaskTouchCount(BizUploadTask uploadTask)
     {
         if (!uploadTask.WeldTaskId.HasValue)
         {
-            return null;
+            return "上传任务缺少对应的生产任务，不能校验程序快照。";
         }
 
         lock (_dbLock)
@@ -854,7 +877,10 @@ public class UploadTaskService : IUploadTaskService
             var weldTask = _dbContext.Db.Queryable<BizWeldTask>().InSingle(uploadTask.WeldTaskId.Value);
             try
             {
-                _ = ProgramContentJsonRules.GetRequiredTouchCount(weldTask?.ProgramContentSnapshot);
+                _ = TaskProductProcessConfigResolver.ValidateProgram(
+                    new ProductProcessConfigService(_dbContext), new TestSchemeConfigService(_dbContext),
+                    weldTask ?? throw new InvalidOperationException("补传任务对应的生产任务不存在。"),
+                    ResolveTaskStations(weldTask), _settingsService.Get().ProcessParameterDeviceType);
                 return null;
             }
             catch (InvalidOperationException ex)
@@ -876,6 +902,11 @@ public class UploadTaskService : IUploadTaskService
             return Unsupported("Start report task payload is missing.");
         }
 
+        var weldTask = GetWeldTask(task);
+        if (weldTask is null) return Unsupported("补传任务对应的生产任务不存在。");
+        // 队列中的旧请求体不是判定依据，补传也只能使用已校验任务快照。
+        request.PramaterActual = ProgramContentJsonRules.NormalizeForProduction(
+            weldTask.ProgramContentSnapshot, _settingsService.Get().ProcessParameterDeviceType);
         ApplyOfflineStartRequestId(task, request);
 
         var response = await _mesProvider.StartWorkAsync(request, cancellationToken);
@@ -1274,7 +1305,8 @@ public class UploadTaskService : IUploadTaskService
             var schemeItems = ResolveProcessParameterSchemeItems(firstRecord, schemeItemCache);
             var config = ResolveProductProcessConfig(firstRecord);
             var task = _dbContext.Db.Queryable<BizWeldTask>().InSingle(firstRecord.TaskId);
-            var touchCount = ProgramContentJsonRules.GetRequiredTouchCount(task?.ProgramContentSnapshot);
+            var content = ProgramContentJsonRules.NormalizeForProduction(task?.ProgramContentSnapshot, deviceType);
+            var touchCount = ProgramContentJsonRules.GetRequiredTouchCount(content);
             if (!WholePieceAbAggregationRules.IsApplicable(deviceType, touchCount))
             {
                 items.AddRange(productRecords.Select(record => ToProcessParameterUploadItem(
@@ -1287,69 +1319,51 @@ public class UploadTaskService : IUploadTaskService
                 continue;
             }
 
-            if (schemeItems.Any(item => SchemeDetailRoleRules.AllRoles
-                .Where(role => role != SchemeDetailValueRole.Actual)
-                .Any(role => SchemeDetailRoleRules.IsMesEnabled(item.Detail, role))))
-            {
-                return Unsupported($"产品“{firstRecord.ProductNo}”的整件检测A/B模式只允许上传实际值，不能配置上限、下限或结果角色。");
-            }
-
-            var definitions = schemeItems
-                .Where(item => SchemeDetailRoleRules.IsMesEnabled(item.Detail, SchemeDetailValueRole.Actual))
-                .Select(item => new WholePieceAbValueDefinition(
-                    item.Item.ItemId,
-                    item.Item.ItemName,
-                    SchemeDetailRoleRules.GetMesFieldName(item.Detail, SchemeDetailValueRole.Actual)?.Trim() ?? string.Empty,
-                    item.Item.ActualExpression))
-                .Where(definition => !string.IsNullOrWhiteSpace(definition.OutputKey))
-                .ToList();
-            var aggregation = WholePieceAbAggregationRules.Aggregate(
-                productRecords,
-                definitions,
-                settings.EnablePlcStringNumericFormatting ?? true,
-                settings.PlcStringNumericFormatMode);
-            if (!aggregation.IsSuccess)
-            {
-                return Unsupported(aggregation.ErrorMessage);
-            }
-
-            // 行结果改用该行的合并值判定，与产品结果同源；
-            // 否则单面检测失败会让某行上传 NG，而按四面最大值算出的产品结果是 OK，两者对不上。
-            var outputRows = WholePieceProgramResultRules.IsApplicable(deviceType)
-                ? WholePieceProgramResultRules.ApplyAggregatedRowResults(
-                    task?.ProgramContentSnapshot,
-                    aggregation.Rows,
-                    definitions,
-                    settings.EffectiveJudgementDecimalPlaces,
-                    settings.PlcStringNumericFormatMode)
-                : aggregation.Rows;
-            foreach (var output in outputRows)
-            {
-                var item = new ProcessParameterUploadItem
-                {
-                    ExpStartId = firstRecord.ExpStartId,
-                    DeviceId = firstRecord.DeviceId,
-                    SN = firstRecord.SN,
-                    ProcessNo = firstRecord.ProcessNo,
-                    ProductNo = firstRecord.ProductNo,
-                    SideNo = output.SideNo,
-                    Result = output.Result,
-                    IsTest = null,
-                    Ts = firstRecord.Ts.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
-                };
-                foreach (var value in output.Values)
-                {
-                    var schemeItem = schemeItems.FirstOrDefault(candidate => string.Equals(
-                        SchemeDetailRoleRules.GetMesFieldName(candidate.Detail, SchemeDetailValueRole.Actual)?.Trim(),
-                        value.Key,
-                        StringComparison.OrdinalIgnoreCase));
-                    item.DynamicFields[value.Key] = FormatMesRoleValue(value.Value, schemeItem?.Item, SchemeDetailValueRole.Actual, numericFormat);
-                }
-                items.Add(item);
-            }
+            items.AddRange(BuildWholePieceProcessParameterItems(productRecords, task!,
+                schemeItems.Select(item => (item.Item, item.Detail)).ToList(), settings));
         }
 
         return await _mesProvider.UploadProcessParametersAsync(items, cancellationToken);
+    }
+
+    internal static IReadOnlyList<ProcessParameterUploadItem> BuildWholePieceProcessParameterItems(
+        IReadOnlyList<BizWeldPointRecord> productRecords,
+        BizWeldTask task,
+        IReadOnlyList<(DimTestItem Item, BizSchemeDetail Detail)> schemeItems,
+        AppSettings settings)
+    {
+        var content = ProgramContentJsonRules.NormalizeForProduction(task.ProgramContentSnapshot, settings.ProcessParameterDeviceType);
+        WholePieceProgramResultRules.ValidateScheme(ProgramContentJsonRules.ReadLimits(content, settings.ProcessParameterDeviceType),
+            schemeItems.Select(item => (item.Detail, item.Item)));
+        var definitions = schemeItems
+            .Where(item => SchemeDetailRoleRules.ShouldEvaluateProgramRole(item.Detail, SchemeDetailValueRole.Actual))
+            .Select(item => new WholePieceAbValueDefinition(item.Item.ItemId, item.Item.ItemName, item.Item.ItemName, item.Item.ActualExpression))
+            .ToList();
+        var aggregation = WholePieceAbAggregationRules.Aggregate(productRecords, definitions,
+            settings.EnablePlcStringNumericFormatting ?? true, settings.PlcStringNumericFormatMode);
+        if (!aggregation.IsSuccess) throw new InvalidOperationException(aggregation.ErrorMessage);
+        var outputRows = WholePieceProgramResultRules.ApplyAggregatedRowResults(content, aggregation.Rows, definitions,
+            settings.EffectiveJudgementDecimalPlaces, settings.PlcStringNumericFormatMode);
+        var numericFormat = OutputNumericFormat.ForUpload(settings);
+        var first = productRecords[0];
+        return outputRows.Select(output =>
+        {
+            var item = new ProcessParameterUploadItem
+            {
+                ExpStartId = first.ExpStartId, DeviceId = first.DeviceId, SN = first.SN,
+                ProcessNo = first.ProcessNo, ProductNo = first.ProductNo,
+                SideNo = output.SideNo, Result = output.Result,
+                Ts = first.Ts.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
+            };
+            // 判定用上报项并集，MES 仅投影自身字段；不把程序上下限增加到协议中。
+            foreach (var schemeItem in schemeItems.Where(candidate => SchemeDetailRoleRules.IsMesEnabled(candidate.Detail, SchemeDetailValueRole.Actual)))
+            {
+                var field = SchemeDetailRoleRules.GetMesFieldName(schemeItem.Detail, SchemeDetailValueRole.Actual)!.Trim();
+                if (IsReservedProcessParameterField(field)) throw new InvalidOperationException($"过程参数字段“{field}”与协议保留字段冲突。");
+                item.DynamicFields[field] = FormatMesRoleValue(output.Values[schemeItem.Item.ItemName], schemeItem.Item, SchemeDetailValueRole.Actual, numericFormat);
+            }
+            return item;
+        }).ToList();
     }
 
     private void UpdateWeldPointUploadStatus(IReadOnlyList<BizWeldPointRecord> records, BasicRes<object> response)
@@ -1440,20 +1454,23 @@ public class UploadTaskService : IUploadTaskService
             .Where(item => itemIds.Contains(item.ItemId))
             .ToList();
 
+        var strictWholePiece = WholePieceProgramResultRules.IsApplicable(_settingsService.Get().ProcessParameterDeviceType);
         return details
             .OrderBy(detail => detail.DetailId)
             .Select(detail => new
             {
-                Item = items.FirstOrDefault(item => item.ItemId == detail.ItemId),
+                Item = items.FirstOrDefault(item => item.ItemId == detail.ItemId)
+                    ?? (strictWholePiece ? throw new InvalidOperationException($"测试方案中的测试项 ID {detail.ItemId} 不存在。") : null),
                 Detail = detail
             })
             .Where(item => item.Item is not null)
             .Select(item =>
             {
-                SchemeDetailRoleRules.ClearUnavailableRoles(item.Detail, item.Item!);
+                if (!strictWholePiece) SchemeDetailRoleRules.ClearUnavailableRoles(item.Detail, item.Item!);
                 return item;
             })
-            .Where(item => HasAnyMesEnabledRole(item.Detail))
+            .Where(item => HasAnyMesEnabledRole(item.Detail)
+                || (strictWholePiece && SchemeDetailRoleRules.AllRoles.Any(role => SchemeDetailRoleRules.IsUploadEnabled(item.Detail, role))))
             .Select(item => new ProcessParameterSchemeItem(item.Item!, item.Detail))
             .ToList();
     }
@@ -1462,8 +1479,11 @@ public class UploadTaskService : IUploadTaskService
     {
         if (!string.IsNullOrWhiteSpace(task.ProgramId))
         {
+            var programId = task.ProgramId.Trim();
+            var localId = programId.StartsWith("local-", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(programId[6..], out var id) ? id : 0;
             var programs = _dbContext.Db.Queryable<BizProgram>()
-                .Where(program => !program.IsDeleted && program.ProgramId == task.ProgramId.Trim())
+                .Where(program => !program.IsDeleted && (program.ProgramId == programId || (localId > 0 && program.Id == localId)))
                 .ToList();
 
             var localProgram = programs
@@ -1780,12 +1800,9 @@ public class UploadTaskService : IUploadTaskService
                 return null;
             }
 
-            // 产品增量刷新和完工刷新可能更新同一报表记录，上传时始终优先读取最新记录。
-            var reportFiles = _dbContext.Db.Queryable<BizProductionReportFile>()
-                .Where(report => report.TaskId == weldTask.Id)
-                .ToList();
-            var latestReportFilePath = ProductionReportFileRules.SelectLatestUploadFilePath(reportFiles, weldTask.Id);
-            var filePath = FirstNonEmpty(latestReportFilePath, task.FilePath);
+            // 必须重新成功生成后再上传；配置失败时不能选中磁盘上遗留的旧报表。
+            var report = _reportFileService.GenerateXlsxReport(weldTask);
+            var filePath = report.FilePath;
 
             if (string.IsNullOrWhiteSpace(filePath))
             {
@@ -1804,7 +1821,7 @@ public class UploadTaskService : IUploadTaskService
         }
     }
 
-    private UploadTaskSummary? FinishExecution(int taskId, BasicRes<object> response)
+    protected virtual UploadTaskSummary? FinishExecution(int taskId, BasicRes<object> response)
     {
         UploadTaskSummary? summary;
         UploadTaskStatusChangedEventArgs? changed = null;

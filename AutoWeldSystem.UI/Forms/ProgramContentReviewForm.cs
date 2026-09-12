@@ -8,7 +8,7 @@ namespace AutoWeldSystem.UI.Forms;
 
 /// <summary>
 /// 开工前程序内容预览/微调弹窗。
-/// 表格展示测试项名称、最大允许值和本次临时修改值；修改只对本次开工生效、不落库。
+/// 表格展示测试项名称、设定上限和设定下限；修改只对本次开工生效、不落库。
 /// </summary>
 public partial class ProgramContentReviewForm : BaseWindow
 {
@@ -20,6 +20,8 @@ public partial class ProgramContentReviewForm : BaseWindow
     private readonly string? _station2RecipeName;
     private readonly int? _touchCount;
     private readonly string _touchCountLabel;
+    private readonly string? _deviceType;
+    private readonly string _originalContent;
 
     public ProgramContentReviewForm(
         ProgramDataRes program,
@@ -30,6 +32,9 @@ public partial class ProgramContentReviewForm : BaseWindow
         ArgumentNullException.ThrowIfNull(program);
         ArgumentNullException.ThrowIfNull(dictionaryItems);
         _program = program;
+        _deviceType = processParameterDeviceType;
+        _originalContent = ProgramContentJsonRules.NormalizeContent(program.ProgramContent, _deviceType);
+        MergedContentJson = _originalContent;
 
         // 配方名称来自程序内容保留键，只读展示，改配方仍走程序管理。
         (_station1RecipeName, _station2RecipeName) =
@@ -79,22 +84,6 @@ public partial class ProgramContentReviewForm : BaseWindow
 
     private void ConfigureGrid()
     {
-        dgvFields.AutoGenerateColumns = false;
-        dgvFields.Columns.Clear();
-        dgvFields.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            DataPropertyName = nameof(ProgramContentReviewRow.ItemName),
-            HeaderText = "测试项名称",
-            ReadOnly = true,
-            FillWeight = 34F
-        });
-        dgvFields.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            DataPropertyName = nameof(ProgramContentReviewRow.StandardValue),
-            HeaderText = "最大允许值",
-            ReadOnly = false,
-            FillWeight = 66F
-        });
         dgvFields.DataSource = _rows;
     }
 
@@ -122,25 +111,23 @@ public partial class ProgramContentReviewForm : BaseWindow
             return;
         }
 
-        // 仅“最大允许值”列允许编辑，测试项名称固定。
-        e.Cancel = e.ColumnIndex != 1;
+        // 测试项名称固定，两侧限值都允许编辑。
+        e.Cancel = e.ColumnIndex == 0;
     }
 
     private void dgvFields_CellValueChanged(object? sender, DataGridViewCellEventArgs e)
     {
-        if (e.RowIndex < 0 || _isBindingRows)
-        {
-            return;
-        }
-
-        if (e.ColumnIndex != 1)
+        if (e.RowIndex < 0 || e.ColumnIndex < 0 || _isBindingRows)
         {
             return;
         }
 
         if (dgvFields.Rows[e.RowIndex].DataBoundItem is ProgramContentReviewRow row)
         {
-            row.StandardValue = dgvFields.Rows[e.RowIndex].Cells[e.ColumnIndex].Value?.ToString() ?? string.Empty;
+            dgvFields.Rows[e.RowIndex].Cells[e.ColumnIndex].ErrorText = string.Empty;
+            var value = dgvFields.Rows[e.RowIndex].Cells[e.ColumnIndex].Value?.ToString() ?? string.Empty;
+            if (e.ColumnIndex == 1) row.UpperLimit = value;
+            if (e.ColumnIndex == 2) row.LowerLimit = value;
         }
     }
 
@@ -154,21 +141,31 @@ public partial class ProgramContentReviewForm : BaseWindow
 
     private void btnApply_Click(object? sender, EventArgs e)
     {
-        dgvFields.EndEdit();
-        if (!ProgramContentJsonRules.TryMergeReviewRowsToJson(_rows, out var json, out var message))
+        if (!dgvFields.EndEdit()) return;
+        BindingContext?[_rows]?.EndCurrentEdit();
+        if (!ProgramContentJsonRules.TryMergeReviewRowsToJson(_rows, out var json, out var message, _deviceType))
         {
+            FocusInvalidLimit(message);
             MessageBox.Show(this, message, "提示", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
-        // 用户只能改最大允许值，配方名称原样写回 JSON 最前面。
-        MergedContentJson = ProgramContentJsonRules.MergeRecipeNamesAndContent(
-            _station1RecipeName,
-            _station2RecipeName,
-            json,
-            _touchCount);
+        MergedContentJson = ProgramContentJsonRules.ReplaceLimits(_originalContent, json, _deviceType);
         DialogResult = DialogResult.OK;
         Close();
+    }
+
+    private void FocusInvalidLimit(string message)
+    {
+        for (var index = 0; index < _rows.Count; index++)
+        {
+            if (string.IsNullOrEmpty(_rows[index].ItemName) || !message.Contains($"“{_rows[index].ItemName}”", StringComparison.Ordinal)) continue;
+            var column = message.Contains("设定下限", StringComparison.Ordinal) ? 2 : 1;
+            dgvFields.CurrentCell = dgvFields.Rows[index].Cells[column];
+            dgvFields.Rows[index].Cells[column].ErrorText = message;
+            dgvFields.Focus();
+            break;
+        }
     }
 
     private void btnCancel_Click(object? sender, EventArgs e)

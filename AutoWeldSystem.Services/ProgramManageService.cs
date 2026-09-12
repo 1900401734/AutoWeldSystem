@@ -295,8 +295,8 @@ public sealed class ProgramManageService : IProgramManageService
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        _dbContext.InitDatabase();
         NormalizeRequest(request);
+        _dbContext.InitDatabase();
 
         var entity = request.Id > 0
             ? _dbContext.Db.Queryable<BizProgram>().InSingle(request.Id)
@@ -456,6 +456,11 @@ public sealed class ProgramManageService : IProgramManageService
                 throw new InvalidOperationException("缺少 MES 程序ID，无法执行当前程序同步动作。");
             }
 
+            if (executableAction != AppConstants.ProgramSyncActions.Delete)
+            {
+                // 重试从库读取的内容也必须校验，不能绕过本地保存门禁。
+                entity.ProgramContent = ProgramContentJsonRules.NormalizeContent(entity.ProgramContent, CurrentSettings.ProcessParameterDeviceType);
+            }
             var responseMessage = executableAction switch
             {
                 AppConstants.ProgramSyncActions.Delete => await SyncDeleteAsync(entity, cancellationToken),
@@ -506,20 +511,40 @@ public sealed class ProgramManageService : IProgramManageService
         var recipeOptions = await ReadRecipeNameOptionsAsync(cancellationToken);
 
         var count = 0;
-        foreach (var item in listResponse.Data)
+        var rejected = new List<string>();
+        try
         {
-            var detailResponse = await _mesProvider.DownloadProgramAsync(settings.DeviceId, item.Id, cancellationToken);
-            if (!detailResponse.IsSuccess || detailResponse.Data is null)
+            foreach (var item in listResponse.Data)
             {
-                continue;
-            }
+                var detailResponse = await _mesProvider.DownloadProgramAsync(settings.DeviceId, item.Id, cancellationToken);
+                if (!detailResponse.IsSuccess || detailResponse.Data is null)
+                {
+                    rejected.Add($"{item.ProgramName}：{detailResponse.Msg}");
+                    continue;
+                }
 
-            UpsertRemoteProgram(detailResponse.Data, recipeOptions);
-            count++;
+                try
+                {
+                    // 与保存/同步串行，单项先校验再替换，不让无效下载覆盖有效程序。
+                    await _mutationGate.WaitAsync(cancellationToken);
+                    try { UpsertRemoteProgram(detailResponse.Data, recipeOptions); }
+                    finally { _mutationGate.Release(); }
+                    count++;
+                }
+                catch (InvalidOperationException ex)
+                {
+                    rejected.Add($"{item.ProgramName}：{ex.Message}");
+                }
+            }
+        }
+        finally
+        {
+            if (count > 0) InvalidateProgramLookups();
         }
 
-        _operationLogService.Write("ProgramPull", $"从 MES 下载程序 {count} 个。");
-        InvalidateProgramLookups();
+        _operationLogService.Write("ProgramPull", $"从 MES 下载程序 {count} 个，拒绝 {rejected.Count} 个。");
+        if (rejected.Count > 0)
+            throw new InvalidOperationException($"已下载 {count} 个程序，以下程序未覆盖本地数据：{string.Join("；", rejected)}");
         return count;
     }
 
@@ -846,6 +871,7 @@ public sealed class ProgramManageService : IProgramManageService
         ProgramDataRes data,
         IReadOnlyDictionary<int, IReadOnlyList<PlcRecipeNameOption>>? recipeOptions = null)
     {
+        var content = ProgramContentJsonRules.NormalizeContent(data.ProgramContent, CurrentSettings.ProcessParameterDeviceType);
         var entity = _dbContext.Db.Queryable<BizProgram>().First(it => it.ProgramId == data.Id);
         if (entity is null)
         {
@@ -861,7 +887,7 @@ public sealed class ProgramManageService : IProgramManageService
 
         entity.ProgramName = data.ProgramName;
         entity.DeviceId = data.DeviceId;
-        entity.ProgramContent = data.ProgramContent;
+        entity.ProgramContent = content;
         entity.ProgramType = data.ProgramType;
         entity.ProductNum = data.ProductNum;
         if (ProgramNameRules.TryParse(data.ProgramName, out var parsedName))
@@ -933,7 +959,7 @@ public sealed class ProgramManageService : IProgramManageService
         request.WeldJobName = request.WeldJobName.Trim();
         request.RobotJobName = request.RobotJobName.Trim();
         request.MesRemark = request.MesRemark.Trim();
-        request.ProgramContentJson = ProgramContentJsonRules.NormalizeTouchCount(request.ProgramContentJson);
+        request.ProgramContentJson = ProgramContentJsonRules.NormalizeContent(request.ProgramContentJson, CurrentSettings.ProcessParameterDeviceType);
 
         ProgramSaveRecipeRules.Validate(
             request.RecipeCode,

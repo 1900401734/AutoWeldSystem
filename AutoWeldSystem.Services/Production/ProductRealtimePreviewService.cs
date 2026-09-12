@@ -164,6 +164,21 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         {
             cancellationToken.ThrowIfCancellationRequested();
             var stationNo = NormalizeStationNo(station.StationNo);
+            if (station.ActiveTask is null)
+            {
+                PublishStatusSnapshot(stationNo, string.Empty);
+                continue;
+            }
+            try
+            {
+                _ = TaskProductProcessConfigResolver.ValidateProgram(_productProcessConfigService, _testSchemeConfigService,
+                    station.ActiveTask, new[] { stationNo }, _settingsService.Get().ProcessParameterDeviceType);
+            }
+            catch (InvalidOperationException ex)
+            {
+                PublishStatusSnapshot(stationNo, $"不可判定：{ex.Message}");
+                continue;
+            }
             // 配方改为按程序名称下发，不再从 PLC 读回配方反查产品身份：
             // 反查链末端是程序里填的工号，通用程序下不代表本批产品。
             var identity = ResolveProductIdentity(station, localPrograms);
@@ -189,8 +204,15 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
                 continue;
             }
 
-            var snapshot = await BuildSnapshotAsync(identity, config, station.ActiveTask, cancellationToken);
-            Publish(snapshot);
+            try
+            {
+                var snapshot = await BuildSnapshotAsync(identity, config, station.ActiveTask, cancellationToken);
+                Publish(snapshot);
+            }
+            catch (InvalidOperationException ex)
+            {
+                PublishStatusSnapshot(identity.StationNo, $"不可判定：{ex.Message}", identity);
+            }
         }
     }
 
@@ -262,6 +284,8 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         var touchCount = identity.TouchCount!.Value;
         var refreshTime = DateTime.Now;
         var settings = _settingsService.Get();
+        if (activeTask is not null)
+            _ = ProgramContentJsonRules.NormalizeForProduction(activeTask.ProgramContentSnapshot, settings.ProcessParameterDeviceType);
         var useProgramResult = WholePieceProgramResultRules.IsApplicable(settings.ProcessParameterDeviceType);
         var useProgramPointNumber = string.Equals(
             ProductionConstants.RealtimePointNumberSources.Normalize(settings.RealtimePointNumberSource),
@@ -316,6 +340,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         // PLC 读取模式没有程序判定依据，失败列保持为空，界面不标红。
         IReadOnlyList<string> mergedFailedColumns = Array.Empty<string>();
+        string? judgementError = null;
         string productResult;
         if (!rowResult.IsComplete)
         {
@@ -325,12 +350,12 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         {
             productResult = TestResultRules.ToDisplayText(ResolveRealtimeProgramProductResult(
                 rowResult,
-                touchCount,
                 activeTask?.ProgramContentSnapshot,
-                mergedSucceeded ? mergedAggregation : null,
+                mergedAggregation,
                 mergedDefinitions,
                 settings,
-                out mergedFailedColumns));
+                out mergedFailedColumns,
+                out judgementError));
             mergedFailedColumns = mergedFailedColumns
                 .Where(columnName => mergedColumns.Any(column =>
                     string.Equals(column.ColumnName, columnName, StringComparison.OrdinalIgnoreCase)))
@@ -340,11 +365,11 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         {
             productResult = plcProductResult;
         }
-        var message = rowResult.Errors.Count > 0
+        var message = judgementError ?? (rowResult.Errors.Count > 0
             ? string.Join("；", rowResult.Errors)
             : rowResult.Rows.Count == 0
                 ? "测试方案没有可显示的测试项，请检查方案明细和测试项字典。"
-                : string.Empty;
+                : string.Empty);
 
         return new ProductRealtimePreviewSnapshot(
             identity.StationNo,
@@ -423,18 +448,26 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
 
     private static string ResolveRealtimeProgramProductResult(
         PreviewRowsResult rowResult,
-        int touchCount,
         string? programContentSnapshot,
         WholePieceAbAggregationResult? mergedAggregation,
         IReadOnlyList<WholePieceAbValueDefinition> definitions,
         AppSettings settings,
-        out IReadOnlyList<string> failedColumns)
+        out IReadOnlyList<string> failedColumns,
+        out string? errorMessage)
     {
         failedColumns = Array.Empty<string>();
-        var faceResult = WholePieceProgramResultRules.ResolveRealtimeProductResult(rowResult.FaceResults, touchCount);
-        if (mergedAggregation is null)
+        errorMessage = null;
+        if (!ProgramContentJsonRules.TryReadLimits(programContentSnapshot, out _, out var configurationError,
+                ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck))
         {
-            return faceResult;
+            errorMessage = $"不可判定：{configurationError}";
+            return ProductionConstants.TestResults.Unknown;
+        }
+        if (!rowResult.IsComplete) return ProductionConstants.TestResults.NotAvailable;
+        if (mergedAggregation is null || !mergedAggregation.IsSuccess)
+        {
+            errorMessage = $"不可判定：{mergedAggregation?.ErrorMessage ?? "缺少有效的 A/B 聚合数据。"}";
+            return ProductionConstants.TestResults.Unknown;
         }
 
         var merged = WholePieceProgramResultRules.EvaluateAggregated(
@@ -445,7 +478,8 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             settings.PlcStringNumericFormatMode);
         if (!merged.IsSuccess)
         {
-            return faceResult;
+            errorMessage = $"不可判定：{merged.ErrorMessage}";
+            return ProductionConstants.TestResults.Unknown;
         }
 
         // 失败项已经是界面列名，直接给合并视图标红用。
@@ -849,8 +883,10 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             return null;
         }
 
+        var localId = normalizedProgramId.StartsWith("local-", StringComparison.OrdinalIgnoreCase)
+            && int.TryParse(normalizedProgramId[6..], out var id) ? id : 0;
         return localPrograms
-            .Where(program => SameText(program.ProgramId, normalizedProgramId))
+            .Where(program => SameText(program.ProgramId, normalizedProgramId) || (localId > 0 && program.Id == localId))
             .OrderByDescending(program => SameText(program.DeviceId, deviceId))
             .ThenByDescending(program => program.UpdatedTime)
             .FirstOrDefault();

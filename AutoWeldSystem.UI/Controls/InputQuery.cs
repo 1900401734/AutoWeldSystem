@@ -58,7 +58,11 @@ public partial class InputQuery : UserControl
     public string PlaceholderText
     {
         get => input1.PlaceholderText ?? string.Empty;
-        set => input1.PlaceholderText = value;
+        set
+        {
+            input1.PlaceholderText = value;
+            Parent?.PerformLayout(this, nameof(PlaceholderText));
+        }
     }
 
     /// <summary>
@@ -95,6 +99,25 @@ public partial class InputQuery : UserControl
 
         InitializeComponent();
         InitializeBehavior();
+    }
+
+    public override Size GetPreferredSize(Size proposedSize)
+    {
+        var preferredSize = base.GetPreferredSize(proposedSize);
+        if (input1 is null || string.IsNullOrEmpty(PlaceholderText))
+        {
+            return preferredSize;
+        }
+
+        // AntdUI 输入框的首选宽度不包含水印；为完整文字和两侧留白补足自动布局所需宽度。
+        var placeholderSize = TextRenderer.MeasureText(
+            PlaceholderText,
+            input1.Font,
+            Size.Empty,
+            TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
+        var inputWidth = placeholderSize.Width + input1.Font.Height * 2;
+        preferredSize.Width += Math.Max(0, inputWidth - input1.GetPreferredSize(Size.Empty).Width);
+        return preferredSize;
     }
 
     public virtual void OnQueryClick(string text = "")

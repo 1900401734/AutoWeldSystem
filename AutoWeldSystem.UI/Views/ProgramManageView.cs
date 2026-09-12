@@ -41,6 +41,7 @@ public partial class ProgramManageView : BaseView
     private readonly Dictionary<int, bool> _recipeNameReadSucceeded = new();
     private int _editingId;
     private BizProgram? _editingProgram;
+    private string _editingContent = "{}";
     private int _detailLoadVersion;
     private bool _initialized;
     private bool _programContentDictionaryAvailable;
@@ -137,10 +138,6 @@ public partial class ProgramManageView : BaseView
         ConfigureProgramColumns();
 
         TableStyleHelper.ApplyAntdTable(tableProgramContent);
-        // AntdUI 表格需要显式设置编辑触发方式，否则列 Editable=true 也不会进入编辑器。
-        tableProgramContent.EditMode = AntdUI.TEditMode.DoubleClick;
-        // 允许单元格失去焦点时提交编辑，保证最大允许值能进入保存流程。
-        tableProgramContent.EditLostFocus = true;
         ConfigureProgramContentColumns(dictionaryAvailable: false);
     }
 
@@ -230,7 +227,7 @@ public partial class ProgramManageView : BaseView
         lblProgramType.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramType);
         lblRemark.Text = _localizer.GetString(TextKeys.ProgramManage.LabelRemark);
         lblDescription.Text = _localizer.GetString(TextKeys.ProgramManage.LabelLocalRemark);
-        lblProgramContent.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramContent);
+        grpProgramContent.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramContent);
     }
 
     private void ApplyGridHeaders()
@@ -269,9 +266,15 @@ public partial class ProgramManageView : BaseView
     private void BindProgramContentRows(string? programContentJson)
     {
         var dictionaryItems = _testSchemeConfigService.GetItems();
-        _programContentDictionaryAvailable = dictionaryItems.Any(item => !string.IsNullOrWhiteSpace(item.ItemName));
+        var rows = ProgramContentJsonRules.BuildRows(dictionaryItems, programContentJson);
+        BindProgramContentRows(rows, dictionaryItems.Any(item => !string.IsNullOrWhiteSpace(item.ItemName)));
+    }
+
+    private void BindProgramContentRows(IReadOnlyList<ProgramContentItemRow> rows, bool dictionaryAvailable)
+    {
+        _programContentDictionaryAvailable = dictionaryAvailable;
         _programContentRows.Clear();
-        _programContentRows.AddRange(ProgramContentJsonRules.BuildRows(dictionaryItems, programContentJson));
+        _programContentRows.AddRange(rows);
         EnsureManualProgramContentRow();
         ConfigureProgramContentColumns(_programContentDictionaryAvailable);
         RefreshProgramContentTable();
@@ -310,7 +313,7 @@ public partial class ProgramManageView : BaseView
     }
 
     private static bool IsBlankProgramContentRow(ProgramContentItemRow row)
-        => string.IsNullOrWhiteSpace(row.ItemName) && string.IsNullOrWhiteSpace(row.StandardValue);
+        => string.IsNullOrWhiteSpace(row.ItemName) && string.IsNullOrWhiteSpace(row.UpperLimit) && string.IsNullOrWhiteSpace(row.LowerLimit);
 
 
     private async Task ReloadProgramsAsync(int? selectedId = null)
@@ -438,6 +441,7 @@ public partial class ProgramManageView : BaseView
         tablePrograms.SelectedIndex = -1;
         _editingId = 0;
         _editingProgram = null;
+        _editingContent = "{}";
         Interlocked.Increment(ref _detailLoadVersion);
         txtProgramId.Clear();
         inputProgramName.Clear();
@@ -469,7 +473,32 @@ public partial class ProgramManageView : BaseView
                 return;
             }
 
+            var dictionaryItems = _testSchemeConfigService.GetItems();
+            var content = program.ProgramContent;
+            IReadOnlyList<ProgramContentItemRow> rows;
+            try
+            {
+                _ = ProgramContentJsonRules.NormalizeContent(content, _appSettingsService.Get().ProcessParameterDeviceType, requireTouchCount: false);
+                rows = ProgramContentJsonRules.BuildRows(dictionaryItems, content);
+            }
+            catch (InvalidOperationException ex)
+            {
+                if (!ProgramContentJsonRules.TryCreateReconfigurationContent(content, out var metadata)
+                    || MessageBox.Show(GetDialogOwner(), $"{ex.Message}\n\n是否重新配置此程序？保留程序身份和有效配方元数据，旧限值不预填；保存前不修改数据库。",
+                        "重新配置", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+                {
+                    ShowWarningMessage(ex.Message);
+                    RestoreEditingSelection();
+                    return;
+                }
+                content = metadata;
+                rows = ProgramContentJsonRules.BuildRows(dictionaryItems, metadata);
+            }
+
+            if (loadVersion != Volatile.Read(ref _detailLoadVersion) || IsDisposed) return;
+            // 全部解析完成后才替换编辑身份和表格，失败不留下上一程序的限值。
             _editingProgram = program;
+            _editingContent = content ?? "{}";
             _suppressNameAutoFill = true;
             _editingId = program.Id;
             txtProgramId.Text = program.ProgramId ?? string.Empty;
@@ -479,14 +508,14 @@ public partial class ProgramManageView : BaseView
             SetRecipeSelection(selectStation2Recipe, 2, program.Station2RecipeCode, selectNotApplicable: true);
             inputComponentCode.Text = program.ComponentCode ?? string.Empty;
             inputSequenceNumber.Text = program.SequenceNumber.ToString();
-            inputTouchCount.Text = ProgramContentJsonRules.TryGetTouchCount(program.ProgramContent, out var touchCount)
+            inputTouchCount.Text = ProgramContentJsonRules.TryGetTouchCount(content, out var touchCount)
                 ? touchCount.ToString(CultureInfo.InvariantCulture)
                 : string.Empty;
             inputTouchCount.Status = AntdUI.TType.None;
             cmbProgramType.SelectedIndex = program.ProgramType == "1" ? 1 : 0;
             BindRemarkText(program.Remark);
             inputDescription.Text = program.Description ?? string.Empty;
-            BindProgramContentRows(program.ProgramContent);
+            BindProgramContentRows(rows, dictionaryItems.Any(item => !string.IsNullOrWhiteSpace(item.ItemName)));
             SetCurrentProgramInfo(program);
             _suppressNameAutoFill = false;
         }
@@ -496,6 +525,20 @@ public partial class ProgramManageView : BaseView
         catch (Exception ex)
         {
             ShowErrorMessage(ex.Message);
+            RestoreEditingSelection();
+        }
+        finally
+        {
+            _suppressNameAutoFill = false;
+        }
+    }
+
+    private void RestoreEditingSelection()
+    {
+        if (tablePrograms.DataSource is IReadOnlyList<ProgramProductGroupRow> rows)
+        {
+            var index = rows.ToList().FindIndex(row => row.ProgramId == _editingId);
+            tablePrograms.SelectedIndex = index < 0 ? -1 : index + 1;
         }
     }
 
@@ -772,6 +815,8 @@ public partial class ProgramManageView : BaseView
         finally
         {
             btnPullMes.Enabled = true;
+            try { await ReloadProgramsAsync(_editingId); }
+            catch (Exception ex) { ShowErrorMessage(ex.Message); }
         }
     }
 
@@ -847,15 +892,26 @@ public partial class ProgramManageView : BaseView
             : inputProgramName.Text;
         request.ProgramType = cmbProgramType.SelectedIndex == 1 ? "1" : "0";
         tableProgramContent.EditModeClose();
-        if (!ProgramContentJsonRules.TryToJson(_programContentRows, out var programContentJson, out var errorMessage))
+        if (!ProgramContentJsonRules.TryToJson(_programContentRows, out var programContentJson, out var errorMessage,
+                _appSettingsService.Get().ProcessParameterDeviceType))
         {
+            var invalidRow = _programContentRows.FirstOrDefault(row => !string.IsNullOrEmpty(row.ItemName)
+                && errorMessage.Contains($"“{row.ItemName}”", StringComparison.Ordinal));
+            if (invalidRow is not null)
+            {
+                tableProgramContent.SelectedIndex = _programContentRows.IndexOf(invalidRow) + 1;
+                tableProgramContent.ScrollLine(invalidRow, true);
+            }
+            tableProgramContent.Focus();
             ShowWarningMessage(errorMessage);
             return false;
         }
 
         // 从配方下拉取出名称，注入到程序内容 JSON 最前面
         var station1RecipeName = ResolveSelectedRecipeName(selectStation1Recipe, 1);
-        var station2RecipeName = ResolveSelectedRecipeName(selectStation2Recipe, 2);
+        var station2RecipeName = selectStation2Recipe.Visible
+            ? ResolveSelectedRecipeName(selectStation2Recipe, 2)
+            : ProgramContentJsonRules.ExtractRecipeNames(_editingContent).Station2RecipeName;
         request.ProgramContentJson = ProgramContentJsonRules.MergeRecipeNamesAndContent(
             station1RecipeName,
             station2RecipeName,
@@ -1001,10 +1057,12 @@ public partial class ProgramManageView : BaseView
         _enableDualStation = enableDualStation;
         tlpRecipe1.Visible = true;
         tlpRecipe2.Visible = enableDualStation;
-        var station2RecipeRow = editorLayout.GetRow(tlpRecipe2);
-        editorLayout.RowStyles[station2RecipeRow].SizeType = enableDualStation ? SizeType.AutoSize : SizeType.Absolute;
-        editorLayout.RowStyles[station2RecipeRow].Height = 0F;
-        editorLayout.PerformLayout();
+        // 配方行移动容器后，必须在实际父容器中折叠，避免压缩编辑区同索引的产品工号行。
+        var recipeLayout = (TableLayoutPanel)tlpRecipe2.Parent!;
+        var station2RecipeRow = recipeLayout.GetRow(tlpRecipe2);
+        recipeLayout.RowStyles[station2RecipeRow].SizeType = enableDualStation ? SizeType.AutoSize : SizeType.Absolute;
+        recipeLayout.RowStyles[station2RecipeRow].Height = 0F;
+        recipeLayout.PerformLayout();
     }
 
     private void BindRecipeNameOptions(
@@ -1115,12 +1173,19 @@ public partial class ProgramManageView : BaseView
             || select.SelectedIndex < 0
             || select.SelectedIndex >= items.Count)
         {
-            return null;
+            var existing = ProgramContentJsonRules.ExtractRecipeNames(_editingContent);
+            return stationNo == 2 ? existing.Station2RecipeName : existing.Station1RecipeName;
         }
 
         var item = items[select.SelectedIndex];
-        // 「不适用」和历史失效选项不写配方名
-        return item.Kind == RecipeSelectionKind.PlcOption ? item.DisplayText : null;
+        // PLC 槽位暂时不可读取时仍保留原程序已验证的配方名称，不能在重填限值时丢失元数据。
+        if (item.Kind == RecipeSelectionKind.PlcOption) return item.DisplayText;
+        if (item.Kind == RecipeSelectionKind.MissingExisting)
+        {
+            var names = ProgramContentJsonRules.ExtractRecipeNames(_editingContent);
+            return stationNo == 2 ? names.Station2RecipeName : names.Station1RecipeName;
+        }
+        return null;
     }
 
     private void RefreshRecipeSelectorTexts()
@@ -1216,28 +1281,9 @@ public partial class ProgramManageView : BaseView
 
     private void ConfigureProgramContentColumns(bool dictionaryAvailable)
     {
-        tableProgramContent.Columns.Clear();
-        tableProgramContent.Columns.Add(CreateProgramContentColumn(
-            nameof(ProgramContentItemRow.ItemName),
-            "测试项名称",
-            readOnly: dictionaryAvailable));
-        tableProgramContent.Columns.Add(CreateProgramContentColumn(
-            nameof(ProgramContentItemRow.StandardValue),
-            "最大允许值",
-            readOnly: false));
+        columnContentName.ReadOnly = dictionaryAvailable;
+        columnContentName.Editable = !dictionaryAvailable;
         TableStyleHelper.ApplyAntdColumnDefaults(tableProgramContent);
-    }
-
-    private static AntdUI.Column CreateProgramContentColumn(string key, string title, bool readOnly)
-    {
-        return new AntdUI.Column(key, title)
-        {
-            Align = AntdUI.ColumnAlign.Center,
-            ColAlign = AntdUI.ColumnAlign.Center,
-            ReadOnly = readOnly,
-            Editable = !readOnly,
-            Ellipsis = true
-        };
     }
 
     /// <summary>

@@ -67,7 +67,7 @@ public sealed class TestSchemeConfigService : ITestSchemeConfigService
         }
     }
 
-    public IReadOnlyList<BizSchemeDetail> GetDetails(string? schemeId = null)
+    public IReadOnlyList<BizSchemeDetail> GetDetails(string? schemeId = null, bool normalizeRoles = true)
     {
         lock (_dbLock)
         {
@@ -81,7 +81,7 @@ public sealed class TestSchemeConfigService : ITestSchemeConfigService
 
             var items = _dbContext.Db.Queryable<DimTestItem>().ToList();
             return query.ToList()
-                .Select(detail => NormalizeDetailRoles(detail, items))
+                .Select(detail => normalizeRoles ? NormalizeDetailRoles(detail, items) : detail)
                 .OrderBy(detail => detail.SchemeId)
                 .ThenBy(detail => detail.DetailId)
                 .ToList();

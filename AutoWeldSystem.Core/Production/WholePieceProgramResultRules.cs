@@ -1,12 +1,12 @@
 ﻿using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Plc;
 using System.Globalization;
-using System.Text.Json;
 
 namespace AutoWeldSystem.Core.Production;
 
 /// <summary>
-/// 整件检测程序判定规则。PLC 面结果只负责确认测试完成，最终结果由任务程序快照中的最大允许值计算。
+/// 整件检测程序判定规则。PLC 面结果只负责确认测试完成，最终结果由任务程序快照中的上下限计算。
 /// </summary>
 public static class WholePieceProgramResultRules
 {
@@ -22,6 +22,67 @@ public static class WholePieceProgramResultRules
                StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
+    /// 开工与各输出入口共用方案校验，不能先按出口裁剪掉参与判定的测试项。
+    /// </summary>
+    public static void ValidateScheme(
+        IReadOnlyDictionary<string, ProgramLimitRange> limits,
+        IEnumerable<(BizSchemeDetail Detail, DimTestItem Item)> schemeItems)
+    {
+        var items = schemeItems.ToList();
+        var participating = items.Where(item => SchemeDetailRoleRules.ShouldEvaluateProgramRole(
+            item.Detail, SchemeDetailValueRole.Actual)).ToList();
+        if (participating.Count == 0)
+        {
+            throw new InvalidOperationException("整件检测测试方案没有启用上报实际值的测试项，无法进行程序判定。");
+        }
+
+        var maximums = limits.Where(pair => pair.Value.UpperLimit.HasValue).ToDictionary(
+            pair => pair.Key, pair => pair.Value.UpperLimit!.Value.ToString(CultureInfo.InvariantCulture), StringComparer.OrdinalIgnoreCase);
+        var missing = SchemeDetailRoleRules.FindUploadItemsMissingMaximum(
+            items.Select(item => (item.Detail, item.Item.ItemName)), maximums);
+        if (missing.Count > 0)
+            throw new InvalidOperationException($"测试项“{string.Join("、", missing)}”勾选了上报但未配置设定上限，请先补齐设定上限。");
+
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var mesFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (detail, item) in items)
+        {
+            if (SchemeDetailRoleRules.AllRoles.Where(role => role != SchemeDetailValueRole.Actual)
+                .Any(role => SchemeDetailRoleRules.IsUploadEnabled(detail, role)))
+            {
+                throw new InvalidOperationException($"整件检测测试项“{item.ItemName}”只允许上报实际值，不能上报上限、下限或结果角色。");
+            }
+            if (!SchemeDetailRoleRules.ShouldEvaluateProgramRole(detail, SchemeDetailValueRole.Actual)) continue;
+            var name = item.ItemName?.Trim() ?? string.Empty;
+            if (name.Length == 0 || !names.Add(name))
+            {
+                throw new InvalidOperationException($"测试方案存在空名称或重复测试项“{name}”。");
+            }
+            PlcOffsetExpression expression;
+            try
+            {
+                expression = PlcOffsetExpression.Parse(item.ActualExpression ?? string.Empty);
+            }
+            catch (Exception ex) when (ex is FormatException or ArgumentException)
+            {
+                throw new InvalidOperationException($"测试项“{name}”实际值表达式无效：{ex.Message}", ex);
+            }
+            if (expression.IsAbsoluteAddress)
+            {
+                throw new InvalidOperationException($"测试项“{name}”用于 A/B 聚合时必须使用按面偏移的相对地址。");
+            }
+            if (SchemeDetailRoleRules.IsMesEnabled(detail, SchemeDetailValueRole.Actual))
+            {
+                var field = SchemeDetailRoleRules.GetMesFieldName(detail, SchemeDetailValueRole.Actual)?.Trim();
+                if (string.IsNullOrEmpty(field) || !mesFields.Add(field))
+                {
+                    throw new InvalidOperationException($"测试项“{name}”的过程参数字段名为空或重复。");
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// 按 A/B 合并值判定一组测试项。逐面判定已取消：面结果寄存器恒为检测完成信号，
     /// 不承载合格信息，产品是否合格只由合并值决定。
     /// 聚合值为空表示参与聚合的面全部视觉失败，该项判 NG。
@@ -29,7 +90,7 @@ public static class WholePieceProgramResultRules
     /// 判定前先按该位数处理聚合值，保证操作员在合并视图看到的数值与判定口径一致。
     /// </summary>
     private static WholePieceProgramFaceResult EvaluateFace(
-        string? programContentSnapshot,
+        IReadOnlyDictionary<string, ProgramLimitRange> limits,
         IEnumerable<WholePieceProgramMeasurement> measurements,
         int? judgementDecimalPlaces,
         string? numericFormatMode)
@@ -52,11 +113,6 @@ public static class WholePieceProgramResultRules
             return WholePieceProgramFaceResult.Failure($"测试方案存在重复测试项：{string.Join("、", duplicateItems)}。");
         }
 
-        if (!TryParseMaximumValues(programContentSnapshot, out var maximumValues, out var parseError))
-        {
-            return WholePieceProgramFaceResult.Failure(parseError);
-        }
-
         var failedItems = new List<string>();
         var evaluatedCount = 0;
         foreach (var measurement in measurementList)
@@ -67,16 +123,10 @@ public static class WholePieceProgramResultRules
                 return WholePieceProgramFaceResult.Failure("测试方案存在名称为空的测试项。");
             }
 
-            // 未填最大设定值表示该测试项只作本地留存和看板转发，不参与合格判定。
-            // 现场借此把数据分成两类：需上传 MES 的按规范判定，其余只供查阅。
-            if (!maximumValues.TryGetValue(itemName, out var maximumText) || string.IsNullOrWhiteSpace(maximumText))
+            // 调用方仅传入参与判定项；缺上限是配置错误，不能跳过后放行。
+            if (!limits.TryGetValue(itemName, out var range) || range.UpperLimit is null)
             {
-                continue;
-            }
-
-            if (!decimal.TryParse(maximumText.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var maximum))
-            {
-                return WholePieceProgramFaceResult.Failure($"测试项“{itemName}”的最大允许值“{maximumText}”不是合法数字。");
+                return WholePieceProgramFaceResult.Failure($"测试项“{itemName}”未配置设定上限。");
             }
 
             evaluatedCount++;
@@ -93,7 +143,7 @@ public static class WholePieceProgramResultRules
                 return WholePieceProgramFaceResult.Failure($"测试项“{itemName}”的实测值“{measurement.ActualValue}”不是合法数字。");
             }
 
-            // 先按判定与上报小数位处理，再与上限比较：合并视图显示的就是判定所用的值。
+            // 先按判定与上报小数位处理，再与上下限比较：合并视图显示的就是判定所用的值。
             var judgedText = PlcStringNumericFormatter.Format(
                 measurement.ActualValue,
                 judgementDecimalPlaces,
@@ -104,7 +154,7 @@ public static class WholePieceProgramResultRules
                 return WholePieceProgramFaceResult.Failure($"测试项“{itemName}”的实测值“{measurement.ActualValue}”不是合法数字。");
             }
 
-            if (actual > maximum)
+            if (!range.Contains(actual))
             {
                 failedItems.Add(itemName);
             }
@@ -112,7 +162,7 @@ public static class WholePieceProgramResultRules
 
         if (evaluatedCount == 0)
         {
-            return WholePieceProgramFaceResult.Failure("参与判定的测试项都没有配置最大允许值，无法进行程序判定。");
+            return WholePieceProgramFaceResult.Failure("参与判定的测试项都没有配置设定上限，无法进行程序判定。");
         }
 
         return WholePieceProgramFaceResult.Success(
@@ -154,10 +204,35 @@ public static class WholePieceProgramResultRules
         int? judgementDecimalPlaces,
         string? numericFormatMode)
     {
+        if (!ProgramContentJsonRules.TryReadLimits(programContentSnapshot, out var limits, out var error,
+                ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck))
+        {
+            return WholePieceProgramAggregatedResult.Failure(error);
+        }
+
+        return EvaluateAggregatedRows(limits, abRows, definitions, judgementDecimalPlaces, numericFormatMode);
+    }
+
+    public static WholePieceProgramAggregatedResult EvaluateAggregatedRows(
+        IReadOnlyDictionary<string, ProgramLimitRange> limits,
+        IReadOnlyList<WholePieceAbOutputRow> abRows,
+        IEnumerable<WholePieceAbValueDefinition> definitions,
+        int? judgementDecimalPlaces,
+        string? numericFormatMode)
+    {
         ArgumentNullException.ThrowIfNull(abRows);
         ArgumentNullException.ThrowIfNull(definitions);
+        if (abRows.Count != 2 || !abRows.Select(row => row.SideNo).ToHashSet(StringComparer.OrdinalIgnoreCase)
+                .SetEquals(new[] { "A", "B" }))
+        {
+            return WholePieceProgramAggregatedResult.Failure("整件检测必须同时提供唯一的 A、B 两行聚合结果。");
+        }
 
         var definitionList = definitions.ToList();
+        if (definitionList.Count == 0)
+        {
+            return WholePieceProgramAggregatedResult.Failure("没有参与判定的测试项。");
+        }
         var results = new List<string>();
         var failedItems = new List<string>();
         foreach (var row in abRows)
@@ -171,11 +246,10 @@ public static class WholePieceProgramResultRules
                     row.Values.TryGetValue(definition.OutputKey, out var value) ? value : null))
                 .ToList();
             // 聚合侧留空表示参与聚合的面全部视觉失败，该行对应测试项判 NG。
-            var rowResult = EvaluateFace(
-                programContentSnapshot,
-                measurements,
-                judgementDecimalPlaces,
-                numericFormatMode);
+            // 只有宽度的方案在 B 行没有适用项；该行不影响产品结果。
+            var rowResult = measurements.Count == 0
+                ? WholePieceProgramFaceResult.Success(ProductionConstants.TestResults.Ok, Array.Empty<string>())
+                : EvaluateFace(limits, measurements, judgementDecimalPlaces, numericFormatMode);
             if (!rowResult.IsSuccess)
             {
                 return WholePieceProgramAggregatedResult.Failure(rowResult.ErrorMessage);
@@ -202,8 +276,7 @@ public static class WholePieceProgramResultRules
 
     /// <summary>
     /// 把 A/B 行的结果替换成按该行合并值判定的结果，使报表和 MES 与产品结果同源。
-    /// 两种情况保持原结果：判定失败时不能给报表导出和 MES 上传引入新的失败点；
-    /// 含焊前 NG 的行对应的产品结果本身就不走合并值判定，替换后反而会对不上。
+    /// 配置错误必须中止正常输出，不能保留 PLC 面结果伪装成有效判定。
     /// </summary>
     public static IReadOnlyList<WholePieceAbOutputRow> ApplyAggregatedRowResults(
         string? programContentSnapshot,
@@ -222,7 +295,7 @@ public static class WholePieceProgramResultRules
             numericFormatMode);
         if (!evaluated.IsSuccess)
         {
-            return abRows;
+            throw new InvalidOperationException(evaluated.ErrorMessage);
         }
 
         // 行级 OK/NG 已取消：A/B 两行统一填产品结果，与合并视图和产品判定同源。
@@ -263,7 +336,7 @@ public static class WholePieceProgramResultRules
                StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// 解析程序快照中的最大允许值，供开工校验复用同一套解析口径。
+    /// 解析程序快照中的设定上限，供开工校验复用同一套解析口径。
     /// </summary>
     public static bool TryReadMaximumValues(
         string? programContentSnapshot,
@@ -272,60 +345,19 @@ public static class WholePieceProgramResultRules
         => TryParseMaximumValues(programContentSnapshot, out values, out errorMessage);
 
     private static bool TryParseMaximumValues(
-        string? json,
+        string? programContentSnapshot,
         out Dictionary<string, string> values,
         out string errorMessage)
     {
-        values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            errorMessage = "任务程序快照为空，无法读取最大允许值。";
-            return false;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            if (document.RootElement.ValueKind != JsonValueKind.Object)
-            {
-                errorMessage = "任务程序快照不是有效的测试项对象。";
-                return false;
-            }
-
-            foreach (var property in document.RootElement.EnumerateObject())
-            {
-                var itemName = property.Name.Trim();
-                if (string.IsNullOrWhiteSpace(itemName))
-                {
-                    continue;
-                }
-
-                // 跳过配方名称保留键，不当测试项上限
-                if (ProgramContentJsonRules.IsReservedKey(itemName))
-                {
-                    continue;
-                }
-
-                if (values.ContainsKey(itemName))
-                {
-                    errorMessage = $"任务程序快照存在重复测试项：{itemName}。";
-                    return false;
-                }
-
-                values[itemName] = property.Value.ValueKind == JsonValueKind.String
-                    ? property.Value.GetString() ?? string.Empty
-                    : property.Value.ToString();
-            }
-
-            errorMessage = string.Empty;
-            return true;
-        }
-        catch (JsonException ex)
-        {
-            errorMessage = $"任务程序快照 JSON 无效：{ex.Message}";
-            return false;
-        }
+        var success = ProgramContentJsonRules.TryReadLimits(programContentSnapshot, out var limits, out errorMessage,
+            ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck);
+        values = limits.Where(pair => pair.Value.UpperLimit.HasValue).ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value.UpperLimit!.Value.ToString(CultureInfo.InvariantCulture),
+            StringComparer.OrdinalIgnoreCase);
+        return success;
     }
+
 }
 
 public sealed record WholePieceProgramMeasurement(string ItemName, string? ActualValue);

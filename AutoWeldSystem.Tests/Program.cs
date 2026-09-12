@@ -36,6 +36,15 @@ using System.Text.Json;
 
 var tests = new (string Name, Action Run)[]
 {
+    ("Report and preview use the same final product result", ReportAndPreviewUseFinalResult),
+    ("Upload configuration errors leave Uploading state", UploadConfigurationErrorsFinishState),
+    ("Strict program limits roundtrip and reject invalid input", StrictProgramLimitsRoundtrip),
+    ("Whole-piece limits compare final aggregate inclusively", WholePieceRangeBoundaries),
+    ("Legacy program reconfiguration keeps metadata only", LegacyProgramExplicitReconfiguration),
+    ("Start validation prevents MES and database side effects", StartValidationPreventsSideEffects),
+    ("Program download rejection preserves selection and storage", InvalidProgramDownloadPreservesState),
+    ("Program snapshot stays frozen across MES await", ProgramSnapshotStaysFrozen),
+    ("Old task cannot restore or allow production", OldTaskCannotRestore),
     ("System setting layout rules honor DPI breakpoints", SystemSettingLayoutRulesHonorDpiBreakpoints),
     ("Monitor right layout rules honor DPI and scrolling", MonitorRightLayoutRulesHonorDpiAndScrolling),
     ("Monitor view applies responsive right layout", MonitorViewAppliesResponsiveRightLayout),
@@ -482,7 +491,7 @@ var tests = new (string Name, Action Run)[]
     ("Monitor display toggle permissions are cataloged for admins only", MonitorDisplayTogglePermissionsAreCatalogedForAdminsOnly),
     ("Monitor display toggle upgrade grants admin only on first introduction", MonitorDisplayToggleUpgradeGrantsAdminOnlyOnFirstIntroduction),
     ("Program content rows come from dictionary items", ProgramContentRowsComeFromDictionaryItems),
-    ("Program content JSON keeps only rows with standard values", ProgramContentJsonKeepsOnlyRowsWithStandardValues),
+    ("Program content JSON keeps only rows with standard values", ProgramContentJsonKeepsOnlyRowsWithUpperLimits),
     ("Program content JSON merges existing values and preserves unknown keys", ProgramContentJsonMergesExistingValuesAndPreservesUnknownKeys),
     ("Program content JSON rejects duplicate valued item names", ProgramContentJsonRejectsDuplicateValuedItemNames),
     ("All select controls limit dropdown items", AllSelectControlsLimitDropdownItems),
@@ -495,7 +504,7 @@ var tests = new (string Name, Action Run)[]
     ("Program list filter narrows by product number when enabled", ProgramListFilterNarrowsByProductNumberWhenEnabled),
     ("Program list filter returns all when work order product number is blank", ProgramListFilterReturnsAllWhenWorkOrderProductNumberIsBlank),
     ("Program list query product number rules", ProgramListQueryProductNumRules),
-    ("Program content review rows use edited standard values", ProgramContentReviewRowsUseEditedStandardValues),
+    ("Program content review rows use edited standard values", ProgramContentReviewRowsUseEditedUpperLimits),
     ("Program content review rejects duplicate item names", ProgramContentReviewRejectsDuplicateItemNames),
     ("LoadPrograms filters available programs by work order product number", LoadProgramsFiltersAvailableProgramsByWorkOrderProductNumber),
     ("LoadPrograms omits product number query when filter disabled", LoadProgramsOmitsProductNumberQueryWhenFilterDisabled),
@@ -521,6 +530,234 @@ foreach (var test in tests)
 /// 于是完工更新会把错误表头写进中心报表文件，把后续携带“检测面”的产品数据全部挡在
 /// EnsureCompatiblePointHeaders 之外。空列定义必须不产生任何采集点表头。
 /// </summary>
+static void ReportAndPreviewUseFinalResult()
+{
+    const string content = "{\"焊点数量\":4,\"高度上限\":12.5,\"高度下限\":10}";
+    var settings = new AppSettings { ProcessParameterDeviceType = ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck, JudgementDecimalPlaces = 2 };
+    var task = BuildReportTask(new DateTime(2026, 9, 12, 8, 0, 0), null);
+    task.ProgramContentSnapshot = content;
+    var item = new DimTestItem { ItemId = 1, ItemName = "高度", ActualExpression = "0:F-0_4" };
+    var detail = new BizSchemeDetail { ItemId = 1, ReportActual = true, ActualHeader = "高度" };
+    var records = Enumerable.Range(1, 4).Select(face =>
+    {
+        var record = BuildReportPoint(task.Id, 1, "P1", face, "OK");
+        record.ProductResult = "OK";
+        record.RawDataJson = "{\"高度\":\"9.9\"}";
+        return record;
+    }).ToList();
+    var path = GenerateExportReportWorkbook(settings, task, records, false, settings.ProcessParameterDeviceType,
+        schemeDefinitions: new[] { (item, detail) }, touchCount: 4);
+    try
+    {
+        using var workbook = new XLWorkbook(path);
+        var sheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+        var headers = ReadHeaderRow(sheet, CenterProductReportFormat.DetailHeaderRow);
+        var column = Array.IndexOf(headers, "产品结果") + 1;
+        AssertEqual("NG", sheet.Cell(CenterProductReportFormat.DetailFirstDataRow, column).GetString(), "报告必须按下限判 NG，不能沿用旧 ProductResult=OK。");
+        AssertTrue(records.All(record => record.ProductResult == "OK"), "生成报告不反写历史产品结果。");
+    }
+    finally { DeleteReportFixture(path); }
+
+    detail.MesActual = true;
+    detail.ActualMesFieldName = "Height";
+    var uploadRows = UploadTaskService.BuildWholePieceProcessParameterItems(records, task, new[] { (item, detail) }, settings);
+    AssertTrue(uploadRows.All(row => row.Result == "NG"), "过程参数 A/B 结果必须与报表/预览同为 NG。");
+    AssertTrue(uploadRows.All(row => row.DynamicFields.Count == 1 && row.DynamicFields.ContainsKey("Height")), "程序上下限不扩展 MES 动态字段。");
+    AssertThrows<InvalidOperationException>(() => UploadTaskService.BuildWholePieceProcessParameterItems(records,
+        new BizWeldTask { ProgramContentSnapshot = "{\"焊点数量\":4,\"高度\":12}" }, new[] { (item, detail) }, settings), "旧快照不能生成正常上传载荷。");
+
+    var definitions = new[] { new WholePieceAbValueDefinition(1, "高度", "高度", item.ActualExpression) };
+    var aggregate = WholePieceAbAggregationRules.Aggregate(records, definitions, true, settings.PlcStringNumericFormatMode);
+    AssertTrue(aggregate.IsSuccess, aggregate.ErrorMessage);
+    var collectionType = typeof(ProductCycleCollectionService);
+    var collection = new ProductCycleCollectionService(null!, null!, new FakeAppSettingsService { Current = settings }, null!, null!, null!, new FakeProductionReportFileService());
+    var schemeItemType = collectionType.GetNestedType("SchemeItemSnapshot", System.Reflection.BindingFlags.NonPublic)!;
+    var collectionItems = CreateGenericList(schemeItemType);
+    collectionItems.Add(Activator.CreateInstance(schemeItemType, 1, item, detail));
+    collectionType.GetMethod("ApplyProgramCalculatedResults", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+        .Invoke(collection, new object[] { task, 4, collectionItems, records });
+    AssertTrue(records.All(record => record.ProductResult == "NG"), "采集正式产品结果必须与预览/报表/MES一致。");
+
+    var previewType = typeof(ProductRealtimePreviewService);
+    var rowsType = previewType.GetNestedType("PreviewRowsResult", System.Reflection.BindingFlags.NonPublic)!;
+    object Rows(bool complete) => Activator.CreateInstance(rowsType, new List<ProductRealtimePreviewRow>(), new List<string?> { "OK", "OK", "OK", "OK" }, new List<string?> { "OK", "OK", "OK", "OK" }, complete, new List<string>())!;
+    var evaluate = previewType.GetMethod("ResolveRealtimeProgramProductResult", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+    var args = new object?[] { Rows(true), content, aggregate, definitions, settings, null, null };
+    AssertEqual("NG", (string)evaluate.Invoke(null, args)!, "预览与报告相同数据必须同为 NG。");
+    args = new object?[] { Rows(true), "{\"高度\":12}", aggregate, definitions, settings, null, null };
+    AssertEqual(ProductionConstants.TestResults.Unknown, (string)evaluate.Invoke(null, args)!, "配置失败不能回退面结果 OK。");
+    AssertTrue(((string?)args[6])?.Contains("不可判定", StringComparison.Ordinal) == true, "预览必须附带具体错误。");
+    args = new object?[] { Rows(false), content, null, definitions, settings, null, null };
+    AssertEqual(ProductionConstants.TestResults.NotAvailable, (string)evaluate.Invoke(null, args)!, "有效配置未采齐时仍为等待态。");
+    AssertTrue(args[6] is null, "等待态不得误报配置错误。");
+}
+
+static void UploadConfigurationErrorsFinishState()
+{
+    var service = new InspectableUploadTaskService();
+    var summary = service.ExecuteAsync(1).GetAwaiter().GetResult();
+    AssertEqual("Failed", summary!.Status, "判定异常必须持久化为失败，不能遗留 Uploading。");
+    AssertTrue(summary.Message.Contains("旧格式", StringComparison.Ordinal), "上传失败必须保留具体配置原因。");
+    AssertEqual(1, service.FinishCount, "上传执行器必须完成一次失败收尾。");
+}
+
+static void StrictProgramLimitsRoundtrip()
+{
+    var rows = new[]
+    {
+        new ProgramContentItemRow { ItemName = "高度", UpperLimit = "12.5", LowerLimit = "10" },
+        new ProgramContentItemRow { ItemName = "对称度", UpperLimit = "0.5" },
+        new ProgramContentItemRow { ItemName = "点焊扩展", LowerLimit = "-2.5e1" },
+        new ProgramContentItemRow { ItemName = "全空", UpperLimit = " ", LowerLimit = " " }
+    };
+    var json = ProgramContentJsonRules.ToJson(rows);
+    var restored = ProgramContentJsonRules.BuildRows(Array.Empty<DimTestItem>(), json);
+    AssertEqual(3, restored.Count, "全空行应省略，单侧限值必须保留。");
+    AssertEqual("10", restored[0].LowerLimit, "下限往返不得丢失。");
+    AssertFalse(json.Contains("全空", StringComparison.Ordinal), "全空项不得写出。");
+    AssertEqual("10≤高度≤12.5 对称度≤0.5 -2.5e1≤点焊扩展", ProgramContentJsonRules.BuildLimitsSummary(json), "区间摘要不应混淆两侧。");
+    var normalized = ProgramContentJsonRules.NormalizeContent("{\"焊点数量\":4,\"高度上限\":12.5,\"高度下限\":\"10\"}");
+    AssertTrue(normalized.Contains("\"高度上限\":\"12.5\"", StringComparison.Ordinal), "JSON 数字统一写字符串。");
+    foreach (var invalid in new[]
+    {
+        "", "null", "[]", "not-json", "{\"高度\":\"12\"}",
+        "{\"高度\":12,\"高度上限\":12}", "{\"高度上限\":12,\"高度上限\":13}",
+        "{\"Height上限\":12,\" height上限 \":13}", "{\"高度上限\":null}",
+        "{\"高度上限\":true}", "{\"高度上限\":{}}", "{\"高度上限\":[]}",
+        "{\"高度上限\":\"NaN\"}", "{\"高度上限\":\"1,000\"}", "{\"高度上限\":1e100}",
+        "{\"高度上限\":\" \"}", "{\"高度上限\":10,\"高度下限\":11}",
+        "{\"焊点数量\":0}", "{\"工位1配方名称\":true}", "{\"上限\":1}"
+    })
+        AssertThrows<InvalidOperationException>(() => ProgramContentJsonRules.ReadLimits(invalid), $"应拒绝：{invalid}");
+    AssertThrows<InvalidOperationException>(() => ProgramContentJsonRules.ReadLimits("{\"高度下限\":10}", ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck), "整件仅下限必须拒绝。");
+    AssertEqual(10m, ProgramContentJsonRules.ReadLimits("{\"高度下限\":10}")["高度"].LowerLimit!.Value, "点焊仅下限允许。");
+    AssertThrows<InvalidOperationException>(() => ProgramContentJsonRules.ToJson(new[] { new ProgramContentItemRow { UpperLimit = "1" } }), "有值但无名称不得静默省略。");
+}
+
+static void WholePieceRangeBoundaries()
+{
+    const string content = "{\"焊点数量\":4,\"高度上限\":12.5,\"高度下限\":10}";
+    var definition = new[] { MergedHeightDefinition() };
+    foreach (var (actual, expected) in new[] { ("10", "OK"), ("12.5", "OK"), ("9.999", "NG"), ("12.51", "NG"), ("12.5099", "OK") })
+    {
+        var rows = new[] { new WholePieceAbOutputRow("A", "OK", new() { ["高度"] = actual }), new WholePieceAbOutputRow("B", "OK", new() { ["高度"] = actual }) };
+        var result = WholePieceProgramResultRules.EvaluateAggregated(content, rows, definition, 2, AppConstants.PlcStringNumericFormatModes.Truncate);
+        AssertTrue(result.IsSuccess, result.ErrorMessage);
+        AssertEqual(expected, result.Result, "上下限都比较截断后的最终值，且包含边界。");
+    }
+    var sides = new Dictionary<string, IReadOnlyDictionary<string, string>>
+    {
+        ["1"] = new Dictionary<string, string> { ["高度"] = "9" }, ["2"] = new Dictionary<string, string> { ["高度"] = "11" },
+        ["3"] = new Dictionary<string, string> { ["高度"] = "1" }, ["4"] = new Dictionary<string, string> { ["高度"] = "1" }
+    };
+    var aggregated = WholePieceAbAggregationRules.AggregatePreview(sides, sides.Keys.ToDictionary(key => key, _ => "OK"), definition, true, "Truncate");
+    AssertTrue(aggregated.IsSuccess, aggregated.ErrorMessage);
+    AssertEqual("OK", WholePieceProgramResultRules.EvaluateAggregated(content, aggregated.Rows, definition, 2, "Truncate").Result, "下限不要求每个面合格，宽松项剔除1后取最大值。");
+    var settings = new AppSettings { ProcessParameterDeviceType = ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck, EnablePlcStringNumericFormatting = false, JudgementDecimalPlaces = 2, PlcStringNumericFormatMode = AppConstants.PlcStringNumericFormatModes.Truncate };
+    AssertEqual("12.50", OutputNumericFormat.ForUpload(settings).Apply("12.5099"), "关闭字符串处理也不能让整件输出与产品判定不一致。");
+    AssertThrows<InvalidOperationException>(() => ProgramContentJsonRules.NormalizeForProduction("{\"焊点数量\":3,\"高度上限\":12}", settings.ProcessParameterDeviceType), "非四面整件必须拒绝。");
+    AssertThrows<InvalidOperationException>(() => WholePieceProgramResultRules.ApplyAggregatedRowResults("{\"高度\":12}", aggregated.Rows, definition, 2, "Truncate"), "旧格式不能保留面结果继续输出。");
+}
+
+static void LegacyProgramExplicitReconfiguration()
+{
+    const string legacy = "{\"配方名称\":\"标准\",\"工位2配方名称\":\"右侧\",\"焊点数量\":4,\"高度\":\"12\"}";
+    AssertThrows<InvalidOperationException>(() => ProgramContentJsonRules.BuildRows(Array.Empty<DimTestItem>(), legacy), "正常加载不得兼容旧格式。");
+    AssertTrue(ProgramContentJsonRules.TryCreateReconfigurationContent(legacy, out var metadata), "纯旧格式可进入显式重填。");
+    var rows = ProgramContentJsonRules.BuildRows(new[] { new DimTestItem { ItemName = "高度" } }, metadata);
+    AssertEqual(string.Empty, rows[0].UpperLimit, "旧限值不得预填。");
+    AssertEqual(string.Empty, rows[0].LowerLimit, "重填下限保持空。");
+    AssertTrue(metadata.Contains("配方名称", StringComparison.Ordinal), "有效元数据保留。");
+    foreach (var invalid in new[] { "{\"高度\":12,\"高度\":13}", "{\"高度\":12,\"宽度上限\":13}", "{\"高度\":{}}" })
+        AssertFalse(ProgramContentJsonRules.TryCreateReconfigurationContent(invalid, out _), "混用/重复/非法结构不得借重填忽略。");
+    var original = ProgramContentJsonRules.MergeRecipeNamesAndContent("标准", "右侧", "{\"高度上限\":12}", 4);
+    var replaced = ProgramContentJsonRules.ReplaceLimits(original, "{\"高度上限\":13,\"高度下限\":10}");
+    AssertEqual("标准", ProgramContentJsonRules.ExtractRecipeNames(replaced).Station1RecipeName, "临时调整保留配方元数据。");
+    AssertEqual(10m, ProgramContentJsonRules.ReadLimits(replaced)["高度"].LowerLimit!.Value, "临时调整保留下限。");
+    AssertEqual(12m, ProgramContentJsonRules.ReadLimits(original)["高度"].UpperLimit!.Value, "原程序不得改变。");
+}
+
+static (InspectableWeldTaskService Service, FakeMesProvider Mes, FakeUploadTaskService Uploads, FakeAppSettingsService Settings) CreateProgramBoundaryService(bool shared = false)
+{
+    var mes = new FakeMesProvider();
+    var uploads = new FakeUploadTaskService();
+    var settings = new FakeAppSettingsService { Current = new AppSettings { DeviceId = "D1", ProcessParameterDeviceType = ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck, EnableDualStation = shared } };
+    var process = new FakeProductProcessConfigService(new Dictionary<int, BizProductProcessConfig>
+    {
+        [1] = new() { StationNo = 1, SchemeId = "S1" }, [2] = new() { StationNo = 2, SchemeId = "S2" }
+    });
+    var schemes = new FakeBoundaryTestSchemeService();
+    var service = new InspectableWeldTaskService(mes, uploads, settings, process, schemes);
+    var station = service.CurrentState.GetOrCreateStation(1);
+    station.CurrentWorkOrder = new WorkOrderRes { SN = "WO1", ProdNum = "真实工号" };
+    station.SelectedProcess = new ExpItemData { ProcessNo = "OP1", ItemName = "检测" };
+    station.SelectedProgram = new ProgramDataRes { Id = "local-1", DeviceId = "D1", ProductNum = "通用工号", ProgramName = "P1", RecipeCode = "1", ProgramContent = "{\"焊点数量\":4,\"高度上限\":12.5,\"高度下限\":10}" };
+    return (service, mes, uploads, settings);
+}
+
+static void StartValidationPreventsSideEffects()
+{
+    foreach (var invalid in new[] { "{\"焊点数量\":4,\"高度\":12}", "{\"焊点数量\":4,\"高度下限\":10}", "{\"焊点数量\":3,\"高度上限\":12}", "{\"焊点数量\":4}" })
+    {
+        var fixture = CreateProgramBoundaryService();
+        fixture.Service.CurrentState.GetOrCreateStation(1).SelectedProgram!.ProgramContent = invalid;
+        AssertThrows<AutoWeldSystem.Core.Exceptions.BusinessOperationException>(() => fixture.Service.StartAsync("U1", 0, employeeAlreadyValidated: true).GetAwaiter().GetResult(), "在线无效内容必须拒绝。");
+        var local = new OfflineExperimentStartReq { StationNo = 1, WorkOrderId = "WO1", ProductNum = "真实工号", ProgramId = "local-1", ProgramName = "P1", RecipeCode = "1", ProgramContent = invalid };
+        AssertThrows<AutoWeldSystem.Core.Exceptions.BusinessOperationException>(() => fixture.Service.StartLocalAsync(local, "U1", "员工", 0).GetAwaiter().GetResult(), "离线无效内容必须拒绝。");
+        AssertEqual(0, fixture.Mes.StartRequests.Count, "拒绝发生在 MES 开工之前。");
+        AssertEqual(0, fixture.Service.InsertedTasks.Count, "拒绝发生在任务写入之前。");
+        AssertEqual(0, fixture.Uploads.Enqueued.Count, "拒绝不能入队。");
+    }
+    var shared = CreateProgramBoundaryService(shared: true);
+    AssertThrows<AutoWeldSystem.Core.Exceptions.BusinessOperationException>(() => shared.Service.StartAsync("U1", 0, employeeAlreadyValidated: true).GetAwaiter().GetResult(), "共用任务工位2缺宽度上限必须拒绝。");
+    AssertEqual(0, shared.Service.InsertedTasks.Count, "另一工位失败也不得写任务。");
+}
+
+static void InvalidProgramDownloadPreservesState()
+{
+    var fixture = CreateProgramBoundaryService();
+    var previous = fixture.Service.CurrentState.GetOrCreateStation(1).SelectedProgram;
+    fixture.Mes.DownloadResponse = new BasicRes<ProgramDataRes> { Status = "S", Data = new() { Id = "bad", ProgramName = "无效", ProgramContent = "{\"焊点数量\":4,\"高度\":12}" } };
+    AssertThrows<InvalidOperationException>(() => fixture.Service.DownloadProgramAsync(new() { Id = "bad" }).GetAwaiter().GetResult(), "无效下载必须拒绝。");
+    AssertTrue(ReferenceEquals(previous, fixture.Service.CurrentState.GetOrCreateStation(1).SelectedProgram), "无效下载不得替换选择。");
+    AssertEqual(0, fixture.Service.ProgramWrites, "无效下载不得写程序库。");
+    fixture.Mes.DownloadResponse.Data.ProgramContent = "{\"焊点数量\":4,\"高度上限\":12}";
+    var downloaded = fixture.Service.DownloadProgramAsync(new() { Id = "valid" }).GetAwaiter().GetResult();
+    AssertEqual(1, fixture.Service.ProgramWrites, "有效下载必须正常写入一次。");
+    AssertTrue(ReferenceEquals(downloaded, fixture.Service.CurrentState.GetOrCreateStation(1).SelectedProgram), "有效下载后才能替换选择。");
+}
+
+static void ProgramSnapshotStaysFrozen()
+{
+    var fixture = CreateProgramBoundaryService();
+    var program = fixture.Service.CurrentState.GetOrCreateStation(1).SelectedProgram!;
+    var localFixture = CreateProgramBoundaryService();
+    var local = localFixture.Service.StartLocalAsync(new OfflineExperimentStartReq
+    {
+        WorkOrderId = "LOCAL-1", ProductNum = "真实工号", ProgramId = "local-1", ProgramName = "P1", RecipeCode = "1", ProgramContent = program.ProgramContent
+    }, "U1", "员工", 0).GetAwaiter().GetResult();
+    AssertEqual(10m, ProgramContentJsonRules.ReadLimits(local.ProgramContentSnapshot)["高度"].LowerLimit!.Value, "本地开工也须保留下限快照。");
+    AssertEqual(0, localFixture.Mes.StartRequests.Count, "本地开工不直接请求 MES。");
+    AssertTrue(localFixture.Uploads.Enqueued.Any(upload => upload.TaskType == ProductionConstants.UploadTaskTypes.StartReport), "本地合法开工须入队。");
+    fixture.Mes.StartObserved = _ => program.ProgramContent = "{\"焊点数量\":4,\"高度上限\":99}";
+    var task = fixture.Service.StartAsync("U1", 0, employeeAlreadyValidated: true).GetAwaiter().GetResult();
+    var limits = ProgramContentJsonRules.ReadLimits(task.ProgramContentSnapshot);
+    AssertEqual(12.5m, limits["高度"].UpperLimit!.Value, "MES await 期间选择变化不能改变任务快照。");
+    AssertEqual(10m, limits["高度"].LowerLimit!.Value, "快照下限不得丢失。");
+    AssertEqual(1, fixture.Service.InsertedTasks.Count, "合法程序只创建一个任务。");
+}
+
+static void OldTaskCannotRestore()
+{
+    var fixture = CreateProgramBoundaryService();
+    var task = new BizWeldTask { Id = 7, ProgramId = "local-1", ProgramContentSnapshot = "{\"焊点数量\":4,\"高度\":12}", TaskStatus = "Running" };
+    fixture.Service.StoredTask = task;
+    AssertThrows<AutoWeldSystem.Core.Exceptions.BusinessOperationException>(() => fixture.Service.RestoreUnfinishedTask(1), "旧快照不可恢复。");
+    AssertTrue(fixture.Service.CurrentState.GetOrCreateStation(1).ActiveTask is null, "恢复失败不得进入运行态。");
+    AssertTrue(ReferenceEquals(task, fixture.Service.GetUnfinishedTask(1)), "旧任务仍可见以阻止新开工。");
+    AssertThrows<AutoWeldSystem.Core.Exceptions.BusinessOperationException>(() => fixture.Service.ValidateTaskForProduction(task, 1), "PLC 放行校验必须拒绝旧快照。");
+}
+
 static void CenterFinishUpdateDoesNotFabricatePointHeaders()
 {
     // 完工更新的列定义为空，不得凭空补出采集点表头
@@ -3127,6 +3364,7 @@ static void LocalExportKeepsRawFaceRowsWithoutAbAggregation()
     };
     var task = BuildReportTask(new DateTime(2026, 9, 2, 8, 0, 0), endTime: null);
     task.SN = "FLOW-EXPORT-RAW-FACES";
+    task.ProgramContentSnapshot = "{\"焊点数量\":4,\"对称度上限\":0.2}";
 
     // 四面整件检测：面 1～4 各一条记录，实测值各不相同。
     var records = Enumerable.Range(1, 4)
@@ -3912,8 +4150,8 @@ static void WholePieceJudgementTruncatesToConfiguredDecimals()
     // 宽度只有 A 行有值，B 行留空由 IsSkippedOnSideB 跳过。
     var snapshot = JsonSerializer.Serialize(new Dictionary<string, string>
     {
-        ["宽度"] = "12.15",
-        ["高度"] = "20.00"
+        ["宽度上限"] = "12.15",
+        ["高度上限"] = "20.00"
     });
     var definitions = new[]
     {
@@ -4027,12 +4265,12 @@ static void WholePieceUploadRequiresConfiguredMaximum()
     AssertFalse(missing.Contains("高度"), "已配置上限的上报项不得报错。");
     AssertFalse(missing.Contains("位移"), "仅勾本地通道的测试项不需要上限，不参与判定。");
 
-    var serviceCode = File.ReadAllText(
-        GetRepoFilePath("AutoWeldSystem.Services", "Production", "ProductCycleCollectionService.cs"),
-        Encoding.UTF8);
-    AssertTrue(
-        serviceCode.Contains("FindUploadItemsMissingMaximum", StringComparison.Ordinal),
-        "采集校验必须调用该规则，否则无上限的上报项仍会产出数据。");
+    var validItem = new DimTestItem { ItemId = 1, ItemName = "高度", ActualExpression = "0:F-0_4" };
+    var configured = ProgramContentJsonRules.ReadLimits("{\"高度上限\":16}");
+    WholePieceProgramResultRules.ValidateScheme(configured, new[] { (new BizSchemeDetail { ReportActual = true }, validItem) });
+    AssertThrows<InvalidOperationException>(() => WholePieceProgramResultRules.ValidateScheme(
+        ProgramContentJsonRules.ReadLimits("{}"), new[] { (new BizSchemeDetail { ReportActual = true }, validItem) }),
+        "统一方案校验不得让无上限的上报项通过。");
 }
 
 static BizSchemeDetail BuildUploadDetail()
@@ -4105,8 +4343,8 @@ static void WholePieceProductResultUsesMergedValues()
 {
     var snapshot = JsonSerializer.Serialize(new Dictionary<string, string>
     {
-        ["高度"] = "16.00",
-        ["对称度"] = "0.10"
+        ["高度上限"] = "16.00",
+        ["对称度上限"] = "0.10"
     });
     var okRows = new List<WholePieceAbOutputRow>
     {
@@ -4149,8 +4387,8 @@ static void WholePieceProductResultUsesMergedValues()
     // 高度取四面最大值，A/B 两行数值相同会各报一次，必须去重成一列。
     var heightSnapshot = JsonSerializer.Serialize(new Dictionary<string, string>
     {
-        ["高度"] = "15.00",
-        ["对称度"] = "0.10"
+        ["高度上限"] = "15.00",
+        ["对称度上限"] = "0.10"
     });
     var heightNgResult = WholePieceProgramResultRules.EvaluateAggregated(
         heightSnapshot,
@@ -4984,19 +5222,8 @@ static void ProductionReportCompletionFlowPersistsBeforeFinalGeneration()
     AssertTrue(buildEndRequestMethod.Contains("EndTs = endTime.ToString(\"yyyy-MM-dd HH:mm:ss\")", StringComparison.Ordinal), "离线 MES 完工时间必须来自统一 endTime。");
     AssertTrue(buildEndRequestMethod.Contains("MesWorkHourRules.FromRange(task.StartTime, endTime)", StringComparison.Ordinal), "离线 MES 工时必须使用统一 endTime 并走两位定标规则。");
 
-    var uploadTaskServiceCode = File.ReadAllText(
-        GetRepoFilePath("AutoWeldSystem.Services", "Production", "UploadTaskService.cs"),
-        Encoding.UTF8);
-    var buildReportRequestMethod = ExtractMethodText(
-        uploadTaskServiceCode,
-        "private UploadReportFileReq? BuildReportFileRequest(BizUploadTask task)",
-        "private UploadTaskSummary? FinishExecution(");
-    AssertTrue(
-        buildReportRequestMethod.Contains("ProductionReportFileRules.SelectLatestUploadFilePath(reportFiles, weldTask.Id)", StringComparison.Ordinal),
-        "MES 报表上传必须调用已验证的最新 XLSX 选择规则。");
-    AssertTrue(
-        buildReportRequestMethod.Contains("FirstNonEmpty(latestReportFilePath, task.FilePath)", StringComparison.Ordinal),
-        "MES 报表上传必须优先使用最新报表记录，再回退上传任务旧路径。");
+    // 缓存文件选择规则另有纯行为覆盖；3.0 上传必须重新生成成功，不能回退旧路径。
+
 }
 
 static void FinishReportQueuesGeneratedXlsxEvenWithoutReportEnable()
@@ -5154,7 +5381,7 @@ static void ReportFileWaitsForSuccessfulFinishReport()
     var uploadCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "UploadTaskService.cs"), Encoding.UTF8);
     var executeMethod = ExtractMethodText(uploadCode, "public async Task<UploadTaskSummary?> ExecuteAsync", "public async Task<int> ExecuteAllPendingAsync");
     var syncMethod = ExtractMethodText(uploadCode, "private void SyncReportFileTasksFromReports", "private void UpsertReportFileUploadTask");
-    var requestMethod = ExtractMethodText(uploadCode, "private UploadReportFileReq? BuildReportFileRequest", "private UploadTaskSummary? FinishExecution");
+    var requestMethod = ExtractMethodText(uploadCode, "private UploadReportFileReq? BuildReportFileRequest", "protected virtual UploadTaskSummary? FinishExecution");
     AssertSourceOrder(executeMethod, "CanExecuteReportFileTask(candidate)", "MarkUploading(id)", "报告文件必须在改为 Uploading 前检查完工依赖。");
     AssertTrue(syncMethod.Contains("ReportFileUploadDependencyRules.IsWeldTaskCompleted", StringComparison.Ordinal), "启动对账不得为未完工工单恢复报告任务。");
     AssertTrue(requestMethod.Contains("CanExecuteReportFileTaskUnsafe(weldTask)", StringComparison.Ordinal), "构造 MES 报告请求时必须再次验证完工依赖。");
@@ -7914,9 +8141,9 @@ static void MonitorShowsProgramLimitsForInspectionDevices()
 {
     var snapshot = JsonSerializer.Serialize(new Dictionary<string, string>
     {
-        ["高度"] = "16.00",
-        ["宽度"] = "20.00",
-        ["对称度"] = "0.10"
+        ["高度上限"] = "16.00",
+        ["宽度上限"] = "20.00",
+        ["对称度上限"] = "0.10"
     });
     AssertEqual(
         "高度≤16.00 宽度≤20.00 对称度≤0.10",
@@ -7925,33 +8152,26 @@ static void MonitorShowsProgramLimitsForInspectionDevices()
 
     AssertEqual(
         "高度≤16.00",
-        ProgramContentJsonRules.BuildLimitsSummary(JsonSerializer.Serialize(new Dictionary<string, string> { ["高度"] = "16.00" })),
+        ProgramContentJsonRules.BuildLimitsSummary(JsonSerializer.Serialize(new Dictionary<string, string> { ["高度上限"] = "16.00" })),
         "单个测试项也要能正常显示。");
 
-    // 值为空的项要跳过，不能产生“高度≤”这种半截文本。
-    AssertEqual(
-        "宽度≤20.00",
-        ProgramContentJsonRules.BuildLimitsSummary(JsonSerializer.Serialize(new Dictionary<string, string>
-        {
-            ["高度"] = "   ",
-            ["宽度"] = "20.00"
-        })),
-        "没有填写最大允许值的测试项必须跳过。");
+    AssertThrows<InvalidOperationException>(
+        () => ProgramContentJsonRules.BuildLimitsSummary("{\"高度上限\":\"   \"}"),
+        "输入 JSON 的空限值是配置错误，编辑行省略应在序列化前完成。");
+    AssertEqual(string.Empty, ProgramContentJsonRules.BuildLimitsSummary("{}"), "空限值集合摘要为空。");
 
     foreach (var (input, description) in new[]
              {
                  ((string?)null, "空引用"),
                  (string.Empty, "空字符串"),
                  ("   ", "空白"),
-                 ("{}", "空 JSON 对象"),
                  ("not-json", "非法 JSON"),
                  ("[1,2,3]", "非对象 JSON")
              })
     {
-        AssertEqual(
-            string.Empty,
-            ProgramContentJsonRules.BuildLimitsSummary(input),
-            $"{description}必须返回空字符串且不抛异常，否则会打断实时预览刷新。");
+        AssertThrows<InvalidOperationException>(
+            () => ProgramContentJsonRules.BuildLimitsSummary(input),
+            $"{description}必须明确拒绝，UI 负责区分无任务与无效任务。");
     }
 
     var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.Designer.cs"), Encoding.UTF8);
@@ -7962,7 +8182,7 @@ static void MonitorShowsProgramLimitsForInspectionDevices()
     AssertTrue(designerCode.Contains("lblLiveTouchNo1.AutoSizeMode = AntdUI.TAutoSize.Width;", StringComparison.Ordinal), "焊点列改为按内容宽度后，弹性宽度才会让给设定值列。");
 
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
-    AssertTrue(viewCode.Contains("ActiveTask?.ProgramContentSnapshot", StringComparison.Ordinal), "设定值必须取开工固化的任务快照，与产品判定同源。");
+    AssertTrue(viewCode.Contains("task.ProgramContentSnapshot", StringComparison.Ordinal), "设定值必须取开工固化的任务快照，与产品判定同源。");
     AssertTrue(viewCode.Contains("ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck", StringComparison.Ordinal), "设定值只对整件检测设备显示。");
 }
 
@@ -9803,7 +10023,7 @@ static void DeviceStatusPendingProjectionPreservesUploadedHistory()
         "public BizUploadTask EnqueueOrUpdate");
     var finishMethod = ExtractMethodText(
         uploadCode,
-        "private UploadTaskSummary? FinishExecution",
+        "protected virtual UploadTaskSummary? FinishExecution",
         "private void WriteUploadFlowLog");
     var serviceCode = File.ReadAllText(
         GetRepoFilePath("AutoWeldSystem.Services", "Production", "DeviceStatusService.cs"),
@@ -9872,7 +10092,7 @@ static void DeviceStatusPendingProjectionKeepsInFlightTaskHistory()
     var softDeleteMethod = ExtractMethodText(
         uploadCode,
         "private void SoftDeleteDeviceStatusTask",
-        "private BizUploadTask? MarkUploading");
+        "protected virtual BizUploadTask? MarkUploading");
     var preserveMethod = typeof(DeviceStatusService).GetMethod("ShouldPreserveUploadingTask");
 
     AssertTrue(preserveMethod is not null, "设备状态服务必须统一判断当前或最近的 Uploading 任务是否应保留。");
@@ -13890,7 +14110,7 @@ static void ProgramRuntimeResolvesRecipesByCurrentStation()
     AssertTrue(offlineRulesCode.Contains("ProgramRecipeMappingRules.Resolve(program, input.StationNo)", StringComparison.Ordinal), "离线开工请求应使用当前工位配方号。 ");
     AssertTrue(weldTaskCode.Contains("ResolveProgramRecipeCode(program, settings.DeviceId, normalizedStationNo)", StringComparison.Ordinal), "在线开工任务应按当前工位解析本地配方号。 ");
     AssertTrue(weldTaskCode.Contains("ProgramRecipeMappingRules.Resolve(localProgram, stationNo)", StringComparison.Ordinal), "WeldTaskService 应复用集中映射规则。 ");
-    var serviceResolver = ExtractMethodText(weldTaskCode, "private string ResolveProgramRecipeCode", "private void EnsureReadyForStart");
+    var serviceResolver = ExtractMethodText(weldTaskCode, "protected virtual string ResolveProgramRecipeCode", "private void EnsureReadyForStart");
     AssertFalse(serviceResolver.Contains("ProgramRecipeMappingRules.Normalize(program.RecipeCode)", StringComparison.Ordinal), "在线开工不得回退 MES 程序配方号。");
     AssertTrue(serviceResolver.Contains("throw new BusinessOperationException", StringComparison.Ordinal), "本机程序当前工位未配置配方时必须拒绝开工。");
     var monitorResolver = ExtractMethodText(monitorCode, "private RecipeCodeResolution ResolveRecipeCodeForStartedTask", "private BizProgram? ResolveLocalProgramByProgramId");
@@ -14147,8 +14367,8 @@ static void ProgramContentPutsRecipeNamesBeforeSettingValues()
 {
     var testItems = JsonSerializer.Serialize(new Dictionary<string, string>
     {
-        ["高度"] = "12.5",
-        ["宽度"] = "20"
+        ["高度上限"] = "12.5",
+        ["宽度上限"] = "20"
     });
 
     var merged = ProgramContentJsonRules.MergeRecipeNamesAndContent("左侧标准", "右侧标准", testItems);
@@ -14180,7 +14400,7 @@ static void ProgramContentRecipeNamesStayOutOfTestItems()
     var content = ProgramContentJsonRules.MergeRecipeNamesAndContent(
         "左侧标准",
         "右侧标准",
-        JsonSerializer.Serialize(new Dictionary<string, string> { ["高度"] = "16.00" }));
+        JsonSerializer.Serialize(new Dictionary<string, string> { ["高度上限"] = "16.00" }));
 
     AssertEqual(
         "高度≤16.00",
@@ -14250,14 +14470,14 @@ static void ProgramContentTouchCountIsAuthoritativeMetadata()
         "生产消费者不得对缺失数量的旧程序做隐式回退。");
 
     var normalized = ProgramContentJsonRules.NormalizeTouchCount(
-        "{\"工位1配方名称\":\"标准配方\",\"焊点数量\":4,\"高度\":\"12.5\",\"扩展元数据\":true}");
+        "{\"工位1配方名称\":\"标准配方\",\"焊点数量\":4,\"高度上限\":\"12.5\",\"扩展测试项下限\":\"1\"}");
     AssertTrue(normalized.Contains("\"焊点数量\":\"4\"", StringComparison.Ordinal), "保存时焊点数量必须统一写成 JSON 字符串。");
-    AssertTrue(normalized.Contains("\"扩展元数据\":true", StringComparison.Ordinal), "规范化数量时必须保留其他程序元数据。");
+    AssertTrue(normalized.Contains("\"扩展测试项下限\":\"1\"", StringComparison.Ordinal), "规范化数量时必须保留未知但合法的新格式测试项。");
 
     var merged = ProgramContentJsonRules.MergeRecipeNamesAndContent(
         "标准配方",
         null,
-        "{\"高度\":\"12.5\"}",
+        "{\"高度上限\":\"12.5\"}",
         4);
     AssertEqual("高度≤12.5", ProgramContentJsonRules.BuildLimitsSummary(merged), "设定值摘要不得包含焊点数量。");
     AssertFalse(
@@ -14297,7 +14517,7 @@ static void ProductCycleCountRespectsProgramUpperBound()
 /// </summary>
 static void ProgramContentExtractsStationRecipeNames()
 {
-    var content = ProgramContentJsonRules.MergeRecipeNamesAndContent("左侧标准", "右侧标准", "{\"高度\":\"12\"}");
+    var content = ProgramContentJsonRules.MergeRecipeNamesAndContent("左侧标准", "右侧标准", "{\"高度上限\":\"12\"}");
     var (station1, station2) = ProgramContentJsonRules.ExtractRecipeNames(content);
     AssertEqual("左侧标准", station1, "必须解析出工位 1 配方名称。");
     AssertEqual("右侧标准", station2, "必须解析出工位 2 配方名称。");
@@ -14318,8 +14538,16 @@ static void ProgramContentExtractsStationRecipeNames()
                  ("[\"数组\"]", "非对象 JSON")
              })
     {
-        var (parsed1, parsed2) = ProgramContentJsonRules.ExtractRecipeNames(input);
-        AssertTrue(parsed1 is null && parsed2 is null, $"{description}不得抛异常且不得解析出配方名称。");
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            var (parsed1, parsed2) = ProgramContentJsonRules.ExtractRecipeNames(input);
+            AssertTrue(parsed1 is null && parsed2 is null, $"{description}无元数据。");
+        }
+        else
+        {
+            AssertThrows<InvalidOperationException>(() => ProgramContentJsonRules.ExtractRecipeNames(input),
+                $"{description}不得通过元数据解析静默吞掉。");
+        }
     }
 }
 
@@ -14380,8 +14608,8 @@ static void StartConfirmDialogShowsReadOnlyRecipeNames()
         formCode.Contains("ItemName = ProgramContentJsonRules.RecipeNameStation1Key", StringComparison.Ordinal),
         "配方名称不得作为测试项行进入表格。");
     AssertTrue(
-        formCode.Contains("ProgramContentJsonRules.MergeRecipeNamesAndContent(", StringComparison.Ordinal)
-            && formCode.Contains("_station1RecipeName", StringComparison.Ordinal),
+        formCode.Contains("ProgramContentJsonRules.ReplaceLimits(", StringComparison.Ordinal)
+            && formCode.Contains("_originalContent", StringComparison.Ordinal),
         "确认应用时必须把配方名称原样写回程序内容。");
     AssertTrue(
         monitorCode.Contains("_currentSettings.ProcessParameterDeviceType);", StringComparison.Ordinal),
@@ -14432,7 +14660,7 @@ static void ProgramContentStripsPlcNulPaddingFromRecipeNames()
     var merged = ProgramContentJsonRules.MergeRecipeNamesAndContent(
         paddedName,
         null,
-        JsonSerializer.Serialize(new Dictionary<string, string> { ["高度"] = "25.6" }));
+        JsonSerializer.Serialize(new Dictionary<string, string> { ["高度上限"] = "25.6" }));
     AssertFalse(merged.Contains('\0'), "程序内容不得包含 PLC 定长字符串的 NUL 填充。");
     AssertFalse(merged.Contains("\\u0000", StringComparison.Ordinal), "序列化后的程序内容不得出现 \\u0000 转义。");
     AssertTrue(merged.Contains("\"工位1配方名称\":\"123#\"", StringComparison.Ordinal), "配方名称必须截断到第一个 NUL。");
@@ -14486,9 +14714,9 @@ static void ProgramContentRulesDetectConfiguredValues()
 {
     AssertFalse(ProgramContentJsonRules.HasConfiguredValues(null), "空程序内容不应视为已填写设定值。");
     AssertFalse(ProgramContentJsonRules.HasConfiguredValues("  { \r\n }  "), "空 JSON 对象不应视为已填写设定值。");
-    AssertTrue(ProgramContentJsonRules.HasConfiguredValues("{\"高度\":\"12.5\"}"), "包含设定项的 JSON 对象应视为已填写设定值。");
-    AssertTrue(ProgramContentJsonRules.HasConfiguredValues("[\"历史内容\"]"), "非对象历史内容不应被误判为空设定值。");
-    AssertTrue(ProgramContentJsonRules.HasConfiguredValues("not-json"), "非法历史内容不应被误判为空设定值。");
+    AssertTrue(ProgramContentJsonRules.HasConfiguredValues("{\"高度上限\":\"12.5\"}"), "包含设定项的 JSON 对象应视为已填写限值。");
+    AssertThrows<InvalidOperationException>(() => ProgramContentJsonRules.HasConfiguredValues("[\"历史内容\"]"), "非对象内容必须拒绝。");
+    AssertThrows<InvalidOperationException>(() => ProgramContentJsonRules.HasConfiguredValues("not-json"), "非法内容必须拒绝。");
 }
 
 static void ProgramSaveRegeneratesNameWhenSequenceChanges()
@@ -15360,16 +15588,18 @@ static void ProgramManageRecipeNameSelectorsBindStationRecipeCodes()
         designerCode.Contains("tlpProgramType.Visible = false;", StringComparison.Ordinal),
         "程序类型行必须在 Designer 中固定隐藏。 ");
     AssertTrue(
-        viewCode.Contains("editorLayout.GetRow(tlpRecipe2)", StringComparison.Ordinal),
-        "双工位切换必须按工位 2 控件的实际行号调整布局。 ");
+        viewCode.Contains("var recipeLayout = (TableLayoutPanel)tlpRecipe2.Parent!;", StringComparison.Ordinal)
+        && viewCode.Contains("recipeLayout.GetRow(tlpRecipe2)", StringComparison.Ordinal),
+        "双工位切换必须在工位 2 配方行的实际父容器中调整行高。");
     AssertFalse(
-        viewCode.Contains("editorLayout.RowStyles[7].SizeType", StringComparison.Ordinal),
-        "双工位切换不得隐藏工位 1 配方行。 ");
+        viewCode.Contains("editorLayout.RowStyles[", StringComparison.Ordinal),
+        "折叠工位 2 配方行不得修改编辑区行高，避免压缩产品工号行。");
     AssertTrue(viewCode.Contains("tlpRecipe1.Visible = true;", StringComparison.Ordinal), "工位 1 配方行必须始终可见。 ");
-    AssertTrue(designerCode.Contains("editorLayout.Controls.Add(tlpRecipe1, 0, 7);", StringComparison.Ordinal)
-        && designerCode.Contains("editorLayout.Controls.Add(tlpRecipe2, 0, 8);", StringComparison.Ordinal),
-        "新增焊点数量后两个配方行必须绑定到独立的连续行。 ");
-    AssertEqual(9, CountDesignerAutoSizeRows(designerCode, "editorLayout"), "当前状态和八个可见编辑字段必须使用自适应行高。 ");
+    AssertTrue(designerCode.Contains("programContentLayout.Controls.Add(tlpRecipe1, 0, 1);", StringComparison.Ordinal)
+        && designerCode.Contains("programContentLayout.Controls.Add(tlpRecipe2, 0, 2);", StringComparison.Ordinal),
+        "两个配方行必须位于程序内容区的独立连续行。");
+    AssertEqual(6, CountDesignerAutoSizeRows(designerCode, "editorLayout"), "当前状态和五个可见编辑字段必须使用自适应行高。");
+    AssertEqual(4, CountDesignerAutoSizeRows(designerCode, "programContentLayout"), "焊点数量、两个配方行和上下限说明必须使用自适应行高。");
     AssertTrue(viewCode.Contains("RecipeSelectionKind.NotApplicable", StringComparison.Ordinal), "双工位下拉必须提供不适用状态。");
     AssertTrue(viewCode.Contains("RecipeSelectionKind.MissingExisting", StringComparison.Ordinal), "历史失效关联必须使用不暴露数字的状态项。");
     AssertTrue(viewCode.Contains("select.List = true;", StringComparison.Ordinal), "配方选择器必须始终保持列表模式。");
@@ -15990,13 +16220,13 @@ static void ProgramContentRowsComeFromDictionaryItems()
     AssertTrue(rows[0].IsDictionaryItem, "字典生成的行需要标记为字典项，便于 UI 控制名称列只读。");
 }
 
-static void ProgramContentJsonKeepsOnlyRowsWithStandardValues()
+static void ProgramContentJsonKeepsOnlyRowsWithUpperLimits()
 {
     var rows = new[]
     {
-        new ProgramContentItemRow { ItemName = "高度", StandardValue = "12.5", IsDictionaryItem = true },
-        new ProgramContentItemRow { ItemName = "压力", StandardValue = "", IsDictionaryItem = true },
-        new ProgramContentItemRow { ItemName = "", StandardValue = "should-skip", IsDictionaryItem = false }
+        new ProgramContentItemRow { ItemName = "高度", UpperLimit = "12.5", IsDictionaryItem = true },
+        new ProgramContentItemRow { ItemName = "压力", UpperLimit = "", IsDictionaryItem = true },
+        new ProgramContentItemRow { ItemName = "", UpperLimit = "", IsDictionaryItem = false }
     };
 
     var json = ProgramContentJsonRules.ToJson(rows);
@@ -16004,7 +16234,7 @@ static void ProgramContentJsonKeepsOnlyRowsWithStandardValues()
     var root = document.RootElement;
 
     AssertEqual(1, root.EnumerateObject().Count(), "只有设定值非空且测试项名称非空的行才应进入 ProgramContent JSON。");
-    AssertEqual("12.5", root.GetProperty("高度").GetString(), "JSON value 必须按字符串保存，不做数值推断。");
+    AssertEqual("12.5", root.GetProperty("高度上限").GetString(), "JSON value 必须按字符串保存，不做数值推断。");
     AssertFalse(root.TryGetProperty("压力", out _), "设定值为空的测试项不应上传。");
 }
 
@@ -16012,12 +16242,13 @@ static void ProgramContentJsonMergesExistingValuesAndPreservesUnknownKeys()
 {
     var rows = ProgramContentJsonRules.BuildRows(
         new[] { new DimTestItem { ItemId = 1, ItemName = "高度" } },
-        "{\"高度\":\"12.5\",\"旧测试项\":\"A1\"}");
+        "{\"高度上限\":\"12.5\",\"扩展测试项上限\":\"1.2\",\"扩展测试项下限\":\"0.1\"}");
 
     AssertEqual(2, rows.Count, "绑定已有程序时，不在当前字典内的旧 key 也应显示，避免旧数据丢失。");
-    AssertEqual("12.5", rows[0].StandardValue, "当前字典项应回填已有 JSON 中的设定值。");
-    AssertEqual("旧测试项", rows[1].ItemName, "旧 JSON 中的未知 key 应追加为额外行。");
-    AssertEqual("A1", rows[1].StandardValue, "未知 key 的值也需要保留。");
+    AssertEqual("12.5", rows[0].UpperLimit, "当前字典项应回填已有 JSON 中的设定值。");
+    AssertEqual("扩展测试项", rows[1].ItemName, "未知新格式测试项应追加为额外行。");
+    AssertEqual("1.2", rows[1].UpperLimit, "未知测试项的上限需要保留。");
+    AssertEqual("0.1", rows[1].LowerLimit, "未知测试项的下限需要保留。");
     AssertFalse(rows[1].IsDictionaryItem, "未知 key 不是当前字典项，UI 可按手动行处理。");
 }
 
@@ -16025,8 +16256,8 @@ static void ProgramContentJsonRejectsDuplicateValuedItemNames()
 {
     var rows = new[]
     {
-        new ProgramContentItemRow { ItemName = "高度", StandardValue = "12.5" },
-        new ProgramContentItemRow { ItemName = "高度", StandardValue = "13.0" }
+        new ProgramContentItemRow { ItemName = "高度", UpperLimit = "12.5" },
+        new ProgramContentItemRow { ItemName = "高度", UpperLimit = "13.0" }
     };
 
     AssertThrows<InvalidOperationException>(
@@ -16577,21 +16808,21 @@ static void ProgramListQueryProductNumRules()
         "查询参数必须原样保留工号中的 #。");
 }
 
-static void ProgramContentReviewRowsUseEditedStandardValues()
+static void ProgramContentReviewRowsUseEditedUpperLimits()
 {
     // 开工弹窗已取消“修改值”列，用户就地改设定值，合并时直接取该值。
     var rows = new List<ProgramContentReviewRow>
     {
-        new() { ItemName = "高度", StandardValue = "13.0" },
-        new() { ItemName = "压力", StandardValue = "20" },
-        new() { ItemName = "", StandardValue = "skip" },
-        new() { ItemName = "电阻", StandardValue = "   " }
+        new() { ItemName = "高度", UpperLimit = "13.0" },
+        new() { ItemName = "压力", UpperLimit = "20" },
+        new() { ItemName = "", UpperLimit = "" },
+        new() { ItemName = "电阻", UpperLimit = "   " }
     };
 
     var json = ProgramContentJsonRules.MergeReviewRowsToJson(rows);
     using var document = JsonDocument.Parse(json);
-    AssertTrue(document.RootElement.GetProperty("高度").GetString() == "13.0", "就地修改后的设定值应直接进入 JSON。");
-    AssertTrue(document.RootElement.GetProperty("压力").GetString() == "20", "未修改的设定值应原样进入 JSON。");
+    AssertTrue(document.RootElement.GetProperty("高度上限").GetString() == "13.0", "就地修改后的设定值应直接进入 JSON。");
+    AssertTrue(document.RootElement.GetProperty("压力上限").GetString() == "20", "未修改的设定值应原样进入 JSON。");
     AssertFalse(document.RootElement.TryGetProperty("", out _), "测试项名称为空的行不应进入 JSON。");
     AssertFalse(document.RootElement.TryGetProperty("电阻", out _), "设定值被清空的行不应进入 JSON。");
 }
@@ -16600,8 +16831,8 @@ static void ProgramContentReviewRejectsDuplicateItemNames()
 {
     var rows = new List<ProgramContentReviewRow>
     {
-        new() { ItemName = "高度", StandardValue = "13.0" },
-        new() { ItemName = "高度", StandardValue = "14.0" }
+        new() { ItemName = "高度", UpperLimit = "13.0" },
+        new() { ItemName = "高度", UpperLimit = "14.0" }
     };
 
     var ok = ProgramContentJsonRules.TryMergeReviewRowsToJson(rows, out _, out var errorMessage);
@@ -16966,7 +17197,7 @@ static void ProgramDeleteKeepsMesSyncOffUiPath()
         "程序表为空时删除必须直接提示，不能进入删除流程。");
     AssertTrue(
         viewCode.Contains("private IWin32Window GetDialogOwner()", StringComparison.Ordinal)
-            && System.Text.RegularExpressions.Regex.Matches(viewCode, @"GetDialogOwner\(\)").Count == 3,
+            && System.Text.RegularExpressions.Regex.Matches(viewCode, @"GetDialogOwner\(\)").Count >= 3,
         "单条删除和批量清理确认框都必须绑定主窗体所有者。");
     AssertFalse(viewCode.Contains("MessageBox.Show(this,", StringComparison.Ordinal), "程序管理页确认框不得继续以 UserControl 作为窗口所有者。");
 }
@@ -18001,8 +18232,71 @@ static void AssertThrows<TException>(Action action, string message)
     throw new InvalidOperationException($"{message} Expected={typeof(TException).Name}, Actual=no exception");
 }
 
+sealed class InspectableUploadTaskService : UploadTaskService
+{
+    private readonly BizUploadTask _task = new() { Id = 1, TaskType = ProductionConstants.UploadTaskTypes.ProcessParameter, Status = "Pending" };
+    public int FinishCount { get; private set; }
+    public InspectableUploadTaskService() : base(null!, new FakeMesProvider(), new FakeAppSettingsService(), null!,
+        new FakeDeviceLifecycleLogService(), new FakeDeviceStatusService(), new FakeProductionReportFileService()) { }
+    protected override BizUploadTask? GetRetryableTask(int id) => _task;
+    protected override BizUploadTask? MarkUploading(int id) { _task.Status = "Uploading"; return _task; }
+    protected override Task<BasicRes<object>> ExecuteByTypeAsync(BizUploadTask task, CancellationToken cancellationToken)
+        => throw new InvalidOperationException("旧格式不能生成结果。");
+    protected override UploadTaskSummary? FinishExecution(int id, BasicRes<object> response)
+    {
+        FinishCount++;
+        _task.Status = response.IsSuccess ? "Uploaded" : "Failed";
+        return new UploadTaskSummary { Id = id, Status = _task.Status, Message = response.Msg };
+    }
+}
+
+sealed class InspectableWeldTaskService : WeldTaskService
+{
+    public InspectableWeldTaskService(FakeMesProvider mes, FakeUploadTaskService uploads, FakeAppSettingsService settings,
+        IProductProcessConfigService process, ITestSchemeConfigService schemes)
+        : base(null!, mes, settings, new FakeOperationLogService(), new FakeLocalizationService(), uploads,
+            new FakeCenterProductForwardingService(), new FakeProductionReportFileService(), new FakeDeviceLifecycleLogService(),
+            new FakeDeviceStatusService(), new FakeSystemClockService(), new FakeDataHistoryMaintenanceService(),
+            productProcessConfigService: process, testSchemeConfigService: schemes) { }
+
+    public BizWeldTask? StoredTask { get; set; }
+    public List<BizWeldTask> InsertedTasks { get; } = [];
+    public int ProgramWrites { get; private set; }
+    protected override BizWeldTask? QueryUnfinishedTask(int[] stations) => StoredTask;
+    protected override BizWeldTask InsertTask(BizWeldTask task)
+    {
+        task.Id = 100 + InsertedTasks.Count;
+        InsertedTasks.Add(task);
+        return task;
+    }
+    protected override BizProgram UpsertProgram(ProgramDataRes detail, string deviceId, BizProgram resolvedRecipes)
+    {
+        ProgramWrites++;
+        return new BizProgram { ProgramId = detail.Id, ProgramContent = detail.ProgramContent, RecipeCode = "1" };
+    }
+    protected override string ResolveProgramRecipeCode(ProgramDataRes program, string deviceId, int stationNo) => "1";
+}
+
+sealed class FakeBoundaryTestSchemeService : ITestSchemeConfigService
+{
+    public IReadOnlyList<BizSchemeDetail> GetDetails(string? schemeId = null, bool normalizeRoles = true)
+        => new[] { new BizSchemeDetail { SchemeId = schemeId ?? "S1", ItemId = schemeId == "S2" ? 2 : 1, ReportActual = true, MesActual = true, ActualMesFieldName = schemeId == "S2" ? "Width" : "Height" } };
+    public IReadOnlyList<DimTestItem> GetItems()
+        => new[] { new DimTestItem { ItemId = 1, ItemName = "高度", ActualExpression = "0:F-0_4" }, new DimTestItem { ItemId = 2, ItemName = "宽度", ActualExpression = "4:F-0_4" } };
+    public IReadOnlyList<BizTestScheme> GetSchemes() => [];
+    public BizTestScheme SaveScheme(BizTestScheme scheme) => throw new NotSupportedException();
+    public void DeleteScheme(string schemeId) => throw new NotSupportedException();
+    public BizSchemeDetail SaveDetail(BizSchemeDetail detail) => throw new NotSupportedException();
+    public void DeleteDetail(int detailId) => throw new NotSupportedException();
+    public DimTestItem SaveItem(DimTestItem item) => throw new NotSupportedException();
+    public void DeleteItem(int itemId) => throw new NotSupportedException();
+}
+
 sealed class FakeMesProvider : IMesProvider
 {
+    public List<ExperimentStartReq> StartRequests { get; } = [];
+    public Action<ExperimentStartReq>? StartObserved { get; set; }
+    public BasicRes<ProgramDataRes>? DownloadResponse { get; set; }
     public List<ReportDeviceStatusReq> DeviceStatusRequests { get; } = new();
 
     public Action<ReportDeviceStatusReq>? DeviceStatusRequestObserved { get; set; }
@@ -18070,7 +18364,7 @@ sealed class FakeMesProvider : IMesProvider
     }
 
     public Task<BasicRes<ProgramDataRes>> DownloadProgramAsync(string deviceId, string programId, CancellationToken cancellationToken = default)
-        => throw new NotSupportedException();
+        => Task.FromResult(DownloadResponse ?? throw new NotSupportedException());
 
     public Task<BasicRes<object>> DeleteExpProgramAsync(string deviceId, string programId, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
@@ -18088,7 +18382,11 @@ sealed class FakeMesProvider : IMesProvider
     }
 
     public Task<BasicRes<ExperimentStartRes>> StartWorkAsync(ExperimentStartReq requestData, CancellationToken cancellationToken = default)
-        => throw new NotSupportedException();
+    {
+        StartRequests.Add(requestData);
+        StartObserved?.Invoke(requestData);
+        return Task.FromResult(new BasicRes<ExperimentStartRes> { Status = "S", Data = new() { Id = "START-1" } });
+    }
 
     public Task<BasicRes<object>> ChangeWorkStatusAsync(ReportExperimentStatusReq requestData, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
