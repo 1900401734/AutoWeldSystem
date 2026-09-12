@@ -7,6 +7,9 @@ partial class ProgramContentReviewForm
     private Label lblDescription;
     private Label lblRecipeNamesSection;
     private DataGridView dgvFields;
+    private DataGridViewTextBoxColumn columnItemName;
+    private DataGridViewTextBoxColumn columnUpperLimit;
+    private DataGridViewTextBoxColumn columnLowerLimit;
     private AntdUI.Button btnCancel;
     private AntdUI.Button btnApply;
     private TableLayoutPanel tableLayoutPanel1;
@@ -28,6 +31,9 @@ partial class ProgramContentReviewForm
         lblDescription = new Label();
         lblRecipeNamesSection = new Label();
         dgvFields = new DataGridView();
+        columnItemName = new DataGridViewTextBoxColumn { Name = "columnItemName", DataPropertyName = "ItemName", HeaderText = "测试项名称", ReadOnly = true, FillWeight = 34F };
+        columnUpperLimit = new DataGridViewTextBoxColumn { Name = "columnUpperLimit", DataPropertyName = "UpperLimit", HeaderText = "设定上限", FillWeight = 33F };
+        columnLowerLimit = new DataGridViewTextBoxColumn { Name = "columnLowerLimit", DataPropertyName = "LowerLimit", HeaderText = "设定下限", FillWeight = 33F };
         btnCancel = new AntdUI.Button();
         btnApply = new AntdUI.Button();
         tableLayoutPanel1 = new TableLayoutPanel();
@@ -58,7 +64,7 @@ partial class ProgramContentReviewForm
         lblDescription.Name = "lblDescription";
         lblDescription.Size = new Size(746, 36);
         lblDescription.TabIndex = 1;
-        lblDescription.Text = "如需调整本次开工取值，请直接修改“最大允许值”列。修改只对本次开工生效、不落库。";
+        lblDescription.Text = "直接修改本次设定上限、设定下限，不回写程序库；取消沿用原内容，开工仍须通过校验。";
         lblDescription.TextAlign = ContentAlignment.MiddleLeft;
         //
         // lblRecipeNamesSection
@@ -74,6 +80,8 @@ partial class ProgramContentReviewForm
         //
         // dgvFields
         //
+        dgvFields.AutoGenerateColumns = false;
+        dgvFields.Columns.AddRange(columnItemName, columnUpperLimit, columnLowerLimit);
         dgvFields.AllowUserToAddRows = false;
         dgvFields.AllowUserToDeleteRows = false;
         dgvFields.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;

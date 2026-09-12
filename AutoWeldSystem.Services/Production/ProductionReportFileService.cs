@@ -69,6 +69,7 @@ public class ProductionReportFileService : IProductionReportFileService
             var latestTask = ProductionReportFileRules.ResolveLatestTask(
                 task,
                 taskId => _dbContext.Db.Queryable<BizWeldTask>().InSingle(taskId));
+            _ = ProgramContentJsonRules.NormalizeForProduction(latestTask.ProgramContentSnapshot, CurrentSettings.ProcessParameterDeviceType);
             var report = GetOrCreateReportRecord(latestTask);
             var records = QueryTaskRecords(latestTask.Id);
 
@@ -192,6 +193,17 @@ public class ProductionReportFileService : IProductionReportFileService
     {
         var touchCount = ProgramContentJsonRules.GetRequiredTouchCount(task.ProgramContentSnapshot);
         var stationConfigs = ResolveStationReportConfigs(task, records, localExport);
+        if (!localExport && WholePieceProgramResultRules.IsApplicable(CurrentSettings.ProcessParameterDeviceType))
+        {
+            var content = ProgramContentJsonRules.NormalizeForProduction(task.ProgramContentSnapshot, CurrentSettings.ProcessParameterDeviceType);
+            var limits = ProgramContentJsonRules.ReadLimits(content, CurrentSettings.ProcessParameterDeviceType);
+            foreach (var stationNo in ResolveReportStationNumbers(task, records))
+            {
+                var config = stationConfigs.FirstOrDefault(config => config.StationNo == stationNo)
+                    ?? throw new InvalidOperationException($"工位 {stationNo} 未找到可用于报表的产品工艺配置。");
+                WholePieceProgramResultRules.ValidateScheme(limits, config.SchemeItems.Select(item => (item.Detail, item.Item)));
+            }
+        }
         return BuildReportSchemaForStationsWithDeviceType(
             stationConfigs,
             CurrentSettings.ProcessParameterDeviceType,
@@ -381,6 +393,8 @@ public class ProductionReportFileService : IProductionReportFileService
         BizWeldTask task)
     {
         var rows = new List<ReportOutputRow>();
+        if (!schema.LocalExport)
+            _ = ProgramContentJsonRules.NormalizeForProduction(task.ProgramContentSnapshot, settings.ProcessParameterDeviceType);
         foreach (var group in records.GroupBy(BuildProductMergeKey, StringComparer.OrdinalIgnoreCase))
         {
             var representative = group.OrderBy(record => record.SequenceNo).ThenBy(record => record.Id).First();
@@ -405,9 +419,12 @@ public class ProductionReportFileService : IProductionReportFileService
                 continue;
             }
 
-            // 只有上传报表会走到这里，取列口径与 BuildItemColumnsForMode 的上传分支一致。
+            WholePieceProgramResultRules.ValidateScheme(
+                ProgramContentJsonRules.ReadLimits(task.ProgramContentSnapshot, settings.ProcessParameterDeviceType),
+                schemeItems.Select(item => (item.Detail, item.Item)));
+            // 以全部上报项判定，报表列仍按自身开关投影。
             var definitions = schemeItems
-                .Where(item => SchemeDetailRoleRules.ShouldWriteReportRole(item.Detail, SchemeDetailValueRole.Actual))
+                .Where(item => SchemeDetailRoleRules.ShouldEvaluateProgramRole(item.Detail, SchemeDetailValueRole.Actual))
                 .Select(item => new WholePieceAbValueDefinition(
                     item.Item.ItemId,
                     item.Item.ItemName,
@@ -424,9 +441,7 @@ public class ProductionReportFileService : IProductionReportFileService
                 throw new InvalidOperationException(aggregation.ErrorMessage);
             }
 
-            var productResult = ResolveProductResult(group);
-            // 行结果改用该行的合并值判定，与产品结果同源；
-            // 否则单面检测失败会让某行显示 NG，而按四面最大值算出的产品结果是 OK，两者对不上。
+            // 输出行与产品结果共用同一判定，不能回退历史记录的旧结果。
             var outputRows = WholePieceProgramResultRules.IsApplicable(settings.ProcessParameterDeviceType)
                 ? WholePieceProgramResultRules.ApplyAggregatedRowResults(
                     task.ProgramContentSnapshot,
@@ -441,7 +456,7 @@ public class ProductionReportFileService : IProductionReportFileService
                     representative,
                     output.SideNo,
                     output.Result,
-                    productResult,
+                    output.Result,
                     productIsTest,
                     BuildAbReportValues(output, definitions)));
             }
@@ -808,20 +823,23 @@ public class ProductionReportFileService : IProductionReportFileService
             .Where(item => itemIds.Contains(item.ItemId))
             .ToList();
 
+        var strictWholePiece = !localExport && WholePieceProgramResultRules.IsApplicable(CurrentSettings.ProcessParameterDeviceType);
         return details
             .OrderBy(detail => detail.DetailId)
             .Select(detail => new
             {
-                Item = items.FirstOrDefault(item => item.ItemId == detail.ItemId),
+                Item = items.FirstOrDefault(item => item.ItemId == detail.ItemId)
+                    ?? (strictWholePiece ? throw new InvalidOperationException($"测试方案中的测试项 ID {detail.ItemId} 不存在。") : null),
                 Detail = detail
             })
             .Where(item => item.Item is not null)
             .Select(item =>
             {
-                SchemeDetailRoleRules.ClearUnavailableRoles(item.Detail, item.Item!);
+                if (!strictWholePiece) SchemeDetailRoleRules.ClearUnavailableRoles(item.Detail, item.Item!);
                 return item;
             })
-            .Where(item => HasAnyEnabledRole(item.Detail, localExport))
+            .Where(item => HasAnyEnabledRole(item.Detail, localExport)
+                || (strictWholePiece && SchemeDetailRoleRules.AllRoles.Any(role => SchemeDetailRoleRules.IsUploadEnabled(item.Detail, role))))
             .Select(item => new SchemeReportItem(item.Item!, item.Detail))
             .ToList();
     }
@@ -925,8 +943,11 @@ public class ProductionReportFileService : IProductionReportFileService
     {
         if (!string.IsNullOrWhiteSpace(task.ProgramId))
         {
+            var programId = task.ProgramId.Trim();
+            var localId = programId.StartsWith("local-", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(programId[6..], out var id) ? id : 0;
             var programs = _dbContext.Db.Queryable<BizProgram>()
-                .Where(program => !program.IsDeleted && program.ProgramId == task.ProgramId.Trim())
+                .Where(program => !program.IsDeleted && (program.ProgramId == programId || (localId > 0 && program.Id == localId)))
                 .ToList();
 
             var localProgram = programs

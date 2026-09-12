@@ -25,8 +25,9 @@ public interface ITestSchemeConfigService
 
     /// <summary>
     /// 获取方案明细；schemeId 为空时返回全部明细。
+    /// 生产校验传 normalizeRoles=false，避免清理无效角色后掩盖原配置错误。
     /// </summary>
-    IReadOnlyList<BizSchemeDetail> GetDetails(string? schemeId = null);
+    IReadOnlyList<BizSchemeDetail> GetDetails(string? schemeId = null, bool normalizeRoles = true);
 
     /// <summary>
     /// 保存一条方案明细。

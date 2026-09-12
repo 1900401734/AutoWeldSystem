@@ -58,20 +58,37 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         }
 
         var normalizedStationNo = NormalizeStationNo(stationNo, task);
+        var settings = _settingsService.Get();
         int touchCount;
+        string validatedContent;
         try
         {
-            touchCount = ProgramContentJsonRules.GetRequiredTouchCount(task.ProgramContentSnapshot);
+            validatedContent = ProgramContentJsonRules.NormalizeForProduction(task.ProgramContentSnapshot, settings.ProcessParameterDeviceType);
+            touchCount = ProgramContentJsonRules.GetRequiredTouchCount(validatedContent);
         }
         catch (InvalidOperationException ex)
         {
-            throw new BusinessOperationException(Category, "产品数据采集失败", ex.Message);
+            throw new ProductCollectionHandledException(Category, "产品数据采集配置错误", ex.Message);
         }
 
         var processConfig = ResolveProcessConfig(task, normalizedStationNo);
         var schemeItems = ResolveSchemeItems(processConfig.SchemeId);
-        var settings = _settingsService.Get();
         var useProgramResult = WholePieceProgramResultRules.IsApplicable(settings.ProcessParameterDeviceType);
+        if (useProgramResult)
+        {
+            try
+            {
+                WholePieceProgramResultRules.ValidateScheme(ProgramContentJsonRules.ReadLimits(validatedContent, settings.ProcessParameterDeviceType),
+                    schemeItems.Select(item => (item.Detail, item.Item)));
+            }
+            catch (InvalidOperationException ex)
+            {
+                throw new ProductCollectionHandledException(Category, "产品数据采集配置错误", ex.Message);
+            }
+        }
+        foreach (var schemeItem in schemeItems)
+            SchemeDetailRoleRules.ClearUnavailableRoles(schemeItem.Detail, schemeItem.Item);
+        schemeItems = schemeItems.Where(item => SchemeDetailRoleRules.HasAnyConfiguredRole(item.Detail)).ToList();
         // 程序计数模式：产品编号由程序自算，PLC 编号只作整件检测被动重测的比对信号。
         var useLocalProductNo = ProductionConstants.ProductionCountSources.IsProgram(settings.ProductionCountSource);
 
@@ -211,7 +228,6 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
                 {
                     var item = items.FirstOrDefault(it => it.ItemId == detail.ItemId)
                         ?? throw new BusinessOperationException(Category, "测试项字典缺失", $"测试项ID“{detail.ItemId}”不存在。");
-                    SchemeDetailRoleRules.ClearUnavailableRoles(detail, item);
                     return new SchemeItemSnapshot(detail.DetailId, item, detail);
                 })
                 .Where(snapshot => SchemeDetailRoleRules.HasAnyConfiguredRole(snapshot.Detail))
@@ -621,7 +637,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
 
     /// <summary>
     /// 四面整件检测的产品结果按 A/B 合并值判定，与报告文件、过程参数使用同一组数据。
-    /// 非四面整件检测沿用面结果取并（点焊等工艺没有 A/B 面概念）。
+    /// 非四面配置明确失败，不能把 PLC 完成信号误作产品合格结论。
     /// </summary>
     private string ResolveProgramProductResult(
         BizWeldTask task,
@@ -632,7 +648,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         var settings = _settingsService.Get();
         if (!WholePieceAbAggregationRules.IsApplicable(settings.ProcessParameterDeviceType, touchCount))
         {
-            return TestResultRules.ResolveProductResult(records.Select(record => record.TestResult));
+            throw new ProductCollectionHandledException(Category, "产品数据采集配置错误", "整件检测必须使用四面 A/B 程序判定。");
         }
 
         var definitions = participatingItems
@@ -712,57 +728,13 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         var settings = _settingsService.Get();
         if (!WholePieceAbAggregationRules.IsApplicable(settings.ProcessParameterDeviceType, touchCount))
         {
+            if (WholePieceProgramResultRules.IsApplicable(_settingsService.Get().ProcessParameterDeviceType))
+                throw new InvalidOperationException("整件检测程序必须使用四面 A/B 配置。");
             return;
         }
 
-        // 勾选「上报」的测试项必须在程序内容里配置最大允许值：
-        // 上报数据要带明确的合格结论，没有上限就会出现「已上报但无判定依据」。
-        if (WholePieceProgramResultRules.TryReadMaximumValues(
-                task.ProgramContentSnapshot,
-                out var maximumValues,
-                out _))
-        {
-            var missingMaximum = SchemeDetailRoleRules.FindUploadItemsMissingMaximum(
-                schemeItems.Select(item => (item.Detail, item.Item.ItemName)),
-                maximumValues);
-            if (missingMaximum.Count > 0)
-            {
-                throw new BusinessOperationException(
-                    Category,
-                    "产品数据采集失败",
-                    $"测试项“{string.Join("、", missingMaximum)}”勾选了上报但未配置最大允许值，无法产出合格结论，请先在程序内容中填写上限。");
-            }
-        }
-
-        // A/B 聚合只对实际值有定义（取最大值），报表和过程参数是逐值输出，非实际值角色必须拦。
-        // 转发看板不在此限制内：中心看板动态列直接透传 RawDataJson，不做 A/B 聚合。
-        var invalidOutput = schemeItems.FirstOrDefault(item => SchemeDetailRoleRules.AllRoles
-            .Where(role => role != SchemeDetailValueRole.Actual)
-            .Any(role => SchemeDetailRoleRules.IsReportEnabled(item.Detail, role)
-                || SchemeDetailRoleRules.IsMesEnabled(item.Detail, role)));
-        if (invalidOutput is not null)
-        {
-            throw new BusinessOperationException(
-                Category,
-                "产品数据采集失败",
-                $"整件检测A/B模式只允许测试项“{invalidOutput.Item.ItemName}”的实际值写入报表或上传过程参数。");
-        }
-
-        var duplicateMesFields = schemeItems
-            .Where(item => SchemeDetailRoleRules.IsMesEnabled(item.Detail, SchemeDetailValueRole.Actual))
-            .Select(item => SchemeDetailRoleRules.GetMesFieldName(item.Detail, SchemeDetailValueRole.Actual)?.Trim())
-            .Where(field => !string.IsNullOrWhiteSpace(field))
-            .GroupBy(field => field!, StringComparer.OrdinalIgnoreCase)
-            .Where(group => group.Count() > 1)
-            .Select(group => group.Key)
-            .ToList();
-        if (duplicateMesFields.Count > 0)
-        {
-            throw new BusinessOperationException(
-                Category,
-                "产品数据采集失败",
-                $"整件检测A/B模式存在重复过程参数字段名：{string.Join("、", duplicateMesFields)}。");
-        }
+        var limits = ProgramContentJsonRules.ReadLimits(task.ProgramContentSnapshot, settings.ProcessParameterDeviceType);
+        WholePieceProgramResultRules.ValidateScheme(limits, schemeItems.Select(item => (item.Detail, item.Item)));
 
         var definitions = schemeItems
             .Where(item => SchemeDetailRoleRules.IsReportEnabled(item.Detail, SchemeDetailValueRole.Actual)

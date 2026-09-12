@@ -135,8 +135,11 @@ public class ProductProcessConfigService : IProductProcessConfigService
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
+            // 未同步 MES 的本地程序用 local-{主键} 标识，工艺仍按程序工号而非现场工单工号查找。
+            var localId = programId.StartsWith("local-", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(programId[6..], out var id) ? id : 0;
             var localProgram = _dbContext.Db.Queryable<BizProgram>()
-                .Where(program => !program.IsDeleted && program.ProgramId == programId)
+                .Where(program => !program.IsDeleted && (program.ProgramId == programId || (localId > 0 && program.Id == localId)))
                 .ToList()
                 .OrderByDescending(program => SameText(program.DeviceId, task.DeviceId))
                 .ThenByDescending(program => program.UpdatedTime)

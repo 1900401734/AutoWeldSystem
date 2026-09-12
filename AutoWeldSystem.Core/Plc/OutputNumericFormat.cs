@@ -1,5 +1,6 @@
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Entities;
+using AutoWeldSystem.Core.Production;
 
 namespace AutoWeldSystem.Core.Plc;
 
@@ -20,7 +21,9 @@ public readonly record struct OutputNumericFormat(int? DecimalPlaces, string? Mo
     /// 报告文件与过程参数共用「判定与上报小数位」，与产品判定、合并视图同源。
     /// </summary>
     public static OutputNumericFormat ForUpload(AppSettings? settings)
-        => Create(settings?.EffectiveJudgementDecimalPlaces, settings);
+        => WholePieceProgramResultRules.IsApplicable(settings?.ProcessParameterDeviceType)
+            ? new OutputNumericFormat(NormalizeDecimalPlaces(settings?.EffectiveJudgementDecimalPlaces), settings?.PlcStringNumericFormatMode)
+            : Create(settings?.EffectiveJudgementDecimalPlaces, settings);
 
     /// <summary>
     /// 归一化输出小数位。负数按未配置处理，超出偏移量表达式允许的上限时收敛到上限。

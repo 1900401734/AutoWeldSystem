@@ -394,7 +394,7 @@ public partial class MonitorView : BaseView
 
         ConfigureDeviceMode();
         ApplyStationViewMode();
-        _weldTaskService.RestoreUnfinishedTask(CurrentStationNo);
+        RestoreUnfinishedTaskForDisplay(CurrentStationNo);
         RefreshProductionRuntimeState();
         RestoreCurrentRuntimeTipState();
         RefreshRuntimePanels();
@@ -554,7 +554,7 @@ public partial class MonitorView : BaseView
     /// </summary>
     private void ApplyReportButtonState()
     {
-        var activeTask = _weldTaskService.RestoreUnfinishedTask(CurrentStationNo)
+        var activeTask = RestoreUnfinishedTaskForDisplay(CurrentStationNo)
             ?? GetCurrentStationState().ActiveTask;
         var hasOnlineRunningTask = activeTask is { IsOfflineCreated: false, EndTime: null };
         var hasOfflineRunningTask = activeTask is { IsOfflineCreated: true, EndTime: null };
@@ -888,9 +888,21 @@ public partial class MonitorView : BaseView
             }
 
             SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.DownloadingProgram);
-            var detail = await _weldTaskService.DownloadProgramAsync(programListItem, stationNo);
+            ProgramDataRes? detail;
+            try
+            {
+                detail = await _weldTaskService.DownloadProgramAsync(programListItem, stationNo);
+            }
+            catch
+            {
+                ClearPendingOnlineProgramSelection();
+                SyncProgramNameSelectionDisplay(state.SelectedProgram?.ProgramName ?? string.Empty);
+                throw;
+            }
             if (detail is null)
             {
+                ClearPendingOnlineProgramSelection();
+                SyncProgramNameSelectionDisplay(state.SelectedProgram?.ProgramName ?? string.Empty);
                 _exceptionLogService.WriteBusiness(
                     "MES.DownloadProgram",
                     _localizer.GetString(TextKeys.Monitor.Message.ProgramDownloadFailed),
@@ -1214,7 +1226,7 @@ public partial class MonitorView : BaseView
 
         var stationNo = CurrentStationNo;
         SelectStationForOperation(stationNo);
-        var activeTask = _weldTaskService.RestoreUnfinishedTask(stationNo);
+        var activeTask = RestoreUnfinishedTaskForDisplay(stationNo);
         // 本地任务未完工时，此按钮复用为“本地完工”，减少离线流程入口数量。
         if (activeTask is { IsOfflineCreated: true, EndTime: null })
         {
@@ -1311,7 +1323,7 @@ public partial class MonitorView : BaseView
     private async void OnlineReport_Click(object? sender, EventArgs e)
     {
         var stationNo = CurrentStationNo;
-        var activeTask = _weldTaskService.RestoreUnfinishedTask(stationNo)
+        var activeTask = RestoreUnfinishedTaskForDisplay(stationNo)
             ?? GetCurrentStationState().ActiveTask;
 
         if (activeTask is { IsOfflineCreated: false, EndTime: null })
@@ -1362,7 +1374,7 @@ public partial class MonitorView : BaseView
         var stationNo = CurrentStationNo;
         SelectStationForOperation(stationNo);
         // 开工前先恢复持久化任务，软件重启后也能拦截未完工任务。
-        if (_weldTaskService.RestoreUnfinishedTask(stationNo) is not null)
+        if (RestoreUnfinishedTaskForDisplay(stationNo) is not null)
         {
             RefreshProductionRuntimeState();
             SetRuntimeError(TextKeys.Monitor.Message.StartBlockedByUnfinishedTask);
@@ -1424,7 +1436,6 @@ public partial class MonitorView : BaseView
         var adjustedWorkOrder = BuildAdjustedWorkOrderFromInputs(state.CurrentWorkOrder!);
         var adjustedProcess = BuildAdjustedProcessFromInputs(state.SelectedProcess!);
         var adjustedProgram = state.SelectedProgram!;
-        _weldTaskService.ApplyStartAdjustment(adjustedWorkOrder, adjustedProcess, adjustedProgram, stationNo);
 
         var actualQty = 0;
 
@@ -1462,6 +1473,7 @@ public partial class MonitorView : BaseView
         {
             ClearRuntimeError();
             SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.SubmittingStart);
+            _weldTaskService.ApplyStartAdjustment(adjustedWorkOrder, adjustedProcess, adjustedProgram, stationNo);
             await _weldTaskService.StartAsync(employeeNumber, actualQty, stationNo, employeeAlreadyValidated: true);
             RefreshProductionRuntimeState();
             QueueRefreshSchemePreview(force: true);
@@ -1484,7 +1496,7 @@ public partial class MonitorView : BaseView
 
         var stationNo = CurrentStationNo;
         SelectStationForOperation(stationNo);
-        var activeTask = _weldTaskService.RestoreUnfinishedTask(stationNo);
+        var activeTask = RestoreUnfinishedTaskForDisplay(stationNo);
         if (activeTask is null)
         {
             SetRuntimeError(TextKeys.Monitor.Message.FinishPrerequisiteMissing);
@@ -1554,7 +1566,7 @@ public partial class MonitorView : BaseView
         SyncMergedDisplayToggle(_currentSettings.IsWholePieceMergedDisplayEnabled);
         UpdateCurrentTime();
         ConfigureDeviceMode();
-        _weldTaskService.RestoreUnfinishedTask(CurrentStationNo);
+        RestoreUnfinishedTaskForDisplay(CurrentStationNo);
         BindProductionRuntimeState();
         RestoreCurrentRuntimeTipState();
         RefreshRuntimePanels();
@@ -3577,7 +3589,7 @@ public partial class MonitorView : BaseView
         await RunReportOperationAsync(stationNo, "本地完工", async () =>
         {
             ClearRuntimeError();
-            var activeTask = _weldTaskService.RestoreUnfinishedTask(stationNo);
+            var activeTask = RestoreUnfinishedTaskForDisplay(stationNo);
             await RefreshRecipeCodeFromPlcBeforeFinishAsync(activeTask, stationNo);
             // 完工不再回填登录账号，直接沿用离线开工时操作员录入并写入任务的员工号。
             await _weldTaskService.FinishLocalAsync(
@@ -4097,7 +4109,7 @@ public partial class MonitorView : BaseView
             _manualWorkOrderEditedByUser = false;
             _validatedOperatorNumber = null;
             // 草稿按工位保存，切换工位不清除，返回该工位后未确认的输入仍受保护。
-                _weldTaskService.RestoreUnfinishedTask(normalizedStationNo);
+                RestoreUnfinishedTaskForDisplay(normalizedStationNo);
         }
 
         RefreshProductionRuntimeState();
@@ -5499,11 +5511,34 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// </summary>
     /// <param name="stationNo">工位编号。</param>
     /// <returns>解析或计算后的数值。</returns>
+    private BizWeldTask? RestoreUnfinishedTaskForDisplay(int stationNo)
+    {
+        try
+        {
+            return _weldTaskService.RestoreUnfinishedTask(stationNo);
+        }
+        catch (BusinessOperationException ex)
+        {
+            // 旧任务仍可见且阻止新开工，但绝不恢复为可生产的运行态。
+            _exceptionLogService.WriteBusiness(ex.SourceName, ex.Message, ex.Detail);
+            SetRuntimeErrorText(ex.Detail);
+            return _weldTaskService.GetUnfinishedTask(stationNo);
+        }
+    }
+
     private int ResolveExpectedPlcWorkOrderStatus(int stationNo)
     {
-        return _weldTaskService.GetUnfinishedTask(stationNo) is null
-            ? ProductionConstants.PlcWorkOrderStatuses.FinishedForbidProduction
-            : ProductionConstants.PlcWorkOrderStatuses.StartedAllowProduction;
+        var task = _weldTaskService.GetUnfinishedTask(stationNo);
+        if (task is null) return ProductionConstants.PlcWorkOrderStatuses.FinishedForbidProduction;
+        try
+        {
+            _weldTaskService.ValidateTaskForProduction(task, stationNo);
+            return ProductionConstants.PlcWorkOrderStatuses.StartedAllowProduction;
+        }
+        catch (BusinessOperationException)
+        {
+            return ProductionConstants.PlcWorkOrderStatuses.FinishedForbidProduction;
+        }
     }
 
     #endregion
@@ -8237,11 +8272,14 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         }
 
         var caption = _localizer.GetString(TextKeys.Monitor.Label.ProgramLimits);
-        var summary = ProgramContentJsonRules.BuildLimitsSummary(
-            GetCurrentStationState().ActiveTask?.ProgramContentSnapshot);
-        SetControlText(
-            lblLiveProgramLimits1,
-            $"{caption}：{(string.IsNullOrWhiteSpace(summary) ? "--" : summary)}");
+        var task = GetCurrentStationState().ActiveTask;
+        var summary = "--";
+        if (task is not null)
+        {
+            try { summary = ProgramContentJsonRules.BuildLimitsSummary(task.ProgramContentSnapshot); }
+            catch (InvalidOperationException ex) { summary = $"不可判定：{ex.Message}"; }
+        }
+        SetControlText(lblLiveProgramLimits1, $"{caption}：{(string.IsNullOrWhiteSpace(summary) ? "--" : summary)}");
     }
 
     private bool HasRealtimeProductChanged(ProductRealtimePreviewSnapshot snapshot)
@@ -9509,7 +9547,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// <returns>异步操作成功返回 true，否则返回 false。</returns>
     private async Task<bool> WriteStartBusinessSignalsAfterStartAsync(ProgramDataRes program, int stationNo)
     {
-        var task = GetCurrentStationState().ActiveTask ?? _weldTaskService.RestoreUnfinishedTask(stationNo);
+        var task = GetCurrentStationState().ActiveTask ?? RestoreUnfinishedTaskForDisplay(stationNo);
 
         if (task is null || task.EndTime is not null)
         {
@@ -9519,6 +9557,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
                 $"No started task exists for station {stationNo}.");
         }
 
+        _weldTaskService.ValidateTaskForProduction(task, stationNo);
         await RequireWorkOrderStatusWriteAsync(
             stationNo,
             ProductionConstants.PlcWorkOrderStatuses.StartedAllowProduction,
@@ -10496,12 +10535,14 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         catch (BusinessOperationException ex)
         {
             _exceptionLogService.WriteBusiness(ex.SourceName, ex.Message, ex.Detail);
-            SetRuntimeError(TextKeys.Monitor.RuntimeError.StationReportFailed);
+            ClearRuntimeStatus();
+            SetRuntimeErrorText(ex.Detail);
         }
         catch (Exception ex)
         {
             _exceptionLogService.Write(ex, $"MonitorView.{actionName}");
-            SetRuntimeError(TextKeys.Monitor.RuntimeError.StationReportFailed);
+            ClearRuntimeStatus();
+            SetRuntimeErrorText(ex.Message);
         }
         finally
         {

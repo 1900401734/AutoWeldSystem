@@ -27,6 +27,11 @@ public interface IWeldTaskService
     /// <returns>恢复成功的未完工任务；若没有可恢复任务则返回 null。</returns>
     BizWeldTask? RestoreUnfinishedTask(int stationNo = ProductionConstants.Stations.DefaultStationNo);
 
+    /// <summary>
+    /// 校验任务是否具备生产条件；恢复、继续和 PLC 放行不得绕过。
+    /// </summary>
+    void ValidateTaskForProduction(BizWeldTask task, int stationNo = ProductionConstants.Stations.DefaultStationNo);
+
     Task<BasicRes<ServerTimeRes>> SyncServerTimeAsync(CancellationToken cancellationToken = default);
 
     Task<WorkOrderRes?> GetWorkOrderInfoAsync(string workId, int stationNo = ProductionConstants.Stations.DefaultStationNo,

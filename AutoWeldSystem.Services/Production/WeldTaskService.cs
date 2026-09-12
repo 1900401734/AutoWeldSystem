@@ -41,6 +41,8 @@ public class WeldTaskService : IWeldTaskService
     private readonly IDataHistoryMaintenanceService _maintenanceService;
     private readonly IMesConnectionMonitor? _mesConnectionMonitor;
     private readonly IPlcRecipeNameReaderService? _recipeNameReaderService;
+    private readonly IProductProcessConfigService _productProcessConfigService;
+    private readonly ITestSchemeConfigService _testSchemeConfigService;
     private AppSettings _currentSettings;
 
     public WeldTaskService(
@@ -57,8 +59,12 @@ public class WeldTaskService : IWeldTaskService
         ISystemClockService systemClockService,
         IDataHistoryMaintenanceService maintenanceService,
         IMesConnectionMonitor? mesConnectionMonitor = null,
-        IPlcRecipeNameReaderService? recipeNameReaderService = null)
+        IPlcRecipeNameReaderService? recipeNameReaderService = null,
+        IProductProcessConfigService? productProcessConfigService = null,
+        ITestSchemeConfigService? testSchemeConfigService = null)
     {
+        _productProcessConfigService = productProcessConfigService ?? new ProductProcessConfigService(dbContext);
+        _testSchemeConfigService = testSchemeConfigService ?? new TestSchemeConfigService(dbContext);
         _recipeNameReaderService = recipeNameReaderService;
         _maintenanceService = maintenanceService;
         _mesConnectionMonitor = mesConnectionMonitor;
@@ -82,6 +88,23 @@ public class WeldTaskService : IWeldTaskService
 
     public event EventHandler? StateChanged;
 
+    protected virtual BizWeldTask? QueryUnfinishedTask(int[] stationNumbers)
+    {
+        var query = _dbContext.Db.Queryable<BizWeldTask>()
+            .Where(task => task.TaskStatus != TaskStatusCompleted && task.EndTime == null);
+        query = stationNumbers.Length == 1
+            ? query.Where(task => task.StationNo == stationNumbers[0])
+            : query.Where(task => stationNumbers.Contains(task.StationNo));
+
+        return query
+            .OrderByDescending(task => task.StartTime)
+            .OrderByDescending(task => task.Id)
+            .First();
+    }
+
+    protected virtual BizWeldTask InsertTask(BizWeldTask task)
+        => _dbContext.Db.Insertable(task).ExecuteReturnEntity();
+
     /// <summary>
     /// 统一查询当前工位是否存在未完工任务，先看内存运行态，再查本地数据库兜底。
     /// </summary>
@@ -98,16 +121,7 @@ public class WeldTaskService : IWeldTaskService
             }
         }
 
-        var query = _dbContext.Db.Queryable<BizWeldTask>()
-            .Where(task => task.TaskStatus != TaskStatusCompleted && task.EndTime == null);
-        query = stationNumbers.Length == 1
-            ? query.Where(task => task.StationNo == stationNumbers[0])
-            : query.Where(task => stationNumbers.Contains(task.StationNo));
-
-        return query
-            .OrderByDescending(task => task.StartTime)
-            .OrderByDescending(task => task.Id)
-            .First();
+        return QueryUnfinishedTask(stationNumbers);
     }
 
     /// <summary>
@@ -122,6 +136,7 @@ public class WeldTaskService : IWeldTaskService
             return null;
         }
 
+        ValidateTaskForProduction(unfinishedTask, normalizedStationNo);
         var station = GetStation(normalizedStationNo);
         var alreadyRestored = station.ActiveTask?.Id == unfinishedTask.Id;
         if (alreadyRestored)
@@ -359,9 +374,11 @@ public class WeldTaskService : IWeldTaskService
         }
 
         var detail = MergeProgramListSnapshot(response.Data, program);
-        var localProgram = UpsertProgram(detail, settings.DeviceId);
-        // 程序内容带配方名称时，按本机 PLC 配方表解析出配方号并回填，供其他设备下载后正确下发。
+        detail.ProgramContent = ProgramContentJsonRules.NormalizeContent(detail.ProgramContent, settings.ProcessParameterDeviceType);
+        var localProgram = new BizProgram { ProgramName = detail.ProgramName, ProgramContent = detail.ProgramContent };
+        // 先在未持久化的候选对象上匹配配方，失败不能覆盖原程序。
         localProgram = await ApplyRecipeNamesFromContentAsync(localProgram, cancellationToken);
+        localProgram = UpsertProgram(detail, settings.DeviceId, localProgram);
         detail.RecipeCode = FirstNonEmpty(
             ProgramRecipeMappingRules.Resolve(localProgram, normalizedStationNo),
             ProgramRecipeMappingRules.Normalize(detail.RecipeCode));
@@ -385,13 +402,15 @@ public class WeldTaskService : IWeldTaskService
             throw new BusinessOperationException("StartAdjustment", "开工信息调整失败", "当前工位已生成生产任务，不能再调整开工信息。");
         }
 
+        var adjustedProgram = CloneProgram(program);
+        adjustedProgram.ProgramContent = ProgramContentJsonRules.NormalizeContent(program.ProgramContent, CurrentSettings.ProcessParameterDeviceType);
         station.CurrentWorkOrder = CloneWorkOrder(workOrder);
         if (process is not null)
         {
             station.SelectedProcess = CloneProcess(process);
         }
 
-        station.SelectedProgram = CloneProgram(program);
+        station.SelectedProgram = adjustedProgram;
 
         station.UpdatedTime = DateTime.Now;
         RefreshCompatibilityState(normalizedStationNo);
@@ -430,9 +449,13 @@ public class WeldTaskService : IWeldTaskService
     {
         var normalizedStationNo = NormalizeStationNo(stationNo);
         var station = GetStation(normalizedStationNo);
-
-        EnsureNoUnfinishedTask(normalizedStationNo);
         EnsureReadyForStart(station);
+        var settings = CurrentSettings.Clone();
+        var workOrder = CloneWorkOrder(station.CurrentWorkOrder!);
+        var process = CloneProcess(station.SelectedProcess!);
+        var program = CloneProgram(station.SelectedProgram!);
+        program.ProgramContent = ValidateStartProgram(program, settings, normalizedStationNo);
+        EnsureNoUnfinishedTask(normalizedStationNo);
 
         if (!employeeAlreadyValidated)
         {
@@ -443,12 +466,9 @@ public class WeldTaskService : IWeldTaskService
             }
         }
 
-        var settings = CurrentSettings;
-        var workOrder = station.CurrentWorkOrder!;
-        var process = station.SelectedProcess!;
-        var program = station.SelectedProgram!;
         var operatorInfo = CreateOperatorInfo(station.MesOperatorInfo, employeeNumber);
         var startOperatorNumber = FirstNonEmpty(operatorInfo.UserNumber, employeeNumber);
+        var recipeCode = ResolveProgramRecipeCode(program, settings.DeviceId, normalizedStationNo);
         var request = BuildStartRequest(settings.DeviceId, workOrder, process, program, actualQty, startOperatorNumber);
 
         var response = await _mesProvider.StartWorkAsync(request, cancellationToken);
@@ -476,7 +496,7 @@ public class WeldTaskService : IWeldTaskService
             ActualQty = actualQty,
             ProgramId = program.Id,
             ProgramName = program.ProgramName,
-            RecipeCode = ResolveProgramRecipeCode(program, settings.DeviceId, normalizedStationNo),
+            RecipeCode = recipeCode,
             UserNumber = startOperatorNumber,
             UserName = operatorInfo.UserName,
             DeptName = operatorInfo.DeptName,
@@ -487,7 +507,7 @@ public class WeldTaskService : IWeldTaskService
             ProgramContentSnapshot = program.ProgramContent
         };
 
-        task = _dbContext.Db.Insertable(task).ExecuteReturnEntity();
+        task = InsertTask(task);
         ApplyStartedRuntimeState(normalizedStationNo, workOrder, process, program, task, startOperatorNumber);
         ApplySharedStartedRuntimeStateIfNeeded(normalizedStationNo, workOrder, process, program, task, startOperatorNumber);
         _operationLogService.Write("ExpStart", $"Start report submitted, Station={task.StationNo}, MES Id={task.ExpStartId}, WorkOrder={task.SN}");
@@ -513,13 +533,12 @@ public class WeldTaskService : IWeldTaskService
         NormalizeLocalRequest(request);
 
         var normalizedStationNo = NormalizeStationNo(request.StationNo);
-        EnsureNoUnfinishedTask(normalizedStationNo);
-
-        var settings = CurrentSettings;
+        var settings = CurrentSettings.Clone();
         var workOrder = CreateLocalWorkOrder(request);
         var process = CreateLocalProcess(request);
         var program = CreateLocalProgram(request, settings.DeviceId);
-        EnsureProgramTouchCount(program, "Local.StartReport", "本地开工失败");
+        program.ProgramContent = ValidateStartProgram(program, settings, normalizedStationNo);
+        EnsureNoUnfinishedTask(normalizedStationNo);
         var localOperatorNumber = RequireOfflineOperatorNumber(operatorNumber);
         var localOperatorName = RequireOfflineOperatorName(operatorName);
         var localOperatorInfo = CreateLocalOperatorInfo(localOperatorNumber, localOperatorName);
@@ -556,7 +575,7 @@ public class WeldTaskService : IWeldTaskService
             ProgramContentSnapshot = program.ProgramContent
         };
 
-        task = _dbContext.Db.Insertable(task).ExecuteReturnEntity();
+        task = InsertTask(task);
         ApplyStartedRuntimeState(normalizedStationNo, workOrder, process, program, task, localOperatorNumber);
         ApplySharedStartedRuntimeStateIfNeeded(normalizedStationNo, workOrder, process, program, task, localOperatorNumber);
         EnqueueStartReportTask(task, startRequest);
@@ -577,6 +596,10 @@ public class WeldTaskService : IWeldTaskService
     {
         var normalizedStationNo = NormalizeStationNo(stationNo);
         var station = GetStation(normalizedStationNo);
+        if (station.ActiveTask is not null && statusCode == ProductionConstants.MesWorkOrderStatuses.StartedOrRestarted)
+        {
+            ValidateTaskForProduction(station.ActiveTask, normalizedStationNo);
+        }
         if (!IsWorkOrderStatusReportEnabled())
         {
             if (station.ActiveTask is null)
@@ -647,6 +670,7 @@ public class WeldTaskService : IWeldTaskService
             throw new BusinessOperationException("MES.FinishReport", "完工上报失败", "No task to finish");
         }
 
+        ValidateTaskForProduction(task, normalizedStationNo);
         var endOperator = string.IsNullOrWhiteSpace(employeeNumber)
             ? task.UserNumber ?? station.MesOperatorNumber
             : employeeNumber;
@@ -757,6 +781,7 @@ public class WeldTaskService : IWeldTaskService
             throw new BusinessOperationException("Local.FinishReport", "本地完工失败", "No offline task to finish.");
         }
 
+        ValidateTaskForProduction(task, normalizedStationNo);
         // 完工员工号与在线完工同口径：调用方未传时沿用开工时录入的员工号，仍不接受登录账号兜底。
         var endOperator = RequireOfflineOperatorNumber(FirstNonEmpty(employeeNumber, task.UserNumber));
         // 离线完工同样只捕获一次结束时间，持久化后再生成最终报表。
@@ -809,7 +834,11 @@ public class WeldTaskService : IWeldTaskService
             return;
         }
 
-        station.SelectedProgram.ProgramContent = content;
+        if (station.ActiveTask is not null)
+        {
+            throw new InvalidOperationException("开工后不能修改当前任务的程序内容。");
+        }
+        station.SelectedProgram.ProgramContent = ProgramContentJsonRules.NormalizeContent(content, CurrentSettings.ProcessParameterDeviceType);
         station.UpdatedTime = DateTime.Now;
         RefreshCompatibilityState(normalizedStationNo);
         NotifyStateChanged();
@@ -1238,7 +1267,7 @@ public class WeldTaskService : IWeldTaskService
     /// <summary>
     /// Resolves the recipe code from the local program record selected by the MES program ID.
     /// </summary>
-    private string ResolveProgramRecipeCode(ProgramDataRes program, string deviceId, int stationNo)
+    protected virtual string ResolveProgramRecipeCode(ProgramDataRes program, string deviceId, int stationNo)
     {
         _dbContext.InitDatabase();
         var programId = NormalizeText(program.Id);
@@ -1260,6 +1289,43 @@ public class WeldTaskService : IWeldTaskService
         }
 
         return recipeCode;
+    }
+
+    public void ValidateTaskForProduction(BizWeldTask task, int stationNo = ProductionConstants.Stations.DefaultStationNo)
+    {
+        try
+        {
+            _ = TaskProductProcessConfigResolver.ValidateProgram(
+                _productProcessConfigService, _testSchemeConfigService, task,
+                ResolveTaskScopeStationNumbers(NormalizeStationNo(stationNo)), CurrentSettings.ProcessParameterDeviceType);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new BusinessOperationException("Program.Configuration", "程序配置无效，不能生产", ex.Message);
+        }
+    }
+
+    private string ValidateStartProgram(ProgramDataRes program, AppSettings settings, int stationNo)
+    {
+        var candidate = new BizWeldTask
+        {
+            DeviceId = settings.DeviceId,
+            ProgramId = program.Id,
+            ProductNum = program.ProductNum,
+            StationNo = stationNo,
+            ProgramContentSnapshot = program.ProgramContent
+        };
+        try
+        {
+            return TaskProductProcessConfigResolver.ValidateProgram(
+                _productProcessConfigService, _testSchemeConfigService, candidate,
+                RecipeStationScopeRules.ResolveSharedTaskStations(settings.EnableDualStation, settings.EnableDualWorkOrder, stationNo),
+                settings.ProcessParameterDeviceType);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new BusinessOperationException("Program.Configuration", "开工失败：程序配置无效", ex.Message);
+        }
     }
 
     private void EnsureReadyForStart(ProductionStationRuntimeState station)
@@ -1545,7 +1611,7 @@ public class WeldTaskService : IWeldTaskService
             }
         }
 
-        if (changed)
+        if (changed && program.Id > 0)
         {
             program.UpdatedTime = DateTime.Now;
             _dbContext.Db.Updateable(program).ExecuteCommand();
@@ -1582,7 +1648,7 @@ public class WeldTaskService : IWeldTaskService
         }
     }
 
-    private BizProgram UpsertProgram(ProgramDataRes detail, string deviceId)
+    protected virtual BizProgram UpsertProgram(ProgramDataRes detail, string deviceId, BizProgram resolvedRecipes)
     {
         var entity = _dbContext.Db.Queryable<BizProgram>().First(it => it.ProgramId == detail.Id && it.DeviceId == deviceId);
 
@@ -1595,7 +1661,8 @@ public class WeldTaskService : IWeldTaskService
                 ProductNum = detail.ProductNum,
                 DeviceId = deviceId,
                 ProgramType = detail.ProgramType,
-                RecipeCode = NormalizeText(detail.RecipeCode),
+                RecipeCode = FirstNonEmpty(resolvedRecipes.RecipeCode, detail.RecipeCode),
+                Station2RecipeCode = resolvedRecipes.Station2RecipeCode,
                 ProgramContent = detail.ProgramContent,
                 ProgramFile = detail.ProgramFile,
                 UpdatedTime = DateTime.Now
@@ -1607,7 +1674,8 @@ public class WeldTaskService : IWeldTaskService
         entity.ProgramName = detail.ProgramName;
         entity.ProductNum = detail.ProductNum;
         entity.ProgramType = detail.ProgramType;
-        entity.RecipeCode = FirstNonEmpty(detail.RecipeCode, entity.RecipeCode);
+        entity.RecipeCode = FirstNonEmpty(resolvedRecipes.RecipeCode, detail.RecipeCode, entity.RecipeCode);
+        entity.Station2RecipeCode = FirstNonEmpty(resolvedRecipes.Station2RecipeCode, entity.Station2RecipeCode);
         entity.ProgramContent = detail.ProgramContent;
         entity.ProgramFile = detail.ProgramFile;
         entity.UpdatedTime = DateTime.Now;
