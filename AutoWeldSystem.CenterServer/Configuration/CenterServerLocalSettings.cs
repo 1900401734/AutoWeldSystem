@@ -11,6 +11,9 @@ public sealed class CenterServerLocalSettings
     /// </summary>
     public bool EnableAutoStart { get; set; } = true;
 
+    /// <summary>服务启动后打开非独占的看板窗口，关闭窗口不停止接收服务。</summary>
+    public bool OpenDashboardOnStart { get; set; } = true;
+
     /// <summary>
     /// 设备推送 JSONL 日志根目录。
     /// </summary>

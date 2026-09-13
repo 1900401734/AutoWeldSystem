@@ -51,8 +51,12 @@ public sealed class CenterDeviceStationRuntimeSnapshot
     /// <summary>
     /// Alarm message resolved by the equipment client.
     /// </summary>
-    [SugarColumn(Length = 500)]
+    [SugarColumn(ColumnDataType = "text")]
     public string AlarmMessage { get; set; } = string.Empty;
+
+    /// <summary>独立保存有效报警及完整原因；可空追加列兼容旧库，不改变原始 PLC 报警字段。</summary>
+    [SugarColumn(IsNullable = true, ColumnDataType = "text")]
+    public string? EffectiveAlarmJson { get; set; }
 
     /// <summary>
     /// Current work order of this station.
@@ -81,6 +85,23 @@ public sealed class CenterDeviceStationRuntimeSnapshot
     /// </summary>
     [SugarColumn(ColumnDescription = "工单数量")]
     public int WorkOrderQuantity { get; set; }
+
+    [SugarColumn(IsNullable = true)]
+    public DateTime? ProductionDate { get; set; }
+    [SugarColumn(IsNullable = true, Length = 100)]
+    public string? TaskKey { get; set; }
+    [SugarColumn(IsNullable = true, Length = 100)]
+    public string? ProgramName { get; set; }
+    [SugarColumn(IsNullable = true, Length = 50)]
+    public string? StationName { get; set; }
+    [SugarColumn(IsNullable = true, Length = 20)]
+    public string? StatusSource { get; set; }
+    [SugarColumn(IsNullable = true)]
+    public int? TaskTotalCount { get; set; }
+    [SugarColumn(IsNullable = true)]
+    public int? TaskQualifiedCount { get; set; }
+    [SugarColumn(IsNullable = true)]
+    public int? TaskFailedCount { get; set; }
 
     public DateTime CollectedAt { get; set; } = DateTime.Now;
     public DateTime UpdatedAt { get; set; } = DateTime.Now;

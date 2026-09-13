@@ -21,12 +21,17 @@
 
             <div class="drawer-body">
                 <label class="switch-field">
-                    <span class="switch-label">开机自启</span>
+                    <span class="switch-label">Windows 登录后自启服务</span>
                     <span class="switch">
                         <input type="checkbox" @bind="_edit.EnableAutoStart" />
                         <span class="switch-track" aria-hidden="true"></span>
                     </span>
                 </label>
+                <label class="switch-field">
+                    <span class="switch-label">启动时打开看板窗口</span>
+                    <span class="switch"><input type="checkbox" @bind="_edit.OpenDashboardOnStart" /><span class="switch-track" aria-hidden="true"></span></span>
+                </label>
+                <p class="field-hint">下次启动生效。窗口可最小化，关闭窗口不会停止中心接收服务。</p>
                 <label>
                     <span>日志路径</span>
                     <input class="text-input" @bind="_edit.LogDirectory" />
@@ -82,8 +87,6 @@
 
     [Parameter]
     public EventCallback OnClose { get; set; }
-
-    protected override void OnInitialized() => LoadSettings();
 
     protected override void OnParametersSet()
     {

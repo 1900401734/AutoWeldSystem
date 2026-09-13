@@ -5,7 +5,13 @@ using AutoWeldSystem.Core.DTOs.CenterServer;
 using AutoWeldSystem.Data;
 using Serilog;
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    // 发布后由 Run 启动项拉起时工作目录可能是 System32。
+    ContentRootPath = AppContext.BaseDirectory
+});
+var dashboardDemo = builder.Configuration.GetValue<bool>("DashboardDemo");
 
 builder.Host.UseSerilog((context, configuration) =>
 {
@@ -34,6 +40,7 @@ builder.Services.AddSingleton(provider =>
 });
 builder.Services.AddSingleton<CenterServerSettingsService>();
 builder.Services.AddSingleton<CenterServerWindowsStartupService>();
+builder.Services.AddSingleton<CenterDashboardLaunchService>();
 builder.Services.AddSingleton<CenterDashboardChangeNotifier>();
 builder.Services.AddSingleton<CenterPushJsonlLogService>();
 builder.Services.AddSingleton<CenterTelemetryIngestService>();
@@ -44,13 +51,50 @@ builder.Services.AddSingleton<ICenterProductReportIngestSideEffects, CenterProdu
 builder.Services.AddSingleton<CenterProductReportIngestService>();
 
 var app = builder.Build();
-var settingsService = app.Services.GetRequiredService<CenterServerSettingsService>();
-var startupService = app.Services.GetRequiredService<CenterServerWindowsStartupService>();
-startupService.Apply(settingsService.Get().EnableAutoStart);
-settingsService.SettingsChanged += (_, settings) => startupService.Apply(settings.EnableAutoStart);
+if (!dashboardDemo)
+{
+    var settingsService = app.Services.GetRequiredService<CenterServerSettingsService>();
+    var startupService = app.Services.GetRequiredService<CenterServerWindowsStartupService>();
+    if (!app.Configuration.GetValue<bool>("DisableDesktopIntegration"))
+    {
+        startupService.Apply(settingsService.Get().EnableAutoStart);
+        settingsService.SettingsChanged += (_, settings) => startupService.Apply(settings.EnableAutoStart);
+        app.Lifetime.ApplicationStarted.Register(() =>
+        {
+            if (settingsService.Get().OpenDashboardOnStart)
+            {
+                app.Services.GetRequiredService<CenterDashboardLaunchService>().OpenOnce(app.Urls);
+            }
+        });
+    }
+}
 
 app.UseStaticFiles();
 app.UseRouting();
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path == "/api/center/telemetry" || context.Request.Path == "/api/center/heartbeat")
+    {
+        var limit = context.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+        if (limit is { IsReadOnly: false }) limit.MaxRequestBodySize = 256 * 1024;
+    }
+    await next();
+});
+app.MapGet("/healthz", () => Results.Ok(new { status = "ready" }));
+
+// 演示实例只供视觉验证，拒绝设备写入且不访问真实数据库。
+if (dashboardDemo)
+{
+    app.Use(async (context, next) =>
+    {
+        if (HttpMethods.IsPost(context.Request.Method) && context.Request.Path.StartsWithSegments("/api/center"))
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return;
+        }
+        await next();
+    });
+}
 
 app.MapPost("/api/center/telemetry", async (
     CenterTelemetrySnapshotRequest request,
