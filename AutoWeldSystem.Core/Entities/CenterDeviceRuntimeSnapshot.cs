@@ -37,6 +37,10 @@ public sealed class CenterDeviceRuntimeSnapshot
     /// </summary>
     public DateTime LastSeenAt { get; set; } = DateTime.Now;
 
+    /// <summary>最终报表同步摘要；旧设备缺少时为空，不能显示为全部已确认。</summary>
+    [SugarColumn(IsNullable = true, ColumnDataType = "text")]
+    public string? ReportSyncJson { get; set; }
+
     /// <summary>
     /// Last update time of this row.
     /// </summary>

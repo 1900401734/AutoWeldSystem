@@ -54,6 +54,17 @@ public sealed class CenterTelemetryIngestService
             };
         }
 
+        if (request.Stations.Any(station => station.EffectiveAlarm?.Message?.Length > CenterAlarmRules.MaxMessageLength
+                || station.AlarmMessage?.Length > CenterAlarmRules.MaxMessageLength))
+        {
+            return new CenterTelemetryAck
+            {
+                Success = false,
+                Message = $"报警文本不能超过 {CenterAlarmRules.MaxMessageLength} 字符。",
+                ServerTime = DateTime.Now
+            };
+        }
+
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -107,12 +118,16 @@ public sealed class CenterTelemetryIngestService
             SystemType = CenterTelemetryRules.NormalizeSystemType(request.SystemType),
             HeartbeatAt = request.HeartbeatAt == default ? DateTime.Now : request.HeartbeatAt,
             LastSeenAt = DateTime.Now,
+            ReportSyncJson = request.ReportSync is null ? null : System.Text.Json.JsonSerializer.Serialize(request.ReportSync),
             UpdatedAt = DateTime.Now
         };
 
         var exists = _dbContext.Db.Queryable<CenterDeviceRuntimeSnapshot>().Any(it => it.DeviceId == deviceId);
         if (exists)
         {
+            // 轻量心跳不携带报表摘要时保留上次遥测值。
+            if (!carriesStations && request.ReportSync is null)
+                snapshot.ReportSyncJson = _dbContext.Db.Queryable<CenterDeviceRuntimeSnapshot>().InSingle(deviceId)?.ReportSyncJson;
             _dbContext.Db.Updateable(snapshot).ExecuteCommand();
         }
         else
@@ -160,6 +175,7 @@ public sealed class CenterTelemetryIngestService
                 station.DeviceStatusCode,
                 station.DeviceStatusName);
             snapshot.AlarmMessage = station.AlarmMessage.Trim();
+            snapshot.EffectiveAlarmJson = CenterAlarmRules.Serialize(station.EffectiveAlarm);
             snapshot.CurrentWorkOrder = station.CurrentWorkOrder.Trim();
             snapshot.ProductJobNo = station.ProductJobNo.Trim();
             snapshot.ProductModel = station.ProductModel.Trim();
@@ -167,6 +183,14 @@ public sealed class CenterTelemetryIngestService
             snapshot.TodayQualifiedCount = Math.Max(0, station.TodayQualifiedCount);
             snapshot.TodayFailedCount = Math.Max(0, station.TodayFailedCount);
             snapshot.WorkOrderQuantity = Math.Max(0, station.WorkOrderQuantity);
+            snapshot.ProductionDate = station.ProductionDate?.Date;
+            snapshot.TaskKey = station.TaskKey;
+            snapshot.ProgramName = station.ProgramName;
+            snapshot.StationName = station.StationName;
+            snapshot.StatusSource = station.StatusSource;
+            snapshot.TaskTotalCount = station.TaskTotalCount;
+            snapshot.TaskQualifiedCount = station.TaskQualifiedCount;
+            snapshot.TaskFailedCount = station.TaskFailedCount;
             snapshot.CollectedAt = station.CollectedAt == default ? DateTime.Now : station.CollectedAt;
             snapshot.UpdatedAt = DateTime.Now;
 

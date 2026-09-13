@@ -14,11 +14,16 @@ public sealed class CenterDashboardQueryService
     private readonly SqlSugarDbContext _dbContext;
     private readonly CenterServerSettingsService _settingsService;
     private readonly object _dbLock = new();
+    private readonly bool _demo;
+    private readonly ILogger<CenterDashboardQueryService>? _logger;
 
-    public CenterDashboardQueryService(SqlSugarDbContext dbContext, CenterServerSettingsService settingsService)
+    public CenterDashboardQueryService(SqlSugarDbContext dbContext, CenterServerSettingsService settingsService,
+        IConfiguration? configuration = null, ILogger<CenterDashboardQueryService>? logger = null)
     {
         _dbContext = dbContext;
         _settingsService = settingsService;
+        _demo = configuration?.GetValue<bool>("DashboardDemo") == true;
+        _logger = logger;
     }
 
     /// <summary>
@@ -27,6 +32,10 @@ public sealed class CenterDashboardQueryService
     public CenterDashboardSnapshotDto GetSnapshot(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (_demo)
+        {
+            return CenterDashboardDemoData.Create();
+        }
 
         lock (_dbLock)
         {
@@ -55,7 +64,7 @@ public sealed class CenterDashboardQueryService
     /// <summary>
     /// Builds one device card DTO. Station status is kept separate from client online state.
     /// </summary>
-    private static CenterDashboardDeviceDto BuildDevice(
+    private CenterDashboardDeviceDto BuildDevice(
         CenterDeviceNode node,
         IReadOnlyDictionary<string, CenterDeviceRuntimeSnapshot> runtimes,
         IReadOnlyDictionary<string, List<CenterDeviceStationRuntimeSnapshot>> stationGroups,
@@ -77,8 +86,10 @@ public sealed class CenterDashboardQueryService
             DeviceName = FirstNonEmpty(runtime?.DeviceName, node.DeviceName),
             SystemType = FirstNonEmpty(runtime?.SystemType, node.SystemType),
             State = deviceState,
+            ReportSync = ReadReportSync(runtime?.ReportSyncJson),
             Stations = (stations ?? new List<CenterDeviceStationRuntimeSnapshot>())
-                .Select(station => BuildStation(station, deviceState, timeoutSeconds))
+                .Select(station => BuildStation(station, deviceState, timeoutSeconds,
+                    ex => _logger?.LogWarning(ex, "有效报警数据损坏，回退旧版状态。DeviceId={DeviceId}, Station={StationNo}", node.DeviceId, station.StationNo)))
                 .ToList()
         };
     }
@@ -86,10 +97,11 @@ public sealed class CenterDashboardQueryService
     /// <summary>
     /// Projects a stored station snapshot into the dashboard station DTO.
     /// </summary>
-    private static CenterDashboardStationDto BuildStation(
+    internal static CenterDashboardStationDto BuildStation(
         CenterDeviceStationRuntimeSnapshot station,
         CenterDashboardDeviceStateDto deviceState,
-        int timeoutSeconds)
+        int timeoutSeconds,
+        Action<Exception>? onAlarmError = null)
     {
         var runtime = new CenterDeviceRuntimeDto
         {
@@ -112,8 +124,24 @@ public sealed class CenterDashboardQueryService
             TodayTotalCount = station.TodayTotalCount,
             TodayQualifiedCount = station.TodayQualifiedCount,
             TodayFailedCount = station.TodayFailedCount,
-            WorkOrderQuantity = station.WorkOrderQuantity
+            WorkOrderQuantity = station.WorkOrderQuantity,
+            ProductionDate = station.ProductionDate,
+            TaskKey = station.TaskKey,
+            ProgramName = station.ProgramName,
+            StationName = station.StationName,
+            StatusSource = station.StatusSource,
+            EffectiveAlarm = CenterAlarmRules.Deserialize(station.EffectiveAlarmJson, onAlarmError),
+            TaskTotalCount = station.TaskTotalCount,
+            TaskQualifiedCount = station.TaskQualifiedCount,
+            TaskFailedCount = station.TaskFailedCount
         };
+    }
+
+    private static CenterReportSyncSummaryDto? ReadReportSync(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try { return System.Text.Json.JsonSerializer.Deserialize<CenterReportSyncSummaryDto>(json); }
+        catch (System.Text.Json.JsonException) { return null; }
     }
 
     private static string FirstNonEmpty(string? preferred, string? fallback)

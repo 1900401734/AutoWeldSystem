@@ -210,7 +210,10 @@ var tests = new (string Name, Action Run)[]
     ("PLC alarm cycle tracks per-address recovery", PlcAlarmCycleTracksPerAddressRecovery),
     ("PLC device alarm cycle restores from jsonl", PlcDeviceAlarmCycleRestoresFromJsonl),
     ("PLC production monitor reads bool alarms independently", PlcProductionMonitorReadsBoolAlarmsIndependently),
-    ("PLC software alarms stay local to monitor view", PlcSoftwareAlarmsStayLocalToMonitorView),
+    ("PLC software alarms feed center telemetry without changing raw status", PlcSoftwareAlarmsFeedCenterTelemetry),
+    ("Center effective alarms preserve compatibility and deduplicate shared reasons", CenterEffectiveAlarmsPreserveCompatibility),
+    ("Center effective alarm changes and recovery send telemetry", CenterEffectiveAlarmChangesSendTelemetry),
+    ("Center effective alarms roundtrip through stored snapshots", CenterEffectiveAlarmsRoundtrip),
     ("Pre-weld NG is treated as failed product result", PreWeldNgIsTreatedAsFailedProductResult),
     ("Center device key uses DeviceId only", CenterDeviceKeyUsesDeviceIdOnly),
     ("Center client online uses heartbeat freshness", CenterClientOnlineUsesHeartbeatFreshness),
@@ -230,7 +233,13 @@ var tests = new (string Name, Action Run)[]
     ("Center telemetry snapshot carries station runtime data", CenterTelemetrySnapshotCarriesStationRuntimeData),
     ("Center dashboard device totals are calculated from station data", CenterDashboardDeviceTotalsAreCalculatedFromStationData),
     ("Center dashboard work order quantity deduplicates shared work order", CenterDashboardWorkOrderQuantityDeduplicatesSharedWorkOrder),
+    ("Center overview status colors respect PLC and lifecycle sources", CenterOverviewStatusColorsRespectSources),
+    ("Center overview status priority keeps labels and running count consistent", CenterOverviewStatusPriorityKeepsLabelsConsistent),
     ("Center dashboard achievement rate uses qualified over work order quantity", CenterDashboardAchievementRateUsesQualifiedOverWorkOrderQuantity),
+    ("Center daily counts use completed product identity and date", CenterDailyCountsUseCompletedProductDate),
+    ("Center active tasks span midnight and preserve distinct identities", CenterActiveTasksKeepIdentityAcrossDays),
+    ("Center missing report sync stays unknown", CenterMissingReportSyncStaysUnknown),
+    ("Center launch resolves wildcard listening addresses", CenterLaunchResolvesWildcardAddresses),
     ("Center product report request carries one completed product", CenterProductReportRequestCarriesOneCompletedProduct),
     ("Center forwarding business ids hash the full identity", CenterForwardingBusinessIdsHashFullIdentity),
     ("Center product report columns follow production Excel format", CenterProductReportColumnsFollowProductionExcelFormat),
@@ -2479,59 +2488,153 @@ static void ProgramExceptionHistoryUsesBoundedTailReads()
     }
 }
 
-static void PlcSoftwareAlarmsStayLocalToMonitorView()
+static void PlcSoftwareAlarmsFeedCenterTelemetry()
 {
-    var monitorCode = File.ReadAllText(
-        GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"),
-        Encoding.UTF8);
-    var applyDeviceStatus = ExtractMethodText(
-        monitorCode,
-        "private void ApplyDeviceStatus",
-        "private void ClearDeviceAlarmRuntimeErrorIfCurrent");
-    AssertTrue(
-        applyDeviceStatus.Contains("snapshot.IsSoftwareAlarmActive", StringComparison.Ordinal)
-        && applyDeviceStatus.Contains("snapshot.SoftwareAlarmMessage", StringComparison.Ordinal),
-        "MonitorView 应直接使用快照中的软件报警状态和内容。");
-    AssertFalse(
-        applyDeviceStatus.Contains("EnablePlcAlarmReading", StringComparison.Ordinal),
-        "MonitorView 不应再用设置开关屏蔽原始状态 4 触发的软件报警。");
-    AssertTrue(
-        applyDeviceStatus.Contains("snapshot.IsAlarmPendingConfirmation", StringComparison.Ordinal)
-        && applyDeviceStatus.Contains("snapshot.IsRawAlarmUnconfirmed", StringComparison.Ordinal),
-        "MonitorView 必须区分双条件模式黄色待确认与仅地址模式灰色未知。");
-    AssertTrue(
-        applyDeviceStatus.Contains("PlcAlarmNotificationRules.SplitMessages(snapshot.SoftwareAlarmMessage)", StringComparison.Ordinal)
-            && applyDeviceStatus.Contains("_deviceAlarmRuntimeErrorText = string.Join(\"；\", alarmMessages);", StringComparison.Ordinal),
-        "异常详情必须保留完整的当前有效报警集合，右侧摘要不得替代原始报警内容。");
-    AssertTrue(
-        applyDeviceStatus.Contains("PlcAlarmNotificationRules.IsActive(", StringComparison.Ordinal)
-        && applyDeviceStatus.Contains("PlcSoftwareAlarmRules.GenericAlarmMessage", StringComparison.Ordinal),
-        "双条件模式状态 4 未匹配报警地址时，异常详情必须展示待确认原因。");
+    var production = new PlcProductionSnapshot(true, 1, 10, null, 10, 0, DateTime.Now, string.Empty)
+    {
+        IsSoftwareAlarmActive = true,
+        SoftwareAlarmMessage = "安全门未关闭；气压不足；安全门未关闭"
+    };
+    var wire = new CenterTelemetryStationSnapshot();
+    CenterTelemetrySyncService.ApplyStatusSnapshot(wire, production, null, null);
+    AssertEqual("1", wire.DeviceStatusCode, "仅地址报警不能伪写原始 PLC 状态为 4。");
+    AssertEqual("运行", wire.DeviceStatusName, "原始状态保留 PLC 本身的含义。");
+    AssertEqual("PLC", wire.StatusSource, "报警不能篡改状态来源。");
+    AssertEqual(string.Empty, wire.AlarmMessage, "原始 PLC 报警字段不混入本机有效报警。");
+    AssertTrue(wire.EffectiveAlarm?.IsActive == true, "PLC 仍为运行时也必须同步有效地址报警。");
+    AssertEqual(2, PlcAlarmNotificationRules.SplitMessages(wire.EffectiveAlarm!.Message).Count, "有效报警原因需完整保留并去重。");
 
-    var centerCode = File.ReadAllText(
-        GetRepoFilePath("AutoWeldSystem.Services", "Center", "CenterTelemetrySyncService.cs"),
-        Encoding.UTF8);
-    var buildStationSnapshot = ExtractMethodText(
-        centerCode,
-        "private CenterTelemetryStationSnapshot BuildStationSnapshot",
-        "private TodayProductionSummary GetTodayProductionSummary");
-    AssertTrue(
-        buildStationSnapshot.Contains("CenterTelemetryRules.ResolveAlarmMessage(production.AlarmMessage, stationStatus)", StringComparison.Ordinal),
-        "中心遥测应继续以原始 PLC 报警内容为准，并经报警规则过滤非报警备注。");
-    AssertFalse(
-        buildStationSnapshot.Contains("SoftwareAlarmMessage", StringComparison.Ordinal),
-        "Bool-only 软件报警内容不得发送到中心服务器。");
-    AssertTrue(
-        buildStationSnapshot.Contains("_deviceStatusService.GetLatestStatus(stationNo)", StringComparison.Ordinal),
-        "PLC 无有效值时中心遥测必须从设备状态 JSONL 获取回退状态。");
+    foreach (var (pending, rawUnconfirmed) in new[] { (true, false), (false, true) })
+    {
+        CenterTelemetrySyncService.ApplyStatusSnapshot(wire, production with
+        {
+            DeviceStatusCode = 4,
+            IsSoftwareAlarmActive = false,
+            IsAlarmPendingConfirmation = pending,
+            IsRawAlarmUnconfirmed = rawUnconfirmed,
+            SoftwareAlarmMessage = string.Empty
+        }, null, null);
+        AssertFalse(wire.EffectiveAlarm!.IsActive, "无有效报警地址时不能把原始码 4 当成确认报警。");
+        AssertEqual(pending, wire.EffectiveAlarm.IsPendingConfirmation, "双条件待确认标记应原样投影。");
+        AssertEqual(rawUnconfirmed, wire.EffectiveAlarm.IsRawAlarmUnconfirmed, "仅地址模式的未确认标记应原样投影。");
+    }
 
-    var lifecycleCode = File.ReadAllText(
-        GetRepoFilePath("AutoWeldSystem.Services", "Log", "DeviceLifecycleLogCoordinator.cs"),
-        Encoding.UTF8);
-    AssertFalse(
-        lifecycleCode.Contains("RecordAlarmChange", StringComparison.Ordinal)
-        || lifecycleCode.Contains("_plcProductionMonitorService.StatusChanged", StringComparison.Ordinal),
-        "设备日志不得再接收原始状态或 Bool 报警，报警只写入设备状态日志。");
+    CenterTelemetrySyncService.ApplyStatusSnapshot(wire, production with { IsSoftwareAlarmActive = false }, null, null);
+    AssertFalse(wire.EffectiveAlarm!.IsActive, "恢复必须发送明确无报警，而非 null。");
+    AssertEqual(string.Empty, wire.EffectiveAlarm.Message, "恢复时即使快照残留文本，也不得发送陈旧原因。");
+    AssertTrue(production.IsSoftwareAlarmActive, "投影不得改写采集服务持有的快照。");
+}
+
+static CenterDashboardStationDto ProjectCenterAlarmStation(CenterTelemetryStationSnapshot wire)
+{
+    var stored = new CenterDeviceStationRuntimeSnapshot
+    {
+        StationNo = wire.StationNo,
+        PlcConnected = wire.PlcConnected,
+        DeviceStatusCode = wire.DeviceStatusCode,
+        DeviceStatusName = wire.DeviceStatusName,
+        AlarmMessage = wire.AlarmMessage,
+        StatusSource = wire.StatusSource,
+        EffectiveAlarmJson = CenterAlarmRules.Serialize(wire.EffectiveAlarm)
+    };
+    var build = typeof(CenterDashboardQueryService).GetMethod("BuildStation", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+    return (CenterDashboardStationDto)build.Invoke(null, [stored, new CenterDashboardDeviceStateDto { LastSeenAt = DateTime.Now }, 15, null])!;
+}
+
+static IReadOnlyList<string> ReadCenterAlarmMessages(CenterDashboardDeviceDto device)
+{
+    var presenter = typeof(CenterDashboardQueryService).Assembly.GetType("AutoWeldSystem.CenterServer.Services.CenterDashboardStatusPresenter")!;
+    return (IReadOnlyList<string>)presenter.GetMethod("AlarmMessages")!.Invoke(null, [device])!;
+}
+
+static void CenterEffectiveAlarmsPreserveCompatibility()
+{
+    var station = CreateCenterStatusStation("PLC", "1", "运行");
+    station.EffectiveAlarm = new CenterEffectiveAlarmDto { IsActive = true, Message = "安全门未关闭；气压不足" };
+    var device = new CenterDashboardDeviceDto { State = new CenterDashboardDeviceStateDto { ClientOnline = true }, Stations = [station] };
+    AssertEqual(("alarm", "报警", false), ReadCenterOverviewStatus(device), "有效地址报警应优先于原始运行状态。");
+    AssertEqual(2, ReadCenterAlarmMessages(device).Count, "看板必须显示所有当前报警原因。");
+    var other = CreateCenterStatusStation("PLC", "2", "暂停/空闲");
+    other.StationNo = 2;
+    other.EffectiveAlarm = new CenterEffectiveAlarmDto { IsActive = true, Message = "气压不足；安全门未关闭" };
+    device.Stations.Add(other);
+    AssertEqual(2, ReadCenterAlarmMessages(device).Count, "双工位的相同设备报警不能重复显示。");
+    AssertFalse(ReadCenterAlarmMessages(device).Any(message => message.Contains("工位")), "共享设备报警不应凭空加左右前缀。");
+    other.EffectiveAlarm.Message += "；右侧夹具未到位";
+    AssertTrue(ReadCenterAlarmMessages(device).Contains("右工位：右侧夹具未到位"), "仅属于一个工位的原因应保留工位标签。");
+
+    device.Stations = [station];
+    station.State.PlcDeviceStatusCode = "4";
+    station.EffectiveAlarm = new CenterEffectiveAlarmDto { Message = "陈旧原因" };
+    AssertEqual(("unknown", "无有效报警", false), ReadCenterOverviewStatus(device), "显式解除应压过未复位的原始码 4。");
+    AssertEqual(0, ReadCenterAlarmMessages(device).Count, "明确无报警时不展示残留原因。");
+    station.EffectiveAlarm.IsPendingConfirmation = true;
+    AssertEqual(("alarm-pending", "报警待确认", false), ReadCenterOverviewStatus(device), "待确认不能计入确认报警。");
+    station.EffectiveAlarm = new CenterEffectiveAlarmDto { IsRawAlarmUnconfirmed = true };
+    AssertEqual(("unknown", "报警未确认", false), ReadCenterOverviewStatus(device), "仅地址未确认状态使用未知灯。");
+    station.EffectiveAlarm = null;
+    AssertEqual(("alarm", "报警", false), ReadCenterOverviewStatus(device), "旧设备无新字段时保留原始码 4 的兼容显示。");
+    AssertEqual(CenterTelemetryRules.UnknownAlarmText, ReadCenterAlarmMessages(device).Single(), "报警缺少原因也应显示提示。");
+    device.State.ClientOnline = false;
+    AssertEqual(("offline", "离线", false), ReadCenterOverviewStatus(device), "离线不伪装报警恢复或在线报警。");
+    AssertEqual(0, ReadCenterAlarmMessages(device).Count, "离线后不把历史原因当实时报警。");
+}
+
+static void CenterEffectiveAlarmChangesSendTelemetry()
+{
+    var settings = new AppSettings { EnableCenterServerSync = true, CenterServerBaseUrl = "http://127.0.0.1:7099/", DeviceId = "D-001" };
+    var handler = new CenterTelemetryHttpMessageHandler();
+    using var httpClient = new HttpClient(handler);
+    using var dbContext = new AutoWeldSystem.Data.SqlSugarDbContext("server=127.0.0.1;database=unused;uid=unused;pwd=unused;");
+    var service = new CenterTelemetrySyncService(dbContext, new FakeAppSettingsService { Current = settings },
+        new FakeDeviceStatusService(), new FakePlcCommunicationService(), new FakePlcProductionMonitorService(),
+        new FakeProgramExceptionLogService(), new CenterTelemetryClient(httpClient, new FakeCenterInteractionLogService(), new CenterServerAvailabilityLogGate()));
+    var request = CreateCenterTelemetryTestRequest();
+    request.Stations[0].EffectiveAlarm = new CenterEffectiveAlarmDto();
+    service.PushRequestAsync(settings, request).GetAwaiter().GetResult();
+    request.Stations[0].EffectiveAlarm = new CenterEffectiveAlarmDto { IsActive = true, Message = "气压不足；安全门未关闭" };
+    service.PushRequestAsync(settings, request).GetAwaiter().GetResult();
+    AssertEqual(2, handler.RequestPaths.Count(path => path.EndsWith("/telemetry")), "仅有效报警变化也必须发送遥测。");
+    request.Stations[0].EffectiveAlarm!.Message = "安全门未关闭；气压不足；安全门未关闭";
+    service.PushRequestAsync(settings, request).GetAwaiter().GetResult();
+    AssertEqual(2, handler.RequestPaths.Count(path => path.EndsWith("/telemetry")), "相同集合的重排、重复原因不应造成重复推送。");
+    request.Stations[0].EffectiveAlarm!.Message = "安全门未关闭";
+    service.PushRequestAsync(settings, request).GetAwaiter().GetResult();
+    AssertEqual(3, handler.RequestPaths.Count(path => path.EndsWith("/telemetry")), "部分原因解除也要推送剩余原因。");
+    handler.IsAvailable = false;
+    request.Stations[0].EffectiveAlarm = new CenterEffectiveAlarmDto();
+    AssertThrows<HttpRequestException>(() => service.PushRequestAsync(settings, request).GetAwaiter().GetResult(), "断网时恢复快照留待重试。");
+    handler.IsAvailable = true;
+    handler.TelemetryAccepted = false;
+    service.PushRequestAsync(settings, request).GetAwaiter().GetResult();
+    handler.TelemetryAccepted = true;
+    service.PushRequestAsync(settings, request).GetAwaiter().GetResult();
+    AssertEqual(5, handler.RequestPaths.Count(path => path.EndsWith("/telemetry")), "恢复请求拒绝后必须在下次周期重发。");
+    var restored = handler.TelemetryRequests.Last().Stations[0];
+    AssertTrue(restored.EffectiveAlarm is { IsActive: false, Message: "" }, "真正发送的 JSON 必须携带明确恢复状态。");
+    AssertEqual("1", restored.DeviceStatusCode, "报警全程不得改写原始 PLC 状态。");
+}
+
+static void CenterEffectiveAlarmsRoundtrip()
+{
+    var wire = new CenterTelemetryStationSnapshot
+    {
+        PlcConnected = true, DeviceStatusCode = "1", DeviceStatusName = "运行", StatusSource = "PLC",
+        EffectiveAlarm = new CenterEffectiveAlarmDto { IsActive = true, Message = new string('报', 600) + "；气压不足" }
+    };
+    var json = JsonSerializer.Serialize(wire, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+    var received = JsonSerializer.Deserialize<CenterTelemetryStationSnapshot>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+    var projected = ProjectCenterAlarmStation(received);
+    AssertTrue(projected.EffectiveAlarm?.IsActive == true, "有效报警必须穿过传输和持久快照投影。");
+    AssertEqual(CenterAlarmRules.Normalize(wire.EffectiveAlarm!).Message, projected.EffectiveAlarm!.Message, "大于旧500字符列的原因不得截断。");
+    AssertEqual("1", projected.State.PlcDeviceStatusCode, "查询显示时也不能改写原始状态。");
+    AssertTrue(CenterAlarmRules.Deserialize(null) is null, "旧设备/旧行应保留 null 区别于无报警。");
+    AssertFalse(CenterAlarmRules.Deserialize("{}")!.IsActive, "明确空对象表示无报警。");
+    var errors = 0;
+    AssertTrue(CenterAlarmRules.Deserialize("bad json", _ => errors++) is null, "坏 JSON 应回退兼容状态。");
+    AssertEqual(1, errors, "坏 JSON 必须交给日志回调而非静默吞掉。");
+    var excessive = new CenterEffectiveAlarmDto { IsActive = true, Message = new string('报', CenterAlarmRules.MaxMessageLength + 1) };
+    AssertTrue(CenterAlarmRules.Deserialize(JsonSerializer.Serialize(excessive, new JsonSerializerOptions(JsonSerializerDefaults.Web)), _ => errors++) is null, "超限存储值应拒绝。");
 }
 
 /// <summary>
@@ -5893,23 +5996,173 @@ static void CenterDashboardWorkOrderQuantityDeduplicatesSharedWorkOrder()
     AssertEqual(100, idle.WorkOrderQuantity, "Stations without a work order must not inflate the denominator.");
 }
 
+static (string ClassName, string Label, bool Running) ReadCenterOverviewStatus(CenterDashboardDeviceDto device)
+{
+    var presenter = typeof(CenterDashboardQueryService).Assembly
+        .GetType("AutoWeldSystem.CenterServer.Services.CenterDashboardStatusPresenter", throwOnError: true)!;
+    var state = ((string ClassName, string Label))presenter.GetMethod("OverviewState")!.Invoke(null, [device])!;
+    var running = (bool)presenter.GetMethod("IsRunningDevice")!.Invoke(null, [device])!;
+    return (state.ClassName, state.Label, running);
+}
+
+static CenterDashboardStationDto CreateCenterStatusStation(string? source, string code, string name, bool connected = true)
+    => new()
+    {
+        StatusSource = source,
+        State = new CenterDashboardDeviceStateDto
+        {
+            PlcConnected = connected,
+            PlcDeviceStatusCode = code,
+            PlcDeviceStatusName = name
+        }
+    };
+
+static void CenterOverviewStatusColorsRespectSources()
+{
+    var cases = new (string? Source, string Code, string Name, string ClassName, string Label, bool Running)[]
+    {
+        ("PLC", "1", "运行", "running", "运行", true),
+        ("Lifecycle", "1", "开机", "powered-on", "开机", false),
+        (" lifecycle ", "1", "开机", "powered-on", "开机", false),
+        ("PLC", "2", "暂停/空闲", "paused", "暂停/空闲", false),
+        ("PLC", "3", "停止", "stopped", "停止", false),
+        ("PLC", "4", "报警", "alarm", "报警", false),
+        ("Lifecycle", "0", "停机", "stopped", "停机", false),
+        ("Lifecycle", "4", "异常", "alarm", "报警", false),
+        ("Lifecycle", "5", "异常恢复", "recovered", "异常恢复", false),
+        ("Lifecycle", "6", "程序执行开始", "program-started", "程序执行开始", false),
+        ("Lifecycle", "7", "程序执行结束", "program-ended", "程序执行结束", false),
+        (null, "1", "开机", "powered-on", "开机", false),
+        (null, "1", "运行", "running", "运行", true),
+        (null, "0", "停机", "stopped", "停机", false),
+        ("PLC", "0", "未知", "unknown", "未知", false),
+        ("PLC", "99", "", "unknown", "待更新", false)
+    };
+    foreach (var item in cases)
+    {
+        var device = new CenterDashboardDeviceDto
+        {
+            State = new CenterDashboardDeviceStateDto { ClientOnline = true },
+            Stations = [CreateCenterStatusStation(item.Source, item.Code, item.Name)]
+        };
+        AssertEqual((item.ClassName, item.Label, item.Running), ReadCenterOverviewStatus(device),
+            $"来源 {item.Source ?? "旧版"}、状态 {item.Code} 的标签与统计必须保持各自含义。");
+    }
+}
+
+static void CenterOverviewStatusPriorityKeepsLabelsConsistent()
+{
+    var device = new CenterDashboardDeviceDto
+    {
+        State = new CenterDashboardDeviceStateDto { ClientOnline = true },
+        Stations =
+        [
+            CreateCenterStatusStation("Lifecycle", "1", "开机"),
+            CreateCenterStatusStation("PLC", "2", "暂停/空闲")
+        ]
+    };
+    AssertEqual(("paused", "暂停/空闲", false), ReadCenterOverviewStatus(device), "双工位标签与颜色应来自优先级最高的同一状态。");
+    device.Stations.Reverse();
+    AssertEqual(("paused", "暂停/空闲", false), ReadCenterOverviewStatus(device), "改变工位顺序不应改变状态。");
+    device.Stations.Add(CreateCenterStatusStation("PLC", "1", "运行"));
+    AssertEqual(("running", "运行", true), ReadCenterOverviewStatus(device), "PLC 运行优先于开机和暂停。");
+    device.Stations.Add(CreateCenterStatusStation("PLC", "4", "报警"));
+    AssertEqual(("alarm", "报警", false), ReadCenterOverviewStatus(device), "报警优先，保持既有运行台数排除报警的约定。");
+    device.State.ClientOnline = false;
+    AssertEqual(("offline", "离线", false), ReadCenterOverviewStatus(device), "设备离线后不得继续显示历史运行或报警色。");
+    device.State.ClientOnline = true;
+    device.Stations = [CreateCenterStatusStation("PLC", "1", "运行", connected: false)];
+    AssertEqual(("unknown", "PLC未连接", false), ReadCenterOverviewStatus(device), "PLC 断开后旧运行状态不应显示成绿色运行。");
+    device.Stations = [CreateCenterStatusStation("Lifecycle", "1", "开机", connected: false)];
+    AssertEqual(("powered-on", "开机", false), ReadCenterOverviewStatus(device), "软件开机状态与 PLC 连接独立。");
+    device.Stations.Clear();
+    AssertEqual(("unknown", "待更新", false), ReadCenterOverviewStatus(device), "无工位数据应使用未知标签而非开机或运行色。");
+}
+
 static void CenterDashboardAchievementRateUsesQualifiedOverWorkOrderQuantity()
 {
-    // CenterDashboardStatusPresenter 是 CenterServer 内部类型，测试项目不可见，
-    // 此处复算同一公式守住口径：分子为合格数，不含不良品，与设备端 MonitorView 一致。
-    static decimal? Rate(int workOrderQuantity, int qualifiedCount)
-        => workOrderQuantity <= 0 ? null : (decimal)qualifiedCount * 100m / workOrderQuantity;
+    var presenter = typeof(CenterDashboardQueryService).Assembly
+        .GetType("AutoWeldSystem.CenterServer.Services.CenterDashboardStatusPresenter", throwOnError: true)!;
+    var method = presenter.GetMethod("TaskAchievementRate")!;
+    decimal? Rate(CenterDashboardStationDto station) => (decimal?)method.Invoke(null, [station]);
+    var station = new CenterDashboardStationDto
+    {
+        CurrentWorkOrder = "WO-current", WorkOrderQuantity = 100,
+        TodayQualifiedCount = 110, TaskQualifiedCount = 10
+    };
+    AssertEqual<decimal?>(10m, Rate(station), "详情和总览都应用当前任务10件，而不是全天110件。");
+    station.TaskQualifiedCount = 120;
+    AssertEqual<decimal?>(120m, Rate(station), "超产达成率保留真实值。");
+    station.TaskQualifiedCount = null;
+    AssertEqual<decimal?>(null, Rate(station), "旧设备未提供任务数量时不能回退到日累计。");
+    station.TaskQualifiedCount = 10;
+    station.WorkOrderQuantity = 0;
+    AssertEqual<decimal?>(null, Rate(station), "无计划量显示未知。");
+    station.WorkOrderQuantity = 100;
+    station.CurrentWorkOrder = string.Empty;
+    AssertEqual<decimal?>(null, Rate(station), "未开工不显示残留达成率。");
+}
 
-    AssertEqual(50m, Rate(100, 50), "Achievement rate must be qualified/quantity.");
-    AssertEqual(120m, Rate(100, 120), "Over-production must exceed 100 percent.");
-    AssertEqual(null, Rate(0, 50), "Zero quantity must yield null instead of dividing by zero.");
+static void CenterDailyCountsUseCompletedProductDate()
+{
+    var day = new DateTime(2026, 9, 13);
+    BizWeldPointRecord Row(int taskId, string productNo, DateTime time, string result = "OK", bool completed = true, bool deleted = false, int station = 1)
+        => new() { TaskId = taskId, ProductNo = productNo, StationNo = station, Ts = time,
+            ProductResult = result, ProductCompleted = completed, IsDeleted = deleted };
+    var records = new List<BizWeldPointRecord>
+    {
+        Row(1, "A", day.AddHours(1)),
+        Row(1, "A", day.AddHours(2), "NG", completed: false),
+        Row(1, "A", day.AddDays(1), completed: false),
+        Row(2, "A", day.AddHours(3), "NG"),
+        Row(2, "B", day.AddHours(4), "Unknown"),
+        Row(2, "OLD", day.AddDays(-1)),
+        Row(2, "DELETED", day.AddHours(5), deleted: true),
+        Row(2, "   ", day.AddHours(6)),
+        Row(2, "INCOMPLETE", day.AddHours(7), completed: false),
+        Row(2, "OTHER-STATION", day.AddHours(8), station: 2)
+    };
+    AssertEqual(new FinishQuantities(3, 1, 2), CenterProductionSummaryRules.ForDay(records, 1, day),
+        "只计完成记录，忽略空编号、已删除、未完成与别的工位；不同任务相同编号不合并。");
+    records[0].Ts = day.AddDays(1).AddMinutes(1);
+    AssertEqual(new FinishQuantities(2, 0, 2), CenterProductionSummaryRules.ForDay(records, 1, day), "跨日重测覆盖完成时间后归到新日。");
+    AssertEqual(new FinishQuantities(1, 1, 0), CenterProductionSummaryRules.ForDay(records, 1, day.AddDays(1)), "不完整焊点不能多计产品。");
+}
 
-    // 同一批产量下达成率必须低于按总数计算的旧口径，确认分子换成了合格数。
-    const int workOrderQuantity = 100;
-    const int total = 57;
-    const int qualified = 43;
-    AssertEqual(43m, Rate(workOrderQuantity, qualified), "Achievement rate must exclude failed pieces.");
-    AssertEqual(57m, Rate(workOrderQuantity, total), "Guard value proves the two definitions differ.");
+static void CenterActiveTasksKeepIdentityAcrossDays()
+{
+    var current = new BizWeldTask { Id = 1, StartTime = DateTime.Today.AddDays(-1), TaskStatus = "Running", LocalExpStartId = "task-1" };
+    var ended = new BizWeldTask { Id = 2, StartTime = DateTime.Today, EndTime = DateTime.Now, TaskStatus = "Completed" };
+    AssertEqual(current, CenterProductionSummaryRules.ActiveTask([ended, current]), "未结束任务不能因跨午夜消失。");
+    var first = new CenterDashboardStationDto { TaskKey = "task-1", CurrentWorkOrder = "WO-1", WorkOrderQuantity = 100 };
+    var second = new CenterDashboardStationDto { TaskKey = "task-2", CurrentWorkOrder = "WO-1", WorkOrderQuantity = 200 };
+    AssertEqual(300, CenterProductionSummaryRules.SumTaskTargets([first, second]), "同流转卡的独立任务不能合并计划量。");
+    second.TaskKey = first.TaskKey;
+    second.WorkOrderQuantity = first.WorkOrderQuantity;
+    AssertEqual(100, CenterProductionSummaryRules.SumTaskTargets([first, second]), "共享任务的计划量只计一次。");
+}
+
+static void CenterMissingReportSyncStaysUnknown()
+{
+    var presenter = typeof(CenterDashboardQueryService).Assembly
+        .GetType("AutoWeldSystem.CenterServer.Services.CenterDashboardStatusPresenter", throwOnError: true)!;
+    var method = presenter.GetMethod("ReportSyncCounts")!;
+    (int? Pending, int? Failed) Counts(params CenterDashboardDeviceDto[] devices)
+        => ((int? Pending, int? Failed))method.Invoke(null, [devices])!;
+    var known = new CenterDashboardDeviceDto { State = new CenterDashboardDeviceStateDto { ClientOnline = true }, ReportSync = new CenterReportSyncSummaryDto { PendingCount = 2, FailedCount = 1 } };
+    AssertEqual<(int?, int?)>((null, null), Counts(), "无设备不是零失败。");
+    AssertEqual<(int?, int?)>((null, null), Counts(known, new CenterDashboardDeviceDto()), "部分设备未上报不能显示不完整总数。");
+    AssertEqual<(int?, int?)>((2, 1), Counts(known), "只有全部已知时才汇总。");
+    known.State.ClientOnline = false;
+    AssertEqual<(int?, int?)>((null, null), Counts(known), "离线设备的历史摘要不能当作当前已同步。");
+}
+
+static void CenterLaunchResolvesWildcardAddresses()
+{
+    var type = typeof(CenterDashboardQueryService).Assembly.GetType("AutoWeldSystem.CenterServer.Services.CenterDashboardLaunchService", throwOnError: true)!;
+    var method = type.GetMethod("ResolveDashboardUrl", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+    foreach (var host in new[] { "0.0.0.0", "[::]", "*", "+" })
+        AssertEqual("http://localhost:7099/", (string)method.Invoke(null, [new[] { $"http://{host}:7099" }])!, "通配监听地址应转换为浏览器可打开的本机地址。");
 }
 
 static void CenterProductReportRequestCarriesOneCompletedProduct()
@@ -6485,14 +6738,6 @@ static CenterTelemetrySnapshotRequest CloneCenterTelemetryRequest(CenterTelemetr
 }
 static void CenterTelemetryJsonlFallbackPreservesMesStatusNames()
 {
-    var centerCode = File.ReadAllText(
-        GetRepoFilePath("AutoWeldSystem.Services", "Center", "CenterTelemetrySyncService.cs"),
-        Encoding.UTF8);
-    var buildStationSnapshot = ExtractMethodText(
-        centerCode,
-        "private CenterTelemetryStationSnapshot BuildStationSnapshot",
-        "private TodayProductionSummary GetTodayProductionSummary");
-
     AssertEqual(
         "运行",
         CenterTelemetryRules.ResolveReportedStatusName("1", null),
@@ -6568,16 +6813,20 @@ static void CenterTelemetryJsonlFallbackPreservesMesStatusNames()
         new DateTime(2026, 7, 22, 9, 0, 1),
         offlineTimeoutSeconds: 15);
     AssertEqual("开机", dashboard.PlcDeviceStatusName, "中心看板不能把设备端 JSONL 的开机名称重写为 PLC 运行。");
-    AssertTrue(
-        buildStationSnapshot.Contains("DeviceStatusReportRules.GetStatusName(statusCode)", StringComparison.Ordinal),
-        "JSONL 历史记录缺少 StatusName 时必须按 MES 状态码补名，不能回退为 PLC 同码名称。");
-    AssertTrue(
-        buildStationSnapshot.Contains("GetLatestStatus(ProductionConstants.Stations.SharedStationNo)", StringComparison.Ordinal)
-            && buildStationSnapshot.Contains("CenterTelemetryRules.ResolveLatestDeviceStatus", StringComparison.Ordinal),
-        "PLC 无有效值时工位遥测必须在工位与共享 JSONL 中选择最新状态。");
-    AssertTrue(
-        buildStationSnapshot.Contains("CenterTelemetryRules.ResolveAlarmMessage(production.AlarmMessage, stationStatus)", StringComparison.Ordinal),
-        "共享生命周期状态不能覆盖工位报警备注，报警内容必须取自工位自身状态。");
+    var wire = new CenterTelemetryStationSnapshot();
+    var noPlcStatus = new PlcProductionSnapshot(false, null, 0, null, 0, 0, DateTime.Now, string.Empty);
+    olderStationException.Remark = "异常：旧报警";
+    CenterTelemetrySyncService.ApplyStatusSnapshot(wire, noPlcStatus, olderStationException, sharedPoweredOn);
+    AssertEqual("开机", wire.DeviceStatusName, "JSONL 无名称时应按生命周期码补名，而不是变成 PLC 运行。");
+    AssertEqual("Lifecycle", wire.StatusSource, "回退的状态来源必须明确。");
+    AssertEqual(string.Empty, wire.AlarmMessage, "采用更新的共享开机状态时不能同时发送旧工位报警原因。");
+    var sharedException = new BizDeviceStatusLog
+    {
+        DeviceStatus = "4", Remark = "异常：共享气压不足", OccurredTime = sharedPoweredOn.OccurredTime.AddMinutes(2)
+    };
+    CenterTelemetrySyncService.ApplyStatusSnapshot(wire, noPlcStatus, newerStationRecovered, sharedException);
+    AssertEqual("4", wire.DeviceStatusCode, "更新的共享异常状态应被保留。");
+    AssertEqual("共享气压不足", wire.AlarmMessage, "共享异常的状态与原因必须来自同一条已选日志。");
 }
 
 static void CenterAlarmMessageClearsOnceTheExceptionRecovers()
@@ -19129,11 +19378,17 @@ sealed class CenterTelemetryHttpMessageHandler : HttpMessageHandler
     public bool MalformedResponse { get; set; }
 
     public List<string> RequestPaths { get; } = new();
+    public List<CenterTelemetrySnapshotRequest> TelemetryRequests { get; } = new();
 
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var path = request.RequestUri?.AbsolutePath.TrimStart('/') ?? string.Empty;
         RequestPaths.Add(path);
+        if (path == "api/center/telemetry" && request.Content is not null)
+        {
+            var body = await request.Content.ReadAsStringAsync(cancellationToken);
+            TelemetryRequests.Add(JsonSerializer.Deserialize<CenterTelemetrySnapshotRequest>(body, new JsonSerializerOptions(JsonSerializerDefaults.Web))!);
+        }
 
         if (!IsAvailable)
         {
@@ -19142,10 +19397,10 @@ sealed class CenterTelemetryHttpMessageHandler : HttpMessageHandler
 
         if (MalformedResponse)
         {
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent("not-json", Encoding.UTF8, "application/json")
-            });
+            };
         }
 
         var isTelemetry = string.Equals(path, "api/center/telemetry", StringComparison.OrdinalIgnoreCase);
@@ -19163,7 +19418,7 @@ sealed class CenterTelemetryHttpMessageHandler : HttpMessageHandler
         {
             Content = new StringContent(JsonSerializer.Serialize(ack), Encoding.UTF8, "application/json")
         };
-        return Task.FromResult(response);
+        return response;
     }
 }
 sealed class RecordingHttpMessageHandler : HttpMessageHandler

@@ -249,6 +249,7 @@ public static class CenterTelemetryRules
         builder.Append(request.DeviceId.Trim()).Append('\n');
         builder.Append(request.DeviceName.Trim()).Append('\n');
         builder.Append(request.SystemType.Trim()).Append('\n');
+        builder.Append(System.Text.Json.JsonSerializer.Serialize(request.ReportSync)).Append('\n');
 
         foreach (var station in request.Stations.OrderBy(it => it.StationNo))
         {
@@ -258,13 +259,22 @@ public static class CenterTelemetryRules
             builder.Append(station.DeviceStatusCode).Append('|');
             builder.Append(station.DeviceStatusName).Append('|');
             builder.Append(station.AlarmMessage).Append('|');
+            builder.Append(CenterAlarmRules.Serialize(station.EffectiveAlarm) ?? "legacy").Append('|');
             builder.Append(station.CurrentWorkOrder).Append('|');
             builder.Append(station.ProductJobNo).Append('|');
             builder.Append(station.ProductModel).Append('|');
             builder.Append(station.TodayTotalCount).Append('|');
             builder.Append(station.TodayQualifiedCount).Append('|');
             builder.Append(station.TodayFailedCount).Append('|');
-            builder.Append(station.WorkOrderQuantity).Append('\n');
+            builder.Append(station.WorkOrderQuantity).Append('|');
+            builder.Append(station.ProductionDate?.ToString("yyyy-MM-dd")).Append('|');
+            builder.Append(station.TaskKey).Append('|');
+            builder.Append(station.ProgramName).Append('|');
+            builder.Append(station.StationName).Append('|');
+            builder.Append(station.StatusSource).Append('|');
+            builder.Append(station.TaskTotalCount).Append('|');
+            builder.Append(station.TaskQualifiedCount).Append('|');
+            builder.Append(station.TaskFailedCount).Append('\n');
         }
 
         return builder.ToString();

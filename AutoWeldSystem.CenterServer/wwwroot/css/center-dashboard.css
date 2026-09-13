@@ -54,7 +54,6 @@
    --input-bg: #131c27;
    --row-hover: #1c2735;
    --accent-sweep: linear-gradient(90deg, #4a95e8, #35d07f 60%, transparent);
-   --alarm-card-bg: linear-gradient(180deg, var(--surface) 62%, #2a1719 100%);
    --alarm-soft-bg: #241417;
    --alarm-border: #5c2b2f;
    --offline-border: #46566a;
@@ -121,7 +120,6 @@
    --input-bg: #ffffff;
    --row-hover: #f4f8fc;
    --accent-sweep: linear-gradient(90deg, #2a78d6, #1baf7a 60%, transparent);
-   --alarm-card-bg: linear-gradient(180deg, #ffffff 62%, #fff7f7 100%);
    --alarm-soft-bg: #fffafa;
    --alarm-border: #f0c8c8;
    --offline-border: #b3bfcb;
@@ -798,13 +796,6 @@ body {
    border-left-color: var(--neutral);
 }
 
-.alarm-card {
-   border-color: var(--alarm-border);
-   border-left-color: var(--crit);
-   background: var(--alarm-card-bg);
-   animation: alarm-pulse 2.2s ease-in-out infinite;
-}
-
 /* 离线整卡降饱和 + 降透明，与在线卡片一眼可分 */
 .offline-card {
    border-left-color: var(--ink-3);
@@ -908,21 +899,13 @@ body {
    border-left-color: var(--neutral);
 }
 
-.station-panel.station-alarm {
-   border-left-color: var(--crit);
-   border-color: var(--alarm-border);
-   background: var(--alarm-soft-bg);
-}
-
-.station-alarm .station-chip {
-   background: var(--crit-tint);
-   color: var(--crit-text);
-}
-
+/* 报警只改变状态圆点，不给工位面板和整张卡片染色。 */
 .station-alarm .station-chip .dot {
    background: var(--crit);
-   box-shadow: 0 0 0 0 rgba(208, 59, 59, 0.4);
-   animation: alarm-pulse 1.6s ease-out infinite;
+}
+
+.station-alarm-pending .station-chip .dot {
+   background: var(--warn);
 }
 
 .station-panel.station-unknown {
@@ -1052,29 +1035,21 @@ body {
    color: var(--ink-3);
 }
 
-/* 报警横幅：置于工位面板之上，整卡宽度，比工位内的提示更显眼 */
+/* 原因完整保留为中性提示区，严重程度由对应状态灯表达。 */
 .alarm-banner {
-   display: flex;
-   align-items: flex-start;
-   gap: 8px;
    margin: 0 0 12px;
    padding: 11px 13px;
-   background: var(--crit-tint);
-   border: 1px solid var(--alarm-border);
-   border-left: 3px solid var(--crit);
+   background: var(--surface-sub);
+   border: 1px solid var(--hairline);
    border-radius: 8px;
-   color: var(--crit-text);
+   color: var(--ink-2);
    font-size: 13.5px;
    line-height: 1.5;
-   font-weight: 600;
+   overflow-wrap: anywhere;
 }
 
-.alarm-banner svg {
-   flex: 0 0 auto;
-   width: 16px;
-   height: 16px;
-   margin-top: 1px;
-}
+.alarm-banner strong { color: var(--ink); font-weight: 600; }
+.alarm-banner ul { margin: 6px 0 0; padding-left: 20px; }
 
 /* ---------- 离线骨架 ---------- */
 

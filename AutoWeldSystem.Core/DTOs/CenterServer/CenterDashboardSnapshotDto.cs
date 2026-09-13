@@ -7,6 +7,8 @@ public sealed class CenterDashboardSnapshotDto
 {
     public DateTime GeneratedAt { get; set; } = DateTime.Now;
     public List<CenterDashboardDeviceDto> Devices { get; set; } = new();
+    public bool IsDemo { get; set; }
+    public string? ErrorMessage { get; set; }
 }
 
 /// <summary>
@@ -39,6 +41,12 @@ public sealed class CenterDashboardDeviceDto
     /// </summary>
     public List<CenterDashboardStationDto> Stations { get; set; } = new();
 
+    public CenterReportSyncSummaryDto? ReportSync { get; set; }
+
+    /// <summary>只有同一统计日的完整工位集合才能形成设备日统计。</summary>
+    public bool HasProductionFor(DateTime date) => Stations.Count > 0
+        && Stations.All(station => station.ProductionDate?.Date == date.Date);
+
     /// <summary>
     /// Sum of today's total production count across all stations.
     /// </summary>
@@ -58,11 +66,7 @@ public sealed class CenterDashboardDeviceDto
     /// 设备级工单数量。双工位同工单时只有一份计划量，按工单号去重后求和；
     /// 工单号为空的工位不计入，避免未开工工位把分母拉大。
     /// </summary>
-    public int WorkOrderQuantity => Stations
-        .Where(station => !string.IsNullOrWhiteSpace(station.CurrentWorkOrder)
-            && station.WorkOrderQuantity > 0)
-        .GroupBy(station => station.CurrentWorkOrder.Trim(), StringComparer.OrdinalIgnoreCase)
-        .Sum(group => group.Max(station => station.WorkOrderQuantity));
+    public int WorkOrderQuantity => Center.CenterProductionSummaryRules.SumTaskTargets(Stations);
 }
 
 /// <summary>
@@ -114,4 +118,14 @@ public sealed class CenterDashboardStationDto
     /// Today's failed production count.
     /// </summary>
     public int TodayFailedCount { get; set; }
+
+    public DateTime? ProductionDate { get; set; }
+    public string? TaskKey { get; set; }
+    public string? ProgramName { get; set; }
+    public string? StationName { get; set; }
+    public string? StatusSource { get; set; }
+    public CenterEffectiveAlarmDto? EffectiveAlarm { get; set; }
+    public int? TaskTotalCount { get; set; }
+    public int? TaskQualifiedCount { get; set; }
+    public int? TaskFailedCount { get; set; }
 }

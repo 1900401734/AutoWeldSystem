@@ -233,81 +233,109 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
         var connection = _plcCommunicationService.Current;
         var production = _productionMonitorService.GetCurrent(stationNo);
         var stationStatus = _deviceStatusService.GetLatestStatus(stationNo);
-        var summary = GetTodayProductionSummary(stationNo, settings);
-        var plcStatusCode = ResolvePlcStatusCode(production);
-        var latestStatus = plcStatusCode is null
-            ? CenterTelemetryRules.ResolveLatestDeviceStatus(
-                stationStatus,
-                _deviceStatusService.GetLatestStatus(ProductionConstants.Stations.SharedStationNo))
-            : stationStatus;
-        var statusCode = plcStatusCode ?? latestStatus?.DeviceStatus ?? string.Empty;
-        var counts = ResolveProductionCounts(production, summary);
+        var sharedStatus = _deviceStatusService.GetLatestStatus(ProductionConstants.Stations.SharedStationNo);
+        var productionDate = DateTime.Today;
+        var summary = GetTodayProductionSummary(stationNo, productionDate);
+        var task = GetActiveTask(stationNo, settings);
+        var taskCounts = GetTaskCounts(task, settings);
 
-        return new CenterTelemetryStationSnapshot
+        var snapshot = new CenterTelemetryStationSnapshot
         {
             StationNo = stationNo,
             PlcConnected = connection.IsConnected,
             PlcConnectionState = connection.State.ToString(),
-            DeviceStatusCode = statusCode,
-            DeviceStatusName = CenterTelemetryRules.ResolveReportedStatusName(
-                statusCode,
-                plcStatusCode is null
-                    ? FirstNonEmpty(latestStatus?.StatusName, DeviceStatusReportRules.GetStatusName(statusCode))
-                    : null),
-            AlarmMessage = CenterTelemetryRules.ResolveAlarmMessage(production.AlarmMessage, stationStatus),
-            CurrentWorkOrder = summary.CurrentWorkOrder,
-            ProductJobNo = summary.ProductJobNo,
-            ProductModel = summary.ProductModel,
-            TodayTotalCount = counts.Total,
-            TodayQualifiedCount = counts.Qualified,
-            TodayFailedCount = counts.Failed,
-            WorkOrderQuantity = summary.WorkOrderQuantity,
+            CurrentWorkOrder = task?.SN ?? string.Empty,
+            ProductJobNo = task?.ProductNum ?? string.Empty,
+            ProductModel = task?.ProductModel ?? string.Empty,
+            TodayTotalCount = summary.ActualQty,
+            TodayQualifiedCount = summary.QualifiedQty,
+            TodayFailedCount = summary.FailedQty,
+            WorkOrderQuantity = Math.Max(0, task?.StartAmount ?? 0),
+            ProductionDate = productionDate,
+            TaskKey = task?.LocalExpStartId,
+            ProgramName = task?.ProgramName,
+            StationName = settings.EnableDualStation ? (stationNo == 2 ? settings.Station2DisplayName : settings.Station1DisplayName) : null,
+            TaskTotalCount = taskCounts?.ActualQty,
+            TaskQualifiedCount = taskCounts?.QualifiedQty,
+            TaskFailedCount = taskCounts?.FailedQty,
             CollectedAt = DateTime.Now
         };
+        ApplyStatusSnapshot(snapshot, production, stationStatus, sharedStatus);
+        return snapshot;
     }
 
-    /// <summary>
-    /// 产量按本工位统计，工单标识按共享任务范围查询。
-    /// 双工位同工单只落库一条任务(标记为发起工位)，工位2必须放宽范围才能查到同一条，
-    /// 否则上报空工单号会让看板把在产工位显示成未开工；
-    /// 而产量必须保持逐工位，设备级 DTO 会对各工位求和，放宽会导致总数翻倍。
-    /// </summary>
-    private TodayProductionSummary GetTodayProductionSummary(int stationNo, AppSettings settings)
+    /// <summary>纯投影供实际遥测和回归共用，原始状态与有效报警分别传输。</summary>
+    internal static void ApplyStatusSnapshot(
+        CenterTelemetryStationSnapshot snapshot,
+        PlcProductionSnapshot production,
+        BizDeviceStatusLog? stationStatus,
+        BizDeviceStatusLog? sharedStatus)
     {
-        var taskScopeStations = RecipeStationScopeRules.ResolveSharedTaskStations(
-            settings.EnableDualStation,
-            settings.EnableDualWorkOrder,
-            stationNo);
+        var plcStatusCode = ResolvePlcStatusCode(production);
+        var latestStatus = CenterTelemetryRules.ResolveLatestDeviceStatus(stationStatus, sharedStatus);
+        var statusCode = plcStatusCode ?? latestStatus?.DeviceStatus ?? string.Empty;
+        snapshot.DeviceStatusCode = statusCode;
+        snapshot.DeviceStatusName = CenterTelemetryRules.ResolveReportedStatusName(
+            statusCode,
+            plcStatusCode is null
+                ? FirstNonEmpty(latestStatus?.StatusName, DeviceStatusReportRules.GetStatusName(statusCode))
+                : null);
+        snapshot.StatusSource = plcStatusCode is null ? "Lifecycle" : "PLC";
+        snapshot.AlarmMessage = CenterTelemetryRules.ResolveAlarmMessage(production.AlarmMessage, latestStatus);
+        snapshot.EffectiveAlarm = CenterAlarmRules.FromProductionSnapshot(production);
+    }
 
+    /// <summary>按产品最后完成日期计数，不用 PLC 当前任务累计数冒充今日产量。</summary>
+    private FinishQuantities GetTodayProductionSummary(int stationNo, DateTime productionDate)
+    {
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
-            var today = DateTime.Today;
-            var tasks = _dbContext.Db.Queryable<BizWeldTask>()
-                .Where(it => it.StartTime >= today && it.StationNo == stationNo)
+            var tomorrow = productionDate.AddDays(1);
+            // 只读取完成标记行，减少每次心跳搬运整天的逐点原始 JSON。
+            var records = _dbContext.Db.Queryable<BizWeldPointRecord>()
+                .Where(record => record.StationNo == stationNo && record.ProductCompleted
+                    && record.Ts >= productionDate && record.Ts < tomorrow)
+                .Select(record => new BizWeldPointRecord
+                {
+                    TaskId = record.TaskId,
+                    StationNo = record.StationNo,
+                    ProductNo = record.ProductNo,
+                    ProductCompleted = record.ProductCompleted,
+                    IsDeleted = record.IsDeleted,
+                    Ts = record.Ts,
+                    ProductResult = record.ProductResult,
+                    RawDataJson = record.ProductResult == null || record.ProductResult == "" ? record.RawDataJson : null
+                })
                 .ToList();
-
-            var activeTasks = taskScopeStations.Length == 1
-                ? tasks
-                : _dbContext.Db.Queryable<BizWeldTask>()
-                    .Where(it => it.StartTime >= today && taskScopeStations.Contains(it.StationNo))
-                    .ToList();
-            var active = activeTasks
-                .Where(it => it.EndTime == null)
-                .OrderByDescending(it => it.StartTime)
-                .FirstOrDefault();
-
-            // 工单数量与工单号同源取 active，双工位同工单时两个工位上报同一个值；
-            // 不能像产量那样逐工位求和，否则分母翻倍。
-            return new TodayProductionSummary(
-                tasks.Sum(it => Math.Max(0, it.ActualQty)),
-                tasks.Sum(it => Math.Max(0, it.QualifiedQty)),
-                tasks.Sum(it => Math.Max(0, it.FailedQty)),
-                active?.SN ?? string.Empty,
-                active?.ProductNum ?? string.Empty,
-                active?.ProductModel ?? string.Empty,
-                Math.Max(0, active?.StartAmount ?? 0));
+            return CenterProductionSummaryRules.ForDay(records, stationNo, productionDate);
         }
+    }
+
+    private BizWeldTask? GetActiveTask(int stationNo, AppSettings settings)
+    {
+        var stations = RecipeStationScopeRules.ResolveSharedTaskStations(settings.EnableDualStation, settings.EnableDualWorkOrder, stationNo);
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            return CenterProductionSummaryRules.ActiveTask(_dbContext.Db.Queryable<BizWeldTask>()
+                .Where(task => task.EndTime == null && stations.Contains(task.StationNo)).ToList());
+        }
+    }
+
+    private FinishQuantities? GetTaskCounts(BizWeldTask? task, AppSettings settings)
+    {
+        if (task is null) return null;
+        if (ProductionConstants.ProductionCountSources.IsProgram(settings.ProductionCountSource))
+        {
+            return new Production.ProductionCountService(_dbContext).GetTaskQuantities(task.Id);
+        }
+        // 共享任务按任务范围累加各工位计数；DTO 中每个工位携带同一份任务总数，由任务键去重显示。
+        var stations = RecipeStationScopeRules.ResolveSharedTaskStations(settings.EnableDualStation, settings.EnableDualWorkOrder, task.StationNo);
+        var snapshots = stations.Select(station => _productionMonitorService.GetCurrent(station)).ToList();
+        if (snapshots.Any(snapshot => !snapshot.ProductionQuantitiesReadSuccess)) return null;
+        return new FinishQuantities(snapshots.Sum(snapshot => Math.Max(0, snapshot.TotalProduction)),
+            snapshots.Sum(snapshot => Math.Max(0, snapshot.AcceptedQuantity)), snapshots.Sum(snapshot => Math.Max(0, snapshot.RejectedQuantity)));
     }
 
     private void WriteFailureLog(Exception ex)
@@ -343,22 +371,6 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
     }
 
     /// <summary>
-    /// Uses PLC production quantities first, then falls back to local task totals when PLC quantity reads failed.
-    /// </summary>
-    private static ProductionCounts ResolveProductionCounts(PlcProductionSnapshot production, TodayProductionSummary summary)
-    {
-        if (production.ProductionQuantitiesReadSuccess)
-        {
-            return new ProductionCounts(
-                Math.Max(0, production.TotalProduction),
-                Math.Max(0, production.AcceptedQuantity),
-                Math.Max(0, production.RejectedQuantity));
-        }
-
-        return new ProductionCounts(summary.Total, summary.Qualified, summary.Failed);
-    }
-
-    /// <summary>
     /// Returns the station numbers that the current device should report to the center server.
     /// </summary>
     private static IEnumerable<int> ResolveStationNumbers(AppSettings settings)
@@ -373,15 +385,4 @@ public sealed class CenterTelemetrySyncService : ICenterTelemetrySyncService
 
     private static string FirstNonEmpty(params string?[] values)
         => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
-
-    private sealed record TodayProductionSummary(
-        int Total,
-        int Qualified,
-        int Failed,
-        string CurrentWorkOrder,
-        string ProductJobNo,
-        string ProductModel,
-        int WorkOrderQuantity);
-
-    private sealed record ProductionCounts(int Total, int Qualified, int Failed);
 }

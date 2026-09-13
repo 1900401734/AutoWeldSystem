@@ -42,7 +42,7 @@ public sealed record PlcProductionSnapshot(
     public bool IsSoftwareAlarmActive { get; init; }
 
     /// <summary>
-    /// 本机软件报警显示内容，不参与 MES、生命周期日志或中心服务器报警上报。
+    /// 本机有效报警显示内容，同时供中心看板遥测使用；不替换 MES 或生命周期原始状态字段。
     /// </summary>
     public string SoftwareAlarmMessage { get; init; } = string.Empty;
 

@@ -87,6 +87,7 @@ public sealed class CenterServerSettingsService
         return Normalize(new CenterServerLocalSettings
         {
             EnableAutoStart = _configuration.GetValue("CenterServer:EnableAutoStart", true),
+            OpenDashboardOnStart = _configuration.GetValue("CenterServer:OpenDashboardOnStart", true),
             LogDirectory = FirstNonEmpty(
                 _configuration.GetValue<string>("CenterServer:DashboardLogDirectory"),
                 _configuration.GetValue<string>("CenterServer:LogDirectory"),
@@ -106,6 +107,7 @@ public sealed class CenterServerSettingsService
         return new CenterServerLocalSettings
         {
             EnableAutoStart = settings.EnableAutoStart,
+            OpenDashboardOnStart = settings.OpenDashboardOnStart,
             LogDirectory = NormalizePath(settings.LogDirectory, Path.Combine(AppContext.BaseDirectory, "CenterLogs")),
             DataDirectory = NormalizePath(settings.DataDirectory, Path.Combine(AppContext.BaseDirectory, "CenterData")),
             OfflineTimeoutSeconds = Math.Clamp(
@@ -120,6 +122,7 @@ public sealed class CenterServerSettingsService
         return new CenterServerLocalSettings
         {
             EnableAutoStart = settings.EnableAutoStart,
+            OpenDashboardOnStart = settings.OpenDashboardOnStart,
             LogDirectory = settings.LogDirectory,
             DataDirectory = settings.DataDirectory,
             OfflineTimeoutSeconds = settings.OfflineTimeoutSeconds
