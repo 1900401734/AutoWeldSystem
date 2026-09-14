@@ -42,6 +42,7 @@ internal static class TaskProductProcessConfigResolver
         IEnumerable<int> stationNumbers,
         string? deviceType)
     {
+        WeldTaskRuntimeRules.EnsureNotAbandoned(task);
         var content = ProgramContentJsonRules.NormalizeForProduction(task.ProgramContentSnapshot, deviceType);
         if (!WholePieceProgramResultRules.IsApplicable(deviceType)) return content;
 

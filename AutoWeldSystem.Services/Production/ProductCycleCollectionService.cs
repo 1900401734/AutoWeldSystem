@@ -63,6 +63,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         string validatedContent;
         try
         {
+            WeldTaskRuntimeRules.EnsureNotAbandoned(task);
             validatedContent = ProgramContentJsonRules.NormalizeForProduction(task.ProgramContentSnapshot, settings.ProcessParameterDeviceType);
             touchCount = ProgramContentJsonRules.GetRequiredTouchCount(validatedContent);
         }

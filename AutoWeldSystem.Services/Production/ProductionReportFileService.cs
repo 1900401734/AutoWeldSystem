@@ -70,6 +70,7 @@ public class ProductionReportFileService : IProductionReportFileService
             var latestTask = ProductionReportFileRules.ResolveLatestTask(
                 task,
                 taskId => _dbContext.Db.Queryable<BizWeldTask>().InSingle(taskId));
+            WeldTaskRuntimeRules.EnsureNotAbandoned(latestTask);
             _ = ProgramContentJsonRules.NormalizeForProduction(latestTask.ProgramContentSnapshot, CurrentSettings.ProcessParameterDeviceType);
             var report = GetOrCreateReportRecord(latestTask);
             var records = QueryTaskRecords(latestTask.Id);

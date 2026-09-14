@@ -1,4 +1,5 @@
-﻿using AutoWeldSystem.Core.Entities;
+﻿using System.Text.RegularExpressions;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Center;
@@ -45,7 +46,9 @@ var tests = new (string Name, Action Run)[]
     ("Program download rejection preserves selection and storage", InvalidProgramDownloadPreservesState),
     ("Program snapshot stays frozen across MES await", ProgramSnapshotStaysFrozen),
     ("Old task cannot restore or allow production", OldTaskCannotRestore),
+    ("Center startup resume generates valid SQL for empty and nonempty exclusions", CenterStartupResumeSqlHandlesExclusions),
     ("Task recovery failure throttles retries and deduplicates errors", TaskRecoveryFailureThrottlesAndResets),
+    ("Abandoned task stays terminal without hiding historical uploads", AbandonedTaskRemainsTerminal),
     ("System setting layout rules honor DPI breakpoints", SystemSettingLayoutRulesHonorDpiBreakpoints),
     ("Monitor right layout rules honor DPI and scrolling", MonitorRightLayoutRulesHonorDpiAndScrolling),
     ("Monitor view applies responsive right layout", MonitorViewAppliesResponsiveRightLayout),
@@ -772,6 +775,23 @@ static void OldTaskCannotRestore()
     AssertThrows<AutoWeldSystem.Core.Exceptions.BusinessOperationException>(() => fixture.Service.ValidateTaskForProduction(task, 1), "PLC 放行校验必须拒绝旧快照。");
 }
 
+static void CenterStartupResumeSqlHandlesExclusions()
+{
+    using var db = new AutoWeldSystem.Data.SqlSugarDbContext("server=127.0.0.1;database=unused;uid=unused;pwd=unused;");
+    var method = typeof(AutoWeldSystem.Services.Center.CenterProductForwardingService)
+        .GetMethod("BuildStartupResumeUpdate", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+    foreach (var ids in new[] { new List<int>(), new List<int> { 7 }, new List<int> { 7, 8 } })
+    {
+        var update = (SqlSugar.IUpdateable<BizUploadTask>)method.Invoke(null, [db.Db, ids, new DateTime(2026, 9, 14)])!;
+        var sql = update.ToSql().Key;
+        AssertFalse(Regex.IsMatch(sql, @"\)\s+NOT\s*\(", RegexOptions.IgnoreCase), "实际生成SQL不得出现缺OR的相邻否定条件。");
+        if (ids.Count == 0)
+            AssertFalse(sql.Contains("WeldTaskId", StringComparison.Ordinal), "没有作废任务时不生成空集合过滤。");
+        else
+            AssertTrue(Regex.IsMatch(sql, @"`WeldTaskId`\s+IS\s+NULL\s*\)*\s+OR", RegexOptions.IgnoreCase), "无父任务ID必须通过OR独立保留。");
+    }
+}
+
 static void TaskRecoveryFailureThrottlesAndResets()
 {
     var state = new TaskRecoveryFailureState();
@@ -791,6 +811,24 @@ static void TaskRecoveryFailureThrottlesAndResets()
     AssertTrue(state.ShouldAttempt(task, "dual", now.AddSeconds(12)), "模式变化立即重试。");
     task.Id = 8;
     AssertTrue(state.ShouldAttempt(task, "dual", now.AddSeconds(13)), "不能把上一任务错误应用到新任务。");
+}
+
+static void AbandonedTaskRemainsTerminal()
+{
+    var fixture = CreateProgramBoundaryService();
+    var task = new BizWeldTask { Id = 7, TaskStatus = ProductionConstants.ProductInstanceStatuses.Abandoned,
+        ProgramContentSnapshot = "{\"焊点数量\":4,\"高度上限\":12}", EndTime = DateTime.Now, UploadStatus = ProductionConstants.UploadStatuses.Skipped };
+    AssertThrows<AutoWeldSystem.Core.Exceptions.BusinessOperationException>(() => fixture.Service.ValidateTaskForProduction(task), "作废任务即使快照合法也不能重新生产。");
+    AssertEqual(ProductionConstants.UploadStatuses.Skipped, UploadSummaryStatusResolver.ResolveStartReportStatus(task, []), "作废任务不伪造待开工上报。");
+    AssertEqual(ProductionConstants.UploadStatuses.Skipped, UploadSummaryStatusResolver.ResolveFinishReportStatus(task, []), "作废任务不伪造待完工上报。");
+    AssertEqual(ProductionConstants.UploadStatuses.Uploaded, UploadSummaryStatusResolver.ResolveStartReportStatus(task, [ProductionConstants.UploadStatuses.Uploaded]), "已上报事实不得被作废覆盖。");
+    AssertEqual(0, ProcessParameterUploadRowRules.CreatePendingProductRows(task, [new() { TaskId = 7, ProductNo = "P1", ProductCompleted = true }], 1).Count, "作废任务不能重新生成虚拟待上传行。");
+    AssertFalse(WeldTaskRuntimeRules.IsProductionUpload(new BizUploadTask { TaskType = ProductionConstants.UploadTaskTypes.DeviceStatus }), "设备日志上报不属于生产任务清理范围。");
+    AssertTrue(WeldTaskRuntimeRules.IsProductionUpload(new BizUploadTask { TaskType = ProductionConstants.UploadTaskTypes.CenterProductReport }), "中心生产转发属于停止范围。");
+    var a = new ProductionStationRuntimeState { StationNo = 1, ActiveTask = task };
+    var b = new ProductionStationRuntimeState { StationNo = 2, ActiveTask = new BizWeldTask { Id = 8 } };
+    AssertTrue(WeldTaskRuntimeRules.ClearFinishedTask(a, task), "释放同一任务运行态。");
+    AssertFalse(WeldTaskRuntimeRules.ClearFinishedTask(b, task), "不得清空另一个独立任务。");
 }
 
 static void CenterFinishUpdateDoesNotFabricatePointHeaders()
@@ -16642,7 +16680,7 @@ static void WeldTaskRestoreUnfinishedTaskIsIdempotent()
         "public BizWeldTask? RestoreUnfinishedTask(int stationNo = ProductionConstants.Stations.DefaultStationNo)",
         "public async Task<BasicRes<ServerTimeRes>> SyncServerTimeAsync");
 
-    var alreadyRestoredIndex = restoreMethod.IndexOf("if (alreadyRestored)", StringComparison.Ordinal);
+    var alreadyRestoredIndex = restoreMethod.IndexOf("if (station.ActiveTask?.Id == unfinishedTask.Id)", StringComparison.Ordinal);
     var returnIndex = alreadyRestoredIndex < 0
         ? -1
         : restoreMethod.IndexOf("return unfinishedTask;", alreadyRestoredIndex, StringComparison.Ordinal);
@@ -17137,13 +17175,13 @@ static void MonitorViewConfirmsManualWorkOrdersAndPrioritizesPlcSnapshots()
 
     // 生产监控页是常驻值守界面，除破坏性操作的二次确认外一律不弹窗，反馈只走运行状态 + 异常摘要。
     AssertEqual(
-        1,
+        2,
         CountOccurrences(viewCode, "MessageBox.Show"),
-        "监控页只保留删除产品的二次确认弹窗，其余提示必须走运行状态和异常摘要。");
+        "监控页只保留删除产品和异常结束任务的二次确认，其余提示必须走运行状态和异常摘要。");
     AssertTrue(
         ExtractMethodText(viewCode, "private bool ConfirmDeleteProduct", "private void RefreshProgramCountMetrics")
             .Contains("MessageBox.Show", StringComparison.Ordinal),
-        "唯一保留的弹窗必须是删除产品的二次确认：删除会抹掉产出记录，需要操作员明确确认。");
+        "删除产品必须二次确认，不能变成直接删除。");
     foreach (var reporter in new[] { "private void ShowWarning(", "private void ShowWarningText(", "private void ShowBusinessWarning(", "private void ShowError(" })
     {
         var reporterMethod = ExtractMethodText(viewCode, reporter, "/// <summary>");
@@ -18710,6 +18748,8 @@ sealed class InspectableUploadTaskService : UploadTaskService
     protected override BizUploadTask? MarkUploading(int id) { _task.Status = "Uploading"; return _task; }
     protected override Task<BasicRes<object>> ExecuteByTypeAsync(BizUploadTask task, CancellationToken cancellationToken)
         => throw new InvalidOperationException("旧格式不能生成结果。");
+    protected override UploadTaskSummary? FinishClaimedExecution(BizUploadTask claim, BasicRes<object> response)
+        => FinishExecution(claim.Id, response);
     protected override UploadTaskSummary? FinishExecution(int id, BasicRes<object> response)
     {
         FinishCount++;
@@ -18722,7 +18762,7 @@ sealed class InspectableWeldTaskService : WeldTaskService
 {
     public InspectableWeldTaskService(FakeMesProvider mes, FakeUploadTaskService uploads, FakeAppSettingsService settings,
         IProductProcessConfigService process, ITestSchemeConfigService schemes)
-        : base(null!, mes, settings, new FakeOperationLogService(), new FakeLocalizationService(), uploads,
+        : base(new AutoWeldSystem.Data.SqlSugarDbContext("server=127.0.0.1;database=unused;uid=unused;pwd=unused;"), mes, settings, new FakeOperationLogService(), new FakeLocalizationService(), uploads,
             new FakeCenterProductForwardingService(), new FakeProductionReportFileService(), new FakeDeviceLifecycleLogService(),
             new FakeDeviceStatusService(), new FakeSystemClockService(), new FakeDataHistoryMaintenanceService(),
             productProcessConfigService: process, testSchemeConfigService: schemes) { }

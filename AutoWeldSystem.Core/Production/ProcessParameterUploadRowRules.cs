@@ -18,6 +18,7 @@ public static class ProcessParameterUploadRowRules
         int uploadBatchSize)
     {
         ArgumentNullException.ThrowIfNull(task);
+        if (WeldTaskRuntimeRules.IsAbandoned(task)) return [];
 
         var normalizedBatchSize = Math.Max(1, uploadBatchSize);
         return records

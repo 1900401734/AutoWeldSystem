@@ -870,11 +870,26 @@
   <data name="monitor.button.clear_error_tips" xml:space="preserve">
     <value>Clear</value>
   </data>
+  <data name="monitor.button.abandon_invalid_task" xml:space="preserve">
+    <value>Abandon Task</value>
+  </data>
   <data name="monitor.message.invalid_task_recovery" xml:space="preserve">
     <value>Task {0} (work order {1}) has an invalid historical program snapshot.</value>
   </data>
   <data name="monitor.message.invalid_task_recovery_detail" xml:space="preserve">
     <value>The unfinished task has an invalid historical program snapshot. Deleting the current program does not remove it. Task ID: {0}; station: {1}; work order: {2}; program: {3}; started: {4}. Reason: {5}</value>
+  </data>
+  <data name="monitor.message.abandon_permission_required" xml:space="preserve">
+    <value>Abandoning a task requires Delete Historical Data permission. Contact an administrator.</value>
+  </data>
+  <data name="monitor.message.abandon_confirm" xml:space="preserve">
+    <value>{0}
+
+Abandon this task?
+The task will be marked Abandoned. Its snapshot, collected data and existing reports are retained, and unsent production uploads are stopped. No normal completion or report is generated; uploaded data is not recalled. Reconcile the MES work order manually. PLC must confirm production is forbidden, and no upload may be in flight.</value>
+  </data>
+  <data name="monitor.message.abandon_success" xml:space="preserve">
+    <value>Task {0} abandoned. History is retained and production uploads are stopped. Reconcile MES manually.</value>
   </data>
   <data name="monitor.button.finish_report" xml:space="preserve">
     <value>Finish Report</value>

@@ -80,6 +80,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
     {
         try
         {
+            lock (_dbContext.TaskTransitionSync)
             lock (_dbLock)
             {
                 _dbContext.InitDatabase();
@@ -117,25 +118,15 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
     {
         try
         {
+            lock (_dbContext.TaskTransitionSync)
             lock (_dbLock)
             {
                 _dbContext.InitDatabase();
                 var now = DateTime.Now;
-                var resumed = _dbContext.Db.Updateable<BizUploadTask>()
-                    .SetColumns(task => new BizUploadTask
-                    {
-                        Status = ProductionConstants.UploadStatuses.Pending,
-                        RetryCount = 0,
-                        NextRetryTime = now,
-                        Message = "启动时恢复未完成的中心服务器转发任务，将重新补传。",
-                        UpdatedTime = now
-                    })
-                    .Where(task => task.TaskType == ProductionConstants.UploadTaskTypes.CenterProductReport
-                        && task.Target == ProductionConstants.UploadTargets.CentralServer
-                        && !task.IsDeleted
-                        && (task.Status == ProductionConstants.UploadStatuses.Failed
-                            || task.Status == ProductionConstants.UploadStatuses.Uploading))
-                    .ExecuteCommand();
+                var abandonedTaskIds = _dbContext.Db.Queryable<BizWeldTask>()
+                    .Where(item => item.TaskStatus == ProductionConstants.ProductInstanceStatuses.Abandoned)
+                    .Select(item => item.Id).ToList();
+                var resumed = BuildStartupResumeUpdate(_dbContext.Db, abandonedTaskIds, now).ExecuteCommand();
                 if (resumed > 0)
                 {
                     _productionLogService.Write(
@@ -149,6 +140,29 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
         {
             _exceptionLogService.Write(ex, "CenterProductForwardingService.ResumeAbandonedCenterTasks");
         }
+    }
+
+    private static SqlSugar.IUpdateable<BizUploadTask> BuildStartupResumeUpdate(
+        SqlSugar.ISqlSugarClient db, List<int> abandonedTaskIds, DateTime now)
+    {
+        var update = db.Updateable<BizUploadTask>()
+            .SetColumns(task => new BizUploadTask
+            {
+                Status = ProductionConstants.UploadStatuses.Pending,
+                RetryCount = 0,
+                NextRetryTime = now,
+                Message = "启动时恢复未完成的中心服务器转发任务，将重新补传。",
+                UpdatedTime = now
+            })
+            .Where(task => task.TaskType == ProductionConstants.UploadTaskTypes.CenterProductReport
+                && task.Target == ProductionConstants.UploadTargets.CentralServer
+                && !task.IsDeleted
+                && (task.Status == ProductionConstants.UploadStatuses.Failed
+                    || task.Status == ProductionConstants.UploadStatuses.Uploading));
+        // SqlSugar 嵌套 AND/OR 与否定 Contains 会漏译 OR；空集合省略，非空条件独立追加。
+        if (abandonedTaskIds.Count > 0)
+            update = update.Where(task => task.WeldTaskId == null || !abandonedTaskIds.Contains(task.WeldTaskId.Value));
+        return update;
     }
 
     public async Task StopAsync(CancellationToken cancellationToken = default)
@@ -265,9 +279,11 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
     {
         try
         {
+            lock (_dbContext.TaskTransitionSync)
             lock (_dbLock)
             {
                 _dbContext.InitDatabase();
+                if (WeldTaskRuntimeRules.IsAbandoned(_dbContext.Db.Queryable<BizWeldTask>().InSingle(task.Id))) return;
                 var now = DateTime.Now;
                 var resumed = _dbContext.Db.Updateable<BizUploadTask>()
                     .SetColumns(item => new BizUploadTask
@@ -282,6 +298,8 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
                         && item.Target == ProductionConstants.UploadTargets.CentralServer
                         && item.WeldTaskId == task.Id
                         && !item.IsDeleted
+                        && item.Status != ProductionConstants.UploadStatuses.Skipped
+                        && item.Status != ProductionConstants.UploadStatuses.Uploading
                         && item.Status != ProductionConstants.UploadStatuses.Uploaded)
                     .ExecuteCommand();
                 if (resumed > 0)
@@ -368,12 +386,15 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
     /// </summary>
     private void MarkConnectivityRetry(BizUploadTask task, string message)
     {
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
             var latest = _dbContext.Db.Queryable<BizUploadTask>().InSingle(task.Id);
             if (latest is null || latest.IsDeleted
-                || latest.Status == ProductionConstants.UploadStatuses.Uploaded)
+                || latest.Status != ProductionConstants.UploadStatuses.Uploading
+                || latest.RetryCount != task.RetryCount
+                || WeldTaskRuntimeRules.IsAbandoned(_dbContext.Db.Queryable<BizWeldTask>().InSingle(latest.WeldTaskId)))
             {
                 return;
             }
@@ -393,6 +414,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
 
     private IReadOnlyList<int> GetPendingTaskIds()
     {
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -401,6 +423,8 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
                     && task.Target == ProductionConstants.UploadTargets.CentralServer
                     && !task.IsDeleted
                     && task.Status != ProductionConstants.UploadStatuses.Uploaded
+                    && task.Status != ProductionConstants.UploadStatuses.Skipped
+                    && task.Status != ProductionConstants.UploadStatuses.Uploading
                     && task.RetryCount < task.MaxRetryCount
                     && (task.NextRetryTime == null || task.NextRetryTime <= DateTime.Now))
                 .OrderBy(task => task.CreatedTime)
@@ -411,21 +435,26 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
 
     private BizUploadTask? MarkUploading(int taskId)
     {
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
             var task = _dbContext.Db.Queryable<BizUploadTask>().InSingle(taskId);
-            if (task is null || task.IsDeleted || task.Status == ProductionConstants.UploadStatuses.Uploaded)
+            if (task is null || !UploadTaskVisibilityRules.ShouldRetry(task)
+                || WeldTaskRuntimeRules.IsAbandoned(_dbContext.Db.Queryable<BizWeldTask>().InSingle(task.WeldTaskId)))
             {
                 return null;
             }
 
+            var previousStatus = task.Status;
             task.Status = ProductionConstants.UploadStatuses.Uploading;
             task.LastAttemptTime = DateTime.Now;
             task.RetryCount++;
             task.UpdatedTime = DateTime.Now;
-            _dbContext.Db.Updateable(task).ExecuteCommand();
-            return task;
+            var updated = _dbContext.Db.Updateable(task)
+                .Where(item => item.Id == taskId && !item.IsDeleted && item.Status == previousStatus)
+                .ExecuteCommand();
+            return updated == 1 ? task : null;
         }
     }
 
@@ -440,6 +469,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
 
         try
         {
+            lock (_dbContext.TaskTransitionSync)
             lock (_dbLock)
             {
                 _dbContext.InitDatabase();
@@ -490,10 +520,20 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             request.ProductNo);
     }
 
+    private bool CanCompleteClaim(BizUploadTask task)
+    {
+        var latest = _dbContext.Db.Queryable<BizUploadTask>().InSingle(task.Id);
+        return latest is { IsDeleted: false, Status: ProductionConstants.UploadStatuses.Uploading }
+            && latest.RetryCount == task.RetryCount
+            && !WeldTaskRuntimeRules.IsAbandoned(_dbContext.Db.Queryable<BizWeldTask>().InSingle(latest.WeldTaskId));
+    }
+
     private void MarkUploaded(BizUploadTask task, string message)
     {
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
+            if (!CanCompleteClaim(task)) return;
             task.Status = ProductionConstants.UploadStatuses.Uploaded;
             task.CompletedTime = DateTime.Now;
             task.Message = string.IsNullOrWhiteSpace(message) ? "Center product report uploaded." : message;
@@ -504,8 +544,10 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
 
     private void MarkRetry(BizUploadTask task, string message)
     {
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
+            if (!CanCompleteClaim(task)) return;
             task.Status = task.RetryCount >= task.MaxRetryCount
                 ? ProductionConstants.UploadStatuses.Failed
                 : ProductionConstants.UploadStatuses.Retrying;
@@ -520,8 +562,10 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
 
     private void MarkFailed(BizUploadTask task, string message)
     {
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
+            if (!CanCompleteClaim(task)) return;
             task.Status = ProductionConstants.UploadStatuses.Failed;
             task.Message = message;
             task.UpdatedTime = DateTime.Now;
@@ -657,6 +701,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             return [];
         }
 
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -804,6 +849,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             return [];
         }
 
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();

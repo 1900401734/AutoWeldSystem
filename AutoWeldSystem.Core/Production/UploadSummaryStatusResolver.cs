@@ -27,6 +27,7 @@ public static class UploadSummaryStatusResolver
             return uploadStatus;
         }
 
+        if (WeldTaskRuntimeRules.IsAbandoned(task)) return ProductionConstants.UploadStatuses.Skipped;
         return string.IsNullOrWhiteSpace(task.ExpStartId)
             ? ProductionConstants.UploadStatuses.Pending
             : ProductionConstants.UploadStatuses.Uploaded;
@@ -77,6 +78,7 @@ public static class UploadSummaryStatusResolver
             return uploadStatus;
         }
 
+        if (WeldTaskRuntimeRules.IsAbandoned(task)) return ProductionConstants.UploadStatuses.Skipped;
         if (task.EndTime is null)
         {
             return NoData;

@@ -870,11 +870,26 @@
   <data name="monitor.button.clear_error_tips" xml:space="preserve">
     <value>清除</value>
   </data>
+  <data name="monitor.button.abandon_invalid_task" xml:space="preserve">
+    <value>异常结束</value>
+  </data>
   <data name="monitor.message.invalid_task_recovery" xml:space="preserve">
-    <value>任务 {0}（工单 {1}）的历史程序快照无效，需处理。</value>
+    <value>任务 {0}（工单 {1}）的历史程序快照无效，需异常结束。</value>
   </data>
   <data name="monitor.message.invalid_task_recovery_detail" xml:space="preserve">
     <value>未完工任务的历史程序快照无效；删除当前程序不会清除此快照。任务 ID：{0}；工位：{1}；工单：{2}；程序：{3}；开工时间：{4}。原因：{5}</value>
+  </data>
+  <data name="monitor.message.abandon_permission_required" xml:space="preserve">
+    <value>异常结束需要“删除历史数据”权限，请联系管理员。</value>
+  </data>
+  <data name="monitor.message.abandon_confirm" xml:space="preserve">
+    <value>{0}
+
+确定异常结束此任务吗？
+任务将标记为“已作废”，保留原快照、采集历史及已有报表，停止尚未发送的生产补传。不生成正常完工或正常报告，不撤回已上传数据；MES 端工单需人工核对。PLC 必须确认禁止生产，有在途上传时不能结束。</value>
+  </data>
+  <data name="monitor.message.abandon_success" xml:space="preserve">
+    <value>任务 {0} 已异常结束，历史已保留，生产补传已停止；MES 端请人工核对。</value>
   </data>
   <data name="monitor.button.finish_report" xml:space="preserve">
     <value>完工上报</value>

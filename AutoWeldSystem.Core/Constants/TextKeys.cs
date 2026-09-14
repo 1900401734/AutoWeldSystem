@@ -122,6 +122,7 @@ public static class TextKeys
             /// 完工上报
             /// </summary>
             public const string FinishReport = "monitor.button.finish_report";
+            public const string AbandonInvalidTask = "monitor.button.abandon_invalid_task";
             /// <summary>
             /// 切换用户
             /// </summary>
@@ -378,6 +379,9 @@ public static class TextKeys
             public const string StartBlockedByUnfinishedTask = "monitor.message.start_blocked_by_unfinished_task";
             public const string InvalidTaskRecovery = "monitor.message.invalid_task_recovery";
             public const string InvalidTaskRecoveryDetail = "monitor.message.invalid_task_recovery_detail";
+            public const string AbandonPermissionRequired = "monitor.message.abandon_permission_required";
+            public const string AbandonConfirm = "monitor.message.abandon_confirm";
+            public const string AbandonSuccess = "monitor.message.abandon_success";
             /// <summary>
             /// 请先加载工单、选择工序并下载程序
             /// </summary>
