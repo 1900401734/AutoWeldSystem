@@ -2553,8 +2553,8 @@ static void ProgramExceptionLogViewNormalizesLegacyAlarmEntries()
         "private void LoadDeviceLifecycleLogs()");
     var contextMethod = ExtractMethodText(
         viewCode,
-        "private static string BuildExceptionContext",
-        "private static string BuildExceptionFullDetails");
+        "private string BuildExceptionContext",
+        "private string BuildExceptionFullDetails");
 
     AssertTrue(viewCode.Contains("NormalizeLegacyPlcAlarmEntry", StringComparison.Ordinal), "旧版 PLC 报警读取日志必须在显示前修正消息和上下文。");
     AssertTrue(loadMethod.Contains(".Select(NormalizeLegacyPlcAlarmEntry)", StringComparison.Ordinal), "加载历史异常日志时必须应用旧报警记录归一化。");
@@ -2572,8 +2572,8 @@ static void ExceptionGridOmitsSourceColumns()
         Encoding.UTF8);
     var basicInfoMethod = ExtractMethodText(
         viewCode,
-        "private static string BuildExceptionBasicInfo",
-        "private static string BuildExceptionContext");
+        "private string BuildExceptionBasicInfo",
+        "private string BuildExceptionContext");
 
     AssertFalse(
         designerCode.Contains("colExceptionSource", StringComparison.Ordinal),
@@ -2582,13 +2582,13 @@ static void ExceptionGridOmitsSourceColumns()
         designerCode.Contains("colExceptionSourceLocation", StringComparison.Ordinal),
         "异常日志表格不得声明或注册 SourceLocation 列。");
     AssertTrue(
-        basicInfoMethod.Contains("Source: {entry.Source}", StringComparison.Ordinal),
+        basicInfoMethod.Contains("TextKeys.Log.ColumnSource, entry.Source", StringComparison.Ordinal),
         "异常基本信息必须继续显示 Source。");
     AssertTrue(
-        basicInfoMethod.Contains("SourceFile: {GetSourceLocation(entry)}", StringComparison.Ordinal),
+        basicInfoMethod.Contains("TextKeys.Log.FieldSourceFile, GetSourceLocation(entry)", StringComparison.Ordinal),
         "异常基本信息必须继续显示 SourceFile。");
     AssertTrue(
-        basicInfoMethod.Contains("SourceMember: {entry.SourceMemberName}", StringComparison.Ordinal),
+        basicInfoMethod.Contains("TextKeys.Log.FieldSourceMember, entry.SourceMemberName", StringComparison.Ordinal),
         "异常基本信息必须继续显示 SourceMember。");
 }
 
@@ -2602,18 +2602,18 @@ static void ExceptionGridOmitsExceptionTypeColumn()
         Encoding.UTF8);
     var basicInfoMethod = ExtractMethodText(
         viewCode,
-        "private static string BuildExceptionBasicInfo",
-        "private static string BuildExceptionContext");
+        "private string BuildExceptionBasicInfo",
+        "private string BuildExceptionContext");
     var filterMethod = ExtractMethodText(
         viewCode,
-        "private static bool IsExceptionLogMatched",
+        "private bool IsExceptionLogMatched",
         "private static bool IsDeviceLifecycleLogMatched");
 
     AssertFalse(
         designerCode.Contains("colExceptionType", StringComparison.Ordinal),
         "异常日志表格不得声明或注册 ExceptionType 列。");
     AssertTrue(
-        basicInfoMethod.Contains("ExceptionType: {entry.ExceptionType}", StringComparison.Ordinal),
+        basicInfoMethod.Contains("TextKeys.Log.ColumnExceptionType", StringComparison.Ordinal) && basicInfoMethod.Contains(": entry.ExceptionType", StringComparison.Ordinal),
         "异常基本信息必须继续显示 ExceptionType。");
     AssertTrue(
         filterMethod.Contains("Contains(entry.ExceptionType, keyword)", StringComparison.Ordinal),

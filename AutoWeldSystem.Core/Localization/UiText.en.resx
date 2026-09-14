@@ -2622,4 +2622,16 @@ This also removes {3} collection record(s) and {4} report file(s) including the 
   <data name="plc.recipe.failure_detail" xml:space="preserve"><value>Station={0}; Reason: {1}</value></data>
   <data name="plc.recipe.missing_recipe_detail" xml:space="preserve"><value>Task ID={0}; Missing recipe stations={1}</value></data>
   <data name="plc.recipe.reconcile_detail" xml:space="preserve"><value>Station={0}; Source station={1}; Task ID={2}; Expected recipe={3}; PLC recipe={4}; Reason: {5}</value></data>
+  <data name="log.value.warning" xml:space="preserve"><value>Warning</value></data>
+  <data name="log.value.error" xml:space="preserve"><value>Error</value></data>
+  <data name="log.value.info" xml:space="preserve"><value>Info</value></data>
+  <data name="log.field.trace_id" xml:space="preserve"><value>Trace ID</value></data>
+  <data name="log.field.source_file" xml:space="preserve"><value>Source file</value></data>
+  <data name="log.field.source_member" xml:space="preserve"><value>Source member</value></data>
+  <data name="log.field.target_site" xml:space="preserve"><value>Target method</value></data>
+  <data name="log.field.thread" xml:space="preserve"><value>Thread</value></data>
+  <data name="log.field.user" xml:space="preserve"><value>User</value></data>
+  <data name="log.field.app_version" xml:space="preserve"><value>App version</value></data>
+  <data name="log.field.detail" xml:space="preserve"><value>Detail</value></data>
+  <data name="log.field.inner_exception" xml:space="preserve"><value>Inner exception</value></data>
 </root>

@@ -2623,4 +2623,16 @@
   <data name="plc.recipe.failure_detail" xml:space="preserve"><value>工位={0}；原因：{1}</value></data>
   <data name="plc.recipe.missing_recipe_detail" xml:space="preserve"><value>任务 ID={0}；缺少配方的工位={1}</value></data>
   <data name="plc.recipe.reconcile_detail" xml:space="preserve"><value>工位={0}；来源工位={1}；任务 ID={2}；期望配方={3}；PLC 配方={4}；原因：{5}</value></data>
+  <data name="log.value.warning" xml:space="preserve"><value>警告</value></data>
+  <data name="log.value.error" xml:space="preserve"><value>错误</value></data>
+  <data name="log.value.info" xml:space="preserve"><value>信息</value></data>
+  <data name="log.field.trace_id" xml:space="preserve"><value>跟踪标识</value></data>
+  <data name="log.field.source_file" xml:space="preserve"><value>源文件</value></data>
+  <data name="log.field.source_member" xml:space="preserve"><value>源成员</value></data>
+  <data name="log.field.target_site" xml:space="preserve"><value>目标方法</value></data>
+  <data name="log.field.thread" xml:space="preserve"><value>线程</value></data>
+  <data name="log.field.user" xml:space="preserve"><value>用户</value></data>
+  <data name="log.field.app_version" xml:space="preserve"><value>程序版本</value></data>
+  <data name="log.field.detail" xml:space="preserve"><value>详情</value></data>
+  <data name="log.field.inner_exception" xml:space="preserve"><value>内部异常</value></data>
 </root>

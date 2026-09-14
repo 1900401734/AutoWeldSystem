@@ -1179,6 +1179,18 @@ public static class TextKeys
 
     public static class Log
     {
+        public const string ValueWarning = "log.value.warning";
+        public const string ValueError = "log.value.error";
+        public const string ValueInfo = "log.value.info";
+        public const string FieldTraceId = "log.field.trace_id";
+        public const string FieldSourceFile = "log.field.source_file";
+        public const string FieldSourceMember = "log.field.source_member";
+        public const string FieldTargetSite = "log.field.target_site";
+        public const string FieldThread = "log.field.thread";
+        public const string FieldUser = "log.field.user";
+        public const string FieldAppVersion = "log.field.app_version";
+        public const string FieldDetail = "log.field.detail";
+        public const string FieldInnerException = "log.field.inner_exception";
         public const string TitleMesInteraction = "log.title.mes_interaction";
         public const string TabProductionFlow = "log.tab.production_flow";
         public const string TabProgramException = "log.tab.program_exception";

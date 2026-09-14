@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using AutoWeldSystem.Core;
@@ -863,7 +864,32 @@ public partial class LogManageView : BaseView
 
     private ExceptionLogRow CreateExceptionLogRow(ProgramExceptionLogEntry entry)
     {
-        return new ExceptionLogRow(entry, GetExceptionCategoryText(entry.Category), _showLogDate);
+        return new ExceptionLogRow(entry, GetExceptionCategoryText(entry.Category), _showLogDate,
+            GetExceptionSeverityText(entry.Severity), GetExceptionMessage(entry));
+    }
+
+    private string GetExceptionSeverityText(string severity) => severity.ToLowerInvariant() switch
+    {
+        "warning" => _localizer.GetString(TextKeys.Log.ValueWarning),
+        "error" => _localizer.GetString(TextKeys.Log.ValueError),
+        "info" => _localizer.GetString(TextKeys.Log.ValueInfo),
+        _ => severity
+    };
+
+    private string GetExceptionMessage(ProgramExceptionLogEntry entry)
+    {
+        if (entry.Source != "PLC.RecipeCodeReconcile") return entry.Message;
+        // 仅投影已知业务摘要；历史 JSONL、原始异常与堆栈不改写。
+        var key = entry.Message.Trim() switch
+        {
+            "PLC recipe task restore failed." or "PLC 配方任务恢复失败" => TextKeys.PlcRecipe.RestoreFailed,
+            "PLC recipe code read failed" or "PLC 配方号读取失败" => TextKeys.PlcRecipe.ReadFailed,
+            "PLC recipe reconcile skipped because local station recipe is missing." or "本地工位配方缺失，已跳过 PLC 配方调和" => TextKeys.PlcRecipe.MissingRecipe,
+            "PLC配方号持续调和监控失败" or "PLC 配方号持续调和监控失败" or "PLC recipe reconciliation monitor failed." => TextKeys.PlcRecipe.MonitorFailed,
+            "PLC配方号调和失败" or "PLC 配方号调和失败" or "PLC recipe code reconciliation failed." => TextKeys.PlcRecipe.ReconcileFailed,
+            _ => null
+        };
+        return key is null ? entry.Message : _localizer.GetString(key);
     }
 
     private string GetExceptionCategoryText(string category)
@@ -953,7 +979,7 @@ public partial class LogManageView : BaseView
             || Contains(entry.PlcAddress, keyword);
     }
 
-    private static bool IsExceptionLogMatched(ProgramExceptionLogEntry entry, string keyword)
+    private bool IsExceptionLogMatched(ProgramExceptionLogEntry entry, string keyword)
     {
         if (string.IsNullOrWhiteSpace(keyword))
         {
@@ -966,6 +992,9 @@ public partial class LogManageView : BaseView
             || Contains(entry.Source, keyword)
             || Contains(entry.ExceptionType, keyword)
             || Contains(entry.Message, keyword)
+            || Contains(GetExceptionMessage(entry), keyword)
+            || Contains(GetExceptionSeverityText(entry.Severity), keyword)
+            || Contains(GetExceptionContextText(entry), keyword)
             || Contains(entry.SourceFilePath, keyword)
             || Contains(entry.SourceMemberName, keyword)
             || Contains(entry.TargetSite, keyword)
@@ -1517,23 +1546,25 @@ public partial class LogManageView : BaseView
         return builder.ToString();
     }
 
-    private static string BuildExceptionBasicInfo(ProgramExceptionLogEntry entry)
+    private string BuildExceptionBasicInfo(ProgramExceptionLogEntry entry)
     {
         var builder = new StringBuilder();
-        builder.AppendLine($"TraceId: {entry.TraceId}");
-        builder.AppendLine($"Category: {entry.Category}");
-        builder.AppendLine($"Severity: {entry.Severity}");
-        builder.AppendLine($"Source: {entry.Source}");
-        builder.AppendLine($"ExceptionType: {entry.ExceptionType}");
-        builder.AppendLine($"Message: {entry.Message}");
-        builder.AppendLine($"OccurredTime: {entry.OccurredTime:yyyy-MM-dd HH:mm:ss.fff}");
-        builder.AppendLine($"SourceFile: {GetSourceLocation(entry)}");
-        builder.AppendLine($"SourceMember: {entry.SourceMemberName}");
-        builder.AppendLine($"TargetSite: {entry.TargetSite}");
-        builder.AppendLine($"Thread: {entry.ThreadId} {entry.ThreadName}".TrimEnd());
-        builder.AppendLine($"User: {entry.MachineName}\\{entry.UserName}");
-        builder.AppendLine($"AppVersion: {entry.ApplicationVersion}");
+        Add(TextKeys.Log.FieldTraceId, entry.TraceId);
+        Add(TextKeys.Log.ColumnCategory, GetExceptionCategoryText(entry.Category));
+        Add(TextKeys.Log.ColumnSeverity, GetExceptionSeverityText(entry.Severity));
+        Add(TextKeys.Log.ColumnSource, entry.Source);
+        Add(TextKeys.Log.ColumnExceptionType, IsBusinessException(entry) ? GetExceptionCategoryText(entry.Category) : entry.ExceptionType);
+        Add(TextKeys.Log.ColumnMessage, GetExceptionMessage(entry));
+        Add(TextKeys.Log.ColumnOccurredTime, $"{entry.OccurredTime:yyyy-MM-dd HH:mm:ss.fff}");
+        Add(TextKeys.Log.FieldSourceFile, GetSourceLocation(entry));
+        Add(TextKeys.Log.FieldSourceMember, entry.SourceMemberName);
+        Add(TextKeys.Log.FieldTargetSite, entry.TargetSite);
+        Add(TextKeys.Log.FieldThread, $"{entry.ThreadId} {entry.ThreadName}".TrimEnd());
+        Add(TextKeys.Log.FieldUser, $"{entry.MachineName}\\{entry.UserName}");
+        Add(TextKeys.Log.FieldAppVersion, entry.ApplicationVersion);
         return builder.ToString();
+
+        void Add(string key, string value) => builder.AppendLine($"{_localizer.GetString(key)}: {value}");
     }
 
     private static string BuildDeviceLifecycleBasicInfo(DeviceLifecycleLogEntry entry)
@@ -1596,29 +1627,49 @@ public partial class LogManageView : BaseView
         return builder.ToString();
     }
 
-    private static string BuildExceptionContext(ProgramExceptionLogEntry entry)
+    private string GetExceptionContextText(ProgramExceptionLogEntry entry)
+    {
+        return string.Join(Environment.NewLine, (entry.Context ?? string.Empty).Split('\n').Select(raw =>
+        {
+            var line = raw.TrimEnd('\r');
+            if (line == "Detail:") return _localizer.GetString(TextKeys.Log.FieldDetail) + ":";
+            if (line == "Context:") return _localizer.GetString(TextKeys.Log.DetailContext) + ":";
+            if (entry.Source == "PLC.RecipeCodeReconcile")
+            {
+                var failure = Regex.Match(line, @"^Station=(\d+); Detail=(.*)$");
+                if (failure.Success)
+                    return _localizer.GetString(TextKeys.PlcRecipe.FailureDetail, failure.Groups[1].Value, failure.Groups[2].Value);
+                var context = Regex.Match(line, @"^(?:开工状态配方持续调和失败。(?:Station|工位)=|Running-task recipe reconciliation failed\. Station=)(\d+)$");
+                if (context.Success)
+                    return _localizer.GetString(TextKeys.PlcRecipe.FailureContext, context.Groups[1].Value);
+            }
+            return line;
+        }));
+    }
+
+    private string BuildExceptionContext(ProgramExceptionLogEntry entry)
     {
         var builder = new StringBuilder();
         if (!string.IsNullOrWhiteSpace(entry.Context))
         {
-            builder.AppendLine(entry.Context.Trim());
+            builder.AppendLine(GetExceptionContextText(entry).Trim());
             builder.AppendLine();
         }
 
         if (!string.IsNullOrWhiteSpace(entry.InnerException))
         {
-            builder.AppendLine("InnerException:");
+            builder.AppendLine(_localizer.GetString(TextKeys.Log.FieldInnerException) + ":");
             builder.AppendLine(entry.InnerException);
         }
 
         return builder.ToString();
     }
 
-    private static string BuildExceptionFullDetails(ProgramExceptionLogEntry entry)
+    private string BuildExceptionFullDetails(ProgramExceptionLogEntry entry)
     {
         var builder = new StringBuilder();
         builder.AppendLine(BuildExceptionBasicInfo(entry));
-        builder.AppendLine("StackTrace:");
+        builder.AppendLine(_localizer.GetString(TextKeys.Log.DetailStackTrace) + ":");
         builder.AppendLine(entry.StackTrace);
 
         var context = BuildExceptionContext(entry);
@@ -2069,11 +2120,13 @@ public partial class LogManageView : BaseView
 
     private sealed class ExceptionLogRow
     {
-        public ExceptionLogRow(ProgramExceptionLogEntry entry, string category, bool showDate)
+        public ExceptionLogRow(ProgramExceptionLogEntry entry, string category, bool showDate, string severity, string message)
         {
             Entry = entry;
             OccurredTime = LogTimestampDisplayRules.Format(entry.OccurredTime, showDate);
             Category = category;
+            Severity = severity;
+            Message = message;
         }
 
         public ProgramExceptionLogEntry Entry { get; }
@@ -2082,8 +2135,8 @@ public partial class LogManageView : BaseView
 
         public string Category { get; }
 
-        public string Severity => Entry.Severity;
+        public string Severity { get; }
 
-        public string Message => Entry.Message;
+        public string Message { get; }
     }
 }
