@@ -7,6 +7,7 @@ using AutoWeldSystem.Core.Plc;
 using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Data;
 using ClosedXML.Excel;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using AutoWeldSystem.Core.Runtime;
@@ -302,7 +303,76 @@ public class ProductionReportFileService : IProductionReportFileService
         WriteDataRows(worksheet, schema, detailColumns, outputRows, stationNames, numericFormat);
         MergeRepeatedProductFields(worksheet, detailColumns, outputRows);
         ApplyWorksheetStyle(worksheet, detailColumns.Count, outputRows.Count, templateColumnCount);
+        if (schema.LocalExport)
+        {
+            InsertProgramLimits(worksheet, task.ProgramContentSnapshot, templateColumnCount);
+        }
         workbook.SaveAs(filePath);
+    }
+
+    /// <summary>
+    /// 本地历史导出额外展示开工快照中的程序限值，不改正式报告模板、PLC 原始限值或历史结果。
+    /// </summary>
+    private static void InsertProgramLimits(IXLWorksheet worksheet, string? programContent, int lastColumn)
+    {
+        // 历史追溯不套用当前设备的生产约束；旧快照无法解析时仍保留原始明细并明确标注。
+        var available = ProgramContentJsonRules.TryReadLimits(programContent, out var limits, out var error);
+        var insertedRows = Math.Max(1, limits.Count) + 3;
+        worksheet.Row(DetailHeaderRow).InsertRowsAbove(insertedRows);
+        var titleRow = DetailHeaderRow;
+        var headerRow = titleRow + 1;
+        var firstValueRow = headerRow + 1;
+        var lastValueRow = titleRow + insertedRows - 2;
+        var range = worksheet.Range(titleRow, 1, lastValueRow, lastColumn);
+        range.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+        range.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+        range.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        range.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        range.Style.Alignment.WrapText = true;
+        range.Style.Alignment.ShrinkToFit = false;
+        range.Style.Font.Bold = false;
+        range.Style.Fill.BackgroundColor = XLColor.NoColor;
+        worksheet.Rows(titleRow, lastValueRow).Height = 30d;
+
+        WriteBlock(titleRow, 1, lastColumn, "程序上下限（来源：任务开工程序快照，仅供追溯）");
+        WriteBlock(headerRow, 1, 6, "测试项");
+        WriteBlock(headerRow, 7, 8, "程序上限");
+        WriteBlock(headerRow, 9, lastColumn, "程序下限");
+        worksheet.Range(titleRow, 1, headerRow, lastColumn).Style.Font.Bold = true;
+        worksheet.Range(headerRow, 1, headerRow, lastColumn).Style.Fill.BackgroundColor = XLColor.FromHtml("#D9E2F3");
+
+        if (!available || limits.Count == 0)
+        {
+            WriteBlock(firstValueRow, 1, lastColumn, available
+                ? "该任务未配置程序上下限。"
+                : $"程序上下限不可用：{error}");
+        }
+        else
+        {
+            var row = firstValueRow;
+            foreach (var (name, limit) in limits)
+            {
+                WriteBlock(row, 1, 6, name);
+                WriteBlock(row, 7, 8, limit.UpperLimit?.ToString(CultureInfo.InvariantCulture) ?? string.Empty);
+                WriteBlock(row, 9, lastColumn, limit.LowerLimit?.ToString(CultureInfo.InvariantCulture) ?? string.Empty);
+                row++;
+            }
+        }
+
+        var spacerRow = titleRow + insertedRows - 1;
+        worksheet.Range(spacerRow, 1, spacerRow, lastColumn).Clear(XLClearOptions.All);
+        worksheet.Row(spacerRow).Height = 15d;
+        worksheet.Row(DetailHeaderRow + insertedRows).Height = 27d;
+        worksheet.SheetView.FreezeRows(DetailHeaderRow + insertedRows);
+
+        void WriteBlock(int row, int startColumn, int endColumn, string text)
+        {
+            WriteHeaderBlock(worksheet, row, startColumn, endColumn, string.Empty, text);
+            // Excel 不为合并单元格自动增高；按中英文宽度预留换行空间，保留长名称和精确阈值。
+            var width = worksheet.Columns(startColumn, endColumn).Sum(column => column.Width) - 2d;
+            var textWidth = text.Sum(character => character > 127 ? 2d : 1d);
+            worksheet.Row(row).Height = Math.Max(worksheet.Row(row).Height, 16d * Math.Ceiling(textWidth / width) + 8d);
+        }
     }
 
     /// <summary>
