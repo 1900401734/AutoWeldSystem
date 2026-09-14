@@ -870,6 +870,12 @@
   <data name="monitor.button.clear_error_tips" xml:space="preserve">
     <value>Clear</value>
   </data>
+  <data name="monitor.message.invalid_task_recovery" xml:space="preserve">
+    <value>Task {0} (work order {1}) has an invalid historical program snapshot.</value>
+  </data>
+  <data name="monitor.message.invalid_task_recovery_detail" xml:space="preserve">
+    <value>The unfinished task has an invalid historical program snapshot. Deleting the current program does not remove it. Task ID: {0}; station: {1}; work order: {2}; program: {3}; started: {4}. Reason: {5}</value>
+  </data>
   <data name="monitor.button.finish_report" xml:space="preserve">
     <value>Finish Report</value>
   </data>
@@ -2589,4 +2595,5 @@ This also removes {3} collection record(s) and {4} report file(s) including the 
   <data name="data.column.is_deleted" xml:space="preserve">
     <value>Deleted</value>
   </data>
+  <data name="monitor.label.task_recovery_failed" xml:space="preserve"><value>Task Error</value></data>
 </root>

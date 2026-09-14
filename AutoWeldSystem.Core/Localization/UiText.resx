@@ -870,6 +870,12 @@
   <data name="monitor.button.clear_error_tips" xml:space="preserve">
     <value>清除</value>
   </data>
+  <data name="monitor.message.invalid_task_recovery" xml:space="preserve">
+    <value>任务 {0}（工单 {1}）的历史程序快照无效，需处理。</value>
+  </data>
+  <data name="monitor.message.invalid_task_recovery_detail" xml:space="preserve">
+    <value>未完工任务的历史程序快照无效；删除当前程序不会清除此快照。任务 ID：{0}；工位：{1}；工单：{2}；程序：{3}；开工时间：{4}。原因：{5}</value>
+  </data>
   <data name="monitor.button.finish_report" xml:space="preserve">
     <value>完工上报</value>
   </data>
@@ -2590,4 +2596,5 @@
   <data name="data.column.is_deleted" xml:space="preserve">
     <value>已删除</value>
   </data>
+  <data name="monitor.label.task_recovery_failed" xml:space="preserve"><value>任务异常</value></data>
 </root>

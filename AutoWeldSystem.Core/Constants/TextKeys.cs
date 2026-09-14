@@ -155,6 +155,7 @@ public static class TextKeys
 
         public static class Label
         {
+            public const string TaskRecoveryFailed = "monitor.label.task_recovery_failed";
             /// <summary>
             /// 序号
             /// </summary>
@@ -375,6 +376,8 @@ public static class TextKeys
             /// 已开工或存在尚未完工任务
             /// </summary>
             public const string StartBlockedByUnfinishedTask = "monitor.message.start_blocked_by_unfinished_task";
+            public const string InvalidTaskRecovery = "monitor.message.invalid_task_recovery";
+            public const string InvalidTaskRecoveryDetail = "monitor.message.invalid_task_recovery_detail";
             /// <summary>
             /// 请先加载工单、选择工序并下载程序
             /// </summary>

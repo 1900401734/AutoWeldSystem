@@ -45,6 +45,7 @@ var tests = new (string Name, Action Run)[]
     ("Program download rejection preserves selection and storage", InvalidProgramDownloadPreservesState),
     ("Program snapshot stays frozen across MES await", ProgramSnapshotStaysFrozen),
     ("Old task cannot restore or allow production", OldTaskCannotRestore),
+    ("Task recovery failure throttles retries and deduplicates errors", TaskRecoveryFailureThrottlesAndResets),
     ("System setting layout rules honor DPI breakpoints", SystemSettingLayoutRulesHonorDpiBreakpoints),
     ("Monitor right layout rules honor DPI and scrolling", MonitorRightLayoutRulesHonorDpiAndScrolling),
     ("Monitor view applies responsive right layout", MonitorViewAppliesResponsiveRightLayout),
@@ -769,6 +770,27 @@ static void OldTaskCannotRestore()
     AssertTrue(fixture.Service.CurrentState.GetOrCreateStation(1).ActiveTask is null, "恢复失败不得进入运行态。");
     AssertTrue(ReferenceEquals(task, fixture.Service.GetUnfinishedTask(1)), "旧任务仍可见以阻止新开工。");
     AssertThrows<AutoWeldSystem.Core.Exceptions.BusinessOperationException>(() => fixture.Service.ValidateTaskForProduction(task, 1), "PLC 放行校验必须拒绝旧快照。");
+}
+
+static void TaskRecoveryFailureThrottlesAndResets()
+{
+    var state = new TaskRecoveryFailureState();
+    var task = new BizWeldTask { Id = 7, ProgramContentSnapshot = "{\"对称度\":0.5}" };
+    var now = new DateTime(2026, 9, 14);
+    AssertTrue(state.ShouldAttempt(task, "single", now), "首次必须尝试恢复。");
+    AssertTrue(state.RecordFailure("old snapshot"), "首次失败必须记录。");
+    for (var index = 1; index < 100; index++)
+        AssertFalse(state.ShouldAttempt(task, "single", now.AddMilliseconds(index * 90)), "高频刷新不能重复恢复旧快照。");
+    AssertTrue(state.ShouldAttempt(task, "single", now.AddSeconds(10)), "到期必须复查以检测方案修复。");
+    AssertFalse(state.RecordFailure("old snapshot"), "相同持续错误不重复写日志。");
+    AssertTrue(state.RecordFailure("different error"), "原因变化必须立即记日志。");
+    task.ProgramContentSnapshot = "{\"对称度上限\":0.5}";
+    AssertTrue(state.ShouldAttempt(task, "single", now.AddSeconds(11)), "快照变化立即重试。");
+    AssertTrue(state.Error is null, "快照变化清除旧错误。");
+    state.RecordFailure("scheme");
+    AssertTrue(state.ShouldAttempt(task, "dual", now.AddSeconds(12)), "模式变化立即重试。");
+    task.Id = 8;
+    AssertTrue(state.ShouldAttempt(task, "dual", now.AddSeconds(13)), "不能把上一任务错误应用到新任务。");
 }
 
 static void CenterFinishUpdateDoesNotFabricatePointHeaders()
