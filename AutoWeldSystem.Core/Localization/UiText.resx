@@ -2612,4 +2612,15 @@
     <value>已删除</value>
   </data>
   <data name="monitor.label.task_recovery_failed" xml:space="preserve"><value>任务异常</value></data>
+  <data name="plc.recipe.restore_failed" xml:space="preserve"><value>PLC 配方任务恢复失败</value></data>
+  <data name="plc.recipe.read_failed" xml:space="preserve"><value>PLC 配方号读取失败</value></data>
+  <data name="plc.recipe.not_read" xml:space="preserve"><value>尚未读取 PLC 配方号</value></data>
+  <data name="plc.recipe.disconnected" xml:space="preserve"><value>PLC 未连接</value></data>
+  <data name="plc.recipe.missing_recipe" xml:space="preserve"><value>本地工位配方缺失，已跳过 PLC 配方调和</value></data>
+  <data name="plc.recipe.monitor_failed" xml:space="preserve"><value>PLC 配方号持续调和监控失败</value></data>
+  <data name="plc.recipe.reconcile_failed" xml:space="preserve"><value>PLC 配方号调和失败</value></data>
+  <data name="plc.recipe.failure_context" xml:space="preserve"><value>开工状态配方持续调和失败。工位={0}</value></data>
+  <data name="plc.recipe.failure_detail" xml:space="preserve"><value>工位={0}；原因：{1}</value></data>
+  <data name="plc.recipe.missing_recipe_detail" xml:space="preserve"><value>任务 ID={0}；缺少配方的工位={1}</value></data>
+  <data name="plc.recipe.reconcile_detail" xml:space="preserve"><value>工位={0}；来源工位={1}；任务 ID={2}；期望配方={3}；PLC 配方={4}；原因：{5}</value></data>
 </root>

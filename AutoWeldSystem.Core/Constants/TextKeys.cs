@@ -1162,6 +1162,21 @@ public static class TextKeys
     /// <summary>
     /// 日志管理页文本键
     /// </summary>
+    public static class PlcRecipe
+    {
+        public const string RestoreFailed = "plc.recipe.restore_failed";
+        public const string ReadFailed = "plc.recipe.read_failed";
+        public const string NotRead = "plc.recipe.not_read";
+        public const string Disconnected = "plc.recipe.disconnected";
+        public const string MissingRecipe = "plc.recipe.missing_recipe";
+        public const string MonitorFailed = "plc.recipe.monitor_failed";
+        public const string ReconcileFailed = "plc.recipe.reconcile_failed";
+        public const string FailureContext = "plc.recipe.failure_context";
+        public const string FailureDetail = "plc.recipe.failure_detail";
+        public const string MissingRecipeDetail = "plc.recipe.missing_recipe_detail";
+        public const string ReconcileDetail = "plc.recipe.reconcile_detail";
+    }
+
     public static class Log
     {
         public const string TitleMesInteraction = "log.title.mes_interaction";

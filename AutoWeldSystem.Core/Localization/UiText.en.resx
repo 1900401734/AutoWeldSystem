@@ -2611,4 +2611,15 @@ This also removes {3} collection record(s) and {4} report file(s) including the 
     <value>Deleted</value>
   </data>
   <data name="monitor.label.task_recovery_failed" xml:space="preserve"><value>Task Error</value></data>
+  <data name="plc.recipe.restore_failed" xml:space="preserve"><value>PLC recipe task restore failed.</value></data>
+  <data name="plc.recipe.read_failed" xml:space="preserve"><value>PLC recipe code read failed</value></data>
+  <data name="plc.recipe.not_read" xml:space="preserve"><value>PLC recipe has not been read.</value></data>
+  <data name="plc.recipe.disconnected" xml:space="preserve"><value>PLC is not connected.</value></data>
+  <data name="plc.recipe.missing_recipe" xml:space="preserve"><value>PLC recipe reconcile skipped because local station recipe is missing.</value></data>
+  <data name="plc.recipe.monitor_failed" xml:space="preserve"><value>PLC recipe reconciliation monitor failed.</value></data>
+  <data name="plc.recipe.reconcile_failed" xml:space="preserve"><value>PLC recipe code reconciliation failed.</value></data>
+  <data name="plc.recipe.failure_context" xml:space="preserve"><value>Running-task recipe reconciliation failed. Station={0}</value></data>
+  <data name="plc.recipe.failure_detail" xml:space="preserve"><value>Station={0}; Reason: {1}</value></data>
+  <data name="plc.recipe.missing_recipe_detail" xml:space="preserve"><value>Task ID={0}; Missing recipe stations={1}</value></data>
+  <data name="plc.recipe.reconcile_detail" xml:space="preserve"><value>Station={0}; Source station={1}; Task ID={2}; Expected recipe={3}; PLC recipe={4}; Reason: {5}</value></data>
 </root>

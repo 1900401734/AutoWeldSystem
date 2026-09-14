@@ -2,6 +2,7 @@ using System.Globalization;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs.Plc;
 using AutoWeldSystem.Core.Entities;
+using AutoWeldSystem.Core.Exceptions;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.PLC;
@@ -28,6 +29,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
     private readonly IProgramManageService _programManageService;
     private readonly IProductionFlowLogService _productionLogService;
     private readonly IProgramExceptionLogService _exceptionLogService;
+    private readonly ILocalizationService _localizer;
     private readonly object _stateSync = new();
     private readonly Dictionary<int, StationRecipeReconcileState> _stationStates = new();
     private readonly Dictionary<int, PlcRecipeCodeSnapshot> _recipeSnapshots = new();
@@ -45,7 +47,8 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
         IWeldTaskService weldTaskService,
         IProgramManageService programManageService,
         IProductionFlowLogService productionLogService,
-        IProgramExceptionLogService exceptionLogService)
+        IProgramExceptionLogService exceptionLogService,
+        ILocalizationService localizer)
     {
         _settingsService = settingsService;
         _plcCommunicationService = plcCommunicationService;
@@ -54,6 +57,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
         _programManageService = programManageService;
         _productionLogService = productionLogService;
         _exceptionLogService = exceptionLogService;
+        _localizer = localizer;
         _currentSettings = settingsService.Get();
         _settingsService.SettingsChanged += SettingsService_SettingsChanged;
     }
@@ -75,7 +79,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
         {
             return _recipeSnapshots.TryGetValue(normalizedStationNo, out var snapshot)
                 ? snapshot
-                : PlcRecipeCodeSnapshot.Failed(normalizedStationNo, "PLC recipe has not been read.");
+                : PlcRecipeCodeSnapshot.Failed(normalizedStationNo, _localizer.GetString(TextKeys.PlcRecipe.NotRead));
         }
     }
 
@@ -166,7 +170,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
             }
             catch (Exception ex)
             {
-                WriteBusinessFailureLog(ProductionConstants.Stations.DefaultStationNo, "PLC配方号持续调和监控失败", ex.Message);
+                WriteBusinessFailureLog(ProductionConstants.Stations.DefaultStationNo, _localizer.GetString(TextKeys.PlcRecipe.MonitorFailed), ex.Message);
                 await Task.Delay(PollInterval, cancellationToken);
             }
         }
@@ -235,9 +239,9 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
             cancellationToken);
         if (!readResult.IsSuccess)
         {
-            PublishRecipeReadFailure(stationNo, readResult.Message);
+            PublishRecipeReadFailure(stationNo, _localizer.GetString(TextKeys.PlcRecipe.ReadFailed));
             ResetStationMismatch(stationNo);
-            WriteBusinessFailureLog(stationNo, "PLC recipe code read failed", readResult.Message);
+            WriteBusinessFailureLog(stationNo, _localizer.GetString(TextKeys.PlcRecipe.ReadFailed), readResult.Message);
             return;
         }
 
@@ -270,7 +274,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
 
         if (!_plcCommunicationService.GetCurrent(normalizedStationNo).IsConnected)
         {
-            PublishRecipeReadFailure(normalizedStationNo, "PLC is not connected.");
+            PublishRecipeReadFailure(normalizedStationNo, _localizer.GetString(TextKeys.PlcRecipe.Disconnected));
             return;
         }
 
@@ -280,7 +284,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
             cancellationToken);
         if (!readResult.IsSuccess)
         {
-            PublishRecipeReadFailure(normalizedStationNo, readResult.Message);
+            PublishRecipeReadFailure(normalizedStationNo, _localizer.GetString(TextKeys.PlcRecipe.ReadFailed));
             return;
         }
 
@@ -337,8 +341,8 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
                 .Select(target => target.StationNo));
             WriteBusinessFailureLog(
                 stationNo,
-                "PLC recipe reconcile skipped because local station recipe is missing.",
-                $"TaskId={task.Id}; MissingStations={missingStations}");
+                _localizer.GetString(TextKeys.PlcRecipe.MissingRecipe),
+                _localizer.GetString(TextKeys.PlcRecipe.MissingRecipeDetail, task.Id, missingStations));
             state.NextRetryTime = DateTime.Now + BusinessLogInterval;
             return;
         }
@@ -382,8 +386,9 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
 
             WriteBusinessFailureLog(
                 targetStationNo,
-                ProductionFlowLogTexts.Summaries.RecipeCodeReconcileFailed,
-                $"Station={targetStationNo}; SourceStation={stationNo}; TaskId={task.Id}; Expected={targetExpectedRecipe}; PLC={currentPlcRecipe}; Detail={syncResult.Message}");
+                _localizer.GetString(TextKeys.PlcRecipe.ReconcileFailed),
+                _localizer.GetString(TextKeys.PlcRecipe.ReconcileDetail, targetStationNo, stationNo, task.Id,
+                    targetExpectedRecipe, currentPlcRecipe, syncResult.Message));
             state.NextRetryTime = DateTime.Now + BusinessLogInterval;
             return;
         }
@@ -423,6 +428,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
         {
             if (runtimeTasks.Any(task => task.StationNo == stationNo))
             {
+                GetStationState(stationNo).RecoveryFailure = null;
                 continue;
             }
 
@@ -472,13 +478,22 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
         }
 
         state.LastRestoreAttemptTime = now;
+        BizWeldTask? task = null;
         try
         {
-            var restoredTask = _weldTaskService.RestoreUnfinishedTask(normalizedStationNo);
-            if (!IsRunningTask(restoredTask))
+            task = _weldTaskService.GetUnfinishedTask(normalizedStationNo);
+            if (task is null)
             {
+                state.RecoveryFailure = null;
                 return false;
             }
+            var settings = CurrentSettings;
+            var failure = state.RecoveryFailure ??= new TaskRecoveryFailureState();
+            var mode = $"{settings.ProcessParameterDeviceType}|{settings.EnableDualStation}|{settings.EnableDualWorkOrder}";
+            if (!failure.ShouldAttempt(task, mode, now)) return false;
+            var restoredTask = _weldTaskService.RestoreUnfinishedTask(normalizedStationNo);
+            state.RecoveryFailure = null;
+            if (!IsRunningTask(restoredTask)) return false;
 
             lock (_stateSync)
             {
@@ -486,12 +501,27 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
             }
             return true;
         }
+        catch (BusinessOperationException ex) when (ex.SourceName == "Program.Configuration" && task is not null)
+        {
+            // 原因签名不包含翻译文本；稳定旧快照不每30秒刷屏，也不丢失具体非法字段。
+            if (state.RecoveryFailure!.RecordFailure(ex.Detail))
+            {
+                _exceptionLogService.WriteBusiness(
+                    "PLC.RecipeCodeReconcile",
+                    _localizer.GetString(TextKeys.PlcRecipe.RestoreFailed),
+                    _localizer.GetString(TextKeys.Monitor.Message.InvalidTaskRecoveryDetail, task.Id, normalizedStationNo,
+                        task.SN, task.ProgramName ?? string.Empty, task.StartTime.ToString("yyyy-MM-dd HH:mm:ss"), ex.Detail),
+                    _localizer.GetString(TextKeys.PlcRecipe.FailureContext, normalizedStationNo));
+            }
+            return false;
+        }
         catch (Exception ex)
         {
+            state.RecoveryFailure = null;
             WriteBusinessFailureLog(
                 normalizedStationNo,
-                "PLC recipe task restore failed.",
-                $"Station={normalizedStationNo}; Detail={ex.Message}");
+                _localizer.GetString(TextKeys.PlcRecipe.RestoreFailed),
+                _localizer.GetString(TextKeys.PlcRecipe.FailureDetail, normalizedStationNo, ex.Message));
             return false;
         }
     }
@@ -607,7 +637,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
             "PLC.RecipeCodeReconcile",
             summary,
             detail,
-            $"开工状态配方持续调和失败。Station={stationNo}");
+            _localizer.GetString(TextKeys.PlcRecipe.FailureContext, stationNo));
     }
 
     /// <summary>
@@ -745,5 +775,7 @@ public sealed class RecipeCodeReconcileMonitorService : IPlcRecipeReconcileMonit
         public DateTime NextRetryTime { get; set; }
 
         public DateTime LastRestoreAttemptTime { get; set; }
+
+        public TaskRecoveryFailureState? RecoveryFailure { get; set; }
     }
 }

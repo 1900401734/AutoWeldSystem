@@ -46,6 +46,7 @@ var tests = new (string Name, Action Run)[]
     ("Program download rejection preserves selection and storage", InvalidProgramDownloadPreservesState),
     ("Program snapshot stays frozen across MES await", ProgramSnapshotStaysFrozen),
     ("Old task cannot restore or allow production", OldTaskCannotRestore),
+    ("PLC task recovery logs localized configuration failure once", PlcTaskRecoveryLocalizesAndDeduplicates),
     ("Center startup resume generates valid SQL for empty and nonempty exclusions", CenterStartupResumeSqlHandlesExclusions),
     ("Task recovery failure throttles retries and deduplicates errors", TaskRecoveryFailureThrottlesAndResets),
     ("Abandoned task stays terminal without hiding historical uploads", AbandonedTaskRemainsTerminal),
@@ -773,6 +774,68 @@ static void OldTaskCannotRestore()
     AssertTrue(fixture.Service.CurrentState.GetOrCreateStation(1).ActiveTask is null, "恢复失败不得进入运行态。");
     AssertTrue(ReferenceEquals(task, fixture.Service.GetUnfinishedTask(1)), "旧任务仍可见以阻止新开工。");
     AssertThrows<AutoWeldSystem.Core.Exceptions.BusinessOperationException>(() => fixture.Service.ValidateTaskForProduction(task, 1), "PLC 放行校验必须拒绝旧快照。");
+}
+
+static void PlcTaskRecoveryLocalizesAndDeduplicates()
+{
+    var fixture = CreateProgramBoundaryService();
+    var task = new BizWeldTask { Id = 7, StationNo = 1, ProgramName = "旧程序", SN = "VERIFY", TaskStatus = "Running", ProgramContentSnapshot = "{\"焊点数量\":4,\"对称度\":0.5}" };
+    fixture.Service.StoredTask = task;
+    var settings = new FakeAppSettingsService();
+    var localizer = new AutoWeldSystem.Services.LocalizationService(settings);
+    localizer.SetLanguage("zh-CN");
+    var logs = new FakeProgramExceptionLogService();
+    using var monitor = new RecipeCodeReconcileMonitorService(settings, null!, null!, fixture.Service, null!, null!, logs, localizer);
+    var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+    var restore = typeof(RecipeCodeReconcileMonitorService).GetMethod("TryRestoreRunningTask", flags)!;
+    var getState = typeof(RecipeCodeReconcileMonitorService).GetMethod("GetStationState", flags)!;
+    var state = getState.Invoke(monitor, [1])!;
+    var cooldown = state.GetType().GetProperty("LastRestoreAttemptTime")!;
+    void Attempt(int station = 1)
+    {
+        cooldown.SetValue(state, DateTime.Now.AddMinutes(-1));
+        var failure = state.GetType().GetProperty("RecoveryFailure")!.GetValue(state);
+        if (failure is not null)
+            typeof(TaskRecoveryFailureState).GetField("_lastAttempt", flags)!.SetValue(failure, DateTime.Now.AddMinutes(-1));
+        AssertFalse((bool)restore.Invoke(monitor, [station])!, "旧任务不可恢复进入配方调和。");
+    }
+    AssertEqual("尚未读取 PLC 配方号", monitor.GetCurrent(1).Message, "中文模式占位不能为英文。");
+    for (var index = 0; index < 5; index++) Attempt();
+    AssertEqual(1, logs.Entries.Count, "跨过30秒重复失败也只能记录首次。");
+    AssertEqual("PLC 配方任务恢复失败", logs.Entries[0].Message, "中文摘要必须本地化。");
+    AssertTrue(logs.Entries[0].StackTrace.Contains("对称度", StringComparison.Ordinal)
+        && logs.Entries[0].StackTrace.Contains("VERIFY", StringComparison.Ordinal), "保留任务身份及具体非法字段原因。");
+    localizer.SetLanguage("en-US");
+    Attempt();
+    AssertEqual(1, logs.Entries.Count, "语言切换不是新故障，不应再写一次。");
+    task.Id = 8;
+    Attempt();
+    AssertEqual(2, logs.Entries.Count, "新任务同类错误必须记录。");
+    AssertEqual("PLC recipe task restore failed.", logs.Entries[1].Message, "英文新消息按当前语言生成。");
+    fixture.Service.StoredTask = null;
+    Attempt();
+    fixture.Service.StoredTask = task;
+    Attempt();
+    AssertEqual(3, logs.Entries.Count, "无任务后重新出现错误必须复位。");
+    task.ProgramContentSnapshot = "{\"焊点数量\":4,\"高度上限\":12}";
+    cooldown.SetValue(state, DateTime.Now.AddMinutes(-1));
+    restore.Invoke(monitor, [1]);
+    AssertTrue(state.GetType().GetProperty("RecoveryFailure")!.GetValue(state) is null, "恢复成功清除失败状态。");
+    fixture.Service.CurrentState.GetOrCreateStation(1).ActiveTask = null;
+    fixture.Service.CurrentState.ActiveTask = null;
+    task.ProgramContentSnapshot = "{\"焊点数量\":4,\"对称度\":0.5}";
+    Attempt();
+    var beforeCommunicationFailure = logs.Entries.Count;
+    typeof(RecipeCodeReconcileMonitorService).GetMethod("WriteBusinessFailureLog", flags)!
+        .Invoke(monitor, [1, "communication", "offline"]);
+    Attempt();
+    AssertEqual(beforeCommunicationFailure + 1, logs.Entries.Count, "通讯故障不能重置配置失败去重状态。");
+    restore.Invoke(monitor, [2]);
+    AssertEqual(beforeCommunicationFailure + 2, logs.Entries.Count, "工位2应有独立的失败状态。");
+    fixture.Service.CurrentState.GetOrCreateStation(1).ActiveTask = new BizWeldTask { Id = 8, StationNo = 1, TaskStatus = "Running" };
+    typeof(RecipeCodeReconcileMonitorService).GetMethod("GetRunningStationTasks", flags)!
+        .Invoke(monitor, [settings.Get()]);
+    AssertTrue(state.GetType().GetProperty("RecoveryFailure")!.GetValue(state) is null, "UI先恢复运行态后后台也要清理旧门禁。");
 }
 
 static void CenterStartupResumeSqlHandlesExclusions()
