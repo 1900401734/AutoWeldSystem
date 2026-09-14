@@ -26,6 +26,9 @@ public interface IProgramManageService
 
     IReadOnlyList<ProgramSyncSummary> GetPendingSyncPrograms();
 
+    Task<IReadOnlyList<ProgramSyncSummary>> GetPendingSyncProgramsAsync(
+        CancellationToken cancellationToken = default);
+
     string BuildProgramName(string productNum, string componentCode, int sequenceNumber, string? description = null);
 
     /// <summary>
@@ -61,8 +64,8 @@ public interface IProgramManageService
     Task UpdateAllProgramsDeviceIdAsync(string newDeviceId);
 
     /// <summary>
-    /// 批量删除指定程序（仅本地删除，不同步 MES）。
-    /// 用于清理因设备编号变更导致无法同步的历史程序。
+    /// 清理指定 ID 中仍异常或待同步的程序（仅删除本地主表，不同步 MES，保留历史版本）。
+    /// 已同步成功或已终结的记录会跳过。
     /// </summary>
     /// <returns>实际删除的程序数量。</returns>
     Task<int> BatchDeleteLocalProgramsAsync(

@@ -27,6 +27,13 @@ public sealed class ProgramManageService : IProgramManageService
 {
     public event EventHandler? ProgramLookupsChanged;
     private const int MaxLocalProgramCount = 256;
+    private static readonly string[] PendingSyncStatuses =
+    [
+        AppConstants.ProgramSyncStatus.PendingCreate,
+        AppConstants.ProgramSyncStatus.PendingUpdate,
+        AppConstants.ProgramSyncStatus.PendingDelete,
+        AppConstants.ProgramSyncStatus.Failed
+    ];
 
     private readonly SqlSugarDbContext _dbContext;
     private readonly IAppSettingsService _settingsService;
@@ -201,21 +208,28 @@ public sealed class ProgramManageService : IProgramManageService
     public IReadOnlyList<ProgramSyncSummary> GetPendingSyncPrograms()
     {
         _dbContext.InitDatabase();
-
-        var pendingStatuses = new[]
-        {
-            AppConstants.ProgramSyncStatus.PendingCreate,
-            AppConstants.ProgramSyncStatus.PendingUpdate,
-            AppConstants.ProgramSyncStatus.PendingDelete,
-            AppConstants.ProgramSyncStatus.Failed
-        };
-
+        // SqlSugar 表达式只能捕获局部数组，不能直接解析私有静态字段。
+        var pendingStatuses = PendingSyncStatuses;
         return _dbContext.Db.Queryable<BizProgram>()
             .Where(it => pendingStatuses.Contains(it.SyncStatus))
             .OrderBy(it => it.UpdatedTime, OrderByType.Desc)
             .ToList()
             .Select(ToSyncSummary)
             .ToArray();
+    }
+
+    public Task<IReadOnlyList<ProgramSyncSummary>> GetPendingSyncProgramsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return Task.Run(
+            () =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var programs = GetPendingSyncPrograms();
+                cancellationToken.ThrowIfCancellationRequested();
+                return programs;
+            },
+            cancellationToken);
     }
 
     public string BuildProgramName(string productNum, string componentCode, int sequenceNumber, string? description = null)
@@ -1042,7 +1056,7 @@ public sealed class ProgramManageService : IProgramManageService
     }
 
     /// <summary>
-    /// 批量删除指定程序（仅本地软删除，不同步 MES）。
+    /// 批量清理指定的异常或待同步程序（仅物理删除本地主表，不通知 MES，保留历史版本）。
     /// 用于清理因设备编号变更等原因导致无法同步的历史程序。
     /// </summary>
     public async Task<int> BatchDeleteLocalProgramsAsync(
@@ -1075,17 +1089,16 @@ public sealed class ProgramManageService : IProgramManageService
         cancellationToken.ThrowIfCancellationRequested();
         _dbContext.InitDatabase();
 
-        var programs = _dbContext.Db.Queryable<BizProgram>()
-            .Where(it => ids.Contains(it.Id))
-            .ToList();
-
-        if (programs.Count == 0)
+        // 确认框和变更门锁等待期间可能已同步成功；只清理已确认 ID 中仍待处理的记录。
+        cancellationToken.ThrowIfCancellationRequested();
+        var pendingStatuses = PendingSyncStatuses;
+        var deletedCount = _dbContext.Db.Deleteable<BizProgram>()
+            .Where(it => ids.Contains(it.Id) && pendingStatuses.Contains(it.SyncStatus))
+            .ExecuteCommand();
+        if (deletedCount == 0)
         {
             return 0;
         }
-
-        cancellationToken.ThrowIfCancellationRequested();
-        var deletedCount = _dbContext.Db.Deleteable(programs).ExecuteCommand();
         _operationLogService.Write(
             "ProgramBatchDelete",
             $"批量删除程序：{deletedCount} 条");

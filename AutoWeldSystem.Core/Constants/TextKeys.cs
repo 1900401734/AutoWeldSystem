@@ -1147,6 +1147,8 @@ public static class TextKeys
         public const string MessageConfirmBatchClean = "program.message.confirm_batch_clean";
         public const string MessageBatchCleanSuccess = "program.message.batch_clean_success";
         public const string MessageBatchCleanFailed = "program.message.batch_clean_failed";
+        public const string MessageBatchCleanEmpty = "program.message.batch_clean_empty";
+        public const string MessageBatchCleanCanceled = "program.message.batch_clean_canceled";
     }
 
     /// <summary>

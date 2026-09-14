@@ -1788,6 +1788,12 @@
   <data name="program.message.delete_success" xml:space="preserve">
     <value>程序已在本地删除。</value>
   </data>
+  <data name="program.message.batch_clean_empty" xml:space="preserve">
+    <value>没有需要清理的程序。</value>
+  </data>
+  <data name="program.message.batch_clean_canceled" xml:space="preserve">
+    <value>批量清理已取消。</value>
+  </data>
   <data name="program.message.save_success" xml:space="preserve">
     <value>程序已保存。</value>
   </data>
@@ -1846,7 +1852,7 @@
     <value>删除</value>
   </data>
   <data name="program.message.confirm_batch_clean" xml:space="preserve">
-    <value>此操作将删除本地所有同步失败或待同步的程序，不会通知 MES。通常用于修改设备编号后清理无法同步的历史程序。是否继续？</value>
+    <value>确定清理 {0} 个同步失败或待同步程序吗？包含列表中已隐藏的删除失败记录，不受搜索和分页影响。仅删除本地主表，不通知 MES，保留历史版本；已同步成功的程序会跳过。</value>
   </data>
   <data name="program.message.batch_clean_success" xml:space="preserve">
     <value>已清理 {0} 个程序。</value>

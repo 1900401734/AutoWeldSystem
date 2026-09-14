@@ -1788,6 +1788,12 @@
   <data name="program.message.delete_success" xml:space="preserve">
     <value>Program deleted locally.</value>
   </data>
+  <data name="program.message.batch_clean_empty" xml:space="preserve">
+    <value>No programs need cleaning.</value>
+  </data>
+  <data name="program.message.batch_clean_canceled" xml:space="preserve">
+    <value>Batch clean canceled.</value>
+  </data>
   <data name="program.message.save_success" xml:space="preserve">
     <value>Program saved.</value>
   </data>
@@ -1846,7 +1852,7 @@
     <value>Delete</value>
   </data>
   <data name="program.message.confirm_batch_clean" xml:space="preserve">
-    <value>This will delete all local programs with sync failures or pending status without notifying MES. Typically used to clean up programs after changing device ID. Continue?</value>
+    <value>Clean {0} failed or pending programs, including hidden failed deletions, regardless of search or page? This deletes local program records only, keeps revision history and does not notify MES. Programs already synced successfully will be skipped.</value>
   </data>
   <data name="program.message.batch_clean_success" xml:space="preserve">
     <value>{0} program(s) cleaned.</value>

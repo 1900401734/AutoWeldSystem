@@ -90,6 +90,7 @@ var tests = new (string Name, Action Run)[]
     ("PLC recipe name reader keeps successful slots after read failures", PlcRecipeNameReaderKeepsSuccessfulSlotsAfterReadFailures),
     ("PLC recipe name reader accepts in-memory configuration", PlcRecipeNameReaderAcceptsInMemoryConfiguration),
     ("PLC recipe name reader returns invalid config failures", PlcRecipeNameReaderReturnsInvalidConfigFailures),
+    ("Program cleanup skips empty requests and honors cancellation", ProgramCleanupGuardsAndCancellation),
     ("Program recipe mapping normalizes positive numeric codes", ProgramRecipeMappingNormalizesPositiveNumericCodes),
     ("Program save recipe rules require positive station codes", ProgramSaveRecipeRulesRequirePositiveStationCodes),
     ("Program recipe mapping resolves station-specific codes", ProgramRecipeMappingResolvesStationSpecificCodes),
@@ -1622,6 +1623,33 @@ static void PlcRecipeNameReaderReturnsInvalidConfigFailures()
     AssertFalse(result.IsSuccess, "历史非法配置应返回读取失败，而不是向界面抛出异常。 ");
     AssertTrue(result.Message.Contains("基地址不能为空", StringComparison.Ordinal), "失败消息应包含具体配置错误。 ");
     AssertEqual(0, result.Options.Count, "配置无效时不应生成配方选项。 ");
+}
+
+static void ProgramCleanupGuardsAndCancellation()
+{
+    // 空目标、预取消和门锁等待取消都必须在访问数据库前返回。
+    using var db = new AutoWeldSystem.Data.SqlSugarDbContext("server=127.0.0.1;database=unused;uid=unused;pwd=unused;");
+    var service = new AutoWeldSystem.Services.ProgramManageService(db, new FakeAppSettingsService(), new FakeMesProvider(), new FakeOperationLogService());
+    AssertEqual(0, service.BatchDeleteLocalProgramsAsync(Array.Empty<int>()).GetAwaiter().GetResult(), "空目标不应触碰数据库。");
+    using var canceled = new CancellationTokenSource();
+    canceled.Cancel();
+    AssertThrows<OperationCanceledException>(() => service.GetPendingSyncProgramsAsync(canceled.Token).GetAwaiter().GetResult(), "候选查询应响应预取消。");
+    AssertThrows<OperationCanceledException>(() => service.BatchDeleteLocalProgramsAsync([1, 1], canceled.Token).GetAwaiter().GetResult(), "清理应响应预取消。");
+    var gate = (SemaphoreSlim)typeof(AutoWeldSystem.Services.ProgramManageService)
+        .GetField("_mutationGate", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(service)!;
+    gate.Wait();
+    try
+    {
+        using var waiting = new CancellationTokenSource();
+        var cleanup = service.BatchDeleteLocalProgramsAsync([1], waiting.Token);
+        AssertFalse(cleanup.IsCompleted, "清理必须等待程序变更门锁。");
+        waiting.Cancel();
+        AssertThrows<OperationCanceledException>(() => cleanup.GetAwaiter().GetResult(), "门锁等待期间取消必须终止清理。");
+    }
+    finally
+    {
+        gate.Release();
+    }
 }
 
 static void ProductProcessDraftCopiesBusinessFieldsAndResetsIdentity()
@@ -17575,7 +17603,7 @@ static void ProgramDeleteKeepsMesSyncOffUiPath()
         "列表查询不能参与程序变更门锁，否则删除后立即刷新会形成互相等待。");
 
     AssertTrue(
-        viewCode.Contains("没有需要清理的程序。", StringComparison.Ordinal),
+        viewCode.Contains("TextKeys.ProgramManage.MessageBatchCleanEmpty", StringComparison.Ordinal),
         "批量清理在没有目标时必须直接提示，不能继续走清理和刷新流程。");
     AssertTrue(
         viewCode.Contains("当前没有可删除的加工程序。", StringComparison.Ordinal),

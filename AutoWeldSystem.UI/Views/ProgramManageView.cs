@@ -1445,33 +1445,29 @@ public partial class ProgramManageView : BaseView
 
     private async void BatchClean_ClickAsync(object? sender, EventArgs e)
     {
-        var pendingIds = _programs
-            .Where(p => p.SyncStatus != AppConstants.ProgramSyncStatus.Synced)
-            .Select(p => p.Id)
-            .ToList();
-
-        if (pendingIds.Count == 0)
-        {
-            ShowWarningMessage("没有需要清理的程序。");
-            return;
-        }
-
-        var confirmMessage = _localizer.GetString(TextKeys.ProgramManage.MessageConfirmBatchClean);
-        var result = MessageBox.Show(
-            GetDialogOwner(),
-            confirmMessage,
-            _localizer.GetString(TextKeys.Common.TitleWarning),
-            MessageBoxButtons.YesNo,
-            MessageBoxIcon.Warning);
-
-        if (result != DialogResult.Yes)
-        {
-            return;
-        }
-
-        btnBatchClean.Enabled = false;
+        if (_programOperationInProgress) return;
+        _programOperationInProgress = true;
+        UpdateProgramActions();
         try
         {
+            // 待处理查询包含已在列表隐藏的删除失败记录，不受分页和搜索快照影响。
+            var pending = await _programService.GetPendingSyncProgramsAsync(_operationCts.Token);
+            var pendingIds = pending.Select(program => program.Id).ToList();
+            if (pendingIds.Count == 0)
+            {
+                ShowWarning(TextKeys.ProgramManage.MessageBatchCleanEmpty);
+                return;
+            }
+
+            var confirmMessage = _localizer.GetString(TextKeys.ProgramManage.MessageConfirmBatchClean, pendingIds.Count);
+            var result = MessageBox.Show(
+                GetDialogOwner(),
+                confirmMessage,
+                _localizer.GetString(TextKeys.Common.TitleWarning),
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+            if (result != DialogResult.Yes) return;
+
             var deleteCount = await _programService.BatchDeleteLocalProgramsAsync(pendingIds, _operationCts.Token);
             await ReloadProgramsAsync();
             if (_programs.Count == 0)
@@ -1483,7 +1479,7 @@ public partial class ProgramManageView : BaseView
         }
         catch (OperationCanceledException)
         {
-            ShowWarningMessage("批量清理已取消。");
+            ShowWarning(TextKeys.ProgramManage.MessageBatchCleanCanceled);
         }
         catch (Exception ex)
         {
@@ -1491,7 +1487,8 @@ public partial class ProgramManageView : BaseView
         }
         finally
         {
-            btnBatchClean.Enabled = true;
+            _programOperationInProgress = false;
+            UpdateProgramActions();
         }
     }
 
