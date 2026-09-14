@@ -160,6 +160,8 @@ var tests = new (string Name, Action Run)[]
     ("Local export reports unavailable and missing program limits", LocalExportReportsUnavailableProgramLimits),
     ("Local export covers all history dynamic columns", LocalExportCoversAllHistoryDynamicColumns),
     ("Local export keeps raw face rows without AB aggregation", LocalExportKeepsRawFaceRowsWithoutAbAggregation),
+    ("Inspection local export removes only fixed face result columns", InspectionLocalExportRemovesOnlyFixedFaceResultColumns),
+    ("Other report exports preserve point result column rules", OtherReportExportsPreservePointResultColumnRules),
     ("Export reports never expose upload status column", ExportReportsNeverExposeUploadStatusColumn),
     ("Reports write product test flag after product result", ReportsWriteProductTestFlagAfterProductResult),
     ("Product test flag marking requeues center report", ProductTestFlagMarkingRequeuesCenterReport),
@@ -3833,7 +3835,7 @@ static void LocalExportKeepsRawFaceRowsWithoutAbAggregation()
         var detailHeaderRow = GetReportDetailHeaderRow(worksheet);
         var headers = ReadHeaderRow(worksheet, detailHeaderRow);
 
-        // A/B 聚合会把表头换成“检测面/检测结果”，本地导出必须保留焊点口径。
+        // A/B 聚合会把面号表头换成“检测面”，本地导出必须保留原始采集点口径。
         AssertTrue(headers.Contains("焊点编号"), "本地导出必须保留采集点表头，不得切换成 A/B 的检测面口径。");
         AssertFalse(headers.Contains("检测面"), "本地导出不得使用 A/B 聚合的检测面表头。");
 
@@ -3896,6 +3898,168 @@ static void LocalExportKeepsRawFaceRowsWithoutAbAggregation()
     finally
     {
         DeleteReportFixture(uploadPath);
+    }
+}
+
+static void InspectionLocalExportRemovesOnlyFixedFaceResultColumns()
+{
+    var definitions = new (DimTestItem Item, BizSchemeDetail Detail)[]
+    {
+        (new DimTestItem { ItemId = 1, ItemName = "高度", Unit = "mm", ActualExpression = "0:F-0", UpperExpression = "4:F-0", LowerExpression = "8:F-0", ResultExpression = "12:I-0" },
+            new BizSchemeDetail
+            {
+                SchemeId = "EXPORT-SCHEME", ItemId = 1, DetailId = 1,
+                SaveActual = true, SaveUpper = true, SaveLower = true, SaveResult = true, ReportActual = true,
+                ActualHeader = "高度", UpperHeader = "高度上限", LowerHeader = "高度下限", ResultHeader = "高度结果"
+            })
+    };
+    foreach (var touchCount in new[] { 1, 2, 4 })
+    foreach (var dualStation in new[] { false, true })
+    foreach (var fixedResultHeader in new[] { "检测结果", "焊点结果", "高度结果" })
+    {
+        var settings = new AppSettings
+        {
+            ProcessParameterDeviceType = ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck,
+            EnableDualStation = dualStation
+        };
+        var task = BuildReportTask(new DateTime(2026, 9, 14, 8, 0, 0), endTime: null);
+        task.ProgramContentSnapshot = $"{{\"焊点数量\":{touchCount},\"高度上限\":\"20.000\",\"高度下限\":\"5.000\"}}";
+        var configs = Enumerable.Range(1, dualStation ? 2 : 1)
+            .Select(station => new BizProductProcessConfig
+            {
+                StationNo = station, SchemeId = "EXPORT-SCHEME", TouchCount = touchCount,
+                PointNoHeader = "面号", PointResultHeader = station == 1 ? fixedResultHeader : $"{fixedResultHeader}-工位2"
+            }).ToArray();
+        var records = new List<BizWeldPointRecord>();
+        foreach (var config in configs)
+        foreach (var productNo in new[] { "P-OK", "P-NG", "P-UNKNOWN" })
+        foreach (var face in Enumerable.Range(1, touchCount))
+        {
+            var record = BuildReportPoint(task.Id, config.StationNo, productNo, records.Count + 1, "3");
+            record.TouchNo = face.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            record.ProductResult = productNo == "P-OK" ? ProductionConstants.TestResults.Ok : string.Empty;
+            record.RawDataJson = JsonSerializer.Serialize(new Dictionary<string, string>
+            {
+                ["高度"] = $"{10 + config.StationNo}.{face}234",
+                ["高度上限"] = "99.000",
+                ["高度下限"] = "1.000",
+                ["高度结果"] = "OK",
+                ["product_result"] = productNo == "P-UNKNOWN" ? string.Empty : ProductionConstants.TestResults.Ng
+            });
+            records.Add(record);
+        }
+        var originalRecords = JsonSerializer.Serialize(records);
+        var path = GenerateExportReportWorkbook(settings, task, records, localExport: true,
+            deviceType: settings.ProcessParameterDeviceType,
+            fileName: $"local-inspection-{touchCount}-{configs.Length}-{fixedResultHeader}.xlsx",
+            schemeDefinitions: definitions, touchCount: touchCount, stationConfigs: configs);
+        try
+        {
+            using var workbook = new XLWorkbook(path);
+            var sheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+            var headerRow = GetReportDetailHeaderRow(sheet);
+            var headers = ReadHeaderRow(sheet, headerRow);
+            var expectedHeaders = new List<string>();
+            if (dualStation) expectedHeaders.Add("工位");
+            expectedHeaders.AddRange(["产品编号", "面号", "高度 (mm)", "高度上限 (mm)", "高度下限 (mm)", "高度结果", "产品结果"]);
+            AssertSequenceEqual(expectedHeaders, headers, "检测设备本地导出只能移除固定逐面结果列，不得保留空列或误删同名的单项结果列。");
+            AssertEqual(1, headers.Count(header => header == "高度结果"), "固定结果列与单项结果同名时仍须保留且只保留单项结果。");
+            var faceColumn = Array.IndexOf(headers, "面号") + 1;
+            var actualColumn = Array.IndexOf(headers, "高度 (mm)") + 1;
+            var upperColumn = Array.IndexOf(headers, "高度上限 (mm)") + 1;
+            var lowerColumn = Array.IndexOf(headers, "高度下限 (mm)") + 1;
+            var itemResultColumn = Array.IndexOf(headers, "高度结果") + 1;
+            var productResultColumn = Array.IndexOf(headers, "产品结果") + 1;
+            var expectedRecords = records.OrderBy(record => record.ProductNo, StringComparer.Ordinal)
+                .ThenBy(record => record.StationNo).ThenBy(record => record.SequenceNo).ToArray();
+            for (var i = 0; i < expectedRecords.Length; i++)
+            {
+                var record = expectedRecords[i];
+                var row = headerRow + 1 + i;
+                var values = JsonSerializer.Deserialize<Dictionary<string, string>>(record.RawDataJson!)!;
+                AssertEqual(record.TouchNo, sheet.Cell(row, faceColumn).GetString(), "面号必须逐行保留，不能聚合成 A/B。");
+                AssertEqual(values["高度"], sheet.Cell(row, actualColumn).GetString(), "实测值必须保留原始采集小数位。");
+                AssertEqual("99.000", sheet.Cell(row, upperColumn).GetString(), "PLC 原始上限不得被程序限值覆盖。");
+                AssertEqual("1.000", sheet.Cell(row, lowerColumn).GetString(), "PLC 原始下限必须保留。");
+                AssertEqual("OK", sheet.Cell(row, itemResultColumn).GetString(), "单项结果必须保留，不能按表头包含结果二字删除。");
+                if (i % touchCount == 0)
+                {
+                    var expectedResult = record.ProductNo == "P-OK" ? "OK" : record.ProductNo == "P-NG" ? "NG" : ProductionConstants.TestResults.Unknown;
+                    AssertEqual(expectedResult, sheet.Cell(row, productResultColumn).GetString(), "产品结果应优先取固化字段、再取历史回退值，不能从完成信号 3 推算。");
+                    if (touchCount > 1)
+                        AssertMerged(sheet, sheet.Range(row, productResultColumn, row + touchCount - 1, productResultColumn).RangeAddress.ToString()!, "产品结果只在本产品、本工位的原始面行内合并。");
+                }
+            }
+            AssertTrue(sheet.Cell(headerRow + records.Count + 1, faceColumn).IsEmpty(), "不能多出聚合行或占位行。");
+            AssertEqual(17, headerRow, "移除明细结果列不应改变程序限值区域占用的行数。");
+            AssertEqual(headerRow, sheet.SheetView.SplitRow, "冻结区域仍应跟随明细表头。");
+            AssertEqual("20.000", sheet.Cell("G15").GetString(), "顶部程序上限必须保持开工快照值与精度。");
+            AssertEqual("5.000", sheet.Cell("I15").GetString(), "顶部程序下限必须保持开工快照值与精度。");
+            AssertTemplateHeaderMerges(sheet);
+            AssertEqual(originalRecords, JsonSerializer.Serialize(records), "手动导出不得修改采集记录或历史产品结果。");
+        }
+        finally
+        {
+            var fixtureRoot = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "AutoWeldSystem.Tests")) + Path.DirectorySeparatorChar;
+            AssertTrue(Path.GetFullPath(Path.GetDirectoryName(path)!).StartsWith(fixtureRoot, StringComparison.OrdinalIgnoreCase), "只允许清理本次生成的测试临时目录。");
+            DeleteReportFixture(path);
+        }
+    }
+}
+
+static void OtherReportExportsPreservePointResultColumnRules()
+{
+    var definitions = new (DimTestItem Item, BizSchemeDetail Detail)[]
+    {
+        (new DimTestItem { ItemId = 1, ItemName = "高度", ActualExpression = "0:F-0" },
+            new BizSchemeDetail { SchemeId = "EXPORT-SCHEME", ItemId = 1, DetailId = 1, ReportActual = true, ActualHeader = "高度" })
+    };
+    var cases = new[]
+    {
+        (ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic, true, 1, true),
+        (ProductionConstants.ProcessParameterDeviceTypes.WholePieceWeld, true, 4, true),
+        (ProductionConstants.ProcessParameterDeviceTypes.Electromagnetic, false, 2, true),
+        (ProductionConstants.ProcessParameterDeviceTypes.WholePieceWeld, false, 1, true),
+        (ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck, false, 4, false)
+    };
+    foreach (var (deviceType, localExport, touchCount, expectPointResult) in cases)
+    {
+        var settings = new AppSettings { ProcessParameterDeviceType = deviceType };
+        var task = BuildReportTask(new DateTime(2026, 9, 14, 8, 0, 0), endTime: null);
+        task.ProgramContentSnapshot = $"{{\"焊点数量\":{touchCount},\"高度上限\":20}}";
+        var records = Enumerable.Range(1, touchCount).Select(face =>
+        {
+            var record = BuildReportPoint(task.Id, 1, "P-001", face, ProductionConstants.TestResults.Ok);
+            record.ProductResult = ProductionConstants.TestResults.Ok;
+            record.RawDataJson = JsonSerializer.Serialize(new Dictionary<string, string> { ["高度"] = "10.25" });
+            return record;
+        }).ToArray();
+        var path = GenerateExportReportWorkbook(settings, task, records, localExport, deviceType,
+            fileName: $"unchanged-results-{deviceType}-{localExport}.xlsx", schemeDefinitions: definitions, touchCount: touchCount);
+        try
+        {
+            using var workbook = new XLWorkbook(path);
+            var sheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+            var headers = ReadHeaderRow(sheet, GetReportDetailHeaderRow(sheet));
+            AssertEqual(expectPointResult, headers.Contains("焊点结果") || headers.Contains("检测结果"), "非检测设备和非本地报表的采集点结果列规则不得改变。");
+            AssertTrue(headers.Contains("产品结果"), "所有出口仍须保留产品结果。");
+            if (!localExport)
+            {
+                AssertEqual(CenterProductReportFormat.DetailHeaderRow, GetReportDetailHeaderRow(sheet), "上传报表不得插入本地历史限值区。");
+                if (deviceType == ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck)
+                {
+                    var faceColumn = Array.IndexOf(headers, "检测面") + 1;
+                    AssertEqual("A", sheet.Cell(CenterProductReportFormat.DetailFirstDataRow, faceColumn).GetString(), "整件检测上传报表仍使用 A/B 两行。");
+                    AssertEqual("B", sheet.Cell(CenterProductReportFormat.DetailFirstDataRow + 1, faceColumn).GetString(), "整件检测上传报表仍使用 A/B 两行。");
+                }
+            }
+        }
+        finally
+        {
+            var fixtureRoot = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "AutoWeldSystem.Tests")) + Path.DirectorySeparatorChar;
+            AssertTrue(Path.GetFullPath(Path.GetDirectoryName(path)!).StartsWith(fixtureRoot, StringComparison.OrdinalIgnoreCase), "只允许清理本次生成的测试临时目录。");
+            DeleteReportFixture(path);
+        }
     }
 }
 
@@ -18571,7 +18735,8 @@ static string GenerateExportReportWorkbook(
     string fileName = "data-manage-export.xlsx",
     IReadOnlyList<(DimTestItem Item, BizSchemeDetail Detail)>? schemeDefinitions = null,
     int touchCount = 0,
-    bool showTestFlagInHistory = false)
+    bool showTestFlagInHistory = false,
+    IReadOnlyList<BizProductProcessConfig>? stationConfigs = null)
 {
     var serviceType = typeof(ProductionReportFileService);
     var service = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(serviceType);
@@ -18602,19 +18767,22 @@ static string GenerateExportReportWorkbook(
     }
 
     var resolvedStations = CreateGenericList(resolvedStationType);
-    resolvedStations.Add(Activator.CreateInstance(
-            resolvedStationType,
-            1,
-            new BizProductProcessConfig
-            {
-                StationNo = 1,
-                SchemeId = "EXPORT-SCHEME",
-                PointNoHeader = "焊点编号",
-                PointResultHeader = "焊点结果",
-                TouchCount = touchCount
-            },
-            schemeItems)
-        ?? throw new InvalidOperationException("无法构造已解析工位报表配置。"));
+    var configs = stationConfigs ??
+    [
+        new BizProductProcessConfig
+        {
+            StationNo = 1,
+            SchemeId = "EXPORT-SCHEME",
+            PointNoHeader = "焊点编号",
+            PointResultHeader = "焊点结果",
+            TouchCount = touchCount
+        }
+    ];
+    foreach (var config in configs)
+    {
+        resolvedStations.Add(Activator.CreateInstance(resolvedStationType, config.StationNo, config, schemeItems)
+            ?? throw new InvalidOperationException("无法构造已解析工位报表配置。"));
+    }
 
     var buildSchema = serviceType.GetMethod(
         "BuildReportSchemaForStationsWithDeviceType",

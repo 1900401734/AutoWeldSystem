@@ -239,22 +239,23 @@ public class ProductionReportFileService : IProductionReportFileService
             .ToList();
         // 本地导出是后台查阅用的明细数据，保留 PLC 采集的原始面记录，不做 A/B 聚合，
         // 因此表头和列合并都按普通焊点口径处理；A/B 只属于上传给 MES 的报表。
+        var localInspectionExport = localExport && WholePieceProgramResultRules.IsApplicable(deviceType);
         var displayOptions = ResolveCompatibleDisplayOptions(
             orderedConfigs,
             !localExport
-                && WholePieceAbAggregationRules.IsApplicable(deviceType, touchCount));
+                && WholePieceAbAggregationRules.IsApplicable(deviceType, touchCount),
+            ignorePointResultHeader: localInspectionExport);
         var leadingColumns = BuildLeadingColumns(displayOptions);
         var dynamicColumns = orderedConfigs
             .SelectMany(config => config.SchemeItems.SelectMany(item => BuildItemColumnsForMode(
                 item,
                 !localExport && WholePieceAbAggregationRules.IsApplicable(deviceType, touchCount),
                 localExport)));
-        // 整件检测的上传报表取消采集点结果列：面结果寄存器恒为检测完成信号，
-        // 列名叫“检测结果”却不承载合格信息，对客户构成误导，产品结果列已足够。
-        // 本地导出保留该列：它输出 PLC 原始面记录，供工艺人员核对采集状态。
-        var wholePieceUploadReport = !localExport
-            && WholePieceAbAggregationRules.IsApplicable(deviceType, touchCount);
-        var pointResultColumn = wholePieceUploadReport
+        // 检测设备的逐面结果固定为完成信号 3，不承载质量判定；本地导出按设备类型移除此固定列，
+        // 不限制旧工单的面数，也不影响方案配置的单项结果列。上传报表保持原有 A/B 输出边界。
+        var omitPointResultColumn = localInspectionExport
+            || (!localExport && WholePieceAbAggregationRules.IsApplicable(deviceType, touchCount));
+        var pointResultColumn = omitPointResultColumn
             ? Array.Empty<ReportColumn>()
             : BuildPointResultColumn(displayOptions);
         // 试焊件列与 MES 过程参数字段共用门禁：本地导出同样遵循，
@@ -985,15 +986,18 @@ public class ProductionReportFileService : IProductionReportFileService
     /// </summary>
     private static ReportDisplayOptions ResolveCompatibleDisplayOptions(
         IReadOnlyList<ResolvedStationReportConfig> stationConfigs,
-        bool wholePieceInspection)
+        bool wholePieceInspection,
+        bool ignorePointResultHeader = false)
     {
         if (stationConfigs.Count == 0)
         {
             return ReportDisplayOptions.FromConfig(null, wholePieceInspection);
         }
 
+        // 本地检测导出已没有固定结果列，不能再因该列的自定义名称不同阻止导出；面号仍须一致。
         var options = stationConfigs
             .Select(config => ReportDisplayOptions.FromConfig(config.Config, wholePieceInspection))
+            .Select(option => ignorePointResultHeader ? option with { PointResultHeader = string.Empty } : option)
             .Distinct()
             .ToList();
         if (options.Count > 1)
