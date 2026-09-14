@@ -1776,6 +1776,18 @@
   <data name="program.message.current_not_synced" xml:space="preserve">
     <value>Current: Not synced</value>
   </data>
+  <data name="program.message.current_invalid" xml:space="preserve">
+    <value>Current: invalid content; deletion only</value>
+  </data>
+  <data name="program.message.content_invalid" xml:space="preserve">
+    <value>Invalid program content. Saving, copying and syncing are blocked, but you can delete this program. Reason: {0}</value>
+  </data>
+  <data name="program.message.detail_loading" xml:space="preserve">
+    <value>Program details are loading. Please wait.</value>
+  </data>
+  <data name="program.message.delete_success" xml:space="preserve">
+    <value>Program deleted locally.</value>
+  </data>
   <data name="program.message.save_success" xml:space="preserve">
     <value>Program saved.</value>
   </data>
@@ -1783,7 +1795,7 @@
     <value>Select a program to delete first.</value>
   </data>
   <data name="program.message.delete_confirm" xml:space="preserve">
-    <value>Delete the current program?</value>
+    <value>Delete program "{0}" (local ID: {1})?</value>
   </data>
   <data name="program.message.select_sync" xml:space="preserve">
     <value>Select a program to sync first.</value>

@@ -1776,6 +1776,18 @@
   <data name="program.message.current_not_synced" xml:space="preserve">
     <value>当前：未同步</value>
   </data>
+  <data name="program.message.current_invalid" xml:space="preserve">
+    <value>当前：内容无效，仅可删除</value>
+  </data>
+  <data name="program.message.content_invalid" xml:space="preserve">
+    <value>程序内容无效，不能保存、另存或同步，但可删除当前程序。原因：{0}</value>
+  </data>
+  <data name="program.message.detail_loading" xml:space="preserve">
+    <value>程序详情正在加载，请稍后再操作。</value>
+  </data>
+  <data name="program.message.delete_success" xml:space="preserve">
+    <value>程序已在本地删除。</value>
+  </data>
   <data name="program.message.save_success" xml:space="preserve">
     <value>程序已保存。</value>
   </data>
@@ -1783,7 +1795,7 @@
     <value>请先选择要删除的程序。</value>
   </data>
   <data name="program.message.delete_confirm" xml:space="preserve">
-    <value>确定删除当前程序吗？</value>
+    <value>确定删除程序“{0}”（本地 ID：{1}）吗？</value>
   </data>
   <data name="program.message.select_sync" xml:space="preserve">
     <value>请先选择要同步的程序。</value>

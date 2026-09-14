@@ -1121,9 +1121,13 @@ public static class TextKeys
         public const string CurrentSelected = "program.message.current_selected";
         public const string CurrentSynced = "program.message.current_synced";
         public const string CurrentNotSynced = "program.message.current_not_synced";
+        public const string CurrentInvalid = "program.message.current_invalid";
+        public const string ContentInvalid = "program.message.content_invalid";
+        public const string DetailLoading = "program.message.detail_loading";
         public const string SaveSuccess = "program.message.save_success";
         public const string SelectDelete = "program.message.select_delete";
         public const string DeleteConfirm = "program.message.delete_confirm";
+        public const string DeleteSuccess = "program.message.delete_success";
         public const string SelectSync = "program.message.select_sync";
         public const string PullSuccess = "program.message.pull_success";
         public const string SequenceInvalid = "program.message.sequence_invalid";

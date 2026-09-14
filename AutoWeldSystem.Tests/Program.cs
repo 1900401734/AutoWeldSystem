@@ -15145,9 +15145,10 @@ static void ProgramManageViewProvidesSaveAsNewEntry()
         viewCode,
         "    private async void SaveAsNew_ClickAsync(object? sender, EventArgs e)",
         "    private async Task SyncProgramInBackgroundAsync(int programId)");
-    // 已有 ProgramId 的程序同步时会把 Create 降级为 Update，必须另起新行才能真正新增。
-    AssertTrue(handler.Contains("_editingId = 0;", StringComparison.Ordinal), "另存为新程序必须清空编辑标识，保存才会走新增。");
-    AssertTrue(handler.Contains("txtProgramId.Clear();", StringComparison.Ordinal), "另存为新程序必须清空 MES 程序ID，避免改名原程序。");
+    // 新请求清空本地 ID 即会新建无 MES ID 的实体，不应在校验成功前破坏当前编辑身份。
+    AssertTrue(handler.Contains("TryBuildRequest(out var request, asNew: true)", StringComparison.Ordinal)
+        && viewCode.Contains("Id = asNew ? 0 : _editingId", StringComparison.Ordinal), "另存请求必须使用新身份。");
+    AssertFalse(handler.Contains("_editingId = 0;", StringComparison.Ordinal), "另存失败前必须保留当前编辑身份，避免误保存或误删。");
     AssertTrue(handler.Contains("GetNextSequenceNumberAsync", StringComparison.Ordinal), "另存为新程序必须异步取该工号下的下一个流水号。");
 }
 
