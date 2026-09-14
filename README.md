@@ -503,20 +503,20 @@ HAVING COUNT(*) > 1;
 # 2. 在 CHANGELOG.md 顶部新增该版本条目，写清行为变化和升级注意
 # 3. 合并到 main 后打带说明的 tag（-F 从文件读取多行说明）
 git checkout main
-git merge --no-ff develop -m "release: v3.1.0"
-git tag -a v3.1.0 -F tag-notes.txt
+git merge --no-ff develop -m "release: v3.2.0"
+git tag -a v3.2.0 -F tag-notes.txt
 git push origin main
-git push origin v3.1.0
+git push origin v3.2.0
 ```
 
-`tag-notes.txt` 为临时文件，内容取自该版本的 CHANGELOG 条目，打完 tag 即可删除。也可用 `git tag -a v3.1.0 -m "标题" -m "正文"` 直接写多段说明。
+`tag-notes.txt` 为临时文件，内容取自该版本的 CHANGELOG 条目，打完 tag 即可删除。也可用 `git tag -a v3.2.0 -m "标题" -m "正文"` 直接写多段说明。
 
 查看历史版本说明：
 
 ```powershell
 git tag -n99                # 列出全部 tag 及完整说明
-git tag -n99 v3.1.0        # 只看某个版本
-git show v3.1.0            # 看 tag 说明 + 指向的提交
+git tag -n99 v3.2.0        # 只看某个版本
+git show v3.2.0            # 看 tag 说明 + 指向的提交
 ```
 
 ## Git 使用
