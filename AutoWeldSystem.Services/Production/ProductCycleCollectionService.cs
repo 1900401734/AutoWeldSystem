@@ -18,7 +18,6 @@ namespace AutoWeldSystem.Services.Production;
 public sealed class ProductCycleCollectionService : IProductCycleCollectionService
 {
     private const string Category = "PLC.ProductCycleCollection";
-    private const string PlcProductNoKey = "plc_product_no";
 
     private readonly SqlSugarDbContext _dbContext;
     private readonly IProductProcessConfigService _productProcessConfigService;
@@ -257,7 +256,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
                 0,
                 config.ProductNoExpr,
                 cancellationToken);
-            (productNo, isOverwrite) = ResolveLocalProductNo(task.Id, stationNo, plcProductNo, processParameterDeviceType);
+            (productNo, isOverwrite) = ResolvePendingProductNo(task.Id, stationNo, plcProductNo, processParameterDeviceType);
         }
         else
         {
@@ -324,69 +323,24 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
     /// 1. 软件里预约了重焊/重测的产品（单槽位）→ 覆盖它；
     /// 2. 整件检测且 PLC 编号与最近一件相同（触摸屏“重测”不更新编号）→ 覆盖最近一件；
     /// 3. 否则取该任务该工位最大编号 +1（含已删除行，不回收）。
-    /// 与保存共用同一把锁，保证同工位取号与落库之间不会插入另一轮采集。
+    /// 与保存共用同一把锁，避免读取写入中的记录；这里只读解析，不预占编号。
     /// </summary>
-    private (string ProductNo, bool IsOverwrite) ResolveLocalProductNo(
+    public (string ProductNo, bool IsOverwrite) ResolvePendingProductNo(
         int taskId,
         int stationNo,
         string? plcProductNo,
         string? processParameterDeviceType)
     {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(taskId);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(stationNo);
+
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
             var existingRecords = _dbContext.Db.Queryable<BizWeldPointRecord>()
                 .Where(record => record.TaskId == taskId && record.StationNo == stationNo)
                 .ToList();
-
-            var reweldTarget = existingRecords
-                .Where(record => record.IsReweldPending && !string.IsNullOrWhiteSpace(record.ProductNo))
-                .OrderByDescending(record => record.SequenceNo)
-                .FirstOrDefault();
-            if (reweldTarget is not null)
-            {
-                return (reweldTarget.ProductNo.Trim(), true);
-            }
-
-            if (!string.IsNullOrWhiteSpace(plcProductNo)
-                && ProductRetestRules.IsSupportedDeviceType(processParameterDeviceType))
-            {
-                var latest = existingRecords
-                    .OrderByDescending(record => record.SequenceNo)
-                    .ThenByDescending(record => record.Id)
-                    .FirstOrDefault();
-                var latestPlcProductNo = ReadRawValue(latest?.RawDataJson, PlcProductNoKey);
-                if (latest is not null
-                    && !latest.IsDeleted
-                    && string.Equals(latestPlcProductNo, plcProductNo.Trim(), StringComparison.OrdinalIgnoreCase))
-                {
-                    return (latest.ProductNo.Trim(), true);
-                }
-            }
-
-            return (LocalProductNoRules.NextProductNo(existingRecords.Select(record => record.ProductNo)), false);
-        }
-    }
-
-    private static string? ReadRawValue(string? rawDataJson, string key)
-    {
-        if (string.IsNullOrWhiteSpace(rawDataJson))
-        {
-            return null;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(rawDataJson);
-            return document.RootElement.ValueKind == JsonValueKind.Object
-                && document.RootElement.TryGetProperty(key, out var value)
-                && value.ValueKind == JsonValueKind.String
-                ? value.GetString()?.Trim()
-                : null;
-        }
-        catch (JsonException)
-        {
-            return null;
+            return LocalProductNoRules.ResolvePendingProductNo(existingRecords, plcProductNo, processParameterDeviceType);
         }
     }
 
@@ -424,7 +378,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         };
         AddValue(values, "plc_preset_touch_count", header.PlcPresetTouchCount);
         // 程序模式下保留 PLC 原始编号，供整件检测被动重测比对与现场追溯。
-        AddValue(values, PlcProductNoKey, header.PlcProductNo);
+        AddValue(values, LocalProductNoRules.PlcProductNoKey, header.PlcProductNo);
         AddValue(values, "product_result", header.ProductResult);
         AddValue(values, "product_result_raw", header.ProductResultRaw);
         AddValue(values, "touch_no_raw", touchNo);

@@ -121,6 +121,11 @@ var tests = new (string Name, Action Run)[]
     ("Product retest removes only uncovered stale records", ProductRetestRemovesOnlyUncoveredStaleRecords),
     ("Product ready stuck high is force reset after timeout", ProductReadyStuckHighIsForceResetAfterTimeout),
     ("Local product number increments from max and never reuses deleted", LocalProductNumberIncrementsFromMaxAndNeverReusesDeleted),
+    ("Pending product number preserves reweld and passive retest priorities", PendingProductNumberPreservesReweldAndPassiveRetestPriorities),
+    ("Realtime product number preserves PLC mode and point source independence", RealtimeProductNumberPreservesPlcModeAndPointSourceIndependence),
+    ("Realtime program product number is read only and scoped by task and station", RealtimeProgramProductNumberIsReadOnlyAndScoped),
+    ("Realtime program product number follows reweld and passive retest targets", RealtimeProgramProductNumberFollowsReweldAndPassiveRetestTargets),
+    ("Realtime program product number tolerates optional PLC failures and honors cancellation", RealtimeProgramProductNumberToleratesOptionalPlcFailuresAndHonorsCancellation),
     ("Finish quantities count distinct undeleted products per station", FinishQuantitiesCountDistinctUndeletedProductsPerStation),
     ("Product history actions follow upload gate and count mode", ProductHistoryActionsFollowUploadGateAndCountMode),
     ("Upload scope rules exclude deleted products", UploadScopeRulesExcludeDeletedProducts),
@@ -8739,8 +8744,8 @@ static void MonitorShowsProgramLimitsForInspectionDevices()
     }
 
     var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.Designer.cs"), Encoding.UTF8);
-    AssertTrue(designerCode.Contains("tlpStationOverview1.ColumnCount = 6;", StringComparison.Ordinal), "工位概览行必须为设定值预留一列。");
-    AssertTrue(designerCode.Contains("tlpStationOverview1.Controls.Add(lblLiveProgramLimits1, 3, 0);", StringComparison.Ordinal), "设定值必须排在焊点之后、快捷开关之前。");
+    AssertTrue(designerCode.Contains("tlpStationOverview1.ColumnCount = 5;", StringComparison.Ordinal), "移除提示列后，工位概览行仍须保留设定值列。");
+    AssertTrue(designerCode.Contains("tlpStationOverview1.Controls.Add(lblLiveProgramLimits1, 2, 0);", StringComparison.Ordinal), "设定值必须排在焊点之后、快捷开关之前。");
     // 弹性列要落在设定值上：设定值超长时省略自己，而不是把焊点信息挤没。
     AssertTrue(designerCode.Contains("lblLiveProgramLimits1.AutoEllipsis = true;", StringComparison.Ordinal), "设定值标签必须开启省略号，配合悬停提示查看完整内容。");
     AssertTrue(designerCode.Contains("lblLiveTouchNo1.AutoSizeMode = AntdUI.TAutoSize.Width;", StringComparison.Ordinal), "焊点列改为按内容宽度后，弹性宽度才会让给设定值列。");
@@ -14074,6 +14079,159 @@ static void LocalProductNumberIncrementsFromMaxAndNeverReusesDeleted()
     AssertEqual("6", LocalProductNoRules.NextProductNo(records.Select(record => record.ProductNo)), "已删除产品占用的编号不得回收。");
 }
 
+static void PendingProductNumberPreservesReweldAndPassiveRetestPriorities()
+{
+    var inspection = ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck;
+    AssertEqual(("1", false), LocalProductNoRules.ResolvePendingProductNo([], null, inspection), "空记录必须从 1 开始且不覆盖。");
+    var older = new BizWeldPointRecord { Id = 1, SequenceNo = 10, ProductNo = " 2 ", RawDataJson = "{\"plc_product_no\":\"41\"}", IsReweldPending = true };
+    var latest = new BizWeldPointRecord { Id = 2, SequenceNo = 10, ProductNo = "4", RawDataJson = "{\"plc_product_no\":\" 42 \"}" };
+    var records = new[]
+    {
+        latest,
+        new BizWeldPointRecord { SequenceNo = 2, ProductNo = "8", IsDeleted = true },
+        older,
+        new BizWeldPointRecord { SequenceNo = 1, ProductNo = "legacy" }
+    };
+    AssertEqual(("2", true), LocalProductNoRules.ResolvePendingProductNo(records, "42", inspection), "软件预约必须优先于上一件 PLC 重测信号。");
+    older.IsReweldPending = false;
+    AssertEqual(("4", true), LocalProductNoRules.ResolvePendingProductNo(records, " 42 ", inspection), "同序号时必须按记录 ID 找到最近一件，并容忍编号空白。");
+    AssertEqual(("9", false), LocalProductNoRules.ResolvePendingProductNo(records, "41", inspection), "匹配更早的 PLC 编号不能当作上一件重测。");
+    AssertEqual(("9", false), LocalProductNoRules.ResolvePendingProductNo(records, "43", inspection), "PLC 编号变化必须使用最大本地编号加一，不能复用已删除编号。");
+    AssertEqual(("9", false), LocalProductNoRules.ResolvePendingProductNo(records, "42", ProductionConstants.ProcessParameterDeviceTypes.WholePieceWeld), "非检测设备不能启用 PLC 被动重测。");
+    latest.IsDeleted = true;
+    AssertEqual(("9", false), LocalProductNoRules.ResolvePendingProductNo(records, "42", inspection), "已删除的最近一件不能成为被动重测目标。");
+    latest.IsDeleted = false;
+    foreach (var json in new[] { "", "bad-json", "[]", "{}", "{\"plc_product_no\":42}" })
+    {
+        latest.RawDataJson = json;
+        AssertEqual(("9", false), LocalProductNoRules.ResolvePendingProductNo(records, "42", inspection), "原始编号缺失或无效时必须安全回退到下一号。");
+    }
+}
+
+static void RealtimeProductNumberPreservesPlcModeAndPointSourceIndependence()
+{
+    var reader = new FakeProductNoExpressionReadService { Read = _ => Task.FromResult(PlcServiceResult<string>.Success(" 512 ")) };
+    var collection = new FakePendingProductCollectionService();
+    using var preview = CreateProductNoPreview(reader, collection);
+    var settings = new AppSettings
+    {
+        RealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Program,
+        ProcessParameterDeviceType = ProductionConstants.ProcessParameterDeviceTypes.WholePieceWeld
+    };
+    foreach (var source in new[] { ProductionConstants.ProductionCountSources.Plc, null, "unknown" })
+    {
+        settings.ProductionCountSource = source;
+        AssertEqual("512", ReadRealtimeProductNo(preview, settings), "PLC 计数模式仍显示 PLC 编号，不受焊点编号来源影响。");
+    }
+    AssertEqual(0, collection.ResolveRequests.Count, "PLC 模式不能查询程序编号。");
+    reader.Read = _ => Task.FromResult(PlcServiceResult<string>.Fail("读取失败"));
+    AssertEqual("--", ReadRealtimeProductNo(preview, settings), "PLC 模式读取失败继续显示既有占位符。");
+    settings.ProductionCountSource = ProductionConstants.ProductionCountSources.Program;
+    settings.RealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Plc;
+    AssertEqual("1", ReadRealtimeProductNo(preview, settings), "程序产品编号不能误跟随焊点编号来源。");
+    AssertEqual(4, reader.ReadCount, "非检测设备的程序编号不能额外读取 PLC 编号。");
+}
+
+static void RealtimeProgramProductNumberIsReadOnlyAndScoped()
+{
+    var reader = new FakeProductNoExpressionReadService();
+    var collection = new FakePendingProductCollectionService();
+    collection.Records.AddRange([
+        new BizWeldPointRecord { TaskId = 1, StationNo = 1, ProductNo = "7", SequenceNo = 2 },
+        new BizWeldPointRecord { TaskId = 1, StationNo = 1, ProductNo = "9", SequenceNo = 3, IsDeleted = true },
+        new BizWeldPointRecord { TaskId = 1, StationNo = 2, ProductNo = "40" },
+        new BizWeldPointRecord { TaskId = 2, StationNo = 1, ProductNo = "80" }
+    ]);
+    using var preview = CreateProductNoPreview(reader, collection);
+    var settings = new AppSettings
+    {
+        ProductionCountSource = ProductionConstants.ProductionCountSources.Program,
+        ProcessParameterDeviceType = ProductionConstants.ProcessParameterDeviceTypes.WholePieceWeld
+    };
+    var before = JsonSerializer.Serialize(collection.Records);
+    for (var i = 0; i < 3; i++)
+        AssertEqual("10", ReadRealtimeProductNo(preview, settings), "重复预览或未成功落库不能推进编号。");
+    AssertEqual("41", ReadRealtimeProductNo(preview, settings, stationNo: 2), "工位 2 必须使用自己的编号范围。");
+    AssertEqual("81", ReadRealtimeProductNo(preview, settings, taskId: 2), "不同任务不能共用编号。");
+    AssertEqual("1", ReadRealtimeProductNo(preview, settings, taskId: 3), "新任务无记录时必须从 1 开始。");
+    AssertEqual(before, JsonSerializer.Serialize(collection.Records), "预览解析不得修改任何记录。");
+    AssertEqual(0, collection.CollectCallCount, "预览不得调用正式采集。");
+    AssertEqual(0, reader.ReadCount, "点焊程序编号无需 PLC 编号信号。");
+    collection.Records.Add(new BizWeldPointRecord { TaskId = 1, StationNo = 1, ProductNo = "10", SequenceNo = 4 });
+    AssertEqual("11", ReadRealtimeProductNo(preview, settings), "只有新记录落库后才推进到下一号。");
+    var queryCount = collection.ResolveRequests.Count;
+    AssertEqual("--", ReadRealtimeProductNo(preview, settings, taskId: 0), "无运行任务时不能显示其他任务的编号。");
+    AssertEqual(queryCount, collection.ResolveRequests.Count, "无任务时不得查询编号。");
+}
+
+static void RealtimeProgramProductNumberFollowsReweldAndPassiveRetestTargets()
+{
+    var reader = new FakeProductNoExpressionReadService { Read = _ => Task.FromResult(PlcServiceResult<string>.Success(" 21 ")) };
+    var collection = new FakePendingProductCollectionService();
+    var target = new BizWeldPointRecord { TaskId = 1, StationNo = 2, ProductNo = "2", SequenceNo = 2, IsReweldPending = true };
+    var latest = new BizWeldPointRecord { TaskId = 1, StationNo = 2, ProductNo = "4", SequenceNo = 4, RawDataJson = "{\"plc_product_no\":\"21\"}" };
+    collection.Records.AddRange([target, latest]);
+    using var preview = CreateProductNoPreview(reader, collection);
+    var settings = new AppSettings
+    {
+        ProductionCountSource = ProductionConstants.ProductionCountSources.Program,
+        ProcessParameterDeviceType = ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck
+    };
+    AssertEqual("2", ReadRealtimeProductNo(preview, settings, stationNo: 2), "预约重测时实时编号必须回到指定产品。");
+    AssertEqual(collection.ResolvePendingProductNo(1, 2, "21", settings.ProcessParameterDeviceType).ProductNo,
+        ReadRealtimeProductNo(preview, settings, stationNo: 2), "预览必须与正式采集调用的解析入口一致。");
+    target.IsReweldPending = false;
+    AssertEqual("4", ReadRealtimeProductNo(preview, settings, stationNo: 2), "取消预约后应恢复 PLC 被动重测对应的本地编号。");
+    AssertEqual("21", collection.ResolveRequests.Last().PlcProductNo, "被动重测比对必须传原始 PLC 编号，不能传本地编号。");
+    reader.Read = _ => Task.FromResult(PlcServiceResult<string>.Success("22"));
+    AssertEqual("5", ReadRealtimeProductNo(preview, settings, stationNo: 2), "PLC 编号变化后显示下一本地编号，而非 PLC 的 22。");
+    AssertEqual(0, collection.CollectCallCount, "重测预览也不得触发正式采集。");
+}
+
+static void RealtimeProgramProductNumberToleratesOptionalPlcFailuresAndHonorsCancellation()
+{
+    var reader = new FakeProductNoExpressionReadService();
+    var collection = new FakePendingProductCollectionService();
+    collection.Records.Add(new BizWeldPointRecord { TaskId = 1, StationNo = 1, ProductNo = "8", RawDataJson = "{\"plc_product_no\":\"--\"}" });
+    using var preview = CreateProductNoPreview(reader, collection);
+    var settings = new AppSettings
+    {
+        ProductionCountSource = ProductionConstants.ProductionCountSources.Program,
+        ProcessParameterDeviceType = ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck
+    };
+    AssertEqual("9", ReadRealtimeProductNo(preview, settings, expression: null), "未配置可选 PLC 编号时仍应显示程序编号。");
+    AssertEqual(0, reader.ReadCount, "空表达式不得触发 PLC 读取。");
+    reader.Read = _ => Task.FromResult(PlcServiceResult<string>.Fail("读取失败"));
+    AssertEqual("9", ReadRealtimeProductNo(preview, settings), "读取失败占位符不能误匹配旧原始编号触发重测。");
+    AssertEqual<string?>(null, collection.ResolveRequests.Last().PlcProductNo, "读取失败必须传空信号，不得传 --。");
+    reader.Read = _ => Task.FromException<PlcServiceResult<string>>(new InvalidOperationException("模拟读取异常"));
+    AssertEqual("9", ReadRealtimeProductNo(preview, settings), "可选 PLC 读取抛异常不能阻断程序编号。");
+    var queryCount = collection.ResolveRequests.Count;
+    reader.Read = _ => Task.FromCanceled<PlcServiceResult<string>>(new CancellationToken(true));
+    AssertThrows<OperationCanceledException>(() => ReadRealtimeProductNo(preview, settings), "可选读取的取消不能被降级为读取失败。");
+    AssertThrows<OperationCanceledException>(() => ReadRealtimeProductNo(preview, settings, expression: null, cancellationToken: new CancellationToken(true)), "无 PLC 表达式时也必须遵循取消。");
+    AssertEqual(queryCount, collection.ResolveRequests.Count, "取消后不能继续查询程序编号。");
+    AssertEqual(0, collection.CollectCallCount, "读取失败和取消不得触发正式采集。");
+}
+
+static ProductRealtimePreviewService CreateProductNoPreview(IPlcExpressionReadService reader, IProductCycleCollectionService collection)
+    => new(null!, null!, null!, null!, null!, null!, reader, null!, collection);
+
+static string ReadRealtimeProductNo(
+    ProductRealtimePreviewService preview,
+    AppSettings settings,
+    int taskId = 1,
+    int stationNo = 1,
+    string? expression = "0:I-0",
+    CancellationToken cancellationToken = default)
+{
+    var method = typeof(ProductRealtimePreviewService).GetMethod("ResolveProductNoAsync",
+        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+    var config = new BizProductProcessConfig { ProductBase = "DB1.0", ProductNoExpr = expression ?? string.Empty };
+    var task = taskId > 0 ? new BizWeldTask { Id = taskId } : null;
+    return ((Task<string>)method.Invoke(preview, [stationNo, config, task, settings, cancellationToken])!).GetAwaiter().GetResult();
+}
+
 static void FinishQuantitiesCountDistinctUndeletedProductsPerStation()
 {
     static BizWeldPointRecord Point(int station, string productNo, string touchNo, string? productResult, bool completed = true, bool deleted = false, bool isTest = false)
@@ -19077,6 +19235,46 @@ sealed class FakePlcAddressService : IPlcAddressService
     public void SaveAll(IEnumerable<BizPlcAddress> addresses)
     {
     }
+}
+
+sealed class FakePendingProductCollectionService : IProductCycleCollectionService
+{
+    public List<BizWeldPointRecord> Records { get; } = [];
+    public List<(int TaskId, int StationNo, string? PlcProductNo)> ResolveRequests { get; } = [];
+    public int CollectCallCount { get; private set; }
+
+    public (string ProductNo, bool IsOverwrite) ResolvePendingProductNo(int taskId, int stationNo, string? plcProductNo, string? processParameterDeviceType)
+    {
+        ResolveRequests.Add((taskId, stationNo, plcProductNo));
+        return LocalProductNoRules.ResolvePendingProductNo(
+            Records.Where(record => record.TaskId == taskId && record.StationNo == stationNo).ToList(),
+            plcProductNo,
+            processParameterDeviceType);
+    }
+
+    public Task<IReadOnlyList<BizWeldPointRecord>> CollectAsync(BizWeldTask task, int stationNo = ProductionConstants.Stations.DefaultStationNo, CancellationToken cancellationToken = default)
+    {
+        CollectCallCount++;
+        throw new InvalidOperationException("实时预览不得调用正式采集。");
+    }
+}
+
+sealed class FakeProductNoExpressionReadService : IPlcExpressionReadService
+{
+    public Func<CancellationToken, Task<PlcServiceResult<string>>> Read { get; set; }
+        = _ => Task.FromResult(PlcServiceResult<string>.Success("900"));
+    public int ReadCount { get; private set; }
+
+    public Task<PlcServiceResult<string>> ReadExpressionTextAsync(string? baseAddress, int contextOffset, string? expressionText, string valueRole = "PLC地址", int stringLength = 32, CancellationToken cancellationToken = default)
+    {
+        ReadCount++;
+        return Read(cancellationToken);
+    }
+
+    public PlcExpressionBinding Resolve(string? baseAddress, int contextOffset, string? expressionText) => throw new NotSupportedException();
+    public bool TryResolve(string? baseAddress, int contextOffset, string? expressionText, out PlcExpressionBinding binding, out string message) => throw new NotSupportedException();
+    public Task<PlcServiceResult<string>> ReadBindingTextAsync(PlcExpressionBinding binding, string valueRole = "PLC地址", int stringLength = 32, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    public Task<PlcServiceResult<string>> ReadResolvedAddressTextAsync(string? address, string? dataType, int rule = 0, string valueRole = "PLC地址", int stringLength = 32, CancellationToken cancellationToken = default, int? decimalPlaces = null) => throw new NotSupportedException();
 }
 
 sealed class FakePlcCommunicationService : IPlcCommunicationService

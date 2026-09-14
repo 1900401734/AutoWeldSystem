@@ -55,7 +55,6 @@ namespace AutoWeldSystem.UI.Views
             tabsPreview1 = new AntdUI.TabPage();
             PreviewLayout1 = new TableLayoutPanel();
             tlpStationOverview1 = new TableLayoutPanel();
-            lblLiveHint1 = new AntdUI.Label();
             lblLiveProductNo1 = new AntdUI.Label();
             lblLiveTouchNo1 = new AntdUI.Label();
             lblLiveProgramLimits1 = new AntdUI.Label();
@@ -74,7 +73,6 @@ namespace AutoWeldSystem.UI.Views
             panelHistory2 = new Panel();
             tableHistory2 = new AntdUI.Table();
             tlpStationOverview2 = new TableLayoutPanel();
-            lblLiveHint2 = new AntdUI.Label();
             lblLiveProductNo2 = new AntdUI.Label();
             lblLiveTouchNo2 = new AntdUI.Label();
             tlpRight = new TableLayoutPanel();
@@ -428,18 +426,16 @@ namespace AutoWeldSystem.UI.Views
             // 
             // tlpStationOverview1
             // 
-            tlpStationOverview1.ColumnCount = 6;
-            tlpStationOverview1.ColumnStyles.Add(new ColumnStyle());
+            tlpStationOverview1.ColumnCount = 5;
             tlpStationOverview1.ColumnStyles.Add(new ColumnStyle());
             tlpStationOverview1.ColumnStyles.Add(new ColumnStyle());
             tlpStationOverview1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             tlpStationOverview1.ColumnStyles.Add(new ColumnStyle());
             tlpStationOverview1.ColumnStyles.Add(new ColumnStyle());
-            tlpStationOverview1.Controls.Add(lblLiveHint1, 0, 0);
-            tlpStationOverview1.Controls.Add(lblLiveProductNo1, 1, 0);
-            tlpStationOverview1.Controls.Add(lblLiveTouchNo1, 2, 0);
-            tlpStationOverview1.Controls.Add(lblLiveProgramLimits1, 3, 0);
-            tlpStationOverview1.Controls.Add(chkMergedDisplay1, 4, 0);
+            tlpStationOverview1.Controls.Add(lblLiveProductNo1, 0, 0);
+            tlpStationOverview1.Controls.Add(lblLiveTouchNo1, 1, 0);
+            tlpStationOverview1.Controls.Add(lblLiveProgramLimits1, 2, 0);
+            tlpStationOverview1.Controls.Add(chkMergedDisplay1, 3, 0);
             tlpStationOverview1.Dock = DockStyle.Fill;
             tlpStationOverview1.Location = new Point(0, 0);
             tlpStationOverview1.Margin = new Padding(0);
@@ -449,30 +445,16 @@ namespace AutoWeldSystem.UI.Views
             tlpStationOverview1.Size = new Size(1057, 36);
             tlpStationOverview1.TabIndex = 0;
             // 
-            // lblLiveHint1
-            // 
-            lblLiveHint1.AutoEllipsis = true;
-            lblLiveHint1.AutoSizeMode = AntdUI.TAutoSize.Width;
-            lblLiveHint1.Dock = DockStyle.Fill;
-            lblLiveHint1.Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold);
-            lblLiveHint1.Location = new Point(0, 0);
-            lblLiveHint1.Margin = new Padding(0);
-            lblLiveHint1.Name = "lblLiveHint1";
-            lblLiveHint1.Padding = new Padding(10, 0, 20, 0);
-            lblLiveHint1.Size = new Size(130, 36);
-            lblLiveHint1.TabIndex = 2;
-            lblLiveHint1.Text = "实时采集正常";
-            // 
             // lblLiveProductNo1
             // 
             lblLiveProductNo1.AutoEllipsis = true;
             lblLiveProductNo1.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblLiveProductNo1.Dock = DockStyle.Fill;
-            lblLiveProductNo1.Location = new Point(130, 0);
+            lblLiveProductNo1.Location = new Point(0, 0);
             lblLiveProductNo1.Margin = new Padding(0);
             lblLiveProductNo1.Name = "lblLiveProductNo1";
-            lblLiveProductNo1.Padding = new Padding(0, 0, 20, 0);
-            lblLiveProductNo1.Size = new Size(123, 36);
+            lblLiveProductNo1.Padding = new Padding(10, 0, 20, 0);
+            lblLiveProductNo1.Size = new Size(133, 36);
             lblLiveProductNo1.TabIndex = 3;
             lblLiveProductNo1.Text = "产品编号：--";
             // 
@@ -481,7 +463,7 @@ namespace AutoWeldSystem.UI.Views
             lblLiveTouchNo1.AutoEllipsis = true;
             lblLiveTouchNo1.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblLiveTouchNo1.Dock = DockStyle.Fill;
-            lblLiveTouchNo1.Location = new Point(253, 0);
+            lblLiveTouchNo1.Location = new Point(133, 0);
             lblLiveTouchNo1.Margin = new Padding(0);
             lblLiveTouchNo1.Name = "lblLiveTouchNo1";
             lblLiveTouchNo1.Padding = new Padding(0, 0, 20, 0);
@@ -493,10 +475,10 @@ namespace AutoWeldSystem.UI.Views
             // 
             lblLiveProgramLimits1.AutoEllipsis = true;
             lblLiveProgramLimits1.Dock = DockStyle.Fill;
-            lblLiveProgramLimits1.Location = new Point(341, 0);
+            lblLiveProgramLimits1.Location = new Point(221, 0);
             lblLiveProgramLimits1.Margin = new Padding(0);
             lblLiveProgramLimits1.Name = "lblLiveProgramLimits1";
-            lblLiveProgramLimits1.Size = new Size(600, 36);
+            lblLiveProgramLimits1.Size = new Size(720, 36);
             lblLiveProgramLimits1.TabIndex = 12;
             lblLiveProgramLimits1.Text = "设定值：--";
             lblLiveProgramLimits1.Visible = false;
@@ -758,13 +740,11 @@ namespace AutoWeldSystem.UI.Views
             // 
             // tlpStationOverview2
             // 
-            tlpStationOverview2.ColumnCount = 3;
-            tlpStationOverview2.ColumnStyles.Add(new ColumnStyle());
+            tlpStationOverview2.ColumnCount = 2;
             tlpStationOverview2.ColumnStyles.Add(new ColumnStyle());
             tlpStationOverview2.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            tlpStationOverview2.Controls.Add(lblLiveHint2, 0, 0);
-            tlpStationOverview2.Controls.Add(lblLiveProductNo2, 1, 0);
-            tlpStationOverview2.Controls.Add(lblLiveTouchNo2, 2, 0);
+            tlpStationOverview2.Controls.Add(lblLiveProductNo2, 0, 0);
+            tlpStationOverview2.Controls.Add(lblLiveTouchNo2, 1, 0);
             tlpStationOverview2.Dock = DockStyle.Fill;
             tlpStationOverview2.Location = new Point(0, 0);
             tlpStationOverview2.Margin = new Padding(0);
@@ -774,40 +754,26 @@ namespace AutoWeldSystem.UI.Views
             tlpStationOverview2.Size = new Size(1148, 36);
             tlpStationOverview2.TabIndex = 0;
             // 
-            // lblLiveHint2
-            // 
-            lblLiveHint2.AutoEllipsis = true;
-            lblLiveHint2.AutoSizeMode = AntdUI.TAutoSize.Width;
-            lblLiveHint2.Dock = DockStyle.Fill;
-            lblLiveHint2.Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold);
-            lblLiveHint2.Location = new Point(0, 0);
-            lblLiveHint2.Margin = new Padding(0);
-            lblLiveHint2.Name = "lblLiveHint2";
-            lblLiveHint2.Padding = new Padding(10, 0, 20, 0);
-            lblLiveHint2.Size = new Size(130, 36);
-            lblLiveHint2.TabIndex = 2;
-            lblLiveHint2.Text = "实时采集正常";
-            // 
             // lblLiveProductNo2
             // 
             lblLiveProductNo2.AutoEllipsis = true;
             lblLiveProductNo2.AutoSizeMode = AntdUI.TAutoSize.Width;
             lblLiveProductNo2.Dock = DockStyle.Fill;
-            lblLiveProductNo2.Location = new Point(130, 0);
+            lblLiveProductNo2.Location = new Point(0, 0);
             lblLiveProductNo2.Margin = new Padding(0);
             lblLiveProductNo2.Name = "lblLiveProductNo2";
-            lblLiveProductNo2.Padding = new Padding(0, 0, 20, 0);
-            lblLiveProductNo2.Size = new Size(123, 36);
+            lblLiveProductNo2.Padding = new Padding(10, 0, 20, 0);
+            lblLiveProductNo2.Size = new Size(133, 36);
             lblLiveProductNo2.TabIndex = 3;
             lblLiveProductNo2.Text = "产品编号：--";
             // 
             // lblLiveTouchNo2
             // 
             lblLiveTouchNo2.Dock = DockStyle.Fill;
-            lblLiveTouchNo2.Location = new Point(253, 0);
+            lblLiveTouchNo2.Location = new Point(133, 0);
             lblLiveTouchNo2.Margin = new Padding(0);
             lblLiveTouchNo2.Name = "lblLiveTouchNo2";
-            lblLiveTouchNo2.Size = new Size(895, 36);
+            lblLiveTouchNo2.Size = new Size(1015, 36);
             lblLiveTouchNo2.TabIndex = 11;
             lblLiveTouchNo2.Text = "焊点：--";
             // 
@@ -1964,7 +1930,6 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Tabs tabsPreview;
         private AntdUI.TabPage tabsPreview1;
         private AntdUI.TabPage tabsPreview2;
-        private AntdUI.Label lblLiveHint1;
         private AntdUI.Label lblLiveProductNo1;
         private AntdUI.Checkbox chkMergedDisplay1;
         private AntdUI.Label lblLiveProgramLimits1;
@@ -1983,7 +1948,6 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Input inputDeptName;
         private TableLayoutPanel previewLayout2;
         private TableLayoutPanel tlpStationOverview2;
-        private AntdUI.Label lblLiveHint2;
         private AntdUI.Label lblLiveProductNo2;
         private AntdUI.Label label7;
         private AntdUI.Label label8;

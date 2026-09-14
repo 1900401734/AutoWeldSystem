@@ -1,6 +1,6 @@
 ﻿# AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v3.2.0`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v3.2.1`。
 
 各版本的行为变化记录在 [CHANGELOG.md](CHANGELOG.md)，也可用 `git tag -n99` 查看对应版本的发布说明。
 
@@ -275,7 +275,7 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 
 系统设置「生产配置」分组自 `v2.26.0` 起新增「产量统计来源」，默认 **PLC 计数**（升级后行为不变）。切换为**程序统计**后，以下三件事同时生效，三者绑定不可拆分：
 
-1. **产品编号由程序自算**：每个任务每个工位从 `1` 开始递增，取该任务该工位现有最大编号 +1，形状与 PLC Int16 原值一致，报表编号列外观不变。已删除产品占用的编号不回收。产品工艺里的「产品编号偏移」改为可选；配置了则仍会读取 PLC 编号，但只作整件检测被动重测的比对信号（PLC 触摸屏「重测」不更新编号 → 与上一件 PLC 编号相同 → 覆盖上一件）。
+1. **产品编号由程序自算**：每个任务每个工位从 `1` 开始递增，取该任务该工位现有最大编号 +1，形状与 PLC Int16 原值一致，报表编号列外观不变。已删除产品占用的编号不回收。产品工艺里的「产品编号偏移」改为可选；配置了则仍会读取 PLC 编号，但只作整件检测被动重测的比对信号（PLC 触摸屏「重测」不更新编号 → 与上一件 PLC 编号相同 → 覆盖上一件）。 监控页实时产品编号同步显示下次采集将使用的编号：正常采集成功后推进到下一号，重焊／重测显示原编号；预览刷新本身不占号。PLC 计数模式仍显示 PLC 编号。
 2. **完工三项数量由程序统计**：上报 MES `ExpEnd` 的 `ExpQty / QualifyNumber / FailureNumber` 按本地采集记录计算——总数 = 任务下两工位未删除且已完成采集的产品数（按产品编号去重）；合格 = 产品结果为 OK；不良 = 总数 − 合格（结果未知归不良，保证恒等式）。试焊件照常计入，由报表和过程参数中的试焊件标志区分。同一数字写入 `BizWeldTask.ActualQty/QualifiedQty/FailedQty`，完工补传回退时也同源。程序模式下不再因 PLC 计数读取失败阻止完工，「完工上报实际数量输入弹窗」设置无效；完工时会在程序异常日志写一条 `PLC.FinishQuantity.Compare` 业务记录，同时列出程序值与 PLC 计数器读数供对账。
 3. **监控页产量指标同源**：实际数量、合格数量、失效数量和良率改为按同一统计口径显示，达成率分母仍为工单数量。
 
@@ -482,10 +482,10 @@ HAVING COUNT(*) > 1;
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>3.2.0</Version>
-<AssemblyVersion>3.2.0.0</AssemblyVersion>
-<FileVersion>3.2.0.0</FileVersion>
-<InformationalVersion>3.2.0</InformationalVersion>
+<Version>3.2.1</Version>
+<AssemblyVersion>3.2.1.0</AssemblyVersion>
+<FileVersion>3.2.1.0</FileVersion>
+<InformationalVersion>3.2.1</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -503,20 +503,20 @@ HAVING COUNT(*) > 1;
 # 2. 在 CHANGELOG.md 顶部新增该版本条目，写清行为变化和升级注意
 # 3. 合并到 main 后打带说明的 tag（-F 从文件读取多行说明）
 git checkout main
-git merge --no-ff develop -m "release: v3.2.0"
-git tag -a v3.2.0 -F tag-notes.txt
+git merge --no-ff develop -m "release: v3.2.1"
+git tag -a v3.2.1 -F tag-notes.txt
 git push origin main
-git push origin v3.2.0
+git push origin v3.2.1
 ```
 
-`tag-notes.txt` 为临时文件，内容取自该版本的 CHANGELOG 条目，打完 tag 即可删除。也可用 `git tag -a v3.2.0 -m "标题" -m "正文"` 直接写多段说明。
+`tag-notes.txt` 为临时文件，内容取自该版本的 CHANGELOG 条目，打完 tag 即可删除。也可用 `git tag -a v3.2.1 -m "标题" -m "正文"` 直接写多段说明。
 
 查看历史版本说明：
 
 ```powershell
 git tag -n99                # 列出全部 tag 及完整说明
-git tag -n99 v3.2.0        # 只看某个版本
-git show v3.2.0            # 看 tag 说明 + 指向的提交
+git tag -n99 v3.2.1        # 只看某个版本
+git show v3.2.1            # 看 tag 说明 + 指向的提交
 ```
 
 ## Git 使用

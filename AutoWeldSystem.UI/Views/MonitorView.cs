@@ -732,8 +732,6 @@ public partial class MonitorView : BaseView
 
     private AntdUI.Table CurrentProductHistoryTable => CurrentStationNo == 2 ? tableHistory2 : tableHistory1;
 
-    private AntdUI.Label CurrentLivePreviewStatusLabel => CurrentStationNo == 2 ? lblLiveHint2 : lblLiveHint1;
-
     private AntdUI.Label CurrentLiveProductNoLabel => CurrentStationNo == 2 ? lblLiveProductNo2 : lblLiveProductNo1;
 
     private AntdUI.Label CurrentLiveTouchCountLabel => CurrentStationNo == 2 ? lblLiveTouchNo2 : lblLiveTouchNo1;
@@ -5298,16 +5296,12 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         lblProcessName.Text = _localizer.GetString(TextKeys.Monitor.Label.ProcessName);
 
 
-        lblLiveHint1.Text = "实时采集正常";
-        lblLiveHint2.Text = "实时采集正常";
         lblLiveProductNo1.Text = "产品编号：--";
         lblLiveProductNo2.Text = "产品编号：--";
         tagResult1.Text = "工位1--";
         tagResult2.Text = "工位2--";
         lblLiveTouchNo1.Text = "焊点：--";
         lblLiveTouchNo2.Text = "焊点：--";
-        lblLiveHint1.ForeColor = UiColors.Status.Success;
-        lblLiveHint2.ForeColor = UiColors.Status.Success;
 
         btnOnlineReport.Text = _localizer.GetString(TextKeys.Monitor.Button.StartReport);
         btnLocalWorkOrder.Text = _localizer.GetString(TextKeys.Monitor.Button.LocalWorkOrder);
@@ -8325,7 +8319,6 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         // 未开工或完工后必须连列一起清空：只清行会残留“焊点序号/焊点结果/提示”空表头。
         ClearWeldPreviewGrid(CurrentWeldPreviewGrid);
 
-        SetControlText(CurrentLivePreviewStatusLabel, string.Empty);
         SetControlText(CurrentLiveProductNoLabel, string.Empty);
         SetControlText(CurrentLiveTouchCountLabel, string.Empty);
         ApplyProgramLimitsDisplay();
@@ -8351,11 +8344,6 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// <param name="snapshot">状态快照。</param>
     private void ApplyLivePreviewSummary(ProductRealtimePreviewSnapshot snapshot, bool productChanged)
     {
-        var hasErrorMessage = !string.IsNullOrWhiteSpace(snapshot.Message);
-        var statusLabel = CurrentLivePreviewStatusLabel;
-        SetControlText(statusLabel, hasErrorMessage ? "实时采集异常" : "实时采集正常");
-        statusLabel.ForeColor = hasErrorMessage ? UiColors.Status.Danger : UiColors.Status.Success;
-
         SetControlText(CurrentLiveProductNoLabel, $"产品编号：{FormatLiveSummaryValue(snapshot.ProductNo)}");
         SetControlText(CurrentLiveTouchCountLabel, $"{NormalizeDisplayText(snapshot.PointName, "焊点")}：{FormatLiveSummaryValue(snapshot.TouchCountText)}");
         ApplyProgramLimitsDisplay();

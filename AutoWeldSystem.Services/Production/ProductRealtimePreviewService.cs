@@ -29,6 +29,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
     private readonly IPlcCommunicationService _plcCommunicationService;
     private readonly IPlcExpressionReadService _plcExpressionReadService;
     private readonly IProgramExceptionLogService _exceptionLogService;
+    private readonly IProductCycleCollectionService _productCycleCollectionService;
     private readonly object _snapshotSync = new();
     private readonly Dictionary<int, ProductRealtimePreviewSnapshot> _snapshots = new();
 
@@ -44,7 +45,8 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         IAppSettingsService settingsService,
         IPlcCommunicationService plcCommunicationService,
         IPlcExpressionReadService plcExpressionReadService,
-        IProgramExceptionLogService exceptionLogService)
+        IProgramExceptionLogService exceptionLogService,
+        IProductCycleCollectionService productCycleCollectionService)
     {
         _weldTaskService = weldTaskService;
         _productProcessConfigService = productProcessConfigService;
@@ -54,6 +56,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         _plcCommunicationService = plcCommunicationService;
         _plcExpressionReadService = plcExpressionReadService;
         _exceptionLogService = exceptionLogService;
+        _productCycleCollectionService = productCycleCollectionService;
     }
 
     public event EventHandler<ProductRealtimePreviewSnapshot>? SnapshotChanged;
@@ -291,7 +294,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             ProductionConstants.RealtimePointNumberSources.Normalize(settings.RealtimePointNumberSource),
             ProductionConstants.RealtimePointNumberSources.Program,
             StringComparison.OrdinalIgnoreCase);
-        var productNo = await ReadExpressionTextAsync(config.ProductBase, 0, config.ProductNoExpr, cancellationToken);
+        var productNo = await ResolveProductNoAsync(identity.StationNo, config, activeTask, settings, cancellationToken);
         var plcProductResult = FormatResult(await ReadExpressionTextAsync(config.ProductBase, 0, config.ProductResultExpr, cancellationToken));
         // 程序判断模式下面数完全由检测结果推算，不读 PLC 的实际数与预设数。
         var actualTouchCount = useProgramPointNumber
@@ -389,6 +392,58 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             MergedDefinitions = mergedDisplayDefinitions,
             MergedFailedColumns = mergedFailedColumns
         };
+    }
+
+    private async Task<string> ResolveProductNoAsync(
+        int stationNo,
+        BizProductProcessConfig config,
+        BizWeldTask? activeTask,
+        AppSettings settings,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!ProductionConstants.ProductionCountSources.IsProgram(settings.ProductionCountSource))
+        {
+            return await ReadExpressionTextAsync(config.ProductBase, 0, config.ProductNoExpr, cancellationToken);
+        }
+
+        if (activeTask is null || activeTask.Id <= 0)
+        {
+            return "--";
+        }
+
+        string? plcProductNo = null;
+        if (ProductRetestRules.IsSupportedDeviceType(settings.ProcessParameterDeviceType)
+            && !string.IsNullOrWhiteSpace(config.ProductNoExpr))
+        {
+            try
+            {
+                var result = await _plcExpressionReadService.ReadExpressionTextAsync(
+                    config.ProductBase,
+                    0,
+                    config.ProductNoExpr,
+                    cancellationToken: cancellationToken);
+                if (result.IsSuccess)
+                {
+                    plcProductNo = result.Value?.Trim();
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // PLC 编号只辅助识别重测，读取失败不能阻止程序编号显示。
+            }
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        return _productCycleCollectionService.ResolvePendingProductNo(
+            activeTask.Id,
+            stationNo,
+            plcProductNo,
+            settings.ProcessParameterDeviceType).ProductNo;
     }
 
     /// <summary>
