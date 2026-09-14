@@ -44,9 +44,11 @@ public partial class ProgramManageView : BaseView
     private string _editingContent = "{}";
     private int _detailLoadVersion;
     private bool _initialized;
+    private bool _wasVisible;
     private bool _detailLoading;
     private string? _contentError;
     private bool _programOperationInProgress;
+    private bool _recipeNameRefreshing;
     private bool _programContentDictionaryAvailable;
     private int _recipeNameRefreshVersion;
     private bool _enableDualStation;
@@ -91,6 +93,7 @@ public partial class ProgramManageView : BaseView
         }
 
         _initialized = true;
+        _wasVisible = Visible;
         try
         {
             await ReloadProgramsAsync();
@@ -109,6 +112,17 @@ public partial class ProgramManageView : BaseView
         }
     }
 
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        var becameVisible = Visible && !_wasVisible;
+        _wasVisible = Visible;
+        if (_initialized && becameVisible && !IsDisposed && !Disposing)
+        {
+            // 主窗体缓存页面；返回时只刷新配方，不重绑未保存的程序内容。
+            _ = RefreshRecipeNameOptionsAsync();
+        }
+    }
 
     private void DisposeOperationCts()
     {
@@ -485,8 +499,8 @@ public partial class ProgramManageView : BaseView
         var editable = idle && !_detailLoading && _contentError is null;
         editorLayout.Enabled = editable;
         grpProgramContent.Enabled = editable;
-        btnSave.Enabled = editable;
-        btnSaveAsNew.Enabled = editable;
+        btnSave.Enabled = editable && !_recipeNameRefreshing;
+        btnSaveAsNew.Enabled = editable && !_recipeNameRefreshing;
         btnSync.Enabled = editable;
         btnDelete.Enabled = idle && !_detailLoading;
         btnBatchClean.Enabled = idle;
@@ -905,6 +919,11 @@ public partial class ProgramManageView : BaseView
     {
         request = new SaveProgramReq { Id = asNew ? 0 : _editingId };
         if (!CanEditProgram()) return false;
+        if (_recipeNameRefreshing)
+        {
+            ShowWarning(TextKeys.ProgramManage.RecipeRefreshing);
+            return false;
+        }
 
         var sequenceNumber = 1;
         if (!asNew && (!int.TryParse(inputSequenceNumber.Text.Trim(), out sequenceNumber) || sequenceNumber <= 0))
@@ -1039,20 +1058,30 @@ public partial class ProgramManageView : BaseView
     /// </summary>
     private async Task RefreshRecipeNameOptionsAsync()
     {
+        if (IsDisposed || Disposing || _operationCts.IsCancellationRequested) return;
         var refreshVersion = Interlocked.Increment(ref _recipeNameRefreshVersion);
+        _recipeNameRefreshing = true;
+        UpdateProgramActions();
         try
         {
             var settings = _appSettingsService.Get();
             ApplyStationRecipeLayout(settings.EnableDualStation);
 
             var stationNumbers = settings.EnableDualStation ? new[] { 1, 2 } : new[] { 1 };
+            foreach (var stationNo in stationNumbers)
+            {
+                _recipeNameReadSucceeded[stationNo] = false;
+                var select = stationNo == 2 ? selectStation2Recipe : selectStation1Recipe;
+                select.ExpandDrop = false;
+                select.ReadOnly = true;
+            }
             var results = new List<(int StationNo, PlcRecipeNameReadResult Result)>();
             foreach (var stationNo in stationNumbers)
             {
                 results.Add((stationNo, await ReadRecipeNameOptionsAsync(stationNo)));
             }
 
-            if (refreshVersion != Volatile.Read(ref _recipeNameRefreshVersion))
+            if (refreshVersion != Volatile.Read(ref _recipeNameRefreshVersion) || IsDisposed || Disposing)
             {
                 return;
             }
@@ -1061,12 +1090,14 @@ public partial class ProgramManageView : BaseView
             {
                 var select = stationNo == 2 ? selectStation2Recipe : selectStation1Recipe;
                 // PLC 读取期间用户可能点击新增或切换程序，必须以统一绑定时的实时编辑值为准。
-                var liveRecipeCode = ResolveSelectedRecipeCode(select, stationNo);
-                if (string.IsNullOrWhiteSpace(liveRecipeCode) && GetEditingProgram() is { } editingProgram)
+                var selection = ResolveSelectedRecipeItem(select, stationNo);
+                var liveRecipeCode = selection?.RecipeCode;
+                if (selection is null && GetEditingProgram() is { } editingProgram)
                 {
                     liveRecipeCode = stationNo == 2 ? editingProgram.Station2RecipeCode : editingProgram.RecipeCode;
                 }
-                BindRecipeNameOptions(select, stationNo, result, liveRecipeCode);
+                BindRecipeNameOptions(select, stationNo, result, liveRecipeCode,
+                    selectNotApplicable: selection?.Kind == RecipeSelectionKind.NotApplicable || _editingId > 0);
             }
         }
         catch (OperationCanceledException)
@@ -1074,7 +1105,7 @@ public partial class ProgramManageView : BaseView
         }
         catch (Exception ex)
         {
-            if (refreshVersion != Volatile.Read(ref _recipeNameRefreshVersion))
+            if (refreshVersion != Volatile.Read(ref _recipeNameRefreshVersion) || IsDisposed || Disposing)
             {
                 return;
             }
@@ -1083,6 +1114,14 @@ public partial class ProgramManageView : BaseView
             if (selectStation2Recipe.Visible)
             {
                 BindRecipeNameReadFailure(selectStation2Recipe, 2, ex);
+            }
+        }
+        finally
+        {
+            if (refreshVersion == Volatile.Read(ref _recipeNameRefreshVersion))
+            {
+                _recipeNameRefreshing = false;
+                UpdateProgramActions();
             }
         }
     }
@@ -1152,7 +1191,8 @@ public partial class ProgramManageView : BaseView
         AntdUI.Select select,
         int stationNo,
         PlcRecipeNameReadResult result,
-        string? currentRecipeCode)
+        string? currentRecipeCode,
+        bool selectNotApplicable = false)
     {
         _recipeNameReadSucceeded[stationNo] = result.IsSuccess;
         var items = result.IsSuccess
@@ -1162,7 +1202,7 @@ public partial class ProgramManageView : BaseView
                 RecipeSelectionKind.PlcOption)).ToList()
             : BuildUnavailableItems(currentRecipeCode);
 
-        if (result.IsSuccess && _enableDualStation)
+        if (_enableDualStation && (result.IsSuccess || (selectNotApplicable && string.IsNullOrWhiteSpace(currentRecipeCode))))
         {
             items.Add(new RecipeSelectionItem(
                 _localizer.GetString(TextKeys.ProgramManage.RecipeNotApplicable),
@@ -1181,7 +1221,7 @@ public partial class ProgramManageView : BaseView
             select,
             stationNo,
             currentRecipeCode,
-            selectNotApplicable: result.IsSuccess && _editingId > 0);
+            selectNotApplicable: selectNotApplicable);
     }
 
     private List<RecipeSelectionItem> BuildUnavailableItems(string? recipeCode)
@@ -1230,20 +1270,23 @@ public partial class ProgramManageView : BaseView
             : selectNotApplicable
                 ? items.FindIndex(item => item.Kind == RecipeSelectionKind.NotApplicable)
                 : -1;
+        // Items 重建不会复位 AntdUI 内部索引；先归位，避免同索引对应的新名称仍显示旧值。
+        select.SelectedIndex = -1;
         select.SelectedIndex = selectedIndex;
-        select.Text = selectedIndex >= 0 ? items[selectedIndex].DisplayText : string.Empty;
+        if (selectedIndex < 0) select.Text = string.Empty;
     }
 
     private string? ResolveSelectedRecipeCode(AntdUI.Select select, int stationNo)
-    {
-        if (!_recipeSelectionItems.TryGetValue(stationNo, out var items)
-            || select.SelectedIndex < 0
-            || select.SelectedIndex >= items.Count)
-        {
-            return null;
-        }
+        => ResolveSelectedRecipeItem(select, stationNo)?.RecipeCode;
 
-        return items[select.SelectedIndex].RecipeCode;
+    private RecipeSelectionItem? ResolveSelectedRecipeItem(AntdUI.Select select, int stationNo)
+    {
+        if (!_recipeSelectionItems.TryGetValue(stationNo, out var items)) return null;
+        var index = SelectListRules.ResolveSelectedIndex(
+            items.Select(item => (string?)item.DisplayText).ToArray(),
+            select.SelectedValue as string ?? select.Text,
+            select.SelectedIndex);
+        return index >= 0 ? items[index] : null;
     }
 
     /// <summary>
@@ -1252,23 +1295,16 @@ public partial class ProgramManageView : BaseView
     /// </summary>
     private string? ResolveSelectedRecipeName(AntdUI.Select select, int stationNo)
     {
-        if (!_recipeSelectionItems.TryGetValue(stationNo, out var items)
-            || select.SelectedIndex < 0
-            || select.SelectedIndex >= items.Count)
+        var item = ResolveSelectedRecipeItem(select, stationNo);
+        if (_recipeNameReadSucceeded.TryGetValue(stationNo, out var succeeded) && succeeded)
         {
-            var existing = ProgramContentJsonRules.ExtractRecipeNames(_editingContent);
-            return stationNo == 2 ? existing.Station2RecipeName : existing.Station1RecipeName;
+            if (item?.Kind == RecipeSelectionKind.PlcOption) return item.DisplayText;
+            if (item?.Kind == RecipeSelectionKind.NotApplicable) return null;
         }
 
-        var item = items[select.SelectedIndex];
-        // PLC 槽位暂时不可读取时仍保留原程序已验证的配方名称，不能在重填限值时丢失元数据。
-        if (item.Kind == RecipeSelectionKind.PlcOption) return item.DisplayText;
-        if (item.Kind == RecipeSelectionKind.MissingExisting)
-        {
-            var names = ProgramContentJsonRules.ExtractRecipeNames(_editingContent);
-            return stationNo == 2 ? names.Station2RecipeName : names.Station1RecipeName;
-        }
-        return null;
+        // 读取失败只允许非配方编辑，名称与配方号必须一起保留，不能混用未保存的选择。
+        var existing = ProgramContentJsonRules.ExtractRecipeNames(_editingContent);
+        return stationNo == 2 ? existing.Station2RecipeName : existing.Station1RecipeName;
     }
 
     private void RefreshRecipeSelectorTexts()
@@ -1279,14 +1315,11 @@ public partial class ProgramManageView : BaseView
 
     private void RefreshRecipeSelectorText(AntdUI.Select select, int stationNo)
     {
-        var recipeCode = ResolveSelectedRecipeCode(select, stationNo);
-        var kind = _recipeSelectionItems.TryGetValue(stationNo, out var items)
-            && select.SelectedIndex >= 0
-            && select.SelectedIndex < items.Count
-                ? items[select.SelectedIndex].Kind
-                : (RecipeSelectionKind?)null;
+        var selection = ResolveSelectedRecipeItem(select, stationNo);
+        var recipeCode = selection?.RecipeCode;
+        var kind = selection?.Kind;
 
-        if (items is not null)
+        if (_recipeSelectionItems.TryGetValue(stationNo, out var items))
         {
             items = items.Select(item => item.Kind switch
             {
@@ -1306,16 +1339,7 @@ public partial class ProgramManageView : BaseView
             _recipeNameReadSucceeded.TryGetValue(stationNo, out var succeeded) && succeeded
                 ? TextKeys.ProgramManage.PlaceholderRecipeSelect
                 : TextKeys.ProgramManage.RecipeReadFailed);
-        if (kind == RecipeSelectionKind.NotApplicable)
-        {
-            var notApplicableIndex = items?.FindIndex(item => item.Kind == RecipeSelectionKind.NotApplicable) ?? -1;
-            select.SelectedIndex = notApplicableIndex;
-            select.Text = notApplicableIndex >= 0 ? items![notApplicableIndex].DisplayText : string.Empty;
-        }
-        else
-        {
-            SetRecipeSelection(select, stationNo, recipeCode);
-        }
+        SetRecipeSelection(select, stationNo, recipeCode, selectNotApplicable: kind == RecipeSelectionKind.NotApplicable);
     }
 
     private void SetRecipeSelectorItems(
@@ -1342,6 +1366,8 @@ public partial class ProgramManageView : BaseView
             _recipeSelectionItems[stationNo] = items;
         }
 
+        select.ExpandDrop = false;
+        select.SelectedIndex = -1;
         select.Items.Clear();
         select.Items.AddRange(items.Select(item => (object)item.DisplayText).ToArray());
     }

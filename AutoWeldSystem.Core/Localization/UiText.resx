@@ -1782,6 +1782,9 @@
   <data name="program.message.content_invalid" xml:space="preserve">
     <value>程序内容无效，不能保存、另存或同步，但可删除当前程序。原因：{0}</value>
   </data>
+  <data name="program.message.recipe_refreshing" xml:space="preserve">
+    <value>正在刷新 PLC 配方，请稍后再保存。</value>
+  </data>
   <data name="program.message.detail_loading" xml:space="preserve">
     <value>程序详情正在加载，请稍后再操作。</value>
   </data>

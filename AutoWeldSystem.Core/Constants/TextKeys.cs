@@ -1105,6 +1105,7 @@ public static class TextKeys
         public const string RecipeNotApplicable = "program.option.recipe_not_applicable";
         public const string MissingRecipeOption = "program.option.missing_recipe";
         public const string RecipeReadFailed = "program.message.recipe_read_failed";
+        public const string RecipeRefreshing = "program.message.recipe_refreshing";
         public const string LabelComponentCode = "program.label.component_code";
         public const string LabelSequenceNumber = "program.label.sequence_number";
         public const string LabelProgramType = "program.label.program_type";

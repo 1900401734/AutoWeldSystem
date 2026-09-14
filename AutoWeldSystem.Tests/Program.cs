@@ -90,6 +90,7 @@ var tests = new (string Name, Action Run)[]
     ("PLC recipe name reader keeps successful slots after read failures", PlcRecipeNameReaderKeepsSuccessfulSlotsAfterReadFailures),
     ("PLC recipe name reader accepts in-memory configuration", PlcRecipeNameReaderAcceptsInMemoryConfiguration),
     ("PLC recipe name reader returns invalid config failures", PlcRecipeNameReaderReturnsInvalidConfigFailures),
+    ("PLC recipe name reader reloads changed station configuration", PlcRecipeNameReaderReloadsChangedConfiguration),
     ("Program cleanup skips empty requests and honors cancellation", ProgramCleanupGuardsAndCancellation),
     ("Program recipe mapping normalizes positive numeric codes", ProgramRecipeMappingNormalizesPositiveNumericCodes),
     ("Program save recipe rules require positive station codes", ProgramSaveRecipeRulesRequirePositiveStationCodes),
@@ -1623,6 +1624,34 @@ static void PlcRecipeNameReaderReturnsInvalidConfigFailures()
     AssertFalse(result.IsSuccess, "历史非法配置应返回读取失败，而不是向界面抛出异常。 ");
     AssertTrue(result.Message.Contains("基地址不能为空", StringComparison.Ordinal), "失败消息应包含具体配置错误。 ");
     AssertEqual(0, result.Options.Count, "配置无效时不应生成配方选项。 ");
+}
+
+static void PlcRecipeNameReaderReloadsChangedConfiguration()
+{
+    var configs = new FakePlcRecipeNameConfigService(
+        new() { StationNo = 1, BaseAddress = "DB30.0", RecipeCount = 1, AddressOffset = 16, StringLength = 12, Enabled = true },
+        new() { StationNo = 2, BaseAddress = "DB40.0", RecipeCount = 1, AddressOffset = 16, StringLength = 12, Enabled = true });
+    var plc = new FakePlcCommunicationService();
+    plc.StringReadResults["DB30.0"] = PlcServiceResult<string>.Success("旧配方");
+    plc.StringReadResults["DB40.0"] = PlcServiceResult<string>.Success("右侧配方");
+    plc.StringReadResults["DB50.0"] = PlcServiceResult<string>.Success("新配方");
+    var reader = new PlcRecipeNameReaderService(configs, plc);
+    AssertEqual("旧配方", reader.ReadStationAsync(1).GetAwaiter().GetResult().Options.Single().Name, "首次应读取原配置。");
+    configs.SaveAll([
+        new() { StationNo = 1, BaseAddress = "DB50.0", RecipeCount = 1, AddressOffset = 16, StringLength = 24, Enabled = true },
+        configs.GetForStation(2)!
+    ]);
+    var changed = reader.ReadStationAsync(1).GetAwaiter().GetResult();
+    AssertEqual("新配方", changed.Options.Single().Name, "同一读取服务实例必须使用保存后的最新地址。");
+    AssertEqual((ushort)24, plc.StringReadRequests.Last().Length, "地址与字符串长度应同时更新。");
+    AssertEqual("右侧配方", reader.ReadStationAsync(2).GetAwaiter().GetResult().Options.Single().Name, "工位1更新不得改变工位2。");
+    plc.StringReadResults["DB50.0"] = PlcServiceResult<string>.Fail("offline");
+    var failed = reader.ReadStationAsync(1).GetAwaiter().GetResult();
+    AssertFalse(failed.IsSuccess, "新地址读取失败必须返回失败，不能命中旧成功结果。");
+    AssertEqual(0, failed.Options.Count, "读取失败不能提供旧配方候选。");
+    using var canceled = new CancellationTokenSource();
+    canceled.Cancel();
+    AssertThrows<OperationCanceledException>(() => reader.ReadStationAsync(1, canceled.Token).GetAwaiter().GetResult(), "配方读取必须响应取消。");
 }
 
 static void ProgramCleanupGuardsAndCancellation()
@@ -19121,7 +19150,7 @@ sealed class FakeCenterProductForwardingService : ICenterProductForwardingServic
 
 sealed class FakePlcRecipeNameConfigService(params BizPlcRecipeNameConfig[] configs) : IPlcRecipeNameConfigService
 {
-    private readonly IReadOnlyList<BizPlcRecipeNameConfig> _configs = configs;
+    private IReadOnlyList<BizPlcRecipeNameConfig> _configs = configs;
 
     public int SaveCallCount { get; private set; }
 
@@ -19131,7 +19160,10 @@ sealed class FakePlcRecipeNameConfigService(params BizPlcRecipeNameConfig[] conf
         => _configs.FirstOrDefault(config => config.StationNo == stationNo);
 
     public void SaveAll(IEnumerable<BizPlcRecipeNameConfig> configs)
-        => SaveCallCount++;
+    {
+        _configs = configs.ToArray();
+        SaveCallCount++;
+    }
 }
 
 sealed class FakeCenterProductReportIngestSideEffects : ICenterProductReportIngestSideEffects

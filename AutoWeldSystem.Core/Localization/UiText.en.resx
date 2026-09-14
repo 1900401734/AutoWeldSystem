@@ -1782,6 +1782,9 @@
   <data name="program.message.content_invalid" xml:space="preserve">
     <value>Invalid program content. Saving, copying and syncing are blocked, but you can delete this program. Reason: {0}</value>
   </data>
+  <data name="program.message.recipe_refreshing" xml:space="preserve">
+    <value>PLC recipes are refreshing. Please wait before saving.</value>
+  </data>
   <data name="program.message.detail_loading" xml:space="preserve">
     <value>Program details are loading. Please wait.</value>
   </data>
