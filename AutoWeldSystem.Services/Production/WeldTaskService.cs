@@ -91,7 +91,8 @@ public class WeldTaskService : IWeldTaskService
     protected virtual BizWeldTask? QueryUnfinishedTask(int[] stationNumbers)
     {
         var query = _dbContext.Db.Queryable<BizWeldTask>()
-            .Where(task => task.TaskStatus != TaskStatusCompleted && task.EndTime == null);
+            .Where(task => task.TaskStatus != TaskStatusCompleted
+                && task.TaskStatus != ProductionConstants.ProductInstanceStatuses.Abandoned && task.EndTime == null);
         query = stationNumbers.Length == 1
             ? query.Where(task => task.StationNo == stationNumbers[0])
             : query.Where(task => stationNumbers.Contains(task.StationNo));
@@ -129,35 +130,138 @@ public class WeldTaskService : IWeldTaskService
     /// </summary>
     public BizWeldTask? RestoreUnfinishedTask(int stationNo = ProductionConstants.Stations.DefaultStationNo)
     {
-        var normalizedStationNo = NormalizeStationNo(stationNo);
-        var unfinishedTask = GetUnfinishedTask(normalizedStationNo);
-        if (unfinishedTask is null)
+        BizWeldTask unfinishedTask;
+        lock (_dbContext.TaskTransitionSync)
         {
-            return null;
+            var normalizedStationNo = NormalizeStationNo(stationNo);
+            var candidate = GetUnfinishedTask(normalizedStationNo);
+            if (candidate is null) return null;
+            unfinishedTask = candidate;
+            ValidateTaskForProduction(unfinishedTask, normalizedStationNo);
+            var station = GetStation(normalizedStationNo);
+            if (station.ActiveTask?.Id == unfinishedTask.Id)
+            {
+                // 同一任务已恢复时直接返回，避免递归触发 StateChanged。
+                return unfinishedTask;
+            }
+
+            var process = CreateProcessSnapshot(unfinishedTask);
+            var workOrder = CreateWorkOrderSnapshot(unfinishedTask, process);
+            var program = CreateProgramSnapshot(unfinishedTask);
+            var operatorNumber = FirstNonEmpty(unfinishedTask.UserNumber, station.MesOperatorNumber);
+            ApplyStartedRuntimeState(normalizedStationNo, workOrder, process, program, unfinishedTask, operatorNumber);
+            ApplySharedStartedRuntimeStateIfNeeded(normalizedStationNo, workOrder, process, program, unfinishedTask, operatorNumber);
         }
-
-        ValidateTaskForProduction(unfinishedTask, normalizedStationNo);
-        var station = GetStation(normalizedStationNo);
-        var alreadyRestored = station.ActiveTask?.Id == unfinishedTask.Id;
-        if (alreadyRestored)
-        {
-            // UI 状态刷新会重复检查未完工任务；同一任务已恢复时直接返回，避免递归触发 StateChanged。
-            return unfinishedTask;
-        }
-
-        var process = CreateProcessSnapshot(unfinishedTask);
-        var workOrder = CreateWorkOrderSnapshot(unfinishedTask, process);
-        var program = CreateProgramSnapshot(unfinishedTask);
-        var operatorNumber = FirstNonEmpty(unfinishedTask.UserNumber, station.MesOperatorNumber);
-
-        ApplyStartedRuntimeState(normalizedStationNo, workOrder, process, program, unfinishedTask, operatorNumber);
-        ApplySharedStartedRuntimeStateIfNeeded(normalizedStationNo, workOrder, process, program, unfinishedTask, operatorNumber);
         _operationLogService.Write(
             "TaskRecovery",
             $"Unfinished task restored, Station={unfinishedTask.StationNo}, WorkOrder={unfinishedTask.SN}, MES Id={unfinishedTask.ExpStartId}");
-
         NotifyStateChanged();
         return unfinishedTask;
+    }
+
+    public async Task<BizWeldTask> AbandonInvalidTaskAsync(
+        int taskId, int stationNo, CancellationToken cancellationToken = default)
+    {
+        var task = await Task.Run(() => AbandonInvalidTaskCore(taskId, stationNo, cancellationToken), cancellationToken);
+        foreach (var station in CurrentState.StationStates.Values)
+        {
+            WeldTaskRuntimeRules.ClearFinishedTask(station, task);
+        }
+        if (CurrentState.ActiveTask?.Id == task.Id) CurrentState.ActiveTask = null;
+        RefreshCompatibilityState(CurrentState.CurrentStationNo);
+        _operationLogService.Write("TaskAbandon", task.UploadMessage ?? $"任务 {task.Id} 已异常结束。", "Warning");
+        NotifyStateChanged();
+        return task;
+    }
+
+    private BizWeldTask AbandonInvalidTaskCore(int taskId, int stationNo, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_dbContext.TaskTransitionSync)
+        {
+            if (!GlobalContext.IsAuthenticated || !GlobalContext.HasPermission(PermissionCodes.Buttons.Data.Delete))
+                throw new BusinessOperationException("Task.Abandon", "异常结束失败", "需要删除历史数据权限。");
+            var operatorNumber = GlobalContext.CurrentUser!.UserNumber;
+            _dbContext.InitDatabase();
+            var normalizedStationNo = NormalizeStationNo(stationNo);
+            var task = _dbContext.Db.Queryable<BizWeldTask>().InSingle(taskId);
+            var scopedStations = ResolveTaskScopeStationNumbers(normalizedStationNo);
+            if (task is null || !IsUnfinishedTask(task)
+                || !scopedStations.Contains(NormalizeStationNo(task.StationNo))
+                || GetUnfinishedTask(normalizedStationNo)?.Id != task.Id)
+                throw new BusinessOperationException("Task.Abandon", "异常结束失败", "任务已改变、已结束或不属于当前工位，请刷新后确认。");
+
+            string failure;
+            try
+            {
+                ValidateTaskForProduction(task, normalizedStationNo);
+                throw new BusinessOperationException("Task.Abandon", "异常结束失败", "程序配置已有效，请使用正常完工，不能异常结束。");
+            }
+            catch (BusinessOperationException ex) when (ex.SourceName == "Program.Configuration")
+            {
+                failure = ex.Detail;
+            }
+
+            var now = DateTime.Now;
+            var message = $"任务 {task.Id} 异常结束；工位={task.StationNo}；工单={task.SN}；程序={task.ProgramName}；开工时间={task.StartTime:yyyy-MM-dd HH:mm:ss}；执行人={GlobalContext.CurrentUser!.UserNumber}。历史数据保留，未发送的生产补传已跳过，MES 端请人工核对。原因：{failure}";
+            var transaction = _dbContext.Db.Ado.UseTran(() =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var uploads = _dbContext.Db.Queryable<BizUploadTask>().Where(item => item.WeldTaskId == task.Id && !item.IsDeleted)
+                    .ToList().Where(WeldTaskRuntimeRules.IsProductionUpload).ToList();
+                if (uploads.Any(item => item.Status == ProductionConstants.UploadStatuses.Uploading)
+                    || _dbContext.Db.Queryable<BizWeldPointRecord>().Any(item => item.TaskId == task.Id && item.UploadStatus == ProductionConstants.UploadStatuses.Uploading)
+                    || _dbContext.Db.Queryable<BizProductionReportFile>().Any(item => item.TaskId == task.Id && item.UploadStatus == ProductionConstants.UploadStatuses.Uploading))
+                    throw new InvalidOperationException("该任务仍有在途上传，请等待结束后重试异常结束。");
+
+                var updated = _dbContext.Db.Updateable<BizWeldTask>()
+                    .SetColumns(item => new BizWeldTask
+                    {
+                        TaskStatus = ProductionConstants.ProductInstanceStatuses.Abandoned,
+                        EndTime = now,
+                        EndOperatorNumber = operatorNumber,
+                        UploadStatus = ProductionConstants.UploadStatuses.Skipped,
+                        UploadMessage = message
+                    })
+                    .Where(item => item.Id == task.Id && item.EndTime == null && item.TaskStatus == task.TaskStatus)
+                    .ExecuteCommand();
+                if (updated != 1) throw new InvalidOperationException("任务状态已改变，未执行异常结束。");
+
+                foreach (var upload in uploads.Where(item => item.Status != ProductionConstants.UploadStatuses.Uploaded))
+                {
+                    upload.Status = ProductionConstants.UploadStatuses.Skipped;
+                    upload.NextRetryTime = null;
+                    upload.CompletedTime = now;
+                    upload.UpdatedTime = now;
+                    upload.Message = message;
+                    _dbContext.Db.Updateable(upload).UpdateColumns(item => new
+                    {
+                        item.Status, item.NextRetryTime, item.CompletedTime, item.UpdatedTime, item.Message
+                    }).ExecuteCommand();
+                }
+                _dbContext.Db.Updateable<BizWeldPointRecord>()
+                    .SetColumns(item => new BizWeldPointRecord { UploadStatus = ProductionConstants.UploadStatuses.Skipped, UploadMessage = message })
+                    .Where(item => item.TaskId == task.Id && item.UploadStatus != ProductionConstants.UploadStatuses.Uploaded).ExecuteCommand();
+                _dbContext.Db.Updateable<BizProductionReportFile>()
+                    .SetColumns(item => new BizProductionReportFile { UploadStatus = ProductionConstants.UploadStatuses.Skipped, UploadMessage = message, UpdatedTime = now })
+                    .Where(item => item.TaskId == task.Id && item.UploadStatus != ProductionConstants.UploadStatuses.Uploaded).ExecuteCommand();
+            });
+            if (!transaction.IsSuccess)
+                throw new BusinessOperationException("Task.Abandon", "异常结束失败", transaction.ErrorException?.Message ?? transaction.ErrorMessage);
+            // 先终结已有内存引用，后台恢复/采集检查不能在 UI 清理前再次看到 Running。
+            foreach (var station in CurrentState.StationStates.Values)
+            {
+                if (station.ActiveTask?.Id != task.Id) continue;
+                station.ActiveTask.TaskStatus = ProductionConstants.ProductInstanceStatuses.Abandoned;
+                station.ActiveTask.EndTime = now;
+            }
+            if (CurrentState.ActiveTask?.Id == task.Id)
+            {
+                CurrentState.ActiveTask.TaskStatus = ProductionConstants.ProductInstanceStatuses.Abandoned;
+                CurrentState.ActiveTask.EndTime = now;
+            }
+            return _dbContext.Db.Queryable<BizWeldTask>().InSingle(task.Id);
+        }
     }
 
     /// <summary>
@@ -1384,6 +1488,7 @@ public class WeldTaskService : IWeldTaskService
     {
         return task is not null
             && task.EndTime is null
+            && !WeldTaskRuntimeRules.IsAbandoned(task)
             && !string.Equals(task.TaskStatus, TaskStatusCompleted, StringComparison.OrdinalIgnoreCase);
     }
 

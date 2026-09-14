@@ -44,6 +44,11 @@ public partial class ProgramManageView : BaseView
     private string _editingContent = "{}";
     private int _detailLoadVersion;
     private bool _initialized;
+    private bool _wasVisible;
+    private bool _detailLoading;
+    private string? _contentError;
+    private bool _programOperationInProgress;
+    private bool _recipeNameRefreshing;
     private bool _programContentDictionaryAvailable;
     private int _recipeNameRefreshVersion;
     private bool _enableDualStation;
@@ -52,7 +57,6 @@ public partial class ProgramManageView : BaseView
     private const int AlertMessageAutoCloseSeconds = 6;
     private readonly CancellationTokenSource _operationCts = new();
     private int _operationCtsDisposed;
-    private bool _deleteInProgress;
     // 回写分页控件属性会触发 ValueChanged，用标志位避免重复绑定当前页。
     private bool _updatingProgramPagination;
     // InputQuery 按点击/回车回传关键字，不再逐字符触发，因此关键字需自己保存。
@@ -89,6 +93,7 @@ public partial class ProgramManageView : BaseView
         }
 
         _initialized = true;
+        _wasVisible = Visible;
         try
         {
             await ReloadProgramsAsync();
@@ -107,6 +112,17 @@ public partial class ProgramManageView : BaseView
         }
     }
 
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        var becameVisible = Visible && !_wasVisible;
+        _wasVisible = Visible;
+        if (_initialized && becameVisible && !IsDisposed && !Disposing)
+        {
+            // 主窗体缓存页面；返回时只刷新配方，不重绑未保存的程序内容。
+            _ = RefreshRecipeNameOptionsAsync();
+        }
+    }
 
     private void DisposeOperationCts()
     {
@@ -171,7 +187,10 @@ public partial class ProgramManageView : BaseView
 
     private void WireEvents()
     {
-        btnNew.Click += (_, _) => StartNewProgram();
+        btnNew.Click += (_, _) =>
+        {
+            if (!_programOperationInProgress) StartNewProgram();
+        };
         btnSave.Click += Save_ClickAsync;
         btnSaveAsNew.Click += SaveAsNew_ClickAsync;
         btnDelete.Click += Delete_ClickAsync;
@@ -184,7 +203,7 @@ public partial class ProgramManageView : BaseView
         programPagination.ValueChanged += ProgramPagination_ValueChanged;
         tablePrograms.CellClick += (_, e) =>
         {
-            if (e.Record is ProgramProductGroupRow row)
+            if (!_programOperationInProgress && e.Record is ProgramProductGroupRow row)
             {
                 BindProgramById(row.ProgramId);
             }
@@ -319,9 +338,18 @@ public partial class ProgramManageView : BaseView
     private async Task ReloadProgramsAsync(int? selectedId = null)
     {
         var programs = await _programService.GetProgramLookupsAsync(_operationCts.Token);
+        if (IsDisposed || Disposing) return;
+        // 新列表取代旧详情请求，避免清理后迟到的详情把已删程序重新绑定回来。
+        Interlocked.Increment(ref _detailLoadVersion);
+        _detailLoading = false;
         _programs.Clear();
         _programs.AddRange(programs.Select(program => program.ToEntityStub()));
+        if (_editingId > 0 && _programs.All(program => program.Id != _editingId))
+        {
+            StartNewProgram();
+        }
         ApplyProgramFilter(selectedId);
+        UpdateProgramActions();
     }
 
     /// <summary>
@@ -393,6 +421,7 @@ public partial class ProgramManageView : BaseView
     /// </summary>
     private async void ProgramQuery_QueryClickAsync(object? sender, string keyword)
     {
+        if (_programOperationInProgress) return;
         _keyword = keyword.Trim();
         try
         {
@@ -442,6 +471,8 @@ public partial class ProgramManageView : BaseView
         _editingId = 0;
         _editingProgram = null;
         _editingContent = "{}";
+        _contentError = null;
+        _detailLoading = false;
         Interlocked.Increment(ref _detailLoadVersion);
         txtProgramId.Clear();
         inputProgramName.Clear();
@@ -458,24 +489,64 @@ public partial class ProgramManageView : BaseView
         BindProgramContentRows(null);
         lblCurrentInfo.Text = _localizer.GetString(TextKeys.ProgramManage.CurrentNew);
         _suppressNameAutoFill = false;
+        UpdateProgramActions();
+    }
+
+    private void UpdateProgramActions()
+    {
+        if (IsDisposed || Disposing) return;
+        var idle = !_programOperationInProgress;
+        var editable = idle && !_detailLoading && _contentError is null;
+        editorLayout.Enabled = editable;
+        grpProgramContent.Enabled = editable;
+        btnSave.Enabled = editable && !_recipeNameRefreshing;
+        btnSaveAsNew.Enabled = editable && !_recipeNameRefreshing;
+        btnSync.Enabled = editable;
+        btnDelete.Enabled = idle && !_detailLoading;
+        btnBatchClean.Enabled = idle;
+        btnNew.Enabled = idle;
+        tablePrograms.Enabled = idle;
+        btnPullMes.Enabled = idle;
+        queryPrograms.Enabled = idle;
+    }
+
+    private bool CanEditProgram()
+    {
+        if (_detailLoading)
+        {
+            ShowWarning(TextKeys.ProgramManage.DetailLoading);
+            return false;
+        }
+        if (_contentError is not null)
+        {
+            ShowWarning(TextKeys.ProgramManage.ContentInvalid, _contentError);
+            return false;
+        }
+        return !_programOperationInProgress;
     }
 
     private async void BindProgramById(int programId)
     {
         var loadVersion = Interlocked.Increment(ref _detailLoadVersion);
+        _detailLoading = true;
+        UpdateProgramActions();
         try
         {
             var program = await _programService.GetProgramAsync(programId, _operationCts.Token);
-            if (program is null
-                || loadVersion != Volatile.Read(ref _detailLoadVersion)
-                || IsDisposed)
+            if (loadVersion != Volatile.Read(ref _detailLoadVersion) || IsDisposed || Disposing)
             {
+                return;
+            }
+            if (program is null || program.IsDeleted)
+            {
+                StartNewProgram();
                 return;
             }
 
             var dictionaryItems = _testSchemeConfigService.GetItems();
             var content = program.ProgramContent;
-            IReadOnlyList<ProgramContentItemRow> rows;
+            string? contentError = null;
+            IReadOnlyList<ProgramContentItemRow> rows = Array.Empty<ProgramContentItemRow>();
             try
             {
                 _ = ProgramContentJsonRules.NormalizeContent(content, _appSettingsService.Get().ProcessParameterDeviceType, requireTouchCount: false);
@@ -483,22 +554,24 @@ public partial class ProgramManageView : BaseView
             }
             catch (InvalidOperationException ex)
             {
-                if (!ProgramContentJsonRules.TryCreateReconfigurationContent(content, out var metadata)
-                    || MessageBox.Show(GetDialogOwner(), $"{ex.Message}\n\n是否重新配置此程序？保留程序身份和有效配方元数据，旧限值不预填；保存前不修改数据库。",
-                        "重新配置", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+                if (ProgramContentJsonRules.TryCreateReconfigurationContent(content, out var metadata)
+                    && MessageBox.Show(GetDialogOwner(), $"{ex.Message}\n\n是否重新配置此程序？保留程序身份和有效配方元数据，旧限值不预填；保存前不修改数据库。",
+                        "重新配置", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
                 {
-                    ShowWarningMessage(ex.Message);
-                    RestoreEditingSelection();
-                    return;
+                    content = metadata;
+                    rows = ProgramContentJsonRules.BuildRows(dictionaryItems, metadata);
                 }
-                content = metadata;
-                rows = ProgramContentJsonRules.BuildRows(dictionaryItems, metadata);
+                else
+                {
+                    contentError = ex.Message;
+                }
             }
 
-            if (loadVersion != Volatile.Read(ref _detailLoadVersion) || IsDisposed) return;
-            // 全部解析完成后才替换编辑身份和表格，失败不留下上一程序的限值。
+            if (loadVersion != Volatile.Read(ref _detailLoadVersion) || IsDisposed || Disposing) return;
+            // 内容无效也必须绑定当前身份供删除；不能回退到上一程序或用空限值覆盖原内容。
             _editingProgram = program;
             _editingContent = content ?? "{}";
+            _contentError = contentError;
             _suppressNameAutoFill = true;
             _editingId = program.Id;
             txtProgramId.Text = program.ProgramId ?? string.Empty;
@@ -515,21 +588,36 @@ public partial class ProgramManageView : BaseView
             cmbProgramType.SelectedIndex = program.ProgramType == "1" ? 1 : 0;
             BindRemarkText(program.Remark);
             inputDescription.Text = program.Description ?? string.Empty;
-            BindProgramContentRows(rows, dictionaryItems.Any(item => !string.IsNullOrWhiteSpace(item.ItemName)));
-            SetCurrentProgramInfo(program);
-            _suppressNameAutoFill = false;
+            if (contentError is null)
+            {
+                BindProgramContentRows(rows, dictionaryItems.Any(item => !string.IsNullOrWhiteSpace(item.ItemName)));
+            }
+            else
+            {
+                _programContentRows.Clear();
+                RefreshProgramContentTable();
+                ShowWarning(TextKeys.ProgramManage.ContentInvalid, contentError);
+            }
+            UpdateCurrentInfoText();
+            RestoreEditingSelection();
         }
         catch (OperationCanceledException)
         {
         }
         catch (Exception ex)
         {
+            if (loadVersion != Volatile.Read(ref _detailLoadVersion) || IsDisposed || Disposing) return;
+            StartNewProgram();
             ShowErrorMessage(ex.Message);
-            RestoreEditingSelection();
         }
         finally
         {
-            _suppressNameAutoFill = false;
+            if (loadVersion == Volatile.Read(ref _detailLoadVersion))
+            {
+                _detailLoading = false;
+                _suppressNameAutoFill = false;
+                UpdateProgramActions();
+            }
         }
     }
 
@@ -544,6 +632,11 @@ public partial class ProgramManageView : BaseView
 
     private void UpdateCurrentInfoText()
     {
+        if (_contentError is not null)
+        {
+            lblCurrentInfo.Text = _localizer.GetString(TextKeys.ProgramManage.CurrentInvalid);
+            return;
+        }
         if (_editingId <= 0)
         {
             lblCurrentInfo.Text = _localizer.GetString(TextKeys.ProgramManage.CurrentNew);
@@ -601,7 +694,8 @@ public partial class ProgramManageView : BaseView
             return;
         }
 
-        btnSave.Enabled = false;
+        _programOperationInProgress = true;
+        UpdateProgramActions();
         try
         {
             var saveResult = await _programService.SaveWithSyncDecisionAsync(request, _operationCts.Token);
@@ -623,45 +717,34 @@ public partial class ProgramManageView : BaseView
         }
         finally
         {
-            btnSave.Enabled = true;
+            _programOperationInProgress = false;
+            UpdateProgramActions();
         }
     }
 
     /// <summary>
     /// 以当前编辑内容为基础，在同一产品工号下另存为一个新程序。
-    /// 必须清空 _editingId 和 MES 程序ID，保存才会走新增；否则只会给原程序改名，
-    /// 因为已有 ProgramId 的程序在同步时会把 Create 降级为 Update。
+    /// 新请求清空本地 ID；保存失败前不改变当前编辑身份，避免误把异常程序当新增保存。
     /// </summary>
     private async void SaveAsNew_ClickAsync(object? sender, EventArgs e)
     {
+        if (!CanEditProgram()) return;
         if (_editingId <= 0)
         {
             ShowWarning(TextKeys.ProgramManage.SelectDelete);
             return;
         }
+        if (!TryBuildRequest(out var request, asNew: true)) return;
 
-        var productNum = inputProductNum.Text.Trim();
-        if (string.IsNullOrWhiteSpace(productNum))
-        {
-            ShowWarning(TextKeys.ProgramManage.ProductNumRequired);
-            return;
-        }
-
-        _editingId = 0;
-        txtProgramId.Clear();
-        btnSaveAsNew.Enabled = false;
+        _programOperationInProgress = true;
+        UpdateProgramActions();
         try
         {
-            inputSequenceNumber.Text = (await _programService.GetNextSequenceNumberAsync(
-                productNum,
-                _operationCts.Token)).ToString();
-            inputProgramName.Text = BuildProgramNameFromInputs();
-
-            if (!TryBuildRequest(out var request))
-            {
-                return;
-            }
-
+            request.SequenceNumber = await _programService.GetNextSequenceNumberAsync(
+                request.ProductNum,
+                _operationCts.Token);
+            request.ProgramName = _programService.BuildProgramName(
+                request.ProductNum, request.ComponentCode, request.SequenceNumber, request.LocalRemark);
             var saveResult = await _programService.SaveWithSyncDecisionAsync(request, _operationCts.Token);
             var saved = saveResult.Program;
             var syncInBackground = SyncAfterSaveEnabled && saveResult.ShouldSyncNow;
@@ -681,7 +764,8 @@ public partial class ProgramManageView : BaseView
         }
         finally
         {
-            btnSaveAsNew.Enabled = true;
+            _programOperationInProgress = false;
+            UpdateProgramActions();
         }
     }
 
@@ -705,37 +789,41 @@ public partial class ProgramManageView : BaseView
 
     private async void Delete_ClickAsync(object? sender, EventArgs e)
     {
+        if (_programOperationInProgress) return;
+        if (_detailLoading)
+        {
+            ShowWarning(TextKeys.ProgramManage.DetailLoading);
+            return;
+        }
         if (_programs.Count == 0)
         {
             ShowWarningMessage("当前没有可删除的加工程序。");
             return;
         }
 
-        if (_editingId <= 0)
+        var program = GetEditingProgram();
+        if (program is null)
         {
             ShowWarning(TextKeys.ProgramManage.SelectDelete);
             return;
         }
 
-        if (_deleteInProgress || !Confirm(TextKeys.ProgramManage.DeleteConfirm))
-        {
-            return;
-        }
-
-        _deleteInProgress = true;
-        btnDelete.Enabled = false;
+        // 确认框期间异步回调仍可运行，删除始终使用确认前捕获的身份与备注。
+        var programId = program.Id;
+        var remark = _contentError is null ? ResolveEditedMesRemark(program) : string.Empty;
+        var syncNow = SyncAfterSaveEnabled;
+        _programOperationInProgress = true;
+        UpdateProgramActions();
         try
         {
-            var result = await _programService.DeleteLocalAsync(
-                _editingId,
-                ResolveEditedMesRemark(GetEditingProgram()),
-                _operationCts.Token);
-            var syncNow = SyncAfterSaveEnabled;
+            if (!Confirm(TextKeys.ProgramManage.DeleteConfirm, program.ProgramName, programId)) return;
+            var result = await _programService.DeleteLocalAsync(programId, remark, _operationCts.Token);
             await ReloadProgramsAsync();
             StartNewProgram();
 
             if (!syncNow || !result.RequiresMesSync)
             {
+                ShowInfo(TextKeys.ProgramManage.DeleteSuccess);
                 return;
             }
 
@@ -752,8 +840,8 @@ public partial class ProgramManageView : BaseView
         }
         finally
         {
-            _deleteInProgress = false;
-            btnDelete.Enabled = true;
+            _programOperationInProgress = false;
+            UpdateProgramActions();
         }
     }
 
@@ -777,17 +865,20 @@ public partial class ProgramManageView : BaseView
 
     private async void SyncSelected_ClickAsync(object? sender, EventArgs e)
     {
+        if (!CanEditProgram()) return;
         if (_editingId <= 0)
         {
             ShowWarning(TextKeys.ProgramManage.SelectSync);
             return;
         }
 
-        btnSync.Enabled = false;
+        var programId = _editingId;
+        _programOperationInProgress = true;
+        UpdateProgramActions();
         try
         {
-            await _programService.SyncProgramAsync(_editingId, _operationCts.Token);
-            await ReloadProgramsAsync(_editingId);
+            await _programService.SyncProgramAsync(programId, _operationCts.Token);
+            await ReloadProgramsAsync(programId);
         }
         catch (Exception ex)
         {
@@ -795,13 +886,16 @@ public partial class ProgramManageView : BaseView
         }
         finally
         {
-            btnSync.Enabled = true;
+            _programOperationInProgress = false;
+            UpdateProgramActions();
         }
     }
 
     private async void PullMes_ClickAsync(object? sender, EventArgs e)
     {
-        btnPullMes.Enabled = false;
+        if (_programOperationInProgress) return;
+        _programOperationInProgress = true;
+        UpdateProgramActions();
         try
         {
             var count = await _programService.PullFromMesAsync(_operationCts.Token);
@@ -814,17 +908,25 @@ public partial class ProgramManageView : BaseView
         }
         finally
         {
-            btnPullMes.Enabled = true;
             try { await ReloadProgramsAsync(_editingId); }
             catch (Exception ex) { ShowErrorMessage(ex.Message); }
+            _programOperationInProgress = false;
+            UpdateProgramActions();
         }
     }
 
-    private bool TryBuildRequest(out SaveProgramReq request)
+    private bool TryBuildRequest(out SaveProgramReq request, bool asNew = false)
     {
-        request = new SaveProgramReq { Id = _editingId };
+        request = new SaveProgramReq { Id = asNew ? 0 : _editingId };
+        if (!CanEditProgram()) return false;
+        if (_recipeNameRefreshing)
+        {
+            ShowWarning(TextKeys.ProgramManage.RecipeRefreshing);
+            return false;
+        }
 
-        if (!int.TryParse(inputSequenceNumber.Text.Trim(), out var sequenceNumber) || sequenceNumber <= 0)
+        var sequenceNumber = 1;
+        if (!asNew && (!int.TryParse(inputSequenceNumber.Text.Trim(), out sequenceNumber) || sequenceNumber <= 0))
         {
             ShowWarning(TextKeys.ProgramManage.SequenceInvalid);
             return false;
@@ -857,7 +959,7 @@ public partial class ProgramManageView : BaseView
         }
 
         var editingProgram = GetEditingProgram();
-        if (_editingId <= 0
+        if ((_editingId <= 0 || asNew)
             && (!_recipeNameReadSucceeded.TryGetValue(1, out var station1ReadSucceeded) || !station1ReadSucceeded
                 || (_enableDualStation
                     && (!_recipeNameReadSucceeded.TryGetValue(2, out var station2ReadSucceeded) || !station2ReadSucceeded))))
@@ -869,7 +971,7 @@ public partial class ProgramManageView : BaseView
         request.RecipeCode = ResolveRecipeCodeForSave(selectStation1Recipe, 1, editingProgram) ?? string.Empty;
         request.Station2RecipeCode = selectStation2Recipe.Visible
             ? ResolveRecipeCodeForSave(selectStation2Recipe, 2, editingProgram)
-            : _editingId > 0
+            : _editingId > 0 && !asNew
                 ? editingProgram?.Station2RecipeCode
                 : null;
         try
@@ -956,20 +1058,30 @@ public partial class ProgramManageView : BaseView
     /// </summary>
     private async Task RefreshRecipeNameOptionsAsync()
     {
+        if (IsDisposed || Disposing || _operationCts.IsCancellationRequested) return;
         var refreshVersion = Interlocked.Increment(ref _recipeNameRefreshVersion);
+        _recipeNameRefreshing = true;
+        UpdateProgramActions();
         try
         {
             var settings = _appSettingsService.Get();
             ApplyStationRecipeLayout(settings.EnableDualStation);
 
             var stationNumbers = settings.EnableDualStation ? new[] { 1, 2 } : new[] { 1 };
+            foreach (var stationNo in stationNumbers)
+            {
+                _recipeNameReadSucceeded[stationNo] = false;
+                var select = stationNo == 2 ? selectStation2Recipe : selectStation1Recipe;
+                select.ExpandDrop = false;
+                select.ReadOnly = true;
+            }
             var results = new List<(int StationNo, PlcRecipeNameReadResult Result)>();
             foreach (var stationNo in stationNumbers)
             {
                 results.Add((stationNo, await ReadRecipeNameOptionsAsync(stationNo)));
             }
 
-            if (refreshVersion != Volatile.Read(ref _recipeNameRefreshVersion))
+            if (refreshVersion != Volatile.Read(ref _recipeNameRefreshVersion) || IsDisposed || Disposing)
             {
                 return;
             }
@@ -978,12 +1090,14 @@ public partial class ProgramManageView : BaseView
             {
                 var select = stationNo == 2 ? selectStation2Recipe : selectStation1Recipe;
                 // PLC 读取期间用户可能点击新增或切换程序，必须以统一绑定时的实时编辑值为准。
-                var liveRecipeCode = ResolveSelectedRecipeCode(select, stationNo);
-                if (string.IsNullOrWhiteSpace(liveRecipeCode) && GetEditingProgram() is { } editingProgram)
+                var selection = ResolveSelectedRecipeItem(select, stationNo);
+                var liveRecipeCode = selection?.RecipeCode;
+                if (selection is null && GetEditingProgram() is { } editingProgram)
                 {
                     liveRecipeCode = stationNo == 2 ? editingProgram.Station2RecipeCode : editingProgram.RecipeCode;
                 }
-                BindRecipeNameOptions(select, stationNo, result, liveRecipeCode);
+                BindRecipeNameOptions(select, stationNo, result, liveRecipeCode,
+                    selectNotApplicable: selection?.Kind == RecipeSelectionKind.NotApplicable || _editingId > 0);
             }
         }
         catch (OperationCanceledException)
@@ -991,7 +1105,7 @@ public partial class ProgramManageView : BaseView
         }
         catch (Exception ex)
         {
-            if (refreshVersion != Volatile.Read(ref _recipeNameRefreshVersion))
+            if (refreshVersion != Volatile.Read(ref _recipeNameRefreshVersion) || IsDisposed || Disposing)
             {
                 return;
             }
@@ -1000,6 +1114,14 @@ public partial class ProgramManageView : BaseView
             if (selectStation2Recipe.Visible)
             {
                 BindRecipeNameReadFailure(selectStation2Recipe, 2, ex);
+            }
+        }
+        finally
+        {
+            if (refreshVersion == Volatile.Read(ref _recipeNameRefreshVersion))
+            {
+                _recipeNameRefreshing = false;
+                UpdateProgramActions();
             }
         }
     }
@@ -1069,7 +1191,8 @@ public partial class ProgramManageView : BaseView
         AntdUI.Select select,
         int stationNo,
         PlcRecipeNameReadResult result,
-        string? currentRecipeCode)
+        string? currentRecipeCode,
+        bool selectNotApplicable = false)
     {
         _recipeNameReadSucceeded[stationNo] = result.IsSuccess;
         var items = result.IsSuccess
@@ -1079,7 +1202,7 @@ public partial class ProgramManageView : BaseView
                 RecipeSelectionKind.PlcOption)).ToList()
             : BuildUnavailableItems(currentRecipeCode);
 
-        if (result.IsSuccess && _enableDualStation)
+        if (_enableDualStation && (result.IsSuccess || (selectNotApplicable && string.IsNullOrWhiteSpace(currentRecipeCode))))
         {
             items.Add(new RecipeSelectionItem(
                 _localizer.GetString(TextKeys.ProgramManage.RecipeNotApplicable),
@@ -1098,7 +1221,7 @@ public partial class ProgramManageView : BaseView
             select,
             stationNo,
             currentRecipeCode,
-            selectNotApplicable: result.IsSuccess && _editingId > 0);
+            selectNotApplicable: selectNotApplicable);
     }
 
     private List<RecipeSelectionItem> BuildUnavailableItems(string? recipeCode)
@@ -1147,20 +1270,23 @@ public partial class ProgramManageView : BaseView
             : selectNotApplicable
                 ? items.FindIndex(item => item.Kind == RecipeSelectionKind.NotApplicable)
                 : -1;
+        // Items 重建不会复位 AntdUI 内部索引；先归位，避免同索引对应的新名称仍显示旧值。
+        select.SelectedIndex = -1;
         select.SelectedIndex = selectedIndex;
-        select.Text = selectedIndex >= 0 ? items[selectedIndex].DisplayText : string.Empty;
+        if (selectedIndex < 0) select.Text = string.Empty;
     }
 
     private string? ResolveSelectedRecipeCode(AntdUI.Select select, int stationNo)
-    {
-        if (!_recipeSelectionItems.TryGetValue(stationNo, out var items)
-            || select.SelectedIndex < 0
-            || select.SelectedIndex >= items.Count)
-        {
-            return null;
-        }
+        => ResolveSelectedRecipeItem(select, stationNo)?.RecipeCode;
 
-        return items[select.SelectedIndex].RecipeCode;
+    private RecipeSelectionItem? ResolveSelectedRecipeItem(AntdUI.Select select, int stationNo)
+    {
+        if (!_recipeSelectionItems.TryGetValue(stationNo, out var items)) return null;
+        var index = SelectListRules.ResolveSelectedIndex(
+            items.Select(item => (string?)item.DisplayText).ToArray(),
+            select.SelectedValue as string ?? select.Text,
+            select.SelectedIndex);
+        return index >= 0 ? items[index] : null;
     }
 
     /// <summary>
@@ -1169,23 +1295,16 @@ public partial class ProgramManageView : BaseView
     /// </summary>
     private string? ResolveSelectedRecipeName(AntdUI.Select select, int stationNo)
     {
-        if (!_recipeSelectionItems.TryGetValue(stationNo, out var items)
-            || select.SelectedIndex < 0
-            || select.SelectedIndex >= items.Count)
+        var item = ResolveSelectedRecipeItem(select, stationNo);
+        if (_recipeNameReadSucceeded.TryGetValue(stationNo, out var succeeded) && succeeded)
         {
-            var existing = ProgramContentJsonRules.ExtractRecipeNames(_editingContent);
-            return stationNo == 2 ? existing.Station2RecipeName : existing.Station1RecipeName;
+            if (item?.Kind == RecipeSelectionKind.PlcOption) return item.DisplayText;
+            if (item?.Kind == RecipeSelectionKind.NotApplicable) return null;
         }
 
-        var item = items[select.SelectedIndex];
-        // PLC 槽位暂时不可读取时仍保留原程序已验证的配方名称，不能在重填限值时丢失元数据。
-        if (item.Kind == RecipeSelectionKind.PlcOption) return item.DisplayText;
-        if (item.Kind == RecipeSelectionKind.MissingExisting)
-        {
-            var names = ProgramContentJsonRules.ExtractRecipeNames(_editingContent);
-            return stationNo == 2 ? names.Station2RecipeName : names.Station1RecipeName;
-        }
-        return null;
+        // 读取失败只允许非配方编辑，名称与配方号必须一起保留，不能混用未保存的选择。
+        var existing = ProgramContentJsonRules.ExtractRecipeNames(_editingContent);
+        return stationNo == 2 ? existing.Station2RecipeName : existing.Station1RecipeName;
     }
 
     private void RefreshRecipeSelectorTexts()
@@ -1196,14 +1315,11 @@ public partial class ProgramManageView : BaseView
 
     private void RefreshRecipeSelectorText(AntdUI.Select select, int stationNo)
     {
-        var recipeCode = ResolveSelectedRecipeCode(select, stationNo);
-        var kind = _recipeSelectionItems.TryGetValue(stationNo, out var items)
-            && select.SelectedIndex >= 0
-            && select.SelectedIndex < items.Count
-                ? items[select.SelectedIndex].Kind
-                : (RecipeSelectionKind?)null;
+        var selection = ResolveSelectedRecipeItem(select, stationNo);
+        var recipeCode = selection?.RecipeCode;
+        var kind = selection?.Kind;
 
-        if (items is not null)
+        if (_recipeSelectionItems.TryGetValue(stationNo, out var items))
         {
             items = items.Select(item => item.Kind switch
             {
@@ -1223,16 +1339,7 @@ public partial class ProgramManageView : BaseView
             _recipeNameReadSucceeded.TryGetValue(stationNo, out var succeeded) && succeeded
                 ? TextKeys.ProgramManage.PlaceholderRecipeSelect
                 : TextKeys.ProgramManage.RecipeReadFailed);
-        if (kind == RecipeSelectionKind.NotApplicable)
-        {
-            var notApplicableIndex = items?.FindIndex(item => item.Kind == RecipeSelectionKind.NotApplicable) ?? -1;
-            select.SelectedIndex = notApplicableIndex;
-            select.Text = notApplicableIndex >= 0 ? items![notApplicableIndex].DisplayText : string.Empty;
-        }
-        else
-        {
-            SetRecipeSelection(select, stationNo, recipeCode);
-        }
+        SetRecipeSelection(select, stationNo, recipeCode, selectNotApplicable: kind == RecipeSelectionKind.NotApplicable);
     }
 
     private void SetRecipeSelectorItems(
@@ -1259,6 +1366,8 @@ public partial class ProgramManageView : BaseView
             _recipeSelectionItems[stationNo] = items;
         }
 
+        select.ExpandDrop = false;
+        select.SelectedIndex = -1;
         select.Items.Clear();
         select.Items.AddRange(items.Select(item => (object)item.DisplayText).ToArray());
     }
@@ -1362,33 +1471,29 @@ public partial class ProgramManageView : BaseView
 
     private async void BatchClean_ClickAsync(object? sender, EventArgs e)
     {
-        var pendingIds = _programs
-            .Where(p => p.SyncStatus != AppConstants.ProgramSyncStatus.Synced)
-            .Select(p => p.Id)
-            .ToList();
-
-        if (pendingIds.Count == 0)
-        {
-            ShowWarningMessage("没有需要清理的程序。");
-            return;
-        }
-
-        var confirmMessage = _localizer.GetString(TextKeys.ProgramManage.MessageConfirmBatchClean);
-        var result = MessageBox.Show(
-            GetDialogOwner(),
-            confirmMessage,
-            _localizer.GetString(TextKeys.Common.TitleWarning),
-            MessageBoxButtons.YesNo,
-            MessageBoxIcon.Warning);
-
-        if (result != DialogResult.Yes)
-        {
-            return;
-        }
-
-        btnBatchClean.Enabled = false;
+        if (_programOperationInProgress) return;
+        _programOperationInProgress = true;
+        UpdateProgramActions();
         try
         {
+            // 待处理查询包含已在列表隐藏的删除失败记录，不受分页和搜索快照影响。
+            var pending = await _programService.GetPendingSyncProgramsAsync(_operationCts.Token);
+            var pendingIds = pending.Select(program => program.Id).ToList();
+            if (pendingIds.Count == 0)
+            {
+                ShowWarning(TextKeys.ProgramManage.MessageBatchCleanEmpty);
+                return;
+            }
+
+            var confirmMessage = _localizer.GetString(TextKeys.ProgramManage.MessageConfirmBatchClean, pendingIds.Count);
+            var result = MessageBox.Show(
+                GetDialogOwner(),
+                confirmMessage,
+                _localizer.GetString(TextKeys.Common.TitleWarning),
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+            if (result != DialogResult.Yes) return;
+
             var deleteCount = await _programService.BatchDeleteLocalProgramsAsync(pendingIds, _operationCts.Token);
             await ReloadProgramsAsync();
             if (_programs.Count == 0)
@@ -1400,7 +1505,7 @@ public partial class ProgramManageView : BaseView
         }
         catch (OperationCanceledException)
         {
-            ShowWarningMessage("批量清理已取消。");
+            ShowWarning(TextKeys.ProgramManage.MessageBatchCleanCanceled);
         }
         catch (Exception ex)
         {
@@ -1408,7 +1513,8 @@ public partial class ProgramManageView : BaseView
         }
         finally
         {
-            btnBatchClean.Enabled = true;
+            _programOperationInProgress = false;
+            UpdateProgramActions();
         }
     }
 

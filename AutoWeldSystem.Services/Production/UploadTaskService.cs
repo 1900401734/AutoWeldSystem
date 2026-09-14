@@ -67,6 +67,7 @@ public class UploadTaskService : IUploadTaskService
             SyncReportFileTasksFromReports();
         }
 
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -98,6 +99,7 @@ public class UploadTaskService : IUploadTaskService
 
     public IReadOnlyList<UploadTaskSummary> GetProcessParameterRows(bool includeCompleted = false)
     {
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -150,6 +152,7 @@ public class UploadTaskService : IUploadTaskService
 
     public UploadTaskSummary? GetById(int id)
     {
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -198,6 +201,7 @@ public class UploadTaskService : IUploadTaskService
             _ = _deviceStatusService.EnsurePendingUploadTask(log);
         }
 
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -277,12 +281,21 @@ public class UploadTaskService : IUploadTaskService
 
     public BizUploadTask EnqueueOrUpdate(BizUploadTask task)
     {
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
             Normalize(task);
 
             var existing = FindExistingTask(task);
+            if (WeldTaskRuntimeRules.IsProductionUpload(task) && IsParentTaskAbandoned(task))
+            {
+                if (existing is not null) return existing;
+                task.Status = ProductionConstants.UploadStatuses.Skipped;
+                task.NextRetryTime = null;
+                task.CompletedTime = DateTime.Now;
+                task.Message = "生产任务已异常结束，禁止重新入队。";
+            }
             if (existing is null)
             {
                 task.CreatedTime = DateTime.Now;
@@ -290,7 +303,7 @@ public class UploadTaskService : IUploadTaskService
                 return _dbContext.Db.Insertable(task).ExecuteReturnEntity();
             }
 
-            if (existing.IsDeleted)
+            if (existing.IsDeleted || existing.Status == ProductionConstants.UploadStatuses.Uploading)
             {
                 return existing;
             }
@@ -328,6 +341,7 @@ public class UploadTaskService : IUploadTaskService
 
     private void SyncReportFileTasksFromReports()
     {
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -520,7 +534,7 @@ public class UploadTaskService : IUploadTaskService
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            FinishExecution(task.Id, Unsupported("上传已取消，等待重试。"));
+            FinishClaimedExecution(task, Unsupported("上传已取消，等待重试。"));
             throw;
         }
         catch (Exception ex)
@@ -533,7 +547,20 @@ public class UploadTaskService : IUploadTaskService
             return null;
         }
 
-        return FinishExecution(task.Id, response);
+        return FinishClaimedExecution(task, response);
+    }
+
+    protected virtual UploadTaskSummary? FinishClaimedExecution(BizUploadTask claim, BasicRes<object> response)
+    {
+        lock (_dbContext.TaskTransitionSync)
+        lock (_dbLock)
+        {
+            var latest = _dbContext.Db.Queryable<BizUploadTask>().InSingle(claim.Id);
+            if (latest is null || latest.IsDeleted || latest.Status != ProductionConstants.UploadStatuses.Uploading
+                || latest.RetryCount != claim.RetryCount
+                || (WeldTaskRuntimeRules.IsProductionUpload(latest) && IsParentTaskAbandoned(latest))) return null;
+            return FinishExecution(claim.Id, response);
+        }
     }
 
     public async Task<int> ExecuteAllPendingAsync(
@@ -551,6 +578,7 @@ public class UploadTaskService : IUploadTaskService
         }
 
         List<int> taskIds;
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -596,6 +624,7 @@ public class UploadTaskService : IUploadTaskService
         }
 
         List<int> taskIds;
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -625,11 +654,13 @@ public class UploadTaskService : IUploadTaskService
     public void RequestRetry(int id)
     {
         UploadTaskStatusChangedEventArgs? changed = null;
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
             var task = _dbContext.Db.Queryable<BizUploadTask>().InSingle(id);
-            if (task is null || !UploadTaskVisibilityRules.ShouldRetry(task))
+            if (task is null || !UploadTaskVisibilityRules.ShouldRetry(task)
+                || (WeldTaskRuntimeRules.IsProductionUpload(task) && IsParentTaskAbandoned(task)))
             {
                 return;
             }
@@ -655,6 +686,7 @@ public class UploadTaskService : IUploadTaskService
         }
 
         var changes = new List<UploadTaskStatusChangedEventArgs>();
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -665,6 +697,7 @@ public class UploadTaskService : IUploadTaskService
 
             foreach (var task in tasks.Where(UploadTaskVisibilityRules.ShouldRetry))
             {
+                if (WeldTaskRuntimeRules.IsProductionUpload(task) && IsParentTaskAbandoned(task)) continue;
                 MarkRetryRequested(task);
                 _dbContext.Db.Updateable(task).ExecuteCommand();
                 changes.Add(ToStatusChangedEvent(task));
@@ -682,6 +715,7 @@ public class UploadTaskService : IUploadTaskService
     public void DeleteTask(int id)
     {
         UploadTaskStatusChangedEventArgs? changed = null;
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -691,6 +725,8 @@ public class UploadTaskService : IUploadTaskService
                 return;
             }
 
+            if (task.Status == ProductionConstants.UploadStatuses.Uploading)
+                throw new InvalidOperationException("该记录正在上传，请等待完成后再删除。");
             changed = ToStatusChangedEvent(task, "Deleted");
             _dbContext.Db.Deleteable(task).ExecuteCommand();
         }
@@ -700,6 +736,7 @@ public class UploadTaskService : IUploadTaskService
 
     public void DeleteProcessParameterVirtualRow(int weldTaskId, int stationNo, string productNo)
     {
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -720,6 +757,7 @@ public class UploadTaskService : IUploadTaskService
         }
 
         var changes = new List<UploadTaskStatusChangedEventArgs>();
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -764,13 +802,19 @@ public class UploadTaskService : IUploadTaskService
         return changes.Count;
     }
 
+    private bool IsParentTaskAbandoned(BizUploadTask task)
+        => task.WeldTaskId.HasValue
+            && WeldTaskRuntimeRules.IsAbandoned(_dbContext.Db.Queryable<BizWeldTask>().InSingle(task.WeldTaskId.Value));
+
     protected virtual BizUploadTask? GetRetryableTask(int id)
     {
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
             var task = _dbContext.Db.Queryable<BizUploadTask>().InSingle(id);
             return task is not null && UploadTaskVisibilityRules.ShouldRetry(task)
+                && (!WeldTaskRuntimeRules.IsProductionUpload(task) || !IsParentTaskAbandoned(task))
                 ? task
                 : null;
         }
@@ -779,6 +823,7 @@ public class UploadTaskService : IUploadTaskService
     private void SoftDeleteDeviceStatusTask(BizUploadTask expectedTask, string message)
     {
         UploadTaskStatusChangedEventArgs? changed = null;
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -819,21 +864,26 @@ public class UploadTaskService : IUploadTaskService
 
     protected virtual BizUploadTask? MarkUploading(int id)
     {
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
             var task = _dbContext.Db.Queryable<BizUploadTask>().InSingle(id);
-            if (task is null || !UploadTaskVisibilityRules.ShouldRetry(task))
+            if (task is null || !UploadTaskVisibilityRules.ShouldRetry(task)
+                || (WeldTaskRuntimeRules.IsProductionUpload(task) && IsParentTaskAbandoned(task)))
             {
                 return null;
             }
 
+            var previousStatus = task.Status;
             task.Status = ProductionConstants.UploadStatuses.Uploading;
             task.LastAttemptTime = DateTime.Now;
             task.RetryCount++;
             task.UpdatedTime = DateTime.Now;
-            _dbContext.Db.Updateable(task).ExecuteCommand();
-            return task;
+            var updated = _dbContext.Db.Updateable(task)
+                .Where(item => item.Id == id && !item.IsDeleted && item.Status == previousStatus)
+                .ExecuteCommand();
+            return updated == 1 ? task : null;
         }
     }
 
@@ -871,6 +921,7 @@ public class UploadTaskService : IUploadTaskService
             return "上传任务缺少对应的生产任务，不能校验程序快照。";
         }
 
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -1158,6 +1209,7 @@ public class UploadTaskService : IUploadTaskService
             return Array.Empty<BizWeldPointRecord>();
         }
 
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -1214,6 +1266,7 @@ public class UploadTaskService : IUploadTaskService
             return null;
         }
 
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -1228,6 +1281,7 @@ public class UploadTaskService : IUploadTaskService
             return;
         }
 
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -1269,6 +1323,7 @@ public class UploadTaskService : IUploadTaskService
 
     private bool IsFinishReportUploadedOrAbsent(int weldTaskId)
     {
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -1368,6 +1423,7 @@ public class UploadTaskService : IUploadTaskService
 
     private void UpdateWeldPointUploadStatus(IReadOnlyList<BizWeldPointRecord> records, BasicRes<object> response)
     {
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -1394,6 +1450,7 @@ public class UploadTaskService : IUploadTaskService
             return cachedItems;
         }
 
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -1727,6 +1784,7 @@ public class UploadTaskService : IUploadTaskService
 
     private bool CanExecuteReportFileTask(BizUploadTask task)
     {
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -1784,6 +1842,7 @@ public class UploadTaskService : IUploadTaskService
 
     private UploadReportFileReq? BuildReportFileRequest(BizUploadTask task)
     {
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
@@ -1825,11 +1884,12 @@ public class UploadTaskService : IUploadTaskService
     {
         UploadTaskSummary? summary;
         UploadTaskStatusChangedEventArgs? changed = null;
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
             var task = _dbContext.Db.Queryable<BizUploadTask>().InSingle(taskId);
-            if (task is null || task.IsDeleted)
+            if (task is null || task.IsDeleted || task.Status != ProductionConstants.UploadStatuses.Uploading)
             {
                 return null;
             }
@@ -1875,7 +1935,7 @@ public class UploadTaskService : IUploadTaskService
         }
 
         var weldTask = _dbContext.Db.Queryable<BizWeldTask>().InSingle(weldTaskId.Value);
-        if (weldTask is null)
+        if (weldTask is null || WeldTaskRuntimeRules.IsAbandoned(weldTask))
         {
             return;
         }
@@ -2328,8 +2388,8 @@ public class UploadTaskService : IUploadTaskService
             ProductNo = productText,
             Status = task.Status,
             IsVirtual = false,
-            CanRetry = task.Status != ProductionConstants.UploadStatuses.Uploaded,
-            CanDelete = true,
+            CanRetry = UploadTaskVisibilityRules.ShouldRetry(task),
+            CanDelete = task.Status != ProductionConstants.UploadStatuses.Uploading,
             RetryCount = task.RetryCount,
             MaxRetryCount = task.MaxRetryCount,
             NextRetryTime = task.NextRetryTime,

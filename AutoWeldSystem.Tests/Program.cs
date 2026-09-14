@@ -1,4 +1,5 @@
-﻿using AutoWeldSystem.Core.Entities;
+﻿using System.Text.RegularExpressions;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Center;
@@ -45,6 +46,10 @@ var tests = new (string Name, Action Run)[]
     ("Program download rejection preserves selection and storage", InvalidProgramDownloadPreservesState),
     ("Program snapshot stays frozen across MES await", ProgramSnapshotStaysFrozen),
     ("Old task cannot restore or allow production", OldTaskCannotRestore),
+    ("PLC task recovery logs localized configuration failure once", PlcTaskRecoveryLocalizesAndDeduplicates),
+    ("Center startup resume generates valid SQL for empty and nonempty exclusions", CenterStartupResumeSqlHandlesExclusions),
+    ("Task recovery failure throttles retries and deduplicates errors", TaskRecoveryFailureThrottlesAndResets),
+    ("Abandoned task stays terminal without hiding historical uploads", AbandonedTaskRemainsTerminal),
     ("System setting layout rules honor DPI breakpoints", SystemSettingLayoutRulesHonorDpiBreakpoints),
     ("Monitor right layout rules honor DPI and scrolling", MonitorRightLayoutRulesHonorDpiAndScrolling),
     ("Monitor view applies responsive right layout", MonitorViewAppliesResponsiveRightLayout),
@@ -90,6 +95,8 @@ var tests = new (string Name, Action Run)[]
     ("PLC recipe name reader keeps successful slots after read failures", PlcRecipeNameReaderKeepsSuccessfulSlotsAfterReadFailures),
     ("PLC recipe name reader accepts in-memory configuration", PlcRecipeNameReaderAcceptsInMemoryConfiguration),
     ("PLC recipe name reader returns invalid config failures", PlcRecipeNameReaderReturnsInvalidConfigFailures),
+    ("PLC recipe name reader reloads changed station configuration", PlcRecipeNameReaderReloadsChangedConfiguration),
+    ("Program cleanup skips empty requests and honors cancellation", ProgramCleanupGuardsAndCancellation),
     ("Program recipe mapping normalizes positive numeric codes", ProgramRecipeMappingNormalizesPositiveNumericCodes),
     ("Program save recipe rules require positive station codes", ProgramSaveRecipeRulesRequirePositiveStationCodes),
     ("Program recipe mapping resolves station-specific codes", ProgramRecipeMappingResolvesStationSpecificCodes),
@@ -144,6 +151,8 @@ var tests = new (string Name, Action Run)[]
     ("Data history product result filter keeps complete product rows", DataHistoryProductResultFilterKeepsCompleteProductRows),
     ("Data history dynamic sort orders products and keeps blanks last", DataHistoryDynamicSortOrdersProductsAndKeepsBlanksLast),
     ("Data history test data paging clamps page index", DataHistoryTestDataPagingClampsPageIndex),
+    ("Local export includes frozen program limits above details", LocalExportIncludesFrozenProgramLimits),
+    ("Local export reports unavailable and missing program limits", LocalExportReportsUnavailableProgramLimits),
     ("Local export covers all history dynamic columns", LocalExportCoversAllHistoryDynamicColumns),
     ("Local export keeps raw face rows without AB aggregation", LocalExportKeepsRawFaceRowsWithoutAbAggregation),
     ("Export reports never expose upload status column", ExportReportsNeverExposeUploadStatusColumn),
@@ -765,6 +774,124 @@ static void OldTaskCannotRestore()
     AssertTrue(fixture.Service.CurrentState.GetOrCreateStation(1).ActiveTask is null, "恢复失败不得进入运行态。");
     AssertTrue(ReferenceEquals(task, fixture.Service.GetUnfinishedTask(1)), "旧任务仍可见以阻止新开工。");
     AssertThrows<AutoWeldSystem.Core.Exceptions.BusinessOperationException>(() => fixture.Service.ValidateTaskForProduction(task, 1), "PLC 放行校验必须拒绝旧快照。");
+}
+
+static void PlcTaskRecoveryLocalizesAndDeduplicates()
+{
+    var fixture = CreateProgramBoundaryService();
+    var task = new BizWeldTask { Id = 7, StationNo = 1, ProgramName = "旧程序", SN = "VERIFY", TaskStatus = "Running", ProgramContentSnapshot = "{\"焊点数量\":4,\"对称度\":0.5}" };
+    fixture.Service.StoredTask = task;
+    var settings = new FakeAppSettingsService();
+    var localizer = new AutoWeldSystem.Services.LocalizationService(settings);
+    localizer.SetLanguage("zh-CN");
+    var logs = new FakeProgramExceptionLogService();
+    using var monitor = new RecipeCodeReconcileMonitorService(settings, null!, null!, fixture.Service, null!, null!, logs, localizer);
+    var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+    var restore = typeof(RecipeCodeReconcileMonitorService).GetMethod("TryRestoreRunningTask", flags)!;
+    var getState = typeof(RecipeCodeReconcileMonitorService).GetMethod("GetStationState", flags)!;
+    var state = getState.Invoke(monitor, [1])!;
+    var cooldown = state.GetType().GetProperty("LastRestoreAttemptTime")!;
+    void Attempt(int station = 1)
+    {
+        cooldown.SetValue(state, DateTime.Now.AddMinutes(-1));
+        var failure = state.GetType().GetProperty("RecoveryFailure")!.GetValue(state);
+        if (failure is not null)
+            typeof(TaskRecoveryFailureState).GetField("_lastAttempt", flags)!.SetValue(failure, DateTime.Now.AddMinutes(-1));
+        AssertFalse((bool)restore.Invoke(monitor, [station])!, "旧任务不可恢复进入配方调和。");
+    }
+    AssertEqual("尚未读取 PLC 配方号", monitor.GetCurrent(1).Message, "中文模式占位不能为英文。");
+    for (var index = 0; index < 5; index++) Attempt();
+    AssertEqual(1, logs.Entries.Count, "跨过30秒重复失败也只能记录首次。");
+    AssertEqual("PLC 配方任务恢复失败", logs.Entries[0].Message, "中文摘要必须本地化。");
+    AssertTrue(logs.Entries[0].StackTrace.Contains("对称度", StringComparison.Ordinal)
+        && logs.Entries[0].StackTrace.Contains("VERIFY", StringComparison.Ordinal), "保留任务身份及具体非法字段原因。");
+    localizer.SetLanguage("en-US");
+    Attempt();
+    AssertEqual(1, logs.Entries.Count, "语言切换不是新故障，不应再写一次。");
+    task.Id = 8;
+    Attempt();
+    AssertEqual(2, logs.Entries.Count, "新任务同类错误必须记录。");
+    AssertEqual("PLC recipe task restore failed.", logs.Entries[1].Message, "英文新消息按当前语言生成。");
+    fixture.Service.StoredTask = null;
+    Attempt();
+    fixture.Service.StoredTask = task;
+    Attempt();
+    AssertEqual(3, logs.Entries.Count, "无任务后重新出现错误必须复位。");
+    task.ProgramContentSnapshot = "{\"焊点数量\":4,\"高度上限\":12}";
+    cooldown.SetValue(state, DateTime.Now.AddMinutes(-1));
+    restore.Invoke(monitor, [1]);
+    AssertTrue(state.GetType().GetProperty("RecoveryFailure")!.GetValue(state) is null, "恢复成功清除失败状态。");
+    fixture.Service.CurrentState.GetOrCreateStation(1).ActiveTask = null;
+    fixture.Service.CurrentState.ActiveTask = null;
+    task.ProgramContentSnapshot = "{\"焊点数量\":4,\"对称度\":0.5}";
+    Attempt();
+    var beforeCommunicationFailure = logs.Entries.Count;
+    typeof(RecipeCodeReconcileMonitorService).GetMethod("WriteBusinessFailureLog", flags)!
+        .Invoke(monitor, [1, "communication", "offline"]);
+    Attempt();
+    AssertEqual(beforeCommunicationFailure + 1, logs.Entries.Count, "通讯故障不能重置配置失败去重状态。");
+    restore.Invoke(monitor, [2]);
+    AssertEqual(beforeCommunicationFailure + 2, logs.Entries.Count, "工位2应有独立的失败状态。");
+    fixture.Service.CurrentState.GetOrCreateStation(1).ActiveTask = new BizWeldTask { Id = 8, StationNo = 1, TaskStatus = "Running" };
+    typeof(RecipeCodeReconcileMonitorService).GetMethod("GetRunningStationTasks", flags)!
+        .Invoke(monitor, [settings.Get()]);
+    AssertTrue(state.GetType().GetProperty("RecoveryFailure")!.GetValue(state) is null, "UI先恢复运行态后后台也要清理旧门禁。");
+}
+
+static void CenterStartupResumeSqlHandlesExclusions()
+{
+    using var db = new AutoWeldSystem.Data.SqlSugarDbContext("server=127.0.0.1;database=unused;uid=unused;pwd=unused;");
+    var method = typeof(AutoWeldSystem.Services.Center.CenterProductForwardingService)
+        .GetMethod("BuildStartupResumeUpdate", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+    foreach (var ids in new[] { new List<int>(), new List<int> { 7 }, new List<int> { 7, 8 } })
+    {
+        var update = (SqlSugar.IUpdateable<BizUploadTask>)method.Invoke(null, [db.Db, ids, new DateTime(2026, 9, 14)])!;
+        var sql = update.ToSql().Key;
+        AssertFalse(Regex.IsMatch(sql, @"\)\s+NOT\s*\(", RegexOptions.IgnoreCase), "实际生成SQL不得出现缺OR的相邻否定条件。");
+        if (ids.Count == 0)
+            AssertFalse(sql.Contains("WeldTaskId", StringComparison.Ordinal), "没有作废任务时不生成空集合过滤。");
+        else
+            AssertTrue(Regex.IsMatch(sql, @"`WeldTaskId`\s+IS\s+NULL\s*\)*\s+OR", RegexOptions.IgnoreCase), "无父任务ID必须通过OR独立保留。");
+    }
+}
+
+static void TaskRecoveryFailureThrottlesAndResets()
+{
+    var state = new TaskRecoveryFailureState();
+    var task = new BizWeldTask { Id = 7, ProgramContentSnapshot = "{\"对称度\":0.5}" };
+    var now = new DateTime(2026, 9, 14);
+    AssertTrue(state.ShouldAttempt(task, "single", now), "首次必须尝试恢复。");
+    AssertTrue(state.RecordFailure("old snapshot"), "首次失败必须记录。");
+    for (var index = 1; index < 100; index++)
+        AssertFalse(state.ShouldAttempt(task, "single", now.AddMilliseconds(index * 90)), "高频刷新不能重复恢复旧快照。");
+    AssertTrue(state.ShouldAttempt(task, "single", now.AddSeconds(10)), "到期必须复查以检测方案修复。");
+    AssertFalse(state.RecordFailure("old snapshot"), "相同持续错误不重复写日志。");
+    AssertTrue(state.RecordFailure("different error"), "原因变化必须立即记日志。");
+    task.ProgramContentSnapshot = "{\"对称度上限\":0.5}";
+    AssertTrue(state.ShouldAttempt(task, "single", now.AddSeconds(11)), "快照变化立即重试。");
+    AssertTrue(state.Error is null, "快照变化清除旧错误。");
+    state.RecordFailure("scheme");
+    AssertTrue(state.ShouldAttempt(task, "dual", now.AddSeconds(12)), "模式变化立即重试。");
+    task.Id = 8;
+    AssertTrue(state.ShouldAttempt(task, "dual", now.AddSeconds(13)), "不能把上一任务错误应用到新任务。");
+}
+
+static void AbandonedTaskRemainsTerminal()
+{
+    var fixture = CreateProgramBoundaryService();
+    var task = new BizWeldTask { Id = 7, TaskStatus = ProductionConstants.ProductInstanceStatuses.Abandoned,
+        ProgramContentSnapshot = "{\"焊点数量\":4,\"高度上限\":12}", EndTime = DateTime.Now, UploadStatus = ProductionConstants.UploadStatuses.Skipped };
+    AssertThrows<AutoWeldSystem.Core.Exceptions.BusinessOperationException>(() => fixture.Service.ValidateTaskForProduction(task), "作废任务即使快照合法也不能重新生产。");
+    AssertEqual(ProductionConstants.UploadStatuses.Skipped, UploadSummaryStatusResolver.ResolveStartReportStatus(task, []), "作废任务不伪造待开工上报。");
+    AssertEqual(ProductionConstants.UploadStatuses.Skipped, UploadSummaryStatusResolver.ResolveFinishReportStatus(task, []), "作废任务不伪造待完工上报。");
+    AssertEqual(ProductionConstants.UploadStatuses.Uploaded, UploadSummaryStatusResolver.ResolveStartReportStatus(task, [ProductionConstants.UploadStatuses.Uploaded]), "已上报事实不得被作废覆盖。");
+    AssertEqual(0, ProcessParameterUploadRowRules.CreatePendingProductRows(task, [new() { TaskId = 7, ProductNo = "P1", ProductCompleted = true }], 1).Count, "作废任务不能重新生成虚拟待上传行。");
+    AssertFalse(WeldTaskRuntimeRules.IsProductionUpload(new BizUploadTask { TaskType = ProductionConstants.UploadTaskTypes.DeviceStatus }), "设备日志上报不属于生产任务清理范围。");
+    AssertTrue(WeldTaskRuntimeRules.IsProductionUpload(new BizUploadTask { TaskType = ProductionConstants.UploadTaskTypes.CenterProductReport }), "中心生产转发属于停止范围。");
+    var a = new ProductionStationRuntimeState { StationNo = 1, ActiveTask = task };
+    var b = new ProductionStationRuntimeState { StationNo = 2, ActiveTask = new BizWeldTask { Id = 8 } };
+    AssertTrue(WeldTaskRuntimeRules.ClearFinishedTask(a, task), "释放同一任务运行态。");
+    AssertFalse(WeldTaskRuntimeRules.ClearFinishedTask(b, task), "不得清空另一个独立任务。");
 }
 
 static void CenterFinishUpdateDoesNotFabricatePointHeaders()
@@ -1622,6 +1749,61 @@ static void PlcRecipeNameReaderReturnsInvalidConfigFailures()
     AssertEqual(0, result.Options.Count, "配置无效时不应生成配方选项。 ");
 }
 
+static void PlcRecipeNameReaderReloadsChangedConfiguration()
+{
+    var configs = new FakePlcRecipeNameConfigService(
+        new() { StationNo = 1, BaseAddress = "DB30.0", RecipeCount = 1, AddressOffset = 16, StringLength = 12, Enabled = true },
+        new() { StationNo = 2, BaseAddress = "DB40.0", RecipeCount = 1, AddressOffset = 16, StringLength = 12, Enabled = true });
+    var plc = new FakePlcCommunicationService();
+    plc.StringReadResults["DB30.0"] = PlcServiceResult<string>.Success("旧配方");
+    plc.StringReadResults["DB40.0"] = PlcServiceResult<string>.Success("右侧配方");
+    plc.StringReadResults["DB50.0"] = PlcServiceResult<string>.Success("新配方");
+    var reader = new PlcRecipeNameReaderService(configs, plc);
+    AssertEqual("旧配方", reader.ReadStationAsync(1).GetAwaiter().GetResult().Options.Single().Name, "首次应读取原配置。");
+    configs.SaveAll([
+        new() { StationNo = 1, BaseAddress = "DB50.0", RecipeCount = 1, AddressOffset = 16, StringLength = 24, Enabled = true },
+        configs.GetForStation(2)!
+    ]);
+    var changed = reader.ReadStationAsync(1).GetAwaiter().GetResult();
+    AssertEqual("新配方", changed.Options.Single().Name, "同一读取服务实例必须使用保存后的最新地址。");
+    AssertEqual((ushort)24, plc.StringReadRequests.Last().Length, "地址与字符串长度应同时更新。");
+    AssertEqual("右侧配方", reader.ReadStationAsync(2).GetAwaiter().GetResult().Options.Single().Name, "工位1更新不得改变工位2。");
+    plc.StringReadResults["DB50.0"] = PlcServiceResult<string>.Fail("offline");
+    var failed = reader.ReadStationAsync(1).GetAwaiter().GetResult();
+    AssertFalse(failed.IsSuccess, "新地址读取失败必须返回失败，不能命中旧成功结果。");
+    AssertEqual(0, failed.Options.Count, "读取失败不能提供旧配方候选。");
+    using var canceled = new CancellationTokenSource();
+    canceled.Cancel();
+    AssertThrows<OperationCanceledException>(() => reader.ReadStationAsync(1, canceled.Token).GetAwaiter().GetResult(), "配方读取必须响应取消。");
+}
+
+static void ProgramCleanupGuardsAndCancellation()
+{
+    // 空目标、预取消和门锁等待取消都必须在访问数据库前返回。
+    using var db = new AutoWeldSystem.Data.SqlSugarDbContext("server=127.0.0.1;database=unused;uid=unused;pwd=unused;");
+    var service = new AutoWeldSystem.Services.ProgramManageService(db, new FakeAppSettingsService(), new FakeMesProvider(), new FakeOperationLogService());
+    AssertEqual(0, service.BatchDeleteLocalProgramsAsync(Array.Empty<int>()).GetAwaiter().GetResult(), "空目标不应触碰数据库。");
+    using var canceled = new CancellationTokenSource();
+    canceled.Cancel();
+    AssertThrows<OperationCanceledException>(() => service.GetPendingSyncProgramsAsync(canceled.Token).GetAwaiter().GetResult(), "候选查询应响应预取消。");
+    AssertThrows<OperationCanceledException>(() => service.BatchDeleteLocalProgramsAsync([1, 1], canceled.Token).GetAwaiter().GetResult(), "清理应响应预取消。");
+    var gate = (SemaphoreSlim)typeof(AutoWeldSystem.Services.ProgramManageService)
+        .GetField("_mutationGate", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(service)!;
+    gate.Wait();
+    try
+    {
+        using var waiting = new CancellationTokenSource();
+        var cleanup = service.BatchDeleteLocalProgramsAsync([1], waiting.Token);
+        AssertFalse(cleanup.IsCompleted, "清理必须等待程序变更门锁。");
+        waiting.Cancel();
+        AssertThrows<OperationCanceledException>(() => cleanup.GetAwaiter().GetResult(), "门锁等待期间取消必须终止清理。");
+    }
+    finally
+    {
+        gate.Release();
+    }
+}
+
 static void ProductProcessDraftCopiesBusinessFieldsAndResetsIdentity()
 {
     var source = new BizProductProcessConfig
@@ -2371,8 +2553,8 @@ static void ProgramExceptionLogViewNormalizesLegacyAlarmEntries()
         "private void LoadDeviceLifecycleLogs()");
     var contextMethod = ExtractMethodText(
         viewCode,
-        "private static string BuildExceptionContext",
-        "private static string BuildExceptionFullDetails");
+        "private string BuildExceptionContext",
+        "private string BuildExceptionFullDetails");
 
     AssertTrue(viewCode.Contains("NormalizeLegacyPlcAlarmEntry", StringComparison.Ordinal), "旧版 PLC 报警读取日志必须在显示前修正消息和上下文。");
     AssertTrue(loadMethod.Contains(".Select(NormalizeLegacyPlcAlarmEntry)", StringComparison.Ordinal), "加载历史异常日志时必须应用旧报警记录归一化。");
@@ -2390,8 +2572,8 @@ static void ExceptionGridOmitsSourceColumns()
         Encoding.UTF8);
     var basicInfoMethod = ExtractMethodText(
         viewCode,
-        "private static string BuildExceptionBasicInfo",
-        "private static string BuildExceptionContext");
+        "private string BuildExceptionBasicInfo",
+        "private string BuildExceptionContext");
 
     AssertFalse(
         designerCode.Contains("colExceptionSource", StringComparison.Ordinal),
@@ -2400,13 +2582,13 @@ static void ExceptionGridOmitsSourceColumns()
         designerCode.Contains("colExceptionSourceLocation", StringComparison.Ordinal),
         "异常日志表格不得声明或注册 SourceLocation 列。");
     AssertTrue(
-        basicInfoMethod.Contains("Source: {entry.Source}", StringComparison.Ordinal),
+        basicInfoMethod.Contains("TextKeys.Log.ColumnSource, entry.Source", StringComparison.Ordinal),
         "异常基本信息必须继续显示 Source。");
     AssertTrue(
-        basicInfoMethod.Contains("SourceFile: {GetSourceLocation(entry)}", StringComparison.Ordinal),
+        basicInfoMethod.Contains("TextKeys.Log.FieldSourceFile, GetSourceLocation(entry)", StringComparison.Ordinal),
         "异常基本信息必须继续显示 SourceFile。");
     AssertTrue(
-        basicInfoMethod.Contains("SourceMember: {entry.SourceMemberName}", StringComparison.Ordinal),
+        basicInfoMethod.Contains("TextKeys.Log.FieldSourceMember, entry.SourceMemberName", StringComparison.Ordinal),
         "异常基本信息必须继续显示 SourceMember。");
 }
 
@@ -2420,18 +2602,18 @@ static void ExceptionGridOmitsExceptionTypeColumn()
         Encoding.UTF8);
     var basicInfoMethod = ExtractMethodText(
         viewCode,
-        "private static string BuildExceptionBasicInfo",
-        "private static string BuildExceptionContext");
+        "private string BuildExceptionBasicInfo",
+        "private string BuildExceptionContext");
     var filterMethod = ExtractMethodText(
         viewCode,
-        "private static bool IsExceptionLogMatched",
+        "private bool IsExceptionLogMatched",
         "private static bool IsDeviceLifecycleLogMatched");
 
     AssertFalse(
         designerCode.Contains("colExceptionType", StringComparison.Ordinal),
         "异常日志表格不得声明或注册 ExceptionType 列。");
     AssertTrue(
-        basicInfoMethod.Contains("ExceptionType: {entry.ExceptionType}", StringComparison.Ordinal),
+        basicInfoMethod.Contains("TextKeys.Log.ColumnExceptionType", StringComparison.Ordinal) && basicInfoMethod.Contains(": entry.ExceptionType", StringComparison.Ordinal),
         "异常基本信息必须继续显示 ExceptionType。");
     AssertTrue(
         filterMethod.Contains("Contains(entry.ExceptionType, keyword)", StringComparison.Ordinal),
@@ -3360,6 +3542,133 @@ static void DataManageViewUsesGenericProductTestTree()
     AssertFalse(designerCode.Contains("detailTabs.Controls.Add(tabCollectionData);", StringComparison.Ordinal), "详情页不得继续显示重复的采集数据页签。");
 }
 
+static void LocalExportIncludesFrozenProgramLimits()
+{
+    var settings = new AppSettings { JudgementDecimalPlaces = 2 };
+    var task = BuildReportTask(new DateTime(2026, 9, 14, 8, 0, 0), new DateTime(2026, 9, 14, 9, 0, 0));
+    task.UserName = "示例操作员";
+    const string longName = "历史程序中名称很长且当前测试方案未包含的位移检查测试项";
+    var snapshot = "{\"焊点数量\":2,\"工位1配方名称\":\"示例配方\",\"高度上限\":\"12.500\",\"高度下限\":\"10\",\"对称度上限\":0.5,\"偏移下限\":-0.25,\"零点上限\":0,\""
+        + longName + "上限\":\"0.1234567890123456789012345678\"}";
+    task.ProgramContentSnapshot = snapshot;
+    var definitions = new[]
+    {
+        (new DimTestItem { ItemId = 1, ItemName = "高度", Unit = "mm", ActualExpression = "0:F-0", UpperExpression = "4:F-0" },
+            new BizSchemeDetail { ItemId = 1, ReportActual = true, ReportUpper = true, ActualHeader = "高度", UpperHeader = "PLC上限" })
+    };
+    var records = Enumerable.Range(1, 2).Select(point =>
+    {
+        var record = BuildReportPoint(task.Id, 1, "P-001", point, "OK");
+        record.ProductResult = "NG";
+        record.RawDataJson = $"{{\"高度\":\"11.{point}00\",\"高度上限\":99}}";
+        return record;
+    }).ToArray();
+    var originalRaw = records.Select(record => record.RawDataJson).ToArray();
+    foreach (var localExport in new[] { true, false })
+    {
+        var path = GenerateExportReportWorkbook(settings, task, records, localExport, schemeDefinitions: definitions, touchCount: 2);
+        try
+        {
+            using var workbook = new XLWorkbook(path);
+            var sheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+            AssertEqual(1, workbook.Worksheets.Count, "限值不得另建工作表。");
+            AssertTrue(sheet.Cell("A1").GetString().Contains(task.SN, StringComparison.Ordinal), "工单抬头不得变化。");
+            AssertTemplateHeaderMerges(sheet);
+            var detailRow = GetReportDetailHeaderRow(sheet);
+            if (localExport)
+            {
+                AssertEqual(21, detailRow, "五个限值项应插入八行，明细整体移到第21行。");
+                AssertEqual("程序上下限（来源：任务开工程序快照，仅供追溯）", sheet.Cell("A13").GetString(), "限值区必须标注来源与用途。");
+                AssertEqual("测试项", sheet.Cell("A14").GetString(), "限值表头必须完整。");
+                AssertEqual("程序上限", sheet.Cell("G14").GetString(), "程序上限不得混为PLC上限。");
+                AssertEqual("程序下限", sheet.Cell("I14").GetString(), "程序下限不得混为PLC下限。");
+                AssertEqual("高度", sheet.Cell("A15").GetString(), "保持快照测试项顺序。");
+                AssertEqual("12.500", sheet.Cell("G15").GetString(), "限值来自历史快照，不是PLC原始99或当前配置，并保留精度。");
+                AssertEqual("10", sheet.Cell("I15").GetString(), "双侧限值完整输出。");
+                AssertEqual("0.5", sheet.Cell("G16").GetString(), "未在当前方案中的测试项仍须导出。");
+                AssertTrue(sheet.Cell("I16").IsEmpty(), "只有上限时下限必须留空。");
+                AssertTrue(sheet.Cell("G17").IsEmpty(), "只有下限时上限必须留空。");
+                AssertEqual("-0.25", sheet.Cell("I17").GetString(), "负数下限必须保留。");
+                AssertEqual("0", sheet.Cell("G18").GetString(), "合法零不得当成缺失。");
+                AssertEqual(longName, sheet.Cell("A19").GetString(), "长名称必须完整输出。");
+                AssertEqual("0.1234567890123456789012345678", sheet.Cell("G19").GetString(), "限值不能被报表小数位或Excel数字精度截断。");
+                AssertEqual(XLDataType.Text, sheet.Cell("G19").DataType, "限值以精确文本写入。");
+                AssertTrue(sheet.Row(19).Height > 30, "长阈值的合并单元格必须增高以避免裁剪。");
+                AssertTrue(sheet.Cell("G19").Style.Alignment.WrapText, "长阈值必须可换行。");
+                AssertMerged(sheet, "A13:J13", "限值标题横跨报表。");
+                AssertMerged(sheet, "A15:F15", "测试项名称占宽列块。");
+                AssertMerged(sheet, "G15:H15", "上限使用独立列块。");
+                AssertMerged(sheet, "I15:J15", "下限使用独立列块。");
+                AssertEqual(XLBorderStyleValues.Thin, sheet.Cell("G15").Style.Border.TopBorder, "限值表应沿用细边框。");
+                AssertTrue(sheet.Cell("A20").IsEmpty(), "限值与明细之间保留空白隔行。");
+                AssertEqual(21, sheet.SheetView.SplitRow, "冻结区域必须跟随明细表头下移。");
+                AssertTrue(!sheet.CellsUsed().Any(cell => cell.HasFormula), "限值追溯无需新建公式。");
+            }
+            else
+            {
+                AssertEqual(13, detailRow, "上传报告文件的行号不得改变。");
+                AssertFalse(sheet.CellsUsed().Any(cell => cell.GetString().StartsWith("程序上下限", StringComparison.Ordinal)), "上传报告文件不得插入程序限值区。");
+            }
+            var headers = ReadHeaderRow(sheet, detailRow);
+            var heightColumn = Array.IndexOf(headers, "高度 (mm)") + 1;
+            var plcUpperColumn = Array.IndexOf(headers, "PLC上限 (mm)") + 1;
+            var productResultColumn = Array.IndexOf(headers, "产品结果") + 1;
+            AssertTrue(plcUpperColumn > 0 && heightColumn > 0, "已有明细列及单位必须保留。");
+            AssertEqual("99" + (localExport ? "" : ".00"), sheet.Cell(detailRow + 1, plcUpperColumn).GetString(), "PLC原始上限列不得被程序阈值覆盖。");
+            AssertEqual(localExport ? "11.100" : "11.10", sheet.Cell(detailRow + 1, heightColumn).GetString(), "实测数据沿用原格式。");
+            AssertEqual("NG", sheet.Cell(detailRow + 1, productResultColumn).GetString(), "程序限值区不能重新判定历史结果。");
+            AssertMerged(sheet, $"A{detailRow + 1}:A{detailRow + 2}", "产品编号合并必须跟随明细下移。");
+            AssertNearlyEqual(27, sheet.Row(detailRow).Height, 0.01, "明细表头行高保持不变。");
+            AssertNearlyEqual(6.6, sheet.Column(1).Width, 0.02, "限值区不改变明细列宽。");
+            AssertEqual(snapshot, task.ProgramContentSnapshot, "导出不能改写任务程序快照。");
+            AssertSequenceEqual(originalRaw, records.Select(record => record.RawDataJson).ToArray(), "导出不能改写原始采集数据。");
+            var sampleDirectory = Environment.GetEnvironmentVariable("AUTOWELD_LOCAL_LIMITS_SAMPLE_DIR");
+            if (localExport && !string.IsNullOrWhiteSpace(sampleDirectory))
+            {
+                Directory.CreateDirectory(sampleDirectory);
+                File.Copy(path, Path.Combine(sampleDirectory, "本地历史导出_程序上下限示例.xlsx"), true);
+            }
+        }
+        finally
+        {
+            DeleteReportFixture(path);
+        }
+    }
+}
+
+static void LocalExportReportsUnavailableProgramLimits()
+{
+    foreach (var snapshot in new[]
+    {
+        "{\"焊点数量\":1}",
+        "{\"焊点数量\":1,\"高度\":12}",
+        "{\"焊点数量\":1,\"高度上限\":12,\"高度下限\":13}",
+        "{\"焊点数量\":1,\"高度上限\":12,\"宽度上限\":\"bad\"}"
+    })
+    {
+        var task = BuildReportTask(DateTime.Now, null);
+        task.ProgramContentSnapshot = snapshot;
+        var record = BuildReportPoint(task.Id, 1, "P-001", 1, "NG");
+        var path = GenerateExportReportWorkbook(new AppSettings(), task, [record], localExport: true);
+        try
+        {
+            using var workbook = new XLWorkbook(path);
+            var sheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+            var detailRow = GetReportDetailHeaderRow(sheet);
+            AssertEqual(17, detailRow, "无有效限值时仍须保留提示区及原始明细。");
+            AssertTrue(sheet.Cell("A15").GetString().StartsWith(snapshot == "{\"焊点数量\":1}"
+                ? "该任务未配置程序上下限" : "程序上下限不可用：", StringComparison.Ordinal), "空/旧/错误快照必须明确提示，不能猜测或部分显示限值。");
+            AssertTrue(sheet.Cell("G15").IsEmpty(), "无效内容不能留下部分有效限值。");
+            AssertEqual("P-001", sheet.Cell(detailRow + 1, 1).GetString(), "旧快照的原始明细仍可导出。");
+            AssertEqual(snapshot, task.ProgramContentSnapshot, "提示不能改写旧快照。");
+        }
+        finally
+        {
+            DeleteReportFixture(path);
+        }
+    }
+}
+
 /// <summary>
 /// 本地导出必须覆盖历史记录里看到的全部动态列：勾「本地保存」但未勾「写入报表」的测试项
 /// 在界面历史表格可见，导出文件若按报表通道取列就会缺列。上传给 MES 的报表仍只按写入报表取列。
@@ -3412,7 +3721,8 @@ static void LocalExportCoversAllHistoryDynamicColumns()
     {
         using var workbook = new XLWorkbook(exportPath);
         var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
-        var headers = ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow);
+        var detailHeaderRow = GetReportDetailHeaderRow(worksheet);
+        var headers = ReadHeaderRow(worksheet, detailHeaderRow);
         AssertTrue(headers.Contains("峰值电流"), "写入报表的测试项必须出现在本地导出中。");
         AssertTrue(
             headers.Contains("位移"),
@@ -3422,7 +3732,7 @@ static void LocalExportCoversAllHistoryDynamicColumns()
         var displacementColumn = Array.IndexOf(headers, "位移") + 1;
         AssertEqual(
             "3.40",
-            worksheet.Cell(CenterProductReportFormat.DetailFirstDataRow, displacementColumn).GetString(),
+            worksheet.Cell(detailHeaderRow + 1, displacementColumn).GetString(),
             "只勾本地保存的测试项必须同时导出取值，不能只有表头。");
     }
     finally
@@ -3515,7 +3825,8 @@ static void LocalExportKeepsRawFaceRowsWithoutAbAggregation()
     {
         using var workbook = new XLWorkbook(exportPath);
         var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
-        var headers = ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow);
+        var detailHeaderRow = GetReportDetailHeaderRow(worksheet);
+        var headers = ReadHeaderRow(worksheet, detailHeaderRow);
 
         // A/B 聚合会把表头换成“检测面/检测结果”，本地导出必须保留焊点口径。
         AssertTrue(headers.Contains("焊点编号"), "本地导出必须保留采集点表头，不得切换成 A/B 的检测面口径。");
@@ -3523,7 +3834,7 @@ static void LocalExportKeepsRawFaceRowsWithoutAbAggregation()
 
         var pointColumn = Array.IndexOf(headers, "焊点编号") + 1;
         var valueColumn = Array.IndexOf(headers, "对称度") + 1;
-        var firstRow = CenterProductReportFormat.DetailFirstDataRow;
+        var firstRow = detailHeaderRow + 1;
 
         // 聚合后只有 A/B 两行；保留原始记录则是四行，且每行取值互不相同。
         var faceValues = Enumerable.Range(0, 4)
@@ -3612,7 +3923,8 @@ static void ExportReportsNeverExposeUploadStatusColumn()
         {
             using var workbook = new XLWorkbook(filePath);
             var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
-            var headers = ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow);
+            var detailHeaderRow = GetReportDetailHeaderRow(worksheet);
+            var headers = ReadHeaderRow(worksheet, detailHeaderRow);
             AssertFalse(headers.Contains("上传状态"), "导出报表不得包含上传状态列。");
             // 试焊件列可以跟在产品结果之后（默认开启且非整件检测设备），但两者必须紧邻末尾。
             AssertTrue(
@@ -3626,7 +3938,7 @@ static void ExportReportsNeverExposeUploadStatusColumn()
             var usedColumns = worksheet.LastColumnUsed()?.ColumnNumber() ?? 0;
             for (var column = 1; column <= usedColumns; column++)
             {
-                var value = worksheet.Cell(CenterProductReportFormat.DetailFirstDataRow, column).GetString();
+                var value = worksheet.Cell(detailHeaderRow + 1, column).GetString();
                 AssertFalse(
                     value is "已上传" or "上传失败" or "待上传",
                     "导出报表数据区不得写入上传状态文本。");
@@ -3684,7 +3996,8 @@ static void ReportsWriteProductTestFlagAfterProductResult()
         {
             using var workbook = new XLWorkbook(filePath);
             var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
-            var headers = ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow);
+            var detailHeaderRow = GetReportDetailHeaderRow(worksheet);
+            var headers = ReadHeaderRow(worksheet, detailHeaderRow);
             AssertSequenceEqual(
                 new[] { "产品结果", "试焊件" },
                 headers.TakeLast(2).ToArray(),
@@ -3693,11 +4006,11 @@ static void ReportsWriteProductTestFlagAfterProductResult()
             var flagColumn = Array.IndexOf(headers, "试焊件") + 1;
             AssertEqual(
                 "是",
-                worksheet.Cell(CenterProductReportFormat.DetailFirstDataRow, flagColumn).GetString(),
+                worksheet.Cell(detailHeaderRow + 1, flagColumn).GetString(),
                 "标记为试焊件的产品必须写“是”。");
             AssertEqual(
                 string.Empty,
-                worksheet.Cell(CenterProductReportFormat.DetailFirstDataRow + 1, flagColumn).GetString(),
+                worksheet.Cell(detailHeaderRow + 2, flagColumn).GetString(),
                 "未标记的产品必须留空，不写占位符。");
         }
         finally
@@ -3718,7 +4031,7 @@ static void ReportsWriteProductTestFlagAfterProductResult()
     {
         using var workbook = new XLWorkbook(disabledPath);
         var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
-        var headers = ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow);
+        var headers = ReadHeaderRow(worksheet, GetReportDetailHeaderRow(worksheet));
         AssertFalse(headers.Contains("试焊件"), "关闭试焊件显示后报表不得输出该列。");
         AssertEqual("产品结果", headers[^1], "关闭试焊件后末列必须仍是产品结果。");
     }
@@ -3741,7 +4054,7 @@ static void ReportsWriteProductTestFlagAfterProductResult()
         using var workbook = new XLWorkbook(wholePiecePath);
         var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
         AssertFalse(
-            ReadHeaderRow(worksheet, CenterProductReportFormat.DetailHeaderRow).Contains("试焊件"),
+            ReadHeaderRow(worksheet, GetReportDetailHeaderRow(worksheet)).Contains("试焊件"),
             "整件检测设备不得输出试焊件列。");
     }
     finally
@@ -3832,7 +4145,7 @@ static void CenterReportKeepsDeclaredTestFlagColumn()
 }
 
 /// <summary>
-/// 导出文件必须与上传报表同源：保留客户模板抬头，明细表头仍在第 11 行。
+/// 本地导出保留客户模板抬头，程序限值区插入后明细整体下移。
 /// </summary>
 static void DataManageExportKeepsUploadReportTemplateLayout()
 {
@@ -3859,14 +4172,16 @@ static void DataManageExportKeepsUploadReportTemplateLayout()
         AssertTrue(
             worksheet.Cell(1, 1).GetString().Contains(task.SN, StringComparison.Ordinal),
             "模板抬头必须携带工单号，导出表格因此无需单独的工单号列。");
+        var detailHeaderRow = GetReportDetailHeaderRow(worksheet);
+        AssertEqual(17, detailHeaderRow, "无已配限值时也应展示提示区，明细向下移动四行。");
         AssertEqual(
             "产品编号",
-            worksheet.Cell(CenterProductReportFormat.DetailHeaderRow, 1).GetString(),
-            "单工位导出的明细表头必须仍从第 11 行的产品编号开始。");
+            worksheet.Cell(detailHeaderRow, 1).GetString(),
+            "单工位导出的明细表头仍以产品编号开始。");
         AssertEqual(
             "P-001",
-            worksheet.Cell(CenterProductReportFormat.DetailFirstDataRow, 1).GetString(),
-            "明细数据必须紧跟表头写入第 12 行。");
+            worksheet.Cell(detailHeaderRow + 1, 1).GetString(),
+            "明细数据必须紧跟下移后的表头。");
     }
     finally
     {
@@ -15010,9 +15325,10 @@ static void ProgramManageViewProvidesSaveAsNewEntry()
         viewCode,
         "    private async void SaveAsNew_ClickAsync(object? sender, EventArgs e)",
         "    private async Task SyncProgramInBackgroundAsync(int programId)");
-    // 已有 ProgramId 的程序同步时会把 Create 降级为 Update，必须另起新行才能真正新增。
-    AssertTrue(handler.Contains("_editingId = 0;", StringComparison.Ordinal), "另存为新程序必须清空编辑标识，保存才会走新增。");
-    AssertTrue(handler.Contains("txtProgramId.Clear();", StringComparison.Ordinal), "另存为新程序必须清空 MES 程序ID，避免改名原程序。");
+    // 新请求清空本地 ID 即会新建无 MES ID 的实体，不应在校验成功前破坏当前编辑身份。
+    AssertTrue(handler.Contains("TryBuildRequest(out var request, asNew: true)", StringComparison.Ordinal)
+        && viewCode.Contains("Id = asNew ? 0 : _editingId", StringComparison.Ordinal), "另存请求必须使用新身份。");
+    AssertFalse(handler.Contains("_editingId = 0;", StringComparison.Ordinal), "另存失败前必须保留当前编辑身份，避免误保存或误删。");
     AssertTrue(handler.Contains("GetNextSequenceNumberAsync", StringComparison.Ordinal), "另存为新程序必须异步取该工号下的下一个流水号。");
 }
 
@@ -16427,7 +16743,7 @@ static void WeldTaskRestoreUnfinishedTaskIsIdempotent()
         "public BizWeldTask? RestoreUnfinishedTask(int stationNo = ProductionConstants.Stations.DefaultStationNo)",
         "public async Task<BasicRes<ServerTimeRes>> SyncServerTimeAsync");
 
-    var alreadyRestoredIndex = restoreMethod.IndexOf("if (alreadyRestored)", StringComparison.Ordinal);
+    var alreadyRestoredIndex = restoreMethod.IndexOf("if (station.ActiveTask?.Id == unfinishedTask.Id)", StringComparison.Ordinal);
     var returnIndex = alreadyRestoredIndex < 0
         ? -1
         : restoreMethod.IndexOf("return unfinishedTask;", alreadyRestoredIndex, StringComparison.Ordinal);
@@ -16922,13 +17238,13 @@ static void MonitorViewConfirmsManualWorkOrdersAndPrioritizesPlcSnapshots()
 
     // 生产监控页是常驻值守界面，除破坏性操作的二次确认外一律不弹窗，反馈只走运行状态 + 异常摘要。
     AssertEqual(
-        1,
+        2,
         CountOccurrences(viewCode, "MessageBox.Show"),
-        "监控页只保留删除产品的二次确认弹窗，其余提示必须走运行状态和异常摘要。");
+        "监控页只保留删除产品和异常结束任务的二次确认，其余提示必须走运行状态和异常摘要。");
     AssertTrue(
         ExtractMethodText(viewCode, "private bool ConfirmDeleteProduct", "private void RefreshProgramCountMetrics")
             .Contains("MessageBox.Show", StringComparison.Ordinal),
-        "唯一保留的弹窗必须是删除产品的二次确认：删除会抹掉产出记录，需要操作员明确确认。");
+        "删除产品必须二次确认，不能变成直接删除。");
     foreach (var reporter in new[] { "private void ShowWarning(", "private void ShowWarningText(", "private void ShowBusinessWarning(", "private void ShowError(" })
     {
         var reporterMethod = ExtractMethodText(viewCode, reporter, "/// <summary>");
@@ -17439,7 +17755,7 @@ static void ProgramDeleteKeepsMesSyncOffUiPath()
         "列表查询不能参与程序变更门锁，否则删除后立即刷新会形成互相等待。");
 
     AssertTrue(
-        viewCode.Contains("没有需要清理的程序。", StringComparison.Ordinal),
+        viewCode.Contains("TextKeys.ProgramManage.MessageBatchCleanEmpty", StringComparison.Ordinal),
         "批量清理在没有目标时必须直接提示，不能继续走清理和刷新流程。");
     AssertTrue(
         viewCode.Contains("当前没有可删除的加工程序。", StringComparison.Ordinal),
@@ -18339,6 +18655,10 @@ static void AddReportColumn(
         ?? throw new InvalidOperationException($"无法构造生产报表列 {title}。"));
 }
 
+static int GetReportDetailHeaderRow(IXLWorksheet worksheet)
+    => worksheet.RowsUsed().Single(row => row.CellsUsed().Any(cell => cell.GetString() == "产品编号")
+        && row.CellsUsed().Any(cell => cell.GetString() == "产品结果")).RowNumber();
+
 static string[] ReadHeaderRow(IXLWorksheet worksheet, int rowNumber)
 {
     var lastCell = worksheet.Row(rowNumber).LastCellUsed();
@@ -18491,6 +18811,8 @@ sealed class InspectableUploadTaskService : UploadTaskService
     protected override BizUploadTask? MarkUploading(int id) { _task.Status = "Uploading"; return _task; }
     protected override Task<BasicRes<object>> ExecuteByTypeAsync(BizUploadTask task, CancellationToken cancellationToken)
         => throw new InvalidOperationException("旧格式不能生成结果。");
+    protected override UploadTaskSummary? FinishClaimedExecution(BizUploadTask claim, BasicRes<object> response)
+        => FinishExecution(claim.Id, response);
     protected override UploadTaskSummary? FinishExecution(int id, BasicRes<object> response)
     {
         FinishCount++;
@@ -18503,7 +18825,7 @@ sealed class InspectableWeldTaskService : WeldTaskService
 {
     public InspectableWeldTaskService(FakeMesProvider mes, FakeUploadTaskService uploads, FakeAppSettingsService settings,
         IProductProcessConfigService process, ITestSchemeConfigService schemes)
-        : base(null!, mes, settings, new FakeOperationLogService(), new FakeLocalizationService(), uploads,
+        : base(new AutoWeldSystem.Data.SqlSugarDbContext("server=127.0.0.1;database=unused;uid=unused;pwd=unused;"), mes, settings, new FakeOperationLogService(), new FakeLocalizationService(), uploads,
             new FakeCenterProductForwardingService(), new FakeProductionReportFileService(), new FakeDeviceLifecycleLogService(),
             new FakeDeviceStatusService(), new FakeSystemClockService(), new FakeDataHistoryMaintenanceService(),
             productProcessConfigService: process, testSchemeConfigService: schemes) { }
@@ -18953,7 +19275,7 @@ sealed class FakeCenterProductForwardingService : ICenterProductForwardingServic
 
 sealed class FakePlcRecipeNameConfigService(params BizPlcRecipeNameConfig[] configs) : IPlcRecipeNameConfigService
 {
-    private readonly IReadOnlyList<BizPlcRecipeNameConfig> _configs = configs;
+    private IReadOnlyList<BizPlcRecipeNameConfig> _configs = configs;
 
     public int SaveCallCount { get; private set; }
 
@@ -18963,7 +19285,10 @@ sealed class FakePlcRecipeNameConfigService(params BizPlcRecipeNameConfig[] conf
         => _configs.FirstOrDefault(config => config.StationNo == stationNo);
 
     public void SaveAll(IEnumerable<BizPlcRecipeNameConfig> configs)
-        => SaveCallCount++;
+    {
+        _configs = configs.ToArray();
+        SaveCallCount++;
+    }
 }
 
 sealed class FakeCenterProductReportIngestSideEffects : ICenterProductReportIngestSideEffects

@@ -7,6 +7,9 @@ public class SqlSugarDbContext : IDisposable
 {
     public SqlSugarScope Db { get; }
 
+    // 任务异常结束与 MES/中心上传认领共用短临界区，不得持有此锁等待网络或 PLC。
+    public object TaskTransitionSync { get; } = new();
+
     private const string DefaultConnectionString = "server=localhost;port=3306;database=autoweldsystem_db;uid=root;pwd=123456;";
     private readonly object _initLock = new();
     private bool _initialized;

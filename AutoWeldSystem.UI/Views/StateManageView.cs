@@ -892,7 +892,7 @@ public partial class StateManageView : BaseView
 
     /// <summary>
     /// 清理选中的程序同步记录。
-    /// 只做本地软删除，不回调 MES：这些记录多半是设备编号变更或 MES 侧已删除导致的死单，
+    /// 只清理本地主表并保留历史版本，不回调 MES：这些记录多半是设备编号变更或 MES 侧已删除导致的死单，
     /// 再次调用远程删除仍会失败，只能在本地终结。
     /// </summary>
     private async void DeleteSelectedProgramSyncRecords()

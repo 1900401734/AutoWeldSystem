@@ -32,6 +32,12 @@ public interface IWeldTaskService
     /// </summary>
     void ValidateTaskForProduction(BizWeldTask task, int stationNo = ProductionConstants.Stations.DefaultStationNo);
 
+    /// <summary>
+    /// 显式作废配置无效的未完工任务，保留历史并停止尚未发送的生产补传。
+    /// 调用前必须确认目标工位 PLC 已禁止生产；服务仍复核维护权限和任务身份。
+    /// </summary>
+    Task<BizWeldTask> AbandonInvalidTaskAsync(int taskId, int stationNo, CancellationToken cancellationToken = default);
+
     Task<BasicRes<ServerTimeRes>> SyncServerTimeAsync(CancellationToken cancellationToken = default);
 
     Task<WorkOrderRes?> GetWorkOrderInfoAsync(string workId, int stationNo = ProductionConstants.Stations.DefaultStationNo,

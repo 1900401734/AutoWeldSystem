@@ -55,6 +55,7 @@ public partial class MonitorView : BaseView
     // 报警属于整台设备，同一个视图内不按工位拆分，双工位聚合成一张卡片。
     private const string PlcAlarmNotificationIdPrefix = "monitor-plc-alarm";
     private const string RuntimeErrorSourceDeviceAlarm = "DeviceAlarm";
+    private const string RuntimeErrorSourceTaskRecovery = "TaskRecovery";
     private const string PreviewTouchNoColumn = "TouchNo";
     private const string PreviewTouchResultColumn = "TouchResult";
     private const string PreviewMessageColumn = "Message";
@@ -132,6 +133,7 @@ public partial class MonitorView : BaseView
     private readonly string _plcAlarmNotificationId =
         $"{PlcAlarmNotificationIdPrefix}-{Guid.NewGuid():N}";
     private readonly Dictionary<int, DateTime> _finishRecipeReadFailureLogTimes = new();
+    private readonly Dictionary<int, TaskRecoveryFailureState> _taskRecoveryFailures = new();
     private readonly Dictionary<int, string> _lastAutoQueriedWorkIds = new();
     private readonly HashSet<int> _workOrderBaselines = new();
     // Stores the value that may be used for start; typing changes are drafts until Enter.
@@ -556,8 +558,19 @@ public partial class MonitorView : BaseView
     {
         var activeTask = RestoreUnfinishedTaskForDisplay(CurrentStationNo)
             ?? GetCurrentStationState().ActiveTask;
+        ApplyTaskStatusTag(GetCurrentStationState());
         var hasOnlineRunningTask = activeTask is { IsOfflineCreated: false, EndTime: null };
         var hasOfflineRunningTask = activeTask is { IsOfflineCreated: true, EndTime: null };
+        if (activeTask is not null && HasTaskRecoveryFailure(CurrentStationNo))
+        {
+            btnOnlineReport.Text = _localizer.GetString(TextKeys.Monitor.Button.AbandonInvalidTask);
+            btnOnlineReport.IconSvg = "StopOutlined";
+            btnOnlineReport.Visible = !_stationViewReadOnly;
+            _permissionUiBinder.ApplyEnabled(btnOnlineReport, PermissionCodes.Buttons.Data.Delete);
+            btnOnlineReport.Enabled = btnOnlineReport.Enabled && !_stationViewReadOnly;
+            btnLocalWorkOrder.Enabled = false;
+            return;
+        }
         var decision = MonitorReportButtonRules.Decide(
             _stationViewReadOnly,
             _mesConnectionMonitorService.Current.IsConnected,
@@ -1326,6 +1339,11 @@ public partial class MonitorView : BaseView
         var activeTask = RestoreUnfinishedTaskForDisplay(stationNo)
             ?? GetCurrentStationState().ActiveTask;
 
+        if (activeTask is not null && HasTaskRecoveryFailure(stationNo))
+        {
+            await AbandonInvalidTaskFromUiAsync(activeTask, stationNo);
+            return;
+        }
         if (activeTask is { IsOfflineCreated: false, EndTime: null })
         {
             await RunFinishReportAsync();
@@ -1333,6 +1351,59 @@ public partial class MonitorView : BaseView
         }
 
         await RunStartReportAsync();
+    }
+
+    private async Task AbandonInvalidTaskFromUiAsync(BizWeldTask task, int stationNo)
+    {
+        if (IsReadOnlyOperationBlocked("异常结束")) return;
+        if (!GlobalContext.IsAuthenticated || !GlobalContext.HasPermission(PermissionCodes.Buttons.Data.Delete))
+        {
+            ShowWarning(TextKeys.Monitor.Message.AbandonPermissionRequired);
+            return;
+        }
+        var taskId = task.Id;
+        var stations = ResolveWorkOrderSignalStations(stationNo).ToArray();
+        var detail = _taskRecoveryFailures.GetValueOrDefault(stationNo)?.Error ?? string.Empty;
+        var owner = (IWin32Window?)FindForm() ?? this;
+        if (MessageBox.Show(owner, _localizer.GetString(TextKeys.Monitor.Message.AbandonConfirm, detail),
+                _localizer.GetString(TextKeys.Monitor.Button.AbandonInvalidTask), MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+
+        await RunReportOperationAsync(stationNo, "异常结束", async () =>
+        {
+            if (!GlobalContext.IsAuthenticated || !GlobalContext.HasPermission(PermissionCodes.Buttons.Data.Delete))
+                throw new BusinessOperationException("Task.Abandon", "异常结束失败", _localizer.GetString(TextKeys.Monitor.Message.AbandonPermissionRequired));
+            var currentTask = _weldTaskService.GetUnfinishedTask(stationNo);
+            if (currentTask?.Id != taskId)
+                throw new BusinessOperationException("Task.Abandon", "异常结束失败", "任务已改变，请刷新后确认。");
+            try
+            {
+                _weldTaskService.ValidateTaskForProduction(currentTask, stationNo);
+                throw new BusinessOperationException("Task.Abandon", "异常结束失败", "程序配置已有效，请刷新并正常完工。");
+            }
+            catch (BusinessOperationException ex) when (ex.SourceName == "Program.Configuration")
+            {
+            }
+            if (!ArePlcStationsConnected(stationNo))
+                throw new BusinessOperationException("Task.Abandon", "异常结束失败", "必须先连接相关工位 PLC 并确认禁止生产。");
+            // 不走正常完工；PLC 禁止生产并回读确认后，才允许释放旧任务占用。
+            await WriteFinishBusinessSignalsAsync(stationNo);
+            foreach (var target in stations)
+            {
+                var read = await _plcBusinessSignalService.ReadTextAsync(AppConstants.PlcLogicalKeys.WorkOrderStatus, target);
+                if (!read.IsSuccess || !int.TryParse(read.Value, out var status)
+                    || status != ProductionConstants.PlcWorkOrderStatuses.FinishedForbidProduction)
+                    throw new BusinessOperationException("Task.Abandon", "异常结束失败", $"工位 {target} PLC 未确认禁止生产，任务仍保留。");
+            }
+            await _weldTaskService.AbandonInvalidTaskAsync(taskId, stationNo);
+            foreach (var target in stations)
+            {
+                ClearTaskRecoveryFailure(target);
+                ClearFinishedProductIdentity(target);
+            }
+            RefreshProductionRuntimeState();
+            SetRuntimeStatusText(_localizer.GetString(TextKeys.Monitor.Message.AbandonSuccess, taskId));
+        });
     }
 
     /// <summary>
@@ -4820,6 +4891,11 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// <param name="state">工位运行状态。</param>
     private void ApplyTaskStatusTag(ProductionStationRuntimeState state)
     {
+        if (HasTaskRecoveryFailure(state.StationNo))
+        {
+            ApplyTaskStatusTag(_localizer.GetString(TextKeys.Monitor.Label.TaskRecoveryFailed), UiColors.Status.Warning);
+            return;
+        }
         var activeTask = state.ActiveTask;
         if (activeTask is null)
         {
@@ -5513,18 +5589,52 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// <returns>解析或计算后的数值。</returns>
     private BizWeldTask? RestoreUnfinishedTaskForDisplay(int stationNo)
     {
+        var task = _weldTaskService.GetUnfinishedTask(stationNo);
+        if (task is null)
+        {
+            ClearTaskRecoveryFailure(stationNo);
+            return null;
+        }
+        if (!_taskRecoveryFailures.TryGetValue(stationNo, out var failure))
+            _taskRecoveryFailures[stationNo] = failure = new TaskRecoveryFailureState();
+        var mode = $"{_currentSettings.ProcessParameterDeviceType}|{_currentSettings.EnableDualStation}|{_currentSettings.EnableDualWorkOrder}";
+        if (!failure.ShouldAttempt(task, mode, DateTime.UtcNow)) return task;
         try
         {
-            return _weldTaskService.RestoreUnfinishedTask(stationNo);
+            var restored = _weldTaskService.RestoreUnfinishedTask(stationNo);
+            ClearTaskRecoveryFailure(stationNo);
+            return restored;
         }
-        catch (BusinessOperationException ex)
+        catch (BusinessOperationException ex) when (ex.SourceName == "Program.Configuration")
         {
-            // 旧任务仍可见且阻止新开工，但绝不恢复为可生产的运行态。
-            _exceptionLogService.WriteBusiness(ex.SourceName, ex.Message, ex.Detail);
-            SetRuntimeErrorText(ex.Detail);
-            return _weldTaskService.GetUnfinishedTask(stationNo);
+            var detail = BuildTaskRecoveryDetail(task, ex.Detail);
+            if (failure.RecordFailure(detail))
+                _exceptionLogService.WriteBusiness(ex.SourceName, ex.Message, detail);
+            if (stationNo == CurrentStationNo
+                && !string.Equals(_runtimeErrorSource, RuntimeErrorSourceDeviceAlarm, StringComparison.Ordinal)
+                && (_runtimeErrorSource != RuntimeErrorSourceTaskRecovery || _runtimeErrorText != detail))
+            {
+                SetRuntimeErrorDetailText(detail, TextKeys.Monitor.Message.InvalidTaskRecovery,
+                    RuntimeErrorSourceTaskRecovery, task.Id, task.SN);
+            }
+            return task;
         }
     }
+
+    private string BuildTaskRecoveryDetail(BizWeldTask task, string error)
+        => _localizer.GetString(TextKeys.Monitor.Message.InvalidTaskRecoveryDetail,
+            task.Id, task.StationNo, task.SN, task.ProgramName ?? string.Empty,
+            task.StartTime.ToString("yyyy-MM-dd HH:mm:ss"), error);
+
+    private void ClearTaskRecoveryFailure(int stationNo)
+    {
+        _taskRecoveryFailures.Remove(stationNo);
+        if (stationNo == CurrentStationNo && _runtimeErrorSource == RuntimeErrorSourceTaskRecovery)
+            ClearRuntimeError();
+    }
+
+    private bool HasTaskRecoveryFailure(int stationNo)
+        => _taskRecoveryFailures.TryGetValue(stationNo, out var failure) && failure.Error is not null;
 
     private int ResolveExpectedPlcWorkOrderStatus(int stationNo)
     {

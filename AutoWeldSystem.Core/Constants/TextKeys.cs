@@ -122,6 +122,7 @@ public static class TextKeys
             /// 完工上报
             /// </summary>
             public const string FinishReport = "monitor.button.finish_report";
+            public const string AbandonInvalidTask = "monitor.button.abandon_invalid_task";
             /// <summary>
             /// 切换用户
             /// </summary>
@@ -155,6 +156,7 @@ public static class TextKeys
 
         public static class Label
         {
+            public const string TaskRecoveryFailed = "monitor.label.task_recovery_failed";
             /// <summary>
             /// 序号
             /// </summary>
@@ -375,6 +377,11 @@ public static class TextKeys
             /// 已开工或存在尚未完工任务
             /// </summary>
             public const string StartBlockedByUnfinishedTask = "monitor.message.start_blocked_by_unfinished_task";
+            public const string InvalidTaskRecovery = "monitor.message.invalid_task_recovery";
+            public const string InvalidTaskRecoveryDetail = "monitor.message.invalid_task_recovery_detail";
+            public const string AbandonPermissionRequired = "monitor.message.abandon_permission_required";
+            public const string AbandonConfirm = "monitor.message.abandon_confirm";
+            public const string AbandonSuccess = "monitor.message.abandon_success";
             /// <summary>
             /// 请先加载工单、选择工序并下载程序
             /// </summary>
@@ -1105,6 +1112,7 @@ public static class TextKeys
         public const string RecipeNotApplicable = "program.option.recipe_not_applicable";
         public const string MissingRecipeOption = "program.option.missing_recipe";
         public const string RecipeReadFailed = "program.message.recipe_read_failed";
+        public const string RecipeRefreshing = "program.message.recipe_refreshing";
         public const string LabelComponentCode = "program.label.component_code";
         public const string LabelSequenceNumber = "program.label.sequence_number";
         public const string LabelProgramType = "program.label.program_type";
@@ -1121,9 +1129,13 @@ public static class TextKeys
         public const string CurrentSelected = "program.message.current_selected";
         public const string CurrentSynced = "program.message.current_synced";
         public const string CurrentNotSynced = "program.message.current_not_synced";
+        public const string CurrentInvalid = "program.message.current_invalid";
+        public const string ContentInvalid = "program.message.content_invalid";
+        public const string DetailLoading = "program.message.detail_loading";
         public const string SaveSuccess = "program.message.save_success";
         public const string SelectDelete = "program.message.select_delete";
         public const string DeleteConfirm = "program.message.delete_confirm";
+        public const string DeleteSuccess = "program.message.delete_success";
         public const string SelectSync = "program.message.select_sync";
         public const string PullSuccess = "program.message.pull_success";
         public const string SequenceInvalid = "program.message.sequence_invalid";
@@ -1143,13 +1155,42 @@ public static class TextKeys
         public const string MessageConfirmBatchClean = "program.message.confirm_batch_clean";
         public const string MessageBatchCleanSuccess = "program.message.batch_clean_success";
         public const string MessageBatchCleanFailed = "program.message.batch_clean_failed";
+        public const string MessageBatchCleanEmpty = "program.message.batch_clean_empty";
+        public const string MessageBatchCleanCanceled = "program.message.batch_clean_canceled";
     }
 
     /// <summary>
     /// 日志管理页文本键
     /// </summary>
+    public static class PlcRecipe
+    {
+        public const string RestoreFailed = "plc.recipe.restore_failed";
+        public const string ReadFailed = "plc.recipe.read_failed";
+        public const string NotRead = "plc.recipe.not_read";
+        public const string Disconnected = "plc.recipe.disconnected";
+        public const string MissingRecipe = "plc.recipe.missing_recipe";
+        public const string MonitorFailed = "plc.recipe.monitor_failed";
+        public const string ReconcileFailed = "plc.recipe.reconcile_failed";
+        public const string FailureContext = "plc.recipe.failure_context";
+        public const string FailureDetail = "plc.recipe.failure_detail";
+        public const string MissingRecipeDetail = "plc.recipe.missing_recipe_detail";
+        public const string ReconcileDetail = "plc.recipe.reconcile_detail";
+    }
+
     public static class Log
     {
+        public const string ValueWarning = "log.value.warning";
+        public const string ValueError = "log.value.error";
+        public const string ValueInfo = "log.value.info";
+        public const string FieldTraceId = "log.field.trace_id";
+        public const string FieldSourceFile = "log.field.source_file";
+        public const string FieldSourceMember = "log.field.source_member";
+        public const string FieldTargetSite = "log.field.target_site";
+        public const string FieldThread = "log.field.thread";
+        public const string FieldUser = "log.field.user";
+        public const string FieldAppVersion = "log.field.app_version";
+        public const string FieldDetail = "log.field.detail";
+        public const string FieldInnerException = "log.field.inner_exception";
         public const string TitleMesInteraction = "log.title.mes_interaction";
         public const string TabProductionFlow = "log.tab.production_flow";
         public const string TabProgramException = "log.tab.program_exception";

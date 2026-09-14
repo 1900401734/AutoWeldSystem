@@ -846,7 +846,7 @@ public partial class DataManageView : BaseView
     }
 
     /// <summary>
-    /// 按上传报表格式导出当前工单，末列附加中文上传状态。
+    /// 导出当前工单的原始明细，顶部附开工程序快照中的上下限；不生成 MES 报告文件。
     /// 导出始终覆盖整个工单，不受页面产品结果筛选影响，因此用全量行判断有无数据。
     /// </summary>
     private void ExportTestData()

@@ -870,6 +870,27 @@
   <data name="monitor.button.clear_error_tips" xml:space="preserve">
     <value>Clear</value>
   </data>
+  <data name="monitor.button.abandon_invalid_task" xml:space="preserve">
+    <value>Abandon Task</value>
+  </data>
+  <data name="monitor.message.invalid_task_recovery" xml:space="preserve">
+    <value>Task {0} (work order {1}) has an invalid historical program snapshot.</value>
+  </data>
+  <data name="monitor.message.invalid_task_recovery_detail" xml:space="preserve">
+    <value>The unfinished task has an invalid historical program snapshot. Deleting the current program does not remove it. Task ID: {0}; station: {1}; work order: {2}; program: {3}; started: {4}. Reason: {5}</value>
+  </data>
+  <data name="monitor.message.abandon_permission_required" xml:space="preserve">
+    <value>Abandoning a task requires Delete Historical Data permission. Contact an administrator.</value>
+  </data>
+  <data name="monitor.message.abandon_confirm" xml:space="preserve">
+    <value>{0}
+
+Abandon this task?
+The task will be marked Abandoned. Its snapshot, collected data and existing reports are retained, and unsent production uploads are stopped. No normal completion or report is generated; uploaded data is not recalled. Reconcile the MES work order manually. PLC must confirm production is forbidden, and no upload may be in flight.</value>
+  </data>
+  <data name="monitor.message.abandon_success" xml:space="preserve">
+    <value>Task {0} abandoned. History is retained and production uploads are stopped. Reconcile MES manually.</value>
+  </data>
   <data name="monitor.button.finish_report" xml:space="preserve">
     <value>Finish Report</value>
   </data>
@@ -1776,6 +1797,27 @@
   <data name="program.message.current_not_synced" xml:space="preserve">
     <value>Current: Not synced</value>
   </data>
+  <data name="program.message.current_invalid" xml:space="preserve">
+    <value>Current: invalid content; deletion only</value>
+  </data>
+  <data name="program.message.content_invalid" xml:space="preserve">
+    <value>Invalid program content. Saving, copying and syncing are blocked, but you can delete this program. Reason: {0}</value>
+  </data>
+  <data name="program.message.recipe_refreshing" xml:space="preserve">
+    <value>PLC recipes are refreshing. Please wait before saving.</value>
+  </data>
+  <data name="program.message.detail_loading" xml:space="preserve">
+    <value>Program details are loading. Please wait.</value>
+  </data>
+  <data name="program.message.delete_success" xml:space="preserve">
+    <value>Program deleted locally.</value>
+  </data>
+  <data name="program.message.batch_clean_empty" xml:space="preserve">
+    <value>No programs need cleaning.</value>
+  </data>
+  <data name="program.message.batch_clean_canceled" xml:space="preserve">
+    <value>Batch clean canceled.</value>
+  </data>
   <data name="program.message.save_success" xml:space="preserve">
     <value>Program saved.</value>
   </data>
@@ -1783,7 +1825,7 @@
     <value>Select a program to delete first.</value>
   </data>
   <data name="program.message.delete_confirm" xml:space="preserve">
-    <value>Delete the current program?</value>
+    <value>Delete program "{0}" (local ID: {1})?</value>
   </data>
   <data name="program.message.select_sync" xml:space="preserve">
     <value>Select a program to sync first.</value>
@@ -1834,7 +1876,7 @@
     <value>Delete</value>
   </data>
   <data name="program.message.confirm_batch_clean" xml:space="preserve">
-    <value>This will delete all local programs with sync failures or pending status without notifying MES. Typically used to clean up programs after changing device ID. Continue?</value>
+    <value>Clean {0} failed or pending programs, including hidden failed deletions, regardless of search or page? This deletes local program records only, keeps revision history and does not notify MES. Programs already synced successfully will be skipped.</value>
   </data>
   <data name="program.message.batch_clean_success" xml:space="preserve">
     <value>{0} program(s) cleaned.</value>
@@ -2568,4 +2610,28 @@ This also removes {3} collection record(s) and {4} report file(s) including the 
   <data name="data.column.is_deleted" xml:space="preserve">
     <value>Deleted</value>
   </data>
+  <data name="monitor.label.task_recovery_failed" xml:space="preserve"><value>Task Error</value></data>
+  <data name="plc.recipe.restore_failed" xml:space="preserve"><value>PLC recipe task restore failed.</value></data>
+  <data name="plc.recipe.read_failed" xml:space="preserve"><value>PLC recipe code read failed</value></data>
+  <data name="plc.recipe.not_read" xml:space="preserve"><value>PLC recipe has not been read.</value></data>
+  <data name="plc.recipe.disconnected" xml:space="preserve"><value>PLC is not connected.</value></data>
+  <data name="plc.recipe.missing_recipe" xml:space="preserve"><value>PLC recipe reconcile skipped because local station recipe is missing.</value></data>
+  <data name="plc.recipe.monitor_failed" xml:space="preserve"><value>PLC recipe reconciliation monitor failed.</value></data>
+  <data name="plc.recipe.reconcile_failed" xml:space="preserve"><value>PLC recipe code reconciliation failed.</value></data>
+  <data name="plc.recipe.failure_context" xml:space="preserve"><value>Running-task recipe reconciliation failed. Station={0}</value></data>
+  <data name="plc.recipe.failure_detail" xml:space="preserve"><value>Station={0}; Reason: {1}</value></data>
+  <data name="plc.recipe.missing_recipe_detail" xml:space="preserve"><value>Task ID={0}; Missing recipe stations={1}</value></data>
+  <data name="plc.recipe.reconcile_detail" xml:space="preserve"><value>Station={0}; Source station={1}; Task ID={2}; Expected recipe={3}; PLC recipe={4}; Reason: {5}</value></data>
+  <data name="log.value.warning" xml:space="preserve"><value>Warning</value></data>
+  <data name="log.value.error" xml:space="preserve"><value>Error</value></data>
+  <data name="log.value.info" xml:space="preserve"><value>Info</value></data>
+  <data name="log.field.trace_id" xml:space="preserve"><value>Trace ID</value></data>
+  <data name="log.field.source_file" xml:space="preserve"><value>Source file</value></data>
+  <data name="log.field.source_member" xml:space="preserve"><value>Source member</value></data>
+  <data name="log.field.target_site" xml:space="preserve"><value>Target method</value></data>
+  <data name="log.field.thread" xml:space="preserve"><value>Thread</value></data>
+  <data name="log.field.user" xml:space="preserve"><value>User</value></data>
+  <data name="log.field.app_version" xml:space="preserve"><value>App version</value></data>
+  <data name="log.field.detail" xml:space="preserve"><value>Detail</value></data>
+  <data name="log.field.inner_exception" xml:space="preserve"><value>Inner exception</value></data>
 </root>
