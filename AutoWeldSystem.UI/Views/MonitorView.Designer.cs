@@ -142,9 +142,7 @@ namespace AutoWeldSystem.UI.Views
             tableMetric1 = new AntdUI.Table();
             tabsMetrics2 = new AntdUI.TabPage();
             tableMetric2 = new AntdUI.Table();
-            components = new System.ComponentModel.Container();
             tooltipComponent = new AntdUI.TooltipComponent();
-            components.Add(tooltipComponent);
             lblLiveResult = new AntdUI.Label();
             lblLiveTouchCount = new AntdUI.Label();
             label7 = new AntdUI.Label();
@@ -1137,7 +1135,7 @@ namespace AutoWeldSystem.UI.Views
             MesUserNumber.Location = new Point(82, 0);
             MesUserNumber.Margin = new Padding(0);
             MesUserNumber.Name = "MesUserNumber";
-            MesUserNumber.PlaceholderText = "请输入员工号";
+            MesUserNumber.PlaceholderText = "输入后回车确认";
             MesUserNumber.ReadOnly = true;
             MesUserNumber.Size = new Size(155, 33);
             MesUserNumber.TabIndex = 3;
