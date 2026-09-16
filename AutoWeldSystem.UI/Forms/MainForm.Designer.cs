@@ -115,6 +115,9 @@ partial class MainForm
         resources.ApplyResources(select_Lang, "select_Lang");
         select_Lang.MaxCount = 10;
         select_Lang.Name = "select_Lang";
+        select_Lang.ReadOnly = false;
+        select_Lang.List = true;
+        select_Lang.WheelModifyEnabled = false;
         select_Lang.TextAlign = HorizontalAlignment.Center;
         // 
         // lblCurLang

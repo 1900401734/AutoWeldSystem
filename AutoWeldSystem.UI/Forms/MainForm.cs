@@ -379,16 +379,19 @@ public partial class MainForm : BaseWindow
             return;
         }
 
-        var targetLanguage = select_Lang.SelectedIndex == 0
-            ? AppConstants.Languages.Chinese
-            : AppConstants.Languages.English;
+        // 禁用项仍可能被程序性赋值，入口只接受中文，拒绝时恢复当前语言显示。
+        if (select_Lang.SelectedValue is not string language || language != AppConstants.Languages.Chinese)
+        {
+            BindLanguageSelection();
+            return;
+        }
 
-        if (string.Equals(GlobalContext.CurrentLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(_localizer.CurrentLanguage, AppConstants.Languages.Chinese, StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
 
-        _localizer.SetLanguage(targetLanguage);
+        _localizer.SetLanguage(AppConstants.Languages.Chinese);
     }
 
     private void SwitchUser_Click(object? sender, EventArgs e)
@@ -454,14 +457,17 @@ public partial class MainForm : BaseWindow
         _syncingLanguageSelection = true;
         try
         {
+            select_Lang.ExpandDrop = false;
             select_Lang.Items.Clear();
             select_Lang.Items.AddRange(new object[]
             {
-                _localizer.GetString(TextKeys.Common.LanguageChinese),
-                _localizer.GetString(TextKeys.Common.LanguageEnglish)
+                new AntdUI.SelectItem(_localizer.GetString(TextKeys.Common.LanguageChinese), AppConstants.Languages.Chinese),
+                new AntdUI.SelectItem(_localizer.GetString(TextKeys.Common.LanguageEnglish), AppConstants.Languages.English) { Enable = false }
             });
 
-            select_Lang.SelectedIndex = GlobalContext.CurrentLanguage == AppConstants.Languages.English ? 1 : 0;
+            // Items 重建不会复位内部选中值，先清除再按语言标识恢复。
+            select_Lang.SelectedIndex = -1;
+            select_Lang.SelectedValue = _localizer.CurrentLanguage;
         }
         finally
         {
