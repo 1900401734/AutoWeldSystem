@@ -2281,11 +2281,22 @@ public class UploadTaskService : IUploadTaskService
     }
 
     private BizUploadTask? FindExistingTask(BizUploadTask task)
+        => BuildExistingTaskQuery(_dbContext.Db, task).First();
+
+    private static SqlSugar.ISugarQueryable<BizUploadTask> BuildExistingTaskQuery(SqlSugar.ISqlSugarClient db, BizUploadTask task)
     {
-        return _dbContext.Db.Queryable<BizUploadTask>()
-            .First(existing => existing.TaskType == task.TaskType
+        var query = db.Queryable<BizUploadTask>()
+            .Where(existing => existing.TaskType == task.TaskType
                 && existing.Target == task.Target
                 && existing.BusinessId == task.BusinessId);
+        // 中心旧 BusinessId 不含任务身份，同流转卡再次开工不能吞掉新任务的同号产品。
+        if (task.TaskType == ProductionConstants.UploadTaskTypes.CenterProductReport
+            && task.Target == ProductionConstants.UploadTargets.CentralServer)
+        {
+            query = query.Where(existing => existing.WeldTaskId == task.WeldTaskId);
+        }
+
+        return query;
     }
 
     private static void Normalize(BizUploadTask task)

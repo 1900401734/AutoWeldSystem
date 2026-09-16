@@ -323,6 +323,7 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
             .Where(report => report.TaskId == taskId)
             .OrderBy(report => report.CreatedTime, SqlSugar.OrderByType.Desc)
             .ToList()
+            .Where(report => !string.IsNullOrWhiteSpace(report.FilePath))
             .Select(report => new DataHistoryReportFileRow
             {
                 Id = report.Id,

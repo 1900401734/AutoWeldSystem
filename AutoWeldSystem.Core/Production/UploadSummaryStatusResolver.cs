@@ -62,7 +62,9 @@ public static class UploadSummaryStatusResolver
             return uploadStatus;
         }
 
-        return AggregateUploadStatuses(reportFiles.Select(report => report.UploadStatus));
+        return AggregateUploadStatuses(reportFiles
+            .Where(report => !string.IsNullOrWhiteSpace(report.FilePath))
+            .Select(report => report.UploadStatus));
     }
 
     /// <summary>

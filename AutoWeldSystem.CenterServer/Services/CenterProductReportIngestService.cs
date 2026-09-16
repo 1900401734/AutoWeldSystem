@@ -55,6 +55,15 @@ public sealed class CenterProductReportIngestService
             return Fail("Product report points are required.");
         }
 
+        try
+        {
+            CenterProductReportPathResolver.ValidateArchiveIdentity(request);
+        }
+        catch (ArgumentException ex)
+        {
+            return Fail(ex.Message);
+        }
+
         var settings = _settingsService.Get();
         var reportPath = _fileStore.Upsert(settings.DataDirectory, request);
         await _sideEffects.ApplyAsync(settings.DataDirectory, deviceId, request, cancellationToken);

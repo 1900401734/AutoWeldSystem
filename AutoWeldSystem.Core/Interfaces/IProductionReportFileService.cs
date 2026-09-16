@@ -10,6 +10,9 @@ public interface IProductionReportFileService
 {
     BizProductionReportFile GenerateXlsxReport(BizWeldTask task);
 
+    /// <summary>预留稳定的报表序号和文件名；FilePath 为空时仅代表预留，尚未生成文件。</summary>
+    BizProductionReportFile ReserveXlsxReport(BizWeldTask task);
+
     /// <summary>
     /// 判断当前任务是否存在可触发 MES 报表文件上传的有效 ReportEnable 角色。
     /// </summary>

@@ -37,6 +37,11 @@ internal sealed record CenterProductReportTaskState(
     string OperatorName,
     string ProgramName)
 {
+    /// <summary>追加的归档身份仅存在隐藏任务页，旧报表缺省为空。</summary>
+    public string DeviceId { get; init; } = string.Empty;
+    public string? ReportFileName { get; init; }
+    public int? ReportSequenceNo { get; init; }
+
     public static CenterProductReportTaskState FromRequest(
         CenterProductReportRequest request,
         DateTime? effectiveEndTime)
@@ -57,7 +62,12 @@ internal sealed record CenterProductReportTaskState(
             effectiveEndTime,
             request.OperatorNo.Trim(),
             request.OperatorName.Trim(),
-            request.ProgramName.Trim());
+            request.ProgramName.Trim())
+        {
+            DeviceId = request.DeviceId.Trim(),
+            ReportFileName = request.ReportFileName,
+            ReportSequenceNo = request.ReportSequenceNo
+        };
     }
 
     public CenterProductReportHeaderValues ToHeaderValues()
@@ -100,7 +110,10 @@ internal sealed record CenterProductReportTaskState(
             [nameof(EndTime)] = EndTime?.ToString("O") ?? string.Empty,
             [nameof(OperatorNo)] = OperatorNo,
             [nameof(OperatorName)] = OperatorName,
-            [nameof(ProgramName)] = ProgramName
+            [nameof(ProgramName)] = ProgramName,
+            [nameof(DeviceId)] = DeviceId,
+            [nameof(ReportFileName)] = ReportFileName ?? string.Empty,
+            [nameof(ReportSequenceNo)] = ReportSequenceNo?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty
         };
     }
 
@@ -124,7 +137,12 @@ internal sealed record CenterProductReportTaskState(
             // 旧报表的隐藏任务页没有这两个键，Get 返回空串即留空标签；
             // 设备端下一次上报（含完工更新）会补齐真值，不做一次性迁移。
             Get(values, nameof(OperatorName)),
-            Get(values, nameof(ProgramName)));
+            Get(values, nameof(ProgramName)))
+        {
+            DeviceId = Get(values, nameof(DeviceId)),
+            ReportFileName = values.TryGetValue(nameof(ReportFileName), out var fileName) && fileName.Length > 0 ? fileName : null,
+            ReportSequenceNo = int.TryParse(Get(values, nameof(ReportSequenceNo)), out var sequence) ? sequence : null
+        };
     }
 
     private static string Get(IReadOnlyDictionary<string, string> values, string key)
