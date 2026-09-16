@@ -33,6 +33,7 @@ public partial class AddressManageView : BaseView
     private readonly IPlcRecipeNameConfigService _plcRecipeNameConfigService;
     private readonly IPlcRecipeNameReaderService _plcRecipeNameReaderService;
     private readonly IAppSettingsService _appSettingsService;
+    private readonly StationDisplayBinding _stationDisplay;
     private readonly IProductProcessConfigService _productProcessConfigService;
     private readonly ITestSchemeConfigService _testSchemeConfigService;
     private readonly IProgramManageService _programManageService;
@@ -132,6 +133,7 @@ public partial class AddressManageView : BaseView
         ConfigureContextMenus();
         ConfigureSchemeDetailRoleGrid();
         WireEvents();
+        _stationDisplay = new StationDisplayBinding(this, appSettingsService, localizer, RefreshStationDisplayTexts);
     }
 
     protected override async void OnLoad(EventArgs e)
@@ -457,9 +459,9 @@ public partial class AddressManageView : BaseView
     /// <param name="readOnly"></param>
     /// <param name="displayFormat"></param>
     /// <returns></returns>
-    private static AntdUI.Column CreateRawColumn(string key, string title, bool readOnly = false, string? displayFormat = null)
+    private AntdUI.Column CreateRawColumn(string key, string title, bool readOnly = false, string? displayFormat = null)
     {
-        return new AntdUI.Column(key, title)
+        var column = new AntdUI.Column(key, title)
         {
             Align = GetColumnAlign(key),
             ReadOnly = readOnly,
@@ -467,6 +469,9 @@ public partial class AddressManageView : BaseView
             Ellipsis = true,
             DisplayFormat = displayFormat
         };
+        if (key == nameof(PlcAddressTableRow.StationNo))
+            column.Render = (value, _, _) => _stationDisplay?.FormatValue(value, true) ?? value?.ToString() ?? string.Empty;
+        return column;
     }
 
     /// <summary>
@@ -685,6 +690,15 @@ public partial class AddressManageView : BaseView
         {
             table.SetSelected(row, true);
         }
+    }
+
+    private void RefreshStationDisplayTexts()
+    {
+        tableAddresses.Refresh();
+        tableRecipeNames.Refresh();
+        tableRecipeNamePreview.Refresh();
+        tableProcess.Refresh();
+        UpdateProductProcessSummary();
     }
 
     private void ApplyLocalizedTexts()
@@ -938,13 +952,13 @@ public partial class AddressManageView : BaseView
 
         var schemeItemCount = ResolveSchemeItems(config.SchemeId).Count;
         var touchCount = ResolveMaxProgramTouchCount(config.ProductNum);
-        var stationText = config.StationNo == ProductionConstants.Stations.SharedStationNo
-            ? "共享工位"
-            : $"工位 {config.StationNo}";
+        var stationText = _stationDisplay.Format(config.StationNo,
+            config.StationNo == ProductionConstants.Stations.SharedStationNo ? "共享工位" : $"工位 {config.StationNo}", true);
 
         lblProductProcessSummary.Text = touchCount.HasValue
             ? $"当前绑定：产品 {config.ProductNum} / {stationText} / 方案 {config.SchemeId} / 有效程序最大焊点数 {touchCount} / 每焊点 {schemeItemCount} 个测试项。"
             : $"当前绑定：产品 {config.ProductNum} / {stationText} / 方案 {config.SchemeId} / 尚无配置有效焊点数量的程序，地址预览仅展开第 1 点模板。";
+        _stationDisplay.SetToolTip(lblProductProcessSummary, lblProductProcessSummary.Text);
     }
 
     private void ApplyAddressFilter(string? keyword)
@@ -959,6 +973,7 @@ public partial class AddressManageView : BaseView
             .Where(address => string.IsNullOrWhiteSpace(_addressKeyword)
                 || Contains(address.LogicalKey, _addressKeyword)
                 || Contains(address.StationNo.ToString(), _addressKeyword)
+                || Contains(_stationDisplay?.FormatTable(address.StationNo, address.StationNo.ToString(), true), _addressKeyword)
                 || Contains(GetAddressDisplayName(address), _addressKeyword)
                 || Contains(address.Address, _addressKeyword)
                 || Contains(address.DataType, _addressKeyword)
@@ -1010,6 +1025,7 @@ public partial class AddressManageView : BaseView
                 || Contains(config.ProductNum, _productProcessKeyword)
                 || Contains(config.SchemeId, _productProcessKeyword)
                 || Contains(config.StationNo.ToString(), _productProcessKeyword)
+                || Contains(_stationDisplay?.FormatTable(config.StationNo, config.StationNo.ToString(), true), _productProcessKeyword)
                 || Contains(config.ProductBase, _productProcessKeyword)
                 || Contains(config.TouchBase, _productProcessKeyword)
                 || Contains(config.TouchNoBase, _productProcessKeyword)
@@ -1942,7 +1958,7 @@ public partial class AddressManageView : BaseView
         UpdateProductProcessSummary();
 
         var rows = BuildProductProcessAddressPreviewRows(row.Source);
-        using var form = new AddressPreviewForm(rows, _plcExpressionReadService, _localizer, _plcWriteDebugLauncher);
+        using var form = new AddressPreviewForm(rows, _plcExpressionReadService, _localizer, _plcWriteDebugLauncher, _appSettingsService);
         form.ShowDialog(this);
     }
 
@@ -2072,6 +2088,7 @@ public partial class AddressManageView : BaseView
         var binding = ResolveProductProcessPreviewBinding(baseAddress, contextOffset, expression);
         rows.Add(new PlcAddressPreviewRow
         {
+            StationNo = identity.StationNo,
             Station = identity.StationText,
             ProductNum = identity.ProductNum,
             ProductModel = identity.ProductModel,

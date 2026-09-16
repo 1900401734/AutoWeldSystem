@@ -6,7 +6,7 @@ public sealed class WeldParameterRow
 {
     public int StationNo { get; init; }
 
-    public string Station { get; init; } = string.Empty;
+    public string Station { get; set; } = string.Empty;
 
     public string ProductNo { get; set; } = string.Empty;
 

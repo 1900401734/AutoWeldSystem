@@ -21,6 +21,7 @@ public partial class AddressPreviewForm : BaseWindow
     private readonly IReadOnlyList<PlcAddressPreviewRow> _rows;
     private readonly IPlcExpressionReadService _plcExpressionReadService;
     private readonly ILocalizationService _localizer;
+    private readonly StationDisplayBinding? _stationDisplay;
     private readonly PlcWriteDebugLauncher _plcWriteDebugLauncher;
     private readonly System.Windows.Forms.ContextMenuStrip _previewContextMenu = new();
     private ToolStripMenuItem? _previewReadMenuItem;
@@ -35,7 +36,8 @@ public partial class AddressPreviewForm : BaseWindow
         IReadOnlyList<PlcAddressPreviewRow> rows,
         IPlcExpressionReadService plcExpressionReadService,
         ILocalizationService localizer,
-        PlcWriteDebugLauncher plcWriteDebugLauncher)
+        PlcWriteDebugLauncher plcWriteDebugLauncher,
+        IAppSettingsService? appSettingsService = null)
     {
         InitializeComponent();
 
@@ -44,6 +46,15 @@ public partial class AddressPreviewForm : BaseWindow
         _localizer = localizer;
         _plcWriteDebugLauncher = plcWriteDebugLauncher;
         ConfigureTable();
+        if (appSettingsService is not null)
+            _stationDisplay = new StationDisplayBinding(this, appSettingsService, localizer, () => tableAddressPreview.Refresh());
+        foreach (var column in tableAddressPreview.Columns)
+        {
+            if (column.Key == nameof(PlcAddressPreviewRow.Station))
+                column.Render = (value, record, _) => record is PlcAddressPreviewRow row
+                    ? _stationDisplay?.FormatTable(row.StationNo, row.Station, true) ?? row.Station
+                    : value?.ToString() ?? string.Empty;
+        }
         ConfigureContextMenu();
         BindRows();
 
@@ -239,9 +250,10 @@ public partial class AddressPreviewForm : BaseWindow
     /// <summary>
     /// 搜索范围覆盖预览表的主要可见列，便于按地址、字段、产品或焊点快速定位。
     /// </summary>
-    private static bool IsMatched(PlcAddressPreviewRow row, string keyword)
+    private bool IsMatched(PlcAddressPreviewRow row, string keyword)
     {
         return Contains(row.Station, keyword)
+            || Contains(_stationDisplay?.FormatTable(row.StationNo, row.Station, true), keyword)
             || Contains(row.ProductNum, keyword)
             || Contains(row.ProductModel, keyword)
             || Contains(row.Category, keyword)

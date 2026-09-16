@@ -6,6 +6,9 @@ namespace AutoWeldSystem.Core.ViewModels;
 /// </summary>
 public sealed class PlcAddressPreviewRow
 {
+    // 保留数值身份，预览窗口可独立更新显示名而不从文案反解析 PLC 工位。
+    public int StationNo { get; init; }
+
     public string Station { get; init; } = string.Empty;
 
     public string ProductNum { get; init; } = string.Empty;
@@ -56,6 +59,7 @@ public sealed class PlcAddressPreviewRow
     {
         return new PlcAddressPreviewRow
         {
+            StationNo = stationNo,
             Station = $"工位{stationNo}",
             Category = "提示",
             ValueRole = message

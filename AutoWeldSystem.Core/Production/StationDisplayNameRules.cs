@@ -1,4 +1,6 @@
 using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.Entities;
+using AutoWeldSystem.Core.Interfaces;
 
 namespace AutoWeldSystem.Core.Production;
 
@@ -9,6 +11,85 @@ public static class StationDisplayNameRules
 {
     public const string DefaultStation1DisplayName = "左";
     public const string DefaultStation2DisplayName = "右";
+
+    /// <summary>
+    /// 只格式化展示文案；单工位、共享或未知编号沿用调用方的既有文本，不改变工位身份。
+    /// </summary>
+    public static string FormatForDisplay(
+        AppSettings settings,
+        int stationNo,
+        ILocalizationService localizer,
+        string fallbackText,
+        bool includePhysicalNumber = false)
+        => FormatCore(settings, stationNo, localizer, fallbackText, includePhysicalNumber, appendStationSuffix: true);
+
+    /// <summary>
+    /// 表格列头已说明“工位”，单元格保留保存的名称，不补充或删除用户填写的后缀。
+    /// </summary>
+    public static string FormatForTable(
+        AppSettings settings,
+        int stationNo,
+        ILocalizationService localizer,
+        string fallbackText,
+        bool includePhysicalNumber = false)
+        => FormatCore(settings, stationNo, localizer, fallbackText, includePhysicalNumber, appendStationSuffix: false);
+
+    private static string FormatCore(
+        AppSettings settings,
+        int stationNo,
+        ILocalizationService localizer,
+        string fallbackText,
+        bool includePhysicalNumber,
+        bool appendStationSuffix)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(localizer);
+        if (!settings.EnableDualStation || stationNo is not (1 or 2))
+            return fallbackText;
+
+        var names = NormalizeForLoad(true, settings.Station1DisplayName, settings.Station2DisplayName);
+        var name = stationNo == 2 ? names.Station2 : names.Station1;
+        var label = !appendStationSuffix || name.EndsWith("工位", StringComparison.Ordinal)
+            || name.EndsWith(" Station", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(name, "Station", StringComparison.OrdinalIgnoreCase)
+            ? name
+            : localizer.GetString(TextKeys.Common.StationNameFormat, name);
+        return includePhysicalNumber
+            ? localizer.GetString(TextKeys.Common.StationWithNumberFormat, label,
+                localizer.GetString(TextKeys.Common.StationNumberFormat, stationNo))
+            : label;
+    }
+
+    /// <summary>
+    /// 仅替换已知工位的业务摘要前缀；不扫描任意正文，也不修改日志、JSON 或外部返回原文。
+    /// </summary>
+    public static string FormatKnownMessage(
+        AppSettings settings,
+        int stationNo,
+        ILocalizationService localizer,
+        string message)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(localizer);
+        if (!settings.EnableDualStation || stationNo is not (1 or 2) || string.IsNullOrEmpty(message))
+            return message;
+
+        foreach (var prefix in new[] { $"工位{stationNo}", $"工位 {stationNo}", $"Station {stationNo}", $"Station{stationNo}" })
+        {
+            if (message.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                && (message.Length == prefix.Length || !char.IsDigit(message[prefix.Length])))
+            {
+                var remainder = message[prefix.Length..];
+                if (remainder.StartsWith("配方名称=", StringComparison.Ordinal)
+                    || remainder.StartsWith("配方名称\"", StringComparison.Ordinal)
+                    || remainder.StartsWith("=", StringComparison.Ordinal)
+                    || remainder.StartsWith("\"", StringComparison.Ordinal))
+                    return message;
+                return FormatForDisplay(settings, stationNo, localizer, prefix) + remainder;
+            }
+        }
+        return message;
+    }
 
     /// <summary>
     /// 加载历史配置时为新增列的空值回填默认名称。

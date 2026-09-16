@@ -1282,6 +1282,7 @@
             lblStation1DisplayName.Dock = DockStyle.Fill;
             lblStation1DisplayName.Location = new Point(0, 0);
             lblStation1DisplayName.Margin = new Padding(0);
+            lblStation1DisplayName.MaximumSize = new Size(140, 0);
             lblStation1DisplayName.Name = "lblStation1DisplayName";
             lblStation1DisplayName.Padding = new Padding(6, 0, 0, 0);
             lblStation1DisplayName.Size = new Size(117, 39);
@@ -1303,6 +1304,7 @@
             lblStation2DisplayName.Dock = DockStyle.Fill;
             lblStation2DisplayName.Location = new Point(204, 0);
             lblStation2DisplayName.Margin = new Padding(0);
+            lblStation2DisplayName.MaximumSize = new Size(140, 0);
             lblStation2DisplayName.Name = "lblStation2DisplayName";
             lblStation2DisplayName.Padding = new Padding(6, 0, 0, 0);
             lblStation2DisplayName.Size = new Size(117, 39);

@@ -1,4 +1,7 @@
 using AutoWeldSystem.Core.Entities;
+using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.Interfaces;
+using AutoWeldSystem.UI.Infrastructure;
 using AutoWeldSystem.Core.DTOs.Mes.Response;
 using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.UI.Base;
@@ -22,12 +25,16 @@ public partial class ProgramContentReviewForm : BaseWindow
     private readonly string _touchCountLabel;
     private readonly string? _deviceType;
     private readonly string _originalContent;
+    private readonly StationDisplayBinding? _stationDisplay;
+    private readonly ILocalizationService? _localizer;
 
     public ProgramContentReviewForm(
         ProgramDataRes program,
         IReadOnlyList<DimTestItem> dictionaryItems,
         bool enableDualStation = false,
-        string? processParameterDeviceType = null)
+        string? processParameterDeviceType = null,
+        IAppSettingsService? appSettingsService = null,
+        ILocalizationService? localizer = null)
     {
         ArgumentNullException.ThrowIfNull(program);
         ArgumentNullException.ThrowIfNull(dictionaryItems);
@@ -46,6 +53,10 @@ public partial class ProgramContentReviewForm : BaseWindow
 
         InitializeComponent();
         ConfigureGrid();
+        _localizer = localizer;
+        if (appSettingsService is not null && localizer is not null)
+            _stationDisplay = new StationDisplayBinding(this, appSettingsService, localizer,
+                () => BindRecipeNames(_stationDisplay?.UsesMapping ?? enableDualStation));
         BindRecipeNames(enableDualStation);
         BindRows(dictionaryItems);
         btnApply.Enabled = _touchCount.HasValue;
@@ -62,24 +73,37 @@ public partial class ProgramContentReviewForm : BaseWindow
     /// </summary>
     private void BindRecipeNames(bool enableDualStation)
     {
-        const string notSpecified = "未指定";
+        var notSpecified = _localizer?.GetString(TextKeys.ProgramManage.RecipeNotSpecified) ?? "未指定";
         var lines = new List<string>
         {
-            $"工位1配方名称：{(string.IsNullOrWhiteSpace(_station1RecipeName) ? notSpecified : _station1RecipeName)}"
+            $"{GetRecipeCaption(1)}：{(string.IsNullOrWhiteSpace(_station1RecipeName) ? notSpecified : _station1RecipeName)}"
         };
 
         if (enableDualStation || !string.IsNullOrWhiteSpace(_station2RecipeName))
         {
-            lines.Add($"工位2配方名称：{(string.IsNullOrWhiteSpace(_station2RecipeName) ? notSpecified : _station2RecipeName)}");
+            lines.Add($"{GetRecipeCaption(2)}：{(string.IsNullOrWhiteSpace(_station2RecipeName) ? notSpecified : _station2RecipeName)}");
         }
 
+        var countLabel = _localizer?.GetString(
+            string.Equals(_deviceType, ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck, StringComparison.OrdinalIgnoreCase)
+                ? TextKeys.ProgramManage.LabelFaceCount : TextKeys.ProgramManage.LabelTouchCount) ?? _touchCountLabel;
+        var missingCount = _localizer?.GetString(TextKeys.ProgramManage.ReviewCountMissing) ?? "未配置（请先在程序管理中补齐）";
         lines.Add(_touchCount.HasValue
-            ? $"{_touchCountLabel}：{_touchCount.Value}"
-            : $"{_touchCountLabel}：未配置（请先在程序管理中补齐）");
+            ? $"{countLabel}：{_touchCount.Value}"
+            : $"{countLabel}：{missingCount}");
 
         lblRecipeNamesSection.Text = string.Join(Environment.NewLine, lines);
-        lblRecipeNamesSection.AutoSize = true;
+        _stationDisplay?.SetToolTip(lblRecipeNamesSection, lblRecipeNamesSection.Text);
         lblRecipeNamesSection.Visible = true;
+    }
+
+    private string GetRecipeCaption(int stationNo)
+    {
+        if (_stationDisplay is { UsesMapping: true } && _localizer is not null)
+            return _localizer.GetString(TextKeys.ProgramManage.LabelStationRecipe,
+                _stationDisplay.Format(stationNo, $"工位{stationNo}"));
+        return _localizer?.GetString(stationNo == 2 ? TextKeys.ProgramManage.LabelStation2Recipe : TextKeys.ProgramManage.LabelStation1Recipe)
+            ?? $"工位{stationNo}配方名称";
     }
 
     private void ConfigureGrid()

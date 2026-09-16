@@ -675,6 +675,7 @@
             // 
             // lblRecipeCode1
             // 
+            lblRecipeCode1.AutoEllipsis = true;
             lblRecipeCode1.Dock = DockStyle.Fill;
             lblRecipeCode1.Location = new Point(0, 0);
             lblRecipeCode1.Margin = new Padding(0);
@@ -717,6 +718,7 @@
             // 
             // lblRecipeCode2
             // 
+            lblRecipeCode2.AutoEllipsis = true;
             lblRecipeCode2.Dock = DockStyle.Fill;
             lblRecipeCode2.Location = new Point(0, 0);
             lblRecipeCode2.Margin = new Padding(0);

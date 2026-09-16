@@ -2634,4 +2634,20 @@ This also removes {3} collection record(s) and {4} report file(s) including the 
   <data name="log.field.app_version" xml:space="preserve"><value>App version</value></data>
   <data name="log.field.detail" xml:space="preserve"><value>Detail</value></data>
   <data name="log.field.inner_exception" xml:space="preserve"><value>Inner exception</value></data>
+  <data name="common.station.name_format" xml:space="preserve">
+    <value>{0} Station</value>
+  </data>
+  <data name="common.station.number_format" xml:space="preserve">
+    <value>Station {0}</value>
+  </data>
+  <data name="common.station.with_number_format" xml:space="preserve">
+    <value>{0} ({1})</value>
+  </data>
+  <data name="program.label.station_recipe" xml:space="preserve">
+    <value>{0} Recipe Name</value>
+  </data>
+  <data name="common.extended_monitor_title" xml:space="preserve"><value>Extended Production Monitor</value></data>
+  <data name="common.extended_dashboard_title" xml:space="preserve"><value>Extended Production Dashboard</value></data>
+  <data name="program.recipe.not_specified" xml:space="preserve"><value>Not specified</value></data>
+  <data name="program.review.count_missing" xml:space="preserve"><value>Not configured (complete it in Program Management first)</value></data>
 </root>

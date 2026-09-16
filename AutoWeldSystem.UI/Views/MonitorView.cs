@@ -109,6 +109,8 @@ public partial class MonitorView : BaseView
     private readonly IProgramExceptionLogService _exceptionLogService;
     private readonly IProductionFlowLogService _productionLogService;
     private readonly IRuntimeTipStateService _runtimeTipStateService;
+    private readonly StationDisplayBinding _stationDisplay;
+    private readonly Dictionary<int, string> _displayedStationResults = new();
 
     #endregion
 
@@ -358,6 +360,7 @@ public partial class MonitorView : BaseView
         _exceptionLogService = exceptionLogService;
         _productionLogService = productionLogService;
         _runtimeTipStateService = runtimeTipStateService;
+        _stationDisplay = new StationDisplayBinding(this, settingsService, localizer, RefreshStationDisplayTexts);
 
         GetVersion();
         ConfigureRuntimeMessagePanels();
@@ -373,6 +376,7 @@ public partial class MonitorView : BaseView
         BindProductionRuntimeState();
         RefreshRuntimePanels();
         ApplyAllStationStatuses();
+        RefreshStationDisplayTexts();
         ApplyMesStatus(_mesConnectionMonitorService.Current);
         QueueRefreshSchemePreview(force: true);
         AdjustTitleFontSize();
@@ -406,6 +410,8 @@ public partial class MonitorView : BaseView
     }
 
     public int ViewStationNo => CurrentStationNo;
+
+    public event EventHandler? ViewStationChanged;
 
     /// <summary>
     /// 应用运行时设置变更，并刷新当前监控界面状态。
@@ -647,7 +653,29 @@ public partial class MonitorView : BaseView
     /// <returns>处理后的文本。</returns>
     private string FormatStationName(int stationNo)
     {
-        return $"{_localizer.GetString(TextKeys.Monitor.Label.Station)} {stationNo}";
+        var fallback = $"{_localizer.GetString(TextKeys.Monitor.Label.Station)} {stationNo}";
+        return _stationDisplay?.Format(stationNo, fallback) ?? fallback;
+    }
+
+    private void RefreshStationDisplayTexts()
+    {
+        // 只改标题，不重建页签或切换项，避免名称刷新触发工位选择和业务重载。
+        tabsPreview1.Text = _stationDisplay.Format(1, _localizer.GetString(TextKeys.Common.StationNumberFormat, 1));
+        tabsPreview2.Text = _stationDisplay.Format(2, _localizer.GetString(TextKeys.Common.StationNumberFormat, 2));
+        tabsMetrics1.Text = tabsPreview1.Text;
+        tabsMetrics2.Text = tabsPreview2.Text;
+        for (var i = 0; i < segmentedStationSwitch.Items.Count && i < 2; i++)
+            segmentedStationSwitch.Items[i].Text = FormatStationName(i + 1);
+        segmentedStationSwitch.Invalidate();
+        tooltipComponent.SetTip(segmentedStationSwitch, $"{FormatStationName(1)} / {FormatStationName(2)}");
+        tooltipComponent.SetTip(tabsPreview, $"{tabsPreview1.Text} / {tabsPreview2.Text}");
+        tooltipComponent.SetTip(tabsMetrics, $"{tabsMetrics1.Text} / {tabsMetrics2.Text}");
+        for (var stationNo = 1; stationNo <= 2; stationNo++)
+            ApplyProductResultToGroup(stationNo, _displayedStationResults.GetValueOrDefault(stationNo, ProductionConstants.TestResults.NotAvailable));
+        foreach (var row in _weldParameterRows)
+            row.Station = _stationDisplay.FormatTable(row.StationNo, $"工位{row.StationNo}");
+        RefreshRuntimePanels();
+        RefreshPlcStatusToolTip();
     }
 
     private int CurrentStationNo => NormalizeStationNo(_viewStationNo);
@@ -817,6 +845,8 @@ public partial class MonitorView : BaseView
 
 
         LeftTopLayout.SizeChanged += TitleLayout_Changed;
+        tagResult1.SizeChanged += StationResult_SizeChanged;
+        tagResult2.SizeChanged += StationResult_SizeChanged;
         lblTitle.SizeChanged += TitleLayout_Changed;
         lblTitle.TextChanged += TitleLayout_Changed;
         tagPLC.MouseEnter += TagPLC_MouseEnter;
@@ -930,7 +960,9 @@ public partial class MonitorView : BaseView
                 detail,
                 _testSchemeConfigService.GetItems(),
                 _currentSettings.EnableDualStation,
-                _currentSettings.ProcessParameterDeviceType);
+                _currentSettings.ProcessParameterDeviceType,
+                _settingsService,
+                _localizer);
             if (form.ShowDialog(this) != DialogResult.OK)
             {
                 // 取消则保留下载的默认内容，不做任何修改。
@@ -1772,14 +1804,14 @@ public partial class MonitorView : BaseView
     protected override void OnLanguageChanged()
     {
         ApplyLocalizedTexts();
-        ConfigureDeviceMode();
-        BindProductionRuntimeState();
+        // 切语言只更新展示，不能重绑工单/程序或触发 PLC 调和、配方读取。
+        RefreshStationDisplayTexts();
         ConfigureProductionTableColumns();
         ConfigureWeldParameterTableColumns();
-        RefreshRuntimePanels();
-        ApplyAllStationStatuses();
-        ApplyMesStatus(_mesConnectionMonitorService.Current);
-        QueueRefreshSchemePreview(force: true);
+        ApplyTaskStatusTag(GetCurrentStationState());
+        ApplyReportButtonState();
+        tagMes.Text = $"MES\r\n{_localizer.GetString(GetMesStateKey(_mesConnectionMonitorService.Current))}";
+        tagPLC.Text = $"PLC\r\n{GetLocalizedPlcStateText(_plcCommunicationService.GetCurrent(CurrentStationNo).State)}";
         AdjustTitleFontSize();
     }
 
@@ -3472,7 +3504,7 @@ public partial class MonitorView : BaseView
         builder.AppendLine(_localizer.GetString(TextKeys.Monitor.PlcToolTip.Title));
         builder.AppendLine(_localizer.GetString(
             TextKeys.Monitor.PlcToolTip.Station,
-            NormalizeStatusStationNo(snapshot.StationNo)));
+            _stationDisplay.Format(NormalizeStatusStationNo(snapshot.StationNo), NormalizeStatusStationNo(snapshot.StationNo).ToString())));
         builder.AppendLine(_localizer.GetString(
             TextKeys.Monitor.PlcToolTip.CurrentState,
             GetLocalizedPlcStateText(snapshot.State)));
@@ -4173,6 +4205,7 @@ public partial class MonitorView : BaseView
         _offlineInputModeActive = false;
             ClearOfflineProgramSelectionByUser(normalizedStationNo);
             _viewStationNo = normalizedStationNo;
+            ViewStationChanged?.Invoke(this, EventArgs.Empty);
             ClearPendingOnlineProgramSelection();
             _offlineWorkOrderEditedByUser = false;
             _manualWorkOrderEditedByUser = false;
@@ -5296,12 +5329,6 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         lblProcessName.Text = _localizer.GetString(TextKeys.Monitor.Label.ProcessName);
 
 
-        lblLiveProductNo1.Text = "产品编号：--";
-        lblLiveProductNo2.Text = "产品编号：--";
-        tagResult1.Text = "工位1--";
-        tagResult2.Text = "工位2--";
-        lblLiveTouchNo1.Text = "焊点：--";
-        lblLiveTouchNo2.Text = "焊点：--";
 
         btnOnlineReport.Text = _localizer.GetString(TextKeys.Monitor.Button.StartReport);
         btnLocalWorkOrder.Text = _localizer.GetString(TextKeys.Monitor.Button.LocalWorkOrder);
@@ -5314,8 +5341,6 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         dgvPreview1.Text = "实时测试结果";
         dgvPreview2.Text = "实时测试结果";
 
-        ApplyProductResultToGroup(ProductionConstants.Stations.DefaultStationNo, ProductionConstants.TestResults.NotAvailable);
-        ApplyProductResultToGroup(2, ProductionConstants.TestResults.NotAvailable);
         RefreshRuntimePanels();
     }
 
@@ -8389,11 +8414,29 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         return changed;
     }
 
+    private void StationResult_SizeChanged(object? sender, EventArgs e)
+    {
+        var stationNo = ReferenceEquals(sender, tagResult2) ? 2 : 1;
+        ApplyProductResultToGroup(stationNo, _displayedStationResults.GetValueOrDefault(stationNo));
+    }
+
     private void ApplyProductResultToGroup(int stationNo, string? productResult)
     {
         var tag = stationNo == 2 ? tagResult2 : tagResult1;
         var resultText = FormatLiveSummaryValue(productResult);
-        tag.Text = $"工位{stationNo}{resultText}";
+        _displayedStationResults[stationNo] = resultText;
+        var stationLabel = _stationDisplay?.Format(stationNo, $"工位{stationNo}") ?? $"工位{stationNo}";
+        tooltipComponent.SetTip(tag, $"{stationLabel}{resultText}");
+        tag.AccessibleName = $"{stationLabel}{resultText}";
+        // 只缩略工位名称，为 OK/NG 等结果保留空间；完整名称始终可通过提示读取。
+        var availableWidth = Math.Max(0, tag.ClientSize.Width - (int)(24 * tag.DeviceDpi / 96F));
+        var elements = StringInfo.ParseCombiningCharacters(stationLabel);
+        var caption = stationLabel;
+        for (var count = elements.Length - 1;
+            count >= 0 && TextRenderer.MeasureText($"{caption}{resultText}", tag.Font).Width > availableWidth;
+            count--)
+            caption = stationLabel[..elements[count]] + "…";
+        tag.Text = $"{caption}{resultText}";
         tag.ForeColor = Color.White;
         tag.BackColor = ResolveStationResultColor(resultText);
     }
@@ -8531,12 +8574,12 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// </summary>
     /// <param name="row">表格行数据。</param>
     /// <returns>解析到的对象；不存在时返回 null。</returns>
-    private static WeldParameterRow ToWeldParameterRow(ProductRealtimePreviewRow row)
+    private WeldParameterRow ToWeldParameterRow(ProductRealtimePreviewRow row)
     {
         return new WeldParameterRow
         {
             StationNo = row.StationNo,
-            Station = row.Station,
+            Station = _stationDisplay.FormatTable(row.StationNo, row.Station),
             ProductNo = row.ProductNo,
             ProductNum = row.ProductNum,
             ProductModel = row.ProductModel,
@@ -8927,7 +8970,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         return new WeldParameterRow
         {
             StationNo = identity.StationNo,
-            Station = $"工位{identity.StationNo}",
+            Station = _stationDisplay.FormatTable(identity.StationNo, $"工位{identity.StationNo}"),
             ProductNum = identity.ProductNum,
             ProductModel = identity.ProductModel,
             TouchIndex = touchNo,
@@ -9001,12 +9044,12 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// <param name="title">标题文本。</param>
     /// <param name="detail">详情。</param>
     /// <returns>解析到的对象；不存在时返回 null。</returns>
-    private static WeldParameterRow CreateInfoRow(ProductIdentity identity, string title, string detail)
+    private WeldParameterRow CreateInfoRow(ProductIdentity identity, string title, string detail)
     {
         return new WeldParameterRow
         {
             StationNo = identity.StationNo,
-            Station = $"工位{identity.StationNo}",
+            Station = _stationDisplay.FormatTable(identity.StationNo, $"工位{identity.StationNo}"),
             ProductNum = identity.ProductNum,
             ProductModel = identity.ProductModel,
             TouchNo = "-",
@@ -9073,7 +9116,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         return new WeldParameterRow
         {
             StationNo = record.StationNo,
-            Station = $"工位{record.StationNo}",
+            Station = _stationDisplay.FormatTable(record.StationNo, $"工位{record.StationNo}"),
             ProductNo = record.ProductNo,
             ProductNum = _currentProductIdentity?.ProductNum ?? GetCurrentStationState().ActiveTask?.ProductNum ?? string.Empty,
             ProductModel = _currentProductIdentity?.ProductModel ?? GetCurrentStationState().ActiveTask?.ProductModel ?? string.Empty,
@@ -10634,7 +10677,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         {
             _exceptionLogService.WriteBusiness(ex.SourceName, ex.Message, ex.Detail);
             ClearRuntimeStatus();
-            SetRuntimeErrorText(ex.Detail);
+            SetRuntimeErrorText(ex.Detail, ex.SourceName);
         }
         catch (Exception ex)
         {
@@ -11046,6 +11089,8 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         inputRunningStatus.Text = _runtimeStatusKey is null
             ? _runtimeStatusText ?? string.Empty
             : BuildLocalizedMessage(_runtimeStatusKey, _runtimeStatusArgs);
+        if (_runtimeStatusKey is not null)
+            inputRunningStatus.Text = _stationDisplay?.FormatMessage(CurrentStationNo, inputRunningStatus.Text) ?? inputRunningStatus.Text;
         ApplyRuntimeStatusTone();
     }
 
@@ -11070,6 +11115,11 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
                 : BuildLocalizedMessage(_runtimeErrorKey, _runtimeErrorArgs);
         }
 
+        // 原始异常、外部返回和协议详情不参与名称替换。
+        if (_runtimeErrorKey is not null)
+            inputErrorTips.Text = _stationDisplay?.FormatMessage(CurrentStationNo, inputErrorTips.Text) ?? inputErrorTips.Text;
+        else if (_runtimeErrorSource == "Task.Abandon")
+            inputErrorTips.Text = _stationDisplay?.FormatMessage(inputErrorTips.Text) ?? inputErrorTips.Text;
         ApplyRuntimeErrorTone(!string.IsNullOrWhiteSpace(inputErrorTips.Text));
     }
 

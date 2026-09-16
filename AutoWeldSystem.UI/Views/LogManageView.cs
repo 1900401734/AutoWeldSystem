@@ -44,6 +44,7 @@ public partial class LogManageView : BaseView
     private readonly IDeviceStatusService _deviceStatusService = null!;
     private readonly ICenterInteractionLogService _centerLogService = null!;
     private readonly ILocalizationService _localizer = null!;
+    private readonly StationDisplayBinding? _stationDisplay;
     private readonly BindingSource _mesBindingSource = new();
     private readonly BindingSource _productionBindingSource = new();
     private readonly BindingSource _exceptionBindingSource = new();
@@ -87,7 +88,8 @@ public partial class LogManageView : BaseView
         IDeviceLifecycleLogService deviceLifecycleLogService,
         IDeviceStatusService deviceStatusService,
         ICenterInteractionLogService centerLogService,
-        ILocalizationService localizer)
+        ILocalizationService localizer,
+        IAppSettingsService appSettingsService)
     {
         _mesLogService = mesLogService;
         _productionLogService = productionLogService;
@@ -106,6 +108,7 @@ public partial class LogManageView : BaseView
         ConfigureDeviceStatusGrid();
         ConfigureCenterGrid();
         WireEvents();
+        _stationDisplay = new StationDisplayBinding(this, appSettingsService, localizer, RefreshStationDisplayTexts);
     }
 
     protected override void OnLoad(EventArgs e)
@@ -745,8 +748,11 @@ public partial class LogManageView : BaseView
     private void ApplyProductionFilter()
     {
         var rows = _productionLogs
-            .Where(entry => IsProductionLogMatched(entry, _productionKeyword, _localizer))
-            .Select(entry => new ProductionLogRow(entry, _localizer, _showLogDate))
+            .Where(entry => IsProductionLogMatched(entry, _productionKeyword, _localizer)
+                || Contains(entry.StationNo.ToString(), _productionKeyword)
+                || Contains(_stationDisplay?.FormatTable(entry.StationNo, entry.StationNo.ToString()), _productionKeyword)
+                || Contains(_stationDisplay?.FormatMessage(entry.StationNo, FormatProductionSummary(entry, _localizer)), _productionKeyword))
+            .Select(entry => new ProductionLogRow(entry, _localizer, _showLogDate, _stationDisplay))
             .ToList();
 
         _productionBindingSource.DataSource = rows;
@@ -764,7 +770,8 @@ public partial class LogManageView : BaseView
     private void ApplyExceptionFilter()
     {
         var rows = _exceptionLogs
-            .Where(entry => IsExceptionLogMatched(entry, _exceptionKeyword))
+            .Where(entry => IsExceptionLogMatched(entry, _exceptionKeyword)
+                || Contains(GetDisplayExceptionMessage(entry), _exceptionKeyword))
             .Select(CreateExceptionLogRow)
             .ToList();
 
@@ -783,7 +790,8 @@ public partial class LogManageView : BaseView
     private void ApplyDeviceLifecycleFilter()
     {
         var rows = _deviceLifecycleLogs
-            .Where(entry => IsDeviceLifecycleLogMatched(entry, _deviceLifecycleKeyword))
+            .Where(entry => IsDeviceLifecycleLogMatched(entry, _deviceLifecycleKeyword)
+                || Contains(_stationDisplay?.FormatTable(entry.StationNo, entry.StationNo.ToString()), _deviceLifecycleKeyword))
             .Select(entry => new DeviceLifecycleLogRow(entry, _showLogDate))
             .ToList();
 
@@ -801,7 +809,8 @@ public partial class LogManageView : BaseView
     private void ApplyDeviceStatusFilter()
     {
         var rows = _deviceStatusLogs
-            .Where(entry => IsDeviceStatusLogMatched(entry, _deviceStatusKeyword))
+            .Where(entry => IsDeviceStatusLogMatched(entry, _deviceStatusKeyword)
+                || Contains(_stationDisplay?.FormatTable(entry.StationNo, entry.StationNo.ToString()), _deviceStatusKeyword))
             .Select(entry => new DeviceStatusLogRow(entry, _showLogDate))
             .ToList();
 
@@ -865,7 +874,26 @@ public partial class LogManageView : BaseView
     private ExceptionLogRow CreateExceptionLogRow(ProgramExceptionLogEntry entry)
     {
         return new ExceptionLogRow(entry, GetExceptionCategoryText(entry.Category), _showLogDate,
-            GetExceptionSeverityText(entry.Severity), GetExceptionMessage(entry));
+            GetExceptionSeverityText(entry.Severity), GetDisplayExceptionMessage(entry));
+    }
+
+    private string GetDisplayExceptionMessage(ProgramExceptionLogEntry entry)
+    {
+        var message = GetExceptionMessage(entry);
+        return IsBusinessException(entry) && entry.Source == "PLC.WeldCycleMonitor"
+            ? _stationDisplay?.FormatMessage(message) ?? message : message;
+    }
+
+    private void RefreshStationDisplayTexts()
+    {
+        var productionId = (dgvProductionLogs.CurrentRow?.DataBoundItem as ProductionLogRow)?.Entry.TraceId;
+        var exceptionId = (dgvExceptionLogs.CurrentRow?.DataBoundItem as ExceptionLogRow)?.Entry.TraceId;
+        ApplyProductionFilter();
+        ApplyExceptionFilter();
+        var productionIndex = _productionBindingSource.List.Cast<ProductionLogRow>().ToList().FindIndex(row => row.Entry.TraceId == productionId);
+        var exceptionIndex = _exceptionBindingSource.List.Cast<ExceptionLogRow>().ToList().FindIndex(row => row.Entry.TraceId == exceptionId);
+        if (productionIndex >= 0) _productionBindingSource.Position = productionIndex;
+        if (exceptionIndex >= 0) _exceptionBindingSource.Position = exceptionIndex;
     }
 
     private string GetExceptionSeverityText(string severity) => severity.ToLowerInvariant() switch
@@ -2013,11 +2041,13 @@ public partial class LogManageView : BaseView
 
     private sealed class ProductionLogRow
     {
-        public ProductionLogRow(ProductionFlowLogEntry entry, ILocalizationService localizer, bool showDate)
+        public ProductionLogRow(ProductionFlowLogEntry entry, ILocalizationService localizer, bool showDate, StationDisplayBinding? stationDisplay = null)
         {
             Entry = entry;
             OccurredTime = LogTimestampDisplayRules.Format(entry.OccurredTime, showDate);
-            Summary = FormatProductionSummary(entry, localizer);
+            Summary = stationDisplay?.FormatMessage(entry.StationNo, FormatProductionSummary(entry, localizer)) ?? FormatProductionSummary(entry, localizer);
+            Station = stationDisplay?.FormatTable(entry.StationNo, entry.StationNo <= 0 ? "-" : entry.StationNo.ToString())
+                ?? (entry.StationNo <= 0 ? "-" : entry.StationNo.ToString());
             PlcSignal = PlcBusinessSignalDisplayHelper.FormatSignalName(entry.PlcSignal, localizer);
         }
 
@@ -2029,7 +2059,7 @@ public partial class LogManageView : BaseView
 
         public string Summary { get; }
 
-        public string Station => Entry.StationNo <= 0 ? "-" : Entry.StationNo.ToString();
+        public string Station { get; }
 
         public string PlcSignal { get; }
     }

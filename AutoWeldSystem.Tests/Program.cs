@@ -140,6 +140,10 @@ var tests = new (string Name, Action Run)[]
     ("Scheme detail role names and monitor fallbacks are centralized", SchemeDetailRoleNamesAndMonitorFallbacksAreCentralized),
     ("Station display names have localized dual-station rules", StationDisplayNamesHaveLocalizedDualStationRules),
     ("Station display names load legacy defaults and collapse hidden row", StationDisplayNamesLoadLegacyDefaultsAndCollapseHiddenRow),
+    ("Station captions map business and technical labels without duplicate suffixes", StationCaptionsMapBusinessAndTechnicalLabels),
+    ("Station table labels use saved names and settings labels keep physical identity", StationTableLabelsUseSavedNames),
+    ("Station display mapping preserves numeric identity and recipe metadata", StationDisplayMappingPreservesIdentityAndMetadata),
+    ("Station message display changes only recognized business prefixes", StationMessageDisplayChangesOnlyKnownPrefixes),
     ("PLC expression rules support absolute test item addresses", PlcExpressionRulesSupportAbsoluteTestItemAddresses),
     ("PLC expression supports subtraction calculation", PlcExpressionSupportsSubtractionCalculation),
     ("Calculated expression subtracts before formatting", CalculatedExpressionSubtractsBeforeFormatting),
@@ -18214,6 +18218,134 @@ static void WaitUntil(Func<bool> condition, string message)
     }
 
     throw new InvalidOperationException(message);
+}
+
+static void StationCaptionsMapBusinessAndTechnicalLabels()
+{
+    var previousLanguage = GlobalContext.CurrentLanguage;
+    try
+    {
+        var localizer = new AutoWeldSystem.Services.LocalizationService(new FakeAppSettingsService
+        {
+            Current = new AppSettings { Language = AppConstants.Languages.Chinese }
+        });
+        var settings = new AppSettings { EnableDualStation = true };
+        AssertEqual("左工位", StationDisplayNameRules.FormatForDisplay(settings, 1, localizer, "工位1"), "业务标签使用映射且补足工位称呼。");
+        AssertEqual("右工位（工位2）", StationDisplayNameRules.FormatForDisplay(settings, 2, localizer, "2", true), "配置标签必须同时保留映射名与原始编号。");
+        settings.Station1DisplayName = " 装配A ";
+        settings.Station2DisplayName = "右工位";
+        AssertEqual("装配A工位", StationDisplayNameRules.FormatForDisplay(settings, 1, localizer, "1"), "显示名应去掉首尾空格，不翻译自定义文本。");
+        AssertEqual("右工位", StationDisplayNameRules.FormatForDisplay(settings, 2, localizer, "2"), "已有工位后缀不能重复追加。");
+        AssertEqual("共享工位", StationDisplayNameRules.FormatForDisplay(settings, 0, localizer, "共享工位", true), "共享编号不能错误映射到左工位。");
+        AssertEqual("工位3", StationDisplayNameRules.FormatForDisplay(settings, 3, localizer, "工位3"), "未知编号保留调用方原文。");
+        settings.EnableDualStation = false;
+        AssertEqual("1", StationDisplayNameRules.FormatForDisplay(settings, 1, localizer, "1", true), "单工位保持原有表格文本。");
+        settings.EnableDualStation = true;
+        settings.Station1DisplayName = "";
+        settings.Station2DisplayName = "";
+        AssertEqual("左工位", StationDisplayNameRules.FormatForDisplay(settings, 1, localizer, "1"), "旧配置空值沿用已存在的左右默认规则。");
+        var english = new AutoWeldSystem.Services.LocalizationService(new FakeAppSettingsService
+        {
+            Current = new AppSettings { Language = AppConstants.Languages.English }
+        });
+        settings.Station1DisplayName = "装配A";
+        AssertEqual("装配A Station", StationDisplayNameRules.FormatForDisplay(settings, 1, english, "1"), "英文界面也不能翻译自定义名称。");
+        settings.Station1DisplayName = "装配A工位";
+        AssertEqual("装配A工位", StationDisplayNameRules.FormatForDisplay(settings, 1, english, "1"), "英文界面保留名称已有的中文后缀。");
+        settings.Station1DisplayName = "Left";
+        settings.Station2DisplayName = "Right Station";
+        AssertEqual("Left Station (Station 1)", StationDisplayNameRules.FormatForDisplay(settings, 1, english, "1", true), "外围工位称呼与编号格式应支持英文资源。");
+        AssertEqual("Right Station", StationDisplayNameRules.FormatForDisplay(settings, 2, english, "2"), "英文工位后缀不能重复。");
+        AssertEqual("Left Station Recipe Name", english.GetString(TextKeys.ProgramManage.LabelStationRecipe,
+            StationDisplayNameRules.FormatForDisplay(settings, 1, english, "1")), "配方标题复用统一工位称呼。");
+    }
+    finally { GlobalContext.SetLanguage(previousLanguage); }
+}
+
+static void StationTableLabelsUseSavedNames()
+{
+    var previousLanguage = GlobalContext.CurrentLanguage;
+    try
+    {
+        var localizer = new AutoWeldSystem.Services.LocalizationService(new FakeAppSettingsService());
+        var settings = new AppSettings { EnableDualStation = true };
+        AssertEqual("左", StationDisplayNameRules.FormatForTable(settings, 1, localizer, "1"), "业务表格不追加工位后缀。");
+        AssertEqual("右（工位2）", StationDisplayNameRules.FormatForTable(settings, 2, localizer, "2", true), "配置表格保留内部编号但不追加后缀。");
+        AssertEqual("工位1显示名称", localizer.GetString(TextKeys.SystemSetting.LabelStation1DisplayName), "设置标签固定为内部工位1。");
+        AssertEqual("工位2显示名称", localizer.GetString(TextKeys.SystemSetting.LabelStation2DisplayName), "设置标签固定为内部工位2。");
+        settings.Station1DisplayName = " 装配A ";
+        settings.Station2DisplayName = "右工位";
+        AssertEqual("装配A", StationDisplayNameRules.FormatForTable(settings, 1, localizer, "1"), "表格沿用名称规范化规则。");
+        AssertEqual("右工位", StationDisplayNameRules.FormatForTable(settings, 2, localizer, "2"), "用户保存的后缀不能被删除。");
+        AssertEqual("共享工位", StationDisplayNameRules.FormatForTable(settings, 0, localizer, "共享工位", true), "共享工位沿用既有含义。");
+        AssertEqual("3", StationDisplayNameRules.FormatForTable(settings, 3, localizer, "3"), "未知编号保留原文。");
+        settings.EnableDualStation = false;
+        AssertEqual("1", StationDisplayNameRules.FormatForTable(settings, 1, localizer, "1", true), "单工位保持数值显示。");
+        settings.EnableDualStation = true;
+        settings.Station1DisplayName = "";
+        settings.Station2DisplayName = "";
+        AssertEqual("左", StationDisplayNameRules.FormatForTable(settings, 1, localizer, "1"), "历史空配置仍使用默认简称。");
+        var english = new AutoWeldSystem.Services.LocalizationService(new FakeAppSettingsService
+        {
+            Current = new AppSettings { Language = AppConstants.Languages.English }
+        });
+        AssertEqual("左 (Station 1)", StationDisplayNameRules.FormatForTable(settings, 1, english, "1", true), "英文配置表仅本地化编号外围文案。");
+        AssertEqual("左", StationDisplayNameRules.FormatForTable(settings, 1, english, "1"), "英文业务表不翻译名称或追加 Station。");
+        settings.Station2DisplayName = "Right Station";
+        AssertEqual("Right Station", StationDisplayNameRules.FormatForTable(settings, 2, english, "2"), "英文名称已有后缀也完整保留。");
+        AssertEqual("Station 1 display name", english.GetString(TextKeys.SystemSetting.LabelStation1DisplayName), "英文设置标签继续使用固定编号。");
+        AssertEqual("Station 2 display name", english.GetString(TextKeys.SystemSetting.LabelStation2DisplayName), "英文工位2设置标签继续使用固定编号。");
+    }
+    finally { GlobalContext.SetLanguage(previousLanguage); }
+}
+
+static void StationDisplayMappingPreservesIdentityAndMetadata()
+{
+    var previousLanguage = GlobalContext.CurrentLanguage;
+    try
+    {
+        var localizer = new AutoWeldSystem.Services.LocalizationService(new FakeAppSettingsService());
+        var settings = new AppSettings { EnableDualStation = true, Station1DisplayName = "右", Station2DisplayName = "左" };
+        var address = new BizPlcAddress { StationNo = 2, Address = "DB1.0" };
+        var preview = PlcAddressPreviewRow.Info(address.StationNo, "提示");
+        var task = new BizWeldTask { StationNo = 2, SN = "ORDER-2", ProgramContentSnapshot = "{\"焊点数量\":4,\"工位1配方名称\":\"RECIPE-A\",\"工位2配方名称\":\"RECIPE-B\"}" };
+        var before = JsonSerializer.Serialize(new { address, task });
+        var options = new[] { 1, 2 }.Select(id => new KeyValuePair<int, string>(id,
+            StationDisplayNameRules.FormatForDisplay(settings, id, localizer, id.ToString()))).ToArray();
+        AssertEqual("右工位", options[0].Value, "交换显示名后只改变工位1的文案。");
+        AssertEqual(2, options[1].Key, "显示为左工位的第二个选项仍须保存编号2。");
+        AssertEqual("左工位（工位2）", StationDisplayNameRules.FormatForDisplay(settings, preview.StationNo, localizer, preview.Station, true), "地址预览通过数值身份格式化，不能反解析显示名。");
+        AssertEqual("左", StationDisplayNameRules.FormatForTable(settings, preview.StationNo, localizer, preview.Station), "交换映射后表格使用编号2对应的名称，不反解析左右。");
+        AssertEqual("左（工位2）", StationDisplayNameRules.FormatForTable(settings, preview.StationNo, localizer, preview.Station, true), "配置表格的简称与编号保持相同归属。");
+        AssertEqual(before, JsonSerializer.Serialize(new { address, task }), "显示映射不得修改 PLC 地址归属、任务或程序快照。");
+        var recipes = ProgramContentJsonRules.ExtractRecipeNames(task.ProgramContentSnapshot);
+        AssertEqual("RECIPE-A", recipes.Station1RecipeName, "程序 JSON 必须继续读取固定的工位1配方键。");
+        AssertEqual("RECIPE-B", recipes.Station2RecipeName, "程序 JSON 必须继续读取固定的工位2配方键。");
+    }
+    finally { GlobalContext.SetLanguage(previousLanguage); }
+}
+
+static void StationMessageDisplayChangesOnlyKnownPrefixes()
+{
+    var previousLanguage = GlobalContext.CurrentLanguage;
+    try
+    {
+        var localizer = new AutoWeldSystem.Services.LocalizationService(new FakeAppSettingsService());
+        var settings = new AppSettings { EnableDualStation = true };
+        var entry = new ProductionFlowLogEntry { StationNo = 2, Summary = "工位2采集完成", Detail = "StationNo=2; 工位2配方名称=RECIPE-B" };
+        var original = JsonSerializer.Serialize(entry);
+        AssertEqual("右工位采集完成", StationDisplayNameRules.FormatKnownMessage(settings, entry.StationNo, localizer, entry.Summary), "已知工位的业务前缀应映射显示。");
+        foreach (var raw in new[] { "工位12采集完成", "前文提及工位2", "{\"工位2配方名称\":\"B\"}", "工位2配方名称=B", "Station 20 error", "Station2=PLC" })
+            AssertEqual(raw, StationDisplayNameRules.FormatKnownMessage(settings, 2, localizer, raw), "不得对任意原文、JSON 或其他工位编号做字符串替换。");
+        AssertEqual("工位1采集完成", StationDisplayNameRules.FormatKnownMessage(settings, 2, localizer, "工位1采集完成"), "不能把其他工位的消息错误归到当前工位。");
+        AssertEqual(original, JsonSerializer.Serialize(entry), "日志展示不得回写原始条目或技术详情。");
+        settings.EnableDualStation = false;
+        AssertEqual(entry.Summary, StationDisplayNameRules.FormatKnownMessage(settings, 2, localizer, entry.Summary), "切回单工位后恢复既有业务文案。");
+        settings.EnableDualStation = true;
+        settings.Station2DisplayName = "装配B";
+        AssertEqual("装配B工位采集完成", StationDisplayNameRules.FormatKnownMessage(settings, 2, localizer, entry.Summary), "重开双工位后按当前配置显示历史摘要，不修改原文。");
+    }
+    finally { GlobalContext.SetLanguage(previousLanguage); }
 }
 
 static void StationDisplayNamesHaveLocalizedDualStationRules()

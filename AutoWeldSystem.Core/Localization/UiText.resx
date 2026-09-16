@@ -2270,10 +2270,10 @@
     <value>已完工</value>
   </data>
   <data name="system.label.station1_display_name" xml:space="preserve">
-    <value>工位 1 显示名称</value>
+    <value>工位1显示名称</value>
   </data>
   <data name="system.label.station2_display_name" xml:space="preserve">
-    <value>工位 2 显示名称</value>
+    <value>工位2显示名称</value>
   </data>
   <data name="system.placeholder.station_display_name" xml:space="preserve">
     <value>请输入工位显示名称</value>
@@ -2635,4 +2635,20 @@
   <data name="log.field.app_version" xml:space="preserve"><value>程序版本</value></data>
   <data name="log.field.detail" xml:space="preserve"><value>详情</value></data>
   <data name="log.field.inner_exception" xml:space="preserve"><value>内部异常</value></data>
+  <data name="common.station.name_format" xml:space="preserve">
+    <value>{0}工位</value>
+  </data>
+  <data name="common.station.number_format" xml:space="preserve">
+    <value>工位{0}</value>
+  </data>
+  <data name="common.station.with_number_format" xml:space="preserve">
+    <value>{0}（{1}）</value>
+  </data>
+  <data name="program.label.station_recipe" xml:space="preserve">
+    <value>{0}配方名称</value>
+  </data>
+  <data name="common.extended_monitor_title" xml:space="preserve"><value>扩展屏生产监控</value></data>
+  <data name="common.extended_dashboard_title" xml:space="preserve"><value>扩展屏生产看板</value></data>
+  <data name="program.recipe.not_specified" xml:space="preserve"><value>未指定</value></data>
+  <data name="program.review.count_missing" xml:space="preserve"><value>未配置（请先在程序管理中补齐）</value></data>
 </root>
