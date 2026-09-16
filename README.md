@@ -1,6 +1,6 @@
 ﻿# AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v3.3.1`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v3.4.0`。
 
 各版本的行为变化记录在 [CHANGELOG.md](CHANGELOG.md)，也可用 `git tag -n99` 查看对应版本的发布说明。
 
@@ -251,6 +251,21 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 - 断线期间仅保留最新快照。恢复连接后，如果快照相对最后一次成功同步确有变化，会在心跳成功后补发一次；未变化时只恢复心跳，不重复发送设备状态。
 - 设备端和中心服务器统一使用三类消息：`heartbeat=心跳`、`telemetry=设备状态`、`product-report=产品数据`。心跳只维护在线时间，设备状态负责更新完整工位快照。
 
+## 中心报表文件归档
+
+自 `v3.4.0` 起，两端升级后的新任务保存为 `中心报表根目录\设备编号\开工日期\报表文件`，例如：
+
+```text
+EQ001\20260917\EQ001_FLOW001_OP10_BG_002.xlsx
+```
+
+- 文件名直接取设备端报表记录：`设备编号_流转卡号_工序号_BG_序号.xlsx`。序号由设备端分配，两端共用；最少三位，不固定为 001，也不在中心重新编号。正常设备编号目录不追加哈希，非法或 Windows 保留名称会安全映射。
+- 日期固定取该任务的开工日期（`yyyyMMdd`），不是产品完成或服务器接收日期。跨日生产、重测、试焊/删除标记更新、断网补传和完工都继续更新同一文件。
+- 本地报表在逐产品采集后增量生成；必要时先预留序号及文件名。预留记录路径为空，不作为已生成报告展示或上传，生成成功后才记录实际路径。预留失败通过中心持久队列重试；本地保存目录及 MES 上传顺序不变。
+- 先升级中心服务器，再升级设备端。产品协议新增可空 `ReportSequenceNo` 和 `ReportFileName`；设备端发送前会为旧队列补齐这两个字段，无需新增数据库字段。
+- 旧报表保留原文件名和位置；能以流转卡、工序及开工时间确认同一任务时继续原位补传，新任务不会混入旧报表。旧设备缺少新增字段时仍支持旧规则；迟到旧协议可定位已经生成的新归档。
+- 文件名非法、清洗后重名但任务身份不同、旧文件损坏或身份缺失时，保留原文件并在中心交互日志报告错误。请核对任务、设备端报表记录与服务器现有文件，勿直接删除历史报表以强制重建；本版本不批量迁移或自动合并历史文件。
+
 ## 生产报表与补传
 
 - “待上传数据 -> 过程参数”页签及工单总览中的过程参数状态只展示、统计目标为 MES 的过程参数；CentralServer 数据仍由其独立后台链路处理，不混入 MES 补传视图。
@@ -497,10 +512,10 @@ HAVING COUNT(*) > 1;
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>3.3.1</Version>
-<AssemblyVersion>3.3.1.0</AssemblyVersion>
-<FileVersion>3.3.1.0</FileVersion>
-<InformationalVersion>3.3.1</InformationalVersion>
+<Version>3.4.0</Version>
+<AssemblyVersion>3.4.0.0</AssemblyVersion>
+<FileVersion>3.4.0.0</FileVersion>
+<InformationalVersion>3.4.0</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -518,20 +533,20 @@ HAVING COUNT(*) > 1;
 # 2. 在 CHANGELOG.md 顶部新增该版本条目，写清行为变化和升级注意
 # 3. 合并到 main 后打带说明的 tag（-F 从文件读取多行说明）
 git checkout main
-git merge --no-ff develop -m "release: v3.3.1"
-git tag -a v3.3.1 -F tag-notes.txt
+git merge --no-ff develop -m "release: v3.4.0"
+git tag -a v3.4.0 -F tag-notes.txt
 git push origin main
-git push origin v3.3.1
+git push origin v3.4.0
 ```
 
-`tag-notes.txt` 为临时文件，内容取自该版本的 CHANGELOG 条目，打完 tag 即可删除。也可用 `git tag -a v3.3.1 -m "标题" -m "正文"` 直接写多段说明。
+`tag-notes.txt` 为临时文件，内容取自该版本的 CHANGELOG 条目，打完 tag 即可删除。也可用 `git tag -a v3.4.0 -m "标题" -m "正文"` 直接写多段说明。
 
 查看历史版本说明：
 
 ```powershell
 git tag -n99                # 列出全部 tag 及完整说明
-git tag -n99 v3.3.1        # 只看某个版本
-git show v3.3.1            # 看 tag 说明 + 指向的提交
+git tag -n99 v3.4.0        # 只看某个版本
+git show v3.4.0            # 看 tag 说明 + 指向的提交
 ```
 
 ## Git 使用

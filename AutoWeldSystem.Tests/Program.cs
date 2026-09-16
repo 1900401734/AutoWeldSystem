@@ -271,6 +271,13 @@ var tests = new (string Name, Action Run)[]
     ("Center dynamic report columns use ForwardEnable only", CenterDynamicReportColumnsUseForwardEnableOnly),
     ("Center product request uses PLC result and task timestamps", CenterProductRequestUsesPlcResultAndTaskTimestamps),
     ("Center product request resolves configured station name", CenterProductRequestResolvesConfiguredStationName),
+    ("Center archive uses equipment identity across midnight", CenterArchiveUsesEquipmentIdentityAcrossMidnight),
+    ("Center archive preserves legacy routes and separates new tasks", CenterArchivePreservesLegacyRoutes),
+    ("Center archive rejects unsafe names and identity collisions", CenterArchiveRejectsUnsafeNamesAndCollisions),
+    ("Center archive serializes mixed protocol writers", CenterArchiveSerializesMixedProtocolWriters),
+    ("Center forwarding fills persisted report identity", CenterForwardingFillsPersistedReportIdentity),
+    ("Center queue lookup scopes task without changing MES", CenterQueueLookupScopesTask),
+    ("Reserved reports are not generated file facts", ReservedReportsAreNotGeneratedFileFacts),
     ("Center report product then finish update keeps detail rows", CenterReportProductThenFinishUpdateKeepsDetailRows),
     ("Center report keeps fixed details without dynamic save fields", CenterReportKeepsFixedDetailsWithoutDynamicSaveFields),
     ("Center report renders single and dual station columns", CenterReportRendersSingleAndDualStationColumns),
@@ -7698,6 +7705,203 @@ static void CenterProductRequestResolvesConfiguredStationName()
 
     AssertEqual(string.Empty, ReadCenterRequestProperty<string>(singleStationRequest, "StationName"), "单工位请求不应要求或填充 StationName。");
     AssertEqual("右工位", ReadCenterRequestProperty<string>(dualStationRequest, "StationName"), "双工位请求必须携带规范化后的配置名称。");
+}
+
+static CenterProductReportRequest BuildArchiveRequest(int sequence = 2, string product = "P001")
+{
+    var request = BuildCenterWorkbookRequest("EQ001", "FLOW001", new DateTime(2026, 9, 17, 23, 50, 0),
+        null, 1, false, 1, string.Empty, product, false, false, 1);
+    request.ReportSequenceNo = sequence;
+    request.ReportFileName = $"EQ001_FLOW001_OP10_BG_{sequence:D3}.xlsx";
+    return request;
+}
+
+static void CenterArchiveUsesEquipmentIdentityAcrossMidnight()
+{
+    var root = CreateCenterReportFixtureDirectory();
+    try
+    {
+        var store = new CenterProductReportFileStore();
+        foreach (var sequence in new[] { 1, 2, 1000 })
+        {
+            var request = BuildArchiveRequest(sequence);
+            var path = store.Upsert(root, request);
+            AssertEqual(Path.Combine(root, "EQ001", "20260917", request.ReportFileName!), path, "归档必须使用设备端真实序号和开工日期。");
+            request.CompletedAt = request.StartTime.AddHours(1);
+            request.ProductNo = "P002";
+            request.StationNo = 2;
+            AssertEqual(path, store.Upsert(root, request), "跨日和工位变化不能改文件名。");
+            request.IsTaskFinishUpdate = true;
+            request.EndTime = request.StartTime.AddHours(2);
+            request.QualifiedQty = 8;
+            request.Points = [];
+            AssertEqual(path, store.Upsert(root, request), "空明细完工必须更新同一文件。");
+            request.IsTaskFinishUpdate = false;
+            request.EndTime = null;
+            request.QualifiedQty = 1;
+            request.ProductNo = "P001";
+            request.StationNo = 1;
+            request.Points = [new() { SequenceNo = 1, TouchNo = "1", TestResult = "NG", CollectedAt = request.CompletedAt }];
+            store.Upsert(root, request);
+            using var workbook = new XLWorkbook(path);
+            AssertEqual(2, CountCenterDataRows(workbook), "重试替换产品，不得重复追加。");
+            AssertEqual("合格数量：8", workbook.Worksheet(CenterProductReportFormat.WorksheetName).Cell("D7").GetString(), "迟到产品不得回退最终统计。");
+            File.Copy(path, Path.Combine(Path.GetDirectoryName(path)!, ".copy.tmp.xlsx"), true);
+        }
+        AssertEqual(6, store.LoadProducts(root, "EQ001", 1, new DateTime(2026, 9, 18)).Count
+            + store.LoadProducts(root, "EQ001", 2, new DateTime(2026, 9, 18)).Count,
+            "历史枚举要读新日期层，按完成日期而非目录日期统计，忽略临时文件。");
+    }
+    finally { DeleteDirectoryIfExists(root); }
+}
+
+static void CenterArchivePreservesLegacyRoutes()
+{
+    var root = CreateCenterReportFixtureDirectory();
+    try
+    {
+        var store = new CenterProductReportFileStore();
+        var legacy = BuildArchiveRequest();
+        legacy.StartTime = legacy.StartTime.AddMilliseconds(321);
+        legacy.ReportSequenceNo = null;
+        legacy.ReportFileName = null;
+        legacy.IsTaskFinishUpdate = true;
+        legacy.EndTime = legacy.StartTime.AddHours(1);
+        legacy.Points = [];
+        var oldPath = store.Upsert(root, legacy);
+        using (var oldWorkbook = new XLWorkbook(oldPath))
+        {
+            var metadata = oldWorkbook.Worksheet(CenterProductReportFormat.TaskWorksheetName);
+            foreach (var row in metadata.RowsUsed().Where(row => row.Cell(1).GetString() is "DeviceId" or "ReportFileName" or "ReportSequenceNo").ToArray())
+                row.Cell(2).Clear();
+            oldWorkbook.Save();
+        }
+        var request = BuildArchiveRequest();
+        AssertEqual(oldPath, store.Upsert(root, request), "同一旧任务必须原位更新，最终表头不妨碍补齐身份。");
+        request.StartTime = request.StartTime.AddDays(1);
+        request.ReportSequenceNo = 3;
+        request.ReportFileName = "EQ001_FLOW001_OP10_BG_003.xlsx";
+        var newPath = store.Upsert(root, request);
+        AssertFalse(oldPath == newPath, "再次开工的新任务不能写旧文件。");
+        request.ReportSequenceNo = null;
+        request.ReportFileName = null;
+        request.ProductNo = "P002";
+        AssertEqual(newPath, store.Upsert(root, request), "迟到旧协议必须定位已有新报表。");
+        AssertEqual(2, Directory.EnumerateFiles(root, "*.xlsx", SearchOption.AllDirectories).Count(), "兼容路由不得生成第三份报告。");
+        var corrupt = Encoding.UTF8.GetBytes("corrupt legacy");
+        var archiveTwin = Path.Combine(root, "EQ001", "20260917", BuildArchiveRequest().ReportFileName!);
+        Directory.CreateDirectory(Path.GetDirectoryName(archiveTwin)!);
+        File.Copy(oldPath, archiveTwin);
+        AssertThrows<InvalidDataException>(() => store.Upsert(root, legacy), "旧请求发现同任务新旧双份文件也必须拒绝猜测。");
+        File.Delete(archiveTwin);
+        File.WriteAllBytes(oldPath, corrupt);
+        AssertThrows<Exception>(() => store.Upsert(root, BuildArchiveRequest()), "损坏旧报表不得绕过或覆盖。");
+        AssertSequenceEqual(corrupt, File.ReadAllBytes(oldPath), "原损坏文件必须保留原字节。");
+    }
+    finally { DeleteDirectoryIfExists(root); }
+}
+
+static void CenterArchiveRejectsUnsafeNamesAndCollisions()
+{
+    var root = CreateCenterReportFixtureDirectory();
+    try
+    {
+        var store = new CenterProductReportFileStore();
+        foreach (var name in new[] { "../escape_BG_002.xlsx", "C:\\escape_BG_002.xlsx", "bad:stream_BG_002.xlsx",
+            "NUL.xlsx", "x_BG_003.xlsx", "x_BG_002.xlsx.", "x_BG_002.xlsx ", "x_BG_002.xlsx/other", "x_BG_002.xlsx\0", "x_BG_.xlsx" })
+        {
+            var invalid = BuildArchiveRequest();
+            invalid.ReportFileName = name;
+            AssertThrows<ArgumentException>(() => store.Upsert(root, invalid), $"必须拒绝非法文件名：{name}");
+        }
+        var incomplete = BuildArchiveRequest();
+        incomplete.ReportSequenceNo = null;
+        AssertThrows<ArgumentException>(() => store.Upsert(root, incomplete), "归档字段必须成对。");
+        incomplete = BuildArchiveRequest();
+        incomplete.StartTime = default;
+        AssertThrows<ArgumentException>(() => store.Upsert(root, incomplete), "新协议不允许缺开工日期。");
+        var request = BuildArchiveRequest();
+        var path = store.Upsert(root, request);
+        var bytes = File.ReadAllBytes(path);
+        request.WorkOrder = "OTHER";
+        AssertThrows<InvalidDataException>(() => store.Upsert(root, request), "同名但身份不匹配不得覆盖。");
+        AssertSequenceEqual(bytes, File.ReadAllBytes(path), "冲突不得更改原文件。");
+        foreach (var id in new[] { "..", "CON", "EQ/001", "EQ:001", ".locks" })
+        {
+            var unsafeDevice = BuildArchiveRequest();
+            unsafeDevice.DeviceId = id;
+            var safePath = store.Upsert(root, unsafeDevice);
+            AssertTrue(safePath.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase), "特殊设备编号不得逃逸根目录。");
+        }
+        AssertEqual(6, Directory.EnumerateFiles(root, "*.xlsx", SearchOption.AllDirectories).Count(), "非法字符替换后不同设备不能碰撞。");
+        AssertEqual(1, store.LoadProducts(root, ".locks", 1, request.CompletedAt.Date).Count, "设备编号不能占用内部锁目录而导致报表漏枚举。");
+    }
+    finally { DeleteDirectoryIfExists(root); }
+}
+
+static void CenterArchiveSerializesMixedProtocolWriters()
+{
+    var root = CreateCenterReportFixtureDirectory();
+    try
+    {
+        var modern = BuildArchiveRequest();
+        var legacy = BuildArchiveRequest(product: "P002");
+        legacy.ReportFileName = null;
+        legacy.ReportSequenceNo = null;
+        using var gate = new ManualResetEventSlim(false);
+        var first = Task.Run(() => { gate.Wait(); return new CenterProductReportFileStore().Upsert(root, modern); });
+        var second = Task.Run(() => { gate.Wait(); return new CenterProductReportFileStore().Upsert(root, legacy); });
+        gate.Set();
+        Task.WaitAll(first, second);
+        AssertEqual(first.Result, second.Result, "新旧协议并发必须路由到同一文件。");
+        using var workbook = new XLWorkbook(first.Result);
+        AssertEqual(2, CountCenterDataRows(workbook), "并发不能丢失产品。");
+        AssertEqual(1, Directory.EnumerateFiles(root, "*.xlsx", SearchOption.AllDirectories).Count(), "并发不能拆单。");
+    }
+    finally { DeleteDirectoryIfExists(root); }
+}
+
+static void CenterForwardingFillsPersistedReportIdentity()
+{
+    var task = new BizWeldTask { Id = 42, StartTime = new DateTime(2026, 9, 17, 8, 0, 0) };
+    var report = new BizProductionReportFile { TaskId = 42, DeviceId = "EQ001", SN = "FLOW001", ProcessNo = "OP10",
+        FileName = "EQ001_FLOW001_OP10_BG_008.xlsx", SequenceNo = 8 };
+    foreach (var finish in new[] { false, true })
+    {
+        var request = new CenterProductReportRequest { DeviceId = "changed settings", IsTaskFinishUpdate = finish };
+        CenterProductForwardingRules.ApplyReportIdentity(request, task, report);
+        var roundtrip = JsonSerializer.Deserialize<CenterProductReportRequest>(JsonSerializer.Serialize(request))!;
+        CenterProductForwardingRules.ApplyReportIdentity(roundtrip, task, report);
+        AssertEqual(8, roundtrip.ReportSequenceNo!.Value, "产品/空产品完工必须沿用预留序号。");
+        AssertEqual(report.FileName, roundtrip.ReportFileName!, "文件名必须取实际本地记录。");
+        AssertEqual("EQ001", roundtrip.DeviceId, "不能取当前设备设置替代历史身份。");
+        roundtrip.ReportSequenceNo = 9;
+        AssertThrows<InvalidOperationException>(() => CenterProductForwardingRules.ApplyReportIdentity(roundtrip, task, report), "重试身份变化必须拒绝。");
+    }
+}
+
+static void CenterQueueLookupScopesTask()
+{
+    using var db = new AutoWeldSystem.Data.SqlSugarDbContext("server=127.0.0.1;database=unused;uid=unused;pwd=unused;");
+    var method = typeof(UploadTaskService).GetMethod("BuildExistingTaskQuery", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+    foreach (var center in new[] { true, false })
+    {
+        var task = new BizUploadTask { WeldTaskId = 42, BusinessId = "same-key",
+            TaskType = center ? ProductionConstants.UploadTaskTypes.CenterProductReport : ProductionConstants.UploadTaskTypes.ProcessParameter,
+            Target = center ? ProductionConstants.UploadTargets.CentralServer : ProductionConstants.UploadTargets.Mes };
+        var query = (SqlSugar.ISugarQueryable<BizUploadTask>)method.Invoke(null, [db.Db, task])!;
+        var where = query.ToSql().Key.Split("WHERE", StringSplitOptions.None)[1];
+        AssertEqual(center, where.Contains("WeldTaskId", StringComparison.Ordinal), "仅中心任务应追加 WeldTaskId 防止跨任务去重。");
+    }
+}
+
+static void ReservedReportsAreNotGeneratedFileFacts()
+{
+    var report = new BizProductionReportFile { FileName = "EQ_FLOW_OP_BG_001.xlsx", SequenceNo = 1, FilePath = string.Empty };
+    AssertEqual(UploadSummaryStatusResolver.NoData, UploadSummaryStatusResolver.ResolveReportFileStatus([], [report]), "仅预留不代表已生成报表。");
+    AssertTrue(ProductionReportFileRules.SelectLatestUploadFilePath([report], 0) is null, "预留记录不能选作上传文件。");
+    AssertEqual(ProductionConstants.UploadStatuses.Failed,
+        UploadSummaryStatusResolver.ResolveReportFileStatus([ProductionConstants.UploadStatuses.Failed], [report]), "真实生成失败任务仍须显示。");
 }
 
 static void CenterReportProductThenFinishUpdateKeepsDetailRows()
@@ -20050,6 +20254,8 @@ sealed class FakeProductionReportFileService : IProductionReportFileService
         GenerateCallCount++;
         return GeneratedReport;
     }
+
+    public BizProductionReportFile ReserveXlsxReport(BizWeldTask task) => GeneratedReport;
 
     public bool ShouldUploadReportFile(BizWeldTask task) => ShouldUploadReportFileResult;
 

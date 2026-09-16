@@ -21,6 +21,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
     private readonly SqlSugarDbContext _dbContext;
     private readonly IAppSettingsService _settingsService;
     private readonly IUploadTaskService _uploadTaskService;
+    private readonly IProductionReportFileService _reportFileService;
     private readonly IProductionFlowLogService _productionLogService;
     private readonly IProgramExceptionLogService _exceptionLogService;
     private readonly IProductProcessConfigService _productProcessConfigService;
@@ -44,7 +45,8 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
         IProductionFlowLogService productionLogService,
         IProgramExceptionLogService exceptionLogService,
         IProductProcessConfigService productProcessConfigService,
-        CenterTelemetryClient client)
+        CenterTelemetryClient client,
+        IProductionReportFileService reportFileService)
     {
         _dbContext = dbContext;
         _settingsService = settingsService;
@@ -53,6 +55,7 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
         _exceptionLogService = exceptionLogService;
         _productProcessConfigService = productProcessConfigService;
         _client = client;
+        _reportFileService = reportFileService;
     }
 
     public Task StartAsync(CancellationToken cancellationToken = default)
@@ -377,6 +380,12 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
                 // Uploading 且 RetryCount 已递增，耗尽后被消费查询永久排除。
                 MarkConnectivityRetry(task, BuildConnectivityRetryMessage(ex));
             }
+            catch (Exception ex)
+            {
+                // 预留身份、持久化请求或协议解析失败也要释放本次认领，不能永久停在 Uploading。
+                MarkRetry(task, $"中心服务器转发失败：{ex.Message}");
+                WriteFailureLog(ex);
+            }
         }
     }
 
@@ -495,6 +504,8 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             return;
         }
 
+        if (!PrepareReportIdentity(task, request)) return;
+
         var response = await _client.UploadProductReportAsync(settings, request, cancellationToken);
         if (response.Success)
         {
@@ -518,6 +529,34 @@ public sealed class CenterProductForwardingService : ICenterProductForwardingSer
             request.StationNo,
             request.WorkOrder,
             request.ProductNo);
+    }
+
+    private bool PrepareReportIdentity(BizUploadTask uploadTask, CenterProductReportRequest request)
+    {
+        BizWeldTask weldTask;
+        lock (_dbContext.TaskTransitionSync)
+        lock (_dbLock)
+        {
+            if (!CanCompleteClaim(uploadTask)) return false;
+            weldTask = _dbContext.Db.Queryable<BizWeldTask>().InSingle(uploadTask.WeldTaskId)
+                ?? throw new InvalidOperationException("中心补传对应的生产任务不存在。");
+        }
+
+        // 与本地生成共用报表服务的锁和记录，预留失败仍由持久队列重试。
+        var report = _reportFileService.ReserveXlsxReport(weldTask);
+        CenterProductForwardingRules.ApplyReportIdentity(request, weldTask, report);
+        var payload = JsonSerializer.Serialize(request, JsonOptions);
+        lock (_dbContext.TaskTransitionSync)
+        lock (_dbLock)
+        {
+            if (!CanCompleteClaim(uploadTask)) return false;
+            _dbContext.Db.Updateable<BizUploadTask>()
+                .SetColumns(item => item.PayloadJson == payload)
+                .Where(item => item.Id == uploadTask.Id)
+                .ExecuteCommand();
+            uploadTask.PayloadJson = payload;
+        }
+        return true;
     }
 
     private bool CanCompleteClaim(BizUploadTask task)

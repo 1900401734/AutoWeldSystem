@@ -123,6 +123,12 @@ public sealed class CenterProductReportRequest
     /// </summary>
     public DateTime StartTime { get; set; }
 
+    /// <summary>设备端持久化的报表流水号，与 ReportFileName 成对发送；旧客户端缺省为空。</summary>
+    public int? ReportSequenceNo { get; set; }
+
+    /// <summary>设备端实际预留的 XLSX 文件名，不包含目录；中心不得重新分配序号。</summary>
+    public string? ReportFileName { get; set; }
+
     /// <summary>
     /// Persisted task finish time. It stays empty until the work order is completed.
     /// </summary>

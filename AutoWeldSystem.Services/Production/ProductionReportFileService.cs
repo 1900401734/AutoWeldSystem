@@ -75,24 +75,23 @@ public class ProductionReportFileService : IProductionReportFileService
             var report = GetOrCreateReportRecord(latestTask);
             var records = QueryTaskRecords(latestTask.Id);
 
-            Directory.CreateDirectory(Path.GetDirectoryName(report.FilePath)!);
+            var filePath = string.IsNullOrWhiteSpace(report.FilePath)
+                ? Path.Combine(GetReportDirectory(latestTask), report.FileName)
+                : report.FilePath;
+            Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
             // 上传给 MES 的报表按系统设置的「报表小数位」输出。
             WriteXlsx(
-                report.FilePath,
+                filePath,
                 BuildReportSchema(latestTask, records),
                 records,
                 latestTask,
                 OutputNumericFormat.ForUpload(CurrentSettings));
 
+            report.FilePath = filePath;
             report.FileFormat = ReportFormat;
             report.UploadStatus = ProductionConstants.UploadStatuses.Pending;
             report.UploadMessage = $"XLSX report generated, rows={records.Count}.";
             report.UpdatedTime = DateTime.Now;
-            if (report.Id <= 0)
-            {
-                return _dbContext.Db.Insertable(report).ExecuteReturnEntity();
-            }
-
             _dbContext.Db.Updateable(report).ExecuteCommand();
             return _dbContext.Db.Queryable<BizProductionReportFile>().InSingle(report.Id) ?? report;
         }
@@ -139,8 +138,25 @@ public class ProductionReportFileService : IProductionReportFileService
             .ThenBy(record => record.SequenceNo)
             .ToList();
 
+    public BizProductionReportFile ReserveXlsxReport(BizWeldTask task)
+    {
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var latestTask = ProductionReportFileRules.ResolveLatestTask(
+                task, taskId => _dbContext.Db.Queryable<BizWeldTask>().InSingle(taskId));
+            WeldTaskRuntimeRules.EnsureNotAbandoned(latestTask);
+            return GetOrCreateReportRecord(latestTask);
+        }
+    }
+
     private BizProductionReportFile GetOrCreateReportRecord(BizWeldTask task)
     {
+        if (task.Id <= 0)
+        {
+            throw new InvalidOperationException("焊接任务尚未保存，无法预留报表序号。");
+        }
+
         var existing = _dbContext.Db.Queryable<BizProductionReportFile>()
             .First(report => report.TaskId == task.Id
                 && report.FileCode == ProductionConstants.ReportFileCodes.Spreadsheet
@@ -153,9 +169,10 @@ public class ProductionReportFileService : IProductionReportFileService
 
         var sequenceNo = GetNextSequenceNo(task);
         var fileName = BuildFileName(task, sequenceNo);
-        var filePath = Path.Combine(GetReportDirectory(task), fileName);
 
-        return new BizProductionReportFile
+        // 先持久化身份：XLSX 生成失败或中心先收到完工时，也不能重新分配序号。
+        // 空路径表示仅预留，不能被上传补齐或历史文件查询误认成已生成报表。
+        return _dbContext.Db.Insertable(new BizProductionReportFile
         {
             TaskId = task.Id,
             ExpStartId = task.ExpStartId,
@@ -166,12 +183,13 @@ public class ProductionReportFileService : IProductionReportFileService
             MesFileType = ProductionConstants.MesFileTypes.ReportFile,
             FileFormat = ReportFormat,
             FileName = fileName,
-            FilePath = filePath,
+            FilePath = string.Empty,
             SequenceNo = sequenceNo,
             UploadStatus = ProductionConstants.UploadStatuses.Pending,
+            UploadMessage = "报表序号已预留，文件尚未生成。",
             CreatedTime = DateTime.Now,
             UpdatedTime = DateTime.Now
-        };
+        }).ExecuteReturnEntity();
     }
 
     private int GetNextSequenceNo(BizWeldTask task)

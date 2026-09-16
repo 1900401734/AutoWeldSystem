@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using AutoWeldSystem.Core.DTOs.CenterServer;
+using AutoWeldSystem.Core.Entities;
 
 namespace AutoWeldSystem.Core.Center;
 
@@ -31,6 +32,37 @@ public static class CenterProductForwardingRules
             : readableIdentity[..readableLength];
 
         return $"{readablePrefix}:{hash}";
+    }
+
+    /// <summary>为旧队列补齐设备端已持久化的报表身份；重试中不能更换身份。</summary>
+    public static void ApplyReportIdentity(
+        CenterProductReportRequest request, BizWeldTask task, BizProductionReportFile report)
+    {
+        if (report.TaskId != task.Id || report.SequenceNo <= 0 || string.IsNullOrWhiteSpace(report.FileName))
+        {
+            throw new InvalidOperationException("设备端报表身份无效，不能转发中心报表。");
+        }
+
+        if (request.ReportSequenceNo.HasValue || request.ReportFileName is not null)
+        {
+            if (request.ReportSequenceNo != report.SequenceNo
+                || !string.Equals(request.ReportFileName, report.FileName, StringComparison.Ordinal)
+                || !string.Equals(request.DeviceId, report.DeviceId.Trim(), StringComparison.Ordinal)
+                || !string.Equals(request.WorkOrder, report.SN, StringComparison.Ordinal)
+                || !string.Equals(request.ProcessNo, report.ProcessNo, StringComparison.Ordinal)
+                || request.StartTime != task.StartTime)
+            {
+                throw new InvalidOperationException("中心转发请求与已预留的报表身份不一致，禁止重新编号或覆盖。");
+            }
+            return;
+        }
+
+        request.DeviceId = report.DeviceId.Trim();
+        request.WorkOrder = report.SN;
+        request.ProcessNo = report.ProcessNo;
+        request.StartTime = task.StartTime;
+        request.ReportSequenceNo = report.SequenceNo;
+        request.ReportFileName = report.FileName;
     }
 
     /// <summary>
