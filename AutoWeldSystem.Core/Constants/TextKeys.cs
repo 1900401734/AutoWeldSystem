@@ -11,6 +11,11 @@ public static class TextKeys
     /// </summary>
     public static class Common
     {
+        public const string ExtendedMonitorTitle = "common.extended_monitor_title";
+        public const string ExtendedDashboardTitle = "common.extended_dashboard_title";
+        public const string StationNameFormat = "common.station.name_format";
+        public const string StationNumberFormat = "common.station.number_format";
+        public const string StationWithNumberFormat = "common.station.with_number_format";
         public const string LanguageChinese = "common.language.chinese";
         public const string LanguageEnglish = "common.language.english";
         public const string TitleInfo = "common.title.info";
@@ -1106,6 +1111,9 @@ public static class TextKeys
         public const string LabelProductNum = "program.label.product_num";
         public const string LabelTouchCount = "program.label.touch_count";
         public const string LabelFaceCount = "program.label.face_count";
+        public const string LabelStationRecipe = "program.label.station_recipe";
+        public const string RecipeNotSpecified = "program.recipe.not_specified";
+        public const string ReviewCountMissing = "program.review.count_missing";
         public const string LabelStation1Recipe = "program.label.station1_recipe";
         public const string LabelStation2Recipe = "program.label.station2_recipe";
         public const string PlaceholderRecipeSelect = "program.placeholder.recipe_select";

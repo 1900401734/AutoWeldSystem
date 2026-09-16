@@ -1,6 +1,6 @@
 ﻿# AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v3.2.2`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v3.2.3`。
 
 各版本的行为变化记录在 [CHANGELOG.md](CHANGELOG.md)，也可用 `git tag -n99` 查看对应版本的发布说明。
 
@@ -272,6 +272,17 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 - 明细整体下移；除上述检测设备固定逐面结果列外，其余列顺序、单位、逐面原始值、PLC 上下限和历史产品结果不变，产品合并与冻结行相应下移。顶部限值不会重新判定历史结果，尤其不代表对整件检测每个原始面重新比较下限。已有 XLSX 文件不会自动修改，重新手动导出时应用新列结构。
 - 仅影响本地手动导出的报表。MES 上传的“报告文件”、过程参数和中心报表不变，也不会修改上传记录、程序库或任务快照。
 
+## 双工位显示名称
+
+启用双工位后，设备端使用系统设置中保存的工位名称。系统设置的输入标签固定为“工位1显示名称／工位2显示名称”，不拼接当前名称。自定义名称不自动翻译，外围文案随界面语言切换。
+
+- 测试数据、历史工单、采集记录、待上传数据和日志等业务表格的工位列直接显示保存的名称，例如“左／右”或“装配A”，不自动追加“工位”。用户自己保存的“左工位”等后缀保持原样。
+- PLC／配方／产品工艺配置表及地址预览表使用名称加内部编号，例如“左（工位1）”；单元格进入编辑时仍为数字。单工位与共享编号 `0` 保持原有含义。
+- 非表格的生产监控页签、工位切换项、结果标签、程序配方标签、确认窗和业务提示继续补足工位称呼，例如“左工位／右工位”“左工位配方名称”；已有后缀不重复追加。
+- 保存名称后更新已打开页面和扩展屏，只刷新文案，不重新取工单、下载程序或读取配方，不清空正在编辑的内容；长名称省略显示时可查看完整提示。
+- 日志列表的工位列和可识别的业务摘要使用当前映射，按工位查找支持映射名与原编号；历史文件、技术详情、JSON 和外部返回原文不改写。
+- 显示名称不是工位身份。交换左右名称不会改变 PLC 地址、任务、选择项的 `StationNo`，也不会重命名程序 JSON 中的“工位1配方名称／工位2配方名称”保留键。报表、MES 和中心上报沿用既有协议及映射。
+
 ## 产量统计来源与程序计数模式
 
 系统设置「生产配置」分组自 `v2.26.0` 起新增「产量统计来源」，默认 **PLC 计数**（升级后行为不变）。切换为**程序统计**后，以下三件事同时生效，三者绑定不可拆分：
@@ -483,10 +494,10 @@ HAVING COUNT(*) > 1;
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>3.2.2</Version>
-<AssemblyVersion>3.2.2.0</AssemblyVersion>
-<FileVersion>3.2.2.0</FileVersion>
-<InformationalVersion>3.2.2</InformationalVersion>
+<Version>3.2.3</Version>
+<AssemblyVersion>3.2.3.0</AssemblyVersion>
+<FileVersion>3.2.3.0</FileVersion>
+<InformationalVersion>3.2.3</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -504,20 +515,20 @@ HAVING COUNT(*) > 1;
 # 2. 在 CHANGELOG.md 顶部新增该版本条目，写清行为变化和升级注意
 # 3. 合并到 main 后打带说明的 tag（-F 从文件读取多行说明）
 git checkout main
-git merge --no-ff develop -m "release: v3.2.2"
-git tag -a v3.2.2 -F tag-notes.txt
+git merge --no-ff develop -m "release: v3.2.3"
+git tag -a v3.2.3 -F tag-notes.txt
 git push origin main
-git push origin v3.2.2
+git push origin v3.2.3
 ```
 
-`tag-notes.txt` 为临时文件，内容取自该版本的 CHANGELOG 条目，打完 tag 即可删除。也可用 `git tag -a v3.2.2 -m "标题" -m "正文"` 直接写多段说明。
+`tag-notes.txt` 为临时文件，内容取自该版本的 CHANGELOG 条目，打完 tag 即可删除。也可用 `git tag -a v3.2.3 -m "标题" -m "正文"` 直接写多段说明。
 
 查看历史版本说明：
 
 ```powershell
 git tag -n99                # 列出全部 tag 及完整说明
-git tag -n99 v3.2.2        # 只看某个版本
-git show v3.2.2            # 看 tag 说明 + 指向的提交
+git tag -n99 v3.2.3        # 只看某个版本
+git show v3.2.3            # 看 tag 说明 + 指向的提交
 ```
 
 ## Git 使用

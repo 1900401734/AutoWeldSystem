@@ -22,6 +22,7 @@ public partial class DataManageView : BaseView
     private readonly IDataHistoryQueryService _historyQueryService = null!;
     private readonly ILocalizationService _localizer = null!;
     private readonly IAppSettingsService _appSettingsService = null!;
+    private readonly StationDisplayBinding? _stationDisplay;
     private readonly IDataHistoryMaintenanceService _maintenanceService = null!;
     private readonly IProductionReportFileService _reportFileService = null!;
     private readonly IUploadTaskService? _uploadTaskService;
@@ -70,6 +71,7 @@ public partial class DataManageView : BaseView
         InitializeComponent();
         ConfigureGrids();
         WireEvents();
+        _stationDisplay = new StationDisplayBinding(this, appSettingsService, localizer, RefreshStationDisplayTexts);
     }
 
     protected override void OnLoad(EventArgs e)
@@ -169,9 +171,9 @@ public partial class DataManageView : BaseView
         nodeColumn.Align = AntdUI.ColumnAlign.Left;
         nodeColumn.SetTree(nameof(DataHistoryTestDataRow.Children));
         tableTestData.Columns.Add(nodeColumn);
-        tableTestData.Columns.Add(CreateTestDataColumn(
-            nameof(DataHistoryTestDataRow.StationNo),
-            T(TextKeys.DataManage.ColumnStation)));
+        var stationColumn = CreateTestDataColumn(nameof(DataHistoryTestDataRow.StationNo), T(TextKeys.DataManage.ColumnStation));
+        stationColumn.Render = (value, _, _) => _stationDisplay?.FormatValue(value) ?? value?.ToString() ?? string.Empty;
+        tableTestData.Columns.Add(stationColumn);
         tableTestData.Columns.Add(new AntdUI.Column(
             nameof(DataHistoryTestDataRow.TestResult),
             T(TextKeys.DataManage.ColumnTouchResult))
@@ -413,6 +415,8 @@ public partial class DataManageView : BaseView
         dgvWorkOrders.SelectionChanged += WorkOrders_SelectionChanged;
         dgvWorkOrders.CellFormatting += Status_CellFormatting;
         dgvReportFiles.CellFormatting += Status_CellFormatting;
+        dgvWeldParameters.CellFormatting += Station_CellFormatting;
+        dgvCollectionRecords.CellFormatting += Station_CellFormatting;
         dgvReportFiles.SelectionChanged += ReportFiles_SelectionChanged;
         dgvReportFiles.CellDoubleClick += (_, e) =>
         {
@@ -1071,6 +1075,8 @@ public partial class DataManageView : BaseView
 
     private void Status_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
     {
+        if (sender is DataGridView stationGrid && _stationDisplay?.TryFormatCell(stationGrid, e) == true)
+            return;
         if (e.RowIndex < 0 || e.Value is not string status)
         {
             return;
@@ -1095,6 +1101,21 @@ public partial class DataManageView : BaseView
         }
 
         UpdateReportButtons();
+    }
+
+    private void Station_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
+    {
+        if (sender is DataGridView grid)
+            _stationDisplay?.TryFormatCell(grid, e);
+    }
+
+    private void RefreshStationDisplayTexts()
+    {
+        tableTestData.Refresh();
+        dgvWorkOrders.Refresh();
+        dgvWeldParameters.Refresh();
+        dgvCollectionRecords.Refresh();
+        Invalidate(true);
     }
 
     private void RemoveDynamicParameterColumns()

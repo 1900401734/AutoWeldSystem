@@ -69,6 +69,9 @@ partial class ProgramContentReviewForm
         //
         // lblRecipeNamesSection
         //
+        lblRecipeNamesSection.AutoSize = true;
+        lblRecipeNamesSection.AutoEllipsis = true;
+        lblRecipeNamesSection.MaximumSize = new Size(0, 160);
         lblRecipeNamesSection.Dock = DockStyle.Fill;
         lblRecipeNamesSection.Location = new Point(0, 65);
         lblRecipeNamesSection.Margin = new Padding(0, 0, 0, 8);

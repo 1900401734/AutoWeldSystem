@@ -34,6 +34,7 @@ public partial class ProgramManageView : BaseView
     private readonly IPlcRecipeNameReaderService _recipeNameReaderService;
     private readonly IAppSettingsService _appSettingsService;
     private readonly ILocalizationService _localizer;
+    private readonly StationDisplayBinding _stationDisplay;
     private readonly List<BizProgram> _programs = new();
     private readonly List<BizProgram> _filteredPrograms = new();
     private readonly List<ProgramContentItemRow> _programContentRows = new();
@@ -81,6 +82,8 @@ public partial class ProgramManageView : BaseView
         ConfigureGrids();
         BindRemarkText(null);
         WireEvents();
+        _stationDisplay = new StationDisplayBinding(this, appSettingsService, localizer, RefreshStationDisplayTexts);
+        RefreshStationDisplayTexts();
     }
 
     protected override async void OnLoad(EventArgs e)
@@ -141,11 +144,10 @@ public partial class ProgramManageView : BaseView
         ApplyGridHeaders();
         ConfigureProgramContentColumns(_programContentDictionaryAvailable);
         BindProgramTypeOptions();
-        BindRemarkText(inputRemark.Text);
         RefreshRecipeSelectorTexts();
         UpdateCurrentInfoText();
-        // 同步状态列使用本地化文本，切换语言后按当前筛选结果重新生成。
-        ApplyProgramFilter(_editingId);
+        // 只投影列表的本地化状态，不重新绑定编辑区，保留未保存的配方和程序内容。
+        BindProgramPage(programPagination.Current, programPagination.PageSize, _editingId, rebindSelection: false);
     }
 
     private void ConfigureGrids()
@@ -239,14 +241,42 @@ public partial class ProgramManageView : BaseView
             ? _localizer.GetString(TextKeys.ProgramManage.LabelFaceCount)
             : _localizer.GetString(TextKeys.ProgramManage.LabelTouchCount);
         inputTouchCount.PlaceholderText = _localizer.GetString(TextKeys.ProgramManage.PlaceholderTouchCount);
-        lblRecipeCode1.Text = _localizer.GetString(TextKeys.ProgramManage.LabelStation1Recipe);
-        lblRecipeCode2.Text = _localizer.GetString(TextKeys.ProgramManage.LabelStation2Recipe);
+        RefreshStationDisplayTexts();
         lblComponentCode.Text = _localizer.GetString(TextKeys.ProgramManage.LabelComponentCode);
         lblSequenceNumber.Text = _localizer.GetString(TextKeys.ProgramManage.LabelSequenceNumber);
         lblProgramType.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramType);
         lblRemark.Text = _localizer.GetString(TextKeys.ProgramManage.LabelRemark);
         lblDescription.Text = _localizer.GetString(TextKeys.ProgramManage.LabelLocalRemark);
         grpProgramContent.Text = _localizer.GetString(TextKeys.ProgramManage.LabelProgramContent);
+    }
+
+    private void RefreshStationDisplayTexts()
+    {
+        var first = _localizer.GetString(TextKeys.ProgramManage.LabelStation1Recipe);
+        var second = _localizer.GetString(TextKeys.ProgramManage.LabelStation2Recipe);
+        if (_stationDisplay is { UsesMapping: true })
+        {
+            first = _localizer.GetString(TextKeys.ProgramManage.LabelStationRecipe, _stationDisplay.Format(1, _localizer.GetString(TextKeys.Common.StationNumberFormat, 1)));
+            second = _localizer.GetString(TextKeys.ProgramManage.LabelStationRecipe, _stationDisplay.Format(2, _localizer.GetString(TextKeys.Common.StationNumberFormat, 2)));
+        }
+        _stationDisplay?.SetCaption(lblRecipeCode1, first);
+        _stationDisplay?.SetCaption(lblRecipeCode2, second);
+        if (_stationDisplay is not null)
+            ApplyStationRecipeLayout(_stationDisplay.UsesMapping);
+        RefreshRecipeReadHint(selectStation1Recipe, 1);
+        RefreshRecipeReadHint(selectStation2Recipe, 2);
+    }
+
+    private void RefreshRecipeReadHint(AntdUI.Select select, int stationNo)
+    {
+        var key = _recipeNameReadSucceeded.GetValueOrDefault(stationNo)
+            ? TextKeys.ProgramManage.PlaceholderRecipeSelect
+            : TextKeys.ProgramManage.RecipeReadFailed;
+        var hint = _localizer.GetString(key);
+        if (_stationDisplay is { UsesMapping: true })
+            hint = $"{_stationDisplay.Format(stationNo, string.Empty)}：{hint}";
+        select.PlaceholderText = hint;
+        _stationDisplay?.SetToolTip(select, hint);
     }
 
     private void ApplyGridHeaders()
@@ -1165,7 +1195,7 @@ public partial class ProgramManageView : BaseView
         SetRecipeSelectorItems(select, stationNo, BuildUnavailableItems(currentRecipeCode));
         select.List = true;
         select.ReadOnly = true;
-        select.PlaceholderText = _localizer.GetString(TextKeys.ProgramManage.RecipeReadFailed);
+        RefreshRecipeReadHint(select, stationNo);
         SetRecipeSelection(select, stationNo, currentRecipeCode);
     }
 
@@ -1214,9 +1244,7 @@ public partial class ProgramManageView : BaseView
         SetRecipeSelectorItems(select, stationNo, items);
         select.List = true;
         select.ReadOnly = !result.IsSuccess;
-        select.PlaceholderText = _localizer.GetString(result.IsSuccess
-            ? TextKeys.ProgramManage.PlaceholderRecipeSelect
-            : TextKeys.ProgramManage.RecipeReadFailed);
+        RefreshRecipeReadHint(select, stationNo);
         SetRecipeSelection(
             select,
             stationNo,
@@ -1335,10 +1363,7 @@ public partial class ProgramManageView : BaseView
             }).ToList();
             SetRecipeSelectorItems(select, stationNo, items);
         }
-        select.PlaceholderText = _localizer.GetString(
-            _recipeNameReadSucceeded.TryGetValue(stationNo, out var succeeded) && succeeded
-                ? TextKeys.ProgramManage.PlaceholderRecipeSelect
-                : TextKeys.ProgramManage.RecipeReadFailed);
+        RefreshRecipeReadHint(select, stationNo);
         SetRecipeSelection(select, stationNo, recipeCode, selectNotApplicable: kind == RecipeSelectionKind.NotApplicable);
     }
 

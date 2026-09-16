@@ -543,6 +543,7 @@ public partial class MainForm : BaseWindow
                 monitorView,
                 _localizer,
                 _permissionUiBinder,
+                _settingsService,
                 stationNo: 2,
                 readOnly);
             _station2DisplayForm.FormClosed += (_, _) => _station2DisplayForm = null;
@@ -724,7 +725,7 @@ public partial class MainForm : BaseWindow
     {
         var localPrograms = await _programManageService.GetProgramLookupsAsync();
         var rows = BuildCurrentAddressPreviewRows(localPrograms);
-        using var form = new AddressPreviewForm(rows, _plcExpressionReadService, _localizer, _plcWriteDebugLauncher);
+        using var form = new AddressPreviewForm(rows, _plcExpressionReadService, _localizer, _plcWriteDebugLauncher, _settingsService);
         form.ShowDialog(this);
     }
 
@@ -848,6 +849,7 @@ public partial class MainForm : BaseWindow
         var binding = ResolvePreviewExpressionBinding(baseAddress, contextOffset, expression);
         rows.Add(new PlcAddressPreviewRow
         {
+            StationNo = identity.StationNo,
             Station = $"工位{identity.StationNo}",
             ProductNum = identity.ProductNum,
             ProductModel = identity.ProductModel,

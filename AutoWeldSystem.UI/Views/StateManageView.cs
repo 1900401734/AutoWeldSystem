@@ -24,6 +24,7 @@ public partial class StateManageView : BaseView
     private readonly IDeviceStatusService _deviceStatusService;
     private readonly IUploadStatusSummaryService _summaryService;
     private readonly ILocalizationService _localizer;
+    private readonly StationDisplayBinding _stationDisplay;
     private readonly IMesConnectionMonitor _mesConnectionMonitor;
     private readonly IReadOnlyList<StateUploadTabDefinition> _tabDefinitions;
     private readonly BindingSource _bindingSource = new();
@@ -44,7 +45,8 @@ public partial class StateManageView : BaseView
         IDeviceStatusService deviceStatusService,
         IUploadStatusSummaryService summaryService,
         ILocalizationService localizer,
-        IMesConnectionMonitor mesConnectionMonitor)
+        IMesConnectionMonitor mesConnectionMonitor,
+        IAppSettingsService appSettingsService)
     {
         _programService = programService;
         _uploadTaskService = uploadTaskService;
@@ -58,6 +60,7 @@ public partial class StateManageView : BaseView
         _tabDefinitions = BuildTabDefinitions();
         ConfigureGrid();
         WireEvents();
+        _stationDisplay = new StationDisplayBinding(this, appSettingsService, localizer, () => dgvPending.Refresh());
     }
 
     protected override void OnLoad(EventArgs e)
@@ -1066,6 +1069,8 @@ public partial class StateManageView : BaseView
 
     private void DgvPending_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
     {
+        if (_stationDisplay?.TryFormatCell(dgvPending, e) == true)
+            return;
         if (e.RowIndex < 0
             || e.RowIndex >= dgvPending.Rows.Count
             || e.ColumnIndex < 0
