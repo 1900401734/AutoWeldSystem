@@ -79,12 +79,14 @@ public partial class LoginForm : BaseWindow
             return;
         }
 
-        // 语言切换统一交给本地化服务处理，这样会自动持久化到设置表。
-        var targetLanguage = selectLang.SelectedIndex == 0
-            ? AppConstants.Languages.Chinese
-            : AppConstants.Languages.English;
+        // 英文界面暂不对客户开放；按稳定语言标识校验，不能依赖下拉索引。
+        if (selectLang.SelectedValue is not string language || language != AppConstants.Languages.Chinese)
+        {
+            UpdateLanguageSelection();
+            return;
+        }
 
-        _localizer.SetLanguage(targetLanguage);
+        _localizer.SetLanguage(AppConstants.Languages.Chinese);
     }
 
     /// <summary>
@@ -150,17 +152,24 @@ public partial class LoginForm : BaseWindow
     private void UpdateLanguageSelection()
     {
         _syncingLanguageSelection = true;
-
-        selectLang.Items.Clear();
-        selectLang.Items.AddRange(new object[]
+        try
         {
-            _localizer.GetString(TextKeys.Common.LanguageChinese),
-            _localizer.GetString(TextKeys.Common.LanguageEnglish)
-        });
+            selectLang.ExpandDrop = false;
+            selectLang.Items.Clear();
+            selectLang.Items.AddRange(new object[]
+            {
+                new AntdUI.SelectItem(_localizer.GetString(TextKeys.Common.LanguageChinese), AppConstants.Languages.Chinese),
+                new AntdUI.SelectItem(_localizer.GetString(TextKeys.Common.LanguageEnglish), AppConstants.Languages.English) { Enable = false }
+            });
 
-        selectLang.SelectedIndex = GlobalContext.CurrentLanguage == AppConstants.Languages.English ? 1 : 0;
-
-        _syncingLanguageSelection = false;
+            // Items 重建不会复位内部选中值，先清除再按语言标识恢复。
+            selectLang.SelectedIndex = -1;
+            selectLang.SelectedValue = _localizer.CurrentLanguage;
+        }
+        finally
+        {
+            _syncingLanguageSelection = false;
+        }
     }
 
     private void ApplyLocalizedTexts()

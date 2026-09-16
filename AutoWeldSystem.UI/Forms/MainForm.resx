@@ -250,6 +250,9 @@
   <data name="select_Lang.Dock" type="System.Windows.Forms.DockStyle, System.Windows.Forms">
     <value>Fill</value>
   </data>
+  <data name="select_Lang.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>Disable</value>
+  </data>
   <data name="select_Lang.Location" type="System.Drawing.Point, System.Drawing">
     <value>374, 0</value>
   </data>
