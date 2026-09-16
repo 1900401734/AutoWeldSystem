@@ -13329,25 +13329,30 @@ static void StartupIntegrationResultReportsRunKeyFallback()
 static void SystemClockSyncSkipsSmallOffset()
 {
     var localTime = new DateTime(2026, 7, 1, 8, 0, 0);
-    var serverTime = localTime.AddSeconds(3);
+    foreach (var offset in new[] { 0d, 0.5d, -0.5d, 1d, -1d })
+    {
+        var serverTime = localTime.AddSeconds(offset);
+        var result = SystemClockSyncRules.Decide(serverTime, localTime);
 
-    var result = SystemClockSyncRules.Decide(serverTime, localTime);
-
-    AssertTrue(result.Success, "服务器时间格式正确时规则应成功返回。");
-    AssertFalse(result.Changed, "时间差未超过 5 秒时不应修改系统时间。");
-    AssertEqual(3d, result.OffsetSeconds, "时间差应按服务器时间减本机时间计算。");
+        AssertTrue(result.Success, "服务器时间格式正确时规则应成功返回。");
+        AssertFalse(result.Changed, $"时间差 {offset} 秒未超过 1 秒，不应修改系统时间。");
+        AssertEqual(offset, result.OffsetSeconds, "时间差应按服务器时间减本机时间计算。");
+        AssertTrue(result.Message.Contains("未超过 1 秒", StringComparison.Ordinal), "无需校时提示必须与 1 秒阈值一致。");
+    }
 }
 
 static void SystemClockSyncChangesLargeOffset()
 {
     var localTime = new DateTime(2026, 7, 1, 8, 0, 0);
-    var serverTime = localTime.AddSeconds(6);
+    foreach (var offsetMilliseconds in new[] { 1001, -1001, 6000, -6000, 86400000, -86400000 })
+    {
+        var serverTime = localTime.AddMilliseconds(offsetMilliseconds);
+        var result = SystemClockSyncRules.Decide(serverTime, localTime);
 
-    var result = SystemClockSyncRules.Decide(serverTime, localTime);
-
-    AssertTrue(result.Success, "服务器时间格式正确时规则应成功返回。");
-    AssertTrue(result.Changed, "时间差超过 5 秒时应触发系统校时。");
-    AssertEqual(6d, result.OffsetSeconds, "触发校时时仍需保留时间差。");
+        AssertTrue(result.Success, "服务器时间格式正确时规则应成功返回。");
+        AssertTrue(result.Changed, $"时间差 {offsetMilliseconds} 毫秒超过 1 秒，应触发系统校时。");
+        AssertEqual(offsetMilliseconds / 1000d, result.OffsetSeconds, "触发校时时仍需保留时间差与方向。");
+    }
 }
 
 static void SystemClockSyncRejectsInvalidServerTime()
@@ -13361,23 +13366,25 @@ static void SystemClockSyncRejectsInvalidServerTime()
 
 static void WeldTaskServerTimeSyncAdjustsSystemClock()
 {
-    var mes = new FakeMesProvider
+    var localTime = new DateTime(2026, 7, 1, 8, 0, 0);
+    foreach (var offsetMilliseconds in new[] { 1001, -1001, 6000, -6000 })
     {
-        ServerTimeResponse = SuccessServerTime("2026-07-01 08:00:06")
-    };
-    var clock = new FakeSystemClockService
-    {
-        CurrentTime = new DateTime(2026, 7, 1, 8, 0, 0)
-    };
-    var operations = new FakeOperationLogService();
-    var service = CreateWeldTaskService(mes, clock, operations);
+        var serverTime = localTime.AddMilliseconds(offsetMilliseconds);
+        var mes = new FakeMesProvider
+        {
+            ServerTimeResponse = SuccessServerTime(serverTime.ToString("yyyy-MM-dd HH:mm:ss.fff"))
+        };
+        var clock = new FakeSystemClockService { CurrentTime = localTime };
+        var operations = new FakeOperationLogService();
+        var service = CreateWeldTaskService(mes, clock, operations);
 
-    service.SyncServerTimeAsync().GetAwaiter().GetResult();
+        service.SyncServerTimeAsync().GetAwaiter().GetResult();
 
-    AssertEqual(1, clock.SetLocalTimeCallCount, "服务器时间和本机时间相差超过阈值时必须尝试修改系统时间。");
-    AssertEqual(new DateTime(2026, 7, 1, 8, 0, 6), clock.LastRequestedTime, "系统时间应按服务器返回时间设置。");
-    AssertTrue(service.CurrentState.LastServerSyncMessage?.Contains("已校时", StringComparison.Ordinal) == true, "运行状态应提示已完成校时。");
-    AssertTrue(operations.Entries.Any(entry => entry.Detail.Contains("Changed=True", StringComparison.Ordinal)), "操作日志应记录校时结果。");
+        AssertEqual(1, clock.SetLocalTimeCallCount, "服务器时间和本机时间相差超过 1 秒时必须尝试修改系统时间。");
+        AssertEqual(serverTime, clock.LastRequestedTime, "系统时间应按服务器返回时间设置。");
+        AssertTrue(service.CurrentState.LastServerSyncMessage?.Contains("已校时", StringComparison.Ordinal) == true, "运行状态应提示已完成校时。");
+        AssertTrue(operations.Entries.Any(entry => entry.Detail.Contains("Changed=True", StringComparison.Ordinal)), "操作日志应记录校时结果。");
+    }
 }
 
 static void WeldTaskServerTimeSyncSkipsClockOnMesFailure()
@@ -13441,24 +13448,25 @@ static void DeviceLifecycleServerTimeSelfCheckUsesSelfCheckEvent()
 
 static void WeldTaskServerTimeSyncWritesDeviceLifecycleSuccessLog()
 {
-    var mes = new FakeMesProvider
+    var localTime = new DateTime(2026, 7, 1, 8, 0, 0);
+    foreach (var offset in new[] { 0d, 0.5d, -0.5d, 1d, -1d })
     {
-        ServerTimeResponse = SuccessServerTime("2026-07-01 08:00:02")
-    };
-    var clock = new FakeSystemClockService
-    {
-        CurrentTime = new DateTime(2026, 7, 1, 8, 0, 0)
-    };
-    var lifecycleLogs = new FakeDeviceLifecycleLogService();
-    var service = CreateWeldTaskService(mes, clock, new FakeOperationLogService(), lifecycleLogs);
+        var mes = new FakeMesProvider
+        {
+            ServerTimeResponse = SuccessServerTime(localTime.AddSeconds(offset).ToString("yyyy-MM-dd HH:mm:ss.fff"))
+        };
+        var clock = new FakeSystemClockService { CurrentTime = localTime };
+        var lifecycleLogs = new FakeDeviceLifecycleLogService();
+        var service = CreateWeldTaskService(mes, clock, new FakeOperationLogService(), lifecycleLogs);
 
-    service.SyncServerTimeAsync().GetAwaiter().GetResult();
+        service.SyncServerTimeAsync().GetAwaiter().GetResult();
 
-    AssertEqual(0, clock.SetLocalTimeCallCount, "时间差未超过阈值时不应修改系统时间。");
-    AssertEqual(1, lifecycleLogs.Entries.Count, "每次启动校时完成后都应写入一条设备自检日志。");
-    AssertEqual("Success", lifecycleLogs.Entries[0].Status, "无需校时也属于自检成功。");
-    AssertEqual("MES服务器校时成功", lifecycleLogs.Entries[0].Summary, "成功日志摘要应明确。");
-    AssertTrue(lifecycleLogs.Entries[0].Detail.Contains("Changed=False", StringComparison.Ordinal), "无需校时时详情应记录 Changed=False。");
+        AssertEqual(0, clock.SetLocalTimeCallCount, $"时间差 {offset} 秒未超过 1 秒，不应修改系统时间。");
+        AssertEqual(1, lifecycleLogs.Entries.Count, "每次启动校时完成后都应写入一条设备自检日志。");
+        AssertEqual("Success", lifecycleLogs.Entries[0].Status, "无需校时也属于自检成功。");
+        AssertEqual("MES服务器校时成功", lifecycleLogs.Entries[0].Summary, "成功日志摘要应明确。");
+        AssertTrue(lifecycleLogs.Entries[0].Detail.Contains("Changed=False", StringComparison.Ordinal), "无需校时时详情应记录 Changed=False。");
+    }
 }
 
 static void WeldTaskServerTimeSyncWritesDeviceLifecycleFailureLogs()
@@ -13623,6 +13631,34 @@ static void DeviceLifecycleCoordinatorSyncsSoftwareStatusTimestamps()
 static void DeviceLifecycleOrdersStatusProducersAroundFinalStates()
 {
     var programCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Program.cs"), Encoding.UTF8);
+    var mainFormCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Forms", "MainForm.cs"), Encoding.UTF8);
+    var syncMethod = ExtractMethodText(
+        programCode,
+        "private static void TrySyncStartupServerTime()",
+        "private static void InstallExceptionHandlers(");
+
+    AssertSourceOrder(
+        programCode,
+        "TrySyncStartupServerTime();",
+        "IDeviceLifecycleLogCoordinator>().Start();",
+        "启动时必须等待 MES 校时尝试结束后再生成开机记录，避免记录使用校时前的时间。");
+    AssertSourceOrder(
+        programCode,
+        "TrySyncStartupServerTime();",
+        "while (true)",
+        "自动校时必须在登录循环外执行，注销重新登录不能重复校时。");
+    AssertTrue(
+        syncMethod.Contains("Task.Run(", StringComparison.Ordinal)
+        && syncMethod.Contains("IWeldTaskService>().SyncServerTimeAsync()", StringComparison.Ordinal)
+        && syncMethod.Contains(".GetAwaiter().GetResult();", StringComparison.Ordinal),
+        "启动校时必须复用焊接服务并在线程池执行、同步等待结束，不能放任后台校时与开机记录竞态。");
+    AssertTrue(
+        syncMethod.Contains("catch (Exception ex)", StringComparison.Ordinal)
+        && syncMethod.Contains("TryLogProgramException(ex, \"Startup.ServerTimeSync\");", StringComparison.Ordinal)
+        && !Regex.IsMatch(syncMethod, @"\bthrow\b"),
+        "启动校时未预期异常必须记录后继续，不能阻断离线启动。");
+    AssertFalse(mainFormCode.Contains("SyncServerTimeAsync", StringComparison.Ordinal),
+        "主窗口不应再触发自动校时，避免首次开机后或重新登录时重复修改时钟。");
 
     AssertSourceOrder(
         programCode,
