@@ -26,7 +26,6 @@ public partial class MainForm : BaseWindow
     private static readonly TimeSpan Station2DisplayCreateRetryDelay = TimeSpan.FromMilliseconds(800);
 
     private bool _syncingLanguageSelection;
-    private bool _startupTimeSyncQueued;
     private bool _station2DisplayCreateFailureNotified;
 
     private AppSettings _currentSettings;
@@ -93,13 +92,9 @@ public partial class MainForm : BaseWindow
         RefreshShell();
     }
 
-    /// <summary>
-    /// MES 校时放在主界面显示后后台执行，避免 MES 离线时拖慢程序启动和登录。
-    /// </summary>
     protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
-        QueueStartupServerTimeSync();
 
         // Wait until the main window has completed its first layout pass. This also
         // ensures that Windows has finished enumerating the active display topology.
@@ -733,28 +728,6 @@ public partial class MainForm : BaseWindow
         var rows = BuildCurrentAddressPreviewRows(localPrograms);
         using var form = new AddressPreviewForm(rows, _plcExpressionReadService, _localizer, _plcWriteDebugLauncher, _settingsService);
         form.ShowDialog(this);
-    }
-
-    private void QueueStartupServerTimeSync()
-    {
-        if (_startupTimeSyncQueued)
-        {
-            return;
-        }
-
-        _startupTimeSyncQueued = true;
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await _weldTaskService.SyncServerTimeAsync();
-            }
-            catch (Exception ex)
-            {
-                _serviceProvider.GetService<IProgramExceptionLogService>()?
-                    .Write(ex, "MainForm.StartupServerTimeSync");
-            }
-        });
     }
 
     /// <summary>

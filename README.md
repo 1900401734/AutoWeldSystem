@@ -1,6 +1,6 @@
 ﻿# AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v3.4.0`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v3.4.1`。
 
 各版本的行为变化记录在 [CHANGELOG.md](CHANGELOG.md)，也可用 `git tag -n99` 查看对应版本的发布说明。
 
@@ -227,7 +227,9 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 
 - MES 在线状态由专用的在线检测接口（默认路由 `api/sys`，GET）判定，按系统设置中的「心跳间隔（秒）」轮询，默认 5 秒，可填 1-300 秒；返回状态为 `S` 视为探测成功，连续 3 次探测失败（含超时、非 2xx、响应无法解析）才确认离线，任意一次成功会立即清零失败次数并保持或恢复在线。
 - 自动 MES 在线心跳使用独立的 3 秒超时且不写入 MES 交互日志，避免在线探测失败/恢复干扰业务请求排查；连续 3 次失败后的 MES 断线和恢复由设备日志记录。生产模式和上传状态只使用连续失败确认后的连接状态，单次或两次偶发失败不会切换离线。
-- 设备校时接口（默认路由 `api/ServerTime`）只在程序启动时调用一次，不再承担在线探测职责。
+- 设备校时接口（默认路由 `api/ServerTime`）在每次进程启动时调用一次：先等待校时结果，再用此时的本机时间生成“开机”状态、按原有顺序补传旧状态和本次开机，随后启动 HTTP/PLC 等后台服务并进入登录。注销后重新登录不重复校时；该接口不承担在线探测职责。
+- 服务器与本机时间的**绝对偏差超过 1 秒**才修改 Windows 系统时间，恰好相差 1 秒不调整，本机快或慢均适用。校时需要相应 Windows 权限；MES 离线、超时、时间格式无效或修改系统时间失败时记录原因，继续使用本机时间启动，不阻止离线使用。登录前会等待这一次请求，MES 请求超时由系统设置决定（默认 10 秒，最低 3 秒），不无限重试。
+- **1 秒是校时触发阈值，不是同步精度保证。** 当前直接使用 MES 返回的 `CurrentTime`，未补偿网络返回、本机处理与调度延迟；MES 若只返回整秒，还存在时间精度损失。工控机与 MES 应配置一致的时区；要求稳定亚秒级同步时，建议统一使用可靠 NTP 时间源，不能只依靠此单时间字段接口。
 - 系统设置页的「测试连接」按钮同样访问在线检测接口，因此提示仅显示是否连通，不再返回服务器时间。
 
 ## 中心服务器同步与日志
@@ -512,10 +514,10 @@ HAVING COUNT(*) > 1;
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>3.4.0</Version>
-<AssemblyVersion>3.4.0.0</AssemblyVersion>
-<FileVersion>3.4.0.0</FileVersion>
-<InformationalVersion>3.4.0</InformationalVersion>
+<Version>3.4.1</Version>
+<AssemblyVersion>3.4.1.0</AssemblyVersion>
+<FileVersion>3.4.1.0</FileVersion>
+<InformationalVersion>3.4.1</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -533,20 +535,20 @@ HAVING COUNT(*) > 1;
 # 2. 在 CHANGELOG.md 顶部新增该版本条目，写清行为变化和升级注意
 # 3. 合并到 main 后打带说明的 tag（-F 从文件读取多行说明）
 git checkout main
-git merge --no-ff develop -m "release: v3.4.0"
-git tag -a v3.4.0 -F tag-notes.txt
+git merge --no-ff develop -m "release: v3.4.1"
+git tag -a v3.4.1 -F tag-notes.txt
 git push origin main
-git push origin v3.4.0
+git push origin v3.4.1
 ```
 
-`tag-notes.txt` 为临时文件，内容取自该版本的 CHANGELOG 条目，打完 tag 即可删除。也可用 `git tag -a v3.4.0 -m "标题" -m "正文"` 直接写多段说明。
+`tag-notes.txt` 为临时文件，内容取自该版本的 CHANGELOG 条目，打完 tag 即可删除。也可用 `git tag -a v3.4.1 -m "标题" -m "正文"` 直接写多段说明。
 
 查看历史版本说明：
 
 ```powershell
 git tag -n99                # 列出全部 tag 及完整说明
-git tag -n99 v3.4.0        # 只看某个版本
-git show v3.4.0            # 看 tag 说明 + 指向的提交
+git tag -n99 v3.4.1        # 只看某个版本
+git show v3.4.1            # 看 tag 说明 + 指向的提交
 ```
 
 ## Git 使用

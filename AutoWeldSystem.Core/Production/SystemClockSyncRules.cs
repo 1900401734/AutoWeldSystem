@@ -10,7 +10,7 @@ public static class SystemClockSyncRules
     /// <summary>
     /// The minimum absolute time difference that requires changing the local clock.
     /// </summary>
-    public const double SyncThresholdSeconds = 5d;
+    public const double SyncThresholdSeconds = 1d;
 
     /// <summary>
     /// Parses the server time returned by MES.
@@ -42,7 +42,7 @@ public static class SystemClockSyncRules
                 serverTime,
                 localTime,
                 offsetSeconds,
-                $"服务器时间与本机时间相差 {offsetSeconds:F3} 秒，未超过 5 秒，无需校时。");
+                $"服务器时间与本机时间相差 {offsetSeconds:F3} 秒，未超过 {SyncThresholdSeconds} 秒，无需校时。");
         }
 
         return SystemClockSyncResult.ChangedResult(

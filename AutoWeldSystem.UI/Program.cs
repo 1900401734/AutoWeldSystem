@@ -127,6 +127,7 @@ public static class Program
             AppHost.Services.GetRequiredService<ISysUserService>().InitDb();
             AppHost.Services.GetRequiredService<ILocalizationService>();
             AppHost.Services.GetRequiredService<IWindowsShellIntegrationService>().ApplyStartupIntegration();
+            TrySyncStartupServerTime();
             AppHost.Services.GetRequiredService<IDeviceLifecycleLogCoordinator>().Start();
             deviceLifecycleLogStarted = true;
             AppHost.Services.GetRequiredService<IDeviceApiServerService>().StartAsync().GetAwaiter().GetResult();
@@ -191,6 +192,21 @@ public static class Program
                 mesMonitorStarted,
                 plcServiceStarted);
             AppHost?.Dispose();
+        }
+    }
+
+    private static void TrySyncStartupServerTime()
+    {
+        try
+        {
+            // 先等待校时，再生成开机时间；在线程池执行，避免同步等待阻塞 UI 上下文中的异步续体。
+            Task.Run(() => AppHost!.Services.GetRequiredService<IWeldTaskService>().SyncServerTimeAsync())
+                .GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            // MES 离线或校时失败不能阻断离线启动，开机记录继续使用当前本机时间。
+            TryLogProgramException(ex, "Startup.ServerTimeSync");
         }
     }
 
