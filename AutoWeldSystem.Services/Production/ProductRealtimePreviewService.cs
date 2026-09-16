@@ -318,12 +318,14 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             touchCount,
             settings,
             detail => SchemeDetailRoleRules.ShouldEvaluateProgramRole(detail, SchemeDetailValueRole.Actual));
-        var mergedDisplayDefinitions = ResolveMergedDefinitions(
-            config,
-            touchCount,
-            settings,
-            SchemeDetailRoleRules.ShouldShowMergedPreviewActual);
-        // 合并列只显示启用实时预览的项，聚合与程序判定仍保留全部业务输出项。
+        var mergedDisplayDefinitions = WholePieceAbAggregationRules.IsApplicable(settings.ProcessParameterDeviceType, touchCount)
+            ? WholePieceMergedDisplayRules.ResolveDefinitions(
+                settings.ProcessParameterDeviceType,
+                touchCount,
+                _testSchemeConfigService.GetDetails(config.SchemeId),
+                _testSchemeConfigService.GetItems())
+            : Array.Empty<WholePieceAbValueDefinition>();
+        // 合并列只显示上报实际值项，与开工时的静态表头同源，不依赖已采集的行数。
         var mergedColumns = mergedDisplayDefinitions.Count > 0
             ? WholePieceMergedDisplayRules.BuildColumns(mergedDisplayDefinitions)
             : Array.Empty<WholePieceMergedColumn>();

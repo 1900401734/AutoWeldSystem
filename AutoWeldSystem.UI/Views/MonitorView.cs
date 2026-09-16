@@ -196,8 +196,9 @@ public partial class MonitorView : BaseView
     private readonly object _realtimePreviewSync = new();
 
     /// <summary>
-    /// 四面整件检测的合并显示列与取值，来自实时预览快照，四面未采集齐时值为空。
+    /// 四面整件检测的合并结构来自当前方案，实时快照提供取值；未采集齐时值为空。
     /// </summary>
+    private (int StationNo, int TaskId, string SchemeId) _mergedPreviewContext;
     private IReadOnlyList<WholePieceMergedColumn> _mergedPreviewColumns = Array.Empty<WholePieceMergedColumn>();
     private IReadOnlyDictionary<string, string> _mergedPreviewValues =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -7408,6 +7409,13 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             return;
         }
 
+        // 合并表头独立于逐面数据行，0/4 快照也必须走合并填充并清除旧值。
+        if (IsWholePieceMergedPreview())
+        {
+            FillMergedPreviewRow();
+            return;
+        }
+
         if (IsInfoPreview(items))
         {
             if (EnsureInfoPreviewRows())
@@ -7417,13 +7425,6 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             }
 
             FillInfoPreviewRows();
-            return;
-        }
-
-        // 合并视图只有一行，行数与四面分组对不上，不走下面的逐面填充，否则每帧都会整表重建。
-        if (IsWholePieceMergedPreview())
-        {
-            FillMergedPreviewRow();
             return;
         }
 
@@ -7923,15 +7924,38 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     }
 
     /// <summary>
-    /// 确保预览行Count。
-    /// </summary>
-    /// <param name="rowCount">目标行数。</param>
-    /// <summary>
-    /// 是否按四面整件检测的合并视图显示实时预览。
-    /// 列结构由实时预览快照提供，开关关闭或非四面整件检测时保持逐面显示。
+    /// 合并模式由任务和设置决定，不以首帧是否有数据或上报列是否为空判断。
     /// </summary>
     private bool IsWholePieceMergedPreview()
-        => _currentSettings.IsWholePieceMergedDisplayEnabled && _mergedPreviewColumns.Count > 0;
+    {
+        var task = GetCurrentStationState().ActiveTask;
+        return _currentSettings.IsWholePieceMergedDisplayEnabled
+            && IsRunningWeldTask(task)
+            && ProgramContentJsonRules.TryGetTouchCount(task!.ProgramContentSnapshot, out var touchCount)
+            && WholePieceAbAggregationRules.IsApplicable(_currentSettings.ProcessParameterDeviceType, touchCount);
+    }
+
+    private bool ApplyMergedPreviewDefinitions(string schemeId, IReadOnlyList<WholePieceAbValueDefinition> definitions)
+    {
+        var context = (CurrentStationNo, GetCurrentStationState().ActiveTask?.Id ?? 0, schemeId);
+        if (_mergedPreviewContext == context && _mergedPreviewDefinitions.SequenceEqual(definitions))
+        {
+            return false;
+        }
+
+        _mergedPreviewContext = context;
+        _weldParameterTableBound = false;
+        _mergedPreviewDefinitions = definitions;
+        _mergedPreviewColumns = WholePieceMergedDisplayRules.BuildColumns(definitions);
+        ClearMergedPreviewValues();
+        return true;
+    }
+
+    private void ClearMergedPreviewValues()
+    {
+        _mergedPreviewValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        _mergedFailedColumns = Array.Empty<string>();
+    }
 
     private static string BuildMergedPreviewColumnName(int index)
         => $"merged_{index.ToString(CultureInfo.InvariantCulture)}";
@@ -7942,8 +7966,13 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// </summary>
     private void FillMergedPreviewRow()
     {
-        EnsurePreviewRowCount(1);
         var grid = CurrentWeldPreviewGrid;
+        if (grid.Columns.Count == 0)
+        {
+            return;
+        }
+
+        EnsurePreviewRowCount(1);
         for (var index = 0; index < _mergedPreviewColumns.Count; index++)
         {
             var column = _mergedPreviewColumns[index];
@@ -8088,13 +8117,13 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// 预览布局键。合并视图的列结构也要参与比较，否则每帧都会误判为布局变化而重建表格。
     /// </summary>
     private string BuildPreviewLayoutKey(IEnumerable<WeldParameterRow> rows)
-        => BuildWeldPreviewLayoutKey(rows) + BuildMergedPreviewLayoutKey();
+        => IsWholePieceMergedPreview() ? BuildMergedPreviewLayoutKey() : BuildWeldPreviewLayoutKey(rows);
 
     /// <summary>
     /// 预览取值键，合并视图的取值同样参与比较。
     /// </summary>
     private string BuildPreviewValueKey(IEnumerable<WeldParameterRow> rows)
-        => BuildWeldPreviewVisibleValueKey(rows) + BuildMergedPreviewValueKey();
+        => IsWholePieceMergedPreview() ? BuildMergedPreviewValueKey() : BuildWeldPreviewVisibleValueKey(rows);
 
     /// <summary>
     /// 合并视图的列结构指纹。未启用合并显示时返回空串，逐面显示的刷新判断保持原样。
@@ -8277,6 +8306,8 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         if (snapshot is null || !CanDisplayRealtimePreviewSnapshot(snapshot))
         {
             ClearCurrentRealtimePreviewDisplay();
+            // 首帧未到或缓存属于旧任务时，仍按当前任务配置建表，不等待 PLC 首次采集。
+            QueueRefreshSchemePreview(force: true);
             return;
         }
 
@@ -8291,25 +8322,40 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     {
         if (!CanDisplayRealtimePreviewSnapshot(snapshot))
         {
-            ClearCurrentRealtimePreviewDisplay();
+            if (!IsRunningWeldTask(GetCurrentStationState().ActiveTask))
+            {
+                ClearCurrentRealtimePreviewDisplay();
+            }
             return;
         }
 
         var productChanged = HasRealtimeProductChanged(snapshot);
         ApplyLivePreviewSummary(snapshot, productChanged);
-        _currentProductIdentity = new ProductIdentity(snapshot.StationNo, snapshot.ProductNum, snapshot.ProductModel, "RealtimePreview");
-        _mergedPreviewColumns = snapshot.MergedColumns;
-        _mergedPreviewValues = snapshot.MergedValues;
-        _mergedPreviewDefinitions = snapshot.MergedDefinitions;
-        _mergedFailedColumns = snapshot.MergedFailedColumns;
-
-        if (snapshot.Rows.Count == 0 && CurrentWeldPreviewGrid.Rows.Count > 0)
+        if (string.IsNullOrWhiteSpace(snapshot.SchemeId))
         {
-            // 后台短暂读空时保留上一帧明细，避免实时表格被瞬间清空造成闪烁。
+            // 错误快照没有结构信息，只保留当前任务可确认的表头，不能继续显示上一帧实测值。
+            var taskId = GetCurrentStationState().ActiveTask!.Id;
+            if (_mergedPreviewContext.StationNo != CurrentStationNo || _mergedPreviewContext.TaskId != taskId)
+            {
+                ClearCurrentRealtimePreviewDisplay();
+                QueueRefreshSchemePreview(force: true);
+            }
+            ClearMergedPreviewValues();
+            ApplyRealtimeWeldParameterRows(Array.Empty<ProductRealtimePreviewRow>());
             return;
         }
 
+        _currentProductIdentity = new ProductIdentity(snapshot.StationNo, snapshot.ProductNum, snapshot.ProductModel, "RealtimePreview");
+        var mergedStructureChanged = ApplyMergedPreviewDefinitions(snapshot.SchemeId, snapshot.MergedDefinitions);
+        _mergedPreviewColumns = snapshot.MergedColumns;
+        _mergedPreviewValues = snapshot.MergedValues;
+        _mergedFailedColumns = snapshot.MergedFailedColumns;
+
         ApplyRealtimeWeldParameterRows(snapshot.Rows);
+        if (mergedStructureChanged)
+        {
+            RefreshProductHistoryPreview();
+        }
     }
 
     private bool CanDisplayRealtimePreviewSnapshot(ProductRealtimePreviewSnapshot snapshot)
@@ -8331,6 +8377,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         _currentProductIdentity = null;
         _lastRealtimeProductNumbers.Remove(CurrentStationNo);
         _lastSchemePreviewKey = string.Empty;
+        _mergedPreviewContext = default;
         _mergedPreviewColumns = Array.Empty<WholePieceMergedColumn>();
         _mergedPreviewValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         _mergedPreviewDefinitions = Array.Empty<WholePieceAbValueDefinition>();
@@ -8801,6 +8848,18 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             return;
         }
 
+        var task = GetCurrentStationState().ActiveTask;
+        ProgramContentJsonRules.TryGetTouchCount(task?.ProgramContentSnapshot, out var touchCount);
+        var mergedDefinitions = processConfig is null
+            || !WholePieceAbAggregationRules.IsApplicable(_currentSettings.ProcessParameterDeviceType, touchCount)
+            ? Array.Empty<WholePieceAbValueDefinition>()
+            : WholePieceMergedDisplayRules.ResolveDefinitions(
+                _currentSettings.ProcessParameterDeviceType,
+                touchCount,
+                _testSchemeConfigService.GetDetails(processConfig.SchemeId),
+                _testSchemeConfigService.GetItems());
+        var mergedStructureChanged = ApplyMergedPreviewDefinitions(processConfig?.SchemeId ?? string.Empty, mergedDefinitions);
+
         // 生成方案行前先缓存上一帧数据，用于把实时值带回新预览行。
         var previousRows = _weldParameterRows
             .Where(row => !string.IsNullOrWhiteSpace(row.ItemKey))
@@ -8810,6 +8869,10 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
 
         _lastSchemePreviewKey = previewKey;
         ApplyWeldParameterRows(nextRows);
+        if (mergedStructureChanged)
+        {
+            RefreshProductHistoryPreview();
+        }
     }
 
     /// <summary>
