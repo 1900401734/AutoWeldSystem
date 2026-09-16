@@ -16,7 +16,7 @@ public interface IProductionReportFileService
     bool ShouldUploadReportFile(BizWeldTask task);
 
     /// <summary>
-    /// 导出本地历史明细，并在工单信息下方展示开工程序快照中的上下限。
+    /// 导出本地历史明细，按保存的导出选项决定是否附带已配置的开工程序快照上下限。
     /// 供数据管理页手动导出使用：不创建也不更新 BizProductionReportFile 记录，
     /// 因此导出动作不会影响真实上传链路的文件与状态。
     /// </summary>

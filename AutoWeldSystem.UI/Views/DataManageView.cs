@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.Entities;
+using AutoWeldSystem.Core.Runtime;
 using AutoWeldSystem.Core.DTOs.DataManagement;
 using AutoWeldSystem.Core.DTOs.Upload;
 using AutoWeldSystem.Core.Interfaces;
@@ -44,6 +46,9 @@ public partial class DataManageView : BaseView
     private bool _suppressProductResultFilter;
     private string? _testDataSortColumnKey;
     private bool _testDataSortDescending;
+    private bool _syncingExportOptions;
+    private bool _savingExportOptions;
+    private bool _includeProgramLimitsInLocalExport = true;
 
     /// <summary>
     /// Constructor used only by the WinForms designer.
@@ -71,6 +76,8 @@ public partial class DataManageView : BaseView
         InitializeComponent();
         ConfigureGrids();
         WireEvents();
+        SyncExportOptions(appSettingsService.Get().IncludeProgramLimitsInLocalExport != false);
+        _appSettingsService.SettingsChanged += AppSettingsService_SettingsChanged;
         _stationDisplay = new StationDisplayBinding(this, appSettingsService, localizer, RefreshStationDisplayTexts);
     }
 
@@ -84,6 +91,7 @@ public partial class DataManageView : BaseView
         }
 
         _initialized = true;
+        SyncExportOptions(_appSettingsService.Get().IncludeProgramLimitsInLocalExport != false);
         SetDefaultDateRange();
         ApplyLocalizedTexts();
         ApplyDefaultSplitterLayout();
@@ -432,6 +440,7 @@ public partial class DataManageView : BaseView
         testDataPagination.ValueChanged += TestDataPagination_ValueChanged;
         btnToggleTestDataExpand.Click += (_, _) => ToggleTestDataExpand();
         btnExportTestData.Click += (_, _) => ExportTestData();
+        chkExportProgramLimits.CheckedChanged += ExportProgramLimits_CheckedChanged;
         btnDeleteWorkOrders.Click += async (_, _) => await DeleteSelectedWorkOrdersAsync();
         btnCleanFailedData.Click += async (_, _) => await CleanFailedDataAsync();
         btnCleanByDate.Click += async (_, _) => await CleanByDateAsync();
@@ -849,12 +858,79 @@ public partial class DataManageView : BaseView
         return true;
     }
 
+    private void SyncExportOptions(bool includeProgramLimits)
+    {
+        _includeProgramLimitsInLocalExport = includeProgramLimits;
+        _syncingExportOptions = true;
+        try
+        {
+            chkExportProgramLimits.Checked = includeProgramLimits;
+        }
+        finally
+        {
+            _syncingExportOptions = false;
+        }
+    }
+
+    private void AppSettingsService_SettingsChanged(object? sender, AppSettingsChangedEventArgs e)
+    {
+        if (!e.HasChanged(nameof(AppSettings.IncludeProgramLimitsInLocalExport)) || _disposing)
+        {
+            return;
+        }
+
+        RunOnUiThread(() =>
+        {
+            if (!_savingExportOptions)
+                SyncExportOptions(_appSettingsService.Get().IncludeProgramLimitsInLocalExport != false);
+        }, "DataManageView.ExportOptionsChanged");
+    }
+
+    private async void ExportProgramLimits_CheckedChanged(object? sender, AntdUI.BoolEventArgs e)
+    {
+        if (_syncingExportOptions || _savingExportOptions || _disposing || IsDesignEnvironment)
+        {
+            return;
+        }
+
+        var previousValue = _includeProgramLimitsInLocalExport;
+        _savingExportOptions = true;
+        chkExportProgramLimits.Enabled = false;
+        btnExportTestData.Enabled = false;
+        try
+        {
+            var settings = _appSettingsService.Get();
+            settings.IncludeProgramLimitsInLocalExport = e.Value;
+            await Task.Run(() => _appSettingsService.Save(settings));
+            if (!_disposing && !IsDisposed)
+                SyncExportOptions(_appSettingsService.Get().IncludeProgramLimitsInLocalExport != false);
+        }
+        catch (Exception ex)
+        {
+            if (!_disposing && !IsDisposed)
+            {
+                SyncExportOptions(previousValue);
+                ShowError(_localizer.GetString(TextKeys.DataManage.ExportOptionsSaveFailed, ex.Message));
+            }
+        }
+        finally
+        {
+            _savingExportOptions = false;
+            if (!_disposing && !IsDisposed)
+            {
+                chkExportProgramLimits.Enabled = true;
+                btnExportTestData.Enabled = true;
+            }
+        }
+    }
+
     /// <summary>
-    /// 导出当前工单的原始明细，顶部附开工程序快照中的上下限；不生成 MES 报告文件。
+    /// 导出当前工单的原始明细，按保存的选项附开工程序快照上下限；不生成 MES 报告文件。
     /// 导出始终覆盖整个工单，不受页面产品结果筛选影响，因此用全量行判断有无数据。
     /// </summary>
     private void ExportTestData()
     {
+        if (_savingExportOptions) return;
         var workOrder = GetSelectedWorkOrder();
         if (workOrder is null || _testDataRows.Count == 0)
         {
@@ -1212,6 +1288,9 @@ public partial class DataManageView : BaseView
         }
 
         _disposing = true;
+        if (_appSettingsService is not null)
+            _appSettingsService.SettingsChanged -= AppSettingsService_SettingsChanged;
+        chkExportProgramLimits.CheckedChanged -= ExportProgramLimits_CheckedChanged;
         GlobalContext.SessionChanged -= GlobalContext_SessionChanged;
         CancelAndDispose(ref _workOrderQueryCancellation);
         CancelAndDispose(ref _detailQueryCancellation);
@@ -1322,6 +1401,7 @@ public partial class DataManageView : BaseView
         tabWeldParameters.Text = _localizer.GetString(TextKeys.DataManage.TabWeldParameters);
         lblProductResultFilter.Text = _localizer.GetString(TextKeys.DataManage.ProductResultFilter);
         btnExportTestData.Text = _localizer.GetString(TextKeys.DataManage.ExportTestData);
+        chkExportProgramLimits.Text = _localizer.GetString(TextKeys.DataManage.ExportProgramLimits);
         ApplyTestDataExpandButtonText();
         BindProductResultFilterOptions();
         ConfigureTestDataColumns(_testDataDynamicColumns);

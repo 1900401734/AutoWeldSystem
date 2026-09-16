@@ -161,7 +161,10 @@ var tests = new (string Name, Action Run)[]
     ("Data history dynamic sort orders products and keeps blanks last", DataHistoryDynamicSortOrdersProductsAndKeepsBlanksLast),
     ("Data history test data paging clamps page index", DataHistoryTestDataPagingClampsPageIndex),
     ("Local export includes frozen program limits above details", LocalExportIncludesFrozenProgramLimits),
-    ("Local export reports unavailable and missing program limits", LocalExportReportsUnavailableProgramLimits),
+    ("Local export omits unconfigured limits and honors saved export options", LocalExportHonorsProgramLimitsOption),
+    ("Local export compact limit table matches six-column reference", LocalExportCompactLimitsMatchReference),
+    ("Local export options default on and normalize legacy null", LocalExportOptionsNormalizeLegacyNull),
+    ("Local export reports invalid program limits without partial values", LocalExportReportsUnavailableProgramLimits),
     ("Local export covers all history dynamic columns", LocalExportCoversAllHistoryDynamicColumns),
     ("Local export keeps raw face rows without AB aggregation", LocalExportKeepsRawFaceRowsWithoutAbAggregation),
     ("Inspection local export removes only fixed face result columns", InspectionLocalExportRemovesOnlyFixedFaceResultColumns),
@@ -3591,26 +3594,29 @@ static void LocalExportIncludesFrozenProgramLimits()
                 AssertEqual(21, detailRow, "五个限值项应插入八行，明细整体移到第21行。");
                 AssertEqual("程序上下限（来源：任务开工程序快照，仅供追溯）", sheet.Cell("A13").GetString(), "限值区必须标注来源与用途。");
                 AssertEqual("测试项", sheet.Cell("A14").GetString(), "限值表头必须完整。");
-                AssertEqual("程序上限", sheet.Cell("G14").GetString(), "程序上限不得混为PLC上限。");
-                AssertEqual("程序下限", sheet.Cell("I14").GetString(), "程序下限不得混为PLC下限。");
+                AssertEqual("程序上限", sheet.Cell("C14").GetString(), "程序上限不得混为PLC上限。");
+                AssertEqual("程序下限", sheet.Cell("E14").GetString(), "程序下限不得混为PLC下限。");
                 AssertEqual("高度", sheet.Cell("A15").GetString(), "保持快照测试项顺序。");
-                AssertEqual("12.500", sheet.Cell("G15").GetString(), "限值来自历史快照，不是PLC原始99或当前配置，并保留精度。");
-                AssertEqual("10", sheet.Cell("I15").GetString(), "双侧限值完整输出。");
-                AssertEqual("0.5", sheet.Cell("G16").GetString(), "未在当前方案中的测试项仍须导出。");
-                AssertTrue(sheet.Cell("I16").IsEmpty(), "只有上限时下限必须留空。");
-                AssertTrue(sheet.Cell("G17").IsEmpty(), "只有下限时上限必须留空。");
-                AssertEqual("-0.25", sheet.Cell("I17").GetString(), "负数下限必须保留。");
-                AssertEqual("0", sheet.Cell("G18").GetString(), "合法零不得当成缺失。");
+                AssertEqual("12.500", sheet.Cell("C15").GetString(), "限值来自历史快照，不是PLC原始99或当前配置，并保留精度。");
+                AssertEqual("10", sheet.Cell("E15").GetString(), "双侧限值完整输出。");
+                AssertEqual("0.5", sheet.Cell("C16").GetString(), "未在当前方案中的测试项仍须导出。");
+                AssertTrue(sheet.Cell("E16").IsEmpty(), "只有上限时下限必须留空。");
+                AssertTrue(sheet.Cell("C17").IsEmpty(), "只有下限时上限必须留空。");
+                AssertEqual("-0.25", sheet.Cell("E17").GetString(), "负数下限必须保留。");
+                AssertEqual("0", sheet.Cell("C18").GetString(), "合法零不得当成缺失。");
                 AssertEqual(longName, sheet.Cell("A19").GetString(), "长名称必须完整输出。");
-                AssertEqual("0.1234567890123456789012345678", sheet.Cell("G19").GetString(), "限值不能被报表小数位或Excel数字精度截断。");
-                AssertEqual(XLDataType.Text, sheet.Cell("G19").DataType, "限值以精确文本写入。");
-                AssertTrue(sheet.Row(19).Height > 30, "长阈值的合并单元格必须增高以避免裁剪。");
-                AssertTrue(sheet.Cell("G19").Style.Alignment.WrapText, "长阈值必须可换行。");
-                AssertMerged(sheet, "A13:J13", "限值标题横跨报表。");
-                AssertMerged(sheet, "A15:F15", "测试项名称占宽列块。");
-                AssertMerged(sheet, "G15:H15", "上限使用独立列块。");
-                AssertMerged(sheet, "I15:J15", "下限使用独立列块。");
-                AssertEqual(XLBorderStyleValues.Thin, sheet.Cell("G15").Style.Border.TopBorder, "限值表应沿用细边框。");
+                AssertEqual("0.1234567890123456789012345678", sheet.Cell("C19").GetString(), "限值不能被报表小数位或Excel数字精度截断。");
+                AssertEqual(XLDataType.Text, sheet.Cell("C19").DataType, "限值以精确文本写入。");
+                AssertTrue(sheet.Row(19).Height > 30, "长名称或阈值必须增高以避免裁剪。");
+                AssertTrue(sheet.Cell("C19").Style.Alignment.WrapText, "长阈值必须可换行。");
+                AssertNearlyEqual(15, sheet.Row(14).Height, 0.01, "短表头不应占用过高的空白。");
+                AssertNearlyEqual(15, sheet.Row(15).Height, 0.01, "短限值行使用紧凑行高。");
+                AssertMerged(sheet, "A13:F13", "限值标题限定在 A:F，不随模板拉宽。");
+                AssertMerged(sheet, "A15:B15", "测试项名称仅占 A:B。");
+                AssertMerged(sheet, "C15:D15", "上限使用 C:D。");
+                AssertMerged(sheet, "E15:F15", "下限使用 E:F。");
+                AssertTrue(sheet.Range("G13:J19").IsEmpty(), "限值区域不能继续写入 F 列之后。");
+                AssertEqual(XLBorderStyleValues.Thin, sheet.Cell("C15").Style.Border.TopBorder, "限值表应沿用细边框。");
                 AssertTrue(sheet.Cell("A20").IsEmpty(), "限值与明细之间保留空白隔行。");
                 AssertEqual(21, sheet.SheetView.SplitRow, "冻结区域必须跟随明细表头下移。");
                 AssertTrue(!sheet.CellsUsed().Any(cell => cell.HasFormula), "限值追溯无需新建公式。");
@@ -3647,11 +3653,146 @@ static void LocalExportIncludesFrozenProgramLimits()
     }
 }
 
+static void LocalExportCompactLimitsMatchReference()
+{
+    var task = BuildReportTask(new DateTime(2026, 9, 16, 8, 0, 0), new DateTime(2026, 9, 16, 9, 0, 0));
+    task.SN = "DEMO-20260916";
+    task.ProgramName = "DEMO-程序上下限导出";
+    task.UserNumber = "DEMO-001";
+    task.UserName = "示例操作员";
+    var definitions = new[] { "对称度", "高度", "宽度" }.Select((name, index) => (
+        new DimTestItem { ItemId = index + 1, ItemName = name, Unit = "mm", ActualExpression = "0:F-0" },
+        new BizSchemeDetail { ItemId = index + 1, DetailId = index + 1, SaveActual = true, ReportActual = true, ActualHeader = name })).ToArray();
+    var values = new[] { ("0.1474", "29.1416", "27.6661"), ("0.0431", "27.1353", "15.6940"), ("0.0317", "28.9650", "27.6273"), ("0.0879", "27.0964", "15.6502") };
+    var records = values.Select((value, index) =>
+    {
+        var record = BuildReportPoint(task.Id, 1, "15", index + 1, "3");
+        record.ProductResult = "OK";
+        record.RawDataJson = JsonSerializer.Serialize(new Dictionary<string, string>
+        {
+            ["对称度"] = value.Item1, ["高度"] = value.Item2, ["宽度"] = value.Item3
+        });
+        return record;
+    }).ToArray();
+    foreach (var mode in new[] { "开启", "关闭", "未配置" })
+    {
+        var settings = new AppSettings
+        {
+            ProcessParameterDeviceType = ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck,
+            IncludeProgramLimitsInLocalExport = mode != "关闭"
+        };
+        task.ProgramContentSnapshot = mode == "未配置" ? "{\"焊点数量\":4}" : "{\"焊点数量\":4,\"对称度上限\":0.15}";
+        var config = new BizProductProcessConfig { StationNo = 1, PointNoHeader = "检测面", PointResultHeader = "检测结果" };
+        var path = GenerateExportReportWorkbook(settings, task, records, true, settings.ProcessParameterDeviceType,
+            schemeDefinitions: definitions, touchCount: 4, stationConfigs: [config]);
+        try
+        {
+            using var workbook = new XLWorkbook(path);
+            var sheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+            var detailRow = GetReportDetailHeaderRow(sheet);
+            AssertEqual(mode == "开启" ? 17 : 13, detailRow, "六列样例必须按开关与限值配置决定明细起始行。");
+            AssertSequenceEqual(new[] { "产品编号", "检测面", "对称度 (mm)", "高度 (mm)", "宽度 (mm)", "产品结果" }, ReadHeaderRow(sheet, detailRow), "原始六列明细结构不变。");
+            if (mode == "开启")
+            {
+                AssertMerged(sheet, "A13:F13", "标题跨六列。");
+                AssertEqual("对称度", sheet.Cell("A15").GetString(), "样例的测试项名称保持。");
+                AssertEqual("0.15", sheet.Cell("C15").GetString(), "样例的上限写入 C:D。");
+                AssertNearlyEqual(15, sheet.Row(15).Height, 0.01, "样例的短数值行紧凑显示。");
+            }
+            AssertEqual("0.1474", sheet.Cell(detailRow + 1, 3).GetString(), "原始小数精度不变。");
+            AssertEqual("OK", sheet.Cell(detailRow + 1, 6).GetString(), "既有产品结果不重算。");
+            AssertMerged(sheet, $"F{detailRow + 1}:F{detailRow + 4}", "产品结果仍合并四面。");
+            var sampleDirectory = Environment.GetEnvironmentVariable("AUTOWELD_LOCAL_LIMITS_SAMPLE_DIR");
+            if (!string.IsNullOrWhiteSpace(sampleDirectory))
+            {
+                Directory.CreateDirectory(sampleDirectory);
+                File.Copy(path, Path.Combine(sampleDirectory, $"本地历史导出_六列_{mode}.xlsx"), true);
+            }
+        }
+        finally { DeleteReportFixture(path); }
+    }
+}
+
+static void LocalExportOptionsNormalizeLegacyNull()
+{
+    AssertEqual(true, new AppSettings().IncludeProgramLimitsInLocalExport, "本地导出限值默认开启。");
+    var normalize = typeof(AutoWeldSystem.Services.AppSettingsService).GetMethod(
+        "Normalize", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+    foreach (var value in new bool?[] { null, false, true })
+    {
+        var settings = new AppSettings { IncludeProgramLimitsInLocalExport = value };
+        normalize.Invoke(null, [settings, true]);
+        AssertEqual(value != false, settings.IncludeProgramLimitsInLocalExport, "旧库空值回填开启，明确关闭不能被覆盖。");
+        AssertEqual(settings.IncludeProgramLimitsInLocalExport, settings.Clone().IncludeProgramLimitsInLocalExport, "配置快照必须携带导出偏好。");
+    }
+    var previous = new AppSettings();
+    var current = previous.Clone();
+    current.IncludeProgramLimitsInLocalExport = false;
+    var resolveChanges = typeof(AutoWeldSystem.Services.AppSettingsService).GetMethod(
+        "ResolveChangedProperties", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+    var changed = (IReadOnlyList<string>)resolveChanges.Invoke(null, [previous, current])!;
+    AssertSequenceEqual(new[] { nameof(AppSettings.IncludeProgramLimitsInLocalExport) }, changed.ToArray(), "切换导出偏好只能广播该字段。");
+}
+
+static void LocalExportHonorsProgramLimitsOption()
+{
+    foreach (var include in new bool?[] { true, false, null })
+    foreach (var configured in new[] { true, false })
+    foreach (var dualStation in new[] { false, true })
+    foreach (var localExport in new[] { true, false })
+    {
+        var settings = new AppSettings { IncludeProgramLimitsInLocalExport = include, EnableDualStation = dualStation };
+        var task = BuildReportTask(new DateTime(2026, 9, 16, 8, 0, 0), new DateTime(2026, 9, 16, 9, 0, 0));
+        task.UserName = "示例操作员";
+        task.ProgramContentSnapshot = configured ? "{\"焊点数量\":2,\"对称度上限\":0.15}" : "{\"焊点数量\":2}";
+        // 明细超过 J 列时，限值区仍固定 A:F；原始 PLC 上下限列不受顶部开关影响。
+        var definitions = Enumerable.Range(1, 5).Select(id => (
+            new DimTestItem { ItemId = id, ItemName = $"测试项{id}", ActualExpression = "0:F-0", UpperExpression = "4:F-0", LowerExpression = "8:F-0" },
+            new BizSchemeDetail { ItemId = id, ReportActual = true, ReportUpper = true, ReportLower = true,
+                ActualHeader = $"测试项{id}", UpperHeader = $"PLC上限{id}", LowerHeader = $"PLC下限{id}" })).ToArray();
+        var records = Enumerable.Range(1, 2).Select(point =>
+        {
+            var record = BuildReportPoint(task.Id, 1, "P-001", point, "OK");
+            record.ProductResult = "OK";
+            record.RawDataJson = "{\"测试项1\":11,\"测试项1上限\":99,\"测试项1下限\":-99}";
+            return record;
+        }).ToArray();
+        var path = GenerateExportReportWorkbook(settings, task, records, localExport, schemeDefinitions: definitions, touchCount: 2);
+        try
+        {
+            using var workbook = new XLWorkbook(path);
+            var sheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+            var showLimits = localExport && include != false && configured;
+            var headerRow = GetReportDetailHeaderRow(sheet);
+            AssertEqual(showLimits ? 17 : 13, headerRow, "未配置或关闭导出时不应留下标题、提示和隔行。");
+            AssertEqual(headerRow, sheet.SheetView.SplitRow, "冻结行随实际明细表头位置移动。");
+            AssertEqual(showLimits, sheet.CellsUsed().Any(cell => cell.GetString().StartsWith("程序上下限", StringComparison.Ordinal)), "仅本地导出且开启并已配置时写入顶部限值区。");
+            if (showLimits)
+            {
+                AssertMerged(sheet, "A13:F13", "动态明细再宽也不能拉宽限值块。");
+                AssertMerged(sheet, "A14:B14", "测试项表头两列。");
+                AssertMerged(sheet, "C14:D14", "程序上限表头两列。");
+                AssertMerged(sheet, "E14:F14", "程序下限表头两列。");
+                AssertEqual("0.15", sheet.Cell("C15").GetString(), "程序限值来自快照。");
+                AssertTrue(sheet.Cell("E15").IsEmpty(), "缺少的一侧留空。");
+            }
+            var headers = ReadHeaderRow(sheet, headerRow);
+            var plcUpper = Array.IndexOf(headers, "PLC上限1") + 1;
+            var plcLower = Array.IndexOf(headers, "PLC下限1") + 1;
+            AssertTrue(headers.Length > 10 && plcUpper > 0 && plcLower > 0, "顶部开关不能删除明细的 PLC 限值列。");
+            AssertEqual(localExport ? "99" : "99.00", sheet.Cell(headerRow + 1, plcUpper).GetString(), "PLC上限原值保持。");
+            AssertEqual(localExport ? "-99" : "-99.00", sheet.Cell(headerRow + 1, plcLower).GetString(), "PLC下限原值保持。");
+            var productColumn = Array.IndexOf(headers, "产品编号") + 1;
+            AssertMerged(sheet, $"{XLHelper.GetColumnLetterFromNumber(productColumn)}{headerRow + 1}:{XLHelper.GetColumnLetterFromNumber(productColumn)}{headerRow + 2}", "产品合并随表头位置移动。");
+        }
+        finally { DeleteReportFixture(path); }
+    }
+}
+
 static void LocalExportReportsUnavailableProgramLimits()
 {
     foreach (var snapshot in new[]
     {
-        "{\"焊点数量\":1}",
         "{\"焊点数量\":1,\"高度\":12}",
         "{\"焊点数量\":1,\"高度上限\":12,\"高度下限\":13}",
         "{\"焊点数量\":1,\"高度上限\":12,\"宽度上限\":\"bad\"}"
@@ -3667,9 +3808,9 @@ static void LocalExportReportsUnavailableProgramLimits()
             var sheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
             var detailRow = GetReportDetailHeaderRow(sheet);
             AssertEqual(17, detailRow, "无有效限值时仍须保留提示区及原始明细。");
-            AssertTrue(sheet.Cell("A15").GetString().StartsWith(snapshot == "{\"焊点数量\":1}"
-                ? "该任务未配置程序上下限" : "程序上下限不可用：", StringComparison.Ordinal), "空/旧/错误快照必须明确提示，不能猜测或部分显示限值。");
-            AssertTrue(sheet.Cell("G15").IsEmpty(), "无效内容不能留下部分有效限值。");
+            AssertTrue(sheet.Cell("A15").GetString().StartsWith("程序上下限不可用：", StringComparison.Ordinal), "旧/错误快照必须明确提示，不能猜测或部分显示限值。");
+            AssertMerged(sheet, "A15:F15", "不可用提示同样限定在紧凑区域。");
+            AssertTrue(sheet.Cell("C15").IsEmpty(), "无效内容不能留下部分有效限值。");
             AssertEqual("P-001", sheet.Cell(detailRow + 1, 1).GetString(), "旧快照的原始明细仍可导出。");
             AssertEqual(snapshot, task.ProgramContentSnapshot, "提示不能改写旧快照。");
         }
@@ -3997,8 +4138,8 @@ static void InspectionLocalExportRemovesOnlyFixedFaceResultColumns()
             AssertTrue(sheet.Cell(headerRow + records.Count + 1, faceColumn).IsEmpty(), "不能多出聚合行或占位行。");
             AssertEqual(17, headerRow, "移除明细结果列不应改变程序限值区域占用的行数。");
             AssertEqual(headerRow, sheet.SheetView.SplitRow, "冻结区域仍应跟随明细表头。");
-            AssertEqual("20.000", sheet.Cell("G15").GetString(), "顶部程序上限必须保持开工快照值与精度。");
-            AssertEqual("5.000", sheet.Cell("I15").GetString(), "顶部程序下限必须保持开工快照值与精度。");
+            AssertEqual("20.000", sheet.Cell("C15").GetString(), "顶部程序上限必须保持开工快照值与精度。");
+            AssertEqual("5.000", sheet.Cell("E15").GetString(), "顶部程序下限必须保持开工快照值与精度。");
             AssertTemplateHeaderMerges(sheet);
             AssertEqual(originalRecords, JsonSerializer.Serialize(records), "手动导出不得修改采集记录或历史产品结果。");
         }
@@ -4346,7 +4487,7 @@ static void DataManageExportKeepsUploadReportTemplateLayout()
             worksheet.Cell(1, 1).GetString().Contains(task.SN, StringComparison.Ordinal),
             "模板抬头必须携带工单号，导出表格因此无需单独的工单号列。");
         var detailHeaderRow = GetReportDetailHeaderRow(worksheet);
-        AssertEqual(17, detailHeaderRow, "无已配限值时也应展示提示区，明细向下移动四行。");
+        AssertEqual(13, detailHeaderRow, "未配置限值时不插入额外区域，保持原模板明细起始行。");
         AssertEqual(
             "产品编号",
             worksheet.Cell(detailHeaderRow, 1).GetString(),

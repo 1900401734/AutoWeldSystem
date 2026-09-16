@@ -2650,4 +2650,6 @@ This also removes {3} collection record(s) and {4} report file(s) including the 
   <data name="common.extended_dashboard_title" xml:space="preserve"><value>Extended Production Dashboard</value></data>
   <data name="program.recipe.not_specified" xml:space="preserve"><value>Not specified</value></data>
   <data name="program.review.count_missing" xml:space="preserve"><value>Not configured (complete it in Program Management first)</value></data>
+  <data name="data.checkbox.export_program_limits" xml:space="preserve"><value>Export program limits</value></data>
+  <data name="data.message.export_options_save_failed" xml:space="preserve"><value>Could not save export options. The previous setting was restored: {0}</value></data>
 </root>
