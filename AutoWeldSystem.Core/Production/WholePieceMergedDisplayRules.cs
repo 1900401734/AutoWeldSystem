@@ -1,3 +1,4 @@
+using AutoWeldSystem.Core.Entities;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -11,6 +12,31 @@ public static class WholePieceMergedDisplayRules
 {
     public const string SideASuffix = "A";
     public const string SideBSuffix = "B";
+
+    /// <summary>
+    /// 合并表头由方案配置决定，不等待采集；上报项即使未打开实时预览也不能被遗漏。
+    /// </summary>
+    public static IReadOnlyList<WholePieceAbValueDefinition> ResolveDefinitions(
+        string? deviceType,
+        int touchCount,
+        IEnumerable<BizSchemeDetail> details,
+        IReadOnlyList<DimTestItem> items)
+    {
+        ArgumentNullException.ThrowIfNull(details);
+        ArgumentNullException.ThrowIfNull(items);
+        if (!WholePieceAbAggregationRules.IsApplicable(deviceType, touchCount))
+        {
+            return Array.Empty<WholePieceAbValueDefinition>();
+        }
+
+        return details
+            .OrderBy(detail => detail.DetailId)
+            .Where(SchemeDetailRoleRules.ShouldShowMergedPreviewActual)
+            .Select(detail => items.FirstOrDefault(item => item.ItemId == detail.ItemId))
+            .Where(item => item is not null && SchemeDetailRoleRules.IsRoleAvailable(item, SchemeDetailValueRole.Actual))
+            .Select(item => new WholePieceAbValueDefinition(item!.ItemId, item.ItemName, item.ItemName, item.ActualExpression))
+            .ToList();
+    }
 
     /// <summary>
     /// 生成合并显示列名。高度、宽度是产品级测试项，只占一列；其余测试项按 A/B 配对分列。

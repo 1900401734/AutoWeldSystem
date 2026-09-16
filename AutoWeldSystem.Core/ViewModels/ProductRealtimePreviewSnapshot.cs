@@ -27,7 +27,7 @@ public sealed record ProductRealtimePreviewSnapshot(
         : RefreshTime.ToString("HH:mm:ss");
 
     /// <summary>
-    /// 四面整件检测的合并显示列。非四面整件检测或四面未采集齐时为空。
+    /// 四面整件检测的合并显示列，由方案的上报实际值项决定；未采集齐时列保留，仅合并值为空。
     /// </summary>
     public IReadOnlyList<WholePieceMergedColumn> MergedColumns { get; init; } = Array.Empty<WholePieceMergedColumn>();
 

@@ -191,6 +191,8 @@ var tests = new (string Name, Action Run)[]
     ("Whole-piece aggregation rejects invalid source data", WholePieceAggregationRejectsInvalidSourceData),
     ("Whole-piece merged view follows upload decimal places", WholePieceMergedViewFollowsUploadDecimalPlaces),
     ("Whole-piece merged display builds A and B columns", WholePieceMergedDisplayBuildsAbColumns),
+    ("Whole-piece merged columns follow upload configuration before collection", WholePieceMergedColumnsFollowUploadConfiguration),
+    ("Whole-piece realtime merged columns survive empty and reset frames", WholePieceRealtimeMergedColumnsSurviveEmptyFrames),
     ("Whole-piece product result uses merged values", WholePieceProductResultUsesMergedValues),
     ("Report file upload rule requires an enabled report role", ReportFileUploadRuleRequiresEnabledReportRole),
     ("Product cycle snapshots persist PLC product results", ProductCycleSnapshotsPersistPlcProductResults),
@@ -5076,6 +5078,102 @@ static void WholePieceMergedDisplayBuildsAbColumns()
     AssertEqual("15.88", values["高度"], "高度列必须取四面最大值。");
     AssertEqual("0.020", values["对称度A"], "对称度A列必须取A行数值。");
     AssertEqual("0.095", values["对称度B"], "对称度B列必须取B行数值。");
+}
+
+static void WholePieceMergedColumnsFollowUploadConfiguration()
+{
+    var details = new[]
+    {
+        new BizSchemeDetail { DetailId = 3, ItemId = 3, EnableActual = true, SaveActual = true, ForwardActual = true },
+        new BizSchemeDetail { DetailId = 2, ItemId = 2, MesActual = true },
+        new BizSchemeDetail { DetailId = 1, ItemId = 1, ReportActual = true },
+        new BizSchemeDetail { DetailId = 4, ItemId = 4, ReportUpper = true },
+        new BizSchemeDetail { DetailId = 5, ItemId = 5, ReportActual = true }
+    };
+    var items = new[]
+    {
+        new DimTestItem { ItemId = 1, ItemName = "高度", ActualExpression = "0:F-0_4" },
+        new DimTestItem { ItemId = 2, ItemName = "对称度", ActualExpression = "4:F-0_4" },
+        new DimTestItem { ItemId = 3, ItemName = "宽度", ActualExpression = "8:F-0_4" },
+        new DimTestItem { ItemId = 4, ItemName = "位移", ActualExpression = "12:F-0_4" },
+        new DimTestItem { ItemId = 5, ItemName = "无表达式", ActualExpression = string.Empty }
+    };
+    var deviceType = ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck;
+    var definitions = WholePieceMergedDisplayRules.ResolveDefinitions(deviceType, 4, details, items);
+    AssertSequenceEqual(new[] { "高度", "对称度A", "对称度B" },
+        WholePieceMergedDisplayRules.BuildColumns(definitions).Select(column => column.ColumnName).ToArray(),
+        "首采前必须只按上报实际值项建合并列，并兼容旧库单独勾报表或 MES 的配置。");
+    AssertFalse(details[1].EnableActual, "生成列定义不能修改方案配置。");
+    AssertTrue(details[4].ReportActual, "不可用角色在显示时排除，但不能静默重写原配置。");
+    AssertEqual(0, WholePieceMergedDisplayRules.ResolveDefinitions(deviceType, 2, details, items).Count,
+        "非四面方案不能套用 A/B 合并列。");
+    AssertEqual(0, WholePieceMergedDisplayRules.ResolveDefinitions("SpotWeld", 4, details, items).Count,
+        "非整件检测设备不能套用 A/B 合并列。");
+    AssertEqual(0, WholePieceMergedDisplayRules.ResolveDefinitions(deviceType, 4, [details[0]], items).Count,
+        "没有上报项时不得回退到实时预览、本地保存或转发项。");
+
+    details[0].MesActual = true;
+    details[1].MesActual = false;
+    AssertSequenceEqual(new[] { "高度", "宽度" },
+        WholePieceMergedDisplayRules.BuildColumns(WholePieceMergedDisplayRules.ResolveDefinitions(deviceType, 4, details, items))
+            .Select(column => column.ColumnName).ToArray(),
+        "修改上报勾选后合并列必须随配置变化。");
+}
+
+static void WholePieceRealtimeMergedColumnsSurviveEmptyFrames()
+{
+    var settings = new FakeAppSettingsService
+    {
+        Current = new AppSettings
+        {
+            ProcessParameterDeviceType = ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck,
+            RealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Program
+        }
+    };
+    var schemes = new FakeBoundaryTestSchemeService
+    {
+        Items = [new DimTestItem { ItemId = 1, ItemName = "高度", ActualExpression = "0:S-0_4" }]
+    };
+    var plc = new FakePlcCommunicationService();
+    var reader = new AutoWeldSystem.Services.Plc.ExpressionReadService(plc, settings);
+    using var service = new ProductRealtimePreviewService(null!, null!, schemes, null!, settings, plc, reader, null!, null!);
+    var config = new BizProductProcessConfig
+    {
+        SchemeId = "S1", ProductBase = "DB1.0", TouchBase = "DB2.0", TestBase = "DB3.0",
+        ProductNoExpr = "0:S-0", ProductResultExpr = "40:S-0", TouchResultExpr = "0:S-0",
+        TouchHeaderLen = 32, TestAreaLen = 32
+    };
+    var task = new BizWeldTask { ProgramContentSnapshot = "{\"焊点数量\":4,\"高度上限\":20}" };
+    var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+    var identityType = typeof(ProductRealtimePreviewService).GetNestedType("ProductPreviewIdentity", System.Reflection.BindingFlags.NonPublic)!;
+    var identity = Activator.CreateInstance(identityType, 1, "P-TEST", "", (int?)4)!;
+    var build = typeof(ProductRealtimePreviewService).GetMethod("BuildSnapshotAsync", flags)!;
+    ProductRealtimePreviewSnapshot ReadFrame(int completed)
+    {
+        for (var face = 0; face < 4; face++)
+        {
+            plc.StringReadResults[$"DB2.{face * 32}"] = PlcServiceResult<string>.Success(face < completed ? "3" : "0");
+            plc.StringReadResults[$"DB3.{face * 32}"] = PlcServiceResult<string>.Success((15 + face / 10m).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+        return ((Task<ProductRealtimePreviewSnapshot>)build.Invoke(service, [identity, config, task, CancellationToken.None])!)
+            .GetAwaiter().GetResult();
+    }
+
+    var idle = ReadFrame(0);
+    AssertEqual(0, idle.Rows.Count, "程序编号模式未采集时没有逐面数据行。");
+    AssertSequenceEqual(new[] { "高度" }, idle.MergedColumns.Select(column => column.ColumnName).ToArray(),
+        "零行快照也必须带上报合并列，不能等触发采集才决定表头。");
+    AssertEqual(0, idle.MergedValues.Count, "未采集齐不能伪造合并值。");
+    var partial = ReadFrame(1);
+    AssertEqual(1, partial.Rows.Count, "一面完成时仅产生一面预览行。");
+    AssertSequenceEqual(idle.MergedColumns, partial.MergedColumns, "部分采集不能改变合并表头。");
+    AssertEqual(0, partial.MergedValues.Count, "部分采集不能提前给出四面合并值。");
+    var completed = ReadFrame(4);
+    AssertSequenceEqual(idle.MergedColumns, completed.MergedColumns, "采集完成后仍应使用相同的合并表头。");
+    AssertEqual("15.30", completed.MergedValues["高度"], "完成时仍取四面最大值并按上报小数位显示。");
+    var reset = ReadFrame(0);
+    AssertSequenceEqual(idle.MergedColumns, reset.MergedColumns, "下一件清零后必须保留合并表头。");
+    AssertEqual(0, reset.MergedValues.Count, "下一件清零不能保留上一帧合并值。");
 }
 
 static void WholePieceProductResultUsesMergedValues()
@@ -19689,10 +19787,12 @@ sealed class InspectableWeldTaskService : WeldTaskService
 
 sealed class FakeBoundaryTestSchemeService : ITestSchemeConfigService
 {
+    public IReadOnlyList<DimTestItem>? Items { get; set; }
+
     public IReadOnlyList<BizSchemeDetail> GetDetails(string? schemeId = null, bool normalizeRoles = true)
         => new[] { new BizSchemeDetail { SchemeId = schemeId ?? "S1", ItemId = schemeId == "S2" ? 2 : 1, ReportActual = true, MesActual = true, ActualMesFieldName = schemeId == "S2" ? "Width" : "Height" } };
     public IReadOnlyList<DimTestItem> GetItems()
-        => new[] { new DimTestItem { ItemId = 1, ItemName = "高度", ActualExpression = "0:F-0_4" }, new DimTestItem { ItemId = 2, ItemName = "宽度", ActualExpression = "4:F-0_4" } };
+        => Items ?? new[] { new DimTestItem { ItemId = 1, ItemName = "高度", ActualExpression = "0:F-0_4" }, new DimTestItem { ItemId = 2, ItemName = "宽度", ActualExpression = "4:F-0_4" } };
     public IReadOnlyList<BizTestScheme> GetSchemes() => [];
     public BizTestScheme SaveScheme(BizTestScheme scheme) => throw new NotSupportedException();
     public void DeleteScheme(string schemeId) => throw new NotSupportedException();
