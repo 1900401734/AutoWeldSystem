@@ -717,7 +717,8 @@ public partial class SystemSettingView : BaseView
         var settings = e.CurrentSettings;
         Interlocked.Exchange(ref _currentSettings, settings);
         if (Volatile.Read(ref _suppressSettingsChangedBinding) != 0
-            || e.ChangedProperties.All(property => property == nameof(AppSettings.Language)))
+            || e.ChangedProperties.All(property => property is nameof(AppSettings.Language)
+                or nameof(AppSettings.IncludeProgramLimitsInLocalExport)))
         {
             return;
         }

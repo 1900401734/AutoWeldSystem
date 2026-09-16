@@ -56,6 +56,7 @@
             selectProductResult = new AntdUI.Select();
             btnToggleTestDataExpand = new AntdUI.Button();
             btnExportTestData = new AntdUI.Button();
+            chkExportProgramLimits = new AntdUI.Checkbox { Checked = true };
             dgvWeldParameters = new DataGridView();
             tableTestData = new AntdUI.Table();
             testDataPagination = new AntdUI.Pagination();
@@ -498,6 +499,7 @@
             //
             // lblParameterSummary
             //
+            lblParameterSummary.AutoEllipsis = true;
             lblParameterSummary.Dock = DockStyle.Fill;
             lblParameterSummary.ForeColor = SystemColors.GrayText;
             lblParameterSummary.Location = new Point(3, 0);
@@ -513,6 +515,7 @@
             parameterToolbar.Controls.Add(lblProductResultFilter);
             parameterToolbar.Controls.Add(selectProductResult);
             parameterToolbar.Controls.Add(btnToggleTestDataExpand);
+            parameterToolbar.Controls.Add(chkExportProgramLimits);
             parameterToolbar.Controls.Add(btnExportTestData);
             parameterToolbar.Dock = DockStyle.Fill;
             parameterToolbar.FlowDirection = FlowDirection.LeftToRight;
@@ -553,6 +556,15 @@
             btnToggleTestDataExpand.TabIndex = 2;
             btnToggleTestDataExpand.Text = "展开全部";
             //
+            // chkExportProgramLimits
+            //
+            chkExportProgramLimits.AutoSizeMode = AntdUI.TAutoSize.Width;
+            chkExportProgramLimits.Margin = new Padding(10, 0, 0, 0);
+            chkExportProgramLimits.Name = "chkExportProgramLimits";
+            chkExportProgramLimits.Size = new Size(160, 30);
+            chkExportProgramLimits.TabIndex = 3;
+            chkExportProgramLimits.Text = "导出程序上下限";
+            //
             // btnExportTestData
             //
             btnExportTestData.BorderWidth = 1F;
@@ -561,7 +573,8 @@
             btnExportTestData.Margin = new Padding(10, 0, 0, 0);
             btnExportTestData.Name = "btnExportTestData";
             btnExportTestData.Size = new Size(136, 30);
-            btnExportTestData.TabIndex = 3;
+            btnExportTestData.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnExportTestData.TabIndex = 4;
             btnExportTestData.Text = "导出测试数据";
             //
             // dgvWeldParameters
@@ -1092,6 +1105,7 @@
         private AntdUI.Select selectProductResult;
         private AntdUI.Button btnToggleTestDataExpand;
         private AntdUI.Button btnExportTestData;
+        private AntdUI.Checkbox chkExportProgramLimits;
         private DataGridView dgvWeldParameters;
         private AntdUI.Table tableTestData;
         private AntdUI.Pagination testDataPagination;

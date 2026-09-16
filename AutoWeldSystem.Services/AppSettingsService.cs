@@ -131,6 +131,7 @@ public class AppSettingsService(SqlSugarDbContext dbContext) : IAppSettingsServi
         settings.EnableAutoStart ??= true;
         settings.EnableElevatedAutoStart ??= true;
         settings.ShowTestFlagInHistory ??= true;
+        settings.IncludeProgramLimitsInLocalExport ??= true;
         settings.EnablePlcStringNumericFormatting ??= true;
         settings.EnablePlcAlarmReading ??= true;
         settings.PlcAlarmTriggerMode = AppConstants.PlcAlarmTriggerModes.Normalize(settings.PlcAlarmTriggerMode);

@@ -2651,4 +2651,6 @@
   <data name="common.extended_dashboard_title" xml:space="preserve"><value>扩展屏生产看板</value></data>
   <data name="program.recipe.not_specified" xml:space="preserve"><value>未指定</value></data>
   <data name="program.review.count_missing" xml:space="preserve"><value>未配置（请先在程序管理中补齐）</value></data>
+  <data name="data.checkbox.export_program_limits" xml:space="preserve"><value>导出程序上下限</value></data>
+  <data name="data.message.export_options_save_failed" xml:space="preserve"><value>导出选项保存失败，已恢复原设置：{0}</value></data>
 </root>

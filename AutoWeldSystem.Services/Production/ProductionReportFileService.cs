@@ -305,7 +305,7 @@ public class ProductionReportFileService : IProductionReportFileService
         WriteDataRows(worksheet, schema, detailColumns, outputRows, stationNames, numericFormat);
         MergeRepeatedProductFields(worksheet, detailColumns, outputRows);
         ApplyWorksheetStyle(worksheet, detailColumns.Count, outputRows.Count, templateColumnCount);
-        if (schema.LocalExport)
+        if (schema.LocalExport && settings.IncludeProgramLimitsInLocalExport != false)
         {
             InsertProgramLimits(worksheet, task.ProgramContentSnapshot, templateColumnCount);
         }
@@ -319,13 +319,20 @@ public class ProductionReportFileService : IProductionReportFileService
     {
         // 历史追溯不套用当前设备的生产约束；旧快照无法解析时仍保留原始明细并明确标注。
         var available = ProgramContentJsonRules.TryReadLimits(programContent, out var limits, out var error);
+        if (available && limits.Count == 0)
+        {
+            return;
+        }
+
+        // 限值区独立使用 A:F 三组等分列，不随明细动态列数拉宽。
+        const int limitsLastColumn = 6;
         var insertedRows = Math.Max(1, limits.Count) + 3;
         worksheet.Row(DetailHeaderRow).InsertRowsAbove(insertedRows);
         var titleRow = DetailHeaderRow;
         var headerRow = titleRow + 1;
         var firstValueRow = headerRow + 1;
         var lastValueRow = titleRow + insertedRows - 2;
-        var range = worksheet.Range(titleRow, 1, lastValueRow, lastColumn);
+        var range = worksheet.Range(titleRow, 1, lastValueRow, limitsLastColumn);
         range.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
         range.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
         range.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
@@ -334,29 +341,27 @@ public class ProductionReportFileService : IProductionReportFileService
         range.Style.Alignment.ShrinkToFit = false;
         range.Style.Font.Bold = false;
         range.Style.Fill.BackgroundColor = XLColor.NoColor;
-        worksheet.Rows(titleRow, lastValueRow).Height = 30d;
+        worksheet.Rows(titleRow, lastValueRow).Height = 15d;
 
-        WriteBlock(titleRow, 1, lastColumn, "程序上下限（来源：任务开工程序快照，仅供追溯）");
-        WriteBlock(headerRow, 1, 6, "测试项");
-        WriteBlock(headerRow, 7, 8, "程序上限");
-        WriteBlock(headerRow, 9, lastColumn, "程序下限");
-        worksheet.Range(titleRow, 1, headerRow, lastColumn).Style.Font.Bold = true;
-        worksheet.Range(headerRow, 1, headerRow, lastColumn).Style.Fill.BackgroundColor = XLColor.FromHtml("#D9E2F3");
+        WriteBlock(titleRow, 1, limitsLastColumn, "程序上下限（来源：任务开工程序快照，仅供追溯）");
+        WriteBlock(headerRow, 1, 2, "测试项");
+        WriteBlock(headerRow, 3, 4, "程序上限");
+        WriteBlock(headerRow, 5, limitsLastColumn, "程序下限");
+        worksheet.Range(titleRow, 1, headerRow, limitsLastColumn).Style.Font.Bold = true;
+        worksheet.Range(headerRow, 1, headerRow, limitsLastColumn).Style.Fill.BackgroundColor = XLColor.FromHtml("#D9E2F3");
 
-        if (!available || limits.Count == 0)
+        if (!available)
         {
-            WriteBlock(firstValueRow, 1, lastColumn, available
-                ? "该任务未配置程序上下限。"
-                : $"程序上下限不可用：{error}");
+            WriteBlock(firstValueRow, 1, limitsLastColumn, $"程序上下限不可用：{error}");
         }
         else
         {
             var row = firstValueRow;
             foreach (var (name, limit) in limits)
             {
-                WriteBlock(row, 1, 6, name);
-                WriteBlock(row, 7, 8, limit.UpperLimit?.ToString(CultureInfo.InvariantCulture) ?? string.Empty);
-                WriteBlock(row, 9, lastColumn, limit.LowerLimit?.ToString(CultureInfo.InvariantCulture) ?? string.Empty);
+                WriteBlock(row, 1, 2, name);
+                WriteBlock(row, 3, 4, limit.UpperLimit?.ToString(CultureInfo.InvariantCulture) ?? string.Empty);
+                WriteBlock(row, 5, limitsLastColumn, limit.LowerLimit?.ToString(CultureInfo.InvariantCulture) ?? string.Empty);
                 row++;
             }
         }
@@ -371,9 +376,9 @@ public class ProductionReportFileService : IProductionReportFileService
         {
             WriteHeaderBlock(worksheet, row, startColumn, endColumn, string.Empty, text);
             // Excel 不为合并单元格自动增高；按中英文宽度预留换行空间，保留长名称和精确阈值。
-            var width = worksheet.Columns(startColumn, endColumn).Sum(column => column.Width) - 2d;
+            var width = Math.Max(1d, worksheet.Columns(startColumn, endColumn).Sum(column => column.Width) - 2d);
             var textWidth = text.Sum(character => character > 127 ? 2d : 1d);
-            worksheet.Row(row).Height = Math.Max(worksheet.Row(row).Height, 16d * Math.Ceiling(textWidth / width) + 8d);
+            worksheet.Row(row).Height = Math.Max(worksheet.Row(row).Height, 15d * Math.Ceiling(textWidth / width));
         }
     }
 

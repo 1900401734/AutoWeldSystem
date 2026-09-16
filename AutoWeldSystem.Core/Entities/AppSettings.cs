@@ -220,6 +220,10 @@ public class AppSettings
     [SugarColumn(IsNullable = true, ColumnDescription = "产品历史显示试焊件")]
     public bool? ShowTestFlagInHistory { get; set; } = true;
 
+    // 旧库新增列允许为空，加载时按开启处理；仅控制本地导出的程序快照限值区。
+    [SugarColumn(IsNullable = true, ColumnDescription = "本地历史导出程序上下限")]
+    public bool? IncludeProgramLimitsInLocalExport { get; set; } = true;
+
     #endregion
 
     #region 生产配置
