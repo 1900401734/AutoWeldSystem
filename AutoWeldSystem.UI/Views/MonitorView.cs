@@ -193,12 +193,15 @@ public partial class MonitorView : BaseView
     #region 预览状态
 
     private readonly List<WeldParameterRow> _weldParameterRows = new();
+    // 表头独立于实时行：已开工的零行快照只清数据，不清当前方案结构。
+    private IReadOnlyList<WeldPreviewItem> _weldPreviewItems = Array.Empty<WeldPreviewItem>();
+    private ProductHistoryDisplayOptions _weldPreviewDisplayOptions = ProductHistoryDisplayOptions.Default;
     private readonly object _realtimePreviewSync = new();
 
     /// <summary>
-    /// 四面整件检测的合并结构来自当前方案，实时快照提供取值；未采集齐时值为空。
+    /// 预览结构绑定当前工位、任务和方案；实时快照仅更新对应上下文的取值。
     /// </summary>
-    private (int StationNo, int TaskId, string SchemeId) _mergedPreviewContext;
+    private (int StationNo, int TaskId, string SchemeId) _previewContext;
     private IReadOnlyList<WholePieceMergedColumn> _mergedPreviewColumns = Array.Empty<WholePieceMergedColumn>();
     private IReadOnlyDictionary<string, string> _mergedPreviewValues =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -4111,6 +4114,11 @@ public partial class MonitorView : BaseView
                     }
                 }
 
+                if (IsRunningWeldTask(GetCurrentStationState().ActiveTask))
+                {
+                    // 任务恢复可能早于程序列表到达，列表就绪后补建表头，不等 PLC 首次出数。
+                    QueueRefreshSchemePreview(force: true);
+                }
                 return Task.CompletedTask;
             }, "MonitorView.ProgramLookupSnapshot");
         }
@@ -7376,6 +7384,10 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         }
 
         SortWeldParameterRows();
+        if (_weldPreviewItems.Count == 0)
+        {
+            ApplyWeldPreviewStructure(_weldParameterRows);
+        }
         BindWeldParameterTable(forceRebind: structureChanged);
     }
 
@@ -7415,7 +7427,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             return;
         }
 
-        var items = ResolveWeldPreviewItems(_weldParameterRows);
+        var items = _weldPreviewItems;
         var layoutKey = BuildPreviewLayoutKey(_weldParameterRows);
         if (!string.Equals(layoutKey, _weldParameterLayoutKey, StringComparison.Ordinal))
         {
@@ -7458,9 +7470,10 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     private void RebuildWeldParameterPreviewTable()
     {
         var grid = CurrentWeldPreviewGrid;
-        if (_weldParameterRows.Count == 0 && !IsWholePieceMergedPreview())
+        if (!IsRunningWeldTask(GetCurrentStationState().ActiveTask)
+            || (_weldParameterRows.Count == 0 && _weldPreviewItems.Count == 0 && !IsWholePieceMergedPreview()))
         {
-            // 没有任何预览行时不建列，否则未开工和完工上报后会残留空表头。
+            // 仅无任务或无可确认的结构时清空；已开工有表头的零行状态必须保留。
             ClearWeldPreviewGrid(grid);
             _weldParameterLayoutKey = string.Empty;
             _weldParameterPreviewSchemaKey = string.Empty;
@@ -7469,8 +7482,8 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             return;
         }
 
-        var items = ResolveWeldPreviewItems(_weldParameterRows);
-        var displayOptions = ResolveWeldPreviewDisplayOptions(_weldParameterRows);
+        var items = _weldPreviewItems;
+        var displayOptions = _weldPreviewDisplayOptions;
         SetControlRedraw(grid, enabled: false);
         grid.SuspendLayout();
         try
@@ -7949,15 +7962,34 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             && WholePieceAbAggregationRules.IsApplicable(_currentSettings.ProcessParameterDeviceType, touchCount);
     }
 
-    private bool ApplyMergedPreviewDefinitions(string schemeId, IReadOnlyList<WholePieceAbValueDefinition> definitions)
+    private bool EnsurePreviewContext(string schemeId)
     {
         var context = (CurrentStationNo, GetCurrentStationState().ActiveTask?.Id ?? 0, schemeId);
-        if (_mergedPreviewContext == context && _mergedPreviewDefinitions.SequenceEqual(definitions))
+        if (_previewContext == context)
         {
             return false;
         }
 
-        _mergedPreviewContext = context;
+        _previewContext = context;
+        _weldPreviewItems = Array.Empty<WeldPreviewItem>();
+        _weldPreviewDisplayOptions = ProductHistoryDisplayOptions.Default;
+        _weldParameterRows.Clear();
+        _weldParameterTableBound = false;
+        _lastSchemePreviewKey = string.Empty;
+        _mergedPreviewDefinitions = Array.Empty<WholePieceAbValueDefinition>();
+        _mergedPreviewColumns = Array.Empty<WholePieceMergedColumn>();
+        ClearMergedPreviewValues();
+        return true;
+    }
+
+    private bool ApplyMergedPreviewDefinitions(string schemeId, IReadOnlyList<WholePieceAbValueDefinition> definitions)
+    {
+        var contextChanged = EnsurePreviewContext(schemeId);
+        if (!contextChanged && _mergedPreviewDefinitions.SequenceEqual(definitions))
+        {
+            return false;
+        }
+
         _weldParameterTableBound = false;
         _mergedPreviewDefinitions = definitions;
         _mergedPreviewColumns = WholePieceMergedDisplayRules.BuildColumns(definitions);
@@ -8131,7 +8163,9 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// 预览布局键。合并视图的列结构也要参与比较，否则每帧都会误判为布局变化而重建表格。
     /// </summary>
     private string BuildPreviewLayoutKey(IEnumerable<WeldParameterRow> rows)
-        => IsWholePieceMergedPreview() ? BuildMergedPreviewLayoutKey() : BuildWeldPreviewLayoutKey(rows);
+        => IsWholePieceMergedPreview()
+            ? BuildMergedPreviewLayoutKey()
+            : BuildWeldPreviewLayoutKey(rows, _weldPreviewItems, _weldPreviewDisplayOptions);
 
     /// <summary>
     /// 预览取值键，合并视图的取值同样参与比较。
@@ -8159,11 +8193,12 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// </summary>
     /// <param name="rows">行数据集合。</param>
     /// <returns>处理后的文本。</returns>
-    private static string BuildWeldPreviewLayoutKey(IEnumerable<WeldParameterRow> rows)
+    private static string BuildWeldPreviewLayoutKey(
+        IEnumerable<WeldParameterRow> rows,
+        IReadOnlyList<WeldPreviewItem> items,
+        ProductHistoryDisplayOptions displayOptions)
     {
         var materializedRows = rows.ToList();
-        var items = ResolveWeldPreviewItems(materializedRows);
-        var displayOptions = ResolveWeldPreviewDisplayOptions(materializedRows);
         var rowCount = IsInfoPreview(items)
             ? materializedRows.Count
             : ResolvePreviewTouchGroups(materializedRows).Count;
@@ -8316,12 +8351,23 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// </summary>
     private void ApplyCurrentRealtimePreviewSnapshot()
     {
+        var task = GetCurrentStationState().ActiveTask;
+        if (!IsRunningWeldTask(task))
+        {
+            ClearCurrentRealtimePreviewDisplay();
+            return;
+        }
+
         var snapshot = _productRealtimePreviewService.GetCurrent(CurrentStationNo);
         if (snapshot is null || !CanDisplayRealtimePreviewSnapshot(snapshot))
         {
-            ClearCurrentRealtimePreviewDisplay();
-            // 首帧未到或缓存属于旧任务时，仍按当前任务配置建表，不等待 PLC 首次采集。
-            QueueRefreshSchemePreview(force: true);
+            var contextChanged = _previewContext.StationNo != CurrentStationNo || _previewContext.TaskId != task!.Id;
+            if (contextChanged)
+            {
+                ClearCurrentRealtimePreviewDisplay();
+            }
+            // 新任务/工位不受旧刷新节流影响；同一上下文首帧未到时保留现有表头。
+            QueueRefreshSchemePreview(force: contextChanged);
             return;
         }
 
@@ -8349,7 +8395,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         {
             // 错误快照没有结构信息，只保留当前任务可确认的表头，不能继续显示上一帧实测值。
             var taskId = GetCurrentStationState().ActiveTask!.Id;
-            if (_mergedPreviewContext.StationNo != CurrentStationNo || _mergedPreviewContext.TaskId != taskId)
+            if (_previewContext.StationNo != CurrentStationNo || _previewContext.TaskId != taskId)
             {
                 ClearCurrentRealtimePreviewDisplay();
                 QueueRefreshSchemePreview(force: true);
@@ -8360,6 +8406,12 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         }
 
         _currentProductIdentity = new ProductIdentity(snapshot.StationNo, snapshot.ProductNum, snapshot.ProductModel, "RealtimePreview");
+        EnsurePreviewContext(snapshot.SchemeId);
+        if (_weldPreviewItems.Count == 0 && string.IsNullOrEmpty(_lastSchemePreviewKey))
+        {
+            // 正常首帧可以没有数据，仍可凭当前任务和快照身份解析表头。
+            ApplySchemePreview(_currentProductIdentity, force: false);
+        }
         var mergedStructureChanged = ApplyMergedPreviewDefinitions(snapshot.SchemeId, snapshot.MergedDefinitions);
         _mergedPreviewColumns = snapshot.MergedColumns;
         _mergedPreviewValues = snapshot.MergedValues;
@@ -8391,7 +8443,9 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         _currentProductIdentity = null;
         _lastRealtimeProductNumbers.Remove(CurrentStationNo);
         _lastSchemePreviewKey = string.Empty;
-        _mergedPreviewContext = default;
+        _previewContext = default;
+        _weldPreviewItems = Array.Empty<WeldPreviewItem>();
+        _weldPreviewDisplayOptions = ProductHistoryDisplayOptions.Default;
         _mergedPreviewColumns = Array.Empty<WholePieceMergedColumn>();
         _mergedPreviewValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         _mergedPreviewDefinitions = Array.Empty<WholePieceAbValueDefinition>();
@@ -8507,6 +8561,18 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         return string.IsNullOrWhiteSpace(value) ? "--" : value.Trim();
     }
 
+    private void ApplyWeldPreviewStructure(IReadOnlyList<WeldParameterRow> rows)
+    {
+        var items = ResolveWeldPreviewItems(rows);
+        var displayOptions = ResolveWeldPreviewDisplayOptions(rows);
+        if (!_weldPreviewItems.SequenceEqual(items) || _weldPreviewDisplayOptions != displayOptions)
+        {
+            _weldParameterTableBound = false;
+        }
+        _weldPreviewItems = items;
+        _weldPreviewDisplayOptions = displayOptions;
+    }
+
     /// <summary>
     /// 将实时预览行转换为焊接参数行并刷新界面。
     /// </summary>
@@ -8517,21 +8583,19 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             .OrderBy(row => row.Sort)
             .Select(ToWeldParameterRow)
             .ToList();
-        ApplyWeldParameterRows(nextRows, preserveStableValues: false);
+        if (nextRows.Count > 0)
+        {
+            ApplyWeldPreviewStructure(nextRows);
+        }
+        ApplyWeldParameterRows(nextRows);
     }
 
     /// <summary>
     /// 应用新的焊接参数行，按布局变化决定重绑或局部刷新。
     /// </summary>
     /// <param name="nextRows">下一批行数据。</param>
-    private void ApplyWeldParameterRows(
-        IReadOnlyList<WeldParameterRow> nextRows,
-        bool preserveStableValues = true)
+    private void ApplyWeldParameterRows(IReadOnlyList<WeldParameterRow> nextRows)
     {
-        if (preserveStableValues)
-        {
-            PreserveStablePreviewValues(nextRows);
-        }
         var nextLayoutKey = BuildPreviewLayoutKey(nextRows);
         var nextVisibleValueKey = BuildPreviewValueKey(nextRows);
         var layoutChanged = !_weldParameterTableBound
@@ -8564,56 +8628,6 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         _weldParameterRows.Clear();
         _weldParameterRows.AddRange(rows);
         SortWeldParameterRows();
-    }
-
-    /// <summary>
-    /// 在新快照缺少值时保留上一帧稳定值，减少界面闪烁。
-    /// </summary>
-    /// <param name="nextRows">下一批行数据。</param>
-    private void PreserveStablePreviewValues(IEnumerable<WeldParameterRow> nextRows)
-    {
-        var previousRows = _weldParameterRows
-            .Where(row => !string.IsNullOrWhiteSpace(row.ItemKey))
-            .GroupBy(row => row.UniqueKey, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
-
-        foreach (var nextRow in nextRows)
-        {
-            if (!previousRows.TryGetValue(nextRow.UniqueKey, out var previousRow))
-            {
-                continue;
-            }
-
-            if (IsEmptyPreviewValue(nextRow.TouchResult) && !IsEmptyPreviewValue(previousRow.TouchResult))
-            {
-                nextRow.TouchResult = previousRow.TouchResult;
-            }
-
-            if (nextRow.EnableUpper && IsEmptyPreviewValue(nextRow.UpperValue) && !IsEmptyPreviewValue(previousRow.UpperValue))
-            {
-                nextRow.UpperValue = previousRow.UpperValue;
-            }
-
-            if (nextRow.EnableLower && IsEmptyPreviewValue(nextRow.LowerValue) && !IsEmptyPreviewValue(previousRow.LowerValue))
-            {
-                nextRow.LowerValue = previousRow.LowerValue;
-            }
-
-            if (nextRow.EnableResult && IsEmptyPreviewValue(nextRow.Result) && !IsEmptyPreviewValue(previousRow.Result))
-            {
-                nextRow.Result = previousRow.Result;
-            }
-        }
-    }
-
-    /// <summary>
-    /// 判断Empty预览值。
-    /// </summary>
-    /// <param name="value">待处理值。</param>
-    /// <returns>条件满足返回 true，否则返回 false。</returns>
-    private static bool IsEmptyPreviewValue(string? value)
-    {
-        return string.IsNullOrWhiteSpace(value) || string.Equals(value.Trim(), "--", StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -8856,9 +8870,9 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         var previewKey = $"{identity.StationNo}|{identity.ProductNum}|{identity.ProductModel}|{identity.Source}|{activeTaskId}|{processConfig?.Id}|{processConfig?.SchemeId}";
         if (!force
             && string.Equals(previewKey, _lastSchemePreviewKey, StringComparison.Ordinal)
-            && _weldParameterRows.Count > 0)
+            && (_weldPreviewItems.Count > 0 || _weldParameterRows.Count > 0))
         {
-            // 产品、任务和方案都没变时复用现有预览，避免频繁重建表格。
+            // 产品、任务和方案都没变时复用现有结构，正常零行不会使表头缓存失效。
             return;
         }
 
@@ -8874,12 +8888,12 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
                 _testSchemeConfigService.GetItems());
         var mergedStructureChanged = ApplyMergedPreviewDefinitions(processConfig?.SchemeId ?? string.Empty, mergedDefinitions);
 
-        // 生成方案行前先缓存上一帧数据，用于把实时值带回新预览行。
-        var previousRows = _weldParameterRows
-            .Where(row => !string.IsNullOrWhiteSpace(row.ItemKey))
-            .GroupBy(row => row.UniqueKey, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
-        var nextRows = BuildSchemePreviewRows(identity, processConfig, previousRows).ToList();
+        // 静态方案只提供结构，数据始终来自当前实时帧，不能恢复已被空帧清除的旧值。
+        var templateRows = BuildSchemePreviewRows(identity, processConfig).ToList();
+        ApplyWeldPreviewStructure(templateRows);
+        var nextRows = _weldPreviewItems.Count == 0
+            ? templateRows
+            : _weldParameterRows.Where(row => row.TouchIndex > 0).ToList();
 
         _lastSchemePreviewKey = previewKey;
         ApplyWeldParameterRows(nextRows);
@@ -8894,10 +8908,9 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// </summary>
     /// <param name="identity">产品身份信息。</param>
     /// <param name="config">产品工艺配置。</param>
-    /// <param name="previousRows">上一次预览行缓存。</param>
     /// <returns>解析后的集合。</returns>
     private IEnumerable<WeldParameterRow> BuildSchemePreviewRows(ProductIdentity identity,
-        BizProductProcessConfig? config, IReadOnlyDictionary<string, WeldParameterRow> previousRows)
+        BizProductProcessConfig? config)
     {
         if (string.IsNullOrWhiteSpace(identity.ProductNum))
         {
@@ -8927,9 +8940,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         {
             foreach (var schemeItem in schemeItems)
             {
-                var row = CreateSchemePreviewRow(identity, config, schemeItem, touchNo);
-                CopyLatestValues(previousRows, row);
-                rows.Add(row);
+                rows.Add(CreateSchemePreviewRow(identity, config, schemeItem, touchNo));
             }
         }
 
@@ -9136,26 +9147,6 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             Sort = 0,
             ItemKey = string.Empty
         };
-    }
-
-    /// <summary>
-    /// 复制最新值。
-    /// </summary>
-    /// <param name="previousRows">上一次预览行缓存。</param>
-    /// <param name="target">目标对象。</param>
-    private static void CopyLatestValues(IReadOnlyDictionary<string, WeldParameterRow> previousRows, WeldParameterRow target)
-    {
-        if (!previousRows.TryGetValue(target.UniqueKey, out var previous))
-        {
-            return;
-        }
-
-        target.Value = previous.Value;
-        target.TouchResult = previous.TouchResult;
-        target.UpperValue = previous.UpperValue;
-        target.LowerValue = previous.LowerValue;
-        target.Result = previous.Result;
-        target.RecordTime = previous.RecordTime;
     }
 
     private IEnumerable<WeldParameterRow> BuildFallbackWeldParameterRows(BizWeldPointRecord record, IReadOnlyDictionary<string, string> rawValues)

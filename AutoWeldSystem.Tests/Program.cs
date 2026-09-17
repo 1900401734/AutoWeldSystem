@@ -193,6 +193,7 @@ var tests = new (string Name, Action Run)[]
     ("Whole-piece merged display builds A and B columns", WholePieceMergedDisplayBuildsAbColumns),
     ("Whole-piece merged columns follow upload configuration before collection", WholePieceMergedColumnsFollowUploadConfiguration),
     ("Whole-piece realtime merged columns survive empty and reset frames", WholePieceRealtimeMergedColumnsSurviveEmptyFrames),
+    ("Point preview rows follow progress without manufacturing measurements", PointPreviewRowsFollowProgress),
     ("Whole-piece product result uses merged values", WholePieceProductResultUsesMergedValues),
     ("Report file upload rule requires an enabled report role", ReportFileUploadRuleRequiresEnabledReportRole),
     ("Product cycle snapshots persist PLC product results", ProductCycleSnapshotsPersistPlcProductResults),
@@ -5176,6 +5177,58 @@ static void WholePieceRealtimeMergedColumnsSurviveEmptyFrames()
     AssertEqual(0, reset.MergedValues.Count, "下一件清零不能保留上一帧合并值。");
 }
 
+static void PointPreviewRowsFollowProgress()
+{
+    var settings = new FakeAppSettingsService
+    {
+        Current = new AppSettings
+        {
+            ProcessParameterDeviceType = ProductionConstants.ProcessParameterDeviceTypes.WholePieceWeld,
+            RealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Program
+        }
+    };
+    var schemes = new FakeBoundaryTestSchemeService
+    {
+        Items = [new DimTestItem { ItemId = 1, ItemName = "电流", Unit = "A", ActualExpression = "0:S-0_4" }]
+    };
+    var plc = new FakePlcCommunicationService();
+    var reader = new AutoWeldSystem.Services.Plc.ExpressionReadService(plc, settings);
+    using var preview = new ProductRealtimePreviewService(null!, null!, schemes, null!, settings, plc, reader, null!, null!);
+    var config = new BizProductProcessConfig
+    {
+        SchemeId = "S1", ProductBase = "DB1.0", TouchBase = "DB2.0", TestBase = "DB3.0",
+        ProductNoExpr = "0:S-0", ProductResultExpr = "40:S-0", TouchResultExpr = "0:S-0",
+        TouchHeaderLen = 32, TestAreaLen = 32, PointNoHeader = "焊点编号", PointResultHeader = "焊接结果"
+    };
+    var task = new BizWeldTask { ProgramContentSnapshot = "{\"焊点数量\":2}" };
+    var identityType = typeof(ProductRealtimePreviewService).GetNestedType("ProductPreviewIdentity", System.Reflection.BindingFlags.NonPublic)!;
+    var identity = Activator.CreateInstance(identityType, 1, "P-TEST", "", (int?)2)!;
+    var build = typeof(ProductRealtimePreviewService).GetMethod("BuildSnapshotAsync",
+        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+    ProductRealtimePreviewSnapshot ReadFrame(int completed)
+    {
+        for (var point = 0; point < 2; point++)
+        {
+            plc.StringReadResults[$"DB2.{point * 32}"] = PlcServiceResult<string>.Success(point < completed ? "3" : "0");
+            plc.StringReadResults[$"DB3.{point * 32}"] = PlcServiceResult<string>.Success("0.1250");
+        }
+        return ((Task<ProductRealtimePreviewSnapshot>)build.Invoke(preview, [identity, config, task, CancellationToken.None])!)
+            .GetAwaiter().GetResult();
+    }
+
+    AssertEqual(0, ReadFrame(0).Rows.Count, "程序编号模式的0/2帧必须是真正零行，不能为保留表头伪造采集数据。");
+    var first = ReadFrame(1);
+    AssertEqual(1, first.Rows.Count, "第一焊点完成后只显示一个焊点的数据。");
+    AssertEqual("焊点编号", first.Rows[0].PointNoHeader, "实时快照应保留自定义点号表头。");
+    AssertEqual("A", first.Rows[0].Unit, "实时快照应保留测试项单位。");
+    AssertEqual(2, ReadFrame(2).Rows.Count, "两个焊点完成后显示两行。");
+    AssertEqual(0, ReadFrame(0).Rows.Count, "下一件清零仍应返回零行，由界面独立保留列结构。");
+    settings.Current.RealtimePointNumberSource = ProductionConstants.RealtimePointNumberSources.Plc;
+    var plcFrame = ReadFrame(0);
+    AssertEqual(2, plcFrame.Rows.Count, "PLC编号模式保留原逐点行结构。");
+    AssertTrue(plcFrame.Rows.All(row => row.ActualValue == "--"), "未完成焊点不能显示残留的测试值。");
+}
+
 static void WholePieceProductResultUsesMergedValues()
 {
     var snapshot = JsonSerializer.Serialize(new Dictionary<string, string>
@@ -6403,11 +6456,13 @@ static void RealtimePreviewValuesRequireCompletedPointResults()
         "private void ApplySchemePreview(ProductIdentity identity, bool force)",
         "private IEnumerable<WeldParameterRow> BuildSchemePreviewRows(");
     AssertTrue(
-        realtimeRowsMethod.Contains("preserveStableValues: false", StringComparison.Ordinal),
+        realtimeRowsMethod.Contains("ApplyWeldParameterRows(nextRows)", StringComparison.Ordinal)
+            && !monitorCode.Contains("PreserveStablePreviewValues", StringComparison.Ordinal),
         "实时 PLC 快照必须允许空值清除上一帧，不能恢复旧 OK/NG 或旧参数。");
     AssertTrue(
-        schemePreviewMethod.Contains("ApplyWeldParameterRows(nextRows);", StringComparison.Ordinal),
-        "静态方案预览仍应保留现有稳定值复制行为。");
+        schemePreviewMethod.Contains("ApplyWeldPreviewStructure(templateRows)", StringComparison.Ordinal)
+            && schemePreviewMethod.Contains("ApplyWeldParameterRows(nextRows)", StringComparison.Ordinal),
+        "静态方案必须只准备表头，不能用模板行恢复已被实时空帧清除的数据。");
     var monitorDesignerCode = File.ReadAllText(
         GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.Designer.cs"),
         Encoding.UTF8);
@@ -17341,7 +17396,9 @@ static void MonitorViewClearsIdleProductionData()
     var weldPointRecordMethod = ExtractMethodText(viewCode, "private void ApplyLatestWeldPointRecord", "private bool ShouldShowProductionHint");
 
     AssertTrue(clearPreviewMethod.Contains("ClearWeldPreviewGrid(CurrentWeldPreviewGrid)", StringComparison.Ordinal), "清空实时预览必须连列一起清，否则会残留空表头。");
-    AssertTrue(rebuildPreviewMethod.Contains("_weldParameterRows.Count == 0", StringComparison.Ordinal), "没有预览行时不得重建实时预览列。");
+    AssertTrue(rebuildPreviewMethod.Contains("!IsRunningWeldTask(GetCurrentStationState().ActiveTask)", StringComparison.Ordinal)
+        && rebuildPreviewMethod.Contains("_weldPreviewItems.Count == 0", StringComparison.Ordinal),
+        "无运行任务必须清表，已开工的零行快照有方案结构时则必须保留表头。");
     AssertTrue(weldPointRecordMethod.Contains("IsRunningWeldTask(GetCurrentStationState().ActiveTask)", StringComparison.Ordinal), "未开工或已完工时不得把采集记录写回实时预览。");
     AssertTrue(bindMethod.Contains("HasPreparedWorkOrderInfo", StringComparison.Ordinal), "未开工工单模块必须区分无上下文空闲态和待开工草稿。");
     AssertTrue(bindMethod.Contains("ClearIdleProductionDataDisplay", StringComparison.Ordinal), "未开工刷新必须统一清理生产数据。");
