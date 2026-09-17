@@ -1,12 +1,12 @@
 ﻿# AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v3.4.4`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v3.4.5`。
 
 各版本的行为变化记录在 [CHANGELOG.md](CHANGELOG.md)，也可用 `git tag -n99` 查看对应版本的发布说明。
 
 ## 功能概览
 
-- 生产监控：工单信息、程序信息、PLC/MES 连接状态、设备状态、生产指标实时显示；采集预览和产品历史仅在开工后显示，无运行任务且无待开工工单或离线草稿时清空工单信息；右侧区域按可用高度与 DPI 自动切换紧凑布局，仅在极低高度下纵向滚动。产品实际只有一条记录时直接显示为单行，不再受程序预设面/焊点数量限制；全为单组数据或使用整件检测合并视图时，省略“产品/面（焊点）”和“面（焊点）”层级列，仅保留产品编号与业务数据；存在多条明细的产品仍可展开查看。
+- 生产监控：工单信息、程序信息、PLC/MES 连接状态、设备状态、生产指标实时显示；采集预览和产品历史仅在开工后显示，无运行任务且无待开工工单或离线草稿时清空工单信息；右侧区域按可用高度与 DPI 自动切换紧凑布局，仅在极低高度下纵向滚动。产品实际只有一条记录时直接显示为单行，不再受程序预设面/焊点数量限制；全为单组数据或使用整件检测合并视图时，省略“产品/面（焊点）”和“面（焊点）”层级列，仅保留产品编号与业务数据；存在多条明细时使用“产品/面（焊点）”树列承载产品及面/焊点身份，并省略重复的“产品编号”“面/焊点”“检测次数/焊点数”三列，仍可展开查看全部测试数据；单组及合并显示的产品编号和数量列不变。
 - 产品重测：PLC 计数模式下仅整件检测设备支持。PLC 触摸屏点击“重测”后不更新产品编号，上位机识别为重测并就地覆盖该产品的测试值、结果和采集时间，产品历史、报表、MES 过程参数和中心看板均更新为最新一轮结果，重测记录写入操作日志；重测不清除已标记的试焊件（`v2.26.0` 修复）。
 - 产品重焊/删除：自 `v2.26.0` 起，系统设置「产量统计来源」为**程序统计**时，生产监控页产品历史右键可对**未上传**产品执行「重焊」（整件检测显示为「重测」）、「删除」和「撤销删除」，详见[产量统计来源与程序计数模式](#产量统计来源与程序计数模式)。
 - MES 交互：员工校验、工单获取、开工上报、完工上报、设备编号同步、程序上传/下载。
@@ -515,10 +515,10 @@ HAVING COUNT(*) > 1;
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>3.4.4</Version>
-<AssemblyVersion>3.4.4.0</AssemblyVersion>
-<FileVersion>3.4.4.0</FileVersion>
-<InformationalVersion>3.4.4</InformationalVersion>
+<Version>3.4.5</Version>
+<AssemblyVersion>3.4.5.0</AssemblyVersion>
+<FileVersion>3.4.5.0</FileVersion>
+<InformationalVersion>3.4.5</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -536,20 +536,20 @@ HAVING COUNT(*) > 1;
 # 2. 在 CHANGELOG.md 顶部新增该版本条目，写清行为变化和升级注意
 # 3. 合并到 main 后打带说明的 tag（-F 从文件读取多行说明）
 git checkout main
-git merge --no-ff develop -m "release: v3.4.4"
-git tag -a v3.4.4 -F tag-notes.txt
+git merge --no-ff develop -m "release: v3.4.5"
+git tag -a v3.4.5 -F tag-notes.txt
 git push origin main
-git push origin v3.4.4
+git push origin v3.4.5
 ```
 
-`tag-notes.txt` 为临时文件，内容取自该版本的 CHANGELOG 条目，打完 tag 即可删除。也可用 `git tag -a v3.4.4 -m "标题" -m "正文"` 直接写多段说明。
+`tag-notes.txt` 为临时文件，内容取自该版本的 CHANGELOG 条目，打完 tag 即可删除。也可用 `git tag -a v3.4.5 -m "标题" -m "正文"` 直接写多段说明。
 
 查看历史版本说明：
 
 ```powershell
 git tag -n99                # 列出全部 tag 及完整说明
-git tag -n99 v3.4.4        # 只看某个版本
-git show v3.4.4            # 看 tag 说明 + 指向的提交
+git tag -n99 v3.4.5        # 只看某个版本
+git show v3.4.5            # 看 tag 说明 + 指向的提交
 ```
 
 ## Git 使用

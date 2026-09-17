@@ -6197,10 +6197,9 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             table.Columns.Add(nodeColumn);
         }
 
-        table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.ProductNo), "产品编号"));
-        if (showHierarchy)
+        if (!showHierarchy)
         {
-            table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.TouchNo), displayOptions.PointName));
+            table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.ProductNo), "产品编号"));
         }
         table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.ResultText), displayOptions.PointResultHeader));
         table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.UploadStatusText), "上传状态"));
@@ -6209,7 +6208,10 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.IsTestText), "试焊件"));
         }
 
-        table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.TouchCountText), displayOptions.PointCountHeader));
+        if (!showHierarchy)
+        {
+            table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.TouchCountText), displayOptions.PointCountHeader));
+        }
         table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.RecordTimeText), "采集时间"));
         foreach (var dynamicColumn in dynamicColumns)
         {
