@@ -1,13 +1,13 @@
 namespace AutoWeldSystem.Core.Production;
 
 /// <summary>
-/// 产品历史单采集点的显示规则。
+/// 产品历史单条记录的显示规则。
 /// </summary>
 public static class ProductHistoryDisplayRules
 {
     /// <summary>
-    /// 只有工艺配置一个采集点且产品实际仅有一条记录时，才直接显示为产品单行。
+    /// 按实际记录数决定是否直接显示产品单行，不依赖程序预设的面/焊点数量。
     /// </summary>
-    public static bool ShouldFlattenSinglePoint(int? configuredPointCount, int recordCount)
-        => configuredPointCount == 1 && recordCount == 1;
+    public static bool ShouldFlattenSingleRecord(int recordCount)
+        => recordCount == 1;
 }

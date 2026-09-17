@@ -146,7 +146,7 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
             return new DataHistoryTestDataResult();
         }
 
-        var touchCount = ProgramContentJsonRules.GetRequiredTouchCount(task.ProgramContentSnapshot);
+        _ = ProgramContentJsonRules.GetRequiredTouchCount(task.ProgramContentSnapshot);
         var records = GetTaskRecords(taskId);
         var processConfigsByStation = TaskProductProcessConfigResolver.Resolve(
             _productProcessConfigService,
@@ -185,7 +185,7 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
             {
                 var children = group.ToList();
                 var productRow = BuildProductRow(taskId, group.Key.StationNo, group.Key.ProductNo, children);
-                return ProductHistoryDisplayRules.ShouldFlattenSinglePoint(touchCount, children.Count)
+                return ProductHistoryDisplayRules.ShouldFlattenSingleRecord(children.Count)
                     ? FlattenSinglePointProductRow(productRow, children[0])
                     : productRow;
             })
