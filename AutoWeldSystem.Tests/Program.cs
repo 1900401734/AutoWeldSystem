@@ -174,7 +174,7 @@ var tests = new (string Name, Action Run)[]
     ("Product test flag marking requeues center report", ProductTestFlagMarkingRequeuesCenterReport),
     ("Center report keeps declared test flag column", CenterReportKeepsDeclaredTestFlagColumn),
     ("Data manage export keeps upload report template layout", DataManageExportKeepsUploadReportTemplateLayout),
-    ("Single-point history display rule uses configured and actual counts", SinglePointHistoryDisplayRuleUsesConfiguredAndActualCounts),
+    ("Single-record history display uses actual count", SingleRecordHistoryDisplayUsesActualCount),
     ("Data history single-point row keeps point values", DataHistorySinglePointRowKeepsPointValues),
     ("Work order deletion rules block running tasks", WorkOrderDeletionRulesBlockRunningTasks),
     ("Work order deletion restricts report paths to report root", WorkOrderDeletionRulesRestrictReportPathsToReportRoot),
@@ -4619,13 +4619,13 @@ static void DataHistoryTreeParentKeepsStoredProductResult()
     AssertEqual(ProductionConstants.TestResults.Ng, parent.ProductResult, "产品父行必须沿用记录中的 PLC 产品结果，不得从子记录结果推断。");
 }
 
-static void SinglePointHistoryDisplayRuleUsesConfiguredAndActualCounts()
+static void SingleRecordHistoryDisplayUsesActualCount()
 {
-    AssertTrue(ProductHistoryDisplayRules.ShouldFlattenSinglePoint(1, 1), "配置一个采集点且只有一条记录时必须扁平显示。");
-    AssertFalse(ProductHistoryDisplayRules.ShouldFlattenSinglePoint(1, 2), "同一产品多次测试时必须保留树形结构。");
-    AssertFalse(ProductHistoryDisplayRules.ShouldFlattenSinglePoint(2, 1), "多采集点配置必须保留树形结构。");
-    AssertFalse(ProductHistoryDisplayRules.ShouldFlattenSinglePoint(null, 1), "缺少配置时不得扁平显示。");
-    AssertFalse(ProductHistoryDisplayRules.ShouldFlattenSinglePoint(0, 1), "无效采集点数量不得扁平显示。");
+    AssertTrue(ProductHistoryDisplayRules.ShouldFlattenSingleRecord(1), "实际一条记录即显示产品单行，不受程序预设数量影响。");
+    AssertFalse(ProductHistoryDisplayRules.ShouldFlattenSingleRecord(0), "空记录不得伪造产品测试数据。");
+    AssertFalse(ProductHistoryDisplayRules.ShouldFlattenSingleRecord(2), "同一产品有多条记录时必须保留树形明细。");
+    AssertFalse(ProductHistoryDisplayRules.ShouldFlattenSingleRecord(4), "四面原始记录未合并时必须保留树形明细。");
+    AssertFalse(ProductHistoryDisplayRules.ShouldFlattenSingleRecord(-1), "非法记录数不得生成单行数据。");
 }
 
 static void DataHistorySinglePointRowKeepsPointValues()
@@ -17321,7 +17321,7 @@ static void MonitorViewSinglePointHistoryMappingKeepsPointValues()
         "private ProductHistoryTableRow ToProductHistoryRow(",
         "    /// <summary>\r\n    /// 处理到产品历史Point行。");
 
-    AssertTrue(method.Contains("ProductHistoryDisplayRules.ShouldFlattenSinglePoint(displayOptions.TouchCount, children.Count)", StringComparison.Ordinal), "实时历史必须按配置采集点数和实际记录数判断是否扁平化。");
+    AssertTrue(method.Contains("ProductHistoryDisplayRules.ShouldFlattenSingleRecord(children.Count)", StringComparison.Ordinal), "实时历史必须仅按实际记录数判断是否显示单行，不能再依赖程序预设数量。");
     AssertTrue(method.Contains("DynamicValues = pointRow.DynamicValues", StringComparison.Ordinal), "实时单焊点扁平行必须保留焊点动态值。");
     AssertTrue(method.Contains("RecordTimeText = pointRow.RecordTimeText", StringComparison.Ordinal), "实时单焊点扁平行必须保留焊点采集时间。");
     AssertTrue(method.Contains("TouchNo = pointRow.TouchNo", StringComparison.Ordinal), "实时单焊点扁平行必须保留焊点序号。");

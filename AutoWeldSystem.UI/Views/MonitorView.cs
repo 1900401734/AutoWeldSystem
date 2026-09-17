@@ -6162,9 +6162,10 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         AntdUI.Table table,
         IReadOnlyList<ProductHistoryDynamicColumn> dynamicColumns,
         int stationNo,
-        ProductHistoryDisplayOptions displayOptions)
+        ProductHistoryDisplayOptions displayOptions,
+        bool showHierarchy = false)
     {
-        var schemaKey = BuildProductHistorySchemaKey(dynamicColumns, displayOptions);
+        var schemaKey = BuildProductHistorySchemaKey(dynamicColumns, displayOptions, showHierarchy);
 
         if (_productHistorySchemaKeys.TryGetValue(stationNo, out var existingSchemaKey)
             && string.Equals(existingSchemaKey, schemaKey, StringComparison.Ordinal)
@@ -6175,17 +6176,24 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
 
         table.Columns.Clear();
 
-        var nodeColumn = new AntdUI.Column(nameof(ProductHistoryTableRow.NodeText), $"产品/{displayOptions.PointName}")
+        AntdUI.Column? nodeColumn = null;
+        if (showHierarchy)
         {
-            Align = AntdUI.ColumnAlign.Left,
-            ColAlign = AntdUI.ColumnAlign.Center,
-            Ellipsis = true
-        };
-        nodeColumn.SetTree(nameof(ProductHistoryTableRow.Children));
+            nodeColumn = new AntdUI.Column(nameof(ProductHistoryTableRow.NodeText), $"产品/{displayOptions.PointName}")
+            {
+                Align = AntdUI.ColumnAlign.Left,
+                ColAlign = AntdUI.ColumnAlign.Center,
+                Ellipsis = true
+            };
+            nodeColumn.SetTree(nameof(ProductHistoryTableRow.Children));
+            table.Columns.Add(nodeColumn);
+        }
 
-        table.Columns.Add(nodeColumn);
         table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.ProductNo), "产品编号"));
-        table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.TouchNo), displayOptions.PointName));
+        if (showHierarchy)
+        {
+            table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.TouchNo), displayOptions.PointName));
+        }
         table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.ResultText), displayOptions.PointResultHeader));
         table.Columns.Add(CreateProductHistoryColumn(nameof(ProductHistoryTableRow.UploadStatusText), "上传状态"));
         if (displayOptions.ShowTestFlagInHistory)
@@ -6201,7 +6209,10 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         }
 
         TableStyleHelper.ApplyAntdColumnDefaults(table);
-        nodeColumn.Align = AntdUI.ColumnAlign.Left;
+        if (nodeColumn is not null)
+        {
+            nodeColumn.Align = AntdUI.ColumnAlign.Left;
+        }
         _productHistorySchemaKeys[stationNo] = schemaKey;
     }
 
@@ -6368,11 +6379,13 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         var table = GetProductHistoryTable(snapshot.StationNo);
         var displayOptions = ResolveProductHistoryDisplayOptions(activeTask, snapshot.StationNo);
         var dynamicColumns = ResolveProductHistoryDynamicColumns(activeTask, snapshot);
-        ConfigureProductHistoryTableColumns(table, dynamicColumns, snapshot.StationNo, displayOptions);
         var rows = ProductHistoryPreviewSortRules.OrderProductsLatestFirst(snapshot.Products)
             .Select(product => ToProductHistoryRow(product, dynamicColumns, displayOptions))
             .ToList();
 
+        // 根据最终显示行决定层级，合并产品和实际单条记录都不需要重复的节点、面号列。
+        ConfigureProductHistoryTableColumns(table, dynamicColumns, snapshot.StationNo, displayOptions,
+            showHierarchy: rows.Any(row => row.Children.Count > 0));
         BindProductHistoryRows(table, rows);
     }
 
@@ -6584,7 +6597,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             Children = children
         };
 
-        return ProductHistoryDisplayRules.ShouldFlattenSinglePoint(displayOptions.TouchCount, children.Count)
+        return ProductHistoryDisplayRules.ShouldFlattenSingleRecord(children.Count)
             ? FlattenSinglePointProductRow(productRow, children[0])
             : productRow;
     }
@@ -7229,7 +7242,8 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// <returns>处理后的文本。</returns>
     private static string BuildProductHistorySchemaKey(
         IReadOnlyList<ProductHistoryDynamicColumn> dynamicColumns,
-        ProductHistoryDisplayOptions displayOptions)
+        ProductHistoryDisplayOptions displayOptions,
+        bool showHierarchy)
     {
         var displayKey = string.Join('\u001E',
             displayOptions.PointName,
@@ -7240,7 +7254,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
         var dynamicKey = dynamicColumns.Count == 0
             ? "base"
             : string.Join("|", dynamicColumns.Select(column => $"{column.Key}:{column.Title}:{column.Role}:{column.Sort}"));
-        return $"{displayKey}|{dynamicKey}";
+        return $"{displayKey}|hierarchy:{showHierarchy}|{dynamicKey}";
     }
 
     /// <summary>

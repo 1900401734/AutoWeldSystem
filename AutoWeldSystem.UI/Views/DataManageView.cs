@@ -173,12 +173,22 @@ public partial class DataManageView : BaseView
     {
         tableTestData.Columns.Clear();
 
-        var nodeColumn = CreateTestDataColumn(
-            nameof(DataHistoryTestDataRow.NodeText),
-            T(TextKeys.DataManage.ColumnTestNode));
-        nodeColumn.Align = AntdUI.ColumnAlign.Left;
-        nodeColumn.SetTree(nameof(DataHistoryTestDataRow.Children));
-        tableTestData.Columns.Add(nodeColumn);
+        // 使用整份查询结果判断，翻页或筛选不应让层级列来回跳变。
+        var showHierarchy = _testDataRows.Any(row => row.Children.Count > 0);
+        btnToggleTestDataExpand.Enabled = showHierarchy;
+        if (!showHierarchy)
+        {
+            ResetTestDataExpandState();
+        }
+
+        var identityColumn = CreateTestDataColumn(
+            showHierarchy ? nameof(DataHistoryTestDataRow.NodeText) : nameof(DataHistoryTestDataRow.ProductNo),
+            T(showHierarchy ? TextKeys.DataManage.ColumnTestNode : TextKeys.DataManage.ColumnProductNo));
+        if (showHierarchy)
+        {
+            identityColumn.SetTree(nameof(DataHistoryTestDataRow.Children));
+        }
+        tableTestData.Columns.Add(identityColumn);
         var stationColumn = CreateTestDataColumn(nameof(DataHistoryTestDataRow.StationNo), T(TextKeys.DataManage.ColumnStation));
         stationColumn.Render = (value, _, _) => _stationDisplay?.FormatValue(value) ?? value?.ToString() ?? string.Empty;
         tableTestData.Columns.Add(stationColumn);
@@ -250,7 +260,10 @@ public partial class DataManageView : BaseView
         }
 
         TableStyleHelper.ApplyAntdColumnDefaults(tableTestData);
-        nodeColumn.Align = AntdUI.ColumnAlign.Left;
+        if (showHierarchy)
+        {
+            identityColumn.Align = AntdUI.ColumnAlign.Left;
+        }
     }
 
     private static AntdUI.Column CreateTestDataColumn(string key, string title)
@@ -823,6 +836,11 @@ public partial class DataManageView : BaseView
     /// </summary>
     private void ToggleTestDataExpand()
     {
+        if (!btnToggleTestDataExpand.Enabled)
+        {
+            return;
+        }
+
         _testDataExpandAll = !_testDataExpandAll;
         tableTestData.ExpandAll(_testDataExpandAll);
         ApplyTestDataExpandButtonText();
