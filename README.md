@@ -1,6 +1,6 @@
 ﻿# AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v3.5.0`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v3.5.1`。
 
 各版本的行为变化记录在 [CHANGELOG.md](CHANGELOG.md)，也可用 `git tag -n99` 查看对应版本的发布说明。
 
@@ -26,6 +26,7 @@
 - 日志管理：MES 交互日志表格按发送时间、接口路径、请求原因、方法、HTTP、结果和耗时展示，完整请求地址及请求/响应正文保留在详情中；MES 交互、生产流程、程序异常、设备、设备状态和服务器日志页签可按角色独立授权。
 - 权限管理：本地用户、角色、页面、页签和按钮权限控制。启动权限初始化会清理已废弃的“导出数据”权限及其角色关联；旧库首次引入日志/地址页签权限时，会为已有对应页面权限的非开发者角色一次性补齐全部页签，后续保留管理员手工调整结果。
 - 国际化：保留简体中文与英文资源。当前登录页和主页面的语言下拉框可展开，但 English 置灰且不可切换，禁止手动输入和滚轮换选，暂仅开放中文。已有英文配置不被强制改写，可通过下拉选择中文恢复中文界面；本地化服务和英文资源保留，便于后续完善英文 UI 后恢复开放。
+- 单实例保护：上位机启动前获取全局命名互斥体 `Global\AutoWeldSystem`；同一台 Windows 工控机已有实例时，后续启动只提示并退出，不会创建数据库、HTTP 或 PLC 后台服务。互斥体从程序启动开始持有，因此即使首个实例停留在登录窗口，也不会再启动第二个 PLC 通讯实例。
 
 ## 技术栈
 
@@ -527,10 +528,10 @@ HAVING COUNT(*) > 1;
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>3.5.0</Version>
-<AssemblyVersion>3.5.0.0</AssemblyVersion>
-<FileVersion>3.5.0.0</FileVersion>
-<InformationalVersion>3.5.0</InformationalVersion>
+<Version>3.5.1</Version>
+<AssemblyVersion>3.5.1.0</AssemblyVersion>
+<FileVersion>3.5.1.0</FileVersion>
+<InformationalVersion>3.5.1</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -548,20 +549,20 @@ HAVING COUNT(*) > 1;
 # 2. 在 CHANGELOG.md 顶部新增该版本条目，写清行为变化和升级注意
 # 3. 合并到 main 后打带说明的 tag（-F 从文件读取多行说明）
 git checkout main
-git merge --no-ff develop -m "release: v3.5.0"
-git tag -a v3.5.0 -F tag-notes.txt
+git merge --no-ff develop -m "release: v3.5.1"
+git tag -a v3.5.1 -F tag-notes.txt
 git push origin main
-git push origin v3.5.0
+git push origin v3.5.1
 ```
 
-`tag-notes.txt` 为临时文件，内容取自该版本的 CHANGELOG 条目，打完 tag 即可删除。也可用 `git tag -a v3.5.0 -m "标题" -m "正文"` 直接写多段说明。
+`tag-notes.txt` 为临时文件，内容取自该版本的 CHANGELOG 条目，打完 tag 即可删除。也可用 `git tag -a v3.5.1 -m "标题" -m "正文"` 直接写多段说明。
 
 查看历史版本说明：
 
 ```powershell
 git tag -n99                # 列出全部 tag 及完整说明
-git tag -n99 v3.5.0        # 只看某个版本
-git show v3.5.0            # 看 tag 说明 + 指向的提交
+git tag -n99 v3.5.1        # 只看某个版本
+git show v3.5.1            # 看 tag 说明 + 指向的提交
 ```
 
 ## Git 使用

@@ -28,6 +28,12 @@ public static class Program
     [STAThread]
     private static void Main()
     {
+        using var singleInstanceMutex = TryAcquireSingleInstance();
+        if (singleInstanceMutex is null)
+        {
+            return;
+        }
+
         ApplicationConfiguration.Initialize();
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
         var plcServiceStarted = false;
@@ -192,6 +198,39 @@ public static class Program
                 mesMonitorStarted,
                 plcServiceStarted);
             AppHost?.Dispose();
+        }
+    }
+
+    private static Mutex? TryAcquireSingleInstance()
+    {
+        try
+        {
+            var mutex = new Mutex(
+                initiallyOwned: true,
+                name: @"Global\AutoWeldSystem",
+                createdNew: out var createdNew);
+            if (createdNew)
+            {
+                return mutex;
+            }
+
+            mutex.Dispose();
+            MessageBox.Show(
+                "AutoWeldSystem 已经在运行，不能重复启动。",
+                AppConstants.ApplicationName,
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            // 无法确认单实例状态时拒绝启动，避免多个进程同时连接 PLC。
+            MessageBox.Show(
+                $"无法确认 AutoWeldSystem 是否已在运行，程序将退出。\n\n{ex.Message}",
+                AppConstants.ApplicationName,
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+            return null;
         }
     }
 
