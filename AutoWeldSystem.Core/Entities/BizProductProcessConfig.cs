@@ -18,6 +18,12 @@ public class BizProductProcessConfig
     [SugarColumn(ColumnDescription = "工位号，0表示通用")]
     public int StationNo { get; set; } = ProductionConstants.Stations.SharedStationNo;
 
+    /// <summary>
+    /// 显式指定当前工位跨产品的整套工艺兜底；旧库空值不启用，禁止跨左右工位借用。
+    /// </summary>
+    [SugarColumn(IsNullable = true, ColumnDescription = "是否作为工位默认工艺")]
+    public bool? IsStationDefault { get; set; }
+
     [SugarColumn(ColumnDescription = "焊点数量")]
     public int TouchCount { get; set; } = 1;
 
@@ -108,4 +114,6 @@ public class BizProductProcessConfig
     [SugarColumn(ColumnDescription = "更新时间")]
     public DateTime UpdatedTime { get; set; } = DateTime.Now;
 
+    // 配置仅含值类型和字符串，保存副本可避免事务回滚后污染界面草稿的主键和时间。
+    public BizProductProcessConfig Clone() => (BizProductProcessConfig)MemberwiseClone();
 }
