@@ -1,6 +1,7 @@
 ﻿using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
 using AutoWeldSystem.Core.DTOs.Mes.Response;
+using AutoWeldSystem.Core.DTOs.Plc;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
@@ -15,7 +16,7 @@ namespace AutoWeldSystem.Services.Production;
 
 /// <summary>
 /// 产品焊点实时预览服务。
-/// 该服务独立于产品就绪信号按固定周期读取 PLC，让界面显示当前设备数据。
+/// 该服务按固定周期读取 PLC；产品编号则由产品就绪上升沿门控，避免采集完成后提前跳到下一号。
 /// </summary>
 public sealed class ProductRealtimePreviewService : IProductRealtimePreviewService, IDisposable
 {
@@ -30,8 +31,10 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
     private readonly IPlcExpressionReadService _plcExpressionReadService;
     private readonly IProgramExceptionLogService _exceptionLogService;
     private readonly IProductCycleCollectionService _productCycleCollectionService;
+    private readonly IPlcWeldCycleMonitorService? _plcWeldCycleMonitorService;
     private readonly object _snapshotSync = new();
     private readonly Dictionary<int, ProductRealtimePreviewSnapshot> _snapshots = new();
+    private readonly Dictionary<int, ProductNumberPreviewGate> _productNumberGates = new();
 
     private CancellationTokenSource? _cts;
     private Task? _loopTask;
@@ -46,7 +49,8 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         IPlcCommunicationService plcCommunicationService,
         IPlcExpressionReadService plcExpressionReadService,
         IProgramExceptionLogService exceptionLogService,
-        IProductCycleCollectionService productCycleCollectionService)
+        IProductCycleCollectionService productCycleCollectionService,
+        IPlcWeldCycleMonitorService? plcWeldCycleMonitorService = null)
     {
         _weldTaskService = weldTaskService;
         _productProcessConfigService = productProcessConfigService;
@@ -57,6 +61,12 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         _plcExpressionReadService = plcExpressionReadService;
         _exceptionLogService = exceptionLogService;
         _productCycleCollectionService = productCycleCollectionService;
+        _plcWeldCycleMonitorService = plcWeldCycleMonitorService;
+        if (_plcWeldCycleMonitorService is not null)
+        {
+            _plcWeldCycleMonitorService.ProductReady += PlcWeldCycleMonitorService_ProductReady;
+            _plcWeldCycleMonitorService.WeldPointCollected += PlcWeldCycleMonitorService_WeldPointCollected;
+        }
     }
 
     public event EventHandler<ProductRealtimePreviewSnapshot>? SnapshotChanged;
@@ -131,6 +141,12 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         }
 
         _cts?.Dispose();
+        if (_plcWeldCycleMonitorService is not null)
+        {
+            _plcWeldCycleMonitorService.ProductReady -= PlcWeldCycleMonitorService_ProductReady;
+            _plcWeldCycleMonitorService.WeldPointCollected -= PlcWeldCycleMonitorService_WeldPointCollected;
+        }
+
         _disposed = true;
     }
 
@@ -169,9 +185,12 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             var stationNo = NormalizeStationNo(station.StationNo);
             if (station.ActiveTask is null)
             {
+                ResetProductNumberGate(stationNo);
                 PublishStatusSnapshot(stationNo, string.Empty);
                 continue;
             }
+
+            EnsureProductNumberGateTask(stationNo, station.ActiveTask.Id);
             try
             {
                 _ = TaskProductProcessConfigResolver.ValidateProgram(_productProcessConfigService, _testSchemeConfigService,
@@ -210,7 +229,7 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             try
             {
                 var snapshot = await BuildSnapshotAsync(identity, config, station.ActiveTask, cancellationToken);
-                Publish(snapshot);
+                Publish(ApplyProductNumberGate(snapshot, station.ActiveTask.Id));
             }
             catch (InvalidOperationException ex)
             {
@@ -894,13 +913,136 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
         SnapshotChanged?.Invoke(this, snapshot);
     }
 
+    private void PlcWeldCycleMonitorService_ProductReady(object? sender, PlcProductReadySnapshot e)
+    {
+        if (e.TaskId <= 0)
+        {
+            return;
+        }
+
+        var stationNo = e.NormalizedStationNo;
+        lock (_snapshotSync)
+        {
+            var gate = GetOrCreateProductNumberGate(stationNo, e.TaskId);
+            if (!gate.HasObservedReadySignal)
+            {
+                // 当前产品的首个上升沿只建立基线，不能让当前产品采集完成后提前跳到下一号。
+                gate.HasObservedReadySignal = true;
+                return;
+            }
+
+            gate.IsNextProductReady = true;
+        }
+    }
+
+    private void PlcWeldCycleMonitorService_WeldPointCollected(object? sender, BizWeldPointRecord e)
+    {
+        if (!e.ProductCompleted
+            || e.TaskId <= 0
+            || string.IsNullOrWhiteSpace(e.ProductNo))
+        {
+            return;
+        }
+
+        var stationNo = NormalizeStationNo(e.StationNo);
+        lock (_snapshotSync)
+        {
+            var gate = GetOrCreateProductNumberGate(stationNo, e.TaskId);
+            // 采集完成事件可先于实时预览首帧到达，用它固化当前产品编号，避免首帧已是下一号时误切换。
+            gate.PublishedProductNo ??= e.ProductNo.Trim();
+        }
+    }
+
+    private ProductRealtimePreviewSnapshot ApplyProductNumberGate(
+        ProductRealtimePreviewSnapshot snapshot,
+        int taskId)
+    {
+        var candidateProductNo = snapshot.ProductNo?.Trim() ?? string.Empty;
+        lock (_snapshotSync)
+        {
+            var gate = GetOrCreateProductNumberGate(snapshot.StationNo, taskId);
+            if (IsUnavailableProductNumber(candidateProductNo))
+            {
+                return gate.PublishedProductNo is null
+                    ? snapshot
+                    : ReplaceProductNumber(snapshot, gate.PublishedProductNo);
+            }
+
+            if (gate.PublishedProductNo is null)
+            {
+                gate.PublishedProductNo = candidateProductNo;
+                gate.IsNextProductReady = false;
+                return snapshot;
+            }
+
+            if (string.Equals(gate.PublishedProductNo, candidateProductNo, StringComparison.OrdinalIgnoreCase))
+            {
+                return snapshot;
+            }
+
+            if (!gate.IsNextProductReady)
+            {
+                return ReplaceProductNumber(snapshot, gate.PublishedProductNo);
+            }
+
+            gate.PublishedProductNo = candidateProductNo;
+            gate.IsNextProductReady = false;
+            return snapshot;
+        }
+    }
+
+    private void EnsureProductNumberGateTask(int stationNo, int taskId)
+    {
+        lock (_snapshotSync)
+        {
+            _ = GetOrCreateProductNumberGate(stationNo, taskId);
+        }
+    }
+
+    private void ResetProductNumberGate(int stationNo)
+    {
+        lock (_snapshotSync)
+        {
+            _productNumberGates.Remove(NormalizeStationNo(stationNo));
+        }
+    }
+
+    private ProductNumberPreviewGate GetOrCreateProductNumberGate(int stationNo, int taskId)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        if (!_productNumberGates.TryGetValue(normalizedStationNo, out var gate)
+            || gate.TaskId != taskId)
+        {
+            gate = new ProductNumberPreviewGate(taskId);
+            _productNumberGates[normalizedStationNo] = gate;
+        }
+
+        return gate;
+    }
+
+    private static ProductRealtimePreviewSnapshot ReplaceProductNumber(
+        ProductRealtimePreviewSnapshot snapshot,
+        string productNo)
+    {
+        foreach (var row in snapshot.Rows)
+        {
+            row.ProductNo = productNo;
+        }
+
+        return snapshot with { ProductNo = productNo };
+    }
+
+    private static bool IsUnavailableProductNumber(string productNo)
+        => string.IsNullOrWhiteSpace(productNo)
+            || string.Equals(productNo, "--", StringComparison.Ordinal);
+
     /// <summary>
     /// Publishes a lightweight failure snapshot so the monitor clears stale rows and shows why realtime refresh stopped.
     /// </summary>
     private void PublishStatusSnapshot(int stationNo, string message, ProductPreviewIdentity? identity = null)
     {
         var normalizedStationNo = NormalizeStationNo(stationNo);
-        Publish(new ProductRealtimePreviewSnapshot(
+        var snapshot = new ProductRealtimePreviewSnapshot(
             normalizedStationNo,
             "--",
             identity?.ProductNum ?? string.Empty,
@@ -911,7 +1053,24 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
             "--",
             DateTime.Now,
             Array.Empty<ProductRealtimePreviewRow>(),
-            message));
+            message);
+        Publish(ApplyExistingProductNumberGate(snapshot));
+    }
+
+    private ProductRealtimePreviewSnapshot ApplyExistingProductNumberGate(ProductRealtimePreviewSnapshot snapshot)
+    {
+        int taskId;
+        lock (_snapshotSync)
+        {
+            if (!_productNumberGates.TryGetValue(snapshot.StationNo, out var gate))
+            {
+                return snapshot;
+            }
+
+            taskId = gate.TaskId;
+        }
+
+        return ApplyProductNumberGate(snapshot, taskId);
     }
 
     private ProgramLookup? ResolveLocalProgram(ProgramDataRes program, IReadOnlyList<ProgramLookup> localPrograms)
@@ -1013,6 +1172,17 @@ public sealed class ProductRealtimePreviewService : IProductRealtimePreviewServi
     }
 
     private sealed record ProductPreviewIdentity(int StationNo, string ProductNum, string ProductModel, int? TouchCount);
+
+    private sealed class ProductNumberPreviewGate(int taskId)
+    {
+        public int TaskId { get; } = taskId;
+
+        public string? PublishedProductNo { get; set; }
+
+        public bool HasObservedReadySignal { get; set; }
+
+        public bool IsNextProductReady { get; set; }
+    }
 
     private enum ProductRealtimePreviewRole
     {

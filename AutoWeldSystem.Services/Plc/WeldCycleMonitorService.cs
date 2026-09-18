@@ -1,5 +1,6 @@
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Entities;
+using AutoWeldSystem.Core.DTOs.Plc;
 using AutoWeldSystem.Core.Exceptions;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.Log;
@@ -64,6 +65,8 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
     }
 
     public event EventHandler<BizWeldPointRecord>? WeldPointCollected;
+
+    public event EventHandler<PlcProductReadySnapshot>? ProductReady;
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
@@ -309,6 +312,12 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
             stationNo: stationState.StationNo,
             plcSignal: AppConstants.PlcLogicalKeys.ProductDataReady,
             plcAddress: stationState.ProductDataReadyAddress?.Address);
+        ProductReady?.Invoke(
+            this,
+            new PlcProductReadySnapshot(
+                stationState.StationNo,
+                task.Id,
+                DateTime.Now));
         await CollectProductCycleAsync(task, stationState, cancellationToken);
     }
 

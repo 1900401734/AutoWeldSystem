@@ -19,7 +19,7 @@ public sealed class ProductRealtimePreviewRow
     /// <summary>
     /// 产品编号
     /// </summary>
-    public string ProductNo { get; init; } = string.Empty;
+    public string ProductNo { get; set; } = string.Empty;
 
     /// <summary>
     /// 产品工号

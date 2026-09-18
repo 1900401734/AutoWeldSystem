@@ -146,6 +146,8 @@ public static class Program
             productionMonitorStarted = true;
             AppHost.Services.GetRequiredService<IPlcWorkIdMonitorService>().StartAsync().GetAwaiter().GetResult();
             workIdMonitorStarted = true;
+            // 先构造实时预览服务，确保它能收到焊接周期监控启动后的首个产品就绪事件。
+            AppHost.Services.GetRequiredService<IProductRealtimePreviewService>();
             AppHost.Services.GetRequiredService<IPlcWeldCycleMonitorService>().StartAsync().GetAwaiter().GetResult();
             weldCycleMonitorStarted = true;
             AppHost.Services.GetRequiredService<IPlcRecipeReconcileMonitorService>().StartAsync().GetAwaiter().GetResult();

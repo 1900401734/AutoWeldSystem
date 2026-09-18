@@ -128,6 +128,7 @@ var tests = new (string Name, Action Run)[]
     ("Realtime product number preserves PLC mode and point source independence", RealtimeProductNumberPreservesPlcModeAndPointSourceIndependence),
     ("Realtime program product number is read only and scoped by task and station", RealtimeProgramProductNumberIsReadOnlyAndScoped),
     ("Realtime program product number follows reweld and passive retest targets", RealtimeProgramProductNumberFollowsReweldAndPassiveRetestTargets),
+    ("Realtime product number waits for the next product ready signal", RealtimeProductNumberWaitsForNextProductReadySignal),
     ("Realtime program product number tolerates optional PLC failures and honors cancellation", RealtimeProgramProductNumberToleratesOptionalPlcFailuresAndHonorsCancellation),
     ("Finish quantities count distinct undeleted products per station", FinishQuantitiesCountDistinctUndeletedProductsPerStation),
     ("Product history actions follow upload gate and count mode", ProductHistoryActionsFollowUploadGateAndCountMode),
@@ -15089,6 +15090,58 @@ static void RealtimeProgramProductNumberFollowsReweldAndPassiveRetestTargets()
     reader.Read = _ => Task.FromResult(PlcServiceResult<string>.Success("22"));
     AssertEqual("5", ReadRealtimeProductNo(preview, settings, stationNo: 2), "PLC 编号变化后显示下一本地编号，而非 PLC 的 22。");
     AssertEqual(0, collection.CollectCallCount, "重测预览也不得触发正式采集。");
+}
+
+static void RealtimeProductNumberWaitsForNextProductReadySignal()
+{
+    using var preview = new ProductRealtimePreviewService(null!, null!, null!, null!, null!, null!, null!, null!, null!);
+    var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+    var applyMethod = typeof(ProductRealtimePreviewService).GetMethod("ApplyProductNumberGate", flags)!;
+    var readyMethod = typeof(ProductRealtimePreviewService).GetMethod("PlcWeldCycleMonitorService_ProductReady", flags)!;
+    var collectedMethod = typeof(ProductRealtimePreviewService).GetMethod("PlcWeldCycleMonitorService_WeldPointCollected", flags)!;
+
+    readyMethod.Invoke(preview, [null, new PlcProductReadySnapshot(1, 1, DateTime.Now)]);
+    var first = ApplyPreviewProductNumber(applyMethod, preview, "1", taskId: 1);
+    AssertEqual("1", first.ProductNo, "首个实时产品编号必须正常显示。");
+
+    var candidate = ApplyPreviewProductNumber(applyMethod, preview, "2", taskId: 1);
+    AssertEqual("1", candidate.ProductNo, "当前产品采集完成后，未收到下一次就绪信号时必须保持原编号。");
+    AssertEqual("1", candidate.Rows[0].ProductNo, "实时预览行的产品编号必须与摘要保持一致。");
+
+    collectedMethod.Invoke(preview, [null, new BizWeldPointRecord
+    {
+        TaskId = 1,
+        StationNo = 1,
+        ProductNo = "1",
+        ProductCompleted = true
+    }]);
+    candidate = ApplyPreviewProductNumber(applyMethod, preview, "2", taskId: 1);
+    AssertEqual("1", candidate.ProductNo, "采集完成回调不能绕过下一次产品就绪信号。");
+
+    readyMethod.Invoke(preview, [null, new PlcProductReadySnapshot(1, 1, DateTime.Now)]);
+    candidate = ApplyPreviewProductNumber(applyMethod, preview, "2", taskId: 1);
+    AssertEqual("2", candidate.ProductNo, "下一次有效产品就绪信号后才允许切换产品编号。");
+    AssertEqual("2", candidate.Rows[0].ProductNo, "切换后的实时预览行必须使用新产品编号。");
+}
+
+static ProductRealtimePreviewSnapshot ApplyPreviewProductNumber(
+    System.Reflection.MethodInfo applyMethod,
+    ProductRealtimePreviewService preview,
+    string productNo,
+    int taskId)
+{
+    var snapshot = new ProductRealtimePreviewSnapshot(
+        1,
+        productNo,
+        "P-1",
+        string.Empty,
+        "scheme-1",
+        "1/1",
+        "焊点",
+        ProductionConstants.TestResults.NotAvailable,
+        DateTime.Now,
+        [new ProductRealtimePreviewRow { ProductNo = productNo }]);
+    return (ProductRealtimePreviewSnapshot)applyMethod.Invoke(preview, [snapshot, taskId])!;
 }
 
 static void RealtimeProgramProductNumberToleratesOptionalPlcFailuresAndHonorsCancellation()
