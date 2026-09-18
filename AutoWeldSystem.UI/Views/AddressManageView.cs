@@ -397,6 +397,7 @@ public partial class AddressManageView : BaseView
         tableProcess.Columns.Add(CreateProgramProductNumColumn());
         tableProcess.Columns.Add(CreateSchemeSelectColumn(nameof(ProductProcessTableRow.SchemeId), "测试方案ID"));
         tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.StationNo), "工位(0共享)"));
+        tableProcess.Columns.Add(new AntdUI.ColumnSwitch(nameof(ProductProcessTableRow.IsStationDefault), "工位默认") { AutoCheck = true });
         tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.PointName), "采集点名称"));
         tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.PointNoHeader), "编号表头"));
         tableProcess.Columns.Add(CreateRawColumn(nameof(ProductProcessTableRow.PointResultHeader), "结果表头"));
@@ -946,7 +947,7 @@ public partial class AddressManageView : BaseView
         var config = _selectedProductProcessRow?.Source;
         if (config is null)
         {
-            lblProductProcessSummary.Text = "选择一条产品工艺后，可查看产品 -> 焊点 -> 测试项绑定摘要，并打开 PLC 地址预览。";
+            lblProductProcessSummary.Text = "匹配顺序：产品+当前工位 → 同产品工位0 → 当前工位默认。工位默认跨产品复用整套工艺，左右工位需分别配置，保存后生效。";
             return;
         }
 
@@ -958,6 +959,11 @@ public partial class AddressManageView : BaseView
         lblProductProcessSummary.Text = touchCount.HasValue
             ? $"当前绑定：产品 {config.ProductNum} / {stationText} / 方案 {config.SchemeId} / 有效程序最大焊点数 {touchCount} / 每焊点 {schemeItemCount} 个测试项。"
             : $"当前绑定：产品 {config.ProductNum} / {stationText} / 方案 {config.SchemeId} / 尚无配置有效焊点数量的程序，地址预览仅展开第 1 点模板。";
+        if (config.IsStationDefault == true)
+        {
+            lblProductProcessSummary.Text = $"工位默认（跨产品兜底{(config.Enabled ? string.Empty : "，已禁用")}）：{lblProductProcessSummary.Text} 模板预览沿用源产品数量，实际数量取使用它的任务程序。";
+        }
+        lblProductProcessSummary.Text += " 匹配：产品+当前工位 → 同产品工位0 → 当前工位默认；修改保存后生效。";
         _stationDisplay.SetToolTip(lblProductProcessSummary, lblProductProcessSummary.Text);
     }
 
@@ -1026,6 +1032,7 @@ public partial class AddressManageView : BaseView
                 || Contains(config.SchemeId, _productProcessKeyword)
                 || Contains(config.StationNo.ToString(), _productProcessKeyword)
                 || Contains(_stationDisplay?.FormatTable(config.StationNo, config.StationNo.ToString(), true), _productProcessKeyword)
+                || (config.IsStationDefault == true && Contains("工位默认", _productProcessKeyword))
                 || Contains(config.ProductBase, _productProcessKeyword)
                 || Contains(config.TouchBase, _productProcessKeyword)
                 || Contains(config.TouchNoBase, _productProcessKeyword)
@@ -1750,10 +1757,7 @@ public partial class AddressManageView : BaseView
     {
         NormalizeProductProcesses(_productProcessConfigs);
         ValidateProductProcesses(_productProcessConfigs);
-        foreach (var config in _productProcessConfigs.OrderBy(config => config.ProductNum).ThenBy(config => config.StationNo))
-        {
-            _productProcessConfigService.Save(config);
-        }
+        _productProcessConfigService.SaveAll(_productProcessConfigs);
 
         ShowPostSaveResult("产品工艺配置已保存。", TryReloadDataAfterSave("AddressManageView.ReloadAfterProductProcessSave"));
     }
@@ -2486,11 +2490,12 @@ public partial class AddressManageView : BaseView
                 nameof(AlarmAddressTableRow.AlarmContent) => !string.IsNullOrWhiteSpace(value),
                 _ => true
             },
-            ProductProcessTableRow => e.Column.Key switch
+            ProductProcessTableRow processRow => e.Column.Key switch
             {
                 nameof(ProductProcessTableRow.ProductNum) => !string.IsNullOrWhiteSpace(value),
                 nameof(ProductProcessTableRow.SchemeId) => !string.IsNullOrWhiteSpace(value),
-                nameof(ProductProcessTableRow.StationNo) => IsNonNegativeInt(value),
+                nameof(ProductProcessTableRow.StationNo) => IsNonNegativeInt(value)
+                    && (!processRow.IsStationDefault || (int.TryParse(value, out var stationNo) && ProductProcessConfigRules.IsDefaultStation(stationNo))),
                 nameof(ProductProcessTableRow.PointName) => !string.IsNullOrWhiteSpace(value),
                 nameof(ProductProcessTableRow.PointNoHeader) => !string.IsNullOrWhiteSpace(value),
                 nameof(ProductProcessTableRow.PointResultHeader) => !string.IsNullOrWhiteSpace(value),
@@ -2562,7 +2567,19 @@ public partial class AddressManageView : BaseView
         if (e.Record is ProductProcessTableRow processRow)
         {
             _selectedProductProcessRow = processRow;
-            processRow.Enabled = e.Value;
+            if (e.Column.Key == nameof(ProductProcessTableRow.IsStationDefault))
+            {
+                processRow.IsStationDefault = e.Value && ProductProcessConfigRules.IsDefaultStation(processRow.StationNo);
+                if (e.Value && !processRow.IsStationDefault)
+                {
+                    ShowWarning("工位默认只能设置为工位 1 或 2，请先将共享工位改为具体工位。");
+                    tableProcess.Refresh();
+                }
+            }
+            else if (e.Column.Key == nameof(ProductProcessTableRow.Enabled))
+            {
+                processRow.Enabled = e.Value;
+            }
 
             UpdateProductProcessSummary();
             SyncActiveCommandState();
@@ -2752,20 +2769,12 @@ public partial class AddressManageView : BaseView
 
     private void ValidateProductProcesses(IEnumerable<BizProductProcessConfig> configs)
     {
+        ProductProcessConfigRules.ValidateConfigurations(configs);
         var enabledConfigs = configs.Where(config => config.Enabled).ToList();
         var missingScheme = enabledConfigs.FirstOrDefault(config => !_testSchemes.Any(scheme => scheme.SchemeId == config.SchemeId));
         if (missingScheme is not null)
         {
             throw new InvalidOperationException($"产品工号“{missingScheme.ProductNum}”绑定的测试方案“{missingScheme.SchemeId}”不存在。");
-        }
-
-        var duplicate = enabledConfigs
-            .GroupBy(config => $"{config.ProductNum}\u001F{config.StationNo}", StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault(group => group.Count() > 1);
-        if (duplicate is not null)
-        {
-            var first = duplicate.First();
-            throw new InvalidOperationException($"产品工号“{first.ProductNum}”、工位“{first.StationNo}”存在重复启用配置。");
         }
     }
 
@@ -3317,6 +3326,12 @@ public partial class AddressManageView : BaseView
         {
             get => Source.StationNo;
             set => Source.StationNo = Math.Max(ProductionConstants.Stations.SharedStationNo, value);
+        }
+
+        public bool IsStationDefault
+        {
+            get => Source.IsStationDefault == true;
+            set => Source.IsStationDefault = value;
         }
 
         public string PointName

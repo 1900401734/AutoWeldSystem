@@ -46,14 +46,17 @@ public class ProductionReportFileService : IProductionReportFileService
     private readonly SqlSugarDbContext _dbContext;
     private readonly IAppSettingsService _settingsService;
     private readonly IProductionFlowLogService _productionLogService;
+    private readonly IProductProcessConfigService _productProcessConfigService;
     private readonly object _dbLock = new();
     private AppSettings _currentSettings;
 
     public ProductionReportFileService(
         SqlSugarDbContext dbContext,
         IAppSettingsService settingsService,
-        IProductionFlowLogService productionLogService)
+        IProductionFlowLogService productionLogService,
+        IProductProcessConfigService? productProcessConfigService = null)
     {
+        _productProcessConfigService = productProcessConfigService ?? new ProductProcessConfigService(dbContext);
         _dbContext = dbContext;
         _settingsService = settingsService;
         _currentSettings = settingsService.Get();
@@ -947,27 +950,11 @@ public class ProductionReportFileService : IProductionReportFileService
         IReadOnlyList<BizWeldPointRecord> records,
         bool localExport = false)
     {
-        var productNum = ResolveTaskProductNum(task);
-        if (string.IsNullOrWhiteSpace(productNum))
-        {
-            return [];
-        }
-
-        var configs = _dbContext.Db.Queryable<BizProductProcessConfig>()
-            .Where(config => config.Enabled && config.ProductNum == productNum)
-            .ToList()
-            .OrderBy(config => config.Id)
-            .ToList();
         var schemeItemsBySchemeId = new Dictionary<string, IReadOnlyList<SchemeReportItem>>(StringComparer.OrdinalIgnoreCase);
         var resolved = new List<ResolvedStationReportConfig>();
         foreach (var stationNo in ResolveReportStationNumbers(task, records))
         {
-            var config = configs
-                .Where(candidate => candidate.StationNo == ProductionConstants.Stations.SharedStationNo
-                    || candidate.StationNo == stationNo)
-                .OrderByDescending(candidate => candidate.StationNo == stationNo)
-                .ThenBy(candidate => candidate.Id)
-                .FirstOrDefault();
+            var config = _productProcessConfigService.FindActiveForTask(task, stationNo);
             if (config is null)
             {
                 continue;
@@ -1030,36 +1017,6 @@ public class ProductionReportFileService : IProductionReportFileService
         }
 
         return options[0];
-    }
-
-    private static bool IsExactTextMatch(string? left, string? right)
-    {
-        return string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
-    }
-
-    private string ResolveTaskProductNum(BizWeldTask task)
-    {
-        if (!string.IsNullOrWhiteSpace(task.ProgramId))
-        {
-            var programId = task.ProgramId.Trim();
-            var localId = programId.StartsWith("local-", StringComparison.OrdinalIgnoreCase)
-                && int.TryParse(programId[6..], out var id) ? id : 0;
-            var programs = _dbContext.Db.Queryable<BizProgram>()
-                .Where(program => !program.IsDeleted && (program.ProgramId == programId || (localId > 0 && program.Id == localId)))
-                .ToList();
-
-            var localProgram = programs
-                .OrderByDescending(program => IsExactTextMatch(program.DeviceId, task.DeviceId))
-                .ThenByDescending(program => program.UpdatedTime)
-                .FirstOrDefault();
-
-            if (!string.IsNullOrWhiteSpace(localProgram?.ProductNum))
-            {
-                return localProgram.ProductNum.Trim();
-            }
-        }
-
-        return task.ProductNum.Trim();
     }
 
     private static IEnumerable<ReportColumn> BuildLeadingColumns(ReportDisplayOptions displayOptions)

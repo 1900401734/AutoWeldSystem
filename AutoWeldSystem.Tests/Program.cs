@@ -109,6 +109,9 @@ var tests = new (string Name, Action Run)[]
     ("Program manage recipe name selectors bind station recipe codes", ProgramManageRecipeNameSelectorsBindStationRecipeCodes),
     ("Address manage exposes PLC recipe name configuration", AddressManageExposesPlcRecipeNameConfiguration),
     ("PLC recipe name config service reads latest station row", PlcRecipeNameConfigServiceReadsLatestStationRow),
+    ("Product process station defaults respect product and station priority", ProductProcessStationDefaultPriority),
+    ("Product process defaults reject ambiguity and preserve invalid dedicated config", ProductProcessDefaultValidation),
+    ("Product process persistence is atomic and legacy defaults remain off", ProductProcessDefaultPersistence),
     ("Product process draft copies business fields and resets identity", ProductProcessDraftCopiesBusinessFieldsAndResetsIdentity),
     ("Product process draft keeps existing defaults without source", ProductProcessDraftKeepsExistingDefaultsWithoutSource),
     ("Address manage copies selected product process on add", AddressManageCopiesSelectedProductProcessOnAdd),
@@ -1828,11 +1831,207 @@ static void ProgramCleanupGuardsAndCancellation()
     }
 }
 
+static void ProductProcessStationDefaultPriority()
+{
+    var specific = new BizProductProcessConfig { Id = 30, ProductNum = "P", StationNo = 1, SchemeId = "SPECIFIC" };
+    var shared = new BizProductProcessConfig { Id = 20, ProductNum = "P", StationNo = 0, SchemeId = "SHARED" };
+    var left = new BizProductProcessConfig { Id = 1, ProductNum = "SOURCE-L", StationNo = 1, IsStationDefault = true, ProductBase = "DB10.0" };
+    var right = new BizProductProcessConfig { Id = 2, ProductNum = "SOURCE-R", StationNo = 2, IsStationDefault = true, ProductBase = "DB20.0" };
+    var configs = new[] { left, right, shared, specific };
+    AssertEqual(specific, ProductProcessConfigRules.SelectActive(configs, " p ", 1), "专用工位优先于共享和默认，忽略工号首尾空格和大小写。");
+    AssertEqual(shared, ProductProcessConfigRules.SelectActive(configs, "P", 2), "同产品共享配置仍优先于工位默认。");
+    AssertEqual(left, ProductProcessConfigRules.SelectActive(configs, "NEW", 1), "新产品工位1使用左工位默认。");
+    AssertEqual(right, ProductProcessConfigRules.SelectActive(configs, "NEW", 2), "新产品工位2使用右工位默认。");
+    AssertEqual(left, ProductProcessConfigRules.SelectActive(configs, "NEW", 0), "调用的共享工位沿用归一为工位1的规则。");
+    AssertTrue(ProductProcessConfigRules.SelectActive([left], "NEW", 2) is null, "不得把左默认借给右工位。");
+    AssertTrue(ProductProcessConfigRules.SelectActive(configs, " ", 1) is null, "缺少产品身份不能被默认配置掩盖。");
+    specific.Enabled = false;
+    AssertEqual(shared, ProductProcessConfigRules.SelectActive(configs, "P", 1), "禁用专用后仍先匹配同产品共享。");
+    shared.Enabled = false;
+    AssertEqual(left, ProductProcessConfigRules.SelectActive(configs, "P", 1), "无启用专用时可使用默认。");
+    left.Enabled = false;
+    AssertTrue(ProductProcessConfigRules.SelectActive(configs, "NEW", 1) is null, "禁用默认不参与兜底。");
+    right.IsStationDefault = null;
+    AssertTrue(ProductProcessConfigRules.SelectActive(configs, "NEW", 2) is null, "旧库NULL默认标记不启用兜底。");
+}
+
+static void ProductProcessDefaultValidation()
+{
+    var left = new BizProductProcessConfig { ProductNum = "P1", StationNo = 1, IsStationDefault = true };
+    var other = new BizProductProcessConfig { ProductNum = "P2", StationNo = 1, IsStationDefault = true };
+    AssertThrows<InvalidOperationException>(() => ProductProcessConfigRules.ValidateConfigurations([left, other]), "同工位启用多个默认必须拒绝。");
+    AssertThrows<InvalidOperationException>(() => ProductProcessConfigRules.SelectActive([left, other], "NEW", 1), "读取脏数据不能任意选择第一条默认。");
+    other.Enabled = false;
+    ProductProcessConfigRules.ValidateConfigurations([left, other]);
+    other.StationNo = 0;
+    AssertThrows<InvalidOperationException>(() => ProductProcessConfigRules.ValidateConfigurations([other]), "默认配置不允许共享工位。");
+    other.IsStationDefault = false;
+    other.Enabled = true;
+    other.ProductNum = "p1 ";
+    other.StationNo = 1;
+    AssertThrows<InvalidOperationException>(() => ProductProcessConfigRules.ValidateConfigurations([left, other]), "产品专用配置重复同样必须拒绝。");
+    other.ProductNum = "NEW";
+    other.TestBase = "invalid";
+    AssertEqual(other, ProductProcessConfigRules.SelectActive([left, other], "NEW", 1), "匹配到无效专用配置也不得静默换成默认。");
+}
+
+static void ProductProcessDefaultPersistence()
+{
+    var directory = Path.Combine(Path.GetTempPath(), "autoweld-process-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(directory);
+    try
+    {
+        using var db = CreateProductProcessTestDatabase(Path.Combine(directory, "test.db"));
+        var service = new ProductProcessConfigService(db);
+        db.Db.Insertable(new BizTestScheme { SchemeId = "S01", SchemeName = "测试方案" }).ExecuteCommand();
+        using var mysql = new AutoWeldSystem.Data.SqlSugarDbContext("unused");
+        var mysqlSql = mysql.Db.Queryable<BizProductProcessConfig>()
+            .Where(config => config.Enabled && (config.ProductNum == "NEW" || (config.IsStationDefault == true && config.StationNo == 1))).ToSqlString();
+        AssertTrue(mysqlSql.Contains("IsStationDefault", StringComparison.Ordinal) && mysqlSql.Contains(" OR ", StringComparison.OrdinalIgnoreCase),
+            "MySQL候选查询必须包含产品或默认的条件，生成SQL不连接现场库。");
+        var defaultColumn = mysql.Db.EntityMaintenance.GetEntityInfo<BizProductProcessConfig>().Columns
+            .Single(column => column.PropertyName == nameof(BizProductProcessConfig.IsStationDefault));
+        AssertTrue(defaultColumn.IsNullable, "MySQL实体映射必须允许旧库默认标记为空。");
+        var legacy = ValidProcess("LEGACY", 1);
+        legacy.IsStationDefault = null;
+        service.Save(legacy);
+        var created = legacy.CreatedTime;
+        db.Db.Ado.ExecuteCommand("ALTER TABLE Biz_ProductProcess DROP COLUMN IsStationDefault");
+        db.Db.CodeFirst.InitTables<BizProductProcessConfig>();
+        AssertTrue(db.Db.DbMaintenance.GetColumnInfosByTableName("Biz_ProductProcess", false)
+            .Any(column => column.DbColumnName == nameof(BizProductProcessConfig.IsStationDefault) && column.IsNullable),
+            "旧表升级必须追加可空默认标记。");
+        AssertTrue(service.FindActive("NEW", 1) is null, "旧行升级后不能自动成为默认。");
+        var legacyColumn = db.Db.Queryable<BizProductProcessConfig>().InSingle(legacy.Id);
+        AssertTrue(legacyColumn.IsStationDefault is null, "CodeFirst不能把旧行自动回填为默认。");
+
+        legacy.IsStationDefault = true;
+        service.Save(legacy);
+        AssertEqual(legacy.Id, service.FindActive("NEW", 1)!.Id, "显式保存默认后才能兜底。");
+        var replacement = ValidProcess("NEXT", 1);
+        replacement.IsStationDefault = true;
+        legacy.IsStationDefault = false;
+        service.SaveAll([replacement, legacy]);
+        AssertEqual(replacement.Id, service.FindActive("NEW", 1)!.Id, "替换默认不能受输入顺序影响。");
+        AssertEqual(created, service.FindActive("LEGACY", 1)!.CreatedTime, "编辑不得覆盖原创建时间。");
+        AssertEqual(2, service.GetAll(true).Count, "保存不删除未传入的记录。");
+        var duplicate = ValidProcess("DUPLICATE", 1);
+        duplicate.IsStationDefault = true;
+        AssertThrows<InvalidOperationException>(() => service.Save(duplicate), "单条保存也要核对数据库已有默认。");
+        AssertEqual(0, duplicate.Id, "校验失败不能污染新增草稿Id。");
+
+        db.Db.Ado.ExecuteCommand("CREATE TRIGGER fail_process_insert BEFORE INSERT ON Biz_ProductProcess WHEN NEW.ProductNum = 'ROLLBACK' BEGIN SELECT RAISE(ABORT, 'simulated write failure'); END;");
+        var added = ValidProcess("ADDED", 2);
+        var fail = ValidProcess("ROLLBACK", 2);
+        var previousCreated = added.CreatedTime;
+        var previousUpdated = added.UpdatedTime;
+        var oldProductBase = service.FindActive("LEGACY", 1)!.ProductBase;
+        legacy.ProductBase = "DB99.0";
+        AssertThrows<InvalidOperationException>(() => service.SaveAll([legacy, added, fail]), "中途插入失败必须回滚整批编辑。");
+        AssertEqual(0, added.Id, "回滚后先插入的草稿不能保留数据库Id。");
+        AssertEqual(previousCreated, added.CreatedTime, "回滚不能改草稿创建时间。");
+        AssertEqual(previousUpdated, added.UpdatedTime, "回滚不能改草稿更新时间。");
+        AssertEqual(0, fail.Id, "失败行也不能获得Id。");
+        AssertEqual(2, service.GetAll(true).Count, "回滚不保留部分插入。");
+        AssertEqual(oldProductBase, service.FindActive("LEGACY", 1)!.ProductBase, "回滚必须撤销之前的更新。");
+        AssertEqual(replacement.Id, service.FindActive("NEW", 1)!.Id, "回滚后原默认保持可用。");
+        var missing = ValidProcess("MISSING", 2);
+        missing.SchemeId = "NOT-EXIST";
+        AssertThrows<InvalidOperationException>(() => service.Save(missing), "服务保存必须拒绝缺失的测试方案。");
+        ProductProcessOutputsUseSameDefault(db, service, replacement, directory);
+    }
+    finally
+    {
+        Directory.Delete(directory, true);
+    }
+}
+
+static AutoWeldSystem.Data.SqlSugarDbContext CreateProductProcessTestDatabase(string file)
+{
+    // 仅替换测试实例的连接，绝不访问应用配置或默认 MySQL；沿用现有 SqlSugar 的 SQLite 依赖。
+    var db = new AutoWeldSystem.Data.SqlSugarDbContext("unused");
+    var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+    var sqlite = new SqlSugar.SqlSugarScope(new SqlSugar.ConnectionConfig
+    {
+        DbType = SqlSugar.DbType.Sqlite, ConnectionString = $"Data Source={file};Pooling=False",
+        IsAutoCloseConnection = true, InitKeyType = SqlSugar.InitKeyType.Attribute
+    });
+    typeof(AutoWeldSystem.Data.SqlSugarDbContext).GetField("<Db>k__BackingField", flags)!.SetValue(db, sqlite);
+    typeof(AutoWeldSystem.Data.SqlSugarDbContext).GetField("_initialized", flags)!.SetValue(db, true);
+    sqlite.CodeFirst.InitTables(typeof(BizProductProcessConfig), typeof(BizTestScheme), typeof(BizProgram),
+        typeof(BizWeldTask), typeof(BizSchemeDetail), typeof(DimTestItem), typeof(BizWeldPointRecord));
+    return db;
+}
+
+static BizProductProcessConfig ValidProcess(string product, int station) => new()
+{
+    ProductNum = product, StationNo = station, SchemeId = "S01", ProductBase = "DB8.0", ProductResultExpr = "4:H-4",
+    TouchBase = "DB8.32", TouchNoExpr = "0:I-0", TouchResultExpr = "4:H-4", TestBase = "DB8.100"
+};
+
+static void ProductProcessOutputsUseSameDefault(AutoWeldSystem.Data.SqlSugarDbContext db,
+    IProductProcessConfigService service, BizProductProcessConfig expected, string directory)
+{
+    var right = ValidProcess("RIGHT", 2);
+    right.IsStationDefault = true;
+    right.ProductBase = "DB20.0";
+    service.Save(right);
+    var task = new BizWeldTask { Id = 77, ProductNum = "ORDER-PRODUCT", ProgramId = "local-1", DeviceId = "TEST", StationNo = 1,
+        ProgramContentSnapshot = "{\"焊点数量\":4,\"高度上限\":20}" };
+    var program = new BizProgram { ProgramId = "P1", DeviceId = "TEST", ProductNum = "NEW-PROGRAM" };
+    program.Id = db.Db.Insertable(program).ExecuteReturnIdentity();
+    task.ProgramId = $"local-{program.Id}";
+    task.Id = db.Db.Insertable(task).ExecuteReturnIdentity();
+    var resolved = TaskProductProcessConfigResolver.Resolve(service, task, [1, 2]);
+    AssertEqual(expected.Id, resolved[1].Id, "历史与中心转发共用解析器使用左工位默认。");
+    AssertEqual(right.Id, resolved[2].Id, "历史与中心转发共用解析器使用右工位默认。");
+    AssertEqual("ORDER-PRODUCT", task.ProductNum, "兜底不改写任务的真实工单产品工号。");
+    TaskProductProcessConfigResolver.ValidateProgram(service, new FakeBoundaryTestSchemeService(), task, [1, 2], ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck);
+    task.ProgramContentSnapshot = "{\"焊点数量\":4}";
+    AssertThrows<InvalidOperationException>(() => TaskProductProcessConfigResolver.ValidateProgram(service,
+        new FakeBoundaryTestSchemeService(), task, [1], ProductionConstants.ProcessParameterDeviceTypes.WholePieceCheck), "默认方案不能绕过上报项限值校验。");
+    var settings = new FakeAppSettingsService();
+    var report = new ProductionReportFileService(db, settings, null!, service);
+    var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+    var reportRows = (System.Collections.IEnumerable)typeof(ProductionReportFileService).GetMethod("ResolveStationReportConfigs", flags)!
+        .Invoke(report, [task, new[] { new BizWeldPointRecord { StationNo = 1 }, new BizWeldPointRecord { StationNo = 2 } }, false])!;
+    var ids = reportRows.Cast<object>().Select(row => ((BizProductProcessConfig)row.GetType().GetProperty("Config")!.GetValue(row)!).Id).ToArray();
+    AssertSequenceEqual(new[] { expected.Id, right.Id }, ids, "报表生成不得保留独立匹配路径而漏掉默认。");
+    var upload = new UploadTaskService(db, new FakeMesProvider(), settings, null!,
+        new FakeDeviceLifecycleLogService(), new FakeDeviceStatusService(), report, service);
+    var uploadedConfig = (BizProductProcessConfig)typeof(UploadTaskService).GetMethod("ResolveProductProcessConfig", flags)!
+        .Invoke(upload, [new BizWeldPointRecord { TaskId = task.Id, StationNo = 2 }])!;
+    AssertEqual(right.Id, uploadedConfig.Id, "过程参数上传使用实际记录工位的默认。");
+    var item = new DimTestItem { ItemName = "高度", ActualExpression = "0:F-0_4", Unit = "mm" };
+    item.ItemId = db.Db.Insertable(item).ExecuteReturnIdentity();
+    db.Db.Insertable(new BizSchemeDetail { SchemeId = "S01", ItemId = item.ItemId, EnableActual = true,
+        SaveActual = true, ReportActual = true, MesActual = true, ActualHeader = "高度", ActualMesFieldName = "Height" }).ExecuteCommand();
+    var record = new BizWeldPointRecord { TaskId = task.Id, StationNo = 2, ProductNo = "1", TouchNo = "1",
+        SequenceNo = 1, ProductCompleted = true, TestResult = "OK", ProductResult = "OK", RawDataJson = "{\"高度\":\"15.30\"}" };
+    db.Db.Insertable(record).ExecuteCommand();
+    var history = new DataHistoryQueryService(db, service).QueryTestDataAsync(task.Id).GetAwaiter().GetResult();
+    AssertTrue(history.DynamicColumns.Any(column => column.HeaderText == "高度 (mm)"), "历史查询必须通过默认工艺找到测试项列。");
+    AssertTrue(history.Rows.Single().DynamicValues.Values.Contains("15.30"), "历史通过默认工艺显示已采集值。");
+    var collection = new ProductCycleCollectionService(db, service, settings, null!, new FakeOperationLogService(), null!, report);
+    var collectionConfig = (BizProductProcessConfig)typeof(ProductCycleCollectionService).GetMethod("ResolveProcessConfig", flags)!
+        .Invoke(collection, [task, 2])!;
+    AssertEqual(right.Id, collectionConfig.Id, "正式采集入口与上传匹配到同一默认。");
+    using var preview = new ProductRealtimePreviewService(null!, service, null!, null!, settings, null!, null!, null!, collection);
+    var previewConfig = (BizProductProcessConfig)typeof(ProductRealtimePreviewService).GetMethod("ResolveProcessConfig", flags)!
+        .Invoke(preview, ["unused", new ProductionStationRuntimeState { StationNo = 2, ActiveTask = task }])!;
+    AssertEqual(right.Id, previewConfig.Id, "实时预览同样使用当前工位默认。");
+    var exportPath = Path.Combine(directory, "default-export.xlsx");
+    report.ExportXlsx(task.Id, exportPath);
+    using var workbook = new XLWorkbook(exportPath);
+    AssertTrue(workbook.Worksheets.First().CellsUsed().Any(cell => cell.GetString() == "高度 (mm)"), "本地导出必须包含默认方案测试项。");
+}
+
 static void ProductProcessDraftCopiesBusinessFieldsAndResetsIdentity()
 {
     var source = new BizProductProcessConfig
     {
         Id = 42,
+        IsStationDefault = true,
         SchemeId = "S09",
         ProductNum = "P-001",
         StationNo = 2,
@@ -1865,6 +2064,8 @@ static void ProductProcessDraftCopiesBusinessFieldsAndResetsIdentity()
     var draft = ProductProcessDraftRules.CreateDraft(source, "DEFAULT-P", "S01", draftTime);
 
     AssertEqual(0, draft.Id, "复制草稿必须保持新增身份。 ");
+    AssertFalse(draft.IsStationDefault == true, "复制默认工艺不能复制默认资格。");
+    AssertTrue(source.IsStationDefault == true, "复制草稿不能修改源默认工艺。");
     AssertEqual(source.ProductNum, draft.ProductNum, "复制草稿应暂时保留源产品工号。 ");
     AssertEqual(source.SchemeId, draft.SchemeId, "测试方案应复制。 ");
     AssertEqual(source.StationNo, draft.StationNo, "工位应复制。 ");
@@ -20016,6 +20217,8 @@ sealed class FakeProductProcessConfigService(
     }
 
     public BizProductProcessConfig Save(BizProductProcessConfig config) => config;
+
+    public void SaveAll(IEnumerable<BizProductProcessConfig> configs) { }
 
     public void Disable(int id)
     {

@@ -27,6 +27,8 @@ public static class ProductProcessDraftRules
             SchemeId = source.SchemeId,
             ProductNum = source.ProductNum,
             StationNo = source.StationNo,
+            // 复制地址不复制默认资格，避免新增草稿无意接管整个工位。
+            IsStationDefault = false,
             PointName = source.PointName,
             PointNoHeader = source.PointNoHeader,
             PointResultHeader = source.PointResultHeader,

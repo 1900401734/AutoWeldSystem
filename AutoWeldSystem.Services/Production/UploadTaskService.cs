@@ -29,6 +29,7 @@ public class UploadTaskService : IUploadTaskService
     private readonly IDeviceLifecycleLogService _deviceLifecycleLogService;
     private readonly IDeviceStatusService _deviceStatusService;
     private readonly IProductionReportFileService _reportFileService;
+    private readonly IProductProcessConfigService _productProcessConfigService;
     private readonly object _dbLock = new();
 
     public UploadTaskService(
@@ -38,7 +39,8 @@ public class UploadTaskService : IUploadTaskService
         IProductionFlowLogService productionLogService,
         IDeviceLifecycleLogService deviceLifecycleLogService,
         IDeviceStatusService deviceStatusService,
-        IProductionReportFileService? reportFileService = null)
+        IProductionReportFileService? reportFileService = null,
+        IProductProcessConfigService? productProcessConfigService = null)
     {
         _dbContext = dbContext;
         _mesProvider = mesProvider;
@@ -46,7 +48,8 @@ public class UploadTaskService : IUploadTaskService
         _productionLogService = productionLogService;
         _deviceLifecycleLogService = deviceLifecycleLogService;
         _deviceStatusService = deviceStatusService;
-        _reportFileService = reportFileService ?? new ProductionReportFileService(dbContext, settingsService, productionLogService);
+        _productProcessConfigService = productProcessConfigService ?? new ProductProcessConfigService(dbContext);
+        _reportFileService = reportFileService ?? new ProductionReportFileService(dbContext, settingsService, productionLogService, _productProcessConfigService);
     }
 
     /// <summary>
@@ -929,7 +932,7 @@ public class UploadTaskService : IUploadTaskService
             try
             {
                 _ = TaskProductProcessConfigResolver.ValidateProgram(
-                    new ProductProcessConfigService(_dbContext), new TestSchemeConfigService(_dbContext),
+                    _productProcessConfigService, new TestSchemeConfigService(_dbContext),
                     weldTask ?? throw new InvalidOperationException("补传任务对应的生产任务不存在。"),
                     ResolveTaskStations(weldTask), _settingsService.Get().ProcessParameterDeviceType);
                 return null;
@@ -1469,12 +1472,6 @@ public class UploadTaskService : IUploadTaskService
             return null;
         }
 
-        var productNum = ResolveTaskProductNum(task);
-        if (string.IsNullOrWhiteSpace(productNum))
-        {
-            return null;
-        }
-
         var stationNo = record.StationNo > ProductionConstants.Stations.SharedStationNo
             ? record.StationNo
             : task.StationNo;
@@ -1482,13 +1479,7 @@ public class UploadTaskService : IUploadTaskService
             ? stationNo
             : ProductionConstants.Stations.DefaultStationNo;
 
-        return _dbContext.Db.Queryable<BizProductProcessConfig>()
-            .Where(config => config.Enabled && config.ProductNum == productNum)
-            .ToList()
-            .Where(config => config.StationNo == ProductionConstants.Stations.SharedStationNo || config.StationNo == stationNo)
-            .OrderByDescending(config => config.StationNo == stationNo)
-            .ThenBy(config => config.Id)
-            .FirstOrDefault();
+        return _productProcessConfigService.FindActiveForTask(task, stationNo);
     }
 
     private IReadOnlyList<ProcessParameterSchemeItem> GetMesSchemeItemsForConfig(BizProductProcessConfig? config)
@@ -1530,31 +1521,6 @@ public class UploadTaskService : IUploadTaskService
                 || (strictWholePiece && SchemeDetailRoleRules.AllRoles.Any(role => SchemeDetailRoleRules.IsUploadEnabled(item.Detail, role))))
             .Select(item => new ProcessParameterSchemeItem(item.Item!, item.Detail))
             .ToList();
-    }
-
-    private string ResolveTaskProductNum(BizWeldTask task)
-    {
-        if (!string.IsNullOrWhiteSpace(task.ProgramId))
-        {
-            var programId = task.ProgramId.Trim();
-            var localId = programId.StartsWith("local-", StringComparison.OrdinalIgnoreCase)
-                && int.TryParse(programId[6..], out var id) ? id : 0;
-            var programs = _dbContext.Db.Queryable<BizProgram>()
-                .Where(program => !program.IsDeleted && (program.ProgramId == programId || (localId > 0 && program.Id == localId)))
-                .ToList();
-
-            var localProgram = programs
-                .OrderByDescending(program => IsExactTextMatch(program.DeviceId, task.DeviceId))
-                .ThenByDescending(program => program.UpdatedTime)
-                .FirstOrDefault();
-
-            if (!string.IsNullOrWhiteSpace(localProgram?.ProductNum))
-            {
-                return localProgram.ProductNum.Trim();
-            }
-        }
-
-        return task.ProductNum.Trim();
     }
 
     private static ProcessParameterUploadItem ToProcessParameterUploadItem(
@@ -1710,11 +1676,6 @@ public class UploadTaskService : IUploadTaskService
     private static bool HasAnyMesEnabledRole(BizSchemeDetail detail)
     {
         return SchemeDetailRoleRules.AllRoles.Any(role => SchemeDetailRoleRules.ShouldUploadMesRole(detail, role));
-    }
-
-    private static bool IsExactTextMatch(string? left, string? right)
-    {
-        return string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? GetRawValue(IReadOnlyDictionary<string, string> rawValues, params string?[] keys)

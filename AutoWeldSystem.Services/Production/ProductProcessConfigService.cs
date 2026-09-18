@@ -2,13 +2,14 @@ using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Plc;
+using AutoWeldSystem.Core.Production;
 using AutoWeldSystem.Data;
 
 namespace AutoWeldSystem.Services.Production;
 
 /// <summary>
 /// 产品工艺配置服务。
-/// 当前最小闭环只按产品工号和工位匹配，不再使用旧的测试参数绑定方式。
+/// 按程序产品工号和工位匹配，找不到专用配置时使用显式的工位默认。
 /// </summary>
 public class ProductProcessConfigService : IProductProcessConfigService
 {
@@ -55,14 +56,11 @@ public class ProductProcessConfigService : IProductProcessConfigService
             _dbContext.InitDatabase();
             var normalizedStationNo = NormalizeStationNo(stationNo);
             var configs = _dbContext.Db.Queryable<BizProductProcessConfig>()
-                .Where(it => it.Enabled && it.ProductNum == normalizedProductNum)
+                .Where(it => it.Enabled && (it.ProductNum == normalizedProductNum
+                    || (it.IsStationDefault == true && it.StationNo == normalizedStationNo)))
                 .ToList();
 
-            return configs
-                .Where(it => it.StationNo == normalizedStationNo || it.StationNo == ProductionConstants.Stations.SharedStationNo)
-                .OrderByDescending(it => it.StationNo == normalizedStationNo)
-                .ThenBy(it => it.Id)
-                .FirstOrDefault();
+            return ProductProcessConfigRules.SelectActive(configs, normalizedProductNum, normalizedStationNo);
         }
     }
 
@@ -76,20 +74,72 @@ public class ProductProcessConfigService : IProductProcessConfigService
 
     public BizProductProcessConfig Save(BizProductProcessConfig config)
     {
+        SaveAll([config]);
+        var saved = config.Clone();
+        Normalize(saved);
+        return saved;
+    }
+
+    public void SaveAll(IEnumerable<BizProductProcessConfig> configs)
+    {
+        ArgumentNullException.ThrowIfNull(configs);
+        var originals = configs.ToList();
+        foreach (var config in originals) ArgumentNullException.ThrowIfNull(config);
+        if (originals.Count == 0) return;
+        if (originals.Distinct(ReferenceEqualityComparer.Instance).Count() != originals.Count
+            || originals.Where(config => config.Id > 0).GroupBy(config => config.Id).Any(group => group.Count() > 1))
+            throw new InvalidOperationException("本次保存包含重复的产品工艺记录。");
+        var pending = originals.Select(config => config.Clone()).ToList();
+        foreach (var config in pending) Normalize(config);
+
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
-            Normalize(config);
-
-            config.UpdatedTime = DateTime.Now;
-            if (config.Id <= 0)
+            var transaction = _dbContext.Db.Ado.UseTran(() =>
             {
-                config.CreatedTime = DateTime.Now;
-                return _dbContext.Db.Insertable(config).ExecuteReturnEntity();
-            }
+                var stored = _dbContext.Db.Queryable<BizProductProcessConfig>().ToList();
+                var storedById = stored.ToDictionary(config => config.Id);
+                foreach (var config in pending.Where(config => config.Id > 0))
+                {
+                    if (!storedById.TryGetValue(config.Id, out var existing))
+                        throw new InvalidOperationException($"产品工艺 {config.Id} 已不存在，请刷新后重试。");
+                    config.CreatedTime = existing.CreatedTime;
+                }
+                var editedIds = pending.Where(config => config.Id > 0).Select(config => config.Id).ToHashSet();
+                var combined = stored.Where(config => !editedIds.Contains(config.Id)).Concat(pending).ToList();
+                ProductProcessConfigRules.ValidateConfigurations(combined);
+                var schemeIds = _dbContext.Db.Queryable<BizTestScheme>().Select(scheme => scheme.SchemeId).ToList()
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var missingScheme = combined.FirstOrDefault(config => config.Enabled && !schemeIds.Contains(config.SchemeId));
+                if (missingScheme is not null)
+                    throw new InvalidOperationException($"产品工号“{missingScheme.ProductNum}”绑定的测试方案“{missingScheme.SchemeId}”不存在。");
 
-            _dbContext.Db.Updateable(config).ExecuteCommand();
-            return _dbContext.Db.Queryable<BizProductProcessConfig>().InSingle(config.Id) ?? config;
+                // 旧默认取消和新默认启用须一起提交，不能让半批写入暴露给采集与补传。
+                var now = DateTime.Now;
+                foreach (var config in pending)
+                {
+                    config.UpdatedTime = now;
+                    if (config.Id <= 0)
+                    {
+                        config.CreatedTime = now;
+                        config.Id = _dbContext.Db.Insertable(config).ExecuteReturnIdentity();
+                    }
+                    else
+                    {
+                        _dbContext.Db.Updateable(config).ExecuteCommand();
+                    }
+                }
+            });
+            if (!transaction.IsSuccess)
+                throw new InvalidOperationException($"保存产品工艺失败：{transaction.ErrorMessage}", transaction.ErrorException);
+
+            // 事务成功后才更新 UI 草稿身份，回滚时不留下并未入库的 Id。
+            for (var index = 0; index < pending.Count; index++)
+            {
+                originals[index].Id = pending[index].Id;
+                originals[index].CreatedTime = pending[index].CreatedTime;
+                originals[index].UpdatedTime = pending[index].UpdatedTime;
+            }
         }
     }
 
