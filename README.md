@@ -1,6 +1,6 @@
 ﻿# AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v3.5.2`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v3.5.3`。
 
 各版本的行为变化记录在 [CHANGELOG.md](CHANGELOG.md)，也可用 `git tag -n99` 查看对应版本的发布说明。
 
@@ -209,7 +209,7 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 - 已开工、任务运行中或工位只读时上述字段全部只读。
 - “工序名称”与其他开工字段同规则：未开工时可编辑（在线态需工单已加载，离线态直接可录入），一旦开工或任务运行中即变为只读。
 - 离线模式下“员工号”开放给现场操作员编辑，不预填程序登录账号，也不受“系统设置 -> 操作员弹窗输入”影响；转入离线时会清空在线阶段校验过的员工信息。留空点“本地工单”会提示员工号必填。离线无法向 MES 校验身份，员工号按录入值原样落库和补传，员工姓名、部门和班组保持为空；离线完工沿用开工时录入的员工号，不再二次录入。
-- 离线模式下工序号、工序名称和工单数量都不预填默认值，转入离线时一并清空，全部由操作员录入。工序号留空点开工会提示工序号不能为空；工序名称和工单数量允许留空，留空时按空值和 0 落库并上报，任务记录、XLSX 报表表头和生产指标“达成率”会相应显示为空。
+- 离线模式下工序号、工序名称和工单数量都不预填默认值，转入离线时一并清空，全部由操作员录入。工序号留空点开工会提示工序号不能为空；工序名称允许留空，工单数量必须大于0，否则不能开工上报。
 - 同一工号存在多个程序时，列表按“程序名称”区分，可继续在程序名称下拉中选择具体程序。
 - 双工位分别记忆各自录入的工号；切换工位或退出离线模式时该记忆自动清除。
 
@@ -528,10 +528,10 @@ HAVING COUNT(*) > 1;
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>3.5.2</Version>
-<AssemblyVersion>3.5.2.0</AssemblyVersion>
-<FileVersion>3.5.2.0</FileVersion>
-<InformationalVersion>3.5.2</InformationalVersion>
+<Version>3.5.3</Version>
+<AssemblyVersion>3.5.3.0</AssemblyVersion>
+<FileVersion>3.5.3.0</FileVersion>
+<InformationalVersion>3.5.3</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -549,20 +549,20 @@ HAVING COUNT(*) > 1;
 # 2. 在 CHANGELOG.md 顶部新增该版本条目，写清行为变化和升级注意
 # 3. 合并到 main 后打带说明的 tag（-F 从文件读取多行说明）
 git checkout main
-git merge --no-ff develop -m "release: v3.5.2"
-git tag -a v3.5.2 -F tag-notes.txt
+git merge --no-ff develop -m "release: v3.5.3"
+git tag -a v3.5.3 -F tag-notes.txt
 git push origin main
-git push origin v3.5.2
+git push origin v3.5.3
 ```
 
-`tag-notes.txt` 为临时文件，内容取自该版本的 CHANGELOG 条目，打完 tag 即可删除。也可用 `git tag -a v3.5.2 -m "标题" -m "正文"` 直接写多段说明。
+`tag-notes.txt` 为临时文件，内容取自该版本的 CHANGELOG 条目，打完 tag 即可删除。也可用 `git tag -a v3.5.3 -m "标题" -m "正文"` 直接写多段说明。
 
 查看历史版本说明：
 
 ```powershell
 git tag -n99                # 列出全部 tag 及完整说明
-git tag -n99 v3.5.2        # 只看某个版本
-git show v3.5.2            # 看 tag 说明 + 指向的提交
+git tag -n99 v3.5.3        # 只看某个版本
+git show v3.5.3            # 看 tag 说明 + 指向的提交
 ```
 
 ## Git 使用

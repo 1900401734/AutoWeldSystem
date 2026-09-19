@@ -635,6 +635,7 @@ public class WeldTaskService : IWeldTaskService
     {
         cancellationToken.ThrowIfCancellationRequested();
         NormalizeLocalRequest(request);
+        EnsurePositiveStartQuantity(request.PlannedQty, "Local.StartReport", "本地开工失败");
 
         var normalizedStationNo = NormalizeStationNo(request.StationNo);
         var settings = CurrentSettings.Clone();
@@ -1322,7 +1323,7 @@ public class WeldTaskService : IWeldTaskService
         request.ProductName = NormalizeText(request.ProductName);
         request.DrawingNo = NormalizeText(request.DrawingNo);
         request.RecipeCode = NormalizeText(request.RecipeCode);
-        // 计划数量为可选项，0 表示操作员未录入；不再回退为 1，避免任务和报表出现无依据的工单数量。
+        // 负数先归一化为 0，再由 StartLocalAsync 的统一开工校验拒绝。
         request.PlannedQty = Math.Max(0, request.PlannedQty);
 
         if (string.IsNullOrWhiteSpace(request.WorkOrderId))
@@ -1444,12 +1445,27 @@ public class WeldTaskService : IWeldTaskService
             throw new BusinessOperationException("MES.StartReport", "开工上报失败", "No process selected");
         }
 
+        EnsurePositiveStartQuantity(station.SelectedProcess.StartAmount, "MES.StartReport", "开工上报失败");
+
         if (station.SelectedProgram is null)
         {
             throw new BusinessOperationException("MES.StartReport", "开工上报失败", "No program downloaded");
         }
 
         EnsureProgramTouchCount(station.SelectedProgram, "MES.StartReport", "开工上报失败");
+    }
+
+    private void EnsurePositiveStartQuantity(int quantity, string category, string title)
+    {
+        if (StartQuantityRules.IsPositive(quantity))
+        {
+            return;
+        }
+
+        throw new BusinessOperationException(
+            category,
+            title,
+            _localizer.GetString(TextKeys.Monitor.RuntimeError.WorkOrderQuantityInvalid));
     }
 
     private static void EnsureProgramTouchCount(ProgramDataRes program, string category, string title)

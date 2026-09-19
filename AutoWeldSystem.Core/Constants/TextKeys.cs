@@ -540,6 +540,10 @@ public static class TextKeys
             /// </summary>
             public const string ProductNumMissingFromWorkOrder = "monitor.error.product_num_missing_from_work_order";
             /// <summary>
+            /// 工单数量必须大于 0
+            /// </summary>
+            public const string WorkOrderQuantityInvalid = "monitor.error.work_order_quantity_invalid";
+            /// <summary>
             /// 请输入产品工号
             /// </summary>
             public const string ProductNumRequired = "monitor.error.product_num_required";

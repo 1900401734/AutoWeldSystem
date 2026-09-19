@@ -1386,6 +1386,9 @@
   <data name="monitor.error.product_num_missing_from_work_order" xml:space="preserve">
     <value>工单未返回产品工号</value>
   </data>
+  <data name="monitor.error.work_order_quantity_invalid" xml:space="preserve">
+    <value>工单数量必须大于0</value>
+  </data>
   <data name="monitor.error.product_num_required" xml:space="preserve">
     <value>请输入产品工号</value>
   </data>

@@ -108,7 +108,7 @@ namespace AutoWeldSystem.UI.Views
             inputProcessNo = new AntdUI.Input();
             lblProcessNo = new AntdUI.Label();
             lblStartAmount = new AntdUI.Label();
-            inputStartAmount = new AntdUI.Input();
+            inputStartAmount = new AntdUI.InputNumber();
             tlpSpecAndBatch = new TableLayoutPanel();
             inputBatch = new AntdUI.Input();
             lblSpec = new AntdUI.Label();
@@ -1263,9 +1263,15 @@ namespace AutoWeldSystem.UI.Views
             inputStartAmount.Dock = DockStyle.Fill;
             inputStartAmount.Location = new Point(315, 0);
             inputStartAmount.Margin = new Padding(0);
+            inputStartAmount.AllowClear = true;
+            inputStartAmount.DecimalPlaces = 0;
+            inputStartAmount.Increment = 1M;
+            inputStartAmount.Minimum = 0M;
             inputStartAmount.Name = "inputStartAmount";
             inputStartAmount.ReadOnly = true;
+            inputStartAmount.ShowControl = false;
             inputStartAmount.Size = new Size(156, 33);
+            inputStartAmount.ThousandsSeparator = false;
             inputStartAmount.TabIndex = 32;
             // 
             // tlpSpecAndBatch
@@ -1924,7 +1930,7 @@ namespace AutoWeldSystem.UI.Views
         private TableLayoutPanel PreviewLayout1;
         private TableLayoutPanel tlpButton;
         private AntdUI.Label lblStartAmount;
-        private AntdUI.Input inputStartAmount;
+        private AntdUI.InputNumber inputStartAmount;
         private AntdUI.Tabs tabsMetrics;
         private AntdUI.TabPage tabsMetrics1;
         private AntdUI.Tabs tabsPreview;

@@ -127,8 +127,8 @@ public static class OfflineStartInputRules
             Batch = Normalize(input.Batch),
             Spec = Normalize(input.Spec),
             ProcessNo = NormalizeRequired(input.ProcessNo, "工序号不能为空。"),
-            // 工序名称和工单数量都是可选录入项，留空时按空值上报，不再补“离线焊接”和 1：
-            // 假值会被当成真实工序和计划数量写入任务、报表和 MES 开工上报。
+            // 工序名称允许为空；工单数量留空时保留为 0，由开工入口和服务层统一拦截。
+            // 不补“离线焊接”和 1，避免假值进入任务、报表和 MES 开工上报。
             ProcessName = Normalize(input.ProcessName),
             PlannedQty = ResolvePlannedQty(input.PlannedQtyText),
             ProgramLocalId = program.Id,
@@ -163,8 +163,8 @@ private static string ResolveDisplayText(BizProgram program, bool includeIdentit
     }
 
     /// <summary>
-    /// 解析工单数量；留空或非法时返回 0，表示操作员未录入计划数量。
-    /// 不再回退为 1：假的计划数量会让达成率和报表“工单数量”出现无依据的数值。
+    /// 解析工单数量；留空或非法时返回 0，后续开工校验会拒绝该请求。
+    /// 不回退为 1，避免假的计划数量进入任务和报表。
     /// </summary>
     private static int ResolvePlannedQty(string? value)
     {

@@ -43,6 +43,7 @@ var tests = new (string Name, Action Run)[]
     ("Whole-piece limits compare final aggregate inclusively", WholePieceRangeBoundaries),
     ("Legacy program reconfiguration keeps metadata only", LegacyProgramExplicitReconfiguration),
     ("Start validation prevents MES and database side effects", StartValidationPreventsSideEffects),
+    ("Non-positive work-order quantity blocks online and offline start", NonPositiveWorkOrderQuantityBlocksStart),
     ("Program download rejection preserves selection and storage", InvalidProgramDownloadPreservesState),
     ("Program snapshot stays frozen across MES await", ProgramSnapshotStaysFrozen),
     ("Old task cannot restore or allow production", OldTaskCannotRestore),
@@ -464,11 +465,12 @@ var tests = new (string Name, Action Run)[]
     ("Offline start uses operator edited product number", OfflineStartUsesOperatorEditedProductNum),
     ("Monitor view links product-num selection to program options", MonitorViewLinksProductNumSelectionToProgramOptions),
     ("Monitor view keeps user product number across runtime rebind", MonitorViewKeepsUserProductNumAcrossRuntimeRebind),
+    ("Monitor view rejects non-positive work-order quantity and uses InputNumber", MonitorViewRejectsNonPositiveWorkOrderQuantityAndUsesInputNumber),
     ("Product history preview sorts latest product first", ProductHistoryPreviewSortsLatestProductFirst),
     ("Offline start request follows inline monitor input", OfflineStartRequestFollowsInlineMonitorInput),
     ("Offline start allows empty part name and drawing number", OfflineStartAllowsEmptyPartNameAndDrawingNumber),
     ("Offline start requires work order and process number", OfflineStartRequiresWorkOrderAndProcessNumber),
-    ("Offline start keeps optional process fields empty", OfflineStartKeepsOptionalProcessFieldsEmpty),
+    ("Offline start keeps empty quantity for service validation", OfflineStartKeepsEmptyQuantityForValidation),
     ("Offline work order input never generates local placeholder", OfflineWorkOrderInputNeverGeneratesLocalPlaceholder),
     ("Program MES sync ignores local-only fields", ProgramMesSyncIgnoresLocalOnlyFields),
     ("Program MES description changes trigger update", ProgramMesDescriptionChangesTriggerUpdate),
@@ -736,7 +738,7 @@ static (InspectableWeldTaskService Service, FakeMesProvider Mes, FakeUploadTaskS
     var service = new InspectableWeldTaskService(mes, uploads, settings, process, schemes);
     var station = service.CurrentState.GetOrCreateStation(1);
     station.CurrentWorkOrder = new WorkOrderRes { SN = "WO1", ProdNum = "真实工号" };
-    station.SelectedProcess = new ExpItemData { ProcessNo = "OP1", ItemName = "检测" };
+    station.SelectedProcess = new ExpItemData { ProcessNo = "OP1", ItemName = "检测", StartAmount = 1 };
     station.SelectedProgram = new ProgramDataRes { Id = "local-1", DeviceId = "D1", ProductNum = "通用工号", ProgramName = "P1", RecipeCode = "1", ProgramContent = "{\"焊点数量\":4,\"高度上限\":12.5,\"高度下限\":10}" };
     return (service, mes, uploads, settings);
 }
@@ -748,7 +750,7 @@ static void StartValidationPreventsSideEffects()
         var fixture = CreateProgramBoundaryService();
         fixture.Service.CurrentState.GetOrCreateStation(1).SelectedProgram!.ProgramContent = invalid;
         AssertThrows<AutoWeldSystem.Core.Exceptions.BusinessOperationException>(() => fixture.Service.StartAsync("U1", 0, employeeAlreadyValidated: true).GetAwaiter().GetResult(), "在线无效内容必须拒绝。");
-        var local = new OfflineExperimentStartReq { StationNo = 1, WorkOrderId = "WO1", ProductNum = "真实工号", ProgramId = "local-1", ProgramName = "P1", RecipeCode = "1", ProgramContent = invalid };
+        var local = new OfflineExperimentStartReq { StationNo = 1, WorkOrderId = "WO1", ProductNum = "真实工号", ProgramId = "local-1", ProgramName = "P1", RecipeCode = "1", ProgramContent = invalid, PlannedQty = 1 };
         AssertThrows<AutoWeldSystem.Core.Exceptions.BusinessOperationException>(() => fixture.Service.StartLocalAsync(local, "U1", "员工", 0).GetAwaiter().GetResult(), "离线无效内容必须拒绝。");
         AssertEqual(0, fixture.Mes.StartRequests.Count, "拒绝发生在 MES 开工之前。");
         AssertEqual(0, fixture.Service.InsertedTasks.Count, "拒绝发生在任务写入之前。");
@@ -757,6 +759,57 @@ static void StartValidationPreventsSideEffects()
     var shared = CreateProgramBoundaryService(shared: true);
     AssertThrows<AutoWeldSystem.Core.Exceptions.BusinessOperationException>(() => shared.Service.StartAsync("U1", 0, employeeAlreadyValidated: true).GetAwaiter().GetResult(), "共用任务工位2缺宽度上限必须拒绝。");
     AssertEqual(0, shared.Service.InsertedTasks.Count, "另一工位失败也不得写任务。");
+}
+
+static void NonPositiveWorkOrderQuantityBlocksStart()
+{
+    AssertFalse(StartQuantityRules.IsPositive(-1), "负数工单数量必须无效。");
+    AssertFalse(StartQuantityRules.IsPositive(0), "0 工单数量必须无效。");
+    AssertTrue(StartQuantityRules.IsPositive(1), "正数工单数量必须有效。");
+
+    foreach (var quantity in new[] { -1, 0 })
+    {
+        var online = CreateProgramBoundaryService();
+        online.Service.CurrentState.GetOrCreateStation(1).SelectedProcess!.StartAmount = quantity;
+        var onlineException = CaptureBusinessException(
+            () => online.Service.StartAsync("U1", 0, employeeAlreadyValidated: true).GetAwaiter().GetResult(),
+            "在线非正工单数量必须被拦截。");
+        AssertEqual(TextKeys.Monitor.RuntimeError.WorkOrderQuantityInvalid, onlineException.Detail, "在线数量异常必须使用专用提示文案。");
+        AssertEqual(0, online.Mes.StartRequests.Count, "在线数量异常不得请求 MES 开工。");
+        AssertEqual(0, online.Service.InsertedTasks.Count, "在线数量异常不得写入生产任务。");
+
+        var offline = CreateProgramBoundaryService();
+        var request = new OfflineExperimentStartReq
+        {
+            StationNo = 1,
+            WorkOrderId = "WO-OFFLINE",
+            ProductNum = "真实工号",
+            ProgramId = "local-1",
+            ProgramName = "P1",
+            RecipeCode = "1",
+            PlannedQty = quantity
+        };
+        var offlineException = CaptureBusinessException(
+            () => offline.Service.StartLocalAsync(request, "U1", "员工", 0).GetAwaiter().GetResult(),
+            "离线非正工单数量必须被拦截。");
+        AssertEqual(TextKeys.Monitor.RuntimeError.WorkOrderQuantityInvalid, offlineException.Detail, "离线数量异常必须使用专用提示文案。");
+        AssertEqual(0, offline.Service.InsertedTasks.Count, "离线数量异常不得写入生产任务。");
+        AssertEqual(0, offline.Uploads.Enqueued.Count, "离线数量异常不得进入开工补传队列。");
+    }
+}
+
+static AutoWeldSystem.Core.Exceptions.BusinessOperationException CaptureBusinessException(Action action, string message)
+{
+    try
+    {
+        action();
+    }
+    catch (AutoWeldSystem.Core.Exceptions.BusinessOperationException ex)
+    {
+        return ex;
+    }
+
+    throw new InvalidOperationException($"{message} Expected={nameof(AutoWeldSystem.Core.Exceptions.BusinessOperationException)}, Actual=no exception");
 }
 
 static void InvalidProgramDownloadPreservesState()
@@ -780,7 +833,7 @@ static void ProgramSnapshotStaysFrozen()
     var localFixture = CreateProgramBoundaryService();
     var local = localFixture.Service.StartLocalAsync(new OfflineExperimentStartReq
     {
-        WorkOrderId = "LOCAL-1", ProductNum = "真实工号", ProgramId = "local-1", ProgramName = "P1", RecipeCode = "1", ProgramContent = program.ProgramContent
+        WorkOrderId = "LOCAL-1", ProductNum = "真实工号", ProgramId = "local-1", ProgramName = "P1", RecipeCode = "1", ProgramContent = program.ProgramContent, PlannedQty = 1
     }, "U1", "员工", 0).GetAwaiter().GetResult();
     AssertEqual(10m, ProgramContentJsonRules.ReadLimits(local.ProgramContentSnapshot)["高度"].LowerLimit!.Value, "本地开工也须保留下限快照。");
     AssertEqual(0, localFixture.Mes.StartRequests.Count, "本地开工不直接请求 MES。");
@@ -15511,10 +15564,10 @@ static void OfflineStartRequiresWorkOrderAndProcessNumber()
 }
 
 /// <summary>
-/// 离线开工的工序名称和工单数量为可选项，留空必须按空值提交。
+/// 离线开工的工序名称可为空；数量规则层保留 0，最终由开工服务统一拦截。
 /// 补默认值会把“离线焊接”和计划数量 1 当成真实数据写进任务、报表和 MES 开工上报。
 /// </summary>
-static void OfflineStartKeepsOptionalProcessFieldsEmpty()
+static void OfflineStartKeepsEmptyQuantityForValidation()
 {
     var option = OfflineStartInputRules.BuildProgramNameOptions(new[]
     {
@@ -15542,20 +15595,24 @@ static void OfflineStartKeepsOptionalProcessFieldsEmpty()
 
     var request = OfflineStartInputRules.BuildRequest(blankInput, option);
     AssertEqual(string.Empty, request.ProcessName, "工序名称留空时不得回填“离线焊接”。");
-    AssertEqual(0, request.PlannedQty, "工单数量留空时不得回填 1，应按未录入提交 0。");
+    AssertEqual(0, request.PlannedQty, "工单数量留空时不得回填 1，应保留 0 交给开工校验。");
 
     AssertEqual(
         0,
         OfflineStartInputRules.BuildRequest(blankInput with { PlannedQtyText = "abc" }, option).PlannedQty,
-        "工单数量非法时同样按未录入处理，不得回填 1。");
+        "工单数量非法时同样归一化为 0，不得回填 1。");
     AssertEqual(
         0,
         OfflineStartInputRules.BuildRequest(blankInput with { PlannedQtyText = "-5" }, option).PlannedQty,
-        "工单数量为负时按未录入处理，不得回填 1。");
+        "工单数量为负时归一化为 0，不得回填 1。");
     AssertEqual(
         7,
         OfflineStartInputRules.BuildRequest(blankInput with { PlannedQtyText = " 7 " }, option).PlannedQty,
         "已录入的工单数量必须原样提交。");
+
+    var serviceCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "Production", "WeldTaskService.cs"), Encoding.UTF8);
+    AssertTrue(serviceCode.Contains("EnsurePositiveStartQuantity(request.PlannedQty, \"Local.StartReport\", \"本地开工失败\");", StringComparison.Ordinal), "离线开工服务必须在归一化后拦截非正数量。");
+    AssertTrue(serviceCode.Contains("EnsurePositiveStartQuantity(station.SelectedProcess.StartAmount, \"MES.StartReport\", \"开工上报失败\");", StringComparison.Ordinal), "在线开工服务必须在 MES 请求前拦截非正数量。");
 
     // 转入离线输入态时必须清空这三项，不能预填让操作员误以为已录入。
     var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
@@ -17121,6 +17178,25 @@ static void MonitorViewProcessSelectionUsesSharedInputBinder()
     AssertTrue(binder.Contains("selectItemName.Text = GetProcessDisplayName(process);", StringComparison.Ordinal), "工序详情回填必须设置工序名称。");
     AssertTrue(binder.Contains("inputProcessNo.Text = process.ProcessNo ?? string.Empty;", StringComparison.Ordinal), "工序详情回填必须设置工序号。");
     AssertTrue(binder.Contains("inputStartAmount.Text = process.StartAmount.ToString(CultureInfo.InvariantCulture);", StringComparison.Ordinal), "工序详情回填必须设置生产数量。");
+}
+
+static void MonitorViewRejectsNonPositiveWorkOrderQuantityAndUsesInputNumber()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.Designer.cs"), Encoding.UTF8);
+    var zhResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.resx"), Encoding.UTF8);
+    var enResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.en.resx"), Encoding.UTF8);
+
+    AssertTrue(designerCode.Contains("inputStartAmount = new AntdUI.InputNumber();", StringComparison.Ordinal), "工单数量必须使用 InputNumber。");
+    AssertTrue(designerCode.Contains("inputStartAmount.Minimum = 0M;", StringComparison.Ordinal), "工单数量控件最小值必须为 0。");
+    AssertTrue(designerCode.Contains("inputStartAmount.DecimalPlaces = 0;", StringComparison.Ordinal), "工单数量控件必须只显示整数。");
+    AssertTrue(designerCode.Contains("inputStartAmount.ShowControl = false;", StringComparison.Ordinal), "工单数量控件必须隐藏加减按钮。");
+    AssertTrue(viewCode.Contains("StartQuantityRules.IsPositive(process.StartAmount)", StringComparison.Ordinal), "选择工序后必须立即检查工单数量。");
+    AssertTrue(viewCode.Contains("StartQuantityRules.IsPositive(adjustedProcess.StartAmount)", StringComparison.Ordinal), "在线点击开工时必须复核工单数量。");
+    AssertTrue(viewCode.Contains("StartQuantityRules.IsPositive(request.PlannedQty)", StringComparison.Ordinal), "离线点击开工时必须复核工单数量。");
+    AssertTrue(zhResources.Contains("<data name=\"monitor.error.work_order_quantity_invalid\"", StringComparison.Ordinal)
+        && zhResources.Contains("<value>工单数量必须大于0</value>", StringComparison.Ordinal), "中文数量异常文案必须简短明确。");
+    AssertTrue(enResources.Contains("<data name=\"monitor.error.work_order_quantity_invalid\"", StringComparison.Ordinal), "英文资源必须提供数量异常文案。");
 }
 
 static void MonitorViewProcessNameFollowsStartInputEditability()

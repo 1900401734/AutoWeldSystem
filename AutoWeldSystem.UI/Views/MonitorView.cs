@@ -1230,7 +1230,7 @@ public partial class MonitorView : BaseView
     }
 
     /// <summary>
-    /// 从主界面控件构造本次开工的工序快照；StartAmount 解析失败时保留原值。
+    /// 从主界面控件构造本次开工的工序快照；数量解析失败按 0 处理，由服务层统一拦截。
     /// </summary>
     private ExpItemData BuildAdjustedProcessFromInputs(ExpItemData source)
     {
@@ -1239,9 +1239,13 @@ public partial class MonitorView : BaseView
         process.ItemName = string.IsNullOrWhiteSpace(selectItemName.Text)
             ? source.ItemName
             : selectItemName.Text.Trim();
-        process.StartAmount = int.TryParse(inputStartAmount.Text.Trim(), out var quantity) && quantity > 0
+        process.StartAmount = int.TryParse(
+            inputStartAmount.Text.Trim(),
+            NumberStyles.Integer,
+            CultureInfo.InvariantCulture,
+            out var quantity)
             ? quantity
-            : source.StartAmount;
+            : 0;
         return process;
     }
 
@@ -1511,6 +1515,13 @@ public partial class MonitorView : BaseView
             return;
         }
 
+        var adjustedProcess = BuildAdjustedProcessFromInputs(state.SelectedProcess);
+        if (!StartQuantityRules.IsPositive(adjustedProcess.StartAmount))
+        {
+            SetRuntimeError(TextKeys.Monitor.RuntimeError.WorkOrderQuantityInvalid);
+            return;
+        }
+
         // 下拉已选定程序但详情尚未下载时，先内联补一次下载（下载失败不弹窗，仅提示区报错）。
         if (state.SelectedProgram is null)
         {
@@ -1539,7 +1550,12 @@ public partial class MonitorView : BaseView
 
         // 从控件构造本次开工的工单/工序快照，可空项允许空串，应用为内存态（只对本次生效，不落库）。
         var adjustedWorkOrder = BuildAdjustedWorkOrderFromInputs(state.CurrentWorkOrder!);
-        var adjustedProcess = BuildAdjustedProcessFromInputs(state.SelectedProcess!);
+        if (!StartQuantityRules.IsPositive(adjustedProcess.StartAmount))
+        {
+            SetRuntimeError(TextKeys.Monitor.RuntimeError.WorkOrderQuantityInvalid);
+            return;
+        }
+
         var adjustedProgram = state.SelectedProgram!;
 
         var actualQty = 0;
@@ -1953,6 +1969,12 @@ public partial class MonitorView : BaseView
         // 也不重新加载程序列表，避免把操作员已选好并下载的程序刷掉。
         _weldTaskService.SelectProcess(process, CurrentStationNo);
         ApplySelectedProcessInputs(process);
+        if (!StartQuantityRules.IsPositive(process.StartAmount))
+        {
+            SetRuntimeError(TextKeys.Monitor.RuntimeError.WorkOrderQuantityInvalid);
+            return;
+        }
+
         ClearRuntimeError();
         SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.ProcessSelected);
     }
@@ -4812,6 +4834,12 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
                     DrawingNo: inputDrawingNo.Text,
                     ProductNum: GetProductNumInputText()),
                 selectedProgram);
+            if (!StartQuantityRules.IsPositive(request.PlannedQty))
+            {
+                SetRuntimeError(TextKeys.Monitor.RuntimeError.WorkOrderQuantityInvalid);
+                return false;
+            }
+
             return true;
         }
         catch (InvalidOperationException ex)
