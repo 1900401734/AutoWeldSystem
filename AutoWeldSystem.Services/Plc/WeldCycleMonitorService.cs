@@ -215,6 +215,22 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
 
     private async Task PollProductCycleAsync(BizWeldTask task, StationCycleState stationState, CancellationToken cancellationToken)
     {
+        try
+        {
+            await PollProductCycleCoreAsync(task, stationState, cancellationToken);
+        }
+        finally
+        {
+            // 采集凭据只在“反馈尚未写成功”时跨轮询保留；完工必须等待它，不能利用两次轮询的间隙结束任务。
+            if (!(stationState.PendingFeedbackValue.HasValue && !stationState.ProductFeedbackWritten))
+            {
+                ReleaseLease(stationState);
+            }
+        }
+    }
+
+    private async Task PollProductCycleCoreAsync(BizWeldTask task, StationCycleState stationState, CancellationToken cancellationToken)
+    {
         if (!IsUsable(stationState.ProductDataReadyAddress) || !IsUsable(stationState.ProductCollectionFeedbackAddress))
         {
             return;
@@ -304,6 +320,22 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
             stationState.ObservedTaskId = task.Id;
         }
 
+        // 上升沿先按数据库复核任务仍在运行，再产生任何 PLC 副作用；已完工任务直接拒绝并清空本机运行态。
+        ITaskCollectionLease lease;
+        try
+        {
+            ReleaseLease(stationState);
+            lease = (_productCycleCollectionService.Lifecycle
+                ?? throw new InvalidOperationException("采集准入协调器未配置。"))
+                .Accept(task, stationState.StationNo);
+            stationState.Lease = lease;
+        }
+        catch (TaskRunRejectedException ex)
+        {
+            HandleRejectedCycle(task, stationState, ex);
+            return;
+        }
+
         WriteProductionLog(
             "ProductDataReady",
             ProductionFlowLogTexts.Summaries.ProductDataReady,
@@ -318,7 +350,47 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
                 stationState.StationNo,
                 task.Id,
                 DateTime.Now));
-        await CollectProductCycleAsync(task, stationState, cancellationToken);
+        await CollectProductCycleAsync(lease, task, stationState, cancellationToken);
+    }
+
+    /// <summary>
+    /// 数据库判定任务已结束：不写 PLC 反馈、不保存、不入队，就绪信号交给正确的实例或 5 秒兜底处理。
+    /// </summary>
+    private void HandleRejectedCycle(BizWeldTask task, StationCycleState stationState, TaskRunRejectedException ex)
+    {
+        ReleaseLease(stationState);
+        ResetCycleMemory(stationState);
+        WriteProductionLog(
+            "ProductCollectionRejected",
+            ProductionFlowLogTexts.Summaries.ProductCollectionRejected,
+            $"ProcessId={Environment.ProcessId}, TaskId={task.Id}, {ex.Message}",
+            task,
+            stationNo: stationState.StationNo,
+            level: "Error",
+            plcSignal: AppConstants.PlcLogicalKeys.ProductDataReady,
+            plcAddress: stationState.ProductDataReadyAddress?.Address);
+        WriteBusinessFailureLog("任务已结束，拒绝产品采集", $"{ex.Message} 请先开工再生产。");
+        _weldTaskService.DetachStaleTask(task.Id);
+    }
+
+    private static void ResetCycleMemory(StationCycleState stationState)
+    {
+        stationState.ReadySignalInitialized = false;
+        stationState.LastReadyHigh = false;
+        stationState.ReadyHighObserved = false;
+        stationState.AwaitingReadyReset = false;
+        stationState.ProductDataReadyHandled = false;
+        stationState.ProductFeedbackWritten = false;
+        stationState.PendingFeedbackValue = null;
+        stationState.ObservedTaskId = null;
+        stationState.ReadyStuckSinceUtc = null;
+        stationState.ReadyForceResetLogged = false;
+    }
+
+    private static void ReleaseLease(StationCycleState stationState)
+    {
+        stationState.Lease?.Dispose();
+        stationState.Lease = null;
     }
 
     private IReadOnlyList<ActiveStationTask> GetActiveTasks()
@@ -411,6 +483,8 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
                 continue;
             }
 
+            // 内存已无运行任务时，遗留的采集凭据不再有意义，释放后完工才能排空。
+            ReleaseLease(stationState);
             if (stationState.PendingFeedbackValue.HasValue && !stationState.ProductFeedbackWritten)
             {
                 await RetryPendingFeedbackAsync(stationState, task: null, cancellationToken);
@@ -466,6 +540,7 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
             await WriteProductCollectionFeedbackAsync(stationState, 0, cancellationToken);
         }
 
+        ReleaseLease(stationState);
         stationState.ReadySignalInitialized = true;
         stationState.LastReadyHigh = false;
         stationState.ReadyHighObserved = false;
@@ -517,7 +592,7 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
         }
     }
 
-    private async Task CollectProductCycleAsync(BizWeldTask task, StationCycleState stationState, CancellationToken cancellationToken)
+    private async Task CollectProductCycleAsync(ITaskCollectionLease lease, BizWeldTask task, StationCycleState stationState, CancellationToken cancellationToken)
     {
         IReadOnlyList<BizWeldPointRecord> records;
         try
@@ -530,7 +605,13 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
                 stationNo: stationState.StationNo,
                 plcSignal: AppConstants.PlcLogicalKeys.ProductDataReady,
                 plcAddress: stationState.ProductDataReadyAddress?.Address);
-            records = await _productCycleCollectionService.CollectAsync(task, stationState.StationNo, cancellationToken);
+            records = await _productCycleCollectionService.CollectAcceptedAsync(lease, cancellationToken);
+        }
+        catch (TaskRunRejectedException ex)
+        {
+            // 保存事务内复核发现任务已结束：整件已回滚，不能再向 PLC 反馈 1。
+            HandleRejectedCycle(task, stationState, ex);
+            return;
         }
         catch (ProductCollectionHandledException ex)
         {
@@ -1053,6 +1134,11 @@ public sealed class WeldCycleMonitorService : IPlcWeldCycleMonitorService, IDisp
         public int? ObservedTaskId { get; set; }
 
         public bool ProductDataReadyHandled { get; set; }
+
+        /// <summary>
+        /// 当前周期的采集准入凭据；反馈写成功或就绪回落后释放，完工必须等待它释放。
+        /// </summary>
+        public ITaskCollectionLease? Lease { get; set; }
 
         public bool ProductFeedbackWritten { get; set; }
 

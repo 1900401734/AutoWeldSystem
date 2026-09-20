@@ -35,7 +35,8 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         IPlcExpressionReadService plcExpressionReadService,
         IOperationLogService operationLogService,
         IProductionFlowLogService productionLogService,
-        IProductionReportFileService reportFileService)
+        IProductionReportFileService reportFileService,
+        ITaskCollectionLifecycleCoordinator? lifecycle = null)
     {
         _dbContext = dbContext;
         _productProcessConfigService = productProcessConfigService;
@@ -44,7 +45,10 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         _operationLogService = operationLogService;
         _productionLogService = productionLogService;
         _reportFileService = reportFileService;
+        Lifecycle = lifecycle ?? (dbContext is null ? null : TaskCollectionLifecycleCoordinator.GetShared(dbContext, settingsService));
     }
+
+    public ITaskCollectionLifecycleCoordinator? Lifecycle { get; }
 
     public async Task<IReadOnlyList<BizWeldPointRecord>> CollectAsync(
         BizWeldTask task,
@@ -56,7 +60,18 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
             throw new BusinessOperationException(Category, "产品数据采集失败", "焊接任务尚未保存，无法采集产品数据。");
         }
 
-        var normalizedStationNo = NormalizeStationNo(stationNo, task);
+        using var lease = (Lifecycle ?? throw new InvalidOperationException("采集准入协调器未配置。"))
+            .Accept(task, NormalizeStationNo(stationNo, task));
+        return await CollectAcceptedAsync(lease, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<BizWeldPointRecord>> CollectAcceptedAsync(
+        ITaskCollectionLease lease,
+        CancellationToken cancellationToken = default)
+    {
+        // 只使用受理时的数据库快照，内存中的旧任务对象不参与采集与保存。
+        var task = lease.TaskSnapshot;
+        var normalizedStationNo = lease.StationNo;
         var settings = _settingsService.Get();
         int touchCount;
         string validatedContent;
@@ -133,7 +148,7 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
         bool isRetest;
         try
         {
-            isRetest = SaveRecords(task.Id, normalizedStationNo, records, useLocalProductNo, header.IsOverwrite);
+            isRetest = SaveRecords(lease, normalizedStationNo, records, useLocalProductNo, header.IsOverwrite);
         }
         catch (Exception ex)
         {
@@ -713,56 +728,79 @@ public sealed class ProductCycleCollectionService : IProductCycleCollectionServi
     }
 
     private bool SaveRecords(
-        int taskId,
+        ITaskCollectionLease lease,
         int stationNo,
         IReadOnlyList<BizWeldPointRecord> records,
         bool useLocalProductNo,
         bool localOverwrite)
     {
+        var taskId = lease.TaskId;
+        // 与完工提交共用同一把短锁；整件焊点在一个事务内提交，任一点失败整件回滚，不留半件。
+        lock (_dbContext.TaskTransitionSync)
         lock (_dbLock)
         {
             _dbContext.InitDatabase();
-            // 程序模式的覆盖判定已在取号时完成；PLC 模式沿用整件检测“编号与上一轮相同”的被动识别。
-            var isRetest = useLocalProductNo
-                ? localOverwrite
-                : IsRetestCollection(taskId, stationNo, records);
-            var nextSequenceNo = GetNextSequenceNo(taskId, stationNo);
-            foreach (var record in records)
+            var snapshots = records.Select(record => (Record: record, record.Id, record.SequenceNo, record.UploadStatus)).ToList();
+            var isRetest = false;
+            var transaction = _dbContext.Db.Ado.UseTran(() =>
             {
-                var existingRecord = FindExistingRecord(record);
-                if (existingRecord is not null)
+                // 事务内再复核一次：完工或异常结束可能已在受理之后提交。
+                lease.EnsureValid();
+                // 程序模式的覆盖判定已在取号时完成；PLC 模式沿用整件检测“编号与上一轮相同”的被动识别。
+                isRetest = useLocalProductNo
+                    ? localOverwrite
+                    : IsRetestCollection(taskId, stationNo, records);
+                var nextSequenceNo = GetNextSequenceNo(taskId, stationNo);
+                foreach (var record in records)
                 {
-                    record.Id = existingRecord.Id;
-                    record.SequenceNo = existingRecord.SequenceNo;
-                    if (!isRetest)
+                    var existingRecord = FindExistingRecord(record);
+                    if (existingRecord is not null)
                     {
-                        if (useLocalProductNo)
+                        record.Id = existingRecord.Id;
+                        record.SequenceNo = existingRecord.SequenceNo;
+                        if (!isRetest)
                         {
-                            // 程序自算编号不应撞号；一旦命中说明取号与落库之间被插入了其它写入，宁可报错也不能静默丢件。
-                            throw new BusinessOperationException(
-                                Category,
-                                "产品数据采集失败",
-                                $"程序编号“{record.ProductNo}”已存在于当前任务，本轮数据未保存。");
+                            if (useLocalProductNo)
+                            {
+                                // 程序自算编号不应撞号；一旦命中说明取号与落库之间被插入了其它写入，宁可报错也不能静默丢件或换号重采。
+                                throw new BusinessOperationException(
+                                    Category,
+                                    "产品数据采集失败",
+                                    $"程序编号“{record.ProductNo}”已存在于当前任务，本轮数据未保存。");
+                            }
+
+                            continue;
                         }
 
+                        // 重测就地覆盖已有记录，使报表、产品历史和上传任务沿用同一产品级自然键。
+                        ProductRetestRules.ApplyRetestValues(existingRecord, record);
+                        _dbContext.Db.Updateable(existingRecord).ExecuteCommand();
+                        record.UploadStatus = existingRecord.UploadStatus;
                         continue;
                     }
 
-                    // 重测就地覆盖已有记录，使报表、产品历史和上传任务沿用同一产品级自然键。
-                    ProductRetestRules.ApplyRetestValues(existingRecord, record);
-                    _dbContext.Db.Updateable(existingRecord).ExecuteCommand();
-                    record.UploadStatus = existingRecord.UploadStatus;
-                    continue;
+                    record.SequenceNo = nextSequenceNo++;
+                    var saved = _dbContext.Db.Insertable(record).ExecuteReturnEntity();
+                    record.Id = saved.Id;
                 }
 
-                record.SequenceNo = nextSequenceNo++;
-                var saved = _dbContext.Db.Insertable(record).ExecuteReturnEntity();
-                record.Id = saved.Id;
-            }
+                if (isRetest)
+                {
+                    RemoveStaleRetestRecords(taskId, stationNo, records);
+                }
+            });
 
-            if (isRetest)
+            if (!transaction.IsSuccess)
             {
-                RemoveStaleRetestRecords(taskId, stationNo, records);
+                // 回滚后把内存对象恢复到保存前，避免调用方拿着已回滚的主键继续下游处理。
+                foreach (var snapshot in snapshots)
+                {
+                    snapshot.Record.Id = snapshot.Id;
+                    snapshot.Record.SequenceNo = snapshot.SequenceNo;
+                    snapshot.Record.UploadStatus = snapshot.UploadStatus;
+                }
+
+                throw transaction.ErrorException ?? new InvalidOperationException(transaction.ErrorMessage);
             }
 
             return isRetest;

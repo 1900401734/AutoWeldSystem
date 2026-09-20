@@ -93,6 +93,11 @@ public static class Program
                     services.AddSingleton<IProductProcessConfigService, ProductProcessConfigService>();
                     services.AddSingleton<ITestSchemeConfigService, TestSchemeConfigService>();
                     services.AddSingleton<IProductCycleCollectionService, ProductCycleCollectionService>();
+                    // 采集准入协调器按数据库上下文共享，采集、完工与异常结束必须看到同一份在途登记。
+                    services.AddSingleton<ITaskCollectionLifecycleCoordinator>(provider =>
+                        TaskCollectionLifecycleCoordinator.GetShared(
+                            provider.GetRequiredService<SqlSugarDbContext>(),
+                            provider.GetRequiredService<IAppSettingsService>()));
                     services.AddSingleton<IProductRealtimePreviewService, ProductRealtimePreviewService>();
                     services.AddSingleton<IProductHistoryService, ProductHistoryService>();
                     services.AddSingleton<IProductionCountService, ProductionCountService>();
