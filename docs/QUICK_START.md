@@ -251,6 +251,7 @@ UI 文件约定：静态控件声明、初始化和布局在 `*.Designer.cs`；�
 - 数据库 `App_Settings` 表：设备端运行配置的主要来源，包括 PLC、MES、目录、工位和中心服务器参数。
 - `AutoWeldSystem.CenterServer/appsettings.json`：中心数据库连接、监听 URL和初始目录设置。
 - 中心程序目录下的 `center-server-settings.json`：看板保存的本机设置，首次运行自动创建。
+- 两个 `appsettings.json` 也是 `tools/backup-mysql.ps1` 的连接串来源，现场定时备份见 README「数据库定时备份与恢复」。
 
 设备端内嵌 API 默认监听 `http://127.0.0.1:7098/`；中心服务器默认监听 `http://0.0.0.0:7099`。现场部署前必须核对端口、防火墙、数据库账号和敏感配置。
 
