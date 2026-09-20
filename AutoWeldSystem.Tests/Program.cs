@@ -528,6 +528,7 @@ var tests = new (string Name, Action Run)[]
     ("Offline operator number comes from operator input only", OfflineOperatorNumberComesFromOperatorInputOnly),
     ("Monitor view clears product identity after finish report", MonitorViewClearsProductIdentityAfterFinishReport),
     ("Monitor view product history uses latest first ordering", MonitorViewProductHistoryUsesLatestFirstOrdering),
+    ("Monitor view product history highlights NG rows", MonitorViewProductHistoryHighlightsNgRows),
     ("Monitor view single-point history mapping keeps point values", MonitorViewSinglePointHistoryMappingKeepsPointValues),
     ("Monitor view clears idle production data", MonitorViewClearsIdleProductionData),
     ("Weld task finish uses MES start id for retry payloads", WeldTaskFinishUsesMesStartIdForRetryPayloads),
@@ -17697,6 +17698,35 @@ static void MonitorViewProductHistoryUsesLatestFirstOrdering()
 
     AssertTrue(bindSnapshotMethod.Contains("ProductHistoryPreviewSortRules.OrderProductsLatestFirst(snapshot.Products)", StringComparison.Ordinal), "MonitorView 绑定产品历史预览时必须按最近产品优先排序。");
     AssertFalse(bindSnapshotMethod.Contains("var rows = snapshot.Products\r\n            .Select(product => ToProductHistoryRow", StringComparison.Ordinal), "MonitorView 不应再直接按服务层原始顺序绑定历史预览。");
+}
+
+static void MonitorViewProductHistoryHighlightsNgRows()
+{
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "MonitorView.cs"), Encoding.UTF8);
+    var rowCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "ViewModels", "ProductHistoryTableRow.cs"), Encoding.UTF8);
+
+    AssertTrue(rowCode.Contains("public bool IsProductNg { get; init; }", StringComparison.Ordinal), "产品历史行模型必须携带按产品结果判定的 NG 标记。");
+
+    const string productNgAssignment = "IsProductNg = TestResultRules.IsFailed(product.Result)";
+    var productRowMethod = ExtractMethodText(viewCode, "private ProductHistoryTableRow ToProductHistoryRow(", "    /// <summary>\r\n    /// 合并视图下每个产品只显示一行");
+    var mergedRowMethod = ExtractMethodText(viewCode, "private ProductHistoryTableRow ToMergedProductHistoryRow(", "    /// <summary>\r\n    /// 按合并列聚合一个产品的四面历史数据");
+    var pointRowMethod = ExtractMethodText(viewCode, "private ProductHistoryTableRow ToProductHistoryPointRow(", "    /// <summary>\r\n    /// 构建产品历史动态值。");
+    var flattenMethod = ExtractMethodText(viewCode, "private static ProductHistoryTableRow FlattenSinglePointProductRow(", "    /// <summary>\r\n    /// 处理到产品历史Point行。");
+
+    AssertTrue(productRowMethod.Contains(productNgAssignment, StringComparison.Ordinal), "产品行必须按产品结果填充 NG 标记。");
+    AssertTrue(mergedRowMethod.Contains(productNgAssignment, StringComparison.Ordinal), "合并视图产品行必须按产品结果填充 NG 标记。");
+    AssertTrue(pointRowMethod.Contains(productNgAssignment, StringComparison.Ordinal), "面/焊点子行必须沿用产品结果的 NG 标记，保证整块标红。");
+    AssertTrue(flattenMethod.Contains("IsProductNg = productRow.IsProductNg", StringComparison.Ordinal), "单条记录扁平行必须保留产品 NG 标记。");
+
+    AssertTrue(viewCode.Contains("tableHistory1.SetRowStyle += ProductHistoryTable_SetRowStyle", StringComparison.Ordinal), "工位 1 产品历史表格必须订阅行样式事件。");
+    AssertTrue(viewCode.Contains("tableHistory2.SetRowStyle += ProductHistoryTable_SetRowStyle", StringComparison.Ordinal), "工位 2 产品历史表格必须订阅行样式事件。");
+    AssertTrue(viewCode.Contains("tableHistory1.SetRowStyle -= ProductHistoryTable_SetRowStyle", StringComparison.Ordinal), "销毁时必须退订工位 1 行样式事件。");
+    AssertTrue(viewCode.Contains("tableHistory2.SetRowStyle -= ProductHistoryTable_SetRowStyle", StringComparison.Ordinal), "销毁时必须退订工位 2 行样式事件。");
+
+    var styleMethod = ExtractMethodText(viewCode, "ProductHistoryTable_SetRowStyle(object sender, AntdUI.TableSetRowStyleEventArgs e)", "    /// <summary>\r\n    /// 获取产品历史表格。");
+    AssertTrue(styleMethod.Contains("IsProductNg: true", StringComparison.Ordinal), "行样式必须按产品 NG 标记决定是否标红。");
+    AssertTrue(styleMethod.Contains("UiColors.Table.NgRowBackColor", StringComparison.Ordinal), "NG 行背景色必须使用统一调色板。");
+    AssertFalse(styleMethod.Contains("IsDeleted", StringComparison.Ordinal), "已删除的 NG 产品仍需标红，行样式不得按删除状态豁免。");
 }
 static void MonitorViewSinglePointHistoryMappingKeepsPointValues()
 {

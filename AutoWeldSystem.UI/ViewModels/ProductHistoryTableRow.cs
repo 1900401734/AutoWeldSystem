@@ -38,6 +38,11 @@ public sealed class ProductHistoryTableRow
     /// </summary>
     public bool IsReweldPending { get; init; }
 
+    /// <summary>
+    /// 产品结果为 NG（含焊前 NG）。按产品结果而非本行结果判定，产品行与全部子行同值，供表格整块标红；已删除产品同样保留。
+    /// </summary>
+    public bool IsProductNg { get; init; }
+
     public string TouchCountText { get; init; } = string.Empty;
 
     public string RecordTimeText { get; init; } = string.Empty;
