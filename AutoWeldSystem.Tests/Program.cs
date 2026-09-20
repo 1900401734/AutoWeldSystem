@@ -37,6 +37,7 @@ using System.Text.Json;
 
 var tests = new (string Name, Action Run)[]
 {
+    ("Task collection admission, atomic save and finish drain stay isolated", AutoWeldSystem.Tests.TaskCollectionLifecycleTests.RunAll),
     ("Report and preview use the same final product result", ReportAndPreviewUseFinalResult),
     ("Upload configuration errors leave Uploading state", UploadConfigurationErrorsFinishState),
     ("Strict program limits roundtrip and reject invalid input", StrictProgramLimitsRoundtrip),
@@ -18122,7 +18123,7 @@ static void OfflineStartAndFinishSkipBlockingDeviceStatusReport()
     // 离线开工/完工只写本地库，显示"正在开工上报"会让操作员误以为正在联系 MES。
     var localStart = ExtractMethodText(
         viewCode,
-        "await RunReportOperationAsync(stationNo, \"本地开工\", async () =>",
+        "var started = await RunReportOperationAsync(stationNo, \"本地开工\", async () =>",
         "// PLC 业务信号独立写入");
     var localFinish = ExtractMethodText(
         viewCode,

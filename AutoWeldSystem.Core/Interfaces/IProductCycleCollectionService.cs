@@ -21,9 +21,23 @@ public interface IProductCycleCollectionService
 
     /// <summary>
     /// Collects one complete product from PLC according to the configured product data block layout.
+    /// 内部先受理采集凭据再采集，凭据在返回前释放。
     /// </summary>
     Task<IReadOnlyList<BizWeldPointRecord>> CollectAsync(
         BizWeldTask task,
         int stationNo = ProductionConstants.Stations.DefaultStationNo,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 采集准入协调器；未配置数据库的场景返回 null。
+    /// </summary>
+    ITaskCollectionLifecycleCoordinator? Lifecycle => null;
+
+    /// <summary>
+    /// 使用调用方已受理的凭据采集，凭据由调用方持有到 PLC 反馈与下游处理结束后再释放。
+    /// </summary>
+    Task<IReadOnlyList<BizWeldPointRecord>> CollectAcceptedAsync(
+        ITaskCollectionLease lease,
+        CancellationToken cancellationToken = default)
+        => CollectAsync(lease.TaskSnapshot, lease.StationNo, cancellationToken);
 }

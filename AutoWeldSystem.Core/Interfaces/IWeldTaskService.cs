@@ -38,6 +38,12 @@ public interface IWeldTaskService
     /// </summary>
     Task<BizWeldTask> AbandonInvalidTaskAsync(int taskId, int stationNo, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// 采集准入被数据库拒绝后，清空本机内存中仍指向该任务的运行态，避免轮询反复复核已结束的任务。
+    /// 只清内存，不改数据库；返回是否确实清除了运行态。
+    /// </summary>
+    bool DetachStaleTask(int taskId);
+
     Task<BasicRes<ServerTimeRes>> SyncServerTimeAsync(CancellationToken cancellationToken = default);
 
     Task<WorkOrderRes?> GetWorkOrderInfoAsync(string workId, int stationNo = ProductionConstants.Stations.DefaultStationNo,

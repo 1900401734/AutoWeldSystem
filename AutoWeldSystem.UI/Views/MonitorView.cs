@@ -1355,7 +1355,7 @@ public partial class MonitorView : BaseView
             ProgramContent = request.ProgramContent
         };
 
-        await RunReportOperationAsync(stationNo, "本地开工", async () =>
+        var started = await RunReportOperationAsync(stationNo, "本地开工", async () =>
         {
             ClearRuntimeError();
             await _weldTaskService.StartLocalAsync(request, employeeNumber, employeeName, 0);
@@ -1365,6 +1365,7 @@ public partial class MonitorView : BaseView
             QueueRefreshSchemePreview(force: true);
             SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.LocalStartSucceeded);
         });
+        if (!started) return;
 
         // PLC 业务信号独立写入；失败只提示和记录日志，不回滚已经成功的本地开工。
         await SafeWriteStartBusinessSignalsAsync(localProgram, stationNo);
@@ -1594,7 +1595,7 @@ public partial class MonitorView : BaseView
             // 已通过身份校验；WeldTaskService 已存储本次校验的操作员信息，直接使用缓存结果。
         }
 
-        await RunReportOperationAsync(stationNo, "开工上报", async () =>
+        var started = await RunReportOperationAsync(stationNo, "开工上报", async () =>
         {
             ClearRuntimeError();
             SetRuntimeStatus(TextKeys.Monitor.RuntimeStatus.SubmittingStart);
@@ -1604,6 +1605,8 @@ public partial class MonitorView : BaseView
             QueueRefreshSchemePreview(force: true);
             SetRuntimeStatusSuccess(TextKeys.Monitor.RuntimeStatus.OnlineStartSucceeded);
         });
+        // 开工被拒绝时不再写 PLC 业务信号，否则“配方下发失败”会覆盖真正的拒绝原因。
+        if (!started) return;
 
         // PLC 业务信号独立写入；失败只提示和记录日志，不回滚已经成功的在线开工。
         await SafeWriteStartBusinessSignalsAsync(adjustedProgram, stationNo);
@@ -10821,15 +10824,15 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     /// <param name="stationNo">工位编号。</param>
     /// <param name="actionName">操作名称，用于提示和日志。</param>
     /// <param name="action">需要执行的异步操作。</param>
-    /// <returns>表示异步操作的任务。</returns>
-    private async Task RunReportOperationAsync(int stationNo, string actionName, Func<Task> action)
+    /// <returns>操作成功完成返回 true；工位忙或抛出异常返回 false，调用方不得继续写 PLC 业务信号。</returns>
+    private async Task<bool> RunReportOperationAsync(int stationNo, string actionName, Func<Task> action)
     {
         stationNo = NormalizeStationNo(stationNo);
         if (!TryEnterStationOperation(stationNo))
         {
             // 同一工位上报必须串行，避免重复点击造成 MES/PLC 状态交叉写入。
             SetRuntimeError(TextKeys.Monitor.RuntimeError.StationOperationBusy);
-            return;
+            return false;
         }
 
         try
@@ -10838,18 +10841,21 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             // 执行业务前再次选中工位，确保服务层和界面层使用同一个工位上下文。
             SelectStationForOperation(stationNo);
             await action();
+            return true;
         }
         catch (BusinessOperationException ex)
         {
             _exceptionLogService.WriteBusiness(ex.SourceName, ex.Message, ex.Detail);
             ClearRuntimeStatus();
             SetRuntimeErrorText(ex.Detail, ex.SourceName);
+            return false;
         }
         catch (Exception ex)
         {
             _exceptionLogService.Write(ex, $"MonitorView.{actionName}");
             ClearRuntimeStatus();
             SetRuntimeErrorText(ex.Message);
+            return false;
         }
         finally
         {

@@ -43,6 +43,8 @@ public class WeldTaskService : IWeldTaskService
     private readonly IPlcRecipeNameReaderService? _recipeNameReaderService;
     private readonly IProductProcessConfigService _productProcessConfigService;
     private readonly ITestSchemeConfigService _testSchemeConfigService;
+    private readonly IProductionCountService? _productionCountService;
+    private readonly ITaskCollectionLifecycleCoordinator? _lifecycle;
     private AppSettings _currentSettings;
 
     public WeldTaskService(
@@ -61,10 +63,15 @@ public class WeldTaskService : IWeldTaskService
         IMesConnectionMonitor? mesConnectionMonitor = null,
         IPlcRecipeNameReaderService? recipeNameReaderService = null,
         IProductProcessConfigService? productProcessConfigService = null,
-        ITestSchemeConfigService? testSchemeConfigService = null)
+        ITestSchemeConfigService? testSchemeConfigService = null,
+        IProductionCountService? productionCountService = null,
+        ITaskCollectionLifecycleCoordinator? lifecycle = null)
     {
         _productProcessConfigService = productProcessConfigService ?? new ProductProcessConfigService(dbContext);
         _testSchemeConfigService = testSchemeConfigService ?? new TestSchemeConfigService(dbContext);
+        // 未配置数据库的测试场景不做排空与重算；生产环境两者都由 DI 提供或按库共享。
+        _productionCountService = productionCountService ?? DefaultProductionCountService(dbContext);
+        _lifecycle = lifecycle ?? DefaultLifecycle(dbContext, settingsService);
         _recipeNameReaderService = recipeNameReaderService;
         _maintenanceService = maintenanceService;
         _mesConnectionMonitor = mesConnectionMonitor;
@@ -162,6 +169,13 @@ public class WeldTaskService : IWeldTaskService
     public async Task<BizWeldTask> AbandonInvalidTaskAsync(
         int taskId, int stationNo, CancellationToken cancellationToken = default)
     {
+        BizWeldTask candidate;
+        lock (_dbContext.TaskTransitionSync)
+            candidate = _dbContext.Db.Queryable<BizWeldTask>().InSingle(taskId)
+                ?? throw new BusinessOperationException("Task.Abandon", "异常结束失败", "任务不存在。");
+        // 作废也是终态切换：先关闭采集准入并等待在途产品处理完，避免作废后仍有产品落库。
+        using var closing = BeginClosing(candidate, "Task.Abandon", "异常结束失败");
+        await WaitForDrainAsync(closing, "Task.Abandon", "异常结束失败", cancellationToken);
         var task = await Task.Run(() => AbandonInvalidTaskCore(taskId, stationNo, cancellationToken), cancellationToken);
         foreach (var station in CurrentState.StationStates.Values)
         {
@@ -172,6 +186,88 @@ public class WeldTaskService : IWeldTaskService
         _operationLogService.Write("TaskAbandon", task.UploadMessage ?? $"任务 {task.Id} 已异常结束。", "Warning");
         NotifyStateChanged();
         return task;
+    }
+
+    public bool DetachStaleTask(int taskId)
+    {
+        var detached = false;
+        // 与开工绑定运行态共用同一把锁，避免“判定为旧任务”和“清空”之间插入新任务绑定。
+        lock (_dbContext.TaskTransitionSync)
+        {
+            foreach (var station in CurrentState.StationStates.Values)
+            {
+                if (station.ActiveTask?.Id != taskId) continue;
+                station.Reset();
+                detached = true;
+            }
+            if (CurrentState.ActiveTask?.Id == taskId)
+            {
+                CurrentState.ActiveTask = null;
+                detached = true;
+            }
+            if (detached) RefreshCompatibilityState(CurrentState.CurrentStationNo);
+        }
+        if (!detached) return false;
+        _operationLogService.Write("TaskDetach",
+            $"ProcessId={Environment.ProcessId}, TaskId={taskId} 已被数据库判定为非运行任务，已清空本机运行态。", "Warning");
+        NotifyStateChanged();
+        return true;
+    }
+
+    private static IProductionCountService? DefaultProductionCountService(SqlSugarDbContext? dbContext)
+        => dbContext is null ? null : new ProductionCountService(dbContext);
+
+    private static ITaskCollectionLifecycleCoordinator? DefaultLifecycle(SqlSugarDbContext? dbContext, IAppSettingsService settingsService)
+        => dbContext is null ? null : TaskCollectionLifecycleCoordinator.GetShared(dbContext, settingsService);
+
+    private ITaskClosingLease? BeginClosing(BizWeldTask task, string source, string title)
+    {
+        if (_lifecycle is null) return null;
+        try
+        {
+            return _lifecycle.BeginClosing(task);
+        }
+        catch (TaskRunRejectedException ex)
+        {
+            throw new BusinessOperationException(source, title, ex.Message);
+        }
+    }
+
+    private static async Task WaitForDrainAsync(ITaskClosingLease? closing, string source, string title, CancellationToken cancellationToken)
+    {
+        if (closing is null) return;
+        try
+        {
+            await closing.WaitForDrainAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is TimeoutException or TaskRunRejectedException)
+        {
+            throw new BusinessOperationException(source, title, ex.Message);
+        }
+    }
+
+    private static void EnsureClosingValid(ITaskClosingLease? closing, string source, string title)
+    {
+        if (closing is null) return;
+        try
+        {
+            closing.EnsureValid();
+        }
+        catch (TaskRunRejectedException ex)
+        {
+            throw new BusinessOperationException(source, title, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 程序统计模式下完工数量由服务层在排空后重算，保证不漏算最后一件；其他模式沿用调用方传入值。
+    /// </summary>
+    private (int Actual, int Qualified, int Failed) ResolveFinishQuantities(BizWeldTask task, int actual, int qualified, int failed)
+    {
+        if (_productionCountService is null || !ProductionConstants.ProductionCountSources.IsProgram(CurrentSettings.ProductionCountSource))
+            return (actual, qualified, failed);
+        var quantities = _productionCountService.GetTaskQuantities(task.Id);
+        return (quantities.ActualQty, quantities.QualifiedQty, quantities.FailedQty);
     }
 
     private BizWeldTask AbandonInvalidTaskCore(int taskId, int stationNo, CancellationToken cancellationToken)
@@ -776,6 +872,10 @@ public class WeldTaskService : IWeldTaskService
         }
 
         ValidateTaskForProduction(task, normalizedStationNo);
+        // 先关闭采集准入并等待在途产品处理完，再重算数量，保证 MES 收到的是完整产量。
+        using var closing = BeginClosing(task, "MES.FinishReport", "完工上报失败");
+        await WaitForDrainAsync(closing, "MES.FinishReport", "完工上报失败", cancellationToken);
+        (actualQty, qualifiedQty, failedQty) = ResolveFinishQuantities(task, actualQty, qualifiedQty, failedQty);
         var endOperator = string.IsNullOrWhiteSpace(employeeNumber)
             ? task.UserNumber ?? station.MesOperatorNumber
             : employeeNumber;
@@ -836,7 +936,11 @@ public class WeldTaskService : IWeldTaskService
             ? ResolveUploadMessage(settings.UploadMode)
             : finishUploadMessage;
 
-        _dbContext.Db.Updateable(task).ExecuteCommand();
+        lock (_dbContext.TaskTransitionSync)
+        {
+            EnsureClosingValid(closing, "MES.FinishReport", "完工上报失败");
+            _dbContext.Db.Updateable(task).ExecuteCommand();
+        }
         _centerProductForwardingService.EnqueueTaskFinishUpdate(task);
         ApplyFinishedRuntimeState(normalizedStationNo, task);
         // 本地完工已持久化后立即刷新 UI；MES 完工、设备状态和文件上传均独立处理。
@@ -887,6 +991,9 @@ public class WeldTaskService : IWeldTaskService
         }
 
         ValidateTaskForProduction(task, normalizedStationNo);
+        using var closing = BeginClosing(task, "Local.FinishReport", "本地完工失败");
+        await WaitForDrainAsync(closing, "Local.FinishReport", "本地完工失败", cancellationToken);
+        (actualQty, qualifiedQty, failedQty) = ResolveFinishQuantities(task, actualQty, qualifiedQty, failedQty);
         // 完工员工号与在线完工同口径：调用方未传时沿用开工时录入的员工号，仍不接受登录账号兜底。
         var endOperator = RequireOfflineOperatorNumber(FirstNonEmpty(employeeNumber, task.UserNumber));
         // 离线完工同样只捕获一次结束时间，持久化后再生成最终报表。
@@ -900,7 +1007,11 @@ public class WeldTaskService : IWeldTaskService
         task.UploadStatus = ProductionConstants.UploadStatuses.Pending;
         task.UploadMessage = "Local finish completed offline. Finish data is queued for MES retry.";
 
-        _dbContext.Db.Updateable(task).ExecuteCommand();
+        lock (_dbContext.TaskTransitionSync)
+        {
+            EnsureClosingValid(closing, "Local.FinishReport", "本地完工失败");
+            _dbContext.Db.Updateable(task).ExecuteCommand();
+        }
         _centerProductForwardingService.EnqueueTaskFinishUpdate(task);
         EnqueueFinishReportTask(task, BuildEndRequest(task, endOperator, actualQty, qualifiedQty, failedQty));
         EnqueueWorkOrderStatusTask(task, ProductionConstants.MesWorkOrderStatuses.Completed);
