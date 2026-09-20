@@ -383,6 +383,7 @@ var tests = new (string Name, Action Run)[]
     ("MES interaction log grid shows route path", MesInteractionLogGridShowsRoutePath),
     ("Production flow summaries use centralized Chinese text", ProductionFlowSummariesUseCentralizedChineseText),
     ("DataManageView static grids define bound columns", DataManageViewStaticGridsDefineBoundColumns),
+    ("Data history report files show task start id", DataHistoryReportFilesShowTaskStartId),
     ("DataManageView ignores report selection while disposing", DataManageViewIgnoresReportSelectionWhileDisposing),
     ("DataManageView ignores work order selection while disposing", DataManageViewIgnoresWorkOrderSelectionWhileDisposing),
     ("DataManageView releases query cancellation sources once", DataManageViewReleasesQueryCancellationSourcesOnce),
@@ -2032,6 +2033,12 @@ static void ProductProcessDefaultPersistence()
 }
 
 static AutoWeldSystem.Data.SqlSugarDbContext CreateProductProcessTestDatabase(string file)
+    => CreateSqliteTestDatabase(
+        file,
+        typeof(BizProductProcessConfig), typeof(BizTestScheme), typeof(BizProgram),
+        typeof(BizWeldTask), typeof(BizSchemeDetail), typeof(DimTestItem), typeof(BizWeldPointRecord));
+
+static AutoWeldSystem.Data.SqlSugarDbContext CreateSqliteTestDatabase(string file, params Type[] tables)
 {
     // 仅替换测试实例的连接，绝不访问应用配置或默认 MySQL；沿用现有 SqlSugar 的 SQLite 依赖。
     var db = new AutoWeldSystem.Data.SqlSugarDbContext("unused");
@@ -2043,8 +2050,7 @@ static AutoWeldSystem.Data.SqlSugarDbContext CreateProductProcessTestDatabase(st
     });
     typeof(AutoWeldSystem.Data.SqlSugarDbContext).GetField("<Db>k__BackingField", flags)!.SetValue(db, sqlite);
     typeof(AutoWeldSystem.Data.SqlSugarDbContext).GetField("_initialized", flags)!.SetValue(db, true);
-    sqlite.CodeFirst.InitTables(typeof(BizProductProcessConfig), typeof(BizTestScheme), typeof(BizProgram),
-        typeof(BizWeldTask), typeof(BizSchemeDetail), typeof(DimTestItem), typeof(BizWeldPointRecord));
+    sqlite.CodeFirst.InitTables(tables);
     return db;
 }
 
@@ -12283,7 +12289,8 @@ static void DataManageViewStaticGridsDefineBoundColumns()
     {
         "nameof(DataHistoryWorkOrderRow.WorkOrderId)",
         "nameof(DataHistoryCollectionRow.SequenceNo)",
-        "nameof(DataHistoryReportFileRow.FileName)"
+        "nameof(DataHistoryReportFileRow.FileName)",
+        "nameof(DataHistoryReportFileRow.ExpStartId)"
     };
 
     foreach (var binding in requiredBindings)
@@ -12291,6 +12298,84 @@ static void DataManageViewStaticGridsDefineBoundColumns()
         AssertTrue(
             viewCode.Contains(binding, StringComparison.Ordinal),
             $"DataManageView 静态列必须使用 {binding} 绑定 DTO 属性。");
+    }
+
+    // 报告文件列表列顺序：文件名 | 开工任务ID | 上传状态 | 创建时间 | 更新时间；格式与路径列已取消，
+    // 但行数据仍保留文件路径供打开文件和目录使用。
+    var reportColumns = ExtractMethodText(
+        viewCode,
+        "dgvReportFiles.Columns.AddRange(new DataGridViewColumn[]",
+        "private static void ConfigureColumn(");
+    var expectedReportColumns = new[]
+    {
+        "colReportFileName",
+        "colReportExpStartId",
+        "colReportUploadStatus",
+        "colReportCreatedTime",
+        "colReportUpdatedTime"
+    };
+    for (var index = 1; index < expectedReportColumns.Length; index++)
+    {
+        AssertSourceOrder(
+            reportColumns,
+            expectedReportColumns[index - 1],
+            expectedReportColumns[index],
+            "报告文件列表列顺序必须为文件名、开工任务ID、上传状态、创建时间、更新时间。");
+    }
+
+    AssertFalse(
+        reportColumns.Contains("colReportFormat", StringComparison.Ordinal)
+            || reportColumns.Contains("colReportPath", StringComparison.Ordinal),
+        "报告文件列表不得再显示文件格式和文件路径列。");
+    AssertTrue(
+        viewCode.Contains("report.FilePath", StringComparison.Ordinal),
+        "打开文件和目录仍必须使用行数据中的文件路径。");
+}
+
+static void DataHistoryReportFilesShowTaskStartId()
+{
+    var directory = Path.Combine(Path.GetTempPath(), "autoweld-report-files-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(directory);
+    try
+    {
+        using var db = CreateSqliteTestDatabase(
+            Path.Combine(directory, "history.db"),
+            typeof(BizWeldTask),
+            typeof(BizProductionReportFile));
+        var task = new BizWeldTask
+        {
+            DeviceId = "TEST", SN = "SN-1", ProcessNo = "10", StationNo = 1, ProgramId = "local-1", ExpStartId = "MES-START-1"
+        };
+        task.Id = db.Db.Insertable(task).ExecuteReturnIdentity();
+        var generatedPath = Path.Combine(directory, "report-001.xlsx");
+        // 报表记录在离线开工阶段创建，快照里的开工任务ID仍为空；补传开工成功后任务上已有 MES 返回值。
+        db.Db.Insertable(new BizProductionReportFile
+        {
+            TaskId = task.Id, ExpStartId = null, DeviceId = "TEST", SN = "SN-1", ProcessNo = "10",
+            FileName = "report-001.xlsx", FilePath = generatedPath, UploadStatus = ProductionConstants.UploadStatuses.Pending
+        }).ExecuteCommand();
+        // 仅预留序号、尚未生成文件的记录不进入列表。
+        db.Db.Insertable(new BizProductionReportFile
+        {
+            TaskId = task.Id, DeviceId = "TEST", SN = "SN-1", ProcessNo = "10", FileName = "report-002.xlsx", FilePath = string.Empty
+        }).ExecuteCommand();
+
+        var rows = new DataHistoryQueryService(db, null!).QueryReportFilesAsync(task.Id).GetAwaiter().GetResult();
+        AssertEqual(1, rows.Count, "尚未生成文件的预留记录不得进入报告文件列表。");
+        AssertEqual("MES-START-1", rows[0].ExpStartId, "开工任务ID必须取任务当前的 MES ExpStartId，而不是报表记录创建时的空快照。");
+        AssertEqual(generatedPath, rows[0].FilePath, "行数据必须保留文件路径，供打开文件和目录使用。");
+
+        task.ExpStartId = null;
+        db.Db.Updateable(task).UpdateColumns(it => new { it.ExpStartId }).ExecuteCommand();
+        var report = db.Db.Queryable<BizProductionReportFile>().First(it => it.TaskId == task.Id && it.FilePath != "");
+        report.ExpStartId = "SNAPSHOT-1";
+        db.Db.Updateable(report).ExecuteCommand();
+        var fallback = new DataHistoryQueryService(db, null!).QueryReportFilesAsync(task.Id).GetAwaiter().GetResult();
+        AssertEqual("SNAPSHOT-1", fallback[0].ExpStartId, "任务上没有开工任务ID时回退到报表记录的快照。");
+    }
+    finally
+    {
+        Directory.Delete(directory, true);
     }
 }
 

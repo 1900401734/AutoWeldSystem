@@ -319,6 +319,9 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
 
     private IReadOnlyList<DataHistoryReportFileRow> QueryReportFiles(int taskId)
     {
+        // 开工任务ID以任务当前值为准：离线开工的任务要等补传开工成功才拿到 MES 的 ExpStartId，
+        // 报表记录创建时复制的快照可能仍为空；上传报告文件时也使用任务当前值，列表与之保持同源。
+        var taskExpStartId = GetTask(taskId)?.ExpStartId?.Trim();
         return _dbContext.Db.Queryable<BizProductionReportFile>()
             .Where(report => report.TaskId == taskId)
             .OrderBy(report => report.CreatedTime, SqlSugar.OrderByType.Desc)
@@ -328,7 +331,9 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
             {
                 Id = report.Id,
                 FileName = report.FileName,
-                FileFormat = report.FileFormat,
+                ExpStartId = string.IsNullOrWhiteSpace(taskExpStartId)
+                    ? report.ExpStartId?.Trim() ?? string.Empty
+                    : taskExpStartId,
                 FilePath = report.FilePath,
                 UploadStatus = report.UploadStatus,
                 CreatedTime = report.CreatedTime,

@@ -935,13 +935,9 @@ public static class TextKeys
         /// </summary>
         public const string ColumnFileName = "data.column.file_name";
         /// <summary>
-        /// 格式
+        /// 开工任务ID
         /// </summary>
-        public const string ColumnFileFormat = "data.column.file_format";
-        /// <summary>
-        /// 文件路径
-        /// </summary>
-        public const string ColumnFilePath = "data.column.file_path";
+        public const string ColumnExpStartId = "data.column.exp_start_id";
         /// <summary>
         /// 创建时间
         /// </summary>

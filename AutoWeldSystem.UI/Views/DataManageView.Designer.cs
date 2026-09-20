@@ -105,8 +105,7 @@
             colCollectionOperator = new DataGridViewTextBoxColumn();
             colCollectionRecordTime = new DataGridViewTextBoxColumn();
             colReportFileName = new DataGridViewTextBoxColumn();
-            colReportFormat = new DataGridViewTextBoxColumn();
-            colReportPath = new DataGridViewTextBoxColumn();
+            colReportExpStartId = new DataGridViewTextBoxColumn();
             colReportUploadStatus = new DataGridViewTextBoxColumn();
             colReportCreatedTime = new DataGridViewTextBoxColumn();
             colReportUpdatedTime = new DataGridViewTextBoxColumn();
@@ -997,17 +996,11 @@
             colReportFileName.Name = "colReportFileName";
             colReportFileName.Width = 125;
             //
-            // colReportFormat
+            // colReportExpStartId
             //
-            colReportFormat.MinimumWidth = 6;
-            colReportFormat.Name = "colReportFormat";
-            colReportFormat.Width = 125;
-            //
-            // colReportPath
-            //
-            colReportPath.MinimumWidth = 6;
-            colReportPath.Name = "colReportPath";
-            colReportPath.Width = 125;
+            colReportExpStartId.MinimumWidth = 6;
+            colReportExpStartId.Name = "colReportExpStartId";
+            colReportExpStartId.Width = 125;
             //
             // colReportUploadStatus
             //
@@ -1154,8 +1147,7 @@
         private DataGridViewTextBoxColumn colCollectionOperator;
         private DataGridViewTextBoxColumn colCollectionRecordTime;
         private DataGridViewTextBoxColumn colReportFileName;
-        private DataGridViewTextBoxColumn colReportFormat;
-        private DataGridViewTextBoxColumn colReportPath;
+        private DataGridViewTextBoxColumn colReportExpStartId;
         private DataGridViewTextBoxColumn colReportUploadStatus;
         private DataGridViewTextBoxColumn colReportCreatedTime;
         private DataGridViewTextBoxColumn colReportUpdatedTime;

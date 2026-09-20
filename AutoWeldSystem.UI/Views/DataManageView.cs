@@ -368,18 +368,17 @@ public partial class DataManageView : BaseView
         }
 
         ConfigureColumn(colReportFileName, nameof(DataHistoryReportFileRow.FileName));
-        ConfigureColumn(colReportFormat, nameof(DataHistoryReportFileRow.FileFormat));
-        ConfigureColumn(colReportPath, nameof(DataHistoryReportFileRow.FilePath));
+        ConfigureColumn(colReportExpStartId, nameof(DataHistoryReportFileRow.ExpStartId));
         ConfigureColumn(colReportUploadStatus, nameof(DataHistoryReportFileRow.UploadStatus));
         ConfigureColumn(colReportCreatedTime, nameof(DataHistoryReportFileRow.CreatedTime), DateTimeDisplayFormat);
         ConfigureColumn(colReportUpdatedTime, nameof(DataHistoryReportFileRow.UpdatedTime), DateTimeDisplayFormat);
         if (dgvReportFiles.Columns.Count == 0)
         {
+            // 列顺序：文件名 | 开工任务ID | 上传状态 | 创建时间 | 更新时间；文件路径仍保留在行数据中供打开文件和目录使用。
             dgvReportFiles.Columns.AddRange(new DataGridViewColumn[]
             {
                 colReportFileName,
-                colReportFormat,
-                colReportPath,
+                colReportExpStartId,
                 colReportUploadStatus,
                 colReportCreatedTime,
                 colReportUpdatedTime
@@ -1490,8 +1489,7 @@ public partial class DataManageView : BaseView
         colCollectionRecordTime.HeaderText = T(TextKeys.DataManage.ColumnRecordTime);
 
         colReportFileName.HeaderText = T(TextKeys.DataManage.ColumnFileName);
-        colReportFormat.HeaderText = T(TextKeys.DataManage.ColumnFileFormat);
-        colReportPath.HeaderText = T(TextKeys.DataManage.ColumnFilePath);
+        colReportExpStartId.HeaderText = T(TextKeys.DataManage.ColumnExpStartId);
         colReportUploadStatus.HeaderText = T(TextKeys.DataManage.ColumnUploadStatus);
         colReportCreatedTime.HeaderText = T(TextKeys.DataManage.ColumnCreatedTime);
         colReportUpdatedTime.HeaderText = T(TextKeys.DataManage.ColumnUpdatedTime);

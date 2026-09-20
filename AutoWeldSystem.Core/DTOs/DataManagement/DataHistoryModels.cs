@@ -237,8 +237,14 @@ public sealed class DataHistoryReportFileRow
 
     public string FileName { get; init; } = string.Empty;
 
-    public string FileFormat { get; init; } = string.Empty;
+    /// <summary>
+    /// 开工任务ID：MES 开工返回的 ExpStartId；离线开工的任务在补传开工前为空。
+    /// </summary>
+    public string ExpStartId { get; init; } = string.Empty;
 
+    /// <summary>
+    /// 本地文件路径，供打开文件和所在目录使用；不再作为列表列显示。
+    /// </summary>
     public string FilePath { get; init; } = string.Empty;
 
     public string UploadStatus { get; init; } = string.Empty;

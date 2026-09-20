@@ -2223,11 +2223,8 @@ This also removes {3} collection record(s) and {4} report file(s) including the 
   <data name="data.column.file_name" xml:space="preserve">
     <value>File Name</value>
   </data>
-  <data name="data.column.file_format" xml:space="preserve">
-    <value>Format</value>
-  </data>
-  <data name="data.column.file_path" xml:space="preserve">
-    <value>File Path</value>
+  <data name="data.column.exp_start_id" xml:space="preserve">
+    <value>Start Task ID</value>
   </data>
   <data name="data.column.created_time" xml:space="preserve">
     <value>Created Time</value>
