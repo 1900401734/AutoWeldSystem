@@ -51,5 +51,11 @@ public static class UiColors
         public static readonly Color AlternateRowColor = Color.FromArgb(249, 250, 251);
         public static readonly Color SelectionBackColor = Color.FromArgb(219, 234, 254);
         public static readonly Color SelectionForeColor = Color.FromArgb(17, 24, 39);
+
+        /// <summary>
+        /// NG 产品整行标红的背景与文字色，浅红底保证黑字仍可读。
+        /// </summary>
+        public static readonly Color NgRowBackColor = Color.FromArgb(255, 228, 230);
+        public static readonly Color NgRowForeColor = Color.FromArgb(153, 27, 27);
     }
 }

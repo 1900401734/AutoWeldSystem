@@ -864,6 +864,8 @@ public partial class MonitorView : BaseView
 
         tableHistory1.CellClick += ProductHistoryTable_CellClick;
         tableHistory2.CellClick += ProductHistoryTable_CellClick;
+        tableHistory1.SetRowStyle += ProductHistoryTable_SetRowStyle;
+        tableHistory2.SetRowStyle += ProductHistoryTable_SetRowStyle;
 
         segmentedStationSwitch.SelectIndexChanged += Station_SelectedIndexChanged;
         selectItemName.SelectedIndexChanged += ProcessSelection_SelectedIndexChanged;
@@ -1868,6 +1870,8 @@ public partial class MonitorView : BaseView
         MesUserNumber.TextChanged -= OperatorInput_TextChanged;
         tableHistory1.CellClick -= ProductHistoryTable_CellClick;
         tableHistory2.CellClick -= ProductHistoryTable_CellClick;
+        tableHistory1.SetRowStyle -= ProductHistoryTable_SetRowStyle;
+        tableHistory2.SetRowStyle -= ProductHistoryTable_SetRowStyle;
         UnwireWeldPreviewGridEvents(dgvPreview1);
         UnwireWeldPreviewGridEvents(dgvPreview2);
         HorizontalScrollBar1.ValueChanged -= Table2HorizontalScrollBar_ValueChanged;
@@ -6440,6 +6444,24 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     }
 
     /// <summary>
+    /// 产品结果为 NG 时整块行标红：产品行与全部子行同色，已删除产品也保留，便于现场辨认后重焊或删除。
+    /// 非 NG 行返回 null 沿用表格默认样式。
+    /// </summary>
+    private static AntdUI.Table.CellStyleInfo? ProductHistoryTable_SetRowStyle(object sender, AntdUI.TableSetRowStyleEventArgs e)
+    {
+        if (e.Record is not ProductHistoryTableRow { IsProductNg: true })
+        {
+            return null;
+        }
+
+        return new AntdUI.Table.CellStyleInfo
+        {
+            BackColor = UiColors.Table.NgRowBackColor,
+            ForeColor = UiColors.Table.NgRowForeColor
+        };
+    }
+
+    /// <summary>
     /// 获取产品历史表格。
     /// </summary>
     /// <param name="stationNo">工位编号。</param>
@@ -6626,6 +6648,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             IsTestText = FormatHistoryTestFlag(product.IsTest),
             IsDeleted = product.IsDeleted,
             IsReweldPending = product.IsReweldPending,
+            IsProductNg = TestResultRules.IsFailed(product.Result),
             TouchCountText = product.TouchCount.ToString(CultureInfo.InvariantCulture),
             RecordTimeText = FormatHistoryTime(product.LastRecordTime),
             CanMarkTest = product.CanMarkTest,
@@ -6661,6 +6684,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             IsTestText = FormatHistoryTestFlag(product.IsTest),
             IsDeleted = product.IsDeleted,
             IsReweldPending = product.IsReweldPending,
+            IsProductNg = TestResultRules.IsFailed(product.Result),
             TouchCountText = product.TouchCount.ToString(CultureInfo.InvariantCulture),
             RecordTimeText = FormatHistoryTime(product.LastRecordTime),
             DynamicValues = BuildMergedHistoryDynamicValues(product),
@@ -6738,6 +6762,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             IsTestText = productRow.IsTestText,
             IsDeleted = productRow.IsDeleted,
             IsReweldPending = productRow.IsReweldPending,
+            IsProductNg = productRow.IsProductNg,
             TouchCountText = productRow.TouchCountText,
             RecordTimeText = pointRow.RecordTimeText,
             DynamicValues = pointRow.DynamicValues,
@@ -6775,6 +6800,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
             IsTestText = FormatHistoryTestFlag(point.IsTest),
             IsDeleted = product.IsDeleted,
             IsReweldPending = product.IsReweldPending,
+            IsProductNg = TestResultRules.IsFailed(product.Result),
             RecordTimeText = FormatHistoryTime(point.RecordTime),
             DynamicValues = BuildProductHistoryDynamicValues(point, dynamicColumns),
             CanMarkTest = product.CanMarkTest,
@@ -7335,7 +7361,7 @@ BindRuntimeOperatorInfo(state, activeTask, ShouldPreserveDraftOperatorNumber(sta
     }
 
     /// <summary>
-    /// 已删除产品在树节点文字上加前缀，弥补 AntdUI 表格无法按行置灰的限制。
+    /// 已删除产品在树节点文字上加前缀，确保状态列被裁剪或折叠时仍可辨认。
     /// </summary>
     private string FormatHistoryProductNodeText(ProductHistoryProduct product)
     {
