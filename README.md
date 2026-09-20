@@ -141,6 +141,63 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 - 修改设备编号时会先使用最后一次成功同步的旧编号更新 MES；如果 MES 明确返回旧设备不存在，系统会询问是否将新编号作为新设备注册，只有确认且注册成功后才更新本地已同步编号。
 - PLC 地址在地址维护界面中填写完整。
 
+## 数据库定时备份与恢复
+
+上位机和中心服务器的工单、焊点记录、上传任务、配置和权限数据都只落在 MySQL 中，现场必须定时备份。仓库提供两个 PowerShell 脚本，不依赖上位机进程运行，脚本头部注释附有完整的部署、日常检查和恢复说明：
+
+| 脚本 | 作用 |
+| --- | --- |
+| `tools/backup-mysql.ps1` | 读取 `appsettings.json` 连接串，调用 `mysqldump` 导出并压缩为 zip，按保留天数清理旧备份，写 `backup.log` |
+| `tools/register-backup-task.ps1` | 以 SYSTEM 账号注册每日计划任务运行上述脚本，也可卸载 |
+
+前提：目标机可找到 `mysqldump.exe`（随 MySQL Server 安装在 `bin` 目录，脚本会自动探测 PATH 和常见安装路径；找不到时用 `-MysqldumpPath` 指定）。脚本兼容 Windows PowerShell 5.1，把 `tools` 目录整体复制到工控机即可使用。不要用右键“使用 PowerShell 运行”：脚本需要参数，且窗口跑完即关看不到结果。
+
+备份对象按参数指定：设备端库读上位机目录下 `appsettings.json` 的 `Database:ConnectionString`；中心库读中心服务器目录下 `appsettings.json` 的 `ConnectionStrings:Default`。两者分机部署时各自注册一次；同机部署时 `-AppSettingsPath` 传两个路径即可一次备两个库。
+
+先手动执行一次确认可用：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\backup-mysql.ps1 -AppSettingsPath "D:\AutoWeld\UI\appsettings.json" -BackupDir "D:\AutoWeldBackup" -RetentionDays 30
+```
+
+再以管理员身份注册每日任务（默认 02:00，任务名 `AutoWeldSystemBackup`）：
+
+```powershell
+# 设备端库
+powershell -ExecutionPolicy Bypass -File tools\register-backup-task.ps1 -AppSettingsPath "D:\AutoWeld\UI\appsettings.json" -BackupDir "D:\AutoWeldBackup" -RetentionDays 30
+
+# 同机双库，03:30 执行
+powershell -ExecutionPolicy Bypass -File tools\register-backup-task.ps1 -AppSettingsPath "D:\AutoWeld\UI\appsettings.json","D:\AutoWeld\Center\appsettings.json" -DailyAt 03:30
+
+# 验证：手动触发一次并查看结果，LastTaskResult 为 0 表示成功
+Start-ScheduledTask -TaskName AutoWeldSystemBackup
+Get-ScheduledTaskInfo -TaskName AutoWeldSystemBackup
+Get-Content D:\AutoWeldBackup\backup.log -Tail 20
+
+# 卸载
+powershell -ExecutionPolicy Bypass -File tools\register-backup-task.ps1 -Unregister
+```
+
+产物为 `<备份目录>\<库名>_<yyyyMMdd_HHmmss>.zip`，内含同名 `.sql`；只有匹配该命名且超过保留天数的 zip 会被清理，目录里其他文件不受影响。任务错过执行时间（如工控机夜间关机）会在下次开机后补跑；任一库失败时脚本以非零退出码结束，计划任务的 `LastTaskResult` 非 0，详情看 `backup.log`。
+
+恢复步骤：
+
+1. 停止上位机或中心服务器，避免恢复期间写入。当前库还能连上时先手动跑一次备份留存现状。
+2. 解压出事之前最近的 zip 得到 `.sql`。
+3. 目标库不存在时先建库：`CREATE DATABASE IF NOT EXISTS autoweldsystem CHARACTER SET utf8mb4;`
+4. 导入：`mysql -uroot -p --default-character-set=utf8mb4 autoweldsystem -e "source D:\AutoWeldBackup\autoweldsystem_20260920_020000.sql"`。用 `source` 而不是 PowerShell 的 `<` 或管道，避免编码被改写。
+5. 启动程序，核对工单、程序和配置。
+
+注意事项：
+
+- 恢复会丢失备份时间点之后的数据；回退程序版本时，程序版本与备份必须配套。
+- 数据库密码只在运行时从 `appsettings.json` 读取并写入临时配置文件，不出现在计划任务命令行；`appsettings.json` 本身的访问权限仍需现场控制。
+- 备份目录是本机单副本，不防硬盘损坏；应定期把该目录复制到 NAS、其他机器或 U 盘。
+- 升级版本前先手动跑一次备份，再按 CHANGELOG 的升级注意操作。
+- 备份是 `mysqldump` 逻辑备份，`--single-transaction` 对 InnoDB 不锁表，可在生产期间执行；库很大时恢复耗时较长。用 MySQL 8.0 的 `mysqldump` 备份 5.7 库可行，8.0 的备份导回 5.7 不保证兼容。
+- 现场若开启了 GTID，需自行在脚本的 `mysqldump` 参数中追加 `--set-gtid-purged=OFF`。
+- Windows PowerShell 5.1 的 `Compress-Archive` 不支持单文件超过 2 GB；焊点记录增长到该量级时应改用 7-Zip 压缩或增加清理频率。
+
 ## 程序管理界面操作
 
 - 左侧列表按程序平铺显示，同一产品工号的多个程序各占一行并重复显示产品工号；首列按当前筛选结果显示程序连续序号，程序名称和同步状态分列显示，不再展示本地版本号或折叠箭头。
@@ -594,3 +651,4 @@ git pull --rebase
 - `bin/`、`obj/`、`.vs/` 为本地构建产物，不需要提交。
 - 数据库结构由 CodeFirst 初始化，修改模型后应先在测试库验证。
 - 现场联调前应先在系统设置界面确认 MES、PLC、日志路径和设备编号。
+- 现场部署后应注册数据库定时备份，见[数据库定时备份与恢复](#数据库定时备份与恢复)。
