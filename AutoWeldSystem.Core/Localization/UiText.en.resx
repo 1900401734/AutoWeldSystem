@@ -2044,9 +2044,6 @@ The task will be marked Abandoned. Its snapshot, collected data and existing rep
     <value>NG</value>
   </data>
   <data name="data.tab.weld_parameters" xml:space="preserve">
-    <value>Test Data</value>
-  </data>
-  <data name="data.tab.collection_data" xml:space="preserve">
     <value>Collection Data</value>
   </data>
   <data name="data.tab.report_files" xml:space="preserve">
@@ -2120,9 +2117,6 @@ This also removes {3} collection record(s) and {4} report file(s) including the 
   </data>
   <data name="data.summary.parameters" xml:space="preserve">
     <value>Test data: {0} products; {1} records; dynamic columns: {2}</value>
-  </data>
-  <data name="data.summary.collection" xml:space="preserve">
-    <value>Collection records: {0}</value>
   </data>
   <data name="data.summary.reports" xml:space="preserve">
     <value>Report files: {0}</value>
@@ -2210,15 +2204,6 @@ This also removes {3} collection record(s) and {4} report file(s) including the 
   </data>
   <data name="data.column.record_time" xml:space="preserve">
     <value>Collection Time</value>
-  </data>
-  <data name="data.column.sequence" xml:space="preserve">
-    <value>Sequence</value>
-  </data>
-  <data name="data.column.is_test" xml:space="preserve">
-    <value>Test Weld</value>
-  </data>
-  <data name="data.column.product_completed" xml:space="preserve">
-    <value>Product Completed</value>
   </data>
   <data name="data.column.file_name" xml:space="preserve">
     <value>File Name</value>
@@ -2603,12 +2588,6 @@ This also removes {3} collection record(s) and {4} report file(s) including the 
   </data>
   <data name="monitor.dialog.delete_product_prompt" xml:space="preserve">
     <value>Delete product {0}? It will no longer be uploaded, reported, or counted; its number is not reused. Use "Restore" to undo.</value>
-  </data>
-  <data name="permission.tab.data.collection_data" xml:space="preserve">
-    <value>Collection Data Tab</value>
-  </data>
-  <data name="data.column.is_deleted" xml:space="preserve">
-    <value>Deleted</value>
   </data>
   <data name="monitor.label.task_recovery_failed" xml:space="preserve"><value>Task Error</value></data>
   <data name="plc.recipe.restore_failed" xml:space="preserve"><value>PLC recipe task restore failed.</value></data>

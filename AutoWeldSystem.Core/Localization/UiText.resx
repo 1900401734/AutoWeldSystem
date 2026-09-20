@@ -2045,9 +2045,6 @@
     <value>NG</value>
   </data>
   <data name="data.tab.weld_parameters" xml:space="preserve">
-    <value>测试数据</value>
-  </data>
-  <data name="data.tab.collection_data" xml:space="preserve">
     <value>采集数据</value>
   </data>
   <data name="data.tab.report_files" xml:space="preserve">
@@ -2121,9 +2118,6 @@
   </data>
   <data name="data.summary.parameters" xml:space="preserve">
     <value>测试数据：{0} 个产品，{1} 条记录，动态列：{2} 列</value>
-  </data>
-  <data name="data.summary.collection" xml:space="preserve">
-    <value>采集数据：{0} 条</value>
   </data>
   <data name="data.summary.reports" xml:space="preserve">
     <value>报告文件：{0} 个</value>
@@ -2211,15 +2205,6 @@
   </data>
   <data name="data.column.record_time" xml:space="preserve">
     <value>采集时间</value>
-  </data>
-  <data name="data.column.sequence" xml:space="preserve">
-    <value>序号</value>
-  </data>
-  <data name="data.column.is_test" xml:space="preserve">
-    <value>试焊件</value>
-  </data>
-  <data name="data.column.product_completed" xml:space="preserve">
-    <value>产品完成</value>
   </data>
   <data name="data.column.file_name" xml:space="preserve">
     <value>文件名</value>
@@ -2604,12 +2589,6 @@
   </data>
   <data name="monitor.dialog.delete_product_prompt" xml:space="preserve">
     <value>确定删除产品 {0} 吗？删除后该产品不再上传、不进入报表与产量统计，产品编号不会被复用；可通过右键“撤销删除”恢复。</value>
-  </data>
-  <data name="permission.tab.data.collection_data" xml:space="preserve">
-    <value>采集数据页签</value>
-  </data>
-  <data name="data.column.is_deleted" xml:space="preserve">
-    <value>已删除</value>
   </data>
   <data name="monitor.label.task_recovery_failed" xml:space="preserve"><value>任务异常</value></data>
   <data name="plc.recipe.restore_failed" xml:space="preserve"><value>PLC 配方任务恢复失败</value></data>

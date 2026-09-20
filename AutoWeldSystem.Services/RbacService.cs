@@ -454,7 +454,9 @@ public class RbacService : IRbacService
             "button.monitor.finish-report",
             "button.monitor.edit-work-order",
             "button.monitor.change-work-order",
-            "button.monitor.get-work-order"
+            "button.monitor.get-work-order",
+            // 数据管理“采集数据”调试页签已移除，旧库残留的页签权限及角色关联一并清理。
+            "tab.data.collection-data"
         };
 
         var permissions = _dbContext.Db.Queryable<SysPermission>()
@@ -543,15 +545,11 @@ public class RbacService : IRbacService
     private static Dictionary<string, IReadOnlyCollection<string>> BuildDefaultRolePermissionMap()
     {
         var allCodes = PermissionCatalog.All.Select(static item => item.Code).ToArray();
-        // 管理员默认不含仅开发者的排障入口；SysUserService 首装路径同样经 ResolveElevatedRoleDefaults 排除。
-        var adminCodes = allCodes
-            .Where(code => !RolePermissionInitializationRules.IsDeveloperOnly(code))
-            .ToArray();
 
         return new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase)
         {
             [AppConstants.Roles.Developer] = allCodes,
-            [AppConstants.Roles.Admin] = adminCodes,
+            [AppConstants.Roles.Admin] = allCodes,
             [AppConstants.Roles.Operator] = new[]
             {
                 PermissionCodes.Pages.Monitor,

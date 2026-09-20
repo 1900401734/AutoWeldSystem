@@ -192,43 +192,6 @@ public sealed class DataHistoryWeldParameterResult
 }
 
 /// <summary>
-/// One raw weld-point collection record.
-/// </summary>
-public sealed class DataHistoryCollectionRow
-{
-    public int Id { get; init; }
-
-    public int SequenceNo { get; init; }
-
-    public int StationNo { get; init; }
-
-    public string ProductNo { get; init; } = string.Empty;
-
-    public string TouchNo { get; init; } = string.Empty;
-
-    public string TestResult { get; init; } = string.Empty;
-
-    /// <summary>
-    /// PLC product-level result. It must not be inferred from weld-point results.
-    /// </summary>
-    public string ProductResult { get; init; } = ProductionConstants.TestResults.Unknown;
-
-    public bool IsTest { get; init; }
-
-    public bool IsDeleted { get; init; }
-
-    public bool ProductCompleted { get; init; }
-
-    public string UploadStatus { get; init; } = string.Empty;
-
-    public string OperatorNo { get; init; } = string.Empty;
-
-    public DateTime RecordTime { get; init; }
-
-    public string RawDataJson { get; init; } = string.Empty;
-}
-
-/// <summary>
 /// One locally generated production report file.
 /// </summary>
 public sealed class DataHistoryReportFileRow

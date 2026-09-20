@@ -50,15 +50,6 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
         return RunQueryAsync(() => QueryWeldParameters(taskId), cancellationToken);
     }
 
-    public Task<PagedResult<DataHistoryCollectionRow>> QueryCollectionRecordsAsync(
-        int taskId,
-        int pageIndex,
-        int pageSize,
-        CancellationToken cancellationToken = default)
-    {
-        return RunQueryAsync(() => QueryCollectionRecords(taskId, pageIndex, pageSize), cancellationToken);
-    }
-
     public Task<IReadOnlyList<DataHistoryReportFileRow>> QueryReportFilesAsync(
         int taskId,
         CancellationToken cancellationToken = default)
@@ -291,29 +282,6 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
         {
             DynamicColumns = dynamicColumns,
             Rows = rows
-        };
-    }
-
-    private PagedResult<DataHistoryCollectionRow> QueryCollectionRecords(
-        int taskId,
-        int pageIndex,
-        int pageSize)
-    {
-        var normalizedPageIndex = Math.Max(1, pageIndex);
-        var normalizedPageSize = Math.Clamp(pageSize, 1, 500);
-        var totalCount = 0;
-        var records = _dbContext.Db.Queryable<BizWeldPointRecord>()
-            .Where(record => record.TaskId == taskId)
-            .OrderBy(record => record.Ts, SqlSugar.OrderByType.Desc)
-            .OrderBy(record => record.Id, SqlSugar.OrderByType.Desc)
-            .ToPageList(normalizedPageIndex, normalizedPageSize, ref totalCount);
-
-        return new PagedResult<DataHistoryCollectionRow>
-        {
-            Items = records.Select(ToCollectionRow).ToList(),
-            TotalCount = totalCount,
-            PageIndex = normalizedPageIndex,
-            PageSize = normalizedPageSize
         };
     }
 
@@ -651,27 +619,6 @@ public sealed class DataHistoryQueryService : IDataHistoryQueryService
             EndTime = task.EndTime,
             TaskStatus = task.TaskStatus,
             UploadStatus = task.UploadStatus
-        };
-    }
-
-    private static DataHistoryCollectionRow ToCollectionRow(BizWeldPointRecord record)
-    {
-        return new DataHistoryCollectionRow
-        {
-            Id = record.Id,
-            SequenceNo = record.SequenceNo,
-            StationNo = record.StationNo,
-            ProductNo = record.ProductNo,
-            TouchNo = record.TouchNo,
-            TestResult = record.TestResult,
-            ProductResult = ResolveProductResult(record),
-            IsTest = record.IsTest,
-            IsDeleted = record.IsDeleted,
-            ProductCompleted = record.ProductCompleted,
-            UploadStatus = record.UploadStatus,
-            OperatorNo = record.OperatorNo ?? string.Empty,
-            RecordTime = record.Ts,
-            RawDataJson = string.Empty
         };
     }
 

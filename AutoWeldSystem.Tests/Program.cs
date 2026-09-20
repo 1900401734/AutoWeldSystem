@@ -136,7 +136,8 @@ var tests = new (string Name, Action Run)[]
     ("Upload scope rules exclude deleted products", UploadScopeRulesExcludeDeletedProducts),
     ("Production count source normalizes and defaults to PLC", ProductionCountSourceNormalizesAndDefaultsToPlc),
     ("Center report deleted flag stays last and filters counts", CenterReportDeletedFlagStaysLastAndFiltersCounts),
-    ("Collection data tab is developer only", CollectionDataTabIsDeveloperOnly),
+    ("Collection data tab permission is retired", CollectionDataTabPermissionIsRetired),
+    ("Data manage tab text is collection data", DataManageTabTextIsCollectionData),
     ("Upload task type normalization covers every registered type", UploadTaskTypeNormalizationCoversEveryRegisteredType),
     ("Upload task retest reopen allows product scoped tasks only", UploadTaskRetestReopenAllowsProductScopedTasksOnly),
     ("Data history dynamic columns append test item units", DataHistoryDynamicColumnsAppendTestItemUnits),
@@ -5814,19 +5815,17 @@ static void StoredPlcProductResultsDriveHistoryWithoutPointAggregation()
     var testDataProductResult = typeof(DataHistoryTestDataRow).GetProperty("ProductResult");
     var testDataRawJson = typeof(DataHistoryTestDataRow).GetProperty("RawDataJson");
     var weldParameterProductResult = typeof(DataHistoryWeldParameterRow).GetProperty("ProductResult");
-    var collectionProductResult = typeof(DataHistoryCollectionRow).GetProperty("ProductResult");
     AssertTrue(testDataProductResult is not null, "通用测试数据树行必须公开独立的 ProductResult。");
     AssertTrue(testDataRawJson is not null, "通用测试数据树行必须保留 RawDataJson 以兼容历史数据和内部业务流程。");
     AssertTrue(weldParameterProductResult is not null, "兼容焊接参数历史行必须公开独立的 ProductResult。");
-    AssertTrue(collectionProductResult is not null, "采集记录历史行必须公开独立的 ProductResult。");
 
     var dataHistoryCode = File.ReadAllText(
         GetRepoFilePath("AutoWeldSystem.Services", "Production", "DataHistoryQueryService.cs"),
         Encoding.UTF8);
     AssertEqual(
-        3,
+        2,
         CountOccurrences(dataHistoryCode, "ProductResult = ResolveProductResult(record),"),
-        "通用测试树、兼容焊接参数行和采集记录行都必须填充独立的 ProductResult。");
+        "通用测试树和兼容焊接参数行都必须填充独立的 ProductResult。");
 }
 
 static void ProductionReportWritesCustomerTemplateForSingleStation()
@@ -12279,16 +12278,12 @@ static void DataManageViewStaticGridsDefineBoundColumns()
         viewCode.Contains("dgvWorkOrders.Columns.AddRange", StringComparison.Ordinal),
         "历史工单表关闭自动生成列后，必须显式添加静态列。");
     AssertTrue(
-        viewCode.Contains("dgvCollectionRecords.Columns.AddRange", StringComparison.Ordinal),
-        "采集数据表关闭自动生成列后，必须显式添加静态列。");
-    AssertTrue(
         viewCode.Contains("dgvReportFiles.Columns.AddRange", StringComparison.Ordinal),
         "报告文件表关闭自动生成列后，必须显式添加静态列。");
 
     var requiredBindings = new[]
     {
         "nameof(DataHistoryWorkOrderRow.WorkOrderId)",
-        "nameof(DataHistoryCollectionRow.SequenceNo)",
         "nameof(DataHistoryReportFileRow.FileName)",
         "nameof(DataHistoryReportFileRow.ExpStartId)"
     };
@@ -15626,18 +15621,48 @@ static void CenterReportDeletedFlagStaysLastAndFiltersCounts()
     }
 }
 
-static void CollectionDataTabIsDeveloperOnly()
+static void CollectionDataTabPermissionIsRetired()
 {
-    var allPermissionCodes = PermissionCatalog.All.Select(permission => permission.Code).ToArray();
-    AssertTrue(allPermissionCodes.Contains(PermissionCodes.Tabs.Data.CollectionData), "采集数据页签权限必须进入权限目录。");
+    // 数据管理“采集数据”调试页签已移除：权限目录、文案映射、视图挂载逻辑和 Designer 控件都不得残留，
+    // 旧库中的权限行由启动时的退役清理删除，避免角色权限页继续显示一个不存在的页签。
+    const string retiredCode = "tab.data.collection-data";
+    AssertFalse(
+        PermissionCatalog.All.Any(permission => string.Equals(permission.Code, retiredCode, StringComparison.OrdinalIgnoreCase)),
+        "采集数据页签权限已退役，不得再进入权限目录。");
 
-    var developerDefaults = RolePermissionInitializationRules.ResolveElevatedRoleDefaults(AppConstants.Roles.Developer, allPermissionCodes);
-    var adminDefaults = RolePermissionInitializationRules.ResolveElevatedRoleDefaults(AppConstants.Roles.Admin, allPermissionCodes);
-    AssertTrue(developerDefaults.Contains(PermissionCodes.Tabs.Data.CollectionData), "开发者默认拥有采集数据页签。");
-    AssertFalse(adminDefaults.Contains(PermissionCodes.Tabs.Data.CollectionData), "管理员首装默认不拥有采集数据页签。");
-    AssertTrue(RolePermissionInitializationRules.IsDeveloperOnly(PermissionCodes.Tabs.Data.CollectionData), "该页签属于仅开发者权限。");
-    AssertFalse(RolePermissionInitializationRules.IsDeveloperOnly(PermissionCodes.Buttons.Data.Delete), "其它权限不受影响。");
-    AssertEqual(TextKeys.Permission.TabDataCollectionData, PermissionTextKeyMapper.GetTextKey(PermissionCodes.Tabs.Data.CollectionData), "权限管理界面必须有对应文案键。");
+    var mapperCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Security", "PermissionTextKeyMapper.cs"), Encoding.UTF8);
+    AssertFalse(mapperCode.Contains("Tabs.Data.CollectionData", StringComparison.Ordinal), "退役权限不得再映射文案键。");
+
+    var rbacCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Services", "RbacService.cs"), Encoding.UTF8);
+    var cleanupMethod = ExtractMethodText(rbacCode, "private void CleanupRetiredPermissions()", "private void EnsureDefaultRolePermissions()");
+    AssertTrue(cleanupMethod.Contains($"\"{retiredCode}\"", StringComparison.Ordinal), "启动时必须清理旧库中的采集数据页签权限及角色关联。");
+
+    var viewCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "DataManageView.cs"), Encoding.UTF8);
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "DataManageView.Designer.cs"), Encoding.UTF8);
+    AssertFalse(viewCode.Contains("ApplyTabPermissions", StringComparison.Ordinal), "数据管理页不再有按权限挂载的页签。");
+    AssertFalse(viewCode.Contains("DataHistoryCollectionRow", StringComparison.Ordinal), "数据管理页不得再引用已删除的采集记录行模型。");
+    AssertFalse(
+        designerCode.Contains("tabCollectionData", StringComparison.Ordinal)
+            || designerCode.Contains("dgvCollectionRecords", StringComparison.Ordinal)
+            || designerCode.Contains("collectionBindingSource", StringComparison.Ordinal),
+        "Designer 不得残留采集数据页签及其表格、绑定源。");
+    AssertTrue(viewCode.Contains("ApplyDeletePermission();", StringComparison.Ordinal), "会话切换后仍必须重新计算删除按钮权限。");
+}
+
+static void DataManageTabTextIsCollectionData()
+{
+    var zhResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.resx"), Encoding.UTF8).ReplaceLineEndings("\n");
+    var enResources = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.Core", "Localization", "UiText.en.resx"), Encoding.UTF8).ReplaceLineEndings("\n");
+    var designerCode = File.ReadAllText(GetRepoFilePath("AutoWeldSystem.UI", "Views", "DataManageView.Designer.cs"), Encoding.UTF8);
+
+    AssertTrue(
+        zhResources.Contains("name=\"data.tab.weld_parameters\" xml:space=\"preserve\">\n    <value>采集数据</value>", StringComparison.Ordinal),
+        "数据管理页测试记录页签的中文标题必须为“采集数据”。");
+    AssertTrue(
+        enResources.Contains("name=\"data.tab.weld_parameters\" xml:space=\"preserve\">\n    <value>Collection Data</value>", StringComparison.Ordinal),
+        "数据管理页测试记录页签的英文标题必须为“Collection Data”。");
+    AssertTrue(designerCode.Contains("tabWeldParameters.Text = \"采集数据\";", StringComparison.Ordinal), "Designer 设计时占位文案必须与资源一致。");
+    AssertFalse(zhResources.Contains("name=\"data.tab.collection_data\"", StringComparison.Ordinal), "旧采集数据页签资源键必须移除。");
 }
 
 static void ProductHistoryPreviewSortsLatestProductFirst()

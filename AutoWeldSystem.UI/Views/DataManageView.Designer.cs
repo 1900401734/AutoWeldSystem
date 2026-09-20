@@ -22,7 +22,6 @@
             components = new System.ComponentModel.Container();
             workOrderBindingSource = new BindingSource(components);
             parameterBindingSource = new BindingSource(components);
-            collectionBindingSource = new BindingSource(components);
             reportBindingSource = new BindingSource(components);
             rootLayout = new TableLayoutPanel();
             filterPanel = new Panel();
@@ -60,11 +59,6 @@
             dgvWeldParameters = new DataGridView();
             tableTestData = new AntdUI.Table();
             testDataPagination = new AntdUI.Pagination();
-            tabCollectionData = new TabPage();
-            collectionLayout = new TableLayoutPanel();
-            lblCollectionSummary = new Label();
-            dgvCollectionRecords = new DataGridView();
-            collectionPagination = new AntdUI.Pagination();
             tabReportFiles = new TabPage();
             reportLayout = new TableLayoutPanel();
             reportToolbar = new FlowLayoutPanel();
@@ -93,17 +87,6 @@
             colParameterTouchNo = new DataGridViewTextBoxColumn();
             colParameterResult = new DataGridViewTextBoxColumn();
             colParameterRecordTime = new DataGridViewTextBoxColumn();
-            colCollectionSequence = new DataGridViewTextBoxColumn();
-            colCollectionStation = new DataGridViewTextBoxColumn();
-            colCollectionProductNo = new DataGridViewTextBoxColumn();
-            colCollectionTouchNo = new DataGridViewTextBoxColumn();
-            colCollectionResult = new DataGridViewTextBoxColumn();
-            colCollectionIsTest = new DataGridViewCheckBoxColumn();
-            colCollectionIsDeleted = new DataGridViewCheckBoxColumn();
-            colCollectionCompleted = new DataGridViewCheckBoxColumn();
-            colCollectionUploadStatus = new DataGridViewTextBoxColumn();
-            colCollectionOperator = new DataGridViewTextBoxColumn();
-            colCollectionRecordTime = new DataGridViewTextBoxColumn();
             colReportFileName = new DataGridViewTextBoxColumn();
             colReportExpStartId = new DataGridViewTextBoxColumn();
             colReportUploadStatus = new DataGridViewTextBoxColumn();
@@ -111,7 +94,6 @@
             colReportUpdatedTime = new DataGridViewTextBoxColumn();
             ((System.ComponentModel.ISupportInitialize)workOrderBindingSource).BeginInit();
             ((System.ComponentModel.ISupportInitialize)parameterBindingSource).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)collectionBindingSource).BeginInit();
             ((System.ComponentModel.ISupportInitialize)reportBindingSource).BeginInit();
             rootLayout.SuspendLayout();
             filterPanel.SuspendLayout();
@@ -129,9 +111,6 @@
             parameterHeaderLayout.SuspendLayout();
             parameterToolbar.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)dgvWeldParameters).BeginInit();
-            tabCollectionData.SuspendLayout();
-            collectionLayout.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)dgvCollectionRecords).BeginInit();
             tabReportFiles.SuspendLayout();
             reportLayout.SuspendLayout();
             reportToolbar.SuspendLayout();
@@ -460,7 +439,7 @@
             tabWeldParameters.Padding = new Padding(3);
             tabWeldParameters.Size = new Size(1416, 320);
             tabWeldParameters.TabIndex = 0;
-            tabWeldParameters.Text = "测试数据";
+            tabWeldParameters.Text = "采集数据";
             tabWeldParameters.UseVisualStyleBackColor = true;
             //
             // parameterLayout
@@ -627,81 +606,6 @@
             testDataPagination.ShowSizeChanger = true;
             testDataPagination.Size = new Size(1404, 38);
             testDataPagination.TabIndex = 3;
-            //
-            // tabCollectionData
-            //
-            tabCollectionData.Location = new Point(4, 29);
-            tabCollectionData.Name = "tabCollectionData";
-            tabCollectionData.Padding = new Padding(3);
-            tabCollectionData.Size = new Size(1416, 323);
-            tabCollectionData.TabIndex = 1;
-            tabCollectionData.Text = "采集数据";
-            tabCollectionData.UseVisualStyleBackColor = true;
-            //
-            // collectionLayout
-            //
-            collectionLayout.ColumnCount = 1;
-            collectionLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            collectionLayout.Controls.Add(lblCollectionSummary, 0, 0);
-            collectionLayout.Controls.Add(dgvCollectionRecords, 0, 1);
-            collectionLayout.Controls.Add(collectionPagination, 0, 2);
-            collectionLayout.Dock = DockStyle.Fill;
-            collectionLayout.Location = new Point(0, 0);
-            collectionLayout.Name = "collectionLayout";
-            collectionLayout.RowCount = 3;
-            collectionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
-            collectionLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            collectionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44F));
-            collectionLayout.Size = new Size(1410, 205);
-            collectionLayout.TabIndex = 0;
-            //
-            // lblCollectionSummary
-            //
-            lblCollectionSummary.Dock = DockStyle.Fill;
-            lblCollectionSummary.ForeColor = SystemColors.GrayText;
-            lblCollectionSummary.Location = new Point(3, 0);
-            lblCollectionSummary.Name = "lblCollectionSummary";
-            lblCollectionSummary.Size = new Size(1404, 30);
-            lblCollectionSummary.TabIndex = 0;
-            lblCollectionSummary.Text = "请选择历史工单";
-            lblCollectionSummary.TextAlign = ContentAlignment.MiddleLeft;
-            //
-            // dgvCollectionRecords
-            //
-            dgvCollectionRecords.AllowUserToAddRows = false;
-            dgvCollectionRecords.AllowUserToDeleteRows = false;
-            dgvCollectionRecords.AutoGenerateColumns = false;
-            dgvCollectionRecords.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-            dgvCollectionRecords.DataSource = collectionBindingSource;
-            dgvCollectionRecords.Dock = DockStyle.Fill;
-            dgvCollectionRecords.Location = new Point(0, 30);
-            dgvCollectionRecords.Margin = new Padding(0);
-            dgvCollectionRecords.MultiSelect = false;
-            dgvCollectionRecords.Name = "dgvCollectionRecords";
-            dgvCollectionRecords.ReadOnly = true;
-            dgvCollectionRecords.RowHeadersVisible = false;
-            dgvCollectionRecords.RowHeadersWidth = 51;
-            dgvCollectionRecords.RowTemplate.Height = 28;
-            dgvCollectionRecords.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgvCollectionRecords.Size = new Size(1410, 131);
-            dgvCollectionRecords.TabIndex = 1;
-            //
-            // collectionPagination
-            //
-            collectionPagination.Dock = DockStyle.Fill;
-            collectionPagination.Location = new Point(3, 164);
-            collectionPagination.Name = "collectionPagination";
-            collectionPagination.PageSize = 50;
-            collectionPagination.PageSizeOptions = new int[]
-    {
-    50,
-    100,
-    200
-    };
-            collectionPagination.RecordsPerPageText = "条/页";
-            collectionPagination.ShowSizeChanger = true;
-            collectionPagination.Size = new Size(1404, 38);
-            collectionPagination.TabIndex = 2;
             //
             // tabReportFiles
             //
@@ -924,72 +828,6 @@
             colParameterRecordTime.Name = "colParameterRecordTime";
             colParameterRecordTime.Width = 125;
             //
-            // colCollectionSequence
-            //
-            colCollectionSequence.MinimumWidth = 6;
-            colCollectionSequence.Name = "colCollectionSequence";
-            colCollectionSequence.Width = 125;
-            //
-            // colCollectionStation
-            //
-            colCollectionStation.MinimumWidth = 6;
-            colCollectionStation.Name = "colCollectionStation";
-            colCollectionStation.Width = 125;
-            //
-            // colCollectionProductNo
-            //
-            colCollectionProductNo.MinimumWidth = 6;
-            colCollectionProductNo.Name = "colCollectionProductNo";
-            colCollectionProductNo.Width = 125;
-            //
-            // colCollectionTouchNo
-            //
-            colCollectionTouchNo.MinimumWidth = 6;
-            colCollectionTouchNo.Name = "colCollectionTouchNo";
-            colCollectionTouchNo.Width = 125;
-            //
-            // colCollectionResult
-            //
-            colCollectionResult.MinimumWidth = 6;
-            colCollectionResult.Name = "colCollectionResult";
-            colCollectionResult.Width = 125;
-            //
-            // colCollectionIsTest
-            //
-            colCollectionIsTest.MinimumWidth = 6;
-            colCollectionIsTest.Name = "colCollectionIsTest";
-            colCollectionIsTest.Width = 125;
-            //
-            // colCollectionIsDeleted
-            //
-            colCollectionIsDeleted.MinimumWidth = 6;
-            colCollectionIsDeleted.Name = "colCollectionIsDeleted";
-            colCollectionIsDeleted.Width = 125;
-            //
-            // colCollectionCompleted
-            //
-            colCollectionCompleted.MinimumWidth = 6;
-            colCollectionCompleted.Name = "colCollectionCompleted";
-            colCollectionCompleted.Width = 125;
-            //
-            // colCollectionUploadStatus
-            //
-            colCollectionUploadStatus.MinimumWidth = 6;
-            colCollectionUploadStatus.Name = "colCollectionUploadStatus";
-            colCollectionUploadStatus.Width = 125;
-            //
-            // colCollectionOperator
-            //
-            colCollectionOperator.MinimumWidth = 6;
-            colCollectionOperator.Name = "colCollectionOperator";
-            colCollectionOperator.Width = 125;
-            //
-            // colCollectionRecordTime
-            //
-            colCollectionRecordTime.MinimumWidth = 6;
-            colCollectionRecordTime.Name = "colCollectionRecordTime";
-            colCollectionRecordTime.Width = 125;
-            //
             // colReportFileName
             //
             colReportFileName.MinimumWidth = 6;
@@ -1030,7 +868,6 @@
             Size = new Size(1456, 760);
             ((System.ComponentModel.ISupportInitialize)workOrderBindingSource).EndInit();
             ((System.ComponentModel.ISupportInitialize)parameterBindingSource).EndInit();
-            ((System.ComponentModel.ISupportInitialize)collectionBindingSource).EndInit();
             ((System.ComponentModel.ISupportInitialize)reportBindingSource).EndInit();
             rootLayout.ResumeLayout(false);
             filterPanel.ResumeLayout(false);
@@ -1050,9 +887,6 @@
             parameterToolbar.ResumeLayout(false);
             parameterToolbar.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)dgvWeldParameters).EndInit();
-            tabCollectionData.ResumeLayout(false);
-            collectionLayout.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)dgvCollectionRecords).EndInit();
             tabReportFiles.ResumeLayout(false);
             reportLayout.ResumeLayout(false);
             reportToolbar.ResumeLayout(false);
@@ -1064,7 +898,6 @@
 
         private BindingSource workOrderBindingSource;
         private BindingSource parameterBindingSource;
-        private BindingSource collectionBindingSource;
         private BindingSource reportBindingSource;
         private TableLayoutPanel rootLayout;
         private Panel filterPanel;
@@ -1102,11 +935,6 @@
         private DataGridView dgvWeldParameters;
         private AntdUI.Table tableTestData;
         private AntdUI.Pagination testDataPagination;
-        private TabPage tabCollectionData;
-        private TableLayoutPanel collectionLayout;
-        private Label lblCollectionSummary;
-        private DataGridView dgvCollectionRecords;
-        private AntdUI.Pagination collectionPagination;
         private TabPage tabReportFiles;
         private TableLayoutPanel reportLayout;
         private FlowLayoutPanel reportToolbar;
@@ -1135,17 +963,6 @@
         private DataGridViewTextBoxColumn colParameterTouchNo;
         private DataGridViewTextBoxColumn colParameterResult;
         private DataGridViewTextBoxColumn colParameterRecordTime;
-        private DataGridViewTextBoxColumn colCollectionSequence;
-        private DataGridViewTextBoxColumn colCollectionStation;
-        private DataGridViewTextBoxColumn colCollectionProductNo;
-        private DataGridViewTextBoxColumn colCollectionTouchNo;
-        private DataGridViewTextBoxColumn colCollectionResult;
-        private DataGridViewCheckBoxColumn colCollectionIsTest;
-        private DataGridViewCheckBoxColumn colCollectionIsDeleted;
-        private DataGridViewCheckBoxColumn colCollectionCompleted;
-        private DataGridViewTextBoxColumn colCollectionUploadStatus;
-        private DataGridViewTextBoxColumn colCollectionOperator;
-        private DataGridViewTextBoxColumn colCollectionRecordTime;
         private DataGridViewTextBoxColumn colReportFileName;
         private DataGridViewTextBoxColumn colReportExpStartId;
         private DataGridViewTextBoxColumn colReportUploadStatus;

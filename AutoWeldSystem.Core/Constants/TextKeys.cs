@@ -760,22 +760,14 @@ public static class TextKeys
         public const string DeleteFailed = "data.message.delete_failed";
 
         /// <summary>
-        /// 焊接参数
+        /// 采集数据（原“测试数据”页签标题，控件名沿用 tabWeldParameters）
         /// </summary>
         public const string TabWeldParameters = "data.tab.weld_parameters";
-        /// <summary>
-        /// 采集数据
-        /// </summary>
-        public const string TabCollectionData = "data.tab.collection_data";
         /// <summary>
         /// 报告文件
         /// </summary>
         public const string TabReportFiles = "data.tab.report_files";
 
-        /// <summary>
-        /// 采集数据：{0} 条
-        /// </summary>
-        public const string CollectionSummary = "data.summary.collection";
         /// <summary>
         /// 焊接参数：{0} 条，动态测试项列：{1} 列
         /// </summary>
@@ -915,22 +907,6 @@ public static class TextKeys
         /// </summary>
         public const string ColumnRecordTime = "data.column.record_time";
         /// <summary>
-        /// 序号
-        /// </summary>
-        public const string ColumnSequence = "data.column.sequence";
-        /// <summary>
-        /// 试焊件
-        /// </summary>
-        public const string ColumnIsTest = "data.column.is_test";
-        /// <summary>
-        /// 产品完成
-        /// </summary>
-        public const string ColumnProductCompleted = "data.column.product_completed";
-        /// <summary>
-        /// 已删除
-        /// </summary>
-        public const string ColumnIsDeleted = "data.column.is_deleted";
-        /// <summary>
         /// 文件名
         /// </summary>
         public const string ColumnFileName = "data.column.file_name";
@@ -1060,7 +1036,6 @@ public static class TextKeys
         public const string TabStateWorkOrderStatus = "permission.tab.state.work_order_status";
         public const string TabStateDeviceStatus = "permission.tab.state.device_status";
         public const string TabStateProgramFile = "permission.tab.state.program_file";
-        public const string TabDataCollectionData = "permission.tab.data.collection_data";
         public const string TabLogMesInteraction = "permission.tab.log.mes_interaction";
         public const string TabLogProductionFlow = "permission.tab.log.production_flow";
         public const string TabLogProgramException = "permission.tab.log.program_exception";

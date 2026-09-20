@@ -96,7 +96,6 @@ public partial class DataManageView : BaseView
         ApplyLocalizedTexts();
         ApplyDefaultSplitterLayout();
         ApplyDeletePermission();
-        ApplyTabPermissions();
 
         // 视图被 MainForm 缓存，切换用户后不会重新绑定权限，必须自行复算删除按钮
         GlobalContext.SessionChanged += GlobalContext_SessionChanged;
@@ -338,35 +337,6 @@ public partial class DataManageView : BaseView
             });
         }
 
-        ConfigureColumn(colCollectionSequence, nameof(DataHistoryCollectionRow.SequenceNo));
-        ConfigureColumn(colCollectionStation, nameof(DataHistoryCollectionRow.StationNo));
-        ConfigureColumn(colCollectionProductNo, nameof(DataHistoryCollectionRow.ProductNo));
-        ConfigureColumn(colCollectionTouchNo, nameof(DataHistoryCollectionRow.TouchNo));
-        ConfigureColumn(colCollectionResult, nameof(DataHistoryCollectionRow.TestResult));
-        ConfigureColumn(colCollectionIsTest, nameof(DataHistoryCollectionRow.IsTest));
-        ConfigureColumn(colCollectionIsDeleted, nameof(DataHistoryCollectionRow.IsDeleted));
-        ConfigureColumn(colCollectionCompleted, nameof(DataHistoryCollectionRow.ProductCompleted));
-        ConfigureColumn(colCollectionUploadStatus, nameof(DataHistoryCollectionRow.UploadStatus));
-        ConfigureColumn(colCollectionOperator, nameof(DataHistoryCollectionRow.OperatorNo));
-        ConfigureColumn(colCollectionRecordTime, nameof(DataHistoryCollectionRow.RecordTime), DateTimeDisplayFormat);
-        if (dgvCollectionRecords.Columns.Count == 0)
-        {
-            dgvCollectionRecords.Columns.AddRange(new DataGridViewColumn[]
-            {
-                colCollectionSequence,
-                colCollectionStation,
-                colCollectionProductNo,
-                colCollectionTouchNo,
-                colCollectionResult,
-                colCollectionIsTest,
-                colCollectionIsDeleted,
-                colCollectionCompleted,
-                colCollectionUploadStatus,
-                colCollectionOperator,
-                colCollectionRecordTime
-            });
-        }
-
         ConfigureColumn(colReportFileName, nameof(DataHistoryReportFileRow.FileName));
         ConfigureColumn(colReportExpStartId, nameof(DataHistoryReportFileRow.ExpStartId));
         ConfigureColumn(colReportUploadStatus, nameof(DataHistoryReportFileRow.UploadStatus));
@@ -436,7 +406,6 @@ public partial class DataManageView : BaseView
         dgvWorkOrders.CellFormatting += Status_CellFormatting;
         dgvReportFiles.CellFormatting += Status_CellFormatting;
         dgvWeldParameters.CellFormatting += Station_CellFormatting;
-        dgvCollectionRecords.CellFormatting += Station_CellFormatting;
         dgvReportFiles.SelectionChanged += ReportFiles_SelectionChanged;
         dgvReportFiles.CellDoubleClick += (_, e) =>
         {
@@ -513,39 +482,11 @@ public partial class DataManageView : BaseView
 
         if (InvokeRequired)
         {
-            BeginInvoke(new Action(() =>
-            {
-                ApplyDeletePermission();
-                ApplyTabPermissions();
-            }));
+            BeginInvoke(new Action(ApplyDeletePermission));
             return;
         }
 
         ApplyDeletePermission();
-        ApplyTabPermissions();
-    }
-
-    /// <summary>
-    /// 采集数据页签展示原始焊点行（含已删除产品），只对拥有该页签权限的角色挂载；
-    /// Designer 中不挂载，运行时按权限决定，模式与待上传数据页一致。
-    /// </summary>
-    private void ApplyTabPermissions()
-    {
-        if (_disposing || IsDisposed || Disposing)
-        {
-            return;
-        }
-
-        var canViewCollection = GlobalContext.HasPermission(PermissionCodes.Tabs.Data.CollectionData);
-        var mounted = detailTabs.TabPages.Contains(tabCollectionData);
-        if (canViewCollection && !mounted)
-        {
-            detailTabs.TabPages.Add(tabCollectionData);
-        }
-        else if (!canViewCollection && mounted)
-        {
-            detailTabs.TabPages.Remove(tabCollectionData);
-        }
     }
 
     /// <summary>
@@ -1207,7 +1148,6 @@ public partial class DataManageView : BaseView
         tableTestData.Refresh();
         dgvWorkOrders.Refresh();
         dgvWeldParameters.Refresh();
-        dgvCollectionRecords.Refresh();
         Invalidate(true);
     }
 
@@ -1329,7 +1269,6 @@ public partial class DataManageView : BaseView
         ConfigureTestDataColumns(_testDataDynamicColumns);
         tableTestData.DataSource = Array.Empty<DataHistoryTestDataRow>();
         ResetTestDataPagination();
-        collectionBindingSource.DataSource = Array.Empty<DataHistoryCollectionRow>();
         reportBindingSource.DataSource = Array.Empty<DataHistoryReportFileRow>();
         lblParameterSummary.Text = _localizer.GetString(TextKeys.DataManage.SelectWorkOrder);
         lblReportSummary.Text = _localizer.GetString(TextKeys.DataManage.SelectWorkOrder);
@@ -1475,18 +1414,6 @@ public partial class DataManageView : BaseView
         colParameterTouchNo.HeaderText = profile.PointNoHeader;
         colParameterResult.HeaderText = profile.PointResultHeader;
         colParameterRecordTime.HeaderText = T(TextKeys.DataManage.ColumnRecordTime);
-
-        colCollectionSequence.HeaderText = T(TextKeys.DataManage.ColumnSequence);
-        colCollectionStation.HeaderText = T(TextKeys.DataManage.ColumnStation);
-        colCollectionProductNo.HeaderText = T(TextKeys.DataManage.ColumnProductNo);
-        colCollectionTouchNo.HeaderText = profile.PointNoHeader;
-        colCollectionResult.HeaderText = profile.PointResultHeader;
-        colCollectionIsTest.HeaderText = T(TextKeys.DataManage.ColumnIsTest);
-        colCollectionIsDeleted.HeaderText = T(TextKeys.DataManage.ColumnIsDeleted);
-        colCollectionCompleted.HeaderText = T(TextKeys.DataManage.ColumnProductCompleted);
-        colCollectionUploadStatus.HeaderText = T(TextKeys.DataManage.ColumnUploadStatus);
-        colCollectionOperator.HeaderText = T(TextKeys.DataManage.ColumnOperator);
-        colCollectionRecordTime.HeaderText = T(TextKeys.DataManage.ColumnRecordTime);
 
         colReportFileName.HeaderText = T(TextKeys.DataManage.ColumnFileName);
         colReportExpStartId.HeaderText = T(TextKeys.DataManage.ColumnExpStartId);

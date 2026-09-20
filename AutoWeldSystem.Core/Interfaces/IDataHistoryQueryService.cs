@@ -21,12 +21,6 @@ public interface IDataHistoryQueryService
         int taskId,
         CancellationToken cancellationToken = default);
 
-    Task<PagedResult<DataHistoryCollectionRow>> QueryCollectionRecordsAsync(
-        int taskId,
-        int pageIndex,
-        int pageSize,
-        CancellationToken cancellationToken = default);
-
     Task<IReadOnlyList<DataHistoryReportFileRow>> QueryReportFilesAsync(
         int taskId,
         CancellationToken cancellationToken = default);

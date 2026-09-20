@@ -61,7 +61,6 @@ public static class PermissionTextKeyMapper
             PermissionCodes.Tabs.State.WorkOrderStatus => TextKeys.Permission.TabStateWorkOrderStatus,
             PermissionCodes.Tabs.State.DeviceStatus => TextKeys.Permission.TabStateDeviceStatus,
             PermissionCodes.Tabs.State.ProgramFile => TextKeys.Permission.TabStateProgramFile,
-            PermissionCodes.Tabs.Data.CollectionData => TextKeys.Permission.TabDataCollectionData,
             PermissionCodes.Tabs.Log.MesInteraction => TextKeys.Permission.TabLogMesInteraction,
             PermissionCodes.Tabs.Log.ProductionFlow => TextKeys.Permission.TabLogProductionFlow,
             PermissionCodes.Tabs.Log.ProgramException => TextKeys.Permission.TabLogProgramException,
