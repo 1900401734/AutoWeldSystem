@@ -241,6 +241,9 @@ var tests = new (string Name, Action Run)[]
     ("PLC alarm cycle tracks per-address recovery", PlcAlarmCycleTracksPerAddressRecovery),
     ("PLC device alarm cycle restores from jsonl", PlcDeviceAlarmCycleRestoresFromJsonl),
     ("PLC production monitor reads bool alarms independently", PlcProductionMonitorReadsBoolAlarmsIndependently),
+    ("PLC alarm batch read rules group Siemens bits into segments", PlcAlarmBatchReadRulesGroupSiemensBitsIntoSegments),
+    ("PLC alarm acknowledgement service shares dismissal across views", PlcAlarmAcknowledgementServiceSharesDismissalAcrossViews),
+    ("PLC production monitor polls alarms without blocking on MES", PlcProductionMonitorPollsAlarmsWithoutBlockingOnMes),
     ("PLC software alarms feed center telemetry without changing raw status", PlcSoftwareAlarmsFeedCenterTelemetry),
     ("Center effective alarms preserve compatibility and deduplicate shared reasons", CenterEffectiveAlarmsPreserveCompatibility),
     ("Center effective alarm changes and recovery send telemetry", CenterEffectiveAlarmChangesSendTelemetry),
@@ -1135,19 +1138,19 @@ static void PlcAlarmNotificationRulesNormalizeMessagesAndSignatures()
         messages.ToArray(),
         "PLC 报警通知必须按分隔符拆分并去重，同时保留首次出现顺序。");
 
-    var activeSignature = PlcAlarmNotificationRules.CreateSignature(messages, pendingConfirmation: false);
-    var reorderedSignature = PlcAlarmNotificationRules.CreateSignature(messages.Reverse(), pendingConfirmation: false);
-    var pendingSignature = PlcAlarmNotificationRules.CreateSignature(messages, pendingConfirmation: true);
+    var activeSignature = PlcAlarmNotificationRules.CreateSignature(messages);
+    var reorderedSignature = PlcAlarmNotificationRules.CreateSignature(messages.Reverse());
+    var changedSignature = PlcAlarmNotificationRules.CreateSignature(messages.Take(2));
     AssertEqual(activeSignature, reorderedSignature, "报警签名不得受 PLC 报警返回顺序变化影响。");
-    AssertFalse(string.Equals(activeSignature, pendingSignature, StringComparison.Ordinal), "确认报警和等待确认报警必须使用不同签名。");
+    AssertFalse(string.Equals(activeSignature, changedSignature, StringComparison.Ordinal), "报警集合变化后必须产生不同签名，使卡片重新弹出。");
     AssertEqual("1.温度过高\r\n2.安全门未关闭\r\n3.伺服报警", PlcAlarmNotificationRules.BuildDisplayText(messages), "通知正文必须按序号逐行展示全部报警。");
 }
 static void PlcAlarmNotificationRulesAggregateAcrossStations()
 {
     var inactive = PlcAlarmNotificationRules.Aggregate(
     [
-        new PlcAlarmNotificationInput(false, false, false, string.Empty),
-        new PlcAlarmNotificationInput(false, false, false, null)
+        new PlcAlarmNotificationInput(false, string.Empty),
+        new PlcAlarmNotificationInput(false, null)
     ]);
     AssertFalse(inactive.IsActive, "全部工位无报警时聚合结果必须为无报警。");
     AssertTrue(inactive.Signature is null, "无报警时聚合签名必须为空，便于清空已读状态。");
@@ -1155,37 +1158,37 @@ static void PlcAlarmNotificationRulesAggregateAcrossStations()
     // 报警地址属于整台设备，双工位收到内容相同的报警快照，聚合后只能得到一份报警集合。
     var duplicated = PlcAlarmNotificationRules.Aggregate(
     [
-        new PlcAlarmNotificationInput(true, false, false, "温度过高；安全门未关闭"),
-        new PlcAlarmNotificationInput(true, false, false, "安全门未关闭；温度过高")
+        new PlcAlarmNotificationInput(true, "温度过高；安全门未关闭"),
+        new PlcAlarmNotificationInput(true, "安全门未关闭；温度过高")
     ]);
     AssertTrue(duplicated.IsActive, "任一工位报警时聚合结果必须为报警。");
-    AssertFalse(duplicated.PendingConfirmation, "已确认报警的聚合结果不得标记为等待确认。");
     AssertSequenceEqual(
         new[] { "温度过高", "安全门未关闭" },
         duplicated.Messages.ToArray(),
         "双工位重复上报同一批报警时必须去重为唯一报警集合。");
+    AssertEqual(
+        PlcAlarmNotificationRules.CreateSignature(duplicated.Messages),
+        duplicated.Signature,
+        "聚合签名必须由聚合后的报警集合决定。");
 
-    var pending = PlcAlarmNotificationRules.Aggregate(
+    // PLC 原始状态为 4 但没有任何已启用报警地址置位（例如对应地址已禁用）属于待确认，
+    // 只由设备状态标签轻提示，不得弹出通知卡片或写入异常摘要。
+    var pendingOnly = PlcAlarmNotificationRules.Aggregate(
     [
-        new PlcAlarmNotificationInput(false, true, false, string.Empty),
-        new PlcAlarmNotificationInput(false, false, false, string.Empty)
+        new PlcAlarmNotificationInput(false, PlcSoftwareAlarmRules.GenericAlarmMessage),
+        new PlcAlarmNotificationInput(false, string.Empty)
     ]);
-    AssertTrue(pending.IsActive && pending.PendingConfirmation, "仅原始状态 4 时聚合结果必须为等待确认。");
+    AssertFalse(pendingOnly.IsActive, "仅原始状态 4、无已启用地址置位时不得产生报警通知。");
+    AssertTrue(pendingOnly.Signature is null, "待确认状态不得产生通知签名。");
+
+    var withoutMessage = PlcAlarmNotificationRules.Aggregate(
+    [
+        new PlcAlarmNotificationInput(true, string.Empty)
+    ]);
     AssertSequenceEqual(
         new[] { PlcSoftwareAlarmRules.GenericAlarmMessage },
-        pending.Messages.ToArray(),
-        "未匹配报警地址时聚合结果必须给出通用待确认原因。");
-
-    var mixed = PlcAlarmNotificationRules.Aggregate(
-    [
-        new PlcAlarmNotificationInput(false, true, false, string.Empty),
-        new PlcAlarmNotificationInput(true, false, false, "温度过高")
-    ]);
-    AssertFalse(mixed.PendingConfirmation, "任一工位已确认报警时聚合结果不得降级为等待确认。");
-    AssertEqual(
-        PlcAlarmNotificationRules.CreateSignature(mixed.Messages, pendingConfirmation: false),
-        mixed.Signature,
-        "聚合签名必须由聚合后的报警集合与确认状态共同决定。");
+        withoutMessage.Messages.ToArray(),
+        "有效报警缺少内容时必须回退为通用报警文案。");
 }
 
 static void MonitorViewAggregatesPlcAlarmNotificationPerDevice()
@@ -1228,8 +1231,8 @@ static void MonitorViewAggregatesPlcAlarmNotificationPerDevice()
         "private void ClearDeviceAlarmRuntimeErrorIfCurrent");
     AssertTrue(
         clearMethod.Contains("DismissPlcAlarmNotification();", StringComparison.Ordinal)
-            && clearMethod.Contains("_plcAlarmSummaryDismissedSignature = signature;", StringComparison.Ordinal),
-        "清除异常摘要时必须同时关闭报警通知卡片并标记为已读。");
+            && clearMethod.Contains("_plcAlarmAcknowledgementService.DismissSummary(signature);", StringComparison.Ordinal),
+        "清除异常摘要时必须同时关闭报警通知卡片并把已读签名写入共享服务。");
     AssertTrue(
         clearMethod.Contains("BuildCurrentPlcAlarmNotificationState().Signature", StringComparison.Ordinal),
         "清除时必须按当前聚合状态重算签名，避免摘要与通知签名不同步导致无法关闭。");
@@ -1241,6 +1244,33 @@ static void MonitorViewAggregatesPlcAlarmNotificationPerDevice()
     AssertTrue(
         dismissMethod.Contains("ClosePlcAlarmNotificationIfPresent(_plcAlarmNotificationId)", StringComparison.Ordinal),
         "关闭报警通知必须作用于本实例的通知 ID。");
+
+    // 主屏与扩展屏是两个实例，已读状态必须放在共享服务中，任一屏关闭卡片或清除摘要另一屏同步。
+    AssertFalse(
+        viewCode.Contains("_plcAlarmNotificationDismissedSignature", StringComparison.Ordinal)
+            || viewCode.Contains("_plcAlarmSummaryDismissedSignature", StringComparison.Ordinal),
+        "已读签名不得再保存在视图实例字段中。");
+    AssertTrue(
+        viewCode.Contains("_plcAlarmAcknowledgementService.Changed += PlcAlarmAcknowledgementService_Changed;", StringComparison.Ordinal)
+            && viewCode.Contains("_plcAlarmAcknowledgementService.Changed -= PlcAlarmAcknowledgementService_Changed;", StringComparison.Ordinal),
+        "监控视图必须订阅并在销毁时退订共享已读状态变化。");
+    var acknowledgementMethod = ExtractMethodText(
+        viewCode,
+        "private void ApplyPlcAlarmAcknowledgement()",
+        "private PlcAlarmNotificationState BuildCurrentPlcAlarmNotificationState()");
+    AssertTrue(
+        acknowledgementMethod.Contains("DismissedNotificationSignature", StringComparison.Ordinal)
+            && acknowledgementMethod.Contains("ClosePlcAlarmNotificationIfPresent(_plcAlarmNotificationId)", StringComparison.Ordinal)
+            && acknowledgementMethod.Contains("DismissedSummarySignature", StringComparison.Ordinal)
+            && acknowledgementMethod.Contains("ClearRuntimeError();", StringComparison.Ordinal),
+        "另一屏已读后本屏必须关闭卡片并清除设备报警摘要。");
+    var closeAllMethod = ExtractMethodText(
+        viewCode,
+        "private void CloseAllPlcAlarmNotifications()",
+        "private void RuntimeErrorClearButton_Click");
+    AssertFalse(
+        closeAllMethod.Contains("Reset()", StringComparison.Ordinal),
+        "视图销毁只清理本实例卡片，不得重置共享已读状态，否则关闭扩展屏会让主屏已读报警重新弹出。");
 }
 
 static void PlcAlarmNotificationTitleOmitsStation()
@@ -2768,6 +2798,125 @@ static void PlcProductionMonitorReadsBoolAlarmsIndependently()
         && deviceStatusStoreCode.Contains("Math.Clamp(maxCount, 1, 5000)", StringComparison.Ordinal)
         && recordAlarmCycle.Contains("maxCount: int.MaxValue", StringComparison.Ordinal),
         "报警周期恢复和删除复核必须扫描全部日期 JSONL，不能受日志管理页的 5000 条显示上限截断。");
+}
+
+static void PlcAlarmBatchReadRulesGroupSiemensBitsIntoSegments()
+{
+    var plan = PlcAlarmBatchReadRules.Plan(
+    [
+        "DB1.10.3",
+        "DB1.0.0",
+        "DB1.0.7",
+        "DB2.4.1",
+        "DB1.250.0",
+        "x=1;100",
+        "db1.0.0"
+    ]);
+
+    // 同一 DB 块内允许跨越未配置字节合并，DB1 的 0~10 字节合成一段；250 超出 200 字节跨度必须另起一段。
+    AssertEqual(3, plan.Segments.Count, "同 DB 且跨度不超过上限的地址必须合并为一段，跨 DB 或超跨度必须分段。");
+    var first = plan.Segments[0];
+    AssertEqual("DB1.0", first.StartAddress, "段起始地址必须是该段最小字节的字节地址。");
+    AssertEqual((ushort)11, first.Length, "段长度必须覆盖到该段最大字节（含）。");
+    AssertSequenceEqual(
+        new[] { "DB1.0.0", "DB1.0.7", "DB1.10.3" },
+        first.Bits.Select(bit => bit.Address).ToArray(),
+        "段内地址按字节和位排序，且大小写不同的重复地址只保留一次。");
+    AssertEqual(10, first.Bits[2].ByteOffset, "段内字节偏移必须相对段起始字节。");
+    AssertEqual(3, first.Bits[2].Bit, "位号必须原样保留。");
+    AssertEqual("DB1.250", plan.Segments[1].StartAddress, "超出跨度上限的地址必须另起新段。");
+    AssertEqual((ushort)1, plan.Segments[1].Length, "单地址段长度为 1 字节。");
+    AssertEqual("DB2.4", plan.Segments[2].StartAddress, "不同 DB 块必须分段读取。");
+    AssertSequenceEqual(new[] { "x=1;100" }, plan.SingleAddresses.ToArray(), "无法解析为西门子 DB 位的地址必须保留逐个读取。");
+
+    var split = PlcAlarmBatchReadRules.Plan(["DB3.0.0", "DB3.199.0", "DB3.200.0"], maxSegmentBytes: 200);
+    AssertEqual(2, split.Segments.Count, "段跨度恰好等于上限时仍在同一段，超过上限才拆分。");
+    AssertEqual((ushort)200, split.Segments[0].Length, "第一段必须覆盖满 200 字节。");
+
+    AssertTrue(PlcAlarmBatchReadRules.TryExtractBit([0b0000_1000, 0xFF], 0, 3, out var bit3) && bit3, "bit 3 置位时必须解析为 true。");
+    AssertTrue(PlcAlarmBatchReadRules.TryExtractBit([0b0000_1000, 0xFF], 0, 2, out var bit2) && !bit2, "未置位的位必须解析为 false。");
+    AssertFalse(PlcAlarmBatchReadRules.TryExtractBit([0x01], 1, 0, out _), "字节不足时必须返回失败，交给调用方回退逐地址读取。");
+    AssertFalse(PlcAlarmBatchReadRules.TryParseSiemensBit("DB1.DBX0.0", out _, out _, out _), "未归一化的 DBX 写法不参与批量规划，由归一化规则先转换。");
+}
+
+static void PlcAlarmAcknowledgementServiceSharesDismissalAcrossViews()
+{
+    var service = new PlcAlarmAcknowledgementService();
+    var changedCount = 0;
+    service.Changed += (_, _) => changedCount++;
+
+    service.Attach();
+    service.Attach();
+    service.DismissNotification("active|A");
+    AssertEqual("active|A", service.DismissedNotificationSignature, "关闭卡片必须记录通知已读签名。");
+    AssertTrue(service.DismissedSummarySignature is null, "关闭卡片不得影响右侧摘要的已读状态。");
+    AssertEqual(1, changedCount, "已读状态变化必须触发一次通知。");
+
+    // 另一屏收到变更后关闭自己的卡片会再次写入相同签名，服务不得再次触发事件，否则两屏互相回写形成回环。
+    service.DismissNotification("active|A");
+    AssertEqual(1, changedCount, "写入相同签名不得重复触发事件。");
+
+    service.DismissSummary("active|A");
+    AssertEqual("active|A", service.DismissedSummarySignature, "清除摘要必须记录摘要已读签名。");
+    AssertEqual("active|A", service.DismissedNotificationSignature, "清除摘要时卡片一并关闭，通知签名必须同步。");
+    AssertEqual(2, changedCount, "摘要已读变化必须触发事件。");
+
+    service.Reset();
+    AssertTrue(service.DismissedNotificationSignature is null && service.DismissedSummarySignature is null, "报警恢复后必须清空全部已读签名。");
+    AssertEqual(3, changedCount, "清空已读状态必须触发事件。");
+    service.Reset();
+    AssertEqual(3, changedCount, "重复清空不得触发事件。");
+
+    // 扩展屏关闭时主屏仍在使用已读状态，不得重置；最后一个视图销毁后才清空，重新登录时报警重新弹出。
+    service.DismissSummary("active|B");
+    service.Detach();
+    AssertEqual("active|B", service.DismissedSummarySignature, "仍有视图在用时注销单个视图不得清空已读状态。");
+    service.Detach();
+    AssertTrue(service.DismissedSummarySignature is null, "最后一个视图注销后必须清空已读状态。");
+}
+
+static void PlcProductionMonitorPollsAlarmsWithoutBlockingOnMes()
+{
+    var serviceCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Plc", "ProductionMonitorService.cs"),
+        Encoding.UTF8);
+    AssertTrue(
+        serviceCode.Contains("PollInterval = TimeSpan.FromMilliseconds(500)", StringComparison.Ordinal),
+        "生产与报警轮询周期必须为 500ms，报警置位/清除才能在 1 秒内反映到界面。");
+
+    // 此前报警变化时同步等待 MES 上报（默认超时 10 秒），整个轮询线程被卡住，下一次报警变化被推迟。
+    var recordMethod = ExtractMethodText(
+        serviceCode,
+        "private async Task<bool> RecordDeviceStatusChangeAsync",
+        "private void QueueDeviceStatusUpload");
+    AssertTrue(recordMethod.Contains("reportToMes: false,", StringComparison.Ordinal), "报警状态必须只落 JSONL 并登记补传任务，不在轮询线程内等待 MES。");
+    AssertFalse(recordMethod.Contains("reportToMes: _mesConnectionMonitorService", StringComparison.Ordinal), "报警状态不得再按 MES 在线状态同步上报。");
+    AssertTrue(recordMethod.Contains("QueueDeviceStatusUpload(cancellationToken);", StringComparison.Ordinal), "落盘成功后必须触发后台补传。");
+    var queueMethod = ExtractMethodText(
+        serviceCode,
+        "private void QueueDeviceStatusUpload",
+        "private async Task<IReadOnlyList<PlcAlarmSignalReadResult>> ReadAlarmSignalsAsync");
+    AssertTrue(
+        queueMethod.Contains("_ = Task.Run(", StringComparison.Ordinal)
+            && queueMethod.Contains("RetryPendingUploadsAsync(cancellationToken)", StringComparison.Ordinal),
+        "MES 补传必须在后台任务中执行，不得阻塞轮询。");
+    AssertTrue(queueMethod.Contains("_mesConnectionMonitorService.Current.IsConnected", StringComparison.Ordinal), "MES 离线时不发起补传，保留既有离线落盘语义。");
+
+    // 报警位按 DB 块合并读取，把每地址一次往返压缩为每段一次往返；段失败时回退逐地址读取。
+    var readMethod = ExtractMethodText(
+        serviceCode,
+        "private async Task<IReadOnlyDictionary<string, PlcServiceResult<bool>>> ReadAlarmBitsAsync",
+        "private void UpdateAlarmReadFailureLog");
+    AssertTrue(readMethod.Contains("PlcAlarmBatchReadRules.Plan(addresses)", StringComparison.Ordinal), "报警读取必须先生成批量读取计划。");
+    AssertTrue(readMethod.Contains("_plcCommunicationService.ReadBytesAsync(", StringComparison.Ordinal), "同段报警位必须通过一次字节读取获取。");
+    AssertEqual(2, CountOccurrences(readMethod, "_plcCommunicationService.ReadBoolAsync("), "段读取失败的地址与无法合并的地址必须回退为逐个读取。");
+
+    var alarmAddressCode = File.ReadAllText(
+        GetRepoFilePath("AutoWeldSystem.Services", "Plc", "PlcAlarmAddressService.cs"),
+        Encoding.UTF8);
+    AssertTrue(alarmAddressCode.Contains("_cache ??= LoadAll();", StringComparison.Ordinal), "报警地址配置必须缓存，避免每轮轮询查库。");
+    AssertTrue(alarmAddressCode.Contains("_cache = null;", StringComparison.Ordinal), "保存报警地址后必须失效缓存，下一轮立即生效。");
+    AssertTrue(alarmAddressCode.Contains("_cache.Select(Clone).ToList()", StringComparison.Ordinal), "缓存必须返回副本，避免地址维护页未保存的编辑影响轮询。");
 }
 
 static void PlcAlarmReadFailuresAreMergedAndLabeledPrecisely()
@@ -16874,8 +17023,8 @@ static void MonitorRuntimeTipsUseLocalizedSummaries()
     AssertTrue(viewCode.Contains("CloseAllPlcAlarmNotifications();", StringComparison.Ordinal), "监控页销毁时必须关闭 PLC 报警通知。");
     var productionMethod = ExtractMethodText(viewCode, "private void ApplyProductionStatus(PlcProductionSnapshot snapshot)", "private void ApplyDeviceStatus");
     AssertTrue(productionMethod.IndexOf("SyncPlcAlarmNotification()", StringComparison.Ordinal) < productionMethod.IndexOf("CurrentStationNo", StringComparison.Ordinal), "任一工位的报警快照变化都必须先按设备聚合同步通知，再按当前工位刷新右侧状态。");
-    AssertTrue(viewCode.Contains("_plcAlarmNotificationDismissedSignature", StringComparison.Ordinal) && viewCode.Contains("OnClose =", StringComparison.Ordinal), "通知手动关闭必须保留已读签名，避免相同报警轮询刷屏。");
-    AssertTrue(viewCode.Contains("_plcAlarmSummaryDismissedSignature", StringComparison.Ordinal), "通知关闭与右侧摘要清除必须使用独立签名，手动关闭通知不得隐藏持续报警状态。");
+    AssertTrue(viewCode.Contains("_plcAlarmAcknowledgementService.DismissNotification(signature);", StringComparison.Ordinal) && viewCode.Contains("OnClose =", StringComparison.Ordinal), "通知手动关闭必须把已读签名写入共享服务，避免相同报警轮询刷屏并同步另一屏。");
+    AssertTrue(viewCode.Contains("_plcAlarmAcknowledgementService.DismissedSummarySignature", StringComparison.Ordinal) && viewCode.Contains("_plcAlarmAcknowledgementService.DismissedNotificationSignature", StringComparison.Ordinal), "通知关闭与右侧摘要清除必须使用独立签名，手动关闭通知不得隐藏持续报警状态。");
     AssertTrue(viewCode.Contains("private void SetRuntimeErrorDetailText", StringComparison.Ordinal) && viewCode.Contains("message.Trim()", StringComparison.Ordinal), "完整 PLC 报警详情不得经过运行摘要长度截断。");
     var resetMethod = ExtractMethodText(
         viewCode,
@@ -16883,8 +17032,9 @@ static void MonitorRuntimeTipsUseLocalizedSummaries()
         "private static void ClosePlcAlarmNotificationIfPresent");
     AssertTrue(
         resetMethod.Contains("_plcAlarmNotificationSignature = null;", StringComparison.Ordinal)
-            && resetMethod.Contains("ClosePlcAlarmNotificationIfPresent(_plcAlarmNotificationId)", StringComparison.Ordinal),
-        "报警恢复时必须清空通知签名并关闭设备级通知，使下一次报警可以重新弹出。");
+            && resetMethod.Contains("ClosePlcAlarmNotificationIfPresent(_plcAlarmNotificationId)", StringComparison.Ordinal)
+            && resetMethod.Contains("_plcAlarmAcknowledgementService.Reset();", StringComparison.Ordinal),
+        "报警恢复时必须清空通知签名、关闭设备级通知并重置共享已读状态，使下一次报警可以重新弹出。");
     AssertTrue(viewCode.Contains("AntdUI.Notification.close_id(notificationId)", StringComparison.Ordinal), "关闭通知必须调用 AntdUI 的按 ID 关闭接口。");
 }
 
@@ -20527,6 +20677,9 @@ sealed class FakePlcCommunicationService : IPlcCommunicationService
                 ? result
                 : PlcServiceResult<string>.Fail("Not configured."));
     }
+
+    public Task<PlcServiceResult<byte[]>> ReadBytesAsync(string address, ushort length, CancellationToken cancellationToken = default)
+        => Task.FromResult(PlcServiceResult<byte[]>.Fail("Not configured."));
 
     public Task<PlcServiceResult> WriteBoolAsync(string address, bool value, CancellationToken cancellationToken = default)
         => Task.FromResult(PlcServiceResult.Fail("Not configured."));

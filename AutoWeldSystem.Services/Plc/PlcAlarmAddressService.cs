@@ -13,17 +13,17 @@ public sealed class PlcAlarmAddressService(SqlSugarDbContext dbContext) : IPlcAl
 {
     private readonly object _dbLock = new();
 
+    // 生产轮询每轮都要读取报警配置；缓存避免每轮查库，保存后失效，下一轮即读到最新配置。
+    private IReadOnlyList<BizPlcAlarmAddress>? _cache;
+
     public IReadOnlyList<BizPlcAlarmAddress> GetAll()
     {
         lock (_dbLock)
         {
-            dbContext.InitDatabase();
-            return dbContext.Db.Queryable<BizPlcAlarmAddress>()
-                .OrderBy(it => it.Sort)
-                .OrderBy(it => it.Id)
-                .ToList()
-                .Select(NormalizeLoadedAlarm)
-                .ToList();
+            _cache ??= LoadAll();
+
+            // 返回副本：地址维护页会直接编辑返回的实体再保存，共享同一实例会让尚未保存的修改影响轮询。
+            return _cache.Select(Clone).ToList();
         }
     }
 
@@ -42,6 +42,8 @@ public sealed class PlcAlarmAddressService(SqlSugarDbContext dbContext) : IPlcAl
 
         lock (_dbLock)
         {
+            // 先失效缓存，写库中途失败时也不会继续提供旧配置。
+            _cache = null;
             dbContext.InitDatabase();
 
             // 报警地址是小体量配置，整体替换能让删除、批量粘贴和排序行为保持简单明确。
@@ -51,6 +53,31 @@ public sealed class PlcAlarmAddressService(SqlSugarDbContext dbContext) : IPlcAl
                 dbContext.Db.Insertable(normalized).ExecuteCommand();
             }
         }
+    }
+
+    private IReadOnlyList<BizPlcAlarmAddress> LoadAll()
+    {
+        dbContext.InitDatabase();
+        return dbContext.Db.Queryable<BizPlcAlarmAddress>()
+            .OrderBy(it => it.Sort)
+            .OrderBy(it => it.Id)
+            .ToList()
+            .Select(NormalizeLoadedAlarm)
+            .ToList();
+    }
+
+    private static BizPlcAlarmAddress Clone(BizPlcAlarmAddress alarm)
+    {
+        return new BizPlcAlarmAddress
+        {
+            Id = alarm.Id,
+            StationNo = alarm.StationNo,
+            Address = alarm.Address,
+            AlarmContent = alarm.AlarmContent,
+            Enabled = alarm.Enabled,
+            Sort = alarm.Sort,
+            UpdatedTime = alarm.UpdatedTime
+        };
     }
 
     private static BizPlcAlarmAddress CloneAndNormalize(BizPlcAlarmAddress alarm)

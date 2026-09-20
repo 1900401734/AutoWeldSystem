@@ -149,6 +149,12 @@ public sealed class CommunicationService : IPlcCommunicationService, IDisposable
         return ExecuteReadAsync(readAddress, client => client.ReadStringAsync(readAddress, Math.Max((ushort)1, length)), cancellationToken);
     }
 
+    public Task<PlcServiceResult<byte[]>> ReadBytesAsync(string address, ushort length, CancellationToken cancellationToken = default)
+    {
+        // 起始地址为字节地址（如 DB1.0），一次往返读回连续字节，调用方自行按位拆分。
+        return ExecuteReadAsync(address, client => client.ReadAsync(address, Math.Max((ushort)1, length)), cancellationToken);
+    }
+
     public Task<PlcServiceResult> WriteBoolAsync(string address, bool value, CancellationToken cancellationToken = default)
     {
         return ExecuteWriteAsync(address, client => client.WriteAsync(address, value), cancellationToken);

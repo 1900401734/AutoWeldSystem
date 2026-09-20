@@ -15,7 +15,8 @@ namespace AutoWeldSystem.Services.Plc;
 /// </summary>
 public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDisposable
 {
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
+    // 报警置位/清除到界面反应受该周期直接影响；报警位按 DB 块合并读取、MES 上报改为后台执行后，单轮耗时已足够短。
+    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
 
     private readonly IPlcCommunicationService _plcCommunicationService;
     private readonly IPlcAddressService _plcAddressService;
@@ -718,11 +719,13 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
                 ? stationState.ActiveTask
                 : _weldTaskService.CurrentState.ActiveTask;
 
+        // 报警状态先落 JSONL 并登记补传任务，MES 上报放到后台执行；轮询线程不再等待 MES 响应，
+        // 避免 MES 超时（默认 10 秒）把下一轮报警置位/清除的检测推迟数秒。
         var log = await _deviceStatusService.ChangeStatusAsync(
             mesStatusCode,
             BuildDeviceStatusRemark(normalizedStationNo, mesStatusCode, alarm, _settingsService.Get()),
             $"PLC-S{normalizedStationNo}",
-            reportToMes: _mesConnectionMonitorService.Current.IsConnected,
+            reportToMes: false,
             stationNo: normalizedStationNo,
             weldTaskId: activeTask?.Id,
             workOrderId: activeTask?.SN,
@@ -735,7 +738,41 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
             alarmContent: alarm?.AlarmContent,
             cancellationToken: cancellationToken);
         var recordKey = DeviceStatusRecordIdentityRules.GetRecordKey(log);
-        return recordKey is not null && _deviceStatusService.GetLog(recordKey) is not null;
+        var recorded = recordKey is not null && _deviceStatusService.GetLog(recordKey) is not null;
+        if (recorded && DeviceStatusUploadVisibilityRules.ShouldInclude(log.ReportStatus))
+        {
+            QueueDeviceStatusUpload(cancellationToken);
+        }
+
+        return recorded;
+    }
+
+    /// <summary>
+    /// 在后台补传待上报的设备状态。补传按发生时间顺序处理全部待传记录，并由设备状态服务的上传门禁串行化，
+    /// 因此每次落盘后各触发一次即可，不会打乱 MES 最终状态顺序。
+    /// </summary>
+    private void QueueDeviceStatusUpload(CancellationToken cancellationToken)
+    {
+        if (!_mesConnectionMonitorService.Current.IsConnected)
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _deviceStatusService.RetryPendingUploadsAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                // 停止监控时取消后台补传，已落盘记录由下次启动或 MES 重连继续补传。
+            }
+            catch (Exception ex)
+            {
+                _exceptionLogService.Write(ex, "PLC.ProductionMonitor.DeviceStatusUpload");
+            }
+        }, CancellationToken.None);
     }
 
     private async Task<IReadOnlyList<PlcAlarmSignalReadResult>> ReadAlarmSignalsAsync(
@@ -752,12 +789,18 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
             .OrderBy(alarm => alarm.Sort)
             .ThenBy(alarm => alarm.Id)
             .ToList();
-        foreach (var addressGroup in configuredAlarms.GroupBy(
-                     alarm => AlarmAddressImportRules.NormalizeAddress(alarm.Address),
-                     StringComparer.OrdinalIgnoreCase))
+        var addressGroups = configuredAlarms
+            .GroupBy(
+                alarm => AlarmAddressImportRules.NormalizeAddress(alarm.Address),
+                StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var valuesByAddress = await ReadAlarmBitsAsync(
+            addressGroups.Select(group => group.Key),
+            cancellationToken);
+        foreach (var addressGroup in addressGroups)
         {
             var plcAddress = addressGroup.Key;
-            var readResult = await _plcCommunicationService.ReadBoolAsync(plcAddress, cancellationToken);
+            var readResult = valuesByAddress[plcAddress];
             foreach (var alarm in addressGroup)
             {
                 readResults.Add(new PlcAlarmSignalReadResult(
@@ -771,6 +814,44 @@ public sealed class ProductionMonitorService : IPlcProductionMonitorService, IDi
         }
 
         return readResults;
+    }
+
+    /// <summary>
+    /// 按唯一地址读取报警位。同一 DB 块内的西门子位地址合并为连续字节段，一段一次往返后按位拆分，
+    /// 把“每个地址一次往返”压缩为“每段一次往返”；段读取失败时对段内地址回退逐个读取，
+    /// 保持单个错误地址只影响自身、其余地址正常判定的既有语义。无法解析为 DB 位的地址仍逐个读取。
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, PlcServiceResult<bool>>> ReadAlarmBitsAsync(
+        IEnumerable<string> addresses,
+        CancellationToken cancellationToken)
+    {
+        var values = new Dictionary<string, PlcServiceResult<bool>>(StringComparer.OrdinalIgnoreCase);
+        var plan = PlcAlarmBatchReadRules.Plan(addresses);
+        foreach (var segment in plan.Segments)
+        {
+            var segmentResult = await _plcCommunicationService.ReadBytesAsync(
+                segment.StartAddress,
+                segment.Length,
+                cancellationToken);
+            foreach (var bit in segment.Bits)
+            {
+                if (segmentResult.IsSuccess
+                    && PlcAlarmBatchReadRules.TryExtractBit(segmentResult.Value, bit.ByteOffset, bit.Bit, out var value))
+                {
+                    values[bit.Address] = PlcServiceResult<bool>.Success(value);
+                    continue;
+                }
+
+                values[bit.Address] = await _plcCommunicationService.ReadBoolAsync(bit.Address, cancellationToken);
+            }
+        }
+
+        foreach (var address in plan.SingleAddresses)
+        {
+            values[address] = await _plcCommunicationService.ReadBoolAsync(address, cancellationToken);
+        }
+
+        return values;
     }
 
     private void UpdateAlarmReadFailureLog(int stationNo, IReadOnlyList<PlcAlarmReadFailure> failures)

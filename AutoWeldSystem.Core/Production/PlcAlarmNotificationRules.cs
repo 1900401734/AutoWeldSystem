@@ -8,29 +8,23 @@ namespace AutoWeldSystem.Core.Production;
 public static class PlcAlarmNotificationRules
 {
     /// <summary>
-    /// 判断当前快照是否需要展示设备报警通知。
-    /// </summary>
-    public static bool IsActive(bool softwareAlarmActive, bool alarmPendingConfirmation, bool rawAlarmUnconfirmed)
-        => softwareAlarmActive || alarmPendingConfirmation || rawAlarmUnconfirmed;
-
-    /// <summary>
     /// 将多个工位的报警快照聚合为整台设备唯一的报警通知状态。
     /// 报警地址属于整台设备而不属于某个程序工位，双工位会收到内容相同的报警快照，
     /// 因此通知、签名和已读状态都必须按设备聚合，避免同一条报警产生多张卡片、各自独立清除。
+    /// 只有匹配到已启用报警地址的有效报警才产生通知；PLC 原始状态为 4 但没有任何已启用地址置位
+    /// （例如对应报警地址已被禁用）时，只由设备状态标签做轻提示，不弹卡片也不写异常摘要。
     /// </summary>
     public static PlcAlarmNotificationState Aggregate(IEnumerable<PlcAlarmNotificationInput> snapshots)
     {
-        var inputs = snapshots.ToList();
-        var hasAlarm = inputs.Any(input => IsActive(
-            input.IsSoftwareAlarmActive,
-            input.IsAlarmPendingConfirmation,
-            input.IsRawAlarmUnconfirmed));
-        if (!hasAlarm)
+        var activeInputs = snapshots
+            .Where(input => input.IsSoftwareAlarmActive)
+            .ToList();
+        if (activeInputs.Count == 0)
         {
             return PlcAlarmNotificationState.Inactive;
         }
 
-        var messages = inputs
+        var messages = activeInputs
             .SelectMany(input => SplitMessages(input.SoftwareAlarmMessage))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -39,11 +33,7 @@ public static class PlcAlarmNotificationRules
             messages = [PlcSoftwareAlarmRules.GenericAlarmMessage];
         }
 
-        // 任一工位已确认报警即视为设备报警；全部工位都只有原始状态 4 时才是等待确认。
-        return new PlcAlarmNotificationState(
-            true,
-            !inputs.Any(input => input.IsSoftwareAlarmActive),
-            messages);
+        return new PlcAlarmNotificationState(true, messages);
     }
 
     /// <summary>
@@ -69,7 +59,7 @@ public static class PlcAlarmNotificationRules
     /// <summary>
     /// 创建不受报警地址返回顺序影响的报警签名。
     /// </summary>
-    public static string CreateSignature(IEnumerable<string> messages, bool pendingConfirmation)
+    public static string CreateSignature(IEnumerable<string> messages)
     {
         var normalizedMessages = messages
             .Where(message => !string.IsNullOrWhiteSpace(message))
@@ -77,7 +67,7 @@ public static class PlcAlarmNotificationRules
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(message => message, StringComparer.OrdinalIgnoreCase);
 
-        var builder = new StringBuilder(pendingConfirmation ? "pending|" : "active|");
+        var builder = new StringBuilder("active|");
         foreach (var message in normalizedMessages)
         {
             builder.Append(message).Append('\u001F');
@@ -98,8 +88,6 @@ public static class PlcAlarmNotificationRules
 /// </summary>
 public sealed record PlcAlarmNotificationInput(
     bool IsSoftwareAlarmActive,
-    bool IsAlarmPendingConfirmation,
-    bool IsRawAlarmUnconfirmed,
     string? SoftwareAlarmMessage);
 
 /// <summary>
@@ -107,15 +95,14 @@ public sealed record PlcAlarmNotificationInput(
 /// </summary>
 public sealed record PlcAlarmNotificationState(
     bool IsActive,
-    bool PendingConfirmation,
     IReadOnlyList<string> Messages)
 {
-    public static PlcAlarmNotificationState Inactive { get; } = new(false, false, []);
+    public static PlcAlarmNotificationState Inactive { get; } = new(false, []);
 
     /// <summary>
     /// 当前报警集合的稳定签名；无报警时返回 null。
     /// </summary>
     public string? Signature => IsActive
-        ? PlcAlarmNotificationRules.CreateSignature(Messages, PendingConfirmation)
+        ? PlcAlarmNotificationRules.CreateSignature(Messages)
         : null;
 }

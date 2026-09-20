@@ -63,6 +63,7 @@ public static class Program
                     services.AddSingleton<IAppSettingsService, AppSettingsService>();
                     services.AddSingleton<IPlcAddressService, AddressService>();
                     services.AddSingleton<IPlcAlarmAddressService, PlcAlarmAddressService>();
+                    services.AddSingleton<IPlcAlarmAcknowledgementService, PlcAlarmAcknowledgementService>();
                     services.AddSingleton<IPlcRecipeNameConfigService, PlcRecipeNameConfigService>();
                     services.AddSingleton<IPlcRecipeNameReaderService, PlcRecipeNameReaderService>();
                     services.AddSingleton<IPlcBusinessSignalService, BusinessSignalService>();

@@ -64,6 +64,11 @@ public interface IPlcCommunicationService : IAsyncDisposable
     Task<PlcServiceResult<string>> ReadStringAsync(string address, ushort length, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// 从指定起始地址连续读取原始字节，供报警位等分散地址合并为一次往返读取。
+    /// </summary>
+    Task<PlcServiceResult<byte[]>> ReadBytesAsync(string address, ushort length, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 写入 Bool 类型地址。
     /// </summary>
     Task<PlcServiceResult> WriteBoolAsync(string address, bool value, CancellationToken cancellationToken = default);
