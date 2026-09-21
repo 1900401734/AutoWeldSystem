@@ -1206,9 +1206,6 @@ The task will be marked Abandoned. Its snapshot, collected data and existing rep
   <data name="permission.button.system.connect_plc" xml:space="preserve">
     <value>Test PLC Connection</value>
   </data>
-  <data name="permission.button.system.connect_master" xml:space="preserve">
-    <value>Test Controller Connection</value>
-  </data>
   <data name="permission.button.system.sync_device" xml:space="preserve">
     <value>Sync Device</value>
   </data>

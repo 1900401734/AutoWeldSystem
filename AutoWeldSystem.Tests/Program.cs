@@ -138,6 +138,7 @@ var tests = new (string Name, Action Run)[]
     ("Production count source normalizes and defaults to PLC", ProductionCountSourceNormalizesAndDefaultsToPlc),
     ("Center report deleted flag stays last and filters counts", CenterReportDeletedFlagStaysLastAndFiltersCounts),
     ("Collection data tab permission is retired", CollectionDataTabPermissionIsRetired),
+    ("Retired button permissions are removed from legacy database", RetiredButtonPermissionsAreRemovedFromLegacyDatabase),
     ("Data manage tab text is collection data", DataManageTabTextIsCollectionData),
     ("Upload task type normalization covers every registered type", UploadTaskTypeNormalizationCoversEveryRegisteredType),
     ("Upload task retest reopen allows product scoped tasks only", UploadTaskRetestReopenAllowsProductScopedTasksOnly),
@@ -15876,6 +15877,68 @@ static void CollectionDataTabPermissionIsRetired()
             || designerCode.Contains("collectionBindingSource", StringComparison.Ordinal),
         "Designer 不得残留采集数据页签及其表格、绑定源。");
     AssertTrue(viewCode.Contains("ApplyDeletePermission();", StringComparison.Ordinal), "会话切换后仍必须重新计算删除按钮权限。");
+}
+
+static void RetiredButtonPermissionsAreRemovedFromLegacyDatabase()
+{
+    // 这五个按钮权限已随功能下线从目录移除，但旧库仍保留权限行与角色关联，
+    // 导致角色权限页显示无中文映射的英文节点。启动初始化必须连同关联一起清理，且不得误删目录内权限及其授权。
+    var retiredCodes = new[]
+    {
+        "button.monitor.face-result-display",
+        "button.program.browse-file",
+        "button.log.delete",
+        "button.system.connect-master",
+        "button.address.delete"
+    };
+    foreach (var code in retiredCodes)
+    {
+        AssertFalse(
+            PermissionCatalog.All.Any(permission => string.Equals(permission.Code, code, StringComparison.OrdinalIgnoreCase)),
+            $"退役权限 {code} 不得再进入权限目录。");
+        AssertTrue(string.IsNullOrWhiteSpace(PermissionTextKeyMapper.GetTextKey(code)), $"退役权限 {code} 不得再映射文案键。");
+    }
+
+    var directory = Path.Combine(Path.GetTempPath(), "AutoWeldSystem.Tests", "retired-permissions-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(directory);
+    try
+    {
+        using var db = CreateSqliteTestDatabase(
+            Path.Combine(directory, "rbac.db"),
+            typeof(SysRole), typeof(SysPermission), typeof(SysRolePermission));
+
+        // 模拟旧库：管理员同时关联一条目录内权限和五条退役权限。
+        var adminId = db.Db.Insertable(new SysRole
+        {
+            RoleCode = AppConstants.Roles.Admin, RoleName = "管理员", Enabled = true, IsSystem = true
+        }).ExecuteReturnIdentity();
+        var keptId = db.Db.Insertable(new SysPermission
+        {
+            Code = PermissionCodes.Pages.Monitor, Name = "Monitor", Type = "Page", Sort = 100
+        }).ExecuteReturnIdentity();
+        var retiredIds = retiredCodes
+            .Select(code => db.Db.Insertable(new SysPermission
+            {
+                Code = code, Name = code, Type = "Button", ParentCode = PermissionCodes.Pages.Monitor, Sort = 999
+            }).ExecuteReturnIdentity())
+            .ToList();
+        db.Db.Insertable(retiredIds.Append(keptId)
+            .Select(permissionId => new SysRolePermission { RoleId = adminId, PermissionId = permissionId })
+            .ToList()).ExecuteCommand();
+
+        new AutoWeldSystem.Services.RbacService(db).InitializeRbac();
+
+        AssertEqual(0, db.Db.Queryable<SysPermission>().Count(item => retiredCodes.Contains(item.Code)), "启动初始化必须删除旧库残留的退役权限行。");
+        AssertEqual(0, db.Db.Queryable<SysRolePermission>().Count(item => retiredIds.Contains(item.PermissionId)), "退役权限的角色关联必须一并删除，不能留下悬空关联。");
+        AssertTrue(
+            db.Db.Queryable<SysRolePermission>().Any(item => item.RoleId == adminId && item.PermissionId == keptId),
+            "目录内权限的既有授权不能被清理误删。");
+        AssertEqual(PermissionCatalog.All.Count, db.Db.Queryable<SysPermission>().Count(), "清理后权限表必须与权限目录一一对应。");
+    }
+    finally
+    {
+        Directory.Delete(directory, recursive: true);
+    }
 }
 
 static void DataManageTabTextIsCollectionData()

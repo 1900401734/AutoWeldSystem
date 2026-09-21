@@ -456,7 +456,13 @@ public class RbacService : IRbacService
             "button.monitor.change-work-order",
             "button.monitor.get-work-order",
             // 数据管理“采集数据”调试页签已移除，旧库残留的页签权限及角色关联一并清理。
-            "tab.data.collection-data"
+            "tab.data.collection-data",
+            // 以下按钮权限已随功能下线从目录移除，但旧库仍保留权限行，导致角色权限页显示无中文映射的英文节点。
+            "button.monitor.face-result-display",
+            "button.program.browse-file",
+            "button.log.delete",
+            "button.system.connect-master",
+            "button.address.delete"
         };
 
         var permissions = _dbContext.Db.Queryable<SysPermission>()

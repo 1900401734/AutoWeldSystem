@@ -8,6 +8,14 @@
 
 版本号规则补充：本仓库对"破坏性变更升主版本"的执行按现场实际影响判断——若变更不影响外部接口调用方式、仅需现场重新配置，则升次版本并在条目中写明升级注意。
 
+## [3.8.3]
+
+### 清理旧库残留的退役权限
+
+- 启动初始化时自动删除旧数据库中残留的五条退役按钮权限及其角色关联：`button.monitor.face-result-display`（Face Result Toggle）、`button.program.browse-file`（Browse Program File）、`button.log.delete`（Delete Logs）、`button.system.connect-master`（Test Controller Connection）、`button.address.delete`（Delete Business Addresses）。这些功能早已下线，权限目录中不存在对应项，此前只在角色权限页显示为无中文映射的英文节点，勾选与否均无效果。
+- 同步移除多语言资源中已不可达的“测试总控连接”文案。
+- 升级注意：无数据库结构变更；清理在同一事务内完成，只影响上述五个 code，其他权限与角色授权不变。
+
 ## [3.8.2]
 
 ### 权限树入口统一

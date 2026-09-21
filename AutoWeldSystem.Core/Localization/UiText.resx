@@ -1206,9 +1206,6 @@
   <data name="permission.button.system.connect_plc" xml:space="preserve">
     <value>测试 PLC 连接</value>
   </data>
-  <data name="permission.button.system.connect_master" xml:space="preserve">
-    <value>测试总控连接</value>
-  </data>
   <data name="permission.button.system.sync_device" xml:space="preserve">
     <value>同步设备</value>
   </data>
