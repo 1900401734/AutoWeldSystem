@@ -1,11 +1,8 @@
-using AntdUI;
 using AutoWeldSystem.Core.Constants;
-using AutoWeldSystem.Core.DTOs;
 using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Exceptions;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.Core.Interfaces.UserManage;
-using AutoWeldSystem.Core.Security;
 using AutoWeldSystem.UI.Base;
 using Message = AntdUI.Message;
 
@@ -38,14 +35,12 @@ public partial class RoleEditForm : BaseWindow
     protected override void OnLanguageChanged()
     {
         ApplyLocalizedTexts();
-        ApplyPermissionTreeTexts(treePermissions.Items);
     }
 
     private void RoleEditForm_Load(object? sender, EventArgs e)
     {
         ApplyLocalizedTexts();
         LoadRoleInfo();
-        LoadPermissionTree();
     }
 
     /// <summary>
@@ -96,38 +91,6 @@ public partial class RoleEditForm : BaseWindow
     }
 
     /// <summary>
-    /// 把服务层的权限树 DTO 转成 AntdUI 树节点。
-    /// </summary>
-    private void LoadPermissionTree()
-    {
-        var treeNodes = _rbacService.GetPermissionTree(_currentRoleId);
-
-        treePermissions.Items.Clear();
-        foreach (var node in treeNodes)
-        {
-            treePermissions.Items.Add(ConvertToTreeItem(node));
-        }
-    }
-
-    private TreeItem ConvertToTreeItem(PermissionTreeNode node)
-    {
-        var treeItem = new TreeItem
-        {
-            Text = GetPermissionText(node.Code, node.Name),
-            Tag = new PermissionTreeItemTag(node.Id, node.Code),
-            Checked = node.Checked,
-            Expand = true
-        };
-
-        foreach (var child in node.Children)
-        {
-            treeItem.Sub.Add(ConvertToTreeItem(child));
-        }
-
-        return treeItem;
-    }
-
-    /// <summary>
     /// 保存逻辑放在表单内部，调用方只关心“是否保存成功”和“保存后的对象”。
     /// </summary>
     private void BtnSave_Click(object? sender, EventArgs e)
@@ -148,13 +111,9 @@ public partial class RoleEditForm : BaseWindow
             Enabled = switchEnabled.Checked
         };
 
-        var selectedPermissionIds = GetCheckedPermissionIds(treePermissions.Items)
-            .Distinct()
-            .ToArray();
-
         try
         {
-            SavedRole = _rbacService.SaveRole(roleToSave, selectedPermissionIds);
+            SavedRole = _rbacService.SaveRole(roleToSave);
             Message.success(this, _localizer.GetString(TextKeys.Common.SaveSuccess));
 
             DialogResult = DialogResult.OK;
@@ -170,57 +129,9 @@ public partial class RoleEditForm : BaseWindow
         }
     }
 
-    /// <summary>
-    /// 递归提取所有勾选权限，便于一次性保存。
-    /// </summary>
-    private List<int> GetCheckedPermissionIds(TreeItemCollection items)
-    {
-        var permissionIds = new List<int>();
-        foreach (TreeItem item in items)
-        {
-            if (item.Checked && item.Tag is PermissionTreeItemTag tag)
-            {
-                permissionIds.Add(tag.Id);
-            }
-
-            if (item.Sub.Count > 0)
-            {
-                permissionIds.AddRange(GetCheckedPermissionIds(item.Sub));
-            }
-        }
-
-        return permissionIds;
-    }
-
-    private void ApplyPermissionTreeTexts(TreeItemCollection items)
-    {
-        foreach (TreeItem item in items)
-        {
-            if (item.Tag is PermissionTreeItemTag tag)
-            {
-                item.Text = GetPermissionText(tag.Code, item.Text ?? string.Empty);
-            }
-
-            if (item.Sub.Count > 0)
-            {
-                ApplyPermissionTreeTexts(item.Sub);
-            }
-        }
-    }
-
-    private string GetPermissionText(string permissionCode, string fallback)
-    {
-        var textKey = PermissionTextKeyMapper.GetTextKey(permissionCode);
-        return string.IsNullOrWhiteSpace(textKey)
-            ? fallback
-            : _localizer.GetString(textKey);
-    }
-
     private void BtnCancel_Click(object? sender, EventArgs e)
     {
         DialogResult = DialogResult.Cancel;
         Close();
     }
-
-    private sealed record PermissionTreeItemTag(int Id, string Code);
 }

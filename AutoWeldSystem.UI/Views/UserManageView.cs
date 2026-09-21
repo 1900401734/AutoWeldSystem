@@ -188,7 +188,8 @@ public partial class UserManageView : BaseView
         // 点击角色行后立即刷新右侧权限树，避免必须手动刷新角色列表。
         dgvRoles.SelectionChanged += DgvRoles_SelectionChanged;
         dgvUsers.CellDoubleClick += (_, _) => BtnEditUser_Click(this, EventArgs.Empty);
-        tvPermissions.AfterCheck += TvPermissions_AfterCheck;
+        // AntdUI 2.3.9 的 CheckStrictly=false 才关闭内置级联，保留任一子权限勾选即授权上级的规则。
+        tvPermissions.CheckedChanged += TvPermissions_CheckedChanged;
 
         btnAddRole.Click += BtnAddRole_Click;
         btnEditRole.Click += BtnEditRole_Click;
@@ -306,7 +307,7 @@ public partial class UserManageView : BaseView
         if (filteredRoles.Count == 0)
         {
             lblSelectedRole.Text = _localizer.GetString(TextKeys.Role.NoMatch);
-            tvPermissions.Nodes.Clear();
+            tvPermissions.Items.Clear();
             return;
         }
 
@@ -346,60 +347,48 @@ public partial class UserManageView : BaseView
     private void LoadPermissionTree(int? roleId)
     {
         _handlingTreeCheck = true;
-        tvPermissions.BeginUpdate();
-        tvPermissions.Nodes.Clear();
-
-        if (!roleId.HasValue || roleId.Value <= 0)
+        tvPermissions.PauseLayout = true;
+        try
         {
-            lblSelectedRole.Text = _localizer.GetString(TextKeys.Role.SelectLeft);
-            tvPermissions.EndUpdate();
+            tvPermissions.Items.Clear();
+            if (!roleId.HasValue || roleId.Value <= 0)
+            {
+                lblSelectedRole.Text = _localizer.GetString(TextKeys.Role.SelectLeft);
+                return;
+            }
+
+            var role = _rbacService.GetRoleById(roleId.Value);
+            lblSelectedRole.Text = role is null
+                ? _localizer.GetString(TextKeys.Role.SelectLeft)
+                : _localizer.GetString(TextKeys.Role.CurrentSelection, role.RoleName, role.RoleCode);
+
+            var permissions = _rbacService.GetPermissionTree(roleId.Value, true);
+            foreach (var permission in permissions)
+            {
+                tvPermissions.Items.Add(CreatePermissionNode(permission));
+            }
+        }
+        finally
+        {
+            tvPermissions.PauseLayout = false;
+            tvPermissions.ScrollBar.ValueY = 0;
             _handlingTreeCheck = false;
-            return;
         }
-
-        var role = _rbacService.GetRoleById(roleId.Value);
-        lblSelectedRole.Text = role is null
-            ? _localizer.GetString(TextKeys.Role.SelectLeft)
-            : _localizer.GetString(TextKeys.Role.CurrentSelection, role.RoleName, role.RoleCode);
-
-        var permissions = _rbacService.GetPermissionTree(roleId.Value, true);
-        foreach (var permission in permissions)
-        {
-            tvPermissions.Nodes.Add(CreatePermissionNode(permission));
-        }
-
-        tvPermissions.ExpandAll();
-        ScrollPermissionTreeToTop();
-        tvPermissions.EndUpdate();
-        _handlingTreeCheck = false;
     }
 
-    /// <summary>
-    /// 权限树展开后，WinForms 可能自动滚动到最后一个节点，这里统一恢复到顶部。
-    /// </summary>
-    private void ScrollPermissionTreeToTop()
+    private AntdUI.TreeItem CreatePermissionNode(PermissionTreeNode node)
     {
-        if (tvPermissions.Nodes.Count == 0)
+        var treeNode = new AntdUI.TreeItem
         {
-            return;
-        }
-
-        var firstNode = tvPermissions.Nodes[0];
-        tvPermissions.TopNode = firstNode;
-        firstNode.EnsureVisible();
-    }
-
-    private TreeNode CreatePermissionNode(PermissionTreeNode node)
-    {
-        var treeNode = new TreeNode(GetPermissionText(node))
-        {
+            Text = GetPermissionText(node),
             Tag = node,
-            Checked = node.Checked
+            Checked = node.Checked,
+            Expand = true
         };
 
         foreach (var child in node.Children.OrderBy(item => item.Sort))
         {
-            treeNode.Nodes.Add(CreatePermissionNode(child));
+            treeNode.Sub.Add(CreatePermissionNode(child));
         }
 
         return treeNode;
@@ -421,38 +410,26 @@ public partial class UserManageView : BaseView
     /// <summary>
     /// 子节点跟随父节点，父节点根据子节点聚合状态自动更新。
     /// </summary>
-    private void TvPermissions_AfterCheck(object? sender, TreeViewEventArgs e)
+    private void TvPermissions_CheckedChanged(object? sender, AntdUI.TreeCheckedEventArgs e)
     {
-        var node = e.Node;
-        if (_handlingTreeCheck || node is null)
+        if (_handlingTreeCheck)
         {
             return;
         }
 
         _handlingTreeCheck = true;
-        SetChildCheckedState(node, node.Checked);
-        UpdateParentCheckedState(node.Parent);
-        _handlingTreeCheck = false;
-    }
-
-    private void SetChildCheckedState(TreeNode node, bool isChecked)
-    {
-        foreach (TreeNode child in node.Nodes)
+        try
         {
-            child.Checked = isChecked;
-            SetChildCheckedState(child, isChecked);
+            tvPermissions.SetCheckeds(e.Item.Sub, e.Value);
+            for (var parent = e.Item.ParentItem; parent is not null; parent = parent.ParentItem)
+            {
+                parent.Checked = parent.Sub.Any(child => child.Checked);
+            }
         }
-    }
-
-    private void UpdateParentCheckedState(TreeNode? node)
-    {
-        if (node is null)
+        finally
         {
-            return;
+            _handlingTreeCheck = false;
         }
-
-        node.Checked = node.Nodes.Cast<TreeNode>().Any(child => child.Checked);
-        UpdateParentCheckedState(node.Parent);
     }
 
     private void BtnSavePermissions_Click(object? sender, EventArgs e)
@@ -466,7 +443,12 @@ public partial class UserManageView : BaseView
 
         try
         {
-            var permissionIds = CollectCheckedPermissionIds(tvPermissions.Nodes).Distinct().ToArray();
+            var permissionIds = tvPermissions.GetCheckeds(false)
+                .Select(item => item.Tag)
+                .OfType<PermissionTreeNode>()
+                .Select(node => node.Id)
+                .Distinct()
+                .ToArray();
             _rbacService.SaveRolePermissions(role.Id, permissionIds);
             ReloadRoles(role.Id);
             ShowInfo(TextKeys.Role.PermissionsApplied);
@@ -743,22 +725,6 @@ public partial class UserManageView : BaseView
 
         grid.Rows[0].Selected = true;
         grid.CurrentCell = grid.Rows[0].Cells[0];
-    }
-
-    private IEnumerable<int> CollectCheckedPermissionIds(TreeNodeCollection nodes)
-    {
-        foreach (TreeNode node in nodes)
-        {
-            if (node.Checked && node.Tag is PermissionTreeNode permissionNode)
-            {
-                yield return permissionNode.Id;
-            }
-
-            foreach (var childId in CollectCheckedPermissionIds(node.Nodes))
-            {
-                yield return childId;
-            }
-        }
     }
 
     private static bool Contains(string? source, string keyword)

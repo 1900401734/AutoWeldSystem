@@ -42,7 +42,7 @@ namespace AutoWeldSystem.UI.Views
             dgvRoles = new DataGridView();
             permissionLayout = new TableLayoutPanel();
             lblSelectedRole = new Label();
-            tvPermissions = new TreeView();
+            tvPermissions = new AntdUI.Tree();
             lblPermissionHint = new Label();
             userLayout.SuspendLayout();
             userToolbarLayout.SuspendLayout();
@@ -439,7 +439,8 @@ namespace AutoWeldSystem.UI.Views
             // 
             // tvPermissions
             // 
-            tvPermissions.CheckBoxes = true;
+            tvPermissions.Checkable = true;
+            tvPermissions.CheckStrictly = false;
             tvPermissions.Dock = DockStyle.Fill;
             tvPermissions.Location = new Point(0, 39);
             tvPermissions.Margin = new Padding(0);
@@ -517,7 +518,7 @@ namespace AutoWeldSystem.UI.Views
         private DataGridView dgvRoles;
         private TableLayoutPanel permissionLayout;
         private Label lblSelectedRole;
-        private TreeView tvPermissions;
+        private AntdUI.Tree tvPermissions;
         private Label lblPermissionHint;
     }
 }
