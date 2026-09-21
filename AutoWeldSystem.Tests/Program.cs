@@ -294,6 +294,7 @@ var tests = new (string Name, Action Run)[]
     ("Center report product then finish update keeps detail rows", CenterReportProductThenFinishUpdateKeepsDetailRows),
     ("Center report keeps fixed details without dynamic save fields", CenterReportKeepsFixedDetailsWithoutDynamicSaveFields),
     ("Center report renders single and dual station columns", CenterReportRendersSingleAndDualStationColumns),
+    ("Center report sorts numeric product numbers within each station", CenterReportSortsNumericProductNumbersWithinEachStation),
     ("Center report replaces duplicate product rows", CenterReportReplacesDuplicateProductRows),
     ("Center report isolates device and work order files", CenterReportIsolatesDeviceAndWorkOrderFiles),
     ("Center report path stays inside root for traversal names", CenterReportPathStaysInsideRootForTraversalNames),
@@ -8622,6 +8623,78 @@ static void CenterReportRendersSingleAndDualStationColumns()
     finally
     {
         DeleteDirectoryIfExists(outputDirectory);
+    }
+}
+
+static void CenterReportSortsNumericProductNumbersWithinEachStation()
+{
+    var outputDirectory = CreateCenterReportFixtureDirectory();
+    try
+    {
+        var request = BuildCenterWorkbookRequest(
+            "DEVICE-01", "FLOW-NUMERIC-SORT", new DateTime(2026, 7, 17, 8, 0, 0),
+            endTime: null, qualifiedQty: 0, enableDualStation: true,
+            stationNo: 2, stationName: "右工位", productNo: "21",
+            includeDynamicColumn: false, isTaskFinishUpdate: false, pointCount: 2);
+        request.Points.Reverse();
+        var reportPath = string.Empty;
+        foreach (var stationNo in new[] { 2, 1 })
+        {
+            request.StationNo = stationNo;
+            request.StationName = stationNo == 1 ? "左工位" : "右工位";
+            foreach (var productNo in new[] { "21", "2", "11", "1", "10" })
+            {
+                request.ProductNo = productNo;
+                reportPath = WriteCenterReportWorkbook(outputDirectory, request);
+            }
+        }
+
+        AssertWorkbookOrder(reportPath);
+        request.ProductNo = "2";
+        reportPath = WriteCenterReportWorkbook(outputDirectory, request);
+        AssertWorkbookOrder(reportPath);
+
+        request.IsTaskFinishUpdate = true;
+        request.EndTime = request.StartTime.AddHours(1);
+        request.ReportColumns.Clear();
+        request.Points.Clear();
+        reportPath = WriteCenterReportWorkbook(outputDirectory, request);
+        AssertWorkbookOrder(reportPath);
+    }
+    finally
+    {
+        DeleteDirectoryIfExists(outputDirectory);
+    }
+
+    static void AssertWorkbookOrder(string reportPath)
+    {
+        using var workbook = new XLWorkbook(reportPath);
+        var worksheet = workbook.Worksheet(CenterProductReportFormat.WorksheetName);
+        AssertEqual(20, CountCenterDataRows(workbook), "新增、重传和完工更新必须保留两个工位各五件产品的两条采集记录，不得重复或丢失。");
+        var firstRow = CenterProductReportFormat.DetailFirstDataRow;
+        AssertEqual(firstRow + 19, worksheet.LastRowUsed()!.RowNumber(), "可见页必须保留全部二十条采集记录。");
+        foreach (var stationName in new[] { "左工位", "右工位" })
+        {
+            AssertSequenceEqual(
+                new[] { "1", "2", "10", "11", "21" },
+                Enumerable.Range(0, 5).Select(index => worksheet.Cell(firstRow + index * 2, 2).GetString()).ToArray(),
+                "中心报表每个工位内的产品编号必须按数字大小排序，而不是 1、10、11、2、21。");
+            for (var index = 0; index < 5; index++)
+            {
+                var row = firstRow + index * 2;
+                AssertEqual(stationName, worksheet.Cell(row, 1).GetString(), "产品排序不能打散工位分组。");
+                AssertEqual("1", worksheet.Cell(row, 3).GetString(), "产品内采集点必须保持序号升序。");
+                AssertEqual("2", worksheet.Cell(row + 1, 3).GetString(), "逆序收到的采集点必须恢复为序号升序。");
+                AssertTrue(
+                    worksheet.MergedRanges.Any(range => range.RangeAddress.FirstAddress.RowNumber == row
+                        && range.RangeAddress.LastAddress.RowNumber == row + 1
+                        && range.RangeAddress.FirstAddress.ColumnNumber == 2
+                        && range.RangeAddress.LastAddress.ColumnNumber == 2),
+                    "每件产品的编号单元格只能合并自身两条采集记录。");
+            }
+
+            firstRow += 10;
+        }
     }
 }
 

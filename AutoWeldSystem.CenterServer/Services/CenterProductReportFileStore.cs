@@ -1,5 +1,6 @@
 using AutoWeldSystem.Core.Center;
 using AutoWeldSystem.Core.DTOs.CenterServer;
+using AutoWeldSystem.Core.Production;
 
 namespace AutoWeldSystem.CenterServer.Services;
 
@@ -160,7 +161,7 @@ public sealed class CenterProductReportFileStore
 
         return rows
             .OrderBy(row => row.StationNo)
-            .ThenBy(row => row.ProductNo)
+            .ThenBy(row => row.ProductNo, NaturalSortComparer.Instance)
             .ThenBy(row => row.SequenceNo)
             .ToList();
     }

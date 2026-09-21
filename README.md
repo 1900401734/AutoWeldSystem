@@ -1,6 +1,6 @@
 ﻿# AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v3.7.3`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v3.8.0`。
 
 各版本的行为变化记录在 [CHANGELOG.md](CHANGELOG.md)，也可用 `git tag -n99` 查看对应版本的发布说明。
 
@@ -346,6 +346,7 @@ EQ001\20260917\EQ001_FLOW001_OP10_BG_002.xlsx
 - 没有任何产品生产数据时，报表仍会按公共字段生成并上传；如果 MES 或文件路径失败，失败信息保留在待上传数据中供手动重试。
 - 设备端与中心服务器生产报表统一使用客户参考模板：任务表头依次展示流转卡号/规格/产品型号、产品工号/批次/部件名称、部件图号/工序名称/工序号、工单数量/合格数量/操作人员、程序名称/员工姓名、开始时间/结束时间；明细基础列按“产品编号 -> 检测面或焊点号 -> 动态测试值 -> 采集点结果 -> 产品结果 -> 试焊件”排列，采集点结果和试焊件列按设备类型与输出用途裁剪，并非所有报表都包含。面号及保留的采集点结果列支持产品工艺自定义表头。离线开工除员工号外还必须录入员工姓名，否则报表该栏无从取值。
 - 试焊件列自 `v2.25.0` 起写入报表末列，取生产监控页产品历史右键标记的产品级结果：标记过的产品写“是”，未标记留空。该列与 MES 过程参数字段 `IsTest` 共用门禁——关闭系统设置“产品历史显示试焊件”或过程参数设备类型为整件检测时，上传报表、本地导出和看板报表都不输出该列。标记发生在采集完成之后，因此标记或取消标记会自动重推该产品到中心看板刷新该列；已上传、上传中或已跳过的产品仍不允许改标记。
+- 中心看板生成的生产报表先按工位分组，组内产品编号按数字大小升序排列（`1、2、3……10、11……21`），产品内保持采集点序号升序；编号原文和单元格格式不变。已有报表在后续产品新增、重传或完工更新时应用该顺序，不自动批量改写历史 XLSX。
 - 已删除产品（见下一节）不进入上传报表、本地导出、数据管理页「采集数据」和中心看板可见页与当日计数；报表明细的产品编号因此可能断号，这是预期行为。
 
 ## 本地历史导出程序上下限
@@ -596,10 +597,10 @@ HAVING COUNT(*) > 1;
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>3.7.3</Version>
-<AssemblyVersion>3.7.3.0</AssemblyVersion>
-<FileVersion>3.7.3.0</FileVersion>
-<InformationalVersion>3.7.3</InformationalVersion>
+<Version>3.8.0</Version>
+<AssemblyVersion>3.8.0.0</AssemblyVersion>
+<FileVersion>3.8.0.0</FileVersion>
+<InformationalVersion>3.8.0</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -617,20 +618,20 @@ HAVING COUNT(*) > 1;
 # 2. 在 CHANGELOG.md 顶部新增该版本条目，写清行为变化和升级注意
 # 3. 合并到 main 后打带说明的 tag（-F 从文件读取多行说明）
 git checkout main
-git merge --no-ff develop -m "release: v3.7.3"
-git tag -a v3.7.3 -F tag-notes.txt
+git merge --no-ff develop -m "release: v3.8.0"
+git tag -a v3.8.0 -F tag-notes.txt
 git push origin main
-git push origin v3.7.3
+git push origin v3.8.0
 ```
 
-`tag-notes.txt` 为临时文件，内容取自该版本的 CHANGELOG 条目，打完 tag 即可删除。也可用 `git tag -a v3.7.3 -m "标题" -m "正文"` 直接写多段说明。
+`tag-notes.txt` 为临时文件，内容取自该版本的 CHANGELOG 条目，打完 tag 即可删除。也可用 `git tag -a v3.8.0 -m "标题" -m "正文"` 直接写多段说明。
 
 查看历史版本说明：
 
 ```powershell
 git tag -n99                # 列出全部 tag 及完整说明
-git tag -n99 v3.7.3        # 只看某个版本
-git show v3.7.3            # 看 tag 说明 + 指向的提交
+git tag -n99 v3.8.0        # 只看某个版本
+git show v3.8.0            # 看 tag 说明 + 指向的提交
 ```
 
 ## Git 使用
