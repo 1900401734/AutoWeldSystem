@@ -1,6 +1,6 @@
 ﻿# AutoWeldSystem
 
-自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v3.8.0`。
+自动点焊系统上位机软件，用于对接 PLC、MES 和本地程序管理流程。当前版本：`v3.8.1`。
 
 各版本的行为变化记录在 [CHANGELOG.md](CHANGELOG.md)，也可用 `git tag -n99` 查看对应版本的发布说明。
 
@@ -356,6 +356,7 @@ EQ001\20260917\EQ001_FLOW001_OP10_BG_002.xlsx
 ```
 
 - 文件名直接取设备端报表记录：`设备编号_流转卡号_工序号_BG_序号.xlsx`。序号由设备端分配，两端共用；最少三位，不固定为 001，也不在中心重新编号。正常设备编号目录不追加哈希，非法或 Windows 保留名称会安全映射。
+- 中心服务的锁文件统一保存在报表根目录 `.locks` 下，不再与 XLSX 混放；报表文件锁使用相对报表路径的哈希命名。锁文件为持久空文件，写入结束即释放占用，文件保留不表示工单未完工；历史统计会忽略锁目录。升级前先停止所有共享该目录的中心服务实例并统一升级，避免不同版本使用不同报表锁；旧版遗留的旁置 `.xlsx.lock` 不自动迁移或删除，可在所有实例停止后人工清理，勿删除 XLSX。
 - 日期固定取该任务的开工日期（`yyyyMMdd`），不是产品完成或服务器接收日期。跨日生产、重测、试焊/删除标记更新、断网补传和完工都继续更新同一文件。
 - 本地报表在逐产品采集后增量生成；必要时先预留序号及文件名。预留记录路径为空，不作为已生成报告展示或上传，生成成功后才记录实际路径。预留失败通过中心持久队列重试；本地保存目录及 MES 上传顺序不变。
 - 先升级中心服务器，再升级设备端。产品协议新增可空 `ReportSequenceNo` 和 `ReportFileName`；设备端发送前会为旧队列补齐这两个字段，无需新增数据库字段。
@@ -621,10 +622,10 @@ HAVING COUNT(*) > 1;
 软件版本统一配置在 `Directory.Build.props`：
 
 ```xml
-<Version>3.8.0</Version>
-<AssemblyVersion>3.8.0.0</AssemblyVersion>
-<FileVersion>3.8.0.0</FileVersion>
-<InformationalVersion>3.8.0</InformationalVersion>
+<Version>3.8.1</Version>
+<AssemblyVersion>3.8.1.0</AssemblyVersion>
+<FileVersion>3.8.1.0</FileVersion>
+<InformationalVersion>3.8.1</InformationalVersion>
 ```
 
 建议使用语义化版本：
@@ -642,20 +643,20 @@ HAVING COUNT(*) > 1;
 # 2. 在 CHANGELOG.md 顶部新增该版本条目，写清行为变化和升级注意
 # 3. 合并到 main 后打带说明的 tag（-F 从文件读取多行说明）
 git checkout main
-git merge --no-ff develop -m "release: v3.8.0"
-git tag -a v3.8.0 -F tag-notes.txt
+git merge --no-ff develop -m "release: v3.8.1"
+git tag -a v3.8.1 -F tag-notes.txt
 git push origin main
-git push origin v3.8.0
+git push origin v3.8.1
 ```
 
-`tag-notes.txt` 为临时文件，内容取自该版本的 CHANGELOG 条目，打完 tag 即可删除。也可用 `git tag -a v3.8.0 -m "标题" -m "正文"` 直接写多段说明。
+`tag-notes.txt` 为临时文件，内容取自该版本的 CHANGELOG 条目，打完 tag 即可删除。也可用 `git tag -a v3.8.1 -m "标题" -m "正文"` 直接写多段说明。
 
 查看历史版本说明：
 
 ```powershell
 git tag -n99                # 列出全部 tag 及完整说明
-git tag -n99 v3.8.0        # 只看某个版本
-git show v3.8.0            # 看 tag 说明 + 指向的提交
+git tag -n99 v3.8.1        # 只看某个版本
+git show v3.8.1            # 看 tag 说明 + 指向的提交
 ```
 
 ## Git 使用
