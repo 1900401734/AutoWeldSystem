@@ -8,10 +8,6 @@ public static class AppConstants
 {
     public const string ApplicationName = "AutoWeldSystem";
 
-    /// <summary>
-    /// 系统默认值常量。
-    /// 这类值会被多个模块共用，集中管理后就不会在代码里散落魔法字符串。
-    /// </summary>
     public static class Defaults
     {
         public const string InitialPassword = "123456";
@@ -22,6 +18,7 @@ public static class AppConstants
     /// </summary>
     public static class Roles
     {
+        public const string Developer = "Developer";
         public const string Admin = "Admin";
         public const string Operator = "Operator";
         public const string Readonly = "Readonly";
@@ -45,29 +42,34 @@ public static class AppConstants
         public const string ModbusTcp = "ModbusTcp";
         public const string TcpSocket = "TcpSocket";
         public const string SiemensS71200 = "SiemensS7-1200";
-        public const string SiemensS7Legacy = "SiemensS7";
-
-        // 兼容旧代码里已经使用的 SiemensS7 常量，实际含义固定为 S7-1200。
-        public const string SiemensS7 = SiemensS71200;
     }
 
     /// <summary>
-    /// PLC 地址用途常量。
-    /// 业务代码只认这些稳定键，用户只需要在界面中维护实际 PLC 地址。
+    /// PLC Logical Key
     /// </summary>
-    public static class PlcAddressKeys
+    public static class PlcLogicalKeys
     {
+        public const string DeviceStatus = "device_status";
+        public const string WorkId = "work_id";
+
         public const string PcHeartBeat = "pc_heartbeat";
         public const string PlcHeartBeat = "plc_heartbeat";
-        public const string DeviceStatus = "device_status";
-        public const string WeldStart = "weld_start";
-        public const string WeldEnd = "weld_end";
-        public const string WorkId = "work_id";
-        public const string LegacySerialNumber = "serial_number";
-        public const string ProgramName = "program_name";
-        public const string ProductModel = "product_model";
+
+        public const string PcRecipeCode = "pc_recipe_code";
+        public const string PlcRecipeCode = "plc_recipe_code";
+
+        public const string ProductDataReady = "product_data_ready";
+        public const string ProductCollectionFeedback = "product_collection_feedback";
+
+        /// <summary>
+        /// 整件检测产品判定结果回写地址，取值与面结果一致：3=OK，2=NG。
+        /// </summary>
+        public const string ProductResultFeedback = "product_result_feedback";
+
+        public const string WorkOrderStatus = "work_order_status";
+        public const string DeviceMode = "device_mode";
+
         public const string TotalProduction = "total_production";
-        public const string TargetProduction = "target_production";
         public const string AcceptedQuantity = "accepted_quantity";
         public const string RejectedQuantity = "rejected_quantity";
     }
@@ -88,6 +90,30 @@ public static class AppConstants
     }
 
     /// <summary>
+    /// PLC 字符串数值的小数处理方式。
+    /// String 表达式是否启用处理由系统设置控制，这里只保存稳定的入库值。
+    /// </summary>
+    public static class PlcStringNumericFormatModes
+    {
+        public const string Truncate = "Truncate";
+        public const string Round = "Round";
+    }
+
+    /// <summary>
+    /// PLC 报警生效条件。持久化值保持稳定，未知值统一回退到双条件模式。
+    /// </summary>
+    public static class PlcAlarmTriggerModes
+    {
+        public const string AddressOnly = "AddressOnly";
+        public const string DeviceStatusAndAddress = "DeviceStatusAndAddress";
+
+        public static string Normalize(string? value)
+            => string.Equals(value?.Trim(), AddressOnly, StringComparison.OrdinalIgnoreCase)
+                ? AddressOnly
+                : DeviceStatusAndAddress;
+    }
+
+    /// <summary>
     /// MES固定状态码常量
     /// </summary>
     public static class MesStatus
@@ -103,7 +129,36 @@ public static class AppConstants
     public static class LogCategories
     {
         public const string Mes = "MES";
+        public const string ProductionFlow = "ProductionFlow";
         public const string ProgramException = "ProgramException";
+        public const string DeviceLifecycle = "DeviceLifecycle";
+        public const string DeviceStatus = "DeviceStatus";
+        public const string CenterServer = "CenterServer";
+    }
+
+    /// <summary>
+    /// 中心服务器交互类型。原始值与中心服务器 API 路径段及看板筛选值保持一致。
+    /// </summary>
+    public static class CenterInteractionTypes
+    {
+        public const string Telemetry = "telemetry";
+        public const string Heartbeat = "heartbeat";
+        public const string ProductReport = "product-report";
+    }
+
+    /// <summary>
+    /// Device lifecycle event type values written to the independent device log.
+    /// Keep these values stable because local JSONL files use them for filtering.
+    /// </summary>
+    public static class DeviceLifecycleEventTypes
+    {
+        public const string SelfCheck = "SelfCheck";
+        public const string RemoteAccess = "RemoteAccess";
+        public const string RemoteConfigChanged = "RemoteConfigChanged";
+        public const string TestProgramRunning = "TestProgramRunning";
+        public const string FaultAlarm = "FaultAlarm";
+        public const string FaultRecovered = "FaultRecovered";
+        public const string DeviceStatusReport = "DeviceStatusReport";
     }
 
     /// <summary>
@@ -125,6 +180,7 @@ public static class AppConstants
         public const string GetWorkOrderInfo = "获取MES工单信息";
         public const string GetServerTime = "服务器校时";
         public const string TestConnection = "MES连通性测试";
+        public const string CheckOnline = "MES在线检测";
         public const string SetDeviceId = "设置设备编号";
         public const string AddProgram = "新增程序";
         public const string UpdateProgram = "更新程序";
@@ -135,11 +191,12 @@ public static class AppConstants
         public const string StartWork = "开工上报";
         public const string ChangeWorkStatus = "工单状态变更";
         public const string EndWork = "完工上报";
+        public const string UploadReportFile = "报告文件上报";
+        public const string UploadProcessParameters = "采集参数上传";
     }
 
     /// <summary>
-    /// 本地程序与 MES 的同步状态。
-    /// 使用稳定字符串保存到数据库，方便上传状态页过滤和人工排查。
+    /// 程序同步状态
     /// </summary>
     public static class ProgramSyncStatus
     {
@@ -160,5 +217,16 @@ public static class AppConstants
         public const string Create = "Create";
         public const string Update = "Update";
         public const string Delete = "Delete";
+    }
+
+    /// <summary>
+    /// MES 程序备注动作。
+    /// 客户接口中的 Remark 字段用于区分程序新增、更新和删除。
+    /// </summary>
+    public static class ProgramRemarkActions
+    {
+        public const string Create = "新增";
+        public const string Update = "更新";
+        public const string Delete = "删除";
     }
 }

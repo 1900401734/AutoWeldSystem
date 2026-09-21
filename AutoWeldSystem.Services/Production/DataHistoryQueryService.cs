@@ -1,0 +1,631 @@
+using System.Text.Json;
+using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.DTOs.DataManagement;
+using AutoWeldSystem.Core.Entities;
+using AutoWeldSystem.Core.Interfaces;
+using AutoWeldSystem.Core.Production;
+using AutoWeldSystem.Data;
+
+namespace AutoWeldSystem.Services.Production;
+
+/// <summary>
+/// Reads local task, weld-point and report-file history for the data-management page.
+/// Database access and test-scheme interpretation stay outside the UI layer.
+/// </summary>
+public sealed class DataHistoryQueryService : IDataHistoryQueryService
+{
+    private readonly SqlSugarDbContext _dbContext;
+    private readonly IProductProcessConfigService _productProcessConfigService;
+    private readonly object _queryLock = new();
+
+    public DataHistoryQueryService(
+        SqlSugarDbContext dbContext,
+        IProductProcessConfigService productProcessConfigService)
+    {
+        _dbContext = dbContext;
+        _productProcessConfigService = productProcessConfigService;
+    }
+
+    public Task<PagedResult<DataHistoryWorkOrderRow>> QueryWorkOrdersAsync(
+        DataHistoryQueryCriteria criteria,
+        int pageIndex,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(criteria);
+        return RunQueryAsync(() => QueryWorkOrders(criteria, pageIndex, pageSize), cancellationToken);
+    }
+
+    public Task<DataHistoryTestDataResult> QueryTestDataAsync(
+        int taskId,
+        CancellationToken cancellationToken = default)
+    {
+        return RunQueryAsync(() => QueryTestData(taskId), cancellationToken);
+    }
+
+    public Task<DataHistoryWeldParameterResult> QueryWeldParametersAsync(
+        int taskId,
+        CancellationToken cancellationToken = default)
+    {
+        return RunQueryAsync(() => QueryWeldParameters(taskId), cancellationToken);
+    }
+
+    public Task<IReadOnlyList<DataHistoryReportFileRow>> QueryReportFilesAsync(
+        int taskId,
+        CancellationToken cancellationToken = default)
+    {
+        return RunQueryAsync<IReadOnlyList<DataHistoryReportFileRow>>(
+            () => QueryReportFiles(taskId),
+            cancellationToken);
+    }
+
+    private Task<T> RunQueryAsync<T>(Func<T> query, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+
+        return Task.Run(() =>
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return default!;
+            }
+
+            lock (_queryLock)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return default!;
+                }
+
+                _dbContext.InitDatabase();
+                return query();
+            }
+        });
+    }
+
+    private PagedResult<DataHistoryWorkOrderRow> QueryWorkOrders(
+        DataHistoryQueryCriteria criteria,
+        int pageIndex,
+        int pageSize)
+    {
+        var normalizedPageIndex = Math.Max(1, pageIndex);
+        var normalizedPageSize = Math.Clamp(pageSize, 1, 500);
+        var productNum = Normalize(criteria.ProductNum);
+        var batch = Normalize(criteria.Batch);
+        var workOrderId = Normalize(criteria.SN);
+        var startTime = criteria.StartTime;
+        var endTime = criteria.EndTime < criteria.StartTime ? criteria.StartTime : criteria.EndTime;
+
+        var query = _dbContext.Db.Queryable<BizWeldTask>()
+            .Where(task => task.StartTime >= startTime && task.StartTime <= endTime);
+
+        if (!string.IsNullOrEmpty(productNum))
+        {
+            query = query.Where(task => task.ProductNum.Contains(productNum));
+        }
+
+        if (!string.IsNullOrEmpty(batch))
+        {
+            query = query.Where(task => task.Batch.Contains(batch));
+        }
+
+        if (!string.IsNullOrEmpty(workOrderId))
+        {
+            query = query.Where(task => task.SN.Contains(workOrderId));
+        }
+
+        var totalCount = 0;
+        var tasks = query
+            .OrderBy(task => task.StartTime, SqlSugar.OrderByType.Desc)
+            .OrderBy(task => task.Id, SqlSugar.OrderByType.Desc)
+            .ToPageList(normalizedPageIndex, normalizedPageSize, ref totalCount);
+
+        return new PagedResult<DataHistoryWorkOrderRow>
+        {
+            Items = tasks.Select(ToWorkOrderRow).ToList(),
+            TotalCount = totalCount,
+            PageIndex = normalizedPageIndex,
+            PageSize = normalizedPageSize
+        };
+    }
+
+    private DataHistoryTestDataResult QueryTestData(int taskId)
+    {
+        var task = GetTask(taskId);
+        if (task is null)
+        {
+            return new DataHistoryTestDataResult();
+        }
+
+        _ = ProgramContentJsonRules.GetRequiredTouchCount(task.ProgramContentSnapshot);
+        var records = GetTaskRecords(taskId);
+        var processConfigsByStation = TaskProductProcessConfigResolver.Resolve(
+            _productProcessConfigService,
+            task,
+            records.Select(record => record.StationNo).Append(task.StationNo));
+        var schemeItemsByStation = ResolveSchemeItems(task, records, processConfigsByStation);
+        var dynamicColumns = BuildDynamicColumns(
+            schemeItemsByStation.OrderBy(pair => pair.Key).SelectMany(pair => pair.Value));
+        var childRows = records.Select(record =>
+        {
+            var schemeItems = GetSchemeItemsForStation(schemeItemsByStation, task, record.StationNo);
+            return new DataHistoryTestDataRow
+            {
+                IsProductRow = false,
+                TaskId = taskId,
+                RecordId = record.Id,
+                SequenceNo = record.SequenceNo,
+                StationNo = record.StationNo,
+                ProductNo = record.ProductNo,
+                TouchNo = record.TouchNo,
+                NodeText = string.IsNullOrWhiteSpace(record.TouchNo)
+                    ? $"记录 {record.SequenceNo}"
+                    : record.TouchNo,
+                TestResult = TestResultRules.Normalize(record.TestResult),
+                ProductResult = ResolveProductResult(record),
+                UploadStatus = record.UploadStatus,
+                RecordTime = record.Ts,
+                RawDataJson = BuildSavedRawDataJson(record, schemeItems),
+                DynamicValues = BuildDynamicValues(record, schemeItems)
+            };
+        }).ToList();
+
+        var productRows = childRows
+            .GroupBy(row => new { row.StationNo, row.ProductNo })
+            .Select(group =>
+            {
+                var children = group.ToList();
+                var productRow = BuildProductRow(taskId, group.Key.StationNo, group.Key.ProductNo, children);
+                return ProductHistoryDisplayRules.ShouldFlattenSingleRecord(children.Count)
+                    ? FlattenSinglePointProductRow(productRow, children[0])
+                    : productRow;
+            })
+            .OrderBy(row => row.StationNo)
+            .ThenBy(row => row.ProductNo, NaturalSortComparer.Instance)
+            .ToList();
+
+        return new DataHistoryTestDataResult
+        {
+            DynamicColumns = dynamicColumns,
+            Rows = productRows,
+            RecordCount = childRows.Count
+        };
+    }
+
+    private static DataHistoryTestDataRow FlattenSinglePointProductRow(
+        DataHistoryTestDataRow productRow,
+        DataHistoryTestDataRow pointRow)
+    {
+        return new DataHistoryTestDataRow
+        {
+            IsProductRow = true,
+            TaskId = productRow.TaskId,
+            RecordId = pointRow.RecordId,
+            SequenceNo = pointRow.SequenceNo,
+            StationNo = productRow.StationNo,
+            ProductNo = productRow.ProductNo,
+            TouchNo = pointRow.TouchNo,
+            NodeText = productRow.NodeText,
+            TestResult = productRow.TestResult,
+            ProductResult = productRow.ProductResult,
+            UploadStatus = productRow.UploadStatus,
+            TestCount = productRow.TestCount,
+            RecordTime = pointRow.RecordTime,
+            DynamicValues = pointRow.DynamicValues,
+            RawDataJson = pointRow.RawDataJson
+        };
+    }
+
+    private static DataHistoryTestDataRow BuildProductRow(
+        int taskId,
+        int stationNo,
+        string productNo,
+        List<DataHistoryTestDataRow> children)
+    {
+        children = children
+            .OrderBy(row => row.SequenceNo)
+            .ThenBy(row => row.RecordId)
+            .ToList();
+        var latest = children[^1];
+        var productResult = children
+            .Select(row => row.ProductResult)
+            .FirstOrDefault(result => !string.Equals(
+                TestResultRules.Normalize(result),
+                ProductionConstants.TestResults.Unknown,
+                StringComparison.OrdinalIgnoreCase))
+            ?? ProductionConstants.TestResults.Unknown;
+
+        return new DataHistoryTestDataRow
+        {
+            IsProductRow = true,
+            TaskId = taskId,
+            StationNo = stationNo,
+            ProductNo = productNo,
+            NodeText = string.IsNullOrWhiteSpace(productNo) ? "--" : productNo,
+            TestResult = productResult,
+            ProductResult = productResult,
+            UploadStatus = latest.UploadStatus,
+            TestCount = children.Count,
+            RecordTime = children.Max(row => row.RecordTime),
+            Children = children
+        };
+    }
+
+    private DataHistoryWeldParameterResult QueryWeldParameters(int taskId)
+    {
+        var task = GetTask(taskId);
+        if (task is null)
+        {
+            return new DataHistoryWeldParameterResult();
+        }
+
+        var records = GetTaskRecords(taskId);
+        var schemeItemsByStation = ResolveSchemeItems(task, records);
+        var dynamicColumns = BuildDynamicColumns(
+            schemeItemsByStation.OrderBy(pair => pair.Key).SelectMany(pair => pair.Value));
+        var rows = records.Select(record =>
+        {
+            var schemeItems = GetSchemeItemsForStation(schemeItemsByStation, task, record.StationNo);
+            return new DataHistoryWeldParameterRow
+            {
+                StationNo = record.StationNo,
+                ProductNo = record.ProductNo,
+                TouchNo = record.TouchNo,
+                TestResult = record.TestResult,
+                ProductResult = ResolveProductResult(record),
+                RecordTime = record.Ts,
+                DynamicValues = BuildDynamicValues(record, schemeItems)
+            };
+        }).ToList();
+
+        return new DataHistoryWeldParameterResult
+        {
+            DynamicColumns = dynamicColumns,
+            Rows = rows
+        };
+    }
+
+    private IReadOnlyList<DataHistoryReportFileRow> QueryReportFiles(int taskId)
+    {
+        // 开工任务ID以任务当前值为准：离线开工的任务要等补传开工成功才拿到 MES 的 ExpStartId，
+        // 报表记录创建时复制的快照可能仍为空；上传报告文件时也使用任务当前值，列表与之保持同源。
+        var taskExpStartId = GetTask(taskId)?.ExpStartId?.Trim();
+        return _dbContext.Db.Queryable<BizProductionReportFile>()
+            .Where(report => report.TaskId == taskId)
+            .OrderBy(report => report.CreatedTime, SqlSugar.OrderByType.Desc)
+            .ToList()
+            .Where(report => !string.IsNullOrWhiteSpace(report.FilePath))
+            .Select(report => new DataHistoryReportFileRow
+            {
+                Id = report.Id,
+                FileName = report.FileName,
+                ExpStartId = string.IsNullOrWhiteSpace(taskExpStartId)
+                    ? report.ExpStartId?.Trim() ?? string.Empty
+                    : taskExpStartId,
+                FilePath = report.FilePath,
+                UploadStatus = report.UploadStatus,
+                CreatedTime = report.CreatedTime,
+                UpdatedTime = report.UpdatedTime
+            })
+            .ToList();
+    }
+
+    private BizWeldTask? GetTask(int taskId)
+    {
+        return taskId <= 0
+            ? null
+            : _dbContext.Db.Queryable<BizWeldTask>().InSingle(taskId);
+    }
+
+    private List<BizWeldPointRecord> GetTaskRecords(int taskId)
+    {
+        // 测试数据页与报表同口径，不显示已删除产品；原始行去采集数据页看。
+        return WeldPointRecordScopeRules.ExcludeDeleted(_dbContext.Db.Queryable<BizWeldPointRecord>()
+                .Where(record => record.TaskId == taskId)
+                .ToList())
+            .OrderBy(record => record.StationNo)
+            .ThenBy(record => record.ProductNo, NaturalSortComparer.Instance)
+            .ThenBy(record => record.SequenceNo)
+            .ThenBy(record => record.Id)
+            .ToList();
+    }
+
+    private IReadOnlyDictionary<int, IReadOnlyList<SchemeItemDefinition>> ResolveSchemeItems(
+        BizWeldTask task,
+        IReadOnlyList<BizWeldPointRecord> records,
+        IReadOnlyDictionary<int, BizProductProcessConfig>? processConfigsByStation = null)
+    {
+        var stationNumbers = records
+            .Select(record => record.StationNo)
+            .Append(task.StationNo)
+            .ToList();
+        var configsByStation = processConfigsByStation ?? TaskProductProcessConfigResolver.Resolve(
+            _productProcessConfigService,
+            task,
+            stationNumbers);
+        var schemeIds = configsByStation.Values
+            .Select(config => config.SchemeId?.Trim())
+            .Where(schemeId => !string.IsNullOrWhiteSpace(schemeId))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (schemeIds.Count == 0)
+        {
+            return new Dictionary<int, IReadOnlyList<SchemeItemDefinition>>();
+        }
+
+        var details = _dbContext.Db.Queryable<BizSchemeDetail>()
+            .Where(detail => schemeIds.Contains(detail.SchemeId))
+            .OrderBy(detail => detail.DetailId)
+            .ToList();
+        var itemIds = details.Select(detail => detail.ItemId).Distinct().ToList();
+        var items = _dbContext.Db.Queryable<DimTestItem>()
+            .Where(item => itemIds.Contains(item.ItemId))
+            .ToList();
+        var definitionsByScheme = details
+            .GroupBy(detail => detail.SchemeId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<SchemeItemDefinition>)group
+                    .Select(detail => new SchemeItemDefinition(
+                        items.FirstOrDefault(item => item.ItemId == detail.ItemId),
+                        detail))
+                    .Where(definition => definition.Item is not null)
+                    .Select(definition =>
+                    {
+                        SchemeDetailRoleRules.ClearUnavailableRoles(definition.Detail, definition.Item!);
+                        return definition;
+                    })
+                    .Where(definition => HasAnyEnabledRole(definition.Detail))
+                    .GroupBy(definition => definition.Item!.ItemId)
+                    .Select(group => group.First())
+                    .ToList(),
+                StringComparer.OrdinalIgnoreCase);
+
+        return configsByStation.ToDictionary(
+            pair => pair.Key,
+            pair => definitionsByScheme.TryGetValue(pair.Value.SchemeId, out var definitions)
+                ? definitions
+                : (IReadOnlyList<SchemeItemDefinition>)Array.Empty<SchemeItemDefinition>());
+    }
+
+    private static IReadOnlyList<SchemeItemDefinition> GetSchemeItemsForStation(
+        IReadOnlyDictionary<int, IReadOnlyList<SchemeItemDefinition>> schemeItemsByStation,
+        BizWeldTask task,
+        int stationNo)
+    {
+        var normalizedStationNo = TaskProductProcessConfigResolver.NormalizeStationNo(stationNo, task);
+        return schemeItemsByStation.TryGetValue(normalizedStationNo, out var definitions)
+            ? definitions
+            : Array.Empty<SchemeItemDefinition>();
+    }
+
+    private static IReadOnlyList<DataHistoryDynamicColumn> BuildDynamicColumns(
+        IEnumerable<SchemeItemDefinition> schemeItems)
+    {
+        var columns = new List<DataHistoryDynamicColumn>();
+        foreach (var definition in schemeItems)
+        {
+            var item = definition.Item!;
+            var detail = definition.Detail;
+            var itemKey = ResolveItemKey(item);
+            AddColumn(columns, SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Actual), itemKey, ResolveColumnHeader(detail, item, SchemeDetailValueRole.Actual));
+            AddColumn(columns, SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Upper), $"{itemKey}_upper", ResolveColumnHeader(detail, item, SchemeDetailValueRole.Upper));
+            AddColumn(columns, SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Lower), $"{itemKey}_lower", ResolveColumnHeader(detail, item, SchemeDetailValueRole.Lower));
+            AddColumn(columns, SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Result), $"{itemKey}_result", ResolveColumnHeader(detail, item, SchemeDetailValueRole.Result));
+        }
+
+        return columns;
+    }
+
+    /// <summary>
+    /// 解析动态列标题，并按统一规则追加测试项单位。
+    /// </summary>
+    private static string ResolveColumnHeader(BizSchemeDetail detail, DimTestItem item, SchemeDetailValueRole role)
+        => TestItemUnitFormatRules.FormatHeader(
+            SchemeDetailRoleRules.ResolveHeader(detail, item, role),
+            item.Unit,
+            role);
+
+    private static string BuildSavedRawDataJson(
+        BizWeldPointRecord record,
+        IReadOnlyList<SchemeItemDefinition> schemeItems)
+    {
+        var rawValues = ParseRawData(record.RawDataJson);
+        var savedValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var definition in schemeItems)
+        {
+            var item = definition.Item!;
+            var detail = definition.Detail;
+            var itemKey = ResolveItemKey(item);
+            AddSavedValue(savedValues, rawValues, SchemeDetailRoleRules.IsSaveEnabled(detail, SchemeDetailValueRole.Actual), itemKey, item.ItemName);
+            AddSavedValue(savedValues, rawValues, SchemeDetailRoleRules.IsSaveEnabled(detail, SchemeDetailValueRole.Upper), $"{itemKey}_upper", $"{item.ItemName}上限");
+            AddSavedValue(savedValues, rawValues, SchemeDetailRoleRules.IsSaveEnabled(detail, SchemeDetailValueRole.Lower), $"{itemKey}_lower", $"{item.ItemName}下限");
+            AddSavedValue(savedValues, rawValues, SchemeDetailRoleRules.IsSaveEnabled(detail, SchemeDetailValueRole.Result), $"{itemKey}_result", $"{item.ItemName}结果");
+        }
+
+        return JsonSerializer.Serialize(savedValues);
+    }
+
+    private static void AddSavedValue(
+        IDictionary<string, string> target,
+        IReadOnlyDictionary<string, string> source,
+        bool enabled,
+        string key,
+        params string[] fallbackKeys)
+    {
+        if (!enabled)
+        {
+            return;
+        }
+
+        var value = FirstRawValue(source, new[] { key }.Concat(fallbackKeys).ToArray());
+        if (value is not null)
+        {
+            target[key] = value;
+        }
+    }
+
+    private static IReadOnlyDictionary<string, string> BuildDynamicValues(
+        BizWeldPointRecord record,
+        IReadOnlyList<SchemeItemDefinition> schemeItems)
+    {
+        var rawValues = ParseRawData(record.RawDataJson);
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var definition in schemeItems)
+        {
+            var item = definition.Item!;
+            var detail = definition.Detail;
+            var itemKey = ResolveItemKey(item);
+            if (SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Actual))
+            {
+                values[itemKey] = FirstRawValue(rawValues, itemKey, item.ItemName) ?? string.Empty;
+            }
+
+            if (SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Upper))
+            {
+                values[$"{itemKey}_upper"] = FirstRawValue(rawValues, $"{itemKey}_upper", $"{item.ItemName}上限") ?? string.Empty;
+            }
+
+            if (SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Lower))
+            {
+                values[$"{itemKey}_lower"] = FirstRawValue(rawValues, $"{itemKey}_lower", $"{item.ItemName}下限") ?? string.Empty;
+            }
+
+            if (SchemeDetailRoleRules.ShouldShowHistoryRole(detail, SchemeDetailValueRole.Result))
+            {
+                values[$"{itemKey}_result"] = FirstRawValue(rawValues, $"{itemKey}_result", $"{item.ItemName}结果") ?? string.Empty;
+            }
+        }
+
+        return values;
+    }
+
+    private static Dictionary<string, string> ParseRawData(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            return document.RootElement.EnumerateObject()
+                .ToDictionary(
+                    property => property.Name,
+                    property => JsonElementToText(property.Value),
+                    StringComparer.OrdinalIgnoreCase);
+        }
+        catch (JsonException)
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private static string JsonElementToText(JsonElement value)
+    {
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString() ?? string.Empty,
+            JsonValueKind.Null => string.Empty,
+            JsonValueKind.Undefined => string.Empty,
+            _ => value.ToString()
+        };
+    }
+
+    private static string? FirstRawValue(
+        IReadOnlyDictionary<string, string> values,
+        params string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            if (values.TryGetValue(key, out var value))
+            {
+                return value;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Reads the product result stored by the PLC collection path.
+    /// New rows use the dedicated column; legacy rows fall back to RawDataJson.
+    /// </summary>
+    private static string ResolveProductResult(BizWeldPointRecord record)
+    {
+        if (!string.IsNullOrWhiteSpace(record.ProductResult))
+        {
+            return TestResultRules.Normalize(record.ProductResult);
+        }
+
+        var rawProductResult = FirstRawValue(ParseRawData(record.RawDataJson), "product_result");
+        return TestResultRules.Normalize(rawProductResult);
+    }
+
+    private static void AddColumn(
+        ICollection<DataHistoryDynamicColumn> columns,
+        bool enabled,
+        string key,
+        string headerText)
+    {
+        if (!enabled || columns.Any(column => string.Equals(column.Key, key, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        columns.Add(new DataHistoryDynamicColumn { Key = key, HeaderText = headerText });
+    }
+
+    private static string NormalizeDisplayText(string? value, string fallback)
+        => string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+
+    private static bool HasAnyEnabledRole(BizSchemeDetail detail)
+    {
+        return SchemeDetailRoleRules.AllRoles.Any(role => SchemeDetailRoleRules.ShouldShowHistoryRole(detail, role));
+    }
+
+    private static string ResolveItemKey(DimTestItem item)
+    {
+        return item.ItemId > 0 ? $"item_{item.ItemId}" : item.ItemName.Trim();
+    }
+
+    private static DataHistoryWorkOrderRow ToWorkOrderRow(BizWeldTask task)
+    {
+        var processDisplay = string.IsNullOrWhiteSpace(task.ProcessName)
+            ? task.ProcessNo
+            : $"{task.ProcessNo} {task.ProcessName}".Trim();
+        return new DataHistoryWorkOrderRow
+        {
+            TaskId = task.Id,
+            StationNo = task.StationNo,
+            WorkOrderId = task.SN,
+            ProductNum = task.ProductNum,
+            Batch = task.Batch,
+            ProductName = task.ProductName,
+            ProcessDisplay = processDisplay,
+            RecipeCode = task.RecipeCode ?? string.Empty,
+            PlannedQty = task.StartAmount,
+            ActualQty = task.ActualQty,
+            QualifiedQty = task.QualifiedQty,
+            FailedQty = task.FailedQty,
+            OperatorNumber = task.UserNumber ?? string.Empty,
+            StartTime = task.StartTime,
+            EndTime = task.EndTime,
+            TaskStatus = task.TaskStatus,
+            UploadStatus = task.UploadStatus
+        };
+    }
+
+    private static string Normalize(string? value)
+    {
+        return value?.Trim() ?? string.Empty;
+    }
+
+    private sealed record SchemeItemDefinition(DimTestItem? Item, BizSchemeDetail Detail);
+}

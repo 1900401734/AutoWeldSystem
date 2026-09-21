@@ -13,11 +13,29 @@ public static class UiColors
     /// </summary>
     public static class Status
     {
+        /// <summary>
+        /// blue
+        /// </summary>
         public static readonly Color Primary = Color.FromArgb(13, 110, 253);
+        /// <summary>
+        /// Green
+        /// </summary>
         public static readonly Color Success = Color.FromArgb(25, 135, 84);
+        /// <summary>
+        /// Orange
+        /// </summary>
         public static readonly Color Business = Color.FromArgb(180, 83, 9);
+        /// <summary>
+        /// Yellow
+        /// </summary>
         public static readonly Color Warning = Color.FromArgb(255, 193, 7);
+        /// <summary>
+        /// Red
+        /// </summary>
         public static readonly Color Danger = Color.FromArgb(220, 53, 69);
+        /// <summary>
+        /// Gray
+        /// </summary>
         public static readonly Color Muted = Color.FromArgb(108, 117, 125);
     }
 
@@ -33,5 +51,11 @@ public static class UiColors
         public static readonly Color AlternateRowColor = Color.FromArgb(249, 250, 251);
         public static readonly Color SelectionBackColor = Color.FromArgb(219, 234, 254);
         public static readonly Color SelectionForeColor = Color.FromArgb(17, 24, 39);
+
+        /// <summary>
+        /// NG 产品整行标红的背景与文字色，浅红底保证黑字仍可读。
+        /// </summary>
+        public static readonly Color NgRowBackColor = Color.FromArgb(255, 228, 230);
+        public static readonly Color NgRowForeColor = Color.FromArgb(153, 27, 27);
     }
 }

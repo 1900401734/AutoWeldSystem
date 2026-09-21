@@ -1,0 +1,278 @@
+@using AutoWeldSystem.CenterServer.Services
+@using AutoWeldSystem.Core.DTOs.CenterServer
+@using Microsoft.JSInterop
+@inject CenterDashboardQueryService DashboardQuery
+@inject CenterDashboardChangeNotifier ChangeNotifier
+@inject CenterDeviceRemovalService DeviceRemovalService
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="monitor-shell" @ref="_shell">
+    <HeaderBar Snapshot="_snapshot" RailOpen="_railOpen"
+               OnSettingsRequested="() => _settingsOpen = true"
+               OnRailToggleRequested="() => _railOpen = !_railOpen" />
+
+    @if (_snapshot.ErrorMessage is not null)
+    {
+        <div class="monitor-notice" role="status">@_snapshot.ErrorMessage <span>将自动重试，当前保留最后一次数据。</span></div>
+    }
+    <section class="monitor-kpis" aria-label="全部设备生产概况">
+        <div class="metric-tile"><span class="metric-label"><i class="metric-dot running" aria-hidden="true"></i>运行设备</span><strong>@RunningCount<span class="metric-unit"> / @_snapshot.Devices.Count 台</span></strong><small>PLC 运行且客户端在线</small></div>
+        <div class="metric-tile"><span class="metric-label">设备总数</span><strong>@_snapshot.Devices.Count<span class="metric-unit"> 台</span></strong><small>@OnlineCount 台在线 · @(_snapshot.Devices.Count - OnlineCount) 台离线</small></div>
+        <div class="metric-tile production"><span class="metric-label">今日产量</span><strong>@(FreshDevices.Count == 0 ? "--" : Total.ToString("N0"))<span class="metric-unit"> 件次</span></strong><small>按设备采集完成日期统计</small></div>
+        <div class="metric-tile"><span class="metric-label">今日良率</span><strong>@(Total > 0 ? $"{Good * 100m / Total:F1}" : "--")<span class="metric-unit"> %</span></strong><small>合格 @(FreshDevices.Count == 0 ? "--" : Good.ToString("N0")) · 不良 @(FreshDevices.Count == 0 ? "--" : (Total - Good).ToString("N0"))</small></div>
+        <div class="metric-tile @(AlarmCount > 0 ? "has-alarm" : null)"><span class="metric-label"><i class="metric-dot alarm" aria-hidden="true"></i>报警设备</span><strong>@AlarmCount<span class="metric-unit"> 台</span></strong><small>@(AlarmCount > 0 ? "请优先查看异常机台" : "当前在线设备无报警")</small></div>
+    </section>
+
+    <div class="monitor-toolbar">
+        <span class="section-heading">生产总览 <span>@DateTime.Today.ToString("MM月dd日")</span></span>
+        <div class="monitor-pagination">
+            @if (_selectedDeviceId is not null)
+            {
+                <button type="button" class="text-button" @onclick="() => _selectedDeviceId = null">取消定位</button>
+            }
+            <span>显示 @(VisibleDevices.Count == 0 ? 0 : _page * PageSize + 1)–@Math.Min((_page + 1) * PageSize, _snapshot.Devices.Count) / @_snapshot.Devices.Count 台</span>
+            <button type="button" class="page-button" disabled="@(_page == 0)" aria-label="上一页设备" @onclick="() => ChangePage(-1)">‹</button>
+            <button type="button" class="page-button" disabled="@(_page >= PageCount - 1)" aria-label="下一页设备" @onclick="() => ChangePage(1)">›</button>
+            <button type="button" class="text-button" onclick="awsCenterDisplay.toggleRotation(this)" aria-pressed="false">全屏轮播</button>
+            <button type="button" class="text-button" onclick="awsCenterDisplay.toggleMotion(this)" aria-pressed="false">减少动画</button>
+        </div>
+    </div>
+
+    <main class="monitor-panels">
+        <section class="monitor-panel devices-panel">
+            <div class="panel-heading"><h2>设备运行状态</h2><span>选择设备可关联定位</span></div>
+            <div class="device-table-wrap">
+                <table class="device-table">
+                    <thead><tr><th>设备 / 工位</th><th>状态</th><th>当前工单</th><th class="table-number">今日产量</th></tr></thead>
+                    <tbody>
+                        @foreach (var device in VisibleDevices)
+                        {
+                            var status = CenterDashboardStatusPresenter.OverviewState(device);
+                            var alarmMessages = CenterDashboardStatusPresenter.AlarmMessages(device);
+                            <tr class="@SelectedClass(device)" @key="device.DeviceId">
+                                <td><button type="button" class="device-select" @onclick="() => SelectDevice(device.DeviceId)"><strong>@device.DeviceName</strong><span>@device.DeviceId · @(device.Stations.Count > 1 ? "双工位" : "单工位")</span></button></td>
+                                <td><span class="state-pill @status.ClassName"><i class="dot" aria-hidden="true"></i><span>@status.Label</span></span></td>
+                                <td><span class="work-order-text">@(device.State.ClientOnline ? string.Join(" / ", device.Stations.Select(station => station.CurrentWorkOrder).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct()) is { Length: > 0 } orders ? orders : "未开工" : "--")</span><button type="button" class="detail-link" @onclick="() => _detailDeviceId = device.DeviceId">查看详情</button></td>
+                                <td class="table-number">@(IsFresh(device) ? device.TodayTotalCount.ToString("N0") : "--")</td>
+                            </tr>
+                            @if (alarmMessages.Count > 0)
+                            {
+                                <tr class="device-alarm-detail"><td colspan="4"><span>报警提示：</span><ul>
+                                    @foreach (var message in alarmMessages) { <li>@message</li> }
+                                </ul></td></tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+                @if (VisibleDevices.Count == 0)
+                {
+                    <div class="monitor-empty"><strong>等待设备接入</strong><p>收到设备心跳和生产数据后，机台会自动出现在这里。</p></div>
+                }
+            </div>
+        </section>
+
+        <section class="monitor-panel progress-panel">
+            <div class="panel-heading"><h2>当前工单进度</h2><span>任务合格数 / 计划数量</span></div>
+            <div class="progress-list">
+                @foreach (var device in VisibleDevices)
+                {
+                    var tasks = device.Stations.Where(station => !string.IsNullOrWhiteSpace(station.CurrentWorkOrder))
+                        .GroupBy(station => station.TaskKey ?? $"legacy-{station.StationNo}").Select(group => group.First()).ToList();
+                    @if (tasks.Count == 0)
+                    {
+                        <div class="progress-item @SelectedClass(device)"><div class="progress-caption"><strong>@device.DeviceName</strong><span>未开工</span></div><div class="progress-track"><span style="transform:scaleX(0)"></span></div></div>
+                    }
+                    @foreach (var station in tasks)
+                    {
+                        var rate = device.State.ClientOnline
+                            ? CenterDashboardStatusPresenter.TaskAchievementRate(station) : null;
+                        <div class="progress-item @SelectedClass(device)">
+                            <div class="progress-caption"><button type="button" class="text-button" @onclick="() => SelectDevice(device.DeviceId)">@device.DeviceName @StationLabel(device, station)</button><strong>@(rate is null ? "--" : $"{rate:F1}%")</strong></div>
+                            <div class="progress-track" role="progressbar" aria-label="@($"{device.DeviceName}工单达成率")" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@Math.Clamp(rate ?? 0, 0, 100)" aria-valuetext="@(rate is null ? "暂无有效任务数量" : $"{rate:F1}%")"><span class="@(rate >= 100 ? "complete" : null)" style="transform:scaleX(@Scale(rate))"></span></div>
+                            <div class="progress-meta"><span>@station.CurrentWorkOrder</span><span>@(rate is null ? "待设备更新" : $"{station.TaskQualifiedCount:N0} / {station.WorkOrderQuantity:N0} 件") @(rate > 100 ? "· 超产" : "")</span></div>
+                        </div>
+                    }
+                }
+                @if (VisibleDevices.Count == 0) { <div class="monitor-empty">暂无生产任务</div> }
+            </div>
+        </section>
+
+        <section class="monitor-panel production-panel">
+            <div class="panel-heading"><h2>今日设备产量</h2><span>设备加工件次 · 不等同最终成品数</span></div>
+            <div class="production-chart-wrap">
+                <DashboardChart Devices="VisibleDevices" SelectedDeviceId="@_selectedDeviceId" OnDeviceSelected="SelectDevice" Description="今日设备产量柱状图，准确数量同时列于设备表格" />
+            </div>
+        </section>
+
+        <section class="monitor-panel quality-panel">
+            <div class="panel-heading"><h2>今日设备良率</h2><span><i class="legend-dot good" aria-hidden="true"></i>合格 <i class="legend-dot bad" aria-hidden="true"></i>不良</span></div>
+            <div class="quality-grid">
+                @foreach (var device in VisibleDevices)
+                {
+                    var valid = IsFresh(device) && device.TodayTotalCount > 0;
+                    <div class="quality-item @SelectedClass(device)" @key="device.DeviceId">
+                        <button type="button" class="quality-device" title="@device.DeviceName" @onclick="() => SelectDevice(device.DeviceId)">@device.DeviceName</button>
+                        <div class="quality-ring">
+                            <DashboardChart Kind="quality" Devices="@(new[] { device })" Description="@($"{device.DeviceName}今日合格与不良占比")" OnDeviceSelected="SelectDevice" />
+                            <div class="quality-value"><strong>@(valid ? $"{device.TodayQualifiedCount * 100m / device.TodayTotalCount:F1}" : "--")<small>@(valid ? "%" : "")</small></strong><span>@(valid ? "合格率" : device.State.ClientOnline ? "暂无有效数据" : "设备离线")</span></div>
+                        </div>
+                        <div class="quality-counts"><span>OK <b>@(IsFresh(device) ? device.TodayQualifiedCount.ToString("N0") : "--")</b></span><span>NG <b>@(IsFresh(device) ? device.TodayFailedCount.ToString("N0") : "--")</b></span></div>
+                    </div>
+                }
+                @if (VisibleDevices.Count == 0) { <div class="monitor-empty">暂无质量数据</div> }
+            </div>
+        </section>
+    </main>
+
+    <footer class="monitor-footer">
+        <span><i class="dot" aria-hidden="true"></i> 最近快照 @_snapshot.GeneratedAt.ToString("HH:mm:ss") <span class="footer-muted">· 有效日统计 @FreshDevices.Count / @_snapshot.Devices.Count 台（离线与旧版不计）</span></span>
+        <span>@ReportSyncText <button class="text-button" type="button" @onclick="() => _railOpen = true">查看日志 →</button></span>
+    </footer>
+
+    @if (_railOpen)
+    {
+        <div class="monitor-overlay" @onclick="() => _railOpen = false">
+            <div class="monitor-log-drawer" role="dialog" aria-modal="true" aria-label="推送日志" @onclick:stopPropagation>
+                <button type="button" class="drawer-close" aria-label="关闭推送日志" @onclick="() => _railOpen = false">关闭 ×</button>
+                @if (!_snapshot.IsDemo) { <LogRail @ref="_logRail" Open="true" /> }
+                else { <div class="monitor-empty">演示模式不读取现场日志</div> }
+            </div>
+        </div>
+    }
+    <SettingsDrawer Open="_settingsOpen" OnClose="() => _settingsOpen = false" OnSaved="HandleSettingsSaved" />
+    @if (_detailDeviceId is not null && _snapshot.Devices.FirstOrDefault(device => device.DeviceId == _detailDeviceId) is { } detail)
+    {
+        <div class="monitor-overlay" @onclick="() => _detailDeviceId = null">
+            <section class="monitor-detail" role="dialog" aria-modal="true" aria-label="设备详情" @onclick:stopPropagation>
+                <button type="button" class="drawer-close" aria-label="关闭设备详情" @onclick="() => _detailDeviceId = null">关闭 ×</button>
+                <DeviceCard Device="detail" OnDeleteRequested="OpenDeleteDialog" />
+            </section>
+        </div>
+    }
+    @if (_pendingDeleteDevice is not null)
+    {
+        <div class="modal-mask" @onclick="CancelDelete"><div class="modal-card" role="dialog" aria-modal="true" aria-label="删除设备确认" @onclick:stopPropagation>
+            <h3>删除设备</h3><p>确认从看板删除 @_pendingDeleteDevice.DeviceName？</p><p class="modal-hint">历史报表和日志保留。设备再次推送时会重新出现。</p>
+            @if (_deleteError is not null) { <p class="modal-error">@_deleteError</p> }
+            <div class="modal-actions"><button type="button" class="ghost-button" disabled="@_deleting" @onclick="CancelDelete">取消</button><button type="button" class="danger-button" disabled="@_deleting" @onclick="ConfirmDeleteAsync">确认删除</button></div>
+        </div></div>
+    }
+</div>
+
+@code {
+    private const int PageSize = 6;
+    private static readonly TimeSpan RenderTickInterval = TimeSpan.FromSeconds(1);
+    private const int MaxStaleSeconds = 10;
+    private CenterDashboardSnapshotDto _snapshot = new();
+    private CancellationTokenSource? _cts;
+    private Task? _refreshTask;
+    private LogRail? _logRail;
+    private ElementReference _shell;
+    private DotNetObjectReference<Dashboard>? _reference;
+    private CenterDashboardDeviceDto? _pendingDeleteDevice;
+    private bool _deleting;
+    private string? _deleteError;
+    private bool _disposed;
+    private bool _settingsOpen;
+    private bool _railOpen;
+    private volatile bool _dirty;
+    private DateTime _lastSnapshotAt;
+    private int _page;
+    private string? _selectedDeviceId;
+    private string? _detailDeviceId;
+
+    private int PageCount => Math.Max(1, (_snapshot.Devices.Count + PageSize - 1) / PageSize);
+    private IReadOnlyList<CenterDashboardDeviceDto> VisibleDevices => _snapshot.Devices.Skip(_page * PageSize).Take(PageSize).ToArray();
+    private IReadOnlyList<CenterDashboardDeviceDto> FreshDevices => _snapshot.Devices.Where(IsFresh).ToArray();
+    private long Total => FreshDevices.Sum(device => (long)device.TodayTotalCount);
+    private long Good => FreshDevices.Sum(device => (long)device.TodayQualifiedCount);
+    private int OnlineCount => _snapshot.Devices.Count(device => device.State.ClientOnline);
+    private int AlarmCount => _snapshot.Devices.Count(device => device.State.ClientOnline && CenterDashboardStatusPresenter.HasAlarm(device));
+    private int RunningCount => _snapshot.Devices.Count(CenterDashboardStatusPresenter.IsRunningDevice);
+    private string ReportSyncText
+    {
+        get
+        {
+            var counts = CenterDashboardStatusPresenter.ReportSyncCounts(_snapshot.Devices);
+            return counts.Pending.HasValue ? $"报表待同步 {counts.Pending} · 失败 {counts.Failed}" : "报表同步状态未上报";
+        }
+    }
+
+    protected override void OnInitialized() => RefreshDashboardSnapshot();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        _cts = new CancellationTokenSource();
+        ChangeNotifier.DashboardChanged += OnDashboardChanged;
+        _refreshTask = RefreshLoopAsync(_cts.Token);
+        _reference = DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("awsCenterDisplay.attach", _shell, _reference);
+    }
+
+    private void OnDashboardChanged(object? sender, CenterDashboardChangedEventArgs _) => _dirty = true;
+
+    private async Task RefreshLoopAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(RenderTickInterval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                if (!_dirty && DateTime.Now - _lastSnapshotAt < TimeSpan.FromSeconds(MaxStaleSeconds)) continue;
+                _dirty = false;
+                await InvokeAsync(() => { RefreshDashboardSnapshot(cancellationToken); StateHasChanged(); });
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
+
+    private void RefreshDashboardSnapshot(CancellationToken cancellationToken = default)
+    {
+        try { _snapshot = DashboardQuery.GetSnapshot(cancellationToken); }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception) { _snapshot.ErrorMessage = "生产数据暂不可用，请检查中心数据库连接。"; }
+        _lastSnapshotAt = DateTime.Now;
+        _page = Math.Clamp(_page, 0, PageCount - 1);
+    }
+
+    [JSInvokable]
+    public Task RotatePage() => InvokeAsync(() => { if (!_railOpen && !_settingsOpen && _detailDeviceId is null) { _page = (_page + 1) % PageCount; StateHasChanged(); } });
+
+    private void ChangePage(int delta) { _page = Math.Clamp(_page + delta, 0, PageCount - 1); _selectedDeviceId = null; }
+    private void SelectDevice(string id) => _selectedDeviceId = _selectedDeviceId == id ? null : id;
+    private string SelectedClass(CenterDashboardDeviceDto device) => device.DeviceId == _selectedDeviceId ? "is-selected" : string.Empty;
+    private static bool IsFresh(CenterDashboardDeviceDto device) => device.State.ClientOnline && device.HasProductionFor(DateTime.Today);
+    private static string Scale(decimal? rate) => (Math.Clamp(rate ?? 0, 0, 100) / 100m).ToString(System.Globalization.CultureInfo.InvariantCulture);
+    private static string StationLabel(CenterDashboardDeviceDto device, CenterDashboardStationDto station) => device.Stations.Count > 1 ? station.StationName ?? $"工位{station.StationNo}" : string.Empty;
+    private void HandleSettingsSaved() => _logRail?.Reload();
+    private void OpenDeleteDialog(CenterDashboardDeviceDto device) { if (!_deleting && !_snapshot.IsDemo) { _pendingDeleteDevice = device; _deleteError = null; } }
+    private void CancelDelete() { if (!_deleting) { _pendingDeleteDevice = null; _deleteError = null; } }
+    private async Task ConfirmDeleteAsync()
+    {
+        if (_deleting || _pendingDeleteDevice is null) return;
+        _deleting = true;
+        try
+        {
+            await DeviceRemovalService.RemoveDeviceAsync(_pendingDeleteDevice.DeviceId);
+            _pendingDeleteDevice = null;
+            _detailDeviceId = null;
+            RefreshDashboardSnapshot();
+        }
+        catch (Exception) { _deleteError = "删除失败，请检查中心服务器日志。"; }
+        finally { _deleting = false; }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        ChangeNotifier.DashboardChanged -= OnDashboardChanged;
+        _cts?.Cancel();
+        try { if (_refreshTask is not null) await _refreshTask; } catch (OperationCanceledException) { }
+        try { await JS.InvokeVoidAsync("awsCenterDisplay.detach"); } catch (JSDisconnectedException) { } catch (InvalidOperationException) { }
+        _reference?.Dispose();
+        _cts?.Dispose();
+    }
+}

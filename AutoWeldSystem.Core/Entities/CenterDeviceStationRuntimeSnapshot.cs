@@ -1,0 +1,108 @@
+using SqlSugar;
+
+namespace AutoWeldSystem.Core.Entities;
+
+/// <summary>
+/// Latest runtime snapshot for one station of one center-server device.
+/// </summary>
+[SugarTable("Center_DeviceStationRuntimeSnapshot", TableDescription = "中心服务器设备工位最新运行快照表")]
+public sealed class CenterDeviceStationRuntimeSnapshot
+{
+    /// <summary>
+    /// Surrogate primary key used by SqlSugar.
+    /// </summary>
+    [SugarColumn(IsPrimaryKey = true, IsIdentity = true)]
+    public long Id { get; set; }
+
+    /// <summary>
+    /// Stable device id.
+    /// </summary>
+    [SugarColumn(Length = 50)]
+    public string DeviceId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Station number on the equipment client.
+    /// </summary>
+    public int StationNo { get; set; } = 1;
+
+    /// <summary>
+    /// Whether the station's PLC business connection is verified.
+    /// </summary>
+    public bool PlcConnected { get; set; }
+
+    /// <summary>
+    /// PLC connection state text.
+    /// </summary>
+    [SugarColumn(Length = 50)]
+    public string PlcConnectionState { get; set; } = string.Empty;
+
+    /// <summary>
+    /// PLC raw status code or device-status JSONL fallback code.
+    /// </summary>
+    [SugarColumn(Length = 20)]
+    public string DeviceStatusCode { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Display name matching the selected status source.
+    /// </summary>
+    [SugarColumn(Length = 50)]
+    public string DeviceStatusName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Alarm message resolved by the equipment client.
+    /// </summary>
+    [SugarColumn(ColumnDataType = "text")]
+    public string AlarmMessage { get; set; } = string.Empty;
+
+    /// <summary>独立保存有效报警及完整原因；可空追加列兼容旧库，不改变原始 PLC 报警字段。</summary>
+    [SugarColumn(IsNullable = true, ColumnDataType = "text")]
+    public string? EffectiveAlarmJson { get; set; }
+
+    /// <summary>
+    /// Current work order of this station.
+    /// </summary>
+    [SugarColumn(Length = 50)]
+    public string CurrentWorkOrder { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Product job number configured in the local task.
+    /// </summary>
+    [SugarColumn(Length = 50)]
+    public string ProductJobNo { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional product model.
+    /// </summary>
+    [SugarColumn(Length = 50)]
+    public string ProductModel { get; set; } = string.Empty;
+
+    public int TodayTotalCount { get; set; }
+    public int TodayQualifiedCount { get; set; }
+    public int TodayFailedCount { get; set; }
+
+    /// <summary>
+    /// 工单计划数量，达成率分母。CodeFirst 追加的 int 列，旧库升级后默认 0 表示未知。
+    /// </summary>
+    [SugarColumn(ColumnDescription = "工单数量")]
+    public int WorkOrderQuantity { get; set; }
+
+    [SugarColumn(IsNullable = true)]
+    public DateTime? ProductionDate { get; set; }
+    [SugarColumn(IsNullable = true, Length = 100)]
+    public string? TaskKey { get; set; }
+    [SugarColumn(IsNullable = true, Length = 100)]
+    public string? ProgramName { get; set; }
+    [SugarColumn(IsNullable = true, Length = 50)]
+    public string? StationName { get; set; }
+    [SugarColumn(IsNullable = true, Length = 20)]
+    public string? StatusSource { get; set; }
+    [SugarColumn(IsNullable = true)]
+    public int? TaskTotalCount { get; set; }
+    [SugarColumn(IsNullable = true)]
+    public int? TaskQualifiedCount { get; set; }
+    [SugarColumn(IsNullable = true)]
+    public int? TaskFailedCount { get; set; }
+
+    public DateTime CollectedAt { get; set; } = DateTime.Now;
+    public DateTime UpdatedAt { get; set; } = DateTime.Now;
+}

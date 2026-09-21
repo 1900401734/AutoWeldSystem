@@ -10,4 +10,8 @@
     <PackageReference Include="SqlSugarCore" Version="5.1.4.214" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Interfaces\Product\" />
+  </ItemGroup>
+
 </Project>

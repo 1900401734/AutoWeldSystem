@@ -1,3 +1,5 @@
+using AntdUI;
+using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.Interfaces;
 using AutoWeldSystem.UI.Base;
@@ -12,6 +14,14 @@ public partial class OperatorInputForm : BaseWindow
     {
         InitializeComponent();
         _localizer = localizer;
+
+        CancelButton = btnCancel;
+        Shown += (_, _) =>
+        {
+            txtEmployeeNumber.Text =  GlobalContext.CurrentUser?.UserNumber ?? string.Empty;
+            txtEmployeeNumber.Focus();
+            txtEmployeeNumber.SelectAll();
+        };
     }
 
     public string EmployeeNumber => txtEmployeeNumber.Text.Trim();

@@ -1,0 +1,1004 @@
+﻿using System.Text.Json;
+using AutoWeldSystem.Core.Center;
+using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.DTOs.CenterServer;
+using AutoWeldSystem.Core.Entities;
+using AutoWeldSystem.Core.Interfaces;
+using AutoWeldSystem.Core.Interfaces.Log;
+using AutoWeldSystem.Core.Production;
+using AutoWeldSystem.Data;
+using AutoWeldSystem.Services.Production;
+
+namespace AutoWeldSystem.Services.Center;
+
+/// <summary>
+/// Queues completed products locally and forwards them to the center server on a background loop.
+/// </summary>
+public sealed class CenterProductForwardingService : ICenterProductForwardingService
+{
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    private readonly SqlSugarDbContext _dbContext;
+    private readonly IAppSettingsService _settingsService;
+    private readonly IUploadTaskService _uploadTaskService;
+    private readonly IProductionReportFileService _reportFileService;
+    private readonly IProductionFlowLogService _productionLogService;
+    private readonly IProgramExceptionLogService _exceptionLogService;
+    private readonly IProductProcessConfigService _productProcessConfigService;
+    private readonly CenterTelemetryClient _client;
+    private readonly object _dbLock = new();
+
+    /// <summary>
+    /// 连接类失败的重试间隔。中心服务器可能停机维护较久，用固定间隔而不是指数退避，
+    /// 保证恢复后最迟一个间隔内就开始补齐，同时不会高频空转。
+    /// </summary>
+    private const int ConnectivityRetryDelaySeconds = 30;
+
+    private CancellationTokenSource? _cts;
+    private Task? _loopTask;
+    private DateTime _lastFailureLogTime = DateTime.MinValue;
+
+    public CenterProductForwardingService(
+        SqlSugarDbContext dbContext,
+        IAppSettingsService settingsService,
+        IUploadTaskService uploadTaskService,
+        IProductionFlowLogService productionLogService,
+        IProgramExceptionLogService exceptionLogService,
+        IProductProcessConfigService productProcessConfigService,
+        CenterTelemetryClient client,
+        IProductionReportFileService reportFileService)
+    {
+        _dbContext = dbContext;
+        _settingsService = settingsService;
+        _uploadTaskService = uploadTaskService;
+        _productionLogService = productionLogService;
+        _exceptionLogService = exceptionLogService;
+        _productProcessConfigService = productProcessConfigService;
+        _client = client;
+        _reportFileService = reportFileService;
+    }
+
+    public Task StartAsync(CancellationToken cancellationToken = default)
+    {
+        if (_loopTask is { IsCompleted: false })
+        {
+            return Task.CompletedTask;
+        }
+
+        RepairMistypedCenterTasks();
+        ResumeAbandonedCenterTasks();
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _loopTask = Task.Run(() => RunAsync(_cts.Token), CancellationToken.None);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 修正历史上被错误归类的中心转发任务。
+    /// UploadTaskService.NormalizeTaskType 曾漏登记 CenterProductReport，把任务类型静默改写成
+    /// ProcessParameter，导致本服务的消费查询永远取不到这些任务，中心看板收不到任何产品数据。
+    /// Target=CentralServer 只由本服务写入，因此该条件不会误伤 MES 任务。
+    /// 修正后这些任务重新进入现有重试队列自动补传；类型已正确时该更新不匹配任何行。
+    /// </summary>
+    private void RepairMistypedCenterTasks()
+    {
+        try
+        {
+            lock (_dbContext.TaskTransitionSync)
+            lock (_dbLock)
+            {
+                _dbContext.InitDatabase();
+                var repaired = _dbContext.Db.Updateable<BizUploadTask>()
+                    .SetColumns(task => task.TaskType == ProductionConstants.UploadTaskTypes.CenterProductReport)
+                    .Where(task => task.Target == ProductionConstants.UploadTargets.CentralServer
+                        && task.TaskType != ProductionConstants.UploadTaskTypes.CenterProductReport
+                        && !task.IsDeleted)
+                    .ExecuteCommand();
+                if (repaired > 0)
+                {
+                    _productionLogService.Write(
+                        "CenterProductForwardTaskTypeRepaired",
+                        ProductionFlowLogTexts.Summaries.CenterProductForwardTaskTypeRepaired,
+                        $"RepairedCount={repaired}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // 修正失败不能阻塞转发循环启动，否则新产品也一起同步不了。
+            _exceptionLogService.Write(ex, "CenterProductForwardingService.RepairMistypedCenterTasks");
+        }
+    }
+
+    /// <summary>
+    /// 启动时唤醒此前被判死的中心转发任务，保证产品数据不因中心服务器停机而永久丢失。
+    /// 两种卡死状态都要救：
+    /// 一是 Failed 终态，NextRetryTime 为空且重试耗尽，消费查询永久排除；
+    /// 二是停留在 Uploading，连接类异常曾穿透消费循环而没有回写状态。
+    /// 重置后按待发处理，重新进入现有重试队列；连接类失败已不再消耗配额，因此该重置
+    /// 主要作用于历史存量，正常运行时不会反复触发。
+    /// </summary>
+    private void ResumeAbandonedCenterTasks()
+    {
+        try
+        {
+            lock (_dbContext.TaskTransitionSync)
+            lock (_dbLock)
+            {
+                _dbContext.InitDatabase();
+                var now = DateTime.Now;
+                var abandonedTaskIds = _dbContext.Db.Queryable<BizWeldTask>()
+                    .Where(item => item.TaskStatus == ProductionConstants.ProductInstanceStatuses.Abandoned)
+                    .Select(item => item.Id).ToList();
+                var resumed = BuildStartupResumeUpdate(_dbContext.Db, abandonedTaskIds, now).ExecuteCommand();
+                if (resumed > 0)
+                {
+                    _productionLogService.Write(
+                        "CenterProductForwardTasksResumed",
+                        ProductionFlowLogTexts.Summaries.CenterProductForwardTasksResumed,
+                        $"ResumedCount={resumed}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _exceptionLogService.Write(ex, "CenterProductForwardingService.ResumeAbandonedCenterTasks");
+        }
+    }
+
+    private static SqlSugar.IUpdateable<BizUploadTask> BuildStartupResumeUpdate(
+        SqlSugar.ISqlSugarClient db, List<int> abandonedTaskIds, DateTime now)
+    {
+        var update = db.Updateable<BizUploadTask>()
+            .SetColumns(task => new BizUploadTask
+            {
+                Status = ProductionConstants.UploadStatuses.Pending,
+                RetryCount = 0,
+                NextRetryTime = now,
+                Message = "启动时恢复未完成的中心服务器转发任务，将重新补传。",
+                UpdatedTime = now
+            })
+            .Where(task => task.TaskType == ProductionConstants.UploadTaskTypes.CenterProductReport
+                && task.Target == ProductionConstants.UploadTargets.CentralServer
+                && !task.IsDeleted
+                && (task.Status == ProductionConstants.UploadStatuses.Failed
+                    || task.Status == ProductionConstants.UploadStatuses.Uploading));
+        // SqlSugar 嵌套 AND/OR 与否定 Contains 会漏译 OR；空集合省略，非空条件独立追加。
+        if (abandonedTaskIds.Count > 0)
+            update = update.Where(task => task.WeldTaskId == null || !abandonedTaskIds.Contains(task.WeldTaskId.Value));
+        return update;
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken = default)
+    {
+        if (_cts is not null)
+        {
+            await _cts.CancelAsync();
+        }
+
+        if (_loopTask is not null)
+        {
+            try
+            {
+                await _loopTask.WaitAsync(TimeSpan.FromSeconds(3), cancellationToken);
+            }
+            catch
+            {
+                // Shutdown must not block the WinForms process from exiting.
+            }
+        }
+
+        _cts?.Dispose();
+        _cts = null;
+        _loopTask = null;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await StopAsync();
+    }
+
+    public void EnqueueCompletedProduct(
+        BizWeldTask task,
+        int stationNo,
+        IReadOnlyList<BizWeldPointRecord> records)
+    {
+        var settings = _settingsService.Get();
+        if (!settings.EnableCenterServerSync || records.Count == 0)
+        {
+            return;
+        }
+
+        var normalizedStationNo = TaskProductProcessConfigResolver.NormalizeStationNo(stationNo, task);
+        var configs = TaskProductProcessConfigResolver.Resolve(
+            _productProcessConfigService,
+            task,
+            [normalizedStationNo]);
+        configs.TryGetValue(normalizedStationNo, out var config);
+        var request = BuildRequest(settings, task, stationNo, records, config);
+        var uploadTask = _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
+        {
+            TaskType = ProductionConstants.UploadTaskTypes.CenterProductReport,
+            Target = ProductionConstants.UploadTargets.CentralServer,
+            BusinessId = BuildBusinessId(request),
+            WeldTaskId = task.Id,
+            PayloadJson = JsonSerializer.Serialize(request, JsonOptions),
+            Status = ProductionConstants.UploadStatuses.Pending,
+            NextRetryTime = DateTime.Now,
+            Message = "中心服务器产品数据转发已入队。"
+        });
+
+        _productionLogService.Write(
+            "CenterProductForwardQueued",
+            ProductionFlowLogTexts.Summaries.CenterProductForwardQueued,
+            $"UploadTaskId={uploadTask.Id}, ProductNo={request.ProductNo}, PointCount={request.Points.Count}",
+            stationNo: stationNo,
+            workOrderId: task.SN,
+            productNo: request.ProductNo,
+            programId: task.ProgramId ?? string.Empty);
+    }
+
+    /// <summary>
+    /// 将已持久化的工单完工统计放入现有中心服务器重试队列。
+    /// 完工请求只包含任务级字段，不重复携带产品点明细。
+    /// 入队前先扫描该工单有无未成功的产品转发任务并唤醒，作为完工前的最后一道补漏。
+    /// </summary>
+    public void EnqueueTaskFinishUpdate(BizWeldTask task)
+    {
+        var settings = _settingsService.Get();
+        if (!settings.EnableCenterServerSync)
+        {
+            return;
+        }
+
+        _ = ProgramContentJsonRules.NormalizeForProduction(task.ProgramContentSnapshot, _settingsService.Get().ProcessParameterDeviceType);
+        ResumeUnfinishedProductTasks(task);
+        var request = BuildTaskFinishRequest(settings, task);
+        var uploadTask = _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
+        {
+            TaskType = ProductionConstants.UploadTaskTypes.CenterProductReport,
+            Target = ProductionConstants.UploadTargets.CentralServer,
+            BusinessId = BuildBusinessId(request),
+            WeldTaskId = task.Id,
+            PayloadJson = JsonSerializer.Serialize(request, JsonOptions),
+            Status = ProductionConstants.UploadStatuses.Pending,
+            NextRetryTime = DateTime.Now,
+            Message = "中心服务器工单完工更新已入队。"
+        });
+
+        _productionLogService.Write(
+            "CenterTaskFinishUpdateQueued",
+            ProductionFlowLogTexts.Summaries.CenterTaskFinishUpdateQueued,
+            $"UploadTaskId={uploadTask.Id}, EndTime={request.EndTime:yyyy-MM-dd HH:mm:ss}, QualifiedQty={request.QualifiedQty}",
+            stationNo: request.StationNo,
+            workOrderId: request.WorkOrder,
+            programId: task.ProgramId ?? string.Empty);
+    }
+
+    /// <summary>
+    /// 工单完工前唤醒该工单尚未成功的产品转发任务，确保完工时整批数据都在队列里等待补齐。
+    /// 逐产品实时转发仍是主通道，这里只兜住此前被判死的漏网任务，不重发已成功的产品。
+    /// </summary>
+    private void ResumeUnfinishedProductTasks(BizWeldTask task)
+    {
+        try
+        {
+            lock (_dbContext.TaskTransitionSync)
+            lock (_dbLock)
+            {
+                _dbContext.InitDatabase();
+                if (WeldTaskRuntimeRules.IsAbandoned(_dbContext.Db.Queryable<BizWeldTask>().InSingle(task.Id))) return;
+                var now = DateTime.Now;
+                var resumed = _dbContext.Db.Updateable<BizUploadTask>()
+                    .SetColumns(item => new BizUploadTask
+                    {
+                        Status = ProductionConstants.UploadStatuses.Pending,
+                        RetryCount = 0,
+                        NextRetryTime = now,
+                        Message = "工单完工补漏：重新排队未成功的中心服务器产品数据。",
+                        UpdatedTime = now
+                    })
+                    .Where(item => item.TaskType == ProductionConstants.UploadTaskTypes.CenterProductReport
+                        && item.Target == ProductionConstants.UploadTargets.CentralServer
+                        && item.WeldTaskId == task.Id
+                        && !item.IsDeleted
+                        && item.Status != ProductionConstants.UploadStatuses.Skipped
+                        && item.Status != ProductionConstants.UploadStatuses.Uploading
+                        && item.Status != ProductionConstants.UploadStatuses.Uploaded)
+                    .ExecuteCommand();
+                if (resumed > 0)
+                {
+                    _productionLogService.Write(
+                        "CenterProductForwardFinishSweep",
+                        ProductionFlowLogTexts.Summaries.CenterProductForwardFinishSweep,
+                        $"ResumedCount={resumed}",
+                        workOrderId: task.SN ?? string.Empty);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // 补漏失败不能阻塞完工上报，产品数据仍留在队列里由后台循环继续重试。
+            _exceptionLogService.Write(ex, "CenterProductForwardingService.ResumeUnfinishedProductTasks");
+        }
+    }
+
+    /// <summary>
+    /// Processes pending center forwarding tasks without blocking product collection.
+    /// </summary>
+    private async Task RunAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await ExecutePendingAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                // 连接类异常已由共享客户端按首次/十分钟摘要记录，避免两个后台服务重复刷程序异常。
+                if (!CenterServerAvailabilityLogGate.IsConnectivityFailure(ex, cancellationToken))
+                {
+                    WriteFailureLog(ex);
+                }
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+        }
+    }
+
+    private async Task ExecutePendingAsync(CancellationToken cancellationToken)
+    {
+        var taskIds = GetPendingTaskIds();
+        foreach (var taskId in taskIds)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var task = MarkUploading(taskId);
+            if (task is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                await ExecuteTaskAsync(task, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // 停机取消不是失败，退回待发状态等下次启动继续，不消耗重试配额。
+                MarkConnectivityRetry(task, "中心服务器转发已随程序停止，等待下次启动重试。");
+                throw;
+            }
+            catch (Exception ex) when (CenterServerAvailabilityLogGate.IsConnectivityFailure(ex, cancellationToken))
+            {
+                // 中心服务器关闭或网络不可达属于对端暂时不可用：重试多少次结果都一样，
+                // 因此不消耗重试配额，只推迟下次尝试，服务器恢复后自动补齐。
+                // 连接类异常会穿透 ExecuteTaskAsync，若不在此接住，任务会永久停在
+                // Uploading 且 RetryCount 已递增，耗尽后被消费查询永久排除。
+                MarkConnectivityRetry(task, BuildConnectivityRetryMessage(ex));
+            }
+            catch (Exception ex)
+            {
+                // 预留身份、持久化请求或协议解析失败也要释放本次认领，不能永久停在 Uploading。
+                MarkRetry(task, $"中心服务器转发失败：{ex.Message}");
+                WriteFailureLog(ex);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 按连接类失败退回待重试：不递增重试次数，只推迟下次尝试时间。
+    /// 与 MarkRetry 的区别是本方法永不进入 Failed 终态，保证服务器恢复后数据不丢。
+    /// </summary>
+    private void MarkConnectivityRetry(BizUploadTask task, string message)
+    {
+        lock (_dbContext.TaskTransitionSync)
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var latest = _dbContext.Db.Queryable<BizUploadTask>().InSingle(task.Id);
+            if (latest is null || latest.IsDeleted
+                || latest.Status != ProductionConstants.UploadStatuses.Uploading
+                || latest.RetryCount != task.RetryCount
+                || WeldTaskRuntimeRules.IsAbandoned(_dbContext.Db.Queryable<BizWeldTask>().InSingle(latest.WeldTaskId)))
+            {
+                return;
+            }
+
+            // MarkUploading 已递增过重试次数，这里回退，避免连接故障消耗业务重试配额。
+            latest.RetryCount = Math.Max(0, latest.RetryCount - 1);
+            latest.Status = ProductionConstants.UploadStatuses.Retrying;
+            latest.NextRetryTime = DateTime.Now.AddSeconds(ConnectivityRetryDelaySeconds);
+            latest.Message = message;
+            latest.UpdatedTime = DateTime.Now;
+            _dbContext.Db.Updateable(latest).ExecuteCommand();
+        }
+    }
+
+    private static string BuildConnectivityRetryMessage(Exception exception)
+        => $"中心服务器暂时不可达，将持续重试：{exception.Message}";
+
+    private IReadOnlyList<int> GetPendingTaskIds()
+    {
+        lock (_dbContext.TaskTransitionSync)
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            return _dbContext.Db.Queryable<BizUploadTask>()
+                .Where(task => task.TaskType == ProductionConstants.UploadTaskTypes.CenterProductReport
+                    && task.Target == ProductionConstants.UploadTargets.CentralServer
+                    && !task.IsDeleted
+                    && task.Status != ProductionConstants.UploadStatuses.Uploaded
+                    && task.Status != ProductionConstants.UploadStatuses.Skipped
+                    && task.Status != ProductionConstants.UploadStatuses.Uploading
+                    && task.RetryCount < task.MaxRetryCount
+                    && (task.NextRetryTime == null || task.NextRetryTime <= DateTime.Now))
+                .OrderBy(task => task.CreatedTime)
+                .Select(task => task.Id)
+                .ToList();
+        }
+    }
+
+    private BizUploadTask? MarkUploading(int taskId)
+    {
+        lock (_dbContext.TaskTransitionSync)
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var task = _dbContext.Db.Queryable<BizUploadTask>().InSingle(taskId);
+            if (task is null || !UploadTaskVisibilityRules.ShouldRetry(task)
+                || WeldTaskRuntimeRules.IsAbandoned(_dbContext.Db.Queryable<BizWeldTask>().InSingle(task.WeldTaskId)))
+            {
+                return null;
+            }
+
+            var previousStatus = task.Status;
+            task.Status = ProductionConstants.UploadStatuses.Uploading;
+            task.LastAttemptTime = DateTime.Now;
+            task.RetryCount++;
+            task.UpdatedTime = DateTime.Now;
+            var updated = _dbContext.Db.Updateable(task)
+                .Where(item => item.Id == taskId && !item.IsDeleted && item.Status == previousStatus)
+                .ExecuteCommand();
+            return updated == 1 ? task : null;
+        }
+    }
+
+    private async Task ExecuteTaskAsync(BizUploadTask task, CancellationToken cancellationToken)
+    {
+        var settings = _settingsService.Get();
+        if (!settings.EnableCenterServerSync)
+        {
+            MarkRetry(task, "中心服务器同步未启用。");
+            return;
+        }
+
+        try
+        {
+            lock (_dbContext.TaskTransitionSync)
+            lock (_dbLock)
+            {
+                _dbContext.InitDatabase();
+                var weldTask = _dbContext.Db.Queryable<BizWeldTask>().InSingle(task.WeldTaskId);
+                if (weldTask is null) throw new InvalidOperationException("中心补传对应的生产任务不存在。");
+                var stations = _dbContext.Db.Queryable<BizWeldPointRecord>().Where(record => record.TaskId == weldTask.Id)
+                    .Select(record => record.StationNo).ToList();
+                if (stations.Count == 0) stations.Add(weldTask.StationNo);
+                _ = TaskProductProcessConfigResolver.ValidateProgram(_productProcessConfigService, new TestSchemeConfigService(_dbContext),
+                    weldTask, stations, settings.ProcessParameterDeviceType);
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            MarkFailed(task, $"中心服务器补传已拒绝：{ex.Message}");
+            return;
+        }
+
+        var request = JsonSerializer.Deserialize<CenterProductReportRequest>(task.PayloadJson ?? string.Empty, JsonOptions);
+        if (request is null)
+        {
+            MarkFailed(task, "中心服务器产品转发任务缺少请求内容。");
+            return;
+        }
+
+        if (!PrepareReportIdentity(task, request)) return;
+
+        var response = await _client.UploadProductReportAsync(settings, request, cancellationToken);
+        if (response.Success)
+        {
+            MarkUploaded(task, response.Message);
+            _productionLogService.Write(
+                "CenterProductForwardSucceeded",
+                ProductionFlowLogTexts.Summaries.CenterProductForwardSucceeded,
+                $"UploadTaskId={task.Id}, ProductNo={request.ProductNo}, PointCount={request.Points.Count}",
+                stationNo: request.StationNo,
+                workOrderId: request.WorkOrder,
+                productNo: request.ProductNo);
+            return;
+        }
+
+        MarkRetry(task, response.Message);
+        _productionLogService.Write(
+            "CenterProductForwardFailed",
+            ProductionFlowLogTexts.Summaries.CenterProductForwardFailed,
+            $"UploadTaskId={task.Id}, ProductNo={request.ProductNo}, Error={response.Message}",
+            "Warning",
+            request.StationNo,
+            request.WorkOrder,
+            request.ProductNo);
+    }
+
+    private bool PrepareReportIdentity(BizUploadTask uploadTask, CenterProductReportRequest request)
+    {
+        BizWeldTask weldTask;
+        lock (_dbContext.TaskTransitionSync)
+        lock (_dbLock)
+        {
+            if (!CanCompleteClaim(uploadTask)) return false;
+            weldTask = _dbContext.Db.Queryable<BizWeldTask>().InSingle(uploadTask.WeldTaskId)
+                ?? throw new InvalidOperationException("中心补传对应的生产任务不存在。");
+        }
+
+        // 与本地生成共用报表服务的锁和记录，预留失败仍由持久队列重试。
+        var report = _reportFileService.ReserveXlsxReport(weldTask);
+        CenterProductForwardingRules.ApplyReportIdentity(request, weldTask, report);
+        var payload = JsonSerializer.Serialize(request, JsonOptions);
+        lock (_dbContext.TaskTransitionSync)
+        lock (_dbLock)
+        {
+            if (!CanCompleteClaim(uploadTask)) return false;
+            _dbContext.Db.Updateable<BizUploadTask>()
+                .SetColumns(item => item.PayloadJson == payload)
+                .Where(item => item.Id == uploadTask.Id)
+                .ExecuteCommand();
+            uploadTask.PayloadJson = payload;
+        }
+        return true;
+    }
+
+    private bool CanCompleteClaim(BizUploadTask task)
+    {
+        var latest = _dbContext.Db.Queryable<BizUploadTask>().InSingle(task.Id);
+        return latest is { IsDeleted: false, Status: ProductionConstants.UploadStatuses.Uploading }
+            && latest.RetryCount == task.RetryCount
+            && !WeldTaskRuntimeRules.IsAbandoned(_dbContext.Db.Queryable<BizWeldTask>().InSingle(latest.WeldTaskId));
+    }
+
+    private void MarkUploaded(BizUploadTask task, string message)
+    {
+        lock (_dbContext.TaskTransitionSync)
+        lock (_dbLock)
+        {
+            if (!CanCompleteClaim(task)) return;
+            task.Status = ProductionConstants.UploadStatuses.Uploaded;
+            task.CompletedTime = DateTime.Now;
+            task.Message = string.IsNullOrWhiteSpace(message) ? "Center product report uploaded." : message;
+            task.UpdatedTime = DateTime.Now;
+            _dbContext.Db.Updateable(task).ExecuteCommand();
+        }
+    }
+
+    private void MarkRetry(BizUploadTask task, string message)
+    {
+        lock (_dbContext.TaskTransitionSync)
+        lock (_dbLock)
+        {
+            if (!CanCompleteClaim(task)) return;
+            task.Status = task.RetryCount >= task.MaxRetryCount
+                ? ProductionConstants.UploadStatuses.Failed
+                : ProductionConstants.UploadStatuses.Retrying;
+            task.NextRetryTime = task.Status == ProductionConstants.UploadStatuses.Failed
+                ? null
+                : DateTime.Now.AddSeconds(Math.Min(120, 10 * Math.Max(1, task.RetryCount)));
+            task.Message = message;
+            task.UpdatedTime = DateTime.Now;
+            _dbContext.Db.Updateable(task).ExecuteCommand();
+        }
+    }
+
+    private void MarkFailed(BizUploadTask task, string message)
+    {
+        lock (_dbContext.TaskTransitionSync)
+        lock (_dbLock)
+        {
+            if (!CanCompleteClaim(task)) return;
+            task.Status = ProductionConstants.UploadStatuses.Failed;
+            task.Message = message;
+            task.UpdatedTime = DateTime.Now;
+            _dbContext.Db.Updateable(task).ExecuteCommand();
+        }
+    }
+
+    private void WriteFailureLog(Exception ex)
+    {
+        if (DateTime.Now - _lastFailureLogTime < TimeSpan.FromMinutes(1))
+        {
+            return;
+        }
+
+        _lastFailureLogTime = DateTime.Now;
+        _exceptionLogService.Write(ex, "CenterProductForwardingService");
+    }
+
+    private CenterProductReportRequest BuildRequest(
+        AppSettings settings,
+        BizWeldTask task,
+        int stationNo,
+        IReadOnlyList<BizWeldPointRecord> records,
+        BizProductProcessConfig? config)
+    {
+        var content = ProgramContentJsonRules.NormalizeForProduction(task.ProgramContentSnapshot, settings.ProcessParameterDeviceType);
+        var touchCount = ProgramContentJsonRules.GetRequiredTouchCount(content);
+        var orderedRecords = records.OrderBy(record => record.SequenceNo).ThenBy(record => record.Id).ToList();
+        var first = orderedRecords[0];
+        var savedFields = BuildSavedFieldDefinitions(config);
+        return new CenterProductReportRequest
+        {
+            DeviceId = settings.DeviceId.Trim(),
+            DeviceName = settings.DeviceName.Trim(),
+            SystemType = CenterTelemetryRules.NormalizeSystemType(settings.CenterServerSystemType),
+            StationNo = stationNo,
+            StationName = ResolveStationName(settings, stationNo),
+            WorkOrder = task.SN ?? string.Empty,
+            Batch = task.Batch ?? string.Empty,
+            Quantity = task.StartAmount,
+            PartName = task.ProductName ?? string.Empty,
+            ProcessName = task.ProcessName ?? string.Empty,
+            ProcessNo = task.ProcessNo ?? string.Empty,
+            OperatorNo = task.UserNumber ?? string.Empty,
+            OperatorName = task.UserName ?? string.Empty,
+            ProgramName = task.ProgramName ?? string.Empty,
+            ProductJobNo = task.ProductNum ?? string.Empty,
+            DrawingNo = task.DrawingNo ?? string.Empty,
+            Spec = task.Spec ?? string.Empty,
+            ProductNo = first.ProductNo,
+            ProductModel = task.ProductModel ?? string.Empty,
+            ProductResult = ProductResultResolver.Resolve(orderedRecords),
+            // 产品级标记：同一产品的焊点行由标记入口一起改写，任一行为真即视为试焊件。
+            IsTest = orderedRecords.Any(record => record.IsTest),
+            // 软删同样是产品级标记；中心侧据此从当日计数与可见报表剔除该产品。
+            IsDeleted = orderedRecords.Any(record => record.IsDeleted),
+            StartTime = task.StartTime,
+            EndTime = task.EndTime,
+            QualifiedQty = task.QualifiedQty,
+            IsTaskFinishUpdate = false,
+            CompletedAt = orderedRecords.Max(record => record.Ts),
+            ReportColumns = BuildReportColumns(settings, config, touchCount),
+            Points = orderedRecords.Select(record => new CenterProductReportPointDto
+            {
+                SequenceNo = record.SequenceNo,
+                TouchNo = record.TouchNo,
+                TestResult = record.TestResult,
+                CollectedAt = record.Ts,
+                OperatorNo = record.OperatorNo ?? string.Empty,
+                RawDataJson = FilterRawDataJson(record.RawDataJson, savedFields)
+            }).ToList()
+        };
+    }
+
+    private static CenterProductReportRequest BuildTaskFinishRequest(AppSettings settings, BizWeldTask task)
+    {
+        return new CenterProductReportRequest
+        {
+            DeviceId = settings.DeviceId.Trim(),
+            DeviceName = settings.DeviceName.Trim(),
+            SystemType = CenterTelemetryRules.NormalizeSystemType(settings.CenterServerSystemType),
+            StationNo = task.StationNo <= ProductionConstants.Stations.SharedStationNo
+                ? ProductionConstants.Stations.DefaultStationNo
+                : task.StationNo,
+            StationName = ResolveStationName(settings, task.StationNo),
+            WorkOrder = task.SN ?? string.Empty,
+            Batch = task.Batch ?? string.Empty,
+            Quantity = task.StartAmount,
+            PartName = task.ProductName ?? string.Empty,
+            ProcessName = task.ProcessName ?? string.Empty,
+            ProcessNo = task.ProcessNo ?? string.Empty,
+            OperatorNo = task.UserNumber ?? string.Empty,
+            OperatorName = task.UserName ?? string.Empty,
+            ProgramName = task.ProgramName ?? string.Empty,
+            ProductJobNo = task.ProductNum ?? string.Empty,
+            DrawingNo = task.DrawingNo ?? string.Empty,
+            Spec = task.Spec ?? string.Empty,
+            ProductModel = task.ProductModel ?? string.Empty,
+            StartTime = task.StartTime,
+            EndTime = task.EndTime,
+            QualifiedQty = task.QualifiedQty,
+            IsTaskFinishUpdate = true,
+            CompletedAt = task.EndTime ?? task.StartTime,
+            ReportColumns = [],
+            Points = []
+        };
+    }
+
+    private static string ResolveStationName(AppSettings settings, int stationNo)
+    {
+        if (!settings.EnableDualStation)
+        {
+            return string.Empty;
+        }
+
+        var names = StationDisplayNameRules.NormalizeForLoad(
+            dualStationEnabled: true,
+            settings.Station1DisplayName,
+            settings.Station2DisplayName);
+        return stationNo == 2
+            ? names.Station2
+            : names.Station1;
+    }
+
+    /// <summary>
+    /// 生成中心看板需要下发的字段清单。
+    /// 必须与 BuildDynamicReportColumns 共用“转发看板”通道，否则列定义和值会对不上。
+    /// </summary>
+    private IReadOnlyList<SavedFieldDefinition> BuildSavedFieldDefinitions(BizProductProcessConfig? config)
+    {
+        if (config is null)
+        {
+            return [];
+        }
+
+        lock (_dbContext.TaskTransitionSync)
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var details = _dbContext.Db.Queryable<BizSchemeDetail>()
+                .Where(detail => detail.SchemeId == config.SchemeId)
+                .ToList();
+            var itemIds = details.Select(detail => detail.ItemId).Distinct().ToList();
+            var items = _dbContext.Db.Queryable<DimTestItem>()
+                .Where(item => itemIds.Contains(item.ItemId))
+                .ToList();
+            var fields = new List<SavedFieldDefinition>();
+            foreach (var detail in details)
+            {
+                var item = items.FirstOrDefault(candidate => candidate.ItemId == detail.ItemId);
+                if (item is null)
+                {
+                    continue;
+                }
+
+                var itemKey = ResolveItemKey(item);
+                AddSavedField(fields, detail.ForwardActual, itemKey, item.ItemName);
+                AddSavedField(fields, detail.ForwardUpper, $"{itemKey}_upper", $"{item.ItemName}上限");
+                AddSavedField(fields, detail.ForwardLower, $"{itemKey}_lower", $"{item.ItemName}下限");
+                AddSavedField(fields, detail.ForwardResult, $"{itemKey}_result", $"{item.ItemName}结果");
+            }
+
+            return fields;
+        }
+    }
+
+    private static void AddSavedField(
+        ICollection<SavedFieldDefinition> fields,
+        bool enabled,
+        string key,
+        string fallbackKey)
+    {
+        if (enabled)
+        {
+            fields.Add(new SavedFieldDefinition(key, fallbackKey));
+        }
+    }
+
+    private static string FilterRawDataJson(
+        string? rawDataJson,
+        IReadOnlyList<SavedFieldDefinition> fields)
+    {
+        if (fields.Count == 0 || string.IsNullOrWhiteSpace(rawDataJson))
+        {
+            return "{}";
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(rawDataJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return "{}";
+            }
+
+            var rawValues = document.RootElement.EnumerateObject().ToDictionary(
+                property => property.Name,
+                property => property.Value.ValueKind == JsonValueKind.String
+                    ? property.Value.GetString() ?? string.Empty
+                    : property.Value.ToString(),
+                StringComparer.OrdinalIgnoreCase);
+            var filtered = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var field in fields)
+            {
+                if (rawValues.TryGetValue(field.Key, out var value)
+                    || rawValues.TryGetValue(field.FallbackKey, out value))
+                {
+                    filtered[field.Key] = value;
+                }
+            }
+
+            return JsonSerializer.Serialize(filtered);
+        }
+        catch (JsonException)
+        {
+            return "{}";
+        }
+    }
+
+    private List<CenterProductReportColumnDto> BuildReportColumns(
+        AppSettings settings,
+        BizProductProcessConfig? config,
+        int touchCount)
+    {
+        var columns = new List<CenterProductReportColumnDto>();
+
+        if (settings.EnableDualStation)
+        {
+            columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnStationNo, Title = "工位", MergeByProduct = true });
+        }
+
+        columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnProductNo, Title = "产品编号", MergeByProduct = true });
+        var wholePieceInspection = WholePieceAbAggregationRules.IsApplicable(
+            settings.ProcessParameterDeviceType,
+            touchCount);
+        columns.Add(new CenterProductReportColumnDto
+        {
+            Key = CenterProductReportFormat.ColumnTouchNo,
+            Title = ResolvePointNoHeader(config, wholePieceInspection),
+            MergeByProduct = false
+        });
+
+        columns.AddRange(BuildDynamicReportColumns(config, wholePieceInspection));
+        columns.Add(new CenterProductReportColumnDto
+        {
+            Key = CenterProductReportFormat.ColumnTouchResult,
+            Title = ResolvePointResultHeader(config, wholePieceInspection),
+            MergeByProduct = false
+        });
+        columns.Add(new CenterProductReportColumnDto { Key = CenterProductReportFormat.ColumnProductResult, Title = "产品结果", MergeByProduct = true });
+        // 试焊件列的门禁与报表、MES 过程参数同源；服务端无从判断设备类型，只能由设备端声明。
+        if (ProcessParameterIsTestRules.IsEnabled(
+                settings.ShowTestFlagInHistory != false,
+                settings.ProcessParameterDeviceType))
+        {
+            columns.Add(new CenterProductReportColumnDto
+            {
+                Key = CenterProductReportFormat.ColumnIsTest,
+                Title = CenterProductReportFormat.HeaderIsTest,
+                MergeByProduct = true
+            });
+        }
+
+        return columns;
+    }
+
+    private static string ResolvePointNoHeader(BizProductProcessConfig? config, bool wholePieceInspection)
+    {
+        return CenterProductReportFormat.ResolvePointNoTitle(config?.PointNoHeader, wholePieceInspection);
+    }
+
+    private static string ResolvePointResultHeader(BizProductProcessConfig? config, bool wholePieceInspection)
+    {
+        return CenterProductReportFormat.ResolvePointResultTitle(config?.PointResultHeader, wholePieceInspection);
+    }
+
+    private List<CenterProductReportColumnDto> BuildDynamicReportColumns(BizProductProcessConfig? config, bool wholePieceInspection)
+    {
+        if (config is null)
+        {
+            return [];
+        }
+
+        lock (_dbContext.TaskTransitionSync)
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var details = _dbContext.Db.Queryable<BizSchemeDetail>()
+                .Where(detail => detail.SchemeId == config.SchemeId)
+                .ToList();
+            if (details.Count == 0)
+            {
+                return [];
+            }
+
+            var itemIds = details.Select(detail => detail.ItemId).Distinct().ToList();
+            var items = _dbContext.Db.Queryable<DimTestItem>()
+                .Where(item => itemIds.Contains(item.ItemId))
+                .ToList();
+
+            return details
+                .OrderBy(detail => detail.DetailId)
+                .SelectMany(detail => BuildDynamicReportColumns(
+                    detail,
+                    items.FirstOrDefault(item => item.ItemId == detail.ItemId),
+                    wholePieceInspection))
+                .ToList();
+        }
+    }
+
+    private static IEnumerable<CenterProductReportColumnDto> BuildDynamicReportColumns(
+        BizSchemeDetail detail,
+        DimTestItem? item)
+        => BuildDynamicReportColumns(detail, item, wholePieceInspection: false);
+
+    private static IEnumerable<CenterProductReportColumnDto> BuildDynamicReportColumns(
+        BizSchemeDetail detail,
+        DimTestItem? item,
+        bool wholePieceInspection)
+    {
+        if (item is null)
+        {
+            yield break;
+        }
+
+        SchemeDetailRoleRules.ClearUnavailableRoles(detail, item);
+        var itemKey = ResolveItemKey(item);
+        if (SchemeDetailRoleRules.ShouldForwardCenterRole(detail, SchemeDetailValueRole.Actual))
+        {
+            yield return BuildDynamicColumn(
+                itemKey,
+                detail.ActualHeader,
+                SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Actual),
+                item.Unit,
+                SchemeDetailValueRole.Actual,
+                // 只有高度是 A/B 两行同值，可以按产品跨行合并；宽度 B 行为空要单独显示，不能合并。
+                wholePieceInspection && WholePieceAbAggregationRules.IsFourSideMaximumItem(item.ItemName));
+        }
+
+        if (SchemeDetailRoleRules.ShouldForwardCenterRole(detail, SchemeDetailValueRole.Upper))
+        {
+            yield return BuildDynamicColumn($"{itemKey}_upper", detail.UpperHeader, SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Upper), item.Unit, SchemeDetailValueRole.Upper);
+        }
+
+        if (SchemeDetailRoleRules.ShouldForwardCenterRole(detail, SchemeDetailValueRole.Lower))
+        {
+            yield return BuildDynamicColumn($"{itemKey}_lower", detail.LowerHeader, SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Lower), item.Unit, SchemeDetailValueRole.Lower);
+        }
+
+        if (SchemeDetailRoleRules.ShouldForwardCenterRole(detail, SchemeDetailValueRole.Result))
+        {
+            yield return BuildDynamicColumn($"{itemKey}_result", detail.ResultHeader, SchemeDetailRoleRules.GetDefaultHeader(item, SchemeDetailValueRole.Result), item.Unit, SchemeDetailValueRole.Result);
+        }
+    }
+
+    private static CenterProductReportColumnDto BuildDynamicColumn(
+        string key,
+        string? title,
+        string fallbackTitle,
+        string? unit,
+        SchemeDetailValueRole role,
+        bool mergeByProduct = false)
+    {
+        return new CenterProductReportColumnDto
+        {
+            Key = key,
+            Title = TestItemUnitFormatRules.FormatHeader(NormalizeDisplayText(title, fallbackTitle), unit, role),
+            MergeByProduct = mergeByProduct
+        };
+    }
+
+    private static string NormalizeDisplayText(string? value, string fallback)
+    {
+        return string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+    }
+
+    private static string ResolveItemKey(DimTestItem item)
+    {
+        return item.ItemName.Trim() switch
+        {
+            "峰值电流" => "max_electric",
+            "峰值电压" => "max_voltage",
+            "有效功率" => "valid_power",
+            "位移" => "displacement",
+            "焊接时间" => "weld_ts",
+            var name when !string.IsNullOrWhiteSpace(name) => $"item_{item.ItemId}",
+            _ => $"item_{item.ItemId}"
+        };
+    }
+
+    private sealed record SavedFieldDefinition(string Key, string FallbackKey);
+
+    private static string BuildBusinessId(CenterProductReportRequest request)
+    {
+        return CenterProductForwardingRules.BuildBusinessId(request);
+    }
+}

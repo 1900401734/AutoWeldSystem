@@ -1,26 +1,24 @@
-using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.Entities;
 using SqlSugar;
 
 namespace AutoWeldSystem.Data;
 
 public class SqlSugarDbContext : IDisposable
 {
-    private const string DefaultConnectionString =
-        "Server=127.0.0.1;Port=3306;Database=autoweldsystem_db;Uid=root;Pwd=123456;SslMode=None;AllowPublicKeyRetrieval=True;CharSet=utf8mb4;";
-
     public SqlSugarScope Db { get; }
+
+    // 任务异常结束与 MES/中心上传认领共用短临界区，不得持有此锁等待网络或 PLC。
+    public object TaskTransitionSync { get; } = new();
+
+    private const string DefaultConnectionString = "server=localhost;port=3306;database=autoweldsystem_db;uid=root;pwd=123456;";
     private readonly object _initLock = new();
     private bool _initialized;
 
-    public SqlSugarDbContext(string? connectionString = null)
+    public SqlSugarDbContext(string? connectionString)
     {
-        var actualConnectionString = string.IsNullOrWhiteSpace(connectionString)
-            ? DefaultConnectionString
-            : connectionString;
-
         Db = new SqlSugarScope(new ConnectionConfig
         {
-            ConnectionString = actualConnectionString,
+            ConnectionString = connectionString ?? DefaultConnectionString,
             DbType = DbType.MySql,
             IsAutoCloseConnection = true,
             InitKeyType = InitKeyType.Attribute
@@ -56,13 +54,27 @@ public class SqlSugarDbContext : IDisposable
                     typeof(BizProgramRevision),
                     typeof(BizWeldTask),
                     typeof(BizWeldData),
-                    typeof(BizPlcAddress));
+                    typeof(BizWeldPointRecord),
+                    typeof(BizProductProcessConfig),
+                    typeof(BizTestScheme),
+                    typeof(BizSchemeDetail),
+                    typeof(DimTestItem),
+                    typeof(BizProductionReportFile),
+                    typeof(BizUploadTask),
+                    typeof(BizRuntimeTipState),
+                    typeof(BizPlcAddress),
+                    typeof(BizPlcAlarmAddress),
+                    typeof(BizPlcRecipeNameConfig),
+                    typeof(CenterDeviceNode),
+                    typeof(CenterDeviceRuntimeSnapshot),
+                    typeof(CenterDeviceStationRuntimeSnapshot));
 
                 _initialized = true;
             }
             catch (Exception ex)
             {
-                throw new InvalidOperationException($"MySql initialization failed. Check the connection string. Details: {ex.Message}", ex);
+                throw new InvalidOperationException(
+                    $"MySql initialization or schema migration failed. Check the connection and legacy data. Details: {ex.Message}");
             }
         }
     }

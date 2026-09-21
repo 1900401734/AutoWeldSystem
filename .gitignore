@@ -15,6 +15,7 @@ x86/
 
 # Local runtime settings
 AutoWeldSystem.UI/appsettings.json
+.claude/
 
 # Logs and generated runtime data
 logs/
@@ -24,3 +25,11 @@ logs/
 # OS files
 Thumbs.db
 Desktop.ini
+/MONITORVIEW_BUSINESS_LOGIC.md
+/STATION_MODE_SWITCH_ANALYSIS.md
+/AGENTS.md
+/CLAUDE.md
+/.idea/.idea.AutoWeldSystem/.idea
+
+# 发布产物（仅本地保留）
+/artifacts/

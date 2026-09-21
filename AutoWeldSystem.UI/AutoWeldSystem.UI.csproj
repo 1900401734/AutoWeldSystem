@@ -1,63 +1,75 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
-    <Nullable>enable</Nullable>
-    <UseWindowsForms>true</UseWindowsForms>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <UseWPF>False</UseWPF>
-    <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
-  </PropertyGroup>
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net8.0-windows</TargetFramework>
+		<Nullable>enable</Nullable>
+		<UseWindowsForms>true</UseWindowsForms>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<UseWPF>False</UseWPF>
+		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+		<ApplicationIcon>Assets\icon.ico</ApplicationIcon>
+	</PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="AntdUI" Version="2.3.9" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.6" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.6" />
-    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.6" />
-  </ItemGroup>
+	<!-- dotnet publish 时打成框架依赖单文件：SqlSugar 带入的原生库解压进 exe，Assets 与更新脚本保持为松散文件。 -->
+	<PropertyGroup Condition="'$(_IsPublishing)' == 'true'">
+		<RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+		<SelfContained Condition="'$(SelfContained)' == ''">false</SelfContained>
+		<PublishSingleFile>true</PublishSingleFile>
+		<IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+	</PropertyGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\AutoWeldSystem.Core\AutoWeldSystem.Core.csproj" />
-    <ProjectReference Include="..\AutoWeldSystem.Data\AutoWeldSystem.Data.csproj" />
-    <ProjectReference Include="..\AutoWeldSystem.Services\AutoWeldSystem.Services.csproj" />
-  </ItemGroup>
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+		<PackageReference Include="AntdUI" Version="2.3.9" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.6" />
+		<PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.6" />
+		<PackageReference Include="Microsoft.Extensions.Http" Version="10.0.6" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <None Update="appsettings.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Assets\icon.ico">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Assets\logo.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\AutoWeldSystem.Core\AutoWeldSystem.Core.csproj" />
+		<ProjectReference Include="..\AutoWeldSystem.Data\AutoWeldSystem.Data.csproj" />
+		<ProjectReference Include="..\AutoWeldSystem.Services\AutoWeldSystem.Services.csproj" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <Compile Remove="Controls\AdminTable.cs" />
-    <Compile Remove="Controls\AdminTable.Designer.cs" />
-    <EmbeddedResource Remove="Controls\AdminTable.resx" />
-  </ItemGroup>
+	<ItemGroup>
+		<!-- 本机 appsettings.json 只进开发输出目录供首次启动迁移，不随发布产物分发；模板嵌入 exe 供缺配置时生成。 -->
+		<None Update="appsettings.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>Never</CopyToPublishDirectory>
+		</None>
+		<EmbeddedResource Include="appsettings.example.json" LogicalName="appsettings.example.json" />
+		<!-- ExcludeFromSingleFile：程序按 exe 目录读取 Assets，且 .ico 文件头会被打包器误判为原生库塞进 exe，必须显式留作松散文件。 -->
+		<None Include="..\tools\update-ui.cmd" Link="update-ui.cmd" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+		<None Include="..\tools\update-ui.ps1" Link="update-ui.ps1" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+		<None Update="Assets\icon.ico">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+		</None>
+		<None Update="Assets\logo.png">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+		</None>
+	</ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="Infrastructure\" />
-  </ItemGroup>
+	<ItemGroup>
+		<Folder Include="Infrastructure\" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <Compile Update="Properties\Resources.Designer.cs">
-      <DesignTime>True</DesignTime>
-      <AutoGen>True</AutoGen>
-      <DependentUpon>Resources.resx</DependentUpon>
-    </Compile>
-  </ItemGroup>
+	<ItemGroup>
+		<Compile Update="Properties\Resources.Designer.cs">
+			<DesignTime>True</DesignTime>
+			<AutoGen>True</AutoGen>
+			<DependentUpon>Resources.resx</DependentUpon>
+		</Compile>
+	</ItemGroup>
 
-  <ItemGroup>
-    <EmbeddedResource Update="Properties\Resources.resx">
-      <Generator>ResXFileCodeGenerator</Generator>
-      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
-    </EmbeddedResource>
-  </ItemGroup>
+	<ItemGroup>
+		<EmbeddedResource Update="Properties\Resources.resx">
+			<Generator>ResXFileCodeGenerator</Generator>
+			<LastGenOutput>Resources.Designer.cs</LastGenOutput>
+		</EmbeddedResource>
+	</ItemGroup>
 
 </Project>

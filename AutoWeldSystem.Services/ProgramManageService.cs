@@ -4,8 +4,16 @@ using System.Text.Json;
 using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
+using AutoWeldSystem.Core.DTOs.Mes.Request;
+using AutoWeldSystem.Core.DTOs.Mes.Response;
+using AutoWeldSystem.Core.DTOs.Plc;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Interfaces;
-using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.Interfaces.Log;
+using AutoWeldSystem.Core.Interfaces.MES;
+using AutoWeldSystem.Core.Interfaces.PLC;
+using AutoWeldSystem.Core.Production;
+using AutoWeldSystem.Core.Runtime;
 using AutoWeldSystem.Data;
 using SqlSugar;
 
@@ -17,23 +25,41 @@ namespace AutoWeldSystem.Services;
 /// </summary>
 public sealed class ProgramManageService : IProgramManageService
 {
-    private const int MaxLocalProgramCount = 128;
+    public event EventHandler? ProgramLookupsChanged;
+    private const int MaxLocalProgramCount = 256;
+    private static readonly string[] PendingSyncStatuses =
+    [
+        AppConstants.ProgramSyncStatus.PendingCreate,
+        AppConstants.ProgramSyncStatus.PendingUpdate,
+        AppConstants.ProgramSyncStatus.PendingDelete,
+        AppConstants.ProgramSyncStatus.Failed
+    ];
 
     private readonly SqlSugarDbContext _dbContext;
     private readonly IAppSettingsService _settingsService;
     private readonly IMesProvider _mesProvider;
     private readonly IOperationLogService _operationLogService;
+    private readonly IPlcRecipeNameReaderService? _recipeNameReaderService;
+    private readonly SemaphoreSlim _mutationGate = new(1, 1);
+    private readonly SemaphoreSlim _lookupGate = new(1, 1);
+    private ProgramLookup[]? _programLookupSnapshot;
+    private long _programLookupVersion;
+    private AppSettings _currentSettings;
 
     public ProgramManageService(
         SqlSugarDbContext dbContext,
         IAppSettingsService settingsService,
         IMesProvider mesProvider,
-        IOperationLogService operationLogService)
+        IOperationLogService operationLogService,
+        IPlcRecipeNameReaderService? recipeNameReaderService = null)
     {
         _dbContext = dbContext;
         _settingsService = settingsService;
+        _currentSettings = settingsService.Get();
+        _settingsService.SettingsChanged += SettingsService_SettingsChanged;
         _mesProvider = mesProvider;
         _operationLogService = operationLogService;
+        _recipeNameReaderService = recipeNameReaderService;
     }
 
     public IReadOnlyList<BizProgram> GetPrograms(bool includeDeleted = false)
@@ -48,54 +74,243 @@ public sealed class ProgramManageService : IProgramManageService
 
         return query
             .OrderBy(it => it.UpdatedTime, OrderByType.Desc)
-            .ToList();
+            .ToArray();
     }
 
-    public IReadOnlyList<BizProgramRevision> GetRevisions(int programLocalId)
+    // 列表查询不参与程序变更门锁：查询与删除互斥会在“删除后立即刷新”的链路上形成互相等待。
+    public Task<IReadOnlyList<BizProgram>> GetProgramsAsync(
+        bool includeDeleted = false,
+        CancellationToken cancellationToken = default)
     {
-        _dbContext.InitDatabase();
+        return Task.Run(
+            () =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var programs = GetPrograms(includeDeleted);
+                cancellationToken.ThrowIfCancellationRequested();
+                return programs;
+            },
+            cancellationToken);
+    }
 
-        return _dbContext.Db.Queryable<BizProgramRevision>()
-            .Where(it => it.ProgramLocalId == programLocalId)
-            .OrderBy(it => it.VersionNumber, OrderByType.Desc)
-            .ToList();
+    public async Task<IReadOnlyList<ProgramLookup>> GetProgramLookupsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var cached = Volatile.Read(ref _programLookupSnapshot);
+        if (cached is not null)
+        {
+            return cached;
+        }
+
+        await _lookupGate.WaitAsync(cancellationToken);
+        try
+        {
+            while (true)
+            {
+                cached = Volatile.Read(ref _programLookupSnapshot);
+                if (cached is not null)
+                {
+                    return cached;
+                }
+
+                var version = Volatile.Read(ref _programLookupVersion);
+                var loaded = await Task.Run(
+                    () => QueryProgramLookups(cancellationToken),
+                    CancellationToken.None);
+                if (version != Volatile.Read(ref _programLookupVersion))
+                {
+                    continue;
+                }
+
+                Volatile.Write(ref _programLookupSnapshot, loaded);
+                return loaded;
+            }
+        }
+        finally
+        {
+            _lookupGate.Release();
+        }
+    }
+
+    public Task<BizProgram?> GetProgramAsync(
+        int id,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.Run(
+            () =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                _dbContext.InitDatabase();
+                return (BizProgram?)_dbContext.Db.Queryable<BizProgram>().InSingle(id);
+            },
+            cancellationToken);
+    }
+
+    private ProgramLookup[] QueryProgramLookups(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _dbContext.InitDatabase();
+        var programs = _dbContext.Db.Queryable<BizProgram>()
+            .Where(it => !it.IsDeleted)
+            .OrderBy(it => it.UpdatedTime, OrderByType.Desc)
+            .Select(it => new BizProgram
+            {
+                Id = it.Id,
+                ProgramId = it.ProgramId,
+                ProgramName = it.ProgramName,
+                DeviceId = it.DeviceId,
+                ProductNum = it.ProductNum,
+                ProductModel = it.ProductModel,
+                RecipeCode = it.RecipeCode,
+                Station2RecipeCode = it.Station2RecipeCode,
+                ComponentCode = it.ComponentCode,
+                ProgramType = it.ProgramType,
+                SequenceNumber = it.SequenceNumber,
+                ProgramContent = it.ProgramContent,
+                Description = it.Description,
+                VersionNumber = it.VersionNumber,
+                SyncStatus = it.SyncStatus,
+                UpdatedTime = it.UpdatedTime
+            })
+            .ToArray();
+
+        cancellationToken.ThrowIfCancellationRequested();
+        return programs.Select(it => new ProgramLookup
+        {
+            Id = it.Id,
+            ProgramId = it.ProgramId,
+            ProgramName = it.ProgramName,
+            DeviceId = it.DeviceId,
+            ProductNum = it.ProductNum,
+            ProductModel = it.ProductModel,
+            RecipeCode = it.RecipeCode,
+            Station2RecipeCode = it.Station2RecipeCode,
+            ComponentCode = it.ComponentCode,
+            ProgramType = it.ProgramType,
+            SequenceNumber = it.SequenceNumber,
+            TouchCount = ProgramContentJsonRules.TryGetTouchCount(it.ProgramContent, out var touchCount)
+                ? touchCount
+                : null,
+            Description = it.Description,
+            VersionNumber = it.VersionNumber,
+            SyncStatus = it.SyncStatus,
+            UpdatedTime = it.UpdatedTime
+        }).ToArray();
+    }
+
+    private void InvalidateProgramLookups()
+    {
+        Interlocked.Increment(ref _programLookupVersion);
+        Volatile.Write(ref _programLookupSnapshot, null);
+        ProgramLookupsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public IReadOnlyList<ProgramSyncSummary> GetPendingSyncPrograms()
     {
         _dbContext.InitDatabase();
-
-        var pendingStatuses = new[]
-        {
-            AppConstants.ProgramSyncStatus.PendingCreate,
-            AppConstants.ProgramSyncStatus.PendingUpdate,
-            AppConstants.ProgramSyncStatus.PendingDelete,
-            AppConstants.ProgramSyncStatus.Failed
-        };
-
+        // SqlSugar 表达式只能捕获局部数组，不能直接解析私有静态字段。
+        var pendingStatuses = PendingSyncStatuses;
         return _dbContext.Db.Queryable<BizProgram>()
             .Where(it => pendingStatuses.Contains(it.SyncStatus))
             .OrderBy(it => it.UpdatedTime, OrderByType.Desc)
             .ToList()
             .Select(ToSyncSummary)
-            .ToList();
+            .ToArray();
     }
 
-    public string BuildProgramName(string productNum, string componentCode, int sequenceNumber)
+    public Task<IReadOnlyList<ProgramSyncSummary>> GetPendingSyncProgramsAsync(
+        CancellationToken cancellationToken = default)
     {
-        var settings = _settingsService.Get();
-        var deviceId = NormalizeNamePart(settings.DeviceId);
-        var component = NormalizeNamePart(componentCode);
-        var product = NormalizeNamePart(productNum.Replace("#", string.Empty));
-        var sequence = Math.Max(1, sequenceNumber).ToString("000");
-
-        return $"{deviceId}_CX_{component}_DH_{sequence}_{product}";
+        return Task.Run(
+            () =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var programs = GetPendingSyncPrograms();
+                cancellationToken.ThrowIfCancellationRequested();
+                return programs;
+            },
+            cancellationToken);
     }
 
-    public async Task<BizProgram> SaveAsync(ProgramSaveRequest request, bool syncNow, CancellationToken cancellationToken = default)
+    public string BuildProgramName(string productNum, string componentCode, int sequenceNumber, string? description = null)
+    {
+        return ProgramNameRules.BuildProgramName(
+            CurrentSettings.DeviceId,
+            componentCode,
+            sequenceNumber,
+            productNum,
+            description);
+    }
+
+    public int GetNextSequenceNumber(string productNum)
     {
         _dbContext.InitDatabase();
+
+        var normalized = productNum?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return 1;
+        }
+
+        var maxSequence = _dbContext.Db.Queryable<BizProgram>()
+            .Where(it => !it.IsDeleted && it.ProductNum == normalized)
+            .Max(it => (int?)it.SequenceNumber) ?? 0;
+        return Math.Max(1, maxSequence + 1);
+    }
+
+    public Task<int> GetNextSequenceNumberAsync(
+        string productNum,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.Run(
+            () =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return GetNextSequenceNumber(productNum);
+            },
+            cancellationToken);
+    }
+
+    public async Task<BizProgram> SaveAsync(SaveProgramReq request, bool syncNow, CancellationToken cancellationToken = default)
+    {
+        var result = await SaveWithSyncDecisionAsync(request, cancellationToken);
+        var entity = result.Program;
+
+        if (syncNow && result.ShouldSyncNow)
+        {
+            await SyncProgramAsync(entity.Id, cancellationToken);
+            entity = _dbContext.Db.Queryable<BizProgram>().InSingle(entity.Id);
+        }
+
+        return entity;
+    }
+
+    public async Task<SaveProgramResult> SaveWithSyncDecisionAsync(
+        SaveProgramReq request,
+        CancellationToken cancellationToken = default)
+    {
+        await _mutationGate.WaitAsync(cancellationToken);
+        try
+        {
+            var result = await Task.Run(
+                () => SaveWithSyncDecisionCore(request, cancellationToken),
+                CancellationToken.None);
+            InvalidateProgramLookups();
+            return result;
+        }
+        finally
+        {
+            _mutationGate.Release();
+        }
+    }
+
+    private SaveProgramResult SaveWithSyncDecisionCore(
+        SaveProgramReq request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
         NormalizeRequest(request);
+        _dbContext.InitDatabase();
 
         var entity = request.Id > 0
             ? _dbContext.Db.Queryable<BizProgram>().InSingle(request.Id)
@@ -111,37 +326,70 @@ public sealed class ProgramManageService : IProgramManageService
             throw new InvalidOperationException($"本地程序数量已达到 {MaxLocalProgramCount} 个上限。");
         }
 
+        var original = entity.Id > 0 ? CloneProgram(entity) : null;
+        var hadPendingAction = ProgramMesSyncRules.HasPendingSyncAction(entity);
         ApplyRequest(entity, request);
+        if (!string.IsNullOrWhiteSpace(request.MesRemark))
+        {
+            // 用户显式填写 MES 备注时才覆盖；空值由真实同步动作兜底。
+            entity.Remark = request.MesRemark;
+        }
+
+        var currentSaveSyncAction = ProgramMesSyncRules.ResolveCurrentSaveAction(original, entity);
+        var syncAction = ResolveSaveSyncAction(original, entity, hadPendingAction);
+        var commitMessage = ResolveSaveCommitMessage(request.MesRemark, currentSaveSyncAction);
         entity.VersionNumber = entity.Id == 0 ? 1 : entity.VersionNumber + 1;
-        entity.CommitId = CreateCommitId(entity, request.CommitMessage);
-        entity.CommitMessage = request.CommitMessage;
-        entity.SyncAction = string.IsNullOrWhiteSpace(entity.ProgramId)
-            ? AppConstants.ProgramSyncActions.Create
-            : AppConstants.ProgramSyncActions.Update;
-        entity.SyncStatus = entity.SyncAction == AppConstants.ProgramSyncActions.Create
-            ? AppConstants.ProgramSyncStatus.PendingCreate
-            : AppConstants.ProgramSyncStatus.PendingUpdate;
-        entity.SyncMessage = "本地已保存，等待同步至 MES。";
+        entity.CommitId = CreateCommitId(entity, commitMessage);
+        entity.CommitMessage = commitMessage;
+        ApplySaveSyncState(entity, syncAction, currentSaveSyncAction, request.MesRemark, original);
         entity.UpdatedTime = DateTime.Now;
 
         entity = entity.Id == 0
             ? _dbContext.Db.Insertable(entity).ExecuteReturnEntity()
             : UpdateAndReturn(entity);
 
-        AddRevision(entity, request.CommitMessage);
+        AddRevision(entity, commitMessage);
         _operationLogService.Write("ProgramSave", $"保存程序：{entity.ProgramName}，版本：v{entity.VersionNumber}");
 
-        if (syncNow)
+        return new SaveProgramResult
         {
-            await SyncProgramAsync(entity.Id, cancellationToken);
-            entity = _dbContext.Db.Queryable<BizProgram>().InSingle(entity.Id);
-        }
-
-        return entity;
+            Program = entity,
+            CurrentSaveSyncAction = currentSaveSyncAction
+        };
     }
 
-    public async Task DeleteAsync(int id, bool syncNow, CancellationToken cancellationToken = default)
+    public async Task<ProgramDeleteResult> DeleteLocalAsync(
+        int id,
+        string? remarkOverride = null,
+        CancellationToken cancellationToken = default)
     {
+        await _mutationGate.WaitAsync(cancellationToken);
+        try
+        {
+            var result = await Task.Run(
+                () => DeleteLocalCore(id, remarkOverride, cancellationToken),
+                CancellationToken.None);
+            InvalidateProgramLookups();
+            return result;
+        }
+        finally
+        {
+            _mutationGate.Release();
+        }
+    }
+
+    public async Task DeleteAsync(int id, bool syncNow, string? remarkOverride = null, CancellationToken cancellationToken = default)
+    {
+        var result = await DeleteLocalAsync(id, remarkOverride, cancellationToken);
+        if (syncNow && result.RequiresMesSync)
+        {
+            await SyncProgramAsync(id, cancellationToken);
+        }
+    }
+
+    private ProgramDeleteResult DeleteLocalCore(int id, string? remarkOverride, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
         _dbContext.InitDatabase();
 
         var entity = _dbContext.Db.Queryable<BizProgram>().InSingle(id);
@@ -152,7 +400,9 @@ public sealed class ProgramManageService : IProgramManageService
 
         entity.IsDeleted = true;
         entity.VersionNumber++;
-        entity.CommitMessage = "删除程序";
+        var deleteRemark = ProgramRemarkRules.ResolveForAction(remarkOverride, AppConstants.ProgramSyncActions.Delete);
+        entity.Remark = deleteRemark;
+        entity.CommitMessage = deleteRemark;
         entity.CommitId = CreateCommitId(entity, entity.CommitMessage);
         entity.UpdatedTime = DateTime.Now;
 
@@ -173,13 +423,31 @@ public sealed class ProgramManageService : IProgramManageService
         AddRevision(entity, entity.CommitMessage);
         _operationLogService.Write("ProgramDelete", $"删除程序：{entity.ProgramName}");
 
-        if (syncNow && entity.SyncStatus == AppConstants.ProgramSyncStatus.PendingDelete)
+        return new ProgramDeleteResult
         {
-            await SyncProgramAsync(entity.Id, cancellationToken);
-        }
+            Id = entity.Id,
+            ProgramName = entity.ProgramName,
+            RequiresMesSync = entity.SyncStatus == AppConstants.ProgramSyncStatus.PendingDelete
+        };
     }
 
     public async Task SyncProgramAsync(int id, CancellationToken cancellationToken = default)
+    {
+        await _mutationGate.WaitAsync(cancellationToken);
+        try
+        {
+            await Task.Run(
+                () => SyncProgramCoreAsync(id, cancellationToken),
+                CancellationToken.None);
+            InvalidateProgramLookups();
+        }
+        finally
+        {
+            _mutationGate.Release();
+        }
+    }
+
+    private async Task SyncProgramCoreAsync(int id, CancellationToken cancellationToken)
     {
         _dbContext.InitDatabase();
 
@@ -191,11 +459,28 @@ public sealed class ProgramManageService : IProgramManageService
 
         try
         {
-            var responseMessage = entity.SyncAction switch
+            var executableAction = ProgramMesSyncRules.ResolveExecutableSyncAction(entity.SyncAction, entity.ProgramId);
+            if (string.IsNullOrWhiteSpace(executableAction))
+            {
+                if (string.IsNullOrWhiteSpace(entity.SyncAction))
+                {
+                    return;
+                }
+
+                throw new InvalidOperationException("缺少 MES 程序ID，无法执行当前程序同步动作。");
+            }
+
+            if (executableAction != AppConstants.ProgramSyncActions.Delete)
+            {
+                // 重试从库读取的内容也必须校验，不能绕过本地保存门禁。
+                entity.ProgramContent = ProgramContentJsonRules.NormalizeContent(entity.ProgramContent, CurrentSettings.ProcessParameterDeviceType);
+            }
+            var responseMessage = executableAction switch
             {
                 AppConstants.ProgramSyncActions.Delete => await SyncDeleteAsync(entity, cancellationToken),
-                AppConstants.ProgramSyncActions.Update when !string.IsNullOrWhiteSpace(entity.ProgramId) => await SyncUpdateAsync(entity, cancellationToken),
-                _ => await SyncCreateAsync(entity, cancellationToken)
+                AppConstants.ProgramSyncActions.Update => await SyncUpdateAsync(entity, cancellationToken),
+                AppConstants.ProgramSyncActions.Create => await SyncCreateAsync(entity, cancellationToken),
+                _ => throw new InvalidOperationException($"未知程序同步动作：{entity.SyncAction}")
             };
 
             entity.SyncAction = null;
@@ -225,32 +510,55 @@ public sealed class ProgramManageService : IProgramManageService
         }
     }
 
-    public async Task<int> PullFromMesAsync(string? productNum = null, CancellationToken cancellationToken = default)
+    public async Task<int> PullFromMesAsync(CancellationToken cancellationToken = default)
     {
         _dbContext.InitDatabase();
 
-        var settings = _settingsService.Get();
-        var queryProductNum = settings.UseProductNumberFilter ? productNum : null;
-        var listResponse = await _mesProvider.GetProgramListAsync(settings.DeviceId, queryProductNum, cancellationToken);
+        var settings = CurrentSettings;
+        var listResponse = await _mesProvider.GetProgramListAsync(settings.DeviceId, null, cancellationToken);
         if (!listResponse.IsSuccess || listResponse.Data is null)
         {
             throw new InvalidOperationException(listResponse.Msg);
         }
 
-        var count = 0;
-        foreach (var item in listResponse.Data)
-        {
-            var detailResponse = await _mesProvider.DownloadProgramAsync(settings.DeviceId, item.Id, cancellationToken);
-            if (!detailResponse.IsSuccess || detailResponse.Data is null)
-            {
-                continue;
-            }
+        // 一次拉取内多个程序共用同一份 PLC 配方名称快照，避免逐个程序重复读 PLC。
+        var recipeOptions = await ReadRecipeNameOptionsAsync(cancellationToken);
 
-            UpsertRemoteProgram(detailResponse.Data);
-            count++;
+        var count = 0;
+        var rejected = new List<string>();
+        try
+        {
+            foreach (var item in listResponse.Data)
+            {
+                var detailResponse = await _mesProvider.DownloadProgramAsync(settings.DeviceId, item.Id, cancellationToken);
+                if (!detailResponse.IsSuccess || detailResponse.Data is null)
+                {
+                    rejected.Add($"{item.ProgramName}：{detailResponse.Msg}");
+                    continue;
+                }
+
+                try
+                {
+                    // 与保存/同步串行，单项先校验再替换，不让无效下载覆盖有效程序。
+                    await _mutationGate.WaitAsync(cancellationToken);
+                    try { UpsertRemoteProgram(detailResponse.Data, recipeOptions); }
+                    finally { _mutationGate.Release(); }
+                    count++;
+                }
+                catch (InvalidOperationException ex)
+                {
+                    rejected.Add($"{item.ProgramName}：{ex.Message}");
+                }
+            }
+        }
+        finally
+        {
+            if (count > 0) InvalidateProgramLookups();
         }
 
-        _operationLogService.Write("ProgramPull", $"从 MES 下载程序 {count} 个。");
+        _operationLogService.Write("ProgramPull", $"从 MES 下载程序 {count} 个，拒绝 {rejected.Count} 个。");
+        if (rejected.Count > 0)
+            throw new InvalidOperationException($"已下载 {count} 个程序，以下程序未覆盖本地数据：{string.Join("；", rejected)}");
         return count;
     }
 
@@ -265,33 +573,43 @@ public sealed class ProgramManageService : IProgramManageService
         return _dbContext.Db.Queryable<BizProgram>().InSingle(entity.Id);
     }
 
-    private void ApplyRequest(BizProgram entity, ProgramSaveRequest request)
+    private void ApplyRequest(BizProgram entity, SaveProgramReq request)
     {
-        var settings = _settingsService.Get();
-        var fileBytes = GetProgramFileBytes(request.ProgramFilePath);
+        var settings = CurrentSettings;
+        var previousDescription = entity.Description ?? string.Empty;
+        var currentDescription = request.LocalRemark;
+        var descriptionChanged = !string.Equals(
+            previousDescription,
+            currentDescription,
+            StringComparison.Ordinal);
+        // 程序名称由工号、部件图号、流水号和程序备注拼成，任一变化都必须重算，
+        // 否则会出现流水号已改、名称仍是旧值的名实不符。
+        // 注意：名称是 MES 上传字段，因此改流水号会经名称间接触发一次 MES 更新。
+        var nameInputsChanged = entity.Id > 0
+            && (!string.Equals(entity.ProductNum?.Trim(), request.ProductNum, StringComparison.Ordinal)
+                || !string.Equals(entity.ComponentCode?.Trim(), request.ComponentCode, StringComparison.Ordinal)
+                || entity.SequenceNumber != Math.Max(1, request.SequenceNumber));
 
-        entity.ProgramName = string.IsNullOrWhiteSpace(request.ProgramName)
-            ? BuildProgramName(request.ProductNum, request.ComponentCode, request.SequenceNumber)
-            : request.ProgramName;
+        entity.ProgramName = entity.Id == 0 || descriptionChanged || nameInputsChanged
+            ? BuildProgramName(request.ProductNum, request.ComponentCode, request.SequenceNumber, request.LocalRemark)
+            : string.IsNullOrWhiteSpace(request.ProgramName)
+                ? entity.ProgramName
+                : request.ProgramName;
+        EnsureProgramNameNotDuplicated(entity);
         entity.ProductNum = request.ProductNum;
-        entity.ProductModel = request.ProductModel;
+        entity.RecipeCode = request.RecipeCode;
+        entity.Station2RecipeCode = request.Station2RecipeCode;
         entity.ComponentCode = request.ComponentCode;
         entity.SequenceNumber = Math.Max(1, request.SequenceNumber);
-        entity.DeviceId = settings.DeviceId;
-        entity.ProgramType = string.IsNullOrWhiteSpace(request.ProgramType) ? "0" : request.ProgramType;
-        entity.ProgramContentJson = request.ProgramContentJson;
-        entity.WeldJobName = request.WeldJobName;
-        entity.RobotJobName = request.RobotJobName;
-        entity.CycleTimeSeconds = request.CycleTimeSeconds;
-        entity.Remark = request.Remark;
-        entity.IsDeleted = false;
-
-        if (fileBytes is not null)
+        if (entity.Id == 0)
         {
-            entity.ProgramFileBase64 = Convert.ToBase64String(fileBytes);
-            entity.ProgramFileName = Path.GetFileName(request.ProgramFilePath);
-            entity.ProgramType = "1";
+            entity.DeviceId = settings.DeviceId;
         }
+
+        entity.ProgramType = string.IsNullOrWhiteSpace(request.ProgramType) ? "0" : request.ProgramType;
+        entity.ProgramContent = string.IsNullOrWhiteSpace(request.ProgramContentJson) ? "{}" : request.ProgramContentJson.Trim();
+        entity.Description = currentDescription;
+        entity.IsDeleted = false;
 
         if (entity.Id == 0)
         {
@@ -299,16 +617,110 @@ public sealed class ProgramManageService : IProgramManageService
         }
     }
 
-    private static byte[]? GetProgramFileBytes(string filePath)
+    private AppSettings CurrentSettings => Volatile.Read(ref _currentSettings);
+
+    /// <summary>
+    /// 阻止保存出同名程序。
+    /// 程序 JSON 文件仅按程序名命名，重名会互相覆盖，且删除其中一个会连带删掉幸存者的文件。
+    /// </summary>
+    private void EnsureProgramNameNotDuplicated(BizProgram entity)
     {
-        if (string.IsNullOrWhiteSpace(filePath))
+        var duplicated = _dbContext.Db.Queryable<BizProgram>()
+            .Any(it => it.ProgramName == entity.ProgramName && it.Id != entity.Id && !it.IsDeleted);
+        if (duplicated)
         {
-            return null;
+            throw new InvalidOperationException($"已存在同名程序：{entity.ProgramName}，请调整流水号或程序备注。");
+        }
+    }
+
+    private void SettingsService_SettingsChanged(object? sender, AppSettingsChangedEventArgs e)
+    {
+        Interlocked.Exchange(ref _currentSettings, e.CurrentSettings);
+    }
+
+    private static string? ResolveSaveSyncAction(BizProgram? original, BizProgram entity, bool hadPendingAction)
+    {
+        return ProgramMesSyncRules.ResolveSaveAction(original, entity, hadPendingAction);
+    }
+
+    private static string ResolveSaveCommitMessage(string? mesRemark, string? syncAction)
+    {
+        if (!string.IsNullOrWhiteSpace(mesRemark))
+        {
+            return mesRemark.Trim();
         }
 
-        return File.Exists(filePath)
-            ? File.ReadAllBytes(filePath)
-            : throw new FileNotFoundException("程序文件不存在。", filePath);
+        return string.IsNullOrWhiteSpace(syncAction)
+            ? "本地保存"
+            : ProgramRemarkRules.ResolveForAction(null, syncAction);
+    }
+
+    private static void ApplySaveSyncState(
+        BizProgram entity,
+        string? syncAction,
+        string? currentSaveSyncAction,
+        string? mesRemark,
+        BizProgram? original)
+    {
+        if (string.IsNullOrWhiteSpace(syncAction))
+        {
+            entity.SyncAction = null;
+            entity.SyncStatus = original?.SyncStatus ?? AppConstants.ProgramSyncStatus.Synced;
+            entity.SyncMessage = "本地辅助字段已保存，无需同步至 MES。";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(currentSaveSyncAction))
+        {
+            // 本次只改本地字段时，保留历史待同步动作，但不把它当作本次保存触发的同步。
+            entity.SyncAction = syncAction;
+            entity.SyncStatus = original?.SyncStatus ?? entity.SyncStatus;
+            entity.SyncMessage = original?.SyncMessage ?? entity.SyncMessage;
+            return;
+        }
+
+        entity.SyncAction = syncAction;
+        entity.Remark = ProgramRemarkRules.ResolveForAction(mesRemark, syncAction);
+        entity.SyncStatus = syncAction switch
+        {
+            AppConstants.ProgramSyncActions.Create => AppConstants.ProgramSyncStatus.PendingCreate,
+            AppConstants.ProgramSyncActions.Delete => AppConstants.ProgramSyncStatus.PendingDelete,
+            _ => AppConstants.ProgramSyncStatus.PendingUpdate
+        };
+        entity.SyncMessage = "本地已保存，等待同步至 MES。";
+    }
+
+    private static BizProgram CloneProgram(BizProgram source)
+    {
+        return new BizProgram
+        {
+            Id = source.Id,
+            ProgramId = source.ProgramId,
+            ProgramName = source.ProgramName,
+            DeviceId = source.DeviceId,
+            ProgramContent = source.ProgramContent,
+            ProgramType = source.ProgramType,
+            ProductNum = source.ProductNum,
+            ProgramFile = source.ProgramFile,
+            Remark = source.Remark,
+            RecipeCode = source.RecipeCode,
+            Station2RecipeCode = source.Station2RecipeCode,
+            ProductModel = source.ProductModel,
+            ComponentCode = source.ComponentCode,
+            SequenceNumber = source.SequenceNumber,
+            ProgramFileName = source.ProgramFileName,
+            Description = source.Description,
+            VersionNumber = source.VersionNumber,
+            CommitId = source.CommitId,
+            CommitMessage = source.CommitMessage,
+            SyncStatus = source.SyncStatus,
+            SyncAction = source.SyncAction,
+            SyncMessage = source.SyncMessage,
+            LastSyncTime = source.LastSyncTime,
+            IsDeleted = source.IsDeleted,
+            CreatedTime = source.CreatedTime,
+            UpdatedTime = source.UpdatedTime
+        };
     }
 
     private void AddRevision(BizProgram entity, string? commitMessage)
@@ -323,8 +735,11 @@ public sealed class ProgramManageService : IProgramManageService
             CommitMessage = commitMessage,
             ProgramName = entity.ProgramName,
             ProductNum = entity.ProductNum,
-            ProgramContentJson = entity.ProgramContentJson,
-            ProgramFileBase64 = entity.ProgramFileBase64,
+            RecipeCode = entity.RecipeCode,
+            Station2RecipeCode = entity.Station2RecipeCode,
+            ProgramContentJson = entity.ProgramContent,
+            LocalRemark = entity.Description,
+            ProgramFileBase64 = entity.ProgramFile,
             UserNumber = user?.UserNumber ?? "system",
             UserName = user?.UserName ?? "system",
             CreatedTime = DateTime.Now
@@ -335,23 +750,32 @@ public sealed class ProgramManageService : IProgramManageService
 
     private async Task<string> SyncCreateAsync(BizProgram entity, CancellationToken cancellationToken)
     {
-        var response = await _mesProvider.AddExpProgramAsync(ToMesProgramData(entity), cancellationToken);
+        var request = ProgramMesPayloadRules.ToCreateRequest(
+            entity,
+            ProgramRemarkRules.ResolveForAction(entity.Remark, AppConstants.ProgramSyncActions.Create));
+        var response = await _mesProvider.AddExpProgramAsync(request, cancellationToken);
         if (!response.IsSuccess)
         {
             throw new InvalidOperationException(response.Msg);
         }
 
+        entity.Remark = request.Remark;
         entity.ProgramId = response.Data?.Id ?? entity.ProgramId;
         return "新增程序已同步至 MES。";
     }
 
     private async Task<string> SyncUpdateAsync(BizProgram entity, CancellationToken cancellationToken)
     {
-        var response = await _mesProvider.UpdateExpProgramAsync(ToMesProgramData(entity), cancellationToken);
+        var request = ProgramMesPayloadRules.ToWriteRequest(
+            entity,
+            ProgramRemarkRules.ResolveForAction(entity.Remark, AppConstants.ProgramSyncActions.Update));
+        var response = await _mesProvider.UpdateExpProgramAsync(request, cancellationToken);
         if (!response.IsSuccess)
         {
             throw new InvalidOperationException(response.Msg);
         }
+
+        entity.Remark = request.Remark;
 
         return "程序更新已同步至 MES。";
     }
@@ -372,8 +796,96 @@ public sealed class ProgramManageService : IProgramManageService
         return "程序删除已同步至 MES。";
     }
 
-    private void UpsertRemoteProgram(MesProgramData data)
+    /// <summary>
+    /// 读取各工位 PLC 配方名称槽位，供拉取程序时按名称匹配配方号。
+    /// 读取失败不阻塞拉取：该工位返回空列表，对应程序保留本机已有配方号。
+    /// </summary>
+    private async Task<Dictionary<int, IReadOnlyList<PlcRecipeNameOption>>> ReadRecipeNameOptionsAsync(
+        CancellationToken cancellationToken)
     {
+        var options = new Dictionary<int, IReadOnlyList<PlcRecipeNameOption>>();
+        if (_recipeNameReaderService is null)
+        {
+            return options;
+        }
+
+        var stationNumbers = CurrentSettings.EnableDualStation ? new[] { 1, 2 } : new[] { 1 };
+        foreach (var stationNo in stationNumbers)
+        {
+            try
+            {
+                var result = await _recipeNameReaderService.ReadStationAsync(stationNo, cancellationToken);
+                options[stationNo] = result.IsSuccess ? result.Options : Array.Empty<PlcRecipeNameOption>();
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _operationLogService.Write(
+                    "ProgramPull",
+                    $"读取工位 {stationNo} PLC 配方名称失败，跳过按名称匹配：{ex.Message}");
+                options[stationNo] = Array.Empty<PlcRecipeNameOption>();
+            }
+        }
+
+        return options;
+    }
+
+    /// <summary>
+    /// 按程序内容里的配方名称匹配本机 PLC 槽位，回填工位配方号。
+    /// 拉取是批量后台操作，匹配失败只记录日志并保留原配方号，不中断整批拉取；
+    /// 真正的开工下发仍会因配方号缺失而报错，不会静默下发错误配方。
+    /// </summary>
+    private void ApplyRecipeNamesFromContent(
+        BizProgram entity,
+        IReadOnlyDictionary<int, IReadOnlyList<PlcRecipeNameOption>> recipeOptions)
+    {
+        if (recipeOptions.Count == 0)
+        {
+            return;
+        }
+
+        var (station1Name, station2Name) = ProgramContentJsonRules.ExtractRecipeNames(entity.ProgramContent);
+        foreach (var (stationNo, recipeName) in new[] { (1, station1Name), (2, station2Name) })
+        {
+            if (string.IsNullOrWhiteSpace(recipeName)
+                || !recipeOptions.TryGetValue(stationNo, out var stationOptions)
+                || stationOptions.Count == 0)
+            {
+                continue;
+            }
+
+            if (!ProgramRecipeNameMappingRules.TryResolveRecipeCode(
+                    recipeName,
+                    stationNo,
+                    stationOptions,
+                    out var recipeCode,
+                    out var errorMessage))
+            {
+                _operationLogService.Write(
+                    "ProgramPull",
+                    $"程序 {entity.ProgramName} 配方名称未匹配本机 PLC 配方：{errorMessage}");
+                continue;
+            }
+
+            if (stationNo == 2)
+            {
+                entity.Station2RecipeCode = recipeCode;
+            }
+            else
+            {
+                entity.RecipeCode = recipeCode;
+            }
+        }
+    }
+
+    private void UpsertRemoteProgram(
+        ProgramDataRes data,
+        IReadOnlyDictionary<int, IReadOnlyList<PlcRecipeNameOption>>? recipeOptions = null)
+    {
+        var content = ProgramContentJsonRules.NormalizeContent(data.ProgramContent, CurrentSettings.ProcessParameterDeviceType);
         var entity = _dbContext.Db.Queryable<BizProgram>().First(it => it.ProgramId == data.Id);
         if (entity is null)
         {
@@ -389,11 +901,37 @@ public sealed class ProgramManageService : IProgramManageService
 
         entity.ProgramName = data.ProgramName;
         entity.DeviceId = data.DeviceId;
-        entity.ProgramContentJson = data.ProgramContent;
+        entity.ProgramContent = content;
         entity.ProgramType = data.ProgramType;
         entity.ProductNum = data.ProductNum;
-        entity.ProgramFileBase64 = data.ProgramFile;
+        if (ProgramNameRules.TryParse(data.ProgramName, out var parsedName))
+        {
+            entity.ComponentCode = parsedName.ComponentCode;
+            entity.SequenceNumber = parsedName.SequenceNumber;
+            entity.Description = parsedName.Description;
+        }
+        else
+        {
+            if (ProgramNameRules.TryExtractComponentCode(data.ProgramName, out var componentCode))
+            {
+                entity.ComponentCode = componentCode;
+            }
+
+            if (entity.SequenceNumber <= 0)
+            {
+                entity.SequenceNumber = 1;
+            }
+
+            entity.Description = string.Empty;
+        }
+
+        entity.ProgramFile = data.ProgramFile;
         entity.Remark = data.Remark;
+        if (recipeOptions is not null)
+        {
+            ApplyRecipeNamesFromContent(entity, recipeOptions);
+        }
+
         entity.SyncAction = null;
         entity.SyncStatus = AppConstants.ProgramSyncStatus.Synced;
         entity.SyncMessage = "已从 MES 下载并保存到本地。";
@@ -406,21 +944,6 @@ public sealed class ProgramManageService : IProgramManageService
             : UpdateAndReturn(entity);
 
         AddRevision(entity, entity.CommitMessage);
-    }
-
-    private static MesProgramData ToMesProgramData(BizProgram entity)
-    {
-        return new MesProgramData
-        {
-            Id = entity.ProgramId ?? string.Empty,
-            ProgramName = entity.ProgramName,
-            DeviceId = entity.DeviceId,
-            ProgramContent = entity.ProgramContentJson ?? string.Empty,
-            ProgramType = entity.ProgramType,
-            ProductNum = entity.ProductNum,
-            ProgramFile = entity.ProgramFileBase64 ?? string.Empty,
-            Remark = entity.Remark ?? string.Empty
-        };
     }
 
     private static ProgramSyncSummary ToSyncSummary(BizProgram entity)
@@ -439,21 +962,23 @@ public sealed class ProgramManageService : IProgramManageService
         };
     }
 
-    private static void NormalizeRequest(ProgramSaveRequest request)
+    private void NormalizeRequest(SaveProgramReq request)
     {
-        request.ProgramName = request.ProgramName.Trim();
         request.ProductNum = request.ProductNum.Trim();
-        request.ProductModel = request.ProductModel.Trim();
+        request.RecipeCode = ProgramRecipeMappingRules.Normalize(request.RecipeCode);
+        request.Station2RecipeCode = ProgramRecipeMappingRules.Normalize(request.Station2RecipeCode);
         request.ComponentCode = request.ComponentCode.Trim();
         request.ProgramType = request.ProgramType.Trim();
         request.ProgramContentJson = request.ProgramContentJson.Trim();
-        request.ProgramFilePath = request.ProgramFilePath.Trim();
         request.WeldJobName = request.WeldJobName.Trim();
         request.RobotJobName = request.RobotJobName.Trim();
-        request.Remark = request.Remark.Trim();
-        request.CommitMessage = string.IsNullOrWhiteSpace(request.CommitMessage)
-            ? "本地保存"
-            : request.CommitMessage.Trim();
+        request.MesRemark = request.MesRemark.Trim();
+        request.ProgramContentJson = ProgramContentJsonRules.NormalizeContent(request.ProgramContentJson, CurrentSettings.ProcessParameterDeviceType);
+
+        ProgramSaveRecipeRules.Validate(
+            request.RecipeCode,
+            request.Station2RecipeCode,
+            CurrentSettings.EnableDualStation);
 
         if (string.IsNullOrWhiteSpace(request.ProductNum))
         {
@@ -462,17 +987,8 @@ public sealed class ProgramManageService : IProgramManageService
 
         if (string.IsNullOrWhiteSpace(request.ComponentCode))
         {
-            throw new InvalidOperationException("零组件代码不能为空。");
+            throw new InvalidOperationException("部件图号不能为空。");
         }
-    }
-
-    private static string NormalizeNamePart(string value)
-    {
-        var chars = value
-            .Where(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '#')
-            .ToArray();
-
-        return chars.Length == 0 ? "NA" : new string(chars);
     }
 
     private static string CreateCommitId(BizProgram entity, string? commitMessage)
@@ -481,8 +997,11 @@ public sealed class ProgramManageService : IProgramManageService
         {
             entity.ProgramName,
             entity.ProductNum,
-            entity.ProgramContentJson,
-            entity.ProgramFileBase64,
+            entity.RecipeCode,
+            entity.Station2RecipeCode,
+            LocalRemark = entity.Description,
+            entity.ProgramContent,
+            entity.ProgramFile,
             entity.VersionNumber,
             commitMessage,
             Timestamp = DateTime.Now.Ticks
@@ -491,7 +1010,7 @@ public sealed class ProgramManageService : IProgramManageService
         return CreateHash(snapshot);
     }
 
-    private static string CreateCommitId(MesProgramData data)
+    private static string CreateCommitId(ProgramDataRes data)
     {
         return CreateHash(JsonSerializer.Serialize(data) + DateTime.Now.Ticks);
     }
@@ -500,5 +1019,89 @@ public sealed class ProgramManageService : IProgramManageService
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(text));
         return Convert.ToHexString(bytes)[..12].ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// 更新所有本地程序的设备编号，用于设备编号变更后统一修正历史程序。
+    /// 同时将处于同步失败或等待状态的程序标记为待更新，保证下次同步使用新设备编号。
+    /// </summary>
+    public Task UpdateAllProgramsDeviceIdAsync(string newDeviceId)
+    {
+        _dbContext.InitDatabase();
+        var normalized = newDeviceId.Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return Task.CompletedTask;
+        }
+
+        var programs = _dbContext.Db.Queryable<BizProgram>()
+            .Where(it => !it.IsDeleted)
+            .ToArray();
+
+        foreach (var p in programs)
+        {
+            if (string.Equals(p.DeviceId, normalized, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            p.DeviceId = normalized;
+            p.UpdatedTime = DateTime.Now;
+            _dbContext.Db.Updateable(p).UpdateColumns(it => new { it.DeviceId, it.UpdatedTime }).ExecuteCommand();
+        }
+
+        _operationLogService.Write("ProgramDeviceIdUpdate", $"设备编号变更，已将所有程序的设备编号更新为 {normalized}。");
+        InvalidateProgramLookups();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 批量清理指定的异常或待同步程序（仅物理删除本地主表，不通知 MES，保留历史版本）。
+    /// 用于清理因设备编号变更等原因导致无法同步的历史程序。
+    /// </summary>
+    public async Task<int> BatchDeleteLocalProgramsAsync(
+        IEnumerable<int> programIds,
+        CancellationToken cancellationToken = default)
+    {
+        var ids = programIds.Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return 0;
+        }
+
+        await _mutationGate.WaitAsync(cancellationToken);
+        try
+        {
+            var result = await Task.Run(
+                () => BatchDeleteLocalProgramsCore(ids, cancellationToken),
+                CancellationToken.None);
+            InvalidateProgramLookups();
+            return result;
+        }
+        finally
+        {
+            _mutationGate.Release();
+        }
+    }
+
+    private int BatchDeleteLocalProgramsCore(IReadOnlyCollection<int> ids, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _dbContext.InitDatabase();
+
+        // 确认框和变更门锁等待期间可能已同步成功；只清理已确认 ID 中仍待处理的记录。
+        cancellationToken.ThrowIfCancellationRequested();
+        var pendingStatuses = PendingSyncStatuses;
+        var deletedCount = _dbContext.Db.Deleteable<BizProgram>()
+            .Where(it => ids.Contains(it.Id) && pendingStatuses.Contains(it.SyncStatus))
+            .ExecuteCommand();
+        if (deletedCount == 0)
+        {
+            return 0;
+        }
+        _operationLogService.Write(
+            "ProgramBatchDelete",
+            $"批量删除程序：{deletedCount} 条");
+        return deletedCount;
     }
 }

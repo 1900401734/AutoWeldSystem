@@ -1,10 +1,10 @@
 using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Enums;
 using AutoWeldSystem.Core.Exceptions;
-using AutoWeldSystem.Core.Interfaces;
-using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.Interfaces.UserManage;
 using AutoWeldSystem.Core.Security;
 using AutoWeldSystem.Data;
 using SqlSugar;
@@ -23,8 +23,11 @@ public class RbacService : IRbacService
     public void InitializeRbac()
     {
         EnsureDefaultRoles();
-        EnsureDefaultPermissions();
+        var createdPermissionCodes = EnsureDefaultPermissions();
+        CleanupRetiredPermissions();
         EnsureDefaultRolePermissions();
+        UpgradeDataDeletePermission(createdPermissionCodes);
+        UpgradeMonitorDisplayTogglePermissions(createdPermissionCodes);
     }
 
     public IReadOnlyList<SysRole> GetAllRoles(bool enabledOnly = false)
@@ -281,25 +284,33 @@ public class RbacService : IRbacService
         {
             new SysRole
             {
+                RoleCode = AppConstants.Roles.Developer,
+                RoleName = "������",
+                Description = "����ϵͳ�����߽�ɫ",
+                Enabled = true,
+                IsSystem = true
+            },
+            new SysRole
+            {
                 RoleCode = AppConstants.Roles.Admin,
-                RoleName = "Administrator",
-                Description = "Built-in administrator role",
+                RoleName = "����Ա",
+                Description = "����ϵͳ����Ա��ɫ",
                 Enabled = true,
                 IsSystem = true
             },
             new SysRole
             {
                 RoleCode = AppConstants.Roles.Operator,
-                RoleName = "Operator",
-                Description = "Built-in operator role",
+                RoleName = "����Ա",
+                Description = "����ϵͳ����Ա��ɫ",
                 Enabled = true,
                 IsSystem = true
             },
             new SysRole
             {
                 RoleCode = AppConstants.Roles.Readonly,
-                RoleName = "Readonly",
-                Description = "Built-in readonly role",
+                RoleName = "ֻ���û�",
+                Description = "����ϵͳֻ����ɫ",
                 Enabled = true,
                 IsSystem = true
             }
@@ -318,9 +329,13 @@ public class RbacService : IRbacService
         }
     }
 
-    private void EnsureDefaultPermissions()
+    /// <summary>
+    /// 补齐权限目录，返回本次新建的权限码，供旧数据库的一次性补权使用。
+    /// </summary>
+    private HashSet<string> EnsureDefaultPermissions()
     {
         var existing = GetAllPermissions().ToDictionary(item => item.Code, StringComparer.OrdinalIgnoreCase);
+        var createdCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var definition in PermissionCatalog.All)
         {
@@ -344,11 +359,135 @@ public class RbacService : IRbacService
             if (permission.Id <= 0)
             {
                 _dbContext.Db.Insertable(permission).ExecuteCommand();
+                createdCodes.Add(definition.Code);
             }
             else
             {
                 _dbContext.Db.Updateable(permission).ExecuteCommand();
             }
+        }
+
+        return createdCodes;
+    }
+
+    /// <summary>
+    /// 旧数据库首次引入历史数据删除权限时，为管理员补权，避免升级后按钮一直置灰。
+    /// </summary>
+    private void UpgradeDataDeletePermission(HashSet<string> createdPermissionCodes)
+    {
+        if (!createdPermissionCodes.Contains(PermissionCodes.Buttons.Data.Delete))
+        {
+            return;
+        }
+
+        var permissions = GetAllPermissions().ToDictionary(item => item.Code, StringComparer.OrdinalIgnoreCase);
+        if (!permissions.TryGetValue(PermissionCodes.Buttons.Data.Delete, out var deletePermission)
+            || !permissions.TryGetValue(PermissionCodes.Pages.DataManage, out var dataManagePermission))
+        {
+            return;
+        }
+
+        foreach (var role in GetAllRoles())
+        {
+            var hasDataManagePage = _dbContext.Db.Queryable<SysRolePermission>()
+                .Any(item => item.RoleId == role.Id && item.PermissionId == dataManagePermission.Id);
+            var upgradeCodes = RolePermissionInitializationRules.ResolveDataDeleteUpgradeDefaults(
+                role.RoleCode,
+                dataDeleteCatalogWasMissing: true,
+                hasDataManagePagePermission: hasDataManagePage);
+            if (upgradeCodes.Count == 0)
+            {
+                continue;
+            }
+
+            AppendMissingRolePermissions(role.Id, [deletePermission.Id]);
+        }
+    }
+
+    /// <summary>
+    /// 旧数据库首次引入监控页显示开关权限时，为管理员补权，避免升级后两个开关一直不显示。
+    /// </summary>
+    private void UpgradeMonitorDisplayTogglePermissions(HashSet<string> createdPermissionCodes)
+    {
+        var toggleCodes = new[]
+        {
+            PermissionCodes.Buttons.Monitor.MergedDisplay,
+        };
+        if (!toggleCodes.Any(createdPermissionCodes.Contains))
+        {
+            return;
+        }
+
+        var permissions = GetAllPermissions().ToDictionary(item => item.Code, StringComparer.OrdinalIgnoreCase);
+        if (!permissions.TryGetValue(PermissionCodes.Pages.Monitor, out var monitorPermission))
+        {
+            return;
+        }
+
+        foreach (var role in GetAllRoles())
+        {
+            var hasMonitorPage = _dbContext.Db.Queryable<SysRolePermission>()
+                .Any(item => item.RoleId == role.Id && item.PermissionId == monitorPermission.Id);
+            var upgradeCodes = RolePermissionInitializationRules.ResolveMonitorDisplayToggleUpgradeDefaults(
+                role.RoleCode,
+                monitorDisplayToggleCatalogWasMissing: true,
+                hasMonitorPagePermission: hasMonitorPage);
+            if (upgradeCodes.Count == 0)
+            {
+                continue;
+            }
+
+            var permissionIds = upgradeCodes
+                .Where(permissions.ContainsKey)
+                .Select(code => permissions[code].Id)
+                .ToArray();
+            AppendMissingRolePermissions(role.Id, permissionIds);
+        }
+    }
+
+    private void CleanupRetiredPermissions()
+    {
+        var retiredCodes = new[]
+        {
+            "button.data.export",
+            "button.monitor.start-report",
+            "button.monitor.finish-report",
+            "button.monitor.edit-work-order",
+            "button.monitor.change-work-order",
+            "button.monitor.get-work-order",
+            // 数据管理“采集数据”调试页签已移除，旧库残留的页签权限及角色关联一并清理。
+            "tab.data.collection-data",
+            // 以下按钮权限已随功能下线从目录移除，但旧库仍保留权限行，导致角色权限页显示无中文映射的英文节点。
+            "button.monitor.face-result-display",
+            "button.program.browse-file",
+            "button.log.delete",
+            "button.system.connect-master",
+            "button.address.delete"
+        };
+
+        var permissions = _dbContext.Db.Queryable<SysPermission>()
+            .Where(item => retiredCodes.Contains(item.Code))
+            .ToList();
+
+        if (permissions.Count == 0)
+        {
+            return;
+        }
+
+        var permissionIds = permissions.Select(item => item.Id).ToList();
+        var tran = _dbContext.Db.Ado.UseTran(() =>
+        {
+            _dbContext.Db.Deleteable<SysRolePermission>()
+                .Where(item => permissionIds.Contains(item.PermissionId))
+                .ExecuteCommand();
+            _dbContext.Db.Deleteable<SysPermission>()
+                .Where(item => permissionIds.Contains(item.Id))
+                .ExecuteCommand();
+        });
+
+        if (!tran.IsSuccess)
+        {
+            throw tran.ErrorException ?? new InvalidOperationException("CleanupRetiredPermissions failed.");
         }
     }
 
@@ -365,17 +504,47 @@ public class RbacService : IRbacService
             }
 
             var existingCount = _dbContext.Db.Queryable<SysRolePermission>().Count(it => it.RoleId == role.Id);
-            if (existingCount > 0)
-            {
-                continue;
-            }
-
             var permissionIds = pair.Value
                 .Where(permissions.ContainsKey)
                 .Select(code => permissions[code].Id)
                 .ToArray();
 
+            if (existingCount > 0
+                && RolePermissionInitializationRules.ShouldAppendMissingDefaults(role.RoleCode))
+            {
+                AppendMissingRolePermissions(role.Id, permissionIds);
+                continue;
+            }
+
+            if (existingCount > 0)
+            {
+                continue;
+            }
+
             SaveRolePermissions(role.Id, permissionIds);
+        }
+    }
+
+    private void AppendMissingRolePermissions(int roleId, IReadOnlyCollection<int> desiredPermissionIds)
+    {
+        var existingIds = _dbContext.Db.Queryable<SysRolePermission>()
+            .Where(item => item.RoleId == roleId)
+            .Select(item => item.PermissionId)
+            .ToList()
+            .ToHashSet();
+        var missing = desiredPermissionIds
+            .Where(permissionId => !existingIds.Contains(permissionId))
+            .Select(permissionId => new SysRolePermission
+            {
+                RoleId = roleId,
+                PermissionId = permissionId,
+                CreatedTime = DateTime.Now
+            })
+            .ToList();
+
+        if (missing.Count > 0)
+        {
+            _dbContext.Db.Insertable(missing).ExecuteCommand();
         }
     }
 
@@ -385,26 +554,38 @@ public class RbacService : IRbacService
 
         return new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase)
         {
+            [AppConstants.Roles.Developer] = allCodes,
             [AppConstants.Roles.Admin] = allCodes,
             [AppConstants.Roles.Operator] = new[]
             {
                 PermissionCodes.Pages.Monitor,
                 PermissionCodes.Pages.DataManage,
                 PermissionCodes.Pages.ProgramManage,
-                PermissionCodes.Buttons.Monitor.ChangeWorkOrder,
-                PermissionCodes.Buttons.Monitor.StartReport,
-                PermissionCodes.Buttons.Monitor.FinishReport,
+                PermissionCodes.Buttons.Monitor.OnlineReport,
+                PermissionCodes.Buttons.Monitor.LocalWorkOrder,
                 PermissionCodes.Buttons.Auth.SwitchUser,
                 PermissionCodes.Buttons.Auth.Logout,
-                PermissionCodes.Buttons.Data.Export,
+                PermissionCodes.Buttons.Auth.AddressPreview,
+                PermissionCodes.Buttons.Data.Query,
+                PermissionCodes.Buttons.Data.Reset,
+                PermissionCodes.Buttons.Data.OpenReport,
+                PermissionCodes.Buttons.Data.OpenReportFolder,
                 PermissionCodes.Buttons.Program.Add,
                 PermissionCodes.Buttons.Program.Edit,
-                PermissionCodes.Buttons.Program.Delete
+                PermissionCodes.Buttons.Program.Delete,
+                PermissionCodes.Buttons.Program.Sync,
+                PermissionCodes.Buttons.Program.PullMes,
+                PermissionCodes.Buttons.Program.Refresh,
+                PermissionCodes.Buttons.Program.BuildName
             },
             [AppConstants.Roles.Readonly] = new[]
             {
                 PermissionCodes.Pages.Monitor,
                 PermissionCodes.Pages.DataManage,
+                PermissionCodes.Buttons.Data.Query,
+                PermissionCodes.Buttons.Data.Reset,
+                PermissionCodes.Buttons.Data.OpenReport,
+                PermissionCodes.Buttons.Data.OpenReportFolder,
                 PermissionCodes.Buttons.Auth.SwitchUser,
                 PermissionCodes.Buttons.Auth.Logout
             }

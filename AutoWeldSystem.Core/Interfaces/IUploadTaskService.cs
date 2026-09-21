@@ -1,0 +1,57 @@
+using AutoWeldSystem.Core.DTOs.Upload;
+using AutoWeldSystem.Core.Entities;
+
+namespace AutoWeldSystem.Core.Interfaces;
+
+/// <summary>
+/// 通用上传任务服务。
+/// 负责查询和重新排队本地上传任务，实际上传执行器后续按任务类型逐步接入。
+/// </summary>
+public interface IUploadTaskService
+{
+    event EventHandler<UploadTaskStatusChangedEventArgs>? TaskStatusChanged;
+
+    IReadOnlyList<UploadTaskSummary> GetTasks(string taskType, bool includeCompleted = false);
+
+    /// <summary>
+    /// Gets process-parameter rows, including persisted upload tasks and read-only product-history rows.
+    /// </summary>
+    IReadOnlyList<UploadTaskSummary> GetProcessParameterRows(bool includeCompleted = false);
+
+    UploadTaskSummary? GetById(int id);
+
+    BizUploadTask EnqueueOrUpdate(BizUploadTask task);
+
+    Task<UploadTaskSummary?> ExecuteAsync(int id, CancellationToken cancellationToken = default);
+
+    Task<int> ExecuteAllPendingAsync(string taskType, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Executes retryable upload tasks of one type for a single weld task.
+    /// </summary>
+    Task<int> ExecutePendingForWeldTaskAsync(
+        int weldTaskId,
+        string taskType,
+        CancellationToken cancellationToken = default);
+
+    void RequestRetry(int id);
+
+    int RequestRetryAll(string taskType);
+
+    void DeleteTask(int id);
+
+    /// <summary>
+    /// Deletes all weld point records for a specific product in a virtual process-parameter row.
+    /// </summary>
+    /// <param name="weldTaskId">Weld task id.</param>
+    /// <param name="stationNo">Station number.</param>
+    /// <param name="productNo">Product number.</param>
+    void DeleteProcessParameterVirtualRow(int weldTaskId, int stationNo, string productNo);
+
+    /// <summary>
+    /// 产品被软删后，把仍未上传成功的过程参数任务置为终态“已跳过”，避免已删产品被无限重试上报。
+    /// 数量批次任务含多件产品时整批跳过，其余产品由完工补传兜底。
+    /// </summary>
+    /// <returns>被置为跳过的任务数。</returns>
+    int SkipProcessParameterTasks(int weldTaskId, int stationNo, string productNo);
+}

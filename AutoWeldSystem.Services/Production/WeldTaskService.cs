@@ -1,28 +1,93 @@
+using AutoWeldSystem.Core;
+using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
+using AutoWeldSystem.Core.DTOs.Mes.Request;
+using AutoWeldSystem.Core.DTOs.Mes.Response;
+using AutoWeldSystem.Core.DTOs.Plc;
+using AutoWeldSystem.Core.DTOs.Upload;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Enums;
 using AutoWeldSystem.Core.Exceptions;
 using AutoWeldSystem.Core.Interfaces;
-using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.Interfaces.Log;
+using AutoWeldSystem.Core.Interfaces.MES;
+using AutoWeldSystem.Core.Interfaces.PLC;
+using AutoWeldSystem.Core.Mes;
+using AutoWeldSystem.Core.Production;
+using AutoWeldSystem.Core.Runtime;
 using AutoWeldSystem.Data;
+using System.Text.Json;
 
 namespace AutoWeldSystem.Services.Production;
 
 public class WeldTaskService : IWeldTaskService
 {
+    private const string TaskStatusCompleted = "Completed";
+    private const string TaskStatusRunning = "Running";
+    // PLC 无响应时不能让下载程序的交互长时间挂起。
+    private static readonly TimeSpan RecipeNameReadTimeout = TimeSpan.FromSeconds(10);
+
     private readonly IMesProvider _mesProvider;
     private readonly SqlSugarDbContext _dbContext;
     private readonly IAppSettingsService _settingsService;
     private readonly IOperationLogService _operationLogService;
     private readonly ILocalizationService _localizer;
+    private readonly IUploadTaskService _uploadTaskService;
+    private readonly ICenterProductForwardingService _centerProductForwardingService;
+    private readonly IProductionReportFileService _reportFileService;
+    private readonly IDeviceLifecycleLogService _deviceLifecycleLogService;
+    private readonly IDeviceStatusService _deviceStatusService;
+    private readonly ISystemClockService _systemClockService;
+    private readonly IDataHistoryMaintenanceService _maintenanceService;
+    private readonly IMesConnectionMonitor? _mesConnectionMonitor;
+    private readonly IPlcRecipeNameReaderService? _recipeNameReaderService;
+    private readonly IProductProcessConfigService _productProcessConfigService;
+    private readonly ITestSchemeConfigService _testSchemeConfigService;
+    private readonly IProductionCountService? _productionCountService;
+    private readonly ITaskCollectionLifecycleCoordinator? _lifecycle;
+    private AppSettings _currentSettings;
 
-    public WeldTaskService(SqlSugarDbContext dbContext,IMesProvider mesProvider,IAppSettingsService settingsService,
-        IOperationLogService operationLogService,ILocalizationService localizer)
+    public WeldTaskService(
+        SqlSugarDbContext dbContext,
+        IMesProvider mesProvider,
+        IAppSettingsService settingsService,
+        IOperationLogService operationLogService,
+        ILocalizationService localizer,
+        IUploadTaskService uploadTaskService,
+        ICenterProductForwardingService centerProductForwardingService,
+        IProductionReportFileService reportFileService,
+        IDeviceLifecycleLogService deviceLifecycleLogService,
+        IDeviceStatusService deviceStatusService,
+        ISystemClockService systemClockService,
+        IDataHistoryMaintenanceService maintenanceService,
+        IMesConnectionMonitor? mesConnectionMonitor = null,
+        IPlcRecipeNameReaderService? recipeNameReaderService = null,
+        IProductProcessConfigService? productProcessConfigService = null,
+        ITestSchemeConfigService? testSchemeConfigService = null,
+        IProductionCountService? productionCountService = null,
+        ITaskCollectionLifecycleCoordinator? lifecycle = null)
     {
+        _productProcessConfigService = productProcessConfigService ?? new ProductProcessConfigService(dbContext);
+        _testSchemeConfigService = testSchemeConfigService ?? new TestSchemeConfigService(dbContext);
+        // 未配置数据库的测试场景不做排空与重算；生产环境两者都由 DI 提供或按库共享。
+        _productionCountService = productionCountService ?? DefaultProductionCountService(dbContext);
+        _lifecycle = lifecycle ?? DefaultLifecycle(dbContext, settingsService);
+        _recipeNameReaderService = recipeNameReaderService;
+        _maintenanceService = maintenanceService;
+        _mesConnectionMonitor = mesConnectionMonitor;
         _mesProvider = mesProvider;
         _dbContext = dbContext;
         _settingsService = settingsService;
+        _currentSettings = settingsService.Get();
+        _settingsService.SettingsChanged += SettingsService_SettingsChanged;
         _operationLogService = operationLogService;
         _localizer = localizer;
+        _uploadTaskService = uploadTaskService;
+        _centerProductForwardingService = centerProductForwardingService;
+        _reportFileService = reportFileService;
+        _deviceLifecycleLogService = deviceLifecycleLogService;
+        _deviceStatusService = deviceStatusService;
+        _systemClockService = systemClockService;
         CurrentState = new ProductionRuntimeState();
     }
 
@@ -30,89 +95,477 @@ public class WeldTaskService : IWeldTaskService
 
     public event EventHandler? StateChanged;
 
+    protected virtual BizWeldTask? QueryUnfinishedTask(int[] stationNumbers)
+    {
+        var query = _dbContext.Db.Queryable<BizWeldTask>()
+            .Where(task => task.TaskStatus != TaskStatusCompleted
+                && task.TaskStatus != ProductionConstants.ProductInstanceStatuses.Abandoned && task.EndTime == null);
+        query = stationNumbers.Length == 1
+            ? query.Where(task => task.StationNo == stationNumbers[0])
+            : query.Where(task => stationNumbers.Contains(task.StationNo));
+
+        return query
+            .OrderByDescending(task => task.StartTime)
+            .OrderByDescending(task => task.Id)
+            .First();
+    }
+
+    protected virtual BizWeldTask InsertTask(BizWeldTask task)
+        => _dbContext.Db.Insertable(task).ExecuteReturnEntity();
+
     /// <summary>
-    /// 同步时间
+    /// 统一查询当前工位是否存在未完工任务，先看内存运行态，再查本地数据库兜底。
     /// </summary>
-    /// <param name="cancellationToken"></param>
-    /// <returns></returns>
-    public async Task<MesBaseResponse<MesServerTimeResponse>> SyncServerTimeAsync(CancellationToken cancellationToken = default)
+    public BizWeldTask? GetUnfinishedTask(int stationNo = ProductionConstants.Stations.DefaultStationNo)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var stationNumbers = ResolveTaskScopeStationNumbers(normalizedStationNo);
+        foreach (var scopedStationNo in stationNumbers)
+        {
+            var station = GetStation(scopedStationNo);
+            if (IsUnfinishedTask(station.ActiveTask))
+            {
+                return station.ActiveTask;
+            }
+        }
+
+        return QueryUnfinishedTask(stationNumbers);
+    }
+
+    /// <summary>
+    /// 将本地未完工任务恢复成运行态，供程序重启后继续完工上报。
+    /// </summary>
+    public BizWeldTask? RestoreUnfinishedTask(int stationNo = ProductionConstants.Stations.DefaultStationNo)
+    {
+        BizWeldTask unfinishedTask;
+        lock (_dbContext.TaskTransitionSync)
+        {
+            var normalizedStationNo = NormalizeStationNo(stationNo);
+            var candidate = GetUnfinishedTask(normalizedStationNo);
+            if (candidate is null) return null;
+            unfinishedTask = candidate;
+            ValidateTaskForProduction(unfinishedTask, normalizedStationNo);
+            var station = GetStation(normalizedStationNo);
+            if (station.ActiveTask?.Id == unfinishedTask.Id)
+            {
+                // 同一任务已恢复时直接返回，避免递归触发 StateChanged。
+                return unfinishedTask;
+            }
+
+            var process = CreateProcessSnapshot(unfinishedTask);
+            var workOrder = CreateWorkOrderSnapshot(unfinishedTask, process);
+            var program = CreateProgramSnapshot(unfinishedTask);
+            var operatorNumber = FirstNonEmpty(unfinishedTask.UserNumber, station.MesOperatorNumber);
+            ApplyStartedRuntimeState(normalizedStationNo, workOrder, process, program, unfinishedTask, operatorNumber);
+            ApplySharedStartedRuntimeStateIfNeeded(normalizedStationNo, workOrder, process, program, unfinishedTask, operatorNumber);
+        }
+        _operationLogService.Write(
+            "TaskRecovery",
+            $"Unfinished task restored, Station={unfinishedTask.StationNo}, WorkOrder={unfinishedTask.SN}, MES Id={unfinishedTask.ExpStartId}");
+        NotifyStateChanged();
+        return unfinishedTask;
+    }
+
+    public async Task<BizWeldTask> AbandonInvalidTaskAsync(
+        int taskId, int stationNo, CancellationToken cancellationToken = default)
+    {
+        BizWeldTask candidate;
+        lock (_dbContext.TaskTransitionSync)
+            candidate = _dbContext.Db.Queryable<BizWeldTask>().InSingle(taskId)
+                ?? throw new BusinessOperationException("Task.Abandon", "异常结束失败", "任务不存在。");
+        // 作废也是终态切换：先关闭采集准入并等待在途产品处理完，避免作废后仍有产品落库。
+        using var closing = BeginClosing(candidate, "Task.Abandon", "异常结束失败");
+        await WaitForDrainAsync(closing, "Task.Abandon", "异常结束失败", cancellationToken);
+        var task = await Task.Run(() => AbandonInvalidTaskCore(taskId, stationNo, cancellationToken), cancellationToken);
+        foreach (var station in CurrentState.StationStates.Values)
+        {
+            WeldTaskRuntimeRules.ClearFinishedTask(station, task);
+        }
+        if (CurrentState.ActiveTask?.Id == task.Id) CurrentState.ActiveTask = null;
+        RefreshCompatibilityState(CurrentState.CurrentStationNo);
+        _operationLogService.Write("TaskAbandon", task.UploadMessage ?? $"任务 {task.Id} 已异常结束。", "Warning");
+        NotifyStateChanged();
+        return task;
+    }
+
+    public bool DetachStaleTask(int taskId)
+    {
+        var detached = false;
+        // 与开工绑定运行态共用同一把锁，避免“判定为旧任务”和“清空”之间插入新任务绑定。
+        lock (_dbContext.TaskTransitionSync)
+        {
+            foreach (var station in CurrentState.StationStates.Values)
+            {
+                if (station.ActiveTask?.Id != taskId) continue;
+                station.Reset();
+                detached = true;
+            }
+            if (CurrentState.ActiveTask?.Id == taskId)
+            {
+                CurrentState.ActiveTask = null;
+                detached = true;
+            }
+            if (detached) RefreshCompatibilityState(CurrentState.CurrentStationNo);
+        }
+        if (!detached) return false;
+        _operationLogService.Write("TaskDetach",
+            $"ProcessId={Environment.ProcessId}, TaskId={taskId} 已被数据库判定为非运行任务，已清空本机运行态。", "Warning");
+        NotifyStateChanged();
+        return true;
+    }
+
+    private static IProductionCountService? DefaultProductionCountService(SqlSugarDbContext? dbContext)
+        => dbContext is null ? null : new ProductionCountService(dbContext);
+
+    private static ITaskCollectionLifecycleCoordinator? DefaultLifecycle(SqlSugarDbContext? dbContext, IAppSettingsService settingsService)
+        => dbContext is null ? null : TaskCollectionLifecycleCoordinator.GetShared(dbContext, settingsService);
+
+    private ITaskClosingLease? BeginClosing(BizWeldTask task, string source, string title)
+    {
+        if (_lifecycle is null) return null;
+        try
+        {
+            return _lifecycle.BeginClosing(task);
+        }
+        catch (TaskRunRejectedException ex)
+        {
+            throw new BusinessOperationException(source, title, ex.Message);
+        }
+    }
+
+    private static async Task WaitForDrainAsync(ITaskClosingLease? closing, string source, string title, CancellationToken cancellationToken)
+    {
+        if (closing is null) return;
+        try
+        {
+            await closing.WaitForDrainAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is TimeoutException or TaskRunRejectedException)
+        {
+            throw new BusinessOperationException(source, title, ex.Message);
+        }
+    }
+
+    private static void EnsureClosingValid(ITaskClosingLease? closing, string source, string title)
+    {
+        if (closing is null) return;
+        try
+        {
+            closing.EnsureValid();
+        }
+        catch (TaskRunRejectedException ex)
+        {
+            throw new BusinessOperationException(source, title, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 程序统计模式下完工数量由服务层在排空后重算，保证不漏算最后一件；其他模式沿用调用方传入值。
+    /// </summary>
+    private (int Actual, int Qualified, int Failed) ResolveFinishQuantities(BizWeldTask task, int actual, int qualified, int failed)
+    {
+        if (_productionCountService is null || !ProductionConstants.ProductionCountSources.IsProgram(CurrentSettings.ProductionCountSource))
+            return (actual, qualified, failed);
+        var quantities = _productionCountService.GetTaskQuantities(task.Id);
+        return (quantities.ActualQty, quantities.QualifiedQty, quantities.FailedQty);
+    }
+
+    private BizWeldTask AbandonInvalidTaskCore(int taskId, int stationNo, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_dbContext.TaskTransitionSync)
+        {
+            if (!GlobalContext.IsAuthenticated || !GlobalContext.HasPermission(PermissionCodes.Buttons.Data.Delete))
+                throw new BusinessOperationException("Task.Abandon", "异常结束失败", "需要删除历史数据权限。");
+            var operatorNumber = GlobalContext.CurrentUser!.UserNumber;
+            _dbContext.InitDatabase();
+            var normalizedStationNo = NormalizeStationNo(stationNo);
+            var task = _dbContext.Db.Queryable<BizWeldTask>().InSingle(taskId);
+            var scopedStations = ResolveTaskScopeStationNumbers(normalizedStationNo);
+            if (task is null || !IsUnfinishedTask(task)
+                || !scopedStations.Contains(NormalizeStationNo(task.StationNo))
+                || GetUnfinishedTask(normalizedStationNo)?.Id != task.Id)
+                throw new BusinessOperationException("Task.Abandon", "异常结束失败", "任务已改变、已结束或不属于当前工位，请刷新后确认。");
+
+            string failure;
+            try
+            {
+                ValidateTaskForProduction(task, normalizedStationNo);
+                throw new BusinessOperationException("Task.Abandon", "异常结束失败", "程序配置已有效，请使用正常完工，不能异常结束。");
+            }
+            catch (BusinessOperationException ex) when (ex.SourceName == "Program.Configuration")
+            {
+                failure = ex.Detail;
+            }
+
+            var now = DateTime.Now;
+            var message = $"任务 {task.Id} 异常结束；工位={task.StationNo}；工单={task.SN}；程序={task.ProgramName}；开工时间={task.StartTime:yyyy-MM-dd HH:mm:ss}；执行人={GlobalContext.CurrentUser!.UserNumber}。历史数据保留，未发送的生产补传已跳过，MES 端请人工核对。原因：{failure}";
+            var transaction = _dbContext.Db.Ado.UseTran(() =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var uploads = _dbContext.Db.Queryable<BizUploadTask>().Where(item => item.WeldTaskId == task.Id && !item.IsDeleted)
+                    .ToList().Where(WeldTaskRuntimeRules.IsProductionUpload).ToList();
+                if (uploads.Any(item => item.Status == ProductionConstants.UploadStatuses.Uploading)
+                    || _dbContext.Db.Queryable<BizWeldPointRecord>().Any(item => item.TaskId == task.Id && item.UploadStatus == ProductionConstants.UploadStatuses.Uploading)
+                    || _dbContext.Db.Queryable<BizProductionReportFile>().Any(item => item.TaskId == task.Id && item.UploadStatus == ProductionConstants.UploadStatuses.Uploading))
+                    throw new InvalidOperationException("该任务仍有在途上传，请等待结束后重试异常结束。");
+
+                var updated = _dbContext.Db.Updateable<BizWeldTask>()
+                    .SetColumns(item => new BizWeldTask
+                    {
+                        TaskStatus = ProductionConstants.ProductInstanceStatuses.Abandoned,
+                        EndTime = now,
+                        EndOperatorNumber = operatorNumber,
+                        UploadStatus = ProductionConstants.UploadStatuses.Skipped,
+                        UploadMessage = message
+                    })
+                    .Where(item => item.Id == task.Id && item.EndTime == null && item.TaskStatus == task.TaskStatus)
+                    .ExecuteCommand();
+                if (updated != 1) throw new InvalidOperationException("任务状态已改变，未执行异常结束。");
+
+                foreach (var upload in uploads.Where(item => item.Status != ProductionConstants.UploadStatuses.Uploaded))
+                {
+                    upload.Status = ProductionConstants.UploadStatuses.Skipped;
+                    upload.NextRetryTime = null;
+                    upload.CompletedTime = now;
+                    upload.UpdatedTime = now;
+                    upload.Message = message;
+                    _dbContext.Db.Updateable(upload).UpdateColumns(item => new
+                    {
+                        item.Status, item.NextRetryTime, item.CompletedTime, item.UpdatedTime, item.Message
+                    }).ExecuteCommand();
+                }
+                _dbContext.Db.Updateable<BizWeldPointRecord>()
+                    .SetColumns(item => new BizWeldPointRecord { UploadStatus = ProductionConstants.UploadStatuses.Skipped, UploadMessage = message })
+                    .Where(item => item.TaskId == task.Id && item.UploadStatus != ProductionConstants.UploadStatuses.Uploaded).ExecuteCommand();
+                _dbContext.Db.Updateable<BizProductionReportFile>()
+                    .SetColumns(item => new BizProductionReportFile { UploadStatus = ProductionConstants.UploadStatuses.Skipped, UploadMessage = message, UpdatedTime = now })
+                    .Where(item => item.TaskId == task.Id && item.UploadStatus != ProductionConstants.UploadStatuses.Uploaded).ExecuteCommand();
+            });
+            if (!transaction.IsSuccess)
+                throw new BusinessOperationException("Task.Abandon", "异常结束失败", transaction.ErrorException?.Message ?? transaction.ErrorMessage);
+            // 先终结已有内存引用，后台恢复/采集检查不能在 UI 清理前再次看到 Running。
+            foreach (var station in CurrentState.StationStates.Values)
+            {
+                if (station.ActiveTask?.Id != task.Id) continue;
+                station.ActiveTask.TaskStatus = ProductionConstants.ProductInstanceStatuses.Abandoned;
+                station.ActiveTask.EndTime = now;
+            }
+            if (CurrentState.ActiveTask?.Id == task.Id)
+            {
+                CurrentState.ActiveTask.TaskStatus = ProductionConstants.ProductInstanceStatuses.Abandoned;
+                CurrentState.ActiveTask.EndTime = now;
+            }
+            return _dbContext.Db.Queryable<BizWeldTask>().InSingle(task.Id);
+        }
+    }
+
+    /// <summary>
+    /// 同步 MES 服务器时间，并记录最近一次同步结果。
+    /// </summary>
+    public async Task<BasicRes<ServerTimeRes>> SyncServerTimeAsync(CancellationToken cancellationToken = default)
     {
         var response = await _mesProvider.GetServerTimeAsync(cancellationToken);
 
-        if (response.IsSuccess && response.Data is not null && DateTime.TryParse(response.Data.CurrentTime, out var serverTime))
-        {
-            CurrentState.LastServerSyncTime = serverTime;
-            CurrentState.LastServerSyncMessage = $"{serverTime:yyyy-MM-dd HH:mm:ss}";
-            _operationLogService.Write("ServerTime", $"Server time sync succeeded: {serverTime:yyyy-MM-dd HH:mm:ss}");
-        }
-        else
+        if (!response.IsSuccess || response.Data is null)
         {
             CurrentState.LastServerSyncMessage = response.Msg;
+            WriteServerTimeSelfCheckLog(SystemClockSyncResult.Failed(
+                default,
+                default,
+                0,
+                string.IsNullOrWhiteSpace(response.Msg) ? "MES 服务器校时接口调用失败。" : response.Msg));
+            NotifyStateChanged();
+            return response;
         }
 
+        var parseResult = SystemClockSyncRules.TryParseServerTime(response.Data.CurrentTime, out var serverTime);
+        if (!parseResult.Success)
+        {
+            CurrentState.LastServerSyncMessage = parseResult.Message;
+            _operationLogService.Write("ServerTime", parseResult.Message, "Error");
+            WriteServerTimeSelfCheckLog(parseResult);
+            NotifyStateChanged();
+            return response;
+        }
+
+        var clockResult = SynchronizeSystemClock(serverTime);
+        CurrentState.LastServerSyncTime = serverTime;
+        CurrentState.LastServerSyncMessage = BuildServerTimeSyncMessage(clockResult);
+        WriteServerTimeSyncLog(clockResult);
+        WriteServerTimeSelfCheckLog(clockResult);
         NotifyStateChanged();
         return response;
     }
 
     /// <summary>
-    /// 
+    /// Compares the MES server time with the local clock and changes Windows time only when needed.
+    /// </summary>
+    private SystemClockSyncResult SynchronizeSystemClock(DateTime serverTime)
+    {
+        var localTimeBefore = _systemClockService.GetLocalTime();
+        var decision = SystemClockSyncRules.Decide(serverTime, localTimeBefore);
+        if (!decision.Changed)
+        {
+            return decision;
+        }
+
+        try
+        {
+            return _systemClockService.SetLocalTime(serverTime, localTimeBefore);
+        }
+        catch (Exception ex)
+        {
+            return SystemClockSyncResult.Failed(
+                serverTime,
+                localTimeBefore,
+                decision.OffsetSeconds,
+                $"系统时间修改失败：{ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Builds the runtime message displayed by monitor screens after startup time sync.
+    /// </summary>
+    private static string BuildServerTimeSyncMessage(SystemClockSyncResult result)
+    {
+        var status = result.Success
+            ? result.Changed ? "已校时" : "无需校时"
+            : "校时失败";
+        return $"{status}：服务器时间={result.ServerTime:yyyy-MM-dd HH:mm:ss}，本机原时间={result.LocalTimeBefore:yyyy-MM-dd HH:mm:ss}，偏差={result.OffsetSeconds:F3} 秒。{result.Message}";
+    }
+
+    /// <summary>
+    /// Writes a compact audit record for server-time synchronization.
+    /// </summary>
+    private void WriteServerTimeSyncLog(SystemClockSyncResult result)
+    {
+        var level = result.Success ? "Info" : "Error";
+        _operationLogService.Write(
+            "ServerTime",
+            $"ServerTime={result.ServerTime:yyyy-MM-dd HH:mm:ss}, LocalBefore={result.LocalTimeBefore:yyyy-MM-dd HH:mm:ss}, OffsetSeconds={result.OffsetSeconds:F3}, Changed={result.Changed}, Success={result.Success}, Message={result.Message}",
+            level);
+    }
+
+    /// <summary>
+    /// Writes MES server-time synchronization as a startup self-check device lifecycle log.
+    /// Device log failures are swallowed because they must not block startup or time sync.
+    /// </summary>
+    private void WriteServerTimeSelfCheckLog(SystemClockSyncResult result)
+    {
+        try
+        {
+            _deviceLifecycleLogService.Write(DeviceLifecycleLogRules.CreateServerTimeSelfCheckEntry(
+                _currentSettings.DeviceId,
+                result,
+                DateTime.Now));
+        }
+        catch (Exception ex)
+        {
+            _operationLogService.Write("ServerTime", $"设备自检日志写入失败：{ex.Message}", "Warning");
+        }
+    }
+
+    /// <summary>
+    /// 获取工单信息
     /// </summary>
     /// <param name="workId"></param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
-    public async Task<MesWorkOrderResponse?> GetWorkOrderInfoAsync(string workId, CancellationToken cancellationToken = default)
+    public async Task<WorkOrderRes?> GetWorkOrderInfoAsync(
+        string workId,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        CancellationToken cancellationToken = default)
     {
-        ResetRuntime(keepSyncMessage: true);
+        cancellationToken.ThrowIfCancellationRequested();
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        ResetStationRuntime(normalizedStationNo);
         var response = await _mesProvider.GetWorkOrderInfoAsync(workId, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         if (!response.IsSuccess || response.Data is null)
         {
             CurrentState.LastServerSyncMessage = response.Msg;
+            RefreshCompatibilityState(normalizedStationNo);
             NotifyStateChanged();
             return null;
         }
 
-        CurrentState.CurrentWorkOrder = response.Data;
-        _operationLogService.Write("WorkOrder", $"Work order loaded: {response.Data.SN}");
+        var station = GetStation(normalizedStationNo);
+        station.CurrentWorkOrder = response.Data;
+        station.UpdatedTime = DateTime.Now;
+        RefreshCompatibilityState(normalizedStationNo);
+        _operationLogService.Write("WorkOrder", $"Work order loaded, Station={normalizedStationNo}, SN={response.Data.SN}");
         NotifyStateChanged();
         return response.Data;
     }
 
-    public void SelectProcess(ExpItemData process)
+    public void SelectStation(int stationNo)
     {
-        CurrentState.SelectedProcess = process;
-        CurrentState.AvailablePrograms.Clear();
-        CurrentState.SelectedProgram = null;
+        CurrentState.SaveCurrentStation();
+        CurrentState.RestoreStation(stationNo);
         NotifyStateChanged();
     }
 
-    public async Task<IReadOnlyList<MesProgramListItemData>> LoadProgramsAsync(CancellationToken cancellationToken = default)
+    public void SelectProcess(ExpItemData process, int stationNo = ProductionConstants.Stations.DefaultStationNo)
     {
-        if (CurrentState.CurrentWorkOrder is null)
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var station = GetStation(normalizedStationNo);
+        station.SelectedProcess = process;
+        // 不清空 AvailablePrograms 和 SelectedProgram：程序列表只按设备号和工单产品工号查询，
+        // 与工序无关，同一工单换工序后可选程序完全相同。清掉会让已选好并下载的程序名消失，
+        // 操作员必须重选一次程序才能开工。
+        station.UpdatedTime = DateTime.Now;
+        RefreshCompatibilityState(normalizedStationNo);
+        NotifyStateChanged();
+    }
+
+    public async Task<IReadOnlyList<MesProgramListItemData>> LoadProgramsAsync(
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var station = GetStation(normalizedStationNo);
+        if (station.CurrentWorkOrder is null)
         {
             return Array.Empty<MesProgramListItemData>();
         }
 
-        var settings = _settingsService.Get();
+        var settings = CurrentSettings;
+        var workOrderProdNum = station.CurrentWorkOrder?.ProdNum;
+        // 未开启“按产品工号筛选程序”时不带 productNum，取回该设备全部程序；
+        // 开启后由 MES 按工单产品工号查询，返回结果再走客户端兜底筛选。
         var response = await _mesProvider.GetProgramListAsync(
             settings.DeviceId,
-            settings.UseProductNumberFilter ? CurrentState.CurrentWorkOrder.ProdNum : null,
+            ProgramListFilterRules.ResolveQueryProductNum(settings.UseProductNumberFilter, workOrderProdNum),
             cancellationToken);
 
         if (!response.IsSuccess || response.Data is null)
         {
-            CurrentState.AvailablePrograms.Clear();
+            station.AvailablePrograms.Clear();
+            station.UpdatedTime = DateTime.Now;
+            RefreshCompatibilityState(normalizedStationNo);
             NotifyStateChanged();
             return Array.Empty<MesProgramListItemData>();
         }
 
-        CurrentState.AvailablePrograms = response.Data;
+        station.AvailablePrograms = ProgramListFilterRules.Filter(
+            response.Data,
+            settings.UseProductNumberFilter,
+            workOrderProdNum).ToList();
+        station.UpdatedTime = DateTime.Now;
+        RefreshCompatibilityState(normalizedStationNo);
         NotifyStateChanged();
-        return CurrentState.AvailablePrograms;
+        return station.AvailablePrograms;
     }
 
-    public async Task<MesProgramData?> DownloadProgramAsync(MesProgramListItemData program, CancellationToken cancellationToken = default)
+    public async Task<ProgramDataRes?> DownloadProgramAsync(
+        MesProgramListItemData program,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        CancellationToken cancellationToken = default)
     {
-        var settings = _settingsService.Get();
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var station = GetStation(normalizedStationNo);
+        var settings = CurrentSettings;
         var response = await _mesProvider.DownloadProgramAsync(settings.DeviceId, program.Id, cancellationToken);
         if (!response.IsSuccess || response.Data is null)
         {
@@ -120,56 +573,103 @@ public class WeldTaskService : IWeldTaskService
             return null;
         }
 
-        CurrentState.SelectedProgram = response.Data;
-        UpsertProgram(response.Data, settings.DeviceId);
+        var detail = MergeProgramListSnapshot(response.Data, program);
+        detail.ProgramContent = ProgramContentJsonRules.NormalizeContent(detail.ProgramContent, settings.ProcessParameterDeviceType);
+        var localProgram = new BizProgram { ProgramName = detail.ProgramName, ProgramContent = detail.ProgramContent };
+        // 先在未持久化的候选对象上匹配配方，失败不能覆盖原程序。
+        localProgram = await ApplyRecipeNamesFromContentAsync(localProgram, cancellationToken);
+        localProgram = UpsertProgram(detail, settings.DeviceId, localProgram);
+        detail.RecipeCode = FirstNonEmpty(
+            ProgramRecipeMappingRules.Resolve(localProgram, normalizedStationNo),
+            ProgramRecipeMappingRules.Normalize(detail.RecipeCode));
+        station.SelectedProgram = detail;
+        station.UpdatedTime = DateTime.Now;
+        RefreshCompatibilityState(normalizedStationNo);
         NotifyStateChanged();
-        return response.Data;
+        return detail;
     }
 
-    public async Task<MesBaseResponse<MesUserInfoResponse>> ValidateMesOperatorAsync(string employeeNumber, CancellationToken cancellationToken = default)
+    public void ApplyStartAdjustment(
+        WorkOrderRes workOrder,
+        ExpItemData? process,
+        ProgramDataRes program,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo)
     {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var station = GetStation(normalizedStationNo);
+        if (station.ActiveTask is not null)
+        {
+            throw new BusinessOperationException("StartAdjustment", "开工信息调整失败", "当前工位已生成生产任务，不能再调整开工信息。");
+        }
+
+        var adjustedProgram = CloneProgram(program);
+        adjustedProgram.ProgramContent = ProgramContentJsonRules.NormalizeContent(program.ProgramContent, CurrentSettings.ProcessParameterDeviceType);
+        station.CurrentWorkOrder = CloneWorkOrder(workOrder);
+        if (process is not null)
+        {
+            station.SelectedProcess = CloneProcess(process);
+        }
+
+        station.SelectedProgram = adjustedProgram;
+
+        station.UpdatedTime = DateTime.Now;
+        RefreshCompatibilityState(normalizedStationNo);
+        _operationLogService.Write(
+            "StartAdjustment",
+            $"Start data adjusted locally, Station={normalizedStationNo}, SN={workOrder.SN}, ProductNumber={workOrder.ProdNum}, ProgramName={program.ProgramName}, Recipe={program.RecipeCode}");
+        NotifyStateChanged();
+    }
+
+    public async Task<BasicRes<UserInfoRes>> ValidateMesOperatorAsync(
+        string employeeNumber,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var station = GetStation(normalizedStationNo);
         var response = await _mesProvider.GetUserInfoAsync(employeeNumber, cancellationToken);
         if (response.IsSuccess)
         {
-            CurrentState.MesOperatorNumber = employeeNumber;
+            station.MesOperatorInfo = CreateOperatorInfo(response.Data, employeeNumber);
+            station.MesOperatorNumber = station.MesOperatorInfo.UserNumber;
+            station.UpdatedTime = DateTime.Now;
+            RefreshCompatibilityState(normalizedStationNo);
         }
 
         NotifyStateChanged();
         return response;
     }
 
-    public async Task<BizWeldTask> StartAsync(string employeeNumber, int actualQty, CancellationToken cancellationToken = default)
+    public async Task<BizWeldTask> StartAsync(
+        string employeeNumber,
+        int actualQty,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        bool employeeAlreadyValidated = false,
+        CancellationToken cancellationToken = default)
     {
-        EnsureReadyForStart();
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var station = GetStation(normalizedStationNo);
+        EnsureReadyForStart(station);
+        var settings = CurrentSettings.Clone();
+        var workOrder = CloneWorkOrder(station.CurrentWorkOrder!);
+        var process = CloneProcess(station.SelectedProcess!);
+        var program = CloneProgram(station.SelectedProgram!);
+        program.ProgramContent = ValidateStartProgram(program, settings, normalizedStationNo);
+        EnsureNoUnfinishedTask(normalizedStationNo);
 
-        var validation = await ValidateMesOperatorAsync(employeeNumber, cancellationToken);
-        if (!validation.IsSuccess)
+        if (!employeeAlreadyValidated)
         {
-            throw new BusinessOperationException("MES.ValidateOperator", "员工校验失败", validation.Msg);
+            var validation = await ValidateMesOperatorAsync(employeeNumber, normalizedStationNo, cancellationToken);
+            if (!validation.IsSuccess)
+            {
+                throw new BusinessOperationException("MES.ValidateOperator", "员工校验失败", validation.Msg);
+            }
         }
 
-        var settings = _settingsService.Get();
-        var workOrder = CurrentState.CurrentWorkOrder!;
-        var process = CurrentState.SelectedProcess!;
-        var program = CurrentState.SelectedProgram!;
-        var request = new ExpStartRequest
-        {
-            DeviceId = settings.DeviceId,
-            SN = workOrder.SN,
-            ProductNum = workOrder.ProdNum,
-            ProductName = workOrder.ProductName,
-            DrawingNo = workOrder.DrawingNo,
-            Batch = workOrder.Batch,
-            Qty = process.StartAmount,
-            ProcessNo = process.ProcessNo,
-            ItemName = process.ItemName,
-            ExpQty = actualQty,
-            StartTs = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
-            StartExperID = employeeNumber,
-            ExpStatus = "0",
-            ProgramName = program.ProgramName,
-            PramaterActual = string.IsNullOrWhiteSpace(program.ProgramContent) ? "{}" : program.ProgramContent
-        };
+        var operatorInfo = CreateOperatorInfo(station.MesOperatorInfo, employeeNumber);
+        var startOperatorNumber = FirstNonEmpty(operatorInfo.UserNumber, employeeNumber);
+        var recipeCode = ResolveProgramRecipeCode(program, settings.DeviceId, normalizedStationNo);
+        var request = BuildStartRequest(settings.DeviceId, workOrder, process, program, actualQty, startOperatorNumber);
 
         var response = await _mesProvider.StartWorkAsync(request, cancellationToken);
         if (!response.IsSuccess || response.Data is null)
@@ -179,8 +679,10 @@ public class WeldTaskService : IWeldTaskService
 
         var task = new BizWeldTask
         {
+            LocalExpStartId = CreateLocalTaskGuid(),
             ExpStartId = response.Data.Id,
-            WorkOrderId = workOrder.SN,
+            StationNo = normalizedStationNo,
+            SN = workOrder.SN,
             ProductNum = workOrder.ProdNum,
             ProductModel = workOrder.ProdModel,
             Spec = workOrder.Spec,
@@ -190,52 +692,155 @@ public class WeldTaskService : IWeldTaskService
             DeviceId = settings.DeviceId,
             ProcessNo = process.ProcessNo,
             ProcessName = process.ItemName,
-            PlannedQty = process.StartAmount,
+            StartAmount = process.StartAmount,
             ActualQty = actualQty,
             ProgramId = program.Id,
             ProgramName = program.ProgramName,
-            StartOperatorNumber = employeeNumber,
+            RecipeCode = recipeCode,
+            UserNumber = startOperatorNumber,
+            UserName = operatorInfo.UserName,
+            DeptName = operatorInfo.DeptName,
+            TeamName = operatorInfo.TeamName,
             StartTime = DateTime.Now,
-            TaskStatus = "Running",
+            TaskStatus = TaskStatusRunning,
             UploadStatus = settings.UploadMode == UploadMode.Realtime ? "Realtime" : "Pending",
             ProgramContentSnapshot = program.ProgramContent
         };
 
-        task = _dbContext.Db.Insertable(task).ExecuteReturnEntity();
-        CurrentState.ActiveTask = task;
-        CurrentState.MesOperatorNumber = employeeNumber;
-        _operationLogService.Write("ExpStart", $"Start report submitted, MES Id={task.ExpStartId}, WorkOrder={task.WorkOrderId}");
+        task = InsertTask(task);
+        ApplyStartedRuntimeState(normalizedStationNo, workOrder, process, program, task, startOperatorNumber);
+        ApplySharedStartedRuntimeStateIfNeeded(normalizedStationNo, workOrder, process, program, task, startOperatorNumber);
+        _operationLogService.Write("ExpStart", $"Start report submitted, Station={task.StationNo}, MES Id={task.ExpStartId}, WorkOrder={task.SN}");
+        WriteTestProgramRunningLog(task);
+        // 任务已经本地落库并进入运行态，先通知 UI；设备状态上传不能阻塞当前任务可见性。
+        NotifyStateChanged();
+        await RecordProgramStartedStatusAsync(task, cancellationToken);
         NotifyStateChanged();
         return task;
     }
 
-    public async Task<MesBaseResponse<object>> ChangeStatusAsync(string statusCode, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Creates a local running task and queues the MES start report for later retry.
+    /// </summary>
+    public async Task<BizWeldTask> StartLocalAsync(
+        OfflineExperimentStartReq request,
+        string operatorNumber,
+        string operatorName,
+        int actualQty,
+        CancellationToken cancellationToken = default)
     {
-        if (CurrentState.ActiveTask?.ExpStartId is null)
+        cancellationToken.ThrowIfCancellationRequested();
+        NormalizeLocalRequest(request);
+        EnsurePositiveStartQuantity(request.PlannedQty, "Local.StartReport", "本地开工失败");
+
+        var normalizedStationNo = NormalizeStationNo(request.StationNo);
+        var settings = CurrentSettings.Clone();
+        var workOrder = CreateLocalWorkOrder(request);
+        var process = CreateLocalProcess(request);
+        var program = CreateLocalProgram(request, settings.DeviceId);
+        program.ProgramContent = ValidateStartProgram(program, settings, normalizedStationNo);
+        EnsureNoUnfinishedTask(normalizedStationNo);
+        var localOperatorNumber = RequireOfflineOperatorNumber(operatorNumber);
+        var localOperatorName = RequireOfflineOperatorName(operatorName);
+        var localOperatorInfo = CreateLocalOperatorInfo(localOperatorNumber, localOperatorName);
+        var startRequest = BuildStartRequest(settings.DeviceId, workOrder, process, program, actualQty, localOperatorNumber);
+
+        var task = new BizWeldTask
         {
-            return new MesBaseResponse<object> { Status = "E", Msg = "No running Task" };
+            LocalExpStartId = CreateLocalTaskGuid(),
+            IsOfflineCreated = true,
+            StationNo = normalizedStationNo,
+            SN = workOrder.SN,
+            ProductNum = workOrder.ProdNum,
+            ProductModel = workOrder.ProdModel,
+            Spec = workOrder.Spec,
+            Batch = workOrder.Batch,
+            ProductName = workOrder.ProductName,
+            DrawingNo = workOrder.DrawingNo,
+            DeviceId = settings.DeviceId,
+            ProcessNo = process.ProcessNo,
+            ProcessName = process.ItemName,
+            StartAmount = process.StartAmount,
+            ActualQty = actualQty,
+            ProgramId = program.Id,
+            ProgramName = program.ProgramName,
+            RecipeCode = request.RecipeCode,
+            UserNumber = localOperatorNumber,
+            UserName = localOperatorInfo.UserName,
+            DeptName = localOperatorInfo.DeptName,
+            TeamName = localOperatorInfo.TeamName,
+            StartTime = DateTime.Now,
+            TaskStatus = TaskStatusRunning,
+            UploadStatus = ProductionConstants.UploadStatuses.Pending,
+            UploadMessage = "Local task created offline. Start report is queued for MES retry.",
+            ProgramContentSnapshot = program.ProgramContent
+        };
+
+        task = InsertTask(task);
+        ApplyStartedRuntimeState(normalizedStationNo, workOrder, process, program, task, localOperatorNumber);
+        ApplySharedStartedRuntimeStateIfNeeded(normalizedStationNo, workOrder, process, program, task, localOperatorNumber);
+        EnqueueStartReportTask(task, startRequest);
+        EnqueueWorkOrderStatusTask(task, ProductionConstants.MesWorkOrderStatuses.StartedOrRestarted);
+
+        _operationLogService.Write("LocalExpStart", $"Local task started, Station={task.StationNo}, WorkOrder={task.SN}, Recipe={task.RecipeCode}");
+        // 本地任务已经落库并进入运行态，先通知 UI；离线状态补传不能延迟当前任务显示。
+        NotifyStateChanged();
+        await RecordProgramStartedStatusAsync(task, cancellationToken);
+        NotifyStateChanged();
+        return task;
+    }
+
+    public async Task<BasicRes<object>> ChangeStatusAsync(
+        string statusCode,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var station = GetStation(normalizedStationNo);
+        if (station.ActiveTask is not null && statusCode == ProductionConstants.MesWorkOrderStatuses.StartedOrRestarted)
+        {
+            ValidateTaskForProduction(station.ActiveTask, normalizedStationNo);
+        }
+        if (!IsWorkOrderStatusReportEnabled())
+        {
+            if (station.ActiveTask is null)
+            {
+                return new BasicRes<object> { Status = AppConstants.MesStatus.Error, Msg = "No running Task" };
+            }
+
+            ApplyWorkOrderStatusLocalState(station, normalizedStationNo, statusCode);
+            return new BasicRes<object>
+            {
+                Status = AppConstants.MesStatus.Success,
+                Msg = "Work-order status report is disabled in system settings."
+            };
         }
 
-        var response = await _mesProvider.ChangeWorkStatusAsync(new ExpStatusRequest
+        if (station.ActiveTask?.ExpStartId is null)
         {
-            ExpStartId = CurrentState.ActiveTask.ExpStartId,
-            DeviceId = CurrentState.ActiveTask.DeviceId,
-            ExpStatus = statusCode,
-            Ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
-        }, cancellationToken);
+            if (station.ActiveTask is not null)
+            {
+                EnqueueWorkOrderStatusTask(station.ActiveTask, statusCode);
+                return new BasicRes<object>
+                {
+                    Status = AppConstants.MesStatus.Success,
+                    Msg = "Work-order status is queued for MES retry."
+                };
+            }
+
+            return new BasicRes<object> { Status = AppConstants.MesStatus.Error, Msg = "No running Task" };
+        }
+
+        var request = BuildStatusRequest(station.ActiveTask, statusCode);
+        var response = await _mesProvider.ChangeWorkStatusAsync(request, cancellationToken);
+        if (!response.IsSuccess)
+        {
+            EnqueueWorkOrderStatusTask(station.ActiveTask, statusCode);
+        }
 
         if (response.IsSuccess)
         {
-            CurrentState.ActiveTask.TaskStatus = statusCode switch
-            {
-                "2" => "Paused",
-                "1" => "Completed",
-                _ => "Running"
-            };
-
-            _dbContext.Db.Updateable(CurrentState.ActiveTask).UpdateColumns(it => new { it.TaskStatus }).ExecuteCommand();
-            _operationLogService.Write("ExpStatus", $"Task status changed to {CurrentState.ActiveTask.TaskStatus}");
-            NotifyStateChanged();
+            ApplyWorkOrderStatusLocalState(station, normalizedStationNo, statusCode);
         }
 
         return response;
@@ -251,86 +856,255 @@ public class WeldTaskService : IWeldTaskService
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
     /// <exception cref="InvalidOperationException"></exception>
-    public async Task<BizWeldTask> FinishAsync(string employeeNumber, int actualQty, int qualifiedQty, int failedQty, CancellationToken cancellationToken = default)
+    public async Task<BizWeldTask> FinishAsync(string employeeNumber, int actualQty, int qualifiedQty, int failedQty,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        CancellationToken cancellationToken = default)
     {
-        if (CurrentState.ActiveTask?.ExpStartId is null || CurrentState.SelectedProcess is null)
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var station = GetStation(normalizedStationNo);
+        var task = IsUnfinishedTask(station.ActiveTask)
+            ? station.ActiveTask!
+            : RestoreUnfinishedTask(normalizedStationNo);
+
+        if (task?.ExpStartId is null)
         {
             throw new BusinessOperationException("MES.FinishReport", "完工上报失败", "No task to finish");
         }
 
-        var task = CurrentState.ActiveTask;
+        ValidateTaskForProduction(task, normalizedStationNo);
+        // 先关闭采集准入并等待在途产品处理完，再重算数量，保证 MES 收到的是完整产量。
+        using var closing = BeginClosing(task, "MES.FinishReport", "完工上报失败");
+        await WaitForDrainAsync(closing, "MES.FinishReport", "完工上报失败", cancellationToken);
+        (actualQty, qualifiedQty, failedQty) = ResolveFinishQuantities(task, actualQty, qualifiedQty, failedQty);
         var endOperator = string.IsNullOrWhiteSpace(employeeNumber)
-            ? task.StartOperatorNumber ?? CurrentState.MesOperatorNumber
+            ? task.UserNumber ?? station.MesOperatorNumber
             : employeeNumber;
+        // 完工请求和本地任务必须共享同一个结束时间，避免报表与 MES 时间出现毫秒级漂移。
+        var finishTime = DateTime.Now;
 
-        var response = await _mesProvider.EndWorkAsync(new ExpEndRequest
+        var finishRequest = new ExperimentEndReq
         {
             ExpStartId = task.ExpStartId,
             DeviceId = task.DeviceId,
-            SN = task.WorkOrderId,
+            SN = task.SN,
             ProcessNo = task.ProcessNo,
-            EndTs = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+            EndTs = finishTime.ToString("yyyy-MM-dd HH:mm:ss"),
             EndExperID = endOperator,
             ExpStatus = "1",
-            WorkHour = Convert.ToDecimal((DateTime.Now - task.StartTime).TotalHours),
+            WorkHour = MesWorkHourRules.FromRange(task.StartTime, finishTime),
             ExpQty = actualQty,
             QualifyNumber = qualifiedQty,
             FailureNumber = failedQty
-        }, cancellationToken);
+        };
 
-        if (!response.IsSuccess)
+        BasicRes<object> response;
+        try
         {
-            throw new BusinessOperationException("MES.FinishReport", "完工上报失败", response.Msg);
+            response = await _mesProvider.EndWorkAsync(finishRequest, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            // MES failures must not block local completion. Keep the reason in the retry task.
+            response = new BasicRes<object>()
+            {
+                Status = "F",
+                Msg = ex.Message
+            };
+        }
+
+        var finishUploaded = response.IsSuccess;
+        var finishUploadMessage = finishUploaded
+            ? (string.IsNullOrWhiteSpace(response.Msg) ? "Finish report uploaded." : response.Msg)
+            : $"Finish report failed and was queued for retry: {response.Msg}";
+
+        if (!finishUploaded)
+        {
+            _operationLogService.Write("ExpEnd", $"Finish report failed before retry queue, Station={task.StationNo}, WorkOrder={task.SN}, Message={response.Msg}");
         }
 
         task.ActualQty = actualQty;
         task.QualifiedQty = qualifiedQty;
         task.FailedQty = failedQty;
         task.EndOperatorNumber = endOperator;
-        task.EndTime = DateTime.Now;
-        task.TaskStatus = "Completed";
-        task.UploadStatus = ResolveUploadStatus(_settingsService.Get().UploadMode);
-        task.UploadMessage = ResolveUploadMessage(_settingsService.Get().UploadMode);
+        task.EndTime = finishTime;
+        task.TaskStatus = TaskStatusCompleted;
+        var settings = CurrentSettings;
+        task.UploadStatus = finishUploaded
+            ? ResolveUploadStatus(settings.UploadMode)
+            : ProductionConstants.UploadStatuses.Pending;
+        task.UploadMessage = finishUploaded
+            ? ResolveUploadMessage(settings.UploadMode)
+            : finishUploadMessage;
 
-        _dbContext.Db.Updateable(task).ExecuteCommand();
-        CurrentState.ActiveTask = task;
-        _operationLogService.Write("ExpEnd", $"Finish report submitted, WorkOrder={task.WorkOrderId}, UploadStatus={task.UploadStatus}");
+        lock (_dbContext.TaskTransitionSync)
+        {
+            EnsureClosingValid(closing, "MES.FinishReport", "完工上报失败");
+            _dbContext.Db.Updateable(task).ExecuteCommand();
+        }
+        _centerProductForwardingService.EnqueueTaskFinishUpdate(task);
+        ApplyFinishedRuntimeState(normalizedStationNo, task);
+        // 本地完工已持久化后立即刷新 UI；MES 完工、设备状态和文件上传均独立处理。
+        NotifyStateChanged();
+        // 首次 MES 完工失败时也必须落设备状态 7，确保后续仍可补传。
+        await RecordProgramEndedStatusAsync(task, cancellationToken);
+
+        var finishReportTask = EnqueueFinishReportTask(
+            task,
+            finishRequest,
+            finishUploaded ? ProductionConstants.UploadStatuses.Uploaded : ProductionConstants.UploadStatuses.Pending,
+            finishUploadMessage);
+        var uploadTasks = EnqueueFinishUploadTasks(task, settings.UploadMode).ToList();
+        if (!finishUploaded)
+        {
+            var reportFileIndex = uploadTasks.FindIndex(uploadTask =>
+                string.Equals(uploadTask.TaskType, ProductionConstants.UploadTaskTypes.ReportFile, StringComparison.OrdinalIgnoreCase));
+            uploadTasks.Insert(reportFileIndex >= 0 ? reportFileIndex : uploadTasks.Count, finishReportTask);
+        }
+
+        await ExecuteFinishUploadTasksAsync(task, uploadTasks, cancellationToken);
+        _operationLogService.Write("ExpEnd", $"Finish report handled, Station={task.StationNo}, WorkOrder={task.SN}, UploadStatus={task.UploadStatus}, FinishUploaded={finishUploaded}");
+        NotifyStateChanged();
+        return task;
+    }
+
+    /// <summary>
+    /// Completes an offline-created task locally and queues all MES uploads for recovery.
+    /// </summary>
+    public async Task<BizWeldTask> FinishLocalAsync(
+        string employeeNumber,
+        int actualQty,
+        int qualifiedQty,
+        int failedQty,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var station = GetStation(normalizedStationNo);
+        var task = IsUnfinishedTask(station.ActiveTask)
+            ? station.ActiveTask!
+            : RestoreUnfinishedTask(normalizedStationNo);
+
+        if (task is null || !task.IsOfflineCreated)
+        {
+            throw new BusinessOperationException("Local.FinishReport", "本地完工失败", "No offline task to finish.");
+        }
+
+        ValidateTaskForProduction(task, normalizedStationNo);
+        using var closing = BeginClosing(task, "Local.FinishReport", "本地完工失败");
+        await WaitForDrainAsync(closing, "Local.FinishReport", "本地完工失败", cancellationToken);
+        (actualQty, qualifiedQty, failedQty) = ResolveFinishQuantities(task, actualQty, qualifiedQty, failedQty);
+        // 完工员工号与在线完工同口径：调用方未传时沿用开工时录入的员工号，仍不接受登录账号兜底。
+        var endOperator = RequireOfflineOperatorNumber(FirstNonEmpty(employeeNumber, task.UserNumber));
+        // 离线完工同样只捕获一次结束时间，持久化后再生成最终报表。
+        var finishTime = DateTime.Now;
+        task.ActualQty = actualQty;
+        task.QualifiedQty = qualifiedQty;
+        task.FailedQty = failedQty;
+        task.EndOperatorNumber = endOperator;
+        task.EndTime = finishTime;
+        task.TaskStatus = TaskStatusCompleted;
+        task.UploadStatus = ProductionConstants.UploadStatuses.Pending;
+        task.UploadMessage = "Local finish completed offline. Finish data is queued for MES retry.";
+
+        lock (_dbContext.TaskTransitionSync)
+        {
+            EnsureClosingValid(closing, "Local.FinishReport", "本地完工失败");
+            _dbContext.Db.Updateable(task).ExecuteCommand();
+        }
+        _centerProductForwardingService.EnqueueTaskFinishUpdate(task);
+        EnqueueFinishReportTask(task, BuildEndRequest(task, endOperator, actualQty, qualifiedQty, failedQty));
+        EnqueueWorkOrderStatusTask(task, ProductionConstants.MesWorkOrderStatuses.Completed);
+        EnqueueFinishUploadTasks(task, CurrentSettings.UploadMode);
+
+        ApplyFinishedRuntimeState(normalizedStationNo, task);
+        // 本地完工状态先可见，设备状态 7 再独立写入并补传。
+        NotifyStateChanged();
+        _operationLogService.Write("LocalExpEnd", $"Local task finished, Station={task.StationNo}, WorkOrder={task.SN}, UploadStatus={task.UploadStatus}");
+        await RecordProgramEndedStatusAsync(task, cancellationToken);
+        if (_mesConnectionMonitor?.Current.IsConnected == true)
+        {
+            await RetryPendingUploadsAsync(task.Id, cancellationToken);
+        }
+
         NotifyStateChanged();
         return task;
     }
 
     public Task RetryPendingUploadsAsync(CancellationToken cancellationToken = default)
     {
-        var pendingTasks = _dbContext.Db.Queryable<BizWeldTask>()
-            .Where(it => it.TaskStatus == "Completed" && it.UploadStatus != "Uploaded")
-            .ToList();
-
-        foreach (var task in pendingTasks)
-        {
-            task.UploadStatus = "Retrying";
-            task.UploadMessage = "Manual retry has been triggered. Process data and report upload integration is reserved for the next step.";
-            _dbContext.Db.Updateable(task).ExecuteCommand();
-        }
-
-        if (CurrentState.ActiveTask is not null)
-        {
-            CurrentState.ActiveTask = _dbContext.Db.Queryable<BizWeldTask>().InSingle(CurrentState.ActiveTask.Id);
-        }
-
-        _operationLogService.Write("RetryUpload", $"Pending upload retry triggered for {pendingTasks.Count} task(s).");
-        NotifyStateChanged();
-        return Task.CompletedTask;
+        return RetryPendingUploadsInternalAsync(cancellationToken);
     }
 
-    public void UpdateProgramContent(string content)
+    public Task RetryPendingUploadsAsync(int weldTaskId, CancellationToken cancellationToken = default)
     {
-        if (CurrentState.SelectedProgram is null)
+        return RetryPendingUploadsInternalAsync(weldTaskId, cancellationToken);
+    }
+
+    public void UpdateProgramContent(string content, int stationNo = ProductionConstants.Stations.DefaultStationNo)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var station = GetStation(normalizedStationNo);
+        if (station.SelectedProgram is null)
         {
             return;
         }
 
-        CurrentState.SelectedProgram.ProgramContent = content;
+        if (station.ActiveTask is not null)
+        {
+            throw new InvalidOperationException("开工后不能修改当前任务的程序内容。");
+        }
+        station.SelectedProgram.ProgramContent = ProgramContentJsonRules.NormalizeContent(content, CurrentSettings.ProcessParameterDeviceType);
+        station.UpdatedTime = DateTime.Now;
+        RefreshCompatibilityState(normalizedStationNo);
         NotifyStateChanged();
+    }
+
+    /// <summary>
+    /// Updates a task recipe code after PLC confirmation and keeps every runtime station that references the task in sync.
+    /// </summary>
+    public bool TryUpdateRecipeCode(
+        int taskId,
+        string recipeCode,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo)
+    {
+        var normalizedRecipeCode = NormalizeText(recipeCode);
+        if (taskId <= 0 || string.IsNullOrWhiteSpace(normalizedRecipeCode))
+        {
+            return false;
+        }
+
+        var task = _dbContext.Db.Queryable<BizWeldTask>().InSingle(taskId);
+        if (task is null)
+        {
+            return false;
+        }
+
+        task.RecipeCode = normalizedRecipeCode;
+        _dbContext.Db.Updateable(task)
+            .UpdateColumns(it => new { it.RecipeCode })
+            .ExecuteCommand();
+
+        // Multiple stations can hold the same task instance in dual-station same-work-order mode.
+        foreach (var station in CurrentState.StationStates.Values)
+        {
+            if (station.ActiveTask?.Id != taskId)
+            {
+                continue;
+            }
+
+            station.ActiveTask.RecipeCode = normalizedRecipeCode;
+            if (station.SelectedProgram is not null)
+            {
+                station.SelectedProgram.RecipeCode = normalizedRecipeCode;
+            }
+
+            station.UpdatedTime = DateTime.Now;
+        }
+
+        RefreshCompatibilityState(stationNo);
+        NotifyStateChanged();
+        return true;
     }
 
     public void Reset()
@@ -339,27 +1113,777 @@ public class WeldTaskService : IWeldTaskService
         NotifyStateChanged();
     }
 
-    private void EnsureReadyForStart()
+    private async Task RetryPendingUploadsInternalAsync(CancellationToken cancellationToken)
     {
-        if (CurrentState.CurrentWorkOrder is null)
+        var executedCount = 0;
+        executedCount += await _uploadTaskService.ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.StartReport, cancellationToken);
+        executedCount += await _uploadTaskService.ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.ProcessParameter, cancellationToken);
+        executedCount += await _uploadTaskService.ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.FinishReport, cancellationToken);
+        executedCount += await _uploadTaskService.ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.WorkOrderStatus, cancellationToken);
+        executedCount += await _uploadTaskService.ExecuteAllPendingAsync(ProductionConstants.UploadTaskTypes.ReportFile, cancellationToken);
+        await _deviceStatusService.RetryPendingUploadsAsync(cancellationToken);
+
+        RefreshActiveTaskFromDatabase();
+        _operationLogService.Write("RetryUpload", $"Pending upload retry executed for {executedCount} task(s).");
+        NotifyStateChanged();
+    }
+
+    private async Task RetryPendingUploadsInternalAsync(int weldTaskId, CancellationToken cancellationToken)
+    {
+        if (weldTaskId <= 0)
+        {
+            return;
+        }
+
+        var executedCount = 0;
+        executedCount += await _uploadTaskService.ExecutePendingForWeldTaskAsync(weldTaskId, ProductionConstants.UploadTaskTypes.StartReport, cancellationToken);
+        executedCount += await _uploadTaskService.ExecutePendingForWeldTaskAsync(weldTaskId, ProductionConstants.UploadTaskTypes.ProcessParameter, cancellationToken);
+        executedCount += await _uploadTaskService.ExecutePendingForWeldTaskAsync(weldTaskId, ProductionConstants.UploadTaskTypes.FinishReport, cancellationToken);
+        executedCount += await _uploadTaskService.ExecutePendingForWeldTaskAsync(weldTaskId, ProductionConstants.UploadTaskTypes.WorkOrderStatus, cancellationToken);
+        executedCount += await _uploadTaskService.ExecutePendingForWeldTaskAsync(weldTaskId, ProductionConstants.UploadTaskTypes.ReportFile, cancellationToken);
+        await _deviceStatusService.RetryPendingUploadsAsync(weldTaskId, cancellationToken);
+
+        RefreshActiveTaskFromDatabase();
+        _operationLogService.Write("RetryUpload", $"Weld task {weldTaskId} retry executed for {executedCount} task(s).");
+        NotifyStateChanged();
+    }
+
+    private void RefreshActiveTaskFromDatabase()
+    {
+        if (CurrentState.ActiveTask is null)
+        {
+            return;
+        }
+
+        CurrentState.ActiveTask = _dbContext.Db.Queryable<BizWeldTask>().InSingle(CurrentState.ActiveTask.Id);
+        CurrentState.SaveCurrentStation();
+    }
+
+    private static ExperimentStartReq BuildStartRequest(
+        string deviceId,
+        WorkOrderRes workOrder,
+        ExpItemData process,
+        ProgramDataRes program,
+        int actualQty,
+        string employeeNumber)
+    {
+        return new ExperimentStartReq
+        {
+            DeviceId = deviceId,
+            SN = workOrder.SN,
+            ProductNum = workOrder.ProdNum,
+            ProductName = workOrder.ProductName,
+            DrawingNo = workOrder.DrawingNo,
+            Batch = workOrder.Batch,
+            Qty = process.StartAmount,
+            ProcessNo = process.ProcessNo,
+            ItemName = process.ItemName,
+            ExpQty = actualQty,
+            StartTs = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+            StartExperID = employeeNumber,
+            ExpStatus = ProductionConstants.MesWorkOrderStatuses.StartedOrRestarted,
+            ProgramName = program.ProgramName,
+            PramaterActual = string.IsNullOrWhiteSpace(program.ProgramContent) ? "{}" : program.ProgramContent
+        };
+    }
+
+    private static ExperimentEndReq BuildEndRequest(
+        BizWeldTask task,
+        string employeeNumber,
+        int actualQty,
+        int qualifiedQty,
+        int failedQty)
+    {
+        var endTime = task.EndTime ?? DateTime.Now;
+        return new ExperimentEndReq
+        {
+            ExpStartId = task.ExpStartId ?? string.Empty,
+            DeviceId = task.DeviceId,
+            SN = task.SN,
+            ProcessNo = task.ProcessNo,
+            EndTs = endTime.ToString("yyyy-MM-dd HH:mm:ss"),
+            EndExperID = employeeNumber,
+            ExpStatus = ProductionConstants.MesWorkOrderStatuses.Completed,
+            WorkHour = MesWorkHourRules.FromRange(task.StartTime, endTime),
+            ExpQty = actualQty,
+            QualifyNumber = qualifiedQty,
+            FailureNumber = failedQty
+        };
+    }
+
+    private static ReportExperimentStatusReq BuildStatusRequest(BizWeldTask task, string statusCode)
+    {
+        return new ReportExperimentStatusReq
+        {
+            ExpStartId = task.ExpStartId ?? string.Empty,
+            DeviceId = task.DeviceId,
+            ExpStatus = statusCode,
+            Ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+        };
+    }
+
+    private static WorkOrderRes CreateLocalWorkOrder(OfflineExperimentStartReq request)
+    {
+        var process = CreateLocalProcess(request);
+        return new WorkOrderRes
+        {
+            SN = request.WorkOrderId,
+            ProdNum = request.ProductNum,
+            ProdModel = request.ProductModel,
+            Spec = request.Spec,
+            Batch = request.Batch,
+            ProductName = request.ProductName,
+            DrawingNo = request.DrawingNo,
+            ProjectFrom = "Local",
+            ExpItems = [process]
+        };
+    }
+
+    private static ExpItemData CreateLocalProcess(OfflineExperimentStartReq request)
+    {
+        return new ExpItemData
+        {
+            ItemId = request.ProgramLocalId,
+            ItemName = request.ProcessName,
+            ProcessNo = request.ProcessNo,
+            StartAmount = Math.Max(0, request.PlannedQty)
+        };
+    }
+
+    private static ProgramDataRes CreateLocalProgram(OfflineExperimentStartReq request, string deviceId)
+    {
+        return new ProgramDataRes
+        {
+            Id = request.ProgramId,
+            ProgramName = request.ProgramName,
+            DeviceId = deviceId,
+            ProductNum = request.ProductNum,
+            RecipeCode = request.RecipeCode,
+            ProgramType = request.ProgramType,
+            ProgramContent = string.IsNullOrWhiteSpace(request.ProgramContent) ? "{}" : request.ProgramContent
+        };
+    }
+
+    private void ApplyStartedRuntimeState(
+        int stationNo,
+        WorkOrderRes workOrder,
+        ExpItemData process,
+        ProgramDataRes program,
+        BizWeldTask task,
+        string operatorNumber)
+    {
+        var station = GetStation(stationNo);
+        station.CurrentWorkOrder = CloneWorkOrder(workOrder);
+        station.SelectedProcess = CloneProcess(process);
+        station.SelectedProgram = program;
+        station.AvailablePrograms = CreateProgramListSnapshot(task);
+        station.ActiveTask = task;
+        station.MesOperatorInfo = CreateTaskOperatorInfo(task, operatorNumber);
+        station.MesOperatorNumber = station.MesOperatorInfo?.UserNumber ?? operatorNumber;
+        station.UpdatedTime = DateTime.Now;
+        RefreshCompatibilityState(stationNo);
+    }
+
+    /// <summary>
+    /// 双工位同工单只创建一个任务，但两个工位都要持有同一个运行任务，用于各自预览和采集。
+    /// </summary>
+    private void ApplySharedStartedRuntimeStateIfNeeded(
+        int sourceStationNo,
+        WorkOrderRes workOrder,
+        ExpItemData process,
+        ProgramDataRes program,
+        BizWeldTask task,
+        string operatorNumber)
+    {
+        if (!IsDualStationSameWorkOrder())
+        {
+            return;
+        }
+
+        var normalizedSourceStationNo = NormalizeStationNo(sourceStationNo);
+        foreach (var stationNo in GetDualStationNumbers())
+        {
+            if (stationNo == normalizedSourceStationNo)
+            {
+                continue;
+            }
+
+            ApplyStartedRuntimeState(stationNo, workOrder, process, program, task, operatorNumber);
+        }
+    }
+
+    /// <summary>
+    /// 同工单模式下，完工一次即结束共享任务，两个工位运行态都需要同步到已完工状态。
+    /// </summary>
+    private void ApplyFinishedRuntimeState(int sourceStationNo, BizWeldTask task)
+    {
+        foreach (var stationNo in ResolveTaskScopeStationNumbers(sourceStationNo))
+        {
+            var station = GetStation(stationNo);
+            WeldTaskRuntimeRules.ClearFinishedTask(station, task);
+        }
+
+        RefreshCompatibilityState(CurrentState.CurrentStationNo);
+    }
+
+    private BizUploadTask EnqueueStartReportTask(BizWeldTask task, ExperimentStartReq request)
+    {
+        ExperimentStartRequestRules.ApplyOfflineStartId(task, request);
+
+        return _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
+        {
+            TaskType = ProductionConstants.UploadTaskTypes.StartReport,
+            Target = ProductionConstants.UploadTargets.Mes,
+            BusinessId = BuildUploadBusinessId(task, "start-report"),
+            WeldTaskId = task.Id,
+            PayloadJson = JsonSerializer.Serialize(new
+            {
+                TaskType = ProductionConstants.UploadTaskTypes.StartReport,
+                WeldTaskId = task.Id,
+                task.StationNo,
+                task.SN,
+                task.ProductNum,
+                task.RecipeCode,
+                Request = request
+            }),
+            Status = ProductionConstants.UploadStatuses.Pending,
+            NextRetryTime = DateTime.Now,
+            Message = "Start report is queued for MES retry."
+        });
+    }
+
+    private BizUploadTask EnqueueFinishReportTask(
+        BizWeldTask task,
+        ExperimentEndReq request,
+        string status = ProductionConstants.UploadStatuses.Pending,
+        string? message = null)
+    {
+        var normalizedStatus = string.IsNullOrWhiteSpace(status)
+            ? ProductionConstants.UploadStatuses.Pending
+            : status.Trim();
+        var isUploaded = string.Equals(normalizedStatus, ProductionConstants.UploadStatuses.Uploaded, StringComparison.OrdinalIgnoreCase);
+
+        return _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
+        {
+            TaskType = ProductionConstants.UploadTaskTypes.FinishReport,
+            Target = ProductionConstants.UploadTargets.Mes,
+            BusinessId = BuildUploadBusinessId(task, "finish-report"),
+            WeldTaskId = task.Id,
+            PayloadJson = JsonSerializer.Serialize(new
+            {
+                TaskType = ProductionConstants.UploadTaskTypes.FinishReport,
+                WeldTaskId = task.Id,
+                task.StationNo,
+                task.SN,
+                task.ProductNum,
+                task.RecipeCode,
+                Request = request
+            }),
+            Status = normalizedStatus,
+            NextRetryTime = isUploaded ? null : DateTime.Now,
+            CompletedTime = isUploaded ? DateTime.Now : null,
+            Message = message ?? (isUploaded
+                ? "Finish report uploaded."
+                : "Finish report is queued for MES retry.")
+        });
+    }
+
+    private BizUploadTask? EnqueueWorkOrderStatusTask(BizWeldTask task, string statusCode)
+    {
+        if (!IsWorkOrderStatusReportEnabled())
+        {
+            return null;
+        }
+
+        return _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
+        {
+            TaskType = ProductionConstants.UploadTaskTypes.WorkOrderStatus,
+            Target = ProductionConstants.UploadTargets.Mes,
+            BusinessId = BuildUploadBusinessId(task, $"work-status-{statusCode}"),
+            WeldTaskId = task.Id,
+            PayloadJson = JsonSerializer.Serialize(new
+            {
+                TaskType = ProductionConstants.UploadTaskTypes.WorkOrderStatus,
+                WeldTaskId = task.Id,
+                task.StationNo,
+                task.SN,
+                task.ProductNum,
+                StatusCode = statusCode,
+                Request = BuildStatusRequest(task, statusCode)
+            }),
+            Status = ProductionConstants.UploadStatuses.Pending,
+            NextRetryTime = DateTime.Now,
+            Message = "Work-order status is queued for MES retry."
+        });
+    }
+
+    private static void NormalizeLocalRequest(OfflineExperimentStartReq request)
+    {
+        request.StationNo = NormalizeStationNo(request.StationNo);
+        request.WorkOrderId = NormalizeText(request.WorkOrderId);
+        request.Batch = NormalizeText(request.Batch);
+        request.Spec = NormalizeText(request.Spec);
+        request.ProcessNo = NormalizeText(request.ProcessNo);
+        request.ProcessName = NormalizeText(request.ProcessName);
+        request.ProgramId = NormalizeText(request.ProgramId);
+        request.ProgramName = NormalizeText(request.ProgramName);
+        request.ProgramType = NormalizeText(request.ProgramType);
+        request.ProgramContent = string.IsNullOrWhiteSpace(request.ProgramContent) ? "{}" : request.ProgramContent.Trim();
+        request.ProductNum = NormalizeText(request.ProductNum);
+        request.ProductModel = NormalizeText(request.ProductModel);
+        request.ProductName = NormalizeText(request.ProductName);
+        request.DrawingNo = NormalizeText(request.DrawingNo);
+        request.RecipeCode = NormalizeText(request.RecipeCode);
+        // 负数先归一化为 0，再由 StartLocalAsync 的统一开工校验拒绝。
+        request.PlannedQty = Math.Max(0, request.PlannedQty);
+
+        if (string.IsNullOrWhiteSpace(request.WorkOrderId))
+        {
+            throw new BusinessOperationException("Local.StartReport", "本地开工失败", "Local work order number is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.ProgramName) || string.IsNullOrWhiteSpace(request.RecipeCode))
+        {
+            throw new BusinessOperationException("Local.StartReport", "本地开工失败", "Local program and recipe code are required.");
+        }
+    }
+
+    /// <summary>
+    /// 校验离线开工/完工的员工号。
+    /// 离线操作员由现场人员录入，不再用登录账号、Windows 用户名或 "local" 兜底：
+    /// 这些兜底值会被当成真实操作员写入任务、报表表头和 MES 补传的开工/完工上报。
+    /// </summary>
+    private static string RequireOfflineOperatorNumber(string? operatorNumber)
+    {
+        var normalized = NormalizeText(operatorNumber);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            throw new BusinessOperationException("Local.Operator", "本地操作失败", "Offline operator number is required.");
+        }
+
+        return normalized;
+    }
+
+    /// <summary>
+    /// 校验离线开工的员工姓名。
+    /// 离线无法向 MES 反查姓名，报表表头的“员工姓名”只能来自现场录入，因此开工时必须给出；
+    /// 不做任何兜底：用登录账号或工号顶替会产出工号与姓名不对应的假数据。
+    /// </summary>
+    private static string RequireOfflineOperatorName(string? operatorName)
+    {
+        var normalized = NormalizeText(operatorName);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            throw new BusinessOperationException("Local.Operator", "本地操作失败", "Offline operator name is required.");
+        }
+
+        return normalized;
+    }
+
+    /// <summary>
+    /// Resolves the recipe code from the local program record selected by the MES program ID.
+    /// </summary>
+    protected virtual string ResolveProgramRecipeCode(ProgramDataRes program, string deviceId, int stationNo)
+    {
+        _dbContext.InitDatabase();
+        var programId = NormalizeText(program.Id);
+        var localProgram = !string.IsNullOrWhiteSpace(programId)
+            ? _dbContext.Db.Queryable<BizProgram>()
+                .Where(item => item.ProgramId == programId)
+                .ToList()
+                .OrderByDescending(item => SameText(item.DeviceId, deviceId))
+                .ThenByDescending(item => item.UpdatedTime)
+                .FirstOrDefault()
+            : null;
+        var recipeCode = ProgramRecipeMappingRules.Resolve(localProgram, stationNo);
+        if (string.IsNullOrWhiteSpace(recipeCode))
+        {
+            throw new BusinessOperationException(
+                "PLC.RecipeCode",
+                "开工失败",
+                $"本机程序未配置工位 {stationNo} 的 PLC 配方，请先在程序管理中选择配方名称。");
+        }
+
+        return recipeCode;
+    }
+
+    public void ValidateTaskForProduction(BizWeldTask task, int stationNo = ProductionConstants.Stations.DefaultStationNo)
+    {
+        try
+        {
+            _ = TaskProductProcessConfigResolver.ValidateProgram(
+                _productProcessConfigService, _testSchemeConfigService, task,
+                ResolveTaskScopeStationNumbers(NormalizeStationNo(stationNo)), CurrentSettings.ProcessParameterDeviceType);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new BusinessOperationException("Program.Configuration", "程序配置无效，不能生产", ex.Message);
+        }
+    }
+
+    private string ValidateStartProgram(ProgramDataRes program, AppSettings settings, int stationNo)
+    {
+        var candidate = new BizWeldTask
+        {
+            DeviceId = settings.DeviceId,
+            ProgramId = program.Id,
+            ProductNum = program.ProductNum,
+            StationNo = stationNo,
+            ProgramContentSnapshot = program.ProgramContent
+        };
+        try
+        {
+            return TaskProductProcessConfigResolver.ValidateProgram(
+                _productProcessConfigService, _testSchemeConfigService, candidate,
+                RecipeStationScopeRules.ResolveSharedTaskStations(settings.EnableDualStation, settings.EnableDualWorkOrder, stationNo),
+                settings.ProcessParameterDeviceType);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new BusinessOperationException("Program.Configuration", "开工失败：程序配置无效", ex.Message);
+        }
+    }
+
+    private void EnsureReadyForStart(ProductionStationRuntimeState station)
+    {
+        if (station.CurrentWorkOrder is null)
         {
             throw new BusinessOperationException("MES.StartReport", "开工上报失败", "No work order available");
         }
 
-        if (CurrentState.SelectedProcess is null)
+        if (station.SelectedProcess is null)
         {
             throw new BusinessOperationException("MES.StartReport", "开工上报失败", "No process selected");
         }
 
-        if (CurrentState.SelectedProgram is null)
+        EnsurePositiveStartQuantity(station.SelectedProcess.StartAmount, "MES.StartReport", "开工上报失败");
+
+        if (station.SelectedProgram is null)
         {
             throw new BusinessOperationException("MES.StartReport", "开工上报失败", "No program downloaded");
         }
+
+        EnsureProgramTouchCount(station.SelectedProgram, "MES.StartReport", "开工上报失败");
     }
 
-    private void UpsertProgram(MesProgramData detail, string deviceId)
+    private void EnsurePositiveStartQuantity(int quantity, string category, string title)
+    {
+        if (StartQuantityRules.IsPositive(quantity))
+        {
+            return;
+        }
+
+        throw new BusinessOperationException(
+            category,
+            title,
+            _localizer.GetString(TextKeys.Monitor.RuntimeError.WorkOrderQuantityInvalid));
+    }
+
+    private static void EnsureProgramTouchCount(ProgramDataRes program, string category, string title)
+    {
+        try
+        {
+            _ = ProgramContentJsonRules.GetRequiredTouchCount(program.ProgramContent);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new BusinessOperationException(category, title, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 开工前的服务层硬拦截，避免 UI 之外的调用绕过“同工位只能有一个未完工任务”的规则。
+    /// </summary>
+    private void EnsureNoUnfinishedTask(int stationNo)
+    {
+        var unfinishedTask = GetUnfinishedTask(stationNo);
+        if (unfinishedTask is null)
+        {
+            return;
+        }
+
+        throw new BusinessOperationException(
+            "MES.StartReport",
+            _localizer.GetString(TextKeys.Monitor.Message.StartBlockedByUnfinishedTask),
+            BuildUnfinishedTaskDetail(unfinishedTask));
+    }
+
+    /// <summary>
+    /// EndTime 有值或状态为 Completed 都视为已完工；上传状态不参与开工拦截。
+    /// </summary>
+    private static bool IsUnfinishedTask(BizWeldTask? task)
+    {
+        return task is not null
+            && task.EndTime is null
+            && !WeldTaskRuntimeRules.IsAbandoned(task)
+            && !string.Equals(task.TaskStatus, TaskStatusCompleted, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildUnfinishedTaskDetail(BizWeldTask task)
+    {
+        return $"Station={task.StationNo}; WorkOrder={task.SN}; MES Id={task.ExpStartId}; Status={task.TaskStatus}; StartTime={task.StartTime:yyyy-MM-dd HH:mm:ss}";
+    }
+
+    /// <summary>
+    /// 使用本地任务快照重建工单对象，让重启后的界面可以继续显示原工单信息。
+    /// </summary>
+    private static WorkOrderRes CreateWorkOrderSnapshot(BizWeldTask task, ExpItemData process)
+    {
+        return new WorkOrderRes
+        {
+            SN = task.SN,
+            ProdNum = task.ProductNum,
+            ProdModel = task.ProductModel,
+            Spec = task.Spec,
+            Batch = task.Batch,
+            ProductName = task.ProductName,
+            DrawingNo = task.DrawingNo,
+            ExpItems = [process]
+        };
+    }
+
+    /// <summary>
+    /// 使用本地任务快照重建工序对象；完工上报只需要工序号和工序名称继续保持一致。
+    /// 工单数量按落库值原样恢复（离线未录入时为 0），不回退为 1。
+    /// </summary>
+    private static ExpItemData CreateProcessSnapshot(BizWeldTask task)
+    {
+        return new ExpItemData
+        {
+            ProcessNo = task.ProcessNo,
+            ItemName = task.ProcessName,
+            StartAmount = Math.Max(0, task.StartAmount)
+        };
+    }
+
+    /// <summary>
+    /// 使用本地任务快照重建程序对象，避免重启后必须重新下载程序才能完工。
+    /// </summary>
+    private static ProgramDataRes CreateProgramSnapshot(BizWeldTask task)
+    {
+        return new ProgramDataRes
+        {
+            Id = task.ProgramId ?? string.Empty,
+            ProgramName = task.ProgramName ?? string.Empty,
+            DeviceId = task.DeviceId,
+            ProductNum = task.ProductNum,
+            RecipeCode = task.RecipeCode ?? string.Empty,
+            ProgramContent = string.IsNullOrWhiteSpace(task.ProgramContentSnapshot)
+                ? "{}"
+                : task.ProgramContentSnapshot
+        };
+    }
+
+    private static List<MesProgramListItemData> CreateProgramListSnapshot(BizWeldTask task)
+    {
+        if (string.IsNullOrWhiteSpace(task.ProgramId) && string.IsNullOrWhiteSpace(task.ProgramName))
+        {
+            return [];
+        }
+
+        return
+        [
+            new MesProgramListItemData
+            {
+                Id = task.ProgramId ?? string.Empty,
+                ProgramName = task.ProgramName ?? string.Empty,
+                DeviceId = task.DeviceId,
+                ProductNum = task.ProductNum
+            }
+        ];
+    }
+
+    /// <summary>
+    /// MES 的程序详情接口可能只返回文件内容，列表接口中的程序工号、类型等信息需要保留下来。
+    /// </summary>
+    private static ProgramDataRes MergeProgramListSnapshot(ProgramDataRes detail, MesProgramListItemData snapshot)
+    {
+        detail.Id = FirstNonEmpty(detail.Id, snapshot.Id);
+        detail.ProgramName = FirstNonEmpty(detail.ProgramName, snapshot.ProgramName);
+        detail.ProductNum = FirstNonEmpty(detail.ProductNum, snapshot.ProductNum);
+        detail.ProgramType = FirstNonEmpty(detail.ProgramType, snapshot.ProgramType);
+        detail.DeviceId = FirstNonEmpty(detail.DeviceId, snapshot.DeviceId);
+        return detail;
+    }
+
+    private static string FirstNonEmpty(params string?[] values)
+        => NormalizeText(values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)));
+
+    /// <summary>
+    /// 统一规范 MES 员工信息。MES 偶发不返回员工号时，用用户输入的工号兜底。
+    /// </summary>
+    private static UserInfoRes CreateOperatorInfo(UserInfoRes? source, string fallbackUserNumber)
+    {
+        return new UserInfoRes
+        {
+            UserNumber = FirstNonEmpty(source?.UserNumber, fallbackUserNumber),
+            UserName = NormalizeText(source?.UserName),
+            DeptName = NormalizeText(source?.DeptName),
+            TeamName = NormalizeText(source?.TeamName)
+        };
+    }
+
+    /// <summary>
+    /// 离线工单无法向 MES 校验员工，只保留操作员现场录入的员工号和姓名。
+    /// 部门和班组仍留空：登录账号的部门班组与现场录入的员工可能不是同一个人，
+    /// 回填会让任务记录和报表出现互不对应的假数据。
+    /// </summary>
+    private static UserInfoRes CreateLocalOperatorInfo(string operatorNumber, string operatorName)
+    {
+        return new UserInfoRes
+        {
+            UserNumber = NormalizeText(operatorNumber),
+            UserName = NormalizeText(operatorName),
+            DeptName = string.Empty,
+            TeamName = string.Empty
+        };
+    }
+
+    /// <summary>
+    /// 从已入库的任务快照恢复员工信息，供软件重启后回填 MonitorView。
+    /// </summary>
+    private static UserInfoRes? CreateTaskOperatorInfo(BizWeldTask task, string? fallbackUserNumber)
+    {
+        var userNumber = FirstNonEmpty(task.UserNumber, fallbackUserNumber);
+        var userName = NormalizeText(task.UserName);
+        var deptName = NormalizeText(task.DeptName);
+        var teamName = NormalizeText(task.TeamName);
+        if (string.IsNullOrWhiteSpace(userNumber)
+            && string.IsNullOrWhiteSpace(userName)
+            && string.IsNullOrWhiteSpace(deptName)
+            && string.IsNullOrWhiteSpace(teamName))
+        {
+            return null;
+        }
+
+        return new UserInfoRes
+        {
+            UserNumber = userNumber,
+            UserName = userName,
+            DeptName = deptName,
+            TeamName = teamName
+        };
+    }
+
+    private static bool SameText(string? left, string? right)
+    {
+        return string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// 按程序内容里的配方名称解析本机 PLC 配方号并回填。
+    /// 内容里有配方名却匹配不到槽位时必须报错，避免向 PLC 下发错误配方。
+    /// 内容没有配方名（旧程序）时沿用本机已保存的配方号。
+    /// </summary>
+    private async Task<BizProgram> ApplyRecipeNamesFromContentAsync(
+        BizProgram program,
+        CancellationToken cancellationToken)
+    {
+        var (station1Name, station2Name) = ProgramContentJsonRules.ExtractRecipeNames(program.ProgramContent);
+        if (string.IsNullOrWhiteSpace(station1Name) && string.IsNullOrWhiteSpace(station2Name))
+        {
+            return program;
+        }
+
+        if (_recipeNameReaderService is null)
+        {
+            return program;
+        }
+
+        var changed = false;
+        var dualStation = _currentSettings.EnableDualStation;
+
+        foreach (var (stationNo, recipeName) in new[] { (1, station1Name), (2, station2Name) })
+        {
+            if (string.IsNullOrWhiteSpace(recipeName))
+            {
+                continue;
+            }
+
+            // 单工位设备不解析工位 2，避免读取未配置的地址。
+            if (stationNo == 2 && !dualStation)
+            {
+                continue;
+            }
+
+            var readResult = await ReadRecipeNameOptionsAsync(stationNo, cancellationToken);
+            if (!readResult.IsSuccess)
+            {
+                throw new BusinessOperationException(
+                    "PLC.RecipeName",
+                    "PLC 配方名称读取失败",
+                    $"Station={stationNo}; RecipeName={recipeName}; Detail={readResult.Message}");
+            }
+
+            if (!ProgramRecipeNameMappingRules.TryResolveRecipeCode(
+                    recipeName,
+                    stationNo,
+                    readResult.Options,
+                    out var recipeCode,
+                    out var errorMessage))
+            {
+                throw new BusinessOperationException(
+                    "PLC.RecipeName",
+                    "程序配方名称无法匹配本机 PLC 配方",
+                    $"ProgramName={program.ProgramName}; {errorMessage}");
+            }
+
+            if (stationNo == 2)
+            {
+                if (!SameText(program.Station2RecipeCode, recipeCode))
+                {
+                    program.Station2RecipeCode = recipeCode;
+                    changed = true;
+                }
+            }
+            else if (!SameText(program.RecipeCode, recipeCode))
+            {
+                program.RecipeCode = recipeCode;
+                changed = true;
+            }
+        }
+
+        if (changed && program.Id > 0)
+        {
+            program.UpdatedTime = DateTime.Now;
+            _dbContext.Db.Updateable(program).ExecuteCommand();
+            _operationLogService.Write(
+                "ProgramRecipeName",
+                $"按程序内容配方名称回填配方号，ProgramName={program.ProgramName}, Station1={program.RecipeCode}, Station2={program.Station2RecipeCode}");
+        }
+
+        return program;
+    }
+
+    /// <summary>
+    /// 读取指定工位 PLC 配方名称，超时按读取失败处理。
+    /// 下载程序是开工前的交互路径，不能因 PLC 无响应长时间挂起。
+    /// </summary>
+    private async Task<PlcRecipeNameReadResult> ReadRecipeNameOptionsAsync(
+        int stationNo,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _recipeNameReaderService!
+                .ReadStationAsync(stationNo, cancellationToken)
+                .WaitAsync(RecipeNameReadTimeout, cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            return new PlcRecipeNameReadResult(
+                stationNo,
+                false,
+                $"工位 {stationNo} 配方名称读取超时。",
+                Array.Empty<PlcRecipeNameOption>(),
+                Array.Empty<PlcRecipeNameReadFailure>());
+        }
+    }
+
+    protected virtual BizProgram UpsertProgram(ProgramDataRes detail, string deviceId, BizProgram resolvedRecipes)
     {
         var entity = _dbContext.Db.Queryable<BizProgram>().First(it => it.ProgramId == detail.Id && it.DeviceId == deviceId);
+
         if (entity is null)
         {
             entity = new BizProgram
@@ -369,29 +1893,87 @@ public class WeldTaskService : IWeldTaskService
                 ProductNum = detail.ProductNum,
                 DeviceId = deviceId,
                 ProgramType = detail.ProgramType,
-                ProgramContentJson = detail.ProgramContent,
-                ProgramFileBase64 = detail.ProgramFile,
+                RecipeCode = FirstNonEmpty(resolvedRecipes.RecipeCode, detail.RecipeCode),
+                Station2RecipeCode = resolvedRecipes.Station2RecipeCode,
+                ProgramContent = detail.ProgramContent,
+                ProgramFile = detail.ProgramFile,
                 UpdatedTime = DateTime.Now
             };
 
-            _dbContext.Db.Insertable(entity).ExecuteCommand();
-            return;
+            return _dbContext.Db.Insertable(entity).ExecuteReturnEntity();
         }
 
         entity.ProgramName = detail.ProgramName;
         entity.ProductNum = detail.ProductNum;
         entity.ProgramType = detail.ProgramType;
-        entity.ProgramContentJson = detail.ProgramContent;
-        entity.ProgramFileBase64 = detail.ProgramFile;
+        entity.RecipeCode = FirstNonEmpty(resolvedRecipes.RecipeCode, detail.RecipeCode, entity.RecipeCode);
+        entity.Station2RecipeCode = FirstNonEmpty(resolvedRecipes.Station2RecipeCode, entity.Station2RecipeCode);
+        entity.ProgramContent = detail.ProgramContent;
+        entity.ProgramFile = detail.ProgramFile;
         entity.UpdatedTime = DateTime.Now;
         _dbContext.Db.Updateable(entity).ExecuteCommand();
+        return entity;
+    }
+
+    private static WorkOrderRes CloneWorkOrder(WorkOrderRes source)
+    {
+        return new WorkOrderRes
+        {
+            SN = NormalizeText(source.SN),
+            ProdNum = NormalizeText(source.ProdNum),
+            ProdModel = NormalizeText(source.ProdModel),
+            Spec = NormalizeText(source.Spec),
+            Batch = NormalizeText(source.Batch),
+            ProductName = NormalizeText(source.ProductName),
+            DrawingNo = NormalizeText(source.DrawingNo),
+            ProjectFrom = NormalizeText(source.ProjectFrom),
+            ExpItems = (source.ExpItems ?? []).Select(CloneProcess).ToList()
+        };
+    }
+
+    private static ExpItemData CloneProcess(ExpItemData source)
+    {
+        return new ExpItemData
+        {
+            ItemId = source.ItemId,
+            ItemTitle = source.ItemTitle,
+            ItemCont = source.ItemCont,
+            SequenceNo = source.SequenceNo,
+            ItemName = NormalizeText(source.ItemName),
+            ProcessNo = NormalizeText(source.ProcessNo),
+            StartAmount = source.StartAmount
+        };
+    }
+
+    /// <summary>
+    /// 复制开工确认后的程序快照，避免界面继续编辑时影响已经保存的运行态。
+    /// </summary>
+    private static ProgramDataRes CloneProgram(ProgramDataRes source)
+    {
+        return new ProgramDataRes
+        {
+            Id = NormalizeText(source.Id),
+            ProgramName = NormalizeText(source.ProgramName),
+            DeviceId = NormalizeText(source.DeviceId),
+            ProgramContent = string.IsNullOrWhiteSpace(source.ProgramContent) ? "{}" : source.ProgramContent.Trim(),
+            ProgramType = string.IsNullOrWhiteSpace(source.ProgramType) ? "0" : source.ProgramType.Trim(),
+            ProductNum = NormalizeText(source.ProductNum),
+            ProgramFile = source.ProgramFile ?? string.Empty,
+            Remark = source.Remark ?? string.Empty,
+            RecipeCode = NormalizeText(source.RecipeCode)
+        };
+    }
+
+    private static string NormalizeText(string? value)
+    {
+        return value?.Trim() ?? string.Empty;
     }
 
     private void ResetRuntime(bool keepSyncMessage)
     {
         var lastSyncTime = CurrentState.LastServerSyncTime;
         var lastSyncMessage = CurrentState.LastServerSyncMessage;
-        CurrentState.Reset();
+        ResetStationRuntime(CurrentState.CurrentStationNo);
         if (keepSyncMessage)
         {
             CurrentState.LastServerSyncTime = lastSyncTime;
@@ -399,13 +1981,155 @@ public class WeldTaskService : IWeldTaskService
         }
     }
 
+    /// <summary>
+    /// 获取指定工位的运行状态，工位不存在时由运行状态对象自动创建。
+    /// </summary>
+    private ProductionStationRuntimeState GetStation(int stationNo)
+    {
+        return CurrentState.GetOrCreateStation(NormalizeStationNo(stationNo));
+    }
+
+    /// <summary>
+    /// 清空指定工位的业务上下文，不影响其它工位。
+    /// </summary>
+    private void ResetStationRuntime(int stationNo)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        var station = GetStation(normalizedStationNo);
+        station.Reset();
+        RefreshCompatibilityState(normalizedStationNo);
+    }
+
+    /// <summary>
+    /// 如果被更新的是当前界面正在查看的工位，则刷新旧版兼容属性，保持现有 MonitorView 不需要立即改造。
+    /// </summary>
+    private void RefreshCompatibilityState(int stationNo)
+    {
+        var normalizedStationNo = NormalizeStationNo(stationNo);
+        if (CurrentState.CurrentStationNo == normalizedStationNo)
+        {
+            CurrentState.RestoreStation(normalizedStationNo);
+        }
+    }
+
+    /// <summary>
+    /// 单工位和双工位双工单只看当前工位；双工位同工单需要把工位1/2视为同一个任务范围。
+    /// 判定规则与遥测上报共用，实现下沉在 <see cref="RecipeStationScopeRules.ResolveSharedTaskStations"/>。
+    /// </summary>
+    private int[] ResolveTaskScopeStationNumbers(int stationNo)
+    {
+        var settings = CurrentSettings;
+        return RecipeStationScopeRules.ResolveSharedTaskStations(
+            settings.EnableDualStation,
+            settings.EnableDualWorkOrder,
+            stationNo);
+    }
+
+    private bool IsDualStationSameWorkOrder()
+    {
+        var settings = CurrentSettings;
+        return settings.EnableDualStation && !settings.EnableDualWorkOrder;
+    }
+
+    private AppSettings CurrentSettings => Volatile.Read(ref _currentSettings);
+
+    private bool IsWorkOrderStatusReportEnabled()
+        => CurrentSettings.EnableWorkOrderStatusReport != false;
+
+    private void ApplyWorkOrderStatusLocalState(
+        ProductionStationRuntimeState station,
+        int stationNo,
+        string statusCode)
+    {
+        if (station.ActiveTask is null)
+        {
+            return;
+        }
+
+        station.ActiveTask.TaskStatus = statusCode switch
+        {
+            "2" => "Paused",
+            "1" => TaskStatusCompleted,
+            _ => TaskStatusRunning
+        };
+
+        station.UpdatedTime = DateTime.Now;
+        _dbContext.Db.Updateable(station.ActiveTask)
+            .UpdateColumns(it => new { it.TaskStatus })
+            .ExecuteCommand();
+        _operationLogService.Write("ExpStatus", $"Task status changed, Station={stationNo}, Status={station.ActiveTask.TaskStatus}");
+        RefreshCompatibilityState(stationNo);
+        NotifyStateChanged();
+    }
+
+    /// <summary>
+    /// Writes the independent device log for a successful MES start report.
+    /// </summary>
+    private void WriteTestProgramRunningLog(BizWeldTask task)
+    {
+        _deviceLifecycleLogService.Write(DeviceLifecycleLogRules.CreateTestProgramRunningEntry(
+            task.DeviceId,
+            task.StationNo,
+            FirstNonEmpty(task.ExpStartId, task.LocalExpStartId),
+            task.SN,
+            DateTime.Now));
+    }
+
+    private Task RecordProgramStartedStatusAsync(BizWeldTask task, CancellationToken cancellationToken)
+    {
+        return _deviceStatusService.ChangeStatusAsync(
+            ProductionConstants.MesDeviceStatuses.ProgramStarted,
+            DeviceStatusReportRules.FormatRemark(
+                ProductionConstants.MesDeviceStatuses.ProgramStarted,
+                task.StationNo,
+                _currentSettings.EnableDualStation,
+                _currentSettings.Station1DisplayName,
+                _currentSettings.Station2DisplayName),
+            task.IsOfflineCreated ? "Local" : "MES",
+            // MES 离线时必然上报失败，只落 JSONL 并进补传队列，不阻塞开工等满 MES 超时。
+            reportToMes: _mesConnectionMonitor?.Current.IsConnected == true,
+            stationNo: task.StationNo,
+            weldTaskId: task.Id,
+            workOrderId: task.SN,
+            cancellationToken: cancellationToken);
+    }
+
+    private Task RecordProgramEndedStatusAsync(BizWeldTask task, CancellationToken cancellationToken)
+    {
+        return _deviceStatusService.ChangeStatusAsync(
+            ProductionConstants.MesDeviceStatuses.ProgramEnded,
+            DeviceStatusReportRules.FormatRemark(
+                ProductionConstants.MesDeviceStatuses.ProgramEnded,
+                task.StationNo,
+                _currentSettings.EnableDualStation,
+                _currentSettings.Station1DisplayName,
+                _currentSettings.Station2DisplayName),
+            task.IsOfflineCreated ? "Local" : "MES",
+            // 同上：完工后的设备状态上报也不阻塞完工。
+            reportToMes: _mesConnectionMonitor?.Current.IsConnected == true,
+            stationNo: task.StationNo,
+            weldTaskId: task.Id,
+            workOrderId: task.SN,
+            cancellationToken: cancellationToken);
+    }
+
+    private void SettingsService_SettingsChanged(object? sender, AppSettingsChangedEventArgs e)
+    {
+        Interlocked.Exchange(ref _currentSettings, e.CurrentSettings);
+    }
+
+    private static int[] GetDualStationNumbers()
+    {
+        return [1, 2];
+    }
+
     private static string ResolveUploadStatus(UploadMode mode)
     {
         return mode switch
         {
-            UploadMode.Realtime => "Uploaded",
-            UploadMode.Quantity => "WaitingQuantityUpload",
-            _ => "WaitingBatchUpload"
+            UploadMode.Realtime => ProductionConstants.UploadStatuses.Uploaded,
+            UploadMode.Quantity => ProductionConstants.UploadStatuses.Pending,
+            _ => ProductionConstants.UploadStatuses.Pending
         };
     }
 
@@ -419,8 +2143,257 @@ public class WeldTaskService : IWeldTaskService
         };
     }
 
+    /// <summary>
+    /// 完工上报成功后创建本地上传任务。
+    /// 当前只负责任务排队，真实上传执行器后续按任务类型逐步接入。
+    /// </summary>
+    private IReadOnlyList<BizUploadTask> EnqueueFinishUploadTasks(BizWeldTask task, UploadMode uploadMode)
+    {
+        var (reportFile, generationError) = GenerateLocalReportFile(task);
+        var uploadTasks = new List<BizUploadTask>();
+
+        // 完工只补传剩余未上传的产品；已上传或已被在途任务认领的产品不再重复进入 Data 数组。
+        var processParameterTask = EnqueueProcessParameterTask(task, uploadMode);
+        if (processParameterTask is not null)
+        {
+            uploadTasks.Add(processParameterTask);
+        }
+
+        // 本地 XLSX 已生成时必须进入上传任务体系；生成失败时再按 ReportEnable 暴露失败任务。
+        if (reportFile is not null || _reportFileService.ShouldUploadReportFile(task))
+        {
+            uploadTasks.Add(EnqueueReportFileTask(task, uploadMode, reportFile, generationError));
+        }
+
+        return uploadTasks;
+    }
+
+    /// <summary>
+    /// 完工时为剩余未上传的产品排队过程参数补传任务。
+    /// 已上传成功的产品、以及仍被在途/待重试上传任务覆盖的产品都会排除，
+    /// 避免按数量上传已提交过的批次在完工时被重复塞进 Data 数组。
+    /// </summary>
+    private BizUploadTask? EnqueueProcessParameterTask(BizWeldTask task, UploadMode uploadMode)
+    {
+        var pendingProductNos = GetFinishMakeupProductNos(task.Id);
+        if (pendingProductNos.Count == 0)
+        {
+            return null;
+        }
+
+        return _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
+        {
+            TaskType = ProductionConstants.UploadTaskTypes.ProcessParameter,
+            Target = ProductionConstants.UploadTargets.Mes,
+            BusinessId = BuildUploadBusinessId(task, "process-parameter"),
+            WeldTaskId = task.Id,
+            PayloadJson = BuildProcessParameterMakeupPayload(task, uploadMode, pendingProductNos),
+            Status = ProductionConstants.UploadStatuses.Pending,
+            NextRetryTime = DateTime.Now,
+            Message = $"{GetUploadModeName(uploadMode)}模式完工后排队，待补传产品 {pendingProductNos.Count} 件。"
+        });
+    }
+
+    /// <summary>
+    /// 查询完工补传范围所需数据，范围判定委托 <see cref="ProcessParameterMakeupRules"/>。
+    /// </summary>
+    private IReadOnlyList<string> GetFinishMakeupProductNos(int weldTaskId)
+    {
+        // 未持久化任务没有采集记录；跳过查询以支持完工排队的纯规则验证。
+        if (weldTaskId <= 0 || _dbContext is null)
+        {
+            return Array.Empty<string>();
+        }
+
+        var records = _dbContext.Db.Queryable<BizWeldPointRecord>()
+            .Where(record => record.TaskId == weldTaskId && record.ProductCompleted)
+            .ToList();
+        if (records.Count == 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        // 在途或待重试的过程参数任务已认领的产品交由原任务重试，完工任务不再接管。
+        var claimedProductNos = _dbContext.Db.Queryable<BizUploadTask>()
+            .Where(uploadTask => uploadTask.WeldTaskId == weldTaskId
+                && uploadTask.TaskType == ProductionConstants.UploadTaskTypes.ProcessParameter
+                && !uploadTask.IsDeleted
+                && uploadTask.Status != ProductionConstants.UploadStatuses.Uploaded)
+            .ToList()
+            .SelectMany(uploadTask => ProcessParameterUploadPayloadRules.ReadProductNos(uploadTask.PayloadJson))
+            .ToList();
+
+        return ProcessParameterMakeupRules.TakeMakeupProductNos(records, weldTaskId, claimedProductNos);
+    }
+
+    private (BizProductionReportFile? ReportFile, string? GenerationError) GenerateLocalReportFile(BizWeldTask task)
+    {
+        try
+        {
+            return (_reportFileService.GenerateXlsxReport(task), null);
+        }
+        catch (Exception ex)
+        {
+            _operationLogService.Write("ReportFile", $"Report file generation failed, WorkOrder={task.SN}, Error={ex.Message}");
+            return (null, ex.Message);
+        }
+    }
+
+    private BizUploadTask EnqueueReportFileTask(
+        BizWeldTask task,
+        UploadMode uploadMode,
+        BizProductionReportFile? reportFile,
+        string? generationError)
+    {
+        return _uploadTaskService.EnqueueOrUpdate(new BizUploadTask
+        {
+            TaskType = ProductionConstants.UploadTaskTypes.ReportFile,
+            Target = ProductionConstants.UploadTargets.Mes,
+            BusinessId = BuildUploadBusinessId(task, "report-file"),
+            WeldTaskId = task.Id,
+            PayloadJson = BuildUploadPayload(task, uploadMode, ProductionConstants.UploadTaskTypes.ReportFile),
+            FilePath = reportFile?.FilePath,
+            Status = reportFile is null ? ProductionConstants.UploadStatuses.Failed : ProductionConstants.UploadStatuses.Pending,
+            NextRetryTime = DateTime.Now,
+            Message = reportFile is null
+                ? $"报告文件生成失败：{generationError}"
+                : "报告文件已生成，等待上传执行器处理。"
+        });
+    }
+
+    /// <summary>
+    /// 完工后立即尝试执行本次任务产生的上传任务。
+    /// 网络或 MES 异常时任务会保留在上传状态页，供用户恢复后手动重试。
+    /// </summary>
+    private async Task ExecuteFinishUploadTasksAsync(
+        BizWeldTask task,
+        IReadOnlyList<BizUploadTask> uploadTasks,
+        CancellationToken cancellationToken)
+    {
+        var summaries = new List<UploadTaskSummary>();
+        foreach (var uploadTask in uploadTasks)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var summary = await _uploadTaskService.ExecuteAsync(uploadTask.Id, cancellationToken);
+            if (summary is not null)
+            {
+                summaries.Add(summary);
+            }
+        }
+
+        UpdateTaskUploadState(task, summaries);
+    }
+
+    private void UpdateTaskUploadState(BizWeldTask task, IReadOnlyList<UploadTaskSummary> uploadSummaries)
+    {
+        if (uploadSummaries.Count == 0)
+        {
+            return;
+        }
+
+        // Each upload execution reconciles the complete four-phase task state.
+        // Do not infer the work-order status from only the subset created at finish time.
+        var persistedTask = _dbContext.Db.Queryable<BizWeldTask>().InSingle(task.Id);
+        if (persistedTask is not null)
+        {
+            task.UploadStatus = persistedTask.UploadStatus;
+            task.UploadMessage = persistedTask.UploadMessage;
+        }
+    }
+
+    private static string BuildUploadBusinessId(BizWeldTask task, string uploadKind)
+    {
+        var stableTaskId = FirstNonEmpty(
+            task.ExpStartId,
+            task.LocalExpStartId,
+            task.Id.ToString("x").PadLeft(32, '0'));
+
+        return $"{stableTaskId}:{uploadKind}";
+    }
+
+    private static string CreateLocalTaskGuid()
+    {
+        return Guid.NewGuid().ToString("N");
+    }
+
+    private static string BuildUploadPayload(BizWeldTask task, UploadMode uploadMode, string taskType)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            TaskType = taskType,
+            UploadMode = uploadMode.ToString(),
+            WeldTaskId = task.Id,
+            task.StationNo,
+            task.ExpStartId,
+            task.IsOfflineCreated,
+            task.DeviceId,
+            SN = task.SN,
+            task.ProductNum,
+            task.ProductModel,
+            task.RecipeCode,
+            task.Batch,
+            task.ProcessNo,
+            task.ProcessName,
+            task.ActualQty,
+            task.QualifiedQty,
+            task.FailedQty,
+            StartTime = task.StartTime.ToString("yyyy-MM-dd HH:mm:ss"),
+            EndTime = task.EndTime?.ToString("yyyy-MM-dd HH:mm:ss"),
+            OperatorNumber = task.EndOperatorNumber ?? task.UserNumber
+        });
+    }
+
+    /// <summary>
+    /// 构建完工补传的过程参数任务载荷。
+    /// 必须写入 ProductNos 限定范围，否则上传执行器会按整工单捞取记录。
+    /// StationNo 固定为 0，表示补传覆盖该工单的所有工位。
+    /// </summary>
+    private static string BuildProcessParameterMakeupPayload(
+        BizWeldTask task,
+        UploadMode uploadMode,
+        IReadOnlyList<string> productNos)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            TaskType = ProductionConstants.UploadTaskTypes.ProcessParameter,
+            UploadMode = uploadMode.ToString(),
+            WeldTaskId = task.Id,
+            TaskId = task.Id,
+            StationNo = 0,
+            task.ExpStartId,
+            task.IsOfflineCreated,
+            task.DeviceId,
+            SN = task.SN,
+            task.ProcessNo,
+            ProductNos = productNos
+        });
+    }
+
+    private static string GetUploadModeName(UploadMode mode)
+    {
+        return mode switch
+        {
+            UploadMode.Realtime => "单件实时上传",
+            UploadMode.Quantity => "特定数量上传",
+            _ => "整批上传"
+        };
+    }
+
+    private static int NormalizeStationNo(int stationNo)
+    {
+        return stationNo <= 0 ? ProductionConstants.Stations.DefaultStationNo : stationNo;
+    }
+
     private void NotifyStateChanged()
     {
         StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// 委托给维护服务统一执行，从而复用事务、磁盘报表清理和审计日志。
+    /// </summary>
+    public void DeleteWeldTask(int id)
+    {
+        _maintenanceService.DeleteWorkOrder(id);
     }
 }

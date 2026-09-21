@@ -32,8 +32,6 @@
             btnSave = new Button();
             btnCancel = new Button();
             pageHeader1 = new AntdUI.PageHeader();
-            treePermissions = new AntdUI.Tree();
-            splitter1 = new AntdUI.Splitter();
             tableLayoutPanel1 = new TableLayoutPanel();
             label2 = new AntdUI.Label();
             inputRoleName = new AntdUI.Input();
@@ -41,17 +39,13 @@
             inputDescription = new AntdUI.Input();
             label1 = new AntdUI.Label();
             label3 = new AntdUI.Label();
-            ((System.ComponentModel.ISupportInitialize)splitter1).BeginInit();
-            splitter1.Panel1.SuspendLayout();
-            splitter1.Panel2.SuspendLayout();
-            splitter1.SuspendLayout();
             tableLayoutPanel1.SuspendLayout();
             SuspendLayout();
             // 
             // switchEnabled
             // 
             switchEnabled.AutoSize = true;
-            switchEnabled.Location = new Point(24, 20);
+            switchEnabled.Location = new Point(24, 38);
             switchEnabled.Name = "switchEnabled";
             switchEnabled.Size = new Size(104, 28);
             switchEnabled.TabIndex = 2;
@@ -84,40 +78,9 @@
             pageHeader1.MinimizeBox = false;
             pageHeader1.Name = "pageHeader1";
             pageHeader1.ShowButton = true;
-            pageHeader1.Size = new Size(603, 29);
+            pageHeader1.Size = new Size(340, 29);
             pageHeader1.TabIndex = 4;
             pageHeader1.Text = "角色编辑";
-            // 
-            // treePermissions
-            // 
-            treePermissions.Checkable = true;
-            treePermissions.Dock = DockStyle.Fill;
-            treePermissions.Location = new Point(0, 0);
-            treePermissions.Name = "treePermissions";
-            treePermissions.Size = new Size(300, 317);
-            treePermissions.TabIndex = 5;
-            treePermissions.Text = "tree1";
-            // 
-            // splitter1
-            // 
-            splitter1.Dock = DockStyle.Fill;
-            splitter1.Location = new Point(0, 29);
-            splitter1.Name = "splitter1";
-            // 
-            // splitter1.Panel1
-            // 
-            splitter1.Panel1.Controls.Add(tableLayoutPanel1);
-            splitter1.Panel1.Controls.Add(btnCancel);
-            splitter1.Panel1.Controls.Add(btnSave);
-            splitter1.Panel1.Controls.Add(switchEnabled);
-            // 
-            // splitter1.Panel2
-            // 
-            splitter1.Panel2.Controls.Add(treePermissions);
-            splitter1.Size = new Size(603, 317);
-            splitter1.SplitterDistance = 293;
-            splitter1.SplitterWidth = 10;
-            splitter1.TabIndex = 6;
             // 
             // tableLayoutPanel1
             // 
@@ -139,12 +102,12 @@
             tableLayoutPanel1.Size = new Size(250, 146);
             tableLayoutPanel1.TabIndex = 5;
             // 
-            // lblProgramName
+            // label2
             // 
             label2.AutoSizeMode = AntdUI.TAutoSize.Width;
             label2.Dock = DockStyle.Fill;
             label2.Location = new Point(3, 3);
-            label2.Name = "lblProgramName";
+            label2.Name = "label2";
             label2.Size = new Size(70, 42);
             label2.TabIndex = 6;
             label2.Text = "角色编码";
@@ -200,17 +163,15 @@
             // 
             AutoScaleDimensions = new SizeF(120F, 120F);
             AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(603, 346);
-            Controls.Add(splitter1);
+            ClientSize = new Size(340, 346);
+            Controls.Add(tableLayoutPanel1);
+            Controls.Add(btnCancel);
+            Controls.Add(btnSave);
+            Controls.Add(switchEnabled);
             Controls.Add(pageHeader1);
             Font = new Font("Microsoft YaHei UI", 10.5F);
             Name = "RoleEditForm";
             Text = "RoleEditForm";
-            splitter1.Panel1.ResumeLayout(false);
-            splitter1.Panel1.PerformLayout();
-            splitter1.Panel2.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)splitter1).EndInit();
-            splitter1.ResumeLayout(false);
             tableLayoutPanel1.ResumeLayout(false);
             tableLayoutPanel1.PerformLayout();
             ResumeLayout(false);
@@ -221,8 +182,6 @@
         private Button btnSave;
         private Button btnCancel;
         private AntdUI.PageHeader pageHeader1;
-        private AntdUI.Tree treePermissions;
-        private AntdUI.Splitter splitter1;
         private TableLayoutPanel tableLayoutPanel1;
         private AntdUI.Label label2;
         private AntdUI.Input inputRoleName;

@@ -146,6 +146,13 @@
   <data name="&gt;&gt;lblEmployeeNumber.ZOrder" xml:space="preserve">
     <value>4</value>
   </data>
+  <data name="txtEmployeeNumber.Font" type="System.Drawing.Font, System.Drawing">
+    <value>Segoe UI, 10.5pt</value>
+  </data>
+  <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
+  <data name="txtEmployeeNumber.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>Disable</value>
+  </data>
   <data name="txtEmployeeNumber.Location" type="System.Drawing.Point, System.Drawing">
     <value>105, 41</value>
   </data>
@@ -154,7 +161,7 @@
     <value>3, 4, 3, 4</value>
   </data>
   <data name="txtEmployeeNumber.Size" type="System.Drawing.Size, System.Drawing">
-    <value>237, 27</value>
+    <value>237, 31</value>
   </data>
   <data name="txtEmployeeNumber.TabIndex" type="System.Int32, mscorlib">
     <value>0</value>
@@ -225,7 +232,6 @@
   <data name="&gt;&gt;btnCancel.ZOrder" xml:space="preserve">
     <value>1</value>
   </data>
-  <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
   <data name="pageHeader1.Dock" type="System.Windows.Forms.DockStyle, System.Windows.Forms">
     <value>Top</value>
   </data>

@@ -1,0 +1,219 @@
+namespace AutoWeldSystem.Core.DTOs.CenterServer;
+
+/// <summary>
+/// One completed product forwarded from an equipment client to the center server.
+/// </summary>
+public sealed class CenterProductReportRequest
+{
+    /// <summary>
+    /// Stable device id configured on the equipment client.
+    /// </summary>
+    public string DeviceId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Human readable device name configured on the equipment client.
+    /// </summary>
+    public string DeviceName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Logical system type used by the center dashboard for grouping.
+    /// </summary>
+    public string SystemType { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Station that produced this product.
+    /// </summary>
+    public int StationNo { get; set; } = 1;
+
+    /// <summary>
+    /// Configured station display name. Single-station requests leave this empty.
+    /// </summary>
+    public string StationName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Work order number of the product.
+    /// </summary>
+    public string WorkOrder { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Work-order batch value used by the standard Excel report.
+    /// </summary>
+    public string Batch { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Work-order quantity used by the standard Excel report.
+    /// </summary>
+    public int Quantity { get; set; }
+
+    /// <summary>
+    /// Part name used by the standard Excel report.
+    /// </summary>
+    public string PartName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// MES process number used by the standard Excel report.
+    /// </summary>
+    public string ProcessNo { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Process name shown by the standard Excel report.
+    /// </summary>
+    public string ProcessName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Task-level operator number used when a point row has no operator.
+    /// </summary>
+    public string OperatorNo { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Task-level operator name shown in the shared customer report header.
+    /// Offline tasks require it at start; legacy tasks may still send an empty value.
+    /// </summary>
+    public string OperatorName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Program name snapshot taken when the task started.
+    /// </summary>
+    public string ProgramName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Product job number configured in the local task.
+    /// </summary>
+    public string ProductJobNo { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Drawing number shown in the shared customer report header.
+    /// </summary>
+    public string DrawingNo { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Part specification shown in the shared customer report header.
+    /// </summary>
+    public string Spec { get; set; } = string.Empty;
+
+    /// <summary>
+    /// PLC-collected product number.
+    /// </summary>
+    public string ProductNo { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional product model.
+    /// </summary>
+    public string ProductModel { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Product-level result resolved by the equipment client.
+    /// </summary>
+    public string ProductResult { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Product-level test-weld flag marked by the operator in product history.
+    /// The flag is marked after collection, so re-marking re-queues this request to refresh the center report.
+    /// </summary>
+    public bool IsTest { get; set; }
+
+    /// <summary>
+    /// 产品级作废标志：设备端软删产品后重推一次，中心侧从当日计数与可见报表中剔除；撤销删除再推一次 false。
+    /// 中心协议没有删除端点，只能靠整产品覆盖表达删除。
+    /// </summary>
+    public bool IsDeleted { get; set; }
+
+    /// <summary>
+    /// Persisted task start time. Product requests and finish updates must use the same task value.
+    /// </summary>
+    public DateTime StartTime { get; set; }
+
+    /// <summary>设备端持久化的报表流水号，与 ReportFileName 成对发送；旧客户端缺省为空。</summary>
+    public int? ReportSequenceNo { get; set; }
+
+    /// <summary>设备端实际预留的 XLSX 文件名，不包含目录；中心不得重新分配序号。</summary>
+    public string? ReportFileName { get; set; }
+
+    /// <summary>
+    /// Persisted task finish time. It stays empty until the work order is completed.
+    /// </summary>
+    public DateTime? EndTime { get; set; }
+
+    /// <summary>
+    /// Current or final qualified quantity stored on the task.
+    /// </summary>
+    public int QualifiedQty { get; set; }
+
+    /// <summary>
+    /// True when this request only refreshes task-level report headers after work-order completion.
+    /// </summary>
+    public bool IsTaskFinishUpdate { get; set; }
+
+    /// <summary>
+    /// Time when the product was completed on the equipment client.
+    /// </summary>
+    public DateTime CompletedAt { get; set; } = DateTime.Now;
+
+    /// <summary>
+    /// Excel report columns generated by the equipment client.
+    /// The center server uses these definitions first so the report table matches the equipment-side format.
+    /// </summary>
+    public List<CenterProductReportColumnDto> ReportColumns { get; set; } = new();
+
+    /// <summary>
+    /// Collected point rows that belong to this completed product.
+    /// </summary>
+    public List<CenterProductReportPointDto> Points { get; set; } = new();
+}
+
+/// <summary>
+/// One Excel report column forwarded by the equipment client.
+/// </summary>
+public sealed class CenterProductReportColumnDto
+{
+    /// <summary>
+    /// Stable column key used to pick a value from fixed fields or RawDataJson.
+    /// </summary>
+    public string Key { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Human-readable column title shown in the Excel header.
+    /// </summary>
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Whether this column should be merged for all rows of the same product.
+    /// </summary>
+    public bool MergeByProduct { get; set; }
+}
+
+/// <summary>
+/// One point row inside a completed product report forwarded to the center server.
+/// </summary>
+public sealed class CenterProductReportPointDto
+{
+    /// <summary>
+    /// Local collection sequence number.
+    /// </summary>
+    public int SequenceNo { get; set; }
+
+    /// <summary>
+    /// Weld point, camera, or inspection point number read from PLC.
+    /// </summary>
+    public string TouchNo { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Point-level result.
+    /// </summary>
+    public string TestResult { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Point collection time.
+    /// </summary>
+    public DateTime CollectedAt { get; set; } = DateTime.Now;
+
+    /// <summary>
+    /// Optional operator number collected with this point.
+    /// </summary>
+    public string OperatorNo { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Dynamic collected values serialized by the equipment client.
+    /// </summary>
+    public string RawDataJson { get; set; } = string.Empty;
+}

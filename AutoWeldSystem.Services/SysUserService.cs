@@ -3,9 +3,10 @@ using System.Text;
 using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Exceptions;
-using AutoWeldSystem.Core.Interfaces;
-using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.Interfaces.UserManage;
+using AutoWeldSystem.Core.Security;
 using AutoWeldSystem.Data;
 
 namespace AutoWeldSystem.Services;
@@ -24,50 +25,216 @@ public class SysUserService : ISysUserService
     public void InitDb()
     {
         _dbContext.InitDatabase();
-        _rbacService.InitializeRbac();
-        MigrateLegacyUsers();
+        InitializeRbacPermissions();
 
-        if (_dbContext.Db.Queryable<SysUser>().Any())
+        var hasAnyUser = _dbContext.Db.Queryable<SysUser>().Any();
+        if (!hasAnyUser)
+        {
+            var adminRole = _rbacService.GetRoleByCode(AppConstants.Roles.Admin)
+                ?? throw new InvalidOperationException("Admin role is missing.");
+            var operatorRole = _rbacService.GetRoleByCode(AppConstants.Roles.Operator)
+                ?? throw new InvalidOperationException("Operator role is missing.");
+            var readonlyRole = _rbacService.GetRoleByCode(AppConstants.Roles.Readonly)
+                ?? throw new InvalidOperationException("Readonly role is missing.");
+
+            var seedUsers = new[]
+            {
+                new SysUser
+                {
+                    UserNumber = "admin",
+                    UserName = "Administrator",
+                    RoleId = adminRole.Id,
+                    Role = adminRole.RoleCode,
+                    PasswordHash = Hash(AppConstants.Defaults.InitialPassword)
+                },
+                new SysUser
+                {
+                    UserNumber = "operator",
+                    UserName = "Operator",
+                    RoleId = operatorRole.Id,
+                    Role = operatorRole.RoleCode,
+                    PasswordHash = Hash(AppConstants.Defaults.InitialPassword)
+                },
+                new SysUser
+                {
+                    UserNumber = "readonly",
+                    UserName = "Readonly",
+                    RoleId = readonlyRole.Id,
+                    Role = readonlyRole.RoleCode,
+                    PasswordHash = Hash(AppConstants.Defaults.InitialPassword)
+                }
+            };
+
+            _dbContext.Db.Insertable(seedUsers).ExecuteCommand();
+        }
+
+        EnsureDeveloperUser();
+    }
+
+    /// <summary>
+    /// 初始化权限目录，并兼容旧版本中管理员会被自动补齐全部权限的行为。
+    /// 初始化前保存管理员的真实授权，初始化后恢复该授权，避免覆盖管理员手工取消的页面或按钮权限。
+    /// </summary>
+    private void InitializeRbacPermissions()
+    {
+        var stateTabCatalogWasMissing = !_rbacService.GetAllPermissions().Any(permission =>
+            PermissionCodes.Tabs.State.All.Contains(permission.Code, StringComparer.OrdinalIgnoreCase));
+        var logTabCatalogWasMissing = !_rbacService.GetAllPermissions().Any(permission =>
+            PermissionCodes.Tabs.Log.All.Contains(permission.Code, StringComparer.OrdinalIgnoreCase));
+        var addressTabCatalogWasMissing = !_rbacService.GetAllPermissions().Any(permission =>
+            PermissionCodes.Tabs.Address.All.Contains(permission.Code, StringComparer.OrdinalIgnoreCase));
+        var rolesBeforeInitialization = _rbacService.GetAllRoles()
+            .ToDictionary(role => role.RoleCode, StringComparer.OrdinalIgnoreCase);
+        var rolePermissionsBeforeInitialization = rolesBeforeInitialization.Values
+            .ToDictionary(
+                role => role.RoleCode,
+                role => (IReadOnlyCollection<string>)_rbacService.GetPermissionCodesByRole(role.Id),
+                StringComparer.OrdinalIgnoreCase);
+        var adminPermissionsBeforeInitialization = CaptureRolePermissionCodes(
+            rolesBeforeInitialization,
+            AppConstants.Roles.Admin);
+
+        _rbacService.InitializeRbac();
+
+        RestoreConfigurableAdminPermissions(
+            rolesBeforeInitialization,
+            adminPermissionsBeforeInitialization,
+            stateTabCatalogWasMissing,
+            logTabCatalogWasMissing,
+            addressTabCatalogWasMissing);
+        ApplyTabUpgradeDefaults(
+            stateTabCatalogWasMissing,
+            PermissionCodes.Pages.StateManage,
+            PermissionCodes.Tabs.State.CustomerDefaults,
+            rolesBeforeInitialization,
+            rolePermissionsBeforeInitialization);
+        ApplyTabUpgradeDefaults(
+            logTabCatalogWasMissing,
+            PermissionCodes.Pages.LogManage,
+            PermissionCodes.Tabs.Log.All,
+            rolesBeforeInitialization,
+            rolePermissionsBeforeInitialization);
+        ApplyTabUpgradeDefaults(
+            addressTabCatalogWasMissing,
+            PermissionCodes.Pages.AddressManage,
+            PermissionCodes.Tabs.Address.All,
+            rolesBeforeInitialization,
+            rolePermissionsBeforeInitialization);
+    }
+
+    /// <summary>
+    /// 读取指定内置角色在初始化前已经保存的权限编码。
+    /// 返回 null 表示这是首次安装，角色尚不存在。
+    /// </summary>
+    private IReadOnlyCollection<string>? CaptureRolePermissionCodes(
+        IReadOnlyDictionary<string, SysRole> roles,
+        string roleCode)
+    {
+        return roles.TryGetValue(roleCode, out var role)
+            ? _rbacService.GetPermissionCodesByRole(role.Id)
+            : null;
+    }
+
+    /// <summary>
+    /// 管理员改为严格按角色授权：旧库恢复原授权，新安装使用“全部页面和按钮 + 三个客户页签”。
+    /// </summary>
+    private void RestoreConfigurableAdminPermissions(
+        IReadOnlyDictionary<string, SysRole> rolesBeforeInitialization,
+        IReadOnlyCollection<string>? permissionsBeforeInitialization,
+        bool stateTabCatalogWasMissing,
+        bool logTabCatalogWasMissing,
+        bool addressTabCatalogWasMissing)
+    {
+        var adminRole = _rbacService.GetRoleByCode(AppConstants.Roles.Admin);
+        if (adminRole is null)
         {
             return;
         }
 
-        var adminRole = _rbacService.GetRoleByCode(AppConstants.Roles.Admin)
-            ?? throw new InvalidOperationException("Admin role is missing.");
-        var operatorRole = _rbacService.GetRoleByCode(AppConstants.Roles.Operator)
-            ?? throw new InvalidOperationException("Operator role is missing.");
-        var readonlyRole = _rbacService.GetRoleByCode(AppConstants.Roles.Readonly)
-            ?? throw new InvalidOperationException("Readonly role is missing.");
-
-        var seedUsers = new[]
+        IReadOnlyCollection<string> targetCodes;
+        if (!rolesBeforeInitialization.ContainsKey(AppConstants.Roles.Admin))
         {
-            new SysUser
-            {
-                UserNumber = "admin",
-                UserName = "Administrator",
-                RoleId = adminRole.Id,
-                Role = adminRole.RoleCode,
-                PasswordHash = Hash(AppConstants.Defaults.InitialPassword)
-            },
-            new SysUser
-            {
-                UserNumber = "operator",
-                UserName = "Operator",
-                RoleId = operatorRole.Id,
-                Role = operatorRole.RoleCode,
-                PasswordHash = Hash(AppConstants.Defaults.InitialPassword)
-            },
-            new SysUser
-            {
-                UserNumber = "readonly",
-                UserName = "Readonly",
-                RoleId = readonlyRole.Id,
-                Role = readonlyRole.RoleCode,
-                PasswordHash = Hash(AppConstants.Defaults.InitialPassword)
-            }
-        };
+            targetCodes = RolePermissionInitializationRules.ResolveElevatedRoleDefaults(
+                AppConstants.Roles.Admin,
+                _rbacService.GetAllPermissions().Select(permission => permission.Code));
+        }
+        else
+        {
+            var originalCodes = permissionsBeforeInitialization ?? Array.Empty<string>();
+            var upgradeDefaults = RolePermissionInitializationRules.ResolveStateTabUpgradeDefaults(
+                AppConstants.Roles.Admin,
+                stateTabCatalogWasMissing,
+                originalCodes.Contains(PermissionCodes.Pages.StateManage, StringComparer.OrdinalIgnoreCase))
+                .Concat(RolePermissionInitializationRules.ResolveTabUpgradeDefaults(
+                    AppConstants.Roles.Admin,
+                    logTabCatalogWasMissing,
+                    originalCodes.Contains(PermissionCodes.Pages.LogManage, StringComparer.OrdinalIgnoreCase),
+                    PermissionCodes.Tabs.Log.All))
+                .Concat(RolePermissionInitializationRules.ResolveTabUpgradeDefaults(
+                    AppConstants.Roles.Admin,
+                    addressTabCatalogWasMissing,
+                    originalCodes.Contains(PermissionCodes.Pages.AddressManage, StringComparer.OrdinalIgnoreCase),
+                    PermissionCodes.Tabs.Address.All));
+            targetCodes = originalCodes
+                .Concat(upgradeDefaults)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
 
-        _dbContext.Db.Insertable(seedUsers).ExecuteCommand();
+        SaveRolePermissionCodes(adminRole.Id, targetCodes);
+    }
+
+    /// <summary>
+    /// 首次增加页签权限时，为已有待上传数据页面权限的非开发、非管理员角色补充客户默认页签。
+    /// 管理员已在 RestoreConfigurableAdminPermissions 中按快照单独处理。
+    /// </summary>
+    private void ApplyTabUpgradeDefaults(
+        bool tabCatalogWasMissing,
+        string parentPageCode,
+        IReadOnlyCollection<string> upgradeDefaultTabCodes,
+        IReadOnlyDictionary<string, SysRole> rolesBeforeInitialization,
+        IReadOnlyDictionary<string, IReadOnlyCollection<string>> rolePermissionsBeforeInitialization)
+    {
+        if (!tabCatalogWasMissing)
+        {
+            return;
+        }
+
+        foreach (var role in rolesBeforeInitialization.Values)
+        {
+            if (string.Equals(role.RoleCode, AppConstants.Roles.Admin, StringComparison.OrdinalIgnoreCase)
+                || !rolePermissionsBeforeInitialization.TryGetValue(role.RoleCode, out var originalCodes))
+            {
+                continue;
+            }
+
+            var upgradeDefaults = RolePermissionInitializationRules.ResolveTabUpgradeDefaults(
+                role.RoleCode,
+                tabCatalogWasMissing,
+                originalCodes.Contains(parentPageCode, StringComparer.OrdinalIgnoreCase),
+                upgradeDefaultTabCodes);
+            if (upgradeDefaults.Count == 0)
+            {
+                continue;
+            }
+
+            SaveRolePermissionCodes(
+                role.Id,
+                originalCodes.Concat(upgradeDefaults).Distinct(StringComparer.OrdinalIgnoreCase));
+        }
+    }
+
+    /// <summary>
+    /// 将权限编码转换为当前数据库权限 Id 后保存，忽略已从目录移除的历史编码。
+    /// </summary>
+    private void SaveRolePermissionCodes(int roleId, IEnumerable<string> permissionCodes)
+    {
+        var requestedCodes = permissionCodes.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var permissionIds = _rbacService.GetAllPermissions()
+            .Where(permission => requestedCodes.Contains(permission.Code))
+            .Select(permission => permission.Id)
+            .ToArray();
+        _rbacService.SaveRolePermissions(roleId, permissionIds);
     }
 
     public UserLoginResult Login(string userNumber, string password)
@@ -122,6 +289,11 @@ public class SysUserService : ISysUserService
         }
 
         PopulateRole(user);
+        if (IsDeveloperUser(user) && !IsCurrentDeveloper())
+        {
+            return null;
+        }
+
         return user;
     }
 
@@ -131,6 +303,11 @@ public class SysUserService : ISysUserService
         foreach (var user in users)
         {
             PopulateRole(user);
+        }
+
+        if (!IsCurrentDeveloper())
+        {
+            users = users.Where(user => !IsDeveloperUser(user)).ToList();
         }
 
         return users;
@@ -149,6 +326,12 @@ public class SysUserService : ISysUserService
 
         var role = ResolveRole(user.RoleId, user.Role);
         if (role is null || !role.Enabled)
+        {
+            throw new UserFriendlyException(TextKeys.User.InvalidRole);
+        }
+
+        var existingUser = user.Id > 0 ? _dbContext.Db.Queryable<SysUser>().InSingle(user.Id) : null;
+        if (((existingUser is not null && IsDeveloperUser(existingUser)) || IsDeveloperRole(role)) && !IsCurrentDeveloper())
         {
             throw new UserFriendlyException(TextKeys.User.InvalidRole);
         }
@@ -210,6 +393,12 @@ public class SysUserService : ISysUserService
             return false;
         }
 
+        var user = _dbContext.Db.Queryable<SysUser>().InSingle(id);
+        if (user is not null && IsDeveloperUser(user) && !IsCurrentDeveloper())
+        {
+            return false;
+        }
+
         return _dbContext.Db.Deleteable<SysUser>(id).ExecuteCommand() > 0;
     }
 
@@ -218,6 +407,11 @@ public class SysUserService : ISysUserService
         var user = GetUserById(userId);
         var role = _rbacService.GetRoleById(roleId);
         if (user is null || role is null || !role.Enabled)
+        {
+            return false;
+        }
+
+        if ((IsDeveloperUser(user) || IsDeveloperRole(role)) && !IsCurrentDeveloper())
         {
             return false;
         }
@@ -248,44 +442,38 @@ public class SysUserService : ISysUserService
         return _rbacService.GetPermissionCodesByUser(user.Id);
     }
 
-    private void MigrateLegacyUsers()
+    private void EnsureDeveloperUser()
     {
-        var operatorRole = _rbacService.GetRoleByCode(AppConstants.Roles.Operator)
-            ?? throw new InvalidOperationException("Operator role is missing.");
+        var developerRole = _rbacService.GetRoleByCode(AppConstants.Roles.Developer)
+            ?? throw new InvalidOperationException("Developer role is missing.");
+        var developer = _dbContext.Db.Queryable<SysUser>()
+            .First(user => user.UserNumber == "dev");
 
-        var users = _dbContext.Db.Queryable<SysUser>().ToList();
-        foreach (var user in users)
+        if (developer is null)
         {
-            var shouldUpdate = false;
-            var role = ResolveRole(user.RoleId, user.Role) ?? operatorRole;
-
-            if (user.RoleId != role.Id)
+            _dbContext.Db.Insertable(new SysUser
             {
-                user.RoleId = role.Id;
-                shouldUpdate = true;
-            }
-
-            if (!string.Equals(user.Role, role.RoleCode, StringComparison.OrdinalIgnoreCase))
-            {
-                user.Role = role.RoleCode;
-                shouldUpdate = true;
-            }
-
-            if (!user.UpdatedTime.HasValue || user.UpdatedTime.Value == default)
-            {
-                user.UpdatedTime = user.CreatedTime == default ? DateTime.Now : user.CreatedTime;
-                shouldUpdate = true;
-            }
-
-            if (!shouldUpdate)
-            {
-                continue;
-            }
-
-            _dbContext.Db.Updateable(user)
-                .UpdateColumns(it => new { it.RoleId, it.Role, it.UpdatedTime })
-                .ExecuteCommand();
+                UserNumber = "dev",
+                UserName = "Developer",
+                RoleId = developerRole.Id,
+                Role = developerRole.RoleCode,
+                PasswordHash = Hash("dev"),
+                Enabled = true,
+                CreatedTime = DateTime.Now,
+                UpdatedTime = DateTime.Now
+            }).ExecuteCommand();
+            return;
         }
+
+        developer.UserName = string.IsNullOrWhiteSpace(developer.UserName) ? "Developer" : developer.UserName.Trim();
+        developer.RoleId = developerRole.Id;
+        developer.Role = developerRole.RoleCode;
+        developer.PasswordHash = Hash("dev");
+        developer.Enabled = true;
+        developer.UpdatedTime = DateTime.Now;
+        _dbContext.Db.Updateable(developer)
+            .UpdateColumns(user => new { user.UserName, user.RoleId, user.Role, user.PasswordHash, user.Enabled, user.UpdatedTime })
+            .ExecuteCommand();
     }
 
     private SysRole? ResolveRole(int roleId, string? roleCode)
@@ -322,6 +510,25 @@ public class SysUserService : ISysUserService
         user.RoleId = role.Id;
         user.Role = role.RoleCode;
         user.RoleName = role.RoleName;
+    }
+
+    private static bool IsDeveloperRole(SysRole role)
+    {
+        return string.Equals(role.RoleCode, AppConstants.Roles.Developer, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsDeveloperUser(SysUser user)
+    {
+        return string.Equals(user.UserNumber, "dev", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(user.Role, AppConstants.Roles.Developer, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsCurrentDeveloper()
+    {
+        var currentUser = GlobalContext.CurrentUser;
+        return currentUser is not null
+            && (string.Equals(currentUser.UserNumber, "dev", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(currentUser.Role, AppConstants.Roles.Developer, StringComparison.OrdinalIgnoreCase));
     }
 
     private void RefreshCurrentUserContext(SysUser user)

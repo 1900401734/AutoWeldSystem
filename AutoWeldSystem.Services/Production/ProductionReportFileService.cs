@@ -1,0 +1,1347 @@
+﻿using AutoWeldSystem.Core.Center;
+using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.Entities;
+using AutoWeldSystem.Core.Interfaces;
+using AutoWeldSystem.Core.Interfaces.Log;
+using AutoWeldSystem.Core.Plc;
+using AutoWeldSystem.Core.Production;
+using AutoWeldSystem.Data;
+using ClosedXML.Excel;
+using System.Globalization;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using AutoWeldSystem.Core.Runtime;
+
+namespace AutoWeldSystem.Services.Production;
+
+/// <summary>
+/// 生产报表文件服务。
+/// 负责把本地焊点记录整理为真实 XLSX 文件，并记录本地文件上传状态。
+/// </summary>
+public class ProductionReportFileService : IProductionReportFileService
+{
+    private const string ColumnStationNo = "station_no";
+    private const string ColumnProductNo = "product_no";
+    private const string ColumnProductResult = "product_result";
+    private const string ColumnIsTest = CenterProductReportFormat.ColumnIsTest;
+    private const string ColumnTouchNo = "touch_no";
+    private const string ColumnTouchResult = "touch_result";
+    private const string ReportRoleActual = "actual";
+    private const string ReportRoleUpper = "upper";
+    private const string ReportRoleLower = "lower";
+    private const string ReportRoleResult = "result";
+
+    // 整件检测 B 行的宽度不适用，报表用斜杠区别于“采集失败留空”。
+    private const string SideNotApplicableText = "\\";
+    private const string HeaderStationNo = "工位";
+    private const string HeaderProductNo = "产品编号";
+    private const string HeaderProductResult = "产品结果";
+    private const string HeaderIsTest = CenterProductReportFormat.HeaderIsTest;
+    private const string HeaderTouchNo = "焊点编号";
+    private const string HeaderTouchResult = "焊点结果";
+    private const string ReportFormat = "XLSX";
+    private const int DetailHeaderRow = CenterProductReportFormat.DetailHeaderRow;
+    private const int DetailFirstDataRow = DetailHeaderRow + 1;
+
+    private readonly SqlSugarDbContext _dbContext;
+    private readonly IAppSettingsService _settingsService;
+    private readonly IProductionFlowLogService _productionLogService;
+    private readonly IProductProcessConfigService _productProcessConfigService;
+    private readonly object _dbLock = new();
+    private AppSettings _currentSettings;
+
+    public ProductionReportFileService(
+        SqlSugarDbContext dbContext,
+        IAppSettingsService settingsService,
+        IProductionFlowLogService productionLogService,
+        IProductProcessConfigService? productProcessConfigService = null)
+    {
+        _productProcessConfigService = productProcessConfigService ?? new ProductProcessConfigService(dbContext);
+        _dbContext = dbContext;
+        _settingsService = settingsService;
+        _currentSettings = settingsService.Get();
+        _settingsService.SettingsChanged += SettingsService_SettingsChanged;
+        _productionLogService = productionLogService;
+    }
+
+    public BizProductionReportFile GenerateXlsxReport(BizWeldTask task)
+    {
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            // 生成报表前必须重读任务，确保完工后持久化的 EndTime 和统计进入最终文件。
+            var latestTask = ProductionReportFileRules.ResolveLatestTask(
+                task,
+                taskId => _dbContext.Db.Queryable<BizWeldTask>().InSingle(taskId));
+            WeldTaskRuntimeRules.EnsureNotAbandoned(latestTask);
+            _ = ProgramContentJsonRules.NormalizeForProduction(latestTask.ProgramContentSnapshot, CurrentSettings.ProcessParameterDeviceType);
+            var report = GetOrCreateReportRecord(latestTask);
+            var records = QueryTaskRecords(latestTask.Id);
+
+            var filePath = string.IsNullOrWhiteSpace(report.FilePath)
+                ? Path.Combine(GetReportDirectory(latestTask), report.FileName)
+                : report.FilePath;
+            Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+            // 上传给 MES 的报表按系统设置的「报表小数位」输出。
+            WriteXlsx(
+                filePath,
+                BuildReportSchema(latestTask, records),
+                records,
+                latestTask,
+                OutputNumericFormat.ForUpload(CurrentSettings));
+
+            report.FilePath = filePath;
+            report.FileFormat = ReportFormat;
+            report.UploadStatus = ProductionConstants.UploadStatuses.Pending;
+            report.UploadMessage = $"XLSX report generated, rows={records.Count}.";
+            report.UpdatedTime = DateTime.Now;
+            _dbContext.Db.Updateable(report).ExecuteCommand();
+            return _dbContext.Db.Queryable<BizProductionReportFile>().InSingle(report.Id) ?? report;
+        }
+    }
+
+    /// <inheritdoc />
+    public void ExportXlsx(int taskId, string filePath)
+    {
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var task = _dbContext.Db.Queryable<BizWeldTask>().InSingle(taskId)
+                ?? throw new InvalidOperationException($"未找到任务 {taskId}，无法导出报表。");
+            var records = QueryTaskRecords(task.Id);
+
+            // 路径由用户在保存对话框指定，可能是纯文件名，需容忍没有目录段的情况。
+            var directory = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            // 本地导出沿用测试项配置的采集小数位：「报表小数位」只针对上传报表，
+            // 本地查看和追溯需要与实时预览、历史数据列表看到的位数一致。
+            WriteXlsx(
+                filePath,
+                BuildReportSchema(task, records, localExport: true),
+                records,
+                task,
+                OutputNumericFormat.None);
+        }
+    }
+
+    /// <summary>
+    /// 按产品编号自然序读取任务下的全部焊点记录，保证报表与手动导出的行顺序一致。
+    /// 已删除产品不进报表：客户接受编号断号，断号即来自软删占位。
+    /// </summary>
+    private IReadOnlyList<BizWeldPointRecord> QueryTaskRecords(int taskId)
+        => WeldPointRecordScopeRules.ExcludeDeleted(_dbContext.Db.Queryable<BizWeldPointRecord>()
+                .Where(record => record.TaskId == taskId)
+                .ToList())
+            .OrderBy(record => record.ProductNo, NaturalSortComparer.Instance)
+            .ThenBy(record => record.StationNo)
+            .ThenBy(record => record.SequenceNo)
+            .ToList();
+
+    public BizProductionReportFile ReserveXlsxReport(BizWeldTask task)
+    {
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var latestTask = ProductionReportFileRules.ResolveLatestTask(
+                task, taskId => _dbContext.Db.Queryable<BizWeldTask>().InSingle(taskId));
+            WeldTaskRuntimeRules.EnsureNotAbandoned(latestTask);
+            return GetOrCreateReportRecord(latestTask);
+        }
+    }
+
+    private BizProductionReportFile GetOrCreateReportRecord(BizWeldTask task)
+    {
+        if (task.Id <= 0)
+        {
+            throw new InvalidOperationException("焊接任务尚未保存，无法预留报表序号。");
+        }
+
+        var existing = _dbContext.Db.Queryable<BizProductionReportFile>()
+            .First(report => report.TaskId == task.Id
+                && report.FileCode == ProductionConstants.ReportFileCodes.Spreadsheet
+                && report.FileFormat == ReportFormat);
+
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        var sequenceNo = GetNextSequenceNo(task);
+        var fileName = BuildFileName(task, sequenceNo);
+
+        // 先持久化身份：XLSX 生成失败或中心先收到完工时，也不能重新分配序号。
+        // 空路径表示仅预留，不能被上传补齐或历史文件查询误认成已生成报表。
+        return _dbContext.Db.Insertable(new BizProductionReportFile
+        {
+            TaskId = task.Id,
+            ExpStartId = task.ExpStartId,
+            DeviceId = task.DeviceId,
+            SN = task.SN,
+            ProcessNo = task.ProcessNo,
+            FileCode = ProductionConstants.ReportFileCodes.Spreadsheet,
+            MesFileType = ProductionConstants.MesFileTypes.ReportFile,
+            FileFormat = ReportFormat,
+            FileName = fileName,
+            FilePath = string.Empty,
+            SequenceNo = sequenceNo,
+            UploadStatus = ProductionConstants.UploadStatuses.Pending,
+            UploadMessage = "报表序号已预留，文件尚未生成。",
+            CreatedTime = DateTime.Now,
+            UpdatedTime = DateTime.Now
+        }).ExecuteReturnEntity();
+    }
+
+    private int GetNextSequenceNo(BizWeldTask task)
+    {
+        var existingReports = _dbContext.Db.Queryable<BizProductionReportFile>()
+            .Where(report => report.DeviceId == task.DeviceId
+                && report.SN == task.SN
+                && report.ProcessNo == task.ProcessNo
+                && report.FileCode == ProductionConstants.ReportFileCodes.Spreadsheet)
+            .ToList();
+
+        return existingReports.Count == 0
+            ? 1
+            : existingReports.Max(report => report.SequenceNo) + 1;
+    }
+
+    private ReportSchema BuildReportSchema(
+        BizWeldTask task,
+        IReadOnlyList<BizWeldPointRecord> records,
+        bool localExport = false)
+    {
+        var touchCount = ProgramContentJsonRules.GetRequiredTouchCount(task.ProgramContentSnapshot);
+        var stationConfigs = ResolveStationReportConfigs(task, records, localExport);
+        if (!localExport && WholePieceProgramResultRules.IsApplicable(CurrentSettings.ProcessParameterDeviceType))
+        {
+            var content = ProgramContentJsonRules.NormalizeForProduction(task.ProgramContentSnapshot, CurrentSettings.ProcessParameterDeviceType);
+            var limits = ProgramContentJsonRules.ReadLimits(content, CurrentSettings.ProcessParameterDeviceType);
+            foreach (var stationNo in ResolveReportStationNumbers(task, records))
+            {
+                var config = stationConfigs.FirstOrDefault(config => config.StationNo == stationNo)
+                    ?? throw new InvalidOperationException($"工位 {stationNo} 未找到可用于报表的产品工艺配置。");
+                WholePieceProgramResultRules.ValidateScheme(limits, config.SchemeItems.Select(item => (item.Detail, item.Item)));
+            }
+        }
+        return BuildReportSchemaForStationsWithDeviceType(
+            stationConfigs,
+            CurrentSettings.ProcessParameterDeviceType,
+            touchCount,
+            localExport,
+            CurrentSettings.ShowTestFlagInHistory != false);
+    }
+
+    /// <summary>
+    /// 按工位顺序构造稳定、去重的动态列并集，同时保留每个工位自己的取值配置。
+    /// </summary>
+    private static ReportSchema BuildReportSchemaForStations(
+        IReadOnlyList<ResolvedStationReportConfig> stationConfigs,
+        int touchCount)
+        => BuildReportSchemaForStationsWithDeviceType(
+            stationConfigs,
+            string.Empty,
+            touchCount,
+            localExport: false,
+            showTestFlagInHistory: false);
+
+    private static ReportSchema BuildReportSchemaForStationsWithDeviceType(
+        IReadOnlyList<ResolvedStationReportConfig> stationConfigs,
+        string deviceType,
+        int touchCount,
+        bool localExport,
+        bool showTestFlagInHistory)
+    {
+        var orderedConfigs = stationConfigs
+            .OrderBy(config => config.StationNo)
+            .ToList();
+        // 本地导出是后台查阅用的明细数据，保留 PLC 采集的原始面记录，不做 A/B 聚合，
+        // 因此表头和列合并都按普通焊点口径处理；A/B 只属于上传给 MES 的报表。
+        var localInspectionExport = localExport && WholePieceProgramResultRules.IsApplicable(deviceType);
+        var displayOptions = ResolveCompatibleDisplayOptions(
+            orderedConfigs,
+            !localExport
+                && WholePieceAbAggregationRules.IsApplicable(deviceType, touchCount),
+            ignorePointResultHeader: localInspectionExport);
+        var leadingColumns = BuildLeadingColumns(displayOptions);
+        var dynamicColumns = orderedConfigs
+            .SelectMany(config => config.SchemeItems.SelectMany(item => BuildItemColumnsForMode(
+                item,
+                !localExport && WholePieceAbAggregationRules.IsApplicable(deviceType, touchCount),
+                localExport)));
+        // 检测设备的逐面结果固定为完成信号 3，不承载质量判定；本地导出按设备类型移除此固定列，
+        // 不限制旧工单的面数，也不影响方案配置的单项结果列。上传报表保持原有 A/B 输出边界。
+        var omitPointResultColumn = localInspectionExport
+            || (!localExport && WholePieceAbAggregationRules.IsApplicable(deviceType, touchCount));
+        var pointResultColumn = omitPointResultColumn
+            ? Array.Empty<ReportColumn>()
+            : BuildPointResultColumn(displayOptions);
+        // 试焊件列与 MES 过程参数字段共用门禁：本地导出同样遵循，
+        // 关闭开关表示现场不使用该概念，导出一列永远空白没有查阅价值。
+        var trailingColumns = BuildTrailingColumns(
+            ProcessParameterIsTestRules.IsEnabled(showTestFlagInHistory, deviceType));
+        var columns = leadingColumns
+            .Concat(dynamicColumns)
+            .Concat(pointResultColumn)
+            .Concat(trailingColumns)
+            .DistinctBy(column => column.Key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var stationSchemeItems = orderedConfigs.ToDictionary(
+            config => config.StationNo,
+            config => config.SchemeItems);
+
+        var stationConfigsByNumber = orderedConfigs.ToDictionary(
+            config => config.StationNo,
+            config => config.Config);
+        return new ReportSchema(columns, stationSchemeItems, stationConfigsByNumber, displayOptions, touchCount, localExport);
+    }
+
+    /// <summary>
+    /// 写出报表文件。<paramref name="numericFormat"/> 决定测试项数值列的输出小数位：
+    /// 上传用报表按系统设置的「报表小数位」，本地手动导出沿用采集小数位。
+    /// </summary>
+    private void WriteXlsx(
+        string filePath,
+        ReportSchema schema,
+        IReadOnlyList<BizWeldPointRecord> records,
+        BizWeldTask task,
+        OutputNumericFormat numericFormat)
+    {
+        using var workbook = new XLWorkbook();
+        var worksheet = workbook.Worksheets.Add(CenterProductReportFormat.WorksheetName);
+        var settings = CurrentSettings;
+        var detailColumns = ResolveDetailColumns(schema.Columns, settings.EnableDualStation);
+        var templateColumnCount = Math.Max(CenterProductReportFormat.TemplateMinimumColumnCount, detailColumns.Count);
+        var stationNames = StationDisplayNameRules.NormalizeForLoad(
+            settings.EnableDualStation,
+            settings.Station1DisplayName,
+            settings.Station2DisplayName);
+
+        WriteTemplateHeader(worksheet, task, templateColumnCount);
+        var outputRows = BuildOutputRows(schema, records, settings, task);
+        WriteDetailHeader(worksheet, detailColumns);
+        WriteDataRows(worksheet, schema, detailColumns, outputRows, stationNames, numericFormat);
+        MergeRepeatedProductFields(worksheet, detailColumns, outputRows);
+        ApplyWorksheetStyle(worksheet, detailColumns.Count, outputRows.Count, templateColumnCount);
+        if (schema.LocalExport && settings.IncludeProgramLimitsInLocalExport != false)
+        {
+            InsertProgramLimits(worksheet, task.ProgramContentSnapshot, templateColumnCount);
+        }
+        workbook.SaveAs(filePath);
+    }
+
+    /// <summary>
+    /// 本地历史导出额外展示开工快照中的程序限值，不改正式报告模板、PLC 原始限值或历史结果。
+    /// </summary>
+    private static void InsertProgramLimits(IXLWorksheet worksheet, string? programContent, int lastColumn)
+    {
+        // 历史追溯不套用当前设备的生产约束；旧快照无法解析时仍保留原始明细并明确标注。
+        var available = ProgramContentJsonRules.TryReadLimits(programContent, out var limits, out var error);
+        if (available && limits.Count == 0)
+        {
+            return;
+        }
+
+        // 限值区独立使用 A:F 三组等分列，不随明细动态列数拉宽。
+        const int limitsLastColumn = 6;
+        var insertedRows = Math.Max(1, limits.Count) + 3;
+        worksheet.Row(DetailHeaderRow).InsertRowsAbove(insertedRows);
+        var titleRow = DetailHeaderRow;
+        var headerRow = titleRow + 1;
+        var firstValueRow = headerRow + 1;
+        var lastValueRow = titleRow + insertedRows - 2;
+        var range = worksheet.Range(titleRow, 1, lastValueRow, limitsLastColumn);
+        range.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+        range.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+        range.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        range.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        range.Style.Alignment.WrapText = true;
+        range.Style.Alignment.ShrinkToFit = false;
+        range.Style.Font.Bold = false;
+        range.Style.Fill.BackgroundColor = XLColor.NoColor;
+        worksheet.Rows(titleRow, lastValueRow).Height = 15d;
+
+        WriteBlock(titleRow, 1, limitsLastColumn, "程序上下限（来源：任务开工程序快照，仅供追溯）");
+        WriteBlock(headerRow, 1, 2, "测试项");
+        WriteBlock(headerRow, 3, 4, "程序上限");
+        WriteBlock(headerRow, 5, limitsLastColumn, "程序下限");
+        worksheet.Range(titleRow, 1, headerRow, limitsLastColumn).Style.Font.Bold = true;
+        worksheet.Range(headerRow, 1, headerRow, limitsLastColumn).Style.Fill.BackgroundColor = XLColor.FromHtml("#D9E2F3");
+
+        if (!available)
+        {
+            WriteBlock(firstValueRow, 1, limitsLastColumn, $"程序上下限不可用：{error}");
+        }
+        else
+        {
+            var row = firstValueRow;
+            foreach (var (name, limit) in limits)
+            {
+                WriteBlock(row, 1, 2, name);
+                WriteBlock(row, 3, 4, limit.UpperLimit?.ToString(CultureInfo.InvariantCulture) ?? string.Empty);
+                WriteBlock(row, 5, limitsLastColumn, limit.LowerLimit?.ToString(CultureInfo.InvariantCulture) ?? string.Empty);
+                row++;
+            }
+        }
+
+        var spacerRow = titleRow + insertedRows - 1;
+        worksheet.Range(spacerRow, 1, spacerRow, lastColumn).Clear(XLClearOptions.All);
+        worksheet.Row(spacerRow).Height = 15d;
+        worksheet.Row(DetailHeaderRow + insertedRows).Height = 27d;
+        worksheet.SheetView.FreezeRows(DetailHeaderRow + insertedRows);
+
+        void WriteBlock(int row, int startColumn, int endColumn, string text)
+        {
+            WriteHeaderBlock(worksheet, row, startColumn, endColumn, string.Empty, text);
+            // Excel 不为合并单元格自动增高；按中英文宽度预留换行空间，保留长名称和精确阈值。
+            var width = Math.Max(1d, worksheet.Columns(startColumn, endColumn).Sum(column => column.Width) - 2d);
+            var textWidth = text.Sum(character => character > 127 ? 2d : 1d);
+            worksheet.Row(row).Height = Math.Max(worksheet.Row(row).Height, 15d * Math.Ceiling(textWidth / width));
+        }
+    }
+
+    /// <summary>
+    /// 写入客户模板的多行任务信息区。最后一组值会扩展到实际报表末列。
+    /// </summary>
+    private static void WriteTemplateHeader(IXLWorksheet worksheet, BizWeldTask task, int lastColumn)
+    {
+        var values = new CenterProductReportHeaderValues(
+            task.ProductNum,
+            task.DrawingNo,
+            task.Batch,
+            task.SN,
+            task.Spec,
+            task.ProductModel,
+            task.ProductName,
+            task.ProcessName,
+            task.ProcessNo,
+            task.StartAmount,
+            task.QualifiedQty,
+            task.StartTime,
+            task.EndTime,
+            task.UserNumber ?? string.Empty,
+            // 离线开工的员工姓名由现场录入；历史任务没有该字段时留空标签，不用工号顶替。
+            task.UserName ?? string.Empty,
+            task.ProgramName ?? string.Empty);
+        foreach (var block in CenterProductReportFormat.BuildTemplateHeaderBlocks(values, lastColumn))
+        {
+            WriteHeaderBlock(
+                worksheet,
+                block.Row,
+                block.StartColumn,
+                block.EndColumn,
+                block.Label,
+                block.Value);
+        }
+    }
+
+    /// <inheritdoc />
+    public bool ShouldUploadReportFile(BizWeldTask task)
+    {
+        lock (_dbLock)
+        {
+            _dbContext.InitDatabase();
+            var latestTask = ProductionReportFileRules.ResolveLatestTask(
+                task,
+                taskId => _dbContext.Db.Queryable<BizWeldTask>().InSingle(taskId));
+            var records = _dbContext.Db.Queryable<BizWeldPointRecord>()
+                .Where(record => record.TaskId == latestTask.Id)
+                .ToList();
+            var reportDetails = ResolveStationReportConfigs(latestTask, records)
+                .SelectMany(config => config.SchemeItems)
+                .Select(item => item.Detail);
+            return ReportFileUploadRules.ShouldUploadReportFile(reportDetails);
+        }
+    }
+
+    /// <summary>
+    /// 按客户模板合并整块公共字段，并在锚点单元格写入“标签 + 值”。
+    /// </summary>
+    private static void WriteHeaderBlock(
+        IXLWorksheet worksheet,
+        int row,
+        int startColumn,
+        int endColumn,
+        string label,
+        object? value)
+    {
+        var range = worksheet.Range(row, startColumn, row, Math.Max(startColumn, endColumn));
+        range.Merge();
+        range.FirstCell().Value = CenterProductReportFormat.BuildHeaderText(label, value);
+    }
+
+    /// <summary>
+    /// 写入第十一行明细表头。
+    /// </summary>
+    private static void WriteDetailHeader(IXLWorksheet worksheet, IReadOnlyList<ReportColumn> columns)
+    {
+        for (var columnIndex = 0; columnIndex < columns.Count; columnIndex++)
+        {
+            worksheet.Cell(DetailHeaderRow, columnIndex + 1).Value = columns[columnIndex].Title;
+        }
+    }
+
+    private IReadOnlyList<ReportOutputRow> BuildOutputRows(
+        ReportSchema schema,
+        IReadOnlyList<BizWeldPointRecord> records,
+        AppSettings settings,
+        BizWeldTask task)
+    {
+        var rows = new List<ReportOutputRow>();
+        if (!schema.LocalExport)
+            _ = ProgramContentJsonRules.NormalizeForProduction(task.ProgramContentSnapshot, settings.ProcessParameterDeviceType);
+        foreach (var group in records.GroupBy(BuildProductMergeKey, StringComparer.OrdinalIgnoreCase))
+        {
+            var representative = group.OrderBy(record => record.SequenceNo).ThenBy(record => record.Id).First();
+            var config = schema.ResolveConfig(representative.StationNo);
+            var schemeItems = schema.ResolveSchemeItems(representative.StationNo);
+            // 本地导出保留逐面原始记录：A/B 聚合会把四面并成两行并改写行结果，
+            // 后台查阅需要的是"数据是怎样就怎样"，聚合只用于上传给 MES 的报表。
+            // 试焊件是产品级人工标记：同一产品的全部焊点行由标记入口一起改写，
+            // 这里按组取值，个别行漏改也不会让同一产品出现半格“是”。
+            var productIsTest = group.Any(record => record.IsTest);
+            if (schema.LocalExport
+                || !WholePieceAbAggregationRules.IsApplicable(settings.ProcessParameterDeviceType, schema.TouchCount))
+            {
+                var standardProductResult = ResolveProductResult(group);
+                rows.AddRange(group.OrderBy(record => record.SequenceNo).ThenBy(record => record.Id)
+                    .Select(record => BuildStandardOutputRow(
+                        record,
+                        schemeItems,
+                        standardProductResult,
+                        productIsTest,
+                        schema.LocalExport)));
+                continue;
+            }
+
+            WholePieceProgramResultRules.ValidateScheme(
+                ProgramContentJsonRules.ReadLimits(task.ProgramContentSnapshot, settings.ProcessParameterDeviceType),
+                schemeItems.Select(item => (item.Detail, item.Item)));
+            // 以全部上报项判定，报表列仍按自身开关投影。
+            var definitions = schemeItems
+                .Where(item => SchemeDetailRoleRules.ShouldEvaluateProgramRole(item.Detail, SchemeDetailValueRole.Actual))
+                .Select(item => new WholePieceAbValueDefinition(
+                    item.Item.ItemId,
+                    item.Item.ItemName,
+                    BuildDynamicColumnKey(item.Item, ReportRoleActual),
+                    item.Item.ActualExpression))
+                .ToList();
+            var aggregation = WholePieceAbAggregationRules.Aggregate(
+                group,
+                definitions,
+                settings.EnablePlcStringNumericFormatting ?? true,
+                settings.PlcStringNumericFormatMode);
+            if (!aggregation.IsSuccess)
+            {
+                throw new InvalidOperationException(aggregation.ErrorMessage);
+            }
+
+            // 输出行与产品结果共用同一判定，不能回退历史记录的旧结果。
+            var outputRows = WholePieceProgramResultRules.IsApplicable(settings.ProcessParameterDeviceType)
+                ? WholePieceProgramResultRules.ApplyAggregatedRowResults(
+                    task.ProgramContentSnapshot,
+                    aggregation.Rows,
+                    definitions,
+                    settings.EffectiveJudgementDecimalPlaces,
+                    settings.PlcStringNumericFormatMode)
+                : aggregation.Rows;
+            foreach (var output in outputRows)
+            {
+                rows.Add(new ReportOutputRow(
+                    representative,
+                    output.SideNo,
+                    output.Result,
+                    output.Result,
+                    productIsTest,
+                    BuildAbReportValues(output, definitions)));
+            }
+        }
+
+        return rows
+            .OrderBy(row => row.Source.ProductNo, NaturalSortComparer.Instance)
+            .ThenBy(row => row.Source.StationNo)
+            .ThenBy(row => row.Source.SequenceNo)
+            .ThenBy(row => row.PointNo, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
+    /// 宽度只有 A 行有值。报表 B 行显示斜杠，避免空单元格被误读成“没有采集到”。
+    /// 斜杠只是报表展示，聚合结果与 MES 上传仍保持空值。
+    /// </summary>
+    private static Dictionary<string, string> BuildAbReportValues(
+        WholePieceAbOutputRow output,
+        IReadOnlyList<WholePieceAbValueDefinition> definitions)
+    {
+        var values = new Dictionary<string, string>(output.Values, StringComparer.OrdinalIgnoreCase);
+        if (!string.Equals(
+                output.SideNo?.Trim(),
+                WholePieceMergedDisplayRules.SideBSuffix,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return values;
+        }
+
+        foreach (var definition in definitions.Where(item => WholePieceAbAggregationRules.IsSideAOnlyItem(item.ItemName)))
+        {
+            values[definition.OutputKey] = SideNotApplicableText;
+        }
+
+        return values;
+    }
+
+    private static ReportOutputRow BuildStandardOutputRow(
+        BizWeldPointRecord record,
+        IReadOnlyList<SchemeReportItem> schemeItems,
+        string productResult,
+        bool productIsTest,
+        bool localExport)
+    {
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        AddSchemeDynamicValues(values, ParseRawData(record.RawDataJson), schemeItems, localExport);
+        return new ReportOutputRow(
+            record,
+            string.IsNullOrWhiteSpace(record.TouchNo) ? record.SequenceNo.ToString() : record.TouchNo,
+            record.TestResult,
+            productResult,
+            productIsTest,
+            values);
+    }
+
+    /// <summary>
+    /// 写入明细数据行。<paramref name="numericFormat"/> 只作用于测试项动态列，
+    /// 工位、产品编号、面号和结果等固定列不参与格式化。
+    /// </summary>
+    private void WriteDataRows(
+        IXLWorksheet worksheet,
+        ReportSchema schema,
+        IReadOnlyList<ReportColumn> detailColumns,
+        IReadOnlyList<ReportOutputRow> rows,
+        StationDisplayNames stationNames,
+        OutputNumericFormat numericFormat)
+    {
+        for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+        {
+            var output = rows[rowIndex];
+            var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                [ColumnStationNo] = ResolveStationDisplayName(output.Source.StationNo, stationNames),
+                [ColumnProductNo] = output.Source.ProductNo,
+                [ColumnProductResult] = output.ProductResult,
+                [ColumnIsTest] = CenterProductReportFormat.FormatIsTest(output.IsTest),
+                [ColumnTouchNo] = output.PointNo,
+                [ColumnTouchResult] = output.PointResult
+            };
+            foreach (var pair in output.DynamicValues)
+            {
+                row[pair.Key] = numericFormat.Apply(pair.Value);
+            }
+
+            for (var columnIndex = 0; columnIndex < detailColumns.Count; columnIndex++)
+            {
+                var column = detailColumns[columnIndex];
+                worksheet.Cell(rowIndex + DetailFirstDataRow, columnIndex + 1).Value = row.TryGetValue(column.Key, out var value)
+                    ? value
+                    : string.Empty;
+            }
+        }
+    }
+
+    private static void MergeRepeatedProductFields(
+        IXLWorksheet worksheet,
+        IReadOnlyList<ReportColumn> columns,
+        IReadOnlyList<ReportOutputRow> rows)
+    {
+        if (rows.Count <= 1)
+        {
+            return;
+        }
+
+        var mergeColumns = columns
+            .Select((column, index) => new { Column = column, Index = index + 1 })
+            .Where(item => item.Column.MergeByProduct)
+            .Select(item => item.Index)
+            .ToArray();
+        var groupStartRow = DetailFirstDataRow;
+        var currentKey = BuildProductMergeKey(rows[0].Source);
+        for (var rowIndex = 1; rowIndex < rows.Count; rowIndex++)
+        {
+            var key = BuildProductMergeKey(rows[rowIndex].Source);
+            if (!string.Equals(currentKey, key, StringComparison.OrdinalIgnoreCase))
+            {
+                MergeProductColumns(worksheet, groupStartRow, rowIndex + DetailHeaderRow, mergeColumns);
+                groupStartRow = rowIndex + DetailFirstDataRow;
+                currentKey = key;
+            }
+        }
+
+        MergeProductColumns(worksheet, groupStartRow, rows.Count + DetailHeaderRow, mergeColumns);
+    }
+
+    private static void ApplyWorksheetStyle(
+        IXLWorksheet worksheet,
+        int detailColumnCount,
+        int dataRowCount,
+        int templateColumnCount)
+    {
+        var templateRange = worksheet.Range(1, 1, CenterProductReportFormat.TemplateLastRow, templateColumnCount);
+        templateRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        templateRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
+        templateRange.Style.Alignment.WrapText = false;
+        templateRange.Style.Alignment.ShrinkToFit = true;
+
+        if (detailColumnCount <= 0)
+        {
+            ApplyTemplateDimensions(worksheet, templateColumnCount);
+            return;
+        }
+
+        var lastRow = Math.Max(DetailHeaderRow, dataRowCount + DetailHeaderRow);
+        var usedRange = worksheet.Range(DetailHeaderRow, 1, lastRow, detailColumnCount);
+        usedRange.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+        usedRange.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+        usedRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        usedRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        usedRange.Style.Alignment.WrapText = true;
+
+        var headerRange = worksheet.Range(DetailHeaderRow, 1, DetailHeaderRow, detailColumnCount);
+        worksheet.Row(DetailHeaderRow).Height = 27d;
+        headerRange.Style.Font.Bold = true;
+        headerRange.Style.Fill.BackgroundColor = XLColor.FromHtml("#D9E2F3");
+        worksheet.SheetView.FreezeRows(DetailHeaderRow);
+        worksheet.Columns(1, detailColumnCount).AdjustToContents();
+        ApplyTemplateDimensions(worksheet, templateColumnCount);
+    }
+
+    /// <summary>
+    /// 固定客户模板的标签和值列宽，避免中文标签被压成纵向多行。
+    /// A:J 使用客户模板原始列宽；动态列超过 J 时为新增列设置可读宽度。
+    /// </summary>
+    private static void ApplyTemplateDimensions(IXLWorksheet worksheet, int templateColumnCount)
+    {
+        for (var columnIndex = 1; columnIndex <= templateColumnCount; columnIndex++)
+        {
+            var column = worksheet.Column(columnIndex);
+            column.Width = CenterProductReportFormat.ResolveTemplateColumnWidth(columnIndex, column.Width);
+        }
+    }
+
+    private static void MergeRepeatedProductFields(
+        IXLWorksheet worksheet,
+        IReadOnlyList<ReportColumn> columns,
+        IReadOnlyList<BizWeldPointRecord> records)
+    {
+        if (records.Count <= 1)
+        {
+            return;
+        }
+
+        var mergeColumns = columns
+            .Select((column, index) => new { Column = column, Index = index + 1 })
+            .Where(item => item.Column.MergeByProduct)
+            .Select(item => item.Index)
+            .ToArray();
+
+        var groupStartRow = DetailFirstDataRow;
+        var currentKey = BuildProductMergeKey(records[0]);
+        for (var recordIndex = 1; recordIndex < records.Count; recordIndex++)
+        {
+            var key = BuildProductMergeKey(records[recordIndex]);
+            if (!string.Equals(currentKey, key, StringComparison.OrdinalIgnoreCase))
+            {
+                MergeProductColumns(worksheet, groupStartRow, recordIndex + DetailHeaderRow, mergeColumns);
+                groupStartRow = recordIndex + DetailFirstDataRow;
+                currentKey = key;
+            }
+        }
+
+        MergeProductColumns(worksheet, groupStartRow, records.Count + DetailHeaderRow, mergeColumns);
+    }
+
+    private static void MergeProductColumns(IXLWorksheet worksheet, int startRow, int endRow, IReadOnlyList<int> columns)
+    {
+        if (endRow <= startRow)
+        {
+            return;
+        }
+
+        foreach (var column in columns)
+        {
+            var range = worksheet.Range(startRow, column, endRow, column);
+            var distinctValues = range.Cells()
+                .Select(cell => cell.GetString())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count();
+            if (distinctValues <= 1)
+            {
+                range.Merge();
+                range.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+                range.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            }
+        }
+    }
+
+    private static string BuildProductMergeKey(BizWeldPointRecord record)
+    {
+        return $"{record.StationNo}\u001F{record.ProductNo}";
+    }
+
+    private static IReadOnlyDictionary<string, ProductReportContext> BuildProductContexts(IReadOnlyList<BizWeldPointRecord> records)
+    {
+        return records
+            .GroupBy(BuildProductMergeKey, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => new ProductReportContext(
+                    ResolveProductResult(group)),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static ProductReportContext ResolveProductContext(
+        BizWeldPointRecord record,
+        IReadOnlyDictionary<string, ProductReportContext> contexts)
+    {
+        return contexts.TryGetValue(BuildProductMergeKey(record), out var context)
+            ? context
+            : new ProductReportContext(ResolveProductResult([record]));
+    }
+
+    /// <summary>
+    /// 产品结果优先读取采集时已固化的产品级字段；旧记录为空时回退 RawDataJson.product_result。
+    /// PLC读取模式不根据焊点 TestResult 重新推算产品结果；程序计算模式已在采集时写入该字段。
+    /// </summary>
+    private static string ResolveProductResult(IEnumerable<BizWeldPointRecord> records)
+    {
+        var recordList = records.ToList();
+        var persistedResult = recordList
+            .Select(record => record.ProductResult)
+            .FirstOrDefault(result => !string.IsNullOrWhiteSpace(result));
+        if (!string.IsNullOrWhiteSpace(persistedResult))
+        {
+            return TestResultRules.Normalize(persistedResult);
+        }
+
+        foreach (var record in recordList)
+        {
+            var rawProductResult = GetRawValue(ParseRawData(record.RawDataJson), ColumnProductResult);
+            if (!string.IsNullOrWhiteSpace(rawProductResult))
+            {
+                return TestResultRules.Normalize(rawProductResult);
+            }
+        }
+
+        return ProductionConstants.TestResults.Unknown;
+    }
+
+    private Dictionary<string, string> BuildRow(
+        BizWeldPointRecord record,
+        ProductReportContext productContext,
+        ReportSchema schema,
+        StationDisplayNames stationNames)
+    {
+        var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [ColumnStationNo] = ResolveStationDisplayName(record.StationNo, stationNames),
+            [ColumnProductNo] = record.ProductNo,
+            [ColumnProductResult] = productContext.ProductResult,
+            [ColumnTouchNo] = string.IsNullOrWhiteSpace(record.TouchNo) ? record.SequenceNo.ToString() : record.TouchNo,
+            [ColumnTouchResult] = record.TestResult
+        };
+
+        AddDynamicValues(row, record, schema);
+        return row;
+    }
+
+    private static string ResolveStationDisplayName(int stationNo, StationDisplayNames stationNames)
+    {
+        return stationNo == 2
+            ? stationNames.Station2
+            : stationNames.Station1;
+    }
+
+    private void AddDynamicValues(Dictionary<string, string> row, BizWeldPointRecord record, ReportSchema schema)
+    {
+        var rawValues = ParseRawData(record.RawDataJson);
+        AddSchemeDynamicValues(row, rawValues, schema.ResolveSchemeItems(record.StationNo), schema.LocalExport);
+    }
+
+    private static void AddSchemeDynamicValues(
+        Dictionary<string, string> row,
+        IReadOnlyDictionary<string, string> rawValues,
+        IReadOnlyList<SchemeReportItem> schemeItems,
+        bool localExport)
+    {
+        foreach (var schemeItem in schemeItems)
+        {
+            var item = schemeItem.Item;
+            var detail = schemeItem.Detail;
+            var itemKey = ResolveItemKey(item);
+            if (ShouldOutputRole(detail, SchemeDetailValueRole.Actual, localExport))
+            {
+                TryAddDynamicValue(row, BuildDynamicColumnKey(item, ReportRoleActual), GetRawValue(rawValues, item.ItemName, itemKey) ?? string.Empty);
+            }
+
+            if (ShouldOutputRole(detail, SchemeDetailValueRole.Upper, localExport))
+            {
+                TryAddDynamicValue(row, BuildDynamicColumnKey(item, ReportRoleUpper), GetRawValue(rawValues, $"{item.ItemName}上限", $"{itemKey}_upper"));
+            }
+
+            if (ShouldOutputRole(detail, SchemeDetailValueRole.Lower, localExport))
+            {
+                TryAddDynamicValue(row, BuildDynamicColumnKey(item, ReportRoleLower), GetRawValue(rawValues, $"{item.ItemName}下限", $"{itemKey}_lower"));
+            }
+
+            if (ShouldOutputRole(detail, SchemeDetailValueRole.Result, localExport))
+            {
+                TryAddDynamicValue(row, BuildDynamicColumnKey(item, ReportRoleResult), GetRawValue(rawValues, $"{item.ItemName}结果", $"{itemKey}_result"));
+            }
+        }
+    }
+
+    private IReadOnlyList<SchemeReportItem> GetSchemeItemsForConfig(BizProductProcessConfig? config, bool localExport)
+    {
+        if (config is null)
+        {
+            return Array.Empty<SchemeReportItem>();
+        }
+
+        var details = _dbContext.Db.Queryable<BizSchemeDetail>()
+            .Where(detail => detail.SchemeId == config.SchemeId)
+            .ToList();
+        if (details.Count == 0)
+        {
+            return Array.Empty<SchemeReportItem>();
+        }
+
+        var itemIds = details.Select(detail => detail.ItemId).Distinct().ToList();
+        var items = _dbContext.Db.Queryable<DimTestItem>()
+            .Where(item => itemIds.Contains(item.ItemId))
+            .ToList();
+
+        var strictWholePiece = !localExport && WholePieceProgramResultRules.IsApplicable(CurrentSettings.ProcessParameterDeviceType);
+        return details
+            .OrderBy(detail => detail.DetailId)
+            .Select(detail => new
+            {
+                Item = items.FirstOrDefault(item => item.ItemId == detail.ItemId)
+                    ?? (strictWholePiece ? throw new InvalidOperationException($"测试方案中的测试项 ID {detail.ItemId} 不存在。") : null),
+                Detail = detail
+            })
+            .Where(item => item.Item is not null)
+            .Select(item =>
+            {
+                if (!strictWholePiece) SchemeDetailRoleRules.ClearUnavailableRoles(item.Detail, item.Item!);
+                return item;
+            })
+            .Where(item => HasAnyEnabledRole(item.Detail, localExport)
+                || (strictWholePiece && SchemeDetailRoleRules.AllRoles.Any(role => SchemeDetailRoleRules.IsUploadEnabled(item.Detail, role))))
+            .Select(item => new SchemeReportItem(item.Item!, item.Detail))
+            .ToList();
+    }
+
+    /// <summary>
+    /// 根据任务实际产生记录的工位选择各自配置；无记录时才回退任务工位。
+    /// </summary>
+    private IReadOnlyList<ResolvedStationReportConfig> ResolveStationReportConfigs(
+        BizWeldTask task,
+        IReadOnlyList<BizWeldPointRecord> records,
+        bool localExport = false)
+    {
+        var schemeItemsBySchemeId = new Dictionary<string, IReadOnlyList<SchemeReportItem>>(StringComparer.OrdinalIgnoreCase);
+        var resolved = new List<ResolvedStationReportConfig>();
+        foreach (var stationNo in ResolveReportStationNumbers(task, records))
+        {
+            var config = _productProcessConfigService.FindActiveForTask(task, stationNo);
+            if (config is null)
+            {
+                continue;
+            }
+
+            if (!schemeItemsBySchemeId.TryGetValue(config.SchemeId, out var schemeItems))
+            {
+                schemeItems = GetSchemeItemsForConfig(config, localExport);
+                schemeItemsBySchemeId[config.SchemeId] = schemeItems;
+            }
+
+            resolved.Add(new ResolvedStationReportConfig(stationNo, config, schemeItems));
+        }
+
+        return resolved;
+    }
+
+    private static IReadOnlyList<int> ResolveReportStationNumbers(
+        BizWeldTask task,
+        IReadOnlyList<BizWeldPointRecord> records)
+    {
+        var stationNumbers = records
+            .Select(record => NormalizeStationNo(record.StationNo))
+            .Distinct()
+            .OrderBy(stationNo => stationNo)
+            .ToList();
+        return stationNumbers.Count > 0
+            ? stationNumbers
+            : [NormalizeStationNo(task.StationNo)];
+    }
+
+    private static int NormalizeStationNo(int stationNo)
+        => stationNo <= ProductionConstants.Stations.SharedStationNo
+            ? ProductionConstants.Stations.DefaultStationNo
+            : stationNo;
+
+    /// <summary>
+    /// 同一设备同一任务只能使用一组采集点标题，冲突时拒绝生成，避免静默错标。
+    /// </summary>
+    private static ReportDisplayOptions ResolveCompatibleDisplayOptions(
+        IReadOnlyList<ResolvedStationReportConfig> stationConfigs,
+        bool wholePieceInspection,
+        bool ignorePointResultHeader = false)
+    {
+        if (stationConfigs.Count == 0)
+        {
+            return ReportDisplayOptions.FromConfig(null, wholePieceInspection);
+        }
+
+        // 本地检测导出已没有固定结果列，不能再因该列的自定义名称不同阻止导出；面号仍须一致。
+        var options = stationConfigs
+            .Select(config => ReportDisplayOptions.FromConfig(config.Config, wholePieceInspection))
+            .Select(option => ignorePointResultHeader ? option with { PointResultHeader = string.Empty } : option)
+            .Distinct()
+            .ToList();
+        if (options.Count > 1)
+        {
+            var stations = string.Join(", ", stationConfigs.Select(config => config.StationNo));
+            throw new InvalidOperationException($"同一任务的工位采集点表头不一致，无法安全生成报表。工位：{stations}。");
+        }
+
+        return options[0];
+    }
+
+    private static IEnumerable<ReportColumn> BuildLeadingColumns(ReportDisplayOptions displayOptions)
+    {
+        yield return new ReportColumn(ColumnStationNo, HeaderStationNo, MergeByProduct: true);
+        yield return new ReportColumn(ColumnProductNo, HeaderProductNo, MergeByProduct: true);
+        yield return new ReportColumn(ColumnTouchNo, displayOptions.PointNoHeader, MergeByProduct: false);
+    }
+
+    private static IEnumerable<ReportColumn> BuildPointResultColumn(ReportDisplayOptions displayOptions)
+    {
+        yield return new ReportColumn(ColumnTouchResult, displayOptions.PointResultHeader, MergeByProduct: false);
+    }
+
+    /// <summary>
+    /// 明细区尾列。试焊件排在产品结果之后，两者都是产品级值，按产品跨行合并。
+    /// </summary>
+    private static IEnumerable<ReportColumn> BuildTrailingColumns(bool includeIsTest)
+    {
+        yield return new ReportColumn(ColumnProductResult, HeaderProductResult, MergeByProduct: true);
+        if (includeIsTest)
+        {
+            yield return new ReportColumn(ColumnIsTest, HeaderIsTest, MergeByProduct: true);
+        }
+    }
+
+    /// <summary>
+    /// 单工位模式完全移除工位列；双工位模式保留并使用配置显示名称。
+    /// </summary>
+    private static IReadOnlyList<ReportColumn> ResolveDetailColumns(
+        IReadOnlyList<ReportColumn> columns,
+        bool enableDualStation)
+    {
+        return columns
+            .Where(column => enableDualStation
+                || !string.Equals(column.Key, ColumnStationNo, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    private static IEnumerable<ReportColumn> BuildItemColumns(SchemeReportItem schemeItem)
+        => BuildItemColumnsForMode(schemeItem, wholePieceAb: false, localExport: false);
+
+    private static IEnumerable<ReportColumn> BuildItemColumnsForMode(
+        SchemeReportItem schemeItem,
+        bool wholePieceAb,
+        bool localExport)
+    {
+        var item = schemeItem.Item;
+        var detail = schemeItem.Detail;
+
+        if (ShouldOutputRole(detail, SchemeDetailValueRole.Actual, localExport))
+        {
+            yield return new ReportColumn(
+                BuildDynamicColumnKey(item, ReportRoleActual),
+                TestItemUnitFormatRules.FormatHeader(SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Actual), item.Unit, SchemeDetailValueRole.Actual),
+                // 只有高度是 A/B 两行同值，可以按产品跨行合并；宽度 B 行为空要单独显示，不能合并。
+                MergeByProduct: wholePieceAb && WholePieceAbAggregationRules.IsFourSideMaximumItem(item.ItemName));
+        }
+
+        if (wholePieceAb)
+        {
+            yield break;
+        }
+
+        if (ShouldOutputRole(detail, SchemeDetailValueRole.Upper, localExport))
+        {
+            yield return new ReportColumn(
+                BuildDynamicColumnKey(item, ReportRoleUpper),
+                TestItemUnitFormatRules.FormatHeader(SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Upper), item.Unit, SchemeDetailValueRole.Upper),
+                MergeByProduct: false);
+        }
+
+        if (ShouldOutputRole(detail, SchemeDetailValueRole.Lower, localExport))
+        {
+            yield return new ReportColumn(
+                BuildDynamicColumnKey(item, ReportRoleLower),
+                TestItemUnitFormatRules.FormatHeader(SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Lower), item.Unit, SchemeDetailValueRole.Lower),
+                MergeByProduct: false);
+        }
+
+        if (ShouldOutputRole(detail, SchemeDetailValueRole.Result, localExport))
+        {
+            yield return new ReportColumn(
+                BuildDynamicColumnKey(item, ReportRoleResult),
+                TestItemUnitFormatRules.FormatHeader(SchemeDetailRoleRules.ResolveHeader(detail, item, SchemeDetailValueRole.Result), item.Unit, SchemeDetailValueRole.Result),
+                MergeByProduct: false);
+        }
+    }
+
+    private static string BuildDynamicColumnKey(DimTestItem item, string role)
+        => $"{ResolveItemKey(item)}_{role}";
+
+    private static string NormalizeDisplayText(string? value, string fallback)
+    {
+        var normalizedValue = value?.Trim();
+        return string.IsNullOrWhiteSpace(normalizedValue)
+            ? fallback
+            : normalizedValue;
+    }
+
+    private static void TryAddDynamicValue(Dictionary<string, string> row, string header, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(header) || row.ContainsKey(header))
+        {
+            return;
+        }
+
+        row[header] = value ?? string.Empty;
+    }
+
+    private static string? GetRawValue(IReadOnlyDictionary<string, string> rawValues, params string?[] keys)
+    {
+        foreach (var key in keys)
+        {
+            if (!string.IsNullOrWhiteSpace(key) && rawValues.TryGetValue(key, out var value))
+            {
+                return value;
+            }
+        }
+
+        return null;
+    }
+
+    private static string ResolveItemKey(DimTestItem item)
+    {
+        return item.ItemName.Trim() switch
+        {
+            "峰值电流" => "max_electric",
+            "峰值电压" => "max_voltage",
+            "有效功率" => "valid_power",
+            "位移" => "displacement",
+            "焊接时间" => "weld_ts",
+            var name when !string.IsNullOrWhiteSpace(name) => $"item_{item.ItemId}",
+            _ => $"item_{item.ItemId}"
+        };
+    }
+
+    private static Dictionary<string, string> ParseRawData(string? rawDataJson)
+    {
+        if (string.IsNullOrWhiteSpace(rawDataJson))
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(rawDataJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            return document.RootElement.EnumerateObject()
+                .ToDictionary(
+                    property => property.Name,
+                    property => property.Value.ToString(),
+                    StringComparer.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private string GetReportDirectory(BizWeldTask task)
+    {
+        var dataDirectory = CurrentSettings.DataDirectory;
+        var baseDirectory = string.IsNullOrWhiteSpace(dataDirectory)
+            ? Path.Combine(AppContext.BaseDirectory, "Data")
+            : dataDirectory.Trim();
+
+        return Path.Combine(baseDirectory, "Reports", SanitizePathPart(task.SN), DateTime.Now.ToString("yyyyMMdd"));
+    }
+
+    private static string BuildFileName(BizWeldTask task, int sequenceNo)
+    {
+        return string.Join(
+            "_",
+            SanitizePathPart(task.DeviceId),
+            SanitizePathPart(task.SN),
+            SanitizePathPart(task.ProcessNo),
+            ProductionConstants.ReportFileCodes.Spreadsheet,
+            sequenceNo.ToString("D3")) + ".xlsx";
+    }
+
+    private static string SanitizePathPart(string? value)
+    {
+        var normalized = string.IsNullOrWhiteSpace(value) ? "NA" : value.Trim();
+        return Regex.Replace(normalized, @"[\\/:*?""<>|]+", "-");
+    }
+
+    /// <summary>
+    /// 判断角色是否输出到当前报表出口。
+    /// 上传给 MES 的报表只认「写入报表」；数据管理页的本地导出还要覆盖「本地保存」，
+    /// 保证导出文件包含历史记录中看到的全部动态列。
+    /// </summary>
+    private static bool ShouldOutputRole(BizSchemeDetail detail, SchemeDetailValueRole role, bool localExport)
+    {
+        return SchemeDetailRoleRules.ShouldWriteReportRole(detail, role)
+            || (localExport && SchemeDetailRoleRules.ShouldShowHistoryRole(detail, role));
+    }
+
+    private static bool HasAnyEnabledRole(BizSchemeDetail detail, bool localExport)
+    {
+        return SchemeDetailRoleRules.AllRoles.Any(role => ShouldOutputRole(detail, role, localExport));
+    }
+
+    private sealed record ProductReportContext(string ProductResult);
+
+    private sealed record ReportSchema
+    {
+        public ReportSchema(
+            IReadOnlyList<ReportColumn> columns,
+            IReadOnlyList<SchemeReportItem> schemeItems,
+            ReportDisplayOptions displayOptions,
+            bool localExport = false)
+            : this(
+                columns,
+                new Dictionary<int, IReadOnlyList<SchemeReportItem>>
+                {
+                    [ProductionConstants.Stations.SharedStationNo] = schemeItems
+                },
+                new Dictionary<int, BizProductProcessConfig>(),
+                displayOptions,
+                0,
+                localExport)
+        {
+        }
+
+        public ReportSchema(
+            IReadOnlyList<ReportColumn> columns,
+            IReadOnlyDictionary<int, IReadOnlyList<SchemeReportItem>> stationSchemeItems,
+            IReadOnlyDictionary<int, BizProductProcessConfig> stationConfigs,
+            ReportDisplayOptions displayOptions,
+            int touchCount,
+            bool localExport = false)
+        {
+            Columns = columns;
+            StationSchemeItems = stationSchemeItems;
+            StationConfigs = stationConfigs;
+            DisplayOptions = displayOptions;
+            TouchCount = touchCount;
+            LocalExport = localExport;
+        }
+
+        public IReadOnlyList<ReportColumn> Columns { get; }
+
+        /// <summary>
+        /// 是否为数据管理页本地导出。取值端据此与列定义保持同一取列口径。
+        /// </summary>
+        public bool LocalExport { get; }
+
+        public int TouchCount { get; }
+
+        public IReadOnlyDictionary<int, IReadOnlyList<SchemeReportItem>> StationSchemeItems { get; }
+
+        public IReadOnlyDictionary<int, BizProductProcessConfig> StationConfigs { get; }
+
+        public ReportDisplayOptions DisplayOptions { get; }
+
+        public BizProductProcessConfig? ResolveConfig(int stationNo)
+        {
+            var normalizedStationNo = NormalizeStationNo(stationNo);
+            if (StationConfigs.TryGetValue(normalizedStationNo, out var config))
+            {
+                return config;
+            }
+
+            return StationConfigs.TryGetValue(ProductionConstants.Stations.SharedStationNo, out var sharedConfig)
+                ? sharedConfig
+                : null;
+        }
+
+        public IReadOnlyList<SchemeReportItem> ResolveSchemeItems(int stationNo)
+        {
+            var normalizedStationNo = NormalizeStationNo(stationNo);
+            if (StationSchemeItems.TryGetValue(normalizedStationNo, out var stationItems))
+            {
+                return stationItems;
+            }
+
+            return StationSchemeItems.TryGetValue(ProductionConstants.Stations.SharedStationNo, out var sharedItems)
+                ? sharedItems
+                : [];
+        }
+    }
+
+    private sealed record ReportColumn(string Key, string Title, bool MergeByProduct);
+
+    private sealed record ReportDisplayOptions(string PointNoHeader, string PointResultHeader)
+    {
+        public static ReportDisplayOptions FromConfig(BizProductProcessConfig? config, bool wholePieceInspection)
+        {
+            if (config is null)
+            {
+                return wholePieceInspection
+                    ? new ReportDisplayOptions("检测面", "检测结果")
+                    : new ReportDisplayOptions(HeaderTouchNo, HeaderTouchResult);
+            }
+
+            return new ReportDisplayOptions(
+                CenterProductReportFormat.ResolvePointNoTitle(config.PointNoHeader, wholePieceInspection),
+                CenterProductReportFormat.ResolvePointResultTitle(config.PointResultHeader, wholePieceInspection));
+        }
+    }
+
+    private sealed record SchemeReportItem(DimTestItem Item, BizSchemeDetail Detail);
+
+    private sealed record ReportOutputRow(
+        BizWeldPointRecord Source,
+        string PointNo,
+        string PointResult,
+        string ProductResult,
+        bool IsTest,
+        IReadOnlyDictionary<string, string> DynamicValues);
+
+    private sealed record ResolvedStationReportConfig(
+        int StationNo,
+        BizProductProcessConfig Config,
+        IReadOnlyList<SchemeReportItem> SchemeItems);
+
+    private AppSettings CurrentSettings => Volatile.Read(ref _currentSettings);
+
+    private void SettingsService_SettingsChanged(object? sender, AppSettingsChangedEventArgs e)
+    {
+        Interlocked.Exchange(ref _currentSettings, e.CurrentSettings);
+    }
+}

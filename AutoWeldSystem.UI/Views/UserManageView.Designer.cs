@@ -24,7 +24,7 @@ namespace AutoWeldSystem.UI.Views
             btnDeleteUser = new AntdUI.Button();
             btnSetRole = new AntdUI.Button();
             btnResetPassword = new AntdUI.Button();
-            queryUsers = new AutoWeldSystem.UI.Components.InputQuery(components);
+            queryUsers = new AutoWeldSystem.UI.Controls.InputQuery(components);
             dgvUsers = new DataGridView();
             tabControl = new TabControl();
             tabPage1 = new TabPage();
@@ -36,13 +36,13 @@ namespace AutoWeldSystem.UI.Views
             btnEditRole = new AntdUI.Button();
             btnDeleteRole = new AntdUI.Button();
             btnRefreshRoles = new AntdUI.Button();
-            queryRoles = new AutoWeldSystem.UI.Components.InputQuery(components);
+            queryRoles = new AutoWeldSystem.UI.Controls.InputQuery(components);
             btnSavePermissions = new AntdUI.Button();
             splitRoleContent = new SplitContainer();
             dgvRoles = new DataGridView();
             permissionLayout = new TableLayoutPanel();
             lblSelectedRole = new Label();
-            tvPermissions = new TreeView();
+            tvPermissions = new AntdUI.Tree();
             lblPermissionHint = new Label();
             userLayout.SuspendLayout();
             userToolbarLayout.SuspendLayout();
@@ -180,14 +180,12 @@ namespace AutoWeldSystem.UI.Views
             queryUsers.AutoSize = true;
             queryUsers.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             queryUsers.Dock = DockStyle.Right;
-            queryUsers.IsShowQueryButton = false;
-            queryUsers.IsShowRefreshButton = false;
-            queryUsers.Location = new Point(1157, 0);
+            queryUsers.Location = new Point(989, 0);
             queryUsers.Margin = new Padding(0);
             queryUsers.MinimumSize = new Size(125, 46);
             queryUsers.Name = "queryUsers";
             queryUsers.QueryChanged = null;
-            queryUsers.Size = new Size(155, 53);
+            queryUsers.Size = new Size(323, 53);
             queryUsers.TabIndex = 1;
             // 
             // dgvUsers
@@ -235,10 +233,10 @@ namespace AutoWeldSystem.UI.Views
             // pageRole
             // 
             pageRole.Controls.Add(roleLayout);
-            pageRole.Location = new Point(4, 32);
+            pageRole.Location = new Point(4, 29);
             pageRole.Name = "pageRole";
             pageRole.Padding = new Padding(3);
-            pageRole.Size = new Size(1358, 709);
+            pageRole.Size = new Size(1358, 712);
             pageRole.TabIndex = 1;
             pageRole.Text = "角色权限";
             pageRole.UseVisualStyleBackColor = true;
@@ -256,7 +254,7 @@ namespace AutoWeldSystem.UI.Views
             roleLayout.RowCount = 2;
             roleLayout.RowStyles.Add(new RowStyle());
             roleLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            roleLayout.Size = new Size(1352, 703);
+            roleLayout.Size = new Size(1352, 706);
             roleLayout.TabIndex = 0;
             // 
             // roleToolbarLayout
@@ -341,6 +339,7 @@ namespace AutoWeldSystem.UI.Views
             btnRefreshRoles.Name = "btnRefreshRoles";
             btnRefreshRoles.Size = new Size(89, 44);
             btnRefreshRoles.TabIndex = 3;
+            btnRefreshRoles.Tag = "perm:button.role.refresh:visible";
             btnRefreshRoles.Text = "刷新";
             // 
             // queryRoles
@@ -348,14 +347,12 @@ namespace AutoWeldSystem.UI.Views
             queryRoles.AutoSize = true;
             queryRoles.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             queryRoles.Dock = DockStyle.Right;
-            queryRoles.IsShowQueryButton = false;
-            queryRoles.IsShowRefreshButton = false;
-            queryRoles.Location = new Point(1069, 0);
+            queryRoles.Location = new Point(901, 0);
             queryRoles.Margin = new Padding(0);
             queryRoles.MinimumSize = new Size(125, 46);
             queryRoles.Name = "queryRoles";
             queryRoles.QueryChanged = null;
-            queryRoles.Size = new Size(155, 53);
+            queryRoles.Size = new Size(323, 53);
             queryRoles.TabIndex = 1;
             // 
             // btnSavePermissions
@@ -386,7 +383,7 @@ namespace AutoWeldSystem.UI.Views
             // 
             splitRoleContent.Panel2.Controls.Add(permissionLayout);
             splitRoleContent.Panel2.Padding = new Padding(15, 0, 0, 0);
-            splitRoleContent.Size = new Size(1312, 600);
+            splitRoleContent.Size = new Size(1312, 603);
             splitRoleContent.SplitterDistance = 656;
             splitRoleContent.SplitterWidth = 5;
             splitRoleContent.TabIndex = 1;
@@ -407,7 +404,7 @@ namespace AutoWeldSystem.UI.Views
             dgvRoles.RowHeadersWidth = 51;
             dgvRoles.RowTemplate.Height = 25;
             dgvRoles.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgvRoles.Size = new Size(641, 600);
+            dgvRoles.Size = new Size(641, 603);
             dgvRoles.TabIndex = 0;
             // 
             // permissionLayout
@@ -425,7 +422,7 @@ namespace AutoWeldSystem.UI.Views
             permissionLayout.RowStyles.Add(new RowStyle());
             permissionLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             permissionLayout.RowStyles.Add(new RowStyle());
-            permissionLayout.Size = new Size(636, 600);
+            permissionLayout.Size = new Size(636, 603);
             permissionLayout.TabIndex = 0;
             // 
             // lblSelectedRole
@@ -442,12 +439,13 @@ namespace AutoWeldSystem.UI.Views
             // 
             // tvPermissions
             // 
-            tvPermissions.CheckBoxes = true;
+            tvPermissions.Checkable = true;
+            tvPermissions.CheckStrictly = false;
             tvPermissions.Dock = DockStyle.Fill;
             tvPermissions.Location = new Point(0, 39);
             tvPermissions.Margin = new Padding(0);
             tvPermissions.Name = "tvPermissions";
-            tvPermissions.Size = new Size(636, 528);
+            tvPermissions.Size = new Size(636, 531);
             tvPermissions.TabIndex = 1;
             // 
             // lblPermissionHint
@@ -455,7 +453,7 @@ namespace AutoWeldSystem.UI.Views
             lblPermissionHint.AutoSize = true;
             lblPermissionHint.Dock = DockStyle.Fill;
             lblPermissionHint.ForeColor = SystemColors.GrayText;
-            lblPermissionHint.Location = new Point(0, 576);
+            lblPermissionHint.Location = new Point(0, 579);
             lblPermissionHint.Margin = new Padding(0, 9, 0, 0);
             lblPermissionHint.Name = "lblPermissionHint";
             lblPermissionHint.Size = new Size(636, 24);
@@ -464,8 +462,8 @@ namespace AutoWeldSystem.UI.Views
             // 
             // UserManageView
             // 
-            AutoScaleDimensions = new SizeF(10F, 23F);
-            AutoScaleMode = AutoScaleMode.Font;
+            AutoScaleDimensions = new SizeF(120F, 120F);
+            AutoScaleMode = AutoScaleMode.Dpi;
             Controls.Add(tabControl);
             Font = new Font("Microsoft YaHei UI", 10.5F);
             Margin = new Padding(4, 3, 4, 3);
@@ -502,7 +500,7 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Button btnDeleteUser;
         private AntdUI.Button btnSetRole;
         private AntdUI.Button btnResetPassword;
-        private Components.InputQuery queryUsers;
+        private Controls.InputQuery queryUsers;
         private DataGridView dgvUsers;
         private TabControl tabControl;
         private TabPage tabPage1;
@@ -514,13 +512,13 @@ namespace AutoWeldSystem.UI.Views
         private AntdUI.Button btnEditRole;
         private AntdUI.Button btnDeleteRole;
         private AntdUI.Button btnRefreshRoles;
-        private Components.InputQuery queryRoles;
+        private Controls.InputQuery queryRoles;
         private AntdUI.Button btnSavePermissions;
         private SplitContainer splitRoleContent;
         private DataGridView dgvRoles;
         private TableLayoutPanel permissionLayout;
         private Label lblSelectedRole;
-        private TreeView tvPermissions;
+        private AntdUI.Tree tvPermissions;
         private Label lblPermissionHint;
     }
 }

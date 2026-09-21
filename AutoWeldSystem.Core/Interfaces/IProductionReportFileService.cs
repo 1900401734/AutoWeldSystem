@@ -1,0 +1,27 @@
+using AutoWeldSystem.Core.Entities;
+
+namespace AutoWeldSystem.Core.Interfaces;
+
+/// <summary>
+/// 生产报告文件服务。
+/// 负责根据本地采集数据生成报告文件，并记录本地文件状态。
+/// </summary>
+public interface IProductionReportFileService
+{
+    BizProductionReportFile GenerateXlsxReport(BizWeldTask task);
+
+    /// <summary>预留稳定的报表序号和文件名；FilePath 为空时仅代表预留，尚未生成文件。</summary>
+    BizProductionReportFile ReserveXlsxReport(BizWeldTask task);
+
+    /// <summary>
+    /// 判断当前任务是否存在可触发 MES 报表文件上传的有效 ReportEnable 角色。
+    /// </summary>
+    bool ShouldUploadReportFile(BizWeldTask task);
+
+    /// <summary>
+    /// 导出本地历史明细，按保存的导出选项决定是否附带已配置的开工程序快照上下限。
+    /// 供数据管理页手动导出使用：不创建也不更新 BizProductionReportFile 记录，
+    /// 因此导出动作不会影响真实上传链路的文件与状态。
+    /// </summary>
+    void ExportXlsx(int taskId, string filePath);
+}

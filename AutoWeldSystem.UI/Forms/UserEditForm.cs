@@ -1,8 +1,10 @@
 using AntdUI;
+using AutoWeldSystem.Core;
 using AutoWeldSystem.Core.Constants;
+using AutoWeldSystem.Core.Entities;
 using AutoWeldSystem.Core.Exceptions;
 using AutoWeldSystem.Core.Interfaces;
-using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.Interfaces.UserManage;
 using AutoWeldSystem.UI.Base;
 using Message = AntdUI.Message;
 
@@ -100,6 +102,8 @@ public partial class UserEditForm : BaseWindow
     {
         var roles = _rbacService.GetAllRoles()
             .Where(role => role.Enabled || role.Id == selectedRoleId)
+            .Where(role => IsCurrentDeveloper()
+                || !string.Equals(role.RoleCode, AppConstants.Roles.Developer, StringComparison.OrdinalIgnoreCase))
             .OrderBy(role => role.IsSystem ? 0 : 1)
             .ThenBy(role => role.Id)
             .ToList();
@@ -217,5 +221,13 @@ public partial class UserEditForm : BaseWindow
         }
 
         return roleIds;
+    }
+
+    private static bool IsCurrentDeveloper()
+    {
+        var currentUser = GlobalContext.CurrentUser;
+        return currentUser is not null
+            && (string.Equals(currentUser.UserNumber, "dev", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(currentUser.Role, AppConstants.Roles.Developer, StringComparison.OrdinalIgnoreCase));
     }
 }

@@ -2,111 +2,971 @@
 {
     partial class DataManageView
     {
-        /// <summary> 
-        /// Required designer variable.
-        /// </summary>
         private System.ComponentModel.IContainer components = null;
 
-        /// <summary> 
-        /// Clean up any resources being used.
-        /// </summary>
-        /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
         protected override void Dispose(bool disposing)
         {
-            if (disposing && (components != null))
+            if (disposing)
             {
-                components.Dispose();
+                BeginDispose();
+                components?.Dispose();
             }
+
             base.Dispose(disposing);
         }
 
         #region Component Designer generated code
 
-        /// <summary> 
-        /// Required method for Designer support - do not modify 
-        /// the contents of this method with the code editor.
-        /// </summary>
         private void InitializeComponent()
         {
-            datePickerRange1 = new AntdUI.DatePickerRange();
-            panel1 = new AntdUI.Panel();
-            splitter1 = new AntdUI.Splitter();
-            table1 = new AntdUI.Table();
-            panel1.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)splitter1).BeginInit();
-            splitter1.Panel1.SuspendLayout();
-            splitter1.SuspendLayout();
+            components = new System.ComponentModel.Container();
+            workOrderBindingSource = new BindingSource(components);
+            parameterBindingSource = new BindingSource(components);
+            reportBindingSource = new BindingSource(components);
+            rootLayout = new TableLayoutPanel();
+            filterPanel = new Panel();
+            filterLayout = new TableLayoutPanel();
+            lblProductNum = new Label();
+            txtProductNum = new AntdUI.Input();
+            lblBatch = new Label();
+            txtBatch = new AntdUI.Input();
+            lblWorkOrder = new Label();
+            txtWorkOrder = new AntdUI.Input();
+            lblDateRange = new Label();
+            dateRange = new AntdUI.DatePickerRange();
+            btnQuery = new AntdUI.Button();
+            btnReset = new AntdUI.Button();
+            mainSplitter = new AntdUI.Splitter();
+            workOrderLayout = new TableLayoutPanel();
+            lblWorkOrderSummary = new Label();
+            workOrderToolbar = new FlowLayoutPanel();
+            btnDeleteWorkOrders = new AntdUI.Button();
+            btnCleanFailedData = new AntdUI.Button();
+            btnCleanByDate = new AntdUI.Button();
+            dgvWorkOrders = new DataGridView();
+            workOrderPagination = new AntdUI.Pagination();
+            detailTabs = new TabControl();
+            tabWeldParameters = new TabPage();
+            parameterLayout = new TableLayoutPanel();
+            parameterHeaderLayout = new TableLayoutPanel();
+            lblParameterSummary = new Label();
+            parameterToolbar = new FlowLayoutPanel();
+            lblProductResultFilter = new Label();
+            selectProductResult = new AntdUI.Select();
+            btnToggleTestDataExpand = new AntdUI.Button();
+            btnExportTestData = new AntdUI.Button();
+            chkExportProgramLimits = new AntdUI.Checkbox { Checked = true };
+            dgvWeldParameters = new DataGridView();
+            tableTestData = new AntdUI.Table();
+            testDataPagination = new AntdUI.Pagination();
+            tabReportFiles = new TabPage();
+            reportLayout = new TableLayoutPanel();
+            reportToolbar = new FlowLayoutPanel();
+            btnOpenReport = new AntdUI.Button();
+            btnOpenReportFolder = new AntdUI.Button();
+            lblReportSummary = new Label();
+            dgvReportFiles = new DataGridView();
+            colTaskStation = new DataGridViewTextBoxColumn();
+            colTaskWorkOrder = new DataGridViewTextBoxColumn();
+            colTaskProductNum = new DataGridViewTextBoxColumn();
+            colTaskBatch = new DataGridViewTextBoxColumn();
+            colTaskProductName = new DataGridViewTextBoxColumn();
+            colTaskProcess = new DataGridViewTextBoxColumn();
+            colTaskRecipe = new DataGridViewTextBoxColumn();
+            colTaskPlannedQty = new DataGridViewTextBoxColumn();
+            colTaskActualQty = new DataGridViewTextBoxColumn();
+            colTaskQualifiedQty = new DataGridViewTextBoxColumn();
+            colTaskFailedQty = new DataGridViewTextBoxColumn();
+            colTaskOperator = new DataGridViewTextBoxColumn();
+            colTaskStartTime = new DataGridViewTextBoxColumn();
+            colTaskEndTime = new DataGridViewTextBoxColumn();
+            colTaskStatus = new DataGridViewTextBoxColumn();
+            colTaskUploadStatus = new DataGridViewTextBoxColumn();
+            colParameterStation = new DataGridViewTextBoxColumn();
+            colParameterProductNo = new DataGridViewTextBoxColumn();
+            colParameterTouchNo = new DataGridViewTextBoxColumn();
+            colParameterResult = new DataGridViewTextBoxColumn();
+            colParameterRecordTime = new DataGridViewTextBoxColumn();
+            colReportFileName = new DataGridViewTextBoxColumn();
+            colReportExpStartId = new DataGridViewTextBoxColumn();
+            colReportUploadStatus = new DataGridViewTextBoxColumn();
+            colReportCreatedTime = new DataGridViewTextBoxColumn();
+            colReportUpdatedTime = new DataGridViewTextBoxColumn();
+            ((System.ComponentModel.ISupportInitialize)workOrderBindingSource).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)parameterBindingSource).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)reportBindingSource).BeginInit();
+            rootLayout.SuspendLayout();
+            filterPanel.SuspendLayout();
+            filterLayout.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)mainSplitter).BeginInit();
+            mainSplitter.Panel1.SuspendLayout();
+            mainSplitter.Panel2.SuspendLayout();
+            mainSplitter.SuspendLayout();
+            workOrderLayout.SuspendLayout();
+            workOrderToolbar.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)dgvWorkOrders).BeginInit();
+            detailTabs.SuspendLayout();
+            tabWeldParameters.SuspendLayout();
+            parameterLayout.SuspendLayout();
+            parameterHeaderLayout.SuspendLayout();
+            parameterToolbar.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)dgvWeldParameters).BeginInit();
+            tabReportFiles.SuspendLayout();
+            reportLayout.SuspendLayout();
+            reportToolbar.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)dgvReportFiles).BeginInit();
             SuspendLayout();
-            // 
-            // datePickerRange1
-            // 
-            datePickerRange1.Dock = DockStyle.Left;
-            datePickerRange1.Format = "yyyy-MM-dd HH:mm:ss";
-            datePickerRange1.Location = new Point(0, 0);
-            datePickerRange1.Margin = new Padding(4, 3, 4, 3);
-            datePickerRange1.Name = "datePickerRange1";
-            datePickerRange1.Size = new Size(503, 47);
-            datePickerRange1.TabIndex = 2;
-            // 
-            // panel1
-            // 
-            panel1.Controls.Add(datePickerRange1);
-            panel1.Dock = DockStyle.Top;
-            panel1.Location = new Point(0, 0);
-            panel1.Margin = new Padding(4, 3, 4, 3);
-            panel1.Name = "panel1";
-            panel1.Size = new Size(1456, 47);
-            panel1.TabIndex = 3;
-            panel1.Text = "panel1";
-            // 
-            // splitter1
-            // 
-            splitter1.Dock = DockStyle.Fill;
-            splitter1.Location = new Point(0, 47);
-            splitter1.Margin = new Padding(4, 3, 4, 3);
-            splitter1.Name = "splitter1";
-            // 
-            // splitter1.Panel1
-            // 
-            splitter1.Panel1.Controls.Add(table1);
-            splitter1.Size = new Size(1456, 608);
-            splitter1.SplitterDistance = 912;
-            splitter1.SplitterWidth = 12;
-            splitter1.TabIndex = 4;
-            // 
-            // table1
-            // 
-            table1.Dock = DockStyle.Fill;
-            table1.Gap = 12;
-            table1.Location = new Point(0, 0);
-            table1.Margin = new Padding(4, 3, 4, 3);
-            table1.Name = "table1";
-            table1.Size = new Size(912, 608);
-            table1.TabIndex = 0;
-            table1.Text = "table1";
-            // 
+            //
+            // rootLayout
+            //
+            rootLayout.ColumnCount = 1;
+            rootLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            rootLayout.Controls.Add(filterPanel, 0, 0);
+            rootLayout.Controls.Add(mainSplitter, 0, 1);
+            rootLayout.Dock = DockStyle.Fill;
+            rootLayout.Location = new Point(0, 0);
+            rootLayout.Name = "rootLayout";
+            rootLayout.RowCount = 2;
+            rootLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 82F));
+            rootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            rootLayout.Size = new Size(1456, 760);
+            rootLayout.TabIndex = 0;
+            //
+            // filterPanel
+            //
+            filterPanel.Controls.Add(filterLayout);
+            filterPanel.Dock = DockStyle.Fill;
+            filterPanel.Location = new Point(16, 12);
+            filterPanel.Margin = new Padding(16, 12, 16, 8);
+            filterPanel.Name = "filterPanel";
+            filterPanel.Size = new Size(1424, 62);
+            filterPanel.TabIndex = 0;
+            //
+            // filterLayout
+            //
+            filterLayout.ColumnCount = 10;
+            filterLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90F));
+            filterLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 21.0526314F));
+            filterLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 66F));
+            filterLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 18.4210529F));
+            filterLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 86F));
+            filterLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 21.0526314F));
+            filterLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80F));
+            filterLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 39.4736824F));
+            filterLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96F));
+            filterLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96F));
+            filterLayout.Controls.Add(lblProductNum, 0, 0);
+            filterLayout.Controls.Add(txtProductNum, 1, 0);
+            filterLayout.Controls.Add(lblBatch, 2, 0);
+            filterLayout.Controls.Add(txtBatch, 3, 0);
+            filterLayout.Controls.Add(lblWorkOrder, 4, 0);
+            filterLayout.Controls.Add(txtWorkOrder, 5, 0);
+            filterLayout.Controls.Add(lblDateRange, 6, 0);
+            filterLayout.Controls.Add(dateRange, 7, 0);
+            filterLayout.Controls.Add(btnQuery, 8, 0);
+            filterLayout.Controls.Add(btnReset, 9, 0);
+            filterLayout.Dock = DockStyle.Fill;
+            filterLayout.Location = new Point(0, 0);
+            filterLayout.Name = "filterLayout";
+            filterLayout.RowCount = 1;
+            filterLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            filterLayout.Size = new Size(1424, 62);
+            filterLayout.TabIndex = 0;
+            //
+            // lblProductNum
+            //
+            lblProductNum.Dock = DockStyle.Fill;
+            lblProductNum.Location = new Point(3, 0);
+            lblProductNum.Name = "lblProductNum";
+            lblProductNum.Size = new Size(84, 62);
+            lblProductNum.TabIndex = 0;
+            lblProductNum.Text = "产品工号";
+            lblProductNum.TextAlign = ContentAlignment.MiddleRight;
+            //
+            // txtProductNum
+            //
+            txtProductNum.Dock = DockStyle.Fill;
+            txtProductNum.Location = new Point(93, 10);
+            txtProductNum.Margin = new Padding(3, 10, 8, 10);
+            txtProductNum.Name = "txtProductNum";
+            txtProductNum.PlaceholderText = "模糊查询";
+            txtProductNum.Size = new Size(180, 42);
+            txtProductNum.TabIndex = 1;
+            //
+            // lblBatch
+            //
+            lblBatch.Dock = DockStyle.Fill;
+            lblBatch.Location = new Point(284, 0);
+            lblBatch.Name = "lblBatch";
+            lblBatch.Size = new Size(60, 62);
+            lblBatch.TabIndex = 2;
+            lblBatch.Text = "批次";
+            lblBatch.TextAlign = ContentAlignment.MiddleRight;
+            //
+            // txtBatch
+            //
+            txtBatch.Dock = DockStyle.Fill;
+            txtBatch.Location = new Point(350, 10);
+            txtBatch.Margin = new Padding(3, 10, 8, 10);
+            txtBatch.Name = "txtBatch";
+            txtBatch.PlaceholderText = "模糊查询";
+            txtBatch.Size = new Size(156, 42);
+            txtBatch.TabIndex = 3;
+            //
+            // lblWorkOrder
+            //
+            lblWorkOrder.Dock = DockStyle.Fill;
+            lblWorkOrder.Location = new Point(517, 0);
+            lblWorkOrder.Name = "lblWorkOrder";
+            lblWorkOrder.Size = new Size(80, 62);
+            lblWorkOrder.TabIndex = 4;
+            lblWorkOrder.Text = "工单号";
+            lblWorkOrder.TextAlign = ContentAlignment.MiddleRight;
+            //
+            // txtWorkOrder
+            //
+            txtWorkOrder.Dock = DockStyle.Fill;
+            txtWorkOrder.Location = new Point(603, 10);
+            txtWorkOrder.Margin = new Padding(3, 10, 8, 10);
+            txtWorkOrder.Name = "txtWorkOrder";
+            txtWorkOrder.PlaceholderText = "流转卡号";
+            txtWorkOrder.Size = new Size(180, 42);
+            txtWorkOrder.TabIndex = 5;
+            //
+            // lblDateRange
+            //
+            lblDateRange.Dock = DockStyle.Fill;
+            lblDateRange.Location = new Point(794, 0);
+            lblDateRange.Name = "lblDateRange";
+            lblDateRange.Size = new Size(74, 62);
+            lblDateRange.TabIndex = 6;
+            lblDateRange.Text = "日期";
+            lblDateRange.TextAlign = ContentAlignment.MiddleRight;
+            //
+            // dateRange
+            //
+            dateRange.Dock = DockStyle.Fill;
+            dateRange.Location = new Point(874, 10);
+            dateRange.Margin = new Padding(3, 10, 8, 10);
+            dateRange.Name = "dateRange";
+            dateRange.Size = new Size(348, 42);
+            dateRange.TabIndex = 7;
+            //
+            // btnQuery
+            //
+            btnQuery.BorderWidth = 1F;
+            btnQuery.Dock = DockStyle.Fill;
+            btnQuery.IconSvg = "SearchOutlined";
+            btnQuery.Location = new Point(1230, 10);
+            btnQuery.Margin = new Padding(0, 10, 8, 10);
+            btnQuery.Name = "btnQuery";
+            btnQuery.Size = new Size(88, 42);
+            btnQuery.TabIndex = 8;
+            btnQuery.Tag = "perm:button.data.query:enabled";
+            btnQuery.Text = "查询";
+            btnQuery.Type = AntdUI.TTypeMini.Primary;
+            //
+            // btnReset
+            //
+            btnReset.BorderWidth = 1F;
+            btnReset.Dock = DockStyle.Fill;
+            btnReset.IconSvg = "ClearOutlined";
+            btnReset.Location = new Point(1326, 10);
+            btnReset.Margin = new Padding(0, 10, 0, 10);
+            btnReset.Name = "btnReset";
+            btnReset.Size = new Size(98, 42);
+            btnReset.TabIndex = 9;
+            btnReset.Tag = "perm:button.data.reset:enabled";
+            btnReset.Text = "重置";
+            //
+            // mainSplitter
+            //
+            mainSplitter.Dock = DockStyle.Fill;
+            mainSplitter.Location = new Point(16, 82);
+            mainSplitter.Margin = new Padding(16, 0, 16, 16);
+            mainSplitter.Name = "mainSplitter";
+            mainSplitter.Orientation = Orientation.Horizontal;
+            //
+            // mainSplitter.Panel1
+            //
+            mainSplitter.Panel1.Controls.Add(workOrderLayout);
+            mainSplitter.Panel1MinSize = 180;
+            //
+            // mainSplitter.Panel2
+            //
+            mainSplitter.Panel2.Controls.Add(detailTabs);
+            mainSplitter.Panel2MinSize = 300;
+            mainSplitter.Size = new Size(1424, 662);
+            mainSplitter.SplitterDistance = 166;
+            mainSplitter.SplitterWidth = 6;
+            mainSplitter.TabIndex = 1;
+            //
+            // workOrderLayout
+            //
+            workOrderLayout.ColumnCount = 2;
+            workOrderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            workOrderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 372F));
+            workOrderLayout.Controls.Add(lblWorkOrderSummary, 0, 0);
+            workOrderLayout.Controls.Add(workOrderToolbar, 1, 0);
+            workOrderLayout.Controls.Add(dgvWorkOrders, 0, 1);
+            workOrderLayout.Controls.Add(workOrderPagination, 0, 2);
+            workOrderLayout.SetColumnSpan(dgvWorkOrders, 2);
+            workOrderLayout.SetColumnSpan(workOrderPagination, 2);
+            workOrderLayout.Dock = DockStyle.Fill;
+            workOrderLayout.Location = new Point(0, 0);
+            workOrderLayout.Name = "workOrderLayout";
+            workOrderLayout.RowCount = 3;
+            workOrderLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
+            workOrderLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            workOrderLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48F));
+            workOrderLayout.Size = new Size(1424, 300);
+            workOrderLayout.TabIndex = 0;
+            //
+            // lblWorkOrderSummary
+            //
+            lblWorkOrderSummary.Dock = DockStyle.Fill;
+            lblWorkOrderSummary.ForeColor = SystemColors.GrayText;
+            lblWorkOrderSummary.Location = new Point(3, 0);
+            lblWorkOrderSummary.Name = "lblWorkOrderSummary";
+            lblWorkOrderSummary.Size = new Size(1046, 40);
+            lblWorkOrderSummary.TabIndex = 0;
+            lblWorkOrderSummary.Text = "历史工单：0 条";
+            lblWorkOrderSummary.TextAlign = ContentAlignment.MiddleLeft;
+            //
+            // workOrderToolbar
+            //
+            workOrderToolbar.Dock = DockStyle.Fill;
+            workOrderToolbar.FlowDirection = FlowDirection.RightToLeft;
+            workOrderToolbar.Location = new Point(1052, 0);
+            workOrderToolbar.Margin = new Padding(0);
+            workOrderToolbar.Name = "workOrderToolbar";
+            workOrderToolbar.Size = new Size(372, 40);
+            workOrderToolbar.TabIndex = 1;
+            workOrderToolbar.WrapContents = false;
+            workOrderToolbar.Controls.Add(btnCleanByDate);
+            workOrderToolbar.Controls.Add(btnCleanFailedData);
+            workOrderToolbar.Controls.Add(btnDeleteWorkOrders);
+            //
+            // btnDeleteWorkOrders
+            //
+            btnDeleteWorkOrders.BorderWidth = 1F;
+            btnDeleteWorkOrders.IconSvg = "DeleteOutlined";
+            btnDeleteWorkOrders.Location = new Point(272, 4);
+            btnDeleteWorkOrders.Margin = new Padding(0, 4, 0, 4);
+            btnDeleteWorkOrders.Name = "btnDeleteWorkOrders";
+            btnDeleteWorkOrders.Size = new Size(100, 32);
+            btnDeleteWorkOrders.TabIndex = 0;
+            btnDeleteWorkOrders.Tag = "perm:button.data.delete:enabled";
+            btnDeleteWorkOrders.Text = "删除选中";
+            //
+            // btnCleanFailedData
+            //
+            btnCleanFailedData.BorderWidth = 1F;
+            btnCleanFailedData.IconSvg = "ClearOutlined";
+            btnCleanFailedData.Location = new Point(140, 4);
+            btnCleanFailedData.Margin = new Padding(8, 4, 0, 4);
+            btnCleanFailedData.Name = "btnCleanFailedData";
+            btnCleanFailedData.Size = new Size(124, 32);
+            btnCleanFailedData.TabIndex = 1;
+            btnCleanFailedData.Tag = "perm:button.data.delete:enabled";
+            btnCleanFailedData.Text = "清理失败数据";
+            //
+            // btnCleanByDate
+            //
+            btnCleanByDate.BorderWidth = 1F;
+            btnCleanByDate.IconSvg = "CalendarOutlined";
+            btnCleanByDate.Location = new Point(8, 4);
+            btnCleanByDate.Margin = new Padding(8, 4, 0, 4);
+            btnCleanByDate.Name = "btnCleanByDate";
+            btnCleanByDate.Size = new Size(112, 32);
+            btnCleanByDate.TabIndex = 2;
+            btnCleanByDate.Tag = "perm:button.data.delete:enabled";
+            btnCleanByDate.Text = "按日期清理";
+            //
+            // dgvWorkOrders
+            //
+            dgvWorkOrders.AllowUserToAddRows = false;
+            dgvWorkOrders.AllowUserToDeleteRows = false;
+            dgvWorkOrders.AutoGenerateColumns = false;
+            dgvWorkOrders.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
+            dgvWorkOrders.DataSource = workOrderBindingSource;
+            dgvWorkOrders.Dock = DockStyle.Fill;
+            dgvWorkOrders.Location = new Point(0, 40);
+            dgvWorkOrders.Margin = new Padding(0);
+            dgvWorkOrders.MultiSelect = true;
+            dgvWorkOrders.Name = "dgvWorkOrders";
+            dgvWorkOrders.ReadOnly = true;
+            dgvWorkOrders.RowHeadersVisible = false;
+            dgvWorkOrders.RowHeadersWidth = 51;
+            dgvWorkOrders.RowTemplate.Height = 28;
+            dgvWorkOrders.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            dgvWorkOrders.Size = new Size(1424, 222);
+            dgvWorkOrders.TabIndex = 1;
+            //
+            // workOrderPagination
+            //
+            workOrderPagination.Dock = DockStyle.Fill;
+            workOrderPagination.Location = new Point(3, 255);
+            workOrderPagination.Name = "workOrderPagination";
+            workOrderPagination.PageSize = 20;
+            workOrderPagination.PageSizeOptions = new int[]
+    {
+    20,
+    50,
+    100
+    };
+            workOrderPagination.RecordsPerPageText = "条/页";
+            workOrderPagination.ShowSizeChanger = true;
+            workOrderPagination.Size = new Size(1418, 42);
+            workOrderPagination.TabIndex = 2;
+            //
+            // detailTabs
+            //
+            detailTabs.Controls.Add(tabReportFiles);
+            detailTabs.Controls.Add(tabWeldParameters);
+            detailTabs.Dock = DockStyle.Fill;
+            detailTabs.Location = new Point(0, 0);
+            detailTabs.Name = "detailTabs";
+            detailTabs.SelectedIndex = 0;
+            detailTabs.Size = new Size(1424, 356);
+            detailTabs.TabIndex = 0;
+            //
+            // tabWeldParameters
+            //
+            tabWeldParameters.Controls.Add(parameterLayout);
+            tabWeldParameters.Location = new Point(4, 32);
+            tabWeldParameters.Name = "tabWeldParameters";
+            tabWeldParameters.Padding = new Padding(3);
+            tabWeldParameters.Size = new Size(1416, 320);
+            tabWeldParameters.TabIndex = 0;
+            tabWeldParameters.Text = "采集数据";
+            tabWeldParameters.UseVisualStyleBackColor = true;
+            //
+            // parameterLayout
+            //
+            parameterLayout.ColumnCount = 1;
+            parameterLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            parameterLayout.Controls.Add(parameterHeaderLayout, 0, 0);
+            parameterLayout.Controls.Add(tableTestData, 0, 1);
+            parameterLayout.Controls.Add(testDataPagination, 0, 2);
+            parameterLayout.Dock = DockStyle.Fill;
+            parameterLayout.Location = new Point(3, 3);
+            parameterLayout.Name = "parameterLayout";
+            parameterLayout.RowCount = 3;
+            parameterLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+            parameterLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            parameterLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44F));
+            parameterLayout.Size = new Size(1410, 314);
+            parameterLayout.TabIndex = 0;
+            //
+            // parameterHeaderLayout
+            //
+            parameterHeaderLayout.ColumnCount = 2;
+            parameterHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            parameterHeaderLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            parameterHeaderLayout.Controls.Add(lblParameterSummary, 0, 0);
+            parameterHeaderLayout.Controls.Add(parameterToolbar, 1, 0);
+            parameterHeaderLayout.Dock = DockStyle.Fill;
+            parameterHeaderLayout.Location = new Point(0, 0);
+            parameterHeaderLayout.Margin = new Padding(0);
+            parameterHeaderLayout.Name = "parameterHeaderLayout";
+            parameterHeaderLayout.RowCount = 1;
+            parameterHeaderLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            parameterHeaderLayout.Size = new Size(1410, 30);
+            parameterHeaderLayout.TabIndex = 0;
+            //
+            // lblParameterSummary
+            //
+            lblParameterSummary.AutoEllipsis = true;
+            lblParameterSummary.Dock = DockStyle.Fill;
+            lblParameterSummary.ForeColor = SystemColors.GrayText;
+            lblParameterSummary.Location = new Point(3, 0);
+            lblParameterSummary.Name = "lblParameterSummary";
+            lblParameterSummary.Size = new Size(1190, 30);
+            lblParameterSummary.TabIndex = 0;
+            lblParameterSummary.Text = "请选择历史工单";
+            lblParameterSummary.TextAlign = ContentAlignment.MiddleLeft;
+            //
+            // parameterToolbar
+            //
+            parameterToolbar.AutoSize = true;
+            parameterToolbar.Controls.Add(lblProductResultFilter);
+            parameterToolbar.Controls.Add(selectProductResult);
+            parameterToolbar.Controls.Add(btnToggleTestDataExpand);
+            parameterToolbar.Controls.Add(chkExportProgramLimits);
+            parameterToolbar.Controls.Add(btnExportTestData);
+            parameterToolbar.Dock = DockStyle.Fill;
+            parameterToolbar.FlowDirection = FlowDirection.LeftToRight;
+            parameterToolbar.Location = new Point(1196, 0);
+            parameterToolbar.Margin = new Padding(0);
+            parameterToolbar.Name = "parameterToolbar";
+            parameterToolbar.Size = new Size(482, 30);
+            parameterToolbar.TabIndex = 1;
+            parameterToolbar.WrapContents = false;
+            //
+            // lblProductResultFilter
+            //
+            lblProductResultFilter.AutoSize = true;
+            lblProductResultFilter.Location = new Point(0, 5);
+            lblProductResultFilter.Margin = new Padding(0, 5, 6, 0);
+            lblProductResultFilter.Name = "lblProductResultFilter";
+            lblProductResultFilter.Size = new Size(72, 20);
+            lblProductResultFilter.TabIndex = 0;
+            lblProductResultFilter.Text = "产品结果";
+            //
+            // selectProductResult
+            //
+            selectProductResult.ListAutoWidth = false;
+            selectProductResult.Location = new Point(78, 0);
+            selectProductResult.Margin = new Padding(0);
+            selectProductResult.Name = "selectProductResult";
+            selectProductResult.Size = new Size(136, 30);
+            selectProductResult.TabIndex = 1;
+            //
+            // btnToggleTestDataExpand
+            //
+            btnToggleTestDataExpand.BorderWidth = 1F;
+            btnToggleTestDataExpand.IconSvg = "NodeExpandOutlined";
+            btnToggleTestDataExpand.Location = new Point(224, 0);
+            btnToggleTestDataExpand.Margin = new Padding(10, 0, 0, 0);
+            btnToggleTestDataExpand.Name = "btnToggleTestDataExpand";
+            btnToggleTestDataExpand.Size = new Size(112, 30);
+            btnToggleTestDataExpand.TabIndex = 2;
+            btnToggleTestDataExpand.Text = "展开全部";
+            //
+            // chkExportProgramLimits
+            //
+            chkExportProgramLimits.AutoSizeMode = AntdUI.TAutoSize.Width;
+            chkExportProgramLimits.Margin = new Padding(10, 0, 0, 0);
+            chkExportProgramLimits.Name = "chkExportProgramLimits";
+            chkExportProgramLimits.Size = new Size(160, 30);
+            chkExportProgramLimits.TabIndex = 3;
+            chkExportProgramLimits.Text = "导出程序上下限";
+            //
+            // btnExportTestData
+            //
+            btnExportTestData.BorderWidth = 1F;
+            btnExportTestData.IconSvg = "FileExcelOutlined";
+            btnExportTestData.Location = new Point(346, 0);
+            btnExportTestData.Margin = new Padding(10, 0, 0, 0);
+            btnExportTestData.Name = "btnExportTestData";
+            btnExportTestData.Size = new Size(136, 30);
+            btnExportTestData.AutoSizeMode = AntdUI.TAutoSize.Width;
+            btnExportTestData.TabIndex = 4;
+            btnExportTestData.Text = "导出测试数据";
+            //
+            // dgvWeldParameters
+            //
+            dgvWeldParameters.AllowUserToAddRows = false;
+            dgvWeldParameters.AllowUserToDeleteRows = false;
+            dgvWeldParameters.AutoGenerateColumns = false;
+            dgvWeldParameters.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
+            dgvWeldParameters.DataSource = parameterBindingSource;
+            dgvWeldParameters.Dock = DockStyle.Fill;
+            dgvWeldParameters.Location = new Point(0, 30);
+            dgvWeldParameters.Margin = new Padding(0);
+            dgvWeldParameters.Name = "dgvWeldParameters";
+            dgvWeldParameters.ReadOnly = true;
+            dgvWeldParameters.RowHeadersVisible = false;
+            dgvWeldParameters.RowHeadersWidth = 51;
+            dgvWeldParameters.RowTemplate.Height = 28;
+            dgvWeldParameters.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            dgvWeldParameters.Size = new Size(1410, 284);
+            dgvWeldParameters.TabIndex = 1;
+            //
+            // tableTestData
+            //
+            tableTestData.Dock = DockStyle.Fill;
+            tableTestData.Gap = 6;
+            tableTestData.GapCell = 3;
+            tableTestData.Gaps = new Size(6, 6);
+            tableTestData.Location = new Point(0, 30);
+            tableTestData.Margin = new Padding(0);
+            tableTestData.Name = "tableTestData";
+            tableTestData.RowHeight = 36;
+            tableTestData.RowHeightHeader = 38;
+            tableTestData.Size = new Size(1410, 240);
+            tableTestData.TabIndex = 2;
+            tableTestData.Text = "tableTestData";
+            tableTestData.TreeButtonSize = 18;
+            //
+            // testDataPagination
+            //
+            testDataPagination.Dock = DockStyle.Fill;
+            testDataPagination.Location = new Point(3, 273);
+            testDataPagination.Name = "testDataPagination";
+            testDataPagination.PageSize = 20;
+            testDataPagination.PageSizeOptions = new int[]
+    {
+    20,
+    50,
+    100
+    };
+            testDataPagination.RecordsPerPageText = "条/页";
+            testDataPagination.ShowSizeChanger = true;
+            testDataPagination.Size = new Size(1404, 38);
+            testDataPagination.TabIndex = 3;
+            //
+            // tabReportFiles
+            //
+            tabReportFiles.Controls.Add(reportLayout);
+            tabReportFiles.Location = new Point(4, 29);
+            tabReportFiles.Name = "tabReportFiles";
+            tabReportFiles.Padding = new Padding(3);
+            tabReportFiles.Size = new Size(1416, 323);
+            tabReportFiles.TabIndex = 2;
+            tabReportFiles.Text = "报告文件";
+            tabReportFiles.UseVisualStyleBackColor = true;
+            //
+            // reportLayout
+            //
+            reportLayout.ColumnCount = 1;
+            reportLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            reportLayout.Controls.Add(reportToolbar, 0, 0);
+            reportLayout.Controls.Add(lblReportSummary, 0, 1);
+            reportLayout.Controls.Add(dgvReportFiles, 0, 2);
+            reportLayout.Dock = DockStyle.Fill;
+            reportLayout.Location = new Point(3, 3);
+            reportLayout.Name = "reportLayout";
+            reportLayout.RowCount = 3;
+            reportLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48F));
+            reportLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+            reportLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            reportLayout.Size = new Size(1410, 317);
+            reportLayout.TabIndex = 0;
+            //
+            // reportToolbar
+            //
+            reportToolbar.Controls.Add(btnOpenReport);
+            reportToolbar.Controls.Add(btnOpenReportFolder);
+            reportToolbar.Dock = DockStyle.Fill;
+            reportToolbar.Location = new Point(0, 0);
+            reportToolbar.Margin = new Padding(0);
+            reportToolbar.Name = "reportToolbar";
+            reportToolbar.Padding = new Padding(0, 4, 0, 0);
+            reportToolbar.Size = new Size(1410, 48);
+            reportToolbar.TabIndex = 0;
+            //
+            // btnOpenReport
+            //
+            btnOpenReport.BorderWidth = 1F;
+            btnOpenReport.IconSvg = "FileExcelOutlined";
+            btnOpenReport.Location = new Point(0, 4);
+            btnOpenReport.Margin = new Padding(0, 0, 10, 0);
+            btnOpenReport.Name = "btnOpenReport";
+            btnOpenReport.Size = new Size(118, 40);
+            btnOpenReport.TabIndex = 0;
+            btnOpenReport.Tag = "perm:button.data.open-report:enabled";
+            btnOpenReport.Text = "打开报告";
+            //
+            // btnOpenReportFolder
+            //
+            btnOpenReportFolder.BorderWidth = 1F;
+            btnOpenReportFolder.IconSvg = "FolderOpenOutlined";
+            btnOpenReportFolder.Location = new Point(128, 4);
+            btnOpenReportFolder.Margin = new Padding(0);
+            btnOpenReportFolder.Name = "btnOpenReportFolder";
+            btnOpenReportFolder.Size = new Size(136, 40);
+            btnOpenReportFolder.TabIndex = 1;
+            btnOpenReportFolder.Tag = "perm:button.data.open-report-folder:enabled";
+            btnOpenReportFolder.Text = "打开所在目录";
+            //
+            // lblReportSummary
+            //
+            lblReportSummary.Dock = DockStyle.Fill;
+            lblReportSummary.ForeColor = SystemColors.GrayText;
+            lblReportSummary.Location = new Point(3, 48);
+            lblReportSummary.Name = "lblReportSummary";
+            lblReportSummary.Size = new Size(1404, 30);
+            lblReportSummary.TabIndex = 1;
+            lblReportSummary.Text = "请选择历史工单";
+            lblReportSummary.TextAlign = ContentAlignment.MiddleLeft;
+            //
+            // dgvReportFiles
+            //
+            dgvReportFiles.AllowUserToAddRows = false;
+            dgvReportFiles.AllowUserToDeleteRows = false;
+            dgvReportFiles.AutoGenerateColumns = false;
+            dgvReportFiles.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
+            dgvReportFiles.DataSource = reportBindingSource;
+            dgvReportFiles.Dock = DockStyle.Fill;
+            dgvReportFiles.Location = new Point(0, 78);
+            dgvReportFiles.Margin = new Padding(0);
+            dgvReportFiles.MultiSelect = false;
+            dgvReportFiles.Name = "dgvReportFiles";
+            dgvReportFiles.ReadOnly = true;
+            dgvReportFiles.RowHeadersVisible = false;
+            dgvReportFiles.RowHeadersWidth = 51;
+            dgvReportFiles.RowTemplate.Height = 28;
+            dgvReportFiles.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            dgvReportFiles.Size = new Size(1410, 239);
+            dgvReportFiles.TabIndex = 2;
+            //
+            // colTaskStation
+            //
+            colTaskStation.MinimumWidth = 6;
+            colTaskStation.Name = "colTaskStation";
+            colTaskStation.Width = 125;
+            //
+            // colTaskWorkOrder
+            //
+            colTaskWorkOrder.MinimumWidth = 6;
+            colTaskWorkOrder.Name = "colTaskWorkOrder";
+            colTaskWorkOrder.Width = 125;
+            //
+            // colTaskProductNum
+            //
+            colTaskProductNum.MinimumWidth = 6;
+            colTaskProductNum.Name = "colTaskProductNum";
+            colTaskProductNum.Width = 125;
+            //
+            // colTaskBatch
+            //
+            colTaskBatch.MinimumWidth = 6;
+            colTaskBatch.Name = "colTaskBatch";
+            colTaskBatch.Width = 125;
+            //
+            // colTaskProductName
+            //
+            colTaskProductName.MinimumWidth = 6;
+            colTaskProductName.Name = "colTaskProductName";
+            colTaskProductName.Width = 125;
+            //
+            // colTaskProcess
+            //
+            colTaskProcess.MinimumWidth = 6;
+            colTaskProcess.Name = "colTaskProcess";
+            colTaskProcess.Width = 125;
+            //
+            // colTaskRecipe
+            //
+            colTaskRecipe.MinimumWidth = 6;
+            colTaskRecipe.Name = "colTaskRecipe";
+            colTaskRecipe.Width = 125;
+            //
+            // colTaskPlannedQty
+            //
+            colTaskPlannedQty.MinimumWidth = 6;
+            colTaskPlannedQty.Name = "colTaskPlannedQty";
+            colTaskPlannedQty.Width = 125;
+            //
+            // colTaskActualQty
+            //
+            colTaskActualQty.MinimumWidth = 6;
+            colTaskActualQty.Name = "colTaskActualQty";
+            colTaskActualQty.Width = 125;
+            //
+            // colTaskQualifiedQty
+            //
+            colTaskQualifiedQty.MinimumWidth = 6;
+            colTaskQualifiedQty.Name = "colTaskQualifiedQty";
+            colTaskQualifiedQty.Width = 125;
+            //
+            // colTaskFailedQty
+            //
+            colTaskFailedQty.MinimumWidth = 6;
+            colTaskFailedQty.Name = "colTaskFailedQty";
+            colTaskFailedQty.Width = 125;
+            //
+            // colTaskOperator
+            //
+            colTaskOperator.MinimumWidth = 6;
+            colTaskOperator.Name = "colTaskOperator";
+            colTaskOperator.Width = 125;
+            //
+            // colTaskStartTime
+            //
+            colTaskStartTime.MinimumWidth = 6;
+            colTaskStartTime.Name = "colTaskStartTime";
+            colTaskStartTime.Width = 125;
+            //
+            // colTaskEndTime
+            //
+            colTaskEndTime.MinimumWidth = 6;
+            colTaskEndTime.Name = "colTaskEndTime";
+            colTaskEndTime.Width = 125;
+            //
+            // colTaskStatus
+            //
+            colTaskStatus.MinimumWidth = 6;
+            colTaskStatus.Name = "colTaskStatus";
+            colTaskStatus.Width = 125;
+            //
+            // colTaskUploadStatus
+            //
+            colTaskUploadStatus.MinimumWidth = 6;
+            colTaskUploadStatus.Name = "colTaskUploadStatus";
+            colTaskUploadStatus.Width = 125;
+            //
+            // colParameterStation
+            //
+            colParameterStation.MinimumWidth = 6;
+            colParameterStation.Name = "colParameterStation";
+            colParameterStation.Width = 125;
+            //
+            // colParameterProductNo
+            //
+            colParameterProductNo.MinimumWidth = 6;
+            colParameterProductNo.Name = "colParameterProductNo";
+            colParameterProductNo.Width = 125;
+            //
+            // colParameterTouchNo
+            //
+            colParameterTouchNo.MinimumWidth = 6;
+            colParameterTouchNo.Name = "colParameterTouchNo";
+            colParameterTouchNo.Width = 125;
+            //
+            // colParameterResult
+            //
+            colParameterResult.MinimumWidth = 6;
+            colParameterResult.Name = "colParameterResult";
+            colParameterResult.Width = 125;
+            //
+            // colParameterRecordTime
+            //
+            colParameterRecordTime.MinimumWidth = 6;
+            colParameterRecordTime.Name = "colParameterRecordTime";
+            colParameterRecordTime.Width = 125;
+            //
+            // colReportFileName
+            //
+            colReportFileName.MinimumWidth = 6;
+            colReportFileName.Name = "colReportFileName";
+            colReportFileName.Width = 125;
+            //
+            // colReportExpStartId
+            //
+            colReportExpStartId.MinimumWidth = 6;
+            colReportExpStartId.Name = "colReportExpStartId";
+            colReportExpStartId.Width = 125;
+            //
+            // colReportUploadStatus
+            //
+            colReportUploadStatus.MinimumWidth = 6;
+            colReportUploadStatus.Name = "colReportUploadStatus";
+            colReportUploadStatus.Width = 125;
+            //
+            // colReportCreatedTime
+            //
+            colReportCreatedTime.MinimumWidth = 6;
+            colReportCreatedTime.Name = "colReportCreatedTime";
+            colReportCreatedTime.Width = 125;
+            //
+            // colReportUpdatedTime
+            //
+            colReportUpdatedTime.MinimumWidth = 6;
+            colReportUpdatedTime.Name = "colReportUpdatedTime";
+            colReportUpdatedTime.Width = 125;
+            //
             // DataManageView
-            // 
-            AutoScaleDimensions = new SizeF(10F, 23F);
-            AutoScaleMode = AutoScaleMode.Font;
-            Controls.Add(splitter1);
-            Controls.Add(panel1);
+            //
+            AutoScaleDimensions = new SizeF(120F, 120F);
+            AutoScaleMode = AutoScaleMode.Dpi;
+            Controls.Add(rootLayout);
             Font = new Font("Microsoft YaHei UI", 10.5F);
-            Margin = new Padding(4, 3, 4, 3);
             Name = "DataManageView";
-            Size = new Size(1456, 655);
-            panel1.ResumeLayout(false);
-            splitter1.Panel1.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)splitter1).EndInit();
-            splitter1.ResumeLayout(false);
+            Size = new Size(1456, 760);
+            ((System.ComponentModel.ISupportInitialize)workOrderBindingSource).EndInit();
+            ((System.ComponentModel.ISupportInitialize)parameterBindingSource).EndInit();
+            ((System.ComponentModel.ISupportInitialize)reportBindingSource).EndInit();
+            rootLayout.ResumeLayout(false);
+            filterPanel.ResumeLayout(false);
+            filterLayout.ResumeLayout(false);
+            mainSplitter.Panel1.ResumeLayout(false);
+            mainSplitter.Panel2.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)mainSplitter).EndInit();
+            mainSplitter.ResumeLayout(false);
+            workOrderLayout.ResumeLayout(false);
+            workOrderToolbar.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)dgvWorkOrders).EndInit();
+            detailTabs.ResumeLayout(false);
+            tabWeldParameters.ResumeLayout(false);
+            parameterLayout.ResumeLayout(false);
+            parameterHeaderLayout.ResumeLayout(false);
+            parameterHeaderLayout.PerformLayout();
+            parameterToolbar.ResumeLayout(false);
+            parameterToolbar.PerformLayout();
+            ((System.ComponentModel.ISupportInitialize)dgvWeldParameters).EndInit();
+            tabReportFiles.ResumeLayout(false);
+            reportLayout.ResumeLayout(false);
+            reportToolbar.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)dgvReportFiles).EndInit();
             ResumeLayout(false);
         }
 
         #endregion
 
-        private AntdUI.DatePickerRange datePickerRange1;
-        private AntdUI.Panel panel1;
-        private AntdUI.Splitter splitter1;
-        private AntdUI.Table table1;
+        private BindingSource workOrderBindingSource;
+        private BindingSource parameterBindingSource;
+        private BindingSource reportBindingSource;
+        private TableLayoutPanel rootLayout;
+        private Panel filterPanel;
+        private TableLayoutPanel filterLayout;
+        private Label lblProductNum;
+        private AntdUI.Input txtProductNum;
+        private Label lblBatch;
+        private AntdUI.Input txtBatch;
+        private Label lblWorkOrder;
+        private AntdUI.Input txtWorkOrder;
+        private Label lblDateRange;
+        private AntdUI.DatePickerRange dateRange;
+        private AntdUI.Button btnQuery;
+        private AntdUI.Button btnReset;
+        private AntdUI.Splitter mainSplitter;
+        private TableLayoutPanel workOrderLayout;
+        private Label lblWorkOrderSummary;
+        private FlowLayoutPanel workOrderToolbar;
+        private AntdUI.Button btnDeleteWorkOrders;
+        private AntdUI.Button btnCleanFailedData;
+        private AntdUI.Button btnCleanByDate;
+        private DataGridView dgvWorkOrders;
+        private AntdUI.Pagination workOrderPagination;
+        private TabControl detailTabs;
+        private TabPage tabWeldParameters;
+        private TableLayoutPanel parameterLayout;
+        private TableLayoutPanel parameterHeaderLayout;
+        private Label lblParameterSummary;
+        private FlowLayoutPanel parameterToolbar;
+        private Label lblProductResultFilter;
+        private AntdUI.Select selectProductResult;
+        private AntdUI.Button btnToggleTestDataExpand;
+        private AntdUI.Button btnExportTestData;
+        private AntdUI.Checkbox chkExportProgramLimits;
+        private DataGridView dgvWeldParameters;
+        private AntdUI.Table tableTestData;
+        private AntdUI.Pagination testDataPagination;
+        private TabPage tabReportFiles;
+        private TableLayoutPanel reportLayout;
+        private FlowLayoutPanel reportToolbar;
+        private AntdUI.Button btnOpenReport;
+        private AntdUI.Button btnOpenReportFolder;
+        private Label lblReportSummary;
+        private DataGridView dgvReportFiles;
+        private DataGridViewTextBoxColumn colTaskStation;
+        private DataGridViewTextBoxColumn colTaskWorkOrder;
+        private DataGridViewTextBoxColumn colTaskProductNum;
+        private DataGridViewTextBoxColumn colTaskBatch;
+        private DataGridViewTextBoxColumn colTaskProductName;
+        private DataGridViewTextBoxColumn colTaskProcess;
+        private DataGridViewTextBoxColumn colTaskRecipe;
+        private DataGridViewTextBoxColumn colTaskPlannedQty;
+        private DataGridViewTextBoxColumn colTaskActualQty;
+        private DataGridViewTextBoxColumn colTaskQualifiedQty;
+        private DataGridViewTextBoxColumn colTaskFailedQty;
+        private DataGridViewTextBoxColumn colTaskOperator;
+        private DataGridViewTextBoxColumn colTaskStartTime;
+        private DataGridViewTextBoxColumn colTaskEndTime;
+        private DataGridViewTextBoxColumn colTaskStatus;
+        private DataGridViewTextBoxColumn colTaskUploadStatus;
+        private DataGridViewTextBoxColumn colParameterStation;
+        private DataGridViewTextBoxColumn colParameterProductNo;
+        private DataGridViewTextBoxColumn colParameterTouchNo;
+        private DataGridViewTextBoxColumn colParameterResult;
+        private DataGridViewTextBoxColumn colParameterRecordTime;
+        private DataGridViewTextBoxColumn colReportFileName;
+        private DataGridViewTextBoxColumn colReportExpStartId;
+        private DataGridViewTextBoxColumn colReportUploadStatus;
+        private DataGridViewTextBoxColumn colReportCreatedTime;
+        private DataGridViewTextBoxColumn colReportUpdatedTime;
     }
 }

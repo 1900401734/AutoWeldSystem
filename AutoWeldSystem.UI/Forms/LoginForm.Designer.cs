@@ -120,7 +120,11 @@ partial class LoginForm
         // 
         selectLang.Items.AddRange(new object[] { "¼òÌåÖÐÎÄ", "English" });
         resources.ApplyResources(selectLang, "selectLang");
+        selectLang.MaxCount = 10;
         selectLang.Name = "selectLang";
+        selectLang.ReadOnly = false;
+        selectLang.List = true;
+        selectLang.WheelModifyEnabled = false;
         selectLang.SelectedIndexChanged += selectLang_SelectedIndexChanged;
         // 
         // pageHeader1

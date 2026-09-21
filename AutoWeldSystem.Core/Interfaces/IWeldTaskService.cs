@@ -1,5 +1,9 @@
+﻿using AutoWeldSystem.Core.Constants;
 using AutoWeldSystem.Core.DTOs;
-using AutoWeldSystem.Core.Models;
+using AutoWeldSystem.Core.DTOs.Mes.Request;
+using AutoWeldSystem.Core.DTOs.Mes.Response;
+using AutoWeldSystem.Core.Entities;
+using AutoWeldSystem.Core.Runtime;
 
 namespace AutoWeldSystem.Core.Interfaces;
 
@@ -9,27 +13,132 @@ public interface IWeldTaskService
 
     event EventHandler? StateChanged;
 
-    Task<MesBaseResponse<MesServerTimeResponse>> SyncServerTimeAsync(CancellationToken cancellationToken = default);
+    /// <summary>
+    /// 查询指定工位当前是否存在尚未完工的焊接任务。
+    /// </summary>
+    /// <param name="stationNo">工位号。</param>
+    /// <returns>未完工任务；若没有则返回 null。</returns>
+    BizWeldTask? GetUnfinishedTask(int stationNo = ProductionConstants.Stations.DefaultStationNo);
 
-    Task<MesWorkOrderResponse?> GetWorkOrderInfoAsync(string workId, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// 将指定工位的本地未完工任务恢复到当前运行态。
+    /// </summary>
+    /// <param name="stationNo">工位号。</param>
+    /// <returns>恢复成功的未完工任务；若没有可恢复任务则返回 null。</returns>
+    BizWeldTask? RestoreUnfinishedTask(int stationNo = ProductionConstants.Stations.DefaultStationNo);
 
-    void SelectProcess(ExpItemData process);
+    /// <summary>
+    /// 校验任务是否具备生产条件；恢复、继续和 PLC 放行不得绕过。
+    /// </summary>
+    void ValidateTaskForProduction(BizWeldTask task, int stationNo = ProductionConstants.Stations.DefaultStationNo);
 
-    Task<IReadOnlyList<MesProgramListItemData>> LoadProgramsAsync(CancellationToken cancellationToken = default);
+    /// <summary>
+    /// 显式作废配置无效的未完工任务，保留历史并停止尚未发送的生产补传。
+    /// 调用前必须确认目标工位 PLC 已禁止生产；服务仍复核维护权限和任务身份。
+    /// </summary>
+    Task<BizWeldTask> AbandonInvalidTaskAsync(int taskId, int stationNo, CancellationToken cancellationToken = default);
 
-    Task<MesProgramData?> DownloadProgramAsync(MesProgramListItemData program, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// 采集准入被数据库拒绝后，清空本机内存中仍指向该任务的运行态，避免轮询反复复核已结束的任务。
+    /// 只清内存，不改数据库；返回是否确实清除了运行态。
+    /// </summary>
+    bool DetachStaleTask(int taskId);
 
-    Task<MesBaseResponse<MesUserInfoResponse>> ValidateMesOperatorAsync(string employeeNumber, CancellationToken cancellationToken = default);
+    Task<BasicRes<ServerTimeRes>> SyncServerTimeAsync(CancellationToken cancellationToken = default);
 
-    Task<BizWeldTask> StartAsync(string employeeNumber, int actualQty, CancellationToken cancellationToken = default);
+    Task<WorkOrderRes?> GetWorkOrderInfoAsync(string workId, int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        CancellationToken cancellationToken = default);
 
-    Task<MesBaseResponse<object>> ChangeStatusAsync(string statusCode, CancellationToken cancellationToken = default);
+    void SelectStation(int stationNo);
 
-    Task<BizWeldTask> FinishAsync(string employeeNumber, int actualQty, int qualifiedQty, int failedQty, CancellationToken cancellationToken = default);
+    void SelectProcess(ExpItemData process, int stationNo = ProductionConstants.Stations.DefaultStationNo);
+
+    Task<IReadOnlyList<MesProgramListItemData>> LoadProgramsAsync(
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        CancellationToken cancellationToken = default);
+
+    Task<ProgramDataRes?> DownloadProgramAsync(
+        MesProgramListItemData program,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        CancellationToken cancellationToken = default);
+
+    void ApplyStartAdjustment(
+        WorkOrderRes workOrder,
+        ExpItemData? process,
+        ProgramDataRes program,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo);
+
+    /// <summary>
+    /// Creates and starts a local work order without MES calls.
+    /// The generated start report is queued for makeup upload after MES recovers.
+    /// Offline start requires both the operator number and name because MES cannot resolve the name later.
+    /// </summary>
+    Task<BizWeldTask> StartLocalAsync(
+        OfflineExperimentStartReq request,
+        string operatorNumber,
+        string operatorName,
+        int actualQty,
+        CancellationToken cancellationToken = default);
+
+    Task<BasicRes<UserInfoRes>> ValidateMesOperatorAsync(
+        string employeeNumber,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        CancellationToken cancellationToken = default);
+
+    Task<BizWeldTask> StartAsync(
+        string employeeNumber,
+        int actualQty,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        bool employeeAlreadyValidated = false,
+        CancellationToken cancellationToken = default);
+
+    Task<BasicRes<object>> ChangeStatusAsync(
+        string statusCode,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        CancellationToken cancellationToken = default);
+
+    Task<BizWeldTask> FinishAsync(
+        string employeeNumber,
+        int actualQty,
+        int qualifiedQty,
+        int failedQty,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        CancellationToken cancellationToken = default);
+
+    Task<BizWeldTask> FinishLocalAsync(
+        string employeeNumber,
+        int actualQty,
+        int qualifiedQty,
+        int failedQty,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Updates the recipe code of an existing task and synchronizes the in-memory runtime state.
+    /// </summary>
+    /// <param name="taskId">Task database id.</param>
+    /// <param name="recipeCode">Recipe code read from PLC or selected by the PC.</param>
+    /// <param name="stationNo">Station context used to refresh the compatibility runtime state.</param>
+    /// <returns>true when the task exists and was updated; otherwise false.</returns>
+    bool TryUpdateRecipeCode(
+        int taskId,
+        string recipeCode,
+        int stationNo = ProductionConstants.Stations.DefaultStationNo);
 
     Task RetryPendingUploadsAsync(CancellationToken cancellationToken = default);
 
-    void UpdateProgramContent(string content);
+    /// <summary>
+    /// Retries the complete upload chain associated with one weld task.
+    /// </summary>
+    Task RetryPendingUploadsAsync(int weldTaskId, CancellationToken cancellationToken = default);
+
+    void UpdateProgramContent(string content, int stationNo = ProductionConstants.Stations.DefaultStationNo);
 
     void Reset();
+
+    /// <summary>
+    /// Deletes a weld task and all associated records (upload tasks, weld point records, report files).
+    /// </summary>
+    /// <param name="id">Weld task id.</param>
+    void DeleteWeldTask(int id);
 }
