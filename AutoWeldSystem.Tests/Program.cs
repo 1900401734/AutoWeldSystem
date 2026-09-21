@@ -433,6 +433,10 @@ var tests = new (string Name, Action Run)[]
     ("Startup integration rules remove all when auto start is disabled", StartupIntegrationRulesRemoveAllWhenAutoStartIsDisabled),
     ("Startup integration rules prefer elevated scheduled task", StartupIntegrationRulesPreferElevatedScheduledTask),
     ("Startup integration result reports run key fallback", StartupIntegrationResultReportsRunKeyFallback),
+    ("Local configuration file resolves ProgramData directory", LocalConfigurationFileResolvesProgramDataDirectory),
+    ("Local configuration file uses existing file without touching legacy", LocalConfigurationFileUsesExistingFile),
+    ("Local configuration file migrates legacy copy without deleting it", LocalConfigurationFileMigratesLegacyCopy),
+    ("Local configuration file creates template when nothing exists", LocalConfigurationFileCreatesTemplate),
     ("System clock sync skips small offset", SystemClockSyncSkipsSmallOffset),
     ("System clock sync changes large offset", SystemClockSyncChangesLargeOffset),
     ("System clock sync rejects invalid server time", SystemClockSyncRejectsInvalidServerTime),
@@ -14036,6 +14040,96 @@ static void StartupIntegrationResultReportsRunKeyFallback()
     AssertFalse(result.UsedElevatedTask, "回退普通自启时不应声明已使用最高权限计划任务。");
     AssertTrue(result.FallbackToRunKey, "结果应明确标记已经回退到普通 Run 启动项。");
     AssertTrue(result.Message.Contains("计划任务创建失败", StringComparison.Ordinal), "失败消息应保留计划任务失败原因。");
+}
+
+static void LocalConfigurationFileResolvesProgramDataDirectory()
+{
+    var directory = LocalConfigurationFile.ResolveDirectory(@"C:\ProgramData");
+
+    AssertEqual(@"C:\ProgramData\AutoWeldSystem", directory, "配置目录必须是 ProgramData 下以程序名命名的独立目录，更新 exe 时不会被覆盖。");
+    AssertEqual("appsettings.json", LocalConfigurationFile.FileName, "配置文件名必须与备份脚本读取的文件名一致。");
+    AssertEqual("Database:ConnectionString", LocalConfigurationFile.ConnectionStringKey, "连接串键名必须与备份脚本解析的键一致。");
+}
+
+static void LocalConfigurationFileUsesExistingFile()
+{
+    var root = CreateLocalConfigurationFixture();
+    try
+    {
+        var configDirectory = Path.Combine(root, "ProgramData");
+        var legacyDirectory = Path.Combine(root, "App");
+        Directory.CreateDirectory(configDirectory);
+        Directory.CreateDirectory(legacyDirectory);
+        File.WriteAllText(Path.Combine(configDirectory, "appsettings.json"), "{\"Database\":{\"ConnectionString\":\"live\"}}");
+        File.WriteAllText(Path.Combine(legacyDirectory, "appsettings.json"), "{\"Database\":{\"ConnectionString\":\"legacy\"}}");
+
+        var result = LocalConfigurationFile.Prepare(configDirectory, legacyDirectory, "{}");
+
+        AssertEqual(LocalConfigurationState.Existing, result.State, "ProgramData 已有配置时必须直接使用，不做迁移。");
+        AssertEqual(Path.Combine(configDirectory, "appsettings.json"), result.FilePath, "返回的路径必须指向 ProgramData 下的配置文件。");
+        AssertTrue(File.ReadAllText(result.FilePath).Contains("\"live\"", StringComparison.Ordinal), "已有的 ProgramData 配置不能被旧目录文件或模板覆盖。");
+        AssertTrue(result.MigratedFromPath is null, "未迁移时不应报告迁移来源。");
+    }
+    finally
+    {
+        Directory.Delete(root, recursive: true);
+    }
+}
+
+static void LocalConfigurationFileMigratesLegacyCopy()
+{
+    var root = CreateLocalConfigurationFixture();
+    try
+    {
+        var configDirectory = Path.Combine(root, "ProgramData");
+        var legacyDirectory = Path.Combine(root, "App");
+        Directory.CreateDirectory(legacyDirectory);
+        var legacyPath = Path.Combine(legacyDirectory, "appsettings.json");
+        File.WriteAllText(legacyPath, "{\"Database\":{\"ConnectionString\":\"legacy\"}}");
+
+        var result = LocalConfigurationFile.Prepare(configDirectory, legacyDirectory, "{}");
+
+        AssertEqual(LocalConfigurationState.Migrated, result.State, "ProgramData 无配置而程序目录有旧配置时必须自动迁移，避免升级后反复提示缺配置。");
+        AssertEqual(legacyPath, result.MigratedFromPath, "迁移结果必须报告来源路径，便于现场核对。");
+        AssertTrue(File.ReadAllText(result.FilePath).Contains("\"legacy\"", StringComparison.Ordinal), "迁移后的文件内容必须与旧配置一致。");
+        AssertTrue(File.Exists(legacyPath), "迁移只复制不删除：旧文件可能仍被已注册的备份计划任务引用。");
+    }
+    finally
+    {
+        Directory.Delete(root, recursive: true);
+    }
+}
+
+static void LocalConfigurationFileCreatesTemplate()
+{
+    var root = CreateLocalConfigurationFixture();
+    try
+    {
+        var configDirectory = Path.Combine(root, "ProgramData");
+        var legacyDirectory = Path.Combine(root, "Missing");
+        const string template = "{\"Database\":{\"ConnectionString\":\"template\"}}";
+
+        var result = LocalConfigurationFile.Prepare(configDirectory, legacyDirectory, template);
+
+        AssertEqual(LocalConfigurationState.TemplateCreated, result.State, "两处都没有配置时必须生成模板并要求程序提示退出。");
+        AssertEqual(template, File.ReadAllText(result.FilePath), "生成的模板内容必须与传入的示例配置完全一致。");
+        var bytes = File.ReadAllBytes(result.FilePath);
+        AssertFalse(bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF, "模板不带 BOM，避免部分编辑器另存后连接串解析异常。");
+
+        var again = LocalConfigurationFile.Prepare(configDirectory, legacyDirectory, "{}");
+        AssertEqual(LocalConfigurationState.Existing, again.State, "模板生成后再次启动必须按已有配置处理，不能重复覆盖现场已填写的内容。");
+    }
+    finally
+    {
+        Directory.Delete(root, recursive: true);
+    }
+}
+
+static string CreateLocalConfigurationFixture()
+{
+    var root = Path.Combine(Path.GetTempPath(), "AutoWeldSystem.Tests", "local-config-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    return root;
 }
 
 static void SystemClockSyncSkipsSmallOffset()

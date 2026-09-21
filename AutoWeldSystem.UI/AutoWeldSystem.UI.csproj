@@ -11,6 +11,14 @@
 		<ApplicationIcon>Assets\icon.ico</ApplicationIcon>
 	</PropertyGroup>
 
+	<!-- dotnet publish 时打成框架依赖单文件：SqlSugar 带入的原生库解压进 exe，Assets 与更新脚本保持为松散文件。 -->
+	<PropertyGroup Condition="'$(_IsPublishing)' == 'true'">
+		<RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+		<SelfContained Condition="'$(SelfContained)' == ''">false</SelfContained>
+		<PublishSingleFile>true</PublishSingleFile>
+		<IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+	</PropertyGroup>
+
 	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
 		<PackageReference Include="AntdUI" Version="2.3.9" />
@@ -26,14 +34,22 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<!-- 本机 appsettings.json 只进开发输出目录供首次启动迁移，不随发布产物分发；模板嵌入 exe 供缺配置时生成。 -->
 		<None Update="appsettings.json">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>Never</CopyToPublishDirectory>
 		</None>
+		<EmbeddedResource Include="appsettings.example.json" LogicalName="appsettings.example.json" />
+		<!-- ExcludeFromSingleFile：程序按 exe 目录读取 Assets，且 .ico 文件头会被打包器误判为原生库塞进 exe，必须显式留作松散文件。 -->
+		<None Include="..\tools\update-ui.cmd" Link="update-ui.cmd" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+		<None Include="..\tools\update-ui.ps1" Link="update-ui.ps1" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
 		<None Update="Assets\icon.ico">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<ExcludeFromSingleFile>true</ExcludeFromSingleFile>
 		</None>
 		<None Update="Assets\logo.png">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<ExcludeFromSingleFile>true</ExcludeFromSingleFile>
 		</None>
 	</ItemGroup>
 

@@ -247,7 +247,7 @@ UI 文件约定：静态控件声明、初始化和布局在 `*.Designer.cs`；�
 
 ### 9.1 配置来源
 
-- `AutoWeldSystem.UI/appsettings.json`：只负责设备端数据库连接；真实文件不应提交，可从 `appsettings.example.json` 复制。
+- `C:\ProgramData\AutoWeldSystem\appsettings.json`：只负责设备端数据库连接，是程序唯一读取的连接串来源；缺失时按 `AutoWeldSystem.UI/appsettings.example.json` 生成模板并提示退出，exe 目录有旧版 `appsettings.json` 时首次启动自动复制过去。
 - 数据库 `App_Settings` 表：设备端运行配置的主要来源，包括 PLC、MES、目录、工位和中心服务器参数。
 - `AutoWeldSystem.CenterServer/appsettings.json`：中心数据库连接、监听 URL和初始目录设置。
 - 中心程序目录下的 `center-server-settings.json`：看板保存的本机设置，首次运行自动创建。
@@ -259,7 +259,8 @@ UI 文件约定：静态控件声明、初始化和布局在 `*.Designer.cs`；�
 
 ```powershell
 # 首次准备
-Copy-Item AutoWeldSystem.UI\appsettings.example.json AutoWeldSystem.UI\appsettings.json
+New-Item -ItemType Directory -Force "$env:ProgramData\AutoWeldSystem" | Out-Null
+Copy-Item AutoWeldSystem.UI\appsettings.example.json "$env:ProgramData\AutoWeldSystem\appsettings.json"
 dotnet restore AutoWeldSystem.sln
 
 # 回归测试（控制台测试清单）

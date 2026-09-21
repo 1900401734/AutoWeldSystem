@@ -22,7 +22,7 @@
 
 【参数说明】
   -AppSettingsPath   必填（与 -ConnectionString 二选一）。appsettings.json 的完整路径，可以给多个，用逗号分隔。
-                     上位机的文件在上位机程序目录下，中心服务器的文件在中心服务器程序目录下，脚本会自动识别两种格式。
+                     上位机的文件在 C:\ProgramData\AutoWeldSystem\ 下（3.8.0 之前的版本在上位机程序目录下），中心服务器的文件在中心服务器程序目录下，脚本会自动识别两种格式。
   -ConnectionString  与 -AppSettingsPath 二选一。直接给连接串，例如
                      "Server=127.0.0.1;Port=3306;Database=autoweldsystem_db;Uid=root;Pwd=密码;"
   -BackupDir         备份存放目录，默认 D:\AutoWeldBackup，不存在会自动创建。
@@ -34,10 +34,10 @@
   第 1 步  把 tools 文件夹里的 backup-mysql.ps1 和 register-backup-task.ps1 复制到工控机，
           例如 D:\AutoWeld\tools\。两个文件必须放在同一个文件夹。
   第 2 步  打开普通 PowerShell 窗口，手动跑一次，确认能成功（把路径换成现场实际路径）：
-            powershell -ExecutionPolicy Bypass -File D:\AutoWeld\tools\backup-mysql.ps1 -AppSettingsPath D:\AutoWeld\UI\appsettings.json -BackupDir D:\AutoWeldBackup
+            powershell -ExecutionPolicy Bypass -File D:\AutoWeld\tools\backup-mysql.ps1 -AppSettingsPath C:\ProgramData\AutoWeldSystem\appsettings.json -BackupDir D:\AutoWeldBackup
           看到“全部备份成功”，并且 D:\AutoWeldBackup 里出现 zip 文件，说明环境没问题。
   第 3 步  用管理员身份打开 PowerShell（右键“以管理员身份运行”），注册每日自动任务：
-            powershell -ExecutionPolicy Bypass -File D:\AutoWeld\tools\register-backup-task.ps1 -AppSettingsPath D:\AutoWeld\UI\appsettings.json -BackupDir D:\AutoWeldBackup
+            powershell -ExecutionPolicy Bypass -File D:\AutoWeld\tools\register-backup-task.ps1 -AppSettingsPath C:\ProgramData\AutoWeldSystem\appsettings.json -BackupDir D:\AutoWeldBackup
           默认每天 02:00 执行；夜里关机错过了，下次开机会自动补跑。
   第 4 步  仍在管理员窗口里立即触发一次并查看结果，确认计划任务本身能跑：
             Start-ScheduledTask -TaskName AutoWeldSystemBackup
@@ -45,7 +45,7 @@
           LastTaskResult 显示 0 就是成功。
   中心服务器在另一台机器时，在那台机器重复以上步骤，-AppSettingsPath 改成中心服务器目录下的 appsettings.json。
   同一台机器同时装了上位机和中心服务器时，两个路径都写上：
-            -AppSettingsPath "D:\AutoWeld\UI\appsettings.json","D:\AutoWeld\Center\appsettings.json"
+            -AppSettingsPath "C:\ProgramData\AutoWeldSystem\appsettings.json","D:\AutoWeld\Center\appsettings.json"
 
 【日常检查】
   每月看一次备份目录：有最近日期的 zip、backup.log 末尾没有 [ERROR]，就是正常。

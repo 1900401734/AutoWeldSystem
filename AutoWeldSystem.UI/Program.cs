@@ -5,6 +5,7 @@ using AutoWeldSystem.Core.Interfaces.Log;
 using AutoWeldSystem.Core.Interfaces.MES;
 using AutoWeldSystem.Core.Interfaces.PLC;
 using AutoWeldSystem.Core.Interfaces.UserManage;
+using AutoWeldSystem.Core.Runtime;
 using AutoWeldSystem.Data;
 using AutoWeldSystem.Services;
 using AutoWeldSystem.Services.Center;
@@ -16,6 +17,7 @@ using AutoWeldSystem.UI.Forms;
 using AutoWeldSystem.UI.Infrastructure;
 using AutoWeldSystem.UI.Views;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -50,13 +52,20 @@ public static class Program
 
         try
         {
+            var localConfiguration = PrepareLocalConfiguration();
+            if (localConfiguration is null)
+            {
+                return;
+            }
+
             AppHost = Host.CreateDefaultBuilder()
+                .ConfigureAppConfiguration(configuration => UseLocalConfigurationFile(configuration, localConfiguration.FilePath))
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton(provider =>
                     {
                         var configuration = provider.GetRequiredService<IConfiguration>();
-                        return new SqlSugarDbContext(configuration["Database:ConnectionString"]);
+                        return new SqlSugarDbContext(configuration[LocalConfigurationFile.ConnectionStringKey]);
                     });
                     services.AddSingleton<IRbacService, RbacService>();
                     services.AddSingleton<ISysUserService, SysUserService>();
@@ -133,6 +142,14 @@ public static class Program
                     services.AddTransient<AddressManageView>();
                 })
                 .Build();
+
+            if (string.IsNullOrWhiteSpace(AppHost.Services.GetRequiredService<IConfiguration>()[LocalConfigurationFile.ConnectionStringKey]))
+            {
+                ShowStartupMessage(
+                    $"配置文件缺少数据库连接串 {LocalConfigurationFile.ConnectionStringKey}，请填写后重新启动程序：\n\n{localConfiguration.FilePath}",
+                    MessageBoxIcon.Warning);
+                return;
+            }
 
             InstallExceptionHandlers(AppHost.Services.GetRequiredService<IProgramExceptionLogService>());
             UiThreadDispatcherProvider.Configure(AppHost.Services.GetRequiredService<IUiThreadDispatcher>());
@@ -240,6 +257,51 @@ public static class Program
                 MessageBoxIcon.Error);
             return null;
         }
+    }
+
+    /// <summary>
+    /// 数据库连接配置固定读取 ProgramData 独立目录，现场只替换 exe 更新时不会被覆盖。
+    /// 找不到配置时生成模板并提示退出，不再静默回退到代码内置的默认连接串。
+    /// </summary>
+    private static LocalConfigurationResult? PrepareLocalConfiguration()
+    {
+        var configDirectory = LocalConfigurationFile.ResolveDirectory(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData));
+        var result = LocalConfigurationFile.Prepare(configDirectory, AppContext.BaseDirectory, ReadConfigurationTemplate());
+        if (result.State != LocalConfigurationState.TemplateCreated)
+        {
+            return result;
+        }
+
+        ShowStartupMessage(
+            $"未找到数据库配置文件，已生成模板：\n\n{result.FilePath}\n\n请填写 MySQL 连接串后重新启动程序。",
+            MessageBoxIcon.Warning);
+        return null;
+    }
+
+    /// <summary>
+    /// 模板内容取自嵌入 exe 的 appsettings.example.json，与仓库示例文件保持同一份。
+    /// </summary>
+    private static string ReadConfigurationTemplate()
+    {
+        using var stream = typeof(Program).Assembly.GetManifestResourceStream("appsettings.example.json")
+            ?? throw new InvalidOperationException("程序内未嵌入配置模板 appsettings.example.json。");
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+
+    /// <summary>
+    /// 只读取 ProgramData 下的配置文件：移除默认按工作目录查找的 appsettings.json，
+    /// 避免程序目录残留的旧配置与现场实际配置不一致。
+    /// </summary>
+    private static void UseLocalConfigurationFile(IConfigurationBuilder configuration, string filePath)
+    {
+        foreach (var source in configuration.Sources.OfType<JsonConfigurationSource>().ToList())
+        {
+            configuration.Sources.Remove(source);
+        }
+
+        configuration.AddJsonFile(filePath, optional: false, reloadOnChange: false);
     }
 
     private static void TrySyncStartupServerTime()
