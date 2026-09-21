@@ -54,6 +54,16 @@ internal sealed class CenterProductReportPathResolver
         return CombineInsideRoot(NormalizeRoot(dataDirectory), ".locks", hash);
     }
 
+    public string BuildReportLockPath(string dataDirectory, string reportPath)
+    {
+        var root = NormalizeRoot(dataDirectory);
+        // 相对路径让不同盘符映射同一共享目录时仍使用同一把锁。
+        var identity = Path.GetRelativePath(root, reportPath);
+        if (OperatingSystem.IsWindows()) identity = identity.ToUpperInvariant();
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)));
+        return CombineInsideRoot(root, ".locks", $"report-{hash}");
+    }
+
     public string NormalizeRoot(string dataDirectory)
     {
         if (string.IsNullOrWhiteSpace(dataDirectory))

@@ -28,7 +28,7 @@ public sealed class CenterProductReportFileStore
         using var routeLock = _pathLock.Acquire(routeLockPath);
         var reportPath = ResolveReportPath(dataDirectory, request);
         Directory.CreateDirectory(Path.GetDirectoryName(reportPath)!);
-        using var pathLock = _pathLock.Acquire(reportPath);
+        using var pathLock = _pathLock.Acquire(_pathResolver.BuildReportLockPath(dataDirectory, reportPath));
         var existing = _reader.Load(reportPath);
         if (existing.TaskState is not null
             && (CenterProductReportPathResolver.HasArchiveIdentity(request) || existing.TaskState.ReportSequenceNo.HasValue))

@@ -303,6 +303,7 @@ var tests = new (string Name, Action Run)[]
     ("Center report preserves corrupt existing workbook", CenterReportPreservesCorruptExistingWorkbook),
     ("Center dashboard skips unrelated corrupt formal workbooks", CenterDashboardSkipsUnrelatedCorruptFormalWorkbooks),
     ("Center report atomic update leaves no temporary files", CenterReportAtomicUpdateLeavesNoTemporaryFiles),
+    ("Center report locks stay in the root lock directory", CenterReportLocksStayInRootLockDirectory),
     ("Center report lock preserves file when same report is busy", CenterReportLockPreservesFileWhenSameReportIsBusy),
     ("Center report lock does not block a different report", CenterReportLockDoesNotBlockDifferentReport),
     ("Center report lock preserves concurrent products from different stores", CenterReportLockPreservesConcurrentProductsFromDifferentStores),
@@ -9049,6 +9050,66 @@ static void CenterReportAtomicUpdateLeavesNoTemporaryFiles()
     }
 }
 
+static void CenterReportLocksStayInRootLockDirectory()
+{
+    var outputDirectory = CreateCenterReportFixtureDirectory();
+    var mirrorDirectory = CreateCenterReportFixtureDirectory();
+    try
+    {
+        var store = new CenterProductReportFileStore();
+        var lockDirectory = Path.Combine(outputDirectory, ".locks");
+        var legacy = BuildCenterWorkbookRequest(
+            "DEVICE-01", "FLOW-LOCK-LOCATION", new DateTime(2026, 7, 17, 8, 0, 0),
+            null, 0, false, 1, string.Empty, "P001", false, false, 1);
+        var archive = BuildArchiveRequest();
+        var otherDay = BuildArchiveRequest();
+        otherDay.StartTime = otherDay.StartTime.AddDays(1);
+        var otherDevice = BuildArchiveRequest();
+        otherDevice.DeviceId = "EQ002";
+        var requests = new[] { legacy, archive, otherDay, otherDevice };
+        for (var index = 0; index < requests.Length; index++)
+        {
+            var request = requests[index];
+            var reportPath = store.Upsert(outputDirectory, request);
+            AssertFalse(File.Exists(reportPath + ".lock"), "旧哈希路径和新日期归档都不得在 XLSX 旁创建锁文件。");
+            AssertEqual(index + 1, Directory.GetFiles(lockDirectory, "report-*.lock").Length,
+                "不同设备或日期下的同名报表必须使用独立文件锁。");
+            var locksBeforeRetry = Directory.GetFiles(lockDirectory).OrderBy(path => path).ToArray();
+            request.ProductNo = "P002";
+            store.Upsert(Path.Combine(outputDirectory, "."), request);
+            if (OperatingSystem.IsWindows())
+            {
+                store.Upsert(outputDirectory.ToUpperInvariant(), request);
+            }
+
+            AssertSequenceEqual(locksBeforeRetry, Directory.GetFiles(lockDirectory).OrderBy(path => path).ToArray(),
+                "重复写入、等价目录和 Windows 大小写路径必须复用锁文件。");
+            using var workbook = new XLWorkbook(reportPath);
+            AssertEqual(2, CountCenterDataRows(workbook), "锁释放后必须允许继续写入且不丢失已有产品。");
+            AssertTrue(store.LoadProducts(outputDirectory, request.DeviceId, request.StationNo, request.CompletedAt.Date)
+                .Any(product => product.ProductNo == "P002" && product.WorkOrder == request.WorkOrder),
+                "锁目录不得干扰报表历史读取。");
+        }
+
+        AssertTrue(Directory.GetFiles(outputDirectory, "*.lock", SearchOption.AllDirectories)
+            .All(path => Path.GetDirectoryName(path) == lockDirectory), "所有新锁只能位于报表根目录的 .locks 中。");
+        foreach (var request in requests)
+        {
+            store.Upsert(mirrorDirectory, request);
+        }
+
+        AssertSequenceEqual(
+            Directory.GetFiles(lockDirectory).Select(Path.GetFileName).OrderBy(name => name).ToArray(),
+            Directory.GetFiles(Path.Combine(mirrorDirectory, ".locks")).Select(Path.GetFileName).OrderBy(name => name).ToArray(),
+            "锁身份必须来自根目录下的相对报表路径，不得受盘符或根目录位置影响。");
+    }
+    finally
+    {
+        DeleteDirectoryIfExists(outputDirectory);
+        DeleteDirectoryIfExists(mirrorDirectory);
+    }
+}
+
 static void CenterReportLockPreservesFileWhenSameReportIsBusy()
 {
     var outputDirectory = CreateCenterReportFixtureDirectory();
@@ -9062,7 +9123,7 @@ static void CenterReportLockPreservesFileWhenSameReportIsBusy()
         request.Points[0].TestResult = ProductionConstants.TestResults.Ng;
 
         using var occupiedLock = new FileStream(
-            reportPath + ".lock",
+            Directory.GetFiles(Path.Combine(outputDirectory, ".locks"), "report-*.lock").Single(),
             FileMode.OpenOrCreate,
             FileAccess.ReadWrite,
             FileShare.None);
@@ -9100,7 +9161,7 @@ static void CenterReportLockDoesNotBlockDifferentReport()
         firstRequest.Points[0].TestResult = ProductionConstants.TestResults.Ng;
 
         using var occupiedLock = new FileStream(
-            firstPath + ".lock",
+            Directory.GetFiles(Path.Combine(outputDirectory, ".locks"), "report-*.lock").Single(),
             FileMode.OpenOrCreate,
             FileAccess.ReadWrite,
             FileShare.None);
