@@ -60,13 +60,21 @@ AutoWeldSystem
 
 ## 本地配置
 
-真实配置文件 `AutoWeldSystem.UI/appsettings.json` 已加入 `.gitignore`，不会提交到仓库。首次拉取后可从示例文件复制一份：
+上位机只读取 `C:\ProgramData\AutoWeldSystem\appsettings.json`（`%ProgramData%` 下的独立目录）中的数据库连接串，程序目录和工作目录里的 `appsettings.json` 不再生效，更新程序时也不会覆盖它。启动时按以下顺序处理：
+
+- ProgramData 下已有该文件：直接使用。
+- ProgramData 下没有、但 exe 所在目录有旧版 `appsettings.json`：自动复制一份到 ProgramData（旧文件保留不删），之后以 ProgramData 为准。
+- 两处都没有：按示例内容生成模板，弹窗提示文件路径后退出；填好 MySQL 连接串再启动。
+- 文件存在但 `Database:ConnectionString` 为空：提示后退出，不会回退到代码内置的默认连接串。
+
+开发机从示例文件复制一份到 ProgramData，再按本机 MySQL 环境修改连接字符串：
 
 ```powershell
-Copy-Item AutoWeldSystem.UI/appsettings.example.json AutoWeldSystem.UI/appsettings.json
+New-Item -ItemType Directory -Force "$env:ProgramData\AutoWeldSystem" | Out-Null
+Copy-Item AutoWeldSystem.UI\appsettings.example.json "$env:ProgramData\AutoWeldSystem\appsettings.json"
 ```
 
-然后按本机 MySQL 环境修改连接字符串。
+`AutoWeldSystem.UI/appsettings.json` 仍在 `.gitignore` 中；旧检出里的这份文件只会随开发输出目录复制并在首次运行时迁移，不进入发布产物。
 
 当前数据库上下文会在启动时执行 CodeFirst 初始化，创建系统需要的表结构。默认管理员账号和权限数据由服务初始化逻辑维护。
 
@@ -98,6 +106,8 @@ dotnet publish AutoWeldSystem.UI\AutoWeldSystem.UI.csproj -c Release -r win-x64 
 dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c Release -r win-x64 --self-contained false -o artifacts\CenterServer-win-x64
 ```
 
+上位机固定发布为单文件：产物只有 `AutoWeldSystem.UI.exe`、`Assets\` 和现场更新脚本 `update-ui.cmd`、`update-ui.ps1`。SqlSugar 附带的原生库已打进 exe，首次启动时解压到系统临时目录。中心服务器仍为多文件目录发布。
+
 ### 自包含（目标机无法安装运行时时使用）
 
 ```powershell
@@ -105,29 +115,42 @@ dotnet publish AutoWeldSystem.UI\AutoWeldSystem.UI.csproj -c Release -r win-x64 
 dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c Release -r win-x64 --self-contained true -o artifacts\CenterServer-win-x64-selfcontained
 ```
 
+自包含的上位机同样是单文件，但体积超过 150 MB，运行时安全补丁要随程序重发，只在工控机无法安装运行时时使用。
+
 ### 产物位置
 
 产物固定输出到仓库根目录下的 `artifacts\`：
 
 | 内容 | 产物目录 | 启动文件 |
 | --- | --- | --- |
-| 上位机主程序（非自包含） | `artifacts\UI-win-x64\` | `AutoWeldSystem.UI.exe` |
-| 上位机主程序（自包含） | `artifacts\UI-win-x64-selfcontained\` | `AutoWeldSystem.UI.exe` |
+| 上位机主程序（非自包含） | `artifacts\UI-win-x64\` | `AutoWeldSystem.UI.exe`（单文件） |
+| 上位机主程序（自包含） | `artifacts\UI-win-x64-selfcontained\` | `AutoWeldSystem.UI.exe`（单文件） |
 | 中心服务器（非自包含） | `artifacts\CenterServer-win-x64\` | `AutoWeldSystem.CenterServer.exe` |
 | 中心服务器（自包含） | `artifacts\CenterServer-win-x64-selfcontained\` | `AutoWeldSystem.CenterServer.exe` |
 
-现场部署时把整个产物目录复制到工控机，运行其中的 `.exe` 即可。
+中心服务器部署时把整个产物目录复制到目标机，运行其中的 `.exe` 即可；上位机按下一节用更新脚本安装或升级。
+
+### 上位机现场安装与更新
+
+把 `artifacts\UI-win-x64\` 整个目录复制到 U 盘，在工控机上双击 `update-ui.cmd`，脚本会：
+
+1. 通过程序的单实例互斥体判断上位机是否在运行；在运行则提示先退出并中止，不强行结束进程。
+2. 把程序目录里的旧版 exe、旧版多文件布局（dll、pdb、`runtimes`、语言资源目录）和旧 `Assets` 移到程序目录下的 `previous-version`，只保留最近一次旧版本；`Logs`、`Data`、`appsettings.json` 和其他文件不动。
+3. 复制新 exe 和 `Assets`；复制失败时自动把旧版本移回。
+4. 打印更新前后的版本号和数据库配置文件状态。
+
+程序目录默认 `D:\AutoWeld\UI`，现场不同时用记事本打开 `update-ui.cmd` 修改 `TARGET=` 一行；目录不存在时按首次安装处理。回退时退出程序，删除程序目录里的 exe 和 `Assets`，把 `previous-version` 里的内容复制回程序目录。开机自启和桌面快捷方式仍由程序按系统设置自动维护，更新后无需重新配置。
 
 ### 目标机运行时要求
 
 非自包含产物体积小、运行时可独立打补丁，但**目标工控机必须预装 .NET 8 运行时**：
 
-- 上位机主程序 UI 需要 **.NET Desktop Runtime 8**（WinForms 依赖）。
+- 上位机主程序 UI 需要 **.NET Desktop Runtime 8**（WinForms 依赖）和 **ASP.NET Core Runtime 8**（内嵌设备 HTTP 服务依赖）。
 - 中心服务器 CenterServer 需要 **ASP.NET Core Runtime 8**。
-- 同机部署两者时装 Desktop Runtime + ASP.NET Core Runtime 即可，均为 x64。
+- 两者均为 x64；同机部署时装 Desktop Runtime + ASP.NET Core Runtime 即可。
 - 现场无法安装运行时或无外网时改用自包含发布，产物体积明显增大，但不依赖预装运行时。
 
-发布产物目录 `artifacts\` 已在 `.gitignore` 中忽略，不进入版本库。UI 的 `appsettings.json` 会随发布输出，现场需按实际 PLC、MES、MySQL 参数单独维护，不要把现场配置提交回仓库。
+发布产物目录 `artifacts\` 已在 `.gitignore` 中忽略，不进入版本库。发布产物不包含 `appsettings.json`：数据库连接串只读 `C:\ProgramData\AutoWeldSystem\appsettings.json`，见[本地配置](#本地配置)；现场 PLC、MES 参数在系统设置页维护，不要把现场配置提交回仓库。
 
 ## 运行
 
@@ -152,22 +175,22 @@ dotnet publish AutoWeldSystem.CenterServer\AutoWeldSystem.CenterServer.csproj -c
 
 前提：目标机可找到 `mysqldump.exe`（随 MySQL Server 安装在 `bin` 目录，脚本会自动探测 PATH 和常见安装路径；找不到时用 `-MysqldumpPath` 指定）。脚本兼容 Windows PowerShell 5.1，把 `tools` 目录整体复制到工控机即可使用。不要用右键“使用 PowerShell 运行”：脚本需要参数，且窗口跑完即关看不到结果。
 
-备份对象按参数指定：设备端库读上位机目录下 `appsettings.json` 的 `Database:ConnectionString`；中心库读中心服务器目录下 `appsettings.json` 的 `ConnectionStrings:Default`。两者分机部署时各自注册一次；同机部署时 `-AppSettingsPath` 传两个路径即可一次备两个库。
+备份对象按参数指定：设备端库读 `C:\ProgramData\AutoWeldSystem\appsettings.json` 的 `Database:ConnectionString`（3.8.0 之前的版本在上位机程序目录下）；中心库读中心服务器目录下 `appsettings.json` 的 `ConnectionStrings:Default`。两者分机部署时各自注册一次；同机部署时 `-AppSettingsPath` 传两个路径即可一次备两个库。
 
 先手动执行一次确认可用：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tools\backup-mysql.ps1 -AppSettingsPath "D:\AutoWeld\UI\appsettings.json" -BackupDir "D:\AutoWeldBackup" -RetentionDays 30
+powershell -ExecutionPolicy Bypass -File tools\backup-mysql.ps1 -AppSettingsPath "C:\ProgramData\AutoWeldSystem\appsettings.json" -BackupDir "D:\AutoWeldBackup" -RetentionDays 30
 ```
 
 再以管理员身份注册每日任务（默认 02:00，任务名 `AutoWeldSystemBackup`）：
 
 ```powershell
 # 设备端库
-powershell -ExecutionPolicy Bypass -File tools\register-backup-task.ps1 -AppSettingsPath "D:\AutoWeld\UI\appsettings.json" -BackupDir "D:\AutoWeldBackup" -RetentionDays 30
+powershell -ExecutionPolicy Bypass -File tools\register-backup-task.ps1 -AppSettingsPath "C:\ProgramData\AutoWeldSystem\appsettings.json" -BackupDir "D:\AutoWeldBackup" -RetentionDays 30
 
 # 同机双库，03:30 执行
-powershell -ExecutionPolicy Bypass -File tools\register-backup-task.ps1 -AppSettingsPath "D:\AutoWeld\UI\appsettings.json","D:\AutoWeld\Center\appsettings.json" -DailyAt 03:30
+powershell -ExecutionPolicy Bypass -File tools\register-backup-task.ps1 -AppSettingsPath "C:\ProgramData\AutoWeldSystem\appsettings.json","D:\AutoWeld\Center\appsettings.json" -DailyAt 03:30
 
 # 验证：手动触发一次并查看结果，LastTaskResult 为 0 表示成功
 Start-ScheduledTask -TaskName AutoWeldSystemBackup
@@ -192,6 +215,7 @@ powershell -ExecutionPolicy Bypass -File tools\register-backup-task.ps1 -Unregis
 
 - 恢复会丢失备份时间点之后的数据；回退程序版本时，程序版本与备份必须配套。
 - 数据库密码只在运行时从 `appsettings.json` 读取并写入临时配置文件，不出现在计划任务命令行；`appsettings.json` 本身的访问权限仍需现场控制。
+- 从 3.8.0 之前的版本升级后，已注册的备份任务仍指向程序目录下的旧 `appsettings.json`；程序不再读取该文件，修改数据库密码后备份会失败，请用 ProgramData 路径重新执行 `register-backup-task.ps1` 注册一次。
 - 备份目录是本机单副本，不防硬盘损坏；应定期把该目录复制到 NAS、其他机器或 U 盘。
 - 升级版本前先手动跑一次备份，再按 CHANGELOG 的升级注意操作。
 - 备份是 `mysqldump` 逻辑备份，`--single-transaction` 对 InnoDB 不锁表，可在生产期间执行；库很大时恢复耗时较长。用 MySQL 8.0 的 `mysqldump` 备份 5.7 库可行，8.0 的备份导回 5.7 不保证兼容。

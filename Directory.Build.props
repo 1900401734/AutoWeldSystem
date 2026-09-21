@@ -6,5 +6,7 @@
     <AssemblyVersion>3.8.0.0</AssemblyVersion>
     <FileVersion>3.8.0.0</FileVersion>
     <InformationalVersion>3.8.0</InformationalVersion>
+    <!-- 符号嵌入程序集：单文件发布后没有松散 pdb，嵌入才能保留异常日志中的源码行号。 -->
+    <DebugType>embedded</DebugType>
   </PropertyGroup>
 </Project>

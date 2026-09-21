@@ -25,9 +25,9 @@
 【使用步骤】
   第 1 步  先用 backup-mysql.ps1 手动备份一次并确认成功（见该脚本头部说明），再来注册任务。
   第 2 步  管理员 PowerShell 里执行（把路径换成现场实际路径）：
-            powershell -ExecutionPolicy Bypass -File D:\AutoWeld\tools\register-backup-task.ps1 -AppSettingsPath D:\AutoWeld\UI\appsettings.json -BackupDir D:\AutoWeldBackup
+            powershell -ExecutionPolicy Bypass -File D:\AutoWeld\tools\register-backup-task.ps1 -AppSettingsPath C:\ProgramData\AutoWeldSystem\appsettings.json -BackupDir D:\AutoWeldBackup
           同机同时有上位机和中心服务器时，两个路径都写上：
-            powershell -ExecutionPolicy Bypass -File D:\AutoWeld\tools\register-backup-task.ps1 -AppSettingsPath "D:\AutoWeld\UI\appsettings.json","D:\AutoWeld\Center\appsettings.json"
+            powershell -ExecutionPolicy Bypass -File D:\AutoWeld\tools\register-backup-task.ps1 -AppSettingsPath "C:\ProgramData\AutoWeldSystem\appsettings.json","D:\AutoWeld\Center\appsettings.json"
           想改时间或保留天数，加 -DailyAt 03:30 -RetentionDays 60 即可；重复执行会覆盖同名旧任务。
   第 3 步  立即触发一次并查看结果，确认任务能正常跑：
             Start-ScheduledTask -TaskName AutoWeldSystemBackup
